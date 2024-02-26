@@ -85,7 +85,8 @@ Following attestation frameworks are considered in the following design:
   * nonce: A nonce provided by the server
   * x5c: The X.509 certificate chain of the attestation key used to sign the JWS
 
-[source,json]
+.The resulting POST request ist as follows:
+[source]
 ----
 message=base64url({
   "alg": "RS256",
@@ -113,7 +114,8 @@ message=base64url({
 3. The JWS compact serialization is signed using the DCAppAttest private key as a whole
 4. Client send signed message to the server including the attestation object
 
-[source,json]
+.The resulting POST request ist as follows:
+[source]
 ----
 message=base64url({
   "alg": "ES256",
@@ -136,7 +138,8 @@ message=base64url({
 
 The subsequent requests are protected using the DCAppAttest assertion:
 
-[source,json]
+.The resulting POST request ist as follows:
+[source]
 ----
 message=base64url({
   "alg": "ES256",
