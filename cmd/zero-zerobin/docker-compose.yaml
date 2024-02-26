@@ -1,0 +1,18 @@
+version: '3'
+services:
+  zerobin:
+    image: spilikin/zero-zerobin:${ZEROBIN_VERSION?}
+    ports:
+      - "443:8443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./static:/app/static
+      - ./static-well-known:/app/static-well-known
+    environment:
+      FQDN: ${FQDN?}
+      TLS_CERT_PATH: /etc/letsencrypt/live/${FQDN?}/fullchain.pem
+      TLS_KEY_PATH: /etc/letsencrypt/live/${FQDN?}/privkey.pem
+      WELL_KNOWN_DIR: /app/static-well-known
+      GOOGLE_OIDC_CLIENT_ID: ${GOOGLE_OIDC_CLIENT_ID}
+      GOOGLE_OIDC_CLIENT_SECRET: ${GOOGLE_OIDC_CLIENT_SECRET}
+      GOOGLE_OIDC_REDIRECT_URI: https://${FQDN?}/reg/auth/oidc/callback

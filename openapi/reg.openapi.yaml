@@ -1,0 +1,111 @@
+openapi: 3.0.3
+info:
+  title: Client Registration API
+  description: |-
+    
+  termsOfService: https://www.gematik.de/
+  contact:
+    url: https://www.gematik.de/
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  version: 0.2.0
+externalDocs:
+  description: Find out more about Swagger
+  url: https://github.com/gematik/api-xxx
+servers:
+  - url: https://dms-01.zu.dev.ccs.gematik.solutions/reg
+tags:
+  - name: registrations
+    description: Registering new clients
+  - name: accounts
+    description: Managing account
+  - name: clients
+    description: Managing clients
+paths:
+  /registrations:
+    post:
+      tags:
+        - registrations
+      summary: Create new pending registration
+      operationId: newRegistration
+      requestBody:
+        description: Update an existent pet in the store
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RegistrationRequest'
+        required: true
+      responses:
+        '201':
+          description: Registration created
+          headers: 
+            Location:
+                description: Full URL to newly created registration
+                schema:
+                    type: string
+            
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrationResponse'          
+        '401':
+          description: Request cannto be parsed
+        '422':
+          description: Unable to create registration due to provided data, e.g. invalid attestation
+
+components:
+  schemas:
+    RegistrationRequest:
+      type: object
+      properties:
+        message:
+          description: JWS-Signed registration message. Content type of a message is determined using `cty` header.
+          type: string
+        attestation_format: 
+          description: Attestation format used by the client to attest the registration message
+          type: string
+          enum:
+            - apple-atestation
+            - apple-assertion
+            - android-key-id-attestation
+            - none
+        attestation_data:
+          description: format specific attestation data. Data bytes are base64-encoded
+          type: string
+      required: 
+        - message
+        - attestation_format
+    RegistrationChallenge:
+      type: object
+      properties:
+        type:
+          description: type of a challenge
+          type: string
+          enum:
+            - offband
+            - oidf
+        url:
+          description: Challenge specific URL to use to perform the challenge
+          type: string
+        status:
+          type: string
+    RegistrationResponse:
+      type: object
+      properties:
+        id:
+          #desciption: Registration identifier
+          type: string
+        status:
+          description: Registration status
+          enum:
+            - pending
+            - completed
+            - cancelled
+            - error
+        challenges:
+          description: List of challenges the client needs to fullfill to complete the registration
+          type: array
+          items:
+            allOf:
+                - $ref: '#/components/schemas/RegistrationChallenge'

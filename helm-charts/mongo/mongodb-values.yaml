@@ -1,0 +1,8 @@
+auth:
+  databases:
+    - dms-01
+    - dms-02
+  usernames:
+    - reg
+    - reg
+    

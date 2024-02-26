@@ -1,0 +1,179 @@
+= 🤝🔐 Experimenting with Zero Trust
+
+NOTE: This work is part of DSR PoC: https://dsr.gematik.solutions/. 
+
+[quote]
+The Zero Trust model is a security concept based on the principle of maintaining strict access controls and not trusting anyone by default, even those already inside the network perimeter. It is a security framework that requires all users, both inside and outside the network perimeter, to be authenticated, authorized, and continuously validated for security configuration and posture before being granted or keeping access to applications and data.
+
+This project contains the experimental implementation the security primitves required to develop a modern Zero Trust based application:
+
+* Nonce Service (Dependency to HashiCorp Std-Lib) 
+* OpenID Federation Relying Party (required for gematik federated IDPs GesundheitsID)
+* DPoP RFC9449 Implementation
+* Apple DCAppAttest Assertion and Attestation
+* Simple OpenID Connect Client (Dependency only to JWX Library, only for test purposes)
+
+== Concept
+
+Installed Apps can only be considered as public clients. Using Zero Trust we provide a way to securely register an App-Instance on a specific device.
+
+Depending on the depth of the attestation of an App and the Device we can define different levels of trust.
+
+=== Client Registration
+
+Design goals:
+
+* Clients binaries contain no secrets.
+* Client generates the credentials during the registration process. Private keys never leave the device.
+* Long term secrets must be protected against extraction. Hardware-backed keystore is preferred.
+* The credentials used in the process must be attested by the plattform means.
+* Client posture must be attested by the plattform means whenever possible. At minimum the App integrity and App authenticity must be attested.
+* After the successful registration, the client can authenticate itself using client credentials against 1st Party and 3rd Party services (if they belong to the same trust domain).
+* JWK-Keypair (JOSEIdentity) and Keypair with MTLS Certificate (MTLSIdentity) must be supported for client authentication.
+* After the succesfull registration a client instance is considered confidential client in terms of OAuth2
+* JOSEIdentity and MTLSIdentity must be usable to authenticate the client as OAuth2 client.
+* MTLSIdentity must be additionally usable as a separate security layer from the application layer.
+* Registered client must be bound to an identity of the user (Subject).
+* For the Subject identification the GesundheitsID must be supported.
+* The registration process must be extendible to support OpenID for Verifiable Credentials. 
+* Offband user challenges must be supported to additionally protect the registration process.
+
+The registration process uses the security patters used in the ACME-Protocol as described in RFC8555. Especially:
+
+* Use of Nonces
+* Use of JWS
+* Use of JWK as client JOSEIdentity
+* GET as POST request with signed and attested payload
+
+The high level registration process is as follows:
+1. User installs the App
+2. App generates a JWK keypair for JOSEIdentity
+3. App generates asymmetric keypair for MTLSIdentity
+4. App requests a nonce from the server
+5. App attests the JOSEIdentity in conjunction with the nonce using the Android Key and ID Attestation or Apple DCAppAttest
+6. App creates a new registration request using the JOSEIdentity and the nonce. Client attests the registration request using Android Key and ID Attestation or Apple DCAppAttest
+7. Registration service validates the request and creates pending registration. The App is required to perform challenges to prove the identity of the Subject:
+  * Subject authentication using GesundheitsID (or later Verifiable Credentials)
+  * Subject authorization using offband challenge
+  * For test purposes only we provide configurable OpenID Connect IDP (Google)
+8. App performs the challenges
+9. Registration service validates the challenges and completes the registration
+10. App requests a MTLS certificate using the MTLSIdentity. The Certificate Request is performed using the attested MTLSIdentity and the nonce. 
+
+=== Protect Requests using Attestation
+
+Design goals:
+
+* Request body must be protected against tampering
+* Request must be bound to a specific client instance
+* Client instance must be identifiable by the server across multiple requests
+* Requests must be protected against replay attacks
+* Different attestation formats must be supported
+* Attestation should be independent of the payload it protects
+
+Following attestation frameworks are considered in the following design:
+
+* Android Key and ID Attestation
+* Apple DCAppAttest
+* TPM2.0
+
+==== Android Key and ID Attestation
+
+1. Request body is constructed using the JSON Web Signature (JWS) Compact Serialization format. Any payload can be used.
+2. The JWS header contains the following fields:
+  * nonce: A nonce provided by the server
+  * x5c: The X.509 certificate chain of the attestation key used to sign the JWS
+
+[source,json]
+----
+message=base64url({
+  "alg": "RS256",
+  "nonce": "bWV0YSB0ZXN0IG5vbmNl",
+  "x5c": [
+    "device cert0",
+    "google cert1",
+    "..."
+  ]
+}
+.
+{
+    // any payload
+}
+.signature)
+&attestation_format=android-key-id-attestation
+----
+
+==== Apple DCAppAttest
+
+1. Request body is constructed using the JSON Web Signature (JWS) Compact Serialization format. Any payload can be used.
+2. The JWS header contains the following fields:
+  * nonce: A nonce provided by the server
+  * jwk: JSONIdentity public key used to sign the JWS
+3. The JWS compact serialization is signed using the DCAppAttest private key as a whole
+4. Client send signed message to the server including the attestation object
+
+[source,json]
+----
+message=base64url({
+  "alg": "ES256",
+  "nonce": "bWV0YSB0ZXN0IG5vbmNl",
+  "jwk": {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": "base64url",
+    "y": "base64url"
+  },
+}
+.
+{
+    // any payload
+}
+.signature)
+&attestation_format=apple-attestation
+&attestation_data=base64url(attestation object)
+----
+
+The subsequent requests are protected using the DCAppAttest assertion:
+
+[source,json]
+----
+message=base64url({
+  "alg": "ES256",
+  "nonce": "bWV0YSB0ZXN0IG5vbmNl",
+  "jwk": {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": "base64url",
+    "y": "base64url"
+  },
+}
+.
+{
+    // any payload
+}
+.signature)
+&attestation_format=apple-assertion
+&attestation_data=base64url(assertion object)
+----
+
+== Running the examples locally
+
+[source,sh]
+----
+go install github.com/cespare/reflex@latest
+reflex -s go run ./cmd/zero-dms
+
+(cd secrets; rm localhost*; mkcert localhost)
+export TLS_CERT_PATH=./secrets/localhost.pem
+export TLS_KEY_PATH=./secrets/localhost-key.pem
+
+mkdir -p ./secrets
+openssl req -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout ./secrets/client.key -out ./secrets/client.csr -subj "/CN=Zero Trust Client"
+curl https://localhost:8443/issue-cert --data-binary @./secrets/client.csr > ./secrets/client.pem
+
+curlie -v --key ./secrets/client.key --cert ./secrets/client.pem https://localhost:8443/echo
+----
+
+== App Links
+
+* https://zerobin.spilikin.dev/app/[Zero App]

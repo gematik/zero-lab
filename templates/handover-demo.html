@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Use smartphone to login</title>
+    <link rel="stylesheet" type="text/css" href="/static/style.css">
+    <link rel="stylesheet" type="text/css" href="/static/handover.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script type="text/javascript" src="/static/libs/qr-code-styling.js"></script>
+
+    <script type="module" defer>
+        import { showIdentityProviders, selectIdentityProvider } from "/static/handover-module.js";
+        showIdentityProviders();
+    </script>
+</head>
+<body>
+    <script type="module">
+        import { generateJOSEIdentity } from  "/static/handover-module.js";
+        await generateJOSEIdentity()
+    </script>
+
+    <div class="container">
+        <div id="identity-providers">
+            <h2>Select Identity Provider</h2>
+            <div id="identity-providers-list">
+            </div>
+        </div>
+        <div id="handover-code">
+            <h2>Scan the QR code with your smartphone to login</h2>
+            <div id="handover-code-wrapper">
+                <i class="fas fa-spinner fa-spin"></i> 
+            </div>
+            <div id="handover-auth-link"></div>
+            <div id="countdown"></div>
+        </div>
+        <div id="handover-token">
+            <h2>Login successful</h2>
+            <label>ID Token Header</label>
+            <div class="value id-token-header"></div>
+            <label>ID Token Claims</label>
+            <div class="value id-token-claims"></div>
+            <label>ID Token</label>
+            <div class="value id-token"></div>
+            <label>User-Agent</label>
+            <div class="value user-agent">37784675</div>
+            <label>Attestation</label>
+            <div class="value attestation">None</div>
+        </div>
+    </div>
+</body>
+</html>
