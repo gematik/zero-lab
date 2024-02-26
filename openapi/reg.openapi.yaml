@@ -85,6 +85,8 @@ components:
           enum:
             - offband
             - oidf
+            # for test and demo purposes
+            - oidc
         url:
           description: Challenge specific URL to use to perform the challenge
           type: string
