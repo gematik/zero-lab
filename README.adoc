@@ -174,7 +174,3 @@ curl https://localhost:8443/issue-cert --data-binary @./secrets/client.csr > ./s
 
 curlie -v --key ./secrets/client.key --cert ./secrets/client.pem https://localhost:8443/echo
 ----
-
-== App Links
-
-* https://zerobin.spilikin.dev/app/[Zero App]
