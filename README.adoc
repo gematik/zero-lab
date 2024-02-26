@@ -46,6 +46,7 @@ The registration process uses the security patters used in the ACME-Protocol as 
 * GET as POST request with signed and attested payload
 
 The high level registration process is as follows:
+
 1. User installs the App
 2. App generates a JWK keypair for JOSEIdentity
 3. App generates asymmetric keypair for MTLSIdentity
