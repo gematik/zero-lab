@@ -1,2 +1,7 @@
-
+/zero
+/zero-*
+/*.env
+/*.prk.json
+.DS_Store
+secrets
 .vscode/settings.json
