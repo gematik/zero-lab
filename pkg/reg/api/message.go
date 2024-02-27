@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/gematik/zero-lab/pkg/reg"
 	"github.com/lestrrat-go/jwx/v2/jwa"
@@ -23,6 +24,7 @@ func ParseSignedMessage(
 	redeemNonce func(nonce string) error,
 ) (*VerifiedMessage, error) {
 	// Parse the message to access the keys
+	slog.Info("parsing message", "message", string(messageData))
 	unsafeMessage, err := jws.Parse(messageData)
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse message: %w", err)

@@ -13,6 +13,7 @@ type RegistrationStore interface {
 	PopAuthSession(state string) (*AuthSessionEntity, error)
 	UpsertAccount(*AccountEntity) error
 	GetRegistration(id string) (*RegistrationEntity, error)
+	FindRegistrationByThumbprint(thumbprint string) (*RegistrationEntity, error)
 	UpsertClient(*ClientEntity) error
 	GetClient(id string) (*ClientEntity, error)
 }
@@ -93,4 +94,13 @@ func (s *MockRegistrationStore) GetClient(id string) (*ClientEntity, error) {
 		return nil, fmt.Errorf("no such client")
 	}
 	return c, nil
+}
+
+func (s *MockRegistrationStore) FindRegistrationByThumbprint(thumbprint string) (*RegistrationEntity, error) {
+	for _, r := range s.registrations {
+		if r.JwkThumbprint == thumbprint {
+			return r, nil
+		}
+	}
+	return nil, nil
 }

@@ -33,7 +33,6 @@ func (r *RegistrationAPI) MountRoutes(group *echo.Group) {
 func (r *RegistrationAPI) parseSignedRequest(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		var err error
-		var body []byte
 		var attestation *reg.AttestationEntity
 		if c.Request().Header.Get("Content-Type") != echo.MIMEApplicationForm {
 			return echo.NewHTTPError(http.StatusBadRequest, "unsupported content type")
@@ -45,7 +44,7 @@ func (r *RegistrationAPI) parseSignedRequest(next echo.HandlerFunc) echo.Handler
 		binderr := echo.FormFieldBinder(c).
 			MustString("message", &messageStr).
 			MustString("attestation_format", &formatStr).
-			MustString("attestation_data", &dataStr).
+			String("attestation_data", &dataStr).
 			BindError()
 		if binderr != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, binderr)
@@ -54,24 +53,23 @@ func (r *RegistrationAPI) parseSignedRequest(next echo.HandlerFunc) echo.Handler
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err)
 		}
-		slog.Info("Validating attestation", "format", format)
 		data, err = base64.RawURLEncoding.DecodeString(dataStr)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err)
 		}
-		body = []byte(messageStr)
-		attestation, err = r.regService.ValidateAttestation(body, format, data, c.Param("id"))
+		attestation, err = r.regService.ValidateMessageAttestation([]byte(messageStr), format, data, nil)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err)
 		}
 
-		message, err := ParseSignedMessage(body, r.regService.NonceService.Redeem)
+		slog.Info("attestation is valid", "format", attestation.Format)
+
+		message, err := ParseSignedMessage([]byte(messageStr), r.regService.NonceService.Redeem)
 		if err != nil {
 			slog.Error("parse error", "err", err)
 			return echo.NewHTTPError(http.StatusBadRequest, err)
 		}
 
-		// TODO: add android attestation
 		message.Attestation = attestation
 
 		if err != nil {

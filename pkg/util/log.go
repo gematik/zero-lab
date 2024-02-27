@@ -1,8 +1,11 @@
 package util
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"io"
+	"net/http"
 	"strings"
 )
 
@@ -36,4 +39,26 @@ func tokenPartToText(s string) string {
 		return err.Error()
 	}
 	return string(jsonBytes)
+}
+
+func ResponseToText(resp *http.Response) string {
+	sb := strings.Builder{}
+	sb.WriteString("HTTP/1.1 ")
+	sb.WriteString(resp.Status)
+	sb.WriteString("\n")
+	for k, v := range resp.Header {
+		sb.WriteString(k)
+		sb.WriteString(": ")
+		sb.WriteString(strings.Join(v, ", "))
+		sb.WriteString("\n")
+	}
+	sb.WriteString("\n")
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		sb.WriteString(err.Error())
+	} else {
+		resp.Body = io.NopCloser(bytes.NewBuffer(body))
+		sb.WriteString(string(body))
+	}
+	return sb.String()
 }

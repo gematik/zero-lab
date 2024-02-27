@@ -1,7 +1,7 @@
 /zero
 /zero-*
 /*.env
-/*.prk.json
+/*.id.json
 .DS_Store
 secrets
 .vscode/settings.json
