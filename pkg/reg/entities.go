@@ -26,6 +26,8 @@ const (
 	AttestationFormatAndroidKeyID     AttestationFormat = "android-key-id"
 	AttestationFormatAppleAttestation AttestationFormat = "apple-attestation"
 	AttestationFormatAppleAssertion   AttestationFormat = "apple-assertion"
+	AttestationFormatNone             AttestationFormat = "none"
+	AttestationFormatGempki           AttestationFormat = "gempki"
 )
 
 func ParseAttestationFormat(s string) (AttestationFormat, error) {
@@ -34,6 +36,12 @@ func ParseAttestationFormat(s string) (AttestationFormat, error) {
 		return AttestationFormatAppleAttestation, nil
 	case "apple-assertion":
 		return AttestationFormatAppleAssertion, nil
+	case "android-key-id":
+		return AttestationFormatAndroidKeyID, nil
+	case "none":
+		return AttestationFormatNone, nil
+	case "gempki":
+		return AttestationFormatGempki, nil
 	default:
 		return "", errors.New("unknown attestation format")
 	}
@@ -64,7 +72,9 @@ const (
 type RegistrationChallengeType string
 
 const (
-	RegistrationChallengeTypeOIDC RegistrationChallengeType = "oidc"
+	RegistrationChallengeTypeOIDC    RegistrationChallengeType = "oidc"
+	RegistrationChallengeTypeOIDF    RegistrationChallengeType = "oidf"
+	RegistrationChallengeTypeOffband RegistrationChallengeType = "offband"
 )
 
 type RegistrationChallengeEntity struct {

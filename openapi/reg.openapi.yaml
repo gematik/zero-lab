@@ -23,6 +23,12 @@ tags:
   - name: clients
     description: Managing clients
 paths:
+  /nonce:
+    head:
+      tags:
+        - registrations
+      summary: TODO nonce is returned as a header 'Replay-Nonce'
+
   /registrations:
     post:
       tags:

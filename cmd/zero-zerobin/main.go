@@ -45,6 +45,9 @@ func init() {
 	}
 
 	clientsCA, err = ca.NewMockCA(clientsIssuer)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func main() {
@@ -95,7 +98,7 @@ func main() {
 			log.Fatal(err)
 		}
 		opts = append(opts, reg.WithOIDCClient(oidcClient))
-		slog.Info("Using Google OIDC client")
+		slog.Info("Using OIDC client (Test only)", "client_id", config.ClientID)
 	}
 
 	var regEntityStatementPath string
@@ -137,8 +140,11 @@ func main() {
 	}
 
 	regapi, err := regapi.NewRegistrationAPI(regService)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	regGroup := root.Group("/reg", bodyDump)
+	regGroup := root.Group("/reg")
 	regapi.MountRoutes(regGroup)
 
 	if wellKnownDir := os.Getenv("WELL_KNOWN_DIR"); wellKnownDir != "" {

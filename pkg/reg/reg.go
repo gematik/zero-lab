@@ -2,15 +2,12 @@ package reg
 
 import (
 	"crypto"
-	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"net/http"
 
-	"github.com/gematik/zero-lab/pkg/attestation/dcappattest"
 	"github.com/gematik/zero-lab/pkg/ca"
 	"github.com/gematik/zero-lab/pkg/dpop"
 	"github.com/gematik/zero-lab/pkg/nonce"
@@ -79,54 +76,38 @@ func NewRegistrationService(
 	return s, nil
 }
 
-func (s *RegistrationService) ValidateAttestation(message []byte, format AttestationFormat, data interface{}, slug string) (*AttestationEntity, error) {
-	if format == AttestationFormatAppleAttestation {
-		return s.validateAppleAttestation(message, data.([]byte))
-	} else if format == AttestationFormatAppleAssertion {
-		return s.validateAppleAssertion(message, data.([]byte), slug)
-	} else {
+func (s *RegistrationService) ValidateMessageAttestation(message []byte, format AttestationFormat, data []byte, lastAttestation *AttestationEntity) (*AttestationEntity, error) {
+	slog.Info("validating message attestation", "format", format, "lastAttestation", lastAttestation)
+	attestor := getAttestor(format)
+	if attestor == nil {
 		return nil, fmt.Errorf("unsupported attestation format: %s", format)
 	}
-}
-
-func (s *RegistrationService) validateAppleAttestation(message []byte, data []byte) (*AttestationEntity, error) {
-	messageHash := sha256.Sum256(message)
-	attestation, err := dcappattest.ParseAttestation(data, messageHash)
-	if err != nil {
-		slog.Error("unable to parse attestation", "message", string(message))
-		return nil, fmt.Errorf("unable to parse attestation: %w", err)
-	}
-	slog.Info("Apple attestation is valid", "rpIdHash", base64.RawURLEncoding.EncodeToString(attestation.AuthenticatorData.RpidHash))
-	return &AttestationEntity{
-		Format: AttestationFormatAppleAttestation,
-		Value:  attestation,
-	}, nil
-}
-
-func (s *RegistrationService) validateAppleAssertion(message []byte, data []byte, slug string) (*AttestationEntity, error) {
-	reg, err := s.store.GetRegistration(slug)
-	if err != nil {
-		return nil, fmt.Errorf("unable to get registration: %w with id '%s'", err, slug)
-	}
-	messageHash := sha256.Sum256(message)
-	attestation := reg.Attestation.Value.(*dcappattest.Attestation)
-	pubKey := attestation.AttestationStatement.CredCert.PublicKey
-	counter := attestation.AuthenticatorData.Count
-	assertion, err := dcappattest.ParseAssertion(data, messageHash, pubKey, counter)
-	if err != nil {
-		slog.Error("unable to parse assertion", "message", string(message))
-		return nil, fmt.Errorf("unable to parse assertion: %w", err)
-	}
-	// update counter
-	attestation.AuthenticatorData.Count = assertion.AuthenticatorData.Count
-	slog.Info("Apple assertion is valid", "count", assertion.AuthenticatorData.Count)
-	return reg.Attestation, nil
+	return attestor.verifyMessageAttestation(message, data, lastAttestation)
 }
 
 func (s *RegistrationService) CreateRegistration(registration *RegistrationEntity) (*RegistrationEntity, error) {
+	var err error
+
 	if registration.Attestation == nil {
 		return nil, ErrAttestationRequired
 	}
+
+	thumbprint, err := registration.Jwk.ThumbprintString(crypto.SHA256)
+	if err != nil {
+		return nil, fmt.Errorf("unable to calculate thumbprint: %w", err)
+	}
+
+	reg, err := s.store.FindRegistrationByThumbprint(thumbprint)
+	if err != nil {
+		return nil, fmt.Errorf("unable to find registration: %w", err)
+	} else if reg != nil {
+		return nil, &ClientError{
+			StatusCode:       http.StatusConflict,
+			ErrorCode:        "registration_exists",
+			ErrorDescription: "Registration already exists",
+		}
+	}
+
 	registration.ID = ksuid.New().String()
 
 	registration.Challenges = []*RegistrationChallengeEntity{}
@@ -147,17 +128,18 @@ func (s *RegistrationService) CreateRegistration(registration *RegistrationEntit
 		slog.Warn("no OIDC client configured")
 	}
 
-	var err error
 	registration.JwkThumbprint, err = registration.Jwk.ThumbprintString(crypto.SHA256)
 	if err != nil {
 		return nil, fmt.Errorf("unable to calculate thumbprint: %w", err)
 	}
 
+	registration.Status = RegistrationStatusPending
+
 	if err := s.store.UpsertRegistration(registration); err != nil {
 		return nil, fmt.Errorf("unable to create registration: %w", err)
 	}
 
-	registration.Status = RegistrationStatusPending
+	s.assertChallengesAndRegister(registration)
 
 	return registration, nil
 }
@@ -195,13 +177,16 @@ func (s *RegistrationService) assertChallengesAndRegister(registration *Registra
 		if err != nil {
 			return nil, fmt.Errorf("unable to parse CSR: %w", err)
 		}
-		cert, err := s.clientsCA.SignCertificateRequest(typedCsr, pkix.Name{CommonName: client.ID})
+		subject := pkix.Name{CommonName: fmt.Sprintf("id:%s attestation-format:%s", clientID, registration.Attestation.Format)}
+		cert, err := s.clientsCA.SignCertificateRequest(typedCsr, subject)
 		if err != nil {
 			return nil, fmt.Errorf("unable to issue certificate: %w", err)
 		}
 
 		client.Certificate = cert.Raw
 		registration.ClientCertificate = cert.Raw
+
+		slog.Info("issued client certificate", "client", client.ID, "name", client.Name, "subject", cert.Subject)
 	}
 
 	if err := s.store.UpsertClient(client); err != nil {
@@ -211,18 +196,3 @@ func (s *RegistrationService) assertChallengesAndRegister(registration *Registra
 	slog.Info("registration complete", "client", client.ID, "name", client.Name)
 	return client, nil
 }
-
-/*
-	if client.Csr != nil {
-		typedCsr, err := x509.ParseCertificateRequest(client.Csr)
-		if err != nil {
-			return nil, fmt.Errorf("unable to parse CSR: %w", err)
-		}
-		cert, err := s.clientsCA.SignCertificateRequest(typedCsr, pkix.Name{CommonName: client.ID})
-		if err != nil {
-			return nil, fmt.Errorf("unable to issue certificate: %w", err)
-		}
-
-		client.Certificate = cert.Raw
-	}
-*/
