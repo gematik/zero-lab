@@ -105,7 +105,7 @@ type AuthSessionEntity struct {
 
 type AttestationEntity struct {
 	Format AttestationFormat
-	Value  interface{}
+	Data   interface{}
 }
 
 type ClientDescriptorEntity struct {
