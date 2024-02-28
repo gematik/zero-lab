@@ -32,7 +32,7 @@ func TestSignedMessage(t *testing.T) {
 		jws.WithKey(jwa.ES256, prkJwk, jws.WithProtectedHeaders(headers)))
 	t.Log(util.JWSToText(string(signedJWS)))
 
-	verifiedMessage, err := ParseSignedMessage(
+	verifiedMessage, err := parseSignedMessage(
 		signedJWS,
 		func(nonce string) error { return nil },
 	)

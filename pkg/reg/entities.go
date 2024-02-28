@@ -13,12 +13,26 @@ type AccountEntity struct {
 	Issuer  string `json:"issuer"`
 }
 
-type ClientType string
+type ClientPlatform string
 
 const (
-	ClientTypeAndroid ClientType = "android"
-	ClientTypeApple   ClientType = "apple"
+	ClientPlatformAndroid  ClientPlatform = "android"
+	ClientPlatformApple    ClientPlatform = "apple"
+	ClientPlatformSoftware ClientPlatform = "software"
 )
+
+func ParseClientPlatform(s string) (ClientPlatform, error) {
+	switch s {
+	case "android":
+		return ClientPlatformAndroid, nil
+	case "apple":
+		return ClientPlatformApple, nil
+	case "software":
+		return ClientPlatformSoftware, nil
+	default:
+		return "", errors.New("unknown client platform")
+	}
+}
 
 type AttestationFormat string
 
@@ -48,16 +62,17 @@ func ParseAttestationFormat(s string) (AttestationFormat, error) {
 }
 
 type ClientEntity struct {
-	ID          string             `json:"id"`
-	Thumbprint  string             `json:"thumbprint"`
-	Name        string             `json:"name"`
-	AccountID   string             `json:"accountId"`
-	DateAdded   time.Time          `json:"dateAdded"`
-	Type        ClientType         `json:"type"`
-	Jwk         *util.Jwk          `json:"jwk"`
-	Csr         []byte             `json:"csr,omitempty"`
-	Certificate []byte             `json:"certificate,omitempty"`
-	Attestation *AttestationEntity `json:"attestation"`
+	ID                    string             `json:"id"`
+	Thumbprint            string             `json:"thumbprint"`
+	Name                  string             `json:"name"`
+	AccountID             string             `json:"accountId"`
+	RegistrationTimestamp time.Time          `json:"registrationTimestamp"`
+	Platform              ClientPlatform     `json:"platform"`
+	Jwk                   *util.Jwk          `json:"jwk"`
+	Csr                   []byte             `json:"csr,omitempty"`
+	Certificate           []byte             `json:"certificate,omitempty"`
+	Attestation           *AttestationEntity `json:"attestation"`
+	Posture               interface{}        `json:"posture"`
 }
 
 type RegistrationStatus string
@@ -84,20 +99,16 @@ type RegistrationChallengeEntity struct {
 }
 
 type RegistrationEntity struct {
-	ID                string                         `json:"id"`
-	JwkThumbprint     string                         `json:"jkt"`
-	Name              string                         `json:"name"`
-	Status            RegistrationStatus             `json:"status"`
-	Csr               []byte                         `json:"csr,omitempty"`
-	Jwk               *util.Jwk                      `json:"jwk"`
-	Attestation       *AttestationEntity             `json:"attestation"`
-	Challenges        []*RegistrationChallengeEntity `json:"challenges"`
-	ClientID          string                         `json:"clientId,omitempty"`
-	ClientCertificate []byte                         `json:"clientCertificate,omitempty"`
+	ID            string                         `json:"id"`
+	JwkThumbprint string                         `json:"jkt"`
+	Iss           string                         `json:"iss,omitempty"`
+	Status        RegistrationStatus             `json:"status"`
+	Challenges    []*RegistrationChallengeEntity `json:"challenges"`
+	Client        *ClientEntity                  `json:"client"`
 }
 
 type AuthSessionEntity struct {
-	Idp          string `json:"idp"`
+	Iss          string `json:"idp"`
 	State        string `json:"state"`
 	Nonce        string `json:"nonce"`
 	CodeVerifier string `json:"codeVerifier"`
@@ -112,4 +123,10 @@ type ClientDescriptorEntity struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	Type string `json:"type"`
+}
+
+type PostureSoftware struct {
+	OS        string `json:"os" validate:"required"`
+	OSVersion string `json:"osVersion" validate:"required"`
+	Arch      string `json:"arch" validate:"required"`
 }

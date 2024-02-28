@@ -88,11 +88,21 @@ func (s *RegistrationService) ValidateMessageAttestation(message []byte, format 
 func (s *RegistrationService) CreateRegistration(registration *RegistrationEntity) (*RegistrationEntity, error) {
 	var err error
 
-	if registration.Attestation == nil {
+	if registration.Client.Attestation == nil {
 		return nil, ErrAttestationRequired
 	}
 
-	thumbprint, err := registration.Jwk.ThumbprintString(crypto.SHA256)
+	attestor := getAttestor(registration.Client.Attestation.Format)
+	if attestor == nil {
+		return nil, fmt.Errorf("unable to get attestor: %w", err)
+	}
+
+	err = attestor.validateClientPosture(registration.Client)
+	if err != nil {
+		return nil, fmt.Errorf("unable to validate client posture: %w", err)
+	}
+
+	thumbprint, err := registration.Client.Jwk.ThumbprintString(crypto.SHA256)
 	if err != nil {
 		return nil, fmt.Errorf("unable to calculate thumbprint: %w", err)
 	}
@@ -128,7 +138,7 @@ func (s *RegistrationService) CreateRegistration(registration *RegistrationEntit
 		slog.Warn("no OIDC client configured")
 	}
 
-	registration.JwkThumbprint, err = registration.Jwk.ThumbprintString(crypto.SHA256)
+	registration.JwkThumbprint, err = registration.Client.Jwk.ThumbprintString(crypto.SHA256)
 	if err != nil {
 		return nil, fmt.Errorf("unable to calculate thumbprint: %w", err)
 	}
@@ -163,36 +173,32 @@ func (s *RegistrationService) assertChallengesAndRegister(registration *Registra
 
 	clientID := ksuid.New().String()
 
-	client := &ClientEntity{
-		ID:          clientID,
-		Name:        registration.Name,
-		Jwk:         registration.Jwk,
-		Attestation: registration.Attestation,
-	}
+	registration.Client.ID = clientID
 
-	registration.ClientID = clientID
-
-	if registration.Csr != nil {
-		typedCsr, err := x509.ParseCertificateRequest(registration.Csr)
+	if registration.Client.Csr != nil {
+		typedCsr, err := x509.ParseCertificateRequest(registration.Client.Csr)
 		if err != nil {
 			return nil, fmt.Errorf("unable to parse CSR: %w", err)
 		}
-		subject := pkix.Name{CommonName: fmt.Sprintf("id:%s attestation-format:%s", clientID, registration.Attestation.Format)}
+		subject := pkix.Name{CommonName: fmt.Sprintf("id:%s attestation-format:%s", clientID, registration.Client.Attestation.Format)}
 		cert, err := s.clientsCA.SignCertificateRequest(typedCsr, subject)
 		if err != nil {
 			return nil, fmt.Errorf("unable to issue certificate: %w", err)
 		}
 
-		client.Certificate = cert.Raw
-		registration.ClientCertificate = cert.Raw
+		registration.Client.Certificate = cert.Raw
 
-		slog.Info("issued client certificate", "client", client.ID, "name", client.Name, "subject", cert.Subject)
+		slog.Info("issued client certificate", "client", registration.Client.ID, "name", registration.Client.Name, "subject", cert.Subject)
 	}
 
-	if err := s.store.UpsertClient(client); err != nil {
+	if err := s.store.UpsertClient(registration.Client); err != nil {
 		return nil, fmt.Errorf("unable to store client: %w", err)
 	}
 
-	slog.Info("registration complete", "client", client.ID, "name", client.Name)
-	return client, nil
+	slog.Info("registration complete", "client", registration.Client.ID, "name", registration.Client.Name)
+	return registration.Client, nil
+}
+
+func (s *RegistrationService) UpdateRegistration(registration *RegistrationEntity) error {
+	return s.store.UpsertRegistration(registration)
 }

@@ -82,16 +82,16 @@ func main() {
 
 	opts := []reg.RegistrationServiceOption{}
 
-	if os.Getenv("GOOGLE_OIDC_CLIENT_ID") != "" {
+	if os.Getenv("OIDC_CLIENT_ID") != "" {
 		config := &oidc.Config{
-			ClientID:     os.Getenv("GOOGLE_OIDC_CLIENT_ID"),
-			ClientSecret: os.Getenv("GOOGLE_OIDC_CLIENT_SECRET"),
-			RedirectURL:  os.Getenv("GOOGLE_OIDC_REDIRECT_URI"),
+			Issuer:       os.Getenv("OIDC_ISSUER"),
+			ClientID:     os.Getenv("OIDC_CLIENT_ID"),
+			ClientSecret: os.Getenv("OIDC_CLIENT_SECRET"),
+			RedirectURI:  os.Getenv("OIDC_REDIRECT_URI"),
 			Scopes: []string{
 				"https://www.googleapis.com/auth/userinfo.email",
 				"openid",
 			},
-			DiscoveryDocumentURL: oidc.DiscoveryDocumentURLGoogle,
 		}
 		oidcClient, err := oidc.NewClient(config)
 		if err != nil {

@@ -22,7 +22,7 @@ func (s *RegistrationService) AuthCodeURLOidc(nonce string) (string, error) {
 	}
 
 	authSession := &AuthSessionEntity{
-		Idp:          s.oidcClient.DiscoveryDocument().Issuer,
+		Iss:          s.oidcClient.DiscoveryDocument().Issuer,
 		State:        util.GenerateRandomString(32),
 		Nonce:        nonce,
 		CodeVerifier: oauth2.GenerateCodeVerifier(),

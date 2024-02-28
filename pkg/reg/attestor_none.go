@@ -2,6 +2,7 @@ package reg
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 )
 
@@ -16,6 +17,13 @@ func (a *attestorNone) verifyMessageAttestation(message, data []byte, lastAttest
 	}, nil
 }
 
-func (a *attestorNone) validateClientPosture(client *ClientEntity, attestation *AttestationEntity) (*AttestationEntity, error) {
-	return nil, errors.New("not implemented")
+func (a *attestorNone) validateClientPosture(client *ClientEntity) error {
+	if client.Attestation.Format != AttestationFormatNone {
+		return errors.New("invalid attestation format")
+	}
+	if client.Platform != ClientPlatformSoftware {
+		return fmt.Errorf("invalid platform / attestation combination: '%s' / '%s'", client.Platform, client.Attestation.Format)
+	}
+
+	return nil
 }

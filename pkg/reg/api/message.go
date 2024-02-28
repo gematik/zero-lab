@@ -4,28 +4,27 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/gematik/zero-lab/pkg/reg"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jws"
 )
 
-type VerifiedMessage struct {
+type verifiedMessage struct {
+	MessageRaw       []byte
 	Jwk              jwk.Key
 	Nonce            string
 	ContentType      string
 	ProtectedHeaders jws.Headers
 	Payload          []byte
-	Attestation      *reg.AttestationEntity
 }
 
-func ParseSignedMessage(
-	messageData []byte,
+func parseSignedMessage(
+	messageRaw []byte,
 	redeemNonce func(nonce string) error,
-) (*VerifiedMessage, error) {
-	// Parse the message to access the keys
-	slog.Info("parsing message", "message", string(messageData))
-	unsafeMessage, err := jws.Parse(messageData)
+) (*verifiedMessage, error) {
+	// Parse the message to access the keys and redeem the nonce
+	slog.Info("parsing message", "message", string(messageRaw))
+	unsafeMessage, err := jws.Parse(messageRaw)
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse message: %w", err)
 	}
@@ -59,7 +58,7 @@ func ParseSignedMessage(
 	publicKeyJWK := protectedHeaders.JWK()
 
 	// verify the signature
-	message, err := jws.Verify(messageData, jws.WithKey(jwa.ES256, publicKeyJWK))
+	payload, err := jws.Verify(messageRaw, jws.WithKey(jwa.ES256, publicKeyJWK))
 	if err != nil {
 		return nil, fmt.Errorf("unable to verify message: %w", err)
 	}
@@ -67,37 +66,15 @@ func ParseSignedMessage(
 	// may be empty
 	contentType := protectedHeaders.ContentType()
 
+	slog.Info("parsed message", "payload", string(payload))
+
 	// return the verified message with the key, protected headers and payload
-	return &VerifiedMessage{
+	return &verifiedMessage{
+		MessageRaw:       messageRaw,
 		Jwk:              publicKeyJWK,
 		Nonce:            nonce,
 		ContentType:      contentType,
 		ProtectedHeaders: protectedHeaders,
-		Payload:          message,
+		Payload:          payload,
 	}, nil
 }
-
-/*
-func verifyAttestationHeader(header *attestationHeader, publicKey jwk.Key, nonce string) (interface{}, error) {
-	switch header.Format {
-	case string(reg.AttestationFormatAppleAttestation):
-		return verifyAppleAttestation(header.Data, publicKey, nonce)
-	default:
-		return nil, fmt.Errorf("unsupported attestation format: %s", header.Format)
-	}
-}
-
-func verifyAppleAttestation(dataString string, publicKey jwk.Key, nonce string) (*dcappattest.Attestation, error) {
-	data, err := base64.RawURLEncoding.DecodeString(dataString)
-	if err != nil {
-		slog.Error("unable to decode base64", "string", dataString)
-		return nil, fmt.Errorf("unable to decode base64: %w", err)
-	}
-	thumbprint, err := publicKey.Thumbprint(crypto.SHA256)
-	if err != nil {
-		return nil, fmt.Errorf("unable to calculate thumbprint: %w", err)
-	}
-	clientHash := sha256.Sum256(append(thumbprint, []byte(nonce)...))
-	return dcappattest.ParseAttestation([]byte(data), clientHash)
-}
-*/

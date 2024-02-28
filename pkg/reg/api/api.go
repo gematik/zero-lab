@@ -29,18 +29,22 @@ func (r *RegistrationAPI) MountRoutes(group *echo.Group) {
 	//group.POST("/clients/:id/issue-cert")
 }
 
-// middleware to parse the JWS signed messages
+type signedRequest struct {
+	message           *verifiedMessage
+	messageRaw        []byte
+	attestationFormat reg.AttestationFormat
+	attestationData   []byte
+}
+
 func (r *RegistrationAPI) parseSignedRequest(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		var err error
-		var attestation *reg.AttestationEntity
 		if c.Request().Header.Get("Content-Type") != echo.MIMEApplicationForm {
 			return echo.NewHTTPError(http.StatusBadRequest, "unsupported content type")
 		}
-		messageStr := c.FormValue("message")
+		var messageStr string
 		var dataStr string
 		var formatStr string
-		var data []byte
 		binderr := echo.FormFieldBinder(c).
 			MustString("message", &messageStr).
 			MustString("attestation_format", &formatStr).
@@ -49,35 +53,34 @@ func (r *RegistrationAPI) parseSignedRequest(next echo.HandlerFunc) echo.Handler
 		if binderr != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, binderr)
 		}
-		format, err := reg.ParseAttestationFormat(formatStr)
+		messageRaw := []byte(messageStr)
+		attestationFormat, err := reg.ParseAttestationFormat(formatStr)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err)
 		}
-		data, err = base64.RawURLEncoding.DecodeString(dataStr)
+		attestationData, err := base64.RawURLEncoding.DecodeString(dataStr)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err)
 		}
-		attestation, err = r.regService.ValidateMessageAttestation([]byte(messageStr), format, data, nil)
-		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, err)
-		}
-
-		slog.Info("attestation is valid", "format", attestation.Format)
-
-		message, err := ParseSignedMessage([]byte(messageStr), r.regService.NonceService.Redeem)
+		message, err := parseSignedMessage(messageRaw, r.regService.NonceService.Redeem)
 		if err != nil {
 			slog.Error("parse error", "err", err)
 			return echo.NewHTTPError(http.StatusBadRequest, err)
 		}
-
-		message.Attestation = attestation
 
 		if err != nil {
 			slog.Error("parse error", "err", err)
 			return echo.NewHTTPError(http.StatusBadRequest, err)
 		}
 
-		c.Set("message", message)
+		signedRequest := &signedRequest{
+			message:           message,
+			messageRaw:        []byte(messageStr),
+			attestationFormat: attestationFormat,
+			attestationData:   attestationData,
+		}
+
+		c.Set("signedRequest", signedRequest)
 		return next(c)
 	}
 }

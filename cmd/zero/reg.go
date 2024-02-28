@@ -24,7 +24,7 @@ var regCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal(err)
 		}
-		slog.Info("Got registration response", "id", regResp.ID, "status", regResp.Status)
+		slog.Info("Got registration response", "id", regResp.ID, "status", regResp.Status, "challenges", regResp.Challenges[0])
 
 		regResp, err = trustClient.GetRegistration()
 		if err != nil {
