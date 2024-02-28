@@ -23,7 +23,7 @@ func (a *attestorAppleAttestation) verifyMessageAttestation(message, attestation
 	slog.Info("Apple attestation is valid", "rpIdHash", base64.RawURLEncoding.EncodeToString(attestation.AuthenticatorData.RpidHash))
 	return &AttestationEntity{
 		Format: AttestationFormatAppleAttestation,
-		Value:  attestation,
+		Data:   attestation,
 	}, nil
 }
 
@@ -36,7 +36,7 @@ type attestorAppleAssertion struct {
 
 func (a *attestorAppleAssertion) verifyMessageAttestation(message, attestationData []byte, lastAttestation *AttestationEntity) (*AttestationEntity, error) {
 	messageHash := sha256.Sum256(message)
-	attestation := lastAttestation.Value.(*dcappattest.Attestation)
+	attestation := lastAttestation.Data.(*dcappattest.Attestation)
 	pubKey := attestation.AttestationStatement.CredCert.PublicKey
 	counter := attestation.AuthenticatorData.Count
 	assertion, err := dcappattest.ParseAssertion(attestationData, messageHash, pubKey, counter)

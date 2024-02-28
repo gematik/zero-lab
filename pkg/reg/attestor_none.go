@@ -12,7 +12,7 @@ func (a *attestorNone) verifyMessageAttestation(message, data []byte, lastAttest
 	slog.Error("unsafe attestation format", "format", AttestationFormatNone)
 	return &AttestationEntity{
 		Format: AttestationFormatNone,
-		Value:  nil,
+		Data:   nil,
 	}, nil
 }
 
