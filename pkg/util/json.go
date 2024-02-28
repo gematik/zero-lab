@@ -1,4 +1,4 @@
-package api
+package util
 
 import (
 	"encoding/json"
@@ -6,7 +6,7 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-func anyToStruct[T any](obj interface{}) (*T, error) {
+func AnyToStruct[T any](obj interface{}) (*T, error) {
 	var err error
 	var asJson []byte
 	asJson, ok := obj.([]byte)

@@ -27,8 +27,8 @@ func (a *attestorAppleAttestation) verifyMessageAttestation(message, attestation
 	}, nil
 }
 
-func (a *attestorAppleAttestation) validateClientPosture(client *ClientEntity, attestation *AttestationEntity) (*AttestationEntity, error) {
-	return nil, errors.New("not implemented")
+func (a *attestorAppleAttestation) validateClientPosture(client *ClientEntity) error {
+	return errors.New("not implemented")
 }
 
 type attestorAppleAssertion struct {
@@ -50,6 +50,6 @@ func (a *attestorAppleAssertion) verifyMessageAttestation(message, attestationDa
 	return lastAttestation, nil
 }
 
-func (a *attestorAppleAssertion) validateClientPosture(client *ClientEntity, attestation *AttestationEntity) (*AttestationEntity, error) {
-	return nil, errors.New("not implemented")
+func (a *attestorAppleAssertion) validateClientPosture(client *ClientEntity) error {
+	return errors.New("not implemented")
 }

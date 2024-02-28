@@ -13,23 +13,38 @@ import (
 )
 
 func (r *RegistrationAPI) newRegistration(c echo.Context) error {
-	message := c.Get("message").(*VerifiedMessage)
+	signedRequest := c.Get("signedRequest").(*signedRequest)
+
+	attestation, err := r.regService.ValidateMessageAttestation(signedRequest.messageRaw, signedRequest.attestationFormat, signedRequest.attestationData, nil)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusUnprocessableEntity, err)
+	}
 
 	fullUrl := fmt.Sprintf("%s://%s%s", c.Scheme(), c.Request().Host, c.Request().RequestURI)
 
-	input, err := anyToStruct[RegistrationRequest](message.Payload)
+	regReq, err := util.AnyToStruct[RegistrationRequest](signedRequest.message.Payload)
 	if err != nil {
-		slog.Error("decode error", "err", err, "input", string(message.Payload))
+		slog.Error("decode error", "err", err, "input", string(signedRequest.message.Payload))
 		return echo.NewHTTPError(http.StatusBadRequest, err)
 	}
 
-	clientJwk := &util.Jwk{Key: message.Jwk}
+	clientJwk := &util.Jwk{Key: signedRequest.message.Jwk}
+
+	platform, err := reg.ParseClientPlatform(regReq.Platform)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err)
+	}
 
 	registration := &reg.RegistrationEntity{
-		Name:        input.Name,
-		Jwk:         clientJwk,
-		Attestation: message.Attestation,
-		Csr:         input.Csr,
+		Iss: regReq.Iss,
+		Client: &reg.ClientEntity{
+			Name:        regReq.Name,
+			Jwk:         clientJwk,
+			Attestation: attestation,
+			Platform:    platform,
+			Posture:     regReq.Posture,
+			Csr:         regReq.Csr,
+		},
 	}
 
 	registration, err = r.regService.CreateRegistration(registration)
@@ -43,9 +58,9 @@ func (r *RegistrationAPI) newRegistration(c echo.Context) error {
 
 func (r *RegistrationAPI) getRegistration(c echo.Context) error {
 	id := c.Param("id")
-	message := c.Get("message").(*VerifiedMessage)
+	signedRequest := c.Get("signedRequest").(*signedRequest)
 
-	tumbprintB, err := message.Jwk.Thumbprint(crypto.SHA256)
+	tumbprintB, err := signedRequest.message.Jwk.Thumbprint(crypto.SHA256)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, err)
 	}
@@ -56,6 +71,15 @@ func (r *RegistrationAPI) getRegistration(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, err)
 	}
+
+	attestation, err := r.regService.ValidateMessageAttestation(signedRequest.messageRaw, signedRequest.attestationFormat, signedRequest.attestationData, registration.Client.Attestation)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusUnprocessableEntity, err)
+	}
+
+	registration.Client.Attestation = attestation
+
+	r.regService.UpdateRegistration(registration)
 
 	if registration.JwkThumbprint != thumbprint {
 		slog.Error("thumbprint mismatch", "actual", registration.JwkThumbprint, "expected", thumbprint)
@@ -75,8 +99,8 @@ func toRegistrationOutput(registration *reg.RegistrationEntity) *RegistrationRes
 		ID:                registration.ID,
 		Status:            registration.Status,
 		Challenges:        challenges,
-		ClientID:          registration.ClientID,
-		ClientCertificate: registration.ClientCertificate,
+		ClientID:          registration.Client.ID,
+		ClientCertificate: registration.Client.Certificate,
 	}
 	return &registrationOutput
 }

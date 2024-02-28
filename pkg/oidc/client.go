@@ -17,11 +17,11 @@ import (
 )
 
 type Config struct {
-	ClientID             string
-	ClientSecret         string
-	DiscoveryDocumentURL DiscoveryDocumentURL
-	RedirectURL          string
-	Scopes               []string
+	Issuer       string
+	ClientID     string
+	ClientSecret string
+	RedirectURI  string
+	Scopes       []string
 }
 
 type Client struct {
@@ -38,9 +38,10 @@ func NewClient(cfg *Config) (*Client, error) {
 	}
 
 	var err error
-	c.discoveryDocument, err = FetchDiscoveryDocument(cfg.DiscoveryDocumentURL)
+	discoveryDocumentUrl := cfg.Issuer + "/.well-known/openid-configuration"
+	c.discoveryDocument, err = FetchDiscoveryDocument(discoveryDocumentUrl)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch discovery document from %s: %w", cfg.DiscoveryDocumentURL, err)
+		return nil, fmt.Errorf("failed to fetch discovery document from %s: %w", discoveryDocumentUrl, err)
 	}
 
 	// prepare the auto-refreshing signing key cache
@@ -61,7 +62,7 @@ func (c *Client) DiscoveryDocument() *DiscoveryDocument {
 func (c *Client) AuthCodeURL(state, nonce, codeChallenge string, codeChallengeMethod oauth2.CodeChallengeMethod) string {
 	query := url.Values{}
 	query.Add("client_id", c.cfg.ClientID)
-	query.Add("redirect_uri", c.cfg.RedirectURL)
+	query.Add("redirect_uri", c.cfg.RedirectURI)
 	query.Add("response_type", "code")
 	query.Add("scope", strings.Join(c.cfg.Scopes, " "))
 	query.Add("state", state)
@@ -77,7 +78,7 @@ func (c *Client) Exchange(code string, codeVerifier string) (*TokenResponse, err
 	params.Set("client_id", c.cfg.ClientID)
 	params.Set("client_secret", c.cfg.ClientSecret)
 	params.Set("code", code)
-	params.Set("redirect_uri", c.cfg.RedirectURL)
+	params.Set("redirect_uri", c.cfg.RedirectURI)
 	params.Set("grant_type", "authorization_code")
 	params.Set("code_verifier", codeVerifier)
 

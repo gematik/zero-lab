@@ -7,7 +7,7 @@ type RegistrationResponse struct {
 	Status            reg.RegistrationStatus   `json:"status"`
 	Challenges        []*RegistrationChallenge `json:"challenges"`
 	ClientID          string                   `json:"clientId,omitempty"`
-	ClientLocation    string                   `json:"clientLocation,omitempty"`
+	ClientUrl         string                   `json:"clientUrl,omitempty"`
 	ClientCertificate []byte                   `json:"clientCertificate,omitempty"`
 }
 
@@ -18,6 +18,9 @@ type RegistrationChallenge struct {
 }
 
 type RegistrationRequest struct {
-	Name string `json:"name" validate:"required"`
-	Csr  []byte `json:"csr,omitempty"`
+	Name     string      `json:"name" validate:"required"`
+	Iss      string      `json:"iss,omitempty"`
+	Csr      []byte      `json:"csr,omitempty"`
+	Platform string      `json:"platform"`
+	Posture  interface{} `json:"posture"`
 }

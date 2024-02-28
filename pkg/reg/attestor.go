@@ -4,7 +4,7 @@ type attestor interface {
 	// VerifyMessageAttestation verifies the attestation of a message
 	verifyMessageAttestation(message, format []byte, lastAttestation *AttestationEntity) (*AttestationEntity, error)
 	// ValidateClientPosture validates if client posture matches the attestation
-	validateClientPosture(client *ClientEntity, attestation *AttestationEntity) (*AttestationEntity, error)
+	validateClientPosture(client *ClientEntity) error
 }
 
 func getAttestor(format AttestationFormat) attestor {
