@@ -165,7 +165,7 @@ message=base64url({
 [source,sh]
 ----
 go install github.com/cespare/reflex@latest
-reflex -s go run ./cmd/zero-dms
+reflex -s go run ./cmd/zero-zerobin
 
 (cd secrets; rm localhost*; mkcert localhost)
 export TLS_CERT_PATH=./secrets/localhost.pem
@@ -176,4 +176,17 @@ openssl req -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout ./se
 curl https://localhost:8443/issue-cert --data-binary @./secrets/client.csr > ./secrets/client.pem
 
 curlie -v --key ./secrets/client.key --cert ./secrets/client.pem https://localhost:8443/echo
+----
+
+----
+/reg/nonce
+/reg/auth/{auth}
+/reg/auth/{auth}/callback
+/reg/registrations
+/reg/registrations/:id
+/reg/registrations/:id/challenges
+/reg/registrations/:id/challenges/:challenge
+/reg/clients
+/reg/clients/:id
+/reg/clients/:id/certs/issue
 ----
