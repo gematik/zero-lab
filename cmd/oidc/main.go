@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"net/http"
 	"net/url"
 	"time"
 
@@ -23,7 +25,8 @@ func main() {
 	params := url.Values{}
 	params.Set("client_id", "zero-test")
 	params.Set("issuer", "https://accounts.google.com")
-	params.Set("redirect_uri", "http://127.0.0.1:8089/auth-callback")
+	params.Set("redirect_uri", "http://127.0.0.1:8089/as-callback")
+	params.Set("op_intermediary_redirect_uri", "http://127.0.0.1:8089/op-callback")
 	params.Set("response_type", "code")
 	params.Set("scope", "register:client")
 	params.Set("code_challenge", challenge)
@@ -39,16 +42,29 @@ func main() {
 	}()
 
 	root := echo.New()
-	root.GET("/auth-callback", func(c echo.Context) error {
+	root.GET("/op-callback", func(c echo.Context) error {
+		slog.Info("callback", "queryString", c.QueryString())
+
+		// client without redirects
+		httpClient := http.Client{
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+
+		callbackUrl := "http://localhost:8080/as/op-callback?" + c.QueryString()
+		resp, err := httpClient.Get(callbackUrl)
+
 		go func() {
-			time.Sleep(25 * time.Microsecond)
+			time.Sleep(3 * time.Second)
 			root.Shutdown(context.Background())
 		}()
 
-		code := c.QueryParam("code")
-		state := c.QueryParam("state")
+		if err != nil {
+			return echo.NewHTTPError(500, err)
+		}
 
-		return c.String(200, fmt.Sprintf("code: %s, state: %s", code, state))
+		return c.String(200, fmt.Sprintf("callback: %s", util.ResponseToText(resp)))
 	})
 
 	root.Start(":8089")
