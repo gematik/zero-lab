@@ -60,7 +60,7 @@ func NewOidfClient(rp *oidf.RelyingParty, idpUrl string) (*simpleOidfClient, err
 func (o *simpleOidfClient) auth(c echo.Context) error {
 	iss := c.Request().URL.Query().Get("iss")
 	if iss == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, errors.New("No iss provided"))
+		return echo.NewHTTPError(http.StatusBadRequest, errors.New("no iss provided"))
 	}
 
 	session := &authSession{
@@ -87,24 +87,24 @@ func (o *simpleOidfClient) auth(c echo.Context) error {
 func (o *simpleOidfClient) callback(c echo.Context) error {
 	code := c.Request().URL.Query().Get("code")
 	if code == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, errors.New("No code provided"))
+		return echo.NewHTTPError(http.StatusBadRequest, errors.New("no code provided"))
 	}
 	state := c.Request().URL.Query().Get("state")
 	if state == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, errors.New("No state provided"))
+		return echo.NewHTTPError(http.StatusBadRequest, errors.New("no state provided"))
 	}
 
 	session, ok := o.authSessions[state]
 	if !ok {
-		return echo.NewHTTPError(http.StatusBadRequest, errors.New("No session found for state"))
+		return echo.NewHTTPError(http.StatusBadRequest, errors.New("no session found for state"))
 	}
 	client, err := o.rp.NewClient(session.idpUrl)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Error creating client: %s", err))
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Errorf("error creating client: %w", err))
 	}
 	tokenResp, err := client.Exchange(code, session.codeVerifier)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Error exchanging code for token: %s", err))
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Errorf("error exchanging code for token: %w", err))
 	}
 
 	session.tokenResponse = tokenResp
@@ -115,7 +115,7 @@ func (o *simpleOidfClient) callback(c echo.Context) error {
 func (o *simpleOidfClient) handoverListener(c echo.Context) error {
 	iss := c.Request().URL.Query().Get("iss")
 	if iss == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, errors.New("No iss provided"))
+		return echo.NewHTTPError(http.StatusBadRequest, errors.New("no iss provided"))
 	}
 
 	var upgrader = websocket.Upgrader{
@@ -246,12 +246,12 @@ func (o *simpleOidfClient) deviceCode(c echo.Context) error {
 
 	iss := c.Request().FormValue("iss")
 	if iss == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, errors.New("No iss provided"))
+		return echo.NewHTTPError(http.StatusBadRequest, errors.New("no iss provided"))
 	}
 
 	clientId := c.Request().FormValue("client_id")
 	if clientId == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, errors.New("No client_id provided"))
+		return echo.NewHTTPError(http.StatusBadRequest, errors.New("no client_id provided"))
 	}
 
 	deviceCode := util.GenerateRandomString(32)
@@ -268,13 +268,13 @@ func (o *simpleOidfClient) deviceCode(c echo.Context) error {
 	o.authSessions[session.state] = session
 	client, err := o.rp.NewClient(session.idpUrl)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Error creating client: %s", err))
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Errorf("error creating client: %s", err))
 	}
 
 	authUrl, err := client.AuthCodeURL(session.state, session.nonce, session.codeVerifier)
 	if err != nil {
 		slog.Error("error pushing authorization request", "error", err)
-		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("Error pushing authorization request: %s", err))
+		return echo.NewHTTPError(http.StatusInternalServerError, fmt.Errorf("error pushing authorization request: %s", err))
 	}
 
 	output := DeviceAuthorizationResponse{

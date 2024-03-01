@@ -4,7 +4,7 @@ properties:
   os:
     type: string
     description: Operating system name
-  osVersion:
+  os_version:
     type: string
     description: Operating system version
   arch:
@@ -12,5 +12,5 @@ properties:
     description: Hardware Architecture
 required:
   - os
-  - osVersion
+  - os_version
   - arch

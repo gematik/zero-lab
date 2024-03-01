@@ -18,6 +18,7 @@ import (
 	"github.com/gematik/zero-lab/pkg/reg"
 	regapi "github.com/gematik/zero-lab/pkg/reg/api"
 	"github.com/gematik/zero-lab/pkg/util"
+	"github.com/gematik/zero-lab/pkg/zas"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -70,6 +71,13 @@ func main() {
 	root.GET("/ca/ca-chain.pem", getUnattestedClientsCAChain)
 	root.POST("/ca/issue-cert", issueCert, bodyDump)
 
+	clientsPolicy, err := zas.LoadClientsPolicy("policy/clients-policy.yaml")
+	if err != nil {
+		log.Fatal(err)
+	}
+	as := &zas.Server{ClientsPolicy: clientsPolicy}
+	root.GET("/as/auth", as.AuthorizationEndpoint)
+
 	nonceService, err := nonce.NewHashicorpNonceService()
 	if err != nil {
 		log.Fatal(err)
@@ -87,7 +95,7 @@ func main() {
 			Issuer:       os.Getenv("OIDC_ISSUER"),
 			ClientID:     os.Getenv("OIDC_CLIENT_ID"),
 			ClientSecret: os.Getenv("OIDC_CLIENT_SECRET"),
-			RedirectURI:  os.Getenv("OIDC_REDIRECT_URI"),
+			RedirectURI:  os.Getenv("OIDC_CALLBACK_URL"),
 			Scopes: []string{
 				"https://www.googleapis.com/auth/userinfo.email",
 				"openid",
@@ -99,6 +107,7 @@ func main() {
 		}
 		opts = append(opts, reg.WithOIDCClient(oidcClient))
 		slog.Info("Using OIDC client (Test only)", "client_id", config.ClientID)
+		as.AddIdentityIssuers(oidcClient)
 	}
 
 	var regEntityStatementPath string
