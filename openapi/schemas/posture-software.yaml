@@ -10,3 +10,7 @@ properties:
   arch:
     type: string
     description: Hardware Architecture
+required:
+  - os
+  - osVersion
+  - arch
