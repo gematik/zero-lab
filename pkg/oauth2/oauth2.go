@@ -9,17 +9,17 @@ import (
 	"github.com/gematik/zero-lab/pkg/util"
 )
 
-type AuthCodeOption func(params url.Values)
+type ParameterOption func(params url.Values)
 
-func WithRedirectURI(redirectUri string) AuthCodeOption {
+func WithRedirectURI(redirectUri string) ParameterOption {
 	return func(params url.Values) {
 		params.Set("redirect_uri", redirectUri)
 	}
 }
 
 type Client interface {
-	AuthCodeURL(state, nonce, verifier string, opts ...AuthCodeOption) (string, error)
-	Exchange(code, verifier string) (*TokenResponse, error)
+	AuthCodeURL(state, nonce, verifier string, opts ...ParameterOption) (string, error)
+	Exchange(code, verifier string, opts ...ParameterOption) (*TokenResponse, error)
 }
 
 type TokenResponse struct {

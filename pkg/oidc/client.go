@@ -59,7 +59,7 @@ func (c *Client) DiscoveryDocument() *DiscoveryDocument {
 	return c.discoveryDocument
 }
 
-func (c *Client) AuthCodeURL(state, nonce, verifier string, opts ...oauth2.AuthCodeOption) string {
+func (c *Client) AuthCodeURL(state, nonce, verifier string, opts ...oauth2.ParameterOption) string {
 	codeChallenge := oauth2.S256ChallengeFromVerifier(verifier)
 	query := url.Values{}
 	query.Add("client_id", c.Config.ClientID)
@@ -75,10 +75,12 @@ func (c *Client) AuthCodeURL(state, nonce, verifier string, opts ...oauth2.AuthC
 		opt(query)
 	}
 
+	slog.Info("Using OP AuthorizationEndpoint", "url", c.discoveryDocument.AuthorizationEndpoint)
+
 	return fmt.Sprintf("%s?%s", c.discoveryDocument.AuthorizationEndpoint, query.Encode())
 }
 
-func (c *Client) Exchange(code string, codeVerifier string) (*oauth2.TokenResponse, error) {
+func (c *Client) Exchange(code string, codeVerifier string, opts ...oauth2.ParameterOption) (*oauth2.TokenResponse, error) {
 	params := url.Values{}
 	params.Set("client_id", c.Config.ClientID)
 	params.Set("client_secret", c.Config.ClientSecret)
@@ -87,12 +89,14 @@ func (c *Client) Exchange(code string, codeVerifier string) (*oauth2.TokenRespon
 	params.Set("grant_type", "authorization_code")
 	params.Set("code_verifier", codeVerifier)
 
+	for _, opt := range opts {
+		opt(params)
+	}
+
 	resp, err := http.PostForm(c.discoveryDocument.TokenEndpoint, params)
 	if err != nil {
 		return nil, fmt.Errorf("unable to exchange code for token: %w", err)
 	}
-
-	slog.Info("Exchange", "resp", resp)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

@@ -75,8 +75,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	as := &zas.Server{ClientsPolicy: clientsPolicy}
-	root.GET("/as/auth", as.AuthorizationEndpoint)
+	zas := zas.NewServer(nil, clientsPolicy)
+	zas.MountRoutes(root.Group("/as"))
 
 	nonceService, err := nonce.NewHashicorpNonceService()
 	if err != nil {
@@ -107,7 +107,7 @@ func main() {
 		}
 		opts = append(opts, reg.WithOIDCClient(oidcClient))
 		slog.Info("Using OIDC client (Test only)", "client_id", config.ClientID)
-		as.AddIdentityIssuers(oidcClient)
+		zas.AddIdentityIssuers(oidcClient)
 	}
 
 	var regEntityStatementPath string

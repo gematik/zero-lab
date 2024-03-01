@@ -7,7 +7,7 @@ clients:
     platform: apple
     platform_product_id:
       appBundleId: A9FL89PFFL.de.gematik.zero-ios
-    auth_intermediary_uris:
+    op_intermediary_uris:
       - https://zerobin.spilikin.dev/app/auth-callback
       - https://zerobin.spilikin.dev/app/reg-callback
       - https://dms-01.zt.dev.ccs.gematik.solutions/app/auth-callback
@@ -18,5 +18,7 @@ clients:
     manufacturer_id: gematik
     manufacturer_name: gematik GmbH
     platform: software
-    auth_intermediary_uris:
-      - http://127.0.0.1:8089/auth-callback
+    redirect_uris:
+      - http://127.0.0.1:8089/as-callback
+    op_intermediary_redirect_uris:
+      - http://127.0.0.1:8089/op-callback

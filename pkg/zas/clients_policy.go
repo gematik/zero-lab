@@ -12,14 +12,15 @@ type ClientsPolicy struct {
 }
 
 type ClientPolicy struct {
-	ProductID            string      `yaml:"product_id"`
-	ProductName          string      `yaml:"product_name"`
-	ManufacturerID       string      `yaml:"manufacturer_id"`
-	ManufacturerName     string      `yaml:"manufacturer_name"`
-	Platform             string      `yaml:"platform"`
-	PlatformProductID    interface{} `yaml:"platform_product_id"`
-	AuthIntermediaryURIs []string    `yaml:"auth_intermediary_uris"`
-	PushGateway          interface{} `yaml:"push_gateway"`
+	ProductID          string      `yaml:"product_id"`
+	ProductName        string      `yaml:"product_name"`
+	ManufacturerID     string      `yaml:"manufacturer_id"`
+	ManufacturerName   string      `yaml:"manufacturer_name"`
+	Platform           string      `yaml:"platform"`
+	PlatformProductID  interface{} `yaml:"platform_product_id"`
+	RedirectURIs       []string    `yaml:"redirect_uris"`
+	OPIntermediaryURIs []string    `yaml:"op_intermediary_redirect_uris"`
+	PushGateway        interface{} `yaml:"push_gateway"`
 }
 
 func LoadClientsPolicy(path string) (*ClientsPolicy, error) {
@@ -35,10 +36,10 @@ func LoadClientsPolicy(path string) (*ClientsPolicy, error) {
 	return &policy, nil
 }
 
-func (p *ClientsPolicy) AllowedAuthIntermediaryURL(clientID, url string) bool {
+func (p *ClientsPolicy) AllowedOPIntermediaryURL(clientID, url string) bool {
 	for _, client := range p.Clients {
 		if client.ProductID == clientID {
-			for _, allowedURL := range client.AuthIntermediaryURIs {
+			for _, allowedURL := range client.OPIntermediaryURIs {
 				if url == allowedURL {
 					return true
 				}
