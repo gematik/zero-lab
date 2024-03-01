@@ -4,9 +4,32 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"net/url"
 
 	"github.com/gematik/zero-lab/pkg/util"
 )
+
+type AuthCodeOption func(params url.Values)
+
+func WithRedirectURI(redirectUri string) AuthCodeOption {
+	return func(params url.Values) {
+		params.Set("redirect_uri", redirectUri)
+	}
+}
+
+type Client interface {
+	AuthCodeURL(state, nonce, verifier string, opts ...AuthCodeOption) (string, error)
+	Exchange(code, verifier string) (*TokenResponse, error)
+}
+
+type TokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int    `json:"expires_in"`
+	Scope        string `json:"scope"`
+	RefreshToken string `json:"refresh_token"`
+	IDToken      string `json:"id_token"`
+}
 
 type CodeChallengeMethod string
 
