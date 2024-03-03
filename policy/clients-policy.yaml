@@ -7,10 +7,10 @@ clients:
     platform: apple
     platform_product_id:
       appBundleId: A9FL89PFFL.de.gematik.zero-ios
-    op_intermediary_uris:
-      - https://zerobin.spilikin.dev/app/auth-callback
-      - https://zerobin.spilikin.dev/app/reg-callback
-      - https://dms-01.zt.dev.ccs.gematik.solutions/app/auth-callback
+    redirect_uris:
+      - https://zerobin.spilikin.dev/app/as-callback
+    op_intermediary_redirect_uris:
+      - https://zerobin.spilikin.dev/app/op-intermediary-callback
     push_gateway:
       url: https://dms-01.zt.dev.ccs.gematik.solutions/push
   - product_id: zero-test
@@ -21,4 +21,4 @@ clients:
     redirect_uris:
       - http://127.0.0.1:8089/as-callback
     op_intermediary_redirect_uris:
-      - http://127.0.0.1:8089/op-callback
+      - http://127.0.0.1:8089/op-intermediary-callback

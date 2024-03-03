@@ -1,6 +1,8 @@
 package zas
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -127,7 +129,7 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 		if !s.clientsPolicy.AllowedOPIntermediaryURL(session.ClientId, session.OPIntermediaryRedirectUri) {
 			return redirectWithError(c, session.RedirectUri, oauth2.Error{
 				Code:        "invalid_request",
-				Description: "invalid redirect_uri",
+				Description: "op_indermediary_redirect_uri forbidden by policy",
 			})
 		}
 		slog.Info("OP Intermediary Redirect URI is set", "op_intermediary_redirect_uri", session.OPIntermediaryRedirectUri)
@@ -290,6 +292,15 @@ func (s *Server) TokenEndpoint(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
 			Code:        "invalid_request",
 			Description: "redirect_uri mismatch",
+		})
+	}
+
+	codeChallengeBytes := sha256.Sum256([]byte(codeVerifier))
+	codeChallenge := base64.RawURLEncoding.EncodeToString(codeChallengeBytes[:])
+	if codeChallenge != session.CodeChallenge {
+		return redirectWithError(c, session.RedirectUri, oauth2.Error{
+			Code:        "invalid_request",
+			Description: "invalid code verifier mismatch",
 		})
 	}
 
