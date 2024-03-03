@@ -23,9 +23,9 @@ func main() {
 	nonce := oauth2.GenerateCodeVerifier()
 
 	params := url.Values{}
-	params.Set("client_id", "zero-test")
-	params.Set("issuer", "https://accounts.google.com")
+	params.Set("client_id", "zero-test2")
 	params.Set("redirect_uri", "http://127.0.0.1:8089/as-callback")
+	params.Set("op_issuer", "https://accounts.google.com")
 	params.Set("op_intermediary_redirect_uri", "http://127.0.0.1:8089/op-callback")
 	params.Set("response_type", "code")
 	params.Set("scope", "register:client")
@@ -65,6 +65,17 @@ func main() {
 		}
 
 		return c.String(200, fmt.Sprintf("callback: %s", util.ResponseToText(resp)))
+	})
+
+	root.GET("/as-callback", func(c echo.Context) error {
+		go func() {
+			time.Sleep(1 * time.Second)
+			root.Shutdown(context.Background())
+		}()
+		if errorCode := c.QueryParam("error"); errorCode != "" {
+			return c.String(http.StatusOK, fmt.Sprintf("Error: %s, Details: %s", errorCode, c.QueryParam("error_description")))
+		}
+		return c.String(http.StatusOK, "OK")
 	})
 
 	root.Start(":8089")
