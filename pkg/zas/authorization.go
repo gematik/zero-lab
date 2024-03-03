@@ -49,7 +49,7 @@ type AuthorizationSession struct {
 	Nonce                     string
 	State                     string
 	Scope                     string
-	Issuer                    string
+	OPIssuer                  string
 	OPIntermediaryRedirectUri string
 	RequestUri                string
 	OPSession                 *OpenidProviderSession
@@ -65,6 +65,14 @@ type OpenidProviderSession struct {
 	TokenResponse *oauth2.TokenResponse
 }
 
+func redirectWithError(c echo.Context, redirectUri string, err oauth2.Error) error {
+	params := url.Values{}
+	params.Add("error", err.Code)
+	params.Add("error_description", err.Description)
+
+	return c.Redirect(http.StatusFound, redirectUri+"?"+params.Encode())
+}
+
 func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 	var session AuthorizationSession
 	binderr := echo.FormFieldBinder(c).
@@ -76,7 +84,7 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 		MustString("nonce", &session.Nonce).
 		MustString("state", &session.State).
 		MustString("scope", &session.Scope).
-		MustString("issuer", &session.Issuer).
+		MustString("op_issuer", &session.OPIssuer).
 		String("op_intermediary_redirect_uri", &session.OPIntermediaryRedirectUri).
 		BindError()
 
@@ -88,7 +96,7 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 	}
 
 	if !s.clientsPolicy.AllowedClient(session.ClientId) {
-		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+		return redirectWithError(c, session.RedirectUri, oauth2.Error{
 			Code:        "invalid_request",
 			Description: "unknown client_id",
 		})
@@ -96,7 +104,7 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 
 	if session.OPIntermediaryRedirectUri == "" {
 		session.OPIntermediaryRedirectUri = session.RedirectUri
-		slog.Info("OP Intermediary Redirect URI is not set. Using redirect_uri instead.", "redirect_uri", session.OPIntermediaryRedirectUri)
+		slog.Warn("OP Intermediary Redirect URI is not set. Using redirect_uri instead.", "redirect_uri", session.OPIntermediaryRedirectUri)
 	} else {
 		slog.Info("OP Intermediary Redirect URI is set", "op_intermediary_redirect_uri", session.OPIntermediaryRedirectUri)
 	}
@@ -108,7 +116,7 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 		})
 	}
 
-	identityIssuer := s.findIdentityIssuer(session.Issuer)
+	identityIssuer := s.findIdentityIssuer(session.OPIssuer)
 	if identityIssuer == nil {
 		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
 			Code:        "invalid_request",
@@ -117,7 +125,7 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 	}
 
 	opSession := OpenidProviderSession{
-		Issuer:      session.Issuer,
+		Issuer:      session.OPIssuer,
 		State:       util.GenerateRandomString(128),
 		Nonce:       session.Nonce,
 		Verifier:    oauth2.GenerateCodeVerifier(),
@@ -193,7 +201,7 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 		})
 	}
 
-	identityIssuer := s.findIdentityIssuer(session.Issuer)
+	identityIssuer := s.findIdentityIssuer(session.OPIssuer)
 	if identityIssuer == nil {
 		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
 			Code:        "invalid_request",
