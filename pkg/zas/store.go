@@ -6,6 +6,7 @@ type SessionStore interface {
 	GetSession(state string) (*AuthorizationSession, error)
 	GetSessionByOPState(opState string) (*AuthorizationSession, error)
 	GetSessionByRequestUri(requestUri string) (*AuthorizationSession, error)
+	GetSessionByCode(code string) (*AuthorizationSession, error)
 	SaveSession(session *AuthorizationSession) error
 	DeleteSession(state string) error
 }
@@ -50,6 +51,15 @@ func (s *mockSessionStore) GetSessionByRequestUri(requestUri string) (*Authoriza
 func (s *mockSessionStore) GetSessionByOPState(opState string) (*AuthorizationSession, error) {
 	for _, session := range s.sessions {
 		if session.OPSession != nil && session.OPSession.State == opState {
+			return session, nil
+		}
+	}
+	return nil, errors.New("session not found")
+}
+
+func (s *mockSessionStore) GetSessionByCode(code string) (*AuthorizationSession, error) {
+	for _, session := range s.sessions {
+		if session.Code == code {
 			return session, nil
 		}
 	}

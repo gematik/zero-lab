@@ -75,7 +75,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	zas := zas.NewServer(nil, clientsPolicy)
+	zas, err := zas.NewServer(nil, clientsPolicy)
+	if err != nil {
+		log.Fatal(err)
+	}
 	zas.MountRoutes(root.Group("/as"))
 
 	nonceService, err := nonce.NewHashicorpNonceService()
