@@ -23,10 +23,10 @@ func main() {
 	nonce := oauth2.GenerateCodeVerifier()
 
 	params := url.Values{}
-	params.Set("client_id", "zero-test2")
+	params.Set("client_id", "zero-test")
 	params.Set("redirect_uri", "http://127.0.0.1:8089/as-callback")
 	params.Set("op_issuer", "https://accounts.google.com")
-	params.Set("op_intermediary_redirect_uri", "http://127.0.0.1:8089/op-callback")
+	//params.Set("op_intermediary_redirect_uri", "http://127.0.0.1:8089/op-callback")
 	params.Set("response_type", "code")
 	params.Set("scope", "register:client")
 	params.Set("code_challenge", challenge)
@@ -43,7 +43,7 @@ func main() {
 
 	root := echo.New()
 	root.GET("/op-callback", func(c echo.Context) error {
-		slog.Info("callback", "queryString", c.QueryString())
+		slog.Info("OP callback", "queryString", c.QueryString())
 
 		// client without redirects
 		httpClient := http.Client{
@@ -55,19 +55,17 @@ func main() {
 		callbackUrl := "http://localhost:8080/as/op-callback?" + c.QueryString()
 		resp, err := httpClient.Get(callbackUrl)
 
-		go func() {
-			time.Sleep(3 * time.Second)
-			root.Shutdown(context.Background())
-		}()
-
 		if err != nil {
 			return echo.NewHTTPError(500, err)
 		}
 
-		return c.String(200, fmt.Sprintf("callback: %s", util.ResponseToText(resp)))
+		location := resp.Header.Get("Location")
+
+		return c.Redirect(http.StatusFound, location)
 	})
 
 	root.GET("/as-callback", func(c echo.Context) error {
+		slog.Info("AS callback", "queryString", c.QueryString())
 		go func() {
 			time.Sleep(1 * time.Second)
 			root.Shutdown(context.Background())
@@ -75,7 +73,27 @@ func main() {
 		if errorCode := c.QueryParam("error"); errorCode != "" {
 			return c.String(http.StatusOK, fmt.Sprintf("Error: %s, Details: %s", errorCode, c.QueryParam("error_description")))
 		}
-		return c.String(http.StatusOK, "OK")
+
+		code := c.QueryParam("code")
+		stateFromAS := c.QueryParam("state")
+
+		if stateFromAS != state {
+			return c.String(http.StatusOK, "State mismatch")
+		}
+
+		params := url.Values{}
+		params.Set("grant_type", "authorization_code")
+		params.Set("client_id", "zero-test")
+		params.Set("code", code)
+		params.Set("code_verifier", verifier)
+		params.Set("redirect_uri", "http://127.0.0.1:8089/as-callback")
+
+		resp, err := http.PostForm("http://localhost:8080/as/token", params)
+		if err != nil {
+			return c.String(http.StatusOK, fmt.Sprintf("Error: %s", err))
+		}
+
+		return c.String(http.StatusOK, util.ResponseToText(resp))
 	})
 
 	root.Start(":8089")

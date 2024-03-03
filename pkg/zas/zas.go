@@ -5,28 +5,41 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/gematik/zero-lab/pkg/oauth2"
 	"github.com/gematik/zero-lab/pkg/oidc"
 	"github.com/gematik/zero-lab/pkg/util"
 	"github.com/labstack/echo/v4"
+	"github.com/lestrrat-go/jwx/v2/jwa"
+	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/segmentio/ksuid"
 )
 
 type Server struct {
 	identityIssuers []*oidc.Client
 	clientsPolicy   *ClientsPolicy
 	sessionStore    SessionStore
+	sigKey          *jwk.Key
 }
 
-func NewServer(sessionStore SessionStore, clientsPolicy *ClientsPolicy) *Server {
+func NewServer(sessionStore SessionStore, clientsPolicy *ClientsPolicy) (*Server, error) {
 	if sessionStore == nil {
 		sessionStore = newMockSessionStore()
 	}
+
+	sigKey, err := util.RandomJWK()
+	if err != nil {
+		return nil, fmt.Errorf("unable to generate keys: %w", err)
+	}
+
 	return &Server{
 		identityIssuers: make([]*oidc.Client, 0),
 		sessionStore:    sessionStore,
 		clientsPolicy:   clientsPolicy,
-	}
+		sigKey:          &sigKey,
+	}, nil
 }
 
 func (s *Server) AddIdentityIssuers(issuer ...*oidc.Client) {
@@ -102,26 +115,25 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 		})
 	}
 
-	if session.OPIntermediaryRedirectUri == "" {
-		session.OPIntermediaryRedirectUri = session.RedirectUri
-		slog.Warn("OP Intermediary Redirect URI is not set. Using redirect_uri instead.", "redirect_uri", session.OPIntermediaryRedirectUri)
-	} else {
-		slog.Info("OP Intermediary Redirect URI is set", "op_intermediary_redirect_uri", session.OPIntermediaryRedirectUri)
-	}
-
-	if !s.clientsPolicy.AllowedOPIntermediaryURL(session.ClientId, session.OPIntermediaryRedirectUri) {
-		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
-			Code:        "invalid_request",
-			Description: "invalid redirect_uri",
-		})
-	}
-
 	identityIssuer := s.findIdentityIssuer(session.OPIssuer)
 	if identityIssuer == nil {
-		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+		return redirectWithError(c, session.RedirectUri, oauth2.Error{
 			Code:        "invalid_request",
 			Description: "unknown issuer",
 		})
+	}
+
+	if session.OPIntermediaryRedirectUri != "" {
+		if !s.clientsPolicy.AllowedOPIntermediaryURL(session.ClientId, session.OPIntermediaryRedirectUri) {
+			return redirectWithError(c, session.RedirectUri, oauth2.Error{
+				Code:        "invalid_request",
+				Description: "invalid redirect_uri",
+			})
+		}
+		slog.Info("OP Intermediary Redirect URI is set", "op_intermediary_redirect_uri", session.OPIntermediaryRedirectUri)
+	} else {
+		session.OPIntermediaryRedirectUri = identityIssuer.DefaultRedirectURI()
+		slog.Info("Using default OP redirect uri", "redirect_uri", identityIssuer.DefaultRedirectURI())
 	}
 
 	opSession := OpenidProviderSession{
@@ -141,7 +153,7 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 
 	session.OPSession = &opSession
 	if err := s.sessionStore.SaveSession(&session); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, oauth2.Error{
+		return redirectWithError(c, session.RedirectUri, oauth2.Error{
 			Code:        "server_error",
 			Description: fmt.Errorf("unable to save session: %w", err).Error(),
 		})
@@ -164,10 +176,6 @@ func (s *Server) findIdentityIssuer(issuer string) *oidc.Client {
 		}
 	}
 	return nil
-}
-
-func (s *Server) TokenEndpoint(c echo.Context) error {
-	return echo.ErrBadRequest
 }
 
 func (s *Server) OPCallbackEndpoint(c echo.Context) error {
@@ -236,4 +244,87 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 	params.Set("state", session.State)
 
 	return c.Redirect(http.StatusFound, session.RedirectUri+"?"+params.Encode())
+}
+
+func (s *Server) TokenEndpoint(c echo.Context) error {
+	var grantType string
+	var code string
+	var codeVerifier string
+	var redirectUri string
+	var clientId string
+	binderr := echo.FormFieldBinder(c).
+		MustString("grant_type", &grantType).
+		MustString("code", &code).
+		MustString("code_verifier", &codeVerifier).
+		MustString("redirect_uri", &redirectUri).
+		String("client_id", &clientId).
+		BindError()
+
+	if binderr != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+			Code:        "invalid_request",
+			Description: binderr.Error(),
+		})
+	}
+
+	slog.Info("Token request", "grant_type", grantType, "code", code, "redirect_uri", redirectUri, "client_id", clientId)
+
+	session, err := s.sessionStore.GetSessionByCode(code)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+			Code:        "invalid_request",
+			Description: fmt.Errorf("unable to get session: %w", err).Error(),
+		})
+	}
+
+	slog.Info("Token request: session", "session", session)
+
+	if session.ClientId != clientId {
+		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+			Code:        "invalid_request",
+			Description: "client_id mismatch",
+		})
+	}
+
+	if session.RedirectUri != redirectUri {
+		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+			Code:        "invalid_request",
+			Description: "redirect_uri mismatch",
+		})
+	}
+
+	accessToken, err := s.issueAccessToken(session)
+	if err != nil {
+		return redirectWithError(c, session.RedirectUri, oauth2.Error{
+			Code:        "server_error",
+			Description: fmt.Errorf("unable to issue access token: %w", err).Error(),
+		})
+	}
+
+	slog.Info("Token request: access token issued", "access_token", accessToken, "details", util.JWSToText(accessToken))
+
+	response := oauth2.TokenResponse{
+		AccessToken:  accessToken,
+		TokenType:    "Bearer",
+		ExpiresIn:    3600,
+		RefreshToken: "",
+	}
+
+	return c.JSON(http.StatusOK, response)
+}
+
+func (s *Server) issueAccessToken(authzSession *AuthorizationSession) (string, error) {
+	accessJwt := jwt.New()
+	accessJwt.Set("sub", authzSession.ClientId)
+	accessJwt.Set("aud", "https://as.example.com") // TODO: use actual audience
+	accessJwt.Set("exp", time.Now().Add(24*time.Hour).Unix())
+	accessJwt.Set("jti", ksuid.New().String())
+	accessJwt.Set("scope", authzSession.Scope)
+
+	accessTokenBytes, err := jwt.Sign(accessJwt, jwt.WithKey(jwa.ES256, *s.sigKey))
+	if err != nil {
+		return "", fmt.Errorf("unable to sign access token: %w", err)
+	}
+
+	return string(accessTokenBytes), nil
 }

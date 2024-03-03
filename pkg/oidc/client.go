@@ -55,6 +55,10 @@ func NewClient(cfg *Config) (*Client, error) {
 	return c, nil
 }
 
+func (c *Client) DefaultRedirectURI() string {
+	return c.Config.RedirectURI
+}
+
 func (c *Client) DiscoveryDocument() *DiscoveryDocument {
 	return c.discoveryDocument
 }
