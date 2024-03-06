@@ -19,9 +19,8 @@
         "manufacturerId": "software product manufacturer Id",
         "owner": {
             "id": "owner Id",
-            "authority": "gem-oidf|gem-idp|gem-pki",
-            "type": "organization|indivIdual",
-            "iss": "issuer of the owner Id, e.g. IDP Url"
+            "iss": "issuer of the owner Id, e.g. IDP Url",
+            "email": "email adress of client owner, used for offband process. can be used by the application for other means"
         },
         "registrationTimestamp": 1234567890,
         "attestation": {
