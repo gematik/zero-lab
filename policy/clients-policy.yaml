@@ -6,7 +6,7 @@ clients:
     manufacturer_name: gematik GmbH
     platform: apple
     platform_product_id:
-      appBundleId: A9FL89PFFL.de.gematik.zero-ios
+      app_bundle_id: A9FL89PFFL.de.gematik.zero-ios
     redirect_uris:
       - https://zerobin.spilikin.dev/app/as-callback
     op_intermediary_redirect_uris:
