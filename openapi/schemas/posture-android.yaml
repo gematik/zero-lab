@@ -1,3 +1,10 @@
+# this schema must be refactored to match the Android APIs
+# e.g. https://developer.android.com/reference/android/os/Build
+# Constants are defined in the Build class
+# - BRAND
+# - DEVICE
+# - HARDWARE
+# etc
 type: object
 properties:
   build:
