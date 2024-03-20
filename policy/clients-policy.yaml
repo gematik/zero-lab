@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=../openapi/schemas/clients-policy.yaml
 clients:
-  - product_id: A9FL89PFFL.de.gematik.zero-ios
+  - product_id: PDTFVD-001
     product_name: Zero iOS
     manufacturer_id: gematik
     manufacturer_name: gematik GmbH
@@ -13,6 +13,7 @@ clients:
       - https://zerobin.spilikin.dev/app/op-intermediary-callback
     push_gateway:
       url: https://dms-01.zt.dev.ccs.gematik.solutions/push
+  - product_id:
   - product_id: zero-test
     product_name: Zero Test
     manufacturer_id: gematik
