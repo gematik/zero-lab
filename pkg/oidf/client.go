@@ -22,7 +22,7 @@ type RelyingPartyClient struct {
 	redirectURI string
 }
 
-func (c *RelyingPartyClient) AuthCodeURL(state, nonce, verifier string) (string, error) {
+func (c *RelyingPartyClient) AuthCodeURL(state, nonce, verifier string, opts ...oauth2.ParameterOption) (string, error) {
 	codeChallenge := oauth2.S256ChallengeFromVerifier(verifier)
 
 	parData := url.Values{}
@@ -71,7 +71,7 @@ func (c *RelyingPartyClient) AuthCodeURL(state, nonce, verifier string) (string,
 	return c.op.Metadata.OpenidProvider.AuthorizationEndpoint + "?" + params.Encode(), nil
 }
 
-func (c *RelyingPartyClient) Exchange(code, verifier string) (*oauth2.TokenResponse, error) {
+func (c *RelyingPartyClient) Exchange(code, verifier string, opts ...oauth2.ParameterOption) (*oauth2.TokenResponse, error) {
 	tokenParams := url.Values{}
 	tokenParams.Add("grant_type", "authorization_code")
 	tokenParams.Add("code", code)
@@ -143,4 +143,12 @@ func (c *RelyingPartyClient) ParseToken(token string) (jwt.Token, error) {
 	}
 
 	return tokenJwt, nil
+}
+
+func (c *RelyingPartyClient) ClientID() string {
+	return c.rp.ClientID()
+}
+
+func (c *RelyingPartyClient) Issuer() string {
+	return c.op.Issuer
 }

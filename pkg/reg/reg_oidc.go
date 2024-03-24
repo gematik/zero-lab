@@ -9,7 +9,7 @@ import (
 	"github.com/gematik/zero-lab/pkg/util"
 )
 
-func WithOIDCClient(client *oidc.Client) RegistrationServiceOption {
+func WithOIDCClient(client oidc.Client) RegistrationServiceOption {
 	return func(s *RegistrationService) error {
 		s.oidcClient = client
 		return nil
@@ -22,7 +22,7 @@ func (s *RegistrationService) AuthCodeURLOidc(nonce string) (string, error) {
 	}
 
 	authSession := &AuthSessionEntity{
-		Iss:          s.oidcClient.DiscoveryDocument().Issuer,
+		Iss:          s.oidcClient.Issuer(),
 		State:        util.GenerateRandomString(32),
 		Nonce:        nonce,
 		CodeVerifier: oauth2.GenerateCodeVerifier(),
@@ -38,7 +38,7 @@ func (s *RegistrationService) AuthCodeURLOidc(nonce string) (string, error) {
 		authSession.State,
 		authSession.Nonce,
 		codeChallenge,
-	), nil
+	)
 
 }
 

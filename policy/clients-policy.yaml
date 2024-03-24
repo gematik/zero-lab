@@ -1,8 +1,8 @@
-# yaml-language-server: $schema=../openapi/schemas/clients-policy.yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/gematik/spec-t20r/develop/src/schemas/clients-policy.yaml
 clients:
-  - product_id: APP-001
+  - product_id: zero-test-ios
     product_name: Zero iOS
-    manufacturer_id: MNFCT-001
+    manufacturer_id: dev-001
     manufacturer_name: gematik GmbH
     platform: apple
     platform_product_id:
@@ -14,9 +14,9 @@ clients:
       - https://zerobin.spilikin.dev/app/op-intermediary-callback
     push_gateway:
       url: https://dms-01.zt.dev.ccs.gematik.solutions/push
-  - product_id: APP-002
+  - product_id: zero-test-android
     product_name: Zero Android
-    manufacturer_id: MNFCT-001
+    manufacturer_id: dev-001
     manufacturer_name: gematik GmbH
     platform: android
     platform_product_id:
@@ -24,7 +24,7 @@ clients:
       package_name: com.example
       sha256_cert_fingerprints:
         - 14:6D:E9:83:C5:73:06:50:D8:EE:B9:95:2F:34:FC:64:16:A0:83:42:E6:1D:BE:A8:8A:04:96:B2:3F:CF:44:E5
-  - product_id: zero-test
+  - product_id: zero-test-software
     product_name: Zero Test
     manufacturer_id: gematik
     manufacturer_name: gematik GmbH

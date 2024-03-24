@@ -10,9 +10,19 @@ import (
 
 	"github.com/gematik/zero-lab/pkg/oauth2"
 	"github.com/gematik/zero-lab/pkg/util"
+	"github.com/goccy/go-json"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 )
+
+var clientId = "zero-test-software"
+
+var opIssuer = "https://accounts.google.com"
+
+//var opIssuer = "https://idbroker.tk.ru2.nonprod-ehealth-id.de"
+
+// var authBaseUrl = "http://127.0.0.1:8080/auth?"
+var asUrl = "https://dms-01.zt.dev.ccs.gematik.solutions"
 
 func main() {
 	godotenv.Load()
@@ -23,52 +33,48 @@ func main() {
 	nonce := oauth2.GenerateCodeVerifier()
 
 	params := url.Values{}
-	params.Set("client_id", "zero-test")
+	params.Set("client_id", clientId)
 	params.Set("redirect_uri", "http://127.0.0.1:8089/as-callback")
-	params.Set("op_issuer", "https://accounts.google.com")
-	//params.Set("op_intermediary_redirect_uri", "http://127.0.0.1:8089/op-callback")
+	params.Set("op_issuer", opIssuer)
+	params.Set("op_intermediary_redirect_uri", "http://127.0.0.1:8089/op-intermediary-callback")
 	params.Set("response_type", "code")
 	params.Set("scope", "register:client")
 	params.Set("code_challenge", challenge)
 	params.Set("code_challenge_method", "S256")
 	params.Set("state", state)
 	params.Set("nonce", nonce)
-	authURL := "http://localhost:8080/as/auth?" + params.Encode()
+	authURL := fmt.Sprintf("%s/auth?%s", asUrl, params.Encode())
 
 	go func() {
 		time.Sleep(15 * time.Microsecond)
-		fmt.Println(authURL)
+		slog.Info("Opening browser", "url", authURL)
 		util.OpenBrowser(authURL)
 	}()
 
 	root := echo.New()
-	root.GET("/op-callback", func(c echo.Context) error {
+	srv := http.Server{}
+	srv.Addr = ":8089"
+	srv.Handler = root
+
+	root.GET("/op-intermediary-callback", func(c echo.Context) error {
 		slog.Info("OP callback", "queryString", c.QueryString())
 
-		// client without redirects
-		httpClient := http.Client{
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		}
-
-		callbackUrl := "http://localhost:8080/as/op-callback?" + c.QueryString()
-		resp, err := httpClient.Get(callbackUrl)
+		// TODO: get this URL from AS metadata
+		callbackUrl := fmt.Sprintf("%s/op-callback?%s", asUrl, c.QueryString())
+		_, err := http.Get(callbackUrl)
 
 		if err != nil {
 			return echo.NewHTTPError(500, err)
 		}
 
-		location := resp.Header.Get("Location")
-
-		return c.Redirect(http.StatusFound, location)
+		return c.String(http.StatusOK, "OP callback successful, continue on command line")
 	})
 
 	root.GET("/as-callback", func(c echo.Context) error {
 		slog.Info("AS callback", "queryString", c.QueryString())
 		go func() {
 			time.Sleep(1 * time.Second)
-			root.Shutdown(context.Background())
+			srv.Shutdown(context.Background())
 		}()
 		if errorCode := c.QueryParam("error"); errorCode != "" {
 			return c.String(http.StatusOK, fmt.Sprintf("Error: %s, Details: %s", errorCode, c.QueryParam("error_description")))
@@ -83,18 +89,29 @@ func main() {
 
 		params := url.Values{}
 		params.Set("grant_type", "authorization_code")
-		params.Set("client_id", "zero-test")
+		params.Set("client_id", "zero-test-software")
 		params.Set("code", code)
 		params.Set("code_verifier", verifier)
 		params.Set("redirect_uri", "http://127.0.0.1:8089/as-callback")
 
-		resp, err := http.PostForm("http://localhost:8080/as/token", params)
+		resp, err := http.PostForm(fmt.Sprintf("%s/token", asUrl), params)
 		if err != nil {
-			return c.String(http.StatusOK, fmt.Sprintf("Error: %s", err))
+			return c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
 		}
+
+		var tokenResp oauth2.TokenResponse
+		err = json.NewDecoder(resp.Body).Decode(&tokenResp)
+		if err != nil {
+			return c.String(http.StatusInternalServerError, fmt.Sprintf("Error: %s", err))
+		}
+
+		slog.Info("Token response", "response", tokenResp, "accessToken", tokenResp.AccessToken)
+
+		fmt.Println(tokenResp.AccessToken)
 
 		return c.String(http.StatusOK, util.ResponseToText(resp))
 	})
 
-	root.Start(":8089")
+	slog.Info("Starting server", "address", ":8089")
+	srv.ListenAndServe()
 }

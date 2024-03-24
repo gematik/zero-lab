@@ -24,14 +24,20 @@ type Config struct {
 	Scopes       []string
 }
 
-type Client struct {
+type Client interface {
+	oauth2.Client
+	Issuer() string
+	ClientID() string
+}
+
+type client struct {
 	Config            *Config
 	discoveryDocument *DiscoveryDocument
 	keyCache          *jwk.Cache
 }
 
-func NewClient(cfg *Config) (*Client, error) {
-	c := &Client{
+func NewClient(cfg *Config) (Client, error) {
+	c := &client{
 		Config:            cfg,
 		discoveryDocument: nil,
 		keyCache:          nil,
@@ -55,15 +61,19 @@ func NewClient(cfg *Config) (*Client, error) {
 	return c, nil
 }
 
-func (c *Client) DefaultRedirectURI() string {
+func (c *client) ClientID() string {
+	return c.Config.ClientID
+}
+
+func (c *client) RedirectURI() string {
 	return c.Config.RedirectURI
 }
 
-func (c *Client) DiscoveryDocument() *DiscoveryDocument {
+func (c *client) DiscoveryDocument() *DiscoveryDocument {
 	return c.discoveryDocument
 }
 
-func (c *Client) AuthCodeURL(state, nonce, verifier string, opts ...oauth2.ParameterOption) string {
+func (c *client) AuthCodeURL(state, nonce, verifier string, opts ...oauth2.ParameterOption) (string, error) {
 	codeChallenge := oauth2.S256ChallengeFromVerifier(verifier)
 	query := url.Values{}
 	query.Add("client_id", c.Config.ClientID)
@@ -81,10 +91,10 @@ func (c *Client) AuthCodeURL(state, nonce, verifier string, opts ...oauth2.Param
 
 	slog.Info("Using OP AuthorizationEndpoint", "url", c.discoveryDocument.AuthorizationEndpoint)
 
-	return fmt.Sprintf("%s?%s", c.discoveryDocument.AuthorizationEndpoint, query.Encode())
+	return fmt.Sprintf("%s?%s", c.discoveryDocument.AuthorizationEndpoint, query.Encode()), nil
 }
 
-func (c *Client) Exchange(code string, codeVerifier string, opts ...oauth2.ParameterOption) (*oauth2.TokenResponse, error) {
+func (c *client) Exchange(code string, codeVerifier string, opts ...oauth2.ParameterOption) (*oauth2.TokenResponse, error) {
 	params := url.Values{}
 	params.Set("client_id", c.Config.ClientID)
 	params.Set("client_secret", c.Config.ClientSecret)
@@ -126,7 +136,7 @@ func (c *Client) Exchange(code string, codeVerifier string, opts ...oauth2.Param
 }
 
 // Parses and verifies an ID token against the keys from the discovery document.
-func (c *Client) ParseIDToken(serialized string) (jwt.Token, error) {
+func (c *client) ParseIDToken(serialized string) (jwt.Token, error) {
 	keySet, err := c.keyCache.Get(context.Background(), c.discoveryDocument.JwksURI)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get key set: %w", err)
@@ -145,4 +155,8 @@ func (c *Client) ParseIDToken(serialized string) (jwt.Token, error) {
 		return nil, fmt.Errorf("unable to parse id token: %w", err)
 	}
 	return token, nil
+}
+
+func (c *client) Issuer() string {
+	return c.discoveryDocument.Issuer
 }

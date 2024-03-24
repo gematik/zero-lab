@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/gematik/zero-lab/pkg/oidc"
 	"github.com/gematik/zero-lab/pkg/util"
 	"github.com/go-playground/validator/v10"
 	"github.com/lestrrat-go/jwx/v2/cert"
@@ -198,7 +199,7 @@ type pushedAuthorizationResponse struct {
 	ExpiresIn  int    `json:"expires_in"`
 }
 
-func (rp *RelyingParty) NewClient(iss string) (*RelyingPartyClient, error) {
+func (rp *RelyingParty) NewClient(iss string) (oidc.Client, error) {
 	op, err := rp.federation.FetchEntityStatement(iss)
 	if err != nil {
 		return nil, err

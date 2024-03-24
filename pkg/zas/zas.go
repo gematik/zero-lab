@@ -11,6 +11,7 @@ import (
 
 	"github.com/gematik/zero-lab/pkg/oauth2"
 	"github.com/gematik/zero-lab/pkg/oidc"
+	"github.com/gematik/zero-lab/pkg/oidf"
 	"github.com/gematik/zero-lab/pkg/util"
 	"github.com/labstack/echo/v4"
 	"github.com/lestrrat-go/jwx/v2/jwa"
@@ -20,32 +21,29 @@ import (
 )
 
 type Server struct {
-	identityIssuers []*oidc.Client
-	clientsPolicy   *ClientsPolicy
-	sessionStore    SessionStore
-	sigKey          *jwk.Key
+	identityIssuers  []oidc.Client
+	oidfRelyingParty *oidf.RelyingParty
+	clientsPolicy    *ClientsPolicy
+	sessionStore     SessionStore
+	sigPrK           jwk.Key
+	jwks             jwk.Set
+	encPuK           jwk.Key
 }
 
-func NewServer(sessionStore SessionStore, clientsPolicy *ClientsPolicy) (*Server, error) {
-	if sessionStore == nil {
-		sessionStore = newMockSessionStore()
+type Option func(*Server) error
+
+func NewServer(opts ...Option) (*Server, error) {
+	s := &Server{
+		identityIssuers: []oidc.Client{},
 	}
 
-	sigKey, err := util.RandomJWK()
-	if err != nil {
-		return nil, fmt.Errorf("unable to generate keys: %w", err)
+	for _, opt := range opts {
+		if err := opt(s); err != nil {
+			return nil, err
+		}
 	}
 
-	return &Server{
-		identityIssuers: make([]*oidc.Client, 0),
-		sessionStore:    sessionStore,
-		clientsPolicy:   clientsPolicy,
-		sigKey:          &sigKey,
-	}, nil
-}
-
-func (s *Server) AddIdentityIssuers(issuer ...*oidc.Client) {
-	s.identityIssuers = append(s.identityIssuers, issuer...)
+	return s, nil
 }
 
 func (s *Server) MountRoutes(group *echo.Group) {
@@ -53,6 +51,11 @@ func (s *Server) MountRoutes(group *echo.Group) {
 	group.GET("/op-callback", s.OPCallbackEndpoint)
 	group.POST("/par", s.PAREndpoint)
 	group.POST("/token", s.TokenEndpoint)
+	group.GET("/jwks", s.JWKS)
+
+	if s.oidfRelyingParty != nil {
+		group.GET("/.well-known/openid-federation", echo.WrapHandler(http.HandlerFunc(s.oidfRelyingParty.Serve)))
+	}
 }
 
 type AuthorizationSession struct {
@@ -117,11 +120,11 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 		})
 	}
 
-	identityIssuer := s.findIdentityIssuer(session.OPIssuer)
-	if identityIssuer == nil {
+	opClient, err := s.opClient(session.OPIssuer)
+	if err != nil {
 		return redirectWithError(c, session.RedirectUri, oauth2.Error{
 			Code:        "invalid_request",
-			Description: "unknown issuer",
+			Description: err.Error(),
 		})
 	}
 
@@ -134,8 +137,8 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 		}
 		slog.Info("OP Intermediary Redirect URI is set", "op_intermediary_redirect_uri", session.OPIntermediaryRedirectUri)
 	} else {
-		session.OPIntermediaryRedirectUri = identityIssuer.DefaultRedirectURI()
-		slog.Info("Using default OP redirect uri", "redirect_uri", identityIssuer.DefaultRedirectURI())
+		session.OPIntermediaryRedirectUri = fmt.Sprintf("%s://%s/op-callback", c.Scheme(), c.Request().Host)
+		slog.Info("Using default OP redirect uri", "redirect_uri", session.OPIntermediaryRedirectUri)
 	}
 
 	opSession := OpenidProviderSession{
@@ -146,12 +149,18 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 		RedirectUri: session.OPIntermediaryRedirectUri,
 	}
 
-	authUrl := identityIssuer.AuthCodeURL(
+	authUrl, err := opClient.AuthCodeURL(
 		opSession.State,
 		opSession.Nonce,
 		opSession.Verifier,
 		oauth2.WithRedirectURI(opSession.RedirectUri),
 	)
+	if err != nil {
+		return redirectWithError(c, session.RedirectUri, oauth2.Error{
+			Code:        "server_error",
+			Description: fmt.Errorf("unable to generate auth url: %w", err).Error(),
+		})
+	}
 
 	session.OPSession = &opSession
 	if err := s.sessionStore.SaveSession(&session); err != nil {
@@ -161,23 +170,28 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 		})
 	}
 
+	slog.Info("Redirecting to OP", "auth_url", authUrl)
+
 	return c.Redirect(http.StatusFound, authUrl)
 }
 
 func (s *Server) PAREndpoint(c echo.Context) error {
 	requestUri := "urn:ietf:params:oauth:request_uri:" + util.GenerateRandomString(128)
 	slog.Info("PAR accepted", "request_uri", requestUri)
-
+	// TODO: implement PAR
 	return echo.ErrBadRequest
 }
 
-func (s *Server) findIdentityIssuer(issuer string) *oidc.Client {
-	for _, id := range s.identityIssuers {
-		if id.Config.Issuer == issuer {
-			return id
+func (s *Server) opClient(issuer string) (oidc.Client, error) {
+	for _, op := range s.identityIssuers {
+		if op.Issuer() == issuer {
+			return op, nil
 		}
 	}
-	return nil
+	if s.oidfRelyingParty != nil {
+		return s.oidfRelyingParty.NewClient(issuer)
+	}
+	return nil, fmt.Errorf("unknown issuer: %s", issuer)
 }
 
 func (s *Server) OPCallbackEndpoint(c echo.Context) error {
@@ -211,11 +225,11 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 		})
 	}
 
-	identityIssuer := s.findIdentityIssuer(session.OPIssuer)
-	if identityIssuer == nil {
+	identityIssuer, err := s.opClient(session.OPIssuer)
+	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
 			Code:        "invalid_request",
-			Description: "unknown issuer",
+			Description: err.Error(),
 		})
 	}
 
@@ -332,10 +346,14 @@ func (s *Server) issueAccessToken(authzSession *AuthorizationSession) (string, e
 	accessJwt.Set("jti", ksuid.New().String())
 	accessJwt.Set("scope", authzSession.Scope)
 
-	accessTokenBytes, err := jwt.Sign(accessJwt, jwt.WithKey(jwa.ES256, *s.sigKey))
+	accessTokenBytes, err := jwt.Sign(accessJwt, jwt.WithKey(jwa.ES256, s.sigPrK))
 	if err != nil {
 		return "", fmt.Errorf("unable to sign access token: %w", err)
 	}
 
 	return string(accessTokenBytes), nil
+}
+
+func (s *Server) JWKS(c echo.Context) error {
+	return c.JSON(http.StatusOK, s.jwks)
 }
