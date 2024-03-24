@@ -9,12 +9,12 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gematik/zero-lab/pkg"
 	"github.com/gematik/zero-lab/pkg/ca"
 	"github.com/gematik/zero-lab/pkg/nonce"
 	"github.com/gematik/zero-lab/pkg/oidc"
-	"github.com/gematik/zero-lab/pkg/oidf"
 	"github.com/gematik/zero-lab/pkg/reg"
 	regapi "github.com/gematik/zero-lab/pkg/reg/api"
 	"github.com/gematik/zero-lab/pkg/util"
@@ -28,6 +28,8 @@ var unattestedClientsCA ca.CertificateAuthority
 var clientsCA ca.CertificateAuthority
 
 func init() {
+	slog.SetLogLoggerLevel(slog.LevelDebug)
+
 	var err error
 	unattestedClientsIssuer := pkix.Name{
 		OrganizationalUnit: []string{"Unattested Clients CA"},
@@ -71,15 +73,16 @@ func main() {
 	root.GET("/ca/ca-chain.pem", getUnattestedClientsCAChain)
 	root.POST("/ca/issue-cert", issueCert, bodyDump)
 
-	clientsPolicy, err := zas.LoadClientsPolicy("policy/clients-policy.yaml")
+	clientsPolicy, err := zas.LoadClientsPolicy(util.GetEnv("CLIENTS_POLICY_PATH", "policy/clients-policy.yaml"))
 	if err != nil {
 		log.Fatal(err)
 	}
-	zas, err := zas.NewServer(nil, clientsPolicy)
-	if err != nil {
-		log.Fatal(err)
+
+	zasOptions := []zas.Option{
+		zas.WithMockSessionStore(),
+		zas.WithClientsPolicy(clientsPolicy),
+		zas.WithSigningKeyFromJWK(os.Getenv("SIGNING_KEY_PATH"), true),
 	}
-	zas.MountRoutes(root.Group("/as"))
 
 	nonceService, err := nonce.NewHashicorpNonceService()
 	if err != nil {
@@ -99,52 +102,54 @@ func main() {
 			ClientID:     os.Getenv("OIDC_CLIENT_ID"),
 			ClientSecret: os.Getenv("OIDC_CLIENT_SECRET"),
 			RedirectURI:  os.Getenv("OIDC_CALLBACK_URL"),
-			Scopes: []string{
-				"https://www.googleapis.com/auth/userinfo.email",
-				"openid",
-			},
+			Scopes:       strings.Split(os.Getenv("OIDC_SCOPE"), " "),
 		}
 		oidcClient, err := oidc.NewClient(config)
 		if err != nil {
 			log.Fatal(err)
 		}
 		opts = append(opts, reg.WithOIDCClient(oidcClient))
-		slog.Info("Using OIDC client (Test only)", "client_id", config.ClientID)
-		zas.AddIdentityIssuers(oidcClient)
+		zasOptions = append(zasOptions, zas.WithOpenidProvider(oidcClient))
 	}
 
-	var regEntityStatementPath string
-	if os.Getenv("RELYING_PARTY_CONFIG_PATH") != "" {
-		regEntityStatementPath = os.Getenv("RELYING_PARTY_CONFIG_PATH")
-	} else if _, err := os.Stat("relying-party-reg.yaml"); err == nil {
-		regEntityStatementPath = "relying-party-reg.yaml"
-	}
+	zasOptions = append(zasOptions, zas.WithOIDFRelyingPartyFromConfigFile(
+		util.GetEnv("RELYING_PARTY_CONFIG_PATH", "relying-party-reg.yaml"),
+		zas.UseMockIfNotAvailable,
+	))
 
-	if regEntityStatementPath != "" {
-		rp, err := oidf.NewRelyingPartyFromConfigFile(regEntityStatementPath)
-		if err != nil {
-			log.Fatal(err)
+	/*
+		if regEntityStatementPath != "" {
+			rp, err := oidf.NewRelyingPartyFromConfigFile(regEntityStatementPath)
+			if err != nil {
+				log.Fatal(err)
+			}
+			opts = append(opts, reg.WithOIDFRelyingParty(rp))
+			root.GET("/.well-known/openid-federation", echo.WrapHandler(http.HandlerFunc(rp.Serve)))
+
+			oidfClient, err := NewOidfClient(rp, "https://idbroker.tk.ru2.nonprod-ehealth-id.de")
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			root.GET("/reg/auth/gematik-fed", oidfClient.auth)
+			root.GET("/reg/auth/gematik-fed/callback", oidfClient.callback)
+			root.GET("/reg/auth/gematik-fed/handover-listener", oidfClient.handoverListener)
+			root.GET("/reg/auth/gematik-fed/identity-providers", oidfClient.getIdentityProviders)
+			//root.POST("/reg/auth/gematik-fed/device/code", oidfClient.deviceCode, dpop.VerifyDPoPHeader)
+			//root.POST("/reg/auth/gematik-fed/device/token", oidfClient.deviceToken, dpop.VerifyDPoPHeader)
+			root.GET("/handover-demo", oidfClient.getHandoverDemo)
+			slog.Info("Using gematik OpenID Federation", "client_id", rp.ClientID())
+
+		} else {
+			slog.Warn("RELYING_PARTY_CONFIG_PATH not set, not serving /.well-known/openid-federation")
 		}
-		opts = append(opts, reg.WithOIDFRelyingParty(rp))
-		root.GET("/.well-known/openid-federation", echo.WrapHandler(http.HandlerFunc(rp.Serve)))
+	*/
 
-		oidfClient, err := NewOidfClient(rp, "https://idbroker.tk.ru2.nonprod-ehealth-id.de")
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		root.GET("/reg/auth/gematik-fed", oidfClient.auth)
-		root.GET("/reg/auth/gematik-fed/callback", oidfClient.callback)
-		root.GET("/reg/auth/gematik-fed/handover-listener", oidfClient.handoverListener)
-		root.GET("/reg/auth/gematik-fed/identity-providers", oidfClient.getIdentityProviders)
-		//root.POST("/reg/auth/gematik-fed/device/code", oidfClient.deviceCode, dpop.VerifyDPoPHeader)
-		//root.POST("/reg/auth/gematik-fed/device/token", oidfClient.deviceToken, dpop.VerifyDPoPHeader)
-		root.GET("/handover-demo", oidfClient.getHandoverDemo)
-		slog.Info("Using gematik OpenID Federation", "client_id", rp.ClientID())
-
-	} else {
-		slog.Warn("RELYING_PARTY_CONFIG_PATH not set, not serving /.well-known/openid-federation")
+	zas, err := zas.NewServer(zasOptions...)
+	if err != nil {
+		log.Fatal(err)
 	}
+	zas.MountRoutes(root.Group(""))
 
 	regService, err := reg.NewRegistrationService(nonceService, store, clientsCA, opts...)
 	if err != nil {

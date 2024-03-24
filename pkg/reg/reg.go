@@ -50,7 +50,7 @@ type RegistrationService struct {
 	NonceService     nonce.NonceService
 	store            RegistrationStore
 	clientsCA        ca.CertificateAuthority
-	oidcClient       *oidc.Client
+	oidcClient       oidc.Client
 	oidfRelyingParty *oidf.RelyingParty
 	dpopMiddleware   *dpop.Middleware
 }

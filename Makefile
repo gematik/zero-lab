@@ -1,7 +1,7 @@
 
 .PHONY: info, docker, dockerhub, version
 
-ZERO_VERSION ?= "0.5.0-beta"
+ZERO_VERSION ?= "0.5.0-beta2"
 REG_FQDN ?= "dms-01.zt.ccs.gematik.solutions"
 REG_SECRETS_DIR ?= "secrets/reg"
 

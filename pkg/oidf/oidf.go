@@ -195,3 +195,7 @@ func idpEntityToIdpInfo(idpEntity interface{}) ([]IdentityProviderInfo, error) {
 
 	return idpInfo, nil
 }
+
+func (f *OpenidFederation) FederationMasterURL() string {
+	return f.fedMasterURL
+}
