@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/gematik/zero-lab/pkg/oauth2"
@@ -52,6 +53,7 @@ func (s *Server) MountRoutes(group *echo.Group) {
 	group.POST("/par", s.PAREndpoint)
 	group.POST("/token", s.TokenEndpoint)
 	group.GET("/jwks", s.JWKS)
+	group.GET("/openid-providers", s.OpenidProviders)
 
 	if s.oidfRelyingParty != nil {
 		group.GET("/.well-known/openid-federation", echo.WrapHandler(http.HandlerFunc(s.oidfRelyingParty.Serve)))
@@ -356,4 +358,38 @@ func (s *Server) issueAccessToken(authzSession *AuthorizationSession) (string, e
 
 func (s *Server) JWKS(c echo.Context) error {
 	return c.JSON(http.StatusOK, s.jwks)
+}
+
+func (s *Server) OpenidProviders(c echo.Context) error {
+	type openidProvider struct {
+		Issuer           string `json:"iss"`
+		LogoURI          string `json:"logo_uri"`
+		OrganizationName string `json:"organization_name"`
+	}
+	providers := []openidProvider{}
+	for _, op := range s.identityIssuers {
+		providers = append(providers, openidProvider{
+			Issuer:           op.Issuer(),
+			LogoURI:          op.LogoURI(),
+			OrganizationName: op.Name(),
+		})
+	}
+	if s.oidfRelyingParty != nil {
+		idps, err := s.oidfRelyingParty.Federation().ListIdpUrls()
+		if err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, err)
+		}
+		for _, op := range idps {
+			// todo: remove this later
+			if !strings.Contains(op.Issuer, ".tk.ru2") {
+				continue
+			}
+			providers = append(providers, openidProvider{
+				Issuer:           op.Issuer,
+				LogoURI:          op.LogoURI,
+				OrganizationName: op.OrganizationName,
+			})
+		}
+	}
+	return c.JSON(http.StatusOK, providers)
 }

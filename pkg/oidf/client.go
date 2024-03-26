@@ -18,6 +18,7 @@ import (
 type RelyingPartyClient struct {
 	rp          *RelyingParty
 	op          *EntityStatement
+	metadata    *OpenIDProviderMetadata
 	scopes      []string
 	redirectURI string
 }
@@ -35,6 +36,12 @@ func (c *RelyingPartyClient) AuthCodeURL(state, nonce, verifier string, opts ...
 	parData.Add("nonce", nonce)
 	parData.Add("client_id", c.rp.ClientID())
 	parData.Add("code_challenge", codeChallenge)
+
+	for _, opt := range opts {
+		opt(parData)
+	}
+
+	slog.Debug("Issuing PAR request", "endpoint", c.op.Metadata.OpenidProvider.PushedAuthorizationRequestEndpoint, "params", parData)
 
 	parRequest, err := http.NewRequest(
 		http.MethodPost,
@@ -55,7 +62,7 @@ func (c *RelyingPartyClient) AuthCodeURL(state, nonce, verifier string, opts ...
 	defer parResponse.Body.Close()
 
 	if parResponse.StatusCode != http.StatusCreated {
-		return "", fmt.Errorf("Unexpected status '%s': %w", parResponse.Status, parseOauth2Error(parResponse.Body))
+		return "", fmt.Errorf("unexpected status '%s': %w", parResponse.Status, parseOauth2Error(parResponse.Body))
 	}
 
 	var parResp pushedAuthorizationResponse
@@ -78,6 +85,10 @@ func (c *RelyingPartyClient) Exchange(code, verifier string, opts ...oauth2.Para
 	tokenParams.Add("redirect_uri", c.redirectURI)
 	tokenParams.Add("client_id", c.rp.ClientID())
 	tokenParams.Add("code_verifier", verifier)
+
+	for _, opt := range opts {
+		opt(tokenParams)
+	}
 
 	req, err := http.NewRequest(http.MethodPost, c.op.Metadata.OpenidProvider.TokenEndpoint, strings.NewReader(tokenParams.Encode()))
 	if err != nil {
@@ -151,4 +162,12 @@ func (c *RelyingPartyClient) ClientID() string {
 
 func (c *RelyingPartyClient) Issuer() string {
 	return c.op.Issuer
+}
+
+func (c *RelyingPartyClient) Name() string {
+	return c.metadata.OrganizationName
+}
+
+func (c *RelyingPartyClient) LogoURI() string {
+	return c.metadata.LogoURI
 }

@@ -22,12 +22,16 @@ type Config struct {
 	ClientSecret string
 	RedirectURI  string
 	Scopes       []string
+	LogoURI      string
+	Name         string
 }
 
 type Client interface {
 	oauth2.Client
 	Issuer() string
 	ClientID() string
+	Name() string
+	LogoURI() string
 }
 
 type client struct {
@@ -159,4 +163,12 @@ func (c *client) ParseIDToken(serialized string) (jwt.Token, error) {
 
 func (c *client) Issuer() string {
 	return c.discoveryDocument.Issuer
+}
+
+func (c *client) Name() string {
+	return c.Config.Name
+}
+
+func (c *client) LogoURI() string {
+	return c.Config.LogoURI
 }

@@ -17,12 +17,13 @@ import (
 
 var clientId = "zero-test-software"
 
-var opIssuer = "https://accounts.google.com"
+//var opIssuer = "https://accounts.google.com"
 
-//var opIssuer = "https://idbroker.tk.ru2.nonprod-ehealth-id.de"
+var opIssuer = "https://idbroker.tk.ru2.nonprod-ehealth-id.de"
 
-// var authBaseUrl = "http://127.0.0.1:8080/auth?"
-var asUrl = "https://dms-01.zt.dev.ccs.gematik.solutions"
+var asUrl = "http://127.0.0.1:8080"
+
+//var asUrl = "https://dms-01.zt.dev.ccs.gematik.solutions"
 
 func main() {
 	godotenv.Load()

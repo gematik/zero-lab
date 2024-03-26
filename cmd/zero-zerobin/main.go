@@ -103,6 +103,8 @@ func main() {
 			ClientSecret: os.Getenv("OIDC_CLIENT_SECRET"),
 			RedirectURI:  os.Getenv("OIDC_CALLBACK_URL"),
 			Scopes:       strings.Split(os.Getenv("OIDC_SCOPE"), " "),
+			Name:         os.Getenv("OIDC_NAME"),
+			LogoURI:      os.Getenv("OIDC_LOGO_URI"),
 		}
 		oidcClient, err := oidc.NewClient(config)
 		if err != nil {

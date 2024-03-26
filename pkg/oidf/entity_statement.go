@@ -89,6 +89,9 @@ type FederationEntityMetadata struct {
 
 func tokenToEntityStatement(token jwt.Token) (*EntityStatement, error) {
 	tokenJson, err := json.Marshal(token)
+	if err != nil {
+		return nil, fmt.Errorf("unable to marshal token: %w", err)
+	}
 	var es EntityStatement
 	err = json.Unmarshal(tokenJson, &es)
 	if err != nil {

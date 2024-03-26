@@ -105,6 +105,9 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 	}
 
 	tlsCert, err := tls.LoadX509KeyPair(cfg.ClientCertPath, cfg.ClientPrivateKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load tls cert: %w", err)
+	}
 	rp.httpClient = &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: util.AddApiKeyTransport(
@@ -205,11 +208,18 @@ func (rp *RelyingParty) NewClient(iss string) (oidc.Client, error) {
 		return nil, err
 	}
 
+	if op.Metadata == nil || op.Metadata.OpenidProvider == nil {
+		return nil, fmt.Errorf("no openid provider metadata found")
+	}
+
+	metadata := op.Metadata.OpenidProvider
+
 	return &RelyingPartyClient{
 		rp:          rp,
 		op:          op,
 		scopes:      []string{"urn:telematik:display_name", "urn:telematik:versicherter", "openid"},
 		redirectURI: rp.entityStatement.Metadata.OpenidRelyingParty.RedirectURIs[0],
+		metadata:    metadata,
 	}, nil
 }
 

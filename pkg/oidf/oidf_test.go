@@ -147,6 +147,10 @@ func TestLogin(t *testing.T) {
 
 	defer parResponse.Body.Close()
 	body, err := io.ReadAll(parResponse.Body)
+	if err != nil {
+		t.Error("Unable to read PAR response body")
+		t.Fatal(err)
+	}
 
 	t.Log("Got response", parResponse.StatusCode)
 
