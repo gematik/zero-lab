@@ -33,7 +33,7 @@ func clockWithTolerance(tolerance time.Duration) jwt.ClockFunc {
 
 type IdentityProviderInfo struct {
 	Issuer           string   `json:"iss"`
-	LogoUri          string   `json:"logo_uri"`
+	LogoURI          string   `json:"logo_uri"`
 	OrganizationName string   `json:"organization_name"`
 	IsPkv            bool     `json:"pkv"`
 	UserType         UserType `json:"user_type_supported"`

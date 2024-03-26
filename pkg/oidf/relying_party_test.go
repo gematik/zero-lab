@@ -124,10 +124,6 @@ func generateCert(keyfile string) (string, error) {
 		return "", err
 	}
 
-	if err != nil {
-		return "", err
-	}
-
 	template := x509.Certificate{
 		SerialNumber: big.NewInt(1),
 		Subject: pkix.Name{
@@ -142,6 +138,9 @@ func generateCert(keyfile string) (string, error) {
 	}
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, pukJwk.Raw(&ecdsa.PublicKey{}), prkJwk.Raw(&ecdsa.PrivateKey{}))
+	if err != nil {
+		return "", err
+	}
 
 	tmpfile, err := os.CreateTemp(``, `cert-*.pem`)
 	if err != nil {
