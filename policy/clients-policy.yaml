@@ -9,9 +9,9 @@ clients:
       app_bundle_ids: 
         - A9FL89PFFL.de.gematik.zero-ios
     redirect_uris:
-      - https://zerobin.spilikin.dev/app/as-callback
+      - https://dms-01.zt.dev.ccs.gematik.solutions/app/as-callback
     op_intermediary_redirect_uris:
-      - https://zerobin.spilikin.dev/app/op-intermediary-callback
+      - https://dms-01.zt.dev.ccs.gematik.solutions/app/op-intermediary-callback
     push_gateway:
       url: https://dms-01.zt.dev.ccs.gematik.solutions/push
   - product_id: zero-test-android

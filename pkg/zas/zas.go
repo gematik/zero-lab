@@ -198,11 +198,9 @@ func (s *Server) opClient(issuer string) (oidc.Client, error) {
 
 func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 	var state string
-	var scope string
 	var code string
 	binderr := echo.FormFieldBinder(c).
 		MustString("state", &state).
-		MustString("scope", &scope).
 		MustString("code", &code).
 		BindError()
 	if binderr != nil {
