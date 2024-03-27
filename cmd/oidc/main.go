@@ -15,7 +15,7 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-var clientId = "zero-test-software"
+var clientId = "zero-test-ios"
 
 //var opIssuer = "https://accounts.google.com"
 
@@ -37,7 +37,7 @@ func main() {
 	params.Set("client_id", clientId)
 	params.Set("redirect_uri", "http://127.0.0.1:8089/as-callback")
 	params.Set("op_issuer", opIssuer)
-	params.Set("op_intermediary_redirect_uri", "http://127.0.0.1:8089/op-intermediary-callback")
+	params.Set("op_intermediary_redirect_uri", "https://dms-01.zt.dev.ccs.gematik.solutions/app/op-intermediary-callback")
 	params.Set("response_type", "code")
 	params.Set("scope", "register:client")
 	params.Set("code_challenge", challenge)

@@ -1,3 +1,3 @@
 package pkg
 
-const Version = "0.5.0-beta3"
+const Version = "0.5.0-beta5"

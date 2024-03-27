@@ -111,6 +111,8 @@ func (c *client) Exchange(code string, codeVerifier string, opts ...oauth2.Param
 		opt(params)
 	}
 
+	slog.Debug("Exchanging code for token", "url", c.discoveryDocument.TokenEndpoint, "params", params)
+
 	resp, err := http.PostForm(c.discoveryDocument.TokenEndpoint, params)
 	if err != nil {
 		return nil, fmt.Errorf("unable to exchange code for token: %w", err)
@@ -127,6 +129,7 @@ func (c *client) Exchange(code string, codeVerifier string, opts ...oauth2.Param
 		if err != nil {
 			return nil, fmt.Errorf("unable to decode error: %w", err)
 		}
+		slog.Error("unable to exchange code for token", "error", oidcErr)
 		return nil, &oidcErr
 	}
 
