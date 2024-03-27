@@ -12,6 +12,7 @@ import (
 	"github.com/gematik/zero-lab/pkg/oauth2"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwe"
+	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
@@ -21,6 +22,7 @@ type RelyingPartyClient struct {
 	metadata    *OpenIDProviderMetadata
 	scopes      []string
 	redirectURI string
+	jwks        jwk.Set
 }
 
 func (c *RelyingPartyClient) AuthCodeURL(state, nonce, verifier string, opts ...oauth2.ParameterOption) (string, error) {
@@ -132,10 +134,8 @@ func (c *RelyingPartyClient) Exchange(code, verifier string, opts ...oauth2.Para
 	return &rawTokenResponse, nil
 }
 
-func (c *RelyingPartyClient) ParseToken(token string) (jwt.Token, error) {
-	// TODO: verify token signature
-	slog.Warn("TODO: verify token signature")
-	tokenJwt, err := jwt.Parse([]byte(token))
+func (c *RelyingPartyClient) ParseIDToken(response *oauth2.TokenResponse) (jwt.Token, error) {
+	tokenJwt, err := jwt.Parse([]byte(response.IDToken), jwt.WithKeySet(c.jwks))
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse token: %w", err)
 	}

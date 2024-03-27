@@ -1,6 +1,7 @@
 package zas
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
@@ -83,6 +84,7 @@ type OpenidProviderSession struct {
 	Verifier      string
 	RedirectUri   string
 	TokenResponse *oauth2.TokenResponse
+	Claims        map[string]interface{}
 }
 
 func redirectWithError(c echo.Context, redirectUri string, err oauth2.Error) error {
@@ -245,7 +247,24 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 		})
 	}
 
+	idToken, err := identityIssuer.ParseIDToken(tokenResponse)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, oauth2.Error{
+			Code:        "server_error",
+			Description: fmt.Errorf("unable to parse id token: %w", err).Error(),
+		})
+	}
+
+	session.OPSession.Claims, err = idToken.AsMap(context.TODO())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, oauth2.Error{
+			Code:        "server_error",
+			Description: fmt.Errorf("unable to parse id token: %w", err).Error(),
+		})
+	}
+
 	session.OPSession.TokenResponse = tokenResponse
+
 	session.Code = util.GenerateRandomString(128)
 
 	if err := s.sessionStore.SaveSession(session); err != nil {
@@ -345,6 +364,7 @@ func (s *Server) issueAccessToken(authzSession *AuthorizationSession) (string, e
 	accessJwt.Set("exp", time.Now().Add(24*time.Hour).Unix())
 	accessJwt.Set("jti", ksuid.New().String())
 	accessJwt.Set("scope", authzSession.Scope)
+	accessJwt.Set("act", authzSession.OPSession.Claims)
 
 	accessTokenBytes, err := jwt.Sign(accessJwt, jwt.WithKey(jwa.ES256, s.sigPrK))
 	if err != nil {
@@ -373,7 +393,7 @@ func (s *Server) OpenidProviders(c echo.Context) error {
 		})
 	}
 	if s.oidfRelyingParty != nil {
-		idps, err := s.oidfRelyingParty.Federation().ListIdpUrls()
+		idps, err := s.oidfRelyingParty.Federation().FetchIdpList()
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, err)
 		}

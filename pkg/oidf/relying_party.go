@@ -214,12 +214,18 @@ func (rp *RelyingParty) NewClient(iss string) (oidc.Client, error) {
 
 	metadata := op.Metadata.OpenidProvider
 
+	jwks, err := rp.federation.FetchSignedJwks(op)
+	if err != nil {
+		return nil, err
+	}
+
 	return &RelyingPartyClient{
 		rp:          rp,
 		op:          op,
 		scopes:      []string{"urn:telematik:display_name", "urn:telematik:versicherter", "openid"},
 		redirectURI: rp.entityStatement.Metadata.OpenidRelyingParty.RedirectURIs[0],
 		metadata:    metadata,
+		jwks:        jwks,
 	}, nil
 }
 

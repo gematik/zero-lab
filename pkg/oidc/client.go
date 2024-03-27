@@ -28,6 +28,7 @@ type Config struct {
 
 type Client interface {
 	oauth2.Client
+	ParseIDToken(response *oauth2.TokenResponse) (jwt.Token, error)
 	Issuer() string
 	ClientID() string
 	Name() string
@@ -143,14 +144,14 @@ func (c *client) Exchange(code string, codeVerifier string, opts ...oauth2.Param
 }
 
 // Parses and verifies an ID token against the keys from the discovery document.
-func (c *client) ParseIDToken(serialized string) (jwt.Token, error) {
+func (c *client) ParseIDToken(response *oauth2.TokenResponse) (jwt.Token, error) {
 	keySet, err := c.keyCache.Get(context.Background(), c.discoveryDocument.JwksURI)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get key set: %w", err)
 	}
 
 	token, err := jwt.ParseString(
-		serialized,
+		response.IDToken,
 		jwt.WithKeySet(keySet),
 		jwt.WithIssuer(c.discoveryDocument.Issuer),
 		jwt.WithAudience(c.Config.ClientID),
