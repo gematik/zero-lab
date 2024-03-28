@@ -57,3 +57,16 @@ func (p *ClientsPolicy) AllowedClient(clientID string) bool {
 	}
 	return false
 }
+
+func (p *ClientsPolicy) AllowedRedirectURI(clientID, uri string) bool {
+	for _, client := range p.Clients {
+		if client.ProductID == clientID {
+			for _, allowedURI := range client.RedirectURIs {
+				if uri == allowedURI {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}

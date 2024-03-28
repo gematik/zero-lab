@@ -48,7 +48,18 @@ func NewServer(opts ...Option) (*Server, error) {
 	return s, nil
 }
 
+func ErrorLogMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		err := next(c)
+		if err != nil {
+			slog.Error("Error", "error", err, "path", c.Path(), "remote_addr", c.RealIP(), "headers", c.Request().Header)
+		}
+		return err
+	}
+}
+
 func (s *Server) MountRoutes(group *echo.Group) {
+	group.Use(ErrorLogMiddleware)
 	group.GET("/auth", s.AuthorizationEndpoint)
 	group.GET("/op-callback", s.OPCallbackEndpoint)
 	group.POST("/par", s.PAREndpoint)
@@ -129,6 +140,13 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 		return redirectWithError(c, session.RedirectUri, oauth2.Error{
 			Code:        "invalid_request",
 			Description: err.Error(),
+		})
+	}
+
+	if !s.clientsPolicy.AllowedRedirectURI(session.ClientId, session.RedirectUri) {
+		return redirectWithError(c, session.RedirectUri, oauth2.Error{
+			Code:        "invalid_request",
+			Description: "redirect_uri forbidden by policy",
 		})
 	}
 
