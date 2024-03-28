@@ -71,10 +71,6 @@ func issueCert(ctx echo.Context) error {
 		csrDer = body
 	} else {
 		csrPEMBytes := body
-		if err != nil {
-			slog.Error("error reading request body", "error", err)
-			return echo.NewHTTPError(http.StatusBadRequest, "error reading request body")
-		}
 		csrPEM, _ := pem.Decode(csrPEMBytes)
 		if csrPEM == nil {
 			slog.Error("error decoding PEM", "error", err)

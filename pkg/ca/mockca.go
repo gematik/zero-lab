@@ -33,8 +33,8 @@ func NewMockCA(issuer pkix.Name) (CertificateAuthority, error) {
 	caCrt := &x509.Certificate{
 		SerialNumber:          sn,
 		Subject:               issuer,
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(6 * time.Hour),
+		NotBefore:             time.Now().Add(-1 * time.Hour),
+		NotAfter:              time.Now().Add(24 * 30 * 6 * time.Hour),
 		IsCA:                  true,
 		ExtKeyUsage:           []x509.ExtKeyUsage{},
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
@@ -75,6 +75,9 @@ func (ca *mockCertificateAuthority) SignCertificateRequest(csr *x509.Certificate
 	max := new(big.Int)
 	max.Exp(big.NewInt(2), big.NewInt(130), nil).Sub(max, big.NewInt(1))
 	serialNumber, err := rand.Int(rand.Reader, max)
+	if err != nil {
+		return nil, fmt.Errorf("unable to generate serial number: %w", err)
+	}
 
 	crtTemplate := x509.Certificate{
 		Signature:          csr.Signature,
@@ -86,7 +89,7 @@ func (ca *mockCertificateAuthority) SignCertificateRequest(csr *x509.Certificate
 		SerialNumber: serialNumber,
 		Issuer:       ca.Certificate.Subject,
 		Subject:      subject,
-		NotBefore:    time.Now(),
+		NotBefore:    time.Now().Add(-1 * time.Hour),
 		NotAfter:     time.Now().Add(24 * time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
