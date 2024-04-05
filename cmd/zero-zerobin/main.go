@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/gematik/zero-lab/pkg"
+	"github.com/gematik/zero-lab/pkg/attestation/tpmattest"
 	"github.com/gematik/zero-lab/pkg/ca"
 	"github.com/gematik/zero-lab/pkg/nonce"
 	"github.com/gematik/zero-lab/pkg/oidc"
@@ -24,7 +25,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
-var unattestedClientsCA ca.CertificateAuthority
+var unregisteredClientsCA ca.CertificateAuthority
 var clientsCA ca.CertificateAuthority
 
 func init() {
@@ -32,9 +33,9 @@ func init() {
 
 	var err error
 	unattestedClientsIssuer := pkix.Name{
-		OrganizationalUnit: []string{"Unattested Clients CA"},
+		OrganizationalUnit: []string{"Unregistered Clients CA"},
 	}
-	unattestedClientsCA, err = ca.NewMockCA(unattestedClientsIssuer)
+	unregisteredClientsCA, err = ca.NewMockCA(unattestedClientsIssuer)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -68,6 +69,10 @@ func main() {
 		templates: template.Must(template.ParseGlob("templates/*.html")),
 	}
 
+	// ------------------
+	root.POST("/tpm/activations", tpmattest.PostActivationRequest)
+	// ------------------
+
 	root.GET("/", getIndex)
 	root.GET("/echo", getEcho)
 	root.GET("/ca/ca-chain.pem", getUnattestedClientsCAChain)
@@ -94,7 +99,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	opts := []reg.RegistrationServiceOption{}
+	regOptions := []reg.RegistrationServiceOption{}
 
 	if os.Getenv("OIDC_CLIENT_ID") != "" {
 		config := &oidc.Config{
@@ -110,7 +115,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		opts = append(opts, reg.WithOIDCClient(oidcClient))
+		regOptions = append(regOptions, reg.WithOIDCClient(oidcClient))
 		zasOptions = append(zasOptions, zas.WithOpenidProvider(oidcClient))
 	}
 
@@ -119,41 +124,13 @@ func main() {
 		zas.UseMockIfNotAvailable,
 	))
 
-	/*
-		if regEntityStatementPath != "" {
-			rp, err := oidf.NewRelyingPartyFromConfigFile(regEntityStatementPath)
-			if err != nil {
-				log.Fatal(err)
-			}
-			opts = append(opts, reg.WithOIDFRelyingParty(rp))
-			root.GET("/.well-known/openid-federation", echo.WrapHandler(http.HandlerFunc(rp.Serve)))
-
-			oidfClient, err := NewOidfClient(rp, "https://idbroker.tk.ru2.nonprod-ehealth-id.de")
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			root.GET("/reg/auth/gematik-fed", oidfClient.auth)
-			root.GET("/reg/auth/gematik-fed/callback", oidfClient.callback)
-			root.GET("/reg/auth/gematik-fed/handover-listener", oidfClient.handoverListener)
-			root.GET("/reg/auth/gematik-fed/identity-providers", oidfClient.getIdentityProviders)
-			//root.POST("/reg/auth/gematik-fed/device/code", oidfClient.deviceCode, dpop.VerifyDPoPHeader)
-			//root.POST("/reg/auth/gematik-fed/device/token", oidfClient.deviceToken, dpop.VerifyDPoPHeader)
-			root.GET("/handover-demo", oidfClient.getHandoverDemo)
-			slog.Info("Using gematik OpenID Federation", "client_id", rp.ClientID())
-
-		} else {
-			slog.Warn("RELYING_PARTY_CONFIG_PATH not set, not serving /.well-known/openid-federation")
-		}
-	*/
-
 	zas, err := zas.NewServer(zasOptions...)
 	if err != nil {
 		log.Fatal(err)
 	}
 	zas.MountRoutes(root.Group(""))
 
-	regService, err := reg.NewRegistrationService(nonceService, store, clientsCA, opts...)
+	regService, err := reg.NewRegistrationService(nonceService, store, clientsCA, regOptions...)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -186,7 +163,7 @@ func main() {
 			log.Fatal("TLS_KEY_PATH not set")
 		}
 		clientCAs := x509.NewCertPool()
-		clientCAs.AddCert(unattestedClientsCA.IssuerCertificate())
+		clientCAs.AddCert(unregisteredClientsCA.IssuerCertificate())
 		clientCAs.AddCert(clientsCA.IssuerCertificate())
 
 		server := &http.Server{

@@ -87,7 +87,7 @@ func issueCert(ctx echo.Context) error {
 	subject := pkix.Name{
 		CommonName: "Unattested Client",
 	}
-	cert, err := unattestedClientsCA.SignCertificateRequest(csr, subject)
+	cert, err := unregisteredClientsCA.SignCertificateRequest(csr, subject)
 	if err != nil {
 		slog.Error("error signing certificate", "error", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "error signing certificate")
@@ -122,5 +122,5 @@ func getIndex(ctx echo.Context) error {
 
 func getUnattestedClientsCAChain(ctx echo.Context) error {
 	ctx.Response().Header().Set("Content-Disposition", "attachment; filename=ca-chain.pem")
-	return pem.Encode(ctx.Response(), &pem.Block{Type: "CERTIFICATE", Bytes: unattestedClientsCA.IssuerCertificate().Raw})
+	return pem.Encode(ctx.Response(), &pem.Block{Type: "CERTIFICATE", Bytes: unregisteredClientsCA.IssuerCertificate().Raw})
 }

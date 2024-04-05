@@ -67,7 +67,7 @@ func (ca *mockCertificateAuthority) IssuerCertificate() *x509.Certificate {
 	return ca.Certificate
 }
 
-func (ca *mockCertificateAuthority) SignCertificateRequest(csr *x509.CertificateRequest, subject pkix.Name) (*x509.Certificate, error) {
+func (ca *mockCertificateAuthority) SignCertificateRequest(csr *x509.CertificateRequest, subject pkix.Name, opts ...SigningOption) (*x509.Certificate, error) {
 	if err := csr.CheckSignature(); err != nil {
 		return nil, fmt.Errorf("invalid CSR signature: %w", err)
 	}
@@ -93,6 +93,12 @@ func (ca *mockCertificateAuthority) SignCertificateRequest(csr *x509.Certificate
 		NotAfter:     time.Now().Add(24 * time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+
+	for _, opt := range opts {
+		if err := opt(&crtTemplate); err != nil {
+			return nil, fmt.Errorf("unable to apply signing option: %w", err)
+		}
 	}
 
 	crtRaw, err := x509.CreateCertificate(rand.Reader, &crtTemplate, ca.Certificate, csr.PublicKey, ca.prk)

@@ -17,9 +17,9 @@ import (
 
 var clientId = "zero-test-software"
 
-var opIssuer = "https://accounts.google.com"
+//var opIssuer = "https://accounts.google.com"
 
-//var opIssuer = "https://idbroker.tk.ru2.nonprod-ehealth-id.de"
+var opIssuer = "https://idbroker.tk.ru2.nonprod-ehealth-id.de"
 
 var asUrl = "http://127.0.0.1:8080"
 

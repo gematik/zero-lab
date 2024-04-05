@@ -24,6 +24,10 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
+	github.com/google/certificate-transparency-go v1.1.2 // indirect
+	github.com/google/go-attestation v0.5.1 // indirect
+	github.com/google/go-tpm v0.9.0 // indirect
+	github.com/google/go-tspi v0.3.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
