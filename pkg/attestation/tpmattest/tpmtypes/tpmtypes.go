@@ -91,7 +91,7 @@ func (j *AttestationParameters) AttestationParameters() attest.AttestationParame
 }
 
 type ActivationRequest struct {
-	TPMVersion int                   `json:"tpm_version" validate:"required"`
+	TPMVersion string                `json:"tpm_version" validate:"required"`
 	EKs        []EK                  `json:"endorsement_keys" validate:"required"`
 	AK         AttestationParameters `json:"attestation_key" validate:"required"`
 }
@@ -99,12 +99,23 @@ type ActivationRequest struct {
 func (j *ActivationRequest) AttestTPMVersion() attest.TPMVersion {
 	var version attest.TPMVersion
 	switch j.TPMVersion {
-	case int(attest.TPMVersion12):
+	case "1.2":
 		version = attest.TPMVersion12
-	case int(attest.TPMVersion20):
+	case "2.0":
 		version = attest.TPMVersion20
 	default:
 		version = attest.TPMVersionAgnostic
 	}
 	return version
+}
+
+func TPMVersionString(version attest.TPMVersion) string {
+	switch version {
+	case attest.TPMVersion12:
+		return "1.2"
+	case attest.TPMVersion20:
+		return "2.0"
+	default:
+		return "agnostic"
+	}
 }

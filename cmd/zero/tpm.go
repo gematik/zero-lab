@@ -8,6 +8,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"os"
 
 	"github.com/gematik/zero-lab/pkg/attestation/tpmattest/tpmtypes"
 	"github.com/google/go-attestation/attest"
@@ -20,22 +21,15 @@ var tpmCmd = &cobra.Command{
 	//Args:  cobra.MatchAll(cobra.ExactArgs(1)),
 	Run: func(cmd *cobra.Command, args []string) {
 		slog.Info("Activating TPM AK")
-		tcl, err := NewUnregisteredClient()
+		tcl, err := CreateClient(".tpm.ak.id.json")
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		tcl.ActivateTPM()
-
-		/*
-			akBytes, err := ak.Marshal()
-			if err != nil {
-				log.Fatal(err)
-			}
-			if err := os.WriteFile("tpm-ak.id.json", akBytes, 0600); err != nil {
-				log.Fatal(err)
-			}
-		*/
+		err = tcl.ActivateTPM()
+		if err != nil {
+			log.Fatal(err)
+		}
 
 	},
 }
@@ -50,28 +44,27 @@ type TrustClient struct {
 	AK  *attest.AK
 }
 
-func NewUnregisteredClient() (*TrustClient, error) {
+func CreateClient(akPath string) (*TrustClient, error) {
 	config := &attest.OpenConfig{}
 	tpm, err := attest.OpenTPM(config)
 	if err != nil {
 		return nil, err
 	}
 
-	eks, err := tpm.EKs()
+	ak, err := loadAK(tpm, akPath)
 	if err != nil {
-		return nil, err
-	}
-
-	for _, ek := range eks {
-		slog.Info("Endorsement Key", "EK", tpmtypes.NewEK(ek).String())
-	}
-
-	return nil, fmt.Errorf("not implemented")
-
-	akConfig := &attest.AKConfig{}
-	ak, err := tpm.NewAK(akConfig)
-	if err != nil {
-		return nil, err
+		slog.Info(fmt.Sprintf("%s. Will create new AK.", err))
+		akConfig := &attest.AKConfig{}
+		ak, err = tpm.NewAK(akConfig)
+		if err != nil {
+			return nil, err
+		}
+		err = saveAK(akPath, ak)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		slog.Info("Loaded existing AK", "path", akPath)
 	}
 
 	return &TrustClient{
@@ -81,6 +74,7 @@ func NewUnregisteredClient() (*TrustClient, error) {
 }
 
 func (c *TrustClient) ActivateTPM() error {
+	slog.Info("Activating TPM")
 	attestParams := c.AK.AttestationParameters()
 
 	tpmEKS, err := c.TPM.EKs()
@@ -95,7 +89,7 @@ func (c *TrustClient) ActivateTPM() error {
 	}
 
 	activationRequest := &tpmtypes.ActivationRequest{
-		TPMVersion: int(c.TPM.Version()),
+		TPMVersion: tpmtypes.TPMVersionString(c.TPM.Version()),
 		EKs:        eks,
 		AK:         tpmtypes.NewAttestationParameters(attestParams),
 	}
@@ -107,13 +101,10 @@ func (c *TrustClient) ActivateTPM() error {
 		return fmt.Errorf("marshaling activation request: %w", err)
 	}
 
-	resp, err := httpClient.Post("http://192.168.1.133:8080/tmp/activate", "application/json", bytes.NewReader(body))
+	slog.Info("Activation request", "body", string(body))
+	resp, err := httpClient.Post("http://192.168.1.133:8080/tpm/activations", "application/json", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("sending activation request: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
 	defer resp.Body.Close()
@@ -123,10 +114,42 @@ func (c *TrustClient) ActivateTPM() error {
 		return fmt.Errorf("reading response body: %w", err)
 	}
 
-	slog.Info("Activation response", "body", string(body))
+	slog.Info("Activation response", "status", resp.Status, "body", string(body))
 
-	slog.Info("Created activation request", "TPMVersion", activationRequest.TPMVersion, "EK.Certificate", c.EK.Certificate.Issuer)
-	// send activationRequest to the Trust
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
 
 	return nil
+}
+
+func (c *TrustClient) Close() {
+	c.TPM.Close()
+}
+
+func saveAK(path string, ak *attest.AK) error {
+	akBytes, err := ak.Marshal()
+	if err != nil {
+		return fmt.Errorf("marshaling AK: %w", err)
+	}
+
+	if err := os.WriteFile(path, akBytes, 0600); err != nil {
+		return fmt.Errorf("writing AK: %w", err)
+	}
+
+	return nil
+}
+
+func loadAK(tpm *attest.TPM, path string) (*attest.AK, error) {
+	akBytes, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading AK: %w", err)
+	}
+
+	ak, err := tpm.LoadAK(akBytes)
+	if err != nil {
+		return nil, fmt.Errorf("loading AK: %w", err)
+	}
+
+	return ak, nil
 }
