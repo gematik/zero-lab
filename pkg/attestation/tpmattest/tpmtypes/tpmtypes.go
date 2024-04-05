@@ -7,8 +7,8 @@ import (
 )
 
 type EK struct {
-	CertificateRaw []byte `json:"certificate"`
-	CertificateURL string `json:"certificate_url,omitempty"`
+	CertificateRaw []byte `json:"certificate" validate:"required"`
+	CertificateURL string `json:"certificate_url,omitempty" validate:"omitempty"`
 }
 
 func NewEK(ek *attest.EK) *EK {
@@ -30,11 +30,11 @@ func (j *EK) Certificate() (*attest.EK, error) {
 }
 
 type AttestationParameters struct {
-	Public                  []byte `json:"public"`
-	UseTCSDActivationFormat bool   `json:"use_tcsd_activation_format"`
-	CreateData              []byte `json:"create_data"`
-	CreateAttestation       []byte `json:"create_attestation"`
-	CreateSignature         []byte `json:"create_signature"`
+	Public                  []byte `json:"public" validate:"required"`
+	UseTCSDActivationFormat bool   `json:"use_tcsd_activation_format" validate:"required"`
+	CreateData              []byte `json:"create_data" validate:"required"`
+	CreateAttestation       []byte `json:"create_attestation" validate:"required"`
+	CreateSignature         []byte `json:"create_signature" validate:"required"`
 }
 
 func NewAttestationParameters(ak *attest.AttestationParameters) *AttestationParameters {
@@ -58,9 +58,9 @@ func (j *AttestationParameters) AttestationParameters() *attest.AttestationParam
 }
 
 type ActivationParameters struct {
-	TPMVersion int                    `json:"tpm_version"`
-	EK         *EK                    `json:"ek"`
-	AK         *AttestationParameters `json:"ak"`
+	TPMVersion int                    `json:"tpm_version" validate:"required"`
+	EK         *EK                    `json:"ek" validate:"required"`
+	AK         *AttestationParameters `json:"ak" validate:"required"`
 }
 
 func (j *ActivationParameters) ActivationParameters() (*attest.ActivationParameters, error) {

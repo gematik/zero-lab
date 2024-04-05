@@ -20,6 +20,7 @@ import (
 	regapi "github.com/gematik/zero-lab/pkg/reg/api"
 	"github.com/gematik/zero-lab/pkg/util"
 	"github.com/gematik/zero-lab/pkg/zas"
+	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -54,10 +55,23 @@ func init() {
 	}
 }
 
+type CustomValidator struct {
+	validator *validator.Validate
+}
+
+func (cv *CustomValidator) Validate(i interface{}) error {
+	if err := cv.validator.Struct(i); err != nil {
+		// Optionally, you could return the error to give each route more control over the status code
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	return nil
+}
+
 func main() {
 	godotenv.Load()
 
 	root := echo.New()
+	root.Validator = &CustomValidator{validator: validator.New()}
 
 	root.Use(middleware.Recover())
 
@@ -70,7 +84,8 @@ func main() {
 	}
 
 	// ------------------
-	root.POST("/tpm/activations", tpmattest.PostActivationRequest)
+	tpmAttestor := tpmattest.NewTPMAttestor()
+	root.POST("/tpm/activations", tpmAttestor.NewActivationSession)
 	// ------------------
 
 	root.GET("/", getIndex)
