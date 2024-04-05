@@ -64,7 +64,7 @@ func (ek EK) String() string {
 
 type AttestationParameters struct {
 	Public                  []byte `json:"public" validate:"required"`
-	UseTCSDActivationFormat bool   `json:"use_tcsd_activation_format" validate:"required"`
+	UseTCSDActivationFormat bool   `json:"use_tcsd_activation_format"`
 	CreateData              []byte `json:"create_data" validate:"required"`
 	CreateAttestation       []byte `json:"create_attestation" validate:"required"`
 	CreateSignature         []byte `json:"create_signature" validate:"required"`

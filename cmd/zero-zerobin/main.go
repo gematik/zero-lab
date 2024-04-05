@@ -85,7 +85,7 @@ func main() {
 
 	// ------------------
 	tpmAttestor := tpmattest.NewTPMAttestor()
-	root.POST("/tpm/activations", tpmAttestor.NewActivationSession)
+	tpmAttestor.MountRoutes(root.Group("/tpm"))
 	// ------------------
 
 	root.GET("/", getIndex)
