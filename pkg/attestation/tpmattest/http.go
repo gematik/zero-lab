@@ -58,16 +58,16 @@ func (a *TPMAttestor) MountRoutes(group *echo.Group) {
 }
 
 func (a *TPMAttestor) NewActivationSession(c echo.Context) error {
-	var params = new(tpmtypes.ActivationParameters)
-	if err := c.Bind(params); err != nil {
+	var ar = new(tpmtypes.ActivationRequest)
+	if err := c.Bind(ar); err != nil {
 		return err
 	}
 
-	if err := c.Validate(params); err != nil {
+	if err := c.Validate(ar); err != nil {
 		return err
 	}
 
-	slog.Info("Activation request", "params", params)
+	slog.Info("Activation request", "params", ar)
 
 	session := a.store.NewSession()
 
@@ -75,5 +75,5 @@ func (a *TPMAttestor) NewActivationSession(c echo.Context) error {
 
 	c.Response().Header().Set("Location", fmt.Sprintf("%s/activations/%s", baseURL, session.ID))
 
-	return c.JSON(http.StatusAccepted, session)
+	return c.JSON(http.StatusCreated, session)
 }
