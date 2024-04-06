@@ -1,12 +1,11 @@
 package tpmattest
 
 import (
-	"crypto/ecdsa"
-	"crypto/x509"
 	"fmt"
 	"log/slog"
 	"sync"
 
+	"github.com/gematik/zero-lab/pkg/util"
 	"github.com/google/go-attestation/attest"
 	"github.com/segmentio/ksuid"
 )
@@ -55,42 +54,16 @@ func NewServer() *Server {
 }
 
 func (a *Server) NewActivationSession(ar *AttestationRequest) (*ActivationSession, error) {
-	// choose the correct EK based from the request
-	// prefer the ECC over RSA
-	// if there are multiple ECC keys, prefer the one with the highest curve
-	var attestationEK *attest.EK
-	for _, e := range ar.EndorsementKeys {
-		ek, err := e.convert()
-		if err != nil {
-			return nil, fmt.Errorf("parsing EK certificate: %w", err)
-		}
-
-		slog.Info("Processing EK", "serial", ek.Certificate.SerialNumber.String(), "public_key_algorithm", ek.Certificate.PublicKeyAlgorithm)
-		if attestationEK == nil {
-			attestationEK = ek
-			continue
-		}
-
-		if ek.Certificate.PublicKeyAlgorithm == x509.ECDSA {
-			bitSize := ek.Certificate.PublicKey.(*ecdsa.PublicKey).Curve.Params().BitSize
-			if attestationEK.Certificate.PublicKeyAlgorithm != x509.ECDSA {
-				attestationEK = ek
-				slog.Info("Found ECC EK", "serial", ek.Certificate.SerialNumber.String(), "bit_size", bitSize)
-			} else if attestationEK.Certificate.PublicKeyAlgorithm == x509.ECDSA &&
-				bitSize > attestationEK.Certificate.PublicKey.(*ecdsa.PublicKey).Curve.Params().BitSize {
-				attestationEK = ek
-				slog.Info("Found higher bit ECC EK", "serial", ek.Certificate.SerialNumber.String(), "bit_size", bitSize)
-			}
-		}
+	ek, err := ar.ConvertEK()
+	if err != nil {
+		return nil, fmt.Errorf("parsing EK certificate: %w", err)
 	}
 
-	if attestationEK == nil {
-		return nil, fmt.Errorf("no EK found")
-	}
+	slog.Info("Received attestation request", "ek", util.CertificateToText(ek.Certificate))
 
 	params := attest.ActivationParameters{
 		TPMVersion: ar.TPMVersion(),
-		EK:         attestationEK.Public,
+		EK:         ek.Public,
 		AK:         ar.ConvertParameters(),
 	}
 
@@ -108,7 +81,7 @@ func (a *Server) NewActivationSession(ar *AttestationRequest) (*ActivationSessio
 		},
 	}
 
-	slog.Info("Created new activation session", "id", session.ID, "ek_serial", session.AttestationChallenge.EKSerialNumber)
+	slog.Info("Created new activation session", "id", session.ID)
 
 	a.store.SaveSession(session)
 

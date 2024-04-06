@@ -1,60 +1,8 @@
 package tpmattest
 
 import (
-	"strings"
-
 	"github.com/google/go-attestation/attest"
 )
-
-type endorsementKey struct {
-	CertificateRaw []byte `json:"certificate" validate:"required"`
-	CertificateURL string `json:"certificate_url,omitempty" validate:"omitempty"`
-}
-
-func (ek endorsementKey) convert() (*attest.EK, error) {
-	cert, err := attest.ParseEKCertificate(ek.CertificateRaw)
-	if err != nil {
-		return nil, err
-	}
-	return &attest.EK{
-		Public:         cert.PublicKey,
-		Certificate:    cert,
-		CertificateURL: ek.CertificateURL,
-	}, nil
-}
-
-func (ek endorsementKey) String() string {
-	sb := strings.Builder{}
-	if string(ek.CertificateRaw) != "" {
-		attestEK, err := ek.convert()
-		if err != nil {
-			sb.WriteString(" Certificate:")
-			sb.WriteString(err.Error())
-		} else {
-			if attestEK.Certificate.Subject.String() != "" {
-				sb.WriteString(" Certificate.Subject:")
-				sb.WriteString(attestEK.Certificate.Subject.String())
-			}
-			sb.WriteString(" Certificate.Issuer:")
-			sb.WriteString(attestEK.Certificate.Issuer.String())
-			sb.WriteString(" Certificate.PublicKeyAlgorithm:")
-			sb.WriteString(attestEK.Certificate.PublicKeyAlgorithm.String())
-			sb.WriteString(" Certificate.SignatureAlgorithm:")
-			sb.WriteString(attestEK.Certificate.SignatureAlgorithm.String())
-			sb.WriteString(" Certificate.SerialNumber:")
-			sb.WriteString(attestEK.Certificate.SerialNumber.String())
-			sb.WriteString(" Certificate.NotBefore:")
-			sb.WriteString(attestEK.Certificate.NotBefore.String())
-			sb.WriteString(" Certificate.NotAfter:")
-			sb.WriteString(attestEK.Certificate.NotAfter.String())
-		}
-	}
-	if ek.CertificateURL != "" {
-		sb.WriteString(" CertificateURL:")
-		sb.WriteString(ek.CertificateURL)
-	}
-	return strings.Trim(sb.String(), " ")
-}
 
 type attestationParameters struct {
 	Public                  []byte `json:"public" validate:"required"`
@@ -76,8 +24,19 @@ func (j *attestationParameters) convert() attest.AttestationParameters {
 
 type AttestationRequest struct {
 	TPMVersionString      string                `json:"tpm_version" validate:"required"`
-	EndorsementKeys       []endorsementKey      `json:"endorsement_keys" validate:"required"`
-	AttestationParameters attestationParameters `json:"attestation_key" validate:"required"`
+	EndorsementCertRaw    []byte                `json:"endorsement_cert" validate:"required"`
+	AttestationParameters attestationParameters `json:"attestation_params" validate:"required"`
+}
+
+func (ar AttestationRequest) ConvertEK() (*attest.EK, error) {
+	cert, err := attest.ParseEKCertificate(ar.EndorsementCertRaw)
+	if err != nil {
+		return nil, err
+	}
+	return &attest.EK{
+		Public:      cert.PublicKey,
+		Certificate: cert,
+	}, nil
 }
 
 func (ar *AttestationRequest) ConvertParameters() attest.AttestationParameters {
