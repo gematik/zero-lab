@@ -11,6 +11,7 @@ import (
 func (a *Server) MountRoutes(group *echo.Group) {
 	subgroup := group.Group("/attestations")
 	subgroup.POST("", a.PostAttestations)
+	subgroup.POST("/:id", a.PostChallengeResponse)
 }
 
 func (a *Server) PostAttestations(c echo.Context) error {
@@ -36,4 +37,22 @@ func (a *Server) PostAttestations(c echo.Context) error {
 	c.Response().Header().Set("Location", fmt.Sprintf("%s/activations/%s", baseURL, session.ID))
 
 	return c.JSON(http.StatusCreated, session.AttestationChallenge)
+}
+
+func (a *Server) PostChallengeResponse(c echo.Context) error {
+	id := c.Param("id")
+
+	session, err := a.store.LoadSession(id)
+	if err != nil {
+		return c.String(http.StatusNotFound, "Session not found")
+	}
+
+	var cr AttestationChallengeResponse
+	if err := c.Bind(&cr); err != nil {
+		return err
+	}
+
+	slog.Info("Challenge response", "params", cr)
+
+	return c.JSON(http.StatusOK, session)
 }

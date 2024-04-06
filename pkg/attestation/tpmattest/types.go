@@ -88,3 +88,7 @@ func (ac AttestationChallenge) EncryptedCredential() attest.EncryptedCredential 
 		Secret:     ac.Secret,
 	}
 }
+
+type AttestationChallengeResponse struct {
+	DecryptedSecret []byte `json:"decrypted_secret" validate:"required"`
+}

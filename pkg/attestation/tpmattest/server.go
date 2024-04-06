@@ -1,6 +1,7 @@
 package tpmattest
 
 import (
+	"crypto/x509"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -10,18 +11,19 @@ import (
 	"github.com/segmentio/ksuid"
 )
 
-type ActivationSession struct {
-	ID                   string
-	Secret               []byte
-	AttestationChallenge AttestationChallenge
+type AttestationSession struct {
+	ID                     string
+	Secret                 []byte
+	EndorsementCertificate x509.Certificate
+	AttestationChallenge   AttestationChallenge
 }
 
 type mockAttestationStore struct {
-	sessions map[string]ActivationSession
+	sessions map[string]AttestationSession
 	lock     sync.RWMutex
 }
 
-func (s *mockAttestationStore) SaveSession(session ActivationSession) error {
+func (s *mockAttestationStore) SaveSession(session AttestationSession) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -29,7 +31,7 @@ func (s *mockAttestationStore) SaveSession(session ActivationSession) error {
 	return nil
 }
 
-func (s *mockAttestationStore) LoadSession(id string) (*ActivationSession, error) {
+func (s *mockAttestationStore) LoadSession(id string) (*AttestationSession, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
@@ -48,12 +50,12 @@ type Server struct {
 func NewServer() *Server {
 	return &Server{
 		store: mockAttestationStore{
-			sessions: make(map[string]ActivationSession),
+			sessions: make(map[string]AttestationSession),
 		},
 	}
 }
 
-func (a *Server) NewActivationSession(ar *AttestationRequest) (*ActivationSession, error) {
+func (a *Server) NewActivationSession(ar *AttestationRequest) (*AttestationSession, error) {
 	ek, err := ar.ConvertEK()
 	if err != nil {
 		return nil, fmt.Errorf("parsing EK certificate: %w", err)
@@ -71,9 +73,10 @@ func (a *Server) NewActivationSession(ar *AttestationRequest) (*ActivationSessio
 	if err != nil {
 		return nil, fmt.Errorf("generating activation challenge: %w", err)
 	}
-	session := ActivationSession{
-		ID:     ksuid.New().String(),
-		Secret: secret,
+	session := AttestationSession{
+		ID:                     ksuid.New().String(),
+		Secret:                 secret,
+		EndorsementCertificate: *ek.Certificate,
 		AttestationChallenge: AttestationChallenge{
 			Credential: encryptedCredential.Credential,
 			Secret:     encryptedCredential.Secret,
