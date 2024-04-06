@@ -6,15 +6,15 @@ import (
 	"github.com/google/go-attestation/attest"
 )
 
-func CreateAttestationRequest(tpm *attest.TPM, ak *attest.AttestationParameters) (*AttestationRequest, error) {
-	tpmEks, err := tpm.EKs()
+func CreateAttestationRequest(tpm *attest.TPM, eks []attest.EK, ak *attest.AttestationParameters) (*AttestationRequest, error) {
+	tpmEks, err := tpm.EKCertificates()
 	if err != nil {
 		return nil, fmt.Errorf("reading EKs from TPM: %w", err)
 	}
 
-	eks := make([]endorsementKey, len(tpmEks))
+	endorsementKeys := make([]endorsementKey, len(tpmEks))
 	for i, ek := range tpmEks {
-		eks[i] = endorsementKey{
+		endorsementKeys[i] = endorsementKey{
 			CertificateRaw: ek.Certificate.Raw,
 			CertificateURL: ek.CertificateURL,
 		}
@@ -22,7 +22,7 @@ func CreateAttestationRequest(tpm *attest.TPM, ak *attest.AttestationParameters)
 
 	ar := &AttestationRequest{
 		TPMVersionString: TPMVersionString(tpm.Version()),
-		EndorsementKeys:  eks,
+		EndorsementKeys:  endorsementKeys,
 		AttestationParameters: attestationParameters{
 			Public:                  ak.Public,
 			UseTCSDActivationFormat: ak.UseTCSDActivationFormat,

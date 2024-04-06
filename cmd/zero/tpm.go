@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"reflect"
 
 	"github.com/gematik/zero-lab/pkg/attestation/tpmattest"
 	"github.com/google/go-attestation/attest"
@@ -21,12 +22,13 @@ var tpmCmd = &cobra.Command{
 	//Args:  cobra.MatchAll(cobra.ExactArgs(1)),
 	Run: func(cmd *cobra.Command, args []string) {
 		slog.Info("Activating TPM AK")
-		tcl, err := CreateClient(".tpm.ak.id.json")
+		tcl, err := CreateClient("http://192.168.1.133:8080", ".tpm.ak.id.json")
 		if err != nil {
 			log.Fatal(err)
 		}
+		defer tcl.Close()
 
-		err = tcl.ActivateTPM()
+		err = tcl.AttestWithServer()
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -39,12 +41,12 @@ func init() {
 }
 
 type TrustClient struct {
-	TPM *attest.TPM
-	EK  *attest.EK
-	AK  *attest.AK
+	regBaseURL string
+	tpm        *attest.TPM
+	ak         *attest.AK
 }
 
-func CreateClient(akPath string) (*TrustClient, error) {
+func CreateClient(regBaseURL string, akPath string) (*TrustClient, error) {
 	config := &attest.OpenConfig{}
 	tpm, err := attest.OpenTPM(config)
 	if err != nil {
@@ -54,7 +56,12 @@ func CreateClient(akPath string) (*TrustClient, error) {
 	ak, err := loadAK(tpm, akPath)
 	if err != nil {
 		slog.Info(fmt.Sprintf("%s. Will create new AK.", err))
-		akConfig := &attest.AKConfig{}
+		akConfig := &attest.AKConfig{
+			Parent: &attest.ParentKeyConfig{
+				Algorithm: attest.ECDSA,
+				Handle:    0x81000002,
+			},
+		}
 		ak, err = tpm.NewAK(akConfig)
 		if err != nil {
 			return nil, err
@@ -67,17 +74,33 @@ func CreateClient(akPath string) (*TrustClient, error) {
 		slog.Info("Loaded existing AK", "path", akPath)
 	}
 
+	puk := ak.AttestationParameters().Public
+
+	key, err := attest.ParseAKPublic(tpm.Version(), puk)
+	if err != nil {
+		return nil, fmt.Errorf("parsing AK public key: %w", err)
+	}
+
+	slog.Info("AK public key", "key", reflect.TypeOf(key.Public))
+	return nil, fmt.Errorf("parsing AK public key")
+
 	return &TrustClient{
-		TPM: tpm,
-		AK:  ak,
+		regBaseURL: regBaseURL,
+		tpm:        tpm,
+		ak:         ak,
 	}, nil
 }
 
-func (c *TrustClient) ActivateTPM() error {
+func (c *TrustClient) AttestWithServer() error {
 	slog.Info("Activating TPM")
-	attestParams := c.AK.AttestationParameters()
+	attestParams := c.ak.AttestationParameters()
 
-	attestationRequest, err := tpmattest.CreateAttestationRequest(c.TPM, &attestParams)
+	eks, err := c.tpm.EKCertificates()
+	if err != nil {
+		return fmt.Errorf("reading EKs from TPM: %w", err)
+	}
+
+	attestationRequest, err := tpmattest.CreateAttestationRequest(c.tpm, eks, &attestParams)
 	if err != nil {
 		return fmt.Errorf("creating attestation request: %w", err)
 	}
@@ -90,7 +113,8 @@ func (c *TrustClient) ActivateTPM() error {
 	}
 
 	slog.Info("Activation request", "body", string(body))
-	resp, err := httpClient.Post("http://192.168.1.133:8080/tpm/attestations", "application/json", bytes.NewReader(body))
+	url := fmt.Sprintf("%s/tpm/attestations", c.regBaseURL)
+	resp, err := httpClient.Post(url, "application/json", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("sending activation request: %w", err)
 	}
@@ -108,11 +132,40 @@ func (c *TrustClient) ActivateTPM() error {
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
+	challenge := new(tpmattest.AttestationChallenge)
+	err = json.Unmarshal(body, challenge)
+	if err != nil {
+		return fmt.Errorf("unmarshaling attestation challenge: %w", err)
+	}
+
+	slog.Info("Received attestation challenge", "challenge", challenge)
+
+	var activationEK *attest.EK
+
+	for _, ek := range eks {
+		if ek.Certificate.SerialNumber.String() == challenge.EKSerialNumber {
+			activationEK = &ek
+			break
+		}
+	}
+
+	if activationEK == nil {
+		return fmt.Errorf("no EK found with seriali number: " + challenge.EKSerialNumber)
+	}
+
+	slog.Info("Server chosen EK", "serial", activationEK.Certificate.SerialNumber.String(), "public_key_algorithm", activationEK.Certificate.PublicKeyAlgorithm, "serial_number", activationEK.Certificate.SerialNumber.String())
+
+	secret, err := c.ak.ActivateCredentialWithEK(c.tpm, challenge.EncryptedCredential(), *activationEK)
+	if err != nil {
+		return fmt.Errorf("activating credential: %w", err)
+	}
+	slog.Info("Activated AK", "secret", secret)
+
 	return nil
 }
 
 func (c *TrustClient) Close() {
-	c.TPM.Close()
+	c.tpm.Close()
 }
 
 func saveAK(path string, ak *attest.AK) error {

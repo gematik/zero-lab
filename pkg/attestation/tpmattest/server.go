@@ -102,10 +102,9 @@ func (a *Server) NewActivationSession(ar *AttestationRequest) (*ActivationSessio
 		ID:     ksuid.New().String(),
 		Secret: secret,
 		AttestationChallenge: AttestationChallenge{
-			EKSerialNumber: attestationEK.Certificate.SerialNumber.String(),
-			Credential:     encryptedCredential.Credential,
-			Secret:         encryptedCredential.Secret,
-			Status:         ChallengeStatusPending,
+			Credential: encryptedCredential.Credential,
+			Secret:     encryptedCredential.Secret,
+			Status:     ChallengeStatusPending,
 		},
 	}
 

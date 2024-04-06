@@ -124,8 +124,8 @@ type AttestationChallenge struct {
 	Status         ChallengeStatus `json:"status" validate:"required"`
 }
 
-func (ac AttestationChallenge) EncryptedCredential() *attest.EncryptedCredential {
-	return &attest.EncryptedCredential{
+func (ac AttestationChallenge) EncryptedCredential() attest.EncryptedCredential {
+	return attest.EncryptedCredential{
 		Credential: ac.Credential,
 		Secret:     ac.Secret,
 	}
