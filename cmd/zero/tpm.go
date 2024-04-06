@@ -12,6 +12,7 @@ import (
 	"reflect"
 
 	"github.com/gematik/zero-lab/pkg/attestation/tpmattest"
+	"github.com/gematik/zero-lab/pkg/util"
 	"github.com/google/go-attestation/attest"
 	"github.com/spf13/cobra"
 )
@@ -44,6 +45,7 @@ type TrustClient struct {
 	regBaseURL string
 	tpm        *attest.TPM
 	ak         *attest.AK
+	ek         *attest.EK
 }
 
 func CreateClient(regBaseURL string, akPath string) (*TrustClient, error) {
@@ -52,6 +54,18 @@ func CreateClient(regBaseURL string, akPath string) (*TrustClient, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	eks, err := tpm.EKCertificates()
+	if err != nil {
+		return nil, fmt.Errorf("reading EKs from TPM: %w", err)
+	}
+
+	slog.Info("TPM EKs", "count", len(eks))
+	for i, ek := range eks {
+		slog.Info("EK", "index", i, "cert", util.CertificateToText(ek.Certificate))
+	}
+
+	ek := eks[0]
 
 	ak, err := loadAK(tpm, akPath)
 	if err != nil {
@@ -74,20 +88,18 @@ func CreateClient(regBaseURL string, akPath string) (*TrustClient, error) {
 		slog.Info("Loaded existing AK", "path", akPath)
 	}
 
-	puk := ak.AttestationParameters().Public
-
-	key, err := attest.ParseAKPublic(tpm.Version(), puk)
+	publicKey, err := attest.ParseAKPublic(tpm.Version(), ak.AttestationParameters().Public)
 	if err != nil {
 		return nil, fmt.Errorf("parsing AK public key: %w", err)
 	}
 
-	slog.Info("AK public key", "key", reflect.TypeOf(key.Public))
-	return nil, fmt.Errorf("parsing AK public key")
+	slog.Info("AK public key", "type", reflect.TypeOf(publicKey.Public))
 
 	return &TrustClient{
 		regBaseURL: regBaseURL,
 		tpm:        tpm,
 		ak:         ak,
+		ek:         &ek,
 	}, nil
 }
 
@@ -95,12 +107,7 @@ func (c *TrustClient) AttestWithServer() error {
 	slog.Info("Activating TPM")
 	attestParams := c.ak.AttestationParameters()
 
-	eks, err := c.tpm.EKCertificates()
-	if err != nil {
-		return fmt.Errorf("reading EKs from TPM: %w", err)
-	}
-
-	attestationRequest, err := tpmattest.CreateAttestationRequest(c.tpm, eks, &attestParams)
+	attestationRequest, err := tpmattest.CreateAttestationRequest(c.tpm, *c.ek, &attestParams)
 	if err != nil {
 		return fmt.Errorf("creating attestation request: %w", err)
 	}
@@ -140,22 +147,7 @@ func (c *TrustClient) AttestWithServer() error {
 
 	slog.Info("Received attestation challenge", "challenge", challenge)
 
-	var activationEK *attest.EK
-
-	for _, ek := range eks {
-		if ek.Certificate.SerialNumber.String() == challenge.EKSerialNumber {
-			activationEK = &ek
-			break
-		}
-	}
-
-	if activationEK == nil {
-		return fmt.Errorf("no EK found with seriali number: " + challenge.EKSerialNumber)
-	}
-
-	slog.Info("Server chosen EK", "serial", activationEK.Certificate.SerialNumber.String(), "public_key_algorithm", activationEK.Certificate.PublicKeyAlgorithm, "serial_number", activationEK.Certificate.SerialNumber.String())
-
-	secret, err := c.ak.ActivateCredentialWithEK(c.tpm, challenge.EncryptedCredential(), *activationEK)
+	secret, err := c.ak.ActivateCredentialWithEK(c.tpm, challenge.EncryptedCredential(), *c.ek)
 	if err != nil {
 		return fmt.Errorf("activating credential: %w", err)
 	}

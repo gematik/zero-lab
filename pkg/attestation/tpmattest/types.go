@@ -77,10 +77,9 @@ const (
 )
 
 type AttestationChallenge struct {
-	EKSerialNumber string          `json:"ek_serial_number" validate:"required"`
-	Credential     []byte          `json:"credential" validate:"required"`
-	Secret         []byte          `json:"secret" validate:"required"`
-	Status         ChallengeStatus `json:"status" validate:"required"`
+	Credential []byte          `json:"credential" validate:"required"`
+	Secret     []byte          `json:"secret" validate:"required"`
+	Status     ChallengeStatus `json:"status" validate:"required"`
 }
 
 func (ac AttestationChallenge) EncryptedCredential() attest.EncryptedCredential {

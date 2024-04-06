@@ -4,8 +4,7 @@ import (
 	"github.com/google/go-attestation/attest"
 )
 
-func CreateAttestationRequest(tpm *attest.TPM, eks []attest.EK, ak *attest.AttestationParameters) (*AttestationRequest, error) {
-	ek := eks[0]
+func CreateAttestationRequest(tpm *attest.TPM, ek attest.EK, ak *attest.AttestationParameters) (*AttestationRequest, error) {
 
 	ar := &AttestationRequest{
 		TPMVersionString:   TPMVersionString(tpm.Version()),
