@@ -77,6 +77,7 @@ const (
 )
 
 type AttestationChallenge struct {
+	ID         string          `json:"id" validate:"required"`
 	Credential []byte          `json:"credential" validate:"required"`
 	Secret     []byte          `json:"secret" validate:"required"`
 	Status     ChallengeStatus `json:"status" validate:"required"`

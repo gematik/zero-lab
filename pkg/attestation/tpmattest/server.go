@@ -73,11 +73,13 @@ func (a *Server) NewActivationSession(ar *AttestationRequest) (*AttestationSessi
 	if err != nil {
 		return nil, fmt.Errorf("generating activation challenge: %w", err)
 	}
+	id := ksuid.New().String()
 	session := AttestationSession{
-		ID:                     ksuid.New().String(),
+		ID:                     id,
 		Secret:                 secret,
 		EndorsementCertificate: *ek.Certificate,
 		AttestationChallenge: AttestationChallenge{
+			ID:         id,
 			Credential: encryptedCredential.Credential,
 			Secret:     encryptedCredential.Secret,
 			Status:     ChallengeStatusPending,
