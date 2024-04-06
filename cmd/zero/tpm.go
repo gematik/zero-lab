@@ -90,7 +90,7 @@ func (c *TrustClient) ActivateTPM() error {
 	}
 
 	slog.Info("Activation request", "body", string(body))
-	resp, err := httpClient.Post("http://192.168.1.133:8080/tpm/activations", "application/json", bytes.NewReader(body))
+	resp, err := httpClient.Post("http://192.168.1.133:8080/tpm/attestations", "application/json", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("sending activation request: %w", err)
 	}
