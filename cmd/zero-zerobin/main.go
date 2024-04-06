@@ -84,7 +84,7 @@ func main() {
 	}
 
 	// ------------------
-	tpmAttestor := tpmattest.NewTPMAttestor()
+	tpmAttestor := tpmattest.NewAttestor()
 	tpmAttestor.MountRoutes(root.Group("/tpm"))
 	// ------------------
 

@@ -1,4 +1,4 @@
-package tpmtypes
+package tpmattest
 
 import (
 	"strings"
@@ -6,33 +6,27 @@ import (
 	"github.com/google/go-attestation/attest"
 )
 
-type EK struct {
+type endorsementKey struct {
 	CertificateRaw []byte `json:"certificate" validate:"required"`
 	CertificateURL string `json:"certificate_url,omitempty" validate:"omitempty"`
 }
 
-func NewEK(ek attest.EK) EK {
-	return EK{
-		CertificateRaw: ek.Certificate.Raw,
-		CertificateURL: ek.CertificateURL,
-	}
-}
-
-func (ek EK) AttestEK() (*attest.EK, error) {
+func (ek endorsementKey) convert() (*attest.EK, error) {
 	cert, err := attest.ParseEKCertificate(ek.CertificateRaw)
 	if err != nil {
 		return nil, err
 	}
 	return &attest.EK{
+		Public:         cert.PublicKey,
 		Certificate:    cert,
 		CertificateURL: ek.CertificateURL,
 	}, nil
 }
 
-func (ek EK) String() string {
+func (ek endorsementKey) String() string {
 	sb := strings.Builder{}
 	if string(ek.CertificateRaw) != "" {
-		attestEK, err := ek.AttestEK()
+		attestEK, err := ek.convert()
 		if err != nil {
 			sb.WriteString(" Certificate:")
 			sb.WriteString(err.Error())
@@ -62,7 +56,7 @@ func (ek EK) String() string {
 	return strings.Trim(sb.String(), " ")
 }
 
-type AttestationParameters struct {
+type attestationParameters struct {
 	Public                  []byte `json:"public" validate:"required"`
 	UseTCSDActivationFormat bool   `json:"use_tcsd_activation_format"`
 	CreateData              []byte `json:"create_data" validate:"required"`
@@ -70,17 +64,7 @@ type AttestationParameters struct {
 	CreateSignature         []byte `json:"create_signature" validate:"required"`
 }
 
-func NewAttestationParameters(ak attest.AttestationParameters) AttestationParameters {
-	return AttestationParameters{
-		Public:                  ak.Public,
-		UseTCSDActivationFormat: ak.UseTCSDActivationFormat,
-		CreateData:              ak.CreateData,
-		CreateAttestation:       ak.CreateAttestation,
-		CreateSignature:         ak.CreateSignature,
-	}
-}
-
-func (j *AttestationParameters) AttestationParameters() attest.AttestationParameters {
+func (j *attestationParameters) convert() attest.AttestationParameters {
 	return attest.AttestationParameters{
 		Public:                  j.Public,
 		UseTCSDActivationFormat: j.UseTCSDActivationFormat,
@@ -90,15 +74,19 @@ func (j *AttestationParameters) AttestationParameters() attest.AttestationParame
 	}
 }
 
-type ActivationRequest struct {
-	TPMVersion string                `json:"tpm_version" validate:"required"`
-	EKs        []EK                  `json:"endorsement_keys" validate:"required"`
-	AK         AttestationParameters `json:"attestation_key" validate:"required"`
+type AttestationRequest struct {
+	TPMVersionString      string                `json:"tpm_version" validate:"required"`
+	EndorsementKeys       []endorsementKey      `json:"endorsement_keys" validate:"required"`
+	AttestationParameters attestationParameters `json:"attestation_key" validate:"required"`
 }
 
-func (j *ActivationRequest) AttestTPMVersion() attest.TPMVersion {
+func (ar *AttestationRequest) ConvertParameters() attest.AttestationParameters {
+	return ar.AttestationParameters.convert()
+}
+
+func (ar *AttestationRequest) TPMVersion() attest.TPMVersion {
 	var version attest.TPMVersion
-	switch j.TPMVersion {
+	switch ar.TPMVersionString {
 	case "1.2":
 		version = attest.TPMVersion12
 	case "2.0":
@@ -117,5 +105,17 @@ func TPMVersionString(version attest.TPMVersion) string {
 		return "2.0"
 	default:
 		return "agnostic"
+	}
+}
+
+type EncryptedCredential struct {
+	Credential []byte `json:"credential" validate:"required"`
+	Secret     []byte `json:"secret" validate:"required"`
+}
+
+func (ec EncryptedCredential) Convert() *attest.EncryptedCredential {
+	return &attest.EncryptedCredential{
+		Credential: ec.Credential,
+		Secret:     ec.Secret,
 	}
 }

@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/gematik/zero-lab/pkg/attestation/tpmattest/tpmtypes"
+	"github.com/gematik/zero-lab/pkg/attestation/tpmattest"
 	"github.com/google/go-attestation/attest"
 	"github.com/spf13/cobra"
 )
@@ -77,26 +77,14 @@ func (c *TrustClient) ActivateTPM() error {
 	slog.Info("Activating TPM")
 	attestParams := c.AK.AttestationParameters()
 
-	tpmEKS, err := c.TPM.EKs()
+	attestationRequest, err := tpmattest.CreateAttestationRequest(c.TPM, &attestParams)
 	if err != nil {
-		return fmt.Errorf("getting EKs: %w", err)
-	}
-
-	eks := make([]tpmtypes.EK, len(tpmEKS))
-	for ind, tpmEK := range tpmEKS {
-		eks[ind] = tpmtypes.NewEK(tpmEK)
-		slog.Info("Endorsement Key", "EK", eks[ind].String())
-	}
-
-	activationRequest := &tpmtypes.ActivationRequest{
-		TPMVersion: tpmtypes.TPMVersionString(c.TPM.Version()),
-		EKs:        eks,
-		AK:         tpmtypes.NewAttestationParameters(attestParams),
+		return fmt.Errorf("creating attestation request: %w", err)
 	}
 
 	httpClient := &http.Client{}
 
-	body, err := json.Marshal(activationRequest)
+	body, err := json.Marshal(attestationRequest)
 	if err != nil {
 		return fmt.Errorf("marshaling activation request: %w", err)
 	}
