@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/x509"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/google/go-attestation/attest"
@@ -64,17 +65,21 @@ func (a *Server) NewActivationSession(ar *AttestationRequest) (*ActivationSessio
 			return nil, fmt.Errorf("parsing EK certificate: %w", err)
 		}
 
+		slog.Info("Processing EK", "serial", ek.Certificate.SerialNumber.String(), "public_key_algorithm", ek.Certificate.PublicKeyAlgorithm)
 		if attestationEK == nil {
 			attestationEK = ek
 			continue
 		}
 
 		if ek.Certificate.PublicKeyAlgorithm == x509.ECDSA {
-			if ek.Certificate.PublicKeyAlgorithm != x509.ECDSA {
+			bitSize := ek.Certificate.PublicKey.(*ecdsa.PublicKey).Curve.Params().BitSize
+			if attestationEK.Certificate.PublicKeyAlgorithm != x509.ECDSA {
 				attestationEK = ek
+				slog.Info("Found ECC EK", "serial", ek.Certificate.SerialNumber.String(), "bit_size", bitSize)
 			} else if attestationEK.Certificate.PublicKeyAlgorithm == x509.ECDSA &&
-				ek.Certificate.PublicKey.(*ecdsa.PublicKey).Curve.Params().BitSize > attestationEK.Certificate.PublicKey.(*ecdsa.PublicKey).Curve.Params().BitSize {
+				bitSize > attestationEK.Certificate.PublicKey.(*ecdsa.PublicKey).Curve.Params().BitSize {
 				attestationEK = ek
+				slog.Info("Found higher bit ECC EK", "serial", ek.Certificate.SerialNumber.String(), "bit_size", bitSize)
 			}
 		}
 	}
@@ -103,6 +108,8 @@ func (a *Server) NewActivationSession(ar *AttestationRequest) (*ActivationSessio
 			Status:         ChallengeStatusPending,
 		},
 	}
+
+	slog.Info("Created new activation session", "id", session.ID, "ek_serial", session.AttestationChallenge.EKSerialNumber)
 
 	a.store.SaveSession(session)
 
