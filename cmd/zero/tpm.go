@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -151,13 +154,53 @@ func (c *TrustClient) AttestWithServer() error {
 	if err != nil {
 		return fmt.Errorf("activating credential: %w", err)
 	}
-	slog.Info("Activated AK", "secret", secret)
+
+	challengeResponse := &tpmattest.AttestationChallengeResponse{
+		DecryptedSecret: secret,
+	}
+
+	body, err = json.Marshal(challengeResponse)
+	if err != nil {
+		return fmt.Errorf("marshaling challenge response: %w", err)
+	}
+
+	slog.Info("Challenge response", "body", string(body))
+
+	url = fmt.Sprintf("%s/tpm/attestations/%s", c.regBaseURL, challenge.ID)
+	resp, err = httpClient.Post(url, "application/json", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("sending challenge response: %w", err)
+	}
+
+	defer resp.Body.Close()
+
+	body, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("reading response body: %w", err)
+	}
+
+	slog.Info("Challenge response", "status", resp.Status, "body", string(body))
 
 	return nil
 }
 
 func (c *TrustClient) Close() {
 	c.tpm.Close()
+}
+
+// Creates a certificate signing request (CSR) for the AK.
+func (c *TrustClient) CreateCSR() ([]byte, error) {
+	csrTemplate := x509.CertificateRequest{
+		Subject:            pkix.Name{CommonName: "Test Certificate"},
+		SignatureAlgorithm: x509.ECDSAWithSHA256,
+	}
+	slog.Info("csrTemplate", "csrTemplate.extraExtensions", csrTemplate.ExtraExtensions)
+	// step: generate the csr request
+	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csrTemplate, c.ak)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create csr request: %w", err)
+	}
+	return csrBytes, nil
 }
 
 func saveAK(path string, ak *attest.AK) error {
