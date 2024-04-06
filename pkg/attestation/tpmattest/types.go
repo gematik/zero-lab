@@ -108,14 +108,25 @@ func TPMVersionString(version attest.TPMVersion) string {
 	}
 }
 
-type EncryptedCredential struct {
-	Credential []byte `json:"credential" validate:"required"`
-	Secret     []byte `json:"secret" validate:"required"`
+type ChallengeStatus string
+
+const (
+	ChallengeStatusPending ChallengeStatus = "pending"
+	ChallengeStatusValid   ChallengeStatus = "valid"
+	ChallengeStatusInvalid ChallengeStatus = "invalid"
+	ChallengeStatusExpired ChallengeStatus = "expired"
+)
+
+type AttestationChallenge struct {
+	EKSerialNumber string          `json:"ek_serial_number" validate:"required"`
+	Credential     []byte          `json:"credential" validate:"required"`
+	Secret         []byte          `json:"secret" validate:"required"`
+	Status         ChallengeStatus `json:"status" validate:"required"`
 }
 
-func (ec EncryptedCredential) Convert() *attest.EncryptedCredential {
+func (ac AttestationChallenge) EncryptedCredential() *attest.EncryptedCredential {
 	return &attest.EncryptedCredential{
-		Credential: ec.Credential,
-		Secret:     ec.Secret,
+		Credential: ac.Credential,
+		Secret:     ac.Secret,
 	}
 }

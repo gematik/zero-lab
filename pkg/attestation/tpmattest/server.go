@@ -11,9 +11,9 @@ import (
 )
 
 type ActivationSession struct {
-	ID                string
-	Secret            []byte
-	EnryptedCrdential EncryptedCredential
+	ID                   string
+	Secret               []byte
+	AttestationChallenge AttestationChallenge
 }
 
 type mockAttestationStore struct {
@@ -41,19 +41,19 @@ func (s *mockAttestationStore) LoadSession(id string) (*ActivationSession, error
 	return &session, nil
 }
 
-type Attestor struct {
+type Server struct {
 	store mockAttestationStore
 }
 
-func NewAttestor() *Attestor {
-	return &Attestor{
+func NewServer() *Server {
+	return &Server{
 		store: mockAttestationStore{
 			sessions: make(map[string]ActivationSession),
 		},
 	}
 }
 
-func (a *Attestor) NewActivationSession(ar *AttestationRequest) (*ActivationSession, error) {
+func (a *Server) NewActivationSession(ar *AttestationRequest) (*ActivationSession, error) {
 	// choose the correct EK based from the request
 	// prefer the ECC over RSA
 	// if there are multiple ECC keys, prefer the one with the highest curve
@@ -96,9 +96,11 @@ func (a *Attestor) NewActivationSession(ar *AttestationRequest) (*ActivationSess
 	session := ActivationSession{
 		ID:     ksuid.New().String(),
 		Secret: secret,
-		EnryptedCrdential: EncryptedCredential{
-			Credential: encryptedCredential.Credential,
-			Secret:     encryptedCredential.Secret,
+		AttestationChallenge: AttestationChallenge{
+			EKSerialNumber: attestationEK.Certificate.SerialNumber.String(),
+			Credential:     encryptedCredential.Credential,
+			Secret:         encryptedCredential.Secret,
+			Status:         ChallengeStatusPending,
 		},
 	}
 

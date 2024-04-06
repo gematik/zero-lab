@@ -8,12 +8,12 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func (a *Attestor) MountRoutes(group *echo.Group) {
+func (a *Server) MountRoutes(group *echo.Group) {
 	subgroup := group.Group("/attestations")
 	subgroup.POST("", a.PostAttestations)
 }
 
-func (a *Attestor) PostAttestations(c echo.Context) error {
+func (a *Server) PostAttestations(c echo.Context) error {
 	var ar = new(AttestationRequest)
 	if err := c.Bind(ar); err != nil {
 		return err
@@ -35,5 +35,5 @@ func (a *Attestor) PostAttestations(c echo.Context) error {
 
 	c.Response().Header().Set("Location", fmt.Sprintf("%s/activations/%s", baseURL, session.ID))
 
-	return c.JSON(http.StatusCreated, session)
+	return c.JSON(http.StatusCreated, session.AttestationChallenge)
 }
