@@ -171,6 +171,7 @@ func (c *TrustClient) AttestWithServer() error {
 
 	appKey, err := c.tpm.NewKey(c.ak, &attest.KeyConfig{
 		Algorithm: attest.ECDSA,
+		Size:      256,
 	})
 	if err != nil {
 		return fmt.Errorf("creating app key: %w", err)
