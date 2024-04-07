@@ -98,7 +98,9 @@ func (h *handler) Handle(ctx context.Context, r slog.Record) error {
 		return true
 	})
 
-	h.Output.WriteString(colorize(darkGray, h.attributesToString(attrs)))
+	if len(attrs) > 0 {
+		h.Output.WriteString(colorize(darkGray, h.attributesToString(attrs)))
+	}
 
 	h.Output.WriteString("\n")
 
