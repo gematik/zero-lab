@@ -86,10 +86,12 @@ var commandTPMCert = &cobra.Command{
 
 		defer tcl.Close()
 
-		err = tcl.RenewClientCertificate()
+		cert, err := tcl.RenewClientCertificate()
 		if err != nil {
 			slog.Error("Error requesting client certificate", "error", err)
 			os.Exit(1)
 		}
+
+		slog.Info("Client Certificate", "cert", cert)
 	},
 }

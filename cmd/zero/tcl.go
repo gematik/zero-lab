@@ -187,8 +187,8 @@ func CreateClient(regBaseURL string, identityPath string) (*TrustClient, error) 
 			return nil, err
 		}
 		identity.ak = ak
-		saveIdentity(identity, identityPath)
 
+		err = saveIdentity(identity, identityPath)
 		if err != nil {
 			return nil, err
 		}
@@ -361,6 +361,9 @@ func (c *TrustClient) RenewClientCertificate() (*x509.Certificate, error) {
 	}
 
 	csr, err := x509.ParseCertificateRequest(csrBytes)
+	if err != nil {
+		return nil, fmt.Errorf("parsing CSR: %w", err)
+	}
 
 	mockCA, err := ca.NewRandomMockCA()
 	if err != nil {
@@ -376,10 +379,16 @@ func (c *TrustClient) RenewClientCertificate() (*x509.Certificate, error) {
 			AttestationMethod: "tpm",
 		},
 	))
+	if err != nil {
+		return nil, fmt.Errorf("signing certificate request: %w", err)
+	}
 
 	c.identity.cert = cert
 
-	saveIdentity(c.identity, appIdentityPath)
+	err = saveIdentity(c.identity, appIdentityPath)
+	if err != nil {
+		return nil, fmt.Errorf("saving identity: %w", err)
+	}
 
-	return nil
+	return cert, nil
 }
