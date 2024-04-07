@@ -2,8 +2,6 @@ module github.com/gematik/zero-lab
 
 go 1.21.5
 
-replace github.com/google/go-attestation v0.5.1 => ../go-attestation
-
 require (
 	github.com/fxamacker/cbor/v2 v2.5.0
 	github.com/go-playground/validator/v10 v10.16.0
