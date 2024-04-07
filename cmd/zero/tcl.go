@@ -309,7 +309,7 @@ func (c *TrustClient) AttestWithServer() error {
 		return fmt.Errorf("creating app key: %w", err)
 	}
 
-	slog.Info("Created app key", "key", appKey.Public())
+	slog.Info("Created app key", "key_type", reflect.TypeOf(appKey.Public()))
 
 	c.identity.key = appKey
 	err = saveIdentity(c.identity, appIdentityPath)
@@ -359,6 +359,8 @@ func (c *TrustClient) RenewClientCertificate() (*x509.Certificate, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating CSR: %w", err)
 	}
+
+	slog.Info("CSR", "csr", csrBytes)
 
 	csr, err := x509.ParseCertificateRequest(csrBytes)
 	if err != nil {

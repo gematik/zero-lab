@@ -93,6 +93,6 @@ var commandTPMCert = &cobra.Command{
 			os.Exit(1)
 		}
 
-		slog.Info("Client Certificate", "cert", cert)
+		slog.Info("Client Certificate", "der", cert.Raw)
 	},
 }
