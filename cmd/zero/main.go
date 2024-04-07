@@ -1,8 +1,10 @@
 package main
 
 import (
+	"log/slog"
 	"os"
 
+	"github.com/gematik/zero-lab/pkg/prettylog"
 	"github.com/spf13/cobra"
 )
 
@@ -22,5 +24,9 @@ func Execute() {
 }
 
 func main() {
+	if os.Getenv("PRETTY_LOGS") != "false" {
+		logger := slog.New(prettylog.NewHandler(slog.LevelDebug))
+		slog.SetDefault(logger)
+	}
 	rootCmd.Execute()
 }

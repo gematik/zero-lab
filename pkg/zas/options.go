@@ -86,7 +86,7 @@ func WithRandomSigningKey() Option {
 			return fmt.Errorf("unable to generate keys: %w", err)
 		}
 
-		slog.Debug("Generated random signing key", "key", sigPuK.KeyID())
+		slog.Debug("Generated random signing key for ACCESS_TOKEN", "kid", sigPuK.KeyID())
 
 		s.sigPrK = sigPrK
 		s.jwks = jwk.NewSet()

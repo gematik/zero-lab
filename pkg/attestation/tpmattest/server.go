@@ -1,12 +1,13 @@
 package tpmattest
 
 import (
+	"bytes"
+	"crypto"
 	"crypto/x509"
 	"fmt"
 	"log/slog"
 	"sync"
 
-	"github.com/gematik/zero-lab/pkg/util"
 	"github.com/google/go-attestation/attest"
 	"github.com/segmentio/ksuid"
 )
@@ -15,6 +16,7 @@ type AttestationSession struct {
 	ID                     string
 	Secret                 []byte
 	EndorsementCertificate x509.Certificate
+	AttestationKey         crypto.PublicKey
 	AttestationChallenge   AttestationChallenge
 }
 
@@ -61,7 +63,7 @@ func (a *Server) NewActivationSession(ar *AttestationRequest) (*AttestationSessi
 		return nil, fmt.Errorf("parsing EK certificate: %w", err)
 	}
 
-	slog.Info("Received attestation request", "ek", util.CertificateToText(ek.Certificate))
+	slog.Info("Received attestation request", "ek", ek.Certificate)
 
 	params := attest.ActivationParameters{
 		TPMVersion: ar.TPMVersion(),
@@ -78,6 +80,7 @@ func (a *Server) NewActivationSession(ar *AttestationRequest) (*AttestationSessi
 		ID:                     id,
 		Secret:                 secret,
 		EndorsementCertificate: *ek.Certificate,
+		AttestationKey:         params.AK.Public,
 		AttestationChallenge: AttestationChallenge{
 			ID:         id,
 			Credential: encryptedCredential.Credential,
@@ -91,4 +94,14 @@ func (a *Server) NewActivationSession(ar *AttestationRequest) (*AttestationSessi
 	a.store.SaveSession(session)
 
 	return &session, nil
+}
+
+func (a *Server) VerifyChallengeResponse(session *AttestationSession, cr AttestationChallengeResponse) error {
+	if bytes.Equal(session.Secret, cr.DecryptedSecret) {
+		session.AttestationChallenge.Status = ChallengeStatusValid
+	} else {
+		session.AttestationChallenge.Status = ChallengeStatusInvalid
+	}
+	a.store.SaveSession(*session)
+	return nil
 }

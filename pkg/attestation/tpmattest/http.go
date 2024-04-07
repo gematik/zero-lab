@@ -24,11 +24,11 @@ func (a *Server) PostAttestations(c echo.Context) error {
 		return err
 	}
 
-	slog.Info("Activation request", "params", ar)
+	slog.Info("Activation request", "activation_reuzest", ar)
 
 	session, err := a.NewActivationSession(ar)
 	if err != nil {
-		slog.Error("Failed to create activation session", "error", err)
+		slog.Error("creating activation session", "error", err)
 		return err
 	}
 
@@ -52,7 +52,12 @@ func (a *Server) PostChallengeResponse(c echo.Context) error {
 		return err
 	}
 
+	err = a.VerifyChallengeResponse(session, cr)
+	if err != nil {
+		return c.String(http.StatusUnauthorized, "Challenge response verification failed")
+	}
+
 	slog.Info("Challenge response", "params", cr)
 
-	return c.JSON(http.StatusOK, session)
+	return c.JSON(http.StatusOK, session.AttestationChallenge)
 }

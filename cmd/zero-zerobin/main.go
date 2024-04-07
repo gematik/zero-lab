@@ -16,6 +16,7 @@ import (
 	"github.com/gematik/zero-lab/pkg/ca"
 	"github.com/gematik/zero-lab/pkg/nonce"
 	"github.com/gematik/zero-lab/pkg/oidc"
+	"github.com/gematik/zero-lab/pkg/prettylog"
 	"github.com/gematik/zero-lab/pkg/reg"
 	regapi "github.com/gematik/zero-lab/pkg/reg/api"
 	"github.com/gematik/zero-lab/pkg/util"
@@ -68,6 +69,11 @@ func (cv *CustomValidator) Validate(i interface{}) error {
 }
 
 func main() {
+	if os.Getenv("PRETTY_LOGS") != "false" {
+		logger := slog.New(prettylog.NewHandler(slog.LevelDebug))
+		slog.SetDefault(logger)
+	}
+
 	godotenv.Load()
 
 	root := echo.New()

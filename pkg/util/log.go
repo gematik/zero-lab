@@ -2,10 +2,8 @@ package util
 
 import (
 	"bytes"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -63,20 +61,4 @@ func ResponseToText(resp *http.Response) string {
 		sb.WriteString(string(body))
 	}
 	return sb.String()
-}
-
-func CertificateToText(cert *x509.Certificate) string {
-	if cert == nil {
-		return "nil"
-	}
-	sb := strings.Builder{}
-	sb.WriteString(fmt.Sprintf("subject: %s\n", cert.Subject.String()))
-	sb.WriteString(fmt.Sprintf("issuer: %s\n", cert.Issuer.String()))
-	sb.WriteString(fmt.Sprintf("publicKeyAlgorithm: %s\n", cert.PublicKeyAlgorithm.String()))
-	sb.WriteString(fmt.Sprintf("signatureAlgorithm: %s\n", cert.SignatureAlgorithm.String()))
-	sb.WriteString(fmt.Sprintf("serialNumber: %s\n", cert.SerialNumber.String()))
-	sb.WriteString(fmt.Sprintf("notBefore: %s\n", cert.NotBefore.String()))
-	sb.WriteString(fmt.Sprintf("notAfter: %s\n", cert.NotAfter.String()))
-	return strings.Trim(sb.String(), " \n")
-
 }

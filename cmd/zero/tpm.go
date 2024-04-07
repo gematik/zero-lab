@@ -12,7 +12,6 @@ import (
 	"reflect"
 
 	"github.com/gematik/zero-lab/pkg/attestation/tpmattest"
-	"github.com/gematik/zero-lab/pkg/util"
 	"github.com/google/go-attestation/attest"
 	"github.com/spf13/cobra"
 )
@@ -62,7 +61,7 @@ func CreateClient(regBaseURL string, akPath string) (*TrustClient, error) {
 
 	slog.Info("TPM EKs", "count", len(eks))
 	for i, ek := range eks {
-		slog.Info("EK", "index", i, "cert", util.CertificateToText(ek.Certificate))
+		slog.Info("EK", "index", i, "cert", ek.Certificate)
 	}
 
 	ek := eks[0]
