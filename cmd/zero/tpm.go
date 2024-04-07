@@ -18,13 +18,14 @@ var tpmCmd = &cobra.Command{
 }
 
 func init() {
-	tpmActivateCmd.Flags().StringVarP(&regBaseURL, "reg-url", "r", regBaseURL, "Registration URL")
-	tpmCmd.AddCommand(tpmActivateCmd)
+	commandTPMActivate.Flags().StringVarP(&regBaseURL, "reg-url", "r", regBaseURL, "Registration URL")
+	tpmCmd.AddCommand(commandTPMActivate)
 	tpmCmd.AddCommand(commandTPMIdentity)
+	tpmCmd.AddCommand(commandTPMCert)
 	rootCmd.AddCommand(tpmCmd)
 }
 
-var tpmActivateCmd = &cobra.Command{
+var commandTPMActivate = &cobra.Command{
 	Use:   "activate",
 	Short: "Activate TPM AK",
 
