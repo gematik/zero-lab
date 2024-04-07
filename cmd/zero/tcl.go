@@ -195,6 +195,13 @@ func CreateClient(regBaseURL string, identityPath string) (*TrustClient, error) 
 		slog.Info("Loaded existing identity", "path", identityPath)
 	}
 
+	puk, err := attest.ParseAKPublic(tpm.Version(), identity.ak.AttestationParameters().Public)
+	if err != nil {
+		return nil, fmt.Errorf("parsing AK public key: %w", err)
+	}
+
+	slog.Info("AK", "public_key", puk.Public)
+
 	return &TrustClient{
 		regBaseURL: regBaseURL,
 		tpm:        tpm,
@@ -334,6 +341,7 @@ func (c *TrustClient) CreateCSR() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("getting private key: %w", err)
 	}
+	slog.Info("Creating CSR", "public_key", c.identity.key.Public())
 	csrTemplate := x509.CertificateRequest{
 		Subject:            pkix.Name{CommonName: "Test Certificate"},
 		SignatureAlgorithm: x509.ECDSAWithSHA256,
