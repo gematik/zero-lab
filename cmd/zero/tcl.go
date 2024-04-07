@@ -95,7 +95,7 @@ func (c *TrustClient) AttestWithServer() error {
 		return fmt.Errorf("marshaling activation request: %w", err)
 	}
 
-	slog.Info("Activation request", "body", string(body))
+	slog.Info("Activation request", "request", attestationRequest)
 	url := fmt.Sprintf("%s/tpm/attestations", c.regBaseURL)
 	resp, err := httpClient.Post(url, "application/json", bytes.NewReader(body))
 	if err != nil {
@@ -132,12 +132,12 @@ func (c *TrustClient) AttestWithServer() error {
 		DecryptedSecret: secret,
 	}
 
+	slog.Info("Sending challenge response", "response", challengeResponse)
+
 	body, err = json.Marshal(challengeResponse)
 	if err != nil {
 		return fmt.Errorf("marshaling challenge response: %w", err)
 	}
-
-	slog.Info("Challenge response", "body", string(body))
 
 	url = fmt.Sprintf("%s/tpm/attestations/%s", c.regBaseURL, challenge.ID)
 	resp, err = httpClient.Post(url, "application/json", bytes.NewReader(body))
@@ -152,7 +152,31 @@ func (c *TrustClient) AttestWithServer() error {
 		return fmt.Errorf("reading response body: %w", err)
 	}
 
-	slog.Info("Challenge response", "status", resp.Status, "body", string(body))
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	err = json.Unmarshal(body, challenge)
+	if err != nil {
+		return fmt.Errorf("unmarshaling attestation challenge: %w", err)
+	}
+
+	slog.Info("Received attestation challenge", "challenge", challenge)
+
+	if challenge.Status != "valid" {
+		return fmt.Errorf("challenge failed with status: %s", challenge.Status)
+	}
+
+	slog.Info("Attestation successful. Creating app key.")
+
+	appKey, err := c.tpm.NewKey(c.ak, &attest.KeyConfig{
+		Algorithm: attest.ECDSA,
+	})
+	if err != nil {
+		return fmt.Errorf("creating app key: %w", err)
+	}
+
+	slog.Info("Created app key", "key", appKey)
 
 	return nil
 }

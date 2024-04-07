@@ -10,12 +10,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var (
+	regBaseURL = "https://dms-01.zt.dev.ccs.gematik.solutions"
+)
 var tpmCmd = &cobra.Command{
 	Use:   "tpm",
 	Short: "TPM Comands",
 }
 
 func init() {
+	tpmActivateCmd.Flags().StringVarP(&regBaseURL, "reg-url", "r", regBaseURL, "Registration URL")
 	tpmCmd.AddCommand(tpmActivateCmd)
 	tpmCmd.AddCommand(tpmTestCmd)
 	rootCmd.AddCommand(tpmCmd)
@@ -24,11 +28,11 @@ func init() {
 var tpmActivateCmd = &cobra.Command{
 	Use:   "activate",
 	Short: "Activate TPM AK",
+
 	Run: func(cmd *cobra.Command, args []string) {
 		slog.Info("Activating TPM AK")
 		tcl, err := CreateClient(
-			//"http://192.168.1.133:8080",
-			"https://dms-01.zt.dev.ccs.gematik.solutions",
+			regBaseURL,
 			".tpm.ak.id.json",
 		)
 		if err != nil {
