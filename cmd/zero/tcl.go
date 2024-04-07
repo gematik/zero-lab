@@ -31,7 +31,7 @@ func CreateClient(regBaseURL string, akPath string) (*TrustClient, error) {
 		return nil, err
 	}
 
-	eks, err := tpm.EKCertificates()
+	eks, err := tpm.EKs()
 	if err != nil {
 		return nil, fmt.Errorf("reading EKs from TPM: %w", err)
 	}

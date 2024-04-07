@@ -1,6 +1,9 @@
 package tpmattest
 
 import (
+	"crypto/x509"
+	"fmt"
+
 	"github.com/google/go-attestation/attest"
 )
 
@@ -22,21 +25,38 @@ func (j *attestationParameters) convert() attest.AttestationParameters {
 	}
 }
 
+type EndorsementKey struct {
+	Public         []byte `json:"public_key" validate:"required"`
+	CertificateRaw []byte `json:"certificate,omitempty"`
+	CertificateURL string `json:"certificate_url,omitempty"`
+}
+
 type AttestationRequest struct {
 	TPMVersionString      string                `json:"tpm_version" validate:"required"`
-	EndorsementCertRaw    []byte                `json:"endorsement_cert" validate:"required"`
+	EndorsementKey        EndorsementKey        `json:"endorsement_key" validate:"required"`
 	AttestationParameters attestationParameters `json:"attestation_params" validate:"required"`
 }
 
 func (ar AttestationRequest) ConvertEK() (*attest.EK, error) {
-	cert, err := attest.ParseEKCertificate(ar.EndorsementCertRaw)
+
+	ekPuk, err := x509.ParsePKIXPublicKey(ar.EndorsementKey.Public)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parsing EK public key: %w", err)
 	}
-	return &attest.EK{
-		Public:      cert.PublicKey,
-		Certificate: cert,
-	}, nil
+
+	ek := attest.EK{
+		Public: ekPuk,
+	}
+
+	if len(ar.EndorsementKey.CertificateRaw) > 0 {
+		cert, err := attest.ParseEKCertificate(ar.EndorsementKey.CertificateRaw)
+		if err != nil {
+			return nil, err
+		}
+		ek.Certificate = cert
+	}
+
+	return &ek, nil
 }
 
 func (ar *AttestationRequest) ConvertParameters() attest.AttestationParameters {
