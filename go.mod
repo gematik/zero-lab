@@ -1,6 +1,6 @@
 module github.com/gematik/zero-lab
 
-go 1.21.5
+go 1.21
 
 require (
 	github.com/fxamacker/cbor/v2 v2.5.0
