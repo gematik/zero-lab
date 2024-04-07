@@ -20,7 +20,7 @@ var tpmCmd = &cobra.Command{
 func init() {
 	tpmActivateCmd.Flags().StringVarP(&regBaseURL, "reg-url", "r", regBaseURL, "Registration URL")
 	tpmCmd.AddCommand(tpmActivateCmd)
-	tpmCmd.AddCommand(tpmIdentity)
+	tpmCmd.AddCommand(commandTPMIdentity)
 	rootCmd.AddCommand(tpmCmd)
 }
 
@@ -47,7 +47,7 @@ var tpmActivateCmd = &cobra.Command{
 	},
 }
 
-var tpmIdentity = &cobra.Command{
+var commandTPMIdentity = &cobra.Command{
 	Use:   "identity",
 	Short: "App Identity",
 	Run: func(cmd *cobra.Command, args []string) {
@@ -66,5 +66,30 @@ var tpmIdentity = &cobra.Command{
 
 		slog.Info("App Identity", "identity", tcl.identity)
 
+	},
+}
+
+var commandTPMCert = &cobra.Command{
+	Use:   "cert",
+	Short: "Requests a client certificate using the identity",
+	Run: func(cmd *cobra.Command, args []string) {
+		slog.Info("Requesting Client Certificate")
+		tcl, err := CreateClient(
+			regBaseURL,
+			appIdentityPath,
+		)
+
+		if err != nil {
+			slog.Error("Error creating client", "error", err)
+			os.Exit(1)
+		}
+
+		defer tcl.Close()
+
+		err = tcl.RenewClientCertificate()
+		if err != nil {
+			slog.Error("Error requesting client certificate", "error", err)
+			os.Exit(1)
+		}
 	},
 }

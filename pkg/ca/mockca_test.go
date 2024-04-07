@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"log/slog"
 	"os"
 	"reflect"
 	"testing"
@@ -27,7 +26,6 @@ func TestCertificateExtension(t *testing.T) {
 		Subject:            pkix.Name{CommonName: "Test Certificate"},
 		SignatureAlgorithm: x509.ECDSAWithSHA256,
 	}
-	slog.Info("csrTemplate", "csrTemplate.extraExtensions", csrTemplate.ExtraExtensions)
 	// step: generate the csr request
 	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csrTemplate, keyPair)
 	if err != nil {

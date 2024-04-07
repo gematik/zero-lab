@@ -16,6 +16,7 @@ import (
 	"reflect"
 
 	"github.com/gematik/zero-lab/pkg/attestation/tpmattest"
+	"github.com/gematik/zero-lab/pkg/ca"
 	"github.com/google/go-attestation/attest"
 )
 
@@ -31,6 +32,7 @@ type Identity struct {
 	tpm           *attest.TPM
 	ak            *attest.AK
 	key           *attest.Key
+	cert          *x509.Certificate
 }
 
 func (i *Identity) MarshalJSON() ([]byte, error) {
@@ -38,6 +40,7 @@ func (i *Identity) MarshalJSON() ([]byte, error) {
 		err       error
 		sealedAK  []byte
 		sealedKey []byte
+		certRaw   []byte
 	)
 
 	if i.ak != nil {
@@ -54,10 +57,15 @@ func (i *Identity) MarshalJSON() ([]byte, error) {
 		}
 	}
 
+	if i.cert != nil {
+		certRaw = i.cert.Raw
+	}
+
 	return json.Marshal(map[string]interface{}{
 		"format_version": "1",
 		"sealed_ak":      sealedAK,
 		"sealed_key":     sealedKey,
+		"cert_raw":       certRaw,
 	})
 }
 
@@ -66,6 +74,7 @@ func (i *Identity) UnmarshalJSON(data []byte) error {
 		FormatVersion string `json:"format_version"`
 		SealedAK      []byte `json:"sealed_ak"`
 		SealedKey     []byte `json:"sealed_key"`
+		CertRaw       []byte `json:"cert_raw"`
 	}
 
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -90,6 +99,14 @@ func (i *Identity) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("unmarshaling key: %w", err)
 		}
 		i.key = key
+	}
+
+	if len(raw.CertRaw) > 0 {
+		cert, err := x509.ParseCertificate(raw.CertRaw)
+		if err != nil {
+			return fmt.Errorf("parsing certificate: %w", err)
+		}
+		i.cert = cert
 	}
 
 	return nil
@@ -329,11 +346,40 @@ func (c *TrustClient) CreateCSR() ([]byte, error) {
 		Subject:            pkix.Name{CommonName: "Test Certificate"},
 		SignatureAlgorithm: x509.ECDSAWithSHA256,
 	}
-	slog.Info("csrTemplate", "csrTemplate.extraExtensions", csrTemplate.ExtraExtensions)
 	// step: generate the csr request
 	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csrTemplate, prk)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create csr request: %w", err)
 	}
 	return csrBytes, nil
+}
+
+func (c *TrustClient) RenewClientCertificate() (*x509.Certificate, error) {
+	csrBytes, err := c.CreateCSR()
+	if err != nil {
+		return nil, fmt.Errorf("creating CSR: %w", err)
+	}
+
+	csr, err := x509.ParseCertificateRequest(csrBytes)
+
+	mockCA, err := ca.NewRandomMockCA()
+	if err != nil {
+		return nil, fmt.Errorf("creating mock CA: %w", err)
+	}
+
+	cert, err := mockCA.SignCertificateRequest(csr, pkix.Name{CommonName: "Test Certificate"}, ca.WithAdditionalInformation(
+		&struct {
+			Owner             string `json:"owner"`
+			AttestationMethod string `json:"attestation_method"`
+		}{
+			Owner:             "unregistered",
+			AttestationMethod: "tpm",
+		},
+	))
+
+	c.identity.cert = cert
+
+	saveIdentity(c.identity, appIdentityPath)
+
+	return nil
 }
