@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -163,18 +164,16 @@ func CreateClient(regBaseURL string, identityPath string) (*TrustClient, error) 
 	}
 
 	slog.Info("TPM EKs", "count", len(eks))
-	for i, ek := range eks {
-		slog.Info("EK", "index", i, "public_key", ek.Public)
-		if ek.Certificate != nil {
-			slog.Info("EK Certificate", "subject", ek.Certificate.Subject.String(), "issuer", ek.Certificate.Issuer.String(), "not_before", ek.Certificate.NotBefore, "not_after", ek.Certificate.NotAfter)
-		}
-	}
 
 	if len(eks) == 0 {
 		return nil, fmt.Errorf("no EKs found")
 	}
 
 	ek := eks[0]
+	slog.Info("EK", "public_key", ek.Public)
+	if ek.Certificate != nil {
+		slog.Info("EK Certificate", "subject", ek.Certificate.Subject.String(), "issuer", ek.Certificate.Issuer.String(), "not_before", ek.Certificate.NotBefore, "not_after", ek.Certificate.NotAfter)
+	}
 
 	identity, err := loadIdentity(tpm, identityPath)
 	if err != nil {
@@ -193,15 +192,8 @@ func CreateClient(regBaseURL string, identityPath string) (*TrustClient, error) 
 			return nil, err
 		}
 	} else {
-		slog.Info("Loaded existing AK", "path", identityPath)
+		slog.Info("Loaded existing identity", "path", identityPath)
 	}
-
-	publicKey, err := attest.ParseAKPublic(tpm.Version(), identity.ak.AttestationParameters().Public)
-	if err != nil {
-		return nil, fmt.Errorf("parsing AK public key: %w", err)
-	}
-
-	slog.Info("AK public key", "type", reflect.TypeOf(publicKey.Public))
 
 	return &TrustClient{
 		regBaseURL: regBaseURL,
@@ -360,7 +352,7 @@ func (c *TrustClient) RenewClientCertificate() (*x509.Certificate, error) {
 		return nil, fmt.Errorf("creating CSR: %w", err)
 	}
 
-	slog.Info("CSR", "csr", csrBytes)
+	slog.Info("CSR", "csr", base64.StdEncoding.EncodeToString(csrBytes))
 
 	csr, err := x509.ParseCertificateRequest(csrBytes)
 	if err != nil {

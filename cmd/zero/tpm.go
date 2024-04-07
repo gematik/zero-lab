@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"log"
 	"log/slog"
 	"os"
@@ -93,6 +94,6 @@ var commandTPMCert = &cobra.Command{
 			os.Exit(1)
 		}
 
-		slog.Info("Client Certificate", "der", cert.Raw)
+		slog.Info("Client Certificate", "der", base64.StdEncoding.EncodeToString(cert.Raw))
 	},
 }
