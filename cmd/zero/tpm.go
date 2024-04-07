@@ -1,17 +1,16 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"log/slog"
-	"reflect"
+	"os"
 
-	"github.com/google/go-attestation/attest"
 	"github.com/spf13/cobra"
 )
 
 var (
-	regBaseURL = "https://dms-01.zt.dev.ccs.gematik.solutions"
+	regBaseURL      = "https://dms-01.zt.dev.ccs.gematik.solutions"
+	appIdentityPath = ".app.identity.json"
 )
 var tpmCmd = &cobra.Command{
 	Use:   "tpm",
@@ -21,7 +20,7 @@ var tpmCmd = &cobra.Command{
 func init() {
 	tpmActivateCmd.Flags().StringVarP(&regBaseURL, "reg-url", "r", regBaseURL, "Registration URL")
 	tpmCmd.AddCommand(tpmActivateCmd)
-	tpmCmd.AddCommand(tpmTestCmd)
+	tpmCmd.AddCommand(tpmIdentity)
 	rootCmd.AddCommand(tpmCmd)
 }
 
@@ -33,7 +32,7 @@ var tpmActivateCmd = &cobra.Command{
 		slog.Info("Activating TPM AK")
 		tcl, err := CreateClient(
 			regBaseURL,
-			".tpm.ak.id.json",
+			appIdentityPath,
 		)
 		if err != nil {
 			log.Fatal(err)
@@ -48,55 +47,24 @@ var tpmActivateCmd = &cobra.Command{
 	},
 }
 
-var tpmTestCmd = &cobra.Command{
-	Use:   "test",
-	Short: "Test TPM",
+var tpmIdentity = &cobra.Command{
+	Use:   "identity",
+	Short: "App Identity",
 	Run: func(cmd *cobra.Command, args []string) {
-		slog.Info("Testing TPM")
+		slog.Info("Loading App Identity")
+		tcl, err := CreateClient(
+			regBaseURL,
+			appIdentityPath,
+		)
 
-		config := &attest.OpenConfig{}
-		tpm, err := attest.OpenTPM(config)
 		if err != nil {
-			log.Fatal(err)
+			slog.Error("Error creating client", "error", err)
+			os.Exit(1)
 		}
 
-		eks, err := tpm.EKs()
-		if err != nil {
-			log.Fatal(fmt.Errorf("reading EKs from TPM: %w", err))
-		}
+		defer tcl.Close()
 
-		slog.Info("TPM EKs", "count", len(eks))
-		for i, ek := range eks {
-			slog.Info("EK", "index", i, "cert", ek.Certificate)
-		}
+		slog.Info("App Identity", "identity", tcl.identity)
 
-		if len(eks) == 0 {
-			log.Fatal("No EKs found")
-		}
-
-		ek := eks[0]
-
-		akConfig := &attest.AKConfig{
-			Parent: &attest.ParentKeyConfig{
-				Algorithm: attest.ECDSA,
-				Handle:    0x81000002,
-			},
-		}
-		ak, err := tpm.NewAK(akConfig)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		akBytes, err := ak.Marshal()
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		slog.Info("Created new AK", "ak", reflect.TypeOf(ak.AttestationParameters().Public), "ek_type", reflect.TypeOf(ek.Public), "ak", string(akBytes))
-
-		ak, err = tpm.LoadAK(akBytes)
-		if err != nil {
-			log.Fatal(err)
-		}
 	},
 }

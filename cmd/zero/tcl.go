@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"log/slog"
@@ -20,11 +22,118 @@ import (
 type TrustClient struct {
 	regBaseURL string
 	tpm        *attest.TPM
-	ak         *attest.AK
+	identity   *Identity
 	ek         *attest.EK
 }
 
-func CreateClient(regBaseURL string, akPath string) (*TrustClient, error) {
+type Identity struct {
+	FormatVersion string `json:"format_version"`
+	tpm           *attest.TPM
+	ak            *attest.AK
+	key           *attest.Key
+}
+
+func (i *Identity) MarshalJSON() ([]byte, error) {
+	var (
+		err       error
+		sealedAK  []byte
+		sealedKey []byte
+	)
+
+	if i.ak != nil {
+		sealedAK, err = i.ak.Marshal()
+		if err != nil {
+			return nil, fmt.Errorf("marshaling AK: %w", err)
+		}
+	}
+
+	if i.key != nil {
+		sealedKey, err = i.key.Marshal()
+		if err != nil {
+			return nil, fmt.Errorf("marshaling key: %w", err)
+		}
+	}
+
+	return json.Marshal(map[string]interface{}{
+		"format_version": "1",
+		"sealed_ak":      sealedAK,
+		"sealed_key":     sealedKey,
+	})
+}
+
+func (i *Identity) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		FormatVersion string `json:"format_version"`
+		SealedAK      []byte `json:"sealed_ak"`
+		SealedKey     []byte `json:"sealed_key"`
+	}
+
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("unmarshaling identity: %w", err)
+	}
+
+	if raw.FormatVersion != "1" {
+		return fmt.Errorf("unsupported format version: %s", raw.FormatVersion)
+	}
+
+	if len(raw.SealedAK) > 0 {
+		ak, err := i.tpm.LoadAK(raw.SealedAK)
+		if err != nil {
+			return fmt.Errorf("unmarshaling AK: %w", err)
+		}
+		i.ak = ak
+	}
+
+	if len(raw.SealedKey) > 0 {
+		key, err := i.tpm.LoadKey(raw.SealedKey)
+		if err != nil {
+			return fmt.Errorf("unmarshaling key: %w", err)
+		}
+		i.key = key
+	}
+
+	return nil
+}
+
+func (i *Identity) PrivateKey() (crypto.PrivateKey, error) {
+	if i.key == nil {
+		return nil, fmt.Errorf("no key available")
+	}
+
+	return i.key.Private(i.key.Public())
+}
+
+func saveIdentity(identity *Identity, path string) error {
+	identityBytes, err := json.Marshal(identity)
+	if err != nil {
+		return fmt.Errorf("marshaling identity: %w", err)
+	}
+
+	if err := os.WriteFile(path, identityBytes, 0600); err != nil {
+		return fmt.Errorf("writing AK: %w", err)
+	}
+
+	return nil
+}
+
+func loadIdentity(tpm *attest.TPM, path string) (*Identity, error) {
+	identityBytes, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading AK: %w", err)
+	}
+
+	identity := Identity{
+		tpm: tpm,
+	}
+
+	if err := json.Unmarshal(identityBytes, &identity); err != nil {
+		return nil, fmt.Errorf("unmarshaling identity: %w", err)
+	}
+
+	return &identity, nil
+}
+
+func CreateClient(regBaseURL string, identityPath string) (*TrustClient, error) {
 	config := &attest.OpenConfig{}
 	tpm, err := attest.OpenTPM(config)
 	if err != nil {
@@ -38,7 +147,10 @@ func CreateClient(regBaseURL string, akPath string) (*TrustClient, error) {
 
 	slog.Info("TPM EKs", "count", len(eks))
 	for i, ek := range eks {
-		slog.Info("EK", "index", i, "cert", ek.Certificate)
+		slog.Info("EK", "index", i, "public_key", ek.Public)
+		if ek.Certificate != nil {
+			slog.Info("EK Certificate", "subject", ek.Certificate.Subject.String(), "issuer", ek.Certificate.Issuer.String(), "not_before", ek.Certificate.NotBefore, "not_after", ek.Certificate.NotAfter)
+		}
 	}
 
 	if len(eks) == 0 {
@@ -47,28 +159,27 @@ func CreateClient(regBaseURL string, akPath string) (*TrustClient, error) {
 
 	ek := eks[0]
 
-	ak, err := loadAK(tpm, akPath)
+	identity, err := loadIdentity(tpm, identityPath)
 	if err != nil {
-		slog.Info(fmt.Sprintf("%s. Will create new AK.", err))
-		akConfig := &attest.AKConfig{
-			Parent: &attest.ParentKeyConfig{
-				Algorithm: attest.ECDSA,
-				Handle:    0x81000002,
-			},
+		slog.Info(fmt.Sprintf("%s. Will create new Identity.", err))
+		identity = &Identity{
+			tpm: tpm,
 		}
-		ak, err = tpm.NewAK(akConfig)
+		ak, err := tpm.NewAK(nil)
 		if err != nil {
 			return nil, err
 		}
-		err = saveAK(akPath, ak)
+		identity.ak = ak
+		saveIdentity(identity, identityPath)
+
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		slog.Info("Loaded existing AK", "path", akPath)
+		slog.Info("Loaded existing AK", "path", identityPath)
 	}
 
-	publicKey, err := attest.ParseAKPublic(tpm.Version(), ak.AttestationParameters().Public)
+	publicKey, err := attest.ParseAKPublic(tpm.Version(), identity.ak.AttestationParameters().Public)
 	if err != nil {
 		return nil, fmt.Errorf("parsing AK public key: %w", err)
 	}
@@ -78,14 +189,14 @@ func CreateClient(regBaseURL string, akPath string) (*TrustClient, error) {
 	return &TrustClient{
 		regBaseURL: regBaseURL,
 		tpm:        tpm,
-		ak:         ak,
+		identity:   identity,
 		ek:         &ek,
 	}, nil
 }
 
 func (c *TrustClient) AttestWithServer() error {
 	slog.Info("Activating TPM")
-	attestParams := c.ak.AttestationParameters()
+	attestParams := c.identity.ak.AttestationParameters()
 
 	attestationRequest, err := tpmattest.CreateAttestationRequest(c.tpm, *c.ek, &attestParams)
 	if err != nil {
@@ -127,7 +238,7 @@ func (c *TrustClient) AttestWithServer() error {
 
 	slog.Info("Received attestation challenge", "challenge", challenge)
 
-	secret, err := c.ak.ActivateCredentialWithEK(c.tpm, challenge.EncryptedCredential(), *c.ek)
+	secret, err := c.identity.ak.ActivateCredentialWithEK(c.tpm, challenge.EncryptedCredential(), *c.ek)
 	if err != nil {
 		return fmt.Errorf("activating credential: %w", err)
 	}
@@ -173,7 +284,7 @@ func (c *TrustClient) AttestWithServer() error {
 
 	slog.Info("Attestation successful. Creating app key.")
 
-	appKey, err := c.tpm.NewKey(c.ak, &attest.KeyConfig{
+	appKey, err := c.tpm.NewKey(c.identity.ak, &attest.KeyConfig{
 		Algorithm: attest.ECDSA,
 		Size:      256,
 	})
@@ -181,7 +292,25 @@ func (c *TrustClient) AttestWithServer() error {
 		return fmt.Errorf("creating app key: %w", err)
 	}
 
-	slog.Info("Created app key", "key", appKey)
+	slog.Info("Created app key", "key", appKey.Public())
+
+	c.identity.key = appKey
+	err = saveIdentity(c.identity, appIdentityPath)
+	if err != nil {
+		return fmt.Errorf("saving identity: %w", err)
+	}
+
+	csr, err := c.CreateCSR()
+	if err != nil {
+		return fmt.Errorf("creating CSR: %w", err)
+	}
+
+	csrPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE REQUEST",
+		Bytes: csr,
+	})
+
+	slog.Info("Created CSR", "csr", csrPEM)
 
 	return nil
 }
@@ -192,42 +321,19 @@ func (c *TrustClient) Close() {
 
 // Creates a certificate signing request (CSR) for the AK.
 func (c *TrustClient) CreateCSR() ([]byte, error) {
+	prk, err := c.identity.PrivateKey()
+	if err != nil {
+		return nil, fmt.Errorf("getting private key: %w", err)
+	}
 	csrTemplate := x509.CertificateRequest{
 		Subject:            pkix.Name{CommonName: "Test Certificate"},
 		SignatureAlgorithm: x509.ECDSAWithSHA256,
 	}
 	slog.Info("csrTemplate", "csrTemplate.extraExtensions", csrTemplate.ExtraExtensions)
 	// step: generate the csr request
-	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csrTemplate, c.ak)
+	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csrTemplate, prk)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create csr request: %w", err)
 	}
 	return csrBytes, nil
-}
-
-func saveAK(path string, ak *attest.AK) error {
-	akBytes, err := ak.Marshal()
-	if err != nil {
-		return fmt.Errorf("marshaling AK: %w", err)
-	}
-
-	if err := os.WriteFile(path, akBytes, 0600); err != nil {
-		return fmt.Errorf("writing AK: %w", err)
-	}
-
-	return nil
-}
-
-func loadAK(tpm *attest.TPM, path string) (*attest.AK, error) {
-	akBytes, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("reading AK: %w", err)
-	}
-
-	ak, err := tpm.LoadAK(akBytes)
-	if err != nil {
-		return nil, fmt.Errorf("loading AK: %w", err)
-	}
-
-	return ak, nil
 }
