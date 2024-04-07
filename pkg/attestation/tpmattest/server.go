@@ -3,7 +3,6 @@ package tpmattest
 import (
 	"bytes"
 	"crypto"
-	"crypto/x509"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -13,11 +12,11 @@ import (
 )
 
 type AttestationSession struct {
-	ID                     string
-	Secret                 []byte
-	EndorsementCertificate x509.Certificate
-	AttestationKey         crypto.PublicKey
-	AttestationChallenge   AttestationChallenge
+	ID                   string
+	Secret               []byte
+	EndorsementKey       EndorsementKey
+	AttestationKey       crypto.PublicKey
+	AttestationChallenge AttestationChallenge
 }
 
 type mockAttestationStore struct {
@@ -63,7 +62,7 @@ func (a *Server) NewActivationSession(ar *AttestationRequest) (*AttestationSessi
 		return nil, fmt.Errorf("parsing EK certificate: %w", err)
 	}
 
-	slog.Info("Received attestation request", "ek", ek.Certificate)
+	slog.Info("Received attestation request", "ek", ek)
 
 	params := attest.ActivationParameters{
 		TPMVersion: ar.TPMVersion(),
@@ -77,10 +76,10 @@ func (a *Server) NewActivationSession(ar *AttestationRequest) (*AttestationSessi
 	}
 	id := ksuid.New().String()
 	session := AttestationSession{
-		ID:                     id,
-		Secret:                 secret,
-		EndorsementCertificate: *ek.Certificate,
-		AttestationKey:         params.AK.Public,
+		ID:             id,
+		Secret:         secret,
+		EndorsementKey: ar.EndorsementKey,
+		AttestationKey: params.AK.Public,
 		AttestationChallenge: AttestationChallenge{
 			ID:         id,
 			Credential: encryptedCredential.Credential,
