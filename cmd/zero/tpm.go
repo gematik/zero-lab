@@ -26,7 +26,11 @@ var tpmActivateCmd = &cobra.Command{
 	Short: "Activate TPM AK",
 	Run: func(cmd *cobra.Command, args []string) {
 		slog.Info("Activating TPM AK")
-		tcl, err := CreateClient("http://192.168.1.133:8080", ".tpm.ak.id.json")
+		tcl, err := CreateClient(
+			//"http://192.168.1.133:8080",
+			"https://dms-01.zt.dev.ccs.gematik.solutions",
+			".tpm.ak.id.json",
+		)
 		if err != nil {
 			log.Fatal(err)
 		}
