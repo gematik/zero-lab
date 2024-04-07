@@ -56,7 +56,7 @@ var tpmTestCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
-		eks, err := tpm.EKCertificates()
+		eks, err := tpm.EKs()
 		if err != nil {
 			log.Fatal(fmt.Errorf("reading EKs from TPM: %w", err))
 		}
@@ -64,6 +64,10 @@ var tpmTestCmd = &cobra.Command{
 		slog.Info("TPM EKs", "count", len(eks))
 		for i, ek := range eks {
 			slog.Info("EK", "index", i, "cert", ek.Certificate)
+		}
+
+		if len(eks) == 0 {
+			log.Fatal("No EKs found")
 		}
 
 		ek := eks[0]
