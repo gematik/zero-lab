@@ -41,6 +41,10 @@ func CreateClient(regBaseURL string, akPath string) (*TrustClient, error) {
 		slog.Info("EK", "index", i, "cert", ek.Certificate)
 	}
 
+	if len(eks) == 0 {
+		return nil, fmt.Errorf("no EKs found")
+	}
+
 	ek := eks[0]
 
 	ak, err := loadAK(tpm, akPath)

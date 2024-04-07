@@ -52,12 +52,12 @@ func (a *Server) PostChallengeResponse(c echo.Context) error {
 		return err
 	}
 
+	slog.Info("Received challenge response", "params", cr, "session", session)
+
 	err = a.VerifyChallengeResponse(session, cr)
 	if err != nil {
 		return c.String(http.StatusUnauthorized, "Challenge response verification failed")
 	}
-
-	slog.Info("Challenge response", "params", cr)
 
 	return c.JSON(http.StatusOK, session.AttestationChallenge)
 }

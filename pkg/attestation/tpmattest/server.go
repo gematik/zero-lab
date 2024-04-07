@@ -102,5 +102,6 @@ func (a *Server) VerifyChallengeResponse(session *AttestationSession, cr Attesta
 		session.AttestationChallenge.Status = ChallengeStatusInvalid
 	}
 	a.store.SaveSession(*session)
+	slog.Info("Challenge response verified", "status", session.AttestationChallenge.Status)
 	return nil
 }
