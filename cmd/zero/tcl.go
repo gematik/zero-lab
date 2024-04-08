@@ -254,7 +254,7 @@ func (c *TrustClient) AttestWithServer() error {
 
 	slog.Info("Received attestation challenge", "challenge", challenge)
 
-	secret, err := c.identity.ak.ActivateCredentialWithEK(c.tpm, challenge.EncryptedCredential(), *c.ek)
+	secret, err := c.identity.ak.ActivateCredential(c.tpm, challenge.EncryptedCredential())
 	if err != nil {
 		return fmt.Errorf("activating credential: %w", err)
 	}
