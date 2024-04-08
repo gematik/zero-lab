@@ -193,18 +193,14 @@ func (c *TrustClient) Close() {
 }
 
 // Creates a certificate signing request (CSR) for the AK.
-func (c *TrustClient) CreateCSR() ([]byte, *x509.CertificateRequest, error) {
+func (c *TrustClient) createCSR(key *attest.Key) ([]byte, *x509.CertificateRequest, error) {
 	slog.Info("Creating CSR")
-	prk, err := c.identity.PrivateKey()
-	if err != nil {
-		return nil, nil, fmt.Errorf("getting private key: %w", err)
-	}
 	csrTemplate := x509.CertificateRequest{
 		Subject:            pkix.Name{CommonName: "Test Certificate"},
 		SignatureAlgorithm: x509.ECDSAWithSHA256,
 	}
 	// step: generate the csr request
-	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csrTemplate, prk)
+	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csrTemplate, key)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create csr request: %w", err)
 	}
@@ -232,12 +228,12 @@ func (c *TrustClient) RenewClientCertificate() (*x509.Certificate, error) {
 
 	slog.Info("Created app key", "key_type", reflect.TypeOf(appKey.Public()))
 
-	c.identity.UpdateKey(appKey)
+	err = c.identity.UpdateKey(appKey)
 	if err != nil {
 		return nil, fmt.Errorf("saving identity: %w", err)
 	}
 
-	csrBytes, csr, err := c.CreateCSR()
+	csrBytes, csr, err := c.createCSR(appKey)
 	if err != nil {
 		return nil, fmt.Errorf("creating CSR: %w", err)
 	}
