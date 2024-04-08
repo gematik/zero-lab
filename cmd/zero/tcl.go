@@ -181,11 +181,6 @@ func CreateClient(regBaseURL string, identityPath string) (*TrustClient, error) 
 		identity = &Identity{
 			tpm: tpm,
 		}
-		ak, err := tpm.NewAK(nil)
-		if err != nil {
-			return nil, err
-		}
-		identity.ak = ak
 
 		err = saveIdentity(identity, identityPath)
 		if err != nil {
@@ -194,13 +189,6 @@ func CreateClient(regBaseURL string, identityPath string) (*TrustClient, error) 
 	} else {
 		slog.Info("Loaded existing identity", "path", identityPath)
 	}
-
-	puk, err := attest.ParseAKPublic(tpm.Version(), identity.ak.AttestationParameters().Public)
-	if err != nil {
-		return nil, fmt.Errorf("parsing AK public key: %w", err)
-	}
-
-	slog.Info("AK", "public_key", puk.Public)
 
 	return &TrustClient{
 		regBaseURL: regBaseURL,
@@ -211,7 +199,20 @@ func CreateClient(regBaseURL string, identityPath string) (*TrustClient, error) 
 }
 
 func (c *TrustClient) AttestWithServer() error {
-	slog.Info("Activating TPM")
+	slog.Info("Activating AK")
+
+	ak, err := c.tpm.NewAK(nil)
+	if err != nil {
+		return err
+	}
+	c.identity.ak = ak
+	puk, err := attest.ParseAKPublic(c.tpm.Version(), c.identity.ak.AttestationParameters().Public)
+	if err != nil {
+		return fmt.Errorf("parsing AK public key: %w", err)
+	}
+
+	slog.Info("Created new AK", "public_key", puk.Public, "public_key_type", reflect.TypeOf(puk.Public))
+
 	attestParams := c.identity.ak.AttestationParameters()
 
 	attestationRequest, err := tpmattest.CreateAttestationRequest(c.tpm, *c.ek, &attestParams)
