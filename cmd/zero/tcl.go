@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -193,14 +194,14 @@ func (c *TrustClient) Close() {
 }
 
 // Creates a certificate signing request (CSR) for the AK.
-func (c *TrustClient) createCSR(key *attest.Key) ([]byte, *x509.CertificateRequest, error) {
+func (c *TrustClient) createCSR(prk crypto.PrivateKey) ([]byte, *x509.CertificateRequest, error) {
 	slog.Info("Creating CSR")
 	csrTemplate := x509.CertificateRequest{
 		Subject:            pkix.Name{CommonName: "Test Certificate"},
 		SignatureAlgorithm: x509.ECDSAWithSHA256,
 	}
 	// step: generate the csr request
-	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csrTemplate, key)
+	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csrTemplate, prk)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create csr request: %w", err)
 	}
@@ -233,7 +234,12 @@ func (c *TrustClient) RenewClientCertificate() (*x509.Certificate, error) {
 		return nil, fmt.Errorf("saving identity: %w", err)
 	}
 
-	csrBytes, csr, err := c.createCSR(appKey)
+	prk, err := c.identity.PrivateKey()
+	if err != nil {
+		return nil, fmt.Errorf("loading private key: %w", err)
+	}
+
+	csrBytes, csr, err := c.createCSR(prk)
 	if err != nil {
 		return nil, fmt.Errorf("creating CSR: %w", err)
 	}
