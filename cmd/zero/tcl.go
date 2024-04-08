@@ -300,8 +300,6 @@ func (c *TrustClient) AttestWithServer() error {
 
 	slog.Info("Attestation successful. Creating app key.")
 
-	c.identity.ak.Close(c.tpm)
-
 	appKey, err := c.tpm.NewKey(c.identity.ak, &attest.KeyConfig{
 		Algorithm: attest.ECDSA,
 		Size:      256,
@@ -334,6 +332,12 @@ func (c *TrustClient) AttestWithServer() error {
 }
 
 func (c *TrustClient) Close() {
+	if c.identity != nil && c.identity.ak != nil {
+		c.identity.ak.Close(c.tpm)
+	}
+	if c.identity != nil && c.identity.key != nil {
+		c.identity.key.Close()
+	}
 	c.tpm.Close()
 }
 
