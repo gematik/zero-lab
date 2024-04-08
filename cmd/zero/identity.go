@@ -17,13 +17,22 @@ type Identity struct {
 	SealedAK      []byte      `json:"sealed_ak"`
 	SealedKey     []byte      `json:"sealed_key"`
 	CertRaw       []byte      `json:"cert_raw"`
+	ak            *attest.AK  `json:"-"`
+	key           *attest.Key `json:"-"`
 }
 
 func (id *Identity) LoadAK() (*attest.AK, error) {
+	if id.ak != nil {
+		return id.ak, nil
+	}
 	if id.SealedAK == nil {
 		return nil, fmt.Errorf("no sealed AK")
 	}
-	return id.tpm.LoadAK(id.SealedAK)
+	ak, err := id.tpm.LoadAK(id.SealedAK)
+	if err != nil {
+		return nil, fmt.Errorf("loading AK: %w", err)
+	}
+	return ak, nil
 }
 
 func (id *Identity) UpdateAK(ak *attest.AK) error {
@@ -31,14 +40,23 @@ func (id *Identity) UpdateAK(ak *attest.AK) error {
 	if id.SealedAK, err = ak.Marshal(); err != nil {
 		return fmt.Errorf("sealing AK: %w", err)
 	}
+	id.ak = ak
 	return nil
 }
 
 func (id *Identity) LoadKey() (*attest.Key, error) {
+	if id.key != nil {
+		return id.key, nil
+	}
 	if id.SealedKey == nil {
 		return nil, fmt.Errorf("no sealed key")
 	}
-	return id.tpm.LoadKey(id.SealedKey)
+	key, err := id.tpm.LoadKey(id.SealedKey)
+	if err != nil {
+		return nil, fmt.Errorf("loading key: %w", err)
+	}
+	id.key = key
+	return key, nil
 }
 
 func (id *Identity) UpdateKey(key *attest.Key) error {
@@ -46,6 +64,7 @@ func (id *Identity) UpdateKey(key *attest.Key) error {
 	if id.SealedKey, err = key.Marshal(); err != nil {
 		return fmt.Errorf("sealing key: %w", err)
 	}
+	id.key = key
 	return nil
 }
 
