@@ -2,13 +2,11 @@ package main
 
 import (
 	"bytes"
-	"crypto"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"log/slog"
@@ -26,129 +24,6 @@ type TrustClient struct {
 	tpm        *attest.TPM
 	identity   *Identity
 	ek         *attest.EK
-}
-
-type Identity struct {
-	FormatVersion string `json:"format_version"`
-	tpm           *attest.TPM
-	ak            *attest.AK
-	key           *attest.Key
-	cert          *x509.Certificate
-}
-
-func (i *Identity) MarshalJSON() ([]byte, error) {
-	var (
-		err       error
-		sealedAK  []byte
-		sealedKey []byte
-		certRaw   []byte
-	)
-
-	if i.ak != nil {
-		sealedAK, err = i.ak.Marshal()
-		if err != nil {
-			return nil, fmt.Errorf("marshaling AK: %w", err)
-		}
-	}
-
-	if i.key != nil {
-		sealedKey, err = i.key.Marshal()
-		if err != nil {
-			return nil, fmt.Errorf("marshaling key: %w", err)
-		}
-	}
-
-	if i.cert != nil {
-		certRaw = i.cert.Raw
-	}
-
-	return json.Marshal(map[string]interface{}{
-		"format_version": "1",
-		"sealed_ak":      sealedAK,
-		"sealed_key":     sealedKey,
-		"cert_raw":       certRaw,
-	})
-}
-
-func (i *Identity) UnmarshalJSON(data []byte) error {
-	var raw struct {
-		FormatVersion string `json:"format_version"`
-		SealedAK      []byte `json:"sealed_ak"`
-		SealedKey     []byte `json:"sealed_key"`
-		CertRaw       []byte `json:"cert_raw"`
-	}
-
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return fmt.Errorf("unmarshaling identity: %w", err)
-	}
-
-	if raw.FormatVersion != "1" {
-		return fmt.Errorf("unsupported format version: %s", raw.FormatVersion)
-	}
-
-	if len(raw.SealedAK) > 0 {
-		ak, err := i.tpm.LoadAK(raw.SealedAK)
-		if err != nil {
-			return fmt.Errorf("unmarshaling AK: %w", err)
-		}
-		i.ak = ak
-	}
-
-	if len(raw.SealedKey) > 0 {
-		key, err := i.tpm.LoadKey(raw.SealedKey)
-		if err != nil {
-			return fmt.Errorf("unmarshaling key: %w", err)
-		}
-		i.key = key
-	}
-
-	if len(raw.CertRaw) > 0 {
-		cert, err := x509.ParseCertificate(raw.CertRaw)
-		if err != nil {
-			return fmt.Errorf("parsing certificate: %w", err)
-		}
-		i.cert = cert
-	}
-
-	return nil
-}
-
-func (i *Identity) PrivateKey() (crypto.PrivateKey, error) {
-	if i.key == nil {
-		return nil, fmt.Errorf("no key available")
-	}
-
-	return i.key.Private(i.key.Public())
-}
-
-func saveIdentity(identity *Identity, path string) error {
-	identityBytes, err := json.Marshal(identity)
-	if err != nil {
-		return fmt.Errorf("marshaling identity: %w", err)
-	}
-
-	if err := os.WriteFile(path, identityBytes, 0600); err != nil {
-		return fmt.Errorf("writing AK: %w", err)
-	}
-
-	return nil
-}
-
-func loadIdentity(tpm *attest.TPM, path string) (*Identity, error) {
-	identityBytes, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("reading AK: %w", err)
-	}
-
-	identity := Identity{
-		tpm: tpm,
-	}
-
-	if err := json.Unmarshal(identityBytes, &identity); err != nil {
-		return nil, fmt.Errorf("unmarshaling identity: %w", err)
-	}
-
-	return &identity, nil
 }
 
 func CreateClient(regBaseURL string, identityPath string) (*TrustClient, error) {
@@ -175,19 +50,25 @@ func CreateClient(regBaseURL string, identityPath string) (*TrustClient, error) 
 		slog.Info("EK Certificate", "subject", ek.Certificate.Subject.String(), "issuer", ek.Certificate.Issuer.String(), "not_before", ek.Certificate.NotBefore, "not_after", ek.Certificate.NotAfter)
 	}
 
-	identity, err := loadIdentity(tpm, identityPath)
-	if err != nil {
-		slog.Info(fmt.Sprintf("%s. Will create new Identity.", err))
+	var identity *Identity
+	// check if file exists
+	if _, err := os.Stat(identityPath); os.IsNotExist(err) {
+		slog.Info("Identity file does not exist. Will create new Identity.")
 		identity = &Identity{
 			tpm: tpm,
 		}
 
-		err = saveIdentity(identity, identityPath)
+		err = identity.save(identityPath)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		slog.Info("Loaded existing identity", "path", identityPath)
+		identity, err = LoadIdentity(tpm, identityPath)
+		if err != nil {
+			return nil, fmt.Errorf("loading identity from '%s': %w", identityPath, err)
+		}
+		slog.Info("Identity loaded", "path", identityPath, "identity", identity)
+
 	}
 
 	return &TrustClient{
@@ -199,26 +80,21 @@ func CreateClient(regBaseURL string, identityPath string) (*TrustClient, error) 
 }
 
 func (c *TrustClient) AttestWithServer() error {
-	if c.identity.ak != nil {
-		slog.Info("AK already activated, unloading.")
-		c.identity.ak.Close(c.tpm)
-		c.identity.ak = nil
-	}
 	slog.Info("Activating AK")
-
+	// create new AK
 	ak, err := c.tpm.NewAK(nil)
 	if err != nil {
 		return err
 	}
-	c.identity.ak = ak
-	puk, err := attest.ParseAKPublic(c.tpm.Version(), c.identity.ak.AttestationParameters().Public)
+
+	puk, err := attest.ParseAKPublic(c.tpm.Version(), ak.AttestationParameters().Public)
 	if err != nil {
 		return fmt.Errorf("parsing AK public key: %w", err)
 	}
 
 	slog.Info("Created new AK", "public_key", puk.Public, "public_key_type", reflect.TypeOf(puk.Public))
 
-	attestParams := c.identity.ak.AttestationParameters()
+	attestParams := ak.AttestationParameters()
 
 	attestationRequest, err := tpmattest.CreateAttestationRequest(c.tpm, *c.ek, &attestParams)
 	if err != nil {
@@ -260,7 +136,7 @@ func (c *TrustClient) AttestWithServer() error {
 
 	slog.Info("Received attestation challenge", "challenge", challenge)
 
-	secret, err := c.identity.ak.ActivateCredential(c.tpm, challenge.EncryptedCredential())
+	secret, err := ak.ActivateCredential(c.tpm, challenge.EncryptedCredential())
 	if err != nil {
 		return fmt.Errorf("activating credential: %w", err)
 	}
@@ -298,62 +174,31 @@ func (c *TrustClient) AttestWithServer() error {
 		return fmt.Errorf("unmarshaling attestation challenge: %w", err)
 	}
 
-	slog.Info("Received attestation challenge", "challenge", challenge)
+	slog.Info("Received attestation challenge #2", "challenge", challenge)
 
 	if challenge.Status != "valid" {
 		return fmt.Errorf("challenge failed with status: %s", challenge.Status)
 	}
 
-	slog.Info("Attestation successful. Creating app key.")
+	c.identity.UpdateAK(ak)
+	c.identity.save(appIdentityPath)
 
-	appKey, err := c.tpm.NewKey(c.identity.ak, &attest.KeyConfig{
-		Algorithm: attest.ECDSA,
-		Size:      256,
-	})
-	if err != nil {
-		return fmt.Errorf("creating app key: %w", err)
-	}
-
-	slog.Info("Created app key", "key_type", reflect.TypeOf(appKey.Public()))
-
-	c.identity.key = appKey
-	err = saveIdentity(c.identity, appIdentityPath)
-	if err != nil {
-		return fmt.Errorf("saving identity: %w", err)
-	}
-
-	csr, err := c.CreateCSR()
-	if err != nil {
-		return fmt.Errorf("creating CSR: %w", err)
-	}
-
-	csrPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE REQUEST",
-		Bytes: csr,
-	})
-
-	slog.Info("Created CSR", "csr", csrPEM)
+	slog.Info("AK attestation successful.")
 
 	return nil
 }
 
 func (c *TrustClient) Close() {
-	if c.identity != nil && c.identity.ak != nil {
-		c.identity.ak.Close(c.tpm)
-	}
-	if c.identity != nil && c.identity.key != nil {
-		c.identity.key.Close()
-	}
 	c.tpm.Close()
 }
 
 // Creates a certificate signing request (CSR) for the AK.
-func (c *TrustClient) CreateCSR() ([]byte, error) {
+func (c *TrustClient) CreateCSR() ([]byte, *x509.CertificateRequest, error) {
+	slog.Info("Creating CSR")
 	prk, err := c.identity.PrivateKey()
 	if err != nil {
-		return nil, fmt.Errorf("getting private key: %w", err)
+		return nil, nil, fmt.Errorf("getting private key: %w", err)
 	}
-	slog.Info("Creating CSR", "public_key", c.identity.key.Public())
 	csrTemplate := x509.CertificateRequest{
 		Subject:            pkix.Name{CommonName: "Test Certificate"},
 		SignatureAlgorithm: x509.ECDSAWithSHA256,
@@ -361,23 +206,43 @@ func (c *TrustClient) CreateCSR() ([]byte, error) {
 	// step: generate the csr request
 	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, &csrTemplate, prk)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create csr request: %w", err)
+		return nil, nil, fmt.Errorf("failed to create csr request: %w", err)
 	}
-	return csrBytes, nil
+
+	csr, err := x509.ParseCertificateRequest(csrBytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse csr request: %w", err)
+	}
+	return csrBytes, csr, nil
 }
 
 func (c *TrustClient) RenewClientCertificate() (*x509.Certificate, error) {
-	csrBytes, err := c.CreateCSR()
+	slog.Info("Renewing client certificate")
+	ak, err := c.identity.LoadAK()
+	if err != nil {
+		return nil, fmt.Errorf("loading AK: %w", err)
+	}
+	appKey, err := c.tpm.NewKey(ak, &attest.KeyConfig{
+		Algorithm: attest.ECDSA,
+		Size:      256,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating app key: %w", err)
+	}
+
+	slog.Info("Created app key", "key_type", reflect.TypeOf(appKey.Public()))
+
+	c.identity.UpdateKey(appKey)
+	if err != nil {
+		return nil, fmt.Errorf("saving identity: %w", err)
+	}
+
+	csrBytes, csr, err := c.CreateCSR()
 	if err != nil {
 		return nil, fmt.Errorf("creating CSR: %w", err)
 	}
 
 	slog.Info("CSR", "csr", base64.StdEncoding.EncodeToString(csrBytes))
-
-	csr, err := x509.ParseCertificateRequest(csrBytes)
-	if err != nil {
-		return nil, fmt.Errorf("parsing CSR: %w", err)
-	}
 
 	mockCA, err := ca.NewRandomMockCA()
 	if err != nil {
@@ -397,9 +262,9 @@ func (c *TrustClient) RenewClientCertificate() (*x509.Certificate, error) {
 		return nil, fmt.Errorf("signing certificate request: %w", err)
 	}
 
-	c.identity.cert = cert
-
-	err = saveIdentity(c.identity, appIdentityPath)
+	// save the certificate
+	c.identity.UpdateCertificate(cert)
+	err = c.identity.save(appIdentityPath)
 	if err != nil {
 		return nil, fmt.Errorf("saving identity: %w", err)
 	}
