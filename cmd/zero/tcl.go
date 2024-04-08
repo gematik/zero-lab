@@ -199,6 +199,11 @@ func CreateClient(regBaseURL string, identityPath string) (*TrustClient, error) 
 }
 
 func (c *TrustClient) AttestWithServer() error {
+	if c.identity.ak != nil {
+		slog.Info("AK already activated, unloading.")
+		c.identity.ak.Close(c.tpm)
+		c.identity.ak = nil
+	}
 	slog.Info("Activating AK")
 
 	ak, err := c.tpm.NewAK(nil)
