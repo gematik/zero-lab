@@ -97,20 +97,20 @@ func (c *TrustClient) AttestWithServer() error {
 
 	attestParams := ak.AttestationParameters()
 
-	attestationRequest, err := tpmattest.CreateAttestationRequest(c.tpm, *c.ek, &attestParams)
+	activationRequest, err := tpmattest.NewActivationRequest(c.tpm, *c.ek, &attestParams)
 	if err != nil {
-		return fmt.Errorf("creating attestation request: %w", err)
+		return fmt.Errorf("creating activation request: %w", err)
 	}
+	slog.Info("Activation request created", "request", activationRequest)
 
 	httpClient := &http.Client{}
 
-	body, err := json.Marshal(attestationRequest)
+	body, err := json.Marshal(activationRequest)
 	if err != nil {
 		return fmt.Errorf("marshaling activation request: %w", err)
 	}
 
-	slog.Info("Activation request", "request", attestationRequest)
-	url := fmt.Sprintf("%s/tpm/attestations", c.regBaseURL)
+	url := fmt.Sprintf("%s/tpm/activations", c.regBaseURL)
 	resp, err := httpClient.Post(url, "application/json", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("sending activation request: %w", err)
@@ -129,7 +129,7 @@ func (c *TrustClient) AttestWithServer() error {
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	challenge := new(tpmattest.AttestationChallenge)
+	challenge := new(tpmattest.ActivationChallenge)
 	err = json.Unmarshal(body, challenge)
 	if err != nil {
 		return fmt.Errorf("unmarshaling attestation challenge: %w", err)
@@ -142,7 +142,7 @@ func (c *TrustClient) AttestWithServer() error {
 		return fmt.Errorf("activating credential: %w", err)
 	}
 
-	challengeResponse := &tpmattest.AttestationChallengeResponse{
+	challengeResponse := &tpmattest.ActivationChallengeResponse{
 		DecryptedSecret: secret,
 	}
 
@@ -153,7 +153,7 @@ func (c *TrustClient) AttestWithServer() error {
 		return fmt.Errorf("marshaling challenge response: %w", err)
 	}
 
-	url = fmt.Sprintf("%s/tpm/attestations/%s", c.regBaseURL, challenge.ID)
+	url = fmt.Sprintf("%s/tpm/activations/%s", c.regBaseURL, challenge.ID)
 	resp, err = httpClient.Post(url, "application/json", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("sending challenge response: %w", err)
@@ -170,12 +170,13 @@ func (c *TrustClient) AttestWithServer() error {
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	err = json.Unmarshal(body, challenge)
+	verification := new(tpmattest.ChallengeVerificationResponse)
+	err = json.Unmarshal(body, verification)
 	if err != nil {
 		return fmt.Errorf("unmarshaling attestation challenge: %w", err)
 	}
 
-	slog.Info("Received attestation challenge #2", "challenge", challenge)
+	slog.Info("Received challenge verification response", "challenge", challenge)
 
 	if challenge.Status != "valid" {
 		return fmt.Errorf("challenge failed with status: %s", challenge.Status)

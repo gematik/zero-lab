@@ -90,8 +90,12 @@ func main() {
 	}
 
 	// ------------------
-	tpmAttestor := tpmattest.NewServer()
-	tpmAttestor.MountRoutes(root.Group("/tpm"))
+	tpmActivationService, err := tpmattest.NewActivationService()
+	if err != nil {
+		slog.Error("Failed to create TPM activation service", "error", err)
+		os.Exit(1)
+	}
+	tpmattest.MountActivationRoutes(root.Group("/tpm"), tpmActivationService)
 	// ------------------
 
 	root.GET("/", getIndex)
