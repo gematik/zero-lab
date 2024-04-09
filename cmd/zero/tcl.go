@@ -239,13 +239,14 @@ func (c *TrustClient) RenewClientCertificate() (*x509.Certificate, error) {
 
 	certParams := newClientKey.CertificationParameters()
 
-	akCert, err := c.identity.AKCertificate()
-	if err != nil {
-		return nil, fmt.Errorf("loading AK certificate: %w", err)
-	}
+	/*
+		akCert, err := c.identity.AKCertificate()
+		if err != nil {
+			return nil, fmt.Errorf("loading AK certificate: %w", err)
+		}*/
 
 	err = certParams.Verify(attest.VerifyOpts{
-		Public: akCert.PublicKey,
+		Public: newClientKey.Public,
 		Hash:   crypto.SHA256,
 	})
 	if err != nil {
