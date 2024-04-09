@@ -178,7 +178,7 @@ func (c *TrustClient) AttestWithServer() error {
 
 	slog.Info("Received challenge verification response", "challenge", challenge)
 
-	if challenge.Status != "valid" {
+	if verification.Status != "valid" {
 		return fmt.Errorf("challenge failed with status: %s", challenge.Status)
 	}
 
