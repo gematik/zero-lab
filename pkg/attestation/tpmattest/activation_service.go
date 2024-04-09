@@ -139,24 +139,24 @@ func NewActivationRequest(tpm *attest.TPM, ek attest.EK, ak *attest.AttestationP
 }
 
 type ChallengeVerificationResponse struct {
-	ID             string          `json:"id"`
-	Status         ChallengeStatus `json:"status"`
-	EndorsementKey EndorsementKey  `json:"endorsement_key"`
-	AKCertificate  []byte          `json:"ak_certificate"`
+	ID                        string          `json:"id"`
+	Status                    ChallengeStatus `json:"status"`
+	EndorsementKey            EndorsementKey  `json:"endorsement_key"`
+	AttestationCertificateRaw []byte          `json:"attestation_certificate"`
 }
 
 type ActivationSession struct {
-	ID                  string `json:"id"`
-	Secret              []byte `json:"secret"`
-	EndorsementKey      EndorsementKey
-	AttestationKeyRaw   []byte `json:"attestation_key"`
-	ActivationChallenge ActivationChallenge
-	AKCertificateRaw    []byte `json:"ak_certificate"`
+	ID                        string `json:"id"`
+	Secret                    []byte `json:"secret"`
+	EndorsementKey            EndorsementKey
+	AttestationKeyRaw         []byte `json:"attestation_key"`
+	ActivationChallenge       ActivationChallenge
+	AttestationCertificateRaw []byte `json:"attestation_certificate"`
 }
 
 type ActivationSessionStore interface {
-	SaveActivationSession(session ActivationSession) error
-	LoadActivationSession(id string) (*ActivationSession, error)
+	SaveTPMActivationSession(session ActivationSession) error
+	LoadTPMActivationSession(id string) (*ActivationSession, error)
 }
 
 type ActivationService struct {
@@ -208,7 +208,7 @@ func (s *ActivationService) NewChallenge(request *ActivationRequest) (*Activatio
 
 	slog.Info("Created new activation session", "id", session.ID)
 
-	s.store.SaveActivationSession(session)
+	s.store.SaveTPMActivationSession(session)
 
 	return &session.ActivationChallenge, nil
 
@@ -216,24 +216,45 @@ func (s *ActivationService) NewChallenge(request *ActivationRequest) (*Activatio
 
 func (s *ActivationService) VerifyChallenge(id string, response ActivationChallengeResponse) (*ChallengeVerificationResponse, error) {
 	slog.Info("Verifying challenge response", "id", id, "response", response)
-	session, err := s.store.LoadActivationSession(id)
+	session, err := s.store.LoadTPMActivationSession(id)
 	if err != nil {
 		return nil, fmt.Errorf("loading session: %w", err)
 	}
 	if bytes.Equal(session.Secret, response.DecryptedSecret) {
 		session.ActivationChallenge.Status = ChallengeStatusValid
 	} else {
-		slog.Warn("Challenge response verification failed", "decrypted_secret", response.DecryptedSecret, "expected_secret", session.Secret)
-		session.ActivationChallenge.Status = ChallengeStatusInvalid
+		slog.Error("Challenge response verification failed", "decrypted_secret", response.DecryptedSecret, "expected_secret", session.Secret)
+		return &ChallengeVerificationResponse{
+			ID:                        id,
+			Status:                    ChallengeStatusInvalid,
+			EndorsementKey:            session.EndorsementKey,
+			AttestationCertificateRaw: nil,
+		}, nil
 	}
 
-	s.store.SaveActivationSession(*session)
 	slog.Info("Challenge response verified", "status", session.ActivationChallenge.Status)
+
+	// certify the AK
+	akPuk, err := x509.ParsePKIXPublicKey(session.AttestationKeyRaw)
+	if err != nil {
+		return nil, fmt.Errorf("parsing AK public key: %w", err)
+	}
+
+	akCert, err := s.ca.CertifyPublicKey(akPuk, pkix.Name{
+		CommonName: "Zero Trust TPM Attestation AK",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("certifying AK: %w", err)
+	}
+
+	session.AttestationCertificateRaw = akCert.Raw
+	s.store.SaveTPMActivationSession(*session)
+
 	return &ChallengeVerificationResponse{
-		ID:             id,
-		Status:         session.ActivationChallenge.Status,
-		EndorsementKey: session.EndorsementKey,
-		AKCertificate:  session.AKCertificateRaw,
+		ID:                        id,
+		Status:                    session.ActivationChallenge.Status,
+		EndorsementKey:            session.EndorsementKey,
+		AttestationCertificateRaw: session.AttestationCertificateRaw,
 	}, nil
 
 }

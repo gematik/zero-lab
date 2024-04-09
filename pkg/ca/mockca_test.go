@@ -6,11 +6,13 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"os"
 	"reflect"
 	"testing"
 
 	"github.com/gematik/zero-lab/pkg/ca"
+	"github.com/google/go-attestation/attest"
 )
 
 func TestCertificateExtension(t *testing.T) {
@@ -67,5 +69,45 @@ func TestCertificateExtension(t *testing.T) {
 
 	// write the certificate to disk /tmp/cert.pem
 	os.WriteFile("/tmp/cert.pem", []byte(certPEM), 0644)
+
+}
+
+// Test RSA Certificate signing
+func TestRSACertificateSigning(t *testing.T) {
+	ak := "AAEACwAFBHIAAAAQABQACwgAAAAAAAEAue7j2pNtfRX0IK7GqE2xEDvWTFZG6O9H2i7arY+j2Fz8tZuBva61navtbEiWudlPw9ViEvhKwycZnLEQYadeTJ0nNDJVPWnlZgbhTDP+mxvZYVheAZDb+/iSg20+71HCBcvjHttrTrF5h8BU9rvmcBv03UBGvxlLqzzKhv6q/swBes+4cIV18mchuGfDwBWwshfKhu/VFsyA1UK4XePjX2nZGLwzFKvaWluk/dF495xkHQVajdsdWkCmppethDi0okyfq2ezXPjldsLQVzB9Ntijx/k5uuAV5s6y7usVhHUQNqj5tesjJXSklFwaFscj98QFvIc/YrsejoMwaxbLkQ=="
+	akBytes, err := base64.StdEncoding.DecodeString(ak)
+	if err != nil {
+		t.Fatalf("failed to decode AK: %s", err)
+	}
+	akPublic, err := attest.ParseAKPublic(attest.TPMVersion20, akBytes)
+	if err != nil {
+		t.Fatalf("failed to parse AK public: %s", err)
+	}
+	t.Log("AK Public Key ", "key_type", reflect.TypeOf(akPublic.Public))
+
+	ca, _ := ca.NewRandomMockCA()
+
+	cert, err := ca.CertifyPublicKey(akPublic.Public, pkix.Name{CommonName: "Test Certificate"})
+	if err != nil {
+		t.Fatalf("failed to sign certificate: %s", err)
+	}
+	t.Log("Certificate", "subject", cert.Subject.String())
+
+	keyBytes, err := x509.MarshalPKIXPublicKey(akPublic.Public)
+	if err != nil {
+		t.Fatalf("failed to marshal public key: %s", err)
+	}
+
+	akPuk, err := x509.ParsePKIXPublicKey(keyBytes)
+	if err != nil {
+		t.Fatalf("failed to parse public key: %s", err)
+	}
+
+	cert, err = ca.CertifyPublicKey(akPuk, pkix.Name{CommonName: "Test Certificate #2"})
+	if err != nil {
+		t.Fatalf("failed to sign certificate: %s", err)
+	}
+
+	t.Log("Certificate", "subject", cert.Subject.String())
 
 }

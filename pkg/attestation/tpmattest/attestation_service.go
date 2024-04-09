@@ -1,12 +1,16 @@
 package tpmattest
 
+import (
+	"github.com/gematik/zero-lab/pkg/nonce"
+	"github.com/google/go-attestation/attest"
+)
+
 type Attestation struct {
-	ID        string `json:"id"`
-	AKRaw     []byte `json:"ak"`
-	AKPub     []byte `json:"ak_pub"`
-	AKCertRaw []byte `json:"ak_cert"`
-	KeyRaw    []byte `json:"key"`
-	CertRaw   []byte `json:"cert"`
+	AKRaw            []byte `json:"ak"`
+	AKPub            []byte `json:"ak_pub"`
+	AKCertificateRaw []byte `json:"ak_certificate"`
+	KeyRaw           []byte `json:"key"`
+	CertRaw          []byte `json:"cert"`
 }
 
 type AttestationStore interface {
@@ -14,5 +18,30 @@ type AttestationStore interface {
 	GetTPMAttestation(id string) (*Attestation, error)
 }
 
-type AttestationService interface {
+func NewAttestationRequest(clientKey *attest.Key) *AttestationRequest {
+	certParams := clientKey.CertificateParameters()
+	return &AttestationRequest{
+		CertificationParameters: CertificationParameters{
+			Public:            certParams.Public,
+			CreateData:        certParams.CreateData,
+			CreateAttestation: certParams.CreateAttestation,
+			CreateSignature:   certParams.CreateSignature,
+		},
+	}
+}
+
+// wrapper for go-attestation attest.CertificateParameters to be used in JSON
+type CertificationParameters struct {
+	Public            []byte `json:"public"`
+	CreateData        []byte `json:"create_data"`
+	CreateAttestation []byte `json:"create_attestation"`
+	CreateSignature   []byte `json:"create_signature"`
+}
+
+type AttestationRequest struct {
+	CertificationParameters CertificationParameters `json:"certification_parameters"`
+}
+
+type AttestationService struct {
+	nonceService nonce.NonceService
 }

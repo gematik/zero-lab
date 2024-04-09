@@ -12,23 +12,24 @@ import (
 )
 
 type Identity struct {
-	FormatVersion string      `json:"format_version"`
-	tpm           *attest.TPM `json:"-"`
-	SealedAK      []byte      `json:"sealed_ak"`
-	SealedKey     []byte      `json:"sealed_key"`
-	CertRaw       []byte      `json:"cert_raw"`
-	ak            *attest.AK  `json:"-"`
-	key           *attest.Key `json:"-"`
+	FormatVersion             string      `json:"format_version"`
+	tpm                       *attest.TPM `json:"-"`
+	AttestationKeySealed      []byte      `json:"attestation_key"`
+	AttestationCertificateRaw []byte      `json:"attestation_certificate"`
+	ClientKeySealed           []byte      `json:"client_key"`
+	ClientCertificateRaw      []byte      `json:"client_certificate"`
+	attestationKey            *attest.AK  `json:"-"`
+	clientKey                 *attest.Key `json:"-"`
 }
 
 func (id *Identity) LoadAK() (*attest.AK, error) {
-	if id.ak != nil {
-		return id.ak, nil
+	if id.attestationKey != nil {
+		return id.attestationKey, nil
 	}
-	if id.SealedAK == nil {
+	if id.AttestationKeySealed == nil {
 		return nil, fmt.Errorf("no sealed AK")
 	}
-	ak, err := id.tpm.LoadAK(id.SealedAK)
+	ak, err := id.tpm.LoadAK(id.AttestationKeySealed)
 	if err != nil {
 		return nil, fmt.Errorf("loading AK: %w", err)
 	}
@@ -37,50 +38,61 @@ func (id *Identity) LoadAK() (*attest.AK, error) {
 
 func (id *Identity) UpdateAK(ak *attest.AK) error {
 	var err error
-	if id.SealedAK, err = ak.Marshal(); err != nil {
+	if id.AttestationKeySealed, err = ak.Marshal(); err != nil {
 		return fmt.Errorf("sealing AK: %w", err)
 	}
-	id.ak = ak
+	id.attestationKey = ak
 	return nil
 }
 
-func (id *Identity) LoadKey() (*attest.Key, error) {
-	if id.key != nil {
-		return id.key, nil
+func (id *Identity) LoadClientKey() (*attest.Key, error) {
+	if id.clientKey != nil {
+		return id.clientKey, nil
 	}
-	if id.SealedKey == nil {
-		return nil, fmt.Errorf("no sealed key")
+	if id.ClientKeySealed == nil {
+		return nil, fmt.Errorf("no sealed client key")
 	}
-	key, err := id.tpm.LoadKey(id.SealedKey)
+	key, err := id.tpm.LoadKey(id.ClientKeySealed)
 	if err != nil {
-		return nil, fmt.Errorf("loading key: %w", err)
+		return nil, fmt.Errorf("loading client key: %w", err)
 	}
-	id.key = key
+	id.clientKey = key
 	return key, nil
 }
 
-func (id *Identity) UpdateKey(key *attest.Key) error {
+func (id *Identity) UpdateClientKey(key *attest.Key) error {
 	var err error
-	if id.SealedKey, err = key.Marshal(); err != nil {
+	if id.ClientKeySealed, err = key.Marshal(); err != nil {
 		return fmt.Errorf("sealing key: %w", err)
 	}
-	id.key = key
+	id.clientKey = key
 	return nil
 }
 
-func (id *Identity) Certificate() (*x509.Certificate, error) {
-	if id.CertRaw == nil {
-		return nil, fmt.Errorf("no certificate")
+func (id *Identity) AKCertificate() (*x509.Certificate, error) {
+	if id.AttestationCertificateRaw == nil {
+		return nil, fmt.Errorf("no attestation certificate")
 	}
-	return x509.ParseCertificate(id.CertRaw)
+	return x509.ParseCertificate(id.AttestationCertificateRaw)
 }
 
-func (id *Identity) UpdateCertificate(cert *x509.Certificate) {
-	id.CertRaw = cert.Raw
+func (id *Identity) UpdateAKCertificate(cert *x509.Certificate) {
+	id.AttestationCertificateRaw = cert.Raw
 }
 
-func (id *Identity) PrivateKey() (crypto.PrivateKey, error) {
-	key, err := id.LoadKey()
+func (id *Identity) ClientCertificate() (*x509.Certificate, error) {
+	if id.ClientCertificateRaw == nil {
+		return nil, fmt.Errorf("no client certificate")
+	}
+	return x509.ParseCertificate(id.ClientCertificateRaw)
+}
+
+func (id *Identity) UpdateClientCertificate(cert *x509.Certificate) {
+	id.ClientCertificateRaw = cert.Raw
+}
+
+func (id *Identity) ClientPrivateKey() (crypto.PrivateKey, error) {
+	key, err := id.LoadClientKey()
 	if err != nil {
 		return nil, fmt.Errorf("loading private key: %w", err)
 	}
@@ -100,6 +112,17 @@ func (id *Identity) save(path string) error {
 	}
 
 	return nil
+}
+
+func (id *Identity) DeleteClientKey() {
+	id.clientKey = nil
+	id.ClientKeySealed = nil
+}
+
+func (id *Identity) DeleteAK() {
+	id.DeleteClientKey()
+	id.attestationKey = nil
+	id.AttestationKeySealed = nil
 }
 
 func LoadIdentity(tpm *attest.TPM, path string) (*Identity, error) {

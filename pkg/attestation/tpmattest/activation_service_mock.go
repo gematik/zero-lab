@@ -10,7 +10,7 @@ type mockActivationSessionStore struct {
 	lock     sync.RWMutex
 }
 
-func (s *mockActivationSessionStore) SaveActivationSession(session ActivationSession) error {
+func (s *mockActivationSessionStore) SaveTPMActivationSession(session ActivationSession) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -18,7 +18,7 @@ func (s *mockActivationSessionStore) SaveActivationSession(session ActivationSes
 	return nil
 }
 
-func (s *mockActivationSessionStore) LoadActivationSession(id string) (*ActivationSession, error) {
+func (s *mockActivationSessionStore) LoadTPMActivationSession(id string) (*ActivationSession, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 

@@ -2,6 +2,7 @@ package ca
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -36,6 +37,7 @@ func WithAdditionalInformation(ai interface{}) SigningOption {
 type CertificateAuthority interface {
 	IssuerCertificate() *x509.Certificate
 	SignCertificateRequest(csr *x509.CertificateRequest, subject pkix.Name, ops ...SigningOption) (*x509.Certificate, error)
+	CertifyPublicKey(pubKey crypto.PublicKey, subject pkix.Name, ops ...SigningOption) (*x509.Certificate, error)
 }
 
 // Encodes a X509 certificate to PEM format

@@ -80,8 +80,8 @@ func CreateClient(regBaseURL string, identityPath string) (*TrustClient, error) 
 	}, nil
 }
 
-func (c *TrustClient) AttestWithServer() error {
-	slog.Info("Activating AK")
+func (c *TrustClient) ActivateAndCertifyAK() error {
+	slog.Info("Activating and certifying AK")
 	// create new AK
 	ak, err := c.tpm.NewAK(nil)
 	if err != nil {
@@ -123,19 +123,18 @@ func (c *TrustClient) AttestWithServer() error {
 		return fmt.Errorf("reading response body: %w", err)
 	}
 
-	slog.Info("Activation response", "status", resp.Status, "body", string(body))
-
 	if resp.StatusCode != http.StatusCreated {
+		slog.Error("Unexpected status code", "status_code", resp.StatusCode, "body", string(body))
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
 	challenge := new(tpmattest.ActivationChallenge)
 	err = json.Unmarshal(body, challenge)
 	if err != nil {
-		return fmt.Errorf("unmarshaling attestation challenge: %w", err)
+		return fmt.Errorf("unmarshaling activation challenge: %w", err)
 	}
 
-	slog.Info("Received attestation challenge", "challenge", challenge)
+	slog.Info("Received activation challenge", "challenge", challenge)
 
 	secret, err := ak.ActivateCredential(c.tpm, challenge.EncryptedCredential())
 	if err != nil {
@@ -167,13 +166,14 @@ func (c *TrustClient) AttestWithServer() error {
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		slog.Error("Unexpected status code", "status_code", resp.StatusCode, "body", string(body))
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
 	verification := new(tpmattest.ChallengeVerificationResponse)
 	err = json.Unmarshal(body, verification)
 	if err != nil {
-		return fmt.Errorf("unmarshaling attestation challenge: %w", err)
+		return fmt.Errorf("unmarshaling challenge verification: %w", err)
 	}
 
 	slog.Info("Received challenge verification response", "verification", verification)
@@ -182,7 +182,14 @@ func (c *TrustClient) AttestWithServer() error {
 		return fmt.Errorf("challenge failed with status: %s", challenge.Status)
 	}
 
+	akCert, err := x509.ParseCertificate(verification.AttestationCertificateRaw)
+	if err != nil {
+		return fmt.Errorf("parsing AK certificate: %w", err)
+	}
+
+	c.identity.DeleteAK()
 	c.identity.UpdateAK(ak)
+	c.identity.UpdateAKCertificate(akCert)
 	c.identity.save(appIdentityPath)
 
 	slog.Info("AK attestation successful.")
@@ -220,7 +227,7 @@ func (c *TrustClient) RenewClientCertificate() (*x509.Certificate, error) {
 	if err != nil {
 		return nil, fmt.Errorf("loading AK: %w", err)
 	}
-	appKey, err := c.tpm.NewKey(ak, &attest.KeyConfig{
+	newClientKey, err := c.tpm.NewKey(ak, &attest.KeyConfig{
 		Algorithm: attest.ECDSA,
 		Size:      256,
 	})
@@ -228,14 +235,31 @@ func (c *TrustClient) RenewClientCertificate() (*x509.Certificate, error) {
 		return nil, fmt.Errorf("creating app key: %w", err)
 	}
 
-	slog.Info("Created app key", "key_type", reflect.TypeOf(appKey.Public()))
+	slog.Info("Created app key", "key_type", reflect.TypeOf(newClientKey.Public()))
 
-	err = c.identity.UpdateKey(appKey)
+	certParams := newClientKey.CertificationParameters()
+
+	akCert, err := c.identity.AKCertificate()
+	if err != nil {
+		return nil, fmt.Errorf("loading AK certificate: %w", err)
+	}
+
+	err = certParams.Verify(attest.VerifyOpts{
+		Public: akCert.PublicKey,
+		Hash:   crypto.SHA256,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("verifying AK certificate: %w", err)
+	}
+
+	slog.Info("Client key certification parameters", "cert_params", certParams)
+
+	err = c.identity.UpdateClientKey(newClientKey)
 	if err != nil {
 		return nil, fmt.Errorf("saving identity: %w", err)
 	}
 
-	prk, err := c.identity.PrivateKey()
+	prk, err := c.identity.ClientPrivateKey()
 	if err != nil {
 		return nil, fmt.Errorf("loading private key: %w", err)
 	}
@@ -266,7 +290,7 @@ func (c *TrustClient) RenewClientCertificate() (*x509.Certificate, error) {
 	}
 
 	// save the certificate
-	c.identity.UpdateCertificate(cert)
+	c.identity.UpdateClientCertificate(cert)
 	err = c.identity.save(appIdentityPath)
 	if err != nil {
 		return nil, fmt.Errorf("saving identity: %w", err)

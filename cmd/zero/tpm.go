@@ -41,7 +41,7 @@ var commandTPMActivate = &cobra.Command{
 		}
 		defer tcl.Close()
 
-		err = tcl.AttestWithServer()
+		err = tcl.ActivateAndCertifyAK()
 		if err != nil {
 			log.Fatal(err)
 		}

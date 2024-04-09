@@ -55,6 +55,7 @@ func postActivationChallengeResponse(as *ActivationService) echo.HandlerFunc {
 
 		response, err := as.VerifyChallenge(id, cr)
 		if err != nil {
+			slog.Error("verifying challenge response", "error", err)
 			return c.String(http.StatusUnauthorized, "Challenge response verification failed")
 		}
 
