@@ -176,7 +176,7 @@ func (c *TrustClient) AttestWithServer() error {
 		return fmt.Errorf("unmarshaling attestation challenge: %w", err)
 	}
 
-	slog.Info("Received challenge verification response", "challenge", challenge)
+	slog.Info("Received challenge verification response", "verification", verification)
 
 	if verification.Status != "valid" {
 		return fmt.Errorf("challenge failed with status: %s", challenge.Status)
