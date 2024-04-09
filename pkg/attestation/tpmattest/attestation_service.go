@@ -19,7 +19,7 @@ type AttestationStore interface {
 }
 
 func NewAttestationRequest(clientKey *attest.Key) *AttestationRequest {
-	certParams := clientKey.CertificateParameters()
+	certParams := clientKey.CertificationParameters()
 	return &AttestationRequest{
 		CertificationParameters: CertificationParameters{
 			Public:            certParams.Public,
