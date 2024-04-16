@@ -1,16 +1,19 @@
 package tpmattest
 
 import (
+	"crypto/x509"
+
 	"github.com/gematik/zero-lab/pkg/nonce"
 	"github.com/google/go-attestation/attest"
 )
 
 type Attestation struct {
-	AKRaw            []byte `json:"ak"`
-	AKPub            []byte `json:"ak_pub"`
-	AKCertificateRaw []byte `json:"ak_certificate"`
-	KeyRaw           []byte `json:"key"`
-	CertRaw          []byte `json:"cert"`
+	AttestationKeyRaw         []byte                  `json:"attestation_key"`
+	AttestationCertificateRaw []byte                  `json:"attestation_certificate"`
+	CertificationParameters   CertificationParameters `json:"certification_parameters"`
+	ClientKeyRaw              []byte                  `json:"client_key"`
+	ClientCertificateRaw      []byte                  `json:"client_certificate"`
+	Csr                       []byte                  `json:"csr"`
 }
 
 type AttestationStore interface {
@@ -18,9 +21,10 @@ type AttestationStore interface {
 	GetTPMAttestation(id string) (*Attestation, error)
 }
 
-func NewAttestationRequest(clientKey *attest.Key) *AttestationRequest {
+func NewKeyAttestation(clientKey *attest.Key, ak *attest.AK, attestationCert *x509.Certificate) *AttestationRequest {
 	certParams := clientKey.CertificationParameters()
 	return &AttestationRequest{
+		AttestationCertificateRaw: attestationCert.Raw,
 		CertificationParameters: CertificationParameters{
 			Public:            certParams.Public,
 			CreateData:        certParams.CreateData,
@@ -39,7 +43,9 @@ type CertificationParameters struct {
 }
 
 type AttestationRequest struct {
-	CertificationParameters CertificationParameters `json:"certification_parameters"`
+	AttestationCertificateRaw []byte                  `json:"attestation_certificate"`
+	Csr                       []byte                  `json:"csr"`
+	CertificationParameters   CertificationParameters `json:"certification_parameters"`
 }
 
 type AttestationService struct {

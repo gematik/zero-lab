@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/gematik/zero-lab/pkg/oauth2"
 	"github.com/gematik/zero-lab/pkg/util"
-	"github.com/goccy/go-json"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 )

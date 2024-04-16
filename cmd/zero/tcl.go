@@ -192,7 +192,7 @@ func (c *TrustClient) ActivateAndCertifyAK() error {
 	c.identity.UpdateAKCertificate(akCert)
 	c.identity.save(appIdentityPath)
 
-	slog.Info("AK attestation successful.")
+	slog.Info("AK activation and certification successful.")
 
 	return nil
 }
