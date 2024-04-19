@@ -13,11 +13,10 @@ func JWSToText(jwsData string) string {
 	sb := strings.Builder{}
 	parts := strings.Split(jwsData, ".")
 
-	sb.WriteString("base64url(")
 	sb.WriteString(tokenPartToText(parts[0]))
-	sb.WriteString(").base64url(")
+	sb.WriteString("\n.\n")
 	sb.WriteString(tokenPartToText(parts[1]))
-	sb.WriteString(").signature(")
+	sb.WriteString("\n.\nsignature(")
 	sb.WriteString(parts[2][0:10])
 	sb.WriteString("...)\n")
 	return sb.String()
@@ -34,7 +33,7 @@ func tokenPartToText(s string) string {
 		return string(dataBytes)
 	}
 
-	jsonBytes, err := json.MarshalIndent(dataMap, "  ", "  ")
+	jsonBytes, err := json.MarshalIndent(dataMap, "", "  ")
 	if err != nil {
 		return err.Error()
 	}

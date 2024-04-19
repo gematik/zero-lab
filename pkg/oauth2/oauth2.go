@@ -1,12 +1,12 @@
 package oauth2
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"math/big"
 	"net/url"
-
-	"github.com/gematik/zero-lab/pkg/util"
 )
 
 type ParameterOption func(params url.Values)
@@ -46,8 +46,20 @@ func (e *Error) Error() string {
 	return fmt.Sprintf("%s: %s", e.Code, e.Description)
 }
 
+const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
+
 func GenerateCodeVerifier() string {
-	return util.GenerateRandomString(128)
+	n := 128
+	ret := make([]byte, n)
+	for i := 0; i < n; i++ {
+		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			panic("Random number generation failed")
+		}
+		ret[i] = letters[num.Int64()]
+	}
+
+	return string(ret)
 }
 
 func S256ChallengeFromVerifier(verifier string) string {
