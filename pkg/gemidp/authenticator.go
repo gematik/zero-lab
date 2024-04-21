@@ -159,8 +159,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+		return nil, parseErrorResponse(resp.StatusCode, resp.Body)
 	}
 
 	var challenge = new(Challenge)

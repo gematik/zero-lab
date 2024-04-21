@@ -29,7 +29,7 @@ func WithSigningKey(sigPrK jwk.Key) Option {
 
 func WithOpenidProvider(oidcClient oidc.Client) Option {
 	return func(s *Server) error {
-		s.identityIssuers = append(s.identityIssuers, oidcClient)
+		s.IdentityIssuers = append(s.IdentityIssuers, oidcClient)
 		slog.Info("Using OIDC client", "issuer", oidcClient.Issuer(), "client_id", oidcClient.ClientID())
 		return nil
 	}
@@ -95,9 +95,9 @@ func WithRandomSigningKey() Option {
 	}
 }
 
-func WithSessionStore(sessionStore SessionStore) Option {
+func WithSessionStore(sessionStore AuthzSessionStore) Option {
 	return func(s *Server) error {
-		s.sessionStore = sessionStore
+		s.SessionStore = sessionStore
 		return nil
 	}
 }
@@ -114,7 +114,7 @@ func WithClientsPolicy(clientsPolicy *ClientsPolicy) Option {
 
 func WithMockSessionStore() Option {
 	return func(s *Server) error {
-		s.sessionStore = newMockSessionStore()
+		s.SessionStore = newMockSessionStore()
 		return nil
 	}
 }
@@ -130,7 +130,7 @@ func WithOIDFRelyingPartyFromConfigFile(path string, tolerance ErrorTolerance) O
 				return fmt.Errorf("unable to read OIDF config file: %w", err)
 			}
 		}
-		s.oidfRelyingParty = oidfRelyingParty
+		s.OIDFRelyingParty = oidfRelyingParty
 		slog.Info("Using OIDF relying party", "federation", oidfRelyingParty.Federation().FederationMasterURL(), "client_id", oidfRelyingParty.ClientID())
 		return nil
 	}

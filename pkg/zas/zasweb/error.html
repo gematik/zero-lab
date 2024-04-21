@@ -1,0 +1,24 @@
+{{template "layout" .}}
+
+{{define "pageTitle"}}Error{{end}}
+
+{{define "content"}}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card text-center">
+                <div class="card-header bg-danger text-white">
+                    Authentication Error
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title">Failed to Authenticate</h5>
+                    <p class="card-text">We encountered an error during the authentication process. Please try again later or contact support if the problem persists.</p>
+                    <pre class="text-danger">{{.error.Code}} {{.error.Description}}</pre>
+                    <a href="/web/login" class="btn btn-primary">Try again</a>
+                    <a href="mailto:support@example.com" class="btn btn-link">Contact Support</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}

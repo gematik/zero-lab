@@ -33,3 +33,11 @@ clients:
       - http://127.0.0.1:8089/as-callback
     op_intermediary_redirect_uris:
       - http://127.0.0.1:8089/op-intermediary-callback
+
+  - product_id: zero-web
+    product_name: Zero Web
+    manufacturer_id: gematik
+    manufacturer_name: gematik GmbH
+    platform: web
+    redirect_uris:
+      - http://localhost:8080/web/as-callback

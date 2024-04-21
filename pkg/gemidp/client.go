@@ -25,6 +25,19 @@ const (
 	EnvironmentProduction
 )
 
+func NewEnvironment(s string) Environment {
+	switch s {
+	case "tu", "test":
+		return EnvironmentTest
+	case "ru", "ref":
+		return EnvironmentReference
+	case "prod", "":
+		return EnvironmentProduction
+	default:
+		return EnvironmentReference
+	}
+}
+
 func (e Environment) GetBaseURL() string {
 	switch e {
 	case EnvironmentTest:
@@ -72,19 +85,32 @@ type TokenKeyPayload struct {
 
 // ClientConfig of the gematik IDP-Dienst client
 type ClientConfig struct {
-	Environment Environment
-	ClientID    string
-	RedirectURI string
-	Scopes      []string
+	Environment       Environment
+	ClientID          string
+	RedirectURI       string
+	Scopes            []string
+	AuthenticatorMode bool
 }
 
-type client struct {
+type Client struct {
 	config   ClientConfig
 	baseURL  string
 	Metadata Metadata
 }
 
-func NewClientFromConfig(config ClientConfig) (*client, error) {
+func NewClientFromConfig(config ClientConfig) (*Client, error) {
+	if config.ClientID == "" {
+		return nil, fmt.Errorf("client ID is required")
+	}
+
+	if config.RedirectURI == "" {
+		return nil, fmt.Errorf("redirect URI is required")
+	}
+
+	if len(config.Scopes) == 0 {
+		return nil, fmt.Errorf("at least one scope is required")
+	}
+
 	baseURL := config.Environment.GetBaseURL()
 
 	metadata, err := fetchMetadata(baseURL)
@@ -92,14 +118,22 @@ func NewClientFromConfig(config ClientConfig) (*client, error) {
 		return nil, err
 	}
 
-	return &client{
+	return &Client{
 		config:   config,
 		baseURL:  baseURL,
 		Metadata: *metadata,
 	}, nil
 }
 
-func (c *client) AuthCodeURL(state, nonce, verifier string, opts ...oauth2.ParameterOption) (string, error) {
+func (c *Client) AuthCodeURL(state, nonce, verifier string, opts ...oauth2.ParameterOption) (string, error) {
+	if c.config.AuthenticatorMode {
+		return c.AuthCodeURLAuthenticator(state, nonce, verifier, opts...)
+	}
+
+	return c.AuthCodeURLDirect(state, nonce, verifier, opts...)
+}
+
+func (c *Client) AuthCodeURLDirect(state, nonce, verifier string, opts ...oauth2.ParameterOption) (string, error) {
 	codeChallenge := oauth2.S256ChallengeFromVerifier(verifier)
 	query := url.Values{}
 	query.Add("client_id", c.config.ClientID)
@@ -120,7 +154,27 @@ func (c *client) AuthCodeURL(state, nonce, verifier string, opts ...oauth2.Param
 	return fmt.Sprintf("%s?%s", c.Metadata.AuthorizationEndpoint, query.Encode()), nil
 }
 
-func (c *client) Exchange(code, verifier string, opts ...oauth2.ParameterOption) (*oauth2.TokenResponse, error) {
+func (c *Client) AuthCodeURLAuthenticator(state, nonce, verifier string, opts ...oauth2.ParameterOption) (string, error) {
+	authURL, err := c.AuthCodeURLDirect(state, nonce, verifier, opts...)
+	if err != nil {
+		return "", err
+	}
+
+	challengePath, err := url.Parse(authURL)
+	if err != nil {
+		return "", fmt.Errorf("parsing challenge path: %w", err)
+	}
+
+	challengePath.RawQuery = challengePath.RawQuery + "&cardType=SMC-B&callback=DIRECT"
+
+	query := url.Values{
+		"challenge_path": {challengePath.String()},
+	}
+
+	return "authenticator://?" + query.Encode(), nil
+}
+
+func (c *Client) Exchange(code, verifier string, opts ...oauth2.ParameterOption) (*oauth2.TokenResponse, error) {
 	// 32 bytes random key to encrypt the token
 	tokenKeyBytes := make([]byte, 32)
 	_, err := io.ReadFull(rand.Reader, tokenKeyBytes)
@@ -185,23 +239,12 @@ func (c *client) Exchange(code, verifier string, opts ...oauth2.ParameterOption)
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("reading response body: %w", err)
-	}
-
 	if resp.StatusCode != http.StatusOK {
-		var errResp oauth2.Error
-		err = json.Unmarshal(body, &errResp)
-		if err != nil {
-			return nil, fmt.Errorf("parsing error response: %w", err)
-		}
-
-		return nil, &errResp
+		return nil, parseErrorResponse(resp.StatusCode, resp.Body)
 	}
 
 	var tokenResp oauth2.TokenResponse
-	err = json.Unmarshal(body, &tokenResp)
+	err = json.NewDecoder(resp.Body).Decode(&tokenResp)
 	if err != nil {
 		return nil, fmt.Errorf("parsing token response: %w", err)
 	}
@@ -239,7 +282,7 @@ func decryptToken(token string, key []byte) (string, error) {
 	return njwt.Njwt, nil
 }
 
-func (c *client) ParseIDToken(response *oauth2.TokenResponse) (jwt.Token, error) {
+func (c *Client) ParseIDToken(response *oauth2.TokenResponse) (jwt.Token, error) {
 	// check signature using the brainpool enabled library
 	key, err := fetchKey(c.Metadata.SigningKeyURI)
 	if err != nil {
@@ -272,4 +315,20 @@ func (c *client) ParseIDToken(response *oauth2.TokenResponse) (jwt.Token, error)
 	}
 
 	return token, nil
+}
+
+func (c *Client) Issuer() string {
+	return c.Metadata.Issuer
+}
+
+func (c *Client) ClientID() string {
+	return c.config.ClientID
+}
+
+func (c *Client) Name() string {
+	return "gematik IDP-Dienst"
+}
+
+func (c *Client) LogoURI() string {
+	return "https://raw.githubusercontent.com/gematik/zero-lab/main/gematik-g.png"
 }

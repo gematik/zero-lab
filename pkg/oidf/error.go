@@ -13,19 +13,19 @@ type Error struct {
 	GematikTimestamp int64  `json:"gematik_timestamp,omitempty"`
 	GematikUUID      string `json:"gematik_uuid,omitempty"`
 	GematikCode      string `json:"gematik_code,omitempty"`
-	// TODO: temporary
+	// Some IDPs return description in camelCase instead of snake_case
 	BadDescription string `json:"errorDescription,omitempty"`
 }
 
 func (e *Error) Error() string {
 	if e.BadDescription != "" {
-		return fmt.Sprintf("%s: %s (errorDescription)", e.ErrorCode, e.BadDescription)
+		return fmt.Sprintf("%s: %s (wrong camelCase response)", e.ErrorCode, e.BadDescription)
 	}
 	return fmt.Sprintf("%s: %s", e.ErrorCode, e.Description)
 }
 
-// tries to parse the oath2 error from the body
-func parseOauth2Error(body io.Reader) error {
+// tries to parse the oath2 error from the reader, taken from the HTTP response body
+func parseErrorResponse(body io.Reader) error {
 	var oidcErr Error
 	err := json.NewDecoder(body).Decode(&oidcErr)
 	if err != nil {

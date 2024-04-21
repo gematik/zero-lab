@@ -11,9 +11,11 @@ import (
 
 type ParameterOption func(params url.Values)
 
-func WithRedirectURI(redirectUri string) ParameterOption {
+func WithAlternateRedirectURI(redirectUri string) ParameterOption {
 	return func(params url.Values) {
-		params.Set("redirect_uri", redirectUri)
+		if redirectUri != "" {
+			params.Set("redirect_uri", redirectUri)
+		}
 	}
 }
 

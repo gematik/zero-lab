@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"html/template"
 	"io"
 	"log/slog"
 	"net/http"
@@ -103,14 +102,6 @@ func issueCert(ctx echo.Context) error {
 	ctx.Blob(http.StatusOK, "application/x-pem-file", []byte(certPEM))
 
 	return nil
-}
-
-type Template struct {
-	templates *template.Template
-}
-
-func (t *Template) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
-	return t.templates.ExecuteTemplate(w, name, data)
 }
 
 func getIndex(ctx echo.Context) error {

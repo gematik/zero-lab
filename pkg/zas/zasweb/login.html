@@ -1,0 +1,21 @@
+{{template "layout" .}}
+
+{{define "pageTitle"}}Select Identity Provider{{end}}
+
+{{define "content"}}
+<div class="container p-5">
+<!-- Header -->
+<h1 class="mb-4">Select Identity Provider</h1>
+
+<!-- Identity Providers List -->
+<div class="list-group">
+    {{ range .openidProviders }}
+    <a href="?op_issuer={{ .Issuer }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+        {{ .Name }}
+        <img src="{{ .LogoURI }}" alt="{{ .Name }}" style="max-height: 40px;">        
+    </a>
+    {{ end }}
+</div>
+
+</div>
+{{end}}

@@ -64,7 +64,7 @@ func (c *RelyingPartyClient) AuthCodeURL(state, nonce, verifier string, opts ...
 	defer parResponse.Body.Close()
 
 	if parResponse.StatusCode != http.StatusCreated {
-		return "", fmt.Errorf("unexpected status '%s': %w", parResponse.Status, parseOauth2Error(parResponse.Body))
+		return "", fmt.Errorf("PAR: unexpected status '%s': %w", parResponse.Status, parseErrorResponse(parResponse.Body))
 	}
 
 	var parResp pushedAuthorizationResponse

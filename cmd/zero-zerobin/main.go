@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"fmt"
 	"html/template"
 	"log"
 	"log/slog"
@@ -14,6 +15,7 @@ import (
 	"github.com/gematik/zero-lab/pkg"
 	"github.com/gematik/zero-lab/pkg/attestation/tpmattest"
 	"github.com/gematik/zero-lab/pkg/ca"
+	"github.com/gematik/zero-lab/pkg/gemidp"
 	"github.com/gematik/zero-lab/pkg/nonce"
 	"github.com/gematik/zero-lab/pkg/oidc"
 	"github.com/gematik/zero-lab/pkg/prettylog"
@@ -21,6 +23,7 @@ import (
 	regapi "github.com/gematik/zero-lab/pkg/reg/api"
 	"github.com/gematik/zero-lab/pkg/util"
 	"github.com/gematik/zero-lab/pkg/zas"
+	"github.com/gematik/zero-lab/pkg/zas/zasweb"
 	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
@@ -85,11 +88,11 @@ func main() {
 		slog.Info("request", "requestBody", string(reqBody), "responseBody", string(resBody))
 	})
 
-	root.Renderer = &Template{
+	root.Renderer = &Renderer{
 		templates: template.Must(template.ParseGlob("templates/*.html")),
 	}
 
-	// ------------------
+	// ------------------ TPM Activation Service
 	tpmActivationService, err := tpmattest.NewActivationService()
 	if err != nil {
 		slog.Error("Failed to create TPM activation service", "error", err)
@@ -126,6 +129,22 @@ func main() {
 
 	regOptions := []reg.RegistrationServiceOption{}
 
+	// configure gematik IDP-Dienst client if configured
+	if os.Getenv("GEMIDP_CLIENT_ID") != "" {
+		config := gemidp.ClientConfig{
+			Environment:       gemidp.NewEnvironment(os.Getenv("GEMIDP_ENV")),
+			ClientID:          os.Getenv("GEMIDP_CLIENT_ID"),
+			Scopes:            strings.Split(os.Getenv("GEMIDP_SCOPE"), " "),
+			RedirectURI:       os.Getenv("GEMIDP_REDIRECT_URI"),
+			AuthenticatorMode: true,
+		}
+		gemidpClient, err := gemidp.NewClientFromConfig(config)
+		if err != nil {
+			log.Fatal(fmt.Errorf("failed to create gematik IDP-Dienst client: %w", err))
+		}
+		zasOptions = append(zasOptions, zas.WithOpenidProvider(gemidpClient))
+	}
+
 	if os.Getenv("OIDC_CLIENT_ID") != "" {
 		config := &oidc.Config{
 			Issuer:       os.Getenv("OIDC_ISSUER"),
@@ -154,6 +173,8 @@ func main() {
 		log.Fatal(err)
 	}
 	zas.MountRoutes(root.Group(""))
+
+	zasweb.MountRoutes(root.Group("/web"), zas)
 
 	regService, err := reg.NewRegistrationService(nonceService, store, clientsCA, regOptions...)
 	if err != nil {

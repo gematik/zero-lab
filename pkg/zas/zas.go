@@ -23,10 +23,10 @@ import (
 )
 
 type Server struct {
-	identityIssuers  []oidc.Client
-	oidfRelyingParty *oidf.RelyingParty
+	IdentityIssuers  []oidc.Client
+	OIDFRelyingParty *oidf.RelyingParty
 	clientsPolicy    *ClientsPolicy
-	sessionStore     SessionStore
+	SessionStore     AuthzSessionStore
 	sigPrK           jwk.Key
 	jwks             jwk.Set
 	encPuK           jwk.Key
@@ -36,7 +36,7 @@ type Option func(*Server) error
 
 func NewServer(opts ...Option) (*Server, error) {
 	s := &Server{
-		identityIssuers: []oidc.Client{},
+		IdentityIssuers: []oidc.Client{},
 	}
 
 	for _, opt := range opts {
@@ -65,37 +65,11 @@ func (s *Server) MountRoutes(group *echo.Group) {
 	group.POST("/par", s.PAREndpoint)
 	group.POST("/token", s.TokenEndpoint)
 	group.GET("/jwks", s.JWKS)
-	group.GET("/openid-providers", s.OpenidProviders)
+	group.GET("/openid-providers", s.OpenidProvidersEndpoint)
 
-	if s.oidfRelyingParty != nil {
-		group.GET("/.well-known/openid-federation", echo.WrapHandler(http.HandlerFunc(s.oidfRelyingParty.Serve)))
+	if s.OIDFRelyingParty != nil {
+		group.GET("/.well-known/openid-federation", echo.WrapHandler(http.HandlerFunc(s.OIDFRelyingParty.Serve)))
 	}
-}
-
-type AuthorizationSession struct {
-	ResponseType              string
-	ClientId                  string
-	RedirectUri               string
-	CodeChallenge             string
-	CodeChallengeMethod       string
-	Nonce                     string
-	State                     string
-	Scope                     string
-	OPIssuer                  string
-	OPIntermediaryRedirectUri string
-	RequestUri                string
-	OPSession                 *OpenidProviderSession
-	Code                      string
-}
-
-type OpenidProviderSession struct {
-	Issuer        string
-	State         string
-	Nonce         string
-	Verifier      string
-	RedirectUri   string
-	TokenResponse *oauth2.TokenResponse
-	Claims        map[string]interface{}
 }
 
 func redirectWithError(c echo.Context, redirectUri string, err oauth2.Error) error {
@@ -107,18 +81,18 @@ func redirectWithError(c echo.Context, redirectUri string, err oauth2.Error) err
 }
 
 func (s *Server) AuthorizationEndpoint(c echo.Context) error {
-	var session AuthorizationSession
+	var session AuthzSession
 	binderr := echo.FormFieldBinder(c).
 		MustString("response_type", &session.ResponseType).
-		MustString("client_id", &session.ClientId).
-		MustString("redirect_uri", &session.RedirectUri).
+		MustString("client_id", &session.ClientID).
+		MustString("redirect_uri", &session.RedirectURI).
 		MustString("code_challenge", &session.CodeChallenge).
 		MustString("code_challenge_method", &session.CodeChallengeMethod).
 		MustString("nonce", &session.Nonce).
 		MustString("state", &session.State).
 		MustString("scope", &session.Scope).
 		MustString("op_issuer", &session.OPIssuer).
-		String("op_intermediary_redirect_uri", &session.OPIntermediaryRedirectUri).
+		String("op_intermediary_redirect_uri", &session.OPIntermediaryRedirectURI).
 		BindError()
 
 	if binderr != nil {
@@ -128,65 +102,67 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 		})
 	}
 
-	if !s.clientsPolicy.AllowedClient(session.ClientId) {
-		return redirectWithError(c, session.RedirectUri, oauth2.Error{
+	if !s.clientsPolicy.AllowedClient(session.ClientID) {
+		return redirectWithError(c, session.RedirectURI, oauth2.Error{
 			Code:        "invalid_request",
 			Description: "unknown client_id",
 		})
 	}
 
-	opClient, err := s.opClient(session.OPIssuer)
+	opClient, err := s.OpenidProvider(session.OPIssuer)
 	if err != nil {
-		return redirectWithError(c, session.RedirectUri, oauth2.Error{
+		return redirectWithError(c, session.RedirectURI, oauth2.Error{
 			Code:        "invalid_request",
 			Description: err.Error(),
 		})
 	}
 
-	if !s.clientsPolicy.AllowedRedirectURI(session.ClientId, session.RedirectUri) {
-		return redirectWithError(c, session.RedirectUri, oauth2.Error{
+	if !s.clientsPolicy.AllowedRedirectURI(session.ClientID, session.RedirectURI) {
+		return redirectWithError(c, session.RedirectURI, oauth2.Error{
 			Code:        "invalid_request",
 			Description: "redirect_uri forbidden by policy",
 		})
 	}
 
-	if session.OPIntermediaryRedirectUri != "" {
-		if !s.clientsPolicy.AllowedOPIntermediaryURL(session.ClientId, session.OPIntermediaryRedirectUri) {
-			return redirectWithError(c, session.RedirectUri, oauth2.Error{
+	if session.OPIntermediaryRedirectURI != "" {
+		if !s.clientsPolicy.AllowedOPIntermediaryURL(session.ClientID, session.OPIntermediaryRedirectURI) {
+			return redirectWithError(c, session.RedirectURI, oauth2.Error{
 				Code:        "invalid_request",
 				Description: "op_indermediary_redirect_uri forbidden by policy",
 			})
 		}
-		slog.Info("OP Intermediary Redirect URI is set", "op_intermediary_redirect_uri", session.OPIntermediaryRedirectUri)
+		slog.Info("OP Intermediary Redirect URI is set", "op_intermediary_redirect_uri", session.OPIntermediaryRedirectURI)
 	} else {
-		session.OPIntermediaryRedirectUri = fmt.Sprintf("%s://%s/op-callback", c.Scheme(), c.Request().Host)
-		slog.Info("Using default OP redirect uri", "redirect_uri", session.OPIntermediaryRedirectUri)
+		session.OPIntermediaryRedirectURI = fmt.Sprintf("%s://%s/op-callback", c.Scheme(), c.Request().Host)
+		slog.Info("Using default OP redirect uri", "redirect_uri", session.OPIntermediaryRedirectURI)
 	}
 
-	opSession := OpenidProviderSession{
+	opSession := oidc.AuthnSession{
+		ID:          ksuid.New().String(),
 		Issuer:      session.OPIssuer,
-		State:       util.GenerateRandomString(128),
+		State:       ksuid.New().String(),
 		Nonce:       session.Nonce,
 		Verifier:    oauth2.GenerateCodeVerifier(),
-		RedirectUri: session.OPIntermediaryRedirectUri,
+		RedirectURI: session.OPIntermediaryRedirectURI,
 	}
 
 	authUrl, err := opClient.AuthCodeURL(
 		opSession.State,
 		opSession.Nonce,
 		opSession.Verifier,
-		oauth2.WithRedirectURI(opSession.RedirectUri),
+		oauth2.WithAlternateRedirectURI(opSession.RedirectURI),
 	)
 	if err != nil {
-		return redirectWithError(c, session.RedirectUri, oauth2.Error{
+		return redirectWithError(c, session.RedirectURI, oauth2.Error{
 			Code:        "server_error",
 			Description: fmt.Errorf("unable to generate auth url: %w", err).Error(),
 		})
 	}
+	opSession.AuthURL = authUrl
 
-	session.OPSession = &opSession
-	if err := s.sessionStore.SaveSession(&session); err != nil {
-		return redirectWithError(c, session.RedirectUri, oauth2.Error{
+	session.AuthnSession = &opSession
+	if err := s.SessionStore.SaveAutzhSession(&session); err != nil {
+		return redirectWithError(c, session.RedirectURI, oauth2.Error{
 			Code:        "server_error",
 			Description: fmt.Errorf("unable to save session: %w", err).Error(),
 		})
@@ -204,19 +180,54 @@ func (s *Server) PAREndpoint(c echo.Context) error {
 	return echo.ErrBadRequest
 }
 
-func (s *Server) opClient(issuer string) (oidc.Client, error) {
-	for _, op := range s.identityIssuers {
+func (s *Server) OpenidProvider(issuer string) (oidc.Client, error) {
+	for _, op := range s.IdentityIssuers {
 		if op.Issuer() == issuer {
 			return op, nil
 		}
 	}
-	if s.oidfRelyingParty != nil {
-		return s.oidfRelyingParty.NewClient(issuer)
+
+	if s.OIDFRelyingParty != nil {
+		return s.OIDFRelyingParty.NewClient(issuer)
 	}
 	return nil, fmt.Errorf("unknown issuer: %s", issuer)
 }
 
+func (s *Server) StartOpenidProviderSession(issuer string) (*oidc.AuthnSession, error) {
+	op, err := s.OpenidProvider(issuer)
+	if err != nil {
+		return nil, err
+	}
+
+	session := &oidc.AuthnSession{
+		ID:       ksuid.New().String(),
+		Issuer:   op.Issuer(),
+		State:    ksuid.New().String(),
+		Nonce:    util.GenerateRandomString(64),
+		Verifier: oauth2.GenerateCodeVerifier(),
+	}
+
+	authURL, err := op.AuthCodeURL(session.State, session.Nonce, session.Verifier)
+	if err != nil {
+		return nil, fmt.Errorf("unable to generate auth url: %w", err)
+	}
+
+	session.AuthURL = authURL
+
+	return session, nil
+}
+
 func (s *Server) OPCallbackEndpoint(c echo.Context) error {
+	if c.QueryParam("error") != "" {
+		slog.Error("OP callback error", "query", c.QueryString())
+		return c.Redirect(
+			http.StatusFound,
+			fmt.Sprintf("/web/error?error=%s&error_description=%s",
+				url.QueryEscape(c.QueryParam("error")),
+				url.QueryEscape(c.QueryParam("error_description")),
+			),
+		)
+	}
 	var state string
 	var code string
 	binderr := echo.FormFieldBinder(c).
@@ -230,22 +241,27 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 		})
 	}
 
-	session, err := s.sessionStore.GetSessionByOPState(state)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
-			Code:        "invalid_request",
-			Description: fmt.Errorf("unable to get session: %w", err).Error(),
-		})
+	var authnSession *oidc.AuthnSession
+	authzSession, err := s.SessionStore.GetAuthzSessionByAuthnState(state)
+	if err == nil {
+		authnSession = authzSession.AuthnSession
+		if authnSession == nil {
+			return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+				Code:        "invalid_request",
+				Description: "missing openid session",
+			})
+		}
+	} else {
+		authnSession, err = s.SessionStore.GetAuthnSessionByState(state)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+				Code:        "invalid_request",
+				Description: fmt.Errorf("unable to get session: %w", err).Error(),
+			})
+		}
 	}
 
-	if session.OPSession == nil {
-		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
-			Code:        "invalid_request",
-			Description: "missing openid session",
-		})
-	}
-
-	identityIssuer, err := s.opClient(session.OPIssuer)
+	identityIssuer, err := s.OpenidProvider(authnSession.Issuer)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
 			Code:        "invalid_request",
@@ -255,8 +271,8 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 
 	tokenResponse, err := identityIssuer.Exchange(
 		code,
-		session.OPSession.Verifier,
-		oauth2.WithRedirectURI(session.OPSession.RedirectUri),
+		authnSession.Verifier,
+		oauth2.WithAlternateRedirectURI(authnSession.RedirectURI),
 	)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, oauth2.Error{
@@ -273,7 +289,7 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 		})
 	}
 
-	session.OPSession.Claims, err = idToken.AsMap(context.TODO())
+	authnSession.Claims, err = idToken.AsMap(context.TODO())
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, oauth2.Error{
 			Code:        "server_error",
@@ -281,22 +297,26 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 		})
 	}
 
-	session.OPSession.TokenResponse = tokenResponse
+	authnSession.TokenResponse = tokenResponse
 
-	session.Code = util.GenerateRandomString(128)
+	if authzSession != nil {
+		authzSession.Code = util.GenerateRandomString(128)
 
-	if err := s.sessionStore.SaveSession(session); err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, oauth2.Error{
-			Code:        "server_error",
-			Description: fmt.Errorf("unable to save session: %w", err).Error(),
-		})
+		if err := s.SessionStore.SaveAutzhSession(authzSession); err != nil {
+			return echo.NewHTTPError(http.StatusInternalServerError, oauth2.Error{
+				Code:        "server_error",
+				Description: fmt.Errorf("unable to save session: %w", err).Error(),
+			})
+		}
+
+		params := url.Values{}
+		params.Set("code", authzSession.Code)
+		params.Set("state", authzSession.State)
+
+		return c.Redirect(http.StatusFound, authzSession.RedirectURI+"?"+params.Encode())
 	}
 
-	params := url.Values{}
-	params.Set("code", session.Code)
-	params.Set("state", session.State)
-
-	return c.Redirect(http.StatusFound, session.RedirectUri+"?"+params.Encode())
+	return c.JSON(http.StatusOK, idToken.PrivateClaims())
 }
 
 func (s *Server) TokenEndpoint(c echo.Context) error {
@@ -322,7 +342,7 @@ func (s *Server) TokenEndpoint(c echo.Context) error {
 
 	slog.Info("Token request", "grant_type", grantType, "code", code, "redirect_uri", redirectUri, "client_id", clientId)
 
-	session, err := s.sessionStore.GetSessionByCode(code)
+	session, err := s.SessionStore.GetAuthzSessionByCode(code)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
 			Code:        "invalid_request",
@@ -332,14 +352,14 @@ func (s *Server) TokenEndpoint(c echo.Context) error {
 
 	slog.Info("Token request: session", "session", session)
 
-	if session.ClientId != clientId {
+	if session.ClientID != clientId {
 		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
 			Code:        "invalid_request",
 			Description: "client_id mismatch",
 		})
 	}
 
-	if session.RedirectUri != redirectUri {
+	if session.RedirectURI != redirectUri {
 		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
 			Code:        "invalid_request",
 			Description: "redirect_uri mismatch",
@@ -349,7 +369,7 @@ func (s *Server) TokenEndpoint(c echo.Context) error {
 	codeChallengeBytes := sha256.Sum256([]byte(codeVerifier))
 	codeChallenge := base64.RawURLEncoding.EncodeToString(codeChallengeBytes[:])
 	if codeChallenge != session.CodeChallenge {
-		return redirectWithError(c, session.RedirectUri, oauth2.Error{
+		return redirectWithError(c, session.RedirectURI, oauth2.Error{
 			Code:        "invalid_request",
 			Description: "invalid code verifier mismatch",
 		})
@@ -357,7 +377,7 @@ func (s *Server) TokenEndpoint(c echo.Context) error {
 
 	accessToken, err := s.issueAccessToken(session)
 	if err != nil {
-		return redirectWithError(c, session.RedirectUri, oauth2.Error{
+		return redirectWithError(c, session.RedirectURI, oauth2.Error{
 			Code:        "server_error",
 			Description: fmt.Errorf("unable to issue access token: %w", err).Error(),
 		})
@@ -375,14 +395,14 @@ func (s *Server) TokenEndpoint(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
-func (s *Server) issueAccessToken(authzSession *AuthorizationSession) (string, error) {
+func (s *Server) issueAccessToken(authzSession *AuthzSession) (string, error) {
 	accessJwt := jwt.New()
-	accessJwt.Set("sub", authzSession.ClientId)
+	accessJwt.Set("sub", authzSession.ClientID)
 	accessJwt.Set("aud", "https://as.example.com") // TODO: use actual audience
 	accessJwt.Set("exp", time.Now().Add(24*time.Hour).Unix())
 	accessJwt.Set("jti", ksuid.New().String())
 	accessJwt.Set("scope", authzSession.Scope)
-	accessJwt.Set("act", authzSession.OPSession.Claims)
+	accessJwt.Set("act", authzSession.AuthnSession.Claims)
 
 	accessTokenBytes, err := jwt.Sign(accessJwt, jwt.WithKey(jwa.ES256, s.sigPrK))
 	if err != nil {
@@ -396,36 +416,46 @@ func (s *Server) JWKS(c echo.Context) error {
 	return c.JSON(http.StatusOK, s.jwks)
 }
 
-func (s *Server) OpenidProviders(c echo.Context) error {
-	type openidProvider struct {
-		Issuer           string `json:"iss"`
-		LogoURI          string `json:"logo_uri"`
-		OrganizationName string `json:"organization_name"`
+type OpenidProviderInfo struct {
+	Issuer  string `json:"iss"`
+	LogoURI string `json:"logo_uri"`
+	Name    string `json:"name"`
+}
+
+func (s *Server) OpenidProvidersEndpoint(c echo.Context) error {
+	providers, err := s.OpenidProviders()
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err)
 	}
-	providers := []openidProvider{}
-	for _, op := range s.identityIssuers {
-		providers = append(providers, openidProvider{
-			Issuer:           op.Issuer(),
-			LogoURI:          op.LogoURI(),
-			OrganizationName: op.Name(),
+	return c.JSON(http.StatusOK, providers)
+}
+
+func (s *Server) OpenidProviders() ([]OpenidProviderInfo, error) {
+	providers := []OpenidProviderInfo{}
+	for _, op := range s.IdentityIssuers {
+		providers = append(providers, OpenidProviderInfo{
+			Issuer:  op.Issuer(),
+			LogoURI: op.LogoURI(),
+			Name:    op.Name(),
 		})
 	}
-	if s.oidfRelyingParty != nil {
-		idps, err := s.oidfRelyingParty.Federation().FetchIdpList()
+	if s.OIDFRelyingParty != nil {
+		idps, err := s.OIDFRelyingParty.Federation().FetchIdpList()
 		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, err)
+			return nil, fmt.Errorf("fetching idp list from federation: %w", err)
 		}
 		for _, op := range idps {
 			// todo: remove this later
 			if !strings.Contains(op.Issuer, ".tk.ru2") {
 				continue
 			}
-			providers = append(providers, openidProvider{
-				Issuer:           op.Issuer,
-				LogoURI:          op.LogoURI,
-				OrganizationName: op.OrganizationName,
+			providers = append(providers, OpenidProviderInfo{
+				Issuer:  op.Issuer,
+				LogoURI: op.LogoURI,
+				Name:    op.OrganizationName,
 			})
 		}
 	}
-	return c.JSON(http.StatusOK, providers)
+
+	return providers, nil
 }

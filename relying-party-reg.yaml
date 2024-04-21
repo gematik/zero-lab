@@ -1,4 +1,4 @@
-url: https://zerobin.zt.dev.ccs.gematik.solutions
+url: https://dms-01.zt.dev.ccs.gematik.solutions
 fed_master_jwks:
   keys:
     - kty: EC
@@ -27,7 +27,7 @@ metadata:
     client_name: Zero Trust Lab
     logo_uri: https://raw.githubusercontent.com/gematik/api-vzd/main/images/gematik_logo.svg
     redirect_uris:
-      - https://zerobin.zt.dev.ccs.gematik.solutions/reg/auth/gematik-fed/callback
+      - https://dms-01.zt.dev.ccs.gematik.solutions/reg/auth/gematik-fed/callback
     response_types:
       - code
     client_registration_types:
