@@ -12,13 +12,15 @@ export async function startDecoupledAuth(iss) {
         })
     }).then(response => response.json())
     .catch(error => alert(error));
+
     if (grantResponse == undefined) {
-        alert('Error during auth')
+        window.location.href = '/web/error?error=server_error';
         return;
     }
 
     if (grantResponse['error'] != undefined) {
-        alert(grantResponse['error']);
+        // redirect to error page with error and error description, url escaped
+        window.location.href = '/web/error?error=' + encodeURIComponent(grantResponse['error']) + '&error_description=' + encodeURIComponent(grantResponse['error_description']);
         return;
     }
 
@@ -36,7 +38,9 @@ export async function startDecoupledAuth(iss) {
             })
         }).then(response => response.json())
         .catch(error => { 
-            alert(error)
+            console.log(error);
+            // redirect to error page with error and error description, url escaped
+            window.location.href = '/web/error?error=server_error&error_description='+encodeURIComponent(error);
             clearInterval(interval);
             return;
         });
@@ -48,6 +52,8 @@ export async function startDecoupledAuth(iss) {
         }
         console.log(tokenResponse);
         clearInterval(interval);
+        // redirect to success page with token, url escaped
+        window.location.href = '/web/userinfo';
     }, grantResponse['interval'] * 1000);
 }
 

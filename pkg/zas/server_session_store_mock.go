@@ -8,19 +8,19 @@ import (
 )
 
 type mockSessionStore struct {
-	sessions                map[string]*AuthzSession
-	standaloneAuthnSessions map[string]*oidc.AuthnSession
+	sessions                map[string]*AuthzServerSession
+	standaloneAuthnSessions map[string]*oidc.AuthnClientSession
 	lock                    sync.RWMutex
 }
 
 func newMockSessionStore() *mockSessionStore {
 	return &mockSessionStore{
-		sessions:                make(map[string]*AuthzSession),
-		standaloneAuthnSessions: make(map[string]*oidc.AuthnSession),
+		sessions:                make(map[string]*AuthzServerSession),
+		standaloneAuthnSessions: make(map[string]*oidc.AuthnClientSession),
 	}
 }
 
-func (s *mockSessionStore) GetAuthzSession(state string) (*AuthzSession, error) {
+func (s *mockSessionStore) GetAuthzServerSession(state string) (*AuthzServerSession, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	session, ok := s.sessions[state]
@@ -30,21 +30,21 @@ func (s *mockSessionStore) GetAuthzSession(state string) (*AuthzSession, error) 
 	return session, nil
 }
 
-func (s *mockSessionStore) SaveAutzhSession(session *AuthzSession) error {
+func (s *mockSessionStore) SaveAutzhServerSession(session *AuthzServerSession) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.sessions[session.State] = session
 	return nil
 }
 
-func (s *mockSessionStore) DeleteAuthzSession(state string) error {
+func (s *mockSessionStore) DeleteAuthzServerSession(state string) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	delete(s.sessions, state)
 	return nil
 }
 
-func (s *mockSessionStore) GetAutzhSessionByRequestURI(requestUri string) (*AuthzSession, error) {
+func (s *mockSessionStore) GetAutzhServerSessionByRequestURI(requestUri string) (*AuthzServerSession, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	for _, session := range s.sessions {
@@ -55,18 +55,18 @@ func (s *mockSessionStore) GetAutzhSessionByRequestURI(requestUri string) (*Auth
 	return nil, errors.New("session not found")
 }
 
-func (s *mockSessionStore) GetAuthzSessionByAuthnState(opState string) (*AuthzSession, error) {
+func (s *mockSessionStore) GetAuthzServerSessionByAuthnState(opState string) (*AuthzServerSession, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	for _, session := range s.sessions {
-		if session.AuthnSession != nil && session.AuthnSession.State == opState {
+		if session.AuthnClientSession != nil && session.AuthnClientSession.State == opState {
 			return session, nil
 		}
 	}
 	return nil, errors.New("session not found")
 }
 
-func (s *mockSessionStore) GetAuthzSessionByCode(code string) (*AuthzSession, error) {
+func (s *mockSessionStore) GetAuthzServerSessionByCode(code string) (*AuthzServerSession, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	for _, session := range s.sessions {
@@ -77,7 +77,7 @@ func (s *mockSessionStore) GetAuthzSessionByCode(code string) (*AuthzSession, er
 	return nil, errors.New("session not found")
 }
 
-func (s *mockSessionStore) GetAuthnSessionByState(state string) (*oidc.AuthnSession, error) {
+func (s *mockSessionStore) GetAuthnClientSessionByState(state string) (*oidc.AuthnClientSession, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	session, ok := s.standaloneAuthnSessions[state]
@@ -87,21 +87,21 @@ func (s *mockSessionStore) GetAuthnSessionByState(state string) (*oidc.AuthnSess
 	return session, nil
 }
 
-func (s *mockSessionStore) SaveAuthnSession(session *oidc.AuthnSession) error {
+func (s *mockSessionStore) SaveAuthnClientSession(session *oidc.AuthnClientSession) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.standaloneAuthnSessions[session.State] = session
 	return nil
 }
 
-func (s *mockSessionStore) DeleteAuthnSession(state string) error {
+func (s *mockSessionStore) DeleteAuthnClientSession(state string) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	delete(s.standaloneAuthnSessions, state)
 	return nil
 }
 
-func (s *mockSessionStore) GetAuthnSessionByID(id string) (*oidc.AuthnSession, error) {
+func (s *mockSessionStore) GetAuthnClientSessionByID(id string) (*oidc.AuthnClientSession, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	for _, session := range s.standaloneAuthnSessions {

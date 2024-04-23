@@ -63,7 +63,7 @@ func TestNewRelyingParty(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	signed, err := es.Sign()
+	signed, err := es.SignEntityStatement()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -95,7 +95,7 @@ func WithRandomSigningKey() Option {
 	}
 }
 
-func WithSessionStore(sessionStore AuthzSessionStore) Option {
+func WithSessionStore(sessionStore AuthzServerSessionStore) Option {
 	return func(s *Server) error {
 		s.SessionStore = sessionStore
 		return nil

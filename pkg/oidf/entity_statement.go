@@ -27,8 +27,8 @@ type EntityStatement struct {
 }
 
 type Metadata struct {
-	OpenidRelyingParty *OpenIDRelyingPartyMetadata `json:"openid_relying_party"`
-	OpenidProvider     *OpenIDProviderMetadata     `json:"openid_provider"`
+	OpenidRelyingParty *OpenIDRelyingPartyMetadata `json:"openid_relying_party,omitempty"`
+	OpenidProvider     *OpenIDProviderMetadata     `json:"openid_provider,omitempty"`
 	FederationEntity   *FederationEntityMetadata   `json:"federation_entity"`
 }
 

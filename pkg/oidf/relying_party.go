@@ -151,7 +151,7 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 	return &rp, nil
 }
 
-func (rp *RelyingParty) Sign() ([]byte, error) {
+func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {
 
 	token, err := jwt.NewBuilder().
 		Issuer(rp.cfg.Url).
@@ -187,7 +187,7 @@ func (rp *RelyingParty) Sign() ([]byte, error) {
 }
 
 func (rp *RelyingParty) Serve(w http.ResponseWriter, r *http.Request) {
-	signed, err := rp.Sign()
+	signed, err := rp.SignEntityStatement()
 	if err != nil {
 		slog.Error("unable to sign entity statement", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -195,6 +195,42 @@ func (rp *RelyingParty) Serve(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/entity-statement+jwt")
 	w.Write(signed)
+}
+
+func (rp *RelyingParty) ServeSignedJwks(w http.ResponseWriter, r *http.Request) {
+
+	token, err := jwt.NewBuilder().
+		Issuer(rp.cfg.Url).
+		IssuedAt(time.Now()).
+		Expiration(time.Now().Add(time.Hour*24)).
+		Claim("keys", rp.entityStatement.Metadata.OpenidRelyingParty.Jwks.Keys).
+		Build()
+
+	if err != nil {
+		slog.Error("unable to build token", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
+
+	headers := jws.NewHeaders()
+	headers.Set(jws.KeyIDKey, rp.cfg.SignKid)
+	headers.Set(jws.TypeKey, "jwk-set+json")
+
+	signed, err := jwt.Sign(token,
+		jwt.WithKey(
+			jwa.ES256,
+			rp.sigPrivateKey,
+			jws.WithProtectedHeaders(headers),
+		),
+	)
+
+	if err != nil {
+		slog.Error("unable to sign token", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
+	w.Header().Set("Content-Type", "application/jwk-set+jwt")
+	w.Write(signed)
+
+	slog.Info("served signed jwks", "remote_addr", r.RemoteAddr)
 }
 
 type pushedAuthorizationResponse struct {

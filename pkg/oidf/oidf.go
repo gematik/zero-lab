@@ -143,7 +143,7 @@ func (f *OpenidFederation) FetchEntityStatement(iss string) (*EntityStatement, e
 
 	url := f.entity.FederationFetchEndpoint + "?" + query.Encode()
 
-	// fetch the entity statement for the fed master first to get the keys
+	// fetch the entity statement from the fed master first to get the trusted keys
 	fromMaster, err := f.fetchAndVerify(url, f.jwks)
 	if err != nil {
 		return nil, fmt.Errorf("unable to fetch entity statement from '%s': %w", url, err)

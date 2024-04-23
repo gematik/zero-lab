@@ -41,3 +41,4 @@ clients:
     platform: web
     redirect_uris:
       - http://localhost:8080/web/as-callback
+      - http://127.0.0.1:8089/as-callback

@@ -2,8 +2,6 @@ module github.com/gematik/zero-lab
 
 go 1.21.5
 
-replace github.com/go-jose/go-jose/v4 => ../go-jose-brainpool
-
 require (
 	github.com/fxamacker/cbor/v2 v2.6.0
 	github.com/go-jose/go-jose/v4 v4.0.1
@@ -53,3 +51,6 @@ require (
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 )
+
+//replace github.com/go-jose/go-jose/v4 => ../go-jose-brainpool
+replace github.com/go-jose/go-jose/v4 v4.0.1 => github.com/spilikin/go-jose-brainpool/v4 v4.0.2

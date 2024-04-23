@@ -1,8 +1,8 @@
 
 .PHONY: info, docker, dockerhub, version
 
-ZERO_VERSION ?= "0.6.0b13"
-REG_FQDN ?= "dms-01.zt.ccs.gematik.solutions"
+ZERO_VERSION ?= "0.7.0b2"
+REG_FQDN ?= "zerobin.zt.ccs.gematik.solutions"
 REG_SECRETS_DIR ?= "secrets/reg"
 
 info: 
@@ -31,7 +31,7 @@ testsecrets:
 	openssl ecparam -name prime256v1 -genkey -noout -out ${REG_SECRETS_DIR}/enc_prk.pem
 
 	openssl ecparam -name prime256v1 -genkey -noout -out ${REG_SECRETS_DIR}/client_prk.pem
-	openssl req -x509 -key ${REG_SECRETS_DIR}/client_prk.pem -subj "/CN=Client Cert for ${REG_FQDN}" -addext 'basicConstraints=critical,CA:TRUE' -addext 'keyUsage=digitalSignature,keyCertSign' -days 1001 -out ${REG_SECRETS_DIR}/client_cert.pem
+	openssl req -x509 -key ${REG_SECRETS_DIR}/client_prk.pem -subj "/CN=${REG_FQDN}" -addext 'basicConstraints=critical,CA:TRUE' -addext 'keyUsage=digitalSignature,keyCertSign' -days 1001 -out ${REG_SECRETS_DIR}/client_cert.pem
 
 make testdeploy: dockerhub
 	ssh zerobin.spilikin.dev docker-compose pull
