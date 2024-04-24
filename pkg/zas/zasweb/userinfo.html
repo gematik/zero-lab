@@ -11,12 +11,34 @@
                     User Information
                 </div>
                 <div class="card-body">
-                    <h5 class="card-title text-primary">.userinfo.Name</h5>
-                    <p class="card-text"> .userinfo.Email</p>
-                    <p class="card-text">.userinfo.Subject</p>
-                    <p class="card-text">.userinfo.Issuer</p>
-                    <a href="/web/login" class="btn btn-outline-danger">Logout</a>
-                </div>
+                    <div class="row mb-3">
+                        <label for="colFormLabel" class="col-sm-2 col-form-label">Issuer</label>
+                        <div class="col-sm-10">
+                            <span class="form-control d-flex justify-content-start">{{.userInfo.Issuer}}</span>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <label for="colFormLabel" class="col-sm-2 col-form-label">Identifier</label>
+                        <div class="col-sm-10">
+                            <span class="form-control d-flex justify-content-start">{{.userInfo.Identifier}}</span>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <label for="colFormLabel" class="col-sm-2 col-form-label">Name</label>
+                        <div class="col-sm-10">
+                            <span class="form-control d-flex justify-content-start">{{.userInfo.Name}}</span>
+                        </div>
+                    </div>
+
+                    <div class="row text-start">
+                        <p class="d-inline-flex gap-1">
+                            <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#accessToken" aria-expanded="false" aria-controls="accessToken">
+                              Details
+                            </button>
+                            <a href="/web/login" class="btn btn-outline-danger">Logout</a>
+                        </p>
+                        <pre class="collapse" id="accessToken">{{.userInfo.AccessTokenJson}}</pre>
+                    </div>
             </div>
         </div>
     </div>

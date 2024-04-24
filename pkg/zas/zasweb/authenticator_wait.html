@@ -29,10 +29,7 @@
 <script type="module">
     import { startDecoupledAuth } from  "/static/authenticator-module.js";
     window.onload = function() {
-        // get op_issuer from the URL query parameter
-        const urlParams = new URLSearchParams(window.location.search);
-        const issuer = urlParams.get('op_issuer');
-        startDecoupledAuth(issuer);
+        startDecoupledAuth("{{ .authURL }}");
     }
 </script>
 {{end}}

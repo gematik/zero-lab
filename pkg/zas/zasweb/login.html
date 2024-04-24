@@ -10,7 +10,7 @@
 <!-- Identity Providers List -->
 <div class="list-group">
     {{ range .openidProviders }}
-    <a href="?op_issuer={{ .Issuer }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+    <a href="/web/login/start?op_issuer={{ .Issuer }}&type={{ .Type }}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
         {{ .Name }}
         <img src="{{ .LogoURI }}" alt="{{ .Name }}" style="max-height: 40px;">        
     </a>

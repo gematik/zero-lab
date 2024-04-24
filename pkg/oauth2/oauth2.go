@@ -19,6 +19,14 @@ func WithAlternateRedirectURI(redirectUri string) ParameterOption {
 	}
 }
 
+func WithOpenidProviderIssuer(issuer string) ParameterOption {
+	return func(params url.Values) {
+		if issuer != "" {
+			params.Set("op_issuer", issuer)
+		}
+	}
+}
+
 type Client interface {
 	AuthCodeURL(state, nonce, verifier string, opts ...ParameterOption) (string, error)
 	Exchange(code, verifier string, opts ...ParameterOption) (*TokenResponse, error)

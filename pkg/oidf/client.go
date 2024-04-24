@@ -43,7 +43,7 @@ func (c *RelyingPartyClient) AuthCodeURL(state, nonce, verifier string, opts ...
 		opt(parData)
 	}
 
-	slog.Debug("Issuing PAR request", "endpoint", c.op.Metadata.OpenidProvider.PushedAuthorizationRequestEndpoint, "params", parData)
+	slog.Info("Issuing PAR request", "endpoint", c.op.Metadata.OpenidProvider.PushedAuthorizationRequestEndpoint, "params", parData)
 
 	parRequest, err := http.NewRequest(
 		http.MethodPost,
@@ -68,6 +68,7 @@ func (c *RelyingPartyClient) AuthCodeURL(state, nonce, verifier string, opts ...
 	}
 
 	var parResp pushedAuthorizationResponse
+
 	err = json.NewDecoder(parResponse.Body).Decode(&parResp)
 	if err != nil {
 		return "", fmt.Errorf("unable to read PAR response body: %w", err)

@@ -174,7 +174,8 @@ func main() {
 	}
 	zas.MountRoutes(root.Group(""))
 
-	zasweb.MountRoutes(root.Group("/web"), zas)
+	webClient := zasweb.New()
+	webClient.MountRoutes(root.Group("/web"))
 
 	regService, err := reg.NewRegistrationService(nonceService, store, clientsCA, regOptions...)
 	if err != nil {

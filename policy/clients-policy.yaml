@@ -40,5 +40,5 @@ clients:
     manufacturer_name: gematik GmbH
     platform: web
     redirect_uris:
-      - http://localhost:8080/web/as-callback
+      - http://127.0.0.1:8080/web/login/callback
       - http://127.0.0.1:8089/as-callback

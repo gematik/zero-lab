@@ -1,59 +1,37 @@
-export async function startDecoupledAuth(iss) {
-    var url = new URL('/web/auth-decoupled', window.location.href).href;
+export async function startDecoupledAuth(authURL) {
+    var url = new URL('/web/login/poll', window.location.href).href;
 
-    var grantResponse = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: new URLSearchParams({
-            'grant_type': 'urn:telematik:params:grant-type:decoupled',
-            'op_issuer': iss,
-        })
-    }).then(response => response.json())
-    .catch(error => alert(error));
-
-    if (grantResponse == undefined) {
-        window.location.href = '/web/error?error=server_error';
-        return;
-    }
-
-    if (grantResponse['error'] != undefined) {
-        // redirect to error page with error and error description, url escaped
-        window.location.href = '/web/error?error=' + encodeURIComponent(grantResponse['error']) + '&error_description=' + encodeURIComponent(grantResponse['error_description']);
-        return;
-    }
-
-    window.open(grantResponse['redirect_uri'], '_self');
+    window.open(authURL, '_self');
 
     // start polling
     var interval = setInterval(async function() {
-        var tokenResponse = await fetch(url, {
+        var pollResponse = await fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
             },
             body: new URLSearchParams({
-                'auth_req_id': grantResponse['auth_req_id']
             })
-        }).then(response => response.json())
+        }).then(async response => { 
+            if (response.status != 200 && response.status != 202) {
+                clearInterval(interval);
+                const body = await response.json();
+                // redirect to error page with error and error description, url escaped
+                window.location.href = '/web/error?error=server_error&error_description='+encodeURIComponent(body['error_description']);
+                return;
+            }
+            return response.json()
+        } )
         .catch(error => { 
             console.log(error);
-            // redirect to error page with error and error description, url escaped
-            window.location.href = '/web/error?error=server_error&error_description='+encodeURIComponent(error);
-            clearInterval(interval);
             return;
         });
-        if (tokenResponse == undefined) {
+        if (pollResponse == null || pollResponse['error'] != null) {
             return;
         }
-        if (tokenResponse['error'] == 'authorization_pending') {
-            return;
-        }
-        console.log(tokenResponse);
+        console.log(pollResponse);
         clearInterval(interval);
-        // redirect to success page with token, url escaped
-        window.location.href = '/web/userinfo';
-    }, grantResponse['interval'] * 1000);
+        window.location.href = '/web/protected/userinfo';
+    }, 2000);
 }
 

@@ -2,11 +2,10 @@ package oauth2
 
 type AuthzClientSession struct {
 	ID            string         `json:"id"`
-	Issuer        string         `json:"issuer"`
+	OPIssuer      string         `json:"op_issuer"`
 	State         string         `json:"state"`
 	Nonce         string         `json:"nonce"`
 	Verifier      string         `json:"verifier"`
-	RedirectURI   string         `json:"redirect_uri"`
 	AuthURL       string         `json:"auth_url"`
 	TokenResponse *TokenResponse `json:"token_response"`
 	AccessToken   string         `json:"access_token"`

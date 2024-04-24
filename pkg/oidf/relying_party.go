@@ -110,13 +110,11 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 	}
 	rp.httpClient = &http.Client{
 		Timeout: 10 * time.Second,
-		Transport: util.AddApiKeyTransport(
-			&http.Transport{
-				TLSClientConfig: &tls.Config{
-					Certificates: []tls.Certificate{tlsCert},
-				},
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				Certificates: []tls.Certificate{tlsCert},
 			},
-		),
+		},
 	}
 
 	metadata, err := templateToMetadata(cfg.MetadataTemplate)
@@ -156,8 +154,8 @@ func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {
 	token, err := jwt.NewBuilder().
 		Issuer(rp.cfg.Url).
 		Subject(rp.cfg.Url).
-		IssuedAt(time.Now()).
-		Expiration(time.Now().Add(time.Hour*24)).
+		IssuedAt(time.Now().Add(-1*time.Hour)). // backdate token to avoid clock skew
+		Expiration(time.Now().Add(time.Hour*23)).
 		Claim("jwks", rp.entityStatement.Jwks.Keys).
 		Claim("authority_hints", []string{rp.cfg.FedMasterURL}).
 		Claim("metadata", rp.entityStatement.Metadata).
@@ -195,14 +193,15 @@ func (rp *RelyingParty) Serve(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/entity-statement+jwt")
 	w.Write(signed)
+	slog.Info("served entity statement", "remote_addr", r.RemoteAddr)
 }
 
 func (rp *RelyingParty) ServeSignedJwks(w http.ResponseWriter, r *http.Request) {
 
 	token, err := jwt.NewBuilder().
 		Issuer(rp.cfg.Url).
-		IssuedAt(time.Now()).
-		Expiration(time.Now().Add(time.Hour*24)).
+		IssuedAt(time.Now().Add(-1*time.Hour)). // backdate token to avoid clock skew
+		Expiration(time.Now().Add(time.Hour*23)).
 		Claim("keys", rp.entityStatement.Metadata.OpenidRelyingParty.Jwks.Keys).
 		Build()
 

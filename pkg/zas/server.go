@@ -11,11 +11,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gematik/zero-lab/pkg/gemidp"
 	"github.com/gematik/zero-lab/pkg/oauth2"
 	"github.com/gematik/zero-lab/pkg/oidc"
 	"github.com/gematik/zero-lab/pkg/oidf"
 	"github.com/gematik/zero-lab/pkg/util"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
@@ -59,7 +61,10 @@ func ErrorLogMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 }
 
 func (s *Server) MountRoutes(group *echo.Group) {
-	group.Use(ErrorLogMiddleware)
+	group.Use(
+		middleware.Logger(),
+		ErrorLogMiddleware,
+	)
 	group.GET("/auth", s.AuthorizationEndpoint)
 	group.GET("/op-callback", s.OPCallbackEndpoint)
 	group.POST("/par", s.PAREndpoint)
@@ -397,6 +402,7 @@ type OpenidProviderInfo struct {
 	Issuer  string `json:"iss"`
 	LogoURI string `json:"logo_uri"`
 	Name    string `json:"name"`
+	Type    string `json:"type"`
 }
 
 func (s *Server) OpenidProvidersEndpoint(c echo.Context) error {
@@ -410,11 +416,19 @@ func (s *Server) OpenidProvidersEndpoint(c echo.Context) error {
 func (s *Server) OpenidProviders() ([]OpenidProviderInfo, error) {
 	providers := []OpenidProviderInfo{}
 	for _, op := range s.IdentityIssuers {
-		providers = append(providers, OpenidProviderInfo{
+		info := OpenidProviderInfo{
 			Issuer:  op.Issuer(),
 			LogoURI: op.LogoURI(),
 			Name:    op.Name(),
-		})
+		}
+		switch op.(type) {
+		case *gemidp.Client:
+			info.Type = "gemidp"
+		default:
+			info.Type = "oidc"
+		}
+		providers = append(providers, info)
+
 	}
 	if s.OIDFRelyingParty != nil {
 		idps, err := s.OIDFRelyingParty.Federation().FetchIdpList()
@@ -430,6 +444,7 @@ func (s *Server) OpenidProviders() ([]OpenidProviderInfo, error) {
 				Issuer:  op.Issuer,
 				LogoURI: op.LogoURI,
 				Name:    op.OrganizationName,
+				Type:    "oidf",
 			})
 		}
 	}
