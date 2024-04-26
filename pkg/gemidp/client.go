@@ -11,7 +11,9 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/gematik/zero-lab/pkg"
 	"github.com/gematik/zero-lab/pkg/oauth2"
+	"github.com/gematik/zero-lab/pkg/util"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
@@ -93,9 +95,10 @@ type ClientConfig struct {
 }
 
 type Client struct {
-	config   ClientConfig
-	baseURL  string
-	Metadata Metadata
+	config     ClientConfig
+	baseURL    string
+	Metadata   Metadata
+	httpClient *http.Client
 }
 
 func NewClientFromConfig(config ClientConfig) (*Client, error) {
@@ -113,15 +116,20 @@ func NewClientFromConfig(config ClientConfig) (*Client, error) {
 
 	baseURL := config.Environment.GetBaseURL()
 
-	metadata, err := fetchMetadata(baseURL)
+	httpClient := &http.Client{
+		Transport: util.AddUserAgentTransport(nil, fmt.Sprintf("zero-gematik-idp-client/%s gematik/%s", pkg.Version, config.ClientID)),
+	}
+
+	metadata, err := fetchMetadata(baseURL, httpClient)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Client{
-		config:   config,
-		baseURL:  baseURL,
-		Metadata: *metadata,
+		config:     config,
+		baseURL:    baseURL,
+		Metadata:   *metadata,
+		httpClient: httpClient,
 	}, nil
 }
 
@@ -233,7 +241,7 @@ func (c *Client) Exchange(code, verifier string, opts ...oauth2.ParameterOption)
 
 	slog.Info("Exchanging code for token", "url", c.Metadata.TokenEndpoint, "params", params)
 
-	resp, err := http.PostForm(c.Metadata.TokenEndpoint, params)
+	resp, err := c.httpClient.PostForm(c.Metadata.TokenEndpoint, params)
 	if err != nil {
 		return nil, fmt.Errorf("unable to exchange code for token: %w", err)
 	}

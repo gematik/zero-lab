@@ -1,0 +1,41 @@
+issuer: https://zerobin.zt.dev.ccs.gematik.solutions
+sign_kid: as_sig_puk
+sign_private_key_path: ./secrets/as/sig_prk.pem
+enc_kid: as_enc_puk
+enc_private_key_path: ./secrets/as/enc_prk.pem
+scopes_supported:
+  - zero:register
+  - zero:manage
+  
+# will read the OIDC config from environment variables 
+# OIDC_<NAME>_ISSUER, OIDC_<NAME>_CLIENT_ID, OIDC_<NAME>_CLIENT_SECRET etc.
+oidc_providers:
+  - google
+
+metadata_template:
+  # issuer: skip, will be set using the issuer field
+  # authorization_endpoint: skip, will be set using the issuer field
+  # token_endpoint: skip, will be set using the issuer field
+  # jwks_uri: skip, will be set using the issuer field
+  # registration_endpoint: skip, will be set using the issuer field
+  # scopes_supported: skip, will be set using the scopes_supported field
+  # response_types_supported: skip, will be set by the server
+  # response_modes_supported: skip, will be set by the server
+  # grant_types_supported: skip, will be set by the server
+  # token_endpoint_auth_methods_supported: skip, will be set by the server
+  # token_endpoint_auth_signing_alg_values_supported: skip, will be set by the server
+  #
+  # service_documentation:
+  # ui_locales_supported:
+  # op_policy_uri:
+  # op_tos_uri:
+  #
+  # revocation_endpoint: skip, will be set by the server
+  # revocation_endpoint_auth_methods_supported: skip, will be set by the server
+  # revocation_endpoint_auth_signing_alg_values_supported: skip, will be set by the server
+  # introspection_endpoint: skip, will be set by the server
+  # introspection_endpoint_auth_methods_supported: skip, will be set by the server
+  # introspection_endpoint_auth_signing_alg_values_supported: skip, will be set by the server
+  # code_challenge_methods_supported: skip, will be set by the server
+
+  

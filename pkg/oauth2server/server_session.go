@@ -1,4 +1,4 @@
-package zas
+package oauth2server
 
 import "github.com/gematik/zero-lab/pkg/oidc"
 

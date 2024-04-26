@@ -1,4 +1,4 @@
-package zasweb
+package webclient
 
 import (
 	"embed"
@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/gematik/zero-lab/pkg/oauth2"
-	"github.com/gematik/zero-lab/pkg/zas"
+	"github.com/gematik/zero-lab/pkg/oauth2server"
 	"github.com/gorilla/sessions"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
@@ -25,32 +25,30 @@ var (
 	templatesFS embed.FS
 )
 
-func New() *Client {
+type Config struct {
+	Issuer string
+}
+
+func NewFromServerMetadata(serverMetadata oauth2server.Metadata) (*Client, error) {
+
 	return &Client{
-		ClientID:    "zero-web",
-		RedirectURI: "http://127.0.0.1:8080/web/login/callback",
-		Scopes:      []string{"zero-web"},
-		Metadata: Metadata{
-			AuthorizationEndpoint: "http://127.0.0.1:8080/auth",
-			TokenEndpoint:         "http://127.0.0.1:8080/token",
-		},
+		ClientID:                  "zero-web",
+		RedirectURI:               fmt.Sprint(serverMetadata.Issuer, "/web/login/callback"),
+		Scopes:                    []string{"zero:register"},
+		ServerMetadata:            serverMetadata,
 		authzSessionStore:         oauth2.NewMockAuthzClientSessionStore(),
 		templateError:             template.Must(template.ParseFS(templatesFS, "error.html", "layout.html")),
 		templateAuthenticatorWait: template.Must(template.ParseFS(templatesFS, "authenticator_wait.html", "layout.html")),
 		templateUserInfo:          template.Must(template.ParseFS(templatesFS, "userinfo.html", "layout.html")),
 		templateLogin:             template.Must(template.ParseFS(templatesFS, "login.html", "layout.html")),
-	}
+	}, nil
 }
 
-type Metadata struct {
-	AuthorizationEndpoint string `json:"authorization_endpoint"`
-	TokenEndpoint         string `json:"token_endpoint"`
-}
 type Client struct {
 	ClientID                  string
 	RedirectURI               string
 	Scopes                    []string
-	Metadata                  Metadata
+	ServerMetadata            oauth2server.Metadata
 	authzSessionStore         oauth2.AuthzClientSessionStore
 	templateError             *template.Template
 	templateAuthenticatorWait *template.Template
@@ -60,7 +58,7 @@ type Client struct {
 
 func (cl *Client) MountRoutes(g *echo.Group) {
 	g.Use(
-		zas.ErrorLogMiddleware,
+		oauth2server.ErrorLogMiddleware,
 		// TODO: make secret configurable
 		session.Middleware(sessions.NewCookieStore([]byte("secret"))),
 	)
@@ -90,7 +88,7 @@ func (cl *Client) AuthCodeURL(state, nonce, verifier string, opts ...oauth2.Para
 		opt(params)
 	}
 
-	url := fmt.Sprintf("%s?%s", cl.Metadata.AuthorizationEndpoint, params.Encode())
+	url := fmt.Sprintf("%s?%s", cl.ServerMetadata.AuthorizationEndpoint, params.Encode())
 
 	return url, nil
 }
@@ -107,9 +105,9 @@ func (cl *Client) Exchange(code, verifier string, opts ...oauth2.ParameterOption
 		opt(params)
 	}
 
-	slog.Debug("Exchanging code for token", "url", cl.Metadata.TokenEndpoint, "params", params)
+	slog.Debug("Exchanging code for token", "url", cl.ServerMetadata.TokenEndpoint, "params", params)
 
-	resp, err := http.PostForm(cl.Metadata.TokenEndpoint, params)
+	resp, err := http.PostForm(cl.ServerMetadata.TokenEndpoint, params)
 	if err != nil {
 		return nil, fmt.Errorf("unable to exchange code for token: %w", err)
 	}
@@ -153,7 +151,7 @@ func (cl *Client) showError(c echo.Context) error {
 	})
 }
 func (cl *Client) login(c echo.Context) error {
-	subUrl := fmt.Sprintf("%s://%s/openid-providers", c.Scheme(), c.Request().Host)
+	subUrl := fmt.Sprint(cl.ServerMetadata.Issuer, "/openid-providers")
 	resp, err := http.Get(subUrl)
 	if err != nil {
 		return redirectWithError(c, &oauth2.Error{
@@ -163,7 +161,7 @@ func (cl *Client) login(c echo.Context) error {
 	}
 	defer resp.Body.Close()
 
-	var openidProviders []zas.OpenidProviderInfo
+	var openidProviders []oauth2server.OpenidProviderInfo
 	err = json.NewDecoder(resp.Body).Decode(&openidProviders)
 	if err != nil {
 		return redirectWithError(c, &oauth2.Error{
@@ -246,13 +244,6 @@ func (cl *Client) loginCallback(c echo.Context) error {
 			Description: c.QueryParam("error_description"),
 		})
 	}
-	httpSession, err := session.Get("session", c)
-	if err != nil {
-		return redirectWithError(c, &oauth2.Error{
-			Code:        "server_error",
-			Description: "failed to get session",
-		})
-	}
 
 	state := c.QueryParam("state")
 	if state == "" {
@@ -302,6 +293,16 @@ func (cl *Client) loginCallback(c echo.Context) error {
 			Description: "failed to parse claims",
 		})
 	}
+
+	httpSession, err := session.Get("session", c)
+	if err != nil {
+		return redirectWithError(c, &oauth2.Error{
+			Code:        "server_error",
+			Description: "failed to get session",
+		})
+	}
+
+	slog.Info("Got me session", "session", fmt.Sprintf("%+v", httpSession))
 
 	if !httpSession.IsNew {
 		httpSession.Values["claims"] = string(claimBytes)

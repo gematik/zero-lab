@@ -1,4 +1,4 @@
-package zas
+package oauth2server
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/gematik/zero-lab/pkg/gemidp"
@@ -37,10 +36,27 @@ func NewServer(opts ...Option) (*Server, error) {
 		}
 	}
 
+	s.Metadata.Issuer = "http://127.0.0.1:8080"
+	s.Metadata.ScopesSupported = []string{}
+
+	// set url explicitly using the issuer
+	s.Metadata.AuthorizationEndpoint = fmt.Sprint(s.Metadata.Issuer, "/auth")
+	s.Metadata.TokenEndpoint = fmt.Sprint(s.Metadata.Issuer, "/token")
+	s.Metadata.JwksURI = fmt.Sprint(s.Metadata.Issuer, "/jwks")
+
+	// set supported parameters explicitly
+	s.Metadata.ResponseTypesSupported = []string{"code"}
+	s.Metadata.ResponseModesSupported = []string{"query"}
+	s.Metadata.GrantTypesSupported = []string{"authorization_code"}
+	s.Metadata.TokenEndpointAuthMethodsSupported = []string{"none"}
+	s.Metadata.TokenEndpointAuthSigningAlgValuesSupported = []string{"ES256"}
+	s.Metadata.CodeChallengeMethodsSupported = []string{"S256"}
+
 	return s, nil
 }
 
 type Server struct {
+	Metadata         Metadata
 	IdentityIssuers  []oidc.Client
 	OIDFRelyingParty *oidf.RelyingParty
 	clientsPolicy    *ClientsPolicy
@@ -65,8 +81,11 @@ func (s *Server) MountRoutes(group *echo.Group) {
 		middleware.Logger(),
 		ErrorLogMiddleware,
 	)
+
+	group.GET("/.well-known/oauth-authorization-server", s.MetadataEndpoint)
 	group.GET("/auth", s.AuthorizationEndpoint)
 	group.GET("/op-callback", s.OPCallbackEndpoint)
+	group.GET("/gemidp-callback", s.OPCallbackEndpoint)
 	group.POST("/par", s.PAREndpoint)
 	group.POST("/token", s.TokenEndpoint)
 	group.GET("/jwks", s.JWKS)
@@ -87,6 +106,10 @@ func redirectWithError(c echo.Context, redirectUri string, state string, err oau
 	params.Add("error_description", err.Description)
 
 	return c.Redirect(http.StatusFound, redirectUri+"?"+params.Encode())
+}
+
+func (s *Server) MetadataEndpoint(c echo.Context) error {
+	return c.JSON(http.StatusOK, s.Metadata)
 }
 
 func (s *Server) AuthorizationEndpoint(c echo.Context) error {
@@ -189,6 +212,7 @@ func (s *Server) PAREndpoint(c echo.Context) error {
 	}
 }
 
+// OpenidProvider returns an OpenID Connect client for the given issuer
 func (s *Server) OpenidProvider(issuer string) (oidc.Client, error) {
 	for _, op := range s.IdentityIssuers {
 		if op.Issuer() == issuer {
@@ -202,6 +226,7 @@ func (s *Server) OpenidProvider(issuer string) (oidc.Client, error) {
 	return nil, fmt.Errorf("unknown issuer: %s", issuer)
 }
 
+// OPCallbackEndpoint handles the callback from the OpenID Provider
 func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 	// retrieve state from query
 	state := c.QueryParam("state")
@@ -301,6 +326,7 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 	return c.JSON(http.StatusOK, idToken.PrivateClaims())
 }
 
+// TokenEndpoint handles the token request
 func (s *Server) TokenEndpoint(c echo.Context) error {
 	var grantType string
 	var code string
@@ -377,10 +403,12 @@ func (s *Server) TokenEndpoint(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
+// issueAccessToken issues an access token for the given authorization session
+// upon successful authentication with the OpenID Provider and authorization
 func (s *Server) issueAccessToken(authzSession *AuthzServerSession) (string, error) {
 	accessJwt := jwt.New()
 	accessJwt.Set("sub", authzSession.ClientID)
-	accessJwt.Set("aud", "https://as.example.com") // TODO: use actual audience
+	accessJwt.Set("aud", authzSession.ClientID)
 	accessJwt.Set("exp", time.Now().Add(24*time.Hour).Unix())
 	accessJwt.Set("jti", ksuid.New().String())
 	accessJwt.Set("scope", authzSession.Scope)
@@ -394,10 +422,12 @@ func (s *Server) issueAccessToken(authzSession *AuthzServerSession) (string, err
 	return string(accessTokenBytes), nil
 }
 
+// JWKS serves the JSON Web Key Set for the server
 func (s *Server) JWKS(c echo.Context) error {
 	return c.JSON(http.StatusOK, s.jwks)
 }
 
+// OpenidProviderInfo represents the information of an OpenID Provider
 type OpenidProviderInfo struct {
 	Issuer  string `json:"iss"`
 	LogoURI string `json:"logo_uri"`
@@ -405,6 +435,7 @@ type OpenidProviderInfo struct {
 	Type    string `json:"type"`
 }
 
+// OpenidProvidersEndpoint serves the list of OpenID Providers supported by the server
 func (s *Server) OpenidProvidersEndpoint(c echo.Context) error {
 	providers, err := s.OpenidProviders()
 	if err != nil {
@@ -413,6 +444,7 @@ func (s *Server) OpenidProvidersEndpoint(c echo.Context) error {
 	return c.JSON(http.StatusOK, providers)
 }
 
+// OpenidProviders returns the list of OpenID Providers supported by the server
 func (s *Server) OpenidProviders() ([]OpenidProviderInfo, error) {
 	providers := []OpenidProviderInfo{}
 	for _, op := range s.IdentityIssuers {
@@ -436,10 +468,6 @@ func (s *Server) OpenidProviders() ([]OpenidProviderInfo, error) {
 			return nil, fmt.Errorf("fetching idp list from federation: %w", err)
 		}
 		for _, op := range idps {
-			// todo: remove this later
-			if !strings.Contains(op.Issuer, ".tk.ru2") {
-				continue
-			}
 			providers = append(providers, OpenidProviderInfo{
 				Issuer:  op.Issuer,
 				LogoURI: op.LogoURI,

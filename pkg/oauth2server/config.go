@@ -1,5 +1,4 @@
-// configuration of a Zero Trust Authorization Server (ZAS)
-package zas
+package oauth2server
 
 import (
 	"github.com/gematik/zero-lab/pkg/oidc"
@@ -8,6 +7,7 @@ import (
 )
 
 type Config struct {
+	Issuer                 string `json:"issuer"`
 	OIDCConfigs            []*oidc.Config
 	OIDFRelyingPartyConfig *oidf.RelyingPartyConfig
 	SigningKey             jwk.Key

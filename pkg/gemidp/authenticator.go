@@ -108,7 +108,7 @@ type AuthenticatorConfig struct {
 // NewAuthenticator creates a new Authenticator
 func NewAuthenticator(config AuthenticatorConfig) (*Authenticator, error) {
 	baseURL := config.Environment.GetBaseURL()
-	metadata, err := fetchMetadata(baseURL)
+	metadata, err := fetchMetadata(baseURL, http.DefaultClient)
 	if err != nil {
 		return nil, err
 	}

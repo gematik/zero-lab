@@ -1,0 +1,67 @@
+{{template "layout" .}}
+
+{{define "pageTitle"}}Select Identity Provider{{end}}
+
+{{define "content"}}
+<div class="container p-5">
+<!-- Header -->
+<h1 class="mb-4">Select Identity Provider</h1>
+
+<div class="input-group mb-3">
+    <span class="input-group-text"><i class="bi bi-search"></i></span>
+    <input type="text" class="form-control" id="search" placeholder="Type to search" onkeyup="search(this)">
+    <button type="button" class="btn" style="margin-left: -40px; z-index: 100;" onclick="clearSearch()">
+        <i class="bi bi-x-lg"></i>
+    </button>  
+</div>
+
+<!-- Identity Providers List -->
+<div class="list-group list-group-flush">
+    {{ range .openidProviders }}
+    <a href="/web/login/start?op_issuer={{ .Issuer }}&type={{ .Type }}" class="search-item list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+        <div>
+            <div>{{ .Name }}</div>
+            <small class="text-muted">{{.Issuer}}</small>
+        </div>
+        <img src="{{ .LogoURI }}" alt="" style="max-height: 40px; max-width: 80px;">        
+    </a>
+    {{ end }}
+    <div class="d-none list-group-item align-items-center text-danger" id="notfound">
+        No matching results found.
+    </div>
+</div>
+
+</div>
+
+<script language="javascript">
+    function search(input) {
+        console.log("search", input.value);
+        const items = document.getElementsByClassName("search-item");
+        var found = false;
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            var textContent = item.textContent || item.innerText;
+            textContent = textContent.trim();
+            if (textContent.toUpperCase().indexOf(input.value.toUpperCase()) > -1) {
+                // remove class .d-none to show
+                item.classList.remove("d-none");
+                found = true;
+            } else {
+                // add class .d-none to hide
+                item.classList.add("d-none");
+            }
+        }
+        if (!found) {
+            document.getElementById("notfound").classList.remove("d-none");
+        } else {
+            document.getElementById("notfound").classList.add("d-none");
+        }
+    }
+    function clearSearch() {
+        const input = document.getElementById("search");
+        input.value = "";
+        search(input);
+    }
+</script>
+
+{{end}}

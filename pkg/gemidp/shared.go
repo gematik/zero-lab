@@ -14,8 +14,8 @@ import (
 	"github.com/spilikin/go-brainpool"
 )
 
-func fetchMetadata(baseURL string) (*Metadata, error) {
-	resp, err := http.Get(baseURL + "/.well-known/openid-configuration")
+func fetchMetadata(baseURL string, httpClient *http.Client) (*Metadata, error) {
+	resp, err := httpClient.Get(baseURL + "/.well-known/openid-configuration")
 	if err != nil {
 		return nil, fmt.Errorf("fetching discovery document: %w", err)
 	}
