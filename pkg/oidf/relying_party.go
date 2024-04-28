@@ -90,24 +90,24 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 	}
 
 	var sigPublicKey jwk.Key
-	rp.sigPrivateKey, sigPublicKey, err = loadKeys(filepath.Join(cfg.baseDir, cfg.SignPrivateKeyPath), cfg.SignKid, jwk.ForSignature, "")
+	rp.sigPrivateKey, sigPublicKey, err = loadKeys(rp.absPath(cfg.SignPrivateKeyPath), cfg.SignKid, jwk.ForSignature, "")
 	if err != nil {
 		return nil, err
 	}
 
 	var encPublicKey jwk.Key
-	rp.encPrivateKey, encPublicKey, err = loadKeys(filepath.Join(cfg.baseDir, cfg.EncPrivateKeyPath), cfg.EncKid, jwk.ForEncryption, "")
+	rp.encPrivateKey, encPublicKey, err = loadKeys(rp.absPath(cfg.EncPrivateKeyPath), cfg.EncKid, jwk.ForEncryption, "")
 	if err != nil {
 		return nil, err
 	}
 
 	var clientPublicKey jwk.Key
-	rp.clientPrivateKey, clientPublicKey, err = loadKeys(filepath.Join(cfg.baseDir, cfg.ClientPrivateKeyPath), cfg.ClientKid, jwk.ForSignature, filepath.Join(cfg.baseDir, cfg.ClientCertPath))
+	rp.clientPrivateKey, clientPublicKey, err = loadKeys(rp.absPath(cfg.ClientPrivateKeyPath), cfg.ClientKid, jwk.ForSignature, rp.absPath(cfg.ClientCertPath))
 	if err != nil {
 		return nil, err
 	}
 
-	tlsCert, err := tls.LoadX509KeyPair(filepath.Join(cfg.baseDir, cfg.ClientCertPath), filepath.Join(cfg.baseDir, cfg.ClientPrivateKeyPath))
+	tlsCert, err := tls.LoadX509KeyPair(rp.absPath(cfg.ClientCertPath), rp.absPath(cfg.ClientPrivateKeyPath))
 	if err != nil {
 		return nil, fmt.Errorf("failed to load tls cert: %w", err)
 	}
@@ -150,6 +150,13 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 	}
 
 	return &rp, nil
+}
+
+func (rp *RelyingParty) absPath(path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(rp.cfg.baseDir, path)
 }
 
 func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {

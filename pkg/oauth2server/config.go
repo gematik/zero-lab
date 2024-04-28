@@ -56,6 +56,13 @@ func NewServerFromConfigFile(path string) (*Server, error) {
 	return New(cfg)
 }
 
+func absPath(baseDir, path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(baseDir, path)
+}
+
 func New(cfg *Config) (*Server, error) {
 	s := &Server{
 		Metadata:        cfg.MetadataTemplate,
@@ -88,7 +95,7 @@ func New(cfg *Config) (*Server, error) {
 	s.Metadata.CodeChallengeMethodsSupported = []string{"S256"}
 
 	// load signing key
-	sigPrK, err := loadJwkFromPem(cfg.SignPrivateKeyPath)
+	sigPrK, err := loadJwkFromPem(absPath(cfg.baseDir, cfg.SignPrivateKeyPath))
 	if err != nil {
 		slog.Warn("failed to load signing key, will create random", "path", cfg.SignPrivateKeyPath)
 		sigPrK, err = util.RandomJWK()
@@ -107,7 +114,7 @@ func New(cfg *Config) (*Server, error) {
 	s.jwks.AddKey(sigPuK)
 
 	// load encryption key
-	encPuK, err := loadJwkFromPem(cfg.EncPublicKeyPath)
+	encPuK, err := loadJwkFromPem(absPath(cfg.baseDir, cfg.EncPublicKeyPath))
 	if err != nil {
 		slog.Warn("failed to load encryption key, will create random", "path", cfg.EncPublicKeyPath)
 		encPrK, err := util.RandomJWK()
@@ -122,7 +129,7 @@ func New(cfg *Config) (*Server, error) {
 	s.encPuK = encPuK
 
 	// load clients policy
-	filename := filepath.Join(cfg.baseDir, cfg.ClientsPolicyPath)
+	filename := absPath(cfg.baseDir, cfg.ClientsPolicyPath)
 	s.clientsPolicy, err = LoadClientsPolicy(filename)
 	if err != nil {
 		return nil, fmt.Errorf("load clients policy: %w", err)
@@ -134,7 +141,7 @@ func New(cfg *Config) (*Server, error) {
 
 	// if relying party config is provided, load it
 	if cfg.OidfRelyingPartyPath != "" {
-		filename = filepath.Join(cfg.baseDir, cfg.OidfRelyingPartyPath)
+		filename = absPath(cfg.baseDir, cfg.OidfRelyingPartyPath)
 		s.oidfRelyingParty, err = oidf.NewRelyingPartyFromConfigFile(filename)
 		if err != nil {
 			return nil, fmt.Errorf("load relying party config: %w", err)
