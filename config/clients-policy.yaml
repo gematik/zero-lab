@@ -40,5 +40,5 @@ clients:
     manufacturer_name: gematik GmbH
     platform: web
     redirect_uris:
+      - https://zerobin.zt.dev.ccs.gematik.solutions/web/login/callback
       - http://127.0.0.1:8080/web/login/callback
-      - http://127.0.0.1:8089/as-callback

@@ -99,58 +99,7 @@ func main() {
 	root.GET("/ca/ca-chain.pem", getUnattestedClientsCAChain)
 	root.POST("/ca/issue-cert", issueCert, bodyDump)
 
-	/*
-		clientsPolicy, err := oauth2server.LoadClientsPolicy(util.GetEnv("CLIENTS_POLICY_PATH", "policy/clients-policy.yaml"))
-		if err != nil {
-			log.Fatal(err)
-		}
-
-			zasOptions := []oauth2server.Option{
-				oauth2server.WithMockSessionStore(),
-				oauth2server.WithClientsPolicy(clientsPolicy),
-				oauth2server.WithSigningKeyFromJWK(os.Getenv("SIGNING_KEY_PATH"), true),
-			}
-
-			// configure gematik IDP-Dienst client if configured
-			if os.Getenv("GEMIDP_CLIENT_ID") != "" {
-				config := gemidp.ClientConfig{
-					Environment:       gemidp.NewEnvironment(os.Getenv("GEMIDP_ENV")),
-					ClientID:          os.Getenv("GEMIDP_CLIENT_ID"),
-					Scopes:            strings.Split(os.Getenv("GEMIDP_SCOPE"), " "),
-					RedirectURI:       os.Getenv("GEMIDP_REDIRECT_URI"),
-					AuthenticatorMode: true,
-				}
-				gemidpClient, err := gemidp.NewClientFromConfig(config)
-				if err != nil {
-					log.Fatal(fmt.Errorf("failed to create gematik IDP-Dienst client: %w", err))
-				}
-				zasOptions = append(zasOptions, oauth2server.WithOpenidProvider(gemidpClient))
-			}
-
-			if os.Getenv("OIDC_CLIENT_ID") != "" {
-				config := &oidc.Config{
-					Issuer:       os.Getenv("OIDC_ISSUER"),
-					ClientID:     os.Getenv("OIDC_CLIENT_ID"),
-					ClientSecret: os.Getenv("OIDC_CLIENT_SECRET"),
-					RedirectURI:  os.Getenv("OIDC_CALLBACK_URL"),
-					Scopes:       strings.Split(os.Getenv("OIDC_SCOPE"), " "),
-					Name:         os.Getenv("OIDC_NAME"),
-					LogoURI:      os.Getenv("OIDC_LOGO_URI"),
-				}
-				oidcClient, err := oidc.NewClient(config)
-				if err != nil {
-					log.Fatal(err)
-				}
-				zasOptions = append(zasOptions, oauth2server.WithOpenidProvider(oidcClient))
-			}
-
-			zasOptions = append(zasOptions, oauth2server.WithOIDFRelyingPartyFromConfigFile(
-				util.GetEnv("RELYING_PARTY_CONFIG_PATH", "relying-party-reg.yaml"),
-				oauth2server.UseMockIfNotAvailable,
-			))
-	*/
-
-	as, err := oauth2server.NewServerFromConfigFile(util.GetEnv("AS_CONFIG_PATH", "config/oauth-authorization-server.yaml"))
+	as, err := oauth2server.NewServerFromConfigFile(util.GetEnv("AUTHZ_SERVER_CONFIG_PATH", "config/authz-server.yaml"))
 	if err != nil {
 		log.Fatal(err)
 	}
