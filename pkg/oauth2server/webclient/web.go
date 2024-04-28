@@ -42,7 +42,8 @@ func NewFromServerMetadata(serverMetadata oauth2server.Metadata) (*Client, error
 		templateUserInfo:          template.Must(template.ParseFS(templatesFS, "userinfo.html", "layout.html")),
 		templateLogin:             template.Must(template.ParseFS(templatesFS, "login.html", "layout.html")),
 		templateChoose:            template.Must(template.ParseFS(templatesFS, "choose-openid-provider.html", "layout.html")),
-		templateDecoupled:         template.Must(template.ParseFS(templatesFS, "decoupled.html", "layout.html")),
+		templateDecoupledWait:     template.Must(template.ParseFS(templatesFS, "decoupled-wait.html", "layout.html")),
+		templateDecoupledSuccess:  template.Must(template.ParseFS(templatesFS, "decoupled-success.html", "layout.html")),
 	}, nil
 }
 
@@ -57,7 +58,8 @@ type Client struct {
 	templateUserInfo          *template.Template
 	templateLogin             *template.Template
 	templateChoose            *template.Template
-	templateDecoupled         *template.Template
+	templateDecoupledWait     *template.Template
+	templateDecoupledSuccess  *template.Template
 	cachedOpenidProviders     []oauth2server.OpenidProviderInfo
 }
 
@@ -343,42 +345,11 @@ func (cl *Client) loginDecoupled(c echo.Context) error {
 		qrCodeURL = redirectUrl.String()
 	}
 
-	return cl.templateDecoupled.Execute(c.Response().Writer, map[string]interface{}{
+	return cl.templateDecoupledWait.Execute(c.Response().Writer, map[string]interface{}{
 		"op":        op,
 		"qrCodeURL": qrCodeURL,
 	})
 }
-
-/*
-	qrCodeUri := ""
-
-	if op.Type == "oidf" {
-		// http client without redirect
-		httpClient := http.Client{
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		}
-
-		resp, err := httpClient.Get(authzSession.AuthURL)
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, &oauth2.Error{
-				Code:        "server_error",
-				Description: "failed to fetch auth URL",
-			})
-		}
-
-		redirectUrl, err := resp.Location()
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, &oauth2.Error{
-				Code:        "server_error",
-				Description: "failed to get location header",
-			})
-		}
-
-		qrCodeUri = redirectUrl.String()
-	}
-*/
 
 func (cl *Client) loginCallback(c echo.Context) error {
 	if c.QueryParam("error") != "" {
@@ -451,8 +422,8 @@ func (cl *Client) loginCallback(c echo.Context) error {
 		httpSession.Values["claims"] = string(claimBytes)
 		httpSession.Save(c.Request(), c.Response())
 	} else {
-		// no session found, respond with OK
-		return c.String(http.StatusOK, "OK")
+		// no session found, seems to be decoupled login
+		return cl.templateDecoupledSuccess.Execute(c.Response().Writer, map[string]interface{}{})
 	}
 
 	return c.Redirect(http.StatusFound, "/web/protected/userinfo")

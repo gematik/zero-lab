@@ -47,95 +47,6 @@
 <script type="text/javascript" src="/static/ext/qr-code-styling.js"></script>
 
 <script type="module">
-  function showQRCode(link) {
-    const qrCode = new QRCodeStyling({
-        "width":350,
-        "height":350,
-        "data":link,
-        "margin":0,
-        "qrOptions":{
-            "typeNumber":"0",
-            "mode":"Byte",
-            "errorCorrectionLevel":"Q"
-        },
-        "imageOptions":{
-            "hideBackgroundDots":true,
-            "imageSize":0.4,
-            "margin":0
-        },
-        "dotsOptions":{
-            "type":"rounded",
-            "color":"#182761"
-        },
-        "backgroundOptions":{
-            "color":"#e4eaf1"
-        },
-        "image":"/static/images/GID_App_light_mode.svg",
-        "dotsOptionsHelper":{
-            "colorType":{
-                "single":true,
-                "gradient":false
-            },
-            "gradient":{
-                "linear":true,
-                "radial":false,
-                "color1":"#6a1a4c",
-                "color2":"#6a1a4c",
-                "rotation":"0"
-            }
-        },
-        "cornersSquareOptions":{
-            "type":"extra-rounded",
-            "color":"#a0afc9"
-        },
-        "cornersSquareOptionsHelper":{
-            "colorType":{
-                "single":true,
-                "gradient":false
-            },
-            "gradient":{
-                "linear":true,
-                "radial":false,
-                "color1":"#000000",
-                "color2":"#000000",
-                "rotation":"0"
-            }
-        },
-        "cornersDotOptions":{
-            "type":"dot",
-            "color":"#182761"
-        },
-        "cornersDotOptionsHelper":{
-            "colorType":{
-                "single":true,
-                "gradient":false
-            },
-            "gradient":{
-                "linear":true,
-                "radial":false,
-                "color1":"#000000",
-                "color2":"#000000",
-                "rotation":"0"
-            }
-        },
-        "backgroundOptionsHelper":{
-            "colorType":{
-                "single":true,
-                "gradient":false
-            },
-            "gradient":{
-                "linear":true,
-                "radial":false,
-                "color1":"#e4eaf1",
-                "color2":"#e4eaf1",
-                "rotation":"0"
-            }
-        }
-    });
-
-    qrCode.append(document.getElementById('code'));
-  }
-
   window.addEventListener("load", function(){
     var issuer = null
 
@@ -164,15 +75,6 @@
         document.getElementById("login-card-button").addEventListener("click", function(){
           location.href = data.auth_url;
         });
-
-        if (data.op.type === "oidf") {
-          var els = document.getElementsByClassName("oidf-extra")
-          for (let i = 0; i < els.length; i++) {
-            els[i].classList.remove("d-none");
-          }
-
-          showQRCode(data.qr_code_uri);
-        }
 
         document.getElementById("waiting").classList.add("d-none");
       });

@@ -218,6 +218,11 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 				Description: "missing openid session",
 			})
 		}
+	} else {
+		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+			Code:        "invalid_request",
+			Description: fmt.Errorf("unable to get session: %w", err).Error(),
+		})
 	}
 
 	if c.QueryParam("error") != "" {
@@ -236,6 +241,8 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 			Description: "missing code",
 		})
 	}
+
+	slog.Info("OP callback", "s", s, "authnSessiom", authnSession, "authzSession", authzSession)
 
 	identityIssuer, err := s.OpenidProvider(authnSession.Issuer)
 	if err != nil {
