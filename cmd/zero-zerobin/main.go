@@ -4,25 +4,18 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"fmt"
 	"html/template"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
-	"strings"
 
 	"github.com/gematik/zero-lab/pkg"
 	"github.com/gematik/zero-lab/pkg/attestation/tpmattest"
 	"github.com/gematik/zero-lab/pkg/ca"
-	"github.com/gematik/zero-lab/pkg/gemidp"
-	"github.com/gematik/zero-lab/pkg/nonce"
 	"github.com/gematik/zero-lab/pkg/oauth2server"
 	"github.com/gematik/zero-lab/pkg/oauth2server/webclient"
-	"github.com/gematik/zero-lab/pkg/oidc"
 	"github.com/gematik/zero-lab/pkg/prettylog"
-	"github.com/gematik/zero-lab/pkg/reg"
-	regapi "github.com/gematik/zero-lab/pkg/reg/api"
 	"github.com/gematik/zero-lab/pkg/util"
 	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
@@ -106,90 +99,69 @@ func main() {
 	root.GET("/ca/ca-chain.pem", getUnattestedClientsCAChain)
 	root.POST("/ca/issue-cert", issueCert, bodyDump)
 
-	clientsPolicy, err := oauth2server.LoadClientsPolicy(util.GetEnv("CLIENTS_POLICY_PATH", "policy/clients-policy.yaml"))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	zasOptions := []oauth2server.Option{
-		oauth2server.WithMockSessionStore(),
-		oauth2server.WithClientsPolicy(clientsPolicy),
-		oauth2server.WithSigningKeyFromJWK(os.Getenv("SIGNING_KEY_PATH"), true),
-	}
-
-	nonceService, err := nonce.NewHashicorpNonceService()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	store := reg.NewMockRegistrationStore()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	regOptions := []reg.RegistrationServiceOption{}
-
-	// configure gematik IDP-Dienst client if configured
-	if os.Getenv("GEMIDP_CLIENT_ID") != "" {
-		config := gemidp.ClientConfig{
-			Environment:       gemidp.NewEnvironment(os.Getenv("GEMIDP_ENV")),
-			ClientID:          os.Getenv("GEMIDP_CLIENT_ID"),
-			Scopes:            strings.Split(os.Getenv("GEMIDP_SCOPE"), " "),
-			RedirectURI:       os.Getenv("GEMIDP_REDIRECT_URI"),
-			AuthenticatorMode: true,
-		}
-		gemidpClient, err := gemidp.NewClientFromConfig(config)
-		if err != nil {
-			log.Fatal(fmt.Errorf("failed to create gematik IDP-Dienst client: %w", err))
-		}
-		zasOptions = append(zasOptions, oauth2server.WithOpenidProvider(gemidpClient))
-	}
-
-	if os.Getenv("OIDC_CLIENT_ID") != "" {
-		config := &oidc.Config{
-			Issuer:       os.Getenv("OIDC_ISSUER"),
-			ClientID:     os.Getenv("OIDC_CLIENT_ID"),
-			ClientSecret: os.Getenv("OIDC_CLIENT_SECRET"),
-			RedirectURI:  os.Getenv("OIDC_CALLBACK_URL"),
-			Scopes:       strings.Split(os.Getenv("OIDC_SCOPE"), " "),
-			Name:         os.Getenv("OIDC_NAME"),
-			LogoURI:      os.Getenv("OIDC_LOGO_URI"),
-		}
-		oidcClient, err := oidc.NewClient(config)
+	/*
+		clientsPolicy, err := oauth2server.LoadClientsPolicy(util.GetEnv("CLIENTS_POLICY_PATH", "policy/clients-policy.yaml"))
 		if err != nil {
 			log.Fatal(err)
 		}
-		regOptions = append(regOptions, reg.WithOIDCClient(oidcClient))
-		zasOptions = append(zasOptions, oauth2server.WithOpenidProvider(oidcClient))
-	}
 
-	zasOptions = append(zasOptions, oauth2server.WithOIDFRelyingPartyFromConfigFile(
-		util.GetEnv("RELYING_PARTY_CONFIG_PATH", "relying-party-reg.yaml"),
-		oauth2server.UseMockIfNotAvailable,
-	))
+			zasOptions := []oauth2server.Option{
+				oauth2server.WithMockSessionStore(),
+				oauth2server.WithClientsPolicy(clientsPolicy),
+				oauth2server.WithSigningKeyFromJWK(os.Getenv("SIGNING_KEY_PATH"), true),
+			}
 
-	zas, err := oauth2server.NewServer(zasOptions...)
+			// configure gematik IDP-Dienst client if configured
+			if os.Getenv("GEMIDP_CLIENT_ID") != "" {
+				config := gemidp.ClientConfig{
+					Environment:       gemidp.NewEnvironment(os.Getenv("GEMIDP_ENV")),
+					ClientID:          os.Getenv("GEMIDP_CLIENT_ID"),
+					Scopes:            strings.Split(os.Getenv("GEMIDP_SCOPE"), " "),
+					RedirectURI:       os.Getenv("GEMIDP_REDIRECT_URI"),
+					AuthenticatorMode: true,
+				}
+				gemidpClient, err := gemidp.NewClientFromConfig(config)
+				if err != nil {
+					log.Fatal(fmt.Errorf("failed to create gematik IDP-Dienst client: %w", err))
+				}
+				zasOptions = append(zasOptions, oauth2server.WithOpenidProvider(gemidpClient))
+			}
+
+			if os.Getenv("OIDC_CLIENT_ID") != "" {
+				config := &oidc.Config{
+					Issuer:       os.Getenv("OIDC_ISSUER"),
+					ClientID:     os.Getenv("OIDC_CLIENT_ID"),
+					ClientSecret: os.Getenv("OIDC_CLIENT_SECRET"),
+					RedirectURI:  os.Getenv("OIDC_CALLBACK_URL"),
+					Scopes:       strings.Split(os.Getenv("OIDC_SCOPE"), " "),
+					Name:         os.Getenv("OIDC_NAME"),
+					LogoURI:      os.Getenv("OIDC_LOGO_URI"),
+				}
+				oidcClient, err := oidc.NewClient(config)
+				if err != nil {
+					log.Fatal(err)
+				}
+				zasOptions = append(zasOptions, oauth2server.WithOpenidProvider(oidcClient))
+			}
+
+			zasOptions = append(zasOptions, oauth2server.WithOIDFRelyingPartyFromConfigFile(
+				util.GetEnv("RELYING_PARTY_CONFIG_PATH", "relying-party-reg.yaml"),
+				oauth2server.UseMockIfNotAvailable,
+			))
+	*/
+
+	as, err := oauth2server.NewServerFromConfigFile(util.GetEnv("AS_CONFIG_PATH", "config/oauth-authorization-server.yaml"))
 	if err != nil {
 		log.Fatal(err)
 	}
-	zas.MountRoutes(root.Group(""))
+	as.MountRoutes(root.Group(""))
 
-	webClient, err := webclient.NewFromServerMetadata(zas.Metadata)
+	webClient, err := webclient.NewFromServerMetadata(as.Metadata)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	webClient.MountRoutes(root.Group("/web"))
-
-	regService, err := reg.NewRegistrationService(nonceService, store, clientsCA, regOptions...)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	regapi, err := regapi.NewRegistrationAPI(regService)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	regGroup := root.Group("/reg")
-	regapi.MountRoutes(regGroup)
 
 	if wellKnownDir := os.Getenv("WELL_KNOWN_DIR"); wellKnownDir != "" {
 		slog.Info("Serving static /.well-known", "dir", wellKnownDir)
@@ -244,3 +216,31 @@ func main() {
 		log.Fatal(http.ListenAndServe(addr, root))
 	}
 }
+
+/*
+	regOptions := []reg.RegistrationServiceOption{}
+
+	nonceService, err := nonce.NewHashicorpNonceService()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	store := reg.NewMockRegistrationStore()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	regService, err := reg.NewRegistrationService(nonceService, store, clientsCA, regOptions...)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	regapi, err := regapi.NewRegistrationAPI(regService)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	regGroup := root.Group("/reg")
+	regapi.MountRoutes(regGroup)
+
+*/

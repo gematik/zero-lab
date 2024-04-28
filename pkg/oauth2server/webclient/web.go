@@ -38,9 +38,11 @@ func NewFromServerMetadata(serverMetadata oauth2server.Metadata) (*Client, error
 		ServerMetadata:            serverMetadata,
 		authzSessionStore:         oauth2.NewMockAuthzClientSessionStore(),
 		templateError:             template.Must(template.ParseFS(templatesFS, "error.html", "layout.html")),
-		templateAuthenticatorWait: template.Must(template.ParseFS(templatesFS, "authenticator_wait.html", "layout.html")),
+		templateAuthenticatorWait: template.Must(template.ParseFS(templatesFS, "authenticator-wait.html", "layout.html")),
 		templateUserInfo:          template.Must(template.ParseFS(templatesFS, "userinfo.html", "layout.html")),
 		templateLogin:             template.Must(template.ParseFS(templatesFS, "login.html", "layout.html")),
+		templateChoose:            template.Must(template.ParseFS(templatesFS, "choose-openid-provider.html", "layout.html")),
+		templateDecoupled:         template.Must(template.ParseFS(templatesFS, "decoupled.html", "layout.html")),
 	}, nil
 }
 
@@ -54,6 +56,9 @@ type Client struct {
 	templateAuthenticatorWait *template.Template
 	templateUserInfo          *template.Template
 	templateLogin             *template.Template
+	templateChoose            *template.Template
+	templateDecoupled         *template.Template
+	cachedOpenidProviders     []oauth2server.OpenidProviderInfo
 }
 
 func (cl *Client) MountRoutes(g *echo.Group) {
@@ -63,8 +68,10 @@ func (cl *Client) MountRoutes(g *echo.Group) {
 		session.Middleware(sessions.NewCookieStore([]byte("secret"))),
 	)
 	g.GET("/error", cl.showError)
+	g.GET("/login/choose-openid-provider", cl.chooseOpenidProvider)
 	g.GET("/login", cl.login)
-	g.GET("/login/start", cl.loginStart)
+	g.GET("/login/start", cl.start)
+	g.GET("/login/decoupled", cl.loginDecoupled)
 	g.GET("/login/authenticator", cl.authenticatorWait)
 	g.GET("/login/callback", cl.loginCallback)
 	g.POST("/login/poll", cl.loginPoll)
@@ -150,35 +157,65 @@ func (cl *Client) showError(c echo.Context) error {
 		},
 	})
 }
-func (cl *Client) login(c echo.Context) error {
+
+func (cl *Client) fetchOpenidProviders() ([]oauth2server.OpenidProviderInfo, error) {
 	subUrl := fmt.Sprint(cl.ServerMetadata.Issuer, "/openid-providers")
 	resp, err := http.Get(subUrl)
 	if err != nil {
-		return redirectWithError(c, &oauth2.Error{
-			Code:        "server_error",
-			Description: "failed to get openid providers",
-		})
+		return nil, fmt.Errorf("fetching openid providers: %w", err)
 	}
 	defer resp.Body.Close()
 
 	var openidProviders []oauth2server.OpenidProviderInfo
 	err = json.NewDecoder(resp.Body).Decode(&openidProviders)
 	if err != nil {
-		return redirectWithError(c, &oauth2.Error{
-			Code:        "server_error",
-			Description: "failed to parse openid providers",
-		})
+		return nil, fmt.Errorf("parsing openid providers: %w", err)
 	}
 
-	return cl.templateLogin.Execute(c.Response().Writer, map[string]interface{}{
+	if cl.cachedOpenidProviders == nil {
+		cl.cachedOpenidProviders = openidProviders
+	}
+
+	return openidProviders, nil
+}
+
+func (cl *Client) fetchOpenidProvider(issuer string) (*oauth2server.OpenidProviderInfo, error) {
+	openidProviders, err := cl.fetchOpenidProviders()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, op := range openidProviders {
+		if op.Issuer == issuer {
+			return &op, nil
+		}
+	}
+
+	return nil, fmt.Errorf("openid provider not found")
+}
+
+func (cl *Client) chooseOpenidProvider(c echo.Context) error {
+	openidProviders, err := cl.fetchOpenidProviders()
+	if err != nil {
+		return redirectWithError(c, &oauth2.Error{
+			Code:        "server_error",
+			Description: "failed to fetch openid providers",
+		})
+	}
+	return cl.templateChoose.Execute(c.Response().Writer, map[string]interface{}{
 		"openidProviders": openidProviders,
 	})
 }
 
-func (cl *Client) loginStart(c echo.Context) error {
+func (cl *Client) login(c echo.Context) error {
+
+	return cl.templateLogin.Execute(c.Response().Writer, nil)
+}
+
+func (cl *Client) start(c echo.Context) error {
 	issuer := c.QueryParam("op_issuer")
 	if issuer == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+		return c.JSON(http.StatusBadRequest, &oauth2.Error{
 			Code:        "invalid_request",
 			Description: "missing op_issuer parameter",
 		})
@@ -200,7 +237,7 @@ func (cl *Client) loginStart(c echo.Context) error {
 		oauth2.WithOpenidProviderIssuer(issuer),
 	)
 	if err != nil {
-		return redirectWithError(c, &oauth2.Error{
+		return c.JSON(http.StatusInternalServerError, &oauth2.Error{
 			Code:        "server_error",
 			Description: "failed to generate auth URL",
 		})
@@ -215,8 +252,7 @@ func (cl *Client) loginStart(c echo.Context) error {
 
 	httpSession, err := session.Get("session", c)
 	if err != nil {
-		// redirect to error page
-		return redirectWithError(c, &oauth2.Error{
+		return c.JSON(http.StatusInternalServerError, &oauth2.Error{
 			Code:        "server_error",
 			Description: "failed to get session",
 		})
@@ -230,12 +266,119 @@ func (cl *Client) loginStart(c echo.Context) error {
 	httpSession.Values["auth_url"] = authzSession.AuthURL
 	httpSession.Save(c.Request(), c.Response())
 
-	if c.QueryParam("type") == "gemidp" {
-		return c.Redirect(http.StatusFound, "/web/login/authenticator")
-	} else {
-		return c.Redirect(http.StatusFound, authzSession.AuthURL)
+	op, err := cl.fetchOpenidProvider(issuer)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, &oauth2.Error{
+			Code:        "server_error",
+			Description: "failed to fetch openid provider",
+		})
 	}
+
+	authURL := authzSession.AuthURL
+
+	if op.Type == "oidf" {
+		authURL = fmt.Sprintf("/web/login/decoupled?auth_url=%s", authzSession.AuthURL)
+	} else if op.Type == "gemidp" {
+		authURL = fmt.Sprintf("/web/login/authenticator?auth_url=%s", authzSession.AuthURL)
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"auth_url": authURL,
+		"op":       op,
+	})
+
 }
+
+func (cl *Client) loginDecoupled(c echo.Context) error {
+	issuer := c.QueryParam("op_issuer")
+	if issuer == "" {
+		return redirectWithError(c, &oauth2.Error{
+			Code:        "invalid_request",
+			Description: "missing op_issuer parameter",
+		})
+	}
+
+	op, err := cl.fetchOpenidProvider(issuer)
+	if err != nil {
+		return redirectWithError(c, &oauth2.Error{
+			Code:        "server_error",
+			Description: "failed to fetch openid provider",
+		})
+	}
+
+	httpSession, err := session.Get("session", c)
+	if err != nil || httpSession.IsNew {
+		return c.JSON(http.StatusInternalServerError, &oauth2.Error{
+			Code:        "server_error",
+			Description: "failed to get session",
+		})
+	}
+
+	qrCodeURL := ""
+
+	if op.Type == "oidf" {
+		// http client without redirect
+		httpClient := http.Client{
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+
+		resp, err := httpClient.Get(httpSession.Values["auth_url"].(string))
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, &oauth2.Error{
+				Code:        "server_error",
+				Description: "failed to fetch auth URL",
+			})
+		}
+
+		redirectUrl, err := resp.Location()
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, &oauth2.Error{
+				Code:        "server_error",
+				Description: "failed to get location header",
+			})
+		}
+
+		qrCodeURL = redirectUrl.String()
+	}
+
+	return cl.templateDecoupled.Execute(c.Response().Writer, map[string]interface{}{
+		"op":        op,
+		"qrCodeURL": qrCodeURL,
+	})
+}
+
+/*
+	qrCodeUri := ""
+
+	if op.Type == "oidf" {
+		// http client without redirect
+		httpClient := http.Client{
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+
+		resp, err := httpClient.Get(authzSession.AuthURL)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, &oauth2.Error{
+				Code:        "server_error",
+				Description: "failed to fetch auth URL",
+			})
+		}
+
+		redirectUrl, err := resp.Location()
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, &oauth2.Error{
+				Code:        "server_error",
+				Description: "failed to get location header",
+			})
+		}
+
+		qrCodeUri = redirectUrl.String()
+	}
+*/
 
 func (cl *Client) loginCallback(c echo.Context) error {
 	if c.QueryParam("error") != "" {

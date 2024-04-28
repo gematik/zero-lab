@@ -17,13 +17,13 @@ import (
 )
 
 type Config struct {
-	Issuer       string
-	ClientID     string
-	ClientSecret string
-	RedirectURI  string
-	Scopes       []string
-	LogoURI      string
-	Name         string
+	Issuer       string   `yaml:"issuer"`
+	ClientID     string   `yaml:"client_id"`
+	ClientSecret string   `yaml:"client_secret"`
+	RedirectURI  string   `yaml:"redirect_uri"`
+	Scopes       []string `yaml:"scopes"`
+	LogoURI      string   `yaml:"logo_uri"`
+	Name         string   `yaml:"name"`
 }
 
 type Client interface {
@@ -36,14 +36,14 @@ type Client interface {
 }
 
 type client struct {
-	Config            *Config
+	cfg               *Config
 	discoveryDocument *DiscoveryDocument
 	keyCache          *jwk.Cache
 }
 
 func NewClient(cfg *Config) (Client, error) {
 	c := &client{
-		Config:            cfg,
+		cfg:               cfg,
 		discoveryDocument: nil,
 		keyCache:          nil,
 	}
@@ -67,11 +67,11 @@ func NewClient(cfg *Config) (Client, error) {
 }
 
 func (c *client) ClientID() string {
-	return c.Config.ClientID
+	return c.cfg.ClientID
 }
 
 func (c *client) RedirectURI() string {
-	return c.Config.RedirectURI
+	return c.cfg.RedirectURI
 }
 
 func (c *client) DiscoveryDocument() *DiscoveryDocument {
@@ -81,10 +81,10 @@ func (c *client) DiscoveryDocument() *DiscoveryDocument {
 func (c *client) AuthCodeURL(state, nonce, verifier string, opts ...oauth2.ParameterOption) (string, error) {
 	codeChallenge := oauth2.S256ChallengeFromVerifier(verifier)
 	query := url.Values{}
-	query.Add("client_id", c.Config.ClientID)
-	query.Add("redirect_uri", c.Config.RedirectURI)
+	query.Add("client_id", c.cfg.ClientID)
+	query.Add("redirect_uri", c.cfg.RedirectURI)
 	query.Add("response_type", "code")
-	query.Add("scope", strings.Join(c.Config.Scopes, " "))
+	query.Add("scope", strings.Join(c.cfg.Scopes, " "))
 	query.Add("state", state)
 	query.Add("nonce", nonce)
 	query.Add("code_challenge", codeChallenge)
@@ -101,10 +101,10 @@ func (c *client) AuthCodeURL(state, nonce, verifier string, opts ...oauth2.Param
 
 func (c *client) Exchange(code string, codeVerifier string, opts ...oauth2.ParameterOption) (*oauth2.TokenResponse, error) {
 	params := url.Values{}
-	params.Set("client_id", c.Config.ClientID)
-	params.Set("client_secret", c.Config.ClientSecret)
+	params.Set("client_id", c.cfg.ClientID)
+	params.Set("client_secret", c.cfg.ClientSecret)
 	params.Set("code", code)
-	params.Set("redirect_uri", c.Config.RedirectURI)
+	params.Set("redirect_uri", c.cfg.RedirectURI)
 	params.Set("grant_type", "authorization_code")
 	params.Set("code_verifier", codeVerifier)
 
@@ -154,7 +154,7 @@ func (c *client) ParseIDToken(response *oauth2.TokenResponse) (jwt.Token, error)
 		response.IDToken,
 		jwt.WithKeySet(keySet),
 		jwt.WithIssuer(c.discoveryDocument.Issuer),
-		jwt.WithAudience(c.Config.ClientID),
+		jwt.WithAudience(c.cfg.ClientID),
 		jwt.WithRequiredClaim("nonce"),
 		//jwt.WithRequiredClaim("iat"),
 		jwt.WithRequiredClaim("exp"),
@@ -170,9 +170,9 @@ func (c *client) Issuer() string {
 }
 
 func (c *client) Name() string {
-	return c.Config.Name
+	return c.cfg.Name
 }
 
 func (c *client) LogoURI() string {
-	return c.Config.LogoURI
+	return c.cfg.LogoURI
 }

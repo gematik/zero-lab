@@ -27,6 +27,16 @@ const (
 	EnvironmentProduction
 )
 
+func (e *Environment) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+
+	*e = NewEnvironment(s)
+	return nil
+}
+
 func NewEnvironment(s string) Environment {
 	switch s {
 	case "tu", "test":
@@ -87,11 +97,13 @@ type TokenKeyPayload struct {
 
 // ClientConfig of the gematik IDP-Dienst client
 type ClientConfig struct {
-	Environment       Environment
-	ClientID          string
-	RedirectURI       string
-	Scopes            []string
-	AuthenticatorMode bool
+	Environment       Environment `yaml:"environment"`
+	Name              string      `yaml:"name"`
+	LogiURI           string      `yaml:"logo_uri"`
+	ClientID          string      `yaml:"client_id"`
+	RedirectURI       string      `yaml:"redirect_uri"`
+	Scopes            []string    `yaml:"scopes"`
+	AuthenticatorMode bool        `yaml:"authenticator_mode"`
 }
 
 type Client struct {
@@ -334,9 +346,9 @@ func (c *Client) ClientID() string {
 }
 
 func (c *Client) Name() string {
-	return "gematik IDP-Dienst"
+	return c.config.Name
 }
 
 func (c *Client) LogoURI() string {
-	return "https://raw.githubusercontent.com/gematik/zero-lab/main/gematik-g.png"
+	return c.config.LogiURI
 }

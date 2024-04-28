@@ -1,4 +1,33 @@
-export async function startDecoupledAuth(authURL) {
+{{template "layout" .}}
+
+{{define "pageTitle"}}Authenticate using gematik Authenticator{{end}}
+
+{{define "content"}}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card text-center">
+                <div class="card-header">
+                    Authentication
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title">gematik Authenticator</h5>
+                    <p class="card-text">Please follow the instructions in the gematik Authenticator App to authenticate.</p>
+                    <div class="d-flex justify-content-center">
+                        <div class="spinner-border" role="status">
+                          <span class="sr-only"></span>
+                        </div>
+                    </div>
+                    <p> </p>
+                    <a href="/web/login" class="btn btn-outline-danger">Cancel</a>  
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+async function startDecoupledAuth(authURL) {
     var url = new URL('/web/login/poll', window.location.href).href;
 
     window.open(authURL, '_self');
@@ -35,3 +64,9 @@ export async function startDecoupledAuth(authURL) {
     }, 2000);
 }
 
+
+window.onload = function() {
+  startDecoupledAuth("{{ .authURL }}");
+}
+</script>
+{{end}}

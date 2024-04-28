@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/gematik/zero-lab/pkg/oidc"
@@ -23,6 +24,7 @@ import (
 )
 
 type RelyingPartyConfig struct {
+	baseDir              string
 	Url                  string                 `yaml:"url" validate:"required"`
 	FedMasterURL         string                 `yaml:"fed_master_url" validate:"required"`
 	FedMasterJwks        map[string]interface{} `yaml:"fed_master_jwks" validate:"required"`
@@ -52,12 +54,13 @@ func LoadRelyingPartyConfig(path string) (*RelyingPartyConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file '%s': %w", path, err)
 	}
-	var cfg RelyingPartyConfig
-	err = yaml.Unmarshal(yamlData, &cfg)
+	cfg := new(RelyingPartyConfig)
+	err = yaml.Unmarshal(yamlData, cfg)
+	cfg.baseDir = filepath.Dir(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config file '%s': %w", path, err)
 	}
-	return &cfg, nil
+	return cfg, nil
 }
 
 func NewRelyingPartyFromConfigFile(path string) (*RelyingParty, error) {
@@ -87,24 +90,24 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 	}
 
 	var sigPublicKey jwk.Key
-	rp.sigPrivateKey, sigPublicKey, err = loadKeys(cfg.SignPrivateKeyPath, cfg.SignKid, jwk.ForSignature, "")
+	rp.sigPrivateKey, sigPublicKey, err = loadKeys(filepath.Join(cfg.baseDir, cfg.SignPrivateKeyPath), cfg.SignKid, jwk.ForSignature, "")
 	if err != nil {
 		return nil, err
 	}
 
 	var encPublicKey jwk.Key
-	rp.encPrivateKey, encPublicKey, err = loadKeys(cfg.EncPrivateKeyPath, cfg.EncKid, jwk.ForEncryption, "")
+	rp.encPrivateKey, encPublicKey, err = loadKeys(filepath.Join(cfg.baseDir, cfg.EncPrivateKeyPath), cfg.EncKid, jwk.ForEncryption, "")
 	if err != nil {
 		return nil, err
 	}
 
 	var clientPublicKey jwk.Key
-	rp.clientPrivateKey, clientPublicKey, err = loadKeys(cfg.ClientPrivateKeyPath, cfg.ClientKid, jwk.ForSignature, cfg.ClientCertPath)
+	rp.clientPrivateKey, clientPublicKey, err = loadKeys(filepath.Join(cfg.baseDir, cfg.ClientPrivateKeyPath), cfg.ClientKid, jwk.ForSignature, filepath.Join(cfg.baseDir, cfg.ClientCertPath))
 	if err != nil {
 		return nil, err
 	}
 
-	tlsCert, err := tls.LoadX509KeyPair(cfg.ClientCertPath, cfg.ClientPrivateKeyPath)
+	tlsCert, err := tls.LoadX509KeyPair(filepath.Join(cfg.baseDir, cfg.ClientCertPath), filepath.Join(cfg.baseDir, cfg.ClientPrivateKeyPath))
 	if err != nil {
 		return nil, fmt.Errorf("failed to load tls cert: %w", err)
 	}

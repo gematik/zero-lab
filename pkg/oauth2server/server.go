@@ -25,42 +25,12 @@ import (
 
 type Option func(*Server) error
 
-func NewServer(opts ...Option) (*Server, error) {
-	s := &Server{
-		IdentityIssuers: []oidc.Client{},
-	}
-
-	for _, opt := range opts {
-		if err := opt(s); err != nil {
-			return nil, err
-		}
-	}
-
-	s.Metadata.Issuer = "http://127.0.0.1:8080"
-	s.Metadata.ScopesSupported = []string{}
-
-	// set url explicitly using the issuer
-	s.Metadata.AuthorizationEndpoint = fmt.Sprint(s.Metadata.Issuer, "/auth")
-	s.Metadata.TokenEndpoint = fmt.Sprint(s.Metadata.Issuer, "/token")
-	s.Metadata.JwksURI = fmt.Sprint(s.Metadata.Issuer, "/jwks")
-
-	// set supported parameters explicitly
-	s.Metadata.ResponseTypesSupported = []string{"code"}
-	s.Metadata.ResponseModesSupported = []string{"query"}
-	s.Metadata.GrantTypesSupported = []string{"authorization_code"}
-	s.Metadata.TokenEndpointAuthMethodsSupported = []string{"none"}
-	s.Metadata.TokenEndpointAuthSigningAlgValuesSupported = []string{"ES256"}
-	s.Metadata.CodeChallengeMethodsSupported = []string{"S256"}
-
-	return s, nil
-}
-
 type Server struct {
 	Metadata         Metadata
-	IdentityIssuers  []oidc.Client
-	OIDFRelyingParty *oidf.RelyingParty
+	identityIssuers  []oidc.Client
+	oidfRelyingParty *oidf.RelyingParty
 	clientsPolicy    *ClientsPolicy
-	SessionStore     AuthzServerSessionStore
+	sessionStore     AuthzServerSessionStore
 	sigPrK           jwk.Key
 	jwks             jwk.Set
 	encPuK           jwk.Key
@@ -91,9 +61,9 @@ func (s *Server) MountRoutes(group *echo.Group) {
 	group.GET("/jwks", s.JWKS)
 	group.GET("/openid-providers", s.OpenidProvidersEndpoint)
 
-	if s.OIDFRelyingParty != nil {
-		group.GET("/.well-known/openid-federation", echo.WrapHandler(http.HandlerFunc(s.OIDFRelyingParty.Serve)))
-		group.GET("/oidf-relying-party-jwks", echo.WrapHandler(http.HandlerFunc(s.OIDFRelyingParty.ServeSignedJwks)))
+	if s.oidfRelyingParty != nil {
+		group.GET("/.well-known/openid-federation", echo.WrapHandler(http.HandlerFunc(s.oidfRelyingParty.Serve)))
+		group.GET("/oidf-relying-party-jwks", echo.WrapHandler(http.HandlerFunc(s.oidfRelyingParty.ServeSignedJwks)))
 	}
 }
 
@@ -190,7 +160,7 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 	opSession.AuthURL = authUrl
 
 	session.AuthnClientSession = &opSession
-	if err := s.SessionStore.SaveAutzhServerSession(&session); err != nil {
+	if err := s.sessionStore.SaveAutzhServerSession(&session); err != nil {
 		return redirectWithError(c, session.RedirectURI, session.State, oauth2.Error{
 			Code:        "server_error",
 			Description: fmt.Errorf("unable to save session: %w", err).Error(),
@@ -214,14 +184,14 @@ func (s *Server) PAREndpoint(c echo.Context) error {
 
 // OpenidProvider returns an OpenID Connect client for the given issuer
 func (s *Server) OpenidProvider(issuer string) (oidc.Client, error) {
-	for _, op := range s.IdentityIssuers {
+	for _, op := range s.identityIssuers {
 		if op.Issuer() == issuer {
 			return op, nil
 		}
 	}
 
-	if s.OIDFRelyingParty != nil {
-		return s.OIDFRelyingParty.NewClient(issuer)
+	if s.oidfRelyingParty != nil {
+		return s.oidfRelyingParty.NewClient(issuer)
 	}
 	return nil, fmt.Errorf("unknown issuer: %s", issuer)
 }
@@ -239,7 +209,7 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 
 	// find running session by the OP state
 	var authnSession *oidc.AuthnClientSession
-	authzSession, err := s.SessionStore.GetAuthzServerSessionByAuthnState(state)
+	authzSession, err := s.sessionStore.GetAuthzServerSessionByAuthnState(state)
 	if err == nil {
 		authnSession = authzSession.AuthnClientSession
 		if authnSession == nil {
@@ -309,7 +279,7 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 	if authzSession != nil {
 		authzSession.Code = util.GenerateRandomString(128)
 
-		if err := s.SessionStore.SaveAutzhServerSession(authzSession); err != nil {
+		if err := s.sessionStore.SaveAutzhServerSession(authzSession); err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, oauth2.Error{
 				Code:        "server_error",
 				Description: fmt.Errorf("unable to save session: %w", err).Error(),
@@ -350,7 +320,7 @@ func (s *Server) TokenEndpoint(c echo.Context) error {
 
 	slog.Info("Token request", "grant_type", grantType, "code", code, "redirect_uri", redirectUri, "client_id", clientId)
 
-	session, err := s.SessionStore.GetAuthzServerSessionByCode(code)
+	session, err := s.sessionStore.GetAuthzServerSessionByCode(code)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
 			Code:        "invalid_request",
@@ -447,7 +417,7 @@ func (s *Server) OpenidProvidersEndpoint(c echo.Context) error {
 // OpenidProviders returns the list of OpenID Providers supported by the server
 func (s *Server) OpenidProviders() ([]OpenidProviderInfo, error) {
 	providers := []OpenidProviderInfo{}
-	for _, op := range s.IdentityIssuers {
+	for _, op := range s.identityIssuers {
 		info := OpenidProviderInfo{
 			Issuer:  op.Issuer(),
 			LogoURI: op.LogoURI(),
@@ -462,8 +432,8 @@ func (s *Server) OpenidProviders() ([]OpenidProviderInfo, error) {
 		providers = append(providers, info)
 
 	}
-	if s.OIDFRelyingParty != nil {
-		idps, err := s.OIDFRelyingParty.Federation().FetchIdpList()
+	if s.oidfRelyingParty != nil {
+		idps, err := s.oidfRelyingParty.Federation().FetchIdpList()
 		if err != nil {
 			return nil, fmt.Errorf("fetching idp list from federation: %w", err)
 		}

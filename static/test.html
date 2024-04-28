@@ -1,8 +1,15 @@
-{{template "layout" .}}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{block "pageTitle" .}}{{end}}</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" crossorigin="anonymous">
+</head>
+<body>
 
-{{define "pageTitle"}}Zero Trust identity verification{{end}}
-
-{{define "content"}}
 <style type="text/css">
   .card-button {
     cursor: pointer;
@@ -13,18 +20,16 @@
 </style>
 
 <div class="container mt-5">
+
   <div class="row">
     <div class="col-md"></div>
     <div class="col-md-8 col-lg-6">
       <h5>Sign in using OpenID Provider</h5>
-      <div id="login-card-button" class="card card-button">
+      <div class="card card-button">
         <div class="card-body d-flex justify-content-between">
-          <img id="op-logo" class="align-self-center" style="height:64px; max-width: 128px;" src=""/>
+          <img class="align-self-center" style="height:64px" src="https://raw.githubusercontent.com/gematik/zero-lab/main/static/images/signin-with-google-logo.svg"/>
           <div class="align-self-center">
-            <div id="op-name" style="font-size:125%;"></div>
-            <div id="waiting" class="spinner-border" role="status">
-              <span class="sr-only primary"></span>
-            </div>        
+            <div style="font-size:125%;">Google</div>
           </div>
           <i style="font-size: 200%" class="bi bi-chevron-right align-self-center"></i>
         </div>
@@ -34,7 +39,7 @@
         Choose provider...
       </a>
 
-      <div class="d-none text-center" style="clear: both;">
+      <div class="text-center" style="clear: both;">
         <div class="m-2">Handover QR-Code</div>
         <div id="code"></div>
       </div>
@@ -44,7 +49,8 @@
   </div>
 
 </div>
-<script type="text/javascript" src="/static/ext/qr-code-styling.js"></script>
+
+<script type="text/javascript" src="ext/qr-code-styling.js"></script>
 
 <script type="module">
   function showQRCode(link) {
@@ -70,7 +76,7 @@
         "backgroundOptions":{
             "color":"#e4eaf1"
         },
-        "image":"/static/images/GID_App_light_mode.svg",
+        "image":"images/GID_App_light_mode.svg",
         "dotsOptionsHelper":{
             "colorType":{
                 "single":true,
@@ -136,50 +142,10 @@
     qrCode.append(document.getElementById('code'));
   }
 
-  window.addEventListener("load", function(){
-    var issuer = null
-
-    const query = new URLSearchParams(location.search);
-
-    if (query.has("op_issuer")) {
-      // save the issuer in localStorage
-      issuer = query.get("op_issuer");
-      localStorage.setItem("op_issuer", issuer);
-      console.log("op_issuer: " + issuer);
-    } else {
-      if (localStorage.getItem("op_issuer") !== null) {
-        console.log("op_issuer: " + localStorage.getItem("op_issuer"));
-        issuer = localStorage.getItem("op_issuer");
-      } else {
-        location.href = "/web/login/choose-openid-provider";
-      }
-    }
-
-    fetch("/web/login/start?op_issuer=" + encodeURIComponent(issuer))
-      .then(response => response.json())
-      .then(data => {
-
-        document.getElementById("op-name").innerText = data.op.name;
-        document.getElementById("op-logo").src = data.op.logo_uri;
-        document.getElementById("login-card-button").addEventListener("click", function(){
-          location.href = data.auth_url;
-        });
-
-        if (data.op.type === "oidf") {
-          var els = document.getElementsByClassName("oidf-extra")
-          for (let i = 0; i < els.length; i++) {
-            els[i].classList.remove("d-none");
-          }
-
-          showQRCode(data.qr_code_uri);
-        }
-
-        document.getElementById("waiting").classList.add("d-none");
-      });
-
-    
-  });
-
+  showQRCode("https://idbroker.tk.ru2.nonprod-ehealth-id.de/qr");
 </script>
 
-{{end}}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+
+</body>
+</html>

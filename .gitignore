@@ -2,6 +2,7 @@
 /zero-*
 /*.env
 /*.id.json
+/*.identity.json
 .DS_Store
 secrets
 .vscode/settings.json
