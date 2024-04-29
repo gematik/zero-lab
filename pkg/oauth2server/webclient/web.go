@@ -534,7 +534,8 @@ func (cl *Client) userInfo(c echo.Context) error {
 	userInfo := &userInfo{
 		Issuer: act["iss"].(string),
 	}
-	if id, ok := act["idNummer"]; ok { // gematik IDP-Dienst
+
+  if id, ok := act["idNummer"]; ok { // gematik IDP-Dienst
 		userInfo.Identifier = id.(string)
 	} else if id, ok := act["urn:telematik:claims:id"]; ok { // GesundheitsID
 		userInfo.Identifier = id.(string)
