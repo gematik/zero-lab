@@ -25,10 +25,6 @@ var (
 	templatesFS embed.FS
 )
 
-type Config struct {
-	Issuer string
-}
-
 func NewFromServerMetadata(serverMetadata oauth2server.Metadata) (*Client, error) {
 
 	return &Client{
@@ -540,11 +536,15 @@ func (cl *Client) userInfo(c echo.Context) error {
 	}
 	if idNummer, ok := act["idNummer"]; ok {
 		userInfo.Identifier = idNummer.(string)
+	} else if id, ok := act["urn:telematik:claims:id"]; ok {
+		userInfo.Identifier = id.(string)
 	} else if mail, ok := act["email"]; ok {
 		userInfo.Identifier = mail.(string)
 	}
 
 	if name, ok := act["organizationName"]; ok {
+		userInfo.Name = name.(string)
+	} else if name, ok := act["urn:telematik:claims:display_name"]; ok {
 		userInfo.Name = name.(string)
 	} else if name, ok := act["name"]; ok {
 		userInfo.Name = name.(string)

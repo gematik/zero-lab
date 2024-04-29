@@ -70,7 +70,7 @@ func New(cfg *Config) (*Server, error) {
 	}
 
 	for _, c := range cfg.OidcProviders {
-		client, err := oidc.NewClient(&c)
+		client, err := oidc.NewClient(c)
 		if err != nil {
 			return nil, fmt.Errorf("create oidc client: %w", err)
 		}

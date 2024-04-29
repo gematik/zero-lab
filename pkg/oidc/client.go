@@ -36,12 +36,12 @@ type Client interface {
 }
 
 type client struct {
-	cfg               *Config
+	cfg               Config
 	discoveryDocument *DiscoveryDocument
 	keyCache          *jwk.Cache
 }
 
-func NewClient(cfg *Config) (Client, error) {
+func NewClient(cfg Config) (Client, error) {
 	c := &client{
 		cfg:               cfg,
 		discoveryDocument: nil,
