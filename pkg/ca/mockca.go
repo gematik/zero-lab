@@ -1,12 +1,15 @@
 package ca
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"time"
 
@@ -33,8 +36,8 @@ func NewMockCA(issuer pkix.Name) (CertificateAuthority, error) {
 	caCrt := &x509.Certificate{
 		SerialNumber:          sn,
 		Subject:               issuer,
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(6 * time.Hour),
+		NotBefore:             time.Now().Add(-1 * time.Hour),
+		NotAfter:              time.Now().Add(24 * 30 * 6 * time.Hour),
 		IsCA:                  true,
 		ExtKeyUsage:           []x509.ExtKeyUsage{},
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
@@ -67,32 +70,48 @@ func (ca *mockCertificateAuthority) IssuerCertificate() *x509.Certificate {
 	return ca.Certificate
 }
 
-func (ca *mockCertificateAuthority) SignCertificateRequest(csr *x509.CertificateRequest, subject pkix.Name) (*x509.Certificate, error) {
+func (ca *mockCertificateAuthority) SignCertificateRequest(csr *x509.CertificateRequest, subject pkix.Name, opts ...SigningOption) (*x509.Certificate, error) {
 	if err := csr.CheckSignature(); err != nil {
 		return nil, fmt.Errorf("invalid CSR signature: %w", err)
 	}
 
+	return ca.createCertificate(csr.PublicKey, csr.PublicKeyAlgorithm, subject, opts...)
+}
+
+func (ca *mockCertificateAuthority) createCertificate(
+	publicKey crypto.PublicKey,
+	publicKeyAlgorithm x509.PublicKeyAlgorithm,
+	subject pkix.Name,
+	opts ...SigningOption) (*x509.Certificate, error) {
 	max := new(big.Int)
 	max.Exp(big.NewInt(2), big.NewInt(130), nil).Sub(max, big.NewInt(1))
 	serialNumber, err := rand.Int(rand.Reader, max)
+	if err != nil {
+		return nil, fmt.Errorf("unable to generate serial number: %w", err)
+	}
 
 	crtTemplate := x509.Certificate{
-		Signature:          csr.Signature,
-		SignatureAlgorithm: csr.SignatureAlgorithm,
+		SignatureAlgorithm: x509.ECDSAWithSHA256,
 
-		PublicKeyAlgorithm: csr.PublicKeyAlgorithm,
-		PublicKey:          csr.PublicKey,
+		PublicKeyAlgorithm: publicKeyAlgorithm,
+		PublicKey:          publicKey,
 
 		SerialNumber: serialNumber,
 		Issuer:       ca.Certificate.Subject,
 		Subject:      subject,
-		NotBefore:    time.Now(),
+		NotBefore:    time.Now().Add(-1 * time.Hour),
 		NotAfter:     time.Now().Add(24 * time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 	}
 
-	crtRaw, err := x509.CreateCertificate(rand.Reader, &crtTemplate, ca.Certificate, csr.PublicKey, ca.prk)
+	for _, opt := range opts {
+		if err := opt(&crtTemplate); err != nil {
+			return nil, fmt.Errorf("unable to apply signing option: %w", err)
+		}
+	}
+
+	crtRaw, err := x509.CreateCertificate(rand.Reader, &crtTemplate, ca.Certificate, publicKey, ca.prk)
 	if err != nil {
 		return nil, fmt.Errorf("unable to sign client certificate: %w", err)
 	}
@@ -103,4 +122,19 @@ func (ca *mockCertificateAuthority) SignCertificateRequest(csr *x509.Certificate
 	}
 
 	return crt, nil
+
+}
+
+func (ca *mockCertificateAuthority) CertifyPublicKey(pubKey crypto.PublicKey, subject pkix.Name, opts ...SigningOption) (*x509.Certificate, error) {
+	var alg x509.PublicKeyAlgorithm
+	switch pubKey.(type) {
+	case *ecdsa.PublicKey:
+		alg = x509.ECDSA
+	case *rsa.PublicKey:
+		alg = x509.RSA
+	default:
+		return nil, fmt.Errorf("unsupported public key type: %T", pubKey)
+	}
+	slog.Info("Certifying public key", "subject", subject, "algorithm", alg)
+	return ca.createCertificate(pubKey, alg, subject, opts...)
 }

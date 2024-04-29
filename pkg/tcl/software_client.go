@@ -43,7 +43,7 @@ func NewSoftwareClient(name string, regBaseURL string, idpath string) (*Software
 
 type SoftwareClientPosture struct {
 	OS        string `json:"os"`
-	OSVersion string `json:"osVersion"`
+	OSVersion string `json:"os_version"`
 	Arch      string `json:"arch"`
 }
 

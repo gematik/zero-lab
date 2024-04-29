@@ -9,8 +9,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
+	"github.com/gematik/zero-lab/pkg/oidc"
 	"github.com/gematik/zero-lab/pkg/util"
 	"github.com/go-playground/validator/v10"
 	"github.com/lestrrat-go/jwx/v2/cert"
@@ -22,6 +24,7 @@ import (
 )
 
 type RelyingPartyConfig struct {
+	baseDir              string
 	Url                  string                 `yaml:"url" validate:"required"`
 	FedMasterURL         string                 `yaml:"fed_master_url" validate:"required"`
 	FedMasterJwks        map[string]interface{} `yaml:"fed_master_jwks" validate:"required"`
@@ -51,12 +54,13 @@ func LoadRelyingPartyConfig(path string) (*RelyingPartyConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file '%s': %w", path, err)
 	}
-	var cfg RelyingPartyConfig
-	err = yaml.Unmarshal(yamlData, &cfg)
+	cfg := new(RelyingPartyConfig)
+	err = yaml.Unmarshal(yamlData, cfg)
+	cfg.baseDir = filepath.Dir(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config file '%s': %w", path, err)
 	}
-	return &cfg, nil
+	return cfg, nil
 }
 
 func NewRelyingPartyFromConfigFile(path string) (*RelyingParty, error) {
@@ -86,33 +90,34 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 	}
 
 	var sigPublicKey jwk.Key
-	rp.sigPrivateKey, sigPublicKey, err = loadKeys(cfg.SignPrivateKeyPath, cfg.SignKid, jwk.ForSignature, "")
+	rp.sigPrivateKey, sigPublicKey, err = loadKeys(rp.absPath(cfg.SignPrivateKeyPath), cfg.SignKid, jwk.ForSignature, "")
 	if err != nil {
 		return nil, err
 	}
 
 	var encPublicKey jwk.Key
-	rp.encPrivateKey, encPublicKey, err = loadKeys(cfg.EncPrivateKeyPath, cfg.EncKid, jwk.ForEncryption, "")
+	rp.encPrivateKey, encPublicKey, err = loadKeys(rp.absPath(cfg.EncPrivateKeyPath), cfg.EncKid, jwk.ForEncryption, "")
 	if err != nil {
 		return nil, err
 	}
 
 	var clientPublicKey jwk.Key
-	rp.clientPrivateKey, clientPublicKey, err = loadKeys(cfg.ClientPrivateKeyPath, cfg.ClientKid, jwk.ForSignature, cfg.ClientCertPath)
+	rp.clientPrivateKey, clientPublicKey, err = loadKeys(rp.absPath(cfg.ClientPrivateKeyPath), cfg.ClientKid, jwk.ForSignature, rp.absPath(cfg.ClientCertPath))
 	if err != nil {
 		return nil, err
 	}
 
-	tlsCert, err := tls.LoadX509KeyPair(cfg.ClientCertPath, cfg.ClientPrivateKeyPath)
+	tlsCert, err := tls.LoadX509KeyPair(rp.absPath(cfg.ClientCertPath), rp.absPath(cfg.ClientPrivateKeyPath))
+	if err != nil {
+		return nil, fmt.Errorf("failed to load tls cert: %w", err)
+	}
 	rp.httpClient = &http.Client{
 		Timeout: 10 * time.Second,
-		Transport: util.AddApiKeyTransport(
-			&http.Transport{
-				TLSClientConfig: &tls.Config{
-					Certificates: []tls.Certificate{tlsCert},
-				},
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				Certificates: []tls.Certificate{tlsCert},
 			},
-		),
+		},
 	}
 
 	metadata, err := templateToMetadata(cfg.MetadataTemplate)
@@ -147,13 +152,20 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 	return &rp, nil
 }
 
-func (rp *RelyingParty) Sign() ([]byte, error) {
+func (rp *RelyingParty) absPath(path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(rp.cfg.baseDir, path)
+}
+
+func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {
 
 	token, err := jwt.NewBuilder().
 		Issuer(rp.cfg.Url).
 		Subject(rp.cfg.Url).
-		IssuedAt(time.Now()).
-		Expiration(time.Now().Add(time.Hour*24)).
+		IssuedAt(time.Now().Add(-1*time.Hour)). // backdate token to avoid clock skew
+		Expiration(time.Now().Add(time.Hour*23)).
 		Claim("jwks", rp.entityStatement.Jwks.Keys).
 		Claim("authority_hints", []string{rp.cfg.FedMasterURL}).
 		Claim("metadata", rp.entityStatement.Metadata).
@@ -183,7 +195,7 @@ func (rp *RelyingParty) Sign() ([]byte, error) {
 }
 
 func (rp *RelyingParty) Serve(w http.ResponseWriter, r *http.Request) {
-	signed, err := rp.Sign()
+	signed, err := rp.SignEntityStatement()
 	if err != nil {
 		slog.Error("unable to sign entity statement", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -191,6 +203,43 @@ func (rp *RelyingParty) Serve(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/entity-statement+jwt")
 	w.Write(signed)
+	slog.Info("served entity statement", "remote_addr", r.RemoteAddr)
+}
+
+func (rp *RelyingParty) ServeSignedJwks(w http.ResponseWriter, r *http.Request) {
+
+	token, err := jwt.NewBuilder().
+		Issuer(rp.cfg.Url).
+		IssuedAt(time.Now().Add(-1*time.Hour)). // backdate token to avoid clock skew
+		Expiration(time.Now().Add(time.Hour*23)).
+		Claim("keys", rp.entityStatement.Metadata.OpenidRelyingParty.Jwks.Keys).
+		Build()
+
+	if err != nil {
+		slog.Error("unable to build token", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
+
+	headers := jws.NewHeaders()
+	headers.Set(jws.KeyIDKey, rp.cfg.SignKid)
+	headers.Set(jws.TypeKey, "jwk-set+json")
+
+	signed, err := jwt.Sign(token,
+		jwt.WithKey(
+			jwa.ES256,
+			rp.sigPrivateKey,
+			jws.WithProtectedHeaders(headers),
+		),
+	)
+
+	if err != nil {
+		slog.Error("unable to sign token", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+	}
+	w.Header().Set("Content-Type", "application/jwk-set+jwt")
+	w.Write(signed)
+
+	slog.Info("served signed jwks", "remote_addr", r.RemoteAddr)
 }
 
 type pushedAuthorizationResponse struct {
@@ -198,8 +247,19 @@ type pushedAuthorizationResponse struct {
 	ExpiresIn  int    `json:"expires_in"`
 }
 
-func (rp *RelyingParty) NewClient(iss string) (*RelyingPartyClient, error) {
+func (rp *RelyingParty) NewClient(iss string) (oidc.Client, error) {
 	op, err := rp.federation.FetchEntityStatement(iss)
+	if err != nil {
+		return nil, err
+	}
+
+	if op.Metadata == nil || op.Metadata.OpenidProvider == nil {
+		return nil, fmt.Errorf("no openid provider metadata found")
+	}
+
+	metadata := op.Metadata.OpenidProvider
+
+	jwks, err := rp.federation.FetchSignedJwks(op)
 	if err != nil {
 		return nil, err
 	}
@@ -209,6 +269,8 @@ func (rp *RelyingParty) NewClient(iss string) (*RelyingPartyClient, error) {
 		op:          op,
 		scopes:      []string{"urn:telematik:display_name", "urn:telematik:versicherter", "openid"},
 		redirectURI: rp.entityStatement.Metadata.OpenidRelyingParty.RedirectURIs[0],
+		metadata:    metadata,
+		jwks:        jwks,
 	}, nil
 }
 

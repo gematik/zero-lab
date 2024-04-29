@@ -8,11 +8,13 @@ services:
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - ./static:/app/static
       - ./static-well-known:/app/static-well-known
+      - ./policy:/app/policy
     environment:
       FQDN: ${FQDN?}
       TLS_CERT_PATH: /etc/letsencrypt/live/${FQDN?}/fullchain.pem
       TLS_KEY_PATH: /etc/letsencrypt/live/${FQDN?}/privkey.pem
       WELL_KNOWN_DIR: /app/static-well-known
-      GOOGLE_OIDC_CLIENT_ID: ${GOOGLE_OIDC_CLIENT_ID}
-      GOOGLE_OIDC_CLIENT_SECRET: ${GOOGLE_OIDC_CLIENT_SECRET}
-      GOOGLE_OIDC_REDIRECT_URI: https://${FQDN?}/reg/auth/oidc/callback
+      OIDC_ISSUER: ${OIDC_ISSUER}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET}
+      OIDC_CALLBACK_URL: https://${FQDN?}/as/op-callback

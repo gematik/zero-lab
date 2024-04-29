@@ -12,17 +12,20 @@ import (
 	"github.com/gematik/zero-lab/pkg/oauth2"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwe"
+	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
 type RelyingPartyClient struct {
 	rp          *RelyingParty
 	op          *EntityStatement
+	metadata    *OpenIDProviderMetadata
 	scopes      []string
 	redirectURI string
+	jwks        jwk.Set
 }
 
-func (c *RelyingPartyClient) AuthCodeURL(state, nonce, verifier string) (string, error) {
+func (c *RelyingPartyClient) AuthCodeURL(state, nonce, verifier string, opts ...oauth2.ParameterOption) (string, error) {
 	codeChallenge := oauth2.S256ChallengeFromVerifier(verifier)
 
 	parData := url.Values{}
@@ -35,6 +38,12 @@ func (c *RelyingPartyClient) AuthCodeURL(state, nonce, verifier string) (string,
 	parData.Add("nonce", nonce)
 	parData.Add("client_id", c.rp.ClientID())
 	parData.Add("code_challenge", codeChallenge)
+
+	for _, opt := range opts {
+		opt(parData)
+	}
+
+	slog.Info("Issuing PAR request", "endpoint", c.op.Metadata.OpenidProvider.PushedAuthorizationRequestEndpoint, "params", parData)
 
 	parRequest, err := http.NewRequest(
 		http.MethodPost,
@@ -55,10 +64,11 @@ func (c *RelyingPartyClient) AuthCodeURL(state, nonce, verifier string) (string,
 	defer parResponse.Body.Close()
 
 	if parResponse.StatusCode != http.StatusCreated {
-		return "", fmt.Errorf("Unexpected status '%s': %w", parResponse.Status, parseOauth2Error(parResponse.Body))
+		return "", fmt.Errorf("PAR: unexpected status '%s': %w", parResponse.Status, parseErrorResponse(parResponse.Body))
 	}
 
 	var parResp pushedAuthorizationResponse
+
 	err = json.NewDecoder(parResponse.Body).Decode(&parResp)
 	if err != nil {
 		return "", fmt.Errorf("unable to read PAR response body: %w", err)
@@ -71,13 +81,17 @@ func (c *RelyingPartyClient) AuthCodeURL(state, nonce, verifier string) (string,
 	return c.op.Metadata.OpenidProvider.AuthorizationEndpoint + "?" + params.Encode(), nil
 }
 
-func (c *RelyingPartyClient) Exchange(code, verifier string) (*oauth2.TokenResponse, error) {
+func (c *RelyingPartyClient) Exchange(code, verifier string, opts ...oauth2.ParameterOption) (*oauth2.TokenResponse, error) {
 	tokenParams := url.Values{}
 	tokenParams.Add("grant_type", "authorization_code")
 	tokenParams.Add("code", code)
 	tokenParams.Add("redirect_uri", c.redirectURI)
 	tokenParams.Add("client_id", c.rp.ClientID())
 	tokenParams.Add("code_verifier", verifier)
+
+	for _, opt := range opts {
+		opt(tokenParams)
+	}
 
 	req, err := http.NewRequest(http.MethodPost, c.op.Metadata.OpenidProvider.TokenEndpoint, strings.NewReader(tokenParams.Encode()))
 	if err != nil {
@@ -121,10 +135,8 @@ func (c *RelyingPartyClient) Exchange(code, verifier string) (*oauth2.TokenRespo
 	return &rawTokenResponse, nil
 }
 
-func (c *RelyingPartyClient) ParseToken(token string) (jwt.Token, error) {
-	// TODO: verify token signature
-	slog.Warn("TODO: verify token signature")
-	tokenJwt, err := jwt.Parse([]byte(token))
+func (c *RelyingPartyClient) ParseIDToken(response *oauth2.TokenResponse) (jwt.Token, error) {
+	tokenJwt, err := jwt.Parse([]byte(response.IDToken), jwt.WithKeySet(c.jwks))
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse token: %w", err)
 	}
@@ -143,4 +155,20 @@ func (c *RelyingPartyClient) ParseToken(token string) (jwt.Token, error) {
 	}
 
 	return tokenJwt, nil
+}
+
+func (c *RelyingPartyClient) ClientID() string {
+	return c.rp.ClientID()
+}
+
+func (c *RelyingPartyClient) Issuer() string {
+	return c.op.Issuer
+}
+
+func (c *RelyingPartyClient) Name() string {
+	return c.metadata.OrganizationName
+}
+
+func (c *RelyingPartyClient) LogoURI() string {
+	return c.metadata.LogoURI
 }

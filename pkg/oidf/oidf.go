@@ -11,6 +11,7 @@ import (
 
 	"github.com/gematik/zero-lab/pkg/util"
 	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/jwx/v2/jws"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
@@ -33,7 +34,7 @@ func clockWithTolerance(tolerance time.Duration) jwt.ClockFunc {
 
 type IdentityProviderInfo struct {
 	Issuer           string   `json:"iss"`
-	LogoUri          string   `json:"logo_uri"`
+	LogoURI          string   `json:"logo_uri"`
 	OrganizationName string   `json:"organization_name"`
 	IsPkv            bool     `json:"pkv"`
 	UserType         UserType `json:"user_type_supported"`
@@ -62,7 +63,7 @@ func NewOpenidFederation(fedMasterURL string, jwks jwk.Set) (*OpenidFederation, 
 	}, nil
 }
 
-func (f *OpenidFederation) ListIdpUrls() ([]IdentityProviderInfo, error) {
+func (f *OpenidFederation) FetchIdpList() ([]IdentityProviderInfo, error) {
 	r, err := f.httpClient.Get(f.entity.IdpListEndpoint)
 	if err != nil {
 		return nil, fmt.Errorf("unable to fetch idp list from '%s': %w", f.entity.IdpListEndpoint, err)
@@ -115,17 +116,13 @@ func (f *OpenidFederation) fetchAndVerify(url string, jwks jwk.Set) (*EntityStat
 		return nil, err
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf(resp.Status)
-	}
-
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		var oidcErr Error
 		err = json.NewDecoder(resp.Body).Decode(&oidcErr)
 		if err != nil {
-			return nil, fmt.Errorf("unable to decode error: %w", err)
+			return nil, fmt.Errorf("http error %d", resp.StatusCode)
 		}
 		return nil, &oidcErr
 	}
@@ -146,7 +143,7 @@ func (f *OpenidFederation) FetchEntityStatement(iss string) (*EntityStatement, e
 
 	url := f.entity.FederationFetchEndpoint + "?" + query.Encode()
 
-	// fetch the entity statement for the fed master first to get the keys
+	// fetch the entity statement from the fed master first to get the trusted keys
 	fromMaster, err := f.fetchAndVerify(url, f.jwks)
 	if err != nil {
 		return nil, fmt.Errorf("unable to fetch entity statement from '%s': %w", url, err)
@@ -194,4 +191,44 @@ func idpEntityToIdpInfo(idpEntity interface{}) ([]IdentityProviderInfo, error) {
 	}
 
 	return idpInfo, nil
+}
+
+func (f *OpenidFederation) FederationMasterURL() string {
+	return f.fedMasterURL
+}
+
+func (f *OpenidFederation) FetchSignedJwks(op *EntityStatement) (jwk.Set, error) {
+	if op.Metadata == nil || op.Metadata.OpenidProvider == nil {
+		return nil, fmt.Errorf("no openid provider found in entity statement")
+	}
+
+	jwksUrl := op.Metadata.OpenidProvider.SignedJwksUri
+
+	resp, err := http.Get(jwksUrl)
+	if err != nil {
+		return nil, fmt.Errorf("unable to fetch jwks from '%s': %w", jwksUrl, err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unable to fetch jwks from '%s': %s", jwksUrl, resp.Status)
+	}
+
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read jwks response body: %w", err)
+	}
+
+	jwksBytes, err := jws.Verify(body, jws.WithKeySet(op.Jwks.Keys))
+	if err != nil {
+		return nil, fmt.Errorf("unable to verify jwks: %w", err)
+	}
+
+	jwks, err := jwk.Parse(jwksBytes)
+	if err != nil {
+		return nil, fmt.Errorf("parsing jwks failed: %w", err)
+	}
+
+	return jwks, err
 }

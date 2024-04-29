@@ -1,0 +1,87 @@
+{{template "layout" .}}
+
+{{define "pageTitle"}}Zero Trust identity verification{{end}}
+
+{{define "content"}}
+<style type="text/css">
+  .card-button {
+    cursor: pointer;
+  }
+  .card-button:hover {
+    border: 1px solid #0d6efd;
+  }
+</style>
+
+<div class="container mt-5">
+  <div class="row">
+    <div class="col-md"></div>
+    <div class="col-md-8 col-lg-6">
+      <h5>Sign in using OpenID Provider</h5>
+      <div id="login-card-button" class="card card-button">
+        <div class="card-body d-flex justify-content-between">
+          <img id="op-logo" class="align-self-center" style="height:64px; max-width: 128px;" src=""/>
+          <div class="align-self-center">
+            <div id="op-name" style="font-size:125%;"></div>
+            <div id="waiting" class="spinner-border" role="status">
+              <span class="sr-only primary"></span>
+            </div>        
+          </div>
+          <i style="font-size: 200%" class="bi bi-chevron-right align-self-center"></i>
+        </div>
+      </div>
+      <a style="float:right" class="icon-link" href="/web/login/choose-openid-provider">
+        <i class="bi bi-pen"></i>
+        Choose provider...
+      </a>
+
+      <div class="d-none text-center" style="clear: both;">
+        <div class="m-2">Handover QR-Code</div>
+        <div id="code"></div>
+      </div>
+
+    </div>
+    <div class="col"></div>
+  </div>
+
+</div>
+<script type="text/javascript" src="/static/ext/qr-code-styling.js"></script>
+
+<script type="module">
+  window.addEventListener("load", function(){
+    var issuer = null
+
+    const query = new URLSearchParams(location.search);
+
+    if (query.has("op_issuer")) {
+      // save the issuer in localStorage
+      issuer = query.get("op_issuer");
+      localStorage.setItem("op_issuer", issuer);
+      console.log("op_issuer: " + issuer);
+    } else {
+      if (localStorage.getItem("op_issuer") !== null) {
+        console.log("op_issuer: " + localStorage.getItem("op_issuer"));
+        issuer = localStorage.getItem("op_issuer");
+      } else {
+        location.href = "/web/login/choose-openid-provider";
+      }
+    }
+
+    fetch("/web/login/start?op_issuer=" + encodeURIComponent(issuer))
+      .then(response => response.json())
+      .then(data => {
+
+        document.getElementById("op-name").innerText = data.op.name;
+        document.getElementById("op-logo").src = data.op.logo_uri;
+        document.getElementById("login-card-button").addEventListener("click", function(){
+          location.href = data.auth_url;
+        });
+
+        document.getElementById("waiting").classList.add("d-none");
+      });
+
+    
+  });
+
+</script>
+
+{{end}}

@@ -9,7 +9,7 @@ import (
 	"github.com/gematik/zero-lab/pkg/util"
 )
 
-func WithOIDCClient(client *oidc.Client) RegistrationServiceOption {
+func WithOIDCClient(client oidc.Client) RegistrationServiceOption {
 	return func(s *RegistrationService) error {
 		s.oidcClient = client
 		return nil
@@ -22,7 +22,7 @@ func (s *RegistrationService) AuthCodeURLOidc(nonce string) (string, error) {
 	}
 
 	authSession := &AuthSessionEntity{
-		Iss:          s.oidcClient.DiscoveryDocument().Issuer,
+		Iss:          s.oidcClient.Issuer(),
 		State:        util.GenerateRandomString(32),
 		Nonce:        nonce,
 		CodeVerifier: oauth2.GenerateCodeVerifier(),
@@ -38,8 +38,7 @@ func (s *RegistrationService) AuthCodeURLOidc(nonce string) (string, error) {
 		authSession.State,
 		authSession.Nonce,
 		codeChallenge,
-		oauth2.CodeChallengeMethodS256,
-	), nil
+	)
 
 }
 
@@ -54,14 +53,10 @@ func (s *RegistrationService) AuthCallbackOidc(state, code string) (*ClientEntit
 		return nil, fmt.Errorf("unable to exchange code: %w", err)
 	}
 
-	slog.Info("auth callback", "token", util.JWSToText(resp.IDTokenRaw))
+	slog.Info("auth callback", "token", util.JWSToText(resp.IDToken))
 
-	account := &AccountEntity{
-		Subject: resp.IDToken.Subject(),
-		Issuer:  resp.IDToken.Issuer(),
-	}
-
-	registrationID, ok := resp.IDToken.PrivateClaims()["nonce"].(string)
+	// TODO
+	registrationID, ok := `resp.IDToken.PrivateClaims()["nonce"].(string)`, true
 	if !ok {
 		return nil, fmt.Errorf("missing nonce claim")
 	}
@@ -69,6 +64,11 @@ func (s *RegistrationService) AuthCallbackOidc(state, code string) (*ClientEntit
 	registration, err := s.store.GetRegistration(registrationID)
 	if err != nil {
 		return nil, fmt.Errorf("unable to find registration: %w", err)
+	}
+
+	account := &AccountEntity{
+		Subject: "resp.IDToken.Subject()",
+		Issuer:  "resp.IDToken.Issuer()",
 	}
 
 	if err := s.store.UpsertAccount(account); err != nil {

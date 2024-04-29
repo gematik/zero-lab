@@ -1,4 +1,4 @@
-FROM golang:1.21 as build
+FROM golang:1.22 as build
 
 WORKDIR /src
 
@@ -24,4 +24,5 @@ COPY --from=build /src/templates /app/templates
 COPY --from=build /src/static /app/static
 
 WORKDIR /app
+ENV PRETTY_LOGS=false
 CMD ["/app/zero-zerobin"]

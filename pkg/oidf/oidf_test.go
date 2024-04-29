@@ -35,17 +35,30 @@ func TestFederation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	f, err := NewOpenidFederation("https://app-ref.federationmaster.de", jwks)
+	fed, err := NewOpenidFederation("https://app-ref.federationmaster.de", jwks)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	es, err := f.FetchEntityStatement("https://gsi.dev.gematik.solutions")
+	idps, err := fed.FetchIdpList()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	es, err := fed.FetchEntityStatement(idps[0].Issuer)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	t.Logf("%+v", es)
+
+	idpJwks, err := fed.FetchSignedJwks(es)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("%+v", idpJwks)
+
 }
 
 func TestLogin(t *testing.T) {
@@ -147,6 +160,10 @@ func TestLogin(t *testing.T) {
 
 	defer parResponse.Body.Close()
 	body, err := io.ReadAll(parResponse.Body)
+	if err != nil {
+		t.Error("Unable to read PAR response body")
+		t.Fatal(err)
+	}
 
 	t.Log("Got response", parResponse.StatusCode)
 

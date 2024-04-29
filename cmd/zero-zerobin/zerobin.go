@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"html/template"
 	"io"
 	"log/slog"
 	"net/http"
@@ -71,10 +70,6 @@ func issueCert(ctx echo.Context) error {
 		csrDer = body
 	} else {
 		csrPEMBytes := body
-		if err != nil {
-			slog.Error("error reading request body", "error", err)
-			return echo.NewHTTPError(http.StatusBadRequest, "error reading request body")
-		}
 		csrPEM, _ := pem.Decode(csrPEMBytes)
 		if csrPEM == nil {
 			slog.Error("error decoding PEM", "error", err)
@@ -91,7 +86,7 @@ func issueCert(ctx echo.Context) error {
 	subject := pkix.Name{
 		CommonName: "Unattested Client",
 	}
-	cert, err := unattestedClientsCA.SignCertificateRequest(csr, subject)
+	cert, err := unregisteredClientsCA.SignCertificateRequest(csr, subject)
 	if err != nil {
 		slog.Error("error signing certificate", "error", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "error signing certificate")
@@ -109,14 +104,6 @@ func issueCert(ctx echo.Context) error {
 	return nil
 }
 
-type Template struct {
-	templates *template.Template
-}
-
-func (t *Template) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
-	return t.templates.ExecuteTemplate(w, name, data)
-}
-
 func getIndex(ctx echo.Context) error {
 	fqdn := util.GetEnv("FQDN", "localhost")
 	return ctx.Render(http.StatusOK, "zerobin-index.html", map[string]string{
@@ -126,5 +113,5 @@ func getIndex(ctx echo.Context) error {
 
 func getUnattestedClientsCAChain(ctx echo.Context) error {
 	ctx.Response().Header().Set("Content-Disposition", "attachment; filename=ca-chain.pem")
-	return pem.Encode(ctx.Response(), &pem.Block{Type: "CERTIFICATE", Bytes: unattestedClientsCA.IssuerCertificate().Raw})
+	return pem.Encode(ctx.Response(), &pem.Block{Type: "CERTIFICATE", Bytes: unregisteredClientsCA.IssuerCertificate().Raw})
 }

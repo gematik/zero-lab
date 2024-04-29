@@ -2,8 +2,12 @@ package util
 
 import (
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
 )
@@ -50,4 +54,16 @@ func (j *Jwks) UnmarshalJSON(data []byte) error {
 	}
 	j.Keys = keys
 	return nil
+}
+
+func RandomJWK() (jwk.Key, error) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("could not generate key: %w", err)
+	}
+	jwkKey, err := jwk.FromRaw(privateKey)
+	if err != nil {
+		return nil, fmt.Errorf("could not create jwk from key: %w", err)
+	}
+	return jwkKey, nil
 }

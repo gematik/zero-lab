@@ -1,0 +1,38 @@
+{{ template "layout" . }}
+
+{{ define "pageTitle" }}User Information{{ end }}
+
+{{ define "content" }}
+<div class="container mt-5">
+
+    <div class="card">
+        <div class="card-header text-center">
+          Identity verified
+        </div>
+        <div class="card-body">
+            <h5 class="card-title"><i class="bi bi-check-circle text-success"></i> OpenID Provider Identity</h5>
+            <dl class="row mt-4">  
+                <dt class="col-md-3">Issuer</dd>
+                <dd class="col-md-9 font-monospace">{{ .userInfo.Issuer }}</dt>
+                <dt class="col-md-3">Identifier</dd>
+                <dd class="col-md-9 font-monospace">{{ .userInfo.Identifier }}</dt>
+                <dt class="col-md-3">Name</dd>
+                <dd class="col-md-9 font-monospace">{{ .userInfo.Name }}</dt>
+            </dl>
+
+            <div class="row text-start">
+                <p class="d-inline-flex gap-1">
+                    <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#accessToken" aria-expanded="false" aria-controls="accessToken">
+                      Details
+                    </button>
+                    <a href="/web/login" class="btn btn-outline-danger">Logout</a>
+                </p>
+                <pre class="collapse" id="accessToken">{{.userInfo.AccessTokenJson}}</pre>
+            </div>
+
+        </div>
+  
+    </div>
+
+</div>
+{{ end }}

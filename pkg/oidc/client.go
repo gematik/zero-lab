@@ -17,21 +17,32 @@ import (
 )
 
 type Config struct {
-	Issuer       string
-	ClientID     string
-	ClientSecret string
-	RedirectURI  string
-	Scopes       []string
+	Issuer       string   `yaml:"issuer"`
+	ClientID     string   `yaml:"client_id"`
+	ClientSecret string   `yaml:"client_secret"`
+	RedirectURI  string   `yaml:"redirect_uri"`
+	Scopes       []string `yaml:"scopes"`
+	LogoURI      string   `yaml:"logo_uri"`
+	Name         string   `yaml:"name"`
 }
 
-type Client struct {
-	cfg               *Config
+type Client interface {
+	oauth2.Client
+	ParseIDToken(response *oauth2.TokenResponse) (jwt.Token, error)
+	Issuer() string
+	ClientID() string
+	Name() string
+	LogoURI() string
+}
+
+type client struct {
+	cfg               Config
 	discoveryDocument *DiscoveryDocument
 	keyCache          *jwk.Cache
 }
 
-func NewClient(cfg *Config) (*Client, error) {
-	c := &Client{
+func NewClient(cfg Config) (Client, error) {
+	c := &client{
 		cfg:               cfg,
 		discoveryDocument: nil,
 		keyCache:          nil,
@@ -55,11 +66,20 @@ func NewClient(cfg *Config) (*Client, error) {
 	return c, nil
 }
 
-func (c *Client) DiscoveryDocument() *DiscoveryDocument {
+func (c *client) ClientID() string {
+	return c.cfg.ClientID
+}
+
+func (c *client) RedirectURI() string {
+	return c.cfg.RedirectURI
+}
+
+func (c *client) DiscoveryDocument() *DiscoveryDocument {
 	return c.discoveryDocument
 }
 
-func (c *Client) AuthCodeURL(state, nonce, codeChallenge string, codeChallengeMethod oauth2.CodeChallengeMethod) string {
+func (c *client) AuthCodeURL(state, nonce, verifier string, opts ...oauth2.ParameterOption) (string, error) {
+	codeChallenge := oauth2.S256ChallengeFromVerifier(verifier)
 	query := url.Values{}
 	query.Add("client_id", c.cfg.ClientID)
 	query.Add("redirect_uri", c.cfg.RedirectURI)
@@ -68,12 +88,18 @@ func (c *Client) AuthCodeURL(state, nonce, codeChallenge string, codeChallengeMe
 	query.Add("state", state)
 	query.Add("nonce", nonce)
 	query.Add("code_challenge", codeChallenge)
-	query.Add("code_challenge_method", string(codeChallengeMethod))
+	query.Add("code_challenge_method", string(oauth2.CodeChallengeMethodS256))
 
-	return fmt.Sprintf("%s?%s", c.discoveryDocument.AuthorizationEndpoint, query.Encode())
+	for _, opt := range opts {
+		opt(query)
+	}
+
+	slog.Info("Using OP AuthorizationEndpoint", "url", c.discoveryDocument.AuthorizationEndpoint)
+
+	return fmt.Sprintf("%s?%s", c.discoveryDocument.AuthorizationEndpoint, query.Encode()), nil
 }
 
-func (c *Client) Exchange(code string, codeVerifier string) (*TokenResponse, error) {
+func (c *client) Exchange(code string, codeVerifier string, opts ...oauth2.ParameterOption) (*oauth2.TokenResponse, error) {
 	params := url.Values{}
 	params.Set("client_id", c.cfg.ClientID)
 	params.Set("client_secret", c.cfg.ClientSecret)
@@ -82,12 +108,16 @@ func (c *Client) Exchange(code string, codeVerifier string) (*TokenResponse, err
 	params.Set("grant_type", "authorization_code")
 	params.Set("code_verifier", codeVerifier)
 
+	for _, opt := range opts {
+		opt(params)
+	}
+
+	slog.Debug("Exchanging code for token", "url", c.discoveryDocument.TokenEndpoint, "params", params)
+
 	resp, err := http.PostForm(c.discoveryDocument.TokenEndpoint, params)
 	if err != nil {
 		return nil, fmt.Errorf("unable to exchange code for token: %w", err)
 	}
-
-	slog.Info("Exchange", "resp", resp)
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -100,6 +130,7 @@ func (c *Client) Exchange(code string, codeVerifier string) (*TokenResponse, err
 		if err != nil {
 			return nil, fmt.Errorf("unable to decode error: %w", err)
 		}
+		slog.Error("unable to exchange code for token", "error", oidcErr)
 		return nil, &oidcErr
 	}
 
@@ -109,30 +140,18 @@ func (c *Client) Exchange(code string, codeVerifier string) (*TokenResponse, err
 		return nil, fmt.Errorf("unable to decode token response: %w", err)
 	}
 
-	idToken, err := c.ParseIDToken(tokenResponse.IDToken)
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse id token: %w", err)
-	}
-
-	return &TokenResponse{
-		AccessToken: tokenResponse.AccessToken,
-		TokenType:   tokenResponse.TokenType,
-		ExpiresIn:   tokenResponse.ExpiresIn,
-		Scopes:      strings.Split(tokenResponse.Scope, " "),
-		IDToken:     idToken,
-		IDTokenRaw:  tokenResponse.IDToken,
-	}, nil
+	return &tokenResponse, nil
 }
 
 // Parses and verifies an ID token against the keys from the discovery document.
-func (c *Client) ParseIDToken(serialized string) (jwt.Token, error) {
+func (c *client) ParseIDToken(response *oauth2.TokenResponse) (jwt.Token, error) {
 	keySet, err := c.keyCache.Get(context.Background(), c.discoveryDocument.JwksURI)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get key set: %w", err)
 	}
 
 	token, err := jwt.ParseString(
-		serialized,
+		response.IDToken,
 		jwt.WithKeySet(keySet),
 		jwt.WithIssuer(c.discoveryDocument.Issuer),
 		jwt.WithAudience(c.cfg.ClientID),
@@ -146,12 +165,14 @@ func (c *Client) ParseIDToken(serialized string) (jwt.Token, error) {
 	return token, nil
 }
 
-type TokenResponse struct {
-	AccessToken  string
-	TokenType    string
-	ExpiresIn    int
-	Scopes       []string
-	RefreshToken string
-	IDToken      jwt.Token
-	IDTokenRaw   string
+func (c *client) Issuer() string {
+	return c.discoveryDocument.Issuer
+}
+
+func (c *client) Name() string {
+	return c.cfg.Name
+}
+
+func (c *client) LogoURI() string {
+	return c.cfg.LogoURI
 }

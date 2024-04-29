@@ -1,0 +1,175 @@
+{{template "layout" .}}
+
+{{define "pageTitle"}}Authenticate using gematik Authenticator{{end}}
+
+{{define "content"}}
+
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card text-center">
+                <div class="card-header">
+                    Authentication
+                </div>
+                <div class="card-body">
+                    <h5 class="card-title">{{.op.Name}}</h5>
+                    <div class="text-center">
+                      <div class="mt-3">
+                        <span>
+                          <img src="/static/images/GID_App_light_mode.svg" style="max-height: 64px;">
+                          <i class="bi bi-arrow-right"></i>
+                        </span>
+                        <img id="op-logo" src="{{.op.LogoURI}}" style="max-height: 64px;">
+                      </div>
+                      <div>
+                        <div class="m-2 mt-4">Handover QR-Code</div>
+                        <div id="code"></div>
+                      </div>
+                      <div class="d-grid gap-2 d-md-block mt-3 text-center">
+                        <a id="login-button" href="" class="btn btn-primary btn-lg">Direct link</a>
+                        <a href="/web/login" class="btn btn-outline-danger">Cancel</a>
+                      </div>
+                    </div>      
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript" src="/static/ext/qr-code-styling.js"></script>
+
+<script type="module">
+async function startDecoupledAuth(authURL) {
+    var url = new URL('/web/login/poll', window.location.href).href;
+
+    // start polling
+    var interval = setInterval(async function() {
+        var pollResponse = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+            })
+        }).then(async response => { 
+            console.log(response);
+            if (response.status != 200 && response.status != 202) {
+                clearInterval(interval);
+                const body = await response.json();
+                // redirect to error page with error and error description, url escaped
+                window.location.href = '/web/error?error=server_error&error_description='+encodeURIComponent(body['error_description']);
+                return;
+            }
+            return response.json()
+        } )
+        .catch(error => { 
+            console.log(error);
+            return;
+        });
+        if (pollResponse == null || pollResponse['error'] != null) {
+            return;
+        }
+        console.log(pollResponse);
+        clearInterval(interval);
+        window.location.href = '/web/protected/userinfo';
+    }, 2000);
+}
+
+function showQRCode(link) {
+  const qrCode = new QRCodeStyling({
+      "width":350,
+      "height":350,
+      "data":link,
+      "margin":0,
+      "qrOptions":{
+          "typeNumber":"0",
+          "mode":"Byte",
+          "errorCorrectionLevel":"Q"
+      },
+      "imageOptions":{
+          "hideBackgroundDots":true,
+          "imageSize":0.4,
+          "margin":0
+      },
+      "dotsOptions":{
+          "type":"rounded",
+          "color":"#182761"
+      },
+      "backgroundOptions":{
+          "color":"#e4eaf1"
+      },
+      "image":"/static/images/GID_App_light_mode.svg",
+      "dotsOptionsHelper":{
+          "colorType":{
+              "single":true,
+              "gradient":false
+          },
+          "gradient":{
+              "linear":true,
+              "radial":false,
+              "color1":"#6a1a4c",
+              "color2":"#6a1a4c",
+              "rotation":"0"
+          }
+      },
+      "cornersSquareOptions":{
+          "type":"extra-rounded",
+          "color":"#a0afc9"
+      },
+      "cornersSquareOptionsHelper":{
+          "colorType":{
+              "single":true,
+              "gradient":false
+          },
+          "gradient":{
+              "linear":true,
+              "radial":false,
+              "color1":"#000000",
+              "color2":"#000000",
+              "rotation":"0"
+          }
+      },
+      "cornersDotOptions":{
+          "type":"dot",
+          "color":"#182761"
+      },
+      "cornersDotOptionsHelper":{
+          "colorType":{
+              "single":true,
+              "gradient":false
+          },
+          "gradient":{
+              "linear":true,
+              "radial":false,
+              "color1":"#000000",
+              "color2":"#000000",
+              "rotation":"0"
+          }
+      },
+      "backgroundOptionsHelper":{
+          "colorType":{
+              "single":true,
+              "gradient":false
+          },
+          "gradient":{
+              "linear":true,
+              "radial":false,
+              "color1":"#e4eaf1",
+              "color2":"#e4eaf1",
+              "rotation":"0"
+          }
+      }
+  });
+
+  qrCode.append(document.getElementById('code'));
+}
+
+window.onload = function() {
+  showQRCode("{{ .qrCodeURL }}");
+  startDecoupledAuth("{{ .authURL }}");
+}
+
+</script>
+
+{{end}}

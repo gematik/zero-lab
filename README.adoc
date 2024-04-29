@@ -164,8 +164,10 @@ message=base64url({
 
 [source,sh]
 ----
-go install github.com/cespare/reflex@latest
-reflex -s go run ./cmd/zero-zerobin
+# install Air - a live reload tool for Go
+go install github.com/cosmtrek/air@latest
+# start zerobin server
+air
 
 (cd secrets; rm localhost*; mkcert localhost)
 export TLS_CERT_PATH=./secrets/localhost.pem
