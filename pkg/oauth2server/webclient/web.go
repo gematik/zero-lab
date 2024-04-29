@@ -534,12 +534,14 @@ func (cl *Client) userInfo(c echo.Context) error {
 	userInfo := &userInfo{
 		Issuer: act["iss"].(string),
 	}
-	if idNummer, ok := act["idNummer"]; ok {
-		userInfo.Identifier = idNummer.(string)
-	} else if id, ok := act["urn:telematik:claims:id"]; ok {
+	if id, ok := act["idNummer"]; ok { // gematik IDP-Dienst
 		userInfo.Identifier = id.(string)
-	} else if mail, ok := act["email"]; ok {
-		userInfo.Identifier = mail.(string)
+	} else if id, ok := act["urn:telematik:claims:id"]; ok { // GesundheitsID
+		userInfo.Identifier = id.(string)
+	} else if id, ok := act["unique_name"]; ok { // Azure EntraID
+		userInfo.Identifier = id.(string)
+	} else if id, ok := act["email"]; ok { // generic fallback, e.g. Google
+		userInfo.Identifier = id.(string)
 	}
 
 	if name, ok := act["organizationName"]; ok {
