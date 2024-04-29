@@ -13,6 +13,7 @@ import (
 
 	"github.com/gematik/zero-lab/pkg/oauth2"
 	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/jwx/v2/jws"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
@@ -137,7 +138,27 @@ func (c *client) Exchange(code string, codeVerifier string, opts ...oauth2.Param
 	var tokenResponse oauth2.TokenResponse
 	err = json.Unmarshal(body, &tokenResponse)
 	if err != nil {
-		return nil, fmt.Errorf("unable to decode token response: %w", err)
+		// ugly fallback to workaround EntraID insonstency with expires_in
+		fallbackTokenResponse := struct {
+			AccessToken  string `json:"access_token"`
+			TokenType    string `json:"token_type"`
+			ExpiresIn    int    `json:"expires_in,string"`
+			Scope        string `json:"scope"`
+			RefreshToken string `json:"refresh_token"`
+			IDToken      string `json:"id_token"`
+		}{}
+		err = json.Unmarshal(body, &fallbackTokenResponse)
+		if err != nil {
+			slog.Error("unable to decode token response", "error", err, "body", string(body))
+			return nil, fmt.Errorf("unable to decode token response: %w", err)
+		} else {
+			tokenResponse.AccessToken = fallbackTokenResponse.AccessToken
+			tokenResponse.TokenType = fallbackTokenResponse.TokenType
+			tokenResponse.ExpiresIn = fallbackTokenResponse.ExpiresIn
+			tokenResponse.Scope = fallbackTokenResponse.Scope
+			tokenResponse.RefreshToken = fallbackTokenResponse.RefreshToken
+			tokenResponse.IDToken = fallbackTokenResponse.IDToken
+		}
 	}
 
 	return &tokenResponse, nil
@@ -152,7 +173,7 @@ func (c *client) ParseIDToken(response *oauth2.TokenResponse) (jwt.Token, error)
 
 	token, err := jwt.ParseString(
 		response.IDToken,
-		jwt.WithKeySet(keySet),
+		jwt.WithKeySet(keySet, jws.WithInferAlgorithmFromKey(true)), // Azure AD does not include alg in ID token header
 		jwt.WithIssuer(c.discoveryDocument.Issuer),
 		jwt.WithAudience(c.cfg.ClientID),
 		jwt.WithRequiredClaim("nonce"),
@@ -160,6 +181,9 @@ func (c *client) ParseIDToken(response *oauth2.TokenResponse) (jwt.Token, error)
 		jwt.WithRequiredClaim("exp"),
 	)
 	if err != nil {
+		// ugly fallback to workaround EntraID using RSA keys
+
+		slog.Error("unable to parse id token", "error", err, "token", response.IDToken, "keySet", keySet, "jwksUri", c.discoveryDocument.JwksURI)
 		return nil, fmt.Errorf("unable to parse id token: %w", err)
 	}
 	return token, nil
