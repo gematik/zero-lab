@@ -7,22 +7,18 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwk"
 )
 
-type Signer func()
-
 func SignRequest(request *http.Request, privateKey jwk.Key) error {
-	token, err := NewToken(
-		NewTokenId(),
-		request.Method,
-		request.URL.String(),
-		time.Now(),
-		"",
-		"",
-	)
+	token := DPoP{
+		JwtID:      NewTokenID(),
+		HttpMethod: request.Method,
+		HttpURI:    request.URL.String(),
+		IssuedAt:   time.Now(),
+	}
+
+	signed, err := token.Sign(privateKey)
 	if err != nil {
 		return err
 	}
-
-	signed, err := SignToken(token, privateKey)
 
 	request.Header.Add(DPoPHeaderName, string(signed))
 

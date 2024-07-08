@@ -37,7 +37,7 @@ type RegistrationServiceOption func(*RegistrationService) error
 func WithOIDFRelyingParty(rp *oidf.RelyingParty) RegistrationServiceOption {
 	return func(s *RegistrationService) error {
 		s.oidfRelyingParty = rp
-		dpopMiddleware, err := dpop.NewMiddleware(dpop.WithNonce(s.NonceService))
+		dpopMiddleware, err := dpop.NewMiddleware(dpop.WithNonceService(s.NonceService))
 		if err != nil {
 			return fmt.Errorf("unable to create dpop middleware: %w", err)
 		}

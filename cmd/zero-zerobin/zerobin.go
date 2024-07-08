@@ -4,7 +4,9 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"embed"
 	"encoding/pem"
+	"html/template"
 	"io"
 	"log/slog"
 	"net/http"
@@ -15,34 +17,44 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func getEcho(ctx echo.Context) error {
-	data := make(map[string]interface{})
-	data["metadata"] = map[string]interface{}{
+var (
+	//go:embed *.html
+	templatesFS   embed.FS
+	templateIndex *template.Template
+)
+
+func init() {
+	templateIndex = template.Must(template.ParseFS(templatesFS, "index.html"))
+}
+
+func requestDetails(ctx echo.Context) map[string]interface{} {
+	details := make(map[string]interface{})
+	details["metadata"] = map[string]interface{}{
 		"version": pkg.Version,
 	}
 
 	r := ctx.Request()
 
-	data["method"] = r.Method
-	data["proto"] = r.Proto
-	data["remoteAddr"] = r.RemoteAddr
-	data["host"] = r.Host
-	data["requestURI"] = r.RequestURI
-	data["headers"] = make(map[string]interface{})
+	details["method"] = r.Method
+	details["proto"] = r.Proto
+	details["remoteAddr"] = r.RemoteAddr
+	details["host"] = r.Host
+	details["requestURI"] = r.RequestURI
+	details["headers"] = make(map[string]interface{})
 	if ctx.Request().TLS != nil {
-		data["tlsVersion"] = tls.VersionName(r.TLS.Version)
-		data["tlsCipherSuite"] = tls.CipherSuiteName(r.TLS.CipherSuite)
-		data["tlsHostname"] = r.TLS.ServerName
+		details["tlsVersion"] = tls.VersionName(r.TLS.Version)
+		details["tlsCipherSuite"] = tls.CipherSuiteName(r.TLS.CipherSuite)
+		details["tlsHostname"] = r.TLS.ServerName
 	}
 
 	for k, v := range r.Header {
-		data["headers"].(map[string]interface{})[k] = v
+		details["headers"].(map[string]interface{})[k] = v
 	}
 
-	if r.TLS.PeerCertificates != nil && len(r.TLS.PeerCertificates) > 0 {
-		data["tlsClientCertificates"] = make([]map[string]string, len(r.TLS.PeerCertificates))
+	if r.TLS != nil && r.TLS.PeerCertificates != nil && len(r.TLS.PeerCertificates) > 0 {
+		details["tlsClientCertificates"] = make([]map[string]string, len(r.TLS.PeerCertificates))
 		for i, cert := range r.TLS.PeerCertificates {
-			data["tlsClientCertificates"].([]map[string]string)[i] = map[string]string{
+			details["tlsClientCertificates"].([]map[string]string)[i] = map[string]string{
 				"subject":   cert.Subject.String(),
 				"issuer":    cert.Issuer.String(),
 				"notBefore": cert.NotBefore.String(),
@@ -51,7 +63,11 @@ func getEcho(ctx echo.Context) error {
 		}
 	}
 
-	return ctx.JSONPretty(http.StatusOK, data, "  ")
+	return details
+}
+
+func getEcho(ctx echo.Context) error {
+	return ctx.JSONPretty(http.StatusOK, requestDetails(ctx), "  ")
 }
 
 // openssl req -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout example.key -out example.csr -subj "/CN=Zero Trust Client"
@@ -106,7 +122,8 @@ func issueCert(ctx echo.Context) error {
 
 func getIndex(ctx echo.Context) error {
 	fqdn := util.GetEnv("FQDN", "localhost")
-	return ctx.Render(http.StatusOK, "zerobin-index.html", map[string]string{
+
+	return templateIndex.Execute(ctx.Response().Writer, map[string]interface{}{
 		"fqdn": fqdn,
 	})
 }

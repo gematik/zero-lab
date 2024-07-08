@@ -47,7 +47,7 @@ func LoadConfigFile(path string) (*Config, error) {
 	return cfg, nil
 }
 
-func NewServerFromConfigFile(path string) (*Server, error) {
+func NewFromConfigFile(path string) (*Server, error) {
 	cfg, err := LoadConfigFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("load config file: %w", err)

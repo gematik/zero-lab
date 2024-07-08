@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"html/template"
 	"log"
 	"log/slog"
 	"net/http"
@@ -13,6 +12,8 @@ import (
 	"github.com/gematik/zero-lab/pkg"
 	"github.com/gematik/zero-lab/pkg/attestation/tpmattest"
 	"github.com/gematik/zero-lab/pkg/ca"
+	"github.com/gematik/zero-lab/pkg/dpop"
+	"github.com/gematik/zero-lab/pkg/nonce"
 	"github.com/gematik/zero-lab/pkg/oauth2server"
 	"github.com/gematik/zero-lab/pkg/oauth2server/webclient"
 	"github.com/gematik/zero-lab/pkg/prettylog"
@@ -81,8 +82,20 @@ func main() {
 		slog.Info("request", "requestBody", string(reqBody), "responseBody", string(resBody))
 	})
 
-	root.Renderer = &Renderer{
-		templates: template.Must(template.ParseGlob("templates/*.html")),
+	nonceService, err := nonce.NewHashicorpNonceService()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	newReplayNonce := func(c echo.Context) error {
+		nonce, err := nonceService.Get()
+		if err != nil {
+			slog.Error("Unable to get nonce", "error", err)
+			return echo.NewHTTPError(500, "Unable to get nonce")
+		}
+		c.Response().Header().Set("Replay-Nonce", nonce)
+		c.Response().WriteHeader(http.StatusCreated)
+		return nil
 	}
 
 	// ------------------ TPM Activation Service
@@ -98,8 +111,30 @@ func main() {
 	root.GET("/echo", getEcho)
 	root.GET("/ca/ca-chain.pem", getUnattestedClientsCAChain)
 	root.POST("/ca/issue-cert", issueCert, bodyDump)
+	root.GET("/nonce", newReplayNonce)
+	root.HEAD("/nonce", newReplayNonce)
 
-	as, err := oauth2server.NewServerFromConfigFile(util.GetEnv("AUTHZ_SERVER_CONFIG_PATH", "config/authz-server.yaml"))
+	// DPoP
+	dpopGroup := root.Group("/dpop")
+	dpopMiddleware, err := dpop.NewMiddleware()
+	if err != nil {
+		log.Fatal(err)
+	}
+	dpopGroup.Use(dpopMiddleware.VerifyDPoPHeader)
+	dpopGroup.GET("/echo", getEcho)
+	dpopGroup.POST("/token", dpopAccessToken)
+
+	// DPoP with nonce
+	dpopNonceGroup := root.Group("/dpop-nonce")
+	dpopNonceMiddleware, err := dpop.NewMiddleware(dpop.WithNonceService(nonceService))
+	if err != nil {
+		log.Fatal(err)
+	}
+	dpopNonceGroup.Use(dpopNonceMiddleware.VerifyDPoPHeader)
+	dpopNonceGroup.GET("/echo", getEcho)
+	dpopNonceGroup.POST("/token", dpopAccessToken)
+
+	as, err := oauth2server.NewFromConfigFile(util.GetEnv("AUTHZ_SERVER_CONFIG_PATH", "config/authz-server.yaml"))
 	if err != nil {
 		log.Fatal(err)
 	}

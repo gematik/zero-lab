@@ -30,60 +30,44 @@ type DPoP struct {
 }
 
 // Creates a new DPoP token ID.
-func NewTokenId() string {
+func NewTokenID() string {
 	return ksuid.New().String()
 }
 
-// Creates a new DPoP token with the given parameters.
-func NewToken(
-	tokenId string,
-	httpMethod string,
-	httpURI string,
-	issuedAt time.Time,
-	accessTokenHash string,
-	nonce string,
-) (jwt.Token, error) {
+// Signs the DPoP token with the given private key and returns
+// the compact serialized token.
+func (dpop *DPoP) Sign(privateKey jwk.Key) ([]byte, error) {
 	token := jwt.New()
 
-	// required
-	if tokenId == "" {
-		return nil, fmt.Errorf("tokenId is required")
+	if dpop.JwtID == "" {
+		dpop.JwtID = NewTokenID()
 	}
-	token.Set("jti", tokenId)
+	token.Set("jti", dpop.JwtID)
 
-	// required
-	if httpMethod == "" {
+	if dpop.HttpMethod == "" {
 		return nil, fmt.Errorf("httpMethod is required")
 	}
-	token.Set("htm", httpMethod)
+	token.Set("htm", dpop.HttpMethod)
 
-	// required
-	if httpURI == "" {
+	if dpop.HttpURI == "" {
 		return nil, fmt.Errorf("httpURI is required")
 	}
-	token.Set("htu", httpURI)
+	token.Set("htu", dpop.HttpURI)
 
-	// required
-	if issuedAt.IsZero() {
+	if dpop.IssuedAt.IsZero() {
 		return nil, fmt.Errorf("issuedAt is required")
 	}
-	token.Set("iat", issuedAt.Unix())
 
-	// optional
-	if accessTokenHash != "" {
-		token.Set("ath", accessTokenHash)
+	token.Set("iat", dpop.IssuedAt.Unix())
+
+	if dpop.AccessTokenHash != "" {
+		token.Set("ath", dpop.AccessTokenHash)
 	}
 
-	// optional
-	if nonce != "" {
-		token.Set("nonce", nonce)
+	if dpop.Nonce != "" {
+		token.Set("nonce", dpop.Nonce)
 	}
 
-	return token, nil
-}
-
-// Signs a DPoP token with the given private key.
-func SignToken(token jwt.Token, privateKey jwk.Key) ([]byte, error) {
 	publicKey, err := privateKey.PublicKey()
 	if err != nil {
 		return nil, err
@@ -97,9 +81,10 @@ func SignToken(token jwt.Token, privateKey jwk.Key) ([]byte, error) {
 		token,
 		jwt.WithKey(jwa.ES256, privateKey, jws.WithProtectedHeaders(headers)),
 	)
+
 }
 
-func ParseToken(tokenBytes []byte) (*DPoP, error) {
+func Parse(tokenBytes []byte) (*DPoP, error) {
 	// DANGER, parsing the token without verifying the signature
 	unsafeMessage, err := jws.Parse(tokenBytes)
 	if err != nil {
@@ -178,10 +163,10 @@ func stringClaim(token jwt.Token, name string, required bool) (string, error) {
 		if claimStr, ok := claim.(string); ok {
 			return claimStr, nil
 		}
-		return "", fmt.Errorf("claim %s is not a string", name)
+		return "", fmt.Errorf("claim '%s' is not a string", name)
 	}
 	if required {
-		return "", fmt.Errorf("claim %s is required", name)
+		return "", fmt.Errorf("claim '%s' is required", name)
 	}
 	return "", nil
 }
