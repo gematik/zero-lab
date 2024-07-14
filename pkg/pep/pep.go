@@ -2,10 +2,12 @@ package pep
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"sync"
 	"time"
 
 	"github.com/gematik/zero-lab/pkg/oauth2server"
@@ -13,58 +15,73 @@ import (
 )
 
 type PEP struct {
-	httpClient    http.Client
-	authzIssuer   string
-	authzMetadata *oauth2server.Metadata
-	jwksCache     *jwk.Cache
+	Config             Config
+	httpClient         http.Client
+	authzIssuer        string
+	authzMetadata      *oauth2server.Metadata
+	authzMetadataMutex sync.RWMutex
+	jwksCache          *jwk.Cache
+	proxies            []*ResourceReverseProxy
 }
 
-func (p *PEP) reloadMetadata(ctx context.Context) error {
-	// fetch metadata from authzIssuer
-	metadata, err := fetchAuthzMetadata(p.authzIssuer)
-	if err != nil {
-		return fmt.Errorf("fetch metadata: %w", err)
-	}
-
-	slog.Info("Fetched authz metadata", "metadata", metadata)
-
-	// update metadata
-	p.authzMetadata = metadata
-
-	jwksCache := jwk.NewCache(ctx)
-	jwksCache.Register(
-		p.authzMetadata.JwksURI,
-		jwk.WithMinRefreshInterval(15*time.Minute),
-		jwk.WithHTTPClient(&p.httpClient),
-	)
-	// refresh signing keys
-	_, err = jwksCache.Refresh(ctx, p.authzMetadata.JwksURI)
-	if err != nil {
-		return fmt.Errorf("failed to fetch signing keys: %w", err)
-	}
-
-	slog.Info("Fetched signing keys", "jwks_uri", p.authzMetadata.JwksURI)
-
-	p.jwksCache = jwksCache
-
-	return nil
-
+type ResourceReverseProxy struct {
+	config ResourceConfig
+	proxy  *httputil.ReverseProxy
 }
 
-func fetchAuthzMetadata(authzIssuer string) (*oauth2server.Metadata, error) {
-	// fetch metadata from authzIssuer
-	metadataURL := authzIssuer + "/.well-known/oauth-authorization-server"
-	resp, err := http.Get(metadataURL)
-	if err != nil {
-		return nil, fmt.Errorf("fetch metadata: %w", err)
-	}
-	defer resp.Body.Close()
+func (proxy *ResourceReverseProxy) Forward(w http.ResponseWriter, r *http.Request) {
+	r.Header.Set("X-ZTA-PEP-Version", "0.0.1")
+	proxy.proxy.ServeHTTP(w, r)
+}
 
-	var metadata oauth2server.Metadata
-	err = json.NewDecoder(resp.Body).Decode(&metadata)
-	if err != nil {
-		return nil, fmt.Errorf("decode metadata: %w", err)
+func New(config Config) (*PEP, error) {
+	p := &PEP{
+		Config:      config,
+		httpClient:  http.Client{},
+		authzIssuer: config.AuthzIssuer,
 	}
 
-	return &metadata, nil
+	for _, r := range config.Resources {
+		url, err := url.Parse(r.Destination)
+		if err != nil {
+			return nil, fmt.Errorf("parse destination URL for pattern '%s': %w", r.Pattern, err)
+		}
+		p.proxies = append(p.proxies, &ResourceReverseProxy{
+			config: r,
+			proxy:  httputil.NewSingleHostReverseProxy(url),
+		})
+		slog.Info("created reverse proxy", "pattern", r.Pattern, "destination", r.Destination)
+	}
+
+	go p.periodicMetadataReload(context.Background(), 5*time.Minute)
+
+	return p, nil
+}
+
+func (p *PEP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	for _, proxy := range p.proxies {
+		if proxy.config.Pattern.MatchString(r.URL.Path) {
+			proxy.Forward(w, r)
+			return
+		}
+	}
+	http.Error(w, "not found", http.StatusNotFound)
+}
+
+func (p *PEP) ListenAndServe(ctx context.Context) error {
+
+	server := &http.Server{
+		Addr:         p.Config.Address,
+		Handler:      p,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
+	// stop server when context is done
+	go func() {
+		<-ctx.Done()
+		server.Shutdown(context.Background())
+	}()
+
+	return server.ListenAndServe()
 }

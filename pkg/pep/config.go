@@ -1,10 +1,9 @@
 package pep
 
 import (
-	"context"
 	"fmt"
-	"net/http"
 	"os"
+	"regexp"
 
 	"github.com/go-playground/validator/v10"
 	"gopkg.in/yaml.v3"
@@ -14,24 +13,17 @@ type Config struct {
 	Address          string                  `yaml:"address" validate:"required"`
 	AuthzIssuer      string                  `yaml:"authz_issuer" validate:"required"`
 	SecurityProfiles []SecurityProfileConfig `yaml:"security_profiles" validate:"required"`
+	Resources        []ResourceConfig        `yaml:"resources" validate:"required"`
 }
 
 type SecurityProfileConfig struct {
 	Name string `yaml:"name" validate:"required"`
 }
 
-func New(config Config) (*PEP, error) {
-	p := &PEP{
-		httpClient:  http.Client{},
-		authzIssuer: config.AuthzIssuer,
-	}
-
-	err := p.reloadMetadata(context.Background())
-	if err != nil {
-		return nil, err
-	}
-
-	return p, nil
+type ResourceConfig struct {
+	Pattern         *regexp.Regexp `yaml:"pattern" validate:"required"`
+	Destination     string         `yaml:"destination" validate:"required"`
+	SecurityProfile string         `yaml:"security_profile" validate:"required"`
 }
 
 func LoadConfigFile(path string) (*Config, error) {
