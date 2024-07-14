@@ -2,6 +2,7 @@ package pep
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -65,7 +66,12 @@ func (p *PEP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	http.Error(w, "not found", http.StatusNotFound)
+	p.RespondWithError(w, r, ErrorNotFound)
+}
+
+func (p *PEP) RespondWithError(w http.ResponseWriter, r *http.Request, err ErrorType) {
+	w.WriteHeader(err.HttpStatus)
+	json.NewEncoder(w).Encode(err)
 }
 
 func (p *PEP) ListenAndServe(ctx context.Context) error {
