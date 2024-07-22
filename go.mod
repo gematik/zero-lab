@@ -9,6 +9,7 @@ require (
 	github.com/go-playground/validator/v10 v10.19.0
 	github.com/google/go-attestation v0.5.1
 	github.com/gorilla/sessions v1.2.2
+	github.com/gorilla/websocket v1.5.3
 	github.com/hashicorp/go-secure-stdlib/nonceutil v0.1.0
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo-contrib v0.17.1
@@ -35,8 +36,6 @@ require (
 	github.com/google/go-tspi v0.3.0 // indirect
 	github.com/gorilla/context v1.1.2 // indirect
 	github.com/gorilla/securecookie v1.1.2 // indirect
-	github.com/gorilla/sessions v1.2.2 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
