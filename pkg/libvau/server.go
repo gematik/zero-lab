@@ -6,6 +6,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log/slog"
@@ -17,16 +18,17 @@ import (
 )
 
 type ChannelState struct {
-	ID              string
-	Message1Raw     []byte
-	Message2Raw     []byte
-	K1_ss_ecdh      []byte
-	K1_ss_kem       []byte
-	K1_c2s          []byte
-	K1_s2c          []byte
-	KeyID           []byte
-	K2_c2s_app_data []byte
-	K2_s2c_app_data []byte
+	ID                      string
+	Message1Raw             []byte
+	Message2Raw             []byte
+	K1_ss_ecdh              []byte
+	K1_ss_kem               []byte
+	K1_c2s                  []byte
+	K1_s2c                  []byte
+	KeyID                   []byte
+	K2_c2s_app_data         []byte
+	K2_s2c_app_data         []byte
+	K2_s2c_app_data_counter Counter
 }
 
 type Server struct {
@@ -361,10 +363,18 @@ func (s *Server) EncryptNestedResponseData(channelState *ChannelState, data []by
 		return nil, fmt.Errorf("creating AES-GCM: %w", err)
 	}
 
-	iv := make([]byte, aesGCM.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-		return nil, fmt.Errorf("generating IV: %w", err)
+	// prepare iv
+	iv := make([]byte, 12)
+
+	// increment counter
+	counter := channelState.K2_s2c_app_data_counter.next()
+
+	// read random bits to have full iv size
+	if _, err := io.ReadAtLeast(rand.Reader, iv, 4); err != nil {
+		return nil, fmt.Errorf("generating iv: %w", err)
 	}
+	// add 64 bit from counter
+	binary.LittleEndian.PutUint64(iv[4:], counter)
 
 	ciphertext := aesGCM.Seal(iv, iv, data, header)
 
