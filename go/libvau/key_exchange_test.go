@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gematik/zero-lab/pkg/libvau"
+	"github.com/gematik/zero-lab/go/libvau"
 )
 
 func TestOpenChannel(t *testing.T) {

@@ -1,7 +1,8 @@
 go 1.22.5
 
 use (
-	./pep
-	./zerobin
-	./zerolib
+	./go/libvau
+	./go/zerobin
+	./go/zerolib
+	./go/zeropep
 )
