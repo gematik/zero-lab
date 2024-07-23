@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/gematik/zero-lab/pkg/util"
+	"github.com/gematik/zero-lab/go/libzero/util"
 )
 
 type AccountEntity struct {

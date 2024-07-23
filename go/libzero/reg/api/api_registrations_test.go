@@ -6,9 +6,9 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/gematik/zero-lab/pkg/ca"
-	"github.com/gematik/zero-lab/pkg/nonce"
-	"github.com/gematik/zero-lab/pkg/reg"
+	"github.com/gematik/zero-lab/go/libzero/ca"
+	"github.com/gematik/zero-lab/go/libzero/nonce"
+	"github.com/gematik/zero-lab/go/libzero/reg"
 	"github.com/labstack/echo/v4"
 )
 

@@ -11,7 +11,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/gematik/zero-lab/pkg/ca"
+	"github.com/gematik/zero-lab/go/libzero/ca"
 	"github.com/google/go-attestation/attest"
 )
 

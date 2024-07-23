@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/gematik/zero-lab/pkg/oauth2"
-	"github.com/gematik/zero-lab/pkg/oidc"
-	"github.com/gematik/zero-lab/pkg/util"
+	"github.com/gematik/zero-lab/go/libzero/oauth2"
+	"github.com/gematik/zero-lab/go/libzero/oidc"
+	"github.com/gematik/zero-lab/go/libzero/util"
 )
 
 func WithOIDCClient(client oidc.Client) RegistrationServiceOption {

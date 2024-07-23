@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"testing"
 
-	"github.com/gematik/zero-lab/pkg/util"
+	"github.com/gematik/zero-lab/go/libzero/util"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jws"

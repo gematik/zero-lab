@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/gematik/zero-lab/pkg/reg"
-	"github.com/gematik/zero-lab/pkg/util"
+	"github.com/gematik/zero-lab/go/libzero/reg"
+	"github.com/gematik/zero-lab/go/libzero/util"
 	"github.com/labstack/echo/v4"
 )
 

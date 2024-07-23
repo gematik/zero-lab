@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/gematik/zero-lab/pkg/util"
+	"github.com/gematik/zero-lab/go/libzero/util"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jws"
 	"github.com/lestrrat-go/jwx/v2/jwt"

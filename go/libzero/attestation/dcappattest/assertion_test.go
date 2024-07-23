@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"testing"
 
-	"github.com/gematik/zero-lab/pkg/attestation/dcappattest"
+	"github.com/gematik/zero-lab/go/libzero/attestation/dcappattest"
 )
 
 const assertionTestData = "omlzaWduYXR1cmVYRjBEAiA8eM/dSDX36hN189RPxmRYXnIVb09hZZnbG/QCWSM5OAIgbfp650O1YUliQufgtvrvUmXPnUjBEYy9mYR+JwHI97hxYXV0aGVudGljYXRvckRhdGFYJfPWTs+IjMo6R9nqPnD9u6dLawuHA9ArlHDNlZnbdO8XQAAAAAE="

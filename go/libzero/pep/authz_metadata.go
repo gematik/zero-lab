@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gematik/zero-lab/pkg/oauth2server"
+	"github.com/gematik/zero-lab/go/libzero/oauth2server"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 )
 

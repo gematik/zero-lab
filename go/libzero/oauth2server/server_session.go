@@ -1,6 +1,6 @@
 package oauth2server
 
-import "github.com/gematik/zero-lab/pkg/oidc"
+import "github.com/gematik/zero-lab/go/libzero/oidc"
 
 type AuthzServerSession struct {
 	ResponseType              string                   `json:"response_type"`

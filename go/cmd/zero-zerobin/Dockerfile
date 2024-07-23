@@ -4,13 +4,11 @@ WORKDIR /src
 
 # Download Go modules
 COPY go.work go.work.sum ./
-# RUN go mod download
 
-COPY cmd ./cmd
+COPY cmd/zero-zerobin ./cmd/zero-zerobin 
 COPY libzero ./libzero
 COPY libvau ./libvau
-#COPY templates ./templates
-#COPY static ./static
+RUN go mod download
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux go build ./cmd/zero-zerobin 
@@ -21,8 +19,7 @@ EXPOSE 8443
 FROM ubuntu
 COPY --from=build /etc/ssl /etc/ssl
 COPY --from=build /src/zero-zerobin /app/zero-zerobin
-COPY --from=build /src/templates /app/templates
-COPY --from=build /src/static /app/static
+COPY --from=build /src/cmd/zero-zerobin/static /app/static
 
 WORKDIR /app
 ENV PRETTY_LOGS=false

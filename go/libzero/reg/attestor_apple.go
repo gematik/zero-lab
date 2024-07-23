@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/gematik/zero-lab/pkg/attestation/dcappattest"
+	"github.com/gematik/zero-lab/go/libzero/attestation/dcappattest"
 )
 
 type attestorAppleAttestation struct {

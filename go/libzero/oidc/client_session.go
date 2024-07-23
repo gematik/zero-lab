@@ -1,6 +1,6 @@
 package oidc
 
-import "github.com/gematik/zero-lab/pkg/oauth2"
+import "github.com/gematik/zero-lab/go/libzero/oauth2"
 
 type AuthnClientSession struct {
 	ID            string                 `json:"id"`

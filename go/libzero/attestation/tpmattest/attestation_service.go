@@ -3,7 +3,7 @@ package tpmattest
 import (
 	"crypto/x509"
 
-	"github.com/gematik/zero-lab/pkg/nonce"
+	"github.com/gematik/zero-lab/go/libzero/nonce"
 	"github.com/google/go-attestation/attest"
 )
 

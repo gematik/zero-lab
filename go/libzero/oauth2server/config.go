@@ -6,10 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/gematik/zero-lab/pkg/gemidp"
-	"github.com/gematik/zero-lab/pkg/oidc"
-	"github.com/gematik/zero-lab/pkg/oidf"
-	"github.com/gematik/zero-lab/pkg/util"
+	"github.com/gematik/zero-lab/go/libzero/gemidp"
+	"github.com/gematik/zero-lab/go/libzero/oidc"
+	"github.com/gematik/zero-lab/go/libzero/oidf"
+	"github.com/gematik/zero-lab/go/libzero/util"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"gopkg.in/yaml.v3"
 )

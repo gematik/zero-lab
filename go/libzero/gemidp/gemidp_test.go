@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gematik/zero-lab/pkg/gemidp"
-	"github.com/gematik/zero-lab/pkg/oauth2"
-	"github.com/gematik/zero-lab/pkg/util"
+	"github.com/gematik/zero-lab/go/libzero/gemidp"
+	"github.com/gematik/zero-lab/go/libzero/oauth2"
+	"github.com/gematik/zero-lab/go/libzero/util"
 	"github.com/spilikin/go-brainpool"
 )
 

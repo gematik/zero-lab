@@ -1,6 +1,6 @@
 package api
 
-import "github.com/gematik/zero-lab/pkg/reg"
+import "github.com/gematik/zero-lab/go/libzero/reg"
 
 type RegistrationResponse struct {
 	ID                string                   `json:"id"`

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/gematik/zero-lab/pkg/oidc"
+	"github.com/gematik/zero-lab/go/libzero/oidc"
 )
 
 type mockSessionStore struct {

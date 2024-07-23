@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/gematik/zero-lab/pkg/oauth2"
+	"github.com/gematik/zero-lab/go/libzero/oauth2"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwe"
 	"github.com/lestrrat-go/jwx/v2/jwk"

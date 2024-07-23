@@ -11,9 +11,9 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/gematik/zero-lab/go/libzero/oauth2"
+	"github.com/gematik/zero-lab/go/libzero/util"
 	"github.com/gematik/zero-lab/pkg"
-	"github.com/gematik/zero-lab/pkg/oauth2"
-	"github.com/gematik/zero-lab/pkg/util"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )

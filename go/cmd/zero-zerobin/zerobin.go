@@ -11,9 +11,9 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/gematik/zero-lab/go/libzero/ca"
+	"github.com/gematik/zero-lab/go/libzero/util"
 	"github.com/gematik/zero-lab/pkg"
-	"github.com/gematik/zero-lab/pkg/ca"
-	"github.com/gematik/zero-lab/pkg/util"
 	"github.com/labstack/echo/v4"
 )
 
