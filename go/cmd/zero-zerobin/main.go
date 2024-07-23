@@ -9,15 +9,15 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/gematik/zero-lab/pkg"
-	"github.com/gematik/zero-lab/pkg/attestation/tpmattest"
-	"github.com/gematik/zero-lab/pkg/ca"
-	"github.com/gematik/zero-lab/pkg/dpop"
-	"github.com/gematik/zero-lab/pkg/nonce"
-	"github.com/gematik/zero-lab/pkg/oauth2server"
-	"github.com/gematik/zero-lab/pkg/oauth2server/webclient"
-	"github.com/gematik/zero-lab/pkg/prettylog"
-	"github.com/gematik/zero-lab/pkg/util"
+	"github.com/gematik/zero-lab/go/libzero"
+	"github.com/gematik/zero-lab/go/libzero/attestation/tpmattest"
+	"github.com/gematik/zero-lab/go/libzero/ca"
+	"github.com/gematik/zero-lab/go/libzero/dpop"
+	"github.com/gematik/zero-lab/go/libzero/nonce"
+	"github.com/gematik/zero-lab/go/libzero/oauth2server"
+	"github.com/gematik/zero-lab/go/libzero/oauth2server/webclient"
+	"github.com/gematik/zero-lab/go/libzero/prettylog"
+	"github.com/gematik/zero-lab/go/libzero/util"
 	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
@@ -192,11 +192,11 @@ func main() {
 				ClientAuth: tls.VerifyClientCertIfGiven,
 			},
 		}
-		slog.Info("Starting zero-zerobin", "addr", server.Addr, "version", pkg.Version)
+		slog.Info("Starting zero-zerobin", "addr", server.Addr, "version", libzero.Version)
 		log.Fatal(server.ListenAndServeTLS(certPath, keyPath))
 	} else {
 		addr := util.GetEnv("SERVER_ADDR", ":8080")
-		slog.Info("Starting zero-zerobin", "addr", addr, "version", pkg.Version)
+		slog.Info("Starting zero-zerobin", "addr", addr, "version", libzero.Version)
 		log.Fatal(http.ListenAndServe(addr, root))
 	}
 }

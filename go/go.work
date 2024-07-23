@@ -1,0 +1,9 @@
+go 1.22.5
+
+use (
+	./libvau
+	./libzero
+	./cmd/zero-zerobin
+)
+
+replace github.com/go-jose/go-jose/v4 v4.0.1 => github.com/spilikin/go-jose-brainpool/v4 v4.0.2

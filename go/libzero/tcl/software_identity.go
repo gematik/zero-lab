@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/gematik/zero-lab/pkg/util"
+	"github.com/gematik/zero-lab/go/libzero/util"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 )
 

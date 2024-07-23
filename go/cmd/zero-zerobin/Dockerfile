@@ -3,13 +3,14 @@ FROM golang:1.22 AS build
 WORKDIR /src
 
 # Download Go modules
-COPY go.mod go.sum ./
-RUN go mod download
+COPY go.work go.work.sum ./
+# RUN go mod download
 
 COPY cmd ./cmd
-COPY pkg ./pkg
-COPY templates ./templates
-COPY static ./static
+COPY libzero ./libzero
+COPY libvau ./libvau
+#COPY templates ./templates
+#COPY static ./static
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux go build ./cmd/zero-zerobin 

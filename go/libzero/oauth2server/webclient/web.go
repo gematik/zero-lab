@@ -12,8 +12,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/gematik/zero-lab/pkg/oauth2"
-	"github.com/gematik/zero-lab/pkg/oauth2server"
+	"github.com/gematik/zero-lab/go/libzero/oauth2"
+	"github.com/gematik/zero-lab/go/libzero/oauth2server"
 	"github.com/gorilla/sessions"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
@@ -535,7 +535,7 @@ func (cl *Client) userInfo(c echo.Context) error {
 		Issuer: act["iss"].(string),
 	}
 
-  if id, ok := act["idNummer"]; ok { // gematik IDP-Dienst
+	if id, ok := act["idNummer"]; ok { // gematik IDP-Dienst
 		userInfo.Identifier = id.(string)
 	} else if id, ok := act["urn:telematik:claims:id"]; ok { // GesundheitsID
 		userInfo.Identifier = id.(string)

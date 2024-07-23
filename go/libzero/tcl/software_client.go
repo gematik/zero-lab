@@ -12,7 +12,7 @@ import (
 	"net/url"
 	"strings"
 
-	regapi "github.com/gematik/zero-lab/pkg/reg/api"
+	regapi "github.com/gematik/zero-lab/go/libzero/reg/api"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jws"
 	"github.com/matishsiao/goInfo"

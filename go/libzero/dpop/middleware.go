@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/gematik/zero-lab/pkg/nonce"
+	"github.com/gematik/zero-lab/go/libzero/nonce"
 )
 
 type Middleware struct {

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gematik/zero-lab/pkg/dpop"
+	"github.com/gematik/zero-lab/go/libzero/dpop"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 )
 

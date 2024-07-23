@@ -8,11 +8,11 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/gematik/zero-lab/pkg/ca"
-	"github.com/gematik/zero-lab/pkg/dpop"
-	"github.com/gematik/zero-lab/pkg/nonce"
-	"github.com/gematik/zero-lab/pkg/oidc"
-	"github.com/gematik/zero-lab/pkg/oidf"
+	"github.com/gematik/zero-lab/go/libzero/ca"
+	"github.com/gematik/zero-lab/go/libzero/dpop"
+	"github.com/gematik/zero-lab/go/libzero/nonce"
+	"github.com/gematik/zero-lab/go/libzero/oidc"
+	"github.com/gematik/zero-lab/go/libzero/oidf"
 	"github.com/segmentio/ksuid"
 )
 
