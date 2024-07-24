@@ -1,0 +1,11 @@
+address: :8092
+authz_issuer: http://localhost:8080
+security_profiles:
+  - name: default
+resources:
+  - pattern: /api
+    security_profile: default
+    destination: http://localhost:8091
+  - pattern: /ws
+    security_profile: default
+    destination: http://localhost:8091
