@@ -52,7 +52,7 @@ type Error struct {
 	Description string `json:"error_description"`
 }
 
-func (e *Error) Error() string {
+func (e Error) Error() string {
 	return fmt.Sprintf("%s: %s", e.Code, e.Description)
 }
 

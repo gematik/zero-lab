@@ -1,0 +1,22 @@
+{
+	zero {
+		oauth2_server_uri http://localhost:8081
+	}
+}
+
+localhost:2019 {
+	route / {
+		respond "I have /public and /protected resources" 200
+	}
+
+	route /public {
+		respond "Hi, I am public resource - everyone can see me." 200
+	}
+
+	route /protected {
+		enforce_policy {
+			scope zero:manage
+		}
+		respond "Hello from behind the curtain. I am protected resource" 200
+	}
+}

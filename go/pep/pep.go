@@ -6,88 +6,210 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/gematik/zero-lab/go/libzero/oauth2server"
 	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/jwx/v2/jws"
+	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
 type PEP struct {
-	Config             Config
-	httpClient         http.Client
-	authzIssuer        string
-	authzMetadata      *oauth2server.Metadata
-	authzMetadataMutex sync.RWMutex
-	jwksCache          *jwk.Cache
-	proxies            []*ResourceReverseProxy
+	OAuth2ServerURI string
+	RefreshInterval time.Duration
+	Logger          *slog.Logger
+	Jwks            jwk.Set
+	HttpClient      *http.Client
+	jwksMutex       sync.RWMutex
+	stopChan        chan bool
 }
 
-type ResourceReverseProxy struct {
-	config ResourceConfig
-	proxy  *httputil.ReverseProxy
+type RequestContext struct {
+	AccessTokenRaw string
+	AccessToken    jwt.Token
+	ClaimsMap      map[string]interface{}
 }
 
-func (proxy *ResourceReverseProxy) Forward(w http.ResponseWriter, r *http.Request) {
-	r.Header.Set("X-ZTA-PEP-Version", "0.0.1")
-	proxy.proxy.ServeHTTP(w, r)
+func New() *PEP {
+	return &PEP{
+		HttpClient: &http.Client{
+			Timeout: 5 * time.Second,
+		},
+		RefreshInterval: 5 * time.Minute,
+		Logger:          slog.Default(),
+	}
 }
 
-func New(config Config) (*PEP, error) {
-	p := &PEP{
-		Config:      config,
-		httpClient:  http.Client{},
-		authzIssuer: config.AuthzIssuer,
+const (
+	ContextKeyAccessToken = "access_token"
+	ContextKeyClaimsMap   = "claims_map"
+)
+
+type Error struct {
+	HttpStatus  int    `json:"-"`
+	Code        string `json:"error"`
+	Description string `json:"error_description,omitempty"`
+	URI         string `json:"error_uri,omitempty"`
+}
+
+func (e Error) Error() string {
+	return fmt.Sprintf("%s: %s", e.Code, e.Description)
+}
+
+var ErrForbiddenHeadersInRequest = &Error{
+	HttpStatus:  400,
+	Code:        "forbidden_headers_in_request",
+	Description: "Request contains forbidden headers",
+}
+
+var ErrNoAuthorizationHeader = &Error{
+	HttpStatus:  400,
+	Code:        "no_authorization_header",
+	Description: "No Authorization header in request",
+}
+
+var ErrInvalidAuthorizationHeader = &Error{
+	HttpStatus:  400,
+	Code:        "invalid_authorization_header",
+	Description: "Invalid Authorization header in request",
+}
+
+// Just enough elements to load the JWKS from the OAuth2 server
+type AuthzServerMetadata struct {
+	JwksURI string `json:"jwks_uri"`
+}
+
+// Reloads the JWKS from the OAuth2 server
+func (p *PEP) ReloadJWKS() error {
+
+	metadataURL := p.OAuth2ServerURI + "/.well-known/oauth-authorization-server"
+
+	resp, err := p.HttpClient.Get(metadataURL)
+	if err != nil {
+		return fmt.Errorf("fetch metadata: %w", err)
+	}
+	defer resp.Body.Close()
+
+	metadata := new(AuthzServerMetadata)
+	err = json.NewDecoder(resp.Body).Decode(metadata)
+	if err != nil {
+		return fmt.Errorf("decode metadata: %w", err)
 	}
 
-	for _, r := range config.Resources {
-		url, err := url.Parse(r.Destination)
-		if err != nil {
-			return nil, fmt.Errorf("parse destination URL for pattern '%s': %w", r.Pattern, err)
+	p.jwksMutex.Lock()
+	defer p.jwksMutex.Unlock()
+
+	p.Jwks, err = jwk.Fetch(context.Background(), metadata.JwksURI, jwk.WithHTTPClient(p.HttpClient))
+	if err != nil {
+		return fmt.Errorf("fetch JWKS: %w", err)
+	}
+
+	return nil
+}
+
+// Start the periodic JWKS reload.
+func (p *PEP) Start(ctx context.Context) error {
+	p.Logger.Info("Starting PEP")
+	p.stopChan = make(chan bool)
+	interval := time.Duration(0)
+	for {
+		select {
+		case <-p.stopChan:
+			p.Logger.Info("stopped PEP")
+			return nil
+		case <-time.After(interval):
+			err := p.ReloadJWKS()
+			if err != nil {
+				if interval == 0 {
+					interval = 1 * time.Second
+				} else {
+					interval = interval * 2
+					if interval > p.RefreshInterval {
+						interval = p.RefreshInterval
+					}
+				}
+				p.Logger.Error("Failed to load JWKS", "error", err, "retry_interval", interval)
+			} else {
+				p.Logger.Info("Loaded the JWKS")
+				interval = p.RefreshInterval
+			}
 		}
-		p.proxies = append(p.proxies, &ResourceReverseProxy{
-			config: r,
-			proxy:  httputil.NewSingleHostReverseProxy(url),
-		})
-		slog.Info("created reverse proxy", "pattern", r.Pattern, "destination", r.Destination)
 	}
 
-	go p.periodicMetadataReload(context.Background(), 5*time.Minute)
-
-	return p, nil
 }
 
-func (p *PEP) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	for _, proxy := range p.proxies {
-		if proxy.config.Pattern.MatchString(r.URL.Path) {
-			proxy.Forward(w, r)
-			return
+// Stop the periodic JWKS reload.
+func (p *PEP) Stop() {
+	if p.stopChan != nil {
+		p.stopChan <- true
+		close(p.stopChan)
+		p.stopChan = nil
+	}
+}
+
+// Check if request headers contains headers starting with "X-ZTA",
+// which are forbidden in the request from the outside.
+func (p *PEP) VerifyHeaders(c *RequestContext, r *http.Request) *Error {
+	for k := range r.Header {
+		n := strings.ToLower(k)
+		if strings.HasPrefix(n, "x-zta") {
+			return ErrForbiddenHeadersInRequest
 		}
 	}
-	p.RespondWithError(w, r, ErrorNotFound)
+	return nil
 }
 
-func (p *PEP) RespondWithError(w http.ResponseWriter, r *http.Request, err ErrorType) {
-	w.WriteHeader(err.HttpStatus)
-	json.NewEncoder(w).Encode(err)
-}
-
-func (p *PEP) ListenAndServe(ctx context.Context) error {
-
-	server := &http.Server{
-		Addr:         p.Config.Address,
-		Handler:      p,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
+// Verify the self contained access token (JWT) using the previously loaded JWKS.
+func (p *PEP) VerifyAccessToken(c *RequestContext, r *http.Request) *Error {
+	authzHeaders := r.Header.Values("Authorization")
+	if len(authzHeaders) == 0 {
+		return ErrNoAuthorizationHeader
 	}
 
-	// stop server when context is done
-	go func() {
-		<-ctx.Done()
-		server.Shutdown(context.Background())
-	}()
+	// we support bearer and dpop
+	// we ignore other authz headers
+	for _, authzHeader := range authzHeaders {
+		parts := strings.Split(authzHeader, " ")
+		if len(parts) != 2 {
+			continue
+		}
 
-	return server.ListenAndServe()
+		tokenType := strings.ToLower(parts[0])
+		if tokenType == "bearer" {
+			claimsMap, err := p.VerifyJWTToken(parts[1])
+			if err != nil {
+				return err
+			}
+			c.AccessTokenRaw = parts[1]
+			c.ClaimsMap = claimsMap
+			return nil
+		}
+	}
+
+	return ErrInvalidAuthorizationHeader
+}
+
+// Verify the JWT token using the previously loaded JWKS.
+// Returns the claims map or an error.
+func (p *PEP) VerifyJWTToken(token string) (map[string]interface{}, *Error) {
+	t, err := jwt.ParseString(token, jwt.WithKeySet(p.Jwks, jws.WithInferAlgorithmFromKey(true)))
+	if err != nil {
+		return nil, &Error{
+			HttpStatus:  403,
+			Code:        "invalid_token",
+			Description: err.Error(),
+		}
+	}
+
+	claims, err := t.AsMap(context.Background())
+	if err != nil {
+		return nil, &Error{
+			HttpStatus:  403,
+			Code:        "invalid_token",
+			Description: err.Error(),
+		}
+	}
+
+	return claims, nil
 }

@@ -5,9 +5,7 @@ WORKDIR /src
 # Download Go modules
 COPY go.work go.work.sum ./
 
-COPY cmd/zero-zerobin ./cmd/zero-zerobin 
-COPY libzero ./libzero
-COPY libvau ./libvau
+COPY . /src
 RUN go mod download
 
 # Build
