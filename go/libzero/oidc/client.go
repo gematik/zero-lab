@@ -17,6 +17,14 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
+// OpenidProviderInfo represents the information about an OpenID Provider
+type OpenidProviderInfo struct {
+	Issuer  string `json:"iss"`
+	LogoURI string `json:"logo_uri"`
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+}
+
 type Config struct {
 	Issuer       string   `yaml:"issuer"`
 	ClientID     string   `yaml:"client_id"`

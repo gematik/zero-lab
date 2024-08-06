@@ -10,12 +10,12 @@ fed_master_jwks:
       alg: ES256
 fed_master_url: https://app-ref.federationmaster.de
 sign_kid: reg_sig_puk
-sign_private_key_path: ../../secrets/reg/sig_prk.pem
+sign_private_key_path: ../../../../secrets/reg/sig_prk.pem
 enc_kid: reg_enc_puk
-enc_private_key_path: ../../secrets/reg/enc_prk.pem
+enc_private_key_path: ../../../../secrets/reg/enc_prk.pem
 client_kid: reg_client_puk
-client_private_key_path: ../../secrets/reg/client_prk.pem
-client_cert_path: ../../secrets/reg/client_cert.pem
+client_private_key_path: ../../../../secrets/reg/client_prk.pem
+client_cert_path: ../../../../secrets/reg/client_cert.pem
 metadata:
   federation_entity:
     name: Zero Trust Lab

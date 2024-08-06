@@ -1,4 +1,4 @@
-package oauth2server
+package authzserver
 
 import "github.com/gematik/zero-lab/go/libzero/oidc"
 

@@ -1,4 +1,4 @@
-package oauth2server
+package authzserver
 
 import (
 	"fmt"
@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/gematik/zero-lab/go/libzero/gemidp"
+	"github.com/gematik/zero-lab/go/libzero/oauth2"
 	"github.com/gematik/zero-lab/go/libzero/oidc"
 	"github.com/gematik/zero-lab/go/libzero/oidf"
 	"github.com/gematik/zero-lab/go/libzero/util"
@@ -20,7 +21,7 @@ type Config struct {
 	SignPrivateKeyPath   string                `yaml:"sign_private_key_path"`
 	EncPublicKeyPath     string                `yaml:"enc_public_key_path"`
 	ScopesSupported      []string              `yaml:"scopes_supported"`
-	MetadataTemplate     Metadata              `yaml:"metadata_template"`
+	MetadataTemplate     oauth2.ServerMetadata `yaml:"metadata_template"`
 	OidcProviders        []oidc.Config         `yaml:"oidc_providers"`
 	GematikIdp           []gemidp.ClientConfig `yaml:"gematik_idp"`
 	ClientsPolicyPath    string                `yaml:"clients_policy_path"`

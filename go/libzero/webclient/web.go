@@ -13,7 +13,7 @@ import (
 	"strings"
 
 	"github.com/gematik/zero-lab/go/libzero/oauth2"
-	"github.com/gematik/zero-lab/go/libzero/oauth2server"
+	"github.com/gematik/zero-lab/go/libzero/oidc"
 	"github.com/gorilla/sessions"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
@@ -25,14 +25,14 @@ var (
 	templatesFS embed.FS
 )
 
-func NewFromServerMetadata(serverMetadata oauth2server.Metadata) (*Client, error) {
+func NewFromServerMetadata(serverMetadata oauth2.ServerMetadata) (*Client, error) {
 
 	return &Client{
 		ClientID:                  "zero-web",
 		RedirectURI:               fmt.Sprint(serverMetadata.Issuer, "/web/login/callback"),
 		Scopes:                    []string{"zero:register"},
 		ServerMetadata:            serverMetadata,
-		authzSessionStore:         oauth2.NewMockAuthzClientSessionStore(),
+		authzSessionStore:         NewMockAuthzClientSessionStore(),
 		templateError:             template.Must(template.ParseFS(templatesFS, "error.html", "layout.html")),
 		templateAuthenticatorWait: template.Must(template.ParseFS(templatesFS, "authenticator-wait.html", "layout.html")),
 		templateUserInfo:          template.Must(template.ParseFS(templatesFS, "userinfo.html", "layout.html")),
@@ -47,8 +47,8 @@ type Client struct {
 	ClientID                  string
 	RedirectURI               string
 	Scopes                    []string
-	ServerMetadata            oauth2server.Metadata
-	authzSessionStore         oauth2.AuthzClientSessionStore
+	ServerMetadata            oauth2.ServerMetadata
+	authzSessionStore         AuthzClientSessionStore
 	templateError             *template.Template
 	templateAuthenticatorWait *template.Template
 	templateUserInfo          *template.Template
@@ -56,12 +56,11 @@ type Client struct {
 	templateChoose            *template.Template
 	templateDecoupledWait     *template.Template
 	templateDecoupledSuccess  *template.Template
-	cachedOpenidProviders     []oauth2server.OpenidProviderInfo
+	cachedOpenidProviders     []oidc.OpenidProviderInfo
 }
 
 func (cl *Client) MountRoutes(g *echo.Group) {
 	g.Use(
-		oauth2server.ErrorLogMiddleware,
 		// TODO: make secret configurable
 		session.Middleware(sessions.NewCookieStore([]byte("secret"))),
 	)
@@ -156,7 +155,7 @@ func (cl *Client) showError(c echo.Context) error {
 	})
 }
 
-func (cl *Client) fetchOpenidProviders() ([]oauth2server.OpenidProviderInfo, error) {
+func (cl *Client) fetchOpenidProviders() ([]oidc.OpenidProviderInfo, error) {
 	subUrl := fmt.Sprint(cl.ServerMetadata.Issuer, "/openid-providers")
 	resp, err := http.Get(subUrl)
 	if err != nil {
@@ -164,7 +163,7 @@ func (cl *Client) fetchOpenidProviders() ([]oauth2server.OpenidProviderInfo, err
 	}
 	defer resp.Body.Close()
 
-	var openidProviders []oauth2server.OpenidProviderInfo
+	var openidProviders []oidc.OpenidProviderInfo
 	err = json.NewDecoder(resp.Body).Decode(&openidProviders)
 	if err != nil {
 		return nil, fmt.Errorf("parsing openid providers: %w", err)
@@ -177,7 +176,7 @@ func (cl *Client) fetchOpenidProviders() ([]oauth2server.OpenidProviderInfo, err
 	return openidProviders, nil
 }
 
-func (cl *Client) fetchOpenidProvider(issuer string) (*oauth2server.OpenidProviderInfo, error) {
+func (cl *Client) fetchOpenidProvider(issuer string) (*oidc.OpenidProviderInfo, error) {
 	openidProviders, err := cl.fetchOpenidProviders()
 	if err != nil {
 		return nil, err
@@ -219,7 +218,7 @@ func (cl *Client) start(c echo.Context) error {
 		})
 	}
 
-	authzSession := oauth2.AuthzClientSession{
+	authzSession := AuthzClientSession{
 		ID:       ksuid.New().String(),
 		OPIssuer: issuer,
 		State:    ksuid.New().String(),

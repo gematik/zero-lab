@@ -6,7 +6,6 @@ WORKDIR /src
 COPY go.work go.work.sum ./
 
 COPY . /src
-RUN go mod download
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux go build ./cmd/zero-zerobin 

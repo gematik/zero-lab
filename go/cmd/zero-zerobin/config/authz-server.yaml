@@ -1,6 +1,6 @@
 issuer: http://127.0.0.1:8080
-sign_private_key_path: ../secrets/authz-server/sig_prk.pem
-enc_public_key_path: ../secrets/authz-server/enc_puk.pem
+sign_private_key_path: ../../../../secrets/authz-server/sig_prk.pem
+enc_public_key_path: ../../../../secrets/authz-server/enc_puk.pem
 scopes_supported:
   - zero:register
   - zero:manage

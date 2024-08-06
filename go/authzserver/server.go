@@ -1,4 +1,4 @@
-package oauth2server
+package authzserver
 
 import (
 	"context"
@@ -26,7 +26,7 @@ import (
 type Option func(*Server) error
 
 type Server struct {
-	Metadata         Metadata
+	Metadata         oauth2.ServerMetadata
 	identityIssuers  []oidc.Client
 	oidfRelyingParty *oidf.RelyingParty
 	clientsPolicy    *ClientsPolicy
@@ -404,14 +404,6 @@ func (s *Server) JWKS(c echo.Context) error {
 	return c.JSON(http.StatusOK, s.jwks)
 }
 
-// OpenidProviderInfo represents the information of an OpenID Provider
-type OpenidProviderInfo struct {
-	Issuer  string `json:"iss"`
-	LogoURI string `json:"logo_uri"`
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-}
-
 // OpenidProvidersEndpoint serves the list of OpenID Providers supported by the server
 func (s *Server) OpenidProvidersEndpoint(c echo.Context) error {
 	providers, err := s.OpenidProviders()
@@ -422,10 +414,10 @@ func (s *Server) OpenidProvidersEndpoint(c echo.Context) error {
 }
 
 // OpenidProviders returns the list of OpenID Providers supported by the server
-func (s *Server) OpenidProviders() ([]OpenidProviderInfo, error) {
-	providers := []OpenidProviderInfo{}
+func (s *Server) OpenidProviders() ([]oidc.OpenidProviderInfo, error) {
+	providers := []oidc.OpenidProviderInfo{}
 	for _, op := range s.identityIssuers {
-		info := OpenidProviderInfo{
+		info := oidc.OpenidProviderInfo{
 			Issuer:  op.Issuer(),
 			LogoURI: op.LogoURI(),
 			Name:    op.Name(),
@@ -445,7 +437,7 @@ func (s *Server) OpenidProviders() ([]OpenidProviderInfo, error) {
 			return nil, fmt.Errorf("fetching idp list from federation: %w", err)
 		}
 		for _, op := range idps {
-			providers = append(providers, OpenidProviderInfo{
+			providers = append(providers, oidc.OpenidProviderInfo{
 				Issuer:  op.Issuer,
 				LogoURI: op.LogoURI,
 				Name:    op.OrganizationName,

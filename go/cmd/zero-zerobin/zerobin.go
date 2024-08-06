@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/gematik/zero-lab/go/libzero"
 	"github.com/gematik/zero-lab/go/libzero/ca"
 	"github.com/gematik/zero-lab/go/libzero/util"
 	"github.com/gematik/zero-lab/pkg"
@@ -30,7 +31,7 @@ func init() {
 func requestDetails(ctx echo.Context) map[string]interface{} {
 	details := make(map[string]interface{})
 	details["metadata"] = map[string]interface{}{
-		"version": pkg.Version,
+		"version": libzero.Version,
 	}
 
 	r := ctx.Request()
@@ -124,7 +125,8 @@ func getIndex(ctx echo.Context) error {
 	fqdn := util.GetEnv("FQDN", "localhost")
 
 	return templateIndex.Execute(ctx.Response().Writer, map[string]interface{}{
-		"fqdn": fqdn,
+		"fqdn":    fqdn,
+		"version": pkg.Version,
 	})
 }
 

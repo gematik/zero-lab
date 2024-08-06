@@ -9,15 +9,15 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/gematik/zero-lab/go/authzserver"
 	"github.com/gematik/zero-lab/go/libzero"
 	"github.com/gematik/zero-lab/go/libzero/attestation/tpmattest"
 	"github.com/gematik/zero-lab/go/libzero/ca"
 	"github.com/gematik/zero-lab/go/libzero/dpop"
 	"github.com/gematik/zero-lab/go/libzero/nonce"
-	"github.com/gematik/zero-lab/go/libzero/oauth2server"
-	"github.com/gematik/zero-lab/go/libzero/oauth2server/webclient"
 	"github.com/gematik/zero-lab/go/libzero/prettylog"
 	"github.com/gematik/zero-lab/go/libzero/util"
+	"github.com/gematik/zero-lab/go/libzero/webclient"
 	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
@@ -134,7 +134,7 @@ func main() {
 	dpopNonceGroup.GET("/echo", getEcho)
 	dpopNonceGroup.POST("/token", dpopAccessToken)
 
-	as, err := oauth2server.NewFromConfigFile(util.GetEnv("AUTHZ_SERVER_CONFIG_PATH", "config/authz-server.yaml"))
+	as, err := authzserver.NewFromConfigFile(util.GetEnv("AUTHZ_SERVER_CONFIG_PATH", "config/authz-server.yaml"))
 	if err != nil {
 		log.Fatal(err)
 	}
