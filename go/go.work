@@ -3,7 +3,7 @@ go 1.22.5
 use (
 	./cmd/zero-zerobin
 	./libzero
-	./oauth2
+	./pdp
 	./pep
 	./vau
 	./zaddy

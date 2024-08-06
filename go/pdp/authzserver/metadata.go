@@ -1,8 +1,8 @@
-package oauth2
+package oauth2server
 
 // OAuth2 Authorization Server Metadata
 // See https://datatracker.ietf.org/doc/html/rfc8414
-type ServerMetadata struct {
+type Metadata struct {
 	Issuer                                             string   `json:"issuer" yaml:"issuer"`
 	AuthorizationEndpoint                              string   `json:"authorization_endpoint" yaml:"authorization_endpoint"`
 	TokenEndpoint                                      string   `json:"token_endpoint" yaml:"token_endpoint"`
