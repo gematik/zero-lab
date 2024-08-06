@@ -1,0 +1,10 @@
+go 1.22.5
+
+use (
+	./authzserver
+	./cmd/zero-zerobin
+	./libzero
+	./pep
+	./vau
+	./zaddy
+)

@@ -192,3 +192,47 @@ curlie -v --key ./secrets/client.key --cert ./secrets/client.pem https://localho
 /reg/clients/:id
 /reg/clients/:id/certs/issue
 ----
+
+
+== Policy Enforcement Point
+
+=== Iteration 0
+
+* Docker image
+* Without TLS support
+* Generic config file /etc/zero/pep.yaml
+* Logging pretty, log level
+* Websocket support
+* Reverse Proxy based on patterns, without security profile - just forward requests
+
+/etc/zero/pep.yaml:
+
+[source,yaml]
+----
+address: :8080
+log:
+  level: debug|info|warn|error
+  pretty: true
+resources:
+  - pattern: /api
+    forward: http://localhost:8081
+  - pattern: /ws
+    forward: ws://localhost:8081
+
+
+----
+
+== Iteration 1
+
+* Authorization Server support
+* Self contained JWT Token
+* Content of of JWT Token is set as X-ZTA- header
+
+== Iteration 2
+
+* Nonce Service support
+* DPoP support with nonce
+
+== Iteration 3
+
+* PoPP-Token verification support 

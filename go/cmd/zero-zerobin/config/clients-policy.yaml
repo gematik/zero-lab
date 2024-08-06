@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/gematik/spec-t20r/develop/src/schemas/clients-policy.yaml
+clients:
+  - product_id: zero-test-ios
+    product_name: Zero iOS
+    manufacturer_id: dev-001
+    manufacturer_name: gematik GmbH
+    platform: apple
+    platform_product_id:
+      app_bundle_ids: 
+        - A9FL89PFFL.de.gematik.zero-ios
+    redirect_uris:
+      - https://dms-01.zt.dev.ccs.gematik.solutions/app/as-callback
+    op_intermediary_redirect_uris:
+      - https://dms-01.zt.dev.ccs.gematik.solutions/app/op-intermediary-callback
+    push_gateway:
+      url: https://dms-01.zt.dev.ccs.gematik.solutions/push
+  - product_id: zero-test-android
+    product_name: Zero Android
+    manufacturer_id: dev-001
+    manufacturer_name: gematik GmbH
+    platform: android
+    platform_product_id:
+      namespace: android_app
+      package_name: com.example
+      sha256_cert_fingerprints:
+        - 14:6D:E9:83:C5:73:06:50:D8:EE:B9:95:2F:34:FC:64:16:A0:83:42:E6:1D:BE:A8:8A:04:96:B2:3F:CF:44:E5
+  - product_id: zero-test-software
+    product_name: Zero Test
+    manufacturer_id: gematik
+    manufacturer_name: gematik GmbH
+    platform: software
+    redirect_uris:
+      - http://127.0.0.1:8089/as-callback
+    op_intermediary_redirect_uris:
+      - http://127.0.0.1:8089/op-intermediary-callback
+
+  - product_id: zero-web
+    product_name: Zero Web
+    manufacturer_id: gematik
+    manufacturer_name: gematik GmbH
+    platform: web
+    redirect_uris:
+      - https://zerobin.zt.dev.ccs.gematik.solutions/web/login/callback
+      - http://127.0.0.1:8080/web/login/callback
