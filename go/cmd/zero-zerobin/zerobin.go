@@ -14,7 +14,6 @@ import (
 	"github.com/gematik/zero-lab/go/libzero"
 	"github.com/gematik/zero-lab/go/libzero/ca"
 	"github.com/gematik/zero-lab/go/libzero/util"
-	"github.com/gematik/zero-lab/pkg"
 	"github.com/labstack/echo/v4"
 )
 
@@ -126,7 +125,7 @@ func getIndex(ctx echo.Context) error {
 
 	return templateIndex.Execute(ctx.Response().Writer, map[string]interface{}{
 		"fqdn":    fqdn,
-		"version": pkg.Version,
+		"version": libzero.Version,
 	})
 }
 
