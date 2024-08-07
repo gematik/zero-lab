@@ -4,7 +4,7 @@ go 1.22.5
 
 require (
 	github.com/gematik/zero-lab/go/authzserver v0.0.0-00010101000000-000000000000
-	github.com/gematik/zero-lab/go/libzero v0.0.0-00010101000000-000000000000
+	github.com/gematik/zero-lab/go/libzero v0.0.0-20240807173054-3f3a299ba164
 	github.com/go-playground/validator/v10 v10.22.0
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v4 v4.12.0
@@ -31,7 +31,6 @@ require (
 	github.com/gorilla/securecookie v1.1.2 // indirect
 	github.com/gorilla/sessions v1.3.0 // indirect
 	github.com/hashicorp/go-secure-stdlib/nonceutil v0.1.0 // indirect
-	github.com/kr/text v0.2.0 // indirect
 	github.com/labstack/echo-contrib v0.17.1 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect

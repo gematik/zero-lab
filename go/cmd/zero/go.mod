@@ -2,10 +2,8 @@ module github.com/gematik/zero-lab/go/cmd/zero
 
 go 1.22.5
 
-replace github.com/gematik/zero-lab/go/libzero => ../../libzero
-
 require (
-	github.com/gematik/zero-lab/go/libzero v0.0.0-00010101000000-000000000000
+	github.com/gematik/zero-lab/go/libzero v0.0.0-20240807173054-3f3a299ba164
 	github.com/google/go-attestation v0.5.1
 	github.com/spf13/cobra v1.8.1
 )

@@ -4,10 +4,8 @@ go 1.22.5
 
 require (
 	github.com/caddyserver/caddy/v2 v2.8.4
-	github.com/gematik/zero-lab/go/pep v0.0.0-00010101000000-000000000000
+	github.com/gematik/zero-lab/go/pep v0.0.0-20240807173054-3f3a299ba164
 )
-
-replace github.com/gematik/zero-lab/go/pep => ../pep
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
