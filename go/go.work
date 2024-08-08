@@ -1,10 +1,10 @@
 go 1.22.5
 
 use (
-	./authzserver
 	./cmd/zero
 	./cmd/zero-zerobin
 	./libzero
+	./pdp
 	./pep
 	./vau
 	./zaddy
