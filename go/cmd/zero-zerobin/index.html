@@ -13,12 +13,25 @@
 
 <h1>Welcome to ZeroBin v{{ .version }}</h1>
 
-<h2>Certificate Authorities</h2>
+<h2 class="mt-4">Web login</h2>
+<ul>
+  <li><a href="/web/login">Login</a></li>
+</ul>
+
+<h2 class="mt-4">Nonce</h2>
+<pre><code>
+curl --head https://{{ .fqdn }}/nonce
+</code>
+</pre>
+
+
+<h2 class="mt-4">Certificate Authorities</h2>
 
 <ul>
   <li><a href="/ca/ca-chain.pem">Unregistered Clients CA Chain</a></li>
 </ul>
-<h2>Try out the mutual TLS</h2>
+
+<h2 class="mt-4">Mutual TLS</h2>
 
 <pre><code>
 openssl req -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout client.key -out client.csr -subj "/CN=Zero Trust Client"
