@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/gematik/zero-lab/go/authzserver"
 	"github.com/gematik/zero-lab/go/libzero"
 	"github.com/gematik/zero-lab/go/libzero/attestation/tpmattest"
 	"github.com/gematik/zero-lab/go/libzero/ca"
@@ -18,6 +17,7 @@ import (
 	"github.com/gematik/zero-lab/go/libzero/prettylog"
 	"github.com/gematik/zero-lab/go/libzero/util"
 	"github.com/gematik/zero-lab/go/libzero/webclient"
+	"github.com/gematik/zero-lab/go/pdp/authzserver"
 	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"

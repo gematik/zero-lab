@@ -3,14 +3,14 @@ module github.com/gematik/zero-lab/go/cmd/zero-zerobin
 go 1.22.5
 
 require (
-	github.com/gematik/zero-lab/go/authzserver v0.0.0-00010101000000-000000000000
+	github.com/gematik/zero-lab/go/pdp v0.0.0-00010101000000-000000000000
 	github.com/gematik/zero-lab/go/libzero v0.0.0-20240807173054-3f3a299ba164
 	github.com/go-playground/validator/v10 v10.22.0
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v4 v4.12.0
 )
 
-replace github.com/gematik/zero-lab/go/authzserver => ../../authzserver
+replace github.com/gematik/zero-lab/go/pdp => ../../pdp
 
 replace github.com/gematik/zero-lab/go/libzero => ../../libzero
 

@@ -6,6 +6,5 @@ use (
 	./libzero
 	./pdp
 	./pep
-	./vau
 	./zaddy
 )
