@@ -3,16 +3,12 @@ module github.com/gematik/zero-lab/go/cmd/zero-zerobin
 go 1.22.5
 
 require (
-	github.com/gematik/zero-lab/go/pdp v0.0.0-00010101000000-000000000000
-	github.com/gematik/zero-lab/go/libzero v0.0.0-20240807173054-3f3a299ba164
+	github.com/gematik/zero-lab/go/libzero v0.0.0-20240808072728-6a6cf67990e6
+	github.com/gematik/zero-lab/go/pdp v0.0.0-20240808151420-0559fc965dc6
 	github.com/go-playground/validator/v10 v10.22.0
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v4 v4.12.0
 )
-
-replace github.com/gematik/zero-lab/go/pdp => ../../pdp
-
-replace github.com/gematik/zero-lab/go/libzero => ../../libzero
 
 require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0 // indirect
@@ -36,9 +32,9 @@ require (
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/lestrrat-go/blackmagic v1.0.2 // indirect
 	github.com/lestrrat-go/httpcc v1.0.1 // indirect
-	github.com/lestrrat-go/httprc v1.0.5 // indirect
+	github.com/lestrrat-go/httprc v1.0.6 // indirect
 	github.com/lestrrat-go/iter v1.0.2 // indirect
-	github.com/lestrrat-go/jwx/v2 v2.1.0 // indirect
+	github.com/lestrrat-go/jwx/v2 v2.1.1 // indirect
 	github.com/lestrrat-go/option v1.0.1 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
