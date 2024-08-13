@@ -26,7 +26,7 @@ type OpenidProviderInfo struct {
 }
 
 type Config struct {
-	Issuer       string   `yaml:"issuer"`
+	Issuer       string   `yaml:"issuer" validate:"required"`
 	ClientID     string   `yaml:"client_id"`
 	ClientSecret string   `yaml:"client_secret"`
 	RedirectURI  string   `yaml:"redirect_uri"`

@@ -25,8 +25,13 @@ import (
 
 type Option func(*Server) error
 
+// Extend the standard OAuth2 server metadata from RFC8414
+type ExtendedMetadata struct {
+	oauth2.ServerMetadata
+	OpenidProvidersEndpoint string `json:"openid_providers_endpoint"`
+}
 type Server struct {
-	Metadata         oauth2.ServerMetadata
+	Metadata         ExtendedMetadata
 	identityIssuers  []oidc.Client
 	oidfRelyingParty *oidf.RelyingParty
 	clientsPolicy    *ClientsPolicy
