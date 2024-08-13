@@ -7,11 +7,14 @@ import (
 	"github.com/gematik/zero-lab/go/libzero"
 	"github.com/gematik/zero-lab/go/pdp"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
 func init() {
+	runCmd.Flags().StringP("addr", "a", ":8080", "Address to listen on")
+	viper.BindPFlag("addr", runCmd.Flags().Lookup("addr"))
 	rootCmd.AddCommand(runCmd)
 }
 
@@ -33,12 +36,14 @@ var runCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		slog.Info("Zero Trust PDP started", "pdp", pdp)
-
 		e := echo.New()
+		e.Use(middleware.Recover())
 
 		pdp.AuthzServer.MountRoutes(e.Group(""))
 
-		e.Logger.Fatal(e.Start(":1323"))
+		addr := viper.GetString("addr")
+		slog.Info("starting Zero Trust PDP", "pdp", pdp, "addr", addr)
+		e.Logger.Fatal(e.Start(addr))
+
 	},
 }

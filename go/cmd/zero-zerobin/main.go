@@ -140,7 +140,7 @@ func main() {
 	}
 	as.MountRoutes(root.Group(""))
 
-	webClient, err := webclient.NewFromServerMetadata(as.Metadata)
+	webClient, err := webclient.NewFromServerMetadata(as.Metadata.ServerMetadata)
 	if err != nil {
 		log.Fatal(err)
 	}
