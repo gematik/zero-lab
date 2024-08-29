@@ -23,13 +23,32 @@ import (
 	"github.com/segmentio/ksuid"
 )
 
+const (
+	GrantTypeAuthorizationCode = "authorization_code"
+	GrantTypeClientCredentials = "client_credentials"
+	GrantTypeRefreshToken      = "refresh_token"
+	GrantTypeJWTBearer         = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+)
+
 type Option func(*Server) error
+
+type Error struct {
+	HttpStatus  int    `json:"-"`
+	Code        string `json:"error"`
+	Description string `json:"error_description,omitempty"`
+	URI         string `json:"error_uri,omitempty"`
+}
+
+func (e Error) Error() string {
+	return fmt.Sprintf("%s: %s", e.Code, e.Description)
+}
 
 // Extend the standard OAuth2 server metadata from RFC8414
 type ExtendedMetadata struct {
 	oauth2.ServerMetadata
 	OpenidProvidersEndpoint string `json:"openid_providers_endpoint"`
 }
+
 type Server struct {
 	Metadata         ExtendedMetadata
 	identityIssuers  []oidc.Client
@@ -41,20 +60,30 @@ type Server struct {
 	encPuK           jwk.Key
 }
 
-func ErrorLogMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
+func ErrorHandlerMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		err := next(c)
 		if err != nil {
 			slog.Error("Error", "error", err, "path", c.Path(), "remote_addr", c.RealIP(), "headers", c.Request().Header)
+			authzError, ok := err.(*Error)
+			if ok {
+				return c.JSON(authzError.HttpStatus, authzError)
+			} else {
+				return c.JSON(http.StatusInternalServerError, &Error{
+					HttpStatus:  http.StatusInternalServerError,
+					Code:        "server_error",
+					Description: err.Error(),
+				})
+			}
 		}
-		return err
+		return nil
 	}
 }
 
 func (s *Server) MountRoutes(group *echo.Group) {
 	group.Use(
 		middleware.Logger(),
-		ErrorLogMiddleware,
+		ErrorHandlerMiddleware,
 	)
 
 	group.GET("/.well-known/oauth-authorization-server", s.MetadataEndpoint)
@@ -103,10 +132,11 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 		BindError()
 
 	if binderr != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+		return &Error{
+			HttpStatus:  http.StatusBadRequest,
 			Code:        "invalid_request",
 			Description: binderr.Error(),
-		})
+		}
 	}
 
 	if !s.clientsPolicy.AllowedClient(session.ClientID) {
@@ -181,7 +211,8 @@ func (s *Server) PAREndpoint(c echo.Context) error {
 	requestUri := "urn:ietf:params:oauth:request_uri:" + util.GenerateRandomString(128)
 	slog.Error("PAR not implemented", "request_uri", requestUri)
 	// TODO: implement PAR
-	return &oauth2.Error{
+	return &Error{
+		HttpStatus:  http.StatusBadRequest,
 		Code:        "unsupported_grant_type",
 		Description: "PAR grant type not supported",
 	}
@@ -206,10 +237,11 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 	// retrieve state from query
 	state := c.QueryParam("state")
 	if state == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+		return &Error{
+			HttpStatus:  http.StatusBadRequest,
 			Code:        "invalid_request",
 			Description: "missing state",
-		})
+		}
 	}
 
 	// find running session by the OP state
@@ -218,16 +250,18 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 	if err == nil {
 		authnSession = authzSession.AuthnClientSession
 		if authnSession == nil {
-			return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+			return &Error{
+				HttpStatus:  http.StatusBadRequest,
 				Code:        "invalid_request",
 				Description: "missing openid session",
-			})
+			}
 		}
 	} else {
-		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+		return &Error{
+			HttpStatus:  http.StatusBadRequest,
 			Code:        "invalid_request",
 			Description: fmt.Errorf("unable to get session: %w", err).Error(),
-		})
+		}
 	}
 
 	if c.QueryParam("error") != "" {
@@ -241,20 +275,22 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 	// retrieve PKCE code from query
 	code := c.QueryParam("code")
 	if code == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+		return &Error{
+			HttpStatus:  http.StatusBadRequest,
 			Code:        "invalid_request",
 			Description: "missing code",
-		})
+		}
 	}
 
 	slog.Info("OP callback", "s", s, "authnSessiom", authnSession, "authzSession", authzSession)
 
 	identityIssuer, err := s.OpenidProvider(authnSession.Issuer)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+		return &Error{
+			HttpStatus:  http.StatusBadRequest,
 			Code:        "invalid_request",
 			Description: err.Error(),
-		})
+		}
 	}
 
 	// exchange code for tokens with the OP
@@ -264,26 +300,29 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 		oauth2.WithAlternateRedirectURI(authnSession.RedirectURI),
 	)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, oauth2.Error{
+		return &Error{
+			HttpStatus:  http.StatusInternalServerError,
 			Code:        "server_error",
 			Description: fmt.Errorf("unable to exchange code: %w", err).Error(),
-		})
+		}
 	}
 
 	idToken, err := identityIssuer.ParseIDToken(tokenResponse)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, oauth2.Error{
+		return &Error{
+			HttpStatus:  http.StatusInternalServerError,
 			Code:        "server_error",
 			Description: fmt.Errorf("unable to parse id token: %w", err).Error(),
-		})
+		}
 	}
 
 	authnSession.Claims, err = idToken.AsMap(context.TODO())
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, oauth2.Error{
+		return &Error{
+			HttpStatus:  http.StatusInternalServerError,
 			Code:        "server_error",
 			Description: fmt.Errorf("unable to parse id token: %w", err).Error(),
-		})
+		}
 	}
 
 	authnSession.TokenResponse = tokenResponse
@@ -292,10 +331,11 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 		authzSession.Code = util.GenerateRandomString(128)
 
 		if err := s.sessionStore.SaveAutzhServerSession(authzSession); err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, oauth2.Error{
+			return &Error{
+				HttpStatus:  http.StatusInternalServerError,
 				Code:        "server_error",
 				Description: fmt.Errorf("unable to save session: %w", err).Error(),
-			})
+			}
 		}
 
 		params := url.Values{}
@@ -308,8 +348,58 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 	return c.JSON(http.StatusOK, idToken.PrivateClaims())
 }
 
-// TokenEndpoint handles the token request
+// TokenEndpoint handles the token request for varous grant types
 func (s *Server) TokenEndpoint(c echo.Context) error {
+	r := c.Request()
+	if r.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
+		return &Error{
+			HttpStatus:  http.StatusBadRequest,
+			Code:        "invalid_request",
+			Description: "invalid content type",
+		}
+	}
+	if err := r.ParseForm(); err != nil {
+		return &Error{
+			HttpStatus:  http.StatusBadRequest,
+			Code:        "invalid_request",
+			Description: fmt.Errorf("unable to parse form: %w", err).Error(),
+		}
+	}
+
+	if !r.Form.Has("grant_type") {
+		return &Error{
+			HttpStatus:  http.StatusBadRequest,
+			Code:        "invalid_request",
+			Description: "missing grant_type",
+		}
+	}
+	grantType := r.FormValue("grant_type")
+	switch grantType {
+	case GrantTypeAuthorizationCode:
+		return s.TokenEndpointAuthorizationCode(c)
+	case GrantTypeClientCredentials:
+		return s.TokenEndpointClientCredentials(c)
+	default:
+		slog.Error("Unsupported grant type", "grant_type", grantType)
+		return &Error{
+			HttpStatus:  http.StatusBadRequest,
+			Code:        "unsupported_grant_type",
+			Description: fmt.Sprintf("unsupported grant type: %s", grantType),
+		}
+	}
+
+}
+
+func (s *Server) TokenEndpointClientCredentials(c echo.Context) error {
+	return &Error{
+		HttpStatus:  http.StatusBadRequest,
+		Code:        "unsupported_grant_type",
+		Description: "client_credentials grant type not supported",
+	}
+}
+
+// TokenEndpointAuthorizationCode handles the token request for the authorization code grant type
+func (s *Server) TokenEndpointAuthorizationCode(c echo.Context) error {
 	var grantType string
 	var code string
 	var codeVerifier string
@@ -324,36 +414,40 @@ func (s *Server) TokenEndpoint(c echo.Context) error {
 		BindError()
 
 	if binderr != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+		return &Error{
+			HttpStatus:  http.StatusBadRequest,
 			Code:        "invalid_request",
 			Description: binderr.Error(),
-		})
+		}
 	}
 
 	slog.Info("Token request", "grant_type", grantType, "code", code, "redirect_uri", redirectUri, "client_id", clientId)
 
 	session, err := s.sessionStore.GetAuthzServerSessionByCode(code)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+		return &Error{
+			HttpStatus:  http.StatusBadRequest,
 			Code:        "invalid_request",
 			Description: fmt.Errorf("unable to get session: %w", err).Error(),
-		})
+		}
 	}
 
 	slog.Info("Token request: session", "session", session)
 
 	if session.ClientID != clientId {
-		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+		return &Error{
+			HttpStatus:  http.StatusBadRequest,
 			Code:        "invalid_request",
 			Description: "client_id mismatch",
-		})
+		}
 	}
 
 	if session.RedirectURI != redirectUri {
-		return echo.NewHTTPError(http.StatusBadRequest, oauth2.Error{
+		return &Error{
+			HttpStatus:  http.StatusBadRequest,
 			Code:        "invalid_request",
 			Description: "redirect_uri mismatch",
-		})
+		}
 	}
 
 	codeChallengeBytes := sha256.Sum256([]byte(codeVerifier))
@@ -394,7 +488,9 @@ func (s *Server) issueAccessToken(authzSession *AuthzServerSession) (string, err
 	accessJwt.Set("exp", time.Now().Add(24*time.Hour).Unix())
 	accessJwt.Set("jti", ksuid.New().String())
 	accessJwt.Set("scope", authzSession.Scope)
-	accessJwt.Set("act", authzSession.AuthnClientSession.Claims)
+	if authzSession.AuthnClientSession.Claims != nil {
+		accessJwt.Set("urn:telematik:zta:subject", authzSession.AuthnClientSession.Claims)
+	}
 
 	accessTokenBytes, err := jwt.Sign(accessJwt, jwt.WithKey(jwa.ES256, s.sigPrK))
 	if err != nil {

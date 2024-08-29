@@ -27,6 +27,7 @@ type Config struct {
 	OidcProviders        []oidc.Config         `yaml:"oidc_providers" validate:"dive"`
 	GematikIdp           []gemidp.ClientConfig `yaml:"gematik_idp"`
 	ClientsPolicyPath    string                `yaml:"clients_policy_path"`
+	ClientsPolicy        *ClientsPolicy        `yaml:"clients_policy"`
 	OidfRelyingPartyPath string                `yaml:"oidf_relying_party_path"`
 }
 
@@ -100,7 +101,12 @@ func New(cfg *Config) (*Server, error) {
 	// set supported parameters explicitly
 	s.Metadata.ResponseTypesSupported = []string{"code"}
 	s.Metadata.ResponseModesSupported = []string{"query"}
-	s.Metadata.GrantTypesSupported = []string{"authorization_code"}
+	s.Metadata.GrantTypesSupported = []string{
+		GrantTypeAuthorizationCode,
+		GrantTypeRefreshToken,
+		GrantTypeClientCredentials,
+		GrantTypeJWTBearer,
+	}
 	s.Metadata.TokenEndpointAuthMethodsSupported = []string{"none"}
 	s.Metadata.TokenEndpointAuthSigningAlgValuesSupported = []string{"ES256"}
 	s.Metadata.CodeChallengeMethodsSupported = []string{"S256"}
