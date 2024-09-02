@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -45,7 +46,8 @@ var runCmd = &cobra.Command{
 		pdp.AuthzServer.MountRoutes(e.Group(""))
 
 		addr := viper.GetString("addr")
-		slog.Info("starting Zero Trust PDP", "pdp", pdp, "addr", addr)
+		slog.Debug("Zero Trust PDP configured", "pdp", pdp)
+		slog.Info(fmt.Sprintf("starting Zero Trust PDP at %s", addr))
 		e.Logger.Fatal(e.Start(addr))
 
 	},
