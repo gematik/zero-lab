@@ -10,11 +10,14 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
+	"github.com/gematik/zero-lab/go/brainpool"
+	"github.com/gematik/zero-lab/go/libzero"
 	"github.com/gematik/zero-lab/go/libzero/oauth2"
 	"github.com/gematik/zero-lab/go/libzero/util"
-	"github.com/gematik/zero-lab/pkg"
-	"github.com/go-jose/go-jose/v4"
+	"github.com/lestrrat-go/jwx/v2/jwa"
+	"github.com/lestrrat-go/jwx/v2/jwe"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
@@ -129,7 +132,7 @@ func NewClientFromConfig(config ClientConfig) (*Client, error) {
 	baseURL := config.Environment.GetBaseURL()
 
 	httpClient := &http.Client{
-		Transport: util.AddUserAgentTransport(nil, fmt.Sprintf("zero-gematik-idp-client/%s gematik/%s", pkg.Version, config.ClientID)),
+		Transport: util.AddUserAgentTransport(nil, fmt.Sprintf("zero-gematik-idp-client/%s gematik/%s", libzero.Version, config.ClientID)),
 	}
 
 	metadata, err := fetchMetadata(baseURL, httpClient)
@@ -219,33 +222,16 @@ func (c *Client) Exchange(code, verifier string, opts ...oauth2.ParameterOption)
 
 	slog.Info("Token key payload", "payload", tokenKeyPayload)
 
-	encrypter, err := jose.NewEncrypter(jose.A256GCM,
-		jose.Recipient{
-			Algorithm: jose.ECDH_ES,
-			Key:       idpEncKey,
-		},
-		nil,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("creating encrypter: %w", err)
-	}
-
-	encryptedTokenKey, err := encrypter.Encrypt(tokenKeyPayloadBytes)
-	if err != nil {
-		return nil, fmt.Errorf("encrypting token key: %w", err)
-	}
-
-	encryptedTokenKeySerialized, err := encryptedTokenKey.CompactSerialize()
-	if err != nil {
-		return nil, fmt.Errorf("serializing encrypted token key: %w", err)
-	}
+	encryptedTokenKeySerialized, err := brainpool.NewJWEBuilder().
+		Plaintext(tokenKeyPayloadBytes).
+		EncryptECDHES(idpEncKey)
 
 	params := url.Values{}
 	params.Set("grant_type", "authorization_code")
 	params.Set("client_id", c.config.ClientID)
 	params.Set("redirect_uri", c.config.RedirectURI)
 	params.Set("code", code)
-	params.Set("key_verifier", encryptedTokenKeySerialized)
+	params.Set("key_verifier", string(encryptedTokenKeySerialized))
 
 	for _, opt := range opts {
 		opt(params)
@@ -283,14 +269,10 @@ func (c *Client) Exchange(code, verifier string, opts ...oauth2.ParameterOption)
 }
 
 func decryptToken(token string, key []byte) (string, error) {
-	jwe, err := jose.ParseEncrypted(token, []jose.KeyAlgorithm{jose.DIRECT}, []jose.ContentEncryption{jose.A256GCM})
-	if err != nil {
-		return "", fmt.Errorf("parsing JWE: %w", err)
-	}
 
-	plaintext, err := jwe.Decrypt(key)
+	plaintext, err := jwe.Decrypt([]byte(token), jwe.WithKey(jwa.DIRECT, key))
 	if err != nil {
-		return "", fmt.Errorf("decrypting JWE: %w", err)
+		return "", fmt.Errorf("decrypting token: %w", err)
 	}
 
 	njwt := new(Njwt)
@@ -309,21 +291,17 @@ func (c *Client) ParseIDToken(response *oauth2.TokenResponse) (jwt.Token, error)
 		return nil, fmt.Errorf("fetching signing key: %w", err)
 	}
 
-	parsedToken, err := jose.ParseSigned(response.IDToken, []jose.SignatureAlgorithm{jose.BP256R1})
+	_, err = brainpool.ParseToken([]byte(response.IDToken), brainpool.WithKey(key))
 	if err != nil {
-		return nil, fmt.Errorf("parsing discovery document: %w", err)
-	}
-
-	_, err = parsedToken.Verify(key)
-	if err != nil {
-		return nil, fmt.Errorf("verifying discovery document: %w", err)
+		return nil, fmt.Errorf("parsing id token: %w", err)
 	}
 
 	// parse the token using the jwx library
 	// since the token is already verified, we can skip the verification step
 	token, err := jwt.ParseString(
 		response.IDToken,
-		jwt.WithVerify(false), // skip verification
+		jwt.WithAcceptableSkew(time.Duration(5*time.Minute)), // allow 5 minutes skew
+		jwt.WithVerify(false), // skip verification since we already verified the token before
 		jwt.WithIssuer(c.Metadata.Issuer),
 		jwt.WithAudience(c.config.ClientID),
 		jwt.WithRequiredClaim("nonce"),

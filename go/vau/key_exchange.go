@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
-	"strings"
 
 	"github.com/cloudflare/circl/kem/kyber/kyber768"
 	"github.com/fxamacker/cbor/v2"
@@ -78,7 +77,7 @@ func OpenChannel(baseURLString string, env Env, httpClient *http.Client) (*Chann
 		return nil, fmt.Errorf("VAU-CID does not match regex")
 	}
 	// build the channel specific URL
-	hostURL := baseURL.ResolveReference(&url.URL{Path: strings.SplitAfter(channelID, "/")[1]})
+	hostURL := baseURL.ResolveReference(&url.URL{Path: channelID})
 
 	slog.Debug("Received Message2", "channelID", channelID, "channelURL", hostURL.String())
 
@@ -190,6 +189,7 @@ func OpenChannel(baseURLString string, env Env, httpClient *http.Client) (*Chann
 	}
 
 	channel := &Channel{
+		httpClient:          httpClient,
 		Env:                 EnvNonPU,
 		ID:                  channelID,
 		HostURL:             hostURL,
@@ -230,7 +230,7 @@ func PostMessage[M interface{}](httpClient *http.Client, url string, requestMess
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, nil, nil, nil, fmt.Errorf("VAU returned status %v", resp.StatusCode)
+		return nil, nil, nil, nil, fmt.Errorf("VAU returned status %v, body: %s", resp.StatusCode, responseCbor)
 	}
 
 	responseMessage := new(M)
@@ -305,6 +305,6 @@ func AEADDecrypt(key []byte, ciphertext []byte) ([]byte, error) {
 }
 
 func ValidateSignedPublicVAUKeys(signedPubKeys *SignedPublicVAUKeys) error {
-	slog.Warn("VAU Host keys validation is not implemented", "signedPubKeys", signedPubKeys)
+	slog.Warn("VAU Host keys validation is not implemented")
 	return nil
 }

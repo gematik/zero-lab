@@ -1,19 +1,13 @@
-package gemidp_test
+package brainpool_test
 
 import (
 	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/x509"
 	"encoding/pem"
-	"fmt"
-	"log/slog"
-	"os"
-	"strings"
 	"testing"
 
 	"github.com/gematik/zero-lab/go/brainpool"
-	"github.com/gematik/zero-lab/go/libzero/gemidp"
-	"github.com/gematik/zero-lab/go/libzero/oauth2"
-	"github.com/gematik/zero-lab/go/libzero/util"
 )
 
 // sample keys and certificates from https://github.com/gematik/erp-e2e-testsuite
@@ -45,64 +39,31 @@ AwIDSAAwRQIgWlSdCIw6Z6alM+dGnA4vfkxDoViIqJMw/PH4U0VUmNsCIQCcX9UW
 JnSDBKGp4nZTcuozRPsJK47cBkil0x6Zrkoxkg==
 -----END CERTIFICATE-----`)
 
-func TestGemIDP(t *testing.T) {
-	t.Log("TestGemIDP")
-	cfg := gemidp.ClientConfig{
-		Environment: gemidp.EnvironmentReference,
-		ClientID:    os.Getenv("GEMIDP_CLIENT_ID"),
-		RedirectURI: os.Getenv("GEMIDP_REDIRECT_URI"),
-		Scopes:      strings.Split(os.Getenv("GEMIDP_SCOPE"), " "),
-	}
-
-	client, err := gemidp.NewClientFromConfig(cfg)
+func TestSignature(t *testing.T) {
+	priv, err := parsePEMKey(testKeyBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	verifier := oauth2.GenerateCodeVerifier()
-
-	authURL, err := client.AuthCodeURL("state", "nonce", verifier)
+	msg := []byte("test")
+	r, s, err := ecdsa.Sign(rand.Reader, priv, msg)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	slog.Info("Auth URL", "url", authURL)
-
-	// load test key and certificate
-	softKey, _ := parsePEMKey(testKeyBytes)
-	softCert, _ := parsePEMCert(testCertBytes)
-
-	authenticator, err := gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
-		Environment: gemidp.EnvironmentReference,
-		SignerFunc:  gemidp.SignWithSoftkey(softKey, softCert),
-	})
+	cert, err := parsePEMCert(testCertBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	codeRedirectURL, err := authenticator.Authenticate(authURL)
-	if err != nil {
-		t.Fatal(err)
+	ecdsaPubKey, ok := cert.PublicKey.(*ecdsa.PublicKey)
+	if !ok {
+		t.Fatal("failed to convert public key to ECDSA public key")
 	}
 
-	t.Log("CodeRedirectURL", codeRedirectURL)
-
-	tokenResponse, err := client.Exchange(codeRedirectURL.Code, verifier)
-	if err != nil {
-		t.Fatal(err)
+	if !ecdsa.Verify(ecdsaPubKey, msg, r, s) {
+		t.Fatal("signature didn't verify.")
 	}
-
-	fmt.Println(util.JWSToText(tokenResponse.IDToken))
-	fmt.Println(util.JWSToText(tokenResponse.AccessToken))
-
-	idToken, err := client.ParseIDToken(tokenResponse)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	privateClaims := idToken.PrivateClaims()
-	slog.Info("ID Token private claims", "claims", privateClaims)
-
 }
 
 func parsePEMKey(pemBytes []byte) (*ecdsa.PrivateKey, error) {

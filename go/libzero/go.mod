@@ -3,12 +3,10 @@ module github.com/gematik/zero-lab/go/libzero
 go 1.22.5
 
 // needed to process brainpool curves in gemidp
-replace github.com/go-jose/go-jose/v4 => github.com/spilikin/go-jose-brainpool/v4 v4.0.3-0.20240723175330-b6b6406b4234
+// replace github.com/go-jose/go-jose/v4 => github.com/spilikin/go-jose-brainpool/v4 v4.0.3-0.20240723175330-b6b6406b4234
 
 require (
 	github.com/fxamacker/cbor/v2 v2.7.0
-	github.com/gematik/zero-lab v0.0.0-20240429121620-438f3cf7af8f
-	github.com/go-jose/go-jose/v4 v4.0.3
 	github.com/go-playground/validator/v10 v10.22.0
 	github.com/google/go-attestation v0.5.1
 	github.com/gorilla/sessions v1.3.0
@@ -18,11 +16,11 @@ require (
 	github.com/lestrrat-go/jwx/v2 v2.1.0
 	github.com/matishsiao/goInfo v0.0.0-20210923090445-da2e3fa8d45f
 	github.com/segmentio/ksuid v1.0.4
-	github.com/spilikin/go-brainpool v0.0.0-20240412075109-c5a9e2e50b53
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
+	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
@@ -45,6 +43,7 @@ require (
 	github.com/lestrrat-go/option v1.0.1 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect

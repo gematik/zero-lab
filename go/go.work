@@ -1,10 +1,14 @@
-go 1.22.5
+go 1.23.2
 
 use (
+	./brainpool
 	./cmd/zero
 	./cmd/zero-zerobin
+	./epa
+	./gempki
 	./libzero
 	./pdp
 	./pep
+	./vau
 	./zaddy
 )

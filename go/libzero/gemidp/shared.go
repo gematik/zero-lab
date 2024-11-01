@@ -10,8 +10,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-jose/go-jose/v4"
-	"github.com/spilikin/go-brainpool"
+	"github.com/gematik/zero-lab/go/brainpool"
 )
 
 func fetchMetadata(baseURL string, httpClient *http.Client) (*Metadata, error) {
@@ -33,21 +32,15 @@ func fetchMetadata(baseURL string, httpClient *http.Client) (*Metadata, error) {
 
 	slog.Info("Extracted signing key", "key", sigJWK)
 
-	token, err := jose.ParseSigned(string(data), []jose.SignatureAlgorithm{jose.BP256R1})
+	token, err := brainpool.ParseToken(data, brainpool.WithKey(sigJWK))
 	if err != nil {
 		return nil, fmt.Errorf("parsing discovery document: %w", err)
 	}
 
-	metadataBytes, err := token.Verify(sigJWK)
-	if err != nil {
-		return nil, fmt.Errorf("verifying discovery document: %w", err)
-	}
-
 	slog.Warn("Certificate of discovery document not verified. Don't trust it in production.", "url", resp.Request.URL)
-	slog.Info("Parsed discovery document", "token", token)
 
 	metadata := new(Metadata)
-	err = json.Unmarshal(metadataBytes, metadata)
+	err = json.Unmarshal(token.PayloadJson, metadata)
 	if err != nil {
 		return nil, fmt.Errorf("parsing discovery document: %w", err)
 	}
@@ -57,7 +50,7 @@ func fetchMetadata(baseURL string, httpClient *http.Client) (*Metadata, error) {
 	return metadata, nil
 }
 
-func extractKeyFromX5CHeader(data []byte) (*jose.JSONWebKey, error) {
+func extractKeyFromX5CHeader(data []byte) (*brainpool.JSONWebKey, error) {
 	parts := strings.Split(string(data), ".")
 	if len(parts) != 3 {
 		return nil, fmt.Errorf("invalid JWT format")
@@ -91,7 +84,7 @@ func extractKeyFromX5CHeader(data []byte) (*jose.JSONWebKey, error) {
 		return nil, fmt.Errorf("parsing certificate: %w", err)
 	}
 
-	return &jose.JSONWebKey{
+	return &brainpool.JSONWebKey{
 		Key:          cert.PublicKey,
 		KeyID:        headerStruct.Kid,
 		Use:          "sig",
@@ -100,14 +93,14 @@ func extractKeyFromX5CHeader(data []byte) (*jose.JSONWebKey, error) {
 }
 
 // fetch and parse JWK from the given URI
-func fetchKey(uri string) (*jose.JSONWebKey, error) {
+func fetchKey(uri string) (*brainpool.JSONWebKey, error) {
 	resp, err := http.Get(uri)
 	if err != nil {
 		return nil, fmt.Errorf("fetching JWK: %w", err)
 	}
 	defer resp.Body.Close()
 
-	key := new(jose.JSONWebKey)
+	key := new(brainpool.JSONWebKey)
 	err = json.NewDecoder(resp.Body).Decode(key)
 	if err != nil {
 		return nil, fmt.Errorf("parsing JWK: %w", err)

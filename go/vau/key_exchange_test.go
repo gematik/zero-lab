@@ -1,6 +1,7 @@
 package vau_test
 
 import (
+	"crypto/tls"
 	"io"
 	"log"
 	"net/http"
@@ -11,8 +12,15 @@ import (
 )
 
 func TestOpenChannel(t *testing.T) {
-	baseURL := "http://localhost:8081"
-	httpClient := &http.Client{}
+	baseURL := "https://10.30.19.143"
+	// do not check the server certificate
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true, // Disable certificate verification
+			},
+		},
+	}
 	channel, err := vau.OpenChannel(baseURL, vau.EnvNonPU, httpClient)
 	if err != nil {
 		t.Fatalf("OpenChannel failed: %v", err)

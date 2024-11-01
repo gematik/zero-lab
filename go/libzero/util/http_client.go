@@ -8,6 +8,7 @@ type addHttpHeaderTransport struct {
 	value string
 }
 
+// Deprecated: do not use commons/util package
 func AddHttpHeaderTransport(t http.RoundTripper, name, value string) http.RoundTripper {
 	return &addHttpHeaderTransport{t, name, value}
 }

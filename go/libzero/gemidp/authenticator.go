@@ -2,6 +2,7 @@ package gemidp
 
 import (
 	"crypto/ecdsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -11,50 +12,27 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/go-jose/go-jose/v4"
+	"github.com/gematik/zero-lab/go/brainpool"
 )
 
 type ChallengeSignerFunc func(challenge Challenge) (string, error)
 
 func SignWithSoftkey(prk *ecdsa.PrivateKey, cert *x509.Certificate) ChallengeSignerFunc {
 	return func(challenge Challenge) (string, error) {
-		signer, err := jose.NewSigner(
-			jose.SigningKey{
-				Algorithm: jose.BP256R1,
-				Key:       prk,
-			},
-			&jose.SignerOptions{
-				ExtraHeaders: map[jose.HeaderKey]interface{}{
-					jose.HeaderType:        "JWT",
-					jose.HeaderContentType: "NJWT",
-					"x5c":                  []string{base64.StdEncoding.EncodeToString(cert.Raw)},
-				},
-			},
-		)
+
+		challengeResponse, err := brainpool.NewJWTBuilder().
+			Header("typ", "JWT").
+			Header("cty", "NJWT").
+			Header("alg", "BP256R1").
+			Header("x5c", []string{base64.StdEncoding.EncodeToString(cert.Raw)}).
+			Claim("njwt", challenge.Challenge).
+			Sign(sha256.New(), brainpool.SignFuncPrivateKey(prk))
+
 		if err != nil {
-			return "", fmt.Errorf("creating signer: %w", err)
+			return "", fmt.Errorf("signing challenge: %w", err)
 		}
 
-		njwt := Njwt{
-			Njwt: challenge.Challenge,
-		}
-
-		njwtJson, err := json.Marshal(njwt)
-		if err != nil {
-			return "", fmt.Errorf("marshalling challenge njwt: %w", err)
-		}
-
-		challengeResponseJws, err := signer.Sign(njwtJson)
-		if err != nil {
-			return "", fmt.Errorf("signing challenge njwt: %w", err)
-		}
-
-		serialized, err := challengeResponseJws.CompactSerialize()
-		if err != nil {
-			return "", fmt.Errorf("serializing challenge njwt: %w", err)
-		}
-
-		return serialized, nil
+		return string(challengeResponse), nil
 	}
 }
 
@@ -145,7 +123,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	}
 	slog.Warn("Using signing and encryption keys with unverified certificates")
 
-	// create http client which prevent redirects
+	// create http client which prevents redirects
 	httpClient := http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
@@ -170,37 +148,15 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 
 	slog.Debug("Challenge", "challenge", challenge)
 
-	token, err := jose.ParseSigned(challenge.Challenge, []jose.SignatureAlgorithm{jose.BP256R1})
+	token, err := brainpool.ParseToken([]byte(challenge.Challenge), brainpool.WithKey(idpSigKey))
 	if err != nil {
 		return nil, fmt.Errorf("parsing challenge: %w", err)
 	}
 
-	challengePayloadBytes, err := token.Verify(idpSigKey)
-	if err != nil {
-		return nil, fmt.Errorf("verifying challenge: %w", err)
-	}
-
 	var challengePayload = new(ChallengePayload)
-	err = json.Unmarshal(challengePayloadBytes, challengePayload)
+	err = json.Unmarshal(token.PayloadJson, challengePayload)
 	if err != nil {
 		return nil, fmt.Errorf("parsing challenge payload: %w", err)
-	}
-
-	challengeResponseEncrypter, err := jose.NewEncrypter(
-		jose.A256GCM,
-		jose.Recipient{
-			Algorithm: jose.ECDH_ES,
-			Key:       idpEncKey,
-		},
-		&jose.EncrypterOptions{
-			ExtraHeaders: map[jose.HeaderKey]interface{}{
-				jose.HeaderContentType: "NJWT",
-				"exp":                  challengePayload.Exp,
-			},
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("creating challenge response encrypter: %w", err)
 	}
 
 	signedChallenge, err := a.signerFunc(*challenge)
@@ -219,21 +175,21 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 
 	slog.Info("Challenge response claims", "claims", string(challengeResponseClaimsJson))
 
-	challengeResponseJwe, err := challengeResponseEncrypter.Encrypt(challengeResponseClaimsJson)
+	homebrew, err := brainpool.NewJWEBuilder().
+		Header("cty", "NJWT").
+		Header("exp", challengePayload.Exp).
+		Plaintext([]byte(challengeResponseClaimsJson)).
+		EncryptECDHES(idpEncKey.Key.(*ecdsa.PublicKey))
+
 	if err != nil {
 		return nil, fmt.Errorf("encrypting challenge response: %w", err)
 	}
 
-	challengeResponse, err := challengeResponseJwe.CompactSerialize()
-	if err != nil {
-		return nil, fmt.Errorf("serializing challenge response: %w", err)
-	}
-
-	slog.Info("Encrypted challenge response", "encrypted", challengeResponse)
+	slog.Info("Encrypted challenge response", "encrypted", string(homebrew))
 
 	// post the encrypted challenge response to the idp
 	form := url.Values{
-		"signed_challenge": {challengeResponse},
+		"signed_challenge": {string(homebrew)},
 	}
 
 	resp, err = httpClient.PostForm(a.Metadata.AuthorizationEndpoint, form)

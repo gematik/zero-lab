@@ -40,6 +40,7 @@ func (c *Counter) next() uint64 {
 }
 
 type Channel struct {
+	httpClient          *http.Client
 	Env                 Env
 	ID                  string
 	HostURL             *url.URL
@@ -176,7 +177,7 @@ func (c *Channel) PostEncryptedRequest(data []byte) (*http.Response, error) {
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("sending request: %w", err)
 	}
