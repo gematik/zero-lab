@@ -14,6 +14,7 @@ import (
 )
 
 func fetchMetadata(baseURL string, httpClient *http.Client) (*Metadata, error) {
+	slog.Info("Fetching OP metadata", "url", baseURL+"/.well-known/openid-configuration")
 	resp, err := httpClient.Get(baseURL + "/.well-known/openid-configuration")
 	if err != nil {
 		return nil, fmt.Errorf("fetching discovery document: %w", err)

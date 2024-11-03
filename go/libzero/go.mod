@@ -1,12 +1,13 @@
 module github.com/gematik/zero-lab/go/libzero
 
-go 1.22.5
+go 1.23.2
 
 // needed to process brainpool curves in gemidp
 // replace github.com/go-jose/go-jose/v4 => github.com/spilikin/go-jose-brainpool/v4 v4.0.3-0.20240723175330-b6b6406b4234
 
 require (
 	github.com/fxamacker/cbor/v2 v2.7.0
+	github.com/gematik/zero-lab/go/brainpool v0.0.0-20241101163550-646c85cb68d7
 	github.com/go-playground/validator/v10 v10.22.0
 	github.com/google/go-attestation v0.5.1
 	github.com/gorilla/sessions v1.3.0
@@ -49,10 +50,10 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.org/x/crypto v0.25.0 // indirect
+	golang.org/x/crypto v0.28.0 // indirect
 	golang.org/x/net v0.25.0 // indirect
-	golang.org/x/sys v0.22.0 // indirect
-	golang.org/x/text v0.16.0 // indirect
+	golang.org/x/sys v0.26.0 // indirect
+	golang.org/x/text v0.19.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )

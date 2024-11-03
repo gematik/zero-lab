@@ -188,6 +188,7 @@ func (c *Client) AuthCodeURLAuthenticator(state, nonce, verifier string, opts ..
 		return "", fmt.Errorf("parsing challenge path: %w", err)
 	}
 
+	// TODO: make selection of SMC-B / HBA configurable
 	challengePath.RawQuery = challengePath.RawQuery + "&cardType=SMC-B&callback=DIRECT"
 
 	query := url.Values{

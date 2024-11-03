@@ -2,52 +2,59 @@ package brainpool
 
 import (
 	"crypto"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rand"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"hash"
 	"io"
 )
 
-func DeriveECDHES(alg string, apuData, apvData []byte, priv *ecdsa.PrivateKey, pub *ecdsa.PublicKey, size int) []byte {
-	if size > 1<<16 {
-		panic("ECDH-ES output size too large, must be less than or equal to 64 KiB")
+func DeriveECDHES(algorithm string, apuData, apvData []byte, privateKey *ecdsa.PrivateKey, publicKey *ecdsa.PublicKey, keySize int) ([]byte, error) {
+	if keySize > 1<<16 {
+		return nil, errors.New("key size too large: must be less than or equal to 64 KiB")
 	}
 
 	// Prefix inputs with length
-	algID := lengthPrefixed([]byte(alg))
-	ptyUInfo := lengthPrefixed(apuData)
-	ptyVInfo := lengthPrefixed(apvData)
+	algorithmID := lengthPrefixed([]byte(algorithm))
+	partyUInfo := lengthPrefixed(apuData)
+	partyVInfo := lengthPrefixed(apvData)
 
 	// Encode output size in bits for suppPubInfo
-	supPubInfo := make([]byte, 4)
-	binary.BigEndian.PutUint32(supPubInfo, uint32(size)*8)
+	suppPubInfo := make([]byte, 4)
+	binary.BigEndian.PutUint32(suppPubInfo, uint32(keySize)*8)
 
 	// Validate that the public key is on the same curve as the private key
-	if !priv.Curve.IsOnCurve(pub.X, pub.Y) {
-		panic("public key not on the same curve as private key")
+	if !privateKey.Curve.IsOnCurve(publicKey.X, publicKey.Y) {
+		return nil, errors.New("public key is not on the same curve as the private key")
 	}
 
 	// Calculate shared secret Z
-	zX, _ := priv.Curve.ScalarMult(pub.X, pub.Y, priv.D.Bytes())
-	zBytes := zX.Bytes()
+	sharedX, _ := privateKey.Curve.ScalarMult(publicKey.X, publicKey.Y, privateKey.D.Bytes())
+	sharedSecret := sharedX.Bytes()
 
-	// Ensure zBytes is padded to the correct size for the curve
-	octSize := curveCoordinateSize(priv.Curve)
-	if len(zBytes) < octSize {
-		paddedZ := make([]byte, octSize)
-		copy(paddedZ[octSize-len(zBytes):], zBytes)
-		zBytes = paddedZ
+	// Ensure sharedSecret is padded to the correct size for the curve
+	curveSize := curveCoordinateSize(privateKey.Curve)
+	if len(sharedSecret) < curveSize {
+		paddedSecret := make([]byte, curveSize)
+		copy(paddedSecret[curveSize-len(sharedSecret):], sharedSecret)
+		sharedSecret = paddedSecret
 	}
 
 	// Create a KDF reader with SHA-256
-	reader := newKDF(crypto.SHA256, zBytes, algID, ptyUInfo, ptyVInfo, supPubInfo, nil)
-	key := make([]byte, size)
+	kdfReader := newKDF(crypto.SHA256, sharedSecret, algorithmID, partyUInfo, partyVInfo, suppPubInfo, nil)
+	derivedKey := make([]byte, keySize)
 
-	// Read from the KDF into the key slice
-	_, _ = reader.Read(key)
+	// Read from the KDF into the derivedKey slice
+	if _, err := kdfReader.Read(derivedKey); err != nil {
+		return nil, fmt.Errorf("failed to read from KDF: %w", err)
+	}
 
-	return key
+	return derivedKey, nil
 }
 
 // curveCoordinateSize returns the size in octets for a coordinate on an elliptic curve.
@@ -124,4 +131,60 @@ func (ctx *kdf) Read(out []byte) (int, error) {
 	}
 
 	return totalCopied, nil
+}
+
+// Encrypts a given plaintext using AES-GCM with an IV and AAD, returning the IV, tag, and ciphertext.
+func encryptAESGCMWithIVAndAAD(key, plaintext, aad []byte) ([]byte, []byte, []byte, error) {
+	// Create a new AES cipher block
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	// Create a GCM block cipher mode instance
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	// Create a nonce (IV) for AES-GCM; it must be 12 bytes for optimal security
+	iv := make([]byte, aesGCM.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		return nil, nil, nil, err
+	}
+
+	// Encrypt the plaintext with the IV and AAD
+	ciphertext := aesGCM.Seal(nil, iv, plaintext, aad)
+
+	// Extract the tag from the end of the ciphertext
+	tag := ciphertext[len(ciphertext)-aesGCM.Overhead():]
+	ciphertext = ciphertext[:len(ciphertext)-aesGCM.Overhead()]
+
+	return iv, tag, ciphertext, nil
+}
+
+// Decrypts the ciphertext using AES-GCM with a provided IV, tag, and AAD.
+func decryptAESGCMWithIVAndAAD(key, iv, tag, ciphertext, aad []byte) (string, error) {
+	// Create a new AES cipher block
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+
+	// Create a GCM block cipher mode instance
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	// Combine the ciphertext and tag for decryption
+	ciphertextWithTag := append(ciphertext, tag...)
+
+	// Decrypt the ciphertext with the provided IV and AAD
+	plaintext, err := aesGCM.Open(nil, iv, ciphertextWithTag, aad)
+	if err != nil {
+		return "", err
+	}
+
+	return string(plaintext), nil
 }

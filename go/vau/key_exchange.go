@@ -62,7 +62,7 @@ func OpenChannel(baseURLString string, env Env, httpClient *http.Client) (*Chann
 
 	// construct URL for starting the channel
 	startChannelURL := baseURL.ResolveReference(&url.URL{Path: "VAU"})
-	slog.Debug("Sending Message1", "m1", m1, "startChannelURL", startChannelURL.String())
+	slog.Debug("Sending Message1", "startChannelURL", startChannelURL.String())
 	m1_cbor, firstHttpResponse, m2_cbor, m2, err := PostMessage[Message2](httpClient, startChannelURL.String(), m1)
 	if err != nil {
 		return nil, fmt.Errorf("sending Message1: %w", err)
@@ -77,9 +77,9 @@ func OpenChannel(baseURLString string, env Env, httpClient *http.Client) (*Chann
 		return nil, fmt.Errorf("VAU-CID does not match regex")
 	}
 	// build the channel specific URL
-	hostURL := baseURL.ResolveReference(&url.URL{Path: channelID})
+	channelURL := baseURL.ResolveReference(&url.URL{Path: channelID})
 
-	slog.Debug("Received Message2", "channelID", channelID, "channelURL", hostURL.String())
+	slog.Debug("Received Message2", "channelID", channelID, "channelURL", channelURL.String())
 
 	ss_e_ecdh, err := keys.ECKeyPair.Decapsulate(&m2.ECDH_ct)
 	if err != nil {
@@ -115,7 +115,7 @@ func OpenChannel(baseURLString string, env Env, httpClient *http.Client) (*Chann
 
 	slog.Debug("VAU keys decoded", "signedPubKeys", signedPubKeys)
 
-	if err := ValidateSignedPublicVAUKeys(signedPubKeys); err != nil {
+	if err := validateSignedPublicVAUKeys(httpClient, baseURL, signedPubKeys); err != nil {
 		return nil, fmt.Errorf("validating signed public VAU keys: %w", err)
 	}
 
@@ -168,11 +168,13 @@ func OpenChannel(baseURLString string, env Env, httpClient *http.Client) (*Chann
 		AEAD_ct_key_confirmation: m3_aead_ct_key_confirmation,
 	}
 
-	m3_cbor, _, _, m4, err := PostMessage[Message4](httpClient, hostURL.String(), m3)
+	slog.Debug("Sending Message3", "channelURL", channelURL.String())
+
+	m3_cbor, _, _, m4, err := PostMessage[Message4](httpClient, channelURL.String(), m3)
 	if err != nil {
 		return nil, fmt.Errorf("sending Message3: %w", err)
 	}
-	slog.Debug("Received Message4", "m3_cbor", m3_cbor, "m4", m4)
+	slog.Debug("Received Message4", "channelURL", channelURL.String())
 
 	transcript = m1_cbor
 	transcript = append(transcript, m2_cbor...)
@@ -192,7 +194,7 @@ func OpenChannel(baseURLString string, env Env, httpClient *http.Client) (*Chann
 		httpClient:          httpClient,
 		Env:                 EnvNonPU,
 		ID:                  channelID,
-		HostURL:             hostURL,
+		HostURL:             channelURL,
 		SignedPublicVAUKeys: signedPubKeys,
 		keyID:               key_id,
 		k2_c2s_app_data:     k2_c2s_app_data,
@@ -304,7 +306,31 @@ func AEADDecrypt(key []byte, ciphertext []byte) ([]byte, error) {
 	return aesGCM.Open(nil, nonce, cypertext, nil)
 }
 
-func ValidateSignedPublicVAUKeys(signedPubKeys *SignedPublicVAUKeys) error {
+func validateSignedPublicVAUKeys(httpClient *http.Client, baseURL *url.URL, signedPubKeys *SignedPublicVAUKeys) error {
+	certDataPath := fmt.Sprintf("/CertData.%x-%d", signedPubKeys.CertHash, signedPubKeys.Cdv)
+	certDataURL := baseURL.ResolveReference(&url.URL{Path: certDataPath})
+
+	resp, err := httpClient.Get(certDataURL.String())
+	if err != nil {
+		return fmt.Errorf("getting CertData: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("getting certData from '%s' returned http status %v", certDataURL.String(), resp.StatusCode)
+	}
+
+	defer resp.Body.Close()
+	certData := new(CertData)
+	if err := cbor.NewDecoder(resp.Body).Decode(certData); err != nil {
+		return fmt.Errorf("decoding CertData: %w", err)
+	}
+
+	slog.Warn("VAU CA validation is not implemented", "ca", certData.CACert.Subject.CommonName)
+
+	for _, cert := range certData.RCAChain {
+		slog.Warn("VAU Root CA validation is not implemented", "cert", cert.Subject.CommonName)
+	}
+
 	slog.Warn("VAU Host keys validation is not implemented")
 	return nil
 }

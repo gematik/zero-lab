@@ -51,7 +51,10 @@ func (b *JWEBuilder) EncryptECDHES(recipient interface{}) ([]byte, error) {
 		return nil, fmt.Errorf("generating ephemeral key: %w", err)
 	}
 
-	cek := DeriveECDHES("A256GCM", []byte{}, []byte{}, ephemeralKey, recipientKey, 32)
+	cek, err := DeriveECDHES("A256GCM", []byte{}, []byte{}, ephemeralKey, recipientKey, 32)
+	if err != nil {
+		return nil, fmt.Errorf("deriving ECDHES: %w", err)
+	}
 
 	b.headers["alg"] = "ECDH-ES"
 	b.headers["enc"] = "A256GCM"

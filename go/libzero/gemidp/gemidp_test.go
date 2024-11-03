@@ -1,16 +1,12 @@
 package gemidp_test
 
 import (
-	"crypto/ecdsa"
-	"crypto/x509"
-	"encoding/pem"
 	"fmt"
 	"log/slog"
 	"os"
 	"strings"
 	"testing"
 
-	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/libzero/gemidp"
 	"github.com/gematik/zero-lab/go/libzero/oauth2"
 	"github.com/gematik/zero-lab/go/libzero/util"
@@ -68,13 +64,9 @@ func TestGemIDP(t *testing.T) {
 
 	slog.Info("Auth URL", "url", authURL)
 
-	// load test key and certificate
-	softKey, _ := parsePEMKey(testKeyBytes)
-	softCert, _ := parsePEMCert(testCertBytes)
-
 	authenticator, err := gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
 		Environment: gemidp.EnvironmentReference,
-		SignerFunc:  gemidp.SignWithSoftkey(softKey, softCert),
+		SignerFunc:  gemidp.SignWithSoftkeyPEM(testKeyBytes, testCertBytes),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -103,22 +95,4 @@ func TestGemIDP(t *testing.T) {
 	privateClaims := idToken.PrivateClaims()
 	slog.Info("ID Token private claims", "claims", privateClaims)
 
-}
-
-func parsePEMKey(pemBytes []byte) (*ecdsa.PrivateKey, error) {
-	pemBlock, _ := pem.Decode(pemBytes)
-	if pemBlock == nil {
-		return nil, nil
-	}
-
-	return brainpool.ParseECPrivateKey(pemBlock.Bytes)
-}
-
-func parsePEMCert(pemBytes []byte) (*x509.Certificate, error) {
-	pemBlock, _ := pem.Decode(pemBytes)
-	if pemBlock == nil {
-		return nil, nil
-	}
-
-	return brainpool.ParseCertificate(pemBlock.Bytes)
 }

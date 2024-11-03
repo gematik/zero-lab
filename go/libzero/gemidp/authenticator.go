@@ -17,6 +17,27 @@ import (
 
 type ChallengeSignerFunc func(challenge Challenge) (string, error)
 
+func SignWithSoftkeyPEM(prkPEM []byte, certPEM []byte) ChallengeSignerFunc {
+	var err error
+	var prk *ecdsa.PrivateKey
+	var cert *x509.Certificate
+
+	if prk, err = brainpool.ParsePrivateKeyPEM(prkPEM); err != nil {
+		slog.Error("Parsing private key PEM", "error", err)
+	}
+
+	if cert, err = brainpool.ParseCertificatePEM(certPEM); err != nil {
+		slog.Error("Parsing certificate PEM", "error", err)
+	}
+
+	return func(challenge Challenge) (string, error) {
+		if err != nil {
+			return "", fmt.Errorf("parsing PEM: %w", err)
+		}
+		return SignWithSoftkey(prk, cert)(challenge)
+	}
+}
+
 func SignWithSoftkey(prk *ecdsa.PrivateKey, cert *x509.Certificate) ChallengeSignerFunc {
 	return func(challenge Challenge) (string, error) {
 
@@ -175,7 +196,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 
 	slog.Info("Challenge response claims", "claims", string(challengeResponseClaimsJson))
 
-	homebrew, err := brainpool.NewJWEBuilder().
+	challengeResponseEncrypted, err := brainpool.NewJWEBuilder().
 		Header("cty", "NJWT").
 		Header("exp", challengePayload.Exp).
 		Plaintext([]byte(challengeResponseClaimsJson)).
@@ -185,11 +206,11 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 		return nil, fmt.Errorf("encrypting challenge response: %w", err)
 	}
 
-	slog.Info("Encrypted challenge response", "encrypted", string(homebrew))
+	slog.Info("Encrypted challenge response", "encrypted", string(challengeResponseEncrypted))
 
 	// post the encrypted challenge response to the idp
 	form := url.Values{
-		"signed_challenge": {string(homebrew)},
+		"signed_challenge": {string(challengeResponseEncrypted)},
 	}
 
 	resp, err = httpClient.PostForm(a.Metadata.AuthorizationEndpoint, form)

@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -53,6 +52,7 @@ type Channel struct {
 	k2_s2c_app_data []byte
 	// request/response counter
 	requestCounter Counter
+	transport      http.Transport
 }
 
 func (c *Channel) Do(req *http.Request) (*http.Response, error) {
@@ -106,8 +106,6 @@ func (c *Channel) Encrypt(data []byte) ([]byte, error) {
 
 	// encrypt data
 	ciphertext := aesGCM.Seal(iv, iv, data, header)
-
-	slog.Info("Length infos", "header", len(header), "data", len(data), "ciphertext", len(ciphertext))
 
 	return append(header, ciphertext...), nil
 }
