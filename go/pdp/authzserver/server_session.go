@@ -1,8 +1,14 @@
 package authzserver
 
-import "github.com/gematik/zero-lab/go/libzero/oidc"
+import (
+	"time"
+
+	"github.com/gematik/zero-lab/go/libzero/oidc"
+)
 
 type AuthzServerSession struct {
+	ID                        string                   `json:"id"`
+	Duration                  time.Duration            `json:"duration"`
 	ResponseType              string                   `json:"response_type"`
 	ClientID                  string                   `json:"client_id"`
 	RedirectURI               string                   `json:"redirect_uri"`
@@ -16,6 +22,10 @@ type AuthzServerSession struct {
 	RequestUri                string                   `json:"request_uri"`
 	AuthnClientSession        *oidc.AuthnClientSession `json:"authn_client_session"`
 	Code                      string                   `json:"code"`
+	RefreshToken              string                   `json:"refresh_token"`
+	RefreshCount              int                      `json:"refresh_count"`
+	FirstIssuedAt             time.Time                `json:"first_issued_at"`
+	LastIssuedAt              time.Time                `json:"last_issued_at"`
 }
 type AuthzServerSessionStore interface {
 	oidc.AuthnClientSessionStore
