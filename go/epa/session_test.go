@@ -43,8 +43,8 @@ func TestConnect(t *testing.T) {
 
 	providerNumber := epa.ProviderNumber1
 	insurantId := "X110600196"
-	providerNumber = epa.ProviderNumber2
-	insurantId = "X110611629"
+	//providerNumber = epa.ProviderNumber2
+	//insurantId = "X110611629"
 
 	testKey, _ := brainpool.ParsePrivateKeyPEM(testKeyBytes)
 	testCert, _ := brainpool.ParseCertificatePEM(testCertBytes)
@@ -64,6 +64,7 @@ func TestConnect(t *testing.T) {
 
 	// TODO
 	session.AttestCertificate = testCert
+	session.ProofOfAuditEvidenceFunc = epa.TestProofOfAuditEvidenceFunc
 
 	clientAttest, err := session.CreateClientAttest()
 	if err != nil {
@@ -115,7 +116,12 @@ func TestConnect(t *testing.T) {
 	}
 	t.Logf("Consent decisions: %v", decisions)
 
-	err = session.SetEntitlementPs(insurantId, epa.EntitlementRequestType{})
+	auditEvidence, err := epa.TestProofOfAuditEvidenceFunc(insurantId)
+	if err != nil {
+		t.Fatalf("TestProofOfAuditEvidenceFunc returned an error: %v", err)
+	}
+
+	err = session.SetEntitlementPs(insurantId, auditEvidence)
 	if err != nil {
 		t.Fatalf("SetEntitlementPs returned an error: %v", err)
 	}

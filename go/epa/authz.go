@@ -96,10 +96,10 @@ func (s *Session) CreateClientAttest() (string, error) {
 	tk, err := brainpool.NewJWTBuilder().
 		Header("typ", "JWT").
 		Header("alg", brainpool.AlgorithmNameES256).
-		Header("x5c", []string{base64.RawURLEncoding.EncodeToString(s.AttestCertificate.Raw)}).
+		Header("x5c", []string{base64.StdEncoding.EncodeToString(s.AttestCertificate.Raw)}).
 		Claim("nonce", nonce).
-		Claim("iat", time.Now().Unix()-60).
-		Claim("exp", time.Now().Unix()+240).
+		Claim("iat", time.Now().Unix()).
+		Claim("exp", time.Now().Add(20*time.Minute).Unix()).
 		Sign(sha256.New(), s.tokenSignFunc)
 
 	if err != nil {

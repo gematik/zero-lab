@@ -43,6 +43,8 @@ type Session struct {
 	tokenSignFunc      brainpool.SignFunc
 	// TODO: make better
 	AttestCertificate *x509.Certificate
+	// TODO: make better
+	ProofOfAuditEvidenceFunc ProofOfAuditEvidenceFunc
 }
 
 // enumeration for environment
@@ -149,7 +151,7 @@ func parseHttpError(resp *http.Response) error {
 	}
 	typedError := new(ErrorType)
 	if err := json.NewDecoder(bodyData).Decode(typedError); err != nil {
-		return fmt.Errorf(fmt.Sprintf("http error %d: %s", resp.StatusCode, bodyData.String()))
+		return fmt.Errorf(fmt.Sprintf("http status %d: %s", resp.StatusCode, bodyData.String()))
 	}
 	typedError.HttpStatusCode = resp.StatusCode
 	return typedError
