@@ -34,12 +34,17 @@ func TestProofOfAuditEvidenceFunc(insurantId string) (string, error) {
 
 	iat := strconv.FormatInt(time.Now().Unix(), 10)
 
-	str := fmt.Sprintf("%s%sU%s", insurantId, iat, hmacKeyKid)
+	proofData := make([]byte, 0, 10+10+2+1+24)
+	proofData = append(proofData, []byte(insurantId)...)
+	proofData = append(proofData, []byte(iat)...)
+	proofData = append(proofData, 'U')
+	proofData = append(proofData, []byte(hmacKeyKid)...)
+	//str := fmt.Sprintf("%s%sU%s", insurantId, iat, hmacKeyKid)
 	mac := hmac.New(sha256.New, hmacKey)
-	mac.Write([]byte(str))
+	mac.Write(proofData)
 	hmacResult := mac.Sum(nil)[:24] // Truncate to 24 bytes
 
-	evidence := base64.StdEncoding.EncodeToString(append([]byte(str), hmacResult...))
+	evidence := base64.StdEncoding.EncodeToString(append(proofData, hmacResult...))
 
 	return evidence, nil
 }
