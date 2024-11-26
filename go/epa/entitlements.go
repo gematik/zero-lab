@@ -16,7 +16,7 @@ type EntitlementRequestType struct {
 	JWT string `json:"jwt"`
 }
 
-func (s *Session) SetEntitlementPs(insurantId string, auditEvidence string) error {
+func (s *Session) SetEntitlementPS(insurantId string, auditEvidence string) error {
 	iat := time.Now().Add(-60 * time.Second)
 	jwt, err := brainpool.NewJWTBuilder().
 		Header("alg", "ES256").
@@ -36,7 +36,7 @@ func (s *Session) SetEntitlementPs(insurantId string, auditEvidence string) erro
 		return fmt.Errorf("marshaling body: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", s.baseURL+"/epa/basic/api/v1/ps/entitlements", bytes.NewBuffer(body))
+	req, err := http.NewRequest("POST", "/epa/basic/api/v1/ps/entitlements", bytes.NewBuffer(body))
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}
@@ -45,7 +45,7 @@ func (s *Session) SetEntitlementPs(insurantId string, auditEvidence string) erro
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
 
-	resp, err := s.channel.Do(req)
+	resp, err := s.VAUChannel.Do(req)
 	if err != nil {
 		return fmt.Errorf("sending request: %w", err)
 	}

@@ -17,7 +17,7 @@ func (s *Session) GetRecordStatus(insurantId string) (bool, error) {
 	req.Header.Set("x-insurantid", insurantId)
 
 	// send request
-	resp, err := s.httpClient.Do(req)
+	resp, err := s.HttpClient.Do(req)
 	if err != nil {
 		return false, err
 	}
@@ -43,7 +43,7 @@ func (c *Session) GetConsentDecisionInformation(insurantId string) (*GetConsentD
 	req.Header.Set("x-insurantid", insurantId)
 
 	// send request
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HttpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

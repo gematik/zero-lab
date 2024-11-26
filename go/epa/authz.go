@@ -13,6 +13,10 @@ import (
 	"github.com/gematik/zero-lab/go/brainpool"
 )
 
+type Nonce struct {
+	Nonce string `json:"nonce"`
+}
+
 func (c *Session) GetNonce() (string, error) {
 	req, err := http.NewRequest("GET", "/epa/authz/v1/getNonce", nil)
 	if err != nil {
@@ -20,7 +24,7 @@ func (c *Session) GetNonce() (string, error) {
 	}
 	req.Header.Set("x-useragent", UserAgent)
 
-	resp, err := c.channel.Do(req)
+	resp, err := c.VAUChannel.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("sending request: %w", err)
 	}
@@ -44,7 +48,7 @@ func (s *Session) SendAuthorizationRequestSC() (string, error) {
 	}
 	req.Header.Set("x-useragent", UserAgent)
 
-	resp, err := s.channel.Do(req)
+	resp, err := s.VAUChannel.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("sending request: %w", err)
 	}
@@ -70,7 +74,7 @@ func (s *Session) SendAuthCodeSC(authCode SendAuthCodeSCtype) error {
 	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
 	req.Header.Set("x-useragent", UserAgent)
 
-	resp, err := s.channel.Do(req)
+	resp, err := s.VAUChannel.Do(req)
 	if err != nil {
 		return fmt.Errorf("sending request: %w", err)
 	}

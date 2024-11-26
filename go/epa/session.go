@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/vau"
@@ -37,8 +38,8 @@ func WithTokenSignFunc(tokenSignFunc brainpool.SignFunc) ClientOption {
 type Session struct {
 	insecureSkipVerify bool
 	certPool           *x509.CertPool
-	httpClient         *http.Client
-	channel            *vau.Channel
+	HttpClient         *http.Client
+	VAUChannel         *vau.Channel
 	baseURL            string
 	tokenSignFunc      brainpool.SignFunc
 	// TODO: make better
@@ -94,10 +95,11 @@ func OpenSession(env Env, provider ProviderNumber, options ...ClientOption) (*Se
 		},
 	}
 	// set User-Agent for all requests
-	session.httpClient = &http.Client{
+	session.HttpClient = &http.Client{
 		Transport: &customTransport{
 			t: transport,
 		},
+		Timeout: 10 * time.Second,
 	}
 
 	session.baseURL = ResolveBaseURL(env, provider)
@@ -121,15 +123,15 @@ func (c *customTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func (s *Session) Close() {
-	s.httpClient.CloseIdleConnections()
+	s.HttpClient.CloseIdleConnections()
 }
 
 func (s *Session) openVauChannel() error {
-	vauChannel, err := vau.OpenChannel(s.baseURL, vau.EnvNonPU, s.httpClient)
+	vauChannel, err := vau.OpenChannel(s.baseURL, vau.EnvNonPU, s.HttpClient)
 	if err != nil {
 		return err
 	}
-	s.channel = vauChannel
+	s.VAUChannel = vauChannel
 	return nil
 }
 

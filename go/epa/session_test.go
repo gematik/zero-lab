@@ -39,90 +39,100 @@ AwIDSAAwRQIgWlSdCIw6Z6alM+dGnA4vfkxDoViIqJMw/PH4U0VUmNsCIQCcX9UW
 JnSDBKGp4nZTcuozRPsJK47cBkil0x6Zrkoxkg==
 -----END CERTIFICATE-----`)
 
+var testRecords = []struct {
+	providerNumber epa.ProviderNumber
+	insurantId     string
+}{
+	{epa.ProviderNumber1, "X110600196"},
+	// {epa.ProviderNumber2, "X110611629"},
+}
+
 func TestConnect(t *testing.T) {
 
-	providerNumber := epa.ProviderNumber1
-	insurantId := "X110600196"
-	//providerNumber = epa.ProviderNumber2
-	//insurantId = "X110611629"
+	for _, testRecord := range testRecords {
+		t.Run(testRecord.insurantId, func(t *testing.T) {
+			providerNumber := testRecord.providerNumber
+			insurantId := testRecord.insurantId
 
-	testKey, _ := brainpool.ParsePrivateKeyPEM(testKeyBytes)
-	testCert, _ := brainpool.ParseCertificatePEM(testCertBytes)
+			testKey, _ := brainpool.ParsePrivateKeyPEM(testKeyBytes)
+			testCert, _ := brainpool.ParseCertificatePEM(testCertBytes)
 
-	logger := slog.New(prettylog.NewHandler(slog.LevelDebug))
-	slog.SetDefault(logger)
+			logger := slog.New(prettylog.NewHandler(slog.LevelDebug))
+			slog.SetDefault(logger)
 
-	session, err := epa.OpenSession(
-		epa.EnvDev,
-		providerNumber,
-		epa.WithInsecureSkipVerify(),
-		epa.WithTokenSignFunc(brainpool.SignFuncPrivateKey(testKey)),
-	)
-	if err != nil {
-		t.Fatalf("Connect returned an error: %v", err)
-	}
+			session, err := epa.OpenSession(
+				epa.EnvDev,
+				providerNumber,
+				epa.WithInsecureSkipVerify(),
+				epa.WithTokenSignFunc(brainpool.SignFuncPrivateKey(testKey)),
+			)
+			if err != nil {
+				t.Fatalf("Connect returned an error: %v", err)
+			}
 
-	// TODO
-	session.AttestCertificate = testCert
-	session.ProofOfAuditEvidenceFunc = epa.TestProofOfAuditEvidenceFunc
+			// TODO
+			session.AttestCertificate = testCert
+			session.ProofOfAuditEvidenceFunc = epa.TestProofOfAuditEvidenceFunc
 
-	clientAttest, err := session.CreateClientAttest()
-	if err != nil {
-		t.Fatalf("CreateClientAttest returned an error: %v", err)
-	}
+			clientAttest, err := session.CreateClientAttest()
+			if err != nil {
+				t.Fatalf("CreateClientAttest returned an error: %v", err)
+			}
 
-	authz_uri, err := session.SendAuthorizationRequestSC()
-	if err != nil {
-		t.Fatalf("SendAuthorizationRequestSC returned an error: %v", err)
-	}
+			authz_uri, err := session.SendAuthorizationRequestSC()
+			if err != nil {
+				t.Fatalf("SendAuthorizationRequestSC returned an error: %v", err)
+			}
 
-	// https://idp-ref.zentral.idp.splitdns.ti-dienste.de
-	// https://idp-ref.app.ti-dienste.de/auth?
-	// https://idp-ref.zentral.idp.splitdns.ti-dienste.de/auth
-	//authz_uri = strings.Replace(authz_uri, "https://idp-ref.app.ti-dienste.de", "https://idp-ref.zentral.idp.splitdns.ti-dienste.de", 1)
+			// https://idp-ref.zentral.idp.splitdns.ti-dienste.de
+			// https://idp-ref.app.ti-dienste.de/auth?
+			// https://idp-ref.zentral.idp.splitdns.ti-dienste.de/auth
+			//authz_uri = strings.Replace(authz_uri, "https://idp-ref.app.ti-dienste.de", "https://idp-ref.zentral.idp.splitdns.ti-dienste.de", 1)
 
-	t.Logf("Authorization URI: %v", authz_uri)
+			t.Logf("Authorization URI: %v", authz_uri)
 
-	authenticator, err := gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
-		Environment: gemidp.EnvironmentReference,
-		SignerFunc:  gemidp.SignWithSoftkey(testKey, testCert),
-	})
+			authenticator, err := gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
+				Environment: gemidp.EnvironmentReference,
+				SignerFunc:  gemidp.SignWithSoftkey(testKey, testCert),
+			})
 
-	codeRedirectURL, err := authenticator.Authenticate(authz_uri)
-	if err != nil {
-		t.Fatalf("Authenticate returned an error: %v", err)
-	}
-	t.Logf("CodeRedirectURL: %v", codeRedirectURL)
+			codeRedirectURL, err := authenticator.Authenticate(authz_uri)
+			if err != nil {
+				t.Fatalf("Authenticate returned an error: %v", err)
+			}
+			t.Logf("CodeRedirectURL: %v", codeRedirectURL)
 
-	err = session.SendAuthCodeSC(epa.SendAuthCodeSCtype{
-		AuthorizationCode: codeRedirectURL.Code,
-		ClientAttest:      clientAttest,
-	})
-	if err != nil {
-		t.Fatalf("SendAuthCodeSC returned an error: %v", err)
-	}
+			err = session.SendAuthCodeSC(epa.SendAuthCodeSCtype{
+				AuthorizationCode: codeRedirectURL.Code,
+				ClientAttest:      clientAttest,
+			})
+			if err != nil {
+				t.Fatalf("SendAuthCodeSC returned an error: %v", err)
+			}
 
-	t.Logf("Session: %v", session)
+			t.Logf("Session: %v", session)
 
-	exsists, err := session.GetRecordStatus(insurantId)
-	if err != nil {
-		t.Fatalf("GetRecordStatus returned an error: %v", err)
-	}
-	t.Logf("Record exists: %v", exsists)
+			exsists, err := session.GetRecordStatus(insurantId)
+			if err != nil {
+				t.Fatalf("GetRecordStatus returned an error: %v", err)
+			}
+			t.Logf("Record exists: %v", exsists)
 
-	decisions, err := session.GetConsentDecisionInformation(insurantId)
-	if err != nil {
-		t.Fatalf("GetConsentDecisionInformation returned an error: %v", err)
-	}
-	t.Logf("Consent decisions: %v", decisions)
+			decisions, err := session.GetConsentDecisionInformation(insurantId)
+			if err != nil {
+				t.Fatalf("GetConsentDecisionInformation returned an error: %v", err)
+			}
+			t.Logf("Consent decisions: %v", decisions)
 
-	auditEvidence, err := epa.TestProofOfAuditEvidenceFunc(insurantId)
-	if err != nil {
-		t.Fatalf("TestProofOfAuditEvidenceFunc returned an error: %v", err)
-	}
+			auditEvidence, err := epa.TestProofOfAuditEvidenceFunc(insurantId)
+			if err != nil {
+				t.Fatalf("TestProofOfAuditEvidenceFunc returned an error: %v", err)
+			}
 
-	err = session.SetEntitlementPs(insurantId, auditEvidence)
-	if err != nil {
-		t.Fatalf("SetEntitlementPs returned an error: %v", err)
+			err = session.SetEntitlementPS(insurantId, auditEvidence)
+			if err != nil {
+				t.Fatalf("SetEntitlementPs returned an error: %v", err)
+			}
+		})
 	}
 }
