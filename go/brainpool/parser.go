@@ -4,8 +4,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/pem"
-
-	"github.com/spilikin/go-brainpool"
 )
 
 func ParsePrivateKeyPEM(pemBytes []byte) (*ecdsa.PrivateKey, error) {
@@ -14,7 +12,7 @@ func ParsePrivateKeyPEM(pemBytes []byte) (*ecdsa.PrivateKey, error) {
 		return nil, nil
 	}
 
-	return brainpool.ParseECPrivateKey(pemBlock.Bytes)
+	return ParseECPrivateKey(pemBlock.Bytes)
 }
 
 func ParseCertificatePEM(pemBytes []byte) (*x509.Certificate, error) {
@@ -23,5 +21,5 @@ func ParseCertificatePEM(pemBytes []byte) (*x509.Certificate, error) {
 		return nil, nil
 	}
 
-	return brainpool.ParseCertificate(pemBlock.Bytes)
+	return ParseCertificate(pemBlock.Bytes)
 }

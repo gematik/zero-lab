@@ -10,10 +10,11 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/brainpool"
+	"github.com/gematik/zero-lab/go/libzero"
 	"github.com/gematik/zero-lab/go/vau"
 )
 
-const UserAgent = "zero-epa-client/0.1"
+var UserAgent = fmt.Sprintf("zero-epa-client/%s", libzero.Version)
 
 type ClientOption func(*Session)
 
@@ -29,23 +30,22 @@ func WithCertPool(certPool *x509.CertPool) ClientOption {
 	}
 }
 
-func WithTokenSignFunc(tokenSignFunc brainpool.SignFunc) ClientOption {
-	return func(s *Session) {
-		s.tokenSignFunc = tokenSignFunc
-	}
+type SecurityFunctions struct {
+	AuthnSignFunc            brainpool.SignFunc
+	AuthnCertFunc            func() (*x509.Certificate, error)
+	ClientAssertionSignFunc  brainpool.SignFunc
+	ClientAssertionCertFunc  func() (*x509.Certificate, error)
+	ProofOfAuditEvidenceFunc ProofOfAuditEvidenceFunc
 }
 
 type Session struct {
+	Env                Env
+	securityFunctions  SecurityFunctions
 	insecureSkipVerify bool
 	certPool           *x509.CertPool
 	HttpClient         *http.Client
 	VAUChannel         *vau.Channel
 	baseURL            string
-	tokenSignFunc      brainpool.SignFunc
-	// TODO: make better
-	AttestCertificate *x509.Certificate
-	// TODO: make better
-	ProofOfAuditEvidenceFunc ProofOfAuditEvidenceFunc
 }
 
 // enumeration for environment
@@ -54,7 +54,7 @@ type Env string
 const (
 	EnvDev  Env = "dev"
 	EnvTest Env = "test"
-	EvnRef  Env = "ref"
+	EnvRef  Env = "ref"
 	EnvProd Env = "prod"
 )
 
@@ -71,7 +71,7 @@ func ResolveBaseURL(env Env, provider ProviderNumber) string {
 		return fmt.Sprintf("https://epa-as-%d.dev.epa4all.de", provider)
 	case EnvTest:
 		return fmt.Sprintf("https://epa-as-%d.test.epa4all.de", provider)
-	case EvnRef:
+	case EnvRef:
 		return fmt.Sprintf("https://epa-as-%d.ref.epa4all.de", provider)
 	case EnvProd:
 		return fmt.Sprintf("https://epa-as-%d.epa4all.de", provider)
@@ -80,9 +80,12 @@ func ResolveBaseURL(env Env, provider ProviderNumber) string {
 	}
 }
 
-func OpenSession(env Env, provider ProviderNumber, options ...ClientOption) (*Session, error) {
+func OpenSession(env Env, provider ProviderNumber, sf SecurityFunctions, options ...ClientOption) (*Session, error) {
 
-	session := &Session{}
+	session := &Session{
+		Env:               env,
+		securityFunctions: sf,
+	}
 
 	for _, option := range options {
 		option(session)

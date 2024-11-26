@@ -1,7 +1,10 @@
 package epa_test
 
 import (
+	"crypto/x509"
+	"fmt"
 	"log/slog"
+	"os"
 	"testing"
 
 	"github.com/gematik/zero-lab/go/brainpool"
@@ -47,6 +50,26 @@ var testRecords = []struct {
 	{epa.ProviderNumber2, "X110611629"},
 }
 
+// create the proof of audit evidence function
+// using the HMAC key and kid from the environment
+func EnvProofOfAuditEvidenceFunc(insurantId string) (string, error) {
+	hmacKeyHex := os.Getenv("VSDM_HMAC_KEY")
+	if hmacKeyHex == "" {
+		return "", fmt.Errorf("VSDM_HMAC_KEY not set")
+	}
+	hmacKeyKid := os.Getenv("VSDM_HMAC_KID")
+	if hmacKeyKid == "" {
+		return "", fmt.Errorf("VSDM_HMAC_KID not set")
+	}
+
+	proofOfAuditEvidence, err := epa.ProofOfAuditEvidenceHMAC(hmacKeyHex, hmacKeyKid)
+	if err != nil {
+		return "", err
+	}
+
+	return proofOfAuditEvidence(insurantId)
+}
+
 func TestConnect(t *testing.T) {
 
 	for _, testRecord := range testRecords {
@@ -63,16 +86,18 @@ func TestConnect(t *testing.T) {
 			session, err := epa.OpenSession(
 				epa.EnvDev,
 				providerNumber,
+				epa.SecurityFunctions{
+					AuthnSignFunc:            brainpool.SignFuncPrivateKey(testKey),
+					AuthnCertFunc:            func() (*x509.Certificate, error) { return testCert, nil },
+					ClientAssertionSignFunc:  brainpool.SignFuncPrivateKey(testKey),
+					ClientAssertionCertFunc:  func() (*x509.Certificate, error) { return testCert, nil },
+					ProofOfAuditEvidenceFunc: EnvProofOfAuditEvidenceFunc,
+				},
 				epa.WithInsecureSkipVerify(),
-				epa.WithTokenSignFunc(brainpool.SignFuncPrivateKey(testKey)),
 			)
 			if err != nil {
 				t.Fatalf("Connect returned an error: %v", err)
 			}
-
-			// TODO
-			session.AttestCertificate = testCert
-			session.ProofOfAuditEvidenceFunc = epa.TestProofOfAuditEvidenceFunc
 
 			clientAttest, err := session.CreateClientAttest()
 			if err != nil {
@@ -124,7 +149,7 @@ func TestConnect(t *testing.T) {
 			}
 			t.Logf("Consent decisions: %v", decisions)
 
-			auditEvidence, err := epa.TestProofOfAuditEvidenceFunc(insurantId)
+			auditEvidence, err := EnvProofOfAuditEvidenceFunc(insurantId)
 			if err != nil {
 				t.Fatalf("TestProofOfAuditEvidenceFunc returned an error: %v", err)
 			}

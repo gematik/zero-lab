@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/brainpool"
+	"github.com/gematik/zero-lab/go/libzero/gemidp"
 )
 
 type Nonce struct {
@@ -97,18 +98,75 @@ func (s *Session) CreateClientAttest() (string, error) {
 		return "", fmt.Errorf("GetNonce: %w", err)
 	}
 
+	cert, err := s.securityFunctions.ClientAssertionCertFunc()
+	if err != nil {
+		return "", fmt.Errorf("ClientAssertionCertFunc: %w", err)
+	}
+
 	tk, err := brainpool.NewJWTBuilder().
 		Header("typ", "JWT").
 		Header("alg", brainpool.AlgorithmNameES256).
-		Header("x5c", []string{base64.StdEncoding.EncodeToString(s.AttestCertificate.Raw)}).
+		Header("x5c", []string{base64.StdEncoding.EncodeToString(cert.Raw)}).
 		Claim("nonce", nonce).
 		Claim("iat", time.Now().Unix()).
 		Claim("exp", time.Now().Add(20*time.Minute).Unix()).
-		Sign(sha256.New(), s.tokenSignFunc)
+		Sign(sha256.New(), s.securityFunctions.ClientAssertionSignFunc)
 
 	if err != nil {
 		return "", fmt.Errorf("Sign: %w", err)
 	}
 
 	return string(tk), nil
+}
+
+func (s *Session) Authorize() error {
+	clientAttest, err := s.CreateClientAttest()
+	if err != nil {
+		return fmt.Errorf("creating client attest: %w", err)
+	}
+
+	authz_uri, err := s.SendAuthorizationRequestSC()
+	if err != nil {
+		return fmt.Errorf("sending authorization request: %w", err)
+	}
+
+	slog.Debug("Authorize", "authz_uri", authz_uri)
+
+	var idpEnv gemidp.Environment
+
+	switch s.Env {
+	case EnvDev:
+		idpEnv = gemidp.EnvironmentReference
+	case EnvRef:
+		idpEnv = gemidp.EnvironmentReference
+	case EnvTest:
+		idpEnv = gemidp.EnvironmentTest
+	case EnvProd:
+		idpEnv = gemidp.EnvironmentProduction
+	default:
+		return fmt.Errorf("unknown environment: %v", s.Env)
+	}
+
+	authenticator, err := gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
+		Environment: idpEnv,
+		SignerFunc:  gemidp.SignWith(s.securityFunctions.AuthnSignFunc, s.securityFunctions.AuthnCertFunc),
+	})
+
+	codeRedirectURL, err := authenticator.Authenticate(authz_uri)
+	if err != nil {
+		return fmt.Errorf("authenticate: %w", err)
+	}
+
+	slog.Debug("Authorize", "codeRedirectURL", codeRedirectURL)
+
+	err = s.SendAuthCodeSC(SendAuthCodeSCtype{
+		AuthorizationCode: codeRedirectURL.Code,
+		ClientAttest:      clientAttest,
+	})
+
+	if err != nil {
+		return fmt.Errorf("sending auth code: %w", err)
+	}
+
+	return nil
 }

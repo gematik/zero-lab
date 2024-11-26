@@ -18,14 +18,18 @@ type EntitlementRequestType struct {
 
 func (s *Session) SetEntitlementPS(insurantId string, auditEvidence string) error {
 	iat := time.Now().Add(-60 * time.Second)
+	cert, err := s.securityFunctions.AuthnCertFunc()
+	if err != nil {
+		return fmt.Errorf("getting authn certificate: %w", err)
+	}
 	jwt, err := brainpool.NewJWTBuilder().
 		Header("alg", "ES256").
 		Header("typ", "JWT").
-		Header("x5c", []string{base64.StdEncoding.EncodeToString(s.AttestCertificate.Raw)}).
+		Header("x5c", []string{base64.StdEncoding.EncodeToString(cert.Raw)}).
 		Claim("iat", iat.Unix()).
 		Claim("exp", iat.Add(20*time.Minute).Unix()).
 		Claim("auditEvidence", auditEvidence).
-		Sign(sha256.New(), s.tokenSignFunc)
+		Sign(sha256.New(), s.securityFunctions.AuthnSignFunc)
 
 	entitlement := EntitlementRequestType{
 		JWT: string(jwt),

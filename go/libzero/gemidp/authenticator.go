@@ -17,6 +17,28 @@ import (
 
 type ChallengeSignerFunc func(challenge Challenge) (string, error)
 
+func SignWith(signFunc brainpool.SignFunc, certFunc func() (*x509.Certificate, error)) ChallengeSignerFunc {
+	return func(challenge Challenge) (string, error) {
+		cert, err := certFunc()
+		if err != nil {
+			return "", fmt.Errorf("getting certificate: %w", err)
+		}
+		challengeResponse, err := brainpool.NewJWTBuilder().
+			Header("typ", "JWT").
+			Header("cty", "NJWT").
+			Header("alg", "BP256R1").
+			Header("x5c", []string{base64.StdEncoding.EncodeToString(cert.Raw)}).
+			Claim("njwt", challenge.Challenge).
+			Sign(sha256.New(), signFunc)
+
+		if err != nil {
+			return "", fmt.Errorf("signing challenge: %w", err)
+		}
+
+		return string(challengeResponse), nil
+	}
+}
+
 func SignWithSoftkeyPEM(prkPEM []byte, certPEM []byte) ChallengeSignerFunc {
 	var err error
 	var prk *ecdsa.PrivateKey
@@ -39,22 +61,12 @@ func SignWithSoftkeyPEM(prkPEM []byte, certPEM []byte) ChallengeSignerFunc {
 }
 
 func SignWithSoftkey(prk *ecdsa.PrivateKey, cert *x509.Certificate) ChallengeSignerFunc {
-	return func(challenge Challenge) (string, error) {
-
-		challengeResponse, err := brainpool.NewJWTBuilder().
-			Header("typ", "JWT").
-			Header("cty", "NJWT").
-			Header("alg", "BP256R1").
-			Header("x5c", []string{base64.StdEncoding.EncodeToString(cert.Raw)}).
-			Claim("njwt", challenge.Challenge).
-			Sign(sha256.New(), brainpool.SignFuncPrivateKey(prk))
-
-		if err != nil {
-			return "", fmt.Errorf("signing challenge: %w", err)
-		}
-
-		return string(challengeResponse), nil
-	}
+	return SignWith(
+		brainpool.SignFuncPrivateKey(prk),
+		func() (*x509.Certificate, error) {
+			return cert, nil
+		},
+	)
 }
 
 // Challenge sent from the gematik IDP-Dienst to the authenticator

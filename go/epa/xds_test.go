@@ -1,12 +1,12 @@
 package epa_test
 
 import (
+	"crypto/x509"
 	"log/slog"
 	"testing"
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/epa"
-	"github.com/gematik/zero-lab/go/libzero/gemidp"
 	"github.com/gematik/zero-lab/go/libzero/prettylog"
 )
 
@@ -26,49 +26,23 @@ func TestXDS(t *testing.T) {
 			session, err := epa.OpenSession(
 				epa.EnvDev,
 				providerNumber,
+				epa.SecurityFunctions{
+					AuthnSignFunc:            brainpool.SignFuncPrivateKey(testKey),
+					AuthnCertFunc:            func() (*x509.Certificate, error) { return testCert, nil },
+					ClientAssertionSignFunc:  brainpool.SignFuncPrivateKey(testKey),
+					ClientAssertionCertFunc:  func() (*x509.Certificate, error) { return testCert, nil },
+					ProofOfAuditEvidenceFunc: EnvProofOfAuditEvidenceFunc,
+				},
 				epa.WithInsecureSkipVerify(),
-				epa.WithTokenSignFunc(brainpool.SignFuncPrivateKey(testKey)),
 			)
 			if err != nil {
 				t.Fatalf("Connect returned an error: %v", err)
 			}
 
-			// TODO
-			session.AttestCertificate = testCert
-			session.ProofOfAuditEvidenceFunc = epa.TestProofOfAuditEvidenceFunc
-
-			clientAttest, err := session.CreateClientAttest()
+			err = session.Authorize()
 			if err != nil {
-				t.Fatalf("CreateClientAttest returned an error: %v", err)
+				t.Fatalf("Authorize returned an error: %v", err)
 			}
-
-			authz_uri, err := session.SendAuthorizationRequestSC()
-			if err != nil {
-				t.Fatalf("SendAuthorizationRequestSC returned an error: %v", err)
-			}
-
-			t.Logf("Authorization URI: %v", authz_uri)
-
-			authenticator, err := gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
-				Environment: gemidp.EnvironmentReference,
-				SignerFunc:  gemidp.SignWithSoftkey(testKey, testCert),
-			})
-
-			codeRedirectURL, err := authenticator.Authenticate(authz_uri)
-			if err != nil {
-				t.Fatalf("Authenticate returned an error: %v", err)
-			}
-			t.Logf("CodeRedirectURL: %v", codeRedirectURL)
-
-			err = session.SendAuthCodeSC(epa.SendAuthCodeSCtype{
-				AuthorizationCode: codeRedirectURL.Code,
-				ClientAttest:      clientAttest,
-			})
-			if err != nil {
-				t.Fatalf("SendAuthCodeSC returned an error: %v", err)
-			}
-
-			slog.Info("Session established", "session", session)
 
 		})
 	}
