@@ -44,7 +44,7 @@ var testRecords = []struct {
 	insurantId     string
 }{
 	{epa.ProviderNumber1, "X110600196"},
-	// {epa.ProviderNumber2, "X110611629"},
+	{epa.ProviderNumber2, "X110611629"},
 }
 
 func TestConnect(t *testing.T) {
