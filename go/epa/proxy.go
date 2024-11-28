@@ -2,6 +2,7 @@ package epa
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -103,29 +104,37 @@ func (p *Proxy) HandleForwardToVAUProvider(w http.ResponseWriter, r *http.Reques
 
 func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNumber ProviderNumber, insurantID string) {
 	path := r.PathValue("path")
-	r.URL.Path = "/" + path
+	path = "/" + path
 	session, ok := p.sessions[providerNumber]
 	if !ok {
 		http.Error(w, "provider not found", http.StatusNotFound)
 		return
 	}
 
-	resp, err := session.VAUChannel.Do(r)
+	r2, err := http.NewRequest(r.Method, path, r.Body)
 	if err != nil {
-		http.Error(w, "failed to forward request", http.StatusInternalServerError)
+		slog.Error("Failed to forward request", "error", err)
+		http.Error(w, "failed to create request", http.StatusInternalServerError)
 		return
 	}
 
-	r.Header.Set("x-useragent", UserAgent)
+	r2.Header.Set("x-useragent", UserAgent)
 	if insurantID != "" {
-		r.Header.Set("x-insurantid", insurantID)
+		r2.Header.Set("x-insurantid", insurantID)
+	}
+
+	resp, err := session.VAUChannel.Do(r2)
+	if err != nil {
+		slog.Error("Failed to forward request", "error", err)
+		http.Error(w, fmt.Sprintf("failed to forward request: %v", err), http.StatusInternalServerError)
+		return
 	}
 
 	for k, v := range resp.Header {
 		w.Header()[k] = v
 	}
 
-	slog.Info("Forwarded request", "method", r.Method, "url", r.URL, "status", resp.StatusCode)
+	slog.Info("Got forwarded request response", "method", r2.Method, "url", r2.URL.String(), "status", resp.StatusCode)
 
 	w.WriteHeader(resp.StatusCode)
 
@@ -163,6 +172,7 @@ func (p *Proxy) findAndCacheRecord(insurantID string) (*PatientRecordMetadata, e
 		type result struct {
 			provider ProviderNumber
 			record   PatientRecordMetadata
+			session  *Session
 			error    error
 		}
 
@@ -183,6 +193,7 @@ func (p *Proxy) findAndCacheRecord(insurantID string) (*PatientRecordMetadata, e
 							InsurantID: insurantID,
 							Provider:   provider,
 						},
+						session: session,
 					}
 					return
 				} else {
@@ -204,6 +215,13 @@ func (p *Proxy) findAndCacheRecord(insurantID string) (*PatientRecordMetadata, e
 				continue
 			}
 			slog.Info("Record status", "provider", r.provider, "insurantID", insurantID, "found", r.record.InsurantID != "")
+			// entitle
+			err := r.session.Entitle(insurantID)
+			if err != nil {
+				slog.Error("Failed to entitle", "provider", r.provider, "insurantID", insurantID, "error", err)
+				continue
+			}
+
 			p.recordsLock.Lock()
 			p.records[insurantID] = r.record
 			p.recordsLock.Unlock()
@@ -229,7 +247,7 @@ func (p *Proxy) HandleForwardToVAUInsurant(w http.ResponseWriter, r *http.Reques
 			http.Error(w, "record not found", http.StatusNotFound)
 			return
 		} else {
-			http.Error(w, "failed to find record", http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("failed to find record: %v", err), http.StatusBadGateway)
 			return
 		}
 	}

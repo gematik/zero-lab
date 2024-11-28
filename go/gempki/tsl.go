@@ -18,7 +18,6 @@ const URLTrustServiceListRef = "https://download-ref.tsl.ti-dienste.de/ECC/ECC-R
 const URLTrustServiceListProd = "https://download.tsl.ti-dienste.de/ECC/ECC-RSA_TSL.xml"
 
 func LoadTSL(url string) (*TrustServiceStatusList, error) {
-	slog.Warn("TSL is loaded from the internet using only TSL. Implement signature verification in production.", "url", url)
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, err
@@ -31,6 +30,9 @@ func LoadTSL(url string) (*TrustServiceStatusList, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	slog.Warn("TSL is loaded from the internet. Implement signature verification in production.", "url", url)
+
 	tsl := new(TrustServiceStatusList)
 	err = xml.Unmarshal(body, tsl)
 	if err != nil {

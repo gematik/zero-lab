@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -14,6 +15,23 @@ import (
 
 type EntitlementRequestType struct {
 	JWT string `json:"jwt"`
+}
+
+// Entitle the current SMC-B (provided by SecuriotyFunctions)
+// to access the data of the insurant with the given insurant.
+func (s *Session) Entitle(insurantId string) error {
+	slog.Info("Entitle insurant", "env", s.Env, "insurantId", insurantId)
+	auditEvidence, err := s.securityFunctions.ProofOfAuditEvidenceFunc(insurantId)
+	if err != nil {
+		return fmt.Errorf("getting proof of audit evidence: %w", err)
+	}
+
+	err = s.SetEntitlementPS(insurantId, auditEvidence)
+	if err != nil {
+		return fmt.Errorf("setting entitlement PS: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Session) SetEntitlementPS(insurantId string, auditEvidence string) error {
