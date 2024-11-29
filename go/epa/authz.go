@@ -119,7 +119,7 @@ func (s *Session) CreateClientAttest() (string, error) {
 	return string(tk), nil
 }
 
-func (s *Session) Authorize() error {
+func (s *Session) Authorize(authenticator *gemidp.Authenticator) error {
 	clientAttest, err := s.CreateClientAttest()
 	if err != nil {
 		return fmt.Errorf("creating client attest: %w", err)
@@ -131,26 +131,6 @@ func (s *Session) Authorize() error {
 	}
 
 	slog.Debug("Authorize", "authz_uri", authz_uri)
-
-	var idpEnv gemidp.Environment
-
-	switch s.Env {
-	case EnvDev:
-		idpEnv = gemidp.EnvironmentReference
-	case EnvRef:
-		idpEnv = gemidp.EnvironmentReference
-	case EnvTest:
-		idpEnv = gemidp.EnvironmentTest
-	case EnvProd:
-		idpEnv = gemidp.EnvironmentProduction
-	default:
-		return fmt.Errorf("unknown environment: %v", s.Env)
-	}
-
-	authenticator, err := gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
-		Environment: idpEnv,
-		SignerFunc:  gemidp.SignWith(s.securityFunctions.AuthnSignFunc, s.securityFunctions.AuthnCertFunc),
-	})
 
 	codeRedirectURL, err := authenticator.Authenticate(authz_uri)
 	if err != nil {

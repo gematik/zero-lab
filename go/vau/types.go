@@ -111,3 +111,14 @@ func (c *CertData) UnmarshalCBOR(data []byte) error {
 
 	return nil
 }
+
+// MessageError is a CBOR encoded error message
+type MessageError struct {
+	MessageType  string `cbor:"MessageType"`
+	ErrorCode    uint64 `cbor:"ErrorCode"`
+	ErrorMessage string `cbor:"ErrorMessage"`
+}
+
+func (m *MessageError) Error() string {
+	return fmt.Sprintf("vau: %d %s", m.ErrorCode, m.ErrorMessage)
+}

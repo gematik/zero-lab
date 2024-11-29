@@ -9,6 +9,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"sync"
 )
 
 const (
@@ -43,11 +44,13 @@ func colorize(colorCode int, v string) string {
 type handler struct {
 	Level  slog.Level
 	Output *os.File
+	lock   *sync.Mutex
 }
 
 func NewHandler(level slog.Level) slog.Handler {
 	return &handler{
 		Level:  level,
+		lock:   new(sync.Mutex),
 		Output: os.Stderr,
 	}
 }
@@ -65,6 +68,8 @@ func (h *handler) WithGroup(name string) slog.Handler {
 }
 
 func (h *handler) Handle(ctx context.Context, r slog.Record) error {
+	h.lock.Lock()
+	defer h.lock.Unlock()
 	if r.Level < h.Level {
 		return nil
 	}

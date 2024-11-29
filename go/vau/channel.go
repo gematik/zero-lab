@@ -9,10 +9,13 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"sync"
+
+	"github.com/fxamacker/cbor/v2"
 )
 
 type Env byte
@@ -63,6 +66,14 @@ func (c *Channel) Do(req *http.Request) (*http.Response, error) {
 	encResp, err := c.PostEncryptedRequest(data)
 	if err != nil {
 		return nil, fmt.Errorf("posting encrypted request: %w", err)
+	}
+
+	if encResp.StatusCode != http.StatusOK {
+		messageError := new(MessageError)
+		if err := cbor.NewDecoder(encResp.Body).Decode(messageError); err != nil {
+			return nil, fmt.Errorf("decoding error: %w", err)
+		}
+		return nil, fmt.Errorf("server %s: %w", c.HostURL, messageError)
 	}
 
 	return c.DecryptResponse(encResp, req)
@@ -126,6 +137,8 @@ func (c *Channel) Decrypt(data []byte, req *http.Request) (*http.Response, error
 	}
 	header := data[:43]
 	ciphertext := data[43:]
+
+	slog.Debug("Decrypting response", "data", string(data))
 
 	if header[0] != Version {
 		return nil, fmt.Errorf("invalid version: %d", header[0])

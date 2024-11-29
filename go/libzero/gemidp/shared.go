@@ -14,7 +14,7 @@ import (
 )
 
 func fetchMetadata(baseURL string, httpClient *http.Client) (*Metadata, error) {
-	slog.Info("Fetching OP metadata", "url", baseURL+"/.well-known/openid-configuration")
+	slog.Debug("Fetching OP metadata", "url", baseURL+"/.well-known/openid-configuration")
 	resp, err := httpClient.Get(baseURL + "/.well-known/openid-configuration")
 	if err != nil {
 		return nil, fmt.Errorf("fetching discovery document: %w", err)
@@ -31,14 +31,14 @@ func fetchMetadata(baseURL string, httpClient *http.Client) (*Metadata, error) {
 		return nil, fmt.Errorf("extracting signing key: %w", err)
 	}
 
-	slog.Info("Extracted signing key", "key", sigJWK)
+	slog.Debug("Extracted signing key", "key", sigJWK)
 
 	token, err := brainpool.ParseToken(data, brainpool.WithKey(sigJWK))
 	if err != nil {
 		return nil, fmt.Errorf("parsing discovery document: %w", err)
 	}
 
-	slog.Warn("Certificate of discovery document not verified. Don't trust it in production.", "url", resp.Request.URL)
+	slog.Warn("Certificate of discovery document not verified. Don't trust it in production.", "url", resp.Request.URL.String())
 
 	metadata := new(Metadata)
 	err = json.Unmarshal(token.PayloadJson, metadata)
@@ -46,7 +46,7 @@ func fetchMetadata(baseURL string, httpClient *http.Client) (*Metadata, error) {
 		return nil, fmt.Errorf("parsing discovery document: %w", err)
 	}
 
-	slog.Info("Fetched OP metadata", "metadata", metadata)
+	slog.Debug("Fetched OP metadata", "metadata", metadata)
 
 	return metadata, nil
 }

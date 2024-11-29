@@ -9,15 +9,18 @@ import (
 	"sync"
 
 	"github.com/gematik/zero-lab/go/gempki"
+	"github.com/gematik/zero-lab/go/libzero/gemidp"
 )
 
 var ErrRecordNotFound = errors.New("record not found")
 
 type Proxy struct {
-	mux         *http.ServeMux
-	sessions    map[ProviderNumber]*Session
-	records     map[string]PatientRecordMetadata
-	recordsLock sync.RWMutex
+	Env           Env
+	Authenticator *gemidp.Authenticator
+	mux           *http.ServeMux
+	sessions      map[ProviderNumber]*Session
+	records       map[string]PatientRecordMetadata
+	recordsLock   sync.RWMutex
 }
 
 type ProxyConfig struct {
@@ -32,6 +35,7 @@ type PatientRecordMetadata struct {
 
 func NewProxy(config *ProxyConfig) (*Proxy, error) {
 	p := &Proxy{
+		Env:         config.Env,
 		mux:         http.NewServeMux(),
 		sessions:    make(map[ProviderNumber]*Session),
 		records:     make(map[string]PatientRecordMetadata),
@@ -59,6 +63,26 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 
 	certPool := gempki.RootsRef.BuildCertPool(tsl)
 
+	var idpEnv gemidp.Environment
+
+	switch p.Env {
+	case EnvDev:
+		idpEnv = gemidp.EnvironmentReference
+	case EnvRef:
+		idpEnv = gemidp.EnvironmentReference
+	case EnvTest:
+		idpEnv = gemidp.EnvironmentTest
+	case EnvProd:
+		idpEnv = gemidp.EnvironmentProduction
+	default:
+		return nil, fmt.Errorf("unknown environment: %v", p.Env)
+	}
+
+	p.Authenticator, err = gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
+		Environment: idpEnv,
+		SignerFunc:  gemidp.SignWith(config.SecurityFunctions.AuthnSignFunc, config.SecurityFunctions.AuthnCertFunc),
+	})
+
 	for _, providerNumber := range []ProviderNumber{
 		ProviderNumber1,
 		ProviderNumber2,
@@ -74,13 +98,14 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 			continue
 		}
 
-		err = session.Authorize()
+		err = session.Authorize(p.Authenticator)
 		if err != nil {
 			slog.Error("Failed to authorize session", "provider", providerNumber, "error", err)
 			continue
 		}
 
 		p.sessions[providerNumber] = session
+		slog.Info("Opened session", "env", p.Env, "provider", providerNumber, "baseURL", session.baseURL)
 	}
 
 	// add direct VAU handler
@@ -113,7 +138,7 @@ func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNum
 
 	r2, err := http.NewRequest(r.Method, path, r.Body)
 	if err != nil {
-		slog.Error("Failed to forward request", "error", err)
+		slog.Error("Failed to create request", "error", err)
 		http.Error(w, "failed to create request", http.StatusInternalServerError)
 		return
 	}
@@ -180,7 +205,7 @@ func (p *Proxy) findAndCacheRecord(insurantID string) (*PatientRecordMetadata, e
 
 		for provider, session := range p.sessions {
 			go func(provider ProviderNumber, session *Session) {
-				slog.Info("Checking record status", "provider", provider, "insurantID", insurantID)
+				slog.Info(fmt.Sprintf("Checking record status for insurantID %s with provider %d", insurantID, provider))
 				found, err := session.GetRecordStatus(insurantID)
 				if err != nil {
 					results <- result{provider: provider, error: err}

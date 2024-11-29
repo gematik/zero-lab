@@ -154,9 +154,16 @@ func parseHttpError(resp *http.Response) error {
 	if _, err := bodyData.ReadFrom(resp.Body); err != nil {
 		return fmt.Errorf("reading response body: %w", err)
 	}
+
+	bodyStr := bodyData.String()
+
+	if bodyStr == "" {
+		bodyStr = http.StatusText(resp.StatusCode)
+	}
+
 	typedError := new(ErrorType)
 	if err := json.NewDecoder(bodyData).Decode(typedError); err != nil {
-		return fmt.Errorf(fmt.Sprintf("http status %d: %s", resp.StatusCode, bodyData.String()))
+		return fmt.Errorf(fmt.Sprintf("http status %d: %s", resp.StatusCode, bodyStr))
 	}
 	typedError.HttpStatusCode = resp.StatusCode
 	return typedError

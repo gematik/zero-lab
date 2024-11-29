@@ -25,6 +25,7 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/segmentio/ksuid"
+	"gopkg.in/yaml.v3"
 )
 
 type Server struct {
@@ -58,6 +59,19 @@ func absPath(baseDir, path string) string {
 		return path
 	}
 	return filepath.Join(baseDir, path)
+}
+
+func NewFromConfigFile(filename string) (*Server, error) {
+	cfg := &Config{}
+	yamlFile, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("read config file '%s': %w", filename, err)
+	}
+	if err := yaml.Unmarshal(yamlFile, cfg); err != nil {
+		return nil, fmt.Errorf("unmarshal config file '%s': %w", filename, err)
+	}
+
+	return New(cfg)
 }
 
 func New(cfg *Config) (*Server, error) {

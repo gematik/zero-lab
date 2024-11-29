@@ -154,7 +154,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetching challenge signing key: %w", err)
 	}
-	slog.Warn("Using signing and encryption keys with unverified certificates")
+	slog.Warn("IDP Authenticator is using signing and encryption keys with unverified certificates")
 
 	// create http client which prevents redirects
 	httpClient := http.Client{
@@ -170,6 +170,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		slog.Error("Unexpected status code", "status", resp.StatusCode, "auth_url", authURL)
 		return nil, parseErrorResponse(resp.StatusCode, resp.Body)
 	}
 
@@ -206,7 +207,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 		return nil, fmt.Errorf("marshalling challenge response claims: %w", err)
 	}
 
-	slog.Info("Challenge response claims", "claims", string(challengeResponseClaimsJson))
+	slog.Debug("Challenge response claims", "claims", string(challengeResponseClaimsJson))
 
 	challengeResponseEncrypted, err := brainpool.NewJWEBuilder().
 		Header("cty", "NJWT").
@@ -218,7 +219,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 		return nil, fmt.Errorf("encrypting challenge response: %w", err)
 	}
 
-	slog.Info("Encrypted challenge response", "encrypted", string(challengeResponseEncrypted))
+	slog.Debug("Encrypted challenge response", "encrypted", string(challengeResponseEncrypted))
 
 	// post the encrypted challenge response to the idp
 	form := url.Values{
