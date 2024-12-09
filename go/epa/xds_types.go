@@ -73,31 +73,33 @@ func (b *Body) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	}
 }
 
-// AdhocQueryResponse represents the AdhocQueryResponse type
-type AdhocQueryResponse struct {
-	XMLName            xml.Name           `xml:"urn:oasis:names:tc:ebxml-regrep:xsd:query:3.0 AdhocQueryResponse"`
-	StartIndex         int                `xml:"startIndex,attr"`
-	TotalResultCount   int                `xml:"totalResultCount,attr"`
-	Status             string             `xml:"status,attr"`
-	RegistryObjectList RegistryObjectList `xml:"urn:oasis:names:tc:ebxml-regrep:xsd:rim:3.0 RegistryObjectList"`
-}
+func (rl *RegistryObjectList) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	rl.Items = make([]interface{}, 0)
+	// Create a loop to consume tokens until the end of the <RegistryObjectList> element
+	for {
+		t, err := d.Token()
+		if err != nil {
+			return err
+		}
 
-// RegistryObjectList contains the list of registry packages
-type RegistryObjectList struct {
-	RegistryPackages []RegistryPackage `xml:"urn:oasis:names:tc:ebxml-regrep:xsd:rim:3.0 RegistryPackage"`
-}
-
-// RegistryPackage represents a single registry package
-type RegistryPackage struct {
-	Status      string          `xml:"status,attr"`
-	ID          string          `xml:"id,attr"`
-	Home        string          `xml:"home,attr"`
-	Name        LocalizedString `xml:"urn:oasis:names:tc:ebxml-regrep:xsd:rim:3.0 Name>urn:oasis:names:tc:ebxml-regrep:xsd:rim:3.0 LocalizedString"`
-	Description LocalizedString `xml:"urn:oasis:names:tc:ebxml-regrep:xsd:rim:3.0 Description>urn:oasis:names:tc:ebxml-regrep:xsd:rim:3.0 LocalizedString"`
-}
-
-// LocalizedString represents a localized string
-type LocalizedString struct {
-	Lang  string `xml:"lang,attr"`
-	Value string `xml:"value,attr"`
+		switch tok := t.(type) {
+		case xml.StartElement:
+			// Handle known types based on the element name
+			switch tok.Name.Local {
+			case "RegistryPackage":
+				var pkg RegistryPackage
+				if err := d.DecodeElement(&pkg, &tok); err != nil {
+					return err
+				}
+				rl.Items = append(rl.Items, pkg)
+			default:
+				return fmt.Errorf("unsupported element: %s %s", tok.Name.Space, tok.Name.Local)
+			}
+		case xml.EndElement:
+			// Exit when we reach the end of the <RegistryObjectList> element
+			if tok.Name.Local == start.Name.Local {
+				return nil
+			}
+		}
+	}
 }

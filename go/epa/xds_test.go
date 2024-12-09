@@ -595,5 +595,6 @@ func TestFindFoldersResponse(t *testing.T) {
 		t.Fatalf("Content is not of type AdhocQueryResponse")
 	}
 
-	t.Logf("Envelope: %v", envelope)
+	//adhocResp := envelope.Body.Content.(epa.AdhocQueryResponse)
+	// t.Logf("AdhocQueryResponse: %d", len(adhocResp.RegistryObjectList))
 }
