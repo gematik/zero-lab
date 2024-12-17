@@ -4,13 +4,14 @@ import (
 	"crypto/x509"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/epa"
 	"github.com/gematik/zero-lab/go/libzero/gemidp"
-	"github.com/gematik/zero-lab/go/libzero/prettylog"
 )
 
 // sample keys and certificates from https://github.com/gematik/erp-e2e-testsuite
@@ -80,7 +81,9 @@ func TestConnect(t *testing.T) {
 			testKey, _ := brainpool.ParsePrivateKeyPEM(testKeyBytes)
 			testCert, _ := brainpool.ParseCertificatePEM(testCertBytes)
 
-			logger := slog.New(prettylog.NewHandler(slog.LevelDebug))
+			logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+				Level: slog.LevelDebug,
+			}))
 			slog.SetDefault(logger)
 
 			session, err := epa.OpenSession(
@@ -159,5 +162,89 @@ func TestConnect(t *testing.T) {
 				t.Fatalf("SetEntitlementPs returned an error: %v", err)
 			}
 		})
+	}
+}
+
+func TestVAURaceCondition(t *testing.T) {
+
+	for _, testRecord := range testRecords {
+		t.Run(testRecord.insurantId, func(t *testing.T) {
+			providerNumber := testRecord.providerNumber
+			insurantId := testRecord.insurantId
+
+			testKey, _ := brainpool.ParsePrivateKeyPEM(testKeyBytes)
+			testCert, _ := brainpool.ParseCertificatePEM(testCertBytes)
+
+			logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+				Level: slog.LevelDebug,
+			}))
+			slog.SetDefault(logger)
+
+			session, err := epa.OpenSession(
+				epa.EnvDev,
+				providerNumber,
+				epa.SecurityFunctions{
+					AuthnSignFunc:            brainpool.SignFuncPrivateKey(testKey),
+					AuthnCertFunc:            func() (*x509.Certificate, error) { return testCert, nil },
+					ClientAssertionSignFunc:  brainpool.SignFuncPrivateKey(testKey),
+					ClientAssertionCertFunc:  func() (*x509.Certificate, error) { return testCert, nil },
+					ProofOfAuditEvidenceFunc: EnvProofOfAuditEvidenceFunc,
+				},
+				epa.WithInsecureSkipVerify(),
+			)
+			if err != nil {
+				t.Fatalf("Connect returned an error: %v", err)
+			}
+
+			authenticator, err := gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
+				Environment: gemidp.EnvironmentReference,
+				SignerFunc: gemidp.SignWith(
+					brainpool.SignFuncPrivateKey(testKey),
+					func() (*x509.Certificate, error) { return testCert, nil },
+				),
+			})
+
+			if err := session.Authorize(authenticator); err != nil {
+				t.Fatalf("Authorize returned an error: %v", err)
+			}
+
+			if err := session.Entitle(insurantId); err != nil {
+				t.Fatalf("Entitle returned an error: %v", err)
+			}
+
+			var wg sync.WaitGroup
+
+			for i := 0; i < 100; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					req, err := http.NewRequest("GET", "/epa/medication/render/v1/eml/xhtml", nil)
+					if err != nil {
+						t.Errorf("http.NewRequest returned an error: %v", err)
+						return
+					}
+
+					req.Header.Set("x-useragent", epa.UserAgent)
+					req.Header.Set("x-insurantid", insurantId)
+					resp, err := session.VAUChannel.Do(req)
+
+					if err != nil {
+						t.Errorf("VAUChannel.Do returned an error: %v", err)
+						return
+					}
+
+					if resp.StatusCode != http.StatusOK {
+						t.Errorf("VAUChannel.Do returned status code %v", resp)
+						return
+					}
+
+					t.Logf("Response: %v", resp)
+				}()
+			}
+
+			wg.Wait()
+
+		})
+
 	}
 }

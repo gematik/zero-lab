@@ -58,15 +58,23 @@ type Channel struct {
 	transport      http.Transport
 }
 
+type EncryptedRequest struct {
+	RequestCounter uint64
+	Ciphertext     []byte
+}
+
 func (c *Channel) Do(req *http.Request) (*http.Response, error) {
-	data, err := c.EncryptRequest(req)
+	encrypted, err := c.EncryptRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("encrypting request: %w", err)
 	}
-	encResp, err := c.PostEncryptedRequest(data)
+	// simulate the race condition by delaying the request randomly
+	encResp, err := c.PostEncryptedRequest(encrypted.Ciphertext)
 	if err != nil {
 		return nil, fmt.Errorf("posting encrypted request: %w", err)
 	}
+
+	slog.Debug("Received VAU response", "url", c.HostURL.String(), "requestCounter", encrypted.RequestCounter, "status", encResp.StatusCode)
 
 	if encResp.StatusCode != http.StatusOK {
 		messageError := new(MessageError)
@@ -79,7 +87,7 @@ func (c *Channel) Do(req *http.Request) (*http.Response, error) {
 	return c.DecryptResponse(encResp, req)
 }
 
-func (c *Channel) EncryptRequest(r *http.Request) ([]byte, error) {
+func (c *Channel) EncryptRequest(r *http.Request) (*EncryptedRequest, error) {
 	data, err := httputil.DumpRequest(r, true)
 	if err != nil {
 		return nil, fmt.Errorf("dumping request: %w", err)
@@ -87,13 +95,14 @@ func (c *Channel) EncryptRequest(r *http.Request) ([]byte, error) {
 	return c.Encrypt(data)
 }
 
-func (c *Channel) Encrypt(data []byte) ([]byte, error) {
+func (c *Channel) Encrypt(data []byte) (*EncryptedRequest, error) {
+	requestCounter := c.requestCounter.next()
 	header := make([]byte, 43)
 	header[0] = Version
 	header[1] = byte(c.Env)
 	header[2] = HeaderRequest
 
-	binary.BigEndian.PutUint64(header[3:], c.requestCounter.next())
+	binary.BigEndian.PutUint64(header[3:], requestCounter)
 	copy(header[11:], c.keyID)
 
 	aes, err := aes.NewCipher(c.k2_c2s_app_data)
@@ -118,7 +127,10 @@ func (c *Channel) Encrypt(data []byte) ([]byte, error) {
 	// encrypt data
 	ciphertext := aesGCM.Seal(iv, iv, data, header)
 
-	return append(header, ciphertext...), nil
+	return &EncryptedRequest{
+		RequestCounter: requestCounter,
+		Ciphertext:     append(header, ciphertext...),
+	}, nil
 }
 
 func (c *Channel) DecryptResponse(resp *http.Response, req *http.Request) (*http.Response, error) {
@@ -137,8 +149,6 @@ func (c *Channel) Decrypt(data []byte, req *http.Request) (*http.Response, error
 	}
 	header := data[:43]
 	ciphertext := data[43:]
-
-	slog.Debug("Decrypting response", "data", string(data))
 
 	if header[0] != Version {
 		return nil, fmt.Errorf("invalid version: %d", header[0])
