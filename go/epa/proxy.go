@@ -1,6 +1,8 @@
 package epa
 
 import (
+	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -8,19 +10,19 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/gempki"
-	"github.com/gematik/zero-lab/go/libzero/gemidp"
 )
 
 var ErrRecordNotFound = errors.New("record not found")
 
 type Proxy struct {
-	Env           Env
-	Authenticator *gemidp.Authenticator
-	mux           *http.ServeMux
-	sessions      map[ProviderNumber]*Session
-	records       map[string]PatientRecordMetadata
-	recordsLock   sync.RWMutex
+	Env            Env
+	Authenticator  *gemidp.Authenticator
+	mux            *http.ServeMux
+	sessionManager *sessionManager
+	records        map[string]PatientRecordMetadata
+	recordsLock    sync.RWMutex
 }
 
 type ProxyConfig struct {
@@ -37,7 +39,6 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 	p := &Proxy{
 		Env:         config.Env,
 		mux:         http.NewServeMux(),
-		sessions:    make(map[ProviderNumber]*Session),
 		records:     make(map[string]PatientRecordMetadata),
 		recordsLock: sync.RWMutex{},
 	}
@@ -83,35 +84,27 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 		SignerFunc:  gemidp.SignWith(config.SecurityFunctions.AuthnSignFunc, config.SecurityFunctions.AuthnCertFunc),
 	})
 
-	for _, providerNumber := range []ProviderNumber{
-		ProviderNumber1,
-		ProviderNumber2,
-	} {
-		session, err := OpenSession(
-			config.Env,
-			providerNumber,
-			config.SecurityFunctions,
-			WithCertPool(certPool),
-		)
+	p.sessionManager = &sessionManager{
+		env:               p.Env,
+		securityFunctions: config.SecurityFunctions,
+		authenticator:     p.Authenticator,
+		certPool:          certPool,
+		sessions:          make(map[ProviderNumber]*Session),
+	}
+
+	for _, providerNumber := range AllProviders {
+		_, err := p.sessionManager.GetSession(providerNumber)
 		if err != nil {
 			slog.Error("Failed to open session", "provider", providerNumber, "error", err)
-			continue
 		}
-
-		err = session.Authorize(p.Authenticator)
-		if err != nil {
-			slog.Error("Failed to authorize session", "provider", providerNumber, "error", err)
-			continue
-		}
-
-		p.sessions[providerNumber] = session
-		slog.Info("Opened session", "env", p.Env, "provider", providerNumber, "baseURL", session.baseURL)
 	}
 
 	// add direct VAU handler
+	p.mux.Handle("/providers", http.HandlerFunc(p.GetProviders))
 	p.mux.Handle("/providers/{providerNumber}/vau/{path...}", http.HandlerFunc(p.HandleForwardToVAUProvider))
 
 	// add insurants handler
+	p.mux.Handle("/insurants", http.HandlerFunc(p.GetInsurants))
 	p.mux.Handle("/insurants/{insurantID}/vau/{path...}", http.HandlerFunc(p.HandleForwardToVAUInsurant))
 
 	return p, nil
@@ -130,9 +123,9 @@ func (p *Proxy) HandleForwardToVAUProvider(w http.ResponseWriter, r *http.Reques
 func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNumber ProviderNumber, insurantID string) {
 	path := r.PathValue("path")
 	path = "/" + path
-	session, ok := p.sessions[providerNumber]
-	if !ok {
-		http.Error(w, "provider not found", http.StatusNotFound)
+	session, err := p.sessionManager.GetSession(providerNumber)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get session: %v", err), http.StatusBadGateway)
 		return
 	}
 
@@ -182,9 +175,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) Close() {
-	for _, session := range p.sessions {
-		session.Close()
-	}
+	p.sessionManager.Close()
 }
 
 func (p *Proxy) findAndCacheRecord(insurantID string) (*PatientRecordMetadata, error) {
@@ -192,6 +183,8 @@ func (p *Proxy) findAndCacheRecord(insurantID string) (*PatientRecordMetadata, e
 	rm, ok := p.records[insurantID]
 	p.recordsLock.RUnlock()
 	if !ok {
+		p.recordsLock.Lock()
+		defer p.recordsLock.Unlock()
 		// try to find the record by asking every session if it has the record
 		// run in parallel
 		type result struct {
@@ -201,11 +194,16 @@ func (p *Proxy) findAndCacheRecord(insurantID string) (*PatientRecordMetadata, e
 			error    error
 		}
 
-		results := make(chan result, len(p.sessions))
+		results := make(chan result, len(AllProviders))
 
-		for provider, session := range p.sessions {
-			go func(provider ProviderNumber, session *Session) {
+		for _, provider := range AllProviders {
+			go func(provider ProviderNumber) {
 				slog.Info(fmt.Sprintf("Checking record status for insurantID %s with provider %d", insurantID, provider))
+				session, err := p.sessionManager.GetSession(provider)
+				if err != nil {
+					results <- result{provider: provider, error: err}
+					return
+				}
 				found, err := session.GetRecordStatus(insurantID)
 				if err != nil {
 					results <- result{provider: provider, error: err}
@@ -226,10 +224,10 @@ func (p *Proxy) findAndCacheRecord(insurantID string) (*PatientRecordMetadata, e
 						provider: provider,
 					}
 				}
-			}(provider, session)
+			}(provider)
 		}
 
-		for i := 0; i < len(p.sessions); i++ {
+		for _ = range AllProviders {
 			r := <-results
 			if r.error != nil {
 				slog.Error("Failed to get record status", "provider", r.provider, "error", r.error)
@@ -247,9 +245,7 @@ func (p *Proxy) findAndCacheRecord(insurantID string) (*PatientRecordMetadata, e
 				continue
 			}
 
-			p.recordsLock.Lock()
 			p.records[insurantID] = r.record
-			p.recordsLock.Unlock()
 			rm = r.record
 			break
 		}
@@ -278,5 +274,83 @@ func (p *Proxy) HandleForwardToVAUInsurant(w http.ResponseWriter, r *http.Reques
 	}
 
 	p.forwardToVAU(w, r, rm.Provider, rm.InsurantID)
+
+}
+
+func (p *Proxy) GetProviders(w http.ResponseWriter, r *http.Request) {
+	type Provider struct {
+		Number          ProviderNumber `json:"number"`
+		BaseURL         string         `json:"baseURL"`
+		SessionOpenedAt string         `json:"sessionOpenedAt"`
+		LatestHealthyAt string         `json:"latestHealthyAt"`
+	}
+	w.Header().Set("Content-Type", "application/json")
+}
+
+func (p *Proxy) GetInsurants(w http.ResponseWriter, r *http.Request) {
+	p.recordsLock.RLock()
+	defer p.recordsLock.RUnlock()
+	type InsurantModel struct {
+		InsurantID     string `json:"insurantID"`
+		ProviderNumber int    `json:"providerNumber"`
+	}
+	w.Header().Set("Content-Type", "application/json")
+	insurants := make([]InsurantModel, 0, len(p.records))
+	for _, record := range p.records {
+		insurants = append(insurants, InsurantModel{
+			InsurantID:     record.InsurantID,
+			ProviderNumber: int(record.Provider),
+		})
+	}
+
+	w.WriteHeader(http.StatusOK)
+	err := json.NewEncoder(w).Encode(insurants)
+	if err != nil {
+		slog.Error("Failed to encode insurants", "error", err)
+	}
+}
+
+type sessionManager struct {
+	lock              sync.RWMutex
+	env               Env
+	certPool          *x509.CertPool
+	securityFunctions SecurityFunctions
+	authenticator     *gemidp.Authenticator
+	sessions          map[ProviderNumber]*Session
+}
+
+func (sm *sessionManager) GetSession(provider ProviderNumber) (*Session, error) {
+	session, ok := sm.sessions[provider]
+	if !ok {
+		return sm.openSession(provider)
+	}
+	return session, nil
+}
+
+func (sm *sessionManager) openSession(provider ProviderNumber) (*Session, error) {
+	sm.lock.Lock()
+	defer sm.lock.Unlock()
+	session, err := OpenSession(sm.env, provider, sm.securityFunctions, WithCertPool(sm.certPool))
+	if err != nil {
+		return nil, fmt.Errorf("open session at provider %d: %w", provider, err)
+	}
+
+	err = session.Authorize(sm.authenticator)
+	if err != nil {
+		session.Close()
+		return nil, fmt.Errorf("authorize session at provider %d: %w", provider, err)
+	}
+
+	sm.sessions[provider] = session
+	return session, nil
+}
+
+func (sm *sessionManager) Close() {
+	sm.lock.Lock()
+	defer sm.lock.Unlock()
+	for pn, session := range sm.sessions {
+		session.Close()
+		delete(sm.sessions, pn)
+	}
 
 }

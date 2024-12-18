@@ -11,7 +11,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/epa"
-	"github.com/gematik/zero-lab/go/libzero/gemidp"
+	"github.com/gematik/zero-lab/go/gemidp"
 )
 
 // sample keys and certificates from https://github.com/gematik/erp-e2e-testsuite

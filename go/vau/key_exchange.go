@@ -113,8 +113,6 @@ func OpenChannel(baseURLString string, env Env, httpClient *http.Client) (*Chann
 
 	signedPubKeys.SignedPubKeys = pubKeys
 
-	slog.Debug("VAU keys decoded", "signedPubKeys", signedPubKeys)
-
 	if err := validateSignedPublicVAUKeys(httpClient, baseURL, signedPubKeys); err != nil {
 		return nil, fmt.Errorf("validating signed public VAU keys: %w", err)
 	}

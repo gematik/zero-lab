@@ -5,6 +5,7 @@ use (
 	./cmd/zero
 	./cmd/zero-zerobin
 	./epa
+	./gemidp
 	./gempki
 	./libzero
 	./pdp

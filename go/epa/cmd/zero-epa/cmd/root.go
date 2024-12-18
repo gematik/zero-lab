@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/gematik/zero-lab/go/libzero/prettylog"
 	"github.com/joho/godotenv"
+	"github.com/phsym/console-slog"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -33,7 +33,9 @@ var (
 				logLevel = slog.LevelDebug
 			}
 			if os.Getenv("PRETTY_LOGS") != "false" {
-				logger := slog.New(prettylog.NewHandler(logLevel))
+				logger := slog.New(
+					console.NewHandler(os.Stderr, &console.HandlerOptions{Level: slog.LevelDebug}),
+				)
 				slog.SetDefault(logger)
 			} else {
 				slog.SetLogLoggerLevel(logLevel)

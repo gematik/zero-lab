@@ -6,15 +6,16 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/gematik/zero-lab/go/brainpool"
-	"github.com/gematik/zero-lab/go/libzero"
 	"github.com/gematik/zero-lab/go/vau"
 )
 
-var UserAgent = fmt.Sprintf("zero-epa-client/%s", libzero.Version)
+// TODO: make this configurable
+var UserAgent = "zero-epa-client/1.0.0"
 
 type ClientOption func(*Session)
 
@@ -40,6 +41,9 @@ type SecurityFunctions struct {
 
 type Session struct {
 	Env                Env
+	ProviderNumber     ProviderNumber
+	OpenedAt           time.Time
+	LastTimeHealthy    time.Time
 	securityFunctions  SecurityFunctions
 	insecureSkipVerify bool
 	certPool           *x509.CertPool
@@ -65,6 +69,8 @@ const (
 	ProviderNumber2 ProviderNumber = 2
 )
 
+var AllProviders = []ProviderNumber{ProviderNumber1, ProviderNumber2}
+
 func ResolveBaseURL(env Env, provider ProviderNumber) string {
 	switch env {
 	case EnvDev:
@@ -84,6 +90,7 @@ func OpenSession(env Env, provider ProviderNumber, sf SecurityFunctions, options
 
 	session := &Session{
 		Env:               env,
+		ProviderNumber:    provider,
 		securityFunctions: sf,
 	}
 
@@ -111,6 +118,9 @@ func OpenSession(env Env, provider ProviderNumber, sf SecurityFunctions, options
 	if err != nil {
 		return nil, err
 	}
+
+	session.OpenedAt = time.Now()
+	session.LastTimeHealthy = time.Now()
 
 	return session, nil
 }
@@ -167,4 +177,16 @@ func parseHttpError(resp *http.Response) error {
 	}
 	typedError.HttpStatusCode = resp.StatusCode
 	return typedError
+}
+
+func (s *Session) HealthCheck() error {
+	// TODO: is there a better way to health check?
+	_, err := s.GetNonce()
+	if err == nil {
+		s.LastTimeHealthy = time.Now()
+		return nil
+	} else {
+		slog.Error("Health check failed", "error", err, "last_time_healthy", s.LastTimeHealthy, "opened_at", s.OpenedAt, "base_url", s.baseURL)
+		return err
+	}
 }

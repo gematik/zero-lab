@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/brainpool"
-	"github.com/gematik/zero-lab/go/libzero/gemidp"
+	"github.com/gematik/zero-lab/go/gemidp"
 )
 
 type Nonce struct {
