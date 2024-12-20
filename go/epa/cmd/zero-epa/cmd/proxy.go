@@ -6,6 +6,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/epa"
@@ -34,6 +35,10 @@ func init() {
 	proxyCmd.Flags().StringP("authn-cert-path", "", "", "Path to SMC-B certificate")
 	viper.BindPFlag("authn-cert-path", proxyCmd.Flags().Lookup("authn-cert-path"))
 	viper.BindEnv("authn-cert-path", "AUTHN_CERT_PATH")
+
+	proxyCmd.Flags().IntP("timeout", "t", 10, "Timeout in seconds")
+	viper.BindPFlag("timeout", proxyCmd.Flags().Lookup("timeout"))
+	viper.BindEnv("timeout", "TIMEOUT")
 
 	rootCmd.AddCommand(proxyCmd)
 }
@@ -84,6 +89,9 @@ var proxyCmd = &cobra.Command{
 			log.Fatalf("Failed to parse SMC-B private key: %v", err)
 		}
 
+		timeout := viper.GetInt("timeout")
+		slog.Info("Using timeout", "timeout", timeout)
+
 		proxy, err := epa.NewProxy(&epa.ProxyConfig{
 			Env: epa.EnvDev,
 			SecurityFunctions: epa.SecurityFunctions{
@@ -93,6 +101,7 @@ var proxyCmd = &cobra.Command{
 				ClientAssertionCertFunc:  func() (*x509.Certificate, error) { return cert, nil },
 				ProofOfAuditEvidenceFunc: proofOfAuditEvidenceFunc,
 			},
+			Timeout: time.Second * time.Duration(timeout),
 		})
 		if err != nil {
 			log.Fatalf("Failed to create Proxy: %v", err)

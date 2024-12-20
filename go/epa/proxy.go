@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/gempki"
@@ -18,6 +19,7 @@ var ErrRecordNotFound = errors.New("record not found")
 
 type Proxy struct {
 	Env            Env
+	config         *ProxyConfig
 	Authenticator  *gemidp.Authenticator
 	mux            *http.ServeMux
 	sessionManager *sessionManager
@@ -28,6 +30,7 @@ type Proxy struct {
 type ProxyConfig struct {
 	Env               Env
 	SecurityFunctions SecurityFunctions
+	Timeout           time.Duration
 }
 
 type PatientRecordMetadata struct {
@@ -38,6 +41,7 @@ type PatientRecordMetadata struct {
 func NewProxy(config *ProxyConfig) (*Proxy, error) {
 	p := &Proxy{
 		Env:         config.Env,
+		config:      config,
 		mux:         http.NewServeMux(),
 		records:     make(map[string]PatientRecordMetadata),
 		recordsLock: sync.RWMutex{},
@@ -86,6 +90,7 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 
 	p.sessionManager = &sessionManager{
 		env:               p.Env,
+		timeout:           config.Timeout,
 		securityFunctions: config.SecurityFunctions,
 		authenticator:     p.Authenticator,
 		certPool:          certPool,
@@ -94,18 +99,19 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 
 	for _, providerNumber := range AllProviders {
 		_, err := p.sessionManager.GetSession(providerNumber)
+		go p.sessionManager.WatchSession(providerNumber)
 		if err != nil {
 			slog.Error("Failed to open session", "provider", providerNumber, "error", err)
 		}
 	}
 
 	// add direct VAU handler
-	p.mux.Handle("/providers", http.HandlerFunc(p.GetProviders))
-	p.mux.Handle("/providers/{providerNumber}/vau/{path...}", http.HandlerFunc(p.HandleForwardToVAUProvider))
+	p.mux.Handle("/api/providers", http.HandlerFunc(p.GetProviders))
+	p.mux.Handle("/api/providers/{providerNumber}/vau/{path...}", http.HandlerFunc(p.HandleForwardToVAUProvider))
 
 	// add insurants handler
-	p.mux.Handle("/insurants", http.HandlerFunc(p.GetInsurants))
-	p.mux.Handle("/insurants/{insurantID}/vau/{path...}", http.HandlerFunc(p.HandleForwardToVAUInsurant))
+	p.mux.Handle("/api/insurants", http.HandlerFunc(p.GetInsurants))
+	p.mux.Handle("/api/insurants/{insurantID}/vau/{path...}", http.HandlerFunc(p.HandleForwardToVAUInsurant))
 
 	return p, nil
 }
@@ -282,9 +288,25 @@ func (p *Proxy) GetProviders(w http.ResponseWriter, r *http.Request) {
 		Number          ProviderNumber `json:"number"`
 		BaseURL         string         `json:"baseURL"`
 		SessionOpenedAt string         `json:"sessionOpenedAt"`
-		LatestHealthyAt string         `json:"latestHealthyAt"`
 	}
 	w.Header().Set("Content-Type", "application/json")
+	providers := make([]Provider, 0, len(AllProviders))
+	for _, providerNumber := range AllProviders {
+		session, err := p.sessionManager.GetSession(providerNumber)
+		if err != nil {
+			slog.Error("Failed to get session", "provider", providerNumber, "error", err)
+			continue
+		}
+		providers = append(providers, Provider{
+			Number:          providerNumber,
+			BaseURL:         session.BaseURL,
+			SessionOpenedAt: session.OpenedAt.Format(time.RFC3339),
+		})
+	}
+	err := json.NewEncoder(w).Encode(providers)
+	if err != nil {
+		slog.Error("Failed to encode providers", "error", err)
+	}
 }
 
 func (p *Proxy) GetInsurants(w http.ResponseWriter, r *http.Request) {
@@ -312,6 +334,7 @@ func (p *Proxy) GetInsurants(w http.ResponseWriter, r *http.Request) {
 
 type sessionManager struct {
 	lock              sync.RWMutex
+	timeout           time.Duration
 	env               Env
 	certPool          *x509.CertPool
 	securityFunctions SecurityFunctions
@@ -330,7 +353,7 @@ func (sm *sessionManager) GetSession(provider ProviderNumber) (*Session, error) 
 func (sm *sessionManager) openSession(provider ProviderNumber) (*Session, error) {
 	sm.lock.Lock()
 	defer sm.lock.Unlock()
-	session, err := OpenSession(sm.env, provider, sm.securityFunctions, WithCertPool(sm.certPool))
+	session, err := OpenSession(sm.env, provider, sm.securityFunctions, WithCertPool(sm.certPool), WithTimeout(sm.timeout))
 	if err != nil {
 		return nil, fmt.Errorf("open session at provider %d: %w", provider, err)
 	}
@@ -343,6 +366,35 @@ func (sm *sessionManager) openSession(provider ProviderNumber) (*Session, error)
 
 	sm.sessions[provider] = session
 	return session, nil
+}
+
+func (sm *sessionManager) WatchSession(pn ProviderNumber) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			slog.Debug("Checking session health", "provider", pn)
+			session, err := sm.GetSession(pn)
+			if err != nil {
+				slog.Error("Failed to get session", "provider", pn, "error", err)
+				continue
+			}
+			if err := session.HealthCheck(); err != nil {
+				slog.Error("Session is unhealthy", "provider", session.ProviderNumber, "error", err)
+				sm.lock.Lock()
+				session.Close()
+				delete(sm.sessions, session.ProviderNumber)
+				sm.lock.Unlock()
+				_, err := sm.openSession(session.ProviderNumber)
+				if err != nil {
+					slog.Error("Failed to re-open session", "provider", session.ProviderNumber, "error", err)
+				}
+			}
+
+		}
+	}
 }
 
 func (sm *sessionManager) Close() {

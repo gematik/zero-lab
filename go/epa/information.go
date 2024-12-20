@@ -9,7 +9,7 @@ import (
 func (s *Session) GetRecordStatus(insurantId string) (bool, error) {
 
 	// set insurantId as header
-	req, err := http.NewRequest("GET", s.baseURL+"/information/api/v1/ehr", nil)
+	req, err := http.NewRequest("GET", s.BaseURL+"/information/api/v1/ehr", nil)
 	if err != nil {
 		return false, err
 	}
@@ -35,7 +35,7 @@ func (s *Session) GetRecordStatus(insurantId string) (bool, error) {
 func (c *Session) GetConsentDecisionInformation(insurantId string) (*GetConsentDecisionInformationType, error) {
 
 	// set insurantId as header
-	req, err := http.NewRequest("GET", c.baseURL+"/information/api/v1/ehr/consentdecisions", nil)
+	req, err := http.NewRequest("GET", c.BaseURL+"/information/api/v1/ehr/consentdecisions", nil)
 	if err != nil {
 		return nil, err
 	}

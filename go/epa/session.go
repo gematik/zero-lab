@@ -31,6 +31,12 @@ func WithCertPool(certPool *x509.CertPool) ClientOption {
 	}
 }
 
+func WithTimeout(timeout time.Duration) ClientOption {
+	return func(s *Session) {
+		s.Timeout = timeout
+	}
+}
+
 type SecurityFunctions struct {
 	AuthnSignFunc            brainpool.SignFunc
 	AuthnCertFunc            func() (*x509.Certificate, error)
@@ -43,13 +49,13 @@ type Session struct {
 	Env                Env
 	ProviderNumber     ProviderNumber
 	OpenedAt           time.Time
-	LastTimeHealthy    time.Time
 	securityFunctions  SecurityFunctions
 	insecureSkipVerify bool
 	certPool           *x509.CertPool
 	HttpClient         *http.Client
 	VAUChannel         *vau.Channel
-	baseURL            string
+	BaseURL            string
+	Timeout            time.Duration
 }
 
 // enumeration for environment
@@ -104,15 +110,21 @@ func OpenSession(env Env, provider ProviderNumber, sf SecurityFunctions, options
 			RootCAs:            session.certPool,
 		},
 	}
+	if session.Timeout > 0 {
+		transport.ResponseHeaderTimeout = session.Timeout
+	} else {
+		// default timeout
+		transport.ResponseHeaderTimeout = 10 * time.Second
+	}
+
 	// set User-Agent for all requests
 	session.HttpClient = &http.Client{
 		Transport: &customTransport{
 			t: transport,
 		},
-		Timeout: 10 * time.Second,
 	}
 
-	session.baseURL = ResolveBaseURL(env, provider)
+	session.BaseURL = ResolveBaseURL(env, provider)
 
 	err := session.openVauChannel()
 	if err != nil {
@@ -120,7 +132,6 @@ func OpenSession(env Env, provider ProviderNumber, sf SecurityFunctions, options
 	}
 
 	session.OpenedAt = time.Now()
-	session.LastTimeHealthy = time.Now()
 
 	return session, nil
 }
@@ -140,7 +151,7 @@ func (s *Session) Close() {
 }
 
 func (s *Session) openVauChannel() error {
-	vauChannel, err := vau.OpenChannel(s.baseURL, vau.EnvNonPU, s.HttpClient)
+	vauChannel, err := vau.OpenChannel(s.BaseURL, vau.EnvNonPU, s.HttpClient)
 	if err != nil {
 		return err
 	}
@@ -183,10 +194,9 @@ func (s *Session) HealthCheck() error {
 	// TODO: is there a better way to health check?
 	_, err := s.GetNonce()
 	if err == nil {
-		s.LastTimeHealthy = time.Now()
 		return nil
 	} else {
-		slog.Error("Health check failed", "error", err, "last_time_healthy", s.LastTimeHealthy, "opened_at", s.OpenedAt, "base_url", s.baseURL)
+		slog.Error("Health check failed", "error", err, "opened_at", s.OpenedAt, "base_url", s.BaseURL)
 		return err
 	}
 }

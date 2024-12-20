@@ -1,0 +1,16 @@
+DOCKER_USER := "spilikin"
+ZERO_EPA_VERSION := "0.0.2"
+
+# Display available commands
+info:
+    just --list
+
+# Build the zero-epa docker image
+epa-docker-build:
+    docker build --platform linux/amd64 -t "{{DOCKER_USER}}/zero-epa:{{ZERO_EPA_VERSION}}" -f ./epa/cmd/zero-epa/Dockerfile .
+    docker tag "{{DOCKER_USER}}/zero-epa:{{ZERO_EPA_VERSION}}" "{{DOCKER_USER}}/zero-epa:latest"
+
+# Push the zero-epa docker image to the docker hub
+epa-docker-push: epa-docker-build
+    docker push "{{DOCKER_USER}}/zero-epa:{{ZERO_EPA_VERSION}}"
+    docker push "{{DOCKER_USER}}/zero-epa:latest"    
