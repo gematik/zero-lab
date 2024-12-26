@@ -1,8 +1,6 @@
 package authzserver
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -19,6 +17,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/oauth"
+	"github.com/gematik/zero-lab/go/oauth/jwkutil"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oauth/oidf"
 	"github.com/go-playground/validator/v10"
@@ -135,7 +134,7 @@ func New(cfg Config) (*Server, error) {
 	sigPrK, err := loadJwkFromPem(absPath(cfg.BaseDir, cfg.SignPrivateKeyPath))
 	if err != nil {
 		slog.Warn("failed to load signing key, will create random", "path", cfg.SignPrivateKeyPath)
-		sigPrK, err = generateRandomJWK()
+		sigPrK, err = jwkutil.GenerateRandomJwk()
 		if err != nil {
 			return nil, fmt.Errorf("generate signing key: %w", err)
 		}
@@ -154,7 +153,7 @@ func New(cfg Config) (*Server, error) {
 	encPuK, err := loadJwkFromPem(absPath(cfg.BaseDir, cfg.EncPublicKeyPath))
 	if err != nil {
 		slog.Warn("failed to load encryption key, will create random", "path", cfg.EncPublicKeyPath)
-		encPrK, err := generateRandomJWK()
+		encPrK, err := jwkutil.GenerateRandomJwk()
 		if err != nil {
 			return nil, fmt.Errorf("generate encryption key: %w", err)
 		}
@@ -903,18 +902,6 @@ func generateRandomString(n int) string {
 	}
 
 	return string(ret)
-}
-
-func generateRandomJWK() (jwk.Key, error) {
-	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, fmt.Errorf("could not generate key: %w", err)
-	}
-	jwkKey, err := jwk.FromRaw(privateKey)
-	if err != nil {
-		return nil, fmt.Errorf("could not create jwk from key: %w", err)
-	}
-	return jwkKey, nil
 }
 
 func (s *Server) applyPolicy(client *ClientMetadata, autzSession *AuthzServerSession) error {
