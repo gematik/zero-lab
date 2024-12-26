@@ -2,6 +2,7 @@ package pep
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -15,6 +16,10 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
+type Guard interface {
+	VerifyRequest(ctx *GuardContext, r *http.Request) error
+}
+
 type PEP struct {
 	OAuth2ServerURI string
 	RefreshInterval time.Duration
@@ -25,10 +30,12 @@ type PEP struct {
 	stopChan        chan bool
 }
 
-type RequestContext struct {
-	AccessTokenRaw string
-	AccessToken    jwt.Token
-	ClaimsMap      map[string]interface{}
+type GuardContext struct {
+	AccessTokenRaw   string
+	AccessToken      jwt.Token
+	SessionCookieRaw []byte
+	ClaimsMap        map[string]interface{}
+	Extra            map[string]interface{}
 }
 
 func New() *PEP {
@@ -150,7 +157,7 @@ func (p *PEP) Stop() {
 
 // Check if request headers contains headers starting with "X-ZTA",
 // which are forbidden in the request from the outside.
-func (p *PEP) VerifyHeaders(c *RequestContext, r *http.Request) *Error {
+func (p *PEP) VerifyHeaders(c *GuardContext, r *http.Request) *Error {
 	for k := range r.Header {
 		n := strings.ToLower(k)
 		if strings.HasPrefix(n, "x-zta") {
@@ -161,7 +168,7 @@ func (p *PEP) VerifyHeaders(c *RequestContext, r *http.Request) *Error {
 }
 
 // Verify the self contained access token (JWT) using the previously loaded JWKS.
-func (p *PEP) VerifyAccessToken(c *RequestContext, r *http.Request) *Error {
+func (p *PEP) VerifyAccessToken(c *GuardContext, r *http.Request) *Error {
 	authzHeaders := r.Header.Values("Authorization")
 	if len(authzHeaders) == 0 {
 		return ErrNoAuthorizationHeader
@@ -212,4 +219,15 @@ func (p *PEP) VerifyJWTToken(token string) (map[string]interface{}, *Error) {
 	}
 
 	return claims, nil
+}
+
+// Generate a random key of the given length in bits.
+func GenerateRandomKey(bits int) ([]byte, error) {
+	key := make([]byte, bits/8)
+	_, err := rand.Read(key)
+	if err != nil {
+		return nil, err
+	}
+
+	return key, nil
 }

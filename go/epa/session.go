@@ -14,8 +14,7 @@ import (
 	"github.com/gematik/zero-lab/go/vau"
 )
 
-// TODO: make this configurable
-var UserAgent = "zero-epa-client/1.0.0"
+var UserAgent = fmt.Sprintf("zero-epa-client/%s", Version)
 
 type ClientOption func(*Session)
 

@@ -34,7 +34,7 @@ var (
 			}
 			if os.Getenv("PRETTY_LOGS") != "false" {
 				logger := slog.New(
-					console.NewHandler(os.Stderr, &console.HandlerOptions{Level: slog.LevelDebug}),
+					console.NewHandler(os.Stderr, &console.HandlerOptions{Level: logLevel}),
 				)
 				slog.SetDefault(logger)
 			} else {

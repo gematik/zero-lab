@@ -57,7 +57,7 @@ func (m *EnforcePolicyMiddleware) Validate() error {
 
 // ServeHTTP implements caddyhttp.MiddlewareHandler.
 func (m EnforcePolicyMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
-	ctx := new(pep.RequestContext)
+	ctx := new(pep.GuardContext)
 	pepErr := m.app.pep.VerifyHeaders(ctx, r)
 	if pepErr != nil {
 		return m.writePEPError(w, pepErr)

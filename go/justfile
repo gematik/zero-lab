@@ -1,9 +1,11 @@
 DOCKER_USER := "spilikin"
 ZERO_EPA_VERSION := "0.0.2"
+ZERO_PDP_VERSION := "0.0.1"
 
 # Display available commands
 info:
     just --list
+
 
 # Build the zero-epa docker image
 epa-docker-build:
@@ -14,3 +16,14 @@ epa-docker-build:
 epa-docker-push: epa-docker-build
     docker push "{{DOCKER_USER}}/zero-epa:{{ZERO_EPA_VERSION}}"
     docker push "{{DOCKER_USER}}/zero-epa:latest"    
+
+# generate version file
+generate-version-file file package version:
+    @echo "package {{package}}" > {{file}}
+    @echo "" >> {{file}}
+    @echo "const Version = \"{{version}}\"" >> {{file}}
+
+# generate version files for all packages
+generate-versions:
+    just generate-version-file epa/version.go epa {{ZERO_EPA_VERSION}}
+    just generate-version-file pdp/version.go pdp {{ZERO_PDP_VERSION}}

@@ -16,7 +16,6 @@ import (
 	"github.com/gematik/zero-lab/go/libzero/nonce"
 	"github.com/gematik/zero-lab/go/libzero/prettylog"
 	"github.com/gematik/zero-lab/go/libzero/util"
-	"github.com/gematik/zero-lab/go/libzero/webclient"
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
 	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
@@ -140,12 +139,14 @@ func main() {
 	}
 	as.MountRoutes(root.Group(""))
 
-	webClient, err := webclient.NewFromServerMetadata(as.Metadata.ServerMetadata)
-	if err != nil {
-		log.Fatal(err)
-	}
+	/*
+		webClient, err := webclient.NewFromServerMetadata(as.Metadata)
+		if err != nil {
+			log.Fatal(err)
+		}
 
-	webClient.MountRoutes(root.Group("/web"))
+		webClient.MountRoutes(root.Group("/web"))
+	*/
 
 	if wellKnownDir := os.Getenv("WELL_KNOWN_DIR"); wellKnownDir != "" {
 		slog.Info("Serving static /.well-known", "dir", wellKnownDir)

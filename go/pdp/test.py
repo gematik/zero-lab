@@ -5,9 +5,8 @@ import base64
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 import threading
-import json
 
-as_url = "http://localhost:8081"
+as_url = "http://127.0.0.1:8011"
 
 # load the metadata
 metadata_url = as_url + "/.well-known/oauth-authorization-server"
@@ -22,7 +21,7 @@ providers_url = metadata["openid_providers_endpoint"]
 providers = requests.get(providers_url).json()
 print(providers)
 
-op_issuer = providers[0]["iss"]
+op_issuer = providers[1]["iss"]
 
 authorization_endpoint = metadata["authorization_endpoint"]
 
@@ -44,21 +43,28 @@ nonce = secrets.token_urlsafe(48)
 # state
 state = secrets.token_urlsafe(48)
 
+client_id = "public-client"
+
 # prepare the request
 params = {
     "response_type": "code",
-    "client_id": "client1",
-    "redirect_uri": "http://localhost:8089/as-callback",
-    "scope": "test",
+    "client_id": client_id,
+    "redirect_uri": "http://127.0.0.1:8089/as-callback",
+    "scope": "zero",
     "code_challenge": code_challenge,
     "code_challenge_method": code_challenge_method,
     "nonce": nonce,
     "state": state,
-    #    "op_issuer": op_issuer,
+    "op_issuer": op_issuer,
 }
 
 # send the request
 response = requests.get(authorization_endpoint, params=params, allow_redirects=False)
+
+if response.status_code != 302:
+    print("Error: Unexpected response from the authorization server.")
+    print(response.text)
+    exit()
 
 # get redirect location
 redirect_location = response.headers["Location"]
@@ -92,8 +98,8 @@ class OAuthCallbackHandler(BaseHTTPRequestHandler):
                 token_params = {
                     "grant_type": "authorization_code",
                     "code": auth_code,
-                    "client_id": "client1",
-                    "redirect_uri": "http://localhost:8089/as-callback",
+                    "client_id": client_id,
+                    "redirect_uri": "http://127.0.0.1:8089/as-callback",
                     "code_verifier": code_verifier,
                 }
                 token_response = requests.post(token_endpoint, data=token_params)

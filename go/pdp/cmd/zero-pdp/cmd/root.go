@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
-	"github.com/gematik/zero-lab/go/libzero/prettylog"
 	"github.com/joho/godotenv"
+	"github.com/phsym/console-slog"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -33,7 +34,9 @@ var (
 				logLevel = slog.LevelDebug
 			}
 			if os.Getenv("PRETTY_LOGS") != "false" {
-				logger := slog.New(prettylog.NewHandler(logLevel))
+				logger := slog.New(
+					console.NewHandler(os.Stderr, &console.HandlerOptions{Level: logLevel}),
+				)
 				slog.SetDefault(logger)
 			} else {
 				slog.SetLogLoggerLevel(logLevel)
@@ -59,6 +62,15 @@ func init() {
 	persistendFlags := rootCmd.PersistentFlags()
 	persistendFlags.StringVarP(&workdir, "workdir", "w", "", "working directory")
 	persistendFlags.BoolVarP(&verbose, "verbose", "v", false, "verbose output")
-	persistendFlags.StringP("config-file", "f", "", "config file (default is pdp.yaml)")
+	persistendFlags.StringP("config-file", "f", "pdp.yaml", "config file (default is pdp.yaml)")
 	viper.BindPFlag("config_file", persistendFlags.Lookup("config-file"))
+}
+
+// Expand ~ to $HOME
+func expandHome(path string) string {
+	if strings.HasPrefix(path, "~") {
+		home, _ := os.UserHomeDir()
+		path = strings.Replace(path, "~", home, 1)
+	}
+	return path
 }

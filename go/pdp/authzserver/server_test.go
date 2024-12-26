@@ -3,12 +3,11 @@ package authzserver
 import (
 	"testing"
 
-	"github.com/gematik/zero-lab/go/libzero/oidc"
-	"github.com/gematik/zero-lab/go/libzero/util"
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
 func CreateTestAuthzServer() (*Server, error) {
-	return New(&Config{})
+	return New(Config{})
 }
 
 func TestAccessToken(t *testing.T) {
@@ -32,5 +31,4 @@ func TestAccessToken(t *testing.T) {
 	}
 
 	t.Logf("access token: %s", accessToken)
-	t.Log(util.JWSToText(accessToken))
 }

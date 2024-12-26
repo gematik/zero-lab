@@ -13,10 +13,11 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/brainpool"
+	"github.com/gematik/zero-lab/go/oauth"
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwe"
 	"github.com/lestrrat-go/jwx/v2/jwt"
-	"golang.org/x/oauth2"
 )
 
 // Environment of the gematik IDP-Dienst
@@ -100,7 +101,7 @@ type TokenKeyPayload struct {
 type ClientConfig struct {
 	Environment       Environment `yaml:"environment"`
 	Name              string      `yaml:"name"`
-	LogiURI           string      `yaml:"logo_uri"`
+	LogoURI           string      `yaml:"logo_uri"`
 	ClientID          string      `yaml:"client_id"`
 	RedirectURI       string      `yaml:"redirect_uri"`
 	Scopes            []string    `yaml:"scopes"`
@@ -149,19 +150,29 @@ func NewClientFromConfig(config ClientConfig) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) AuthCodeURL(state, nonce, verifier string, extraParams url.Values) (string, error) {
+func (c *Client) AuthenticationURL(state, nonce, verifier string, options ...oidc.Option) (string, error) {
+	redirectURI := c.config.RedirectURI
+	for _, opt := range options {
+		switch o := opt.(type) {
+		case oidc.WithAlternateRedirectURI:
+			redirectURI = string(o)
+		}
+	}
 	if c.config.AuthenticatorMode {
-		return c.AuthCodeURLAuthenticator(state, nonce, verifier, extraParams)
+		return c.authenticationURLAuthenticator(state, nonce, verifier, redirectURI)
 	}
 
-	return c.AuthCodeURLDirect(state, nonce, verifier, extraParams)
+	return c.authenticationURLDirect(state, nonce, verifier, redirectURI)
 }
 
-func (c *Client) AuthCodeURLDirect(state, nonce, verifier string, extraParams url.Values) (string, error) {
-	codeChallenge := oauth2.S256ChallengeFromVerifier(verifier)
+func (c *Client) authenticationURLDirect(state, nonce, verifier, redirectURI string) (string, error) {
+	if redirectURI == "" {
+		redirectURI = c.config.RedirectURI
+	}
+	codeChallenge := oauth.S256ChallengeFromVerifier(verifier)
 	query := url.Values{}
 	query.Add("client_id", c.config.ClientID)
-	query.Add("redirect_uri", c.config.RedirectURI)
+	query.Add("redirect_uri", redirectURI)
 	query.Add("response_type", "code")
 	query.Add("scope", strings.Join(c.config.Scopes, " "))
 	query.Add("state", state)
@@ -169,19 +180,13 @@ func (c *Client) AuthCodeURLDirect(state, nonce, verifier string, extraParams ur
 	query.Add("code_challenge", codeChallenge)
 	query.Add("code_challenge_method", "S256")
 
-	for k, v := range extraParams {
-		if _, ok := query[k]; !ok {
-			query[k] = v
-		}
-	}
-
 	slog.Info("Using OP AuthorizationEndpoint", "url", c.Metadata.AuthorizationEndpoint)
 
 	return fmt.Sprintf("%s?%s", c.Metadata.AuthorizationEndpoint, query.Encode()), nil
 }
 
-func (c *Client) AuthCodeURLAuthenticator(state, nonce, verifier string, extraParams url.Values) (string, error) {
-	authURL, err := c.AuthCodeURLDirect(state, nonce, verifier, extraParams)
+func (c *Client) authenticationURLAuthenticator(state, nonce, verifier, redirectURI string) (string, error) {
+	authURL, err := c.authenticationURLDirect(state, nonce, verifier, redirectURI)
 	if err != nil {
 		return "", err
 	}
@@ -201,7 +206,14 @@ func (c *Client) AuthCodeURLAuthenticator(state, nonce, verifier string, extraPa
 	return "authenticator://?" + query.Encode(), nil
 }
 
-func (c *Client) Exchange(code, verifier string, extraParams url.Values) (*oauth2.Token, error) {
+func (c *Client) ExchangeForIdentity(code, verifier string, options ...oidc.Option) (*oidc.TokenResponse, error) {
+	redirectURI := c.config.RedirectURI
+	for _, opt := range options {
+		switch o := opt.(type) {
+		case oidc.WithAlternateRedirectURI:
+			redirectURI = string(o)
+		}
+	}
 	// 32 bytes random key to encrypt the token
 	tokenKeyBytes := make([]byte, 32)
 	_, err := io.ReadFull(rand.Reader, tokenKeyBytes)
@@ -233,15 +245,9 @@ func (c *Client) Exchange(code, verifier string, extraParams url.Values) (*oauth
 	params := url.Values{}
 	params.Set("grant_type", "authorization_code")
 	params.Set("client_id", c.config.ClientID)
-	params.Set("redirect_uri", c.config.RedirectURI)
+	params.Set("redirect_uri", redirectURI)
 	params.Set("code", code)
 	params.Set("key_verifier", string(encryptedTokenKeySerialized))
-
-	for k, v := range extraParams {
-		if _, ok := params[k]; !ok {
-			params[k] = v
-		}
-	}
 
 	slog.Info("Exchanging code for token", "url", c.Metadata.TokenEndpoint, "params", params)
 
@@ -255,27 +261,24 @@ func (c *Client) Exchange(code, verifier string, extraParams url.Values) (*oauth
 		return nil, parseErrorResponse(resp.StatusCode, resp.Body)
 	}
 
-	token, err := unmarshalTokenResponse(resp.Body)
+	tokenResponse, err := unmarshalTokenResponse(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("parsing token response: %w", err)
 	}
 
-	idTokenRaw, ok := token.Extra("id_token").(string)
-	if !ok {
-		return nil, fmt.Errorf("missing or invalid encrypted ID token")
-	}
-
-	if idTokenRaw, err = decryptToken(idTokenRaw, tokenKeyBytes); err != nil {
+	if tokenResponse.IDTokenRaw, err = decryptToken(tokenResponse.IDTokenRaw, tokenKeyBytes); err != nil {
 		return nil, fmt.Errorf("decrypting ID token: %w", err)
 	}
 
-	if token.AccessToken, err = decryptToken(token.AccessToken, tokenKeyBytes); err != nil {
+	if tokenResponse.AccessToken, err = decryptToken(tokenResponse.AccessToken, tokenKeyBytes); err != nil {
 		return nil, fmt.Errorf("decrypting access token: %w", err)
 	}
 
-	return token.WithExtra(map[string]interface{}{
-		"id_token": idTokenRaw,
-	}), nil
+	if tokenResponse.IDToken, err = c.parseIDToken(tokenResponse); err != nil {
+		return nil, fmt.Errorf("parsing ID token: %w", err)
+	}
+
+	return tokenResponse, nil
 }
 
 func decryptToken(token string, key []byte) (string, error) {
@@ -294,19 +297,14 @@ func decryptToken(token string, key []byte) (string, error) {
 	return njwt.Njwt, nil
 }
 
-func (c *Client) ParseIDToken(response *oauth2.Token) (jwt.Token, error) {
+func (c *Client) parseIDToken(response *oidc.TokenResponse) (jwt.Token, error) {
 	key, err := fetchKey(c.Metadata.SigningKeyURI)
 	if err != nil {
 		return nil, fmt.Errorf("fetching signing key: %w", err)
 	}
 
-	idTokenRaw, ok := response.Extra("id_token").(string)
-	if !ok {
-		return nil, fmt.Errorf("missing or invalid ID token")
-	}
-
 	// check signature using the brainpool enabled library
-	_, err = brainpool.ParseToken([]byte(idTokenRaw), brainpool.WithKey(key))
+	_, err = brainpool.ParseToken([]byte(response.IDTokenRaw), brainpool.WithKey(key))
 	if err != nil {
 		return nil, fmt.Errorf("parsing id token: %w", err)
 	}
@@ -314,7 +312,7 @@ func (c *Client) ParseIDToken(response *oauth2.Token) (jwt.Token, error) {
 	// parse the token using the jwx library
 	// since the token is already verified, we can skip the verification step
 	token, err := jwt.ParseString(
-		idTokenRaw,
+		response.IDTokenRaw,
 		jwt.WithAcceptableSkew(time.Duration(5*time.Minute)), // allow 5 minutes skew
 		jwt.WithVerify(false), // skip verification since we already verified the token before
 		jwt.WithIssuer(c.Metadata.Issuer),
@@ -343,7 +341,11 @@ func (c *Client) Name() string {
 }
 
 func (c *Client) LogoURI() string {
-	return c.config.LogiURI
+	return c.config.LogoURI
+}
+
+func (c *Client) RedirectURI() string {
+	return c.config.RedirectURI
 }
 
 type transportAddUserAgent struct {
@@ -356,23 +358,16 @@ func (t *transportAddUserAgent) RoundTrip(req *http.Request) (*http.Response, er
 	return t.Transport.RoundTrip(req)
 }
 
-func unmarshalTokenResponse(r io.Reader) (*oauth2.Token, error) {
+func unmarshalTokenResponse(r io.Reader) (*oidc.TokenResponse, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, fmt.Errorf("reading token response: %w", err)
 	}
 
-	token := new(oauth2.Token)
-	if err = json.Unmarshal(data, token); err != nil {
+	tokenResponse := new(oidc.TokenResponse)
+	if err = json.Unmarshal(data, tokenResponse); err != nil {
 		return nil, fmt.Errorf("unmarshalling token response: %w", err)
 	}
 
-	extras := make(map[string]interface{})
-	if err = json.Unmarshal(data, &extras); err != nil {
-		return nil, fmt.Errorf("unmarshalling token response extras: %w", err)
-	}
-
-	token = token.WithExtra(extras)
-
-	return token, nil
+	return tokenResponse, nil
 }

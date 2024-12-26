@@ -57,7 +57,7 @@ func TestGemIDP(t *testing.T) {
 
 	verifier := oauth2.GenerateVerifier()
 
-	authURL, err := client.AuthCodeURL("state", "nonce", verifier, nil)
+	authURL, err := client.AuthenticationURL("state", "nonce", verifier)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,19 +79,19 @@ func TestGemIDP(t *testing.T) {
 
 	t.Log("CodeRedirectURL", codeRedirectURL)
 
-	tokenResponse, err := client.Exchange(codeRedirectURL.Code, verifier, nil)
+	tokenResponse, err := client.ExchangeForIdentity(codeRedirectURL.Code, verifier)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	fmt.Println(tokenResponse.AccessToken)
 
-	idToken, err := client.ParseIDToken(tokenResponse)
+	claims := make(map[string]any)
+	err = tokenResponse.Claims(&claims)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	privateClaims := idToken.PrivateClaims()
-	slog.Info("ID Token private claims", "claims", privateClaims)
+	t.Log(claims)
 
 }

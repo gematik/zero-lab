@@ -14,8 +14,6 @@ import (
 )
 
 func init() {
-	runCmd.Flags().StringP("addr", "a", ":8081", "Address to listen on")
-	viper.BindPFlag("addr", runCmd.Flags().Lookup("addr"))
 	rootCmd.AddCommand(runCmd)
 }
 
@@ -23,7 +21,7 @@ var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Run the Zero Trust PDP",
 	Run: func(cmd *cobra.Command, args []string) {
-		configFile := pdp.ExpandPath(viper.GetString("config_file"))
+		configFile := expandHome(viper.GetString("config_file"))
 		if configFile == "" {
 			cobra.CheckErr("config file is required. Use --config-file/-f flag or environment variable")
 		}
@@ -33,10 +31,10 @@ var runCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		slog.Info("Starting Zero Trust PDP", "version", libzero.Version, "config_file", configFile, "config", config)
-		pdp, err := pdp.New(config)
+		slog.Info("Starting Zero Trust PDP", "version", libzero.Version, "config_file", configFile)
+		pdp, err := pdp.New(*config)
 		if err != nil {
-			slog.Error("Failed to create PDP", "error", err)
+			slog.Error("Failed to create PDP", "error", err, "config", config)
 			os.Exit(1)
 		}
 
@@ -45,10 +43,13 @@ var runCmd = &cobra.Command{
 
 		pdp.AuthzServer.MountRoutes(e.Group(""))
 
-		addr := viper.GetString("addr")
+		for _, route := range e.Routes() {
+			slog.Info("Route", "method", route.Method, "path", route.Path)
+		}
+
 		slog.Debug("Zero Trust PDP configured", "pdp", pdp)
-		slog.Info(fmt.Sprintf("starting Zero Trust PDP at %s", addr))
-		e.Logger.Fatal(e.Start(addr))
+		slog.Info(fmt.Sprintf("starting Zero Trust PDP at %s", pdp.Address))
+		e.Logger.Fatal(e.Start(pdp.Address))
 
 	},
 }

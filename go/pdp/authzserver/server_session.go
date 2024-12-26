@@ -3,7 +3,7 @@ package authzserver
 import (
 	"time"
 
-	"github.com/gematik/zero-lab/go/libzero/oidc"
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
 type AuthzServerSession struct {

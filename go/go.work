@@ -2,12 +2,10 @@ go 1.23.4
 
 use (
 	./brainpool
-	./cmd/zero
-	./cmd/zero-zerobin
 	./epa
 	./gemidp
 	./gempki
-	./libzero
+	./oauth
 	./pdp
 	./pep
 	./vau

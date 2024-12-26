@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
 	"github.com/go-playground/validator/v10"
@@ -13,8 +12,9 @@ import (
 )
 
 type Config struct {
-	BaseDir           string              `yaml:"-"`
-	AuthzServerConfig *authzserver.Config `yaml:"authorization_server" validate:"required"`
+	Address           string             `yaml:"address"`
+	BaseDir           string             `yaml:"-"`
+	AuthzServerConfig authzserver.Config `yaml:"authorization_server" validate:"required"`
 }
 
 func LoadConfigFile(path string) (*Config, error) {
@@ -40,10 +40,11 @@ func LoadConfigFile(path string) (*Config, error) {
 }
 
 type PDP struct {
+	Address     string
 	AuthzServer *authzserver.Server
 }
 
-func New(config *Config) (*PDP, error) {
+func New(config Config) (*PDP, error) {
 	validate := validator.New()
 	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
 		return fld.Tag.Get("yaml")
@@ -59,16 +60,15 @@ func New(config *Config) (*PDP, error) {
 		return nil, fmt.Errorf("create authorization server: %w", err)
 	}
 
-	return &PDP{
+	pdp := &PDP{
 		AuthzServer: authzServer,
-	}, nil
-}
-
-// Expand ~ to $HOME
-func ExpandPath(path string) string {
-	if strings.HasPrefix(path, "~") {
-		home, _ := os.UserHomeDir()
-		path = strings.Replace(path, "~", home, 1)
 	}
-	return path
+
+	if config.Address == "" {
+		pdp.Address = ":8011"
+	} else {
+		pdp.Address = config.Address
+	}
+
+	return pdp, nil
 }
