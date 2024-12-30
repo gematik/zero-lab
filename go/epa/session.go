@@ -109,18 +109,19 @@ func OpenSession(env Env, provider ProviderNumber, sf SecurityFunctions, options
 			RootCAs:            session.certPool,
 		},
 	}
-	if session.Timeout > 0 {
-		transport.ResponseHeaderTimeout = session.Timeout
-	} else {
-		// default timeout
-		transport.ResponseHeaderTimeout = 10 * time.Second
-	}
 
 	// set User-Agent for all requests
 	session.HttpClient = &http.Client{
 		Transport: &customTransport{
 			t: transport,
 		},
+	}
+
+	if session.Timeout > 0 {
+		session.HttpClient.Timeout = session.Timeout
+	} else {
+		// default timeout 5 seconds
+		session.HttpClient.Timeout = 5 * time.Second
 	}
 
 	session.BaseURL = ResolveBaseURL(env, provider)
@@ -183,7 +184,7 @@ func parseHttpError(resp *http.Response) error {
 
 	typedError := new(ErrorType)
 	if err := json.NewDecoder(bodyData).Decode(typedError); err != nil {
-		return fmt.Errorf(fmt.Sprintf("http status %d: %s", resp.StatusCode, bodyStr))
+		return fmt.Errorf("http status %d: %s", resp.StatusCode, bodyStr)
 	}
 	typedError.HttpStatusCode = resp.StatusCode
 	return typedError

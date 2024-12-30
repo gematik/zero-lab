@@ -8,8 +8,8 @@ COPY . ./
 # Build
 RUN CGO_ENABLED=0 GOOS=linux go build ./epa/cmd/zero-epa 
 
-#FROM scratch
-FROM ubuntu
+FROM scratch
+#FROM ubuntu
 COPY --from=build /etc/ssl /etc/ssl
 COPY --from=build /src/zero-epa /app/zero-epa
 
