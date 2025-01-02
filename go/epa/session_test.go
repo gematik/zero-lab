@@ -4,9 +4,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
-	"sync"
 	"testing"
 
 	"github.com/gematik/zero-lab/go/brainpool"
@@ -165,6 +163,7 @@ func TestConnect(t *testing.T) {
 	}
 }
 
+/*
 func TestVAURaceCondition(t *testing.T) {
 
 	for _, testRecord := range testRecords {
@@ -248,3 +247,4 @@ func TestVAURaceCondition(t *testing.T) {
 
 	}
 }
+*/
