@@ -45,7 +45,7 @@ type Channel struct {
 	httpClient          *http.Client
 	Env                 Env
 	ID                  string
-	HostURL             *url.URL
+	ChannelURL          *url.URL
 	SignedPublicVAUKeys *SignedPublicVAUKeys
 	keyID               []byte
 	// key and counter for k2_c2s_app_data
@@ -74,21 +74,21 @@ func (c *Channel) Do(req *http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("posting encrypted request: %w", err)
 	}
 
-	slog.Debug("Received VAU response", "url", c.HostURL.String(), "requestCounter", encrypted.RequestCounter, "status", encResp.StatusCode)
+	slog.Debug("Received VAU response", "channel_url", c.ChannelURL.String(), "requestCounter", encrypted.RequestCounter, "status", encResp.StatusCode)
 
 	if encResp.StatusCode != http.StatusOK {
 		messageError := new(MessageError)
 		if err := cbor.NewDecoder(encResp.Body).Decode(messageError); err != nil {
 			return nil, fmt.Errorf("decoding error: %w", err)
 		}
-		return nil, fmt.Errorf("server %s: %w", c.HostURL, messageError)
+		return nil, fmt.Errorf("server %s: %w", c.ChannelURL, messageError)
 	}
 
 	return c.DecryptResponse(encResp, req)
 }
 
 func (c *Channel) EncryptRequest(r *http.Request) (*EncryptedRequest, error) {
-	slog.Debug("Encrypting VAU request", "host_url", c.HostURL.String(), "method", r.Method, "url", r.URL.String())
+	slog.Debug("Encrypting VAU request", "channel_url", c.ChannelURL.String(), "method", r.Method, "url", r.URL.String())
 	data, err := httputil.DumpRequest(r, true)
 	if err != nil {
 		return nil, fmt.Errorf("dumping request: %w", err)
@@ -188,14 +188,14 @@ func (c *Channel) Decrypt(data []byte, req *http.Request) (*http.Response, error
 		return nil, fmt.Errorf("parsing response: %w", err)
 	}
 
-	slog.Debug("Decrypted VAU response", "host_url", c.HostURL.String(), "requestCounter", binary.BigEndian.Uint64(header[3:]), "status", resp.StatusCode)
+	slog.Debug("Decrypted VAU response", "channel_url", c.ChannelURL.String(), "requestCounter", binary.BigEndian.Uint64(header[3:]), "status", resp.StatusCode)
 
 	return resp, nil
 }
 
 // PostEncryptedRequest sends previously encrypted data to the server, returning the raw "outer" response.
 func (c *Channel) PostEncryptedRequest(data []byte) (*http.Response, error) {
-	req, err := http.NewRequest(http.MethodPost, c.HostURL.String(), bytes.NewReader(data))
+	req, err := http.NewRequest(http.MethodPost, c.ChannelURL.String(), bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}

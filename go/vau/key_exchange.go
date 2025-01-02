@@ -192,7 +192,7 @@ func OpenChannel(baseURLString string, env Env, httpClient *http.Client) (*Chann
 		httpClient:          httpClient,
 		Env:                 EnvNonPU,
 		ID:                  channelID,
-		HostURL:             channelURL,
+		ChannelURL:          channelURL,
 		SignedPublicVAUKeys: signedPubKeys,
 		keyID:               key_id,
 		k2_c2s_app_data:     k2_c2s_app_data,

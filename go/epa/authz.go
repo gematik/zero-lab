@@ -66,7 +66,7 @@ func (s *Session) SendAuthCodeSC(authCode SendAuthCodeSCtype) error {
 	if err != nil {
 		return fmt.Errorf("marshaling body: %w", err)
 	}
-	slog.Debug("SendAuthCodeSC", "vau_host", s.VAUChannel.HostURL)
+	slog.Debug("SendAuthCodeSC", "host_url", s.BaseURL)
 	req, err := http.NewRequest("POST", "/epa/authz/v1/send_authcode_sc", bytes.NewBuffer(body))
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
@@ -137,7 +137,7 @@ func (s *Session) Authorize(authenticator *gemidp.Authenticator) error {
 		return fmt.Errorf("authenticate: %w", err)
 	}
 
-	slog.Debug("Authorize", "codeRedirectURL", codeRedirectURL)
+	slog.Debug("Authorize", "code_redirect_url", codeRedirectURL)
 
 	err = s.SendAuthCodeSC(SendAuthCodeSCtype{
 		AuthorizationCode: codeRedirectURL.Code,
