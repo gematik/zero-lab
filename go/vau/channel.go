@@ -88,6 +88,7 @@ func (c *Channel) Do(req *http.Request) (*http.Response, error) {
 }
 
 func (c *Channel) EncryptRequest(r *http.Request) (*EncryptedRequest, error) {
+	slog.Debug("Encrypting VAU request", "host_url", c.HostURL.String(), "method", r.Method, "url", r.URL.String())
 	data, err := httputil.DumpRequest(r, true)
 	if err != nil {
 		return nil, fmt.Errorf("dumping request: %w", err)
@@ -186,6 +187,8 @@ func (c *Channel) Decrypt(data []byte, req *http.Request) (*http.Response, error
 	if err != nil {
 		return nil, fmt.Errorf("parsing response: %w", err)
 	}
+
+	slog.Debug("Decrypted VAU response", "host_url", c.HostURL.String(), "requestCounter", binary.BigEndian.Uint64(header[3:]), "status", resp.StatusCode)
 
 	return resp, nil
 }
