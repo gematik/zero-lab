@@ -66,7 +66,7 @@ func (s *Session) SendAuthCodeSC(authCode SendAuthCodeSCtype) error {
 	if err != nil {
 		return fmt.Errorf("marshaling body: %w", err)
 	}
-	slog.Debug("SendAuthCodeSC", "body", string(body))
+	slog.Debug("SendAuthCodeSC", "vau_host", s.VAUChannel.HostURL)
 	req, err := http.NewRequest("POST", "/epa/authz/v1/send_authcode_sc", bytes.NewBuffer(body))
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
