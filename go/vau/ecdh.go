@@ -53,8 +53,8 @@ func (ed *ECDHData) Encapsulate() (ss []byte, ct *ECDHData, err error) {
 
 	return ss, &ECDHData{
 		Crv: ed.Crv,
-		X:   ecdsaPrK.X.Bytes(),
-		Y:   ecdsaPrK.Y.Bytes(),
+		X:   ensurePadding(elliptic.P256(), ecdsaPrK.X.Bytes()),
+		Y:   ensurePadding(elliptic.P256(), ecdsaPrK.Y.Bytes()),
 	}, nil
 }
 
@@ -76,24 +76,13 @@ func GenerateRandomECKeyPair(curve elliptic.Curve) (*ECKeyPair, error) {
 		return nil, fmt.Errorf("generating ECDH key pair: %w", err)
 	}
 
-	// take care of padings
-	size := curve.Params().BitSize / 8
-	x := ecdsaPrK.X.Bytes()
-	y := ecdsaPrK.Y.Bytes()
-	if len(x) < size {
-		x = append(make([]byte, size-len(x)), x...)
-	}
-	if len(y) < size {
-		y = append(make([]byte, size-len(y)), y...)
-	}
-
 	return &ECKeyPair{
 		privateKey: ecdhPrK,
 		PublicKey:  ecdhPrK.PublicKey(),
 		PublicData: ECDHData{
 			Crv: curve.Params().Name,
-			X:   x,
-			Y:   y,
+			X:   ensurePadding(curve, ecdsaPrK.X.Bytes()),
+			Y:   ensurePadding(curve, ecdsaPrK.Y.Bytes()),
 		},
 	}, nil
 }
@@ -105,4 +94,12 @@ func (kp *ECKeyPair) Decapsulate(ecdhData *ECDHData) (ss []byte, err error) {
 		return nil, fmt.Errorf("decoding ECDH public key: %w", err)
 	}
 	return kp.privateKey.ECDH(ecc_public_key_sender)
+}
+
+func ensurePadding(curve elliptic.Curve, axis []byte) []byte {
+	size := curve.Params().BitSize / 8
+	if len(axis) < size {
+		return append(make([]byte, size-len(axis)), axis...)
+	}
+	return axis
 }

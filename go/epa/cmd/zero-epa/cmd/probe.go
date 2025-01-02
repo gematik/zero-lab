@@ -64,11 +64,20 @@ var probePatientCmd = &cobra.Command{
 
 			slog.Info("Authorized", "env", env, "provider", provider, "subject", cert.Subject.String())
 
-			if err := session.Entitle(kvnr); err != nil {
-				slog.Error("Failed to entitle", "error", err)
+			recordAvailable, err := session.GetRecordStatus(kvnr)
+			if err != nil {
+				slog.Error("Failed to get record status", "error", err, "base_url", session.BaseURL)
 				continue
 			}
-			slog.Info("Entitled", "env", env, "provider", provider, "kvnr", kvnr)
+
+			if recordAvailable {
+				slog.Info("Record available", "kvnr", kvnr, "base_url", session.BaseURL)
+				if err := session.Entitle(kvnr); err != nil {
+					slog.Error("Failed to entitle", "error", err)
+					continue
+				}
+				slog.Info("Entitled", "env", env, "provider", provider, "kvnr", kvnr)
+			}
 		}
 	},
 }
