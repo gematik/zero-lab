@@ -1,6 +1,7 @@
 DOCKER_USER := "spilikin"
-ZERO_EPA_VERSION := "0.0.2"
-ZERO_PDP_VERSION := "0.0.1"
+ZERO_VERSION := "0.10.1"
+ZERO_EPA_VERSION := ZERO_VERSION
+ZERO_PDP_VERSION := ZERO_VERSION
 
 # Display available commands
 info:
