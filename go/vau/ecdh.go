@@ -76,13 +76,24 @@ func GenerateRandomECKeyPair(curve elliptic.Curve) (*ECKeyPair, error) {
 		return nil, fmt.Errorf("generating ECDH key pair: %w", err)
 	}
 
+	// take care of padings
+	size := curve.Params().BitSize / 8
+	x := ecdsaPrK.X.Bytes()
+	y := ecdsaPrK.Y.Bytes()
+	if len(x) < size {
+		x = append(make([]byte, size-len(x)), x...)
+	}
+	if len(y) < size {
+		y = append(make([]byte, size-len(y)), y...)
+	}
+
 	return &ECKeyPair{
 		privateKey: ecdhPrK,
 		PublicKey:  ecdhPrK.PublicKey(),
 		PublicData: ECDHData{
 			Crv: curve.Params().Name,
-			X:   ecdsaPrK.X.Bytes(),
-			Y:   ecdsaPrK.Y.Bytes(),
+			X:   x,
+			Y:   y,
 		},
 	}, nil
 }

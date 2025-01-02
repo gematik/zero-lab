@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/epa"
@@ -95,6 +96,7 @@ func TestConnect(t *testing.T) {
 					ProofOfAuditEvidenceFunc: EnvProofOfAuditEvidenceFunc,
 				},
 				epa.WithInsecureSkipVerify(),
+				epa.WithTimeout(30*time.Second),
 			)
 			if err != nil {
 				t.Fatalf("Connect returned an error: %v", err)

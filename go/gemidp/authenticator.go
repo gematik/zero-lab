@@ -128,7 +128,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 		return nil, fmt.Errorf("decoding challenge: %w", err)
 	}
 
-	slog.Info("Challenge", "challenge", challenge)
+	slog.Debug("Challenge", "challenge", challenge)
 
 	token, err := brainpool.ParseToken([]byte(challenge.Challenge), brainpool.WithKey(idpSigKey))
 	if err != nil {

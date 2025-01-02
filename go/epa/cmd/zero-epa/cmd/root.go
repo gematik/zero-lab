@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/phsym/console-slog"
@@ -63,4 +64,29 @@ func init() {
 	persistendFlags.BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 	persistendFlags.StringP("config-file", "f", "zero-epa.yaml", "config file, relative to working directory")
 	viper.BindPFlag("config_file", persistendFlags.Lookup("config-file"))
+
+	persistendFlags.StringP("vsdm-hmac-key", "", "", "VSDM HMAC Key")
+	viper.BindPFlag("vsdm-hmac-key", persistendFlags.Lookup("vsdm-hmac-key"))
+	viper.BindEnv("vsdm-hmac-key", "VSDM_HMAC_KEY")
+
+	persistendFlags.StringP("vsdm-hmac-kid", "", "", "VSDM HMAC Key ID")
+	viper.BindPFlag("vsdm-hmac-kid", persistendFlags.Lookup("vsdm-hmac-kid"))
+	viper.BindEnv("vsdm-hmac-kid", "VSDM_HMAC_KID")
+
+	persistendFlags.StringP("authn-private-key-path", "", "", "Path to SMC-B private key")
+	viper.BindPFlag("authn-private-key-path", persistendFlags.Lookup("authn-private-key-path"))
+	viper.BindEnv("authn-private-key-path", "AUTHN_PRIVATE_KEY_PATH")
+
+	persistendFlags.StringP("authn-cert-path", "", "", "Path to SMC-B certificate")
+	viper.BindPFlag("authn-cert-path", persistendFlags.Lookup("authn-cert-path"))
+	viper.BindEnv("authn-cert-path", "AUTHN_CERT_PATH")
+
+	persistendFlags.DurationP("timeout", "t", 10*time.Second, "Timeout for requests as duration")
+	viper.BindPFlag("timeout", persistendFlags.Lookup("timeout"))
+	viper.BindEnv("timeout", "TIMEOUT")
+
+	persistendFlags.StringP("env", "e", "dev", "ePA Environment (dev, ref, test, prod)")
+	viper.BindPFlag("env", persistendFlags.Lookup("env"))
+	viper.BindEnv("env", "EPA_ENV")
+
 }

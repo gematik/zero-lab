@@ -38,6 +38,21 @@ type PatientRecordMetadata struct {
 	Provider   ProviderNumber
 }
 
+func IDPEnvironment(env Env) gemidp.Environment {
+	switch env {
+	case EnvDev:
+		return gemidp.EnvironmentReference
+	case EnvRef:
+		return gemidp.EnvironmentReference
+	case EnvTest:
+		return gemidp.EnvironmentTest
+	case EnvProd:
+		return gemidp.EnvironmentProduction
+	default:
+		return gemidp.EnvironmentReference
+	}
+}
+
 func NewProxy(config *ProxyConfig) (*Proxy, error) {
 	p := &Proxy{
 		Env:         config.Env,
@@ -68,20 +83,7 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 
 	certPool := gempki.RootsRef.BuildCertPool(tsl)
 
-	var idpEnv gemidp.Environment
-
-	switch p.Env {
-	case EnvDev:
-		idpEnv = gemidp.EnvironmentReference
-	case EnvRef:
-		idpEnv = gemidp.EnvironmentReference
-	case EnvTest:
-		idpEnv = gemidp.EnvironmentTest
-	case EnvProd:
-		idpEnv = gemidp.EnvironmentProduction
-	default:
-		return nil, fmt.Errorf("unknown environment: %v", p.Env)
-	}
+	idpEnv := IDPEnvironment(p.Env)
 
 	p.Authenticator, err = gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
 		Environment: idpEnv,

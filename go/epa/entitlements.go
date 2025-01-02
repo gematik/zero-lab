@@ -20,7 +20,7 @@ type EntitlementRequestType struct {
 // Entitle the current SMC-B (provided by SecuriotyFunctions)
 // to access the data of the insurant with the given insurant.
 func (s *Session) Entitle(insurantId string) error {
-	slog.Info("Entitle insurant", "env", s.Env, "insurantId", insurantId)
+	slog.Debug("Entitling insurant", "env", s.Env, "insurantId", insurantId)
 	auditEvidence, err := s.securityFunctions.ProofOfAuditEvidenceFunc(insurantId)
 	if err != nil {
 		return fmt.Errorf("getting proof of audit evidence: %w", err)

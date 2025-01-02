@@ -67,6 +67,25 @@ const (
 	EnvProd Env = "prod"
 )
 
+func (e Env) String() string {
+	return string(e)
+}
+
+func EnvFromString(s string) (Env, error) {
+	switch s {
+	case "dev":
+		return EnvDev, nil
+	case "test":
+		return EnvTest, nil
+	case "ref":
+		return EnvRef, nil
+	case "prod":
+		return EnvProd, nil
+	default:
+		return "", fmt.Errorf("unknown environment: %s", s)
+	}
+}
+
 type ProviderNumber int
 
 const (
