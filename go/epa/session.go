@@ -183,7 +183,7 @@ func parseHttpError(resp *http.Response) error {
 
 	typedError := new(ErrorType)
 	if err := json.NewDecoder(bodyData).Decode(typedError); err != nil {
-		return fmt.Errorf(fmt.Sprintf("http status %d: %s", resp.StatusCode, bodyStr))
+		return fmt.Errorf("http status %d: %s", resp.StatusCode, bodyStr)
 	}
 	typedError.HttpStatusCode = resp.StatusCode
 	return typedError

@@ -2,6 +2,7 @@ package zaddy
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/caddyserver/caddy/v2"
@@ -13,13 +14,13 @@ import (
 
 func init() {
 	caddy.RegisterModule(App{})
-	httpcaddyfile.RegisterGlobalOption("zero", parseCaddyfileZero)
+	httpcaddyfile.RegisterGlobalOption("pep", parseCaddyfilePEP)
 }
 
 type App struct {
-	OAuth2ServerURI string `json:"oauth2_server_uri,omitempty"`
-	logger          *slog.Logger
-	pep             *pep.PEP
+	JWKSPath string `json:"jwks_path,omitempty"`
+	logger   *slog.Logger
+	pep      *pep.PEP
 }
 
 func (App) CaddyModule() caddy.ModuleInfo {
@@ -31,33 +32,39 @@ func (App) CaddyModule() caddy.ModuleInfo {
 
 func (a *App) Start() error {
 	a.logger.Info("Starting Zero app")
-	a.pep = pep.New()
-	a.pep.Logger = a.logger
-	a.pep.OAuth2ServerURI = a.OAuth2ServerURI
-	go a.pep.Start(caddy.Context{})
+	var err error
+	a.pep, err = pep.NewBuilder().
+		WithJWKSetPath(a.JWKSPath).
+		WithSlogger(a.logger).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to create PEP: %w", err)
+	}
+
+	a.logger.Info("PEP successfully created", "jwks_path", a.JWKSPath)
+
 	return nil
 }
 
 func (a *App) Stop() error {
 	a.logger.Info("Stopping Zero app")
-	a.pep.Stop()
+	a.pep.Close()
 	return nil
 }
 
 func (a *App) Provision(ctx caddy.Context) error {
 	a.logger = ctx.Slogger()
-	a.logger.Info(">>>>> Provisioning Zero app", "oauth2_server_uri", a.OAuth2ServerURI)
 	return nil
 }
 
 func (a *App) Validate() error {
-	if a.OAuth2ServerURI == "" {
-		return errors.New("oauth2_server_uri must be set")
+	if a.JWKSPath == "" {
+		return errors.New("jwks_path must be set")
 	}
 	return nil
 }
 
-func parseCaddyfileZero(d *caddyfile.Dispenser, existingVal any) (interface{}, error) {
+func parseCaddyfilePEP(d *caddyfile.Dispenser, existingVal any) (interface{}, error) {
 	a, ok := existingVal.(*App)
 	if !ok {
 		a = new(App)
@@ -69,11 +76,11 @@ func parseCaddyfileZero(d *caddyfile.Dispenser, existingVal any) (interface{}, e
 
 	for d.NextBlock(0) {
 		switch d.Val() {
-		case "oauth2_server_uri":
+		case "jwks_path":
 			if !d.NextArg() {
 				return nil, d.ArgErr()
 			}
-			a.OAuth2ServerURI = d.Val()
+			a.JWKSPath = d.Val()
 		default:
 			return nil, d.Errf("unrecognized subdirective: %s", d.Val())
 		}

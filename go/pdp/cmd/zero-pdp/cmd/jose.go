@@ -76,7 +76,9 @@ var josePublicJwkSetCmd = &cobra.Command{
 		data, err := io.ReadAll(os.Stdin)
 		cobra.CheckErr(err)
 		set, err := jwk.Parse(data)
+		cobra.CheckErr(err)
 		publicSet, err := jwkutil.PublicJwkSet(set)
+		println(set, publicSet)
 		cobra.CheckErr(err)
 		cobra.CheckErr(json.NewEncoder(os.Stdout).Encode(publicSet))
 	},

@@ -1,7 +1,6 @@
 package zaddy
 
 import (
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -19,9 +18,9 @@ func init() {
 }
 
 type EnforcePolicyMiddleware struct {
-	Scope  string `json:"scope,omitempty"`
-	logger *slog.Logger
-	app    *App
+	Enforcer *pep.EnforcerHolder `json:"enforcer,omitempty"`
+	logger   *slog.Logger
+	app      *App
 }
 
 func (EnforcePolicyMiddleware) CaddyModule() caddy.ModuleInfo {
@@ -57,22 +56,11 @@ func (m *EnforcePolicyMiddleware) Validate() error {
 
 // ServeHTTP implements caddyhttp.MiddlewareHandler.
 func (m EnforcePolicyMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
-	ctx := new(pep.GuardContext)
-	pepErr := m.app.pep.VerifyHeaders(ctx, r)
-	if pepErr != nil {
-		return m.writePEPError(w, pepErr)
-	}
-	pepErr = m.app.pep.VerifyAccessToken(ctx, r)
-	if pepErr != nil {
-		return m.writePEPError(w, pepErr)
-	}
-	return next.ServeHTTP(w, r)
-}
-
-func (m EnforcePolicyMiddleware) writePEPError(w http.ResponseWriter, err *pep.Error) error {
-	m.logger.Debug("PEP error occured", "error", err)
-	w.WriteHeader(err.HttpStatus)
-	return json.NewEncoder(w).Encode(err)
+	pepCtx := m.app.pep.NewContext(w, r)
+	m.Enforcer.Apply(pepCtx, func(ctx pep.Context) {
+		next.ServeHTTP(w, r)
+	})
+	return nil
 }
 
 // Caddyfile parsing
@@ -80,6 +68,7 @@ func (m EnforcePolicyMiddleware) writePEPError(w http.ResponseWriter, err *pep.E
 //
 //	enforce_policy {
 //	   scope <scope>
+//
 //	}
 func (m *EnforcePolicyMiddleware) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
 	// consume the option name
@@ -94,7 +83,12 @@ func (m *EnforcePolicyMiddleware) UnmarshalCaddyfile(d *caddyfile.Dispenser) err
 			if !d.NextArg() {
 				return d.ArgErr()
 			}
-			m.Scope = d.Val()
+			m.Enforcer = &pep.EnforcerHolder{
+				Enforcer: &pep.EnforcerScope{
+					TypeVal: pep.EnforcerTypeScope,
+					Scope:   d.Val(),
+				},
+			}
 		default:
 			return d.Errf("unrecognized subdirective: %s", d.Val())
 		}

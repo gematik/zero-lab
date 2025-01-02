@@ -55,9 +55,10 @@ func GenerateJwkSet(num int) (jwk.Set, error) {
 
 func PublicJwkSet(set jwk.Set) (jwk.Set, error) {
 	publicSet := jwk.NewSet()
-	for iter := set.Iterate(context.Background()); iter.Next(context.Background()); {
+	it := set.Keys(context.Background())
+	for it.Next(context.Background()) {
 		print(set)
-		key := iter.Pair().Value.(jwk.Key)
+		key := it.Pair().Value.(jwk.Key)
 		publicKey, err := key.PublicKey()
 		if err != nil {
 			return nil, fmt.Errorf("could not get public key: %w", err)

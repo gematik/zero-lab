@@ -2,13 +2,13 @@ package pep
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/lestrrat-go/jwx/v2/jwk"
@@ -16,160 +16,153 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
-type Guard interface {
-	VerifyRequest(ctx *GuardContext, r *http.Request) error
+type Config struct {
+	JWKSetPath string `json:"jwks_path,omitempty"`
 }
 
 type PEP struct {
-	OAuth2ServerURI string
-	RefreshInterval time.Duration
-	Logger          *slog.Logger
-	Jwks            jwk.Set
-	HttpClient      *http.Client
-	jwksMutex       sync.RWMutex
-	stopChan        chan bool
+	slogger                *slog.Logger
+	httpClient             *http.Client
+	jwkSetFunc             func() (jwk.Set, error)
+	decryptAccessTokenFunc func(string) (string, error)
 }
 
-type GuardContext struct {
-	AccessTokenRaw   string
-	AccessToken      jwt.Token
-	SessionCookieRaw []byte
-	ClaimsMap        map[string]interface{}
-	Extra            map[string]interface{}
+type builder struct {
+	p   *PEP
+	err error
 }
 
-func New() *PEP {
-	return &PEP{
-		HttpClient: &http.Client{
-			Timeout: 5 * time.Second,
-		},
-		RefreshInterval: 5 * time.Minute,
-		Logger:          slog.Default(),
+func NewBuilder() *builder {
+	return &builder{p: &PEP{}}
+}
+
+func (b *builder) Build() (*PEP, error) {
+	if b.err != nil {
+		return nil, b.err
 	}
-}
-
-const (
-	ContextKeyAccessToken = "access_token"
-	ContextKeyClaimsMap   = "claims_map"
-)
-
-type Error struct {
-	HttpStatus  int    `json:"-"`
-	Code        string `json:"error"`
-	Description string `json:"error_description,omitempty"`
-	URI         string `json:"error_uri,omitempty"`
-}
-
-func (e Error) Error() string {
-	return fmt.Sprintf("%s: %s", e.Code, e.Description)
-}
-
-var ErrForbiddenHeadersInRequest = &Error{
-	HttpStatus:  400,
-	Code:        "forbidden_headers_in_request",
-	Description: "Request contains forbidden headers",
-}
-
-var ErrNoAuthorizationHeader = &Error{
-	HttpStatus:  400,
-	Code:        "no_authorization_header",
-	Description: "No Authorization header in request",
-}
-
-var ErrInvalidAuthorizationHeader = &Error{
-	HttpStatus:  400,
-	Code:        "invalid_authorization_header",
-	Description: "Invalid Authorization header in request",
-}
-
-// Just enough elements to load the JWKS from the OAuth2 server
-type AuthzServerMetadata struct {
-	JwksURI string `json:"jwks_uri"`
-}
-
-// Reloads the JWKS from the OAuth2 server
-func (p *PEP) ReloadJWKS() error {
-
-	metadataURL := p.OAuth2ServerURI + "/.well-known/oauth-authorization-server"
-
-	resp, err := p.HttpClient.Get(metadataURL)
-	if err != nil {
-		return fmt.Errorf("fetch metadata: %w", err)
+	if b.p.jwkSetFunc == nil {
+		return nil, errors.New("none of the JWKSet provider has been set")
 	}
-	defer resp.Body.Close()
+	if b.p.httpClient == nil {
+		b.p.httpClient = http.DefaultClient
+	}
+	if b.p.slogger == nil {
+		b.p.slogger = slog.Default()
+	}
+	return b.p, nil
+}
 
-	metadata := new(AuthzServerMetadata)
-	err = json.NewDecoder(resp.Body).Decode(metadata)
+func (b *builder) WithJWKSetFunc(f func() (jwk.Set, error)) *builder {
+	b.p.jwkSetFunc = f
+	return b
+}
+
+func (b *builder) WithJWKSet(jwkSet jwk.Set) *builder {
+	b.p.jwkSetFunc = func() (jwk.Set, error) {
+		return jwkSet, nil
+	}
+	return b
+}
+
+func (b *builder) WithJWKSetPath(path string) *builder {
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("decode metadata: %w", err)
+		b.err = fmt.Errorf("could not read JWKSet from %s: %w", path, err)
+	}
+	jwks, err := jwk.Parse(data)
+	if err != nil {
+		b.err = fmt.Errorf("could not parse JWKSet from %s: %w", path, err)
 	}
 
-	p.jwksMutex.Lock()
-	defer p.jwksMutex.Unlock()
+	return b.WithJWKSet(jwks)
+}
 
-	p.Jwks, err = jwk.Fetch(context.Background(), metadata.JwksURI, jwk.WithHTTPClient(p.HttpClient))
-	if err != nil {
-		return fmt.Errorf("fetch JWKS: %w", err)
+func (b *builder) WithDecryptAccessTokenFunc(f func(string) (string, error)) *builder {
+	b.p.decryptAccessTokenFunc = f
+	return b
+}
+
+func (b *builder) WithHttpClient(client *http.Client) *builder {
+	b.p.httpClient = client
+	return b
+}
+
+func (b *builder) WithSlogger(slogger *slog.Logger) *builder {
+	b.p.slogger = slogger
+	return b
+}
+
+// close the PEP and release any resources
+func (p *PEP) Close() error {
+	// TODO: reserved for future use
+	return nil
+}
+
+func (p *PEP) deny(ctx Context, err Error) {
+	w := ctx.Writer()
+	r := ctx.Request()
+	slog.Debug("Request denied", "method", r.Method, "url", r.URL)
+	w.Header().Add("Content-Type", "application/json")
+	w.WriteHeader(err.HttpStatus)
+	json.NewEncoder(w).Encode(err)
+}
+
+type HandlerFunc func(ctx Context)
+
+type Context interface {
+	Writer() http.ResponseWriter
+	Request() *http.Request
+	Deny(err Error)
+	WithDeny(deny func(c Context, err Error)) Context
+	Slogger() *slog.Logger
+	Claims(claims any) error
+}
+
+type pepContext struct {
+	pep            *PEP
+	slogger        *slog.Logger
+	writer         http.ResponseWriter
+	request        *http.Request
+	deny           func(Context, Error)
+	accessTokenRaw string
+	accessToken    jwt.Token
+	claimsRaw      []byte
+}
+
+func (c pepContext) Writer() http.ResponseWriter {
+	return c.writer
+}
+
+func (c pepContext) Request() *http.Request {
+	return c.request
+}
+
+func (c pepContext) Deny(err Error) {
+	c.deny(c, err)
+}
+
+func (c pepContext) WithDeny(deny func(Context, Error)) Context {
+	c.deny = deny
+	return c
+}
+
+func (c pepContext) Slogger() *slog.Logger {
+	return c.slogger
+}
+
+func (c pepContext) Claims(claims any) error {
+	if err := c.assureAccessToken(); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(c.claimsRaw, claims); err != nil {
+		return fmt.Errorf("unable to unmarshal claims: %w", err)
 	}
 
 	return nil
 }
 
-// Start the periodic JWKS reload.
-func (p *PEP) Start(ctx context.Context) error {
-	p.Logger.Info("Starting PEP")
-	p.stopChan = make(chan bool)
-	interval := time.Duration(0)
-	for {
-		select {
-		case <-p.stopChan:
-			p.Logger.Info("stopped PEP")
-			return nil
-		case <-time.After(interval):
-			err := p.ReloadJWKS()
-			if err != nil {
-				if interval == 0 {
-					interval = 1 * time.Second
-				} else {
-					interval = interval * 2
-					if interval > p.RefreshInterval {
-						interval = p.RefreshInterval
-					}
-				}
-				p.Logger.Error("Failed to load JWKS", "error", err, "retry_interval", interval)
-			} else {
-				p.Logger.Info("Loaded the JWKS")
-				interval = p.RefreshInterval
-			}
-		}
-	}
-
-}
-
-// Stop the periodic JWKS reload.
-func (p *PEP) Stop() {
-	if p.stopChan != nil {
-		p.stopChan <- true
-		close(p.stopChan)
-		p.stopChan = nil
-	}
-}
-
-// Check if request headers contains headers starting with "X-ZTA",
-// which are forbidden in the request from the outside.
-func (p *PEP) VerifyHeaders(c *GuardContext, r *http.Request) *Error {
-	for k := range r.Header {
-		n := strings.ToLower(k)
-		if strings.HasPrefix(n, "x-zta") {
-			return ErrForbiddenHeadersInRequest
-		}
-	}
-	return nil
-}
-
-// Verify the self contained access token (JWT) using the previously loaded JWKS.
-func (p *PEP) VerifyAccessToken(c *GuardContext, r *http.Request) *Error {
-	authzHeaders := r.Header.Values("Authorization")
+func (c *pepContext) assureAccessToken() error {
+	authzHeaders := c.request.Header.Values("Authorization")
 	if len(authzHeaders) == 0 {
 		return ErrNoAuthorizationHeader
 	}
@@ -184,12 +177,25 @@ func (p *PEP) VerifyAccessToken(c *GuardContext, r *http.Request) *Error {
 
 		tokenType := strings.ToLower(parts[0])
 		if tokenType == "bearer" {
-			claimsMap, err := p.VerifyJWTToken(parts[1])
+			token, err := c.pep.verifyAccessToken(parts[1])
 			if err != nil {
-				return err
+				return &Error{
+					HttpStatus:  http.StatusUnauthorized,
+					Code:        "invalid_token",
+					Description: fmt.Sprintf("invalid access token: %s", err),
+				}
 			}
-			c.AccessTokenRaw = parts[1]
-			c.ClaimsMap = claimsMap
+			c.accessTokenRaw = parts[1]
+			c.accessToken = token
+			asMap, err := c.accessToken.AsMap(context.Background())
+			if err != nil {
+				return fmt.Errorf("unable to convert token to map: %w", err)
+			}
+
+			if c.claimsRaw, err = json.Marshal(asMap); err != nil {
+				return fmt.Errorf("unable to process claims: %w", err)
+			}
+
 			return nil
 		}
 	}
@@ -197,37 +203,41 @@ func (p *PEP) VerifyAccessToken(c *GuardContext, r *http.Request) *Error {
 	return ErrInvalidAuthorizationHeader
 }
 
-// Verify the JWT token using the previously loaded JWKS.
-// Returns the claims map or an error.
-func (p *PEP) VerifyJWTToken(token string) (map[string]interface{}, *Error) {
-	t, err := jwt.ParseString(token, jwt.WithKeySet(p.Jwks, jws.WithInferAlgorithmFromKey(true)))
-	if err != nil {
-		return nil, &Error{
-			HttpStatus:  403,
-			Code:        "invalid_token",
-			Description: err.Error(),
-		}
+func (p *PEP) NewContext(w http.ResponseWriter, r *http.Request) Context {
+	return &pepContext{
+		pep:     p,
+		slogger: p.slogger,
+		writer:  w,
+		request: r,
+		deny:    p.deny,
 	}
-
-	claims, err := t.AsMap(context.Background())
-	if err != nil {
-		return nil, &Error{
-			HttpStatus:  403,
-			Code:        "invalid_token",
-			Description: err.Error(),
-		}
-	}
-
-	return claims, nil
 }
 
-// Generate a random key of the given length in bits.
-func GenerateRandomKey(bits int) ([]byte, error) {
-	key := make([]byte, bits/8)
-	_, err := rand.Read(key)
+func (p *PEP) GuardedHandlerFunc(enforcer Enforcer, next func(w http.ResponseWriter, r *http.Request)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := p.NewContext(w, r)
+		enforcer.Apply(ctx, func(ctx Context) {
+			next(ctx.Writer(), ctx.Request())
+		})
+	}
+}
+
+func (p *PEP) verifyAccessToken(tokenRaw string) (jwt.Token, error) {
+	jwks, err := p.jwkSetFunc()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not get JWKSet: %w", err)
+	}
+	token, err := jwt.ParseString(
+		tokenRaw,
+		jwt.WithAcceptableSkew(1*time.Minute),
+		jwt.WithKeySet(jwks, jws.WithInferAlgorithmFromKey(true)),
+	)
+
+	if err != nil {
+		p.slogger.Error("could not parse JWT", "error", err, "token", tokenRaw)
+		return nil, fmt.Errorf("could not parse JWT: %w", err)
 	}
 
-	return key, nil
+	return token, nil
+
 }

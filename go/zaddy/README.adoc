@@ -1,0 +1,15 @@
+= Caddy based Zero Trust PEP (Zaddy)
+
+== Development
+
+[source,bash]
+----
+go run ./cmd/zero-caddy run
+----
+
+[source,bash]
+----
+curlie -k https://localhost:2019/
+curlie -k https://localhost:2019/public
+curlie -k https://localhost:2019/protected
+----

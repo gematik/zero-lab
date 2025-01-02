@@ -1,6 +1,6 @@
 {
-	zero {
-		oauth2_server_uri http://localhost:8081
+	pep {
+		jwks_path test_jwks.json
 	}
 }
 
@@ -15,8 +15,8 @@ localhost:2019 {
 
 	route /protected {
 		enforce_policy {
-			scope zero:manage
+			scope protected
 		}
-		respond "Hello from behind the curtain. I am protected resource" 200
+		respond "Hello from behind the curtain. I am protected resource (scope: protected)" 200
 	}
 }

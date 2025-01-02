@@ -233,7 +233,7 @@ func (p *Proxy) findAndCacheRecord(insurantID string) (*PatientRecordMetadata, e
 			}(provider)
 		}
 
-		for _ = range AllProviders {
+		for range AllProviders {
 			r := <-results
 			if r.error != nil {
 				slog.Error("Failed to get record status", "provider", r.provider, "error", r.error)

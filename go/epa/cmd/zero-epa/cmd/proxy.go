@@ -90,7 +90,7 @@ var proxyCmd = &cobra.Command{
 		}
 
 		timeout := viper.GetInt("timeout")
-		slog.Info("Using timeout", "timeout", timeout)
+		slog.Info("Using timeout", "timeout", time.Second*time.Duration(timeout))
 
 		proxy, err := epa.NewProxy(&epa.ProxyConfig{
 			Env: epa.EnvDev,
