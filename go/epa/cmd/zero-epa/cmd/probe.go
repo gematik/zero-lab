@@ -77,6 +77,8 @@ var probePatientCmd = &cobra.Command{
 					continue
 				}
 				slog.Info("Entitled", "env", env, "provider", provider, "kvnr", kvnr)
+			} else {
+				slog.Info("Record not available", "kvnr", kvnr, "base_url", session.BaseURL)
 			}
 		}
 	},
