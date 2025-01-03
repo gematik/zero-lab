@@ -250,7 +250,6 @@ func (p *Proxy) findAndCacheRecord(insurantID string) (*PatientRecordMetadata, e
 			err := r.session.Entitle(insurantID)
 			if err != nil {
 				slog.Error("Failed to entitle", "provider", r.provider, "insurantID", insurantID, "error", err)
-				continue
 			}
 
 			p.records[insurantID] = r.record

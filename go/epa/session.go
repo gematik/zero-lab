@@ -47,13 +47,13 @@ type SecurityFunctions struct {
 type Session struct {
 	Env                Env
 	ProviderNumber     ProviderNumber
+	BaseURL            string
 	OpenedAt           time.Time
 	securityFunctions  SecurityFunctions
 	insecureSkipVerify bool
 	certPool           *x509.CertPool
 	HttpClient         *http.Client
 	VAUChannel         *vau.Channel
-	BaseURL            string
 	Timeout            time.Duration
 }
 
