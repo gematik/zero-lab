@@ -254,7 +254,7 @@ func (p *PEP) verifyAccessToken(tokenRaw string) (jwt.Token, error) {
 	)
 
 	if err != nil {
-		p.slogger.Error("could not parse JWT", "error", err, "token", tokenRaw)
+		p.slogger.Warn("could not parse JWT", "error", err, "token", tokenRaw)
 		return nil, fmt.Errorf("could not parse JWT: %w", err)
 	}
 
