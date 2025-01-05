@@ -54,13 +54,24 @@ func TestEnforcersJSON(t *testing.T) {
 
 	pep := createPEP(t)
 
-	ctx := pep.NewContext(nil, nil).WithDeny(deny)
+	req, err := http.NewRequest(http.MethodGet, "http://example.com", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := httptest.NewRecorder()
+	ctx := pep.NewContext(resp, req).WithDeny(deny)
 
 	ao.Apply(ctx, next)
 
 	if !denyCalled {
 		t.Fatal("Deny function should have been called")
 	}
+
+	asJson, err := json.Marshal(eh)
+	if err != nil {
+		t.Fatalf("Failed to marshal JSON: %s", err)
+	}
+	t.Logf("Marshalled JSON: %s", asJson)
 }
 
 func TestEnforcersLogic(t *testing.T) {
@@ -69,11 +80,10 @@ func TestEnforcersLogic(t *testing.T) {
 
 	denyAllEnforcer := pep.EnforcerAllOf{
 		TypeVal: pep.EnforcerTypeAllOf,
-		Enforcers: []pep.EnforcerHolder{
+		EnforcerHolders: []pep.EnforcerHolder{
 			{&pep.EnforcerDeny{TypeVal: pep.EnforcerTypeDeny}},
 		},
 	}
-
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /public", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -89,7 +99,7 @@ func TestEnforcersLogic(t *testing.T) {
 
 	customEnforcer := pep.EnforcerFromFunc(func(ctx pep.Context, next pep.HandlerFunc) {
 		if ctx.Request().Header.Get("X-Api-Key") != "api-key" {
-			ctx.Deny(pep.ErrAccessDenied)
+			ctx.Deny(pep.ErrorAccessDeinied("API key does not match"))
 			return
 		}
 		slog.Info("Request allowed since api-key match", "method", ctx.Request().Method, "url", ctx.Request().URL)
@@ -104,7 +114,7 @@ func TestEnforcersLogic(t *testing.T) {
 
 	anyOfEnforcer := pep.EnforcerAnyOf{
 		TypeVal: pep.EnforcerTypeAnyOf,
-		Enforcers: []pep.EnforcerHolder{
+		EnforcerHolders: []pep.EnforcerHolder{
 			{&pep.EnforcerDeny{TypeVal: pep.EnforcerTypeDeny}},
 			{customEnforcer},
 		},
@@ -188,7 +198,7 @@ func TestEnforcersLogic(t *testing.T) {
 func TestEnforcerScope(t *testing.T) {
 	p := createPEP(t)
 	enforcerRead := new(pep.EnforcerHolder)
-	if err := json.Unmarshal([]byte(`{"type":"Scope","scope":"read"}`), enforcerRead); err != nil {
+	if err := json.Unmarshal([]byte(`{"type":"AllOf","enforcers":[{"type":"VerifyBearer"},{"type":"Scope","scope":"read"}]}`), enforcerRead); err != nil {
 		t.Fatalf("Failed to unmarshal JSON: %s", err)
 	}
 
@@ -206,7 +216,7 @@ func TestEnforcerScope(t *testing.T) {
 	)
 
 	enforcerWrite := new(pep.EnforcerHolder)
-	if err := json.Unmarshal([]byte(`{"type":"Scope","scope":"write"}`), enforcerWrite); err != nil {
+	if err := json.Unmarshal([]byte(`{"type":"AllOf","enforcers":[{"type":"VerifyBearer"},{"type":"Scope","scope":"write"}]}`), enforcerWrite); err != nil {
 		t.Fatalf("Failed to unmarshal JSON: %s", err)
 	}
 
@@ -231,6 +241,7 @@ func TestEnforcerScope(t *testing.T) {
 		{url: "/public", expectedStatus: http.StatusOK, expectedBody: "public"},
 		{url: "/read", expectedStatus: http.StatusForbidden},
 		{url: "/write", expectedStatus: http.StatusForbidden},
+		{url: "/write", expectedStatus: http.StatusOK, expectedBody: "write", request: createRequestWithAccessToken(t, server.URL+"/write", []byte(privateJWK1), []string{"write"}, time.Now().Add(time.Hour))},
 		{url: "/read", expectedStatus: http.StatusOK, expectedBody: "read", request: createRequestWithAccessToken(t, server.URL+"/read", []byte(privateJWK1), []string{"read"}, time.Now().Add(time.Hour))},
 		{url: "/read", expectedStatus: http.StatusForbidden, request: createRequestWithAccessToken(t, server.URL+"/read", []byte(privateJWKUnknown), []string{"read"}, time.Now().Add(time.Hour))},
 		{url: "/read", expectedStatus: http.StatusForbidden, request: createRequestWithAccessToken(t, server.URL+"/read", []byte(privateJWK1), []string{"read"}, time.Now().Add(-2*time.Hour))},

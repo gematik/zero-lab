@@ -10,7 +10,7 @@ type Error struct {
 }
 
 func (e Error) Error() string {
-	return fmt.Sprintf("%s: %s", e.Code, e.Description)
+	return fmt.Sprintf("%s (code=%s)", e.Description, e.Code)
 }
 
 var ErrForbiddenHeadersInRequest = Error{
@@ -31,8 +31,10 @@ var ErrInvalidAuthorizationHeader = Error{
 	Description: "Invalid Authorization header in request",
 }
 
-var ErrAccessDenied = Error{
-	HttpStatus:  403,
-	Code:        "access_denied",
-	Description: "Access denied",
+func ErrorAccessDeinied(description string) Error {
+	return Error{
+		HttpStatus:  403,
+		Code:        "access_denied",
+		Description: description,
+	}
 }

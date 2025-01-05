@@ -115,6 +115,8 @@ type Context interface {
 	Deny(err Error)
 	WithDeny(deny func(c Context, err Error)) Context
 	Slogger() *slog.Logger
+	VerifyAuthorizationBearer() error
+	VerifyAuthorizationDPoP() error
 	Claims(claims any) error
 }
 
@@ -129,30 +131,35 @@ type pepContext struct {
 	claimsRaw      []byte
 }
 
-func (c pepContext) Writer() http.ResponseWriter {
+func (c *pepContext) Writer() http.ResponseWriter {
 	return c.writer
 }
 
-func (c pepContext) Request() *http.Request {
+func (c *pepContext) Request() *http.Request {
 	return c.request
 }
 
-func (c pepContext) Deny(err Error) {
+func (c *pepContext) Deny(err Error) {
 	c.deny(c, err)
 }
 
-func (c pepContext) WithDeny(deny func(Context, Error)) Context {
-	c.deny = deny
-	return c
+func (c *pepContext) WithDeny(deny func(Context, Error)) Context {
+	return &pepContext{
+		pep:     c.pep,
+		slogger: c.slogger,
+		writer:  c.writer,
+		request: c.request,
+		deny:    deny,
+	}
 }
 
-func (c pepContext) Slogger() *slog.Logger {
+func (c *pepContext) Slogger() *slog.Logger {
 	return c.slogger
 }
 
-func (c pepContext) Claims(claims any) error {
-	if err := c.assureAccessToken(); err != nil {
-		return err
+func (c *pepContext) Claims(claims any) error {
+	if c.claimsRaw == nil {
+		return errors.New("claims not available, verify access token first")
 	}
 	if err := json.Unmarshal(c.claimsRaw, claims); err != nil {
 		return fmt.Errorf("unable to unmarshal claims: %w", err)
@@ -161,46 +168,59 @@ func (c pepContext) Claims(claims any) error {
 	return nil
 }
 
-func (c *pepContext) assureAccessToken() error {
+func (c *pepContext) VerifyAuthorizationBearer() error {
+	bearerToken, err := c.parseAuthorizationScheme("bearer")
+	if err != nil {
+		return err
+	}
+	return c.verifyAccessToken(bearerToken)
+}
+
+func (c pepContext) VerifyAuthorizationDPoP() error {
+	return errors.New("not implemented")
+}
+
+func (c *pepContext) parseAuthorizationScheme(scheme string) (string, error) {
 	authzHeaders := c.request.Header.Values("Authorization")
 	if len(authzHeaders) == 0 {
-		return ErrNoAuthorizationHeader
+		return "", ErrNoAuthorizationHeader
 	}
-
-	// we support bearer and dpop
-	// we ignore other authz headers
 	for _, authzHeader := range authzHeaders {
 		parts := strings.Split(authzHeader, " ")
 		if len(parts) != 2 {
 			continue
 		}
 
-		tokenType := strings.ToLower(parts[0])
-		if tokenType == "bearer" {
-			token, err := c.pep.verifyAccessToken(parts[1])
-			if err != nil {
-				return &Error{
-					HttpStatus:  http.StatusUnauthorized,
-					Code:        "invalid_token",
-					Description: fmt.Sprintf("invalid access token: %s", err),
-				}
-			}
-			c.accessTokenRaw = parts[1]
-			c.accessToken = token
-			asMap, err := c.accessToken.AsMap(context.Background())
-			if err != nil {
-				return fmt.Errorf("unable to convert token to map: %w", err)
-			}
-
-			if c.claimsRaw, err = json.Marshal(asMap); err != nil {
-				return fmt.Errorf("unable to process claims: %w", err)
-			}
-
-			return nil
+		authScheme := strings.ToLower(parts[0])
+		if authScheme == scheme {
+			return parts[1], nil
 		}
 	}
 
-	return ErrInvalidAuthorizationHeader
+	return "", ErrInvalidAuthorizationHeader
+}
+
+func (c *pepContext) verifyAccessToken(accessToken string) error {
+	token, err := c.pep.verifyAccessToken(accessToken)
+	if err != nil {
+		return &Error{
+			HttpStatus:  http.StatusUnauthorized,
+			Code:        "invalid_token",
+			Description: fmt.Sprintf("invalid access token: %s", err),
+		}
+	}
+	c.accessTokenRaw = accessToken
+	c.accessToken = token
+	asMap, err := c.accessToken.AsMap(context.Background())
+	if err != nil {
+		return fmt.Errorf("unable to convert token to map: %w", err)
+	}
+
+	if c.claimsRaw, err = json.Marshal(asMap); err != nil {
+		return fmt.Errorf("unable to process claims: %w", err)
+	}
+
+	return nil
 }
 
 func (p *PEP) NewContext(w http.ResponseWriter, r *http.Request) Context {

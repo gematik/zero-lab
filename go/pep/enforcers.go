@@ -14,6 +14,7 @@ const (
 	EnforcerTypeAllOf         EnforcerType = "AllOf"
 	EnforcerTypeAnyOf         EnforcerType = "AnyOf"
 	EnforcerTypeDeny          EnforcerType = "Deny"
+	EnforcerTypeVerifyBearer  EnforcerType = "VerifyBearer"
 	EnforcerTypeScope         EnforcerType = "Scope"
 	EnforcerTypeSessionCookie EnforcerType = "SessionCookie"
 )
@@ -21,6 +22,11 @@ const (
 type Enforcer interface {
 	Type() EnforcerType
 	Apply(ctx Context, next HandlerFunc)
+}
+
+type MultipleEnforcer interface {
+	Enforcers() []Enforcer
+	Append(Enforcer)
 }
 
 type EnforcerHolder struct {
@@ -41,6 +47,8 @@ func (h *EnforcerHolder) UnmarshalJSON(data []byte) error {
 		h.Enforcer = &EnforcerAnyOf{}
 	case EnforcerTypeDeny:
 		h.Enforcer = &EnforcerDeny{}
+	case EnforcerTypeVerifyBearer:
+		h.Enforcer = &EnforcerVerifyBearer{}
 	case EnforcerTypeScope:
 		h.Enforcer = &EnforcerScope{}
 	case EnforcerTypeSessionCookie:
@@ -56,18 +64,18 @@ func (h EnforcerHolder) MarshalJSON() ([]byte, error) {
 }
 
 type EnforcerAllOf struct {
-	TypeVal   EnforcerType     `json:"type" validate:"required"`
-	Enforcers []EnforcerHolder `json:"enforcers" validate:"required,dive"`
+	TypeVal         EnforcerType     `json:"type" validate:"required"`
+	EnforcerHolders []EnforcerHolder `json:"enforcers" validate:"required,dive"`
 }
 
 func (e EnforcerAllOf) Type() EnforcerType {
-	return e.TypeVal
+	return EnforcerTypeAllOf
 }
 
 func (e EnforcerAllOf) Apply(ctx Context, next HandlerFunc) {
-	if len(e.Enforcers) == 0 {
+	if len(e.EnforcerHolders) == 0 {
 		slog.Warn("No enforcers confgured, denying request")
-		ctx.Deny(ErrAccessDenied)
+		ctx.Deny(ErrorAccessDeinied("No enforcers configured"))
 		return
 	}
 	var errorFromGuard *Error
@@ -80,8 +88,8 @@ func (e EnforcerAllOf) Apply(ctx Context, next HandlerFunc) {
 
 	subCtx := ctx.WithDeny(singleDeny)
 
-	for _, enforcer := range e.Enforcers {
-		slog.Info("Applying enforcer", "type", enforcer.Type())
+	for _, enforcer := range e.EnforcerHolders {
+		slog.Debug("Applying enforcer", "type", enforcer.Type())
 		enforcer.Apply(subCtx, singleNext)
 		if errorFromGuard != nil {
 			ctx.Deny(*errorFromGuard)
@@ -92,19 +100,31 @@ func (e EnforcerAllOf) Apply(ctx Context, next HandlerFunc) {
 	next(ctx)
 }
 
+func (e EnforcerAllOf) Enforcers() []Enforcer {
+	enforcers := make([]Enforcer, len(e.EnforcerHolders))
+	for i, enforcer := range e.EnforcerHolders {
+		enforcers[i] = enforcer.Enforcer
+	}
+	return enforcers
+}
+
+func (e *EnforcerAllOf) Append(enforcer Enforcer) {
+	e.EnforcerHolders = append(e.EnforcerHolders, EnforcerHolder{enforcer})
+}
+
 type EnforcerAnyOf struct {
-	TypeVal   EnforcerType     `json:"type" validate:"required"`
-	Enforcers []EnforcerHolder `json:"enforcers" validate:"required,dive"`
+	TypeVal         EnforcerType     `json:"type" validate:"required"`
+	EnforcerHolders []EnforcerHolder `json:"enforcers" validate:"required,dive"`
 }
 
 func (e EnforcerAnyOf) Type() EnforcerType {
-	return e.TypeVal
+	return EnforcerTypeAnyOf
 }
 
 func (e EnforcerAnyOf) Apply(ctx Context, next HandlerFunc) {
-	if len(e.Enforcers) == 0 {
+	if len(e.EnforcerHolders) == 0 {
 		slog.Warn("No enforcers confgured, denying request")
-		ctx.Deny(ErrAccessDenied)
+		ctx.Deny(ErrorAccessDeinied("No enforcers configured"))
 		return
 	}
 	var errorFromGuard *Error
@@ -117,8 +137,8 @@ func (e EnforcerAnyOf) Apply(ctx Context, next HandlerFunc) {
 
 	subCtx := ctx.WithDeny(singleDeny)
 
-	for _, enforcer := range e.Enforcers {
-		slog.Info("Applying enforcer", "type", enforcer.Type())
+	for _, enforcer := range e.EnforcerHolders {
+		slog.Debug("Applying enforcer", "type", enforcer.Type())
 		enforcer.Apply(subCtx, singleNext)
 		if errorFromGuard == nil {
 			next(ctx)
@@ -128,7 +148,19 @@ func (e EnforcerAnyOf) Apply(ctx Context, next HandlerFunc) {
 		}
 	}
 
-	ctx.Deny(ErrAccessDenied)
+	ctx.Deny(ErrorAccessDeinied("None of the enforcers in any_of allowed the request"))
+}
+
+func (e EnforcerAnyOf) Enforcers() []Enforcer {
+	enforcers := make([]Enforcer, len(e.EnforcerHolders))
+	for i, enforcer := range e.EnforcerHolders {
+		enforcers[i] = enforcer.Enforcer
+	}
+	return enforcers
+}
+
+func (e *EnforcerAnyOf) Append(enforcer Enforcer) {
+	e.EnforcerHolders = append(e.EnforcerHolders, EnforcerHolder{enforcer})
 }
 
 type EnforcerDeny struct {
@@ -136,11 +168,11 @@ type EnforcerDeny struct {
 }
 
 func (e *EnforcerDeny) Type() EnforcerType {
-	return e.TypeVal
+	return EnforcerTypeDeny
 }
 
 func (e *EnforcerDeny) Apply(ctx Context, next HandlerFunc) {
-	ctx.Deny(ErrAccessDenied)
+	ctx.Deny(ErrorAccessDeinied("Access denied by configuration"))
 }
 
 type EnforcerScope struct {
@@ -149,7 +181,7 @@ type EnforcerScope struct {
 }
 
 func (e *EnforcerScope) Type() EnforcerType {
-	return e.TypeVal
+	return EnforcerTypeScope
 }
 
 func (e *EnforcerScope) Apply(ctx Context, next HandlerFunc) {
@@ -158,7 +190,11 @@ func (e *EnforcerScope) Apply(ctx Context, next HandlerFunc) {
 	}{}
 	if err := ctx.Claims(&scopeStruct); err != nil {
 		ctx.Slogger().Error("Failed to get claims", "error", err)
-		ctx.Deny(ErrAccessDenied)
+		ctx.Deny(Error{
+			HttpStatus:  403,
+			Code:        "access_denied",
+			Description: err.Error(),
+		})
 		return
 	}
 
@@ -170,9 +206,9 @@ func (e *EnforcerScope) Apply(ctx Context, next HandlerFunc) {
 		}
 	}
 
-	ctx.Slogger().Warn("Scope not found", "required", e.Scope, "actual", scopes)
+	ctx.Slogger().Warn("Scope not found in claims", "required", e.Scope, "actual", scopes)
 
-	ctx.Deny(ErrAccessDenied)
+	ctx.Deny(ErrorAccessDeinied("Scope not found in claims"))
 }
 
 type EnforcerSessionCookie struct {
@@ -188,7 +224,7 @@ func (e *EnforcerSessionCookie) Type() EnforcerType {
 
 func (e *EnforcerSessionCookie) Apply(ctx Context, next HandlerFunc) {
 	ctx.Slogger().Warn("EnforcerSessionCookie not implemented")
-	ctx.Deny(ErrAccessDenied)
+	ctx.Deny(ErrorAccessDeinied("EnforcerSessionCookie not implemented"))
 }
 
 type enforcerFunc struct {
@@ -205,4 +241,22 @@ func (e *enforcerFunc) Apply(ctx Context, next HandlerFunc) {
 
 func EnforcerFromFunc(apply func(Context, HandlerFunc)) Enforcer {
 	return &enforcerFunc{apply}
+}
+
+type EnforcerVerifyBearer struct {
+	TypeVal EnforcerType `json:"type" validate:"required"`
+}
+
+func (e *EnforcerVerifyBearer) Type() EnforcerType {
+	return EnforcerTypeVerifyBearer
+}
+
+func (e *EnforcerVerifyBearer) Apply(ctx Context, next HandlerFunc) {
+	if err := ctx.VerifyAuthorizationBearer(); err != nil {
+		ctx.Slogger().Warn("Failed to verify authorization bearer", "error", err)
+		ctx.Deny(ErrorAccessDeinied("Failed to verify authorization bearer: " + err.Error()))
+		return
+	}
+	ctx.Slogger().Debug("Authorization bearer successfully verified")
+	next(ctx)
 }

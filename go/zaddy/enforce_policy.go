@@ -18,7 +18,7 @@ func init() {
 }
 
 type EnforcePolicyMiddleware struct {
-	Enforcer *pep.EnforcerHolder `json:"enforcer,omitempty"`
+	Enforcer *pep.EnforcerHolder `json:"enforcer"`
 	logger   *slog.Logger
 	app      *App
 }
@@ -57,6 +57,7 @@ func (m *EnforcePolicyMiddleware) Validate() error {
 // ServeHTTP implements caddyhttp.MiddlewareHandler.
 func (m EnforcePolicyMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	pepCtx := m.app.pep.NewContext(w, r)
+	m.logger.Info("EnforcePolicyMiddleware", "enforcer", m.Enforcer)
 	m.Enforcer.Apply(pepCtx, func(ctx pep.Context) {
 		next.ServeHTTP(w, r)
 	})
@@ -67,40 +68,81 @@ func (m EnforcePolicyMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Reques
 // Structure:
 //
 //	enforce_policy {
+//	   verify_bearer
 //	   scope <scope>
+//	   any_of {
+//			...
+//		}
+//		all_of {
+//			...
+//		}
 //
 //	}
-func (m *EnforcePolicyMiddleware) UnmarshalCaddyfile(d *caddyfile.Dispenser) error {
-	// consume the option name
-	if !d.Next() {
-		return d.ArgErr()
-	}
-
+func (m EnforcePolicyMiddleware) unmarshalMultipleEnforcer(d *caddyfile.Dispenser, me pep.MultipleEnforcer, nesting int) error {
 	// handle the block
-	for d.NextBlock(0) {
+	for d.NextBlock(nesting) {
 		switch d.Val() {
+		case "verify_bearer":
+			e := &pep.EnforcerVerifyBearer{
+				TypeVal: pep.EnforcerTypeVerifyBearer,
+			}
+			me.Append(e)
 		case "scope":
 			if !d.NextArg() {
 				return d.ArgErr()
 			}
-			m.Enforcer = &pep.EnforcerHolder{
-				Enforcer: &pep.EnforcerScope{
-					TypeVal: pep.EnforcerTypeScope,
-					Scope:   d.Val(),
-				},
+			e := &pep.EnforcerScope{
+				TypeVal: pep.EnforcerTypeScope,
+				Scope:   d.Val(),
 			}
+			me.Append(e)
+		case "any_of":
+			anyOf := &pep.EnforcerAnyOf{
+				TypeVal:         pep.EnforcerTypeAnyOf,
+				EnforcerHolders: make([]pep.EnforcerHolder, 0),
+			}
+			err := m.unmarshalMultipleEnforcer(d, anyOf, nesting+1)
+			if err != nil {
+				return err
+			}
+			me.Append(anyOf)
+		case "all_of":
+			allOf := &pep.EnforcerAllOf{
+				TypeVal:         pep.EnforcerTypeAllOf,
+				EnforcerHolders: make([]pep.EnforcerHolder, 0),
+			}
+			err := m.unmarshalMultipleEnforcer(d, allOf, nesting+1)
+			if err != nil {
+				return err
+			}
+			me.Append(allOf)
 		default:
 			return d.Errf("unrecognized subdirective: %s", d.Val())
 		}
 	}
+	for nesting := d.Nesting(); d.NextBlock(nesting); {
+		return d.Errf("unexpected block")
+	}
 	return nil
+
 }
 
 func parseCaddyfileEnforcePolicy(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
 	var m EnforcePolicyMiddleware
-	err := m.UnmarshalCaddyfile(h.Dispenser)
+	me := &pep.EnforcerAllOf{
+		TypeVal:         pep.EnforcerTypeAllOf,
+		EnforcerHolders: make([]pep.EnforcerHolder, 0),
+	}
+	// consume the option name
+	if !h.Dispenser.Next() {
+		return nil, h.Dispenser.ArgErr()
+	}
+	err := m.unmarshalMultipleEnforcer(h.Dispenser, me, 0)
 	if err != nil {
 		return nil, err
+	}
+	m.Enforcer = &pep.EnforcerHolder{
+		Enforcer: me,
 	}
 	return m, nil
 }
@@ -110,5 +152,4 @@ var (
 	_ caddy.Provisioner           = (*EnforcePolicyMiddleware)(nil)
 	_ caddy.Validator             = (*EnforcePolicyMiddleware)(nil)
 	_ caddyhttp.MiddlewareHandler = (*EnforcePolicyMiddleware)(nil)
-	_ caddyfile.Unmarshaler       = (*EnforcePolicyMiddleware)(nil)
 )
