@@ -67,6 +67,8 @@ func (s *Session) SetEntitlementPS(insurantId string, auditEvidence string) erro
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
 
+	slog.Debug("Sending entitlement request", "body", string(body))
+
 	resp, err := s.VAUChannel.Do(req)
 	if err != nil {
 		return fmt.Errorf("sending request: %w", err)

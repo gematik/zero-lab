@@ -70,16 +70,25 @@ var probePatientCmd = &cobra.Command{
 				continue
 			}
 
-			if recordAvailable {
-				slog.Info("Record available", "kvnr", kvnr, "base_url", session.BaseURL)
-				if err := session.Entitle(kvnr); err != nil {
-					slog.Error("Failed to entitle", "error", err)
-					continue
-				}
-				slog.Info("Entitled", "env", env, "provider", provider, "kvnr", kvnr)
-			} else {
+			if !recordAvailable {
 				slog.Info("Record not available", "kvnr", kvnr, "base_url", session.BaseURL)
+				continue
 			}
+
+			slog.Info("Record available", "kvnr", kvnr, "base_url", session.BaseURL)
+			if err := session.Entitle(kvnr); err != nil {
+				slog.Error("Failed to entitle", "error", err)
+			} else {
+				slog.Info("Entitled", "patient", kvnr, "env", env, "provider", provider, "kvnr", kvnr)
+			}
+
+			consent, err := session.GetConsentDecisionInformation(kvnr)
+			if err != nil {
+				slog.Error("Failed to get consent decision information", "error", err)
+			} else {
+				slog.Info("Consent decision information", "consent", consent)
+			}
+			break
 		}
 	},
 }
