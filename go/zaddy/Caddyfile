@@ -4,7 +4,7 @@
 	}
 }
 
-localhost:2019 {
+http://localhost:2019 {
 	route / {
 		respond "I have /public and /protected resources" 200
 	}
