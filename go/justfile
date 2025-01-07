@@ -2,6 +2,7 @@ DOCKER_USER := "spilikin"
 ZERO_VERSION := "0.10.1"
 ZERO_EPA_VERSION := ZERO_VERSION
 ZERO_PDP_VERSION := ZERO_VERSION
+ZERO_CADDY_VERSION := ZERO_VERSION
 
 # Display available commands
 info:
@@ -9,14 +10,24 @@ info:
 
 
 # Build the zero-epa docker image
-epa-docker-build:
+docker-build-epa: generate-versions
     docker build --platform linux/amd64 -t "{{DOCKER_USER}}/zero-epa:{{ZERO_EPA_VERSION}}" -f ./epa/cmd/zero-epa/Dockerfile .
     docker tag "{{DOCKER_USER}}/zero-epa:{{ZERO_EPA_VERSION}}" "{{DOCKER_USER}}/zero-epa:latest"
 
 # Push the zero-epa docker image to the docker hub
-epa-docker-push: epa-docker-build
+docker-push-epa: docker-build-epa
     docker push "{{DOCKER_USER}}/zero-epa:{{ZERO_EPA_VERSION}}"
     docker push "{{DOCKER_USER}}/zero-epa:latest"    
+
+# Build the zero-caddy docker image
+docker-build-caddy:
+    docker build --platform linux/amd64 -t "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}" -f ./zaddy/cmd/zero-caddy/Dockerfile .
+    docker tag "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}" "{{DOCKER_USER}}/zero-caddy:latest"
+
+# Push the zero-caddy docker image to the docker hub
+docker-push-caddy: docker-build-caddy
+    docker push "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}"
+    docker push "{{DOCKER_USER}}/zero-caddy:latest"    
 
 # generate version file
 generate-version-file file package version:
