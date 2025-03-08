@@ -25,6 +25,7 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/goccy/go-json v0.10.3 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
+	github.com/hashicorp/go-secure-stdlib/nonceutil v0.1.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect

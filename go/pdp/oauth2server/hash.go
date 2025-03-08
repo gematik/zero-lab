@@ -1,4 +1,4 @@
-package authzserver
+package oauth2server
 
 import (
 	"crypto/rand"

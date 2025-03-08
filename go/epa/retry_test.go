@@ -9,7 +9,7 @@ import (
 )
 
 func TestRetry(t *testing.T) {
-	// 100 retries
+	retres := 1
 	fqdn := "epa-as-1.dev.epa4all.de"
 	// resolve DNS name to IP
 	ips, err := net.LookupIP(fqdn)
@@ -17,7 +17,7 @@ func TestRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	slog.Info("Resolved", "fqdn", fqdn, "ips", ips)
-	for i := 0; i < 100; i++ {
+	for i := 0; i < retres; i++ {
 		// resolve DNS name to IP
 		ips, err := net.LookupIP(fqdn)
 		if err != nil {

@@ -9,12 +9,18 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/gematik/zero-lab/go/oauth"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwe"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
+	"golang.org/x/oauth2"
+)
+
+type CodeChallengeMethod string
+
+const (
+	CodeChallengeMethodS256 CodeChallengeMethod = "S256"
 )
 
 type RelyingPartyClient struct {
@@ -22,20 +28,20 @@ type RelyingPartyClient struct {
 	op          *EntityStatement
 	metadata    *OpenIDProviderMetadata
 	scopes      []string
-	redirectURI string
+	redirectUri string
 	jwks        jwk.Set
 }
 
 func (c *RelyingPartyClient) AuthenticationURL(state, nonce, verifier string, options ...oidc.Option) (string, error) {
-	codeChallenge := oauth.S256ChallengeFromVerifier(verifier)
+	codeChallenge := oauth2.S256ChallengeFromVerifier(verifier)
 
 	parData := url.Values{}
 	parData.Add("scope", strings.Join(c.scopes, " "))
 	parData.Add("acr_values", "gematik-ehealth-loa-high")
 	parData.Add("response_type", "code")
 	parData.Add("state", state)
-	parData.Add("redirect_uri", c.redirectURI)
-	parData.Add("code_challenge_method", string(oauth.CodeChallengeMethodS256))
+	parData.Add("redirect_uri", c.redirectUri)
+	parData.Add("code_challenge_method", string(CodeChallengeMethodS256))
 	parData.Add("nonce", nonce)
 	parData.Add("client_id", c.rp.ClientID())
 	parData.Add("code_challenge", codeChallenge)
@@ -89,7 +95,7 @@ func (c *RelyingPartyClient) ExchangeForIdentity(code, verifier string, options 
 	tokenParams := url.Values{}
 	tokenParams.Add("grant_type", "authorization_code")
 	tokenParams.Add("code", code)
-	tokenParams.Add("redirect_uri", c.redirectURI)
+	tokenParams.Add("redirect_uri", c.redirectUri)
 	tokenParams.Add("client_id", c.rp.ClientID())
 	tokenParams.Add("code_verifier", verifier)
 
@@ -186,5 +192,5 @@ func (c *RelyingPartyClient) LogoURI() string {
 }
 
 func (c *RelyingPartyClient) RedirectURI() string {
-	return c.redirectURI
+	return c.redirectUri
 }

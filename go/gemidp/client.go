@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/brainpool"
-	"github.com/gematik/zero-lab/go/oauth"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwe"
 	"github.com/lestrrat-go/jwx/v2/jwt"
+	"golang.org/x/oauth2"
 )
 
 // Environment of the gematik IDP-Dienst
@@ -169,7 +169,7 @@ func (c *Client) authenticationURLDirect(state, nonce, verifier, redirectURI str
 	if redirectURI == "" {
 		redirectURI = c.config.RedirectURI
 	}
-	codeChallenge := oauth.S256ChallengeFromVerifier(verifier)
+	codeChallenge := oauth2.S256ChallengeFromVerifier(verifier)
 	query := url.Values{}
 	query.Add("client_id", c.config.ClientID)
 	query.Add("redirect_uri", redirectURI)

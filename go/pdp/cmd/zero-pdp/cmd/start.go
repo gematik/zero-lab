@@ -14,12 +14,12 @@ import (
 )
 
 func init() {
-	rootCmd.AddCommand(runCmd)
+	rootCmd.AddCommand(startCmd)
 }
 
-var runCmd = &cobra.Command{
-	Use:   "run",
-	Short: "Run the Zero Trust PDP",
+var startCmd = &cobra.Command{
+	Use:   "start",
+	Short: "Start the Zero Trust PDP",
 	Run: func(cmd *cobra.Command, args []string) {
 		configFile := expandHome(viper.GetString("config_file"))
 		if configFile == "" {
@@ -34,7 +34,7 @@ var runCmd = &cobra.Command{
 		slog.Info("Starting Zero Trust PDP", "version", libzero.Version, "config_file", configFile)
 		pdp, err := pdp.New(*config)
 		if err != nil {
-			slog.Error("Failed to create PDP", "error", err, "config", config)
+			slog.Error("Failed to create PDP", "error", err, "config", fmt.Sprintf("%+v", *config))
 			os.Exit(1)
 		}
 

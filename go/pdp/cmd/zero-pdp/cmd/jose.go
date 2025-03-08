@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gematik/zero-lab/go/oauth/jwkutil"
+	"github.com/gematik/zero-lab/go/pdp/oauth2server"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/spf13/cobra"
 )
@@ -33,7 +33,7 @@ var joseGenerateJwkCmd = &cobra.Command{
 	Use:   "generate-jwk",
 	Short: "Generate a JWK",
 	Run: func(cmd *cobra.Command, args []string) {
-		randomJwk, err := jwkutil.GenerateRandomJwk()
+		randomJwk, err := oauth2server.GenerateRandomJwk()
 		cobra.CheckErr(err)
 		cobra.CheckErr(json.NewEncoder(os.Stdout).Encode(randomJwk))
 	},
@@ -49,7 +49,7 @@ var joseGenerateJwkSetCmd = &cobra.Command{
 			num, err = strconv.Atoi(strings.TrimSpace(args[0]))
 			cobra.CheckErr(err)
 		}
-		jwks, err := jwkutil.GenerateJwkSet(num)
+		jwks, err := oauth2server.GenerateJwkSet(num)
 		cobra.CheckErr(err)
 		cobra.CheckErr(json.NewEncoder(os.Stdout).Encode(jwks))
 	},
@@ -77,7 +77,7 @@ var josePublicJwkSetCmd = &cobra.Command{
 		cobra.CheckErr(err)
 		set, err := jwk.Parse(data)
 		cobra.CheckErr(err)
-		publicSet, err := jwkutil.PublicJwkSet(set)
+		publicSet, err := oauth2server.PublicJwkSet(set)
 		println(set, publicSet)
 		cobra.CheckErr(err)
 		cobra.CheckErr(json.NewEncoder(os.Stdout).Encode(publicSet))

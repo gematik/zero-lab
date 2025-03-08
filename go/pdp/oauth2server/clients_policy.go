@@ -1,4 +1,4 @@
-package authzserver
+package oauth2server
 
 import (
 	"fmt"
@@ -36,7 +36,7 @@ func LoadClientsPolicy(path string) (*ClientsPolicy, error) {
 	return &policy, nil
 }
 
-func (p *ClientsPolicy) AllowedOPIntermediaryURL(clientID, url string) bool {
+func (p *ClientsPolicy) IsOPIntermediaryRedirectURIAllowed(clientID, url string) bool {
 	for _, client := range p.Clients {
 		if client.ProductID == clientID {
 			for _, allowedURL := range client.OPIntermediaryURIs {
@@ -49,7 +49,7 @@ func (p *ClientsPolicy) AllowedOPIntermediaryURL(clientID, url string) bool {
 	return false
 }
 
-func (p *ClientsPolicy) AllowedClient(clientID string) bool {
+func (p *ClientsPolicy) IsClientAllowed(clientID string) bool {
 	for _, client := range p.Clients {
 		if client.ProductID == clientID {
 			return true
@@ -58,7 +58,7 @@ func (p *ClientsPolicy) AllowedClient(clientID string) bool {
 	return false
 }
 
-func (p *ClientsPolicy) AllowedRedirectURI(clientID, uri string) bool {
+func (p *ClientsPolicy) IsRedirectURIAllowed(clientID, uri string) bool {
 	for _, client := range p.Clients {
 		if client.ProductID == clientID {
 			for _, allowedURI := range client.RedirectURIs {

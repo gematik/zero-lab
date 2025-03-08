@@ -7,6 +7,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log"
@@ -323,6 +324,9 @@ func validateSignedPublicVAUKeys(httpClient *http.Client, baseURL *url.URL, sign
 		return fmt.Errorf("decoding CertData: %w", err)
 	}
 
+	slog.Debug("Received CertData", "cert", base64.StdEncoding.EncodeToString(certData.Cert.Raw), "ca", base64.StdEncoding.EncodeToString(certData.CACert.Raw))
+
+	slog.Warn("VAU Cert validation is not implemented", "cert", certData.Cert.Subject.CommonName)
 	slog.Warn("VAU CA validation is not implemented", "ca", certData.CACert.Subject.CommonName)
 
 	for _, cert := range certData.RCAChain {

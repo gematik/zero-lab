@@ -8,6 +8,16 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
 
+type Error struct {
+	Code        string `json:"error"`
+	Description string `json:"error_description"`
+	URI         string `json:"error_uri,omitempty"`
+}
+
+func (e Error) Error() string {
+	return fmt.Sprintf("%s: %s", e.Code, e.Description)
+}
+
 type Client interface {
 	Issuer() string
 	ClientID() string

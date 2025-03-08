@@ -1,4 +1,4 @@
-package jwkutil
+package oauth2server
 
 import (
 	"context"

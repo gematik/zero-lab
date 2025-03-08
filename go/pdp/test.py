@@ -1,10 +1,11 @@
-import requests
-import secrets
-import hashlib
 import base64
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import urlparse, parse_qs
+import hashlib
+import secrets
 import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, urlparse
+
+import requests
 
 as_url = "http://127.0.0.1:8011"
 
@@ -21,7 +22,8 @@ providers_url = metadata["openid_providers_endpoint"]
 providers = requests.get(providers_url).json()
 print(providers)
 
-op_issuer = providers[1]["iss"]
+# pick first provider
+op_issuer = providers[0]["iss"]
 
 authorization_endpoint = metadata["authorization_endpoint"]
 
@@ -37,9 +39,6 @@ code_challenge = (
 # code challenge method
 code_challenge_method = "S256"
 
-# nonce
-nonce = secrets.token_urlsafe(48)
-
 # state
 state = secrets.token_urlsafe(48)
 
@@ -53,7 +52,6 @@ params = {
     "scope": "zero",
     "code_challenge": code_challenge,
     "code_challenge_method": code_challenge_method,
-    "nonce": nonce,
     "state": state,
     "op_issuer": op_issuer,
 }

@@ -11,20 +11,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gematik/zero-lab/go/oauth"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jws"
 	"github.com/lestrrat-go/jwx/v2/jwt"
+	"golang.org/x/oauth2"
 )
 
 type Config struct {
-	Issuer       string             `yaml:"issuer" validate:"required"`
-	ClientID     string             `yaml:"client_id" validate:"required"`
-	ClientSecret oauth.SecretString `yaml:"client_secret" validate:"required"`
-	RedirectURI  string             `yaml:"redirect_uri" validate:"required"`
-	Scopes       []string           `yaml:"scopes"`
-	LogoURI      string             `yaml:"logo_uri"`
-	Name         string             `yaml:"name"`
+	Issuer       string       `yaml:"issuer" validate:"required"`
+	ClientID     string       `yaml:"client_id" validate:"required"`
+	ClientSecret SecretString `yaml:"client_secret" validate:"required"`
+	RedirectURI  string       `yaml:"redirect_uri" validate:"required"`
+	Scopes       []string     `yaml:"scopes"`
+	LogoURI      string       `yaml:"logo_uri"`
+	Name         string       `yaml:"name"`
 }
 
 type client struct {
@@ -71,7 +71,7 @@ func (c *client) DiscoveryDocument() *DiscoveryDocument {
 }
 
 func (c *client) AuthenticationURL(state, nonce, verifier string, options ...Option) (string, error) {
-	codeChallenge := oauth.S256ChallengeFromVerifier(verifier)
+	codeChallenge := oauth2.S256ChallengeFromVerifier(verifier)
 	query := url.Values{}
 	query.Add("client_id", c.cfg.ClientID)
 	query.Add("redirect_uri", c.cfg.RedirectURI)
@@ -123,13 +123,13 @@ func (c *client) ExchangeForIdentity(code, verifier string, options ...Option) (
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		var oidcErr oauth.Error
+		oidcErr := new(Error)
 		err = json.Unmarshal(body, &oidcErr)
 		if err != nil {
 			return nil, fmt.Errorf("unable to decode error: %w", err)
 		}
 		slog.Error("unable to exchange code for token", "error", oidcErr)
-		return nil, &oidcErr
+		return nil, oidcErr
 	}
 
 	tokenResponse := new(TokenResponse)

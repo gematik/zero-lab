@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/gematik/zero-lab/go/pdp/authzserver"
+	"github.com/gematik/zero-lab/go/pdp/oauth2server"
 	"github.com/spf13/cobra"
 )
 
@@ -17,7 +17,7 @@ var secretHashCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		secret := args[0]
-		hashed, err := authzserver.HashSecret(secret)
+		hashed, err := oauth2server.HashSecret(secret)
 		cobra.CheckErr(err)
 		fmt.Println(hashed)
 	},

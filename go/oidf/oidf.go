@@ -156,12 +156,46 @@ func (f *OpenidFederation) FetchEntityStatement(iss string) (*EntityStatement, e
 	return selfSigned, nil
 }
 
+func convertToStringMap(i interface{}) interface{} {
+	switch x := i.(type) {
+	// Convert maps
+	case map[interface{}]interface{}:
+		m := make(map[string]interface{})
+		for k, v := range x {
+			// Convert the key to a string (often you'd cast if keys are known to be strings,
+			// but if they're not guaranteed, you can use fmt.Sprintf, as below).
+			key := fmt.Sprintf("%v", k)
+			m[key] = convertToStringMap(v)
+		}
+		return m
+	case map[string]interface{}:
+		m := make(map[string]interface{})
+		for k, v := range x {
+			m[k] = convertToStringMap(v)
+		}
+		return m
+
+	// Convert slices
+	case []interface{}:
+		for i, v := range x {
+			x[i] = convertToStringMap(v)
+		}
+		return x
+
+	// Fallback (string, int, float, bool, etc.)
+	default:
+		return x
+	}
+}
+
 // converts the metadata template to an oidf.Metadata object
 func templateToMetadata(template map[string]interface{}) (*Metadata, error) {
+	template = convertToStringMap(template).(map[string]interface{})
+
 	// serialize the template to json
 	jsonData, err := json.Marshal(template)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("serialize metadata template: %w", err)
 	}
 
 	// deserialize the json to an oidf.Metadata object

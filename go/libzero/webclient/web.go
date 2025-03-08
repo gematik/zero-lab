@@ -14,7 +14,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/libzero/oauth2"
 	"github.com/gematik/zero-lab/go/libzero/oidc"
-	"github.com/gematik/zero-lab/go/pdp/authzserver"
+	"github.com/gematik/zero-lab/go/pdp/oauth2server"
 	"github.com/gorilla/sessions"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
@@ -26,7 +26,7 @@ var (
 	templatesFS embed.FS
 )
 
-func NewFromServerMetadata(serverMetadata authzserver.Metadata) (*Client, error) {
+func NewFromServerMetadata(serverMetadata oauth2server.Metadata) (*Client, error) {
 
 	return &Client{
 		ClientID:                  "zero-web",
@@ -48,7 +48,7 @@ type Client struct {
 	ClientID                  string
 	RedirectURI               string
 	Scopes                    []string
-	ServerMetadata            authzserver.Metadata
+	ServerMetadata            oauth2server.Metadata
 	authzSessionStore         AuthzClientSessionStore
 	templateError             *template.Template
 	templateAuthenticatorWait *template.Template

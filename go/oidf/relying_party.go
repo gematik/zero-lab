@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"time"
 
 	"github.com/gematik/zero-lab/go/oauth/oidc"
@@ -23,10 +24,10 @@ import (
 )
 
 type RelyingPartyConfig struct {
-	baseDir              string
+	BaseDir              string                 `yaml:"-"`
 	Url                  string                 `yaml:"url" validate:"required"`
 	FedMasterURL         string                 `yaml:"fed_master_url" validate:"required"`
-	FedMasterJwks        map[string]interface{} `yaml:"fed_master_jwks" validate:"required"`
+	FedMasterJwk         Jwk                    `yaml:"fed_master_jwk" validate:"required"`
 	SignKid              string                 `yaml:"sign_kid" validate:"required"`
 	SignPrivateKeyPath   string                 `yaml:"sign_private_key_path" validate:"required"`
 	EncKid               string                 `yaml:"enc_kid" validate:"required"`
@@ -34,7 +35,7 @@ type RelyingPartyConfig struct {
 	ClientKid            string                 `yaml:"client_kid" validate:"required"`
 	ClientPrivateKeyPath string                 `yaml:"client_private_key_path" validate:"required"`
 	ClientCertPath       string                 `yaml:"client_cert_path" validate:"required"`
-	MetadataTemplate     map[string]interface{} `yaml:"metadata" validate:"required"`
+	MetadataTemplate     map[string]interface{} `yaml:"metadata_template" validate:"required"`
 }
 
 type RelyingParty struct {
@@ -55,7 +56,7 @@ func LoadRelyingPartyConfig(path string) (*RelyingPartyConfig, error) {
 	}
 	cfg := new(RelyingPartyConfig)
 	err = yaml.Unmarshal(yamlData, cfg)
-	cfg.baseDir = filepath.Dir(path)
+	cfg.BaseDir = filepath.Dir(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config file '%s': %w", path, err)
 	}
@@ -73,19 +74,22 @@ func NewRelyingPartyFromConfigFile(path string) (*RelyingParty, error) {
 func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 	validate := validator.New(validator.WithRequiredStructEnabled())
 
+	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
+		name := fld.Tag.Get("yaml")
+		if name == "" {
+			name = fld.Name
+		}
+		return name
+	})
 	err := validate.Struct(cfg)
 	if err != nil {
-		return nil, err
-	}
-
-	trustAnchor, err := mapToJwks(cfg.FedMasterJwks)
-	if err != nil {
-		return nil, err
+		slog.Error("config validation failed", "error", err, "config", fmt.Sprintf("%+v", cfg))
+		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 
 	rp := RelyingParty{
 		cfg:         cfg,
-		trustAnchor: trustAnchor,
+		trustAnchor: cfg.FedMasterJwk.AsSet().Keys,
 	}
 
 	var sigPublicKey jwk.Key
@@ -155,7 +159,7 @@ func (rp *RelyingParty) absPath(path string) string {
 	if filepath.IsAbs(path) {
 		return path
 	}
-	return filepath.Join(rp.cfg.baseDir, path)
+	return filepath.Join(rp.cfg.BaseDir, path)
 }
 
 func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {
@@ -246,12 +250,13 @@ type pushedAuthorizationResponse struct {
 	ExpiresIn  int    `json:"expires_in"`
 }
 
-func (rp *RelyingParty) NewClient(iss string) (oidc.Client, error) {
-	op, err := rp.federation.FetchEntityStatement(iss)
+func (rp *RelyingParty) NewClient(issuer, redirectUri string) (oidc.Client, error) {
+	op, err := rp.federation.FetchEntityStatement(issuer)
 	if err != nil {
 		return nil, err
 	}
 
+	// TODO: check if entity is openid provider
 	if op.Metadata == nil || op.Metadata.OpenidProvider == nil {
 		return nil, fmt.Errorf("no openid provider metadata found")
 	}
@@ -267,7 +272,7 @@ func (rp *RelyingParty) NewClient(iss string) (oidc.Client, error) {
 		rp:          rp,
 		op:          op,
 		scopes:      []string{"urn:telematik:display_name", "urn:telematik:versicherter", "openid"},
-		redirectURI: rp.entityStatement.Metadata.OpenidRelyingParty.RedirectURIs[0],
+		redirectUri: redirectUri,
 		metadata:    metadata,
 		jwks:        jwks,
 	}, nil

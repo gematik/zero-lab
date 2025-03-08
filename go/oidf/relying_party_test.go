@@ -28,22 +28,20 @@ func TestNewRelyingParty(t *testing.T) {
 	clientCertPath, _ := generateCert(clientKeyPath)
 	defer os.Remove(clientCertPath)
 
+	jwk, _ := NewJwkFromJson(`{
+		"kty": "EC",
+		"crv": "P-256",
+		"x":   "cdIR8dLbqaGrzfgyu365KM5s00zjFq8DFaUFqBvrWLs",
+		"y":   "XVp1ySJ2kjEInpjTZy0wD59afEXELpck0fk7vrMWrbw",
+		"kid": "puk_fedmaster_sig",
+		"use": "sig",
+		"alg": "ES256",
+	}`)
+
 	cfg := &RelyingPartyConfig{
-		Url: "https://example.com",
-		FedMasterJwks: map[string]interface{}{
-			"keys": []map[string]interface{}{
-				{
-					"kty": "EC",
-					"crv": "P-256",
-					"x":   "cdIR8dLbqaGrzfgyu365KM5s00zjFq8DFaUFqBvrWLs",
-					"y":   "XVp1ySJ2kjEInpjTZy0wD59afEXELpck0fk7vrMWrbw",
-					"kid": "puk_fedmaster_sig",
-					"use": "sig",
-					"alg": "ES256",
-				},
-			},
-		},
+		Url:                  "https://example.com",
 		FedMasterURL:         "https://fed.example.com",
+		FedMasterJwk:         *jwk,
 		SignKid:              "sign-kid",
 		SignPrivateKeyPath:   signKeyPath,
 		EncKid:               "enc-kid",

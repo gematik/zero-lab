@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>Test Frontend</title>
+    <style>
+        .hidden {
+            display: none;
+        }
+    </style>
+    <script>
+        function checkSession() {
+            fetch('/bff/check-session', {
+                method: 'GET',
+            }).then(response => {
+                if (response.ok) {
+                    document.getElementById('sessionAvailable').style.display = 'block';
+                    response.json().then(data => {
+                        document.getElementById('sessionInfo').innerText = JSON.stringify(data, null, 2);
+                    });
+                } else {
+                    document.getElementById('sessionNotAvailable').style.display = 'block';
+                }
+            });
+        }
+        // on page load, see if error query parameter is set
+        window.onload = function() {
+            var urlParams = new URLSearchParams(window.location.search);
+            var error = urlParams.get('error');
+            if (error) {
+                document.getElementById('error').style.display = 'block';
+                errorDescription = urlParams.get('error_description');
+                document.getElementById('errorCode').innerText = error;
+                document.getElementById('errorDescription').innerText = errorDescription;
+            } else {
+                checkSession();
+            }
+        };
+    </script>
+</head>
+<body>
+    <div id="sessionNotAvailable" class="hidden">
+        <h1>No session</h1>
+        <form method="get" action="/bff/auth">
+            <input type="hidden" name="redirect_uri" value="/">
+            <input type="text" name="scope" placeholder="Scope" value="zero">
+            <input type="submit" value="Authenticate">
+        </form>
+    </div>
+    <div id="sessionAvailable" class="hidden">
+        <h1>Active session</h1>
+        <p><pre id="sessionInfo"></pre></p>
+    </div>
+    <div id="error" class="hidden">
+        <h1>Error</h1>
+        <p><code id="errorCode"></code>: <span id="errorDescription"></span></p>
+    </div>
+</body>
+</html>

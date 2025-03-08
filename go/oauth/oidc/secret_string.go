@@ -1,4 +1,4 @@
-package oauth
+package oidc
 
 import (
 	"encoding/json"
@@ -23,7 +23,7 @@ func (s SecretString) Value() string {
 }
 
 func (s SecretString) MarshalJSON() ([]byte, error) {
-	return json.Marshal(s.String())
+	return json.Marshal(s.value)
 }
 
 func (s *SecretString) UnmarshalJSON(data []byte) error {
@@ -43,5 +43,5 @@ func (s *SecretString) UnmarshalYAML(unmarshal func(any) error) error {
 }
 
 func (s SecretString) MarshalYAML() (interface{}, error) {
-	return s.String(), nil
+	return s.value, nil
 }

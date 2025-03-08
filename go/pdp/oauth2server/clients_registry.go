@@ -1,4 +1,4 @@
-package authzserver
+package oauth2server
 
 import (
 	"fmt"
@@ -42,7 +42,7 @@ func (r *StaticClientsRegistry) GetClientMetadata(clientID string) (*ClientMetad
 	return nil, fmt.Errorf("client not found: '%s'", clientID)
 }
 
-func (m *ClientMetadata) AllowedRedirectURI(redirectURI string) bool {
+func (m *ClientMetadata) IsAllowedRedirectURI(redirectURI string) bool {
 	for _, uri := range m.RedirectURIs {
 		if uri == redirectURI {
 			return true
@@ -51,11 +51,20 @@ func (m *ClientMetadata) AllowedRedirectURI(redirectURI string) bool {
 	return false
 }
 
-func (m *ClientMetadata) AllowedScope(scope string) bool {
+func (m *ClientMetadata) IsAllowedScope(scope string) bool {
 	for _, s := range m.Scopes {
 		if s == scope {
 			return true
 		}
 	}
 	return false
+}
+
+func (m *ClientMetadata) IsAllowedScopes(scopes []string) bool {
+	for _, scope := range scopes {
+		if !m.IsAllowedScope(scope) {
+			return false
+		}
+	}
+	return true
 }

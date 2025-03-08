@@ -6,15 +6,15 @@ import (
 	"path/filepath"
 	"reflect"
 
-	"github.com/gematik/zero-lab/go/pdp/authzserver"
+	"github.com/gematik/zero-lab/go/pdp/oauth2server"
 	"github.com/go-playground/validator/v10"
 	"gopkg.in/yaml.v2"
 )
 
 type Config struct {
-	Address           string             `yaml:"address"`
-	BaseDir           string             `yaml:"-"`
-	AuthzServerConfig authzserver.Config `yaml:"authorization_server" validate:"required"`
+	Address           string              `yaml:"address"`
+	BaseDir           string              `yaml:"-"`
+	AuthzServerConfig oauth2server.Config `yaml:"authorization_server" validate:"required"`
 }
 
 func LoadConfigFile(path string) (*Config, error) {
@@ -41,7 +41,7 @@ func LoadConfigFile(path string) (*Config, error) {
 
 type PDP struct {
 	Address     string
-	AuthzServer *authzserver.Server
+	AuthzServer *oauth2server.Server
 }
 
 func New(config Config) (*PDP, error) {
@@ -55,7 +55,7 @@ func New(config Config) (*PDP, error) {
 		return nil, fmt.Errorf("validate config: %w", err)
 	}
 
-	authzServer, err := authzserver.New(config.AuthzServerConfig)
+	authzServer, err := oauth2server.New(config.AuthzServerConfig)
 	if err != nil {
 		return nil, fmt.Errorf("create authorization server: %w", err)
 	}

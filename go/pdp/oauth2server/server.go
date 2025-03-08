@@ -1,12 +1,12 @@
-package authzserver
+package oauth2server
 
 import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"log/slog"
-	"math/big"
 	"net/http"
 	"net/url"
 	"os"
@@ -16,10 +16,9 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/gemidp"
-	"github.com/gematik/zero-lab/go/oauth"
-	"github.com/gematik/zero-lab/go/oauth/jwkutil"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
-	"github.com/gematik/zero-lab/go/oauth/oidf"
+	"github.com/gematik/zero-lab/go/oidf"
+	"github.com/gematik/zero-lab/go/pdp/nonce"
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -27,11 +26,13 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/segmentio/ksuid"
+	"golang.org/x/oauth2"
 	"gopkg.in/yaml.v3"
 )
 
 type Server struct {
 	Metadata         ExtendedMetadata
+	endpointPaths    *EndpointsConfig
 	clientsRegistry  ClientsRegistry
 	openidProviders  []oidc.Client
 	oidfRelyingParty *oidf.RelyingParty
@@ -41,22 +42,75 @@ type Server struct {
 	sigPrK           jwk.Key
 	jwks             jwk.Set
 	encPuK           jwk.Key
+	nonceService     nonce.Service
 }
 
 type Config struct {
-	BaseDir                string                   `yaml:"-"`
-	Issuer                 string                   `yaml:"issuer" validate:"required"`
-	SignPrivateKeyPath     string                   `yaml:"sign_private_key_path"`
-	EncPublicKeyPath       string                   `yaml:"enc_public_key_path"`
-	ScopesSupported        []string                 `yaml:"scopes_supported"`
-	MetadataTemplate       ExtendedMetadata         `yaml:"metadata_template"`
-	DefaultOPIssuer        string                   `yaml:"default_op_issuer"`
-	OidcProviders          []oidc.Config            `yaml:"oidc_providers" validate:"dive"`
-	GematikIdp             []gemidp.ClientConfig    `yaml:"gematik_idp" validate:"dive"`
-	ClientsPolicyPath      string                   `yaml:"clients_policy_path"`
-	Clients                []ClientMetadata         `yaml:"clients" validate:"omitempty,dive"`
-	OidfRelyingPartyPath   string                   `yaml:"oidf_relying_party_path"`
-	OidfRelyingPartyConfig *oidf.RelyingPartyConfig `yaml:"oidf_relying_party" validate:"omitempty"`
+	BaseDir                    string                   `yaml:"-"`
+	Issuer                     string                   `yaml:"issuer" validate:"required"`
+	SignPrivateKeyPath         string                   `yaml:"sign_private_key_path"`
+	EncPublicKeyPath           string                   `yaml:"enc_public_key_path"`
+	ScopesSupported            []string                 `yaml:"scopes_supported"`
+	MetadataTemplate           ExtendedMetadata         `yaml:"metadata_template"`
+	DefaultOPIssuer            string                   `yaml:"default_op_issuer"`
+	OidcProviders              []oidc.Config            `yaml:"oidc_providers" validate:"dive"`
+	GematikIdp                 []gemidp.ClientConfig    `yaml:"gematik_idp" validate:"dive"`
+	ClientsPolicyPath          string                   `yaml:"clients_policy_path"`
+	Clients                    []ClientMetadata         `yaml:"clients" validate:"omitempty,dive"`
+	OidfRelyingPartyConfigPath string                   `yaml:"oidf_relying_party_path"`
+	OidfRelyingPartyConfig     *oidf.RelyingPartyConfig `yaml:"oidf_relying_party" validate:"omitempty"`
+	Endpoints                  EndpointsConfig          `yaml:"endpoints"`
+}
+
+type EndpointsConfig struct {
+	AuthorizationServerMetadata string `yaml:"authorization_server_metadata"`
+	Jwks                        string `yaml:"jwks"`
+	Nonce                       string `yaml:"nonce"`
+	OpenIDProviders             string `yaml:"openid_providers"`
+	Authorization               string `yaml:"authorization"`
+	Par                         string `yaml:"par"`
+	OPCallback                  string `yaml:"op_callback"`
+	GemIDPCallback              string `yaml:"gemidp_callback"`
+	Token                       string `yaml:"token"`
+	EntityStatement             string `yaml:"entity_statement"`
+}
+
+func (s *EndpointsConfig) setDefaults(baseURI *url.URL) {
+	basePath := strings.TrimRight(baseURI.Path, "/")
+	if basePath == "/" {
+		basePath = ""
+	}
+
+	if s.AuthorizationServerMetadata == "" {
+		s.AuthorizationServerMetadata = basePath + "/.well-known/oauth-authorization-server"
+	}
+	if s.Jwks == "" {
+		s.Jwks = basePath + "/jwks"
+	}
+	if s.Nonce == "" {
+		s.Nonce = basePath + "/nonce"
+	}
+	if s.OpenIDProviders == "" {
+		s.OpenIDProviders = basePath + "/openid-providers"
+	}
+	if s.Authorization == "" {
+		s.Authorization = basePath + "/auth"
+	}
+	if s.Par == "" {
+		s.Par = basePath + "/par"
+	}
+	if s.OPCallback == "" {
+		s.OPCallback = basePath + "/op-callback"
+	}
+	if s.GemIDPCallback == "" {
+		s.GemIDPCallback = basePath + "/gemidp-callback"
+	}
+	if s.Token == "" {
+		s.Token = basePath + "/token"
+	}
+	if s.EntityStatement == "" {
+		s.EntityStatement = basePath + "/.well-known/openid-federation"
+	}
 }
 
 func absPath(baseDir, path string) string {
@@ -90,6 +144,14 @@ func New(cfg Config) (*Server, error) {
 		openidProviders: make([]oidc.Client, 0),
 	}
 
+	issuerUri, err := url.Parse(cfg.Issuer)
+	if err != nil {
+		return nil, fmt.Errorf("invalid issuer URI: %w", err)
+	}
+
+	s.endpointPaths = &cfg.Endpoints
+	s.endpointPaths.setDefaults(issuerUri)
+
 	for _, c := range cfg.OidcProviders {
 		client, err := oidc.NewClient(c)
 		if err != nil {
@@ -103,10 +165,11 @@ func New(cfg Config) (*Server, error) {
 	s.Metadata.ScopesSupported = cfg.ScopesSupported
 
 	// set urls explicitly using the issuer
-	s.Metadata.AuthorizationEndpoint = fmt.Sprint(s.Metadata.Issuer, "/auth")
-	s.Metadata.TokenEndpoint = fmt.Sprint(s.Metadata.Issuer, "/token")
-	s.Metadata.JwksURI = fmt.Sprint(s.Metadata.Issuer, "/jwks")
-	s.Metadata.OpenidProvidersEndpoint = fmt.Sprint(s.Metadata.Issuer, "/openid-providers")
+	s.Metadata.AuthorizationEndpoint = buildURI(s.Metadata.Issuer, s.endpointPaths.Authorization)
+	s.Metadata.TokenEndpoint = buildURI(s.Metadata.Issuer, s.endpointPaths.Token)
+	s.Metadata.JwksURI = buildURI(s.Metadata.Issuer, s.endpointPaths.Jwks)
+	s.Metadata.OpenidProvidersEndpoint = buildURI(s.Metadata.Issuer, s.endpointPaths.OpenIDProviders)
+	s.Metadata.NonceEndpoint = buildURI(s.Metadata.Issuer, s.endpointPaths.Nonce)
 
 	// set supported parameters explicitly
 	s.Metadata.ResponseTypesSupported = []string{"code"}
@@ -134,7 +197,7 @@ func New(cfg Config) (*Server, error) {
 	sigPrK, err := loadJwkFromPem(absPath(cfg.BaseDir, cfg.SignPrivateKeyPath))
 	if err != nil {
 		slog.Warn("failed to load signing key, will create random", "path", cfg.SignPrivateKeyPath)
-		sigPrK, err = jwkutil.GenerateRandomJwk()
+		sigPrK, err = GenerateRandomJwk()
 		if err != nil {
 			return nil, fmt.Errorf("generate signing key: %w", err)
 		}
@@ -153,7 +216,7 @@ func New(cfg Config) (*Server, error) {
 	encPuK, err := loadJwkFromPem(absPath(cfg.BaseDir, cfg.EncPublicKeyPath))
 	if err != nil {
 		slog.Warn("failed to load encryption key, will create random", "path", cfg.EncPublicKeyPath)
-		encPrK, err := jwkutil.GenerateRandomJwk()
+		encPrK, err := GenerateRandomJwk()
 		if err != nil {
 			return nil, fmt.Errorf("generate encryption key: %w", err)
 		}
@@ -177,14 +240,15 @@ func New(cfg Config) (*Server, error) {
 	s.sessionStore = newMockSessionStore()
 
 	// if relying party config is provided, load it
-	if cfg.OidfRelyingPartyPath != "" {
-		filename := absPath(cfg.BaseDir, cfg.OidfRelyingPartyPath)
+	if cfg.OidfRelyingPartyConfigPath != "" {
+		filename := absPath(cfg.BaseDir, cfg.OidfRelyingPartyConfigPath)
 		s.oidfRelyingParty, err = oidf.NewRelyingPartyFromConfigFile(filename)
 		if err != nil {
 			return nil, fmt.Errorf("load relying party config: %w", err)
 		}
 		slog.Info("loaded relying party config", "path", filename)
 	} else if cfg.OidfRelyingPartyConfig != nil {
+		cfg.OidfRelyingPartyConfig.BaseDir = cfg.BaseDir
 		if s.oidfRelyingParty, err = oidf.NewRelyingPartyFromConfig(cfg.OidfRelyingPartyConfig); err != nil {
 			return nil, fmt.Errorf("create relying party: %w", err)
 		}
@@ -198,6 +262,12 @@ func New(cfg Config) (*Server, error) {
 		}
 		slog.Info("created gematik IDP-Dienst client", "issuer", client.Issuer())
 		s.openidProviders = append(s.openidProviders, client)
+	}
+
+	// configure nonce service
+	s.nonceService, err = nonce.NewHashicorpNonceService()
+	if err != nil {
+		return nil, fmt.Errorf("create nonce service: %w", err)
 	}
 
 	return s, nil
@@ -251,16 +321,17 @@ type Metadata struct {
 // Extend the standard OAuth2 server metadata from RFC8414
 type ExtendedMetadata struct {
 	Metadata
+	NonceEndpoint           string `json:"nonce_endpoint"`
 	OpenidProvidersEndpoint string `json:"openid_providers_endpoint"`
 }
 
 type TokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	TokenType    string `json:"token_type"`
-	ExpiresIn    int    `json:"expires_in"`
-	Scope        string `json:"scope,omitempty"`
-	RefreshToken string `json:"refresh_token,omitempty"`
-	IDToken      string `json:"id_token,omitempty"`
+	AccessToken      string `json:"access_token"`
+	TokenType        string `json:"token_type"`
+	ExpiresIn        int    `json:"expires_in"`
+	Scope            string `json:"scope,omitempty"`
+	RefreshToken     string `json:"refresh_token,omitempty"`
+	RefreshExpiresIn int    `json:"refresh_expires_in,omitempty"`
 }
 
 func ErrorHandlerMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
@@ -289,25 +360,25 @@ func ErrorHandlerMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
-// TODO: make paths configurable
 func (s *Server) MountRoutes(group *echo.Group) {
 	group.Use(
 		middleware.Logger(),
 		ErrorHandlerMiddleware,
 	)
 
-	group.GET("/.well-known/oauth-authorization-server", s.MetadataEndpoint)
-	group.GET("/auth", s.AuthorizationEndpoint)
-	group.GET("/op-callback", s.OPCallbackEndpoint)
-	group.GET("/gemidp-callback", s.OPCallbackEndpoint)
-	group.POST("/par", s.PAREndpoint)
-	group.POST("/token", s.TokenEndpoint)
-	group.GET("/jwks", s.JWKS)
-	group.GET("/openid-providers", s.OpenidProvidersEndpoint)
+	group.GET(s.endpointPaths.AuthorizationServerMetadata, s.MetadataEndpoint)
+	group.GET(s.endpointPaths.Jwks, s.JWKS)
+	group.GET(s.endpointPaths.OpenIDProviders, s.OpenidProvidersEndpoint)
+	group.GET(s.endpointPaths.Authorization, s.AuthorizationEndpoint)
+	group.POST(s.endpointPaths.Par, s.PAREndpoint)
+	group.GET(s.endpointPaths.OPCallback, s.OPCallbackEndpoint)
+	group.GET(s.endpointPaths.GemIDPCallback, s.OPCallbackEndpoint)
+	group.POST(s.endpointPaths.Token, s.TokenEndpoint)
+	group.GET(s.endpointPaths.Nonce, s.NonceEndpoint)
+	group.HEAD(s.endpointPaths.Nonce, s.NonceEndpoint)
 
 	if s.oidfRelyingParty != nil {
-		group.GET("/.well-known/openid-federation", echo.WrapHandler(http.HandlerFunc(s.oidfRelyingParty.Serve)))
-		group.GET("/oidf-relying-party-jwks", echo.WrapHandler(http.HandlerFunc(s.oidfRelyingParty.ServeSignedJwks)))
+		group.GET(s.endpointPaths.EntityStatement, echo.WrapHandler(http.HandlerFunc(s.oidfRelyingParty.Serve)))
 	}
 }
 
@@ -327,18 +398,21 @@ func (s *Server) MetadataEndpoint(c echo.Context) error {
 }
 
 func (s *Server) AuthorizationEndpoint(c echo.Context) error {
-	var session AuthzServerSession
-	session.ID = ksuid.New().String()
+	session := &AuthzServerSession{
+		ID:        ksuid.New().String(),
+		CreatedAt: time.Now(),
+	}
+	var responseType string
+	var scope string
 
 	binderr := echo.FormFieldBinder(c).
-		MustString("response_type", &session.ResponseType).
+		MustString("response_type", &responseType).
 		MustString("client_id", &session.ClientID).
 		MustString("redirect_uri", &session.RedirectURI).
 		MustString("code_challenge", &session.CodeChallenge).
 		MustString("code_challenge_method", &session.CodeChallengeMethod).
-		MustString("nonce", &session.Nonce).
 		MustString("state", &session.State).
-		MustString("scope", &session.Scope).
+		MustString("scope", &scope).
 		String("op_issuer", &session.OPIssuer).
 		String("op_intermediary_redirect_uri", &session.OPIntermediaryRedirectURI).
 		BindError()
@@ -348,6 +422,14 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 			HttpStatus:  http.StatusBadRequest,
 			Code:        "invalid_request",
 			Description: binderr.Error(),
+		}
+	}
+
+	if responseType != "code" {
+		return &Error{
+			HttpStatus:  http.StatusBadRequest,
+			Code:        "unsupported_response_type",
+			Description: fmt.Sprintf("unsupported response_type: %s", responseType),
 		}
 	}
 
@@ -371,7 +453,7 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 		}
 	}
 
-	clientMetadata, err := s.clientsRegistry.GetClientMetadata(session.ClientID)
+	client, err := s.clientsRegistry.GetClientMetadata(session.ClientID)
 	if err != nil {
 		return &Error{
 			HttpStatus:  http.StatusBadRequest,
@@ -380,14 +462,23 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 		}
 	}
 
-	if !clientMetadata.AllowedScope(session.Scope) {
+	if !client.IsAllowedRedirectURI(session.RedirectURI) {
+		return &Error{
+			HttpStatus:  http.StatusBadRequest,
+			Code:        "invalid_request",
+			Description: "Invalid redirect_uri",
+		}
+	}
+
+	session.Scopes = strings.Split(scope, " ")
+	if !client.IsAllowedScopes(session.Scopes) {
 		return redirectWithError(c, session.RedirectURI, session.State, Error{
 			Code:        "invalid_scope",
-			Description: fmt.Sprintf("scope not allowed: %s", session.Scope),
+			Description: fmt.Sprintf("scope not allowed: %s", strings.Join(session.Scopes, " ")),
 		})
 	}
 
-	opClient, err := s.OpenidProvider(session.OPIssuer)
+	opClient, err := s.GetOpenidClient(session.OPIssuer)
 	if err != nil {
 		return redirectWithError(c, session.RedirectURI, session.State, Error{
 			Code:        "invalid_request",
@@ -395,37 +486,29 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 		})
 	}
 
-	if !clientMetadata.AllowedRedirectURI(session.RedirectURI) {
-		return redirectWithError(c, session.RedirectURI, session.State, Error{
-			Code:        "invalid_request",
-			Description: "redirect_uri forbidden by policy",
-		})
-	}
-
-	if session.OPIntermediaryRedirectURI != "" {
-		if !s.clientsPolicy.AllowedOPIntermediaryURL(session.ClientID, session.OPIntermediaryRedirectURI) {
-			return redirectWithError(c, session.RedirectURI, session.State, Error{
-				Code:        "invalid_request",
-				Description: "op_indermediary_redirect_uri forbidden by policy",
-			})
-		}
-		slog.Info("OP Intermediary Redirect URI is set", "op_intermediary_redirect_uri", session.OPIntermediaryRedirectURI)
-	}
-
 	opRedirectURI := opClient.RedirectURI()
 
-	slog.Info("OP redirect URI", "redirect_uri", opRedirectURI)
+	if session.OPIntermediaryRedirectURI != "" {
+		if !s.clientsPolicy.IsOPIntermediaryRedirectURIAllowed(session.ClientID, session.OPIntermediaryRedirectURI) {
+			return redirectWithError(c, session.RedirectURI, session.State, Error{
+				Code:        "invalid_request",
+				Description: fmt.Sprintf("OP Intermediary Redirect URI not allowed: %s, client: %s", session.OPIntermediaryRedirectURI, session.ClientID),
+			})
+		}
+		opRedirectURI = session.OPIntermediaryRedirectURI
+		slog.Info("OP Intermediary Redirect URI is set", "op_intermediary_redirect_uri", session.OPIntermediaryRedirectURI)
+	}
 
 	opSession := &oidc.AuthnClientSession{
 		ID:          ksuid.New().String(),
 		Issuer:      session.OPIssuer,
 		State:       ksuid.New().String(),
-		Nonce:       session.Nonce,
-		Verifier:    oauth.GenerateVerifier(),
+		Nonce:       ksuid.New().String(),
+		Verifier:    oauth2.GenerateVerifier(),
 		RedirectURI: opRedirectURI,
 	}
 
-	slog.Info("OP session", "redirect_uri", opSession.RedirectURI)
+	slog.Info("OP session", "op_session", fmt.Sprintf("%+v", opSession))
 
 	authUrl, err := opClient.AuthenticationURL(
 		opSession.State,
@@ -442,20 +525,20 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 	opSession.AuthURL = authUrl
 
 	session.AuthnClientSession = opSession
-	if err := s.sessionStore.SaveAutzhServerSession(&session); err != nil {
+	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {
 		return redirectWithError(c, session.RedirectURI, session.State, Error{
 			Code:        "server_error",
 			Description: fmt.Errorf("unable to save session: %w", err).Error(),
 		})
 	}
 
-	slog.Info("Redirecting to OP", "auth_url", authUrl)
+	slog.Info("Redirecting to OpenID Provider", "auth_url", authUrl)
 
 	return c.Redirect(http.StatusFound, authUrl)
 }
 
 func (s *Server) PAREndpoint(c echo.Context) error {
-	requestUri := "urn:ietf:params:oauth:request_uri:" + generateRandomString(128)
+	requestUri := "urn:ietf:params:oauth:request_uri:" + generateNonce(64)
 	slog.Error("PAR not implemented", "request_uri", requestUri)
 	// TODO: implement PAR
 	return &Error{
@@ -465,8 +548,8 @@ func (s *Server) PAREndpoint(c echo.Context) error {
 	}
 }
 
-// OpenidProvider returns an OpenID Connect client for the given issuer
-func (s *Server) OpenidProvider(issuer string) (oidc.Client, error) {
+// GetOpenidClient returns an OpenID Connect client for the given issuer
+func (s *Server) GetOpenidClient(issuer string) (oidc.Client, error) {
 	for _, op := range s.openidProviders {
 		if op.Issuer() == issuer {
 			return op, nil
@@ -474,7 +557,7 @@ func (s *Server) OpenidProvider(issuer string) (oidc.Client, error) {
 	}
 
 	if s.oidfRelyingParty != nil {
-		return s.oidfRelyingParty.NewClient(issuer)
+		return s.oidfRelyingParty.NewClient(issuer, buildURI(s.Metadata.Issuer, s.endpointPaths.EntityStatement))
 	}
 	return nil, fmt.Errorf("unknown issuer: %s", issuer)
 }
@@ -531,7 +614,7 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 
 	slog.Info("OP callback", "s", s, "authnSessiom", authnSession, "authzSession", authzSession)
 
-	identityIssuer, err := s.OpenidProvider(authnSession.Issuer)
+	identityIssuer, err := s.GetOpenidClient(authnSession.Issuer)
 	if err != nil {
 		return &Error{
 			HttpStatus:  http.StatusBadRequest,
@@ -554,20 +637,10 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 		}
 	}
 
-	authnSession.Claims = make(map[string]any)
-
-	if err := tokenResponse.Claims(&authnSession.Claims); err != nil {
-		return &Error{
-			HttpStatus:  http.StatusInternalServerError,
-			Code:        "server_error",
-			Description: fmt.Errorf("unable to parse claims: %w", err).Error(),
-		}
-	}
-
 	authnSession.TokenResponse = tokenResponse
 
 	if authzSession != nil {
-		authzSession.Code = generateRandomString(128)
+		authzSession.Code = generateNonce(64)
 
 		if err := s.sessionStore.SaveAutzhServerSession(authzSession); err != nil {
 			return &Error{
@@ -618,6 +691,8 @@ func (s *Server) TokenEndpoint(c echo.Context) error {
 		return s.TokenEndpointAuthorizationCode(c)
 	case GrantTypeClientCredentials:
 		return s.TokenEndpointClientCredentials(c)
+	case GrantTypeRefreshToken:
+		return s.TokenEndpointRefreshToken(c)
 	default:
 		slog.Error("Unsupported grant type", "grant_type", grantType)
 		return &Error{
@@ -629,7 +704,41 @@ func (s *Server) TokenEndpoint(c echo.Context) error {
 
 }
 
-func (s *Server) verifyClientCredentials(c echo.Context) (*ClientMetadata, error) {
+func (s *Server) verifyClient(c echo.Context) (*ClientMetadata, *Error) {
+	formClientId := c.FormValue("client_id")
+
+	if formClientId != "" {
+		cm, err := s.clientsRegistry.GetClientMetadata(formClientId)
+		if err != nil {
+			return nil, &Error{
+				HttpStatus:  http.StatusBadRequest,
+				Code:        "invalid_client",
+				Description: fmt.Errorf("unable to get client metadata: %w", err).Error(),
+			}
+		}
+
+		if cm.Type == ClientTypeConfidential {
+			formClientSecret := c.FormValue("client_secret")
+			if formClientSecret == "" {
+				return nil, &Error{
+					HttpStatus:  http.StatusBadRequest,
+					Code:        "invalid_client",
+					Description: "missing client_secret",
+				}
+			}
+			return verifyClientSecret(formClientSecret, cm)
+		} else {
+			// public client
+			return cm, nil
+		}
+
+	}
+
+	// no client_id in form, try basic auth
+	return s.verifyClientCredentialsBasic(c)
+}
+
+func (s *Server) verifyClientCredentialsBasic(c echo.Context) (*ClientMetadata, *Error) {
 	clientId, clientSecret, ok := c.Request().BasicAuth()
 	if !ok {
 		return nil, &Error{
@@ -648,6 +757,18 @@ func (s *Server) verifyClientCredentials(c echo.Context) (*ClientMetadata, error
 		}
 	}
 
+	return verifyClientSecret(clientSecret, client)
+}
+
+func verifyClientSecret(clientSecret string, client *ClientMetadata) (*ClientMetadata, *Error) {
+	if client.ClientSecretHash == "" && client.Type == ClientTypePublic {
+		return nil, &Error{
+			HttpStatus:  http.StatusBadRequest,
+			Code:        "unauthorized_client",
+			Description: "public client must not use client_secret",
+		}
+	}
+
 	if ok, err := VerifySecretHash(clientSecret, client.ClientSecretHash); !ok {
 		if err != nil {
 			slog.Error("VerifySecretHash failed", "error", err)
@@ -655,68 +776,87 @@ func (s *Server) verifyClientCredentials(c echo.Context) (*ClientMetadata, error
 
 		return nil, &Error{
 			HttpStatus:  http.StatusBadRequest,
-			Code:        "invalid_client",
+			Code:        "unauthorized_client",
 			Description: "invalid client_secret",
 		}
 	}
 
+	// client secret is valid
 	return client, nil
 }
 
 func (s *Server) TokenEndpointClientCredentials(c echo.Context) error {
 
-	client, err := s.verifyClientCredentials(c)
-	if err != nil {
-		return err
+	client, clientError := s.verifyClient(c)
+	if clientError != nil {
+		return clientError
 	}
 
 	slog.Info("Token request", "client", client)
 
-	session := &AuthzServerSession{
-		ID:       ksuid.New().String(),
-		ClientID: client.ClientID,
-		Duration: 1 * time.Hour,
-		Scope:    c.FormValue("scope"),
-	}
-
-	if err = s.applyPolicy(client, session); err != nil {
+	scope := c.FormValue("scope")
+	if scope == "" {
 		return &Error{
-			HttpStatus:  http.StatusForbidden,
-			Code:        "access_denied",
-			Description: fmt.Errorf("unable to apply policy: %w", err).Error(),
+			HttpStatus:  http.StatusBadRequest,
+			Code:        "invalid_request",
+			Description: "missing scope",
 		}
 	}
 
-	accessToken, err := s.issueAccessToken(session)
+	if !client.IsAllowedScope(scope) {
+		return &Error{
+			HttpStatus:  http.StatusForbidden,
+			Code:        "invalid_scope",
+			Description: fmt.Sprintf("scope not allowed: %s", scope),
+		}
+	}
+
+	session := &AuthzServerSession{
+		ID:           ksuid.New().String(),
+		CreatedAt:    time.Now(),
+		ClientID:     client.ClientID,
+		Scopes:       strings.Split(scope, " "),
+		RefreshCount: -1,
+	}
+
+	if err := s.applyPolicyNewSession(client, session); err != nil {
+		return err
+	}
+
+	response, err := s.refreshTokens(session)
 	if err != nil {
 		return &Error{
 			HttpStatus:  http.StatusInternalServerError,
 			Code:        "server_error",
-			Description: fmt.Errorf("unable to issue access token: %w", err).Error(),
+			Description: fmt.Sprintf("unable to issue access token: %v", err),
 		}
 	}
 
-	return c.JSON(http.StatusOK, TokenResponse{
-		AccessToken:  accessToken,
-		TokenType:    "Bearer",
-		ExpiresIn:    int(session.Duration.Seconds()),
-		RefreshToken: "",
-	})
+	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {
+		return &Error{
+			HttpStatus:  http.StatusInternalServerError,
+			Code:        "server_error",
+			Description: fmt.Sprintf("unable to save session: %v", err),
+		}
+	}
+
+	return c.JSON(http.StatusOK, response)
 }
 
 // TokenEndpointAuthorizationCode handles the token request for the authorization code grant type
 func (s *Server) TokenEndpointAuthorizationCode(c echo.Context) error {
-	var grantType string
+	client, clientError := s.verifyClient(c)
+	if clientError != nil {
+		return clientError
+	}
+
 	var code string
 	var codeVerifier string
 	var redirectUri string
-	var clientId string
 	binderr := echo.FormFieldBinder(c).
-		MustString("grant_type", &grantType).
 		MustString("code", &code).
 		MustString("code_verifier", &codeVerifier).
 		MustString("redirect_uri", &redirectUri).
-		String("client_id", &clientId).
 		BindError()
 
 	if binderr != nil {
@@ -727,24 +867,7 @@ func (s *Server) TokenEndpointAuthorizationCode(c echo.Context) error {
 		}
 	}
 
-	clientMetadata, err := s.clientsRegistry.GetClientMetadata(clientId)
-	if err != nil {
-		return &Error{
-			HttpStatus:  http.StatusBadRequest,
-			Code:        "server_error",
-			Description: fmt.Errorf("unable to get client metadata: %w", err).Error(),
-		}
-	}
-
-	if clientMetadata.Type == ClientTypeConfidential {
-		return &Error{
-			HttpStatus:  http.StatusBadRequest,
-			Code:        "invalid_request",
-			Description: "client_secret required",
-		}
-	}
-
-	slog.Info("Token request", "grant_type", grantType, "code", code, "redirect_uri", redirectUri, "client_id", clientId)
+	slog.Info("Token request", "code", code, "redirect_uri", redirectUri, "client_id", client.ClientID)
 
 	session, err := s.sessionStore.GetAuthzServerSessionByCode(code)
 	if err != nil {
@@ -755,9 +878,9 @@ func (s *Server) TokenEndpointAuthorizationCode(c echo.Context) error {
 		}
 	}
 
-	slog.Info("Token request: session", "session", session)
+	slog.Info("Token request: session", "session", fmt.Sprintf("%+v", session))
 
-	if session.ClientID != clientId {
+	if session.ClientID != client.ClientID {
 		return &Error{
 			HttpStatus:  http.StatusBadRequest,
 			Code:        "invalid_request",
@@ -782,7 +905,12 @@ func (s *Server) TokenEndpointAuthorizationCode(c echo.Context) error {
 		})
 	}
 
-	accessToken, err := s.issueAccessToken(session)
+	if err := s.applyPolicyNewSession(client, session); err != nil {
+		return err
+	}
+
+	response, err := s.refreshTokens(session)
+
 	if err != nil {
 		return redirectWithError(c, session.RedirectURI, session.State, Error{
 			Code:        "server_error",
@@ -790,39 +918,63 @@ func (s *Server) TokenEndpointAuthorizationCode(c echo.Context) error {
 		})
 	}
 
-	slog.Info("Token request: access token issued", "access_token", accessToken)
-
-	response := TokenResponse{
-		AccessToken:  accessToken,
-		TokenType:    "Bearer",
-		ExpiresIn:    int(session.Duration.Seconds()),
-		RefreshToken: "",
-	}
+	slog.Info("Token request: tokens issued", "response", fmt.Sprintf("%+v", response))
 
 	return c.JSON(http.StatusOK, response)
 }
 
-// issueAccessToken issues an access token for the given authorization session
-// upon successful authentication with the OpenID Provider and authorization
-func (s *Server) issueAccessToken(authzSession *AuthzServerSession) (string, error) {
-	accessJwt := jwt.New()
-	accessJwt.Set("jti", authzSession.ID)
-	accessJwt.Set("aud", []string{"TODO"})
-	accessJwt.Set("iat", time.Now().Unix())
-	accessJwt.Set("exp", time.Now().Add(authzSession.Duration).Unix())
-	if authzSession.Scope != "" {
-		accessJwt.Set("scope", authzSession.Scope)
+func (s *Server) TokenEndpointRefreshToken(c echo.Context) error {
+	client, clientError := s.verifyClient(c)
+	if clientError != nil {
+		return clientError
 	}
-	if authzSession.AuthnClientSession != nil && authzSession.AuthnClientSession.Claims != nil {
-		accessJwt.Set("urn:telematik:zta:subject", authzSession.AuthnClientSession.Claims)
+
+	refreshToken := c.FormValue("refresh_token")
+	if refreshToken == "" {
+		return &Error{
+			HttpStatus:  http.StatusBadRequest,
+			Code:        "invalid_request",
+			Description: "missing refresh_token",
+		}
+	}
+
+	slog.Info("Token request", "client", client, "refresh_token", refreshToken)
+
+	return c.JSON(http.StatusUnauthorized, nil)
+}
+
+func (s *Server) refreshTokens(session *AuthzServerSession) (*TokenResponse, error) {
+	accessJwt := jwt.New()
+	accessJwt.Set("jti", session.ID)
+	if session.Audience != nil {
+		accessJwt.Set("aud", session.Audience)
+	}
+	accessJwt.Set("iat", time.Now().Unix())
+	exp := time.Now().Add(session.AccessTokenDuration)
+	if session.ExpiresAt.Before(exp) {
+		exp = session.ExpiresAt
+	}
+	accessJwt.Set("exp", exp.Unix())
+	if session.Scopes != nil {
+		accessJwt.Set("scope", strings.Join(session.Scopes, " "))
 	}
 
 	accessTokenBytes, err := jwt.Sign(accessJwt, jwt.WithKey(jwa.ES256, s.sigPrK))
 	if err != nil {
-		return "", fmt.Errorf("unable to sign access token: %w", err)
+		return nil, fmt.Errorf("unable to sign access token: %w", err)
 	}
 
-	return string(accessTokenBytes), nil
+	session.RefreshToken = generateNonce(64)
+	session.RefreshCount++
+
+	return &TokenResponse{
+		AccessToken:      string(accessTokenBytes),
+		TokenType:        "Bearer",
+		ExpiresIn:        int(time.Until(exp).Seconds()),
+		Scope:            strings.Join(session.Scopes, " "),
+		RefreshToken:     session.RefreshToken,
+		RefreshExpiresIn: int(time.Until(session.ExpiresAt).Seconds()),
+	}, nil
 }
 
 // JWKS serves the JSON Web Key Set for the server
@@ -890,31 +1042,64 @@ type OpenidProviderInfo struct {
 	Type    string `json:"type"`
 }
 
-func generateRandomString(n int) string {
-	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
-	ret := make([]byte, n)
-	for i := 0; i < n; i++ {
-		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
-		if err != nil {
-			panic("Random number generation failed")
+func (s *Server) applyPolicyNewSession(client *ClientMetadata, session *AuthzServerSession) *Error {
+	if !client.IsAllowedScopes(session.Scopes) {
+		return &Error{
+			HttpStatus:  http.StatusForbidden,
+			Code:        "invalid_scope",
+			Description: fmt.Sprintf("scope not allowed: %s", strings.Join(session.Scopes, " ")),
 		}
-		ret[i] = letters[num.Int64()]
 	}
-
-	return string(ret)
+	session.AccessTokenDuration = 60 * time.Second
+	session.ExpiresAt = session.CreatedAt.Add(10 * time.Minute)
+	return nil
 }
 
-func (s *Server) applyPolicy(client *ClientMetadata, autzSession *AuthzServerSession) error {
-	if autzSession.Scope == "" {
-		slog.Warn("No scope requested")
-	} else {
-		scopes := strings.Split(autzSession.Scope, " ")
-		slog.Info("Requested scopes", "scopes", scopes)
-		for _, scope := range scopes {
-			if !client.AllowedScope(scope) {
-				return fmt.Errorf("scope %s not allowed by policy", scope)
-			}
+// generateNonce generates a cryptographically secure random nonce of the given size.
+func generateNonce(size int) string {
+	// Create a byte slice of the desired size
+	nonceBytes := make([]byte, size)
+
+	// Read random bytes into the slice
+	_, err := rand.Read(nonceBytes)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Encode the bytes into a base64 string without padding (URL-safe)
+	nonce := base64.RawURLEncoding.WithPadding(base64.NoPadding).EncodeToString(nonceBytes)
+
+	return nonce
+}
+
+func buildURI(base string, paths ...string) string {
+	result := strings.TrimRight(base, "/")
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		result = fmt.Sprintf("%s/%s", result, strings.Trim(p, "/"))
+	}
+	return result
+}
+
+type NonceType struct {
+	Nonce string `json:"nonce"`
+}
+
+func (s *Server) NonceEndpoint(c echo.Context) error {
+	nonce, err := s.nonceService.Get()
+	if err != nil {
+		return &Error{
+			HttpStatus:  http.StatusInternalServerError,
+			Code:        "server_error",
+			Description: fmt.Sprintf("unable to get nonce: %v", err),
 		}
 	}
-	return nil
+	if c.Request().Method == http.MethodHead {
+		c.Response().Header().Set("Replay-Nonce", nonce)
+		return c.NoContent(http.StatusOK)
+	} else {
+		return c.JSON(http.StatusOK, NonceType{Nonce: nonce})
+	}
 }
