@@ -13,13 +13,6 @@ type WithAlternateRedirectURI string
 // op_issuer
 type WithOpenidProviderIssuer string
 
-/*
-type Client interface {
-	AuthCodeURL(state, nonce, verifier string, opts ...Option) (string, error)
-	Exchange(code, verifier string, opts ...Option) (*TokenResponse, error)
-}
-*/
-
 type Client struct {
 }
 

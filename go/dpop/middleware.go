@@ -5,16 +5,16 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/gematik/zero-lab/go/libzero/nonce"
+	"github.com/gematik/zero-lab/go/nonce"
 )
 
 type Middleware struct {
-	nonceService nonce.NonceService
+	nonceService nonce.Service
 }
 
 type MiddlewareOption func(*Middleware) error
 
-func WithNonceService(nonceService nonce.NonceService) MiddlewareOption {
+func WithNonceService(nonceService nonce.Service) MiddlewareOption {
 	return func(m *Middleware) error {
 		m.nonceService = nonceService
 		return nil

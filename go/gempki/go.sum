@@ -1,0 +1,4 @@
+github.com/gematik/zero-lab/go/brainpool v0.0.0-20250308083443-b9991fbc0c0c h1:DXPDf6gFzl7G35ZV48pIqFI7GFbnxg1gAMIi7hic6j0=
+github.com/gematik/zero-lab/go/brainpool v0.0.0-20250308083443-b9991fbc0c0c/go.mod h1:EE2YYA5/qWFC0yjasTpAANhD9wCESvABd7zJ/edCmIM=
+golang.org/x/crypto v0.28.0 h1:GBDwsMXVQi34v5CCYUm2jkJvu4cbtru2U4TN2PSyQnw=
+golang.org/x/crypto v0.28.0/go.mod h1:rmgy+3RHxRZMyY0jjAJShp2zgEdOqj2AO7U0pYmeQ7U=

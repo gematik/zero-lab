@@ -10,15 +10,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
 
 	"github.com/gematik/zero-lab/go/gemidp"
+	"github.com/gematik/zero-lab/go/nonce"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
-	"github.com/gematik/zero-lab/go/pdp/nonce"
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -43,81 +42,6 @@ type Server struct {
 	jwks             jwk.Set
 	encPuK           jwk.Key
 	nonceService     nonce.Service
-}
-
-type Config struct {
-	BaseDir                    string                   `yaml:"-"`
-	Issuer                     string                   `yaml:"issuer" validate:"required"`
-	SignPrivateKeyPath         string                   `yaml:"sign_private_key_path"`
-	EncPublicKeyPath           string                   `yaml:"enc_public_key_path"`
-	ScopesSupported            []string                 `yaml:"scopes_supported"`
-	MetadataTemplate           ExtendedMetadata         `yaml:"metadata_template"`
-	DefaultOPIssuer            string                   `yaml:"default_op_issuer"`
-	OidcProviders              []oidc.Config            `yaml:"oidc_providers" validate:"dive"`
-	GematikIdp                 []gemidp.ClientConfig    `yaml:"gematik_idp" validate:"dive"`
-	ClientsPolicyPath          string                   `yaml:"clients_policy_path"`
-	Clients                    []ClientMetadata         `yaml:"clients" validate:"omitempty,dive"`
-	OidfRelyingPartyConfigPath string                   `yaml:"oidf_relying_party_path"`
-	OidfRelyingPartyConfig     *oidf.RelyingPartyConfig `yaml:"oidf_relying_party" validate:"omitempty"`
-	Endpoints                  EndpointsConfig          `yaml:"endpoints"`
-}
-
-type EndpointsConfig struct {
-	AuthorizationServerMetadata string `yaml:"authorization_server_metadata"`
-	Jwks                        string `yaml:"jwks"`
-	Nonce                       string `yaml:"nonce"`
-	OpenIDProviders             string `yaml:"openid_providers"`
-	Authorization               string `yaml:"authorization"`
-	Par                         string `yaml:"par"`
-	OPCallback                  string `yaml:"op_callback"`
-	GemIDPCallback              string `yaml:"gemidp_callback"`
-	Token                       string `yaml:"token"`
-	EntityStatement             string `yaml:"entity_statement"`
-}
-
-func (s *EndpointsConfig) setDefaults(baseURI *url.URL) {
-	basePath := strings.TrimRight(baseURI.Path, "/")
-	if basePath == "/" {
-		basePath = ""
-	}
-
-	if s.AuthorizationServerMetadata == "" {
-		s.AuthorizationServerMetadata = basePath + "/.well-known/oauth-authorization-server"
-	}
-	if s.Jwks == "" {
-		s.Jwks = basePath + "/jwks"
-	}
-	if s.Nonce == "" {
-		s.Nonce = basePath + "/nonce"
-	}
-	if s.OpenIDProviders == "" {
-		s.OpenIDProviders = basePath + "/openid-providers"
-	}
-	if s.Authorization == "" {
-		s.Authorization = basePath + "/auth"
-	}
-	if s.Par == "" {
-		s.Par = basePath + "/par"
-	}
-	if s.OPCallback == "" {
-		s.OPCallback = basePath + "/op-callback"
-	}
-	if s.GemIDPCallback == "" {
-		s.GemIDPCallback = basePath + "/gemidp-callback"
-	}
-	if s.Token == "" {
-		s.Token = basePath + "/token"
-	}
-	if s.EntityStatement == "" {
-		s.EntityStatement = basePath + "/.well-known/openid-federation"
-	}
-}
-
-func absPath(baseDir, path string) string {
-	if filepath.IsAbs(path) {
-		return path
-	}
-	return filepath.Join(baseDir, path)
 }
 
 func NewFromConfigFile(filename string) (*Server, error) {
@@ -150,7 +74,7 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	s.endpointPaths = &cfg.Endpoints
-	s.endpointPaths.setDefaults(issuerUri)
+	s.endpointPaths.applyDefaults(issuerUri)
 
 	for _, c := range cfg.OidcProviders {
 		client, err := oidc.NewClient(c)
@@ -190,7 +114,7 @@ func New(cfg Config) (*Server, error) {
 	if len(cfg.Clients) > 0 {
 		s.clientsRegistry = &StaticClientsRegistry{Clients: cfg.Clients}
 	} else {
-		return nil, fmt.Errorf("no clients configured")
+		slog.Warn("no OAuth2 clients configured")
 	}
 
 	// load signing key
@@ -264,7 +188,7 @@ func New(cfg Config) (*Server, error) {
 		s.openidProviders = append(s.openidProviders, client)
 	}
 
-	// configure nonce service
+	// TODO: configure nonce service
 	s.nonceService, err = nonce.NewHashicorpNonceService()
 	if err != nil {
 		return nil, fmt.Errorf("create nonce service: %w", err)
@@ -688,11 +612,13 @@ func (s *Server) TokenEndpoint(c echo.Context) error {
 	grantType := r.FormValue("grant_type")
 	switch grantType {
 	case GrantTypeAuthorizationCode:
-		return s.TokenEndpointAuthorizationCode(c)
+		return s.tokenEndpointAuthorizationCode(c)
 	case GrantTypeClientCredentials:
-		return s.TokenEndpointClientCredentials(c)
+		return s.tokenEndpointClientCredentials(c)
 	case GrantTypeRefreshToken:
-		return s.TokenEndpointRefreshToken(c)
+		return s.tokenEndpointRefreshToken(c)
+	case GrantTypeJWTBearer:
+		return s.tokenEndpointJWTBearer(c)
 	default:
 		slog.Error("Unsupported grant type", "grant_type", grantType)
 		return &Error{
@@ -785,7 +711,7 @@ func verifyClientSecret(clientSecret string, client *ClientMetadata) (*ClientMet
 	return client, nil
 }
 
-func (s *Server) TokenEndpointClientCredentials(c echo.Context) error {
+func (s *Server) tokenEndpointClientCredentials(c echo.Context) error {
 
 	client, clientError := s.verifyClient(c)
 	if clientError != nil {
@@ -844,7 +770,7 @@ func (s *Server) TokenEndpointClientCredentials(c echo.Context) error {
 }
 
 // TokenEndpointAuthorizationCode handles the token request for the authorization code grant type
-func (s *Server) TokenEndpointAuthorizationCode(c echo.Context) error {
+func (s *Server) tokenEndpointAuthorizationCode(c echo.Context) error {
 	client, clientError := s.verifyClient(c)
 	if clientError != nil {
 		return clientError
@@ -923,7 +849,25 @@ func (s *Server) TokenEndpointAuthorizationCode(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
-func (s *Server) TokenEndpointRefreshToken(c echo.Context) error {
+func (s *Server) tokenEndpointJWTBearer(c echo.Context) error {
+	r := c.Request()
+
+	assertion, ok := r.Form["assertion"]
+	if !ok {
+		return &Error{
+			HttpStatus:  http.StatusBadRequest,
+			Code:        "invalid_request",
+			Description: "missing assertion parameter",
+		}
+	}
+
+	slog.Info("Token request", "assertion", assertion)
+
+	return c.JSON(http.StatusUnauthorized, nil)
+
+}
+
+func (s *Server) tokenEndpointRefreshToken(c echo.Context) error {
 	client, clientError := s.verifyClient(c)
 	if clientError != nil {
 		return clientError

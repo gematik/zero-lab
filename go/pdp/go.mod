@@ -3,7 +3,6 @@ module github.com/gematik/zero-lab/go/pdp
 go 1.22.5
 
 require (
-	github.com/gematik/zero-lab/go/libzero v0.0.0-20240808072728-6a6cf67990e6
 	github.com/go-playground/validator/v10 v10.22.0
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v4 v4.12.0

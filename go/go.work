@@ -3,9 +3,11 @@ go 1.24.0
 use (
 	./bff
 	./brainpool
+	./dpop
 	./epa
 	./gemidp
 	./gempki
+	./nonce
 	./oauth
 	./oidf
 	./pdp

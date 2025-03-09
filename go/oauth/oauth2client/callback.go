@@ -6,12 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
-
-	"github.com/gematik/zero-lab/pkg/oauth2"
 )
-
-type callbackServer struct {
-}
 
 type Callback struct {
 	Code        string
@@ -34,7 +29,7 @@ func StartCallbackServer(address string, path string, timeout time.Duration) <-c
 		if r.URL.Query().Get("error") != "" {
 			stopChan <- &Callback{
 				HttpRequest: r,
-				Error: &oauth2.Error{
+				Error: Error{
 					Code:        r.URL.Query().Get("error"),
 					Description: r.URL.Query().Get("error_description"),
 				},

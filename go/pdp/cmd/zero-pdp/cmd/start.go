@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/gematik/zero-lab/go/libzero"
 	"github.com/gematik/zero-lab/go/pdp"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -31,7 +30,7 @@ var startCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		slog.Info("Starting Zero Trust PDP", "version", libzero.Version, "config_file", configFile)
+		slog.Info("Starting Zero Trust PDP", "version", pdp.Version, "config_file", configFile)
 		pdp, err := pdp.New(*config)
 		if err != nil {
 			slog.Error("Failed to create PDP", "error", err, "config", fmt.Sprintf("%+v", *config))
