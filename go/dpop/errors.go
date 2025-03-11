@@ -1,34 +1,48 @@
 package dpop
 
-import "fmt"
+import (
+	"fmt"
+	"net/http"
+)
 
 type DPoPError struct {
-	ErrorCode        string `json:"error"`
-	ErrorDescription string `json:"error_description"`
+	HttpStatus  int    `json:"-"`
+	Code        string `json:"error"`
+	Description string `json:"error_description"`
 }
 
-func (e *DPoPError) Error() string {
-	return fmt.Sprintf("%s: %s", e.ErrorCode, e.ErrorDescription)
+func (e DPoPError) Error() string {
+	return fmt.Sprintf("%s: %s", e.Code, e.Description)
 }
 
 var (
+	ErrMissingHeader = DPoPError{
+		HttpStatus:  http.StatusBadRequest,
+		Code:        "missing_header",
+		Description: "Missing DPoP header",
+	}
+
 	ErrInvalidToken = DPoPError{
-		ErrorCode:        "invalid_token",
-		ErrorDescription: "Invalid token",
+		HttpStatus:  http.StatusBadRequest,
+		Code:        "invalid_token",
+		Description: "Invalid token",
 	}
 
 	ErrUseDPoPNonce = DPoPError{
-		ErrorCode:        "use_dpop_nonce",
-		ErrorDescription: "Authorization server requires nonce in DPoP proof",
+		HttpStatus:  http.StatusBadRequest,
+		Code:        "use_dpop_nonce",
+		Description: "DPoP nonce is required",
 	}
 
 	ErrInvalidDPoPKeyBinding = DPoPError{
-		ErrorCode:        "invalid_token",
-		ErrorDescription: "Invalid DPoP key binding",
+		HttpStatus:  http.StatusBadRequest,
+		Code:        "invalid_token",
+		Description: "Invalid DPoP key binding",
 	}
 
 	ErrMultipleMethods = DPoPError{
-		ErrorCode:        "invalid_request",
-		ErrorDescription: "Multiple methods used to include access token",
+		HttpStatus:  http.StatusBadRequest,
+		Code:        "invalid_request",
+		Description: "Multiple methods used to include access token",
 	}
 )

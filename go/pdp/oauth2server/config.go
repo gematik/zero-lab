@@ -28,7 +28,7 @@ type Config struct {
 	Endpoints                  EndpointsConfig          `yaml:"endpoints"`
 	// some values maybe set  programmatically
 	NonceService              nonce.Service
-	VerifyClientAssertionFunc func(assertion string) (map[string]interface{}, error)
+	VerifyClientAssertionFunc VerifyClientAssertionFunc
 }
 
 type EndpointsConfig struct {

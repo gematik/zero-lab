@@ -1,18 +1,17 @@
 package dpop
 
 import (
+	"fmt"
 	"net/http"
-	"time"
-
-	"github.com/lestrrat-go/jwx/v2/jwk"
 )
 
-func SignRequest(request *http.Request, privateKey jwk.Key) error {
-	token := DPoP{
-		JwtID:      NewTokenID(),
-		HttpMethod: request.Method,
-		HttpURI:    request.URL.String(),
-		IssuedAt:   time.Now(),
+func SignRequest(request *http.Request, privateKey *PrivateKey) error {
+
+	token, err := NewBuilder().
+		HttpRequest(request).
+		Build()
+	if err != nil {
+		return fmt.Errorf("build DPoP token: %w", err)
 	}
 
 	signed, err := token.Sign(privateKey)

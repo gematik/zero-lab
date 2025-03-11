@@ -60,7 +60,7 @@ func (m *Middleware) VerifyRequest(request *http.Request, writer http.ResponseWr
 		return nil, errors.New("no dpop header")
 	}
 
-	dpop, err := Parse([]byte(dpopStr))
+	dpop, err := Parse(dpopStr)
 	if err != nil {
 		slog.Error("failed to parse dpop header", "error", err)
 		m.addWwwAuthenticateHeader(writer)
