@@ -84,7 +84,7 @@ func TestGemIDP(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fmt.Println(tokenResponse.AccessToken)
+	fmt.Printf("Token response: %+v\n", tokenResponse)
 
 	claims := make(map[string]any)
 	err = tokenResponse.Claims(&claims)
