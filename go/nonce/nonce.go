@@ -1,11 +1,10 @@
 package nonce
 
-type Stats struct {
-	Active int
+type Options struct {
+	ExpirySeconds int64
 }
 
 type Service interface {
 	Get() (string, error)
 	Redeem(nonceStr string) error
-	Stats() (*Stats, error)
 }

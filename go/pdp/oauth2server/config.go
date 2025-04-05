@@ -25,10 +25,19 @@ type Config struct {
 	Clients                    []ClientMetadata         `yaml:"clients" validate:"omitempty,dive"`
 	OidfRelyingPartyConfigPath string                   `yaml:"oidf_relying_party_path"`
 	OidfRelyingPartyConfig     *oidf.RelyingPartyConfig `yaml:"oidf_relying_party" validate:"omitempty"`
-	Endpoints                  EndpointsConfig          `yaml:"endpoints"`
+	Endpoints                  EndpointsConfig          `yaml:"endpoints" validate:"omitempty"`
+	ValkeyConfig               *ValkeyConfig            `yaml:"valkey"`
 	// some values maybe set  programmatically
 	NonceService              nonce.Service
 	VerifyClientAssertionFunc VerifyClientAssertionFunc
+}
+
+type ValkeyConfig struct {
+	Host     string `yaml:"host" validate:"required"`
+	Port     int    `yaml:"port" validate:"required"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+	UseTLS   bool   `yaml:"use_tls"`
 }
 
 type EndpointsConfig struct {
@@ -37,11 +46,12 @@ type EndpointsConfig struct {
 	Nonce                       string `yaml:"nonce"`
 	OpenIDProviders             string `yaml:"openid_providers"`
 	Authorization               string `yaml:"authorization"`
-	Par                         string `yaml:"par"`
+	PushedAuthorizationRequest  string `yaml:"pushed_authorization_request"`
 	OPCallback                  string `yaml:"op_callback"`
 	GemIDPCallback              string `yaml:"gemidp_callback"`
 	Token                       string `yaml:"token"`
 	EntityStatement             string `yaml:"entity_statement"`
+	Registration                string `yaml:"registration"`
 }
 
 func (s *EndpointsConfig) applyDefaults(baseURI *url.URL) {
@@ -65,8 +75,8 @@ func (s *EndpointsConfig) applyDefaults(baseURI *url.URL) {
 	if s.Authorization == "" {
 		s.Authorization = basePath + "/auth"
 	}
-	if s.Par == "" {
-		s.Par = basePath + "/par"
+	if s.PushedAuthorizationRequest == "" {
+		s.PushedAuthorizationRequest = basePath + "/par"
 	}
 	if s.OPCallback == "" {
 		s.OPCallback = basePath + "/op-callback"
@@ -79,6 +89,9 @@ func (s *EndpointsConfig) applyDefaults(baseURI *url.URL) {
 	}
 	if s.EntityStatement == "" {
 		s.EntityStatement = basePath + "/.well-known/openid-federation"
+	}
+	if s.Registration == "" {
+		s.Registration = basePath + "/register"
 	}
 }
 

@@ -23,6 +23,7 @@ type ClientMetadata struct {
 
 type ClientsRegistry interface {
 	GetClientMetadata(clientID string) (*ClientMetadata, error)
+	RegisterClient(client *ClientMetadata) error
 }
 
 type StaticClientsRegistry struct {
@@ -40,6 +41,11 @@ func (r *StaticClientsRegistry) GetClientMetadata(clientID string) (*ClientMetad
 		}
 	}
 	return nil, fmt.Errorf("client not found: '%s'", clientID)
+}
+
+func (r *StaticClientsRegistry) RegisterClient(client *ClientMetadata) error {
+	r.Clients = append(r.Clients, *client)
+	return nil
 }
 
 func (m *ClientMetadata) IsAllowedRedirectURI(redirectURI string) bool {

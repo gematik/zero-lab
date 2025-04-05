@@ -25,6 +25,7 @@ type Metadata struct {
 	IntrospectionEndpointAuthMethodsSupported          []string `json:"introspection_endpoint_auth_methods_supported,omitempty" yaml:"introspection_endpoint_auth_methods_supported"`
 	IntrospectionEndpointAuthSigningAlgValuesSupported []string `json:"introspection_endpoint_auth_signing_alg_values_supported,omitempty" yaml:"introspection_endpoint_auth_signing_alg_values_supported"`
 	CodeChallengeMethodsSupported                      []string `json:"code_challenge_methods_supported" yaml:"code_challenge_methods_supported"`
+	PushedAuthorizationRequestEndpoint                 string   `json:"pushed_authorization_request_endpoint,omitempty" yaml:"pushed_authorization_request_endpoint"`
 }
 
 // Extend the standard OAuth2 server metadata from RFC8414

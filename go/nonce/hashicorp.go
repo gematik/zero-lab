@@ -34,8 +34,3 @@ func (s *HashicorpNonceService) Redeem(nonceStr string) error {
 	}
 	return nil
 }
-
-func (s *HashicorpNonceService) Stats() (*Stats, error) {
-	nonceStatus := s.nonceService.Tidy()
-	return &Stats{Active: int(nonceStatus.Outstanding)}, nil
-}

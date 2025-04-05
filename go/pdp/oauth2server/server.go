@@ -26,6 +26,7 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/segmentio/ksuid"
+	"github.com/valkey-io/valkey-glide/go/api"
 	"golang.org/x/oauth2"
 	"gopkg.in/yaml.v3"
 )
@@ -45,6 +46,7 @@ type Server struct {
 	nonceService              nonce.Service
 	verifyClientAssertionFunc VerifyClientAssertionFunc
 	dpopMaxAge                time.Duration
+	valkey                    api.GlideClientCommands
 }
 
 func NewFromConfigFile(filename string) (*Server, error) {
@@ -71,6 +73,25 @@ func New(cfg Config) (*Server, error) {
 		openidProviders: make([]oidc.Client, 0),
 	}
 
+	if cfg.ValkeyConfig != nil {
+		valkeyConfig := api.NewGlideClientConfiguration().
+			WithAddress(&api.NodeAddress{Host: cfg.ValkeyConfig.Host, Port: cfg.ValkeyConfig.Port})
+
+		if cfg.ValkeyConfig.Username != "" {
+			valkeyConfig.WithCredentials(api.NewServerCredentials(cfg.ValkeyConfig.Username, cfg.ValkeyConfig.Password))
+		}
+
+		if cfg.ValkeyConfig.UseTLS {
+			valkeyConfig.WithUseTLS(cfg.ValkeyConfig.UseTLS)
+		}
+
+		valkey, err := api.NewGlideClient(valkeyConfig)
+		if err != nil {
+			return nil, fmt.Errorf("create valkey client: %w", err)
+		}
+		s.valkey = valkey
+
+	}
 	issuerUri, err := url.Parse(cfg.Issuer)
 	if err != nil {
 		return nil, fmt.Errorf("invalid issuer URI: %w", err)
@@ -97,6 +118,8 @@ func New(cfg Config) (*Server, error) {
 	s.Metadata.JwksURI = buildURI(s.Metadata.Issuer, s.endpointPaths.Jwks)
 	s.Metadata.OpenidProvidersEndpoint = buildURI(s.Metadata.Issuer, s.endpointPaths.OpenIDProviders)
 	s.Metadata.NonceEndpoint = buildURI(s.Metadata.Issuer, s.endpointPaths.Nonce)
+	s.Metadata.PushedAuthorizationRequestEndpoint = buildURI(s.Metadata.Issuer, s.endpointPaths.PushedAuthorizationRequest)
+	s.Metadata.RegistrationEndpoint = buildURI(s.Metadata.Issuer, s.endpointPaths.Registration)
 
 	// set supported parameters explicitly
 	s.Metadata.ResponseTypesSupported = []string{"code"}
@@ -271,12 +294,13 @@ func (s *Server) MountRoutes(group *echo.Group) {
 	group.GET(s.endpointPaths.Jwks, s.JWKS)
 	group.GET(s.endpointPaths.OpenIDProviders, s.OpenidProvidersEndpoint)
 	group.GET(s.endpointPaths.Authorization, s.AuthorizationEndpoint)
-	group.POST(s.endpointPaths.Par, s.PAREndpoint)
+	group.POST(s.endpointPaths.PushedAuthorizationRequest, s.PAREndpoint)
 	group.GET(s.endpointPaths.OPCallback, s.OPCallbackEndpoint)
 	group.GET(s.endpointPaths.GemIDPCallback, s.OPCallbackEndpoint)
 	group.POST(s.endpointPaths.Token, s.TokenEndpoint)
 	group.GET(s.endpointPaths.Nonce, s.NonceEndpoint)
 	group.HEAD(s.endpointPaths.Nonce, s.NonceEndpoint)
+	group.POST(s.endpointPaths.Registration, s.RegistrationEndpoint)
 
 	if s.oidfRelyingParty != nil {
 		group.GET(s.endpointPaths.EntityStatement, echo.WrapHandler(http.HandlerFunc(s.oidfRelyingParty.Serve)))
