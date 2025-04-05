@@ -144,6 +144,8 @@ func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNum
 		return
 	}
 
+	r2.URL.RawQuery = r.URL.RawQuery
+
 	r2.Header.Set("x-useragent", UserAgent)
 	if insurantID != "" {
 		r2.Header.Set("x-insurantid", insurantID)

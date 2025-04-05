@@ -93,6 +93,7 @@ func (c *Channel) EncryptRequest(r *http.Request) (*EncryptedRequest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dumping request: %w", err)
 	}
+	slog.Debug("VAU request", "channel_url", c.ChannelURL.String(), "method", r.Method, "url", r.URL.String(), "data", string(data))
 	return c.Encrypt(data)
 }
 
