@@ -241,6 +241,9 @@ func (c *Client) ExchangeForIdentity(code, verifier string, options ...oidc.Opti
 	encryptedTokenKeySerialized, err := brainpool.NewJWEBuilder().
 		Plaintext(tokenKeyPayloadBytes).
 		EncryptECDHES(idpEncKey)
+	if err != nil {
+		return nil, fmt.Errorf("encrypting token key payload: %w", err)
+	}
 
 	params := url.Values{}
 	params.Set("grant_type", "authorization_code")

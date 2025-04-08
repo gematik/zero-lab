@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/gematik/zero-lab/go/brainpool"
 )
@@ -117,8 +118,29 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		slog.Error("Unexpected status code", "status", resp.StatusCode, "auth_url", authURL)
+	if resp.StatusCode == http.StatusFound {
+		codeRedirectURL, err := resp.Location()
+		if err != nil {
+			return nil, fmt.Errorf("IDP responded with unexpected redirect: %w", err)
+		}
+		slog.Debug("IDP responded with redirect", "url", codeRedirectURL.String())
+		return nil, &Error{
+			ErrorCode:        codeRedirectURL.Query().Get("error"),
+			GematikErrorText: codeRedirectURL.Query().Get("gematik_error_text"),
+			GematikTimestamp: func() int64 {
+				timestampStr := codeRedirectURL.Query().Get("gematik_timestamp")
+				timestamp, err := strconv.ParseInt(timestampStr, 10, 64)
+				if err != nil {
+					slog.Error("Parsing timestamp", "error", err, "timestamp", timestampStr)
+					return 0
+				}
+				return timestamp
+			}(),
+			GematikCode: codeRedirectURL.Query().Get("gematik_code"),
+			GematikUUID: codeRedirectURL.Query().Get("gematik_uuid"),
+		}
+	} else if resp.StatusCode == http.StatusUnauthorized {
+		slog.Error("Unexpected status code", "status", resp.StatusCode, "auth_url", authURL, "headers", resp.Header)
 		return nil, parseErrorResponse(resp.StatusCode, resp.Body)
 	}
 

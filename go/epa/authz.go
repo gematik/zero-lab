@@ -113,7 +113,7 @@ func (s *Session) CreateClientAttest() (string, error) {
 		Sign(sha256.New(), s.securityFunctions.ClientAssertionSignFunc)
 
 	if err != nil {
-		return "", fmt.Errorf("Sign: %w", err)
+		return "", fmt.Errorf("signing client attest: %w", err)
 	}
 
 	return string(tk), nil
