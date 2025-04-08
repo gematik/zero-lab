@@ -89,6 +89,9 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 		Environment: idpEnv,
 		SignerFunc:  gemidp.SignWith(config.SecurityFunctions.AuthnSignFunc, config.SecurityFunctions.AuthnCertFunc),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("creating authenticator: %w", err)
+	}
 
 	p.sessionManager = &sessionManager{
 		env:               p.Env,
@@ -375,27 +378,23 @@ func (sm *sessionManager) WatchSession(pn ProviderNumber) {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			slog.Debug("Checking session health", "provider", pn)
-			session, err := sm.GetSession(pn)
+	for range ticker.C {
+		slog.Debug("Checking session health", "provider", pn)
+		session, err := sm.GetSession(pn)
+		if err != nil {
+			slog.Error("Failed to get session", "provider", pn, "error", err)
+			continue
+		}
+		if err := session.HealthCheck(); err != nil {
+			slog.Error("Session is unhealthy", "provider", session.ProviderNumber, "error", err)
+			sm.lock.Lock()
+			session.Close()
+			delete(sm.sessions, session.ProviderNumber)
+			sm.lock.Unlock()
+			_, err := sm.openSession(session.ProviderNumber)
 			if err != nil {
-				slog.Error("Failed to get session", "provider", pn, "error", err)
-				continue
+				slog.Error("Failed to re-open session", "provider", session.ProviderNumber, "error", err)
 			}
-			if err := session.HealthCheck(); err != nil {
-				slog.Error("Session is unhealthy", "provider", session.ProviderNumber, "error", err)
-				sm.lock.Lock()
-				session.Close()
-				delete(sm.sessions, session.ProviderNumber)
-				sm.lock.Unlock()
-				_, err := sm.openSession(session.ProviderNumber)
-				if err != nil {
-					slog.Error("Failed to re-open session", "provider", session.ProviderNumber, "error", err)
-				}
-			}
-
 		}
 	}
 }

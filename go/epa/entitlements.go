@@ -48,6 +48,9 @@ func (s *Session) SetEntitlementPS(insurantId string, auditEvidence string) erro
 		Claim("exp", iat.Add(20*time.Minute).Unix()).
 		Claim("auditEvidence", auditEvidence).
 		Sign(sha256.New(), s.securityFunctions.AuthnSignFunc)
+	if err != nil {
+		return fmt.Errorf("signing JWT: %w", err)
+	}
 
 	entitlement := EntitlementRequestType{
 		JWT: string(jwt),

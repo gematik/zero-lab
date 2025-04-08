@@ -30,6 +30,9 @@ func TestJWECross(t *testing.T) {
 	cipher, err := brainpool.NewJWEBuilder().
 		Plaintext(plaintext).
 		EncryptECDHES(pukBP.Key.(*ecdsa.PublicKey))
+	if err != nil {
+		t.Fatalf("Encrypt returned an error: %v", err)
+	}
 
 	t.Logf("(2) Encrypted: %v", string(cipher))
 	/*
