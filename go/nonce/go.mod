@@ -4,7 +4,10 @@ go 1.24.0
 
 require (
 	github.com/hashicorp/go-secure-stdlib/nonceutil v0.1.0
-	github.com/valkey-io/valkey-glide/go v1.3.1
+	github.com/valkey-io/valkey-go v1.0.57
 )
 
-require google.golang.org/protobuf v1.33.0 // indirect
+require (
+	github.com/stretchr/testify v1.8.4 // indirect
+	golang.org/x/sys v0.31.0 // indirect
+)

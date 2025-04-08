@@ -1,4 +1,4 @@
-FROM golang:1.22 AS builder
+FROM golang:1.24 AS build
 
 WORKDIR /src
 
@@ -6,40 +6,13 @@ WORKDIR /src
 COPY . ./
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux go build ./zaddy/cmd/zero-caddy 
+RUN CGO_ENABLED=0 GOOS=linux go build ./pdp/cmd/zero-pdp 
 
-EXPOSE 8443
+FROM scratch
+#FROM ubuntu
+COPY --from=build /etc/ssl /etc/ssl
+COPY --from=build /src/zero-epa /app/zero-pdp
 
-# based on https://github.com/caddyserver/caddy-docker/blob/master/2.8/alpine/Dockerfile
-
-FROM alpine:3.20
-
-RUN apk add --no-cache \
-	ca-certificates \
-	libcap \
-	mailcap
-
-RUN set -eux; \
-	mkdir -p \
-		/config/caddy \
-		/data/caddy \
-		/etc/caddy \
-		/usr/share/caddy \
-	; \
-	wget -O /etc/caddy/Caddyfile "https://github.com/caddyserver/dist/raw/509c30cecd3cbc4012f6b1cc88d8f3f000fb06e4/config/Caddyfile"; \
-	wget -O /usr/share/caddy/index.html "https://github.com/caddyserver/dist/raw/509c30cecd3cbc4012f6b1cc88d8f3f000fb06e4/welcome/index.html"
-
-COPY --from=builder /src/zero-caddy /srv/zero-caddy
-
-# See https://caddyserver.com/docs/conventions#file-locations for details
-ENV XDG_CONFIG_HOME=/config
-ENV XDG_DATA_HOME=/data
-
-EXPOSE 80
-EXPOSE 443
-EXPOSE 443/udp
-EXPOSE 2019
-
-WORKDIR /srv
-
-CMD ["/srv/zero-caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+WORKDIR /app
+ENV PRETTY_LOGS=false
+ENTRYPOINT ["/app/zero-pdp"]

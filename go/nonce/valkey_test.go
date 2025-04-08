@@ -5,15 +5,18 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/nonce"
-	"github.com/valkey-io/valkey-glide/go/api"
+	"github.com/valkey-io/valkey-go"
 )
 
 func TestValkeyNonceService(t *testing.T) {
-	config := api.NewGlideClientConfiguration().
-		WithAddress(&api.NodeAddress{Host: "localhost", Port: 6379}).
-		WithUseTLS(false)
+	valkeyClient, err := valkey.NewClient(valkey.ClientOption{
+		InitAddress: []string{"127.0.0.1:6379"},
+	})
+	if err != nil {
+		t.Fatalf("creating Valkey client: %v", err)
+	}
 
-	service, err := nonce.NewValkeyNonceService(config, nonce.Options{ExpirySeconds: 2})
+	service, err := nonce.NewValkeyNonceService(valkeyClient, nonce.Options{ExpirySeconds: 2})
 	if err != nil {
 		t.Fatalf("creating Valkey nonce service: %v", err)
 	}

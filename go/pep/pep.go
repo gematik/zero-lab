@@ -1,7 +1,7 @@
 package pep
 
 import (
-	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jws"
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jws"
+	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
 type Config struct {
@@ -201,7 +201,7 @@ func (c *pepContext) parseAuthorizationScheme(scheme string) (string, error) {
 }
 
 func (c *pepContext) verifyAccessToken(accessToken string) error {
-	token, err := c.pep.verifyAccessToken(accessToken)
+	jwtToken, err := c.pep.verifyAccessToken(accessToken)
 	if err != nil {
 		return &Error{
 			HttpStatus:  http.StatusUnauthorized,
@@ -210,15 +210,20 @@ func (c *pepContext) verifyAccessToken(accessToken string) error {
 		}
 	}
 	c.accessTokenRaw = accessToken
-	c.accessToken = token
-	asMap, err := c.accessToken.AsMap(context.Background())
-	if err != nil {
-		return fmt.Errorf("unable to convert token to map: %w", err)
+	c.accessToken = jwtToken
+
+	parts := strings.Split(accessToken, ".")
+	if len(parts) != 3 {
+		return fmt.Errorf("invalid JWT format")
 	}
 
-	if c.claimsRaw, err = json.Marshal(asMap); err != nil {
-		return fmt.Errorf("unable to process claims: %w", err)
+	claimsSegment := parts[1]
+	claimsRaw, err := base64.RawURLEncoding.DecodeString(claimsSegment)
+	if err != nil {
+		return fmt.Errorf("invalid JWT claims segment: %w", err)
 	}
+
+	c.claimsRaw = claimsRaw
 
 	return nil
 }

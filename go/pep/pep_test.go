@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/gematik/zero-lab/go/pep"
-	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
 const privateJWK1 = `{"crv":"P-256","d":"wCAQdVx6LR3BRFACmporyQ2tMGu755WNJsfhu5sx3Qk","kid":"NFXYr6yPkItn_euY_fvaiKetekY0fFcZIupXwGaesjo","kty":"EC","x":"CSe6WWOsFaUSjp437htjVBkDdF5LRj_ZvBfxQ4BecH4","y":"rhz8yAOajNwAH3DTujwepcsUQI-cBeSMGyCuByhbh-4"}`

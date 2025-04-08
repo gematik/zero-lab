@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/pep"
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
 func TestEnforcersJSON(t *testing.T) {
@@ -315,7 +315,7 @@ func createTestAccessToken(keyBytes []byte, scopes []string, exp time.Time) (str
 		return "", err
 	}
 
-	signed, err := jwt.Sign(token, jwt.WithKey(jwa.ES256, prk))
+	signed, err := jwt.Sign(token, jwt.WithKey(jwa.ES256(), prk))
 	if err != nil {
 		return "", err
 	}

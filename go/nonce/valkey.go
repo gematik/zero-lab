@@ -1,29 +1,27 @@
 package nonce
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"crypto/rand"
 	"encoding/base64"
 
-	"github.com/valkey-io/valkey-glide/go/api"
+	"github.com/valkey-io/valkey-go"
 )
 
 type ValkeyNonceService struct {
-	options Options
-	client  api.GlideClientCommands
+	options      Options
+	valkeyClient valkey.Client
 }
 
-func NewValkeyNonceService(config *api.GlideClientConfiguration, options Options) (Service, error) {
-	client, err := api.NewGlideClient(config)
-	if err != nil {
-		return nil, fmt.Errorf("creating glide client: %w", err)
-	}
+func NewValkeyNonceService(valkeyClient valkey.Client, options Options) (Service, error) {
 
 	return &ValkeyNonceService{
-		options: options,
-		client:  client,
+		options:      options,
+		valkeyClient: valkeyClient,
 	}, nil
 }
 
@@ -42,35 +40,37 @@ func (v *ValkeyNonceService) Get() (string, error) {
 	nonce := base64.RawURLEncoding.EncodeToString(randomBytes)
 
 	// Store the nonce in Valkey
-	_, err = v.client.Set("nonce:"+nonce, "")
+	ctx := context.Background()
+	expiryDuration := time.Duration(v.options.ExpirySeconds) * time.Second
+	err = v.valkeyClient.Do(ctx, v.valkeyClient.B().Set().Key("nonce:"+nonce).Value("").Ex(expiryDuration).Build()).Error()
 	if err != nil {
 		return "", fmt.Errorf("storing nonce in Valkey: %w", err)
-	}
-	_, err = v.client.Expire("nonce:"+nonce, v.options.ExpirySeconds) // Expire the nonce after 60 seconds
-	if err != nil {
-		return "", fmt.Errorf("setting expiry for nonce in Valkey: %w", err)
 	}
 
 	return nonce, nil
 }
 
 func (v *ValkeyNonceService) Redeem(nonce string) error {
+	ctx := context.Background()
 	// Check if the nonce exists in Valkey
-	exists, err := v.client.Exists([]string{"nonce:" + nonce})
+	cmd := v.valkeyClient.B().Exists().Key("nonce:" + nonce).Build()
+	result := v.valkeyClient.Do(ctx, cmd)
+	if result.Error() != nil {
+		return fmt.Errorf("checking if nonce exists in Valkey: %w", result.Error())
+	}
+	exists, err := result.AsBool()
 	if err != nil {
 		return fmt.Errorf("checking if nonce exists in Valkey: %w", err)
 	}
-	if exists == 0 {
+	if !exists {
 		return errors.New("nonce not found")
 	}
 
 	// Delete the nonce from Valkey
-	num, err := v.client.Del([]string{"nonce:" + nonce})
+	cmd = v.valkeyClient.B().Del().Key("nonce:" + nonce).Build()
+	err = v.valkeyClient.Do(ctx, cmd).Error()
 	if err != nil {
 		return fmt.Errorf("deleting nonce from Valkey: %w", err)
-	}
-	if num == 0 {
-		return errors.New("nonce not found")
 	}
 
 	return nil
