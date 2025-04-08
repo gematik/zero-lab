@@ -15,6 +15,7 @@ const (
 	EnforcerTypeAnyOf         EnforcerType = "AnyOf"
 	EnforcerTypeDeny          EnforcerType = "Deny"
 	EnforcerTypeVerifyBearer  EnforcerType = "VerifyBearer"
+	EnforcerVerifyDPoP        EnforcerType = "VerifyDPoP"
 	EnforcerTypeScope         EnforcerType = "Scope"
 	EnforcerTypeSessionCookie EnforcerType = "SessionCookie"
 )
@@ -188,7 +189,7 @@ func (e *EnforcerScope) Apply(ctx Context, next HandlerFunc) {
 	scopeStruct := struct {
 		Scope string `json:"scope"`
 	}{}
-	if err := ctx.Claims(&scopeStruct); err != nil {
+	if err := ctx.UnmarshalClaims(&scopeStruct); err != nil {
 		ctx.Slogger().Error("Failed to get claims", "error", err)
 		ctx.Deny(Error{
 			HttpStatus:  403,

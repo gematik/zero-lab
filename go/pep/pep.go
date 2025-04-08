@@ -117,7 +117,7 @@ type Context interface {
 	Slogger() *slog.Logger
 	VerifyAuthorizationBearer() error
 	VerifyAuthorizationDPoP() error
-	Claims(claims any) error
+	UnmarshalClaims(claims any) error
 }
 
 type pepContext struct {
@@ -157,7 +157,7 @@ func (c *pepContext) Slogger() *slog.Logger {
 	return c.slogger
 }
 
-func (c *pepContext) Claims(claims any) error {
+func (c *pepContext) UnmarshalClaims(claims any) error {
 	if c.claimsRaw == nil {
 		return errors.New("claims not available, verify access token first")
 	}
