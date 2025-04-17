@@ -1,19 +1,14 @@
 package dpop_test
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"testing"
 	"time"
 
-	"github.com/gematik/zero-lab/go/libzero/dpop"
-	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/gematik/zero-lab/go/dpop"
 )
 
 func TestSigning(t *testing.T) {
-	privateKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	jwkKey, _ := jwk.FromRaw(privateKey)
+	privateKey, _ := dpop.NewPrivateKey()
 
 	token := dpop.DPoP{
 		HttpMethod: "GET",
@@ -21,7 +16,7 @@ func TestSigning(t *testing.T) {
 		IssuedAt:   time.Now(),
 	}
 
-	signed, err := token.Sign(jwkKey)
+	signed, err := token.Sign(privateKey)
 	if err != nil {
 		t.Error("expected nil, got ", err)
 	}

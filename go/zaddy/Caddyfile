@@ -5,6 +5,13 @@
 }
 
 http://localhost:2019 {
+	route /.well-known/oauth-protected-resources {
+		header Content-Type application/json
+		respond <<JSON 
+			foo
+			JSON 200
+	}
+
 	route / {
 		respond "I have /public and /protected resources" 200
 	}
@@ -15,21 +22,21 @@ http://localhost:2019 {
 
 	route /protected {
 		enforce_policy {
-      verify_bearer
+			verify_bearer
 			scope protected
 		}
 		respond "Hello from behind the curtain. I am protected resource (scope: protected)" 200
 	}
 
-  route /protected-complex {
-    enforce_policy {
-      any_of {
-        all_of {
-          verify_bearer
-          scope edit
-        }
-      }
-    }
+	route /protected-complex {
+		enforce_policy {
+			any_of {
+				all_of {
+					verify_bearer
+					scope edit
+				}
+			}
+		}
 		respond "Hello from behind the curtain. I am resource protected with complex rules" 200
-  }
+	}
 }

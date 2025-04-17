@@ -16,10 +16,6 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
-type Config struct {
-	JWKSetPath string `json:"jwks_path,omitempty"`
-}
-
 type PEP struct {
 	slogger                *slog.Logger
 	httpClient             *http.Client

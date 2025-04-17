@@ -18,9 +18,11 @@ func init() {
 }
 
 type App struct {
-	JWKSPath string `json:"jwks_path,omitempty"`
-	logger   *slog.Logger
-	pep      *pep.PEP
+	AuthorizationServer               string                        `json:"authorization_server"`
+	JWKSPath                          string                        `json:"jwks_path"`
+	ProtectedResourceMetadataTemplate pep.ProtectedResourceMetadata `json:"protected_resource_metadata_template"`
+	logger                            *slog.Logger
+	pep                               *pep.PEP
 }
 
 func (App) CaddyModule() caddy.ModuleInfo {
@@ -81,6 +83,7 @@ func parseCaddyfilePEP(d *caddyfile.Dispenser, existingVal any) (interface{}, er
 				return nil, d.ArgErr()
 			}
 			a.JWKSPath = d.Val()
+		case "authorization_server":
 		default:
 			return nil, d.Errf("unrecognized subdirective: %s", d.Val())
 		}

@@ -4,17 +4,20 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-
-	"github.com/gematik/zero-lab/go/nonce"
 )
 
+type NonceService interface {
+	Get() (string, error)
+	Redeem(nonceStr string) error
+}
+
 type Middleware struct {
-	nonceService nonce.Service
+	nonceService NonceService
 }
 
 type MiddlewareOption func(*Middleware) error
 
-func WithNonceService(nonceService nonce.Service) MiddlewareOption {
+func WithNonceService(nonceService NonceService) MiddlewareOption {
 	return func(m *Middleware) error {
 		m.nonceService = nonceService
 		return nil
