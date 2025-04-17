@@ -21,12 +21,17 @@ type EntitlementRequestType struct {
 // to access the data of the insurant with the given insurant.
 func (s *Session) Entitle(insurantId string) error {
 	slog.Debug("Entitling insurant", "env", s.Env, "insurantId", insurantId)
-	auditEvidence, err := s.securityFunctions.ProofOfAuditEvidenceFunc(insurantId)
+	auditEvidence, err := s.securityFunctions.ProvidePN(insurantId)
 	if err != nil {
 		return fmt.Errorf("getting proof of audit evidence: %w", err)
 	}
 
-	err = s.SetEntitlementPS(insurantId, auditEvidence)
+	hcv, err := s.securityFunctions.ProvideHCV(insurantId)
+	if err != nil {
+		return fmt.Errorf("getting HCV: %w", err)
+	}
+
+	err = s.SetEntitlementPS(insurantId, auditEvidence, hcv)
 	if err != nil {
 		return fmt.Errorf("setting entitlement PS: %w", err)
 	}
@@ -34,12 +39,13 @@ func (s *Session) Entitle(insurantId string) error {
 	return nil
 }
 
-func (s *Session) SetEntitlementPS(insurantId string, auditEvidence string) error {
+func (s *Session) SetEntitlementPS(insurantId string, auditEvidence string, hcv []byte) error {
 	iat := time.Now().Add(-60 * time.Second)
 	cert, err := s.securityFunctions.AuthnCertFunc()
 	if err != nil {
 		return fmt.Errorf("getting authn certificate: %w", err)
 	}
+
 	jwt, err := brainpool.NewJWTBuilder().
 		Header("alg", "ES256").
 		Header("typ", "JWT").
@@ -47,6 +53,7 @@ func (s *Session) SetEntitlementPS(insurantId string, auditEvidence string) erro
 		Claim("iat", iat.Unix()).
 		Claim("exp", iat.Add(20*time.Minute).Unix()).
 		Claim("auditEvidence", auditEvidence).
+		Claim("hcv", base64.StdEncoding.EncodeToString(hcv)).
 		Sign(sha256.New(), s.securityFunctions.AuthnSignFunc)
 	if err != nil {
 		return fmt.Errorf("signing JWT: %w", err)

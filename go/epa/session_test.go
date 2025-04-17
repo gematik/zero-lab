@@ -50,9 +50,29 @@ var testRecords = []struct {
 	{epa.ProviderNumber2, "X110611629"},
 }
 
+func ProvidePNFromEnvironmentV2(provideHcv epa.ProvideHCVFunc) epa.ProvidePNFunc {
+	return func(insurantId string) (string, error) {
+		hmacKeyHex := os.Getenv("VSDM_HMAC_KEY")
+		if hmacKeyHex == "" {
+			return "", fmt.Errorf("VSDM_HMAC_KEY not set")
+		}
+		hmacKeyKid := os.Getenv("VSDM_HMAC_KID")
+		if hmacKeyKid == "" {
+			return "", fmt.Errorf("VSDM_HMAC_KID not set")
+		}
+
+		proofOfAuditEvidence, err := epa.ProvidePNv2(hmacKeyHex, hmacKeyKid, provideHcv)
+		if err != nil {
+			return "", err
+		}
+
+		return proofOfAuditEvidence(insurantId)
+	}
+}
+
 // create the proof of audit evidence function
 // using the HMAC key and kid from the environment
-func EnvProofOfAuditEvidenceFunc(insurantId string) (string, error) {
+func ProvidePNFromEnvironment(insurantId string) (string, error) {
 	hmacKeyHex := os.Getenv("VSDM_HMAC_KEY")
 	if hmacKeyHex == "" {
 		return "", fmt.Errorf("VSDM_HMAC_KEY not set")
@@ -62,7 +82,7 @@ func EnvProofOfAuditEvidenceFunc(insurantId string) (string, error) {
 		return "", fmt.Errorf("VSDM_HMAC_KID not set")
 	}
 
-	proofOfAuditEvidence, err := epa.ProofOfAuditEvidenceHMAC(hmacKeyHex, hmacKeyKid)
+	proofOfAuditEvidence, err := epa.ProvidePNByHMAC(hmacKeyHex, hmacKeyKid)
 	if err != nil {
 		return "", err
 	}
@@ -85,15 +105,20 @@ func TestConnect(t *testing.T) {
 			}))
 			slog.SetDefault(logger)
 
+			provideHCVFunc := func(insurantId string) ([]byte, error) {
+				return epa.CalculateHCV("20241023", "Berliner Str.___")
+			}
+
 			session, err := epa.OpenSession(
 				epa.EnvDev,
 				providerNumber,
 				epa.SecurityFunctions{
-					AuthnSignFunc:            brainpool.SignFuncPrivateKey(testKey),
-					AuthnCertFunc:            func() (*x509.Certificate, error) { return testCert, nil },
-					ClientAssertionSignFunc:  brainpool.SignFuncPrivateKey(testKey),
-					ClientAssertionCertFunc:  func() (*x509.Certificate, error) { return testCert, nil },
-					ProofOfAuditEvidenceFunc: EnvProofOfAuditEvidenceFunc,
+					AuthnSignFunc:           brainpool.SignFuncPrivateKey(testKey),
+					AuthnCertFunc:           func() (*x509.Certificate, error) { return testCert, nil },
+					ClientAssertionSignFunc: brainpool.SignFuncPrivateKey(testKey),
+					ClientAssertionCertFunc: func() (*x509.Certificate, error) { return testCert, nil },
+					ProvidePN:               ProvidePNFromEnvironmentV2(provideHCVFunc),
+					ProvideHCV:              provideHCVFunc,
 				},
 				epa.WithInsecureSkipVerify(),
 				epa.WithTimeout(30*time.Second),
@@ -123,6 +148,9 @@ func TestConnect(t *testing.T) {
 				Environment: gemidp.EnvironmentReference,
 				SignerFunc:  gemidp.SignWithSoftkey(testKey, testCert),
 			})
+			if err != nil {
+				t.Fatalf("NewAuthenticator returned an error: %v", err)
+			}
 
 			codeRedirectURL, err := authenticator.Authenticate(authz_uri)
 			if err != nil {
@@ -152,14 +180,9 @@ func TestConnect(t *testing.T) {
 			}
 			t.Logf("Consent decisions: %v", decisions)
 
-			auditEvidence, err := EnvProofOfAuditEvidenceFunc(insurantId)
+			err = session.Entitle(insurantId)
 			if err != nil {
-				t.Fatalf("TestProofOfAuditEvidenceFunc returned an error: %v", err)
-			}
-
-			err = session.SetEntitlementPS(insurantId, auditEvidence)
-			if err != nil {
-				t.Fatalf("SetEntitlementPs returned an error: %v", err)
+				t.Fatalf("Entitle returned an error: %v", err)
 			}
 		})
 	}

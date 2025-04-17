@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,7 +16,27 @@ import (
 	"github.com/gematik/zero-lab/go/gempki"
 )
 
-var ErrRecordNotFound = errors.New("record not found")
+type ProvidersError struct {
+	Code           string         `json:"error"`
+	Description    string         `json:"error_description"`
+	ProviderNumber ProviderNumber `json:"provider"`
+}
+
+func (e *ProvidersError) Error() string {
+	return fmt.Sprintf("provider %d: %s: %s", e.ProviderNumber, e.Code, e.Description)
+}
+
+type MultiProviderError struct {
+	Errors []ProvidersError `json:"errors"`
+}
+
+func (e *MultiProviderError) Error() string {
+	var errStrings []string
+	for _, err := range e.Errors {
+		errStrings = append(errStrings, err.Error())
+	}
+	return fmt.Sprintf("multiple provider errors: %s", strings.Join(errStrings, "; "))
+}
 
 type Proxy struct {
 	Env            Env
@@ -240,14 +261,28 @@ func (p *Proxy) findAndCacheRecord(insurantID string) (*PatientRecordMetadata, e
 			}(provider)
 		}
 
+		multiProviderError := &MultiProviderError{
+			Errors: make([]ProvidersError, 0, len(AllProviders)),
+		}
+
 		for range AllProviders {
 			r := <-results
 			if r.error != nil {
+				multiProviderError.Errors = append(multiProviderError.Errors, ProvidersError{
+					Code:           "provider_error",
+					Description:    r.error.Error(),
+					ProviderNumber: r.provider,
+				})
 				slog.Error("Failed to get record status", "provider", r.provider, "error", r.error)
 				continue
 			}
 			if r.record.InsurantID == "" {
 				slog.Info("Record not found", "provider", r.provider, "insurantID", insurantID)
+				multiProviderError.Errors = append(multiProviderError.Errors, ProvidersError{
+					Code:           "record_not_found",
+					Description:    fmt.Sprintf("record not found for insurantID '%s'", insurantID),
+					ProviderNumber: r.provider,
+				})
 				continue
 			}
 			slog.Info("Record status", "provider", r.provider, "insurantID", insurantID, "found", r.record.InsurantID != "")
@@ -263,7 +298,7 @@ func (p *Proxy) findAndCacheRecord(insurantID string) (*PatientRecordMetadata, e
 		}
 
 		if rm.InsurantID == "" {
-			return nil, ErrRecordNotFound
+			return nil, multiProviderError
 		}
 
 	}
@@ -276,8 +311,15 @@ func (p *Proxy) HandleForwardToVAUInsurant(w http.ResponseWriter, r *http.Reques
 	rm, err := p.findAndCacheRecord(insurantID)
 	if err != nil {
 		slog.Error("Failed to find record", "insurantID", insurantID, "error", err)
-		if errors.Is(err, ErrRecordNotFound) {
-			http.Error(w, "record not found", http.StatusNotFound)
+		if err, ok := err.(*MultiProviderError); ok {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			errBytes, err := json.Marshal(err)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("failed to marshal error: %v", err), http.StatusInternalServerError)
+				return
+			}
+			w.Write(errBytes)
 			return
 		} else {
 			http.Error(w, fmt.Sprintf("failed to find record: %v", err), http.StatusBadGateway)

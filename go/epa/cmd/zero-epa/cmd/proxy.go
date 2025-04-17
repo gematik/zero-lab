@@ -44,12 +44,18 @@ var proxyCmd = &cobra.Command{
 }
 
 func createSecurityFunctions() epa.SecurityFunctions {
+
+	provideHCV := func(insurantId string) ([]byte, error) {
+		return epa.CalculateHCV("19981123", "Berliner Straße")
+	}
+
 	vsdmHMACKey := viper.GetString("vsdm-hmac-key")
 	vsdmHMACKeyID := viper.GetString("vsdm-hmac-kid")
 	slog.Debug("Using VSDM HMAC Key", "key", "***", "kid", vsdmHMACKeyID)
-	proofOfAuditEvidenceFunc, err := epa.ProofOfAuditEvidenceHMAC(
+	proofOfAuditEvidenceFunc, err := epa.ProvidePNv2(
 		vsdmHMACKey,
 		vsdmHMACKeyID,
+		provideHCV,
 	)
 	if err != nil {
 		log.Fatalf("Failed to create ProofOfAuditEvidenceFunc: %v", err)
@@ -86,11 +92,12 @@ func createSecurityFunctions() epa.SecurityFunctions {
 	}
 
 	return epa.SecurityFunctions{
-		AuthnSignFunc:            brainpool.SignFuncPrivateKey(prk),
-		AuthnCertFunc:            func() (*x509.Certificate, error) { return cert, nil },
-		ClientAssertionSignFunc:  brainpool.SignFuncPrivateKey(prk),
-		ClientAssertionCertFunc:  func() (*x509.Certificate, error) { return cert, nil },
-		ProofOfAuditEvidenceFunc: proofOfAuditEvidenceFunc,
+		AuthnSignFunc:           brainpool.SignFuncPrivateKey(prk),
+		AuthnCertFunc:           func() (*x509.Certificate, error) { return cert, nil },
+		ClientAssertionSignFunc: brainpool.SignFuncPrivateKey(prk),
+		ClientAssertionCertFunc: func() (*x509.Certificate, error) { return cert, nil },
+		ProvidePN:               proofOfAuditEvidenceFunc,
+		ProvideHCV:              provideHCV,
 	}
 
 }

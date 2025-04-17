@@ -37,11 +37,12 @@ func WithTimeout(timeout time.Duration) ClientOption {
 }
 
 type SecurityFunctions struct {
-	AuthnSignFunc            brainpool.SignFunc
-	AuthnCertFunc            func() (*x509.Certificate, error)
-	ClientAssertionSignFunc  brainpool.SignFunc
-	ClientAssertionCertFunc  func() (*x509.Certificate, error)
-	ProofOfAuditEvidenceFunc ProofOfAuditEvidenceFunc
+	AuthnSignFunc           brainpool.SignFunc
+	AuthnCertFunc           func() (*x509.Certificate, error)
+	ClientAssertionSignFunc brainpool.SignFunc
+	ClientAssertionCertFunc func() (*x509.Certificate, error)
+	ProvidePN               ProvidePNFunc
+	ProvideHCV              func(insurantId string) ([]byte, error)
 }
 
 type Session struct {
