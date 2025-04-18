@@ -5,12 +5,14 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/dpop"
+	"github.com/segmentio/ksuid"
 )
 
 func TestSigning(t *testing.T) {
 	privateKey, _ := dpop.NewPrivateKey()
 
 	token := dpop.DPoP{
+		Id:         ksuid.New().String(),
 		HttpMethod: "GET",
 		HttpURI:    "https://example.com/resource/1",
 		IssuedAt:   time.Now(),

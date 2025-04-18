@@ -255,7 +255,11 @@ func (e *EnforcerVerifyBearer) Type() EnforcerType {
 func (e *EnforcerVerifyBearer) Apply(ctx Context, next HandlerFunc) {
 	if err := ctx.VerifyAuthorizationBearer(); err != nil {
 		ctx.Slogger().Warn("Failed to verify authorization bearer", "error", err)
-		ctx.Deny(ErrorAccessDeinied("Failed to verify authorization bearer: " + err.Error()))
+		if pepErr, ok := err.(Error); ok {
+			ctx.Deny(pepErr)
+		} else {
+			ctx.Deny(ErrorAccessDeinied("Failed to verify authorization bearer: " + err.Error()))
+		}
 		return
 	}
 	ctx.Slogger().Debug("Authorization bearer successfully verified")

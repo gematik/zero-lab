@@ -20,7 +20,7 @@ var ErrForbiddenHeadersInRequest = Error{
 }
 
 var ErrNoAuthorizationHeader = Error{
-	HttpStatus:  400,
+	HttpStatus:  401,
 	Code:        "no_authorization_header",
 	Description: "No Authorization header in request",
 }

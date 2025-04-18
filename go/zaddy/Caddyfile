@@ -4,12 +4,11 @@
 	}
 }
 
-http://localhost:2019 {
-	route /.well-known/oauth-protected-resources {
+http://127.0.0.1:8010 {
+	handle /.well-known/oauth-protected-resource {
 		header Content-Type application/json
-		respond <<JSON 
-			foo
-			JSON 200
+		root ./static
+		file_server
 	}
 
 	route / {
@@ -38,5 +37,13 @@ http://localhost:2019 {
 			}
 		}
 		respond "Hello from behind the curtain. I am resource protected with complex rules" 200
+	}
+
+	route /* {
+		header Content-Type application/json
+		respond 404 {
+			body "{\"error\": \"not_found\", \"description\": \"The requested resource was not found\"
+		}		"
+		}
 	}
 }
