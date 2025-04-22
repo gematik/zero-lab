@@ -14,8 +14,7 @@ import (
 type Config struct {
 	BaseDir                    string                   `yaml:"-"`
 	Issuer                     string                   `yaml:"issuer" validate:"required"`
-	SignPrivateKeyPath         string                   `yaml:"sign_private_key_path"`
-	EncPublicKeyPath           string                   `yaml:"enc_public_key_path"`
+	SignJwkPath                string                   `yaml:"sign_jwk_path"`
 	ScopesSupported            []string                 `yaml:"scopes_supported"`
 	MetadataTemplate           ExtendedMetadata         `yaml:"metadata_template"`
 	DefaultOPIssuer            string                   `yaml:"default_op_issuer"`
@@ -27,6 +26,7 @@ type Config struct {
 	OidfRelyingPartyConfig     *oidf.RelyingPartyConfig `yaml:"oidf_relying_party" validate:"omitempty"`
 	Endpoints                  EndpointsConfig          `yaml:"endpoints" validate:"omitempty"`
 	ValkeyConfig               *ValkeyConfig            `yaml:"valkey"`
+	NonProdMode                bool                     `yaml:"non_prod_mode"`
 	// some values maybe set  programmatically
 	NonceService              nonce.Service
 	VerifyClientAssertionFunc VerifyClientAssertionFunc

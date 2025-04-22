@@ -26,7 +26,7 @@ var versionCmd = &cobra.Command{
 			fmt.Println("Config file:", expanded)
 		}
 
-		fmt.Println("Working directory:", workdir)
+		fmt.Println("Working directory:", viper.GetString("workdir"))
 
 	},
 }

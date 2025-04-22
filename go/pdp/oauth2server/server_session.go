@@ -27,6 +27,7 @@ type AuthzServerSession struct {
 	RefreshCount              int                      `json:"refresh_count"`
 	LastRefreshAt             time.Time                `json:"last_refresh_at"`
 }
+
 type AuthzServerSessionStore interface {
 	GetAuthzServerSessionByID(id string) (*AuthzServerSession, error)
 	GetAuthzServerSessionByState(state string) (*AuthzServerSession, error)

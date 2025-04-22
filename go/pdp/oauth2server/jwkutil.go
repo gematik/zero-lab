@@ -57,7 +57,6 @@ func PublicJwkSet(set jwk.Set) (jwk.Set, error) {
 	publicSet := jwk.NewSet()
 	it := set.Keys(context.Background())
 	for it.Next(context.Background()) {
-		print(set)
 		key := it.Pair().Value.(jwk.Key)
 		publicKey, err := key.PublicKey()
 		if err != nil {

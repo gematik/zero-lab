@@ -3,6 +3,7 @@ package oauth2server
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"log"
@@ -26,13 +27,14 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 	"github.com/segmentio/ksuid"
-	"github.com/valkey-io/valkey-glide/go/api"
+	"github.com/valkey-io/valkey-go"
 	"golang.org/x/oauth2"
 	"gopkg.in/yaml.v3"
 )
 
 type Server struct {
 	Metadata                  ExtendedMetadata
+	nonProdMode               bool
 	endpointPaths             *EndpointsConfig
 	clientsRegistry           ClientsRegistry
 	openidProviders           []oidc.Client
@@ -42,11 +44,10 @@ type Server struct {
 	sessionStore              AuthzServerSessionStore
 	sigPrK                    jwk.Key
 	jwks                      jwk.Set
-	encPuK                    jwk.Key
 	nonceService              nonce.Service
 	verifyClientAssertionFunc VerifyClientAssertionFunc
 	dpopMaxAge                time.Duration
-	valkey                    api.GlideClientCommands
+	valkey                    valkey.Client
 }
 
 func NewFromConfigFile(filename string) (*Server, error) {
@@ -71,25 +72,29 @@ func New(cfg Config) (*Server, error) {
 	s := &Server{
 		Metadata:        cfg.MetadataTemplate,
 		openidProviders: make([]oidc.Client, 0),
+		nonProdMode:     cfg.NonProdMode,
+	}
+
+	if s.nonProdMode {
+		slog.Warn("Authorization server is running in non-production mode")
 	}
 
 	if cfg.ValkeyConfig != nil {
-		valkeyConfig := api.NewGlideClientConfiguration().
-			WithAddress(&api.NodeAddress{Host: cfg.ValkeyConfig.Host, Port: cfg.ValkeyConfig.Port})
-
+		valkeyClientOption := valkey.ClientOption{
+			InitAddress: []string{fmt.Sprintf("%s:%d", cfg.ValkeyConfig.Host, cfg.ValkeyConfig.Port)},
+		}
 		if cfg.ValkeyConfig.Username != "" {
-			valkeyConfig.WithCredentials(api.NewServerCredentials(cfg.ValkeyConfig.Username, cfg.ValkeyConfig.Password))
+			valkeyClientOption.Username = cfg.ValkeyConfig.Username
 		}
 
 		if cfg.ValkeyConfig.UseTLS {
-			valkeyConfig.WithUseTLS(cfg.ValkeyConfig.UseTLS)
+			valkeyClientOption.TLSConfig = &tls.Config{}
 		}
 
-		valkey, err := api.NewGlideClient(valkeyConfig)
-		if err != nil {
+		var err error
+		if s.valkey, err = valkey.NewClient(valkeyClientOption); err != nil {
 			return nil, fmt.Errorf("create valkey client: %w", err)
 		}
-		s.valkey = valkey
 
 	}
 	issuerUri, err := url.Parse(cfg.Issuer)
@@ -144,9 +149,15 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	// load signing key
-	sigPrK, err := loadJwkFromPem(absPath(cfg.BaseDir, cfg.SignPrivateKeyPath))
+	sigPrK, err := func(filename string) (jwk.Key, error) {
+		bytes, err := os.ReadFile(filename)
+		if err != nil {
+			return nil, fmt.Errorf("read signing key file '%s': %w", filename, err)
+		}
+		return jwk.ParseKey(bytes)
+	}(absPath(cfg.BaseDir, cfg.SignJwkPath))
 	if err != nil {
-		slog.Warn("failed to load signing key, will create random", "path", cfg.SignPrivateKeyPath)
+		slog.Warn("failed to load signing key, will create random", "path", cfg.SignJwkPath, "error", err)
 		sigPrK, err = GenerateRandomJwk()
 		if err != nil {
 			return nil, fmt.Errorf("generate signing key: %w", err)
@@ -161,21 +172,6 @@ func New(cfg Config) (*Server, error) {
 	}
 	s.jwks = jwk.NewSet()
 	s.jwks.AddKey(sigPuK)
-
-	// load encryption key
-	encPuK, err := loadJwkFromPem(absPath(cfg.BaseDir, cfg.EncPublicKeyPath))
-	if err != nil {
-		slog.Warn("failed to load encryption key, will create random", "path", cfg.EncPublicKeyPath)
-		encPrK, err := GenerateRandomJwk()
-		if err != nil {
-			return nil, fmt.Errorf("generate encryption key: %w", err)
-		}
-		encPuK, err = encPrK.PublicKey()
-		if err != nil {
-			return nil, fmt.Errorf("get public key: %w", err)
-		}
-	}
-	s.encPuK = encPuK
 
 	// load clients policy
 	if cfg.ClientsPolicyPath != "" {
@@ -750,7 +746,7 @@ func (s *Server) tokenEndpointClientCredentials(c echo.Context) error {
 		return err
 	}
 
-	response, err := s.refreshTokens(session)
+	response, err := s.issueOrRefreshTokens(session)
 	if err != nil {
 		return &Error{
 			HttpStatus:  http.StatusInternalServerError,
@@ -836,7 +832,7 @@ func (s *Server) tokenEndpointAuthorizationCode(c echo.Context) error {
 		return err
 	}
 
-	response, err := s.refreshTokens(session)
+	response, err := s.issueOrRefreshTokens(session)
 
 	if err != nil {
 		return redirectWithError(c, session.RedirectURI, session.State, Error{
@@ -955,7 +951,7 @@ func (s *Server) tokenEndpointRefreshToken(c echo.Context) error {
 	return c.JSON(http.StatusUnauthorized, nil)
 }
 
-func (s *Server) refreshTokens(session *AuthzServerSession) (*TokenResponse, error) {
+func (s *Server) issueOrRefreshTokens(session *AuthzServerSession) (*TokenResponse, error) {
 	accessJwt := jwt.New()
 	accessJwt.Set("jti", session.ID)
 	if session.Audience != nil {
@@ -966,8 +962,12 @@ func (s *Server) refreshTokens(session *AuthzServerSession) (*TokenResponse, err
 	if session.ExpiresAt.Before(exp) {
 		exp = session.ExpiresAt
 	}
+	accessJwt.Set("client_id", session.ClientID)
+	// TODO: set proper subject
+	accessJwt.Set("sub", session.ClientID)
+
 	accessJwt.Set("exp", exp.Unix())
-	if session.Scopes != nil {
+	if len(session.Scopes) > 0 {
 		accessJwt.Set("scope", strings.Join(session.Scopes, " "))
 	}
 
@@ -1036,14 +1036,6 @@ func (s *Server) OpenidProviders() ([]OpenidProviderInfo, error) {
 	}
 
 	return providers, nil
-}
-
-func loadJwkFromPem(path string) (jwk.Key, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read file: %w", err)
-	}
-	return jwk.ParseKey(data, jwk.WithPEM(true))
 }
 
 // OpenidProviderInfo represents the information about an OpenID Provider

@@ -71,14 +71,13 @@ var josePublicJwkCmd = &cobra.Command{
 
 var josePublicJwkSetCmd = &cobra.Command{
 	Use:   "public-jwks",
-	Short: "Reads the JWK Set from stdin and prints the public JWK Set to stdout",
+	Short: "Reads the a single JWK or JWK Set from stdin and prints the public JWK Set to stdout",
 	Run: func(cmd *cobra.Command, args []string) {
 		data, err := io.ReadAll(os.Stdin)
 		cobra.CheckErr(err)
 		set, err := jwk.Parse(data)
 		cobra.CheckErr(err)
 		publicSet, err := oauth2server.PublicJwkSet(set)
-		println(set, publicSet)
 		cobra.CheckErr(err)
 		cobra.CheckErr(json.NewEncoder(os.Stdout).Encode(publicSet))
 	},

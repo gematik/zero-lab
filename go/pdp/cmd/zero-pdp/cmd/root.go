@@ -12,14 +12,12 @@ import (
 	"github.com/spf13/viper"
 )
 
-var verbose = false
-var workdir = ""
-
 var (
 	rootCmd = &cobra.Command{
 		Use:   "zero-pdp",
 		Short: "Zero Trust Policy Decision Point",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			workdir := viper.GetString("workdir")
 			if workdir != "" {
 				err := os.Chdir(workdir)
 				if err != nil {
@@ -30,7 +28,7 @@ var (
 			godotenv.Load()
 
 			logLevel := slog.LevelInfo
-			if verbose {
+			if viper.GetBool("verbose") {
 				logLevel = slog.LevelDebug
 			}
 			if os.Getenv("PRETTY_LOGS") != "false" {
@@ -60,9 +58,11 @@ func init() {
 	viper.AutomaticEnv()
 	viper.SetEnvPrefix("PDP")
 	persistendFlags := rootCmd.PersistentFlags()
-	persistendFlags.StringVarP(&workdir, "workdir", "w", "", "working directory")
-	persistendFlags.BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+	persistendFlags.StringP("workdir", "w", "", "working directory")
+	persistendFlags.BoolP("verbose", "v", false, "verbose output")
 	persistendFlags.StringP("config-file", "f", "pdp.yaml", "config file (default is pdp.yaml)")
+	viper.BindPFlag("workdir", persistendFlags.Lookup("workdir"))
+	viper.BindPFlag("verbose", persistendFlags.Lookup("verbose"))
 	viper.BindPFlag("config_file", persistendFlags.Lookup("config-file"))
 }
 
