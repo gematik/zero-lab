@@ -9,9 +9,9 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jws"
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jws"
+	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
 type OpenidFederation struct {
@@ -74,7 +74,12 @@ func (f *OpenidFederation) FetchIdpList() ([]IdentityProviderInfo, error) {
 		return nil, err
 	}
 
-	return idpEntityToIdpInfo(token.PrivateClaims()["idp_entity"])
+	var idpEntity interface{}
+	if err := token.Get("idp_entity", &idpEntity); err != nil {
+		return nil, fmt.Errorf("unable to get idp_entity from token: %w", err)
+	}
+
+	return idpEntityToIdpInfo(idpEntity)
 
 }
 

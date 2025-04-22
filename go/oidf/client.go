@@ -10,10 +10,10 @@ import (
 	"strings"
 
 	"github.com/gematik/zero-lab/go/oauth/oidc"
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwe"
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jwe"
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jwt"
 	"golang.org/x/oauth2"
 )
 
@@ -139,7 +139,7 @@ func (c *RelyingPartyClient) ExchangeForIdentity(code, verifier string, options 
 		return nil, fmt.Errorf("unable to decode token response: %w", err)
 	}
 
-	decryptedIdToken, err := jwe.Decrypt([]byte(tokenResponse.IDTokenRaw), jwe.WithKey(jwa.ECDH_ES, c.rp.encPrivateKey))
+	decryptedIdToken, err := jwe.Decrypt([]byte(tokenResponse.IDTokenRaw), jwe.WithKey(jwa.ECDH_ES(), c.rp.encPrivateKey))
 	if err != nil {
 		return nil, fmt.Errorf("unable to decrypt id_token: %w", err)
 	}
@@ -159,7 +159,11 @@ func (c *RelyingPartyClient) parseIDToken(response *oidc.TokenResponse) (jwt.Tok
 		return nil, fmt.Errorf("unable to parse token: %w", err)
 	}
 	// verify audience
-	aud := tokenJwt.Audience()
+	aud, ok := tokenJwt.Audience()
+	if !ok {
+		slog.Error("token audience not found", "aud", aud)
+		return nil, fmt.Errorf("token audience not found")
+	}
 	var matchedAud string
 	for _, a := range aud {
 		if a == c.rp.ClientID() {

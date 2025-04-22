@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/gematik/zero-lab/go/brainpool"
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwe"
-	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jwe"
+	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
 func TestJWECross(t *testing.T) {
@@ -54,7 +54,7 @@ func TestJWECross(t *testing.T) {
 
 		t.Logf("(1) Encrypted: %v", string(cipher))
 	*/
-	decrypted, err := jwe.Decrypt(cipher, jwe.WithKey(jwa.ECDH_ES, prk))
+	decrypted, err := jwe.Decrypt(cipher, jwe.WithKey(jwa.ECDH_ES(), prk))
 	if err != nil {
 		t.Fatalf("Decrypt returned an error: %v", err)
 	}

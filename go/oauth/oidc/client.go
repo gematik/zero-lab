@@ -9,11 +9,11 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jws"
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/httprc/v3"
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jws"
+	"github.com/lestrrat-go/jwx/v3/jwt"
 	"golang.org/x/oauth2"
 )
 
@@ -48,9 +48,11 @@ func NewClient(cfg Config) (Client, error) {
 	}
 
 	// prepare the auto-refreshing signing key cache
-	c.keyCache = jwk.NewCache(context.Background())
-	c.keyCache.Register(c.discoveryDocument.JwksURI, jwk.WithMinRefreshInterval(15*time.Minute))
-	_, err = c.keyCache.Refresh(context.Background(), c.discoveryDocument.JwksURI)
+	context := context.Background()
+	c.keyCache, err = jwk.NewCache(context, httprc.NewClient())
+
+	c.keyCache.Register(context, c.discoveryDocument.JwksURI)
+	_, err = c.keyCache.Refresh(context, c.discoveryDocument.JwksURI)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch signing keys: %w", err)
 	}
@@ -169,7 +171,7 @@ func (c *client) ExchangeForIdentity(code, verifier string, options ...Option) (
 
 // Parses and verifies an ID token against the keys from the discovery document.
 func (c *client) parseIDToken(response *TokenResponse) (jwt.Token, error) {
-	keySet, err := c.keyCache.Get(context.Background(), c.discoveryDocument.JwksURI)
+	keySet, err := c.keyCache.Lookup(context.Background(), c.discoveryDocument.JwksURI)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get key set: %w", err)
 	}

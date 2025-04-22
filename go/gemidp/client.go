@@ -14,9 +14,9 @@ import (
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwe"
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jwe"
+	"github.com/lestrrat-go/jwx/v3/jwt"
 	"golang.org/x/oauth2"
 )
 
@@ -286,7 +286,7 @@ func (c *Client) ExchangeForIdentity(code, verifier string, options ...oidc.Opti
 
 func decryptToken(token string, key []byte) (string, error) {
 
-	plaintext, err := jwe.Decrypt([]byte(token), jwe.WithKey(jwa.DIRECT, key))
+	plaintext, err := jwe.Decrypt([]byte(token), jwe.WithKey(jwa.DIRECT(), key))
 	if err != nil {
 		return "", fmt.Errorf("decrypting token: %w", err)
 	}
@@ -312,8 +312,8 @@ func (c *Client) parseIDToken(response *oidc.TokenResponse) (jwt.Token, error) {
 		return nil, fmt.Errorf("parsing id token: %w", err)
 	}
 
-	// parse the token using the jwx library
-	// since the token is already verified, we can skip the verification step
+	// parse the token using the jwx library, after we verified the brainpool signature
+	// since the token signature is already verified, we can skip the verification step
 	token, err := jwt.ParseString(
 		response.IDTokenRaw,
 		jwt.WithAcceptableSkew(time.Duration(5*time.Minute)), // allow 5 minutes skew

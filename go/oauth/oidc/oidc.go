@@ -1,11 +1,12 @@
 package oidc
 
 import (
-	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
 type Error struct {
@@ -44,20 +45,15 @@ type TokenResponse struct {
 }
 
 func (t *TokenResponse) Claims(claims any) error {
-	asMap, err := t.IDToken.AsMap(context.Background())
+	claimsRaw := strings.Split(t.IDTokenRaw, ".")[1]
+
+	claimsBytes, err := base64.RawURLEncoding.DecodeString(claimsRaw)
 	if err != nil {
-		return fmt.Errorf("unable to convert ID token to map: %w", err)
+		return fmt.Errorf("decoding ID claims: %w", err)
 	}
 
-	// serialize to JSON and back to get the correct types
-	// this is a bit of a hack, but it works
-	asJSON, err := json.Marshal(asMap)
-	if err != nil {
-		return fmt.Errorf("unable to marshal claims: %w", err)
-	}
-
-	if err := json.Unmarshal(asJSON, claims); err != nil {
-		return fmt.Errorf("unable to unmarshal claims: %w", err)
+	if err := json.Unmarshal(claimsBytes, claims); err != nil {
+		return fmt.Errorf("unmarshal claims: %w", err)
 	}
 
 	return nil

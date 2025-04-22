@@ -3,7 +3,6 @@ package oidf
 import (
 	"crypto/tls"
 	"encoding/base64"
-	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"log/slog"
@@ -15,11 +14,11 @@ import (
 
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/go-playground/validator/v10"
-	"github.com/lestrrat-go/jwx/v2/cert"
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jws"
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v3/cert"
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jws"
+	"github.com/lestrrat-go/jwx/v3/jwt"
 	"gopkg.in/yaml.v3"
 )
 
@@ -184,7 +183,7 @@ func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {
 
 	signed, err := jwt.Sign(token,
 		jwt.WithKey(
-			jwa.ES256,
+			jwa.ES256(),
 			rp.sigPrivateKey,
 			jws.WithProtectedHeaders(headers),
 		),
@@ -229,7 +228,7 @@ func (rp *RelyingParty) ServeSignedJwks(w http.ResponseWriter, r *http.Request) 
 
 	signed, err := jwt.Sign(token,
 		jwt.WithKey(
-			jwa.ES256,
+			jwa.ES256(),
 			rp.sigPrivateKey,
 			jws.WithProtectedHeaders(headers),
 		),
@@ -339,23 +338,6 @@ func loadKeys(privateKeyPath string, kid string, keyUsage jwk.KeyUsageType, cert
 
 func (rp *RelyingParty) Federation() *OpenidFederation {
 	return rp.federation
-}
-
-// converts a map containing jwks to jwks object
-func mapToJwks(m map[string]interface{}) (jwk.Set, error) {
-	// convert map to json first
-	jsonData, err := json.Marshal(m)
-	if err != nil {
-		return nil, err
-	}
-
-	// convert json to jwks
-	jwks, err := jwk.Parse(jsonData)
-	if err != nil {
-		return nil, err
-	}
-
-	return jwks, nil
 }
 
 func (rp *RelyingParty) ClientID() string {
