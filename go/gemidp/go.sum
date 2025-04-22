@@ -3,8 +3,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 h1:NMZiJj8QnKe1LgsbDayM4UoHwbvwDRwnI3hwNaAHRnc=
 github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0/go.mod h1:ZXNYxsqcloTdSy/rNShjYzMhyjf0LaoftYK0p+A3h40=
-github.com/gematik/zero-lab/go/brainpool v0.0.0-20241217060143-5643c6e16209 h1:vc7ETjQ8MOemMTtvkZP/33g7mSMlHTKlNeEt02LPkL8=
-github.com/gematik/zero-lab/go/brainpool v0.0.0-20241217060143-5643c6e16209/go.mod h1:EE2YYA5/qWFC0yjasTpAANhD9wCESvABd7zJ/edCmIM=
+github.com/gematik/zero-lab/go/brainpool v0.0.0-20250422145859-511984f81774 h1:FTL6qbwCOO9FexMz8c5jt+pnxQnFGiZbecsWmxEkL88=
+github.com/gematik/zero-lab/go/brainpool v0.0.0-20250422145859-511984f81774/go.mod h1:EE2YYA5/qWFC0yjasTpAANhD9wCESvABd7zJ/edCmIM=
 github.com/gematik/zero-lab/go/oauth v0.0.0-20250422140352-bc4b2b7a32b8 h1:m+2PYFEQlyhT2g6fn66KWajOoqD/4so9IfVTiohwots=
 github.com/gematik/zero-lab/go/oauth v0.0.0-20250422140352-bc4b2b7a32b8/go.mod h1:lr2B7nCnRf1Wt4iQ3A8QK08PJ19tfRO7OMXXhRPTCHc=
 github.com/goccy/go-json v0.10.3 h1:KZ5WoDbxAIgm2HNbYckL0se1fHD6rz5j4ywS6ebzDqA=
