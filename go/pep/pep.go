@@ -11,16 +11,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
 type PEP struct {
-	slogger                *slog.Logger
-	httpClient             *http.Client
-	jwkSetFunc             func() (jwk.Set, error)
-	decryptAccessTokenFunc func(string) (string, error)
+	slogger                   *slog.Logger
+	httpClient                *http.Client
+	provideJwkSetFunc         func() (jwk.Set, error)
+	decryptAccessTokenFunc    func(string) (string, error)
+	accessTokenAcceptableSkew time.Duration
+	resource                  string // URI of the resource being protected
+
 }
 
 type builder struct {
@@ -36,7 +40,7 @@ func (b *builder) Build() (*PEP, error) {
 	if b.err != nil {
 		return nil, b.err
 	}
-	if b.p.jwkSetFunc == nil {
+	if b.p.provideJwkSetFunc == nil {
 		return nil, errors.New("none of the JWKSet provider has been set")
 	}
 	if b.p.httpClient == nil {
@@ -45,16 +49,19 @@ func (b *builder) Build() (*PEP, error) {
 	if b.p.slogger == nil {
 		b.p.slogger = slog.Default()
 	}
+	if b.p.accessTokenAcceptableSkew == 0 {
+		b.p.accessTokenAcceptableSkew = 1 * time.Minute
+	}
 	return b.p, nil
 }
 
 func (b *builder) WithJWKSetFunc(f func() (jwk.Set, error)) *builder {
-	b.p.jwkSetFunc = f
+	b.p.provideJwkSetFunc = f
 	return b
 }
 
 func (b *builder) WithJWKSet(jwkSet jwk.Set) *builder {
-	b.p.jwkSetFunc = func() (jwk.Set, error) {
+	b.p.provideJwkSetFunc = func() (jwk.Set, error) {
 		return jwkSet, nil
 	}
 	return b
@@ -73,6 +80,11 @@ func (b *builder) WithJWKSetPath(path string) *builder {
 	return b.WithJWKSet(jwks)
 }
 
+func (b *builder) WithAccessTokenAcceptableSkew(d time.Duration) *builder {
+	b.p.accessTokenAcceptableSkew = d
+	return b
+}
+
 func (b *builder) WithDecryptAccessTokenFunc(f func(string) (string, error)) *builder {
 	b.p.decryptAccessTokenFunc = f
 	return b
@@ -85,6 +97,11 @@ func (b *builder) WithHttpClient(client *http.Client) *builder {
 
 func (b *builder) WithSlogger(slogger *slog.Logger) *builder {
 	b.p.slogger = slogger
+	return b
+}
+
+func (b *builder) Resource(resource string) *builder {
+	b.p.resource = resource
 	return b
 }
 
@@ -111,8 +128,6 @@ type Context interface {
 	Deny(err Error)
 	WithDeny(deny func(c Context, err Error)) Context
 	Slogger() *slog.Logger
-	VerifyAuthorizationBearer() error
-	VerifyAuthorizationDPoP() error
 	UnmarshalClaims(claims any) error
 }
 
@@ -124,6 +139,7 @@ type pepContext struct {
 	deny           func(Context, Error)
 	accessTokenRaw string
 	accessToken    jwt.Token
+	dpop           *dpop.DPoP
 	claimsRaw      []byte
 }
 
@@ -164,7 +180,7 @@ func (c *pepContext) UnmarshalClaims(claims any) error {
 	return nil
 }
 
-func (c *pepContext) VerifyAuthorizationBearer() error {
+func (c *pepContext) verifyAuthorizationBearer() error {
 	bearerToken, err := c.parseAuthorizationScheme("bearer")
 	if err != nil {
 		return err
@@ -172,8 +188,29 @@ func (c *pepContext) VerifyAuthorizationBearer() error {
 	return c.verifyAccessToken(bearerToken)
 }
 
-func (c pepContext) VerifyAuthorizationDPoP() error {
-	return errors.New("not implemented")
+func (c pepContext) verifyAuthorizationDPoP(options dpop.ParseOptions) error {
+	proof, dpopErr := dpop.ParseRequest(c.request, options)
+	if dpopErr != nil {
+		return dpopErr
+	}
+
+	if err := c.verifyAccessToken(proof.AccessTokenRaw); err != nil {
+		return err
+	}
+
+	// verify access token binding
+	cnf := new(map[string]interface{})
+
+	c.accessToken.Get("cnf", cnf)
+	if (*cnf)["jkt"] == "" {
+		return ErrMissingAccessTokenDPoPBinding
+	}
+	if proof.DPoP.KeyThumbprint != (*cnf)["jkt"] {
+		return ErrInvalidAccessTokenDPoPBinding
+	}
+	c.dpop = proof.DPoP
+
+	return nil
 }
 
 func (c *pepContext) parseAuthorizationScheme(scheme string) (string, error) {
@@ -244,14 +281,15 @@ func (p *PEP) GuardedHandlerFunc(enforcer Enforcer, next func(w http.ResponseWri
 }
 
 func (p *PEP) verifyAccessToken(tokenRaw string) (jwt.Token, error) {
-	jwks, err := p.jwkSetFunc()
+	jwks, err := p.provideJwkSetFunc()
 	if err != nil {
 		return nil, fmt.Errorf("could not get JWKSet: %w", err)
 	}
 	token, err := jwt.ParseString(
 		tokenRaw,
-		jwt.WithAcceptableSkew(1*time.Minute),
+		jwt.WithAcceptableSkew(p.accessTokenAcceptableSkew),
 		jwt.WithKeySet(jwks, jws.WithInferAlgorithmFromKey(true)),
+		jwt.WithAudience(p.resource),
 	)
 
 	if err != nil {

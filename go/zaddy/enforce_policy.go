@@ -82,9 +82,22 @@ func (m EnforcePolicyMiddleware) unmarshalMultipleEnforcer(d *caddyfile.Dispense
 	// handle the block
 	for d.NextBlock(nesting) {
 		switch d.Val() {
-		case "verify_bearer":
-			e := &pep.EnforcerVerifyBearer{
-				TypeVal: pep.EnforcerTypeVerifyBearer,
+		case "authorozation_bearer":
+			e := &pep.EnforcerAuthorizationBearer{
+				TypeVal: pep.EnforcerTypeAuthorizationBearer,
+			}
+			me.Append(e)
+		case "authorization_dpop":
+			e := &pep.EnforcerAuthorizationDPoP{
+				TypeVal: pep.EnforcerTypeAuthorizationDPoP,
+			}
+			for d.NextArg() {
+				switch d.Val() {
+				case "nonce_required":
+					e.NonceRequired = true
+				default:
+					return d.Errf("unrecognized subdirective: %s", d.Val())
+				}
 			}
 			me.Append(e)
 		case "scope":

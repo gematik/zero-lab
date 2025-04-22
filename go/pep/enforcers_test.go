@@ -10,10 +10,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/gematik/zero-lab/go/pep"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/segmentio/ksuid"
 )
 
 func TestEnforcersJSON(t *testing.T) {
@@ -102,7 +105,7 @@ func TestEnforcersLogic(t *testing.T) {
 			ctx.Deny(pep.ErrorAccessDeinied("API key does not match"))
 			return
 		}
-		slog.Info("Request allowed since api-key match", "method", ctx.Request().Method, "url", ctx.Request().URL)
+		ctx.Slogger().Info("API key matched")
 		next(ctx)
 
 	})
@@ -137,7 +140,7 @@ func TestEnforcersLogic(t *testing.T) {
 		createRequest  func() (*http.Request, error)
 	}{
 		{url: "/public", expectedStatus: http.StatusOK, expectedBody: "public"},
-		{url: "/private", expectedStatus: http.StatusForbidden, expectedBody: "{\"error\":\"access_denied\",\"error_description\":\"Access denied\"}\n"},
+		{url: "/private", expectedStatus: http.StatusForbidden, expectedBody: "{\"error\":\"access_denied\",\"error_description\":\"Access denied by configuration\"}\n"},
 		{url: "/api-key", expectedStatus: http.StatusOK, expectedBody: "protected-by-api-key", createRequest: func() (*http.Request, error) {
 			req, err := http.NewRequest(http.MethodGet, server.URL+"/api-key", nil)
 			if err != nil {
@@ -146,8 +149,8 @@ func TestEnforcersLogic(t *testing.T) {
 			req.Header.Set("X-Api-Key", "api-key")
 			return req, nil
 		}},
-		{url: "/api-key", expectedStatus: http.StatusForbidden, expectedBody: "{\"error\":\"access_denied\",\"error_description\":\"Access denied\"}\n"},
-		{url: "/any-of", expectedStatus: http.StatusForbidden, expectedBody: "{\"error\":\"access_denied\",\"error_description\":\"Access denied\"}\n"},
+		{url: "/api-key", expectedStatus: http.StatusForbidden, expectedBody: "{\"error\":\"access_denied\",\"error_description\":\"API key does not match\"}\n"},
+		{url: "/any-of", expectedStatus: http.StatusForbidden, expectedBody: "{\"error\":\"access_denied\",\"error_description\":\"None of the enforcers in any_of allowed the request\"}\n"},
 		{url: "/any-of", expectedStatus: http.StatusOK, expectedBody: "any-of", createRequest: func() (*http.Request, error) {
 			req, err := http.NewRequest(http.MethodGet, server.URL+"/any-of", nil)
 			if err != nil {
@@ -198,7 +201,7 @@ func TestEnforcersLogic(t *testing.T) {
 func TestEnforcerScope(t *testing.T) {
 	p := createPEP(t)
 	enforcerRead := new(pep.EnforcerHolder)
-	if err := json.Unmarshal([]byte(`{"type":"AllOf","enforcers":[{"type":"VerifyBearer"},{"type":"Scope","scope":"read"}]}`), enforcerRead); err != nil {
+	if err := json.Unmarshal([]byte(`{"type":"AllOf","enforcers":[{"type":"AuthorizationBearer"},{"type":"Scope","scope":"read"}]}`), enforcerRead); err != nil {
 		t.Fatalf("Failed to unmarshal JSON: %s", err)
 	}
 
@@ -216,7 +219,7 @@ func TestEnforcerScope(t *testing.T) {
 	)
 
 	enforcerWrite := new(pep.EnforcerHolder)
-	if err := json.Unmarshal([]byte(`{"type":"AllOf","enforcers":[{"type":"VerifyBearer"},{"type":"Scope","scope":"write"}]}`), enforcerWrite); err != nil {
+	if err := json.Unmarshal([]byte(`{"type":"AllOf","enforcers":[{"type":"AuthorizationBearer"},{"type":"Scope","scope":"write"}]}`), enforcerWrite); err != nil {
 		t.Fatalf("Failed to unmarshal JSON: %s", err)
 	}
 
@@ -239,8 +242,8 @@ func TestEnforcerScope(t *testing.T) {
 		request        *http.Request
 	}{
 		{url: "/public", expectedStatus: http.StatusOK, expectedBody: "public"},
-		{url: "/read", expectedStatus: http.StatusForbidden},
-		{url: "/write", expectedStatus: http.StatusForbidden},
+		{url: "/read", expectedStatus: http.StatusUnauthorized},
+		{url: "/write", expectedStatus: http.StatusUnauthorized},
 		{url: "/write", expectedStatus: http.StatusOK, expectedBody: "write", request: createRequestWithAccessToken(t, server.URL+"/write", []byte(privateJWK1), []string{"write"}, time.Now().Add(time.Hour))},
 		{url: "/read", expectedStatus: http.StatusOK, expectedBody: "read", request: createRequestWithAccessToken(t, server.URL+"/read", []byte(privateJWK1), []string{"read"}, time.Now().Add(time.Hour))},
 		{url: "/read", expectedStatus: http.StatusForbidden, request: createRequestWithAccessToken(t, server.URL+"/read", []byte(privateJWKUnknown), []string{"read"}, time.Now().Add(time.Hour))},
@@ -284,8 +287,40 @@ func TestEnforcerScope(t *testing.T) {
 
 }
 
+func createTestAccessToken(keyBytes []byte, scopes []string, exp time.Time, jkt string) (string, error) {
+	scope := strings.Join(scopes, " ")
+	prk, err := jwk.ParseKey(keyBytes)
+	if err != nil {
+		return "", err
+	}
+
+	token, err := jwt.NewBuilder().
+		Claim("scope", scope).
+		Audience([]string{"https://example.com"}).
+		Expiration(exp).
+		Build()
+	if err != nil {
+		return "", err
+	}
+
+	if jkt != "" {
+		if err := token.Set("cnf", map[string]string{"jkt": jkt}); err != nil {
+			return "", err
+		}
+	}
+
+	signed, err := jwt.Sign(token, jwt.WithKey(jwa.ES256(), prk))
+	if err != nil {
+		return "", err
+	}
+
+	slog.Info("signed access token", "token", string(signed))
+
+	return string(signed), nil
+}
+
 func createRequestWithAccessToken(t *testing.T, url string, keyBytes []byte, scopes []string, exp time.Time) *http.Request {
-	accessToken, err := createTestAccessToken(keyBytes, scopes, exp)
+	accessToken, err := createTestAccessToken(keyBytes, scopes, exp, "")
 	if err != nil {
 		t.Fatal(err)
 		return nil
@@ -300,25 +335,155 @@ func createRequestWithAccessToken(t *testing.T, url string, keyBytes []byte, sco
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	return req
 }
-func createTestAccessToken(keyBytes []byte, scopes []string, exp time.Time) (string, error) {
-	scope := strings.Join(scopes, " ")
-	prk, err := jwk.ParseKey(keyBytes)
+
+func createRequestWithAccessTokenAndDPoP(t *testing.T, url string, keyBytes []byte, scopes []string, exp time.Time) *http.Request {
+	proofKey, err := dpop.NewPrivateKey()
 	if err != nil {
-		return "", err
+		t.Fatal(err)
+		return nil
 	}
 
-	token, err := jwt.NewBuilder().
-		Claim("scope", scope).
-		Expiration(exp).
+	accessToken, err := createTestAccessToken(keyBytes, scopes, exp, proofKey.Thumbprint)
+	if err != nil {
+		t.Fatal(err)
+		return nil
+	}
+
+	proof, err := dpop.NewBuilder().
+		Id(ksuid.New().String()).
+		HttpMethod(http.MethodGet).
+		HttpURI(url).
+		AccessTokenHashFrom(accessToken).
 		Build()
 	if err != nil {
-		return "", err
+		t.Fatal(err)
+		return nil
 	}
 
-	signed, err := jwt.Sign(token, jwt.WithKey(jwa.ES256(), prk))
+	signedProof, err := proof.Sign(proofKey)
 	if err != nil {
-		return "", err
+		t.Fatal(err)
+		return nil
+	}
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatal(err)
+		return nil
 	}
 
-	return string(signed), nil
+	req.Header.Set("Authorization", "DPoP "+accessToken)
+	req.Header.Set("DPoP", signedProof)
+
+	return req
+}
+
+func TestDPoPEnforcer(t *testing.T) {
+	p := createPEP(t)
+
+	dpopEnforcer := &pep.EnforcerAuthorizationDPoP{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/public", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("public"))
+	})
+
+	mux.HandleFunc("/dpop",
+		p.GuardedHandlerFunc(dpopEnforcer, func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("dpop"))
+		}),
+	)
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := server.Client()
+
+	tests := []struct {
+		scenario       string
+		url            string
+		expectedStatus int
+		expectedBody   string
+		request        *http.Request
+	}{
+		{scenario: "public access is always possible", url: "/public", expectedStatus: http.StatusOK, expectedBody: "public"},
+		{scenario: "fail without dpop+authorization", url: "/dpop", expectedStatus: http.StatusBadRequest},
+		{
+			scenario:       "fail withoit dpop, but with bearer authorization",
+			url:            "/dpop",
+			expectedStatus: http.StatusBadRequest,
+			request:        createRequestWithAccessToken(t, server.URL+"/dpop", []byte(privateJWK1), []string{"read"}, time.Now().Add(time.Hour)),
+		},
+		{
+			scenario:       "success",
+			url:            "/dpop",
+			expectedStatus: http.StatusOK,
+			expectedBody:   "dpop",
+			request:        createRequestWithAccessTokenAndDPoP(t, server.URL+"/dpop", []byte(privateJWK1), []string{"read"}, time.Now().Add(time.Hour)),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.scenario, func(t *testing.T) {
+			req := tt.request
+			if req == nil {
+				var err error
+				req, err = http.NewRequest(http.MethodGet, server.URL+tt.url, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d", tt.expectedStatus, resp.StatusCode)
+			}
+
+			if tt.expectedBody == "" {
+				return
+			}
+
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if string(body) != tt.expectedBody {
+				t.Errorf("expected body %q, got %q", tt.expectedBody, string(body))
+			}
+		})
+	}
+}
+
+func TestAccessToken(t *testing.T) {
+	accessToken, err := createTestAccessToken([]byte(privateJWK1), []string{"read"}, time.Now().Add(time.Hour), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("Access token: %s", accessToken)
+
+	jwks, err := jwk.Parse([]byte(publicJWSKSet))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parsedToken, err := jwt.Parse([]byte(accessToken), jwt.WithKeySet(jwks, jws.WithInferAlgorithmFromKey(true)))
+	if err != nil {
+		t.Fatalf("Failed to parse access token: %s", err)
+	}
+
+	cnf := new(map[string]interface{})
+	if err := parsedToken.Get("cnf", cnf); err != nil {
+		t.Fatalf("Failed to get cnf: %s", err)
+	}
+
+	if (*cnf)["jkt"] != "test" {
+		t.Fatalf("Expected thumbprint %s, got %s", "test", (*cnf)["jkt"])
+	}
+
 }

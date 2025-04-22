@@ -5,19 +5,21 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+
+	"github.com/gematik/zero-lab/go/dpop"
 )
 
 type EnforcerType string
 
 const (
-	EnforcerTypeCustom        EnforcerType = "Custom"
-	EnforcerTypeAllOf         EnforcerType = "AllOf"
-	EnforcerTypeAnyOf         EnforcerType = "AnyOf"
-	EnforcerTypeDeny          EnforcerType = "Deny"
-	EnforcerTypeVerifyBearer  EnforcerType = "VerifyBearer"
-	EnforcerVerifyDPoP        EnforcerType = "VerifyDPoP"
-	EnforcerTypeScope         EnforcerType = "Scope"
-	EnforcerTypeSessionCookie EnforcerType = "SessionCookie"
+	EnforcerTypeCustom              EnforcerType = "Custom"
+	EnforcerTypeAllOf               EnforcerType = "AllOf"
+	EnforcerTypeAnyOf               EnforcerType = "AnyOf"
+	EnforcerTypeDeny                EnforcerType = "Deny"
+	EnforcerTypeAuthorizationBearer EnforcerType = "AuthorizationBearer"
+	EnforcerTypeAuthorizationDPoP   EnforcerType = "AuthorizationDPoP"
+	EnforcerTypeScope               EnforcerType = "Scope"
+	EnforcerTypeSessionCookie       EnforcerType = "SessionCookie"
 )
 
 type Enforcer interface {
@@ -48,8 +50,10 @@ func (h *EnforcerHolder) UnmarshalJSON(data []byte) error {
 		h.Enforcer = &EnforcerAnyOf{}
 	case EnforcerTypeDeny:
 		h.Enforcer = &EnforcerDeny{}
-	case EnforcerTypeVerifyBearer:
-		h.Enforcer = &EnforcerVerifyBearer{}
+	case EnforcerTypeAuthorizationBearer:
+		h.Enforcer = &EnforcerAuthorizationBearer{}
+	case EnforcerTypeAuthorizationDPoP:
+		h.Enforcer = &EnforcerAuthorizationDPoP{}
 	case EnforcerTypeScope:
 		h.Enforcer = &EnforcerScope{}
 	case EnforcerTypeSessionCookie:
@@ -244,16 +248,23 @@ func EnforcerFromFunc(apply func(Context, HandlerFunc)) Enforcer {
 	return &enforcerFunc{apply}
 }
 
-type EnforcerVerifyBearer struct {
+type EnforcerAuthorizationBearer struct {
 	TypeVal EnforcerType `json:"type" validate:"required"`
 }
 
-func (e *EnforcerVerifyBearer) Type() EnforcerType {
-	return EnforcerTypeVerifyBearer
+func (e *EnforcerAuthorizationBearer) Type() EnforcerType {
+	return EnforcerTypeAuthorizationBearer
 }
 
-func (e *EnforcerVerifyBearer) Apply(ctx Context, next HandlerFunc) {
-	if err := ctx.VerifyAuthorizationBearer(); err != nil {
+func (e *EnforcerAuthorizationBearer) Apply(ctx Context, next HandlerFunc) {
+	internalCtx, ok := ctx.(*pepContext)
+	if !ok {
+		ctx.Slogger().Error("Failed to cast context to pepContext")
+		ctx.Deny(Error{HttpStatus: 500, Code: "internal_error", Description: "Failed to cast context to pepContext"})
+		return
+	}
+
+	if err := internalCtx.verifyAuthorizationBearer(); err != nil {
 		ctx.Slogger().Warn("Failed to verify authorization bearer", "error", err)
 		if pepErr, ok := err.(Error); ok {
 			ctx.Deny(pepErr)
@@ -263,5 +274,61 @@ func (e *EnforcerVerifyBearer) Apply(ctx Context, next HandlerFunc) {
 		return
 	}
 	ctx.Slogger().Debug("Authorization bearer successfully verified")
+	next(ctx)
+}
+
+type EnforcerAuthorizationDPoP struct {
+	TypeVal       EnforcerType `json:"type" validate:"required"`
+	NonceRequired bool         `json:"nonce_required" validate:"required"`
+}
+
+func (e *EnforcerAuthorizationDPoP) Type() EnforcerType {
+	return EnforcerTypeAuthorizationDPoP
+}
+
+func (e *EnforcerAuthorizationDPoP) Apply(ctx Context, next HandlerFunc) {
+	internalCtx, ok := ctx.(*pepContext)
+	if !ok {
+		ctx.Slogger().Error("Failed to cast context to pepContext")
+		ctx.Deny(Error{
+			HttpStatus:  500,
+			Code:        "internal_error",
+			Description: "Failed to cast context to pepContext",
+		})
+		return
+	}
+
+	options := dpop.ParseOptions{
+		NonceRequired:         e.NonceRequired,
+		AuthorizationRequired: true,
+	}
+
+	if err := internalCtx.verifyAuthorizationDPoP(options); err != nil {
+		ctx.Slogger().Warn("Failed to verify authorization dpop", "error", err)
+		if pepErr, ok := err.(Error); ok {
+			ctx.Deny(pepErr)
+		} else if dpopErr, ok := err.(*dpop.DPoPError); ok {
+			ctx.Deny(Error{
+				HttpStatus:  dpopErr.HttpStatus,
+				Code:        dpopErr.Code,
+				Description: dpopErr.Description,
+			})
+
+		} else {
+			ctx.Deny(ErrorAccessDeinied("Failed to verify authorization dpop: " + err.Error()))
+		}
+		return
+	}
+
+	if e.NonceRequired {
+		ctx.Deny(Error{
+			HttpStatus:  500,
+			Code:        "internal_error",
+			Description: "Nonce required but not implemented",
+		})
+		return
+	}
+
+	ctx.Slogger().Debug("Authorization dpop successfully verified")
 	next(ctx)
 }

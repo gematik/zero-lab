@@ -38,3 +38,15 @@ func ErrorAccessDeinied(description string) Error {
 		Description: description,
 	}
 }
+
+var ErrMissingAccessTokenDPoPBinding = Error{
+	HttpStatus:  400,
+	Code:        "missing_access_token_dpop_binding",
+	Description: "Access token is missing DPoP binding (cnf.jkt)",
+}
+
+var ErrInvalidAccessTokenDPoPBinding = Error{
+	HttpStatus:  400,
+	Code:        "invalid_access_token_dpop_binding",
+	Description: "Key thumbprint in DPoP proof does not match access token",
+}

@@ -894,7 +894,7 @@ func (s *Server) tokenEndpointJWTBearer(c echo.Context) error {
 		}
 	}
 
-	dpopToken, dpoppErr := dpop.ParseRequest(r, dpop.ParseOptions{
+	dpopBinding, dpoppErr := dpop.ParseRequest(r, dpop.ParseOptions{
 		MaxAge:        s.dpopMaxAge,
 		NonceRequired: true,
 	})
@@ -905,9 +905,9 @@ func (s *Server) tokenEndpointJWTBearer(c echo.Context) error {
 			Description: dpoppErr.Description,
 		}
 	}
-	slog.Info("DPoP token", "dpop", fmt.Sprintf("%+v", dpopToken), "raw", r.Header.Get("DPoP"))
+	slog.Info("DPoP token", "dpop", fmt.Sprintf("%+v", dpopBinding), "raw", r.Header.Get("DPoP"))
 
-	if dpopToken.Nonce != claims.Nonce {
+	if dpopBinding.DPoP.Nonce != claims.Nonce {
 		return &Error{
 			HttpStatus:  http.StatusBadRequest,
 			Code:        "invalid_request",
@@ -915,7 +915,7 @@ func (s *Server) tokenEndpointJWTBearer(c echo.Context) error {
 		}
 	}
 
-	if dpopToken.KeyThumbprint != "" && dpopToken.KeyThumbprint != claims.Cnf.Jkt {
+	if dpopBinding.DPoP.KeyThumbprint != "" && dpopBinding.DPoP.KeyThumbprint != claims.Cnf.Jkt {
 		return &Error{
 			HttpStatus:  http.StatusBadRequest,
 			Code:        "invalid_request",

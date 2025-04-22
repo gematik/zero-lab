@@ -6,9 +6,12 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/lestrrat-go/jwx/v3/jwa"
@@ -65,6 +68,7 @@ type DPoP struct {
 }
 
 type Builder struct {
+	err  error
 	dpop *DPoP
 }
 
@@ -73,6 +77,9 @@ func NewBuilder() *Builder {
 }
 
 func (b *Builder) Build() (*DPoP, error) {
+	if b.err != nil {
+		return nil, b.err
+	}
 	// set defaults if possible and necessary
 	if b.dpop.Id == "" {
 		b.dpop.Id = ksuid.New().String()
@@ -110,6 +117,17 @@ func (b *Builder) HttpRequest(request *http.Request) *Builder {
 
 func (b *Builder) AccessTokenHash(accessTokenHash string) *Builder {
 	b.dpop.AccessTokenHash = accessTokenHash
+	return b
+}
+
+func (b *Builder) AccessTokenHashFrom(accessToken string) *Builder {
+	hash, err := CalculateAccessTokenHash(accessToken)
+	if err != nil {
+		b.err = fmt.Errorf("failed to calculate access token hash: %w", err)
+		b.dpop.AccessTokenHash = ""
+		return b
+	}
+	b.dpop.AccessTokenHash = hash
 	return b
 }
 
@@ -170,32 +188,101 @@ func (dpop *DPoP) Sign(privateKey *PrivateKey) (string, error) {
 }
 
 type ParseOptions struct {
-	MaxAge        time.Duration
-	NonceRequired bool
+	RequestURL            string
+	MaxAge                time.Duration
+	NonceRequired         bool
+	AuthorizationRequired bool
 }
 
-func ParseRequest(request *http.Request, options ParseOptions) (*DPoP, *DPoPError) {
+type RequestBinding struct {
+	DPoP           *DPoP
+	AccessTokenRaw string
+}
+
+func ParseRequest(request *http.Request, options ParseOptions) (*RequestBinding, *DPoPError) {
 	dpopHeader := request.Header.Get(DPoPHeaderName)
 	if dpopHeader == "" {
 		return nil, &ErrMissingHeader
 	}
 
-	token, err := Parse(dpopHeader)
+	proof, err := Parse(dpopHeader)
 	if err != nil {
 		return nil, &DPoPError{HttpStatus: http.StatusBadRequest, Code: "invalid_dpop_proof", Description: err.Error()}
 	}
 
 	// Check the issued at time
-	if options.MaxAge > 0 && time.Since(token.IssuedAt) > options.MaxAge {
+	if options.MaxAge > 0 && time.Since(proof.IssuedAt) > options.MaxAge {
 		return nil, &DPoPError{HttpStatus: http.StatusBadRequest, Code: "invalid_dpop_proof", Description: "DPoP is too old"}
 	}
 
 	// Check if nonce is required
-	if options.NonceRequired && token.Nonce == "" {
+	if options.NonceRequired && proof.Nonce == "" {
 		return nil, &ErrUseDPoPNonce
 	}
 
-	return token, nil
+	// check the HTTP method
+	if proof.HttpMethod != request.Method {
+		slog.Error("method mismatch", "dpop", proof.HttpMethod, "request", request.Method)
+		return nil, &DPoPError{HttpStatus: http.StatusBadRequest, Code: "invalid_dpop_proof", Description: "method mismatch"}
+	}
+
+	if options.RequestURL == "" {
+		// TODO: make thois more robust, e.g. by reading the header
+		scheme := "http"
+		if request.TLS != nil {
+			scheme = "https"
+		}
+		options.RequestURL = scheme + "://" + request.Host + request.RequestURI
+	}
+
+	// check the request URL
+	if proof.HttpURI != options.RequestURL {
+		slog.Error("request uri mismatch", "dpop", proof.HttpURI, "request", options.RequestURL)
+		return nil, &DPoPError{HttpStatus: http.StatusBadRequest, Code: "invalid_dpop_proof", Description: "request uri mismatch"}
+	}
+
+	var accessToken string
+	if options.AuthorizationRequired {
+		// Check if the access token is present in the authorization header
+		if proof.AccessTokenHash == "" {
+			return nil, &ErrMissingAccessTokenHash
+		}
+
+		// Check if the request has an authorization header
+		authHeader := request.Header.Get("Authorization")
+		if authHeader == "" {
+			return nil, &ErrMissingAuthorizationHeader
+		}
+
+		// Check if the authorization header contains a DPoP bound access token
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 {
+			return nil, &ErrInvalidAuthorizationHeader
+		}
+
+		// Check if the authorization header uses the DPoP scheme
+		if parts[0] != "DPoP" {
+			return nil, &ErrInvalidAuthorizationHeader
+		}
+
+		// Check if the access token hash matches the DPoP proof
+		athFromRequest, err := CalculateAccessTokenHash(parts[1])
+		if err != nil {
+			slog.Error("failed to calculate access token hash", "error", err)
+			return nil, &DPoPError{HttpStatus: http.StatusInternalServerError, Code: "internal_server_error", Description: "failed to calculate access token hash"}
+		}
+		if proof.AccessTokenHash != athFromRequest {
+			slog.Error("access token hash mismatch", "dpop", proof.AccessTokenHash, "request", athFromRequest)
+			return nil, &ErrInvalidAccessTokenHash
+		}
+
+		accessToken = parts[1]
+	}
+
+	return &RequestBinding{
+		DPoP:           proof,
+		AccessTokenRaw: accessToken,
+	}, nil
 }
 
 func Parse(token string) (*DPoP, error) {
@@ -271,4 +358,15 @@ func Parse(token string) (*DPoP, error) {
 	dpopToken.KeyThumbprint = base64.RawURLEncoding.EncodeToString(thumbprintBytes)
 
 	return dpopToken, nil
+}
+
+// calculate the access token hash as described in RFC9449
+func CalculateAccessTokenHash(accessToken string) (string, error) {
+	// calculate the SHA-256 hash of the access token
+	hash := sha256.Sum256([]byte(accessToken))
+
+	// base64url encode the hash
+	encodedHash := base64.RawURLEncoding.EncodeToString(hash[:])
+
+	return encodedHash, nil
 }
