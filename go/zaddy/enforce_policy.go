@@ -82,7 +82,7 @@ func (m EnforcePolicyMiddleware) unmarshalMultipleEnforcer(d *caddyfile.Dispense
 	// handle the block
 	for d.NextBlock(nesting) {
 		switch d.Val() {
-		case "authorozation_bearer":
+		case "authorization_bearer":
 			e := &pep.EnforcerAuthorizationBearer{
 				TypeVal: pep.EnforcerTypeAuthorizationBearer,
 			}

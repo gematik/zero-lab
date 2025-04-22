@@ -200,6 +200,28 @@ type RequestBinding struct {
 }
 
 func ParseRequest(request *http.Request, options ParseOptions) (*RequestBinding, *DPoPError) {
+	var accessToken string
+	if options.AuthorizationRequired {
+		// Check if the request has an authorization header
+		authHeader := request.Header.Get("Authorization")
+		if authHeader == "" {
+			return nil, &ErrMissingAuthorizationHeader
+		}
+
+		// Check if the authorization header contains a DPoP bound access token
+		parts := strings.Split(authHeader, " ")
+		if len(parts) != 2 {
+			return nil, &ErrInvalidAuthorizationHeader
+		}
+
+		// Check if the authorization header uses the DPoP scheme
+		if parts[0] != "DPoP" {
+			return nil, &ErrInvalidAuthorizationHeader
+		}
+
+		accessToken = parts[1]
+	}
+
 	dpopHeader := request.Header.Get(DPoPHeaderName)
 	if dpopHeader == "" {
 		return nil, &ErrMissingHeader
@@ -241,32 +263,14 @@ func ParseRequest(request *http.Request, options ParseOptions) (*RequestBinding,
 		return nil, &DPoPError{HttpStatus: http.StatusBadRequest, Code: "invalid_dpop_proof", Description: "request uri mismatch"}
 	}
 
-	var accessToken string
 	if options.AuthorizationRequired {
 		// Check if the access token is present in the authorization header
 		if proof.AccessTokenHash == "" {
 			return nil, &ErrMissingAccessTokenHash
 		}
 
-		// Check if the request has an authorization header
-		authHeader := request.Header.Get("Authorization")
-		if authHeader == "" {
-			return nil, &ErrMissingAuthorizationHeader
-		}
-
-		// Check if the authorization header contains a DPoP bound access token
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 {
-			return nil, &ErrInvalidAuthorizationHeader
-		}
-
-		// Check if the authorization header uses the DPoP scheme
-		if parts[0] != "DPoP" {
-			return nil, &ErrInvalidAuthorizationHeader
-		}
-
 		// Check if the access token hash matches the DPoP proof
-		athFromRequest, err := CalculateAccessTokenHash(parts[1])
+		athFromRequest, err := CalculateAccessTokenHash(accessToken)
 		if err != nil {
 			slog.Error("failed to calculate access token hash", "error", err)
 			return nil, &DPoPError{HttpStatus: http.StatusInternalServerError, Code: "internal_server_error", Description: "failed to calculate access token hash"}
@@ -275,8 +279,6 @@ func ParseRequest(request *http.Request, options ParseOptions) (*RequestBinding,
 			slog.Error("access token hash mismatch", "dpop", proof.AccessTokenHash, "request", athFromRequest)
 			return nil, &ErrInvalidAccessTokenHash
 		}
-
-		accessToken = parts[1]
 	}
 
 	return &RequestBinding{

@@ -4,7 +4,7 @@
 	}
 }
 
-http://127.0.0.1:8010 {
+http://127.0.0.1:8010, http://localhost:8010 {
 	handle /.well-known/oauth-protected-resource {
 		header Content-Type application/json
 		root ./static
@@ -12,7 +12,7 @@ http://127.0.0.1:8010 {
 	}
 
 	route / {
-		respond "I have /public and /protected resources" 200
+		respond "I have /public, /protected and /protected-dpop resources" 200
 	}
 
 	route /public {
@@ -21,17 +21,25 @@ http://127.0.0.1:8010 {
 
 	route /protected {
 		enforce_policy {
-			verify_bearer
+			authorization_bearer
 			scope protected
 		}
 		respond "Hello from behind the curtain. I am protected resource (scope: protected)" 200
+	}
+
+	route /protected-dpop {
+		enforce_policy {
+			authorization_dpop
+			scope protected
+		}
+		respond "Hello from behind the curtain. I am protected resource (scope: protected) with DPoP" 200
 	}
 
 	route /protected-complex {
 		enforce_policy {
 			any_of {
 				all_of {
-					verify_bearer
+					authorization_bearer
 					scope edit
 				}
 			}
@@ -42,8 +50,7 @@ http://127.0.0.1:8010 {
 	route /* {
 		header Content-Type application/json
 		respond 404 {
-			body "{\"error\": \"not_found\", \"description\": \"The requested resource was not found\"
-		}		"
+			body "{\"error\": \"not_found\", \"description\": \"The requested resource was not found\"}"
 		}
 	}
 }

@@ -47,8 +47,8 @@ var (
 	}
 
 	ErrMissingAuthorizationHeader = DPoPError{
-		HttpStatus:  http.StatusBadRequest,
-		Code:        "invalid_request",
+		HttpStatus:  http.StatusUnauthorized,
+		Code:        "authorization_required",
 		Description: "Missing authorization header",
 	}
 
