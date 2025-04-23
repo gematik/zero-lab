@@ -1,3 +1,3 @@
 package pdp
 
-const Version = "0.10.9b"
+const Version = "0.11.1"

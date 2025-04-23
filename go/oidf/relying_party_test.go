@@ -39,7 +39,7 @@ func TestNewRelyingParty(t *testing.T) {
 	}`)
 
 	cfg := &RelyingPartyConfig{
-		Url:                  "https://example.com",
+		Subject:              "https://example.com",
 		FedMasterURL:         "https://fed.example.com",
 		FedMasterJwk:         *jwk,
 		SignKid:              "sign-kid",

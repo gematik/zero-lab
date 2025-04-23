@@ -61,7 +61,7 @@ func (s *EndpointsConfig) applyDefaults(baseURI *url.URL) {
 	}
 
 	if s.AuthorizationServerMetadata == "" {
-		s.AuthorizationServerMetadata = basePath + "/.well-known/oauth-authorization-server"
+		s.AuthorizationServerMetadata = "/.well-known/oauth-authorization-server"
 	}
 	if s.Jwks == "" {
 		s.Jwks = basePath + "/jwks"
@@ -88,7 +88,7 @@ func (s *EndpointsConfig) applyDefaults(baseURI *url.URL) {
 		s.Token = basePath + "/token"
 	}
 	if s.EntityStatement == "" {
-		s.EntityStatement = basePath + "/.well-known/openid-federation"
+		s.EntityStatement = "/.well-known/openid-federation"
 	}
 	if s.Registration == "" {
 		s.Registration = basePath + "/register"

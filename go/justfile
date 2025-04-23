@@ -1,5 +1,5 @@
 DOCKER_USER := "spilikin"
-ZERO_VERSION := "0.10.9b"
+ZERO_VERSION := "0.11.1"
 ZERO_EPA_VERSION := ZERO_VERSION
 ZERO_PDP_VERSION := ZERO_VERSION
 ZERO_CADDY_VERSION := ZERO_VERSION
@@ -20,7 +20,7 @@ docker-push-epa: docker-build-epa
     docker push "{{DOCKER_USER}}/zero-epa:latest"    
 
 # Build the zero-caddy docker image
-docker-build-caddy:
+docker-build-caddy: generate-versions
     docker build --platform linux/amd64 -t "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}" -f ./zaddy/cmd/zero-caddy/Dockerfile .
     docker tag "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}" "{{DOCKER_USER}}/zero-caddy:latest"
 
@@ -28,6 +28,16 @@ docker-build-caddy:
 docker-push-caddy: docker-build-caddy
     docker push "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}"
     docker push "{{DOCKER_USER}}/zero-caddy:latest"    
+
+# Build the zero-pdp docker image
+docker-build-pdp: generate-versions
+    docker build --platform linux/amd64 -t "{{DOCKER_USER}}/zero-pdp:{{ZERO_PDP_VERSION}}" -f ./pdp/cmd/zero-pdp/Dockerfile .
+    docker tag "{{DOCKER_USER}}/zero-pdp:{{ZERO_PDP_VERSION}}" "{{DOCKER_USER}}/zero-pdp:latest"
+
+# Push the zero-pdp docker image to the docker hub
+docker-push-pdp: docker-build-pdp
+    docker push "{{DOCKER_USER}}/zero-pdp:{{ZERO_PDP_VERSION}}"
+    docker push "{{DOCKER_USER}}/zero-pdp:latest"
 
 # generate version file
 generate-version-file file package version:

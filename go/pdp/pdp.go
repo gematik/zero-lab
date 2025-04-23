@@ -12,7 +12,7 @@ import (
 )
 
 type Config struct {
-	Address           string              `yaml:"address"`
+	BindAddress       string              `yaml:"bind_address"`
 	BaseDir           string              `yaml:"-"`
 	AuthzServerConfig oauth2server.Config `yaml:"authorization_server" validate:"required"`
 }
@@ -40,7 +40,7 @@ func LoadConfigFile(path string) (*Config, error) {
 }
 
 type PDP struct {
-	Address     string
+	BindAddress string
 	AuthzServer *oauth2server.Server
 }
 
@@ -64,10 +64,10 @@ func New(config Config) (*PDP, error) {
 		AuthzServer: authzServer,
 	}
 
-	if config.Address == "" {
-		pdp.Address = ":8011"
+	if config.BindAddress == "" {
+		pdp.BindAddress = ":8011"
 	} else {
-		pdp.Address = config.Address
+		pdp.BindAddress = config.BindAddress
 	}
 
 	return pdp, nil

@@ -97,13 +97,13 @@ func New(cfg Config) (*Server, error) {
 		}
 
 	}
-	issuerUri, err := url.Parse(cfg.Issuer)
+	issuerUrl, err := url.Parse(cfg.Issuer)
 	if err != nil {
 		return nil, fmt.Errorf("invalid issuer URI: %w", err)
 	}
 
 	s.endpointPaths = &cfg.Endpoints
-	s.endpointPaths.applyDefaults(issuerUri)
+	s.endpointPaths.applyDefaults(issuerUrl)
 
 	for _, c := range cfg.OidcProviders {
 		client, err := oidc.NewClient(c)
@@ -118,13 +118,13 @@ func New(cfg Config) (*Server, error) {
 	s.Metadata.ScopesSupported = cfg.ScopesSupported
 
 	// set urls explicitly using the issuer
-	s.Metadata.AuthorizationEndpoint = buildURI(s.Metadata.Issuer, s.endpointPaths.Authorization)
-	s.Metadata.TokenEndpoint = buildURI(s.Metadata.Issuer, s.endpointPaths.Token)
-	s.Metadata.JwksURI = buildURI(s.Metadata.Issuer, s.endpointPaths.Jwks)
-	s.Metadata.OpenidProvidersEndpoint = buildURI(s.Metadata.Issuer, s.endpointPaths.OpenIDProviders)
-	s.Metadata.NonceEndpoint = buildURI(s.Metadata.Issuer, s.endpointPaths.Nonce)
-	s.Metadata.PushedAuthorizationRequestEndpoint = buildURI(s.Metadata.Issuer, s.endpointPaths.PushedAuthorizationRequest)
-	s.Metadata.RegistrationEndpoint = buildURI(s.Metadata.Issuer, s.endpointPaths.Registration)
+	s.Metadata.AuthorizationEndpoint = buildURI(issuerUrl, s.endpointPaths.Authorization)
+	s.Metadata.TokenEndpoint = buildURI(issuerUrl, s.endpointPaths.Token)
+	s.Metadata.JwksURI = buildURI(issuerUrl, s.endpointPaths.Jwks)
+	s.Metadata.OpenidProvidersEndpoint = buildURI(issuerUrl, s.endpointPaths.OpenIDProviders)
+	s.Metadata.NonceEndpoint = buildURI(issuerUrl, s.endpointPaths.Nonce)
+	s.Metadata.PushedAuthorizationRequestEndpoint = buildURI(issuerUrl, s.endpointPaths.PushedAuthorizationRequest)
+	s.Metadata.RegistrationEndpoint = buildURI(issuerUrl, s.endpointPaths.Registration)
 
 	// set supported parameters explicitly
 	s.Metadata.ResponseTypesSupported = []string{"code"}
@@ -478,7 +478,7 @@ func (s *Server) GetOpenidClient(issuer string) (oidc.Client, error) {
 	}
 
 	if s.oidfRelyingParty != nil {
-		return s.oidfRelyingParty.NewClient(issuer, buildURI(s.Metadata.Issuer, s.endpointPaths.EntityStatement))
+		return s.oidfRelyingParty.NewClient(issuer)
 	}
 	return nil, fmt.Errorf("unknown issuer: %s", issuer)
 }
@@ -1076,15 +1076,10 @@ func generateNonce(size int) string {
 	return nonce
 }
 
-func buildURI(base string, paths ...string) string {
-	result := strings.TrimRight(base, "/")
-	for _, p := range paths {
-		if p == "" {
-			continue
-		}
-		result = fmt.Sprintf("%s/%s", result, strings.Trim(p, "/"))
-	}
-	return result
+func buildURI(baseURL *url.URL, path string) string {
+	result := *baseURL
+	result.Path = path
+	return result.String()
 }
 
 type NonceType struct {

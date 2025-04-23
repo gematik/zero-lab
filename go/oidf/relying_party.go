@@ -24,7 +24,7 @@ import (
 
 type RelyingPartyConfig struct {
 	BaseDir              string                 `yaml:"-"`
-	Url                  string                 `yaml:"url" validate:"required"`
+	Subject              string                 `yaml:"sub" validate:"required"`
 	FedMasterURL         string                 `yaml:"fed_master_url" validate:"required"`
 	FedMasterJwk         Jwk                    `yaml:"fed_master_jwk" validate:"required"`
 	SignKid              string                 `yaml:"sign_kid" validate:"required"`
@@ -132,8 +132,8 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 	}
 
 	rp.entityStatement = &EntityStatement{
-		Issuer:   cfg.Url,
-		Subject:  cfg.Url,
+		Issuer:   cfg.Subject,
+		Subject:  cfg.Subject,
 		Metadata: metadata,
 	}
 
@@ -164,8 +164,8 @@ func (rp *RelyingParty) absPath(path string) string {
 func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {
 
 	token, err := jwt.NewBuilder().
-		Issuer(rp.cfg.Url).
-		Subject(rp.cfg.Url).
+		Issuer(rp.entityStatement.Issuer).
+		Subject(rp.entityStatement.Subject).
 		IssuedAt(time.Now().Add(-1*time.Hour)). // backdate token to avoid clock skew
 		Expiration(time.Now().Add(time.Hour*23)).
 		Claim("jwks", rp.entityStatement.Jwks.Keys).
@@ -211,7 +211,7 @@ func (rp *RelyingParty) Serve(w http.ResponseWriter, r *http.Request) {
 func (rp *RelyingParty) ServeSignedJwks(w http.ResponseWriter, r *http.Request) {
 
 	token, err := jwt.NewBuilder().
-		Issuer(rp.cfg.Url).
+		Issuer(rp.entityStatement.Subject).
 		IssuedAt(time.Now().Add(-1*time.Hour)). // backdate token to avoid clock skew
 		Expiration(time.Now().Add(time.Hour*23)).
 		Claim("keys", rp.entityStatement.Metadata.OpenidRelyingParty.Jwks.Keys).
@@ -249,7 +249,7 @@ type pushedAuthorizationResponse struct {
 	ExpiresIn  int    `json:"expires_in"`
 }
 
-func (rp *RelyingParty) NewClient(issuer, redirectUri string) (oidc.Client, error) {
+func (rp *RelyingParty) NewClient(issuer string) (oidc.Client, error) {
 	op, err := rp.federation.FetchEntityStatement(issuer)
 	if err != nil {
 		return nil, err
@@ -271,7 +271,7 @@ func (rp *RelyingParty) NewClient(issuer, redirectUri string) (oidc.Client, erro
 		rp:          rp,
 		op:          op,
 		scopes:      []string{"urn:telematik:display_name", "urn:telematik:versicherter", "openid"},
-		redirectUri: redirectUri,
+		redirectUri: rp.entityStatement.Metadata.OpenidRelyingParty.RedirectURIs[0],
 		metadata:    metadata,
 		jwks:        jwks,
 	}, nil
@@ -341,5 +341,5 @@ func (rp *RelyingParty) Federation() *OpenidFederation {
 }
 
 func (rp *RelyingParty) ClientID() string {
-	return rp.cfg.Url
+	return rp.entityStatement.Subject
 }

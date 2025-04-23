@@ -34,8 +34,8 @@ var startCmd = &cobra.Command{
 		}
 
 		slog.Debug("Zero Trust PDP configured", "pdp", pdp)
-		slog.Info(fmt.Sprintf("starting Zero Trust PDP at %s", pdp.Address))
-		e.Logger.Fatal(e.Start(pdp.Address))
+		slog.Info(fmt.Sprintf("starting Zero Trust PDP at %s", pdp.BindAddress))
+		e.Logger.Fatal(e.Start(pdp.BindAddress))
 
 	},
 }
