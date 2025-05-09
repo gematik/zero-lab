@@ -171,7 +171,7 @@ func (c *pepContext) Slogger() *slog.Logger {
 
 func (c *pepContext) UnmarshalClaims(claims any) error {
 	if c.claimsRaw == nil {
-		return errors.New("claims not available, verify access token first")
+		return errors.New("claims not available, authorize_bearer or dpop not used")
 	}
 	if err := json.Unmarshal(c.claimsRaw, claims); err != nil {
 		return fmt.Errorf("unable to unmarshal claims: %w", err)
@@ -188,7 +188,7 @@ func (c *pepContext) verifyAuthorizationBearer() error {
 	return c.verifyAccessToken(bearerToken)
 }
 
-func (c pepContext) verifyAuthorizationDPoP(options dpop.ParseOptions) error {
+func (c *pepContext) verifyAuthorizationDPoP(options dpop.ParseOptions) error {
 	proof, dpopErr := dpop.ParseRequest(c.request, options)
 	if dpopErr != nil {
 		return dpopErr

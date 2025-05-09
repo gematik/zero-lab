@@ -18,11 +18,12 @@ func init() {
 }
 
 type App struct {
-	AuthorizationServer               string                        `json:"authorization_server"`
-	JWKSPath                          string                        `json:"jwks_path"`
-	ProtectedResourceMetadataTemplate pep.ProtectedResourceMetadata `json:"protected_resource_metadata_template"`
-	logger                            *slog.Logger
-	pep                               *pep.PEP
+	Resource            string `json:"resource"`
+	AuthorizationServer string `json:"authorization_server"`
+	JWKSPath            string `json:"jwks_path"` // if set, it will be used otherwise the JWKS from authorization_server will be used
+
+	logger *slog.Logger
+	pep    *pep.PEP
 }
 
 func (App) CaddyModule() caddy.ModuleInfo {
@@ -36,6 +37,7 @@ func (a *App) Start() error {
 	a.logger.Info("Starting Zero app")
 	var err error
 	a.pep, err = pep.NewBuilder().
+		Resource(a.Resource).
 		WithJWKSetPath(a.JWKSPath).
 		WithSlogger(a.logger).
 		Build()
@@ -84,6 +86,16 @@ func parseCaddyfilePEP(d *caddyfile.Dispenser, existingVal any) (interface{}, er
 			}
 			a.JWKSPath = d.Val()
 		case "authorization_server":
+			if !d.NextArg() {
+				return nil, d.ArgErr()
+			}
+			a.AuthorizationServer = d.Val()
+		case "resource":
+			if !d.NextArg() {
+				return nil, d.ArgErr()
+			}
+			a.Resource = d.Val()
+		case "access_token_acceptable_skew":
 		default:
 			return nil, d.Errf("unrecognized subdirective: %s", d.Val())
 		}

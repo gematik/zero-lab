@@ -952,6 +952,13 @@ func (s *Server) tokenEndpointRefreshToken(c echo.Context) error {
 }
 
 func (s *Server) issueOrRefreshTokens(session *AuthzServerSession) (*TokenResponse, error) {
+	var tokenType string
+	if session.DPoPThumbprint != "" {
+		tokenType = "DPoP"
+	} else {
+		tokenType = "Bearer"
+	}
+
 	accessJwt := jwt.New()
 	accessJwt.Set("jti", session.ID)
 	if session.Audience != nil {
@@ -971,6 +978,12 @@ func (s *Server) issueOrRefreshTokens(session *AuthzServerSession) (*TokenRespon
 		accessJwt.Set("scope", strings.Join(session.Scopes, " "))
 	}
 
+	if session.DPoPThumbprint != "" {
+		accessJwt.Set("cnf", map[string]interface{}{
+			"jkt": session.DPoPThumbprint,
+		})
+	}
+
 	accessTokenBytes, err := jwt.Sign(accessJwt, jwt.WithKey(jwa.ES256, s.sigPrK))
 	if err != nil {
 		return nil, fmt.Errorf("unable to sign access token: %w", err)
@@ -981,7 +994,7 @@ func (s *Server) issueOrRefreshTokens(session *AuthzServerSession) (*TokenRespon
 
 	return &TokenResponse{
 		AccessToken:      string(accessTokenBytes),
-		TokenType:        "Bearer",
+		TokenType:        tokenType,
 		ExpiresIn:        int(time.Until(exp).Seconds()),
 		Scope:            strings.Join(session.Scopes, " "),
 		RefreshToken:     session.RefreshToken,

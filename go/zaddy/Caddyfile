@@ -1,5 +1,6 @@
 {
 	pep {
+		resource http://127.0.0.1:8010
 		jwks_path test_jwks.json
 	}
 }
