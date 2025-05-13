@@ -26,10 +26,12 @@ var proxyCmd = &cobra.Command{
 	Use:   "proxy",
 	Short: "Run ePA Client as Proxy",
 	Run: func(cmd *cobra.Command, args []string) {
-		proxy, err := createProxy()
-		if err != nil {
-			log.Fatalf("Failed to create Proxy: %v", err)
-		}
+		env, err := epa.EnvFromString(viper.GetString("env"))
+		cobra.CheckErr(err)
+
+		proxy, err := createProxy(env)
+		cobra.CheckErr(err)
+
 		e := echo.New()
 		e.Use(middleware.Recover())
 
@@ -102,12 +104,12 @@ func createSecurityFunctions() epa.SecurityFunctions {
 
 }
 
-func createProxy() (*epa.Proxy, error) {
+func createProxy(env epa.Env) (*epa.Proxy, error) {
 
 	timeout := viper.GetDuration("timeout")
 
 	return epa.NewProxy(&epa.ProxyConfig{
-		Env:               epa.EnvDev,
+		Env:               env,
 		SecurityFunctions: createSecurityFunctions(),
 		Timeout:           timeout,
 	})

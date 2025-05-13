@@ -38,15 +38,13 @@ var probePatientCmd = &cobra.Command{
 		timeout := viper.GetDuration("timeout")
 
 		cert, err := sf.AuthnCertFunc()
-		if err != nil {
-			slog.Error("Failed to get authn certificate", "error", err)
-			return
-		}
+		cobra.CheckErr(err)
 
 		authenticator, err := gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
 			Environment: epa.IDPEnvironment(env),
 			SignerFunc:  gemidp.SignWith(sf.AuthnSignFunc, sf.AuthnCertFunc),
 		})
+		cobra.CheckErr(err)
 
 		for _, provider := range []epa.ProviderNumber{epa.ProviderNumber1, epa.ProviderNumber2} {
 			slog.Info("Opening session", "env", env, "provider", provider)
@@ -91,8 +89,4 @@ var probePatientCmd = &cobra.Command{
 			break
 		}
 	},
-}
-
-func probe() error {
-	return nil
 }
