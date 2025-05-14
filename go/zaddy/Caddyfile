@@ -2,6 +2,13 @@
 	pep {
 		resource http://127.0.0.1:8010
 		jwks_path test_jwks.json
+		asl {
+			cert asl_cert.pem
+			key asl_key.pem
+			ca ca.pem
+			rca_chain rca1.pem rca2.pem
+			upstream http://127.0.0.1:8010/asl-protected
+		}
 	}
 }
 
@@ -52,6 +59,17 @@ http://127.0.0.1:8010, http://localhost:8010 {
 		header Content-Type application/json
 		respond 404 {
 			body "{\"error\": \"not_found\", \"description\": \"The requested resource was not found\"}"
+		}
+	}
+
+	route /CertData-* {
+		asl_cert_data
+	}
+
+	route /ASL* {
+		#asl
+		respond 200 {
+			body "ASL"
 		}
 	}
 }

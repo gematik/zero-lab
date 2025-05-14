@@ -1,7 +1,6 @@
 package zaddy
 
 import (
-	"errors"
 	"log/slog"
 	"net/http"
 
@@ -32,19 +31,11 @@ func (EnforcePolicyMiddleware) CaddyModule() caddy.ModuleInfo {
 
 func (m *EnforcePolicyMiddleware) Provision(ctx caddy.Context) error {
 	m.logger = ctx.Slogger()
-	app, err := ctx.AppIfConfigured("zero")
-	if err != nil {
+
+	var err error
+	if m.app, err = getZeroApp(ctx); err != nil {
 		return err
 	}
-
-	zeroApp, ok := app.(*App)
-	if !ok {
-		return errors.New("app is not of type zaddy.App")
-	}
-
-	m.app = zeroApp
-
-	m.logger.Info("Provisioned EnforcePolicyMiddleware", "x", ctx.Module().CaddyModule().ID)
 
 	return nil
 }
