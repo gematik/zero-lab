@@ -41,6 +41,7 @@ JnSDBKGp4nZTcuozRPsJK47cBkil0x6Zrkoxkg==
 -----END CERTIFICATE-----`)
 
 func TestGemIDP(t *testing.T) {
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	t.Log("TestGemIDP")
 	cfg := gemidp.ClientConfig{
 		UserAgent:   "zero-lab-testcase",

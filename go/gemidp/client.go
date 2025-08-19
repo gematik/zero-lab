@@ -29,6 +29,12 @@ const (
 	EnvironmentProduction
 )
 
+func init() {
+	jwa.RegisterSignatureAlgorithm(jwa.NewSignatureAlgorithm(
+		brainpool.AlgorithmNameBP256R1,
+	))
+}
+
 func (e *Environment) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {
@@ -309,7 +315,7 @@ func (c *Client) parseIDToken(response *oidc.TokenResponse) (jwt.Token, error) {
 	// check signature using the brainpool enabled library
 	_, err = brainpool.ParseToken([]byte(response.IDTokenRaw), brainpool.WithKey(key))
 	if err != nil {
-		return nil, fmt.Errorf("parsing id token: %w", err)
+		return nil, fmt.Errorf("parsing ID token: %w", err)
 	}
 
 	// parse the token using the jwx library, after we verified the brainpool signature
@@ -325,7 +331,7 @@ func (c *Client) parseIDToken(response *oidc.TokenResponse) (jwt.Token, error) {
 	)
 
 	if err != nil {
-		return nil, fmt.Errorf("unable to parse id token: %w", err)
+		return nil, fmt.Errorf("unable to parse ID token: %w", err)
 	}
 
 	return token, nil
