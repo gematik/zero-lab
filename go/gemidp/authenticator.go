@@ -61,20 +61,20 @@ type Authenticator struct {
 }
 
 type AuthenticatorConfig struct {
-	Environment Environment
-	SignerFunc  ChallengeSignerFunc
+	Idp        Idp
+	SignerFunc ChallengeSignerFunc
 }
 
 // NewAuthenticator creates a new Authenticator
 func NewAuthenticator(config AuthenticatorConfig) (*Authenticator, error) {
-	baseURL := config.Environment.GetBaseURL()
+	baseURL := config.Idp.baseURL
 	metadata, err := fetchMetadata(baseURL, http.DefaultClient)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Authenticator{
-		Environment: config.Environment,
+		Environment: config.Idp.environment,
 		Metadata:    *metadata,
 		baseURL:     baseURL,
 		signerFunc:  config.SignerFunc,
@@ -118,6 +118,8 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	}
 	defer resp.Body.Close()
 
+	slog.Debug("IDP responded", "status", resp.StatusCode, "headers", resp.Header)
+
 	if resp.StatusCode == http.StatusFound {
 		codeRedirectURL, err := resp.Location()
 		if err != nil {
@@ -140,6 +142,9 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 			GematikUUID: codeRedirectURL.Query().Get("gematik_uuid"),
 		}
 	} else if resp.StatusCode == http.StatusUnauthorized {
+		slog.Error("Unexpected status code", "status", resp.StatusCode, "auth_url", authURL, "headers", resp.Header)
+		return nil, parseErrorResponse(resp.StatusCode, resp.Body)
+	} else if resp.StatusCode != http.StatusOK {
 		slog.Error("Unexpected status code", "status", resp.StatusCode, "auth_url", authURL, "headers", resp.Header)
 		return nil, parseErrorResponse(resp.StatusCode, resp.Body)
 	}
@@ -242,21 +247,24 @@ func SignWith(signFunc brainpool.SignFunc, certFunc func() (*x509.Certificate, e
 }
 
 func SignWithSoftkeyPEM(prkPEM []byte, certPEM []byte) ChallengeSignerFunc {
+	var parsingErr error
 	var err error
 	var prk *ecdsa.PrivateKey
 	var cert *x509.Certificate
 
 	if prk, err = brainpool.ParsePrivateKeyPEM(prkPEM); err != nil {
 		slog.Error("Parsing private key PEM", "error", err)
+		parsingErr = err
 	}
 
 	if cert, err = brainpool.ParseCertificatePEM(certPEM); err != nil {
 		slog.Error("Parsing certificate PEM", "error", err)
+		parsingErr = err
 	}
 
 	return func(challenge Challenge) (string, error) {
-		if err != nil {
-			return "", fmt.Errorf("parsing PEM: %w", err)
+		if parsingErr != nil {
+			return "", fmt.Errorf("parsing PEM: %w", parsingErr)
 		}
 		return SignWithSoftkey(prk, cert)(challenge)
 	}

@@ -88,7 +88,7 @@ func deriveAES128Key(hmacKey []byte) ([]byte, error) {
 	return derived[:16], nil
 }
 
-func ProvidePNv2(hmacKeyHex string, hmacKeyKid string, provideHcv ProvideHCVFunc) (ProvidePNFunc, error) {
+func CalculatePNv2(hmacKeyHex string, hmacKeyKid string, provideHcv ProvideHCVFunc) (ProvidePNFunc, error) {
 	hmacKey, err := hex.DecodeString(hmacKeyHex)
 	if err != nil {
 		return nil, fmt.Errorf("decoding hmac key: %w", err)

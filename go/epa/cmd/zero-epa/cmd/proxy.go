@@ -54,7 +54,7 @@ func createSecurityFunctions() epa.SecurityFunctions {
 	vsdmHMACKey := viper.GetString("vsdm-hmac-key")
 	vsdmHMACKeyID := viper.GetString("vsdm-hmac-kid")
 	slog.Debug("Using VSDM HMAC Key", "key", "***", "kid", vsdmHMACKeyID)
-	proofOfAuditEvidenceFunc, err := epa.ProvidePNv2(
+	proofOfAuditEvidenceFunc, err := epa.CalculatePNv2(
 		vsdmHMACKey,
 		vsdmHMACKeyID,
 		provideHCV,

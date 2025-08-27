@@ -1,6 +1,7 @@
 package epa_test
 
 import (
+	"bufio"
 	"crypto/x509"
 	"fmt"
 	"log/slog"
@@ -61,7 +62,7 @@ func ProvidePNFromEnvironmentV2(provideHcv epa.ProvideHCVFunc) epa.ProvidePNFunc
 			return "", fmt.Errorf("VSDM_HMAC_KID not set")
 		}
 
-		proofOfAuditEvidence, err := epa.ProvidePNv2(hmacKeyHex, hmacKeyKid, provideHcv)
+		proofOfAuditEvidence, err := epa.CalculatePNv2(hmacKeyHex, hmacKeyKid, provideHcv)
 		if err != nil {
 			return "", err
 		}
@@ -145,8 +146,8 @@ func TestConnect(t *testing.T) {
 			t.Logf("Authorization URI: %v", authz_uri)
 
 			authenticator, err := gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
-				Environment: gemidp.EnvironmentReference,
-				SignerFunc:  gemidp.SignWithSoftkey(testKey, testCert),
+				Idp:        gemidp.IdpReference,
+				SignerFunc: gemidp.SignWithSoftkey(testKey, testCert),
 			})
 			if err != nil {
 				t.Fatalf("NewAuthenticator returned an error: %v", err)
@@ -186,6 +187,70 @@ func TestConnect(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRecordsAvailability(t *testing.T) {
+	filename := "kvnrs.txt"
+	file, err := os.Open(filename)
+	if err != nil {
+		t.Fatalf("Failed to open file %s: %v", filename, err)
+	}
+	defer file.Close()
+	var recordIds []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line != "" {
+			recordIds = append(recordIds, line)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatalf("Failed to read file %s: %v", filename, err)
+	}
+
+	testKey, _ := brainpool.ParsePrivateKeyPEM(testKeyBytes)
+	testCert, _ := brainpool.ParseCertificatePEM(testCertBytes)
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+	slog.SetDefault(logger)
+
+	provideHCVFunc := func(insurantId string) ([]byte, error) {
+		return epa.CalculateHCV("20241023", "Berliner Str.___")
+	}
+
+	session, err := epa.OpenSession(
+		epa.EnvRef,
+		epa.ProviderNumber1,
+		epa.SecurityFunctions{
+			AuthnSignFunc:           brainpool.SignFuncPrivateKey(testKey),
+			AuthnCertFunc:           func() (*x509.Certificate, error) { return testCert, nil },
+			ClientAssertionSignFunc: brainpool.SignFuncPrivateKey(testKey),
+			ClientAssertionCertFunc: func() (*x509.Certificate, error) { return testCert, nil },
+			ProvidePN:               ProvidePNFromEnvironmentV2(provideHCVFunc),
+			ProvideHCV:              provideHCVFunc,
+		},
+		epa.WithInsecureSkipVerify(),
+		epa.WithTimeout(30*time.Second),
+	)
+
+	if err != nil {
+		t.Fatalf("Connect returned an error: %v", err)
+	}
+
+	for _, recordId := range recordIds {
+		exists, err := session.GetRecordStatus(recordId)
+		if err != nil {
+			t.Fatalf("GetRecordStatus returned an error: %v", err)
+		}
+		if !exists {
+			t.Errorf("Record %s does not exist", recordId)
+		} else {
+			t.Logf("Record %s exists", recordId)
+		}
+	}
+
 }
 
 /*

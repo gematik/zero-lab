@@ -6,7 +6,7 @@ import (
 	"io"
 )
 
-// gematik IDP-Dienst retusn an error in the following format:
+// gematik IDP-Dienst returns an error in the following format:
 //
 //	{
 //		 "error":"invalid_request",

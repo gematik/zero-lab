@@ -40,9 +40,11 @@ var probePatientCmd = &cobra.Command{
 		cert, err := sf.AuthnCertFunc()
 		cobra.CheckErr(err)
 
+		idpEnv := epa.IDPEnvironment(env)
+
 		authenticator, err := gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
-			Environment: epa.IDPEnvironment(env),
-			SignerFunc:  gemidp.SignWith(sf.AuthnSignFunc, sf.AuthnCertFunc),
+			Idp:        gemidp.GetIdpByEnvironment(idpEnv),
+			SignerFunc: gemidp.SignWith(sf.AuthnSignFunc, sf.AuthnCertFunc),
 		})
 		cobra.CheckErr(err)
 

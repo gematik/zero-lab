@@ -45,6 +45,9 @@ type TokenResponse struct {
 }
 
 func (t *TokenResponse) Claims(claims any) error {
+	if t.IDTokenRaw == "" {
+		return fmt.Errorf("ID token is empty")
+	}
 	claimsRaw := strings.Split(t.IDTokenRaw, ".")[1]
 
 	claimsBytes, err := base64.RawURLEncoding.DecodeString(claimsRaw)

@@ -50,6 +50,9 @@ func NewClient(cfg Config) (Client, error) {
 	// prepare the auto-refreshing signing key cache
 	context := context.Background()
 	c.keyCache, err = jwk.NewCache(context, httprc.NewClient())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create key cache: %w", err)
+	}
 
 	c.keyCache.Register(context, c.discoveryDocument.JwksURI)
 	_, err = c.keyCache.Refresh(context, c.discoveryDocument.JwksURI)

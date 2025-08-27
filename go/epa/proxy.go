@@ -107,8 +107,8 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 	idpEnv := IDPEnvironment(p.Env)
 
 	p.Authenticator, err = gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
-		Environment: idpEnv,
-		SignerFunc:  gemidp.SignWith(config.SecurityFunctions.AuthnSignFunc, config.SecurityFunctions.AuthnCertFunc),
+		Idp:        gemidp.GetIdpByEnvironment(idpEnv),
+		SignerFunc: gemidp.SignWith(config.SecurityFunctions.AuthnSignFunc, config.SecurityFunctions.AuthnCertFunc),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating authenticator: %w", err)
@@ -311,10 +311,10 @@ func (p *Proxy) HandleForwardToVAUInsurant(w http.ResponseWriter, r *http.Reques
 	rm, err := p.findAndCacheRecord(insurantID)
 	if err != nil {
 		slog.Error("Failed to find record", "insurantID", insurantID, "error", err)
-		if err, ok := err.(*MultiProviderError); ok {
+		if mperr, ok := err.(*MultiProviderError); ok {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadGateway)
-			errBytes, err := json.Marshal(err)
+			errBytes, err := json.Marshal(mperr)
 			if err != nil {
 				http.Error(w, fmt.Sprintf("failed to marshal error: %v", err), http.StatusInternalServerError)
 				return

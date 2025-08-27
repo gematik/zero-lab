@@ -13,6 +13,65 @@ import (
 	"github.com/gematik/zero-lab/go/brainpool"
 )
 
+// Environment of the gematik IDP-Dienst
+type Environment int
+
+const (
+	EnvironmentTest Environment = iota
+	EnvironmentReference
+	EnvironmentProduction
+)
+
+type Idp struct {
+	environment Environment
+	baseURL     string
+}
+
+func NewIdp(env Environment, baseUrl string) Idp {
+	return Idp{
+		environment: env,
+		baseURL:     baseUrl,
+	}
+}
+
+var IdpProduction = NewIdp(EnvironmentProduction, "https://idp.app.ti-dienste.de")
+var IdpReference = NewIdp(EnvironmentReference, "https://idp-ref.app.ti-dienste.de")
+var IdpTest = NewIdp(EnvironmentTest, "https://idp-test.app.ti-dienste.de")
+
+func GetIdpByEnvironment(env Environment) Idp {
+	switch env {
+	case EnvironmentProduction:
+		return IdpProduction
+	case EnvironmentReference:
+		return IdpReference
+	default:
+		return IdpTest
+	}
+}
+
+func (e *Environment) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+
+	*e = NewEnvironment(s)
+	return nil
+}
+
+func NewEnvironment(s string) Environment {
+	switch s {
+	case "tu", "test":
+		return EnvironmentTest
+	case "ru", "ref":
+		return EnvironmentReference
+	case "prod", "":
+		return EnvironmentProduction
+	default:
+		return EnvironmentReference
+	}
+}
+
 func fetchMetadata(baseURL string, httpClient *http.Client) (*Metadata, error) {
 	slog.Debug("Fetching OP metadata", "url", baseURL+"/.well-known/openid-configuration")
 	resp, err := httpClient.Get(baseURL + "/.well-known/openid-configuration")

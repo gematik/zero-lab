@@ -20,63 +20,11 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// Environment of the gematik IDP-Dienst
-type Environment int
-
-const (
-	EnvironmentTest Environment = iota
-	EnvironmentReference
-	EnvironmentProduction
-)
-
 func init() {
 	jwa.RegisterSignatureAlgorithm(jwa.NewSignatureAlgorithm(
 		brainpool.AlgorithmNameBP256R1,
 	))
 }
-
-func (e *Environment) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var s string
-	if err := unmarshal(&s); err != nil {
-		return err
-	}
-
-	*e = NewEnvironment(s)
-	return nil
-}
-
-func NewEnvironment(s string) Environment {
-	switch s {
-	case "tu", "test":
-		return EnvironmentTest
-	case "ru", "ref":
-		return EnvironmentReference
-	case "prod", "":
-		return EnvironmentProduction
-	default:
-		return EnvironmentReference
-	}
-}
-
-func (e Environment) GetBaseURL() string {
-	switch e {
-	case EnvironmentTest:
-		return BaseURLTest
-	case EnvironmentReference:
-		return BaseURLReference
-	case EnvironmentProduction:
-		return BaseURLProduction
-	default:
-		return "unknown"
-	}
-}
-
-// BaseURLs of the different environments
-const (
-	BaseURLProduction string = "https://idp.app.ti-dienste.de"
-	BaseURLReference  string = "https://idp-ref.app.ti-dienste.de"
-	BaseURLTest       string = "https://idp-test.app.ti-dienste.de"
-)
 
 // OpenID Connect metadata of the gematik IDP-Dienst
 type Metadata struct {
@@ -106,6 +54,7 @@ type TokenKeyPayload struct {
 // ClientConfig of the gematik IDP-Dienst client
 type ClientConfig struct {
 	Environment       Environment `yaml:"environment"`
+	BaseURL           string      `yaml:"base_url,omitempty"`
 	Name              string      `yaml:"name"`
 	LogoURI           string      `yaml:"logo_uri"`
 	ClientID          string      `yaml:"client_id"`
@@ -118,6 +67,7 @@ type ClientConfig struct {
 type Client struct {
 	config      ClientConfig
 	Environment Environment
+	Idp         Idp
 	Metadata    Metadata
 	baseURL     string
 	httpClient  *http.Client
@@ -136,7 +86,14 @@ func NewClientFromConfig(config ClientConfig) (*Client, error) {
 		return nil, fmt.Errorf("at least one scope is required")
 	}
 
-	baseURL := config.Environment.GetBaseURL()
+	var idp Idp
+	if config.BaseURL != "" {
+		idp = NewIdp(config.Environment, config.BaseURL)
+	} else {
+		idp = GetIdpByEnvironment(config.Environment)
+	}
+
+	baseURL := idp.baseURL
 
 	httpClient := &http.Client{
 		Transport: &transportAddUserAgent{http.DefaultTransport, config.UserAgent},
@@ -150,6 +107,7 @@ func NewClientFromConfig(config ClientConfig) (*Client, error) {
 	return &Client{
 		config:      config,
 		Environment: config.Environment,
+		Idp:         idp,
 		Metadata:    *metadata,
 		baseURL:     baseURL,
 		httpClient:  httpClient,
@@ -275,16 +233,21 @@ func (c *Client) ExchangeForIdentity(code, verifier string, options ...oidc.Opti
 		return nil, fmt.Errorf("parsing token response: %w", err)
 	}
 
-	if tokenResponse.IDTokenRaw, err = decryptToken(tokenResponse.IDTokenRaw, tokenKeyBytes); err != nil {
-		return nil, fmt.Errorf("decrypting ID token: %w", err)
+	slog.Debug("Token response", "response", tokenResponse)
+
+	if tokenResponse.IDTokenRaw != "" {
+		if tokenResponse.IDTokenRaw, err = decryptToken(tokenResponse.IDTokenRaw, tokenKeyBytes); err != nil {
+			return nil, fmt.Errorf("decrypting ID token: %w", err)
+		}
+		if tokenResponse.IDToken, err = c.parseIDToken(tokenResponse); err != nil {
+			return nil, fmt.Errorf("parsing ID token: %w", err)
+		}
 	}
 
-	if tokenResponse.AccessToken, err = decryptToken(tokenResponse.AccessToken, tokenKeyBytes); err != nil {
-		return nil, fmt.Errorf("decrypting access token: %w", err)
-	}
-
-	if tokenResponse.IDToken, err = c.parseIDToken(tokenResponse); err != nil {
-		return nil, fmt.Errorf("parsing ID token: %w", err)
+	if tokenResponse.AccessToken != "" {
+		if tokenResponse.AccessToken, err = decryptToken(tokenResponse.AccessToken, tokenKeyBytes); err != nil {
+			return nil, fmt.Errorf("decrypting access token: %w", err)
+		}
 	}
 
 	return tokenResponse, nil

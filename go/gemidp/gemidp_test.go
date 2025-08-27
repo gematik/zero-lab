@@ -46,6 +46,7 @@ func TestGemIDP(t *testing.T) {
 	cfg := gemidp.ClientConfig{
 		UserAgent:   "zero-lab-testcase",
 		Environment: gemidp.EnvironmentReference,
+		BaseURL:     os.Getenv("GEMIDP_BASE_URL"),
 		ClientID:    os.Getenv("GEMIDP_CLIENT_ID"),
 		RedirectURI: os.Getenv("GEMIDP_REDIRECT_URI"),
 		Scopes:      strings.Split(os.Getenv("GEMIDP_SCOPE"), " "),
@@ -66,8 +67,8 @@ func TestGemIDP(t *testing.T) {
 	slog.Info("Auth URL", "url", authURL)
 
 	authenticator, err := gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
-		Environment: client.Environment,
-		SignerFunc:  gemidp.SignWithSoftkeyPEM(testKeyBytes, testCertBytes),
+		Idp:        client.Idp,
+		SignerFunc: gemidp.SignWithSoftkeyPEM(testKeyBytes, testCertBytes),
 	})
 	if err != nil {
 		t.Fatal(err)
