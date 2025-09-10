@@ -113,7 +113,7 @@ func TestConnect(t *testing.T) {
 			session, err := epa.OpenSession(
 				epa.EnvDev,
 				providerNumber,
-				epa.SecurityFunctions{
+				&epa.SecurityFunctions{
 					AuthnSignFunc:           brainpool.SignFuncPrivateKey(testKey),
 					AuthnCertFunc:           func() (*x509.Certificate, error) { return testCert, nil },
 					ClientAssertionSignFunc: brainpool.SignFuncPrivateKey(testKey),
@@ -223,7 +223,7 @@ func TestRecordsAvailability(t *testing.T) {
 	session, err := epa.OpenSession(
 		epa.EnvRef,
 		epa.ProviderNumber1,
-		epa.SecurityFunctions{
+		&epa.SecurityFunctions{
 			AuthnSignFunc:           brainpool.SignFuncPrivateKey(testKey),
 			AuthnCertFunc:           func() (*x509.Certificate, error) { return testCert, nil },
 			ClientAssertionSignFunc: brainpool.SignFuncPrivateKey(testKey),

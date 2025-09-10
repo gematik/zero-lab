@@ -1,13 +1,11 @@
 package cmd
 
 import (
-	"crypto/x509"
 	"fmt"
 	"log"
 	"log/slog"
-	"os"
+	"net/http"
 
-	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/epa"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -16,27 +14,53 @@ import (
 )
 
 func init() {
-	proxyCmd.Flags().StringP("addr", "a", ":8082", "Address to listen on")
-	viper.BindPFlag("addr", proxyCmd.Flags().Lookup("addr"))
+	routerCmd.Flags().StringP("addr", "a", ":8082", "Address to listen on")
+	viper.BindPFlag("addr", routerCmd.Flags().Lookup("addr"))
 
-	rootCmd.AddCommand(proxyCmd)
+	rootCmd.AddCommand(routerCmd)
 }
 
-var proxyCmd = &cobra.Command{
+var routerCmd = &cobra.Command{
 	Use:   "proxy",
 	Short: "Run ePA Client as Proxy",
 	Run: func(cmd *cobra.Command, args []string) {
-		env, err := epa.EnvFromString(viper.GetString("env"))
-		cobra.CheckErr(err)
-
-		proxy, err := createProxy(env)
-		cobra.CheckErr(err)
 
 		e := echo.New()
 		e.Use(middleware.Recover())
+		proxies := make([]*epa.Proxy, len(config.ProxyConfigs))
+		proxyInfos := make([]*epa.ProxyInfo, 0, len(config.ProxyConfigs))
+		for num, proxyConfig := range config.ProxyConfigs {
+			proxy, err := createProxy(&proxyConfig)
+			cobra.CheckErr(err)
+			info, err := proxy.GetProxyInfo()
+			cobra.CheckErr(err)
+			proxyInfos = append(proxyInfos, info)
+			proxies[num] = proxy
+			if num == 0 {
+				api := e.Group("/api")
+				api.Any("/*", echo.WrapHandler(http.StripPrefix("/api", proxy)))
+			}
 
-		e.Any("/*", echo.WrapHandler(proxy))
+			proxyRouteName := "/api/proxies/" + proxyConfig.Name
+			proxyRoute := e.Group(proxyRouteName)
+			proxyRoute.Any("/*", echo.WrapHandler(http.StripPrefix(proxyRouteName, proxy)))
 
+			slog.Info("Registered proxy", "name", proxyConfig.Name, "route", proxyRouteName)
+		}
+
+		e.GET("/api/proxies", func(c echo.Context) error {
+			var infos []*epa.ProxyInfo
+			for _, proxy := range proxies {
+				info, err := proxy.GetProxyInfo()
+				if err != nil {
+					slog.Error("Failed to get proxy info", "error", err)
+					continue
+				}
+				infos = append(infos, info)
+			}
+			return c.JSON(http.StatusOK, infos)
+		})
+		e.GET("/", echo.WrapHandler(epa.HandleReadmeFunc(proxyInfos)))
 		addr := viper.GetString("addr")
 		slog.Info(fmt.Sprintf("starting Proxy at %s", addr))
 
@@ -45,73 +69,10 @@ var proxyCmd = &cobra.Command{
 	},
 }
 
-func createSecurityFunctions() epa.SecurityFunctions {
-
-	provideHCV := func(insurantId string) ([]byte, error) {
-		return epa.CalculateHCV("19981123", "Berliner Straße")
-	}
-
-	vsdmHMACKey := viper.GetString("vsdm-hmac-key")
-	vsdmHMACKeyID := viper.GetString("vsdm-hmac-kid")
-	slog.Debug("Using VSDM HMAC Key", "key", "***", "kid", vsdmHMACKeyID)
-	proofOfAuditEvidenceFunc, err := epa.CalculatePNv2(
-		vsdmHMACKey,
-		vsdmHMACKeyID,
-		provideHCV,
-	)
+func createProxy(proxyConfig *epa.ProxyConfig) (*epa.Proxy, error) {
+	err := proxyConfig.Init()
 	if err != nil {
-		log.Fatalf("Failed to create ProofOfAuditEvidenceFunc: %v", err)
+		return nil, fmt.Errorf("failed to initialize security functions: %w", err)
 	}
-
-	// read the private key and certificate for SMC-B
-	authnCertPath := viper.GetString("authn-cert-path")
-	authnPrivateKeyPath := viper.GetString("authn-private-key-path")
-	slog.Debug("Reading SMC-B private key and certificate", "private_key_path", authnPrivateKeyPath, "cert_path", authnCertPath)
-
-	// read certificate pem bytes
-	certData, err := os.ReadFile(authnCertPath)
-	if err != nil {
-		log.Fatalf("Failed to read SMC-B certificate: %v", err)
-	}
-
-	// parse certificate
-	cert, err := brainpool.ParseCertificatePEM(certData)
-	if err != nil {
-		log.Fatalf("Failed to parse SMC-B certificate: %v", err)
-	}
-
-	slog.Info("Successfully read SMC-B certificate", "subject", cert.Subject.CommonName, "alg", cert.PublicKeyAlgorithm.String())
-
-	// read private key pem bytes
-	prkData, err := os.ReadFile(authnPrivateKeyPath)
-	if err != nil {
-		log.Fatalf("Failed to read SMC-B private key: %v", err)
-	}
-	// parse private key
-	prk, err := brainpool.ParsePrivateKeyPEM(prkData)
-	if err != nil {
-		log.Fatalf("Failed to parse SMC-B private key: %v", err)
-	}
-
-	return epa.SecurityFunctions{
-		AuthnSignFunc:           brainpool.SignFuncPrivateKey(prk),
-		AuthnCertFunc:           func() (*x509.Certificate, error) { return cert, nil },
-		ClientAssertionSignFunc: brainpool.SignFuncPrivateKey(prk),
-		ClientAssertionCertFunc: func() (*x509.Certificate, error) { return cert, nil },
-		ProvidePN:               proofOfAuditEvidenceFunc,
-		ProvideHCV:              provideHCV,
-	}
-
-}
-
-func createProxy(env epa.Env) (*epa.Proxy, error) {
-
-	timeout := viper.GetDuration("timeout")
-
-	return epa.NewProxy(&epa.ProxyConfig{
-		Env:               env,
-		SecurityFunctions: createSecurityFunctions(),
-		Timeout:           timeout,
-	})
-
+	return epa.NewProxy(proxyConfig)
 }

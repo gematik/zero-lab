@@ -3,14 +3,17 @@ package epa
 import (
 	"crypto/x509"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gematik/zero-lab/go/brainpool"
 
 	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/gempki"
@@ -49,14 +52,82 @@ type Proxy struct {
 }
 
 type ProxyConfig struct {
-	Env               Env
-	SecurityFunctions SecurityFunctions
-	Timeout           time.Duration
+	BaseDir string        `yaml:"-"`
+	Name    string        `yaml:"name" validate:"required"`
+	Env     Env           `yaml:"env" validate:"required,oneof=dev test ref prod"`
+	Timeout time.Duration `yaml:"timeout" validate:"required,gt=0"`
+
+	AuthnCertPath string `yaml:"authn_cert_path" validate:"required"`
+	AuthnKeyPath  string `yaml:"authn_key_path" validate:"required"`
+
+	VsdmHmacKeyHex string `yaml:"vsdm_hmac_key_hex" validate:"required"`
+	VsdmHmacKeyId  string `yaml:"vsdm_hmac_key_id" validate:"required"`
+
+	SecurityFunctions *SecurityFunctions `yaml:"-"`
+}
+
+func (pc *ProxyConfig) Init() error {
+	provideHCV := func(insurantId string) ([]byte, error) {
+		return CalculateHCV("19981123", "Berliner Straße")
+	}
+
+	vsdmHMACKey := pc.VsdmHmacKeyHex
+	vsdmHMACKeyID := pc.VsdmHmacKeyId
+	slog.Debug("Using VSDM HMAC Key", "key", "***", "kid", vsdmHMACKeyID)
+	proofOfAuditEvidenceFunc, err := CalculatePNv2(
+		vsdmHMACKey,
+		vsdmHMACKeyID,
+		provideHCV,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create ProofOfAuditEvidenceFunc: %w", err)
+	}
+
+	// read the private key and certificate for SMC-B
+	authnCertPath := resolvePath(pc.BaseDir, pc.AuthnCertPath)
+	authnPrivateKeyPath := resolvePath(pc.BaseDir, pc.AuthnKeyPath)
+	slog.Debug("Reading SMC-B private key and certificate", "private_key_path", authnPrivateKeyPath, "cert_path", authnCertPath)
+
+	authnCertData, err := os.ReadFile(authnCertPath)
+	if err != nil {
+		return fmt.Errorf("failed to read SMC-B certificate: %w", err)
+	}
+	authnCert, err := brainpool.ParseCertificatePEM(authnCertData)
+	if err != nil {
+		return fmt.Errorf("failed to parse SMC-B certificate: %w", err)
+	}
+	slog.Info("Successfully read SMC-B certificate", "subject", authnCert.Subject.CommonName)
+	authnPrivateKeyData, err := os.ReadFile(authnPrivateKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read SMC-B private key: %w", err)
+	}
+	authnPrivateKey, err := brainpool.ParsePrivateKeyPEM(authnPrivateKeyData)
+	if err != nil {
+		return fmt.Errorf("failed to parse SMC-B private key: %w", err)
+	}
+
+	pc.SecurityFunctions = &SecurityFunctions{
+		AuthnSignFunc:           brainpool.SignFuncPrivateKey(authnPrivateKey),
+		AuthnCertFunc:           func() (*x509.Certificate, error) { return authnCert, nil },
+		ClientAssertionSignFunc: brainpool.SignFuncPrivateKey(authnPrivateKey),
+		ClientAssertionCertFunc: func() (*x509.Certificate, error) { return authnCert, nil },
+		ProvidePN:               proofOfAuditEvidenceFunc,
+		ProvideHCV:              provideHCV,
+	}
+
+	return nil
 }
 
 type PatientRecordMetadata struct {
 	InsurantID string
 	Provider   ProviderNumber
+}
+
+func resolvePath(baseDir, path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(baseDir, path)
 }
 
 func IDPEnvironment(env Env) gemidp.Environment {
@@ -75,6 +146,8 @@ func IDPEnvironment(env Env) gemidp.Environment {
 }
 
 func NewProxy(config *ProxyConfig) (*Proxy, error) {
+	var err error
+
 	p := &Proxy{
 		Env:         config.Env,
 		config:      config,
@@ -82,27 +155,6 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 		records:     make(map[string]PatientRecordMetadata),
 		recordsLock: sync.RWMutex{},
 	}
-
-	var tslURL string
-	switch config.Env {
-	case EnvDev:
-		tslURL = gempki.URLTrustServiceListRef
-	case EnvTest:
-		tslURL = gempki.URLTrustServiceListTest
-	case EnvRef:
-		tslURL = gempki.URLTrustServiceListRef
-	case EnvProd:
-		tslURL = gempki.URLTrustServiceListProd
-	default:
-		return nil, errors.New("unknown environment")
-	}
-
-	tsl, err := gempki.LoadTSL(tslURL)
-	if err != nil {
-		return nil, err
-	}
-
-	certPool := gempki.RootsRef.BuildCertPool(tsl)
 
 	idpEnv := IDPEnvironment(p.Env)
 
@@ -119,25 +171,24 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 		timeout:           config.Timeout,
 		securityFunctions: config.SecurityFunctions,
 		authenticator:     p.Authenticator,
-		certPool:          certPool,
+		certPool:          nil,
 		sessions:          make(map[ProviderNumber]*Session),
 	}
 
 	for _, providerNumber := range AllProviders {
-		_, err := p.sessionManager.GetSession(providerNumber)
 		go p.sessionManager.WatchSession(providerNumber)
-		if err != nil {
-			slog.Error("Failed to open session", "provider", providerNumber, "error", err)
-		}
 	}
 
 	// add direct VAU handler
-	p.mux.Handle("/api/providers", http.HandlerFunc(p.GetProviders))
-	p.mux.Handle("/api/providers/{providerNumber}/vau/{path...}", http.HandlerFunc(p.HandleForwardToVAUProvider))
+	p.mux.Handle("/providers", http.HandlerFunc(p.GetProviders))
+	p.mux.Handle("/providers/{providerNumber}/vau/{path...}", http.HandlerFunc(p.HandleForwardToVAUProvider))
 
 	// add insurants handler
-	p.mux.Handle("/api/insurants", http.HandlerFunc(p.GetInsurants))
-	p.mux.Handle("/api/insurants/{insurantID}/vau/{path...}", http.HandlerFunc(p.HandleForwardToVAUInsurant))
+	p.mux.Handle("/insurants", http.HandlerFunc(p.GetInsurants))
+	p.mux.Handle("/insurants/{insurantID}/vau/{path...}", http.HandlerFunc(p.HandleForwardToVAUInsurant))
+
+	// shows proxy info
+	p.mux.Handle("/info", http.HandlerFunc(p.HandleProxyInfo))
 
 	return p, nil
 }
@@ -186,7 +237,7 @@ func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNum
 		w.Header()[k] = v
 	}
 
-	slog.Info("Got forwarded request response", "method", r2.Method, "url", r2.URL.String(), "status", resp.StatusCode)
+	slog.Info("Got forwarded request response", "method", r2.Method, "url", session.BaseURL, "path", r2.URL.String(), "status", resp.StatusCode)
 
 	w.WriteHeader(resp.StatusCode)
 
@@ -331,6 +382,45 @@ func (p *Proxy) HandleForwardToVAUInsurant(w http.ResponseWriter, r *http.Reques
 
 }
 
+type ProxyInfo struct {
+	Name               string                     `json:"name"`
+	Env                Env                        `json:"env"`
+	Subject            string                     `json:"subject"`
+	AdmissionStatement *gempki.AdmissionStatement `json:"admission_statement"`
+}
+
+func (p *Proxy) GetProxyInfo() (*ProxyInfo, error) {
+	cert, err := p.config.SecurityFunctions.AuthnCertFunc()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get authn cert: %w", err)
+	}
+	admissionStatement, err := gempki.ParseAdmissionStatement(cert)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse admission statement: %w", err)
+	}
+	return &ProxyInfo{
+		Name:               p.config.Name,
+		Env:                p.Env,
+		Subject:            cert.Subject.CommonName,
+		AdmissionStatement: admissionStatement,
+	}, nil
+}
+
+func (p *Proxy) HandleProxyInfo(w http.ResponseWriter, r *http.Request) {
+	info, err := p.GetProxyInfo()
+	if err != nil {
+		slog.Error("Failed to get proxy info", "error", err)
+		http.Error(w, fmt.Sprintf("failed to get proxy info: %v", err), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(info)
+	if err != nil {
+		slog.Error("Failed to encode proxy info", "error", err)
+		return
+	}
+}
+
 func (p *Proxy) GetProviders(w http.ResponseWriter, r *http.Request) {
 	type Provider struct {
 		Number          ProviderNumber `json:"number"`
@@ -378,75 +468,4 @@ func (p *Proxy) GetInsurants(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Error("Failed to encode insurants", "error", err)
 	}
-}
-
-type sessionManager struct {
-	lock              sync.RWMutex
-	timeout           time.Duration
-	env               Env
-	certPool          *x509.CertPool
-	securityFunctions SecurityFunctions
-	authenticator     *gemidp.Authenticator
-	sessions          map[ProviderNumber]*Session
-}
-
-func (sm *sessionManager) GetSession(provider ProviderNumber) (*Session, error) {
-	session, ok := sm.sessions[provider]
-	if !ok {
-		return sm.openSession(provider)
-	}
-	return session, nil
-}
-
-func (sm *sessionManager) openSession(provider ProviderNumber) (*Session, error) {
-	sm.lock.Lock()
-	defer sm.lock.Unlock()
-	session, err := OpenSession(sm.env, provider, sm.securityFunctions, WithCertPool(sm.certPool), WithTimeout(sm.timeout))
-	if err != nil {
-		return nil, fmt.Errorf("open session at provider %d: %w", provider, err)
-	}
-
-	err = session.Authorize(sm.authenticator)
-	if err != nil {
-		session.Close()
-		return nil, fmt.Errorf("authorize session at provider %d: %w", provider, err)
-	}
-
-	sm.sessions[provider] = session
-	return session, nil
-}
-
-func (sm *sessionManager) WatchSession(pn ProviderNumber) {
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		slog.Debug("Checking session health", "provider", pn)
-		session, err := sm.GetSession(pn)
-		if err != nil {
-			slog.Error("Failed to get session", "provider", pn, "error", err)
-			continue
-		}
-		if err := session.HealthCheck(); err != nil {
-			slog.Error("Session is unhealthy", "provider", session.ProviderNumber, "error", err)
-			sm.lock.Lock()
-			session.Close()
-			delete(sm.sessions, session.ProviderNumber)
-			sm.lock.Unlock()
-			_, err := sm.openSession(session.ProviderNumber)
-			if err != nil {
-				slog.Error("Failed to re-open session", "provider", session.ProviderNumber, "error", err)
-			}
-		}
-	}
-}
-
-func (sm *sessionManager) Close() {
-	sm.lock.Lock()
-	defer sm.lock.Unlock()
-	for pn, session := range sm.sessions {
-		session.Close()
-		delete(sm.sessions, pn)
-	}
-
 }

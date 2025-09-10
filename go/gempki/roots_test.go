@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/gematik/zero-lab/go/gempki"
 )
@@ -11,8 +12,12 @@ import (
 func TestRoots(t *testing.T) {
 
 	tsl, err := gempki.LoadTSL(gempki.URLTrustServiceListRef)
+	if err != nil {
+		t.Fatalf("loading TSL: %v", err)
+	}
 
 	httpClient := &http.Client{
+		Timeout: 2 * time.Second,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				RootCAs: gempki.RootsRef.BuildCertPool(tsl),

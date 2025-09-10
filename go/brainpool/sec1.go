@@ -143,3 +143,18 @@ func oidFromNamedCurve(curve elliptic.Curve) (asn1.ObjectIdentifier, bool) {
 
 	return nil, false
 }
+
+func oidFromECDHCurve(curve ecdh.Curve) (asn1.ObjectIdentifier, bool) {
+	switch curve {
+	case ecdh.X25519():
+		return oidPublicKeyX25519, true
+	case ecdh.P256():
+		return oidNamedCurveP256, true
+	case ecdh.P384():
+		return oidNamedCurveP384, true
+	case ecdh.P521():
+		return oidNamedCurveP521, true
+	}
+
+	return nil, false
+}

@@ -11,6 +11,9 @@ import (
 
 func init() {
 	rootCmd.AddCommand(probeCmd)
+	probeCmd.PersistentFlags().StringP("proxy", "p", "", "Specify the proxy to use")
+	viper.BindPFlag("proxy", probeCmd.PersistentFlags().Lookup("proxy"))
+
 	probeCmd.AddCommand(probePatientCmd)
 }
 
@@ -28,18 +31,31 @@ var probePatientCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		kvnr := args[0]
-		sf := createSecurityFunctions()
-		env, err := epa.EnvFromString(viper.GetString("env"))
-		if err != nil {
-			slog.Error("Failed to parse environment", "error", err)
+
+		proxyName := viper.GetString("proxy")
+
+		slog.Debug("Starting probe", "kvnr", kvnr, "proxy", proxyName)
+
+		var proxyConfig *epa.ProxyConfig
+		var ok bool
+		if proxyName != "" {
+			if proxyConfig, ok = config.GetProxyConfigByName(proxyName); !ok {
+				slog.Error("Proxy not found", "proxy", proxyName)
+				return
+			}
+		} else if proxyConfig, ok = config.GetDefaultProxyConfig(); !ok {
+			slog.Error("No default profile found, please specify a profile")
 			return
 		}
 
-		timeout := viper.GetDuration("timeout")
+		err := proxyConfig.Init()
+		cobra.CheckErr(err)
+		sf := proxyConfig.SecurityFunctions
 
 		cert, err := sf.AuthnCertFunc()
 		cobra.CheckErr(err)
 
+		env := proxyConfig.Env
 		idpEnv := epa.IDPEnvironment(env)
 
 		authenticator, err := gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
@@ -50,9 +66,9 @@ var probePatientCmd = &cobra.Command{
 
 		for _, provider := range []epa.ProviderNumber{epa.ProviderNumber1, epa.ProviderNumber2} {
 			slog.Info("Opening session", "env", env, "provider", provider)
-			session, err := epa.OpenSession(env, provider, sf, epa.WithInsecureSkipVerify(), epa.WithTimeout(timeout))
+			session, err := epa.OpenSession(env, provider, sf, epa.WithInsecureSkipVerify(), epa.WithTimeout(proxyConfig.Timeout))
 			if err != nil {
-				slog.Error("Failed to open session", "error", err, "timeout", timeout)
+				slog.Error("Failed to open session", "error", err)
 				continue
 			}
 			slog.Info("VAU session opened", "env", env, "provider", provider)

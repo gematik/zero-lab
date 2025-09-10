@@ -1,0 +1,10 @@
+# Config file for testing only
+# All values will be taken from the environment variables
+proxies:
+  - name: 1
+    env: dev
+    timeout: 10s
+    vsdm_hmac_key_hex: ${VSDM_HMAC_KEY}
+    vsdm_hmac_key_id: ${VSDM_HMAC_KID}
+    authn_cert_path: ${AUTHN_CERT_PATH}
+    authn_key_path: ${AUTHN_PRIVATE_KEY_PATH}

@@ -50,7 +50,7 @@ type Session struct {
 	ProviderNumber     ProviderNumber
 	BaseURL            string
 	OpenedAt           time.Time
-	securityFunctions  SecurityFunctions
+	securityFunctions  *SecurityFunctions
 	insecureSkipVerify bool
 	certPool           *x509.CertPool
 	HttpClient         *http.Client
@@ -111,7 +111,7 @@ func ResolveBaseURL(env Env, provider ProviderNumber) string {
 	}
 }
 
-func OpenSession(env Env, provider ProviderNumber, sf SecurityFunctions, options ...ClientOption) (*Session, error) {
+func OpenSession(env Env, provider ProviderNumber, sf *SecurityFunctions, options ...ClientOption) (*Session, error) {
 
 	session := &Session{
 		Env:               env,

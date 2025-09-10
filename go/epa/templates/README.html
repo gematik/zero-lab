@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="de" data-bs-theme="dark">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bootstrap demo</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+
+  </head>
+  <body>
+      <div class="container mt-5">
+      <h1>ePA Middleware</h1>
+      <p>
+        <code>ePA Middleware</code> ermöglicht die Kommunikation mit der elektronischen Patientenakte (ePA) über eine REST-Schnittstelle.
+      </p>
+      <h2>Proxies</h2>
+      <p>
+        Es werden mehere Proxies unterstützt, die jeweils unterschiedliche Konfigurationen haben.
+        Die Konfigurationen beinhalten insbesondere die Authentifizierungs-Identitäten (Arztpraxis, Krankenhaus, Apotheke) sowie die Umgebungen der ePA (Dev, Ref).
+      </p>
+      <p>
+        Um aktuell konfigurierte Proxies abzurufen wird <code>/api/proxies</code> Endpunkt verwendet.
+        <pre class="sh">
+          <code>{{ .CurlCommand }} {{ .BaseURL }}/api/proxies</code>
+        </pre>
+      </p>
+      <p>Aktuelle Proxies:</p>
+      <table class="table table-bordered">
+        <thead>
+          <th>Pfad</th>
+          <th>Umgebung</th>
+          <th>Leistungserbringer</th>
+        </thead>
+        {{ range .ProxyInfos }}
+        <tr>
+          <td><code>/api/proxies/{{ .Name }}</code></td>
+          <td>{{ .Env }}</td>
+          <td>{{ .Subject }}<br/><code>{{ .AdmissionStatement.RegistrationNumber }}</code></td>
+        </tr>
+        {{ end }}
+      </table>
+      <p>
+        <pre class="sh">
+          <code>{{ range .ProxyInfos }}# Informationen zu Proxy "{{ .Name }}"
+{{ $.CurlCommand }} "{{ $.BaseURL }}/api/proxies/{{ .Name }}/info"
+{{ end }}</code>
+        </pre>
+      </p>
+      <h2>Providers</h2>
+      <p>ePA hat zwei Provider, die über fortlaufende Nummern identifiziert werden 1 und 2. 
+        Jeder Proxy öffnet jeweils eine session zu den beiden ePA-Providern. 
+        Aktueller Stand der Provider-Sessions kann über <code>/api/proxies/{name}/providers</code> abgerufen werden.
+        <pre class="sh">
+          <code>{{ .CurlCommand }} "{{ .BaseURL }}/api/proxies/{{ (index .ProxyInfos 0).Name }}/providers"</code>
+        </pre>
+      </p>
+      
+      <h2>Insurants</h2>
+      <p>Insurants (Versicherten) sind Patienten, die eine ePA besitzen.
+        ePA Middleware erzeugt automatisch das Befugnis für den im Proxy konfigurierten Leistungserbringer, um auf die ePA des Versicherten zuzugreifen.
+        Provider, bei denen die Akte des Versicherten gespeichert ist, werden automatisch ermittelt.
+        Die Abfragen an die Akten müssen folgenden Path-Prefix verwenden: <code>/api/proxies/{name}/insurrants/{kvnr}/vau</code>, wobei <code>{kvnr}</code> die Krankenversichertennummer des Versicherten ist.
+        Zusatz "vau" im Pfad ist notwendig, damit die Anfrage über den VAU-Kanal weitergeleitet wird.
+        Darauf folgender Pfad inkl. Method, Header, Query und Body wird an den korrekten Provider weitergeleitet.
+      </p>
+      <pre class="sh">
+        <code># Abfrage der Medikationsliste des Versicherten mit KVNR X110611629 (XHTML Format)
+{{ .CurlCommand }} "{{ .BaseURL }}/api/proxies/{{ (index .ProxyInfos 0).Name }}/insurants/X110611629/vau/epa/medication/render/v1/eml/xhtml"
+# Abfrage der Medikationsliste des Versicherten mit KVNR X110611629 (PDF Format)
+{{ .CurlCommand }} "{{ .BaseURL }}/api/proxies/{{ (index .ProxyInfos 0).Name }}/insurants/X110611629/vau/epa/medication/render/v1/eml/pdf"
+# Abfrage der FHIR Medication Ressourcen des Versicherten mit KVNR X110611629 
+{{ .CurlCommand }} "{{ .BaseURL }}/api/proxies/{{ (index .ProxyInfos 0).Name }}/insurants/X110611629/vau/epa/medication/api/v1/fhir/Medication"
+</code>
+      </pre>
+      </div>
+  
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
+    <script>hljs.highlightAll();</script>
+  </body>
+</html>

@@ -30,7 +30,7 @@ func (t *TimeWithoutTimezone) UnmarshalJSON(data []byte) error {
 
 type Root struct {
 	Cert           *x509.Certificate   `json:"-"`
-	CertRaw        []byte              `json:"cert,base64"`
+	CertRaw        []byte              `json:"cert"`
 	CommonName     string              `json:"cn"`
 	Name           string              `json:"name"`
 	Next           string              `json:"next"`
@@ -57,11 +57,12 @@ func (r *Root) UnmarshalJSON(data []byte) error {
 }
 
 type Roots struct {
+	Env          Environment
 	ByCommonName map[string]Root
 }
 
 func (r Roots) BuildCertPool(tsl *TrustServiceStatusList) *x509.CertPool {
-	rootCAs := x509.NewCertPool()
+	caPool := x509.NewCertPool()
 	// add all CA certificates from TSL which were issued by the roots
 	for _, provider := range tsl.TrustServiceProviderList {
 		for _, service := range provider.TSPServices {
@@ -77,11 +78,11 @@ func (r Roots) BuildCertPool(tsl *TrustServiceStatusList) *x509.CertPool {
 					continue
 				}
 				// check if the CA certificate was issued by the matching root
-				rootCAs.AddCert(caCert)
+				caPool.AddCert(caCert)
 			}
 		}
 	}
-	return rootCAs
+	return caPool
 }
 
 func (r *Roots) UnmarshalJSON(data []byte) error {
@@ -107,11 +108,39 @@ var dataRootsRef []byte
 //go:embed roots-prod.json
 var dataRootsProd []byte
 
+var RootsDev Roots
 var RootsRef Roots
+var RootsTest Roots
+var RootsProd Roots
 
 func init() {
-	err := json.Unmarshal(dataRootsRef, &RootsRef)
+	RootsRef = parseRoots(dataRootsRef, EnvRef)
+	RootsDev = RootsRef
+	RootsTest = parseRoots(dataRootsTest, EnvTest)
+	RootsProd = parseRoots(dataRootsProd, EnvProd)
+}
+
+func parseRoots(data []byte, env Environment) Roots {
+	var roots Roots
+	err := json.Unmarshal(data, &roots)
 	if err != nil {
 		panic(err)
+	}
+	roots.Env = env
+	return roots
+}
+
+func (r Roots) GetRoots(env Environment) Roots {
+	switch env {
+	case EnvDev:
+		return RootsDev
+	case EnvRef:
+		return RootsRef
+	case EnvTest:
+		return RootsTest
+	case EnvProd:
+		return RootsProd
+	default:
+		return RootsDev
 	}
 }
