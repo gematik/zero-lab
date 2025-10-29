@@ -221,10 +221,31 @@ func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNum
 
 	r2.URL.RawQuery = r.URL.RawQuery
 
-	r2.Header.Set("x-useragent", UserAgent)
+	proxyHeaderNames := []string{
+		"Accept",
+		"Accept-Encoding",
+		"Content-Type",
+		"Content-Length",
+		"x-useragent",
+		"x-insurantid",
+	}
+	for _, h := range proxyHeaderNames {
+		if v := r.Header.Get(h); v != "" {
+			r2.Header.Set(h, v)
+		}
+	}
+
+	if r2.Header.Get("x-useragent") == "" {
+		r2.Header.Set("x-useragent", UserAgent)
+	}
+
+	r2.Host = session.VAUChannel.ChannelURL.Host
+
 	if insurantID != "" {
 		r2.Header.Set("x-insurantid", insurantID)
 	}
+
+	slog.Info("Forwarding request to VAU", "method", r2.Method, "path", r2.URL.String(), "headers", r2.Header, "session_url", session.BaseURL)
 
 	resp, err := session.VAUChannel.Do(r2)
 	if err != nil {
@@ -237,7 +258,7 @@ func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNum
 		w.Header()[k] = v
 	}
 
-	slog.Info("Got forwarded request response", "method", r2.Method, "url", session.BaseURL, "path", r2.URL.String(), "status", resp.StatusCode)
+	slog.Info("Got forwarded request response", "method", r2.Method, "path", r2.URL.String(), "status", resp.StatusCode, "session_url", session.BaseURL)
 
 	w.WriteHeader(resp.StatusCode)
 

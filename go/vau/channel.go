@@ -55,7 +55,6 @@ type Channel struct {
 	k2_s2c_app_data []byte
 	// request/response counter
 	requestCounter Counter
-	transport      http.Transport
 }
 
 type EncryptedRequest struct {
@@ -78,7 +77,12 @@ func (c *Channel) Do(req *http.Request) (*http.Response, error) {
 
 	if encResp.StatusCode != http.StatusOK {
 		messageError := new(MessageError)
-		if err := cbor.NewDecoder(encResp.Body).Decode(messageError); err != nil {
+		body, err := io.ReadAll(encResp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("reading error response: %w", err)
+		}
+		if err := cbor.NewDecoder(bytes.NewReader(body)).Decode(messageError); err != nil {
+			slog.Error("Decoding error response failed", "error", err, "body", string(body), "http_status", encResp.StatusCode, "header", encResp.Header)
 			return nil, fmt.Errorf("decoding error: %w", err)
 		}
 		return nil, fmt.Errorf("server %s: %w", c.ChannelURL, messageError)
@@ -189,7 +193,11 @@ func (c *Channel) Decrypt(data []byte, req *http.Request) (*http.Response, error
 		return nil, fmt.Errorf("parsing response: %w", err)
 	}
 
-	slog.Debug("Decrypted VAU response", "channel_url", c.ChannelURL.String(), "requestCounter", binary.BigEndian.Uint64(header[3:]), "status", resp.StatusCode)
+	// pick 8 bytes
+	requestCounterBytes := header[3:11]
+	requestCounter := binary.BigEndian.Uint64(requestCounterBytes)
+
+	slog.Debug("Decrypted VAU response", "channel_url", c.ChannelURL.String(), "server_request_counter", requestCounter, "status_code", resp.StatusCode)
 
 	return resp, nil
 }
@@ -208,4 +216,12 @@ func (c *Channel) PostEncryptedRequest(data []byte) (*http.Response, error) {
 	}
 
 	return resp, nil
+}
+
+type Status struct {
+	VAUType            string `json:"VAU-Type"`
+	VAUVersion         string `json:"VAU-Version"`
+	UserAuthentication string `json:"User-Authentication"`
+	KeyID              string `json:"KeyID"`
+	ConnectionStart    string `json:"Connection-Start"`
 }

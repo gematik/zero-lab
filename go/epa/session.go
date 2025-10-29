@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -211,12 +212,38 @@ func parseHttpError(resp *http.Response) error {
 }
 
 func (s *Session) HealthCheck() error {
-	// TODO: is there a better way to health check?
-	_, err := s.GetNonce()
+	_, err := s.GetStatus()
 	if err == nil {
 		return nil
 	} else {
 		slog.Error("Health check failed", "error", err, "opened_at", s.OpenedAt, "base_url", s.BaseURL)
 		return err
 	}
+}
+
+func (s *Session) GetStatus() (*vau.Status, error) {
+	req, err := http.NewRequest("GET", "/VAU-Status", nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+
+	req.Header.Set("x-useragent", UserAgent)
+
+	resp, err := s.VAUChannel.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("sending request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code: %d. error: %s", resp.StatusCode, string(body))
+	}
+
+	status := new(vau.Status)
+	if err := json.NewDecoder(resp.Body).Decode(status); err != nil {
+		return nil, fmt.Errorf("unmarshaling response: %w", err)
+	}
+
+	return status, nil
 }
