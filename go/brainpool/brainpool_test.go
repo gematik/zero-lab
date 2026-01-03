@@ -66,6 +66,13 @@ func TestSignature(t *testing.T) {
 	}
 }
 
+func TestParsePrivateKeyPEM(t *testing.T) {
+	_, err := brainpool.ParsePrivateKeyPEM(testKeyBytes)
+	if err != nil {
+		t.Fatalf("ParsePrivateKeyPEM failed: %v", err)
+	}
+}
+
 func parsePEMKey(pemBytes []byte) (*ecdsa.PrivateKey, error) {
 	pemBlock, _ := pem.Decode(pemBytes)
 	if pemBlock == nil {
