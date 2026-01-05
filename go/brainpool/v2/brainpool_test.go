@@ -281,3 +281,20 @@ func TestParseRootCACertificatePEM(t *testing.T) {
 	assert.True(t, cert.KeyUsage&x509.KeyUsageCertSign != 0, "KeyUsage should contain CertSign for Root CA certificate")
 	assert.True(t, cert.KeyUsage&x509.KeyUsageCRLSign != 0, "KeyUsage should contain CRLSign for Root CA certificate")
 }
+
+func TestNilInput(t *testing.T) {
+	_, err := brainpool.ParseCertificatePEM(nil)
+	if err == nil {
+		t.Fatalf("Expected error for nil input in ParseCertificatePEM, got nil")
+	}
+
+	_, err = brainpool.ParsePrivateKeyPEM(nil)
+	if err == nil {
+		t.Fatalf("Expected error for nil input in ParsePrivateKeyPEM, got nil")
+	}
+
+	_, err = brainpool.ParseCertificate(nil)
+	if err == nil {
+		t.Fatalf("Expected error for nil input in ParseCertificate, got nil")
+	}
+}

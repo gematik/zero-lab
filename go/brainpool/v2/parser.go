@@ -59,7 +59,7 @@ var (
 func ParseCertificatePEM(pemBytes []byte) (*x509.Certificate, error) {
 	pemBlock, _ := pem.Decode(pemBytes)
 	if pemBlock == nil {
-		return nil, nil
+		return nil, errors.New("failed to decode PEM block")
 	}
 
 	return ParseCertificate(pemBlock.Bytes)
@@ -72,7 +72,7 @@ func ParseCertificate(der []byte) (*x509.Certificate, error) {
 func ParsePrivateKeyPEM(pemBytes []byte) (*ecdsa.PrivateKey, error) {
 	pemBlock, _ := pem.Decode(pemBytes)
 	if pemBlock == nil {
-		return nil, nil
+		return nil, errors.New("failed to decode PEM block")
 	}
 	switch pemBlock.Type {
 	case "PRIVATE KEY":
