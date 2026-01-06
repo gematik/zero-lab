@@ -528,7 +528,7 @@ func (cl *Client) userInfo(c echo.Context) error {
 		})
 	}
 
-	act := claims["act"].(map[string]interface{})
+	act := claims["urn:telematik:zta:subject"].(map[string]interface{})
 
 	userInfo := &userInfo{
 		Issuer: act["iss"].(string),

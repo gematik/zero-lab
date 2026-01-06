@@ -1,5 +1,8 @@
 FROM golang:1.22 AS build
 
+RUN useradd -m -u 1000 zero
+USER zero
+
 WORKDIR /src
 
 # Download Go modules
@@ -17,6 +20,8 @@ FROM ubuntu
 COPY --from=build /etc/ssl /etc/ssl
 COPY --from=build /src/zero-zerobin /app/zero-zerobin
 COPY --from=build /src/cmd/zero-zerobin/static /app/static
+
+USER 1000:1000
 
 WORKDIR /app
 ENV PRETTY_LOGS=false
