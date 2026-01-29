@@ -1,4 +1,4 @@
-go 1.25
+go 1.25.5
 
 use (
 	./asl
@@ -14,5 +14,6 @@ use (
 	./pdp
 	./pep
 	./vau
+	./wasm
 	./zaddy
 )

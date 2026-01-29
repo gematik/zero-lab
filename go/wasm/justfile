@@ -1,0 +1,30 @@
+# Default recipe
+default: build
+
+# Variables
+OUT_DIR := "assets"
+WASM_FILE := "zero.wasm"
+
+# Clean artifacts
+clean:
+    rm -f {{OUT_DIR}}/{{WASM_FILE}}
+    rm -f {{OUT_DIR}}/wasm_exec.js
+
+# Copy the necessary JS glue code from your Go installation
+init-wasm:
+    @echo "Copying wasm_exec.js from GOROOT..."
+    cp $(go env GOROOT)/lib/wasm/wasm_exec.js {{OUT_DIR}}/
+
+# Build the Wasm binary with the correct architecture flags
+build: init-wasm
+    @echo "Building Wasm..."
+    GOOS=js GOARCH=wasm go build -o assets/{{WASM_FILE}} main.go
+
+# Serve the application locally using Python
+serve: build
+    @echo "Starting server at http://localhost:8080"
+    @echo "Press Ctrl+C to stop"
+    cd {{OUT_DIR}} && python3 -m http.server 8080
+
+# Build and Run in one command
+run: serve
