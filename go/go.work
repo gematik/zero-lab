@@ -1,4 +1,4 @@
-go 1.25
+go 1.25.6
 
 use (
 	./asl
@@ -8,6 +8,7 @@ use (
 	./epa
 	./gemidp
 	./gempki
+	./kms
 	./nonce
 	./oauth
 	./oidf
