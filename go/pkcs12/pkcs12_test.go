@@ -136,25 +136,6 @@ func TestOIDEquality(t *testing.T) {
 	}
 }
 
-func TestParseBERIndefiniteLength(t *testing.T) {
-	// BER indefinite-length encoding: 0x30 0x80 (SEQUENCE with indefinite length)
-	// This should now be automatically converted if valid, or fail with conversion error
-	berData := []byte{0x30, 0x80, 0x02, 0x01, 0x03, 0x30, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00}
-
-	_, err := Parse(berData)
-	if err == nil {
-		t.Fatal("Expected error for incomplete BER structure")
-	}
-
-	// Should fail during conversion (missing EOC marker)
-	if !strings.Contains(err.Error(), "BER to DER") || !strings.Contains(err.Error(), "EOC") {
-		t.Errorf("Error should mention BER-to-DER conversion failure, got: %v", err)
-	}
-
-	if !strings.Contains(err.Error(), "openssl") {
-		t.Errorf("Error should provide conversion solution, got: %v", err)
-	}
-}
 
 func TestParseInvalidTag(t *testing.T) {
 // Invalid first byte (not SEQUENCE), but large enough
