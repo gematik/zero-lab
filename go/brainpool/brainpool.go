@@ -12,6 +12,8 @@ import (
 )
 
 var OIDNamedCurveP256r1 = asn1.ObjectIdentifier{1, 3, 36, 3, 3, 2, 8, 1, 1, 7}
+var OIDNamedCurveP384r1 = asn1.ObjectIdentifier{1, 3, 36, 3, 3, 2, 8, 1, 1, 11}
+var OIDNamedCurveP512r1 = asn1.ObjectIdentifier{1, 3, 36, 3, 3, 2, 8, 1, 1, 13}
 
 var (
 	once                   sync.Once
@@ -26,6 +28,19 @@ func initAll() {
 	initP256r1()
 	initP384r1()
 	initP512r1()
+}
+
+func CurveFromOID(oid asn1.ObjectIdentifier) (bool, elliptic.Curve) {
+	switch {
+	case oid.Equal(OIDNamedCurveP256r1):
+		return true, P256r1()
+	case oid.Equal(OIDNamedCurveP384r1):
+		return true, P384r1()
+	case oid.Equal(OIDNamedCurveP512r1):
+		return true, P512r1()
+	default:
+		return false, nil
+	}
 }
 
 func initP256t1() {
