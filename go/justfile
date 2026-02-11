@@ -3,6 +3,7 @@ ZERO_VERSION := "0.13.0"
 ZERO_EPA_VERSION := ZERO_VERSION
 ZERO_PDP_VERSION := ZERO_VERSION
 ZERO_CADDY_VERSION := ZERO_VERSION
+TI_CLI_VERSION := ZERO_VERSION
 
 # Display available commands
 info:
@@ -49,3 +50,5 @@ generate-version-file file package version:
 generate-versions:
     just generate-version-file epa/version.go epa {{ZERO_EPA_VERSION}}
     just generate-version-file pdp/version.go pdp {{ZERO_PDP_VERSION}}
+    just generate-version-file ti/version.go main {{TI_CLI_VERSION}}
+
