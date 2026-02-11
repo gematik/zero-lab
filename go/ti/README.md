@@ -1,6 +1,6 @@
 # 🖥️ ti — Telematik CLI
 
-A command-line tool for interacting with the German Telematikinfrastruktur (TI) — specifically the Konnektor healthcare connector and PKCS#12 certificate files.
+A command-line tool for interacting with the German Telematikinfrastruktur (TI).
 
 ![ti CLI screencast](images/cli.gif)
 
@@ -44,7 +44,6 @@ Default name is `default` (i.e. `default.kon`).
 |------|--------|-------------|
 | `basic` | `username`, `password` | HTTP Basic Auth |
 | `pkcs12` | `data`, `password` | Base64-encoded PKCS#12 for mTLS |
-| `system` | `name` | System keychain reference |
 
 ## Usage
 
