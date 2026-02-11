@@ -16,9 +16,3 @@ type CredentialsConfigPKCS12 struct {
 	Data     string `json:"data"`
 	Password string `json:"password,omitempty"`
 }
-
-// CredentialsConfigSystem is a struct for OS credential store credentials
-type CredentialsConfigSystem struct {
-	Type string `json:"type"`
-	Name string `json:"name"`
-}

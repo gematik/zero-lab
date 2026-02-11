@@ -106,17 +106,8 @@ func parseCredentials(raw json.RawMessage) (CredentialsConfig, error) {
 			return nil, fmt.Errorf("credentials.data is required for pkcs12 credentials")
 		}
 		return cred, nil
-	case "system":
-		var cred CredentialsConfigSystem
-		if err := json.Unmarshal(raw, &cred); err != nil {
-			return nil, err
-		}
-		if cred.Name == "" {
-			return nil, fmt.Errorf("credentials.name is required for system credentials")
-		}
-		return cred, nil
 	default:
-		return nil, fmt.Errorf("unsupported credentials.type: %q (must be basic, pkcs12, or system)", typ.Type)
+		return nil, fmt.Errorf("unsupported credentials.type: %q (must be basic or pkcs12)", typ.Type)
 	}
 }
 
