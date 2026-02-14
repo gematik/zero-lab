@@ -5,8 +5,6 @@ import (
 	"context"
 	"encoding/xml"
 	"io"
-	"log/slog"
-	"time"
 
 	"github.com/gematik/zero-lab/go/kon"
 	"github.com/spf13/cobra"
@@ -31,16 +29,7 @@ func newGetCmd() *cobra.Command {
 }
 
 func loadClient(config *kon.Dotkon) (*kon.Client, error) {
-	var opts []kon.ClientOption
-	if !noCacheFlag {
-		cache, err := openBoltCache(15 * time.Second)
-		if err != nil {
-			slog.Warn("failed to open cache, continuing without cache", "error", err)
-		} else {
-			opts = append(opts, kon.WithCache(cache))
-		}
-	}
-	return kon.NewClient(config, opts...)
+	return kon.NewClient(config)
 }
 
 func loadServices(config *kon.Dotkon) (*kon.ConnectorServices, error) {

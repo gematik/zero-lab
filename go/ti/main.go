@@ -16,10 +16,8 @@ import (
 )
 
 var (
-	konFlag        string
-	verboseFlag    bool
-	noCacheFlag    bool
-	clearCacheFlag bool
+	konFlag     string
+	verboseFlag bool
 )
 
 func main() {
@@ -43,26 +41,13 @@ func main() {
 		Use:   "kon",
 		Short: "Konnektor commands",
 		Long:  "Commands for interacting with the Gematik Konnektor.\n\nSpecify a .kon configuration with -k/--kon or DOTKON_FILE env var.\nThe name is resolved as: exact path, <name>.kon in current dir, then $XDG_CONFIG_HOME/telematik/kon/",
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Inherit root PersistentPreRun (logging setup)
-			if parent := cmd.Root().PersistentPreRun; parent != nil {
-				parent(cmd, args)
-			}
-			if clearCacheFlag {
-				return clearCache()
-			}
-			return nil
-		},
 	}
 	konCmd.PersistentFlags().StringVarP(&konFlag, "kon", "k", "", "name or path of .kon configuration file (env: DOTKON_FILE)")
 	konCmd.PersistentFlags().StringVarP(&outputFlag, "output", "o", "text", "output format: text, json")
-	konCmd.PersistentFlags().BoolVar(&noCacheFlag, "no-cache", false, "disable caching of SOAP responses")
-	konCmd.PersistentFlags().BoolVar(&clearCacheFlag, "clear-cache", false, "clear the cache before executing the command")
 
 	konCmd.AddCommand(newGetCmd())
 	konCmd.AddCommand(newDescribeCmd())
 	konCmd.AddCommand(newVerifyCmd())
-	konCmd.AddCommand(newCacheCmd())
 
 	rootCmd.AddCommand(konCmd)
 	rootCmd.AddCommand(newPKCS12Cmd())

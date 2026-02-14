@@ -2,10 +2,7 @@ package kon
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"slices"
-	"strings"
 
 	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/cardservice81"
 	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/cardservicecommon20"
@@ -97,29 +94,7 @@ func (c *Client) GetCardsByType(ctx context.Context, cardTypes ...cardservicecom
 	return c.getCardsByType(ctx, cardTypes)
 }
 
-func (c *Client) cardsCacheKey(cardTypes []cardservicecommon20.CardType) string {
-	if len(cardTypes) == 0 || (len(cardTypes) == 1 && cardTypes[0] == "") {
-		return "cards:all"
-	}
-	types := make([]string, len(cardTypes))
-	for i, t := range cardTypes {
-		types[i] = string(t)
-	}
-	slices.Sort(types)
-	return "cards:" + strings.Join(types, ",")
-}
-
 func (c *Client) getCardsByType(ctx context.Context, cardTypes []cardservicecommon20.CardType) ([]Card, error) {
-	if cache := c.Config.Cache; cache != nil {
-		key := c.cardsCacheKey(cardTypes)
-		if data, ok := cache.Get(key); ok {
-			var cards []Card
-			if err := json.Unmarshal(data, &cards); err == nil {
-				return cards, nil
-			}
-		}
-	}
-
 	proxy, err := c.createLatestServiceProxy(ServiceNameEventService)
 	if err != nil {
 		return nil, err
@@ -150,13 +125,6 @@ func (c *Client) getCardsByType(ctx context.Context, cardTypes []cardservicecomm
 		}
 		for _, rawCard := range resp.GetCardsResponse.Cards.Card {
 			cards = append(cards, Card{Card: rawCard})
-		}
-	}
-
-	if cache := c.Config.Cache; cache != nil {
-		key := c.cardsCacheKey(cardTypes)
-		if data, err := json.Marshal(cards); err == nil {
-			cache.Set(key, data)
 		}
 	}
 
