@@ -31,17 +31,17 @@ func runGetCertificates(ctx context.Context, config *kon.Dotkon, cardHandle stri
 		return err
 	}
 
-	_, certs, err := client.GetCard(ctx, cardHandle)
+	card, err := client.GetCard(ctx, cardHandle)
 	if err != nil {
 		return err
 	}
 
 	if outputFlag == "json" {
-		return printJSON(certs)
+		return printJSON(card.Certificates)
 	}
 
 	return printTable("REF\tSUBJECT\tTELEMATIK-ID\tNOT BEFORE\tNOT AFTER\tKEY", func(w io.Writer) {
-		for _, c := range certs {
+		for _, c := range card.Certificates {
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 				c.CertRef,
 				subjectCN(c.X509),

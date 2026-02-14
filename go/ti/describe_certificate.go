@@ -62,7 +62,7 @@ func runDescribeCertificate(ctx context.Context, config *kon.Dotkon, cardHandle 
 		return err
 	}
 
-	certs, err := client.ReadCardCertificates(ctx, cardHandle, []certificateservicecommon20.CertRefEnum{certRef}, certificateservice601.CryptTypeEcc)
+	certs, err := client.ReadCardCertificates(ctx, cardHandle, certificateservice601.CryptTypeEcc, certRef)
 	if err != nil {
 		return err
 	}

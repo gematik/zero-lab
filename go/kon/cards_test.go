@@ -171,7 +171,7 @@ func TestGetCards_Fault(t *testing.T) {
 		t.Fatal("expected error for SOAP fault")
 	}
 
-	expected := "GetCards SOAP fault: internal error"
+	expected := "GetCards() SOAP fault: internal error"
 	if err.Error() != expected {
 		t.Errorf("expected error %q, got %q", expected, err.Error())
 	}

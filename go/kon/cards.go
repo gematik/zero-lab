@@ -40,7 +40,13 @@ func CertRefsForCardType(cardType cardservicecommon20.CardType) ([]certificatese
 	return certRefs, nil
 }
 
-func (c *Client) GetCard(ctx context.Context, cardHandle string) (*cardservice81.Card, []*CardCertificate, error) {
+// Card wraps cardservice81.Card and includes certificates read from the card.
+type Card struct {
+	cardservice81.Card
+	Certificates []*CardCertificate `json:"certificates,omitempty"`
+}
+
+func (c *Client) GetCard(ctx context.Context, cardHandle string) (*Card, error) {
 	envelope := &eventservice72.GetResourceInformationEnvelope{
 		GetResourceInformation: &eventservice72.GetResourceInformation{
 			Context:    c.connectorContext(),
@@ -51,57 +57,105 @@ func (c *Client) GetCard(ctx context.Context, cardHandle string) (*cardservice81
 	var resp eventservice72.GetResourceInformationResponseEnvelope
 	proxy, err := c.createLatestServiceProxy(ServiceNameEventService)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if err := proxy.Call(ctx, &eventservice72.OperationGetResourceInformation, envelope, &resp); err != nil {
-		return nil, nil, fmt.Errorf("GetResourceInformation: %w", err)
+		return nil, fmt.Errorf("GetResourceInformation: %w", err)
 	}
 
 	if resp.Fault != nil {
-		return nil, nil, fmt.Errorf("GetResourceInformation SOAP fault: %s", resp.Fault.String)
+		return nil, fmt.Errorf("GetResourceInformation SOAP fault: %s", resp.Fault.String)
 	}
 	if resp.GetResourceInformationResponse == nil {
-		return nil, nil, fmt.Errorf("GetResourceInformation: empty response")
+		return nil, fmt.Errorf("GetResourceInformation: empty response")
 	}
 	if resp.GetResourceInformationResponse.Card == nil {
-		return nil, nil, fmt.Errorf("GetResourceInformation: no card in response")
+		return nil, fmt.Errorf("GetResourceInformation: no card in response")
 	}
 
-	card := resp.GetResourceInformationResponse.Card
+	card := &Card{
+		Card: *resp.GetResourceInformationResponse.Card,
+	}
 
 	certs, err := c.ReadAllCardCertificates(ctx, card)
 	if err != nil {
-		return nil, nil, fmt.Errorf("reading card certificates: %w", err)
+		return nil, fmt.Errorf("reading card certificates: %w", err)
 	}
+	card.Certificates = certs
 
-	return card, certs, nil
+	return card, nil
 }
 
-func (c *Client) GetAllCards(ctx context.Context) ([]cardservice81.Card, error) {
+func (c *Client) GetAllCards(ctx context.Context) ([]Card, error) {
+	return c.getCardsByType(ctx, nil)
+}
+
+func (c *Client) GetCardsByType(ctx context.Context, cardTypes ...cardservicecommon20.CardType) ([]Card, error) {
+	return c.getCardsByType(ctx, cardTypes)
+}
+
+func (c *Client) getCardsByType(ctx context.Context, cardTypes []cardservicecommon20.CardType) ([]Card, error) {
 	proxy, err := c.createLatestServiceProxy(ServiceNameEventService)
 	if err != nil {
 		return nil, err
 	}
 
-	envelope := &eventservice72.GetCardsEnvelope{
-		GetCards: &eventservice72.GetCards{
-			Context: c.connectorContext(),
-		},
+	if len(cardTypes) == 0 {
+		cardTypes = []cardservicecommon20.CardType{""}
 	}
 
-	var resp eventservice72.GetCardsResponseEnvelope
-	if err := proxy.Call(ctx, &eventservice72.OperationGetCards, envelope, &resp); err != nil {
-		return nil, fmt.Errorf("GetCards: %w", err)
+	var cards []Card
+	for _, cardType := range cardTypes {
+		envelope := &eventservice72.GetCardsEnvelope{
+			GetCards: &eventservice72.GetCards{
+				Context:  c.connectorContext(),
+				CardType: cardType,
+			},
+		}
+
+		var resp eventservice72.GetCardsResponseEnvelope
+		if err := proxy.Call(ctx, &eventservice72.OperationGetCards, envelope, &resp); err != nil {
+			return nil, fmt.Errorf("GetCards(%s): %w", cardType, err)
+		}
+		if resp.Fault != nil {
+			return nil, fmt.Errorf("GetCards(%s) SOAP fault: %s", cardType, resp.Fault.String)
+		}
+		if resp.GetCardsResponse == nil {
+			continue
+		}
+		for _, rawCard := range resp.GetCardsResponse.Cards.Card {
+			cards = append(cards, Card{Card: rawCard})
+		}
 	}
 
-	if resp.Fault != nil {
-		return nil, fmt.Errorf("GetCards SOAP fault: %s", resp.Fault.String)
-	}
-	if resp.GetCardsResponse == nil {
-		return nil, fmt.Errorf("GetCards: empty response")
+	return cards, nil
+}
+
+func (c *Client) FindCardByRegistrationNumber(ctx context.Context, registrationNumber string) (*Card, error) {
+	cards, err := c.GetCardsByType(ctx,
+		cardservicecommon20.CardTypeHba,
+		cardservicecommon20.CardTypeSmcB,
+		cardservicecommon20.CardTypeHsmB,
+		cardservicecommon20.CardTypeSmB,
+	)
+	if err != nil {
+		return nil, err
 	}
 
-	return resp.GetCardsResponse.Cards.Card, nil
+	for _, card := range cards {
+		certs, err := c.ReadAllCardCertificates(ctx, &card)
+		if err != nil {
+			continue
+		}
+		card.Certificates = certs
+		for _, cert := range certs {
+			if cert.Admission != nil && cert.Admission.RegistrationNumber == registrationNumber {
+				return &card, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("no card found with registration number %s", registrationNumber)
 }
 
 func (c *Client) connectorContext() connectorcontext20.Context {

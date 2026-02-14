@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/gematik/zero-lab/go/kon"
-	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/cardservice81"
 	"github.com/spf13/cobra"
 )
 
@@ -33,19 +32,13 @@ func runDescribeCard(ctx context.Context, config *kon.Dotkon, cardHandle string)
 		return err
 	}
 
-	card, certs, err := client.GetCard(ctx, cardHandle)
+	card, err := client.GetCard(ctx, cardHandle)
 	if err != nil {
 		return err
 	}
 
 	if outputFlag == "json" {
-		return printJSON(struct {
-			Card  *cardservice81.Card    `json:"card"`
-			Certs []*kon.CardCertificate `json:"certificates"`
-		}{
-			Card:  card,
-			Certs: certs,
-		})
+		return printJSON(card)
 	}
 
 	kv := newKVWriter()
@@ -83,7 +76,7 @@ func runDescribeCard(ctx context.Context, config *kon.Dotkon, cardHandle string)
 	}
 	kv.EndSection()
 
-	for _, c := range certs {
+	for _, c := range card.Certificates {
 		writeCertificateDetail(kv, c)
 	}
 
