@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 
 	"github.com/gematik/zero-lab/go/kon"
 	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/cardservice81"
@@ -49,21 +48,44 @@ func runDescribeCard(ctx context.Context, config *kon.Dotkon, cardHandle string)
 		})
 	}
 
-	return printKeyValue(func(w io.Writer) {
-		fmt.Fprintf(w, "Card Handle\t%s\n", card.CardHandle)
-		fmt.Fprintf(w, "Card Type\t%s\n", card.CardType)
-		fmt.Fprintf(w, "ICCSN\t%s\n", card.Iccsn)
-		fmt.Fprintf(w, "CT ID\t%s\n", card.CtId)
-		fmt.Fprintf(w, "Slot ID\t%d\n", card.SlotId)
-		fmt.Fprintf(w, "Card Holder Name\t%s\n", card.CardHolderName)
-		for _, cert := range certs {
-			fmt.Fprintf(w, "Certificate %s\n", cert.CertRef)
-			fmt.Fprintf(w, "    Subject\t%s\n", cert.X509.Subject)
-			fmt.Fprintf(w, "    Issuer\t%s\n", cert.X509.Issuer)
-			fmt.Fprintf(w, "    Valid From\t%s\n", cert.X509.NotBefore)
-			fmt.Fprintf(w, "    Valid To\t%s\n", cert.X509.NotAfter)
-			fmt.Fprintf(w, "    Public Key\t%s\n", describePublicKey(cert.X509.PublicKey))
-		}
-	})
+	kv := newKVWriter()
 
+	kv.Section("Card")
+	kv.KV("Card Handle", card.CardHandle)
+	kv.KV("Card Type", string(card.CardType))
+	kv.KV("ICCSN", card.Iccsn)
+	kv.KV("CT ID", card.CtId)
+	kv.KV("Slot ID", fmt.Sprintf("%d", card.SlotId))
+	if card.InsertTime != "" {
+		kv.KV("Insert Time", card.InsertTime)
+	}
+	if card.CardHolderName != "" {
+		kv.KV("Card Holder", card.CardHolderName)
+	}
+	if card.Kvnr != "" {
+		kv.KV("KVNR", card.Kvnr)
+	}
+	if card.CertificateExpirationDate != "" {
+		kv.KV("Cert Expiration", card.CertificateExpirationDate)
+	}
+	if card.CardVersion != nil {
+		kv.Section("Card Version")
+		v := card.CardVersion
+		kv.KV("COS", fmt.Sprintf("%d.%d.%d", v.COSVersion.Major, v.COSVersion.Minor, v.COSVersion.Revision))
+		kv.KV("Object System", fmt.Sprintf("%d.%d.%d", v.ObjectSystemVersion.Major, v.ObjectSystemVersion.Minor, v.ObjectSystemVersion.Revision))
+		if v.CardPTPersVersion != nil {
+			kv.KV("Card PT Pers", fmt.Sprintf("%d.%d.%d", v.CardPTPersVersion.Major, v.CardPTPersVersion.Minor, v.CardPTPersVersion.Revision))
+		}
+		if v.DataStructureVersion != nil {
+			kv.KV("Data Structure", fmt.Sprintf("%d.%d.%d", v.DataStructureVersion.Major, v.DataStructureVersion.Minor, v.DataStructureVersion.Revision))
+		}
+		kv.EndSection()
+	}
+	kv.EndSection()
+
+	for _, c := range certs {
+		writeCertificateDetail(kv, c)
+	}
+
+	return kv.Print()
 }

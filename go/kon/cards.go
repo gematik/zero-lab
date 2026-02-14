@@ -26,8 +26,6 @@ var CertificatesByCardType = map[cardservicecommon20.CardType][]certificateservi
 	},
 	cardservicecommon20.CardTypeSmcKt: {
 		certificateservicecommon20.CertRefEnumCAut,
-		certificateservicecommon20.CertRefEnumCSig,
-		certificateservicecommon20.CertRefEnumCEnc,
 	},
 }
 
