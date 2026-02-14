@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/asn1"
+	"encoding/base64"
 	"encoding/pem"
 	"testing"
 
@@ -297,4 +298,33 @@ func TestNilInput(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Expected error for nil input in ParseCertificate, got nil")
 	}
+}
+
+func TestSubjectParsing(t *testing.T) {
+	certBase64 := `MIIDijCCAzGgAwIBAgIHAK4aqPhmlDAKBggqhkjOPQQDAjCBiDELMAkGA1UEBhMCREUxHzAdBgNVBAoMFmdlbWF0aWsgR21iSCBOT1QtVkFMSUQxNjA0BgNVBAsMLVF1YWxpZml6aWVydGVyIFZEQSBkZXIgVGVsZW1hdGlraW5mcmFzdHJ1a3R1cjEgMB4GA1UEAwwXR0VNLkhCQS1xQ0E1MSBURVNULU9OTFkwHhcNMjQxMjAzMDAwMDAwWhcNMjkxMjAzMjM1OTU5WjBzMQswCQYDVQQGEwJERTFkMA4GA1UEKgwHVWxscmljaDARBgNVBAQMCkFuZ2VybcOkbm4wGwYDVQQFExQ4MDI3Njg4MzExMDAwMDE2Mzk3NDAiBgNVBAMMG1VsbHJpY2ggQW5nZXJtw6RublRFU1QtT05MWTBaMBQGByqGSM49AgEGCSskAwMCCAEBBwNCAARZ3Wv87oBjWg/plcaHVtMMJIyhxxSBJhtGycd/OuDxvRDf48s+/5+/UJOuJMbFzuJYcuJKzNplZr6XqCqICYNbo4IBlzCCAZMwIgYIKwYBBQUHAQMEFjAUMAgGBgQAjkYBATAIBgYEAI5GAQQwGwYJKwYBBAHAbQMFBA4wDAYKKwYBBAHAbQMFATAMBgNVHRMBAf8EAjAAMDkGA1UdIAQyMDAwCQYHKoIUAEwESDAJBgcEAIvsQAECMAoGCCqCFABMBIERMAwGCisGAQQBgs0zAQEwPAYIKwYBBQUHAQEEMDAuMCwGCCsGAQUFBzABhiBodHRwOi8vZWhjYS5nZW1hdGlrLmRlL2VjYy1xb2NzcDAOBgNVHQ8BAf8EBAMCBkAwHQYDVR0OBBYEFJjLsEp9jJQWFCgq0sZxS4SnU+RoMB8GA1UdIwQYMBaAFFztN5TdWlaBgLcpVEEcxrkFvuu8MHkGBSskCAMDBHAwbqQoMCYxCzAJBgNVBAYTAkRFMRcwFQYDVQQKDA5nZW1hdGlrIEJlcmxpbjBCMEAwPjA8MA4MDMOEcnp0aW4vQXJ6dDAJBgcqghQATAQeEx8xLUhCQS1UZXN0a2FydGUtODgzMTEwMDAwMTYzOTc0MAoGCCqGSM49BAMCA0cAMEQCIHijw1NSTSQYrZ7vWzCOOl5NawkcsWof3t6vN7uZTZguAiAyZW8q1tSOzdQnMUH03mAbRdiYlQ6AkhE/UemL18v/7Q==`
+	certBytes, err := base64.StdEncoding.DecodeString(certBase64)
+	if err != nil {
+		t.Fatalf("Failed to decode base64 certificate: %v", err)
+	}
+	cert, err := brainpool.ParseCertificate(certBytes)
+	if err != nil {
+		t.Fatalf("ParseCertificate failed: %v", err)
+	}
+
+	assert.Equal(t, []string{"DE"}, cert.Subject.Country)
+	assert.Equal(t, "Ullrich Angerm\u00e4nnTEST-ONLY", cert.Subject.CommonName)
+	assert.Equal(t, "80276883110000163974", cert.Subject.SerialNumber)
+
+	// GivenName (2.5.4.42) and Surname (2.5.4.4) are stored in Names
+	var givenName, surname string
+	for _, name := range cert.Subject.Names {
+		switch {
+		case name.Type.Equal(asn1.ObjectIdentifier{2, 5, 4, 42}):
+			givenName = name.Value.(string)
+		case name.Type.Equal(asn1.ObjectIdentifier{2, 5, 4, 4}):
+			surname = name.Value.(string)
+		}
+	}
+	assert.Equal(t, "Ullrich", givenName)
+	assert.Equal(t, "Angerm\u00e4nn", surname)
 }
