@@ -135,7 +135,7 @@ func (c *Client) FindCardByRegistrationNumber(ctx context.Context, registrationN
 	cards, err := c.GetCardsByType(ctx,
 		cardservicecommon20.CardTypeHba,
 		cardservicecommon20.CardTypeSmcB,
-		cardservicecommon20.CardTypeHsmB,
+		//cardservicecommon20.CardTypeHsmB,
 		cardservicecommon20.CardTypeSmB,
 	)
 	if err != nil {

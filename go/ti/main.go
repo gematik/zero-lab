@@ -48,6 +48,7 @@ func main() {
 	konCmd.AddCommand(newGetCmd())
 	konCmd.AddCommand(newDescribeCmd())
 	konCmd.AddCommand(newVerifyCmd())
+	konCmd.AddCommand(newChangeCmd())
 
 	rootCmd.AddCommand(konCmd)
 	rootCmd.AddCommand(newPKCS12Cmd())
