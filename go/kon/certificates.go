@@ -4,8 +4,11 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
+	"strings"
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/gempki"
@@ -27,7 +30,26 @@ type CardCertificate struct {
 	Admission   *AdmissionInfo    `json:"admission,omitempty"`
 }
 
+func certsCacheKey(cardHandle string, crypt certificateservice601.CryptType, certRefs []certificateservicecommon20.CertRefEnum) string {
+	refs := make([]string, len(certRefs))
+	for i, r := range certRefs {
+		refs[i] = string(r)
+	}
+	slices.Sort(refs)
+	return "certs:" + cardHandle + ":" + string(crypt) + ":" + strings.Join(refs, ",")
+}
+
 func (c *Client) ReadCardCertificates(ctx context.Context, cardHandle string, crypt certificateservice601.CryptType, certRefs ...certificateservicecommon20.CertRefEnum) ([]*CardCertificate, error) {
+	if cache := c.Config.Cache; cache != nil {
+		key := certsCacheKey(cardHandle, crypt, certRefs)
+		if data, ok := cache.Get(key); ok {
+			var certs []*CardCertificate
+			if err := json.Unmarshal(data, &certs); err == nil {
+				return certs, nil
+			}
+		}
+	}
+
 	proxy, err := c.createLatestServiceProxy(ServiceNameCertificateService)
 	if err != nil {
 		return nil, err
@@ -86,6 +108,13 @@ func (c *Client) ReadCardCertificates(ctx context.Context, cardHandle string, cr
 			}
 		}
 		certs = append(certs, cc)
+	}
+
+	if cache := c.Config.Cache; cache != nil {
+		key := certsCacheKey(cardHandle, crypt, certRefs)
+		if data, err := json.Marshal(certs); err == nil {
+			cache.Set(key, data)
+		}
 	}
 
 	return certs, nil
