@@ -5,9 +5,11 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
+	"log/slog"
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/gempki"
+	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/cardservice81"
 	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/certificateservice601"
 	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/certificateservicecommon20"
 )
@@ -26,7 +28,7 @@ type CardCertificate struct {
 	Admission   *AdmissionInfo    `json:"admission,omitempty"`
 }
 
-func (c *Client) ReadCardCertificates(ctx context.Context, cardHandle string, certRefs ...certificateservicecommon20.CertRefEnum) ([]CardCertificate, error) {
+func (c *Client) ReadCardCertificates(ctx context.Context, cardHandle string, certRefs []certificateservicecommon20.CertRefEnum, crypt certificateservice601.CryptType) ([]*CardCertificate, error) {
 	proxy, err := c.createLatestServiceProxy(ServiceNameCertificateService)
 	if err != nil {
 		return nil, err
@@ -42,7 +44,7 @@ func (c *Client) ReadCardCertificates(ctx context.Context, cardHandle string, ce
 			CardHandle:  cardHandle,
 			Context:     c.connectorContext(),
 			CertRefList: certificateservice601.ReadCardCertificateCertRefList{CertRef: refs},
-			Crypt:       "ECC",
+			Crypt:       crypt,
 		},
 	}
 
@@ -58,7 +60,7 @@ func (c *Client) ReadCardCertificates(ctx context.Context, cardHandle string, ce
 		return nil, fmt.Errorf("ReadCardCertificate: empty response")
 	}
 
-	var certs []CardCertificate
+	var certs []*CardCertificate
 	for _, info := range resp.ReadCardCertificateResponse.X509DataInfoList.X509DataInfo {
 		if info.X509Data == nil || info.X509Data.X509Certificate == "" {
 			continue
@@ -71,7 +73,7 @@ func (c *Client) ReadCardCertificates(ctx context.Context, cardHandle string, ce
 		if err != nil {
 			return nil, fmt.Errorf("parsing certificate %s: %w", info.CertRef, err)
 		}
-		cc := CardCertificate{
+		cc := &CardCertificate{
 			CertRef:     string(info.CertRef),
 			X509:        cert,
 			IssuerName:  info.X509Data.X509IssuerSerial.X509IssuerName,
@@ -90,6 +92,21 @@ func (c *Client) ReadCardCertificates(ctx context.Context, cardHandle string, ce
 	return certs, nil
 }
 
-func (c *Client) ReadAllCardCertificates(ctx context.Context, cardHandle string) ([]CardCertificate, error) {
-	return c.ReadCardCertificates(ctx, cardHandle, "C.AUT")
+func (c *Client) ReadAllCardCertificates(ctx context.Context, card *cardservice81.Card) ([]*CardCertificate, error) {
+	certRefs, err := CertRefsForCardType(card.CardType)
+	if err != nil {
+		return nil, fmt.Errorf("getting certificate refs: %w", err)
+	}
+	eccCerts, err := c.ReadCardCertificates(ctx, card.CardHandle, certRefs, certificateservice601.CryptTypeEcc)
+	if err != nil {
+		return nil, fmt.Errorf("reading ECC certificates: %w", err)
+	}
+	rsaCerts, err := c.ReadCardCertificates(ctx, card.CardHandle, certRefs, certificateservice601.CryptTypeRsa)
+	if err != nil {
+		slog.Warn("reading RSA certificates failed, maybe no RSA certificates on card", "error", err)
+	} else {
+	}
+
+	return append(eccCerts, rsaCerts...), nil
+
 }

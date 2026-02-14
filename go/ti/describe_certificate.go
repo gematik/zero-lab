@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/gematik/zero-lab/go/kon"
+	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/certificateservice601"
 	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/certificateservicecommon20"
 	"github.com/spf13/cobra"
 )
@@ -31,17 +32,6 @@ func subjectCN(cert *x509.Certificate) string {
 		}
 	}
 	return ""
-}
-
-func newDescribeCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "describe",
-		Short: "Describe a resource in detail",
-	}
-
-	cmd.AddCommand(newDescribeCertificateCmd())
-
-	return cmd
 }
 
 func newDescribeCertificateCmd() *cobra.Command {
@@ -71,7 +61,7 @@ func runDescribeCertificate(ctx context.Context, config *kon.Dotkon, cardHandle 
 		return err
 	}
 
-	certs, err := client.ReadCardCertificates(ctx, cardHandle, certRef)
+	certs, err := client.ReadCardCertificates(ctx, cardHandle, []certificateservicecommon20.CertRefEnum{certRef}, certificateservice601.CryptTypeEcc)
 	if err != nil {
 		return err
 	}

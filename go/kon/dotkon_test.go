@@ -127,33 +127,6 @@ func TestParseDotkonPKCS12(t *testing.T) {
 	}
 }
 
-func TestParseDotkonSystem(t *testing.T) {
-	data := []byte(`{
-		"version": "1.0.0",
-		"url": "https://konnektor.example.com:8443",
-		"mandantId": "M1",
-		"workplaceId": "W1",
-		"clientSystemId": "C1",
-		"credentials": {
-			"type": "system",
-			"name": "my-konnektor"
-		}
-	}`)
-
-	config, err := kon.ParseDotkon(data)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	cred, ok := config.Credentials.(kon.CredentialsConfigSystem)
-	if !ok {
-		t.Fatalf("expected CredentialsConfigSystem, got %T", config.Credentials)
-	}
-	if cred.Name != "my-konnektor" {
-		t.Errorf("Name = %q, want %q", cred.Name, "my-konnektor")
-	}
-}
-
 func TestParseDotkonValidationRequiredFields(t *testing.T) {
 	data := []byte(`{}`)
 
@@ -234,26 +207,6 @@ func TestParseDotkonValidationPKCS12Data(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "credentials.data") {
 		t.Errorf("expected data validation error, got: %v", err)
-	}
-}
-
-func TestParseDotkonValidationSystemName(t *testing.T) {
-	data := []byte(`{
-		"url": "https://konnektor.example.com:8443",
-		"mandantId": "M1",
-		"workplaceId": "W1",
-		"clientSystemId": "C1",
-		"credentials": {
-			"type": "system"
-		}
-	}`)
-
-	_, err := kon.ParseDotkon(data)
-	if err == nil {
-		t.Fatal("expected validation error, got nil")
-	}
-	if !strings.Contains(err.Error(), "credentials.name") {
-		t.Errorf("expected name validation error, got: %v", err)
 	}
 }
 

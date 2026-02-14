@@ -126,7 +126,7 @@ func TestGetCards(t *testing.T) {
 	})
 	defer server.Close()
 
-	cards, err := client.GetCards(context.Background())
+	cards, err := client.GetAllCards(context.Background())
 	if err != nil {
 		t.Fatalf("GetCards failed: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestGetCards_Fault(t *testing.T) {
 	})
 	defer server.Close()
 
-	_, err := client.GetCards(context.Background())
+	_, err := client.GetAllCards(context.Background())
 	if err == nil {
 		t.Fatal("expected error for SOAP fault")
 	}

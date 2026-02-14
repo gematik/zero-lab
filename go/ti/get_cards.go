@@ -30,7 +30,7 @@ func runGetCards(ctx context.Context, config *kon.Dotkon) error {
 		return err
 	}
 
-	cards, err := client.GetCards(ctx)
+	cards, err := client.GetAllCards(ctx)
 	if err != nil {
 		return err
 	}

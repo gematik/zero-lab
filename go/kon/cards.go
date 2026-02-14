@@ -5,11 +5,81 @@ import (
 	"fmt"
 
 	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/cardservice81"
+	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/cardservicecommon20"
+	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/certificateservicecommon20"
 	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/connectorcontext20"
 	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/eventservice72"
 )
 
-func (c *Client) GetCards(ctx context.Context) ([]cardservice81.Card, error) {
+// CertificatesByCardType maps card types to the certificates available for them.
+// This is used to determine which certificates to request for a given card type.
+var CertificatesByCardType = map[cardservicecommon20.CardType][]certificateservicecommon20.CertRefEnum{
+	cardservicecommon20.CardTypeHba: {
+		certificateservicecommon20.CertRefEnumCAut,
+		certificateservicecommon20.CertRefEnumCQes,
+		certificateservicecommon20.CertRefEnumCEnc,
+	},
+	cardservicecommon20.CardTypeSmcB: {
+		certificateservicecommon20.CertRefEnumCAut,
+		certificateservicecommon20.CertRefEnumCSig,
+		certificateservicecommon20.CertRefEnumCEnc,
+	},
+	cardservicecommon20.CardTypeSmcKt: {
+		certificateservicecommon20.CertRefEnumCAut,
+		certificateservicecommon20.CertRefEnumCSig,
+		certificateservicecommon20.CertRefEnumCEnc,
+	},
+}
+
+func CertRefsForCardType(cardType cardservicecommon20.CardType) ([]certificateservicecommon20.CertRefEnum, error) {
+	if cardType == cardservicecommon20.CardTypeHsmB || cardType == cardservicecommon20.CardTypeSmB {
+		cardType = cardservicecommon20.CardTypeSmcB
+	}
+	certRefs, ok := CertificatesByCardType[cardType]
+	if !ok {
+		return nil, fmt.Errorf("unsupported card type: %s", cardType)
+	}
+	return certRefs, nil
+}
+
+func (c *Client) GetCard(ctx context.Context, cardHandle string) (*cardservice81.Card, []*CardCertificate, error) {
+	envelope := &eventservice72.GetResourceInformationEnvelope{
+		GetResourceInformation: &eventservice72.GetResourceInformation{
+			Context:    c.connectorContext(),
+			CardHandle: cardHandle,
+		},
+	}
+
+	var resp eventservice72.GetResourceInformationResponseEnvelope
+	proxy, err := c.createLatestServiceProxy(ServiceNameEventService)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := proxy.Call(ctx, &eventservice72.OperationGetResourceInformation, envelope, &resp); err != nil {
+		return nil, nil, fmt.Errorf("GetResourceInformation: %w", err)
+	}
+
+	if resp.Fault != nil {
+		return nil, nil, fmt.Errorf("GetResourceInformation SOAP fault: %s", resp.Fault.String)
+	}
+	if resp.GetResourceInformationResponse == nil {
+		return nil, nil, fmt.Errorf("GetResourceInformation: empty response")
+	}
+	if resp.GetResourceInformationResponse.Card == nil {
+		return nil, nil, fmt.Errorf("GetResourceInformation: no card in response")
+	}
+
+	card := resp.GetResourceInformationResponse.Card
+
+	certs, err := c.ReadAllCardCertificates(ctx, card)
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading card certificates: %w", err)
+	}
+
+	return card, certs, nil
+}
+
+func (c *Client) GetAllCards(ctx context.Context) ([]cardservice81.Card, error) {
 	proxy, err := c.createLatestServiceProxy(ServiceNameEventService)
 	if err != nil {
 		return nil, err
