@@ -3,6 +3,9 @@ Set Shell zsh
 Type "ti"
 Enter
 Sleep 2
+Type "ti probe ref"
+Enter
+Sleep 2
 Type "ti kon get info"
 Enter
 Sleep 2
