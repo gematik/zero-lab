@@ -23,6 +23,7 @@ func newGetCmd() *cobra.Command {
 	cmd.AddCommand(newGetCardsCmd())
 	cmd.AddCommand(newGetCertificatesCmd())
 	cmd.AddCommand(newGetStatusCmd())
+	cmd.AddCommand(newGetIdentitiesCmd())
 
 	return cmd
 }

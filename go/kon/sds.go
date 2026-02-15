@@ -131,7 +131,7 @@ func LoadConnectorServices(ctx context.Context, httpClient *http.Client, baseUrl
 		return nil, err
 	}
 
-	slog.Debug("Loaded service directory", "services", services)
+	slog.Debug("Loaded service directory", "product_information", services.ProductInformation, "service_information", services.ServiceInformation)
 
 	for _, s := range services.ServiceInformation.Service {
 		slog.Debug("Service", "name", s.Name, "versionsCount", len(s.Versions))

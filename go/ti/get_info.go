@@ -23,6 +23,17 @@ func newGetInfoCmd() *cobra.Command {
 	}
 }
 
+func credentialsType(config *kon.Dotkon) string {
+	switch config.Credentials.(type) {
+	case kon.CredentialsConfigBasic:
+		return "basic"
+	case kon.CredentialsConfigPKCS12:
+		return "pkcs12"
+	default:
+		return "unknown"
+	}
+}
+
 func runGetInfo(config *kon.Dotkon) error {
 	services, err := loadServices(config)
 	if err != nil {
@@ -35,6 +46,15 @@ func runGetInfo(config *kon.Dotkon) error {
 
 	pi := services.ProductInformation
 	return printKeyValue(func(w io.Writer) {
+		fmt.Fprintf(w, "URL\t%s\n", config.URL)
+		fmt.Fprintf(w, "Mandant\t%s\n", config.MandantId)
+		fmt.Fprintf(w, "Workplace\t%s\n", config.WorkplaceId)
+		fmt.Fprintf(w, "Client System\t%s\n", config.ClientSystemId)
+		fmt.Fprintf(w, "Credentials\t%s\n", credentialsType(config))
+		if config.Env != "" {
+			fmt.Fprintf(w, "Environment\t%s\n", config.Env)
+		}
+fmt.Fprintf(w, "\t\n")
 		fmt.Fprintf(w, "Product Type\t%s\n", pi.ProductTypeInformation.ProductType)
 		fmt.Fprintf(w, "Product Type Version\t%s\n", pi.ProductTypeInformation.ProductTypeVersion)
 		fmt.Fprintf(w, "Vendor\t%s\n", pi.ProductIdentification.ProductVendorID)

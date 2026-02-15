@@ -31,21 +31,21 @@ func runGetCertificates(ctx context.Context, config *kon.Dotkon, cardHandle stri
 		return err
 	}
 
-	certs, err := client.ReadAllCardCertificates(ctx, cardHandle)
+	card, err := client.GetCard(ctx, cardHandle)
 	if err != nil {
 		return err
 	}
 
 	if outputFlag == "json" {
-		return printJSON(certs)
+		return printJSON(card.Certificates)
 	}
 
-	return printTable("REF\tSUBJECT\tISSUER\tNOT BEFORE\tNOT AFTER\tKEY", func(w io.Writer) {
-		for _, c := range certs {
+	return printTable("REF\tSUBJECT\tTELEMATIK-ID\tNOT BEFORE\tNOT AFTER\tKEY", func(w io.Writer) {
+		for _, c := range card.Certificates {
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 				c.CertRef,
 				subjectCN(c.X509),
-				c.X509.Issuer.CommonName,
+				c.Admission.RegistrationNumber,
 				c.X509.NotBefore.Format("2006-01-02"),
 				c.X509.NotAfter.Format("2006-01-02"),
 				describePublicKey(c.X509.PublicKey),

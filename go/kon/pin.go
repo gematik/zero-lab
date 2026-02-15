@@ -67,3 +67,32 @@ func (c *Client) VerifyPin(ctx context.Context, cardHandle string, pinTyp PinTyp
 
 	return resp.VerifyPinResponse, nil
 }
+
+func (c *Client) ChangePin(ctx context.Context, cardHandle string, pinTyp PinTyp) (*cardservice81.ChangePinResponse, error) {
+	proxy, err := c.createLatestServiceProxy(ServiceNameCardService)
+	if err != nil {
+		return nil, err
+	}
+
+	envelope := &cardservice81.ChangePinEnvelope{
+		ChangePin: &cardservice81.ChangePin{
+			Context:    c.connectorContext(),
+			CardHandle: cardHandle,
+			PinTyp:     string(pinTyp),
+		},
+	}
+
+	var resp cardservice81.ChangePinResponseEnvelope
+	if err := proxy.Call(ctx, &cardservice81.OperationChangePin, envelope, &resp); err != nil {
+		return nil, fmt.Errorf("ChangePin: %w", err)
+	}
+
+	if resp.Fault != nil {
+		return nil, fmt.Errorf("ChangePin SOAP fault: %s", resp.Fault.String)
+	}
+	if resp.ChangePinResponse == nil {
+		return nil, fmt.Errorf("ChangePin: empty response")
+	}
+
+	return resp.ChangePinResponse, nil
+}

@@ -397,28 +397,47 @@ func parseRDNSequence(rdnSeq *cryptobyte.String) (*pkix.RDNSequence, error) {
 			return nil, errors.New("brainpool: failed to parse RDN set")
 		}
 
-		var atvSeq cryptobyte.String
-		if !setSeq.ReadASN1(&atvSeq, cryptobyte_asn1.SEQUENCE) {
-			return nil, errors.New("brainpool: failed to parse AttributeTypeAndValue sequence")
+		var atvs []pkix.AttributeTypeAndValue
+		for !setSeq.Empty() {
+			var atvSeq cryptobyte.String
+			if !setSeq.ReadASN1(&atvSeq, cryptobyte_asn1.SEQUENCE) {
+				return nil, errors.New("brainpool: failed to parse AttributeTypeAndValue sequence")
+			}
+
+			var typeOID asn1.ObjectIdentifier
+			if !atvSeq.ReadASN1ObjectIdentifier(&typeOID) {
+				return nil, errors.New("brainpool: failed to read AttributeType OID")
+			}
+
+			var valueRaw cryptobyte.String
+			var valueTag cryptobyte_asn1.Tag
+			if !atvSeq.ReadAnyASN1(&valueRaw, &valueTag) {
+				return nil, errors.New("brainpool: failed to read AttributeValue")
+			}
+
+			// Decode the ASN.1 string value based on the tag type
+			var value interface{}
+			switch valueTag {
+			case cryptobyte_asn1.UTF8String, cryptobyte_asn1.PrintableString, cryptobyte_asn1.IA5String:
+				value = string(valueRaw)
+			default:
+				// For other types, use asn1.Unmarshal to decode properly
+				var rawVal asn1.RawValue
+				// Reconstruct the full DER encoding (tag + length + content) for asn1.Unmarshal
+				rawVal.Tag = int(valueTag) & 0x1f
+				rawVal.Class = int(valueTag) >> 6
+				rawVal.Bytes = []byte(valueRaw)
+				rawVal.FullBytes = nil
+				value = rawVal
+			}
+
+			atvs = append(atvs, pkix.AttributeTypeAndValue{
+				Type:  typeOID,
+				Value: value,
+			})
 		}
 
-		var typeOID asn1.ObjectIdentifier
-		if !atvSeq.ReadASN1ObjectIdentifier(&typeOID) {
-			return nil, errors.New("brainpool: failed to read AttributeType OID")
-		}
-
-		var valueRaw cryptobyte.String
-		var valueTag cryptobyte_asn1.Tag
-		if !atvSeq.ReadAnyASN1(&valueRaw, &valueTag) {
-			return nil, errors.New("brainpool: failed to read AttributeValue")
-		}
-
-		atv := pkix.AttributeTypeAndValue{
-			Type:  typeOID,
-			Value: string(valueRaw),
-		}
-
-		rdn = append(rdn, []pkix.AttributeTypeAndValue{atv})
+		rdn = append(rdn, atvs)
 	}
 
 	return &rdn, nil

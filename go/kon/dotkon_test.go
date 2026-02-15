@@ -17,8 +17,7 @@ func TestParseDotkonBasic(t *testing.T) {
 		"workplaceId": "W1",
 		"clientSystemId": "C1",
 		"userId": "U1",
-		"telematikId": "2-2134567890",
-		"credentials": {
+"credentials": {
 			"type": "basic",
 			"username": "user",
 			"password": "secret"
@@ -47,9 +46,6 @@ func TestParseDotkonBasic(t *testing.T) {
 	}
 	if config.UserId != "U1" {
 		t.Errorf("UserId = %q, want %q", config.UserId, "U1")
-	}
-	if config.TelematikId != "2-2134567890" {
-		t.Errorf("TelematikId = %q, want %q", config.TelematikId, "2-2134567890")
 	}
 	if config.Env != "ru" {
 		t.Errorf("Env = %q, want %q", config.Env, "ru")
@@ -124,33 +120,6 @@ func TestParseDotkonPKCS12(t *testing.T) {
 	}
 	if cred.Password != "test" {
 		t.Errorf("UnsafePassword = %q, want %q", cred.Password, "test")
-	}
-}
-
-func TestParseDotkonSystem(t *testing.T) {
-	data := []byte(`{
-		"version": "1.0.0",
-		"url": "https://konnektor.example.com:8443",
-		"mandantId": "M1",
-		"workplaceId": "W1",
-		"clientSystemId": "C1",
-		"credentials": {
-			"type": "system",
-			"name": "my-konnektor"
-		}
-	}`)
-
-	config, err := kon.ParseDotkon(data)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	cred, ok := config.Credentials.(kon.CredentialsConfigSystem)
-	if !ok {
-		t.Fatalf("expected CredentialsConfigSystem, got %T", config.Credentials)
-	}
-	if cred.Name != "my-konnektor" {
-		t.Errorf("Name = %q, want %q", cred.Name, "my-konnektor")
 	}
 }
 
@@ -237,26 +206,6 @@ func TestParseDotkonValidationPKCS12Data(t *testing.T) {
 	}
 }
 
-func TestParseDotkonValidationSystemName(t *testing.T) {
-	data := []byte(`{
-		"url": "https://konnektor.example.com:8443",
-		"mandantId": "M1",
-		"workplaceId": "W1",
-		"clientSystemId": "C1",
-		"credentials": {
-			"type": "system"
-		}
-	}`)
-
-	_, err := kon.ParseDotkon(data)
-	if err == nil {
-		t.Fatal("expected validation error, got nil")
-	}
-	if !strings.Contains(err.Error(), "credentials.name") {
-		t.Errorf("expected name validation error, got: %v", err)
-	}
-}
-
 func TestParseDotkonValidationMissingCredentialType(t *testing.T) {
 	data := []byte(`{
 		"url": "https://konnektor.example.com:8443",
@@ -291,7 +240,7 @@ func TestParseDotkonUnsupportedCredentials(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unsupported credentials, got nil")
 	}
-	if !strings.Contains(err.Error(), "must be basic, pkcs12, or system") {
+	if !strings.Contains(err.Error(), "must be basic or pkcs12") {
 		t.Errorf("expected helpful error listing valid types, got: %v", err)
 	}
 }
