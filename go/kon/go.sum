@@ -1,4 +1,5 @@
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
+github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/gematik/zero-lab/go/brainpool v0.0.0-20260206105435-3f58f701734e h1:sbKlDKGft8gV7ah5ONF5eQCKYGhzDbFD3LCL2H/HXwU=
 github.com/gematik/zero-lab/go/brainpool v0.0.0-20260206105435-3f58f701734e/go.mod h1:eY7vZLWZ6ptyVE4OQeT2IMhXqo21aEgASR2SZ/JUsAg=
 github.com/gematik/zero-lab/go/gempki v0.0.0-20260206105435-3f58f701734e h1:8mdNBWl3LEqYWXfL8qIYB7AtT6FYFXdgRJ1qXh7FOTE=
@@ -6,8 +7,10 @@ github.com/gematik/zero-lab/go/gempki v0.0.0-20260206105435-3f58f701734e/go.mod 
 github.com/gematik/zero-lab/go/pkcs12 v0.0.0-20260206105435-3f58f701734e h1:TrVFtO7+xZ9/M3XrAybDQh1tAsjpC8JSogmpWveGZ9g=
 github.com/gematik/zero-lab/go/pkcs12 v0.0.0-20260206105435-3f58f701734e/go.mod h1:pG2R35hVFHkr3ZVwWMQ0yhATJ9LbpszSusvxdpJmzUo=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
+github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 golang.org/x/crypto v0.38.0 h1:jt+WWG8IZlBnVbomuhg2Mdq0+BBQaHbtqHEFEigjUV8=
+golang.org/x/crypto v0.38.0/go.mod h1:MvrbAqul58NNYPKnOra203SB9vpuZW0e+RRZV+Ggqjw=
 gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
