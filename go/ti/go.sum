@@ -15,8 +15,8 @@ github.com/gematik/zero-lab/go/gempki v0.0.0-20260206105435-3f58f701734e h1:8mdN
 github.com/gematik/zero-lab/go/gempki v0.0.0-20260206105435-3f58f701734e/go.mod h1:QD2ridh/0rQZfAP0/sU5JYrI4vZHektLpk9r976EGZI=
 github.com/gematik/zero-lab/go/kon v0.0.0-20260218054643-ad26161f5f17 h1:FjUsl4qcxBIXp9Ox07/zhZlSisYAYnJA2sS3usyQ2W0=
 github.com/gematik/zero-lab/go/kon v0.0.0-20260218054643-ad26161f5f17/go.mod h1:zvjLENBXWAYv25HGlN4RVTxumcE6kwht99MrzFOpo90=
-github.com/gematik/zero-lab/go/pkcs12 v0.0.0-20260215175341-e6a3c94ba3eb h1:JUwqcFcrx4ph2NvDmcf7TjEuZSuB+C1YVZUz/Iitd58=
-github.com/gematik/zero-lab/go/pkcs12 v0.0.0-20260215175341-e6a3c94ba3eb/go.mod h1:qlLEtTDv4e8NfH3dYKppkSiOVXJi2jsigMBdS+nPtT4=
+github.com/gematik/zero-lab/go/pkcs12 v0.0.0-20260218060622-f0988b82292e h1:l1OeoCcDooAYsHTJGGVzhUQGXOASUBNLpTPLWEyjRIc=
+github.com/gematik/zero-lab/go/pkcs12 v0.0.0-20260218060622-f0988b82292e/go.mod h1:qlLEtTDv4e8NfH3dYKppkSiOVXJi2jsigMBdS+nPtT4=
 github.com/hexops/gotextdiff v1.0.3 h1:gitA9+qJrrTCsiCl7+kh75nPqQt1cx4ZkudSTLoUqJM=
 github.com/hexops/gotextdiff v1.0.3/go.mod h1:pSWU5MAI3yDq+fZBTazCSJysOMbxWL1BSow5/V2vxeg=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
