@@ -25,10 +25,10 @@ type probeResult struct {
 }
 
 type environment struct {
-	EPAAS1   string
-	EPAAS2   string
-	IDP      string
-	ERezept  string
+	EPAAS1  string
+	EPAAS2  string
+	IDP     string
+	ERezept string
 }
 
 var (
@@ -86,9 +86,9 @@ func newProbeCmd() *cobra.Command {
 func runProbe(env environment) error {
 	targets := []probeTarget{
 		{Label: "IDP", URL: env.IDP},
+		{Label: "eRX", URL: env.ERezept},
 		{Label: "ePA 1", URL: env.EPAAS1},
 		{Label: "ePA 2", URL: env.EPAAS2},
-		{Label: "ERP", URL: env.ERezept},
 	}
 
 	results := make([]probeResult, len(targets))

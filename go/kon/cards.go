@@ -47,6 +47,14 @@ type Card struct {
 }
 
 func (c *Client) GetCard(ctx context.Context, cardHandle string) (*Card, error) {
+	return c.getCard(ctx, cardHandle, false)
+}
+
+func (c *Client) GetCardWithCertificates(ctx context.Context, cardHandle string) (*Card, error) {
+	return c.getCard(ctx, cardHandle, true)
+}
+
+func (c *Client) getCard(ctx context.Context, cardHandle string, withCertificates bool) (*Card, error) {
 	envelope := &eventservice72.GetResourceInformationEnvelope{
 		GetResourceInformation: &eventservice72.GetResourceInformation{
 			Context:    c.connectorContext(),
@@ -77,11 +85,13 @@ func (c *Client) GetCard(ctx context.Context, cardHandle string) (*Card, error) 
 		Card: *resp.GetResourceInformationResponse.Card,
 	}
 
-	certs, err := c.ReadAllCardCertificates(ctx, card)
-	if err != nil {
-		return nil, fmt.Errorf("reading card certificates: %w", err)
+	if withCertificates {
+		certs, err := c.ReadAllCardCertificates(ctx, card)
+		if err != nil {
+			return nil, fmt.Errorf("reading card certificates: %w", err)
+		}
+		card.Certificates = certs
 	}
-	card.Certificates = certs
 
 	return card, nil
 }

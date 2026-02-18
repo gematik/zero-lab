@@ -31,7 +31,7 @@ func runGetCertificates(ctx context.Context, config *kon.Dotkon, cardHandle stri
 		return err
 	}
 
-	card, err := client.GetCard(ctx, cardHandle)
+	card, err := client.GetCardWithCertificates(ctx, cardHandle)
 	if err != nil {
 		return err
 	}
