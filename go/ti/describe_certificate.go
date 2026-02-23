@@ -18,23 +18,6 @@ import (
 
 var oidCommonName = asn1.ObjectIdentifier{2, 5, 4, 3}
 
-// subjectCN extracts the CommonName from a certificate subject.
-// Falls back to searching Names for multi-valued RDN subjects
-// where Go's pkix.Name doesn't populate CommonName.
-func subjectCN(cert *x509.Certificate) string {
-	if cert.Subject.CommonName != "" {
-		return cert.Subject.CommonName
-	}
-	for _, name := range cert.Subject.Names {
-		if name.Type.Equal(oidCommonName) {
-			if s, ok := name.Value.(string); ok {
-				return s
-			}
-		}
-	}
-	return ""
-}
-
 func newDescribeCertificateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "certificate <card-handle> <cert-ref>",

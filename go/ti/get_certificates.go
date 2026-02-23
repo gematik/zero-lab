@@ -44,7 +44,7 @@ func runGetCertificates(ctx context.Context, config *kon.Dotkon, cardHandle stri
 		for _, c := range card.Certificates {
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 				c.CertRef,
-				subjectCN(c.X509),
+				c.X509.Subject.CommonName,
 				c.Admission.RegistrationNumber,
 				c.X509.NotBefore.Format("2006-01-02"),
 				c.X509.NotAfter.Format("2006-01-02"),
