@@ -24,6 +24,7 @@ func newGetCmd() *cobra.Command {
 	cmd.AddCommand(newGetCertificatesCmd())
 	cmd.AddCommand(newGetStatusCmd())
 	cmd.AddCommand(newGetIdentitiesCmd())
+	cmd.AddCommand(newGetExpirationCmd())
 
 	return cmd
 }

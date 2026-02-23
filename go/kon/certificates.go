@@ -13,18 +13,13 @@ import (
 	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/certificateservicecommon20"
 )
 
-type AdmissionInfo struct {
-	ProfessionItems    []string `json:"professionItems,omitempty"`
-	ProfessionOids     []string `json:"professionOids,omitempty"`
-	RegistrationNumber string   `json:"registrationNumber,omitempty"`
-}
-
 type CardCertificate struct {
-	CertRef     string            `json:"certRef"`
-	X509        *x509.Certificate `json:"-"`
-	IssuerName  string            `json:"issuerName"`
-	SubjectName string            `json:"subjectName"`
-	Admission   *AdmissionInfo    `json:"admission,omitempty"`
+	CertRef     string                          `json:"certRef"`
+	Crypt       certificateservice601.CryptType `json:"crypt"`
+	X509        *x509.Certificate               `json:"-"`
+	IssuerName  string                          `json:"issuerName"`
+	SubjectName string                          `json:"subjectName"`
+	Admission   *gempki.AdmissionStatement      `json:"admission,omitempty"`
 }
 
 func (c *Client) ReadCardCertificates(ctx context.Context, cardHandle string, crypt certificateservice601.CryptType, certRefs ...certificateservicecommon20.CertRefEnum) ([]*CardCertificate, error) {
@@ -74,16 +69,13 @@ func (c *Client) ReadCardCertificates(ctx context.Context, cardHandle string, cr
 		}
 		cc := &CardCertificate{
 			CertRef:     string(info.CertRef),
+			Crypt:       crypt,
 			X509:        cert,
 			IssuerName:  info.X509Data.X509IssuerSerial.X509IssuerName,
 			SubjectName: info.X509Data.X509SubjectName,
 		}
 		if adm, err := gempki.ParseAdmissionStatement(cert); err == nil {
-			cc.Admission = &AdmissionInfo{
-				ProfessionItems:    adm.ProfessionItems,
-				ProfessionOids:     adm.ProfessionOids,
-				RegistrationNumber: adm.RegistrationNumber,
-			}
+			cc.Admission = adm
 		}
 		certs = append(certs, cc)
 	}
@@ -107,5 +99,33 @@ func (c *Client) ReadAllCardCertificates(ctx context.Context, card *Card) ([]*Ca
 	}
 
 	return append(eccCerts, rsaCerts...), nil
+}
 
+func (c *Client) CheckCertificateExpiration(ctx context.Context, crypt certificateservice601.CryptType, cardHandle string) ([]certificateservice601.CertificateExpirationType, error) {
+	proxy, err := c.createLatestServiceProxy(ServiceNameCertificateService)
+	if err != nil {
+		return nil, err
+	}
+
+	envelope := &certificateservice601.CheckCertificateExpirationEnvelope{
+		CheckCertificateExpiration: &certificateservice601.CheckCertificateExpiration{
+			CardHandle: cardHandle,
+			Context:    c.connectorContext(),
+			Crypt:      crypt,
+		},
+	}
+
+	var resp certificateservice601.CheckCertificateExpirationResponseEnvelope
+	if err := proxy.Call(ctx, &certificateservice601.OperationCheckCertificateExpiration, envelope, &resp); err != nil {
+		return nil, fmt.Errorf("CheckCertificateExpiration: %w", err)
+	}
+
+	if resp.Fault != nil {
+		return nil, fmt.Errorf("CheckCertificateExpiration SOAP fault: %s", resp.Fault.String)
+	}
+	if resp.CheckCertificateExpirationResponse == nil {
+		return nil, fmt.Errorf("CheckCertificateExpiration: empty response")
+	}
+
+	return resp.CheckCertificateExpirationResponse.CertificateExpiration, nil
 }
