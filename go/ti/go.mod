@@ -4,9 +4,9 @@ go 1.25.7
 
 require (
 	github.com/alecthomas/chroma/v2 v2.23.1
-	github.com/gematik/zero-lab/go/brainpool v0.0.0-20260206105435-3f58f701734e
-	github.com/gematik/zero-lab/go/kon v0.0.0-20260218054643-ad26161f5f17
-	github.com/gematik/zero-lab/go/pkcs12 v0.0.0-20260218060622-f0988b82292e
+	github.com/gematik/zero-lab/go/brainpool v0.0.0-20260218061118-ce81d5181e50
+	github.com/gematik/zero-lab/go/kon v0.0.0-20260218061118-ce81d5181e50
+	github.com/gematik/zero-lab/go/pkcs12 v0.0.0-20260218061118-ce81d5181e50
 	github.com/phsym/console-slog v0.3.1
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/term v0.40.0
@@ -14,9 +14,9 @@ require (
 
 require (
 	github.com/dlclark/regexp2 v1.11.5 // indirect
-	github.com/gematik/zero-lab/go/gempki v0.0.0-20260206105435-3f58f701734e // indirect
+	github.com/gematik/zero-lab/go/gempki v0.0.0-20260218061118-ce81d5181e50 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/spf13/pflag v1.0.9 // indirect
-	golang.org/x/crypto v0.38.0 // indirect
+	github.com/spf13/pflag v1.0.10 // indirect
+	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 )
