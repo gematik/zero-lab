@@ -35,8 +35,6 @@ func runGetIdentities(ctx context.Context, config *kon.Dotkon) error {
 
 	cards, err := client.GetCardsByType(ctx,
 		cardservicecommon20.CardTypeHba,
-		cardservicecommon20.CardTypeSmcB,
-		//		cardservicecommon20.CardTypeHsmB,
 		cardservicecommon20.CardTypeSmB,
 	)
 	if err != nil {
