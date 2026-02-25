@@ -328,3 +328,60 @@ func TestSubjectParsing(t *testing.T) {
 	assert.Equal(t, "Ullrich", givenName)
 	assert.Equal(t, "Angerm\u00e4nn", surname)
 }
+
+func TestCrossCertificateVerification(t *testing.T) {
+	var anchorPEM = `-----BEGIN CERTIFICATE-----
+MIICzTCCAnOgAwIBAgIBATAKBggqhkjOPQQDAjCBgjELMAkGA1UEBhMCREUxHzAd
+BgNVBAoMFmdlbWF0aWsgR21iSCBOT1QtVkFMSUQxNDAyBgNVBAsMK1plbnRyYWxl
+IFJvb3QtQ0EgZGVyIFRlbGVtYXRpa2luZnJhc3RydWt0dXIxHDAaBgNVBAMME0dF
+TS5SQ0ExMCBURVNULU9OTFkwHhcNMjUwNTA4MTIwODA0WhcNMzUwNTA2MTIwODA0
+WjCBgjELMAkGA1UEBhMCREUxHzAdBgNVBAoMFmdlbWF0aWsgR21iSCBOT1QtVkFM
+SUQxNDAyBgNVBAsMK1plbnRyYWxlIFJvb3QtQ0EgZGVyIFRlbGVtYXRpa2luZnJh
+c3RydWt0dXIxHDAaBgNVBAMME0dFTS5SQ0ExMCBURVNULU9OTFkwWTATBgcqhkjO
+PQIBBggqhkjOPQMBBwNCAATnZExIrTwptz9EJUY/T9n8n10aY++5T2JQKarANPCm
+PSo9nv2vwvePXbe7tB+6QQj0jwDniWrOwd5PtTFjMXDio4HXMIHUMB0GA1UdDgQW
+BBS0QNvJwfb7eHYiztH7eSbzWIqRCjBKBggrBgEFBQcBAQQ+MDwwOgYIKwYBBQUH
+MAGGLmh0dHA6Ly9vY3NwLXRlc3RyZWYucm9vdC1jYS50aS1kaWVuc3RlLmRlL29j
+c3AwDgYDVR0PAQH/BAQDAgEGMEYGA1UdIAQ/MD0wOwYIKoIUAEwEgSMwLzAtBggr
+BgEFBQcCARYhaHR0cDovL3d3dy5nZW1hdGlrLmRlL2dvL3BvbGljaWVzMA8GA1Ud
+EwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDSAAwRQIhAKmNBIGUeu2PFH6hD2mGyGSx
+rvVY8gsiooXO+gwODNfiAiByRfTY1l2QB3UGWrgyDZs8SAkKPAltj0zNKuuhj8uF
+DQ==
+-----END CERTIFICATE-----`
+
+	var crossCertPEM = `-----BEGIN CERTIFICATE-----
+MIIC7jCCApWgAwIBAgIBBjAKBggqhkjOPQQDAjCBgjELMAkGA1UEBhMCREUxHzAd
+BgNVBAoMFmdlbWF0aWsgR21iSCBOT1QtVkFMSUQxNDAyBgNVBAsMK1plbnRyYWxl
+IFJvb3QtQ0EgZGVyIFRlbGVtYXRpa2luZnJhc3RydWt0dXIxHDAaBgNVBAMME0dF
+TS5SQ0ExMCBURVNULU9OTFkwHhcNMjUwNzMxMDkzNzU0WhcNMzUwNTA2MDkzNzUz
+WjCBgjELMAkGA1UEBhMCREUxHzAdBgNVBAoMFmdlbWF0aWsgR21iSCBOT1QtVkFM
+SUQxNDAyBgNVBAsMK1plbnRyYWxlIFJvb3QtQ0EgZGVyIFRlbGVtYXRpa2luZnJh
+c3RydWt0dXIxHDAaBgNVBAMME0dFTS5SQ0ExMSBURVNULU9OTFkwWjAUBgcqhkjO
+PQIBBgkrJAMDAggBAQcDQgAEM+tXRqOS0Fak7/qZdiZQwlKmm+3OspytaRA1OdrO
+4sUO3JoeLSTUDUAJoOtchwDwiq9jrbsVbaQDU4VqB3BcQKOB+DCB9TAdBgNVHQ4E
+FgQUAgoWJunzX0JiKe6ckosFM5fechQwHwYDVR0jBBgwFoAUtEDbycH2+3h2Is7R
++3km81iKkQowSgYIKwYBBQUHAQEEPjA8MDoGCCsGAQUFBzABhi5odHRwOi8vb2Nz
+cC10ZXN0cmVmLnJvb3QtY2EudGktZGllbnN0ZS5kZS9vY3NwMA4GA1UdDwEB/wQE
+AwIBBjBGBgNVHSAEPzA9MDsGCCqCFABMBIEjMC8wLQYIKwYBBQUHAgEWIWh0dHA6
+Ly93d3cuZ2VtYXRpay5kZS9nby9wb2xpY2llczAPBgNVHRMBAf8EBTADAQH/MAoG
+CCqGSM49BAMCA0cAMEQCIGJzLNFtIM9MMMkFWkUv+Z5xzhCmR/CCjIbzwQCbkVgJ
+AiA8IFHJslZ76EpSSgKQkDdsFTOHeDXzjeDd+xBcm5IrIg==
+-----END CERTIFICATE-----`
+
+	anchorCert, err := brainpool.ParseCertificatePEM([]byte(anchorPEM))
+	if err != nil {
+		t.Fatalf("Failed to parse root certificate: %v", err)
+	}
+
+	crossCert, err := brainpool.ParseCertificatePEM([]byte(crossCertPEM))
+	if err != nil {
+		t.Fatalf("Failed to parse cross certificate: %v", err)
+	}
+
+	assert.Equal(t, 665, len(crossCert.RawTBSCertificate), "Unexpected length of RawTBSCertificate in cross certificate")
+
+	err = crossCert.CheckSignatureFrom(anchorCert)
+	if err != nil {
+		t.Fatalf("Cross certificate signature verification failed: %v", err)
+	}
+}

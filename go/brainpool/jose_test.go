@@ -41,7 +41,7 @@ func TestJose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse returned an error: %v", err)
 	}
-	t.Logf("Verified Token: %v", verifiedToken)
+	t.Logf("Verified Token claims: %v", verifiedToken.Claims)
 
 }
 
@@ -73,7 +73,7 @@ func TestCrossVerify(t *testing.T) {
 		t.Fatalf("Parse returned an error: %v", err)
 	}
 
-	t.Logf("Verified Token: %v", verifiedToken)
+	t.Logf("Verified Token claims: %v", verifiedToken.Claims)
 
 }
 
@@ -99,7 +99,7 @@ func TestCrossSign(t *testing.T) {
 		t.Fatalf("Parse returned an error: %v", err)
 	}
 
-	t.Logf("Verified Token: %v", verifiedToken)
+	t.Logf("Verified Token claims: %v", verifiedToken.Claims)
 }
 
 func TestJWK(t *testing.T) {

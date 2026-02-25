@@ -52,3 +52,8 @@ generate-versions:
     just generate-version-file pdp/version.go pdp {{ZERO_PDP_VERSION}}
     just generate-version-file ti/version.go main {{TI_CLI_VERSION}}
 
+# Update roots.json files for embedded use
+update-roots:
+    curl -o ./gempki/roots-test.json https://download-test.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json
+    curl -o ./gempki/roots-dev-ref.json https://download-ref.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json
+    curl -o ./gempki/roots-prod.json https://download.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json

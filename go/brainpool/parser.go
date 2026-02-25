@@ -184,6 +184,12 @@ func parseCertificate(der []byte) (*x509.Certificate, error) {
 		return nil, errors.New("brainpool: failed to parse certificate: invalid ASN.1 data")
 	}
 
+	peek := certSeq
+	var tbsCertRaw cryptobyte.String
+	if !peek.ReadASN1Element(&tbsCertRaw, cryptobyte_asn1.SEQUENCE) {
+		return nil, errors.New("brainpool: failed to read TBSCertificate")
+	}
+
 	var tbsCertSeq cryptobyte.String
 	if !certSeq.ReadASN1(&tbsCertSeq, cryptobyte_asn1.SEQUENCE) {
 		return nil, errors.New("brainpool: failed to parse tbsCertificate: invalid ASN.1 data")
@@ -260,7 +266,7 @@ func parseCertificate(der []byte) (*x509.Certificate, error) {
 	cert.Raw = der
 	cert.RawIssuer = issuerSeq
 	cert.RawSubject = subjectSeq
-	cert.RawTBSCertificate = tbsCertSeq
+	cert.RawTBSCertificate = tbsCertRaw
 	cert.RawSubjectPublicKeyInfo = spkiSeq
 	cert.Version = version + 1
 	cert.SerialNumber = new(big.Int).SetBytes(serial)
@@ -516,6 +522,7 @@ func processKnownExtensions(cert *x509.Certificate) (err error) {
 			cert.IsCA = isCA
 			cert.MaxPathLen = maxPathLen
 			cert.MaxPathLenZero = maxPathLenZero
+			cert.BasicConstraintsValid = true
 		case ext.Id.Equal(oidExtensionKeyUsage):
 			if cert.KeyUsage, err = parseExtensionKeyUsage(ext.Value); err != nil {
 				return err

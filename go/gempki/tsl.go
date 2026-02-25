@@ -1,13 +1,17 @@
 package gempki
 
 import (
+	"context"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/xml"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gematik/zero-lab/go/brainpool"
@@ -17,8 +21,18 @@ const URLTrustServiceListTest = "https://download-test.tsl.ti-dienste.de/ECC/ECC
 const URLTrustServiceListRef = "https://download-ref.tsl.ti-dienste.de/ECC/ECC-RSA_TSL-ref.xml"
 const URLTrustServiceListProd = "https://download.tsl.ti-dienste.de/ECC/ECC-RSA_TSL.xml"
 
-func LoadTSL(url string) (*TrustServiceStatusList, error) {
-	resp, err := http.Get(url)
+func UpdateTSL(ctx context.Context, httpClient *http.Client, tsl *TrustServiceStatusList) (*TrustServiceStatusList, error) {
+	if tsl == nil {
+		return nil, fmt.Errorf("TSL is nil")
+	}
+	// construct sha2 url
+	sha2Url := strings.Replace(tsl.Url, ".xml", ".sha2", 1)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sha2Url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -31,13 +45,46 @@ func LoadTSL(url string) (*TrustServiceStatusList, error) {
 		return nil, err
 	}
 
-	slog.Warn("TSL is loaded from the internet. Implement signature verification in production.", "url", url)
+	// compare hash
+	newHash := strings.TrimSpace(string(body))
+
+	if tsl.Hash == newHash {
+		slog.Info("TSL is up to date", "url", tsl.Url)
+		return tsl, nil
+	}
+
+	slog.Info("TSL update available", "url", tsl.Url)
+	return LoadTSL(ctx, httpClient, tsl.Url)
+}
+
+func LoadTSL(ctx context.Context, httpClient *http.Client, url string) (*TrustServiceStatusList, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP response error: %s", resp.Status)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	hash := sha256.Sum256(body)
+	hashStr := hex.EncodeToString(hash[:])
 
 	tsl := new(TrustServiceStatusList)
 	err = xml.Unmarshal(body, tsl)
 	if err != nil {
 		return nil, err
 	}
+	tsl.Hash = hashStr
+	tsl.Url = url
 	return tsl, nil
 }
 
@@ -75,9 +122,11 @@ func (t *DateTime) MarshalJSON() ([]byte, error) {
 	return []byte(str), nil
 }
 
-const Svctype_CA_PKC = "http://uri.etsi.org/TrstSvc/Svctype/CA/PKC"
-const Svctype_CA_CVC = "http://uri.telematik/TrstSvc/Svctype/CA/CVC"
-const Svctype_Certstatus_OCSP = "http://uri.etsi.org/TrstSvc/Svctype/Certstatus/OCSP"
+const (
+	ServiceTypeCaPkc          = "http://uri.etsi.org/TrstSvc/Svctype/CA/PKC"
+	ServiceTypeCaCvc          = "http://uri.telematik/TrstSvc/Svctype/CA/CVC"
+	ServiceTypeCertstatusOcsp = "http://uri.etsi.org/TrstSvc/Svctype/Certstatus/OCSP"
+)
 
 type MultiLangString struct {
 	Lang  string `xml:"http://www.w3.org/XML/1998/namespace lang,attr"`
@@ -220,6 +269,8 @@ type TrustServiceProvider struct {
 }
 
 type TrustServiceStatusList struct {
+	Hash                     string                 `xml:"-"`
+	Url                      string                 `xml:"-"`
 	XMLName                  xml.Name               `xml:"http://uri.etsi.org/02231/v2# TrustServiceStatusList"`
 	Id                       string                 `xml:"Id,attr"`
 	TSLTag                   string                 `xml:"TSLTag,attr"`
