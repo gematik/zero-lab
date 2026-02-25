@@ -21,35 +21,45 @@ const URLTrustServiceListTest = "https://download-test.tsl.ti-dienste.de/ECC/ECC
 const URLTrustServiceListRef = "https://download-ref.tsl.ti-dienste.de/ECC/ECC-RSA_TSL-ref.xml"
 const URLTrustServiceListProd = "https://download.tsl.ti-dienste.de/ECC/ECC-RSA_TSL.xml"
 
-func UpdateTSL(ctx context.Context, httpClient *http.Client, tsl *TrustServiceStatusList) (*TrustServiceStatusList, error) {
-	if tsl == nil {
-		return nil, fmt.Errorf("TSL is nil")
-	}
+func IsTSLUpdateAvailable(ctx context.Context, httpClient *http.Client, url string, hash string) (bool, error) {
 	// construct sha2 url
-	sha2Url := strings.Replace(tsl.Url, ".xml", ".sha2", 1)
+	sha2Url := strings.Replace(url, ".xml", ".sha2", 1)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sha2Url, nil)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP response error: %s", resp.Status)
+		return false, fmt.Errorf("HTTP response error: %s", resp.Status)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 
 	// compare hash
 	newHash := strings.TrimSpace(string(body))
 
-	if tsl.Hash == newHash {
-		slog.Info("TSL is up to date", "url", tsl.Url)
+	if hash == newHash {
+		slog.Debug("TSL is up to date", "url", url)
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func UpdateTSL(ctx context.Context, httpClient *http.Client, tsl *TrustServiceStatusList) (*TrustServiceStatusList, error) {
+
+	updateAvailable, err := IsTSLUpdateAvailable(ctx, httpClient, tsl.Url, tsl.Hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check for TSL update: %w", err)
+	} else if !updateAvailable {
+		slog.Debug("No TSL update available", "url", tsl.Url)
 		return tsl, nil
 	}
 
@@ -58,6 +68,7 @@ func UpdateTSL(ctx context.Context, httpClient *http.Client, tsl *TrustServiceSt
 }
 
 func LoadTSL(ctx context.Context, httpClient *http.Client, url string) (*TrustServiceStatusList, error) {
+	slog.Info("Loading TSL", "url", url)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -70,11 +81,15 @@ func LoadTSL(ctx context.Context, httpClient *http.Client, url string) (*TrustSe
 		return nil, fmt.Errorf("HTTP response error: %s", resp.Status)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+
+	return ParseTSL(resp.Body, url)
+}
+
+func ParseTSL(input io.Reader, url string) (*TrustServiceStatusList, error) {
+	body, err := io.ReadAll(input)
 	if err != nil {
 		return nil, err
 	}
-
 	hash := sha256.Sum256(body)
 	hashStr := hex.EncodeToString(hash[:])
 
@@ -85,6 +100,7 @@ func LoadTSL(ctx context.Context, httpClient *http.Client, url string) (*TrustSe
 	}
 	tsl.Hash = hashStr
 	tsl.Url = url
+	tsl.Raw = body
 	return tsl, nil
 }
 
@@ -271,6 +287,7 @@ type TrustServiceProvider struct {
 type TrustServiceStatusList struct {
 	Hash                     string                 `xml:"-"`
 	Url                      string                 `xml:"-"`
+	Raw                      []byte                 `xml:"-"`
 	XMLName                  xml.Name               `xml:"http://uri.etsi.org/02231/v2# TrustServiceStatusList"`
 	Id                       string                 `xml:"Id,attr"`
 	TSLTag                   string                 `xml:"TSLTag,attr"`

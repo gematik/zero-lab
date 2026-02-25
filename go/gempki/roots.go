@@ -92,6 +92,8 @@ func LoadRoots(ctx context.Context, httpClient *http.Client, env Environment) (*
 		return nil, fmt.Errorf("unknown environment: %s", env)
 	}
 
+	slog.Info("Loading roots from the internet", "environment", env, "url", url)
+
 	resp, err := httpClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch roots: %w", err)
@@ -149,6 +151,8 @@ func parseRoots(env Environment, input io.Reader) (*Roots, error) {
 	default:
 		return nil, fmt.Errorf("unknown environment: %s", env)
 	}
+
+	slog.Info("Verifying roots with trust anchor", "anchor", anchor.Subject.CommonName)
 
 	certs, err := verifyRoots(anchor, jsonRoots)
 	if err != nil {
