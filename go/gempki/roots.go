@@ -318,8 +318,10 @@ func verifyCrossSigned(anchor, c, s *x509.Certificate) error {
 	return nil
 }
 
-func (r Roots) BuildCertPoolWithSubCAs(tsl *TrustServiceStatusList) *x509.CertPool {
-	caPool := x509.NewCertPool()
+func (r Roots) FilterValidSubCAs(tsl *TrustServiceStatusList) []*x509.Certificate {
+	var validSubCAs []*x509.Certificate
+	// add all CA certificates from TSL which were issued by the roots
+
 	// add all CA certificates from TSL which were issued by the roots
 	for _, provider := range tsl.TrustServiceProviderList {
 		for _, service := range provider.TSPServices {
@@ -330,6 +332,7 @@ func (r Roots) BuildCertPoolWithSubCAs(tsl *TrustServiceStatusList) *x509.CertPo
 					slog.Debug("CA certificate not issued any known root", "ca", caCert.Subject.CommonName)
 					continue
 				}
+				// check if the CA certificate was issued by the matching root
 				if err := caCert.CheckSignatureFrom(root); err != nil {
 					slog.Error("CA certificate not signed by root", "ca", caCert.Subject.CommonName, "root", root.Subject.CommonName)
 					continue
@@ -350,10 +353,23 @@ func (r Roots) BuildCertPoolWithSubCAs(tsl *TrustServiceStatusList) *x509.CertPo
 					continue
 				}
 
-				// check if the CA certificate was issued by the matching root
-				caPool.AddCert(caCert)
+				validSubCAs = append(validSubCAs, caCert)
+				slog.Debug("Added valid CA certificate from TSL", "ca", caCert.Subject.CommonName, "issuer", caCert.Issuer.CommonName)
 			}
 		}
 	}
-	return caPool
+	return validSubCAs
+}
+
+func (r Roots) BuildCertPoolWithSubCAs(tsl *TrustServiceStatusList) *x509.CertPool {
+	certPool := x509.NewCertPool()
+	for _, root := range r.ByCommonName {
+		certPool.AddCert(root)
+	}
+
+	for _, subCA := range r.FilterValidSubCAs(tsl) {
+		certPool.AddCert(subCA)
+	}
+
+	return certPool
 }
