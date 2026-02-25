@@ -3,7 +3,7 @@ module github.com/gematik/zero-lab/go/gempki
 go 1.24.0
 
 require (
-	github.com/gematik/zero-lab/go/brainpool v0.0.0-20260223163307-6fceb940705a
+	github.com/gematik/zero-lab/go/brainpool v0.0.0-20260225184437-39af4f661717
 	github.com/stretchr/testify v1.11.1
 )
 
