@@ -24,71 +24,32 @@ type probeResult struct {
 	Err   error
 }
 
-type environment struct {
-	EPAAS1  string
-	EPAAS2  string
-	IDP     string
-	ERezept string
-}
-
-var (
-	envDev = environment{
-		EPAAS1:  "https://epa-as-1.dev.epa4all.de",
-		EPAAS2:  "https://epa-as-2.dev.epa4all.de",
-		IDP:     "https://idp-ref.zentral.idp.splitdns.ti-dienste.de",
-		ERezept: "https://erp-ref.zentral.erp.splitdns.ti-dienste.de",
-	}
-	envRef = environment{
-		EPAAS1:  "https://epa-as-1.ref.epa4all.de",
-		EPAAS2:  "https://epa-as-2.ref.epa4all.de",
-		IDP:     "https://idp-ref.zentral.idp.splitdns.ti-dienste.de",
-		ERezept: "https://erp-ref.zentral.erp.splitdns.ti-dienste.de",
-	}
-	envTest = environment{
-		EPAAS1:  "https://epa-as-1.test.epa4all.de",
-		EPAAS2:  "https://epa-as-2.test.epa4all.de",
-		IDP:     "https://idp-ref.zentral.idp.splitdns.ti-dienste.de",
-		ERezept: "https://erp-test.zentral.erp.splitdns.ti-dienste.de",
-	}
-	envProd = environment{
-		EPAAS1:  "https://epa-as-1.prod.epa4all.de",
-		EPAAS2:  "https://epa-as-2.prod.epa4all.de",
-		IDP:     "https://idp.zentral.idp.splitdns.ti-dienste.de",
-		ERezept: "https://erp.zentral.erp.splitdns.ti-dienste.de",
-	}
-)
-
 func newProbeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "probe",
 		Short: "Check connectivity to TI services",
 	}
 
-	for name, env := range map[string]environment{
-		"dev":  envDev,
-		"ref":  envRef,
-		"test": envTest,
-		"prod": envProd,
-	} {
-		cmd.AddCommand(&cobra.Command{
+	addEnvSubcommands(cmd, func(name string, def envDef) *cobra.Command {
+		return &cobra.Command{
 			Use:   name,
 			Short: fmt.Sprintf("Probe %s environment", name),
 			Args:  cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, args []string) error {
-				return runProbe(env)
+				return runProbe(def)
 			},
-		})
-	}
+		}
+	})
 
 	return cmd
 }
 
-func runProbe(env environment) error {
+func runProbe(def envDef) error {
 	targets := []probeTarget{
-		{Label: "IDP", URL: env.IDP},
-		{Label: "eRX", URL: env.ERezept},
-		{Label: "ePA 1", URL: env.EPAAS1},
-		{Label: "ePA 2", URL: env.EPAAS2},
+		{Label: "IDP", URL: def.IDP},
+		{Label: "eRX", URL: def.ERezept},
+		{Label: "ePA 1", URL: def.EPAAS1},
+		{Label: "ePA 2", URL: def.EPAAS2},
 	}
 
 	results := make([]probeResult, len(targets))
@@ -129,11 +90,10 @@ func probeURL(target string) error {
 		return err
 	}
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
-	}
+	client := clientWithTransport(&http.Transport{
+		Proxy:           http.ProxyFromEnvironment,
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	})
 	resp, err := client.Do(req)
 	if err != nil {
 		return err

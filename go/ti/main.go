@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/adrg/xdg"
 	"github.com/alecthomas/chroma/v2/quick"
 	"github.com/gematik/zero-lab/go/kon"
 	console "github.com/phsym/console-slog"
@@ -53,6 +54,7 @@ func main() {
 	rootCmd.AddCommand(konCmd)
 	rootCmd.AddCommand(newPKCS12Cmd())
 	rootCmd.AddCommand(newProbeCmd())
+	rootCmd.AddCommand(newPKICmd())
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "version",
 		Short: "Print the version number",
@@ -143,24 +145,15 @@ func resolveKonFile(name string) (string, error) {
 	}
 
 	// 3. Try XDG config directory: $XDG_CONFIG_HOME/telematik/kon/<name>.kon
-	xdgDir := os.Getenv("XDG_CONFIG_HOME")
-	if xdgDir == "" {
-		home, err := os.UserHomeDir()
-		if err == nil {
-			xdgDir = filepath.Join(home, ".config")
-		}
+	xdgPath := filepath.Join(xdg.ConfigHome, "telematik", "kon", name+".kon")
+	if _, err := os.Stat(xdgPath); err == nil {
+		return xdgPath, nil
 	}
-	if xdgDir != "" {
-		xdgPath := filepath.Join(xdgDir, "telematik", "kon", name+".kon")
-		if _, err := os.Stat(xdgPath); err == nil {
-			return xdgPath, nil
-		}
-		xdgPathExact := filepath.Join(xdgDir, "telematik", "kon", name)
-		if _, err := os.Stat(xdgPathExact); err == nil {
-			return xdgPathExact, nil
-		}
+	xdgPathExact := filepath.Join(xdg.ConfigHome, "telematik", "kon", name)
+	if _, err := os.Stat(xdgPathExact); err == nil {
+		return xdgPathExact, nil
 	}
 
 	return "", fmt.Errorf("configuration %q not found (searched current directory and %s/telematik/kon/)",
-		name, xdgDir)
+		name, xdg.ConfigHome)
 }

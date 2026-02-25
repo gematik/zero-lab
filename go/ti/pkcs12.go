@@ -233,7 +233,7 @@ func runPKCS12Inspect(file string) error {
 func describePublicKey(pub any) string {
 	switch k := pub.(type) {
 	case *rsa.PublicKey:
-		return fmt.Sprintf("%d bit", k.N.BitLen())
+		return fmt.Sprintf("RSA-%d", k.N.BitLen())
 	case *ecdsa.PublicKey:
 		return describeECCurve(k.Curve)
 	default:
