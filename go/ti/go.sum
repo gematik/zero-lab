@@ -13,10 +13,14 @@ github.com/dlclark/regexp2 v1.11.5 h1:Q/sSnsKerHeCkc/jSTNq1oCm7KiVgUMZRDUoRu0JQZ
 github.com/dlclark/regexp2 v1.11.5/go.mod h1:DHkYz0B9wPfa6wondMfaivmHpzrQ3v9q8cnmRbL6yW8=
 github.com/gematik/zero-lab/go/brainpool v0.0.0-20260225170509-b0fbaf80cff1 h1:Vi8LshScbPgPRS9Vg4ympviVxWKKF/3dDv/AhW0nPtA=
 github.com/gematik/zero-lab/go/brainpool v0.0.0-20260225170509-b0fbaf80cff1/go.mod h1:TaeFLI1a/MDVsD8s9QcvIBigMUB6TrwjTW07mjrfhek=
+github.com/gematik/zero-lab/go/brainpool v0.0.0-20260225184437-39af4f661717 h1:HJNYEujTQip8Y+J7WmyDFTSVUfO12xocxgKCX1mAqMY=
+github.com/gematik/zero-lab/go/brainpool v0.0.0-20260225184437-39af4f661717/go.mod h1:TaeFLI1a/MDVsD8s9QcvIBigMUB6TrwjTW07mjrfhek=
 github.com/gematik/zero-lab/go/gempki v0.0.0-20260225170509-b0fbaf80cff1 h1:SIbwACTT+0G/3sKceXGOznTqgII8s/Zc5L33bxd9pXM=
 github.com/gematik/zero-lab/go/gempki v0.0.0-20260225170509-b0fbaf80cff1/go.mod h1:iVEbRMGcReihrRQQVhgCnoEpvHpSRh1oNt1GECh6QLU=
 github.com/gematik/zero-lab/go/kon v0.0.0-20260225170509-b0fbaf80cff1 h1:J4dDnsE+8tJIlDF8gfUzm9p4ibcCRGW3On0vhKc28M8=
 github.com/gematik/zero-lab/go/kon v0.0.0-20260225170509-b0fbaf80cff1/go.mod h1:zvjLENBXWAYv25HGlN4RVTxumcE6kwht99MrzFOpo90=
+github.com/gematik/zero-lab/go/kon v0.0.0-20260225184437-39af4f661717 h1:asj5VsoSvTfZM1l7VMe8WJh56WudZPf71GJI5j1x3Y4=
+github.com/gematik/zero-lab/go/kon v0.0.0-20260225184437-39af4f661717/go.mod h1:zvjLENBXWAYv25HGlN4RVTxumcE6kwht99MrzFOpo90=
 github.com/gematik/zero-lab/go/pkcs12 v0.0.0-20260225170509-b0fbaf80cff1 h1:FU8v9lG0wgooNkAqTS37OcdOxx3nT70c8YORgj4kObA=
 github.com/gematik/zero-lab/go/pkcs12 v0.0.0-20260225170509-b0fbaf80cff1/go.mod h1:qlLEtTDv4e8NfH3dYKppkSiOVXJi2jsigMBdS+nPtT4=
 github.com/hexops/gotextdiff v1.0.3 h1:gitA9+qJrrTCsiCl7+kh75nPqQt1cx4ZkudSTLoUqJM=

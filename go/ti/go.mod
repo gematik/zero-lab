@@ -5,9 +5,9 @@ go 1.25.7
 require (
 	github.com/adrg/xdg v0.5.3
 	github.com/alecthomas/chroma/v2 v2.23.1
-	github.com/gematik/zero-lab/go/brainpool v0.0.0-20260225170509-b0fbaf80cff1
+	github.com/gematik/zero-lab/go/brainpool v0.0.0-20260225184437-39af4f661717
 	github.com/gematik/zero-lab/go/gempki v0.0.0-20260225170509-b0fbaf80cff1
-	github.com/gematik/zero-lab/go/kon v0.0.0-20260225170509-b0fbaf80cff1
+	github.com/gematik/zero-lab/go/kon v0.0.0-20260225184437-39af4f661717
 	github.com/gematik/zero-lab/go/pkcs12 v0.0.0-20260225170509-b0fbaf80cff1
 	github.com/phsym/console-slog v0.3.1
 	github.com/spf13/cobra v1.10.2
