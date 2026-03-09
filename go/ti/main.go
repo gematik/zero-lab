@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/adrg/xdg"
 	"github.com/alecthomas/chroma/v2/quick"
 	"github.com/gematik/zero-lab/go/kon"
 	console "github.com/phsym/console-slog"
@@ -50,6 +49,7 @@ func main() {
 	konCmd.AddCommand(newDescribeCmd())
 	konCmd.AddCommand(newVerifyCmd())
 	konCmd.AddCommand(newChangeCmd())
+	konCmd.AddCommand(newKonConfigsCmd())
 
 	rootCmd.AddCommand(konCmd)
 	rootCmd.AddCommand(newPKCS12Cmd())
@@ -145,15 +145,15 @@ func resolveKonFile(name string) (string, error) {
 	}
 
 	// 3. Try XDG config directory: $XDG_CONFIG_HOME/telematik/kon/<name>.kon
-	xdgPath := filepath.Join(xdg.ConfigHome, "telematik", "kon", name+".kon")
+	xdgPath := filepath.Join(xdgConfigHome(), "telematik", "kon", name+".kon")
 	if _, err := os.Stat(xdgPath); err == nil {
 		return xdgPath, nil
 	}
-	xdgPathExact := filepath.Join(xdg.ConfigHome, "telematik", "kon", name)
+	xdgPathExact := filepath.Join(xdgConfigHome(), "telematik", "kon", name)
 	if _, err := os.Stat(xdgPathExact); err == nil {
 		return xdgPathExact, nil
 	}
 
 	return "", fmt.Errorf("configuration %q not found (searched current directory and %s/telematik/kon/)",
-		name, xdg.ConfigHome)
+		name, xdgConfigHome())
 }

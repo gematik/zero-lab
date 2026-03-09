@@ -2,15 +2,28 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
-	"github.com/adrg/xdg"
 	bolt "go.etcd.io/bbolt"
 )
 
-func openDB() (*bolt.DB, error) {
-	path, err := xdg.DataFile("telematik/cli.db")
-	if err != nil {
-		return nil, fmt.Errorf("resolving db path: %w", err)
+// xdgConfigHome returns $XDG_CONFIG_HOME if set, otherwise ~/.config.
+// This deliberately ignores platform-specific overrides (e.g. macOS
+// ~/Library/Application Support) so the path is consistent everywhere.
+func xdgConfigHome() string {
+	if h := os.Getenv("XDG_CONFIG_HOME"); h != "" {
+		return h
 	}
-	return bolt.Open(path, 0o600, nil)
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config")
+}
+
+func openDB() (*bolt.DB, error) {
+	dir := filepath.Join(xdgConfigHome(), "telematik")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("creating config directory: %w", err)
+	}
+
+	return bolt.Open(filepath.Join(dir, "cli.db"), 0o600, nil)
 }
