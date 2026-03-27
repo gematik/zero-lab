@@ -41,13 +41,59 @@ func NewHTTPClient(config *Dotkon) (*http.Client, *url.URL, error) {
 		},
 	}
 
-	if len(config.TrustedCertificates) > 0 {
-		certPool := x509.NewCertPool()
+	if len(config.TrustedCertificates) > 0 && !config.InsecureSkipVerify {
+		var caCerts, eeCerts []*x509.Certificate
 		for _, cert := range config.TrustedCertificates {
-			slog.Debug("adding trusted certificate", "subject", cert.Subject)
-			certPool.AddCert(cert)
+			slog.Debug("adding trusted certificate", "subject", cert.Subject, "isCA", cert.IsCA)
+			if cert.IsCA {
+				caCerts = append(caCerts, cert)
+			} else {
+				eeCerts = append(eeCerts, cert)
+			}
 		}
-		transport.TLSClientConfig.RootCAs = certPool
+
+		if len(eeCerts) > 0 {
+			// EE certs cannot be used as trust anchors in standard chain verification.
+			// Use InsecureSkipVerify + VerifyConnection to do direct cert matching.
+			caPool := x509.NewCertPool()
+			for _, ca := range caCerts {
+				caPool.AddCert(ca)
+			}
+			serverName := config.ExpectedHost
+			transport.TLSClientConfig.InsecureSkipVerify = true
+			transport.TLSClientConfig.VerifyConnection = func(cs tls.ConnectionState) error {
+				leaf := cs.PeerCertificates[0]
+				for _, trusted := range eeCerts {
+					if leaf.Equal(trusted) {
+						return nil
+					}
+				}
+				if len(caCerts) > 0 {
+					intermediates := x509.NewCertPool()
+					for _, c := range cs.PeerCertificates[1:] {
+						intermediates.AddCert(c)
+					}
+					hostname := cs.ServerName
+					if hostname == "" {
+						hostname = serverName
+					}
+					opts := x509.VerifyOptions{
+						DNSName:       hostname,
+						Roots:         caPool,
+						Intermediates: intermediates,
+					}
+					_, err := leaf.Verify(opts)
+					return err
+				}
+				return fmt.Errorf("certificate not trusted: %s", leaf.Subject)
+			}
+		} else {
+			certPool := x509.NewCertPool()
+			for _, ca := range caCerts {
+				certPool.AddCert(ca)
+			}
+			transport.TLSClientConfig.RootCAs = certPool
+		}
 	}
 
 	httpClient := &http.Client{
