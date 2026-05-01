@@ -235,7 +235,7 @@ type CardInfoErrType struct {
 	Error                     *error20.Error               `xml:"http://ws.gematik.de/tel/error/v2.0 Error,omitempty"`
 }
 
-// extends #/components/schemas/de.gematik.ws.conn.CardService81/CardInfoType
+// extends #/components/schemas/de.gematik.ws.conn.CardService81.CardInfoType
 func (CardInfoErrType) IsCardService81CardInfoType() {}
 
 type CardInfoTypeCardVersion struct {

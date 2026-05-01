@@ -3,6 +3,7 @@
 package certificateservice601
 
 import (
+	"encoding/base64"
 	"encoding/xml"
 	certificateservicecommon20 "github.com/gematik/zero-lab/go/kon/api/gematik/conn/certificateservicecommon20"
 	connectorcommon50 "github.com/gematik/zero-lab/go/kon/api/gematik/conn/connectorcommon50"
@@ -40,7 +41,7 @@ type ReadCardCertificateResponse struct {
 type VerifyCertificate struct {
 	XMLName          xml.Name                   `xml:"http://ws.gematik.de/conn/CertificateService/v6.0 VerifyCertificate"`
 	Context          connectorcontext20.Context `xml:"http://ws.gematik.de/conn/ConnectorContext/v2.0 Context"`
-	X509Certificate  string                     `xml:"http://ws.gematik.de/conn/CertificateServiceCommon/v2.0 X509Certificate"`
+	X509Certificate  Base64Bytes                `xml:"http://ws.gematik.de/conn/CertificateServiceCommon/v2.0 X509Certificate"`
 	VerificationTime string                     `xml:"VerificationTime,omitempty"`
 }
 
@@ -115,4 +116,23 @@ type VerifyCertificateResponseVerificationStatus struct {
 type VerifyCertificateResponseRoleList struct {
 	XMLName xml.Name `xml:"http://ws.gematik.de/conn/CertificateService/v6.0 RoleList"`
 	Role    []string `xml:"Role"`
+}
+
+type Base64Bytes []byte
+
+func (b *Base64Bytes) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var s string
+	if err := d.DecodeElement(&s, &start); err != nil {
+		return err
+	}
+	decoded, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return err
+	}
+	*b = decoded
+	return nil
+}
+
+func (b Base64Bytes) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	return e.EncodeElement(base64.StdEncoding.EncodeToString(b), start)
 }

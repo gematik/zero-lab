@@ -2,7 +2,10 @@
 
 package certificateservicecommon20
 
-import "encoding/xml"
+import (
+	"encoding/base64"
+	"encoding/xml"
+)
 
 type X509DataInfoList struct {
 	XMLName      xml.Name                           `xml:"http://ws.gematik.de/conn/CertificateServiceCommon/v2.0 X509DataInfoList"`
@@ -128,11 +131,30 @@ type X509DataInfoListTypeX509DataInfoX509Data struct {
 	XMLName          xml.Name                                                 `xml:"http://ws.gematik.de/conn/CertificateServiceCommon/v2.0 X509Data"`
 	X509IssuerSerial X509DataInfoListTypeX509DataInfoX509DataX509IssuerSerial `xml:"X509IssuerSerial"`
 	X509SubjectName  string                                                   `xml:"X509SubjectName"`
-	X509Certificate  string                                                   `xml:"X509Certificate"`
+	X509Certificate  Base64Bytes                                              `xml:"X509Certificate"`
 }
 
 type X509DataInfoListTypeX509DataInfoX509DataX509IssuerSerial struct {
 	XMLName          xml.Name `xml:"http://ws.gematik.de/conn/CertificateServiceCommon/v2.0 X509IssuerSerial"`
 	X509IssuerName   string   `xml:"X509IssuerName"`
 	X509SerialNumber string   `xml:"X509SerialNumber"`
+}
+
+type Base64Bytes []byte
+
+func (b *Base64Bytes) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var s string
+	if err := d.DecodeElement(&s, &start); err != nil {
+		return err
+	}
+	decoded, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return err
+	}
+	*b = decoded
+	return nil
+}
+
+func (b Base64Bytes) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	return e.EncodeElement(base64.StdEncoding.EncodeToString(b), start)
 }

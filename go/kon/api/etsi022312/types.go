@@ -3,6 +3,7 @@
 package etsi022312
 
 import (
+	"encoding/base64"
 	"encoding/xml"
 	xmldsig "github.com/gematik/zero-lab/go/kon/api/w3200009/xmldsig"
 )
@@ -283,7 +284,7 @@ type ExtensionType struct {
 	UnknownContent string
 }
 
-// extends #/components/schemas/org.etsi022312/AnyType
+// extends #/components/schemas/org.etsi022312.AnyType
 func (ExtensionType) IsEtsi022312AnyType() {}
 
 // Interface for types that extend ExtensionType
@@ -574,10 +575,10 @@ type IDigitalIdentityListType interface {
 func (DigitalIdentityListType) IsEtsi022312DigitalIdentityListType() {}
 
 type DigitalIdentityType struct {
-	X509Certificate string            `xml:"http://uri.etsi.org/02231/v2# X509Certificate,omitempty"`
+	X509Certificate Base64Bytes       `xml:"http://uri.etsi.org/02231/v2# X509Certificate,omitempty"`
 	X509SubjectName string            `xml:"http://uri.etsi.org/02231/v2# X509SubjectName,omitempty"`
 	KeyValue        *xmldsig.KeyValue `xml:"http://www.w3.org/2000/09/xmldsig# KeyValue,omitempty"`
-	X509ski         string            `xml:"http://uri.etsi.org/02231/v2# X509SKI,omitempty"`
+	X509ski         Base64Bytes       `xml:"http://uri.etsi.org/02231/v2# X509SKI,omitempty"`
 	Other           *AnyType          `xml:"http://uri.etsi.org/02231/v2# Other,omitempty"`
 }
 
@@ -623,3 +624,22 @@ type IAdditionalServiceInformationType interface {
 
 // The type itself implements IAdditionalServiceInformationType
 func (AdditionalServiceInformationType) IsEtsi022312AdditionalServiceInformationType() {}
+
+type Base64Bytes []byte
+
+func (b *Base64Bytes) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var s string
+	if err := d.DecodeElement(&s, &start); err != nil {
+		return err
+	}
+	decoded, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return err
+	}
+	*b = decoded
+	return nil
+}
+
+func (b Base64Bytes) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	return e.EncodeElement(base64.StdEncoding.EncodeToString(b), start)
+}

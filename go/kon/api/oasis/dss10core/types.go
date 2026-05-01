@@ -3,8 +3,8 @@
 package dss10core
 
 import (
+	"encoding/base64"
 	"encoding/xml"
-	saml10assertion "github.com/gematik/zero-lab/go/kon/api/oasis/saml10assertion"
 	xmldsig "github.com/gematik/zero-lab/go/kon/api/w3200009/xmldsig"
 )
 
@@ -23,7 +23,7 @@ type Document struct {
 	RefType             string               `xml:"RefType,attr,omitempty"`
 	SchemaRefs          string               `xml:"SchemaRefs,attr,omitempty"`
 	InlineXML           *InlineXMLType       `xml:"InlineXML,omitempty"`
-	Base64XML           string               `xml:"Base64XML,omitempty"`
+	Base64XML           Base64Bytes          `xml:"Base64XML,omitempty"`
 	EscapedXML          string               `xml:"EscapedXML,omitempty"`
 	Base64Data          *Base64Data          `xml:"Base64Data,omitempty"`
 	AttachmentReference *AttachmentReference `xml:"AttachmentReference,omitempty"`
@@ -46,7 +46,7 @@ type TransformedData struct {
 	Base64Data     Base64Data          `xml:"Base64Data"`
 }
 
-// extends #/components/schemas/oasis.names.tc.dss10.core/DocumentBaseType
+// extends #/components/schemas/oasis.names.tc.dss10.core.DocumentBaseType
 func (TransformedData) IsCoreDocumentBaseType() {}
 
 type DocumentHash struct {
@@ -58,10 +58,10 @@ type DocumentHash struct {
 	WhichReference int                   `xml:"WhichReference,attr,omitempty"`
 	Transforms     *xmldsig.Transforms   `xml:"http://www.w3.org/2000/09/xmldsig# Transforms,omitempty"`
 	DigestMethod   *xmldsig.DigestMethod `xml:"http://www.w3.org/2000/09/xmldsig# DigestMethod,omitempty"`
-	DigestValue    string                `xml:"http://www.w3.org/2000/09/xmldsig# DigestValue"`
+	DigestValue    Base64Bytes           `xml:"http://www.w3.org/2000/09/xmldsig# DigestValue"`
 }
 
-// extends #/components/schemas/oasis.names.tc.dss10.core/DocumentBaseType
+// extends #/components/schemas/oasis.names.tc.dss10.core.DocumentBaseType
 func (DocumentHash) IsCoreDocumentBaseType() {}
 
 type SignatureObject struct {
@@ -104,9 +104,9 @@ type OptionalOutputs struct {
 }
 
 type ClaimedIdentity struct {
-	XMLName        xml.Name                           `xml:"urn:oasis:names:tc:dss:1.0:core:schema ClaimedIdentity"`
-	Name           saml10assertion.NameIdentifierType `xml:"Name"`
-	SupportingInfo *AnyType                           `xml:"SupportingInfo,omitempty"`
+	XMLName        xml.Name `xml:"urn:oasis:names:tc:dss:1.0:core:schema ClaimedIdentity"`
+	Name           string   `xml:"Name"`
+	SupportingInfo *AnyType `xml:"SupportingInfo,omitempty"`
 }
 
 type Schemas struct {
@@ -121,7 +121,7 @@ type Schema struct {
 	RefType             string               `xml:"RefType,attr,omitempty"`
 	SchemaRefs          string               `xml:"SchemaRefs,attr,omitempty"`
 	InlineXML           *InlineXMLType       `xml:"InlineXML,omitempty"`
-	Base64XML           string               `xml:"Base64XML,omitempty"`
+	Base64XML           Base64Bytes          `xml:"Base64XML,omitempty"`
 	EscapedXML          string               `xml:"EscapedXML,omitempty"`
 	Base64Data          *Base64Data          `xml:"Base64Data,omitempty"`
 	AttachmentReference *AttachmentReference `xml:"AttachmentReference,omitempty"`
@@ -143,7 +143,7 @@ type SignRequest struct {
 	InputDocuments *InputDocuments `xml:"InputDocuments,omitempty"`
 }
 
-// extends #/components/schemas/oasis.names.tc.dss10.core/RequestBaseType
+// extends #/components/schemas/oasis.names.tc.dss10.core.RequestBaseType
 func (SignRequest) IsCoreRequestBaseType() {}
 
 type SignResponse struct {
@@ -155,7 +155,7 @@ type SignResponse struct {
 	SignatureObject *SignatureObject `xml:"SignatureObject,omitempty"`
 }
 
-// extends #/components/schemas/oasis.names.tc.dss10.core/ResponseBaseType
+// extends #/components/schemas/oasis.names.tc.dss10.core.ResponseBaseType
 func (SignResponse) IsCoreResponseBaseType() {}
 
 type AddTimestamp struct {
@@ -164,8 +164,8 @@ type AddTimestamp struct {
 }
 
 type IntendedAudience struct {
-	XMLName   xml.Name                             `xml:"urn:oasis:names:tc:dss:1.0:core:schema IntendedAudience"`
-	Recipient []saml10assertion.NameIdentifierType `xml:"Recipient"`
+	XMLName   xml.Name `xml:"urn:oasis:names:tc:dss:1.0:core:schema IntendedAudience"`
+	Recipient []string `xml:"Recipient"`
 }
 
 type KeySelector struct {
@@ -229,7 +229,7 @@ type VerifyRequest struct {
 	SignatureObject *SignatureObject `xml:"SignatureObject,omitempty"`
 }
 
-// extends #/components/schemas/oasis.names.tc.dss10.core/RequestBaseType
+// extends #/components/schemas/oasis.names.tc.dss10.core.RequestBaseType
 func (VerifyRequest) IsCoreRequestBaseType() {}
 
 type VerifyResponse struct {
@@ -282,13 +282,6 @@ type SigningTimeInfo struct {
 	SigningTimeBoundaries *SigningTimeInfoTypeSigningTimeBoundaries `xml:"SigningTimeBoundaries,omitempty"`
 }
 
-type SignerIdentity struct {
-	XMLName       xml.Name `xml:"urn:oasis:names:tc:dss:1.0:core:schema SignerIdentity"`
-	NameQualifier string   `xml:"NameQualifier,attr,omitempty"`
-	Format        string   `xml:"Format,attr,omitempty"`
-	CharData      string   `xml:"chardata"`
-}
-
 type ReturnUpdatedSignature struct {
 	XMLName xml.Name `xml:"urn:oasis:names:tc:dss:1.0:core:schema ReturnUpdatedSignature"`
 	Type    string   `xml:"Type,attr,omitempty"`
@@ -325,24 +318,24 @@ type TimestampedSignature struct {
 type Timestamp struct {
 	XMLName               xml.Name           `xml:"urn:oasis:names:tc:dss:1.0:core:schema Timestamp"`
 	Signature             *xmldsig.Signature `xml:"http://www.w3.org/2000/09/xmldsig# Signature,omitempty"`
-	RFC3161TimeStampToken string             `xml:"RFC3161TimeStampToken,omitempty"`
+	RFC3161TimeStampToken Base64Bytes        `xml:"RFC3161TimeStampToken,omitempty"`
 	Other                 *AnyType           `xml:"Other,omitempty"`
 }
 
 type TstInfo struct {
-	XMLName      xml.Name                            `xml:"urn:oasis:names:tc:dss:1.0:core:schema TstInfo"`
-	SerialNumber int                                 `xml:"SerialNumber"`
-	CreationTime string                              `xml:"CreationTime"`
-	Policy       string                              `xml:"Policy,omitempty"`
-	ErrorBound   string                              `xml:"ErrorBound,omitempty"`
-	Ordered      bool                                `xml:"Ordered,omitempty"`
-	Tsa          *saml10assertion.NameIdentifierType `xml:"TSA,omitempty"`
+	XMLName      xml.Name `xml:"urn:oasis:names:tc:dss:1.0:core:schema TstInfo"`
+	SerialNumber int      `xml:"SerialNumber"`
+	CreationTime string   `xml:"CreationTime"`
+	Policy       string   `xml:"Policy,omitempty"`
+	ErrorBound   string   `xml:"ErrorBound,omitempty"`
+	Ordered      bool     `xml:"Ordered,omitempty"`
+	Tsa          string   `xml:"TSA,omitempty"`
 }
 
 type RequesterIdentity struct {
-	XMLName        xml.Name                           `xml:"urn:oasis:names:tc:dss:1.0:core:schema RequesterIdentity"`
-	Name           saml10assertion.NameIdentifierType `xml:"Name"`
-	SupportingInfo *AnyType                           `xml:"SupportingInfo,omitempty"`
+	XMLName        xml.Name `xml:"urn:oasis:names:tc:dss:1.0:core:schema RequesterIdentity"`
+	Name           string   `xml:"Name"`
+	SupportingInfo *AnyType `xml:"SupportingInfo,omitempty"`
 }
 
 type AttachmentReference struct {
@@ -350,7 +343,7 @@ type AttachmentReference struct {
 	AttRefURI    string               `xml:"AttRefURI,attr,omitempty"`
 	MimeType     string               `xml:"MimeType,attr,omitempty"`
 	DigestMethod xmldsig.DigestMethod `xml:"http://www.w3.org/2000/09/xmldsig# DigestMethod"`
-	DigestValue  string               `xml:"http://www.w3.org/2000/09/xmldsig# DigestValue"`
+	DigestValue  Base64Bytes          `xml:"http://www.w3.org/2000/09/xmldsig# DigestValue"`
 }
 
 type AnyType struct {
@@ -391,13 +384,13 @@ type DocumentType struct {
 	RefType             string               `xml:"RefType,attr,omitempty"`
 	SchemaRefs          string               `xml:"SchemaRefs,attr,omitempty"`
 	InlineXML           *InlineXMLType       `xml:"urn:oasis:names:tc:dss:1.0:core:schema InlineXML,omitempty"`
-	Base64XML           string               `xml:"urn:oasis:names:tc:dss:1.0:core:schema Base64XML,omitempty"`
+	Base64XML           Base64Bytes          `xml:"urn:oasis:names:tc:dss:1.0:core:schema Base64XML,omitempty"`
 	EscapedXML          string               `xml:"urn:oasis:names:tc:dss:1.0:core:schema EscapedXML,omitempty"`
 	Base64Data          *Base64Data          `xml:"urn:oasis:names:tc:dss:1.0:core:schema Base64Data,omitempty"`
 	AttachmentReference *AttachmentReference `xml:"urn:oasis:names:tc:dss:1.0:core:schema AttachmentReference,omitempty"`
 }
 
-// extends #/components/schemas/oasis.names.tc.dss10.core/DocumentBaseType
+// extends #/components/schemas/oasis.names.tc.dss10.core.DocumentBaseType
 func (DocumentType) IsCoreDocumentBaseType() {}
 
 // Interface for types that extend DocumentType
@@ -462,7 +455,7 @@ type TimeSignatureInstructionType struct {
 	CharData                   string `xml:"chardata"`
 }
 
-// extends #/components/schemas/oasis.names.tc.dss10.core/UpdateSignatureInstructionType
+// extends #/components/schemas/oasis.names.tc.dss10.core.UpdateSignatureInstructionType
 func (TimeSignatureInstructionType) IsCoreUpdateSignatureInstructionType() {}
 
 type UpdateSignatureInstructionType struct {
@@ -579,7 +572,7 @@ type AttachmentReferenceType struct {
 	AttRefURI    string               `xml:"AttRefURI,attr,omitempty"`
 	MimeType     string               `xml:"MimeType,attr,omitempty"`
 	DigestMethod xmldsig.DigestMethod `xml:"http://www.w3.org/2000/09/xmldsig# DigestMethod"`
-	DigestValue  string               `xml:"http://www.w3.org/2000/09/xmldsig# DigestValue"`
+	DigestValue  Base64Bytes          `xml:"http://www.w3.org/2000/09/xmldsig# DigestValue"`
 }
 
 // Interface for types that extend AttachmentReferenceType
@@ -594,4 +587,23 @@ type SigningTimeInfoTypeSigningTimeBoundaries struct {
 	XMLName       xml.Name `xml:"urn:oasis:names:tc:dss:1.0:core:schema SigningTimeBoundaries"`
 	LowerBoundary string   `xml:"LowerBoundary,omitempty"`
 	UpperBoundary string   `xml:"UpperBoundary,omitempty"`
+}
+
+type Base64Bytes []byte
+
+func (b *Base64Bytes) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var s string
+	if err := d.DecodeElement(&s, &start); err != nil {
+		return err
+	}
+	decoded, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return err
+	}
+	*b = decoded
+	return nil
+}
+
+func (b Base64Bytes) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	return e.EncodeElement(base64.StdEncoding.EncodeToString(b), start)
 }

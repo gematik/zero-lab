@@ -3,6 +3,7 @@
 package etsi01903132
 
 import (
+	"encoding/base64"
 	"encoding/xml"
 	xmldsig "github.com/gematik/zero-lab/go/kon/api/w3200009/xmldsig"
 )
@@ -38,7 +39,7 @@ type ReferenceInfo struct {
 	Id           string               `xml:"Id,attr,omitempty"`
 	Uri          string               `xml:"URI,attr,omitempty"`
 	DigestMethod xmldsig.DigestMethod `xml:"http://www.w3.org/2000/09/xmldsig# DigestMethod"`
-	DigestValue  string               `xml:"http://www.w3.org/2000/09/xmldsig# DigestValue"`
+	DigestValue  Base64Bytes          `xml:"http://www.w3.org/2000/09/xmldsig# DigestValue"`
 }
 
 type XAdESTimeStamp struct {
@@ -382,7 +383,7 @@ type ReferenceInfoType struct {
 	Id           string               `xml:"Id,attr,omitempty"`
 	Uri          string               `xml:"URI,attr,omitempty"`
 	DigestMethod xmldsig.DigestMethod `xml:"http://www.w3.org/2000/09/xmldsig# DigestMethod"`
-	DigestValue  string               `xml:"http://www.w3.org/2000/09/xmldsig# DigestValue"`
+	DigestValue  Base64Bytes          `xml:"http://www.w3.org/2000/09/xmldsig# DigestValue"`
 }
 
 // Interface for types that extend ReferenceInfoType
@@ -582,7 +583,7 @@ type CertIDType struct {
 
 type DigestAlgAndValueType struct {
 	DigestMethod xmldsig.DigestMethod `xml:"http://www.w3.org/2000/09/xmldsig# DigestMethod"`
-	DigestValue  string               `xml:"http://www.w3.org/2000/09/xmldsig# DigestValue"`
+	DigestValue  Base64Bytes          `xml:"http://www.w3.org/2000/09/xmldsig# DigestValue"`
 }
 
 type SignaturePolicyIdentifierType struct {
@@ -768,8 +769,8 @@ type OCSPRefType struct {
 }
 
 type ResponderIDType struct {
-	ByName string `xml:"http://uri.etsi.org/01903/v1.3.2# ByName,omitempty"`
-	ByKey  string `xml:"http://uri.etsi.org/01903/v1.3.2# ByKey,omitempty"`
+	ByName string      `xml:"http://uri.etsi.org/01903/v1.3.2# ByName,omitempty"`
+	ByKey  Base64Bytes `xml:"http://uri.etsi.org/01903/v1.3.2# ByKey,omitempty"`
 }
 
 type OCSPIdentifierType struct {
@@ -821,4 +822,23 @@ type OCSPValuesType struct {
 
 type OtherCertStatusValuesType struct {
 	OtherValue []AnyType `xml:"http://uri.etsi.org/01903/v1.3.2# OtherValue"`
+}
+
+type Base64Bytes []byte
+
+func (b *Base64Bytes) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var s string
+	if err := d.DecodeElement(&s, &start); err != nil {
+		return err
+	}
+	decoded, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return err
+	}
+	*b = decoded
+	return nil
+}
+
+func (b Base64Bytes) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	return e.EncodeElement(base64.StdEncoding.EncodeToString(b), start)
 }

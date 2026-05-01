@@ -2,7 +2,10 @@
 
 package xmldsig
 
-import "encoding/xml"
+import (
+	"encoding/base64"
+	"encoding/xml"
+)
 
 type Signature struct {
 	XMLName        xml.Name       `xml:"http://www.w3.org/2000/09/xmldsig# Signature"`
@@ -47,7 +50,7 @@ type Reference struct {
 	Type         string       `xml:"Type,attr,omitempty"`
 	Transforms   *Transforms  `xml:"Transforms,omitempty"`
 	DigestMethod DigestMethod `xml:"DigestMethod"`
-	DigestValue  string       `xml:"DigestValue"`
+	DigestValue  Base64Bytes  `xml:"DigestValue"`
 }
 
 type Transforms struct {
@@ -71,13 +74,13 @@ type DigestMethod struct {
 type KeyInfo struct {
 	XMLName         xml.Name          `xml:"http://www.w3.org/2000/09/xmldsig# KeyInfo"`
 	Id              string            `xml:"Id,attr,omitempty"`
-	KeyName         []string          `xml:"KeyName,omitempty"`
+	KeyName         []string          `xml:"KeyName"`
 	KeyValue        []KeyValue        `xml:"KeyValue"`
 	RetrievalMethod []RetrievalMethod `xml:"RetrievalMethod"`
 	X509Data        []X509Data        `xml:"X509Data"`
 	PGPData         []PGPData         `xml:"PGPData"`
 	SPKIData        []SPKIData        `xml:"SPKIData"`
-	MgmtData        []string          `xml:"MgmtData,omitempty"`
+	MgmtData        []string          `xml:"MgmtData"`
 	UnknownContent  string
 }
 
@@ -98,23 +101,23 @@ type RetrievalMethod struct {
 type X509Data struct {
 	XMLName          xml.Name              `xml:"http://www.w3.org/2000/09/xmldsig# X509Data"`
 	X509IssuerSerial *X509IssuerSerialType `xml:"X509IssuerSerial,omitempty"`
-	X509ski          string                `xml:"X509SKI,omitempty"`
+	X509ski          Base64Bytes           `xml:"X509SKI,omitempty"`
 	X509SubjectName  string                `xml:"X509SubjectName,omitempty"`
-	X509Certificate  string                `xml:"X509Certificate,omitempty"`
-	X509crl          string                `xml:"X509CRL,omitempty"`
+	X509Certificate  Base64Bytes           `xml:"X509Certificate,omitempty"`
+	X509crl          Base64Bytes           `xml:"X509CRL,omitempty"`
 	UnknownContent   string
 }
 
 type PGPData struct {
-	XMLName        xml.Name `xml:"http://www.w3.org/2000/09/xmldsig# PGPData"`
-	PGPKeyID       string   `xml:"PGPKeyID"`
-	PGPKeyPacket   string   `xml:"PGPKeyPacket,omitempty"`
+	XMLName        xml.Name    `xml:"http://www.w3.org/2000/09/xmldsig# PGPData"`
+	PGPKeyID       Base64Bytes `xml:"PGPKeyID"`
+	PGPKeyPacket   Base64Bytes `xml:"PGPKeyPacket,omitempty"`
 	UnknownContent string
 }
 
 type SPKIData struct {
-	XMLName        xml.Name `xml:"http://www.w3.org/2000/09/xmldsig# SPKIData"`
-	SPKISexp       []string `xml:"SPKISexp"`
+	XMLName        xml.Name      `xml:"http://www.w3.org/2000/09/xmldsig# SPKIData"`
+	SPKISexp       []Base64Bytes `xml:"SPKISexp"`
 	UnknownContent string
 }
 
@@ -146,20 +149,20 @@ type SignatureProperty struct {
 }
 
 type DSAKeyValue struct {
-	XMLName     xml.Name `xml:"http://www.w3.org/2000/09/xmldsig# DSAKeyValue"`
-	P           string   `xml:"P"`
-	Q           string   `xml:"Q"`
-	G           string   `xml:"G,omitempty"`
-	Y           string   `xml:"Y"`
-	J           string   `xml:"J,omitempty"`
-	Seed        string   `xml:"Seed"`
-	PgenCounter string   `xml:"PgenCounter"`
+	XMLName     xml.Name    `xml:"http://www.w3.org/2000/09/xmldsig# DSAKeyValue"`
+	P           Base64Bytes `xml:"P"`
+	Q           Base64Bytes `xml:"Q"`
+	G           Base64Bytes `xml:"G,omitempty"`
+	Y           Base64Bytes `xml:"Y"`
+	J           Base64Bytes `xml:"J,omitempty"`
+	Seed        Base64Bytes `xml:"Seed"`
+	PgenCounter Base64Bytes `xml:"PgenCounter"`
 }
 
 type RSAKeyValue struct {
-	XMLName  xml.Name `xml:"http://www.w3.org/2000/09/xmldsig# RSAKeyValue"`
-	Modulus  string   `xml:"Modulus"`
-	Exponent string   `xml:"Exponent"`
+	XMLName  xml.Name    `xml:"http://www.w3.org/2000/09/xmldsig# RSAKeyValue"`
+	Modulus  Base64Bytes `xml:"Modulus"`
+	Exponent Base64Bytes `xml:"Exponent"`
 }
 
 type SignatureType struct {
@@ -239,7 +242,7 @@ type ReferenceType struct {
 	Type         string       `xml:"Type,attr,omitempty"`
 	Transforms   *Transforms  `xml:"http://www.w3.org/2000/09/xmldsig# Transforms,omitempty"`
 	DigestMethod DigestMethod `xml:"http://www.w3.org/2000/09/xmldsig# DigestMethod"`
-	DigestValue  string       `xml:"http://www.w3.org/2000/09/xmldsig# DigestValue"`
+	DigestValue  Base64Bytes  `xml:"http://www.w3.org/2000/09/xmldsig# DigestValue"`
 }
 
 // Interface for types that extend ReferenceType
@@ -291,13 +294,13 @@ func (DigestMethodType) IsXmldsigDigestMethodType() {}
 
 type KeyInfoType struct {
 	Id              string            `xml:"Id,attr,omitempty"`
-	KeyName         []string          `xml:"http://www.w3.org/2000/09/xmldsig# KeyName,omitempty"`
+	KeyName         []string          `xml:"http://www.w3.org/2000/09/xmldsig# KeyName"`
 	KeyValue        []KeyValue        `xml:"http://www.w3.org/2000/09/xmldsig# KeyValue"`
 	RetrievalMethod []RetrievalMethod `xml:"http://www.w3.org/2000/09/xmldsig# RetrievalMethod"`
 	X509Data        []X509Data        `xml:"http://www.w3.org/2000/09/xmldsig# X509Data"`
 	PGPData         []PGPData         `xml:"http://www.w3.org/2000/09/xmldsig# PGPData"`
 	SPKIData        []SPKIData        `xml:"http://www.w3.org/2000/09/xmldsig# SPKIData"`
-	MgmtData        []string          `xml:"http://www.w3.org/2000/09/xmldsig# MgmtData,omitempty"`
+	MgmtData        []string          `xml:"http://www.w3.org/2000/09/xmldsig# MgmtData"`
 	UnknownContent  string
 }
 
@@ -339,10 +342,10 @@ func (RetrievalMethodType) IsXmldsigRetrievalMethodType() {}
 
 type X509DataType struct {
 	X509IssuerSerial *X509IssuerSerialType `xml:"http://www.w3.org/2000/09/xmldsig# X509IssuerSerial,omitempty"`
-	X509ski          string                `xml:"http://www.w3.org/2000/09/xmldsig# X509SKI,omitempty"`
+	X509ski          Base64Bytes           `xml:"http://www.w3.org/2000/09/xmldsig# X509SKI,omitempty"`
 	X509SubjectName  string                `xml:"http://www.w3.org/2000/09/xmldsig# X509SubjectName,omitempty"`
-	X509Certificate  string                `xml:"http://www.w3.org/2000/09/xmldsig# X509Certificate,omitempty"`
-	X509crl          string                `xml:"http://www.w3.org/2000/09/xmldsig# X509CRL,omitempty"`
+	X509Certificate  Base64Bytes           `xml:"http://www.w3.org/2000/09/xmldsig# X509Certificate,omitempty"`
+	X509crl          Base64Bytes           `xml:"http://www.w3.org/2000/09/xmldsig# X509CRL,omitempty"`
 	UnknownContent   string
 }
 
@@ -360,8 +363,8 @@ type X509IssuerSerialType struct {
 }
 
 type PGPDataType struct {
-	PGPKeyID       string `xml:"http://www.w3.org/2000/09/xmldsig# PGPKeyID"`
-	PGPKeyPacket   string `xml:"http://www.w3.org/2000/09/xmldsig# PGPKeyPacket,omitempty"`
+	PGPKeyID       Base64Bytes `xml:"http://www.w3.org/2000/09/xmldsig# PGPKeyID"`
+	PGPKeyPacket   Base64Bytes `xml:"http://www.w3.org/2000/09/xmldsig# PGPKeyPacket,omitempty"`
 	UnknownContent string
 }
 
@@ -374,7 +377,7 @@ type IPGPDataType interface {
 func (PGPDataType) IsXmldsigPGPDataType() {}
 
 type SPKIDataType struct {
-	SPKISexp       []string `xml:"http://www.w3.org/2000/09/xmldsig# SPKISexp"`
+	SPKISexp       []Base64Bytes `xml:"http://www.w3.org/2000/09/xmldsig# SPKISexp"`
 	UnknownContent string
 }
 
@@ -442,13 +445,13 @@ type ISignaturePropertyType interface {
 func (SignaturePropertyType) IsXmldsigSignaturePropertyType() {}
 
 type DSAKeyValueType struct {
-	P           string `xml:"http://www.w3.org/2000/09/xmldsig# P"`
-	Q           string `xml:"http://www.w3.org/2000/09/xmldsig# Q"`
-	G           string `xml:"http://www.w3.org/2000/09/xmldsig# G,omitempty"`
-	Y           string `xml:"http://www.w3.org/2000/09/xmldsig# Y"`
-	J           string `xml:"http://www.w3.org/2000/09/xmldsig# J,omitempty"`
-	Seed        string `xml:"http://www.w3.org/2000/09/xmldsig# Seed"`
-	PgenCounter string `xml:"http://www.w3.org/2000/09/xmldsig# PgenCounter"`
+	P           Base64Bytes `xml:"http://www.w3.org/2000/09/xmldsig# P"`
+	Q           Base64Bytes `xml:"http://www.w3.org/2000/09/xmldsig# Q"`
+	G           Base64Bytes `xml:"http://www.w3.org/2000/09/xmldsig# G,omitempty"`
+	Y           Base64Bytes `xml:"http://www.w3.org/2000/09/xmldsig# Y"`
+	J           Base64Bytes `xml:"http://www.w3.org/2000/09/xmldsig# J,omitempty"`
+	Seed        Base64Bytes `xml:"http://www.w3.org/2000/09/xmldsig# Seed"`
+	PgenCounter Base64Bytes `xml:"http://www.w3.org/2000/09/xmldsig# PgenCounter"`
 }
 
 // Interface for types that extend DSAKeyValueType
@@ -460,8 +463,8 @@ type IDSAKeyValueType interface {
 func (DSAKeyValueType) IsXmldsigDSAKeyValueType() {}
 
 type RSAKeyValueType struct {
-	Modulus  string `xml:"http://www.w3.org/2000/09/xmldsig# Modulus"`
-	Exponent string `xml:"http://www.w3.org/2000/09/xmldsig# Exponent"`
+	Modulus  Base64Bytes `xml:"http://www.w3.org/2000/09/xmldsig# Modulus"`
+	Exponent Base64Bytes `xml:"http://www.w3.org/2000/09/xmldsig# Exponent"`
 }
 
 // Interface for types that extend RSAKeyValueType
@@ -471,3 +474,22 @@ type IRSAKeyValueType interface {
 
 // The type itself implements IRSAKeyValueType
 func (RSAKeyValueType) IsXmldsigRSAKeyValueType() {}
+
+type Base64Bytes []byte
+
+func (b *Base64Bytes) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var s string
+	if err := d.DecodeElement(&s, &start); err != nil {
+		return err
+	}
+	decoded, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return err
+	}
+	*b = decoded
+	return nil
+}
+
+func (b Base64Bytes) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	return e.EncodeElement(base64.StdEncoding.EncodeToString(b), start)
+}

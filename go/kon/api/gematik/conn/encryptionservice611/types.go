@@ -3,6 +3,7 @@
 package encryptionservice611
 
 import (
+	"encoding/base64"
 	"encoding/xml"
 	connectorcommon50 "github.com/gematik/zero-lab/go/kon/api/gematik/conn/connectorcommon50"
 	connectorcontext20 "github.com/gematik/zero-lab/go/kon/api/gematik/conn/connectorcontext20"
@@ -141,7 +142,7 @@ func (KeyOnCardType) IsEncryptionService611KeyOnCardType() {}
 type EncryptDocumentRecipientKeys struct {
 	XMLName           xml.Name           `xml:"http://ws.gematik.de/conn/EncryptionService/v6.1 RecipientKeys"`
 	CertificateOnCard *CertificateOnCard `xml:"CertificateOnCard,omitempty"`
-	Certificate       []string           `xml:"Certificate"`
+	Certificate       []Base64Bytes      `xml:"Certificate"`
 }
 
 type EncryptDocumentOptionalInputs struct {
@@ -149,4 +150,23 @@ type EncryptDocumentOptionalInputs struct {
 	EncryptionType        EncryptionType         `xml:"EncryptionType,omitempty"`
 	Element               []Element              `xml:"Element"`
 	UnprotectedProperties *UnprotectedProperties `xml:"UnprotectedProperties,omitempty"`
+}
+
+type Base64Bytes []byte
+
+func (b *Base64Bytes) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var s string
+	if err := d.DecodeElement(&s, &start); err != nil {
+		return err
+	}
+	decoded, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return err
+	}
+	*b = decoded
+	return nil
+}
+
+func (b Base64Bytes) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	return e.EncodeElement(base64.StdEncoding.EncodeToString(b), start)
 }

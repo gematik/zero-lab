@@ -3,6 +3,7 @@
 package connectorcommon50
 
 import (
+	"encoding/base64"
 	"encoding/xml"
 	error20 "github.com/gematik/zero-lab/go/kon/api/gematik/tel/error20"
 	dss10core "github.com/gematik/zero-lab/go/kon/api/oasis/dss10core"
@@ -60,7 +61,7 @@ type Document struct {
 	RefURI     string                `xml:"RefURI,attr,omitempty"`
 	RefType    string                `xml:"RefType,attr,omitempty"`
 	SchemaRefs string                `xml:"SchemaRefs,attr,omitempty"`
-	Base64XML  string                `xml:"Base64XML,omitempty"`
+	Base64XML  Base64Bytes           `xml:"Base64XML,omitempty"`
 	Base64Data *dss10core.Base64Data `xml:"urn:oasis:names:tc:dss:1.0:core:schema Base64Data,omitempty"`
 }
 
@@ -70,15 +71,15 @@ type OperatingState struct {
 }
 
 type XmlSchema struct {
-	XMLName xml.Name `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 XmlSchema"`
-	Data    string   `xml:"Data"`
-	RefURI  string   `xml:"RefURI"`
+	XMLName xml.Name    `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 XmlSchema"`
+	Data    Base64Bytes `xml:"Data"`
+	RefURI  string      `xml:"RefURI"`
 }
 
 type XslStylesheet struct {
-	XMLName xml.Name `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 XslStylesheet"`
-	Data    string   `xml:"Data"`
-	RefURI  string   `xml:"RefURI"`
+	XMLName xml.Name    `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 XslStylesheet"`
+	Data    Base64Bytes `xml:"Data"`
+	RefURI  string      `xml:"RefURI"`
 }
 
 type ResultEnum string
@@ -104,8 +105,8 @@ func (v ResultEnum) IsValid() bool {
 }
 
 type AttachmentType struct {
-	Data   string `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Data"`
-	RefURI string `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 RefURI"`
+	Data   Base64Bytes `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Data"`
+	RefURI string      `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 RefURI"`
 }
 
 // Interface for types that extend AttachmentType
@@ -121,11 +122,11 @@ type DocumentType struct {
 	RefURI     string                `xml:"RefURI,attr,omitempty"`
 	RefType    string                `xml:"RefType,attr,omitempty"`
 	SchemaRefs string                `xml:"SchemaRefs,attr,omitempty"`
-	Base64XML  string                `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Base64XML,omitempty"`
+	Base64XML  Base64Bytes           `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Base64XML,omitempty"`
 	Base64Data *dss10core.Base64Data `xml:"urn:oasis:names:tc:dss:1.0:core:schema Base64Data,omitempty"`
 }
 
-// extends #/components/schemas/oasis.names.tc.dss10.core/DocumentBaseType
+// extends #/components/schemas/oasis.names.tc.dss10.core.DocumentBaseType
 func (DocumentType) IsCoreDocumentBaseType() {}
 
 // Interface for types that extend DocumentType
@@ -146,4 +147,23 @@ type ConnectorVPNSISStatus struct {
 	XMLName          xml.Name `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 VPNSISStatus"`
 	ConnectionStatus string   `xml:"ConnectionStatus"`
 	Timestamp        string   `xml:"Timestamp"`
+}
+
+type Base64Bytes []byte
+
+func (b *Base64Bytes) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var s string
+	if err := d.DecodeElement(&s, &start); err != nil {
+		return err
+	}
+	decoded, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return err
+	}
+	*b = decoded
+	return nil
+}
+
+func (b Base64Bytes) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	return e.EncodeElement(base64.StdEncoding.EncodeToString(b), start)
 }

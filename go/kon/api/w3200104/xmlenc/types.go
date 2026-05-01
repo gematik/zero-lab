@@ -3,13 +3,14 @@
 package xmlenc
 
 import (
+	"encoding/base64"
 	"encoding/xml"
 	xmldsig "github.com/gematik/zero-lab/go/kon/api/w3200009/xmldsig"
 )
 
 type CipherData struct {
 	XMLName         xml.Name         `xml:"http://www.w3.org/2001/04/xmlenc# CipherData"`
-	CipherValue     string           `xml:"CipherValue,omitempty"`
+	CipherValue     Base64Bytes      `xml:"CipherValue,omitempty"`
 	CipherReference *CipherReference `xml:"CipherReference,omitempty"`
 }
 
@@ -47,9 +48,9 @@ type EncryptedKey struct {
 }
 
 type AgreementMethod struct {
-	XMLName           xml.Name `xml:"http://www.w3.org/2001/04/xmlenc# AgreementMethod"`
-	Algorithm         string   `xml:"Algorithm,attr"`
-	KaNonce           string   `xml:"KA-Nonce,omitempty"`
+	XMLName           xml.Name    `xml:"http://www.w3.org/2001/04/xmlenc# AgreementMethod"`
+	Algorithm         string      `xml:"Algorithm,attr"`
+	KaNonce           Base64Bytes `xml:"KA-Nonce,omitempty"`
 	UnknownContent    string
 	OriginatorKeyInfo *xmldsig.KeyInfoType `xml:"OriginatorKeyInfo,omitempty"`
 	RecipientKeyInfo  *xmldsig.KeyInfoType `xml:"RecipientKeyInfo,omitempty"`
@@ -76,13 +77,13 @@ type EncryptionProperty struct {
 }
 
 type DHKeyValue struct {
-	XMLName     xml.Name `xml:"http://www.w3.org/2001/04/xmlenc# DHKeyValue"`
-	P           string   `xml:"P"`
-	Q           string   `xml:"Q"`
-	Generator   string   `xml:"Generator"`
-	Public      string   `xml:"Public"`
-	Seed        string   `xml:"seed"`
-	PgenCounter string   `xml:"pgenCounter"`
+	XMLName     xml.Name    `xml:"http://www.w3.org/2001/04/xmlenc# DHKeyValue"`
+	P           Base64Bytes `xml:"P"`
+	Q           Base64Bytes `xml:"Q"`
+	Generator   Base64Bytes `xml:"Generator"`
+	Public      Base64Bytes `xml:"Public"`
+	Seed        Base64Bytes `xml:"seed"`
+	PgenCounter Base64Bytes `xml:"pgenCounter"`
 }
 
 type EncryptedType struct {
@@ -105,14 +106,14 @@ type IEncryptedType interface {
 func (EncryptedType) IsXmlencEncryptedType() {}
 
 type EncryptionMethodType struct {
-	Algorithm      string `xml:"Algorithm,attr"`
-	KeySize        int    `xml:"http://www.w3.org/2001/04/xmlenc# KeySize,omitempty"`
-	OAEPparams     string `xml:"http://www.w3.org/2001/04/xmlenc# OAEPparams,omitempty"`
+	Algorithm      string      `xml:"Algorithm,attr"`
+	KeySize        int         `xml:"http://www.w3.org/2001/04/xmlenc# KeySize,omitempty"`
+	OAEPparams     Base64Bytes `xml:"http://www.w3.org/2001/04/xmlenc# OAEPparams,omitempty"`
 	UnknownContent string
 }
 
 type CipherDataType struct {
-	CipherValue     string           `xml:"http://www.w3.org/2001/04/xmlenc# CipherValue,omitempty"`
+	CipherValue     Base64Bytes      `xml:"http://www.w3.org/2001/04/xmlenc# CipherValue,omitempty"`
 	CipherReference *CipherReference `xml:"http://www.w3.org/2001/04/xmlenc# CipherReference,omitempty"`
 }
 
@@ -152,7 +153,7 @@ type EncryptedDataType struct {
 	EncryptionProperties *EncryptionProperties `xml:"http://www.w3.org/2001/04/xmlenc# EncryptionProperties,omitempty"`
 }
 
-// extends #/components/schemas/org.w3200104.xmlenc/EncryptedType
+// extends #/components/schemas/org.w3200104.xmlenc.EncryptedType
 func (EncryptedDataType) IsXmlencEncryptedType() {}
 
 // Interface for types that extend EncryptedDataType
@@ -177,7 +178,7 @@ type EncryptedKeyType struct {
 	CarriedKeyName       string                `xml:"http://www.w3.org/2001/04/xmlenc# CarriedKeyName,omitempty"`
 }
 
-// extends #/components/schemas/org.w3200104.xmlenc/EncryptedType
+// extends #/components/schemas/org.w3200104.xmlenc.EncryptedType
 func (EncryptedKeyType) IsXmlencEncryptedType() {}
 
 // Interface for types that extend EncryptedKeyType
@@ -189,8 +190,8 @@ type IEncryptedKeyType interface {
 func (EncryptedKeyType) IsXmlencEncryptedKeyType() {}
 
 type AgreementMethodType struct {
-	Algorithm         string `xml:"Algorithm,attr"`
-	KaNonce           string `xml:"http://www.w3.org/2001/04/xmlenc# KA-Nonce,omitempty"`
+	Algorithm         string      `xml:"Algorithm,attr"`
+	KaNonce           Base64Bytes `xml:"http://www.w3.org/2001/04/xmlenc# KA-Nonce,omitempty"`
 	UnknownContent    string
 	OriginatorKeyInfo *xmldsig.KeyInfoType `xml:"http://www.w3.org/2001/04/xmlenc# OriginatorKeyInfo,omitempty"`
 	RecipientKeyInfo  *xmldsig.KeyInfoType `xml:"http://www.w3.org/2001/04/xmlenc# RecipientKeyInfo,omitempty"`
@@ -238,12 +239,12 @@ type IEncryptionPropertyType interface {
 func (EncryptionPropertyType) IsXmlencEncryptionPropertyType() {}
 
 type DHKeyValueType struct {
-	P           string `xml:"http://www.w3.org/2001/04/xmlenc# P"`
-	Q           string `xml:"http://www.w3.org/2001/04/xmlenc# Q"`
-	Generator   string `xml:"http://www.w3.org/2001/04/xmlenc# Generator"`
-	Public      string `xml:"http://www.w3.org/2001/04/xmlenc# Public"`
-	Seed        string `xml:"http://www.w3.org/2001/04/xmlenc# seed"`
-	PgenCounter string `xml:"http://www.w3.org/2001/04/xmlenc# pgenCounter"`
+	P           Base64Bytes `xml:"http://www.w3.org/2001/04/xmlenc# P"`
+	Q           Base64Bytes `xml:"http://www.w3.org/2001/04/xmlenc# Q"`
+	Generator   Base64Bytes `xml:"http://www.w3.org/2001/04/xmlenc# Generator"`
+	Public      Base64Bytes `xml:"http://www.w3.org/2001/04/xmlenc# Public"`
+	Seed        Base64Bytes `xml:"http://www.w3.org/2001/04/xmlenc# seed"`
+	PgenCounter Base64Bytes `xml:"http://www.w3.org/2001/04/xmlenc# pgenCounter"`
 }
 
 // Interface for types that extend DHKeyValueType
@@ -253,3 +254,22 @@ type IDHKeyValueType interface {
 
 // The type itself implements IDHKeyValueType
 func (DHKeyValueType) IsXmlencDHKeyValueType() {}
+
+type Base64Bytes []byte
+
+func (b *Base64Bytes) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var s string
+	if err := d.DecodeElement(&s, &start); err != nil {
+		return err
+	}
+	decoded, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return err
+	}
+	*b = decoded
+	return nil
+}
+
+func (b Base64Bytes) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	return e.EncodeElement(base64.StdEncoding.EncodeToString(b), start)
+}

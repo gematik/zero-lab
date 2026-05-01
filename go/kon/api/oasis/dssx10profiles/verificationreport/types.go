@@ -3,12 +3,11 @@
 package verificationreport
 
 import (
+	"encoding/base64"
 	"encoding/xml"
 	etsi01903132 "github.com/gematik/zero-lab/go/kon/api/etsi01903132"
 	etsi022312 "github.com/gematik/zero-lab/go/kon/api/etsi022312"
 	dss10core "github.com/gematik/zero-lab/go/kon/api/oasis/dss10core"
-	saml10assertion "github.com/gematik/zero-lab/go/kon/api/oasis/saml10assertion"
-	saml20assertion "github.com/gematik/zero-lab/go/kon/api/oasis/saml20assertion"
 	xmldsig "github.com/gematik/zero-lab/go/kon/api/w3200009/xmldsig"
 )
 
@@ -55,7 +54,7 @@ type IndividualCertificateReport struct {
 	ChainingOK            VerificationResultType       `xml:"ChainingOK"`
 	ValidityPeriodOK      VerificationResultType       `xml:"ValidityPeriodOK"`
 	ExtensionsOK          VerificationResultType       `xml:"ExtensionsOK"`
-	CertificateValue      string                       `xml:"CertificateValue,omitempty"`
+	CertificateValue      Base64Bytes                  `xml:"CertificateValue,omitempty"`
 	CertificateContent    *CertificateContentType      `xml:"CertificateContent,omitempty"`
 	SignatureOK           SignatureValidityType        `xml:"SignatureOK"`
 	CertificateStatus     CertificateStatusType        `xml:"CertificateStatus"`
@@ -64,7 +63,7 @@ type IndividualCertificateReport struct {
 type IndividualAttributeCertificateReport struct {
 	XMLName                        xml.Name                         `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# IndividualAttributeCertificateReport"`
 	AttributeCertificateIdentifier AttrCertIDType                   `xml:"AttributeCertificateIdentifier"`
-	AttributeCertificateValue      string                           `xml:"AttributeCertificateValue,omitempty"`
+	AttributeCertificateValue      Base64Bytes                      `xml:"AttributeCertificateValue,omitempty"`
 	AttributeCertificateContent    *AttributeCertificateContentType `xml:"AttributeCertificateContent,omitempty"`
 	SignatureOK                    SignatureValidityType            `xml:"SignatureOK"`
 	CertificatePathValidity        CertificatePathValidityType      `xml:"CertificatePathValidity"`
@@ -74,7 +73,7 @@ type IndividualCRLReport struct {
 	XMLName                 xml.Name                       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# IndividualCRLReport"`
 	Id                      string                         `xml:"Id,attr,omitempty"`
 	CRLIdentifier           etsi01903132.CRLIdentifierType `xml:"CRLIdentifier"`
-	CRLValue                string                         `xml:"CRLValue,omitempty"`
+	CRLValue                Base64Bytes                    `xml:"CRLValue,omitempty"`
 	CRLContent              *CRLContentType                `xml:"CRLContent,omitempty"`
 	SignatureOK             SignatureValidityType          `xml:"SignatureOK"`
 	CertificatePathValidity CertificatePathValidityType    `xml:"CertificatePathValidity"`
@@ -84,7 +83,7 @@ type IndividualOCSPReport struct {
 	XMLName                 xml.Name                        `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# IndividualOCSPReport"`
 	Id                      string                          `xml:"Id,attr,omitempty"`
 	OCSPIdentifier          etsi01903132.OCSPIdentifierType `xml:"OCSPIdentifier"`
-	OCSPValue               string                          `xml:"OCSPValue,omitempty"`
+	OCSPValue               Base64Bytes                     `xml:"OCSPValue,omitempty"`
 	OCSPContent             *OCSPContentType                `xml:"OCSPContent,omitempty"`
 	SignatureOK             SignatureValidityType           `xml:"SignatureOK"`
 	CertificatePathValidity CertificatePathValidityType     `xml:"CertificatePathValidity"`
@@ -116,10 +115,10 @@ type IVerificationReportType interface {
 func (VerificationReportType) IsVerificationreportVerificationReportType() {}
 
 type IdentifierType struct {
-	X509Data         *xmldsig.X509Data                   `xml:"http://www.w3.org/2000/09/xmldsig# X509Data,omitempty"`
-	SAMLv1Identifier *saml10assertion.NameIdentifierType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SAMLv1Identifier,omitempty"`
-	SAMLv2Identifier *saml20assertion.NameIDType         `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SAMLv2Identifier,omitempty"`
-	Other            *dss10core.AnyType                  `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# Other,omitempty"`
+	X509Data         *xmldsig.X509Data  `xml:"http://www.w3.org/2000/09/xmldsig# X509Data,omitempty"`
+	SAMLv1Identifier string             `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SAMLv1Identifier,omitempty"`
+	SAMLv2Identifier string             `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SAMLv2Identifier,omitempty"`
+	Other            *dss10core.AnyType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# Other,omitempty"`
 }
 
 type IndividualReportType struct {
@@ -206,7 +205,7 @@ type CertifiedRolesListType struct {
 
 type AttributeCertificateValidityType struct {
 	AttributeCertificateIdentifier AttrCertIDType                   `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# AttributeCertificateIdentifier"`
-	AttributeCertificateValue      string                           `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# AttributeCertificateValue,omitempty"`
+	AttributeCertificateValue      Base64Bytes                      `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# AttributeCertificateValue,omitempty"`
 	AttributeCertificateContent    *AttributeCertificateContentType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# AttributeCertificateContent,omitempty"`
 	SignatureOK                    SignatureValidityType            `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureOK"`
 	CertificatePathValidity        CertificatePathValidityType      `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertificatePathValidity"`
@@ -325,7 +324,7 @@ type CertificateValidityType struct {
 	ChainingOK            VerificationResultType       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# ChainingOK"`
 	ValidityPeriodOK      VerificationResultType       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# ValidityPeriodOK"`
 	ExtensionsOK          VerificationResultType       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# ExtensionsOK"`
-	CertificateValue      string                       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertificateValue,omitempty"`
+	CertificateValue      Base64Bytes                  `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertificateValue,omitempty"`
 	CertificateContent    *CertificateContentType      `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertificateContent,omitempty"`
 	SignatureOK           SignatureValidityType        `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureOK"`
 	CertificateStatus     CertificateStatusType        `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertificateStatus"`
@@ -358,7 +357,7 @@ type CertificateStatusType struct {
 type CRLValidityType struct {
 	Id                      string                         `xml:"Id,attr,omitempty"`
 	CRLIdentifier           etsi01903132.CRLIdentifierType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CRLIdentifier"`
-	CRLValue                string                         `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CRLValue,omitempty"`
+	CRLValue                Base64Bytes                    `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CRLValue,omitempty"`
 	CRLContent              *CRLContentType                `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CRLContent,omitempty"`
 	SignatureOK             SignatureValidityType          `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureOK"`
 	CertificatePathValidity CertificatePathValidityType    `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertificatePathValidity"`
@@ -385,7 +384,7 @@ type CRLContentType struct {
 type OCSPValidityType struct {
 	Id                      string                          `xml:"Id,attr,omitempty"`
 	OCSPIdentifier          etsi01903132.OCSPIdentifierType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# OCSPIdentifier"`
-	OCSPValue               string                          `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# OCSPValue,omitempty"`
+	OCSPValue               Base64Bytes                     `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# OCSPValue,omitempty"`
 	OCSPContent             *OCSPContentType                `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# OCSPContent,omitempty"`
 	SignatureOK             SignatureValidityType           `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureOK"`
 	CertificatePathValidity CertificatePathValidityType     `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertificatePathValidity"`
@@ -576,4 +575,23 @@ type EvidenceRecordValidityTypeArchiveTimeStampSequenceArchiveTimeStampChain str
 type ArchiveTimeStampValidityTypeReducedHashTreePartialHashTree struct {
 	XMLName   xml.Name        `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# PartialHashTree"`
 	HashValue []HashValueType `xml:"HashValue"`
+}
+
+type Base64Bytes []byte
+
+func (b *Base64Bytes) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var s string
+	if err := d.DecodeElement(&s, &start); err != nil {
+		return err
+	}
+	decoded, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return err
+	}
+	*b = decoded
+	return nil
+}
+
+func (b Base64Bytes) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	return e.EncodeElement(base64.StdEncoding.EncodeToString(b), start)
 }

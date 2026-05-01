@@ -3,6 +3,7 @@
 package signatureservice74
 
 import (
+	"encoding/base64"
 	"encoding/xml"
 	connectorcommon50 "github.com/gematik/zero-lab/go/kon/api/gematik/conn/connectorcommon50"
 	connectorcontext20 "github.com/gematik/zero-lab/go/kon/api/gematik/conn/connectorcontext20"
@@ -18,6 +19,7 @@ type SignDocument struct {
 	TvMode      TvMode                     `xml:"TvMode"`
 	JobNumber   string                     `xml:"JobNumber,omitempty"`
 	SignRequest []SignRequest              `xml:"SignRequest"`
+	Crypt       string                     `xml:"Crypt,omitempty"`
 }
 
 type SignRequest struct {
@@ -54,7 +56,7 @@ type DocumentWithSignature struct {
 	RefType    string                `xml:"RefType,attr,omitempty"`
 	SchemaRefs string                `xml:"SchemaRefs,attr,omitempty"`
 	ShortText  string                `xml:"ShortText,attr,omitempty"`
-	Base64XML  string                `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Base64XML,omitempty"`
+	Base64XML  Base64Bytes           `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Base64XML,omitempty"`
 	Base64Data *dss10core.Base64Data `xml:"urn:oasis:names:tc:dss:1.0:core:schema Base64Data,omitempty"`
 }
 
@@ -192,7 +194,7 @@ type Document struct {
 	RefType    string                `xml:"RefType,attr,omitempty"`
 	SchemaRefs string                `xml:"SchemaRefs,attr,omitempty"`
 	ShortText  string                `xml:"ShortText,attr,omitempty"`
-	Base64XML  string                `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Base64XML,omitempty"`
+	Base64XML  Base64Bytes           `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Base64XML,omitempty"`
 	Base64Data *dss10core.Base64Data `xml:"urn:oasis:names:tc:dss:1.0:core:schema Base64Data,omitempty"`
 }
 
@@ -221,14 +223,14 @@ type DocumentType struct {
 	RefType    string                `xml:"RefType,attr,omitempty"`
 	SchemaRefs string                `xml:"SchemaRefs,attr,omitempty"`
 	ShortText  string                `xml:"ShortText,attr,omitempty"`
-	Base64XML  string                `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Base64XML,omitempty"`
+	Base64XML  Base64Bytes           `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Base64XML,omitempty"`
 	Base64Data *dss10core.Base64Data `xml:"urn:oasis:names:tc:dss:1.0:core:schema Base64Data,omitempty"`
 }
 
-// extends #/components/schemas/de.gematik.ws.conn.ConnectorCommon50/DocumentType
+// extends #/components/schemas/de.gematik.ws.conn.ConnectorCommon50.DocumentType
 func (DocumentType) IsConnectorCommon50DocumentType() {}
 
-// extends #/components/schemas/oasis.names.tc.dss10.core/DocumentBaseType
+// extends #/components/schemas/oasis.names.tc.dss10.core.DocumentBaseType
 func (DocumentType) IsCoreDocumentBaseType() {}
 
 // Interface for types that extend DocumentType
@@ -247,7 +249,7 @@ type BinaryDocumentType struct {
 	Base64Data dss10core.Base64Data `xml:"urn:oasis:names:tc:dss:1.0:core:schema Base64Data"`
 }
 
-// extends #/components/schemas/oasis.names.tc.dss10.core/DocumentBaseType
+// extends #/components/schemas/oasis.names.tc.dss10.core.DocumentBaseType
 func (BinaryDocumentType) IsCoreDocumentBaseType() {}
 
 // Interface for types that extend BinaryDocumentType
@@ -326,4 +328,23 @@ type DisplayableAttributesDisplayableAttribute struct {
 type SignRequestOptionalInputsIncludeObjects struct {
 	XMLName       xml.Name                  `xml:"http://ws.gematik.de/conn/SignatureService/v7.4 IncludeObjects"`
 	IncludeObject []dss10core.IncludeObject `xml:"urn:oasis:names:tc:dss:1.0:core:schema IncludeObject"`
+}
+
+type Base64Bytes []byte
+
+func (b *Base64Bytes) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var s string
+	if err := d.DecodeElement(&s, &start); err != nil {
+		return err
+	}
+	decoded, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return err
+	}
+	*b = decoded
+	return nil
+}
+
+func (b Base64Bytes) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	return e.EncodeElement(base64.StdEncoding.EncodeToString(b), start)
 }

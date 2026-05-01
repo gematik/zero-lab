@@ -1,9 +1,5 @@
 DOCKER_USER := "spilikin"
-<<<<<<< HEAD:go/Justfile
-ZERO_VERSION := "0.13.3"
-=======
 ZERO_VERSION := "0.14.0"
->>>>>>> epa:go/justfile
 ZERO_EPA_VERSION := ZERO_VERSION
 ZERO_PDP_VERSION := ZERO_VERSION
 ZERO_CADDY_VERSION := ZERO_VERSION
@@ -22,7 +18,7 @@ docker-build-epa: generate-versions
 # Push the zero-epa docker image to the docker hub
 docker-push-epa: docker-build-epa
     docker push "{{DOCKER_USER}}/zero-epa:{{ZERO_EPA_VERSION}}"
-    docker push "{{DOCKER_USER}}/zero-epa:latest"    
+    docker push "{{DOCKER_USER}}/zero-epa:latest"
 
 # Build the zero-caddy docker image
 docker-build-caddy: generate-versions
@@ -32,7 +28,7 @@ docker-build-caddy: generate-versions
 # Push the zero-caddy docker image to the docker hub
 docker-push-caddy: docker-build-caddy
     docker push "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}"
-    docker push "{{DOCKER_USER}}/zero-caddy:latest"    
+    docker push "{{DOCKER_USER}}/zero-caddy:latest"
 
 # Build the zero-pdp docker image
 docker-build-pdp: generate-versions

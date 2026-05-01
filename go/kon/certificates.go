@@ -3,7 +3,6 @@ package kon
 import (
 	"context"
 	"crypto/x509"
-	"encoding/base64"
 	"fmt"
 	"log/slog"
 
@@ -56,14 +55,10 @@ func (c *Client) ReadCardCertificates(ctx context.Context, cardHandle string, cr
 
 	var certs []*CardCertificate
 	for _, info := range resp.ReadCardCertificateResponse.X509DataInfoList.X509DataInfo {
-		if info.X509Data == nil || info.X509Data.X509Certificate == "" {
+		if info.X509Data == nil || len(info.X509Data.X509Certificate) == 0 {
 			continue
 		}
-		der, err := base64.StdEncoding.DecodeString(info.X509Data.X509Certificate)
-		if err != nil {
-			return nil, fmt.Errorf("decoding certificate %s: %w", info.CertRef, err)
-		}
-		cert, err := brainpool.ParseCertificate(der)
+		cert, err := brainpool.ParseCertificate(info.X509Data.X509Certificate)
 		if err != nil {
 			return nil, fmt.Errorf("parsing certificate %s: %w", info.CertRef, err)
 		}
