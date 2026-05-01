@@ -52,6 +52,15 @@ generate-versions:
     just generate-version-file pdp/version.go pdp {{ZERO_PDP_VERSION}}
     just generate-version-file ti/version.go main {{TI_CLI_VERSION}}
 
+# Update and tidy all go modules
+tidy:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
+        echo "==> Tidying $dir"
+        (cd "$dir" && go get -u ./... && go mod tidy)
+    done
+
 # Update roots.json files for embedded use
 update-roots:
     curl -o ./gempki/roots-test.json https://download-test.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json
