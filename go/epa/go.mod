@@ -8,6 +8,7 @@ require (
 	github.com/gematik/zero-lab/go/gempki v0.0.0-20250102154718-985761a2d60e
 	github.com/gematik/zero-lab/go/vau v0.0.0-20240918112308-8edbfb7f7338
 	github.com/go-playground/validator/v10 v10.27.0
+	github.com/google/uuid v1.4.0
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v4 v4.13.4
 	github.com/phsym/console-slog v0.3.1

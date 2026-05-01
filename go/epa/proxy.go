@@ -5,15 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gematik/zero-lab/go/brainpool"
+	"github.com/google/uuid"
 
 	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/gempki"
@@ -203,6 +206,13 @@ func (p *Proxy) HandleForwardToVAUProvider(w http.ResponseWriter, r *http.Reques
 	p.forwardToVAU(w, r, ProviderNumber(num), "")
 }
 
+var vauProxyBlockedHeaderNames = []string{
+	"authorization",
+	"via",
+	"x-forwarded-host",
+	"x-forwarded-for",
+}
+
 func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNumber ProviderNumber, insurantID string) {
 	path := r.PathValue("path")
 	path = "/" + path
@@ -220,29 +230,27 @@ func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNum
 	}
 
 	r2.URL.RawQuery = r.URL.RawQuery
+	r2.Host = session.VAUChannel.ChannelURL.Host
 
-	proxyHeaderNames := []string{
-		"Accept",
-		"Accept-Encoding",
-		"Content-Type",
-		"Content-Length",
-		"x-useragent",
-		"x-insurantid",
-	}
-	for _, h := range proxyHeaderNames {
-		if v := r.Header.Get(h); v != "" {
-			r2.Header.Set(h, v)
+	for n, v := range r.Header {
+		lowerN := strings.ToLower(n)
+		if slices.Contains(vauProxyBlockedHeaderNames, lowerN) {
+			continue
 		}
+		r2.Header[n] = v
 	}
 
 	if r2.Header.Get("x-useragent") == "" {
 		r2.Header.Set("x-useragent", UserAgent)
 	}
 
-	r2.Host = session.VAUChannel.ChannelURL.Host
-
 	if insurantID != "" {
 		r2.Header.Set("x-insurantid", insurantID)
+	}
+
+	if r2.Header.Get("x-request-id") == "" {
+		// set request id to uuid4
+		r2.Header.Set("x-request-id", uuid.New().String())
 	}
 
 	slog.Info("Forwarding request to VAU", "method", r2.Method, "path", r2.URL.String(), "headers", r2.Header, "session_url", session.BaseURL)
@@ -254,9 +262,7 @@ func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNum
 		return
 	}
 
-	for k, v := range resp.Header {
-		w.Header()[k] = v
-	}
+	maps.Copy(w.Header(), resp.Header)
 
 	slog.Info("Got forwarded request response", "method", r2.Method, "path", r2.URL.String(), "status", resp.StatusCode, "session_url", session.BaseURL)
 
