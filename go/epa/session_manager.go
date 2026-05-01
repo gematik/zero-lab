@@ -4,6 +4,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"log/slog"
+	"maps"
 	"sync"
 	"time"
 
@@ -80,9 +81,9 @@ func (sm *sessionManager) WatchSession(pn ProviderNumber) {
 func (sm *sessionManager) Close() {
 	sm.lock.Lock()
 	defer sm.lock.Unlock()
-	for pn, session := range sm.sessions {
+	for session := range maps.Values(sm.sessions) {
 		session.Close()
-		delete(sm.sessions, pn)
 	}
+	clear(sm.sessions)
 
 }
