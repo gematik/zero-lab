@@ -1277,7 +1277,7 @@
       "de.gematik.ws.conn.SignatureService74.SignRequest": {
         "type": "object",
         "properties": {
-          "requestID": {
+          "requestId": {
             "type": "string",
             "xml": {
               "name": "RequestID",
@@ -1293,7 +1293,7 @@
               "properties": {
                 "$ref": "#/components/schemas/oasis.names.tc.dss10.core.Properties"
               },
-              "includeEContent": {
+              "includeEnvelopedContent": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.SignatureService74.IncludeEContent"
               },
               "includeObjects": {
@@ -1343,7 +1343,7 @@
           }
         },
         "required": [
-          "requestID",
+          "requestId",
           "document",
           "includeRevocationInfo"
         ],
@@ -1395,7 +1395,7 @@
       "de.gematik.ws.conn.SignatureService74.SignResponse": {
         "type": "object",
         "properties": {
-          "requestID": {
+          "requestId": {
             "type": "string",
             "xml": {
               "name": "RequestID",
@@ -1425,7 +1425,7 @@
           }
         },
         "required": [
-          "requestID",
+          "requestId",
           "status"
         ],
         "xml": {
@@ -2557,7 +2557,7 @@
               "attribute": true
             }
           },
-          "refURI": {
+          "refUri": {
             "type": "string",
             "format": "uri",
             "xml": {
@@ -2616,7 +2616,7 @@
               "attribute": true
             }
           },
-          "refURI": {
+          "refUri": {
             "type": "string",
             "format": "uri",
             "xml": {
@@ -2887,7 +2887,7 @@
       "oasis.names.tc.dss10.core.SignRequest": {
         "type": "object",
         "properties": {
-          "requestID": {
+          "requestId": {
             "type": "string",
             "xml": {
               "name": "RequestID",
@@ -2921,7 +2921,7 @@
       "oasis.names.tc.dss10.core.SignResponse": {
         "type": "object",
         "properties": {
-          "requestID": {
+          "requestId": {
             "type": "string",
             "xml": {
               "name": "RequestID",
@@ -3193,7 +3193,7 @@
               "attribute": true
             }
           },
-          "refURI": {
+          "refUri": {
             "type": "string",
             "format": "uri",
             "xml": {
@@ -3224,7 +3224,7 @@
       "oasis.names.tc.dss10.core.VerifyRequest": {
         "type": "object",
         "properties": {
-          "requestID": {
+          "requestId": {
             "type": "string",
             "xml": {
               "name": "RequestID",
@@ -3529,7 +3529,7 @@
           "signature": {
             "$ref": "#/components/schemas/org.w3200009.xmldsig.Signature"
           },
-          "rFC3161TimeStampToken": {
+          "rfc3161TimeStampToken": {
             "type": "string",
             "format": "byte",
             "xml": {
@@ -4254,7 +4254,7 @@
       "de.gematik.ws.conn.ConnectorCommon50.Connector": {
         "type": "object",
         "properties": {
-          "vPNTIStatus": {
+          "vpnTiStatus": {
             "type": "object",
             "properties": {
               "connectionStatus": {
@@ -4286,7 +4286,7 @@
               "namespace": "http://ws.gematik.de/conn/ConnectorCommon/v5.0"
             }
           },
-          "vPNSISStatus": {
+          "vpnSisStatus": {
             "type": "object",
             "properties": {
               "connectionStatus": {
@@ -4319,8 +4319,8 @@
           }
         },
         "required": [
-          "vPNTIStatus",
-          "vPNSISStatus",
+          "vpnTiStatus",
+          "vpnSisStatus",
           "operatingState"
         ],
         "xml": {
@@ -4440,7 +4440,7 @@
       "de.gematik.ws.tel.error20.Error": {
         "type": "object",
         "properties": {
-          "messageID": {
+          "messageId": {
             "type": "string",
             "xml": {
               "name": "MessageID",
@@ -4460,7 +4460,7 @@
             "items": {
               "type": "object",
               "properties": {
-                "eventID": {
+                "eventId": {
                   "type": "string",
                   "xml": {
                     "name": "EventID",
@@ -4541,7 +4541,7 @@
                 }
               },
               "required": [
-                "eventID",
+                "eventId",
                 "instance",
                 "logReference",
                 "compType",
@@ -4558,7 +4558,7 @@
           }
         },
         "required": [
-          "messageID",
+          "messageId",
           "timestamp",
           "trace"
         ],
@@ -4586,7 +4586,7 @@
               "attribute": true
             }
           },
-          "refURI": {
+          "refUri": {
             "type": "string",
             "format": "uri",
             "xml": {
@@ -4616,7 +4616,7 @@
               "attribute": true
             }
           },
-          "base64XML": {
+          "base64Xml": {
             "type": "string",
             "format": "byte",
             "xml": {
@@ -4647,7 +4647,7 @@
               "attribute": true
             }
           },
-          "refURI": {
+          "refUri": {
             "type": "string",
             "format": "uri",
             "xml": {
@@ -4861,7 +4861,7 @@
               "attribute": true
             }
           },
-          "hMACOutputLength": {
+          "hmacOutputLength": {
             "$ref": "#/components/schemas/org.w3200009.xmldsig.HMACOutputLengthType",
             "xml": {
               "name": "HMACOutputLength",
@@ -5041,13 +5041,13 @@
               "$ref": "#/components/schemas/org.w3200009.xmldsig.X509Data"
             }
           },
-          "pGPData": {
+          "pgpData": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/org.w3200009.xmldsig.PGPData"
             }
           },
-          "sPKIData": {
+          "spkiData": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/org.w3200009.xmldsig.SPKIData"
@@ -5072,10 +5072,10 @@
       "org.w3200009.xmldsig.KeyValueType": {
         "type": "object",
         "properties": {
-          "dSAKeyValue": {
+          "dsaKeyValue": {
             "$ref": "#/components/schemas/org.w3200009.xmldsig.DSAKeyValue"
           },
-          "rSAKeyValue": {
+          "rsaKeyValue": {
             "$ref": "#/components/schemas/org.w3200009.xmldsig.RSAKeyValue"
           },
           "unknownContent": {
@@ -5126,7 +5126,7 @@
               "namespace": "http://www.w3.org/2000/09/xmldsig#"
             }
           },
-          "x509ski": {
+          "x509Ski": {
             "type": "string",
             "format": "byte",
             "xml": {
@@ -5149,7 +5149,7 @@
               "namespace": "http://www.w3.org/2000/09/xmldsig#"
             }
           },
-          "x509crl": {
+          "x509Crl": {
             "type": "string",
             "format": "byte",
             "xml": {
@@ -5194,7 +5194,7 @@
       "org.w3200009.xmldsig.PGPDataType": {
         "type": "object",
         "properties": {
-          "pGPKeyID": {
+          "pgpKeyId": {
             "type": "string",
             "format": "byte",
             "xml": {
@@ -5202,7 +5202,7 @@
               "namespace": "http://www.w3.org/2000/09/xmldsig#"
             }
           },
-          "pGPKeyPacket": {
+          "pgpKeyPacket": {
             "type": "string",
             "format": "byte",
             "xml": {
@@ -5216,7 +5216,7 @@
           }
         },
         "required": [
-          "pGPKeyID"
+          "pgpKeyId"
         ],
         "xml": {
           "x-is-base": true
@@ -5226,7 +5226,7 @@
       "org.w3200009.xmldsig.SPKIDataType": {
         "type": "object",
         "properties": {
-          "sPKISexp": {
+          "spkiSexp": {
             "type": "array",
             "items": {
               "type": "string",
@@ -5243,7 +5243,7 @@
           }
         },
         "required": [
-          "sPKISexp"
+          "spkiSexp"
         ],
         "xml": {
           "x-is-base": true
@@ -5804,7 +5804,7 @@
               }
             }
           },
-          "xMLTimeStamp": {
+          "xmlTimeStamp": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/org.etsi01903132.AnyType",
@@ -5846,7 +5846,7 @@
               }
             }
           },
-          "xMLTimeStamp": {
+          "xmlTimeStamp": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/org.etsi01903132.AnyType",
@@ -5888,7 +5888,7 @@
               "namespace": "http://uri.etsi.org/01903/v1.3.2#"
             }
           },
-          "xMLTimeStamp": {
+          "xmlTimeStamp": {
             "$ref": "#/components/schemas/org.etsi01903132.AnyType",
             "xml": {
               "name": "XMLTimeStamp",
@@ -6788,14 +6788,14 @@
               "attribute": true
             }
           },
-          "cRLRefs": {
+          "crlRefs": {
             "$ref": "#/components/schemas/org.etsi01903132.CRLRefsType",
             "xml": {
               "name": "CRLRefs",
               "namespace": "http://uri.etsi.org/01903/v1.3.2#"
             }
           },
-          "oCSPRefs": {
+          "ocspRefs": {
             "$ref": "#/components/schemas/org.etsi01903132.OCSPRefsType",
             "xml": {
               "name": "OCSPRefs",
@@ -6818,7 +6818,7 @@
       "org.etsi01903132.CRLRefsType": {
         "type": "object",
         "properties": {
-          "cRLRef": {
+          "crlRef": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/org.etsi01903132.CRLRefType",
@@ -6830,7 +6830,7 @@
           }
         },
         "required": [
-          "cRLRef"
+          "crlRef"
         ],
         "description": "`CRLRefsType` from XML namespace `http://uri.etsi.org/01903/v1.3.2#` (package `org.etsi01903132`)."
       },
@@ -6844,7 +6844,7 @@
               "namespace": "http://uri.etsi.org/01903/v1.3.2#"
             }
           },
-          "cRLIdentifier": {
+          "crlIdentifier": {
             "$ref": "#/components/schemas/org.etsi01903132.CRLIdentifierType",
             "xml": {
               "name": "CRLIdentifier",
@@ -6900,7 +6900,7 @@
       "org.etsi01903132.OCSPRefsType": {
         "type": "object",
         "properties": {
-          "oCSPRef": {
+          "ocspRef": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/org.etsi01903132.OCSPRefType",
@@ -6912,14 +6912,14 @@
           }
         },
         "required": [
-          "oCSPRef"
+          "ocspRef"
         ],
         "description": "`OCSPRefsType` from XML namespace `http://uri.etsi.org/01903/v1.3.2#` (package `org.etsi01903132`)."
       },
       "org.etsi01903132.OCSPRefType": {
         "type": "object",
         "properties": {
-          "oCSPIdentifier": {
+          "ocspIdentifier": {
             "$ref": "#/components/schemas/org.etsi01903132.OCSPIdentifierType",
             "xml": {
               "name": "OCSPIdentifier",
@@ -6935,7 +6935,7 @@
           }
         },
         "required": [
-          "oCSPIdentifier"
+          "ocspIdentifier"
         ],
         "description": "`OCSPRefType` from XML namespace `http://uri.etsi.org/01903/v1.3.2#` (package `org.etsi01903132`)."
       },
@@ -6971,7 +6971,7 @@
               "attribute": true
             }
           },
-          "responderID": {
+          "responderId": {
             "$ref": "#/components/schemas/org.etsi01903132.ResponderIDType",
             "xml": {
               "name": "ResponderID",
@@ -6988,7 +6988,7 @@
           }
         },
         "required": [
-          "responderID",
+          "responderId",
           "producedAt"
         ],
         "description": "`OCSPIdentifierType` from XML namespace `http://uri.etsi.org/01903/v1.3.2#` (package `org.etsi01903132`)."
@@ -7058,14 +7058,14 @@
               "attribute": true
             }
           },
-          "cRLValues": {
+          "crlValues": {
             "$ref": "#/components/schemas/org.etsi01903132.CRLValuesType",
             "xml": {
               "name": "CRLValues",
               "namespace": "http://uri.etsi.org/01903/v1.3.2#"
             }
           },
-          "oCSPValues": {
+          "ocspValues": {
             "$ref": "#/components/schemas/org.etsi01903132.OCSPValuesType",
             "xml": {
               "name": "OCSPValues",
@@ -7088,7 +7088,7 @@
       "org.etsi01903132.CRLValuesType": {
         "type": "object",
         "properties": {
-          "encapsulatedCRLValue": {
+          "encapsulatedCrlValue": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/org.etsi01903132.EncapsulatedPKIDataType",
@@ -7100,14 +7100,14 @@
           }
         },
         "required": [
-          "encapsulatedCRLValue"
+          "encapsulatedCrlValue"
         ],
         "description": "`CRLValuesType` from XML namespace `http://uri.etsi.org/01903/v1.3.2#` (package `org.etsi01903132`)."
       },
       "org.etsi01903132.OCSPValuesType": {
         "type": "object",
         "properties": {
-          "encapsulatedOCSPValue": {
+          "encapsulatedOcspValue": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/org.etsi01903132.EncapsulatedPKIDataType",
@@ -7119,7 +7119,7 @@
           }
         },
         "required": [
-          "encapsulatedOCSPValue"
+          "encapsulatedOcspValue"
         ],
         "description": "`OCSPValuesType` from XML namespace `http://uri.etsi.org/01903/v1.3.2#` (package `org.etsi01903132`)."
       },
@@ -7189,7 +7189,7 @@
               "attribute": true
             }
           },
-          "refURI": {
+          "refUri": {
             "type": "string",
             "format": "uri",
             "xml": {
@@ -7228,7 +7228,7 @@
               "attribute": true
             }
           },
-          "refURI": {
+          "refUri": {
             "type": "string",
             "format": "uri",
             "xml": {
@@ -7251,14 +7251,14 @@
               "attribute": true
             }
           },
-          "inlineXML": {
+          "inlineXml": {
             "$ref": "#/components/schemas/oasis.names.tc.dss10.core.InlineXMLType",
             "xml": {
               "name": "InlineXML",
               "namespace": "urn:oasis:names:tc:dss:1.0:core:schema"
             }
           },
-          "base64XML": {
+          "base64Xml": {
             "type": "string",
             "format": "byte",
             "xml": {
@@ -7266,7 +7266,7 @@
               "namespace": "urn:oasis:names:tc:dss:1.0:core:schema"
             }
           },
-          "escapedXML": {
+          "escapedXml": {
             "type": "string",
             "xml": {
               "name": "EscapedXML",
@@ -7291,7 +7291,7 @@
       "oasis.names.tc.dss10.core.InlineXMLType": {
         "type": "object",
         "properties": {
-          "ignorePIs": {
+          "ignoreProcessingInstructions": {
             "type": "boolean",
             "xml": {
               "name": "ignorePIs",
@@ -7333,7 +7333,7 @@
       "oasis.names.tc.dss10.core.RequestBaseType": {
         "type": "object",
         "properties": {
-          "requestID": {
+          "requestId": {
             "type": "string",
             "xml": {
               "name": "RequestID",
@@ -7363,7 +7363,7 @@
       "oasis.names.tc.dss10.core.ResponseBaseType": {
         "type": "object",
         "properties": {
-          "requestID": {
+          "requestId": {
             "type": "string",
             "xml": {
               "name": "RequestID",
@@ -7675,7 +7675,7 @@
       "oasis.names.tc.dss10.core.AttachmentReferenceType": {
         "type": "object",
         "properties": {
-          "attRefURI": {
+          "attRefUri": {
             "type": "string",
             "format": "uri",
             "xml": {
@@ -7741,7 +7741,7 @@
           "x509Data": {
             "$ref": "#/components/schemas/org.w3200009.xmldsig.X509Data"
           },
-          "sAMLv1Identifier": {
+          "samLv1Identifier": {
             "type": "string",
             "format": "xml",
             "xml": {
@@ -7749,7 +7749,7 @@
               "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
             }
           },
-          "sAMLv2Identifier": {
+          "samLv2Identifier": {
             "type": "string",
             "format": "xml",
             "xml": {
@@ -7897,7 +7897,7 @@
       "oasis.names.tc.dssx10.profiles.verificationreport.DetailedSignatureReportType": {
         "type": "object",
         "properties": {
-          "formatOK": {
+          "formatOk": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.VerificationResultType",
             "xml": {
               "name": "FormatOK",
@@ -7921,7 +7921,7 @@
               "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
             }
           },
-          "signatureOK": {
+          "signatureOk": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.SignatureValidityType",
             "xml": {
               "name": "SignatureOK",
@@ -7937,8 +7937,8 @@
           }
         },
         "required": [
-          "formatOK",
-          "signatureOK",
+          "formatOk",
+          "signatureOk",
           "certificatePathValidity"
         ],
         "xml": {
@@ -8111,7 +8111,7 @@
               "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
             }
           },
-          "signatureOK": {
+          "signatureOk": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.SignatureValidityType",
             "xml": {
               "name": "SignatureOK",
@@ -8128,7 +8128,7 @@
         },
         "required": [
           "attributeCertificateIdentifier",
-          "signatureOK",
+          "signatureOk",
           "certificatePathValidity"
         ],
         "xml": {
@@ -8170,7 +8170,7 @@
       "oasis.names.tc.dssx10.profiles.verificationreport.EntityType": {
         "type": "object",
         "properties": {
-          "baseCertificateID": {
+          "baseCertificateId": {
             "$ref": "#/components/schemas/org.w3200009.xmldsig.X509IssuerSerialType",
             "xml": {
               "name": "BaseCertificateID",
@@ -8262,7 +8262,7 @@
               "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
             }
           },
-          "issuerUniqueID": {
+          "issuerUniqueId": {
             "type": "string",
             "format": "hex",
             "xml": {
@@ -8383,7 +8383,7 @@
               "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
             }
           },
-          "extensionOK": {
+          "extensionOk": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.VerificationResultType",
             "xml": {
               "name": "ExtensionOK",
@@ -8394,7 +8394,7 @@
         "required": [
           "extnId",
           "critical",
-          "extensionOK"
+          "extensionOk"
         ],
         "description": "`ExtensionType` from XML namespace `urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#` (package `oasis.names.tc.dssx10.profiles.verificationreport`)."
       },
@@ -8460,7 +8460,7 @@
               "attribute": true
             }
           },
-          "formatOK": {
+          "formatOk": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.VerificationResultType",
             "xml": {
               "name": "FormatOK",
@@ -8481,7 +8481,7 @@
               "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
             }
           },
-          "signatureOK": {
+          "signatureOk": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.SignatureValidityType",
             "xml": {
               "name": "SignatureOK",
@@ -8497,8 +8497,8 @@
           }
         },
         "required": [
-          "formatOK",
-          "signatureOK",
+          "formatOk",
+          "signatureOk",
           "certificatePathValidity"
         ],
         "xml": {
@@ -8525,7 +8525,7 @@
       "oasis.names.tc.dssx10.profiles.verificationreport.SignatureValidityType": {
         "type": "object",
         "properties": {
-          "sigMathOK": {
+          "sigMathOk": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.VerificationResultType",
             "xml": {
               "name": "SigMathOK",
@@ -8541,7 +8541,7 @@
           }
         },
         "required": [
-          "sigMathOK"
+          "sigMathOk"
         ],
         "description": "`SignatureValidityType` from XML namespace `urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#` (package `oasis.names.tc.dssx10.profiles.verificationreport`)."
       },
@@ -8620,7 +8620,7 @@
               }
             }
           },
-          "tSLValidity": {
+          "tslValidity": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.TrustStatusListValidityType",
             "xml": {
               "name": "TSLValidity",
@@ -8657,21 +8657,21 @@
               "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
             }
           },
-          "chainingOK": {
+          "chainingOk": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.VerificationResultType",
             "xml": {
               "name": "ChainingOK",
               "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
             }
           },
-          "validityPeriodOK": {
+          "validityPeriodOk": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.VerificationResultType",
             "xml": {
               "name": "ValidityPeriodOK",
               "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
             }
           },
-          "extensionsOK": {
+          "extensionsOk": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.VerificationResultType",
             "xml": {
               "name": "ExtensionsOK",
@@ -8693,7 +8693,7 @@
               "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
             }
           },
-          "signatureOK": {
+          "signatureOk": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.SignatureValidityType",
             "xml": {
               "name": "SignatureOK",
@@ -8711,10 +8711,10 @@
         "required": [
           "certificateIdentifier",
           "subject",
-          "chainingOK",
-          "validityPeriodOK",
-          "extensionsOK",
-          "signatureOK",
+          "chainingOk",
+          "validityPeriodOk",
+          "extensionsOk",
+          "signatureOk",
           "certificateStatus"
         ],
         "xml": {
@@ -8788,7 +8788,7 @@
       "oasis.names.tc.dssx10.profiles.verificationreport.CertificateStatusType": {
         "type": "object",
         "properties": {
-          "certStatusOK": {
+          "certStatusOk": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.VerificationResultType",
             "xml": {
               "name": "CertStatusOK",
@@ -8826,28 +8826,28 @@
           "revocationEvidence": {
             "type": "object",
             "properties": {
-              "cRLValidity": {
+              "crlValidity": {
                 "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.CRLValidityType",
                 "xml": {
                   "name": "CRLValidity",
                   "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
                 }
               },
-              "cRLReference": {
+              "crlReference": {
                 "$ref": "#/components/schemas/org.etsi01903132.CRLIdentifierType",
                 "xml": {
                   "name": "CRLReference",
                   "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
                 }
               },
-              "oCSPValidity": {
+              "ocspValidity": {
                 "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.OCSPValidityType",
                 "xml": {
                   "name": "OCSPValidity",
                   "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
                 }
               },
-              "oCSPReference": {
+              "ocspReference": {
                 "$ref": "#/components/schemas/org.etsi01903132.OCSPIdentifierType",
                 "xml": {
                   "name": "OCSPReference",
@@ -8869,7 +8869,7 @@
           }
         },
         "required": [
-          "certStatusOK"
+          "certStatusOk"
         ],
         "description": "`CertificateStatusType` from XML namespace `urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#` (package `oasis.names.tc.dssx10.profiles.verificationreport`)."
       },
@@ -8883,14 +8883,14 @@
               "attribute": true
             }
           },
-          "cRLIdentifier": {
+          "crlIdentifier": {
             "$ref": "#/components/schemas/org.etsi01903132.CRLIdentifierType",
             "xml": {
               "name": "CRLIdentifier",
               "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
             }
           },
-          "cRLValue": {
+          "crlValue": {
             "type": "string",
             "format": "byte",
             "xml": {
@@ -8898,14 +8898,14 @@
               "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
             }
           },
-          "cRLContent": {
+          "crlContent": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.CRLContentType",
             "xml": {
               "name": "CRLContent",
               "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
             }
           },
-          "signatureOK": {
+          "signatureOk": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.SignatureValidityType",
             "xml": {
               "name": "SignatureOK",
@@ -8921,8 +8921,8 @@
           }
         },
         "required": [
-          "cRLIdentifier",
-          "signatureOK",
+          "crlIdentifier",
+          "signatureOk",
           "certificatePathValidity"
         ],
         "xml": {
@@ -9039,14 +9039,14 @@
               "attribute": true
             }
           },
-          "oCSPIdentifier": {
+          "ocspIdentifier": {
             "$ref": "#/components/schemas/org.etsi01903132.OCSPIdentifierType",
             "xml": {
               "name": "OCSPIdentifier",
               "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
             }
           },
-          "oCSPValue": {
+          "ocspValue": {
             "type": "string",
             "format": "byte",
             "xml": {
@@ -9054,14 +9054,14 @@
               "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
             }
           },
-          "oCSPContent": {
+          "ocspContent": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.OCSPContentType",
             "xml": {
               "name": "OCSPContent",
               "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
             }
           },
-          "signatureOK": {
+          "signatureOk": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.SignatureValidityType",
             "xml": {
               "name": "SignatureOK",
@@ -9077,8 +9077,8 @@
           }
         },
         "required": [
-          "oCSPIdentifier",
-          "signatureOK",
+          "ocspIdentifier",
+          "signatureOk",
           "certificatePathValidity"
         ],
         "xml": {
@@ -9096,7 +9096,7 @@
               "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
             }
           },
-          "responderID": {
+          "responderId": {
             "type": "string",
             "xml": {
               "name": "ResponderID",
@@ -9143,7 +9143,7 @@
         },
         "required": [
           "version",
-          "responderID",
+          "responderId",
           "producedAt",
           "responses"
         ],
@@ -9152,7 +9152,7 @@
       "oasis.names.tc.dssx10.profiles.verificationreport.SingleResponseType": {
         "type": "object",
         "properties": {
-          "certID": {
+          "certId": {
             "type": "object",
             "properties": {
               "hashAlgorithm": {
@@ -9230,7 +9230,7 @@
           }
         },
         "required": [
-          "certID",
+          "certId",
           "certStatus",
           "thisUpdate"
         ],
@@ -9239,7 +9239,7 @@
       "oasis.names.tc.dssx10.profiles.verificationreport.TrustStatusListValidityType": {
         "type": "object",
         "properties": {
-          "tSLTag": {
+          "tslTag": {
             "$ref": "#/components/schemas/org.etsi022312.TSLTagType",
             "xml": {
               "name": "TSLTag",
@@ -9259,7 +9259,7 @@
           "trustServiceProviderList": {
             "$ref": "#/components/schemas/org.etsi022312.TrustServiceProviderList"
           },
-          "signatureOK": {
+          "signatureOk": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.SignatureValidityType",
             "xml": {
               "name": "SignatureOK",
@@ -9268,9 +9268,9 @@
           }
         },
         "required": [
-          "tSLTag",
+          "tslTag",
           "schemeInformation",
-          "signatureOK"
+          "signatureOk"
         ],
         "description": "`TrustStatusListValidityType` from XML namespace `urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#` (package `oasis.names.tc.dssx10.profiles.verificationreport`)."
       },
@@ -9441,10 +9441,10 @@
               "attribute": true
             }
           },
-          "cRLValues": {
+          "crlValues": {
             "type": "object",
             "properties": {
-              "verifiedCRL": {
+              "verifiedCrl": {
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.CRLValidityType",
@@ -9456,17 +9456,17 @@
               }
             },
             "required": [
-              "verifiedCRL"
+              "verifiedCrl"
             ],
             "xml": {
               "name": "CRLValues",
               "namespace": "urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#"
             }
           },
-          "oCSPValues": {
+          "ocspValues": {
             "type": "object",
             "properties": {
-              "verifiedOCSPResponse": {
+              "verifiedOcspResponse": {
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.OCSPValidityType",
@@ -9478,7 +9478,7 @@
               }
             },
             "required": [
-              "verifiedOCSPResponse"
+              "verifiedOcspResponse"
             ],
             "xml": {
               "name": "OCSPValues",
@@ -9539,7 +9539,7 @@
               "attribute": true
             }
           },
-          "formatOK": {
+          "formatOk": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.VerificationResultType",
             "xml": {
               "name": "FormatOK",
@@ -9651,7 +9651,7 @@
           }
         },
         "required": [
-          "formatOK",
+          "formatOk",
           "archiveTimeStampSequence"
         ],
         "xml": {
@@ -9669,7 +9669,7 @@
               "attribute": true
             }
           },
-          "formatOK": {
+          "formatOk": {
             "$ref": "#/components/schemas/oasis.names.tc.dssx10.profiles.verificationreport.VerificationResultType",
             "xml": {
               "name": "FormatOK",
@@ -9751,7 +9751,7 @@
           }
         },
         "required": [
-          "formatOK",
+          "formatOk",
           "timeStamp"
         ],
         "description": "`ArchiveTimeStampValidityType` from XML namespace `urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema#` (package `oasis.names.tc.dssx10.profiles.verificationreport`)."
@@ -10104,7 +10104,7 @@
       "org.etsi022312.TrustStatusListType": {
         "type": "object",
         "properties": {
-          "tSLTag": {
+          "tslTag": {
             "$ref": "#/components/schemas/org.etsi022312.TSLTagType",
             "xml": {
               "name": "TSLTag",
@@ -10129,7 +10129,7 @@
           }
         },
         "required": [
-          "tSLTag",
+          "tslTag",
           "schemeInformation"
         ],
         "xml": {
@@ -10166,14 +10166,14 @@
       "org.etsi022312.TSLSchemeInformationType": {
         "type": "object",
         "properties": {
-          "tSLVersionIdentifier": {
+          "tslVersionIdentifier": {
             "type": "integer",
             "xml": {
               "name": "TSLVersionIdentifier",
               "namespace": "http://uri.etsi.org/02231/v2#"
             }
           },
-          "tSLSequenceNumber": {
+          "tslSequenceNumber": {
             "type": "integer",
             "minimum": 1,
             "xml": {
@@ -10181,7 +10181,7 @@
               "namespace": "http://uri.etsi.org/02231/v2#"
             }
           },
-          "tSLType": {
+          "tslType": {
             "$ref": "#/components/schemas/org.etsi022312.TSLType"
           },
           "schemeOperatorName": {
@@ -10197,7 +10197,7 @@
           "schemeName": {
             "$ref": "#/components/schemas/org.etsi022312.SchemeName"
           },
-          "schemeInformationURI": {
+          "schemeInformationUri": {
             "$ref": "#/components/schemas/org.etsi022312.SchemeInformationURI"
           },
           "statusDeterminationApproach": {
@@ -10224,7 +10224,7 @@
               "namespace": "http://uri.etsi.org/02231/v2#"
             }
           },
-          "pointersToOtherTSL": {
+          "pointersToOtherTsl": {
             "$ref": "#/components/schemas/org.etsi022312.PointersToOtherTSL"
           },
           "listIssueDateTime": {
@@ -10250,13 +10250,13 @@
           }
         },
         "required": [
-          "tSLVersionIdentifier",
-          "tSLSequenceNumber",
-          "tSLType",
+          "tslVersionIdentifier",
+          "tslSequenceNumber",
+          "tslType",
           "schemeOperatorName",
           "schemeOperatorAddress",
           "schemeName",
-          "schemeInformationURI",
+          "schemeInformationUri",
           "statusDeterminationApproach",
           "historicalInformationPeriod",
           "listIssueDateTime",
@@ -10276,7 +10276,7 @@
       "org.etsi022312.PolicyOrLegalnoticeType": {
         "type": "object",
         "properties": {
-          "tSLPolicy": {
+          "tslPolicy": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/org.etsi022312.NonEmptyMultiLangURIType",
@@ -10286,7 +10286,7 @@
               }
             }
           },
-          "tSLLegalNotice": {
+          "tslLegalNotice": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/org.etsi022312.MultiLangStringType",
@@ -10322,7 +10322,7 @@
       "org.etsi022312.OtherTSLPointersType": {
         "type": "object",
         "properties": {
-          "otherTSLPointer": {
+          "otherTslPointer": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/org.etsi022312.OtherTSLPointer"
@@ -10330,7 +10330,7 @@
           }
         },
         "required": [
-          "otherTSLPointer"
+          "otherTslPointer"
         ],
         "xml": {
           "x-is-base": true
@@ -10343,7 +10343,7 @@
           "serviceDigitalIdentities": {
             "$ref": "#/components/schemas/org.etsi022312.ServiceDigitalIdentities"
           },
-          "tSLLocation": {
+          "tslLocation": {
             "$ref": "#/components/schemas/org.etsi022312.NonEmptyURIType",
             "xml": {
               "name": "TSLLocation",
@@ -10355,7 +10355,7 @@
           }
         },
         "required": [
-          "tSLLocation"
+          "tslLocation"
         ],
         "xml": {
           "x-is-base": true
@@ -10412,16 +10412,16 @@
       "org.etsi022312.TSPType": {
         "type": "object",
         "properties": {
-          "tSPInformation": {
+          "tspInformation": {
             "$ref": "#/components/schemas/org.etsi022312.TSPInformation"
           },
-          "tSPServices": {
+          "tspServices": {
             "$ref": "#/components/schemas/org.etsi022312.TSPServices"
           }
         },
         "required": [
-          "tSPInformation",
-          "tSPServices"
+          "tspInformation",
+          "tspServices"
         ],
         "xml": {
           "x-is-base": true
@@ -10431,35 +10431,35 @@
       "org.etsi022312.TSPInformationType": {
         "type": "object",
         "properties": {
-          "tSPName": {
+          "tspName": {
             "$ref": "#/components/schemas/org.etsi022312.InternationalNamesType",
             "xml": {
               "name": "TSPName",
               "namespace": "http://uri.etsi.org/02231/v2#"
             }
           },
-          "tSPTradeName": {
+          "tspTradeName": {
             "$ref": "#/components/schemas/org.etsi022312.InternationalNamesType",
             "xml": {
               "name": "TSPTradeName",
               "namespace": "http://uri.etsi.org/02231/v2#"
             }
           },
-          "tSPAddress": {
+          "tspAddress": {
             "$ref": "#/components/schemas/org.etsi022312.AddressType",
             "xml": {
               "name": "TSPAddress",
               "namespace": "http://uri.etsi.org/02231/v2#"
             }
           },
-          "tSPInformationURI": {
+          "tspInformationUri": {
             "$ref": "#/components/schemas/org.etsi022312.NonEmptyMultiLangURIListType",
             "xml": {
               "name": "TSPInformationURI",
               "namespace": "http://uri.etsi.org/02231/v2#"
             }
           },
-          "tSPInformationExtensions": {
+          "tspInformationExtensions": {
             "$ref": "#/components/schemas/org.etsi022312.ExtensionsListType",
             "xml": {
               "name": "TSPInformationExtensions",
@@ -10468,9 +10468,9 @@
           }
         },
         "required": [
-          "tSPName",
-          "tSPAddress",
-          "tSPInformationURI"
+          "tspName",
+          "tspAddress",
+          "tspInformationUri"
         ],
         "xml": {
           "x-is-base": true
@@ -10480,7 +10480,7 @@
       "org.etsi022312.TSPServicesListType": {
         "type": "object",
         "properties": {
-          "tSPService": {
+          "tspService": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/org.etsi022312.TSPService"
@@ -10488,7 +10488,7 @@
           }
         },
         "required": [
-          "tSPService"
+          "tspService"
         ],
         "xml": {
           "x-is-base": true
@@ -10540,7 +10540,7 @@
               "namespace": "http://uri.etsi.org/02231/v2#"
             }
           },
-          "schemeServiceDefinitionURI": {
+          "schemeServiceDefinitionUri": {
             "$ref": "#/components/schemas/org.etsi022312.NonEmptyMultiLangURIListType",
             "xml": {
               "name": "SchemeServiceDefinitionURI",
@@ -10550,7 +10550,7 @@
           "serviceSupplyPoints": {
             "$ref": "#/components/schemas/org.etsi022312.ServiceSupplyPoints"
           },
-          "tSPServiceDefinitionURI": {
+          "tspServiceDefinitionUri": {
             "$ref": "#/components/schemas/org.etsi022312.NonEmptyMultiLangURIListType",
             "xml": {
               "name": "TSPServiceDefinitionURI",
@@ -10639,7 +10639,7 @@
           "keyValue": {
             "$ref": "#/components/schemas/org.w3200009.xmldsig.KeyValue"
           },
-          "x509ski": {
+          "x509Ski": {
             "type": "string",
             "format": "byte",
             "xml": {
@@ -10828,7 +10828,7 @@
               "namespace": "http://www.w3.org/2001/04/xmlenc#"
             }
           },
-          "oAEPparams": {
+          "oaePparams": {
             "type": "string",
             "format": "byte",
             "xml": {
@@ -11417,7 +11417,7 @@
               "namespace": "http://ws.gematik.de/conn/ConnectorCommon/v5.0"
             }
           },
-          "refURI": {
+          "refUri": {
             "type": "string",
             "format": "uri",
             "xml": {
@@ -11428,7 +11428,7 @@
         },
         "required": [
           "data",
-          "refURI"
+          "refUri"
         ],
         "xml": {
           "x-is-base": true
@@ -11445,7 +11445,7 @@
               "attribute": true
             }
           },
-          "refURI": {
+          "refUri": {
             "type": "string",
             "format": "uri",
             "xml": {
@@ -11468,7 +11468,7 @@
               "attribute": true
             }
           },
-          "base64XML": {
+          "base64Xml": {
             "type": "string",
             "format": "byte",
             "xml": {
@@ -11938,7 +11938,7 @@
           "cardVersion": {
             "type": "object",
             "properties": {
-              "cOSVersion": {
+              "cosVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService81.VersionInfoType",
                 "xml": {
                   "name": "COSVersion",
@@ -11952,7 +11952,7 @@
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.1"
                 }
               },
-              "cardPTPersVersion": {
+              "cardPtPersVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService81.VersionInfoType",
                 "xml": {
                   "name": "CardPTPersVersion",
@@ -11973,14 +11973,14 @@
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.1"
                 }
               },
-              "aTRVersion": {
+              "atrVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService81.VersionInfoType",
                 "xml": {
                   "name": "ATRVersion",
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.1"
                 }
               },
-              "gDOVersion": {
+              "gdoVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService81.VersionInfoType",
                 "xml": {
                   "name": "GDOVersion",
@@ -11996,7 +11996,7 @@
               }
             },
             "required": [
-              "cOSVersion",
+              "cosVersion",
               "objectSystemVersion"
             ],
             "xml": {
@@ -12055,7 +12055,7 @@
           "cardVersion": {
             "type": "object",
             "properties": {
-              "cOSVersion": {
+              "cosVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService81.VersionInfoType",
                 "xml": {
                   "name": "COSVersion",
@@ -12069,7 +12069,7 @@
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.1"
                 }
               },
-              "cardPTPersVersion": {
+              "cardPtPersVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService81.VersionInfoType",
                 "xml": {
                   "name": "CardPTPersVersion",
@@ -12090,14 +12090,14 @@
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.1"
                 }
               },
-              "aTRVersion": {
+              "atrVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService81.VersionInfoType",
                 "xml": {
                   "name": "ATRVersion",
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.1"
                 }
               },
-              "gDOVersion": {
+              "gdoVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService81.VersionInfoType",
                 "xml": {
                   "name": "GDOVersion",
@@ -12113,7 +12113,7 @@
               }
             },
             "required": [
-              "cOSVersion",
+              "cosVersion",
               "objectSystemVersion"
             ],
             "xml": {
@@ -12285,14 +12285,14 @@
       "de.gematik.ws.int.version.ProductInformation11.ProductVersionLocal": {
         "type": "object",
         "properties": {
-          "hWVersion": {
+          "hwVersion": {
             "$ref": "#/components/schemas/de.gematik.ws.int.version.ProductInformation11.HWVersion",
             "xml": {
               "name": "HWVersion",
               "namespace": "http://ws.gematik.de/int/version/ProductInformation/v1.1"
             }
           },
-          "fWVersion": {
+          "fwVersion": {
             "$ref": "#/components/schemas/de.gematik.ws.int.version.ProductInformation11.FWVersion",
             "xml": {
               "name": "FWVersion",
@@ -12301,8 +12301,8 @@
           }
         },
         "required": [
-          "hWVersion",
-          "fWVersion"
+          "hwVersion",
+          "fwVersion"
         ],
         "description": "`ProductVersionLocal` from XML namespace `http://ws.gematik.de/int/version/ProductInformation/v1.1` (package `de.gematik.ws.int.version.ProductInformation11`)."
       },
@@ -12368,7 +12368,7 @@
       "de.gematik.ws.int.version.ProductInformation11.ProductIdentification": {
         "type": "object",
         "properties": {
-          "productVendorID": {
+          "productVendorId": {
             "$ref": "#/components/schemas/de.gematik.ws.int.version.ProductInformation11.ProductVendorID",
             "xml": {
               "name": "ProductVendorID",
@@ -12391,7 +12391,7 @@
           }
         },
         "required": [
-          "productVendorID",
+          "productVendorId",
           "productCode",
           "productVersion"
         ],
@@ -12792,7 +12792,7 @@
           "cardVersion": {
             "type": "object",
             "properties": {
-              "cOSVersion": {
+              "cosVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService811.VersionInfoType",
                 "xml": {
                   "name": "COSVersion",
@@ -12806,7 +12806,7 @@
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.1"
                 }
               },
-              "cardPTPersVersion": {
+              "cardPtPersVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService811.VersionInfoType",
                 "xml": {
                   "name": "CardPTPersVersion",
@@ -12827,14 +12827,14 @@
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.1"
                 }
               },
-              "aTRVersion": {
+              "atrVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService811.VersionInfoType",
                 "xml": {
                   "name": "ATRVersion",
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.1"
                 }
               },
-              "gDOVersion": {
+              "gdoVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService811.VersionInfoType",
                 "xml": {
                   "name": "GDOVersion",
@@ -12850,7 +12850,7 @@
               }
             },
             "required": [
-              "cOSVersion",
+              "cosVersion",
               "objectSystemVersion"
             ],
             "xml": {
@@ -12909,7 +12909,7 @@
           "cardVersion": {
             "type": "object",
             "properties": {
-              "cOSVersion": {
+              "cosVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService811.VersionInfoType",
                 "xml": {
                   "name": "COSVersion",
@@ -12923,7 +12923,7 @@
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.1"
                 }
               },
-              "cardPTPersVersion": {
+              "cardPtPersVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService811.VersionInfoType",
                 "xml": {
                   "name": "CardPTPersVersion",
@@ -12944,14 +12944,14 @@
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.1"
                 }
               },
-              "aTRVersion": {
+              "atrVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService811.VersionInfoType",
                 "xml": {
                   "name": "ATRVersion",
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.1"
                 }
               },
-              "gDOVersion": {
+              "gdoVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService811.VersionInfoType",
                 "xml": {
                   "name": "GDOVersion",
@@ -12967,7 +12967,7 @@
               }
             },
             "required": [
-              "cOSVersion",
+              "cosVersion",
               "objectSystemVersion"
             ],
             "xml": {
@@ -13411,7 +13411,7 @@
           "cardVersion": {
             "type": "object",
             "properties": {
-              "cOSVersion": {
+              "cosVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService812.VersionInfoType",
                 "xml": {
                   "name": "COSVersion",
@@ -13425,7 +13425,7 @@
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.1"
                 }
               },
-              "cardPTPersVersion": {
+              "cardPtPersVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService812.VersionInfoType",
                 "xml": {
                   "name": "CardPTPersVersion",
@@ -13446,14 +13446,14 @@
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.1"
                 }
               },
-              "aTRVersion": {
+              "atrVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService812.VersionInfoType",
                 "xml": {
                   "name": "ATRVersion",
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.1"
                 }
               },
-              "gDOVersion": {
+              "gdoVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService812.VersionInfoType",
                 "xml": {
                   "name": "GDOVersion",
@@ -13469,7 +13469,7 @@
               }
             },
             "required": [
-              "cOSVersion",
+              "cosVersion",
               "objectSystemVersion"
             ],
             "xml": {
@@ -13528,7 +13528,7 @@
           "cardVersion": {
             "type": "object",
             "properties": {
-              "cOSVersion": {
+              "cosVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService812.VersionInfoType",
                 "xml": {
                   "name": "COSVersion",
@@ -13542,7 +13542,7 @@
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.1"
                 }
               },
-              "cardPTPersVersion": {
+              "cardPtPersVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService812.VersionInfoType",
                 "xml": {
                   "name": "CardPTPersVersion",
@@ -13563,14 +13563,14 @@
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.1"
                 }
               },
-              "aTRVersion": {
+              "atrVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService812.VersionInfoType",
                 "xml": {
                   "name": "ATRVersion",
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.1"
                 }
               },
-              "gDOVersion": {
+              "gdoVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService812.VersionInfoType",
                 "xml": {
                   "name": "GDOVersion",
@@ -13586,7 +13586,7 @@
               }
             },
             "required": [
-              "cOSVersion",
+              "cosVersion",
               "objectSystemVersion"
             ],
             "xml": {
@@ -14132,7 +14132,7 @@
       "de.gematik.ws.conn.SignatureService75.SignRequest": {
         "type": "object",
         "properties": {
-          "requestID": {
+          "requestId": {
             "type": "string",
             "xml": {
               "name": "RequestID",
@@ -14148,7 +14148,7 @@
               "properties": {
                 "$ref": "#/components/schemas/oasis.names.tc.dss10.core.Properties"
               },
-              "includeEContent": {
+              "includeEnvelopedContent": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.SignatureService75.IncludeEContent"
               },
               "includeObjects": {
@@ -14198,7 +14198,7 @@
           }
         },
         "required": [
-          "requestID",
+          "requestId",
           "document",
           "includeRevocationInfo"
         ],
@@ -14250,7 +14250,7 @@
       "de.gematik.ws.conn.SignatureService75.SignResponse": {
         "type": "object",
         "properties": {
-          "requestID": {
+          "requestId": {
             "type": "string",
             "xml": {
               "name": "RequestID",
@@ -14280,7 +14280,7 @@
           }
         },
         "required": [
-          "requestID",
+          "requestId",
           "status"
         ],
         "xml": {
@@ -14995,7 +14995,7 @@
           "cardVersion": {
             "type": "object",
             "properties": {
-              "cOSVersion": {
+              "cosVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService820.VersionInfoType",
                 "xml": {
                   "name": "COSVersion",
@@ -15009,7 +15009,7 @@
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.2"
                 }
               },
-              "cardPTPersVersion": {
+              "cardPtPersVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService820.VersionInfoType",
                 "xml": {
                   "name": "CardPTPersVersion",
@@ -15030,14 +15030,14 @@
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.2"
                 }
               },
-              "aTRVersion": {
+              "atrVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService820.VersionInfoType",
                 "xml": {
                   "name": "ATRVersion",
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.2"
                 }
               },
-              "gDOVersion": {
+              "gdoVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService820.VersionInfoType",
                 "xml": {
                   "name": "GDOVersion",
@@ -15053,7 +15053,7 @@
               }
             },
             "required": [
-              "cOSVersion",
+              "cosVersion",
               "objectSystemVersion"
             ],
             "xml": {
@@ -15112,7 +15112,7 @@
           "cardVersion": {
             "type": "object",
             "properties": {
-              "cOSVersion": {
+              "cosVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService820.VersionInfoType",
                 "xml": {
                   "name": "COSVersion",
@@ -15126,7 +15126,7 @@
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.2"
                 }
               },
-              "cardPTPersVersion": {
+              "cardPtPersVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService820.VersionInfoType",
                 "xml": {
                   "name": "CardPTPersVersion",
@@ -15147,14 +15147,14 @@
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.2"
                 }
               },
-              "aTRVersion": {
+              "atrVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService820.VersionInfoType",
                 "xml": {
                   "name": "ATRVersion",
                   "namespace": "http://ws.gematik.de/conn/CardService/v8.2"
                 }
               },
-              "gDOVersion": {
+              "gdoVersion": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardService820.VersionInfoType",
                 "xml": {
                   "name": "GDOVersion",
@@ -15170,7 +15170,7 @@
               }
             },
             "required": [
-              "cOSVersion",
+              "cosVersion",
               "objectSystemVersion"
             ],
             "xml": {
@@ -15232,7 +15232,7 @@
               "attribute": true
             }
           },
-          "refURI": {
+          "refUri": {
             "type": "string",
             "format": "uri",
             "xml": {
@@ -15262,7 +15262,7 @@
               "attribute": true
             }
           },
-          "base64XML": {
+          "base64Xml": {
             "type": "string",
             "format": "byte",
             "xml": {
@@ -15293,7 +15293,7 @@
               "attribute": true
             }
           },
-          "refURI": {
+          "refUri": {
             "type": "string",
             "format": "uri",
             "xml": {
@@ -15736,7 +15736,7 @@
       "de.gematik.ws.conn.CertificateService60.CertificateExpirationType": {
         "type": "object",
         "properties": {
-          "ctID": {
+          "ctId": {
             "type": "string",
             "xml": {
               "name": "CtID",
@@ -15753,7 +15753,7 @@
               "namespace": "http://ws.gematik.de/conn/CertificateService/v6.0"
             }
           },
-          "subjectCommonname": {
+          "subjectCommonName": {
             "type": "string",
             "xml": {
               "name": "subject_commonName",
@@ -15777,10 +15777,10 @@
           }
         },
         "required": [
-          "ctID",
+          "ctId",
           "cardHandle",
           "iccsn",
-          "subjectCommonname",
+          "subjectCommonName",
           "serialNumber",
           "validity"
         ],
@@ -16010,7 +16010,7 @@
       "de.gematik.ws.conn.CertificateService601.CertificateExpirationType": {
         "type": "object",
         "properties": {
-          "ctID": {
+          "ctId": {
             "type": "string",
             "xml": {
               "name": "CtID",
@@ -16027,7 +16027,7 @@
               "namespace": "http://ws.gematik.de/conn/CertificateService/v6.0"
             }
           },
-          "subjectCommonname": {
+          "subjectCommonName": {
             "type": "string",
             "xml": {
               "name": "subject_commonName",
@@ -16051,10 +16051,10 @@
           }
         },
         "required": [
-          "ctID",
+          "ctId",
           "cardHandle",
           "iccsn",
-          "subjectCommonname",
+          "subjectCommonName",
           "serialNumber",
           "validity"
         ],
@@ -16635,7 +16635,7 @@
               "namespace": "http://ws.gematik.de/conn/EventService/v7.2"
             }
           },
-          "subscriptionID": {
+          "subscriptionId": {
             "$ref": "#/components/schemas/de.gematik.ws.conn.EventService72.SubscriptionID"
           },
           "message": {
@@ -16684,7 +16684,7 @@
           "topic",
           "type",
           "severity",
-          "subscriptionID",
+          "subscriptionId",
           "message"
         ],
         "xml": {
@@ -16719,7 +16719,7 @@
           "status": {
             "$ref": "#/components/schemas/de.gematik.ws.conn.ConnectorCommon50.Status"
           },
-          "subscriptionID": {
+          "subscriptionId": {
             "$ref": "#/components/schemas/de.gematik.ws.conn.EventService72.SubscriptionID"
           },
           "terminationTime": {
@@ -16728,7 +16728,7 @@
         },
         "required": [
           "status",
-          "subscriptionID",
+          "subscriptionId",
           "terminationTime"
         ],
         "xml": {
@@ -16740,7 +16740,7 @@
       "de.gematik.ws.conn.EventService72.SubscriptionRenewal": {
         "type": "object",
         "properties": {
-          "subscriptionID": {
+          "subscriptionId": {
             "$ref": "#/components/schemas/de.gematik.ws.conn.EventService72.SubscriptionID"
           },
           "terminationTime": {
@@ -16748,7 +16748,7 @@
           }
         },
         "required": [
-          "subscriptionID",
+          "subscriptionId",
           "terminationTime"
         ],
         "xml": {
@@ -16763,7 +16763,7 @@
           "context": {
             "$ref": "#/components/schemas/de.gematik.ws.conn.ConnectorContext20.Context"
           },
-          "subscriptionID": {
+          "subscriptionId": {
             "$ref": "#/components/schemas/de.gematik.ws.conn.EventService72.SubscriptionID"
           },
           "eventTo": {
@@ -16808,7 +16808,7 @@
           "context": {
             "$ref": "#/components/schemas/de.gematik.ws.conn.ConnectorContext20.Context"
           },
-          "subscriptionID": {
+          "subscriptionId": {
             "$ref": "#/components/schemas/de.gematik.ws.conn.EventService72.SubscriptionID"
           }
         },
@@ -17034,7 +17034,7 @@
           "context": {
             "$ref": "#/components/schemas/de.gematik.ws.conn.ConnectorContext20.Context"
           },
-          "subscriptionID": {
+          "subscriptionId": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/de.gematik.ws.conn.EventService72.SubscriptionID"
@@ -17043,7 +17043,7 @@
         },
         "required": [
           "context",
-          "subscriptionID"
+          "subscriptionId"
         ],
         "xml": {
           "name": "RenewSubscriptions",
@@ -17149,7 +17149,7 @@
       "de.gematik.ws.conn.EventService72.SubscriptionType": {
         "type": "object",
         "properties": {
-          "subscriptionID": {
+          "subscriptionId": {
             "$ref": "#/components/schemas/de.gematik.ws.conn.EventService72.SubscriptionID"
           },
           "terminationTime": {
@@ -17208,17 +17208,17 @@
               "namespace": "http://ws.gematik.de/conn/CardTerminalInfo/v8.0"
             }
           },
-          "iPAddress": {
+          "ipAddress": {
             "type": "object",
             "properties": {
-              "iPV4Address": {
+              "ipv4Address": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardTerminalInfo80.Ipv4",
                 "xml": {
                   "name": "IPV4Address",
                   "namespace": "http://ws.gematik.de/conn/CardTerminalInfo/v8.0"
                 }
               },
-              "iPV6Address": {
+              "ipv6Address": {
                 "$ref": "#/components/schemas/de.gematik.ws.conn.CardTerminalInfo80.Ipv6",
                 "xml": {
                   "name": "IPV6Address",
@@ -17239,7 +17239,7 @@
               "namespace": "http://ws.gematik.de/conn/CardTerminalInfo/v8.0"
             }
           },
-          "is_physical": {
+          "isPhysical": {
             "type": "boolean",
             "xml": {
               "name": "IS_PHYSICAL",
@@ -17261,7 +17261,7 @@
           "name",
           "macAddress",
           "slots",
-          "is_physical",
+          "isPhysical",
           "connected"
         ],
         "xml": {

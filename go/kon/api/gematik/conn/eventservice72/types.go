@@ -16,7 +16,7 @@ type Event struct {
 	Topic          string            `xml:"Topic"`
 	Type           EventType         `xml:"Type"`
 	Severity       EventSeverityType `xml:"Severity"`
-	SubscriptionID string            `xml:"SubscriptionID"`
+	SubscriptionId string            `xml:"SubscriptionID"`
 	Message        EventMessage      `xml:"Message"`
 }
 
@@ -29,20 +29,20 @@ type Subscribe struct {
 type SubscribeResponse struct {
 	XMLName         xml.Name                 `xml:"http://ws.gematik.de/conn/EventService/v7.2 SubscribeResponse"`
 	Status          connectorcommon50.Status `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Status"`
-	SubscriptionID  string                   `xml:"SubscriptionID"`
+	SubscriptionId  string                   `xml:"SubscriptionID"`
 	TerminationTime string                   `xml:"TerminationTime"`
 }
 
 type SubscriptionRenewal struct {
 	XMLName         xml.Name `xml:"http://ws.gematik.de/conn/EventService/v7.2 SubscriptionRenewal"`
-	SubscriptionID  string   `xml:"SubscriptionID"`
+	SubscriptionId  string   `xml:"SubscriptionID"`
 	TerminationTime string   `xml:"TerminationTime"`
 }
 
 type Unsubscribe struct {
 	XMLName        xml.Name                   `xml:"http://ws.gematik.de/conn/EventService/v7.2 Unsubscribe"`
 	Context        connectorcontext20.Context `xml:"http://ws.gematik.de/conn/ConnectorContext/v2.0 Context"`
-	SubscriptionID string                     `xml:"SubscriptionID,omitempty"`
+	SubscriptionId string                     `xml:"SubscriptionID,omitempty"`
 	EventTo        string                     `xml:"EventTo,omitempty"`
 }
 
@@ -55,7 +55,7 @@ type GetSubscription struct {
 	XMLName        xml.Name                   `xml:"http://ws.gematik.de/conn/EventService/v7.2 GetSubscription"`
 	MandantWide    bool                       `xml:"mandant-wide,attr,omitempty"`
 	Context        connectorcontext20.Context `xml:"http://ws.gematik.de/conn/ConnectorContext/v2.0 Context"`
-	SubscriptionID string                     `xml:"SubscriptionID,omitempty"`
+	SubscriptionId string                     `xml:"SubscriptionID,omitempty"`
 }
 
 type GetSubscriptionResponse struct {
@@ -110,7 +110,7 @@ type GetCardTerminalsResponse struct {
 
 type Subscription struct {
 	XMLName         xml.Name `xml:"http://ws.gematik.de/conn/EventService/v7.2 Subscription"`
-	SubscriptionID  string   `xml:"SubscriptionID,omitempty"`
+	SubscriptionId  string   `xml:"SubscriptionID,omitempty"`
 	TerminationTime string   `xml:"TerminationTime,omitempty"`
 	EventTo         string   `xml:"EventTo"`
 	Topic           string   `xml:"Topic"`
@@ -120,7 +120,7 @@ type Subscription struct {
 type RenewSubscriptions struct {
 	XMLName        xml.Name                   `xml:"http://ws.gematik.de/conn/EventService/v7.2 RenewSubscriptions"`
 	Context        connectorcontext20.Context `xml:"http://ws.gematik.de/conn/ConnectorContext/v2.0 Context"`
-	SubscriptionID []string                   `xml:"SubscriptionID"`
+	SubscriptionId []string                   `xml:"SubscriptionID"`
 }
 
 type RenewSubscriptionsResponse struct {
@@ -183,7 +183,7 @@ func (v EventSeverityType) IsValid() bool {
 }
 
 type SubscriptionType struct {
-	SubscriptionID  string `xml:"http://ws.gematik.de/conn/EventService/v7.2 SubscriptionID,omitempty"`
+	SubscriptionId  string `xml:"http://ws.gematik.de/conn/EventService/v7.2 SubscriptionID,omitempty"`
 	TerminationTime string `xml:"http://ws.gematik.de/conn/EventService/v7.2 TerminationTime,omitempty"`
 	EventTo         string `xml:"http://ws.gematik.de/conn/EventService/v7.2 EventTo"`
 	Topic           string `xml:"http://ws.gematik.de/conn/EventService/v7.2 Topic"`

@@ -24,7 +24,7 @@ type SignDocument struct {
 
 type SignRequest struct {
 	XMLName               xml.Name                   `xml:"http://ws.gematik.de/conn/SignatureService/v7.5 SignRequest"`
-	RequestID             string                     `xml:"RequestID,attr"`
+	RequestId             string                     `xml:"RequestID,attr"`
 	OptionalInputs        *SignRequestOptionalInputs `xml:"OptionalInputs,omitempty"`
 	Document              Document                   `xml:"Document"`
 	IncludeRevocationInfo bool                       `xml:"IncludeRevocationInfo"`
@@ -52,11 +52,11 @@ func (v SignatureSchemes) IsValid() bool {
 type DocumentWithSignature struct {
 	XMLName    xml.Name              `xml:"http://ws.gematik.de/conn/SignatureService/v7.5 DocumentWithSignature"`
 	Id         string                `xml:"ID,attr,omitempty"`
-	RefURI     string                `xml:"RefURI,attr,omitempty"`
+	RefUri     string                `xml:"RefURI,attr,omitempty"`
 	RefType    string                `xml:"RefType,attr,omitempty"`
 	SchemaRefs string                `xml:"SchemaRefs,attr,omitempty"`
 	ShortText  string                `xml:"ShortText,attr,omitempty"`
-	Base64XML  Base64Bytes           `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Base64XML,omitempty"`
+	Base64Xml  Base64Bytes           `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Base64XML,omitempty"`
 	Base64Data *dss10core.Base64Data `xml:"urn:oasis:names:tc:dss:1.0:core:schema Base64Data,omitempty"`
 }
 
@@ -67,7 +67,7 @@ type SignDocumentResponse struct {
 
 type SignResponse struct {
 	XMLName         xml.Name                     `xml:"http://ws.gematik.de/conn/SignatureService/v7.5 SignResponse"`
-	RequestID       string                       `xml:"RequestID,attr"`
+	RequestId       string                       `xml:"RequestID,attr"`
 	Status          connectorcommon50.Status     `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Status"`
 	OptionalOutputs *SignResponseOptionalOutputs `xml:"OptionalOutputs,omitempty"`
 	SignatureObject *dss10core.SignatureObject   `xml:"urn:oasis:names:tc:dss:1.0:core:schema SignatureObject,omitempty"`
@@ -190,18 +190,18 @@ func (v SignatureForm) IsValid() bool {
 type Document struct {
 	XMLName    xml.Name              `xml:"http://ws.gematik.de/conn/SignatureService/v7.5 Document"`
 	Id         string                `xml:"ID,attr,omitempty"`
-	RefURI     string                `xml:"RefURI,attr,omitempty"`
+	RefUri     string                `xml:"RefURI,attr,omitempty"`
 	RefType    string                `xml:"RefType,attr,omitempty"`
 	SchemaRefs string                `xml:"SchemaRefs,attr,omitempty"`
 	ShortText  string                `xml:"ShortText,attr,omitempty"`
-	Base64XML  Base64Bytes           `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Base64XML,omitempty"`
+	Base64Xml  Base64Bytes           `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Base64XML,omitempty"`
 	Base64Data *dss10core.Base64Data `xml:"urn:oasis:names:tc:dss:1.0:core:schema Base64Data,omitempty"`
 }
 
 type BinaryString struct {
 	XMLName    xml.Name             `xml:"http://ws.gematik.de/conn/SignatureService/v7.5 BinaryString"`
 	Id         string               `xml:"ID,attr,omitempty"`
-	RefURI     string               `xml:"RefURI,attr,omitempty"`
+	RefUri     string               `xml:"RefURI,attr,omitempty"`
 	RefType    string               `xml:"RefType,attr,omitempty"`
 	SchemaRefs string               `xml:"SchemaRefs,attr,omitempty"`
 	Base64Data dss10core.Base64Data `xml:"urn:oasis:names:tc:dss:1.0:core:schema Base64Data"`
@@ -282,11 +282,11 @@ func (v SignatureMode) IsValid() bool {
 
 type DocumentType struct {
 	Id         string                `xml:"ID,attr,omitempty"`
-	RefURI     string                `xml:"RefURI,attr,omitempty"`
+	RefUri     string                `xml:"RefURI,attr,omitempty"`
 	RefType    string                `xml:"RefType,attr,omitempty"`
 	SchemaRefs string                `xml:"SchemaRefs,attr,omitempty"`
 	ShortText  string                `xml:"ShortText,attr,omitempty"`
-	Base64XML  Base64Bytes           `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Base64XML,omitempty"`
+	Base64Xml  Base64Bytes           `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Base64XML,omitempty"`
 	Base64Data *dss10core.Base64Data `xml:"urn:oasis:names:tc:dss:1.0:core:schema Base64Data,omitempty"`
 }
 
@@ -306,7 +306,7 @@ func (DocumentType) IsSignatureService75DocumentType() {}
 
 type BinaryDocumentType struct {
 	Id         string               `xml:"ID,attr,omitempty"`
-	RefURI     string               `xml:"RefURI,attr,omitempty"`
+	RefUri     string               `xml:"RefURI,attr,omitempty"`
 	RefType    string               `xml:"RefType,attr,omitempty"`
 	SchemaRefs string               `xml:"SchemaRefs,attr,omitempty"`
 	Base64Data dss10core.Base64Data `xml:"urn:oasis:names:tc:dss:1.0:core:schema Base64Data"`
@@ -371,7 +371,7 @@ type SignRequestOptionalInputs struct {
 	XMLName                      xml.Name                                      `xml:"http://ws.gematik.de/conn/SignatureService/v7.5 OptionalInputs"`
 	SignatureType                string                                        `xml:"urn:oasis:names:tc:dss:1.0:core:schema SignatureType,omitempty"`
 	Properties                   *dss10core.Properties                         `xml:"urn:oasis:names:tc:dss:1.0:core:schema Properties,omitempty"`
-	IncludeEContent              bool                                          `xml:"IncludeEContent,omitempty"`
+	IncludeEnvelopedContent      bool                                          `xml:"IncludeEContent,omitempty"`
 	IncludeObjects               *SignRequestOptionalInputsIncludeObjects      `xml:"IncludeObjects,omitempty"`
 	SignaturePlacement           *dss10core.SignaturePlacement                 `xml:"urn:oasis:names:tc:dss:1.0:core:schema SignaturePlacement,omitempty"`
 	ReturnUpdatedSignature       *dss10core.ReturnUpdatedSignature             `xml:"urn:oasis:names:tc:dss:1.0:core:schema ReturnUpdatedSignature,omitempty"`

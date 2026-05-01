@@ -39,7 +39,7 @@ type CanonicalizationMethod struct {
 type SignatureMethod struct {
 	XMLName          xml.Name `xml:"http://www.w3.org/2000/09/xmldsig# SignatureMethod"`
 	Algorithm        string   `xml:"Algorithm,attr"`
-	HMACOutputLength int      `xml:"HMACOutputLength,omitempty"`
+	HmacOutputLength int      `xml:"HMACOutputLength,omitempty"`
 	UnknownContent   string
 }
 
@@ -78,16 +78,16 @@ type KeyInfo struct {
 	KeyValue        []KeyValue        `xml:"KeyValue"`
 	RetrievalMethod []RetrievalMethod `xml:"RetrievalMethod"`
 	X509Data        []X509Data        `xml:"X509Data"`
-	PGPData         []PGPData         `xml:"PGPData"`
-	SPKIData        []SPKIData        `xml:"SPKIData"`
+	PgpData         []PGPData         `xml:"PGPData"`
+	SpkiData        []SPKIData        `xml:"SPKIData"`
 	MgmtData        []string          `xml:"MgmtData"`
 	UnknownContent  string
 }
 
 type KeyValue struct {
 	XMLName        xml.Name     `xml:"http://www.w3.org/2000/09/xmldsig# KeyValue"`
-	DSAKeyValue    *DSAKeyValue `xml:"DSAKeyValue,omitempty"`
-	RSAKeyValue    *RSAKeyValue `xml:"RSAKeyValue,omitempty"`
+	DsaKeyValue    *DSAKeyValue `xml:"DSAKeyValue,omitempty"`
+	RsaKeyValue    *RSAKeyValue `xml:"RSAKeyValue,omitempty"`
 	UnknownContent string
 }
 
@@ -101,23 +101,23 @@ type RetrievalMethod struct {
 type X509Data struct {
 	XMLName          xml.Name              `xml:"http://www.w3.org/2000/09/xmldsig# X509Data"`
 	X509IssuerSerial *X509IssuerSerialType `xml:"X509IssuerSerial,omitempty"`
-	X509ski          Base64Bytes           `xml:"X509SKI,omitempty"`
+	X509Ski          Base64Bytes           `xml:"X509SKI,omitempty"`
 	X509SubjectName  string                `xml:"X509SubjectName,omitempty"`
 	X509Certificate  Base64Bytes           `xml:"X509Certificate,omitempty"`
-	X509crl          Base64Bytes           `xml:"X509CRL,omitempty"`
+	X509Crl          Base64Bytes           `xml:"X509CRL,omitempty"`
 	UnknownContent   string
 }
 
 type PGPData struct {
 	XMLName        xml.Name    `xml:"http://www.w3.org/2000/09/xmldsig# PGPData"`
-	PGPKeyID       Base64Bytes `xml:"PGPKeyID"`
-	PGPKeyPacket   Base64Bytes `xml:"PGPKeyPacket,omitempty"`
+	PgpKeyId       Base64Bytes `xml:"PGPKeyID"`
+	PgpKeyPacket   Base64Bytes `xml:"PGPKeyPacket,omitempty"`
 	UnknownContent string
 }
 
 type SPKIData struct {
 	XMLName        xml.Name      `xml:"http://www.w3.org/2000/09/xmldsig# SPKIData"`
-	SPKISexp       []Base64Bytes `xml:"SPKISexp"`
+	SpkiSexp       []Base64Bytes `xml:"SPKISexp"`
 	UnknownContent string
 }
 
@@ -224,7 +224,7 @@ func (CanonicalizationMethodType) IsXmldsigCanonicalizationMethodType() {}
 
 type SignatureMethodType struct {
 	Algorithm        string `xml:"Algorithm,attr"`
-	HMACOutputLength int    `xml:"http://www.w3.org/2000/09/xmldsig# HMACOutputLength,omitempty"`
+	HmacOutputLength int    `xml:"http://www.w3.org/2000/09/xmldsig# HMACOutputLength,omitempty"`
 	UnknownContent   string
 }
 
@@ -298,8 +298,8 @@ type KeyInfoType struct {
 	KeyValue        []KeyValue        `xml:"http://www.w3.org/2000/09/xmldsig# KeyValue"`
 	RetrievalMethod []RetrievalMethod `xml:"http://www.w3.org/2000/09/xmldsig# RetrievalMethod"`
 	X509Data        []X509Data        `xml:"http://www.w3.org/2000/09/xmldsig# X509Data"`
-	PGPData         []PGPData         `xml:"http://www.w3.org/2000/09/xmldsig# PGPData"`
-	SPKIData        []SPKIData        `xml:"http://www.w3.org/2000/09/xmldsig# SPKIData"`
+	PgpData         []PGPData         `xml:"http://www.w3.org/2000/09/xmldsig# PGPData"`
+	SpkiData        []SPKIData        `xml:"http://www.w3.org/2000/09/xmldsig# SPKIData"`
 	MgmtData        []string          `xml:"http://www.w3.org/2000/09/xmldsig# MgmtData"`
 	UnknownContent  string
 }
@@ -313,8 +313,8 @@ type IKeyInfoType interface {
 func (KeyInfoType) IsXmldsigKeyInfoType() {}
 
 type KeyValueType struct {
-	DSAKeyValue    *DSAKeyValue `xml:"http://www.w3.org/2000/09/xmldsig# DSAKeyValue,omitempty"`
-	RSAKeyValue    *RSAKeyValue `xml:"http://www.w3.org/2000/09/xmldsig# RSAKeyValue,omitempty"`
+	DsaKeyValue    *DSAKeyValue `xml:"http://www.w3.org/2000/09/xmldsig# DSAKeyValue,omitempty"`
+	RsaKeyValue    *RSAKeyValue `xml:"http://www.w3.org/2000/09/xmldsig# RSAKeyValue,omitempty"`
 	UnknownContent string
 }
 
@@ -342,10 +342,10 @@ func (RetrievalMethodType) IsXmldsigRetrievalMethodType() {}
 
 type X509DataType struct {
 	X509IssuerSerial *X509IssuerSerialType `xml:"http://www.w3.org/2000/09/xmldsig# X509IssuerSerial,omitempty"`
-	X509ski          Base64Bytes           `xml:"http://www.w3.org/2000/09/xmldsig# X509SKI,omitempty"`
+	X509Ski          Base64Bytes           `xml:"http://www.w3.org/2000/09/xmldsig# X509SKI,omitempty"`
 	X509SubjectName  string                `xml:"http://www.w3.org/2000/09/xmldsig# X509SubjectName,omitempty"`
 	X509Certificate  Base64Bytes           `xml:"http://www.w3.org/2000/09/xmldsig# X509Certificate,omitempty"`
-	X509crl          Base64Bytes           `xml:"http://www.w3.org/2000/09/xmldsig# X509CRL,omitempty"`
+	X509Crl          Base64Bytes           `xml:"http://www.w3.org/2000/09/xmldsig# X509CRL,omitempty"`
 	UnknownContent   string
 }
 
@@ -363,8 +363,8 @@ type X509IssuerSerialType struct {
 }
 
 type PGPDataType struct {
-	PGPKeyID       Base64Bytes `xml:"http://www.w3.org/2000/09/xmldsig# PGPKeyID"`
-	PGPKeyPacket   Base64Bytes `xml:"http://www.w3.org/2000/09/xmldsig# PGPKeyPacket,omitempty"`
+	PgpKeyId       Base64Bytes `xml:"http://www.w3.org/2000/09/xmldsig# PGPKeyID"`
+	PgpKeyPacket   Base64Bytes `xml:"http://www.w3.org/2000/09/xmldsig# PGPKeyPacket,omitempty"`
 	UnknownContent string
 }
 
@@ -377,7 +377,7 @@ type IPGPDataType interface {
 func (PGPDataType) IsXmldsigPGPDataType() {}
 
 type SPKIDataType struct {
-	SPKISexp       []Base64Bytes `xml:"http://www.w3.org/2000/09/xmldsig# SPKISexp"`
+	SpkiSexp       []Base64Bytes `xml:"http://www.w3.org/2000/09/xmldsig# SPKISexp"`
 	UnknownContent string
 }
 

@@ -36,7 +36,7 @@ type Extension struct {
 
 type TrustServiceStatusList struct {
 	XMLName                  xml.Name                  `xml:"http://uri.etsi.org/02231/v2# TrustServiceStatusList"`
-	TSLTag                   TSLTagType                `xml:"TSLTag,attr"`
+	TslTag                   TSLTagType                `xml:"TSLTag,attr"`
 	Id                       string                    `xml:"Id,attr,omitempty"`
 	SchemeInformation        SchemeInformation         `xml:"SchemeInformation"`
 	TrustServiceProviderList *TrustServiceProviderList `xml:"TrustServiceProviderList,omitempty"`
@@ -50,19 +50,19 @@ type TrustServiceProviderList struct {
 
 type SchemeInformation struct {
 	XMLName                     xml.Name                  `xml:"http://uri.etsi.org/02231/v2# SchemeInformation"`
-	TSLVersionIdentifier        int                       `xml:"TSLVersionIdentifier"`
-	TSLSequenceNumber           int                       `xml:"TSLSequenceNumber"`
-	TSLType                     string                    `xml:"TSLType"`
+	TslVersionIdentifier        int                       `xml:"TSLVersionIdentifier"`
+	TslSequenceNumber           int                       `xml:"TSLSequenceNumber"`
+	TslType                     string                    `xml:"TSLType"`
 	SchemeOperatorName          SchemeOperatorName        `xml:"SchemeOperatorName"`
 	SchemeOperatorAddress       AddressType               `xml:"SchemeOperatorAddress"`
 	SchemeName                  SchemeName                `xml:"SchemeName"`
-	SchemeInformationURI        SchemeInformationURI      `xml:"SchemeInformationURI"`
+	SchemeInformationUri        SchemeInformationURI      `xml:"SchemeInformationURI"`
 	StatusDeterminationApproach string                    `xml:"StatusDeterminationApproach"`
 	SchemeTypeCommunityRules    *SchemeTypeCommunityRules `xml:"SchemeTypeCommunityRules,omitempty"`
 	SchemeTerritory             string                    `xml:"SchemeTerritory,omitempty"`
 	PolicyOrLegalNotice         *PolicyOrLegalNotice      `xml:"PolicyOrLegalNotice,omitempty"`
 	HistoricalInformationPeriod int                       `xml:"HistoricalInformationPeriod"`
-	PointersToOtherTSL          *PointersToOtherTSL       `xml:"PointersToOtherTSL,omitempty"`
+	PointersToOtherTsl          *PointersToOtherTSL       `xml:"PointersToOtherTSL,omitempty"`
 	ListIssueDateTime           string                    `xml:"ListIssueDateTime"`
 	NextUpdate                  NextUpdate                `xml:"NextUpdate"`
 	DistributionPoints          *DistributionPoints       `xml:"DistributionPoints,omitempty"`
@@ -91,8 +91,8 @@ type SchemeTypeCommunityRules struct {
 
 type PolicyOrLegalNotice struct {
 	XMLName        xml.Name                   `xml:"http://uri.etsi.org/02231/v2# PolicyOrLegalNotice"`
-	TSLPolicy      []NonEmptyMultiLangURIType `xml:"TSLPolicy"`
-	TSLLegalNotice []MultiLangStringType      `xml:"TSLLegalNotice"`
+	TslPolicy      []NonEmptyMultiLangURIType `xml:"TSLPolicy"`
+	TslLegalNotice []MultiLangStringType      `xml:"TSLLegalNotice"`
 }
 
 type NextUpdate struct {
@@ -102,13 +102,13 @@ type NextUpdate struct {
 
 type PointersToOtherTSL struct {
 	XMLName         xml.Name          `xml:"http://uri.etsi.org/02231/v2# PointersToOtherTSL"`
-	OtherTSLPointer []OtherTSLPointer `xml:"OtherTSLPointer"`
+	OtherTslPointer []OtherTSLPointer `xml:"OtherTSLPointer"`
 }
 
 type OtherTSLPointer struct {
 	XMLName                  xml.Name                  `xml:"http://uri.etsi.org/02231/v2# OtherTSLPointer"`
 	ServiceDigitalIdentities *ServiceDigitalIdentities `xml:"ServiceDigitalIdentities,omitempty"`
-	TSLLocation              string                    `xml:"TSLLocation"`
+	TslLocation              string                    `xml:"TSLLocation"`
 	AdditionalInformation    *AdditionalInformation    `xml:"AdditionalInformation,omitempty"`
 }
 
@@ -130,22 +130,22 @@ type DistributionPoints struct {
 
 type TrustServiceProvider struct {
 	XMLName        xml.Name       `xml:"http://uri.etsi.org/02231/v2# TrustServiceProvider"`
-	TSPInformation TSPInformation `xml:"TSPInformation"`
-	TSPServices    TSPServices    `xml:"TSPServices"`
+	TspInformation TSPInformation `xml:"TSPInformation"`
+	TspServices    TSPServices    `xml:"TSPServices"`
 }
 
 type TSPInformation struct {
 	XMLName                  xml.Name                     `xml:"http://uri.etsi.org/02231/v2# TSPInformation"`
-	TSPName                  InternationalNamesType       `xml:"TSPName"`
-	TSPTradeName             *InternationalNamesType      `xml:"TSPTradeName,omitempty"`
-	TSPAddress               AddressType                  `xml:"TSPAddress"`
-	TSPInformationURI        NonEmptyMultiLangURIListType `xml:"TSPInformationURI"`
-	TSPInformationExtensions *ExtensionsListType          `xml:"TSPInformationExtensions,omitempty"`
+	TspName                  InternationalNamesType       `xml:"TSPName"`
+	TspTradeName             *InternationalNamesType      `xml:"TSPTradeName,omitempty"`
+	TspAddress               AddressType                  `xml:"TSPAddress"`
+	TspInformationUri        NonEmptyMultiLangURIListType `xml:"TSPInformationURI"`
+	TspInformationExtensions *ExtensionsListType          `xml:"TSPInformationExtensions,omitempty"`
 }
 
 type TSPServices struct {
 	XMLName    xml.Name     `xml:"http://uri.etsi.org/02231/v2# TSPServices"`
-	TSPService []TSPService `xml:"TSPService"`
+	TspService []TSPService `xml:"TSPService"`
 }
 
 type TSPService struct {
@@ -161,9 +161,9 @@ type ServiceInformation struct {
 	ServiceDigitalIdentity       ServiceDigitalIdentity        `xml:"ServiceDigitalIdentity"`
 	ServiceStatus                string                        `xml:"ServiceStatus"`
 	StatusStartingTime           string                        `xml:"StatusStartingTime"`
-	SchemeServiceDefinitionURI   *NonEmptyMultiLangURIListType `xml:"SchemeServiceDefinitionURI,omitempty"`
+	SchemeServiceDefinitionUri   *NonEmptyMultiLangURIListType `xml:"SchemeServiceDefinitionURI,omitempty"`
 	ServiceSupplyPoints          *ServiceSupplyPoints          `xml:"ServiceSupplyPoints,omitempty"`
-	TSPServiceDefinitionURI      *NonEmptyMultiLangURIListType `xml:"TSPServiceDefinitionURI,omitempty"`
+	TspServiceDefinitionUri      *NonEmptyMultiLangURIListType `xml:"TSPServiceDefinitionURI,omitempty"`
 	ServiceInformationExtensions *ExtensionsListType           `xml:"ServiceInformationExtensions,omitempty"`
 }
 
@@ -329,7 +329,7 @@ type INonEmptyURIListType interface {
 func (NonEmptyURIListType) IsEtsi022312NonEmptyURIListType() {}
 
 type TrustStatusListType struct {
-	TSLTag                   TSLTagType                `xml:"TSLTag,attr"`
+	TslTag                   TSLTagType                `xml:"TSLTag,attr"`
 	Id                       string                    `xml:"Id,attr,omitempty"`
 	SchemeInformation        SchemeInformation         `xml:"http://uri.etsi.org/02231/v2# SchemeInformation"`
 	TrustServiceProviderList *TrustServiceProviderList `xml:"http://uri.etsi.org/02231/v2# TrustServiceProviderList,omitempty"`
@@ -373,19 +373,19 @@ type ITrustServiceProviderListType interface {
 func (TrustServiceProviderListType) IsEtsi022312TrustServiceProviderListType() {}
 
 type TSLSchemeInformationType struct {
-	TSLVersionIdentifier        int                       `xml:"http://uri.etsi.org/02231/v2# TSLVersionIdentifier"`
-	TSLSequenceNumber           int                       `xml:"http://uri.etsi.org/02231/v2# TSLSequenceNumber"`
-	TSLType                     string                    `xml:"http://uri.etsi.org/02231/v2# TSLType"`
+	TslVersionIdentifier        int                       `xml:"http://uri.etsi.org/02231/v2# TSLVersionIdentifier"`
+	TslSequenceNumber           int                       `xml:"http://uri.etsi.org/02231/v2# TSLSequenceNumber"`
+	TslType                     string                    `xml:"http://uri.etsi.org/02231/v2# TSLType"`
 	SchemeOperatorName          SchemeOperatorName        `xml:"http://uri.etsi.org/02231/v2# SchemeOperatorName"`
 	SchemeOperatorAddress       AddressType               `xml:"http://uri.etsi.org/02231/v2# SchemeOperatorAddress"`
 	SchemeName                  SchemeName                `xml:"http://uri.etsi.org/02231/v2# SchemeName"`
-	SchemeInformationURI        SchemeInformationURI      `xml:"http://uri.etsi.org/02231/v2# SchemeInformationURI"`
+	SchemeInformationUri        SchemeInformationURI      `xml:"http://uri.etsi.org/02231/v2# SchemeInformationURI"`
 	StatusDeterminationApproach string                    `xml:"http://uri.etsi.org/02231/v2# StatusDeterminationApproach"`
 	SchemeTypeCommunityRules    *SchemeTypeCommunityRules `xml:"http://uri.etsi.org/02231/v2# SchemeTypeCommunityRules,omitempty"`
 	SchemeTerritory             string                    `xml:"http://uri.etsi.org/02231/v2# SchemeTerritory,omitempty"`
 	PolicyOrLegalNotice         *PolicyOrLegalNotice      `xml:"http://uri.etsi.org/02231/v2# PolicyOrLegalNotice,omitempty"`
 	HistoricalInformationPeriod int                       `xml:"http://uri.etsi.org/02231/v2# HistoricalInformationPeriod"`
-	PointersToOtherTSL          *PointersToOtherTSL       `xml:"http://uri.etsi.org/02231/v2# PointersToOtherTSL,omitempty"`
+	PointersToOtherTsl          *PointersToOtherTSL       `xml:"http://uri.etsi.org/02231/v2# PointersToOtherTSL,omitempty"`
 	ListIssueDateTime           string                    `xml:"http://uri.etsi.org/02231/v2# ListIssueDateTime"`
 	NextUpdate                  NextUpdate                `xml:"http://uri.etsi.org/02231/v2# NextUpdate"`
 	DistributionPoints          *DistributionPoints       `xml:"http://uri.etsi.org/02231/v2# DistributionPoints,omitempty"`
@@ -401,8 +401,8 @@ type ITSLSchemeInformationType interface {
 func (TSLSchemeInformationType) IsEtsi022312TSLSchemeInformationType() {}
 
 type PolicyOrLegalnoticeType struct {
-	TSLPolicy      []NonEmptyMultiLangURIType `xml:"http://uri.etsi.org/02231/v2# TSLPolicy"`
-	TSLLegalNotice []MultiLangStringType      `xml:"http://uri.etsi.org/02231/v2# TSLLegalNotice"`
+	TslPolicy      []NonEmptyMultiLangURIType `xml:"http://uri.etsi.org/02231/v2# TSLPolicy"`
+	TslLegalNotice []MultiLangStringType      `xml:"http://uri.etsi.org/02231/v2# TSLLegalNotice"`
 }
 
 // Interface for types that extend PolicyOrLegalnoticeType
@@ -426,7 +426,7 @@ type INextUpdateType interface {
 func (NextUpdateType) IsEtsi022312NextUpdateType() {}
 
 type OtherTSLPointersType struct {
-	OtherTSLPointer []OtherTSLPointer `xml:"http://uri.etsi.org/02231/v2# OtherTSLPointer"`
+	OtherTslPointer []OtherTSLPointer `xml:"http://uri.etsi.org/02231/v2# OtherTSLPointer"`
 }
 
 // Interface for types that extend OtherTSLPointersType
@@ -439,7 +439,7 @@ func (OtherTSLPointersType) IsEtsi022312OtherTSLPointersType() {}
 
 type OtherTSLPointerType struct {
 	ServiceDigitalIdentities *ServiceDigitalIdentities `xml:"http://uri.etsi.org/02231/v2# ServiceDigitalIdentities,omitempty"`
-	TSLLocation              string                    `xml:"http://uri.etsi.org/02231/v2# TSLLocation"`
+	TslLocation              string                    `xml:"http://uri.etsi.org/02231/v2# TSLLocation"`
 	AdditionalInformation    *AdditionalInformation    `xml:"http://uri.etsi.org/02231/v2# AdditionalInformation,omitempty"`
 }
 
@@ -477,8 +477,8 @@ type IAdditionalInformationType interface {
 func (AdditionalInformationType) IsEtsi022312AdditionalInformationType() {}
 
 type TSPType struct {
-	TSPInformation TSPInformation `xml:"http://uri.etsi.org/02231/v2# TSPInformation"`
-	TSPServices    TSPServices    `xml:"http://uri.etsi.org/02231/v2# TSPServices"`
+	TspInformation TSPInformation `xml:"http://uri.etsi.org/02231/v2# TSPInformation"`
+	TspServices    TSPServices    `xml:"http://uri.etsi.org/02231/v2# TSPServices"`
 }
 
 // Interface for types that extend TSPType
@@ -490,11 +490,11 @@ type ITSPType interface {
 func (TSPType) IsEtsi022312TSPType() {}
 
 type TSPInformationType struct {
-	TSPName                  InternationalNamesType       `xml:"http://uri.etsi.org/02231/v2# TSPName"`
-	TSPTradeName             *InternationalNamesType      `xml:"http://uri.etsi.org/02231/v2# TSPTradeName,omitempty"`
-	TSPAddress               AddressType                  `xml:"http://uri.etsi.org/02231/v2# TSPAddress"`
-	TSPInformationURI        NonEmptyMultiLangURIListType `xml:"http://uri.etsi.org/02231/v2# TSPInformationURI"`
-	TSPInformationExtensions *ExtensionsListType          `xml:"http://uri.etsi.org/02231/v2# TSPInformationExtensions,omitempty"`
+	TspName                  InternationalNamesType       `xml:"http://uri.etsi.org/02231/v2# TSPName"`
+	TspTradeName             *InternationalNamesType      `xml:"http://uri.etsi.org/02231/v2# TSPTradeName,omitempty"`
+	TspAddress               AddressType                  `xml:"http://uri.etsi.org/02231/v2# TSPAddress"`
+	TspInformationUri        NonEmptyMultiLangURIListType `xml:"http://uri.etsi.org/02231/v2# TSPInformationURI"`
+	TspInformationExtensions *ExtensionsListType          `xml:"http://uri.etsi.org/02231/v2# TSPInformationExtensions,omitempty"`
 }
 
 // Interface for types that extend TSPInformationType
@@ -506,7 +506,7 @@ type ITSPInformationType interface {
 func (TSPInformationType) IsEtsi022312TSPInformationType() {}
 
 type TSPServicesListType struct {
-	TSPService []TSPService `xml:"http://uri.etsi.org/02231/v2# TSPService"`
+	TspService []TSPService `xml:"http://uri.etsi.org/02231/v2# TSPService"`
 }
 
 // Interface for types that extend TSPServicesListType
@@ -536,9 +536,9 @@ type TSPServiceInformationType struct {
 	ServiceDigitalIdentity       ServiceDigitalIdentity        `xml:"http://uri.etsi.org/02231/v2# ServiceDigitalIdentity"`
 	ServiceStatus                string                        `xml:"http://uri.etsi.org/02231/v2# ServiceStatus"`
 	StatusStartingTime           string                        `xml:"http://uri.etsi.org/02231/v2# StatusStartingTime"`
-	SchemeServiceDefinitionURI   *NonEmptyMultiLangURIListType `xml:"http://uri.etsi.org/02231/v2# SchemeServiceDefinitionURI,omitempty"`
+	SchemeServiceDefinitionUri   *NonEmptyMultiLangURIListType `xml:"http://uri.etsi.org/02231/v2# SchemeServiceDefinitionURI,omitempty"`
 	ServiceSupplyPoints          *ServiceSupplyPoints          `xml:"http://uri.etsi.org/02231/v2# ServiceSupplyPoints,omitempty"`
-	TSPServiceDefinitionURI      *NonEmptyMultiLangURIListType `xml:"http://uri.etsi.org/02231/v2# TSPServiceDefinitionURI,omitempty"`
+	TspServiceDefinitionUri      *NonEmptyMultiLangURIListType `xml:"http://uri.etsi.org/02231/v2# TSPServiceDefinitionURI,omitempty"`
 	ServiceInformationExtensions *ExtensionsListType           `xml:"http://uri.etsi.org/02231/v2# ServiceInformationExtensions,omitempty"`
 }
 
@@ -578,7 +578,7 @@ type DigitalIdentityType struct {
 	X509Certificate Base64Bytes       `xml:"http://uri.etsi.org/02231/v2# X509Certificate,omitempty"`
 	X509SubjectName string            `xml:"http://uri.etsi.org/02231/v2# X509SubjectName,omitempty"`
 	KeyValue        *xmldsig.KeyValue `xml:"http://www.w3.org/2000/09/xmldsig# KeyValue,omitempty"`
-	X509ski         Base64Bytes       `xml:"http://uri.etsi.org/02231/v2# X509SKI,omitempty"`
+	X509Ski         Base64Bytes       `xml:"http://uri.etsi.org/02231/v2# X509SKI,omitempty"`
 	Other           *AnyType          `xml:"http://uri.etsi.org/02231/v2# Other,omitempty"`
 }
 

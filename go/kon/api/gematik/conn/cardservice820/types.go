@@ -296,25 +296,25 @@ func (CardInfoErrType) IsCardService820CardInfoType() {}
 
 type CardInfoTypeCardVersion struct {
 	XMLName              xml.Name         `xml:"http://ws.gematik.de/conn/CardService/v8.2 CardVersion"`
-	COSVersion           VersionInfoType  `xml:"COSVersion"`
+	CosVersion           VersionInfoType  `xml:"COSVersion"`
 	ObjectSystemVersion  VersionInfoType  `xml:"ObjectSystemVersion"`
-	CardPTPersVersion    *VersionInfoType `xml:"CardPTPersVersion,omitempty"`
+	CardPtPersVersion    *VersionInfoType `xml:"CardPTPersVersion,omitempty"`
 	DataStructureVersion *VersionInfoType `xml:"DataStructureVersion,omitempty"`
 	LoggingVersion       *VersionInfoType `xml:"LoggingVersion,omitempty"`
-	ATRVersion           *VersionInfoType `xml:"ATRVersion,omitempty"`
-	GDOVersion           *VersionInfoType `xml:"GDOVersion,omitempty"`
+	AtrVersion           *VersionInfoType `xml:"ATRVersion,omitempty"`
+	GdoVersion           *VersionInfoType `xml:"GDOVersion,omitempty"`
 	KeyInfoVersion       *VersionInfoType `xml:"KeyInfoVersion,omitempty"`
 }
 
 type CardInfoErrTypeCardVersion struct {
 	XMLName              xml.Name         `xml:"http://ws.gematik.de/conn/CardService/v8.2 CardVersion"`
-	COSVersion           VersionInfoType  `xml:"COSVersion"`
+	CosVersion           VersionInfoType  `xml:"COSVersion"`
 	ObjectSystemVersion  VersionInfoType  `xml:"ObjectSystemVersion"`
-	CardPTPersVersion    *VersionInfoType `xml:"CardPTPersVersion,omitempty"`
+	CardPtPersVersion    *VersionInfoType `xml:"CardPTPersVersion,omitempty"`
 	DataStructureVersion *VersionInfoType `xml:"DataStructureVersion,omitempty"`
 	LoggingVersion       *VersionInfoType `xml:"LoggingVersion,omitempty"`
-	ATRVersion           *VersionInfoType `xml:"ATRVersion,omitempty"`
-	GDOVersion           *VersionInfoType `xml:"GDOVersion,omitempty"`
+	AtrVersion           *VersionInfoType `xml:"ATRVersion,omitempty"`
+	GdoVersion           *VersionInfoType `xml:"GDOVersion,omitempty"`
 	KeyInfoVersion       *VersionInfoType `xml:"KeyInfoVersion,omitempty"`
 }
 

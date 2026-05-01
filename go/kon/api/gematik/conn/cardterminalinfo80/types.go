@@ -15,7 +15,7 @@ type CardTerminal struct {
 	WorkplaceIds       connectorcommon50.WorkplaceIds          `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 WorkplaceIds"`
 	Name               string                                  `xml:"Name"`
 	MacAddress         string                                  `xml:"MacAddress"`
-	IPAddress          *CardTerminalInfoTypeIPAddress          `xml:"IPAddress,omitempty"`
+	IpAddress          *CardTerminalInfoTypeIpAddress          `xml:"IPAddress,omitempty"`
 	Slots              int                                     `xml:"Slots"`
 	IsPhysical         bool                                    `xml:"IS_PHYSICAL"`
 	Connected          bool                                    `xml:"Connected"`
@@ -32,7 +32,7 @@ type CardTerminalInfoType struct {
 	WorkplaceIds       connectorcommon50.WorkplaceIds          `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 WorkplaceIds"`
 	Name               string                                  `xml:"http://ws.gematik.de/conn/CardTerminalInfo/v8.0 Name"`
 	MacAddress         string                                  `xml:"http://ws.gematik.de/conn/CardTerminalInfo/v8.0 MacAddress"`
-	IPAddress          *CardTerminalInfoTypeIPAddress          `xml:"http://ws.gematik.de/conn/CardTerminalInfo/v8.0 IPAddress,omitempty"`
+	IpAddress          *CardTerminalInfoTypeIpAddress          `xml:"http://ws.gematik.de/conn/CardTerminalInfo/v8.0 IPAddress,omitempty"`
 	Slots              int                                     `xml:"http://ws.gematik.de/conn/CardTerminalInfo/v8.0 Slots"`
 	IsPhysical         bool                                    `xml:"http://ws.gematik.de/conn/CardTerminalInfo/v8.0 IS_PHYSICAL"`
 	Connected          bool                                    `xml:"http://ws.gematik.de/conn/CardTerminalInfo/v8.0 Connected"`
@@ -46,8 +46,8 @@ type ICardTerminalInfoType interface {
 // The type itself implements ICardTerminalInfoType
 func (CardTerminalInfoType) IsCardTerminalInfo80CardTerminalInfoType() {}
 
-type CardTerminalInfoTypeIPAddress struct {
+type CardTerminalInfoTypeIpAddress struct {
 	XMLName     xml.Name `xml:"http://ws.gematik.de/conn/CardTerminalInfo/v8.0 IPAddress"`
-	IPV4Address string   `xml:"IPV4Address,omitempty"`
-	IPV6Address string   `xml:"IPV6Address,omitempty"`
+	Ipv4Address string   `xml:"IPV4Address,omitempty"`
+	Ipv6Address string   `xml:"IPV6Address,omitempty"`
 }

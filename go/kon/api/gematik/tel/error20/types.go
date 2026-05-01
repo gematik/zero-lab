@@ -6,14 +6,14 @@ import "encoding/xml"
 
 type Error struct {
 	XMLName   xml.Name     `xml:"http://ws.gematik.de/tel/error/v2.0 Error"`
-	MessageID string       `xml:"MessageID"`
+	MessageId string       `xml:"MessageID"`
 	Timestamp string       `xml:"Timestamp"`
 	Trace     []ErrorTrace `xml:"Trace"`
 }
 
 type ErrorTrace struct {
 	XMLName      xml.Name          `xml:"http://ws.gematik.de/tel/error/v2.0 Trace"`
-	EventID      string            `xml:"EventID"`
+	EventId      string            `xml:"EventID"`
 	Instance     string            `xml:"Instance"`
 	LogReference string            `xml:"LogReference"`
 	CompType     string            `xml:"CompType"`

@@ -108,7 +108,7 @@ func (EncryptedType) IsXmlencEncryptedType() {}
 type EncryptionMethodType struct {
 	Algorithm      string      `xml:"Algorithm,attr"`
 	KeySize        int         `xml:"http://www.w3.org/2001/04/xmlenc# KeySize,omitempty"`
-	OAEPparams     Base64Bytes `xml:"http://www.w3.org/2001/04/xmlenc# OAEPparams,omitempty"`
+	OaePparams     Base64Bytes `xml:"http://www.w3.org/2001/04/xmlenc# OAEPparams,omitempty"`
 	UnknownContent string
 }
 

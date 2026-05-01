@@ -29,21 +29,21 @@ type VerificationReport struct {
 
 type DetailedSignatureReport struct {
 	XMLName                    xml.Name                         `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# DetailedSignatureReport"`
-	FormatOK                   VerificationResultType           `xml:"FormatOK"`
+	FormatOk                   VerificationResultType           `xml:"FormatOK"`
 	Properties                 *PropertiesType                  `xml:"Properties,omitempty"`
 	VerifyManifestResults      *dss10core.VerifyManifestResults `xml:"urn:oasis:names:tc:dss:1.0:core:schema VerifyManifestResults,omitempty"`
 	SignatureHasVisibleContent bool                             `xml:"SignatureHasVisibleContent,omitempty"`
-	SignatureOK                SignatureValidityType            `xml:"SignatureOK"`
+	SignatureOk                SignatureValidityType            `xml:"SignatureOK"`
 	CertificatePathValidity    CertificatePathValidityType      `xml:"CertificatePathValidity"`
 }
 
 type IndividualTimeStampReport struct {
 	XMLName                 xml.Name                    `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# IndividualTimeStampReport"`
 	Id                      string                      `xml:"Id,attr,omitempty"`
-	FormatOK                VerificationResultType      `xml:"FormatOK"`
+	FormatOk                VerificationResultType      `xml:"FormatOK"`
 	TimeStampContent        *TstContentType             `xml:"TimeStampContent,omitempty"`
 	MessageHashAlgorithm    *AlgorithmValidityType      `xml:"MessageHashAlgorithm,omitempty"`
-	SignatureOK             SignatureValidityType       `xml:"SignatureOK"`
+	SignatureOk             SignatureValidityType       `xml:"SignatureOK"`
 	CertificatePathValidity CertificatePathValidityType `xml:"CertificatePathValidity"`
 }
 
@@ -51,12 +51,12 @@ type IndividualCertificateReport struct {
 	XMLName               xml.Name                     `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# IndividualCertificateReport"`
 	CertificateIdentifier xmldsig.X509IssuerSerialType `xml:"CertificateIdentifier"`
 	Subject               string                       `xml:"Subject"`
-	ChainingOK            VerificationResultType       `xml:"ChainingOK"`
-	ValidityPeriodOK      VerificationResultType       `xml:"ValidityPeriodOK"`
-	ExtensionsOK          VerificationResultType       `xml:"ExtensionsOK"`
+	ChainingOk            VerificationResultType       `xml:"ChainingOK"`
+	ValidityPeriodOk      VerificationResultType       `xml:"ValidityPeriodOK"`
+	ExtensionsOk          VerificationResultType       `xml:"ExtensionsOK"`
 	CertificateValue      Base64Bytes                  `xml:"CertificateValue,omitempty"`
 	CertificateContent    *CertificateContentType      `xml:"CertificateContent,omitempty"`
-	SignatureOK           SignatureValidityType        `xml:"SignatureOK"`
+	SignatureOk           SignatureValidityType        `xml:"SignatureOK"`
 	CertificateStatus     CertificateStatusType        `xml:"CertificateStatus"`
 }
 
@@ -65,34 +65,34 @@ type IndividualAttributeCertificateReport struct {
 	AttributeCertificateIdentifier AttrCertIDType                   `xml:"AttributeCertificateIdentifier"`
 	AttributeCertificateValue      Base64Bytes                      `xml:"AttributeCertificateValue,omitempty"`
 	AttributeCertificateContent    *AttributeCertificateContentType `xml:"AttributeCertificateContent,omitempty"`
-	SignatureOK                    SignatureValidityType            `xml:"SignatureOK"`
+	SignatureOk                    SignatureValidityType            `xml:"SignatureOK"`
 	CertificatePathValidity        CertificatePathValidityType      `xml:"CertificatePathValidity"`
 }
 
 type IndividualCRLReport struct {
 	XMLName                 xml.Name                       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# IndividualCRLReport"`
 	Id                      string                         `xml:"Id,attr,omitempty"`
-	CRLIdentifier           etsi01903132.CRLIdentifierType `xml:"CRLIdentifier"`
-	CRLValue                Base64Bytes                    `xml:"CRLValue,omitempty"`
-	CRLContent              *CRLContentType                `xml:"CRLContent,omitempty"`
-	SignatureOK             SignatureValidityType          `xml:"SignatureOK"`
+	CrlIdentifier           etsi01903132.CRLIdentifierType `xml:"CRLIdentifier"`
+	CrlValue                Base64Bytes                    `xml:"CRLValue,omitempty"`
+	CrlContent              *CRLContentType                `xml:"CRLContent,omitempty"`
+	SignatureOk             SignatureValidityType          `xml:"SignatureOK"`
 	CertificatePathValidity CertificatePathValidityType    `xml:"CertificatePathValidity"`
 }
 
 type IndividualOCSPReport struct {
 	XMLName                 xml.Name                        `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# IndividualOCSPReport"`
 	Id                      string                          `xml:"Id,attr,omitempty"`
-	OCSPIdentifier          etsi01903132.OCSPIdentifierType `xml:"OCSPIdentifier"`
-	OCSPValue               Base64Bytes                     `xml:"OCSPValue,omitempty"`
-	OCSPContent             *OCSPContentType                `xml:"OCSPContent,omitempty"`
-	SignatureOK             SignatureValidityType           `xml:"SignatureOK"`
+	OcspIdentifier          etsi01903132.OCSPIdentifierType `xml:"OCSPIdentifier"`
+	OcspValue               Base64Bytes                     `xml:"OCSPValue,omitempty"`
+	OcspContent             *OCSPContentType                `xml:"OCSPContent,omitempty"`
+	SignatureOk             SignatureValidityType           `xml:"SignatureOK"`
 	CertificatePathValidity CertificatePathValidityType     `xml:"CertificatePathValidity"`
 }
 
 type EvidenceRecordReport struct {
 	XMLName                  xml.Name                                           `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# EvidenceRecordReport"`
 	Id                       string                                             `xml:"Id,attr,omitempty"`
-	FormatOK                 VerificationResultType                             `xml:"FormatOK"`
+	FormatOk                 VerificationResultType                             `xml:"FormatOK"`
 	Version                  int                                                `xml:"Version,omitempty"`
 	DigestAlgorithm          []AlgorithmValidityType                            `xml:"DigestAlgorithm"`
 	CryptoInfos              *EvidenceRecordValidityTypeCryptoInfos             `xml:"CryptoInfos,omitempty"`
@@ -116,8 +116,8 @@ func (VerificationReportType) IsVerificationreportVerificationReportType() {}
 
 type IdentifierType struct {
 	X509Data         *xmldsig.X509Data  `xml:"http://www.w3.org/2000/09/xmldsig# X509Data,omitempty"`
-	SAMLv1Identifier string             `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SAMLv1Identifier,omitempty"`
-	SAMLv2Identifier string             `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SAMLv2Identifier,omitempty"`
+	SamLv1Identifier string             `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SAMLv1Identifier,omitempty"`
+	SamLv2Identifier string             `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SAMLv2Identifier,omitempty"`
 	Other            *dss10core.AnyType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# Other,omitempty"`
 }
 
@@ -155,11 +155,11 @@ type VerificationResultType struct {
 }
 
 type DetailedSignatureReportType struct {
-	FormatOK                   VerificationResultType           `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# FormatOK"`
+	FormatOk                   VerificationResultType           `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# FormatOK"`
 	Properties                 *PropertiesType                  `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# Properties,omitempty"`
 	VerifyManifestResults      *dss10core.VerifyManifestResults `xml:"urn:oasis:names:tc:dss:1.0:core:schema VerifyManifestResults,omitempty"`
 	SignatureHasVisibleContent bool                             `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureHasVisibleContent,omitempty"`
-	SignatureOK                SignatureValidityType            `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureOK"`
+	SignatureOk                SignatureValidityType            `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureOK"`
 	CertificatePathValidity    CertificatePathValidityType      `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertificatePathValidity"`
 }
 
@@ -207,7 +207,7 @@ type AttributeCertificateValidityType struct {
 	AttributeCertificateIdentifier AttrCertIDType                   `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# AttributeCertificateIdentifier"`
 	AttributeCertificateValue      Base64Bytes                      `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# AttributeCertificateValue,omitempty"`
 	AttributeCertificateContent    *AttributeCertificateContentType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# AttributeCertificateContent,omitempty"`
-	SignatureOK                    SignatureValidityType            `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureOK"`
+	SignatureOk                    SignatureValidityType            `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureOK"`
 	CertificatePathValidity        CertificatePathValidityType      `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertificatePathValidity"`
 }
 
@@ -226,7 +226,7 @@ type AttrCertIDType struct {
 }
 
 type EntityType struct {
-	BaseCertificateID *xmldsig.X509IssuerSerialType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# BaseCertificateID,omitempty"`
+	BaseCertificateId *xmldsig.X509IssuerSerialType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# BaseCertificateID,omitempty"`
 	Name              string                        `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# Name,omitempty"`
 	Other             *dss10core.AnyType            `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# Other,omitempty"`
 }
@@ -239,7 +239,7 @@ type AttributeCertificateContentType struct {
 	SerialNumber          int                                       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SerialNumber"`
 	AttCertValidityPeriod ValidityPeriodType                        `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# AttCertValidityPeriod"`
 	Attributes            AttributeCertificateContentTypeAttributes `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# Attributes"`
-	IssuerUniqueID        string                                    `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# IssuerUniqueID,omitempty"`
+	IssuerUniqueId        string                                    `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# IssuerUniqueID,omitempty"`
 	Extensions            *ExtensionsType                           `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# Extensions,omitempty"`
 }
 
@@ -261,7 +261,7 @@ type ExtensionType struct {
 	ExtnId      etsi01903132.ObjectIdentifierType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# ExtnId"`
 	Critical    bool                              `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# Critical"`
 	ExtnValue   *dss10core.AnyType                `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# ExtnValue,omitempty"`
-	ExtensionOK VerificationResultType            `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# ExtensionOK"`
+	ExtensionOk VerificationResultType            `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# ExtensionOK"`
 }
 
 type SignedDataObjectPropertiesType struct {
@@ -275,10 +275,10 @@ type SignedDataObjectPropertiesType struct {
 
 type TimeStampValidityType struct {
 	Id                      string                      `xml:"Id,attr,omitempty"`
-	FormatOK                VerificationResultType      `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# FormatOK"`
+	FormatOk                VerificationResultType      `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# FormatOK"`
 	TimeStampContent        *TstContentType             `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# TimeStampContent,omitempty"`
 	MessageHashAlgorithm    *AlgorithmValidityType      `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# MessageHashAlgorithm,omitempty"`
-	SignatureOK             SignatureValidityType       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureOK"`
+	SignatureOk             SignatureValidityType       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureOK"`
 	CertificatePathValidity CertificatePathValidityType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertificatePathValidity"`
 }
 
@@ -296,7 +296,7 @@ type TstContentType struct {
 }
 
 type SignatureValidityType struct {
-	SigMathOK          VerificationResultType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SigMathOK"`
+	SigMathOk          VerificationResultType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SigMathOK"`
 	SignatureAlgorithm *AlgorithmValidityType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureAlgorithm,omitempty"`
 }
 
@@ -314,19 +314,19 @@ type CertificatePathValidityType struct {
 
 type CertificatePathValidityVerificationDetailType struct {
 	CertificateValidity []CertificateValidityType    `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertificateValidity"`
-	TSLValidity         *TrustStatusListValidityType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# TSLValidity,omitempty"`
+	TslValidity         *TrustStatusListValidityType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# TSLValidity,omitempty"`
 	TrustAnchor         VerificationResultType       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# TrustAnchor"`
 }
 
 type CertificateValidityType struct {
 	CertificateIdentifier xmldsig.X509IssuerSerialType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertificateIdentifier"`
 	Subject               string                       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# Subject"`
-	ChainingOK            VerificationResultType       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# ChainingOK"`
-	ValidityPeriodOK      VerificationResultType       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# ValidityPeriodOK"`
-	ExtensionsOK          VerificationResultType       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# ExtensionsOK"`
+	ChainingOk            VerificationResultType       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# ChainingOK"`
+	ValidityPeriodOk      VerificationResultType       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# ValidityPeriodOK"`
+	ExtensionsOk          VerificationResultType       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# ExtensionsOK"`
 	CertificateValue      Base64Bytes                  `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertificateValue,omitempty"`
 	CertificateContent    *CertificateContentType      `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertificateContent,omitempty"`
-	SignatureOK           SignatureValidityType        `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureOK"`
+	SignatureOk           SignatureValidityType        `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureOK"`
 	CertificateStatus     CertificateStatusType        `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertificateStatus"`
 }
 
@@ -349,17 +349,17 @@ type CertificateContentType struct {
 }
 
 type CertificateStatusType struct {
-	CertStatusOK       VerificationResultType                   `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertStatusOK"`
+	CertStatusOk       VerificationResultType                   `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertStatusOK"`
 	RevocationInfo     *CertificateStatusTypeRevocationInfo     `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# RevocationInfo,omitempty"`
 	RevocationEvidence *CertificateStatusTypeRevocationEvidence `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# RevocationEvidence,omitempty"`
 }
 
 type CRLValidityType struct {
 	Id                      string                         `xml:"Id,attr,omitempty"`
-	CRLIdentifier           etsi01903132.CRLIdentifierType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CRLIdentifier"`
-	CRLValue                Base64Bytes                    `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CRLValue,omitempty"`
-	CRLContent              *CRLContentType                `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CRLContent,omitempty"`
-	SignatureOK             SignatureValidityType          `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureOK"`
+	CrlIdentifier           etsi01903132.CRLIdentifierType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CRLIdentifier"`
+	CrlValue                Base64Bytes                    `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CRLValue,omitempty"`
+	CrlContent              *CRLContentType                `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CRLContent,omitempty"`
+	SignatureOk             SignatureValidityType          `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureOK"`
 	CertificatePathValidity CertificatePathValidityType    `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertificatePathValidity"`
 }
 
@@ -383,10 +383,10 @@ type CRLContentType struct {
 
 type OCSPValidityType struct {
 	Id                      string                          `xml:"Id,attr,omitempty"`
-	OCSPIdentifier          etsi01903132.OCSPIdentifierType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# OCSPIdentifier"`
-	OCSPValue               Base64Bytes                     `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# OCSPValue,omitempty"`
-	OCSPContent             *OCSPContentType                `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# OCSPContent,omitempty"`
-	SignatureOK             SignatureValidityType           `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureOK"`
+	OcspIdentifier          etsi01903132.OCSPIdentifierType `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# OCSPIdentifier"`
+	OcspValue               Base64Bytes                     `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# OCSPValue,omitempty"`
+	OcspContent             *OCSPContentType                `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# OCSPContent,omitempty"`
+	SignatureOk             SignatureValidityType           `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureOK"`
 	CertificatePathValidity CertificatePathValidityType     `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertificatePathValidity"`
 }
 
@@ -400,14 +400,14 @@ func (OCSPValidityType) IsVerificationreportOCSPValidityType() {}
 
 type OCSPContentType struct {
 	Version            int                      `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# Version"`
-	ResponderID        string                   `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# ResponderID"`
+	ResponderId        string                   `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# ResponderID"`
 	ProducedAt         string                   `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# producedAt"`
 	Responses          OCSPContentTypeResponses `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# Responses"`
 	ResponseExtensions *ExtensionsType          `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# ResponseExtensions,omitempty"`
 }
 
 type SingleResponseType struct {
-	CertID           SingleResponseTypeCertID `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertID"`
+	CertId           SingleResponseTypeCertId `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertID"`
 	CertStatus       VerificationResultType   `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertStatus"`
 	ThisUpdate       string                   `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# ThisUpdate"`
 	NextUpdate       string                   `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# NextUpdate,omitempty"`
@@ -415,11 +415,11 @@ type SingleResponseType struct {
 }
 
 type TrustStatusListValidityType struct {
-	TSLTag                   etsi022312.TSLTagType                `xml:"TSLTag,attr"`
+	TslTag                   etsi022312.TSLTagType                `xml:"TSLTag,attr"`
 	Id                       string                               `xml:"Id,attr,omitempty"`
 	SchemeInformation        etsi022312.SchemeInformation         `xml:"http://uri.etsi.org/02231/v2# SchemeInformation"`
 	TrustServiceProviderList *etsi022312.TrustServiceProviderList `xml:"http://uri.etsi.org/02231/v2# TrustServiceProviderList,omitempty"`
-	SignatureOK              SignatureValidityType                `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureOK"`
+	SignatureOk              SignatureValidityType                `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# SignatureOK"`
 }
 
 type UnsignedPropertiesType struct {
@@ -448,8 +448,8 @@ type UnsignedSignaturePropertiesType struct {
 
 type RevocationValuesType struct {
 	Id          string                          `xml:"Id,attr,omitempty"`
-	CRLValues   *RevocationValuesTypeCRLValues  `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CRLValues,omitempty"`
-	OCSPValues  *RevocationValuesTypeOCSPValues `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# OCSPValues,omitempty"`
+	CrlValues   *RevocationValuesTypeCrlValues  `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CRLValues,omitempty"`
+	OcspValues  *RevocationValuesTypeOcspValues `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# OCSPValues,omitempty"`
 	OtherValues *dss10core.AnyType              `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# OtherValues,omitempty"`
 }
 
@@ -461,7 +461,7 @@ type CertificateValuesType struct {
 
 type EvidenceRecordValidityType struct {
 	Id                       string                                             `xml:"Id,attr,omitempty"`
-	FormatOK                 VerificationResultType                             `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# FormatOK"`
+	FormatOk                 VerificationResultType                             `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# FormatOK"`
 	Version                  int                                                `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# Version,omitempty"`
 	DigestAlgorithm          []AlgorithmValidityType                            `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# DigestAlgorithm"`
 	CryptoInfos              *EvidenceRecordValidityTypeCryptoInfos             `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CryptoInfos,omitempty"`
@@ -479,7 +479,7 @@ func (EvidenceRecordValidityType) IsVerificationreportEvidenceRecordValidityType
 
 type ArchiveTimeStampValidityType struct {
 	Id              string                                       `xml:"Id,attr,omitempty"`
-	FormatOK        VerificationResultType                       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# FormatOK"`
+	FormatOk        VerificationResultType                       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# FormatOK"`
 	DigestAlgorithm *AlgorithmValidityType                       `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# DigestAlgorithm,omitempty"`
 	Attributes      *ArchiveTimeStampValidityTypeAttributes      `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# Attributes,omitempty"`
 	ReducedHashTree *ArchiveTimeStampValidityTypeReducedHashTree `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# ReducedHashTree,omitempty"`
@@ -504,10 +504,10 @@ type CertificateStatusTypeRevocationInfo struct {
 
 type CertificateStatusTypeRevocationEvidence struct {
 	XMLName       xml.Name                         `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# RevocationEvidence"`
-	CRLValidity   *CRLValidityType                 `xml:"CRLValidity,omitempty"`
-	CRLReference  *etsi01903132.CRLIdentifierType  `xml:"CRLReference,omitempty"`
-	OCSPValidity  *OCSPValidityType                `xml:"OCSPValidity,omitempty"`
-	OCSPReference *etsi01903132.OCSPIdentifierType `xml:"OCSPReference,omitempty"`
+	CrlValidity   *CRLValidityType                 `xml:"CRLValidity,omitempty"`
+	CrlReference  *etsi01903132.CRLIdentifierType  `xml:"CRLReference,omitempty"`
+	OcspValidity  *OCSPValidityType                `xml:"OCSPValidity,omitempty"`
+	OcspReference *etsi01903132.OCSPIdentifierType `xml:"OCSPReference,omitempty"`
 	Other         *dss10core.AnyType               `xml:"Other,omitempty"`
 }
 
@@ -523,7 +523,7 @@ type OCSPContentTypeResponses struct {
 	SingleResponse []SingleResponseType `xml:"SingleResponse"`
 }
 
-type SingleResponseTypeCertID struct {
+type SingleResponseTypeCertId struct {
 	XMLName        xml.Name `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CertID"`
 	HashAlgorithm  string   `xml:"HashAlgorithm"`
 	IssuerNameHash string   `xml:"IssuerNameHash"`
@@ -531,14 +531,14 @@ type SingleResponseTypeCertID struct {
 	SerialNumber   int      `xml:"SerialNumber"`
 }
 
-type RevocationValuesTypeCRLValues struct {
+type RevocationValuesTypeCrlValues struct {
 	XMLName     xml.Name          `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# CRLValues"`
-	VerifiedCRL []CRLValidityType `xml:"VerifiedCRL"`
+	VerifiedCrl []CRLValidityType `xml:"VerifiedCRL"`
 }
 
-type RevocationValuesTypeOCSPValues struct {
+type RevocationValuesTypeOcspValues struct {
 	XMLName              xml.Name           `xml:"urn:oasis:names:tc:dss-x:1.0:profiles:verificationreport:schema# OCSPValues"`
-	VerifiedOCSPResponse []OCSPValidityType `xml:"VerifiedOCSPResponse"`
+	VerifiedOcspResponse []OCSPValidityType `xml:"VerifiedOCSPResponse"`
 }
 
 type EvidenceRecordValidityTypeCryptoInfos struct {

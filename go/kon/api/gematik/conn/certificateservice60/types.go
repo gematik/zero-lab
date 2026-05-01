@@ -51,10 +51,10 @@ type VerifyCertificateResponse struct {
 }
 
 type CertificateExpirationType struct {
-	CtID              string `xml:"http://ws.gematik.de/conn/CertificateService/v6.0 CtID"`
+	CtId              string `xml:"http://ws.gematik.de/conn/CertificateService/v6.0 CtID"`
 	CardHandle        string `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 CardHandle"`
 	Iccsn             string `xml:"http://ws.gematik.de/conn/CertificateService/v6.0 ICCSN"`
-	SubjectCommonname string `xml:"http://ws.gematik.de/conn/CertificateService/v6.0 subject_commonName"`
+	SubjectCommonName string `xml:"http://ws.gematik.de/conn/CertificateService/v6.0 subject_commonName"`
 	SerialNumber      string `xml:"http://ws.gematik.de/conn/CertificateService/v6.0 serialNumber"`
 	Validity          string `xml:"http://ws.gematik.de/conn/CertificateService/v6.0 validity"`
 }

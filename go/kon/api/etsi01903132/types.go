@@ -48,7 +48,7 @@ type XAdESTimeStamp struct {
 	Include                []Include                       `xml:"Include"`
 	CanonicalizationMethod *xmldsig.CanonicalizationMethod `xml:"http://www.w3.org/2000/09/xmldsig# CanonicalizationMethod,omitempty"`
 	EncapsulatedTimeStamp  []EncapsulatedPKIDataType       `xml:"EncapsulatedTimeStamp"`
-	XMLTimeStamp           []AnyType                       `xml:"XMLTimeStamp"`
+	XmlTimeStamp           []AnyType                       `xml:"XMLTimeStamp"`
 }
 
 type OtherTimeStamp struct {
@@ -57,7 +57,7 @@ type OtherTimeStamp struct {
 	ReferenceInfo          []ReferenceInfo                 `xml:"ReferenceInfo"`
 	CanonicalizationMethod *xmldsig.CanonicalizationMethod `xml:"http://www.w3.org/2000/09/xmldsig# CanonicalizationMethod,omitempty"`
 	EncapsulatedTimeStamp  *EncapsulatedPKIDataType        `xml:"EncapsulatedTimeStamp,omitempty"`
-	XMLTimeStamp           *AnyType                        `xml:"XMLTimeStamp,omitempty"`
+	XmlTimeStamp           *AnyType                        `xml:"XMLTimeStamp,omitempty"`
 }
 
 type QualifyingProperties struct {
@@ -191,7 +191,7 @@ type AllDataObjectsTimeStamp struct {
 	Include                []Include                       `xml:"Include"`
 	CanonicalizationMethod *xmldsig.CanonicalizationMethod `xml:"http://www.w3.org/2000/09/xmldsig# CanonicalizationMethod,omitempty"`
 	EncapsulatedTimeStamp  []EncapsulatedPKIDataType       `xml:"EncapsulatedTimeStamp"`
-	XMLTimeStamp           []AnyType                       `xml:"XMLTimeStamp"`
+	XmlTimeStamp           []AnyType                       `xml:"XMLTimeStamp"`
 }
 
 type IndividualDataObjectsTimeStamp struct {
@@ -200,7 +200,7 @@ type IndividualDataObjectsTimeStamp struct {
 	Include                []Include                       `xml:"Include"`
 	CanonicalizationMethod *xmldsig.CanonicalizationMethod `xml:"http://www.w3.org/2000/09/xmldsig# CanonicalizationMethod,omitempty"`
 	EncapsulatedTimeStamp  []EncapsulatedPKIDataType       `xml:"EncapsulatedTimeStamp"`
-	XMLTimeStamp           []AnyType                       `xml:"XMLTimeStamp"`
+	XmlTimeStamp           []AnyType                       `xml:"XMLTimeStamp"`
 }
 
 type SignatureTimeStamp struct {
@@ -209,7 +209,7 @@ type SignatureTimeStamp struct {
 	Include                []Include                       `xml:"Include"`
 	CanonicalizationMethod *xmldsig.CanonicalizationMethod `xml:"http://www.w3.org/2000/09/xmldsig# CanonicalizationMethod,omitempty"`
 	EncapsulatedTimeStamp  []EncapsulatedPKIDataType       `xml:"EncapsulatedTimeStamp"`
-	XMLTimeStamp           []AnyType                       `xml:"XMLTimeStamp"`
+	XmlTimeStamp           []AnyType                       `xml:"XMLTimeStamp"`
 }
 
 type CompleteCertificateRefs struct {
@@ -221,8 +221,8 @@ type CompleteCertificateRefs struct {
 type CompleteRevocationRefs struct {
 	XMLName   xml.Name                 `xml:"http://uri.etsi.org/01903/v1.3.2# CompleteRevocationRefs"`
 	Id        string                   `xml:"Id,attr,omitempty"`
-	CRLRefs   *CRLRefsType             `xml:"CRLRefs,omitempty"`
-	OCSPRefs  *OCSPRefsType            `xml:"OCSPRefs,omitempty"`
+	CrlRefs   *CRLRefsType             `xml:"CRLRefs,omitempty"`
+	OcspRefs  *OCSPRefsType            `xml:"OCSPRefs,omitempty"`
 	OtherRefs *OtherCertStatusRefsType `xml:"OtherRefs,omitempty"`
 }
 
@@ -235,8 +235,8 @@ type AttributeCertificateRefs struct {
 type AttributeRevocationRefs struct {
 	XMLName   xml.Name                 `xml:"http://uri.etsi.org/01903/v1.3.2# AttributeRevocationRefs"`
 	Id        string                   `xml:"Id,attr,omitempty"`
-	CRLRefs   *CRLRefsType             `xml:"CRLRefs,omitempty"`
-	OCSPRefs  *OCSPRefsType            `xml:"OCSPRefs,omitempty"`
+	CrlRefs   *CRLRefsType             `xml:"CRLRefs,omitempty"`
+	OcspRefs  *OCSPRefsType            `xml:"OCSPRefs,omitempty"`
 	OtherRefs *OtherCertStatusRefsType `xml:"OtherRefs,omitempty"`
 }
 
@@ -246,7 +246,7 @@ type SigAndRefsTimeStamp struct {
 	Include                []Include                       `xml:"Include"`
 	CanonicalizationMethod *xmldsig.CanonicalizationMethod `xml:"http://www.w3.org/2000/09/xmldsig# CanonicalizationMethod,omitempty"`
 	EncapsulatedTimeStamp  []EncapsulatedPKIDataType       `xml:"EncapsulatedTimeStamp"`
-	XMLTimeStamp           []AnyType                       `xml:"XMLTimeStamp"`
+	XmlTimeStamp           []AnyType                       `xml:"XMLTimeStamp"`
 }
 
 type RefsOnlyTimeStamp struct {
@@ -255,7 +255,7 @@ type RefsOnlyTimeStamp struct {
 	Include                []Include                       `xml:"Include"`
 	CanonicalizationMethod *xmldsig.CanonicalizationMethod `xml:"http://www.w3.org/2000/09/xmldsig# CanonicalizationMethod,omitempty"`
 	EncapsulatedTimeStamp  []EncapsulatedPKIDataType       `xml:"EncapsulatedTimeStamp"`
-	XMLTimeStamp           []AnyType                       `xml:"XMLTimeStamp"`
+	XmlTimeStamp           []AnyType                       `xml:"XMLTimeStamp"`
 }
 
 type CertificateValues struct {
@@ -268,8 +268,8 @@ type CertificateValues struct {
 type RevocationValues struct {
 	XMLName     xml.Name                   `xml:"http://uri.etsi.org/01903/v1.3.2# RevocationValues"`
 	Id          string                     `xml:"Id,attr,omitempty"`
-	CRLValues   *CRLValuesType             `xml:"CRLValues,omitempty"`
-	OCSPValues  *OCSPValuesType            `xml:"OCSPValues,omitempty"`
+	CrlValues   *CRLValuesType             `xml:"CRLValues,omitempty"`
+	OcspValues  *OCSPValuesType            `xml:"OCSPValues,omitempty"`
 	OtherValues *OtherCertStatusValuesType `xml:"OtherValues,omitempty"`
 }
 
@@ -283,8 +283,8 @@ type AttrAuthoritiesCertValues struct {
 type AttributeRevocationValues struct {
 	XMLName     xml.Name                   `xml:"http://uri.etsi.org/01903/v1.3.2# AttributeRevocationValues"`
 	Id          string                     `xml:"Id,attr,omitempty"`
-	CRLValues   *CRLValuesType             `xml:"CRLValues,omitempty"`
-	OCSPValues  *OCSPValuesType            `xml:"OCSPValues,omitempty"`
+	CrlValues   *CRLValuesType             `xml:"CRLValues,omitempty"`
+	OcspValues  *OCSPValuesType            `xml:"OCSPValues,omitempty"`
 	OtherValues *OtherCertStatusValuesType `xml:"OtherValues,omitempty"`
 }
 
@@ -294,7 +294,7 @@ type ArchiveTimeStamp struct {
 	Include                []Include                       `xml:"Include"`
 	CanonicalizationMethod *xmldsig.CanonicalizationMethod `xml:"http://www.w3.org/2000/09/xmldsig# CanonicalizationMethod,omitempty"`
 	EncapsulatedTimeStamp  []EncapsulatedPKIDataType       `xml:"EncapsulatedTimeStamp"`
-	XMLTimeStamp           []AnyType                       `xml:"XMLTimeStamp"`
+	XmlTimeStamp           []AnyType                       `xml:"XMLTimeStamp"`
 }
 
 type AnyType struct {
@@ -400,7 +400,7 @@ type GenericTimeStampType struct {
 	ReferenceInfo          []ReferenceInfo                 `xml:"http://uri.etsi.org/01903/v1.3.2# ReferenceInfo"`
 	CanonicalizationMethod *xmldsig.CanonicalizationMethod `xml:"http://www.w3.org/2000/09/xmldsig# CanonicalizationMethod,omitempty"`
 	EncapsulatedTimeStamp  []EncapsulatedPKIDataType       `xml:"http://uri.etsi.org/01903/v1.3.2# EncapsulatedTimeStamp"`
-	XMLTimeStamp           []AnyType                       `xml:"http://uri.etsi.org/01903/v1.3.2# XMLTimeStamp"`
+	XmlTimeStamp           []AnyType                       `xml:"http://uri.etsi.org/01903/v1.3.2# XMLTimeStamp"`
 }
 
 type XAdESTimeStampType struct {
@@ -408,7 +408,7 @@ type XAdESTimeStampType struct {
 	Include                []Include                       `xml:"http://uri.etsi.org/01903/v1.3.2# Include"`
 	CanonicalizationMethod *xmldsig.CanonicalizationMethod `xml:"http://www.w3.org/2000/09/xmldsig# CanonicalizationMethod,omitempty"`
 	EncapsulatedTimeStamp  []EncapsulatedPKIDataType       `xml:"http://uri.etsi.org/01903/v1.3.2# EncapsulatedTimeStamp"`
-	XMLTimeStamp           []AnyType                       `xml:"http://uri.etsi.org/01903/v1.3.2# XMLTimeStamp"`
+	XmlTimeStamp           []AnyType                       `xml:"http://uri.etsi.org/01903/v1.3.2# XMLTimeStamp"`
 }
 
 // Interface for types that extend XAdESTimeStampType
@@ -424,7 +424,7 @@ type OtherTimeStampType struct {
 	ReferenceInfo          []ReferenceInfo                 `xml:"http://uri.etsi.org/01903/v1.3.2# ReferenceInfo"`
 	CanonicalizationMethod *xmldsig.CanonicalizationMethod `xml:"http://www.w3.org/2000/09/xmldsig# CanonicalizationMethod,omitempty"`
 	EncapsulatedTimeStamp  *EncapsulatedPKIDataType        `xml:"http://uri.etsi.org/01903/v1.3.2# EncapsulatedTimeStamp,omitempty"`
-	XMLTimeStamp           *AnyType                        `xml:"http://uri.etsi.org/01903/v1.3.2# XMLTimeStamp,omitempty"`
+	XmlTimeStamp           *AnyType                        `xml:"http://uri.etsi.org/01903/v1.3.2# XMLTimeStamp,omitempty"`
 }
 
 // Interface for types that extend OtherTimeStampType
@@ -730,8 +730,8 @@ func (CompleteCertificateRefsType) IsEtsi01903132CompleteCertificateRefsType() {
 
 type CompleteRevocationRefsType struct {
 	Id        string                   `xml:"Id,attr,omitempty"`
-	CRLRefs   *CRLRefsType             `xml:"http://uri.etsi.org/01903/v1.3.2# CRLRefs,omitempty"`
-	OCSPRefs  *OCSPRefsType            `xml:"http://uri.etsi.org/01903/v1.3.2# OCSPRefs,omitempty"`
+	CrlRefs   *CRLRefsType             `xml:"http://uri.etsi.org/01903/v1.3.2# CRLRefs,omitempty"`
+	OcspRefs  *OCSPRefsType            `xml:"http://uri.etsi.org/01903/v1.3.2# OCSPRefs,omitempty"`
 	OtherRefs *OtherCertStatusRefsType `xml:"http://uri.etsi.org/01903/v1.3.2# OtherRefs,omitempty"`
 }
 
@@ -744,12 +744,12 @@ type ICompleteRevocationRefsType interface {
 func (CompleteRevocationRefsType) IsEtsi01903132CompleteRevocationRefsType() {}
 
 type CRLRefsType struct {
-	CRLRef []CRLRefType `xml:"http://uri.etsi.org/01903/v1.3.2# CRLRef"`
+	CrlRef []CRLRefType `xml:"http://uri.etsi.org/01903/v1.3.2# CRLRef"`
 }
 
 type CRLRefType struct {
 	DigestAlgAndValue DigestAlgAndValueType `xml:"http://uri.etsi.org/01903/v1.3.2# DigestAlgAndValue"`
-	CRLIdentifier     *CRLIdentifierType    `xml:"http://uri.etsi.org/01903/v1.3.2# CRLIdentifier,omitempty"`
+	CrlIdentifier     *CRLIdentifierType    `xml:"http://uri.etsi.org/01903/v1.3.2# CRLIdentifier,omitempty"`
 }
 
 type CRLIdentifierType struct {
@@ -760,11 +760,11 @@ type CRLIdentifierType struct {
 }
 
 type OCSPRefsType struct {
-	OCSPRef []OCSPRefType `xml:"http://uri.etsi.org/01903/v1.3.2# OCSPRef"`
+	OcspRef []OCSPRefType `xml:"http://uri.etsi.org/01903/v1.3.2# OCSPRef"`
 }
 
 type OCSPRefType struct {
-	OCSPIdentifier    OCSPIdentifierType     `xml:"http://uri.etsi.org/01903/v1.3.2# OCSPIdentifier"`
+	OcspIdentifier    OCSPIdentifierType     `xml:"http://uri.etsi.org/01903/v1.3.2# OCSPIdentifier"`
 	DigestAlgAndValue *DigestAlgAndValueType `xml:"http://uri.etsi.org/01903/v1.3.2# DigestAlgAndValue,omitempty"`
 }
 
@@ -775,7 +775,7 @@ type ResponderIDType struct {
 
 type OCSPIdentifierType struct {
 	Uri         string          `xml:"URI,attr,omitempty"`
-	ResponderID ResponderIDType `xml:"http://uri.etsi.org/01903/v1.3.2# ResponderID"`
+	ResponderId ResponderIDType `xml:"http://uri.etsi.org/01903/v1.3.2# ResponderID"`
 	ProducedAt  string          `xml:"http://uri.etsi.org/01903/v1.3.2# ProducedAt"`
 }
 
@@ -799,8 +799,8 @@ func (CertificateValuesType) IsEtsi01903132CertificateValuesType() {}
 
 type RevocationValuesType struct {
 	Id          string                     `xml:"Id,attr,omitempty"`
-	CRLValues   *CRLValuesType             `xml:"http://uri.etsi.org/01903/v1.3.2# CRLValues,omitempty"`
-	OCSPValues  *OCSPValuesType            `xml:"http://uri.etsi.org/01903/v1.3.2# OCSPValues,omitempty"`
+	CrlValues   *CRLValuesType             `xml:"http://uri.etsi.org/01903/v1.3.2# CRLValues,omitempty"`
+	OcspValues  *OCSPValuesType            `xml:"http://uri.etsi.org/01903/v1.3.2# OCSPValues,omitempty"`
 	OtherValues *OtherCertStatusValuesType `xml:"http://uri.etsi.org/01903/v1.3.2# OtherValues,omitempty"`
 }
 
@@ -813,11 +813,11 @@ type IRevocationValuesType interface {
 func (RevocationValuesType) IsEtsi01903132RevocationValuesType() {}
 
 type CRLValuesType struct {
-	EncapsulatedCRLValue []EncapsulatedPKIDataType `xml:"http://uri.etsi.org/01903/v1.3.2# EncapsulatedCRLValue"`
+	EncapsulatedCrlValue []EncapsulatedPKIDataType `xml:"http://uri.etsi.org/01903/v1.3.2# EncapsulatedCRLValue"`
 }
 
 type OCSPValuesType struct {
-	EncapsulatedOCSPValue []EncapsulatedPKIDataType `xml:"http://uri.etsi.org/01903/v1.3.2# EncapsulatedOCSPValue"`
+	EncapsulatedOcspValue []EncapsulatedPKIDataType `xml:"http://uri.etsi.org/01903/v1.3.2# EncapsulatedOCSPValue"`
 }
 
 type OtherCertStatusValuesType struct {

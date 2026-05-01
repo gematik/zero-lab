@@ -19,12 +19,12 @@ type InputDocuments struct {
 type Document struct {
 	XMLName             xml.Name             `xml:"urn:oasis:names:tc:dss:1.0:core:schema Document"`
 	Id                  string               `xml:"ID,attr,omitempty"`
-	RefURI              string               `xml:"RefURI,attr,omitempty"`
+	RefUri              string               `xml:"RefURI,attr,omitempty"`
 	RefType             string               `xml:"RefType,attr,omitempty"`
 	SchemaRefs          string               `xml:"SchemaRefs,attr,omitempty"`
-	InlineXML           *InlineXMLType       `xml:"InlineXML,omitempty"`
-	Base64XML           Base64Bytes          `xml:"Base64XML,omitempty"`
-	EscapedXML          string               `xml:"EscapedXML,omitempty"`
+	InlineXml           *InlineXMLType       `xml:"InlineXML,omitempty"`
+	Base64Xml           Base64Bytes          `xml:"Base64XML,omitempty"`
+	EscapedXml          string               `xml:"EscapedXML,omitempty"`
 	Base64Data          *Base64Data          `xml:"Base64Data,omitempty"`
 	AttachmentReference *AttachmentReference `xml:"AttachmentReference,omitempty"`
 }
@@ -38,7 +38,7 @@ type Base64Data struct {
 type TransformedData struct {
 	XMLName        xml.Name            `xml:"urn:oasis:names:tc:dss:1.0:core:schema TransformedData"`
 	Id             string              `xml:"ID,attr,omitempty"`
-	RefURI         string              `xml:"RefURI,attr,omitempty"`
+	RefUri         string              `xml:"RefURI,attr,omitempty"`
 	RefType        string              `xml:"RefType,attr,omitempty"`
 	SchemaRefs     string              `xml:"SchemaRefs,attr,omitempty"`
 	WhichReference int                 `xml:"WhichReference,attr,omitempty"`
@@ -52,7 +52,7 @@ func (TransformedData) IsCoreDocumentBaseType() {}
 type DocumentHash struct {
 	XMLName        xml.Name              `xml:"urn:oasis:names:tc:dss:1.0:core:schema DocumentHash"`
 	Id             string                `xml:"ID,attr,omitempty"`
-	RefURI         string                `xml:"RefURI,attr,omitempty"`
+	RefUri         string                `xml:"RefURI,attr,omitempty"`
 	RefType        string                `xml:"RefType,attr,omitempty"`
 	SchemaRefs     string                `xml:"SchemaRefs,attr,omitempty"`
 	WhichReference int                   `xml:"WhichReference,attr,omitempty"`
@@ -117,19 +117,19 @@ type Schemas struct {
 type Schema struct {
 	XMLName             xml.Name             `xml:"urn:oasis:names:tc:dss:1.0:core:schema Schema"`
 	Id                  string               `xml:"ID,attr,omitempty"`
-	RefURI              string               `xml:"RefURI,attr,omitempty"`
+	RefUri              string               `xml:"RefURI,attr,omitempty"`
 	RefType             string               `xml:"RefType,attr,omitempty"`
 	SchemaRefs          string               `xml:"SchemaRefs,attr,omitempty"`
-	InlineXML           *InlineXMLType       `xml:"InlineXML,omitempty"`
-	Base64XML           Base64Bytes          `xml:"Base64XML,omitempty"`
-	EscapedXML          string               `xml:"EscapedXML,omitempty"`
+	InlineXml           *InlineXMLType       `xml:"InlineXML,omitempty"`
+	Base64Xml           Base64Bytes          `xml:"Base64XML,omitempty"`
+	EscapedXml          string               `xml:"EscapedXML,omitempty"`
 	Base64Data          *Base64Data          `xml:"Base64Data,omitempty"`
 	AttachmentReference *AttachmentReference `xml:"AttachmentReference,omitempty"`
 }
 
 type Response struct {
 	XMLName         xml.Name         `xml:"urn:oasis:names:tc:dss:1.0:core:schema Response"`
-	RequestID       string           `xml:"RequestID,attr,omitempty"`
+	RequestId       string           `xml:"RequestID,attr,omitempty"`
 	Profile         string           `xml:"Profile,attr"`
 	Result          Result           `xml:"Result"`
 	OptionalOutputs *OptionalOutputs `xml:"OptionalOutputs,omitempty"`
@@ -137,7 +137,7 @@ type Response struct {
 
 type SignRequest struct {
 	XMLName        xml.Name        `xml:"urn:oasis:names:tc:dss:1.0:core:schema SignRequest"`
-	RequestID      string          `xml:"RequestID,attr,omitempty"`
+	RequestId      string          `xml:"RequestID,attr,omitempty"`
 	Profile        string          `xml:"Profile,attr,omitempty"`
 	OptionalInputs *OptionalInputs `xml:"OptionalInputs,omitempty"`
 	InputDocuments *InputDocuments `xml:"InputDocuments,omitempty"`
@@ -148,7 +148,7 @@ func (SignRequest) IsCoreRequestBaseType() {}
 
 type SignResponse struct {
 	XMLName         xml.Name         `xml:"urn:oasis:names:tc:dss:1.0:core:schema SignResponse"`
-	RequestID       string           `xml:"RequestID,attr,omitempty"`
+	RequestId       string           `xml:"RequestID,attr,omitempty"`
 	Profile         string           `xml:"Profile,attr"`
 	Result          Result           `xml:"Result"`
 	OptionalOutputs *OptionalOutputs `xml:"OptionalOutputs,omitempty"`
@@ -215,14 +215,14 @@ type SignedReferences struct {
 type SignedReference struct {
 	XMLName       xml.Name            `xml:"urn:oasis:names:tc:dss:1.0:core:schema SignedReference"`
 	WhichDocument string              `xml:"WhichDocument,attr"`
-	RefURI        string              `xml:"RefURI,attr,omitempty"`
+	RefUri        string              `xml:"RefURI,attr,omitempty"`
 	RefId         string              `xml:"RefId,attr,omitempty"`
 	Transforms    *xmldsig.Transforms `xml:"http://www.w3.org/2000/09/xmldsig# Transforms,omitempty"`
 }
 
 type VerifyRequest struct {
 	XMLName         xml.Name         `xml:"urn:oasis:names:tc:dss:1.0:core:schema VerifyRequest"`
-	RequestID       string           `xml:"RequestID,attr,omitempty"`
+	RequestId       string           `xml:"RequestID,attr,omitempty"`
 	Profile         string           `xml:"Profile,attr,omitempty"`
 	OptionalInputs  *OptionalInputs  `xml:"OptionalInputs,omitempty"`
 	InputDocuments  *InputDocuments  `xml:"InputDocuments,omitempty"`
@@ -234,7 +234,7 @@ func (VerifyRequest) IsCoreRequestBaseType() {}
 
 type VerifyResponse struct {
 	XMLName         xml.Name         `xml:"urn:oasis:names:tc:dss:1.0:core:schema VerifyResponse"`
-	RequestID       string           `xml:"RequestID,attr,omitempty"`
+	RequestId       string           `xml:"RequestID,attr,omitempty"`
 	Profile         string           `xml:"Profile,attr"`
 	Result          Result           `xml:"Result"`
 	OptionalOutputs *OptionalOutputs `xml:"OptionalOutputs,omitempty"`
@@ -318,7 +318,7 @@ type TimestampedSignature struct {
 type Timestamp struct {
 	XMLName               xml.Name           `xml:"urn:oasis:names:tc:dss:1.0:core:schema Timestamp"`
 	Signature             *xmldsig.Signature `xml:"http://www.w3.org/2000/09/xmldsig# Signature,omitempty"`
-	RFC3161TimeStampToken Base64Bytes        `xml:"RFC3161TimeStampToken,omitempty"`
+	Rfc3161TimeStampToken Base64Bytes        `xml:"RFC3161TimeStampToken,omitempty"`
 	Other                 *AnyType           `xml:"Other,omitempty"`
 }
 
@@ -340,7 +340,7 @@ type RequesterIdentity struct {
 
 type AttachmentReference struct {
 	XMLName      xml.Name             `xml:"urn:oasis:names:tc:dss:1.0:core:schema AttachmentReference"`
-	AttRefURI    string               `xml:"AttRefURI,attr,omitempty"`
+	AttRefUri    string               `xml:"AttRefURI,attr,omitempty"`
 	MimeType     string               `xml:"MimeType,attr,omitempty"`
 	DigestMethod xmldsig.DigestMethod `xml:"http://www.w3.org/2000/09/xmldsig# DigestMethod"`
 	DigestValue  Base64Bytes          `xml:"http://www.w3.org/2000/09/xmldsig# DigestValue"`
@@ -365,7 +365,7 @@ type InternationalStringType struct {
 
 type DocumentBaseType struct {
 	Id         string `xml:"ID,attr,omitempty"`
-	RefURI     string `xml:"RefURI,attr,omitempty"`
+	RefUri     string `xml:"RefURI,attr,omitempty"`
 	RefType    string `xml:"RefType,attr,omitempty"`
 	SchemaRefs string `xml:"SchemaRefs,attr,omitempty"`
 }
@@ -380,12 +380,12 @@ func (DocumentBaseType) IsCoreDocumentBaseType() {}
 
 type DocumentType struct {
 	Id                  string               `xml:"ID,attr,omitempty"`
-	RefURI              string               `xml:"RefURI,attr,omitempty"`
+	RefUri              string               `xml:"RefURI,attr,omitempty"`
 	RefType             string               `xml:"RefType,attr,omitempty"`
 	SchemaRefs          string               `xml:"SchemaRefs,attr,omitempty"`
-	InlineXML           *InlineXMLType       `xml:"urn:oasis:names:tc:dss:1.0:core:schema InlineXML,omitempty"`
-	Base64XML           Base64Bytes          `xml:"urn:oasis:names:tc:dss:1.0:core:schema Base64XML,omitempty"`
-	EscapedXML          string               `xml:"urn:oasis:names:tc:dss:1.0:core:schema EscapedXML,omitempty"`
+	InlineXml           *InlineXMLType       `xml:"urn:oasis:names:tc:dss:1.0:core:schema InlineXML,omitempty"`
+	Base64Xml           Base64Bytes          `xml:"urn:oasis:names:tc:dss:1.0:core:schema Base64XML,omitempty"`
+	EscapedXml          string               `xml:"urn:oasis:names:tc:dss:1.0:core:schema EscapedXML,omitempty"`
 	Base64Data          *Base64Data          `xml:"urn:oasis:names:tc:dss:1.0:core:schema Base64Data,omitempty"`
 	AttachmentReference *AttachmentReference `xml:"urn:oasis:names:tc:dss:1.0:core:schema AttachmentReference,omitempty"`
 }
@@ -402,9 +402,9 @@ type IDocumentType interface {
 func (DocumentType) IsCoreDocumentType() {}
 
 type InlineXMLType struct {
-	IgnorePIs      bool `xml:"ignorePIs,attr,omitempty"`
-	IgnoreComments bool `xml:"ignoreComments,attr,omitempty"`
-	UnknownContent string
+	IgnoreProcessingInstructions bool `xml:"ignorePIs,attr,omitempty"`
+	IgnoreComments               bool `xml:"ignoreComments,attr,omitempty"`
+	UnknownContent               string
 }
 
 type SchemasType struct {
@@ -420,7 +420,7 @@ type ISchemasType interface {
 func (SchemasType) IsCoreSchemasType() {}
 
 type RequestBaseType struct {
-	RequestID      string          `xml:"RequestID,attr,omitempty"`
+	RequestId      string          `xml:"RequestID,attr,omitempty"`
 	Profile        string          `xml:"Profile,attr,omitempty"`
 	OptionalInputs *OptionalInputs `xml:"urn:oasis:names:tc:dss:1.0:core:schema OptionalInputs,omitempty"`
 	InputDocuments *InputDocuments `xml:"urn:oasis:names:tc:dss:1.0:core:schema InputDocuments,omitempty"`
@@ -435,7 +435,7 @@ type IRequestBaseType interface {
 func (RequestBaseType) IsCoreRequestBaseType() {}
 
 type ResponseBaseType struct {
-	RequestID       string           `xml:"RequestID,attr,omitempty"`
+	RequestId       string           `xml:"RequestID,attr,omitempty"`
 	Profile         string           `xml:"Profile,attr"`
 	Result          Result           `xml:"urn:oasis:names:tc:dss:1.0:core:schema Result"`
 	OptionalOutputs *OptionalOutputs `xml:"urn:oasis:names:tc:dss:1.0:core:schema OptionalOutputs,omitempty"`
@@ -569,7 +569,7 @@ type IUpdatedSignatureType interface {
 func (UpdatedSignatureType) IsCoreUpdatedSignatureType() {}
 
 type AttachmentReferenceType struct {
-	AttRefURI    string               `xml:"AttRefURI,attr,omitempty"`
+	AttRefUri    string               `xml:"AttRefURI,attr,omitempty"`
 	MimeType     string               `xml:"MimeType,attr,omitempty"`
 	DigestMethod xmldsig.DigestMethod `xml:"http://www.w3.org/2000/09/xmldsig# DigestMethod"`
 	DigestValue  Base64Bytes          `xml:"http://www.w3.org/2000/09/xmldsig# DigestValue"`

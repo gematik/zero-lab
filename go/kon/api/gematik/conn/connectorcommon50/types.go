@@ -41,8 +41,8 @@ type WorkplaceIds struct {
 
 type Connector struct {
 	XMLName        xml.Name              `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Connector"`
-	VPNTIStatus    ConnectorVPNTIStatus  `xml:"VPNTIStatus"`
-	VPNSISStatus   ConnectorVPNSISStatus `xml:"VPNSISStatus"`
+	VpnTiStatus    ConnectorVpnTiStatus  `xml:"VPNTIStatus"`
+	VpnSisStatus   ConnectorVpnSisStatus `xml:"VPNSISStatus"`
 	OperatingState OperatingState        `xml:"OperatingState"`
 }
 
@@ -58,10 +58,10 @@ type ErrorState struct {
 type Document struct {
 	XMLName    xml.Name              `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Document"`
 	Id         string                `xml:"ID,attr,omitempty"`
-	RefURI     string                `xml:"RefURI,attr,omitempty"`
+	RefUri     string                `xml:"RefURI,attr,omitempty"`
 	RefType    string                `xml:"RefType,attr,omitempty"`
 	SchemaRefs string                `xml:"SchemaRefs,attr,omitempty"`
-	Base64XML  Base64Bytes           `xml:"Base64XML,omitempty"`
+	Base64Xml  Base64Bytes           `xml:"Base64XML,omitempty"`
 	Base64Data *dss10core.Base64Data `xml:"urn:oasis:names:tc:dss:1.0:core:schema Base64Data,omitempty"`
 }
 
@@ -73,13 +73,13 @@ type OperatingState struct {
 type XmlSchema struct {
 	XMLName xml.Name    `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 XmlSchema"`
 	Data    Base64Bytes `xml:"Data"`
-	RefURI  string      `xml:"RefURI"`
+	RefUri  string      `xml:"RefURI"`
 }
 
 type XslStylesheet struct {
 	XMLName xml.Name    `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 XslStylesheet"`
 	Data    Base64Bytes `xml:"Data"`
-	RefURI  string      `xml:"RefURI"`
+	RefUri  string      `xml:"RefURI"`
 }
 
 type ResultEnum string
@@ -106,7 +106,7 @@ func (v ResultEnum) IsValid() bool {
 
 type AttachmentType struct {
 	Data   Base64Bytes `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Data"`
-	RefURI string      `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 RefURI"`
+	RefUri string      `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 RefURI"`
 }
 
 // Interface for types that extend AttachmentType
@@ -119,10 +119,10 @@ func (AttachmentType) IsConnectorCommon50AttachmentType() {}
 
 type DocumentType struct {
 	Id         string                `xml:"ID,attr,omitempty"`
-	RefURI     string                `xml:"RefURI,attr,omitempty"`
+	RefUri     string                `xml:"RefURI,attr,omitempty"`
 	RefType    string                `xml:"RefType,attr,omitempty"`
 	SchemaRefs string                `xml:"SchemaRefs,attr,omitempty"`
-	Base64XML  Base64Bytes           `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Base64XML,omitempty"`
+	Base64Xml  Base64Bytes           `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 Base64XML,omitempty"`
 	Base64Data *dss10core.Base64Data `xml:"urn:oasis:names:tc:dss:1.0:core:schema Base64Data,omitempty"`
 }
 
@@ -137,13 +137,13 @@ type IDocumentType interface {
 // The type itself implements IDocumentType
 func (DocumentType) IsConnectorCommon50DocumentType() {}
 
-type ConnectorVPNTIStatus struct {
+type ConnectorVpnTiStatus struct {
 	XMLName          xml.Name `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 VPNTIStatus"`
 	ConnectionStatus string   `xml:"ConnectionStatus"`
 	Timestamp        string   `xml:"Timestamp"`
 }
 
-type ConnectorVPNSISStatus struct {
+type ConnectorVpnSisStatus struct {
 	XMLName          xml.Name `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 VPNSISStatus"`
 	ConnectionStatus string   `xml:"ConnectionStatus"`
 	Timestamp        string   `xml:"Timestamp"`

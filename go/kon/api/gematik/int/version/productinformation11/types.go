@@ -13,8 +13,8 @@ type ProductInformation struct {
 }
 
 type ProductVersionLocal struct {
-	HWVersion string `xml:"http://ws.gematik.de/int/version/ProductInformation/v1.1 HWVersion"`
-	FWVersion string `xml:"http://ws.gematik.de/int/version/ProductInformation/v1.1 FWVersion"`
+	HwVersion string `xml:"http://ws.gematik.de/int/version/ProductInformation/v1.1 HWVersion"`
+	FwVersion string `xml:"http://ws.gematik.de/int/version/ProductInformation/v1.1 FWVersion"`
 }
 
 type ProductVersion struct {
@@ -28,7 +28,7 @@ type ProductTypeInformation struct {
 }
 
 type ProductIdentification struct {
-	ProductVendorID string         `xml:"http://ws.gematik.de/int/version/ProductInformation/v1.1 ProductVendorID"`
+	ProductVendorId string         `xml:"http://ws.gematik.de/int/version/ProductInformation/v1.1 ProductVendorID"`
 	ProductCode     string         `xml:"http://ws.gematik.de/int/version/ProductInformation/v1.1 ProductCode"`
 	ProductVersion  ProductVersion `xml:"http://ws.gematik.de/int/version/ProductInformation/v1.1 ProductVersion"`
 }
