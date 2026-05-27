@@ -182,11 +182,13 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 		go p.sessionManager.WatchSession(providerNumber)
 	}
 
-	// add direct VAU handler
 	p.mux.Handle("/providers", http.HandlerFunc(p.GetProviders))
+	// add direct VAU handler
 	p.mux.Handle("/providers/{providerNumber}/vau/{path...}", http.HandlerFunc(p.HandleForwardToVAUProvider))
+	// add direct provider handler
+	p.mux.Handle("/providers/{providerNumber}/{path...}", http.HandlerFunc(p.HandleForwardToProvider))
 
-	// add insurants handler
+	// add insurants handlers
 	p.mux.Handle("/insurants", http.HandlerFunc(p.GetInsurants))
 	p.mux.Handle("/insurants/{insurantID}/vau/{path...}", http.HandlerFunc(p.HandleForwardToVAUInsurant))
 
@@ -194,6 +196,53 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 	p.mux.Handle("/info", http.HandlerFunc(p.HandleProxyInfo))
 
 	return p, nil
+}
+
+func (p *Proxy) HandleForwardToProvider(w http.ResponseWriter, r *http.Request) {
+	num, err := strconv.Atoi(r.PathValue("providerNumber"))
+	if err != nil {
+		http.Error(w, "invalid provider number", http.StatusBadRequest)
+		return
+	}
+
+	session, err := p.sessionManager.GetSession(ProviderNumber(num))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to get session: %v", err), http.StatusBadGateway)
+		return
+	}
+
+	subRequest, err := http.NewRequest(r.Method, session.BaseURL+r.PathValue("path"), r.Body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to create request: %v", err), http.StatusInternalServerError)
+		return
+	}
+	subRequest.URL.RawQuery = r.URL.RawQuery
+	subRequest.Host = session.BaseURL
+
+	for n, v := range r.Header {
+		subRequest.Header[n] = v
+	}
+
+	resp, err := session.HttpClient.Do(subRequest)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to forward request: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	maps.Copy(w.Header(), resp.Header)
+	w.WriteHeader(resp.StatusCode)
+
+	// read from response body and write to response writer
+	buf := make([]byte, 4096)
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			w.Write(buf[:n])
+		}
+		if err != nil {
+			break
+		}
+	}
 }
 
 func (p *Proxy) HandleForwardToVAUProvider(w http.ResponseWriter, r *http.Request) {
