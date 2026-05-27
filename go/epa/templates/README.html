@@ -1,82 +1,449 @@
 <!doctype html>
-<html lang="de" data-bs-theme="dark">
+<html lang="de">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Bootstrap demo</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/dark.min.css">
+    <title>ePA Middleware</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+    <style>
+      :root {
+        --bg: #0d1117;
+        --surface: #161b22;
+        --border: #21262d;
+        --border-strong: #30363d;
+        --text: #c9d1d9;
+        --muted: #8b949e;
+        --heading: #f0f6fc;
+        --accent: #58a6ff;
+        --green: #7ee787;
+        --pink: #ff7b72;
+        --code-bg: #010409;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; background: var(--bg); color: var(--text); }
+      body {
+        font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .container { max-width: 820px; margin: 0 auto; padding: 4rem 1.5rem 6rem; }
 
+      h1 {
+        font-size: 2rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: var(--heading);
+        margin: 0 0 0.5rem;
+      }
+      .subtitle {
+        color: var(--muted);
+        font-size: 1.05rem;
+        margin: 0 0 3rem;
+        max-width: 60ch;
+      }
+      h2 {
+        font-size: 1.45rem;
+        font-weight: 650;
+        color: var(--heading);
+        letter-spacing: -0.01em;
+        margin: 3.5rem 0 0.75rem;
+      }
+      p { margin: 0 0 1rem; }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+
+      code:not(pre code) {
+        background: rgba(110, 118, 129, 0.16);
+        color: var(--pink);
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
+        font-size: 0.86em;
+        font-family: "SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+      }
+
+      .endpoint {
+        display: flex;
+        align-items: baseline;
+        gap: 0.65rem;
+        flex-wrap: wrap;
+        margin: 2.25rem 0 0.5rem;
+        font-family: "SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+        font-size: 0.95rem;
+        color: var(--heading);
+        font-weight: 500;
+        word-break: break-all;
+      }
+      .endpoint .method {
+        flex-shrink: 0;
+        color: var(--green);
+        font-weight: 700;
+        font-size: 0.72rem;
+        letter-spacing: 0.06em;
+        background: rgba(126, 231, 135, 0.08);
+        border: 1px solid rgba(126, 231, 135, 0.28);
+        padding: 0.15rem 0.5rem;
+        border-radius: 4px;
+        font-family: "SF Mono", "JetBrains Mono", monospace;
+      }
+
+      .proxies { list-style: none; padding: 0; margin: 0.5rem 0 1.5rem; }
+      .proxies li { padding: 0.35rem 0; color: var(--muted); }
+      .proxies .env {
+        color: var(--accent);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-left: 0.5rem;
+      }
+      .proxies .who { color: var(--text); }
+
+      .code {
+        position: relative;
+        background: var(--code-bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        margin: 0.5rem 0 1.75rem;
+      }
+      .code pre {
+        margin: 0;
+        padding: 0.9rem 1rem;
+        padding-right: 3.75rem;
+        overflow-x: auto;
+      }
+      .code code {
+        font-family: "SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+        font-size: 0.83rem;
+        line-height: 1.55;
+        background: transparent;
+        color: var(--text);
+      }
+      .copy {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        appearance: none;
+        background: var(--surface);
+        border: 1px solid var(--border-strong);
+        color: var(--muted);
+        padding: 0.3rem 0.6rem;
+        border-radius: 6px;
+        font-size: 0.72rem;
+        font-weight: 500;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        transition: color .15s ease, border-color .15s ease, background .15s ease;
+      }
+      .copy:hover {
+        color: var(--heading);
+        border-color: rgba(88, 166, 255, 0.45);
+        background: rgba(88, 166, 255, 0.08);
+      }
+      .copy.copied {
+        color: var(--green);
+        border-color: rgba(126, 231, 135, 0.5);
+        background: rgba(126, 231, 135, 0.08);
+      }
+      .copy svg { width: 13px; height: 13px; }
+
+      .caption {
+        margin: 1rem 0 0.4rem;
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .caption .status {
+        margin-left: 0.4rem;
+        color: var(--green);
+        background: rgba(126, 231, 135, 0.08);
+        border: 1px solid rgba(126, 231, 135, 0.28);
+        padding: 0.05rem 0.4rem;
+        border-radius: 999px;
+        font-family: "SF Mono", "JetBrains Mono", monospace;
+        font-size: 0.68rem;
+        letter-spacing: 0;
+      }
+
+      .note {
+        margin: 1rem 0 1.5rem;
+        padding: 0.75rem 1rem;
+        background: rgba(88, 166, 255, 0.06);
+        border-left: 3px solid var(--accent);
+        border-radius: 4px;
+        color: var(--text);
+        font-size: 0.92rem;
+      }
+      .note strong { color: var(--heading); }
+      .note p { margin: 0; }
+      .note p + p { margin-top: 0.5rem; }
+
+      .concepts {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 0.6rem 1.25rem;
+        margin: 0.75rem 0 1.5rem;
+      }
+      .concepts dt {
+        color: var(--heading);
+        font-weight: 600;
+        font-size: 0.92rem;
+      }
+      .concepts dd {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+      .concepts dd code { color: var(--pink); }
+
+      .response {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-left: 3px solid rgba(126, 231, 135, 0.55);
+        border-radius: 6px;
+        margin: 0.4rem 0 1.75rem;
+        overflow: hidden;
+      }
+      .response pre {
+        margin: 0;
+        padding: 0.85rem 1rem;
+        overflow-x: auto;
+      }
+      .response code {
+        font-family: "SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+        font-size: 0.82rem;
+        line-height: 1.55;
+        background: transparent;
+        color: var(--text);
+      }
+
+      footer {
+        margin-top: 4rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+    </style>
   </head>
   <body>
-      <div class="container mt-5">
+    <div class="container">
+
       <h1>ePA Middleware</h1>
-      <p>
-        <code>ePA Middleware</code> ermöglicht die Kommunikation mit der elektronischen Patientenakte (ePA) über eine REST-Schnittstelle.
+      <p class="subtitle">
+        REST-Gateway für die elektronische Patientenakte (ePA). Kapselt die SMC-B Authentifizierung,
+        den gemIDP-Flow und die VAU-Verschlüsselung — Clients sprechen einfaches HTTPS.
       </p>
+
+      {{ define "curl" -}}
+      <div class="code">
+        <button class="copy" type="button" aria-label="Copy to clipboard">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>
+          <span>Copy</span>
+        </button><pre><code class="language-bash">{{ . }}</code></pre>
+      </div>
+      {{- end }}
+
+      {{ define "json" -}}
+      <div class="response"><pre><code class="language-json">{{ . }}</code></pre></div>
+      {{- end }}
+
+      <h2>Konzepte</h2>
+      <p>
+        Die ePA ist verteilt: zwei produktive Provider-Backends speichern die Akten der Versicherten.
+        Anfragen an eine Akte müssen über einen verschlüsselten Tunnel (VAU) laufen und mit einer
+        gültigen Leistungserbringer-Identität (SMC-B) autorisiert werden. Die Middleware abstrahiert all das.
+      </p>
+      <dl class="concepts">
+        <dt>Proxy</dt>
+        <dd>Eine konfigurierte Identität dieser Middleware — SMC-B-Zertifikat (Arztpraxis, Krankenhaus, Apotheke) plus ePA-Umgebung (<code>dev</code>, <code>ref</code>, <code>test</code>, <code>prod</code>). Adressiert über <code>/api/proxies/{name}</code>.</dd>
+
+        <dt>Provider</dt>
+        <dd>Ein ePA-Backend. Es existieren zwei produktive Provider, identifiziert durch die Nummern <code>1</code> und <code>2</code>. Welcher Provider die Akte eines Versicherten hostet, ist nicht öffentlich bekannt.</dd>
+
+        <dt>VAU</dt>
+        <dd>Vertrauenswürdige Ausführungsumgebung — verschlüsselter Tunnel zum Provider, in dem die Akten-Inhalte für den Provider unsichtbar bleiben. Die Middleware öffnet pro Proxy und Provider eine VAU-Session und hält sie offen.</dd>
+
+        <dt>Insurant</dt>
+        <dd>Ein Versicherter mit ePA, identifiziert durch eine <strong>KVNR</strong> (z.B. <code>X110611629</code>). Die Middleware ermittelt automatisch, bei welchem Provider die Akte liegt, und erzeugt die Befugnis für den Leistungserbringer.</dd>
+      </dl>
+
+      <h2>Authentifizierung</h2>
+      <p>
+        Anfragen an diese Middleware werden über den HTTP-Header <code>Authorization</code> autorisiert.
+        Wird die README-Seite mit einem solchen Header geladen, erscheint der Header automatisch in allen unten gezeigten <code>curl</code>-Befehlen.
+      </p>
+      <p>
+        Die Middleware selbst authentifiziert sich gegenüber gemIDP und ePA-Provider eigenständig
+        mittels des im Proxy hinterlegten SMC-B Zertifikats. Für Clients ist dieser Schritt transparent.
+      </p>
+
       <h2>Proxies</h2>
       <p>
-        Es werden mehere Proxies unterstützt, die jeweils unterschiedliche Konfigurationen haben.
-        Die Konfigurationen beinhalten insbesondere die Authentifizierungs-Identitäten (Arztpraxis, Krankenhaus, Apotheke) sowie die Umgebungen der ePA (Dev, Ref).
+        Jeder Proxy bündelt eine Leistungserbringer-Identität und eine ePA-Umgebung. Alle Anfragen
+        starten mit dem Pfad-Präfix <code>/api/proxies/{name}</code>, der bestimmt, welche Identität verwendet wird.
       </p>
-      <p>
-        Um aktuell konfigurierte Proxies abzurufen wird <code>/api/proxies</code> Endpunkt verwendet.
-        <pre class="sh">
-          <code>{{ .CurlCommand }} {{ .BaseURL }}/api/proxies</code>
-        </pre>
-      </p>
-      <p>Aktuelle Proxies:</p>
-      <table class="table table-bordered">
-        <thead>
-          <th>Pfad</th>
-          <th>Umgebung</th>
-          <th>Leistungserbringer</th>
-        </thead>
+
+      <div class="endpoint"><span class="method">GET</span><span>/api/proxies</span></div>
+      <p>Listet alle aktuell konfigurierten Proxies.</p>
+      {{ template "curl" (.Curl (.URL "/api/proxies")) }}
+
+      <p class="caption">Antwort <span class="status">200 OK · application/json</span></p>
+      {{ template "json" "[\n  {\n    \"name\": \"1\",\n    \"env\": \"dev\",\n    \"subject\": \"Adler ApothekeTEST-ONLY\",\n    \"admission_statement\": {\n      \"professionItems\": [\"Öffentliche Apotheke\"],\n      \"professionOids\": [\"1.2.276.0.76.4.54\"],\n      \"registrationNumber\": \"3-SMC-B-Testkarte--883110000153440\"\n    }\n  }\n]" }}
+
+      <p>Aktuell auf diesem Gateway konfiguriert:</p>
+      <ul class="proxies">
         {{ range .ProxyInfos }}
-        <tr>
-          <td><code>/api/proxies/{{ .Name }}</code></td>
-          <td>{{ .Env }}</td>
-          <td>{{ .Subject }}<br/><code>{{ .AdmissionStatement.RegistrationNumber }}</code></td>
-        </tr>
+        <li>
+          <code>/api/proxies/{{ .Name }}</code><span class="env">{{ .Env }}</span><br>
+          <span class="who">{{ .Subject }}</span> · <code>{{ .AdmissionStatement.RegistrationNumber }}</code>
+        </li>
         {{ end }}
-      </table>
-      <p>
-        <pre class="sh">
-          <code>{{ range .ProxyInfos }}# Informationen zu Proxy "{{ .Name }}"
-{{ $.CurlCommand }} "{{ $.BaseURL }}/api/proxies/{{ .Name }}/info"
-{{ end }}</code>
-        </pre>
-      </p>
+      </ul>
+
+      <div class="endpoint"><span class="method">GET</span><span>/api/proxies/{name}/info</span></div>
+      <p>Details zu einem einzelnen Proxy — Name, Umgebung, Common Name des SMC-B-Zertifikats und Admission Statement (Berufsgruppe, Registrierungsnummer).</p>
+      {{ template "curl" (.Curl (.URL "/api/proxies/%s/info" (index .ProxyInfos 0).Name)) }}
+
+      <p class="caption">Antwort <span class="status">200 OK · application/json</span></p>
+      {{ template "json" "{\n  \"name\": \"1\",\n  \"env\": \"dev\",\n  \"subject\": \"Adler ApothekeTEST-ONLY\",\n  \"admission_statement\": {\n    \"professionItems\": [\"Öffentliche Apotheke\"],\n    \"professionOids\": [\"1.2.276.0.76.4.54\"],\n    \"registrationNumber\": \"3-SMC-B-Testkarte--883110000153440\"\n  }\n}" }}
+
       <h2>Providers</h2>
-      <p>ePA hat zwei Provider, die über fortlaufende Nummern identifiziert werden 1 und 2. 
-        Jeder Proxy öffnet jeweils eine session zu den beiden ePA-Providern. 
-        Aktueller Stand der Provider-Sessions kann über <code>/api/proxies/{name}/providers</code> abgerufen werden.
-        <pre class="sh">
-          <code>{{ .CurlCommand }} "{{ .BaseURL }}/api/proxies/{{ (index .ProxyInfos 0).Name }}/providers"</code>
-        </pre>
+      <p>
+        Jeder Proxy unterhält zu beiden ePA-Providern eine VAU-Session, die im Hintergrund automatisch
+        geöffnet, überwacht und erneuert wird. Diese Sessions werden für alle Insurant-Anfragen wiederverwendet,
+        sodass keine Initialisierungs-Latenz pro Aufruf entsteht.
       </p>
-      
-      <h2>Insurants</h2>
-      <p>Insurants (Versicherten) sind Patienten, die eine ePA besitzen.
-        ePA Middleware erzeugt automatisch das Befugnis für den im Proxy konfigurierten Leistungserbringer, um auf die ePA des Versicherten zuzugreifen.
-        Provider, bei denen die Akte des Versicherten gespeichert ist, werden automatisch ermittelt.
-        Die Abfragen an die Akten müssen folgenden Path-Prefix verwenden: <code>/api/proxies/{name}/insurrants/{kvnr}/vau</code>, wobei <code>{kvnr}</code> die Krankenversichertennummer des Versicherten ist.
-        Zusatz "vau" im Pfad ist notwendig, damit die Anfrage über den VAU-Kanal weitergeleitet wird.
-        Darauf folgender Pfad inkl. Method, Header, Query und Body wird an den korrekten Provider weitergeleitet.
+      <p>
+        Direkte Provider-Anfragen umgehen die automatische Akten-Auflösung und richten sich an einen
+        konkret benannten Provider <code>{n} = 1 | 2</code>:
       </p>
-      <pre class="sh">
-        <code># Abfrage der Medikationsliste des Versicherten mit KVNR X110611629 (XHTML Format)
-{{ .CurlCommand }} "{{ .BaseURL }}/api/proxies/{{ (index .ProxyInfos 0).Name }}/insurants/X110611629/vau/epa/medication/render/v1/eml/xhtml"
-# Abfrage der Medikationsliste des Versicherten mit KVNR X110611629 (PDF Format)
-{{ .CurlCommand }} "{{ .BaseURL }}/api/proxies/{{ (index .ProxyInfos 0).Name }}/insurants/X110611629/vau/epa/medication/render/v1/eml/pdf"
-# Abfrage der FHIR Medication Ressourcen des Versicherten mit KVNR X110611629 
-{{ .CurlCommand }} "{{ .BaseURL }}/api/proxies/{{ (index .ProxyInfos 0).Name }}/insurants/X110611629/vau/epa/medication/api/v1/fhir/Medication"
-</code>
-      </pre>
+      <ul>
+        <li><code>/api/proxies/{name}/providers/{n}/…</code> — unverschlüsselt zum Provider (für öffentliche Endpunkte wie Informationen oder Status)</li>
+        <li><code>/api/proxies/{name}/providers/{n}/vau/…</code> — durch den VAU-Tunnel</li>
+      </ul>
+
+      <div class="endpoint"><span class="method">GET</span><span>/api/proxies/{name}/providers</span></div>
+      <p>Aktueller Stand der Provider-Sessions des Proxy — Base-URL und Zeitpunkt der Session-Öffnung.</p>
+      {{ template "curl" (.Curl (.URL "/api/proxies/%s/providers" (index .ProxyInfos 0).Name)) }}
+
+      <p class="caption">Antwort <span class="status">200 OK · application/json</span></p>
+      {{ template "json" "[\n  {\n    \"number\": 1,\n    \"baseURL\": \"https://epa-as-1.dev.epa4all.de\",\n    \"sessionOpenedAt\": \"2026-05-27T20:44:34+02:00\"\n  },\n  {\n    \"number\": 2,\n    \"baseURL\": \"https://epa-as-2.dev.epa4all.de\",\n    \"sessionOpenedAt\": \"2026-05-27T20:44:37+02:00\"\n  }\n]" }}
+
+      <div class="endpoint"><span class="method">GET</span><span>/api/proxies/{name}/providers/{n}/information/api/v1/ehr/consentdecisions</span></div>
+      <p>
+        Liefert die Consent-Entscheidungen eines Versicherten beim ausgewählten Provider — also für welche
+        ePA-Funktionen (z.B. Medikation, E-Rezept, Dokumente) der Leistungserbringer Zugriff erhalten würde.
+        Nützlich vor einem tatsächlichen Zugriff auf eine Akte.
+      </p>
+      <div class="note">
+        <p>
+          <strong>Pflicht-Header:</strong> <code>x-insurantid: &lt;KVNR&gt;</code> — die KVNR des Versicherten,
+          dessen Consent abgefragt werden soll. Die KVNR hat das Format <code>X</code> + 9 Ziffern.
+        </p>
+        <p>
+          Da diese Information vor dem VAU-Tunnel liegt, wird der Endpunkt direkt am Provider angesprochen — nicht über <code>/vau/…</code>.
+        </p>
       </div>
-  
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
-    <script>hljs.highlightAll();</script>
+      <p class="caption">Beispiel 1 — Versicherter <code>X110611629</code> (Akte auf Provider <code>2</code>)</p>
+      {{ template "curl" (.Curl (.URL "/api/proxies/%s/providers/2/information/api/v1/ehr/consentdecisions" (index .ProxyInfos 0).Name) "x-insurantid: X110611629") }}
+      <p class="caption">Beispiel 2 — Versicherter <code>X110600196</code> (Akte auf Provider <code>1</code>)</p>
+      {{ template "curl" (.Curl (.URL "/api/proxies/%s/providers/1/information/api/v1/ehr/consentdecisions" (index .ProxyInfos 0).Name) "x-insurantid: X110600196") }}
+
+      <p class="caption">Antwort <span class="status">200 OK · application/json</span></p>
+      {{ template "json" "{\n  \"data\": [\n    { \"functionId\": \"medication\",     \"decision\": \"permit\" },\n    { \"functionId\": \"erp-submission\",  \"decision\": \"permit\" }\n  ]\n}" }}
+
+      <p class="caption">Antwort bei falschem Provider <span class="status">404 Not Found · application/json</span></p>
+      {{ template "json" "{\n  \"errorCode\": \"noHealthRecord\",\n  \"errorDetail\": \"89GF TLTP 4FCH HKYM\"\n}" }}
+
+      <div class="endpoint"><span class="method">GET</span><span>/api/proxies/{name}/providers/{n}/vau/VAU-Status</span></div>
+      <p>
+        Sendet eine Status-Anfrage durch den VAU-Tunnel zum gewählten Provider. Eine erfolgreiche Antwort
+        bestätigt, dass die VAU-Session intakt und ent-/verschlüsselbar ist — praktisch zum Debugging.
+        <code>User-Authentication</code> enthält die ID der im Tunnel angemeldeten SMC-B Karte.
+      </p>
+      {{ template "curl" (.Curl (.URL "/api/proxies/%s/providers/1/vau/VAU-Status" (index .ProxyInfos 0).Name)) }}
+      {{ template "curl" (.Curl (.URL "/api/proxies/%s/providers/2/vau/VAU-Status" (index .ProxyInfos 0).Name)) }}
+
+      <p class="caption">Antwort <span class="status">200 OK · application/json</span></p>
+      {{ template "json" "{\n  \"VAU-Type\": \"epa\",\n  \"VAU-Version\": \"v-4.31.617 Release\",\n  \"User-Authentication\": \"TID:3-SMC-B-Testkarte--883110000153440\",\n  \"KeyID\": \"9cbdf2107ae39c4705f9b41ab22d79e6f14039ee92e2ac61ac5145e6748ee208\",\n  \"Connection-Start\": \"2026-05-27T18:44:34.614738Z\"\n}" }}
+
+      <h2>Insurants</h2>
+      <p>
+        Der Insurants-Pfad ist der bequemste Weg, eine konkrete Akte anzusprechen: man gibt nur die KVNR an,
+        die Middleware übernimmt die Routenermittlung, die Befugnis-Erteilung (Entitlement) und das VAU-Tunneling.
+      </p>
+      <p>So läuft eine Anfrage intern ab:</p>
+      <ol>
+        <li>Erste Anfrage für eine KVNR: die Middleware fragt parallel beide Provider, welcher die Akte hält.</li>
+        <li>Beim zuständigen Provider erzeugt sie eine Befugnis (Entitlement) für den im Proxy konfigurierten Leistungserbringer.</li>
+        <li>Das Mapping <em>KVNR → Provider</em> wird gecached, sodass Folge-Anfragen direkt zum richtigen Backend gehen.</li>
+        <li>Die Anfrage wird inklusive Method, Header, Query und Body durch den VAU-Tunnel weitergeleitet; die Antwort wird transparent zurückgegeben.</li>
+      </ol>
+      <div class="note">
+        <p>
+          <strong>Pfad-Schema:</strong> <code>/api/proxies/{name}/insurants/{kvnr}/vau/&lt;Provider-Pfad&gt;</code>
+        </p>
+        <p>
+          Alles nach dem <code>/vau/</code> ist der originale Provider-Pfad — die offizielle ePA-Dokumentation
+          ist hier 1:1 anwendbar. HTTP-Method und Body werden ebenfalls durchgereicht.
+        </p>
+      </div>
+
+      <div class="endpoint"><span class="method">GET</span><span>/api/proxies/{name}/insurants/{kvnr}/vau/epa/medication/render/v1/eml/xhtml</span></div>
+      <p>Gerenderte Medikationsliste (eML) als <code>application/xhtml+xml</code> — geeignet zur direkten Anzeige im Browser.</p>
+      {{ template "curl" (.Curl (.URL "/api/proxies/%s/insurants/X110611629/vau/epa/medication/render/v1/eml/xhtml" (index .ProxyInfos 0).Name)) }}
+
+      <div class="endpoint"><span class="method">GET</span><span>/api/proxies/{name}/insurants/{kvnr}/vau/epa/medication/render/v1/eml/pdf</span></div>
+      <p>Selbe Daten wie XHTML, aber als <code>application/pdf</code> — gerendert für Druck oder Archivierung.</p>
+      {{ template "curl" (.Curl (.URL "/api/proxies/%s/insurants/X110600196/vau/epa/medication/render/v1/eml/pdf" (index .ProxyInfos 0).Name)) }}
+
+      <div class="endpoint"><span class="method">GET</span><span>/api/proxies/{name}/insurants/{kvnr}/vau/epa/medication/api/v1/fhir/Medication</span></div>
+      <p>FHIR-<code>Medication</code> Ressourcen des Versicherten als <code>application/fhir+json</code>. Ideal für maschinelle Weiterverarbeitung.</p>
+      {{ template "curl" (.Curl (.URL "/api/proxies/%s/insurants/X110611629/vau/epa/medication/api/v1/fhir/Medication" (index .ProxyInfos 0).Name)) }}
+
+      <p class="caption">Antwort (gekürzt — Bundle mit 12 Einträgen, hier 1 gezeigt) <span class="status">200 OK · application/fhir+json</span></p>
+      {{ template "json" "{\n  \"resourceType\": \"Bundle\",\n  \"type\": \"searchset\",\n  \"total\": 12,\n  \"entry\": [\n    {\n      \"fullUrl\": \"http://epa4all/epa/medication/api/v1/fhir/Medication/ba8572fd-0db1-48b1-9438-321c38131928\",\n      \"resource\": {\n        \"resourceType\": \"Medication\",\n        \"id\": \"ba8572fd-0db1-48b1-9438-321c38131928\",\n        \"code\": {\n          \"coding\": [\n            { \"system\": \"http://fhir.de/CodeSystem/ifa/pzn\", \"code\": \"00571748\" }\n          ],\n          \"text\": \"Imupret® N Dragees Beutel 2000 mg\"\n        },\n        \"status\": \"inactive\",\n        \"form\": {\n          \"coding\": [\n            { \"system\": \"https://fhir.kbv.de/CodeSystem/KBV_CS_SFHIR_KBV_DARREICHUNGSFORM\", \"code\": \"GUL\" }\n          ]\n        }\n      }\n    }\n  ]\n}" }}
+
+      <h2>Fehler</h2>
+      <p>
+        Fehler werden mit passenden HTTP-Statuscodes signalisiert. Direkte Provider-Antworten werden 1:1 durchgereicht
+        (siehe das <code>404</code>-Beispiel oben bei den Consent-Entscheidungen).
+        Schlägt die automatische Akten-Auflösung über die <code>/insurants/{kvnr}/vau/…</code>-Route fehl, antwortet die Middleware mit einem zusammengesetzten Fehler beider Provider:
+      </p>
+      <p class="caption">Beispiel — unbekannte KVNR <span class="status">502 Bad Gateway · application/json</span></p>
+      {{ template "json" "{\n  \"errors\": [\n    {\n      \"error\": \"provider_error\",\n      \"error_description\": \"http error: 400, error code: malformedRequest, error detail: \",\n      \"provider\": 2\n    },\n    {\n      \"error\": \"provider_error\",\n      \"error_description\": \"http error: 400, error code: malformedRequest, error detail: \",\n      \"provider\": 1\n    }\n  ]\n}" }}
+
+      <footer>ePA Middleware · gematik</footer>
+    </div>
+
+    <script>
+      hljs.highlightAll();
+
+      const COPY_SVG = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>';
+      const CHECK_SVG = '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>';
+
+      document.querySelectorAll('.copy').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const block = btn.closest('.code');
+          const code = block.querySelector('pre code');
+          if (!code) return;
+          const text = code.innerText.replace(/\n$/, '');
+          try {
+            await navigator.clipboard.writeText(text);
+            btn.classList.add('copied');
+            btn.innerHTML = CHECK_SVG + '<span>Copied</span>';
+            setTimeout(() => {
+              btn.classList.remove('copied');
+              btn.innerHTML = COPY_SVG + '<span>Copy</span>';
+            }, 1500);
+          } catch (e) {
+            console.error('Copy failed', e);
+          }
+        });
+      });
+    </script>
   </body>
 </html>

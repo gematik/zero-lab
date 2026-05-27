@@ -211,19 +211,18 @@ func (p *Proxy) HandleForwardToProvider(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	subRequest, err := http.NewRequest(r.Method, session.BaseURL+r.PathValue("path"), r.Body)
+	r2, err := http.NewRequest(r.Method, session.BaseURL+"/"+r.PathValue("path"), r.Body)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create request: %v", err), http.StatusInternalServerError)
 		return
 	}
-	subRequest.URL.RawQuery = r.URL.RawQuery
-	subRequest.Host = session.BaseURL
+	r2.URL.RawQuery = r.URL.RawQuery
 
-	for n, v := range r.Header {
-		subRequest.Header[n] = v
-	}
+	copyAndPrepareHeaders(r.Header, r2.Header)
 
-	resp, err := session.HttpClient.Do(subRequest)
+	slog.Info("Forwarding request to provider", "method", r2.Method, "url", r2.URL.String(), "headers", r2.Header)
+
+	resp, err := session.HttpClient.Do(r2)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to forward request: %v", err), http.StatusInternalServerError)
 		return
@@ -255,7 +254,7 @@ func (p *Proxy) HandleForwardToVAUProvider(w http.ResponseWriter, r *http.Reques
 	p.forwardToVAU(w, r, ProviderNumber(num), "")
 }
 
-var vauProxyBlockedHeaderNames = []string{
+var proxyBlockedHeaderNames = []string{
 	"authorization",
 	"via",
 	"x-forwarded-host",
@@ -281,17 +280,7 @@ func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNum
 	r2.URL.RawQuery = r.URL.RawQuery
 	r2.Host = session.VAUChannel.ChannelURL.Host
 
-	for n, v := range r.Header {
-		lowerN := strings.ToLower(n)
-		if slices.Contains(vauProxyBlockedHeaderNames, lowerN) {
-			continue
-		}
-		r2.Header[n] = v
-	}
-
-	if r2.Header.Get("x-useragent") == "" {
-		r2.Header.Set("x-useragent", UserAgent)
-	}
+	copyAndPrepareHeaders(r.Header, r2.Header)
 
 	if insurantID != "" {
 		r2.Header.Set("x-insurantid", insurantID)
@@ -543,5 +532,27 @@ func (p *Proxy) GetInsurants(w http.ResponseWriter, r *http.Request) {
 	err := json.NewEncoder(w).Encode(insurants)
 	if err != nil {
 		slog.Error("Failed to encode insurants", "error", err)
+	}
+}
+
+// copyAndPrepareHeaders copies headers from src to dst, while
+// 1. removing or modifying headers that should not be forwarded to the provider.
+// 2. adding necessary headers if they are not specified explicitly by the client
+func copyAndPrepareHeaders(src, dst http.Header) {
+	for n, v := range src {
+		lowerN := strings.ToLower(n)
+		if slices.Contains(proxyBlockedHeaderNames, lowerN) {
+			continue
+		}
+		dst[n] = v
+	}
+
+	if dst.Get("x-useragent") == "" {
+		dst.Set("x-useragent", UserAgent)
+	}
+
+	if dst.Get("x-request-id") == "" {
+		// set request id to uuid4
+		dst.Set("x-request-id", uuid.New().String())
 	}
 }

@@ -3,6 +3,7 @@ package epa
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 )
 
@@ -41,6 +42,8 @@ func (c *Session) GetConsentDecisionInformation(insurantId string) (*GetConsentD
 	}
 	req.Header.Set("x-useragent", UserAgent)
 	req.Header.Set("x-insurantid", insurantId)
+
+	slog.Info("Requesting consent decision information", "method", req.Method, "url", req.URL, "headers", req.Header)
 
 	// send request
 	resp, err := c.HttpClient.Do(req)
