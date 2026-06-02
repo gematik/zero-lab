@@ -1,0 +1,7 @@
+# display info about the project
+info:
+    just -l
+
+# generate API client for konnektor
+generate-kon:
+    wsdl2openapi2go --file konnektor-opb6.json --output ./api --naming naming-kon.json

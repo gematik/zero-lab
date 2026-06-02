@@ -3,6 +3,7 @@ ZERO_VERSION := "0.15.0"
 ZERO_EPA_VERSION := ZERO_VERSION
 ZERO_PDP_VERSION := ZERO_VERSION
 ZERO_CADDY_VERSION := ZERO_VERSION
+TI_CLI_VERSION := ZERO_VERSION
 
 # Display available commands
 info:
@@ -49,3 +50,19 @@ generate-version-file file package version:
 generate-versions:
     just generate-version-file epa/version.go epa {{ZERO_EPA_VERSION}}
     just generate-version-file pdp/version.go pdp {{ZERO_PDP_VERSION}}
+    just generate-version-file ti/version.go main {{TI_CLI_VERSION}}
+
+# Update and tidy all go modules
+tidy:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
+        echo "==> Tidying $dir"
+        (cd "$dir" && go get -u ./... && go mod tidy)
+    done
+
+# Update roots.json files for embedded use
+update-roots:
+    curl -o ./gempki/roots-test.json https://download-test.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json
+    curl -o ./gempki/roots-dev-ref.json https://download-ref.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json
+    curl -o ./gempki/roots-prod.json https://download.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json

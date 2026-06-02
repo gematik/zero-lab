@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/asn1"
+	"encoding/base64"
 	"encoding/pem"
 	"testing"
 
@@ -296,5 +297,91 @@ func TestNilInput(t *testing.T) {
 	_, err = brainpool.ParseCertificate(nil)
 	if err == nil {
 		t.Fatalf("Expected error for nil input in ParseCertificate, got nil")
+	}
+}
+
+func TestSubjectParsing(t *testing.T) {
+	certBase64 := `MIIDijCCAzGgAwIBAgIHAK4aqPhmlDAKBggqhkjOPQQDAjCBiDELMAkGA1UEBhMCREUxHzAdBgNVBAoMFmdlbWF0aWsgR21iSCBOT1QtVkFMSUQxNjA0BgNVBAsMLVF1YWxpZml6aWVydGVyIFZEQSBkZXIgVGVsZW1hdGlraW5mcmFzdHJ1a3R1cjEgMB4GA1UEAwwXR0VNLkhCQS1xQ0E1MSBURVNULU9OTFkwHhcNMjQxMjAzMDAwMDAwWhcNMjkxMjAzMjM1OTU5WjBzMQswCQYDVQQGEwJERTFkMA4GA1UEKgwHVWxscmljaDARBgNVBAQMCkFuZ2VybcOkbm4wGwYDVQQFExQ4MDI3Njg4MzExMDAwMDE2Mzk3NDAiBgNVBAMMG1VsbHJpY2ggQW5nZXJtw6RublRFU1QtT05MWTBaMBQGByqGSM49AgEGCSskAwMCCAEBBwNCAARZ3Wv87oBjWg/plcaHVtMMJIyhxxSBJhtGycd/OuDxvRDf48s+/5+/UJOuJMbFzuJYcuJKzNplZr6XqCqICYNbo4IBlzCCAZMwIgYIKwYBBQUHAQMEFjAUMAgGBgQAjkYBATAIBgYEAI5GAQQwGwYJKwYBBAHAbQMFBA4wDAYKKwYBBAHAbQMFATAMBgNVHRMBAf8EAjAAMDkGA1UdIAQyMDAwCQYHKoIUAEwESDAJBgcEAIvsQAECMAoGCCqCFABMBIERMAwGCisGAQQBgs0zAQEwPAYIKwYBBQUHAQEEMDAuMCwGCCsGAQUFBzABhiBodHRwOi8vZWhjYS5nZW1hdGlrLmRlL2VjYy1xb2NzcDAOBgNVHQ8BAf8EBAMCBkAwHQYDVR0OBBYEFJjLsEp9jJQWFCgq0sZxS4SnU+RoMB8GA1UdIwQYMBaAFFztN5TdWlaBgLcpVEEcxrkFvuu8MHkGBSskCAMDBHAwbqQoMCYxCzAJBgNVBAYTAkRFMRcwFQYDVQQKDA5nZW1hdGlrIEJlcmxpbjBCMEAwPjA8MA4MDMOEcnp0aW4vQXJ6dDAJBgcqghQATAQeEx8xLUhCQS1UZXN0a2FydGUtODgzMTEwMDAwMTYzOTc0MAoGCCqGSM49BAMCA0cAMEQCIHijw1NSTSQYrZ7vWzCOOl5NawkcsWof3t6vN7uZTZguAiAyZW8q1tSOzdQnMUH03mAbRdiYlQ6AkhE/UemL18v/7Q==`
+	certBytes, err := base64.StdEncoding.DecodeString(certBase64)
+	if err != nil {
+		t.Fatalf("Failed to decode base64 certificate: %v", err)
+	}
+	cert, err := brainpool.ParseCertificate(certBytes)
+	if err != nil {
+		t.Fatalf("ParseCertificate failed: %v", err)
+	}
+
+	assert.Equal(t, []string{"DE"}, cert.Subject.Country)
+	assert.Equal(t, "Ullrich Angerm\u00e4nnTEST-ONLY", cert.Subject.CommonName)
+	assert.Equal(t, "80276883110000163974", cert.Subject.SerialNumber)
+
+	// GivenName (2.5.4.42) and Surname (2.5.4.4) are stored in Names
+	var givenName, surname string
+	for _, name := range cert.Subject.Names {
+		switch {
+		case name.Type.Equal(asn1.ObjectIdentifier{2, 5, 4, 42}):
+			givenName = name.Value.(string)
+		case name.Type.Equal(asn1.ObjectIdentifier{2, 5, 4, 4}):
+			surname = name.Value.(string)
+		}
+	}
+	assert.Equal(t, "Ullrich", givenName)
+	assert.Equal(t, "Angerm\u00e4nn", surname)
+}
+
+func TestCrossCertificateVerification(t *testing.T) {
+	var anchorPEM = `-----BEGIN CERTIFICATE-----
+MIICzTCCAnOgAwIBAgIBATAKBggqhkjOPQQDAjCBgjELMAkGA1UEBhMCREUxHzAd
+BgNVBAoMFmdlbWF0aWsgR21iSCBOT1QtVkFMSUQxNDAyBgNVBAsMK1plbnRyYWxl
+IFJvb3QtQ0EgZGVyIFRlbGVtYXRpa2luZnJhc3RydWt0dXIxHDAaBgNVBAMME0dF
+TS5SQ0ExMCBURVNULU9OTFkwHhcNMjUwNTA4MTIwODA0WhcNMzUwNTA2MTIwODA0
+WjCBgjELMAkGA1UEBhMCREUxHzAdBgNVBAoMFmdlbWF0aWsgR21iSCBOT1QtVkFM
+SUQxNDAyBgNVBAsMK1plbnRyYWxlIFJvb3QtQ0EgZGVyIFRlbGVtYXRpa2luZnJh
+c3RydWt0dXIxHDAaBgNVBAMME0dFTS5SQ0ExMCBURVNULU9OTFkwWTATBgcqhkjO
+PQIBBggqhkjOPQMBBwNCAATnZExIrTwptz9EJUY/T9n8n10aY++5T2JQKarANPCm
+PSo9nv2vwvePXbe7tB+6QQj0jwDniWrOwd5PtTFjMXDio4HXMIHUMB0GA1UdDgQW
+BBS0QNvJwfb7eHYiztH7eSbzWIqRCjBKBggrBgEFBQcBAQQ+MDwwOgYIKwYBBQUH
+MAGGLmh0dHA6Ly9vY3NwLXRlc3RyZWYucm9vdC1jYS50aS1kaWVuc3RlLmRlL29j
+c3AwDgYDVR0PAQH/BAQDAgEGMEYGA1UdIAQ/MD0wOwYIKoIUAEwEgSMwLzAtBggr
+BgEFBQcCARYhaHR0cDovL3d3dy5nZW1hdGlrLmRlL2dvL3BvbGljaWVzMA8GA1Ud
+EwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDSAAwRQIhAKmNBIGUeu2PFH6hD2mGyGSx
+rvVY8gsiooXO+gwODNfiAiByRfTY1l2QB3UGWrgyDZs8SAkKPAltj0zNKuuhj8uF
+DQ==
+-----END CERTIFICATE-----`
+
+	var crossCertPEM = `-----BEGIN CERTIFICATE-----
+MIIC7jCCApWgAwIBAgIBBjAKBggqhkjOPQQDAjCBgjELMAkGA1UEBhMCREUxHzAd
+BgNVBAoMFmdlbWF0aWsgR21iSCBOT1QtVkFMSUQxNDAyBgNVBAsMK1plbnRyYWxl
+IFJvb3QtQ0EgZGVyIFRlbGVtYXRpa2luZnJhc3RydWt0dXIxHDAaBgNVBAMME0dF
+TS5SQ0ExMCBURVNULU9OTFkwHhcNMjUwNzMxMDkzNzU0WhcNMzUwNTA2MDkzNzUz
+WjCBgjELMAkGA1UEBhMCREUxHzAdBgNVBAoMFmdlbWF0aWsgR21iSCBOT1QtVkFM
+SUQxNDAyBgNVBAsMK1plbnRyYWxlIFJvb3QtQ0EgZGVyIFRlbGVtYXRpa2luZnJh
+c3RydWt0dXIxHDAaBgNVBAMME0dFTS5SQ0ExMSBURVNULU9OTFkwWjAUBgcqhkjO
+PQIBBgkrJAMDAggBAQcDQgAEM+tXRqOS0Fak7/qZdiZQwlKmm+3OspytaRA1OdrO
+4sUO3JoeLSTUDUAJoOtchwDwiq9jrbsVbaQDU4VqB3BcQKOB+DCB9TAdBgNVHQ4E
+FgQUAgoWJunzX0JiKe6ckosFM5fechQwHwYDVR0jBBgwFoAUtEDbycH2+3h2Is7R
++3km81iKkQowSgYIKwYBBQUHAQEEPjA8MDoGCCsGAQUFBzABhi5odHRwOi8vb2Nz
+cC10ZXN0cmVmLnJvb3QtY2EudGktZGllbnN0ZS5kZS9vY3NwMA4GA1UdDwEB/wQE
+AwIBBjBGBgNVHSAEPzA9MDsGCCqCFABMBIEjMC8wLQYIKwYBBQUHAgEWIWh0dHA6
+Ly93d3cuZ2VtYXRpay5kZS9nby9wb2xpY2llczAPBgNVHRMBAf8EBTADAQH/MAoG
+CCqGSM49BAMCA0cAMEQCIGJzLNFtIM9MMMkFWkUv+Z5xzhCmR/CCjIbzwQCbkVgJ
+AiA8IFHJslZ76EpSSgKQkDdsFTOHeDXzjeDd+xBcm5IrIg==
+-----END CERTIFICATE-----`
+
+	anchorCert, err := brainpool.ParseCertificatePEM([]byte(anchorPEM))
+	if err != nil {
+		t.Fatalf("Failed to parse root certificate: %v", err)
+	}
+
+	crossCert, err := brainpool.ParseCertificatePEM([]byte(crossCertPEM))
+	if err != nil {
+		t.Fatalf("Failed to parse cross certificate: %v", err)
+	}
+
+	assert.Equal(t, 665, len(crossCert.RawTBSCertificate), "Unexpected length of RawTBSCertificate in cross certificate")
+
+	err = crossCert.CheckSignatureFrom(anchorCert)
+	if err != nil {
+		t.Fatalf("Cross certificate signature verification failed: %v", err)
 	}
 }

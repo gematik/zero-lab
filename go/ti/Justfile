@@ -1,0 +1,8 @@
+# display info about the project
+info:
+    just -l
+
+# build image using vhs
+cli-screencast:
+    go install .
+    vhs cli.tape

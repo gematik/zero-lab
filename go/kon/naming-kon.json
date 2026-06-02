@@ -1,0 +1,17 @@
+{
+  "basePackage": "github.com/gematik/zero-lab/go/kon/api",
+  "packageMappings": [
+    {
+      "pattern": "de\\.gematik\\.ws\\.(.*)",
+      "replacement": "gematik.$1"
+    },
+    {
+      "pattern": "oasis.names.tc.([^.]+).([^.]+)",
+      "replacement": "oasis.$1$2"
+    },
+    {
+      "pattern": "org\\.(.*)",
+      "replacement": "$1"
+    }
+  ]
+}

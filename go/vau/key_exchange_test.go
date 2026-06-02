@@ -11,13 +11,25 @@ import (
 	"github.com/gematik/zero-lab/go/vau"
 )
 
+type customTransport struct {
+	t http.RoundTripper
+}
+
+func (c *customTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Set("x-useragent", "zero-lab-test/0.1.0")
+	req.Header.Set("user-agent", "zero-lab-test/0.1.0")
+	return c.t.RoundTrip(req)
+}
+
 func TestOpenChannel(t *testing.T) {
-	baseURL := "https://10.30.19.143"
+	baseURL := "https://epa-as-2.ref.epa4all.de"
 	// do not check the server certificate
 	httpClient := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true, // Disable certificate verification
+		Transport: &customTransport{
+			t: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true, // Disable certificate verification
+				},
 			},
 		},
 	}
