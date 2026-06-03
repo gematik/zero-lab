@@ -3,7 +3,7 @@ module github.com/gematik/zero-lab/go/oidf
 go 1.25.0
 
 require (
-	github.com/gematik/zero-lab/go/oauth v0.0.0-20250422140352-bc4b2b7a32b8
+	github.com/gematik/zero-lab/go/oauth v0.0.0-20260602064120-59fe4d3a6a39
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/lestrrat-go/jwx/v2 v2.1.6
 	github.com/lestrrat-go/jwx/v3 v3.1.1
@@ -12,7 +12,6 @@ require (
 )
 
 require (
-	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
@@ -29,7 +28,6 @@ require (
 	github.com/lestrrat-go/iter v1.0.2 // indirect
 	github.com/lestrrat-go/option v1.0.1 // indirect
 	github.com/lestrrat-go/option/v2 v2.0.0 // indirect
-	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/valyala/fastjson v1.6.10 // indirect

@@ -3,11 +3,11 @@ module github.com/gematik/zero-lab/go/pdp
 go 1.25.0
 
 require (
-	github.com/gematik/zero-lab/go/dpop v0.0.0-20250418150140-667c48e927b1
-	github.com/gematik/zero-lab/go/gemidp v0.0.0-20250418150140-667c48e927b1
-	github.com/gematik/zero-lab/go/nonce v0.0.0-20250311061716-39691eb008a0
-	github.com/gematik/zero-lab/go/oauth v0.0.0-20250308083443-b9991fbc0c0c
-	github.com/gematik/zero-lab/go/oidf v0.0.0-20250418150140-667c48e927b1
+	github.com/gematik/zero-lab/go/dpop v0.0.0-20260602064120-59fe4d3a6a39
+	github.com/gematik/zero-lab/go/gemidp v0.0.0-20260602064120-59fe4d3a6a39
+	github.com/gematik/zero-lab/go/nonce v0.0.0-20260602064120-59fe4d3a6a39
+	github.com/gematik/zero-lab/go/oauth v0.0.0-20260602064120-59fe4d3a6a39
+	github.com/gematik/zero-lab/go/oidf v0.0.0-20260602064120-59fe4d3a6a39
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v4 v4.15.2
@@ -16,7 +16,7 @@ require (
 	github.com/segmentio/ksuid v1.0.4
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
-	github.com/valkey-io/valkey-go v1.0.57
+	github.com/valkey-io/valkey-go v1.0.75
 	golang.org/x/crypto v0.52.0
 	golang.org/x/oauth2 v0.36.0
 	gopkg.in/yaml.v2 v2.4.0
@@ -24,11 +24,10 @@ require (
 )
 
 require (
-	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
-	github.com/gematik/zero-lab/go/brainpool v0.0.0-20241217060143-5643c6e16209 // indirect
+	github.com/gematik/zero-lab/go/brainpool v0.0.0-20260602064120-59fe4d3a6a39 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
@@ -50,8 +49,6 @@ require (
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/pelletier/go-toml/v2 v2.3.1 // indirect
-	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
@@ -66,5 +63,4 @@ require (
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )

@@ -1,4 +1,4 @@
-FROM golang:1.24 AS build
+FROM golang:1.25 AS build
 
 WORKDIR /src
 
@@ -6,7 +6,7 @@ WORKDIR /src
 COPY . ./
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux go build ./pdp/cmd/zero-pdp 
+RUN CGO_ENABLED=0 GOOS=linux go build ./pdp/cmd/zero-pdp
 
 RUN mkdir -p /etc/pdp
 

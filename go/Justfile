@@ -1,9 +1,8 @@
 DOCKER_USER := "spilikin"
-ZERO_VERSION := "0.15.0"
-ZERO_EPA_VERSION := ZERO_VERSION
-ZERO_PDP_VERSION := ZERO_VERSION
-ZERO_CADDY_VERSION := ZERO_VERSION
-TI_CLI_VERSION := ZERO_VERSION
+ZERO_EPA_VERSION := "0.16.0"
+ZERO_PDP_VERSION := "0.15.0"
+ZERO_CADDY_VERSION := "0.16.0"
+TI_CLI_VERSION := "0.16.0"
 
 # Display available commands
 info:
@@ -11,7 +10,8 @@ info:
 
 
 # Build the zero-epa docker image
-docker-build-epa: generate-versions
+docker-build-epa:
+    just generate-version-file epa/version.go epa {{ZERO_EPA_VERSION}}
     docker build --platform linux/amd64 -t "{{DOCKER_USER}}/zero-epa:{{ZERO_EPA_VERSION}}" -f ./epa/cmd/zero-epa/Dockerfile .
     docker tag "{{DOCKER_USER}}/zero-epa:{{ZERO_EPA_VERSION}}" "{{DOCKER_USER}}/zero-epa:latest"
 
@@ -21,7 +21,7 @@ docker-push-epa: docker-build-epa
     docker push "{{DOCKER_USER}}/zero-epa:latest"
 
 # Build the zero-caddy docker image
-docker-build-caddy: generate-versions
+docker-build-caddy:
     docker build --platform linux/amd64 -t "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}" -f ./zaddy/cmd/zero-caddy/Dockerfile .
     docker tag "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}" "{{DOCKER_USER}}/zero-caddy:latest"
 
@@ -31,7 +31,8 @@ docker-push-caddy: docker-build-caddy
     docker push "{{DOCKER_USER}}/zero-caddy:latest"
 
 # Build the zero-pdp docker image
-docker-build-pdp: generate-versions
+docker-build-pdp:
+    just generate-version-file pdp/version.go pdp {{ZERO_PDP_VERSION}}
     docker build --platform linux/amd64 -t "{{DOCKER_USER}}/zero-pdp:{{ZERO_PDP_VERSION}}" -f ./pdp/cmd/zero-pdp/Dockerfile .
     docker tag "{{DOCKER_USER}}/zero-pdp:{{ZERO_PDP_VERSION}}" "{{DOCKER_USER}}/zero-pdp:latest"
 
@@ -46,17 +47,11 @@ generate-version-file file package version:
     @echo "" >> {{file}}
     @echo "const Version = \"{{version}}\"" >> {{file}}
 
-# generate version files for all packages
-generate-versions:
-    just generate-version-file epa/version.go epa {{ZERO_EPA_VERSION}}
-    just generate-version-file pdp/version.go pdp {{ZERO_PDP_VERSION}}
-    just generate-version-file ti/version.go main {{TI_CLI_VERSION}}
-
 # Update and tidy all go modules
 tidy:
     #!/usr/bin/env bash
     set -euo pipefail
-    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
+    for dir in $(find . -name 'go.mod' -not -path './libzero/*' -exec dirname {} \; | sort); do
         echo "==> Tidying $dir"
         (cd "$dir" && go get -u ./... && go mod tidy)
     done
@@ -66,3 +61,7 @@ update-roots:
     curl -o ./gempki/roots-test.json https://download-test.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json
     curl -o ./gempki/roots-dev-ref.json https://download-ref.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json
     curl -o ./gempki/roots-prod.json https://download.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json
+
+# Generate version file for TI CLI
+generate-version-ti-cli:
+    just generate-version-file ti/version.go main {{TI_CLI_VERSION}}

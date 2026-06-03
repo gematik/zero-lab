@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/hashicorp/go-secure-stdlib/nonceutil v0.1.0
-	github.com/valkey-io/valkey-go v1.0.57
+	github.com/valkey-io/valkey-go v1.0.75
 )
 
 require (
