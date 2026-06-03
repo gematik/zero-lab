@@ -12,28 +12,28 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/brainpool"
-	"github.com/gematik/zero-lab/go/vau"
+	"github.com/gematik/zero-lab/go/epa/vau"
 )
 
 var UserAgent = fmt.Sprintf("zero-epa-client/%s", Version)
 
-type ClientOption func(*Session)
+type ClientOption func(*Client)
 
 func WithInsecureSkipVerify() ClientOption {
-	return func(s *Session) {
-		s.insecureSkipVerify = true
+	return func(c *Client) {
+		c.insecureSkipVerify = true
 	}
 }
 
 func WithCertPool(certPool *x509.CertPool) ClientOption {
-	return func(s *Session) {
-		s.certPool = certPool
+	return func(c *Client) {
+		c.certPool = certPool
 	}
 }
 
 func WithTimeout(timeout time.Duration) ClientOption {
-	return func(s *Session) {
-		s.Timeout = timeout
+	return func(c *Client) {
+		c.Timeout = timeout
 	}
 }
 
@@ -46,17 +46,30 @@ type SecurityFunctions struct {
 	ProvideHCV              func(insurantId string) ([]byte, error)
 }
 
-type Session struct {
+// Client is a cheap, pre-VAU handle to an aggregator. It owns the HTTP
+// transport and identity material needed for both the unauthenticated
+// /information endpoints and for opening a VAU session.
+//
+// Methods that hit /information endpoints (e.g. GetRecordStatus,
+// GetConsentDecisionInformation) live on *Client and do NOT require an open
+// VAU channel. Use OpenSession to upgrade to a *Session for VAU-bound calls.
+type Client struct {
 	Env                Env
 	ProviderNumber     ProviderNumber
 	BaseURL            string
-	OpenedAt           time.Time
+	HttpClient         *http.Client
 	securityFunctions  *SecurityFunctions
 	insecureSkipVerify bool
 	certPool           *x509.CertPool
-	HttpClient         *http.Client
-	VAUChannel         *vau.Channel
 	Timeout            time.Duration
+}
+
+// Session is a Client with an open VAU channel. Authorize must be called
+// before VAU-bound operations like Entitle.
+type Session struct {
+	*Client
+	VAUChannel *vau.Channel
+	OpenedAt   time.Time
 }
 
 // enumeration for environment
@@ -93,9 +106,10 @@ type ProviderNumber int
 const (
 	ProviderNumber1 ProviderNumber = 1
 	ProviderNumber2 ProviderNumber = 2
+	ProviderNumber3 ProviderNumber = 3
 )
 
-var AllProviders = []ProviderNumber{ProviderNumber1, ProviderNumber2}
+var AllProviders = []ProviderNumber{ProviderNumber1, ProviderNumber2, ProviderNumber3}
 
 func ResolveBaseURL(env Env, provider ProviderNumber) string {
 	switch env {
@@ -112,49 +126,59 @@ func ResolveBaseURL(env Env, provider ProviderNumber) string {
 	}
 }
 
-func OpenSession(env Env, provider ProviderNumber, sf *SecurityFunctions, options ...ClientOption) (*Session, error) {
-
-	session := &Session{
+// NewClient builds a Client for the given aggregator. It does not perform
+// any network calls; the returned Client is ready to use for /information
+// endpoints, and may be promoted to a *Session via OpenSession when a VAU
+// channel is needed.
+func NewClient(env Env, provider ProviderNumber, sf *SecurityFunctions, options ...ClientOption) (*Client, error) {
+	client := &Client{
 		Env:               env,
 		ProviderNumber:    provider,
 		securityFunctions: sf,
 	}
 
 	for _, option := range options {
-		option(session)
+		option(client)
 	}
 
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: session.insecureSkipVerify,
-			RootCAs:            session.certPool,
+			InsecureSkipVerify: client.insecureSkipVerify,
+			RootCAs:            client.certPool,
 		},
 	}
 
-	// set User-Agent for all requests
-	session.HttpClient = &http.Client{
+	client.HttpClient = &http.Client{
 		Transport: &customTransport{
 			t: transport,
 		},
 	}
 
-	if session.Timeout > 0 {
-		session.HttpClient.Timeout = session.Timeout
+	if client.Timeout > 0 {
+		client.HttpClient.Timeout = client.Timeout
 	} else {
-		// default timeout 5 seconds
-		session.HttpClient.Timeout = 5 * time.Second
+		client.HttpClient.Timeout = 5 * time.Second
 	}
 
-	session.BaseURL = ResolveBaseURL(env, provider)
+	client.BaseURL = ResolveBaseURL(env, provider)
 
-	err := session.openVauChannel()
+	return client, nil
+}
+
+// OpenSession performs the VAU handshake and returns a Session that can be
+// Authorized for VAU-bound calls. The underlying Client (HTTP transport,
+// identity) is shared with the returned Session via embedding.
+func (c *Client) OpenSession() (*Session, error) {
+	vauChannel, err := vau.OpenChannel(c.BaseURL, vau.EnvNonPU, c.HttpClient)
 	if err != nil {
 		return nil, err
 	}
 
-	session.OpenedAt = time.Now()
-
-	return session, nil
+	return &Session{
+		Client:     c,
+		VAUChannel: vauChannel,
+		OpenedAt:   time.Now(),
+	}, nil
 }
 
 type customTransport struct {
@@ -167,17 +191,9 @@ func (c *customTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return c.t.RoundTrip(req)
 }
 
-func (s *Session) Close() {
-	s.HttpClient.CloseIdleConnections()
-}
-
-func (s *Session) openVauChannel() error {
-	vauChannel, err := vau.OpenChannel(s.BaseURL, vau.EnvNonPU, s.HttpClient)
-	if err != nil {
-		return err
-	}
-	s.VAUChannel = vauChannel
-	return nil
+// Close releases idle HTTP connections held by the Client.
+func (c *Client) Close() {
+	c.HttpClient.CloseIdleConnections()
 }
 
 type ErrorType struct {

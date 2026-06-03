@@ -32,20 +32,27 @@ func (sm *sessionManager) GetSession(provider ProviderNumber) (*Session, error) 
 func (sm *sessionManager) openSession(provider ProviderNumber) (*Session, error) {
 	sm.lock.Lock()
 	defer sm.lock.Unlock()
+
+	var client *Client
 	var err error
-	var session *Session
 	if sm.certPool == nil {
-		session, err = OpenSession(sm.env, provider, sm.securityFunctions, WithTimeout(sm.timeout), WithInsecureSkipVerify())
+		client, err = NewClient(sm.env, provider, sm.securityFunctions, WithTimeout(sm.timeout), WithInsecureSkipVerify())
 	} else {
-		session, err = OpenSession(sm.env, provider, sm.securityFunctions, WithTimeout(sm.timeout), WithCertPool(sm.certPool))
+		client, err = NewClient(sm.env, provider, sm.securityFunctions, WithTimeout(sm.timeout), WithCertPool(sm.certPool))
 	}
 	if err != nil {
+		return nil, fmt.Errorf("new client at provider %d: %w", provider, err)
+	}
+
+	session, err := client.OpenSession()
+	if err != nil {
+		client.Close()
 		return nil, fmt.Errorf("open session at provider %d: %w", provider, err)
 	}
 
 	err = session.Authorize(sm.authenticator)
 	if err != nil {
-		session.Close()
+		client.Close()
 		return nil, fmt.Errorf("authorize session at provider %d: %w", provider, err)
 	}
 

@@ -17,6 +17,5 @@ use (
 	./pep
 	./pkcs12
 	./ti
-	./vau
 	./zaddy
 )

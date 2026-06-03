@@ -7,18 +7,15 @@ import (
 	"net/http"
 )
 
-func (s *Session) GetRecordStatus(insurantId string) (bool, error) {
-
-	// set insurantId as header
-	req, err := http.NewRequest("GET", s.BaseURL+"/information/api/v1/ehr", nil)
+func (c *Client) GetRecordStatus(insurantId string) (bool, error) {
+	req, err := http.NewRequest("GET", c.BaseURL+"/information/api/v1/ehr", nil)
 	if err != nil {
 		return false, err
 	}
 	req.Header.Set("x-useragent", UserAgent)
 	req.Header.Set("x-insurantid", insurantId)
 
-	// send request
-	resp, err := s.HttpClient.Do(req)
+	resp, err := c.HttpClient.Do(req)
 	if err != nil {
 		return false, err
 	}
@@ -30,12 +27,9 @@ func (s *Session) GetRecordStatus(insurantId string) (bool, error) {
 	} else {
 		return false, parseHttpError(resp)
 	}
-
 }
 
-func (c *Session) GetConsentDecisionInformation(insurantId string) (*GetConsentDecisionInformationType, error) {
-
-	// set insurantId as header
+func (c *Client) GetConsentDecisionInformation(insurantId string) (*GetConsentDecisionInformationType, error) {
 	req, err := http.NewRequest("GET", c.BaseURL+"/information/api/v1/ehr/consentdecisions", nil)
 	if err != nil {
 		return nil, err
@@ -45,7 +39,6 @@ func (c *Session) GetConsentDecisionInformation(insurantId string) (*GetConsentD
 
 	slog.Info("Requesting consent decision information", "method", req.Method, "url", req.URL, "headers", req.Header)
 
-	// send request
 	resp, err := c.HttpClient.Do(req)
 	if err != nil {
 		return nil, err

@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gematik/zero-lab/go/vau"
+	"github.com/gematik/zero-lab/go/epa/vau"
 )
 
 type customTransport struct {

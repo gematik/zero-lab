@@ -64,46 +64,57 @@ var probePatientCmd = &cobra.Command{
 		})
 		cobra.CheckErr(err)
 
-		for _, provider := range []epa.ProviderNumber{epa.ProviderNumber1, epa.ProviderNumber2} {
-			slog.Info("Opening session", "env", env, "provider", provider)
-			session, err := epa.OpenSession(env, provider, sf, epa.WithInsecureSkipVerify(), epa.WithTimeout(proxyConfig.Timeout))
+		for _, provider := range epa.AllProviders {
+			client, err := epa.NewClient(env, provider, sf, epa.WithInsecureSkipVerify(), epa.WithTimeout(proxyConfig.Timeout))
+			if err != nil {
+				slog.Error("Failed to create client", "error", err)
+				continue
+			}
+
+			recordAvailable, err := client.GetRecordStatus(kvnr)
+			if err != nil {
+				slog.Error("Failed to get record status", "error", err, "base_url", client.BaseURL)
+				client.Close()
+				continue
+			}
+			if !recordAvailable {
+				slog.Info("Record not available", "kvnr", kvnr, "base_url", client.BaseURL)
+				client.Close()
+				continue
+			}
+
+			slog.Info("Record available", "kvnr", kvnr, "base_url", client.BaseURL)
+
+			slog.Info("Opening VAU session", "env", env, "provider", provider)
+			session, err := client.OpenSession()
 			if err != nil {
 				slog.Error("Failed to open session", "error", err)
+				client.Close()
 				continue
 			}
 			slog.Info("VAU session opened", "env", env, "provider", provider)
 
 			if err := session.Authorize(authenticator); err != nil {
 				slog.Error("Failed to authorize", "error", err)
+				client.Close()
 				continue
 			}
-
 			slog.Info("Authorized", "env", env, "provider", provider, "subject", cert.Subject.String())
 
-			recordAvailable, err := session.GetRecordStatus(kvnr)
-			if err != nil {
-				slog.Error("Failed to get record status", "error", err, "base_url", session.BaseURL)
-				continue
-			}
-
-			if !recordAvailable {
-				slog.Info("Record not available", "kvnr", kvnr, "base_url", session.BaseURL)
-				continue
-			}
-
-			slog.Info("Record available", "kvnr", kvnr, "base_url", session.BaseURL)
 			if err := session.Entitle(kvnr); err != nil {
 				slog.Error("Failed to entitle", "error", err)
 			} else {
 				slog.Info("Entitled", "patient", kvnr, "env", env, "provider", provider, "kvnr", kvnr)
 			}
 
-			consent, err := session.GetConsentDecisionInformation(kvnr)
+			consent, err := client.GetConsentDecisionInformation(kvnr)
 			if err != nil {
 				slog.Error("Failed to get consent decision information", "error", err)
 			} else {
 				slog.Info("Consent decision information", "consent", consent)
 			}
+
+			client.Close()
 			break
 		}
 	},

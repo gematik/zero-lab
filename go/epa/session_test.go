@@ -110,7 +110,7 @@ func TestConnect(t *testing.T) {
 				return epa.CalculateHCV("20241023", "Berliner Str.___")
 			}
 
-			session, err := epa.OpenSession(
+			client, err := epa.NewClient(
 				epa.EnvDev,
 				providerNumber,
 				&epa.SecurityFunctions{
@@ -125,7 +125,12 @@ func TestConnect(t *testing.T) {
 				epa.WithTimeout(30*time.Second),
 			)
 			if err != nil {
-				t.Fatalf("Connect returned an error: %v", err)
+				t.Fatalf("NewClient returned an error: %v", err)
+			}
+
+			session, err := client.OpenSession()
+			if err != nil {
+				t.Fatalf("OpenSession returned an error: %v", err)
 			}
 
 			clientAttest, err := session.CreateClientAttest()
@@ -220,7 +225,7 @@ func TestRecordsAvailability(t *testing.T) {
 		return epa.CalculateHCV("20241023", "Berliner Str.___")
 	}
 
-	session, err := epa.OpenSession(
+	client, err := epa.NewClient(
 		epa.EnvRef,
 		epa.ProviderNumber1,
 		&epa.SecurityFunctions{
@@ -236,11 +241,11 @@ func TestRecordsAvailability(t *testing.T) {
 	)
 
 	if err != nil {
-		t.Fatalf("Connect returned an error: %v", err)
+		t.Fatalf("NewClient returned an error: %v", err)
 	}
 
 	for _, recordId := range recordIds {
-		exists, err := session.GetRecordStatus(recordId)
+		exists, err := client.GetRecordStatus(recordId)
 		if err != nil {
 			t.Fatalf("GetRecordStatus returned an error: %v", err)
 		}
