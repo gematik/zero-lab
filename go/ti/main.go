@@ -16,9 +16,11 @@ import (
 )
 
 var (
-	konFlag     string
-	verboseFlag bool
+	connectorConfigFlag string
+	verboseFlag         bool
 )
+
+const connectorConfigEnv = "TI_CONNECTOR_CONFIG"
 
 func main() {
 	rootCmd := &cobra.Command{
@@ -37,21 +39,24 @@ func main() {
 	}
 	rootCmd.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "v", false, "enable debug logging")
 
-	konCmd := &cobra.Command{
-		Use:   "kon",
-		Short: "Konnektor commands",
-		Long:  "Commands for interacting with the Gematik Konnektor.\n\nSpecify a .kon configuration with -k/--kon or DOTKON_FILE env var.\nThe name is resolved as: exact path, <name>.kon in current dir, then $XDG_CONFIG_HOME/telematik/kon/",
+	connectorCmd := &cobra.Command{
+		Use:   "connector",
+		Short: "Connector (Konnektor) commands",
+		Long: "Commands for interacting with the Gematik Konnektor.\n\n" +
+			"Select a configuration with -c/--connector-config, the " + connectorConfigEnv + " env var,\n" +
+			"or `ti connector use <name>` to make a selection sticky.\n\n" +
+			"Names resolve as: exact path, <name>.kon in current dir, then $XDG_CONFIG_HOME/telematik/connectors/.",
 	}
-	konCmd.PersistentFlags().StringVarP(&konFlag, "kon", "k", "", "name or path of .kon configuration file (env: DOTKON_FILE)")
-	konCmd.PersistentFlags().StringVarP(&outputFlag, "output", "o", "text", "output format: text, json")
+	connectorCmd.PersistentFlags().StringVarP(&outputFlag, "output", "o", "text", "output format: text, json")
 
-	konCmd.AddCommand(newGetCmd())
-	konCmd.AddCommand(newDescribeCmd())
-	konCmd.AddCommand(newVerifyCmd())
-	konCmd.AddCommand(newChangeCmd())
-	konCmd.AddCommand(newKonConfigsCmd())
+	connectorCmd.AddCommand(newGetCmd())
+	connectorCmd.AddCommand(newDescribeCmd())
+	connectorCmd.AddCommand(newVerifyCmd())
+	connectorCmd.AddCommand(newChangeCmd())
+	connectorCmd.AddCommand(newConnectorConfigsCmd())
+	connectorCmd.AddCommand(newConnectorUseCmd())
 
-	rootCmd.AddCommand(konCmd)
+	rootCmd.AddCommand(connectorCmd)
 	rootCmd.AddCommand(newPKCS12Cmd())
 	rootCmd.AddCommand(newProbeCmd())
 	rootCmd.AddCommand(newPKICmd())
@@ -68,17 +73,44 @@ func main() {
 	}
 }
 
-func loadDotkon() (*kon.Dotkon, error) {
-	name := konFlag
+func addConnectorConfigFlag(cmd *cobra.Command) {
+	cmd.Flags().StringVarP(&connectorConfigFlag, "connector-config", "c", "",
+		"name or path of .kon configuration file (env: "+connectorConfigEnv+")")
+	cmd.RegisterFlagCompletionFunc("connector-config", completeConnectorConfigNames)
+}
+
+func completeConnectorConfigNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	configs := collectConnectorConfigs()
+	names := make([]string, 0, len(configs))
+	for _, c := range configs {
+		names = append(names, c.Name)
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
+}
+
+func loadConnectorConfig() (*kon.Dotkon, error) {
+	name := connectorConfigFlag
+	source := "flag"
 	if name == "" {
-		name = os.Getenv("DOTKON_FILE")
+		name = os.Getenv(connectorConfigEnv)
+		source = "env " + connectorConfigEnv
+	}
+	if name == "" {
+		if active, err := readActiveConnector(); err == nil && active != "" {
+			name = active
+			source = "active file"
+		}
 	}
 	if name == "" {
 		name = "default"
+		source = "default"
 	}
 
-	path, err := resolveKonFile(name)
+	path, err := resolveConnectorConfigFile(name)
 	if err != nil {
+		if source == "active file" {
+			return nil, fmt.Errorf("%w\n\nthe active connector points at %q which no longer resolves; run `ti connector use <name>` to pick another, or `ti connector configs` to list available configs", err, name)
+		}
 		return nil, err
 	}
 	data, err := os.ReadFile(path)
@@ -86,6 +118,18 @@ func loadDotkon() (*kon.Dotkon, error) {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}
 	return kon.ParseDotkon(data)
+}
+
+func activeConnectorFile() string {
+	return filepath.Join(xdgConfigHome(), "telematik", "connectors", "active")
+}
+
+func readActiveConnector() (string, error) {
+	data, err := os.ReadFile(activeConnectorFile())
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
 }
 
 func isTerminal() bool {
@@ -109,7 +153,7 @@ func printJSON(v any) error {
 	return nil
 }
 
-func resolveKonFile(name string) (string, error) {
+func resolveConnectorConfigFile(name string) (string, error) {
 	// Expand ~ to home directory
 	if strings.HasPrefix(name, "~/") {
 		home, err := os.UserHomeDir()
@@ -144,16 +188,17 @@ func resolveKonFile(name string) (string, error) {
 		return withExt, nil
 	}
 
-	// 3. Try XDG config directory: $XDG_CONFIG_HOME/telematik/kon/<name>.kon
-	xdgPath := filepath.Join(xdgConfigHome(), "telematik", "kon", name+".kon")
+	// 3. Try XDG config directory: $XDG_CONFIG_HOME/telematik/connectors/<name>.kon
+	xdgDir := filepath.Join(xdgConfigHome(), "telematik", "connectors")
+	xdgPath := filepath.Join(xdgDir, name+".kon")
 	if _, err := os.Stat(xdgPath); err == nil {
 		return xdgPath, nil
 	}
-	xdgPathExact := filepath.Join(xdgConfigHome(), "telematik", "kon", name)
+	xdgPathExact := filepath.Join(xdgDir, name)
 	if _, err := os.Stat(xdgPathExact); err == nil {
 		return xdgPathExact, nil
 	}
 
-	return "", fmt.Errorf("configuration %q not found (searched current directory and %s/telematik/kon/)",
-		name, xdgConfigHome())
+	return "", fmt.Errorf("configuration %q not found (searched current directory and %s)",
+		name, xdgDir)
 }

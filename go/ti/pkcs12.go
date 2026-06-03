@@ -106,7 +106,7 @@ func runPKCS12Convert(input, output string) error {
 func newPKCS12EncodeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "encode <file>",
-		Short: "Encode PKCS#12 file as .kon credentials JSON",
+		Short: "Encode PKCS#12 file as connector credentials JSON (for .kon configs)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true

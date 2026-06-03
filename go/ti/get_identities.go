@@ -13,18 +13,20 @@ import (
 )
 
 func newGetIdentitiesCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "identities",
 		Short: "List identities (Telematik-IDs) from HBA and SMC-B cards",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
-			config, err := loadDotkon()
+			config, err := loadConnectorConfig()
 			if err != nil {
 				return err
 			}
 			return runGetIdentities(cmd.Context(), config)
 		},
 	}
+	addConnectorConfigFlag(cmd)
+	return cmd
 }
 
 func runGetIdentities(ctx context.Context, config *kon.Dotkon) error {

@@ -10,19 +10,21 @@ import (
 )
 
 func newGetCertificatesCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "certificates <card-handle>",
 		Short: "List certificates of a card",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
-			config, err := loadDotkon()
+			config, err := loadConnectorConfig()
 			if err != nil {
 				return err
 			}
 			return runGetCertificates(cmd.Context(), config, args[0])
 		},
 	}
+	addConnectorConfigFlag(cmd)
+	return cmd
 }
 
 func runGetCertificates(ctx context.Context, config *kon.Dotkon, cardHandle string) error {
