@@ -154,8 +154,8 @@ github.com/fxamacker/cbor/v2 v2.9.2 h1:X4Ksno9+x3cz0TZv69ec1hxP/+tymuR8PXQJyDwfh
 github.com/fxamacker/cbor/v2 v2.9.2/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
 github.com/gematik/zero-lab/go/asl v0.0.0-20260602064120-59fe4d3a6a39 h1:y8xVRS39Hob4xXhJug5vLtuDnIvZcf02Zazk5wLT+IA=
 github.com/gematik/zero-lab/go/asl v0.0.0-20260602064120-59fe4d3a6a39/go.mod h1:7aEq5+DVso1Cv/e2g9XGLIJEf1qLNwGmhqHhgowtNEc=
-github.com/gematik/zero-lab/go/brainpool v0.0.0-20250509081459-e32b34798016 h1:12nebyq3/uAZ4TUMT7tA89+XNHp8mF6PZ4gkeGczCBE=
-github.com/gematik/zero-lab/go/brainpool v0.0.0-20250509081459-e32b34798016/go.mod h1:EE2YYA5/qWFC0yjasTpAANhD9wCESvABd7zJ/edCmIM=
+github.com/gematik/zero-lab/go/brainpool v0.0.0-20260602064120-59fe4d3a6a39 h1:J9rt8vLXXxyd5AwIEun91tjYdwW2H3AXAAEZHNA1YW0=
+github.com/gematik/zero-lab/go/brainpool v0.0.0-20260602064120-59fe4d3a6a39/go.mod h1:TaeFLI1a/MDVsD8s9QcvIBigMUB6TrwjTW07mjrfhek=
 github.com/gematik/zero-lab/go/dpop v0.0.0-20260602064120-59fe4d3a6a39 h1:VyMbv+qIDMwcPeIzJwIUkrVeKrIGxHBY68uRX2HYFYM=
 github.com/gematik/zero-lab/go/dpop v0.0.0-20260602064120-59fe4d3a6a39/go.mod h1:sAuIAlxEqEw47SFChAZaY9xOTg9p8HSNocPyDGM3Wdg=
 github.com/gematik/zero-lab/go/pep v0.0.0-20260602064120-59fe4d3a6a39 h1:3ydeRNJyCsj6xP/AVk2qKDTHhfEWKNITsqJM/phqNUY=
