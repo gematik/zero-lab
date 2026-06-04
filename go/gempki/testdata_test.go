@@ -18,8 +18,9 @@ import (
 // Brainpool TI certificate fixtures.
 // Source: gematik erp-e2e-testsuite (TEST-ONLY, not production).
 // Reused from the sibling brainpool package's test fixtures so we exercise
-// real-world TI cert formats (SMC-B leaf signed by an intermediate CA signed
-// by GEM.RCA5, all Brainpool P-256r1).
+// real-world TI cert formats: SMC-B EE (Arztpraxis Bernd Rosenstrauch),
+// signed by GEM.SMCB-CA51 TEST-ONLY, signed by GEM.RCA5 TEST-ONLY — all
+// Brainpool P-256r1.
 
 // fixtureBrainpoolRCA5PEM — self-signed root, brainpoolP256r1.
 const fixtureBrainpoolRCA5PEM = `-----BEGIN CERTIFICATE-----
@@ -40,8 +41,8 @@ AQH/BAUwAwEB/zAKBggqhkjOPQQDAgNHADBEAiAGnycg02dlaa1JGjN2g2NGc28j
 j4yuHQZrOb0yDWrgVQIgBRqGkgNF8R2HTjHZpW/ImKbvHoO6iV1AwzfFl1uzdG0=
 -----END CERTIFICATE-----`
 
-// fixtureBrainpoolSMCBCA5PEM — intermediate CA signed by RCA5, brainpoolP256r1.
-const fixtureBrainpoolSMCBCA5PEM = `-----BEGIN CERTIFICATE-----
+// fixtureBrainpoolSMCBCA51PEM — GEM.SMCB-CA51 TEST-ONLY intermediate CA signed by RCA5, brainpoolP256r1.
+const fixtureBrainpoolSMCBCA51PEM = `-----BEGIN CERTIFICATE-----
 MIIDCTCCAq+gAwIBAgIBFTAKBggqhkjOPQQDAjCBgTELMAkGA1UEBhMCREUxHzAd
 BgNVBAoMFmdlbWF0aWsgR21iSCBOT1QtVkFMSUQxNDAyBgNVBAsMK1plbnRyYWxl
 IFJvb3QtQ0EgZGVyIFRlbGVtYXRpa2luZnJhc3RydWt0dXIxGzAZBgNVBAMMEkdF
@@ -62,7 +63,7 @@ M2VUJBbT0gYAHiqjAA==
 -----END CERTIFICATE-----`
 
 // fixtureBrainpoolSMCBEEPEM — SMC-B end-entity cert (Arztpraxis Bernd
-// Rosenstrauch), signed by SMCB-CA5, brainpoolP256r1.
+// Rosenstrauch), signed by GEM.SMCB-CA51 TEST-ONLY, brainpoolP256r1.
 const fixtureBrainpoolSMCBEEPEM = `-----BEGIN CERTIFICATE-----
 MIIDeDCCAx6gAwIBAgIHArLLcBI3KDAKBggqhkjOPQQDAjCBmjELMAkGA1UEBhMC
 REUxHzAdBgNVBAoMFmdlbWF0aWsgR21iSCBOT1QtVkFMSUQxSDBGBgNVBAsMP0lu

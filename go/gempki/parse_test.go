@@ -114,12 +114,12 @@ func TestParseCertificates_RSAInStream(t *testing.T) {
 func TestParsePEMCertificates(t *testing.T) {
 	t.Parallel()
 
-	combined := []byte(fixtureBrainpoolRCA5PEM + "\n" + fixtureBrainpoolSMCBCA5PEM)
+	combined := []byte(fixtureBrainpoolRCA5PEM + "\n" + fixtureBrainpoolSMCBCA51PEM)
 	certs, err := gempki.ParsePEMCertificates(combined)
 	require.NoError(t, err)
 	require.Len(t, certs, 2)
 	assert.Contains(t, certs[0].Subject.CommonName, "RCA5")
-	assert.Contains(t, certs[1].Subject.CommonName, "SMCB-CA5")
+	assert.Contains(t, certs[1].Subject.CommonName, "SMCB-CA51")
 }
 
 func TestParsePEMCertificates_SkipsNonCertBlocks(t *testing.T) {

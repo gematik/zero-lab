@@ -23,7 +23,7 @@ func TestVerifyCertificateSignature_BrainpoolChain(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, root, 1)
 
-	ca, err := gempki.ParsePEMCertificates([]byte(fixtureBrainpoolSMCBCA5PEM))
+	ca, err := gempki.ParsePEMCertificates([]byte(fixtureBrainpoolSMCBCA51PEM))
 	require.NoError(t, err)
 	require.Len(t, ca, 1)
 
