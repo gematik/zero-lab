@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/cloudflare/circl v1.6.3
 	github.com/fxamacker/cbor/v2 v2.9.2
-	github.com/gematik/zero-lab/go/brainpool v0.0.0-20260602064120-59fe4d3a6a39
+	github.com/gematik/zero-lab/go/brainpool v0.0.0-20260603180414-a36cd6f7f8b7
 	github.com/segmentio/ksuid v1.0.4
 	golang.org/x/crypto v0.52.0
 )
