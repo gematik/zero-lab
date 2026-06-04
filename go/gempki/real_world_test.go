@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/gematik/zero-lab/go/gempki"
+	"github.com/gematik/zero-lab/go/gempki/internal/testtsl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -58,7 +59,7 @@ func TestRealWorld_EmbeddedTestRootsLoad(t *testing.T) {
 func TestRealWorld_TSLParsesAndPublishesCAs(t *testing.T) {
 	t.Parallel()
 
-	tsl, err := gempki.EmbeddedTestTSL()
+	tsl, err := testtsl.EmbeddedTSL()
 	require.NoError(t, err)
 	require.NotNil(t, tsl)
 	assert.Equal(t, "TEST-ONLY gematik GmbH",
@@ -106,7 +107,7 @@ func TestRealWorld_SMCBValidatesEndToEnd(t *testing.T) {
 	// navigates a realistic candidate set, not just a hand-picked SubCA.
 	smcbCA51, err := gempki.ParsePEMCertificates([]byte(fixtureBrainpoolSMCBCA51PEM))
 	require.NoError(t, err)
-	tsl, err := gempki.EmbeddedTestTSL()
+	tsl, err := testtsl.EmbeddedTSL()
 	require.NoError(t, err)
 	tslCAs := gempki.IntermediateCAsFromTSL(tsl)
 	intermediates := smcbCA51

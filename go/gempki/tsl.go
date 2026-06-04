@@ -143,6 +143,16 @@ const (
 	ServiceTypeCaPkc          = "http://uri.etsi.org/TrstSvc/Svctype/CA/PKC"
 	ServiceTypeCaCvc          = "http://uri.telematik/TrstSvc/Svctype/CA/CVC"
 	ServiceTypeCertstatusOcsp = "http://uri.etsi.org/TrstSvc/Svctype/Certstatus/OCSP"
+
+	// ServiceTypeTSLServiceCertChange identifies a TSPService entry that
+	// announces a *future* TSL-Signer-CA trust anchor (TUC_PKI_013, "Import
+	// TI-Vertrauensanker aus TSL"). After verifying a TSL's detached
+	// signature with the currently-trusted TSL-Signer-CA, callers can extract
+	// certs from these entries via [TSLSignerCertCandidates] and pre-stage
+	// them for verifying the next published TSL.
+	//
+	// Defined in gemSpec_PKI / gemLibPki as `STI_SRV_CERT_CHANGE`.
+	ServiceTypeTSLServiceCertChange = "http://uri.etsi.org/TrstSvc/Svctype/TSLServiceCertChange"
 )
 
 type MultiLangString struct {

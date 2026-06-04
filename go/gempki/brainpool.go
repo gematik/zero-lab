@@ -70,13 +70,22 @@ func assertECC(pub crypto.PublicKey) error {
 	}
 }
 
+// Allowed-curve handles are resolved once at package-load time, before any
+// goroutine runs. crypto/elliptic's lazy initialisation isn't goroutine-safe
+// under -race when first triggered concurrently — caching the handles here
+// avoids the stdlib race without resorting to an init() function.
+var (
+	nistP256        = elliptic.P256()
+	nistP384        = elliptic.P384()
+	brainpoolP256r1 = brainpool.P256r1()
+	brainpoolP384r1 = brainpool.P384r1()
+)
+
 // assertCurveAllowed rejects ECDSA keys on curves outside the TI-PKI policy
 // (e.g. secp256k1, NIST P-521, Brainpool P512r1).
 func assertCurveAllowed(curve elliptic.Curve) error {
 	switch curve {
-	case elliptic.P256(), elliptic.P384():
-		return nil
-	case brainpool.P256r1(), brainpool.P384r1():
+	case nistP256, nistP384, brainpoolP256r1, brainpoolP384r1:
 		return nil
 	}
 	name := "unnamed"
