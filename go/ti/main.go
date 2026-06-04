@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/alecthomas/chroma/v2/quick"
 	"github.com/gematik/zero-lab/go/kon"
@@ -33,7 +32,7 @@ func main() {
 			}
 			slog.SetDefault(slog.New(console.NewHandler(os.Stderr, &console.HandlerOptions{
 				Level:      level,
-				TimeFormat: time.TimeOnly,
+				TimeFormat: "2006-01-02 15:04:05",
 			})))
 		},
 	}
@@ -57,6 +56,7 @@ func main() {
 	connectorCmd.AddCommand(newConnectorUseCmd())
 
 	rootCmd.AddCommand(connectorCmd)
+	rootCmd.AddCommand(newEpaCmd())
 	rootCmd.AddCommand(newPKCS12Cmd())
 	rootCmd.AddCommand(newProbeCmd())
 	rootCmd.AddCommand(newPKICmd())

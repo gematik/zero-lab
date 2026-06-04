@@ -62,6 +62,80 @@ type EncryptedRequest struct {
 	Ciphertext     []byte
 }
 
+// ChannelSnapshot captures everything needed to resume an open VAU channel from a
+// different process. AEAD keys, the channel ID/URL, and both monotonic counters
+// are included; the HTTP client and SignedPublicVAUKeys are intentionally
+// excluded (the client is process-local, the server keys are only used during
+// the initial handshake and are not consulted on subsequent Encrypt/Decrypt).
+//
+// The receiver of a ChannelSnapshot MUST persist counters at least as often as it
+// sends VAU requests — counter reuse breaks AES-GCM nonce uniqueness AND will
+// be rejected by the server. The simplest correct pattern: snapshot after each
+// successful request, drop the snapshot on any failure, fall back to a fresh
+// handshake.
+type ChannelSnapshot struct {
+	Env                 Env    `json:"env"`
+	ID                  string `json:"id"`
+	ChannelURL          string `json:"channel_url"`
+	KeyID               []byte `json:"key_id"`
+	K2C2SAppData        []byte `json:"k2_c2s_app_data"`
+	K2C2SAppDataCounter uint64 `json:"k2_c2s_app_data_counter"`
+	K2S2CAppData        []byte `json:"k2_s2c_app_data"`
+	RequestCounter      uint64 `json:"request_counter"`
+}
+
+// Snapshot returns the current state of the channel suitable for persistence.
+// Counters are read under their respective locks so concurrent senders don't
+// race the snapshotter.
+func (c *Channel) Snapshot() ChannelSnapshot {
+	c.requestCounter.mu.Lock()
+	rc := c.requestCounter.value
+	c.requestCounter.mu.Unlock()
+
+	c.k2_c2s_app_data_counter.mu.Lock()
+	cc := c.k2_c2s_app_data_counter.value
+	c.k2_c2s_app_data_counter.mu.Unlock()
+
+	return ChannelSnapshot{
+		Env:                 c.Env,
+		ID:                  c.ID,
+		ChannelURL:          c.ChannelURL.String(),
+		KeyID:               append([]byte(nil), c.keyID...),
+		K2C2SAppData:        append([]byte(nil), c.k2_c2s_app_data...),
+		K2C2SAppDataCounter: cc,
+		K2S2CAppData:        append([]byte(nil), c.k2_s2c_app_data...),
+		RequestCounter:      rc,
+	}
+}
+
+// RestoreChannel reconstructs a Channel from a previously captured state. The
+// HTTP client is provided by the caller (typically wired with the same cert
+// pool used at handshake time). Subsequent Encrypts will resume from the
+// counters in the state.
+func RestoreChannel(state ChannelSnapshot, httpClient *http.Client) (*Channel, error) {
+	if httpClient == nil {
+		return nil, fmt.Errorf("RestoreChannel: httpClient is required")
+	}
+	u, err := url.Parse(state.ChannelURL)
+	if err != nil {
+		return nil, fmt.Errorf("RestoreChannel: parsing channel URL: %w", err)
+	}
+	if len(state.KeyID) == 0 || len(state.K2C2SAppData) == 0 || len(state.K2S2CAppData) == 0 {
+		return nil, fmt.Errorf("RestoreChannel: state is missing required key material")
+	}
+	return &Channel{
+		httpClient:              httpClient,
+		Env:                     state.Env,
+		ID:                      state.ID,
+		ChannelURL:              u,
+		keyID:                   append([]byte(nil), state.KeyID...),
+		k2_c2s_app_data:         append([]byte(nil), state.K2C2SAppData...),
+		k2_c2s_app_data_counter: Counter{value: state.K2C2SAppDataCounter},
+		k2_s2c_app_data:         append([]byte(nil), state.K2S2CAppData...),
+		requestCounter:          Counter{value: state.RequestCounter},
+	}, nil
+}
+
 func (c *Channel) Do(req *http.Request) (*http.Response, error) {
 	encrypted, err := c.EncryptRequest(req)
 	if err != nil {
