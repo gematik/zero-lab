@@ -19,7 +19,7 @@ func newGetExpirationCmd() *cobra.Command {
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
-			config, err := loadDotkon()
+			config, err := loadConnectorConfig()
 			if err != nil {
 				return err
 			}
@@ -39,6 +39,7 @@ func newGetExpirationCmd() *cobra.Command {
 	cmd.RegisterFlagCompletionFunc("crypt", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return []string{"RSA", "ECC"}, cobra.ShellCompDirectiveNoFileComp
 	})
+	addConnectorConfigFlag(cmd)
 
 	return cmd
 }

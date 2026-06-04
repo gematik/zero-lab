@@ -13,6 +13,7 @@ type envDef struct {
 	TSLURL  string
 	EPAAS1  string
 	EPAAS2  string
+	EPAAS3  string
 	IDP     string
 	ERezept string
 }
@@ -24,6 +25,7 @@ var envDefs = map[string]envDef{
 		TSLURL:  gempki.URLTrustServiceListRef,
 		EPAAS1:  "https://epa-as-1.dev.epa4all.de",
 		EPAAS2:  "https://epa-as-2.dev.epa4all.de",
+		EPAAS3:  "https://epa-as-3.dev.epa4all.de",
 		IDP:     "https://idp-ref.zentral.idp.splitdns.ti-dienste.de",
 		ERezept: "https://erp-ref.zentral.erp.splitdns.ti-dienste.de",
 	},
@@ -32,6 +34,7 @@ var envDefs = map[string]envDef{
 		TSLURL:  gempki.URLTrustServiceListRef,
 		EPAAS1:  "https://epa-as-1.ref.epa4all.de",
 		EPAAS2:  "https://epa-as-2.ref.epa4all.de",
+		EPAAS3:  "https://epa-as-3.ref.epa4all.de",
 		IDP:     "https://idp-ref.zentral.idp.splitdns.ti-dienste.de",
 		ERezept: "https://erp-ref.zentral.erp.splitdns.ti-dienste.de",
 	},
@@ -40,6 +43,7 @@ var envDefs = map[string]envDef{
 		TSLURL:  gempki.URLTrustServiceListTest,
 		EPAAS1:  "https://epa-as-1.test.epa4all.de",
 		EPAAS2:  "https://epa-as-2.test.epa4all.de",
+		EPAAS3:  "https://epa-as-3.test.epa4all.de",
 		IDP:     "https://idp-ref.zentral.idp.splitdns.ti-dienste.de",
 		ERezept: "https://erp-test.zentral.erp.splitdns.ti-dienste.de",
 	},
@@ -48,6 +52,7 @@ var envDefs = map[string]envDef{
 		TSLURL:  gempki.URLTrustServiceListProd,
 		EPAAS1:  "https://epa-as-1.prod.epa4all.de",
 		EPAAS2:  "https://epa-as-2.prod.epa4all.de",
+		EPAAS3:  "https://epa-as-3.prod.epa4all.de",
 		IDP:     "https://idp.zentral.idp.splitdns.ti-dienste.de",
 		ERezept: "https://erp.zentral.erp.splitdns.ti-dienste.de",
 	},

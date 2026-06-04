@@ -3,20 +3,21 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gematik/zero-lab/go/gempki"
+	"github.com/gematik/zero-lab/go/ti/state"
 	"github.com/spf13/cobra"
-	bolt "go.etcd.io/bbolt"
 )
 
-const tslCacheTTL = 5 * time.Minute
-
-var tslBucket = []byte("tsl")
+const (
+	tslCacheTTL  = 5 * time.Minute
+	tslKeyPrefix = "pki:tsl:"
+)
 
 type tslCacheEntry struct {
 	CachedAt time.Time `json:"cachedAt"`
@@ -24,36 +25,44 @@ type tslCacheEntry struct {
 	Raw      []byte    `json:"raw"`
 }
 
-// loadTSLCached returns a parsed TSL, using a local bbolt cache.
-// Cache entries younger than 5 minutes are re-parsed from stored bytes.
-// Stale entries trigger an IsTSLUpdateAvailable check; the full XML is
-// only re-downloaded when the server hash differs.
-// If bbolt is unavailable, falls back to a direct LoadTSL call.
+func tslKey(url string) string { return tslKeyPrefix + url }
+
+// loadTSLCached returns a parsed TSL, using the unified state store as a
+// 5-minute cache. On stale entries we run `IsTSLUpdateAvailable` so the 4MB
+// XML only re-downloads when the upstream hash actually changed.
+//
+// If the state store is unavailable for any reason (permissions, disk full)
+// we degrade to a direct LoadTSL so the CLI keeps working.
 func loadTSLCached(ctx context.Context, httpClient *http.Client, url string) (*gempki.TrustServiceStatusList, error) {
 	if noCacheFlag {
 		return gempki.LoadTSL(ctx, httpClient, url)
 	}
 
-	db, err := openDB()
+	st, err := loadCLIState()
 	if err != nil {
-		slog.Warn("TSL cache unavailable, fetching directly", "err", err)
+		slog.Warn("state cache unavailable, fetching TSL directly", "err", err)
 		return gempki.LoadTSL(ctx, httpClient, url)
 	}
-	defer db.Close()
+	defer st.Close()
 
-	entry, _ := readTSLCache(db, url)
+	key := tslKey(url)
+	entry, hit, err := getJSON[tslCacheEntry](st, key)
+	if err != nil {
+		slog.Warn("TSL cache read failed, fetching directly", "err", err)
+		return gempki.LoadTSL(ctx, httpClient, url)
+	}
 
-	if entry != nil && time.Since(entry.CachedAt) < tslCacheTTL {
+	if hit && time.Since(entry.CachedAt) < tslCacheTTL {
 		slog.Debug("TSL cache hit", "url", url, "age", time.Since(entry.CachedAt).Round(time.Second))
 		return gempki.ParseTSL(bytes.NewReader(entry.Raw), url)
 	}
 
-	if entry != nil {
+	if hit {
 		updated, err := gempki.IsTSLUpdateAvailable(ctx, httpClient, url, entry.Hash)
 		if err == nil && !updated {
 			slog.Debug("TSL unchanged, refreshing cache timestamp", "url", url)
 			entry.CachedAt = time.Now()
-			if werr := writeTSLCache(db, url, entry); werr != nil {
+			if werr := setJSON(st, key, entry, state.Expire(tslCacheTTL)); werr != nil {
 				slog.Warn("failed to refresh TSL cache timestamp", "err", werr)
 			}
 			return gempki.ParseTSL(bytes.NewReader(entry.Raw), url)
@@ -65,16 +74,19 @@ func loadTSLCached(ctx context.Context, httpClient *http.Client, url string) (*g
 	if err != nil {
 		return nil, err
 	}
-	if werr := writeTSLCache(db, url, &tslCacheEntry{
+	if werr := setJSON(st, key, tslCacheEntry{
 		CachedAt: time.Now(),
 		Hash:     tsl.Hash,
 		Raw:      tsl.Raw,
-	}); werr != nil {
+	}, state.Expire(tslCacheTTL)); werr != nil {
 		slog.Warn("failed to write TSL cache", "err", werr)
 	}
 	return tsl, nil
 }
 
+// newPKIClearCacheCmd wipes all `pki:`-prefixed entries from the unified state
+// store. Cosmetic-only difference from `ti epa cache clear pki:…` per key —
+// kept as a distinct command so users with muscle memory still find it.
 func newPKIClearCacheCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "clear-cache",
@@ -82,55 +94,26 @@ func newPKIClearCacheCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
-			db, err := openDB()
+			st, err := loadCLIState()
 			if err != nil {
 				return err
 			}
-			defer db.Close()
-			return db.Update(func(tx *bolt.Tx) error {
-				if tx.Bucket(tslBucket) == nil {
-					fmt.Println("Cache is already empty.")
-					return nil
-				}
-				if err := tx.DeleteBucket(tslBucket); err != nil {
-					return err
-				}
-				fmt.Println("Cache cleared.")
+			defer st.Close()
+			keys, err := st.Keys("pki:")
+			if err != nil {
+				return err
+			}
+			if len(keys) == 0 {
+				fmt.Println("Cache is already empty.")
 				return nil
-			})
+			}
+			for _, k := range keys {
+				if err := st.Delete(k); err != nil {
+					return fmt.Errorf("deleting %q: %w", k, err)
+				}
+			}
+			fmt.Printf("Cache cleared (%d entries: %s).\n", len(keys), strings.Join(keys, ", "))
+			return nil
 		},
 	}
-}
-
-func readTSLCache(db *bolt.DB, url string) (*tslCacheEntry, error) {
-	var entry tslCacheEntry
-	err := db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket(tslBucket)
-		if b == nil {
-			return fmt.Errorf("bucket not found")
-		}
-		data := b.Get([]byte(url))
-		if data == nil {
-			return fmt.Errorf("not cached")
-		}
-		return json.Unmarshal(data, &entry)
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &entry, nil
-}
-
-func writeTSLCache(db *bolt.DB, url string, entry *tslCacheEntry) error {
-	data, err := json.Marshal(entry)
-	if err != nil {
-		return err
-	}
-	return db.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists(tslBucket)
-		if err != nil {
-			return err
-		}
-		return b.Put([]byte(url), data)
-	})
 }

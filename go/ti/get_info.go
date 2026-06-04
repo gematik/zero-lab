@@ -9,18 +9,20 @@ import (
 )
 
 func newGetInfoCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "info",
 		Short: "Show Konnektor product information",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
-			config, err := loadDotkon()
+			config, err := loadConnectorConfig()
 			if err != nil {
 				return err
 			}
 			return runGetInfo(config)
 		},
 	}
+	addConnectorConfigFlag(cmd)
+	return cmd
 }
 
 func credentialsType(config *kon.Dotkon) string {
