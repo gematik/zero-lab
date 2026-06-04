@@ -159,17 +159,19 @@ func runCertInspect(certs []*x509.Certificate, f outputFormat, short bool) error
 // Text and JSON renderers both read from this so the two outputs stay in
 // lock-step; adding a field is automatically visible in both.
 type certInspect struct {
-	Version            int                 `json:"version"`
-	SerialNumberHex    string              `json:"serialNumber"`
-	SerialNumberDec    string              `json:"serialNumberDecimal"`
-	SignatureAlgorithm string              `json:"signatureAlgorithm"`
-	Issuer             distinguishedName   `json:"issuer"`
-	Subject            distinguishedName   `json:"subject"`
-	Validity           validityInfo        `json:"validity"`
-	PublicKey          publicKeyInfo       `json:"publicKey"`
-	Extensions         *extensionsInfo     `json:"extensions,omitempty"`
-	Admission          *admissionInfo      `json:"admission,omitempty"`
-	Fingerprints       fingerprintsInfo    `json:"fingerprints"`
+	Version            int                     `json:"version"`
+	SerialNumberHex    string                  `json:"serialNumber"`
+	SerialNumberDec    string                  `json:"serialNumberDecimal"`
+	SignatureAlgorithm string                  `json:"signatureAlgorithm"`
+	Issuer             distinguishedName       `json:"issuer"`
+	Subject            distinguishedName       `json:"subject"`
+	Validity           validityInfo            `json:"validity"`
+	PublicKey          publicKeyInfo           `json:"publicKey"`
+	Type               gempki.CertificateType  `json:"type,omitempty"`
+	TypeOID            string                  `json:"typeOID,omitempty"`
+	Extensions         *extensionsInfo         `json:"extensions,omitempty"`
+	Admission          *admissionInfo          `json:"admission,omitempty"`
+	Fingerprints       fingerprintsInfo        `json:"fingerprints"`
 }
 
 type distinguishedName struct {
@@ -248,6 +250,10 @@ func buildCertInspect(c *x509.Certificate, short bool) certInspect {
 			SHA1:   colonHex(sha1sum[:]),
 			SHA256: colonHex(sha256sum[:]),
 		},
+	}
+	if t := gempki.DetectCertificateType(c); t != gempki.CertTypeUnknown {
+		out.Type = t
+		out.TypeOID = t.OID().String()
 	}
 	if ext := buildExtensionsInfo(c); ext != nil {
 		out.Extensions = ext
@@ -356,6 +362,12 @@ func buildExtensionsInfo(c *x509.Certificate) *extensionsInfo {
 // writeCertInspect renders a certInspect via kvWriter — the text companion
 // of marshalling the struct to JSON.
 func writeCertInspect(kv *kvWriter, ci certInspect) {
+	if ci.Type != gempki.CertTypeUnknown {
+		kv.Section("Certificate Type")
+		kv.KV("Name", string(ci.Type))
+		kv.KV("OID", ci.TypeOID)
+		kv.EndSection()
+	}
 	kv.Section("Certificate")
 	kv.KV("Version", fmt.Sprintf("%d (0x%x)", ci.Version, ci.Version-1))
 	kv.KV("Serial Number", fmt.Sprintf("%s (%s)", ci.SerialNumberHex, ci.SerialNumberDec))
@@ -526,7 +538,7 @@ func newPKICertVerifyCmd(def envDef) *cobra.Command {
 	cmd.Flags().StringVar(&formatRaw, "format", string(formatText), "output format: text, json")
 	cmd.Flags().StringVar(&rootsPath, "roots", "", "PEM file of trust anchors (default: env embedded roots)")
 	cmd.Flags().StringVar(&intermediatesPath, "intermediates", "", "PEM file of additional candidate intermediates")
-	cmd.Flags().StringVar(&profile, "profile", "", "profile-based EE checks: smcbauth | qes | komponente | idp")
+	cmd.Flags().StringVar(&profile, "profile", "auto", "profile-driven EE checks. 'auto' (default) detects the gemSpec_PKI Tab_PKI_405 cert type and picks the matching profile (C.HCI.AUT → smcbauth, C.HP.QES → qes, C.FD.TLS-S → komponente, …). 'none' disables profile checks (chain-only). Explicit profiles: smcbauth | qes | komponente | idp.")
 	cmd.Flags().BoolVar(&withOCSP, "ocsp", false, "evaluate revocation via OCSP (AIA-driven). Profiles enable OCSP automatically per their gemSpec policy; this flag is for use without --profile.")
 	cmd.Flags().BoolVar(&insecure, "insecure", false, "skip chain build; print decoded cert only")
 	cmd.Flags().StringVar(&atRaw, "at", "", "validate at a specific time (RFC3339; default: now)")
@@ -548,11 +560,45 @@ type certVerifyOpts struct {
 	tslResponders []*x509.Certificate
 	intermediates []*x509.Certificate
 	roots         *gempki.TrustStore
+
+	// Auto-detection bookkeeping (populated when Profile == "auto"):
+	//   detectedType — what DetectCertificateType returned for the EE
+	//   resolvedFrom — "auto", "explicit", or "none" (drives display)
+	//   profileMissing — auto ran but found no matching profile
+	detectedType   gempki.CertificateType
+	resolvedFrom   string
+	profileMissing bool
 }
 
 func runCertVerify(ctx context.Context, def envDef, certs []*x509.Certificate, f outputFormat, opts certVerifyOpts) error {
 	if opts.Insecure {
 		return runCertInspect(certs, f, false)
+	}
+	// Resolve --profile auto / none into a concrete profile name. Detection
+	// runs against the EE (certs[0]); the result drives both the validator
+	// choice and the "Detected Type" / "Profile" surface in the output.
+	switch strings.ToLower(opts.Profile) {
+	case "", "auto":
+		t := gempki.DetectCertificateType(certs[0])
+		opts.detectedType = t
+		opts.resolvedFrom = "auto"
+		opts.Profile = t.Profile()
+		if opts.Profile == "" {
+			opts.profileMissing = true
+			slog.Debug("gempki: profile auto-detection found no match",
+				"subject", certs[0].Subject.CommonName,
+				"type", string(t))
+		} else {
+			slog.Debug("gempki: profile auto-selected",
+				"subject", certs[0].Subject.CommonName,
+				"type", string(t),
+				"profile", opts.Profile)
+		}
+	case "none":
+		opts.resolvedFrom = "none"
+		opts.Profile = ""
+	default:
+		opts.resolvedFrom = "explicit"
 	}
 	httpClient := newHTTPClient()
 	ts, err := resolveTrustStoreFor(ctx, def, opts.RootsPath, httpClient)
@@ -599,10 +645,16 @@ func runCertVerify(ctx context.Context, def envDef, certs []*x509.Certificate, f
 		return err
 	}
 
-	if f == formatJSON {
-		return printJSON(verifyResultJSON(result))
+	if opts.profileMissing {
+		w := *gempki.WarnProfileNotDetected
+		w.Subject = certs[0].Subject.CommonName
+		result.Warnings = append(result.Warnings, &w)
 	}
-	return renderVerifyResultText(result)
+
+	if f == formatJSON {
+		return printJSON(verifyResultJSON(result, opts))
+	}
+	return renderVerifyResultText(result, opts)
 }
 
 func resolveTrustStoreFor(ctx context.Context, def envDef, rootsPath string, httpClient *http.Client) (*gempki.TrustStore, error) {
@@ -669,8 +721,29 @@ func buildValidator(def envDef, ts *gempki.TrustStore, opts certVerifyOpts) *gem
 	return v
 }
 
-func renderVerifyResultText(result *gempki.ValidationResult) error {
+func renderVerifyResultText(result *gempki.ValidationResult, opts certVerifyOpts) error {
 	kv := newKVWriter()
+	// Lead with the most useful facts about the EE — type/profile (the
+	// answers a user usually wants) and a compact identity block — so
+	// reviewers see the "what cert and how was it judged" up front
+	// without scrolling through the chain detail.
+	if len(result.Chain) > 0 && result.Chain[0] != nil {
+		ee := result.Chain[0]
+		if opts.detectedType != gempki.CertTypeUnknown {
+			kv.Section("Certificate Type")
+			kv.KV("Name", string(opts.detectedType))
+			kv.KV("OID", opts.detectedType.OID().String())
+			kv.EndSection()
+		}
+		kv.Section("Certificate")
+		kv.KV("Subject", ee.Subject.CommonName)
+		kv.KV("Issuer", ee.Issuer.CommonName)
+		kv.KV("Serial Number", colonHex(ee.SerialNumber.Bytes()))
+		kv.KV("Not Before", ee.NotBefore.Format(time.RFC3339))
+		kv.KV("Not After", ee.NotAfter.Format(time.RFC3339))
+		kv.KV("Public Key", fmt.Sprintf("%s %s", ee.PublicKeyAlgorithm, describePublicKey(ee.PublicKey)))
+		kv.EndSection()
+	}
 	kv.Section("Validation")
 	verdict := "VALID"
 	if !result.Valid {
@@ -678,6 +751,18 @@ func renderVerifyResultText(result *gempki.ValidationResult) error {
 	}
 	kv.KV("Result", verdict)
 	kv.KV("Chain length", fmt.Sprintf("%d", len(result.Chain)))
+	if opts.resolvedFrom == "auto" {
+		typeStr := string(opts.detectedType)
+		if typeStr == "" {
+			typeStr = "(unknown)"
+		}
+		kv.KV("Detected Type", typeStr)
+	}
+	if opts.Profile != "" {
+		kv.KV("Profile", opts.Profile)
+	} else if opts.resolvedFrom == "none" {
+		kv.KV("Profile", "(none — chain-only)")
+	}
 	if len(result.Errors) > 0 {
 		kv.Section("Errors")
 		for _, e := range result.Errors {
@@ -753,7 +838,7 @@ func writeRevocationDetail(kv *kvWriter, rev *gempki.RevocationResult) {
 	}
 }
 
-func verifyResultJSON(r *gempki.ValidationResult) map[string]any {
+func verifyResultJSON(r *gempki.ValidationResult, opts certVerifyOpts) map[string]any {
 	errors := make([]map[string]any, len(r.Errors))
 	for i, e := range r.Errors {
 		errors[i] = map[string]any{
@@ -788,12 +873,37 @@ func verifyResultJSON(r *gempki.ValidationResult) map[string]any {
 		}
 		chain[i] = entry
 	}
-	return map[string]any{
+	out := map[string]any{
 		"valid":    r.Valid,
 		"errors":   errors,
 		"warnings": warnings,
 		"chain":    chain,
 	}
+	if len(r.Chain) > 0 && r.Chain[0] != nil {
+		ee := r.Chain[0]
+		cert := map[string]any{
+			"subject":      ee.Subject.CommonName,
+			"issuer":       ee.Issuer.CommonName,
+			"serialNumber": colonHex(ee.SerialNumber.Bytes()),
+			"notBefore":    ee.NotBefore.Format(time.RFC3339),
+			"notAfter":     ee.NotAfter.Format(time.RFC3339),
+			"publicKey":    fmt.Sprintf("%s %s", ee.PublicKeyAlgorithm, describePublicKey(ee.PublicKey)),
+		}
+		if opts.detectedType != gempki.CertTypeUnknown {
+			cert["type"] = string(opts.detectedType)
+			cert["typeOID"] = opts.detectedType.OID().String()
+		}
+		out["certificate"] = cert
+	}
+	if opts.resolvedFrom == "auto" {
+		out["detectedType"] = string(opts.detectedType)
+	}
+	if opts.Profile != "" {
+		out["profile"] = opts.Profile
+	} else if opts.resolvedFrom == "none" {
+		out["profile"] = "none"
+	}
+	return out
 }
 
 func revocationJSON(rev *gempki.RevocationResult) map[string]any {
@@ -884,14 +994,15 @@ func runCertLint(ctx context.Context, def envDef, certs []*x509.Certificate, f o
 	} else {
 		slog.Warn("TSL load failed; lint chain build will rely on roots only", "env", def.Env, "err", terr)
 	}
-	v := buildValidator(def, ts, certVerifyOpts{Profile: profile, WithOCSP: false})
+	opts := certVerifyOpts{Profile: profile, WithOCSP: false, resolvedFrom: "explicit"}
+	v := buildValidator(def, ts, opts)
 	result, err := v.Validate(ctx, append([]*x509.Certificate{certs[0]}, intermediates...))
 	if err != nil {
 		return err
 	}
 	if f == formatJSON {
-		return printJSON(verifyResultJSON(result))
+		return printJSON(verifyResultJSON(result, opts))
 	}
-	return renderVerifyResultText(result)
+	return renderVerifyResultText(result, opts)
 }
 

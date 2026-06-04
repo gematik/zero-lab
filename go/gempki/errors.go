@@ -70,6 +70,13 @@ const (
 	// ErrCodeUnsupportedCrypto — key type or curve outside TI-PKI policy
 	// (Ed25519, P-521, secp256k1, ...). RSA is no longer flagged here.
 	ErrCodeUnsupportedCrypto ErrorCode = "unsupported_crypto"
+
+	// ErrCodeProfileNotDetected — a profile-driven verify ran in auto mode
+	// but the cert carries no Tab_PKI_405 type marker and the Admission
+	// fallback couldn't infer one. The chain-only result is still returned,
+	// but role/policy/OCSP enforcement was skipped — callers using --profile
+	// auto should treat this as a loud "we didn't do everything you asked".
+	ErrCodeProfileNotDetected ErrorCode = "profile_not_detected"
 )
 
 // ValidationError describes a single validation failure attributable to one
@@ -135,6 +142,15 @@ var (
 	ErrKeyUsageMismatch       = &ValidationError{Code: ErrCodeKeyUsageMismatch, Message: "key usage mismatch"}
 	ErrUnsupportedCrypto      = &ValidationError{Code: ErrCodeUnsupportedCrypto, Message: "unsupported crypto"}
 )
+
+// WarnProfileNotDetected is the sentinel used by auto-profile callers when
+// [DetectCertificateType] returns [CertTypeUnknown]. It is a warning, not
+// an error, so [ValidationResult].Valid stays true while the caller is
+// notified that profile-driven checks were skipped.
+var WarnProfileNotDetected = &ValidationWarning{
+	Code:    ErrCodeProfileNotDetected,
+	Message: "cert type could not be auto-detected; ran chain-only validation (pass --profile explicitly or use --profile none to silence)",
+}
 
 // ValidationWarning is a non-fatal observation about the validated chain.
 // Warnings never cause [ValidationResult].Valid to be false.
