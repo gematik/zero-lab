@@ -55,27 +55,27 @@
 // predecessors. The result is an immutable [TrustStore] that knows nothing
 // the anchor did not implicitly bless.
 //
-// # ECC-only and what it means for legacy roots
+// # Crypto policy
 //
-// Per gemSpec_Krypt the TI-PKI is ECC-only. The library enforces this
-// uniformly: any RSA key, any RSA-based signature algorithm, returns
-// [ErrRSANotSupported]. There is no flag to disable the policy.
+// The library accepts ECDSA (Brainpool P256r1/P384r1, NIST P-256/P-384)
+// and RSA throughout the cert/key/chain/trust-store surfaces. RSA is
+// permitted because historical TI roots (GEM.RCA1/2/6) are RSA-keyed and
+// must be loadable for chain validation to work end-to-end. Ed25519,
+// secp256k1, P-521 and similar are still rejected as outside TI-PKI use.
 //
-// In practice this interacts with the cross-cert walk in two ways:
+// The one remaining RSA limitation is the TSL detached-signature parser
+// ([ParseTSLDetachedSignature]), which only decodes the ECDSA-Sig-Value
+// format and returns [ErrRSANotSupported] for the RSA-PSS variant —
+// that's a format limitation, not a policy choice.
 //
-//   - Legacy RSA roots in roots.json (GEM.RCA1, GEM.RCA2 in the published
-//     data) are dropped at parse time and never enter the TrustStore.
-//   - When the backward walk reaches a cross certificate signed by an RSA
-//     key, the walk stops gracefully. This can leave perfectly valid
-//     earlier ECC roots out of reach — RCA5 in the test environment is
-//     such a case, isolated from the RCA8 anchor by an RSA-signed bridge.
+// In the cross-cert walk, any verification failure (RSA-related or not)
+// terminates the walk direction with a Debug log and returns whatever was
+// already trusted. This keeps the loader robust against quirks in older
+// roots.json layouts (e.g. non-traversable cross-cert orientations).
 //
-// Callers who need a wider root set than EmbeddedLoader exposes have two
-// options. They can build a [TrustStore] directly with [NewTrustStore]
-// from a caller-supplied slice of *x509.Certificate (the simplest path for
-// airgap deployments that ship their own trust bundle). Or they can
-// implement the [Loader] interface and decide what cross-cert acceptance
-// means for their use case.
+// Callers who need a wider root set than the [Loader] discovers can build
+// a [TrustStore] directly with [NewTrustStore] from a caller-supplied
+// slice of *x509.Certificate.
 //
 // # Loader and Holder
 //

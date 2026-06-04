@@ -51,6 +51,48 @@ type X509FromTSL struct {
 	ServiceStatus string
 }
 
+// OCSPRespondersFromTSL returns every OCSP responder certificate the TSL
+// lists (TSPServices with ServiceTypeIdentifier =
+// [ServiceTypeCertstatusOcsp]).
+//
+// Per gemSpec_PKI §6 / TUC_PKI_006 the TSL is the authoritative directory
+// of OCSP signers for the TI. The gemLibPki reference implementation
+// (de.gematik.pki.gemlibpki.ocsp.OcspResponderValidator) follows the
+// same pattern: the embedded OCSP responder cert is authorized iff it
+// matches a TSL Certstatus/OCSP TSPService entry. A responder that
+// appears here is trusted to answer for the CAs configured under the
+// same Trust Service Provider, even when it isn't issued by the same CA
+// as the cert under check — TI's KOMP-CAxx responders routinely answer
+// for SMCB-CAxx cards, which this entry-based authorization sanctions.
+//
+// Callers verifying OCSP responses should match the embedded responder
+// cert against this list (by SKI) and accept it on match without
+// insisting on the responder being signed by the cert's own issuer.
+func OCSPRespondersFromTSL(tsl *TrustServiceStatusList) []*X509FromTSL {
+	if tsl == nil {
+		return nil
+	}
+	out := make([]*X509FromTSL, 0, 16)
+	for i := range tsl.TrustServiceProviderList {
+		prov := &tsl.TrustServiceProviderList[i]
+		for j := range prov.TSPServices {
+			info := &prov.TSPServices[j].ServiceInformation
+			if info.ServiceTypeIdentifier != ServiceTypeCertstatusOcsp {
+				continue
+			}
+			cert := info.ServiceDigitalIdentity.DigitalId.X509Certificate
+			if cert == nil {
+				continue
+			}
+			out = append(out, &X509FromTSL{
+				Cert:          cert,
+				ServiceStatus: info.ServiceStatus,
+			})
+		}
+	}
+	return out
+}
+
 // IntermediateCAsFromTSL returns every CA/PKC service certificate the TSL
 // lists — the candidate intermediates a [Validator] can be fed alongside
 // an end-entity. Order is the document order from the TSL XML.

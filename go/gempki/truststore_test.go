@@ -52,17 +52,22 @@ func TestNewTrustStore_DedupAndLookup(t *testing.T) {
 	})
 }
 
-func TestNewTrustStore_RejectsRSA(t *testing.T) {
+// TestNewTrustStore_AcceptsRSA pins the post-policy-change behavior:
+// NewTrustStore admits RSA roots so historical RCAs (RCA1/2/6) can live
+// alongside the modern ECC anchors.
+func TestNewTrustStore_AcceptsRSA(t *testing.T) {
 	t.Parallel()
 
 	rsaDER := makeSelfSignedRSA(t, "rsa-root")
-	// Parse with stdlib so we can sneak it past gempki.ParseCertificate.
 	rsaCert, err := x509.ParseCertificate(rsaDER)
 	require.NoError(t, err)
 
-	_, err = gempki.NewTrustStore([]*x509.Certificate{rsaCert})
-	require.Error(t, err)
-	assert.ErrorIs(t, err, gempki.ErrRSANotSupported)
+	ts, err := gempki.NewTrustStore([]*x509.Certificate{rsaCert})
+	require.NoError(t, err)
+	require.Equal(t, 1, ts.Len())
+	got, ok := ts.ByCommonName("rsa-root")
+	require.True(t, ok)
+	assert.True(t, got.Equal(rsaCert))
 }
 
 func TestNewTrustStore_RejectsNil(t *testing.T) {

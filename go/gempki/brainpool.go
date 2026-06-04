@@ -1,11 +1,7 @@
 package gempki
 
 import (
-	"crypto"
-	"crypto/ecdsa"
-	"crypto/ed25519"
 	"crypto/elliptic"
-	"crypto/rsa"
 	"encoding/asn1"
 	"fmt"
 
@@ -49,48 +45,3 @@ func CurveForOID(oid asn1.ObjectIdentifier) (elliptic.Curve, error) {
 	return nil, fmt.Errorf("gempki: unsupported elliptic curve OID %s", oid)
 }
 
-// assertECC verifies that pub is an ECDSA public key on a curve allowed by
-// the TI-PKI. Any other key type (RSA, Ed25519, unknown) is rejected with a
-// loud, attributable error. This is the single crypto-policy gate the rest of
-// the package relies on; every entrypoint that observes a public key must
-// route through here.
-func assertECC(pub crypto.PublicKey) error {
-	switch k := pub.(type) {
-	case *ecdsa.PublicKey:
-		if k == nil || k.Curve == nil {
-			return fmt.Errorf("gempki: nil ECDSA public key")
-		}
-		return assertCurveAllowed(k.Curve)
-	case *rsa.PublicKey:
-		return ErrRSANotSupported
-	case ed25519.PublicKey:
-		return fmt.Errorf("gempki: Ed25519 is not supported in the TI-PKI")
-	default:
-		return fmt.Errorf("gempki: unsupported public key type %T", pub)
-	}
-}
-
-// Allowed-curve handles are resolved once at package-load time, before any
-// goroutine runs. crypto/elliptic's lazy initialisation isn't goroutine-safe
-// under -race when first triggered concurrently — caching the handles here
-// avoids the stdlib race without resorting to an init() function.
-var (
-	nistP256        = elliptic.P256()
-	nistP384        = elliptic.P384()
-	brainpoolP256r1 = brainpool.P256r1()
-	brainpoolP384r1 = brainpool.P384r1()
-)
-
-// assertCurveAllowed rejects ECDSA keys on curves outside the TI-PKI policy
-// (e.g. secp256k1, NIST P-521, Brainpool P512r1).
-func assertCurveAllowed(curve elliptic.Curve) error {
-	switch curve {
-	case nistP256, nistP384, brainpoolP256r1, brainpoolP384r1:
-		return nil
-	}
-	name := "unnamed"
-	if p := curve.Params(); p != nil && p.Name != "" {
-		name = p.Name
-	}
-	return fmt.Errorf("gempki: unsupported elliptic curve %q (TI-PKI allows NIST P-256/P-384 and Brainpool P256r1/P384r1)", name)
-}

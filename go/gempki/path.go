@@ -29,8 +29,8 @@ type ValidatePathOptions struct {
 // to every non-EE cert: IsCA must be set, KeyUsage must include KeyCertSign,
 // and the PathLenConstraint (if asserted) is respected by the number of
 // intermediates beneath it. Each adjacent pair is verified via
-// [VerifyCertificateSignature] — RSA at any link surfaces
-// [ErrRSANotSupported] without special handling here.
+// [VerifyCertificateSignature], which accepts ECDSA (Brainpool/NIST) and
+// RSA uniformly.
 //
 // chain must be ordered [EE, SubCA…, Root]. ValidatePath returns a
 // [ValidationResult] with Valid=false and one or more Errors when checks fail;

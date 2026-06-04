@@ -5,15 +5,18 @@ import (
 	"fmt"
 )
 
-// ErrRSANotSupported is returned whenever an RSA public key is encountered
-// anywhere in a certificate chain, OCSP response, or other PKI artifact.
+// ErrRSANotSupported is the sentinel for the one remaining RSA-rejection
+// path: the TSL detached-signature parser ([ParseTSLDetachedSignature])
+// only knows the ECDSA-Sig-Value structure. The .sig file's RSA-PSS
+// variant has a different on-disk shape that this library doesn't decode
+// yet.
 //
-// The TI-PKI migrated from RSA to ECC; this library accepts only Brainpool
-// (P256r1, P384r1) and NIST (P-256, P-384) elliptic curves per gemSpec_Krypt.
-// There is no opt-in to enable RSA. The error message references gemSpec_Krypt
-// so failures are easy to triage in production.
+// For every other surface (parsing certificates, building a TrustStore,
+// chain validation), RSA is accepted: historical TI roots (GEM.RCA1/2/6)
+// are RSA-keyed and must be loadable for end-to-end chain validation to
+// work.
 var ErrRSANotSupported = errors.New(
-	"gempki: RSA is not supported — the TI-PKI requires ECC (Brainpool or NIST). See gemSpec_Krypt",
+	"gempki: RSA-PSS TSL signatures are not decoded yet — only the ECDSA TSL .sig file is supported",
 )
 
 // ErrorCode is a stable, machine-readable identifier for a validation failure
@@ -65,7 +68,7 @@ const (
 	ErrCodeKeyUsageMismatch ErrorCode = "key_usage_mismatch"
 
 	// ErrCodeUnsupportedCrypto — key type or curve outside TI-PKI policy
-	// (RSA, Ed25519, P-521, ...). Wraps [ErrRSANotSupported] for RSA cases.
+	// (Ed25519, P-521, secp256k1, ...). RSA is no longer flagged here.
 	ErrCodeUnsupportedCrypto ErrorCode = "unsupported_crypto"
 )
 

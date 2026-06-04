@@ -20,10 +20,9 @@ type TrustStore struct {
 
 // NewTrustStore returns an immutable TrustStore over the given roots.
 //
-// Every root must pass [assertECC] — RSA and other non-TI-PKI key types are
-// rejected up-front with [ErrRSANotSupported] (wrapped) so an attacker cannot
-// smuggle an unsupported algorithm into the trust store and have it surface
-// as a chain-building failure deeper in the validator.
+// There is no key-type gate. Trust comes from anchor selection (whoever
+// populates the slice has already decided what to trust); the TrustStore
+// just deduplicates and indexes.
 //
 // Duplicate roots (same SKI) are deduplicated; the first occurrence wins.
 // Conflicting CommonName entries (same CN, different SKI) coexist — only the
@@ -38,9 +37,6 @@ func NewTrustStore(roots []*x509.Certificate) (*TrustStore, error) {
 	for _, r := range roots {
 		if r == nil {
 			return nil, fmt.Errorf("gempki: nil certificate in trust store input")
-		}
-		if err := assertECC(r.PublicKey); err != nil {
-			return nil, fmt.Errorf("gempki: trust store rejected %q: %w", r.Subject.CommonName, err)
 		}
 		key := hex.EncodeToString(r.SubjectKeyId)
 		if _, exists := ts.bySKI[key]; exists {

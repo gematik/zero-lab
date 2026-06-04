@@ -8,7 +8,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	"errors"
 	"math/big"
 	"testing"
 	"time"
@@ -44,21 +43,27 @@ func TestParseCertificate_NISTP256(t *testing.T) {
 	assert.Same(t, elliptic.P256(), pub.Curve)
 }
 
-func TestParseCertificate_RSARejected(t *testing.T) {
+// TestParseCertificate_RSAAccepted documents that gempki now accepts RSA
+// certificates. The historical TI roots (GEM.RCA1/2/6) are RSA-keyed and
+// must be loadable for full chain validation; the older ECC-only policy
+// is gone.
+func TestParseCertificate_RSAAccepted(t *testing.T) {
 	t.Parallel()
 
 	der := makeSelfSignedRSA(t, "test-rsa")
-	_, err := gempki.ParseCertificate(der)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, gempki.ErrRSANotSupported)
-	assert.Contains(t, err.Error(), "gemSpec_Krypt",
-		"error message must reference gemSpec_Krypt so failures are easy to triage")
+	cert, err := gempki.ParseCertificate(der)
+	require.NoError(t, err)
+	assert.Equal(t, "test-rsa", cert.Subject.CommonName)
+	assert.Equal(t, x509.RSA, cert.PublicKeyAlgorithm)
 }
 
-func TestParseCertificate_P521Rejected(t *testing.T) {
+// TestParseCertificate_P521Accepted pins the post-policy-removal behavior:
+// with assertECC gone, any curve the brainpool/stdlib parsers handle is
+// accepted at parse time. Trust is gated by anchor membership in
+// [gempki.TrustStore], not by parse-time key-type filtering.
+func TestParseCertificate_P521Accepted(t *testing.T) {
 	t.Parallel()
 
-	// P-521 is ECDSA but outside the TI-PKI policy.
 	k, err := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
 	require.NoError(t, err)
 	tmpl := &x509.Certificate{
@@ -70,9 +75,9 @@ func TestParseCertificate_P521Rejected(t *testing.T) {
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &k.PublicKey, k)
 	require.NoError(t, err)
 
-	_, err = gempki.ParseCertificate(der)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported elliptic curve")
+	cert, err := gempki.ParseCertificate(der)
+	require.NoError(t, err)
+	assert.Equal(t, "test-p521", cert.Subject.CommonName)
 }
 
 func TestParseCertificates_MixedStream(t *testing.T) {
@@ -102,13 +107,15 @@ func TestParseCertificates_RSAInStream(t *testing.T) {
 	t.Parallel()
 
 	nistDER, _ := makeSelfSignedECDSA(t, elliptic.P256(), "ok")
-	rsaDER := makeSelfSignedRSA(t, "rogue-rsa")
+	rsaDER := makeSelfSignedRSA(t, "rsa-in-stream")
 	stream := bytes.Join([][]byte{nistDER, rsaDER}, nil)
 
-	_, err := gempki.ParseCertificates(stream)
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, gempki.ErrRSANotSupported),
-		"RSA anywhere in the stream must reject with ErrRSANotSupported, got %v", err)
+	certs, err := gempki.ParseCertificates(stream)
+	require.NoError(t, err)
+	require.Len(t, certs, 2)
+	assert.Equal(t, "ok", certs[0].Subject.CommonName)
+	assert.Equal(t, "rsa-in-stream", certs[1].Subject.CommonName)
+	assert.Equal(t, x509.RSA, certs[1].PublicKeyAlgorithm)
 }
 
 func TestParsePEMCertificates(t *testing.T) {

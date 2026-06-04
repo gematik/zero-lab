@@ -11,21 +11,13 @@ import (
 // ParseCertificate parses a single DER-encoded X.509 certificate.
 //
 // It delegates to the sibling brainpool package's parser, which falls back to
-// manual ASN.1 parsing when the standard library rejects a Brainpool curve.
-// The parsed certificate's public key is then validated against the TI-PKI
-// crypto policy: only NIST P-256/P-384 and Brainpool P256r1/P384r1 are
-// accepted. RSA keys return [ErrRSANotSupported].
-//
-// This is the single certificate entrypoint callers should use. Internal code
-// that calls [x509.ParseCertificate] directly will silently bypass the curve
-// policy and fail downstream with worse error messages.
+// the standard library when the certificate isn't on a Brainpool curve.
+// Any key type the brainpool/stdlib parsers accept is returned; trust comes
+// from anchor selection in [TrustStore], not from a parse-time key-type gate.
 func ParseCertificate(der []byte) (*x509.Certificate, error) {
 	cert, err := brainpool.ParseCertificate(der)
 	if err != nil {
 		return nil, fmt.Errorf("gempki: parse certificate: %w", err)
-	}
-	if err := assertECC(cert.PublicKey); err != nil {
-		return nil, fmt.Errorf("gempki: certificate %q: %w", cert.Subject.CommonName, err)
 	}
 	return cert, nil
 }

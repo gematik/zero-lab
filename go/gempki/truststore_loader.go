@@ -300,20 +300,15 @@ func verifyRootsList(anchor *x509.Certificate, r io.Reader) (*TrustStore, error)
 		return nil, errors.New("gempki: roots.json is empty")
 	}
 
-	// Parse every entry's main cert. Legacy RSA roots (GEM.RCA1/2 in the
-	// production payload) cannot enter the TI-PKI trust store — skip them with
-	// a warning rather than failing the entire load. Any cross-cert link that
-	// later resolves to a skipped entry will stop the walk gracefully.
+	// Parse every entry's main cert. Both ECC and RSA root certs are accepted
+	// — the historical GEM.RCA1/2/6 are RSA-keyed but still part of the TI
+	// trust corpus; rejecting them would break chain validation for cards
+	// issued under those eras.
 	parsed := make([]parsedEntry, 0, len(entries))
 	anchorIdx := -1
 	for _, e := range entries {
 		c, err := ParseCertificate(e.CertRaw)
 		if err != nil {
-			if errors.Is(err, ErrRSANotSupported) {
-				slog.Debug("gempki: skipping legacy RSA root from roots.json",
-					"common_name", e.CommonName)
-				continue
-			}
 			return nil, fmt.Errorf("gempki: parse root %q: %w", e.CommonName, err)
 		}
 		if c.Equal(anchor) {
@@ -328,73 +323,52 @@ func verifyRootsList(anchor *x509.Certificate, r io.Reader) (*TrustStore, error)
 	trusted := []*x509.Certificate{parsed[anchorIdx].cert}
 	now := time.Now()
 
-	// Forward walk through "next" links — successors are the modern,
-	// always-ECC roots, so any failure here is a real protocol violation.
+	// Forward and backward walks through "next" / "prev" cross-cert links.
+	// Any verification failure terminates that walk direction with a Debug
+	// log — the walker is best-effort, and older roots.json layouts have
+	// non-traversable orientations (e.g. RCA8.prev signed by RCA6 instead of
+	// by RCA8) that simply can't be followed but should not fail the load.
 	cur := anchorIdx
 	for len(parsed[cur].entry.NextCertRaw) > 0 {
 		nextCross, err := ParseCertificate(parsed[cur].entry.NextCertRaw)
 		if err != nil {
-			if errors.Is(err, ErrRSANotSupported) {
-				slog.Debug("gempki: forward walk hit RSA cross-cert; stopping",
-					"from", parsed[cur].cert.Subject.CommonName)
-				break
-			}
-			return nil, fmt.Errorf("gempki: parse next cross-cert from %q: %w",
-				parsed[cur].cert.Subject.CommonName, err)
+			slog.Debug("gempki: forward walk parse failed; stopping",
+				"from", parsed[cur].cert.Subject.CommonName, "err", err)
+			break
 		}
 		idx, ok := findBySKI(parsed, nextCross.SubjectKeyId)
 		if !ok {
-			slog.Debug("gempki: forward walk reached an entry not in roots.json (possibly RSA-skipped); stopping",
+			slog.Debug("gempki: forward walk reached an entry not in roots.json; stopping",
 				"ski", fmt.Sprintf("%x", nextCross.SubjectKeyId))
 			break
 		}
 		if err := verifyCrossSignedAt(parsed[cur].cert, nextCross, parsed[idx].cert, now); err != nil {
-			if errors.Is(err, ErrRSANotSupported) {
-				slog.Debug("gempki: forward walk hit RSA-signed cross-cert; stopping",
-					"from", parsed[cur].cert.Subject.CommonName)
-				break
-			}
-			return nil, fmt.Errorf("gempki: forward cross-cert chain broke at %q: %w",
-				parsed[idx].cert.Subject.CommonName, err)
+			slog.Debug("gempki: forward cross-cert verification failed; stopping",
+				"at", parsed[idx].cert.Subject.CommonName, "err", err)
+			break
 		}
 		trusted = append(trusted, parsed[idx].cert)
 		cur = idx
 	}
 
-	// Backward walk through "prev" links — predecessors may be expired or RSA.
-	// Both cases stop the walk gracefully; only Step-3..7 violations on
-	// in-window certs are treated as protocol failures.
 	cur = anchorIdx
 	for len(parsed[cur].entry.PrevCertRaw) > 0 {
 		prevCross, err := ParseCertificate(parsed[cur].entry.PrevCertRaw)
 		if err != nil {
-			if errors.Is(err, ErrRSANotSupported) {
-				slog.Debug("gempki: backward walk hit RSA predecessor; stopping",
-					"from", parsed[cur].cert.Subject.CommonName)
-				break
-			}
-			return nil, fmt.Errorf("gempki: parse prev cross-cert from %q: %w",
-				parsed[cur].cert.Subject.CommonName, err)
+			slog.Debug("gempki: backward walk parse failed; stopping",
+				"from", parsed[cur].cert.Subject.CommonName, "err", err)
+			break
 		}
 		idx, ok := findBySKI(parsed, prevCross.SubjectKeyId)
 		if !ok {
-			slog.Debug("gempki: backward walk reached an entry not in roots.json (likely RSA-skipped); stopping",
+			slog.Debug("gempki: backward walk reached an entry not in roots.json; stopping",
 				"ski", fmt.Sprintf("%x", prevCross.SubjectKeyId))
 			break
 		}
 		if err := verifyCrossSignedAt(parsed[cur].cert, prevCross, parsed[idx].cert, now); err != nil {
-			if errors.Is(err, ErrCrossCertStep2) {
-				slog.Debug("gempki: skipping expired predecessor in trust chain",
-					"common_name", parsed[idx].cert.Subject.CommonName, "reason", err.Error())
-				break
-			}
-			if errors.Is(err, ErrRSANotSupported) {
-				slog.Debug("gempki: backward walk hit RSA-signed cross-cert; stopping",
-					"from", parsed[cur].cert.Subject.CommonName)
-				break
-			}
-			return nil, fmt.Errorf("gempki: backward cross-cert chain broke at %q: %w",
-				parsed[idx].cert.Subject.CommonName, err)
+			slog.Debug("gempki: backward cross-cert verification failed; stopping",
+				"at", parsed[idx].cert.Subject.CommonName, "err", err)
+			break
 		}
 		trusted = append(trusted, parsed[idx].cert)
 		cur = idx

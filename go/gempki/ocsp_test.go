@@ -2,6 +2,7 @@ package gempki_test
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"io"
 	"net/http"
@@ -202,4 +203,103 @@ func TestOCSPChecker_MaxResponseAge(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, gempki.RevocationStatusUnknown, result.Status)
 	assert.Contains(t, result.Reason, "exceeds MaxResponseAge")
+}
+
+// TestOCSPChecker_BrainpoolResponderCert covers the case the user explicitly
+// flagged: the embedded responder certificate is on a Brainpool curve, so
+// x/crypto/ocsp's stdlib parser path can't decode it. Our [parseOCSPResponse]
+// strips the certs section, parses via [ParseCertificate] (brainpool-aware),
+// and verifies the response signature manually. Regression test for the
+// "parse OCSP response: x509: unsupported elliptic curve" bug.
+func TestOCSPChecker_BrainpoolResponderCert(t *testing.T) {
+	t.Parallel()
+
+	pki, err := testca.New()
+	require.NoError(t, err)
+	// SubCAHBA is Brainpool P-256r1 and signs EEArzt. Use it as both the
+	// OCSP signer (so the embedded responder cert is brainpool) and the
+	// issuer parameter (so VerifyCertificateSignature succeeds trivially).
+	signKey, signCert := pki.SubCAHBA.Key, pki.SubCAHBA.Cert
+
+	resp := testocsp.NewResponder(t, pki.SubCAHBA.Cert, signKey, signCert)
+	resp.Set(pki.EEArzt.Cert.SerialNumber, testocsp.Entry{Status: testocsp.StatusGood})
+
+	checker := &gempki.OCSPChecker{
+		HTTPClient:   &http.Client{Timeout: 5 * time.Second},
+		ResponderURL: resp.URL,
+	}
+	result, err := checker.Check(t.Context(), pki.EEArzt.Cert, pki.SubCAHBA.Cert)
+	require.NoError(t, err)
+	assert.Equal(t, gempki.RevocationStatusGood, result.Status,
+		"a Brainpool-keyed embedded responder cert must parse and verify, got reason=%q", result.Reason)
+}
+
+// TestOCSPChecker_DelegatedResponderAuthorizedByTSL pins the gemSpec_PKI /
+// gemLibPki authorization path: the OCSP responder cert is *not* signed by
+// the cert's own issuer, but it appears in the TSL's Certstatus/OCSP
+// responder list (TSLResponders), so the checker accepts it without
+// requiring a same-CA signing relationship. This is how TI deployments
+// authorize cross-CA OCSP responders (e.g. KOMP-CA-issued responder
+// answering for SMCB-CA cards).
+func TestOCSPChecker_DelegatedResponderAuthorizedByTSL(t *testing.T) {
+	t.Parallel()
+
+	pki, err := testca.New()
+	require.NoError(t, err)
+	// Cross-CA setup: SubCAHBA issues the EE, but SubCAKomp issues (and
+	// IS) the OCSP responder. From the EE's point of view the responder
+	// is delegated and not signed by the EE's issuer.
+	signKey, signCert := pki.SubCAKomp.Key, pki.SubCAKomp.Cert
+
+	r := testocsp.NewResponder(t, pki.SubCAHBA.Cert, signKey, signCert)
+	r.Set(pki.EEArzt.Cert.SerialNumber, testocsp.Entry{Status: testocsp.StatusGood})
+
+	// Without authorization the check must fail.
+	bare := &gempki.OCSPChecker{HTTPClient: &http.Client{Timeout: 5 * time.Second}, ResponderURL: r.URL}
+	resBare, err := bare.Check(t.Context(), pki.EEArzt.Cert, pki.SubCAHBA.Cert)
+	require.NoError(t, err)
+	assert.Equal(t, gempki.RevocationStatusUnknown, resBare.Status,
+		"delegated responder without TSL listing must not be trusted")
+	assert.Contains(t, resBare.Reason, "responder cert authorization failed")
+
+	// With the responder cert in TSLResponders, authorization succeeds.
+	auth := &gempki.OCSPChecker{
+		HTTPClient:    &http.Client{Timeout: 5 * time.Second},
+		ResponderURL:  r.URL,
+		TSLResponders: []*x509.Certificate{signCert},
+	}
+	resAuth, err := auth.Check(t.Context(), pki.EEArzt.Cert, pki.SubCAHBA.Cert)
+	require.NoError(t, err)
+	assert.Equal(t, gempki.RevocationStatusGood, resAuth.Status,
+		"responder listed in TSLResponders must be authorized; got reason=%q", resAuth.Reason)
+}
+
+// TestOCSPChecker_DelegatedResponderViaChainFallback verifies the third
+// authorization path: when the responder isn't TSL-listed and isn't
+// signed by the cert's issuer, but it chains to a configured root via
+// supplied intermediates.
+func TestOCSPChecker_DelegatedResponderViaChainFallback(t *testing.T) {
+	t.Parallel()
+
+	pki, err := testca.New()
+	require.NoError(t, err)
+	// SubCAKomp is the responder and is signed by RCA7 (a root). EE's
+	// own issuer is SubCAHBA (under RCA1) — different CA family.
+	signKey, signCert := pki.SubCAKomp.Key, pki.SubCAKomp.Cert
+	r := testocsp.NewResponder(t, pki.SubCAHBA.Cert, signKey, signCert)
+	r.Set(pki.EEArzt.Cert.SerialNumber, testocsp.Entry{Status: testocsp.StatusGood})
+
+	rootStore, err := gempki.NewTrustStore([]*x509.Certificate{pki.RCA7.Cert})
+	require.NoError(t, err)
+
+	checker := &gempki.OCSPChecker{
+		HTTPClient:   &http.Client{Timeout: 5 * time.Second},
+		ResponderURL: r.URL,
+		// No TSLResponders: we want to exercise the chain path.
+		Roots: rootStore,
+	}
+	result, err := checker.Check(t.Context(), pki.EEArzt.Cert, pki.SubCAHBA.Cert)
+	require.NoError(t, err)
+	assert.Equal(t, gempki.RevocationStatusGood, result.Status,
+		"responder chaining to a configured root must be authorized; got reason=%q", result.Reason)
 }

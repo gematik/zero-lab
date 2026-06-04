@@ -1,6 +1,9 @@
 package gempki
 
-import "time"
+import (
+	"crypto/x509"
+	"time"
+)
 
 // RevocationStatus is the per-certificate revocation verdict derived from a
 // single revocation source (OCSP, hash list, cache).
@@ -27,15 +30,21 @@ const (
 )
 
 // RevocationResult is the revocation outcome for one certificate.
-//
-// This is a structural placeholder for the Phase 4 revocation subsystem; only
-// the fields needed by [CertResult] are populated by the current code paths.
-// Additional fields (raw OCSP DER, producedAt, nextUpdate, signer cert, …)
-// arrive when OCSPChecker and HashListChecker land.
 type RevocationResult struct {
 	Status    RevocationStatus
 	Source    RevocationSource
 	CheckedAt time.Time
 	RevokedAt time.Time // zero unless Status == Revoked
-	Reason    string    // human-readable; structured fields TBD in Phase 4
+	Reason    string    // human-readable
+
+	// OCSP fields. Populated when Source == [RevocationSourceOCSP] and the
+	// response decoded successfully — useful for displaying the response
+	// detail and for diagnostics.
+	ResponderURL  string            // the OCSP endpoint we queried
+	ProducedAt    time.Time         // BasicOCSPResponse.tbsResponseData.producedAt
+	ThisUpdate    time.Time         // SingleResponse.thisUpdate
+	NextUpdate    time.Time         // SingleResponse.nextUpdate (zero if absent)
+	Responder     *x509.Certificate // embedded responder cert, nil if responder == issuer
+	ResponderName string            // CommonName of the signer (Responder or issuer)
+	RawResponse   []byte            // raw DER bytes of the OCSP response, kept for forensic dumps
 }

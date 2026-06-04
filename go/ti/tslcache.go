@@ -3,15 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gematik/zero-lab/go/gempki"
 	"github.com/gematik/zero-lab/go/ti/state"
-	"github.com/spf13/cobra"
 )
 
 const (
@@ -84,36 +81,4 @@ func loadTSLCached(ctx context.Context, httpClient *http.Client, url string) (*g
 	return tsl, nil
 }
 
-// newPKIClearCacheCmd wipes all `pki:`-prefixed entries from the unified state
-// store. Cosmetic-only difference from `ti epa cache clear pki:…` per key —
-// kept as a distinct command so users with muscle memory still find it.
-func newPKIClearCacheCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "clear-cache",
-		Short: "Delete all locally cached PKI data",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.SilenceUsage = true
-			st, err := loadCLIState()
-			if err != nil {
-				return err
-			}
-			defer st.Close()
-			keys, err := st.Keys("pki:")
-			if err != nil {
-				return err
-			}
-			if len(keys) == 0 {
-				fmt.Println("Cache is already empty.")
-				return nil
-			}
-			for _, k := range keys {
-				if err := st.Delete(k); err != nil {
-					return fmt.Errorf("deleting %q: %w", k, err)
-				}
-			}
-			fmt.Printf("Cache cleared (%d entries: %s).\n", len(keys), strings.Join(keys, ", "))
-			return nil
-		},
-	}
-}
+// `clear` command moved to pki_cache.go as `ti pki cache clear`.

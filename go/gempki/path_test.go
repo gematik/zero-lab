@@ -2,7 +2,6 @@ package gempki_test
 
 import (
 	"crypto/x509"
-	"errors"
 	"testing"
 	"time"
 
@@ -141,16 +140,17 @@ func TestValidatePath_TimeFuncFlipsValidity(t *testing.T) {
 	assert.True(t, result.HasError(gempki.ErrCodeExpired))
 }
 
-func TestValidatePath_RSACertLoudRejection(t *testing.T) {
+// TestValidatePath_RSACertSignatureMismatch shows that an RSA cert spliced
+// into a chain no longer triggers a categorical RSA rejection (that policy
+// is gone), but the cryptographic signature check still fails because the
+// adjacent links weren't actually issued by an RSA key. The chain is
+// invalid; the failure surfaces as ErrCodeSignatureInvalid.
+func TestValidatePath_RSACertSignatureMismatch(t *testing.T) {
 	t.Parallel()
 
 	pki, err := testca.New()
 	require.NoError(t, err)
 
-	// Build a chain where the SubCA is replaced by an RSA cert. We bypass
-	// gempki.ParseCertificate (which rejects RSA up-front) by using stdlib,
-	// then hand-construct the chain — ValidatePath itself is what we're
-	// exercising here, so we don't need a TrustStore for chain building.
 	rsaDER := makeSelfSignedRSA(t, "rogue-rsa-subca")
 	rsaCert, err := x509.ParseCertificate(rsaDER)
 	require.NoError(t, err)
@@ -159,14 +159,8 @@ func TestValidatePath_RSACertLoudRejection(t *testing.T) {
 	result, err := gempki.ValidatePath(t.Context(), chain, gempki.ValidatePathOptions{})
 	require.NoError(t, err)
 	assert.False(t, result.Valid)
-	// At least one error must wrap ErrRSANotSupported.
-	var sawRSA bool
-	for _, e := range result.Errors {
-		if errors.Is(e, gempki.ErrRSANotSupported) {
-			sawRSA = true
-		}
-	}
-	assert.True(t, sawRSA, "RSA cert in chain must produce ErrRSANotSupported; got %v", result.Errors)
+	assert.True(t, result.HasError(gempki.ErrCodeSignatureInvalid),
+		"RSA cert spliced into ECC chain must fail signature verification, got %v", result.Errors)
 }
 
 func TestValidatePath_WrongIssuer(t *testing.T) {

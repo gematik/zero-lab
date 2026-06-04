@@ -218,9 +218,23 @@ func (v *Validator) Validate(ctx context.Context, chain []*x509.Certificate) (*V
 	fullChain, err := BuildChain(chain[0], chain[1:], ts, BuildChainOptions{MaxChainLen: v.MaxChainLen})
 	v.Hooks.fireAfterChainBuild(ctx, fullChain, err)
 	if err != nil {
+		// Positions and CertResults are parallel slices to Chain — callers
+		// (CLI renderers, metric pipelines) index Positions[i] while
+		// iterating Chain. Keep them in sync even on the failure path so
+		// nobody indexes out of bounds.
+		positions := make([]ChainPosition, len(chain))
+		certResults := make([]CertResult, len(chain))
+		for i, c := range chain {
+			positions[i] = positionOf(i, len(chain))
+			if c != nil {
+				certResults[i] = CertResult{Subject: c.Subject.CommonName, Position: positions[i]}
+			}
+		}
 		result := &ValidationResult{
-			Valid: false,
-			Chain: chain,
+			Valid:       false,
+			Chain:       chain,
+			Positions:   positions,
+			CertResults: certResults,
 			Errors: []*ValidationError{{
 				Code:    ErrCodeChainIncomplete,
 				Subject: chain[0].Subject.CommonName,

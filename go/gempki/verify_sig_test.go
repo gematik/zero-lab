@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"errors"
 	"math/big"
 	"testing"
 	"time"
@@ -76,12 +75,15 @@ func TestVerifyCertificateSignature_WrongIssuer(t *testing.T) {
 	assert.Contains(t, err.Error(), "signature verification failed")
 }
 
-func TestVerifyCertificateSignature_RSAParentRejected(t *testing.T) {
+// TestVerifyCertificateSignature_RSAParentMismatch covers an RSA parent with
+// an ECDSA-signed child: the parent type is allowed, but stdlib's
+// CheckSignatureFrom rejects the algorithm/key mismatch. The error must
+// still be wrapped by gempki's "signature verification failed" prefix
+// (no ErrRSANotSupported anymore — that sentinel is gone).
+func TestVerifyCertificateSignature_RSAParentMismatch(t *testing.T) {
 	t.Parallel()
 
 	rsaDER := makeSelfSignedRSA(t, "rsa-parent")
-	// Have to bypass gempki.ParseCertificate (which itself rejects RSA) — use
-	// the stdlib so we can construct the rejection scenario at the next layer.
 	rsaCert, err := x509.ParseCertificate(rsaDER)
 	require.NoError(t, err)
 
@@ -90,8 +92,7 @@ func TestVerifyCertificateSignature_RSAParentRejected(t *testing.T) {
 
 	err = gempki.VerifyCertificateSignature(child[0], rsaCert)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, gempki.ErrRSANotSupported),
-		"RSA parent must yield ErrRSANotSupported, got %v", err)
+	assert.Contains(t, err.Error(), "signature verification failed")
 }
 
 func TestVerifyCertificateSignature_NilArgs(t *testing.T) {

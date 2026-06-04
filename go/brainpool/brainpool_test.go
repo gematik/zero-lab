@@ -235,6 +235,38 @@ func TestParseCertificateFields(t *testing.T) {
 
 }
 
+// TestRawSubjectPublicKeyInfo_FullEncoding pins the on-disk shape of
+// cert.RawSubjectPublicKeyInfo. Stdlib and x/crypto consumers (notably
+// ocsp.CreateRequest) feed this field directly to asn1.Unmarshal with a
+// struct{Algorithm; PublicKey BitString}, which requires the outer
+// SubjectPublicKeyInfo SEQUENCE wrapping to be present. A prior bug
+// stored only the content bytes here, which broke OCSP request building
+// for any brainpool-keyed issuer.
+func TestRawSubjectPublicKeyInfo_FullEncoding(t *testing.T) {
+	cert, err := brainpool.ParseCertificatePEM(testCertBytes)
+	if err != nil {
+		t.Fatalf("parse test cert: %v", err)
+	}
+	raw := cert.RawSubjectPublicKeyInfo
+	if len(raw) < 2 {
+		t.Fatalf("RawSubjectPublicKeyInfo too short: %d bytes", len(raw))
+	}
+	assert.Equal(t, byte(0x30), raw[0],
+		"RawSubjectPublicKeyInfo must start with SEQUENCE tag 0x30, got 0x%02x", raw[0])
+
+	var spki struct {
+		Algorithm struct {
+			Algorithm  asn1.ObjectIdentifier
+			Parameters asn1.RawValue `asn1:"optional"`
+		}
+		PublicKey asn1.BitString
+	}
+	rest, err := asn1.Unmarshal(raw, &spki)
+	assert.NoError(t, err, "asn1.Unmarshal of RawSubjectPublicKeyInfo must succeed")
+	assert.Empty(t, rest, "no trailing bytes after asn1.Unmarshal")
+	assert.NotEmpty(t, spki.PublicKey.Bytes, "BIT STRING content must be present")
+}
+
 func TestParseCACertificatePEM(t *testing.T) {
 	cert, err := brainpool.ParseCertificatePEM(testCaCertBytes)
 	if err != nil {

@@ -149,9 +149,6 @@ func (s *TSLDetachedSignature) VerifyOver(tslBytes []byte) error {
 	if !ok {
 		return fmt.Errorf("gempki: TSL signer public key is %T, want *ecdsa.PublicKey", s.Signer.PublicKey)
 	}
-	if err := assertECC(pub); err != nil {
-		return fmt.Errorf("gempki: TSL signer key rejected: %w", err)
-	}
 	digest := sha256.Sum256(tslBytes)
 	if !ecdsa.VerifyASN1(pub, digest[:], s.sigDER) {
 		return errors.New("gempki: TSL detached signature does not verify against TSL bytes")

@@ -14,7 +14,6 @@ package testocsp
 
 import (
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/x509"
 	"fmt"
 	"io"
@@ -91,13 +90,10 @@ func NewResponder(t *testing.T, issuer *x509.Certificate, signerKey *ecdsa.Priva
 	if signerKey == nil || signerCert == nil {
 		t.Fatal("testocsp: signerKey and signerCert are required")
 	}
-	switch signerKey.Curve {
-	case elliptic.P256(), elliptic.P384():
-		// OK — golang.org/x/crypto/ocsp can sign with these.
-	default:
-		t.Fatalf("testocsp: signer curve %q not supported in Phase 0; brainpool OCSP signing arrives in Phase 4",
-			signerKey.Curve.Params().Name)
-	}
+	// All ECDSA curves are accepted — x/crypto/ocsp.CreateResponse signs
+	// via stdlib's curve-agnostic ECDSA path, and gempki.parseOCSPResponse
+	// handles brainpool-keyed responder certs (the prior Phase-0 NIST-only
+	// gate is removed).
 
 	r := &Responder{
 		Issuer:     issuer,
@@ -198,6 +194,13 @@ func (r *Responder) buildResponse(req *ocsp.Request) ([]byte, error) {
 		NextUpdate:   now.Add(24 * time.Hour),
 		IssuerHash:   req.HashAlgorithm,
 	}
+	// Embed the signer cert in the response whenever it's distinct from
+	// the issuer cert — that's the delegated-responder case real OCSP
+	// responders use, and the only way to exercise our embedded-cert
+	// parsing path in unit tests.
+	if r.SignerCert != nil && r.Issuer != nil && !r.SignerCert.Equal(r.Issuer) {
+		tmpl.Certificate = r.SignerCert
+	}
 	if found {
 		switch e.Status {
 		case StatusGood:
@@ -216,5 +219,12 @@ func (r *Responder) buildResponse(req *ocsp.Request) ([]byte, error) {
 		}
 	}
 
-	return ocsp.CreateResponse(r.Issuer, r.SignerCert, tmpl, r.SignerKey)
+	if isStdlibSignableCurve(r.SignerKey.Curve) {
+		return ocsp.CreateResponse(r.Issuer, r.SignerCert, tmpl, r.SignerKey)
+	}
+	// x/crypto/ocsp's signingParamsForPublicKey switches on stdlib elliptic
+	// curves only and refuses brainpool. Re-sign the TBSResponseData with
+	// the brainpool key after letting x/crypto do the structural work via
+	// a swapped-in NIST signer.
+	return createBrainpoolOCSPResponse(r.Issuer, r.SignerCert, tmpl, r.SignerKey)
 }
