@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -64,15 +63,13 @@ type rootCertInfo struct {
 }
 
 func runPKIRoots(ctx context.Context, env gempki.Environment) error {
-	roots, err := gempki.LoadRoots(ctx, newHTTPClient(), env)
+	loader := gempki.NetworkLoader{Env: env, HTTPClient: newHTTPClient()}
+	ts, err := loader.Load(ctx)
 	if err != nil {
 		return err
 	}
 
-	certs := make([]*x509.Certificate, 0, len(roots.ByCommonName))
-	for _, c := range roots.ByCommonName {
-		certs = append(certs, c)
-	}
+	certs := ts.Roots()
 	sort.Slice(certs, func(i, j int) bool {
 		return certs[i].NotAfter.Before(certs[j].NotAfter)
 	})

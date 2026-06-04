@@ -1,0 +1,43 @@
+run:
+  go: "1.25"
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose
+    - noctx
+    - gocritic
+    - errorlint
+    - exhaustive
+    - gofumpt
+    - nilerr
+    - unparam
+    - wastedassign
+    - prealloc
+
+linters-settings:
+  exhaustive:
+    default-signifies-exhaustive: true
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+    disabled-checks:
+      - hugeParam
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+    - path: internal/testca/
+      linters:
+        - gocritic
+        - unparam

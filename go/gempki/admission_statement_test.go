@@ -92,5 +92,4 @@ func TestParseAdmissionStatement(t *testing.T) {
 			}
 		})
 	}
-
 }
