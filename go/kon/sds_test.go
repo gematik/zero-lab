@@ -1,13 +1,9 @@
-package kon_test
+package kon
 
 import (
-	"context"
 	"log/slog"
-	"net/http"
 	"net/url"
 	"testing"
-
-	"github.com/gematik/zero-lab/go/kon"
 )
 
 func init() {
@@ -16,11 +12,18 @@ func init() {
 }
 
 func TestLoadConnectorServices(t *testing.T) {
-	httpClient := &http.Client{}
-	ctx := context.TODO()
-	_, err := kon.LoadConnectorServices(ctx, httpClient, &url.URL{Scheme: "https", Host: "tig.spilikin.dev"})
+	server := newTestSDSServer(t)
+
+	u, err := url.Parse(server.URL)
 	if err != nil {
-		t.Errorf("error loading service directory: %v", err)
+		t.Fatalf("parse mock URL: %v", err)
 	}
 
+	got, err := LoadConnectorServices(t.Context(), server.Client(), u)
+	if err != nil {
+		t.Fatalf("LoadConnectorServices: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected non-nil ConnectorServices")
+	}
 }
