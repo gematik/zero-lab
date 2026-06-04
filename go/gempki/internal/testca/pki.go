@@ -51,6 +51,15 @@ type TestPKI struct {
 	// Rogue root (NIST, not in any trust store) for unknown-CA tests.
 	RogueRoot *Node
 	EERogue   *Node
+
+	// Time-edge EEs (Brainpool, under SubCAHBA unless noted).
+	EEExpired     *Node // notAfter in the past
+	EENotYetValid *Node // notBefore in the future
+
+	// Expired SubCA + child whose own dates are fine. Use to confirm the
+	// validator surfaces the parent's expiry separately from the EE.
+	SubCAExpired   *Node
+	EEUnderExpired *Node
 }
 
 // New generates a fresh test PKI. Reasonably fast (~50ms on Apple M-class).
@@ -184,6 +193,49 @@ func New() (*TestPKI, error) {
 		return nil, fmt.Errorf("gen EERogue key: %w", err)
 	}
 	pki.EERogue, err = issue(eeRogueKey, "rogue-ee NOT-VALID", pki.RogueRoot, now, fiveYears, eeOpts())
+	if err != nil {
+		return nil, err
+	}
+
+	// Time-edge fixtures.
+	pastFrom := now.Add(-2 * 365 * 24 * time.Hour)
+	pastTo := now.Add(-24 * time.Hour)
+	futureFrom := now.Add(24 * time.Hour)
+	futureTo := now.Add(365 * 24 * time.Hour)
+
+	eeExpiredKey, err := ecdsa.GenerateKey(brainpool.P256r1(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("gen EEExpired key: %w", err)
+	}
+	pki.EEExpired, err = issue(eeExpiredKey, "EE-Expired TEST-ONLY", pki.SubCAHBA, pastFrom, pastTo, eeOpts())
+	if err != nil {
+		return nil, err
+	}
+
+	eeNotYetKey, err := ecdsa.GenerateKey(brainpool.P256r1(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("gen EENotYetValid key: %w", err)
+	}
+	pki.EENotYetValid, err = issue(eeNotYetKey, "EE-NotYetValid TEST-ONLY", pki.SubCAHBA, futureFrom, futureTo, eeOpts())
+	if err != nil {
+		return nil, err
+	}
+
+	// Expired SubCA + a child whose own dates are fine. ValidatePath should
+	// flag the SubCA but not the EE — the chain still fails overall.
+	subExpKey, err := ecdsa.GenerateKey(brainpool.P256r1(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("gen SubCAExpired key: %w", err)
+	}
+	pki.SubCAExpired, err = issue(subExpKey, "GEM.SubCA-Expired TEST-ONLY", pki.RCA1, pastFrom, pastTo, caOpts())
+	if err != nil {
+		return nil, err
+	}
+	eeUnderExpKey, err := ecdsa.GenerateKey(brainpool.P256r1(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("gen EEUnderExpired key: %w", err)
+	}
+	pki.EEUnderExpired, err = issue(eeUnderExpKey, "EE-UnderExpired TEST-ONLY", pki.SubCAExpired, now, fiveYears, eeOpts())
 	if err != nil {
 		return nil, err
 	}
