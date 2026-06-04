@@ -60,6 +60,11 @@ type TestPKI struct {
 	// validator surfaces the parent's expiry separately from the EE.
 	SubCAExpired   *Node
 	EEUnderExpired *Node
+
+	// EERevoked is a Brainpool EE under SubCAHBA, valid by all chain checks.
+	// Tests mark it as revoked at the OCSP responder / in a hash list so the
+	// revocation subsystem can be exercised independently of path validation.
+	EERevoked *Node
 }
 
 // New generates a fresh test PKI. Reasonably fast (~50ms on Apple M-class).
@@ -236,6 +241,15 @@ func New() (*TestPKI, error) {
 		return nil, fmt.Errorf("gen EEUnderExpired key: %w", err)
 	}
 	pki.EEUnderExpired, err = issue(eeUnderExpKey, "EE-UnderExpired TEST-ONLY", pki.SubCAExpired, now, fiveYears, eeOpts())
+	if err != nil {
+		return nil, err
+	}
+
+	eeRevokedKey, err := ecdsa.GenerateKey(brainpool.P256r1(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("gen EERevoked key: %w", err)
+	}
+	pki.EERevoked, err = issue(eeRevokedKey, "EE-Revoked TEST-ONLY", pki.SubCAHBA, now, fiveYears, eeOpts())
 	if err != nil {
 		return nil, err
 	}
