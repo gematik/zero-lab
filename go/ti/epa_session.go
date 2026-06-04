@@ -122,7 +122,7 @@ func openSessionFresh(ctx context.Context, env epa.Env, provider epa.ProviderNum
 
 	session, err := client.OpenSession()
 	if err != nil {
-		return nil, fmt.Errorf("opening VAU session: %w", err)
+		return nil, err
 	}
 
 	// Authorize so the cached entry represents a session that's actually
@@ -138,7 +138,7 @@ func openSessionFresh(ctx context.Context, env epa.Env, provider epa.ProviderNum
 		return nil, fmt.Errorf("building IDP authenticator: %w", err)
 	}
 	if err := session.Authorize(authenticator); err != nil {
-		return nil, fmt.Errorf("authorizing VAU session: %w", err)
+		return nil, fmt.Errorf("authorize: %w", err)
 	}
 
 	snap := session.VAUChannel.Snapshot()

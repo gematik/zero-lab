@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"sync"
 	"time"
 
@@ -101,13 +100,8 @@ func connectOne(ctx context.Context, env epa.Env, sf *epa.SecurityFunctions, st 
 	r := connectResult{Provider: p, Env: env}
 
 	// obtainSession prefers resume; falls back to fresh handshake + authorize
-	// on cache miss or failed probe. One transparent retry on transient
-	// failure — the flow is idempotent so a clean reattempt is safe.
+	// on cache miss or failed probe.
 	entry, resumed, err := obtainSession(ctx, env, p, sf, st)
-	if err != nil {
-		slog.Warn("VAU open failed, retrying once", "provider", p, "err", err)
-		entry, resumed, err = obtainSession(ctx, env, p, sf, st)
-	}
 	if err != nil {
 		r.Error = err.Error()
 		return r
