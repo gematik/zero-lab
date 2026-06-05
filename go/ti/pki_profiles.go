@@ -5,51 +5,36 @@ import (
 	"encoding/asn1"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/gematik/zero-lab/go/gempki"
 	"github.com/spf13/cobra"
 )
 
-// profileSpec is a small static descriptor of a gempki profile factory.
-// We build it by instantiating the profile against a placeholder TrustStore
-// so the displayed fields are always whatever the live factory configures —
-// not a hand-maintained copy that can drift.
-type profileSpec struct {
-	Name        string
-	Short       string
-	Factory     gempki.Profile
+// profileShort returns a short description for a profile, used in the
+// list view. Sourced from a small lookup so the list stays one-line
+// friendly without dragging gempki package docs into the CLI.
+func profileShort(name string) string {
+	switch name {
+	case "smbauth":
+		return "SMC-B-family institution authentication (C.HCI.AUT; SMB = SMC-B / HSM-B / SMC-B-ORG umbrella)"
+	case "epavau":
+		return "ePA Aktensystem VAU backend authenticity (C.FD.AUT)"
+	case "idp":
+		return "IDP discovery / JWKS / authenticity (C.FD.SIG, C.FD.AUT)"
+	default:
+		return ""
+	}
 }
 
-var availableProfiles = []profileSpec{
-	{
-		Name:    "smcbauth",
-		Short:   "SMC-B institution authentication (C.HCI.AUT)",
-		Factory: gempki.ProfileSMCBAuth,
-	},
-	{
-		Name:    "qes",
-		Short:   "Qualified electronic signature (HBA, C.HP.QES)",
-		Factory: gempki.ProfileQES,
-	},
-	{
-		Name:    "komponente",
-		Short:   "TI component certificates (Fachdienst / ZETA server, C.FD.TLS-S)",
-		Factory: gempki.ProfileKomponente,
-	},
-	{
-		Name:    "idp",
-		Short:   "IDP discovery / JWKS authenticity (C.FD.SIG)",
-		Factory: gempki.ProfileIDPAuthenticity,
-	},
-}
-
-// emptyTrustStore is the placeholder TrustStore passed to profile factories
-// so we can inspect the Validator they build. Used only for introspection;
-// no validation happens against it.
-func emptyTrustStore() *gempki.TrustStore {
-	ts, _ := gempki.NewTrustStore(nil)
-	return ts
+func sortedProfileNames() []string {
+	names := make([]string, 0, len(gempki.ProfileRegistry))
+	for n := range gempki.ProfileRegistry {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func newPKIProfilesCmd(def envDef) *cobra.Command {
@@ -84,41 +69,65 @@ func newPKIProfilesListCmd(def envDef) *cobra.Command {
 
 func runProfilesList(f outputFormat) error {
 	type row struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
+		Name           string   `json:"name"`
+		Description    string   `json:"description"`
+		RevocationMode string   `json:"revocationMode"`
+		AcceptsTypes   []string `json:"acceptsTypes"`
+		DefaultFor     []string `json:"defaultFor,omitempty"`
 	}
-	rows := make([]row, len(availableProfiles))
-	for i, p := range availableProfiles {
-		rows[i] = row{Name: p.Name, Description: p.Short}
+	var rows []row
+	for _, name := range sortedProfileNames() {
+		p := gempki.ProfileRegistry[name]
+		rows = append(rows, row{
+			Name:           p.Name,
+			Description:    profileShort(p.Name),
+			RevocationMode: revocationModeString(p.RevocationMode),
+			AcceptsTypes:   certTypeNames(p.AcceptsTypes),
+			DefaultFor:     certTypeNames(p.DefaultFor),
+		})
 	}
 	if f == formatJSON {
 		return printJSON(rows)
 	}
-	return printTable("NAME\tDESCRIPTION", func(w io.Writer) {
+	return printTable("NAME\tREVOCATION\tACCEPTS\tDEFAULT FOR\tDESCRIPTION", func(w io.Writer) {
 		for _, r := range rows {
-			fmt.Fprintf(w, "%s\t%s\n", r.Name, r.Description)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+				r.Name,
+				r.RevocationMode,
+				strings.Join(r.AcceptsTypes, ", "),
+				strings.Join(r.DefaultFor, ", "),
+				r.Description,
+			)
 		}
 	})
+}
+
+func certTypeNames(ts []gempki.CertificateType) []string {
+	out := make([]string, len(ts))
+	for i, t := range ts {
+		out[i] = string(t)
+	}
+	return out
 }
 
 func newPKIProfilesDescribeCmd(def envDef) *cobra.Command {
 	var formatRaw string
 	cmd := &cobra.Command{
-		Use:   "describe NAME",
-		Short: "Show the configured constraints of a profile",
-		Args:  cobra.ExactArgs(1),
-		ValidArgs: profileNames(),
+		Use:       "describe NAME",
+		Short:     "Show the configured constraints of a profile",
+		Args:      cobra.ExactArgs(1),
+		ValidArgs: sortedProfileNames(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
 			f, err := parseOutputFormat(formatRaw, []outputFormat{formatText, formatJSON})
 			if err != nil {
 				return err
 			}
-			spec, ok := findProfile(args[0])
+			p, ok := gempki.ProfileRegistry[strings.ToLower(args[0])]
 			if !ok {
-				return fmt.Errorf("unknown profile %q (try `ti pki %s profiles list`)", args[0], "<env>")
+				return fmt.Errorf("unknown profile %q (try `ti pki <env> profiles list`)", args[0])
 			}
-			return runProfilesDescribe(spec, f)
+			return runProfilesDescribe(p, f)
 		},
 	}
 	_ = def
@@ -126,76 +135,93 @@ func newPKIProfilesDescribeCmd(def envDef) *cobra.Command {
 	return cmd
 }
 
-func profileNames() []string {
-	out := make([]string, len(availableProfiles))
-	for i, p := range availableProfiles {
-		out[i] = p.Name
-	}
-	return out
-}
-
-func findProfile(name string) (profileSpec, bool) {
-	for _, p := range availableProfiles {
-		if strings.EqualFold(p.Name, name) {
-			return p, true
-		}
-	}
-	return profileSpec{}, false
-}
-
-func runProfilesDescribe(spec profileSpec, f outputFormat) error {
-	v := spec.Factory(emptyTrustStore())
-	detail := describeProfileValidator(spec, v)
+func runProfilesDescribe(p *gempki.Profile, f outputFormat) error {
+	detail := describeProfile(p)
 	if f == formatJSON {
 		return printJSON(detail)
 	}
 	return renderProfileDescribeText(detail)
 }
 
-type profileDetail struct {
-	Name                string   `json:"name"`
-	Description         string   `json:"description"`
-	RevocationMode      string   `json:"revocationMode"`
+type perTypeDetail struct {
+	Type                string   `json:"type"`
 	RequiredKeyUsage    string   `json:"requiredKeyUsage,omitempty"`
 	AllowedExtKeyUsages []string `json:"allowedExtKeyUsages,omitempty"`
 	RequiredPolicies    []string `json:"requiredPolicies,omitempty"`
 	RequiredRoleOIDs    []string `json:"requiredRoleOIDs,omitempty"`
 }
 
-func describeProfileValidator(spec profileSpec, v *gempki.Validator) profileDetail {
-	return profileDetail{
-		Name:                spec.Name,
-		Description:         spec.Short,
-		RevocationMode:      revocationModeString(v.Revocation.Mode),
-		RequiredKeyUsage:    keyUsageString(v.RequiredKeyUsage),
-		AllowedExtKeyUsages: extKeyUsageStrings(v.AllowedExtKeyUsages),
-		RequiredPolicies:    asn1OIDStrings(v.RequiredPolicies),
-		RequiredRoleOIDs:    asn1OIDStrings(v.RequiredRoleOIDs),
+type profileDetail struct {
+	Name           string          `json:"name"`
+	Description    string          `json:"description"`
+	RevocationMode string          `json:"revocationMode"`
+	ExtraPolicies  []string        `json:"extraPolicies,omitempty"`
+	AcceptsTypes   []string        `json:"acceptsTypes"`
+	DefaultFor     []string        `json:"defaultFor,omitempty"`
+	PerType        []perTypeDetail `json:"perType,omitempty"`
+}
+
+func describeProfile(p *gempki.Profile) profileDetail {
+	d := profileDetail{
+		Name:           p.Name,
+		Description:    profileShort(p.Name),
+		RevocationMode: revocationModeString(p.RevocationMode),
+		ExtraPolicies:  asn1OIDStrings(p.ExtraPolicies),
+		AcceptsTypes:   certTypeNames(p.AcceptsTypes),
+		DefaultFor:     certTypeNames(p.DefaultFor),
 	}
+	for _, t := range p.AcceptsTypes {
+		spec := t.Spec()
+		d.PerType = append(d.PerType, perTypeDetail{
+			Type:                string(t),
+			RequiredKeyUsage:    keyUsageString(spec.KeyUsage),
+			AllowedExtKeyUsages: extKeyUsageStrings(spec.EKU),
+			RequiredPolicies:    asn1OIDStrings(spec.Policies),
+			RequiredRoleOIDs:    asn1OIDStrings(spec.RoleOIDs),
+		})
+	}
+	return d
 }
 
 func renderProfileDescribeText(d profileDetail) error {
 	kv := newKVWriter()
 	kv.Section("Profile " + d.Name)
-	kv.KV("Description", d.Description)
+	if d.Description != "" {
+		kv.KV("Description", d.Description)
+	}
 	kv.KV("Revocation Mode", d.RevocationMode)
-	if d.RequiredKeyUsage != "" {
-		kv.KV("Required Key Usage", d.RequiredKeyUsage)
+	kv.KV("Accepts Types", strings.Join(d.AcceptsTypes, ", "))
+	if len(d.DefaultFor) > 0 {
+		kv.KV("Default For", strings.Join(d.DefaultFor, ", "))
 	}
-	if len(d.AllowedExtKeyUsages) > 0 {
-		kv.KV("Allowed Ext Key Usage", strings.Join(d.AllowedExtKeyUsages, ", "))
-	}
-	if len(d.RequiredPolicies) > 0 {
-		kv.Section("Required Certificate Policies")
-		for _, p := range d.RequiredPolicies {
+	if len(d.ExtraPolicies) > 0 {
+		kv.Section("Extra Policies (added on top of type baseline)")
+		for _, p := range d.ExtraPolicies {
 			kv.KV("OID", p)
 		}
 		kv.EndSection()
 	}
-	if len(d.RequiredRoleOIDs) > 0 {
-		kv.Section("Required Role OIDs (at least one must match)")
-		for _, p := range d.RequiredRoleOIDs {
-			kv.KV("OID", p)
+	for _, pt := range d.PerType {
+		kv.Section("Type " + pt.Type)
+		if pt.RequiredKeyUsage != "" {
+			kv.KV("Required Key Usage", pt.RequiredKeyUsage)
+		}
+		if len(pt.AllowedExtKeyUsages) > 0 {
+			kv.KV("Allowed Ext Key Usage", strings.Join(pt.AllowedExtKeyUsages, ", "))
+		}
+		if len(pt.RequiredPolicies) > 0 {
+			kv.Section("Required Certificate Policies")
+			for _, p := range pt.RequiredPolicies {
+				kv.KV("OID", p)
+			}
+			kv.EndSection()
+		}
+		if len(pt.RequiredRoleOIDs) > 0 {
+			kv.Section("Required Role OIDs (at least one must match)")
+			for _, oid := range pt.RequiredRoleOIDs {
+				kv.KV("OID", oid)
+			}
+			kv.EndSection()
 		}
 		kv.EndSection()
 	}

@@ -77,6 +77,21 @@ const (
 	// but role/policy/OCSP enforcement was skipped — callers using --profile
 	// auto should treat this as a loud "we didn't do everything you asked".
 	ErrCodeProfileNotDetected ErrorCode = "profile_not_detected"
+
+	// ErrCodeProfileAmbiguous — auto mode detected the cert type, multiple
+	// profiles accept that type, and none of them claims default-for
+	// ownership. Validation falls back to chain-only; callers must pass
+	// --profile explicitly to pick one.
+	//
+	// The canonical example is C.FD.AUT, accepted by both `epavau` (ePA
+	// VAU authenticity) and `idp` (IDP authenticity).
+	ErrCodeProfileAmbiguous ErrorCode = "profile_ambiguous"
+
+	// ErrCodeProfileTypeMismatch — the user passed --profile X explicitly,
+	// but the detected cert type isn't in X.AcceptsTypes. Validation
+	// proceeds (the user is forcing the profile) but the warning surfaces
+	// the mismatch loudly.
+	ErrCodeProfileTypeMismatch ErrorCode = "profile_type_mismatch"
 )
 
 // ValidationError describes a single validation failure attributable to one
@@ -150,6 +165,23 @@ var (
 var WarnProfileNotDetected = &ValidationWarning{
 	Code:    ErrCodeProfileNotDetected,
 	Message: "cert type could not be auto-detected; ran chain-only validation (pass --profile explicitly or use --profile none to silence)",
+}
+
+// WarnProfileAmbiguous is the sentinel used by auto-profile callers when
+// the cert type is known but multiple profiles accept it and none owns
+// the default. Callers should fill Subject and append a message that
+// names the candidates (the bare sentinel carries only the code).
+var WarnProfileAmbiguous = &ValidationWarning{
+	Code:    ErrCodeProfileAmbiguous,
+	Message: "cert type matches multiple profiles; pass --profile explicitly to pick one",
+}
+
+// WarnProfileTypeMismatch is the sentinel used when --profile X is forced
+// against a cert whose detected type isn't in X.AcceptsTypes. Validation
+// still runs under X; this warning records the override.
+var WarnProfileTypeMismatch = &ValidationWarning{
+	Code:    ErrCodeProfileTypeMismatch,
+	Message: "explicit profile does not accept the detected cert type; running validation anyway",
 }
 
 // ValidationWarning is a non-fatal observation about the validated chain.

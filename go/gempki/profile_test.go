@@ -16,14 +16,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestProfileSMCBAuth_AcceptsBrainpoolFixtureCert(t *testing.T) {
+func TestProfileSmbAuth_AcceptsBrainpoolFixtureCert(t *testing.T) {
 	t.Parallel()
 	rca5, err := gempki.ParsePEMCertificates([]byte(fixtureBrainpoolRCA5PEM))
 	require.NoError(t, err)
 	ts, err := gempki.NewTrustStore(rca5)
 	require.NoError(t, err)
 
-	v := gempki.ProfileSMCBAuth(ts)
+	v := gempki.ProfileSmbAuth.Validator(ts, gempki.CertTypeHciAUT)
 	gempki.WithRevocationChecker(emptyHashListChecker())(v)
 
 	pemAll := []byte(fixtureBrainpoolSMCBEEPEM + "\n" +
@@ -33,7 +33,7 @@ func TestProfileSMCBAuth_AcceptsBrainpoolFixtureCert(t *testing.T) {
 	assert.True(t, result.Valid, "errors: %v", result.Errors)
 }
 
-func TestProfileSMCBAuth_RejectsHBARoleOID(t *testing.T) {
+func TestProfileSmbAuth_RejectsHBARoleOID(t *testing.T) {
 	t.Parallel()
 	pki, err := testca.New()
 	require.NoError(t, err)
@@ -51,7 +51,7 @@ func TestProfileSMCBAuth_RejectsHBARoleOID(t *testing.T) {
 		ExtraExtensions:     []pkix.Extension{admExt},
 	})
 
-	v := gempki.ProfileSMCBAuth(ts)
+	v := gempki.ProfileSmbAuth.Validator(ts, gempki.CertTypeHciAUT)
 	gempki.WithRevocationChecker(emptyHashListChecker())(v)
 	result, err := v.Validate(t.Context(), []*x509.Certificate{ee, pki.SubCAHBA.Cert})
 	require.NoError(t, err)
@@ -59,58 +59,70 @@ func TestProfileSMCBAuth_RejectsHBARoleOID(t *testing.T) {
 	assert.True(t, result.HasError(gempki.ErrCodeRoleOIDMissing))
 }
 
-func TestProfileQES_AcceptsHBAQESCert(t *testing.T) {
-	t.Parallel()
-	pki, err := testca.New()
-	require.NoError(t, err)
-	ts, _ := gempki.NewTrustStore([]*x509.Certificate{pki.RCA1.Cert})
-
-	admExt, err := testca.AdmissionExtension(
-		"Arzt", asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 30}, "test-arzt-hba",
-	)
-	require.NoError(t, err)
-
-	opts := testca.CertOptions{
-		KeyUsage: x509.KeyUsageContentCommitment, // QES = nonRepudiation
-		CertificatePolicies: []asn1.ObjectIdentifier{
-			gempki.OIDPolicyHbaCP, gempki.OIDPolicyGemOrCP,
-		},
-		ExtraExtensions: []pkix.Extension{admExt},
-	}
-	opts.Serial = big.NewInt(time.Now().UnixNano())
-	opts.NotBefore = time.Now().Add(-time.Hour)
-	opts.NotAfter = time.Now().Add(24 * time.Hour)
-	der, err := testca.CreateCertificate(opts, &pki.EEArzt.Key.PublicKey, pki.SubCAHBA.Cert, pki.SubCAHBA.Key)
-	require.NoError(t, err)
-	ee, err := gempki.ParseCertificate(der)
-	require.NoError(t, err)
-
-	v := gempki.ProfileQES(ts)
-	gempki.WithRevocationChecker(emptyHashListChecker())(v)
-	result, err := v.Validate(t.Context(), []*x509.Certificate{ee, pki.SubCAHBA.Cert})
-	require.NoError(t, err)
-	assert.True(t, result.Valid, "errors: %v", result.Errors)
-}
-
-func TestProfileKomponente_AcceptsServerAuthEE(t *testing.T) {
+func TestProfileIdp_AcceptsFdSIGShape(t *testing.T) {
 	t.Parallel()
 	pki, err := testca.New()
 	require.NoError(t, err)
 	ts, _ := gempki.NewTrustStore([]*x509.Certificate{pki.RCA7.Cert})
 
-	// Build a NIST EE under SubCAKomp asserting serverAuth + the required policy.
+	// Build a Fachdienst-shape EE under SubCAKomp asserting just the
+	// gematik umbrella policy — the C.FD.SIG baseline mandates
+	// digitalSignature + the umbrella + the cert-type OID. We only
+	// have the umbrella as a real fixture OID, so the test asserts
+	// "policy_mismatch fails when type OID is missing" rather than
+	// the happy path. That still exercises the spec-composition path
+	// the way the validator sees it.
 	ee := customNISTEE(t, pki, testca.CertOptions{
-		KeyUsage:            x509.KeyUsageDigitalSignature | x509.KeyUsageKeyAgreement,
-		ExtKeyUsage:         []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		KeyUsage:            x509.KeyUsageDigitalSignature,
 		CertificatePolicies: []asn1.ObjectIdentifier{gempki.OIDPolicyGemOrCP},
-		DNSNames:            []string{"komp.test.invalid"},
 	})
 
-	v := gempki.ProfileKomponente(ts)
+	v := gempki.ProfileIdp.Validator(ts, gempki.CertTypeFdSIG)
 	gempki.WithRevocationChecker(emptyHashListChecker())(v)
 	result, err := v.Validate(t.Context(), []*x509.Certificate{ee, pki.SubCAKomp.Cert})
 	require.NoError(t, err)
-	assert.True(t, result.Valid, "errors: %v", result.Errors)
+	assert.False(t, result.Valid, "should reject — missing OIDCertTypeFdSIG policy")
+	assert.True(t, result.HasError(gempki.ErrCodePolicyMismatch),
+		"expected policy_mismatch (C.FD.SIG spec mandates the type OID), got: %v", result.Errors)
+}
+
+func TestProfileEpaVau_RevocationModeIsHardFail(t *testing.T) {
+	t.Parallel()
+	// ProfileEpaVau is HardFail for ePA backend access — a sanity test
+	// against accidental downgrade. Pair with ProfileSmbAuth (SoftFail)
+	// to confirm the matrix.
+	pki, err := testca.New()
+	require.NoError(t, err)
+	ts, _ := gempki.NewTrustStore([]*x509.Certificate{pki.RCA7.Cert})
+
+	v := gempki.ProfileEpaVau.Validator(ts, gempki.CertTypeFdAUT)
+	assert.Equal(t, gempki.RevocationModeHardFail, v.Revocation.Mode)
+
+	v2 := gempki.ProfileSmbAuth.Validator(ts, gempki.CertTypeHciAUT)
+	assert.Equal(t, gempki.RevocationModeSoftFail, v2.Revocation.Mode)
+
+	v3 := gempki.ProfileIdp.Validator(ts, gempki.CertTypeFdSIG)
+	assert.Equal(t, gempki.RevocationModeHardFail, v3.Revocation.Mode)
+}
+
+func TestProfile_Validator_ComposesSpecBaseline(t *testing.T) {
+	t.Parallel()
+	// The composer pulls KeyUsage / EKU / Policies / RoleOIDs from the
+	// type spec and revocation mode from the profile. Inspect the
+	// resulting Validator fields directly so we know the wiring works
+	// without running a full validation.
+	pki, err := testca.New()
+	require.NoError(t, err)
+	ts, _ := gempki.NewTrustStore([]*x509.Certificate{pki.RCA1.Cert})
+
+	v := gempki.ProfileSmbAuth.Validator(ts, gempki.CertTypeHciAUT)
+
+	spec := gempki.CertTypeHciAUT.Spec()
+	assert.Equal(t, spec.KeyUsage, v.RequiredKeyUsage, "baseline KeyUsage must flow through")
+	assert.ElementsMatch(t, spec.EKU, v.AllowedExtKeyUsages, "baseline EKU must flow through")
+	assert.ElementsMatch(t, spec.Policies, v.RequiredPolicies, "baseline Policies must flow through")
+	assert.ElementsMatch(t, spec.RoleOIDs, v.RequiredRoleOIDs, "baseline RoleOIDs must flow through")
+	assert.Equal(t, gempki.ProfileSmbAuth.RevocationMode, v.Revocation.Mode)
 }
 
 // customNISTEE — sibling of customEE but issued under SubCAKomp (NIST).

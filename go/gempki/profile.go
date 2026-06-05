@@ -1,127 +1,164 @@
 package gempki
 
 import (
-	"crypto/x509"
 	"encoding/asn1"
 	"net/http"
+	"sort"
 	"time"
 )
 
-// Profile is a named factory that returns a pre-configured [Validator] for
-// a specific TI use case. Each profile encodes the required validation
-// policy as the corresponding gematik specification mandates it.
+// Profile is a named, type-aware validation strategy.
 //
-// Callers may mutate the returned Validator before using it (e.g. swap in
-// a custom cache, install hooks, tighten the revocation mode) — the
-// profile sets defaults, not a contract.
+// A Profile carries the use-case-specific overlay (revocation strictness,
+// extra policy assertions, the set of cert types it accepts) and a
+// [CertificateType] carries the spec-mandated baseline (KeyUsage, EKUs,
+// CertificatePolicies, role OIDs). [Profile.Validator] composes the two
+// into a [*Validator] ready for [Validator.Validate].
 //
-// The base profiles don't wire a network OCSPChecker because that needs a
-// caller-supplied *http.Client. Use the *WithOCSP convenience wrappers to
-// bundle a checker, or attach one manually via [WithRevocationChecker].
-type Profile func(ts *TrustStore) *Validator
+// Profiles are values, not factories: write
+//
+//	v := gempki.ProfileSmbAuth.Validator(ts, gempki.CertTypeHciAUT)
+//
+// then mutate v further if needed (install a custom OCSP checker, override
+// the revocation mode for dev, attach hooks). The profile sets defaults,
+// not a contract.
+type Profile struct {
+	// Name is the slug used by the CLI (`--profile <name>`) and by the
+	// [ProfileRegistry]. Lower-case kebab is the convention.
+	Name string
 
-// SMC-B institution role OIDs accepted by [ProfileSMCBAuth]. These are the
-// institutions that may present an SMC-B for authentication.
-var smcbInstitutionRoleOIDs = []asn1.ObjectIdentifier{
-	OIDInstArztpraxis,
-	OIDInstZahnarztpraxis,
-	OIDInstPraxisPsychotherapeut,
-	OIDInstKrankenhaus,
-	OIDInstOeffentlicheApo,
-	OIDInstKrankenhausapotheke,
-	OIDInstBundeswehrapotheke,
+	// RevocationMode is the strictness layer the profile contributes on
+	// top of the type baseline.
+	RevocationMode RevocationMode
+
+	// ExtraPolicies are CertificatePolicies OIDs the profile mandates
+	// on top of the type baseline (`t.Spec().Policies`). Use this for
+	// per-use-case policy assertions that aren't part of every cert of
+	// the same type.
+	ExtraPolicies []asn1.ObjectIdentifier
+
+	// AcceptsTypes is the closed set of [CertificateType]s this profile
+	// is meant to validate. A cert whose detected type isn't in this
+	// set should never be validated under this profile; callers
+	// (typically the CLI) may force it but should emit a warning.
+	AcceptsTypes []CertificateType
+
+	// DefaultFor lists the types for which this profile is the
+	// auto-mode default. A type may appear in `AcceptsTypes` of
+	// several profiles but in `DefaultFor` of at most one — otherwise
+	// auto mode must signal ambiguity.
+	DefaultFor []CertificateType
 }
 
-// HBA professional role OIDs accepted by [ProfileQES] for qualified
-// signature verification. Restricted to the QES-relevant professions per
-// gemSpec_OID Tab_PKI_402.
-var hbaQESRoleOIDs = []asn1.ObjectIdentifier{
-	OIDProfArzt,
-	OIDProfZahnarzt,
-	OIDProfApotheker,
-	OIDProfPsychotherapeut,
-	OIDProfPsPsychotherapeut,
-	OIDProfKuJPsychotherapeut,
-}
-
-// ProfileSMCBAuth returns a Validator configured for SMC-B-based
-// institution authentication (the C.HCI.AUT cert profile).
+// Validator builds a fresh [*Validator] for the given [TrustStore] and
+// cert type, composing the type's baseline ([CertificateType.Spec]) with
+// this profile's overlay. The returned validator has no revocation
+// checker wired — callers add one with [WithRevocationChecker] or
+// [WithOCSPNetworkChecker] before validating.
 //
-//   - PathValidation:   standard
-//   - Revocation:       soft-fail (Unknown becomes a warning, not a failure)
-//   - RequiredKeyUsage: digitalSignature
-//   - AllowedExtKeyUsages: clientAuth
-//   - RequiredRoleOIDs: SMC-B institution OIDs (Tab_PKI_403 subset)
-//   - RequiredPolicies: OIDPolicyGemOrCP
-func ProfileSMCBAuth(ts *TrustStore) *Validator {
-	return NewValidator(
+// Passing a type that isn't in [Profile.AcceptsTypes] is allowed (the
+// caller may be deliberately forcing a profile); the resulting
+// validator simply applies the type's baseline with this profile's
+// overlay, which may or may not be appropriate. The CLI emits a
+// warning when this happens.
+func (p *Profile) Validator(ts *TrustStore, t CertificateType) *Validator {
+	spec := t.Spec()
+	policies := append(append([]asn1.ObjectIdentifier{}, spec.Policies...), p.ExtraPolicies...)
+	opts := []Option{
 		WithTrustStore(ts),
-		WithRevocationMode(RevocationModeSoftFail),
-		WithRequiredKeyUsage(x509.KeyUsageDigitalSignature),
-		WithAllowedExtKeyUsages(x509.ExtKeyUsageClientAuth),
-		WithRequiredRoleOIDs(smcbInstitutionRoleOIDs...),
-		WithRequiredPolicies(OIDPolicyGemOrCP),
-	)
+		WithRevocationMode(p.RevocationMode),
+	}
+	if spec.KeyUsage != 0 {
+		opts = append(opts, WithRequiredKeyUsage(spec.KeyUsage))
+	}
+	if len(spec.EKU) > 0 {
+		opts = append(opts, WithAllowedExtKeyUsages(spec.EKU...))
+	}
+	if len(policies) > 0 {
+		opts = append(opts, WithRequiredPolicies(policies...))
+	}
+	if len(spec.RoleOIDs) > 0 {
+		opts = append(opts, WithRequiredRoleOIDs(spec.RoleOIDs...))
+	}
+	return NewValidator(opts...)
 }
 
-// ProfileQES returns a Validator configured for qualified electronic
-// signature verification on HBA-issued certificates (C.HP.QES).
-//
-//   - PathValidation:   strict
-//   - Revocation:       hard-fail (Unknown becomes an error)
-//   - RequiredKeyUsage: contentCommitment (nonRepudiation)
-//   - RequiredRoleOIDs: HBA professional OIDs (Tab_PKI_402 subset)
-//   - RequiredPolicies: OIDPolicyHbaCP + OIDPolicyGemOrCP
-func ProfileQES(ts *TrustStore) *Validator {
-	return NewValidator(
-		WithTrustStore(ts),
-		WithRevocationMode(RevocationModeHardFail),
-		WithRequiredKeyUsage(x509.KeyUsageContentCommitment),
-		WithRequiredRoleOIDs(hbaQESRoleOIDs...),
-		WithRequiredPolicies(OIDPolicyHbaCP, OIDPolicyGemOrCP),
-	)
+// Accepts reports whether t is in p.AcceptsTypes. Convenience for callers
+// that want to check before composing a validator.
+func (p *Profile) Accepts(t CertificateType) bool {
+	for _, a := range p.AcceptsTypes {
+		if a == t {
+			return true
+		}
+	}
+	return false
 }
 
-// ProfileKomponente returns a Validator configured for TI component
-// certificates (Fachdienst / ZETA server certs, C.FD.TLS-S et al).
+// ProfileSmbAuth validates SMC-B-family institution authentication certs
+// (C.HCI.AUT today; HSM-B / SMC-B-ORG sibling types added to AcceptsTypes
+// when their cert types are defined). SMB is the umbrella ("Oberbegriff")
+// for every SMC-B variant.
 //
-//   - PathValidation:    strict
-//   - Revocation:        hard-fail
-//   - RequiredKeyUsage:  digitalSignature | keyAgreement
-//   - AllowedExtKeyUsages: serverAuth
-//   - RequiredPolicies:  OIDPolicyGemOrCP
-func ProfileKomponente(ts *TrustStore) *Validator {
-	return NewValidator(
-		WithTrustStore(ts),
-		WithRevocationMode(RevocationModeHardFail),
-		WithRequiredKeyUsage(x509.KeyUsageDigitalSignature|x509.KeyUsageKeyAgreement),
-		WithAllowedExtKeyUsages(x509.ExtKeyUsageServerAuth),
-		WithRequiredPolicies(OIDPolicyGemOrCP),
-	)
+// SoftFail revocation: an unknown OCSP status downgrades to a warning so
+// transient OCSP outages don't reject an SMC-B login. Production deployments
+// can override to HardFail before validating.
+var ProfileSmbAuth = &Profile{
+	Name:           "smbauth",
+	RevocationMode: RevocationModeSoftFail,
+	AcceptsTypes:   []CertificateType{CertTypeHciAUT},
+	DefaultFor:     []CertificateType{CertTypeHciAUT},
 }
 
-// ProfileIDPAuthenticity returns a Validator configured for IDP discovery-
-// document and JWKS certificate validation (typically C.FD.SIG / C.FD.TLS-S
-// asserting OIDTechRoleIDPD).
+// ProfileEpaVau validates the C.FD.AUT cert that an ePA Aktensystem VAU
+// (Vertrauenswürdige Ausführungsumgebung) presents for authenticity.
 //
-//   - PathValidation:   strict
-//   - Revocation:       hard-fail
-//   - RequiredKeyUsage: digitalSignature
-//   - RequiredPolicies: OIDPolicyGemOrCP
-func ProfileIDPAuthenticity(ts *TrustStore) *Validator {
-	return NewValidator(
-		WithTrustStore(ts),
-		WithRevocationMode(RevocationModeHardFail),
-		WithRequiredKeyUsage(x509.KeyUsageDigitalSignature),
-		WithRequiredPolicies(OIDPolicyGemOrCP),
-	)
+// HardFail revocation: ePA backend access must reject on revocation
+// uncertainty.
+//
+// C.FD.AUT is also accepted by [ProfileIdp]; that's the 1:N case the
+// `--profile` flag exists to disambiguate. ProfileEpaVau is *not* the
+// default-for C.FD.AUT — auto mode warns and asks the user to pick.
+var ProfileEpaVau = &Profile{
+	Name:           "epavau",
+	RevocationMode: RevocationModeHardFail,
+	AcceptsTypes:   []CertificateType{CertTypeFdAUT},
+}
+
+// ProfileIdp validates IDP-side certs: discovery-document signing
+// (C.FD.SIG) and JWKS / authenticity (C.FD.AUT).
+//
+// HardFail revocation: IDP key compromise must not be soft-failed.
+//
+// `DefaultFor` only lists C.FD.SIG because C.FD.AUT is genuinely
+// ambiguous between idp and epavau; the user picks.
+var ProfileIdp = &Profile{
+	Name:           "idp",
+	RevocationMode: RevocationModeHardFail,
+	AcceptsTypes:   []CertificateType{CertTypeFdSIG, CertTypeFdAUT},
+	DefaultFor:     []CertificateType{CertTypeFdSIG},
+}
+
+// ProfileRegistry is the canonical name → profile lookup. CLI `--profile
+// <name>` and `pki profiles` both read through this map. Add new
+// profiles by appending here; the rest of the CLI surface picks them up
+// automatically.
+var ProfileRegistry = map[string]*Profile{
+	ProfileSmbAuth.Name: ProfileSmbAuth,
+	ProfileEpaVau.Name:  ProfileEpaVau,
+	ProfileIdp.Name:     ProfileIdp,
+}
+
+// sortProfilesByName sorts in place by Name for deterministic output.
+// Used by [ProfilesForType] and `pki profiles` rendering.
+func sortProfilesByName(ps []*Profile) {
+	sort.Slice(ps, func(i, j int) bool { return ps[i].Name < ps[j].Name })
 }
 
 // WithOCSPNetworkChecker is a convenience for the most common revocation
 // wire-up: an [OCSPChecker] that fetches over HTTPS through the supplied
 // http.Client. Most production callers want this together with a profile:
 //
-//	v := gempki.ProfileSMCBAuth(ts)
+//	v := gempki.ProfileSmbAuth.Validator(ts, gempki.CertTypeHciAUT)
 //	gempki.WithOCSPNetworkChecker(client, "")(v)         // AIA-driven
 //	gempki.WithCache(gempki.NewInMemoryCache(2000))(v)
 //

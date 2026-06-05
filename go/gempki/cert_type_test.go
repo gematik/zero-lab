@@ -226,27 +226,82 @@ func TestDetectCertificateType_RoundTrip(t *testing.T) {
 	}
 }
 
-func TestCertificateType_Profile(t *testing.T) {
+func TestCertificateType_DefaultProfile(t *testing.T) {
 	t.Parallel()
 	type tc struct {
 		typed gempki.CertificateType
-		want  string
+		want  *gempki.Profile
 	}
 	cases := []tc{
-		{gempki.CertTypeHciAUT, "smcbauth"},
-		{gempki.CertTypeHpQES, "qes"},
-		{gempki.CertTypeFdTLSS, "komponente"},
-		{gempki.CertTypeFdTLSC, "komponente"},
-		{gempki.CertTypeZdTLSS, "komponente"},
-		{gempki.CertTypeFdSIG, "idpauthenticity"},
-		{gempki.CertTypeFdAUT, "idpauthenticity"},
-		{gempki.CertTypeHciENC, ""},
-		{gempki.CertTypeChQES, ""},
-		{gempki.CertTypeUnknown, ""},
+		{gempki.CertTypeHciAUT, gempki.ProfileSmbAuth},
+		{gempki.CertTypeFdSIG, gempki.ProfileIdp},
+		// C.FD.AUT is the 1:N case: accepted by both epavau and idp, no
+		// default-for. Auto mode warns; user picks.
+		{gempki.CertTypeFdAUT, nil},
+		// Types with no profile in the slimmed registry.
+		{gempki.CertTypeHpQES, nil},
+		{gempki.CertTypeFdTLSS, nil},
+		{gempki.CertTypeHciENC, nil},
+		{gempki.CertTypeChQES, nil},
+		{gempki.CertTypeUnknown, nil},
 	}
 	for _, c := range cases {
 		t.Run(string(c.typed), func(t *testing.T) {
-			assert.Equal(t, c.want, c.typed.Profile())
+			assert.Same(t, c.want, c.typed.DefaultProfile())
 		})
 	}
+}
+
+func TestProfilesForType(t *testing.T) {
+	t.Parallel()
+	type tc struct {
+		typed gempki.CertificateType
+		want  []*gempki.Profile // expected, order-insensitive
+	}
+	cases := []tc{
+		{gempki.CertTypeHciAUT, []*gempki.Profile{gempki.ProfileSmbAuth}},
+		{gempki.CertTypeFdSIG, []*gempki.Profile{gempki.ProfileIdp}},
+		// 1:N — both profiles accept this type.
+		{gempki.CertTypeFdAUT, []*gempki.Profile{gempki.ProfileEpaVau, gempki.ProfileIdp}},
+		{gempki.CertTypeHpQES, nil},
+		{gempki.CertTypeFdTLSS, nil},
+		{gempki.CertTypeUnknown, nil},
+	}
+	for _, c := range cases {
+		t.Run(string(c.typed), func(t *testing.T) {
+			got := gempki.ProfilesForType(c.typed)
+			assert.ElementsMatch(t, c.want, got)
+		})
+	}
+}
+
+func TestCertTypeSpec(t *testing.T) {
+	t.Parallel()
+	// HCI.AUT — fully populated baseline including SMC-B institution role OIDs.
+	hciAUT := gempki.CertTypeHciAUT.Spec()
+	assert.NotZero(t, hciAUT.KeyUsage)
+	assert.NotEmpty(t, hciAUT.EKU)
+	assert.NotEmpty(t, hciAUT.Policies)
+	assert.NotEmpty(t, hciAUT.RoleOIDs, "C.HCI.AUT must mandate institution role OIDs")
+
+	// FD.AUT — KeyUsage + Policies, no EKU / role OIDs (Fachdienst certs).
+	fdAUT := gempki.CertTypeFdAUT.Spec()
+	assert.NotZero(t, fdAUT.KeyUsage)
+	assert.Empty(t, fdAUT.EKU)
+	assert.NotEmpty(t, fdAUT.Policies)
+	assert.Empty(t, fdAUT.RoleOIDs)
+
+	// FD.SIG — same shape as FD.AUT.
+	fdSIG := gempki.CertTypeFdSIG.Spec()
+	assert.NotZero(t, fdSIG.KeyUsage)
+	assert.NotEmpty(t, fdSIG.Policies)
+
+	// HP.QES — contentCommitment + HBA profession role OIDs.
+	hpQES := gempki.CertTypeHpQES.Spec()
+	assert.NotZero(t, hpQES.KeyUsage)
+	assert.NotEmpty(t, hpQES.Policies)
+	assert.NotEmpty(t, hpQES.RoleOIDs, "C.HP.QES must mandate HBA profession role OIDs")
+
+	// Unknown returns zero value, not a panic.
+	assert.Equal(t, gempki.CertTypeSpec{}, gempki.CertTypeUnknown.Spec())
 }

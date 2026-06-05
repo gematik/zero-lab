@@ -55,6 +55,119 @@ const (
 	CertTypeGemVER CertificateType = "C.GEM.VER"
 )
 
+// CertTypeSpec is the gemSpec_PKI-mandated validation baseline for a cert
+// type — what every cert of this type must satisfy regardless of which
+// [Profile] is enforcing it. A [Profile] layers revocation-mode and other
+// use-case-specific overrides on top of this baseline; see
+// [Profile.Validator].
+//
+// Zero fields mean "no requirement at this layer":
+//   - KeyUsage == 0   → no KeyUsage check from the type spec
+//   - len(EKU) == 0   → no ExtKeyUsage check from the type spec
+//   - len(Policies)   → no required CertificatePolicies
+//   - len(RoleOIDs)   → no profession/institution role enforcement
+type CertTypeSpec struct {
+	KeyUsage x509.KeyUsage
+	EKU      []x509.ExtKeyUsage
+	Policies []asn1.ObjectIdentifier
+	RoleOIDs []asn1.ObjectIdentifier
+}
+
+// smcbInstitutionRoleOIDs are the institution OIDs Tab_PKI_403 accepts on a
+// C.HCI.AUT cert. Carried by the type spec, not by an individual profile —
+// every C.HCI.AUT cert is expected to assert one of these.
+var smcbInstitutionRoleOIDs = []asn1.ObjectIdentifier{
+	OIDInstArztpraxis,
+	OIDInstZahnarztpraxis,
+	OIDInstPraxisPsychotherapeut,
+	OIDInstKrankenhaus,
+	OIDInstOeffentlicheApo,
+	OIDInstKrankenhausapotheke,
+	OIDInstBundeswehrapotheke,
+}
+
+// hbaQESRoleOIDs are the HBA profession OIDs Tab_PKI_402 accepts on a
+// C.HP.QES cert. Carried by the type spec; no profile in the current set
+// enforces it directly, but a future QES validator can layer on top of the
+// type baseline without re-declaring this list.
+var hbaQESRoleOIDs = []asn1.ObjectIdentifier{
+	OIDProfArzt,
+	OIDProfZahnarzt,
+	OIDProfApotheker,
+	OIDProfPsychotherapeut,
+	OIDProfPsPsychotherapeut,
+	OIDProfKuJPsychotherapeut,
+}
+
+// certTypeSpec is the per-type baseline lookup used by [CertificateType.Spec].
+// Entries populated for the types currently consumed by a profile (HCI.AUT,
+// FD.AUT, FD.SIG, HP.QES) plus the TLS family (TLS-S, TLS-C, ZD.TLS-S) for
+// documentation. The remaining 16 entries are empty placeholders that still
+// signal "known type" to callers; populate them when a real consumer needs
+// the baseline.
+var certTypeSpec = map[CertificateType]CertTypeSpec{
+	CertTypeHciAUT: {
+		KeyUsage: x509.KeyUsageDigitalSignature,
+		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDCertTypeSmcBAUT},
+		RoleOIDs: smcbInstitutionRoleOIDs,
+	},
+	CertTypeHciENC:  {},
+	CertTypeHciOSIG: {},
+
+	CertTypeHpQES: {
+		KeyUsage: x509.KeyUsageContentCommitment,
+		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDPolicyHbaCP, OIDCertTypeHbaQES},
+		RoleOIDs: hbaQESRoleOIDs,
+	},
+	CertTypeHpAUT: {},
+	CertTypeHpENC: {},
+
+	CertTypeFdAUT: {
+		KeyUsage: x509.KeyUsageDigitalSignature,
+		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDCertTypeFdAUT},
+	},
+	CertTypeFdSIG: {
+		KeyUsage: x509.KeyUsageDigitalSignature,
+		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDCertTypeFdSIG},
+	},
+	CertTypeFdTLSS: {
+		KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageKeyAgreement,
+		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDCertTypeFdTLSS},
+	},
+	CertTypeFdTLSC: {
+		KeyUsage: x509.KeyUsageDigitalSignature,
+		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDCertTypeFdTLSC},
+	},
+	CertTypeFdENC:  {},
+	CertTypeFdOSIG: {},
+
+	CertTypeZdTLSS: {
+		KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageKeyAgreement,
+		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDCertTypeZdTLSS},
+	},
+	CertTypeZdSIG: {},
+
+	CertTypeChQES:  {},
+	CertTypeChSIG:  {},
+	CertTypeChENC:  {},
+	CertTypeChENCV: {},
+	CertTypeChAUT:  {},
+	CertTypeChAUTN: {},
+
+	CertTypeHskSIG: {},
+	CertTypeHskENC: {},
+	CertTypeGemVER: {},
+}
+
+// Spec returns the gemSpec_PKI-mandated baseline rules for this type. The
+// zero [CertTypeSpec] is returned for [CertTypeUnknown] or for any type
+// that has no populated baseline yet.
+func (t CertificateType) Spec() CertTypeSpec { return certTypeSpec[t] }
+
 // certTypeByOID is the Tab_PKI_405 OID → name lookup used by the phase-1
 // CertificatePolicies scan. Keyed by OID `.String()` for cheap lookup.
 var certTypeByOID = map[string]CertificateType{
@@ -128,33 +241,60 @@ var certTypeOID = func() map[CertificateType]asn1.ObjectIdentifier {
 	return m
 }()
 
-// certTypeProfile maps a cert type to the gempki profile factory that
-// validates it. Empty string means no built-in profile matches this type
-// yet — callers using [CertificateType.Profile] should treat empty as
-// "no profile available; fall back to bare chain validation".
-//
-// These names align with the keys [buildValidator] switches on in ti.
-var certTypeProfile = map[CertificateType]string{
-	CertTypeHciAUT:  "smcbauth",
-	CertTypeHpQES:   "qes",
-	CertTypeFdTLSS:  "komponente",
-	CertTypeFdTLSC:  "komponente",
-	CertTypeZdTLSS:  "komponente",
-	CertTypeFdSIG:   "idpauthenticity",
-	CertTypeFdAUT:   "idpauthenticity",
-}
-
 // OID returns the Tab_PKI_405 object identifier for this type. Returns an
 // empty OID for [CertTypeUnknown] or any type not registered in the map.
 func (t CertificateType) OID() asn1.ObjectIdentifier {
 	return certTypeOID[t]
 }
 
-// Profile returns the gempki profile name that best matches this type
-// (e.g. "smcbauth" for [CertTypeHciAUT]). Returns an empty string when no
-// built-in profile covers this type.
-func (t CertificateType) Profile() string {
-	return certTypeProfile[t]
+// DefaultProfile returns the profile that auto-mode should pick for this
+// type, or nil if no profile in [ProfileRegistry] lists t in its
+// `DefaultFor`. A nil result means one of:
+//   - no profile accepts this type at all → callers should warn
+//     [WarnProfileNotDetected];
+//   - multiple profiles accept this type but none claims default ownership
+//     → callers should warn [WarnProfileAmbiguous] and ask the user to
+//     pick via [ProfilesForType].
+//
+// Callers can distinguish the two with `len(ProfilesForType(t))`.
+func (t CertificateType) DefaultProfile() *Profile {
+	for _, p := range ProfileRegistry {
+		for _, dt := range p.DefaultFor {
+			if dt == t {
+				return p
+			}
+		}
+	}
+	return nil
+}
+
+// ProfilesForType returns every profile in [ProfileRegistry] whose
+// `AcceptsTypes` includes t. The result is sorted by profile name so the
+// output is deterministic for `pki profiles --for <type>` and similar
+// introspection paths. Returns nil if no profile accepts the type.
+//
+// This is the 1:N entry point: a single cert type may legitimately be
+// validated under multiple named profiles (e.g. `C.FD.AUT` is accepted
+// by both `epavau` and `idp`).
+func ProfilesForType(t CertificateType) []*Profile {
+	var out []*Profile
+	seen := map[*Profile]struct{}{}
+	for _, p := range ProfileRegistry {
+		if _, ok := seen[p]; ok {
+			// Registry aliases (e.g. "idp" pointing at the same profile
+			// twice) — skip duplicates.
+			continue
+		}
+		for _, at := range p.AcceptsTypes {
+			if at == t {
+				out = append(out, p)
+				seen[p] = struct{}{}
+				break
+			}
+		}
+	}
+	sortProfilesByName(out)
+	return out
 }
 
 // DetectCertificateType classifies cert as one of the gemSpec_PKI

@@ -159,19 +159,21 @@ func runCertInspect(certs []*x509.Certificate, f outputFormat, short bool) error
 // Text and JSON renderers both read from this so the two outputs stay in
 // lock-step; adding a field is automatically visible in both.
 type certInspect struct {
-	Version            int                     `json:"version"`
-	SerialNumberHex    string                  `json:"serialNumber"`
-	SerialNumberDec    string                  `json:"serialNumberDecimal"`
-	SignatureAlgorithm string                  `json:"signatureAlgorithm"`
-	Issuer             distinguishedName       `json:"issuer"`
-	Subject            distinguishedName       `json:"subject"`
-	Validity           validityInfo            `json:"validity"`
-	PublicKey          publicKeyInfo           `json:"publicKey"`
-	Type               gempki.CertificateType  `json:"type,omitempty"`
-	TypeOID            string                  `json:"typeOID,omitempty"`
-	Extensions         *extensionsInfo         `json:"extensions,omitempty"`
-	Admission          *admissionInfo          `json:"admission,omitempty"`
-	Fingerprints       fingerprintsInfo        `json:"fingerprints"`
+	Version            int                    `json:"version"`
+	SerialNumberHex    string                 `json:"serialNumber"`
+	SerialNumberDec    string                 `json:"serialNumberDecimal"`
+	SignatureAlgorithm string                 `json:"signatureAlgorithm"`
+	Issuer             distinguishedName      `json:"issuer"`
+	Subject            distinguishedName      `json:"subject"`
+	Validity           validityInfo           `json:"validity"`
+	PublicKey          publicKeyInfo          `json:"publicKey"`
+	Type               gempki.CertificateType `json:"type,omitempty"`
+	TypeOID            string                 `json:"typeOID,omitempty"`
+	DefaultProfile     string                 `json:"defaultProfile,omitempty"`
+	CompatibleProfiles []string               `json:"compatibleProfiles,omitempty"`
+	Extensions         *extensionsInfo        `json:"extensions,omitempty"`
+	Admission          *admissionInfo         `json:"admission,omitempty"`
+	Fingerprints       fingerprintsInfo       `json:"fingerprints"`
 }
 
 type distinguishedName struct {
@@ -254,6 +256,12 @@ func buildCertInspect(c *x509.Certificate, short bool) certInspect {
 	if t := gempki.DetectCertificateType(c); t != gempki.CertTypeUnknown {
 		out.Type = t
 		out.TypeOID = t.OID().String()
+		if dp := t.DefaultProfile(); dp != nil {
+			out.DefaultProfile = dp.Name
+		}
+		for _, p := range gempki.ProfilesForType(t) {
+			out.CompatibleProfiles = append(out.CompatibleProfiles, p.Name)
+		}
 	}
 	if ext := buildExtensionsInfo(c); ext != nil {
 		out.Extensions = ext
@@ -366,6 +374,12 @@ func writeCertInspect(kv *kvWriter, ci certInspect) {
 		kv.Section("Certificate Type")
 		kv.KV("Name", string(ci.Type))
 		kv.KV("OID", ci.TypeOID)
+		if ci.DefaultProfile != "" {
+			kv.KV("Default Profile", ci.DefaultProfile)
+		}
+		if len(ci.CompatibleProfiles) > 0 {
+			kv.KV("Compatible Profiles", strings.Join(ci.CompatibleProfiles, ", "))
+		}
 		kv.EndSection()
 	}
 	kv.Section("Certificate")
@@ -538,7 +552,7 @@ func newPKICertVerifyCmd(def envDef) *cobra.Command {
 	cmd.Flags().StringVar(&formatRaw, "format", string(formatText), "output format: text, json")
 	cmd.Flags().StringVar(&rootsPath, "roots", "", "PEM file of trust anchors (default: env embedded roots)")
 	cmd.Flags().StringVar(&intermediatesPath, "intermediates", "", "PEM file of additional candidate intermediates")
-	cmd.Flags().StringVar(&profile, "profile", "auto", "profile-driven EE checks. 'auto' (default) detects the gemSpec_PKI Tab_PKI_405 cert type and picks the matching profile (C.HCI.AUT → smcbauth, C.HP.QES → qes, C.FD.TLS-S → komponente, …). 'none' disables profile checks (chain-only). Explicit profiles: smcbauth | qes | komponente | idp.")
+	cmd.Flags().StringVar(&profile, "profile", "auto", "profile-driven EE checks. 'auto' (default) detects the cert type and picks the matching profile (C.HCI.AUT → smbauth, C.FD.SIG → idp). 'none' disables profile checks (chain-only). Explicit profiles: smbauth | epavau | idp. Use --profile explicitly when the cert type matches multiple profiles (e.g. C.FD.AUT → epavau or idp).")
 	cmd.Flags().BoolVar(&withOCSP, "ocsp", false, "evaluate revocation via OCSP (AIA-driven). Profiles enable OCSP automatically per their gemSpec policy; this flag is for use without --profile.")
 	cmd.Flags().BoolVar(&insecure, "insecure", false, "skip chain build; print decoded cert only")
 	cmd.Flags().StringVar(&atRaw, "at", "", "validate at a specific time (RFC3339; default: now)")
@@ -564,10 +578,15 @@ type certVerifyOpts struct {
 	// Auto-detection bookkeeping (populated when Profile == "auto"):
 	//   detectedType — what DetectCertificateType returned for the EE
 	//   resolvedFrom — "auto", "explicit", or "none" (drives display)
-	//   profileMissing — auto ran but found no matching profile
-	detectedType   gempki.CertificateType
-	resolvedFrom   string
-	profileMissing bool
+	//   profileMissing — auto ran but no profile accepts the detected type
+	//   profileAmbiguous — auto ran, multiple profiles accept the type,
+	//                      none owns the default → user must pick
+	//   profileCandidates — when ambiguous, the profile names that match
+	detectedType      gempki.CertificateType
+	resolvedFrom      string
+	profileMissing    bool
+	profileAmbiguous  bool
+	profileCandidates []string
 }
 
 func runCertVerify(ctx context.Context, def envDef, certs []*x509.Certificate, f outputFormat, opts certVerifyOpts) error {
@@ -582,23 +601,38 @@ func runCertVerify(ctx context.Context, def envDef, certs []*x509.Certificate, f
 		t := gempki.DetectCertificateType(certs[0])
 		opts.detectedType = t
 		opts.resolvedFrom = "auto"
-		opts.Profile = t.Profile()
-		if opts.Profile == "" {
+		candidates := gempki.ProfilesForType(t)
+		switch {
+		case len(candidates) == 0:
 			opts.profileMissing = true
+			opts.Profile = ""
 			slog.Debug("gempki: profile auto-detection found no match",
 				"subject", certs[0].Subject.CommonName,
 				"type", string(t))
-		} else {
+		case t.DefaultProfile() != nil:
+			opts.Profile = t.DefaultProfile().Name
 			slog.Debug("gempki: profile auto-selected",
 				"subject", certs[0].Subject.CommonName,
 				"type", string(t),
 				"profile", opts.Profile)
+		default:
+			opts.profileAmbiguous = true
+			opts.Profile = ""
+			opts.profileCandidates = make([]string, len(candidates))
+			for i, p := range candidates {
+				opts.profileCandidates[i] = p.Name
+			}
+			slog.Debug("gempki: profile auto-detection found multiple matches",
+				"subject", certs[0].Subject.CommonName,
+				"type", string(t),
+				"candidates", opts.profileCandidates)
 		}
 	case "none":
 		opts.resolvedFrom = "none"
 		opts.Profile = ""
 	default:
 		opts.resolvedFrom = "explicit"
+		opts.detectedType = gempki.DetectCertificateType(certs[0])
 	}
 	httpClient := newHTTPClient()
 	ts, err := resolveTrustStoreFor(ctx, def, opts.RootsPath, httpClient)
@@ -648,7 +682,34 @@ func runCertVerify(ctx context.Context, def envDef, certs []*x509.Certificate, f
 	if opts.profileMissing {
 		w := *gempki.WarnProfileNotDetected
 		w.Subject = certs[0].Subject.CommonName
+		if opts.detectedType != gempki.CertTypeUnknown {
+			w.Message = fmt.Sprintf(
+				"no profile accepts type %s; ran chain-only validation (pass --profile explicitly or use --profile none to silence)",
+				opts.detectedType,
+			)
+		}
 		result.Warnings = append(result.Warnings, &w)
+	}
+	if opts.profileAmbiguous {
+		w := *gempki.WarnProfileAmbiguous
+		w.Subject = certs[0].Subject.CommonName
+		w.Message = fmt.Sprintf(
+			"type %s matches multiple profiles: %s; pass --profile explicitly",
+			opts.detectedType, strings.Join(opts.profileCandidates, ", "),
+		)
+		result.Warnings = append(result.Warnings, &w)
+	}
+	if opts.resolvedFrom == "explicit" && opts.Profile != "" {
+		if p, ok := gempki.ProfileRegistry[strings.ToLower(opts.Profile)]; ok &&
+			opts.detectedType != gempki.CertTypeUnknown && !p.Accepts(opts.detectedType) {
+			w := *gempki.WarnProfileTypeMismatch
+			w.Subject = certs[0].Subject.CommonName
+			w.Message = fmt.Sprintf(
+				"profile %s does not accept type %s; running validation anyway",
+				p.Name, opts.detectedType,
+			)
+			result.Warnings = append(result.Warnings, &w)
+		}
 	}
 
 	if f == formatJSON {
@@ -675,16 +736,9 @@ func resolveTrustStoreFor(ctx context.Context, def envDef, rootsPath string, htt
 
 func buildValidator(def envDef, ts *gempki.TrustStore, opts certVerifyOpts) *gempki.Validator {
 	var v *gempki.Validator
-	switch strings.ToLower(opts.Profile) {
-	case "smcbauth":
-		v = gempki.ProfileSMCBAuth(ts)
-	case "qes":
-		v = gempki.ProfileQES(ts)
-	case "komponente":
-		v = gempki.ProfileKomponente(ts)
-	case "idp":
-		v = gempki.ProfileIDPAuthenticity(ts)
-	default:
+	if p, ok := gempki.ProfileRegistry[strings.ToLower(opts.Profile)]; ok {
+		v = p.Validator(ts, opts.detectedType)
+	} else {
 		v = gempki.NewValidator(gempki.WithTrustStore(ts))
 	}
 	if opts.At != nil {
@@ -692,10 +746,10 @@ func buildValidator(def envDef, ts *gempki.TrustStore, opts certVerifyOpts) *gem
 		v.TimeFunc = func() time.Time { return at }
 	}
 	// Revocation policy:
-	//   - When a profile is set, the profile factory has already chosen the
-	//     mode (gempki.ProfileQES/Komponente/IDPAuthenticity = HardFail,
-	//     ProfileSMCBAuth = SoftFail). The profile dictates; we just wire the
-	//     OCSPChecker so the mode actually has something to evaluate.
+	//   - When a profile is set, the profile carries the mode (e.g.
+	//     ProfileSmbAuth = SoftFail, ProfileIdp / ProfileEpaVau = HardFail).
+	//     The profile dictates; we just wire the OCSPChecker so the mode has
+	//     something to evaluate.
 	//   - When no profile is set, `--ocsp` opts in to SoftFail revocation.
 	//   - When neither is set, revocation is disabled (cheap decode + chain).
 	profileSet := opts.Profile != ""
@@ -733,6 +787,16 @@ func renderVerifyResultText(result *gempki.ValidationResult, opts certVerifyOpts
 			kv.Section("Certificate Type")
 			kv.KV("Name", string(opts.detectedType))
 			kv.KV("OID", opts.detectedType.OID().String())
+			if dp := opts.detectedType.DefaultProfile(); dp != nil {
+				kv.KV("Default Profile", dp.Name)
+			}
+			if compat := gempki.ProfilesForType(opts.detectedType); len(compat) > 0 {
+				names := make([]string, len(compat))
+				for i, p := range compat {
+					names[i] = p.Name
+				}
+				kv.KV("Compatible Profiles", strings.Join(names, ", "))
+			}
 			kv.EndSection()
 		}
 		kv.Section("Certificate")
@@ -892,6 +956,16 @@ func verifyResultJSON(r *gempki.ValidationResult, opts certVerifyOpts) map[strin
 		if opts.detectedType != gempki.CertTypeUnknown {
 			cert["type"] = string(opts.detectedType)
 			cert["typeOID"] = opts.detectedType.OID().String()
+			if dp := opts.detectedType.DefaultProfile(); dp != nil {
+				cert["defaultProfile"] = dp.Name
+			}
+			if compat := gempki.ProfilesForType(opts.detectedType); len(compat) > 0 {
+				names := make([]string, len(compat))
+				for i, p := range compat {
+					names[i] = p.Name
+				}
+				cert["compatibleProfiles"] = names
+			}
 		}
 		out["certificate"] = cert
 	}
@@ -964,7 +1038,7 @@ func newPKICertLintCmd(def envDef) *cobra.Command {
 				return err
 			}
 			if profile == "" {
-				return fmt.Errorf("--profile is required (smcbauth | qes | komponente | idp)")
+				return fmt.Errorf("--profile is required (smbauth | epavau | idp)")
 			}
 			certs, err := loadCertChain(args[0])
 			if err != nil {
@@ -974,7 +1048,7 @@ func newPKICertLintCmd(def envDef) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&formatRaw, "format", string(formatText), "output format: text, json")
-	cmd.Flags().StringVar(&profile, "profile", "", "profile: smcbauth | qes | komponente | idp")
+	cmd.Flags().StringVar(&profile, "profile", "", "profile: smbauth | epavau | idp")
 	return cmd
 }
 

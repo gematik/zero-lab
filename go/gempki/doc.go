@@ -6,15 +6,18 @@
 // chain construction through TSL-published intermediates, revocation via
 // OCSP and/or hash lists, role-OID and certificate-policy checks per
 // gemSpec_OID, and named profiles for the common TI use cases (SMC-B
-// authentication, qualified signatures, component certs, IDP authenticity).
+// authentication, ePA VAU backend authenticity, IDP discovery/JWKS).
 //
 // # Quick start
 //
 //	import "github.com/gematik/zero-lab/go/gempki"
 //
 //	ts, _ := gempki.EmbeddedLoader{Env: gempki.EnvProd}.Load(ctx)
-//	v := gempki.ProfileSMCBAuth(ts)
-//	result, _ := v.ValidatePEM(ctx, certPEM)
+//	cert, _ := gempki.ParseCertificatePEM(certPEM)
+//	t := gempki.DetectCertificateType(cert) // e.g. C.HCI.AUT
+//	p := t.DefaultProfile()                 // → ProfileSmbAuth, or nil if ambiguous/unknown
+//	v := p.Validator(ts, t)
+//	result, _ := v.Validate(ctx, []*x509.Certificate{cert /* + intermediates */})
 //	if !result.Valid {
 //	    log.Printf("rejected: %v", result.Errors)
 //	}
