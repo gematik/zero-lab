@@ -6,61 +6,58 @@ tagged, reproducible builds. All commands are run from the `go/` directory, wher
 
 ## Versioning model in one minute
 
+**Every module — library and command — is versioned solely by its own git tag**
+`go/<module>/vX.Y.Z`, bumped only when that module changes. There is no shared version and
+no version variables: an unchanged module keeps its tag, and nothing is "ahead of" or
+"behind" anything else. The number just reflects that module's own history.
+
 - **Local development** uses the tracked `go.work` workspace: every in-repo module resolves
-  from local source, so a library edit is used immediately by every command — no version
-  bumps, no `go.mod` edits.
-- **Commands** (`zero-epa`, `zero-pdp`, `zero-caddy`, the `ti` CLI) are versioned
-  independently via `go/Justfile` variables and tagged with canonical Go module tags
-  (`go/<module>/vX.Y.Z`), so they are `go install`-able.
-- **Libraries** are referenced by commit pseudo-versions in `go.mod`. `go install …@<tag>`
-  and tag-pinned Docker builds run *outside* the workspace, so `just sync` repins the
-  in-repo `require` lines to the chosen commit before tagging.
-- **`zero-caddy`** reports its version plus the upstream Caddy version as SemVer build
-  metadata, e.g. `zero-caddy 0.20.1+caddy2.11.4`.
+  from local source, so a library edit is used immediately by every command — no tags, no
+  `go.mod` edits.
+- **`go install <cmd>@vX.Y.Z`** reports its version automatically — Go embeds the module
+  version in the build info, and each command's `ResolveVersion()` reads it (no ldflags
+  needed).
+- **Local / Docker builds** stamp the version from `git describe` (the `_modver` helper):
+  exactly on a tag → `0.20.2`; a few commits past it → `0.20.2-3-gdeadbeef`; never tagged
+  → `dev`.
+- **`zero-caddy`** combines its version with the upstream Caddy version as SemVer build
+  metadata, e.g. `zero-caddy 0.20.2+caddy2.11.4`.
 
-The `go/Justfile` version variables are the single source of truth:
+Inspect and manage versions:
 
-```
-ZERO_VERSION       # shared version for the common library modules (ZERO_LIBS)
-ZERO_EPA_VERSION   # zero-epa command
-ZERO_PDP_VERSION   # zero-pdp command
-ZERO_CADDY_VERSION # zero-caddy command
-TI_CLI_VERSION     # ti CLI command
-CADDY_VERSION      # derived from zaddy/go.mod (upstream Caddy), not edited by hand
+```console
+just versions     # latest tag per module
+just changed      # modules with commits since their last tag (candidates to bump)
+just tag <mod> <ver>   # e.g. just tag brainpool 0.3.1  -> tags go/brainpool/v0.3.1
 ```
 
 ## Part A — Local development (workspace)
 
 ```console
-# 1. Clone and enter the workspace
 git clone https://github.com/gematik/zero-lab.git
 cd zero-lab/go                       # go.work lives here
 
-# 2. Edit a library (e.g. brainpool, gempki, oauth, …)
+# Edit a library (e.g. brainpool, gempki, oauth, …)
 $EDITOR brainpool/parser.go
 
-# 3. Build / test / run — the change is already in effect via go.work
-go build ./...                       # build the whole workspace
-(cd brainpool && go test ./...)      # test the library you changed
-(cd ti && go test ./...)             # test a consumer
-go run ./ti version                  # run a command against your local libs
+# Build / test / run — the change is already in effect via go.work
+go build ./...
+(cd brainpool && go test ./...)
+go run ./ti version
+
+# Build a stamped binary locally (version from the module's git tag)
+just build-ti        # ./dist/ti
+just build           # all four commands into ./dist/
 ```
 
-Confirm the workspace is wiring local source (not a cached module version):
+Confirm the workspace is wiring local source:
 
 ```console
 (cd ti && go list -m -f '{{.Path}} => {{.Dir}}' github.com/gematik/zero-lab/go/brainpool)
-# => …/zero-lab/go/brainpool   (a local directory means go.work is resolving it locally)
+# => …/zero-lab/go/brainpool   (a local directory = go.work resolving it locally)
 ```
 
-Build a real binary locally with its version stamped in (it defaults to `dev` otherwise):
-
-```console
-just build-ti        # ./dist/ti  ->  "ti 0.20.1"
-just build           # build all four commands into ./dist/
-```
-
-Keep modules tidy while developing (no version changes):
+Keep modules tidy (no version changes):
 
 ```console
 just tidy            # go mod tidy per module
@@ -69,86 +66,93 @@ just upgrade         # ONLY when deliberately bumping external deps to latest
 
 ## Part B — Tag & reproducible builds
 
-Reproducibility rests on three things: a tagged source commit, `go.mod`/`go.sum` pinned to
-immutable versions, and the version stamped via `-ldflags`. Because `go install …@<tag>`
-and tag-pinned Docker builds ignore `go.work`, a command's `go.mod` must point at the
-library commit you want included — that is what `just sync` ensures.
+`go install <cmd>@<tag>` and tag-pinned Docker builds run **outside** `go.work`, so a
+command resolves its libraries from its `go.mod`. To make a tagged build pick up a library
+change, repin with `just sync` before tagging.
 
 ```console
-# 1. Land the library change first (it must be fetchable from the remote)
+# 1. Land the library change (must be fetchable from the remote)
 git add -A && git commit -m "brainpool: <change>"
 git push origin <branch>
 
-# 2. Repin in-repo requires to the branch tip so tagged/installed builds pick up
-#    that library commit (local dev was already using it through go.work)
-just sync                         # default REF = current branch
-#   …or target a specific ref:  just sync REF=<branch|commit|tag>
+# 2. Repin in-repo requires to the branch tip so out-of-workspace builds pick it up
+just sync                         # default REF = current branch; or: just sync REF=<ref>
 git add -A && git commit -m "sync: pin in-repo deps to branch tip"
 git push
 
-# 3. If releasing new numbers, bump the version variables in go/Justfile, commit, push
-
-# 4. Tag — canonical Go module tags (go/<module>/vX.Y.Z)
-just tag                          # all four commands: go/epa, go/pdp, go/zaddy, go/ti
-just tag-zero                     # optional: tag the libraries at ZERO_VERSION
-just push-tags                    # push every tag to origin
+# 3. Tag the modules that changed (check with `just changed`), then push the tags
+just tag brainpool 0.3.1          # the changed library
+just tag ti 0.20.3                # any command whose release you're cutting
+just push-tags
 ```
+
+Only tag what actually changed — `just changed` lists modules with commits since their last
+tag. Unchanged modules keep their existing tag.
 
 ### Reproducible install of a command
 
-`go install` ignores `go.work` and resolves the pinned `go.mod`, so it pulls the exact
-library commit synced in step 2:
+`go install` ignores `go.work`, resolves the pinned `go.mod`, and reports its version from
+the module build info:
 
 ```console
-go install github.com/gematik/zero-lab/go/ti@v0.20.1
-go install github.com/gematik/zero-lab/go/epa/cmd/zero-epa@v0.20.1
-ti version        # -> "ti 0.20.1"
+go install github.com/gematik/zero-lab/go/ti@v0.20.3
+go install github.com/gematik/zero-lab/go/epa/cmd/zero-epa@v0.20.3
+ti version        # -> "0.20.3"
+```
+
+The `@` takes the bare semver (`v0.20.3`); Go maps the module's `go/ti` subdirectory to the
+`go/ti/v0.20.3` tag automatically.
+
+If `proxy.golang.org` returns "unknown revision"/404 right after tagging (it negatively
+caches a version that didn't exist yet), fetch directly:
+
+```console
+go env -w GOPRIVATE=github.com/gematik/zero-lab   # once; installs bypass the proxy/sumdb
+go install github.com/gematik/zero-lab/go/ti@v0.20.3
 ```
 
 ### Reproducible library consumption from another project
 
 ```console
-go get github.com/gematik/zero-lab/go/gempki@v0.20.1   # clean semver (after just tag-zero)
-# or pin an exact commit pseudo-version for maximum reproducibility
+go get github.com/gematik/zero-lab/go/gempki@v0.20.2   # the library's own tag
 ```
 
 ### Reproducible Docker images
 
-The build context includes `go.work`, so images build from the exact source tree; the
-version is injected via `--build-arg VERSION`.
+The build context includes `go.work`; the version is derived from `git describe` and passed
+via `--build-arg VERSION`:
 
 ```console
-just docker-build-epa      # spilikin/zero-epa:0.20.1                  (+ :latest)
-just docker-build-pdp      # spilikin/zero-pdp:0.20.1
-just docker-build-caddy    # spilikin/zero-caddy:0.20.1-caddy2.11.4    (our ver + Caddy ver)
-just docker-push-epa       # build + push to the registry
+just docker-build-epa      # spilikin/zero-epa:<git-describe>            (+ :latest)
+just docker-build-pdp
+just docker-build-caddy    # spilikin/zero-caddy:<ver>-caddy2.11.4
+just docker-push-epa       # build + push
 ```
 
-For byte-reproducible images, build from a clean checkout of the tag so the source tree and
-`go.sum` are fixed:
+For a clean image tag (`0.20.3` instead of `0.20.3-2-g…`), build from a checkout of the tag:
 
 ```console
-git checkout go/ti/v0.20.1
+git checkout go/epa/v0.20.3
 ```
 
 ## The golden rule
 
-- **Develop** against `go.work` — local, fast, no version churn.
-- **Release** = push libraries → `just sync` → `just tag*` → `just push-tags`. Only then do
-  `go install` and tag-pinned Docker builds see the new library code, because those paths
-  bypass `go.work` and read the pinned `go.mod`.
+- **Develop** against `go.work` — local, fast, no tags, no churn.
+- **Release** = push the change → `just sync` → `just tag <module> <version>` for each
+  changed module → `just push-tags`. Only then do `go install` and tag-pinned Docker builds
+  see the new code, because those paths bypass `go.work`.
 
 ## `just` recipe reference
 
 | Recipe | Purpose |
 | --- | --- |
-| `build`, `build-<cmd>` | Build command binaries locally into `./dist` (version via ldflags) |
+| `build`, `build-<cmd>` | Build command binaries into `./dist` (version from git tag via ldflags) |
+| `versions` | Show the latest tag for every module |
+| `changed` | List modules with commits since their last tag |
+| `tag <mod> <ver>` | Create the `go/<mod>/v<ver>` release tag |
+| `push-tags` | Push all local tags to origin |
+| `sync [REF=…]` | Repin in-repo requires to a branch/commit/tag tip |
 | `tidy` | `go mod tidy` per module (no version changes) |
 | `upgrade` | `go get -u ./...` + tidy per module (deliberate dependency upgrade) |
-| `sync [REF=…]` | Repin in-repo requires to a branch/commit/tag tip |
-| `tag`, `tag-<cmd>` | Canonical Go module release tags for the commands |
-| `tag-zero` | Tag the library modules at `ZERO_VERSION` |
-| `push-tags` | Push all local tags to origin |
-| `docker-build-<cmd>` | Build the command's Docker image |
-| `docker-push-<cmd>` | Build + push the command's Docker image |
+| `docker-build-<cmd>` / `docker-push-<cmd>` | Build / build+push the command's Docker image |
 | `update-roots` | Refresh the embedded TSL root certificates |
