@@ -1,3 +1,5 @@
 package main
 
-const Version = "0.16.0"
+// Version is the ti CLI release version. It defaults to "dev" and is overridden
+// at build time via -ldflags "-X main.Version=<v>".
+var Version = "dev"

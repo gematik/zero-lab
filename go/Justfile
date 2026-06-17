@@ -8,11 +8,29 @@ TI_CLI_VERSION := "0.16.0"
 info:
     just --list
 
+# Build all product binaries locally into ./dist with version injected via ldflags
+build: build-epa build-pdp build-caddy build-ti
+
+# Build the zero-epa binary locally (version injected via ldflags)
+build-epa:
+    go build -ldflags "-X github.com/gematik/zero-lab/go/epa.Version={{ZERO_EPA_VERSION}}" -o dist/zero-epa ./epa/cmd/zero-epa
+
+# Build the zero-pdp binary locally (version injected via ldflags)
+build-pdp:
+    go build -ldflags "-X github.com/gematik/zero-lab/go/pdp.Version={{ZERO_PDP_VERSION}}" -o dist/zero-pdp ./pdp/cmd/zero-pdp
+
+# Build the zero-caddy binary locally (version injected via ldflags)
+build-caddy:
+    go build -ldflags "-X main.Version={{ZERO_CADDY_VERSION}}" -o dist/zero-caddy ./zaddy/cmd/zero-caddy
+
+# Build the ti CLI binary locally (version injected via ldflags)
+build-ti:
+    go build -ldflags "-X main.Version={{TI_CLI_VERSION}}" -o dist/ti ./ti
+
 
 # Build the zero-epa docker image
 docker-build-epa:
-    just generate-version-file epa/version.go epa {{ZERO_EPA_VERSION}}
-    docker build --platform linux/amd64 -t "{{DOCKER_USER}}/zero-epa:{{ZERO_EPA_VERSION}}" -f ./epa/cmd/zero-epa/Dockerfile .
+    docker build --platform linux/amd64 --build-arg VERSION={{ZERO_EPA_VERSION}} -t "{{DOCKER_USER}}/zero-epa:{{ZERO_EPA_VERSION}}" -f ./epa/cmd/zero-epa/Dockerfile .
     docker tag "{{DOCKER_USER}}/zero-epa:{{ZERO_EPA_VERSION}}" "{{DOCKER_USER}}/zero-epa:latest"
 
 # Push the zero-epa docker image to the docker hub
@@ -22,7 +40,7 @@ docker-push-epa: docker-build-epa
 
 # Build the zero-caddy docker image
 docker-build-caddy:
-    docker build --platform linux/amd64 -t "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}" -f ./zaddy/cmd/zero-caddy/Dockerfile .
+    docker build --platform linux/amd64 --build-arg VERSION={{ZERO_CADDY_VERSION}} -t "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}" -f ./zaddy/cmd/zero-caddy/Dockerfile .
     docker tag "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}" "{{DOCKER_USER}}/zero-caddy:latest"
 
 # Push the zero-caddy docker image to the docker hub
@@ -32,8 +50,7 @@ docker-push-caddy: docker-build-caddy
 
 # Build the zero-pdp docker image
 docker-build-pdp:
-    just generate-version-file pdp/version.go pdp {{ZERO_PDP_VERSION}}
-    docker build --platform linux/amd64 -t "{{DOCKER_USER}}/zero-pdp:{{ZERO_PDP_VERSION}}" -f ./pdp/cmd/zero-pdp/Dockerfile .
+    docker build --platform linux/amd64 --build-arg VERSION={{ZERO_PDP_VERSION}} -t "{{DOCKER_USER}}/zero-pdp:{{ZERO_PDP_VERSION}}" -f ./pdp/cmd/zero-pdp/Dockerfile .
     docker tag "{{DOCKER_USER}}/zero-pdp:{{ZERO_PDP_VERSION}}" "{{DOCKER_USER}}/zero-pdp:latest"
 
 # Push the zero-pdp docker image to the docker hub
@@ -41,11 +58,28 @@ docker-push-pdp: docker-build-pdp
     docker push "{{DOCKER_USER}}/zero-pdp:{{ZERO_PDP_VERSION}}"
     docker push "{{DOCKER_USER}}/zero-pdp:latest"
 
-# generate version file
-generate-version-file file package version:
-    @echo "package {{package}}" > {{file}}
-    @echo "" >> {{file}}
-    @echo "const Version = \"{{version}}\"" >> {{file}}
+# Tag the current commit with all four product release versions
+tag: tag-epa tag-pdp tag-caddy tag-ti
+
+# Tag the current commit as a zero-epa release
+tag-epa:
+    git tag -a "zero-epa/v{{ZERO_EPA_VERSION}}" -m "zero-epa v{{ZERO_EPA_VERSION}}"
+
+# Tag the current commit as a zero-pdp release
+tag-pdp:
+    git tag -a "zero-pdp/v{{ZERO_PDP_VERSION}}" -m "zero-pdp v{{ZERO_PDP_VERSION}}"
+
+# Tag the current commit as a zero-caddy release
+tag-caddy:
+    git tag -a "zero-caddy/v{{ZERO_CADDY_VERSION}}" -m "zero-caddy v{{ZERO_CADDY_VERSION}}"
+
+# Tag the current commit as a ti CLI release
+tag-ti:
+    git tag -a "ti/v{{TI_CLI_VERSION}}" -m "ti v{{TI_CLI_VERSION}}"
+
+# Push all local product tags to origin
+push-tags:
+    git push origin --tags
 
 # Update and tidy all go modules
 tidy:
@@ -61,7 +95,3 @@ update-roots:
     curl -o ./gempki/roots-test.json https://download-test.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json
     curl -o ./gempki/roots-dev-ref.json https://download-ref.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json
     curl -o ./gempki/roots-prod.json https://download.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json
-
-# Generate version file for TI CLI
-generate-version-ti-cli:
-    just generate-version-file ti/version.go main {{TI_CLI_VERSION}}

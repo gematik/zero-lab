@@ -1,3 +1,5 @@
 package pdp
 
-const Version = "0.15.0"
+// Version is the zero-pdp release version. It defaults to "dev" and is overridden
+// at build time via -ldflags "-X github.com/gematik/zero-lab/go/pdp.Version=<v>".
+var Version = "dev"

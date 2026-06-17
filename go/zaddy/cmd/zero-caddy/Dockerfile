@@ -1,4 +1,6 @@
-FROM golang:1.25 AS builder
+FROM golang:1.26 AS builder
+
+ARG VERSION=dev
 
 WORKDIR /src
 
@@ -6,7 +8,9 @@ WORKDIR /src
 COPY . ./
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux go build ./zaddy/cmd/zero-caddy
+RUN CGO_ENABLED=0 GOOS=linux go build \
+	-ldflags "-X main.Version=${VERSION}" \
+	./zaddy/cmd/zero-caddy
 
 # based on https://github.com/caddyserver/caddy-docker/blob/master/2.9/alpine/Dockerfile
 FROM alpine:3.20
