@@ -185,6 +185,7 @@ github.com/dlclark/regexp2 v1.11.4 h1:rPYF9/LECdNymJufQKmri9gV604RvvABwgOA8un7yA
 github.com/dlclark/regexp2 v1.11.4/go.mod h1:DHkYz0B9wPfa6wondMfaivmHpzrQ3v9q8cnmRbL6yW8=
 github.com/dlclark/regexp2 v1.12.0 h1:0j4c5qQmnC6XOWNjP3PIXURXN2gWx76rd3KvgdPkCz8=
 github.com/dlclark/regexp2 v1.12.0/go.mod h1:DHkYz0B9wPfa6wondMfaivmHpzrQ3v9q8cnmRbL6yW8=
+github.com/dlclark/regexp2/v2 v2.2.1/go.mod h1:avUrQvPaLz2DrFNHJF0taWAFFX2C1GMSSoeiqFjcBmU=
 github.com/dnephin/pflag v1.0.7/go.mod h1:uxE91IoWURlOiTUIA8Mq5ZZkAv3dPUfZNaT80Zm7OQE=
 github.com/edsrzf/mmap-go v1.0.0/go.mod h1:YO35OhQPt3KJa3ryjFM5Bs14WD66h8eGKpfaBNrHW5M=
 github.com/envoyproxy/go-control-plane v0.12.0/go.mod h1:ZBTaoJ23lqITozF0M6G4/IragXCQKCnYbmlmtHvwRG0=
@@ -217,17 +218,10 @@ github.com/fzipp/gocyclo v0.6.0/go.mod h1:rXPyn8fnlpa0R2csP/31uerbiVBugk5whMdlya
 github.com/gabriel-vasile/mimetype v1.4.8/go.mod h1:ByKUIKGjh1ODkGM1asKUbQZOLGrPjydw3hYPU2YU9t8=
 github.com/gaissmai/bart v0.26.0/go.mod h1:GREWQfTLRWz/c5FTOsIw+KkscuFkIV5t8Rp7Nd1Td5c=
 github.com/gematik/zero-lab/go/brainpool v0.0.0-20250422145859-511984f81774/go.mod h1:EE2YYA5/qWFC0yjasTpAANhD9wCESvABd7zJ/edCmIM=
-github.com/gematik/zero-lab/go/brainpool v0.0.0-20260602064120-59fe4d3a6a39/go.mod h1:TaeFLI1a/MDVsD8s9QcvIBigMUB6TrwjTW07mjrfhek=
-github.com/gematik/zero-lab/go/epa v0.0.0-20260603180414-a36cd6f7f8b7/go.mod h1:rB+OJBQ1odmU3CkCEKUthKnDvB8295uVdjcHMmn7CIo=
 github.com/gematik/zero-lab/go/gemidp v0.0.0-20250422145859-511984f81774/go.mod h1:eRmGODEPFM1m14Jv+mOljwoJ0dV+AXPF81utISBdG2k=
-github.com/gematik/zero-lab/go/gemidp v0.0.0-20260602064120-59fe4d3a6a39/go.mod h1:PU21jf/wUvvbw0IOZ+7Apxyih19F8l48blAtylwYtNs=
 github.com/gematik/zero-lab/go/gempki v0.0.0-20250102154718-985761a2d60e/go.mod h1:ptVjDKLipw70z3kEuujfyktv+7bGj8kM0JjqjwskK3o=
-github.com/gematik/zero-lab/go/gempki v0.0.0-20260602064120-59fe4d3a6a39/go.mod h1:2p6l7pwoUREn0AbOp7W0nYFau7m5sIm90vuJVUjhEok=
-github.com/gematik/zero-lab/go/kon v0.0.0-20260602064120-59fe4d3a6a39/go.mod h1:rcO1+8zjF2s1jPGBfabFTcZ/0kOp1RGoZ//5YETqg+c=
 github.com/gematik/zero-lab/go/oauth v0.0.0-20250422140352-bc4b2b7a32b8/go.mod h1:lr2B7nCnRf1Wt4iQ3A8QK08PJ19tfRO7OMXXhRPTCHc=
-github.com/gematik/zero-lab/go/oauth v0.0.0-20260602064120-59fe4d3a6a39/go.mod h1:SRW1XjKOwj4d6WDxpuvopEgIPtpS3B83fGDuhSCPIW4=
 github.com/gematik/zero-lab/go/pep v0.0.0-20250417071827-e41fe1336689/go.mod h1:rkwSHhLj4ffVd/2NaMiFfN+Tj/Zsww/P34n+y/Eva38=
-github.com/gematik/zero-lab/go/pkcs12 v0.0.0-20260602064120-59fe4d3a6a39/go.mod h1:4uypW0t3Ks8BoqUbbJC9KjbDMiQ/ieN6864oNjZIi80=
 github.com/gematik/zero-lab/go/vau v0.0.0-20240918112308-8edbfb7f7338 h1:aY/00WF5OizcjWjv0h465SOamlFbSc8LV32xuBPMrfs=
 github.com/gematik/zero-lab/go/vau v0.0.0-20240918112308-8edbfb7f7338/go.mod h1:BBT3rlrP1SMrGiEtAmEyv0PWU8vRjwHJlG3X8/kL39s=
 github.com/ghodss/yaml v1.0.0/go.mod h1:4dBDuWmgqj2HViK6kFavaiC9ZROes6MMH2rRYeMEF04=
@@ -398,7 +392,6 @@ github.com/hashicorp/go-sockaddr v1.0.7/go.mod h1:FZQbEYa1pxkQ7WLpyXJ6cbjpT8q0Yg
 github.com/hashicorp/go-uuid v1.0.2/go.mod h1:6SBZvOh/SIDV7/2o3Jml5SYk/TvGqwFJ/bN7x4byOro=
 github.com/hashicorp/go-version v1.7.0/go.mod h1:fltr4n8CU8Ke44wwGCBoEymUuxUHl09ZGVZPK5anwXA=
 github.com/hashicorp/golang-lru v0.5.4/go.mod h1:iADmTwqILo4mZ8BN3D2Q6+9jd8WM5uGBxy+E8yxSoD4=
-github.com/hashicorp/golang-lru/v2 v2.0.7/go.mod h1:QeFd9opnmA6QUJc5vARoKUSoFhyfM2/ZepoAG6RGpeM=
 github.com/hashicorp/hcl v1.0.1-vault-7/go.mod h1:XYhtn6ijBSAj6n4YqAaf7RBPS4I06AItNorpy+MoQNM=
 github.com/hashicorp/serf v0.10.0/go.mod h1:bXN03oZc5xlH46k/K1qTrpXb9ERKyY1/i/N5mxvgrZw=
 github.com/hashicorp/serf v0.10.1/go.mod h1:yL2t6BqATOLGc5HF7qbFkTfXoPIY0WZdWHfEvMqbG+4=
