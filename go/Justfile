@@ -3,16 +3,16 @@ DOCKER_USER := "spilikin"
 # Shared version for the common library packages. Used only to tag the library
 # modules (go/<lib>/vX.Y.Z) so other projects can `go get` a stable version.
 # Local development resolves the libs through go.work, not these tags.
-ZERO_VERSION := "0.20.0"
+ZERO_VERSION := "0.20.1"
 # The common library modules versioned together under ZERO_VERSION. The commands
 # (epa, pdp, zaddy, ti) are versioned separately below and are not listed here.
 ZERO_LIBS := "asl bff brainpool dpop gemidp gempki kms kon nonce oauth oidf pep pkcs12"
 
 # Independent per-command versions.
-ZERO_EPA_VERSION := "0.17.0"
-ZERO_PDP_VERSION := "0.15.0"
-ZERO_CADDY_VERSION := "0.16.0"
-TI_CLI_VERSION := "0.16.0"
+ZERO_EPA_VERSION := "0.20.1"
+ZERO_PDP_VERSION := "0.20.1"
+ZERO_CADDY_VERSION := "0.20.1"
+TI_CLI_VERSION := "0.20.1"
 
 # Upstream Caddy version, derived from zaddy/go.mod (single source of truth). Used as
 # SemVer build metadata for the zero-caddy image tag, e.g. zero-caddy:0.16.0-caddy2.11.4.
