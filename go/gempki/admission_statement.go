@@ -69,12 +69,9 @@ type ProfessionInfo struct {
 	AddProfessionInfo  []byte                  `asn1:"optional"`
 }
 
-var (
-	OIDAdmissionStatement = "1.3.36.8.3.3"
-)
+var OIDAdmissionStatement = "1.3.36.8.3.3"
 
 func ParseAdmissionStatement(cert *x509.Certificate) (*AdmissionStatement, error) {
-
 	for _, ext := range cert.Extensions {
 		if ext.Id.String() == OIDAdmissionStatement {
 			as, err := parseAdmissionSyntax(ext.Value)

@@ -17,9 +17,11 @@ import (
 	"github.com/gematik/zero-lab/go/brainpool"
 )
 
-const URLTrustServiceListTest = "https://download-test.tsl.ti-dienste.de/ECC/ECC-RSA_TSL-test.xml"
-const URLTrustServiceListRef = "https://download-ref.tsl.ti-dienste.de/ECC/ECC-RSA_TSL-ref.xml"
-const URLTrustServiceListProd = "https://download.tsl.ti-dienste.de/ECC/ECC-RSA_TSL.xml"
+const (
+	URLTrustServiceListTest = "https://download-test.tsl.ti-dienste.de/ECC/ECC-RSA_TSL-test.xml"
+	URLTrustServiceListRef  = "https://download-ref.tsl.ti-dienste.de/ECC/ECC-RSA_TSL-ref.xml"
+	URLTrustServiceListProd = "https://download.tsl.ti-dienste.de/ECC/ECC-RSA_TSL.xml"
+)
 
 func IsTSLUpdateAvailable(ctx context.Context, httpClient *http.Client, url string, hash string) (bool, error) {
 	// construct sha2 url
@@ -54,7 +56,6 @@ func IsTSLUpdateAvailable(ctx context.Context, httpClient *http.Client, url stri
 }
 
 func UpdateTSL(ctx context.Context, httpClient *http.Client, tsl *TrustServiceStatusList) (*TrustServiceStatusList, error) {
-
 	updateAvailable, err := IsTSLUpdateAvailable(ctx, httpClient, tsl.Url, tsl.Hash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check for TSL update: %w", err)
@@ -142,14 +143,26 @@ const (
 	ServiceTypeCaPkc          = "http://uri.etsi.org/TrstSvc/Svctype/CA/PKC"
 	ServiceTypeCaCvc          = "http://uri.telematik/TrstSvc/Svctype/CA/CVC"
 	ServiceTypeCertstatusOcsp = "http://uri.etsi.org/TrstSvc/Svctype/Certstatus/OCSP"
+
+	// ServiceTypeTSLServiceCertChange identifies a TSPService entry that
+	// announces a *future* TSL-Signer-CA trust anchor (TUC_PKI_013, "Import
+	// TI-Vertrauensanker aus TSL"). After verifying a TSL's detached
+	// signature with the currently-trusted TSL-Signer-CA, callers can extract
+	// certs from these entries via [TSLSignerCertCandidates] and pre-stage
+	// them for verifying the next published TSL.
+	//
+	// Defined in gemSpec_PKI / gemLibPki as `STI_SRV_CERT_CHANGE`.
+	ServiceTypeTSLServiceCertChange = "http://uri.etsi.org/TrstSvc/Svctype/TSLServiceCertChange"
 )
 
 type MultiLangString struct {
 	Lang  string `xml:"http://www.w3.org/XML/1998/namespace lang,attr"`
 	Value string `xml:",chardata"`
 }
-type MultiLangStringList []MultiLangString
-type InternationalNameList []MultiLangString
+type (
+	MultiLangStringList   []MultiLangString
+	InternationalNameList []MultiLangString
+)
 
 type MultiLangUri struct {
 	Lang  string `xml:"http://www.w3.org/XML/1998/namespace lang,attr"`

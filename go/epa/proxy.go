@@ -71,7 +71,7 @@ type ProxyConfig struct {
 	// CertPool is the TLS root pool used when connecting to ePA aggregators.
 	// When nil, the session manager falls back to InsecureSkipVerify — fine for
 	// demos, wrong for anything real. Callers should populate this from the
-	// gematik TI roots (e.g. via gempki.LoadRootsEmbedded).
+	// gematik TI roots (e.g. via gempki.EmbeddedLoader{Env}.Load(ctx)).
 	CertPool *x509.CertPool `yaml:"-"`
 }
 

@@ -80,10 +80,11 @@ type cachedCertPool struct {
 // gematik PKI, so without this pool the TLS handshake to aggregators fails with
 // "certificate is not standards compliant" or "unknown authority".
 //
-// On a cache miss it matches the `ti pki` pattern (`gempki.LoadRoots` +
-// `loadTSLCached` + `roots.BuildCertPoolWithSubCAs`) and writes the assembled
-// cert DER bytes to the state store with a 24h TTL. Subsequent calls within
-// that window rebuild the pool from cached bytes — no network, no XML parse.
+// On a cache miss it loads the TI trust store via gempki's NetworkLoader,
+// fetches the TSL via loadTSLCached, assembles a pool of roots + TSL-listed
+// intermediates, and writes the DER bytes to the state store with a 24h TTL.
+// Subsequent calls within that window rebuild the pool from cached bytes —
+// no network, no XML parse.
 func epaCertPool(ctx context.Context, env epa.Env) (*x509.CertPool, error) {
 	if pool := cachedEpaCertPool(env); pool != nil {
 		return pool, nil
@@ -91,9 +92,9 @@ func epaCertPool(ctx context.Context, env epa.Env) (*x509.CertPool, error) {
 
 	httpClient := newHTTPClient()
 	gpkEnv := gempki.Environment(env)
-	roots, err := gempki.LoadRoots(ctx, httpClient, gpkEnv)
+	ts, err := gempki.NetworkLoader{Env: gpkEnv, HTTPClient: httpClient}.Load(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("loading gempki roots for %s: %w", env, err)
+		return nil, fmt.Errorf("loading gempki trust store for %s: %w", env, err)
 	}
 	def, ok := envDefs[string(env)]
 	if !ok {
@@ -104,17 +105,18 @@ func epaCertPool(ctx context.Context, env epa.Env) (*x509.CertPool, error) {
 		return nil, fmt.Errorf("loading TSL for %s: %w", env, err)
 	}
 
-	// Build the cert list ourselves so we can both build the pool and cache
-	// the DER bytes. Same order as roots.BuildCertPoolWithSubCAs.
+	// Roots first, then every CA/PKC intermediate from the TSL. The TLS
+	// handshake performs path validation, so an unused intermediate in the
+	// pool is harmless; a missing one breaks the handshake.
 	pool := x509.NewCertPool()
 	cached := cachedCertPool{}
-	for _, root := range roots.ByCommonName {
+	for _, root := range ts.Roots() {
 		pool.AddCert(root)
 		cached.CertsDER = append(cached.CertsDER, root.Raw)
 	}
-	for _, subCA := range roots.FilterValidSubCAs(tsl) {
-		pool.AddCert(subCA)
-		cached.CertsDER = append(cached.CertsDER, subCA.Raw)
+	for _, sub := range gempki.IntermediateCAsFromTSL(tsl) {
+		pool.AddCert(sub.Cert)
+		cached.CertsDER = append(cached.CertsDER, sub.Cert.Raw)
 	}
 	storeCachedEpaCertPool(env, cached)
 	return pool, nil
