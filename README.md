@@ -11,7 +11,7 @@
 
 ## License
 
-Copyright 2023-2025 gematik GmbH
+Copyright 2023-2026 gematik GmbH
 
 EUROPEAN UNION PUBLIC LICENCE v. 1.2
 
