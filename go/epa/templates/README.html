@@ -219,6 +219,34 @@
         color: var(--text);
       }
 
+      .provider-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0.5rem 0 1.75rem;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        overflow: hidden;
+        font-size: 0.9rem;
+      }
+      .provider-table th,
+      .provider-table td {
+        text-align: left;
+        padding: 0.55rem 0.85rem;
+        border-bottom: 1px solid var(--border);
+      }
+      .provider-table thead th {
+        font-weight: 600;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        background: rgba(110, 118, 129, 0.08);
+      }
+      .provider-table tbody tr:last-child td { border-bottom: none; }
+      .provider-table td code { color: var(--pink); }
+      .provider-table td:first-child { width: 4rem; }
+
       footer {
         margin-top: 4rem;
         padding-top: 1.5rem;
@@ -252,7 +280,7 @@
 
       <h2>Konzepte</h2>
       <p>
-        Die ePA ist verteilt: zwei produktive Provider-Backends speichern die Akten der Versicherten.
+        Die ePA ist verteilt: drei produktive Provider-Backends speichern die Akten der Versicherten.
         Anfragen an eine Akte müssen über einen verschlüsselten Tunnel (VAU) laufen und mit einer
         gültigen Leistungserbringer-Identität (SMC-B) autorisiert werden. Die Middleware abstrahiert all das.
       </p>
@@ -261,7 +289,7 @@
         <dd>Eine konfigurierte Identität dieser Middleware — SMC-B-Zertifikat (Arztpraxis, Krankenhaus, Apotheke) plus ePA-Umgebung (<code>dev</code>, <code>ref</code>, <code>test</code>, <code>prod</code>). Adressiert über <code>/api/proxies/{name}</code>.</dd>
 
         <dt>Provider</dt>
-        <dd>Ein ePA-Backend. Es existieren zwei produktive Provider, identifiziert durch die Nummern <code>1</code> und <code>2</code>. Welcher Provider die Akte eines Versicherten hostet, ist nicht öffentlich bekannt.</dd>
+        <dd>Ein ePA-Backend. Es existieren drei produktive Provider, identifiziert durch die Nummern <code>1</code>, <code>2</code> und <code>3</code>. Welcher Provider die Akte eines Versicherten hostet, ist nicht öffentlich bekannt.</dd>
 
         <dt>VAU</dt>
         <dd>Vertrauenswürdige Ausführungsumgebung — verschlüsselter Tunnel zum Provider, in dem die Akten-Inhalte für den Provider unsichtbar bleiben. Die Middleware öffnet pro Proxy und Provider eine VAU-Session und hält sie offen.</dd>
@@ -312,13 +340,23 @@
 
       <h2>Providers</h2>
       <p>
-        Jeder Proxy unterhält zu beiden ePA-Providern eine VAU-Session, die im Hintergrund automatisch
+        Jeder Proxy unterhält zu allen drei ePA-Providern eine VAU-Session, die im Hintergrund automatisch
         geöffnet, überwacht und erneuert wird. Diese Sessions werden für alle Insurant-Anfragen wiederverwendet,
         sodass keine Initialisierungs-Latenz pro Aufruf entsteht.
       </p>
+      <table class="provider-table">
+        <thead>
+          <tr><th>Nummer</th><th>Hostname-Muster</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>1</code></td><td><code>epa-as-1.{env}.epa4all.de</code></td></tr>
+          <tr><td><code>2</code></td><td><code>epa-as-2.{env}.epa4all.de</code></td></tr>
+          <tr><td><code>3</code></td><td><code>epa-as-3.{env}.epa4all.de</code></td></tr>
+        </tbody>
+      </table>
       <p>
         Direkte Provider-Anfragen umgehen die automatische Akten-Auflösung und richten sich an einen
-        konkret benannten Provider <code>{n} = 1 | 2</code>:
+        konkret benannten Provider <code>{n} = 1 | 2 | 3</code>:
       </p>
       <ul>
         <li><code>/api/proxies/{name}/providers/{n}/…</code> — unverschlüsselt zum Provider (für öffentliche Endpunkte wie Informationen oder Status)</li>
@@ -330,7 +368,7 @@
       {{ template "curl" (.Curl (.URL "/api/proxies/%s/providers" (index .ProxyInfos 0).Name)) }}
 
       <p class="caption">Antwort <span class="status">200 OK · application/json</span></p>
-      {{ template "json" "[\n  {\n    \"number\": 1,\n    \"baseURL\": \"https://epa-as-1.dev.epa4all.de\",\n    \"sessionOpenedAt\": \"2026-05-27T20:44:34+02:00\"\n  },\n  {\n    \"number\": 2,\n    \"baseURL\": \"https://epa-as-2.dev.epa4all.de\",\n    \"sessionOpenedAt\": \"2026-05-27T20:44:37+02:00\"\n  }\n]" }}
+      {{ template "json" "[\n  {\n    \"number\": 1,\n    \"baseURL\": \"https://epa-as-1.dev.epa4all.de\",\n    \"sessionOpenedAt\": \"2026-05-27T20:44:34+02:00\"\n  },\n  {\n    \"number\": 2,\n    \"baseURL\": \"https://epa-as-2.dev.epa4all.de\",\n    \"sessionOpenedAt\": \"2026-05-27T20:44:37+02:00\"\n  },\n  {\n    \"number\": 3,\n    \"baseURL\": \"https://epa-as-3.dev.epa4all.de\",\n    \"sessionOpenedAt\": \"2026-05-27T20:44:39+02:00\"\n  }\n]" }}
 
       <div class="endpoint"><span class="method">GET</span><span>/api/proxies/{name}/providers/{n}/information/api/v1/ehr/consentdecisions</span></div>
       <p>
@@ -366,6 +404,7 @@
       </p>
       {{ template "curl" (.Curl (.URL "/api/proxies/%s/providers/1/vau/VAU-Status" (index .ProxyInfos 0).Name)) }}
       {{ template "curl" (.Curl (.URL "/api/proxies/%s/providers/2/vau/VAU-Status" (index .ProxyInfos 0).Name)) }}
+      {{ template "curl" (.Curl (.URL "/api/proxies/%s/providers/3/vau/VAU-Status" (index .ProxyInfos 0).Name)) }}
 
       <p class="caption">Antwort <span class="status">200 OK · application/json</span></p>
       {{ template "json" "{\n  \"VAU-Type\": \"epa\",\n  \"VAU-Version\": \"v-4.31.617 Release\",\n  \"User-Authentication\": \"TID:3-SMC-B-Testkarte--883110000153440\",\n  \"KeyID\": \"9cbdf2107ae39c4705f9b41ab22d79e6f14039ee92e2ac61ac5145e6748ee208\",\n  \"Connection-Start\": \"2026-05-27T18:44:34.614738Z\"\n}" }}
@@ -377,7 +416,7 @@
       </p>
       <p>So läuft eine Anfrage intern ab:</p>
       <ol>
-        <li>Erste Anfrage für eine KVNR: die Middleware fragt parallel beide Provider, welcher die Akte hält.</li>
+        <li>Erste Anfrage für eine KVNR: die Middleware fragt parallel alle Provider, welcher die Akte hält.</li>
         <li>Beim zuständigen Provider erzeugt sie eine Befugnis (Entitlement) für den im Proxy konfigurierten Leistungserbringer.</li>
         <li>Das Mapping <em>KVNR → Provider</em> wird gecached, sodass Folge-Anfragen direkt zum richtigen Backend gehen.</li>
         <li>Die Anfrage wird inklusive Method, Header, Query und Body durch den VAU-Tunnel weitergeleitet; die Antwort wird transparent zurückgegeben.</li>
@@ -411,10 +450,10 @@
       <p>
         Fehler werden mit passenden HTTP-Statuscodes signalisiert. Direkte Provider-Antworten werden 1:1 durchgereicht
         (siehe das <code>404</code>-Beispiel oben bei den Consent-Entscheidungen).
-        Schlägt die automatische Akten-Auflösung über die <code>/insurants/{kvnr}/vau/…</code>-Route fehl, antwortet die Middleware mit einem zusammengesetzten Fehler beider Provider:
+        Schlägt die automatische Akten-Auflösung über die <code>/insurants/{kvnr}/vau/…</code>-Route fehl, antwortet die Middleware mit einem zusammengesetzten Fehler aller Provider:
       </p>
       <p class="caption">Beispiel — unbekannte KVNR <span class="status">502 Bad Gateway · application/json</span></p>
-      {{ template "json" "{\n  \"errors\": [\n    {\n      \"error\": \"provider_error\",\n      \"error_description\": \"http error: 400, error code: malformedRequest, error detail: \",\n      \"provider\": 2\n    },\n    {\n      \"error\": \"provider_error\",\n      \"error_description\": \"http error: 400, error code: malformedRequest, error detail: \",\n      \"provider\": 1\n    }\n  ]\n}" }}
+      {{ template "json" "{\n  \"errors\": [\n    {\n      \"error\": \"provider_error\",\n      \"error_description\": \"http error: 400, error code: malformedRequest, error detail: \",\n      \"provider\": 2\n    },\n    {\n      \"error\": \"provider_error\",\n      \"error_description\": \"http error: 400, error code: malformedRequest, error detail: \",\n      \"provider\": 1\n    },\n    {\n      \"error\": \"provider_error\",\n      \"error_description\": \"http error: 400, error code: malformedRequest, error detail: \",\n      \"provider\": 3\n    }\n  ]\n}" }}
 
       <footer>ePA Middleware · gematik</footer>
     </div>

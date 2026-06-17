@@ -4,8 +4,8 @@ go 1.25.8
 
 require (
 	github.com/caddyserver/caddy/v2 v2.11.4
-	github.com/gematik/zero-lab/go/asl v0.0.0-20260602064120-59fe4d3a6a39
-	github.com/gematik/zero-lab/go/pep v0.0.0-20260602064120-59fe4d3a6a39
+	github.com/gematik/zero-lab/go/asl v0.0.0-20260603180414-a36cd6f7f8b7
+	github.com/gematik/zero-lab/go/pep v0.0.0-20260603180414-a36cd6f7f8b7
 )
 
 require (
@@ -46,8 +46,8 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.2 // indirect
-	github.com/gematik/zero-lab/go/brainpool v0.0.0-20260602064120-59fe4d3a6a39 // indirect
-	github.com/gematik/zero-lab/go/dpop v0.0.0-20260602064120-59fe4d3a6a39 // indirect
+	github.com/gematik/zero-lab/go/brainpool v0.0.0-20260603180414-a36cd6f7f8b7 // indirect
+	github.com/gematik/zero-lab/go/dpop v0.0.0-20260603180414-a36cd6f7f8b7 // indirect
 	github.com/go-chi/chi/v5 v5.3.0 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
@@ -166,7 +166,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.52.0 // indirect
 	golang.org/x/crypto/x509roots/fallback v0.0.0-20260602072539-e2ffffe738fb // indirect
-	golang.org/x/exp v0.0.0-20260529124908-c761662dc8c9 // indirect
+	golang.org/x/exp v0.0.0-20260603202125-055de637280b // indirect
 	golang.org/x/mod v0.36.0 // indirect
 	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
