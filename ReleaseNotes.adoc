@@ -4,24 +4,54 @@ This lab project ist yet to yield a first release. Stay tuned!
 
 == Versioning
 
-The `go/` workspace contains four independently versioned **products** and a set of
-internal **libraries**.
+The model balances frictionless local development against stable, installable builds.
 
-Products (`zero-epa`, `zero-pdp`, `zero-caddy`, `ti` CLI) are versioned independently.
-The version numbers live as variables in `go/Justfile`
-(`ZERO_EPA_VERSION`, `ZERO_PDP_VERSION`, `ZERO_CADDY_VERSION`, `TI_CLI_VERSION`) and are
-the single source of truth. They are injected into the binaries at build time via
-`-ldflags "-X <pkg>.Version=<v>"` — `just build-<product>` for local builds and the
-`--build-arg VERSION=...` passed by `just docker-build-<product>` for images. The
-in-source `Version` symbols default to `"dev"` for plain `go build`.
+=== Local development (go.work)
 
-A release is marked with a per-product, annotated git tag created from the Justfile var:
-`zero-epa/vX.Y.Z`, `zero-pdp/vX.Y.Z`, `zero-caddy/vX.Y.Z`, `ti/vX.Y.Z`
-(`just tag-<product>`, or `just tag` for all four; `just push-tags` to publish). These are
-release markers only — they are deliberately not Go module version tags.
+The tracked `go.work` workspace resolves every in-repo module from its local source. Edit any
+library (e.g. `brainpool`) and the change is immediately used by every command (e.g. `ti`)
+when you build, test, or run inside the workspace — no version bumps, no go.mod edits.
 
-The library modules (brainpool, gempki, oauth, oidf, dpop, pep, nonce, kms, kon, pkcs12,
-gemidp, asl, bff) are **not** versioned or tagged. They are resolved locally through the
-tracked `go.work` workspace, so the commit pseudo-versions in their `go.mod` `require`
-blocks are cosmetic. Run `go work sync` (and `just tidy`) to keep them aligned; never
-hand-edit those pseudo-versions.
+=== Commands (independent versions, installable)
+
+The commands `zero-epa`, `zero-pdp`, `zero-caddy` and the `ti` CLI are versioned independently
+via the `ZERO_EPA_VERSION`, `ZERO_PDP_VERSION`, `ZERO_CADDY_VERSION` and `TI_CLI_VERSION`
+variables in `go/Justfile`. The version is injected at build time with
+`-ldflags "-X <pkg>.Version=<v>"` (`just build-<cmd>` locally, or `--build-arg VERSION=...`
+into `just docker-build-<cmd>`); the in-source `Version` defaults to `"dev"` for a plain
+`go build`. `zero-caddy` combines its version with the upstream Caddy version as SemVer build
+metadata, e.g. the binary reports `zero-caddy 0.16.0+caddy2.11.4` and the Docker image is
+tagged `zero-caddy:0.16.0-caddy2.11.4` (`+` is illegal in Docker tags). Its go-installable
+module tag stays plain (`go/zaddy/v0.16.0`).
+
+A command release is marked with a **canonical Go module tag** `go/<module>/vX.Y.Z`
+(`just tag-<cmd>`, or `just tag` for all four). Because these are real module tags, the
+commands are installable directly:
+
+  go install github.com/gematik/zero-lab/go/ti@go/ti/v0.16.0
+  go install github.com/gematik/zero-lab/go/epa/cmd/zero-epa@go/epa/v0.17.0
+
+=== Libraries (pseudo-versions + sync)
+
+Library modules are referenced by commit pseudo-versions in `go.mod`. A tagged command build
+runs **outside** the workspace (`go install …@<tag>` ignores `go.work`), so it resolves the
+libraries from those `require` lines. To make a tagged command pick up a library change:
+
+. Edit the library; build/test/run locally (go.work uses it directly).
+. Commit and **push** the library change to the branch.
+. `just sync` — repins every in-repo `require` to the branch tip (fetches the just-pushed
+  commits and records their pseudo-versions). Commit the `go.mod`/`go.sum` updates.
+. `just tag-<cmd>` and `just push-tags`.
+. `go install …/<cmd>@<tag>` now builds the command at its tag with the updated library code.
+
+`just sync REF=<branch|commit|tag>` targets a specific ref (default: current branch).
+
+=== Optional: clean library semver for external consumers
+
+`ZERO_VERSION` + `just tag-zero` cut one shared semver across the library modules
+(`go/<lib>/vZERO_VERSION`), so other projects can `go get github.com/gematik/zero-lab/go/<lib>@vZERO_VERSION`
+instead of a pseudo-version. This is independent of the per-change `sync` flow above.
+
+`just tidy` only syncs `go.mod`/`go.sum` to imports (no version changes). `just upgrade`
+deliberately bumps external dependencies to latest; after running it, re-run `just sync`
+before tagging a release.

@@ -1,8 +1,22 @@
 DOCKER_USER := "spilikin"
+
+# Shared version for the common library packages. Used only to tag the library
+# modules (go/<lib>/vX.Y.Z) so other projects can `go get` a stable version.
+# Local development resolves the libs through go.work, not these tags.
+ZERO_VERSION := "0.20.0"
+# The common library modules versioned together under ZERO_VERSION. The commands
+# (epa, pdp, zaddy, ti) are versioned separately below and are not listed here.
+ZERO_LIBS := "asl bff brainpool dpop gemidp gempki kms kon nonce oauth oidf pep pkcs12"
+
+# Independent per-command versions.
 ZERO_EPA_VERSION := "0.17.0"
 ZERO_PDP_VERSION := "0.15.0"
 ZERO_CADDY_VERSION := "0.16.0"
 TI_CLI_VERSION := "0.16.0"
+
+# Upstream Caddy version, derived from zaddy/go.mod (single source of truth). Used as
+# SemVer build metadata for the zero-caddy image tag, e.g. zero-caddy:0.16.0-caddy2.11.4.
+CADDY_VERSION := `grep -E 'caddyserver/caddy/v2 v[0-9]' zaddy/go.mod | head -1 | awk '{print $2}' | sed 's/^v//'`
 
 # Display available commands
 info:
@@ -38,14 +52,14 @@ docker-push-epa: docker-build-epa
     docker push "{{DOCKER_USER}}/zero-epa:{{ZERO_EPA_VERSION}}"
     docker push "{{DOCKER_USER}}/zero-epa:latest"
 
-# Build the zero-caddy docker image
+# Build the zero-caddy docker image (tag combines our version + Caddy version)
 docker-build-caddy:
-    docker build --platform linux/amd64 --build-arg VERSION={{ZERO_CADDY_VERSION}} -t "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}" -f ./zaddy/cmd/zero-caddy/Dockerfile .
-    docker tag "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}" "{{DOCKER_USER}}/zero-caddy:latest"
+    docker build --platform linux/amd64 --build-arg VERSION={{ZERO_CADDY_VERSION}} -t "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}-caddy{{CADDY_VERSION}}" -f ./zaddy/cmd/zero-caddy/Dockerfile .
+    docker tag "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}-caddy{{CADDY_VERSION}}" "{{DOCKER_USER}}/zero-caddy:latest"
 
 # Push the zero-caddy docker image to the docker hub
 docker-push-caddy: docker-build-caddy
-    docker push "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}"
+    docker push "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}-caddy{{CADDY_VERSION}}"
     docker push "{{DOCKER_USER}}/zero-caddy:latest"
 
 # Build the zero-pdp docker image
@@ -58,35 +72,73 @@ docker-push-pdp: docker-build-pdp
     docker push "{{DOCKER_USER}}/zero-pdp:{{ZERO_PDP_VERSION}}"
     docker push "{{DOCKER_USER}}/zero-pdp:latest"
 
-# Tag the current commit with all four product release versions
+# Tag the current commit with all four command release versions
 tag: tag-epa tag-pdp tag-caddy tag-ti
 
-# Tag the current commit as a zero-epa release
+# Tag the current commit as a zero-epa (go/epa module) release — installable with
+#   go install github.com/gematik/zero-lab/go/epa/cmd/zero-epa@go/epa/v{{ZERO_EPA_VERSION}}
 tag-epa:
-    git tag -a "zero-epa/v{{ZERO_EPA_VERSION}}" -m "zero-epa v{{ZERO_EPA_VERSION}}"
+    git tag -a "go/epa/v{{ZERO_EPA_VERSION}}" -m "zero-epa v{{ZERO_EPA_VERSION}}"
 
-# Tag the current commit as a zero-pdp release
+# Tag the current commit as a zero-pdp (go/pdp module) release
 tag-pdp:
-    git tag -a "zero-pdp/v{{ZERO_PDP_VERSION}}" -m "zero-pdp v{{ZERO_PDP_VERSION}}"
+    git tag -a "go/pdp/v{{ZERO_PDP_VERSION}}" -m "zero-pdp v{{ZERO_PDP_VERSION}}"
 
-# Tag the current commit as a zero-caddy release
+# Tag the current commit as a zero-caddy (go/zaddy module) release
 tag-caddy:
-    git tag -a "zero-caddy/v{{ZERO_CADDY_VERSION}}" -m "zero-caddy v{{ZERO_CADDY_VERSION}}"
+    git tag -a "go/zaddy/v{{ZERO_CADDY_VERSION}}" -m "zero-caddy v{{ZERO_CADDY_VERSION}}"
 
-# Tag the current commit as a ti CLI release
+# Tag the current commit as a ti CLI (go/ti module) release — installable with
+#   go install github.com/gematik/zero-lab/go/ti@go/ti/v{{TI_CLI_VERSION}}
 tag-ti:
-    git tag -a "ti/v{{TI_CLI_VERSION}}" -m "ti v{{TI_CLI_VERSION}}"
+    git tag -a "go/ti/v{{TI_CLI_VERSION}}" -m "ti v{{TI_CLI_VERSION}}"
 
-# Push all local product tags to origin
+# Tag the current commit with the zero-lab core version for every library module
+tag-zero:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for lib in {{ZERO_LIBS}}; do
+        git tag -a "go/$lib/v{{ZERO_VERSION}}" -m "zero-lab $lib v{{ZERO_VERSION}}"
+    done
+
+# Push all local tags (product + zero-lab core) to origin
 push-tags:
     git push origin --tags
 
-# Update and tidy all go modules
+# Repin every in-repo (zero-lab/go) require to the latest commit on a git ref
+# (default: current branch) so that tagged command builds — `go install ...@<tag>`,
+# which ignore go.work — pick up the latest library code. PUSH library changes first:
+# this fetches the modules from the remote at REF and records their pseudo-versions.
+sync REF=`git rev-parse --abbrev-ref HEAD`:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for dir in $(find . -name 'go.mod' -not -path './libzero/*' -exec dirname {} \;); do
+        ( cd "$dir"
+          self=$(awk 'NR==1{print $2}' go.mod)
+          for dep in $(grep -oE 'github\.com/gematik/zero-lab/go/[a-zA-Z0-9]+' go.mod | sort -u); do
+              [ "$dep" = "$self" ] && continue
+              echo "==> $self: get $dep@{{REF}}"
+              go get "$dep@{{REF}}"
+          done )
+    done
+    go work sync
+
+# Tidy all go modules: sync go.mod/go.sum to imports. Does NOT upgrade versions.
 tidy:
     #!/usr/bin/env bash
     set -euo pipefail
     for dir in $(find . -name 'go.mod' -not -path './libzero/*' -exec dirname {} \; | sort); do
         echo "==> Tidying $dir"
+        (cd "$dir" && go mod tidy)
+    done
+
+# Upgrade all external dependencies to their latest versions, then tidy. Deliberate
+# action — re-floats deps, so re-run `just sync` before tagging a release.
+upgrade:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for dir in $(find . -name 'go.mod' -not -path './libzero/*' -exec dirname {} \; | sort); do
+        echo "==> Upgrading $dir"
         (cd "$dir" && go get -u ./... && go mod tidy)
     done
 
