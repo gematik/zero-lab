@@ -31,7 +31,7 @@ RUN set -eux; \
 	wget -O /usr/share/caddy/index.html "https://github.com/caddyserver/dist/raw/33ae08ff08d168572df2956ed14fbc4949880d94/welcome/index.html"
 
 # https://github.com/caddyserver/caddy/releases
-ENV CADDY_VERSION=v2.9.1
+ENV CADDY_VERSION=v2.11.4
 
 COPY --from=builder /src/zero-caddy /srv/zero-caddy
 RUN addgroup -g 1000 -S caddy
