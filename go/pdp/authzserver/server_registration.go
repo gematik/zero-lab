@@ -7,16 +7,8 @@ import (
 // Implements https://datatracker.ietf.org/doc/html/rfc7591
 func (s *Server) RegistrationEndpoint(w http.ResponseWriter, r *http.Request) error {
 	if r.Header.Get("Content-Type") != "application/json" {
-		return &Error{
-			HttpStatus:  http.StatusUnsupportedMediaType,
-			Code:        "unsupported_media_type",
-			Description: "content type must be application/json",
-		}
+		return oauthErr(http.StatusUnsupportedMediaType, "unsupported_media_type", "content type must be application/json")
 	}
 
-	return &Error{
-		HttpStatus:  http.StatusNotImplemented,
-		Code:        "not_implemented",
-		Description: "registration endpoint is not implemented",
-	}
+	return oauthErr(http.StatusNotImplemented, "not_implemented", "registration endpoint is not implemented")
 }
