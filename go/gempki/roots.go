@@ -349,11 +349,11 @@ func (r Roots) FilterValidSubCAs(tsl *TrustServiceStatusList) []*x509.Certificat
 				// check time validity of CA certificate
 				now := time.Now()
 				if now.Before(caCert.NotBefore) {
-					slog.Warn("CA certificate not valid yet, skipping", "ca", caCert.Subject.CommonName, "notBefore", caCert.NotBefore)
+					slog.Debug("CA certificate not valid yet, skipping", "ca", caCert.Subject.CommonName, "notBefore", caCert.NotBefore)
 					continue
 				}
 				if now.After(caCert.NotAfter) {
-					slog.Warn("CA certificate expired, skipping", "ca", caCert.Subject.CommonName, "notAfter", caCert.NotAfter)
+					slog.Debug("CA certificate expired, skipping", "ca", caCert.Subject.CommonName, "notAfter", caCert.NotAfter)
 					continue
 				}
 

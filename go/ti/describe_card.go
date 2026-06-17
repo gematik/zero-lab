@@ -9,14 +9,14 @@ import (
 )
 
 func newDescribeCardCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "card <card-handle>",
 		Short: "Show detailed card information",
 		Long:  "Show detailed card information.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
-			config, err := loadDotkon()
+			config, err := loadConnectorConfig()
 			if err != nil {
 				return err
 			}
@@ -24,6 +24,8 @@ func newDescribeCardCmd() *cobra.Command {
 			return runDescribeCard(cmd.Context(), config, cardHandle)
 		},
 	}
+	addConnectorConfigFlag(cmd)
+	return cmd
 }
 
 func runDescribeCard(ctx context.Context, config *kon.Dotkon, cardHandle string) error {

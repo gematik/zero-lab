@@ -50,6 +50,7 @@ func runProbe(def envDef) error {
 		{Label: "eRX", URL: def.ERezept},
 		{Label: "ePA 1", URL: def.EPAAS1},
 		{Label: "ePA 2", URL: def.EPAAS2},
+		{Label: "ePA 3", URL: def.EPAAS3},
 	}
 
 	results := make([]probeResult, len(targets))
