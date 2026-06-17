@@ -3,10 +3,10 @@ github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 h1:5RVFMOWjMyRy8cARdy79nAmgYw3hK/4HUq48LQ6Wwqo=
 github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1/go.mod h1:ZXNYxsqcloTdSy/rNShjYzMhyjf0LaoftYK0p+A3h40=
-github.com/gematik/zero-lab/go/brainpool v0.0.0-20260603180414-a36cd6f7f8b7 h1:S/7pnjA8xPN2sjcVH0G4Nz7qHT92DOX4EqIMQid0SOk=
-github.com/gematik/zero-lab/go/brainpool v0.0.0-20260603180414-a36cd6f7f8b7/go.mod h1:Ir16b/cT1tgUZP/A4qRW8UWnnOD8AElT6g5jlM732u4=
-github.com/gematik/zero-lab/go/oauth v0.0.0-20260603180414-a36cd6f7f8b7 h1:t0dyPxrS/ILJEKp7Ow5zX/MUvUi9DnRQ+W00r52vwUY=
-github.com/gematik/zero-lab/go/oauth v0.0.0-20260603180414-a36cd6f7f8b7/go.mod h1:2gJq3AxevHnq+AgkAIFs8ss8UiP/bh5J8nsMwLPwvMQ=
+github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58 h1:wxMP0D2TuSAlR+WNkYeHHvXDj2SWBWZ6BZwOaRUMHUI=
+github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58/go.mod h1:R/2lWeEB3SqwjVXuLDd++e1akc/fK/O79aF7fmxw3xY=
+github.com/gematik/zero-lab/go/oauth v0.0.0-20260617184140-1440fec98b58 h1:KQ9wHxKrxpR5DmzBXy6FvQv/WaBU4vT8zMrjYuaY3Rk=
+github.com/gematik/zero-lab/go/oauth v0.0.0-20260617184140-1440fec98b58/go.mod h1:jjMGmst3PfIVl+8P1CbIhT6KPi1XjLhtC+Rewkyr6pE=
 github.com/goccy/go-json v0.10.6 h1:p8HrPJzOakx/mn/bQtjgNjdTcN+/S6FcG2CTtQOrHVU=
 github.com/goccy/go-json v0.10.6/go.mod h1:oq7eo15ShAhp70Anwd5lgX2pLfOS3QCiwU/PULtXL6M=
 github.com/lestrrat-go/blackmagic v1.0.4 h1:IwQibdnf8l2KoO+qC3uT4OaTWsW7tuRQXy9TRN9QanA=

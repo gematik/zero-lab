@@ -1,11 +1,11 @@
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/gematik/zero-lab/go/brainpool v0.0.0-20260603180414-a36cd6f7f8b7 h1:S/7pnjA8xPN2sjcVH0G4Nz7qHT92DOX4EqIMQid0SOk=
-github.com/gematik/zero-lab/go/brainpool v0.0.0-20260603180414-a36cd6f7f8b7/go.mod h1:Ir16b/cT1tgUZP/A4qRW8UWnnOD8AElT6g5jlM732u4=
-github.com/gematik/zero-lab/go/gempki v0.0.0-20260603180414-a36cd6f7f8b7 h1:6B4CNfiOSF5KrBEIlb9lEtCoRG5YRloI69ZsKxkGFf8=
-github.com/gematik/zero-lab/go/gempki v0.0.0-20260603180414-a36cd6f7f8b7/go.mod h1:9reO6m6ModqC+PF5EdKVZcXuvEwelObxUi4PZfSqIG8=
-github.com/gematik/zero-lab/go/pkcs12 v0.0.0-20260603180414-a36cd6f7f8b7 h1:cSd1DHo4d26VTw4cIkW64hE74TwEcBb01RoAFbdHk78=
-github.com/gematik/zero-lab/go/pkcs12 v0.0.0-20260603180414-a36cd6f7f8b7/go.mod h1:z5JeoUjPqp2EliR9wPZDx+qAcTrUehI81C+xwxCiH38=
+github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58 h1:wxMP0D2TuSAlR+WNkYeHHvXDj2SWBWZ6BZwOaRUMHUI=
+github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58/go.mod h1:R/2lWeEB3SqwjVXuLDd++e1akc/fK/O79aF7fmxw3xY=
+github.com/gematik/zero-lab/go/gempki v0.0.0-20260617184140-1440fec98b58 h1:LzTOuWgazVGYJaszWxyfmoUc6dS68V4iX43a2o2qqFU=
+github.com/gematik/zero-lab/go/gempki v0.0.0-20260617184140-1440fec98b58/go.mod h1:mBZDsBmzJJpXBKEP6a+pkjMQly8TIrSmXUBCFWgx7AQ=
+github.com/gematik/zero-lab/go/pkcs12 v0.0.0-20260617184140-1440fec98b58 h1:/kJbfeiUr/siSyjwwi9Tbv5D7+gzOCnoyx26Nnj589s=
+github.com/gematik/zero-lab/go/pkcs12 v0.0.0-20260617184140-1440fec98b58/go.mod h1:VNHdfm5gWuJAldR08RHteNOQaWXbuC2MtJbWCOIByVo=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=

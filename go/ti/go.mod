@@ -4,12 +4,12 @@ go 1.26.4
 
 require (
 	github.com/alecthomas/chroma/v2 v2.27.0
-	github.com/gematik/zero-lab/go/brainpool v0.0.0-20260603180414-a36cd6f7f8b7
-	github.com/gematik/zero-lab/go/epa v0.0.0-20260603180414-a36cd6f7f8b7
-	github.com/gematik/zero-lab/go/gemidp v0.0.0-20260603180414-a36cd6f7f8b7
-	github.com/gematik/zero-lab/go/gempki v0.0.0-20260603180414-a36cd6f7f8b7
-	github.com/gematik/zero-lab/go/kon v0.0.0-20260603180414-a36cd6f7f8b7
-	github.com/gematik/zero-lab/go/pkcs12 v0.0.0-20260603180414-a36cd6f7f8b7
+	github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58
+	github.com/gematik/zero-lab/go/epa v0.0.0-20260617184140-1440fec98b58
+	github.com/gematik/zero-lab/go/gemidp v0.0.0-20260617184140-1440fec98b58
+	github.com/gematik/zero-lab/go/gempki v0.0.0-20260617184140-1440fec98b58
+	github.com/gematik/zero-lab/go/kon v0.0.0-20260617184140-1440fec98b58
+	github.com/gematik/zero-lab/go/pkcs12 v0.0.0-20260617184140-1440fec98b58
 	github.com/phsym/console-slog v0.3.1
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/term v0.44.0
@@ -23,7 +23,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.2 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
-	github.com/gematik/zero-lab/go/oauth v0.0.0-20260603180414-a36cd6f7f8b7 // indirect
+	github.com/gematik/zero-lab/go/oauth v0.0.0-20260617184140-1440fec98b58 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.30.3 // indirect
@@ -42,7 +42,6 @@ require (
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect

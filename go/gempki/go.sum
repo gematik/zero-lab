@@ -1,8 +1,8 @@
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/gematik/zero-lab/go/brainpool v0.0.0-20260603180414-a36cd6f7f8b7 h1:S/7pnjA8xPN2sjcVH0G4Nz7qHT92DOX4EqIMQid0SOk=
-github.com/gematik/zero-lab/go/brainpool v0.0.0-20260603180414-a36cd6f7f8b7/go.mod h1:Ir16b/cT1tgUZP/A4qRW8UWnnOD8AElT6g5jlM732u4=
+github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58 h1:wxMP0D2TuSAlR+WNkYeHHvXDj2SWBWZ6BZwOaRUMHUI=
+github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58/go.mod h1:R/2lWeEB3SqwjVXuLDd++e1akc/fK/O79aF7fmxw3xY=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
 github.com/kr/pretty v0.3.1/go.mod h1:hoEshYVHaxMs3cyo3Yncou5ZscifuDolrwPKZanG3xk=
 github.com/kr/text v0.2.0 h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=

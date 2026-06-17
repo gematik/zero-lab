@@ -4,8 +4,8 @@ github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/fxamacker/cbor/v2 v2.9.2 h1:X4Ksno9+x3cz0TZv69ec1hxP/+tymuR8PXQJyDwfh78=
 github.com/fxamacker/cbor/v2 v2.9.2/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
-github.com/gematik/zero-lab/go/brainpool v0.0.0-20260603180414-a36cd6f7f8b7 h1:S/7pnjA8xPN2sjcVH0G4Nz7qHT92DOX4EqIMQid0SOk=
-github.com/gematik/zero-lab/go/brainpool v0.0.0-20260603180414-a36cd6f7f8b7/go.mod h1:Ir16b/cT1tgUZP/A4qRW8UWnnOD8AElT6g5jlM732u4=
+github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58 h1:wxMP0D2TuSAlR+WNkYeHHvXDj2SWBWZ6BZwOaRUMHUI=
+github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58/go.mod h1:R/2lWeEB3SqwjVXuLDd++e1akc/fK/O79aF7fmxw3xY=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/segmentio/ksuid v1.0.4 h1:sBo2BdShXjmcugAMwjugoGUdUV0pcxY5mW4xKRn3v4c=
