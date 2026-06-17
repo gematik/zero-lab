@@ -2,13 +2,11 @@ package authzserver
 
 import (
 	"net/http"
-
-	"github.com/labstack/echo/v4"
 )
 
 // Implements https://datatracker.ietf.org/doc/html/rfc7591
-func (s *Server) RegistrationEndpoint(c echo.Context) error {
-	if c.Request().Header.Get("Content-Type") != "application/json" {
+func (s *Server) RegistrationEndpoint(w http.ResponseWriter, r *http.Request) error {
+	if r.Header.Get("Content-Type") != "application/json" {
 		return &Error{
 			HttpStatus:  http.StatusUnsupportedMediaType,
 			Code:        "unsupported_media_type",

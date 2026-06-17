@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/labstack/echo/v4"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jws"
@@ -112,8 +111,6 @@ func TestJWTAssertion(t *testing.T) {
 
 	t.Logf("Assertion: %s", string(assertionBytes))
 
-	echoServer := echo.New()
-
 	req, _ := http.NewRequest("POST", "http://127.0.0.1/token", nil)
 	resp := httptest.NewRecorder()
 
@@ -141,8 +138,7 @@ func TestJWTAssertion(t *testing.T) {
 	encodedForm := req.Form.Encode()
 	req.Body = io.NopCloser(strings.NewReader(encodedForm))
 
-	e := echoServer.NewContext(req, resp)
-	if err := server.TokenEndpoint(e); err != nil {
+	if err := server.TokenEndpoint(resp, req); err != nil {
 		t.Fatalf("Failed to call TokenEndpoint: %v", err)
 	}
 }

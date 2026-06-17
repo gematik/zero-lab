@@ -21,8 +21,6 @@ import (
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
 	"github.com/go-playground/validator/v10"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
@@ -254,56 +252,38 @@ type TokenResponse struct {
 	RefreshExpiresIn int    `json:"refresh_expires_in,omitempty"`
 }
 
-func ErrorHandlerMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		err := next(c)
-		if err != nil {
-			slog.Error("Error", "error", err, "path", c.Path(), "remote_addr", c.RealIP(), "headers", c.Request().Header)
-
-			if authzError, ok := err.(*Error); ok {
-				return c.JSON(authzError.HttpStatus, authzError)
-			} else if echoErr, ok := err.(*echo.HTTPError); ok {
-				return c.JSON(echoErr.Code, &Error{
-					HttpStatus:  echoErr.Code,
-					Code:        "server_error",
-					Description: echoErr.Message.(string),
-				})
-			} else {
-				return c.JSON(http.StatusInternalServerError, &Error{
-					HttpStatus:  http.StatusInternalServerError,
-					Code:        "server_error",
-					Description: err.Error(),
-				})
-			}
-		}
-		return nil
+// MountRoutes registers the authorization server routes on the given ServeMux. Each handler
+// is wrapped by s.handle, which renders returned errors as OAuth JSON (RFC 6749 §5.2).
+func (s *Server) MountRoutes(mux *http.ServeMux) {
+	routes := []struct {
+		method  string
+		path    string
+		handler handlerFunc
+	}{
+		{http.MethodGet, s.endpointPaths.AuthorizationServerMetadata, s.MetadataEndpoint},
+		{http.MethodGet, s.endpointPaths.Jwks, s.JWKS},
+		{http.MethodGet, s.endpointPaths.OpenIDProviders, s.OpenidProvidersEndpoint},
+		{http.MethodGet, s.endpointPaths.Authorization, s.AuthorizationEndpoint},
+		{http.MethodPost, s.endpointPaths.PushedAuthorizationRequest, s.PAREndpoint},
+		{http.MethodGet, s.endpointPaths.OPCallback, s.OPCallbackEndpoint},
+		{http.MethodGet, s.endpointPaths.GemIDPCallback, s.OPCallbackEndpoint},
+		{http.MethodPost, s.endpointPaths.Token, s.TokenEndpoint},
+		{http.MethodGet, s.endpointPaths.Nonce, s.NonceEndpoint},
+		{http.MethodHead, s.endpointPaths.Nonce, s.NonceEndpoint},
+		{http.MethodPost, s.endpointPaths.Registration, s.RegistrationEndpoint},
 	}
-}
-
-func (s *Server) MountRoutes(group *echo.Group) {
-	group.Use(
-		middleware.Logger(),
-		ErrorHandlerMiddleware,
-	)
-
-	group.GET(s.endpointPaths.AuthorizationServerMetadata, s.MetadataEndpoint)
-	group.GET(s.endpointPaths.Jwks, s.JWKS)
-	group.GET(s.endpointPaths.OpenIDProviders, s.OpenidProvidersEndpoint)
-	group.GET(s.endpointPaths.Authorization, s.AuthorizationEndpoint)
-	group.POST(s.endpointPaths.PushedAuthorizationRequest, s.PAREndpoint)
-	group.GET(s.endpointPaths.OPCallback, s.OPCallbackEndpoint)
-	group.GET(s.endpointPaths.GemIDPCallback, s.OPCallbackEndpoint)
-	group.POST(s.endpointPaths.Token, s.TokenEndpoint)
-	group.GET(s.endpointPaths.Nonce, s.NonceEndpoint)
-	group.HEAD(s.endpointPaths.Nonce, s.NonceEndpoint)
-	group.POST(s.endpointPaths.Registration, s.RegistrationEndpoint)
+	for _, rt := range routes {
+		mux.Handle(rt.method+" "+rt.path, s.handle(rt.handler))
+		slog.Info("registered route", "method", rt.method, "path", rt.path)
+	}
 
 	if s.oidfRelyingParty != nil {
-		group.GET(s.endpointPaths.EntityStatement, echo.WrapHandler(http.HandlerFunc(s.oidfRelyingParty.Serve)))
+		mux.Handle(http.MethodGet+" "+s.endpointPaths.EntityStatement, http.HandlerFunc(s.oidfRelyingParty.Serve))
+		slog.Info("registered route", "method", http.MethodGet, "path", s.endpointPaths.EntityStatement)
 	}
 }
 
-func redirectWithError(c echo.Context, redirectUri string, state string, err Error) error {
+func redirectWithError(w http.ResponseWriter, r *http.Request, redirectUri string, state string, err Error) error {
 	params := url.Values{}
 	if state != "" {
 		params.Add("state", state)
@@ -311,14 +291,15 @@ func redirectWithError(c echo.Context, redirectUri string, state string, err Err
 	params.Add("error", err.Code)
 	params.Add("error_description", err.Description)
 
-	return c.Redirect(http.StatusFound, redirectUri+"?"+params.Encode())
+	http.Redirect(w, r, redirectUri+"?"+params.Encode(), http.StatusFound)
+	return nil
 }
 
-func (s *Server) MetadataEndpoint(c echo.Context) error {
-	return c.JSON(http.StatusOK, s.Metadata)
+func (s *Server) MetadataEndpoint(w http.ResponseWriter, r *http.Request) error {
+	return writeJSON(w, http.StatusOK, s.Metadata)
 }
 
-func (s *Server) AuthorizationEndpoint(c echo.Context) error {
+func (s *Server) AuthorizationEndpoint(w http.ResponseWriter, r *http.Request) error {
 	session := &AuthzServerSession{
 		ID:        ksuid.New().String(),
 		CreatedAt: time.Now(),
@@ -326,7 +307,7 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 	var responseType string
 	var scope string
 
-	binderr := echo.FormFieldBinder(c).
+	binderr := newFormBinder(r).
 		MustString("response_type", &responseType).
 		MustString("client_id", &session.ClientID).
 		MustString("redirect_uri", &session.RedirectURI).
@@ -393,7 +374,7 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 
 	session.Scopes = strings.Split(scope, " ")
 	if !client.IsAllowedScopes(session.Scopes) {
-		return redirectWithError(c, session.RedirectURI, session.State, Error{
+		return redirectWithError(w, r, session.RedirectURI, session.State, Error{
 			Code:        "invalid_scope",
 			Description: fmt.Sprintf("scope not allowed: %s", strings.Join(session.Scopes, " ")),
 		})
@@ -401,7 +382,7 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 
 	opClient, err := s.GetOpenidClient(session.OPIssuer)
 	if err != nil {
-		return redirectWithError(c, session.RedirectURI, session.State, Error{
+		return redirectWithError(w, r, session.RedirectURI, session.State, Error{
 			Code:        "invalid_request",
 			Description: err.Error(),
 		})
@@ -411,7 +392,7 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 
 	if session.OPIntermediaryRedirectURI != "" {
 		if !s.clientsPolicy.IsOPIntermediaryRedirectURIAllowed(session.ClientID, session.OPIntermediaryRedirectURI) {
-			return redirectWithError(c, session.RedirectURI, session.State, Error{
+			return redirectWithError(w, r, session.RedirectURI, session.State, Error{
 				Code:        "invalid_request",
 				Description: fmt.Sprintf("OP Intermediary Redirect URI not allowed: %s, client: %s", session.OPIntermediaryRedirectURI, session.ClientID),
 			})
@@ -438,7 +419,7 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 		oidc.WithAlternateRedirectURI(opSession.RedirectURI),
 	)
 	if err != nil {
-		return redirectWithError(c, session.RedirectURI, session.State, Error{
+		return redirectWithError(w, r, session.RedirectURI, session.State, Error{
 			Code:        "server_error",
 			Description: fmt.Errorf("unable to generate auth url: %w", err).Error(),
 		})
@@ -447,7 +428,7 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 
 	session.AuthnClientSession = opSession
 	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {
-		return redirectWithError(c, session.RedirectURI, session.State, Error{
+		return redirectWithError(w, r, session.RedirectURI, session.State, Error{
 			Code:        "server_error",
 			Description: fmt.Errorf("unable to save session: %w", err).Error(),
 		})
@@ -455,10 +436,11 @@ func (s *Server) AuthorizationEndpoint(c echo.Context) error {
 
 	slog.Info("Redirecting to OpenID Provider", "auth_url", authUrl)
 
-	return c.Redirect(http.StatusFound, authUrl)
+	http.Redirect(w, r, authUrl, http.StatusFound)
+	return nil
 }
 
-func (s *Server) PAREndpoint(c echo.Context) error {
+func (s *Server) PAREndpoint(w http.ResponseWriter, r *http.Request) error {
 	requestUri := "urn:ietf:params:oauth:request_uri:" + generateNonce(64)
 	slog.Error("PAR not implemented", "request_uri", requestUri)
 	// TODO: implement PAR
@@ -484,9 +466,10 @@ func (s *Server) GetOpenidClient(issuer string) (oidc.Client, error) {
 }
 
 // OPCallbackEndpoint handles the callback from the OpenID Provider
-func (s *Server) OPCallbackEndpoint(c echo.Context) error {
+func (s *Server) OPCallbackEndpoint(w http.ResponseWriter, r *http.Request) error {
+	query := r.URL.Query()
 	// retrieve state from query
-	state := c.QueryParam("state")
+	state := query.Get("state")
 	if state == "" {
 		return &Error{
 			HttpStatus:  http.StatusBadRequest,
@@ -515,16 +498,16 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 		}
 	}
 
-	if c.QueryParam("error") != "" {
-		slog.Error("OP callback error", "query", c.QueryString())
-		return redirectWithError(c, authnSession.RedirectURI, authnSession.State, Error{
-			Code:        c.QueryParam("error"),
-			Description: c.QueryParam("error_description"),
+	if query.Get("error") != "" {
+		slog.Error("OP callback error", "query", r.URL.RawQuery)
+		return redirectWithError(w, r, authnSession.RedirectURI, authnSession.State, Error{
+			Code:        query.Get("error"),
+			Description: query.Get("error_description"),
 		})
 	}
 
 	// retrieve PKCE code from query
-	code := c.QueryParam("code")
+	code := query.Get("code")
 	if code == "" {
 		return &Error{
 			HttpStatus:  http.StatusBadRequest,
@@ -575,15 +558,15 @@ func (s *Server) OPCallbackEndpoint(c echo.Context) error {
 		params.Set("code", authzSession.Code)
 		params.Set("state", authzSession.State)
 
-		return c.Redirect(http.StatusFound, authzSession.RedirectURI+"?"+params.Encode())
+		http.Redirect(w, r, authzSession.RedirectURI+"?"+params.Encode(), http.StatusFound)
+		return nil
 	}
 
-	return c.JSON(http.StatusOK, tokenResponse)
+	return writeJSON(w, http.StatusOK, tokenResponse)
 }
 
 // TokenEndpoint handles the token request for various grant types
-func (s *Server) TokenEndpoint(c echo.Context) error {
-	r := c.Request()
+func (s *Server) TokenEndpoint(w http.ResponseWriter, r *http.Request) error {
 	if r.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
 		return &Error{
 			HttpStatus:  http.StatusBadRequest,
@@ -609,13 +592,13 @@ func (s *Server) TokenEndpoint(c echo.Context) error {
 	grantType := r.FormValue("grant_type")
 	switch grantType {
 	case GrantTypeAuthorizationCode:
-		return s.tokenEndpointAuthorizationCode(c)
+		return s.tokenEndpointAuthorizationCode(w, r)
 	case GrantTypeClientCredentials:
-		return s.tokenEndpointClientCredentials(c)
+		return s.tokenEndpointClientCredentials(w, r)
 	case GrantTypeRefreshToken:
-		return s.tokenEndpointRefreshToken(c)
+		return s.tokenEndpointRefreshToken(w, r)
 	case GrantTypeJWTBearer:
-		return s.tokenEndpointJWTBearer(c)
+		return s.tokenEndpointJWTBearer(w, r)
 	default:
 		slog.Error("Unsupported grant type", "grant_type", grantType)
 		return &Error{
@@ -627,8 +610,8 @@ func (s *Server) TokenEndpoint(c echo.Context) error {
 
 }
 
-func (s *Server) verifyClient(c echo.Context) (*ClientMetadata, *Error) {
-	formClientId := c.FormValue("client_id")
+func (s *Server) verifyClient(r *http.Request) (*ClientMetadata, *Error) {
+	formClientId := r.FormValue("client_id")
 
 	if formClientId != "" {
 		cm, err := s.clientsRegistry.GetClientMetadata(formClientId)
@@ -641,7 +624,7 @@ func (s *Server) verifyClient(c echo.Context) (*ClientMetadata, *Error) {
 		}
 
 		if cm.Type == ClientTypeConfidential {
-			formClientSecret := c.FormValue("client_secret")
+			formClientSecret := r.FormValue("client_secret")
 			if formClientSecret == "" {
 				return nil, &Error{
 					HttpStatus:  http.StatusBadRequest,
@@ -658,11 +641,11 @@ func (s *Server) verifyClient(c echo.Context) (*ClientMetadata, *Error) {
 	}
 
 	// no client_id in form, try basic auth
-	return s.verifyClientCredentialsBasic(c)
+	return s.verifyClientCredentialsBasic(r)
 }
 
-func (s *Server) verifyClientCredentialsBasic(c echo.Context) (*ClientMetadata, *Error) {
-	clientId, clientSecret, ok := c.Request().BasicAuth()
+func (s *Server) verifyClientCredentialsBasic(r *http.Request) (*ClientMetadata, *Error) {
+	clientId, clientSecret, ok := r.BasicAuth()
 	if !ok {
 		return nil, &Error{
 			HttpStatus:  http.StatusUnauthorized,
@@ -708,16 +691,16 @@ func verifyClientSecret(clientSecret string, client *ClientMetadata) (*ClientMet
 	return client, nil
 }
 
-func (s *Server) tokenEndpointClientCredentials(c echo.Context) error {
+func (s *Server) tokenEndpointClientCredentials(w http.ResponseWriter, r *http.Request) error {
 
-	client, clientError := s.verifyClient(c)
+	client, clientError := s.verifyClient(r)
 	if clientError != nil {
 		return clientError
 	}
 
 	slog.Info("Token request", "client", client)
 
-	scope := c.FormValue("scope")
+	scope := r.FormValue("scope")
 	if scope == "" {
 		return &Error{
 			HttpStatus:  http.StatusBadRequest,
@@ -763,12 +746,12 @@ func (s *Server) tokenEndpointClientCredentials(c echo.Context) error {
 		}
 	}
 
-	return c.JSON(http.StatusOK, response)
+	return writeJSON(w, http.StatusOK, response)
 }
 
-// TokenEndpointAuthorizationCode handles the token request for the authorization code grant type
-func (s *Server) tokenEndpointAuthorizationCode(c echo.Context) error {
-	client, clientError := s.verifyClient(c)
+// tokenEndpointAuthorizationCode handles the token request for the authorization code grant type
+func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.Request) error {
+	client, clientError := s.verifyClient(r)
 	if clientError != nil {
 		return clientError
 	}
@@ -776,7 +759,7 @@ func (s *Server) tokenEndpointAuthorizationCode(c echo.Context) error {
 	var code string
 	var codeVerifier string
 	var redirectUri string
-	binderr := echo.FormFieldBinder(c).
+	binderr := newFormBinder(r).
 		MustString("code", &code).
 		MustString("code_verifier", &codeVerifier).
 		MustString("redirect_uri", &redirectUri).
@@ -822,7 +805,7 @@ func (s *Server) tokenEndpointAuthorizationCode(c echo.Context) error {
 	codeChallengeBytes := sha256.Sum256([]byte(codeVerifier))
 	codeChallenge := base64.RawURLEncoding.EncodeToString(codeChallengeBytes[:])
 	if codeChallenge != session.CodeChallenge {
-		return redirectWithError(c, session.RedirectURI, session.State, Error{
+		return redirectWithError(w, r, session.RedirectURI, session.State, Error{
 			Code:        "invalid_request",
 			Description: "invalid code verifier mismatch",
 		})
@@ -835,7 +818,7 @@ func (s *Server) tokenEndpointAuthorizationCode(c echo.Context) error {
 	response, err := s.issueOrRefreshTokens(session)
 
 	if err != nil {
-		return redirectWithError(c, session.RedirectURI, session.State, Error{
+		return redirectWithError(w, r, session.RedirectURI, session.State, Error{
 			Code:        "server_error",
 			Description: fmt.Errorf("unable to issue access token: %w", err).Error(),
 		})
@@ -843,10 +826,10 @@ func (s *Server) tokenEndpointAuthorizationCode(c echo.Context) error {
 
 	slog.Info("Token request: tokens issued", "response", fmt.Sprintf("%+v", response))
 
-	return c.JSON(http.StatusOK, response)
+	return writeJSON(w, http.StatusOK, response)
 }
 
-func (s *Server) tokenEndpointJWTBearer(c echo.Context) error {
+func (s *Server) tokenEndpointJWTBearer(w http.ResponseWriter, r *http.Request) error {
 	if s.verifyClientAssertionFunc == nil {
 		return &Error{
 			HttpStatus:  http.StatusBadRequest,
@@ -854,7 +837,6 @@ func (s *Server) tokenEndpointJWTBearer(c echo.Context) error {
 			Description: "JWT Bearer grant type not configured",
 		}
 	}
-	r := c.Request()
 
 	assertion, ok := r.Form["assertion"]
 	if !ok {
@@ -931,13 +913,13 @@ func (s *Server) tokenEndpointJWTBearer(c echo.Context) error {
 
 }
 
-func (s *Server) tokenEndpointRefreshToken(c echo.Context) error {
-	client, clientError := s.verifyClient(c)
+func (s *Server) tokenEndpointRefreshToken(w http.ResponseWriter, r *http.Request) error {
+	client, clientError := s.verifyClient(r)
 	if clientError != nil {
 		return clientError
 	}
 
-	refreshToken := c.FormValue("refresh_token")
+	refreshToken := r.FormValue("refresh_token")
 	if refreshToken == "" {
 		return &Error{
 			HttpStatus:  http.StatusBadRequest,
@@ -948,7 +930,7 @@ func (s *Server) tokenEndpointRefreshToken(c echo.Context) error {
 
 	slog.Info("Token request", "client", client, "refresh_token", refreshToken)
 
-	return c.JSON(http.StatusUnauthorized, nil)
+	return writeJSON(w, http.StatusUnauthorized, nil)
 }
 
 func (s *Server) issueOrRefreshTokens(session *AuthzServerSession) (*TokenResponse, error) {
@@ -1003,17 +985,21 @@ func (s *Server) issueOrRefreshTokens(session *AuthzServerSession) (*TokenRespon
 }
 
 // JWKS serves the JSON Web Key Set for the server
-func (s *Server) JWKS(c echo.Context) error {
-	return c.JSON(http.StatusOK, s.jwks)
+func (s *Server) JWKS(w http.ResponseWriter, r *http.Request) error {
+	return writeJSON(w, http.StatusOK, s.jwks)
 }
 
 // OpenidProvidersEndpoint serves the list of OpenID Providers supported by the server
-func (s *Server) OpenidProvidersEndpoint(c echo.Context) error {
+func (s *Server) OpenidProvidersEndpoint(w http.ResponseWriter, r *http.Request) error {
 	providers, err := s.OpenidProviders()
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err)
+		return &Error{
+			HttpStatus:  http.StatusInternalServerError,
+			Code:        "server_error",
+			Description: err.Error(),
+		}
 	}
-	return c.JSON(http.StatusOK, providers)
+	return writeJSON(w, http.StatusOK, providers)
 }
 
 // OpenidProviders returns the list of OpenID Providers supported by the server
@@ -1099,7 +1085,7 @@ type NonceType struct {
 	Nonce string `json:"nonce"`
 }
 
-func (s *Server) NonceEndpoint(c echo.Context) error {
+func (s *Server) NonceEndpoint(w http.ResponseWriter, r *http.Request) error {
 	nonce, err := s.nonceService.Get()
 	if err != nil {
 		return &Error{
@@ -1108,10 +1094,10 @@ func (s *Server) NonceEndpoint(c echo.Context) error {
 			Description: fmt.Sprintf("unable to get nonce: %v", err),
 		}
 	}
-	if c.Request().Method == http.MethodHead {
-		c.Response().Header().Set("Replay-Nonce", nonce)
-		return c.NoContent(http.StatusOK)
-	} else {
-		return c.JSON(http.StatusOK, NonceType{Nonce: nonce})
+	if r.Method == http.MethodHead {
+		w.Header().Set("Replay-Nonce", nonce)
+		w.WriteHeader(http.StatusOK)
+		return nil
 	}
+	return writeJSON(w, http.StatusOK, NonceType{Nonce: nonce})
 }
