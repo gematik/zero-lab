@@ -100,15 +100,15 @@ just push-tags                    # push every tag to origin
 library commit synced in step 2:
 
 ```console
-go install github.com/gematik/zero-lab/go/ti@go/ti/v0.20.1
-go install github.com/gematik/zero-lab/go/epa/cmd/zero-epa@go/epa/v0.20.1
+go install github.com/gematik/zero-lab/go/ti@v0.20.1
+go install github.com/gematik/zero-lab/go/epa/cmd/zero-epa@v0.20.1
 ti version        # -> "ti 0.20.1"
 ```
 
 ### Reproducible library consumption from another project
 
 ```console
-go get github.com/gematik/zero-lab/go/gempki@go/gempki/v0.20.1   # clean semver (after just tag-zero)
+go get github.com/gematik/zero-lab/go/gempki@v0.20.1   # clean semver (after just tag-zero)
 # or pin an exact commit pseudo-version for maximum reproducibility
 ```
 

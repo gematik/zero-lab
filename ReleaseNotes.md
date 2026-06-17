@@ -27,8 +27,8 @@ A command release is marked with a **canonical Go module tag** `go/<module>/vX.Y
 commands are installable directly:
 
 ```
-go install github.com/gematik/zero-lab/go/ti@go/ti/v0.20.1
-go install github.com/gematik/zero-lab/go/epa/cmd/zero-epa@go/epa/v0.20.1
+go install github.com/gematik/zero-lab/go/ti@v0.20.1
+go install github.com/gematik/zero-lab/go/epa/cmd/zero-epa@v0.20.1
 ```
 
 `zero-caddy` combines its version with the upstream Caddy version as SemVer build
