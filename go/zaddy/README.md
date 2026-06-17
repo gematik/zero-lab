@@ -1,16 +1,14 @@
-= Caddy based Zero Trust PEP (Zaddy)
+# Caddy based Zero Trust PEP (Zaddy)
 
-== Development
+## Development
 
-[source,bash]
-----
+```bash
 go run ./cmd/zero-caddy run
-----
+```
 
-[source,bash]
-----
+```bash
 curlie -k https://localhost:2019/
 curlie -k https://localhost:2019/public
 # This should fail
 curlie -k https://localhost:2019/protected
-----
+```

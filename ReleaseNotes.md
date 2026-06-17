@@ -1,52 +1,57 @@
-= Release Notes
+# Release Notes
 
 This lab project ist yet to yield a first release. Stay tuned!
 
-== Versioning
+## Versioning
 
 The model balances frictionless local development against stable, installable builds.
+See the [Development & Release Guide](./docs/development.md) for the step-by-step workflow.
 
-=== Local development (go.work)
+### Local development (go.work)
 
 The tracked `go.work` workspace resolves every in-repo module from its local source. Edit any
 library (e.g. `brainpool`) and the change is immediately used by every command (e.g. `ti`)
 when you build, test, or run inside the workspace — no version bumps, no go.mod edits.
 
-=== Commands (independent versions, installable)
+### Commands (independent versions, installable)
 
 The commands `zero-epa`, `zero-pdp`, `zero-caddy` and the `ti` CLI are versioned independently
 via the `ZERO_EPA_VERSION`, `ZERO_PDP_VERSION`, `ZERO_CADDY_VERSION` and `TI_CLI_VERSION`
 variables in `go/Justfile`. The version is injected at build time with
 `-ldflags "-X <pkg>.Version=<v>"` (`just build-<cmd>` locally, or `--build-arg VERSION=...`
 into `just docker-build-<cmd>`); the in-source `Version` defaults to `"dev"` for a plain
-`go build`. `zero-caddy` combines its version with the upstream Caddy version as SemVer build
-metadata, e.g. the binary reports `zero-caddy 0.16.0+caddy2.11.4` and the Docker image is
-tagged `zero-caddy:0.16.0-caddy2.11.4` (`+` is illegal in Docker tags). Its go-installable
-module tag stays plain (`go/zaddy/v0.16.0`).
+`go build`.
 
 A command release is marked with a **canonical Go module tag** `go/<module>/vX.Y.Z`
 (`just tag-<cmd>`, or `just tag` for all four). Because these are real module tags, the
 commands are installable directly:
 
-  go install github.com/gematik/zero-lab/go/ti@go/ti/v0.16.0
-  go install github.com/gematik/zero-lab/go/epa/cmd/zero-epa@go/epa/v0.17.0
+```
+go install github.com/gematik/zero-lab/go/ti@go/ti/v0.20.1
+go install github.com/gematik/zero-lab/go/epa/cmd/zero-epa@go/epa/v0.20.1
+```
 
-=== Libraries (pseudo-versions + sync)
+`zero-caddy` combines its version with the upstream Caddy version as SemVer build
+metadata, e.g. the binary reports `zero-caddy 0.20.1+caddy2.11.4` and the Docker image is
+tagged `zero-caddy:0.20.1-caddy2.11.4` (`+` is illegal in Docker tags). Its go-installable
+module tag stays plain (`go/zaddy/v0.20.1`).
+
+### Libraries (pseudo-versions + sync)
 
 Library modules are referenced by commit pseudo-versions in `go.mod`. A tagged command build
 runs **outside** the workspace (`go install …@<tag>` ignores `go.work`), so it resolves the
 libraries from those `require` lines. To make a tagged command pick up a library change:
 
-. Edit the library; build/test/run locally (go.work uses it directly).
-. Commit and **push** the library change to the branch.
-. `just sync` — repins every in-repo `require` to the branch tip (fetches the just-pushed
-  commits and records their pseudo-versions). Commit the `go.mod`/`go.sum` updates.
-. `just tag-<cmd>` and `just push-tags`.
-. `go install …/<cmd>@<tag>` now builds the command at its tag with the updated library code.
+1. Edit the library; build/test/run locally (go.work uses it directly).
+2. Commit and **push** the library change to the branch.
+3. `just sync` — repins every in-repo `require` to the branch tip (fetches the just-pushed
+   commits and records their pseudo-versions). Commit the `go.mod`/`go.sum` updates.
+4. `just tag-<cmd>` and `just push-tags`.
+5. `go install …/<cmd>@<tag>` now builds the command at its tag with the updated library code.
 
 `just sync REF=<branch|commit|tag>` targets a specific ref (default: current branch).
 
-=== Optional: clean library semver for external consumers
+### Optional: clean library semver for external consumers
 
 `ZERO_VERSION` + `just tag-zero` cut one shared semver across the library modules
 (`go/<lib>/vZERO_VERSION`), so other projects can `go get github.com/gematik/zero-lab/go/<lib>@vZERO_VERSION`
