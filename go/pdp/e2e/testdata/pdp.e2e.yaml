@@ -1,0 +1,37 @@
+# Developer e2e config for zero-pdp.
+#
+# Values are filled from environment variables at load time (pdp.LoadConfigFile runs
+# os.ExpandEnv). Do NOT put real secrets in this file. Use `just pdp-e2e-serve`, which
+# exports the env vars and generates sign.jwk.
+#
+# The server always binds :8011 locally; `issuer` is the externally-reachable base URL
+# (http://localhost:8011 locally, or the rathole https://… host when tunneled).
+bind_address: ":8011"
+authorization_server:
+  issuer: "${ZERO_PDP_E2E_URL}"
+  sign_jwk_path: sign.jwk
+  scopes_supported:
+    - e2e
+  clients:
+    - type: confidential
+      client_id: "${ZERO_PDP_E2E_CLIENT_ID}"
+      client_secret_hash: "${ZERO_PDP_E2E_CLIENT_SECRET_HASH}"
+      client_name: e2e client
+      redirect_uris:
+        - "${ZERO_PDP_E2E_REDIRECT_URI}"
+      scopes:
+        - e2e
+
+  # --- Optional: configure an OpenID Provider to exercise the authorization-code / PAR /
+  # --- HITL flows. Provide credentials via env and uncomment a block. See docs/e2e.md.
+  #
+  # gematik_idp:
+  #   - environment: ref
+  #     client_id: "${GEMIDP_CLIENT_ID}"
+  #     redirect_uri: "${ZERO_PDP_E2E_URL}/gemidp-callback"
+  #     scopes: ["openid"]
+  # default_op_issuer: "https://idp-ref.app.ti-dienste.de"
+  #
+  # oidf_relying_party:
+  #   fed_master_url: "${OIDF_FED_MASTER_URL}"
+  #   ...
