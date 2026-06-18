@@ -109,8 +109,8 @@ func TestFlow_ClientCredentials(t *testing.T) {
 		t.Fatal("token: empty access_token")
 	}
 	tok := verifyAccessToken(t, tr.AccessToken, getJWKS(t, md))
-	if tok.Subject() != clientID {
-		t.Errorf("access token sub = %q, want %q", tok.Subject(), clientID)
+	if sub, _ := tok.Subject(); sub != clientID {
+		t.Errorf("access token sub = %q, want %q", sub, clientID)
 	}
 	t.Logf("OK: client_credentials issued a verifiable %s token (expires_in=%d)", tr.TokenType, tr.ExpiresIn)
 }

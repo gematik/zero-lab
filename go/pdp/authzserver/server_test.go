@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jws"
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jws"
+	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
 func createTestJwk() (jwk.Key, jwk.Set, error) {
@@ -26,7 +26,7 @@ func createTestJwk() (jwk.Key, jwk.Set, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	jwkPrK, err := jwk.FromRaw(privateKey)
+	jwkPrK, err := jwk.Import(privateKey)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -104,7 +104,7 @@ func TestJWTAssertion(t *testing.T) {
 		"product_version": "1.0.0",
 	})
 
-	assertionBytes, err := jwt.Sign(assertion, jwt.WithKey(jwa.ES256, jwkPrk))
+	assertionBytes, err := jwt.Sign(assertion, jwt.WithKey(jwa.ES256(), jwkPrk))
 	if err != nil {
 		t.Fatalf("Failed to sign assertion: %v", err)
 	}

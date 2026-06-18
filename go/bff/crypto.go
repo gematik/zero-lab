@@ -3,32 +3,32 @@ package bff
 import (
 	"crypto/rand"
 
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwe"
-	"github.com/lestrrat-go/jwx/v2/jws"
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jwe"
+	"github.com/lestrrat-go/jwx/v3/jws"
 )
 
 func EncryptWithDirectKeyFunc(key []byte) func([]byte) ([]byte, error) {
 	return func(payload []byte) ([]byte, error) {
-		return jwe.Encrypt(payload, jwe.WithKey(jwa.DIRECT, key))
+		return jwe.Encrypt(payload, jwe.WithKey(jwa.DIRECT(), key))
 	}
 }
 
 func DecryptWithDirectKeyFunc(key []byte) func([]byte) ([]byte, error) {
 	return func(payload []byte) ([]byte, error) {
-		return jwe.Decrypt(payload, jwe.WithKey(jwa.DIRECT, key))
+		return jwe.Decrypt(payload, jwe.WithKey(jwa.DIRECT(), key))
 	}
 }
 
 func SignWithHS256KeyFunc(key []byte) func([]byte) ([]byte, error) {
 	return func(payload []byte) ([]byte, error) {
-		return jws.Sign(payload, jws.WithKey(jwa.HS256, key))
+		return jws.Sign(payload, jws.WithKey(jwa.HS256(), key))
 	}
 }
 
 func VerifyWithHS256KeyFunc(key []byte) func([]byte) ([]byte, error) {
 	return func(payload []byte) ([]byte, error) {
-		return jws.Verify(payload, jws.WithKey(jwa.HS256, key))
+		return jws.Verify(payload, jws.WithKey(jwa.HS256(), key))
 	}
 }
 

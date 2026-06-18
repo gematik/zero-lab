@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/segmentio/ksuid"
 )
 
@@ -320,7 +320,7 @@ func (s *Server) issueOrRefreshTokens(session *AuthzServerSession) (*TokenRespon
 		})
 	}
 
-	accessTokenBytes, err := jwt.Sign(accessJwt, jwt.WithKey(jwa.ES256, s.sigPrK))
+	accessTokenBytes, err := jwt.Sign(accessJwt, jwt.WithKey(jwa.ES256(), s.sigPrK))
 	if err != nil {
 		return nil, fmt.Errorf("unable to sign access token: %w", err)
 	}
