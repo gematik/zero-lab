@@ -1,4 +1,4 @@
-package oauth2server
+package authzserver
 
 // OAuth2 Authorization Server Metadata
 // See https://datatracker.ietf.org/doc/html/rfc8414

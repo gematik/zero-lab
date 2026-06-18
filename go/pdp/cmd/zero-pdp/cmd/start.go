@@ -3,10 +3,10 @@ package cmd
 import (
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	"github.com/gematik/zero-lab/go/pdp/authzserver"
 	"github.com/spf13/cobra"
 )
 
@@ -24,18 +24,18 @@ var startCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		e := echo.New()
-		e.Use(middleware.Recover())
+		mux := http.NewServeMux()
+		pdp.AuthzServer.MountRoutes(mux)
 
-		pdp.AuthzServer.MountRoutes(e.Group(""))
-
-		for _, route := range e.Routes() {
-			slog.Info("Route", "method", route.Method, "path", route.Path)
-		}
+		// recover -> logger -> mux, all wrapped by the OAuth error normalizer so every
+		// error response (incl. 404/405) uses the OAuth JSON shape.
+		handler := authzserver.OAuthErrors(authzserver.Logger(authzserver.Recover(mux)))
 
 		slog.Debug("Zero Trust PDP configured", "pdp", pdp)
 		slog.Info(fmt.Sprintf("starting Zero Trust PDP at %s", pdp.BindAddress))
-		e.Logger.Fatal(e.Start(pdp.BindAddress))
-
+		if err := http.ListenAndServe(pdp.BindAddress, handler); err != nil {
+			slog.Error("server stopped", "error", err)
+			os.Exit(1)
+		}
 	},
 }
