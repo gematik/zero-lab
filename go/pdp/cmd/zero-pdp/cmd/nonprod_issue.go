@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
-	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/spf13/cobra"
 )
 
 type issueCmdResponse struct {
 	TokenResponse *authzserver.TokenResponse `json:"token_response"`
-	DpopKey       jwk.Key                     `json:"dpop_key"`
+	DpopKey       jwk.Key                    `json:"dpop_key"`
 }
 
 var issueCmd = &cobra.Command{

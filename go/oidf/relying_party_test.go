@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jwt"
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
 func TestNewRelyingParty(t *testing.T) {
@@ -71,7 +71,11 @@ func TestNewRelyingParty(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	metadataMap, ok := unverified.PrivateClaims()["metadata"].(map[string]interface{})
+	var metaRaw interface{}
+	if err := unverified.Get("metadata", &metaRaw); err != nil {
+		t.Fatal(err)
+	}
+	metadataMap, ok := metaRaw.(map[string]interface{})
 	if !ok {
 		t.Fatal("metadata not found")
 	}
@@ -135,7 +139,16 @@ func generateCert(keyfile string) (string, error) {
 		BasicConstraintsValid: true,
 	}
 
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, pukJwk.Raw(&ecdsa.PublicKey{}), prkJwk.Raw(&ecdsa.PrivateKey{}))
+	var pubKey ecdsa.PublicKey
+	if err := jwk.Export(pukJwk, &pubKey); err != nil {
+		return "", err
+	}
+	var privKey ecdsa.PrivateKey
+	if err := jwk.Export(prkJwk, &privKey); err != nil {
+		return "", err
+	}
+
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &pubKey, &privKey)
 	if err != nil {
 		return "", err
 	}

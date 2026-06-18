@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lestrrat-go/jwx/v2/jwk"
-	"github.com/lestrrat-go/jwx/v2/jws"
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jws"
 )
 
 // oauthError decodes an OAuth JSON error body and returns its "error" code, also asserting the

@@ -1,7 +1,6 @@
 package authzserver
 
 import (
-	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -9,7 +8,7 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
 func GenerateRandomJwk() (jwk.Key, error) {
@@ -17,7 +16,7 @@ func GenerateRandomJwk() (jwk.Key, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not generate key: %w", err)
 	}
-	jwkKey, err := jwk.FromRaw(privateKey)
+	jwkKey, err := jwk.Import(privateKey)
 	if err != nil {
 		return nil, fmt.Errorf("could not create jwk from key: %w", err)
 	}
@@ -55,9 +54,11 @@ func GenerateJwkSet(num int) (jwk.Set, error) {
 
 func PublicJwkSet(set jwk.Set) (jwk.Set, error) {
 	publicSet := jwk.NewSet()
-	it := set.Keys(context.Background())
-	for it.Next(context.Background()) {
-		key := it.Pair().Value.(jwk.Key)
+	for i := 0; i < set.Len(); i++ {
+		key, ok := set.Key(i)
+		if !ok {
+			continue
+		}
 		publicKey, err := key.PublicKey()
 		if err != nil {
 			return nil, fmt.Errorf("could not get public key: %w", err)

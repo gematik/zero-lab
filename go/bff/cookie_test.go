@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"github.com/gematik/zero-lab/go/bff"
-	"github.com/lestrrat-go/jwx/v2/jwa"
-	"github.com/lestrrat-go/jwx/v2/jwe"
-	"github.com/lestrrat-go/jwx/v2/jws"
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jwe"
+	"github.com/lestrrat-go/jwx/v3/jws"
 )
 
 func TestGuardSessionCookie(t *testing.T) {
@@ -18,19 +18,19 @@ func TestGuardSessionCookie(t *testing.T) {
 	encKey := bff.GenerateRandomKey(256)
 
 	cookiePlaintext := []byte("Hello, World!")
-	signed, err := jws.Sign(cookiePlaintext, jws.WithKey(jwa.HS256, signKey))
+	signed, err := jws.Sign(cookiePlaintext, jws.WithKey(jwa.HS256(), signKey))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	encrypted, err := jwe.Encrypt([]byte(signed), jwe.WithContentEncryption(jwa.A256GCM), jwe.WithKey(jwa.DIRECT, encKey))
+	encrypted, err := jwe.Encrypt([]byte(signed), jwe.WithContentEncryption(jwa.A256GCM()), jwe.WithKey(jwa.DIRECT(), encKey))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// encr<pt with wrong key
 	badKey := bff.GenerateRandomKey(256)
-	encrptedBad, _ := jwe.Encrypt([]byte(signed), jwe.WithContentEncryption(jwa.A256GCM), jwe.WithKey(jwa.DIRECT, badKey))
+	encrptedBad, _ := jwe.Encrypt([]byte(signed), jwe.WithContentEncryption(jwa.A256GCM()), jwe.WithKey(jwa.DIRECT(), badKey))
 
 	t.Log(string(encrypted))
 

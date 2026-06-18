@@ -12,8 +12,8 @@ import (
 )
 
 type Config struct {
-	BindAddress       string              `yaml:"bind_address"`
-	BaseDir           string              `yaml:"-"`
+	BindAddress       string             `yaml:"bind_address"`
+	BaseDir           string             `yaml:"-"`
 	AuthzServerConfig authzserver.Config `yaml:"authorization_server" validate:"required"`
 }
 
