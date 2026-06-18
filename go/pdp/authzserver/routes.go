@@ -22,7 +22,6 @@ func (s *Server) MountRoutes(mux *http.ServeMux) {
 		{http.MethodGet, s.endpointPaths.GemIDPCallback, s.OPCallbackEndpoint},
 		{http.MethodPost, s.endpointPaths.Token, s.TokenEndpoint},
 		{http.MethodGet, s.endpointPaths.Nonce, s.NonceEndpoint},
-		{http.MethodHead, s.endpointPaths.Nonce, s.NonceEndpoint},
 		{http.MethodPost, s.endpointPaths.Registration, s.RegistrationEndpoint},
 	}
 	for _, rt := range routes {
