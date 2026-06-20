@@ -3,6 +3,7 @@ package authzserver
 import (
 	"fmt"
 	"os"
+	"slices"
 
 	"gopkg.in/yaml.v3"
 )
@@ -12,15 +13,15 @@ type ClientsPolicy struct {
 }
 
 type ClientPolicy struct {
-	ProductID          string      `yaml:"product_id"`
-	ProductName        string      `yaml:"product_name"`
-	ManufacturerID     string      `yaml:"manufacturer_id"`
-	ManufacturerName   string      `yaml:"manufacturer_name"`
-	Platform           string      `yaml:"platform"`
-	PlatformProductID  interface{} `yaml:"platform_product_id"`
-	RedirectURIs       []string    `yaml:"redirect_uris"`
-	OPIntermediaryURIs []string    `yaml:"op_intermediary_redirect_uris"`
-	PushGateway        interface{} `yaml:"push_gateway"`
+	ProductID          string   `yaml:"product_id"`
+	ProductName        string   `yaml:"product_name"`
+	ManufacturerID     string   `yaml:"manufacturer_id"`
+	ManufacturerName   string   `yaml:"manufacturer_name"`
+	Platform           string   `yaml:"platform"`
+	PlatformProductID  any      `yaml:"platform_product_id"`
+	RedirectURIs       []string `yaml:"redirect_uris"`
+	OPIntermediaryURIs []string `yaml:"op_intermediary_redirect_uris"`
+	PushGateway        any      `yaml:"push_gateway"`
 }
 
 func LoadClientsPolicy(path string) (*ClientsPolicy, error) {
@@ -39,10 +40,8 @@ func LoadClientsPolicy(path string) (*ClientsPolicy, error) {
 func (p *ClientsPolicy) IsOPIntermediaryRedirectURIAllowed(clientID, url string) bool {
 	for _, client := range p.Clients {
 		if client.ProductID == clientID {
-			for _, allowedURL := range client.OPIntermediaryURIs {
-				if url == allowedURL {
-					return true
-				}
+			if slices.Contains(client.OPIntermediaryURIs, url) {
+				return true
 			}
 		}
 	}
@@ -61,10 +60,8 @@ func (p *ClientsPolicy) IsClientAllowed(clientID string) bool {
 func (p *ClientsPolicy) IsRedirectURIAllowed(clientID, uri string) bool {
 	for _, client := range p.Clients {
 		if client.ProductID == clientID {
-			for _, allowedURI := range client.RedirectURIs {
-				if uri == allowedURI {
-					return true
-				}
+			if slices.Contains(client.RedirectURIs, uri) {
+				return true
 			}
 		}
 	}

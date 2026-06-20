@@ -477,7 +477,7 @@ func TestAccessToken(t *testing.T) {
 		t.Fatalf("Failed to parse access token: %s", err)
 	}
 
-	cnf := new(map[string]interface{})
+	cnf := new(map[string]any)
 	if err := parsedToken.Get("cnf", cnf); err != nil {
 		t.Fatalf("Failed to get cnf: %s", err)
 	}

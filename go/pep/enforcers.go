@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/gematik/zero-lab/go/dpop"
@@ -204,11 +205,9 @@ func (e *EnforcerScope) Apply(ctx Context, next HandlerFunc) {
 	}
 
 	scopes := strings.Split(scopeStruct.Scope, " ")
-	for _, scope := range scopes {
-		if scope == e.Scope {
-			next(ctx)
-			return
-		}
+	if slices.Contains(scopes, e.Scope) {
+		next(ctx)
+		return
 	}
 
 	ctx.Slogger().Warn("Scope not found in claims", "required", e.Scope, "actual", scopes)

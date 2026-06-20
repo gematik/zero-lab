@@ -56,7 +56,7 @@ func runGetInfo(config *kon.Dotkon) error {
 		if config.Env != "" {
 			fmt.Fprintf(w, "Environment\t%s\n", config.Env)
 		}
-fmt.Fprintf(w, "\t\n")
+		fmt.Fprintf(w, "\t\n")
 		fmt.Fprintf(w, "Product Type\t%s\n", pi.ProductTypeInformation.ProductType)
 		fmt.Fprintf(w, "Product Type Version\t%s\n", pi.ProductTypeInformation.ProductTypeVersion)
 		fmt.Fprintf(w, "Vendor\t%s\n", pi.ProductIdentification.ProductVendorID)

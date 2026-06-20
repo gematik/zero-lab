@@ -203,7 +203,7 @@ func OpenChannel(baseURLString string, env Env, httpClient *http.Client) (*Chann
 	return channel, nil
 }
 
-func PostMessage[M interface{}](httpClient *http.Client, url string, requestMessage interface{}) ([]byte, *http.Response, []byte, *M, error) {
+func PostMessage[M any](httpClient *http.Client, url string, requestMessage any) ([]byte, *http.Response, []byte, *M, error) {
 	// marshal Message1 to CBOR
 	requestMessageCbor, err := cbor.Marshal(requestMessage)
 	if err != nil {

@@ -20,7 +20,7 @@ func IsBrainpoolCurve(curve elliptic.Curve) bool {
 
 // IsBrainpoolPublicKey checks if the given public key uses elliptic curve cryptography
 // with a brainpool curve.
-func IsBrainpoolPublicKey(pub interface{}) bool {
+func IsBrainpoolPublicKey(pub any) bool {
 	pk, ok := pub.(*ecdsa.PublicKey)
 	return ok && IsBrainpoolCurve(pk.Curve)
 }
@@ -32,7 +32,7 @@ func IsBrainpoolCertificate(cert *x509.Certificate) bool {
 	return ok && IsBrainpoolCurve(pub.Curve)
 }
 
-func MarshalPKIXPublicKey(pub interface{}) ([]byte, error) {
+func MarshalPKIXPublicKey(pub any) ([]byte, error) {
 	if pk, ok := pub.(*ecdsa.PublicKey); ok && IsBrainpoolCurve(pk.Curve) {
 		return marshalPKIXPublicKeyBrainpool(pk)
 	}

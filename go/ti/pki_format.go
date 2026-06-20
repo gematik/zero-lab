@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -21,10 +22,8 @@ const (
 // against the allowed set for the calling subcommand.
 func parseOutputFormat(raw string, allowed []outputFormat) (outputFormat, error) {
 	f := outputFormat(strings.ToLower(strings.TrimSpace(raw)))
-	for _, a := range allowed {
-		if f == a {
-			return f, nil
-		}
+	if slices.Contains(allowed, f) {
+		return f, nil
 	}
 	names := make([]string, len(allowed))
 	for i, a := range allowed {

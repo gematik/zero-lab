@@ -93,8 +93,7 @@ func OpenSSLVerify(t *testing.T, leafPath, chainPath, rootPath string) (bool, st
 	out, err := exec.Command("openssl", args...).CombinedOutput()
 	text := strings.TrimSpace(string(out))
 	if err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
+		if _, ok := errors.AsType[*exec.ExitError](err); ok {
 			return false, text
 		}
 		t.Fatalf("openssl verify: %v\n%s", err, text)

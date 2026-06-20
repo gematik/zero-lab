@@ -20,7 +20,7 @@ func NewJWEBuilder() *JWEBuilder {
 	}
 }
 
-func (b *JWEBuilder) Header(key string, value interface{}) *JWEBuilder {
+func (b *JWEBuilder) Header(key string, value any) *JWEBuilder {
 	b.headers[key] = value
 	return b
 }
@@ -30,7 +30,7 @@ func (b *JWEBuilder) Plaintext(plaintext []byte) *JWEBuilder {
 	return b
 }
 
-func (b *JWEBuilder) EncryptECDHES(recipient interface{}) ([]byte, error) {
+func (b *JWEBuilder) EncryptECDHES(recipient any) ([]byte, error) {
 	var recipientKey *ecdsa.PublicKey
 	switch recipient := recipient.(type) {
 	case *ecdsa.PublicKey:

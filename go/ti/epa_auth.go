@@ -10,18 +10,18 @@ import (
 )
 
 const (
-	authMethodFlag        = "auth-method"
-	authMethodEnv         = "TI_EPA_AUTH_METHOD"
-	authMethodConnector   = "connector"
-	authMethodP12         = "p12"
-	authMethodDefault     = authMethodConnector
-	authCardFlag          = "card"
-	authP12FileFlag       = "p12-file"
-	authP12AliasFlag      = "p12-alias"
-	authP12PasswordFlag   = "p12-password"
-	authP12AliasDefault   = "alias"
+	authMethodFlag         = "auth-method"
+	authMethodEnv          = "TI_EPA_AUTH_METHOD"
+	authMethodConnector    = "connector"
+	authMethodP12          = "p12"
+	authMethodDefault      = authMethodConnector
+	authCardFlag           = "card"
+	authP12FileFlag        = "p12-file"
+	authP12AliasFlag       = "p12-alias"
+	authP12PasswordFlag    = "p12-password"
+	authP12AliasDefault    = "alias"
 	authP12PasswordDefault = "00"
-	authP12PasswordEnv    = "TI_EPA_P12_PASSWORD"
+	authP12PasswordEnv     = "TI_EPA_P12_PASSWORD"
 )
 
 var (

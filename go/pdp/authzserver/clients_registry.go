@@ -2,6 +2,7 @@ package authzserver
 
 import (
 	"fmt"
+	"slices"
 )
 
 type ClientType string
@@ -49,21 +50,11 @@ func (r *StaticClientsRegistry) RegisterClient(client *ClientMetadata) error {
 }
 
 func (m *ClientMetadata) IsAllowedRedirectURI(redirectURI string) bool {
-	for _, uri := range m.RedirectURIs {
-		if uri == redirectURI {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(m.RedirectURIs, redirectURI)
 }
 
 func (m *ClientMetadata) IsAllowedScope(scope string) bool {
-	for _, s := range m.Scopes {
-		if s == scope {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(m.Scopes, scope)
 }
 
 func (m *ClientMetadata) IsAllowedScopes(scopes []string) bool {

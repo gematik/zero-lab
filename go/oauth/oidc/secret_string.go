@@ -42,6 +42,6 @@ func (s *SecretString) UnmarshalYAML(unmarshal func(any) error) error {
 	return nil
 }
 
-func (s SecretString) MarshalYAML() (interface{}, error) {
+func (s SecretString) MarshalYAML() (any, error) {
 	return s.value, nil
 }

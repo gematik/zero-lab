@@ -89,10 +89,10 @@ func runOCSPCheck(ctx context.Context, def envDef, cert *x509.Certificate, f out
 		return fmt.Errorf("OCSP check: %w", err)
 	}
 	out := map[string]any{
-		"subject":  cert.Subject.CommonName,
-		"issuer":   issuer.Subject.CommonName,
-		"status":   string(result.Status),
-		"source":   string(result.Source),
+		"subject":   cert.Subject.CommonName,
+		"issuer":    issuer.Subject.CommonName,
+		"status":    string(result.Status),
+		"source":    string(result.Source),
 		"checkedAt": result.CheckedAt.Format(time.RFC3339),
 	}
 	if !result.RevokedAt.IsZero() {

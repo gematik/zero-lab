@@ -75,7 +75,7 @@ func isPEM(raw []byte) bool {
 		return false
 	}
 	// Find the first non-whitespace byte; if it starts the PEM marker, it's PEM.
-	for i := 0; i < len(raw); i++ {
+	for i := range raw {
 		if raw[i] == ' ' || raw[i] == '\t' || raw[i] == '\r' || raw[i] == '\n' {
 			continue
 		}
@@ -177,8 +177,8 @@ type certInspect struct {
 }
 
 type distinguishedName struct {
-	String string           `json:"string"`
-	Attrs  []nameAttribute  `json:"attributes"`
+	String string          `json:"string"`
+	Attrs  []nameAttribute `json:"attributes"`
 }
 
 type nameAttribute struct {
@@ -231,7 +231,7 @@ type fingerprintsInfo struct {
 // "short" elsewhere); kept here for symmetry with the JSON path.
 func buildCertInspect(c *x509.Certificate, short bool) certInspect {
 	_ = short
-	sha1sum := sha1.Sum(c.Raw)       //nolint:gosec // user-facing fingerprint
+	sha1sum := sha1.Sum(c.Raw) //nolint:gosec // user-facing fingerprint
 	sha256sum := sha256.Sum256(c.Raw)
 	out := certInspect{
 		Version:            c.Version,
@@ -1079,4 +1079,3 @@ func runCertLint(ctx context.Context, def envDef, certs []*x509.Certificate, f o
 	}
 	return renderVerifyResultText(result, opts)
 }
-

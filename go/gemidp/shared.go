@@ -49,7 +49,7 @@ func GetIdpByEnvironment(env Environment) Idp {
 	}
 }
 
-func (e *Environment) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (e *Environment) UnmarshalYAML(unmarshal func(any) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {
 		return err

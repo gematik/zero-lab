@@ -23,18 +23,18 @@ import (
 )
 
 type RelyingPartyConfig struct {
-	BaseDir              string                 `yaml:"-"`
-	Subject              string                 `yaml:"sub" validate:"required"`
-	FedMasterURL         string                 `yaml:"fed_master_url" validate:"required"`
-	FedMasterJwk         Jwk                    `yaml:"fed_master_jwk" validate:"required"`
-	SignKid              string                 `yaml:"sign_kid" validate:"required"`
-	SignPrivateKeyPath   string                 `yaml:"sign_private_key_path" validate:"required"`
-	EncKid               string                 `yaml:"enc_kid" validate:"required"`
-	EncPrivateKeyPath    string                 `yaml:"enc_private_key_path" validate:"required"`
-	ClientKid            string                 `yaml:"client_kid" validate:"required"`
-	ClientPrivateKeyPath string                 `yaml:"client_private_key_path" validate:"required"`
-	ClientCertPath       string                 `yaml:"client_cert_path" validate:"required"`
-	MetadataTemplate     map[string]interface{} `yaml:"metadata_template" validate:"required"`
+	BaseDir              string         `yaml:"-"`
+	Subject              string         `yaml:"sub" validate:"required"`
+	FedMasterURL         string         `yaml:"fed_master_url" validate:"required"`
+	FedMasterJwk         Jwk            `yaml:"fed_master_jwk" validate:"required"`
+	SignKid              string         `yaml:"sign_kid" validate:"required"`
+	SignPrivateKeyPath   string         `yaml:"sign_private_key_path" validate:"required"`
+	EncKid               string         `yaml:"enc_kid" validate:"required"`
+	EncPrivateKeyPath    string         `yaml:"enc_private_key_path" validate:"required"`
+	ClientKid            string         `yaml:"client_kid" validate:"required"`
+	ClientPrivateKeyPath string         `yaml:"client_private_key_path" validate:"required"`
+	ClientCertPath       string         `yaml:"client_cert_path" validate:"required"`
+	MetadataTemplate     map[string]any `yaml:"metadata_template" validate:"required"`
 }
 
 type RelyingParty struct {

@@ -315,7 +315,7 @@ func (s *Server) issueOrRefreshTokens(session *AuthzServerSession) (*TokenRespon
 	}
 
 	if session.DPoPThumbprint != "" {
-		accessJwt.Set("cnf", map[string]interface{}{
+		accessJwt.Set("cnf", map[string]any{
 			"jkt": session.DPoPThumbprint,
 		})
 	}

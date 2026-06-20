@@ -25,8 +25,8 @@ const (
 	AlgorithmNameBP512R1 = "BP512R1"
 )
 
-type Headers map[string]interface{}
-type Claims map[string]interface{}
+type Headers map[string]any
+type Claims map[string]any
 
 type JWT struct {
 	Raw         []byte
@@ -49,12 +49,12 @@ func NewJWTBuilder() *JWTBuilder {
 	}
 }
 
-func (b *JWTBuilder) Header(key string, value interface{}) *JWTBuilder {
+func (b *JWTBuilder) Header(key string, value any) *JWTBuilder {
 	b.headers[key] = value
 	return b
 }
 
-func (b *JWTBuilder) Claim(key string, value interface{}) *JWTBuilder {
+func (b *JWTBuilder) Claim(key string, value any) *JWTBuilder {
 	b.claims[key] = value
 	return b
 }
@@ -270,7 +270,7 @@ type JSONWebKey struct {
 	Use             string              `json:"use,omitempty"`
 	Algortihm       string              `json:"alg,omitempty"`
 	KeyID           string              `json:"kid,omitempty"`
-	Key             interface{}         `json:"-"`
+	Key             any                 `json:"-"`
 	CertificatesRaw [][]byte            `json:"x5c,omitempty"`
 	Certificates    []*x509.Certificate `json:"-"`
 	X               string              `json:"x"`

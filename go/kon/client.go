@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 
 	"github.com/gematik/zero-lab/go/pkcs12"
@@ -63,10 +64,8 @@ func NewHTTPClient(config *Dotkon) (*http.Client, *url.URL, error) {
 			transport.TLSClientConfig.InsecureSkipVerify = true
 			transport.TLSClientConfig.VerifyConnection = func(cs tls.ConnectionState) error {
 				leaf := cs.PeerCertificates[0]
-				for _, trusted := range eeCerts {
-					if leaf.Equal(trusted) {
-						return nil
-					}
+				if slices.ContainsFunc(eeCerts, leaf.Equal) {
+					return nil
 				}
 				if len(caCerts) > 0 {
 					intermediates := x509.NewCertPool()

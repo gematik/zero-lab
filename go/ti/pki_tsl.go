@@ -84,15 +84,15 @@ func tslSummaryJSON(tsl *gempki.TrustServiceStatusList, url string) map[string]a
 		providers[i] = shortProviderName(p.TSPInformation.TSPTradeName)
 	}
 	return map[string]any{
-		"url":         url,
-		"hash":        tsl.Hash,
-		"version":     si.TSLVersionIdentifier,
-		"sequence":    si.TSLSequenceNumber,
-		"type":        si.TSLType,
-		"operator":    tslName(si.SchemeOperatorName),
-		"issued":      time.Time(si.ListIssueDateTime).Format(time.RFC3339),
-		"nextUpdate":  time.Time(si.NextUpdate).Format(time.RFC3339),
-		"providers":   providers,
+		"url":        url,
+		"hash":       tsl.Hash,
+		"version":    si.TSLVersionIdentifier,
+		"sequence":   si.TSLSequenceNumber,
+		"type":       si.TSLType,
+		"operator":   tslName(si.SchemeOperatorName),
+		"issued":     time.Time(si.ListIssueDateTime).Format(time.RFC3339),
+		"nextUpdate": time.Time(si.NextUpdate).Format(time.RFC3339),
+		"providers":  providers,
 	}
 }
 

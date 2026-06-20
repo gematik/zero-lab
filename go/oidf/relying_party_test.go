@@ -49,8 +49,8 @@ func TestNewRelyingParty(t *testing.T) {
 		ClientKid:            "client-kid",
 		ClientPrivateKeyPath: clientKeyPath,
 		ClientCertPath:       clientCertPath,
-		MetadataTemplate: map[string]interface{}{
-			"openid_relying_party": map[string]interface{}{
+		MetadataTemplate: map[string]any{
+			"openid_relying_party": map[string]any{
 				"client_name": "https://example.com",
 			},
 		},
@@ -71,11 +71,11 @@ func TestNewRelyingParty(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var metaRaw interface{}
+	var metaRaw any
 	if err := unverified.Get("metadata", &metaRaw); err != nil {
 		t.Fatal(err)
 	}
-	metadataMap, ok := metaRaw.(map[string]interface{})
+	metadataMap, ok := metaRaw.(map[string]any)
 	if !ok {
 		t.Fatal("metadata not found")
 	}
