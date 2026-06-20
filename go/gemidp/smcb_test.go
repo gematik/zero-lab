@@ -21,7 +21,7 @@ import (
 // TestGemIDP_SMCB authenticates against the gematik IDP-Dienst (reference env) using a real
 // SMC-B identity loaded from a PKCS#12 file. It is env-guarded and skips unless an SMC-B P12 and
 // the IDP client config are provided. This exercises the full Brainpool path end to end,
-// including the new jwx Brainpool plugin (gemidp imports brainpool/jwxbp).
+// including the jwx-free JOSE in brainpool/josebp (sign/verify/JWE/JWK).
 //
 // Required env:
 //
@@ -157,7 +157,7 @@ func buildSMCBReport(d smcbReportData) string {
 	for _, step := range []string{
 		"Loaded SMC-B AUT identity from PKCS#12",
 		"Built authorization URL",
-		"Signed the IDP challenge (BP256R1 via brainpool/jwxbp)",
+		"Signed the IDP challenge (BP256R1 via brainpool/josebp)",
 		"Received the authorization code",
 		"Exchanged the code for an identity token",
 		"Parsed the identity claims",

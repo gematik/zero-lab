@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/gematik/zero-lab/go/brainpool"
+	"github.com/gematik/zero-lab/go/brainpool/josebp"
 )
 
 // Environment of the gematik IDP-Dienst
@@ -96,7 +97,7 @@ func fetchMetadata(baseURL string, httpClient *http.Client) (*Metadata, error) {
 
 	slog.Debug("Extracted signing key", "key", sigJWK)
 
-	token, err := brainpool.ParseToken(data, brainpool.WithKey(sigJWK))
+	token, err := josebp.ParseToken(data, josebp.WithKey(sigJWK))
 	if err != nil {
 		return nil, fmt.Errorf("parsing discovery document: %w", err)
 	}
@@ -114,7 +115,7 @@ func fetchMetadata(baseURL string, httpClient *http.Client) (*Metadata, error) {
 	return metadata, nil
 }
 
-func extractKeyFromX5CHeader(data []byte) (*brainpool.JSONWebKey, error) {
+func extractKeyFromX5CHeader(data []byte) (*josebp.JSONWebKey, error) {
 	parts := strings.Split(string(data), ".")
 	if len(parts) != 3 {
 		return nil, fmt.Errorf("invalid JWT format")
@@ -148,7 +149,7 @@ func extractKeyFromX5CHeader(data []byte) (*brainpool.JSONWebKey, error) {
 		return nil, fmt.Errorf("parsing certificate: %w", err)
 	}
 
-	return &brainpool.JSONWebKey{
+	return &josebp.JSONWebKey{
 		Key:          cert.PublicKey,
 		KeyID:        headerStruct.Kid,
 		Use:          "sig",
@@ -157,14 +158,14 @@ func extractKeyFromX5CHeader(data []byte) (*brainpool.JSONWebKey, error) {
 }
 
 // fetch and parse JWK from the given URI
-func fetchKey(uri string) (*brainpool.JSONWebKey, error) {
+func fetchKey(uri string) (*josebp.JSONWebKey, error) {
 	resp, err := http.Get(uri)
 	if err != nil {
 		return nil, fmt.Errorf("fetching JWK: %w", err)
 	}
 	defer resp.Body.Close()
 
-	key := new(brainpool.JSONWebKey)
+	key := new(josebp.JSONWebKey)
 	err = json.NewDecoder(resp.Body).Decode(key)
 	if err != nil {
 		return nil, fmt.Errorf("parsing JWK: %w", err)

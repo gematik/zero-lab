@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/gematik/zero-lab/go/brainpool"
+	"github.com/gematik/zero-lab/go/brainpool/josebp"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwe"
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -23,11 +23,11 @@ func TestJWECross(t *testing.T) {
 
 	plaintext := []byte("Hello, World!")
 
-	pukBP := new(brainpool.JSONWebKey)
+	pukBP := new(josebp.JSONWebKey)
 	if err := json.Unmarshal([]byte(jwkPublicString), pukBP); err != nil {
 		t.Fatalf("Unmarshal returned an error: %v", err)
 	}
-	cipher, err := brainpool.NewJWEBuilder().
+	cipher, err := josebp.NewJWEBuilder().
 		Plaintext(plaintext).
 		EncryptECDHES(pukBP.Key.(*ecdsa.PublicKey))
 	if err != nil {
