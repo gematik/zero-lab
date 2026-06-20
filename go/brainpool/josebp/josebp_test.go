@@ -2,7 +2,6 @@ package josebp
 
 import (
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -13,23 +12,18 @@ import (
 	"github.com/gematik/zero-lab/go/brainpool"
 )
 
-// TestSignVerifyRoundTrip signs with a software key and verifies with stdlib ecdsa — no jwx.
+// TestSignVerifyRoundTrip signs a Brainpool key and verifies with stdlib ecdsa — no jwx. Both the
+// native BP256R1 alg and the gematik "ES256 over a Brainpool key" case (used by epa's client
+// attest) are covered; the curve is always Brainpool.
 func TestSignVerifyRoundTrip(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		curve elliptic.Curve
-		alg   string
-	}{
-		{"BP256R1", brainpool.P256r1(), AlgorithmNameBP256R1},
-		{"ES256", elliptic.P256(), AlgorithmNameES256},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			prk, err := ecdsa.GenerateKey(tc.curve, rand.Reader)
+	for _, alg := range []string{AlgorithmNameBP256R1, AlgorithmNameES256} {
+		t.Run(alg, func(t *testing.T) {
+			prk, err := ecdsa.GenerateKey(brainpool.P256r1(), rand.Reader)
 			if err != nil {
 				t.Fatal(err)
 			}
 			token, err := NewJWTBuilder().
-				Header("alg", tc.alg).
+				Header("alg", alg).
 				Header("typ", "JWT").
 				Claim("iss", "test").
 				Sign(sha256.New(), brainpool.SignFuncPrivateKey(prk))
@@ -107,21 +101,25 @@ func TestJWEEncryptRoundTrip(t *testing.T) {
 	}
 }
 
-// TestJSONWebKeyParseBrainpoolX5C parses a real gematik IDP JWK (BP-256 + Brainpool x5c).
-func TestJSONWebKeyParseBrainpoolX5C(t *testing.T) {
-	const jwkJSON = `{
-    "kid": "puk_idp_sig",
-    "use": "sig",
-    "kty": "EC",
-    "crv": "BP-256",
-    "x": "pogLhoK59j_BX7OKqZWQ0GkEckCbr2IJ5HZLRLkXyn8",
-    "y": "qBNddqxoOK_2Vd5ocnuQtP1q_PuRslxfAQjv4E4dReA",
-    "x5c": [
-        "MIIC+jCCAqCgAwIBAgICG3wwCgYIKoZIzj0EAwIwgYQxCzAJBgNVBAYTAkRFMR8wHQYDVQQKDBZnZW1hdGlrIEdtYkggTk9ULVZBTElEMTIwMAYDVQQLDClLb21wb25lbnRlbi1DQSBkZXIgVGVsZW1hdGlraW5mcmFzdHJ1a3R1cjEgMB4GA1UEAwwXR0VNLktPTVAtQ0EyOCBURVNULU9OTFkwHhcNMjEwNTA2MTUyODI5WhcNMjYwNTA1MTUyODI4WjB9MQswCQYDVQQGEwJBVDEoMCYGA1UECgwfUklTRSBHbWJIIFRFU1QtT05MWSAtIE5PVC1WQUxJRDEpMCcGA1UEBRMgMzMyMjUtVjAxSTAwMDFUMjAyMTA1MDYxNDM5NTk0MDYxGTAXBgNVBAMMEG1haW4ucnUuaWRwLnJpc2UwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEpogLhoK59j/BX7OKqZWQ0GkEckCbr2IJ5HZLRLkXyn+oE112rGg4r/ZV3mhye5C0/Wr8+5GyXF8BCO/gTh1F4KOCAQUwggEBMB0GA1UdDgQWBBSsDmRSbs5NJ9mkyg4xsmmYb7osDTAfBgNVHSMEGDAWgBQAajiQ85muIY9S2u7BjG6ArWEiyTBPBggrBgEFBQcBAQRDMEEwPwYIKwYBBQUHMAGGM2h0dHA6Ly9vY3NwMi10ZXN0cmVmLmtvbXAtY2EudGVsZW1hdGlrLXRlc3Qvb2NzcC9lYzAOBgNVHQ8BAf8EBAMCB4AwIQYDVR0gBBowGDAKBggqghQATASBIzAKBggqghQATASBSzAMBgNVHRMBAf8EAjAAMC0GBSskCAMDBCQwIjAgMB4wHDAaMAwMCklEUC1EaWVuc3QwCgYIKoIUAEwEggQwCgYIKoZIzj0EAwIDSAAwRQIgcVkzvJuJ4y/2wAeYcQaKJyWELB4RuO1AcmbhEaPX2y8CIQCG3d0zgqqbskiLAbmwbxMOjrtClRS6xK2J61BATOj20w=="
-    ]
-}`
+// TestJSONWebKeyBrainpoolRoundTrip marshals and parses a Brainpool EC public key (crv "BP-256").
+// The x5c→certificate path (brainpool.ParseCertificate) is covered end to end by the live gemidp
+// SMC-B test, which parses the IDP's real Brainpool certificate.
+func TestJSONWebKeyBrainpoolRoundTrip(t *testing.T) {
+	prk, err := ecdsa.GenerateKey(brainpool.P256r1(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := json.Marshal(&JSONWebKey{Key: &prk.PublicKey})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(data), `"crv":"BP-256"`) {
+		t.Fatalf("expected crv BP-256 in %s", data)
+	}
+
 	var jwk JSONWebKey
-	if err := json.Unmarshal([]byte(jwkJSON), &jwk); err != nil {
+	if err := json.Unmarshal(data, &jwk); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	pub, ok := jwk.Key.(*ecdsa.PublicKey)
@@ -131,7 +129,7 @@ func TestJSONWebKeyParseBrainpoolX5C(t *testing.T) {
 	if pub.Curve != brainpool.P256r1() {
 		t.Fatalf("curve = %s", pub.Curve.Params().Name)
 	}
-	if len(jwk.Certificates) != 1 {
-		t.Fatalf("certificates = %d", len(jwk.Certificates))
+	if pub.X.Cmp(prk.PublicKey.X) != 0 || pub.Y.Cmp(prk.PublicKey.Y) != 0 {
+		t.Fatal("public key coordinates did not round-trip")
 	}
 }
