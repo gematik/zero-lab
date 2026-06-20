@@ -213,7 +213,7 @@ func TestVAUResumeFromStaleSnapshotIsObservable(t *testing.T) {
 	}
 
 	early := session.VAUChannel.Snapshot()
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		if _, err := session.GetStatus(); err != nil {
 			t.Fatalf("GetStatus during burn loop: %v", err)
 		}

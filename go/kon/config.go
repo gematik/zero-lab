@@ -1,7 +1,7 @@
 package kon
 
 // CredentialsConfig is an interface for different types of credentials
-type CredentialsConfig interface{}
+type CredentialsConfig any
 
 // CredentialsConfigBasic is a struct for HTTP basic credentials
 type CredentialsConfigBasic struct {

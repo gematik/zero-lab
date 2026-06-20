@@ -23,11 +23,11 @@ import (
 // `ChannelSnapshot` is omitempty so older metadata-only entries written before
 // resumption was wired still parse cleanly.
 type sessionOpenEntry struct {
-	Provider        epa.ProviderNumber    `json:"provider"`
-	Env             epa.Env               `json:"env"`
-	BaseURL         string                `json:"base_url"`
-	OpenedAt        time.Time             `json:"opened_at"`
-	ChannelSnapshot *vau.ChannelSnapshot  `json:"channel_snapshot,omitempty"`
+	Provider        epa.ProviderNumber   `json:"provider"`
+	Env             epa.Env              `json:"env"`
+	BaseURL         string               `json:"base_url"`
+	OpenedAt        time.Time            `json:"opened_at"`
+	ChannelSnapshot *vau.ChannelSnapshot `json:"channel_snapshot,omitempty"`
 }
 
 // sessionEntryTTL matches the upper bound of an authorized VAU session at the

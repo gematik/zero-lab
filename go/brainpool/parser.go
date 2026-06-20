@@ -444,7 +444,7 @@ func parseRDNSequence(rdnSeq *cryptobyte.String) (*pkix.RDNSequence, error) {
 			}
 
 			// Decode the ASN.1 string value based on the tag type
-			var value interface{}
+			var value any
 			switch valueTag {
 			case cryptobyte_asn1.UTF8String, cryptobyte_asn1.PrintableString, cryptobyte_asn1.IA5String:
 				value = string(valueRaw)

@@ -32,8 +32,8 @@ func (j *Jwk) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (j *Jwk) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var m map[string]interface{}
+func (j *Jwk) UnmarshalYAML(unmarshal func(any) error) error {
+	var m map[string]any
 	if err := unmarshal(&m); err != nil {
 		return err
 	}

@@ -41,7 +41,7 @@ func ThumbprintS256(jwk jwk.Key) (string, error) {
 
 func GenerateJwkSet(num int) (jwk.Set, error) {
 	set := jwk.NewSet()
-	for i := 0; i < num; i++ {
+	for range num {
 		key, err := GenerateRandomJwk()
 		if err != nil {
 			return nil, fmt.Errorf("could not generate key: %w", err)

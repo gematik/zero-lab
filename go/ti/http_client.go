@@ -13,7 +13,6 @@ func newHTTPClient() *http.Client {
 	})
 }
 
-
 func clientWithTransport(base http.RoundTripper) *http.Client {
 	return &http.Client{
 		Transport: &userAgentTransport{base: base},

@@ -186,7 +186,7 @@ func TestConcurrentReadsWithWrites(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
@@ -198,14 +198,12 @@ func TestConcurrentReadsWithWrites(t *testing.T) {
 			}
 		}(i)
 	}
-	for i := 0; i < 20; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 20 {
+		wg.Go(func() {
 			if _, _, err := s.Get("k"); err != nil {
 				t.Errorf("Get: %v", err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	if _, ok, err := s.Get("k"); err != nil || !ok {
@@ -293,7 +291,7 @@ func TestKeepTTL(t *testing.T) {
 func TestSchemaInitIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "cli-state.db")
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		s, err := OpenSQLite(path)
 		if err != nil {
 			t.Fatalf("open #%d: %v", i, err)
@@ -337,7 +335,7 @@ func TestSQLiteFileIsOpenableExternally(t *testing.T) {
 func TestExpiresAtIndexIsUsed(t *testing.T) {
 	s := newTestStore(t)
 	// Populate enough rows that the planner takes the index path seriously.
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		key := "k" + strings.Repeat("a", i%5) + string(rune('0'+i%10))
 		if err := s.Set(key, []byte(`"v"`), Expire(time.Hour)); err != nil {
 			t.Fatal(err)

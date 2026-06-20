@@ -136,28 +136,27 @@ func TestOIDEquality(t *testing.T) {
 	}
 }
 
-
 func TestParseInvalidTag(t *testing.T) {
-// Invalid first byte (not SEQUENCE), but large enough
-invalidData := []byte{0xFF, 0x10, 0x02, 0x01, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+	// Invalid first byte (not SEQUENCE), but large enough
+	invalidData := []byte{0xFF, 0x10, 0x02, 0x01, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 
-_, err := Parse(invalidData)
-if err == nil {
-t.Fatal("Expected error for invalid tag")
-}
+	_, err := Parse(invalidData)
+	if err == nil {
+		t.Fatal("Expected error for invalid tag")
+	}
 
-if !strings.Contains(err.Error(), "0xff") || !strings.Contains(err.Error(), "0x30") {
-t.Errorf("Error should mention expected and actual tags, got: %v", err)
-}
+	if !strings.Contains(err.Error(), "0xff") || !strings.Contains(err.Error(), "0x30") {
+		t.Errorf("Error should mention expected and actual tags, got: %v", err)
+	}
 }
 
 func TestParseTooSmall(t *testing.T) {
-_, err := Parse([]byte{0x30, 0x05})
-if err == nil {
-t.Fatal("Expected error for file too small")
-}
+	_, err := Parse([]byte{0x30, 0x05})
+	if err == nil {
+		t.Fatal("Expected error for file too small")
+	}
 
-if !strings.Contains(err.Error(), "too small") {
-t.Errorf("Error should mention file is too small, got: %v", err)
-}
+	if !strings.Contains(err.Error(), "too small") {
+		t.Errorf("Error should mention file is too small, got: %v", err)
+	}
 }

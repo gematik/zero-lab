@@ -16,7 +16,7 @@ type connectResult struct {
 	Provider epa.ProviderNumber `json:"provider"`
 	Env      epa.Env            `json:"env"`
 	BaseURL  string             `json:"base_url,omitempty"`
-	OpenedAt time.Time          `json:"opened_at,omitempty"`
+	OpenedAt time.Time          `json:"opened_at"`
 	OK       bool               `json:"ok"`
 	Resumed  bool               `json:"resumed,omitempty"`
 	Error    string             `json:"error,omitempty"`

@@ -194,8 +194,7 @@ func (r *ValidationResult) add(err *ValidationError) {
 // *ValidationError already, so this is a defensive fallback for callers'
 // custom checks.
 func toValidationError(err error, cert *x509.Certificate) *ValidationError {
-	var ve *ValidationError
-	if errors.As(err, &ve) {
+	if ve, ok := errors.AsType[*ValidationError](err); ok {
 		if ve.Subject == "" {
 			ve.Subject = cert.Subject.CommonName
 		}

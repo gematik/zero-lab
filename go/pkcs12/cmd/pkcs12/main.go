@@ -434,7 +434,7 @@ func oidToString(oid []int) string {
 	return oidStr
 }
 
-func publicKeyType(pub interface{}) string {
+func publicKeyType(pub any) string {
 	switch pub.(type) {
 	case *rsa.PublicKey:
 		return "RSA"

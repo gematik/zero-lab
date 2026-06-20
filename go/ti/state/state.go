@@ -52,9 +52,9 @@ type setOptions struct {
 
 	// Reserved for future Redis-like semantics. Backends are expected to honor
 	// these once their constructors are exposed.
-	nx       bool // only set if key does not exist (Redis NX)
-	xx       bool // only set if key already exists (Redis XX)
-	keepTTL  bool // retain existing TTL on overwrite (Redis KEEPTTL)
+	nx      bool // only set if key does not exist (Redis NX)
+	xx      bool // only set if key already exists (Redis XX)
+	keepTTL bool // retain existing TTL on overwrite (Redis KEEPTTL)
 }
 
 // Expire sets a relative TTL. The entry expires at time.Now() + d at the moment

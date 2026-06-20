@@ -3,6 +3,11 @@ set dotenv-load := true
 
 DOCKER_USER := "spilikin"
 
+# Pinned Go code-analysis tools (run via `go run`; not added to any go.mod)
+MODERNIZE := "golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.22.0"
+STATICCHECK := "honnef.co/go/tools/cmd/staticcheck@v0.7.0"
+GOVULNCHECK := "golang.org/x/vuln/cmd/govulncheck@v1.4.0"
+
 # Every module — library AND command — is versioned solely by its own git tag
 # (go/<module>/vX.Y.Z), bumped only when that module changes. The local/Docker build stamp
 # is derived from `git describe` (see `_modver`); `go install` reads the version from the
@@ -199,3 +204,50 @@ pdp-e2e-hitl URL:
 # Run the env-guarded gemidp SMC-B integration test against the gematik IDP (uses ./.env).
 gemidp-smcb-test:
     go test ./gemidp -run TestGemIDP_SMCB -count=1 -v -timeout 2m
+
+# --- Go code analysis (all modules except libzero) ---
+
+# Report Go modernization suggestions (modern idioms: any, min/max, slices/maps, range-int, ...)
+modernize:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    fail=0
+    for dir in $(find . -name 'go.mod' -not -path './libzero/*' -exec dirname {} \; | sort); do
+        echo "==> modernize $dir"
+        ( cd "$dir" && go run {{MODERNIZE}} ./... ) || fail=1
+    done
+    exit $fail
+
+# Apply Go modernization fixes (including tests), then gofmt
+modernize-fix:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    for dir in $(find . -name 'go.mod' -not -path './libzero/*' -exec dirname {} \; | sort); do
+        echo "==> modernize -fix $dir"
+        ( cd "$dir" && go run {{MODERNIZE}} -fix -test ./... || true; gofmt -w . )
+    done
+
+# Static analysis: go vet + staticcheck
+lint:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    fail=0
+    for dir in $(find . -name 'go.mod' -not -path './libzero/*' -exec dirname {} \; | sort); do
+        echo "==> lint $dir"
+        ( cd "$dir" && go vet ./... && go run {{STATICCHECK}} ./... ) || fail=1
+    done
+    exit $fail
+
+# Scan for known vulnerabilities (govulncheck)
+vuln:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    fail=0
+    for dir in $(find . -name 'go.mod' -not -path './libzero/*' -exec dirname {} \; | sort); do
+        echo "==> govulncheck $dir"
+        ( cd "$dir" && go run {{GOVULNCHECK}} ./... ) || fail=1
+    done
+    exit $fail
+
+# One-shot static checks: go vet + staticcheck + modernize report
+check: lint modernize

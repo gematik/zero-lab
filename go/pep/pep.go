@@ -199,7 +199,7 @@ func (c *pepContext) verifyAuthorizationDPoP(options dpop.ParseOptions) error {
 	}
 
 	// verify access token binding
-	cnf := new(map[string]interface{})
+	cnf := new(map[string]any)
 
 	c.accessToken.Get("cnf", cnf)
 	if (*cnf)["jkt"] == "" {

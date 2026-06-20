@@ -124,9 +124,9 @@ func resolveCardHandle(ctx context.Context, client *kon.Client, identifier strin
 
 // spinner displays an animated waiting indicator on stderr.
 type spinner struct {
-	msg    string
-	stop   chan struct{}
-	done   sync.WaitGroup
+	msg  string
+	stop chan struct{}
+	done sync.WaitGroup
 }
 
 func startSpinner(msg string) *spinner {
@@ -134,9 +134,7 @@ func startSpinner(msg string) *spinner {
 	if !isTerminal() {
 		return s
 	}
-	s.done.Add(1)
-	go func() {
-		defer s.done.Done()
+	s.done.Go(func() {
 		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 		i := 0
 		ticker := time.NewTicker(80 * time.Millisecond)
@@ -151,7 +149,7 @@ func startSpinner(msg string) *spinner {
 				i++
 			}
 		}
-	}()
+	})
 	return s
 }
 

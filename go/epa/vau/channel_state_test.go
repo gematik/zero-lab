@@ -191,7 +191,7 @@ func TestRestoreRejectsNilHTTPClient(t *testing.T) {
 
 func TestRestoreRejectsMissingKeyMaterial(t *testing.T) {
 	cases := []struct {
-		name  string
+		name   string
 		mutate func(s *ChannelSnapshot)
 	}{
 		{"no KeyID", func(s *ChannelSnapshot) { s.KeyID = nil }},

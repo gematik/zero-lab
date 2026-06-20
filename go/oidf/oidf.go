@@ -74,7 +74,7 @@ func (f *OpenidFederation) FetchIdpList() ([]IdentityProviderInfo, error) {
 		return nil, err
 	}
 
-	var idpEntity interface{}
+	var idpEntity any
 	if err := token.Get("idp_entity", &idpEntity); err != nil {
 		return nil, fmt.Errorf("unable to get idp_entity from token: %w", err)
 	}
@@ -161,11 +161,11 @@ func (f *OpenidFederation) FetchEntityStatement(iss string) (*EntityStatement, e
 	return selfSigned, nil
 }
 
-func convertToStringMap(i interface{}) interface{} {
+func convertToStringMap(i any) any {
 	switch x := i.(type) {
 	// Convert maps
-	case map[interface{}]interface{}:
-		m := make(map[string]interface{})
+	case map[any]any:
+		m := make(map[string]any)
 		for k, v := range x {
 			// Convert the key to a string (often you'd cast if keys are known to be strings,
 			// but if they're not guaranteed, you can use fmt.Sprintf, as below).
@@ -173,15 +173,15 @@ func convertToStringMap(i interface{}) interface{} {
 			m[key] = convertToStringMap(v)
 		}
 		return m
-	case map[string]interface{}:
-		m := make(map[string]interface{})
+	case map[string]any:
+		m := make(map[string]any)
 		for k, v := range x {
 			m[k] = convertToStringMap(v)
 		}
 		return m
 
 	// Convert slices
-	case []interface{}:
+	case []any:
 		for i, v := range x {
 			x[i] = convertToStringMap(v)
 		}
@@ -194,8 +194,8 @@ func convertToStringMap(i interface{}) interface{} {
 }
 
 // converts the metadata template to an oidf.Metadata object
-func templateToMetadata(template map[string]interface{}) (*Metadata, error) {
-	template = convertToStringMap(template).(map[string]interface{})
+func templateToMetadata(template map[string]any) (*Metadata, error) {
+	template = convertToStringMap(template).(map[string]any)
 
 	// serialize the template to json
 	jsonData, err := json.Marshal(template)
@@ -214,7 +214,7 @@ func templateToMetadata(template map[string]interface{}) (*Metadata, error) {
 }
 
 // converts idp_entity claim to array of IdentityProviderInfo
-func idpEntityToIdpInfo(idpEntity interface{}) ([]IdentityProviderInfo, error) {
+func idpEntityToIdpInfo(idpEntity any) ([]IdentityProviderInfo, error) {
 	// serialize the obj to json
 	jsonData, err := json.Marshal(idpEntity)
 	if err != nil {

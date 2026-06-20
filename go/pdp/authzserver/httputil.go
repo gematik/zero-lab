@@ -45,8 +45,8 @@ func writeJSON(w http.ResponseWriter, status int, v any) error {
 // realIP returns a best-effort client IP for logging (X-Forwarded-For / X-Real-IP / RemoteAddr).
 func realIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if i := strings.IndexByte(xff, ','); i >= 0 {
-			return strings.TrimSpace(xff[:i])
+		if before, _, ok := strings.Cut(xff, ","); ok {
+			return strings.TrimSpace(before)
 		}
 		return strings.TrimSpace(xff)
 	}

@@ -203,7 +203,7 @@ func OpenChannel(baseURLString string, env Env, profile Profile, httpClient *htt
 	return channel, nil
 }
 
-func PostMessage[M interface{}](httpClient *http.Client, url string, requestMessage interface{}) ([]byte, *http.Response, []byte, *M, error) {
+func PostMessage[M any](httpClient *http.Client, url string, requestMessage any) ([]byte, *http.Response, []byte, *M, error) {
 	requestMessageCbor, err := cbor.Marshal(requestMessage)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("marshaling Message1: %w", err)
