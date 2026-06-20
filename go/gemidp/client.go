@@ -13,18 +13,13 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/brainpool"
+	_ "github.com/gematik/zero-lab/go/brainpool/jwxbp" // register Brainpool algorithms with jwx
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwe"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"golang.org/x/oauth2"
 )
-
-func init() {
-	jwa.RegisterSignatureAlgorithm(jwa.NewSignatureAlgorithm(
-		brainpool.AlgorithmNameBP256R1,
-	))
-}
 
 // OpenID Connect metadata of the gematik IDP-Dienst
 type Metadata struct {
