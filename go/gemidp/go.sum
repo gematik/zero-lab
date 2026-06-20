@@ -7,6 +7,8 @@ github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58 h1:w
 github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58/go.mod h1:R/2lWeEB3SqwjVXuLDd++e1akc/fK/O79aF7fmxw3xY=
 github.com/gematik/zero-lab/go/oauth v0.0.0-20260617184140-1440fec98b58 h1:KQ9wHxKrxpR5DmzBXy6FvQv/WaBU4vT8zMrjYuaY3Rk=
 github.com/gematik/zero-lab/go/oauth v0.0.0-20260617184140-1440fec98b58/go.mod h1:jjMGmst3PfIVl+8P1CbIhT6KPi1XjLhtC+Rewkyr6pE=
+github.com/gematik/zero-lab/go/pkcs12 v0.20.2 h1:QVpSSYCoINAhzD+kWqNlkkT5fYrcGKn2gjmtzWAZOS0=
+github.com/gematik/zero-lab/go/pkcs12 v0.20.2/go.mod h1:VNHdfm5gWuJAldR08RHteNOQaWXbuC2MtJbWCOIByVo=
 github.com/goccy/go-json v0.10.6 h1:p8HrPJzOakx/mn/bQtjgNjdTcN+/S6FcG2CTtQOrHVU=
 github.com/goccy/go-json v0.10.6/go.mod h1:oq7eo15ShAhp70Anwd5lgX2pLfOS3QCiwU/PULtXL6M=
 github.com/lestrrat-go/blackmagic v1.0.4 h1:IwQibdnf8l2KoO+qC3uT4OaTWsW7tuRQXy9TRN9QanA=
