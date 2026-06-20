@@ -1,3 +1,6 @@
+# Load ./.env (gitignored) so env-guarded tests pick up local config (e.g. GEMIDP_*).
+set dotenv-load := true
+
 DOCKER_USER := "spilikin"
 
 # Every module — library AND command — is versioned solely by its own git tag
@@ -192,3 +195,7 @@ pdp-e2e-smoke URL='http://localhost:8011':
 # Provide the public URL explicitly, e.g. `just pdp-e2e-hitl https://<rathole-host>`.
 pdp-e2e-hitl URL:
     ZERO_PDP_E2E_URL='{{URL}}' ZERO_PDP_E2E_HITL=1 ZERO_PDP_E2E_CLIENT_SECRET="${ZERO_PDP_E2E_CLIENT_SECRET:-e2e-client}" go test ./pdp/e2e -run HITL -count=1 -v -timeout 5m
+
+# Run the env-guarded gemidp SMC-B integration test against the gematik IDP (uses ./.env).
+gemidp-smcb-test:
+    go test ./gemidp -run TestGemIDP_SMCB -count=1 -v -timeout 2m
