@@ -45,29 +45,7 @@ func HashFunctionForCurve(curve elliptic.Curve) (hash.Hash, error) {
 	return hashFunc, nil
 }
 
-// AlgorithmForCurve maps an elliptic curve to its JOSE signature algorithm name.
-func AlgorithmForCurve(curve elliptic.Curve) (string, error) {
-	name := curve.Params().Name
-
-	switch name {
-	case "P-256":
-		return AlgorithmNameES256, nil
-	case "P-384":
-		return AlgorithmNameBP384R1, nil
-	case "P-521":
-		return AlgorithmNameES512, nil
-	case "BP-256":
-		return AlgorithmNameBP256R1, nil
-	case "BP-384":
-		return AlgorithmNameBP384R1, nil
-	case "BP-521":
-		return AlgorithmNameBP512R1, nil
-	default:
-		return "", fmt.Errorf("unsupported curve: %s", name)
-	}
-}
-
-// JWAForCurve maps a Go elliptic curve to its JOSE "crv" name (Brainpool included).
+// JWAForCurve maps a Brainpool elliptic curve to its JOSE "crv" name.
 func JWAForCurve(curve elliptic.Curve) string {
 	switch curve.Params().Name {
 	case "brainpoolP256r1":
@@ -81,15 +59,9 @@ func JWAForCurve(curve elliptic.Curve) string {
 	}
 }
 
-// CurveForJWA maps a JOSE "crv" name to a Go elliptic curve (Brainpool included).
+// CurveForJWA maps a JOSE "crv" name to a Brainpool elliptic curve.
 func CurveForJWA(name string) (elliptic.Curve, error) {
 	switch name {
-	case "P-256":
-		return elliptic.P256(), nil
-	case "P-384":
-		return elliptic.P384(), nil
-	case "P-521":
-		return elliptic.P521(), nil
 	case "BP-256":
 		return brainpool.P256r1(), nil
 	case "BP-384":
@@ -97,6 +69,6 @@ func CurveForJWA(name string) (elliptic.Curve, error) {
 	case "BP-512":
 		return brainpool.P512r1(), nil
 	default:
-		return nil, fmt.Errorf("unsupported curve: %s", name)
+		return nil, fmt.Errorf("unsupported Brainpool curve: %s", name)
 	}
 }

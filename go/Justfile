@@ -205,6 +205,16 @@ pdp-e2e-hitl URL:
 gemidp-smcb-test:
     go test ./gemidp -run TestGemIDP_SMCB -count=1 -v -timeout 2m
 
+# Run the env-guarded epa connect test for both providers (VAU + authorize + record status + consent;
+# no VSDM). Uses ./.env (EPA_SMCB_P12, EPA_ENV, EPA_P1_INSURANT_ID, EPA_P2_INSURANT_ID, ...).
+epa-connect-test:
+    go test ./epa -run TestEPA_Connect -count=1 -v -timeout 5m
+
+# Run the env-guarded epa entitlement test. Requires VSDM_HMAC_KEY/VSDM_HMAC_KID exported in the SHELL
+# (never store them in ./.env). Writes a report to epa/test-reports/.
+epa-entitle-test:
+    go test ./epa -run TestEPA_Entitle -count=1 -v -timeout 5m
+
 # --- Go code analysis (all modules except libzero) ---
 
 # Report Go modernization suggestions (modern idioms: any, min/max, slices/maps, range-int, ...)

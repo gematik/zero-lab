@@ -7,3 +7,5 @@ pdp/e2e/testdata/sign.jwk
 .env
 # per-run gemidp test reports
 gemidp/test-reports/
+# per-run epa test reports
+epa/test-reports/
