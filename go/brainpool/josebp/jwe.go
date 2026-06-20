@@ -1,4 +1,4 @@
-package brainpool
+package josebp
 
 import (
 	"crypto"
@@ -7,37 +7,116 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash"
 	"io"
 )
 
+type JWEBuilder struct {
+	headers   Headers
+	plaintext []byte
+}
+
+func NewJWEBuilder() *JWEBuilder {
+	return &JWEBuilder{
+		headers: make(Headers),
+	}
+}
+
+func (b *JWEBuilder) Header(key string, value any) *JWEBuilder {
+	b.headers[key] = value
+	return b
+}
+
+func (b *JWEBuilder) Plaintext(plaintext []byte) *JWEBuilder {
+	b.plaintext = plaintext
+	return b
+}
+
+// EncryptECDHES builds a compact JWE (alg=ECDH-ES direct, enc=A256GCM) for the recipient's
+// Brainpool public key, as required by the gematik IDP-Dienst. The ephemeral public key (epk) is
+// serialized via josebp.JSONWebKey, so it carries the Brainpool crv (e.g. "BP-256").
+func (b *JWEBuilder) EncryptECDHES(recipient any) ([]byte, error) {
+	var recipientKey *ecdsa.PublicKey
+	switch recipient := recipient.(type) {
+	case *ecdsa.PublicKey:
+		recipientKey = recipient
+	case *JSONWebKey:
+		switch key := recipient.Key.(type) {
+		case *ecdsa.PublicKey:
+			recipientKey = key
+		default:
+			return nil, errors.New("unsupported key type")
+		}
+	default:
+		return nil, errors.New("unsupported key type")
+	}
+
+	ephemeralKey, err := ecdsa.GenerateKey(recipientKey.Curve, rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("generating ephemeral key: %w", err)
+	}
+
+	cek, err := DeriveECDHES("A256GCM", []byte{}, []byte{}, ephemeralKey, recipientKey, 32)
+	if err != nil {
+		return nil, fmt.Errorf("deriving ECDHES: %w", err)
+	}
+
+	b.headers["alg"] = "ECDH-ES"
+	b.headers["enc"] = "A256GCM"
+	b.headers["epk"] = &JSONWebKey{
+		Key: &ephemeralKey.PublicKey,
+	}
+
+	headersJson, err := json.Marshal(b.headers)
+	if err != nil {
+		return nil, fmt.Errorf("marshalling headers: %w", err)
+	}
+
+	aad := []byte(base64.RawURLEncoding.EncodeToString(headersJson))
+
+	iv, tag, ciphertext, err := encryptAESGCMWithIVAndAAD(cek, b.plaintext, aad)
+	if err != nil {
+		return nil, fmt.Errorf("encrypting with AES-GCM: %w", err)
+	}
+
+	// Compact serialization: header..iv.ciphertext.tag (empty encrypted-key for ECDH-ES direct).
+	serialized := []byte(base64.RawURLEncoding.EncodeToString(headersJson))
+	serialized = append(serialized, '.')
+	serialized = append(serialized, '.')
+	serialized = append(serialized, base64.RawURLEncoding.EncodeToString(iv)...)
+	serialized = append(serialized, '.')
+	serialized = append(serialized, base64.RawURLEncoding.EncodeToString(ciphertext)...)
+	serialized = append(serialized, '.')
+	serialized = append(serialized, base64.RawURLEncoding.EncodeToString(tag)...)
+
+	return serialized, nil
+}
+
+// DeriveECDHES performs the ECDH-ES Concat KDF (RFC 7518 §4.6) over an elliptic curve.
 func DeriveECDHES(algorithm string, apuData, apvData []byte, privateKey *ecdsa.PrivateKey, publicKey *ecdsa.PublicKey, keySize int) ([]byte, error) {
 	if keySize > 1<<16 {
 		return nil, errors.New("key size too large: must be less than or equal to 64 KiB")
 	}
 
-	// Prefix inputs with length
 	algorithmID := lengthPrefixed([]byte(algorithm))
 	partyUInfo := lengthPrefixed(apuData)
 	partyVInfo := lengthPrefixed(apvData)
 
-	// Encode output size in bits for suppPubInfo
 	suppPubInfo := make([]byte, 4)
 	binary.BigEndian.PutUint32(suppPubInfo, uint32(keySize)*8)
 
-	// Validate that the public key is on the same curve as the private key
 	if !privateKey.Curve.IsOnCurve(publicKey.X, publicKey.Y) {
 		return nil, errors.New("public key is not on the same curve as the private key")
 	}
 
-	// Calculate shared secret Z
 	sharedX, _ := privateKey.Curve.ScalarMult(publicKey.X, publicKey.Y, privateKey.D.Bytes())
 	sharedSecret := sharedX.Bytes()
 
-	// Ensure sharedSecret is padded to the correct size for the curve
 	curveSize := curveCoordinateSize(privateKey.Curve)
 	if len(sharedSecret) < curveSize {
 		paddedSecret := make([]byte, curveSize)
@@ -45,11 +124,9 @@ func DeriveECDHES(algorithm string, apuData, apvData []byte, privateKey *ecdsa.P
 		sharedSecret = paddedSecret
 	}
 
-	// Create a KDF reader with SHA-256
 	kdfReader := newKDF(crypto.SHA256, sharedSecret, algorithmID, partyUInfo, partyVInfo, suppPubInfo, nil)
 	derivedKey := make([]byte, keySize)
 
-	// Read from the KDF into the derivedKey slice
 	if _, err := kdfReader.Read(derivedKey); err != nil {
 		return nil, fmt.Errorf("failed to read from KDF: %w", err)
 	}
@@ -57,12 +134,10 @@ func DeriveECDHES(algorithm string, apuData, apvData []byte, privateKey *ecdsa.P
 	return derivedKey, nil
 }
 
-// curveCoordinateSize returns the size in octets for a coordinate on an elliptic curve.
 func curveCoordinateSize(curve elliptic.Curve) int {
-	return (curve.Params().BitSize + 7) / 8 // Equivalent to bitLen / 8 rounded up
+	return (curve.Params().BitSize + 7) / 8
 }
 
-// lengthPrefixed returns a byte slice prefixed with its length in 32-bit big-endian format.
 func lengthPrefixed(data []byte) []byte {
 	out := make([]byte, len(data)+4)
 	binary.BigEndian.PutUint32(out, uint32(len(data)))
@@ -77,7 +152,6 @@ type kdf struct {
 	hasher  hash.Hash
 }
 
-// newKDF builds a KDF reader based on the given inputs.
 func newKDF(hash crypto.Hash, z, algID, ptyUInfo, ptyVInfo, supPubInfo, supPrivInfo []byte) io.Reader {
 	info := append(append(append(append(append([]byte{}, algID...), ptyUInfo...), ptyVInfo...), supPubInfo...), supPrivInfo...)
 	return &kdf{
@@ -92,7 +166,6 @@ func newKDF(hash crypto.Hash, z, algID, ptyUInfo, ptyVInfo, supPubInfo, supPrivI
 func (ctx *kdf) Read(out []byte) (int, error) {
 	totalCopied := 0
 
-	// Use cached data if available
 	if len(ctx.cache) > 0 {
 		n := copy(out, ctx.cache)
 		totalCopied += n
@@ -102,25 +175,20 @@ func (ctx *kdf) Read(out []byte) (int, error) {
 		}
 	}
 
-	// Generate new hash blocks until the output buffer is filled
 	for totalCopied < len(out) {
 		ctx.hasher.Reset()
 
-		// Write counter in big-endian format to the hasher
 		counter := [4]byte{}
 		binary.BigEndian.PutUint32(counter[:], ctx.i)
 		_, _ = ctx.hasher.Write(counter[:])
 
-		// Write shared secret Z and info
 		_, _ = ctx.hasher.Write(ctx.z)
 		_, _ = ctx.hasher.Write(ctx.info)
 
-		// Get the hash sum and copy to the output buffer
 		hash := ctx.hasher.Sum(nil)
 		n := copy(out[totalCopied:], hash)
 		totalCopied += n
 
-		// Save any unused portion of the hash to the cache
 		if n < len(hash) {
 			ctx.cache = hash[n:]
 		} else {
@@ -133,58 +201,49 @@ func (ctx *kdf) Read(out []byte) (int, error) {
 	return totalCopied, nil
 }
 
-// Encrypts a given plaintext using AES-GCM with an IV and AAD, returning the IV, tag, and ciphertext.
+// encryptAESGCMWithIVAndAAD encrypts plaintext with AES-GCM, returning iv, tag, ciphertext.
 func encryptAESGCMWithIVAndAAD(key, plaintext, aad []byte) ([]byte, []byte, []byte, error) {
-	// Create a new AES cipher block
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	// Create a GCM block cipher mode instance
 	aesGCM, err := cipher.NewGCM(block)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	// Create a nonce (IV) for AES-GCM; it must be 12 bytes for optimal security
 	iv := make([]byte, aesGCM.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
 		return nil, nil, nil, err
 	}
 
-	// Encrypt the plaintext with the IV and AAD
 	ciphertext := aesGCM.Seal(nil, iv, plaintext, aad)
 
-	// Extract the tag from the end of the ciphertext
 	tag := ciphertext[len(ciphertext)-aesGCM.Overhead():]
 	ciphertext = ciphertext[:len(ciphertext)-aesGCM.Overhead()]
 
 	return iv, tag, ciphertext, nil
 }
 
-// Decrypts the ciphertext using AES-GCM with a provided IV, tag, and AAD.
-func decryptAESGCMWithIVAndAAD(key, iv, tag, ciphertext, aad []byte) (string, error) {
-	// Create a new AES cipher block
+// decryptAESGCMWithIVAndAAD decrypts AES-GCM given iv, tag, ciphertext, and aad.
+func decryptAESGCMWithIVAndAAD(key, iv, tag, ciphertext, aad []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	// Create a GCM block cipher mode instance
 	aesGCM, err := cipher.NewGCM(block)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	// Combine the ciphertext and tag for decryption
 	ciphertextWithTag := append(ciphertext, tag...)
 
-	// Decrypt the ciphertext with the provided IV and AAD
 	plaintext, err := aesGCM.Open(nil, iv, ciphertextWithTag, aad)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return string(plaintext), nil
+	return plaintext, nil
 }

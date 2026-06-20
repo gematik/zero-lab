@@ -12,8 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gematik/zero-lab/go/brainpool"
-	_ "github.com/gematik/zero-lab/go/brainpool/jwxbp" // register Brainpool algorithms with jwx
+	"github.com/gematik/zero-lab/go/brainpool/josebp"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwe"
@@ -197,7 +196,7 @@ func (c *Client) ExchangeForIdentity(code, verifier string, options ...oidc.Opti
 
 	slog.Info("Token key payload", "payload", tokenKeyPayload)
 
-	encryptedTokenKeySerialized, err := brainpool.NewJWEBuilder().
+	encryptedTokenKeySerialized, err := josebp.NewJWEBuilder().
 		Plaintext(tokenKeyPayloadBytes).
 		EncryptECDHES(idpEncKey)
 	if err != nil {
@@ -270,14 +269,14 @@ func (c *Client) parseIDToken(response *oidc.TokenResponse) (jwt.Token, error) {
 		return nil, fmt.Errorf("fetching signing key: %w", err)
 	}
 
-	// check signature using the brainpool enabled library
-	_, err = brainpool.ParseToken([]byte(response.IDTokenRaw), brainpool.WithKey(key))
+	// verify the Brainpool signature with josebp (stdlib ecdsa; no jwx)
+	_, err = josebp.ParseToken([]byte(response.IDTokenRaw), josebp.WithKey(key))
 	if err != nil {
 		return nil, fmt.Errorf("parsing ID token: %w", err)
 	}
 
-	// parse the token using the jwx library, after we verified the brainpool signature
-	// since the token signature is already verified, we can skip the verification step
+	// parse the token with jwx for claim validation; signature already verified above,
+	// so verification is disabled (jwx never sees the Brainpool key/curve)
 	token, err := jwt.ParseString(
 		response.IDTokenRaw,
 		jwt.WithAcceptableSkew(time.Duration(5*time.Minute)), // allow 5 minutes skew

@@ -14,6 +14,7 @@ import (
 	"strconv"
 
 	"github.com/gematik/zero-lab/go/brainpool"
+	"github.com/gematik/zero-lab/go/brainpool/josebp"
 )
 
 type ChallengeSignerFunc func(challenge Challenge) (string, error)
@@ -157,7 +158,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 
 	slog.Debug("Challenge", "challenge", challenge)
 
-	token, err := brainpool.ParseToken([]byte(challenge.Challenge), brainpool.WithKey(idpSigKey))
+	token, err := josebp.ParseToken([]byte(challenge.Challenge), josebp.WithKey(idpSigKey))
 	if err != nil {
 		return nil, fmt.Errorf("parsing challenge NJWT: %w", err)
 	}
@@ -184,7 +185,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 
 	slog.Debug("Challenge response claims", "claims", string(challengeResponseClaimsJson))
 
-	challengeResponseEncrypted, err := brainpool.NewJWEBuilder().
+	challengeResponseEncrypted, err := josebp.NewJWEBuilder().
 		Header("cty", "NJWT").
 		Header("exp", challengePayload.Exp).
 		Plaintext([]byte(challengeResponseClaimsJson)).
@@ -230,7 +231,7 @@ func SignWith(signFunc brainpool.SignFunc, certFunc func() (*x509.Certificate, e
 		if err != nil {
 			return "", fmt.Errorf("getting certificate: %w", err)
 		}
-		challengeResponse, err := brainpool.NewJWTBuilder().
+		challengeResponse, err := josebp.NewJWTBuilder().
 			Header("typ", "JWT").
 			Header("cty", "NJWT").
 			Header("alg", "BP256R1").
