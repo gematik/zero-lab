@@ -1,7 +1,17 @@
 services:
-  valkey:
-    image: valkey/valkey
+  redis:
+    image: redis:7-alpine
+    container_name: zero-pdp-redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
-      - ./valkey-data:/data
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  redis-data:

@@ -25,19 +25,10 @@ type Config struct {
 	OidfRelyingPartyConfigPath string                   `yaml:"oidf_relying_party_path"`
 	OidfRelyingPartyConfig     *oidf.RelyingPartyConfig `yaml:"oidf_relying_party" validate:"omitempty"`
 	Endpoints                  EndpointsConfig          `yaml:"endpoints" validate:"omitempty"`
-	ValkeyConfig               *ValkeyConfig            `yaml:"valkey"`
 	NonProdMode                bool                     `yaml:"non_prod_mode"`
 	// some values maybe set  programmatically
 	NonceService              nonce.Service
 	VerifyClientAssertionFunc VerifyClientAssertionFunc
-}
-
-type ValkeyConfig struct {
-	Host     string `yaml:"host" validate:"required"`
-	Port     int    `yaml:"port" validate:"required"`
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
-	UseTLS   bool   `yaml:"use_tls"`
 }
 
 type EndpointsConfig struct {

@@ -2,7 +2,6 @@ package authzserver
 
 import (
 	"crypto/rand"
-	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"log"
@@ -18,7 +17,6 @@ import (
 	"github.com/gematik/zero-lab/go/oidf"
 	"github.com/gematik/zero-lab/go/pep"
 	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/valkey-io/valkey-go"
 	"gopkg.in/yaml.v3"
 )
 
@@ -38,7 +36,6 @@ type Server struct {
 	nonceService              nonce.Service
 	verifyClientAssertionFunc VerifyClientAssertionFunc
 	dpopMaxAge                time.Duration
-	valkey                    valkey.Client
 }
 
 func NewFromConfigFile(filename string) (*Server, error) {
@@ -63,10 +60,6 @@ func New(cfg Config) (*Server, error) {
 
 	if s.nonProdMode {
 		slog.Warn("Authorization server is running in non-production mode")
-	}
-
-	if err := s.initValkey(cfg); err != nil {
-		return nil, err
 	}
 
 	issuerUrl, err := url.Parse(cfg.Issuer)
@@ -130,27 +123,6 @@ func New(cfg Config) (*Server, error) {
 	s.dpopMaxAge = 5 * time.Minute
 
 	return s, nil
-}
-
-// initValkey creates the optional Valkey client used for distributed state.
-func (s *Server) initValkey(cfg Config) error {
-	if cfg.ValkeyConfig == nil {
-		return nil
-	}
-	opt := valkey.ClientOption{
-		InitAddress: []string{fmt.Sprintf("%s:%d", cfg.ValkeyConfig.Host, cfg.ValkeyConfig.Port)},
-	}
-	if cfg.ValkeyConfig.Username != "" {
-		opt.Username = cfg.ValkeyConfig.Username
-	}
-	if cfg.ValkeyConfig.UseTLS {
-		opt.TLSConfig = &tls.Config{}
-	}
-	var err error
-	if s.valkey, err = valkey.NewClient(opt); err != nil {
-		return fmt.Errorf("create valkey client: %w", err)
-	}
-	return nil
 }
 
 // initOpenidProviders configures the statically-listed OIDC providers.
