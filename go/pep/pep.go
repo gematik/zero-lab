@@ -234,7 +234,7 @@ func (c *pepContext) parseAuthorizationScheme(scheme string) (string, error) {
 }
 
 func (c *pepContext) verifyAccessToken(accessToken string) error {
-	jwtToken, err := c.pep.verifyAccessToken(accessToken)
+	jwtToken, err := c.pep.VerifyAccessToken(accessToken)
 	if err != nil {
 		return &Error{
 			HttpStatus:  http.StatusUnauthorized,
@@ -280,23 +280,27 @@ func (p *PEP) GuardedHandlerFunc(enforcer Enforcer, next func(w http.ResponseWri
 	}
 }
 
-func (p *PEP) verifyAccessToken(tokenRaw string) (jwt.Token, error) {
+// VerifyAccessToken parses and verifies a JWT access token against the configured JWKSet. When a
+// resource is set (guarding a resource server) the token's audience must match it; with no resource
+// configured — e.g. when an authorization server reuses the PEP to verify its own tokens — the
+// audience is not restricted.
+func (p *PEP) VerifyAccessToken(tokenRaw string) (jwt.Token, error) {
 	jwks, err := p.provideJwkSetFunc()
 	if err != nil {
 		return nil, fmt.Errorf("could not get JWKSet: %w", err)
 	}
-	token, err := jwt.ParseString(
-		tokenRaw,
+	opts := []jwt.ParseOption{
 		jwt.WithAcceptableSkew(p.accessTokenAcceptableSkew),
 		jwt.WithKeySet(jwks, jws.WithInferAlgorithmFromKey(true)),
-		jwt.WithAudience(p.resource),
-	)
-
+	}
+	if p.resource != "" {
+		opts = append(opts, jwt.WithAudience(p.resource))
+	}
+	token, err := jwt.ParseString(tokenRaw, opts...)
 	if err != nil {
 		p.slogger.Warn("could not parse JWT", "error", err, "token", tokenRaw)
 		return nil, fmt.Errorf("could not parse JWT: %w", err)
 	}
 
 	return token, nil
-
 }
