@@ -2,7 +2,6 @@ package gemidp_test
 
 import (
 	"crypto/ecdsa"
-	"encoding/json"
 	"testing"
 
 	"github.com/gematik/zero-lab/go/brainpool/josebp"
@@ -23,13 +22,14 @@ func TestJWECross(t *testing.T) {
 
 	plaintext := []byte("Hello, World!")
 
-	pukBP := new(josebp.JSONWebKey)
-	if err := json.Unmarshal([]byte(jwkPublicString), pukBP); err != nil {
-		t.Fatalf("Unmarshal returned an error: %v", err)
+	// josebp is Brainpool-only; get the NIST P-256 public key via jwx (not josebp.JSONWebKey).
+	var pukEC ecdsa.PublicKey
+	if err := jwk.Export(puk, &pukEC); err != nil {
+		t.Fatalf("export public key: %v", err)
 	}
 	cipher, err := josebp.NewJWEBuilder().
 		Plaintext(plaintext).
-		EncryptECDHES(pukBP.Key.(*ecdsa.PublicKey))
+		EncryptECDHES(&pukEC)
 	if err != nil {
 		t.Fatalf("Encrypt returned an error: %v", err)
 	}

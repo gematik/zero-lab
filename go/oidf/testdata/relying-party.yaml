@@ -1,0 +1,24 @@
+sub: https://rp.example.com
+fed_master_url: https://app-ref.federationmaster.de
+fed_master_jwk:
+  kty: EC
+  crv: P-256
+  x: cdIR8dLbqaGrzfgyu365KM5s00zjFq8DFaUFqBvrWLs
+  y: XVp1ySJ2kjEInpjTZy0wD59afEXELpck0fk7vrMWrbw
+  kid: puk_fedmaster_sig
+  use: sig
+  alg: ES256
+sign_kid: reg_sig_puk
+sign_private_key_path: sign.pem
+enc_kid: reg_enc_puk
+enc_private_key_path: enc.pem
+client_kid: reg_client_puk
+client_private_key_path: client.pem
+client_cert_path: client-cert.pem
+metadata_template:
+  federation_entity:
+    name: Zero Trust Lab
+  openid_relying_party:
+    client_name: Zero Trust Lab
+    redirect_uris:
+      - https://rp.example.com/callback

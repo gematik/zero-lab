@@ -19,6 +19,10 @@ import (
 )
 
 func TestNewRelyingParty(t *testing.T) {
+	fedMasterURL := os.Getenv("OIDF_FEDMASTER_URL")
+	if fedMasterURL == "" {
+		t.Skip("OIDF_FEDMASTER_URL not set — skipping (NewRelyingPartyFromConfig fetches a live federation master)")
+	}
 	signKeyPath, _ := generateTempKeyFile()
 	defer os.Remove(signKeyPath)
 	encKeyPath, _ := generateTempKeyFile()
@@ -28,19 +32,22 @@ func TestNewRelyingParty(t *testing.T) {
 	clientCertPath, _ := generateCert(clientKeyPath)
 	defer os.Remove(clientCertPath)
 
-	jwk, _ := NewJwkFromJson(`{
+	jwk, err := NewJwkFromJson(`{
 		"kty": "EC",
 		"crv": "P-256",
 		"x":   "cdIR8dLbqaGrzfgyu365KM5s00zjFq8DFaUFqBvrWLs",
 		"y":   "XVp1ySJ2kjEInpjTZy0wD59afEXELpck0fk7vrMWrbw",
 		"kid": "puk_fedmaster_sig",
 		"use": "sig",
-		"alg": "ES256",
+		"alg": "ES256"
 	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := &RelyingPartyConfig{
 		Subject:              "https://example.com",
-		FedMasterURL:         "https://fed.example.com",
+		FedMasterURL:         fedMasterURL,
 		FedMasterJwk:         *jwk,
 		SignKid:              "sign-kid",
 		SignPrivateKeyPath:   signKeyPath,
@@ -167,15 +174,31 @@ func generateCert(keyfile string) (string, error) {
 }
 
 func TestConfigFile(t *testing.T) {
-	cfg, err := LoadRelyingPartyConfig("../../relying-party-reg.yaml")
+	cfg, err := LoadRelyingPartyConfig("testdata/relying-party.yaml")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	m, err := json.Marshal(cfg.MetadataTemplate)
-	if err != nil {
-		t.Fatal(err)
+	if cfg.Subject != "https://rp.example.com" {
+		t.Errorf("sub = %q", cfg.Subject)
+	}
+	if cfg.FedMasterURL != "https://app-ref.federationmaster.de" {
+		t.Errorf("fed_master_url = %q", cfg.FedMasterURL)
+	}
+	if cfg.FedMasterJwk.Key == nil {
+		t.Error("fed_master_jwk did not parse into a key")
 	}
 
-	t.Log(string(m))
+	rp, ok := cfg.MetadataTemplate["openid_relying_party"].(map[string]any)
+	if !ok {
+		t.Fatalf("metadata_template.openid_relying_party missing: %v", cfg.MetadataTemplate)
+	}
+	if rp["client_name"] != "Zero Trust Lab" {
+		t.Errorf("client_name = %v", rp["client_name"])
+	}
+
+	// MetadataTemplate must stay JSON-serializable (it's marshaled downstream).
+	if _, err := json.Marshal(cfg.MetadataTemplate); err != nil {
+		t.Fatalf("metadata_template not JSON-serializable: %v", err)
+	}
 }
