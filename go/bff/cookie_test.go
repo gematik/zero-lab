@@ -8,87 +8,59 @@ import (
 	"testing"
 
 	"github.com/gematik/zero-lab/go/bff"
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwe"
-	"github.com/lestrrat-go/jwx/v3/jws"
 )
 
+// Protect treats the cookie value as an opaque session ID and looks it up in the SessionManager;
+// a session is authorized only once it carries an access token. (The cookie is not a self-contained
+// encrypted/signed blob — that earlier design was replaced by the server-side SessionManager.)
 func TestGuardSessionCookie(t *testing.T) {
-	signKey := bff.GenerateRandomKey(256)
-	encKey := bff.GenerateRandomKey(256)
-
-	cookiePlaintext := []byte("Hello, World!")
-	signed, err := jws.Sign(cookiePlaintext, jws.WithKey(jwa.HS256(), signKey))
+	sm := bff.NewSessionManagerMock()
+	session, err := sm.CreateSession("state", "verifier", "S256")
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	encrypted, err := jwe.Encrypt([]byte(signed), jwe.WithContentEncryption(jwa.A256GCM()), jwe.WithKey(jwa.DIRECT(), encKey))
-	if err != nil {
+	session.AccessToken = "an-access-token"
+	if err := sm.UpdateSession(session); err != nil {
 		t.Fatal(err)
 	}
-
-	// encr<pt with wrong key
-	badKey := bff.GenerateRandomKey(256)
-	encrptedBad, _ := jwe.Encrypt([]byte(signed), jwe.WithContentEncryption(jwa.A256GCM()), jwe.WithKey(jwa.DIRECT(), badKey))
-
-	t.Log(string(encrypted))
 
 	b, err := bff.New(bff.Config{
-		EncryptKeyString: base64.StdEncoding.EncodeToString(encKey),
-		SignKeyString:    base64.StdEncoding.EncodeToString(signKey),
+		EncryptKeyString: base64.StdEncoding.EncodeToString(bff.GenerateRandomKey(256)),
+		SignKeyString:    base64.StdEncoding.EncodeToString(bff.GenerateRandomKey(256)),
 		CookieName:       "test-cookie",
+		SessionManager:   sm,
 	})
-
-	testserver := httptest.NewServer(b.Protect(
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("You are in"))
-			t.Log("Someone got in")
-		})),
-	)
-	defer testserver.Close()
-
-	testclient := testserver.Client()
-	httpReq, err := http.NewRequest("GET", testserver.URL, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	httpReq.AddCookie(&http.Cookie{
-		Name:  "test-cookie",
-		Value: string(encrypted),
-	})
+	server := httptest.NewServer(b.Protect(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("You are in"))
+	}))
+	defer server.Close()
 
-	resp, err := testclient.Do(httpReq)
-	if err != nil {
-		t.Fatal(err)
+	do := func(cookieValue string) int {
+		req, err := http.NewRequest("GET", server.URL, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.AddCookie(&http.Cookie{Name: "test-cookie", Value: cookieValue})
+		resp, err := server.Client().Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		resp.Body.Close()
+		return resp.StatusCode
 	}
-	resp.Body.Close()
-	io.ReadAll(resp.Body)
 
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected status code %d, got %d", http.StatusOK, resp.StatusCode)
+	// valid, authorized session id → allowed
+	if code := do(session.ID); code != http.StatusOK {
+		t.Fatalf("valid session: expected %d, got %d", http.StatusOK, code)
 	}
-
-	// mage bad request
-	httpReq, err = http.NewRequest("GET", testserver.URL, nil)
-	if err != nil {
-		t.Fatal(err)
+	// unknown session id → rejected
+	if code := do("nonexistent-session-id"); code != http.StatusUnauthorized {
+		t.Fatalf("unknown session: expected %d, got %d", http.StatusUnauthorized, code)
 	}
-	httpReq.AddCookie(&http.Cookie{
-		Name:  "test-cookie",
-		Value: string(encrptedBad),
-	})
-
-	resp, err = testclient.Do(httpReq)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("expected status code %d, got %d", http.StatusUnauthorized, resp.StatusCode)
-	}
-	resp.Body.Close()
-	io.ReadAll(resp.Body)
-
 }

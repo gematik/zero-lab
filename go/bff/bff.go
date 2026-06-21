@@ -46,6 +46,10 @@ type Config struct {
 	CookieName            string                    `json:"cookie_name" validate:"required"`
 	ProductionGradeCookie bool                      `json:"production_grade_cookie"`
 	FrontendRedirectURI   string                    `json:"frontend_redirect_uri" validate:"required"`
+
+	// SessionManager overrides the default in-memory mock when non-nil. Not serialized;
+	// supplied programmatically (e.g. a persistent store, or a seeded manager in tests).
+	SessionManager SessionManager `json:"-"`
 }
 
 type AuthorizationServerConfig struct {
@@ -112,8 +116,11 @@ func New(cfg Config) (*BackendForFrontend, error) {
 	b.signCookie = SignWithHS256KeyFunc(signKey)
 	b.verifyCookie = VerifyWithHS256KeyFunc(signKey)
 
-	// TODO: implement session manager
-	b.sessionManager = NewSessionManagerMock()
+	if cfg.SessionManager != nil {
+		b.sessionManager = cfg.SessionManager
+	} else {
+		b.sessionManager = NewSessionManagerMock()
+	}
 
 	b.oauth2Client = &oauth2.Config{
 		ClientID:     cfg.AuthorizationServer.ClientID,
