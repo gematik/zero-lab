@@ -17,6 +17,8 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
+const defaultHTTPTimeout = 30 * time.Second
+
 type PEP struct {
 	slogger                   *slog.Logger
 	httpClient                *http.Client
@@ -44,7 +46,7 @@ func (b *builder) Build() (*PEP, error) {
 		return nil, errors.New("none of the JWKSet provider has been set")
 	}
 	if b.p.httpClient == nil {
-		b.p.httpClient = http.DefaultClient
+		b.p.httpClient = &http.Client{Timeout: defaultHTTPTimeout}
 	}
 	if b.p.slogger == nil {
 		b.p.slogger = slog.Default()

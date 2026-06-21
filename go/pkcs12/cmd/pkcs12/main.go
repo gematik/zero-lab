@@ -15,6 +15,7 @@ import (
 	"os"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/gematik/zero-lab/go/pkcs12"
 	"github.com/gematik/zero-lab/go/pkcs12/legacy"
@@ -667,6 +668,7 @@ func requestCommand(args []string) {
 
 	// Create HTTP client
 	client := &http.Client{
+		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
 			TLSClientConfig: tlsConfig,
 		},

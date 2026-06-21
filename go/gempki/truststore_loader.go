@@ -167,7 +167,7 @@ func (l FileLoader) Load(_ context.Context) (*TrustStore, error) {
 
 // NetworkLoader fetches roots.json from the gematik distribution endpoint
 // for the configured Environment. HTTPClient is optional; nil falls back to
-// [http.DefaultClient] — production callers should pass a configured client
+// a bounded default client — production callers should pass a configured client
 // with appropriate timeouts.
 type NetworkLoader struct {
 	Env        Environment
@@ -186,7 +186,7 @@ func (l NetworkLoader) Load(ctx context.Context) (*TrustStore, error) {
 	}
 	client := l.HTTPClient
 	if client == nil {
-		client = http.DefaultClient
+		client = defaultHTTPClient
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {

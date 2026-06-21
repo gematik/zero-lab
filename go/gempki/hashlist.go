@@ -211,7 +211,7 @@ func (l HashListNetworkLoader) Load(ctx context.Context) (*HashListChecker, erro
 	}
 	client := l.HTTPClient
 	if client == nil {
-		client = http.DefaultClient
+		client = defaultHTTPClient
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, l.URL, http.NoBody)
 	if err != nil {

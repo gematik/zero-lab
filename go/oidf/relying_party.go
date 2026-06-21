@@ -35,6 +35,11 @@ type RelyingPartyConfig struct {
 	ClientPrivateKeyPath string         `yaml:"client_private_key_path" validate:"required"`
 	ClientCertPath       string         `yaml:"client_cert_path" validate:"required"`
 	MetadataTemplate     map[string]any `yaml:"metadata_template" validate:"required"`
+
+	// HTTPClient is the base client for federation and relying-party calls. Not serialized; supplied
+	// programmatically. When nil, a client with a default timeout is created. The relying party's
+	// authenticated calls layer mutual TLS onto a copy of it.
+	HTTPClient *http.Client `yaml:"-"`
 }
 
 type RelyingParty struct {
@@ -113,14 +118,18 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load tls cert: %w", err)
 	}
-	rp.httpClient = &http.Client{
-		Timeout: 10 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				Certificates: []tls.Certificate{tlsCert},
-			},
-		},
+
+	baseClient := cfg.HTTPClient
+	if baseClient == nil {
+		baseClient = &http.Client{Timeout: defaultHTTPTimeout}
 	}
+	// the relying party's authenticated calls use mutual TLS; derive that client from the base
+	// without mutating the caller's
+	mtlsClient := *baseClient
+	mtlsClient.Transport = transportWithTLS(baseClient.Transport, &tls.Config{
+		Certificates: []tls.Certificate{tlsCert},
+	})
+	rp.httpClient = &mtlsClient
 
 	metadata, err := templateToMetadata(cfg.MetadataTemplate)
 	if err != nil {
@@ -146,7 +155,7 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 
 	rp.entityStatement.Metadata.OpenidRelyingParty.Jwks = &Jwks{Keys: entityJwks}
 
-	rp.federation, err = NewOpenidFederation(cfg.FedMasterURL, rp.trustAnchor)
+	rp.federation, err = NewOpenidFederation(cfg.FedMasterURL, rp.trustAnchor, WithHTTPClient(baseClient))
 	if err != nil {
 		return nil, err
 	}
@@ -334,6 +343,19 @@ func loadKeys(privateKeyPath string, kid string, keyUsage jwk.KeyUsageType, cert
 	}
 
 	return privateKey, publicKey, nil
+}
+
+// transportWithTLS clones the base transport (or http.DefaultTransport when the base is nil or not a
+// *http.Transport) and applies the given TLS config, so mutual TLS is layered onto the chosen client
+// without mutating it.
+func transportWithTLS(rt http.RoundTripper, tlsConfig *tls.Config) http.RoundTripper {
+	base, ok := transportOrDefault(rt).(*http.Transport)
+	if !ok {
+		base = http.DefaultTransport.(*http.Transport)
+	}
+	t := base.Clone()
+	t.TLSClientConfig = tlsConfig
+	return t
 }
 
 func (rp *RelyingParty) Federation() *OpenidFederation {
