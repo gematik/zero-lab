@@ -9,10 +9,22 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/brainpool/josebp"
 )
+
+const defaultHTTPTimeout = 30 * time.Second
+
+// transportOrDefault returns http.DefaultTransport when rt is nil, so a decorated client always
+// has a concrete base transport to wrap.
+func transportOrDefault(rt http.RoundTripper) http.RoundTripper {
+	if rt == nil {
+		return http.DefaultTransport
+	}
+	return rt
+}
 
 // Environment of the gematik IDP-Dienst
 type Environment int
@@ -158,8 +170,8 @@ func extractKeyFromX5CHeader(data []byte) (*josebp.JSONWebKey, error) {
 }
 
 // fetch and parse JWK from the given URI
-func fetchKey(uri string) (*josebp.JSONWebKey, error) {
-	resp, err := http.Get(uri)
+func fetchKey(uri string, httpClient *http.Client) (*josebp.JSONWebKey, error) {
+	resp, err := httpClient.Get(uri)
 	if err != nil {
 		return nil, fmt.Errorf("fetching JWK: %w", err)
 	}

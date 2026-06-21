@@ -59,17 +59,27 @@ type Authenticator struct {
 	Metadata    Metadata
 	baseURL     string
 	signerFunc  ChallengeSignerFunc
+	httpClient  *http.Client
 }
 
 type AuthenticatorConfig struct {
 	Idp        Idp
 	SignerFunc ChallengeSignerFunc
+
+	// HTTPClient is used for metadata and key fetches; a redirect-suppressing copy of it drives the
+	// challenge flow. When nil, a client with a default timeout is created.
+	HTTPClient *http.Client
 }
 
 // NewAuthenticator creates a new Authenticator
 func NewAuthenticator(config AuthenticatorConfig) (*Authenticator, error) {
+	httpClient := config.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
+	}
+
 	baseURL := config.Idp.baseURL
-	metadata, err := fetchMetadata(baseURL, http.DefaultClient)
+	metadata, err := fetchMetadata(baseURL, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -79,6 +89,7 @@ func NewAuthenticator(config AuthenticatorConfig) (*Authenticator, error) {
 		Metadata:    *metadata,
 		baseURL:     baseURL,
 		signerFunc:  config.SignerFunc,
+		httpClient:  httpClient,
 	}, nil
 }
 
@@ -96,22 +107,23 @@ type CodeRedirectURL struct {
 func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	// fetch fresh keys
 	// encrypt the signed challenge response for the idp
-	idpEncKey, err := fetchKey(a.Metadata.EncryptionKeyURI)
+	idpEncKey, err := fetchKey(a.Metadata.EncryptionKeyURI, a.httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("fetching challenge encryption key: %w", err)
 	}
-	idpSigKey, err := fetchKey(a.Metadata.SigningKeyURI)
+	idpSigKey, err := fetchKey(a.Metadata.SigningKeyURI, a.httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("fetching challenge signing key: %w", err)
 	}
 	slog.Warn("IDP Authenticator is using signing and encryption keys with unverified certificates")
 
-	// create http client which prevents redirects
-	httpClient := http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
+	// derive a redirect-suppressing client from the injected one (the challenge flow inspects the
+	// 302 Location itself), without mutating the caller's client
+	noFollow := *a.httpClient
+	noFollow.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
 	}
+	httpClient := &noFollow
 
 	resp, err := httpClient.Get(authURL)
 	if err != nil {

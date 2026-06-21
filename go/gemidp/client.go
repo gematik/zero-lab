@@ -56,6 +56,11 @@ type ClientConfig struct {
 	Scopes            []string    `yaml:"scopes"`
 	AuthenticatorMode bool        `yaml:"authenticator_mode"`
 	UserAgent         string      `yaml:"user_agent"`
+
+	// HTTPClient is used for metadata, key, and token requests. Not serialized; supplied
+	// programmatically. When nil, a client with a default timeout is created. The configured
+	// User-Agent is layered onto the client's transport either way.
+	HTTPClient *http.Client `yaml:"-"`
 }
 
 type Client struct {
@@ -89,9 +94,14 @@ func NewClientFromConfig(config ClientConfig) (*Client, error) {
 
 	baseURL := idp.baseURL
 
-	httpClient := &http.Client{
-		Transport: &transportAddUserAgent{http.DefaultTransport, config.UserAgent},
+	httpClient := config.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
 	}
+	// layer the gematik User-Agent onto the chosen client without mutating the caller's
+	decorated := *httpClient
+	decorated.Transport = &transportAddUserAgent{transportOrDefault(httpClient.Transport), config.UserAgent}
+	httpClient = &decorated
 
 	metadata, err := fetchMetadata(baseURL, httpClient)
 	if err != nil {
@@ -179,7 +189,7 @@ func (c *Client) ExchangeForIdentity(code, verifier string, options ...oidc.Opti
 		return nil, fmt.Errorf("generating token key: %w", err)
 	}
 
-	idpEncKey, err := fetchKey(c.Metadata.EncryptionKeyURI)
+	idpEncKey, err := fetchKey(c.Metadata.EncryptionKeyURI, c.httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("fetching challenge encryption key: %w", err)
 	}
@@ -264,7 +274,7 @@ func decryptToken(token string, key []byte) (string, error) {
 }
 
 func (c *Client) parseIDToken(response *oidc.TokenResponse) (jwt.Token, error) {
-	key, err := fetchKey(c.Metadata.SigningKeyURI)
+	key, err := fetchKey(c.Metadata.SigningKeyURI, c.httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("fetching signing key: %w", err)
 	}

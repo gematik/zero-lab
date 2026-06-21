@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/lestrrat-go/httprc/v3"
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -16,6 +17,8 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"golang.org/x/oauth2"
 )
+
+const defaultHTTPTimeout = 30 * time.Second
 
 type Config struct {
 	Issuer       string       `yaml:"issuer" validate:"required"`
@@ -25,31 +28,39 @@ type Config struct {
 	Scopes       []string     `yaml:"scopes"`
 	LogoURI      string       `yaml:"logo_uri"`
 	Name         string       `yaml:"name"`
+
+	// HTTPClient is used for discovery, the key cache, and token exchange. Not serialized; supplied
+	// programmatically. When nil, a client with a default timeout is created.
+	HTTPClient *http.Client `yaml:"-"`
 }
 
 type client struct {
 	cfg               Config
+	httpClient        *http.Client
 	discoveryDocument *DiscoveryDocument
 	keyCache          *jwk.Cache
 }
 
 func NewClient(cfg Config) (Client, error) {
+	httpClient := cfg.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
+	}
 	c := &client{
-		cfg:               cfg,
-		discoveryDocument: nil,
-		keyCache:          nil,
+		cfg:        cfg,
+		httpClient: httpClient,
 	}
 
 	var err error
 	discoveryDocumentUrl := cfg.Issuer + "/.well-known/openid-configuration"
-	c.discoveryDocument, err = FetchDiscoveryDocument(discoveryDocumentUrl)
+	c.discoveryDocument, err = FetchDiscoveryDocument(discoveryDocumentUrl, httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch discovery document from %s: %w", discoveryDocumentUrl, err)
 	}
 
 	// prepare the auto-refreshing signing key cache
 	context := context.Background()
-	c.keyCache, err = jwk.NewCache(context, httprc.NewClient())
+	c.keyCache, err = jwk.NewCache(context, httprc.NewClient(httprc.WithHTTPClient(httpClient)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create key cache: %w", err)
 	}
@@ -117,7 +128,7 @@ func (c *client) ExchangeForIdentity(code, verifier string, options ...Option) (
 
 	slog.Debug("Exchanging code for token", "url", c.discoveryDocument.TokenEndpoint, "params", params)
 
-	resp, err := http.PostForm(c.discoveryDocument.TokenEndpoint, params)
+	resp, err := c.httpClient.PostForm(c.discoveryDocument.TokenEndpoint, params)
 	if err != nil {
 		return nil, fmt.Errorf("unable to exchange code for token: %w", err)
 	}

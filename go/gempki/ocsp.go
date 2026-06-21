@@ -38,7 +38,7 @@ const (
 // always takes a caller-supplied [*http.Client] and propagates
 // [context.Context] from Check through to the HTTP layer — production
 // callers can wire timeouts, proxies, TLS pinning, and tracing via the
-// client. A nil HTTPClient falls back to [http.DefaultClient] for tests; do
+// client. A nil HTTPClient falls back to a bounded default client for tests; do
 // not rely on the fallback in production.
 //
 // OCSPChecker is safe for concurrent use.
@@ -183,7 +183,7 @@ func (c *OCSPChecker) Check(ctx context.Context, cert, issuer *x509.Certificate)
 func (c *OCSPChecker) post(ctx context.Context, urlStr string, body []byte) ([]byte, error) {
 	client := c.HTTPClient
 	if client == nil {
-		client = http.DefaultClient
+		client = defaultHTTPClient
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, urlStr, bytes.NewReader(body))
 	if err != nil {
