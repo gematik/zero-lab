@@ -22,6 +22,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// defaultOPScopes are requested from an OpenID provider when RelyingPartyConfig.Scopes is unset — the
+// minimal identity set (display name + insured/KVNR).
+var defaultOPScopes = []string{"openid", "urn:telematik:display_name", "urn:telematik:versicherter"}
+
 type RelyingPartyConfig struct {
 	BaseDir              string         `yaml:"-"`
 	Subject              string         `yaml:"sub" validate:"required"`
@@ -35,6 +39,9 @@ type RelyingPartyConfig struct {
 	ClientPrivateKeyPath string         `yaml:"client_private_key_path" validate:"required"`
 	ClientCertPath       string         `yaml:"client_cert_path" validate:"required"`
 	MetadataTemplate     map[string]any `yaml:"metadata_template" validate:"required"`
+	// Scopes requested from the OpenID provider's authorization endpoint — the scopes that determine
+	// which identity claims (name, KVNR, …) the provider returns. When empty, defaultOPScopes is used.
+	Scopes               []string       `yaml:"scopes"`
 
 	// HTTPClient is the base client for federation and relying-party calls. Not serialized; supplied
 	// programmatically. When nil, a client with a default timeout is created. The relying party's
@@ -276,10 +283,15 @@ func (rp *RelyingParty) NewClient(issuer string) (oidc.Client, error) {
 		return nil, err
 	}
 
+	scopes := rp.cfg.Scopes
+	if len(scopes) == 0 {
+		scopes = defaultOPScopes
+	}
+
 	return &RelyingPartyClient{
 		rp:          rp,
 		op:          op,
-		scopes:      []string{"urn:telematik:display_name", "urn:telematik:versicherter", "openid"},
+		scopes:      scopes,
 		redirectUri: rp.entityStatement.Metadata.OpenidRelyingParty.RedirectURIs[0],
 		metadata:    metadata,
 		jwks:        jwks,

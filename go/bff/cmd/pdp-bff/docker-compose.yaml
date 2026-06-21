@@ -1,0 +1,24 @@
+# Single-service demo: the pdp authorization server + bff + webui in one process on one port.
+# Expose it publicly with a tunnel (e.g. rathole pointed at port 8011); ingress/TLS is handled upstream
+# (directory-ref Caddy), so no proxy service is needed here.
+services:
+  pdp-bff:
+    build:
+      context: ../../.. # the go/ workspace root (for go.work + the pdp/bff modules)
+      dockerfile: bff/cmd/pdp-bff/Dockerfile
+    ports:
+      - "8011:8011"
+    environment:
+      PDP_BFF_CONFIG: /config/pdp.yaml
+      # Public origin the demo is reached at (your tunnel URL). Used as issuer + redirect base, and
+      # referenced by ${PUBLIC_URL} inside pdp.yaml.
+      PUBLIC_URL: "${PUBLIC_URL:-http://127.0.0.1:8011}"
+      BFF_PUBLIC_URL: "${PUBLIC_URL:-http://127.0.0.1:8011}"
+      BFF_AS_ISSUER: "${PUBLIC_URL:-http://127.0.0.1:8011}"
+      BFF_CLIENT_ID: "${BFF_CLIENT_ID:-bff-demo}"
+      BFF_CLIENT_SECRET: "${BFF_CLIENT_SECRET:-bff-demo}"
+      BFF_CLIENT_SECRET_HASH: "${BFF_CLIENT_SECRET_HASH}"
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET}"
+    volumes:
+      - ./config:/config:ro

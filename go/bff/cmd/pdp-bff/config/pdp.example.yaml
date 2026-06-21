@@ -1,0 +1,66 @@
+# Example pdp config for the pdp-bff demo — replace with your real directory-ref config.
+#
+# Routing contract: pdp-bff serves everything on ONE port and splits by path, so operational endpoints must
+# live under /as (the well-knowns stay at root). Then /.well-known/* and /as/* reach the authorization server
+# and /, /bff/* reach the bff + webui.
+#
+# ${...} is expanded from the environment at load time (see .env.example). Generate the signing key and the
+# bff client secret hash with the zero-pdp tool:
+#   go run ./pdp/cmd/zero-pdp jose generate-jwk > config/sign.jwk
+#   go run ./pdp/cmd/zero-pdp secret-hash "$BFF_CLIENT_SECRET"   # -> BFF_CLIENT_SECRET_HASH
+bind_address: ":8011"
+authorization_server:
+  issuer: "${PUBLIC_URL}"
+  sign_jwk_path: sign.jwk
+  scopes_supported:
+    - openid
+    - profile
+    - email
+
+  # Operational endpoints under /as; well-knowns at root (required by the single-port mux).
+  endpoints:
+    authorization_server_metadata: /.well-known/oauth-authorization-server
+    entity_statement: /.well-known/openid-federation
+    jwks: /as/jwks
+    nonce: /as/nonce
+    openid_providers: /as/openid-providers
+    authorization: /as/auth
+    pushed_authorization_request: /as/par
+    op_callback: /as/op-callback
+    gemidp_callback: /as/gemidp-callback
+    token: /as/token
+    introspection: /as/introspect
+    registration: /as/register
+
+  # The bff is a confidential client of this AS.
+  clients:
+    - type: confidential
+      client_id: "${BFF_CLIENT_ID}"
+      client_secret_hash: "${BFF_CLIENT_SECRET_HASH}"
+      client_name: pdp-bff demo
+      redirect_uris:
+        - "${PUBLIC_URL}/bff/auth/callback"
+      scopes:
+        - openid
+        - profile
+        - email
+
+  # --- Two OP types combined behind one AS ---
+
+  # 1) Google as a generic OIDC provider.
+  oidc_providers:
+    - name: Google
+      issuer: https://accounts.google.com
+      client_id: "${GOOGLE_CLIENT_ID}"
+      client_secret: "${GOOGLE_CLIENT_SECRET}"
+      redirect_uri: "${PUBLIC_URL}/as/op-callback"
+      scopes:
+        - openid
+        - email
+        - profile
+
+  # 2) The gematik directory (OIDF) federation. Provide your relying-party config + keys (your directory-ref
+  #    setup has these) and uncomment:
+  # oidf_relying_party_path: oidf-rp.yaml
+
+  non_prod_mode: true

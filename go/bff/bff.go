@@ -2,8 +2,10 @@ package bff
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -59,6 +61,9 @@ type AuthorizationServerConfig struct {
 	ClientId     string `json:"client_id" validate:"required"`
 	ClientSecret string `json:"client_secret" validate:"required"`
 	RedirectUri  string `json:"redirect_uri" validate:"required"`
+	// Scopes the BFF requests from the AS when a login does not specify its own. Space-joined into the
+	// authorization request's scope parameter.
+	Scopes []string `json:"scopes"`
 }
 
 // asMetadata is the subset of RFC 8414 authorization-server metadata the BFF needs.
@@ -208,6 +213,9 @@ type loginResponse struct {
 func (b *BackendForFrontend) LoginEndpoint(w http.ResponseWriter, r *http.Request) {
 	opIssuer := r.URL.Query().Get("op_issuer")
 	scope := r.URL.Query().Get("scope")
+	if scope == "" {
+		scope = strings.Join(b.cfg.AuthorizationServer.Scopes, " ")
+	}
 
 	session, err := b.sessionManager.CreateSession(oauth2.GenerateVerifier(), oauth2.GenerateVerifier(), "S256")
 	if err != nil {
@@ -239,7 +247,42 @@ func (b *BackendForFrontend) LoginEndpoint(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
+	// For the decoupled (OIDF) flow, resolve the authorization request server-side: the AS performs the
+	// PAR and 302-redirects to the provider's authorization URL, so the second device gets a direct link
+	// to the OpenID provider (the AS stays behind the scenes). The whole flow is state-correlated, so a
+	// server-initiated PAR completes normally. If the AS does not redirect, surface the error instead of
+	// a QR.
+	if mode == "decoupled" {
+		directUrl, err := b.resolveDecoupledAuthURL(authUrl)
+		if err != nil {
+			respondWithError(w, elaborateError(errTemplateInternalError, "start decoupled login: %v", err))
+			return
+		}
+		authUrl = directUrl
+	}
+
 	respondJSON(w, http.StatusOK, loginResponse{AuthUrl: authUrl, Mode: mode, Op: op})
+}
+
+// resolveDecoupledAuthURL follows the AS authorization request without following the redirect, and returns
+// the provider authorization URL from the 302 Location (the link the second device opens). A non-redirect
+// response is returned as an error so the caller renders it rather than a QR.
+func (b *BackendForFrontend) resolveDecoupledAuthURL(authUrl string) (string, error) {
+	noRedirect := *b.httpClient
+	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+
+	resp, err := noRedirect.Get(authUrl)
+	if err != nil {
+		return "", fmt.Errorf("fetch authorization url: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if loc, err := resp.Location(); err == nil {
+		return loc.String(), nil
+	}
+
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	return "", fmt.Errorf("authorization server returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 }
 
 // CallbackEndpoint is the OAuth redirect_uri. It exchanges the code, introspects the access token at
@@ -304,8 +347,55 @@ func (b *BackendForFrontend) PollEndpoint(w http.ResponseWriter, r *http.Request
 }
 
 type sessionResponse struct {
-	Authenticated bool           `json:"authenticated"`
-	UserInfo      map[string]any `json:"userinfo,omitempty"`
+	Authenticated bool         `json:"authenticated"`
+	Session       *SessionView `json:"session,omitempty"`
+}
+
+// SessionView is the browser-facing projection of a session: decoded token CLAIMS and non-secret
+// fields only. The raw access/refresh tokens, the session id, and the PKCE verifier are never
+// serialized — keeping the BFF property that bearer tokens stay server-side.
+type SessionView struct {
+	Identity    map[string]any `json:"identity,omitempty"`     // upstream identity claims
+	AccessToken map[string]any `json:"access_token,omitempty"` // decoded access-token claims (not the raw JWT)
+	IdToken     map[string]any `json:"id_token,omitempty"`     // decoded id_token claims (not the raw JWT)
+	Scope       string         `json:"scope,omitempty"`
+	ClientId    string         `json:"client_id,omitempty"`
+	ExpiresAt   time.Time      `json:"expires_at,omitempty"`
+}
+
+// newSessionView decodes the access token and id_token to their claims and copies the non-secret
+// introspection fields, dropping all raw token material.
+func newSessionView(session *Session) *SessionView {
+	sv := &SessionView{
+		AccessToken: decodeJWTClaims(session.AccessToken),
+		ExpiresAt:   session.AccessTokenExpiresAt,
+	}
+	if intro := session.Identity; intro != nil {
+		sv.Identity, _ = intro["identity"].(map[string]any)
+		sv.Scope, _ = intro["scope"].(string)
+		sv.ClientId, _ = intro["client_id"].(string)
+		if idt, _ := intro["id_token"].(string); idt != "" {
+			sv.IdToken = decodeJWTClaims(idt)
+		}
+	}
+	return sv
+}
+
+// decodeJWTClaims returns a JWT's payload claims (no signature verification). Returns nil for non-JWTs.
+func decodeJWTClaims(token string) map[string]any {
+	parts := strings.Split(token, ".")
+	if len(parts) < 2 {
+		return nil
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil
+	}
+	var claims map[string]any
+	if json.Unmarshal(payload, &claims) != nil {
+		return nil
+	}
+	return claims
 }
 
 // SessionEndpoint returns the authenticated user's identity for the cookie-bound session, refreshing
@@ -337,7 +427,7 @@ func (b *BackendForFrontend) SessionEndpoint(w http.ResponseWriter, r *http.Requ
 		_ = b.sessionManager.UpdateSession(session)
 	}
 
-	respondJSON(w, http.StatusOK, sessionResponse{Authenticated: true, UserInfo: session.Identity})
+	respondJSON(w, http.StatusOK, sessionResponse{Authenticated: true, Session: newSessionView(session)})
 }
 
 // LogoutEndpoint terminates the session. CSRF is defended by requiring a custom header that a
@@ -403,17 +493,16 @@ func (b *BackendForFrontend) introspectIdentity(ctx context.Context, accessToken
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("introspection returned %d", resp.StatusCode)
 	}
-	var ir struct {
-		Active   bool           `json:"active"`
-		Identity map[string]any `json:"identity"`
-	}
+	// Capture the whole RFC 7662 introspection response (identity claims, id_token, scope, cnf, session,
+	// …) so the BFF can surface the full session, not only the identity sub-object.
+	var ir map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&ir); err != nil {
 		return nil, err
 	}
-	if !ir.Active {
+	if active, _ := ir["active"].(bool); !active {
 		return nil, fmt.Errorf("token is not active")
 	}
-	return ir.Identity, nil
+	return ir, nil
 }
 
 func (b *BackendForFrontend) fetchProviders() ([]providerInfo, error) {
@@ -486,15 +575,19 @@ func (b *BackendForFrontend) expireCookie(w http.ResponseWriter) {
 
 func (b *BackendForFrontend) redirectToFrontend(w http.ResponseWriter, r *http.Request, errForClient *Error) {
 	redirectURI := *b.frontendRedirectUrl
+	params := url.Values{}
 	if errForClient != nil {
-		params := url.Values{}
 		params.Set("error", errForClient.Code)
 		params.Set("error_description", errForClient.Description)
 		if errForClient.Uri != "" {
 			params.Set("error_uri", errForClient.Uri)
 		}
-		redirectURI.RawQuery = params.Encode()
+	} else {
+		// Mark a completed login so the landing page (e.g. the cookie-less decoupled device) shows
+		// success instead of the provider chooser.
+		params.Set("login", "success")
 	}
+	redirectURI.RawQuery = params.Encode()
 	http.Redirect(w, r, redirectURI.String(), http.StatusFound)
 }
 
