@@ -22,6 +22,8 @@ github.com/gematik/zero-lab/go/oauth v0.0.0-20260617184140-1440fec98b58 h1:KQ9wH
 github.com/gematik/zero-lab/go/oauth v0.0.0-20260617184140-1440fec98b58/go.mod h1:jjMGmst3PfIVl+8P1CbIhT6KPi1XjLhtC+Rewkyr6pE=
 github.com/gematik/zero-lab/go/oidf v0.0.0-20260617184140-1440fec98b58 h1:QQOBAJCC3jKRU1euQsFbcS0cLZB06NsPQLZCFeTpCSg=
 github.com/gematik/zero-lab/go/oidf v0.0.0-20260617184140-1440fec98b58/go.mod h1:vdF3yjqsNc6XSbgX/VYHdT0ZJEs2X+9Pk46JaFmMfrc=
+github.com/gematik/zero-lab/go/pep v0.20.2 h1:O7g3fIhOO3mV+NCOBlCLGhzeJGepwXTkeV2U/VrlX0Q=
+github.com/gematik/zero-lab/go/pep v0.20.2/go.mod h1:eQtzqIXe6SYEiBLxKQ0WC9dQfNHZGk+/Sgfz/EvDWC0=
 github.com/go-playground/assert/v2 v2.2.0 h1:JvknZsQTYeFEAhQwI4qEt9cyV5ONwRHC+lYKSsYSR8s=
 github.com/go-playground/assert/v2 v2.2.0/go.mod h1:VDjEfimB/XKnb+ZQfWdccd7VUvScMdVu0Titje2rxJ4=
 github.com/go-playground/locales v0.14.1 h1:EWaQ/wswjilfKLTECiXz7Rh+3BjFhfDFKv/oXslEjJA=

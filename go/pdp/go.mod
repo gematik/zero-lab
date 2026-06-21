@@ -8,6 +8,7 @@ require (
 	github.com/gematik/zero-lab/go/nonce v0.0.0-20260617184140-1440fec98b58
 	github.com/gematik/zero-lab/go/oauth v0.0.0-20260617184140-1440fec98b58
 	github.com/gematik/zero-lab/go/oidf v0.0.0-20260617184140-1440fec98b58
+	github.com/gematik/zero-lab/go/pep v0.20.2
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/joho/godotenv v1.5.1
 	github.com/lestrrat-go/jwx/v3 v3.1.1

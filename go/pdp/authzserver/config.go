@@ -50,6 +50,7 @@ type EndpointsConfig struct {
 	OPCallback                  string `yaml:"op_callback"`
 	GemIDPCallback              string `yaml:"gemidp_callback"`
 	Token                       string `yaml:"token"`
+	Introspection               string `yaml:"introspection"`
 	EntityStatement             string `yaml:"entity_statement"`
 	Registration                string `yaml:"registration"`
 }
@@ -86,6 +87,9 @@ func (s *EndpointsConfig) applyDefaults(baseURI *url.URL) {
 	}
 	if s.Token == "" {
 		s.Token = basePath + "/token"
+	}
+	if s.Introspection == "" {
+		s.Introspection = basePath + "/introspect"
 	}
 	if s.EntityStatement == "" {
 		s.EntityStatement = "/.well-known/openid-federation"

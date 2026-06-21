@@ -99,6 +99,20 @@ func TestHITL_AuthorizationCode(t *testing.T) {
 	}
 	verifyAccessToken(t, tr.AccessToken, getJWKS(t, md))
 	t.Logf("OK: full authorization-code flow completed; access token verifies (%s, expires_in=%d)", tr.TokenType, tr.ExpiresIn)
+
+	// Introspect the issued token: as the issuing client it is active and carries the upstream
+	// OIDC identity captured during the login.
+	_, ir := introspect(t, md, clientID, clientSecret, tr.AccessToken)
+	if !ir.Active {
+		t.Fatal("introspect: active=false, want true")
+	}
+	if ir.Sub == "" {
+		t.Error("introspect: empty sub")
+	}
+	if len(ir.Identity) == 0 {
+		t.Error("introspect: empty identity for an authorization-code session")
+	}
+	t.Logf("OK: introspection returned the upstream identity (sub=%s, %d id_token claims)", ir.Sub, len(ir.Identity))
 }
 
 // openBrowser best-effort opens a URL in the default browser.

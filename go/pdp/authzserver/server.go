@@ -16,6 +16,7 @@ import (
 	"github.com/gematik/zero-lab/go/nonce"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
+	"github.com/gematik/zero-lab/go/pep"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/valkey-io/valkey-go"
 	"gopkg.in/yaml.v3"
@@ -33,6 +34,7 @@ type Server struct {
 	sessionStore              AuthzServerSessionStore
 	sigPrK                    jwk.Key
 	jwks                      jwk.Set
+	tokenVerifier             *pep.PEP
 	nonceService              nonce.Service
 	verifyClientAssertionFunc VerifyClientAssertionFunc
 	dpopMaxAge                time.Duration
@@ -90,6 +92,12 @@ func New(cfg Config) (*Server, error) {
 
 	if err := s.initSigningKey(cfg); err != nil {
 		return nil, err
+	}
+
+	// Reuse the PEP as a token verifier for the server's own tokens (e.g. introspection). No
+	// resource is configured, so the audience is not restricted to a single resource server.
+	if s.tokenVerifier, err = pep.NewBuilder().WithJWKSet(s.jwks).Build(); err != nil {
+		return nil, fmt.Errorf("create token verifier: %w", err)
 	}
 
 	if err := s.initClientsPolicy(cfg); err != nil {
@@ -165,6 +173,8 @@ func (s *Server) initMetadata(issuerUrl *url.URL, cfg Config) {
 
 	s.Metadata.AuthorizationEndpoint = buildURI(issuerUrl, s.endpointPaths.Authorization)
 	s.Metadata.TokenEndpoint = buildURI(issuerUrl, s.endpointPaths.Token)
+	s.Metadata.IntrospectionEndpoint = buildURI(issuerUrl, s.endpointPaths.Introspection)
+	s.Metadata.IntrospectionEndpointAuthMethodsSupported = []string{"client_secret_basic", "none"}
 	s.Metadata.JwksURI = buildURI(issuerUrl, s.endpointPaths.Jwks)
 	s.Metadata.OpenidProvidersEndpoint = buildURI(issuerUrl, s.endpointPaths.OpenIDProviders)
 	s.Metadata.NonceEndpoint = buildURI(issuerUrl, s.endpointPaths.Nonce)
