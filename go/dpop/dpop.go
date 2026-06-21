@@ -249,12 +249,18 @@ func ParseRequest(request *http.Request, options ParseOptions) (*RequestBinding,
 	}
 
 	if options.RequestURL == "" {
-		// TODO: make thois more robust, e.g. by reading the header
-		scheme := "http"
-		if request.TLS != nil {
-			scheme = "https"
+		if request.URL != nil && request.URL.IsAbs() {
+			// A client-built or proxied request carries an absolute URL; trust it as-is.
+			options.RequestURL = request.URL.String()
+		} else {
+			// A server-received request has a relative URL; reconstruct from the host and
+			// raw request URI. X-Forwarded-Proto covers a TLS-terminating proxy upstream.
+			scheme := "http"
+			if request.TLS != nil || request.Header.Get("X-Forwarded-Proto") == "https" {
+				scheme = "https"
+			}
+			options.RequestURL = scheme + "://" + request.Host + request.RequestURI
 		}
-		options.RequestURL = scheme + "://" + request.Host + request.RequestURI
 	}
 
 	// check the request URL
