@@ -377,6 +377,14 @@ func createRequestWithAccessTokenAndDPoP(t *testing.T, url string, keyBytes []by
 	return req
 }
 
+// requestWithDPoPAuthMissingProof carries a valid DPoP-scheme Authorization header but no DPoP
+// proof header, exercising the "access token present, proof absent" path.
+func requestWithDPoPAuthMissingProof(t *testing.T, url string, keyBytes []byte, scopes []string, exp time.Time) *http.Request {
+	req := createRequestWithAccessTokenAndDPoP(t, url, keyBytes, scopes, exp)
+	req.Header.Del("DPoP")
+	return req
+}
+
 func TestDPoPEnforcer(t *testing.T) {
 	p := createPEP(t)
 
@@ -407,12 +415,19 @@ func TestDPoPEnforcer(t *testing.T) {
 		request        *http.Request
 	}{
 		{scenario: "public access is always possible", url: "/public", expectedStatus: http.StatusOK, expectedBody: "public"},
-		{scenario: "fail without dpop+authorization", url: "/dpop", expectedStatus: http.StatusBadRequest},
+		// RFC 9449 §7.1: a protected-resource request without credentials is answered with 401.
+		{scenario: "fail without dpop+authorization", url: "/dpop", expectedStatus: http.StatusUnauthorized},
 		{
 			scenario:       "fail withoit dpop, but with bearer authorization",
 			url:            "/dpop",
 			expectedStatus: http.StatusBadRequest,
 			request:        createRequestWithAccessToken(t, server.URL+"/dpop", []byte(privateJWK1), []string{"read"}, time.Now().Add(time.Hour)),
+		},
+		{
+			scenario:       "fail with dpop authorization but missing dpop proof",
+			url:            "/dpop",
+			expectedStatus: http.StatusBadRequest,
+			request:        requestWithDPoPAuthMissingProof(t, server.URL+"/dpop", []byte(privateJWK1), []string{"read"}, time.Now().Add(time.Hour)),
 		},
 		{
 			scenario:       "success",
