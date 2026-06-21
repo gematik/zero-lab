@@ -1,49 +1,47 @@
 package main
 
 import (
-	"embed"
-	"encoding/base64"
 	"log"
+	"log/slog"
 	"net/http"
-	"text/template"
+	"os"
 
 	"github.com/gematik/zero-lab/go/bff"
+	"github.com/gematik/zero-lab/go/bff/webui"
 )
 
-var (
-	//go:embed *.html
-	templatesFS embed.FS
-)
+func env(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
 
 func main() {
-
-	templateFrontend := template.Must(template.ParseFS(templatesFS, "test_frontend.html"))
-
-	randomSignKey := bff.GenerateRandomKey(256)
-
-	randomEncryptKey := bff.GenerateRandomKey(256)
+	addr := env("BFF_ADDR", ":8080")
+	// Public origin the browser reaches the BFF at; the AS must have <public>/bff/auth/callback
+	// registered as the client's redirect_uri.
+	publicUrl := env("BFF_PUBLIC_URL", "http://127.0.0.1:8080")
 
 	b, err := bff.New(bff.Config{
 		AuthorizationServer: bff.AuthorizationServerConfig{
-			Issuer:      "http://127.0.0.1:8011",
-			ClientID:    "public-client",
-			RedirectURI: "http://127.0.0.1:8080/bff/as-callback",
+			Issuer:       env("BFF_AS_ISSUER", "http://127.0.0.1:8011"),
+			ClientId:     env("BFF_CLIENT_ID", "e2e-client"),
+			ClientSecret: env("BFF_CLIENT_SECRET", "e2e-client"),
+			RedirectUri:  publicUrl + "/bff/auth/callback",
 		},
-		EncryptKeyString:    base64.StdEncoding.EncodeToString(randomEncryptKey),
-		SignKeyString:       base64.StdEncoding.EncodeToString(randomSignKey),
-		CookieName:          "ZETA-BFF-SID",
-		FrontendRedirectURI: "http://127.0.0.1:8080/",
+		CookieName:          env("BFF_COOKIE_NAME", "ZETA-BFF-SID"),
+		FrontendRedirectUri: publicUrl + "/",
 	})
 	if err != nil {
-		log.Fatalf("Failed to create middleware: %v", err)
+		log.Fatalf("create bff: %v", err)
 	}
 
 	mux := http.NewServeMux()
 	b.Mount(mux)
+	// Static SPA at /. Swappable for a React/Svelte build without touching the API.
+	mux.Handle("/", http.FileServerFS(webui.FS))
 
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		templateFrontend.Execute(w, nil)
-	})
-
-	log.Fatal(http.ListenAndServe(":8080", mux))
+	slog.Info("bff listening", "addr", addr, "public_url", publicUrl)
+	log.Fatal(http.ListenAndServe(addr, bff.RecoverMiddleware(mux)))
 }
