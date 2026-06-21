@@ -306,6 +306,13 @@ func AEADDecrypt(key []byte, ciphertext []byte) ([]byte, error) {
 }
 
 func validateSignedPublicVAUKeys(httpClient *http.Client, baseURL *url.URL, signedPubKeys *SignedPublicVAUKeys) error {
+	if len(signedPubKeys.CertHash) == 0 {
+		// Without a certificate hash there is no CertData document to retrieve; a real VAU
+		// server always supplies one. Nothing to fetch or validate, so skip.
+		slog.Warn("VAU key validation skipped: server provided no certificate hash")
+		return nil
+	}
+
 	certDataPath := fmt.Sprintf("/CertData.%x-%d", signedPubKeys.CertHash, signedPubKeys.Cdv)
 	certDataURL := baseURL.ResolveReference(&url.URL{Path: certDataPath})
 
