@@ -10,21 +10,19 @@ import (
 	"testing"
 
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
+	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
-// introspect posts a token to the introspection endpoint, optionally authenticating as a client.
-func introspect(t *testing.T, md authzserver.ExtendedMetadata, clientID, secret, token string) (*http.Response, authzserver.IntrospectionResponse) {
+// introspect posts a token to the introspection endpoint, authenticating with the given client
+// assertion (an empty assertion means no client authentication).
+func introspect(t *testing.T, md authzserver.ExtendedMetadata, assertion, token string) (*http.Response, authzserver.IntrospectionResponse) {
 	t.Helper()
 	form := url.Values{"token": {token}}
-	// Confidential clients authenticate via HTTP Basic; public clients send client_id in the form.
-	if clientID != "" && secret == "" {
-		form.Set("client_id", clientID)
+	if assertion != "" {
+		addClientAuth(form, assertion)
 	}
 	req, _ := http.NewRequest(http.MethodPost, md.IntrospectionEndpoint, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	if secret != "" {
-		req.SetBasicAuth(clientID, secret)
-	}
 	resp, err := httpClient().Do(req)
 	if err != nil {
 		t.Fatalf("introspect: %v", err)
@@ -39,13 +37,14 @@ func introspect(t *testing.T, md authzserver.ExtendedMetadata, clientID, secret,
 	return resp, ir
 }
 
-// mintClientCredentialsToken obtains an access token via the client_credentials grant.
-func mintClientCredentialsToken(t *testing.T, md authzserver.ExtendedMetadata, clientID, secret, scope string) string {
+// mintClientCredentialsToken obtains an access token via the client_credentials grant, authenticating
+// clientID with key.
+func mintClientCredentialsToken(t *testing.T, md authzserver.ExtendedMetadata, clientID, scope string, key jwk.Key) string {
 	t.Helper()
 	form := url.Values{"grant_type": {"client_credentials"}, "scope": {scope}}
+	addClientAuth(form, clientAssertion(t, md, clientID, key))
 	req, _ := http.NewRequest(http.MethodPost, md.TokenEndpoint, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.SetBasicAuth(clientID, secret)
 	resp, err := httpClient().Do(req)
 	if err != nil {
 		t.Fatalf("token: %v", err)
@@ -71,16 +70,16 @@ func TestSmoke_Introspection(t *testing.T) {
 		t.Fatal("metadata: empty introspection_endpoint")
 	}
 	clientID := env("ZERO_PDP_E2E_CLIENT_ID", defaultClientID)
-	secret := env("ZERO_PDP_E2E_CLIENT_SECRET", defaultClientSecret)
+	key := clientKey(t)
 
 	// No client authentication → 401 (RFC 7662 §2.1).
-	resp, _ := introspect(t, md, "", "", "anything")
+	resp, _ := introspect(t, md, "", "anything")
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("introspect without client auth: status %d, want 401", resp.StatusCode)
 	}
 
 	// Authenticated client, bogus token → {"active": false}.
-	resp, ir := introspect(t, md, clientID, secret, "not-a-jwt")
+	resp, ir := introspect(t, md, clientAssertion(t, md, clientID, key), "not-a-jwt")
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("introspect bogus token: status %d, want 200", resp.StatusCode)
 	}
@@ -93,13 +92,13 @@ func TestSmoke_Introspection(t *testing.T) {
 func TestFlow_Introspection_ClientCredentials(t *testing.T) {
 	base := baseURL(t)
 	clientID := env("ZERO_PDP_E2E_CLIENT_ID", defaultClientID)
-	secret := env("ZERO_PDP_E2E_CLIENT_SECRET", defaultClientSecret)
 	scope := env("ZERO_PDP_E2E_SCOPE", defaultScope)
 	md := getMetadata(t, base)
+	key := clientKey(t)
 
-	token := mintClientCredentialsToken(t, md, clientID, secret, scope)
+	token := mintClientCredentialsToken(t, md, clientID, scope, key)
 
-	_, ir := introspect(t, md, clientID, secret, token)
+	_, ir := introspect(t, md, clientAssertion(t, md, clientID, key), token)
 	if !ir.Active {
 		t.Fatal("introspect own token: active=false, want true")
 	}
@@ -116,22 +115,31 @@ func TestFlow_Introspection_ClientCredentials(t *testing.T) {
 }
 
 // TestFlow_Introspection_CrossClient verifies the ownership rule: a different authenticated client
-// must not learn anything about a token it did not receive. Needs a second registered client.
+// must not learn anything about a token it did not receive. Needs a second registered client with its
+// own key (ZERO_PDP_E2E_CLIENT2_ID + ZERO_PDP_E2E_CLIENT2_KEY_PATH).
 func TestFlow_Introspection_CrossClient(t *testing.T) {
 	base := baseURL(t)
 	client2 := os.Getenv("ZERO_PDP_E2E_CLIENT2_ID")
-	if client2 == "" {
-		t.Skip("ZERO_PDP_E2E_CLIENT2_ID not set — skipping cross-client ownership check")
+	key2Path := os.Getenv("ZERO_PDP_E2E_CLIENT2_KEY_PATH")
+	if client2 == "" || key2Path == "" {
+		t.Skip("ZERO_PDP_E2E_CLIENT2_ID / ZERO_PDP_E2E_CLIENT2_KEY_PATH not set — skipping cross-client ownership check")
 	}
-	secret2 := os.Getenv("ZERO_PDP_E2E_CLIENT2_SECRET")
 	clientID := env("ZERO_PDP_E2E_CLIENT_ID", defaultClientID)
-	secret := env("ZERO_PDP_E2E_CLIENT_SECRET", defaultClientSecret)
 	scope := env("ZERO_PDP_E2E_SCOPE", defaultScope)
 	md := getMetadata(t, base)
 
-	token := mintClientCredentialsToken(t, md, clientID, secret, scope)
+	token := mintClientCredentialsToken(t, md, clientID, scope, clientKey(t))
 
-	_, ir := introspect(t, md, client2, secret2, token)
+	key2b, err := os.ReadFile(key2Path)
+	if err != nil {
+		t.Fatalf("read client2 key: %v", err)
+	}
+	key2, err := jwk.ParseKey(key2b)
+	if err != nil {
+		t.Fatalf("parse client2 key: %v", err)
+	}
+
+	_, ir := introspect(t, md, clientAssertion(t, md, client2, key2), token)
 	if ir.Active {
 		t.Fatal("cross-client introspect: active=true, want false (ownership rule)")
 	}

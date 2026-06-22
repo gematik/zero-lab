@@ -41,7 +41,7 @@ type IntrospectedSession struct {
 // authenticate as a client, and only the client a token was issued to may introspect it; any other
 // outcome answers {"active": false} so a token is never revealed to a party that does not own it.
 func (s *Server) IntrospectionEndpoint(w http.ResponseWriter, r *http.Request) error {
-	client, clientErr := s.verifyClient(r)
+	client, _, clientErr := s.verifyClient(r)
 	if clientErr != nil {
 		return clientErr
 	}

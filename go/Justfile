@@ -174,8 +174,9 @@ update-roots:
 
 # --- zero-pdp e2e (see docs/e2e.md) ---
 
-# Start zero-pdp for e2e against URL (the issuer). Generates sign.jwk and a client-secret hash
-# from ZERO_PDP_E2E_CLIENT_SECRET (default "e2e-secret"), then serves the e2e testdata config.
+# Start zero-pdp for e2e against URL (the issuer). Generates sign.jwk, then serves the e2e testdata
+# config. The e2e client authenticates with private_key_jwt: its public JWK is committed in the config
+# and the tests sign assertions with testdata/e2e-client.prk.jwk.
 pdp-e2e-serve URL='http://localhost:8011':
     #!/usr/bin/env bash
     set -euo pipefail
@@ -184,13 +185,12 @@ pdp-e2e-serve URL='http://localhost:8011':
     export ZERO_PDP_E2E_URL='{{URL}}'
     export ZERO_PDP_E2E_CLIENT_ID="${ZERO_PDP_E2E_CLIENT_ID:-e2e-client}"
     export ZERO_PDP_E2E_REDIRECT_URI="${ZERO_PDP_E2E_REDIRECT_URI:-http://localhost:8765/as-callback}"
-    export ZERO_PDP_E2E_CLIENT_SECRET_HASH="$(go run ./pdp/cmd/zero-pdp secret-hash "${ZERO_PDP_E2E_CLIENT_SECRET:-e2e-client}")"
     echo "serving zero-pdp: issuer={{URL}} client=$ZERO_PDP_E2E_CLIENT_ID"
     go run ./pdp/cmd/zero-pdp start -f pdp.e2e.yaml -w "$td"
 
 # Run smoke+regression+flow e2e suites against a running server at URL.
 pdp-e2e URL='http://localhost:8011':
-    ZERO_PDP_E2E_URL='{{URL}}' ZERO_PDP_E2E_CLIENT_SECRET="${ZERO_PDP_E2E_CLIENT_SECRET:-e2e-client}" go test ./pdp/e2e -run 'Smoke|Regression|Flow' -count=1 -v
+    ZERO_PDP_E2E_URL='{{URL}}' go test ./pdp/e2e -run 'Smoke|Regression|Flow' -count=1 -v
 
 # Run only the smoke suite.
 pdp-e2e-smoke URL='http://localhost:8011':
@@ -199,7 +199,7 @@ pdp-e2e-smoke URL='http://localhost:8011':
 # Run the human-in-the-loop authorization-code flow (opens a browser; needs an OP configured).
 # Provide the public URL explicitly, e.g. `just pdp-e2e-hitl https://<rathole-host>`.
 pdp-e2e-hitl URL:
-    ZERO_PDP_E2E_URL='{{URL}}' ZERO_PDP_E2E_HITL=1 ZERO_PDP_E2E_CLIENT_SECRET="${ZERO_PDP_E2E_CLIENT_SECRET:-e2e-client}" go test ./pdp/e2e -run HITL -count=1 -v -timeout 5m
+    ZERO_PDP_E2E_URL='{{URL}}' ZERO_PDP_E2E_HITL=1 go test ./pdp/e2e -run HITL -count=1 -v -timeout 5m
 
 # Run the env-guarded gemidp SMC-B integration test against the gematik IDP (uses ./.env).
 gemidp-smcb-test:

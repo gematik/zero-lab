@@ -21,21 +21,20 @@ import (
 )
 
 type Server struct {
-	Metadata                  ExtendedMetadata
-	nonProdMode               bool
-	endpointPaths             *EndpointsConfig
-	clientsRegistry           ClientsRegistry
-	openidProviders           []oidc.Client
-	oidfRelyingParty          *oidf.RelyingParty
-	defaultOPIssuer           string
-	clientsPolicy             *ClientsPolicy
-	sessionStore              AuthzServerSessionStore
-	sigPrK                    jwk.Key
-	jwks                      jwk.Set
-	tokenVerifier             *pep.PEP
-	nonceService              nonce.Service
-	verifyClientAssertionFunc VerifyClientAssertionFunc
-	dpopMaxAge                time.Duration
+	Metadata         ExtendedMetadata
+	nonProdMode      bool
+	endpointPaths    *EndpointsConfig
+	clientsRegistry  ClientsRegistry
+	productsRegistry *ProductsRegistry
+	openidProviders  []oidc.Client
+	oidfRelyingParty *oidf.RelyingParty
+	defaultOPIssuer  string
+	sessionStore     AuthzServerSessionStore
+	sigPrK           jwk.Key
+	jwks             jwk.Set
+	tokenVerifier    *pep.PEP
+	nonceService     nonce.Service
+	dpopMaxAge       time.Duration
 }
 
 func NewFromConfigFile(filename string) (*Server, error) {
@@ -78,7 +77,9 @@ func New(cfg Config) (*Server, error) {
 
 	// load clients registry
 	if len(cfg.Clients) > 0 {
-		s.clientsRegistry = &StaticClientsRegistry{Clients: cfg.Clients}
+		if s.clientsRegistry, err = NewStaticClientsRegistry(cfg.Clients); err != nil {
+			return nil, fmt.Errorf("load clients registry: %w", err)
+		}
 	} else {
 		slog.Warn("no OAuth2 clients configured")
 	}
@@ -93,7 +94,7 @@ func New(cfg Config) (*Server, error) {
 		return nil, fmt.Errorf("create token verifier: %w", err)
 	}
 
-	if err := s.initClientsPolicy(cfg); err != nil {
+	if err := s.initProducts(cfg); err != nil {
 		return nil, err
 	}
 
@@ -112,11 +113,6 @@ func New(cfg Config) (*Server, error) {
 	s.nonceService, err = nonce.NewHashicorpNonceService()
 	if err != nil {
 		return nil, fmt.Errorf("create nonce service: %w", err)
-	}
-
-	// TODO: configure client assertion verification function
-	if cfg.VerifyClientAssertionFunc != nil {
-		s.verifyClientAssertionFunc = cfg.VerifyClientAssertionFunc
 	}
 
 	// TODO: configure DPoP validity period
@@ -146,7 +142,7 @@ func (s *Server) initMetadata(issuerUrl *url.URL, cfg Config) {
 	s.Metadata.AuthorizationEndpoint = buildURI(issuerUrl, s.endpointPaths.Authorization)
 	s.Metadata.TokenEndpoint = buildURI(issuerUrl, s.endpointPaths.Token)
 	s.Metadata.IntrospectionEndpoint = buildURI(issuerUrl, s.endpointPaths.Introspection)
-	s.Metadata.IntrospectionEndpointAuthMethodsSupported = []string{"client_secret_basic", "none"}
+	s.Metadata.IntrospectionEndpointAuthMethodsSupported = []string{"private_key_jwt"}
 	s.Metadata.JwksURI = buildURI(issuerUrl, s.endpointPaths.Jwks)
 	s.Metadata.OpenidProvidersEndpoint = buildURI(issuerUrl, s.endpointPaths.OpenIDProviders)
 	s.Metadata.NonceEndpoint = buildURI(issuerUrl, s.endpointPaths.Nonce)
@@ -159,9 +155,8 @@ func (s *Server) initMetadata(issuerUrl *url.URL, cfg Config) {
 		GrantTypeAuthorizationCode,
 		GrantTypeRefreshToken,
 		GrantTypeClientCredentials,
-		GrantTypeJWTBearer,
 	}
-	s.Metadata.TokenEndpointAuthMethodsSupported = []string{"none", "client_secret_basic"}
+	s.Metadata.TokenEndpointAuthMethodsSupported = []string{"private_key_jwt"}
 	s.Metadata.TokenEndpointAuthSigningAlgValuesSupported = []string{"ES256"}
 	s.Metadata.CodeChallengeMethodsSupported = []string{"S256"}
 }
@@ -194,17 +189,23 @@ func loadJwkFromFile(filename string) (jwk.Key, error) {
 	return jwk.ParseKey(bytes)
 }
 
-// initClientsPolicy loads the optional clients policy file.
-func (s *Server) initClientsPolicy(cfg Config) error {
-	if cfg.ClientsPolicyPath == "" {
-		return nil
+// initProducts builds the products registry from inline config (products:) and/or the gematik
+// clients-policy file (clients_policy_path).
+func (s *Server) initProducts(cfg Config) error {
+	products := make([]*Product, 0, len(cfg.Products))
+	if cfg.ClientsPolicyPath != "" {
+		filename := absPath(cfg.BaseDir, cfg.ClientsPolicyPath)
+		loaded, err := LoadProductsFile(filename)
+		if err != nil {
+			return fmt.Errorf("load products file: %w", err)
+		}
+		products = append(products, loaded...)
+		slog.Info("loaded products policy", "path", filename, "count", len(loaded))
 	}
-	filename := absPath(cfg.BaseDir, cfg.ClientsPolicyPath)
-	var err error
-	if s.clientsPolicy, err = LoadClientsPolicy(filename); err != nil {
-		return fmt.Errorf("load clients policy: %w", err)
+	for i := range cfg.Products {
+		products = append(products, &cfg.Products[i])
 	}
-	slog.Info("loaded clients policy", "path", filename)
+	s.productsRegistry = NewProductsRegistry(products)
 	return nil
 }
 

@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/segmentio/ksuid"
@@ -19,7 +18,6 @@ const (
 	GrantTypeAuthorizationCode = "authorization_code"
 	GrantTypeClientCredentials = "client_credentials"
 	GrantTypeRefreshToken      = "refresh_token"
-	GrantTypeJWTBearer         = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 )
 
 type TokenResponse struct {
@@ -51,8 +49,6 @@ func (s *Server) TokenEndpoint(w http.ResponseWriter, r *http.Request) error {
 		return s.tokenEndpointClientCredentials(w, r)
 	case GrantTypeRefreshToken:
 		return s.tokenEndpointRefreshToken(w, r)
-	case GrantTypeJWTBearer:
-		return s.tokenEndpointJWTBearer(w, r)
 	default:
 		slog.Error("Unsupported grant type", "grant_type", grantType)
 		return oauthErr(http.StatusBadRequest, "unsupported_grant_type", fmt.Sprintf("unsupported grant type: %s", grantType))
@@ -60,90 +56,102 @@ func (s *Server) TokenEndpoint(w http.ResponseWriter, r *http.Request) error {
 
 }
 
-func (s *Server) verifyClient(r *http.Request) (*ClientMetadata, *Error) {
-	formClientId := r.FormValue("client_id")
-
-	if formClientId != "" {
-		cm, err := s.clientsRegistry.GetClientMetadata(formClientId)
-		if err != nil {
-			return nil, oauthErr(http.StatusBadRequest, "invalid_client", fmt.Errorf("unable to get client metadata: %w", err).Error())
-		}
-
-		if cm.Type == ClientTypeConfidential {
-			formClientSecret := r.FormValue("client_secret")
-			if formClientSecret == "" {
-				return nil, oauthErr(http.StatusBadRequest, "invalid_client", "missing client_secret")
-			}
-			return verifyClientSecret(formClientSecret, cm)
-		} else {
-			// public client
-			return cm, nil
-		}
-
+// verifyClient authenticates the caller via private_key_jwt (RFC 7523 §2.2): the request carries a
+// client_assertion JWT whose signature is verified against the calling client's registered public
+// JWK. It also redeems the assertion's one-time nonce and returns the validated claims (for the
+// kept cnf.jkt DPoP binding). Used by the token endpoint (all grants) and introspection.
+func (s *Server) verifyClient(r *http.Request) (*Client, *ClientAssertionClaims, *Error) {
+	if at := r.FormValue("client_assertion_type"); at != ClientAssertionTypeJWTBearer {
+		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", "client_assertion_type must be "+ClientAssertionTypeJWTBearer)
+	}
+	assertion := r.FormValue("client_assertion")
+	if assertion == "" {
+		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", "missing client_assertion")
+	}
+	if s.clientsRegistry == nil {
+		return nil, nil, oauthErr(http.StatusInternalServerError, "server_error", "clients registry not configured")
 	}
 
-	// no client_id in form, try basic auth
-	return s.verifyClientCredentialsBasic(r)
+	// Identify the client from the (not yet verified) assertion subject, then verify the signature
+	// against that client's registered public JWK.
+	claims, err := parseClientAssertionClaims(assertion)
+	if err != nil {
+		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", err.Error())
+	}
+	client, err := s.clientsRegistry.GetClient(claims.Sub)
+	if err != nil {
+		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", err.Error())
+	}
+
+	if _, err := jwt.Parse([]byte(assertion),
+		jwt.WithKey(jwa.ES256(), client.Key()),
+		jwt.WithAudience(s.Metadata.Issuer),
+		jwt.WithAcceptableSkew(time.Minute),
+		jwt.WithValidate(true),
+	); err != nil {
+		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", fmt.Sprintf("invalid client_assertion: %v", err))
+	}
+
+	if err := claims.Validate(); err != nil {
+		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", fmt.Sprintf("invalid client_assertion claims: %v", err))
+	}
+	if claims.Iss != client.ClientID || claims.Sub != client.ClientID {
+		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", "iss and sub must equal client_id")
+	}
+
+	// Redeem the one-time nonce (freshness / anti-replay).
+	if err := s.nonceService.Redeem(claims.Nonce); err != nil {
+		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", fmt.Sprintf("invalid nonce: %v", err))
+	}
+
+	return client, claims, nil
 }
 
-func (s *Server) verifyClientCredentialsBasic(r *http.Request) (*ClientMetadata, *Error) {
-	clientId, clientSecret, ok := r.BasicAuth()
-	if !ok {
-		return nil, oauthErr(http.StatusUnauthorized, "unauthorized_client", "missing basic auth")
+// clientProduct resolves the product a client belongs to (its redirect-URI and scope policy).
+func (s *Server) clientProduct(client *Client) (*Product, *Error) {
+	if s.productsRegistry == nil {
+		return nil, oauthErr(http.StatusInternalServerError, "server_error", "products registry not configured")
 	}
-
-	client, err := s.clientsRegistry.GetClientMetadata(clientId)
+	product, err := s.productsRegistry.GetProduct(client.ProductID)
 	if err != nil {
 		return nil, oauthErr(http.StatusBadRequest, "invalid_client", err.Error())
 	}
-
-	return verifyClientSecret(clientSecret, client)
-}
-
-func verifyClientSecret(clientSecret string, client *ClientMetadata) (*ClientMetadata, *Error) {
-	if client.ClientSecretHash == "" && client.Type == ClientTypePublic {
-		return nil, oauthErr(http.StatusBadRequest, "unauthorized_client", "public client must not use client_secret")
-	}
-
-	if ok, err := VerifySecretHash(clientSecret, client.ClientSecretHash); !ok {
-		if err != nil {
-			slog.Error("VerifySecretHash failed", "error", err)
-		}
-
-		return nil, oauthErr(http.StatusBadRequest, "unauthorized_client", "invalid client_secret")
-	}
-
-	// client secret is valid
-	return client, nil
+	return product, nil
 }
 
 func (s *Server) tokenEndpointClientCredentials(w http.ResponseWriter, r *http.Request) error {
 
-	client, clientError := s.verifyClient(r)
+	client, claims, clientError := s.verifyClient(r)
 	if clientError != nil {
 		return clientError
 	}
 
-	slog.Info("Token request", "client", client)
+	product, productErr := s.clientProduct(client)
+	if productErr != nil {
+		return productErr
+	}
+
+	slog.Info("Token request", "client", client.ClientID)
 
 	scope := r.FormValue("scope")
 	if scope == "" {
 		return oauthErr(http.StatusBadRequest, "invalid_request", "missing scope")
 	}
 
-	if !client.IsAllowedScope(scope) {
+	if !product.IsAllowedScope(scope) {
 		return oauthErr(http.StatusForbidden, "invalid_scope", fmt.Sprintf("scope not allowed: %s", scope))
 	}
 
 	session := &AuthzServerSession{
-		ID:           ksuid.New().String(),
-		CreatedAt:    time.Now(),
-		ClientID:     client.ClientID,
-		Scopes:       strings.Split(scope, " "),
-		RefreshCount: -1,
+		ID:             ksuid.New().String(),
+		CreatedAt:      time.Now(),
+		ClientID:       client.ClientID,
+		Scopes:         strings.Split(scope, " "),
+		DPoPThumbprint: claims.Cnf.Jkt,
+		RefreshCount:   -1,
 	}
 
-	if err := s.applyPolicyNewSession(client, session); err != nil {
+	if err := s.applyPolicyNewSession(product, session); err != nil {
 		return err
 	}
 
@@ -161,9 +169,14 @@ func (s *Server) tokenEndpointClientCredentials(w http.ResponseWriter, r *http.R
 
 // tokenEndpointAuthorizationCode handles the token request for the authorization code grant type
 func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.Request) error {
-	client, clientError := s.verifyClient(r)
+	client, claims, clientError := s.verifyClient(r)
 	if clientError != nil {
 		return clientError
+	}
+
+	product, productErr := s.clientProduct(client)
+	if productErr != nil {
+		return productErr
 	}
 
 	var code string
@@ -205,7 +218,9 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 		})
 	}
 
-	if err := s.applyPolicyNewSession(client, session); err != nil {
+	session.DPoPThumbprint = claims.Cnf.Jkt
+
+	if err := s.applyPolicyNewSession(product, session); err != nil {
 		return err
 	}
 
@@ -223,56 +238,8 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 	return writeJSON(w, http.StatusOK, response)
 }
 
-func (s *Server) tokenEndpointJWTBearer(w http.ResponseWriter, r *http.Request) error {
-	if s.verifyClientAssertionFunc == nil {
-		return oauthErr(http.StatusBadRequest, "bad_request", "JWT Bearer grant type not configured")
-	}
-
-	assertion, ok := r.Form["assertion"]
-	if !ok {
-		return oauthErr(http.StatusBadRequest, "invalid_request", "missing assertion parameter")
-	}
-
-	claims, err := s.verifyClientAssertionFunc(assertion[0])
-	if err != nil {
-		return oauthErr(http.StatusUnauthorized, "bad_request", fmt.Sprintf("failed to verify assertion: %v", err))
-	}
-
-	slog.Info("Token request", "claims", claims)
-
-	if err := claims.Validate(); err != nil {
-		return oauthErr(http.StatusBadRequest, "bad_request", fmt.Sprintf("invalid assertion claims: %v", err))
-	}
-
-	// redeem nonce
-	err = s.nonceService.Redeem(claims.Nonce)
-	if err != nil {
-		return oauthErr(http.StatusBadRequest, "invalid_request", fmt.Sprintf("invalid nonce: %v", err))
-	}
-
-	dpopBinding, dpoppErr := dpop.ParseRequest(r, dpop.ParseOptions{
-		MaxAge:        s.dpopMaxAge,
-		NonceRequired: true,
-	})
-	if dpoppErr != nil {
-		return oauthErr(dpoppErr.HttpStatus, dpoppErr.Code, dpoppErr.Description)
-	}
-	slog.Info("DPoP token", "dpop", fmt.Sprintf("%+v", dpopBinding), "raw", r.Header.Get("DPoP"))
-
-	if dpopBinding.DPoP.Nonce != claims.Nonce {
-		return oauthErr(http.StatusBadRequest, "invalid_request", "nonce mismatch")
-	}
-
-	if dpopBinding.DPoP.KeyThumbprint != "" && dpopBinding.DPoP.KeyThumbprint != claims.Cnf.Jkt {
-		return oauthErr(http.StatusBadRequest, "invalid_request", "key thumbprint mismatch")
-	}
-
-	return oauthErr(http.StatusUnauthorized, "not_implemented", "JWT Bearer grant type not implemented")
-
-}
-
 func (s *Server) tokenEndpointRefreshToken(w http.ResponseWriter, r *http.Request) error {
-	client, clientError := s.verifyClient(r)
+	client, _, clientError := s.verifyClient(r)
 	if clientError != nil {
 		return clientError
 	}
@@ -282,7 +249,7 @@ func (s *Server) tokenEndpointRefreshToken(w http.ResponseWriter, r *http.Reques
 		return oauthErr(http.StatusBadRequest, "invalid_request", "missing refresh_token")
 	}
 
-	slog.Info("Token request", "client", client, "refresh_token", refreshToken)
+	slog.Info("Token request", "client", client.ClientID, "refresh_token", refreshToken)
 
 	return writeJSON(w, http.StatusUnauthorized, nil)
 }
@@ -338,8 +305,8 @@ func (s *Server) issueOrRefreshTokens(session *AuthzServerSession) (*TokenRespon
 	}, nil
 }
 
-func (s *Server) applyPolicyNewSession(client *ClientMetadata, session *AuthzServerSession) *Error {
-	if !client.IsAllowedScopes(session.Scopes) {
+func (s *Server) applyPolicyNewSession(product *Product, session *AuthzServerSession) *Error {
+	if !product.IsAllowedScopes(session.Scopes) {
 		return oauthErr(http.StatusForbidden, "invalid_scope", fmt.Sprintf("scope not allowed: %s", strings.Join(session.Scopes, " ")))
 	}
 	session.AccessTokenDuration = 60 * time.Second

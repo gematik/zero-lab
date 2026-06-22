@@ -12,15 +12,25 @@ authorization_server:
   sign_jwk_path: sign.jwk
   scopes_supported:
     - e2e
-  clients:
-    - type: confidential
-      client_id: "${ZERO_PDP_E2E_CLIENT_ID}"
-      client_secret_hash: "${ZERO_PDP_E2E_CLIENT_SECRET_HASH}"
-      client_name: e2e client
+  # The e2e client authenticates with private_key_jwt (RFC 7523). Its public JWK below is the public half
+  # of testdata/e2e-client.prk.jwk, which the tests sign assertions with. Redirect/scope policy lives on the
+  # product the client belongs to.
+  products:
+    - product_id: e2e-product
+      product_name: e2e product
       redirect_uris:
         - "${ZERO_PDP_E2E_REDIRECT_URI}"
       scopes:
         - e2e
+  clients:
+    - client_id: "${ZERO_PDP_E2E_CLIENT_ID}"
+      product_id: e2e-product
+      public_jwk:
+        kty: EC
+        crv: P-256
+        kid: SBkiQ-QORTGMWT_DwohoykhoSsphiDAI25j9AMwSYSM
+        x: yD6TyA8SM6whnWN-AIWoPn9hcgX2rRJRRCyfFkUjn20
+        y: rcuJK6wmSOtiyEGH1jzDR66m-pgKLcA5bFKKODpF3a0
 
   # --- Optional: configure an OpenID Provider to exercise the authorization-code / PAR /
   # --- HITL flows. Provide credentials via env and uncomment a block. See docs/e2e.md.

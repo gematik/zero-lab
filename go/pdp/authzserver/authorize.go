@@ -67,30 +67,35 @@ func (s *Server) AuthorizationEndpoint(w http.ResponseWriter, r *http.Request) e
 		return oauthErr(http.StatusInternalServerError, "server_error", "clients registry not configured")
 	}
 
-	client, err := s.clientsRegistry.GetClientMetadata(session.ClientID)
+	client, err := s.clientsRegistry.GetClient(session.ClientID)
 	if err != nil {
 		return oauthErr(http.StatusBadRequest, "invalid_request", err.Error())
 	}
 
-	if !client.IsAllowedRedirectURI(session.RedirectURI) {
+	product, productErr := s.clientProduct(client)
+	if productErr != nil {
+		return productErr
+	}
+
+	if !product.IsAllowedRedirectURI(session.RedirectURI) {
 		return oauthErr(http.StatusBadRequest, "invalid_request", "Invalid redirect_uri")
 	}
 
 	session.Scopes = strings.Split(scope, " ")
-	if !client.IsAllowedScopes(session.Scopes) {
+	if !product.IsAllowedScopes(session.Scopes) {
 		return redirectWithError(w, r, session.RedirectURI, session.State, Error{
 			Code:        "invalid_scope",
 			Description: fmt.Sprintf("scope not allowed: %s", strings.Join(session.Scopes, " ")),
 		})
 	}
 
-	return s.startOpenidProviderLogin(w, r, session)
+	return s.startOpenidProviderLogin(w, r, session, product)
 }
 
 // startOpenidProviderLogin resolves the upstream OP, creates the authentication session and
 // redirects the user-agent to the provider. On error it redirects back to the client with an
 // OAuth error.
-func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request, session *AuthzServerSession) error {
+func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request, session *AuthzServerSession, product *Product) error {
 	opClient, err := s.GetOpenidClient(session.OPIssuer)
 	if err != nil {
 		return redirectWithError(w, r, session.RedirectURI, session.State, Error{
@@ -102,7 +107,7 @@ func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request
 	opRedirectURI := opClient.RedirectURI()
 
 	if session.OPIntermediaryRedirectURI != "" {
-		if !s.clientsPolicy.IsOPIntermediaryRedirectURIAllowed(session.ClientID, session.OPIntermediaryRedirectURI) {
+		if !product.IsOPIntermediaryRedirectURIAllowed(session.OPIntermediaryRedirectURI) {
 			return redirectWithError(w, r, session.RedirectURI, session.State, Error{
 				Code:        "invalid_request",
 				Description: fmt.Sprintf("OP Intermediary Redirect URI not allowed: %s, client: %s", session.OPIntermediaryRedirectURI, session.ClientID),
