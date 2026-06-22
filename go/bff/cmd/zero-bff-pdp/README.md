@@ -31,7 +31,7 @@ docker compose up --build
 ```
 Or locally, without docker:
 ```sh
-PDP_BFF_CONFIG=config/pdp.yaml BFF_PUBLIC_URL=http://127.0.0.1:8011 go run ./bff/cmd/pdp-bff
+PDP_CONFIG_PATH=config/pdp.yaml PUBLIC_URL=http://127.0.0.1:8011 go run ./bff/cmd/pdp-bff
 ```
 
 ## What it demonstrates
@@ -41,8 +41,8 @@ The webui's provider picker lists every OP configured in the pdp — e.g. **Goog
 ## Environment
 | var | meaning |
 |---|---|
-| `PDP_BFF_CONFIG` | path to the pdp config (flag `--pdp-config`; default `pdp.yaml`, container `/config/pdp.yaml`) |
+| `PDP_CONFIG_PATH` | path to the pdp config (flag `--pdp-config`; default `pdp.yaml`, container `/config/pdp.yaml`) |
 | `PUBLIC_URL` | public origin (tunnel URL); the config's `issuer` + redirect base |
-| `BFF_PUBLIC_URL` / `BFF_AS_ISSUER` | the public origin (one URL = `PUBLIC_URL`) |
+| `PUBLIC_URL` / `BFF_AS_ISSUER` | the public origin (one URL = `PUBLIC_URL`) |
 | `BFF_CLIENT_ID` | the bff's client_id (auto-registered at startup with a generated key, `private_key_jwt`) |
 | `BFF_COOKIE_NAME` | session cookie name (default `ZETA-BFF-SID`) |

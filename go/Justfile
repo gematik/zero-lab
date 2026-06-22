@@ -106,6 +106,22 @@ pdp-db-up:
 pdp-db-down *ARGS:
     docker compose -f pdp/docker-compose.yaml down {{ARGS}}
 
+# Build the zero-bff-pdp docker image (pdp authorization server + bff + webui in one process, scratch, non-root)
+docker-build-bff-pdp:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver bff)
+    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/zero-bff-pdp:$v" -f ./bff/cmd/zero-bff-pdp/Dockerfile .
+    docker tag "{{DOCKER_USER}}/zero-bff-pdp:$v" "{{DOCKER_USER}}/zero-bff-pdp:latest"
+
+# Push the zero-bff-pdp docker image to the docker hub
+docker-push-bff-pdp: docker-build-bff-pdp
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver bff)
+    docker push "{{DOCKER_USER}}/zero-bff-pdp:$v"
+    docker push "{{DOCKER_USER}}/zero-bff-pdp:latest"
+
 # Tag a module at a version, e.g. `just tag ti 0.20.2` or `just tag brainpool 0.3.1`
 # -> go/<module>/vX.Y.Z. Tag only the modules that changed (see `changed`).
 tag name version:

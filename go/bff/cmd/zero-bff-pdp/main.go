@@ -45,7 +45,7 @@ func env(key, def string) string {
 }
 
 func main() {
-	pdpConfigPath := flag.String("pdp-config", env("PDP_BFF_CONFIG", "pdp.yaml"), "path to the pdp config file")
+	pdpConfigPath := flag.String("pdp-config", env("PDP_CONFIG_PATH", "pdp.yaml"), "path to the pdp config file")
 	flag.Parse()
 
 	// Load a .env next to the config (best-effort) so the BFF_* vars and the config's ${...} placeholders
@@ -70,7 +70,7 @@ func main() {
 	if bindAddress == "" {
 		bindAddress = ":8011"
 	}
-	publicURL := env("BFF_PUBLIC_URL", "http://127.0.0.1"+bindAddress)
+	publicURL := env("PUBLIC_URL", "http://127.0.0.1"+bindAddress)
 	localIssuer := "http://127.0.0.1" + bindAddress
 
 	clientID := env("BFF_CLIENT_ID", "bff-demo")
