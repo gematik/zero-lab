@@ -5,7 +5,7 @@ import (
 )
 
 type Session struct {
-	Id                   string         `json:"id"`
+	ID                   string         `json:"id"`
 	State                string         `json:"state"`
 	CreatedAt            time.Time      `json:"created_at"`
 	CodeVerifier         string         `json:"code_verifier"`
@@ -20,6 +20,6 @@ type SessionManager interface {
 	CreateSession(state string, codeVerifier string, codeChallengeMethod string) (*Session, error)
 	UpdateSession(session *Session) error
 	GetSessionByState(state string) (*Session, error)
-	GetSessionById(id string) (*Session, error)
-	DeleteSessionById(id string) error
+	GetSessionByID(id string) (*Session, error)
+	DeleteSessionByID(id string) error
 }

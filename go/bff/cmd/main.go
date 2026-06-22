@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"log/slog"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/bff"
 	"github.com/gematik/zero-lab/go/bff/webui"
+	"github.com/gematik/zero-lab/go/pdp/authzserver"
 )
 
 func env(key, def string) string {
@@ -21,17 +23,36 @@ func main() {
 	addr := env("BFF_ADDR", ":8080")
 	// Public origin the browser reaches the BFF at; the AS must have <public>/bff/auth/callback
 	// registered as the client's redirect_uri.
-	publicUrl := env("BFF_PUBLIC_URL", "http://127.0.0.1:8080")
+	publicURL := env("BFF_PUBLIC_URL", "http://127.0.0.1:8080")
+	clientID := env("BFF_CLIENT_ID", "e2e-client")
+
+	// The bff authenticates to the AS with private_key_jwt (RFC 7523). Generate an ephemeral signing key
+	// (for the client_assertion) and DPoP key (its thumbprint is the assertion's cnf.jkt), and log the
+	// public signing JWK so it can be registered as this client's public_jwk at the AS.
+	signingKey, err := authzserver.GenerateRandomJwk()
+	if err != nil {
+		log.Fatalf("generate signing key: %v", err)
+	}
+	dpopKey, err := authzserver.GenerateRandomJwk()
+	if err != nil {
+		log.Fatalf("generate dpop key: %v", err)
+	}
+	if pub, err := signingKey.PublicKey(); err == nil {
+		if pubJSON, err := json.Marshal(pub); err == nil {
+			slog.Info("register this public JWK as the client's public_jwk at the AS", "client_id", clientID, "public_jwk", string(pubJSON))
+		}
+	}
 
 	b, err := bff.New(bff.Config{
 		AuthorizationServer: bff.AuthorizationServerConfig{
-			Issuer:       env("BFF_AS_ISSUER", "http://127.0.0.1:8011"),
-			ClientId:     env("BFF_CLIENT_ID", "e2e-client"),
-			ClientSecret: env("BFF_CLIENT_SECRET", "e2e-client"),
-			RedirectUri:  publicUrl + "/bff/auth/callback",
+			Issuer:      env("BFF_AS_ISSUER", "http://127.0.0.1:8011"),
+			ClientID:    clientID,
+			RedirectURI: publicURL + "/bff/auth/callback",
+			SigningKey:  signingKey,
+			DPoPKey:     dpopKey,
 		},
 		CookieName:          env("BFF_COOKIE_NAME", "ZETA-BFF-SID"),
-		FrontendRedirectUri: publicUrl + "/",
+		FrontendRedirectURI: publicURL + "/",
 	})
 	if err != nil {
 		log.Fatalf("create bff: %v", err)
@@ -42,6 +63,6 @@ func main() {
 	// Static SPA at /. Swappable for a React/Svelte build without touching the API.
 	mux.Handle("/", http.FileServerFS(webui.FS))
 
-	slog.Info("bff listening", "addr", addr, "public_url", publicUrl)
+	slog.Info("bff listening", "addr", addr, "public_url", publicURL)
 	log.Fatal(http.ListenAndServe(addr, bff.RecoverMiddleware(mux)))
 }

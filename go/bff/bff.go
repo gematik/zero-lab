@@ -2,6 +2,7 @@ package bff
 
 import (
 	"context"
+	"crypto"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -13,16 +14,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lestrrat-go/jwx/v3/jwa"
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/lestrrat-go/jwx/v3/jwt"
 	"golang.org/x/oauth2"
 )
 
+// clientAssertionTypeJWTBearer is the client_assertion_type for private_key_jwt (RFC 7523 §2.2).
+const clientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+
 type Error struct {
-	// HttpStatusCode is used as the HTTP status code when the error is rendered as a response.
-	HttpStatusCode int `json:"-"`
+	// HTTPStatusCode is used as the HTTP status code when the error is rendered as a response.
+	HTTPStatusCode int `json:"-"`
 	// OAuth2 error fields.
 	Code        string `json:"error"`
 	Description string `json:"error_description"`
-	Uri         string `json:"error_uri,omitempty"`
+	URI         string `json:"error_uri,omitempty"`
 }
 
 func (e *Error) Error() string {
@@ -30,13 +37,13 @@ func (e *Error) Error() string {
 }
 
 var errTemplateUnauthorized = Error{
-	HttpStatusCode: http.StatusUnauthorized,
+	HTTPStatusCode: http.StatusUnauthorized,
 	Code:           "unauthorized",
 	Description:    "Unauthorized",
 }
 
 var errTemplateInternalError = Error{
-	HttpStatusCode: http.StatusInternalServerError,
+	HTTPStatusCode: http.StatusInternalServerError,
 	Code:           "internal_error",
 	Description:    "Internal error",
 }
@@ -45,7 +52,7 @@ type Config struct {
 	AuthorizationServer   AuthorizationServerConfig `json:"authorization_server" validate:"required"`
 	CookieName            string                    `json:"cookie_name" validate:"required"`
 	ProductionGradeCookie bool                      `json:"production_grade_cookie"`
-	FrontendRedirectUri   string                    `json:"frontend_redirect_uri" validate:"required"`
+	FrontendRedirectURI   string                    `json:"frontend_redirect_uri" validate:"required"`
 
 	// SessionManager overrides the default in-memory mock when non-nil. Not serialized.
 	SessionManager SessionManager `json:"-"`
@@ -55,15 +62,21 @@ type Config struct {
 
 // AuthorizationServerConfig describes the BFF's confidential-client credentials at the AS. The BFF
 // MUST be a confidential client (BCP draft-ietf-oauth-browser-based-apps), which is also required so
-// it may introspect its own access token at the AS.
+// it may introspect its own access token at the AS. It authenticates with private_key_jwt (RFC 7523):
+// it signs a client_assertion with SigningKey (whose public half is registered at the AS) and declares
+// DPoPKey's thumbprint as the assertion's cnf.jkt, binding the issued access token to that key.
 type AuthorizationServerConfig struct {
-	Issuer       string `json:"issuer" validate:"required"`
-	ClientId     string `json:"client_id" validate:"required"`
-	ClientSecret string `json:"client_secret" validate:"required"`
-	RedirectUri  string `json:"redirect_uri" validate:"required"`
+	Issuer      string `json:"issuer" validate:"required"`
+	ClientID    string `json:"client_id" validate:"required"`
+	RedirectURI string `json:"redirect_uri" validate:"required"`
 	// Scopes the BFF requests from the AS when a login does not specify its own. Space-joined into the
 	// authorization request's scope parameter.
 	Scopes []string `json:"scopes"`
+
+	// SigningKey signs the client_assertion; its public JWK is registered at the AS. Set programmatically.
+	SigningKey jwk.Key `json:"-"`
+	// DPoPKey is the sender-constraining key whose thumbprint is the assertion's cnf.jkt. Set programmatically.
+	DPoPKey jwk.Key `json:"-"`
 }
 
 // asMetadata is the subset of RFC 8414 authorization-server metadata the BFF needs.
@@ -73,12 +86,13 @@ type asMetadata struct {
 	TokenEndpoint           string `json:"token_endpoint"`
 	IntrospectionEndpoint   string `json:"introspection_endpoint"`
 	OpenidProvidersEndpoint string `json:"openid_providers_endpoint"`
+	NonceEndpoint           string `json:"nonce_endpoint"`
 }
 
 // providerInfo mirrors the AS openid-providers list entry.
 type providerInfo struct {
 	Issuer  string `json:"iss"`
-	LogoUri string `json:"logo_uri"`
+	LogoURI string `json:"logo_uri"`
 	Name    string `json:"name"`
 	Type    string `json:"type"`
 }
@@ -90,7 +104,7 @@ type BackendForFrontend struct {
 	cookieTemplate      *http.Cookie
 	oauth2Client        *oauth2.Config
 	metadata            asMetadata
-	frontendRedirectUrl *url.URL
+	frontendRedirectURL *url.URL
 }
 
 func New(cfg Config) (*BackendForFrontend, error) {
@@ -120,7 +134,7 @@ func New(cfg Config) (*BackendForFrontend, error) {
 	}
 
 	var err error
-	if b.frontendRedirectUrl, err = url.Parse(cfg.FrontendRedirectUri); err != nil {
+	if b.frontendRedirectURL, err = url.Parse(cfg.FrontendRedirectURI); err != nil {
 		return nil, fmt.Errorf("parse frontend redirect uri: %w", err)
 	}
 
@@ -135,16 +149,76 @@ func New(cfg Config) (*BackendForFrontend, error) {
 	}
 
 	b.oauth2Client = &oauth2.Config{
-		ClientID:     cfg.AuthorizationServer.ClientId,
-		ClientSecret: cfg.AuthorizationServer.ClientSecret,
+		ClientID: cfg.AuthorizationServer.ClientID,
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  b.metadata.AuthorizationEndpoint,
-			TokenURL: b.metadata.TokenEndpoint,
+			AuthURL:   b.metadata.AuthorizationEndpoint,
+			TokenURL:  b.metadata.TokenEndpoint,
+			AuthStyle: oauth2.AuthStyleInParams,
 		},
-		RedirectURL: cfg.AuthorizationServer.RedirectUri,
+		RedirectURL: cfg.AuthorizationServer.RedirectURI,
 	}
 
 	return b, nil
+}
+
+// clientAssertion mints a private_key_jwt assertion (RFC 7523 §2.2) authenticating the BFF to the AS:
+// iss=sub=client_id, aud=issuer, a fresh AS nonce, and cnf.jkt = the DPoP key thumbprint. Signed with
+// the BFF's registered signing key.
+func (b *BackendForFrontend) clientAssertion(ctx context.Context) (string, error) {
+	as := b.cfg.AuthorizationServer
+	if as.SigningKey == nil || as.DPoPKey == nil {
+		return "", fmt.Errorf("client signing/DPoP key not configured")
+	}
+	nonce, err := b.fetchNonce(ctx)
+	if err != nil {
+		return "", fmt.Errorf("fetch nonce: %w", err)
+	}
+	thumb, err := as.DPoPKey.Thumbprint(crypto.SHA256)
+	if err != nil {
+		return "", fmt.Errorf("dpop thumbprint: %w", err)
+	}
+	jkt := base64.RawURLEncoding.EncodeToString(thumb)
+
+	now := time.Now()
+	// aud must be the AS's real issuer (which it validates against), not the local discovery URL.
+	tok := jwt.New()
+	tok.Set(jwt.IssuerKey, as.ClientID)
+	tok.Set(jwt.SubjectKey, as.ClientID)
+	tok.Set(jwt.AudienceKey, b.metadata.Issuer)
+	tok.Set(jwt.IssuedAtKey, now.Unix())
+	tok.Set(jwt.ExpirationKey, now.Add(time.Minute).Unix())
+	tok.Set("nonce", nonce)
+	tok.Set("cnf", map[string]string{"jkt": jkt})
+
+	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.ES256(), as.SigningKey))
+	if err != nil {
+		return "", fmt.Errorf("sign client_assertion: %w", err)
+	}
+	return string(signed), nil
+}
+
+// fetchNonce gets a one-time nonce from the AS nonce endpoint (plain-text body).
+func (b *BackendForFrontend) fetchNonce(ctx context.Context) (string, error) {
+	if b.metadata.NonceEndpoint == "" {
+		return "", fmt.Errorf("no nonce_endpoint in metadata")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.metadata.NonceEndpoint, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := b.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("nonce endpoint returned %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(body)), nil
 }
 
 // discoverMetadata fetches the RFC 8414 authorization-server metadata document.
@@ -190,7 +264,7 @@ func RecoverMiddleware(next http.Handler) http.Handler {
 			if rec := recover(); rec != nil {
 				slog.Error("recovered from panic", "error", rec, "path", r.URL.Path, "stack", string(debug.Stack()))
 				respondWithError(w, &Error{
-					HttpStatusCode: http.StatusInternalServerError,
+					HTTPStatusCode: http.StatusInternalServerError,
 					Code:           "internal_error",
 					Description:    "Internal server error",
 				})
@@ -201,7 +275,7 @@ func RecoverMiddleware(next http.Handler) http.Handler {
 }
 
 type loginResponse struct {
-	AuthUrl string        `json:"auth_url"`
+	AuthURL string        `json:"auth_url"`
 	Mode    string        `json:"mode"` // "redirect" or "decoupled"
 	Op      *providerInfo `json:"op,omitempty"`
 }
@@ -230,9 +304,9 @@ func (b *BackendForFrontend) LoginEndpoint(w http.ResponseWriter, r *http.Reques
 	if opIssuer != "" {
 		opts = append(opts, oauth2.SetAuthURLParam("op_issuer", opIssuer))
 	}
-	authUrl := b.oauth2Client.AuthCodeURL(session.State, opts...)
+	authURL := b.oauth2Client.AuthCodeURL(session.State, opts...)
 
-	b.setCookie(w, session.Id)
+	b.setCookie(w, session.ID)
 
 	mode := "redirect"
 	var op *providerInfo
@@ -253,36 +327,44 @@ func (b *BackendForFrontend) LoginEndpoint(w http.ResponseWriter, r *http.Reques
 	// server-initiated PAR completes normally. If the AS does not redirect, surface the error instead of
 	// a QR.
 	if mode == "decoupled" {
-		directUrl, err := b.resolveDecoupledAuthURL(authUrl)
+		directURL, err := b.resolveDecoupledAuthURL(authURL)
 		if err != nil {
 			respondWithError(w, elaborateError(errTemplateInternalError, "start decoupled login: %v", err))
 			return
 		}
-		authUrl = directUrl
+		authURL = directURL
 	}
 
-	respondJSON(w, http.StatusOK, loginResponse{AuthUrl: authUrl, Mode: mode, Op: op})
+	respondJSON(w, http.StatusOK, loginResponse{AuthURL: authURL, Mode: mode, Op: op})
 }
 
-// resolveDecoupledAuthURL follows the AS authorization request without following the redirect, and returns
-// the provider authorization URL from the 302 Location (the link the second device opens). A non-redirect
-// response is returned as an error so the caller renders it rather than a QR.
-func (b *BackendForFrontend) resolveDecoupledAuthURL(authUrl string) (string, error) {
+// resolveDecoupledAuthURL drives the AS authorization request in the backend (the AS performs the PAR)
+// without following the redirect, and returns the provider authorization URL from the 3xx Location — the
+// link the second device opens. The redirect is only handed to the browser if it is a clean redirect to
+// the provider: a non-3xx response, or a redirect back to our redirect_uri carrying ?error= (PAR or
+// validation failed), is returned as an error so the caller renders it instead of a QR to our own callback.
+func (b *BackendForFrontend) resolveDecoupledAuthURL(authURL string) (string, error) {
 	noRedirect := *b.httpClient
 	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
-	resp, err := noRedirect.Get(authUrl)
+	resp, err := noRedirect.Get(authURL)
 	if err != nil {
 		return "", fmt.Errorf("fetch authorization url: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if loc, err := resp.Location(); err == nil {
-		return loc.String(), nil
+	if resp.StatusCode < 300 || resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return "", fmt.Errorf("authorization server returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	return "", fmt.Errorf("authorization server returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	loc, err := resp.Location()
+	if err != nil {
+		return "", fmt.Errorf("authorization redirect without Location: %w", err)
+	}
+	if e := loc.Query().Get("error"); e != "" {
+		return "", fmt.Errorf("%s: %s", e, loc.Query().Get("error_description"))
+	}
+	return loc.String(), nil
 }
 
 // CallbackEndpoint is the OAuth redirect_uri. It exchanges the code, introspects the access token at
@@ -292,7 +374,7 @@ func (b *BackendForFrontend) CallbackEndpoint(w http.ResponseWriter, r *http.Req
 		b.redirectToFrontend(w, r, &Error{
 			Code:        oauthErr,
 			Description: r.URL.Query().Get("error_description"),
-			Uri:         r.URL.Query().Get("error_uri"),
+			URI:         r.URL.Query().Get("error_uri"),
 		})
 		return
 	}
@@ -306,7 +388,16 @@ func (b *BackendForFrontend) CallbackEndpoint(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	token, err := b.oauth2Client.Exchange(r.Context(), code, oauth2.VerifierOption(session.CodeVerifier))
+	assertion, err := b.clientAssertion(r.Context())
+	if err != nil {
+		b.redirectToFrontend(w, r, elaborateError(errTemplateInternalError, "build client assertion: %v", err))
+		return
+	}
+	token, err := b.oauth2Client.Exchange(r.Context(), code,
+		oauth2.VerifierOption(session.CodeVerifier),
+		oauth2.SetAuthURLParam("client_assertion_type", clientAssertionTypeJWTBearer),
+		oauth2.SetAuthURLParam("client_assertion", assertion),
+	)
 	if err != nil {
 		b.redirectToFrontend(w, r, elaborateError(errTemplateInternalError, "exchange code: %v", err))
 		return
@@ -357,9 +448,9 @@ type sessionResponse struct {
 type SessionView struct {
 	Identity    map[string]any `json:"identity,omitempty"`     // upstream identity claims
 	AccessToken map[string]any `json:"access_token,omitempty"` // decoded access-token claims (not the raw JWT)
-	IdToken     map[string]any `json:"id_token,omitempty"`     // decoded id_token claims (not the raw JWT)
+	IDToken     map[string]any `json:"id_token,omitempty"`     // decoded id_token claims (not the raw JWT)
 	Scope       string         `json:"scope,omitempty"`
-	ClientId    string         `json:"client_id,omitempty"`
+	ClientID    string         `json:"client_id,omitempty"`
 	ExpiresAt   time.Time      `json:"expires_at,omitempty"`
 }
 
@@ -373,9 +464,9 @@ func newSessionView(session *Session) *SessionView {
 	if intro := session.Identity; intro != nil {
 		sv.Identity, _ = intro["identity"].(map[string]any)
 		sv.Scope, _ = intro["scope"].(string)
-		sv.ClientId, _ = intro["client_id"].(string)
+		sv.ClientID, _ = intro["client_id"].(string)
 		if idt, _ := intro["id_token"].(string); idt != "" {
-			sv.IdToken = decodeJWTClaims(idt)
+			sv.IDToken = decodeJWTClaims(idt)
 		}
 	}
 	return sv
@@ -415,7 +506,7 @@ func (b *BackendForFrontend) SessionEndpoint(w http.ResponseWriter, r *http.Requ
 	token, tokenErr := ts.Token()
 	if tokenErr != nil {
 		slog.Warn("session token refresh failed", "error", tokenErr)
-		b.sessionManager.DeleteSessionById(session.Id)
+		b.sessionManager.DeleteSessionByID(session.ID)
 		b.expireCookie(w)
 		respondJSON(w, http.StatusUnauthorized, sessionResponse{Authenticated: false})
 		return
@@ -435,14 +526,14 @@ func (b *BackendForFrontend) SessionEndpoint(w http.ResponseWriter, r *http.Requ
 func (b *BackendForFrontend) LogoutEndpoint(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("X-Requested-With") == "" {
 		respondWithError(w, &Error{
-			HttpStatusCode: http.StatusForbidden,
+			HTTPStatusCode: http.StatusForbidden,
 			Code:           "invalid_request",
 			Description:    "missing X-Requested-With header",
 		})
 		return
 	}
 	if session, err := b.sessionByCookie(r); err == nil {
-		_ = b.sessionManager.DeleteSessionById(session.Id)
+		_ = b.sessionManager.DeleteSessionByID(session.ID)
 	}
 	b.expireCookie(w)
 	w.WriteHeader(http.StatusNoContent)
@@ -477,13 +568,20 @@ func (b *BackendForFrontend) introspectIdentity(ctx context.Context, accessToken
 	if b.metadata.IntrospectionEndpoint == "" {
 		return nil, fmt.Errorf("no introspection_endpoint in metadata")
 	}
-	form := url.Values{"token": {accessToken}}
+	assertion, err := b.clientAssertion(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("build client assertion: %w", err)
+	}
+	form := url.Values{
+		"token":                 {accessToken},
+		"client_assertion_type": {clientAssertionTypeJWTBearer},
+		"client_assertion":      {assertion},
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.metadata.IntrospectionEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.SetBasicAuth(b.cfg.AuthorizationServer.ClientId, b.cfg.AuthorizationServer.ClientSecret)
 
 	resp, err := b.httpClient.Do(req)
 	if err != nil {
@@ -542,7 +640,7 @@ func (b *BackendForFrontend) sessionByCookie(r *http.Request) (*Session, *Error)
 	if err != nil {
 		return nil, elaborateError(errTemplateUnauthorized, "missing cookie '%s': %v", b.cookieTemplate.Name, err)
 	}
-	session, err := b.sessionManager.GetSessionById(cookie.Value)
+	session, err := b.sessionManager.GetSessionByID(cookie.Value)
 	if err != nil {
 		return nil, elaborateError(errTemplateUnauthorized, "session not found: %v", err)
 	}
@@ -574,13 +672,13 @@ func (b *BackendForFrontend) expireCookie(w http.ResponseWriter) {
 }
 
 func (b *BackendForFrontend) redirectToFrontend(w http.ResponseWriter, r *http.Request, errForClient *Error) {
-	redirectURI := *b.frontendRedirectUrl
+	redirectURI := *b.frontendRedirectURL
 	params := url.Values{}
 	if errForClient != nil {
 		params.Set("error", errForClient.Code)
 		params.Set("error_description", errForClient.Description)
-		if errForClient.Uri != "" {
-			params.Set("error_uri", errForClient.Uri)
+		if errForClient.URI != "" {
+			params.Set("error_uri", errForClient.URI)
 		}
 	} else {
 		// Mark a completed login so the landing page (e.g. the cookie-less decoupled device) shows
@@ -603,5 +701,5 @@ func respondJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func respondWithError(w http.ResponseWriter, err *Error) {
-	respondJSON(w, err.HttpStatusCode, err)
+	respondJSON(w, err.HTTPStatusCode, err)
 }

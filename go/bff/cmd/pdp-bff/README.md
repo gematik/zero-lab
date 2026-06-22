@@ -19,11 +19,10 @@ So the pdp config **must** keep operational endpoints under `/as` (well-knowns a
    ```sh
    go run ./pdp/cmd/zero-pdp jose generate-jwk > config/sign.jwk
    ```
-2. Register the bff as a client in the config and hash its secret:
-   ```sh
-   go run ./pdp/cmd/zero-pdp secret-hash "bff-demo"   # -> BFF_CLIENT_SECRET_HASH
-   ```
-3. Copy `.env.example` to `.env` and set `PUBLIC_URL` (your tunnel origin), `BFF_CLIENT_*`, `GOOGLE_*`.
+2. Copy `.env.example` to `.env` and set `PUBLIC_URL` (your tunnel origin), `BFF_CLIENT_ID`, `GOOGLE_*`.
+   The bff authenticates with `private_key_jwt` (RFC 7523): pdp-bff generates its signing + DPoP keys at
+   startup and registers it (with its public JWK) as a client of a demo product automatically, so there is
+   no client secret to manage.
 
 ## Run
 ```sh
@@ -45,5 +44,5 @@ The webui's provider picker lists every OP configured in the pdp — e.g. **Goog
 | `PDP_BFF_CONFIG` | path to the pdp config (flag `--pdp-config`; default `pdp.yaml`, container `/config/pdp.yaml`) |
 | `PUBLIC_URL` | public origin (tunnel URL); the config's `issuer` + redirect base |
 | `BFF_PUBLIC_URL` / `BFF_AS_ISSUER` | the public origin (one URL = `PUBLIC_URL`) |
-| `BFF_CLIENT_ID` / `BFF_CLIENT_SECRET` | the bff's credentials (must match the config's client + its hash) |
+| `BFF_CLIENT_ID` | the bff's client_id (auto-registered at startup with a generated key, `private_key_jwt`) |
 | `BFF_COOKIE_NAME` | session cookie name (default `ZETA-BFF-SID`) |
