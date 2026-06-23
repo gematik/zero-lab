@@ -9,6 +9,7 @@ use (
 	./gemidp
 	./gempki
 	./kon
+	./kv
 	./nonce
 	./oauth
 	./oidf
