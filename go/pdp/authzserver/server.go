@@ -12,12 +12,20 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/gemidp"
+	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/nonce"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
 	"github.com/gematik/zero-lab/go/pep"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"gopkg.in/yaml.v3"
+)
+
+const (
+	// defaultSessionTTL bounds a pending authorization session before a policy sets its ExpiresAt.
+	defaultSessionTTL = 15 * time.Minute
+	// defaultNonceTTL bounds how long an issued replay nonce stays redeemable.
+	defaultNonceTTL = 5 * time.Minute
 )
 
 type Server struct {
@@ -98,8 +106,14 @@ func New(cfg Config) (*Server, error) {
 		return nil, err
 	}
 
-	// session store is mock atm
-	s.sessionStore = newMockSessionStore()
+	// One kv.Store backs the session store and the nonce service. The caller injects a Postgres-backed
+	// store via Config.Store (built in the command, which owns the driver dependency); without it we use
+	// an in-memory store (tests and dev).
+	store := cfg.Store
+	if store == nil {
+		store = kv.NewMemory()
+	}
+	s.sessionStore = newKVSessionStore(store, defaultSessionTTL)
 
 	if err := s.initRelyingParty(cfg); err != nil {
 		return nil, err
@@ -109,10 +123,10 @@ func New(cfg Config) (*Server, error) {
 		return nil, err
 	}
 
-	// TODO: configure nonce service
-	s.nonceService, err = nonce.NewHashicorpNonceService()
-	if err != nil {
-		return nil, fmt.Errorf("create nonce service: %w", err)
+	if cfg.NonceService != nil {
+		s.nonceService = cfg.NonceService
+	} else {
+		s.nonceService = nonce.NewKVService(store, defaultNonceTTL)
 	}
 
 	// TODO: configure DPoP validity period

@@ -95,6 +95,17 @@ docker-push-pdp: docker-build-pdp
     docker push "{{DOCKER_USER}}/zero-pdp:$v"
     docker push "{{DOCKER_USER}}/zero-pdp:latest"
 
+# Start the local Postgres for zero-pdp (the kv JSON store). Then point the server at it with
+#   export DATABASE_URL=postgres://zero:zero@localhost:5432/zero?sslmode=disable
+# (unset DATABASE_URL falls back to an in-memory store). Run the kv Postgres tests with
+#   TEST_DATABASE_URL=$DATABASE_URL go test ./kv/postgres
+pdp-db-up:
+    docker compose -f pdp/docker-compose.yaml up -d
+
+# Stop the local Postgres (append `-- -v` to also drop the data volume).
+pdp-db-down *ARGS:
+    docker compose -f pdp/docker-compose.yaml down {{ARGS}}
+
 # Tag a module at a version, e.g. `just tag ti 0.20.2` or `just tag brainpool 0.3.1`
 # -> go/<module>/vX.Y.Z. Tag only the modules that changed (see `changed`).
 tag name version:

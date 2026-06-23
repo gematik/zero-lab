@@ -1,17 +1,24 @@
+# Local Postgres for zero-pdp (the kv JSON store: sessions + nonces). Point the server at it with
+#   DATABASE_URL=postgres://zero:zero@localhost:5432/zero?sslmode=disable
+# Unset DATABASE_URL falls back to an in-memory store (non-durable).
 services:
-  redis:
-    image: redis:7-alpine
-    container_name: zero-pdp-redis
+  postgres:
+    image: postgres:16-alpine
+    container_name: zero-pdp-postgres
     restart: unless-stopped
+    environment:
+      POSTGRES_DB: zero
+      POSTGRES_USER: zero
+      POSTGRES_PASSWORD: zero
     ports:
-      - "6379:6379"
+      - "5432:5432"
     volumes:
-      - redis-data:/data
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "pg_isready -U zero -d zero"]
       interval: 5s
       timeout: 3s
       retries: 5
 
 volumes:
-  redis-data:
+  postgres-data:

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gematik/zero-lab/go/gemidp"
+	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/nonce"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
@@ -27,8 +28,12 @@ type Config struct {
 	OidfRelyingPartyConfig     *oidf.RelyingPartyConfig `yaml:"oidf_relying_party" validate:"omitempty"`
 	Endpoints                  EndpointsConfig          `yaml:"endpoints" validate:"omitempty"`
 	NonProdMode                bool                     `yaml:"non_prod_mode"`
-	// some values maybe set programmatically
+	// some values may be set programmatically
 	NonceService nonce.Service
+	// Store is the kv backend for sessions + nonces. The command opens the Postgres store from
+	// DATABASE_URL (it owns the driver dependency) and injects it here; nil ⇒ an in-memory store
+	// (tests and dev).
+	Store kv.Store
 }
 
 type EndpointsConfig struct {
