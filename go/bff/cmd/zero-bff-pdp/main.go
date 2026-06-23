@@ -46,6 +46,10 @@ func env(key, def string) string {
 }
 
 func main() {
+	if env("DEBUG", "") != "" {
+		slog.SetLogLoggerLevel(slog.LevelDebug)
+	}
+
 	pdpConfigPath := flag.String("pdp-config", env("PDP_CONFIG_PATH", "pdp.yaml"), "path to the pdp config file")
 	flag.Parse()
 

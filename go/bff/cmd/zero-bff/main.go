@@ -24,6 +24,10 @@ func env(key, def string) string {
 }
 
 func main() {
+	if env("DEBUG", "") != "" {
+		slog.SetLogLoggerLevel(slog.LevelDebug)
+	}
+
 	addr := env("BFF_ADDR", ":8080")
 	// Public origin the browser reaches the BFF at; the AS must have <public>/bff/auth/callback
 	// registered as the client's redirect_uri.
