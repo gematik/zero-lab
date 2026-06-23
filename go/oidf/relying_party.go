@@ -134,7 +134,13 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 	// without mutating the caller's
 	mtlsClient := *baseClient
 	mtlsClient.Transport = transportWithTLS(baseClient.Transport, &tls.Config{
-		Certificates: []tls.Certificate{tlsCert},
+		// GetClientCertificate (not Certificates) so our self-signed client cert is presented
+		// unconditionally: self_signed_tls_client_auth means the IDP's CertificateRequest advertises a
+		// list of acceptable CA names that does not include our self-signed issuer, and Go would otherwise
+		// withhold the cert for not chaining to one of them.
+		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			return &tlsCert, nil
+		},
 	})
 	rp.httpClient = &mtlsClient
 
