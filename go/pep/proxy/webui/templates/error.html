@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign-in failed</title>
+  {{template "styles"}}
+</head>
+<body>
+  <main class="card">
+    <h1>Sign-in failed</h1>
+    <p><code>{{.Code}}</code></p>
+    {{if .Description}}<p class="muted">{{.Description}}</p>{{end}}
+    <a class="btn" href="/oauth2/sign_in">Try again</a>
+  </main>
+</body>
+</html>

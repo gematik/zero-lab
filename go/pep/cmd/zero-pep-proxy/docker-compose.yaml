@@ -1,0 +1,40 @@
+# S1 HITL harness — prove the forward_auth flow end-to-end with a real OIDC provider:
+#
+#   browser → caddy(:8480) ──forward_auth──> zero-pep-proxy /oauth2/auth   (gate)
+#                          └─reverse_proxy──> upstream (podinfo: web UI + /headers echo)
+#
+# Setup: `cp .env.example .env`, fill the OIDC provider creds, and register the redirect_uri
+#   http://127.0.0.1:8480/oauth2/callback
+# at that provider. Then `docker compose up --build`: open http://127.0.0.1:8480/ for the podinfo UI (gated),
+# and http://127.0.0.1:8480/headers to see the injected X-Auth-Request-User / -Email / -Groups.
+services:
+  # The protected upstream — podinfo (web UI + GET /headers echoes the request headers the proxy injects).
+  upstream:
+    image: ghcr.io/stefanprodan/podinfo:latest
+
+  zero-pep-proxy:
+    build:
+      context: ../../.. # the go/ workspace root (for go.work)
+      dockerfile: pep/cmd/zero-pep-proxy/Dockerfile
+    environment:
+      DEBUG: "${DEBUG:-1}"
+      PEP_ADDR: ":4180"
+      # The public origin the browser reaches the proxy at — the Caddy front, not the proxy directly.
+      PEP_PUBLIC_URL: "${PEP_PUBLIC_URL:-http://127.0.0.1:8480}"
+      PEP_OIDC_ISSUER: "${PEP_OIDC_ISSUER}"
+      PEP_OIDC_CLIENT_ID: "${PEP_OIDC_CLIENT_ID}"
+      PEP_OIDC_CLIENT_SECRET: "${PEP_OIDC_CLIENT_SECRET}"
+      PEP_OIDC_SCOPES: "${PEP_OIDC_SCOPES:-openid email profile}"
+      PEP_OIDC_NAME: "${PEP_OIDC_NAME:-OpenID Connect}"
+      PEP_OIDC_ACCEPTABLE_SKEW: "${PEP_OIDC_ACCEPTABLE_SKEW:-1m}"
+
+  caddy:
+    image: caddy:2
+    depends_on: [zero-pep-proxy, upstream]
+    ports:
+      - "8480:8480"
+    environment:
+      PEP_UPSTREAM: "zero-pep-proxy:4180"
+      APP_UPSTREAM: "upstream:9898"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro

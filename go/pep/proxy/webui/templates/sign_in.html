@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in</title>
+  {{template "styles"}}
+</head>
+<body>
+  <main class="card">
+    <h1>Sign in</h1>
+    {{range .Providers}}
+    <a class="provider" href="/oauth2/start?idp_iss={{.Issuer | urlquery}}{{if $.ReturnTo}}&amp;rd={{$.ReturnTo | urlquery}}{{end}}">
+      {{if .LogoURI}}<img src="{{.LogoURI}}" alt="" loading="lazy">{{end}}
+      <span>{{if .Name}}{{.Name}}{{else}}{{.Issuer}}{{end}}</span>
+    </a>
+    {{else}}
+    <p class="muted">No identity providers are configured.</p>
+    {{end}}
+  </main>
+</body>
+</html>
