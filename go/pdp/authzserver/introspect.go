@@ -32,7 +32,7 @@ type IntrospectionResponse struct {
 type IntrospectedSession struct {
 	CreatedAt      time.Time `json:"created_at"`
 	ExpiresAt      time.Time `json:"expires_at"`
-	OPIssuer       string    `json:"op_issuer,omitempty"`
+	IDPIss         string    `json:"idp_iss,omitempty"`
 	RedirectURI    string    `json:"redirect_uri,omitempty"`
 	DPoPThumbprint string    `json:"dpop_thumbprint,omitempty"`
 }
@@ -90,7 +90,7 @@ func (s *Server) IntrospectionEndpoint(w http.ResponseWriter, r *http.Request) e
 		Session: &IntrospectedSession{
 			CreatedAt:      session.CreatedAt,
 			ExpiresAt:      session.ExpiresAt,
-			OPIssuer:       session.OPIssuer,
+			IDPIss:         session.IDPIss,
 			RedirectURI:    session.RedirectURI,
 			DPoPThumbprint: session.DPoPThumbprint,
 		},

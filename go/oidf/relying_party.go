@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"time"
 
 	"github.com/gematik/zero-lab/go/oauth/oidc"
@@ -41,7 +42,7 @@ type RelyingPartyConfig struct {
 	MetadataTemplate     map[string]any `yaml:"metadata_template" validate:"required"`
 	// Scopes requested from the OpenID provider's authorization endpoint — the scopes that determine
 	// which identity claims (name, KVNR, …) the provider returns. When empty, defaultOPScopes is used.
-	Scopes               []string       `yaml:"scopes"`
+	Scopes []string `yaml:"scopes"`
 
 	// HTTPClient is the base client for federation and relying-party calls. Not serialized; supplied
 	// programmatically. When nil, a client with a default timeout is created. The relying party's
@@ -58,6 +59,7 @@ type RelyingParty struct {
 	entityStatement  *EntityStatement
 	federation       *OpenidFederation
 	httpClient       *http.Client
+	hooks            []func(*EntityStatement)
 }
 
 func LoadRelyingPartyConfig(path string) (*RelyingPartyConfig, error) {
@@ -183,16 +185,46 @@ func (rp *RelyingParty) absPath(path string) string {
 	return filepath.Join(rp.cfg.BaseDir, path)
 }
 
+// AddEntityStatementHook registers a function applied to a copy of the entity statement on every
+// SignEntityStatement call, in registration order. A hook may mutate the copy (e.g. append redirect_uris)
+// and never affects the relying party's base statement. This lets a consumer inject values into the served
+// entity statement without oidf depending on it; add more hooks the same way for future needs.
+func (rp *RelyingParty) AddEntityStatementHook(h func(*EntityStatement)) {
+	rp.hooks = append(rp.hooks, h)
+}
+
+// entityStatementForRequest returns a copy of the base entity statement with all hooks applied. Only the
+// fields a hook may mutate (metadata.openid_relying_party.redirect_uris) are deep-copied; the rest shares
+// the base's pointers, which is safe because hooks only append to the cloned slice — so repeated calls do
+// not accumulate.
+func (rp *RelyingParty) entityStatementForRequest() *EntityStatement {
+	es := *rp.entityStatement
+	if md := rp.entityStatement.Metadata; md != nil {
+		mdCopy := *md
+		if orp := md.OpenidRelyingParty; orp != nil {
+			orpCopy := *orp
+			orpCopy.RedirectURIs = slices.Clone(orp.RedirectURIs)
+			mdCopy.OpenidRelyingParty = &orpCopy
+		}
+		es.Metadata = &mdCopy
+	}
+	for _, h := range rp.hooks {
+		h(&es)
+	}
+	return &es
+}
+
 func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {
+	es := rp.entityStatementForRequest()
 
 	token, err := jwt.NewBuilder().
-		Issuer(rp.entityStatement.Issuer).
-		Subject(rp.entityStatement.Subject).
+		Issuer(es.Issuer).
+		Subject(es.Subject).
 		IssuedAt(time.Now().Add(-1*time.Hour)). // backdate token to avoid clock skew
 		Expiration(time.Now().Add(time.Hour*23)).
-		Claim("jwks", rp.entityStatement.Jwks.Keys).
+		Claim("jwks", es.Jwks.Keys).
 		Claim("authority_hints", []string{rp.cfg.FedMasterURL}).
-		Claim("metadata", rp.entityStatement.Metadata).
+		Claim("metadata", es.Metadata).
 		Build()
 
 	if err != nil {

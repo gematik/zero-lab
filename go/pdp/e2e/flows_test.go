@@ -32,7 +32,7 @@ func TestFlow_FederationPAR(t *testing.T) {
 		t.Skip("no OIDF federation providers configured")
 	}
 
-	opIssuer := env("ZERO_PDP_E2E_FED_ISSUER", defaultFedIssuer)
+	idpIss := env("ZERO_PDP_E2E_FED_ISSUER", defaultFedIssuer)
 	clientID := env("ZERO_PDP_E2E_CLIENT_ID", defaultClientID)
 	redirectURI := env("ZERO_PDP_E2E_REDIRECT_URI", defaultRedirectURI)
 	scope := env("ZERO_PDP_E2E_SCOPE", defaultScope)
@@ -47,7 +47,7 @@ func TestFlow_FederationPAR(t *testing.T) {
 		"code_challenge_method": {"S256"},
 		"state":                 {state},
 		"scope":                 {scope},
-		"op_issuer":             {opIssuer},
+		"idp_iss":               {idpIss},
 	}
 
 	// Federation discovery + automatic registration + PAR involve several upstream fetches.
@@ -55,7 +55,7 @@ func TestFlow_FederationPAR(t *testing.T) {
 		Timeout:       90 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
-	t.Logf("driving federation IdP %s", opIssuer)
+	t.Logf("driving federation IdP %s", idpIss)
 	resp, err := c.Get(md.AuthorizationEndpoint + "?" + q.Encode())
 	if err != nil {
 		t.Fatalf("GET authorization: %v", err)

@@ -16,7 +16,7 @@ holds an opaque, `HttpOnly` session cookie — tokens stay in the BFF.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/bff/auth/providers` | list the AS openid providers for the chooser |
-| GET | `/bff/auth/login?op_issuer=` | start login; JSON `{auth_url, mode, op}` (`mode` = `redirect` or, for OIDF, `decoupled`); binds the browser to a pending session |
+| GET | `/bff/auth/login?idp_iss=` | start login; JSON `{auth_url, mode, op}` (`mode` = `redirect` or, for OIDF, `decoupled`); binds the browser to a pending session |
 | GET | `/bff/auth/callback` | OAuth redirect_uri: exchange code, introspect for identity, set session cookie |
 | GET | `/bff/auth/poll` | `202` while pending, `200` once authenticated (decoupled/QR flow) |
 | GET | `/bff/auth/session` | `{authenticated, userinfo}` for the current session |

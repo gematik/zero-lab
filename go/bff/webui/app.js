@@ -172,8 +172,8 @@ function paintActive() {
   els[active]?.scrollIntoView({ block: "nearest" });
 }
 
-async function startLogin(opIssuer) {
-  const resp = await api("/bff/auth/login?op_issuer=" + encodeURIComponent(opIssuer));
+async function startLogin(idpIss) {
+  const resp = await api("/bff/auth/login?idp_iss=" + encodeURIComponent(idpIss));
   if (!resp.ok) { renderError("login_failed", "We couldn't start sign-in with that provider."); return; }
   const data = await resp.json();
   if (data.mode === "decoupled") {

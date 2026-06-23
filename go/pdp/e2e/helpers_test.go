@@ -27,7 +27,7 @@ const (
 	defaultClientID      = "e2e-client"
 	defaultClientKeyPath = "testdata/e2e-client.prk.jwk"
 	defaultScope         = "e2e"
-	defaultOPIssuer      = "https://accounts.google.com"
+	defaultIDPIss        = "https://accounts.google.com"
 	defaultFedIssuer     = "https://idbroker.tk.ru2.nonprod-ehealth-id.de"
 	defaultRedirectURI   = "http://localhost:8765/as-callback"
 	defaultCallbackAddr  = "localhost:8765"

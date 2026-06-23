@@ -36,7 +36,7 @@ type Server struct {
 	productsRegistry *ProductsRegistry
 	openidProviders  []oidc.Client
 	oidfRelyingParty *oidf.RelyingParty
-	defaultOPIssuer  string
+	defaultIDPIss    string
 	sessionStore     AuthzServerSessionStore
 	sigPrK           jwk.Key
 	jwks             jwk.Set
@@ -81,7 +81,7 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	s.initMetadata(issuerUrl, cfg)
-	s.defaultOPIssuer = cfg.DefaultOPIssuer
+	s.defaultIDPIss = cfg.DefaultIDPIss
 
 	// load clients registry
 	if len(cfg.Clients) > 0 {
@@ -238,6 +238,29 @@ func (s *Server) initRelyingParty(cfg Config) error {
 		if s.oidfRelyingParty, err = oidf.NewRelyingPartyFromConfig(cfg.OidfRelyingPartyConfig); err != nil {
 			return fmt.Errorf("create relying party: %w", err)
 		}
+	}
+
+	// Inject the products' as_redirect_uris into the served entity statement so the federation accepts the
+	// AS callback URLs the products register. oidf stays registry-agnostic — it just runs this func hook.
+	if s.oidfRelyingParty != nil && s.productsRegistry != nil {
+		registry := s.productsRegistry
+		s.oidfRelyingParty.AddEntityStatementHook(func(es *oidf.EntityStatement) {
+			if es.Metadata == nil || es.Metadata.OpenidRelyingParty == nil {
+				return
+			}
+			rpMeta := es.Metadata.OpenidRelyingParty
+			seen := make(map[string]struct{}, len(rpMeta.RedirectURIs))
+			for _, u := range rpMeta.RedirectURIs {
+				seen[u] = struct{}{}
+			}
+			for _, u := range registry.AllASRedirectURIs() {
+				if _, ok := seen[u]; ok {
+					continue
+				}
+				seen[u] = struct{}{}
+				rpMeta.RedirectURIs = append(rpMeta.RedirectURIs, u)
+			}
+		})
 	}
 	return nil
 }

@@ -49,7 +49,7 @@ func newMockAS(t *testing.T) *httptest.Server {
 		_, _ = w.Write([]byte("test-nonce"))
 	})
 	// The decoupled (OIDF) login resolves the authorization request server-side: the AS does the PAR and
-	// 302-redirects to the provider. The stub echoes the query so the resolved link keeps op_issuer.
+	// 302-redirects to the provider. The stub echoes the query so the resolved link keeps idp_iss.
 	mux.HandleFunc("GET /auth", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "https://provider.example/authorize?"+r.URL.RawQuery, http.StatusFound)
 	})
@@ -136,14 +136,14 @@ func queryParam(t *testing.T, rawURL, key string) string {
 func TestLogin_ModeByProviderType(t *testing.T) {
 	b := newTestBFF(t, nil)
 
-	for _, tc := range []struct{ opIssuer, wantMode string }{
+	for _, tc := range []struct{ idpIss, wantMode string }{
 		{"https://std.example", "redirect"},
 		{"https://oidf.example", "decoupled"},
 	} {
 		rec := httptest.NewRecorder()
-		b.LoginEndpoint(rec, httptest.NewRequest("GET", "/bff/auth/login?op_issuer="+url.QueryEscape(tc.opIssuer), nil))
+		b.LoginEndpoint(rec, httptest.NewRequest("GET", "/bff/auth/login?idp_iss="+url.QueryEscape(tc.idpIss), nil))
 		if rec.Code != http.StatusOK {
-			t.Fatalf("%s: login status %d", tc.opIssuer, rec.Code)
+			t.Fatalf("%s: login status %d", tc.idpIss, rec.Code)
 		}
 		var lr struct {
 			AuthURL string `json:"auth_url"`
@@ -153,13 +153,13 @@ func TestLogin_ModeByProviderType(t *testing.T) {
 			t.Fatal(err)
 		}
 		if lr.Mode != tc.wantMode {
-			t.Errorf("%s: mode = %q, want %q", tc.opIssuer, lr.Mode, tc.wantMode)
+			t.Errorf("%s: mode = %q, want %q", tc.idpIss, lr.Mode, tc.wantMode)
 		}
 		if lr.AuthURL == "" {
-			t.Errorf("%s: empty auth_url", tc.opIssuer)
+			t.Errorf("%s: empty auth_url", tc.idpIss)
 		}
-		if queryParam(t, lr.AuthURL, "op_issuer") != tc.opIssuer {
-			t.Errorf("%s: auth_url missing op_issuer", tc.opIssuer)
+		if queryParam(t, lr.AuthURL, "idp_iss") != tc.idpIss {
+			t.Errorf("%s: auth_url missing idp_iss", tc.idpIss)
 		}
 		_ = sessionCookie(t, rec) // login binds the browser to the pending session
 	}
@@ -171,7 +171,7 @@ func TestCallbackThenSession(t *testing.T) {
 
 	// Start login → pending session + cookie + auth_url carrying the state.
 	loginRec := httptest.NewRecorder()
-	b.LoginEndpoint(loginRec, httptest.NewRequest("GET", "/bff/auth/login?op_issuer=https://std.example", nil))
+	b.LoginEndpoint(loginRec, httptest.NewRequest("GET", "/bff/auth/login?idp_iss=https://std.example", nil))
 	cookie := sessionCookie(t, loginRec)
 	var lr struct {
 		AuthURL string `json:"auth_url"`

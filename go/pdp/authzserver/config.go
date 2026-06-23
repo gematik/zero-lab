@@ -18,7 +18,7 @@ type Config struct {
 	SignJwkPath                string                   `yaml:"sign_jwk_path"`
 	ScopesSupported            []string                 `yaml:"scopes_supported"`
 	MetadataTemplate           ExtendedMetadata         `yaml:"metadata_template"`
-	DefaultOPIssuer            string                   `yaml:"default_op_issuer"`
+	DefaultIDPIss              string                   `yaml:"default_idp_iss"`
 	OidcProviders              []oidc.Config            `yaml:"oidc_providers" validate:"dive"`
 	GematikIdp                 []gemidp.ClientConfig    `yaml:"gematik_idp" validate:"dive"`
 	ClientsPolicyPath          string                   `yaml:"clients_policy_path"`

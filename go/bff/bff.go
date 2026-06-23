@@ -292,7 +292,7 @@ type loginResponse struct {
 // For OIDF providers it advertises mode "decoupled" (the SPA renders a QR + polls); otherwise the
 // SPA performs a full-page redirect to auth_url.
 func (b *BackendForFrontend) LoginEndpoint(w http.ResponseWriter, r *http.Request) {
-	opIssuer := r.URL.Query().Get("op_issuer")
+	idpIss := r.URL.Query().Get("idp_iss")
 	scope := r.URL.Query().Get("scope")
 	if scope == "" {
 		scope = strings.Join(b.cfg.AuthorizationServer.Scopes, " ")
@@ -308,8 +308,8 @@ func (b *BackendForFrontend) LoginEndpoint(w http.ResponseWriter, r *http.Reques
 	if scope != "" {
 		opts = append(opts, oauth2.SetAuthURLParam("scope", scope))
 	}
-	if opIssuer != "" {
-		opts = append(opts, oauth2.SetAuthURLParam("op_issuer", opIssuer))
+	if idpIss != "" {
+		opts = append(opts, oauth2.SetAuthURLParam("idp_iss", idpIss))
 	}
 	authURL := b.oauth2Client.AuthCodeURL(session.State, opts...)
 
@@ -317,9 +317,9 @@ func (b *BackendForFrontend) LoginEndpoint(w http.ResponseWriter, r *http.Reques
 
 	mode := "redirect"
 	var op *providerInfo
-	if opIssuer != "" {
-		if p, err := b.lookupProvider(opIssuer); err != nil {
-			slog.Warn("provider lookup failed", "op_issuer", opIssuer, "error", err)
+	if idpIss != "" {
+		if p, err := b.lookupProvider(idpIss); err != nil {
+			slog.Warn("provider lookup failed", "idp_iss", idpIss, "error", err)
 		} else {
 			op = p
 			if p.Type == "oidf" {

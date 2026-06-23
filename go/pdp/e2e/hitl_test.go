@@ -28,7 +28,7 @@ func TestHITL_AuthorizationCode(t *testing.T) {
 		t.Skip("no OpenID Provider configured — see docs/e2e.md")
 	}
 
-	opIssuer := env("ZERO_PDP_E2E_OP_ISSUER", defaultOPIssuer)
+	idpIss := env("ZERO_PDP_E2E_OP_ISSUER", defaultIDPIss)
 	clientID := env("ZERO_PDP_E2E_CLIENT_ID", defaultClientID)
 	scope := env("ZERO_PDP_E2E_SCOPE", defaultScope)
 	key := clientKey(t)
@@ -47,7 +47,7 @@ func TestHITL_AuthorizationCode(t *testing.T) {
 		"code_challenge_method": {"S256"},
 		"state":                 {state},
 		"scope":                 {scope},
-		"op_issuer":             {opIssuer},
+		"idp_iss":               {idpIss},
 	}
 	authURL := md.AuthorizationEndpoint + "?" + q.Encode()
 

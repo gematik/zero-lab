@@ -43,8 +43,7 @@ func (s *Server) AuthorizationEndpoint(w http.ResponseWriter, r *http.Request) e
 		MustString("code_challenge_method", &session.CodeChallengeMethod).
 		MustString("state", &session.State).
 		MustString("scope", &scope).
-		String("op_issuer", &session.OPIssuer).
-		String("op_intermediary_redirect_uri", &session.OPIntermediaryRedirectURI).
+		String("idp_iss", &session.IDPIss).
 		BindError()
 
 	if binderr != nil {
@@ -55,8 +54,8 @@ func (s *Server) AuthorizationEndpoint(w http.ResponseWriter, r *http.Request) e
 		return oauthErr(http.StatusBadRequest, "unsupported_response_type", fmt.Sprintf("unsupported response_type: %s", responseType))
 	}
 
-	if session.OPIssuer == "" {
-		session.OPIssuer = s.defaultOPIssuer
+	if session.IDPIss == "" {
+		session.IDPIss = s.defaultIDPIss
 	}
 
 	if session.CodeChallengeMethod != "S256" {
@@ -96,7 +95,7 @@ func (s *Server) AuthorizationEndpoint(w http.ResponseWriter, r *http.Request) e
 // redirects the user-agent to the provider. On error it redirects back to the client with an
 // OAuth error.
 func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request, session *AuthzServerSession, product *Product) error {
-	opClient, err := s.GetOpenidClient(session.OPIssuer)
+	opClient, err := s.GetOpenidClient(session.IDPIss)
 	if err != nil {
 		return redirectWithError(w, r, session.RedirectURI, session.State, Error{
 			Code:        "invalid_request",
@@ -104,22 +103,17 @@ func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request
 		})
 	}
 
+	// A product may register its own redirect_uri(s) at the upstream IdP (as_redirect_uris): the IdP then
+	// redirects straight back to the AS at that URL instead of the default /op-callback, so no app-side
+	// intermediary popup is needed. When unset, fall back to the AS's own op-callback.
 	opRedirectURI := opClient.RedirectURI()
-
-	if session.OPIntermediaryRedirectURI != "" {
-		if !product.IsOPIntermediaryRedirectURIAllowed(session.OPIntermediaryRedirectURI) {
-			return redirectWithError(w, r, session.RedirectURI, session.State, Error{
-				Code:        "invalid_request",
-				Description: fmt.Sprintf("OP Intermediary Redirect URI not allowed: %s, client: %s", session.OPIntermediaryRedirectURI, session.ClientID),
-			})
-		}
-		opRedirectURI = session.OPIntermediaryRedirectURI
-		slog.Info("OP Intermediary Redirect URI is set", "op_intermediary_redirect_uri", session.OPIntermediaryRedirectURI)
+	if len(product.ASRedirectURIs) > 0 {
+		opRedirectURI = product.ASRedirectURIs[0]
 	}
 
 	opSession := &oidc.AuthnClientSession{
 		ID:          ksuid.New().String(),
-		Issuer:      session.OPIssuer,
+		Issuer:      session.IDPIss,
 		State:       ksuid.New().String(),
 		Nonce:       ksuid.New().String(),
 		Verifier:    oauth2.GenerateVerifier(),

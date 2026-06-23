@@ -40,7 +40,7 @@ authorization_server:
   #     client_id: "${GEMIDP_CLIENT_ID}"
   #     redirect_uri: "${ZERO_PDP_E2E_URL}/gemidp-callback"
   #     scopes: ["openid"]
-  # default_op_issuer: "https://idp-ref.app.ti-dienste.de"
+  # default_idp_iss: "https://idp-ref.app.ti-dienste.de"
   #
   # oidf_relying_party:
   #   fed_master_url: "${OIDF_FED_MASTER_URL}"
