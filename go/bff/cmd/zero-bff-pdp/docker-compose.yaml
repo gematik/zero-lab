@@ -1,20 +1,61 @@
-# Single-service demo: the pdp authorization server + bff + webui in one process on one port.
-# Expose it publicly with a tunnel (e.g. rathole pointed at port 8011); ingress/TLS is handled upstream
-# (directory-ref Caddy), so no proxy service is needed here.
+# Demo: the pdp authorization server + bff run in one process as an oauth2-proxy-style auth gateway,
+# fronting a SEPARATE business webapp and an API resource server (both httpbun here, which echo back the
+# request headers the gateway injects). Only the gateway publishes a port; the upstreams are reachable
+# solely through it. Expose the gateway publicly with a tunnel (e.g. rathole at port 8011); ingress/TLS is
+# handled upstream, so it speaks plain HTTP.
+#
+# Gateway mode is enabled by WEBAPP_UPSTREAM/API_UPSTREAM below — drop them (and the webapp/api services)
+# to run the classic single-service demo with the login UI served at /.
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: zero
+      POSTGRES_USER: zero
+      POSTGRES_PASSWORD: zero
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zero -d zero"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # The business webapp — a separate container. httpbun echoes the X-Auth-Request-Identity header the
+  # gateway forwards (GET /headers). Replace with your real app image. No published ports.
+  webapp:
+    image: ghcr.io/sharat87/httpbun:latest
+
+  # The API resource server — a separate container. The gateway strips the /api prefix, so GET /api/headers
+  # reaches httpbun's /headers and echoes the Authorization: DPoP header + the per-request DPoP proof.
+  api:
+    image: ghcr.io/sharat87/httpbun:latest
+
   zero-bff-pdp:
     build:
       context: ../../.. # the go/ workspace root (for go.work + the pdp/bff modules)
       dockerfile: bff/cmd/zero-bff-pdp/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "8011:8011"
     environment:
       PDP_CONFIG_PATH: /config/pdp.yaml
-      # Public origin the demo is reached at (your tunnel URL). Used as issuer + redirect base, and
-      # referenced by ${PUBLIC_URL} inside pdp.yaml.
+      # Sessions + nonces in Postgres (durable). Unset → in-memory.
+      DATABASE_URL: "postgres://zero:zero@postgres:5432/zero?sslmode=disable"
+      # Public origin the demo is reached at (your tunnel URL). Issuer + redirect base; referenced by
+      # ${PUBLIC_URL} inside pdp.yaml.
       PUBLIC_URL: "${PUBLIC_URL:-http://127.0.0.1:8011}"
       BFF_CLIENT_ID: "${BFF_CLIENT_ID:-bff-demo}"
+      # Enabling gateway mode: the webapp gets the identity header (/), the API gets the DPoP-bound token
+      # (/api/, prefix stripped). Compose service names.
+      WEBAPP_UPSTREAM: "http://webapp:80"
+      API_UPSTREAM: "http://api:80"
       GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID}"
       GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET}"
     volumes:
       - ./config:/config:ro
+
+volumes:
+  postgres-data:

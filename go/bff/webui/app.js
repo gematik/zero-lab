@@ -49,12 +49,24 @@ function setState(html, scroll) {
 
 async function boot() {
   const params = new URLSearchParams(location.search);
+  // When the gateway sends an unauthenticated request here it carries ?rd=<original path>; remember it so
+  // we can bounce back to the app once signed in. Local absolute paths only (no open redirects).
+  const rd = params.get("rd");
+  if (rd && rd.startsWith("/") && !rd.startsWith("//")) {
+    sessionStorage.setItem("bff_rd", rd);
+  }
   if (params.get("error")) {
     renderError(params.get("error"), params.get("error_description"));
     return;
   }
   const resp = await api("/bff/auth/session");
   if (resp.status === 200) {
+    const dest = sessionStorage.getItem("bff_rd");
+    if (dest) {
+      sessionStorage.removeItem("bff_rd");
+      location.replace(dest);
+      return;
+    }
     renderIdentity((await resp.json()).session || {});
   } else if (params.get("login") === "success") {
     renderLoginSuccess();

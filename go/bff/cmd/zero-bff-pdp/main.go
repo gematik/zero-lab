@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/bff"
+	"github.com/gematik/zero-lab/go/bff/gateway"
 	"github.com/gematik/zero-lab/go/bff/webui"
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/kv/postgres"
@@ -160,9 +161,16 @@ type bffParams struct {
 	store           kv.Store
 }
 
-// buildBFF constructs the bff, retrying until the in-process AS answers discovery, and returns the mux with
-// the bff API + the static webui.
-func buildBFF(p bffParams) *http.ServeMux {
+// buildBFF constructs the bff, retrying until the in-process AS answers discovery, and returns its handler.
+// When WEBAPP_UPSTREAM/API_UPSTREAM are set it runs as an auth gateway (gating + proxying those upstreams,
+// login UI under /bff/); otherwise it serves the bff API + the static login UI at /.
+func buildBFF(p bffParams) http.Handler {
+	routes := gateway.RoutesFromEnv()
+	frontendRedirect := p.publicURL + "/"
+	if len(routes) > 0 {
+		frontendRedirect = p.publicURL + "/bff/"
+	}
+
 	cfg := bff.Config{
 		AuthorizationServer: bff.AuthorizationServerConfig{
 			Issuer:      p.discoveryIssuer,
@@ -173,7 +181,7 @@ func buildBFF(p bffParams) *http.ServeMux {
 			DPoPKey:     p.dpopKey,
 		},
 		CookieName:          env("BFF_COOKIE_NAME", "ZETA-BFF-SID"),
-		FrontendRedirectURI: p.publicURL + "/",
+		FrontendRedirectURI: frontendRedirect,
 		SessionManager:      bff.NewSessionManager(p.store, 0),
 	}
 
@@ -188,10 +196,11 @@ func buildBFF(p bffParams) *http.ServeMux {
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	mux := http.NewServeMux()
-	b.Mount(mux)
-	mux.Handle("/", http.FileServerFS(webui.FS))
-	return mux
+	handler, err := gateway.Handler(b, webui.FS, gateway.Config{Routes: routes})
+	if err != nil {
+		log.Fatalf("build gateway: %v", err)
+	}
+	return handler
 }
 
 // openStore returns the kv backend: Postgres when DATABASE_URL is set, otherwise an in-memory store

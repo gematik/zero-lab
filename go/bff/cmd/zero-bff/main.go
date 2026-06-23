@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"github.com/gematik/zero-lab/go/bff"
+	"github.com/gematik/zero-lab/go/bff/gateway"
 	"github.com/gematik/zero-lab/go/bff/webui"
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/kv/postgres"
@@ -46,6 +47,15 @@ func main() {
 		}
 	}
 
+	// Gateway mode kicks in when WEBAPP_UPSTREAM/API_UPSTREAM are set: the BFF gates + reverse-proxies those
+	// upstreams and the login UI moves under /bff/ (so the OAuth callback lands there). Without them it is
+	// the classic BFF with the static UI at /.
+	routes := gateway.RoutesFromEnv()
+	frontendRedirect := publicURL + "/"
+	if len(routes) > 0 {
+		frontendRedirect = publicURL + "/bff/"
+	}
+
 	b, err := bff.New(bff.Config{
 		AuthorizationServer: bff.AuthorizationServerConfig{
 			Issuer:      env("BFF_AS_ISSUER", "http://127.0.0.1:8011"),
@@ -55,20 +65,20 @@ func main() {
 			DPoPKey:     dpopKey,
 		},
 		CookieName:          env("BFF_COOKIE_NAME", "ZETA-BFF-SID"),
-		FrontendRedirectURI: publicURL + "/",
+		FrontendRedirectURI: frontendRedirect,
 		SessionManager:      bff.NewSessionManager(openStore(), 0),
 	})
 	if err != nil {
 		log.Fatalf("create bff: %v", err)
 	}
 
-	mux := http.NewServeMux()
-	b.Mount(mux)
-	// Static SPA at /. Swappable for a React/Svelte build without touching the API.
-	mux.Handle("/", http.FileServerFS(webui.FS))
+	handler, err := gateway.Handler(b, webui.FS, gateway.Config{Routes: routes})
+	if err != nil {
+		log.Fatalf("build handler: %v", err)
+	}
 
-	slog.Info("bff listening", "addr", addr, "public_url", publicURL)
-	log.Fatal(http.ListenAndServe(addr, bff.RecoverMiddleware(mux)))
+	slog.Info("bff listening", "addr", addr, "public_url", publicURL, "gateway", len(routes) > 0)
+	log.Fatal(http.ListenAndServe(addr, bff.RecoverMiddleware(handler)))
 }
 
 // openStore returns the kv backend: Postgres when DATABASE_URL is set, otherwise an in-memory store

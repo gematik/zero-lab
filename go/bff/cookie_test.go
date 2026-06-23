@@ -23,10 +23,13 @@ func TestGuardSessionCookie(t *testing.T) {
 	}
 
 	b := newTestBFF(t, sm)
-	protected := b.Protect(func(w http.ResponseWriter, r *http.Request) {
+	protected := b.Protect(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s, ok := bff.SessionFromContext(r.Context()); !ok || s.ID != session.ID {
+			t.Errorf("protected handler: session not in context")
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("You are in"))
-	})
+	}))
 
 	do := func(cookieValue string) int {
 		req := httptest.NewRequest("GET", "/protected", nil)
@@ -34,7 +37,7 @@ func TestGuardSessionCookie(t *testing.T) {
 			req.AddCookie(&http.Cookie{Name: "test-cookie", Value: cookieValue})
 		}
 		rec := httptest.NewRecorder()
-		protected(rec, req)
+		protected.ServeHTTP(rec, req)
 		return rec.Code
 	}
 

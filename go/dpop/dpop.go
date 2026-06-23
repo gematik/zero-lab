@@ -56,6 +56,25 @@ func NewPrivateKey() (*PrivateKey, error) {
 	return &PrivateKey{JwkPrivate: key, JwkPublic: publicKes, Thumbprint: thumbprint}, nil
 }
 
+// FromJWK wraps an existing JWK private key as a DPoP signing key (deriving its public half and base64url
+// SHA-256 thumbprint). Unlike NewPrivateKey it does not generate a key — it is used to sign proofs with a
+// key minted elsewhere, e.g. the BFF's DPoP key, to which its access tokens are cnf.jkt-bound.
+func FromJWK(key jwk.Key) (*PrivateKey, error) {
+	thumbprintBytes, err := key.Thumbprint(crypto.SHA256)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute thumbprint: %w", err)
+	}
+	publicKey, err := key.PublicKey()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create public key: %w", err)
+	}
+	return &PrivateKey{
+		JwkPrivate: key,
+		JwkPublic:  publicKey,
+		Thumbprint: base64.RawURLEncoding.EncodeToString(thumbprintBytes),
+	}, nil
+}
+
 type DPoP struct {
 	Id              string
 	HttpMethod      string

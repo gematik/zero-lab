@@ -243,9 +243,9 @@ func (b *BackendForFrontend) discoverMetadata(issuer string) (asMetadata, error)
 	return md, nil
 }
 
-// Mount registers the BFF control plane under /bff/auth/ on the given mux, wrapped by the panic
-// recovery middleware. /bff/api/ is reserved for a future token-injecting resource-server proxy.
-func (b *BackendForFrontend) Mount(mux *http.ServeMux) {
+// AuthHandler returns the BFF auth endpoints (/bff/auth/*) wrapped in panic recovery. A host that serves
+// the login UI under /bff/ itself (the gateway) mounts this at /bff/auth/; Mount bundles it at /bff/.
+func (b *BackendForFrontend) AuthHandler() http.Handler {
 	authMux := http.NewServeMux()
 	authMux.HandleFunc("GET /bff/auth/login", b.LoginEndpoint)
 	authMux.HandleFunc("GET /bff/auth/callback", b.CallbackEndpoint)
@@ -253,8 +253,14 @@ func (b *BackendForFrontend) Mount(mux *http.ServeMux) {
 	authMux.HandleFunc("GET /bff/auth/session", b.SessionEndpoint)
 	authMux.HandleFunc("POST /bff/auth/logout", b.LogoutEndpoint)
 	authMux.HandleFunc("GET /bff/auth/providers", b.ProvidersEndpoint)
+	return RecoverMiddleware(authMux)
+}
 
-	mux.Handle("/bff/", RecoverMiddleware(authMux))
+// Mount registers the BFF control plane under /bff/ on the given mux (the auth endpoints live at
+// /bff/auth/*). A host that also serves the login UI at /bff/ should instead mount AuthHandler at
+// /bff/auth/ and the UI at /bff/ separately.
+func (b *BackendForFrontend) Mount(mux *http.ServeMux) {
+	mux.Handle("/bff/", b.AuthHandler())
 }
 
 // RecoverMiddleware catches panics, logs the stack, and renders a 500 JSON error so a single bad
@@ -499,18 +505,29 @@ func (b *BackendForFrontend) SessionEndpoint(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	ts := b.oauth2Client.TokenSource(r.Context(), &oauth2.Token{
-		AccessToken:  session.AccessToken,
-		Expiry:       session.AccessTokenExpiresAt,
-		RefreshToken: session.RefreshToken,
-	})
-	token, tokenErr := ts.Token()
-	if tokenErr != nil {
-		slog.Warn("session token refresh failed", "error", tokenErr)
+	if _, err := b.FreshAccessToken(r.Context(), session); err != nil {
+		slog.Warn("session token refresh failed", "error", err)
 		b.sessionManager.DeleteSessionByID(session.ID)
 		b.expireCookie(w)
 		respondJSON(w, http.StatusUnauthorized, sessionResponse{Authenticated: false})
 		return
+	}
+
+	respondJSON(w, http.StatusOK, sessionResponse{Authenticated: true, Session: newSessionView(session)})
+}
+
+// FreshAccessToken returns a non-expired access token for the session, transparently refreshing via the
+// refresh_token grant and re-persisting the session when the token rotates. It returns an error when the
+// refresh fails (the caller should drop the session + cookie). Shared by SessionEndpoint and the gateway.
+func (b *BackendForFrontend) FreshAccessToken(ctx context.Context, session *Session) (string, error) {
+	ts := b.oauth2Client.TokenSource(ctx, &oauth2.Token{
+		AccessToken:  session.AccessToken,
+		Expiry:       session.AccessTokenExpiresAt,
+		RefreshToken: session.RefreshToken,
+	})
+	token, err := ts.Token()
+	if err != nil {
+		return "", err
 	}
 	if token.AccessToken != session.AccessToken {
 		session.AccessToken = token.AccessToken
@@ -518,9 +535,30 @@ func (b *BackendForFrontend) SessionEndpoint(w http.ResponseWriter, r *http.Requ
 		session.RefreshToken = token.RefreshToken
 		_ = b.sessionManager.UpdateSession(session)
 	}
-
-	respondJSON(w, http.StatusOK, sessionResponse{Authenticated: true, Session: newSessionView(session)})
+	return token.AccessToken, nil
 }
+
+// RetrieveSession returns the authenticated session bound to the request cookie, or an error when there is
+// no valid, access-token-bearing session. Exported for the gateway.
+func (b *BackendForFrontend) RetrieveSession(r *http.Request) (*Session, error) {
+	session, aerr := b.retrieveSession(r)
+	if aerr != nil {
+		return nil, aerr
+	}
+	return session, nil
+}
+
+// ExpireCookie clears the session cookie on the response. Exported for the gateway.
+func (b *BackendForFrontend) ExpireCookie(w http.ResponseWriter) { b.expireCookie(w) }
+
+// DeleteSession removes the session from the store. Exported for the gateway.
+func (b *BackendForFrontend) DeleteSession(session *Session) error {
+	return b.sessionManager.DeleteSessionByID(session.ID)
+}
+
+// DPoPKey returns the BFF's DPoP key. Its access tokens are cnf.jkt-bound to this key, so the gateway uses
+// it to mint DPoP proofs when forwarding a token to a resource server.
+func (b *BackendForFrontend) DPoPKey() jwk.Key { return b.cfg.AuthorizationServer.DPoPKey }
 
 // LogoutEndpoint terminates the session. CSRF is defended by requiring a custom header that a
 // cross-site form submission cannot set (in addition to the SameSite=Strict cookie).
@@ -550,17 +588,26 @@ func (b *BackendForFrontend) ProvidersEndpoint(w http.ResponseWriter, r *http.Re
 	respondJSON(w, http.StatusOK, providers)
 }
 
-// Protect wraps a downstream handler so it only runs for an authenticated session (e.g. a future
-// resource-server proxy under /bff/api/).
-func (b *BackendForFrontend) Protect(next func(http.ResponseWriter, *http.Request)) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if _, err := b.retrieveSession(r); err != nil {
-			slog.Error("failed to retrieve session", "error", err)
+type sessionCtxKey struct{}
+
+// SessionFromContext returns the session a Protect-wrapped handler is running for.
+func SessionFromContext(ctx context.Context) (*Session, bool) {
+	s, ok := ctx.Value(sessionCtxKey{}).(*Session)
+	return s, ok
+}
+
+// Protect wraps a handler so it only runs for an authenticated session, which it exposes via
+// SessionFromContext. Unauthenticated requests get the BFF JSON 401. The gateway does its own gating
+// (to branch redirect-vs-401), but this stays for hosts that mount a protected handler directly.
+func (b *BackendForFrontend) Protect(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		session, err := b.retrieveSession(r)
+		if err != nil {
 			respondWithError(w, err)
 			return
 		}
-		next(w, r)
-	}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionCtxKey{}, session)))
+	})
 }
 
 // introspectIdentity asks the AS for the upstream identity behind an access token, authenticating as
