@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gematik/zero-lab/go/kv"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
@@ -141,7 +142,7 @@ func New(cfg Config) (*BackendForFrontend, error) {
 	if cfg.SessionManager != nil {
 		b.sessionManager = cfg.SessionManager
 	} else {
-		b.sessionManager = NewSessionManagerMock()
+		b.sessionManager = NewSessionManager(kv.NewMemory(), 0)
 	}
 
 	if b.metadata, err = b.discoverMetadata(cfg.AuthorizationServer.Issuer); err != nil {

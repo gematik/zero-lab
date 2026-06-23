@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/gematik/zero-lab/go/bff"
+	"github.com/gematik/zero-lab/go/kv"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
@@ -92,7 +93,7 @@ func newTestBFF(t *testing.T, sm bff.SessionManager) *bff.BackendForFrontend {
 	t.Helper()
 	as := newMockAS(t)
 	if sm == nil {
-		sm = bff.NewSessionManagerMock()
+		sm = bff.NewSessionManager(kv.NewMemory(), 0)
 	}
 	b, err := bff.New(bff.Config{
 		AuthorizationServer: bff.AuthorizationServerConfig{
@@ -165,7 +166,7 @@ func TestLogin_ModeByProviderType(t *testing.T) {
 }
 
 func TestCallbackThenSession(t *testing.T) {
-	sm := bff.NewSessionManagerMock()
+	sm := bff.NewSessionManager(kv.NewMemory(), 0)
 	b := newTestBFF(t, sm)
 
 	// Start login → pending session + cookie + auth_url carrying the state.
@@ -209,7 +210,7 @@ func TestCallbackThenSession(t *testing.T) {
 }
 
 func TestPoll_PendingThenDone(t *testing.T) {
-	sm := bff.NewSessionManagerMock()
+	sm := bff.NewSessionManager(kv.NewMemory(), 0)
 	b := newTestBFF(t, sm)
 
 	loginRec := httptest.NewRecorder()
@@ -241,7 +242,7 @@ func TestPoll_PendingThenDone(t *testing.T) {
 }
 
 func TestLogout_CSRFAndClear(t *testing.T) {
-	sm := bff.NewSessionManagerMock()
+	sm := bff.NewSessionManager(kv.NewMemory(), 0)
 	b := newTestBFF(t, sm)
 	session, _ := sm.CreateSession("s", "v", "S256")
 	session.AccessToken = "tok"

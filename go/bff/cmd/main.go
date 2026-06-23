@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"log/slog"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/gematik/zero-lab/go/bff"
 	"github.com/gematik/zero-lab/go/bff/webui"
+	"github.com/gematik/zero-lab/go/kv"
+	"github.com/gematik/zero-lab/go/kv/postgres"
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
 )
 
@@ -53,6 +56,7 @@ func main() {
 		},
 		CookieName:          env("BFF_COOKIE_NAME", "ZETA-BFF-SID"),
 		FrontendRedirectURI: publicURL + "/",
+		SessionManager:      bff.NewSessionManager(openStore(), 0),
 	})
 	if err != nil {
 		log.Fatalf("create bff: %v", err)
@@ -65,4 +69,20 @@ func main() {
 
 	slog.Info("bff listening", "addr", addr, "public_url", publicURL)
 	log.Fatal(http.ListenAndServe(addr, bff.RecoverMiddleware(mux)))
+}
+
+// openStore returns the kv backend: Postgres when DATABASE_URL is set, otherwise an in-memory store
+// (sessions are not durable across restarts).
+func openStore() kv.Store {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		slog.Warn("DATABASE_URL not set — using in-memory kv store (sessions are not durable)")
+		return kv.NewMemory()
+	}
+	store, err := postgres.Open(context.Background(), dsn)
+	if err != nil {
+		log.Fatalf("open postgres kv store: %v", err)
+	}
+	slog.Info("using postgres kv store")
+	return store
 }

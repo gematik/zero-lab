@@ -13,6 +13,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"log"
@@ -26,6 +27,8 @@ import (
 
 	"github.com/gematik/zero-lab/go/bff"
 	"github.com/gematik/zero-lab/go/bff/webui"
+	"github.com/gematik/zero-lab/go/kv"
+	"github.com/gematik/zero-lab/go/kv/postgres"
 	"github.com/gematik/zero-lab/go/pdp"
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
 	"github.com/joho/godotenv"
@@ -53,6 +56,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("load pdp config %q: %v", *pdpConfigPath, err)
 	}
+
+	// One kv store (Postgres when DATABASE_URL is set, else in-memory) backs both halves: the AS sessions
+	// + nonces and the bff sessions. The command owns the driver dependency (kv/postgres); the libraries
+	// only see the kv.Store interface.
+	store := openStore()
+	pdpCfg.AuthzServerConfig.Store = store
 
 	// One origin: the issuer, the public URL and the bff's redirect base are the same public tunnel URL. The
 	// AS itself is discovered locally (it's in this process); the metadata it returns carries the public,
@@ -133,6 +142,7 @@ func main() {
 		scopes:          scopes,
 		signingKey:      signingKey,
 		dpopKey:         dpopKey,
+		store:           store,
 	}))
 	bffHandler.Store(&h)
 
@@ -147,6 +157,7 @@ type bffParams struct {
 	scopes          []string
 	signingKey      jwk.Key
 	dpopKey         jwk.Key
+	store           kv.Store
 }
 
 // buildBFF constructs the bff, retrying until the in-process AS answers discovery, and returns the mux with
@@ -163,6 +174,7 @@ func buildBFF(p bffParams) *http.ServeMux {
 		},
 		CookieName:          env("BFF_COOKIE_NAME", "ZETA-BFF-SID"),
 		FrontendRedirectURI: p.publicURL + "/",
+		SessionManager:      bff.NewSessionManager(p.store, 0),
 	}
 
 	var b *bff.BackendForFrontend
@@ -180,6 +192,22 @@ func buildBFF(p bffParams) *http.ServeMux {
 	b.Mount(mux)
 	mux.Handle("/", http.FileServerFS(webui.FS))
 	return mux
+}
+
+// openStore returns the kv backend: Postgres when DATABASE_URL is set, otherwise an in-memory store
+// (sessions + nonces are not durable across restarts).
+func openStore() kv.Store {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		slog.Warn("DATABASE_URL not set — using in-memory kv store (sessions + nonces are not durable)")
+		return kv.NewMemory()
+	}
+	store, err := postgres.Open(context.Background(), dsn)
+	if err != nil {
+		log.Fatalf("open postgres kv store: %v", err)
+	}
+	slog.Info("using postgres kv store")
+	return store
 }
 
 // newBffKeys generates the bff's ES256 signing key (for the client_assertion) and DPoP key (its thumbprint

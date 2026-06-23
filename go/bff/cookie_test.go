@@ -6,12 +6,13 @@ import (
 	"testing"
 
 	"github.com/gematik/zero-lab/go/bff"
+	"github.com/gematik/zero-lab/go/kv"
 )
 
 // Protect treats the cookie value as an opaque session id and looks it up in the SessionManager; the
 // session is authorized only once it carries an access token.
 func TestGuardSessionCookie(t *testing.T) {
-	sm := bff.NewSessionManagerMock()
+	sm := bff.NewSessionManager(kv.NewMemory(), 0)
 	session, err := sm.CreateSession("state", "verifier", "S256")
 	if err != nil {
 		t.Fatal(err)
