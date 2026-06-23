@@ -1,6 +1,9 @@
 package bff_test
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,7 +11,21 @@ import (
 	"testing"
 
 	"github.com/gematik/zero-lab/go/bff"
+	"github.com/lestrrat-go/jwx/v3/jwk"
 )
+
+func testKey(t *testing.T) jwk.Key {
+	t.Helper()
+	prk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k, err := jwk.Import(prk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return k
+}
 
 // newMockAS spins up an authorization server stub serving just what the BFF talks to: RFC 8414
 // metadata, the token endpoint, introspection, and the openid-providers list.
@@ -24,7 +41,16 @@ func newMockAS(t *testing.T) *httptest.Server {
 			"token_endpoint":            base + "/token",
 			"introspection_endpoint":    base + "/introspect",
 			"openid_providers_endpoint": base + "/openid-providers",
+			"nonce_endpoint":            base + "/nonce",
 		})
+	})
+	mux.HandleFunc("GET /nonce", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("test-nonce"))
+	})
+	// The decoupled (OIDF) login resolves the authorization request server-side: the AS does the PAR and
+	// 302-redirects to the provider. The stub echoes the query so the resolved link keeps op_issuer.
+	mux.HandleFunc("GET /auth", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://provider.example/authorize?"+r.URL.RawQuery, http.StatusFound)
 	})
 	mux.HandleFunc("POST /token", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{
@@ -35,7 +61,8 @@ func newMockAS(t *testing.T) *httptest.Server {
 		})
 	})
 	mux.HandleFunc("POST /introspect", func(w http.ResponseWriter, r *http.Request) {
-		if _, _, ok := r.BasicAuth(); !ok {
+		_ = r.ParseForm()
+		if r.PostForm.Get("client_assertion") == "" {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
@@ -69,13 +96,14 @@ func newTestBFF(t *testing.T, sm bff.SessionManager) *bff.BackendForFrontend {
 	}
 	b, err := bff.New(bff.Config{
 		AuthorizationServer: bff.AuthorizationServerConfig{
-			Issuer:       as.URL,
-			ClientId:     "bff-client",
-			ClientSecret: "secret",
-			RedirectUri:  "http://bff.example/bff/auth/callback",
+			Issuer:      as.URL,
+			ClientID:    "bff-client",
+			RedirectURI: "http://bff.example/bff/auth/callback",
+			SigningKey:  testKey(t),
+			DPoPKey:     testKey(t),
 		},
 		CookieName:          "test-cookie",
-		FrontendRedirectUri: "http://bff.example/",
+		FrontendRedirectURI: "http://bff.example/",
 		SessionManager:      sm,
 	})
 	if err != nil {
@@ -117,7 +145,7 @@ func TestLogin_ModeByProviderType(t *testing.T) {
 			t.Fatalf("%s: login status %d", tc.opIssuer, rec.Code)
 		}
 		var lr struct {
-			AuthUrl string `json:"auth_url"`
+			AuthURL string `json:"auth_url"`
 			Mode    string `json:"mode"`
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &lr); err != nil {
@@ -126,10 +154,10 @@ func TestLogin_ModeByProviderType(t *testing.T) {
 		if lr.Mode != tc.wantMode {
 			t.Errorf("%s: mode = %q, want %q", tc.opIssuer, lr.Mode, tc.wantMode)
 		}
-		if lr.AuthUrl == "" {
+		if lr.AuthURL == "" {
 			t.Errorf("%s: empty auth_url", tc.opIssuer)
 		}
-		if queryParam(t, lr.AuthUrl, "op_issuer") != tc.opIssuer {
+		if queryParam(t, lr.AuthURL, "op_issuer") != tc.opIssuer {
 			t.Errorf("%s: auth_url missing op_issuer", tc.opIssuer)
 		}
 		_ = sessionCookie(t, rec) // login binds the browser to the pending session
@@ -145,10 +173,10 @@ func TestCallbackThenSession(t *testing.T) {
 	b.LoginEndpoint(loginRec, httptest.NewRequest("GET", "/bff/auth/login?op_issuer=https://std.example", nil))
 	cookie := sessionCookie(t, loginRec)
 	var lr struct {
-		AuthUrl string `json:"auth_url"`
+		AuthURL string `json:"auth_url"`
 	}
 	_ = json.Unmarshal(loginRec.Body.Bytes(), &lr)
-	state := queryParam(t, lr.AuthUrl, "state")
+	state := queryParam(t, lr.AuthURL, "state")
 
 	// Callback exchanges the code, introspects, caches the identity.
 	cbRec := httptest.NewRecorder()
@@ -166,15 +194,17 @@ func TestCallbackThenSession(t *testing.T) {
 		t.Fatalf("session status %d, want 200; body=%s", sessRec.Code, sessRec.Body)
 	}
 	var sr struct {
-		Authenticated bool           `json:"authenticated"`
-		UserInfo      map[string]any `json:"userinfo"`
+		Authenticated bool `json:"authenticated"`
+		Session       struct {
+			Identity map[string]any `json:"identity"`
+		} `json:"session"`
 	}
 	_ = json.Unmarshal(sessRec.Body.Bytes(), &sr)
 	if !sr.Authenticated {
 		t.Fatal("session: not authenticated")
 	}
-	if sr.UserInfo["sub"] != "user-123" {
-		t.Errorf("session: userinfo sub = %v, want user-123", sr.UserInfo["sub"])
+	if sr.Session.Identity["sub"] != "user-123" {
+		t.Errorf("session: identity sub = %v, want user-123", sr.Session.Identity["sub"])
 	}
 }
 
@@ -198,7 +228,7 @@ func TestPoll_PendingThenDone(t *testing.T) {
 		t.Fatalf("pending poll = %d, want 202", code)
 	}
 
-	session, err := sm.GetSessionById(cookie.Value)
+	session, err := sm.GetSessionByID(cookie.Value)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +246,7 @@ func TestLogout_CSRFAndClear(t *testing.T) {
 	session, _ := sm.CreateSession("s", "v", "S256")
 	session.AccessToken = "tok"
 	_ = sm.UpdateSession(session)
-	cookie := &http.Cookie{Name: "test-cookie", Value: session.Id}
+	cookie := &http.Cookie{Name: "test-cookie", Value: session.ID}
 
 	// Missing the custom header → rejected (CSRF defense).
 	noCSRF := httptest.NewRequest("POST", "/bff/auth/logout", nil)
@@ -236,7 +266,7 @@ func TestLogout_CSRFAndClear(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("logout = %d, want 204", rec.Code)
 	}
-	if _, err := sm.GetSessionById(session.Id); err == nil {
+	if _, err := sm.GetSessionByID(session.ID); err == nil {
 		t.Error("session was not deleted on logout")
 	}
 }

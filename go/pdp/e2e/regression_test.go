@@ -35,11 +35,13 @@ func TestRegression_MetadataContract(t *testing.T) {
 
 	for _, gt := range []string{
 		"authorization_code", "refresh_token", "client_credentials",
-		"urn:ietf:params:oauth:grant-type:jwt-bearer",
 	} {
 		if !slices.Contains(md.GrantTypesSupported, gt) {
 			t.Errorf("grant_types_supported missing %q: %v", gt, md.GrantTypesSupported)
 		}
+	}
+	if !slices.Equal(md.TokenEndpointAuthMethodsSupported, []string{"private_key_jwt"}) {
+		t.Errorf("token_endpoint_auth_methods_supported = %v, want [private_key_jwt]", md.TokenEndpointAuthMethodsSupported)
 	}
 	if !slices.Equal(md.CodeChallengeMethodsSupported, []string{"S256"}) {
 		t.Errorf("code_challenge_methods_supported = %v, want [S256]", md.CodeChallengeMethodsSupported)

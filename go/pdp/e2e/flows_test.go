@@ -84,14 +84,13 @@ func TestFlow_FederationPAR(t *testing.T) {
 func TestFlow_ClientCredentials(t *testing.T) {
 	base := baseURL(t)
 	clientID := env("ZERO_PDP_E2E_CLIENT_ID", defaultClientID)
-	secret := env("ZERO_PDP_E2E_CLIENT_SECRET", defaultClientSecret)
 	scope := env("ZERO_PDP_E2E_SCOPE", defaultScope)
 	md := getMetadata(t, base)
 
 	form := url.Values{"grant_type": {"client_credentials"}, "scope": {scope}}
+	addClientAuth(form, clientAssertion(t, md, clientID, clientKey(t)))
 	req, _ := http.NewRequest(http.MethodPost, md.TokenEndpoint, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.SetBasicAuth(clientID, secret)
 	resp, err := httpClient().Do(req)
 	if err != nil {
 		t.Fatalf("token: %v", err)
@@ -113,33 +112,4 @@ func TestFlow_ClientCredentials(t *testing.T) {
 		t.Errorf("access token sub = %q, want %q", sub, clientID)
 	}
 	t.Logf("OK: client_credentials issued a verifiable %s token (expires_in=%d)", tr.TokenType, tr.ExpiresIn)
-}
-
-// TestFlow_JwtBearer checks that the jwt-bearer grant reaches its handler (the checkpoint is
-// the grant-specific validation, e.g. "missing assertion" / "not implemented"). If the grant is
-// not enabled on this server ("not configured"), the test skips rather than passing on a generic
-// error.
-func TestFlow_JwtBearer(t *testing.T) {
-	md := getMetadata(t, baseURL(t))
-	form := url.Values{"grant_type": {"urn:ietf:params:oauth:grant-type:jwt-bearer"}}
-	resp, err := httpClient().Post(md.TokenEndpoint, "application/x-www-form-urlencoded", strings.NewReader(form.Encode()))
-	if err != nil {
-		t.Fatalf("token: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
-		t.Fatalf("jwt-bearer: unexpected routing status %d", resp.StatusCode)
-	}
-	var e struct {
-		Error string `json:"error"`
-		Desc  string `json:"error_description"`
-	}
-	if derr := json.NewDecoder(resp.Body).Decode(&e); derr != nil {
-		t.Fatalf("jwt-bearer: decode error body: %v", derr)
-	}
-	if strings.Contains(strings.ToLower(e.Desc), "not configured") {
-		t.Skipf("jwt-bearer grant not enabled on this server: %q", e.Desc)
-	}
-	// Reached the grant handler (e.g. missing assertion / not implemented) — the checkpoint.
-	t.Logf("OK: jwt-bearer reached its handler — status=%d error=%q desc=%q", resp.StatusCode, e.Error, e.Desc)
 }

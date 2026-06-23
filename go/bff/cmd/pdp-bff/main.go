@@ -6,9 +6,14 @@
 // Routing on the single mux: the pdp config must keep operational endpoints under /as (well-knowns at root),
 // so /.well-known/* and /as/* go to the authorization server and everything else to the bff and webui. Each
 // side keeps its own middleware chain.
+//
+// The bff authenticates to the AS with private_key_jwt (RFC 7523). Because the AS lives in this same
+// process, the demo generates the bff's keys at startup and registers it as a client of a demo product
+// directly in the AS config, so it runs without any manual key generation or client registration.
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"log"
 	"log/slog"
@@ -24,7 +29,10 @@ import (
 	"github.com/gematik/zero-lab/go/pdp"
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
 	"github.com/joho/godotenv"
+	"github.com/lestrrat-go/jwx/v3/jwk"
 )
+
+const demoProductID = "bff-demo"
 
 func env(key, def string) string {
 	if v := os.Getenv(key); v != "" {
@@ -41,12 +49,48 @@ func main() {
 	// are sourced from one place. Existing environment variables take precedence.
 	_ = godotenv.Load(filepath.Join(filepath.Dir(*pdpConfigPath), ".env"))
 
-	// Authorization server: its own OAuth-error/logging/recover chain. The pdp listen address (bind_address)
-	// is the single port the whole demo serves on.
 	pdpCfg, err := pdp.LoadConfigFile(*pdpConfigPath)
 	if err != nil {
 		log.Fatalf("load pdp config %q: %v", *pdpConfigPath, err)
 	}
+
+	// One origin: the issuer, the public URL and the bff's redirect base are the same public tunnel URL. The
+	// AS itself is discovered locally (it's in this process); the metadata it returns carries the public,
+	// issuer-based endpoint URLs that the browser and the bff's server-side calls use.
+	bindAddress := pdpCfg.BindAddress
+	if bindAddress == "" {
+		bindAddress = ":8011"
+	}
+	publicURL := env("BFF_PUBLIC_URL", "http://127.0.0.1"+bindAddress)
+	localIssuer := "http://127.0.0.1" + bindAddress
+
+	clientID := env("BFF_CLIENT_ID", "bff-demo")
+	scopes := strings.Fields(env("BFF_SCOPE", ""))
+
+	// Generate the bff's signing + DPoP keys and register the bff as a client of a demo product directly in
+	// the in-process AS config — no manual keygen or client registration needed.
+	signingKey, dpopKey, err := newBffKeys()
+	if err != nil {
+		log.Fatalf("generate bff keys: %v", err)
+	}
+	publicJWK, err := publicJWKMap(signingKey)
+	if err != nil {
+		log.Fatalf("encode bff public jwk: %v", err)
+	}
+	pdpCfg.AuthzServerConfig.Products = append(pdpCfg.AuthzServerConfig.Products, authzserver.Product{
+		ProductID:    demoProductID,
+		ProductName:  "Zero BFF demo",
+		RedirectURIs: []string{publicURL + "/bff/auth/callback"},
+		Scopes:       scopes,
+	})
+	pdpCfg.AuthzServerConfig.Clients = append(pdpCfg.AuthzServerConfig.Clients, authzserver.Client{
+		ClientID:  clientID,
+		ProductID: demoProductID,
+		PublicJWK: publicJWK,
+	})
+
+	// Authorization server: its own OAuth-error/logging/recover chain. The pdp listen address (bind_address)
+	// is the single port the whole demo serves on.
 	p, err := pdp.New(*pdpCfg)
 	if err != nil {
 		log.Fatalf("create pdp: %v", err)
@@ -82,31 +126,43 @@ func main() {
 		}
 	}()
 
-	// One origin: the issuer, the public URL and the bff's redirect base are the same public tunnel URL. The
-	// AS itself is discovered locally (it's in this process); the metadata it returns carries the public,
-	// issuer-based endpoint URLs that the browser and the bff's server-side calls use.
-	publicURL := env("BFF_PUBLIC_URL", "http://127.0.0.1"+p.BindAddress)
-	localIssuer := "http://127.0.0.1" + p.BindAddress
-	h := bff.RecoverMiddleware(buildBFF(localIssuer, publicURL))
+	h := bff.RecoverMiddleware(buildBFF(bffParams{
+		discoveryIssuer: localIssuer,
+		publicURL:       publicURL,
+		clientID:        clientID,
+		scopes:          scopes,
+		signingKey:      signingKey,
+		dpopKey:         dpopKey,
+	}))
 	bffHandler.Store(&h)
 
 	slog.Info("pdp-bff ready", "public_url", publicURL)
 	select {}
 }
 
+type bffParams struct {
+	discoveryIssuer string
+	publicURL       string
+	clientID        string
+	scopes          []string
+	signingKey      jwk.Key
+	dpopKey         jwk.Key
+}
+
 // buildBFF constructs the bff, retrying until the in-process AS answers discovery, and returns the mux with
 // the bff API + the static webui.
-func buildBFF(discoveryIssuer, publicURL string) *http.ServeMux {
+func buildBFF(p bffParams) *http.ServeMux {
 	cfg := bff.Config{
 		AuthorizationServer: bff.AuthorizationServerConfig{
-			Issuer:       discoveryIssuer,
-			ClientId:     env("BFF_CLIENT_ID", "bff-demo"),
-			ClientSecret: env("BFF_CLIENT_SECRET", "bff-demo"),
-			RedirectUri:  publicURL + "/bff/auth/callback",
-			Scopes:       strings.Fields(env("BFF_SCOPE", "")),
+			Issuer:      p.discoveryIssuer,
+			ClientID:    p.clientID,
+			RedirectURI: p.publicURL + "/bff/auth/callback",
+			Scopes:      p.scopes,
+			SigningKey:  p.signingKey,
+			DPoPKey:     p.dpopKey,
 		},
 		CookieName:          env("BFF_COOKIE_NAME", "ZETA-BFF-SID"),
-		FrontendRedirectUri: publicURL + "/",
+		FrontendRedirectURI: p.publicURL + "/",
 	}
 
 	var b *bff.BackendForFrontend
@@ -124,4 +180,31 @@ func buildBFF(discoveryIssuer, publicURL string) *http.ServeMux {
 	b.Mount(mux)
 	mux.Handle("/", http.FileServerFS(webui.FS))
 	return mux
+}
+
+// newBffKeys generates the bff's ES256 signing key (for the client_assertion) and DPoP key (its thumbprint
+// becomes the assertion's cnf.jkt).
+func newBffKeys() (signing, dpop jwk.Key, err error) {
+	if signing, err = authzserver.GenerateRandomJwk(); err != nil {
+		return nil, nil, err
+	}
+	dpop, err = authzserver.GenerateRandomJwk()
+	return signing, dpop, err
+}
+
+// publicJWKMap returns the public half of key as a JWK object suitable for the AS client registry.
+func publicJWKMap(key jwk.Key) (map[string]any, error) {
+	pub, err := key.PublicKey()
+	if err != nil {
+		return nil, err
+	}
+	b, err := json.Marshal(pub)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }

@@ -30,8 +30,8 @@ func TestHITL_AuthorizationCode(t *testing.T) {
 
 	opIssuer := env("ZERO_PDP_E2E_OP_ISSUER", defaultOPIssuer)
 	clientID := env("ZERO_PDP_E2E_CLIENT_ID", defaultClientID)
-	clientSecret := env("ZERO_PDP_E2E_CLIENT_SECRET", defaultClientSecret)
 	scope := env("ZERO_PDP_E2E_SCOPE", defaultScope)
+	key := clientKey(t)
 	addr := env("ZERO_PDP_E2E_CALLBACK_ADDR", defaultCallbackAddr)
 
 	cb := startCallbackServer(t, addr)
@@ -71,16 +71,10 @@ func TestHITL_AuthorizationCode(t *testing.T) {
 		"code_verifier": {verifier},
 		"redirect_uri":  {redirectURI},
 	}
-	// Confidential clients authenticate via HTTP Basic (client_secret_basic, per the AS
-	// metadata); public clients send client_id in the form instead.
-	if clientSecret == "" {
-		form.Set("client_id", clientID)
-	}
+	// The client authenticates with private_key_jwt (RFC 7523), per the AS metadata.
+	addClientAuth(form, clientAssertion(t, md, clientID, key))
 	req, _ := http.NewRequest(http.MethodPost, md.TokenEndpoint, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	if clientSecret != "" {
-		req.SetBasicAuth(clientID, clientSecret)
-	}
 	resp, err := httpClient().Do(req)
 	if err != nil {
 		t.Fatalf("token: %v", err)
@@ -102,7 +96,7 @@ func TestHITL_AuthorizationCode(t *testing.T) {
 
 	// Introspect the issued token: as the issuing client it is active and carries the upstream
 	// OIDC identity captured during the login.
-	_, ir := introspect(t, md, clientID, clientSecret, tr.AccessToken)
+	_, ir := introspect(t, md, clientAssertion(t, md, clientID, key), tr.AccessToken)
 	if !ir.Active {
 		t.Fatal("introspect: active=false, want true")
 	}

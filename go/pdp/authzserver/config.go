@@ -21,14 +21,14 @@ type Config struct {
 	OidcProviders              []oidc.Config            `yaml:"oidc_providers" validate:"dive"`
 	GematikIdp                 []gemidp.ClientConfig    `yaml:"gematik_idp" validate:"dive"`
 	ClientsPolicyPath          string                   `yaml:"clients_policy_path"`
-	Clients                    []ClientMetadata         `yaml:"clients" validate:"omitempty,dive"`
+	Products                   []Product                `yaml:"products" validate:"omitempty,dive"`
+	Clients                    []Client                 `yaml:"clients" validate:"omitempty,dive"`
 	OidfRelyingPartyConfigPath string                   `yaml:"oidf_relying_party_path"`
 	OidfRelyingPartyConfig     *oidf.RelyingPartyConfig `yaml:"oidf_relying_party" validate:"omitempty"`
 	Endpoints                  EndpointsConfig          `yaml:"endpoints" validate:"omitempty"`
 	NonProdMode                bool                     `yaml:"non_prod_mode"`
-	// some values maybe set  programmatically
-	NonceService              nonce.Service
-	VerifyClientAssertionFunc VerifyClientAssertionFunc
+	// some values maybe set programmatically
+	NonceService nonce.Service
 }
 
 type EndpointsConfig struct {

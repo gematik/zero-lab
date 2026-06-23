@@ -1,67 +1,69 @@
 package authzserver
 
 import (
+	"encoding/json"
 	"fmt"
-	"slices"
+
+	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
-type ClientType string
+// Client is a registered instance of a Product. A product may have many client instances; each
+// authenticates with private_key_jwt (RFC 7523), proving itself with a client_assertion verified
+// against PublicJWK. Redirect-URI and scope policy live on the Product the client belongs to.
+type Client struct {
+	ClientID  string `yaml:"client_id" json:"client_id" validate:"required"`
+	ProductID string `yaml:"product_id" json:"product_id" validate:"required"`
+	// PublicJWK is the client's assertion-verification key as a nested JWK object. It is parsed into
+	// a jwk.Key once at registry-build time (see Key).
+	PublicJWK map[string]any `yaml:"public_jwk" json:"public_jwk" validate:"required"`
 
-const (
-	ClientTypeConfidential ClientType = "confidential"
-	ClientTypePublic       ClientType = "public"
-)
-
-type ClientMetadata struct {
-	Type             ClientType `yaml:"type" json:"type" validate:"required,oneof=confidential public"`
-	ClientID         string     `yaml:"client_id" json:"client_id" validate:"required"`
-	ClientSecretHash string     `yaml:"client_secret_hash" json:"client_secret_hash"`
-	RedirectURIs     []string   `yaml:"redirect_uris" json:"redirect_uris"`
-	Scopes           []string   `yaml:"scopes" json:"scopes"`
-	ClientName       string     `yaml:"client_name" json:"client_name"`
-	LogoURI          string     `yaml:"logo_uri" json:"logo_uri"`
+	key jwk.Key
 }
 
+// Key returns the parsed public JWK used to verify the client's assertions.
+func (c *Client) Key() jwk.Key { return c.key }
+
 type ClientsRegistry interface {
-	GetClientMetadata(clientID string) (*ClientMetadata, error)
-	RegisterClient(client *ClientMetadata) error
+	GetClient(clientID string) (*Client, error)
 }
 
 type StaticClientsRegistry struct {
-	// list of clients
-	Clients []ClientMetadata `yaml:"clients" json:"clients" validate:"required,dive,required"`
+	clients map[string]*Client
 }
 
-func (r *StaticClientsRegistry) GetClientMetadata(clientID string) (*ClientMetadata, error) {
-	if r.Clients == nil {
-		return nil, fmt.Errorf("no clients configured")
-	}
-	for _, client := range r.Clients {
-		if client.ClientID == clientID {
-			return &client, nil
+// NewStaticClientsRegistry parses each client's public JWK and indexes the clients by client_id.
+func NewStaticClientsRegistry(clients []Client) (*StaticClientsRegistry, error) {
+	indexed := make(map[string]*Client, len(clients))
+	for i := range clients {
+		c := clients[i]
+		key, err := parsePublicJWK(c.PublicJWK)
+		if err != nil {
+			return nil, fmt.Errorf("client %q: %w", c.ClientID, err)
 		}
+		c.key = key
+		indexed[c.ClientID] = &c
 	}
-	return nil, fmt.Errorf("client not found: '%s'", clientID)
+	return &StaticClientsRegistry{clients: indexed}, nil
 }
 
-func (r *StaticClientsRegistry) RegisterClient(client *ClientMetadata) error {
-	r.Clients = append(r.Clients, *client)
-	return nil
-}
-
-func (m *ClientMetadata) IsAllowedRedirectURI(redirectURI string) bool {
-	return slices.Contains(m.RedirectURIs, redirectURI)
-}
-
-func (m *ClientMetadata) IsAllowedScope(scope string) bool {
-	return slices.Contains(m.Scopes, scope)
-}
-
-func (m *ClientMetadata) IsAllowedScopes(scopes []string) bool {
-	for _, scope := range scopes {
-		if !m.IsAllowedScope(scope) {
-			return false
-		}
+func (r *StaticClientsRegistry) GetClient(clientID string) (*Client, error) {
+	if c, ok := r.clients[clientID]; ok {
+		return c, nil
 	}
-	return true
+	return nil, fmt.Errorf("client not found: %q", clientID)
+}
+
+func parsePublicJWK(raw map[string]any) (jwk.Key, error) {
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("missing public_jwk")
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("marshal public_jwk: %w", err)
+	}
+	key, err := jwk.ParseKey(b)
+	if err != nil {
+		return nil, fmt.Errorf("parse public_jwk: %w", err)
+	}
+	return key, nil
 }

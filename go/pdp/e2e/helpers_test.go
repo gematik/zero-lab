@@ -1,10 +1,12 @@
 package e2e
 
 import (
+	"crypto"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -14,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
+	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/lestrrat-go/jwx/v3/jwt"
@@ -21,14 +24,65 @@ import (
 
 // Defaults for the e2e knobs; overridable via the matching ZERO_PDP_E2E_* env vars.
 const (
-	defaultClientID     = "e2e-client"
-	defaultClientSecret = "e2e-client"
-	defaultScope        = "e2e"
-	defaultOPIssuer     = "https://accounts.google.com"
-	defaultFedIssuer    = "https://idbroker.tk.ru2.nonprod-ehealth-id.de"
-	defaultRedirectURI  = "http://localhost:8765/as-callback"
-	defaultCallbackAddr = "localhost:8765"
+	defaultClientID      = "e2e-client"
+	defaultClientKeyPath = "testdata/e2e-client.prk.jwk"
+	defaultScope         = "e2e"
+	defaultOPIssuer      = "https://accounts.google.com"
+	defaultFedIssuer     = "https://idbroker.tk.ru2.nonprod-ehealth-id.de"
+	defaultRedirectURI   = "http://localhost:8765/as-callback"
+	defaultCallbackAddr  = "localhost:8765"
 )
+
+// clientKey loads the e2e client's private signing JWK (its public half is registered in the AS
+// config), used to mint private_key_jwt assertions. Override with ZERO_PDP_E2E_CLIENT_KEY_PATH.
+func clientKey(t *testing.T) jwk.Key {
+	t.Helper()
+	path := env("ZERO_PDP_E2E_CLIENT_KEY_PATH", defaultClientKeyPath)
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read client key %s: %v", path, err)
+	}
+	k, err := jwk.ParseKey(b)
+	if err != nil {
+		t.Fatalf("parse client key: %v", err)
+	}
+	return k
+}
+
+// clientAssertion mints a private_key_jwt assertion (RFC 7523) for clientID signed with key: a fresh
+// AS nonce, iss=sub=clientID, aud=issuer, and cnf.jkt = key's thumbprint.
+func clientAssertion(t *testing.T, md authzserver.ExtendedMetadata, clientID string, key jwk.Key) string {
+	t.Helper()
+	resp := mustGet(t, httpClient(), md.NonceEndpoint)
+	nonceBytes, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	nonce := strings.TrimSpace(string(nonceBytes))
+
+	thumb, err := key.Thumbprint(crypto.SHA256)
+	if err != nil {
+		t.Fatalf("thumbprint: %v", err)
+	}
+	now := time.Now()
+	tok := jwt.New()
+	tok.Set(jwt.IssuerKey, clientID)
+	tok.Set(jwt.SubjectKey, clientID)
+	tok.Set(jwt.AudienceKey, md.Issuer)
+	tok.Set(jwt.IssuedAtKey, now.Unix())
+	tok.Set(jwt.ExpirationKey, now.Add(time.Minute).Unix())
+	tok.Set("nonce", nonce)
+	tok.Set("cnf", map[string]string{"jkt": base64.RawURLEncoding.EncodeToString(thumb)})
+	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.ES256(), key))
+	if err != nil {
+		t.Fatalf("sign assertion: %v", err)
+	}
+	return string(signed)
+}
+
+// addClientAuth adds the private_key_jwt parameters to a token/introspection form.
+func addClientAuth(form url.Values, assertion string) {
+	form.Set("client_assertion_type", authzserver.ClientAssertionTypeJWTBearer)
+	form.Set("client_assertion", assertion)
+}
 
 // baseURL returns the e2e target base URL, skipping the test if ZERO_PDP_E2E_URL is unset.
 func baseURL(t *testing.T) string {

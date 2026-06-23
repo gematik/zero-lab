@@ -4,10 +4,9 @@
 # live under /as (the well-knowns stay at root). Then /.well-known/* and /as/* reach the authorization server
 # and /, /bff/* reach the bff + webui.
 #
-# ${...} is expanded from the environment at load time (see .env.example). Generate the signing key and the
-# bff client secret hash with the zero-pdp tool:
+# ${...} is expanded from the environment at load time (see .env.example). Generate the signing key with the
+# zero-pdp tool:
 #   go run ./pdp/cmd/zero-pdp jose generate-jwk > config/sign.jwk
-#   go run ./pdp/cmd/zero-pdp secret-hash "$BFF_CLIENT_SECRET"   # -> BFF_CLIENT_SECRET_HASH
 bind_address: ":8011"
 authorization_server:
   issuer: "${PUBLIC_URL}"
@@ -32,18 +31,9 @@ authorization_server:
     introspection: /as/introspect
     registration: /as/register
 
-  # The bff is a confidential client of this AS.
-  clients:
-    - type: confidential
-      client_id: "${BFF_CLIENT_ID}"
-      client_secret_hash: "${BFF_CLIENT_SECRET_HASH}"
-      client_name: pdp-bff demo
-      redirect_uris:
-        - "${PUBLIC_URL}/bff/auth/callback"
-      scopes:
-        - openid
-        - profile
-        - email
+  # The bff registers itself: pdp-bff generates the bff's keys at startup and injects it as a client of a
+  # demo product (with its public JWK) directly into this in-process AS, so no clients section is needed here.
+  # It authenticates with private_key_jwt (RFC 7523); client_secret_basic is not supported.
 
   # --- Two OP types combined behind one AS ---
 

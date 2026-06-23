@@ -37,7 +37,7 @@ func TestGuardSessionCookie(t *testing.T) {
 		return rec.Code
 	}
 
-	if code := do(session.Id); code != http.StatusOK {
+	if code := do(session.ID); code != http.StatusOK {
 		t.Fatalf("valid session: expected %d, got %d", http.StatusOK, code)
 	}
 	if code := do("nonexistent-session-id"); code != http.StatusUnauthorized {
