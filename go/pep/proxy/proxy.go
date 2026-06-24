@@ -111,7 +111,6 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setIdentityHeaders(w.Header(), sess.Identity)
-	slog.Debug("forward_auth allow", "session", sess.ID, "user", claimString(sess.Identity, "preferred_username", "sub"))
 	w.WriteHeader(http.StatusAccepted)
 }
 
