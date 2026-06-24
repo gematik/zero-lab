@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
 )
@@ -29,6 +30,10 @@ type Backend interface {
 	// Providers lists the IdPs for the chooser.
 	Providers(ctx context.Context) ([]Provider, error)
 
+	// DefaultIssuer returns the issuer to auto-start with when no idp_iss is given (a single configured
+	// provider), or "" to show the chooser.
+	DefaultIssuer() string
+
 	// StartLogin builds the authorization request for idpIss ("" = the default/single provider), mutating
 	// sess (IDPIss, State, Nonce, CodeVerifier, CodeChallengeMethod) before it is persisted.
 	StartLogin(ctx context.Context, sess *Session, idpIss, scope string) (LoginStart, error)
@@ -43,4 +48,16 @@ type Backend interface {
 
 	// DPoPKey is the key DPoP injection proofs are minted with, or nil when unsupported.
 	DPoPKey() jwk.Key
+}
+
+// proxyRoute is an extra HTTP route a backend asks the server to mount outside /oauth2/* (e.g. the OIDF
+// relying-party entity statement at /.well-known/openid-federation).
+type proxyRoute struct {
+	Pattern string
+	Handler http.Handler
+}
+
+// routeProvider is optionally implemented by a Backend that needs extra top-level routes mounted.
+type routeProvider interface {
+	proxyRoutes() []proxyRoute
 }

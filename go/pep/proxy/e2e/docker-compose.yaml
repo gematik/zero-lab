@@ -1,0 +1,35 @@
+# e2e harness for the pep oauth2-proxy: Caddy (forward_auth) + podinfo (upstream) only.
+#
+# The proxy itself runs on the HOST (`go run ./pep/cmd/zero-pep-proxy` on :4180) so it can use local OIDF
+# relying-party secrets and/or a rathole tunnel; Caddy reaches it via host.docker.internal. This keeps the
+# auth backend (OIDC or OIDF) outside the container while the gate + upstream stay reproducible.
+#
+#   browser → caddy(:8480) ──forward_auth──> host pep /oauth2/auth        (gate)
+#                          ├─reverse_proxy──> /.well-known/openid-federation → host pep  (OIDF, public)
+#                          └─reverse_proxy──> upstream (podinfo: web UI + /headers echo)
+#
+# Usage:
+#   1) docker compose -f pep/proxy/e2e/docker-compose.yaml up
+#   2) run the proxy on the host, e.g.:
+#        PEP_OIDC_ISSUER=... PEP_OIDC_CLIENT_ID=... PEP_OIDC_CLIENT_SECRET=... \
+#          go run ./pep/cmd/zero-pep-proxy
+#      (or PEP_OIDF_RP_CONFIG_PATH=... PEP_PUBLIC_URL=https://<rathole-sub> for OIDF)
+#   3) open http://127.0.0.1:8480/headers   (or https://<rathole-sub>/headers for OIDF)
+services:
+  # Protected upstream — podinfo's GET /headers echoes the X-Auth-Request-* headers the proxy injects.
+  upstream:
+    image: ghcr.io/stefanprodan/podinfo:latest
+
+  caddy:
+    image: caddy:2
+    depends_on: [upstream]
+    ports:
+      - "8480:8480"
+    environment:
+      # The proxy runs on the host; reach it from inside the container.
+      PEP_UPSTREAM: "host.docker.internal:4180"
+      APP_UPSTREAM: "upstream:9898"
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # Linux: map host.docker.internal to the host
+    volumes:
+      - ../../cmd/zero-pep-proxy/Caddyfile:/etc/caddy/Caddyfile:ro

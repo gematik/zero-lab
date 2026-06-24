@@ -11,7 +11,10 @@
     <h1>Sign-in failed</h1>
     <p><code>{{.Code}}</code></p>
     {{if .Description}}<p class="muted">{{.Description}}</p>{{end}}
-    <a class="btn" href="/oauth2/sign_in">Try again</a>
+    <div class="actions">
+      {{if .IDPIss}}<a class="btn" href="/oauth2/start?idp_iss={{.IDPIss | urlquery}}{{if .ReturnTo}}&amp;rd={{.ReturnTo | urlquery}}{{end}}">Try again</a>{{end}}
+      <a class="btn secondary" href="/oauth2/sign_in{{if .ReturnTo}}?rd={{.ReturnTo | urlquery}}{{end}}">Choose another provider</a>
+    </div>
   </main>
 </body>
 </html>

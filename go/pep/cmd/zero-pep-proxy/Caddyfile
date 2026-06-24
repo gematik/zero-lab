@@ -12,6 +12,11 @@
 		reverse_proxy {$PEP_UPSTREAM:127.0.0.1:4180}
 	}
 
+	# OIDF relying-party entity statement — public (no auth); the federation + OPs fetch it here.
+	route /.well-known/openid-federation {
+		reverse_proxy {$PEP_UPSTREAM:127.0.0.1:4180}
+	}
+
 	# Everything else: gate on auth first.
 	route {
 		forward_auth {$PEP_UPSTREAM:127.0.0.1:4180} {

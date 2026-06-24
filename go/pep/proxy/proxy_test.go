@@ -15,6 +15,7 @@ type fakeBackend struct{ identity map[string]any }
 func (f *fakeBackend) Providers(ctx context.Context) ([]Provider, error) {
 	return []Provider{{Issuer: "https://idp.example", Name: "Test IdP", Type: "oidc"}}, nil
 }
+func (f *fakeBackend) DefaultIssuer() string { return "https://idp.example" }
 func (f *fakeBackend) StartLogin(ctx context.Context, sess *Session, idpIss, scope string) (LoginStart, error) {
 	sess.IDPIss = "https://idp.example"
 	sess.State = "test-state"
