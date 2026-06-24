@@ -185,7 +185,8 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 }
 
 // handlePoll reports decoupled-login progress for the cookie-bound session: 200 once authenticated (with
-// the return-to target), 202 while pending, 401 when there is no session.
+// the return-to target), 202 while pending, 401 when there is no session. See DESIGN.md §3 — the cookie
+// correlates the waiting browser, state correlates the out-of-band callback (cf. RFC 8628 / OIDC CIBA).
 func (s *Server) handlePoll(w http.ResponseWriter, r *http.Request) {
 	sess, ok := s.currentSession(r)
 	if !ok {
