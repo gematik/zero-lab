@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -74,6 +76,8 @@ func providerType(c oidc.Client) string {
 	switch c.(type) {
 	case *oidf.RelyingPartyClient:
 		return "oidf"
+	case *gemidp.Client:
+		return "gemidp"
 	default:
 		return "oidc"
 	}
@@ -123,9 +127,13 @@ func (b *providerBackend) StartLogin(ctx context.Context, sess *Session, idpIss,
 	if err != nil {
 		return LoginStart{}, err
 	}
-	// OIDF's authorization URL (PAR request_uri) drives both the on-device redirect and the decoupled QR.
+	// Pick the front-end flow: gemidp's authenticator:// deep link → a wait page that opens the app and
+	// polls; OIDF's PAR URL → the decoupled QR; everything else → a plain redirect.
 	mode := "redirect"
-	if providerType(c) == "oidf" {
+	switch {
+	case strings.HasPrefix(authURL, "authenticator://"):
+		mode = "authenticator"
+	case providerType(c) == "oidf":
 		mode = "decoupled"
 	}
 	p := providerOf(c)

@@ -19,7 +19,7 @@ type Provider struct {
 // "decoupled" means AuthURL is rendered as a QR for a second device (with an on-device redirect offered too).
 type LoginStart struct {
 	AuthURL  string
-	Mode     string // "redirect" | "decoupled"
+	Mode     string // "redirect" | "decoupled" (OIDF QR) | "authenticator" (gemidp deep link)
 	Provider *Provider
 }
 

@@ -13,11 +13,17 @@
 //	PEP_OIDC_NAME            display name in the chooser (default "OpenID Connect")
 //	PEP_OIDC_ACCEPTABLE_SKEW id_token clock-skew tolerance, a Go duration (e.g. 60s, 2m); default 1m
 //	PEP_OIDF_RP_CONFIG_PATH  gematik OIDF relying-party config (YAML); enables federation login
+//	PEP_GEMIDP_CLIENT_ID     gematik IDP-Dienst client_id (enables gemidp login)
+//	PEP_GEMIDP_ENV           test|ref|prod (default prod); or PEP_GEMIDP_BASE_URL to override
+//	PEP_GEMIDP_REDIRECT_URI  redirect_uri the gemidp client sends in its auth/token requests (default
+//	                         <public>/oauth2/callback)
+//	PEP_GEMIDP_REDIRECT_SCOPES  space-separated (default "openid")
+//	PEP_GEMIDP_NAME / _LOGO_URI / _USER_AGENT  chooser/display options (always Authenticator-app flow)
 //	PEP_COOKIE_NAME          session cookie name (default ZERO-PEP-SID)
 //	PEP_PRODUCTION_COOKIE    "true" → __Host- + Secure (set behind HTTPS)
 //	PEP_TEMPLATE_DIR         replace the embedded UI templates from this directory
 //
-// Configure at least one of PEP_OIDC_ISSUER / PEP_OIDF_RP_CONFIG_PATH.
+// Configure at least one of PEP_OIDC_ISSUER / PEP_OIDF_RP_CONFIG_PATH / PEP_GEMIDP_CLIENT_ID.
 package main
 
 import (
@@ -28,6 +34,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
@@ -88,8 +95,34 @@ func main() {
 		slog.Info("oidf relying party configured", "config", rpPath)
 	}
 
+	// gematik IDP-Dienst (gemidp) direct provider (optional). PEP_GEMIDP_REDIRECT_URI overrides the
+	// redirect_uri this client sends in its auth/token requests (default pep's own callback) — for a client
+	// registered with a fixed redirect_uri.
+	if clientID := os.Getenv("PEP_GEMIDP_CLIENT_ID"); clientID != "" {
+		redirectURI := publicURL + "/oauth2/callback"
+		if v := os.Getenv("PEP_GEMIDP_REDIRECT_URI"); v != "" {
+			redirectURI = v
+		}
+		client, err := gemidp.NewClientFromConfig(gemidp.ClientConfig{
+			Environment:       gemidp.NewEnvironment(os.Getenv("PEP_GEMIDP_ENV")),
+			BaseURL:           os.Getenv("PEP_GEMIDP_BASE_URL"),
+			ClientID:          clientID,
+			RedirectURI:       redirectURI,
+			Scopes:            strings.Fields(env("PEP_GEMIDP_REDIRECT_SCOPES", "openid")),
+			Name:              env("PEP_GEMIDP_NAME", "gematik IDP-Dienst"),
+			LogoURI:           os.Getenv("PEP_GEMIDP_LOGO_URI"),
+			AuthenticatorMode: true, // gemidp is always the gematik Authenticator deep-link flow
+			UserAgent:         env("PEP_GEMIDP_USER_AGENT", "zero-pep-proxy"),
+		})
+		if err != nil {
+			log.Fatalf("create gemidp client: %v", err)
+		}
+		opts = append(opts, proxy.WithOIDCClients(client))
+		slog.Info("gemidp provider configured", "env", os.Getenv("PEP_GEMIDP_ENV"), "client_id", clientID, "redirect_uri", redirectURI)
+	}
+
 	if len(opts) == 0 {
-		log.Fatal("configure at least one provider: PEP_OIDC_ISSUER and/or PEP_OIDF_RP_CONFIG_PATH")
+		log.Fatal("configure at least one provider: PEP_OIDC_ISSUER, PEP_OIDF_RP_CONFIG_PATH, and/or PEP_GEMIDP_CLIENT_ID")
 	}
 
 	server, err := proxy.New(proxy.Config{

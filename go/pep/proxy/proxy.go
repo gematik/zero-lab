@@ -159,23 +159,29 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	}
 	setCookie(w, s.cookie, sess.ID)
 
-	if start.Mode == "decoupled" {
+	var name string
+	if start.Provider != nil {
+		name = start.Provider.Name
+	}
+	switch start.Mode {
+	case "decoupled": // OIDF — QR for a second device + on-device redirect, polled
 		img, err := qrImage(start.AuthURL)
 		if err != nil {
 			s.renderError(w, "qr_error", err.Error(), idpIss, rd)
 			return
 		}
-		var name string
-		if start.Provider != nil {
-			name = start.Provider.Name
-		}
 		s.render.render(w, http.StatusOK, "qr.html", qrData{
 			ProviderName: name, AuthURL: start.AuthURL, QRImage: img,
 			PollURL: "/oauth2/poll", ReturnTo: sess.ReturnTo,
 		})
-		return
+	case "authenticator": // gemidp — open the authenticator:// app on this device + poll
+		s.render.render(w, http.StatusOK, "authenticator.html", qrData{
+			ProviderName: name, AuthURL: start.AuthURL,
+			PollURL: "/oauth2/poll", ReturnTo: sess.ReturnTo,
+		})
+	default:
+		http.Redirect(w, r, start.AuthURL, http.StatusFound)
 	}
-	http.Redirect(w, r, start.AuthURL, http.StatusFound)
 }
 
 // handlePoll reports decoupled-login progress for the cookie-bound session: 200 once authenticated (with
