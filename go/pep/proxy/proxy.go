@@ -159,6 +159,8 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	}
 	setCookie(w, s.cookie, sess.ID)
 
+	slog.Info("login start", "session", sess.ID, "idp_iss", idpIss, "mode", start.Mode, "auth_url", start.AuthURL)
+
 	var name string
 	if start.Provider != nil {
 		name = start.Provider.Name
@@ -252,7 +254,23 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		dest = "/"
 	}
 	slog.Info("login complete", "session", sess.ID, "idp_iss", sess.IDPIss, "return_to", dest)
+
+	// Decoupled (OIDF QR) flow: this callback landed on a second device that scanned the QR and never started
+	// the login here, so it holds no session cookie — redirecting it to rd is meaningless. Show a success
+	// page and let the originating device (polling /oauth2/poll) be the one that proceeds to rd. The on-device
+	// flow carries the /oauth2/start cookie and falls through to the redirect.
+	if !s.requestOwnsSession(r, sess) {
+		s.render.render(w, http.StatusOK, "complete.html", nil)
+		return
+	}
 	http.Redirect(w, r, dest, http.StatusFound)
+}
+
+// requestOwnsSession reports whether the request carries the session cookie set at /oauth2/start for this
+// session — true on the device that began the login, false on a second device in the decoupled flow.
+func (s *Server) requestOwnsSession(r *http.Request, sess *Session) bool {
+	c, err := r.Cookie(s.cookie.Name)
+	return err == nil && c.Value == sess.ID
 }
 
 // handleSignOut clears the session. POST (XHR) requires the X-Requested-With CSRF header and returns 204;
