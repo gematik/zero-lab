@@ -32,6 +32,10 @@ type Config struct {
 	SnapshotKeyPath         string        // base64 256-bit key file; "" disables the fast path
 	SnapshotPreviousKeyPath string        // optional previous key file (rotation overlap)
 	SnapshotTTL             time.Duration // = session absolute lifetime (0 = 8h)
+
+	// Bus carries session revocations to all replicas so logout/lockout is fleet-wide instant. nil = a
+	// single-instance in-memory revoker.
+	Bus kv.Bus
 }
 
 // defaultSnapshotTTL is the snapshot lifetime, and — when the fast path is on — the session lifetime: the
@@ -74,6 +78,11 @@ func New(cfg Config) (*Server, error) {
 		return nil, err
 	}
 
+	var rev revoker = newMemRevoker(snapTTL)
+	if cfg.Bus != nil {
+		rev = newBusRevoker(cfg.Bus, snapTTL)
+	}
+
 	sessions := newSessionStore(cfg.Store, cfg.SessionTTL)
 	s := &Server{
 		sessions: sessions,
@@ -81,7 +90,7 @@ func New(cfg Config) (*Server, error) {
 		render:   r,
 		backend:  cfg.Backend,
 		snap:     snap,
-		revoker:  newMemRevoker(snapTTL),
+		revoker:  rev,
 	}
 	if snap != nil {
 		// The snapshot covers the whole session, so the kv session must live as long (it holds the refresh

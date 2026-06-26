@@ -19,9 +19,9 @@
 //	PEP_COOKIE_NAME          session cookie name (default ZERO-PEP-SID)
 //	PEP_PRODUCTION_COOKIE    "true" → __Host- + Secure (set behind HTTPS)
 //	PEP_TEMPLATE_DIR         replace the embedded UI templates from this directory
-//	PEP_SNAPSHOT_KEY_PATH    file with a base64 256-bit key → enables the /oauth2/auth snapshot fast path
-//	                         (local decrypt, no kv per request). PEP_SNAPSHOT_PREVIOUS_KEY_PATH for rotation.
-//	PEP_SNAPSHOT_TTL         snapshot = session lifetime when the fast path is on (Go duration, default 8h)
+//	PEP_SESSION_KEY_PATH     file with a base64 256-bit key → enables local /oauth2/auth validation (decrypt
+//	                         an encrypted session token, no kv per request). PEP_SESSION_PREVIOUS_KEY_PATH rotates it.
+//	PEP_SESSION_TTL          session lifetime when local validation is on (Go duration, default 8h)
 //	DATABASE_URL             Postgres DSN for the session store; durable + shared across replicas. When unset,
 //	                         an in-memory store is used (dev only — sessions are lost on restart, not shared).
 //
@@ -73,6 +73,21 @@ func openStore() kv.Store {
 	}
 	slog.Info("using postgres kv store for sessions")
 	return store
+}
+
+// openBus returns the revocation bus: Postgres LISTEN/NOTIFY when DATABASE_URL is set (so logout/lockout is
+// fleet-wide), otherwise nil — a single-instance in-memory revoker.
+func openBus() kv.Bus {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		return nil
+	}
+	bus, err := postgres.OpenBus(context.Background(), dsn)
+	if err != nil {
+		log.Fatalf("open revocation bus: %v", err)
+	}
+	slog.Info("using postgres revocation bus (LISTEN/NOTIFY)")
+	return bus
 }
 
 func main() {
@@ -135,10 +150,10 @@ func main() {
 	}
 
 	var snapshotTTL time.Duration
-	if v := os.Getenv("PEP_SNAPSHOT_TTL"); v != "" {
+	if v := os.Getenv("PEP_SESSION_TTL"); v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil {
-			log.Fatalf("invalid PEP_SNAPSHOT_TTL %q: %v", v, err)
+			log.Fatalf("invalid PEP_SESSION_TTL %q: %v", v, err)
 		}
 		snapshotTTL = d
 	}
@@ -149,9 +164,10 @@ func main() {
 		CookieName:              env("PEP_COOKIE_NAME", "ZERO-PEP-SID"),
 		ProductionCookie:        os.Getenv("PEP_PRODUCTION_COOKIE") == "true",
 		TemplateDir:             os.Getenv("PEP_TEMPLATE_DIR"),
-		SnapshotKeyPath:         os.Getenv("PEP_SNAPSHOT_KEY_PATH"),
-		SnapshotPreviousKeyPath: os.Getenv("PEP_SNAPSHOT_PREVIOUS_KEY_PATH"),
+		SnapshotKeyPath:         os.Getenv("PEP_SESSION_KEY_PATH"),
+		SnapshotPreviousKeyPath: os.Getenv("PEP_SESSION_PREVIOUS_KEY_PATH"),
 		SnapshotTTL:             snapshotTTL,
+		Bus:                     openBus(),
 	})
 	if err != nil {
 		log.Fatalf("create proxy: %v", err)
