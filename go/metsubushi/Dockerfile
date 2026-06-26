@@ -1,23 +1,25 @@
-# ---- build stage ----
-FROM golang:1.26-alpine AS build
+FROM golang:1.26 AS build
+
+ARG VERSION=dev
+
 WORKDIR /src
 
-# Build is dependency-free; copy the source straight in.
-COPY go.mod ./
-COPY main.go index.html ./
+# Copy the whole go workspace so go.work resolves the metsubushi module.
+COPY . ./
 
-# Static, stripped, reproducible binary. CGO off so it runs on scratch.
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -ldflags="-s -w" -o /metsubushi .
+RUN CGO_ENABLED=0 GOOS=linux go build -o /out/metsubushi ./metsubushi
 
-# ---- runtime stage ----
+# A passwd entry so the scratch image can run as a non-root user.
+RUN echo 'metsubushi:x:65532:65532::/app:/sbin/nologin' > /out/passwd
+
+# scratch — the lightest possible runtime (no distro, shell, or package manager).
 FROM scratch
-COPY --from=build /metsubushi /metsubushi
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=build /out/passwd /etc/passwd
+COPY --from=build /out/metsubushi /app/metsubushi
 
-# Run as a non-root, non-existent UID; scratch has no users to map.
 USER 65532:65532
+WORKDIR /app
 EXPOSE 8080
 ENV PORT=8080
-ENTRYPOINT ["/metsubushi"]
+ENTRYPOINT ["/app/metsubushi"]

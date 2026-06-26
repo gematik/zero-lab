@@ -122,6 +122,22 @@ docker-push-bff-pdp: docker-build-bff-pdp
     docker push "{{DOCKER_USER}}/zero-bff-pdp:$v"
     docker push "{{DOCKER_USER}}/zero-bff-pdp:latest"
 
+# Build the metsubushi docker image (pod smoke-test app, scratch, non-root)
+docker-build-metsubushi:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver metsubushi)
+    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/metsubushi:$v" -f ./metsubushi/Dockerfile .
+    docker tag "{{DOCKER_USER}}/metsubushi:$v" "{{DOCKER_USER}}/metsubushi:latest"
+
+# Push the metsubushi docker image to the docker hub
+docker-push-metsubushi: docker-build-metsubushi
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver metsubushi)
+    docker push "{{DOCKER_USER}}/metsubushi:$v"
+    docker push "{{DOCKER_USER}}/metsubushi:latest"
+
 # Tag a module at a version, e.g. `just tag ti 0.20.2` or `just tag brainpool 0.3.1`
 # -> go/<module>/vX.Y.Z. Tag only the modules that changed (see `changed`).
 tag name version:
