@@ -1,7 +1,8 @@
 # Stateless session validation — signed snapshot + revocation bus
 
-**Status:** Stages 0–3 implemented (persistent kv, snapshot fast path, Postgres revocation bus, durable
-backstop). Stage 4 (two-replica HITL) pending.
+**Status:** Implemented and HITL-proven (Stages 0–4): persistent kv, encrypted snapshot fast path, Postgres
+revocation bus, durable backstop, and a two-replica HITL (shared key, instant cross-replica revocation,
+durable-backstop late-join).
 **Scope:** `pep/proxy` session validation on the `/oauth2/auth` (forward_auth) hot path.
 **Supersedes:** the per-request `kv.byID()` lookup described in `DESIGN.md` §2.
 
@@ -233,4 +234,4 @@ worst case is the usual `kv` fallback + re-mint, never a forced re-login.
 2. `kv` revocation bus on Postgres `LISTEN`/`NOTIFY` (behind the `revoker` interface); `Revoke` already wired
    into logout + rotation in Stage 1. ✅ done.
 3. Durable `pep:revoked` backstop: startup load + periodic reconcile. ✅ done.
-4. HITL: on-device + QR login, instant logout across two replicas, missed-message backstop; then enable.
+4. HITL: shared key + instant cross-replica revocation + durable-backstop late-join, all proven with two+ replicas. ✅ done.
