@@ -131,7 +131,7 @@ tag name version:
 versions:
     #!/usr/bin/env bash
     set -euo pipefail
-    for dir in $(find . -name go.mod -not -path './libzero/*' -exec dirname {} \; | sed 's|^\./||' | sort); do
+    for dir in $(find . -name go.mod -exec dirname {} \; | sed 's|^\./||' | sort); do
         latest=$(git tag -l "go/$dir/v*" | sort -V | tail -1)
         printf '%-12s %s\n' "$dir" "${latest:-<untagged>}"
     done
@@ -140,7 +140,7 @@ versions:
 changed:
     #!/usr/bin/env bash
     set -euo pipefail
-    for dir in $(find . -name go.mod -not -path './libzero/*' -exec dirname {} \; | sed 's|^\./||' | sort); do
+    for dir in $(find . -name go.mod -exec dirname {} \; | sed 's|^\./||' | sort); do
         latest=$(git tag -l "go/$dir/v*" | sort -V | tail -1)
         if [ -z "$latest" ]; then
             echo "$dir: never tagged"
@@ -163,7 +163,7 @@ sync REF=`git rev-parse --abbrev-ref HEAD`:
     # Resolve in-repo modules straight from the VCS: proxy.golang.org cannot resolve a
     # branch ref (and negatively caches unreleased versions), so a proxy fetch no-ops.
     export GOPRIVATE=github.com/gematik/zero-lab
-    for dir in $(find . -name 'go.mod' -not -path './libzero/*' -exec dirname {} \;); do
+    for dir in $(find . -name 'go.mod' -exec dirname {} \;); do
         ( cd "$dir"
           self=$(awk 'NR==1{print $2}' go.mod)
           for dep in $(grep -oE 'github\.com/gematik/zero-lab/go/[a-zA-Z0-9]+' go.mod | sort -u); do
@@ -178,7 +178,7 @@ sync REF=`git rev-parse --abbrev-ref HEAD`:
 tidy:
     #!/usr/bin/env bash
     set -euo pipefail
-    for dir in $(find . -name 'go.mod' -not -path './libzero/*' -exec dirname {} \; | sort); do
+    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
         echo "==> Tidying $dir"
         (cd "$dir" && go mod tidy)
     done
@@ -188,7 +188,7 @@ tidy:
 upgrade:
     #!/usr/bin/env bash
     set -euo pipefail
-    for dir in $(find . -name 'go.mod' -not -path './libzero/*' -exec dirname {} \; | sort); do
+    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
         echo "==> Upgrading $dir"
         (cd "$dir" && go get -u ./... && go mod tidy)
     done
@@ -247,14 +247,14 @@ epa-entitle-test:
 oidf-test:
     go test ./oidf -run TestFederation -count=1 -v -timeout 2m
 
-# --- Go code analysis (all modules except libzero) ---
+# --- Go code analysis (all modules) ---
 
 # Report Go modernization suggestions (modern idioms: any, min/max, slices/maps, range-int, ...)
 modernize:
     #!/usr/bin/env bash
     set -uo pipefail
     fail=0
-    for dir in $(find . -name 'go.mod' -not -path './libzero/*' -exec dirname {} \; | sort); do
+    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
         echo "==> modernize $dir"
         ( cd "$dir" && go run {{MODERNIZE}} ./... ) || fail=1
     done
@@ -264,7 +264,7 @@ modernize:
 modernize-fix:
     #!/usr/bin/env bash
     set -uo pipefail
-    for dir in $(find . -name 'go.mod' -not -path './libzero/*' -exec dirname {} \; | sort); do
+    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
         echo "==> modernize -fix $dir"
         ( cd "$dir" && go run {{MODERNIZE}} -fix -test ./... || true; gofmt -w . )
     done
@@ -274,7 +274,7 @@ lint:
     #!/usr/bin/env bash
     set -uo pipefail
     fail=0
-    for dir in $(find . -name 'go.mod' -not -path './libzero/*' -exec dirname {} \; | sort); do
+    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
         echo "==> lint $dir"
         ( cd "$dir" && go vet ./... && go run {{STATICCHECK}} ./... ) || fail=1
     done
@@ -285,7 +285,7 @@ vuln:
     #!/usr/bin/env bash
     set -uo pipefail
     fail=0
-    for dir in $(find . -name 'go.mod' -not -path './libzero/*' -exec dirname {} \; | sort); do
+    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
         echo "==> govulncheck $dir"
         ( cd "$dir" && go run {{GOVULNCHECK}} ./... ) || fail=1
     done

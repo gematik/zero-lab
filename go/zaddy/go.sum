@@ -152,10 +152,6 @@ github.com/frankban/quicktest v1.14.6/go.mod h1:4ptaffx2x8+WTWXmUCuVU6aPUX1/Mz7z
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
 github.com/fxamacker/cbor/v2 v2.9.2 h1:X4Ksno9+x3cz0TZv69ec1hxP/+tymuR8PXQJyDwfh78=
 github.com/fxamacker/cbor/v2 v2.9.2/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
-github.com/gematik/zero-lab/go/asl v0.0.0-20260617184140-1440fec98b58 h1:YgUBwjFN1Rg0vbX4YQ83WI56lNcCUgdZ1dIzZepFrQg=
-github.com/gematik/zero-lab/go/asl v0.0.0-20260617184140-1440fec98b58/go.mod h1:0RUa2DSvd0uTwiFQyjk/WilclTchD9lJlh2pb/d2h9s=
-github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58 h1:wxMP0D2TuSAlR+WNkYeHHvXDj2SWBWZ6BZwOaRUMHUI=
-github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58/go.mod h1:R/2lWeEB3SqwjVXuLDd++e1akc/fK/O79aF7fmxw3xY=
 github.com/gematik/zero-lab/go/dpop v0.0.0-20260617184140-1440fec98b58 h1:ogDHGqlLlEVDx3ap/Tpn/Dao9WshM9AQ0zLNDhZdkeE=
 github.com/gematik/zero-lab/go/dpop v0.0.0-20260617184140-1440fec98b58/go.mod h1:4ftB4hp9k2ejj8a434GmjY4j3ynhmun6ltRIzap9ygM=
 github.com/gematik/zero-lab/go/pep v0.0.0-20260617184140-1440fec98b58 h1:lGBh9FrD8vAwmsfIJi3//zLG1iyc3O/QHQd2xOP9mWM=

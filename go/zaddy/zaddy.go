@@ -11,7 +11,6 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
-	"github.com/gematik/zero-lab/go/asl"
 	"github.com/gematik/zero-lab/go/pep"
 )
 
@@ -21,14 +20,12 @@ func init() {
 }
 
 type App struct {
-	Resource            string           `json:"resource"`
-	AuthorizationServer string           `json:"authorization_server"`
-	JWKSPath            string           `json:"jwks_path"` // if set, it will be used otherwise the JWKS from authorization_server will be used
-	AslConfig           *AslGlobalConfig `json:"asl,omitempty"`
+	Resource            string `json:"resource"`
+	AuthorizationServer string `json:"authorization_server"`
+	JWKSPath            string `json:"jwks_path"` // if set, it will be used otherwise the JWKS from authorization_server will be used
 
-	logger    *slog.Logger
-	pep       *pep.PEP
-	aslServer *asl.Server
+	logger *slog.Logger
+	pep    *pep.PEP
 }
 
 func (App) CaddyModule() caddy.ModuleInfo {
@@ -48,10 +45,6 @@ func (a *App) Start() error {
 		Build()
 	if err != nil {
 		return fmt.Errorf("failed to create PEP: %w", err)
-	}
-
-	if err := a.startAslServer(); err != nil {
-		return fmt.Errorf("starting ASL: %w", err)
 	}
 
 	a.logger.Info("PEP successfully created", "jwks_path", a.JWKSPath)
@@ -104,12 +97,6 @@ func parseCaddyfilePEP(d *caddyfile.Dispenser, existingVal any) (any, error) {
 				return nil, d.ArgErr()
 			}
 			a.Resource = d.Val()
-		case "asl":
-			var err error
-			a.AslConfig, err = parseAslGlobalConfig(d)
-			if err != nil {
-				return nil, err
-			}
 		default:
 			return nil, d.Errf("unrecognized subdirective: %s", d.Val())
 		}
