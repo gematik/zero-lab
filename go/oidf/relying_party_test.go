@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"math/big"
@@ -46,20 +45,15 @@ func TestNewRelyingParty(t *testing.T) {
 	}
 
 	cfg := &RelyingPartyConfig{
-		Subject:              "https://example.com",
-		FedMasterURL:         fedMasterURL,
-		FedMasterJwk:         *jwk,
-		SignKid:              "sign-kid",
-		SignPrivateKeyPath:   signKeyPath,
-		EncKid:               "enc-kid",
-		EncPrivateKeyPath:    encKeyPath,
-		ClientKid:            "client-kid",
-		ClientPrivateKeyPath: clientKeyPath,
-		ClientCertPath:       clientCertPath,
-		MetadataTemplate: map[string]any{
-			"openid_relying_party": map[string]any{
-				"client_name": "https://example.com",
-			},
+		Subject:      "https://example.com",
+		FedMasterURL: fedMasterURL,
+		FedMasterJWK: jwk,
+		SignKey:      KeyConfig{KeyPEMPath: signKeyPath},
+		EncKey:       KeyConfig{KeyPEMPath: encKeyPath},
+		ClientKey:    KeyConfig{KeyPEMPath: clientKeyPath, CertPEMPath: clientCertPath},
+		RelyingParty: RelyingPartyMetadata{
+			ClientName:   "https://example.com",
+			RedirectURIs: []string{"https://example.com/callback"},
 		},
 	}
 
@@ -185,20 +179,22 @@ func TestConfigFile(t *testing.T) {
 	if cfg.FedMasterURL != "https://app-ref.federationmaster.de" {
 		t.Errorf("fed_master_url = %q", cfg.FedMasterURL)
 	}
-	if cfg.FedMasterJwk.Key == nil {
-		t.Error("fed_master_jwk did not parse into a key")
+	if cfg.RelyingParty.ClientName != "Zero Trust Lab" {
+		t.Errorf("client_name = %q", cfg.RelyingParty.ClientName)
+	}
+	if len(cfg.RelyingParty.RedirectURIs) == 0 {
+		t.Error("redirect_uris empty")
+	}
+	if cfg.SignKey.KeyPEMPath == "" {
+		t.Errorf("sign_key.key_pem_path = %q", cfg.SignKey.KeyPEMPath)
+	}
+	if cfg.ClientKey.CertPEMPath == "" {
+		t.Errorf("client_key.cert_pem_path = %q", cfg.ClientKey.CertPEMPath)
 	}
 
-	rp, ok := cfg.MetadataTemplate["openid_relying_party"].(map[string]any)
-	if !ok {
-		t.Fatalf("metadata_template.openid_relying_party missing: %v", cfg.MetadataTemplate)
-	}
-	if rp["client_name"] != "Zero Trust Lab" {
-		t.Errorf("client_name = %v", rp["client_name"])
-	}
-
-	// MetadataTemplate must stay JSON-serializable (it's marshaled downstream).
-	if _, err := json.Marshal(cfg.MetadataTemplate); err != nil {
-		t.Fatalf("metadata_template not JSON-serializable: %v", err)
+	// buildMetadata fills the OIDF boilerplate (response_types, algs, …) the config omits.
+	md := cfg.buildMetadata().OpenidRelyingParty
+	if md.TokenEndpointAuthMethod != "self_signed_tls_client_auth" || md.IDTokenEncryptedResponseEnc != "A256GCM" {
+		t.Errorf("defaults not applied: %+v", md)
 	}
 }

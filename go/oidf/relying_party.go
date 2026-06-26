@@ -1,8 +1,11 @@
 package oidf
 
 import (
+	"crypto"
+	"crypto/ecdsa"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"log/slog"
@@ -27,22 +30,35 @@ import (
 // minimal identity set (display name + insured/KVNR).
 var defaultOPScopes = []string{"openid", "urn:telematik:display_name", "urn:telematik:versicherter"}
 
+// RelyingPartyConfig configures a gematik OpenID Federation relying party. Only deployment-specific values
+// are required; the invariant gematik OIDF metadata (response_types, grant_types, client_registration_types,
+// token_endpoint_auth_method, id_token algorithms, PAR) is filled in by buildMetadata.
 type RelyingPartyConfig struct {
-	BaseDir              string         `yaml:"-"`
-	Subject              string         `yaml:"sub" validate:"required"`
-	FedMasterURL         string         `yaml:"fed_master_url" validate:"required"`
-	FedMasterJwk         Jwk            `yaml:"fed_master_jwk" validate:"required"`
-	SignKid              string         `yaml:"sign_kid" validate:"required"`
-	SignPrivateKeyPath   string         `yaml:"sign_private_key_path" validate:"required"`
-	EncKid               string         `yaml:"enc_kid" validate:"required"`
-	EncPrivateKeyPath    string         `yaml:"enc_private_key_path" validate:"required"`
-	ClientKid            string         `yaml:"client_kid" validate:"required"`
-	ClientPrivateKeyPath string         `yaml:"client_private_key_path" validate:"required"`
-	ClientCertPath       string         `yaml:"client_cert_path" validate:"required"`
-	MetadataTemplate     map[string]any `yaml:"metadata_template" validate:"required"`
-	// Scopes requested from the OpenID provider's authorization endpoint — the scopes that determine
-	// which identity claims (name, KVNR, …) the provider returns. When empty, defaultOPScopes is used.
-	Scopes []string `yaml:"scopes"`
+	BaseDir string `yaml:"-"`
+
+	// Subject is this relying party's entity identifier — its own public URL — and also the entity
+	// statement's iss/sub and the OIDF client_id.
+	Subject string `yaml:"sub" validate:"required"`
+
+	// FedMasterURL is the federation master. Its trust-anchor signing key is resolved from a built-in table
+	// of known gematik masters (see knownFedMasters); set FedMasterJWK to override or for an unlisted master.
+	FedMasterURL string `yaml:"fed_master_url" validate:"required"`
+	FedMasterJWK *Jwk   `yaml:"fed_master_jwk,omitempty"`
+
+	// SignKey signs the entity statement; EncKey decrypts the JWE id_token; ClientKey authenticates the
+	// self_signed_tls_client_auth mTLS calls (its cert_pem_path is required). Each is a KeyConfig.
+	SignKey   KeyConfig `yaml:"sign_key" validate:"required"`
+	EncKey    KeyConfig `yaml:"enc_key" validate:"required"`
+	ClientKey KeyConfig `yaml:"client_key" validate:"required"`
+
+	// RelyingParty + FederationEntity are the deployment-specific entity-statement metadata; the rest is
+	// defaulted.
+	RelyingParty     RelyingPartyMetadata `yaml:"relying_party" validate:"required"`
+	FederationEntity FederationEntity     `yaml:"federation_entity"`
+
+	// Scopes requested from the OpenID provider's authorization endpoint (which identity claims it returns).
+	// When empty, defaultOPScopes is used.
+	Scopes []string `yaml:"scopes,omitempty"`
 
 	// HTTPClient is the base client for federation and relying-party calls. Not serialized; supplied
 	// programmatically. When nil, a client with a default timeout is created. The relying party's
@@ -50,10 +66,53 @@ type RelyingPartyConfig struct {
 	HTTPClient *http.Client `yaml:"-"`
 }
 
+// KeyConfig sources one key. Provide exactly one of KeyPEMPath (a PEM private-key file), JWKPath (a JWK
+// file), or JWK (an inline JWK). CertPEMPath is the optional X.509 certificate (PEM) bound to the key —
+// required for the client key (mTLS). The key id is Kid when set, otherwise the RFC 7638 SHA-256 thumbprint;
+// a relying party already registered with a federation master MUST set Kid to the registered key id, or the
+// OP cannot match the signing key (it looks it up by kid in the jwks the master vouches for).
+type KeyConfig struct {
+	KeyPEMPath  string         `yaml:"key_pem_path,omitempty"`
+	CertPEMPath string         `yaml:"cert_pem_path,omitempty"`
+	JWKPath     string         `yaml:"jwk_path,omitempty"`
+	JWK         map[string]any `yaml:"jwk,omitempty"`
+	Kid         string         `yaml:"kid,omitempty"`
+}
+
+// RelyingPartyMetadata holds the variable openid_relying_party fields; the OIDF boilerplate is defaulted.
+type RelyingPartyMetadata struct {
+	ClientName       string   `yaml:"client_name" validate:"required"`
+	RedirectURIs     []string `yaml:"redirect_uris" validate:"required,min=1"`
+	OrganizationName string   `yaml:"organization_name,omitempty"`
+	LogoURI          string   `yaml:"logo_uri,omitempty"`
+	Scope            string   `yaml:"scope,omitempty"`              // default defaultMetadataScope
+	DefaultACRValues []string `yaml:"default_acr_values,omitempty"` // default [defaultACRValue]
+	SignedJwksURI    string   `yaml:"signed_jwks_uri,omitempty"`
+}
+
+// FederationEntity holds the variable federation_entity metadata.
+type FederationEntity struct {
+	Name        string   `yaml:"name,omitempty"`
+	Contacts    []string `yaml:"contacts,omitempty"`
+	HomepageURI string   `yaml:"homepage_uri,omitempty"`
+}
+
+const (
+	defaultMetadataScope = "openid urn:telematik:display_name urn:telematik:versicherter"
+	defaultACRValue      = "gematik-ehealth-loa-high"
+)
+
+// knownFedMasters maps a federation-master URL to its published signing JWK, so a config needs only the URL.
+// Unlisted masters require RelyingPartyConfig.FedMasterJWK.
+var knownFedMasters = map[string]string{
+	"https://app-ref.federationmaster.de": `{"kty":"EC","crv":"P-256","x":"cdIR8dLbqaGrzfgyu365KM5s00zjFq8DFaUFqBvrWLs","y":"XVp1ySJ2kjEInpjTZy0wD59afEXELpck0fk7vrMWrbw","kid":"puk_fedmaster_sig","use":"sig","alg":"ES256"}`,
+}
+
 type RelyingParty struct {
 	cfg              *RelyingPartyConfig
 	trustAnchor      jwk.Set
 	sigPrivateKey    jwk.Key
+	signKid          string
 	encPrivateKey    jwk.Key
 	clientPrivateKey jwk.Key
 	entityStatement  *EntityStatement
@@ -100,32 +159,31 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 
-	rp := RelyingParty{
-		cfg:         cfg,
-		trustAnchor: cfg.FedMasterJwk.AsSet().Keys,
-	}
+	rp := RelyingParty{cfg: cfg}
 
-	var sigPublicKey jwk.Key
-	rp.sigPrivateKey, sigPublicKey, err = loadKeys(rp.absPath(cfg.SignPrivateKeyPath), cfg.SignKid, jwk.ForSignature, "")
+	rp.trustAnchor, err = cfg.resolveTrustAnchor()
 	if err != nil {
 		return nil, err
 	}
 
-	var encPublicKey jwk.Key
-	rp.encPrivateKey, encPublicKey, err = loadKeys(rp.absPath(cfg.EncPrivateKeyPath), cfg.EncKid, jwk.ForEncryption, "")
-	if err != nil {
-		return nil, err
+	if cfg.ClientKey.CertPEMPath == "" {
+		return nil, fmt.Errorf("client_key.cert_pem_path is required (mTLS)")
 	}
 
-	var clientPublicKey jwk.Key
-	rp.clientPrivateKey, clientPublicKey, err = loadKeys(rp.absPath(cfg.ClientPrivateKeyPath), cfg.ClientKid, jwk.ForSignature, rp.absPath(cfg.ClientCertPath))
-	if err != nil {
-		return nil, err
+	var sigPublicKey, encPublicKey, clientPublicKey jwk.Key
+	if rp.sigPrivateKey, sigPublicKey, rp.signKid, err = loadKeyConfig(cfg.SignKey, cfg.BaseDir, jwk.ForSignature); err != nil {
+		return nil, fmt.Errorf("sign_key: %w", err)
+	}
+	if rp.encPrivateKey, encPublicKey, _, err = loadKeyConfig(cfg.EncKey, cfg.BaseDir, jwk.ForEncryption); err != nil {
+		return nil, fmt.Errorf("enc_key: %w", err)
+	}
+	if rp.clientPrivateKey, clientPublicKey, _, err = loadKeyConfig(cfg.ClientKey, cfg.BaseDir, jwk.ForSignature); err != nil {
+		return nil, fmt.Errorf("client_key: %w", err)
 	}
 
-	tlsCert, err := tls.LoadX509KeyPair(rp.absPath(cfg.ClientCertPath), rp.absPath(cfg.ClientPrivateKeyPath))
+	tlsCert, err := tlsCertFromKey(rp.clientPrivateKey, rp.absPath(cfg.ClientKey.CertPEMPath))
 	if err != nil {
-		return nil, fmt.Errorf("failed to load tls cert: %w", err)
+		return nil, fmt.Errorf("build mTLS client cert: %w", err)
 	}
 
 	baseClient := cfg.HTTPClient
@@ -146,19 +204,10 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 	})
 	rp.httpClient = &mtlsClient
 
-	metadata, err := templateToMetadata(cfg.MetadataTemplate)
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert metadata template: %w", err)
-	}
-
-	if metadata.OpenidRelyingParty == nil {
-		return nil, fmt.Errorf("template must contain openid_relying_party")
-	}
-
 	rp.entityStatement = &EntityStatement{
 		Issuer:   cfg.Subject,
 		Subject:  cfg.Subject,
-		Metadata: metadata,
+		Metadata: cfg.buildMetadata(),
 	}
 
 	rp.entityStatement.Jwks = &Jwks{Keys: jwk.NewSet()}
@@ -232,7 +281,7 @@ func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {
 	}
 
 	headers := jws.NewHeaders()
-	headers.Set(jws.KeyIDKey, rp.cfg.SignKid)
+	headers.Set(jws.KeyIDKey, rp.signKid)
 	headers.Set(jws.TypeKey, "entity-statement+jwt")
 
 	signed, err := jwt.Sign(token,
@@ -259,7 +308,6 @@ func (rp *RelyingParty) Serve(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/entity-statement+jwt")
 	w.Write(signed)
-	slog.Info("served entity statement", "remote_addr", r.RemoteAddr)
 }
 
 func (rp *RelyingParty) ServeSignedJwks(w http.ResponseWriter, r *http.Request) {
@@ -277,7 +325,7 @@ func (rp *RelyingParty) ServeSignedJwks(w http.ResponseWriter, r *http.Request) 
 	}
 
 	headers := jws.NewHeaders()
-	headers.Set(jws.KeyIDKey, rp.cfg.SignKid)
+	headers.Set(jws.KeyIDKey, rp.signKid)
 	headers.Set(jws.TypeKey, "jwk-set+json")
 
 	signed, err := jwt.Sign(token,
@@ -352,14 +400,22 @@ func loadCertBytesFromPem(certPath string) ([]byte, error) {
 
 // Loads the private key from the given path
 // and adds the certificate chain if certPath is not empty.
-func loadKeys(privateKeyPath string, kid string, keyUsage jwk.KeyUsageType, certPath string) (jwk.Key, jwk.Key, error) {
-	data, err := os.ReadFile(privateKeyPath)
+// loadKeyConfig loads one key (PEM file, JWK file, or inline JWK) for the given usage, returning the private
+// key, the matching public key, and the key id. The kid is KeyConfig.Kid when set, otherwise the RFC 7638
+// SHA-256 thumbprint. When KeyConfig.CertPEMPath is set the public key carries the X.509 cert chain.
+func loadKeyConfig(kc KeyConfig, baseDir string, keyUsage jwk.KeyUsageType) (jwk.Key, jwk.Key, string, error) {
+	privateKey, err := parseKeySource(kc, baseDir)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to read file: %w", err)
+		return nil, nil, "", err
 	}
-	privateKey, err := jwk.ParseKey(data, jwk.WithPEM(true))
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse key file %s: %w", privateKeyPath, err)
+
+	kid := kc.Kid
+	if kid == "" {
+		tp, err := privateKey.Thumbprint(crypto.SHA256)
+		if err != nil {
+			return nil, nil, "", fmt.Errorf("compute key thumbprint: %w", err)
+		}
+		kid = base64.RawURLEncoding.EncodeToString(tp)
 	}
 
 	privateKey.Set(jwk.KeyIDKey, kid)
@@ -367,32 +423,133 @@ func loadKeys(privateKeyPath string, kid string, keyUsage jwk.KeyUsageType, cert
 
 	publicKey, err := privateKey.PublicKey()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get public key from private key: %w", err)
+		return nil, nil, "", fmt.Errorf("derive public key: %w", err)
 	}
-
 	publicKey.Set(jwk.KeyIDKey, kid)
 	publicKey.Set(jwk.KeyUsageKey, keyUsage)
-
 	if keyUsage == jwk.ForEncryption {
 		publicKey.Set(jwk.AlgorithmKey, jwa.ECDH_ES)
 	} else {
 		publicKey.Set(jwk.AlgorithmKey, jwa.ES256)
 	}
 
-	if certPath != "" {
-		certDataDer, err := loadCertBytesFromPem(certPath)
+	if kc.CertPEMPath != "" {
+		certDataDer, err := loadCertBytesFromPem(joinBase(baseDir, kc.CertPEMPath))
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, "", err
 		}
 		var certChain cert.Chain
 		certChain.AddString(base64.StdEncoding.EncodeToString(certDataDer))
-		err = publicKey.Set(jwk.X509CertChainKey, &certChain)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to set cert chain: %w", err)
+		if err := publicKey.Set(jwk.X509CertChainKey, &certChain); err != nil {
+			return nil, nil, "", fmt.Errorf("set cert chain: %w", err)
 		}
 	}
 
-	return privateKey, publicKey, nil
+	return privateKey, publicKey, kid, nil
+}
+
+// parseKeySource parses a private key from exactly one of pem_path, jwk_path, or an inline jwk.
+func parseKeySource(kc KeyConfig, baseDir string) (jwk.Key, error) {
+	switch {
+	case kc.KeyPEMPath != "":
+		data, err := os.ReadFile(joinBase(baseDir, kc.KeyPEMPath))
+		if err != nil {
+			return nil, fmt.Errorf("read key_pem_path %q: %w", kc.KeyPEMPath, err)
+		}
+		return jwk.ParseKey(data, jwk.WithPEM(true))
+	case kc.JWKPath != "":
+		data, err := os.ReadFile(joinBase(baseDir, kc.JWKPath))
+		if err != nil {
+			return nil, fmt.Errorf("read jwk_path %q: %w", kc.JWKPath, err)
+		}
+		return jwk.ParseKey(data)
+	case len(kc.JWK) > 0:
+		data, err := json.Marshal(kc.JWK)
+		if err != nil {
+			return nil, fmt.Errorf("marshal inline jwk: %w", err)
+		}
+		return jwk.ParseKey(data)
+	default:
+		return nil, fmt.Errorf("provide one of key_pem_path, jwk_path, or jwk")
+	}
+}
+
+func joinBase(baseDir, p string) string {
+	if filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(baseDir, p)
+}
+
+// tlsCertFromKey builds the mTLS client certificate from the parsed client private key + the PEM cert, so
+// the client key may come from any source (PEM, JWK, inline) rather than only a PEM file pair.
+func tlsCertFromKey(clientPrivateKey jwk.Key, certPEMPath string) (tls.Certificate, error) {
+	certDER, err := loadCertBytesFromPem(certPEMPath)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	var ecKey ecdsa.PrivateKey
+	if err := jwk.Export(clientPrivateKey, &ecKey); err != nil {
+		return tls.Certificate{}, fmt.Errorf("export client private key: %w", err)
+	}
+	return tls.Certificate{Certificate: [][]byte{certDER}, PrivateKey: &ecKey}, nil
+}
+
+// resolveTrustAnchor returns the federation master's signing key set: the explicit FedMasterJWK, else the
+// built-in JWK for a known FedMasterURL.
+func (cfg *RelyingPartyConfig) resolveTrustAnchor() (jwk.Set, error) {
+	if cfg.FedMasterJWK != nil && cfg.FedMasterJWK.Key != nil {
+		return cfg.FedMasterJWK.AsSet().Keys, nil
+	}
+	known, ok := knownFedMasters[cfg.FedMasterURL]
+	if !ok {
+		return nil, fmt.Errorf("no built-in trust anchor for fed_master_url %q; set fed_master_jwk", cfg.FedMasterURL)
+	}
+	key, err := jwk.ParseKey([]byte(known))
+	if err != nil {
+		return nil, fmt.Errorf("parse built-in fed master jwk: %w", err)
+	}
+	set := jwk.NewSet()
+	set.AddKey(key)
+	return set, nil
+}
+
+// buildMetadata assembles the entity-statement metadata from the deployment-specific config plus the
+// invariant gematik OIDF defaults.
+func (cfg *RelyingPartyConfig) buildMetadata() *Metadata {
+	rp := cfg.RelyingParty
+	scope := rp.Scope
+	if scope == "" {
+		scope = defaultMetadataScope
+	}
+	acr := rp.DefaultACRValues
+	if len(acr) == 0 {
+		acr = []string{defaultACRValue}
+	}
+	return &Metadata{
+		OpenidRelyingParty: &OpenIDRelyingPartyMetadata{
+			ClientName:                         rp.ClientName,
+			RedirectURIs:                       rp.RedirectURIs,
+			OrganizationName:                   rp.OrganizationName,
+			LogoURI:                            rp.LogoURI,
+			Scope:                              scope,
+			DefaultACRValues:                   acr,
+			SignedJwksUri:                      rp.SignedJwksURI,
+			ResponseTypes:                      []string{"code"},
+			ClientRegistrationTypes:            []string{"automatic"},
+			GrantTypes:                         []string{"authorization_code"},
+			RequirePushedAuthorizationRequests: true,
+			TokenEndpointAuthMethod:            "self_signed_tls_client_auth",
+			IDTokenSignedResponseAlg:           "ES256",
+			IDTokenEncryptedResponseAlg:        "ECDH-ES",
+			IDTokenEncryptedResponseEnc:        "A256GCM",
+		},
+		FederationEntity: &FederationEntityMetadata{
+			Name:        cfg.FederationEntity.Name,
+			Contacts:    cfg.FederationEntity.Contacts,
+			HomepageURI: cfg.FederationEntity.HomepageURI,
+		},
+	}
 }
 
 // transportWithTLS clones the base transport (or http.DefaultTransport when the base is nil or not a

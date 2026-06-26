@@ -31,8 +31,9 @@ func TestEntityStatementHook(t *testing.T) {
 	jwks.Keys.AddKey(pub)
 
 	rp := &RelyingParty{
-		cfg:           &RelyingPartyConfig{FedMasterURL: "https://fedmaster.example", SignKid: "sign-kid"},
+		cfg:           &RelyingPartyConfig{FedMasterURL: "https://fedmaster.example"},
 		sigPrivateKey: sigKey,
+		signKid:       "sign-kid",
 		entityStatement: &EntityStatement{
 			Issuer:  "https://rp.example",
 			Subject: "https://rp.example",
