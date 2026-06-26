@@ -1,16 +1,22 @@
-# S1 HITL harness — prove the forward_auth flow end-to-end with a real OIDC provider:
+# HITL harness — prove the forward_auth flow end-to-end with a real OIDC provider:
 #
 #   browser → caddy(:8480) ──forward_auth──> zero-pep-proxy /oauth2/auth   (gate)
-#                          └─reverse_proxy──> upstream (podinfo: web UI + /headers echo)
+#                          └─reverse_proxy──> upstream (metsubushi: header-reflecting page + /api/headers)
 #
 # Setup: `cp .env.example .env`, fill the OIDC provider creds, and register the redirect_uri
 #   http://127.0.0.1:8480/oauth2/callback
-# at that provider. Then `docker compose up --build`: open http://127.0.0.1:8480/ for the podinfo UI (gated),
-# and http://127.0.0.1:8480/headers to see the injected X-Auth-Request-User / -Email / -Groups.
+# at that provider. Then `docker compose up --build`: open http://127.0.0.1:8480/ for the metsubushi page
+# (gated) — it renders the injected X-Auth-Request-User / -Email / -Groups (/api/headers for the JSON).
 services:
-  # The protected upstream — podinfo (web UI + GET /headers echoes the request headers the proxy injects).
+  # The protected upstream — metsubushi (header-reflecting page + GET /api/headers echoes the request headers
+  # the proxy injects). Built from the workspace via go.work. LOGOUT_URL wires its "Log out" button to the pep
+  # proxy's sign-out (relative, so it works on whatever origin Caddy fronts).
   upstream:
-    image: ghcr.io/stefanprodan/podinfo:latest
+    build:
+      context: ../../.. # the go/ workspace root (for go.work)
+      dockerfile: metsubushi/Dockerfile
+    environment:
+      LOGOUT_URL: "/oauth2/sign_out"
 
   zero-pep-proxy:
     build:
@@ -35,6 +41,6 @@ services:
       - "8480:8480"
     environment:
       PEP_UPSTREAM: "zero-pep-proxy:4180"
-      APP_UPSTREAM: "upstream:9898"
+      APP_UPSTREAM: "upstream:8080"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro

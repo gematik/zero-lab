@@ -1,4 +1,4 @@
-# e2e harness for the pep oauth2-proxy: Caddy (forward_auth) + podinfo (upstream) only.
+# e2e harness for the pep oauth2-proxy: Caddy (forward_auth) + metsubushi (upstream) only.
 #
 # The proxy itself runs on the HOST (`go run ./pep/cmd/zero-pep-proxy` on :4180) so it can use local OIDF
 # relying-party secrets and/or a rathole tunnel; Caddy reaches it via host.docker.internal. This keeps the
@@ -6,19 +6,26 @@
 #
 #   browser → caddy(:8480) ──forward_auth──> host pep /oauth2/auth        (gate)
 #                          ├─reverse_proxy──> /.well-known/openid-federation → host pep  (OIDF, public)
-#                          └─reverse_proxy──> upstream (podinfo: web UI + /headers echo)
+#                          └─reverse_proxy──> upstream (metsubushi: header-reflecting page + /api/headers)
 #
 # Usage:
-#   1) docker compose -f pep/proxy/e2e/docker-compose.yaml up
+#   1) docker compose -f pep/proxy/e2e/docker-compose.yaml up --build
 #   2) run the proxy on the host, e.g.:
 #        PEP_OIDC_ISSUER=... PEP_OIDC_CLIENT_ID=... PEP_OIDC_CLIENT_SECRET=... \
 #          go run ./pep/cmd/zero-pep-proxy
 #      (or PEP_OIDF_RP_CONFIG_PATH=... PEP_PUBLIC_URL=https://<rathole-sub> for OIDF)
-#   3) open http://127.0.0.1:8480/headers   (or https://<rathole-sub>/headers for OIDF)
+#   3) open http://127.0.0.1:8480/   (the page renders the injected X-Auth-Request-*/PEP headers; /api/headers
+#      returns the same as JSON)
 services:
-  # Protected upstream — podinfo's GET /headers echoes the X-Auth-Request-* headers the proxy injects.
+  # Protected upstream — metsubushi renders the injected X-Auth-Request-*/PEP headers (GET /) and echoes the
+  # request headers as JSON (GET /api/headers). LOGOUT_URL wires its "Log out" button to the pep proxy's
+  # sign-out. Built from the workspace via go.work.
   upstream:
-    image: ghcr.io/stefanprodan/podinfo:latest
+    build:
+      context: ../../.. # the go/ workspace root
+      dockerfile: metsubushi/Dockerfile
+    environment:
+      LOGOUT_URL: "/oauth2/sign_out"
 
   caddy:
     image: caddy:2
@@ -28,7 +35,7 @@ services:
     environment:
       # The proxy runs on the host; reach it from inside the container.
       PEP_UPSTREAM: "host.docker.internal:4180"
-      APP_UPSTREAM: "upstream:9898"
+      APP_UPSTREAM: "upstream:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway" # Linux: map host.docker.internal to the host
     volumes:

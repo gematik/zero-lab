@@ -200,6 +200,13 @@ func (s *Server) handlePoll(w http.ResponseWriter, r *http.Request) {
 		if dest == "" {
 			dest = "/"
 		}
+		// Decoupled flow: the callback completed on the other device, so the id wasn't rotated there. Rotate
+		// now on this cookie-owning device (anti-fixation) and re-bind the cookie before handing back control.
+		if err := s.sessions.rotate(sess); err != nil {
+			slog.Warn("session rotation failed", "session", sess.ID, "error", err)
+		} else {
+			setCookie(w, s.cookie, sess.ID)
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "return_to": dest})
 		return
 	}
@@ -245,6 +252,9 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		s.renderError(w, "exchange_failed", err.Error(), idpIss, rd)
 		return
 	}
+	// Consume the one-time state so it can't be replayed; clearing it also stops save() from re-indexing it.
+	s.sessions.deleteState(sess.State)
+	sess.State = ""
 	if err := s.sessions.save(sess); err != nil {
 		s.renderError(w, "server_error", err.Error(), idpIss, rd)
 		return
@@ -253,16 +263,24 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	if dest == "" {
 		dest = "/"
 	}
-	slog.Info("login complete", "session", sess.ID, "idp_iss", sess.IDPIss, "return_to", dest)
 
 	// Decoupled (OIDF QR) flow: this callback landed on a second device that scanned the QR and never started
-	// the login here, so it holds no session cookie — redirecting it to rd is meaningless. Show a success
-	// page and let the originating device (polling /oauth2/poll) be the one that proceeds to rd. The on-device
-	// flow carries the /oauth2/start cookie and falls through to the redirect.
+	// the login here, so it holds no session cookie — redirecting it to rd is meaningless, and it can't rotate
+	// the cookie. Show a success page; the originating device (polling /oauth2/poll) proceeds to rd and rotates
+	// the id there.
 	if !s.requestOwnsSession(r, sess) {
+		slog.Info("login complete", "session", sess.ID, "idp_iss", sess.IDPIss, "decoupled", true)
 		s.render.render(w, http.StatusOK, "complete.html", nil)
 		return
 	}
+	// On-device: now that the user is authenticated, rotate the session id (anti-fixation) and re-bind the
+	// cookie before returning to rd.
+	if err := s.sessions.rotate(sess); err != nil {
+		s.renderError(w, "server_error", err.Error(), idpIss, rd)
+		return
+	}
+	setCookie(w, s.cookie, sess.ID)
+	slog.Info("login complete", "session", sess.ID, "idp_iss", sess.IDPIss, "return_to", dest)
 	http.Redirect(w, r, dest, http.StatusFound)
 }
 
