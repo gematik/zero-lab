@@ -19,6 +19,8 @@
 //	PEP_COOKIE_NAME          session cookie name (default ZERO-PEP-SID)
 //	PEP_PRODUCTION_COOKIE    "true" → __Host- + Secure (set behind HTTPS)
 //	PEP_TEMPLATE_DIR         replace the embedded UI templates from this directory
+//	DATABASE_URL             Postgres DSN for the session store; durable + shared across replicas. When unset,
+//	                         an in-memory store is used (dev only — sessions are lost on restart, not shared).
 //
 // Usage: zero-pep-proxy [-w workdir] [-f config.yaml]
 //
@@ -30,6 +32,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"log/slog"
@@ -39,6 +42,7 @@ import (
 	"strings"
 
 	"github.com/gematik/zero-lab/go/kv"
+	"github.com/gematik/zero-lab/go/kv/postgres"
 	"github.com/gematik/zero-lab/go/pep/proxy"
 	"github.com/joho/godotenv"
 )
@@ -48,6 +52,23 @@ func env(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// openStore returns the session store. Postgres when DATABASE_URL is set — durable across restarts and shared
+// across replicas (required for production / horizontal scale). Otherwise an in-memory store for dev/tests,
+// where sessions are lost on restart and not shared.
+func openStore() kv.Store {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		slog.Warn("DATABASE_URL not set — using in-memory kv store (sessions are lost on restart and not shared across replicas)")
+		return kv.NewMemory()
+	}
+	store, err := postgres.Open(context.Background(), dsn)
+	if err != nil {
+		log.Fatalf("open postgres kv store: %v", err)
+	}
+	slog.Info("using postgres kv store for sessions")
+	return store
 }
 
 func main() {
@@ -111,7 +132,7 @@ func main() {
 
 	server, err := proxy.New(proxy.Config{
 		Backend:          proxy.NewProviderBackend(opts...),
-		Store:            kv.NewMemory(),
+		Store:            openStore(),
 		CookieName:       env("PEP_COOKIE_NAME", "ZERO-PEP-SID"),
 		ProductionCookie: os.Getenv("PEP_PRODUCTION_COOKIE") == "true",
 		TemplateDir:      os.Getenv("PEP_TEMPLATE_DIR"),
