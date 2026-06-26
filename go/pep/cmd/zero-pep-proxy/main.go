@@ -2,43 +2,45 @@
 // serves the /oauth2/* endpoints on :4180 and is meant to sit behind Caddy in forward_auth mode (see the
 // Caddyfile alongside this file) or to be reverse-proxied directly.
 //
-// Direct providers (OIDC, OIDF) with sessions in memory. Config from env:
+// Providers run in parallel. For several providers (multiple OIDC, gemidp, an OIDF RP), point
+// PEP_CONFIG_PATH at a YAML file (see config.example.yaml). For a single provider of each type, the PEP_*
+// env vars below work without a config file. Sessions are in memory.
 //
 //	PEP_ADDR                 listen address (default :4180)
 //	PEP_PUBLIC_URL           public origin the browser reaches the proxy at (default http://127.0.0.1:4180)
-//	PEP_OIDC_ISSUER          direct OIDC provider issuer (enables OIDC login)
-//	PEP_OIDC_CLIENT_ID       the proxy's client_id at the provider
-//	PEP_OIDC_CLIENT_SECRET   the client secret
-//	PEP_OIDC_SCOPES          space-separated (default "openid email profile")
-//	PEP_OIDC_NAME            display name in the chooser (default "OpenID Connect")
-//	PEP_OIDC_ACCEPTABLE_SKEW id_token clock-skew tolerance, a Go duration (e.g. 60s, 2m); default 1m
+//	PEP_CONFIG_PATH          YAML listing several providers (oidc[], gemidp[], oidf) — the multi-provider path
+//	PEP_OIDC_ISSUER          direct OIDC provider issuer (enables single-OIDC login)
+//	PEP_OIDC_CLIENT_ID / _CLIENT_SECRET / _SCOPES / _NAME / _LOGO_URI / _ACCEPTABLE_SKEW  OIDC options
 //	PEP_OIDF_RP_CONFIG_PATH  gematik OIDF relying-party config (YAML); enables federation login
 //	PEP_GEMIDP_CLIENT_ID     gematik IDP-Dienst client_id (enables gemidp login)
 //	PEP_GEMIDP_ENV           test|ref|prod (default prod); or PEP_GEMIDP_BASE_URL to override
-//	PEP_GEMIDP_REDIRECT_URI  redirect_uri the gemidp client sends in its auth/token requests (default
-//	                         <public>/oauth2/callback)
-//	PEP_GEMIDP_REDIRECT_SCOPES  space-separated (default "openid")
-//	PEP_GEMIDP_NAME / _LOGO_URI / _USER_AGENT  chooser/display options (always Authenticator-app flow)
+//	PEP_GEMIDP_REDIRECT_URI  redirect_uri the gemidp client sends (default <public>/oauth2/callback)
+//	PEP_GEMIDP_REDIRECT_SCOPES / _NAME / _LOGO_URI / _USER_AGENT  gemidp options (always Authenticator flow)
 //	PEP_COOKIE_NAME          session cookie name (default ZERO-PEP-SID)
 //	PEP_PRODUCTION_COOKIE    "true" → __Host- + Secure (set behind HTTPS)
 //	PEP_TEMPLATE_DIR         replace the embedded UI templates from this directory
 //
-// Configure at least one of PEP_OIDC_ISSUER / PEP_OIDF_RP_CONFIG_PATH / PEP_GEMIDP_CLIENT_ID.
+// Usage: zero-pep-proxy [-w workdir] [-f config.yaml]
+//
+//	-w chdir's to workdir and loads a .env from it; the config (default pep.yaml) is found there too, but a
+//	config's own relative paths (keys, secrets) always resolve against the config file's directory, not -w.
+//	${VAR} placeholders in the config expand from the environment. -f overrides the default / PEP_CONFIG_PATH.
+//
+// Configure providers via the config file, or PEP_OIDC_ISSUER / PEP_OIDF_RP_CONFIG_PATH / PEP_GEMIDP_CLIENT_ID.
 package main
 
 import (
+	"flag"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/kv"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
-	"github.com/gematik/zero-lab/go/oidf"
 	"github.com/gematik/zero-lab/go/pep/proxy"
+	"github.com/joho/godotenv"
 )
 
 func env(key, def string) string {
@@ -49,80 +51,62 @@ func env(key, def string) string {
 }
 
 func main() {
+	configPath := flag.String("f", "", "providers config YAML (default pep.yaml in the workdir); overrides PEP_CONFIG_PATH")
+	workdir := flag.String("w", "", "working directory: chdir here and load .env from it (does not move the config's base path)")
+	flag.Parse()
+
+	// Resolve an explicit -f / PEP_CONFIG_PATH against the invocation directory now, before -w changes the
+	// cwd, and make it absolute — so the config's own relative paths (keys, secrets) stay anchored to the
+	// config file's directory regardless of -w.
+	cfgPath := *configPath
+	if cfgPath == "" {
+		cfgPath = os.Getenv("PEP_CONFIG_PATH")
+	}
+	if cfgPath != "" {
+		if abs, err := filepath.Abs(cfgPath); err == nil {
+			cfgPath = abs
+		}
+	}
+
+	if *workdir != "" {
+		if err := os.Chdir(*workdir); err != nil {
+			log.Fatalf("chdir %q: %v", *workdir, err)
+		}
+	}
+	// Load .env from the (work)dir so PEP_* and the config's ${VAR} placeholders come from one place;
+	// existing environment variables take precedence.
+	_ = godotenv.Load()
+
 	if os.Getenv("DEBUG") != "" {
 		slog.SetLogLoggerLevel(slog.LevelDebug)
 	}
 	addr := env("PEP_ADDR", ":4180")
 	publicURL := strings.TrimRight(env("PEP_PUBLIC_URL", "http://127.0.0.1:4180"), "/")
 
-	var opts []proxy.ProviderOption
-
-	// Direct OIDC provider (optional).
-	if issuer := os.Getenv("PEP_OIDC_ISSUER"); issuer != "" {
-		var skew time.Duration // id_token clock-skew tolerance; 0 → the oidc client's 1m default.
-		if v := os.Getenv("PEP_OIDC_ACCEPTABLE_SKEW"); v != "" {
-			d, err := time.ParseDuration(v)
-			if err != nil {
-				log.Fatalf("invalid PEP_OIDC_ACCEPTABLE_SKEW %q: %v", v, err)
+	// Default config filename, looked up in the workdir; absolute so its directory is the config's base path.
+	if cfgPath == "" {
+		if abs, err := filepath.Abs("pep.yaml"); err == nil {
+			if _, statErr := os.Stat(abs); statErr == nil {
+				cfgPath = abs
 			}
-			skew = d
 		}
-		client, err := oidc.NewClient(oidc.Config{
-			Issuer:         issuer,
-			ClientID:       os.Getenv("PEP_OIDC_CLIENT_ID"),
-			ClientSecret:   oidc.NewSecretString(os.Getenv("PEP_OIDC_CLIENT_SECRET")),
-			RedirectURI:    publicURL + "/oauth2/callback",
-			Scopes:         strings.Fields(env("PEP_OIDC_SCOPES", "openid email profile")),
-			Name:           env("PEP_OIDC_NAME", "OpenID Connect"),
-			AcceptableSkew: skew,
-		})
-		if err != nil {
-			log.Fatalf("create oidc client: %v", err)
-		}
-		opts = append(opts, proxy.WithOIDCClients(client))
-		slog.Info("oidc provider configured", "issuer", issuer)
 	}
 
-	// OIDF (gematik federation) relying party (optional). The config's redirect_uris[0] must be
-	// <public>/oauth2/callback, and its `sub` must be reachable at <public> and registered with the
-	// federation master.
-	if rpPath := os.Getenv("PEP_OIDF_RP_CONFIG_PATH"); rpPath != "" {
-		rp, err := oidf.NewRelyingPartyFromConfigFile(rpPath)
-		if err != nil {
-			log.Fatalf("load oidf relying party: %v", err)
+	// Providers run in parallel. A config file (-f / PEP_CONFIG_PATH, a YAML listing several oidc/gemidp +
+	// one oidf RP) is the multi-provider path; otherwise a single provider of each type comes from PEP_* env.
+	var opts []proxy.ProviderOption
+	if cfgPath != "" {
+		var err error
+		if opts, err = loadProviders(cfgPath, publicURL); err != nil {
+			log.Fatalf("load providers from %s: %v", cfgPath, err)
 		}
-		opts = append(opts, proxy.WithRelyingParty(rp))
-		slog.Info("oidf relying party configured", "config", rpPath)
-	}
-
-	// gematik IDP-Dienst (gemidp) direct provider (optional). PEP_GEMIDP_REDIRECT_URI overrides the
-	// redirect_uri this client sends in its auth/token requests (default pep's own callback) — for a client
-	// registered with a fixed redirect_uri.
-	if clientID := os.Getenv("PEP_GEMIDP_CLIENT_ID"); clientID != "" {
-		redirectURI := publicURL + "/oauth2/callback"
-		if v := os.Getenv("PEP_GEMIDP_REDIRECT_URI"); v != "" {
-			redirectURI = v
-		}
-		client, err := gemidp.NewClientFromConfig(gemidp.ClientConfig{
-			Environment:       gemidp.NewEnvironment(os.Getenv("PEP_GEMIDP_ENV")),
-			BaseURL:           os.Getenv("PEP_GEMIDP_BASE_URL"),
-			ClientID:          clientID,
-			RedirectURI:       redirectURI,
-			Scopes:            strings.Fields(env("PEP_GEMIDP_REDIRECT_SCOPES", "openid")),
-			Name:              env("PEP_GEMIDP_NAME", "gematik IDP-Dienst"),
-			LogoURI:           os.Getenv("PEP_GEMIDP_LOGO_URI"),
-			AuthenticatorMode: true, // gemidp is always the gematik Authenticator deep-link flow
-			UserAgent:         env("PEP_GEMIDP_USER_AGENT", "zero-pep-proxy"),
-		})
-		if err != nil {
-			log.Fatalf("create gemidp client: %v", err)
-		}
-		opts = append(opts, proxy.WithOIDCClients(client))
-		slog.Info("gemidp provider configured", "env", os.Getenv("PEP_GEMIDP_ENV"), "client_id", clientID, "redirect_uri", redirectURI)
+		slog.Info("providers loaded from config", "path", cfgPath)
+	} else {
+		opts = providersFromEnv(publicURL)
 	}
 
 	if len(opts) == 0 {
-		log.Fatal("configure at least one provider: PEP_OIDC_ISSUER, PEP_OIDF_RP_CONFIG_PATH, and/or PEP_GEMIDP_CLIENT_ID")
+		log.Fatal("configure providers via PEP_CONFIG_PATH, or PEP_OIDC_ISSUER / PEP_OIDF_RP_CONFIG_PATH / PEP_GEMIDP_CLIENT_ID")
 	}
 
 	server, err := proxy.New(proxy.Config{
