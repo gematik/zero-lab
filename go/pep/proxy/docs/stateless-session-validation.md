@@ -29,8 +29,9 @@ Validate the hot path locally from a **signed session-snapshot cookie**, and mak
 fleet-wide** with an in-memory revoked-session set kept in sync over a **`kv` revocation bus** (pub/sub),
 backed by a durable `kv` set so a missed message cannot leak access for long.
 
-`kv` reads on the hot path drop from *per request* to *~once per snapshot-TTL per active session* (the
-re-mint), with **no `kv` read at all** while a snapshot is valid.
+`kv` reads on the hot path drop from *per request* to *~once per session* (at login, when the snapshot is
+minted), with **no `kv` read at all** while a snapshot is valid — and with `exp` = the session lifetime, that
+is the whole session.
 
 ## Design
 
@@ -46,16 +47,20 @@ Two cookies (cookie-caching style — the opaque id stays canonical; the snapsho
   headers:
 
   ```
-  { sid, sub, email, groups, iat, exp }      exp = iat + SNAPSHOT_TTL   (default 2–5 min)
+  { sid, identity{…}, iat, exp }      exp = iat + the session's absolute lifetime (e.g. 8h)
   ```
 
-  `HttpOnly`, `__Host-`+`Secure` in prod, `SameSite=Lax`. It is **not** an IdP token — it is pep's own
-  identity assertion. It is **encrypted**, not just signed: the claims are PII (`email`), so the browser holds
-  an opaque blob (data minimization + the BFF "nothing identity-bearing client-side" property), and AES-GCM
-  gives integrity in the same primitive. Encryption is for confidentiality, **not** anti-replay — a stolen
-  snapshot is replayable either way; that is handled by the cookie hardening, short TTL, and revoked-set.
+  It carries the **full identity map** (not just sub/email/groups) so the fast path reproduces every header
+  the kv path emits, incl. `X-Auth-Request-Identity`. `HttpOnly`, `__Host-`+`Secure` in prod, `SameSite=Lax`.
+  It is **not** an IdP token — it is pep's own identity assertion. It is **encrypted**, not just signed: the
+  claims are PII (`email`), so the browser holds an opaque blob (data minimization + the BFF "nothing
+  identity-bearing client-side" property), and AES-GCM gives integrity in the same primitive. Encryption is
+  for confidentiality, **not** anti-replay — a stolen snapshot is replayable either way; that is handled by the
+  cookie hardening, the bounded lifetime, and the revoked-set.
 
-Set/refreshed together at login, on rotation, and whenever the fast path re-mints (below).
+Minted at login and on rotation (browser-direct responses). It is **not** refreshed mid-session — in
+forward_auth the `/auth` subrequest can't set a browser cookie, so the snapshot is long-lived (covers the
+whole session) instead of short + re-minted (see Fast path).
 
 ### 2. Snapshot key
 
@@ -83,22 +88,22 @@ per-request `kv` path (re-mint on the next request), never a lockout.
 ```
 read snapshot cookie
   decrypt + authenticate (AES-256-GCM)
-    invalid/absent → fall back (below)
-  valid:
-    if sid ∈ revokedSet            → 401            # instant revocation
-    if exp in the past             → fall back (below)
-    else → 202 + X-Auth-Request-* from claims       # no kv, no network
+    valid + exp in future + sid ∉ revokedSet → 202 + X-Auth-Request-* from claims   # no kv, no network
+    valid + sid ∈ revokedSet                 → 401                                  # instant revocation
+    invalid / expired / absent               → fall back (below)
 
-fall back (snapshot expired/absent, signature still readable for the sid, or via the opaque cookie):
-  resolve session id (from the signed-but-expired snapshot, else the opaque session cookie)
-  load from kv (this re-checks the idle + absolute TTLs and existence — the source of truth)
-    not found / expired / revoked → 401
-  re-mint the snapshot cookie (Set-Cookie on the /auth response)
-  202 + X-Auth-Request-*
+fall back (no valid snapshot — e.g. before login establishes one, or after the session lifetime):
+  resolve the session via the opaque session cookie → load from kv (source of truth)
+    not found / past absolute lifetime / revoked → 401
+    else                                          → 202 + X-Auth-Request-*
 ```
 
-The fallback is the only place `kv` is touched, at most once per `SNAPSHOT_TTL` per active session, and it is
-where the existing **idle/absolute TTL** hardening is re-enforced.
+**The `/auth` subrequest does not re-mint the snapshot.** In forward_auth (and every ingress equivalent — see
+below) a `Set-Cookie` on the auth-subrequest response does not reach the browser. So the snapshot is minted
+on the **browser-direct** responses — `/oauth2/callback` (on-device) and `/oauth2/poll` (decoupled) — with
+`exp` = the session's **absolute lifetime**, covering the whole session; `/auth` only ever reads it. While a
+snapshot is valid, `/auth` touches `kv` **zero** times for the entire session; `kv` is consulted only on the
+fallback (no snapshot yet) and during the auth flow.
 
 ### 4. Revocation bus
 
@@ -135,9 +140,30 @@ interval. So a dropped pub/sub message bounds exposure to the reconcile interval
 ### 6. Interactions
 
 - Token-mediating BFF preserved: tokens stay in `kv`; the snapshot carries only identity claims.
-- Idle + absolute TTLs (existing) are re-checked on the fallback path (≤ `SNAPSHOT_TTL` lag); set
-  `SNAPSHOT_TTL` ≤ the idle TTL.
+- **No sliding idle on the snapshot path.** Because forward_auth can't refresh the cookie, the snapshot must
+  cover the whole session, so the `kv` session TTL and the snapshot `exp` are both set to the session's
+  **absolute lifetime** (default 8h); instant revocation (revoked-set) is the only early termination. When no
+  key is configured, the current sliding-idle + per-request `kv` behavior is unchanged. Reverse-proxy mode
+  (S5) — pep in the request path, refreshing the cookie per response — can restore a true sliding idle.
+- The `kv` session must outlive any valid snapshot (it holds the refresh token the auth flow needs), which is
+  why its TTL is tied to the snapshot `exp`, not the old 1h idle.
 - Single-use `state` (existing) is unaffected — it lives entirely in the auth flow.
+
+## Ingress / external-auth portability
+
+pep is a generic **external-auth** service, not Caddy-specific. The same forward_auth model — and the same
+"the auth subrequest can't set a browser cookie" limitation — is how every common ingress integrates:
+
+- **Caddy** `forward_auth` → `/oauth2/auth`, `copy_headers X-Auth-Request-*`.
+- **nginx / ingress-nginx** `auth_request` (`nginx.ingress.kubernetes.io/auth-url` + `auth-signin`,
+  `auth-response-headers: X-Auth-Request-User,…`).
+- **Traefik** `ForwardAuth` middleware (`authResponseHeaders`).
+
+All three call pep's `/oauth2/auth` as a subrequest, propagate the `X-Auth-Request-*` headers to the upstream,
+and **cannot** forward a `Set-Cookie` from that subrequest to the browser. That is exactly why the snapshot is
+minted on the browser-direct `/oauth2/callback` + `/oauth2/poll` responses (which any ingress passes through
+unchanged) and made long-lived rather than re-minted — so the design is portable across all of them with no
+ingress-specific cookie hacks. pep's existing endpoint + header contract already matches these annotations.
 
 ## Durability & restart survival
 

@@ -22,18 +22,32 @@ import (
 type Config struct {
 	Backend          Backend       // the auth backend (providerBackend today; pdpBackend later)
 	Store            kv.Store      // session store
-	SessionTTL       time.Duration // sliding session TTL (0 = 1h)
+	SessionTTL       time.Duration // sliding session TTL (0 = 1h); ignored when the snapshot fast path is on
 	CookieName       string        // session cookie name (default ZERO-PEP-SID)
 	ProductionCookie bool          // __Host- + Secure (true behind HTTPS)
 	TemplateDir      string        // override the embedded UI templates (os.DirFS); "" = embedded
+
+	// Snapshot fast path (docs/stateless-session-validation.md). When SnapshotKeyPath is set, /oauth2/auth
+	// validates an encrypted snapshot cookie locally (no kv) for the whole session. Keys are read from files.
+	SnapshotKeyPath         string        // base64 256-bit key file; "" disables the fast path
+	SnapshotPreviousKeyPath string        // optional previous key file (rotation overlap)
+	SnapshotTTL             time.Duration // = session absolute lifetime (0 = 8h)
 }
+
+// defaultSnapshotTTL is the snapshot lifetime, and — when the fast path is on — the session lifetime: the
+// snapshot covers the whole session (forward_auth can't refresh the cookie), with instant revocation via the
+// revoked-set as the only early termination.
+const defaultSnapshotTTL = 8 * time.Hour
 
 // Server serves the /oauth2/* endpoints over a Backend + session store.
 type Server struct {
-	sessions *sessionStore
-	cookie   *http.Cookie
-	render   *renderer
-	backend  Backend
+	sessions   *sessionStore
+	cookie     *http.Cookie
+	render     *renderer
+	backend    Backend
+	snap       *snapshotter // nil when the fast path is disabled (no key file)
+	snapCookie *http.Cookie // snapshot cookie template (only when snap != nil)
+	revoker    revoker
 }
 
 func New(cfg Config) (*Server, error) {
@@ -50,12 +64,34 @@ func New(cfg Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Server{
-		sessions: newSessionStore(cfg.Store, cfg.SessionTTL),
+
+	snapTTL := cfg.SnapshotTTL
+	if snapTTL <= 0 {
+		snapTTL = defaultSnapshotTTL
+	}
+	snap, err := newSnapshotter(cfg.SnapshotKeyPath, cfg.SnapshotPreviousKeyPath, snapTTL)
+	if err != nil {
+		return nil, err
+	}
+
+	sessions := newSessionStore(cfg.Store, cfg.SessionTTL)
+	s := &Server{
+		sessions: sessions,
 		cookie:   newCookieTemplate(cfg.CookieName, cfg.ProductionCookie),
 		render:   r,
 		backend:  cfg.Backend,
-	}, nil
+		snap:     snap,
+		revoker:  newMemRevoker(snapTTL),
+	}
+	if snap != nil {
+		// The snapshot covers the whole session, so the kv session must live as long (it holds the refresh
+		// token) and there is no sliding idle: pin both the idle and absolute TTLs to the snapshot lifetime.
+		sessions.ttl = snapTTL
+		sessions.maxLifetime = snapTTL
+		s.snapCookie = newCookieTemplate(cfg.CookieName+"-SNAP", cfg.ProductionCookie)
+		slog.Info("snapshot fast path enabled", "ttl", snapTTL)
+	}
+	return s, nil
 }
 
 // Handler returns the /oauth2/* mux. Mount it at the root; in forward_auth mode Caddy reverse_proxies
@@ -102,6 +138,23 @@ type qrData struct {
 // handleAuth is the forward_auth subrequest: 202 + identity headers when authenticated, bare 401 otherwise
 // (Caddy's handle_response then redirects to /oauth2/start?rd=).
 func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
+	// Fast path: validate the encrypted snapshot locally — no kv — for the whole session lifetime. Revoked
+	// sessions are rejected immediately via the revoked-set.
+	if s.snap != nil {
+		if c, err := r.Cookie(s.snapCookie.Name); err == nil {
+			if claims, ok := s.snap.open(c.Value); ok {
+				if s.revoker.IsRevoked(claims.SID) {
+					w.WriteHeader(http.StatusUnauthorized)
+					return
+				}
+				setIdentityHeaders(w.Header(), claims.Identity)
+				w.WriteHeader(http.StatusAccepted)
+				return
+			}
+		}
+		// No valid snapshot → fall through to the kv path; the /auth subrequest can't re-mint the cookie
+		// (forward_auth), so the snapshot is (re)minted on the browser-direct callback/poll responses.
+	}
 	sess, ok := s.currentSession(r)
 	if !ok || !sess.Authenticated() {
 		_, cookieErr := r.Cookie(s.cookie.Name)
@@ -112,6 +165,20 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	}
 	setIdentityHeaders(w.Header(), sess.Identity)
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// setSnapshot mints the encrypted snapshot cookie for an authenticated session, on a browser-direct response
+// (callback / poll). No-op when the fast path is disabled.
+func (s *Server) setSnapshot(w http.ResponseWriter, sess *Session) {
+	if s.snap == nil {
+		return
+	}
+	tok, err := s.snap.mint(sess.ID, sess.Identity)
+	if err != nil {
+		slog.Warn("mint snapshot failed", "session", sess.ID, "error", err)
+		return
+	}
+	setCookie(w, s.snapCookie, tok)
 }
 
 // handleSignIn renders the provider chooser.
@@ -201,11 +268,15 @@ func (s *Server) handlePoll(w http.ResponseWriter, r *http.Request) {
 			dest = "/"
 		}
 		// Decoupled flow: the callback completed on the other device, so the id wasn't rotated there. Rotate
-		// now on this cookie-owning device (anti-fixation) and re-bind the cookie before handing back control.
+		// now on this cookie-owning device (anti-fixation), revoke the old id, re-bind the cookie, and mint the
+		// snapshot before handing back control.
+		oldID := sess.ID
 		if err := s.sessions.rotate(sess); err != nil {
 			slog.Warn("session rotation failed", "session", sess.ID, "error", err)
 		} else {
+			s.revoker.Revoke(oldID)
 			setCookie(w, s.cookie, sess.ID)
+			s.setSnapshot(w, sess)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "return_to": dest})
 		return
@@ -273,13 +344,16 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		s.render.render(w, http.StatusOK, "complete.html", nil)
 		return
 	}
-	// On-device: now that the user is authenticated, rotate the session id (anti-fixation) and re-bind the
-	// cookie before returning to rd.
+	// On-device: now that the user is authenticated, rotate the session id (anti-fixation), revoke the old id
+	// (kills any old snapshot), re-bind the cookie, and mint a fresh snapshot before returning to rd.
+	oldID := sess.ID
 	if err := s.sessions.rotate(sess); err != nil {
 		s.renderError(w, "server_error", err.Error(), idpIss, rd)
 		return
 	}
+	s.revoker.Revoke(oldID)
 	setCookie(w, s.cookie, sess.ID)
+	s.setSnapshot(w, sess)
 	slog.Info("login complete", "session", sess.ID, "idp_iss", sess.IDPIss, "return_to", dest)
 	http.Redirect(w, r, dest, http.StatusFound)
 }
@@ -300,8 +374,12 @@ func (s *Server) handleSignOut(w http.ResponseWriter, r *http.Request) {
 	}
 	if sess, ok := s.currentSession(r); ok {
 		_ = s.sessions.deleteByID(sess.ID)
+		s.revoker.Revoke(sess.ID) // instant: any valid snapshot for this sid is rejected on the fast path
 	}
 	expireCookie(w, s.cookie)
+	if s.snapCookie != nil {
+		expireCookie(w, s.snapCookie)
+	}
 	if r.Method == http.MethodGet {
 		s.render.render(w, http.StatusOK, "signed_out.html", nil)
 		return

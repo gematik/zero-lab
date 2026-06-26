@@ -19,6 +19,9 @@
 //	PEP_COOKIE_NAME          session cookie name (default ZERO-PEP-SID)
 //	PEP_PRODUCTION_COOKIE    "true" → __Host- + Secure (set behind HTTPS)
 //	PEP_TEMPLATE_DIR         replace the embedded UI templates from this directory
+//	PEP_SNAPSHOT_KEY_PATH    file with a base64 256-bit key → enables the /oauth2/auth snapshot fast path
+//	                         (local decrypt, no kv per request). PEP_SNAPSHOT_PREVIOUS_KEY_PATH for rotation.
+//	PEP_SNAPSHOT_TTL         snapshot = session lifetime when the fast path is on (Go duration, default 8h)
 //	DATABASE_URL             Postgres DSN for the session store; durable + shared across replicas. When unset,
 //	                         an in-memory store is used (dev only — sessions are lost on restart, not shared).
 //
@@ -40,6 +43,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/kv/postgres"
@@ -130,12 +134,24 @@ func main() {
 		log.Fatal("configure providers via PEP_CONFIG_PATH, or PEP_OIDC_ISSUER / PEP_OIDF_RP_CONFIG_PATH / PEP_GEMIDP_CLIENT_ID")
 	}
 
+	var snapshotTTL time.Duration
+	if v := os.Getenv("PEP_SNAPSHOT_TTL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			log.Fatalf("invalid PEP_SNAPSHOT_TTL %q: %v", v, err)
+		}
+		snapshotTTL = d
+	}
+
 	server, err := proxy.New(proxy.Config{
-		Backend:          proxy.NewProviderBackend(opts...),
-		Store:            openStore(),
-		CookieName:       env("PEP_COOKIE_NAME", "ZERO-PEP-SID"),
-		ProductionCookie: os.Getenv("PEP_PRODUCTION_COOKIE") == "true",
-		TemplateDir:      os.Getenv("PEP_TEMPLATE_DIR"),
+		Backend:                 proxy.NewProviderBackend(opts...),
+		Store:                   openStore(),
+		CookieName:              env("PEP_COOKIE_NAME", "ZERO-PEP-SID"),
+		ProductionCookie:        os.Getenv("PEP_PRODUCTION_COOKIE") == "true",
+		TemplateDir:             os.Getenv("PEP_TEMPLATE_DIR"),
+		SnapshotKeyPath:         os.Getenv("PEP_SNAPSHOT_KEY_PATH"),
+		SnapshotPreviousKeyPath: os.Getenv("PEP_SNAPSHOT_PREVIOUS_KEY_PATH"),
+		SnapshotTTL:             snapshotTTL,
 	})
 	if err != nil {
 		log.Fatalf("create proxy: %v", err)
