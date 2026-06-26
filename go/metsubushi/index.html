@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>Pod Vitals · pod smoke test</title>
+<meta name="description" content="Lightweight pod smoke-test endpoint in the gematik developer style.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --white: #fff;
+    --green: #00ff64;
+    --almost-black: #252834;
+    --dark-grey: #59677c;
+    --medium-grey: #d1dbe7;
+    --light-grey: #e8edf3;
+    --lightest-grey: #f4f6f9;
+    --dark-blue: #000e52;
+    --bright-blue: #00b7ff;
+    --medium-blue: #1391bc;
+    --magenta: #ff1b7c;
+    --functional-green: #007336;
+    --functional-light-green: #d8f3e5;
+    --functional-red: #c71a11;
+    --base-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --mono-font: 'SF Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+    --radius-m: 8px;
+    --radius-l: 24px;
+    --shadow-soft: 0 2px 8px 0 rgb(0 14 82 / 10%);
+    --shadow-mid: 0 4px 16px 0 rgb(0 14 82 / 12%);
+    --navbar-height: 72px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { -webkit-text-size-adjust: 100%; overflow-x: hidden; }
+  img, svg, table { max-width: 100%; }
+
+  body {
+    margin: 0;
+    font-family: var(--base-font);
+    font-size: 18px;
+    line-height: 1.5;
+    color: var(--almost-black);
+    background: var(--white);
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  a { color: var(--dark-blue); text-decoration: none; }
+  a:hover { color: var(--magenta); }
+
+  .container {
+    width: 100%;
+    max-width: 1100px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: max(20px, env(safe-area-inset-left, 0px));
+    padding-right: max(20px, env(safe-area-inset-right, 0px));
+  }
+
+  /* ---------- Navbar ---------- */
+  .navbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    height: var(--navbar-height);
+    display: flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: saturate(180%) blur(12px);
+    border-bottom: 1px solid var(--light-grey);
+  }
+  .navbar__inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    width: 100%;
+  }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo__bars { display: block; flex: none; }
+  .logo__word {
+    font-weight: 800;
+    font-size: 19px;
+    letter-spacing: -0.01em;
+    color: var(--dark-blue);
+    white-space: nowrap;
+  }
+  .logo__tag {
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--dark-grey);
+    border: 1px solid var(--medium-grey);
+    border-radius: 999px;
+    padding: 2px 10px;
+    text-transform: lowercase;
+  }
+  .navbar__actions { display: flex; align-items: center; gap: 12px; }
+  .navbar__status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--functional-green);
+    background: var(--functional-light-green);
+    border-radius: 999px;
+    padding: 6px 14px;
+  }
+  .btn-logout {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--dark-blue);
+    background: transparent;
+    border: 2px solid var(--dark-blue);
+    border-radius: var(--radius-m);
+    padding: 7px 14px;
+    cursor: pointer;
+    transition: all .35s ease;
+  }
+  .btn-logout:hover { background: var(--dark-blue); color: var(--white); }
+  .btn-logout[hidden] { display: none; }
+  .dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--functional-green);
+    box-shadow: 0 0 0 0 rgba(0, 115, 54, 0.5);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(0,115,54,.45); }
+    70%  { box-shadow: 0 0 0 8px rgba(0,115,54,0); }
+    100% { box-shadow: 0 0 0 0 rgba(0,115,54,0); }
+  }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    position: relative;
+    padding: 72px 0 48px;
+    overflow: hidden;
+    background:
+      radial-gradient(120% 120% at 100% 0%, rgba(0,183,255,.10), transparent 55%),
+      radial-gradient(90% 90% at 0% 0%, rgba(0,255,100,.12), transparent 45%);
+  }
+  .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: .14em;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--dark-grey);
+    margin: 0 0 14px;
+  }
+  .hero h1 {
+    margin: 0;
+    font-size: clamp(1.8rem, 6vw, 3.4rem);
+    line-height: 1.08;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--dark-blue);
+    overflow-wrap: break-word;
+  }
+  .hero h1 .accent {
+    background: linear-gradient(180deg, transparent 62%, var(--green) 62%);
+    padding: 0 2px;
+  }
+  .hero p.lead {
+    margin: 20px 0 0;
+    max-width: 46ch;
+    font-size: clamp(1rem, 2.6vw, 1.18rem);
+    color: var(--dark-grey);
+  }
+  .hero__actions { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: var(--radius-m);
+    padding: 12px 22px;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    border: 2px solid var(--dark-blue);
+    transition: all .35s ease;
+  }
+  .btn--primary { background: var(--dark-blue); color: var(--green); }
+  .btn--primary:hover { background: var(--green); border-color: var(--green); color: var(--dark-blue); }
+  .btn--ghost { background: transparent; color: var(--dark-blue); }
+  .btn--ghost:hover { background: var(--dark-blue); color: var(--white); }
+
+  /* ---------- Sections ---------- */
+  section.block { padding: 40px 0; }
+  .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+  .section-head h2 {
+    margin: 0;
+    font-size: clamp(1.4rem, 3.4vw, 1.9rem);
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: var(--dark-blue);
+  }
+  .section-head .hint { font-size: 14px; color: var(--dark-grey); }
+
+  /* ---------- Pod info grid ---------- */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: var(--white);
+    border: 1px solid var(--light-grey);
+    border-radius: var(--radius-l);
+    padding: 20px 22px;
+    box-shadow: var(--shadow-soft);
+    transition: transform .35s ease, box-shadow .35s ease;
+  }
+  .card:hover { transform: translateY(-3px); box-shadow: var(--shadow-mid); }
+  .card .label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--dark-grey);
+    margin: 0 0 8px;
+  }
+  .card .value {
+    font-family: var(--mono-font);
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--almost-black);
+    word-break: break-word;
+  }
+  .card .value.big { font-size: 22px; font-weight: 600; }
+
+  /* ---------- Headers table ---------- */
+  .panel {
+    background: var(--white);
+    border: 1px solid var(--light-grey);
+    border-radius: var(--radius-l);
+    box-shadow: var(--shadow-soft);
+    overflow: hidden;
+  }
+  .hdr-head {
+    display: grid;
+    grid-template-columns: 30% 1fr;
+    gap: 16px;
+    padding: 13px 22px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--dark-grey);
+    background: var(--lightest-grey);
+    border-bottom: 1px solid var(--light-grey);
+  }
+  .hdr-row {
+    display: grid;
+    grid-template-columns: 30% 1fr;
+    gap: 16px;
+    padding: 13px 22px;
+    border-bottom: 1px solid var(--lightest-grey);
+  }
+  .hdr-row:last-child { border-bottom: none; }
+  .hdr-row:hover { background: rgba(0,183,255,.04); }
+  .hdr-row .k {
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--dark-blue);
+    overflow-wrap: anywhere;
+  }
+  .hdr-row .v {
+    font-family: var(--mono-font);
+    font-size: 13.5px;
+    color: var(--almost-black);
+    overflow-wrap: anywhere;
+  }
+  .hdr-row--decoded .k { align-self: start; }
+  .badge-decoded {
+    display: inline-block;
+    margin-left: 8px;
+    font-family: var(--base-font);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--dark-blue);
+    background: var(--green);
+    border-radius: 999px;
+    padding: 2px 8px;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  pre.json {
+    margin: 0;
+    background: var(--lightest-grey);
+    border: 1px solid var(--light-grey);
+    border-radius: var(--radius-m);
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-family: var(--mono-font);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--almost-black);
+    -webkit-overflow-scrolling: touch;
+  }
+  .hdr-row .raw { margin-top: 8px; font-family: var(--base-font); font-size: 12px; }
+  .hdr-row .raw summary { cursor: pointer; color: var(--dark-grey); width: max-content; }
+  .hdr-row .raw summary:hover { color: var(--dark-blue); }
+  .hdr-row .raw code {
+    display: block;
+    margin-top: 6px;
+    font-family: var(--mono-font);
+    font-size: 12px;
+    color: var(--dark-grey);
+    word-break: break-all;
+  }
+  .decode-err { color: var(--functional-red); font-size: 13px; margin-top: 6px; }
+  .j-key { color: var(--dark-blue); font-weight: 600; }
+  .j-str { color: var(--functional-green); }
+  .j-num { color: var(--magenta); }
+  .j-bool { color: var(--medium-blue); font-weight: 600; }
+  .j-null { color: var(--dark-grey); }
+
+  /* ---------- API endpoint list ---------- */
+  .endpoints { display: grid; gap: 12px; }
+  .endpoint {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: var(--white);
+    border: 1px solid var(--light-grey);
+    border-radius: var(--radius-m);
+    padding: 14px 18px;
+    transition: border-color .25s ease, background .25s ease;
+  }
+  .endpoint:hover { border-color: var(--bright-blue); background: rgba(0,183,255,.04); }
+  .method {
+    font-family: var(--mono-font);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--dark-blue);
+    background: var(--green);
+    border-radius: 6px;
+    padding: 4px 10px;
+    flex: none;
+  }
+  .endpoint .path { font-family: var(--mono-font); font-size: 15px; color: var(--almost-black); }
+  .endpoint .desc { margin-left: auto; font-size: 14px; color: var(--dark-grey); text-align: right; }
+
+  /* ---------- Footer ---------- */
+  footer.site {
+    margin-top: 24px;
+    padding: 32px 0;
+    border-top: 1px solid var(--light-grey);
+    color: var(--dark-grey);
+    font-size: 14px;
+  }
+  footer.site .container { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .muted { color: var(--dark-grey); }
+
+  .skeleton {
+    color: transparent;
+    background: linear-gradient(90deg, var(--lightest-grey) 25%, var(--light-grey) 37%, var(--lightest-grey) 63%);
+    background-size: 400% 100%;
+    border-radius: 6px;
+    animation: shimmer 1.4s ease infinite;
+  }
+  @keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+
+  @media (max-width: 640px) {
+    body { font-size: 16px; }
+    .logo__tag { display: none; }
+    .navbar__status span.txt { display: none; }
+    .btn-logout__txt { display: none; }
+    .btn-logout { padding: 8px 10px; }
+    .endpoint { flex-wrap: wrap; }
+    .endpoint .desc { margin-left: 0; width: 100%; text-align: left; }
+    .hdr-head { display: none; }
+    .hdr-row {
+      grid-template-columns: 1fr;
+      gap: 3px;
+      padding: 14px 18px;
+    }
+    .hdr-row .k {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--dark-grey);
+    }
+    .hdr-row .v { font-size: 14px; }
+    .hero { padding: 48px 0 36px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+  <header class="navbar">
+    <div class="container navbar__inner">
+      <a class="logo" href="/" aria-label="Pod Vitals home">
+        <svg class="logo__bars" width="30" height="22" viewBox="0 0 30 22" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect x="0" y="0"  width="29.5" height="3.4" rx="1.7" fill="#FFCD00"/>
+          <rect x="0" y="6.4" width="20.6" height="3.4" rx="1.7" fill="#E82112"/>
+          <rect x="0" y="12.8" width="11.5" height="3.4" rx="1.7" fill="#1D1D1D"/>
+        </svg>
+        <span class="logo__word">Pod Vitals</span>
+        <span class="logo__tag">smoke-test</span>
+      </a>
+      <div class="navbar__actions">
+        <span class="navbar__status"><span class="dot"></span><span class="txt">healthy</span></span>
+        <a class="btn-logout" id="logout" aria-label="Log out" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          <span class="btn-logout__txt">Log out</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container">
+        <p class="eyebrow">gematik · developer smoke test</p>
+        <h1>Your pod is <span class="accent">up &amp; serving</span>.</h1>
+        <p class="lead">A featherweight endpoint that reports live pod information and reflects every request header back to you — built for fast smoke tests behind the gateway.</p>
+        <div class="hero__actions">
+          <button class="btn btn--primary" id="refresh">↻ Refresh data</button>
+          <a class="btn btn--ghost" href="/api/info" target="_blank" rel="noopener">View JSON</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="pod">
+      <div class="container">
+        <div class="section-head">
+          <h2>Pod information</h2>
+          <span class="hint" id="podHint">live from <code>/api/info</code></span>
+        </div>
+        <div class="grid" id="podGrid" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <section class="block" id="headers">
+      <div class="container">
+        <div class="section-head">
+          <h2>Request headers</h2>
+          <span class="hint" id="hdrCount">reflected from your browser</span>
+        </div>
+        <div class="panel">
+          <div class="hdr-head"><span>Header</span><span>Value</span></div>
+          <div id="hdrBody" aria-live="polite"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block" id="api">
+      <div class="container">
+        <div class="section-head">
+          <h2>API endpoints</h2>
+          <span class="hint">httpbin-style smoke checks</span>
+        </div>
+        <div class="endpoints">
+          <a class="endpoint" href="/healthz" target="_blank" rel="noopener"><span class="method">GET</span><span class="path">/healthz</span><span class="desc">liveness &amp; uptime</span></a>
+          <a class="endpoint" href="/api/info" target="_blank" rel="noopener"><span class="method">GET</span><span class="path">/api/info</span><span class="desc">pod metadata</span></a>
+          <a class="endpoint" href="/api/headers" target="_blank" rel="noopener"><span class="method">GET</span><span class="path">/api/headers</span><span class="desc">reflected headers</span></a>
+          <a class="endpoint" href="/api/get?hello=world" target="_blank" rel="noopener"><span class="method">GET</span><span class="path">/api/get</span><span class="desc">echo: args, headers, origin</span></a>
+          <a class="endpoint" href="/api/ip" target="_blank" rel="noopener"><span class="method">GET</span><span class="path">/api/ip</span><span class="desc">client origin IP</span></a>
+          <a class="endpoint" href="/api/uuid" target="_blank" rel="noopener"><span class="method">GET</span><span class="path">/api/uuid</span><span class="desc">random UUIDv4</span></a>
+          <a class="endpoint" href="/api/status/418" target="_blank" rel="noopener"><span class="method">GET</span><span class="path">/api/status/{code}</span><span class="desc">return any status</span></a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site">
+    <div class="container">
+      <span>Pod Vitals · pod smoke test</span>
+      <span class="muted" id="footMeta"></span>
+    </div>
+  </footer>
+
+  <script>
+    const $ = (s, r = document) => r.querySelector(s);
+    const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+    // ZETA PEP HTTP Proxy headers (A_25669-01): Base64-URL encoded JSON.
+    const ZETA_HEADERS = new Set(['zeta-user-info', 'zeta-popp-token-content', 'zeta-client-data']);
+
+    function decodeB64UrlJson(s) {
+      let b64 = String(s).replace(/-/g, '+').replace(/_/g, '/');
+      const pad = b64.length % 4;
+      if (pad) b64 += '='.repeat(4 - pad);
+      const bin = atob(b64);
+      const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+      return JSON.parse(new TextDecoder('utf-8').decode(bytes));
+    }
+
+    function highlightJson(obj) {
+      let json = JSON.stringify(obj, null, 2)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      return json.replace(
+        /("(?:\\.|[^"\\])*"(?:\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?)/g,
+        (m) => {
+          let cls = 'j-num';
+          if (/^"/.test(m)) cls = /:\s*$/.test(m) ? 'j-key' : 'j-str';
+          else if (m === 'true' || m === 'false') cls = 'j-bool';
+          else if (m === 'null') cls = 'j-null';
+          return `<span class="${cls}">${m}</span>`;
+        });
+    }
+
+    const INFO_FIELDS = [
+      ['Hostname', 'hostname', true],
+      ['Pod name', 'podName'],
+      ['Namespace', 'podNamespace'],
+      ['Pod IP', 'podIP'],
+      ['Node', 'nodeName'],
+      ['Local address', 'localAddresses'],
+      ['Platform', 'platform'],
+      ['Go runtime', 'goVersion'],
+      ['CPU cores', 'numCPU'],
+      ['Goroutines', 'goroutines'],
+      ['Requests served', 'requestsServed'],
+      ['Uptime', 'uptimeSeconds'],
+    ];
+
+    function fmtUptime(s) {
+      s = Number(s) || 0;
+      const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600),
+            m = Math.floor(s % 3600 / 60), sec = s % 60;
+      return [d && d + 'd', h && h + 'h', m && m + 'm', sec + 's'].filter(Boolean).join(' ');
+    }
+
+    function renderInfo(info) {
+      const grid = $('#podGrid');
+      grid.innerHTML = '';
+      for (const [label, key, big] of INFO_FIELDS) {
+        let v = info[key];
+        if (Array.isArray(v)) v = v.join(', ');
+        if (v === '' || v === null || v === undefined) v = '—';
+        if (key === 'uptimeSeconds') v = fmtUptime(info[key]);
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `<p class="label">${esc(label)}</p><div class="value${big ? ' big' : ''}">${esc(v)}</div>`;
+        grid.appendChild(card);
+      }
+      $('#footMeta').textContent = `served at ${info.serverTime} · pid ${info.pid}`;
+
+      const logout = $('#logout');
+      if (info.logoutUrl) {
+        logout.href = info.logoutUrl;
+        logout.hidden = false;
+      } else {
+        logout.hidden = true;
+      }
+    }
+
+    function plainRow(k, v) {
+      return `<div class="hdr-row"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`;
+    }
+
+    function decodedRow(k, v) {
+      let inner;
+      try {
+        const obj = decodeB64UrlJson(v);
+        inner = `<pre class="json">${highlightJson(obj)}</pre>` +
+          `<details class="raw"><summary>raw base64url</summary><code>${esc(v)}</code></details>`;
+      } catch (e) {
+        inner = `<div>${esc(v)}</div><div class="decode-err">⚠ could not decode as base64url JSON: ${esc(e.message)}</div>`;
+      }
+      return `<div class="hdr-row hdr-row--decoded">` +
+        `<div class="k">${esc(k)}<span class="badge-decoded">base64url · json</span></div>` +
+        `<div class="v">${inner}</div></div>`;
+    }
+
+    function renderHeaders(data) {
+      const body = $('#hdrBody');
+      body.innerHTML = '';
+      const h = data.headers || {};
+      const keys = Object.keys(h).sort((a, b) => a.localeCompare(b));
+      const zeta = keys.filter(k => ZETA_HEADERS.has(k.toLowerCase()));
+      const rest = keys.filter(k => !ZETA_HEADERS.has(k.toLowerCase()));
+      const extra = { Host: data.host, Origin: data.origin, Proto: data.proto, Method: data.method };
+      $('#hdrCount').textContent = `${keys.length} header${keys.length === 1 ? '' : 's'} reflected` +
+        (zeta.length ? ` · ${zeta.length} decoded` : '');
+
+      for (const k of zeta) body.insertAdjacentHTML('beforeend', decodedRow(k, h[k]));
+      for (const [k, v] of Object.entries(extra)) {
+        if (v) body.insertAdjacentHTML('beforeend', plainRow(k, v));
+      }
+      for (const k of rest) body.insertAdjacentHTML('beforeend', plainRow(k, h[k]));
+    }
+
+    function skeleton() {
+      const grid = $('#podGrid');
+      grid.innerHTML = Array.from({ length: 8 }).map(() =>
+        `<div class="card"><p class="label skeleton">label</p><div class="value skeleton">loading value text</div></div>`).join('');
+    }
+
+    async function load() {
+      skeleton();
+      try {
+        const [info, headers] = await Promise.all([
+          fetch('/api/info', { cache: 'no-store' }).then(r => r.json()),
+          fetch('/api/headers', { cache: 'no-store' }).then(r => r.json()),
+        ]);
+        renderInfo(info);
+        renderHeaders(headers);
+      } catch (e) {
+        $('#podGrid').innerHTML = `<div class="card"><p class="label">Error</p><div class="value">${esc(e.message)}</div></div>`;
+      }
+    }
+
+    $('#refresh').addEventListener('click', load);
+    load();
+  </script>
+</body>
+</html>
