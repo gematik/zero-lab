@@ -80,7 +80,7 @@ func New(cfg Config) (*Server, error) {
 
 	var rev revoker = newMemRevoker(snapTTL)
 	if cfg.Bus != nil {
-		rev = newBusRevoker(cfg.Bus, snapTTL)
+		rev = newBusRevoker(cfg.Bus, cfg.Store, snapTTL)
 	}
 
 	sessions := newSessionStore(cfg.Store, cfg.SessionTTL)

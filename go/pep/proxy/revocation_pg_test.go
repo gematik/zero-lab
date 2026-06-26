@@ -18,6 +18,11 @@ func TestBusRevokerPostgres(t *testing.T) {
 		t.Skip("PEP_PG_DSN not set — skipping Postgres LISTEN/NOTIFY integration test")
 	}
 	ctx := context.Background()
+	store, err := postgres.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
 	busA, err := postgres.OpenBus(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
@@ -29,8 +34,8 @@ func TestBusRevokerPostgres(t *testing.T) {
 	}
 	defer busB.Close()
 
-	a := newBusRevoker(busA, time.Hour)
-	b := newBusRevoker(busB, time.Hour)
+	a := newBusRevoker(busA, store, time.Hour)
+	b := newBusRevoker(busB, store, time.Hour)
 	time.Sleep(300 * time.Millisecond) // let both listeners establish LISTEN before the first NOTIFY
 
 	a.Revoke("sid-pg")
