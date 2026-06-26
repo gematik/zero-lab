@@ -85,6 +85,15 @@ cookie on top-level GET navigations while still blocking it on cross-site subreq
 endpoints (`sign_out`) add the `X-Requested-With` check. This matches the **OWASP** and **RFC 6265bis**
 guidance for session cookies in redirect-based login.
 
+## 5. Stateless validation on the hot path (planned)
+
+§2 currently resolves the session with a `kv` read **per request**. For horizontally-scaled deployments with
+an instant-revocation requirement this is being replaced by a signed **session-snapshot cookie** (verified
+locally on `/oauth2/auth`, no `kv`) plus an in-memory **revoked-session set** synced over a `kv` pub/sub bus
+(with a durable backstop) for fleet-wide instant revocation — the "cookie caching" / hybrid-session pattern.
+`kv` then sees ~one read per snapshot-TTL per session instead of one per request. Decision + plan:
+[`docs/stateless-session-validation.md`](docs/stateless-session-validation.md).
+
 ## References
 
 - IETF `draft-ietf-oauth-browser-based-apps` — OAuth 2.0 for Browser-Based Applications (Token-Mediating Backend)
