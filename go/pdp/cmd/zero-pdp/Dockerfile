@@ -12,11 +12,16 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 	-ldflags "-X github.com/gematik/zero-lab/go/pdp.Version=${VERSION}" \
 	./pdp/cmd/zero-pdp
 
+RUN mkdir -p /etc/pdp
+
 FROM scratch
+#FROM ubuntu
 COPY --from=build /etc/ssl /etc/ssl
-# Binary on PATH, config in the WORKDIR: mount your config + secrets at /app without shadowing the executable.
-COPY --from=build /src/zero-pdp /usr/local/bin/zero-pdp
+COPY --from=build /src/zero-pdp /app/zero-pdp
+COPY --from=build /etc/pdp /etc/pdp
+
 
 WORKDIR /app
 ENV PRETTY_LOGS=false
-ENTRYPOINT ["/usr/local/bin/zero-pdp"]
+ENV PDP_WORKDIR="/etc/pdp"
+ENTRYPOINT ["/app/zero-pdp"]

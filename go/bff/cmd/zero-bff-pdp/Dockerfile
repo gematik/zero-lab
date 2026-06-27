@@ -16,11 +16,10 @@ RUN echo 'pdpbff:x:65532:65532::/app:/sbin/nologin' > /out/passwd
 FROM scratch
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /out/passwd /etc/passwd
-# Binary on PATH, config in the WORKDIR: mount your config + secrets at /app without shadowing the executable.
-COPY --from=build /out/zero-bff-pdp /usr/local/bin/zero-bff-pdp
+COPY --from=build /out/zero-bff-pdp /app/zero-bff-pdp
 
 USER 65532:65532
 WORKDIR /app
 ENV PRETTY_LOGS=false
-ENV PDP_CONFIG_PATH=/app/pdp.yaml
-ENTRYPOINT ["/usr/local/bin/zero-bff-pdp"]
+ENV PDP_CONFIG_PATH=/config/pdp.yaml
+ENTRYPOINT ["/app/zero-bff-pdp"]

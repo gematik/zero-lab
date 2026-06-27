@@ -22,8 +22,8 @@ docker run -p 4180:4180 \
   spilikin/zero-pep-proxy:latest
 ```
 
-For several providers, mount your config dir at `/app` — `openid-providers.yaml` (with `oidc:` / `gemidp:` /
-`oidf:`) and any secrets live there.
+For several providers, mount your config dir at `/etc/pep` — `openid-providers.yaml` (with `oidc:` /
+`gemidp:` / `oidf:`) and any secrets live there.
 
 ## Configuration
 
