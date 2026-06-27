@@ -23,7 +23,7 @@ services:
 
   zero-pdp:
     build:
-      context: ../.. # the go/ workspace root (for go.work)
+      context: .. # the go/ workspace root (for go.work)
       dockerfile: pdp/cmd/zero-pdp/Dockerfile
     depends_on:
       postgres:
@@ -35,7 +35,7 @@ services:
     volumes:
       - ./config:/etc/pdp:ro # pdp.yaml (mock_idp + non_prod) + openid-providers.yaml + sign.jwk
     ports:
-      - "8011:8011"
+      - "${PDP_HOST_PORT:-8011}:8011"
     command: ["start"]
 
 volumes:
