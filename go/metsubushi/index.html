@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<title>Pod Vitals · pod smoke test</title>
+<title>Pod Echo · pod smoke test</title>
 <meta name="description" content="Lightweight pod smoke-test endpoint in the gematik developer style.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -327,13 +327,17 @@
   .j-num { color: var(--magenta); }
   .j-bool { color: var(--medium-blue); font-weight: 600; }
   .j-null { color: var(--dark-grey); }
-  .cookie-list { display: grid; gap: 10px; }
+  .cookie-list { display: grid; gap: 0; }
   .cookie-row {
     display: grid;
-    grid-template-columns: minmax(120px, 28%) 1fr;
-    gap: 14px;
+    grid-template-columns: 1fr;
+    gap: 4px;
     align-items: start;
+    padding: 12px 0;
+    border-top: 1px solid var(--light-grey);
   }
+  .cookie-row:first-child { padding-top: 0; border-top: none; }
+  .cookie-row:last-child { padding-bottom: 0; }
   .cookie-name {
     font-family: var(--mono-font);
     font-size: 13px;
@@ -447,13 +451,13 @@
 <body>
   <header class="navbar">
     <div class="container navbar__inner">
-      <a class="logo" href="/" aria-label="Pod Vitals home">
+      <a class="logo" href="/" aria-label="Pod Echo home">
         <svg class="logo__bars" width="30" height="22" viewBox="0 0 30 22" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           <rect x="0" y="0"  width="29.5" height="3.4" rx="1.7" fill="#FFCD00"/>
           <rect x="0" y="6.4" width="20.6" height="3.4" rx="1.7" fill="#E82112"/>
           <rect x="0" y="12.8" width="11.5" height="3.4" rx="1.7" fill="#1D1D1D"/>
         </svg>
-        <span class="logo__word">Pod Vitals</span>
+        <span class="logo__word">Pod Echo</span>
         <span class="logo__tag">smoke-test</span>
       </a>
       <div class="navbar__actions">
@@ -523,7 +527,7 @@
 
   <footer class="site">
     <div class="container">
-      <span>Pod Vitals · pod smoke test</span>
+      <span>Pod Echo · pod smoke test</span>
       <span class="muted" id="footMeta"></span>
     </div>
   </footer>

@@ -7,6 +7,8 @@
 }
 
 :8080 {
+    # rewrite temporarily unitil new config works
+    rewrite /auth/signin-gematik-fed /oauth2/callback
 	# oauth2-proxy serves its own paths.
 	route /oauth2/* {
 		reverse_proxy {$PEP_UPSTREAM:127.0.0.1:4180}
