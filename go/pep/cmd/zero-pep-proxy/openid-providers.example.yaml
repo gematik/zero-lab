@@ -1,42 +1,45 @@
-# pep proxy providers — point PEP_CONFIG_PATH at this file to run several providers in parallel.
-# openid_providers aggregates each provider's own package config type: oauth/oidc.Config, gemidp.ClientConfig,
-# oidf.RelyingPartyConfig. Each oidc/gemidp uses <PEP_PUBLIC_URL>/oauth2/callback unless it sets redirect_uri.
-# logo_uri (chooser icon) is configurable per provider; OIDF brings its federation IdPs' logos built in.
+# openid-providers.yaml — the identity providers, run in parallel. pep loads it from
+# PEP_OPENID_PROVIDERS_PATH (default ./openid-providers.yaml). The same flat format is what pdp references by
+# path, so copy this to openid-providers.yaml and fill it in.
+#
+# Each entry is the provider's own package config type: oauth/oidc.Config, gemidp.ClientConfig,
+# oidf.RelyingPartyConfig. ${VAR} placeholders expand from the environment / a .env in the workdir.
+# Each oidc/gemidp uses <PEP_PUBLIC_URL>/oauth2/callback unless it sets its own redirect_uri. logo_uri is the
+# chooser icon (OIDF brings its federation IdPs' logos built in).
 
-openid_providers:
-  oidc:
-    - issuer: https://accounts.google.com
-      client_id: "<google-client-id>"
-      client_secret: "<secret>"
-      scopes: [openid, email, profile]
-      name: Google
-      logo_uri: https://www.google.com/favicon.ico
-    - issuer: https://login.microsoftonline.com/<tenant>/v2.0
-      client_id: "<entra-client-id>"
-      client_secret: "<secret>"
-      name: Microsoft Entra
-      logo_uri: https://www.microsoft.com/favicon.ico
+oidc:
+  - issuer: https://accounts.google.com
+    client_id: "<google-client-id>"
+    client_secret: "<secret>"
+    scopes: [openid, email, profile]
+    name: Google
+    logo_uri: https://www.google.com/favicon.ico
+  - issuer: https://login.microsoftonline.com/<tenant>/v2.0
+    client_id: "<entra-client-id>"
+    client_secret: "<secret>"
+    name: Microsoft Entra
+    logo_uri: https://www.microsoft.com/favicon.ico
 
-  gemidp:
-    - client_id: "<gemidp-client-id>"
-      environment: ref # test|ref|prod
-      redirect_uri: https://<host>/gemidp-callback
-      scopes: [openid, gmtik-zerotrust-poc]
-      name: gematik IDP-Dienst
-      logo_uri: https://www.gematik.de/favicon.ico
+gemidp:
+  - client_id: "<gemidp-client-id>"
+    environment: ref # test|ref|prod
+    redirect_uri: https://<host>/gemidp-callback
+    scopes: [openid, gmtik-zerotrust-poc]
+    name: gematik IDP-Dienst
+    logo_uri: https://www.gematik.de/favicon.ico
 
-  # One OIDF relying party (oidf.RelyingPartyConfig); contributes the federation's IdPs (each with its logo).
-  # Relative key paths resolve against THIS file's directory.
-  oidf:
-    sub: https://<host>
-    fed_master_url: https://app-ref.federationmaster.de
-    # A registered RP MUST pin the kids it registered at the fed master (else the OP can't match the signing
-    # key). Omit kid only for a brand-new RP — it then defaults to the RFC 7638 thumbprint.
-    sign_key: { key_pem_path: ./secrets/sig_prk.pem, kid: <sig-kid> }
-    enc_key: { key_pem_path: ./secrets/enc_prk.pem, kid: <enc-kid> }
-    client_key: { key_pem_path: ./secrets/client_prk.pem, cert_pem_path: ./secrets/client_cert.pem, kid: <client-kid> }
-    relying_party:
-      client_name: My Relying Party
-      redirect_uris: [https://<host>/oauth2/callback]
-    federation_entity:
-      name: My Relying Party
+# One OIDF relying party (oidf.RelyingPartyConfig); contributes the federation's IdPs (each with its logo).
+# Relative key paths resolve against THIS file's directory.
+oidf:
+  sub: https://<host>
+  fed_master_url: https://app-ref.federationmaster.de
+  # A registered RP MUST pin the kids it registered at the fed master (else the OP can't match the signing
+  # key). Omit kid only for a brand-new RP — it then defaults to the RFC 7638 thumbprint.
+  sign_key: { key_pem_path: ./secrets/sig_prk.pem, kid: <sig-kid> }
+  enc_key: { key_pem_path: ./secrets/enc_prk.pem, kid: <enc-kid> }
+  client_key: { key_pem_path: ./secrets/client_prk.pem, cert_pem_path: ./secrets/client_cert.pem, kid: <client-kid> }
+  relying_party:
+    client_name: My Relying Party
+    redirect_uris: [https://<host>/oauth2/callback]
+  federation_entity:
+    name: My Relying Party

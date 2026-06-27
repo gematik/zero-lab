@@ -16,34 +16,28 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// peproxyConfig is the optional PEP_CONFIG_PATH YAML. Under openid_providers it aggregates each provider's
-// own package config type (oauth/oidc.Config, gemidp.ClientConfig, oidf.RelyingPartyConfig), run in parallel
-// — several OIDC, several gemidp, and one OIDF relying party (which contributes its federation IdPs to the
-// chooser). When unset, the single-provider PEP_* env vars are used instead.
-type peproxyConfig struct {
-	OpenidProviders openidProviders `yaml:"openid_providers"`
-}
-
+// openidProviders is the openid-providers.yaml schema (flat) — several providers of each kind, each reusing
+// its package config type (oauth/oidc.Config, gemidp.ClientConfig, oidf.RelyingPartyConfig). The same file
+// format is what pdp references by path, so the two stay in sync without a shared package.
 type openidProviders struct {
 	OIDC   []oidc.Config            `yaml:"oidc"`
 	Gemidp []gemidp.ClientConfig    `yaml:"gemidp"`
 	OIDF   *oidf.RelyingPartyConfig `yaml:"oidf"`
 }
 
-// loadProviders builds the provider options from a PEP_CONFIG_PATH file. Each OIDC/gemidp uses
+// loadProviders builds the provider options from openid-providers.yaml. Each OIDC/gemidp uses
 // <public>/oauth2/callback unless it sets its own redirect_uri; the OIDF config's relative key paths resolve
-// against the config file's directory.
+// against the providers file's directory.
 func loadProviders(path, publicURL string) ([]proxy.ProviderOption, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read config %q: %w", path, err)
+		return nil, fmt.Errorf("read providers %q: %w", path, err)
 	}
 	// Expand ${VAR} placeholders from the environment (incl. the .env loaded from the workdir).
-	var cfg peproxyConfig
-	if err := yaml.Unmarshal([]byte(os.ExpandEnv(string(data))), &cfg); err != nil {
-		return nil, fmt.Errorf("parse config %q: %w", path, err)
+	var op openidProviders
+	if err := yaml.Unmarshal([]byte(os.ExpandEnv(string(data))), &op); err != nil {
+		return nil, fmt.Errorf("parse providers %q: %w", path, err)
 	}
-	op := cfg.OpenidProviders
 	callback := publicURL + "/oauth2/callback"
 
 	var clients []oidc.Client
@@ -87,13 +81,13 @@ func loadProviders(path, publicURL string) ([]proxy.ProviderOption, error) {
 		slog.Info("configured openid provider", "type", "oidf-rp", "name", op.OIDF.RelyingParty.ClientName, "iss", rp.ClientID())
 	}
 	if len(opts) == 0 {
-		return nil, fmt.Errorf("PEP_CONFIG_PATH %q configured no providers", path)
+		return nil, fmt.Errorf("providers file %q configured no providers", path)
 	}
 	return opts, nil
 }
 
 // providersFromEnv builds a single provider of each type from the PEP_* env vars — the simple path used
-// when PEP_CONFIG_PATH is unset.
+// when no openid-providers.yaml is present.
 func providersFromEnv(publicURL string) []proxy.ProviderOption {
 	var opts []proxy.ProviderOption
 	callback := publicURL + "/oauth2/callback"

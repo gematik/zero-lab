@@ -42,7 +42,7 @@ injected `X-Auth-Request-*` headers + a **Log out** button.
 - **Plain OIDC (no tunnel)** — drop the OIDF vars, set `PEP_OIDC_ISSUER` / `PEP_OIDC_CLIENT_ID` /
   `PEP_OIDC_CLIENT_SECRET`, and `PEP_PUBLIC_URL=http://localhost:8080`. Register
   `http://localhost:8080/oauth2/callback` at the provider. Browse `http://localhost:8080/`.
-- **Several providers** — use a config file: `-f pep.yaml` (see `../../cmd/zero-pep-proxy/config.example.yaml`).
+- **Several providers** — drop an `openid-providers.yaml` next to pep (or set `PEP_OPENID_PROVIDERS_PATH`); see `../../cmd/zero-pep-proxy/openid-providers.example.yaml`.
 - **No DB / no snapshot** — omit `DATABASE_URL` and `PEP_SESSION_KEY_PATH` (in-memory store, per-request kv;
   sessions don't survive a restart and the fast path is off).
 - **Fully containerized OIDC demo** (pep in a container, no host go-run, no Postgres) —

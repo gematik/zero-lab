@@ -2,13 +2,13 @@
 // serves the /oauth2/* endpoints on :4180 and is meant to sit behind Caddy in forward_auth mode (see the
 // Caddyfile alongside this file) or to be reverse-proxied directly.
 //
-// Providers run in parallel. For several providers (multiple OIDC, gemidp, an OIDF RP), point
-// PEP_CONFIG_PATH at a YAML file (see config.example.yaml). For a single provider of each type, the PEP_*
-// env vars below work without a config file. Sessions are in memory.
+// Providers run in parallel. They come from an openid-providers.yaml file (oidc[]/gemidp[]/oidf — see
+// openid-providers.example.yaml); when that file is absent, the single-provider PEP_* env vars below are used
+// instead. Everything else (server, session, secrets) is env-only — see CONFIG.md.
 //
 //	PEP_ADDR                 listen address (default :4180)
 //	PEP_PUBLIC_URL           public origin the browser reaches the proxy at (default http://127.0.0.1:4180)
-//	PEP_CONFIG_PATH          YAML listing several providers (oidc[], gemidp[], oidf) — the multi-provider path
+//	PEP_OPENID_PROVIDERS_PATH  providers YAML (default ./openid-providers.yaml); the multi-provider source
 //	PEP_OIDC_ISSUER          direct OIDC provider issuer (enables single-OIDC login)
 //	PEP_OIDC_CLIENT_ID / _CLIENT_SECRET / _SCOPES / _NAME / _LOGO_URI / _ACCEPTABLE_SKEW  OIDC options
 //	PEP_OIDF_RP_CONFIG_PATH  gematik OIDF relying-party config (YAML); enables federation login
@@ -25,13 +25,13 @@
 //	DATABASE_URL             Postgres DSN for the session store; durable + shared across replicas. When unset,
 //	                         an in-memory store is used (dev only — sessions are lost on restart, not shared).
 //
-// Usage: zero-pep-proxy [-w workdir] [-f config.yaml]
+// Usage: zero-pep-proxy [-w workdir]
 //
-//	-w chdir's to workdir and loads a .env from it; the config (default pep.yaml) is found there too, but a
-//	config's own relative paths (keys, secrets) always resolve against the config file's directory, not -w.
-//	${VAR} placeholders in the config expand from the environment. -f overrides the default / PEP_CONFIG_PATH.
+//	-w chdir's to workdir and loads a .env from it. openid-providers.yaml is found there (or set
+//	PEP_OPENID_PROVIDERS_PATH); the OIDF config's own relative key paths always resolve against the providers
+//	file's directory, not -w. ${VAR} placeholders in the providers file expand from the environment.
 //
-// Configure providers via the config file, or PEP_OIDC_ISSUER / PEP_OIDF_RP_CONFIG_PATH / PEP_GEMIDP_CLIENT_ID.
+// Configure providers via openid-providers.yaml, or PEP_OIDC_ISSUER / PEP_OIDF_RP_CONFIG_PATH / PEP_GEMIDP_CLIENT_ID.
 package main
 
 import (
@@ -47,6 +47,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/kv/postgres"
+	"github.com/gematik/zero-lab/go/pep"
 	"github.com/gematik/zero-lab/go/pep/proxy"
 	"github.com/joho/godotenv"
 )
@@ -91,20 +92,18 @@ func openBus() kv.Bus {
 }
 
 func main() {
-	configPath := flag.String("f", "", "providers config YAML (default pep.yaml in the workdir); overrides PEP_CONFIG_PATH")
-	workdir := flag.String("w", "", "working directory: chdir here and load .env from it (does not move the config's base path)")
+	workdir := flag.String("w", "", "working directory: chdir here and load .env from it")
 	flag.Parse()
 
-	// Resolve an explicit -f / PEP_CONFIG_PATH against the invocation directory now, before -w changes the
-	// cwd, and make it absolute — so the config's own relative paths (keys, secrets) stay anchored to the
-	// config file's directory regardless of -w.
-	cfgPath := *configPath
-	if cfgPath == "" {
-		cfgPath = os.Getenv("PEP_CONFIG_PATH")
-	}
-	if cfgPath != "" {
-		if abs, err := filepath.Abs(cfgPath); err == nil {
-			cfgPath = abs
+	// Resolve an explicitly-set PEP_OPENID_PROVIDERS_PATH against the invocation directory now, before -w
+	// changes the cwd, so the providers file's own relative paths (OIDF keys/secrets) stay anchored to its
+	// directory regardless of -w. providersExplicit ("operator set it") must exist; the default is optional —
+	// fall back to the single-provider PEP_* env vars.
+	providersPath := os.Getenv("PEP_OPENID_PROVIDERS_PATH")
+	providersExplicit := providersPath != ""
+	if providersExplicit {
+		if abs, err := filepath.Abs(providersPath); err == nil {
+			providersPath = abs
 		}
 	}
 
@@ -123,30 +122,31 @@ func main() {
 	addr := env("PEP_ADDR", ":4180")
 	publicURL := strings.TrimRight(env("PEP_PUBLIC_URL", "http://127.0.0.1:4180"), "/")
 
-	// Default config filename, looked up in the workdir; absolute so its directory is the config's base path.
-	if cfgPath == "" {
-		if abs, err := filepath.Abs("pep.yaml"); err == nil {
-			if _, statErr := os.Stat(abs); statErr == nil {
-				cfgPath = abs
-			}
+	// Default providers file: openid-providers.yaml in the workdir, absolute (its directory anchors the OIDF
+	// config's relative key paths).
+	if !providersExplicit {
+		if abs, err := filepath.Abs("openid-providers.yaml"); err == nil {
+			providersPath = abs
 		}
 	}
 
-	// Providers run in parallel. A config file (-f / PEP_CONFIG_PATH, a YAML listing several oidc/gemidp +
-	// one oidf RP) is the multi-provider path; otherwise a single provider of each type comes from PEP_* env.
+	// Providers run in parallel. When the providers file exists it is the source; otherwise a single provider
+	// of each type comes from the PEP_OIDC_* / PEP_OIDF_RP_CONFIG_PATH / PEP_GEMIDP_* env vars.
 	var opts []proxy.ProviderOption
-	if cfgPath != "" {
+	if _, statErr := os.Stat(providersPath); statErr == nil {
 		var err error
-		if opts, err = loadProviders(cfgPath, publicURL); err != nil {
-			log.Fatalf("load providers from %s: %v", cfgPath, err)
+		if opts, err = loadProviders(providersPath, publicURL); err != nil {
+			log.Fatalf("load providers from %s: %v", providersPath, err)
 		}
-		slog.Info("providers loaded from config", "path", cfgPath)
+		slog.Info("providers loaded", "path", providersPath)
+	} else if providersExplicit {
+		log.Fatalf("PEP_OPENID_PROVIDERS_PATH %q does not exist: %v", providersPath, statErr)
 	} else {
 		opts = providersFromEnv(publicURL)
 	}
 
 	if len(opts) == 0 {
-		log.Fatal("configure providers via PEP_CONFIG_PATH, or PEP_OIDC_ISSUER / PEP_OIDF_RP_CONFIG_PATH / PEP_GEMIDP_CLIENT_ID")
+		log.Fatal("configure providers via openid-providers.yaml (PEP_OPENID_PROVIDERS_PATH), or PEP_OIDC_ISSUER / PEP_OIDF_RP_CONFIG_PATH / PEP_GEMIDP_CLIENT_ID")
 	}
 
 	var snapshotTTL time.Duration
@@ -173,6 +173,6 @@ func main() {
 		log.Fatalf("create proxy: %v", err)
 	}
 
-	slog.Info("zero-pep-proxy listening", "addr", addr, "public_url", publicURL)
+	slog.Info("zero-pep-proxy listening", "version", pep.Version, "addr", addr, "public_url", publicURL)
 	log.Fatal(http.ListenAndServe(addr, server.Handler()))
 }
