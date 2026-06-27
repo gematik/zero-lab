@@ -26,11 +26,12 @@ func newKVSessionStore(store kv.Store, defaultTTL time.Duration) *kvSessionStore
 
 var errSessionNotFound = errors.New("session not found")
 
-func asSessionKey(id string) string  { return "as:session:" + id }
-func asStateKey(state string) string { return "as:state:" + state }
-func asCodeKey(code string) string   { return "as:code:" + code }
-func asAuthnKey(state string) string { return "as:authn:" + state }
-func asRequriKey(uri string) string  { return "as:requri:" + uri }
+func asSessionKey(id string) string      { return "as:session:" + id }
+func asStateKey(state string) string     { return "as:state:" + state }
+func asCodeKey(code string) string       { return "as:code:" + code }
+func asAuthnKey(state string) string     { return "as:authn:" + state }
+func asRequriKey(uri string) string      { return "as:requri:" + uri }
+func asRefreshKey(token string) string   { return "as:refresh:" + token }
 
 // ttl bounds how long a session (and its index keys) live: until ExpiresAt when set, otherwise the
 // default (the pending window between /auth and /token, before a policy sets ExpiresAt).
@@ -69,6 +70,9 @@ func (s *kvSessionStore) SaveAutzhServerSession(session *AuthzServerSession) err
 	}
 	if session.RequestUri != "" {
 		addIndex(asRequriKey(session.RequestUri))
+	}
+	if session.RefreshToken != "" {
+		addIndex(asRefreshKey(session.RefreshToken))
 	}
 	return s.store.SetMany(ctx, entries...)
 }
@@ -115,6 +119,11 @@ func (s *kvSessionStore) GetAuthzServerSessionByAuthnState(authnState string) (*
 
 func (s *kvSessionStore) GetAutzhServerSessionByRequestURI(requestURI string) (*AuthzServerSession, error) {
 	v, found, err := s.store.Get(context.Background(), asRequriKey(requestURI))
+	return s.resolveIndex(v, found, err)
+}
+
+func (s *kvSessionStore) GetAuthzServerSessionByRefreshToken(token string) (*AuthzServerSession, error) {
+	v, found, err := s.store.Get(context.Background(), asRefreshKey(token))
 	return s.resolveIndex(v, found, err)
 }
 

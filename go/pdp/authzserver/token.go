@@ -233,13 +233,18 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 		})
 	}
 
+	// Persist the rotated refresh token (and its index) so the session is refreshable.
+	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {
+		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to save session: %v", err))
+	}
+
 	slog.Info("Token request: tokens issued", "response", fmt.Sprintf("%+v", response))
 
 	return writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) tokenEndpointRefreshToken(w http.ResponseWriter, r *http.Request) error {
-	client, _, clientError := s.verifyClient(r)
+	client, claims, clientError := s.verifyClient(r)
 	if clientError != nil {
 		return clientError
 	}
@@ -249,9 +254,37 @@ func (s *Server) tokenEndpointRefreshToken(w http.ResponseWriter, r *http.Reques
 		return oauthErr(http.StatusBadRequest, "invalid_request", "missing refresh_token")
 	}
 
-	slog.Info("Token request", "client", client.ClientID, "refresh_token", refreshToken)
+	session, err := s.sessionStore.GetAuthzServerSessionByRefreshToken(refreshToken)
+	if err != nil {
+		return oauthErr(http.StatusBadRequest, "invalid_grant", "invalid refresh_token")
+	}
+	if session.ClientID != client.ClientID {
+		return oauthErr(http.StatusBadRequest, "invalid_grant", "client mismatch")
+	}
+	// Rotation/reuse: only the session's CURRENT refresh token is accepted. A superseded token (presented
+	// after rotation, or a stolen one that has since been rotated) resolves via its stale index but fails
+	// here — a replay signal.
+	if session.RefreshToken != refreshToken {
+		return oauthErr(http.StatusBadRequest, "invalid_grant", "refresh_token superseded")
+	}
+	// Sender-constrained (RFC 9449): the refresher must present the same DPoP key the tokens are bound to.
+	if session.DPoPThumbprint != "" && claims.Cnf.Jkt != session.DPoPThumbprint {
+		return oauthErr(http.StatusBadRequest, "invalid_grant", "DPoP key mismatch")
+	}
+	// Absolute lifetime: refresh never extends a session past its cap.
+	if !session.ExpiresAt.IsZero() && time.Now().After(session.ExpiresAt) {
+		return oauthErr(http.StatusBadRequest, "invalid_grant", "session expired")
+	}
 
-	return writeJSON(w, http.StatusUnauthorized, nil)
+	response, err := s.issueOrRefreshTokens(session) // rotates RefreshToken, re-binds via DPoPThumbprint
+	if err != nil {
+		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to refresh tokens: %v", err))
+	}
+	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {
+		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to save session: %v", err))
+	}
+	slog.Info("Token refreshed", "client", client.ClientID, "session", session.ID, "refresh_count", session.RefreshCount)
+	return writeJSON(w, http.StatusOK, response)
 }
 
 func (s *Server) issueOrRefreshTokens(session *AuthzServerSession) (*TokenResponse, error) {

@@ -34,6 +34,7 @@ type AuthzServerSessionStore interface {
 	GetAuthzServerSessionByAuthnState(authnState string) (*AuthzServerSession, error)
 	GetAutzhServerSessionByRequestURI(requestURI string) (*AuthzServerSession, error)
 	GetAuthzServerSessionByCode(code string) (*AuthzServerSession, error)
+	GetAuthzServerSessionByRefreshToken(token string) (*AuthzServerSession, error)
 	SaveAutzhServerSession(session *AuthzServerSession) error
 	DeleteAuthzServerSessionByID(id string) error
 }
