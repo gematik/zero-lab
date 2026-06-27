@@ -192,10 +192,11 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 	if baseClient == nil {
 		baseClient = &http.Client{Timeout: defaultHTTPTimeout}
 	}
-	// the relying party's authenticated calls use mutual TLS; derive that client from the base
-	// without mutating the caller's
+	// The relying party's authenticated calls (PAR, token) use mutual TLS, and the dev gematik OPs also gate
+	// on the federation API key — so layer both onto a copy of the base transport (same x-authorization
+	// injection as the federation client), without mutating the caller's.
 	mtlsClient := *baseClient
-	mtlsClient.Transport = transportWithTLS(baseClient.Transport, &tls.Config{
+	mtlsClient.Transport = AddApiKeyTransport(transportWithTLS(baseClient.Transport, &tls.Config{
 		// GetClientCertificate (not Certificates) so our self-signed client cert is presented
 		// unconditionally: self_signed_tls_client_auth means the IDP's CertificateRequest advertises a
 		// list of acceptable CA names that does not include our self-signed issuer, and Go would otherwise
@@ -203,7 +204,7 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
 			return &tlsCert, nil
 		},
-	})
+	}))
 	rp.httpClient = &mtlsClient
 
 	rp.entityStatement = &EntityStatement{
