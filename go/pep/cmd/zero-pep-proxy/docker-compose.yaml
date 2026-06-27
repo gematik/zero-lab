@@ -1,11 +1,12 @@
-# HITL harness — prove the forward_auth flow end-to-end with a real OIDC provider:
+# Fully-containerized OIDC demo (no host go-run, no Postgres/snapshot). For the OIDF / multi-replica / snapshot
+# HITL use ../../proxy/e2e/ instead (host pep + Postgres). Both front on Caddy :8080.
 #
-#   browser → caddy(:8480) ──forward_auth──> zero-pep-proxy /oauth2/auth   (gate)
+#   browser → caddy(:8080) ──forward_auth──> zero-pep-proxy /oauth2/auth   (gate)
 #                          └─reverse_proxy──> upstream (metsubushi: header-reflecting page + /api/headers)
 #
 # Setup: `cp .env.example .env`, fill the OIDC provider creds, and register the redirect_uri
-#   http://127.0.0.1:8480/oauth2/callback
-# at that provider. Then `docker compose up --build`: open http://127.0.0.1:8480/ for the metsubushi page
+#   http://127.0.0.1:8080/oauth2/callback
+# at that provider. Then `docker compose up --build`: open http://127.0.0.1:8080/ for the metsubushi page
 # (gated) — it renders the injected X-Auth-Request-User / -Email / -Groups (/api/headers for the JSON).
 services:
   # The protected upstream — metsubushi (header-reflecting page + GET /api/headers echoes the request headers
@@ -26,7 +27,7 @@ services:
       DEBUG: "${DEBUG:-1}"
       PEP_ADDR: ":4180"
       # The public origin the browser reaches the proxy at — the Caddy front, not the proxy directly.
-      PEP_PUBLIC_URL: "${PEP_PUBLIC_URL:-http://127.0.0.1:8480}"
+      PEP_PUBLIC_URL: "${PEP_PUBLIC_URL:-http://127.0.0.1:8080}"
       PEP_OIDC_ISSUER: "${PEP_OIDC_ISSUER}"
       PEP_OIDC_CLIENT_ID: "${PEP_OIDC_CLIENT_ID}"
       PEP_OIDC_CLIENT_SECRET: "${PEP_OIDC_CLIENT_SECRET}"
@@ -38,7 +39,7 @@ services:
     image: caddy:2
     depends_on: [zero-pep-proxy, upstream]
     ports:
-      - "8480:8480"
+      - "8080:8080"
     environment:
       PEP_UPSTREAM: "zero-pep-proxy:4180"
       APP_UPSTREAM: "upstream:8080"

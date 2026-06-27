@@ -1,28 +1,26 @@
-# e2e harness for the pep oauth2-proxy: Caddy (forward_auth) + metsubushi (upstream) only.
+# pep proxy — HITL / e2e harness. ONE front port: Caddy on :8080 (point your rathole tunnel here). The proxy
+# itself runs on the HOST (go run) so it can use local OIDF secrets + the session key; Caddy reaches it via
+# host.docker.internal. Postgres and the upstream live in this compose. See README.md.
 #
-# The proxy itself runs on the HOST (`go run ./pep/cmd/zero-pep-proxy` on :4180) so it can use local OIDF
-# relying-party secrets and/or a rathole tunnel; Caddy reaches it via host.docker.internal. This keeps the
-# auth backend (OIDC or OIDF) outside the container while the gate + upstream stay reproducible.
-#
-#   browser → caddy(:8480) ──forward_auth──> host pep /oauth2/auth        (gate)
-#                          ├─reverse_proxy──> /.well-known/openid-federation → host pep  (OIDF, public)
-#                          └─reverse_proxy──> upstream (metsubushi: header-reflecting page + /api/headers)
-#
-# Usage:
-#   1) docker compose -f pep/proxy/e2e/docker-compose.yaml up --build
-#   2) run the proxy on the host, e.g.:
-#        PEP_OIDC_ISSUER=... PEP_OIDC_CLIENT_ID=... PEP_OIDC_CLIENT_SECRET=... \
-#          go run ./pep/cmd/zero-pep-proxy
-#      (or PEP_OIDF_RP_CONFIG_PATH=... PEP_PUBLIC_URL=https://<rathole-sub> for OIDF)
-#   3) open http://127.0.0.1:8480/   (the page renders the injected X-Auth-Request-*/PEP headers; /api/headers
-#      returns the same as JSON)
+#   rathole / browser → caddy :8080 ──forward_auth──> host pep :4180 /oauth2/auth   (gate)
+#                                    ├─reverse_proxy──> host pep :4180   (/oauth2/*, OIDF entity statement)
+#                                    └─reverse_proxy──> metsubushi       (protected upstream)
+#   host pep :4180 ──DATABASE_URL──> postgres :5432
 services:
-  # Protected upstream — metsubushi renders the injected X-Auth-Request-*/PEP headers (GET /) and echoes the
-  # request headers as JSON (GET /api/headers). LOGOUT_URL wires its "Log out" button to the pep proxy's
-  # sign-out. Built from the workspace via go.work.
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: zero
+      POSTGRES_USER: zero
+      POSTGRES_PASSWORD: zero
+    ports:
+      - "5432:5432"
+
+  # Protected upstream — metsubushi renders the injected X-Auth-Request-*/PEP headers (GET /) + a Log out
+  # button (LOGOUT_URL), and echoes request headers as JSON (GET /api/headers). Built from the workspace.
   upstream:
     build:
-      context: ../../.. # the go/ workspace root
+      context: ../../..
       dockerfile: metsubushi/Dockerfile
     environment:
       LOGOUT_URL: "/oauth2/sign_out"
@@ -31,10 +29,9 @@ services:
     image: caddy:2
     depends_on: [upstream]
     ports:
-      - "8480:8480"
+      - "8080:8080" # the one front port — point rathole / your browser here
     environment:
-      # The proxy runs on the host; reach it from inside the container.
-      PEP_UPSTREAM: "host.docker.internal:4180"
+      PEP_UPSTREAM: "host.docker.internal:4180" # the proxy on the host
       APP_UPSTREAM: "upstream:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway" # Linux: map host.docker.internal to the host
