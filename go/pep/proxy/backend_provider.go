@@ -10,7 +10,6 @@ import (
 	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
-	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/segmentio/ksuid"
 	"golang.org/x/oauth2"
 )
@@ -166,8 +165,6 @@ func (b *providerBackend) Complete(ctx context.Context, sess *Session, code stri
 func (b *providerBackend) FreshAccessToken(ctx context.Context, sess *Session) (string, error) {
 	return sess.AccessToken, nil
 }
-
-func (b *providerBackend) DPoPKey() jwk.Key { return nil }
 
 // proxyRoutes serves the OIDF relying-party entity statement so the federation (and the OPs) can resolve
 // this proxy as a relying party.

@@ -21,6 +21,8 @@ import (
 	"golang.org/x/oauth2"
 )
 
+var _ Backend = (*pdpBackend)(nil)
+
 const clientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
 
 // PDPConfig configures the pdpBackend: pep as a confidential OAuth client of the PDP (the gematik AS).

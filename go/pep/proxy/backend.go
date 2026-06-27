@@ -3,8 +3,6 @@ package proxy
 import (
 	"context"
 	"net/http"
-
-	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
 // Provider is a selectable identity provider for the sign-in chooser.
@@ -43,11 +41,9 @@ type Backend interface {
 	Complete(ctx context.Context, sess *Session, code string) error
 
 	// FreshAccessToken returns a non-expired upstream access token (refreshing + persisting as needed), or
-	// "" when the backend keeps no forwardable token (e.g. direct providers).
+	// "" when the backend keeps no forwardable token (e.g. direct providers). The DPoP injection key, when
+	// the backend uses DPoP, is per-session state (Session.DPoPKeyJWK), not a backend-wide key.
 	FreshAccessToken(ctx context.Context, sess *Session) (string, error)
-
-	// DPoPKey is the key DPoP injection proofs are minted with, or nil when unsupported.
-	DPoPKey() jwk.Key
 }
 
 // proxyRoute is an extra HTTP route a backend asks the server to mount outside /oauth2/* (e.g. the OIDF
