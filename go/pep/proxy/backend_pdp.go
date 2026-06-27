@@ -50,10 +50,11 @@ type asMetadata struct {
 // pdpBackend is a confidential BFF client of the PDP: it drives the auth-code flow, holds DPoP-bound tokens
 // server-side (keyed by AS issuer on the session), and injects them into the gated /api reverse-proxy.
 type pdpBackend struct {
-	cfg    PDPConfig
-	meta   asMetadata
-	http   *http.Client
-	signer sessionSigner
+	cfg       PDPConfig
+	meta      asMetadata
+	http      *http.Client
+	signer    sessionSigner
+	providers []Provider // the AS's IdP list, cached at construction (the chooser + single-provider default)
 }
 
 // NewPDPBackend discovers the AS metadata and returns the backend (a confidential BFF client of the PDP).
@@ -74,6 +75,15 @@ func NewPDPBackend(cfg PDPConfig) (Backend, error) {
 		return nil, fmt.Errorf("pdp discovery: %w", err)
 	}
 	b.meta = meta
+	// Cache the AS's provider list once: pep treats it exactly like the provider backend's static list — a
+	// single provider auto-starts, several show the chooser. pep has no knowledge of which (if any) is a mock.
+	if ps, err := b.fetchProviders(); err != nil {
+		slog.Warn("pdp: fetch openid-providers failed", "error", err)
+	} else {
+		for _, p := range ps {
+			b.providers = append(b.providers, Provider{Issuer: p.Issuer, Name: p.Name, LogoURI: p.LogoURI, Type: p.Type})
+		}
+	}
 	return b, nil
 }
 
@@ -162,9 +172,13 @@ func (b *pdpBackend) discoverMetadata(issuer string) (asMetadata, error) {
 	return md, nil
 }
 
-// DefaultIssuer returns the AS issuer as a "let the PDP pick the IdP" sentinel, so login auto-starts (the
-// PDP applies its own default_idp_iss) instead of showing the chooser. StartLogin normalizes it to no idp_iss.
-func (b *pdpBackend) DefaultIssuer() string { return b.cfg.ASIssuer }
+// DefaultIssuer auto-starts a single provider (like the provider backend); several show the chooser.
+func (b *pdpBackend) DefaultIssuer() string {
+	if len(b.providers) == 1 {
+		return b.providers[0].Issuer
+	}
+	return ""
+}
 
 type providerInfo struct {
 	Issuer  string `json:"iss"`
@@ -174,15 +188,7 @@ type providerInfo struct {
 }
 
 func (b *pdpBackend) Providers(ctx context.Context) ([]Provider, error) {
-	ps, err := b.fetchProviders()
-	if err != nil {
-		return nil, err
-	}
-	out := make([]Provider, 0, len(ps))
-	for _, p := range ps {
-		out = append(out, Provider{Issuer: p.Issuer, Name: p.Name, LogoURI: p.LogoURI, Type: p.Type})
-	}
-	return out, nil
+	return b.providers, nil
 }
 
 func (b *pdpBackend) fetchProviders() ([]providerInfo, error) {
@@ -204,19 +210,6 @@ func (b *pdpBackend) fetchProviders() ([]providerInfo, error) {
 	return ps, nil
 }
 
-func (b *pdpBackend) lookupProvider(issuer string) (*providerInfo, error) {
-	ps, err := b.fetchProviders()
-	if err != nil {
-		return nil, err
-	}
-	for i := range ps {
-		if ps[i].Issuer == issuer {
-			return &ps[i], nil
-		}
-	}
-	return nil, fmt.Errorf("provider %q not found", issuer)
-}
-
 func (b *pdpBackend) StartLogin(ctx context.Context, sess *Session, idpIss, scope string) (LoginStart, error) {
 	_, jwkJSON, err := newSessionDPoPKey()
 	if err != nil {
@@ -229,9 +222,6 @@ func (b *pdpBackend) StartLogin(ctx context.Context, sess *Session, idpIss, scop
 	sess.CodeChallengeMethod = "S256"
 	if scope == "" {
 		scope = strings.Join(b.cfg.Scopes, " ")
-	}
-	if idpIss == b.cfg.ASIssuer { // the DefaultIssuer sentinel → let the PDP decide
-		idpIss = ""
 	}
 	sess.IDPIss = idpIss
 
@@ -251,9 +241,10 @@ func (b *pdpBackend) StartLogin(ctx context.Context, sess *Session, idpIss, scop
 	authURL := b.meta.AuthorizationEndpoint + "?" + params.Encode()
 
 	mode := "redirect"
-	if idpIss != "" {
-		if p, err := b.lookupProvider(idpIss); err == nil && p != nil && p.Type == "oidf" {
+	for _, p := range b.providers {
+		if p.Issuer == idpIss && p.Type == "oidf" {
 			mode = "decoupled"
+			break
 		}
 	}
 	if mode == "decoupled" {
