@@ -148,6 +148,9 @@ func TestSanitizeReturnTo(t *testing.T) {
 	cases := map[string]string{
 		"/dashboard": "/dashboard", "/a?b=c": "/a?b=c",
 		"//evil.example": "", "https://evil.example": "", "/\\evil": "", "": "",
+		// returns into pep's own auth endpoints are rejected — they are how the rd loop grows
+		"/oauth2/start?rd=/oauth2/start?rd=/": "", "/oauth2/start": "", "/oauth2": "",
+		"/oauth2callback": "/oauth2callback", "/foo/../oauth2/start": "",
 	}
 	for in, want := range cases {
 		if got := sanitizeReturnTo(in); got != want {

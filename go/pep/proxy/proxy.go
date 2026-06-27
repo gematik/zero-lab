@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"time"
 
@@ -416,10 +417,20 @@ func (s *Server) renderError(w http.ResponseWriter, code, description, idpIss, r
 	})
 }
 
-// sanitizeReturnTo guards the rd= return-to against open redirects: a local absolute path only.
+// sanitizeReturnTo guards the rd= return-to against open redirects and login loops: a local absolute path
+// that is not one of pep's own /oauth2/* endpoints. Returning into /oauth2/* bounces the browser back into
+// the auth flow instead of the app, and it is how a forward_auth that fails to exclude /oauth2/* accretes an
+// ever-growing rd=/oauth2/start?rd=/oauth2/start?… Anything rejected collapses to "" (callers default to "/").
 func sanitizeReturnTo(rd string) string {
-	if strings.HasPrefix(rd, "/") && !strings.HasPrefix(rd, "//") && !strings.HasPrefix(rd, "/\\") {
-		return rd
+	if !strings.HasPrefix(rd, "/") || strings.HasPrefix(rd, "//") || strings.HasPrefix(rd, "/\\") {
+		return ""
 	}
-	return ""
+	u, err := url.Parse(rd)
+	if err != nil {
+		return ""
+	}
+	if p := path.Clean(u.Path); p == "/oauth2" || strings.HasPrefix(p, "/oauth2/") {
+		return ""
+	}
+	return rd
 }
