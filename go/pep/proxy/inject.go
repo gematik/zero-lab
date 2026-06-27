@@ -9,6 +9,15 @@ import (
 	"github.com/gematik/zero-lab/go/dpop"
 )
 
+// mountAPI mounts the gated /api reverse-proxy on the server mux when an upstream is configured (apiBackend).
+func (b *pdpBackend) mountAPI(s *Server, mux *http.ServeMux) {
+	if b.cfg.APIUpstream == "" {
+		return
+	}
+	prefix := strings.TrimRight(b.cfg.APIPrefix, "/")
+	mux.Handle(prefix+"/", b.apiProxy(s.currentSession))
+}
+
 // apiProxy returns a gated reverse-proxy for the binding's upstream: it requires a valid session, mints a
 // fresh access token + a DPoP proof (session key) per request, replaces any client Authorization, and
 // forwards. The configured upstream is the only allowed destination (BCP "validate destination" allowlist).

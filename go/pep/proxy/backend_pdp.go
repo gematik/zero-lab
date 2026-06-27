@@ -56,9 +56,8 @@ type pdpBackend struct {
 	signer sessionSigner
 }
 
-// NewPDPBackend discovers the AS metadata and returns the backend. (Returns the concrete type until the
-// remaining Backend methods land; callers assign it to proxy.Config.Backend.)
-func NewPDPBackend(cfg PDPConfig) (*pdpBackend, error) {
+// NewPDPBackend discovers the AS metadata and returns the backend (a confidential BFF client of the PDP).
+func NewPDPBackend(cfg PDPConfig) (Backend, error) {
 	if cfg.ASIssuer == "" || cfg.ClientID == "" || cfg.SigningKey == nil {
 		return nil, fmt.Errorf("pdp backend: as_issuer, client_id, signing key required")
 	}

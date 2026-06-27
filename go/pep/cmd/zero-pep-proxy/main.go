@@ -130,23 +130,30 @@ func main() {
 		}
 	}
 
-	// Providers run in parallel. When the providers file exists it is the source; otherwise a single provider
-	// of each type comes from the PEP_OIDC_* / PEP_OIDF_RP_CONFIG_PATH / PEP_GEMIDP_* env vars.
-	var opts []proxy.ProviderOption
-	if _, statErr := os.Stat(providersPath); statErr == nil {
-		var err error
-		if opts, err = loadProviders(providersPath, publicURL); err != nil {
-			log.Fatalf("load providers from %s: %v", providersPath, err)
-		}
-		slog.Info("providers loaded", "path", providersPath)
-	} else if providersExplicit {
-		log.Fatalf("PEP_OPENID_PROVIDERS_PATH %q does not exist: %v", providersPath, statErr)
+	// Backend selection: PEP_BACKEND=pdp makes pep a confidential client of the PDP (DPoP-bound tokens + the
+	// gated /api proxy); otherwise pep drives the configured OIDC/OIDF/gemidp providers directly.
+	var backend proxy.Backend
+	if os.Getenv("PEP_BACKEND") == "pdp" {
+		backend = pdpBackendFromEnv(publicURL)
 	} else {
-		opts = providersFromEnv(publicURL)
-	}
-
-	if len(opts) == 0 {
-		log.Fatal("configure providers via openid-providers.yaml (PEP_OPENID_PROVIDERS_PATH), or PEP_OIDC_ISSUER / PEP_OIDF_RP_CONFIG_PATH / PEP_GEMIDP_CLIENT_ID")
+		// Providers run in parallel. When the providers file exists it is the source; otherwise a single
+		// provider of each type comes from the PEP_OIDC_* / PEP_OIDF_RP_CONFIG_PATH / PEP_GEMIDP_* env vars.
+		var opts []proxy.ProviderOption
+		if _, statErr := os.Stat(providersPath); statErr == nil {
+			var err error
+			if opts, err = loadProviders(providersPath, publicURL); err != nil {
+				log.Fatalf("load providers from %s: %v", providersPath, err)
+			}
+			slog.Info("providers loaded", "path", providersPath)
+		} else if providersExplicit {
+			log.Fatalf("PEP_OPENID_PROVIDERS_PATH %q does not exist: %v", providersPath, statErr)
+		} else {
+			opts = providersFromEnv(publicURL)
+		}
+		if len(opts) == 0 {
+			log.Fatal("configure providers via openid-providers.yaml (PEP_OPENID_PROVIDERS_PATH), or PEP_OIDC_ISSUER / PEP_OIDF_RP_CONFIG_PATH / PEP_GEMIDP_CLIENT_ID")
+		}
+		backend = proxy.NewProviderBackend(opts...)
 	}
 
 	var snapshotTTL time.Duration
@@ -159,7 +166,7 @@ func main() {
 	}
 
 	server, err := proxy.New(proxy.Config{
-		Backend:                 proxy.NewProviderBackend(opts...),
+		Backend:                 backend,
 		Store:                   openStore(),
 		CookieName:              env("PEP_COOKIE_NAME", "ZERO-PEP-SID"),
 		InsecureCookie:          os.Getenv("PEP_INSECURE_COOKIE") == "true",

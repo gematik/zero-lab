@@ -122,7 +122,17 @@ func (s *Server) Handler() http.Handler {
 			mux.Handle(rt.Pattern, rt.Handler)
 		}
 	}
+	// A DPoP-API backend (the PDP backend) mounts its gated /api reverse-proxy.
+	if ab, ok := s.backend.(apiBackend); ok {
+		ab.mountAPI(s, mux)
+	}
 	return mux
+}
+
+// apiBackend is optionally implemented by a Backend that gates + reverse-proxies a DPoP-protected API route
+// (the PDP backend). It is given the server so it can resolve sessions from the request cookie.
+type apiBackend interface {
+	mountAPI(s *Server, mux *http.ServeMux)
 }
 
 type signInData struct {
