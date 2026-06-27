@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scan to sign in</title>
+  {{template "styles"}}
+  <style>
+    img.qr { display: block; margin: 1.1rem auto; border-radius: 10px; background: #fff; padding: .6rem; max-width: 100% }
+    .or { text-align: center; margin: .4rem 0 }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Sign in{{if .ProviderName}} · {{.ProviderName}}{{end}}</h1>
+    <p class="muted">Scan the code with your authenticator app on another device,</p>
+    <img class="qr" src="{{.QRImage}}" alt="Sign-in QR code" width="320" height="320">
+    <p class="muted or">— or —</p>
+    <a class="btn" href="{{.AuthURL}}">Continue on this device</a>
+  </main>
+  <script>
+    const pollURL = "{{.PollURL}}";
+    async function tick() {
+      try {
+        const r = await fetch(pollURL, { headers: { "X-Requested-With": "fetch" } });
+        if (r.ok) {
+          const data = await r.json();
+          if (data.authenticated) { location.href = data.return_to || "/"; return; }
+        }
+      } catch (e) { /* keep polling */ }
+      setTimeout(tick, 2000);
+    }
+    setTimeout(tick, 2000);
+  </script>
+</body>
+</html>

@@ -85,6 +85,10 @@ func NewClientFromConfig(config ClientConfig) (*Client, error) {
 		return nil, fmt.Errorf("at least one scope is required")
 	}
 
+	if config.UserAgent == "" {
+		config.UserAgent = defaultUserAgent
+	}
+
 	var idp Idp
 	if config.BaseURL != "" {
 		idp = NewIdp(config.Environment, config.BaseURL)

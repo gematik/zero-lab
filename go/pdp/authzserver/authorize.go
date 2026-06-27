@@ -103,12 +103,12 @@ func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request
 		})
 	}
 
-	// A product may register its own redirect_uri(s) at the upstream IdP (as_redirect_uris): the IdP then
+	// A product may register its own redirect_uri at the upstream IdP (oidc_redirect_uri): the IdP then
 	// redirects straight back to the AS at that URL instead of the default /op-callback, so no app-side
 	// intermediary popup is needed. When unset, fall back to the AS's own op-callback.
 	opRedirectURI := opClient.RedirectURI()
-	if len(product.ASRedirectURIs) > 0 {
-		opRedirectURI = product.ASRedirectURIs[0]
+	if len(product.OIDCRedirectURIs) > 0 {
+		opRedirectURI = product.OIDCRedirectURIs[0]
 	}
 
 	opSession := &oidc.AuthnClientSession{

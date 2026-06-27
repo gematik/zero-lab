@@ -20,11 +20,11 @@ type Product struct {
 	PlatformProductID any      `yaml:"platform_product_id" json:"platform_product_id"`
 	RedirectURIs      []string `yaml:"redirect_uris" json:"redirect_uris"`
 	Scopes            []string `yaml:"scopes" json:"scopes"`
-	// ASRedirectURIs are the redirect_uri(s) the upstream IdP sends the user back to the AS at (gematik
-	// redirect_uri_as), instead of the default /op-callback — so the IdP redirects straight to the AS with
+	// OIDCRedirectURIs are the redirect_uri(s) the upstream IdP sends the user back to the AS at (gematik
+	// oidc_redirect_uri), instead of the default /op-callback — so the IdP redirects straight to the AS with
 	// no app-side intermediary popup. Registered into the OIDF entity statement (see initRelyingParty).
-	ASRedirectURIs []string `yaml:"as_redirect_uris" json:"as_redirect_uris"`
-	PushGateway    any      `yaml:"push_gateway" json:"push_gateway"`
+	OIDCRedirectURIs []string `yaml:"oidc_redirect_uris" json:"oidc_redirect_uris"`
+	PushGateway      any      `yaml:"push_gateway" json:"push_gateway"`
 }
 
 func (p *Product) IsAllowedRedirectURI(redirectURI string) bool {
@@ -63,13 +63,13 @@ func (r *ProductsRegistry) GetProduct(productID string) (*Product, error) {
 	return nil, fmt.Errorf("product not found: %q", productID)
 }
 
-// AllASRedirectURIs returns the deduplicated as_redirect_uris across every product — the redirect URIs the
-// upstream IdP may send the user back to the AS at. They are injected into the OIDF entity statement.
-func (r *ProductsRegistry) AllASRedirectURIs() []string {
+// AllOIDCRedirectURIs returns the deduplicated oidc_redirect_uri across every product — the redirect URIs
+// the upstream IdP may send the user back to the AS at. They are injected into the OIDF entity statement.
+func (r *ProductsRegistry) AllOIDCRedirectURIs() []string {
 	var uris []string
 	seen := make(map[string]struct{})
 	for _, p := range r.products {
-		for _, u := range p.ASRedirectURIs {
+		for _, u := range p.OIDCRedirectURIs {
 			if _, ok := seen[u]; ok {
 				continue
 			}

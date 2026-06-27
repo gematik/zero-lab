@@ -18,7 +18,13 @@ import (
 	"golang.org/x/oauth2"
 )
 
-const defaultHTTPTimeout = 30 * time.Second
+const (
+	defaultHTTPTimeout = 30 * time.Second
+	// defaultAcceptableSkew is the RP/IdP clock-skew tolerance applied to the id_token's iat/exp/nbf when
+	// Config.AcceptableSkew is unset. One minute is the common best-practice default: enough for real clock
+	// drift + network latency, small enough to keep the replay window tight.
+	defaultAcceptableSkew = time.Minute
+)
 
 type Config struct {
 	Issuer       string       `yaml:"issuer" validate:"required"`
@@ -28,6 +34,9 @@ type Config struct {
 	Scopes       []string     `yaml:"scopes"`
 	LogoURI      string       `yaml:"logo_uri"`
 	Name         string       `yaml:"name"`
+
+	// AcceptableSkew is the clock-skew tolerance for id_token iat/exp/nbf validation. 0 = defaultAcceptableSkew.
+	AcceptableSkew time.Duration `yaml:"acceptable_skew"`
 
 	// HTTPClient is used for discovery, the key cache, and token exchange. Not serialized; supplied
 	// programmatically. When nil, a client with a default timeout is created.
@@ -175,9 +184,9 @@ func (c *client) ExchangeForIdentity(code, verifier string, options ...Option) (
 		}
 	}
 
-	// Parse the ID token
+	// Parse the ID token (parseIDToken already wraps the error with context).
 	if tokenResponse.IDToken, err = c.parseIDToken(tokenResponse); err != nil {
-		return nil, fmt.Errorf("unable to parse ID token: %w", err)
+		return nil, err
 	}
 
 	return tokenResponse, nil
@@ -190,18 +199,22 @@ func (c *client) parseIDToken(response *TokenResponse) (jwt.Token, error) {
 		return nil, fmt.Errorf("unable to get key set: %w", err)
 	}
 
+	skew := c.cfg.AcceptableSkew
+	if skew <= 0 {
+		skew = defaultAcceptableSkew
+	}
 	token, err := jwt.ParseString(
 		response.IDTokenRaw,
 		jwt.WithKeySet(keySet, jws.WithInferAlgorithmFromKey(true)), // Azure AD does not include alg in ID token header
 		jwt.WithIssuer(c.discoveryDocument.Issuer),
 		jwt.WithAudience(c.cfg.ClientID),
 		jwt.WithRequiredClaim("nonce"),
-		//jwt.WithRequiredClaim("iat"),
 		jwt.WithRequiredClaim("exp"),
+		jwt.WithAcceptableSkew(skew), // tolerate RP/IdP clock skew on iat/exp/nbf
 	)
 	if err != nil {
-		slog.Error("unable to parse id token", "error", err, "id_token", response.IDTokenRaw, "keySet", keySet, "jwksUri", c.discoveryDocument.JwksURI)
-		return nil, fmt.Errorf("unable to parse id token: %w", err)
+		slog.Error("verify id_token", "error", err, "jwks_uri", c.discoveryDocument.JwksURI)
+		return nil, fmt.Errorf("verify id_token: %w", err)
 	}
 
 	return token, nil

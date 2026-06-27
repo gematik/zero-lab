@@ -95,6 +95,22 @@ docker-push-pdp: docker-build-pdp
     docker push "{{DOCKER_USER}}/zero-pdp:$v"
     docker push "{{DOCKER_USER}}/zero-pdp:latest"
 
+# Build the zero-pep-proxy docker image (oauth2-proxy-style auth gateway, scratch, non-root)
+docker-build-pep:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver pep)
+    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/zero-pep-proxy:$v" -f ./pep/cmd/zero-pep-proxy/Dockerfile .
+    docker tag "{{DOCKER_USER}}/zero-pep-proxy:$v" "{{DOCKER_USER}}/zero-pep-proxy:latest"
+
+# Push the zero-pep-proxy docker image to the docker hub
+docker-push-pep: docker-build-pep
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver pep)
+    docker push "{{DOCKER_USER}}/zero-pep-proxy:$v"
+    docker push "{{DOCKER_USER}}/zero-pep-proxy:latest"
+
 # Start the local Postgres for zero-pdp (the kv JSON store). Then point the server at it with
 #   export DATABASE_URL=postgres://zero:zero@localhost:5432/zero?sslmode=disable
 # (unset DATABASE_URL falls back to an in-memory store). Run the kv Postgres tests with
@@ -121,6 +137,22 @@ docker-push-bff-pdp: docker-build-bff-pdp
     v=$(just _modver bff)
     docker push "{{DOCKER_USER}}/zero-bff-pdp:$v"
     docker push "{{DOCKER_USER}}/zero-bff-pdp:latest"
+
+# Build the metsubushi docker image (pod smoke-test app, scratch, non-root)
+docker-build-metsubushi:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver metsubushi)
+    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/metsubushi:$v" -f ./metsubushi/Dockerfile .
+    docker tag "{{DOCKER_USER}}/metsubushi:$v" "{{DOCKER_USER}}/metsubushi:latest"
+
+# Push the metsubushi docker image to the docker hub
+docker-push-metsubushi: docker-build-metsubushi
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver metsubushi)
+    docker push "{{DOCKER_USER}}/metsubushi:$v"
+    docker push "{{DOCKER_USER}}/metsubushi:latest"
 
 # Tag a module at a version, e.g. `just tag ti 0.20.2` or `just tag brainpool 0.3.1`
 # -> go/<module>/vX.Y.Z. Tag only the modules that changed (see `changed`).

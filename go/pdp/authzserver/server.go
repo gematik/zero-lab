@@ -240,7 +240,7 @@ func (s *Server) initRelyingParty(cfg Config) error {
 		}
 	}
 
-	// Inject the products' as_redirect_uris into the served entity statement so the federation accepts the
+	// Inject the products' oidc_redirect_uri into the served entity statement so the federation accepts the
 	// AS callback URLs the products register. oidf stays registry-agnostic — it just runs this func hook.
 	if s.oidfRelyingParty != nil && s.productsRegistry != nil {
 		registry := s.productsRegistry
@@ -253,7 +253,7 @@ func (s *Server) initRelyingParty(cfg Config) error {
 			for _, u := range rpMeta.RedirectURIs {
 				seen[u] = struct{}{}
 			}
-			for _, u := range registry.AllASRedirectURIs() {
+			for _, u := range registry.AllOIDCRedirectURIs() {
 				if _, ok := seen[u]; ok {
 					continue
 				}

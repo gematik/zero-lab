@@ -196,58 +196,6 @@ func (f *OpenidFederation) FetchEntityStatement(iss string) (*EntityStatement, e
 	return selfSigned, nil
 }
 
-func convertToStringMap(i any) any {
-	switch x := i.(type) {
-	// Convert maps
-	case map[any]any:
-		m := make(map[string]any)
-		for k, v := range x {
-			// Convert the key to a string (often you'd cast if keys are known to be strings,
-			// but if they're not guaranteed, you can use fmt.Sprintf, as below).
-			key := fmt.Sprintf("%v", k)
-			m[key] = convertToStringMap(v)
-		}
-		return m
-	case map[string]any:
-		m := make(map[string]any)
-		for k, v := range x {
-			m[k] = convertToStringMap(v)
-		}
-		return m
-
-	// Convert slices
-	case []any:
-		for i, v := range x {
-			x[i] = convertToStringMap(v)
-		}
-		return x
-
-	// Fallback (string, int, float, bool, etc.)
-	default:
-		return x
-	}
-}
-
-// converts the metadata template to an oidf.Metadata object
-func templateToMetadata(template map[string]any) (*Metadata, error) {
-	template = convertToStringMap(template).(map[string]any)
-
-	// serialize the template to json
-	jsonData, err := json.Marshal(template)
-	if err != nil {
-		return nil, fmt.Errorf("serialize metadata template: %w", err)
-	}
-
-	// deserialize the json to an oidf.Metadata object
-	var metadata Metadata
-	err = json.Unmarshal(jsonData, &metadata)
-	if err != nil {
-		return nil, err
-	}
-
-	return &metadata, nil
-}
-
 // converts idp_entity claim to array of IdentityProviderInfo
 func idpEntityToIdpInfo(idpEntity any) ([]IdentityProviderInfo, error) {
 	// serialize the obj to json

@@ -17,6 +17,10 @@ import (
 
 const defaultHTTPTimeout = 30 * time.Second
 
+// defaultUserAgent is sent when ClientConfig.UserAgent is empty: the gematik IDP-Dienst rejects requests
+// without a User-Agent ("User Agent fehlt").
+const defaultUserAgent = "zero-lab"
+
 // transportOrDefault returns http.DefaultTransport when rt is nil, so a decorated client always
 // has a concrete base transport to wrap.
 func transportOrDefault(rt http.RoundTripper) http.RoundTripper {
