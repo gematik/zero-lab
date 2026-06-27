@@ -18,9 +18,10 @@ RUN echo 'pep:x:65532:65532::/app:/sbin/nologin' > /out/passwd
 FROM scratch
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /out/passwd /etc/passwd
-COPY --from=build /out/zero-pep-proxy /app/zero-pep-proxy
+# Binary on PATH (not in WORKDIR) so mounting /app for config + secrets doesn't shadow the executable.
+COPY --from=build /out/zero-pep-proxy /usr/local/bin/zero-pep-proxy
 
 USER 65532:65532
 WORKDIR /app
 ENV PRETTY_LOGS=false
-ENTRYPOINT ["/app/zero-pep-proxy"]
+ENTRYPOINT ["/usr/local/bin/zero-pep-proxy"]

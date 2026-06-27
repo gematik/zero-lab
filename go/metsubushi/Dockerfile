@@ -16,10 +16,10 @@ RUN echo 'metsubushi:x:65532:65532::/app:/sbin/nologin' > /out/passwd
 FROM scratch
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=build /out/passwd /etc/passwd
-COPY --from=build /out/metsubushi /app/metsubushi
+COPY --from=build /out/metsubushi /usr/local/bin/metsubushi
 
 USER 65532:65532
 WORKDIR /app
 EXPOSE 8080
 ENV PORT=8080
-ENTRYPOINT ["/app/metsubushi"]
+ENTRYPOINT ["/usr/local/bin/metsubushi"]
