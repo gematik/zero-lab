@@ -63,7 +63,7 @@ func TestForwardAuth_Authenticated(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest("GET", "/oauth2/auth", nil)
-	req.AddCookie(&http.Cookie{Name: s.cookie.Name, Value: sess.ID})
+	req.AddCookie(&http.Cookie{Name: s.cookie.Name, Value: sess.token})
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 
@@ -108,8 +108,9 @@ func TestStart_RedirectsAndBindsCookie(t *testing.T) {
 	if err != nil {
 		t.Fatalf("session not persisted by state: %v", err)
 	}
-	if sess.ID != sid || sess.ReturnTo != "/dashboard" {
-		t.Errorf("session id/return-to mismatch: id=%s rd=%q", sess.ID, sess.ReturnTo)
+	// The cookie carries the token; the kv record is stored under hashToken(token).
+	if sess.ID != hashToken(sid) || sess.ReturnTo != "/dashboard" {
+		t.Errorf("session id/return-to mismatch: id=%s cookie=%s rd=%q", sess.ID, sid, sess.ReturnTo)
 	}
 }
 
@@ -121,7 +122,7 @@ func TestSignOut_ClearsSession(t *testing.T) {
 
 	req := httptest.NewRequest("POST", "/oauth2/sign_out", nil)
 	req.Header.Set("X-Requested-With", "fetch")
-	req.AddCookie(&http.Cookie{Name: s.cookie.Name, Value: sess.ID})
+	req.AddCookie(&http.Cookie{Name: s.cookie.Name, Value: sess.token})
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 

@@ -34,6 +34,12 @@ type Config struct {
 	SnapshotPreviousKeyPath string        // optional previous key file (rotation overlap)
 	SnapshotTTL             time.Duration // = session absolute lifetime (0 = 8h)
 
+	// SessionStoreKeyPath enables at-rest encryption of kv session records (AES-256-GCM, the id as AAD) with a
+	// SEPARATE base64 256-bit key file, independent of the snapshot key. "" leaves records as plaintext JSON.
+	// Defends a rogue storage admin against disclosure, forgery, and record substitution. See
+	// docs/at-rest-encryption.md.
+	SessionStoreKeyPath string
+
 	// Bus carries session revocations to all replicas so logout/lockout is fleet-wide instant. nil = a
 	// single-instance in-memory revoker.
 	Bus kv.Bus
@@ -85,6 +91,17 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	sessions := newSessionStore(cfg.Store, cfg.SessionTTL)
+	if cfg.SessionStoreKeyPath != "" {
+		key, err := loadBase64Key(cfg.SessionStoreKeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("session store key: %w", err)
+		}
+		crypter, err := newAESRecordCrypter(key)
+		if err != nil {
+			return nil, fmt.Errorf("session store cipher: %w", err)
+		}
+		sessions.crypter = crypter
+	}
 	s := &Server{
 		sessions: sessions,
 		cookie:   newCookieTemplate(cfg.CookieName, cfg.InsecureCookie),
@@ -244,7 +261,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		s.renderError(w, "server_error", err.Error(), idpIss, rd)
 		return
 	}
-	setCookie(w, s.cookie, sess.ID)
+	setCookie(w, s.cookie, sess.token)
 
 	slog.Info("login start", "session", sess.ID, "idp_iss", idpIss, "mode", start.Mode, "auth_url", start.AuthURL)
 
@@ -295,7 +312,7 @@ func (s *Server) handlePoll(w http.ResponseWriter, r *http.Request) {
 			slog.Warn("session rotation failed", "session", sess.ID, "error", err)
 		} else {
 			s.revoker.Revoke(oldID)
-			setCookie(w, s.cookie, sess.ID)
+			setCookie(w, s.cookie, sess.token)
 			s.setSnapshot(w, sess)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "return_to": dest})
@@ -372,7 +389,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.revoker.Revoke(oldID)
-	setCookie(w, s.cookie, sess.ID)
+	setCookie(w, s.cookie, sess.token)
 	s.setSnapshot(w, sess)
 	slog.Info("login complete", "session", sess.ID, "idp_iss", sess.IDPIss, "return_to", dest)
 	http.Redirect(w, r, dest, http.StatusFound)
@@ -382,7 +399,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 // session — true on the device that began the login, false on a second device in the decoupled flow.
 func (s *Server) requestOwnsSession(r *http.Request, sess *Session) bool {
 	c, err := r.Cookie(s.cookie.Name)
-	return err == nil && c.Value == sess.ID
+	return err == nil && hashToken(c.Value) == sess.ID
 }
 
 // handleSignOut clears the session. POST (XHR) requires the X-Requested-With CSRF header and returns 204;
@@ -412,7 +429,7 @@ func (s *Server) currentSession(r *http.Request) (*Session, bool) {
 	if err != nil {
 		return nil, false
 	}
-	sess, err := s.sessions.byID(c.Value)
+	sess, err := s.sessions.byToken(c.Value)
 	if err != nil {
 		return nil, false
 	}

@@ -22,6 +22,8 @@
 //	PEP_SESSION_KEY_PATH     file with a base64 256-bit key → enables local /oauth2/auth validation (decrypt
 //	                         an encrypted session token, no kv per request). PEP_SESSION_PREVIOUS_KEY_PATH rotates it.
 //	PEP_SESSION_TTL          session lifetime when local validation is on (Go duration, default 8h)
+//	PEP_SESSION_STORE_KEY_PATH  file with a SEPARATE base64 256-bit key → encrypts kv session records at rest
+//	                         (AES-256-GCM, id-bound). Defends a rogue storage admin. See docs/at-rest-encryption.md.
 //	DATABASE_URL             Postgres DSN for the session store; durable + shared across replicas. When unset,
 //	                         an in-memory store is used (dev only — sessions are lost on restart, not shared).
 //
@@ -174,6 +176,7 @@ func main() {
 		SnapshotKeyPath:         os.Getenv("PEP_SESSION_KEY_PATH"),
 		SnapshotPreviousKeyPath: os.Getenv("PEP_SESSION_PREVIOUS_KEY_PATH"),
 		SnapshotTTL:             snapshotTTL,
+		SessionStoreKeyPath:     os.Getenv("PEP_SESSION_STORE_KEY_PATH"),
 		Bus:                     openBus(),
 	})
 	if err != nil {

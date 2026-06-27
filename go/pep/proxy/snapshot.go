@@ -35,13 +35,13 @@ func newSnapshotter(keyPath, prevKeyPath string, ttl time.Duration) (*snapshotte
 	if keyPath == "" {
 		return nil, nil
 	}
-	key, err := loadSnapshotKey(keyPath)
+	key, err := loadBase64Key(keyPath)
 	if err != nil {
 		return nil, fmt.Errorf("snapshot key: %w", err)
 	}
 	s := &snapshotter{encKey: key, decKeys: [][]byte{key}, ttl: ttl}
 	if prevKeyPath != "" {
-		prev, err := loadSnapshotKey(prevKeyPath)
+		prev, err := loadBase64Key(prevKeyPath)
 		if err != nil {
 			return nil, fmt.Errorf("snapshot previous key: %w", err)
 		}
@@ -50,8 +50,9 @@ func newSnapshotter(keyPath, prevKeyPath string, ttl time.Duration) (*snapshotte
 	return s, nil
 }
 
-// loadSnapshotKey reads a base64-encoded 256-bit key from a file.
-func loadSnapshotKey(path string) ([]byte, error) {
+// loadBase64Key reads a base64-encoded 256-bit key from a file (the snapshot key and the session-store
+// at-rest key share this format).
+func loadBase64Key(path string) ([]byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read %q: %w", path, err)
@@ -61,7 +62,7 @@ func loadSnapshotKey(path string) ([]byte, error) {
 		return nil, fmt.Errorf("base64-decode key in %q: %w", path, err)
 	}
 	if len(key) != 32 {
-		return nil, fmt.Errorf("snapshot key in %q must be 32 bytes (A256GCM), got %d", path, len(key))
+		return nil, fmt.Errorf("key in %q must be 32 bytes (256-bit), got %d", path, len(key))
 	}
 	return key, nil
 }
