@@ -1,0 +1,25 @@
+# S4 PDP-backend HITL — the two airgapped backend services. pep runs on the HOST against these (so the PDP
+# issuer URL http://localhost:8011 is consistent for both the browser redirect and pep's backend calls). No
+# external network: the PDP authenticates with its NonProd mock IdP. See README.md (§ PDP backend).
+services:
+  zero-pdp:
+    build:
+      context: ../../.. # the go/ workspace root (go.work)
+      dockerfile: pdp/cmd/zero-pdp/Dockerfile
+    environment:
+      PDP_NON_PROD: "true"
+      PRETTY_LOGS: "false"
+    volumes:
+      - ./pdp-config:/etc/pdp:ro # pdp.yaml (mock_idp + pep-client) + sign.jwk + openid-providers.yaml
+    ports:
+      - "8011:8011"
+    command: ["start"]
+
+  zaddy:
+    build:
+      context: ../../..
+      dockerfile: zaddy/cmd/zero-caddy/Dockerfile
+    volumes:
+      - ./zaddy-config:/etc/caddy:ro # Caddyfile (enforce_policy authorization_dpop) + pdp-jwks.json
+    ports:
+      - "8010:8010"

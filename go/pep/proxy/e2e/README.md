@@ -62,3 +62,37 @@ With `DATABASE_URL` and `PEP_SESSION_KEY_PATH` set, run a second proxy on `PEP_A
 and key. A logout on one replica is honored on the other instantly (Postgres LISTEN/NOTIFY), and a freshly
 started replica loads revocations from the durable `pep:revoked` set. See
 [`../docs/stateless-session-validation.md`](../docs/stateless-session-validation.md).
+
+## PDP backend (S4) — airgapped, DPoP end to end
+
+pep as a confidential client of the PDP ([`../docs/pdp-backend.md`](../docs/pdp-backend.md)): login via the
+PDP's NonProd mock IdP (no external IdP), then a DPoP-bound `/api` call that a `zaddy` resource server
+**verifies**. The two backend services run in compose; pep runs on the host so the PDP issuer URL
+(`http://localhost:8011`) is the same for the browser redirect and pep's backend calls.
+
+```sh
+# 1) PDP (NonProd mock IdP, pep registered as a client) + zaddy (enforce_policy authorization_dpop)
+docker compose -f docker-compose.pdp.yaml up --build -d
+
+# 2) pep on the host, PDP backend
+PEP_BACKEND=pdp PEP_AS_ISSUER=http://localhost:8011 PEP_CLIENT_ID=pep-client \
+PEP_CLIENT_SIGNING_KEY_PATH=pdp-config/pep-client.jwk \
+PEP_PUBLIC_URL=http://localhost:8080 PEP_ADDR=:8080 PEP_INSECURE_COOKIE=true \
+PEP_SCOPES=protected PEP_API_UPSTREAM=http://localhost:8010 \
+  go run ../../cmd/zero-pep-proxy
+```
+
+Drive it (browser at `http://localhost:8080/`, or curl):
+
+```sh
+curl -s -c jar -b jar -L http://localhost:8080/oauth2/start -o /dev/null   # login via the mock IdP
+curl -s -b jar http://localhost:8080/oauth2/userinfo                       # → the mock identity
+curl -s -i -b jar http://localhost:8080/api/protected-dpop                 # → 200, zaddy verified the proof
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8010/protected-dpop  # → 401 (no token)
+```
+
+The `/api` call shows the whole chain: pep exchanges the code at `/token` with `private_key_jwt` + a DPoP
+proof (so the AS issues a `cnf.jkt`-bound token), then injects `Authorization: DPoP <token>` + a fresh proof
+bound to the upstream request; zaddy verifies token + proof + scope. No external network.
+
+`pdp-config/` and `zaddy-config/` carry **non-production test keys** for this harness only.

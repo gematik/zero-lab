@@ -1,0 +1,28 @@
+bind_address: ":8011"
+authorization_server:
+  issuer: "http://localhost:8011"
+  sign_jwk_path: sign.jwk
+  non_prod_mode: true
+  mock_idp:
+    subject: X110000001
+    claims:
+      name: Test User
+      email: test@example.com
+  scopes_supported:
+    - protected
+  products:
+    - product_id: pep-product
+      product_name: pep S4 e2e
+      redirect_uris:
+        - http://localhost:8080/oauth2/callback
+      scopes:
+        - protected
+  clients:
+    - client_id: pep-client
+      product_id: pep-product
+      public_jwk:
+        kty: EC
+        crv: P-256
+        kid: a1pogbcdw_yb2mmqSt7FFjj-3tjRglQ8Evz_ARGwTpc
+        x: XbzUtT4Jf8lU551ckVNFw4-kBOTzK3psak83ZYKm-SM
+        y: GIC-gzT4yOhu_3DqDjiaaf06q_m_1OQKI_hDATbDHu8
