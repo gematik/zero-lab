@@ -37,6 +37,33 @@ type Session struct {
 	Identity             map[string]any `json:"identity,omitempty"`
 	ReturnTo             string         `json:"return_to,omitempty"`
 	CreatedAt            time.Time      `json:"created_at"`
+
+	// PDP backend: tokens keyed by AS issuer (one entry in S4) and the per-session DPoP private key (JWK
+	// JSON). The provider backend leaves both zero. DPoPKeyJWK holds the private key in S4; the T3 stage
+	// (see docs/pdp-backend.md §10) moves it to the browser, leaving only the public half here.
+	Tokens     map[string]*TokenEntry `json:"tokens,omitempty"`
+	DPoPKeyJWK []byte                 `json:"dpop_key_jwk,omitempty"`
+}
+
+// TokenEntry is the PDP-issued token set for one authorization server.
+type TokenEntry struct {
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token,omitempty"`
+	ExpiresAt    time.Time `json:"expires_at,omitempty"`
+}
+
+// SetTokens stores the token set for an authorization server on the session.
+func (s *Session) SetTokens(asIssuer string, e *TokenEntry) {
+	if s.Tokens == nil {
+		s.Tokens = map[string]*TokenEntry{}
+	}
+	s.Tokens[asIssuer] = e
+}
+
+// GetTokens returns the token set for an authorization server, if present.
+func (s *Session) GetTokens(asIssuer string) (*TokenEntry, bool) {
+	e, ok := s.Tokens[asIssuer]
+	return e, ok
 }
 
 // Authenticated reports whether the login completed (identity captured).

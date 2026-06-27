@@ -8,6 +8,18 @@ import (
 	"github.com/gematik/zero-lab/go/kv"
 )
 
+func TestSessionTokenSet(t *testing.T) {
+	s := &Session{ID: "x"}
+	if _, ok := s.GetTokens("https://as"); ok {
+		t.Fatal("empty session should have no tokens")
+	}
+	s.SetTokens("https://as", &TokenEntry{AccessToken: "at", RefreshToken: "rt", ExpiresAt: time.Unix(100, 0)})
+	got, ok := s.GetTokens("https://as")
+	if !ok || got.AccessToken != "at" || got.RefreshToken != "rt" {
+		t.Fatalf("got %+v, ok=%v", got, ok)
+	}
+}
+
 func TestSessionRotate(t *testing.T) {
 	store := newSessionStore(kv.NewMemory(), time.Hour)
 	sess := store.create()
