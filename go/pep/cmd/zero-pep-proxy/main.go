@@ -17,7 +17,7 @@
 //	PEP_GEMIDP_REDIRECT_URI  redirect_uri the gemidp client sends (default <public>/oauth2/callback)
 //	PEP_GEMIDP_REDIRECT_SCOPES / _NAME / _LOGO_URI / _USER_AGENT  gemidp options (always Authenticator flow)
 //	PEP_COOKIE_NAME          session cookie name (default ZERO-PEP-SID)
-//	PEP_PRODUCTION_COOKIE    "true" → __Host- + Secure (set behind HTTPS)
+//	PEP_INSECURE_COOKIE      "true" → drop __Host-/Secure for http://localhost dev; default is secure
 //	PEP_TEMPLATE_DIR         replace the embedded UI templates from this directory
 //	PEP_SESSION_KEY_PATH     file with a base64 256-bit key → enables local /oauth2/auth validation (decrypt
 //	                         an encrypted session token, no kv per request). PEP_SESSION_PREVIOUS_KEY_PATH rotates it.
@@ -162,7 +162,7 @@ func main() {
 		Backend:                 proxy.NewProviderBackend(opts...),
 		Store:                   openStore(),
 		CookieName:              env("PEP_COOKIE_NAME", "ZERO-PEP-SID"),
-		ProductionCookie:        os.Getenv("PEP_PRODUCTION_COOKIE") == "true",
+		InsecureCookie:          os.Getenv("PEP_INSECURE_COOKIE") == "true",
 		TemplateDir:             os.Getenv("PEP_TEMPLATE_DIR"),
 		SnapshotKeyPath:         os.Getenv("PEP_SESSION_KEY_PATH"),
 		SnapshotPreviousKeyPath: os.Getenv("PEP_SESSION_PREVIOUS_KEY_PATH"),

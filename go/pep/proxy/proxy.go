@@ -21,12 +21,12 @@ import (
 
 // Config configures the proxy server.
 type Config struct {
-	Backend          Backend       // the auth backend (providerBackend today; pdpBackend later)
-	Store            kv.Store      // session store
-	SessionTTL       time.Duration // sliding session TTL (0 = 1h); ignored when the snapshot fast path is on
-	CookieName       string        // session cookie name (default ZERO-PEP-SID)
-	ProductionCookie bool          // __Host- + Secure (true behind HTTPS)
-	TemplateDir      string        // override the embedded UI templates (os.DirFS); "" = embedded
+	Backend        Backend       // the auth backend (providerBackend today; pdpBackend later)
+	Store          kv.Store      // session store
+	SessionTTL     time.Duration // sliding session TTL (0 = 1h); ignored when the snapshot fast path is on
+	CookieName     string        // session cookie name (default ZERO-PEP-SID)
+	InsecureCookie bool          // drop the __Host- prefix + Secure for http dev; default is secure
+	TemplateDir    string        // override the embedded UI templates (os.DirFS); "" = embedded
 
 	// Snapshot fast path (docs/stateless-session-validation.md). When SnapshotKeyPath is set, /oauth2/auth
 	// validates an encrypted snapshot cookie locally (no kv) for the whole session. Keys are read from files.
@@ -87,7 +87,7 @@ func New(cfg Config) (*Server, error) {
 	sessions := newSessionStore(cfg.Store, cfg.SessionTTL)
 	s := &Server{
 		sessions: sessions,
-		cookie:   newCookieTemplate(cfg.CookieName, cfg.ProductionCookie),
+		cookie:   newCookieTemplate(cfg.CookieName, cfg.InsecureCookie),
 		render:   r,
 		backend:  cfg.Backend,
 		snap:     snap,
@@ -98,7 +98,7 @@ func New(cfg Config) (*Server, error) {
 		// token) and there is no sliding idle: pin both the idle and absolute TTLs to the snapshot lifetime.
 		sessions.ttl = snapTTL
 		sessions.maxLifetime = snapTTL
-		s.snapCookie = newCookieTemplate(cfg.CookieName+"-SNAP", cfg.ProductionCookie)
+		s.snapCookie = newCookieTemplate(cfg.CookieName+"-SNAP", cfg.InsecureCookie)
 		slog.Info("snapshot fast path enabled", "ttl", snapTTL)
 	}
 	return s, nil

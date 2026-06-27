@@ -20,15 +20,17 @@ One front port — point your browser or rathole tunnel at it; the rest is inter
 ```sh
 docker compose -f pep/proxy/e2e/docker-compose.yaml up --build
 
-PEP_PUBLIC_URL=http://localhost:8080 \
+PEP_PUBLIC_URL=http://localhost:8080 PEP_INSECURE_COOKIE=true \
 PEP_OIDC_ISSUER=https://accounts.google.com \
 PEP_OIDC_CLIENT_ID=... PEP_OIDC_CLIENT_SECRET=... \
   go run ./pep/cmd/zero-pep-proxy
 ```
 
 Open http://localhost:8080/ and log in; register `http://localhost:8080/oauth2/callback` at the provider.
-Sessions are in memory (lost on restart) and `/oauth2/auth` reads them per request — the database and the
-snapshot fast path are off until you set the vars below.
+`PEP_INSECURE_COOKIE=true` is required only here: the session cookie is `__Host-`/Secure by default, which
+`http://localhost` can't carry — drop it behind HTTPS. Sessions are in memory (lost on restart) and
+`/oauth2/auth` reads them per request — the database and the snapshot fast path are off until you set the
+vars below.
 
 ## Config
 
@@ -43,12 +45,12 @@ All via environment; full reference in [`../../cmd/zero-pep-proxy/CONFIG.md`](..
 | PEP_OPENID_PROVIDERS_PATH | several providers (openid-providers.yaml)    | ./openid-providers.yaml|
 | DATABASE_URL              | durable + shared sessions (Postgres)         | in-memory              |
 | PEP_SESSION_KEY_PATH      | snapshot fast path (no DB read per request)  | off                    |
-| PEP_PRODUCTION_COOKIE     | `__Host-` + Secure cookie (set behind HTTPS) | false                  |
+| PEP_INSECURE_COOKIE       | drop `__Host-`/Secure for `http://localhost` (secure by default) | secure      |
 
 ## Variations
 
 - OIDF (needs a public host): point rathole at :8080 and add `PEP_PUBLIC_URL=https://<rathole-host>`,
-  `PEP_PRODUCTION_COOKIE=true`, `PEP_OIDF_RP_CONFIG_PATH=...`.
+  `PEP_OIDF_RP_CONFIG_PATH=...` (drop `PEP_INSECURE_COOKIE` — the default secure cookie is what you want over HTTPS).
 - Durable sessions + snapshot fast path: add `DATABASE_URL=postgres://zero:zero@127.0.0.1:5432/zero?sslmode=disable`,
   generate a key (`openssl rand -base64 32 > /tmp/pep-session.key`), and set `PEP_SESSION_KEY_PATH=/tmp/pep-session.key`.
 - Several providers: set `PEP_OPENID_PROVIDERS_PATH` (see `../../cmd/zero-pep-proxy/openid-providers.example.yaml`).

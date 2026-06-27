@@ -28,6 +28,8 @@ services:
       PEP_ADDR: ":4180"
       # The public origin the browser reaches the proxy at — the Caddy front, not the proxy directly.
       PEP_PUBLIC_URL: "${PEP_PUBLIC_URL:-http://127.0.0.1:8080}"
+      # The cookie is __Host-/Secure by default; this demo is plain http, so relax it. Unset behind HTTPS.
+      PEP_INSECURE_COOKIE: "${PEP_INSECURE_COOKIE:-true}"
       PEP_OIDC_ISSUER: "${PEP_OIDC_ISSUER}"
       PEP_OIDC_CLIENT_ID: "${PEP_OIDC_CLIENT_ID}"
       PEP_OIDC_CLIENT_SECRET: "${PEP_OIDC_CLIENT_SECRET}"

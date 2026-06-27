@@ -34,7 +34,7 @@ Full reference: [CONFIG.md](https://github.com/gematik/zero-lab/blob/main/go/pep
 | --- | --- | --- |
 | PEP_PUBLIC_URL | public origin the browser uses (the front) | http://127.0.0.1:4180 |
 | PEP_ADDR | listen address | :4180 |
-| PEP_PRODUCTION_COOKIE | `__Host-` + Secure cookie (set behind HTTPS) | false |
+| PEP_INSECURE_COOKIE | `"true"` drops `__Host-`/Secure for `http://localhost` dev; secure by default | false |
 | PEP_OIDC_ISSUER (+ _CLIENT_ID/_CLIENT_SECRET) | one OIDC provider | — |
 | PEP_OIDF_RP_CONFIG_PATH | a gematik OIDF relying party | — |
 | PEP_GEMIDP_CLIENT_ID | a gematik IDP-Dienst client | — |
