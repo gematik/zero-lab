@@ -30,8 +30,6 @@ const (
 
 type Server struct {
 	Metadata         ExtendedMetadata
-	nonProdMode      bool
-	mockIDP          *MockIDPConfig
 	endpointPaths    *EndpointsConfig
 	clientsRegistry  ClientsRegistry
 	productsRegistry *ProductsRegistry
@@ -63,12 +61,6 @@ func New(cfg Config) (*Server, error) {
 	s := &Server{
 		Metadata:        cfg.MetadataTemplate,
 		openidProviders: make([]oidc.Client, 0),
-		nonProdMode:     cfg.NonProdMode,
-		mockIDP:         cfg.MockIDP,
-	}
-
-	if s.nonProdMode {
-		slog.Warn("Authorization server is running in non-production mode")
 	}
 
 	issuerUrl, err := url.Parse(cfg.Issuer)

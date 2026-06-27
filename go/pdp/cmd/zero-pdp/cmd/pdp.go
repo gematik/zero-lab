@@ -28,12 +28,6 @@ func createPdp() (*pdp.PDP, error) {
 
 	config.AuthzServerConfig.Store = openStore()
 
-	// PDP_NON_PROD=true forces NonProdMode (the mock IdP) regardless of the config file — for the airgapped
-	// compose harness. The mock_idp claims still come from the config file.
-	if viper.GetBool("non_prod") {
-		config.AuthzServerConfig.NonProdMode = true
-	}
-
 	slog.Info("Creating Zero Trust PDP", "version", pdp.Version, "config_file", configFile, "workdir", viper.GetString("workdir"))
 	return pdp.New(*config)
 }

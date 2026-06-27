@@ -2,12 +2,8 @@ bind_address: ":8011"
 authorization_server:
   issuer: "http://localhost:8011"
   sign_jwk_path: sign.jwk
-  non_prod_mode: true
-  mock_idp:
-    subject: X110000001
-    claims:
-      name: Test User
-      email: test@example.com
+  # The mock OpenID Provider is baked into the image via -tags mockidp (see docker-compose.pdp.yaml); it
+  # registers itself as a provider at <issuer>/mock-idp and runs the real op-callback login path.
   scopes_supported:
     - protected
   products:

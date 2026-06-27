@@ -65,13 +65,17 @@ started replica loads revocations from the durable `pep:revoked` set. See
 
 ## PDP backend (S4) — airgapped, DPoP end to end
 
-pep as a confidential client of the PDP ([`../docs/pdp-backend.md`](../docs/pdp-backend.md)): login via the
-PDP's NonProd mock IdP (no external IdP), then a DPoP-bound `/api` call that a `zaddy` resource server
-**verifies**. The two backend services run in compose; pep runs on the host so the PDP issuer URL
-(`http://localhost:8011`) is the same for the browser redirect and pep's backend calls.
+pep as a confidential client of the PDP ([`../docs/pdp-backend.md`](../docs/pdp-backend.md)): login via a
+co-hosted mock OpenID Provider (no external IdP), then a DPoP-bound `/api` call that a `zaddy` resource server
+**verifies**. The mock OP is compiled into the PDP image only with `-tags mockidp` (the compose sets the
+`GO_TAGS` build arg); production builds exclude it entirely, and the authorization-server flow has no mock
+branches — the mock registers as an ordinary provider at `<issuer>/mock-idp` and runs the real op-callback
+login path (a login page → `/op-callback` → code exchange → id_token validation). The two backend services
+run in compose; pep runs on the host so the PDP issuer URL (`http://localhost:8011`) is the same for the
+browser redirect and pep's backend calls.
 
 ```sh
-# 1) PDP (NonProd mock IdP, pep registered as a client) + zaddy (enforce_policy authorization_dpop)
+# 1) PDP (image built with -tags mockidp → co-hosted mock OP) + zaddy (enforce_policy authorization_dpop)
 docker compose -f docker-compose.pdp.yaml up --build -d
 
 # 2) pep on the host, PDP backend
@@ -82,14 +86,12 @@ PEP_SCOPES=protected PEP_API_UPSTREAM=http://localhost:8010 \
   go run ../../cmd/zero-pep-proxy
 ```
 
-Drive it (browser at `http://localhost:8080/`, or curl):
+Drive it in a **browser** at `http://localhost:8080/oauth2/start`: you're redirected to the **Mock IdP login
+page**; click **Sign in** to complete login (the mock runs the real op-callback path). Then:
 
-```sh
-curl -s -c jar -b jar -L http://localhost:8080/oauth2/start -o /dev/null   # login via the mock IdP
-curl -s -b jar http://localhost:8080/oauth2/userinfo                       # → the mock identity
-curl -s -i -b jar http://localhost:8080/api/protected-dpop                 # → 200, zaddy verified the proof
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8010/protected-dpop  # → 401 (no token)
-```
+- `GET http://localhost:8080/oauth2/userinfo` → the identity from the signed id_token
+- `GET http://localhost:8080/api/protected-dpop` → `200`, zaddy-verified DPoP-bound token
+- `GET http://localhost:8010/protected-dpop` (no token) → `401`
 
 The `/api` call shows the whole chain: pep exchanges the code at `/token` with `private_key_jwt` + a DPoP
 proof (so the AS issues a `cnf.jkt`-bound token), then injects `Authorization: DPoP <token>` + a fresh proof

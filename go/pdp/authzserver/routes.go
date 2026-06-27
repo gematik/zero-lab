@@ -34,4 +34,8 @@ func (s *Server) MountRoutes(mux *http.ServeMux) {
 		mux.Handle(http.MethodGet+" "+s.endpointPaths.EntityStatement, http.HandlerFunc(s.oidfRelyingParty.Serve))
 		slog.Info("registered route", "method", http.MethodGet, "path", s.endpointPaths.EntityStatement)
 	}
+
+	// Build-tag gated: mounts the co-hosted mock OP + registers it as a provider when built with -tags
+	// mockidp; a no-op otherwise (the mockidp package is then not compiled or imported).
+	s.registerMockProviders(mux)
 }
