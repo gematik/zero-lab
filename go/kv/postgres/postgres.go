@@ -16,15 +16,25 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-// schemaSQL is applied idempotently on Open (no migration tool). value is jsonb — the JSON store.
+// schemaSQL is applied idempotently on Open (no migration tool). value is bytea — an opaque binary store
+// (the kv never queries inside values), so JSON, snapshots, and at-rest ciphertext all store as raw bytes
+// with no base64/jsonb overhead. The DO block migrates pre-existing jsonb tables in place.
 const schemaSQL = `
 CREATE TABLE IF NOT EXISTS kv (
   key        text PRIMARY KEY,
-  value      jsonb NOT NULL,
+  value      bytea NOT NULL,
+  metadata   jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   expires_at timestamptz
 );
 CREATE INDEX IF NOT EXISTS idx_kv_expires_at ON kv(expires_at);
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name='kv' AND column_name='value' AND data_type='jsonb') THEN
+    ALTER TABLE kv ALTER COLUMN value TYPE bytea USING convert_to(value::text, 'UTF8');
+  END IF;
+END $$;
+ALTER TABLE kv ADD COLUMN IF NOT EXISTS metadata jsonb;
 `
 
 type store struct {
@@ -61,6 +71,20 @@ func (s *store) Get(ctx context.Context, key string) ([]byte, bool, error) {
 	return v, true, nil
 }
 
+func (s *store) GetItem(ctx context.Context, key string) (kv.Item, bool, error) {
+	var value, metadata []byte
+	err := s.db.QueryRowContext(ctx,
+		`SELECT value, metadata FROM kv WHERE key=$1 AND (expires_at IS NULL OR expires_at > now())`,
+		key).Scan(&value, &metadata)
+	if errors.Is(err, sql.ErrNoRows) {
+		return kv.Item{}, false, nil
+	}
+	if err != nil {
+		return kv.Item{}, false, fmt.Errorf("kv/postgres: getitem %q: %w", key, err)
+	}
+	return kv.Item{Value: value, Metadata: metadata}, true, nil
+}
+
 type execer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
@@ -70,10 +94,15 @@ func upsert(ctx context.Context, e execer, ent kv.Entry) error {
 	if ent.TTL > 0 {
 		expiresAt = time.Now().Add(ent.TTL)
 	}
+	var metadata any
+	if len(ent.Metadata) > 0 {
+		metadata = string(ent.Metadata)
+	}
 	_, err := e.ExecContext(ctx,
-		`INSERT INTO kv(key, value, expires_at) VALUES($1, $2::jsonb, $3)
-		   ON CONFLICT(key) DO UPDATE SET value=excluded.value, created_at=now(), expires_at=excluded.expires_at`,
-		ent.Key, string(ent.Value), expiresAt)
+		`INSERT INTO kv(key, value, metadata, expires_at) VALUES($1, $2, $3::jsonb, $4)
+		   ON CONFLICT(key) DO UPDATE SET value=excluded.value, metadata=excluded.metadata,
+		     created_at=now(), expires_at=excluded.expires_at`,
+		ent.Key, ent.Value, metadata, expiresAt)
 	if err != nil {
 		return fmt.Errorf("kv/postgres: set %q: %w", ent.Key, err)
 	}

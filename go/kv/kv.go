@@ -1,5 +1,7 @@
-// Package kv is a small Redis-style JSON key/value store with per-entry TTLs. Values are opaque JSON
-// bytes; callers handle their own (de)serialization. The store is the single persistence primitive for
+// Package kv is a small Redis-style key/value store with per-entry TTLs. Values are opaque bytes (JSON
+// records, encrypted snapshots, or at-rest ciphertext); each entry may carry an opaque metadata descriptor
+// so reads can dispatch parsing/decryption per value. Callers handle their own (de)serialization. The store
+// is the single persistence primitive for
 // the authorization server, the bff, and the nonce service — multi-index lookups are modelled with
 // secondary-index keys (a record under "<ns>:<id>" plus "<ns>:<field>:<v>" keys holding the id).
 //
@@ -21,17 +23,30 @@ import (
 // ErrClosed is returned by every method after Close.
 var ErrClosed = errors.New("kv: store closed")
 
-// Entry is one key/value/TTL triple for SetMany. A zero TTL means no expiry.
+// Entry is one key/value/TTL triple for SetMany. A zero TTL means no expiry. Metadata is an optional,
+// opaque descriptor stored alongside the value (e.g. a codec / encryption-scheme tag) so reads can dispatch
+// parsing/decryption per value rather than via a global flag; nil leaves it unset.
 type Entry struct {
-	Key   string
-	Value []byte
-	TTL   time.Duration
+	Key      string
+	Value    []byte
+	TTL      time.Duration
+	Metadata []byte
+}
+
+// Item is a value plus its optional metadata descriptor, returned by GetItem.
+type Item struct {
+	Value    []byte
+	Metadata []byte
 }
 
 // Store is the persistence interface. Implementations must be safe for concurrent use.
 type Store interface {
 	// Get returns the value for key. found is false when the key is absent or expired.
 	Get(ctx context.Context, key string) (value []byte, found bool, err error)
+
+	// GetItem returns the value and its metadata descriptor (the per-entry Metadata written via SetMany) for
+	// key. found is false when the key is absent or expired.
+	GetItem(ctx context.Context, key string) (item Item, found bool, err error)
 
 	// Set stores value under key with an optional TTL (0 = no expiry), overwriting any existing value.
 	Set(ctx context.Context, key string, value []byte, ttl time.Duration) error

@@ -16,6 +16,7 @@ type memoryStore struct {
 
 type memEntry struct {
 	value     []byte
+	metadata  []byte
 	expiresAt time.Time // zero = no expiry
 }
 
@@ -70,9 +71,26 @@ func (s *memoryStore) SetMany(_ context.Context, entries ...Entry) error {
 		return ErrClosed
 	}
 	for _, e := range entries {
-		s.items[e.Key] = memEntry{value: clone(e.Value), expiresAt: ttlExpiry(e.TTL)}
+		s.items[e.Key] = memEntry{value: clone(e.Value), metadata: clone(e.Metadata), expiresAt: ttlExpiry(e.TTL)}
 	}
 	return nil
+}
+
+func (s *memoryStore) GetItem(_ context.Context, key string) (Item, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return Item{}, false, ErrClosed
+	}
+	e, ok := s.items[key]
+	if !ok {
+		return Item{}, false, nil
+	}
+	if e.expired(time.Now()) {
+		delete(s.items, key)
+		return Item{}, false, nil
+	}
+	return Item{Value: clone(e.value), Metadata: clone(e.metadata)}, true, nil
 }
 
 func (s *memoryStore) Take(_ context.Context, key string) ([]byte, bool, error) {
