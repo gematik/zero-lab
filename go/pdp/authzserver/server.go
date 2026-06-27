@@ -31,6 +31,7 @@ const (
 type Server struct {
 	Metadata         ExtendedMetadata
 	nonProdMode      bool
+	mockIDP          *MockIDPConfig
 	endpointPaths    *EndpointsConfig
 	clientsRegistry  ClientsRegistry
 	productsRegistry *ProductsRegistry
@@ -63,6 +64,7 @@ func New(cfg Config) (*Server, error) {
 		Metadata:        cfg.MetadataTemplate,
 		openidProviders: make([]oidc.Client, 0),
 		nonProdMode:     cfg.NonProdMode,
+		mockIDP:         cfg.MockIDP,
 	}
 
 	if s.nonProdMode {

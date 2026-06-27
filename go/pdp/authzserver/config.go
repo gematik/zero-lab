@@ -28,6 +28,9 @@ type Config struct {
 	OidfRelyingPartyConfig     *oidf.RelyingPartyConfig `yaml:"oidf_relying_party" validate:"omitempty"`
 	Endpoints                  EndpointsConfig          `yaml:"endpoints" validate:"omitempty"`
 	NonProdMode                bool                     `yaml:"non_prod_mode"`
+	// MockIDP, when set and NonProdMode is on, makes the authorization endpoint auto-complete login with this
+	// canned identity instead of redirecting to a real OP. Non-prod test harness only.
+	MockIDP *MockIDPConfig `yaml:"mock_idp" validate:"omitempty"`
 	// some values may be set programmatically
 	NonceService nonce.Service
 	// Store is the kv backend for sessions + nonces. The command opens the Postgres store from

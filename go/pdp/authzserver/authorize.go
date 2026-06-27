@@ -95,6 +95,10 @@ func (s *Server) AuthorizationEndpoint(w http.ResponseWriter, r *http.Request) e
 // redirects the user-agent to the provider. On error it redirects back to the client with an
 // OAuth error.
 func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request, session *AuthzServerSession, product *Product) error {
+	if s.nonProdMode && s.mockIDP != nil {
+		return s.completeMockLogin(w, r, session)
+	}
+
 	opClient, err := s.GetOpenidClient(session.IDPIss)
 	if err != nil {
 		return redirectWithError(w, r, session.RedirectURI, session.State, Error{

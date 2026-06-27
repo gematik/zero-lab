@@ -26,6 +26,7 @@ type AuthzServerSession struct {
 	RefreshCount        int                      `json:"refresh_count"`
 	LastRefreshAt       time.Time                `json:"last_refresh_at"`
 	DPoPThumbprint      string                   `json:"dpop_thumbprint"`
+	MockClaims          map[string]any           `json:"mock_claims,omitempty"`
 }
 
 type AuthzServerSessionStore interface {

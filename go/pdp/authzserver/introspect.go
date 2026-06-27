@@ -118,6 +118,15 @@ func (s *Server) IntrospectionEndpoint(w http.ResponseWriter, r *http.Request) e
 		}
 	}
 
+	// NonProd mock-IdP sessions carry a canned identity instead of an upstream id_token.
+	if resp.Identity == nil && len(session.MockClaims) > 0 {
+		resp.Identity = session.MockClaims
+		if sub, ok := session.MockClaims["sub"].(string); ok && sub != "" {
+			resp.Sub = sub
+		}
+		resp.Username = firstNonEmpty(session.MockClaims, "preferred_username", "name", "email")
+	}
+
 	return writeJSON(w, http.StatusOK, resp)
 }
 
