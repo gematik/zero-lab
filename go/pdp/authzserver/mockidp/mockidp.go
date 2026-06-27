@@ -125,11 +125,28 @@ func (p *provider) handleJWKS(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, p.jwks)
 }
 
+// loginPage uses the gematik developer style (light, Inter, gematik palette) so the mock matches pep's auth
+// UI and the metsubushi app. No web-font fetch (airgapped): Inter if present, else system fonts.
 var loginPage = template.Must(template.New("login").Parse(`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>Mock IdP</title>
-<style>body{font-family:system-ui,sans-serif;max-width:24rem;margin:6rem auto;padding:0 1rem}
-button{font-size:1rem;padding:.6rem 1.2rem;cursor:pointer}</style></head>
-<body><h1>Mock IdP <small>(non-prod)</small></h1>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mock IdP</title><style>
+:root{--white:#fff;--almost-black:#252834;--dark-grey:#59677c;--light-grey:#e8edf3;--dark-blue:#000e52;--magenta:#ff1b7c}
+*{box-sizing:border-box}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:17px;color:var(--almost-black);
+margin:0;min-height:100vh;display:grid;place-items:center;padding:1.5rem;-webkit-font-smoothing:antialiased;
+background:radial-gradient(120% 120% at 100% 0%,rgba(0,183,255,.10),transparent 55%),
+radial-gradient(90% 90% at 0% 0%,rgba(0,255,100,.12),transparent 45%),var(--white)}
+main{background:var(--white);border:1px solid var(--light-grey);border-radius:24px;padding:2.25rem;
+width:min(92%,22rem);box-shadow:0 4px 16px 0 rgb(0 14 82 / 12%)}
+h1{font-size:1.3rem;font-weight:800;letter-spacing:-.01em;color:var(--dark-blue);margin:0 0 .25rem}
+h1 small{color:var(--dark-grey);font-weight:600;font-size:.7em}
+p{color:var(--dark-grey);margin:.2rem 0 0}
+button{font-family:inherit;font-size:1rem;font-weight:700;width:100%;margin-top:1.4rem;color:var(--white);
+background:var(--dark-blue);border:2px solid var(--dark-blue);border-radius:8px;padding:.7rem 1.2rem;cursor:pointer;
+transition:background .25s ease,border-color .25s ease}
+button:hover{background:var(--magenta);border-color:var(--magenta)}
+</style></head>
+<body><main><h1>Mock IdP <small>(non-prod)</small></h1>
 <p>Sign in as <strong>{{.Subject}}</strong></p>
 <form method="post" action="{{.Action}}">
 <input type="hidden" name="client_id" value="{{.ClientID}}">
@@ -138,7 +155,7 @@ button{font-size:1rem;padding:.6rem 1.2rem;cursor:pointer}</style></head>
 <input type="hidden" name="nonce" value="{{.Nonce}}">
 <input type="hidden" name="code_challenge" value="{{.CodeChallenge}}">
 <button type="submit">Sign in</button>
-</form></body></html>`))
+</form></main></body></html>`))
 
 func (p *provider) handleAuthPage(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()

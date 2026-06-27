@@ -1,21 +1,49 @@
 {{define "styles"}}<style>
-  :root { color-scheme: dark }
-  body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #0f1115; color: #e6e6e6;
-         margin: 0; min-height: 100vh; display: grid; place-items: center }
-  main.card { background: #1a1d24; border: 1px solid #2a2f3a; border-radius: 14px; padding: 2rem;
-              max-width: 24rem; width: min(90%, 24rem); box-shadow: 0 18px 50px -24px rgba(0,0,0,.6) }
-  h1 { font-size: 1.2rem; margin: 0 0 1rem }
-  a.provider { display: flex; align-items: center; gap: .65rem; padding: .7rem .9rem; margin: .45rem 0;
-               border: 1px solid #2a2f3a; border-radius: 10px; text-decoration: none; color: inherit }
-  a.provider:hover { border-color: #3b82f6; background: #20242d }
+  /* gematik developer style — kept in sync with the metsubushi reference app (light, Inter, gematik palette).
+     No web-font fetch (airgapped-friendly): Inter if present, else system fonts. */
+  :root {
+    color-scheme: light;
+    --white: #fff;
+    --green: #00ff64;
+    --almost-black: #252834;
+    --dark-grey: #59677c;
+    --medium-grey: #d1dbe7;
+    --light-grey: #e8edf3;
+    --lightest-grey: #f4f6f9;
+    --dark-blue: #000e52;
+    --bright-blue: #00b7ff;
+    --magenta: #ff1b7c;
+    --functional-green: #007336;
+    --base-font: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --radius-m: 8px;
+    --radius-l: 24px;
+  }
+  * { box-sizing: border-box }
+  body { font-family: var(--base-font); font-size: 17px; line-height: 1.5; color: var(--almost-black);
+         margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 1.5rem;
+         background: radial-gradient(120% 120% at 100% 0%, rgba(0,183,255,.10), transparent 55%),
+                     radial-gradient(90% 90% at 0% 0%, rgba(0,255,100,.12), transparent 45%), var(--white);
+         -webkit-font-smoothing: antialiased }
+  main.card { background: var(--white); border: 1px solid var(--light-grey); border-radius: var(--radius-l);
+              padding: 2.25rem; max-width: 24rem; width: min(92%, 24rem);
+              box-shadow: 0 4px 16px 0 rgb(0 14 82 / 12%) }
+  h1 { font-size: 1.3rem; font-weight: 800; letter-spacing: -.01em; color: var(--dark-blue); margin: 0 0 1.1rem }
+  a { color: var(--dark-blue); text-decoration: none }
+  a:hover { color: var(--magenta) }
+  a.provider { display: flex; align-items: center; gap: .65rem; padding: .75rem .95rem; margin: .5rem 0;
+               border: 1px solid var(--medium-grey); border-radius: var(--radius-m); color: var(--almost-black);
+               font-weight: 600; transition: border-color .2s ease, background .2s ease }
+  a.provider:hover { border-color: var(--dark-blue); background: var(--lightest-grey); color: var(--almost-black) }
   a.provider img { width: 24px; height: 24px; border-radius: 5px }
-  a.btn { display: inline-block; margin-top: 1rem; background: #3b82f6; color: #fff; padding: .6rem 1rem;
-          border-radius: 8px; text-decoration: none }
-  a.btn:hover { background: #2f6fe0 }
-  a.btn.secondary { background: transparent; border: 1px solid #2a2f3a; color: #e6e6e6 }
-  a.btn.secondary:hover { border-color: #3b82f6; background: #20242d }
+  a.btn { display: inline-block; margin-top: 1rem; background: var(--dark-blue); color: var(--white);
+          padding: .65rem 1.1rem; border: 2px solid var(--dark-blue); border-radius: var(--radius-m);
+          font-weight: 700; transition: background .25s ease, border-color .25s ease, color .25s ease }
+  a.btn:hover { background: var(--magenta); border-color: var(--magenta); color: var(--white) }
+  a.btn.secondary { background: transparent; color: var(--dark-blue) }
+  a.btn.secondary:hover { background: var(--dark-blue); border-color: var(--dark-blue); color: var(--white) }
   .actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1rem }
   .actions .btn { margin-top: 0 }
-  .muted { color: #9aa5b1; font-size: .85rem }
-  code { background: #2a2f3a; padding: .15rem .4rem; border-radius: 4px }
+  .muted { color: var(--dark-grey); font-size: .85rem }
+  code { background: var(--light-grey); padding: .15rem .4rem; border-radius: 4px;
+         font-family: ui-monospace, "SF Mono", monospace }
 </style>{{end}}
