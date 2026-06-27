@@ -1,6 +1,7 @@
-# Local Postgres for zero-pdp (the kv JSON store: sessions + nonces). Point the server at it with
-#   DATABASE_URL=postgres://zero:zero@localhost:5432/zero?sslmode=disable
-# Unset DATABASE_URL falls back to an in-memory store (non-durable).
+# Airgapped zero-pdp: the PDP runs in NonProdMode with a baked-in mock IdP (PDP_NON_PROD=true), so it
+# authenticates users with a canned identity — no external OpenID Provider, zero network egress. Mount your
+# config dir (pdp.yaml with mock_idp + a test client/product, openid-providers.yaml, sign.jwk) at /etc/pdp.
+# Postgres backs the kv store; drop DATABASE_URL for an in-memory store.
 services:
   postgres:
     image: postgres:16-alpine
@@ -19,6 +20,23 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  zero-pdp:
+    build:
+      context: ../.. # the go/ workspace root (for go.work)
+      dockerfile: pdp/cmd/zero-pdp/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PRETTY_LOGS: "false"
+      PDP_NON_PROD: "true"
+      DATABASE_URL: "postgres://zero:zero@postgres:5432/zero?sslmode=disable"
+    volumes:
+      - ./config:/etc/pdp:ro # pdp.yaml (mock_idp + non_prod) + openid-providers.yaml + sign.jwk
+    ports:
+      - "8011:8011"
+    command: ["start"]
 
 volumes:
   postgres-data:

@@ -1,0 +1,10 @@
+# Providers the PDP authenticates users against. Shared flat format with pep (oidc / gemidp / oidf).
+# Loaded from PDP_OPENID_PROVIDERS_PATH (default openid-providers.yaml, next to pdp.yaml).
+#
+# In NonProdMode with a mock_idp set in pdp.yaml, the PDP skips these and auto-issues a canned identity — so
+# for the airgapped compose harness this file can be empty/omitted.
+oidc:
+  - issuer: https://op.example.com
+    client_id: "<client-id>"
+    client_secret: "<secret>"
+    name: Example OP
