@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"github.com/segmentio/ksuid"
@@ -105,6 +106,28 @@ func (s *Server) verifyClient(r *http.Request) (*Client, *ClientAssertionClaims,
 	}
 
 	return client, claims, nil
+}
+
+// verifyDPoPBinding enforces DPoP proof-of-possession on the token request when the client asserts a
+// DPoP-bound token (cnf.jkt present): the request must carry a DPoP proof (RFC 9449) whose key thumbprint
+// equals the asserted cnf.jkt — proving the caller HOLDS the key, not merely names it. ParseRequest verifies
+// the proof signature and that htm/htu match this token endpoint. Without a cnf.jkt the request is bearer and
+// no proof is required.
+func (s *Server) verifyDPoPBinding(r *http.Request, claims *ClientAssertionClaims) *Error {
+	if claims.Cnf.Jkt == "" {
+		return nil
+	}
+	binding, dpopErr := dpop.ParseRequest(r, dpop.ParseOptions{
+		RequestURL: s.Metadata.TokenEndpoint,
+		MaxAge:     s.dpopMaxAge,
+	})
+	if dpopErr != nil {
+		return oauthErr(dpopErr.HttpStatus, dpopErr.Code, dpopErr.Description)
+	}
+	if binding.DPoP.KeyThumbprint != claims.Cnf.Jkt {
+		return oauthErr(http.StatusBadRequest, "invalid_dpop_proof", "DPoP proof key does not match cnf.jkt")
+	}
+	return nil
 }
 
 // clientProduct resolves the product a client belongs to (its redirect-URI and scope policy).
@@ -220,6 +243,11 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 
 	session.DPoPThumbprint = claims.Cnf.Jkt
 
+	// Proof-of-possession: a DPoP-bound code exchange must carry a valid DPoP proof for the cnf key.
+	if dpopErr := s.verifyDPoPBinding(r, claims); dpopErr != nil {
+		return dpopErr
+	}
+
 	if err := s.applyPolicyNewSession(product, session); err != nil {
 		return err
 	}
@@ -253,8 +281,10 @@ func (s *Server) tokenEndpointRefreshToken(w http.ResponseWriter, r *http.Reques
 	if refreshToken == "" {
 		return oauthErr(http.StatusBadRequest, "invalid_request", "missing refresh_token")
 	}
+	// Only the hash is stored/indexed; hash the presented token to look it up and to compare.
+	refreshHash := hashRefreshToken(refreshToken)
 
-	session, err := s.sessionStore.GetAuthzServerSessionByRefreshToken(refreshToken)
+	session, err := s.sessionStore.GetAuthzServerSessionByRefreshToken(refreshHash)
 	if err != nil {
 		return oauthErr(http.StatusBadRequest, "invalid_grant", "invalid refresh_token")
 	}
@@ -264,12 +294,16 @@ func (s *Server) tokenEndpointRefreshToken(w http.ResponseWriter, r *http.Reques
 	// Rotation/reuse: only the session's CURRENT refresh token is accepted. A superseded token (presented
 	// after rotation, or a stolen one that has since been rotated) resolves via its stale index but fails
 	// here — a replay signal.
-	if session.RefreshToken != refreshToken {
+	if session.RefreshToken != refreshHash {
 		return oauthErr(http.StatusBadRequest, "invalid_grant", "refresh_token superseded")
 	}
-	// Sender-constrained (RFC 9449): the refresher must present the same DPoP key the tokens are bound to.
+	// Sender-constrained (RFC 9449): the refresher must hold the same DPoP key the tokens are bound to —
+	// proven by the DPoP proof (verifyDPoPBinding below), and the asserted cnf must match the session.
 	if session.DPoPThumbprint != "" && claims.Cnf.Jkt != session.DPoPThumbprint {
 		return oauthErr(http.StatusBadRequest, "invalid_grant", "DPoP key mismatch")
+	}
+	if dpopErr := s.verifyDPoPBinding(r, claims); dpopErr != nil {
+		return dpopErr
 	}
 	// Absolute lifetime: refresh never extends a session past its cap.
 	if !session.ExpiresAt.IsZero() && time.Now().After(session.ExpiresAt) {
@@ -325,7 +359,10 @@ func (s *Server) issueOrRefreshTokens(session *AuthzServerSession) (*TokenRespon
 		return nil, fmt.Errorf("unable to sign access token: %w", err)
 	}
 
-	session.RefreshToken = generateNonce(64)
+	// Rotate the refresh token. Only the HASH is persisted (record + index); the raw token goes back to the
+	// client in the response and is never stored — a kv reader gets hashes, not replayable tokens.
+	rawRefresh := generateNonce(64)
+	session.RefreshToken = hashRefreshToken(rawRefresh)
 	session.RefreshCount++
 
 	return &TokenResponse{
@@ -333,7 +370,7 @@ func (s *Server) issueOrRefreshTokens(session *AuthzServerSession) (*TokenRespon
 		TokenType:        tokenType,
 		ExpiresIn:        int(time.Until(exp).Seconds()),
 		Scope:            strings.Join(session.Scopes, " "),
-		RefreshToken:     session.RefreshToken,
+		RefreshToken:     rawRefresh,
 		RefreshExpiresIn: int(time.Until(session.ExpiresAt).Seconds()),
 	}, nil
 }

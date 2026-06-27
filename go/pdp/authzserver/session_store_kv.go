@@ -2,6 +2,8 @@ package authzserver
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,6 +34,14 @@ func asCodeKey(code string) string       { return "as:code:" + code }
 func asAuthnKey(state string) string     { return "as:authn:" + state }
 func asRequriKey(uri string) string      { return "as:requri:" + uri }
 func asRefreshKey(token string) string   { return "as:refresh:" + token }
+
+// hashRefreshToken maps a raw refresh token to its stored form. Only the hash is persisted (in the session
+// record and the as:refresh index), so a rogue storage admin reading the kv learns hashes, not replayable
+// tokens. The raw token exists only in transit (issued in the token response, presented back on refresh).
+func hashRefreshToken(raw string) string {
+	sum := sha256.Sum256([]byte(raw))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
 
 // ttl bounds how long a session (and its index keys) live: until ExpiresAt when set, otherwise the
 // default (the pending window between /auth and /token, before a policy sets ExpiresAt).
