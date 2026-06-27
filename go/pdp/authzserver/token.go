@@ -232,13 +232,14 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 		return oauthErr(http.StatusBadRequest, "invalid_request", "redirect_uri mismatch")
 	}
 
+	if verr := validateCodeVerifier(codeVerifier); verr != nil {
+		return verr
+	}
 	codeChallengeBytes := sha256.Sum256([]byte(codeVerifier))
 	codeChallenge := base64.RawURLEncoding.EncodeToString(codeChallengeBytes[:])
 	if codeChallenge != session.CodeChallenge {
-		return redirectWithError(w, r, session.RedirectURI, session.State, Error{
-			Code:        "invalid_request",
-			Description: "invalid code verifier mismatch",
-		})
+		// The token endpoint returns JSON errors (RFC 6749 §5.2), never a browser redirect — the caller is a backend.
+		return oauthErr(http.StatusBadRequest, "invalid_grant", "PKCE verification failed")
 	}
 
 	session.DPoPThumbprint = claims.Cnf.Jkt
@@ -255,10 +256,7 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 	response, err := s.issueOrRefreshTokens(session)
 
 	if err != nil {
-		return redirectWithError(w, r, session.RedirectURI, session.State, Error{
-			Code:        "server_error",
-			Description: fmt.Errorf("unable to issue access token: %w", err).Error(),
-		})
+		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to issue access token: %v", err))
 	}
 
 	// Persist the rotated refresh token (and its index) so the session is refreshable.

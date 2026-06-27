@@ -61,6 +61,9 @@ func (s *Server) AuthorizationEndpoint(w http.ResponseWriter, r *http.Request) e
 	if session.CodeChallengeMethod != "S256" {
 		return oauthErr(http.StatusBadRequest, "invalid_request", fmt.Sprintf("unsupported code_challenge_method: %s", session.CodeChallengeMethod))
 	}
+	if cerr := validateCodeChallenge(session.CodeChallenge); cerr != nil {
+		return cerr
+	}
 
 	if s.clientsRegistry == nil {
 		return oauthErr(http.StatusInternalServerError, "server_error", "clients registry not configured")
