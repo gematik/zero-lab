@@ -9,3 +9,6 @@ pdp/e2e/testdata/sign.jwk
 gemidp/test-reports/
 # per-run epa test reports
 epa/test-reports/
+
+# local PDP HITL harness (carries a test key)
+pdp/config/
