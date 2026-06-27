@@ -1,17 +1,18 @@
 # PKCS#12 Parser and Encoder
 
-A Go implementation of PKCS#12 (RFC 7292) for encoding and decoding .p12/.pfx files containing X.509 certificates and private keys.
+A Go implementation of PKCS#12 (RFC 7292) for encoding and decoding .p12/.pfx files containing X.509
+certificates and private keys.
 
 ## Features
 
-- ✅ RFC 7292 compliant parsing and encoding
-- ✅ Modern cryptography: PBES2/PBKDF2 with AES-128/192/256-CBC  
-- ✅ Legacy support: 3DES-CBC for compatibility
-- ✅ MAC verification with SHA-256/384/512
-- ✅ Zero-copy parsing using cryptobytes
-- ✅ **Byte-oriented API** - works with `[]byte`, no file I/O
-- ✅ **WASM compatible** - no syscalls or platform dependencies
-- ✅ Security-focused: No MD5, RC4, or weak algorithms
+- RFC 7292 compliant parsing and encoding
+- Modern cryptography: PBES2/PBKDF2 with AES-128/192/256-CBC
+- Legacy read support: 3DES-CBC for compatibility
+- MAC verification with SHA-256/384/512
+- Zero-copy parsing via `golang.org/x/crypto/cryptobyte`
+- Byte-oriented API: works with `[]byte`, no file I/O
+- WebAssembly compatible: no syscalls or platform dependencies
+- No MD5, RC4, single DES, or weak RC2
 
 ## Installation
 
@@ -21,7 +22,7 @@ go get github.com/gematik/zero-lab/go/pkcs12
 
 ## Quick Start
 
-### Read PKCS#12 Data
+### Read PKCS#12 data
 
 ```go
 import "github.com/gematik/zero-lab/go/pkcs12"
@@ -35,23 +36,20 @@ if err != nil {
     log.Fatal(err)
 }
 
-// Use certificates
 for _, certBag := range bags.Certificates {
     cert, _ := x509.ParseCertificate(certBag.Raw)
     fmt.Println("Certificate:", cert.Subject)
 }
 
-// Use private keys
 for _, keyBag := range bags.PrivateKeys {
     key, _ := x509.ParsePKCS8PrivateKey(keyBag.Raw)
     fmt.Printf("Key: %T\n", key)
 }
 ```
 
-### Create PKCS#12 Data
+### Create PKCS#12 data
 
 ```go
-// Create bags
 bags := &pkcs12.Bags{
     Certificates: []pkcs12.CertificateBag{{
         Raw:        certDER,
@@ -63,26 +61,25 @@ bags := &pkcs12.Bags{
     }},
 }
 
-// Encode (uses AES-256, SHA-256, 2048 iterations)
+// Encode (AES-256-CBC, HMAC-SHA256, 2048 iterations)
 p12Data, err := pkcs12.Encode(bags, []byte("password"))
 
-// Write to file
 os.WriteFile("keystore.p12", p12Data, 0600)
 ```
 
-### Custom Security Options
+### Custom security options
 
 ```go
 opts := pkcs12.DefaultEncodeOptions()
-opts.Iterations = 10000                    // More iterations
-opts.MacAlgorithm = pkcs12.OIDSHA512       // SHA-512 MAC
+opts.Iterations = 10000
+opts.MacAlgorithm = pkcs12.OIDSHA512
 
 p12Data, _ := pkcs12.EncodeWithOptions(bags, password, opts)
 ```
 
-## API Overview
+## API overview
 
-### High-Level (Recommended)
+High-level (recommended):
 
 ```go
 Decode(data, password) (*Bags, error)           // Parse and extract
@@ -90,14 +87,14 @@ Encode(bags, password) ([]byte, error)          // Create PKCS#12
 EncodeWithOptions(bags, password, opts) ([]byte, error)
 ```
 
-### Mid-Level
+Mid-level:
 
 ```go
-Parse(data) (*PFX, error)                       // Parse structure
-ExtractBags(pfx, password) (*Bags, error)       // Extract bags
+Parse(data) (*PFX, error)                        // Parse structure
+ExtractBags(pfx, password) (*Bags, error)        // Extract bags
 ```
 
-### Low-Level
+Low-level:
 
 ```go
 ParseAuthenticatedSafe(data) (*AuthenticatedSafe, error)
@@ -108,22 +105,25 @@ VerifyMAC(pfx, password) error
 
 ## Types
 
-**High-level:**
-- `Bags` - Collection of certificates and keys
-- `CertificateBag` - Certificate with metadata (FriendlyName, LocalKeyID)
-- `PrivateKeyBag` - Private key with metadata
-- `CertKeyPair` - Matched certificate and key
+High-level:
 
-**Low-level:**
-- `PFX` - Top-level PKCS#12 structure
-- `ContentInfo` - Container for encrypted or unencrypted data
-- `SafeContents` - Collection of bags
-- `SafeBag` - Individual certificate or key
-- `MacData` - MAC for integrity verification
+- `Bags` — collection of certificates and keys
+- `CertificateBag` — certificate with metadata (FriendlyName, LocalKeyID)
+- `PrivateKeyBag` — private key with metadata
+- `CertKeyPair` — matched certificate and key
 
-## WASM Usage
+Low-level:
 
-This library works in WebAssembly environments:
+- `PFX` — top-level PKCS#12 structure
+- `ContentInfo` — container for encrypted or unencrypted data
+- `SafeContents` — collection of bags
+- `SafeBag` — individual certificate or key
+- `MacData` — MAC for integrity verification
+
+## WebAssembly
+
+The library has no file I/O or platform-specific dependencies, so it runs in WebAssembly targets (browsers,
+Node.js, edge runtimes). Callers provide the bytes:
 
 ```go
 //go:build wasm
@@ -135,30 +135,25 @@ import "github.com/gematik/zero-lab/go/pkcs12"
 //export decodePKCS12
 func decodePKCS12(data []byte, password []byte) []byte {
     bags, _ := pkcs12.Decode(data, password)
-    // Process bags and return result
     return serializeBags(bags)
 }
 ```
 
-No file I/O means it works everywhere: browsers, Node.js, edge workers, etc.
-
 ## Security
 
-**Default encoding uses:**
+Default encoding:
+
 - AES-256-CBC for key encryption
 - PBKDF2 with 2048 iterations
-- HMAC-SHA256 for MAC
+- HMAC-SHA256 for the MAC
 
-**Supported algorithms:**
+Supported algorithms:
+
 - PBES2 with AES-128/192/256-CBC
 - PBKDF2 with SHA-256/384/512
-- 3DES-CBC (legacy)
+- 3DES-CBC (read only, legacy)
 
-**Intentionally unsupported:**
-- MD5-based algorithms
-- RC4
-- Single DES
-- Weak RC2 variants
+Unsupported by design: MD5-based algorithms, RC4, single DES, weak RC2 variants.
 
 ## Structure
 
@@ -181,31 +176,27 @@ PFX
 
 ## Examples
 
-### Find Matching Pairs
+Find matching certificate/key pairs:
 
 ```go
 pairs := bags.FindMatchingPairs()
 for _, pair := range pairs {
     cert, _ := x509.ParseCertificate(pair.Certificate.Raw)
     key, _ := x509.ParsePKCS8PrivateKey(pair.PrivateKey.Raw)
-    // Use matched cert and key together
+    // Use the matched cert and key together
 }
 ```
 
-### Low-Level Parsing
+Low-level parsing:
 
 ```go
 pfx, _ := pkcs12.Parse(data)
 
-// Verify MAC
 if err := pkcs12.VerifyMAC(pfx, password); err != nil {
     log.Fatal("MAC verification failed")
 }
 
-// Parse authenticated safe
 authSafe, _ := pkcs12.ParseAuthenticatedSafe(pfx.RawAuthSafe)
-
-// Process each ContentInfo
 for _, ci := range authSafe.ContentInfos {
     if ci.ContentType.Equal(pkcs12.OIDData) {
         safeContents, _ := pkcs12.ParseSafeContents(ci.Content)
@@ -214,39 +205,27 @@ for _, ci := range authSafe.ContentInfos {
 }
 ```
 
+## Design
+
+The library follows Go standard-library conventions:
+
+- Byte-oriented, like `encoding/json` and `crypto/x509` — works with `[]byte`.
+- No file I/O — callers use `os.ReadFile`/`os.WriteFile`, which composes better and keeps the package
+  WebAssembly-friendly.
+
 ## Testing
 
 ```bash
-go test -v
+go test ./...
 ```
-
-180 tests, 80.4% coverage.
-
-## Design Philosophy
-
-This library follows Go standard library patterns:
-
-- **Byte-oriented**: Like `encoding/json`, `crypto/x509` - works with `[]byte`
-- **No file I/O**: Users call `os.ReadFile`/`os.WriteFile` - more composable
-- **WASM-friendly**: No platform-specific dependencies
-- **Interface-compatible**: Works with `io.Reader`/`Writer` via `io.ReadAll`
-
-## References
-
-- [RFC 7292](https://tools.ietf.org/html/rfc7292) - PKCS #12 v1.1
-- [RFC 8018](https://tools.ietf.org/html/rfc8018) - PKCS #5 v2.1
-
-## License
-
-See LICENSE file in repository root.
 
 ## Troubleshooting
 
-### BER Indefinite-Length Encoding Error
+### BER indefinite-length encoding error
 
-If you see an error about "BER indefinite-length encoding detected (0x30 0x80)", your PKCS#12 file uses an older encoding format that must be converted to DER.
-
-**Solution for OpenSSL 3.x (with legacy algorithms):**
+An error mentioning `BER indefinite-length encoding detected (0x30 0x80)` means the file uses an older
+encoding that must be converted to DER. RFC 7292 mandates DER, and this parser requires it for security and
+predictability. Convert with OpenSSL 3.x (legacy algorithms enabled):
 
 ```bash
 openssl pkcs12 -in file.p12 -out temp.pem -nodes -passin pass:PASSWORD -legacy
@@ -254,22 +233,23 @@ openssl pkcs12 -export -in temp.pem -out converted.p12 -passout pass:PASSWORD
 rm temp.pem
 ```
 
-**Why?**
-- BER (Basic Encoding Rules) allows indefinite-length encoding
-- DER (Distinguished Encoding Rules) requires definite lengths
-- RFC 7292 mandates DER for PKCS#12
-- This parser requires strict DER compliance for security and predictability
+Or use `ti pkcs12 convert <input> <output>`, which handles the conversion.
 
-### Legacy Algorithms
+### Legacy algorithms
 
-OpenSSL 3.0+ requires the `-legacy` flag for old encryption algorithms (RC2, MD5-based, etc.):
+OpenSSL 3.0+ requires `-legacy` for old encryption algorithms (RC2, MD5-based, etc.):
 
 ```bash
 openssl pkcs12 -in old.p12 -out new.p12 -legacy
 ```
 
-Our library supports:
-- ✅ Modern: PBES2 with AES-128/192/256-CBC, PBKDF2, SHA-256/384/512
-- ✅ Legacy (read-only): 3DES-CBC, SHA-1 MAC
-- ❌ Not supported: MD5, RC4, single DES, weak RC2
+This library reads legacy 3DES-CBC and SHA-1 MAC, but does not support MD5, RC4, single DES, or weak RC2.
 
+## References
+
+- [RFC 7292](https://tools.ietf.org/html/rfc7292) — PKCS #12 v1.1
+- [RFC 8018](https://tools.ietf.org/html/rfc8018) — PKCS #5 v2.1
+
+## License
+
+See the `LICENSE` file in the repository root.
