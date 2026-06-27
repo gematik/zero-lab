@@ -1,21 +1,19 @@
 # zero-pep-proxy — configuration
 
-pep is configured from **two sources**, and the split is deliberate:
+pep is configured from two sources:
 
-- **`openid-providers.yaml`** holds **only the identity providers**.
-- **Environment variables** hold **everything else** — the server, the session/persistence secrets, and the
-  single-provider shortcuts. **None of these live in `openid-providers.yaml`.**
+- `openid-providers.yaml` holds the identity providers (who can log in).
+- Environment variables hold everything else — the server, the session/persistence secrets, and the
+  single-provider shortcuts (how the gateway runs and where its state lives).
 
-So `openid-providers.yaml` describes *who can log in*; env vars describe *how the gateway runs and where its
-state lives*.
+The providers file holds only providers; it does not contain `PEP_PUBLIC_URL`, cookies, the session key,
+`DATABASE_URL`, etc.
 
----
+## 1. `openid-providers.yaml` — the providers
 
-## 1. `openid-providers.yaml` — the providers (and nothing else)
-
-Loaded from `PEP_OPENID_PROVIDERS_PATH` (default `./openid-providers.yaml`). It is **flat** — the three
-provider kinds at the top level, each reusing that provider's own package config type. The *same flat format*
-is what pdp references by path, so the two stay in sync:
+Loaded from `PEP_OPENID_PROVIDERS_PATH` (default `./openid-providers.yaml`). It is flat — the three provider
+kinds at the top level, each reusing that provider's own package config type. The same format is what pdp
+references by path, so the two stay in sync:
 
 ```yaml
 oidc:   [ <oauth/oidc.Config>, … ]      # several direct OIDC providers
@@ -24,13 +22,9 @@ oidf:   <oidf.RelyingPartyConfig>       # one OIDF relying party (brings its fed
 ```
 
 - Full example: [`openid-providers.example.yaml`](openid-providers.example.yaml).
-- `${VAR}` placeholders expand from the environment (keep secrets in a `.env` / mounted file and reference
-  them here).
-- Relative paths inside the OIDF config (`key_pem_path`, `cert_pem_path`, …) resolve against **the providers
-  file's own directory**, not the process working directory (and not `-w`).
-
-`openid-providers.yaml` does **not** contain `PEP_PUBLIC_URL`, cookies, the session key, `DATABASE_URL`, etc.
-— those are env-only (below).
+- `${VAR}` placeholders expand from the environment (keep secrets in a `.env` / mounted file).
+- Relative paths in the OIDF config (`key_pem_path`, `cert_pem_path`, …) resolve against the providers file's
+  own directory — not the process working directory, and not `-w`.
 
 ## 2. Environment variables (everything that is not a provider)
 
