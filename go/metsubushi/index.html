@@ -327,6 +327,37 @@
   .j-num { color: var(--magenta); }
   .j-bool { color: var(--medium-blue); font-weight: 600; }
   .j-null { color: var(--dark-grey); }
+  .cookie-list { display: grid; gap: 10px; }
+  .cookie-row {
+    display: grid;
+    grid-template-columns: minmax(120px, 28%) 1fr;
+    gap: 14px;
+    align-items: start;
+  }
+  .cookie-name {
+    font-family: var(--mono-font);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--dark-blue);
+    overflow-wrap: anywhere;
+  }
+  .cookie-value { min-width: 0; }
+  .cookie-val {
+    font-family: var(--mono-font);
+    font-size: 13px;
+    color: var(--almost-black);
+    word-break: break-all;
+  }
+  .jwt { display: grid; gap: 12px; }
+  .jwt-part { display: grid; gap: 5px; min-width: 0; }
+  .jwt-label {
+    font-family: var(--base-font);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--dark-grey);
+  }
 
   /* ---------- API endpoint list ---------- */
   .endpoints { display: grid; gap: 12px; }
@@ -395,6 +426,17 @@
       color: var(--dark-grey);
     }
     .hdr-row .v { font-size: 14px; }
+    .cookie-list { gap: 14px; }
+    .cookie-row {
+      grid-template-columns: 1fr;
+      gap: 3px;
+    }
+    .cookie-name {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--dark-grey);
+    }
     .hero { padding: 48px 0 36px; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -502,6 +544,65 @@
       return JSON.parse(new TextDecoder('utf-8').decode(bytes));
     }
 
+    // Best-effort: decode any value that is base64/base64url-encoded JSON.
+    // Only objects/arrays count — scalars (numbers, bare strings) are rejected
+    // so opaque tokens and ids don't get mistaken for encoded JSON.
+    function tryDecodeJsonValue(s) {
+      const v = String(s);
+      if (v.length < 8 || !/^[A-Za-z0-9+/_=-]+$/.test(v)) return null;
+      let b64 = v.replace(/-/g, '+').replace(/_/g, '/');
+      const pad = b64.length % 4;
+      if (pad) b64 += '='.repeat(4 - pad);
+      try {
+        const bin = atob(b64);
+        const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+        const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+        const obj = JSON.parse(text);
+        return (obj !== null && typeof obj === 'object') ? obj : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function b64urlDecode(seg) {
+      let b64 = seg.replace(/-/g, '+').replace(/_/g, '/');
+      const pad = b64.length % 4;
+      if (pad) b64 += '='.repeat(4 - pad);
+      const bin = atob(b64);
+      const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    }
+
+    // Recognise a compact JWS (3 segments) or JWE (5 segments) and extract
+    // what is decodable without keys: always the protected header, plus the
+    // JWS payload. JWE content stays opaque (encrypted). A leading "Bearer "
+    // scheme is tolerated. The header must parse to a JSON object, which keeps
+    // arbitrary dotted strings from being mistaken for tokens.
+    function tryDecodeJwt(s) {
+      let v = String(s).trim();
+      const m = /^Bearer\s+(.+)$/i.exec(v);
+      if (m) v = m[1].trim();
+      const parts = v.split('.');
+      if (parts.length !== 3 && parts.length !== 5) return null;
+      if (!parts[0] || !parts.every(p => /^[A-Za-z0-9_-]*$/.test(p))) return null;
+      let header;
+      try {
+        header = JSON.parse(b64urlDecode(parts[0]));
+      } catch {
+        return null;
+      }
+      if (header === null || typeof header !== 'object') return null;
+      const out = { type: parts.length === 5 ? 'jwe' : 'jws', header, parts, token: v };
+      if (out.type === 'jws') {
+        try {
+          const text = b64urlDecode(parts[1]);
+          try { out.payload = JSON.parse(text); }
+          catch { out.payloadText = text; }
+        } catch { /* payload not base64url-decodable; leave opaque */ }
+      }
+      return out;
+    }
+
     function highlightJson(obj) {
       let json = JSON.stringify(obj, null, 2)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -566,12 +667,16 @@
       return `<div class="hdr-row"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`;
     }
 
-    function decodedRow(k, v) {
+    function jsonBlock(v, obj, rawLabel) {
+      return `<pre class="json">${highlightJson(obj)}</pre>` +
+        `<details class="raw"><summary>${rawLabel}</summary><code>${esc(v)}</code></details>`;
+    }
+
+    function decodedRow(k, v, obj) {
       let inner;
       try {
-        const obj = decodeB64UrlJson(v);
-        inner = `<pre class="json">${highlightJson(obj)}</pre>` +
-          `<details class="raw"><summary>raw base64url</summary><code>${esc(v)}</code></details>`;
+        if (obj === undefined) obj = decodeB64UrlJson(v);
+        inner = jsonBlock(v, obj, 'raw base64url');
       } catch (e) {
         inner = `<div>${esc(v)}</div><div class="decode-err">⚠ could not decode as base64url JSON: ${esc(e.message)}</div>`;
       }
@@ -580,22 +685,109 @@
         `<div class="v">${inner}</div></div>`;
     }
 
+    function jwtPart(label, html) {
+      return `<div class="jwt-part"><div class="jwt-label">${label}</div>${html}</div>`;
+    }
+
+    function jwtInner(v, jwt) {
+      const opaque = (seg) => `<code class="cookie-val">${esc(seg) || '—'}</code>`;
+      const sections = [jwtPart('header', `<pre class="json">${highlightJson(jwt.header)}</pre>`)];
+      if (jwt.type === 'jws') {
+        let payload;
+        if (jwt.payload !== undefined) payload = `<pre class="json">${highlightJson(jwt.payload)}</pre>`;
+        else if (jwt.payloadText !== undefined) payload = `<pre class="json">${esc(jwt.payloadText)}</pre>`;
+        else payload = opaque(jwt.parts[1]);
+        sections.push(jwtPart('payload', payload));
+        sections.push(jwtPart('signature', opaque(jwt.parts[2])));
+      } else {
+        const labels = ['', 'encrypted key', 'iv', 'ciphertext', 'tag'];
+        for (let i = 1; i < 5; i++) sections.push(jwtPart(labels[i], opaque(jwt.parts[i])));
+      }
+      return `<div class="jwt">${sections.join('')}` +
+        `<details class="raw"><summary>raw token</summary><code>${esc(v)}</code></details></div>`;
+    }
+
+    function jwtRow(k, v, jwt) {
+      const badge = jwt.type === 'jwe' ? 'jwt · jwe' : 'jwt · jws';
+      return `<div class="hdr-row hdr-row--decoded">` +
+        `<div class="k">${esc(k)}<span class="badge-decoded">${badge}</span></div>` +
+        `<div class="v">${jwtInner(v, jwt)}</div></div>`;
+    }
+
+    // Best decodable block for an arbitrary value (cookie value, etc.):
+    // JWT/JWS/JWE first, then base64/base64url JSON. Null when nothing fits.
+    function decodeValueBlock(v) {
+      const jwt = tryDecodeJwt(v);
+      if (jwt) return jwtInner(v, jwt);
+      const obj = tryDecodeJsonValue(v);
+      if (obj !== null) return jsonBlock(v, obj, 'raw value');
+      return null;
+    }
+
+    function parseCookies(v) {
+      return String(v).split(';').map(s => s.trim()).filter(Boolean).map(pair => {
+        const i = pair.indexOf('=');
+        return i < 0
+          ? { name: pair, value: '' }
+          : { name: pair.slice(0, i).trim(), value: pair.slice(i + 1).trim() };
+      });
+    }
+
+    function cookieRow(k, v) {
+      const cookies = parseCookies(v);
+      const items = cookies.map(c => {
+        const block = decodeValueBlock(c.value);
+        const val = block !== null
+          ? block
+          : `<code class="cookie-val">${c.value === '' ? '—' : esc(c.value)}</code>`;
+        return `<div class="cookie-row">` +
+          `<div class="cookie-name">${esc(c.name)}</div>` +
+          `<div class="cookie-value">${val}</div></div>`;
+      }).join('');
+      return `<div class="hdr-row hdr-row--decoded">` +
+        `<div class="k">${esc(k)}<span class="badge-decoded">cookies · ${cookies.length}</span></div>` +
+        `<div class="v"><div class="cookie-list">${items}</div></div></div>`;
+    }
+
     function renderHeaders(data) {
       const body = $('#hdrBody');
       body.innerHTML = '';
       const h = data.headers || {};
       const keys = Object.keys(h).sort((a, b) => a.localeCompare(b));
-      const zeta = keys.filter(k => ZETA_HEADERS.has(k.toLowerCase()));
-      const rest = keys.filter(k => !ZETA_HEADERS.has(k.toLowerCase()));
       const extra = { Host: data.host, Origin: data.origin, Proto: data.proto, Method: data.method };
-      $('#hdrCount').textContent = `${keys.length} header${keys.length === 1 ? '' : 's'} reflected` +
-        (zeta.length ? ` · ${zeta.length} decoded` : '');
 
-      for (const k of zeta) body.insertAdjacentHTML('beforeend', decodedRow(k, h[k]));
+      const special = [], plain = [];
+      let decoded = 0;
+      for (const k of keys) {
+        const lk = k.toLowerCase();
+        if (lk === 'cookie') {
+          special.push(cookieRow(k, h[k]));
+        } else if (ZETA_HEADERS.has(lk)) {
+          special.push(decodedRow(k, h[k]));
+          decoded++;
+        } else {
+          const jwt = tryDecodeJwt(h[k]);
+          const obj = jwt ? null : tryDecodeJsonValue(h[k]);
+          if (jwt) {
+            special.push(jwtRow(k, h[k], jwt));
+            decoded++;
+          } else if (obj !== null) {
+            special.push(decodedRow(k, h[k], obj));
+            decoded++;
+          } else {
+            plain.push(plainRow(k, h[k]));
+          }
+        }
+      }
+
+      $('#hdrCount').textContent = `${keys.length} header${keys.length === 1 ? '' : 's'} reflected` +
+        (decoded ? ` · ${decoded} decoded` : '');
+
+      for (const row of special) body.insertAdjacentHTML('beforeend', row);
       for (const [k, v] of Object.entries(extra)) {
         if (v) body.insertAdjacentHTML('beforeend', plainRow(k, v));
       }
-      for (const k of rest) body.insertAdjacentHTML('beforeend', plainRow(k, h[k]));
+      for (const row of plain) body.insertAdjacentHTML('beforeend', row);
     }
 
     function skeleton() {
