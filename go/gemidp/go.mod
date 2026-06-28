@@ -3,15 +3,15 @@ module github.com/gematik/zero-lab/go/gemidp
 go 1.26.4
 
 require (
-	github.com/gematik/zero-lab/go/brainpool v1.0.0
-	github.com/gematik/zero-lab/go/oauth v0.0.0-20260617184140-1440fec98b58
+	github.com/gematik/zero-lab/go/brainpool v1.0.2-0.20260628170841-68cf93ff9bb8
+	github.com/gematik/zero-lab/go/oauth v0.50.1
+	github.com/gematik/zero-lab/go/pkcs12 v0.99.1
 	github.com/lestrrat-go/jwx/v3 v3.1.1
 	golang.org/x/oauth2 v0.36.0
 )
 
 require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
-	github.com/gematik/zero-lab/go/pkcs12 v0.20.2 // indirect
 	github.com/goccy/go-json v0.10.6 // indirect
 	github.com/lestrrat-go/blackmagic v1.0.4 // indirect
 	github.com/lestrrat-go/dsig v1.3.0 // indirect

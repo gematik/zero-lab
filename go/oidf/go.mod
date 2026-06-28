@@ -3,7 +3,7 @@ module github.com/gematik/zero-lab/go/oidf
 go 1.26.4
 
 require (
-	github.com/gematik/zero-lab/go/oauth v0.0.0-20260617184140-1440fec98b58
+	github.com/gematik/zero-lab/go/oauth v0.50.1
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/lestrrat-go/jwx/v3 v3.1.1
 	golang.org/x/oauth2 v0.36.0

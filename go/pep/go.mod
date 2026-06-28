@@ -3,11 +3,11 @@ module github.com/gematik/zero-lab/go/pep
 go 1.26.4
 
 require (
-	github.com/gematik/zero-lab/go/dpop v0.0.0-20260617184140-1440fec98b58
-	github.com/gematik/zero-lab/go/gemidp v0.20.2
-	github.com/gematik/zero-lab/go/kv v0.0.0-20260623095736-d5af4c669d37
-	github.com/gematik/zero-lab/go/oauth v0.20.2
-	github.com/gematik/zero-lab/go/oidf v0.20.2
+	github.com/gematik/zero-lab/go/dpop v0.1.2-0.20260628170841-68cf93ff9bb8
+	github.com/gematik/zero-lab/go/gemidp v0.50.1
+	github.com/gematik/zero-lab/go/kv v0.0.2-0.20260628170841-68cf93ff9bb8
+	github.com/gematik/zero-lab/go/oauth v0.50.1
+	github.com/gematik/zero-lab/go/oidf v0.50.1
 	github.com/joho/godotenv v1.5.1
 	github.com/lestrrat-go/jwx/v3 v3.1.1
 	github.com/segmentio/ksuid v1.0.4
@@ -19,7 +19,7 @@ require (
 require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
-	github.com/gematik/zero-lab/go/brainpool v1.0.0 // indirect
+	github.com/gematik/zero-lab/go/brainpool v1.0.2-0.20260628170841-68cf93ff9bb8 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.30.3 // indirect
