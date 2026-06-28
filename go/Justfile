@@ -185,23 +185,50 @@ changed:
 push-tags:
     git push origin --tags
 
-# Repin every in-repo (zero-lab/go) require to the latest commit on a git ref
-# (default: current branch) so that tagged command builds — `go install ...@<tag>`,
-# which ignore go.work — pick up the latest library code. PUSH library changes first:
-# this fetches the modules from the remote at REF and records their pseudo-versions.
+# Repin every in-repo (zero-lab/go) require to a git ref (default: current branch)
+# so that tagged command builds — `go install ...@<tag>`, which ignore go.work —
+# pick up the latest library code. PUSH library changes first.
+#
+# We construct each module's pseudo-version explicitly instead of letting
+# `go get <dep>@<branch>` derive it. In this multi-module repo the automatic
+# derivation mis-bases the pseudo-version on the highest repo-wide tag (e.g.
+# go/ti/v0.20.3) rather than the dep's own go/<dep>/v* tag, so the fetch then
+# fails with "module github.com/gematik/zero-lab@<ref> found, but does not
+# contain package .../go/<dep>". Deriving it ourselves from each module's own
+# latest tag sidesteps that.
 sync REF=`git rev-parse --abbrev-ref HEAD`:
     #!/usr/bin/env bash
     set -euo pipefail
-    # Resolve in-repo modules straight from the VCS: proxy.golang.org cannot resolve a
-    # branch ref (and negatively caches unreleased versions), so a proxy fetch no-ops.
     export GOPRIVATE=github.com/gematik/zero-lab
+    commit=$(git rev-parse "{{REF}}")
+    short=$(git rev-parse --short=12 "$commit")
+    ts=$(TZ=UTC git show -s --date=format-local:%Y%m%d%H%M%S --format=%cd "$commit")
+    # modver <name>: the version to require for go/<name> at $commit — its tag if
+    # the tag is at $commit, otherwise a correctly-based pseudo-version above the
+    # highest tag that is an ANCESTOR of $commit (Go rejects a pseudo-version whose
+    # base tag is not an ancestor, and tags may live off-main).
+    modver() {
+        local tag best="" ma mi pa
+        for tag in $(git tag -l "go/$1/v*" | sort -V); do
+            git merge-base --is-ancestor "$(git rev-list -n1 "$tag")" "$commit" 2>/dev/null && best="$tag"
+        done
+        if [ -z "$best" ]; then
+            echo "v0.0.0-$ts-$short"
+        elif [ "$(git rev-list -n1 "$best")" = "$commit" ]; then
+            echo "${best##*/}"
+        else
+            IFS=. read -r ma mi pa <<<"${best##*/v}"
+            echo "v$ma.$mi.$((pa+1))-0.$ts-$short"
+        fi
+    }
     for dir in $(find . -name 'go.mod' -exec dirname {} \;); do
         ( cd "$dir"
           self=$(awk 'NR==1{print $2}' go.mod)
           for dep in $(grep -oE 'github\.com/gematik/zero-lab/go/[a-zA-Z0-9]+' go.mod | sort -u); do
               [ "$dep" = "$self" ] && continue
-              echo "==> $self: get $dep@{{REF}}"
-              go get "$dep@{{REF}}"
+              ver=$(modver "${dep##*/}")
+              echo "==> $self: get $dep@$ver"
+              go get "$dep@$ver"
           done )
     done
     go work sync
