@@ -78,6 +78,44 @@ providers, use openid-providers.yaml.
 
 ---
 
+## Standalone gateway (reverse-proxy mode)
+
+By default pep runs in forward_auth mode (behind Caddy). Configure routes to make pep **gate and
+reverse-proxy** upstreams itself — an oauth2-proxy-style gateway, no Caddy needed. Gating runs as a
+`pep.Enforcer` chain (`session_cookie` + optional `scope`); each route injects the user identity or a
+DPoP-bound access token. This replaces the `zero-bff-pdp` all-in-one: run `zero-pdp` + `zero-pep-proxy`
+(gateway mode) as two services.
+
+| Var | Purpose |
+| --- | --- |
+| `PEP_ROUTES_PATH` | path to a routes YAML (authoritative when set) |
+| `PEP_API_UPSTREAM` | shortcut → `{ /api, inject: dpop, gate: session, strip }` |
+| `PEP_WEBAPP_UPSTREAM` | shortcut → `{ /, inject: identity, gate: snapshot }` |
+
+A `routes.yaml`:
+
+```yaml
+routes:
+  - path_prefix: /api          # longest-prefix wins; /oauth2/* always wins
+    upstream: http://resource-server:8080
+    inject: dpop               # Authorization: DPoP <token> + a fresh proof
+    gate: session              # stateful kv lookup (required for dpop)
+    strip_prefix: true         # /api/x → upstream /x
+  - path_prefix: /
+    upstream: http://webapp:8080
+    inject: identity           # X-Auth-Request-* headers (incl. base64url-JSON)
+    gate: snapshot             # stateless session cookie (needs PEP_SESSION_KEY_PATH)
+    scope: protected           # optional: also require this scope claim
+```
+
+- `gate`: `none` (passthrough) · `snapshot` (stateless cookie, default for identity routes) · `session`
+  (stateful kv). `gate: snapshot` requires the snapshot fast path (`PEP_SESSION_KEY_PATH`).
+- `inject`: `none` · `identity` · `dpop`. `dpop` requires `gate: session` **and** the PDP backend (validated
+  at startup).
+- Unauthenticated requests: browsers (`Accept: text/html`) → `302 /oauth2/sign_in`; APIs → `401` JSON.
+
+---
+
 ## Docker image
 
 Built + published via the justfile (Docker Hub, version from the `go/pep/v*` tag):

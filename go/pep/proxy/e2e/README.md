@@ -98,3 +98,30 @@ proof (so the AS issues a `cnf.jkt`-bound token), then injects `Authorization: D
 bound to the upstream request; zaddy verifies token + proof + scope. No external network.
 
 `pdp-config/` and `zaddy-config/` carry **non-production test keys** for this harness only.
+
+## Standalone gateway (S5) — pep gates + reverse-proxies, no Caddy
+
+Gateway mode (`PEP_ROUTES_PATH`, or the `PEP_WEBAPP_UPSTREAM` / `PEP_API_UPSTREAM` shortcuts) makes pep gate
+and reverse-proxy upstreams itself — the `zero-bff-pdp` replacement shape. Reusing the PDP backend services:
+
+```sh
+# 1) PDP (mockidp) + zaddy, as above
+docker compose -f docker-compose.pdp.yaml up --build -d
+
+# 2) a webapp upstream on the host (any app; metsubushi here)
+PORT=8082 metsubushi &
+
+# 3) pep standalone, gateway mode, PDP backend
+PEP_BACKEND=pdp PEP_AS_ISSUER=http://localhost:8011 PEP_CLIENT_ID=pep-client \
+PEP_CLIENT_SIGNING_KEY_PATH=pdp-config/pep-client.jwk \
+PEP_PUBLIC_URL=http://localhost:8080 PEP_ADDR=:8080 PEP_INSECURE_COOKIE=true PEP_SCOPES=protected \
+PEP_SESSION_KEY_PATH=/tmp/pep-snap.key \
+PEP_WEBAPP_UPSTREAM=http://localhost:8082 PEP_API_UPSTREAM=http://localhost:8010 \
+  go run ../../cmd/zero-pep-proxy
+```
+
+`PEP_WEBAPP_UPSTREAM` mounts `/` (identity, snapshot gate — hence `PEP_SESSION_KEY_PATH`); `PEP_API_UPSTREAM`
+mounts `/api` (DPoP, stateful gate). In a browser at `http://localhost:8080/`: unauthenticated → mock-IdP
+login; after login `/` renders the webapp with the injected `X-Auth-Request-*` identity, and `GET
+/api/protected-dpop` returns a zaddy-verified DPoP-bound token. `curl http://localhost:8080/api/...` (no
+`Accept: text/html`) → `401` JSON.
