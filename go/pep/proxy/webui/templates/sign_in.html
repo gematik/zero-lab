@@ -5,18 +5,84 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sign in</title>
   {{template "styles"}}
+  <style>
+    .search { width: 100%; font: inherit; padding: .6rem .8rem; margin: 0 0 .8rem; color: var(--almost-black);
+              border: 1px solid var(--medium-grey); border-radius: var(--radius-m); background: var(--white) }
+    .search:focus { outline: 2px solid var(--bright-blue); outline-offset: 1px; border-color: var(--bright-blue) }
+    .provider { justify-content: flex-start }
+    .provider.last-used { border-color: var(--dark-blue); background: var(--lightest-grey) }
+    .provider.last-used::after { content: "Last used"; margin-left: auto; font-size: .68rem; font-weight: 700;
+              color: var(--dark-blue); background: var(--light-grey); border-radius: 999px; padding: .15rem .55rem }
+    #no-match { display: none; margin: .4rem 0 0 }
+  </style>
 </head>
 <body>
   <main class="card">
     <h1>Sign in</h1>
-    {{range .Providers}}
-    <a class="provider" href="/oauth2/start?idp_iss={{.Issuer | urlquery}}{{if $.ReturnTo}}&amp;rd={{$.ReturnTo | urlquery}}{{end}}">
-      {{if .LogoURI}}<img src="{{.LogoURI}}" alt="" loading="lazy">{{end}}
-      <span>{{if .Name}}{{.Name}}{{else}}{{.Issuer}}{{end}}</span>
-    </a>
+    {{if .Providers}}
+    {{if gt (len .Providers) 6}}
+    <input type="search" id="provider-search" class="search" placeholder="Search providers…" autocomplete="off" aria-label="Search providers">
+    {{end}}
+    <div id="provider-list">
+      {{range .Providers}}
+      <a class="provider" data-issuer="{{.Issuer}}" data-name="{{if .Name}}{{.Name}}{{else}}{{.Issuer}}{{end}}"
+         href="/oauth2/start?idp_iss={{.Issuer | urlquery}}{{if $.ReturnTo}}&amp;rd={{$.ReturnTo | urlquery}}{{end}}">
+        {{if .LogoURI}}<img src="{{.LogoURI}}" alt="" loading="lazy">{{end}}
+        <span>{{if .Name}}{{.Name}}{{else}}{{.Issuer}}{{end}}</span>
+      </a>
+      {{end}}
+    </div>
+    <p class="muted" id="no-match">No providers match your search.</p>
     {{else}}
     <p class="muted">No identity providers are configured.</p>
     {{end}}
   </main>
+  <script>
+  (function () {
+    var KEY = 'pep:last-provider';
+    var list = document.getElementById('provider-list');
+    if (!list) return;
+    var providers = Array.prototype.slice.call(list.querySelectorAll('.provider'));
+
+    // Pin the provider last used in this browser to the top.
+    try {
+      var last = localStorage.getItem(KEY);
+      if (last) {
+        var sel = '.provider[data-issuer="' + (window.CSS && CSS.escape ? CSS.escape(last) : last) + '"]';
+        var el = list.querySelector(sel);
+        if (el) { el.classList.add('last-used'); list.prepend(el); }
+      }
+    } catch (e) {}
+
+    providers.forEach(function (el) {
+      el.addEventListener('click', function () {
+        try { localStorage.setItem(KEY, el.dataset.issuer); } catch (e) {}
+      });
+    });
+
+    // Lightweight fuzzy filter: the query characters must appear in order within the label.
+    function fuzzy(q, text) {
+      q = q.toLowerCase(); text = text.toLowerCase();
+      var qi = 0;
+      for (var ti = 0; ti < text.length && qi < q.length; ti++) {
+        if (text[ti] === q[qi]) qi++;
+      }
+      return qi === q.length;
+    }
+    var search = document.getElementById('provider-search');
+    var noMatch = document.getElementById('no-match');
+    if (search) {
+      search.addEventListener('input', function () {
+        var q = search.value.trim(), shown = 0;
+        providers.forEach(function (el) {
+          var match = q === '' || fuzzy(q, el.dataset.name || el.textContent);
+          el.hidden = !match;
+          if (match) shown++;
+        });
+        if (noMatch) noMatch.style.display = shown === 0 ? 'block' : 'none';
+      });
+    }
+  })();
+  </script>
 </body>
 </html>

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"sort"
 	"strings"
 	"time"
 
@@ -218,6 +219,22 @@ func (s *Server) setSnapshot(w http.ResponseWriter, sess *Session) {
 	setCookie(w, s.snapCookie, tok)
 }
 
+// sortProviders orders the chooser list: oidc + gemidp keep their configured order at the top, and the OIDF
+// federation IdPs (typically many) are sorted by label. The browser then pins the last-used provider above
+// all (localStorage) and fuzzy-filters.
+func sortProviders(providers []Provider) {
+	sort.SliceStable(providers, func(i, j int) bool {
+		oi, oj := providers[i].Type == "oidf", providers[j].Type == "oidf"
+		if oi != oj {
+			return !oi
+		}
+		if oi {
+			return strings.ToLower(providers[i].Name) < strings.ToLower(providers[j].Name)
+		}
+		return false
+	})
+}
+
 // handleSignIn renders the provider chooser.
 func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {
 	rd := sanitizeReturnTo(r.URL.Query().Get("rd"))
@@ -226,6 +243,7 @@ func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {
 		s.renderError(w, "providers_error", err.Error(), "", rd)
 		return
 	}
+	sortProviders(providers)
 	s.render.render(w, http.StatusOK, "sign_in.html", signInData{Providers: providers, ReturnTo: rd})
 }
 
