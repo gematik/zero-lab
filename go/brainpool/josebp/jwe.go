@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"hash"
 	"io"
+
+	"github.com/gematik/zero-lab/go/brainpool"
 )
 
 type JWEBuilder struct {
@@ -110,18 +112,32 @@ func DeriveECDHES(algorithm string, apuData, apvData []byte, privateKey *ecdsa.P
 	suppPubInfo := make([]byte, 4)
 	binary.BigEndian.PutUint32(suppPubInfo, uint32(keySize)*8)
 
-	if !privateKey.Curve.IsOnCurve(publicKey.X, publicKey.Y) {
+	if publicKey.Curve.Params().Name != privateKey.Curve.Params().Name {
 		return nil, errors.New("public key is not on the same curve as the private key")
 	}
 
-	sharedX, _ := privateKey.Curve.ScalarMult(publicKey.X, publicKey.Y, privateKey.D.Bytes())
-	sharedSecret := sharedX.Bytes()
-
+	var sharedSecret []byte
 	curveSize := curveCoordinateSize(privateKey.Curve)
-	if len(sharedSecret) < curveSize {
-		paddedSecret := make([]byte, curveSize)
-		copy(paddedSecret[curveSize-len(sharedSecret):], sharedSecret)
-		sharedSecret = paddedSecret
+
+	if privateKey.Curve.Params().Name == "brainpoolP256r1" {
+		// Constant-time ECDH with full peer-point validation (on-curve, in range)
+		// performed inside ECDHP256r1.
+		secret, err := brainpool.ECDHP256r1(privateKey, publicKey.X, publicKey.Y)
+		if err != nil {
+			return nil, err
+		}
+		sharedSecret = secret
+	} else {
+		if !privateKey.Curve.IsOnCurve(publicKey.X, publicKey.Y) {
+			return nil, errors.New("public key is not on the same curve as the private key")
+		}
+		sharedX, _ := privateKey.Curve.ScalarMult(publicKey.X, publicKey.Y, privateKey.D.Bytes())
+		sharedSecret = sharedX.Bytes()
+		if len(sharedSecret) < curveSize {
+			paddedSecret := make([]byte, curveSize)
+			copy(paddedSecret[curveSize-len(sharedSecret):], sharedSecret)
+			sharedSecret = paddedSecret
+		}
 	}
 
 	kdfReader := newKDF(crypto.SHA256, sharedSecret, algorithmID, partyUInfo, partyVInfo, suppPubInfo, nil)

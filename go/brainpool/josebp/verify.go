@@ -31,9 +31,15 @@ func WithEcdsaPublicKey(pubKey *ecdsa.PublicKey) VerifierFunc {
 		if !ok {
 			return fmt.Errorf("missing alg header")
 		}
-		// TODO: check alg against the key's curve
-		if alg != AlgorithmNameBP256R1 && alg != AlgorithmNameBP384R1 && alg != AlgorithmNameBP512R1 && alg != AlgorithmNameES256 && alg != AlgorithmNameES384 && alg != AlgorithmNameES512 {
-			return VerifierErrorUnsupportedSignatureAlgorithm(fmt.Errorf("unsupported signature algorithm: %s", alg))
+		algBits, err := BitSizeForAlg(alg)
+		if err != nil {
+			return VerifierErrorUnsupportedSignatureAlgorithm(err)
+		}
+		// Reject a token whose algorithm does not match the verifying key's
+		// curve (e.g. ES384 against a brainpoolP256r1 key). Without this an
+		// attacker can choose any alg the key happens to support.
+		if algBits != pubKey.Curve.Params().BitSize {
+			return fmt.Errorf("algorithm %s does not match key curve %s", alg, pubKey.Curve.Params().Name)
 		}
 
 		// Decode the signature into r‖s.
