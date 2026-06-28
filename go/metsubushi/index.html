@@ -112,6 +112,28 @@
     border-radius: 999px;
     padding: 6px 14px;
   }
+  .navbar__status.is-checking {
+    color: var(--dark-grey);
+    background: var(--medium-grey);
+  }
+  .navbar__status.is-checking .dot {
+    background: var(--dark-grey);
+    animation: none;
+    box-shadow: none;
+  }
+  .navbar__status.is-down {
+    color: var(--functional-red);
+    background: #fbe2e0;
+  }
+  .navbar__status.is-down .dot {
+    background: var(--functional-red);
+    animation: pulse-down 2s infinite;
+  }
+  @keyframes pulse-down {
+    0%   { box-shadow: 0 0 0 0 rgba(199,26,17,.45); }
+    70%  { box-shadow: 0 0 0 8px rgba(199,26,17,0); }
+    100% { box-shadow: 0 0 0 0 rgba(199,26,17,0); }
+  }
   .btn-logout {
     display: inline-flex;
     align-items: center;
@@ -461,7 +483,7 @@
         <span class="logo__tag">smoke-test</span>
       </a>
       <div class="navbar__actions">
-        <span class="navbar__status"><span class="dot"></span><span class="txt">healthy</span></span>
+        <span class="navbar__status is-checking" id="status" title="checking…"><span class="dot"></span><span class="txt">checking…</span></span>
         <a class="btn-logout" id="logout" aria-label="Log out" hidden>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           <span class="btn-logout__txt">Log out</span>
@@ -814,8 +836,52 @@
       }
     }
 
+    function setStatus(state, label, title) {
+      const el = $('#status');
+      el.classList.remove('is-checking', 'is-down');
+      if (state !== 'up') el.classList.add(state === 'down' ? 'is-down' : 'is-checking');
+      el.querySelector('.txt').textContent = label;
+      el.title = title || label;
+    }
+
+    function fmtUptime(s) {
+      s = Math.max(0, Math.floor(s));
+      const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600);
+      const m = Math.floor(s % 3600 / 60), sec = s % 60;
+      if (d) return `${d}d ${h}h`;
+      if (h) return `${h}h ${m}m`;
+      if (m) return `${m}m ${sec}s`;
+      return `${sec}s`;
+    }
+
+    function checkHealth() {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', '/healthz', true);
+      xhr.timeout = 5000;
+      xhr.setRequestHeader('Cache-Control', 'no-store');
+      xhr.onload = () => {
+        if (xhr.status < 200 || xhr.status >= 300) {
+          setStatus('down', 'unhealthy', `HTTP ${xhr.status}`);
+          return;
+        }
+        try {
+          const d = JSON.parse(xhr.responseText);
+          const healthy = d.status === 'healthy';
+          const title = `up ${fmtUptime(d.uptimeSeconds)} · ${d.requestsServed} requests served`;
+          setStatus(healthy ? 'up' : 'down', healthy ? 'healthy' : 'unhealthy', healthy ? title : 'reported unhealthy');
+        } catch (e) {
+          setStatus('down', 'unhealthy', 'invalid response');
+        }
+      };
+      xhr.onerror = () => setStatus('down', 'unreachable', 'network error');
+      xhr.ontimeout = () => setStatus('down', 'unreachable', 'request timed out');
+      xhr.send();
+    }
+
     $('#refresh').addEventListener('click', load);
     load();
+    checkHealth();
+    setInterval(checkHealth, 10000);
   </script>
 </body>
 </html>
