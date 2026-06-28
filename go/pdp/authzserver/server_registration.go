@@ -4,11 +4,11 @@ import (
 	"net/http"
 )
 
-// Implements https://datatracker.ietf.org/doc/html/rfc7591
+// RegistrationEndpoint is intentionally closed. Clients are provisioned out-of-band (operator config now,
+// federation later), so dynamic client registration (RFC 7591) is not offered. The endpoint stays advertised
+// in the metadata and returns a coherent OAuth error — the same shape as every other endpoint — rather than a
+// bare 404, leaving a clean seam to enable gated registration later (swap this body, add storage).
 func (s *Server) RegistrationEndpoint(w http.ResponseWriter, r *http.Request) error {
-	if r.Header.Get("Content-Type") != "application/json" {
-		return oauthErr(http.StatusUnsupportedMediaType, "unsupported_media_type", "content type must be application/json")
-	}
-
-	return oauthErr(http.StatusNotImplemented, "not_implemented", "registration endpoint is not implemented")
+	return oauthErr(http.StatusForbidden, "access_denied",
+		"dynamic client registration is not supported; clients are provisioned out-of-band")
 }
