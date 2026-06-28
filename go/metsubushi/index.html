@@ -25,6 +25,7 @@
     --functional-green: #007336;
     --functional-light-green: #d8f3e5;
     --functional-red: #c71a11;
+    --functional-light-red: #ffe0df;
     --base-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --mono-font: 'SF Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
     --radius-m: 8px;
@@ -111,6 +112,28 @@
     background: var(--functional-light-green);
     border-radius: 999px;
     padding: 6px 14px;
+  }
+  .navbar__status.is-checking {
+    color: var(--dark-grey);
+    background: var(--medium-grey);
+  }
+  .navbar__status.is-checking .dot {
+    background: var(--dark-grey);
+    animation: none;
+    box-shadow: none;
+  }
+  .navbar__status.is-down {
+    color: var(--functional-red);
+    background: var(--functional-light-red);
+  }
+  .navbar__status.is-down .dot {
+    background: var(--functional-red);
+    animation: pulse-down 2s infinite;
+  }
+  @keyframes pulse-down {
+    0%   { box-shadow: 0 0 0 0 rgba(199,26,17,.45); }
+    70%  { box-shadow: 0 0 0 8px rgba(199,26,17,0); }
+    100% { box-shadow: 0 0 0 0 rgba(199,26,17,0); }
   }
   .btn-logout {
     display: inline-flex;
@@ -352,6 +375,36 @@
     color: var(--almost-black);
     word-break: break-all;
   }
+  .cookie-row.is-sensitive {
+    border-left: 3px solid var(--magenta);
+    padding-left: 12px;
+    margin-left: -3px;
+  }
+  .badge-warn {
+    display: inline-block;
+    margin-left: 8px;
+    font-family: var(--base-font);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--white);
+    background: var(--magenta);
+    border-radius: 999px;
+    padding: 2px 8px;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .cookie-warn {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--magenta);
+  }
+  .cookie-warn svg { flex: none; margin-top: 1px; }
   .jwt { display: grid; gap: 12px; }
   .jwt-part { display: grid; gap: 5px; min-width: 0; }
   .jwt-label {
@@ -461,7 +514,7 @@
         <span class="logo__tag">smoke-test</span>
       </a>
       <div class="navbar__actions">
-        <span class="navbar__status"><span class="dot"></span><span class="txt">healthy</span></span>
+        <span class="navbar__status is-checking" id="status" title="checking…"><span class="dot"></span><span class="txt">checking…</span></span>
         <a class="btn-logout" id="logout" aria-label="Log out" hidden>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           <span class="btn-logout__txt">Log out</span>
@@ -737,6 +790,18 @@
       });
     }
 
+    // Heuristic: a cookie likely carries credential/session material. We can't
+    // see Set-Cookie attributes (HttpOnly/Secure) from a reflected Cookie header,
+    // so we flag by name prefix/keyword or by the value being a token.
+    const SENSITIVE_COOKIE_RE =
+      /(^__(host|secure)-)|sess|sid\b|auth|token|jwt|bearer|cred|secret|csrf|xsrf|(^|[_-])(access|refresh|id)([_-]?token)?$|api[_-]?key/i;
+
+    function cookieSensitivity(name, value) {
+      if (tryDecodeJwt(value)) return 'token value (JWT) exposed in plaintext';
+      if (SENSITIVE_COOKIE_RE.test(name)) return 'name suggests session/credential material';
+      return null;
+    }
+
     function cookieRow(k, v) {
       const cookies = parseCookies(v);
       const items = cookies.map(c => {
@@ -744,9 +809,15 @@
         const val = block !== null
           ? block
           : `<code class="cookie-val">${c.value === '' ? '—' : esc(c.value)}</code>`;
-        return `<div class="cookie-row">` +
-          `<div class="cookie-name">${esc(c.name)}</div>` +
-          `<div class="cookie-value">${val}</div></div>`;
+        const reason = cookieSensitivity(c.name, c.value);
+        const nameBadge = reason ? `<span class="badge-warn" title="${esc(reason)}">sensitive</span>` : '';
+        const warn = reason
+          ? `<div class="cookie-warn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>` +
+            `<span>${esc(reason)} — reflecting it here defeats HttpOnly; test identities only.</span></div>`
+          : '';
+        return `<div class="cookie-row${reason ? ' is-sensitive' : ''}">` +
+          `<div class="cookie-name">${esc(c.name)}${nameBadge}</div>` +
+          `<div class="cookie-value">${val}${warn}</div></div>`;
       }).join('');
       return `<div class="hdr-row hdr-row--decoded">` +
         `<div class="k">${esc(k)}<span class="badge-decoded">cookies · ${cookies.length}</span></div>` +
@@ -814,8 +885,52 @@
       }
     }
 
+    function setStatus(state, label, title) {
+      const el = $('#status');
+      el.classList.remove('is-checking', 'is-down');
+      if (state !== 'up') el.classList.add(state === 'down' ? 'is-down' : 'is-checking');
+      el.querySelector('.txt').textContent = label;
+      el.title = title || label;
+    }
+
+    function fmtUptime(s) {
+      s = Math.max(0, Math.floor(s));
+      const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600);
+      const m = Math.floor(s % 3600 / 60), sec = s % 60;
+      if (d) return `${d}d ${h}h`;
+      if (h) return `${h}h ${m}m`;
+      if (m) return `${m}m ${sec}s`;
+      return `${sec}s`;
+    }
+
+    function checkHealth() {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', '/healthz', true);
+      xhr.timeout = 5000;
+      xhr.setRequestHeader('Cache-Control', 'no-store');
+      xhr.onload = () => {
+        if (xhr.status < 200 || xhr.status >= 300) {
+          setStatus('down', 'unhealthy', `HTTP ${xhr.status}`);
+          return;
+        }
+        try {
+          const d = JSON.parse(xhr.responseText);
+          const healthy = d.status === 'healthy';
+          const title = `up ${fmtUptime(d.uptimeSeconds)} · ${d.requestsServed} requests served`;
+          setStatus(healthy ? 'up' : 'down', healthy ? 'healthy' : 'unhealthy', healthy ? title : 'reported unhealthy');
+        } catch (e) {
+          setStatus('down', 'unhealthy', 'invalid response');
+        }
+      };
+      xhr.onerror = () => setStatus('down', 'unreachable', 'network error');
+      xhr.ontimeout = () => setStatus('down', 'unreachable', 'request timed out');
+      xhr.send();
+    }
+
     $('#refresh').addEventListener('click', load);
     load();
+    checkHealth();
+    setInterval(checkHealth, 10000);
   </script>
 </body>
 </html>
