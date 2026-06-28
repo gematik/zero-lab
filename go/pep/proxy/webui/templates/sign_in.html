@@ -6,13 +6,17 @@
   <title>Sign in</title>
   {{template "styles"}}
   <style>
+    /* Wider on desktop, fluid on mobile; the provider list flows into columns when there's room. */
+    main.card { max-width: 46rem; width: min(94%, 46rem) }
+    #provider-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: .55rem }
+    #provider-list .provider { margin: 0 }
     .search { width: 100%; font: inherit; padding: .6rem .8rem; margin: 0 0 .8rem; color: var(--almost-black);
               border: 1px solid var(--medium-grey); border-radius: var(--radius-m); background: var(--white) }
     .search:focus { outline: 2px solid var(--bright-blue); outline-offset: 1px; border-color: var(--bright-blue) }
     .provider { justify-content: flex-start }
+    .provider[hidden] { display: none } /* the .provider display:flex would otherwise override [hidden] */
     .provider.last-used { border-color: var(--dark-blue); background: var(--lightest-grey) }
-    .provider.last-used::after { content: "Last used"; margin-left: auto; font-size: .68rem; font-weight: 700;
-              color: var(--dark-blue); background: var(--light-grey); border-radius: 999px; padding: .15rem .55rem }
+    .provider.last-used::after { content: "⏱"; margin-left: auto; font-size: 1.2rem; line-height: 1 }
     #no-match { display: none; margin: .4rem 0 0 }
   </style>
 </head>
@@ -20,7 +24,7 @@
   <main class="card">
     <h1>Sign in</h1>
     {{if .Providers}}
-    {{if gt (len .Providers) 6}}
+    {{if gt (len .Providers) 5}}
     <input type="search" id="provider-search" class="search" placeholder="Search providers…" autocomplete="off" aria-label="Search providers">
     {{end}}
     <div id="provider-list">
@@ -50,7 +54,7 @@
       if (last) {
         var sel = '.provider[data-issuer="' + (window.CSS && CSS.escape ? CSS.escape(last) : last) + '"]';
         var el = list.querySelector(sel);
-        if (el) { el.classList.add('last-used'); list.prepend(el); }
+        if (el) { el.classList.add('last-used'); el.title = 'Last used'; list.prepend(el); }
       }
     } catch (e) {}
 

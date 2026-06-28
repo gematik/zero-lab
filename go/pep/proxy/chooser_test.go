@@ -56,10 +56,10 @@ func TestSignInChooserRender(t *testing.T) {
 		}
 	}
 
-	// Search is hidden when there are only a couple of providers.
+	// Search is hidden at 5 providers, shown only when there are more than 5.
 	rec2 := httptest.NewRecorder()
-	r.render(rec2, 200, "sign_in.html", signInData{Providers: many[:2], ReturnTo: "/"})
+	r.render(rec2, 200, "sign_in.html", signInData{Providers: many[:5], ReturnTo: "/"})
 	if strings.Contains(rec2.Body.String(), `id="provider-search"`) {
-		t.Error("search input shown for 2 providers (should be hidden until > 6)")
+		t.Error("search input shown for 5 providers (should appear only above 5)")
 	}
 }

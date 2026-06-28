@@ -30,11 +30,12 @@
   h1 { font-size: 1.3rem; font-weight: 800; letter-spacing: -.01em; color: var(--dark-blue); margin: 0 0 1.1rem }
   a { color: var(--dark-blue); text-decoration: none }
   a:hover { color: var(--magenta) }
-  a.provider { display: flex; align-items: center; gap: .65rem; padding: .75rem .95rem; margin: .5rem 0;
+  a.provider { display: flex; align-items: center; gap: .9rem; padding: .9rem 1.1rem; margin: .6rem 0;
                border: 1px solid var(--medium-grey); border-radius: var(--radius-m); color: var(--almost-black);
                font-weight: 600; transition: border-color .2s ease, background .2s ease }
   a.provider:hover { border-color: var(--dark-blue); background: var(--lightest-grey); color: var(--almost-black) }
-  a.provider img { width: 24px; height: 24px; border-radius: 5px }
+  /* object-fit: contain scales the logo within the box WITHOUT ever distorting its aspect ratio. */
+  a.provider img { width: 44px; height: 44px; object-fit: contain; flex: none; border-radius: 6px }
   a.btn { display: inline-block; margin-top: 1rem; background: var(--dark-blue); color: var(--white);
           padding: .65rem 1.1rem; border: 2px solid var(--dark-blue); border-radius: var(--radius-m);
           font-weight: 700; transition: background .25s ease, border-color .25s ease, color .25s ease }

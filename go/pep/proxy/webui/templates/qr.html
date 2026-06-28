@@ -6,9 +6,19 @@
   <title>Scan to sign in</title>
   {{template "styles"}}
   <style>
+    main.card { text-align: center }
     img.qr { display: block; margin: 1.1rem auto; border-radius: 10px; background: #fff; padding: .6rem; max-width: 100% }
     .or { text-align: center; margin: .4rem 0 }
+    .qr-actions { display: flex; flex-direction: column; align-items: center; gap: .6rem; margin-top: 1rem }
+    .qr-actions .btn { margin-top: 0; min-width: 15rem }
   </style>
+  <script>
+    // On a phone the QR can't be self-scanned, so go straight to the on-device login. Tablets/desktops keep
+    // the QR. (This is OIDF-only — gemidp's authenticator flow is a separate template and is unaffected.)
+    if (/iphone|ipod|android.*mobile|windows phone|iemobile|blackberry|opera mini/i.test(navigator.userAgent)) {
+      window.location.replace("{{.AuthURL}}");
+    }
+  </script>
 </head>
 <body>
   <main class="card">
@@ -16,7 +26,10 @@
     <p class="muted">Scan the code with your authenticator app on another device,</p>
     <img class="qr" src="{{.QRImage}}" alt="Sign-in QR code" width="320" height="320">
     <p class="muted or">— or —</p>
-    <a class="btn" href="{{.AuthURL}}">Continue on this device</a>
+    <div class="qr-actions">
+      <a class="btn" href="{{.AuthURL}}">Continue on this device</a>
+      <a class="btn secondary" href="/oauth2/sign_in{{if .ReturnTo}}?rd={{.ReturnTo | urlquery}}{{end}}">Choose another provider</a>
+    </div>
   </main>
   <script>
     const pollURL = "{{.PollURL}}";
