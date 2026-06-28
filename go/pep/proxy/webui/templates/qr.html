@@ -45,6 +45,7 @@
       <a id="continue" href="{{.AuthURL}}">Continue on this device</a>
       <a href="/oauth2/sign_in{{if .ReturnTo}}?rd={{.ReturnTo | urlquery}}{{end}}">Choose another provider</a>
     </div>
+    <p class="muted" id="disclaimer" hidden>You can close this tab.</p>
   </main>
   <script>
     var AUTH_URL = "{{.AuthURL}}";
@@ -76,6 +77,7 @@
               // The app returns the user authenticated (often in a new tab) and owns the destination; this
               // tab just confirms in place.
               statusEl.textContent = "Signed in";
+              document.getElementById("disclaimer").hidden = false;
             } else {
               // Desktop scanned with a second device — nothing else navigates here, so return to the app.
               statusEl.textContent = "Signed in — returning…";
