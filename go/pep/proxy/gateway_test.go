@@ -23,10 +23,10 @@ func TestRoutesFromEnv(t *testing.T) {
 		t.Fatalf("len = %d, want 2 (%+v)", len(got), got)
 	}
 	api, web := got[0], got[1]
-	if api.PathPrefix != "/api" || api.Inject != InjectDPoP || !api.StripPrefix || !api.Protected {
+	if api.PathPrefix != "/api" || api.Inject != InjectDPoP || !api.StripPrefix || api.Gate != GateSession {
 		t.Errorf("api route = %+v", api)
 	}
-	if web.PathPrefix != "/" || web.Inject != InjectIdentity || !web.Protected {
+	if web.PathPrefix != "/" || web.Inject != InjectIdentity || web.Gate != GateSnapshot {
 		t.Errorf("webapp route = %+v", web)
 	}
 }
@@ -58,10 +58,24 @@ func TestValidateRoutesRejectsBadInject(t *testing.T) {
 	}
 }
 
+func TestValidateRoutesDPoPRequiresSessionGate(t *testing.T) {
+	if _, err := validateRoutes([]Route{{PathPrefix: "/api", Upstream: "http://rs", Inject: InjectDPoP, Gate: GateSnapshot}}); err == nil {
+		t.Error("dpop route accepted with gate: snapshot")
+	}
+	// dpop defaults to gate: session and is accepted.
+	out, err := validateRoutes([]Route{{PathPrefix: "/api", Upstream: "http://rs", Inject: InjectDPoP}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out[0].Gate != GateSession {
+		t.Errorf("dpop gate defaulted to %q, want session", out[0].Gate)
+	}
+}
+
 func TestLoadRoutesYAML(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "routes.yaml")
-	if err := os.WriteFile(p, []byte("routes:\n  - path_prefix: /api\n    upstream: http://rs:8080\n    inject: dpop\n    strip_prefix: true\n  - path_prefix: /open\n    upstream: http://x:8080\n    protected: false\n"), 0o600); err != nil {
+	if err := os.WriteFile(p, []byte("routes:\n  - path_prefix: /api\n    upstream: http://rs:8080\n    inject: dpop\n    gate: session\n    strip_prefix: true\n  - path_prefix: /open\n    upstream: http://x:8080\n    gate: none\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	got, err := loadRoutes(p)
@@ -71,11 +85,11 @@ func TestLoadRoutesYAML(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("len = %d, want 2", len(got))
 	}
-	if got[0].Inject != InjectDPoP || !got[0].StripPrefix || !got[0].Protected {
+	if got[0].Inject != InjectDPoP || !got[0].StripPrefix || got[0].Gate != GateSession {
 		t.Errorf("api route = %+v", got[0])
 	}
-	if got[1].Protected {
-		t.Error("protected:false should be honored")
+	if got[1].Gate != GateNone {
+		t.Errorf("open route gate = %q, want none", got[1].Gate)
 	}
 }
 
@@ -97,7 +111,7 @@ func TestGatewayLongestPrefixMatch(t *testing.T) {
 
 func TestGatewayUnauthenticatedBranch(t *testing.T) {
 	gw, err := newGateway(staticSession(nil), &fakeBackend{}, []Route{
-		{PathPrefix: "/", Upstream: "http://app:8080", Protected: true, Inject: InjectIdentity},
+		{PathPrefix: "/", Upstream: "http://app:8080", Inject: InjectIdentity, Gate: GateSnapshot},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -135,7 +149,7 @@ func TestGatewayIdentityInjection(t *testing.T) {
 
 	sess := &Session{Identity: map[string]any{"sub": "u-1", "preferred_username": "alice"}}
 	gw, err := newGateway(staticSession(sess), &fakeBackend{}, []Route{
-		{PathPrefix: "/app", Upstream: upstream.URL, Protected: true, Inject: InjectIdentity, StripPrefix: true},
+		{PathPrefix: "/app", Upstream: upstream.URL, Inject: InjectIdentity, Gate: GateSnapshot, StripPrefix: true},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -174,7 +188,7 @@ func TestGatewayUnprotectedPassthrough(t *testing.T) {
 	defer upstream.Close()
 
 	gw, err := newGateway(staticSession(nil), &fakeBackend{}, []Route{
-		{PathPrefix: "/public", Upstream: upstream.URL, Protected: false},
+		{PathPrefix: "/public", Upstream: upstream.URL, Gate: GateNone},
 	})
 	if err != nil {
 		t.Fatal(err)

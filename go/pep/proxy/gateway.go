@@ -52,7 +52,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if !rt.Protected {
+	if rt.Gate == GateNone {
 		rt.proxy.ServeHTTP(w, r)
 		return
 	}
