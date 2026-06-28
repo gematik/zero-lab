@@ -120,8 +120,10 @@ func (s *kvSessionStore) GetAuthzServerSessionByAuthnState(authnState string) (*
 	return s.resolveIndex(v, found, err)
 }
 
+// GetAutzhServerSessionByRequestURI consumes the request_uri index (Take) so a PAR request_uri is
+// single-use (RFC 9126 §4): a replayed /authorize with the same request_uri resolves to not-found.
 func (s *kvSessionStore) GetAutzhServerSessionByRequestURI(requestURI string) (*AuthzServerSession, error) {
-	v, found, err := s.store.Get(context.Background(), asRequriKey(requestURI))
+	v, found, err := s.store.Take(context.Background(), asRequriKey(requestURI))
 	return s.resolveIndex(v, found, err)
 }
 

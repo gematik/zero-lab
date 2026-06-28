@@ -27,7 +27,10 @@ func redirectWithError(w http.ResponseWriter, r *http.Request, redirectUri strin
 
 // AuthorizationEndpoint validates an OAuth2 authorization-code request and starts the
 // upstream OpenID Provider login.
-func (s *Server) AuthorizationEndpoint(w http.ResponseWriter, r *http.Request) error {
+// bindAuthzRequest parses + validates an authorization request — from the /authorize query OR a /par body —
+// into a pending session and resolves its product. Shared so direct authorization and PAR enforce identical
+// policy. The scope-allowlist check is left to the caller (it redirects at /authorize, returns JSON at /par).
+func (s *Server) bindAuthzRequest(r *http.Request) (*AuthzServerSession, *Product, *Error) {
 	session := &AuthzServerSession{
 		ID:        ksuid.New().String(),
 		CreatedAt: time.Now(),
@@ -45,52 +48,68 @@ func (s *Server) AuthorizationEndpoint(w http.ResponseWriter, r *http.Request) e
 		MustString("scope", &scope).
 		String("idp_iss", &session.IDPIss).
 		BindError()
-
 	if binderr != nil {
-		return oauthErr(http.StatusBadRequest, "invalid_request", binderr.Error())
+		return nil, nil, oauthErr(http.StatusBadRequest, "invalid_request", binderr.Error())
 	}
-
 	if responseType != "code" {
-		return oauthErr(http.StatusBadRequest, "unsupported_response_type", fmt.Sprintf("unsupported response_type: %s", responseType))
+		return nil, nil, oauthErr(http.StatusBadRequest, "unsupported_response_type", fmt.Sprintf("unsupported response_type: %s", responseType))
 	}
-
 	if session.IDPIss == "" {
 		session.IDPIss = s.defaultIDPIss
 	}
-
 	if session.CodeChallengeMethod != "S256" {
-		return oauthErr(http.StatusBadRequest, "invalid_request", fmt.Sprintf("unsupported code_challenge_method: %s", session.CodeChallengeMethod))
+		return nil, nil, oauthErr(http.StatusBadRequest, "invalid_request", fmt.Sprintf("unsupported code_challenge_method: %s", session.CodeChallengeMethod))
 	}
 	if cerr := validateCodeChallenge(session.CodeChallenge); cerr != nil {
-		return cerr
+		return nil, nil, cerr
 	}
-
 	if s.clientsRegistry == nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", "clients registry not configured")
+		return nil, nil, oauthErr(http.StatusInternalServerError, "server_error", "clients registry not configured")
 	}
-
 	client, err := s.clientsRegistry.GetClient(session.ClientID)
 	if err != nil {
-		return oauthErr(http.StatusBadRequest, "invalid_request", err.Error())
+		return nil, nil, oauthErr(http.StatusBadRequest, "invalid_request", err.Error())
 	}
-
 	product, productErr := s.clientProduct(client)
 	if productErr != nil {
-		return productErr
+		return nil, nil, productErr
 	}
-
 	if !product.IsAllowedRedirectURI(session.RedirectURI) {
-		return oauthErr(http.StatusBadRequest, "invalid_request", "Invalid redirect_uri")
+		return nil, nil, oauthErr(http.StatusBadRequest, "invalid_request", "Invalid redirect_uri")
+	}
+	session.Scopes = strings.Split(scope, " ")
+	return session, product, nil
+}
+
+func (s *Server) AuthorizationEndpoint(w http.ResponseWriter, r *http.Request) error {
+	if requestURI := r.FormValue("request_uri"); requestURI != "" {
+		// PAR (RFC 9126): the request was validated + client-authenticated at /par. Load it single-use
+		// (the index is consumed); the rest of the query is ignored.
+		session, err := s.sessionStore.GetAutzhServerSessionByRequestURI(requestURI)
+		if err != nil {
+			return oauthErr(http.StatusBadRequest, "invalid_request", "invalid or expired request_uri")
+		}
+		client, cerr := s.clientsRegistry.GetClient(session.ClientID)
+		if cerr != nil {
+			return oauthErr(http.StatusBadRequest, "invalid_request", cerr.Error())
+		}
+		product, perr := s.clientProduct(client)
+		if perr != nil {
+			return perr
+		}
+		return s.startOpenidProviderLogin(w, r, session, product)
 	}
 
-	session.Scopes = strings.Split(scope, " ")
+	session, product, perr := s.bindAuthzRequest(r)
+	if perr != nil {
+		return perr
+	}
 	if !product.IsAllowedScopes(session.Scopes) {
 		return redirectWithError(w, r, session.RedirectURI, session.State, Error{
 			Code:        "invalid_scope",
 			Description: fmt.Sprintf("scope not allowed: %s", strings.Join(session.Scopes, " ")),
 		})
 	}
-
 	return s.startOpenidProviderLogin(w, r, session, product)
 }
 
@@ -153,11 +172,40 @@ func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request
 	return nil
 }
 
+// PAREndpoint (RFC 9126) accepts a client-authenticated pushed authorization request: it validates the
+// parameters exactly as /authorize would, stores them, and returns a single-use request_uri the client then
+// hands to /authorize. FAPI 2.0 requires this — the request is integrity-protected (back-channel,
+// private_key_jwt) rather than carried in the browser URL.
 func (s *Server) PAREndpoint(w http.ResponseWriter, r *http.Request) error {
-	requestUri := "urn:ietf:params:oauth:request_uri:" + generateNonce(64)
-	slog.Error("PAR not implemented", "request_uri", requestUri)
-	// TODO: implement PAR
-	return oauthErr(http.StatusNotImplemented, "unsupported_grant_type", "PAR grant type not supported")
+	if r.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
+		return oauthErr(http.StatusBadRequest, "invalid_request", "invalid content type")
+	}
+	if err := r.ParseForm(); err != nil {
+		return oauthErr(http.StatusBadRequest, "invalid_request", "unable to parse form")
+	}
+	// PAR is client-authenticated (private_key_jwt) — that's what makes the pushed request trustworthy.
+	client, _, clientError := s.verifyClient(r)
+	if clientError != nil {
+		return clientError
+	}
+	session, product, perr := s.bindAuthzRequest(r)
+	if perr != nil {
+		return perr
+	}
+	if session.ClientID != client.ClientID {
+		return oauthErr(http.StatusBadRequest, "invalid_request", "client_id does not match the authenticated client")
+	}
+	if !product.IsAllowedScopes(session.Scopes) {
+		return oauthErr(http.StatusBadRequest, "invalid_scope", fmt.Sprintf("scope not allowed: %s", strings.Join(session.Scopes, " ")))
+	}
+	session.RequestUri = "urn:ietf:params:oauth:request_uri:" + generateNonce(64)
+	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {
+		return oauthErr(http.StatusInternalServerError, "server_error", "unable to store pushed request")
+	}
+	return writeJSON(w, http.StatusCreated, map[string]any{
+		"request_uri": session.RequestUri,
+		"expires_in":  int(defaultSessionTTL.Seconds()),
+	})
 }
 
 // GetOpenidClient returns an OpenID Connect client for the given issuer
