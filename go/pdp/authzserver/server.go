@@ -155,6 +155,7 @@ func (s *Server) initMetadata(issuerUrl *url.URL, cfg Config) {
 	s.Metadata.OpenidProvidersEndpoint = buildURI(issuerUrl, s.endpointPaths.OpenIDProviders)
 	s.Metadata.NonceEndpoint = buildURI(issuerUrl, s.endpointPaths.Nonce)
 	s.Metadata.PushedAuthorizationRequestEndpoint = buildURI(issuerUrl, s.endpointPaths.PushedAuthorizationRequest)
+	s.Metadata.RequirePushedAuthorizationRequests = true
 	s.Metadata.RegistrationEndpoint = buildURI(issuerUrl, s.endpointPaths.Registration)
 
 	s.Metadata.ResponseTypesSupported = []string{"code"}

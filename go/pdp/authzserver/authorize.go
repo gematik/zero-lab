@@ -82,33 +82,25 @@ func (s *Server) bindAuthzRequest(r *http.Request) (*AuthzServerSession, *Produc
 }
 
 func (s *Server) AuthorizationEndpoint(w http.ResponseWriter, r *http.Request) error {
-	if requestURI := r.FormValue("request_uri"); requestURI != "" {
-		// PAR (RFC 9126): the request was validated + client-authenticated at /par. Load it single-use
-		// (the index is consumed); the rest of the query is ignored.
-		session, err := s.sessionStore.GetAutzhServerSessionByRequestURI(requestURI)
-		if err != nil {
-			return oauthErr(http.StatusBadRequest, "invalid_request", "invalid or expired request_uri")
-		}
-		client, cerr := s.clientsRegistry.GetClient(session.ClientID)
-		if cerr != nil {
-			return oauthErr(http.StatusBadRequest, "invalid_request", cerr.Error())
-		}
-		product, perr := s.clientProduct(client)
-		if perr != nil {
-			return perr
-		}
-		return s.startOpenidProviderLogin(w, r, session, product)
+	// FAPI 2.0: authorization requests MUST be pushed (RFC 9126). The browser arrives here carrying only the
+	// single-use request_uri minted at /par — where the request was validated and client-authenticated.
+	// Direct authorization parameters are not accepted.
+	requestURI := r.FormValue("request_uri")
+	if requestURI == "" {
+		return oauthErr(http.StatusBadRequest, "invalid_request",
+			"request_uri is required: push the authorization request to the PAR endpoint first")
 	}
-
-	session, product, perr := s.bindAuthzRequest(r)
+	session, err := s.sessionStore.GetAutzhServerSessionByRequestURI(requestURI)
+	if err != nil {
+		return oauthErr(http.StatusBadRequest, "invalid_request", "invalid or expired request_uri")
+	}
+	client, cerr := s.clientsRegistry.GetClient(session.ClientID)
+	if cerr != nil {
+		return oauthErr(http.StatusBadRequest, "invalid_request", cerr.Error())
+	}
+	product, perr := s.clientProduct(client)
 	if perr != nil {
 		return perr
-	}
-	if !product.IsAllowedScopes(session.Scopes) {
-		return redirectWithError(w, r, session.RedirectURI, session.State, Error{
-			Code:        "invalid_scope",
-			Description: fmt.Sprintf("scope not allowed: %s", strings.Join(session.Scopes, " ")),
-		})
 	}
 	return s.startOpenidProviderLogin(w, r, session, product)
 }

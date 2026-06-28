@@ -12,7 +12,8 @@ import (
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
 )
 
-// TestFlow_FederationPAR drives an OpenID Federation IdP (type "oidf") via /authorization and
+// TestFlow_FederationPAR drives an OpenID Federation IdP (type "oidf") by pushing the request to the AS's
+// PAR endpoint then driving /authorize with the request_uri (FAPI 2.0: direct /authorize is rejected), and
 // asserts the pdp (relying party) successfully performed a Pushed Authorization Request against
 // it — the checkpoint is the redirect to the IdP carrying request_uri. No human login. Picks the
 // gematik sectoral IDP if present, else the first oidf provider; override with
@@ -56,7 +57,31 @@ func TestFlow_FederationPAR(t *testing.T) {
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	t.Logf("driving federation IdP %s", idpIss)
-	resp, err := c.Get(md.AuthorizationEndpoint + "?" + q.Encode())
+
+	// FAPI 2.0: push the request first (client-authenticated), then drive /authorize with the request_uri.
+	addClientAuth(q, clientAssertion(t, md, clientID, clientKey(t)))
+	parReq, _ := http.NewRequest(http.MethodPost, md.PushedAuthorizationRequestEndpoint, strings.NewReader(q.Encode()))
+	parReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	parResp, err := httpClient().Do(parReq)
+	if err != nil {
+		t.Fatalf("PAR: %v", err)
+	}
+	if parResp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(parResp.Body)
+		parResp.Body.Close()
+		t.Fatalf("PAR: status %d, want 201: %s", parResp.StatusCode, body)
+	}
+	var par struct {
+		RequestURI string `json:"request_uri"`
+	}
+	err = json.NewDecoder(parResp.Body).Decode(&par)
+	parResp.Body.Close()
+	if err != nil {
+		t.Fatalf("PAR decode: %v", err)
+	}
+
+	authQ := url.Values{"client_id": {clientID}, "request_uri": {par.RequestURI}}
+	resp, err := c.Get(md.AuthorizationEndpoint + "?" + authQ.Encode())
 	if err != nil {
 		t.Fatalf("GET authorization: %v", err)
 	}
