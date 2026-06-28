@@ -89,17 +89,17 @@ func handleInfo(w http.ResponseWriter, r *http.Request) {
 		"app":            "metsubushi",
 		"status":         "healthy",
 		"hostname":       hostname(),
-		"podName":        os.Getenv("POD_NAME"),
-		"podNamespace":   os.Getenv("POD_NAMESPACE"),
-		"podIP":          os.Getenv("POD_IP"),
+		// Prefer the downward-API env vars; fall back to the pod's own context so the page is populated even
+		// when the deployment doesn't inject them. (NODE_NAME has no in-pod source — it needs the env var.)
+		"podName":        envOr("POD_NAME", hostname()),
+		"podNamespace":   envOr("POD_NAMESPACE", k8sNamespace()),
+		"podIP":          envOr("POD_IP", firstLocalIP()),
 		"nodeName":       os.Getenv("NODE_NAME"),
 		"serviceName":    envOr("SERVICE_NAME", "metsubushi"),
 		"logoutUrl":      os.Getenv("LOGOUT_URL"),
 		"localAddresses": localAddrs(),
-		"goVersion":      runtime.Version(),
 		"platform":       runtime.GOOS + "/" + runtime.GOARCH,
 		"numCPU":         runtime.NumCPU(),
-		"goroutines":     runtime.NumGoroutine(),
 		"pid":            os.Getpid(),
 		"startedAt":      startTime.UTC().Format(time.RFC3339),
 		"serverTime":     time.Now().UTC().Format(time.RFC3339),
@@ -196,6 +196,24 @@ func hostname() string {
 		return "unknown"
 	}
 	return h
+}
+
+// k8sNamespace reads the namespace from the service-account mount, present in every pod even without the
+// downward API; "" outside Kubernetes.
+func k8sNamespace() string {
+	b, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// firstLocalIP returns the pod's primary non-loopback IPv4 — a fallback for POD_IP.
+func firstLocalIP() string {
+	if a := localAddrs(); len(a) > 0 {
+		return a[0]
+	}
+	return ""
 }
 
 func uuidV4() string {
