@@ -45,6 +45,23 @@ func HashFunctionForCurve(curve elliptic.Curve) (hash.Hash, error) {
 	return hashFunc, nil
 }
 
+// BitSizeForAlg returns the curve bit size implied by a JOSE signature algorithm
+// name as used in the gematik stack: ES256/BP256R1 → 256, ES384/BP384R1 → 384,
+// ES512/BP512R1 → 512. It is the basis for the alg↔curve consistency check on
+// verification (rejecting e.g. ES384 with a 256-bit key).
+func BitSizeForAlg(alg string) (int, error) {
+	switch alg {
+	case AlgorithmNameES256, AlgorithmNameBP256R1:
+		return 256, nil
+	case AlgorithmNameES384, AlgorithmNameBP384R1:
+		return 384, nil
+	case AlgorithmNameES512, AlgorithmNameBP512R1:
+		return 512, nil
+	default:
+		return 0, fmt.Errorf("unsupported signature algorithm: %s", alg)
+	}
+}
+
 // JWAForCurve maps a Brainpool elliptic curve to its JOSE "crv" name.
 func JWAForCurve(curve elliptic.Curve) string {
 	switch curve.Params().Name {

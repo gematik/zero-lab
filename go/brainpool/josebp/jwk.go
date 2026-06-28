@@ -2,6 +2,7 @@ package josebp
 
 import (
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -51,10 +52,21 @@ func (jwk *JSONWebKey) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("failed to parse y: %w", err)
 		}
 
+		// Reject points that are off-curve or out of range before constructing a
+		// key. Without this an attacker-supplied JWK can mount an invalid-curve
+		// attack against later ECDH/verify operations.
+		if err := validateECPublicCoords(curve, x, y); err != nil {
+			return err
+		}
+
 		if jwkAlias.D != "" {
 			d, err := parseBigInt(jwkAlias.D)
 			if err != nil {
 				return fmt.Errorf("failed to parse d: %w", err)
+			}
+
+			if err := validateECPrivateScalar(curve, d); err != nil {
+				return err
 			}
 
 			jwkAlias.Key = &ecdsa.PrivateKey{
@@ -115,6 +127,33 @@ func (jwk *JSONWebKey) MarshalJSON() ([]byte, error) {
 	}
 
 	return json.Marshal(jwkAlias)
+}
+
+// validateECPublicCoords checks that (x, y) is a valid affine point on curve:
+// both coordinates canonical in [0, p-1] and the point on the curve (which also
+// rejects the point at infinity, since b ≠ 0). Public-key validation per BSI
+// TR-03111 §3.2.2 / SEC 1 §3.2.2.1.
+func validateECPublicCoords(curve elliptic.Curve, x, y *big.Int) error {
+	p := curve.Params().P
+	if x.Sign() < 0 || x.Cmp(p) >= 0 {
+		return fmt.Errorf("x coordinate out of range for %s", curve.Params().Name)
+	}
+	if y.Sign() < 0 || y.Cmp(p) >= 0 {
+		return fmt.Errorf("y coordinate out of range for %s", curve.Params().Name)
+	}
+	if !curve.IsOnCurve(x, y) {
+		return fmt.Errorf("public key point is not on curve %s", curve.Params().Name)
+	}
+	return nil
+}
+
+// validateECPrivateScalar checks d ∈ [1, n-1].
+func validateECPrivateScalar(curve elliptic.Curve, d *big.Int) error {
+	n := curve.Params().N
+	if d.Sign() <= 0 || d.Cmp(n) >= 0 {
+		return fmt.Errorf("private scalar out of range [1, n-1] for %s", curve.Params().Name)
+	}
+	return nil
 }
 
 func parseBigInt(s string) (*big.Int, error) {
