@@ -47,4 +47,13 @@
   .muted { color: var(--dark-grey); font-size: .85rem }
   code { background: var(--light-grey); padding: .15rem .4rem; border-radius: 4px;
          font-family: ui-monospace, "SF Mono", monospace }
+  /* Status disc — shared by the decoupled QR page and the post-callback page so the success circle is identical.
+     The checkmark uses the gematik CI functional green. */
+  .indicator { width: 3.2rem; height: 3.2rem; margin: 1.4rem auto .5rem; box-sizing: border-box }
+  .indicator.waiting { border: 4px solid var(--light-grey); border-top-color: var(--dark-blue);
+                       border-radius: 50%; animation: spin .8s linear infinite }
+  .indicator.success { border-radius: 50%; background: var(--functional-green); position: relative; animation: none }
+  .indicator.success::after { content: ""; position: absolute; left: 36%; top: 18%; width: 26%; height: 52%;
+                              border: solid #fff; border-width: 0 4px 4px 0; transform: rotate(45deg) }
+  @keyframes spin { to { transform: rotate(360deg) } }
 </style>{{end}}

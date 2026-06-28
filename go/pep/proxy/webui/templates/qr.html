@@ -13,15 +13,6 @@
     html:not([data-mobile]) .mobile-only { display: none }
     body.done .desktop-only, body.done .qr-actions { display: none }
 
-    /* One status disc, same footprint whether spinning or resolved. */
-    .indicator { width: 3.2rem; height: 3.2rem; margin: 1.4rem auto .5rem; box-sizing: border-box }
-    .indicator.waiting { border: 4px solid var(--light-grey); border-top-color: var(--dark-blue);
-                         border-radius: 50%; animation: spin .8s linear infinite }
-    .indicator.success { border-radius: 50%; background: var(--functional-green); position: relative; animation: none }
-    .indicator.success::after { content: ""; position: absolute; left: 36%; top: 18%; width: 26%; height: 52%;
-                                border: solid #fff; border-width: 0 4px 4px 0; transform: rotate(45deg) }
-    @keyframes spin { to { transform: rotate(360deg) } }
-
     .status { font-weight: 600; color: var(--dark-grey); margin: 0 }
     .status.ok { color: var(--functional-green); font-size: 1.15rem }
 
@@ -81,7 +72,15 @@
             document.body.classList.add("done");
             indicator.className = "indicator success";
             statusEl.className = "status ok";
-            statusEl.textContent = "Signed in";
+            if (isMobile) {
+              // The app returns the user authenticated (often in a new tab) and owns the destination; this
+              // tab just confirms in place.
+              statusEl.textContent = "Signed in";
+            } else {
+              // Desktop scanned with a second device — nothing else navigates here, so return to the app.
+              statusEl.textContent = "Signed in — returning…";
+              setTimeout(function () { location.href = data.return_to || "/"; }, 1000);
+            }
             return;
           }
         }
