@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -12,6 +13,20 @@ import (
 	"testing"
 	"time"
 )
+
+// dpopTestBackend is a Backend that yields a token and forwards DPoP via the real pdpBackend minting.
+type dpopTestBackend struct {
+	fakeBackend
+	pdp *pdpBackend
+}
+
+func (d *dpopTestBackend) FreshAccessToken(ctx context.Context, sess *Session) (string, error) {
+	return "test-token", nil
+}
+
+func (d *dpopTestBackend) injectDPoP(out *http.Request, sess *Session, token string) error {
+	return d.pdp.injectDPoP(out, sess, token)
+}
 
 func staticSession(sess *Session) func(*http.Request) (*Session, bool) {
 	return func(*http.Request) (*Session, bool) { return sess, sess != nil }
@@ -228,6 +243,37 @@ func TestGatewayScopeGate(t *testing.T) {
 	}
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("status = %d, want 403", rec.Code)
+	}
+}
+
+func TestGatewayDPoPInjection(t *testing.T) {
+	_, jwkJSON, err := newSessionDPoPKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess := &Session{Identity: map[string]any{"sub": "u1"}, DPoPKeyJWK: jwkJSON}
+
+	var gotAuth, gotProof string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotProof = r.Header.Get("DPoP")
+	}))
+	defer upstream.Close()
+
+	backend := &dpopTestBackend{pdp: &pdpBackend{signer: bffSigner{}}}
+	gw, err := newGateway([]Route{
+		{PathPrefix: "/api", Upstream: upstream.URL, Inject: InjectDPoP, Gate: GateSession, StripPrefix: true},
+	}, gatewayDeps{currentSession: staticSession(sess), backend: backend})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gw.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/orders", nil))
+
+	if !strings.HasPrefix(gotAuth, "DPoP ") {
+		t.Errorf("Authorization = %q, want DPoP <token>", gotAuth)
+	}
+	if gotProof == "" {
+		t.Error("DPoP proof header not set")
 	}
 }
 

@@ -22,6 +22,24 @@ import (
 )
 
 var _ Backend = (*pdpBackend)(nil)
+var _ dpopForwarder = (*pdpBackend)(nil)
+
+// injectDPoP mints a fresh proof bound to the outbound request and attaches the DPoP-bound token, replacing
+// any client Authorization. The proof is signed with the session's DPoP key (the token's cnf.jkt). This is the
+// gateway's dpop inject, generalizing the former single /api proxy.
+func (b *pdpBackend) injectDPoP(out *http.Request, sess *Session, token string) error {
+	key, err := parseSessionDPoPKey(sess.DPoPKeyJWK)
+	if err != nil {
+		return err
+	}
+	proof, err := b.signer.dpopProof(out, token, key)
+	if err != nil {
+		return err
+	}
+	out.Header.Set("Authorization", "DPoP "+token)
+	out.Header.Set(dpop.DPoPHeaderName, proof)
+	return nil
+}
 
 const clientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
 
