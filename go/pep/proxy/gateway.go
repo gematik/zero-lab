@@ -9,28 +9,41 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+
+	"github.com/gematik/zero-lab/go/pep"
 )
 
-// Gateway gates and reverse-proxies the configured routes. It is mounted on the Server mux after /oauth2/*,
-// so it only ever sees paths the auth endpoints didn't claim. It is backend-agnostic for routing, gating and
-// identity injection; DPoP injection is delegated to a dpopForwarder backend.
-type Gateway struct {
+// gatewayDeps are what the gateway needs from the Server: session resolution, the backend (token + DPoP
+// injection), and the snapshot cookie name + keys for the stateless gate.
+type gatewayDeps struct {
 	currentSession func(*http.Request) (*Session, bool)
 	backend        Backend
-	routes         []Route
+	cookieName     string
+	snapshotKeys   [][]byte
 }
 
-// newGateway validates the routes (rejecting dpop routes the backend can't honor) and builds one reverse
-// proxy per route.
-func newGateway(currentSession func(*http.Request) (*Session, bool), backend Backend, routes []Route) (*Gateway, error) {
+// Gateway gates and reverse-proxies the configured routes. Gating runs as a pep.Enforcer chain (the gate,
+// optionally AllOf with EnforcerScope) over a gatewayContext; the inject is the terminal next. Mounted on the
+// Server mux after /oauth2/*, active only when routes are configured.
+type Gateway struct {
+	deps   gatewayDeps
+	routes []Route
+}
+
+func newGateway(routes []Route, deps gatewayDeps) (*Gateway, error) {
 	validated, err := validateRoutes(routes)
 	if err != nil {
 		return nil, err
 	}
-	if err := requireDPoPCapability(backend, validated); err != nil {
+	if err := requireDPoPCapability(deps.backend, validated); err != nil {
 		return nil, err
 	}
-	g := &Gateway{currentSession: currentSession, backend: backend, routes: validated}
+	for _, rt := range validated {
+		if rt.Gate == GateSnapshot && len(deps.snapshotKeys) == 0 {
+			return nil, fmt.Errorf("route %q uses gate: snapshot, but the snapshot fast path is not configured (set the session key)", rt.PathPrefix)
+		}
+	}
+	g := &Gateway{deps: deps, routes: validated}
 	for i := range g.routes {
 		g.routes[i].proxy = g.newProxy(&g.routes[i])
 	}
@@ -56,30 +69,66 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rt.proxy.ServeHTTP(w, r)
 		return
 	}
-	sess, ok := g.currentSession(r)
-	if !ok || !sess.Authenticated() {
+	gctx := newGatewayContext(w, r)
+	served := false
+	g.policyFor(rt).Apply(gctx, func(pep.Context) {
+		served = true
+		g.injectAndProxy(rt, gctx)
+	})
+	if gctx.state.denied {
+		g.handleDenied(w, r, gctx.state.denyErr)
+		return
+	}
+	if !served {
+		g.handleUnauthenticated(w, r)
+	}
+}
+
+// policyFor builds the route's enforcer: the gate (stateless snapshot or stateful kv), optionally wrapped in
+// AllOf with an EnforcerScope.
+func (g *Gateway) policyFor(rt *Route) pep.Enforcer {
+	var gate pep.Enforcer
+	switch rt.Gate {
+	case GateSnapshot:
+		gate = pep.NewEnforcerSessionCookie(g.deps.cookieName, g.deps.snapshotKeys)
+	default: // GateSession
+		gate = &statefulGate{currentSession: g.deps.currentSession}
+	}
+	if rt.Scope == "" {
+		return gate
+	}
+	allOf := &pep.EnforcerAllOf{TypeVal: pep.EnforcerTypeAllOf}
+	allOf.Append(gate)
+	allOf.Append(&pep.EnforcerScope{TypeVal: pep.EnforcerTypeScope, Scope: rt.Scope})
+	return allOf
+}
+
+// injectAndProxy is the policy's terminal next: build the injection from the resolved identity/session and
+// reverse-proxy the upstream.
+func (g *Gateway) injectAndProxy(rt *Route, gctx *gatewayContext) {
+	inj := &injection{mode: rt.Inject, sess: gctx.state.session}
+	_ = gctx.UnmarshalClaims(&inj.identity)
+	if rt.Inject == InjectDPoP {
+		token, err := g.deps.backend.FreshAccessToken(gctx.r.Context(), gctx.state.session)
+		if err != nil || token == "" {
+			slog.Warn("gateway upstream token unavailable", "route", rt.PathPrefix, "error", err)
+			g.handleUnauthenticated(gctx.w, gctx.r)
+			return
+		}
+		inj.token = token
+	}
+	r2 := gctx.r.WithContext(withInjection(gctx.r.Context(), inj))
+	rt.proxy.ServeHTTP(gctx.w, r2)
+}
+
+func (g *Gateway) handleDenied(w http.ResponseWriter, r *http.Request, err pep.Error) {
+	if err.HttpStatus == http.StatusUnauthorized {
 		g.handleUnauthenticated(w, r)
 		return
 	}
-	if rt.Inject != InjectNone {
-		var token string
-		if rt.Inject == InjectDPoP {
-			t, err := g.backend.FreshAccessToken(r.Context(), sess)
-			if err != nil || t == "" {
-				slog.Warn("gateway token refresh failed", "route", rt.PathPrefix, "error", err)
-				g.handleUnauthenticated(w, r)
-				return
-			}
-			token = t
-		}
-		r = r.WithContext(withInjection(r.Context(), &injection{mode: rt.Inject, token: token, sess: sess}))
-	}
-	rt.proxy.ServeHTTP(w, r)
+	respondGatewayJSON(w, err.HttpStatus, err.Code, err.Description)
 }
 
-// newProxy builds the reverse proxy for one route. The Rewrite hook runs on the cloned outbound request: it
-// retargets the upstream, strips the prefix, refreshes X-Forwarded-*, drops any client-supplied auth/identity
-// headers, then injects our own identity header or DPoP-bound token from the request context.
 func (g *Gateway) newProxy(rt *Route) *httputil.ReverseProxy {
 	return &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
@@ -107,7 +156,7 @@ func (g *Gateway) newProxy(rt *Route) *httputil.ReverseProxy {
 			}
 			switch inj.mode {
 			case InjectIdentity:
-				setIdentityHeaders(pr.Out.Header, inj.sess.Identity)
+				setIdentityHeaders(pr.Out.Header, inj.identity)
 			case InjectDPoP:
 				if err := g.injectDPoP(pr.Out, inj.sess, inj.token); err != nil {
 					slog.Error("gateway DPoP injection", "route", rt.PathPrefix, "error", err)
@@ -121,8 +170,6 @@ func (g *Gateway) newProxy(rt *Route) *httputil.ReverseProxy {
 	}
 }
 
-// handleUnauthenticated sends a browser navigation to the login UI (with a guarded return-to) and any other
-// request a JSON 401 — so APIs get a clean 401 and humans get the login page.
 func (g *Gateway) handleUnauthenticated(w http.ResponseWriter, r *http.Request) {
 	if wantsHTML(r) {
 		loginURL := "/oauth2/sign_in"
@@ -151,9 +198,10 @@ func respondGatewayJSON(w http.ResponseWriter, status int, code, desc string) {
 type injectionCtxKey struct{}
 
 type injection struct {
-	mode  InjectMode
-	token string
-	sess  *Session
+	mode     InjectMode
+	identity map[string]any
+	sess     *Session
+	token    string
 }
 
 func withInjection(ctx context.Context, inj *injection) context.Context {
@@ -168,7 +216,7 @@ func injectionFrom(ctx context.Context) *injection {
 // injectDPoP delegates to the backend when it can forward DPoP-bound tokens. dpop routes are rejected at
 // construction (requireDPoPCapability) when the backend can't, so the assertion should always hold here.
 func (g *Gateway) injectDPoP(out *http.Request, sess *Session, token string) error {
-	fwd, ok := g.backend.(dpopForwarder)
+	fwd, ok := g.deps.backend.(dpopForwarder)
 	if !ok {
 		return fmt.Errorf("backend does not support DPoP injection")
 	}

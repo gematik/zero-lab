@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func staticSession(sess *Session) func(*http.Request) (*Session, bool) {
@@ -94,10 +96,10 @@ func TestLoadRoutesYAML(t *testing.T) {
 }
 
 func TestGatewayLongestPrefixMatch(t *testing.T) {
-	gw, err := newGateway(staticSession(nil), &fakeBackend{}, []Route{
+	gw, err := newGateway([]Route{
 		{PathPrefix: "/", Upstream: "http://app"},
 		{PathPrefix: "/api", Upstream: "http://rs"},
-	})
+	}, gatewayDeps{currentSession: staticSession(nil), backend: &fakeBackend{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,9 +112,9 @@ func TestGatewayLongestPrefixMatch(t *testing.T) {
 }
 
 func TestGatewayUnauthenticatedBranch(t *testing.T) {
-	gw, err := newGateway(staticSession(nil), &fakeBackend{}, []Route{
-		{PathPrefix: "/", Upstream: "http://app:8080", Inject: InjectIdentity, Gate: GateSnapshot},
-	})
+	gw, err := newGateway([]Route{
+		{PathPrefix: "/", Upstream: "http://app:8080", Inject: InjectIdentity, Gate: GateSession},
+	}, gatewayDeps{currentSession: staticSession(nil), backend: &fakeBackend{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,9 +150,9 @@ func TestGatewayIdentityInjection(t *testing.T) {
 	defer upstream.Close()
 
 	sess := &Session{Identity: map[string]any{"sub": "u-1", "preferred_username": "alice"}}
-	gw, err := newGateway(staticSession(sess), &fakeBackend{}, []Route{
-		{PathPrefix: "/app", Upstream: upstream.URL, Inject: InjectIdentity, Gate: GateSnapshot, StripPrefix: true},
-	})
+	gw, err := newGateway([]Route{
+		{PathPrefix: "/app", Upstream: upstream.URL, Inject: InjectIdentity, Gate: GateSession, StripPrefix: true},
+	}, gatewayDeps{currentSession: staticSession(sess), backend: &fakeBackend{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,9 +189,9 @@ func TestGatewayUnprotectedPassthrough(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hit = true }))
 	defer upstream.Close()
 
-	gw, err := newGateway(staticSession(nil), &fakeBackend{}, []Route{
+	gw, err := newGateway([]Route{
 		{PathPrefix: "/public", Upstream: upstream.URL, Gate: GateNone},
-	})
+	}, gatewayDeps{currentSession: staticSession(nil), backend: &fakeBackend{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,5 +199,69 @@ func TestGatewayUnprotectedPassthrough(t *testing.T) {
 	gw.ServeHTTP(rec, httptest.NewRequest("GET", "/public/x", nil))
 	if !hit {
 		t.Error("unprotected route did not reach the upstream")
+	}
+}
+
+func TestGatewayScopeGate(t *testing.T) {
+	reached := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached = true }))
+	defer upstream.Close()
+	routes := []Route{{PathPrefix: "/", Upstream: upstream.URL, Inject: InjectIdentity, Gate: GateSession, Scope: "admin"}}
+
+	allowed := &Session{Identity: map[string]any{"sub": "u1", "scope": "read admin"}}
+	gw, err := newGateway(routes, gatewayDeps{currentSession: staticSession(allowed), backend: &fakeBackend{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gw.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/x", nil))
+	if !reached {
+		t.Error("required scope present but upstream not reached")
+	}
+
+	reached = false
+	denied := &Session{Identity: map[string]any{"sub": "u1", "scope": "read"}}
+	gw2, _ := newGateway(routes, gatewayDeps{currentSession: staticSession(denied), backend: &fakeBackend{}})
+	rec := httptest.NewRecorder()
+	gw2.ServeHTTP(rec, httptest.NewRequest("GET", "/x", nil))
+	if reached {
+		t.Error("upstream reached without the required scope")
+	}
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", rec.Code)
+	}
+}
+
+func TestGatewaySnapshotGate(t *testing.T) {
+	key := bytes.Repeat([]byte{3}, 32)
+	snap := &snapshotter{encKey: key, decKeys: [][]byte{key}, ttl: time.Hour}
+	cookie, err := snap.mint("sid-1", map[string]any{"sub": "u9"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var gotIdentity string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotIdentity = r.Header.Get("X-Auth-Request-Identity")
+	}))
+	defer upstream.Close()
+
+	gw, err := newGateway([]Route{
+		{PathPrefix: "/", Upstream: upstream.URL, Inject: InjectIdentity, Gate: GateSnapshot},
+	}, gatewayDeps{currentSession: staticSession(nil), backend: &fakeBackend{}, cookieName: "SID", snapshotKeys: [][]byte{key}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("GET", "/page", nil)
+	req.AddCookie(&http.Cookie{Name: "SID", Value: cookie})
+	gw.ServeHTTP(httptest.NewRecorder(), req)
+
+	if gotIdentity == "" {
+		t.Fatal("snapshot gate: identity not injected")
+	}
+	raw, _ := base64.RawURLEncoding.DecodeString(gotIdentity)
+	var claims map[string]any
+	json.Unmarshal(raw, &claims)
+	if claims["sub"] != "u9" {
+		t.Errorf("identity = %v", claims)
 	}
 }
