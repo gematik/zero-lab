@@ -47,8 +47,8 @@
   .muted { color: var(--dark-grey); font-size: .85rem }
   code { background: var(--light-grey); padding: .15rem .4rem; border-radius: 4px;
          font-family: ui-monospace, "SF Mono", monospace }
-  /* Status disc — shared by the decoupled QR page and the post-callback page so the success circle is identical.
-     The checkmark uses the gematik CI functional green. */
+  /* Status disc — shared by every sign-in waiting page (decoupled QR, gemidp authenticator, post-callback) so
+     the spinner and success circle are identical. The checkmark uses the gematik CI functional green. */
   .indicator { width: 3.2rem; height: 3.2rem; margin: 1.4rem auto .5rem; box-sizing: border-box }
   .indicator.waiting { border: 4px solid var(--light-grey); border-top-color: var(--dark-blue);
                        border-radius: 50%; animation: spin .8s linear infinite }
@@ -56,4 +56,10 @@
   .indicator.success::after { content: ""; position: absolute; left: 36%; top: 18%; width: 26%; height: 52%;
                               border: solid #fff; border-width: 0 4px 4px 0; transform: rotate(45deg) }
   @keyframes spin { to { transform: rotate(360deg) } }
+  .status { font-weight: 600; color: var(--dark-grey); margin: 0 }
+  .status.ok { color: var(--functional-green); font-size: 1.15rem }
+  /* Quiet, stacked secondary links (cancel / choose another / continue on this device). */
+  .quiet-actions { display: flex; flex-direction: column; align-items: center; gap: .3rem; margin-top: 1.3rem }
+  .quiet-actions a { font-size: .85rem; font-weight: 500; color: var(--dark-grey); text-decoration: underline }
+  .quiet-actions a:hover { color: var(--dark-blue) }
 </style>{{end}}

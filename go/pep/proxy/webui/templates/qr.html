@@ -11,15 +11,7 @@
     /* On a phone the QR can't be self-scanned — hide it and lead with the on-device app. */
     html[data-mobile] .desktop-only { display: none }
     html:not([data-mobile]) .mobile-only { display: none }
-    body.done .desktop-only, body.done .qr-actions { display: none }
-
-    .status { font-weight: 600; color: var(--dark-grey); margin: 0 }
-    .status.ok { color: var(--functional-green); font-size: 1.15rem }
-
-    /* Quiet, secondary affordances — the primary action is the QR / the auto-opened app. */
-    .qr-actions { display: flex; flex-direction: column; align-items: center; gap: .3rem; margin-top: 1.3rem }
-    .qr-actions a { font-size: .85rem; font-weight: 500; color: var(--dark-grey); text-decoration: underline }
-    .qr-actions a:hover { color: var(--dark-blue) }
+    body.done .desktop-only, body.done .quiet-actions { display: none }
   </style>
   <script>
     // Decide phone-vs-desktop before first paint so the correct content renders (no QR flash on mobile).
@@ -41,7 +33,7 @@
     <div class="indicator waiting" id="indicator"></div>
     <p class="status" id="status">Waiting for sign-in…</p>
 
-    <div class="qr-actions">
+    <div class="quiet-actions">
       <a id="continue" href="{{.AuthURL}}">Continue on this device</a>
       <a href="/oauth2/sign_in{{if .ReturnTo}}?rd={{.ReturnTo | urlquery}}{{end}}">Choose another provider</a>
     </div>

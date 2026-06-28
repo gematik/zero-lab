@@ -5,30 +5,40 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>gematik Authenticator</title>
   {{template "styles"}}
-  <style>
-    .spinner { width: 38px; height: 38px; margin: 1.3rem auto; border: 3px solid #2a2f3a;
-               border-top-color: #3b82f6; border-radius: 50%; animation: spin .9s linear infinite }
-    @keyframes spin { to { transform: rotate(360deg) } }
-  </style>
+  <style>main.card { text-align: center }</style>
 </head>
 <body>
   <main class="card">
     <h1>{{if .ProviderName}}{{.ProviderName}}{{else}}gematik Authenticator{{end}}</h1>
     <p class="muted">Follow the instructions in the gematik Authenticator app to sign in.</p>
-    <div class="spinner" role="status" aria-label="Waiting for authentication"></div>
-    <a class="btn secondary" href="/oauth2/sign_in{{if .ReturnTo}}?rd={{.ReturnTo | urlquery}}{{end}}">Cancel</a>
+    <div class="indicator waiting" id="indicator" role="status" aria-label="Waiting for sign-in"></div>
+    <p class="status" id="status">Waiting for sign-in…</p>
+    <div class="quiet-actions">
+      <a href="/oauth2/sign_in{{if .ReturnTo}}?rd={{.ReturnTo | urlquery}}{{end}}">Cancel</a>
+    </div>
   </main>
   <script>
     // Open the authenticator:// deep link in this tab (the OS hands it to the Authenticator app; the page
     // stays put), then poll until the app completes the callback.
     window.open("{{.AuthURL}}", "_self");
-    const pollURL = "{{.PollURL}}";
+    var pollURL = "{{.PollURL}}";
+    var indicator = document.getElementById("indicator");
+    var statusEl = document.getElementById("status");
+    var done = false;
     async function tick() {
+      if (done) return;
       try {
-        const r = await fetch(pollURL, { headers: { "X-Requested-With": "fetch" } });
+        var r = await fetch(pollURL, { headers: { "X-Requested-With": "fetch" } });
         if (r.ok) {
-          const data = await r.json();
-          if (data.authenticated) { location.href = data.return_to || "/"; return; }
+          var data = await r.json();
+          if (data.authenticated) {
+            done = true;
+            indicator.className = "indicator success";
+            statusEl.className = "status ok";
+            statusEl.textContent = "Signed in — returning…";
+            setTimeout(function () { location.href = data.return_to || "/"; }, 1000);
+            return;
+          }
         }
       } catch (e) { /* keep polling */ }
       setTimeout(tick, 2000);
