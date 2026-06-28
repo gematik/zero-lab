@@ -39,12 +39,13 @@ type PDPConfig struct {
 
 // asMetadata is the subset of RFC 8414 authorization-server metadata the backend needs.
 type asMetadata struct {
-	Issuer                  string `json:"issuer"`
-	AuthorizationEndpoint   string `json:"authorization_endpoint"`
-	TokenEndpoint           string `json:"token_endpoint"`
-	IntrospectionEndpoint   string `json:"introspection_endpoint"`
-	OpenidProvidersEndpoint string `json:"openid_providers_endpoint"`
-	NonceEndpoint           string `json:"nonce_endpoint"`
+	Issuer                             string `json:"issuer"`
+	AuthorizationEndpoint              string `json:"authorization_endpoint"`
+	TokenEndpoint                      string `json:"token_endpoint"`
+	IntrospectionEndpoint              string `json:"introspection_endpoint"`
+	OpenidProvidersEndpoint            string `json:"openid_providers_endpoint"`
+	NonceEndpoint                      string `json:"nonce_endpoint"`
+	PushedAuthorizationRequestEndpoint string `json:"pushed_authorization_request_endpoint"`
 }
 
 // pdpBackend is a confidential BFF client of the PDP: it drives the auth-code flow, holds DPoP-bound tokens
@@ -238,7 +239,23 @@ func (b *pdpBackend) StartLogin(ctx context.Context, sess *Session, idpIss, scop
 	if idpIss != "" {
 		params.Set("idp_iss", idpIss)
 	}
-	authURL := b.meta.AuthorizationEndpoint + "?" + params.Encode()
+
+	// Prefer PAR (RFC 9126 / FAPI 2.0): push the request back-channel (client-authenticated), then send the
+	// browser to /authorize with only client_id + the single-use request_uri. Fall back to the direct URL
+	// when the AS doesn't advertise a PAR endpoint.
+	var authURL string
+	if b.meta.PushedAuthorizationRequestEndpoint != "" {
+		requestURI, err := b.pushAuthorizationRequest(ctx, sess, params)
+		if err != nil {
+			return LoginStart{}, fmt.Errorf("PAR: %w", err)
+		}
+		authURL = b.meta.AuthorizationEndpoint + "?" + url.Values{
+			"client_id":   {b.cfg.ClientID},
+			"request_uri": {requestURI},
+		}.Encode()
+	} else {
+		authURL = b.meta.AuthorizationEndpoint + "?" + params.Encode()
+	}
 
 	mode := "redirect"
 	for _, p := range b.providers {
@@ -255,6 +272,46 @@ func (b *pdpBackend) StartLogin(ctx context.Context, sess *Session, idpIss, scop
 		authURL = directURL
 	}
 	return LoginStart{AuthURL: authURL, Mode: mode}, nil
+}
+
+// pushAuthorizationRequest sends the authorization parameters to the AS's PAR endpoint (RFC 9126),
+// client-authenticated by private_key_jwt, and returns the single-use request_uri.
+func (b *pdpBackend) pushAuthorizationRequest(ctx context.Context, sess *Session, params url.Values) (string, error) {
+	assertion, err := b.clientAssertion(ctx, sess)
+	if err != nil {
+		return "", err
+	}
+	form := url.Values{}
+	for k, v := range params {
+		form[k] = v
+	}
+	form.Set("client_assertion_type", clientAssertionTypeJWTBearer)
+	form.Set("client_assertion", assertion)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.meta.PushedAuthorizationRequestEndpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := b.http.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("PAR endpoint returned %d: %s", resp.StatusCode, string(body))
+	}
+	var pr struct {
+		RequestURI string `json:"request_uri"`
+	}
+	if err := json.Unmarshal(body, &pr); err != nil {
+		return "", fmt.Errorf("decode PAR response: %w", err)
+	}
+	if pr.RequestURI == "" {
+		return "", fmt.Errorf("PAR response missing request_uri")
+	}
+	return pr.RequestURI, nil
 }
 
 // resolveDecoupledAuthURL drives the AS authorization request server-side (the AS performs the PAR) without
