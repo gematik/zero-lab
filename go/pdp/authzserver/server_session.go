@@ -30,7 +30,6 @@ type AuthzServerSession struct {
 
 type AuthzServerSessionStore interface {
 	GetAuthzServerSessionByID(id string) (*AuthzServerSession, error)
-	GetAuthzServerSessionByState(state string) (*AuthzServerSession, error)
 	GetAuthzServerSessionByAuthnState(authnState string) (*AuthzServerSession, error)
 	GetAutzhServerSessionByRequestURI(requestURI string) (*AuthzServerSession, error)
 	GetAuthzServerSessionByCode(code string) (*AuthzServerSession, error)

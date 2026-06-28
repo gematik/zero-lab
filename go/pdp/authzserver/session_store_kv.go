@@ -13,7 +13,7 @@ import (
 )
 
 // kvSessionStore implements AuthzServerSessionStore over a kv.Store. The session record lives under
-// "as:session:<id>"; secondary lookups (state, code, authn-state, request_uri) are index keys holding
+// "as:session:<id>"; secondary lookups (code, authn-state, request_uri, refresh) are index keys holding
 // the id. Save writes the record + all populated index keys atomically (SetMany), so a lookup never
 // resolves a half-written session. GetByCode consumes the code index (Take) so an authorization code is
 // single-use even under concurrent token requests.
@@ -28,12 +28,11 @@ func newKVSessionStore(store kv.Store, defaultTTL time.Duration) *kvSessionStore
 
 var errSessionNotFound = errors.New("session not found")
 
-func asSessionKey(id string) string      { return "as:session:" + id }
-func asStateKey(state string) string     { return "as:state:" + state }
-func asCodeKey(code string) string       { return "as:code:" + code }
-func asAuthnKey(state string) string     { return "as:authn:" + state }
-func asRequriKey(uri string) string      { return "as:requri:" + uri }
-func asRefreshKey(token string) string   { return "as:refresh:" + token }
+func asSessionKey(id string) string    { return "as:session:" + id }
+func asCodeKey(code string) string     { return "as:code:" + code }
+func asAuthnKey(state string) string   { return "as:authn:" + state }
+func asRequriKey(uri string) string    { return "as:requri:" + uri }
+func asRefreshKey(token string) string { return "as:refresh:" + token }
 
 // hashRefreshToken maps a raw refresh token to its stored form. Only the hash is persisted (in the session
 // record and the as:refresh index), so a rogue storage admin reading the kv learns hashes, not replayable
@@ -69,9 +68,8 @@ func (s *kvSessionStore) SaveAutzhServerSession(session *AuthzServerSession) err
 
 	entries := []kv.Entry{{Key: asSessionKey(session.ID), Value: record, TTL: ttl}}
 	addIndex := func(key string) { entries = append(entries, kv.Entry{Key: key, Value: idValue, TTL: ttl}) }
-	if session.State != "" {
-		addIndex(asStateKey(session.State))
-	}
+	// No state index: per OAuth 2.0 / OIDC the AS only stores + echoes `state` (done at the callback); CSRF
+	// validation is the client's job. The dead lookup-by-state index was pure redundancy.
 	if session.Code != "" {
 		addIndex(asCodeKey(session.Code))
 	}
@@ -117,11 +115,6 @@ func (s *kvSessionStore) resolveIndex(idData []byte, found bool, err error) (*Au
 	return s.GetAuthzServerSessionByID(id)
 }
 
-func (s *kvSessionStore) GetAuthzServerSessionByState(state string) (*AuthzServerSession, error) {
-	v, found, err := s.store.Get(context.Background(), asStateKey(state))
-	return s.resolveIndex(v, found, err)
-}
-
 func (s *kvSessionStore) GetAuthzServerSessionByAuthnState(authnState string) (*AuthzServerSession, error) {
 	v, found, err := s.store.Get(context.Background(), asAuthnKey(authnState))
 	return s.resolveIndex(v, found, err)
@@ -153,9 +146,6 @@ func (s *kvSessionStore) DeleteAuthzServerSessionByID(id string) error {
 		return err
 	}
 	_ = s.store.Delete(ctx, asSessionKey(id))
-	if sess.State != "" {
-		_ = s.store.Delete(ctx, asStateKey(sess.State))
-	}
 	if sess.Code != "" {
 		_ = s.store.Delete(ctx, asCodeKey(sess.Code))
 	}
