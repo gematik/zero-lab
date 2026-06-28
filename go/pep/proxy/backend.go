@@ -57,3 +57,9 @@ type proxyRoute struct {
 type routeProvider interface {
 	proxyRoutes() []proxyRoute
 }
+
+// dpopForwarder is optionally implemented by a Backend that can attach a DPoP-bound access token to an
+// upstream request (the PDP backend). Gateway routes with inject: dpop require it.
+type dpopForwarder interface {
+	injectDPoP(out *http.Request, sess *Session, token string) error
+}
