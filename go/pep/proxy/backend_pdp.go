@@ -50,8 +50,6 @@ type PDPConfig struct {
 	SigningKey  jwk.Key // private_key_jwt signing key (loaded from a *_PATH file)
 	RedirectURI string  // default <public>/oauth2/callback
 	Scopes      []string
-	APIPrefix   string // gated reverse-proxy prefix, default /api
-	APIUpstream string // the single allowlisted upstream for that prefix
 	HTTPClient  *http.Client
 }
 
@@ -80,9 +78,6 @@ type pdpBackend struct {
 func NewPDPBackend(cfg PDPConfig) (Backend, error) {
 	if cfg.ASIssuer == "" || cfg.ClientID == "" || cfg.SigningKey == nil {
 		return nil, fmt.Errorf("pdp backend: as_issuer, client_id, signing key required")
-	}
-	if cfg.APIPrefix == "" {
-		cfg.APIPrefix = "/api"
 	}
 	hc := cfg.HTTPClient
 	if hc == nil {

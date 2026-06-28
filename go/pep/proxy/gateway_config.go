@@ -57,6 +57,15 @@ func routesFromEnv() []Route {
 	return routes
 }
 
+// RoutesFromConfig returns the gateway routes from PEP_ROUTES_PATH (a YAML file, authoritative when set) or
+// the PEP_API_UPSTREAM / PEP_WEBAPP_UPSTREAM env shortcuts. Empty = forward_auth-only (no gateway).
+func RoutesFromConfig() ([]Route, error) {
+	if p := os.Getenv("PEP_ROUTES_PATH"); p != "" {
+		return loadRoutes(p)
+	}
+	return routesFromEnv(), nil
+}
+
 type routesFile struct {
 	Routes []Route `yaml:"routes"`
 }

@@ -31,8 +31,6 @@ func pdpBackendFromEnv(publicURL string) proxy.Backend {
 		ClientID:    clientID,
 		SigningKey:  signingKey,
 		RedirectURI: redirect,
-		APIUpstream: os.Getenv("PEP_API_UPSTREAM"),
-		APIPrefix:   env("PEP_API_PREFIX", "/api"),
 	}
 	if s := os.Getenv("PEP_SCOPES"); s != "" {
 		cfg.Scopes = strings.Fields(s)

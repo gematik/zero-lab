@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gematik/zero-lab/go/kv"
 )
 
 // dpopTestBackend is a Backend that yields a token and forwards DPoP via the real pdpBackend minting.
@@ -214,6 +216,36 @@ func TestGatewayUnprotectedPassthrough(t *testing.T) {
 	gw.ServeHTTP(rec, httptest.NewRequest("GET", "/public/x", nil))
 	if !hit {
 		t.Error("unprotected route did not reach the upstream")
+	}
+}
+
+func TestServerMountsOAuthBeforeGateway(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(299) // sentinel: the gateway proxied to the upstream
+	}))
+	defer upstream.Close()
+
+	s, err := New(Config{
+		Backend:    &fakeBackend{identity: map[string]any{"sub": "u1"}},
+		Store:      kv.NewMemory(),
+		CookieName: "TEST-SID",
+		Routes:     []Route{{PathPrefix: "/", Upstream: upstream.URL, Gate: GateNone}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := s.Handler()
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/oauth2/sign_in", nil))
+	if rec.Code == 299 {
+		t.Fatal("/oauth2/* was proxied to the upstream — pep must serve it")
+	}
+
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/anything", nil))
+	if rec.Code != 299 {
+		t.Fatalf("gateway route not reached: status %d", rec.Code)
 	}
 }
 

@@ -167,6 +167,11 @@ func main() {
 		snapshotTTL = d
 	}
 
+	routes, err := proxy.RoutesFromConfig()
+	if err != nil {
+		log.Fatalf("gateway routes: %v", err)
+	}
+
 	server, err := proxy.New(proxy.Config{
 		Backend:                 backend,
 		Store:                   openStore(),
@@ -178,6 +183,7 @@ func main() {
 		SnapshotTTL:             snapshotTTL,
 		SessionStoreKeyPath:     os.Getenv("PEP_SESSION_STORE_KEY_PATH"),
 		Bus:                     openBus(),
+		Routes:                  routes,
 	})
 	if err != nil {
 		log.Fatalf("create proxy: %v", err)

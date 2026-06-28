@@ -44,6 +44,11 @@ type Config struct {
 	// Bus carries session revocations to all replicas so logout/lockout is fleet-wide instant. nil = a
 	// single-instance in-memory revoker.
 	Bus kv.Bus
+
+	// Routes, when non-empty, turn on standalone gateway mode: pep gates + reverse-proxies these upstreams
+	// itself (no Caddy). Empty = forward_auth-only, unchanged. gate: snapshot routes require the snapshot fast
+	// path (SnapshotKeyPath).
+	Routes []Route
 }
 
 // defaultSnapshotTTL is the snapshot lifetime, and — when the fast path is on — the session lifetime: the
@@ -60,6 +65,7 @@ type Server struct {
 	snap       *snapshotter // nil when the fast path is disabled (no key file)
 	snapCookie *http.Cookie // snapshot cookie template (only when snap != nil)
 	revoker    revoker
+	gateway    *Gateway // nil in forward_auth-only mode (no Routes)
 }
 
 func New(cfg Config) (*Server, error) {
@@ -119,6 +125,20 @@ func New(cfg Config) (*Server, error) {
 		s.snapCookie = newCookieTemplate(cfg.CookieName+"-SNAP", cfg.InsecureCookie)
 		slog.Info("snapshot fast path enabled", "ttl", snapTTL)
 	}
+
+	if len(cfg.Routes) > 0 {
+		deps := gatewayDeps{currentSession: s.currentSession, backend: s.backend}
+		if snap != nil {
+			deps.cookieName = s.snapCookie.Name // the snapshot gate validates the -SNAP cookie
+			deps.snapshotKeys = snap.decKeys
+		}
+		gw, err := newGateway(cfg.Routes, deps)
+		if err != nil {
+			return nil, fmt.Errorf("gateway: %w", err)
+		}
+		s.gateway = gw
+		slog.Info("standalone gateway enabled", "routes", len(cfg.Routes))
+	}
 	return s, nil
 }
 
@@ -140,17 +160,12 @@ func (s *Server) Handler() http.Handler {
 			mux.Handle(rt.Pattern, rt.Handler)
 		}
 	}
-	// A DPoP-API backend (the PDP backend) mounts its gated /api reverse-proxy.
-	if ab, ok := s.backend.(apiBackend); ok {
-		ab.mountAPI(s, mux)
+	// Standalone gateway mode: gate + reverse-proxy the configured upstreams. "/" is least-specific, so
+	// /oauth2/* and the backend routes above always win.
+	if s.gateway != nil {
+		mux.Handle("/", s.gateway)
 	}
 	return mux
-}
-
-// apiBackend is optionally implemented by a Backend that gates + reverse-proxies a DPoP-protected API route
-// (the PDP backend). It is given the server so it can resolve sessions from the request cookie.
-type apiBackend interface {
-	mountAPI(s *Server, mux *http.ServeMux)
 }
 
 type signInData struct {
