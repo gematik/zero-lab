@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Scan to sign in</title>
+  <title>Sign in</title>
   {{template "styles"}}
   <style>
     main.card { text-align: center }
@@ -11,34 +11,70 @@
     .or { text-align: center; margin: .4rem 0 }
     .qr-actions { display: flex; flex-direction: column; align-items: center; gap: .6rem; margin-top: 1rem }
     .qr-actions .btn { margin-top: 0; min-width: 15rem }
+    /* On a phone the QR can't be self-scanned — hide it and lead with the on-device app. */
+    html[data-mobile] .desktop-only { display: none }
+    html:not([data-mobile]) .mobile-only { display: none }
+    .status { margin-top: 1.1rem; font-weight: 600; color: var(--dark-grey) }
+    .status.success { color: var(--functional-green); font-size: 1.1rem }
+    .spinner { display: inline-block; width: 1em; height: 1em; vertical-align: -.12em; margin-right: .45em;
+               border: 2px solid var(--medium-grey); border-top-color: var(--dark-blue); border-radius: 50%;
+               animation: spin .8s linear infinite }
+    .status.success .spinner { display: none }
+    @keyframes spin { to { transform: rotate(360deg) } }
   </style>
   <script>
-    // On a phone the QR can't be self-scanned, so go straight to the on-device login. Tablets/desktops keep
-    // the QR. (This is OIDF-only — gemidp's authenticator flow is a separate template and is unaffected.)
+    // Decide phone-vs-desktop before first paint so the correct content renders (no QR flash on mobile).
     if (/iphone|ipod|android.*mobile|windows phone|iemobile|blackberry|opera mini/i.test(navigator.userAgent)) {
-      window.location.replace("{{.AuthURL}}");
+      document.documentElement.setAttribute("data-mobile", "1");
     }
   </script>
 </head>
 <body>
   <main class="card">
     <h1>Sign in{{if .ProviderName}} · {{.ProviderName}}{{end}}</h1>
-    <p class="muted">Scan the code with your authenticator app on another device,</p>
-    <img class="qr" src="{{.QRImage}}" alt="Sign-in QR code" width="320" height="320">
-    <p class="muted or">— or —</p>
+
+    <div class="desktop-only">
+      <p class="muted">Scan the code with your authenticator app on another device,</p>
+      <img class="qr" src="{{.QRImage}}" alt="Sign-in QR code" width="320" height="320">
+      <p class="muted or">— or —</p>
+    </div>
+    <p class="muted mobile-only">Opening your authenticator app…</p>
+
     <div class="qr-actions">
-      <a class="btn" href="{{.AuthURL}}">Continue on this device</a>
+      <a class="btn" id="continue" href="{{.AuthURL}}">Continue on this device</a>
       <a class="btn secondary" href="/oauth2/sign_in{{if .ReturnTo}}?rd={{.ReturnTo | urlquery}}{{end}}">Choose another provider</a>
     </div>
+
+    <p class="status" id="status"><span class="spinner"></span>Waiting for sign-in…</p>
   </main>
   <script>
-    const pollURL = "{{.PollURL}}";
+    var AUTH_URL = "{{.AuthURL}}";
+    var pollURL = "{{.PollURL}}";
+    var isMobile = document.documentElement.hasAttribute("data-mobile");
+    var statusEl = document.getElementById("status");
+
+    if (isMobile) {
+      // The deep link opens the app and the browser tab STAYS here — so we keep polling and report the
+      // result in this tab, rather than navigating away (which blanked the page before). A short delay lets
+      // this page paint first. The button is the fallback if the OS didn't auto-launch.
+      document.getElementById("continue").textContent = "Open your authenticator app";
+      setTimeout(function () { window.location.href = AUTH_URL; }, 400);
+    }
+
+    var done = false;
     async function tick() {
+      if (done) return;
       try {
-        const r = await fetch(pollURL, { headers: { "X-Requested-With": "fetch" } });
+        var r = await fetch(pollURL, { headers: { "X-Requested-With": "fetch" } });
         if (r.ok) {
-          const data = await r.json();
-          if (data.authenticated) { location.href = data.return_to || "/"; return; }
+          var data = await r.json();
+          if (data.authenticated) {
+            done = true;
+            statusEl.className = "status success";
+            statusEl.textContent = "✓ Signed in — returning…";
+            setTimeout(function () { location.href = data.return_to || "/"; }, 1200);
+            return;
+          }
         }
       } catch (e) { /* keep polling */ }
       setTimeout(tick, 2000);
