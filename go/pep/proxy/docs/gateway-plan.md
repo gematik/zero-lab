@@ -1,959 +1,122 @@
-# pep gateway (S5) — Implementation Plan
+# pep gateway (S5) — Implementation Plan (enforcer-based)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or
-> superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
+> REQUIRED SUB-SKILL: superpowers:executing-plans. TDD, bite-sized, frequent commits. Steps use `- [ ]`.
 
-**Goal:** Generalize pep's single `/api` DPoP proxy into a flexible multi-route reverse-proxy gateway that
-gates and proxies a set of upstreams standalone, injecting identity or a DPoP-bound token per route.
+**Goal:** A multi-route reverse-proxy gateway in `pep/proxy` whose gating reuses the `pep.Enforcer` model and
+implements the stubbed `pep.EnforcerSessionCookie`; per route it injects identity or a DPoP-bound token.
 
-**Architecture:** A Server-level `Gateway` `http.Handler` built from a validated route table, mounted after
-`/oauth2/*`. Routing/gating/identity injection are backend-agnostic (reuse `headers.go`); DPoP injection is
-delegated to a token-bearing backend (the PDP backend) via a small optional interface, generalizing the
-existing per-session proof minting. The current `apiBackend.mountAPI` path is subsumed.
-
-**Tech Stack:** Go, `net/http/httputil.ReverseProxy`, `gopkg.in/yaml.v3` (already used by pep config),
-`github.com/gematik/zero-lab/go/dpop`.
-
-**Spec:** [`gateway.md`](gateway.md).
+**Architecture:** Reverse-proxy engine (Tasks 1-3 already built: config, match, proxy/strip/hygiene, identity
+inject) + a reworked gating layer. Session resolution is per-route: `gate: snapshot` (stateless JWE, shared
+with the new `pep.EnforcerSessionCookie`) or `gate: session` (stateful kv, required for `dpop`). Policy checks
+(`scope`) run as `pep.Enforcer`s over a `pep.Context` whose claims are the session identity. See
+[`gateway.md`](gateway.md).
 
 ## Global Constraints
 
-- Branch `feat/pep-gateway` off `main` (prefix `feat`). Ask before commit. Never push.
-- `/oauth2/*` is always mounted first and must win the mux; a `/` webapp route must never shadow it.
-- The gateway is active only when routes are configured; with none, pep is forward_auth-only — `handleAuth`
-  is unchanged (bare 401, Caddy redirects).
-- `dpop` routes require a backend implementing the DPoP injector (the PDP backend) — a `dpop` route with the
-  provider backend is a startup error.
-- DPoP is per-session (`Session.DPoPKeyJWK`), not a backend-wide key.
-- Module-graph guard must stay 0: `go list -deps ./zaddy/cmd/zero-caddy | grep -c 'gematik/zero-lab/go/\(oidf\|gemidp\|pep/proxy\)'` → `0`.
-- Naming: Go-idiomatic initialisms (DPoP, URL, JWK). Env vars holding a path end in `_PATH`.
-- No narration comments; comments explain *why*. Match surrounding style.
+- Branch `feat/pep-gateway`. Ask before commit. Never push.
+- `/oauth2/*` mounted first; gateway active only when routes configured (else forward_auth-only, unchanged).
+- `inject: dpop` ⇒ `gate: session` ⇒ PDP backend; all checked at load.
+- DPoP key is per-session and **never** enters the cookie — `dpop` requires the stateful gate.
+- Module guard: `go list -deps ./zaddy/cmd/zero-caddy | grep -c '…/\(oidf\|gemidp\|pep/proxy\)'` → 0. zaddy may
+  pull `pep` (for `EnforcerSessionCookie`), never `pep/proxy`.
+- Go-idiomatic initialisms; no narration comments.
 
-## File Structure
+## Status of the already-built tasks (commit d065f12)
 
-| File | Responsibility |
-| --- | --- |
-| `pep/proxy/gateway.go` (new) | `Route`, `InjectMode`, `Gateway` engine: longest-prefix match, gating, per-route reverse proxy + injection (Rewrite), `handleUnauthenticated`. |
-| `pep/proxy/gateway_config.go` (new) | Route loading: `routesFromEnv()` + `loadRoutes(path)` (YAML) + `validateRoutes()`. |
-| `pep/proxy/gateway_test.go` (new) | Unit tests for the engine + config. |
-| `pep/proxy/backend.go` (modify) | Add the `dpopForwarder` optional interface. |
-| `pep/proxy/backend_pdp.go` (modify) | Add `injectDPoP(out, sess, token)` (refactor from `apiProxy`); drop `mountAPI`/`apiProxy` + `PDPConfig.APIPrefix`/`APIUpstream`. |
-| `pep/proxy/inject.go` (delete) | Subsumed by `gateway.go`. |
-| `pep/proxy/proxy.go` (modify) | `Config.Routes`; `Handler()` builds + mounts the `Gateway` (replacing the `apiBackend` block); drop the `apiBackend` interface. |
-| `pep/cmd/zero-pep-proxy/main.go` (modify) | Read `PEP_ROUTES_PATH` / `PEP_API_UPSTREAM` / `PEP_WEBAPP_UPSTREAM` → `Config.Routes`. |
-| `pep/cmd/zero-pep-proxy/CONFIG.md`, `pep/proxy/e2e/README.md` (modify) | Document the gateway vars + the standalone shape. |
+- **Done & kept:** route config loading + validation (`gateway_config.go`), longest-prefix match, the
+  reverse-proxy with strip + header hygiene, identity injection (`gateway.go`), `dpopForwarder` seam
+  (`backend.go`). Tests green.
+- **Reworked below:** `Route.Protected bool` → `gate`/`scope`; the gating layer moves to the enforcer model.
 
 ---
 
-### Task 1: Route type + config loading + validation
+### Task R1: Route gate/scope config (rework of Task 1)
 
-**Files:**
-- Create: `pep/proxy/gateway_config.go`
-- Test: `pep/proxy/gateway_test.go`
+**Files:** `pep/proxy/gateway_config.go`, `pep/proxy/gateway_test.go`
 
-**Interfaces:**
-- Produces: `type InjectMode string` (`InjectNone`/`InjectIdentity`/`InjectDPoP`); `type Route struct{PathPrefix, Upstream string; Protected bool; Inject InjectMode; StripPrefix bool}`; `routesFromEnv() []Route`; `loadRoutes(path string) ([]Route, error)`; `validateRoutes(routes []Route) ([]Route, error)` (returns longest-prefix-sorted routes or an error).
+- Replace `Route.Protected bool` with `Gate string` (`"" | none | snapshot | session`) + `Scope string`.
+  `routesFromEnv`: `PEP_API_UPSTREAM` → `{/api, inject:dpop, gate:session, strip}`; `PEP_WEBAPP_UPSTREAM` →
+  `{/, inject:identity, gate:snapshot}`. Default gate for a protected route (any `inject`) is `snapshot`.
+- `validateRoutes` adds: `gate` enum check; `inject:dpop ⇒ gate:session` else error; longest-prefix sort,
+  dup-prefix + bad-upstream as before.
+- [ ] Tests: env shortcuts produce the gates; `inject:dpop`+`gate:snapshot` → error; `gate` enum guarded.
+- [ ] Commit: `feat(pep): gateway route gate/scope config`.
 
-- [ ] **Step 1: Write the failing test**
+### Task R2: Shared snapshot-open + `pep.EnforcerSessionCookie`
 
-```go
-// pep/proxy/gateway_test.go
-package proxy
+**Files:** `pep/session_cookie.go` (new), `pep/enforcers.go` (replace the stub), `pep/proxy/snapshot.go`
+(delegate), tests in `pep/`.
 
-import (
-	"os"
-	"path/filepath"
-	"testing"
-)
+- Move the JWE open (`dir`+`A256GCM`, one key; parse `{sid, identity, exp}`; expiry check) into `pep` as
+  `OpenSessionCookie(token string, keys [][]byte) (identity map[string]any, sid string, ok bool)`.
+- Rewrite `EnforcerSessionCookie` fields to `CookieName` + `KeyPath` (+ optional `PreviousKeyPath`); `Apply`:
+  read cookie → `OpenSessionCookie` → on ok set `pepContext.claimsRaw = json(identity)` and `next`; else
+  `ctx.Deny`. (Add a package-internal `setClaims([]byte)` on `pepContext`.)
+- `pep/proxy/snapshot.go` `open` calls `pep.OpenSessionCookie` (DRY); `mint` stays.
+- [ ] Tests (pep): valid snapshot → `next` runs with identity in claims; tampered/expired → `Deny`.
+- [ ] Guard stays 0. Commit: `feat(pep): implement EnforcerSessionCookie (stateless snapshot)`.
 
-func TestRoutesFromEnv(t *testing.T) {
-	t.Setenv("PEP_API_UPSTREAM", "http://rs:8080")
-	t.Setenv("PEP_WEBAPP_UPSTREAM", "http://app:8080")
-	got := routesFromEnv()
-	if len(got) != 2 {
-		t.Fatalf("len = %d, want 2 (%+v)", len(got), got)
-	}
-	api, web := got[0], got[1]
-	if api.PathPrefix != "/api" || api.Inject != InjectDPoP || !api.StripPrefix || !api.Protected {
-		t.Errorf("api route = %+v", api)
-	}
-	if web.PathPrefix != "/" || web.Inject != InjectIdentity || !web.Protected {
-		t.Errorf("webapp route = %+v", web)
-	}
-}
+### Task R3: Gateway session resolution + `pep.Context`
 
-func TestValidateRoutesSortsLongestPrefixFirst(t *testing.T) {
-	in := []Route{{PathPrefix: "/", Upstream: "http://a"}, {PathPrefix: "/api", Upstream: "http://b"}}
-	out, err := validateRoutes(in)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if out[0].PathPrefix != "/api" {
-		t.Errorf("first prefix = %q, want /api", out[0].PathPrefix)
-	}
-}
+**Files:** `pep/proxy/gateway.go`, `pep/proxy/gateway_session.go` (new), tests.
 
-func TestValidateRoutesRejectsBadUpstreamAndDupes(t *testing.T) {
-	if _, err := validateRoutes([]Route{{PathPrefix: "/a", Upstream: "::nope"}}); err == nil {
-		t.Error("accepted invalid upstream")
-	}
-	dup := []Route{{PathPrefix: "/a", Upstream: "http://x"}, {PathPrefix: "/a", Upstream: "http://y"}}
-	if _, err := validateRoutes(dup); err == nil {
-		t.Error("accepted duplicate prefix")
-	}
-}
+- `resolveGatewaySession(r, gate) (*Session, map[string]any, bool)`: `snapshot` → read cookie +
+  `pep.OpenSessionCookie` (identity only, `*Session` nil); `session` → `currentSession` (full session +
+  `sess.Identity`).
+- Build a gateway `pep.Context` (or reuse `pep.NewContext` + `setClaims`) carrying the identity for
+  `EnforcerScope`.
+- [ ] Tests: snapshot path yields identity, no session; session path yields full session.
+- [ ] Commit: `feat(pep): gateway per-route session resolution (snapshot/stateful)`.
 
-func TestLoadRoutesYAML(t *testing.T) {
-	dir := t.TempDir()
-	p := filepath.Join(dir, "routes.yaml")
-	os.WriteFile(p, []byte("routes:\n  - path_prefix: /api\n    upstream: http://rs:8080\n    inject: dpop\n    strip_prefix: true\n"), 0o600)
-	got, err := loadRoutes(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 1 || got[0].Inject != InjectDPoP || !got[0].StripPrefix {
-		t.Fatalf("loaded = %+v", got)
-	}
-	if !got[0].Protected {
-		t.Error("Protected should default true")
-	}
-}
-```
+### Task R4: Reworked engine — gate, policy (scope), inject, unauth branch
 
-- [ ] **Step 2: Run to verify it fails**
+**Files:** `pep/proxy/gateway.go`, tests.
 
-Run: `go test ./pep/proxy/ -run 'TestRoutes|TestValidateRoutes|TestLoadRoutes' -v`
-Expected: FAIL (undefined: Route, routesFromEnv, …).
+- `ServeHTTP`: match → `gate==none` proxy → else `resolveGatewaySession`; fail → `handleUnauthenticated`
+  (HTML 302 `/oauth2/sign_in?rd=…` / API 401, already built). If `Scope != ""`, run
+  `(&pep.EnforcerScope{Scope: rt.Scope}).Apply(ctx, next)` with `Deny` → `handleUnauthenticated`/403; else
+  call next directly. `next` = inject + proxy.
+- Identity inject reuses the built Rewrite (identity from the resolved identity map); DPoP in R5.
+- [ ] Tests: scope allow/deny over the gateway context; identity route end to end; unauth branch.
+- [ ] Commit: `feat(pep): enforcer-based gateway gating (session_cookie + scope)`.
 
-- [ ] **Step 3: Implement**
+### Task R5: DPoP inject on the stateful path
 
-```go
-// pep/proxy/gateway_config.go
-package proxy
+**Files:** `pep/proxy/backend_pdp.go` (add `injectDPoP`, delete `inject.go`), `pep/proxy/gateway.go`, tests.
 
-import (
-	"fmt"
-	"net/url"
-	"os"
-	"sort"
-	"strings"
+- Add `(*pdpBackend) injectDPoP(out, sess, token)` (refactor the `apiProxy` minting: `parseSessionDPoPKey` +
+  `signer.dpopProof` + set `Authorization: DPoP` + `dpop.DPoPHeaderName`). Delete `inject.go`.
+- Gateway dpop route (gate:session): `FreshAccessToken` + `g.injectDPoP` (via `dpopForwarder`) in the Rewrite.
+- [ ] Tests: dpop route sets `Authorization: DPoP` + proof bound to the outbound request.
+- [ ] Commit: `feat(pep): gateway DPoP injection; subsume the single /api proxy`.
 
-	"gopkg.in/yaml.v3"
-)
+### Task R6: Wire into the Server; drop the old apiBackend path
 
-type InjectMode string
+**Files:** `pep/proxy/proxy.go`, `pep/proxy/backend_pdp.go`, tests.
 
-const (
-	InjectNone     InjectMode = ""
-	InjectIdentity InjectMode = "identity"
-	InjectDPoP     InjectMode = "dpop"
-)
+- `Config.Routes []Route`; build the gateway in `New` (surface errors), store `s.gateway`; `Handler()` mounts
+  `mux.Handle("/", s.gateway)` last when set. Remove the `apiBackend` interface + `mountAPI` call;
+  drop `PDPConfig.APIPrefix/APIUpstream`.
+- [ ] Tests: `/oauth2/*` wins over a `/` route; gateway reached for other paths; off when no routes.
+- [ ] Guard 0. Commit: `feat(pep): mount the enforcer gateway; remove the single-/api path`.
 
-// Route maps a path prefix to an upstream. Protected routes require an authenticated session; Inject (only
-// meaningful when Protected) selects what is forwarded to identify/authorize the user.
-type Route struct {
-	PathPrefix  string     `yaml:"path_prefix"`
-	Upstream    string     `yaml:"upstream"`
-	Protected   bool       `yaml:"protected"`
-	Inject      InjectMode `yaml:"inject"`
-	StripPrefix bool       `yaml:"strip_prefix"`
+### Task R7: cmd + docs
 
-	upstream *url.URL
-}
+**Files:** `pep/cmd/zero-pep-proxy/main.go`, `CONFIG.md`, `pep/proxy/e2e/README.md`.
 
-// routesFromEnv builds the two common routes from env shortcuts: PEP_API_UPSTREAM (/api, DPoP, strip) and
-// PEP_WEBAPP_UPSTREAM (/, identity). Empty when neither is set.
-func routesFromEnv() []Route {
-	var routes []Route
-	if u := os.Getenv("PEP_API_UPSTREAM"); u != "" {
-		routes = append(routes, Route{PathPrefix: "/api", Upstream: u, Protected: true, Inject: InjectDPoP, StripPrefix: true})
-	}
-	if u := os.Getenv("PEP_WEBAPP_UPSTREAM"); u != "" {
-		routes = append(routes, Route{PathPrefix: "/", Upstream: u, Protected: true, Inject: InjectIdentity})
-	}
-	return routes
-}
+- `RoutesFromConfig()` (PEP_ROUTES_PATH YAML | env shortcuts) → `cfg.Routes`. Document `gate`/`scope`/`inject`
+  + a `routes.yaml` example + the standalone shape replacing `zero-bff-pdp`.
+- [ ] Build + vet. Commit: `feat(pep): wire gateway routes; document gate/scope`.
 
-type routesFile struct {
-	Routes []Route `yaml:"routes"`
-}
+### Task R8: HITL (the bff-pdp replacement shape)
 
-// loadRoutes reads a routes YAML. Routes default to Protected unless the file sets protected:false — yaml
-// zero-values bool to false, so we re-read with a presence-aware decode.
-func loadRoutes(path string) ([]Route, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read routes %q: %w", path, err)
-	}
-	// Default Protected=true: decode into a map first to see which keys were set.
-	var probe struct {
-		Routes []map[string]any `yaml:"routes"`
-	}
-	if err := yaml.Unmarshal(b, &probe); err != nil {
-		return nil, fmt.Errorf("parse routes %q: %w", path, err)
-	}
-	var f routesFile
-	if err := yaml.Unmarshal(b, &f); err != nil {
-		return nil, fmt.Errorf("parse routes %q: %w", path, err)
-	}
-	for i := range f.Routes {
-		if _, set := probe.Routes[i]["protected"]; !set {
-			f.Routes[i].Protected = true
-		}
-	}
-	return f.Routes, nil
-}
-
-// validateRoutes parses each upstream, rejects duplicate prefixes, and returns the routes sorted
-// longest-prefix-first (so "/api" wins over "/").
-func validateRoutes(routes []Route) ([]Route, error) {
-	seen := map[string]bool{}
-	out := make([]Route, len(routes))
-	copy(out, routes)
-	for i := range out {
-		rt := &out[i]
-		if rt.PathPrefix == "" {
-			return nil, fmt.Errorf("route %d: empty path_prefix", i)
-		}
-		if seen[rt.PathPrefix] {
-			return nil, fmt.Errorf("duplicate route prefix %q", rt.PathPrefix)
-		}
-		seen[rt.PathPrefix] = true
-		u, err := url.Parse(rt.Upstream)
-		if err != nil || u.Scheme == "" || u.Host == "" {
-			return nil, fmt.Errorf("route %q: invalid upstream %q", rt.PathPrefix, rt.Upstream)
-		}
-		rt.upstream = u
-		switch rt.Inject {
-		case InjectNone, InjectIdentity, InjectDPoP:
-		default:
-			return nil, fmt.Errorf("route %q: invalid inject %q", rt.PathPrefix, rt.Inject)
-		}
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		return len(out[i].PathPrefix) > len(out[j].PathPrefix)
-	})
-	return out, nil
-}
-```
-
-- [ ] **Step 4: Run to verify pass**
-
-Run: `go test ./pep/proxy/ -run 'TestRoutes|TestValidateRoutes|TestLoadRoutes' -v`
-Expected: PASS (4 tests).
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add pep/proxy/gateway_config.go pep/proxy/gateway_test.go
-git commit -m "feat(pep): gateway route config (env shortcuts + YAML) + validation"
-```
-
----
-
-### Task 2: Gateway engine — match, gate, unauthenticated branch
-
-**Files:**
-- Create: `pep/proxy/gateway.go`
-- Test: `pep/proxy/gateway_test.go` (append)
-
-**Interfaces:**
-- Consumes: `Route`, `InjectMode`, `validateRoutes` (Task 1); `*Server`, `s.currentSession(r) (*Session, bool)`, `sess.Authenticated()`, `sanitizeReturnTo` (existing in proxy.go), `s.backend` (`Backend`).
-- Produces: `type Gateway struct{…}`; `newGateway(s *Server, routes []Route) (*Gateway, error)`; `(*Gateway) ServeHTTP`; `(*Gateway) handleUnauthenticated`; `wantsHTML(r) bool`.
-
-- [ ] **Step 1: Write the failing test**
-
-```go
-// append to pep/proxy/gateway_test.go
-import (
-	"net/http"
-	"net/http/httptest"
-	// (keep existing imports)
-)
-
-// newGatewayTestServer builds a Server whose backend is a stub and whose currentSession returns the given
-// session. (Reuse the package's existing test helpers where present.)
-func TestGatewayUnauthenticatedBranch(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(200)
-	}))
-	defer upstream.Close()
-
-	s := newGatewayTestServer(t, nil /* no session */)
-	gw, err := newGateway(s, []Route{{PathPrefix: "/", Upstream: upstream.URL, Protected: true, Inject: InjectIdentity}})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Browser navigation → 302 to the login UI.
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/dashboard", nil)
-	req.Header.Set("Accept", "text/html")
-	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusFound {
-		t.Fatalf("html unauth: status %d, want 302", rec.Code)
-	}
-	if loc := rec.Header().Get("Location"); loc != "/oauth2/sign_in?rd=%2Fdashboard" {
-		t.Errorf("redirect = %q", loc)
-	}
-
-	// API request → 401 JSON.
-	rec = httptest.NewRecorder()
-	req = httptest.NewRequest("GET", "/api/data", nil)
-	gw.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("api unauth: status %d, want 401", rec.Code)
-	}
-}
-
-func TestGatewayLongestPrefixMatch(t *testing.T) {
-	s := newGatewayTestServer(t, nil)
-	gw, _ := newGateway(s, []Route{
-		{PathPrefix: "/", Upstream: "http://app"},
-		{PathPrefix: "/api", Upstream: "http://rs"},
-	})
-	if rt := gw.match("/api/x"); rt == nil || rt.PathPrefix != "/api" {
-		t.Errorf("match(/api/x) = %v, want /api", rt)
-	}
-	if rt := gw.match("/home"); rt == nil || rt.PathPrefix != "/" {
-		t.Errorf("match(/home) = %v, want /", rt)
-	}
-}
-```
-
-Add a `newGatewayTestServer(t, sess)` helper to the test file that constructs a minimal `*Server` whose
-`currentSession` returns `(sess, sess != nil)` and whose `backend` is a stub implementing `Backend`
-(`FreshAccessToken` returns `("tok", nil)`). Model it on the existing `newTestServer`/`fakeBackend` in
-`proxy_test.go`.
-
-- [ ] **Step 2: Run to verify it fails**
-
-Run: `go test ./pep/proxy/ -run TestGateway -v`
-Expected: FAIL (undefined: newGateway, newGatewayTestServer).
-
-- [ ] **Step 3: Implement the engine**
-
-```go
-// pep/proxy/gateway.go
-package proxy
-
-import (
-	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httputil"
-	"net/url"
-	"strings"
-)
-
-// Gateway gates and reverse-proxies the configured routes. It is mounted on the Server mux after /oauth2/*,
-// so it only ever sees paths the auth endpoints didn't claim.
-type Gateway struct {
-	s      *Server
-	routes []Route
-}
-
-// newGateway validates the routes and builds the gateway. dpop routes require a backend that can attach a
-// DPoP-bound token (the PDP backend); see Task 5 for the capability check.
-func newGateway(s *Server, routes []Route) (*Gateway, error) {
-	validated, err := validateRoutes(routes)
-	if err != nil {
-		return nil, err
-	}
-	if err := requireDPoPCapability(s.backend, validated); err != nil { // Task 5
-		return nil, err
-	}
-	return &Gateway{s: s, routes: validated}, nil
-}
-
-func (g *Gateway) match(path string) *Route {
-	for i := range g.routes {
-		if strings.HasPrefix(path, g.routes[i].PathPrefix) {
-			return &g.routes[i]
-		}
-	}
-	return nil
-}
-
-func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	rt := g.match(r.URL.Path)
-	if rt == nil {
-		http.NotFound(w, r)
-		return
-	}
-	if !rt.Protected {
-		g.proxy(rt).ServeHTTP(w, r)
-		return
-	}
-	sess, ok := g.s.currentSession(r)
-	if !ok || !sess.Authenticated() {
-		g.handleUnauthenticated(w, r)
-		return
-	}
-	if rt.Inject != InjectNone {
-		var token string
-		if rt.Inject == InjectDPoP {
-			t, err := g.s.backend.FreshAccessToken(r.Context(), sess)
-			if err != nil || t == "" {
-				g.handleUnauthenticated(w, r)
-				return
-			}
-			token = t
-		}
-		r = r.WithContext(withInjection(r.Context(), &injection{mode: rt.Inject, token: token, sess: sess}))
-	}
-	g.proxy(rt).ServeHTTP(w, r)
-}
-
-// handleUnauthenticated sends a browser navigation to the login UI (with a guarded return-to) and any other
-// request a JSON 401 — the oauth2-proxy behavior, so APIs get a clean 401 and humans get the login page.
-func (g *Gateway) handleUnauthenticated(w http.ResponseWriter, r *http.Request) {
-	if wantsHTML(r) {
-		loginURL := "/oauth2/sign_in"
-		if rd := sanitizeReturnTo(r.URL.RequestURI()); rd != "" {
-			loginURL += "?rd=" + url.QueryEscape(rd)
-		}
-		http.Redirect(w, r, loginURL, http.StatusFound)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusUnauthorized)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized", "error_description": "authentication required"})
-}
-
-func wantsHTML(r *http.Request) bool {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		return false
-	}
-	return strings.Contains(r.Header.Get("Accept"), "text/html")
-}
-
-type injectionCtxKey struct{}
-
-type injection struct {
-	mode  InjectMode
-	token string
-	sess  *Session
-}
-
-func withInjection(ctx context.Context, inj *injection) context.Context {
-	return context.WithValue(ctx, injectionCtxKey{}, inj)
-}
-
-func injectionFrom(ctx context.Context) *injection {
-	inj, _ := ctx.Value(injectionCtxKey{}).(*injection)
-	return inj
-}
-
-// proxy builds the reverse proxy for a route. Implemented in Task 3 (identity) and extended in Task 4 (DPoP).
-func (g *Gateway) proxy(rt *Route) http.Handler { // placeholder replaced in Task 3
-	return &httputil.ReverseProxy{Rewrite: func(pr *httputil.ProxyRequest) { pr.SetURL(rt.upstream) }}
-}
-```
-
-Verify `sanitizeReturnTo` exists in `proxy.go` and returns `""` for non-local paths (it does — it guards the
-`rd` param on `/oauth2/start`). If its empty-on-invalid behavior differs, adjust the redirect accordingly.
-
-- [ ] **Step 4: Run to verify pass**
-
-Run: `go test ./pep/proxy/ -run TestGateway -v`
-Expected: PASS (`TestGatewayUnauthenticatedBranch`, `TestGatewayLongestPrefixMatch`).
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add pep/proxy/gateway.go pep/proxy/gateway_test.go
-git commit -m "feat(pep): gateway engine — match, gate, HTML/API unauthenticated branch"
-```
-
----
-
-### Task 3: Identity injection + prefix strip + header hygiene
-
-**Files:**
-- Modify: `pep/proxy/gateway.go` (replace the `proxy` placeholder)
-- Test: `pep/proxy/gateway_test.go` (append)
-
-**Interfaces:**
-- Consumes: `setIdentityHeaders(h http.Header, identity map[string]any)` (headers.go), `injectionFrom`.
-- Produces: real `(*Gateway) proxy(rt *Route) http.Handler` with a Rewrite that strips the prefix, sets
-  X-Forwarded, clears client `Authorization`/`X-Auth-Request-*`, and injects identity.
-
-- [ ] **Step 1: Write the failing test**
-
-```go
-// append to pep/proxy/gateway_test.go
-func TestGatewayIdentityInjection(t *testing.T) {
-	var gotPath, gotIdentity, gotForgedUser string
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotPath = r.URL.Path
-		gotIdentity = r.Header.Get("X-Auth-Request-Identity")
-		gotForgedUser = r.Header.Get("X-Auth-Request-User")
-	}))
-	defer upstream.Close()
-
-	sess := &Session{Identity: map[string]any{"sub": "u-1", "preferred_username": "alice"}}
-	s := newGatewayTestServer(t, sess)
-	gw, _ := newGateway(s, []Route{{PathPrefix: "/app", Upstream: upstream.URL, Protected: true, Inject: InjectIdentity, StripPrefix: true}})
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/app/page", nil)
-	req.Header.Set("X-Auth-Request-User", "attacker") // must be stripped
-	gw.ServeHTTP(rec, req)
-
-	if gotPath != "/page" {
-		t.Errorf("upstream path = %q, want /page (strip)", gotPath)
-	}
-	if gotForgedUser == "attacker" {
-		t.Error("client-forged X-Auth-Request-User reached upstream")
-	}
-	if gotIdentity == "" {
-		t.Fatal("X-Auth-Request-Identity not injected")
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(gotIdentity)
-	if err != nil {
-		t.Fatalf("identity not base64url: %v", err)
-	}
-	var claims map[string]any
-	json.Unmarshal(raw, &claims)
-	if claims["sub"] != "u-1" {
-		t.Errorf("identity claims = %v", claims)
-	}
-}
-```
-
-Add `"encoding/base64"` to the test imports.
-
-- [ ] **Step 2: Run to verify it fails**
-
-Run: `go test ./pep/proxy/ -run TestGatewayIdentityInjection -v`
-Expected: FAIL (strip not applied / identity not set — the placeholder proxy does neither).
-
-- [ ] **Step 3: Implement the real proxy**
-
-```go
-// pep/proxy/gateway.go — replace the placeholder proxy method, add imports "log/slog"
-func (g *Gateway) proxy(rt *Route) http.Handler {
-	return &httputil.ReverseProxy{
-		Rewrite: func(pr *httputil.ProxyRequest) {
-			pr.SetURL(rt.upstream)
-			if rt.StripPrefix {
-				trimmed := strings.TrimPrefix(pr.Out.URL.Path, strings.TrimSuffix(rt.PathPrefix, "/"))
-				if trimmed == "" {
-					trimmed = "/"
-				}
-				pr.Out.URL.Path = trimmed
-				pr.Out.URL.RawPath = ""
-			}
-			pr.SetXForwarded()
-
-			// Never let a client forge identity or authorization to the upstream.
-			pr.Out.Header.Del("Authorization")
-			pr.Out.Header.Del(headerUser)
-			pr.Out.Header.Del(headerEmail)
-			pr.Out.Header.Del(headerGroups)
-			pr.Out.Header.Del(headerIdentity)
-
-			inj := injectionFrom(pr.In.Context())
-			if inj == nil {
-				return
-			}
-			switch inj.mode {
-			case InjectIdentity:
-				setIdentityHeaders(pr.Out.Header, inj.sess.Identity)
-			case InjectDPoP:
-				if err := g.injectDPoP(pr.Out, inj.sess, inj.token); err != nil { // Task 4
-					slog.Error("gateway DPoP injection", "route", rt.PathPrefix, "error", err)
-				}
-			}
-		},
-		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			slog.Error("gateway upstream unreachable", "upstream", rt.upstream.String(), "error", err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadGateway)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "bad_gateway", "error_description": "upstream unavailable"})
-		},
-	}
-}
-```
-
-For now stub `injectDPoP` on the Gateway so it compiles; Task 4 fills it:
-
-```go
-func (g *Gateway) injectDPoP(out *http.Request, sess *Session, token string) error { return nil }
-```
-
-- [ ] **Step 4: Run to verify pass**
-
-Run: `go test ./pep/proxy/ -run TestGateway -v`
-Expected: PASS (identity injection, strip, hygiene all green).
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add pep/proxy/gateway.go pep/proxy/gateway_test.go
-git commit -m "feat(pep): gateway identity injection, prefix strip, header hygiene"
-```
-
----
-
-### Task 4: DPoP injection via the backend seam
-
-**Files:**
-- Modify: `pep/proxy/backend.go` (add interface), `pep/proxy/backend_pdp.go` (add method), `pep/proxy/gateway.go` (real `injectDPoP`)
-- Test: `pep/proxy/gateway_test.go` (append)
-
-**Interfaces:**
-- Produces: `type dpopForwarder interface { injectDPoP(out *http.Request, sess *Session, token string) error }`; `(*pdpBackend) injectDPoP(...)`; `(*Gateway) injectDPoP` delegating to the backend when it implements `dpopForwarder`.
-- Consumes: `parseSessionDPoPKey`, `b.signer.dpopProof(out, token, key)`, `dpop.DPoPHeaderName` (from inject.go / signer.go).
-
-- [ ] **Step 1: Write the failing test**
-
-```go
-// append to pep/proxy/gateway_test.go — requires the PDP backend stub to implement dpopForwarder.
-func TestGatewayDPoPInjection(t *testing.T) {
-	var gotAuth, gotProof string
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotAuth = r.Header.Get("Authorization")
-		gotProof = r.Header.Get("DPoP")
-	}))
-	defer upstream.Close()
-
-	// A session with a real DPoP key + identity, and a backend that returns a token + injects DPoP.
-	sess := newDPoPTestSession(t) // helper: generates an ES256 JWK into Session.DPoPKeyJWK, sets Identity
-	s := newGatewayTestServerWithDPoP(t, sess) // backend implements dpopForwarder via the real pdpBackend signer
-	gw, err := newGateway(s, []Route{{PathPrefix: "/api", Upstream: upstream.URL, Protected: true, Inject: InjectDPoP, StripPrefix: true}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	rec := httptest.NewRecorder()
-	gw.ServeHTTP(rec, httptest.NewRequest("GET", "/api/orders", nil))
-
-	if !strings.HasPrefix(gotAuth, "DPoP ") {
-		t.Errorf("Authorization = %q, want DPoP <token>", gotAuth)
-	}
-	if gotProof == "" {
-		t.Error("DPoP proof header not set")
-	}
-}
-```
-
-Add helpers `newDPoPTestSession` and `newGatewayTestServerWithDPoP` whose backend is a real `*pdpBackend`
-(constructed via `NewPDPBackend` with a stub HTTP client, or a thin struct embedding `bffSigner{}` that
-implements both `FreshAccessToken` and `injectDPoP`). Reuse `bffSigner{}.dpopProof` directly.
-
-- [ ] **Step 2: Run to verify it fails**
-
-Run: `go test ./pep/proxy/ -run TestGatewayDPoP -v`
-Expected: FAIL (Gateway.injectDPoP is a no-op stub → no headers).
-
-- [ ] **Step 3: Implement the seam + the PDP method + the gateway delegation**
-
-```go
-// pep/proxy/backend.go — add near apiBackend/routeProvider optional interfaces
-// dpopForwarder is implemented by a backend that can attach a DPoP-bound access token to an upstream
-// request (the PDP backend). dpop routes require it.
-type dpopForwarder interface {
-	injectDPoP(out *http.Request, sess *Session, token string) error
-}
-```
-
-```go
-// pep/proxy/backend_pdp.go — refactor the apiProxy minting into a reusable method (delete mountAPI/apiProxy)
-import "github.com/gematik/zero-lab/go/dpop"
-
-var _ dpopForwarder = (*pdpBackend)(nil)
-
-// injectDPoP mints a fresh proof bound to the outbound request and attaches the DPoP-bound token, replacing
-// any client Authorization. The proof is signed with the session's DPoP key (the token's cnf.jkt).
-func (b *pdpBackend) injectDPoP(out *http.Request, sess *Session, token string) error {
-	key, err := parseSessionDPoPKey(sess.DPoPKeyJWK)
-	if err != nil {
-		return err
-	}
-	proof, err := b.signer.dpopProof(out, token, key)
-	if err != nil {
-		return err
-	}
-	out.Header.Set("Authorization", "DPoP "+token)
-	out.Header.Set(dpop.DPoPHeaderName, proof)
-	return nil
-}
-```
-
-```go
-// pep/proxy/gateway.go — replace the injectDPoP stub
-func (g *Gateway) injectDPoP(out *http.Request, sess *Session, token string) error {
-	fwd, ok := g.s.backend.(dpopForwarder)
-	if !ok {
-		return fmt.Errorf("backend does not support DPoP injection")
-	}
-	return fwd.injectDPoP(out, sess, token)
-}
-```
-
-Add `"fmt"` to `gateway.go` imports. Delete `pep/proxy/inject.go` (its `mountAPI`/`apiProxy` are now gone;
-`injectDPoP` carries the minting). Keep `PDPConfig.APIPrefix`/`APIUpstream` for now — removed in Task 6.
-
-- [ ] **Step 4: Run to verify pass**
-
-Run: `go test ./pep/proxy/ -run TestGateway -v && go build ./pep/...`
-Expected: PASS; build clean (no more references to the deleted apiProxy).
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add pep/proxy/backend.go pep/proxy/backend_pdp.go pep/proxy/gateway.go pep/proxy/inject.go pep/proxy/gateway_test.go
-git commit -m "feat(pep): gateway DPoP injection via backend seam; subsume the /api proxy"
-```
-
----
-
-### Task 5: Load-time capability validation (dpop requires PDP backend)
-
-**Files:**
-- Modify: `pep/proxy/gateway.go` (implement `requireDPoPCapability`, referenced in Task 2)
-- Test: `pep/proxy/gateway_test.go` (append)
-
-**Interfaces:**
-- Produces: `requireDPoPCapability(backend Backend, routes []Route) error`.
-
-- [ ] **Step 1: Write the failing test**
-
-```go
-// append to pep/proxy/gateway_test.go
-func TestGatewayDPoPRouteRequiresCapableBackend(t *testing.T) {
-	// providerBackend stub: no dpopForwarder.
-	s := newGatewayTestServer(t, nil) // its backend is the plain stub (not a dpopForwarder)
-	_, err := newGateway(s, []Route{{PathPrefix: "/api", Upstream: "http://rs:8080", Protected: true, Inject: InjectDPoP}})
-	if err == nil {
-		t.Fatal("dpop route accepted with a non-DPoP backend")
-	}
-}
-```
-
-Ensure the plain `newGatewayTestServer` backend stub does NOT implement `dpopForwarder` (only
-`newGatewayTestServerWithDPoP` does).
-
-- [ ] **Step 2: Run to verify it fails**
-
-Run: `go test ./pep/proxy/ -run TestGatewayDPoPRouteRequires -v`
-Expected: FAIL (`requireDPoPCapability` is a stub that returns nil).
-
-- [ ] **Step 3: Implement**
-
-```go
-// pep/proxy/gateway.go
-func requireDPoPCapability(backend Backend, routes []Route) error {
-	for _, rt := range routes {
-		if rt.Inject == InjectDPoP {
-			if _, ok := backend.(dpopForwarder); !ok {
-				return fmt.Errorf("route %q uses inject: dpop, but the backend cannot forward DPoP tokens (needs the PDP backend)", rt.PathPrefix)
-			}
-		}
-	}
-	return nil
-}
-```
-
-- [ ] **Step 4: Run to verify pass**
-
-Run: `go test ./pep/proxy/ -run TestGateway -v`
-Expected: PASS (all gateway tests).
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add pep/proxy/gateway.go pep/proxy/gateway_test.go
-git commit -m "feat(pep): reject dpop routes without a DPoP-capable backend at load"
-```
-
----
-
-### Task 6: Wire the gateway into the Server; drop the old apiBackend path
-
-**Files:**
-- Modify: `pep/proxy/proxy.go` (add `Config.Routes`; build+mount Gateway in `Handler()`; remove `apiBackend` interface + the `mountAPI` block), `pep/proxy/backend_pdp.go` (drop `PDPConfig.APIPrefix`/`APIUpstream`)
-- Test: `pep/proxy/gateway_test.go` (append) + ensure existing `proxy_test.go` still passes.
-
-**Interfaces:**
-- Consumes: `newGateway`. Produces: `Config.Routes []Route`; `Handler()` mounts the Gateway at `/` when routes are set.
-
-- [ ] **Step 1: Write the failing test**
-
-```go
-// append to pep/proxy/gateway_test.go — /oauth2/* must win over a "/" gateway route.
-func TestServerMountsOAuthBeforeGateway(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(299) // sentinel: upstream was hit
-	}))
-	defer upstream.Close()
-
-	s := newTestServer(t) // existing helper; provider backend, no session
-	s.cfg.Routes = []Route{{PathPrefix: "/", Upstream: upstream.URL, Protected: false}}
-	h := s.Handler()
-
-	// /oauth2/sign_in is served by pep, not proxied.
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("GET", "/oauth2/sign_in", nil))
-	if rec.Code == 299 {
-		t.Fatal("/oauth2/* was proxied to the upstream — must be served by pep")
-	}
-	// A non-oauth path is proxied (unprotected route → 299).
-	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("GET", "/anything", nil))
-	if rec.Code != 299 {
-		t.Fatalf("gateway route not reached: status %d", rec.Code)
-	}
-}
-```
-
-- [ ] **Step 2: Run to verify it fails**
-
-Run: `go test ./pep/proxy/ -run TestServerMountsOAuthBeforeGateway -v`
-Expected: FAIL (Config has no Routes field; gateway not mounted).
-
-- [ ] **Step 3: Implement**
-
-```go
-// pep/proxy/proxy.go — add to Config struct
-// Routes, when non-empty, turn on standalone gateway mode: pep gates + reverse-proxies these upstreams.
-// Empty → forward_auth-only (behind Caddy), unchanged.
-Routes []Route
-```
-
-```go
-// pep/proxy/proxy.go — in Handler(), REPLACE the apiBackend block:
-//   if ab, ok := s.backend.(apiBackend); ok { ab.mountAPI(s, mux) }
-// with the gateway mount (kept LAST so /oauth2/* and proxyRoutes win):
-if len(s.cfg.Routes) > 0 {
-	gw, err := newGateway(s, s.cfg.Routes)
-	if err != nil {
-		// Handler() has no error return; fail loudly at construction. If Handler can't return an error,
-		// build the gateway in the Server constructor (NewServer) and store it, surfacing the error there.
-		panic(fmt.Sprintf("gateway config: %v", err))
-	}
-	mux.Handle("/", gw)
-}
-```
-
-Prefer surfacing the error: build the gateway in `NewServer` (where errors propagate) and store `s.gateway`;
-`Handler()` then just does `if s.gateway != nil { mux.Handle("/", s.gateway) }`. Check `NewServer`'s
-signature in `proxy.go` and follow whichever pattern it already uses for fallible setup. Remove the now-unused
-`apiBackend` interface and the `mountAPI` block. Delete `PDPConfig.APIPrefix` and `PDPConfig.APIUpstream` and
-the `cfg.APIPrefix` default in `NewPDPBackend`.
-
-- [ ] **Step 4: Run to verify pass**
-
-Run: `go test ./pep/... -v 2>&1 | grep -E 'FAIL|ok' && go vet ./pep/...`
-Expected: PASS for all pep tests; vet clean.
-
-- [ ] **Step 5: Guard + commit**
-
-Run: `go list -deps ./zaddy/cmd/zero-caddy | grep -c 'gematik/zero-lab/go/\(oidf\|gemidp\|pep/proxy\)'`
-Expected: `0`.
-
-```bash
-git add pep/proxy/proxy.go pep/proxy/backend_pdp.go pep/proxy/gateway_test.go
-git commit -m "feat(pep): mount the gateway in standalone mode; remove the single-/api path"
-```
-
----
-
-### Task 7: Command wiring + docs
-
-**Files:**
-- Modify: `pep/cmd/zero-pep-proxy/main.go`, `pep/cmd/zero-pep-proxy/CONFIG.md`, `pep/proxy/e2e/README.md`
-
-**Interfaces:**
-- Consumes: `proxy.Config.Routes`, `proxy.loadRoutes` (export as needed) / `proxy.routesFromEnv`.
-
-- [ ] **Step 1: Decide the export surface**
-
-`main.go` is in a different package, so it needs exported builders. Add to `gateway_config.go`:
-
-```go
-// RoutesFromConfig returns the gateway routes from PEP_ROUTES_PATH (a YAML file, authoritative) or the
-// PEP_API_UPSTREAM / PEP_WEBAPP_UPSTREAM env shortcuts. Empty when none are set (forward_auth-only).
-func RoutesFromConfig() ([]Route, error) {
-	if p := os.Getenv("PEP_ROUTES_PATH"); p != "" {
-		return loadRoutes(p)
-	}
-	return routesFromEnv(), nil
-}
-```
-
-- [ ] **Step 2: Wire it in main.go**
-
-Find where `proxy.Config` is assembled in `main.go` and set `cfg.Routes`:
-
-```go
-routes, err := proxy.RoutesFromConfig()
-if err != nil {
-	log.Fatalf("gateway routes: %v", err)
-}
-cfg.Routes = routes
-```
-
-Remove any prior wiring that set `PEP_API_UPSTREAM` into the PDP backend config (it now feeds the gateway).
-
-- [ ] **Step 3: Build + run the existing PDP HITL harness smoke**
-
-Run: `go build ./pep/... && go vet ./pep/...`
-Expected: clean. (Functional proof is Task 8.)
-
-- [ ] **Step 4: Docs**
-
-Update `pep/cmd/zero-pep-proxy/CONFIG.md` and `pep/proxy/e2e/README.md`: document `PEP_ROUTES_PATH`,
-`PEP_WEBAPP_UPSTREAM` (and that `PEP_API_UPSTREAM` now feeds a gateway route), with a `routes.yaml` example
-and the standalone (no-Caddy) shape that replaces `zero-bff-pdp`.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add pep/proxy/gateway_config.go pep/cmd/zero-pep-proxy/main.go pep/cmd/zero-pep-proxy/CONFIG.md pep/proxy/e2e/README.md
-git commit -m "feat(pep): wire gateway routes from env/PEP_ROUTES_PATH; document the standalone gateway"
-```
-
----
-
-### Task 8: HITL — standalone gateway end to end (the bff-pdp replacement shape)
-
-**Files:** none (verification). Per the stage-HITL rule, the human drives this before the stage is done.
-
-- [ ] **Step 1: Bring up the PDP backend harness** (PDP `:8011` + zaddy `:8010`, built with mockidp) per
-  `pep/proxy/e2e/README.md` § PDP backend.
-
-- [ ] **Step 2: Run pep standalone with TWO routes** (no Caddy in front): a `/` identity webapp
-  (`PEP_WEBAPP_UPSTREAM` → metsubushi) and an `/api` DPoP route (`PEP_API_UPSTREAM` → zaddy `:8010`), on the
-  PDP backend. Example:
-
-```sh
-PEP_BACKEND=pdp PEP_AS_ISSUER=http://localhost:8011 PEP_CLIENT_ID=pep-client \
-PEP_CLIENT_SIGNING_KEY_PATH=pdp-config/pep-client.jwk \
-PEP_PUBLIC_URL=http://localhost:8080 PEP_ADDR=:8080 PEP_INSECURE_COOKIE=true PEP_SCOPES=protected \
-PEP_WEBAPP_UPSTREAM=http://localhost:8082 PEP_API_UPSTREAM=http://localhost:8010 \
-  go run ../../cmd/zero-pep-proxy
-```
-
-- [ ] **Step 3: Verify in a browser:**
-  - Unauthenticated `GET /` (browser) → 302 to `/oauth2/sign_in` → mock-IdP login → back to `/`, the webapp
-    renders with the injected `X-Auth-Request-*` identity.
-  - `GET /api/protected-dpop` → 200, zaddy-verified DPoP-bound token.
-  - Unauthenticated `curl /api/...` (no `Accept: text/html`) → 401 JSON.
-
-- [ ] **Step 4:** Report results; only then mark S5 done and proceed to the cut-over backlog item.
-
----
+Per the stage-HITL rule. pep standalone, `/` identity (gate snapshot) + `/api` dpop (gate session), PDP backend
++ mock-IdP harness. Verify: unauthenticated `/` → login; after login `/` injected identity; `/api` →
+zaddy-verified DPoP; unauthenticated `/api` → 401.
 
 ## Self-Review
 
-- **Spec coverage:** Route/config (T1), engine + unauth branch (T2), identity inject + hygiene + strip (T3),
-  DPoP inject + backend seam + subsume /api (T4), capability validation (T5), mux precedence + standalone
-  mount + remove old path (T6), config/env/docs (T7), HITL (T8). All spec sections map to a task.
-- **Type consistency:** `Route`/`InjectMode`/`injection`/`dpopForwarder`/`Gateway`/`newGateway`/
-  `requireDPoPCapability`/`injectDPoP` names are used identically across T1–T6.
-- **Watch-outs flagged inline:** `sanitizeReturnTo` empty-on-invalid semantics (T2); `Handler()` has no error
-  return → build the gateway in `NewServer` and surface the error there (T6); test helpers
-  (`newGatewayTestServer`, `newGatewayTestServerWithDPoP`, `newDPoPTestSession`) modeled on the existing
-  `proxy_test.go` fakes (T2/T4).
+- Spec coverage: gate/scope config (R1), EnforcerSessionCookie + shared open (R2), resolution + Context (R3),
+  enforcer gating (R4), DPoP (R5), Server wiring (R6), cmd/docs (R7), HITL (R8).
+- Risk flagged: `pepContext.setClaims` is a new in-package method (R2); the gateway resolves its own session
+  rather than threading `*Session` through `pep.Context` (R3/R4) — the cleanest given the DPoP-stateful constraint.
