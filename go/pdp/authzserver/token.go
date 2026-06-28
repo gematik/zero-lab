@@ -315,6 +315,8 @@ func (s *Server) tokenEndpointRefreshToken(w http.ResponseWriter, r *http.Reques
 	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {
 		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to save session: %v", err))
 	}
+	// The session now indexes the NEW refresh hash; drop the rotated-out one so it stops resolving.
+	_ = s.sessionStore.DeleteRefreshIndex(refreshHash)
 	slog.Info("Token refreshed", "client", client.ClientID, "session", session.ID, "refresh_count", session.RefreshCount)
 	return writeJSON(w, http.StatusOK, response)
 }

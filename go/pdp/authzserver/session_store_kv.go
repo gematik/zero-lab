@@ -165,5 +165,14 @@ func (s *kvSessionStore) DeleteAuthzServerSessionByID(id string) error {
 	if sess.RequestUri != "" {
 		_ = s.store.Delete(ctx, asRequriKey(sess.RequestUri))
 	}
+	if sess.RefreshToken != "" {
+		_ = s.store.Delete(ctx, asRefreshKey(sess.RefreshToken))
+	}
 	return nil
+}
+
+// DeleteRefreshIndex removes a superseded refresh-token index without touching the session — called on
+// rotation so the rotated-out hash stops resolving (no dangling index until TTL).
+func (s *kvSessionStore) DeleteRefreshIndex(refreshTokenHash string) error {
+	return s.store.Delete(context.Background(), asRefreshKey(refreshTokenHash))
 }

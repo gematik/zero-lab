@@ -228,6 +228,15 @@ func (s *Server) OPCallbackEndpoint(w http.ResponseWriter, r *http.Request) erro
 
 	authnSession.TokenResponse = tokenResponse
 
+	// Bind the id_token to THIS login: its nonce must equal the one we sent the OP (OIDC Core §3.1.3.7
+	// step 11 — anti-replay / token injection). The oidc client requires a nonce claim; here we match it.
+	var idClaims struct {
+		Nonce string `json:"nonce"`
+	}
+	if err := tokenResponse.Claims(&idClaims); err != nil || idClaims.Nonce != authnSession.Nonce {
+		return oauthErr(http.StatusBadRequest, "invalid_request", "id_token nonce mismatch")
+	}
+
 	if authzSession != nil {
 		authzSession.Code = generateNonce(64)
 
