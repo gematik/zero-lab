@@ -7,20 +7,28 @@
   {{template "styles"}}
   <style>
     main.card { text-align: center }
-    img.qr { display: block; margin: 1.1rem auto; border-radius: 10px; background: #fff; padding: .6rem; max-width: 100% }
-    .or { text-align: center; margin: .4rem 0 }
-    .qr-actions { display: flex; flex-direction: column; align-items: center; gap: .6rem; margin-top: 1rem }
-    .qr-actions .btn { margin-top: 0; min-width: 15rem }
+    img.qr { display: block; margin: 1.1rem auto .2rem; border-radius: 10px; background: #fff; padding: .6rem; max-width: 100% }
     /* On a phone the QR can't be self-scanned — hide it and lead with the on-device app. */
     html[data-mobile] .desktop-only { display: none }
     html:not([data-mobile]) .mobile-only { display: none }
-    .status { margin-top: 1.1rem; font-weight: 600; color: var(--dark-grey) }
-    .status.success { color: var(--functional-green); font-size: 1.1rem }
-    .spinner { display: inline-block; width: 1em; height: 1em; vertical-align: -.12em; margin-right: .45em;
-               border: 2px solid var(--medium-grey); border-top-color: var(--dark-blue); border-radius: 50%;
-               animation: spin .8s linear infinite }
-    .status.success .spinner { display: none }
+    body.done .desktop-only, body.done .qr-actions { display: none }
+
+    /* One status disc, same footprint whether spinning or resolved. */
+    .indicator { width: 3.2rem; height: 3.2rem; margin: 1.4rem auto .5rem; box-sizing: border-box }
+    .indicator.waiting { border: 4px solid var(--light-grey); border-top-color: var(--dark-blue);
+                         border-radius: 50%; animation: spin .8s linear infinite }
+    .indicator.success { border-radius: 50%; background: var(--functional-green); position: relative; animation: none }
+    .indicator.success::after { content: ""; position: absolute; left: 36%; top: 18%; width: 26%; height: 52%;
+                                border: solid #fff; border-width: 0 4px 4px 0; transform: rotate(45deg) }
     @keyframes spin { to { transform: rotate(360deg) } }
+
+    .status { font-weight: 600; color: var(--dark-grey); margin: 0 }
+    .status.ok { color: var(--functional-green); font-size: 1.15rem }
+
+    /* Quiet, secondary affordances — the primary action is the QR / the auto-opened app. */
+    .qr-actions { display: flex; flex-direction: column; align-items: center; gap: .3rem; margin-top: 1.3rem }
+    .qr-actions a { font-size: .85rem; font-weight: 500; color: var(--dark-grey); text-decoration: underline }
+    .qr-actions a:hover { color: var(--dark-blue) }
   </style>
   <script>
     // Decide phone-vs-desktop before first paint so the correct content renders (no QR flash on mobile).
@@ -34,29 +42,29 @@
     <h1>Sign in{{if .ProviderName}} · {{.ProviderName}}{{end}}</h1>
 
     <div class="desktop-only">
-      <p class="muted">Scan the code with your authenticator app on another device,</p>
+      <p class="muted">Scan with your authenticator app on another device</p>
       <img class="qr" src="{{.QRImage}}" alt="Sign-in QR code" width="320" height="320">
-      <p class="muted or">— or —</p>
     </div>
     <p class="muted mobile-only">Opening your authenticator app…</p>
 
-    <div class="qr-actions">
-      <a class="btn" id="continue" href="{{.AuthURL}}">Continue on this device</a>
-      <a class="btn secondary" href="/oauth2/sign_in{{if .ReturnTo}}?rd={{.ReturnTo | urlquery}}{{end}}">Choose another provider</a>
-    </div>
+    <div class="indicator waiting" id="indicator"></div>
+    <p class="status" id="status">Waiting for sign-in…</p>
 
-    <p class="status" id="status"><span class="spinner"></span>Waiting for sign-in…</p>
+    <div class="qr-actions">
+      <a id="continue" href="{{.AuthURL}}">Continue on this device</a>
+      <a href="/oauth2/sign_in{{if .ReturnTo}}?rd={{.ReturnTo | urlquery}}{{end}}">Choose another provider</a>
+    </div>
   </main>
   <script>
     var AUTH_URL = "{{.AuthURL}}";
     var pollURL = "{{.PollURL}}";
     var isMobile = document.documentElement.hasAttribute("data-mobile");
+    var indicator = document.getElementById("indicator");
     var statusEl = document.getElementById("status");
 
     if (isMobile) {
-      // The deep link opens the app and the browser tab STAYS here — so we keep polling and report the
-      // result in this tab, rather than navigating away (which blanked the page before). A short delay lets
-      // this page paint first. The button is the fallback if the OS didn't auto-launch.
+      // The deep link opens the app and the browser tab STAYS here, so we keep polling and report the result
+      // in this tab. A short delay lets the page paint first. The link is the fallback if the OS didn't launch.
       document.getElementById("continue").textContent = "Open your authenticator app";
       setTimeout(function () { window.location.href = AUTH_URL; }, 400);
     }
@@ -70,9 +78,10 @@
           var data = await r.json();
           if (data.authenticated) {
             done = true;
-            statusEl.className = "status success";
-            statusEl.textContent = "✓ Signed in — returning…";
-            setTimeout(function () { location.href = data.return_to || "/"; }, 1200);
+            document.body.classList.add("done");
+            indicator.className = "indicator success";
+            statusEl.className = "status ok";
+            statusEl.textContent = "Signed in";
             return;
           }
         }
