@@ -10,6 +10,8 @@ import (
 
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwe"
+
+	"github.com/gematik/zero-lab/go/pep"
 )
 
 // snapshotClaims is the encrypted session-snapshot payload: enough for /oauth2/auth to emit the identity
@@ -82,22 +84,12 @@ func (s *snapshotter) mint(sid string, identity map[string]any) (string, error) 
 	return string(enc), nil
 }
 
-// open decrypts and validates a snapshot, trying each key (primary then previous). It returns (claims, true)
-// only when the token decrypts and is unexpired; otherwise (nil, false) so the caller falls back to kv.
+// open decrypts and validates a snapshot via the shared pep validation (so the verifier and zaddy use the
+// same code). It returns (claims, true) only when the token decrypts and is unexpired.
 func (s *snapshotter) open(token string) (*snapshotClaims, bool) {
-	for _, k := range s.decKeys {
-		payload, err := jwe.Decrypt([]byte(token), jwe.WithKey(jwa.DIRECT(), k))
-		if err != nil {
-			continue
-		}
-		var c snapshotClaims
-		if json.Unmarshal(payload, &c) != nil {
-			return nil, false
-		}
-		if time.Now().Unix() >= c.Expiry {
-			return nil, false
-		}
-		return &c, true
+	identity, sid, ok := pep.OpenSessionCookie(token, s.decKeys)
+	if !ok {
+		return nil, false
 	}
-	return nil, false
+	return &snapshotClaims{SID: sid, Identity: identity}, true
 }

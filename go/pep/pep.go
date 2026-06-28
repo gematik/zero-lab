@@ -131,6 +131,9 @@ type Context interface {
 	WithDeny(deny func(c Context, err Error)) Context
 	Slogger() *slog.Logger
 	UnmarshalClaims(claims any) error
+	// SetClaims sets the raw JSON claims that UnmarshalClaims reads. A token-verifying enforcer sets these
+	// from the verified token; a session-cookie enforcer sets them from the cookie identity.
+	SetClaims(raw []byte)
 }
 
 type pepContext struct {
@@ -169,6 +172,10 @@ func (c *pepContext) WithDeny(deny func(Context, Error)) Context {
 
 func (c *pepContext) Slogger() *slog.Logger {
 	return c.slogger
+}
+
+func (c *pepContext) SetClaims(raw []byte) {
+	c.claimsRaw = raw
 }
 
 func (c *pepContext) UnmarshalClaims(claims any) error {

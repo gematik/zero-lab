@@ -39,6 +39,12 @@ func ErrorAccessDeinied(description string) Error {
 	}
 }
 
+var ErrSessionRequired = Error{
+	HttpStatus:  401,
+	Code:        "session_required",
+	Description: "no valid session cookie",
+}
+
 var ErrMissingAccessTokenDPoPBinding = Error{
 	HttpStatus:  400,
 	Code:        "missing_access_token_dpop_binding",

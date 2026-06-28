@@ -215,21 +215,7 @@ func (e *EnforcerScope) Apply(ctx Context, next HandlerFunc) {
 	ctx.Deny(ErrorAccessDeinied("Scope not found in claims"))
 }
 
-type EnforcerSessionCookie struct {
-	TypeVal        EnforcerType `json:"type" validate:"required"`
-	CookieName     string       `json:"cookie_name" validate:"required"`
-	DecryptKeyPath string       `json:"decrypt_key_path" validate:"required"`
-	VerifyKeyPath  string       `json:"verify_key_path" validate:"required"`
-}
-
-func (e *EnforcerSessionCookie) Type() EnforcerType {
-	return e.TypeVal
-}
-
-func (e *EnforcerSessionCookie) Apply(ctx Context, next HandlerFunc) {
-	ctx.Slogger().Warn("EnforcerSessionCookie not implemented")
-	ctx.Deny(ErrorAccessDeinied("EnforcerSessionCookie not implemented"))
-}
+// EnforcerSessionCookie is implemented in session_cookie.go (the stateless snapshot gate).
 
 type enforcerFunc struct {
 	apply func(Context, HandlerFunc)
