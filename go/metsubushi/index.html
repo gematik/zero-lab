@@ -25,6 +25,7 @@
     --functional-green: #007336;
     --functional-light-green: #d8f3e5;
     --functional-red: #c71a11;
+    --functional-light-red: #ffe0df;
     --base-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --mono-font: 'SF Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
     --radius-m: 8px;
@@ -123,7 +124,7 @@
   }
   .navbar__status.is-down {
     color: var(--functional-red);
-    background: #fbe2e0;
+    background: var(--functional-light-red);
   }
   .navbar__status.is-down .dot {
     background: var(--functional-red);
@@ -374,6 +375,36 @@
     color: var(--almost-black);
     word-break: break-all;
   }
+  .cookie-row.is-sensitive {
+    border-left: 3px solid var(--magenta);
+    padding-left: 12px;
+    margin-left: -3px;
+  }
+  .badge-warn {
+    display: inline-block;
+    margin-left: 8px;
+    font-family: var(--base-font);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--white);
+    background: var(--magenta);
+    border-radius: 999px;
+    padding: 2px 8px;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .cookie-warn {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--magenta);
+  }
+  .cookie-warn svg { flex: none; margin-top: 1px; }
   .jwt { display: grid; gap: 12px; }
   .jwt-part { display: grid; gap: 5px; min-width: 0; }
   .jwt-label {
@@ -759,6 +790,18 @@
       });
     }
 
+    // Heuristic: a cookie likely carries credential/session material. We can't
+    // see Set-Cookie attributes (HttpOnly/Secure) from a reflected Cookie header,
+    // so we flag by name prefix/keyword or by the value being a token.
+    const SENSITIVE_COOKIE_RE =
+      /(^__(host|secure)-)|sess|sid\b|auth|token|jwt|bearer|cred|secret|csrf|xsrf|(^|[_-])(access|refresh|id)([_-]?token)?$|api[_-]?key/i;
+
+    function cookieSensitivity(name, value) {
+      if (tryDecodeJwt(value)) return 'token value (JWT) exposed in plaintext';
+      if (SENSITIVE_COOKIE_RE.test(name)) return 'name suggests session/credential material';
+      return null;
+    }
+
     function cookieRow(k, v) {
       const cookies = parseCookies(v);
       const items = cookies.map(c => {
@@ -766,9 +809,15 @@
         const val = block !== null
           ? block
           : `<code class="cookie-val">${c.value === '' ? '—' : esc(c.value)}</code>`;
-        return `<div class="cookie-row">` +
-          `<div class="cookie-name">${esc(c.name)}</div>` +
-          `<div class="cookie-value">${val}</div></div>`;
+        const reason = cookieSensitivity(c.name, c.value);
+        const nameBadge = reason ? `<span class="badge-warn" title="${esc(reason)}">sensitive</span>` : '';
+        const warn = reason
+          ? `<div class="cookie-warn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>` +
+            `<span>${esc(reason)} — reflecting it here defeats HttpOnly; test identities only.</span></div>`
+          : '';
+        return `<div class="cookie-row${reason ? ' is-sensitive' : ''}">` +
+          `<div class="cookie-name">${esc(c.name)}${nameBadge}</div>` +
+          `<div class="cookie-value">${val}${warn}</div></div>`;
       }).join('');
       return `<div class="hdr-row hdr-row--decoded">` +
         `<div class="k">${esc(k)}<span class="badge-decoded">cookies · ${cookies.length}</span></div>` +
