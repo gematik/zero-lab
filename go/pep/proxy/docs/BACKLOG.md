@@ -1,33 +1,41 @@
-# pep — backlog
+# pep — backlog (goal: retire the bff)
 
-Candidate next steps, parked. Not prioritized; pick one and brainstorm it into a spec when ready.
-Done so far: S1–S4 of the staged build (OIDC / OIDF / gemidp / PDP backend), DPoP, mandatory PAR client,
-the provider chooser + decoupled-page UX (pep `v0.25.x`).
+The bff is redundant with pep once pep covers the gateway role. Audit finding: pep already **matches or
+exceeds** the bff on the AS-client (pep adds PAR + DPoP-nonce retry), sessions (per-issuer token sets, at-rest
+encryption, revocation bus, snapshot fast path, OWASP TTLs), and DPoP (per-session keys). The bff has **no
+consumers** — nothing in the repo imports it and no external SPA calls `/bff/auth/*`; its SPA is internal to
+its own binaries. So the only thing standing between us and deleting `bff/` is the reverse-proxy gateway.
 
-## S5 — reverse-proxy mode + injection
-Make pep gate **and** reverse-proxy upstreams itself, so it runs standalone without Caddy in front (an
-oauth2-proxy lookalike on its own port). Port `bff/gateway`: `InjectIdentity` / `InjectDPoP`, request/response
-header hygiene, `handleUnauthenticated`, and `WEBAPP_UPSTREAM` / `API_UPSTREAM` route config
-(`RoutesFromEnv` shape). The next staged-build step.
-- Refs: `bff/gateway/{gateway,inject,host}.go`, the plan `pep/proxy/docs/pdp-backend-plan.md` (S5).
-- Note: this also unblocks the standalone `/` 404 we hit during HITL — a configured upstream serves `/`.
+Priority order below is the retire-the-bff path. Items 3–4 are independent and rank below it.
 
-## Cross-AS token acquisition
-S4 shipped a **single** AS binding. Add lazy multi-AS token acquisition + a per-AS token-set on the session,
-so one login can mediate DPoP-bound tokens for several resource servers (each its own AS) without re-auth.
-- Refs: `pep/proxy/docs/pdp-backend.md` (binding-list config), `pep/proxy/backend_pdp.go`.
+## 1. Gateway parity (S5) — the one removal blocker  ·  NEXT
+Port `bff/gateway` into pep so it gates **and** reverse-proxies upstreams standalone (no Caddy required):
+- **Multi-route reverse proxy** (not just `/api`): configurable upstreams + path prefixes + optional strip
+  (the `RoutesFromEnv` shape), each with its own injection mode.
+- **Identity-header injection**: `X-Auth-Request-Identity` = base64url(JSON claims), alongside the existing
+  per-session DPoP injection.
+- **HTML/API branching on unauthenticated**: browser (`Accept: text/html`) → 302 `/oauth2/sign_in`; API →
+  JSON 401. Today pep returns a bare 401 and leans on Caddy's `handle_response` — this makes pep self-sufficient.
+- Refs: `bff/gateway/{gateway,host,inject}.go`, `pep/proxy/{proxy.go,inject.go,backend_pdp.go}`. HITL-gated.
 
-## Login / chooser UX
-Build on the recent chooser + decoupled work: error/retry pages, chooser refinements, the `/oauth2/userinfo`
-+ session views, accessibility (focus/reduced-motion), and the close-tab / desktop-redirect edge cases on the
-decoupled + gemidp pages.
+## 2. Cut over + delete the bff  ·  after 1
+- Replace the **zero-bff-pdp** all-in-one demo (PDP authz server + bff + webui in one process) with
+  `zero-pdp` + `zero-pep-proxy` as two services — the e2e harness already runs them side by side.
+- Repoint build/deploy: justfile docker targets (`docker-*-bff-pdp`), the bff docker-compose, any deploy refs.
+- Delete `bff/` (`bff.go`, `gateway/`, `session_manager*`, the webui SPA, `cmd/zero-bff{,-pdp}`, tests). No
+  external consumers, so no deprecation window needed.
+- Docs: redirect `/bff/auth/*` → `/oauth2/*`; note pep's server-rendered pages replace the bff SPA (no
+  JSON-API compat mode is needed — there are no SPA consumers).
 
-## Deprecate the bff (S7)
-Repoint `zero-bff*` / successor commands at `pep/proxy`, mark the `bff` module deprecated, and plan its
-removal now that pep covers the token-mediating BFF role.
-- Refs: the plan (S7), `bff/`.
+## 3. Cross-AS token acquisition  ·  not a blocker
+pep already has per-issuer token sets + per-session DPoP. Add lazy multi-AS acquisition so one login mediates
+DPoP-bound tokens for several resource servers. Independent of the bff removal.
 
-## Smaller threads
-- `/api` reverse-proxy is gated to a single upstream today; generalize alongside S5.
-- Operator docs: a CONFIG note that PDP-backend clients must use PAR (direct `/authorize` is rejected since
-  `zero-pdp` v0.22.0).
+## 4. Login / chooser UX  ·  ongoing
+Error/retry pages, chooser refinements, `userinfo`/session views, accessibility (focus / reduced-motion), and
+the close-tab / desktop-redirect edge cases on the decoupled + gemidp pages.
+
+## Notes
+- pep's PDP AS-client is a faithful port of the bff's **plus** PAR and nonce-retry — no parity work there.
+- The all-in-one `zero-bff-pdp` was a single-port demo convenience; replacing it with two services (or one
+  behind Caddy) is an ops change, not a pep functional gap.
