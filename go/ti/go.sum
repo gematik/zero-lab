@@ -22,6 +22,8 @@ github.com/gabriel-vasile/mimetype v1.4.13 h1:46nXokslUBsAJE/wMsp5gtO500a4F3Nkz9
 github.com/gabriel-vasile/mimetype v1.4.13/go.mod h1:d+9Oxyo1wTzWdyVUPMmXFvp4F9tea18J8ufA774AB3s=
 github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58 h1:wxMP0D2TuSAlR+WNkYeHHvXDj2SWBWZ6BZwOaRUMHUI=
 github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58/go.mod h1:R/2lWeEB3SqwjVXuLDd++e1akc/fK/O79aF7fmxw3xY=
+github.com/gematik/zero-lab/go/brainpool v1.0.0 h1:iRFFgQcdzlqqZKUKMXLsoqo0vdhWcmtmER2USj702xU=
+github.com/gematik/zero-lab/go/brainpool v1.0.0/go.mod h1:TGiI/RSzM76LwiWZRMzc9t1yDfN6D4uOaeYCd8N5rCs=
 github.com/gematik/zero-lab/go/epa v0.0.0-20260617184140-1440fec98b58 h1:77YwK9l+xbS9/b6du82JtKN/bl5RHHyFhT6265pAiQk=
 github.com/gematik/zero-lab/go/epa v0.0.0-20260617184140-1440fec98b58/go.mod h1:fnlvO9ZepLRitzczoiNKFBoK87WBzsY2WENzw2zxnIQ=
 github.com/gematik/zero-lab/go/gemidp v0.0.0-20260617184140-1440fec98b58 h1:mW79uzq2cB69oRORpYjHDiBhalEuUX1aSqYR29PFBiU=
@@ -122,6 +124,7 @@ golang.org/x/text v0.38.0 h1:sXmwo9DwP3OK9EZ7PqAdaooSGozfl/3a6/xJcbzPRhE=
 golang.org/x/text v0.38.0/go.mod h1:YXZt3QhHUKYT53r2lLKFIVi6Ao1jdzrTR/KQ09qyxF4=
 golang.org/x/tools v0.46.0 h1:7jTurBkPZu4moS/Uy4OQT1M+QBlsj3wejyZwsT8Z7rk=
 golang.org/x/tools v0.46.0/go.mod h1:FrD85F8l+NWL+9XWBSyVSHO6Ne4jutsfIFba7AWQ5Ys=
+gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c h1:Hei/4ADfdWqJk1ZMxUNpqntNwaWcugrBjAiHlqqRiVk=
 gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c/go.mod h1:JHkPIbrfpd72SG/EVd6muEfDQjcINNoR0C8j2r3qZ4Q=

@@ -12,7 +12,7 @@ require (
 require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
-	github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58 // indirect
+	github.com/gematik/zero-lab/go/brainpool v1.0.0 // indirect
 	github.com/gematik/zero-lab/go/dpop v0.0.0-20260617184140-1440fec98b58 // indirect
 	github.com/gematik/zero-lab/go/gemidp v0.0.0-20260617184140-1440fec98b58 // indirect
 	github.com/gematik/zero-lab/go/nonce v0.0.0-20260617184140-1440fec98b58 // indirect

@@ -19,7 +19,7 @@ require (
 require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
-	github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58 // indirect
+	github.com/gematik/zero-lab/go/brainpool v1.0.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.30.3 // indirect

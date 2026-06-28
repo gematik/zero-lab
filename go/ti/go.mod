@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	github.com/alecthomas/chroma/v2 v2.27.0
-	github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58
+	github.com/gematik/zero-lab/go/brainpool v1.0.0
 	github.com/gematik/zero-lab/go/epa v0.0.0-20260617184140-1440fec98b58
 	github.com/gematik/zero-lab/go/gemidp v0.0.0-20260617184140-1440fec98b58
 	github.com/gematik/zero-lab/go/gempki v0.0.0-20260617184140-1440fec98b58

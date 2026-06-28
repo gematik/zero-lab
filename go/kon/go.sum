@@ -2,6 +2,8 @@ github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58 h1:wxMP0D2TuSAlR+WNkYeHHvXDj2SWBWZ6BZwOaRUMHUI=
 github.com/gematik/zero-lab/go/brainpool v0.0.0-20260617184140-1440fec98b58/go.mod h1:R/2lWeEB3SqwjVXuLDd++e1akc/fK/O79aF7fmxw3xY=
+github.com/gematik/zero-lab/go/brainpool v1.0.0 h1:iRFFgQcdzlqqZKUKMXLsoqo0vdhWcmtmER2USj702xU=
+github.com/gematik/zero-lab/go/brainpool v1.0.0/go.mod h1:TGiI/RSzM76LwiWZRMzc9t1yDfN6D4uOaeYCd8N5rCs=
 github.com/gematik/zero-lab/go/gempki v0.0.0-20260617184140-1440fec98b58 h1:LzTOuWgazVGYJaszWxyfmoUc6dS68V4iX43a2o2qqFU=
 github.com/gematik/zero-lab/go/gempki v0.0.0-20260617184140-1440fec98b58/go.mod h1:mBZDsBmzJJpXBKEP6a+pkjMQly8TIrSmXUBCFWgx7AQ=
 github.com/gematik/zero-lab/go/pkcs12 v0.0.0-20260617184140-1440fec98b58 h1:/kJbfeiUr/siSyjwwi9Tbv5D7+gzOCnoyx26Nnj589s=
