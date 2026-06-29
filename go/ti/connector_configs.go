@@ -12,27 +12,27 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type konConfigInfo struct {
+type connectorConfigInfo struct {
 	Name    string `json:"name"`
 	URL     string `json:"url"`
 	Context string `json:"context"`
 	Path    string `json:"path"`
 }
 
-func newKonConfigsCmd() *cobra.Command {
+func newConnectorConfigsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "configs",
-		Short: "List available Konnektor configuration files",
+		Short: "List available connector configuration files",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
-			return runKonConfigs()
+			return runConnectorConfigs()
 		},
 	}
 }
 
-func runKonConfigs() error {
-	configs := collectKonConfigs()
+func runConnectorConfigs() error {
+	configs := collectConnectorConfigs()
 
 	if outputFlag == "json" {
 		return printJSON(configs)
@@ -45,10 +45,9 @@ func runKonConfigs() error {
 	})
 }
 
-func collectKonConfigs() []konConfigInfo {
+func collectConnectorConfigs() []connectorConfigInfo {
 	var paths []string
 
-	// Current working directory
 	if entries, err := os.ReadDir("."); err == nil {
 		for _, e := range entries {
 			if !e.IsDir() && strings.HasSuffix(e.Name(), ".kon") {
@@ -57,8 +56,7 @@ func collectKonConfigs() []konConfigInfo {
 		}
 	}
 
-	// XDG config directory
-	xdgDir := filepath.Join(xdgConfigHome(), "telematik", "kon")
+	xdgDir := filepath.Join(xdgConfigHome(), "telematik", "connectors")
 	if entries, err := os.ReadDir(xdgDir); err == nil {
 		for _, e := range entries {
 			if !e.IsDir() && strings.HasSuffix(e.Name(), ".kon") {
@@ -67,7 +65,7 @@ func collectKonConfigs() []konConfigInfo {
 		}
 	}
 
-	var configs []konConfigInfo
+	var configs []connectorConfigInfo
 	for _, path := range paths {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -81,7 +79,7 @@ func collectKonConfigs() []konConfigInfo {
 		}
 		name := strings.TrimSuffix(filepath.Base(path), ".kon")
 		context := strings.Join([]string{dk.MandantId, dk.WorkplaceId, dk.ClientSystemId}, "/")
-		configs = append(configs, konConfigInfo{
+		configs = append(configs, connectorConfigInfo{
 			Name:    name,
 			URL:     dk.URL,
 			Context: context,

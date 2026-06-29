@@ -18,7 +18,7 @@ func newGetServicesCmd() *cobra.Command {
 		Short: "List available services",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
-			config, err := loadDotkon()
+			config, err := loadConnectorConfig()
 			if err != nil {
 				return err
 			}
@@ -30,6 +30,7 @@ func newGetServicesCmd() *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&raw, "raw", false, "show raw service directory XML")
+	addConnectorConfigFlag(cmd)
 
 	return cmd
 }

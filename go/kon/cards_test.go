@@ -83,6 +83,31 @@ const testGetCardsFault = `<?xml version="1.0" encoding="UTF-8"?>
   </soap:Body>
 </soap:Envelope>`
 
+// newTestSDSServer returns an httptest.Server that responds to GET
+// /connector.sds with the [testSDS] XML payload, substituting %%ENDPOINT%%
+// with its own URL so any service endpoints in the SDS resolve back to the
+// same mock. Suitable for tests that only need the SDS surface.
+//
+// Tests that also need to exercise EventService (or other SOAP endpoints
+// declared in the SDS) call [newTestKonnektor] instead — that helper sets up
+// a single multiplexing server so the SDS's declared endpoints reach the
+// caller's handler on the same origin.
+func newTestSDSServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/connector.sds" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/xml")
+		sds := strings.ReplaceAll(testSDS, "%%ENDPOINT%%", server.URL)
+		_, _ = w.Write([]byte(sds))
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
 func newTestKonnektor(t *testing.T, eventServiceHandler http.HandlerFunc) (*Client, *httptest.Server) {
 	t.Helper()
 
@@ -92,7 +117,7 @@ func newTestKonnektor(t *testing.T, eventServiceHandler http.HandlerFunc) (*Clie
 		case "/connector.sds":
 			w.Header().Set("Content-Type", "text/xml")
 			sds := strings.ReplaceAll(testSDS, "%%ENDPOINT%%", server.URL)
-			w.Write([]byte(sds))
+			_, _ = w.Write([]byte(sds))
 		case "/ws/EventService":
 			eventServiceHandler(w, r)
 		default:

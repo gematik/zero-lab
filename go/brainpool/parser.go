@@ -214,9 +214,18 @@ func parseCertificate(der []byte) (*x509.Certificate, error) {
 		return nil, errors.New("brainpool: failed to parse signature algorithm")
 	}
 
-	var issuerSeq cryptobyte.String
-	if !tbsCertSeq.ReadASN1(&issuerSeq, cryptobyte_asn1.SEQUENCE) {
+	// Capture the FULL Issuer / Subject DER (including the outer SEQUENCE
+	// tag+length) — stdlib consumers (x/crypto/ocsp's RawResponderName,
+	// crypto/x509 verification) feed cert.RawIssuer / cert.RawSubject back
+	// to asn1.Unmarshal, which requires the wrapping SEQUENCE. The inner
+	// `*Content` strings (without the wrapper) drive the RDN parser below.
+	var issuerFull cryptobyte.String
+	if !tbsCertSeq.ReadASN1Element(&issuerFull, cryptobyte_asn1.SEQUENCE) {
 		return nil, errors.New("brainpool: failed to parse issuer")
+	}
+	issuerContent := issuerFull
+	if !issuerContent.ReadASN1(&issuerContent, cryptobyte_asn1.SEQUENCE) {
+		return nil, errors.New("brainpool: failed to parse issuer SEQUENCE content")
 	}
 
 	var validitySeq cryptobyte.String
@@ -224,13 +233,26 @@ func parseCertificate(der []byte) (*x509.Certificate, error) {
 		return nil, errors.New("brainpool: failed to parse validity")
 	}
 
-	var subjectSeq cryptobyte.String
-	if !tbsCertSeq.ReadASN1(&subjectSeq, cryptobyte_asn1.SEQUENCE) {
+	var subjectFull cryptobyte.String
+	if !tbsCertSeq.ReadASN1Element(&subjectFull, cryptobyte_asn1.SEQUENCE) {
 		return nil, errors.New("brainpool: failed to parse subject")
 	}
+	subjectContent := subjectFull
+	if !subjectContent.ReadASN1(&subjectContent, cryptobyte_asn1.SEQUENCE) {
+		return nil, errors.New("brainpool: failed to parse subject SEQUENCE content")
+	}
 
-	var spkiSeq cryptobyte.String
-	if !tbsCertSeq.ReadASN1(&spkiSeq, cryptobyte_asn1.SEQUENCE) {
+	// Capture the FULL SubjectPublicKeyInfo encoding (including the outer
+	// SEQUENCE tag+length) — stdlib consumers of cert.RawSubjectPublicKeyInfo
+	// (e.g. x/crypto/ocsp.CreateRequest) feed it back to asn1.Unmarshal,
+	// which requires the wrapping SEQUENCE to be present. Storing only the
+	// content broke OCSP request building for brainpool-keyed issuers.
+	var spkiFull cryptobyte.String
+	if !tbsCertSeq.ReadASN1Element(&spkiFull, cryptobyte_asn1.SEQUENCE) {
+		return nil, errors.New("brainpool: failed to read SubjectPublicKeyInfo element")
+	}
+	spkiSeq := spkiFull
+	if !spkiSeq.ReadASN1(&spkiSeq, cryptobyte_asn1.SEQUENCE) {
 		return nil, errors.New("brainpool: failed to parse SubjectPublicKeyInfo")
 	}
 
@@ -264,24 +286,24 @@ func parseCertificate(der []byte) (*x509.Certificate, error) {
 	cert := new(x509.Certificate)
 	// set the fields we have parsed already
 	cert.Raw = der
-	cert.RawIssuer = issuerSeq
-	cert.RawSubject = subjectSeq
+	cert.RawIssuer = issuerFull
+	cert.RawSubject = subjectFull
 	cert.RawTBSCertificate = tbsCertRaw
-	cert.RawSubjectPublicKeyInfo = spkiSeq
+	cert.RawSubjectPublicKeyInfo = spkiFull
 	cert.Version = version + 1
 	cert.SerialNumber = new(big.Int).SetBytes(serial)
 	// brainpool is only ECDSA
 	cert.PublicKeyAlgorithm = x509.ECDSA
 
 	// parse issuer
-	issuerRDN, err := parseRDNSequence(&issuerSeq)
+	issuerRDN, err := parseRDNSequence(&issuerContent)
 	if err != nil {
 		return nil, err
 	}
 	cert.Issuer.FillFromRDNSequence(issuerRDN)
 
 	// parse subject
-	subjectRDN, err := parseRDNSequence(&subjectSeq)
+	subjectRDN, err := parseRDNSequence(&subjectContent)
 	if err != nil {
 		return nil, err
 	}

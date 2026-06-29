@@ -10,18 +10,20 @@ import (
 )
 
 func newGetCardsCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "cards",
 		Short: "List inserted cards",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
-			config, err := loadDotkon()
+			config, err := loadConnectorConfig()
 			if err != nil {
 				return err
 			}
 			return runGetCards(cmd.Context(), config)
 		},
 	}
+	addConnectorConfigFlag(cmd)
+	return cmd
 }
 
 func runGetCards(ctx context.Context, config *kon.Dotkon) error {

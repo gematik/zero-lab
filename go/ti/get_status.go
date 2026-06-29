@@ -10,18 +10,20 @@ import (
 )
 
 func newGetStatusCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show resource information (connector, card terminals, cards)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
-			config, err := loadDotkon()
+			config, err := loadConnectorConfig()
 			if err != nil {
 				return err
 			}
 			return runGetStatus(cmd.Context(), config)
 		},
 	}
+	addConnectorConfigFlag(cmd)
+	return cmd
 }
 
 func runGetStatus(ctx context.Context, config *kon.Dotkon) error {

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/cardservice81"
+	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/cardservicecommon20"
 )
 
 type PinTyp string
@@ -17,6 +18,23 @@ const (
 )
 
 var AllPinTypes = []PinTyp{PinTypCH, PinTypQES, PinTypSMC}
+
+// PinTypesByCardType maps card types to the PIN types accepted by VerifyPin/ChangePin.
+// SM-B and HSM-B are normalized to SMC-B by PinTypesForCardType.
+var PinTypesByCardType = map[cardservicecommon20.CardType][]PinTyp{
+	cardservicecommon20.CardTypeHba:  {PinTypCH, PinTypQES},
+	cardservicecommon20.CardTypeSmcB: {PinTypSMC},
+	cardservicecommon20.CardTypeEgk:  {PinTypCH},
+}
+
+// PinTypesForCardType returns the PIN types supported by the given card type,
+// or nil if the card type has no user-facing PINs (e.g. SMC-KT).
+func PinTypesForCardType(cardType cardservicecommon20.CardType) []PinTyp {
+	if cardType == cardservicecommon20.CardTypeHsmB || cardType == cardservicecommon20.CardTypeSmB {
+		cardType = cardservicecommon20.CardTypeSmcB
+	}
+	return PinTypesByCardType[cardType]
+}
 
 func (p PinTyp) IsValid() bool {
 	for _, v := range AllPinTypes {

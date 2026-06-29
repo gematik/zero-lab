@@ -67,6 +67,12 @@ type ProxyConfig struct {
 	VsdmHmacKeyId  string `yaml:"vsdm_hmac_key_id" validate:"required"`
 
 	SecurityFunctions *SecurityFunctions `yaml:"-"`
+
+	// CertPool is the TLS root pool used when connecting to ePA aggregators.
+	// When nil, the session manager falls back to InsecureSkipVerify — fine for
+	// demos, wrong for anything real. Callers should populate this from the
+	// gematik TI roots (e.g. via gempki.EmbeddedLoader{Env}.Load(ctx)).
+	CertPool *x509.CertPool `yaml:"-"`
 }
 
 func (pc *ProxyConfig) Init() error {
@@ -148,6 +154,29 @@ func IDPEnvironment(env Env) gemidp.Environment {
 	}
 }
 
+// NewProxyWithSecurityFunctions builds a Proxy from a pre-assembled
+// SecurityFunctions, skipping ProxyConfig.Init() (which reads cert+key files
+// from disk and assembles a VSDM-HMAC ProvidePN). Use this from callers that
+// already produced SecurityFunctions through some other identity backend
+// (e.g. a Konnektor-backed signer or a PKCS#12 loaded in another process).
+//
+// ProvidePN / ProvideHCV may be left nil on sf when the caller is only
+// interested in /information endpoints and the VAU handshake; VAU-bound calls
+// that need entitlement will fail at the first call with a clear nil-deref
+// error from the consuming code.
+func NewProxyWithSecurityFunctions(env Env, sf *SecurityFunctions, name string, timeout time.Duration, certPool *x509.CertPool) (*Proxy, error) {
+	if sf == nil {
+		return nil, fmt.Errorf("SecurityFunctions is required")
+	}
+	return NewProxy(&ProxyConfig{
+		Env:               env,
+		Name:              name,
+		Timeout:           timeout,
+		SecurityFunctions: sf,
+		CertPool:          certPool,
+	})
+}
+
 func NewProxy(config *ProxyConfig) (*Proxy, error) {
 	var err error
 
@@ -174,7 +203,7 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 		timeout:           config.Timeout,
 		securityFunctions: config.SecurityFunctions,
 		authenticator:     p.Authenticator,
-		certPool:          nil,
+		certPool:          config.CertPool,
 		sessions:          make(map[ProviderNumber]*Session),
 	}
 

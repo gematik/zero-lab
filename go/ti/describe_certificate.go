@@ -19,14 +19,14 @@ import (
 var oidCommonName = asn1.ObjectIdentifier{2, 5, 4, 3}
 
 func newDescribeCertificateCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "certificate <card-handle> <cert-ref>",
 		Short: "Show detailed certificate information",
 		Long:  "Show detailed certificate information.\nCert refs: C.AUT, C.ENC, C.SIG, C.QES",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
-			config, err := loadDotkon()
+			config, err := loadConnectorConfig()
 			if err != nil {
 				return err
 			}
@@ -37,6 +37,8 @@ func newDescribeCertificateCmd() *cobra.Command {
 			return runDescribeCertificate(cmd.Context(), config, args[0], certRef)
 		},
 	}
+	addConnectorConfigFlag(cmd)
+	return cmd
 }
 
 func runDescribeCertificate(ctx context.Context, config *kon.Dotkon, cardHandle string, certRef certificateservicecommon20.CertRefEnum) error {
