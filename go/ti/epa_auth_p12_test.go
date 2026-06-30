@@ -19,7 +19,7 @@ func TestP12AuthE2E(t *testing.T) {
 		t.Skip("TI_TEST_SMCB_P12 not set; skipping e2e p12 auth test")
 	}
 
-	am := newP12AuthMethod(path, authP12AliasDefault, authP12PasswordDefault)
+	am := newP12AuthMethod(path, authP12AliasDefault, authP12Password.def)
 	sf, err := am.SecurityFunctions(context.Background())
 	if err != nil {
 		t.Fatalf("SecurityFunctions: %v", err)

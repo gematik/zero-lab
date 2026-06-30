@@ -23,7 +23,7 @@ import (
 // the env var it skips cleanly.
 //
 // We deliberately keep this in the `main` package (not `_test`) so it can poke
-// at the package globals connectorConfigFlag / authCardFlagVal in the same
+// at the package globals connectorConfig.val / authCardFlagVal in the same
 // way as TestConnectorAuthE2E.
 func TestVAUResumptionE2E(t *testing.T) {
 	konPath := os.Getenv("TI_TEST_KON_FILE")
@@ -31,12 +31,12 @@ func TestVAUResumptionE2E(t *testing.T) {
 		t.Skip("TI_TEST_KON_FILE not set; skipping VAU resumption e2e test")
 	}
 
-	prevConfig := connectorConfigFlag
+	prevConfig := connectorConfig.val
 	prevCard := authCardFlagVal
-	connectorConfigFlag = konPath
+	connectorConfig.val = konPath
 	authCardFlagVal = ""
 	t.Cleanup(func() {
-		connectorConfigFlag = prevConfig
+		connectorConfig.val = prevConfig
 		authCardFlagVal = prevCard
 	})
 
@@ -170,12 +170,12 @@ func TestVAUResumeFromStaleSnapshotIsObservable(t *testing.T) {
 		t.Skip("TI_TEST_KON_FILE not set; skipping stale-snapshot observation test")
 	}
 
-	prevConfig := connectorConfigFlag
+	prevConfig := connectorConfig.val
 	prevCard := authCardFlagVal
-	connectorConfigFlag = konPath
+	connectorConfig.val = konPath
 	authCardFlagVal = ""
 	t.Cleanup(func() {
-		connectorConfigFlag = prevConfig
+		connectorConfig.val = prevConfig
 		authCardFlagVal = prevCard
 	})
 

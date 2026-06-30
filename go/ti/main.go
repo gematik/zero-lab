@@ -15,8 +15,11 @@ import (
 )
 
 var (
-	connectorConfigFlag string
-	verboseFlag         bool
+	connectorConfig = envFlag{
+		name: "connector-config", shorthand: "c", env: connectorConfigEnv,
+		usage: "name or path of .kon configuration file",
+	}
+	verboseFlag bool
 )
 
 const connectorConfigEnv = "TI_CONNECTOR_CONFIG"
@@ -74,8 +77,7 @@ func main() {
 }
 
 func addConnectorConfigFlag(cmd *cobra.Command) {
-	cmd.Flags().StringVarP(&connectorConfigFlag, "connector-config", "c", "",
-		"name or path of .kon configuration file (env: "+connectorConfigEnv+")")
+	connectorConfig.register(cmd)
 	cmd.RegisterFlagCompletionFunc("connector-config", completeConnectorConfigNames)
 }
 
@@ -89,10 +91,10 @@ func completeConnectorConfigNames(cmd *cobra.Command, args []string, toComplete 
 }
 
 func loadConnectorConfig() (*kon.Dotkon, error) {
-	name := connectorConfigFlag
+	name := connectorConfig.val
 	source := "flag"
 	if name == "" {
-		name = os.Getenv(connectorConfigEnv)
+		name = connectorConfig.envValue()
 		source = "env " + connectorConfigEnv
 	}
 	if name == "" {

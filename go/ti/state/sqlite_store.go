@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	_ "modernc.org/sqlite"
+	sqlitedriver "modernc.org/sqlite"
 )
 
 // schemaSQL is applied idempotently on every OpenSQLite.
@@ -25,14 +25,20 @@ CREATE TABLE IF NOT EXISTS kv (
 CREATE INDEX IF NOT EXISTS idx_kv_expires_at ON kv(expires_at);
 `
 
-// pragmas tune SQLite for our workload: WAL gives concurrent readers + one
-// writer cleanly; NORMAL fsync is the right durability trade for a cache; the
-// 2s busy timeout absorbs cross-process write contention without falling over.
-const pragmaSQL = `
-PRAGMA journal_mode = WAL;
-PRAGMA synchronous = NORMAL;
-PRAGMA busy_timeout = 2000;
-`
+// dsnParams tune SQLite for our workload, applied per-connection via the DSN so
+// every connection the driver opens gets them (a one-shot PRAGMA exec only
+// touches whichever pooled connection happened to run it):
+//
+//   - WAL gives concurrent readers + one writer cleanly.
+//   - NORMAL fsync is the right durability trade for a cache.
+//   - busy_timeout makes a contended writer wait-and-retry instead of failing.
+//   - _txlock=immediate makes database/sql's Begin emit BEGIN IMMEDIATE, so a
+//     read-then-write transaction (Set) grabs the write lock up front. Without
+//     it, two connections that both hold the read lock and then try to upgrade
+//     deadlock, and SQLite returns SQLITE_BUSY *without* honoring busy_timeout —
+//     which surfaced as intermittent "database is locked" while writing caches
+//     during concurrent provider connects.
+const dsnParams = "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_txlock=immediate"
 
 // SQLiteStore implements Store on top of a single SQLite file. All operations
 // are safe for concurrent use; cross-process writers are serialized by the
@@ -53,23 +59,59 @@ func OpenSQLite(path string) (*SQLiteStore, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("state: creating %s: %w", filepath.Dir(path), err)
 	}
-	db, err := sql.Open("sqlite", path)
+	// The driver strips the query string off a non-"file:" path and uses the
+	// rest verbatim as the filename, so this is safe for paths with spaces.
+	db, err := sql.Open("sqlite", path+"?"+dsnParams)
 	if err != nil {
 		return nil, fmt.Errorf("state: open sqlite %s: %w", path, err)
 	}
-	// Pragmas must be applied per-connection. The simplest way is to cap
-	// the pool to one connection — fine because our access pattern is
-	// short-lived from a single CLI process.
+	// One writer at a time within this process keeps the access pattern simple;
+	// cross-process and cross-handle writers serialize on the busy_timeout +
+	// BEGIN IMMEDIATE set in dsnParams.
 	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(pragmaSQL); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("state: applying pragmas: %w", err)
-	}
-	if _, err := db.Exec(schemaSQL); err != nil {
+	// Schema init forces the first real connection, which is where the DSN
+	// pragmas (incl. journal_mode=WAL) run. busy_timeout covers ordinary write
+	// contention, but switching journal mode returns SQLITE_BUSY *immediately*
+	// when another connection holds a lock — so several processes opening a
+	// fresh file at once can collide here. Retry briefly until WAL sticks.
+	if err := retryBusy(func() error {
+		_, err := db.Exec(schemaSQL)
+		return err
+	}); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("state: applying schema: %w", err)
 	}
 	return &SQLiteStore{path: path, db: db}, nil
+}
+
+// retryBusy re-runs fn while it fails with SQLITE_BUSY/SQLITE_LOCKED, backing
+// off up to a few seconds. Used for the narrow window where busy_timeout doesn't
+// apply (journal-mode switch on a freshly created file).
+func retryBusy(fn func() error) error {
+	const deadline = 5 * time.Second
+	backoff := 5 * time.Millisecond
+	start := time.Now()
+	for {
+		err := fn()
+		if err == nil || !isBusy(err) || time.Since(start) >= deadline {
+			return err
+		}
+		time.Sleep(backoff)
+		if backoff < 100*time.Millisecond {
+			backoff *= 2
+		}
+	}
+}
+
+func isBusy(err error) bool {
+	var se *sqlitedriver.Error
+	if errors.As(err, &se) {
+		switch se.Code() & 0xFF { // strip extended-result high bits
+		case 5, 6: // SQLITE_BUSY, SQLITE_LOCKED
+			return true
+		}
+	}
+	return false
 }
 
 // Path returns the on-disk path of the SQLite file (for diagnostics / tests).

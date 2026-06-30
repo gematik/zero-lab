@@ -16,11 +16,13 @@ const (
 	epaEnvDefault = epa.EnvRef
 )
 
-var epaEnvFlagVal string
+var epaEnv = envFlag{
+	name: epaEnvFlag, env: epaEnvEnv,
+	usage: "ePA environment: dev, test, ref, prod",
+}
 
 func addEpaEnvFlag(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&epaEnvFlagVal, epaEnvFlag, "",
-		"ePA environment: dev, test, ref, prod (env: "+epaEnvEnv+")")
+	epaEnv.register(cmd)
 	cmd.RegisterFlagCompletionFunc(epaEnvFlag, completeEpaEnv)
 }
 
@@ -40,14 +42,14 @@ const (
 
 // resolveEpaEnv applies the resolution chain: flag → env var → sticky → default.
 func resolveEpaEnv() (epa.Env, epaEnvSource, error) {
-	if epaEnvFlagVal != "" {
-		e, err := epa.EnvFromString(epaEnvFlagVal)
+	if epaEnv.val != "" {
+		e, err := epa.EnvFromString(epaEnv.val)
 		if err != nil {
 			return "", "", fmt.Errorf("--%s: %w", epaEnvFlag, err)
 		}
 		return e, epaEnvFromFlag, nil
 	}
-	if v := os.Getenv(epaEnvEnv); v != "" {
+	if v := epaEnv.envValue(); v != "" {
 		e, err := epa.EnvFromString(v)
 		if err != nil {
 			return "", "", fmt.Errorf("%s: %w", epaEnvEnv, err)

@@ -15,7 +15,7 @@ import (
 // real .kon config pointed at a live Konnektor. The path is read from
 // TI_TEST_KON_FILE; without it, the test skips so CI stays unaffected.
 //
-// The test wires global flags `connectorConfigFlag` (used by loadConnectorConfig
+// The test wires global flags `connectorConfig.val` (used by loadConnectorConfig
 // via the existing `-c` resolution chain) and `authCardFlagVal` (left empty so
 // the connector method auto-picks the first SMC-B). It then asks for
 // SecurityFunctions, signs a hash via ExternalAuthenticate, and verifies the
@@ -26,12 +26,12 @@ func TestConnectorAuthE2E(t *testing.T) {
 		t.Skip("TI_TEST_KON_FILE not set; skipping e2e connector auth test")
 	}
 
-	prevConfig := connectorConfigFlag
+	prevConfig := connectorConfig.val
 	prevCard := authCardFlagVal
-	connectorConfigFlag = konPath
+	connectorConfig.val = konPath
 	authCardFlagVal = ""
 	t.Cleanup(func() {
-		connectorConfigFlag = prevConfig
+		connectorConfig.val = prevConfig
 		authCardFlagVal = prevCard
 	})
 

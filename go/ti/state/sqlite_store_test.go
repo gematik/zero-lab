@@ -397,6 +397,52 @@ func TestEntries(t *testing.T) {
 	}
 }
 
+// TestConcurrentWritersAcrossHandles reproduces the "database is locked" that
+// surfaced during concurrent provider connects: several helpers each open their
+// own *sql.DB on the same file and write at once. With deferred transactions a
+// read-then-write upgrade deadlocks and SQLite returns SQLITE_BUSY without
+// honoring busy_timeout; BEGIN IMMEDIATE (set via the DSN) makes them serialize
+// on the busy_timeout instead. No write here should error.
+func TestConcurrentWritersAcrossHandles(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cli-state.db")
+
+	const handles = 6
+	const writesPerHandle = 40
+
+	var wg sync.WaitGroup
+	errs := make(chan error, handles*writesPerHandle)
+	for h := 0; h < handles; h++ {
+		wg.Add(1)
+		go func(h int) {
+			defer wg.Done()
+			s, err := OpenSQLite(path)
+			if err != nil {
+				errs <- err
+				return
+			}
+			defer s.Close()
+			for i := 0; i < writesPerHandle; i++ {
+				// Mix shared and per-handle keys so writers contend on the same
+				// rows (the upgrade-deadlock case) and on the table generally.
+				key := "pki:tsl:shared"
+				if i%2 == 0 {
+					key = "epa:h" + string(rune('0'+h))
+				}
+				if err := s.Set(key, []byte(`{"v":1}`), Expire(time.Minute)); err != nil {
+					errs <- err
+					return
+				}
+			}
+		}(h)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("concurrent write failed: %v", err)
+	}
+}
+
 func keysOf(m map[string]Entry) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
