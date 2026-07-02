@@ -11,6 +11,7 @@ import (
 	"github.com/gematik/zero-lab/go/epa"
 	"github.com/gematik/zero-lab/go/epa/vau"
 	"github.com/gematik/zero-lab/go/gemidp"
+	"github.com/gematik/zero-lab/go/gempki"
 	"github.com/gematik/zero-lab/go/ti/internal/common"
 	"github.com/gematik/zero-lab/go/ti/state"
 	"github.com/spf13/cobra"
@@ -28,6 +29,7 @@ type sessionOpenEntry struct {
 	Env             epa.Env              `json:"env"`
 	BaseURL         string               `json:"base_url"`
 	OpenedAt        time.Time            `json:"opened_at"`
+	TelematikID     string               `json:"telematik_id,omitempty"`
 	ChannelSnapshot *vau.ChannelSnapshot `json:"channel_snapshot,omitempty"`
 }
 
@@ -65,14 +67,42 @@ func newEpaSessionCmd() *cobra.Command {
 // from our side. Server-side counter enforcement varies by aggregator (see
 // TestVAUResumeFromStaleSnapshotIsObservable).
 func obtainSession(ctx context.Context, env epa.Env, provider epa.ProviderNumber, sf *epa.SecurityFunctions, st state.Store) (*sessionOpenEntry, bool, error) {
+	// Same auth cert for every provider this invocation; stamp the entry so both
+	// display and the cached metadata carry the authenticated institution.
+	tid := telematikIDFromSecurityFunctions(sf)
 	if entry, ok := tryResumeSession(ctx, env, provider, sf, st); ok {
+		if tid != "" {
+			entry.TelematikID = tid
+		}
 		return entry, true, nil
 	}
 	entry, err := openSessionFresh(ctx, env, provider, sf)
 	if err != nil {
 		return nil, false, err
 	}
+	entry.TelematikID = tid
 	return entry, false, nil
+}
+
+// telematikIDFromSecurityFunctions extracts the SMC-B Telematik-ID (the
+// admission statement's registrationNumber) from the auth cert. Best-effort:
+// returns "" if no cert is available or the extension can't be parsed, so a
+// session still opens and caches without it.
+func telematikIDFromSecurityFunctions(sf *epa.SecurityFunctions) string {
+	if sf == nil || sf.AuthnCertFunc == nil {
+		return ""
+	}
+	cert, err := sf.AuthnCertFunc()
+	if err != nil || cert == nil {
+		slog.Debug("telematik-id: no auth cert available", "err", err)
+		return ""
+	}
+	as, err := gempki.ParseAdmissionStatement(cert)
+	if err != nil {
+		slog.Debug("telematik-id: parsing admission statement failed", "err", err)
+		return ""
+	}
+	return as.RegistrationNumber
 }
 
 // tryResumeSession attempts to restore the channel from cache and verifies it
@@ -185,9 +215,9 @@ func newEpaSessionListCmd() *cobra.Command {
 				fmt.Printf("no cached sessions for %s\n", env)
 				return nil
 			}
-			return common.PrintTable("PROVIDER\tENV\tBASE URL\tOPENED AT", func(w io.Writer) {
+			return common.PrintTable("PROVIDER\tENV\tTELEMATIK-ID\tBASE URL\tOPENED AT", func(w io.Writer) {
 				for _, e := range entries {
-					fmt.Fprintf(w, "%d\t%s\t%s\t%s\n", e.Provider, e.Env, e.BaseURL, e.OpenedAt.Format(time.RFC3339))
+					fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\n", e.Provider, e.Env, dashIfEmpty(e.TelematikID), e.BaseURL, e.OpenedAt.Format(time.RFC3339))
 				}
 			})
 		},
@@ -220,17 +250,44 @@ func newEpaSessionCloseCmd() *cobra.Command {
 				}
 				targets = []epa.ProviderNumber{p}
 			}
-			for _, p := range targets {
-				if err := st.Delete(vauKeysKey(env, p)); err != nil {
-					return err
-				}
+			closed, err := disconnectSessions(st, env, targets)
+			if err != nil {
+				return err
 			}
-			fmt.Printf("cleared %d cached session entries for %s\n", len(targets), env)
+			fmt.Printf("cleared %d cached session entries for %s\n", len(closed), env)
 			return nil
 		},
 	}
 	addEpaEnvFlag(cmd)
 	return cmd
+}
+
+// disconnectSessions drops the cached VAU session metadata for the given
+// providers and returns the entries that were actually present, so callers can
+// report which institution/provider was closed. The live channel is gone once
+// the opening process exits, so closing a session is purely a cache clear.
+func disconnectSessions(st state.Store, env epa.Env, targets []epa.ProviderNumber) ([]sessionOpenEntry, error) {
+	var closed []sessionOpenEntry
+	for _, p := range targets {
+		e, hit, err := common.GetJSON[sessionOpenEntry](st, vauKeysKey(env, p))
+		if err != nil {
+			return closed, err
+		}
+		if err := st.Delete(vauKeysKey(env, p)); err != nil {
+			return closed, err
+		}
+		if hit {
+			closed = append(closed, e)
+		}
+	}
+	return closed, nil
+}
+
+func dashIfEmpty(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }
 
 func parseProvider(s string) (epa.ProviderNumber, error) {

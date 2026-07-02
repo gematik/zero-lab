@@ -4,6 +4,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/gematik/zero-lab/go/brainpool"
@@ -97,9 +98,8 @@ func (c *CertData) UnmarshalCBOR(data []byte) error {
 	}
 
 	if len(raw.RCAChain) == 0 {
-		return errors.New("missing RCA chain")
+		slog.Warn("CertData missing RCA chain")
 	}
-
 	c.RCAChain = make([]*x509.Certificate, 0, len(raw.RCAChain))
 	for _, cert := range raw.RCAChain {
 		rca, err := brainpool.ParseCertificate(cert)

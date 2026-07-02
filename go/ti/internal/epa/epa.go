@@ -38,6 +38,7 @@ func NewCmd() *cobra.Command {
 	cmd.AddCommand(newEpaProvidersCmd())
 	cmd.AddCommand(newEpaRecordCmd())
 	cmd.AddCommand(newEpaConnectCmd())
+	cmd.AddCommand(newEpaDisconnectCmd())
 	cmd.AddCommand(newEpaSessionCmd())
 	cmd.AddCommand(newEpaProxyCmd())
 	cmd.AddCommand(newEpaCacheCmd())
@@ -120,9 +121,6 @@ func cachedEpaCertPool(env epa.Env) *x509.CertPool {
 	}
 	pool := x509.NewCertPool()
 	for _, der := range cached.CertsDER {
-		// TI roots are brainpool-curve certs, which stdlib x509 can't parse.
-		// brainpool.ParseCertificate falls back to x509 for RSA/standard-ECC
-		// intermediates, so it handles every cert kind we cache.
 		cert, err := brainpool.ParseCertificate(der)
 		if err != nil {
 			slog.Debug("cert pool cache: parse failed, discarding cache", "err", err)

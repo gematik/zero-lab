@@ -137,6 +137,9 @@ func RestoreChannel(state ChannelSnapshot, httpClient *http.Client) (*Channel, e
 }
 
 func (c *Channel) Do(req *http.Request) (*http.Response, error) {
+	if req.Host == "" && req.URL.Host == "" {
+		req.Host = c.ChannelURL.Host
+	}
 	encrypted, err := c.EncryptRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("encrypting request: %w", err)

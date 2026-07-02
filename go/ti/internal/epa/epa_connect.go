@@ -14,13 +14,14 @@ import (
 )
 
 type connectResult struct {
-	Provider epa.ProviderNumber `json:"provider"`
-	Env      epa.Env            `json:"env"`
-	BaseURL  string             `json:"base_url,omitempty"`
-	OpenedAt time.Time          `json:"opened_at,omitempty"`
-	OK       bool               `json:"ok"`
-	Resumed  bool               `json:"resumed,omitempty"`
-	Error    string             `json:"error,omitempty"`
+	Provider    epa.ProviderNumber `json:"provider"`
+	Env         epa.Env            `json:"env"`
+	TelematikID string             `json:"telematik_id,omitempty"`
+	BaseURL     string             `json:"base_url,omitempty"`
+	OpenedAt    time.Time          `json:"opened_at,omitempty"`
+	OK          bool               `json:"ok"`
+	Resumed     bool               `json:"resumed,omitempty"`
+	Error       string             `json:"error,omitempty"`
 }
 
 func newEpaConnectCmd() *cobra.Command {
@@ -83,6 +84,66 @@ func newEpaConnectCmd() *cobra.Command {
 	return cmd
 }
 
+func newEpaDisconnectCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "disconnect [<provider>]",
+		Aliases: []string{"close", "logout"},
+		Short:   "Close cached VAU session(s) opened by `connect`; no arg = all",
+		Long: "Drop the cached VAU session metadata written by `ti epa connect`. The live\n" +
+			"channel is already gone once the opening process exits, so this clears the\n" +
+			"cached resume state. With no argument, all providers are closed.",
+		Args: cobra.MaximumNArgs(1),
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) > 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return []string{"1", "2", "3"}, cobra.ShellCompDirectiveNoFileComp
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SilenceUsage = true
+			env, _, err := resolveEpaEnv()
+			if err != nil {
+				return err
+			}
+			st, err := common.LoadCLIState()
+			if err != nil {
+				return err
+			}
+			defer st.Close()
+			targets := epa.AllProviders
+			if len(args) == 1 {
+				p, err := parseProvider(args[0])
+				if err != nil {
+					return err
+				}
+				targets = []epa.ProviderNumber{p}
+			}
+			closed, err := disconnectSessions(st, env, targets)
+			if err != nil {
+				return err
+			}
+			if common.OutputFlag == "json" {
+				return common.PrintJSON(closed)
+			}
+			renderDisconnect(env, closed)
+			return nil
+		},
+	}
+	addEpaEnvFlag(cmd)
+	return cmd
+}
+
+func renderDisconnect(env epa.Env, closed []sessionOpenEntry) {
+	if len(closed) == 0 {
+		fmt.Printf("no cached sessions to close for %s\n", env)
+		return
+	}
+	for _, e := range closed {
+		fmt.Printf("closed VAU session to provider %d (%s), telematik-id %s\n",
+			e.Provider, e.Env, dashIfEmpty(e.TelematikID))
+	}
+}
+
 func connectAll(ctx context.Context, env epa.Env, sf *epa.SecurityFunctions, st state.Store, providers []epa.ProviderNumber) []connectResult {
 	results := make([]connectResult, len(providers))
 	var wg sync.WaitGroup
@@ -113,6 +174,7 @@ func connectOne(ctx context.Context, env epa.Env, sf *epa.SecurityFunctions, st 
 	}
 	r.OK = true
 	r.Resumed = resumed
+	r.TelematikID = entry.TelematikID
 	r.BaseURL = entry.BaseURL
 	r.OpenedAt = entry.OpenedAt
 	return r
@@ -126,14 +188,14 @@ func renderConnectResults(results []connectResult) {
 			if r.Resumed {
 				verb = "resumed"
 			}
-			fmt.Printf("%s VAU session to provider %d (%s)\n  base url: %s\n  opened at: %s\n  cached for: %s\n",
-				verb, r.Provider, r.Env, r.BaseURL, r.OpenedAt.Format(time.RFC3339), sessionEntryTTL)
+			fmt.Printf("%s VAU session to provider %d (%s)\n  telematik-id: %s\n  base url: %s\n  opened at: %s\n  cached for: %s\n",
+				verb, r.Provider, r.Env, dashIfEmpty(r.TelematikID), r.BaseURL, r.OpenedAt.Format(time.RFC3339), sessionEntryTTL)
 		} else {
 			fmt.Printf("failed to open VAU session to provider %d (%s): %s\n", r.Provider, r.Env, r.Error)
 		}
 		return
 	}
-	common.PrintTable("PROVIDER\tENV\tSTATUS\tOPENED AT\tNOTE", func(w io.Writer) {
+	common.PrintTable("PROVIDER\tENV\tTELEMATIK-ID\tSTATUS\tOPENED AT\tNOTE", func(w io.Writer) {
 		for _, r := range results {
 			status := "ok"
 			openedAt := ""
@@ -147,7 +209,7 @@ func renderConnectResults(results []connectResult) {
 				status = "fail"
 				note = r.Error
 			}
-			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\n", r.Provider, r.Env, status, openedAt, note)
+			fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\n", r.Provider, r.Env, dashIfEmpty(r.TelematikID), status, openedAt, note)
 		}
 	})
 }
