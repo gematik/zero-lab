@@ -11,7 +11,7 @@ import (
 // Bundling the flag name, env key and default into one value is the whole
 // point: a flag can't be registered without naming its env var, the help text
 // is derived from the same fields, and resolution reads the same key — so the
-// three can no longer drift apart (which is how --p12-file ended up ignoring
+// three can no longer drift apart (which is how --auth-p12-file ended up ignoring
 // TI_EPA_P12_FILE). Resolution order is flag → env → default.
 type EnvFlag struct {
 	Name      string

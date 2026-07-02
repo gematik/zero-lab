@@ -18,7 +18,7 @@ import (
 // connectorAuthMethod signs ePA traffic with an SMC-B's C.AUT key by routing
 // the hash through the Konnektor's ExternalAuthenticate SOAP operation. The
 // .kon config and card identity are taken from the same flags the rest of the
-// ti CLI uses (-c, --card).
+// ti CLI uses (-c, --auth-card).
 type connectorAuthMethod struct {
 	cardIdentifier string // empty → auto-pick first SMC-B
 }
@@ -93,7 +93,7 @@ func (c *connectorAuthMethod) resolveCard(ctx context.Context, client *kon.Clien
 		return "", "", fmt.Errorf("no SMC-B card inserted; pass --%s to select one explicitly", authCardFlag)
 	}
 	if len(unique) > 1 {
-		slog.Warn("multiple SMC-B cards inserted; using the first one — pass --card to select explicitly",
+		slog.Warn("multiple SMC-B cards inserted; using the first one — pass --auth-card to select explicitly",
 			"chosen", unique[0].CardHandle, "candidates", len(unique))
 	}
 	return unique[0].CardHandle, unique[0].CardType, nil

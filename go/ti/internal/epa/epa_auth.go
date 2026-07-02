@@ -15,10 +15,10 @@ const (
 	authMethodConnector = "connector"
 	authMethodP12       = "p12"
 	authMethodDefault   = authMethodConnector
-	authCardFlag        = "card"
-	authP12FileFlag     = "p12-file"
-	authP12AliasFlag    = "p12-alias"
-	authP12PasswordFlag = "p12-password"
+	authCardFlag        = "auth-card"
+	authP12FileFlag     = "auth-p12-file"
+	authP12AliasFlag    = "auth-p12-alias"
+	authP12PasswordFlag = "auth-p12-password"
 	authP12AliasDefault = "alias"
 )
 
@@ -56,7 +56,7 @@ func addAuthMethodFlags(cmd *cobra.Command) {
 	// Connector group
 	common.AddConnectorConfigFlag(cmd)
 	cmd.Flags().StringVar(&authCardFlagVal, authCardFlag, "",
-		"connector auth: card handle or Telematik-ID (defaults to first SMC-B on the connector)")
+		"connector auth: SMC-B Telematik-ID, ICCSN, or card handle (defaults to first SMC-B on the connector)")
 
 	// P12 group
 	authP12File.Register(cmd)
