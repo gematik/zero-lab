@@ -19,7 +19,7 @@ type Dotkon struct {
 	WorkplaceId             string              `json:"workplaceId"`
 	ClientSystemId          string              `json:"clientSystemId"`
 	UserId                  string              `json:"userId"`
-Credentials             CredentialsConfig   `json:"-"`
+	Credentials             CredentialsConfig   `json:"-"`
 	Env                     string              `json:"env"`
 	InsecureSkipVerify      bool                `json:"insecureSkipVerify"`
 	ExpectedHost            string              `json:"expectedHost"`

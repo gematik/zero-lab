@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
+	"time"
 
 	"github.com/gematik/zero-lab/go/pkcs12"
 	"github.com/gematik/zero-lab/go/pkcs12/legacy"
@@ -34,11 +36,28 @@ type Client struct {
 // NewHTTPClient creates an http.Client and base URL from a Dotkon config.
 // It configures TLS and credentials but does not contact the Konnektor.
 func NewHTTPClient(config *Dotkon) (*http.Client, *url.URL, error) {
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			ServerName:         config.ExpectedHost,
-			InsecureSkipVerify: config.InsecureSkipVerify,
-		},
+	return newConnectorClient(config, nil, defaultClientConfig().LongTimeout)
+}
+
+// newConnectorClient builds the Konnektor mutual-TLS client and base URL. A non-nil base seeds the
+// transport (cloned) and timeout, so a caller-supplied client controls proxy/timeout while the
+// Konnektor TLS and credentials are layered on without mutating it. When base carries no timeout,
+// the given timeout (the configured LongTimeout) bounds a request so it can never hang forever;
+// per-operation context deadlines bound normal calls more tightly.
+func newConnectorClient(config *Dotkon, base *http.Client, timeout time.Duration) (*http.Client, *url.URL, error) {
+	var transport *http.Transport
+	if base != nil {
+		if bt, ok := base.Transport.(*http.Transport); ok && bt != nil {
+			transport = bt.Clone()
+		} else {
+			transport = http.DefaultTransport.(*http.Transport).Clone()
+		}
+	} else {
+		transport = &http.Transport{}
+	}
+	transport.TLSClientConfig = &tls.Config{
+		ServerName:         config.ExpectedHost,
+		InsecureSkipVerify: config.InsecureSkipVerify,
 	}
 
 	if len(config.TrustedCertificates) > 0 && !config.InsecureSkipVerify {
@@ -63,10 +82,8 @@ func NewHTTPClient(config *Dotkon) (*http.Client, *url.URL, error) {
 			transport.TLSClientConfig.InsecureSkipVerify = true
 			transport.TLSClientConfig.VerifyConnection = func(cs tls.ConnectionState) error {
 				leaf := cs.PeerCertificates[0]
-				for _, trusted := range eeCerts {
-					if leaf.Equal(trusted) {
-						return nil
-					}
+				if slices.ContainsFunc(eeCerts, leaf.Equal) {
+					return nil
 				}
 				if len(caCerts) > 0 {
 					intermediates := x509.NewCertPool()
@@ -98,6 +115,11 @@ func NewHTTPClient(config *Dotkon) (*http.Client, *url.URL, error) {
 
 	httpClient := &http.Client{
 		Transport: transport,
+	}
+	if base != nil && base.Timeout > 0 {
+		httpClient.Timeout = base.Timeout
+	} else {
+		httpClient.Timeout = timeout
 	}
 
 	if config.Credentials != nil {
@@ -133,7 +155,7 @@ func NewClient(dotkon *Dotkon, opts ...ClientOption) (*Client, error) {
 		opt(config)
 	}
 
-	httpClient, baseURL, err := NewHTTPClient(dotkon)
+	httpClient, baseURL, err := newConnectorClient(dotkon, config.HTTPClient, config.LongTimeout)
 	if err != nil {
 		return nil, err
 	}

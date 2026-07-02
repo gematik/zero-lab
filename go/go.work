@@ -1,15 +1,14 @@
-go 1.26
+go 1.26.4
 
 use (
-	./asl
 	./bff
 	./brainpool
 	./dpop
 	./epa
 	./gemidp
 	./gempki
-	./kms
 	./kon
+	./kv
 	./metsubushi
 	./nonce
 	./oauth

@@ -5,14 +5,14 @@ import (
 	"os"
 	"time"
 
-	"github.com/gematik/zero-lab/go/pdp/oauth2server"
-	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/gematik/zero-lab/go/pdp/authzserver"
+	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/spf13/cobra"
 )
 
 type issueCmdResponse struct {
-	TokenResponse *oauth2server.TokenResponse `json:"token_response"`
-	DpopKey       jwk.Key                     `json:"dpop_key"`
+	TokenResponse *authzserver.TokenResponse `json:"token_response"`
+	DpopKey       jwk.Key                    `json:"dpop_key"`
 }
 
 var issueCmd = &cobra.Command{
@@ -26,13 +26,13 @@ var issueCmd = &cobra.Command{
 		pdp, err := createPdp()
 		cobra.CheckErr(err)
 
-		dpopPrK, err := oauth2server.GenerateRandomJwk()
+		dpopPrK, err := authzserver.GenerateRandomJwk()
 		cobra.CheckErr(err)
 
-		dpopThumbprit, err := oauth2server.ThumbprintS256(dpopPrK)
+		dpopThumbprit, err := authzserver.ThumbprintS256(dpopPrK)
 		cobra.CheckErr(err)
 
-		session := &oauth2server.AuthzServerSession{
+		session := &authzserver.AuthzServerSession{
 			AccessTokenDuration: 5 * time.Minute,
 			ExpiresAt:           time.Now().Add(4 * time.Hour),
 			ClientID:            "client_id",

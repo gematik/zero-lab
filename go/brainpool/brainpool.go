@@ -1,7 +1,23 @@
-// Package brainpool implements Brainpool elliptic curves.
-// Implementation of rcurves is from github.com/ebfe/brainpool
-// Note that these curves are implemented with naive, non-constant time operations
-// and are likely not suitable for enviroments where timing attacks are a concern.
+// Package brainpool implements the Brainpool elliptic curves (RFC 5639) used by
+// the gematik telematics infrastructure, together with X.509 certificate/key
+// parsing for these curves and the signing entry points used by the josebp JOSE
+// layer.
+//
+// Constant-time posture is per curve:
+//
+//   - brainpoolP256r1 secret-scalar operations (ECDSA signing via
+//     SignFuncPrivateKey, ECDH via ECDHP256r1) are routed through a
+//     constant-time, formally-verified core (see internal/bp256) using RFC 6979
+//     deterministic nonces and low-s normalisation. Signature verification uses
+//     the standard library, which is appropriate because it processes only
+//     public data.
+//   - brainpoolP384r1, brainpoolP512r1 and the twisted (t1) curves use the
+//     standard library's generic, non-constant-time crypto/elliptic
+//     implementation (the rcurve isomorphism is adapted from
+//     github.com/ebfe/brainpool). They are used for certificate handling, not as
+//     software-signing curves.
+//
+// See README.md for the full security posture and references.
 package brainpool
 
 import (

@@ -3,6 +3,7 @@ package gempki
 import (
 	"encoding/asn1"
 	"net/http"
+	"slices"
 	"sort"
 	"time"
 )
@@ -86,12 +87,7 @@ func (p *Profile) Validator(ts *TrustStore, t CertificateType) *Validator {
 // Accepts reports whether t is in p.AcceptsTypes. Convenience for callers
 // that want to check before composing a validator.
 func (p *Profile) Accepts(t CertificateType) bool {
-	for _, a := range p.AcceptsTypes {
-		if a == t {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(p.AcceptsTypes, t)
 }
 
 // ProfileSmbAuth validates SMC-B-family institution authentication certs

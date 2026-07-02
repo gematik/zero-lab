@@ -41,6 +41,9 @@ JnSDBKGp4nZTcuozRPsJK47cBkil0x6Zrkoxkg==
 -----END CERTIFICATE-----`)
 
 func TestGemIDP(t *testing.T) {
+	if os.Getenv("GEMIDP_CLIENT_ID") == "" {
+		t.Skip("GEMIDP_CLIENT_ID not set — skipping gematik IDP test")
+	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	t.Log("TestGemIDP")
 	cfg := gemidp.ClientConfig{

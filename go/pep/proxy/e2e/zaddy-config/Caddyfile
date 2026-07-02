@@ -1,0 +1,15 @@
+{
+	auto_https off
+	pep {
+		jwks_path /etc/caddy/pdp-jwks.json
+	}
+}
+:8010 {
+	route /protected-dpop {
+		enforce_policy {
+			authorization_dpop
+			scope protected
+		}
+		respond "OK: zaddy verified the DPoP-bound access token" 200
+	}
+}

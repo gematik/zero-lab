@@ -14,6 +14,17 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
+const defaultHTTPTimeout = 30 * time.Second
+
+// transportOrDefault returns http.DefaultTransport when rt is nil, so a decorated client always
+// has a concrete base transport to wrap.
+func transportOrDefault(rt http.RoundTripper) http.RoundTripper {
+	if rt == nil {
+		return http.DefaultTransport
+	}
+	return rt
+}
+
 type OpenidFederation struct {
 	fedMasterURL string
 	jwks         jwk.Set
@@ -39,19 +50,43 @@ type IdentityProviderInfo struct {
 	UserType         UserType `json:"user_type_supported"`
 }
 
-func NewOpenidFederation(fedMasterURL string, jwks jwk.Set) (*OpenidFederation, error) {
-	es, err := fetchMasterEntityStatement(fedMasterURL, jwks)
+// Option configures an OpenidFederation.
+type Option func(*federationOptions)
+
+type federationOptions struct {
+	httpClient *http.Client
+}
+
+// WithHTTPClient supplies the base HTTP client; the federation API key is layered onto a copy of it.
+// When unset, a client with a default timeout is created.
+func WithHTTPClient(httpClient *http.Client) Option {
+	return func(o *federationOptions) {
+		o.httpClient = httpClient
+	}
+}
+
+func NewOpenidFederation(fedMasterURL string, jwks jwk.Set, opts ...Option) (*OpenidFederation, error) {
+	o := &federationOptions{}
+	for _, opt := range opts {
+		opt(o)
+	}
+
+	httpClient := o.httpClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
+	}
+	// layer the federation API key onto the chosen client without mutating the caller's
+	decorated := *httpClient
+	decorated.Transport = AddApiKeyTransport(transportOrDefault(httpClient.Transport))
+	httpClient = &decorated
+
+	es, err := fetchMasterEntityStatement(fedMasterURL, jwks, httpClient)
 	if err != nil {
 		return nil, err
 	}
 
 	if es.Metadata.FederationEntity == nil {
 		return nil, fmt.Errorf("no federation entity found in master entity statement")
-	}
-
-	httpClient := &http.Client{
-		Timeout:   10 * time.Second,
-		Transport: AddApiKeyTransport(http.DefaultTransport),
 	}
 
 	return &OpenidFederation{
@@ -74,7 +109,7 @@ func (f *OpenidFederation) FetchIdpList() ([]IdentityProviderInfo, error) {
 		return nil, err
 	}
 
-	var idpEntity interface{}
+	var idpEntity any
 	if err := token.Get("idp_entity", &idpEntity); err != nil {
 		return nil, fmt.Errorf("unable to get idp_entity from token: %w", err)
 	}
@@ -83,8 +118,8 @@ func (f *OpenidFederation) FetchIdpList() ([]IdentityProviderInfo, error) {
 
 }
 
-func fetchMasterEntityStatement(fedMasterURL string, jwks jwk.Set) (*EntityStatement, error) {
-	resp, err := http.Get(fedMasterURL + "/.well-known/openid-federation")
+func fetchMasterEntityStatement(fedMasterURL string, jwks jwk.Set, httpClient *http.Client) (*EntityStatement, error) {
+	resp, err := httpClient.Get(fedMasterURL + "/.well-known/openid-federation")
 	if err != nil {
 		return nil, err
 	}
@@ -161,60 +196,8 @@ func (f *OpenidFederation) FetchEntityStatement(iss string) (*EntityStatement, e
 	return selfSigned, nil
 }
 
-func convertToStringMap(i interface{}) interface{} {
-	switch x := i.(type) {
-	// Convert maps
-	case map[interface{}]interface{}:
-		m := make(map[string]interface{})
-		for k, v := range x {
-			// Convert the key to a string (often you'd cast if keys are known to be strings,
-			// but if they're not guaranteed, you can use fmt.Sprintf, as below).
-			key := fmt.Sprintf("%v", k)
-			m[key] = convertToStringMap(v)
-		}
-		return m
-	case map[string]interface{}:
-		m := make(map[string]interface{})
-		for k, v := range x {
-			m[k] = convertToStringMap(v)
-		}
-		return m
-
-	// Convert slices
-	case []interface{}:
-		for i, v := range x {
-			x[i] = convertToStringMap(v)
-		}
-		return x
-
-	// Fallback (string, int, float, bool, etc.)
-	default:
-		return x
-	}
-}
-
-// converts the metadata template to an oidf.Metadata object
-func templateToMetadata(template map[string]interface{}) (*Metadata, error) {
-	template = convertToStringMap(template).(map[string]interface{})
-
-	// serialize the template to json
-	jsonData, err := json.Marshal(template)
-	if err != nil {
-		return nil, fmt.Errorf("serialize metadata template: %w", err)
-	}
-
-	// deserialize the json to an oidf.Metadata object
-	var metadata Metadata
-	err = json.Unmarshal(jsonData, &metadata)
-	if err != nil {
-		return nil, err
-	}
-
-	return &metadata, nil
-}
-
 // converts idp_entity claim to array of IdentityProviderInfo
-func idpEntityToIdpInfo(idpEntity interface{}) ([]IdentityProviderInfo, error) {
+func idpEntityToIdpInfo(idpEntity any) ([]IdentityProviderInfo, error) {
 	// serialize the obj to json
 	jsonData, err := json.Marshal(idpEntity)
 	if err != nil {
@@ -242,7 +225,7 @@ func (f *OpenidFederation) FetchSignedJwks(op *EntityStatement) (jwk.Set, error)
 
 	jwksUrl := op.Metadata.OpenidProvider.SignedJwksUri
 
-	resp, err := http.Get(jwksUrl)
+	resp, err := f.httpClient.Get(jwksUrl)
 	if err != nil {
 		return nil, fmt.Errorf("unable to fetch jwks from '%s': %w", jwksUrl, err)
 	}

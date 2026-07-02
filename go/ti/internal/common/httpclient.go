@@ -3,7 +3,12 @@ package common
 import (
 	"fmt"
 	"net/http"
+	"time"
 )
+
+// defaultHTTPTimeout is a backstop ceiling on TI HTTP requests; per-call context deadlines bound
+// individual operations.
+const defaultHTTPTimeout = 60 * time.Second
 
 // NewHTTPClient returns an HTTP client with proxy support (HTTP_PROXY, HTTPS_PROXY,
 // NO_PROXY) and a User-Agent header on every request.
@@ -15,6 +20,7 @@ func NewHTTPClient() *http.Client {
 
 func ClientWithTransport(base http.RoundTripper) *http.Client {
 	return &http.Client{
+		Timeout:   defaultHTTPTimeout,
 		Transport: &userAgentTransport{base: base},
 	}
 }

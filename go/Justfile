@@ -1,58 +1,254 @@
+# Load ./.env (gitignored) so env-guarded tests pick up local config (e.g. GEMIDP_*).
+set dotenv-load := true
+
 DOCKER_USER := "spilikin"
-ZERO_EPA_VERSION := "0.17.0"
-ZERO_PDP_VERSION := "0.15.0"
-ZERO_CADDY_VERSION := "0.16.0"
-TI_CLI_VERSION := "0.16.0"
+
+# Pinned Go code-analysis tools (run via `go run`; not added to any go.mod)
+MODERNIZE := "golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.22.0"
+STATICCHECK := "honnef.co/go/tools/cmd/staticcheck@v0.7.0"
+GOVULNCHECK := "golang.org/x/vuln/cmd/govulncheck@v1.4.0"
+
+# Every module — library AND command — is versioned solely by its own git tag
+# (go/<module>/vX.Y.Z), bumped only when that module changes. The local/Docker build stamp
+# is derived from `git describe` (see `_modver`); `go install` reads the version from the
+# module build info. Bump by tagging: `just tag <module> <version>` (see `versions`/`changed`).
+
+# Upstream Caddy version, derived from zaddy/go.mod (single source of truth). Used as
+# SemVer build metadata for the zero-caddy image tag, e.g. zero-caddy:0.20.2-caddy2.11.4.
+CADDY_VERSION := `grep -E 'caddyserver/caddy/v2 v[0-9]' zaddy/go.mod | head -1 | awk '{print $2}' | sed 's/^v//'`
 
 # Display available commands
 info:
     just --list
 
+# (internal) A module's version from its latest go/<mod>/v* tag via git describe, else "dev".
+_modver mod:
+    #!/usr/bin/env bash
+    v=$(git describe --tags --match "go/{{mod}}/v*" 2>/dev/null | sed 's|.*/v||')
+    echo "${v:-dev}"
+
+# Build all command binaries locally into ./dist (version from git tag via ldflags)
+build: build-epa build-pdp build-caddy build-ti
+
+# Build the zero-epa binary locally
+build-epa:
+    go build -ldflags "-X github.com/gematik/zero-lab/go/epa.Version=$(just _modver epa)" -o dist/zero-epa ./epa/cmd/zero-epa
+
+# Build the zero-pdp binary locally
+build-pdp:
+    go build -ldflags "-X github.com/gematik/zero-lab/go/pdp.Version=$(just _modver pdp)" -o dist/zero-pdp ./pdp/cmd/zero-pdp
+
+# Build the zero-caddy binary locally
+build-caddy:
+    go build -ldflags "-X main.Version=$(just _modver zaddy)" -o dist/zero-caddy ./zaddy/cmd/zero-caddy
+
+# Build the ti CLI binary locally
+build-ti:
+    go build -ldflags "-X main.Version=$(just _modver ti)" -o dist/ti ./ti
+
 
 # Build the zero-epa docker image
 docker-build-epa:
-    just generate-version-file epa/version.go epa {{ZERO_EPA_VERSION}}
-    docker build --platform linux/amd64 -t "{{DOCKER_USER}}/zero-epa:{{ZERO_EPA_VERSION}}" -f ./epa/cmd/zero-epa/Dockerfile .
-    docker tag "{{DOCKER_USER}}/zero-epa:{{ZERO_EPA_VERSION}}" "{{DOCKER_USER}}/zero-epa:latest"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver epa)
+    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/zero-epa:$v" -f ./epa/cmd/zero-epa/Dockerfile .
+    docker tag "{{DOCKER_USER}}/zero-epa:$v" "{{DOCKER_USER}}/zero-epa:latest"
 
 # Push the zero-epa docker image to the docker hub
 docker-push-epa: docker-build-epa
-    docker push "{{DOCKER_USER}}/zero-epa:{{ZERO_EPA_VERSION}}"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver epa)
+    docker push "{{DOCKER_USER}}/zero-epa:$v"
     docker push "{{DOCKER_USER}}/zero-epa:latest"
 
-# Build the zero-caddy docker image
+# Build the zero-caddy docker image (tag combines our version + Caddy version)
 docker-build-caddy:
-    docker build --platform linux/amd64 -t "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}" -f ./zaddy/cmd/zero-caddy/Dockerfile .
-    docker tag "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}" "{{DOCKER_USER}}/zero-caddy:latest"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver zaddy)
+    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/zero-caddy:$v-caddy{{CADDY_VERSION}}" -f ./zaddy/cmd/zero-caddy/Dockerfile .
+    docker tag "{{DOCKER_USER}}/zero-caddy:$v-caddy{{CADDY_VERSION}}" "{{DOCKER_USER}}/zero-caddy:latest"
 
 # Push the zero-caddy docker image to the docker hub
 docker-push-caddy: docker-build-caddy
-    docker push "{{DOCKER_USER}}/zero-caddy:{{ZERO_CADDY_VERSION}}"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver zaddy)
+    docker push "{{DOCKER_USER}}/zero-caddy:$v-caddy{{CADDY_VERSION}}"
     docker push "{{DOCKER_USER}}/zero-caddy:latest"
 
 # Build the zero-pdp docker image
 docker-build-pdp:
-    just generate-version-file pdp/version.go pdp {{ZERO_PDP_VERSION}}
-    docker build --platform linux/amd64 -t "{{DOCKER_USER}}/zero-pdp:{{ZERO_PDP_VERSION}}" -f ./pdp/cmd/zero-pdp/Dockerfile .
-    docker tag "{{DOCKER_USER}}/zero-pdp:{{ZERO_PDP_VERSION}}" "{{DOCKER_USER}}/zero-pdp:latest"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver pdp)
+    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/zero-pdp:$v" -f ./pdp/cmd/zero-pdp/Dockerfile .
+    docker tag "{{DOCKER_USER}}/zero-pdp:$v" "{{DOCKER_USER}}/zero-pdp:latest"
 
 # Push the zero-pdp docker image to the docker hub
 docker-push-pdp: docker-build-pdp
-    docker push "{{DOCKER_USER}}/zero-pdp:{{ZERO_PDP_VERSION}}"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver pdp)
+    docker push "{{DOCKER_USER}}/zero-pdp:$v"
     docker push "{{DOCKER_USER}}/zero-pdp:latest"
 
-# generate version file
-generate-version-file file package version:
-    @echo "package {{package}}" > {{file}}
-    @echo "" >> {{file}}
-    @echo "const Version = \"{{version}}\"" >> {{file}}
+# Build the zero-pep-proxy docker image (oauth2-proxy-style auth gateway, scratch, non-root)
+docker-build-pep:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver pep)
+    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/zero-pep-proxy:$v" -f ./pep/cmd/zero-pep-proxy/Dockerfile .
+    docker tag "{{DOCKER_USER}}/zero-pep-proxy:$v" "{{DOCKER_USER}}/zero-pep-proxy:latest"
 
-# Update and tidy all go modules
+# Push the zero-pep-proxy docker image to the docker hub
+docker-push-pep: docker-build-pep
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver pep)
+    docker push "{{DOCKER_USER}}/zero-pep-proxy:$v"
+    docker push "{{DOCKER_USER}}/zero-pep-proxy:latest"
+
+# Start the local Postgres for zero-pdp (the kv JSON store). Then point the server at it with
+#   export DATABASE_URL=postgres://zero:zero@localhost:5432/zero?sslmode=disable
+# (unset DATABASE_URL falls back to an in-memory store). Run the kv Postgres tests with
+#   TEST_DATABASE_URL=$DATABASE_URL go test ./kv/postgres
+pdp-db-up:
+    docker compose -f pdp/docker-compose.yaml up -d
+
+# Stop the local Postgres (append `-- -v` to also drop the data volume).
+pdp-db-down *ARGS:
+    docker compose -f pdp/docker-compose.yaml down {{ARGS}}
+
+# Build the zero-bff-pdp docker image (pdp authorization server + bff + webui in one process, scratch, non-root)
+docker-build-bff-pdp:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver bff)
+    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/zero-bff-pdp:$v" -f ./bff/cmd/zero-bff-pdp/Dockerfile .
+    docker tag "{{DOCKER_USER}}/zero-bff-pdp:$v" "{{DOCKER_USER}}/zero-bff-pdp:latest"
+
+# Push the zero-bff-pdp docker image to the docker hub
+docker-push-bff-pdp: docker-build-bff-pdp
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver bff)
+    docker push "{{DOCKER_USER}}/zero-bff-pdp:$v"
+    docker push "{{DOCKER_USER}}/zero-bff-pdp:latest"
+
+# Build the metsubushi docker image (pod smoke-test app, scratch, non-root)
+docker-build-metsubushi:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver metsubushi)
+    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/metsubushi:$v" -f ./metsubushi/Dockerfile .
+    docker tag "{{DOCKER_USER}}/metsubushi:$v" "{{DOCKER_USER}}/metsubushi:latest"
+
+# Push the metsubushi docker image to the docker hub
+docker-push-metsubushi: docker-build-metsubushi
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v=$(just _modver metsubushi)
+    docker push "{{DOCKER_USER}}/metsubushi:$v"
+    docker push "{{DOCKER_USER}}/metsubushi:latest"
+
+# Tag a module at a version, e.g. `just tag ti 0.20.2` or `just tag brainpool 0.3.1`
+# -> go/<module>/vX.Y.Z. Tag only the modules that changed (see `changed`).
+tag name version:
+    git tag -a "go/{{name}}/v{{version}}" -m "{{name}} v{{version}}"
+
+# Show the latest release tag for every module.
+versions:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for dir in $(find . -name go.mod -exec dirname {} \; | sed 's|^\./||' | sort); do
+        latest=$(git tag -l "go/$dir/v*" | sort -V | tail -1)
+        printf '%-12s %s\n' "$dir" "${latest:-<untagged>}"
+    done
+
+# List modules with commits since their latest tag (candidates for a version bump).
+changed:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for dir in $(find . -name go.mod -exec dirname {} \; | sed 's|^\./||' | sort); do
+        latest=$(git tag -l "go/$dir/v*" | sort -V | tail -1)
+        if [ -z "$latest" ]; then
+            echo "$dir: never tagged"
+        elif [ -n "$(git log --oneline "$latest"..HEAD -- "$dir")" ]; then
+            echo "$dir: changed since $latest"
+        fi
+    done
+
+# Push all local tags to origin
+push-tags:
+    git push origin --tags
+
+# Repin every in-repo (zero-lab/go) require to a git ref (default: current branch)
+# so that tagged command builds — `go install ...@<tag>`, which ignore go.work —
+# pick up the latest library code. PUSH library changes first.
+#
+# We construct each module's pseudo-version explicitly instead of letting
+# `go get <dep>@<branch>` derive it. In this multi-module repo the automatic
+# derivation mis-bases the pseudo-version on the highest repo-wide tag (e.g.
+# go/ti/v0.20.3) rather than the dep's own go/<dep>/v* tag, so the fetch then
+# fails with "module github.com/gematik/zero-lab@<ref> found, but does not
+# contain package .../go/<dep>". Deriving it ourselves from each module's own
+# latest tag sidesteps that.
+sync REF=`git rev-parse --abbrev-ref HEAD`:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export GOPRIVATE=github.com/gematik/zero-lab
+    commit=$(git rev-parse "{{REF}}")
+    short=$(git rev-parse --short=12 "$commit")
+    ts=$(TZ=UTC git show -s --date=format-local:%Y%m%d%H%M%S --format=%cd "$commit")
+    # modver <name>: the version to require for go/<name> at $commit — its tag if
+    # the tag is at $commit, otherwise a correctly-based pseudo-version above the
+    # highest tag that is an ANCESTOR of $commit (Go rejects a pseudo-version whose
+    # base tag is not an ancestor, and tags may live off-main).
+    modver() {
+        local tag best="" ma mi pa
+        for tag in $(git tag -l "go/$1/v*" | sort -V); do
+            git merge-base --is-ancestor "$(git rev-list -n1 "$tag")" "$commit" 2>/dev/null && best="$tag"
+        done
+        if [ -z "$best" ]; then
+            echo "v0.0.0-$ts-$short"
+        elif [ "$(git rev-list -n1 "$best")" = "$commit" ]; then
+            echo "${best##*/}"
+        else
+            IFS=. read -r ma mi pa <<<"${best##*/v}"
+            echo "v$ma.$mi.$((pa+1))-0.$ts-$short"
+        fi
+    }
+    for dir in $(find . -name 'go.mod' -exec dirname {} \;); do
+        ( cd "$dir"
+          self=$(awk 'NR==1{print $2}' go.mod)
+          for dep in $(grep -oE 'github\.com/gematik/zero-lab/go/[a-zA-Z0-9]+' go.mod | sort -u); do
+              [ "$dep" = "$self" ] && continue
+              ver=$(modver "${dep##*/}")
+              echo "==> $self: get $dep@$ver"
+              go get "$dep@$ver"
+          done )
+    done
+    go work sync
+
+# Tidy all go modules: sync go.mod/go.sum to imports. Does NOT upgrade versions.
 tidy:
     #!/usr/bin/env bash
     set -euo pipefail
-    for dir in $(find . -name 'go.mod' -not -path './libzero/*' -exec dirname {} \; | sort); do
+    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
         echo "==> Tidying $dir"
+        (cd "$dir" && go mod tidy)
+    done
+
+# Upgrade all external dependencies to their latest versions, then tidy. Deliberate
+# action — re-floats deps, so re-run `just sync` before tagging a release.
+upgrade:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
+        echo "==> Upgrading $dir"
         (cd "$dir" && go get -u ./... && go mod tidy)
     done
 
@@ -62,6 +258,97 @@ update-roots:
     curl -o ./gempki/roots-dev-ref.json https://download-ref.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json
     curl -o ./gempki/roots-prod.json https://download.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json
 
-# Generate version file for TI CLI
-generate-version-ti-cli:
-    just generate-version-file ti/version.go main {{TI_CLI_VERSION}}
+# --- zero-pdp e2e (see docs/e2e.md) ---
+
+# Start zero-pdp for e2e against URL (the issuer). Generates sign.jwk, then serves the e2e testdata
+# config. The e2e client authenticates with private_key_jwt: its public JWK is committed in the config
+# and the tests sign assertions with testdata/e2e-client.prk.jwk.
+pdp-e2e-serve URL='http://localhost:8011':
+    #!/usr/bin/env bash
+    set -euo pipefail
+    td=pdp/e2e/testdata
+    [ -f "$td/sign.jwk" ] || go run ./pdp/cmd/zero-pdp jose generate-jwk > "$td/sign.jwk"
+    export ZERO_PDP_E2E_URL='{{URL}}'
+    export ZERO_PDP_E2E_CLIENT_ID="${ZERO_PDP_E2E_CLIENT_ID:-e2e-client}"
+    export ZERO_PDP_E2E_REDIRECT_URI="${ZERO_PDP_E2E_REDIRECT_URI:-http://localhost:8765/as-callback}"
+    echo "serving zero-pdp: issuer={{URL}} client=$ZERO_PDP_E2E_CLIENT_ID"
+    go run ./pdp/cmd/zero-pdp start -f pdp.e2e.yaml -w "$td"
+
+# Run smoke+regression+flow e2e suites against a running server at URL.
+pdp-e2e URL='http://localhost:8011':
+    ZERO_PDP_E2E_URL='{{URL}}' go test ./pdp/e2e -run 'Smoke|Regression|Flow' -count=1 -v
+
+# Run only the smoke suite.
+pdp-e2e-smoke URL='http://localhost:8011':
+    ZERO_PDP_E2E_URL='{{URL}}' go test ./pdp/e2e -run Smoke -count=1 -v
+
+# Run the human-in-the-loop authorization-code flow (opens a browser; needs an OP configured).
+# Provide the public URL explicitly, e.g. `just pdp-e2e-hitl https://<rathole-host>`.
+pdp-e2e-hitl URL:
+    ZERO_PDP_E2E_URL='{{URL}}' ZERO_PDP_E2E_HITL=1 go test ./pdp/e2e -run HITL -count=1 -v -timeout 5m
+
+# Run the env-guarded gemidp SMC-B integration test against the gematik IDP (uses ./.env).
+gemidp-smcb-test:
+    go test ./gemidp -run TestGemIDP_SMCB -count=1 -v -timeout 2m
+
+# Run the env-guarded epa connect test for both providers (VAU + authorize + record status + consent;
+# no VSDM). Uses ./.env (EPA_SMCB_P12, EPA_ENV, EPA_P1_INSURANT_ID, EPA_P2_INSURANT_ID, ...).
+epa-connect-test:
+    go test ./epa -run TestEPA_Connect -count=1 -v -timeout 5m
+
+# Run the env-guarded epa entitlement test. Requires VSDM_HMAC_KEY/VSDM_HMAC_KID exported in the SHELL
+# (never store them in ./.env). Writes a report to epa/test-reports/.
+epa-entitle-test:
+    go test ./epa -run TestEPA_Entitle -count=1 -v -timeout 5m
+
+# Run the env-guarded OpenID Federation test against a live federation master (uses ./.env).
+# Set OIDF_FEDMASTER_URL, e.g. https://app-ref.federationmaster.de.
+oidf-test:
+    go test ./oidf -run TestFederation -count=1 -v -timeout 2m
+
+# --- Go code analysis (all modules) ---
+
+# Report Go modernization suggestions (modern idioms: any, min/max, slices/maps, range-int, ...)
+modernize:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    fail=0
+    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
+        echo "==> modernize $dir"
+        ( cd "$dir" && go run {{MODERNIZE}} ./... ) || fail=1
+    done
+    exit $fail
+
+# Apply Go modernization fixes (including tests), then gofmt
+modernize-fix:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
+        echo "==> modernize -fix $dir"
+        ( cd "$dir" && go run {{MODERNIZE}} -fix -test ./... || true; gofmt -w . )
+    done
+
+# Static analysis: go vet + staticcheck
+lint:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    fail=0
+    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
+        echo "==> lint $dir"
+        ( cd "$dir" && go vet ./... && go run {{STATICCHECK}} ./... ) || fail=1
+    done
+    exit $fail
+
+# Scan for known vulnerabilities (govulncheck)
+vuln:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    fail=0
+    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
+        echo "==> govulncheck $dir"
+        ( cd "$dir" && go run {{GOVULNCHECK}} ./... ) || fail=1
+    done
+    exit $fail
+
+# One-shot static checks: go vet + staticcheck + modernize report
+check: lint modernize

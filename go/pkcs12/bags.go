@@ -8,10 +8,10 @@ import (
 type CertificateBag struct {
 	// Raw certificate data (DER-encoded X.509)
 	Raw []byte
-	
+
 	// FriendlyName is a human-readable name for the certificate
 	FriendlyName string
-	
+
 	// LocalKeyID links this certificate to its corresponding private key
 	LocalKeyID []byte
 }
@@ -20,10 +20,10 @@ type CertificateBag struct {
 type PrivateKeyBag struct {
 	// Raw private key data (DER-encoded PKCS#8)
 	Raw []byte
-	
+
 	// FriendlyName is a human-readable name for the key
 	FriendlyName string
-	
+
 	// LocalKeyID links this key to its corresponding certificate
 	LocalKeyID []byte
 }
@@ -43,33 +43,34 @@ type Bags struct {
 //   - For keys: x509.ParsePKCS8PrivateKey(key.Raw)
 //
 // Example:
-//   pfx, _ := pkcs12.Parse(data)
-//   bags, _ := pkcs12.ExtractBags(pfx, password)
-//   for _, cert := range bags.Certificates {
-//       x509Cert, _ := x509.ParseCertificate(cert.Raw)
-//       fmt.Println("Cert:", x509Cert.Subject)
-//   }
+//
+//	pfx, _ := pkcs12.Parse(data)
+//	bags, _ := pkcs12.ExtractBags(pfx, password)
+//	for _, cert := range bags.Certificates {
+//	    x509Cert, _ := x509.ParseCertificate(cert.Raw)
+//	    fmt.Println("Cert:", x509Cert.Subject)
+//	}
 func ExtractBags(pfx *PFX, password []byte) (*Bags, error) {
 	bags := &Bags{
 		Certificates: make([]CertificateBag, 0),
 		PrivateKeys:  make([]PrivateKeyBag, 0),
 	}
-	
+
 	// Verify MAC if present
 	if err := VerifyMAC(pfx, password); err != nil {
 		return nil, fmt.Errorf("MAC verification failed: %w", err)
 	}
-	
+
 	// Parse authenticated safe
 	authSafe, err := ParseAuthenticatedSafe(pfx.RawAuthSafe)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse authenticated safe: %w", err)
 	}
-	
+
 	// Process each ContentInfo
 	for _, ci := range authSafe.ContentInfos {
 		var safeContents []byte
-		
+
 		if ci.ContentType.Equal(OIDData) {
 			// Unencrypted data
 			safeContents, err = extractOctetString(ci.Content)
@@ -86,19 +87,19 @@ func ExtractBags(pfx *PFX, password []byte) (*Bags, error) {
 			// Unknown content type - skip
 			continue
 		}
-		
+
 		// Parse safe contents
 		sc, err := ParseSafeContents(safeContents)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse safe contents: %w", err)
 		}
-		
+
 		// Extract bags
 		if err := extractFromSafeContents(sc, password, bags); err != nil {
 			return nil, err
 		}
 	}
-	
+
 	return bags, nil
 }
 
@@ -136,7 +137,7 @@ func extractFromSafeContents(sc *SafeContents, password []byte, bags *Bags) erro
 				return fmt.Errorf("failed to extract certificate: %w", err)
 			}
 			bags.Certificates = append(bags.Certificates, cert)
-			
+
 		case bag.BagID.Equal(OIDPKCS8ShroudedKeyBag):
 			// Encrypted private key
 			key, err := extractShroudedKey(bag, password)
@@ -144,7 +145,7 @@ func extractFromSafeContents(sc *SafeContents, password []byte, bags *Bags) erro
 				return fmt.Errorf("failed to extract shrouded key: %w", err)
 			}
 			bags.PrivateKeys = append(bags.PrivateKeys, key)
-			
+
 		case bag.BagID.Equal(OIDKeyBag):
 			// Unencrypted private key (PKCS#8)
 			key, err := extractKeyBag(bag)
@@ -152,7 +153,7 @@ func extractFromSafeContents(sc *SafeContents, password []byte, bags *Bags) erro
 				return fmt.Errorf("failed to extract key bag: %w", err)
 			}
 			bags.PrivateKeys = append(bags.PrivateKeys, key)
-			
+
 		case bag.BagID.Equal(OIDSafeContentsBag):
 			// Nested safe contents
 			nestedSC, err := ParseSafeContents(bag.BagValue)
@@ -164,50 +165,50 @@ func extractFromSafeContents(sc *SafeContents, password []byte, bags *Bags) erro
 			}
 		}
 	}
-	
+
 	return nil
 }
 
 // extractCertificate extracts a certificate from a CertBag
 func extractCertificate(bag SafeBag) (CertificateBag, error) {
 	cert := CertificateBag{}
-	
+
 	// Parse CertBag
 	certBag, err := ParseCertBag(bag.BagValue)
 	if err != nil {
 		return cert, err
 	}
-	
+
 	// Only support X.509 certificates
 	if !certBag.CertID.Equal(OIDX509Certificate) {
-		return cert, fmt.Errorf("%w: unsupported certificate type %v", 
+		return cert, fmt.Errorf("%w: unsupported certificate type %v",
 			ErrUnsupportedAlgorithm, certBag.CertID)
 	}
-	
+
 	// CertValue is already the raw DER-encoded certificate
 	cert.Raw = certBag.CertValue
-	
+
 	// Extract attributes
 	cert.FriendlyName, cert.LocalKeyID = extractAttributes(bag.Attributes)
-	
+
 	return cert, nil
 }
 
 // extractShroudedKey extracts and decrypts a PKCS8ShroudedKeyBag
 func extractShroudedKey(bag SafeBag, password []byte) (PrivateKeyBag, error) {
 	key := PrivateKeyBag{}
-	
+
 	// Decrypt the shrouded key bag
 	decrypted, err := DecryptShroudedKeyBag(bag.BagValue, password)
 	if err != nil {
 		return key, err
 	}
-	
+
 	key.Raw = decrypted
-	
+
 	// Extract attributes
 	key.FriendlyName, key.LocalKeyID = extractAttributes(bag.Attributes)
-	
+
 	return key, nil
 }
 
@@ -216,10 +217,10 @@ func extractKeyBag(bag SafeBag) (PrivateKeyBag, error) {
 	key := PrivateKeyBag{
 		Raw: bag.BagValue, // Already in PKCS#8 format
 	}
-	
+
 	// Extract attributes
 	key.FriendlyName, key.LocalKeyID = extractAttributes(bag.Attributes)
-	
+
 	return key, nil
 }
 
@@ -258,7 +259,7 @@ func (b *Bags) FindPrivateKey(localKeyID []byte) *PrivateKeyBag {
 // based on localKeyID matching
 func (b *Bags) FindMatchingPairs() []CertKeyPair {
 	pairs := make([]CertKeyPair, 0)
-	
+
 	for i := range b.Certificates {
 		cert := &b.Certificates[i]
 		if len(cert.LocalKeyID) > 0 {
@@ -270,7 +271,7 @@ func (b *Bags) FindMatchingPairs() []CertKeyPair {
 			}
 		}
 	}
-	
+
 	return pairs
 }
 

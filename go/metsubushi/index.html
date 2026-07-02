@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light">
-<title>Pod Vitals · pod smoke test</title>
+<title>Pod Echo · pod smoke test</title>
 <meta name="description" content="Lightweight pod smoke-test endpoint in the gematik developer style.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -25,6 +25,7 @@
     --functional-green: #007336;
     --functional-light-green: #d8f3e5;
     --functional-red: #c71a11;
+    --functional-light-red: #ffe0df;
     --base-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --mono-font: 'SF Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
     --radius-m: 8px;
@@ -111,6 +112,28 @@
     background: var(--functional-light-green);
     border-radius: 999px;
     padding: 6px 14px;
+  }
+  .navbar__status.is-checking {
+    color: var(--dark-grey);
+    background: var(--medium-grey);
+  }
+  .navbar__status.is-checking .dot {
+    background: var(--dark-grey);
+    animation: none;
+    box-shadow: none;
+  }
+  .navbar__status.is-down {
+    color: var(--functional-red);
+    background: var(--functional-light-red);
+  }
+  .navbar__status.is-down .dot {
+    background: var(--functional-red);
+    animation: pulse-down 2s infinite;
+  }
+  @keyframes pulse-down {
+    0%   { box-shadow: 0 0 0 0 rgba(199,26,17,.45); }
+    70%  { box-shadow: 0 0 0 8px rgba(199,26,17,0); }
+    100% { box-shadow: 0 0 0 0 rgba(199,26,17,0); }
   }
   .btn-logout {
     display: inline-flex;
@@ -327,6 +350,71 @@
   .j-num { color: var(--magenta); }
   .j-bool { color: var(--medium-blue); font-weight: 600; }
   .j-null { color: var(--dark-grey); }
+  .cookie-list { display: grid; gap: 0; }
+  .cookie-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 4px;
+    align-items: start;
+    padding: 12px 0;
+    border-top: 1px solid var(--light-grey);
+  }
+  .cookie-row:first-child { padding-top: 0; border-top: none; }
+  .cookie-row:last-child { padding-bottom: 0; }
+  .cookie-name {
+    font-family: var(--mono-font);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--dark-blue);
+    overflow-wrap: anywhere;
+  }
+  .cookie-value { min-width: 0; }
+  .cookie-val {
+    font-family: var(--mono-font);
+    font-size: 13px;
+    color: var(--almost-black);
+    word-break: break-all;
+  }
+  .cookie-row.is-sensitive {
+    border-left: 3px solid var(--magenta);
+    padding-left: 12px;
+    margin-left: -3px;
+  }
+  .badge-warn {
+    display: inline-block;
+    margin-left: 8px;
+    font-family: var(--base-font);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--white);
+    background: var(--magenta);
+    border-radius: 999px;
+    padding: 2px 8px;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .cookie-warn {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--magenta);
+  }
+  .cookie-warn svg { flex: none; margin-top: 1px; }
+  .jwt { display: grid; gap: 12px; }
+  .jwt-part { display: grid; gap: 5px; min-width: 0; }
+  .jwt-label {
+    font-family: var(--base-font);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--dark-grey);
+  }
 
   /* ---------- API endpoint list ---------- */
   .endpoints { display: grid; gap: 12px; }
@@ -395,6 +483,17 @@
       color: var(--dark-grey);
     }
     .hdr-row .v { font-size: 14px; }
+    .cookie-list { gap: 14px; }
+    .cookie-row {
+      grid-template-columns: 1fr;
+      gap: 3px;
+    }
+    .cookie-name {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--dark-grey);
+    }
     .hero { padding: 48px 0 36px; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -405,17 +504,17 @@
 <body>
   <header class="navbar">
     <div class="container navbar__inner">
-      <a class="logo" href="/" aria-label="Pod Vitals home">
+      <a class="logo" href="/" aria-label="Pod Echo home">
         <svg class="logo__bars" width="30" height="22" viewBox="0 0 30 22" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           <rect x="0" y="0"  width="29.5" height="3.4" rx="1.7" fill="#FFCD00"/>
           <rect x="0" y="6.4" width="20.6" height="3.4" rx="1.7" fill="#E82112"/>
           <rect x="0" y="12.8" width="11.5" height="3.4" rx="1.7" fill="#1D1D1D"/>
         </svg>
-        <span class="logo__word">Pod Vitals</span>
+        <span class="logo__word">Pod Echo</span>
         <span class="logo__tag">smoke-test</span>
       </a>
       <div class="navbar__actions">
-        <span class="navbar__status"><span class="dot"></span><span class="txt">healthy</span></span>
+        <span class="navbar__status is-checking" id="status" title="checking…"><span class="dot"></span><span class="txt">checking…</span></span>
         <a class="btn-logout" id="logout" aria-label="Log out" hidden>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           <span class="btn-logout__txt">Log out</span>
@@ -481,7 +580,7 @@
 
   <footer class="site">
     <div class="container">
-      <span>Pod Vitals · pod smoke test</span>
+      <span>Pod Echo · pod smoke test</span>
       <span class="muted" id="footMeta"></span>
     </div>
   </footer>
@@ -500,6 +599,65 @@
       const bin = atob(b64);
       const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
       return JSON.parse(new TextDecoder('utf-8').decode(bytes));
+    }
+
+    // Best-effort: decode any value that is base64/base64url-encoded JSON.
+    // Only objects/arrays count — scalars (numbers, bare strings) are rejected
+    // so opaque tokens and ids don't get mistaken for encoded JSON.
+    function tryDecodeJsonValue(s) {
+      const v = String(s);
+      if (v.length < 8 || !/^[A-Za-z0-9+/_=-]+$/.test(v)) return null;
+      let b64 = v.replace(/-/g, '+').replace(/_/g, '/');
+      const pad = b64.length % 4;
+      if (pad) b64 += '='.repeat(4 - pad);
+      try {
+        const bin = atob(b64);
+        const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+        const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+        const obj = JSON.parse(text);
+        return (obj !== null && typeof obj === 'object') ? obj : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function b64urlDecode(seg) {
+      let b64 = seg.replace(/-/g, '+').replace(/_/g, '/');
+      const pad = b64.length % 4;
+      if (pad) b64 += '='.repeat(4 - pad);
+      const bin = atob(b64);
+      const bytes = Uint8Array.from(bin, c => c.charCodeAt(0));
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    }
+
+    // Recognise a compact JWS (3 segments) or JWE (5 segments) and extract
+    // what is decodable without keys: always the protected header, plus the
+    // JWS payload. JWE content stays opaque (encrypted). A leading "Bearer "
+    // scheme is tolerated. The header must parse to a JSON object, which keeps
+    // arbitrary dotted strings from being mistaken for tokens.
+    function tryDecodeJwt(s) {
+      let v = String(s).trim();
+      const m = /^Bearer\s+(.+)$/i.exec(v);
+      if (m) v = m[1].trim();
+      const parts = v.split('.');
+      if (parts.length !== 3 && parts.length !== 5) return null;
+      if (!parts[0] || !parts.every(p => /^[A-Za-z0-9_-]*$/.test(p))) return null;
+      let header;
+      try {
+        header = JSON.parse(b64urlDecode(parts[0]));
+      } catch {
+        return null;
+      }
+      if (header === null || typeof header !== 'object') return null;
+      const out = { type: parts.length === 5 ? 'jwe' : 'jws', header, parts, token: v };
+      if (out.type === 'jws') {
+        try {
+          const text = b64urlDecode(parts[1]);
+          try { out.payload = JSON.parse(text); }
+          catch { out.payloadText = text; }
+        } catch { /* payload not base64url-decodable; leave opaque */ }
+      }
+      return out;
     }
 
     function highlightJson(obj) {
@@ -524,9 +682,7 @@
       ['Node', 'nodeName'],
       ['Local address', 'localAddresses'],
       ['Platform', 'platform'],
-      ['Go runtime', 'goVersion'],
       ['CPU cores', 'numCPU'],
-      ['Goroutines', 'goroutines'],
       ['Requests served', 'requestsServed'],
       ['Uptime', 'uptimeSeconds'],
     ];
@@ -566,12 +722,16 @@
       return `<div class="hdr-row"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`;
     }
 
-    function decodedRow(k, v) {
+    function jsonBlock(v, obj, rawLabel) {
+      return `<pre class="json">${highlightJson(obj)}</pre>` +
+        `<details class="raw"><summary>${rawLabel}</summary><code>${esc(v)}</code></details>`;
+    }
+
+    function decodedRow(k, v, obj) {
       let inner;
       try {
-        const obj = decodeB64UrlJson(v);
-        inner = `<pre class="json">${highlightJson(obj)}</pre>` +
-          `<details class="raw"><summary>raw base64url</summary><code>${esc(v)}</code></details>`;
+        if (obj === undefined) obj = decodeB64UrlJson(v);
+        inner = jsonBlock(v, obj, 'raw base64url');
       } catch (e) {
         inner = `<div>${esc(v)}</div><div class="decode-err">⚠ could not decode as base64url JSON: ${esc(e.message)}</div>`;
       }
@@ -580,22 +740,127 @@
         `<div class="v">${inner}</div></div>`;
     }
 
+    function jwtPart(label, html) {
+      return `<div class="jwt-part"><div class="jwt-label">${label}</div>${html}</div>`;
+    }
+
+    function jwtInner(v, jwt) {
+      const opaque = (seg) => `<code class="cookie-val">${esc(seg) || '—'}</code>`;
+      const sections = [jwtPart('header', `<pre class="json">${highlightJson(jwt.header)}</pre>`)];
+      if (jwt.type === 'jws') {
+        let payload;
+        if (jwt.payload !== undefined) payload = `<pre class="json">${highlightJson(jwt.payload)}</pre>`;
+        else if (jwt.payloadText !== undefined) payload = `<pre class="json">${esc(jwt.payloadText)}</pre>`;
+        else payload = opaque(jwt.parts[1]);
+        sections.push(jwtPart('payload', payload));
+        sections.push(jwtPart('signature', opaque(jwt.parts[2])));
+      } else {
+        const labels = ['', 'encrypted key', 'iv', 'ciphertext', 'tag'];
+        for (let i = 1; i < 5; i++) sections.push(jwtPart(labels[i], opaque(jwt.parts[i])));
+      }
+      return `<div class="jwt">${sections.join('')}` +
+        `<details class="raw"><summary>raw token</summary><code>${esc(v)}</code></details></div>`;
+    }
+
+    function jwtRow(k, v, jwt) {
+      const badge = jwt.type === 'jwe' ? 'jwt · jwe' : 'jwt · jws';
+      return `<div class="hdr-row hdr-row--decoded">` +
+        `<div class="k">${esc(k)}<span class="badge-decoded">${badge}</span></div>` +
+        `<div class="v">${jwtInner(v, jwt)}</div></div>`;
+    }
+
+    // Best decodable block for an arbitrary value (cookie value, etc.):
+    // JWT/JWS/JWE first, then base64/base64url JSON. Null when nothing fits.
+    function decodeValueBlock(v) {
+      const jwt = tryDecodeJwt(v);
+      if (jwt) return jwtInner(v, jwt);
+      const obj = tryDecodeJsonValue(v);
+      if (obj !== null) return jsonBlock(v, obj, 'raw value');
+      return null;
+    }
+
+    function parseCookies(v) {
+      return String(v).split(';').map(s => s.trim()).filter(Boolean).map(pair => {
+        const i = pair.indexOf('=');
+        return i < 0
+          ? { name: pair, value: '' }
+          : { name: pair.slice(0, i).trim(), value: pair.slice(i + 1).trim() };
+      });
+    }
+
+    // Heuristic: a cookie likely carries credential/session material. We can't
+    // see Set-Cookie attributes (HttpOnly/Secure) from a reflected Cookie header,
+    // so we flag by name prefix/keyword or by the value being a token.
+    const SENSITIVE_COOKIE_RE =
+      /(^__(host|secure)-)|sess|sid\b|auth|token|jwt|bearer|cred|secret|csrf|xsrf|(^|[_-])(access|refresh|id)([_-]?token)?$|api[_-]?key/i;
+
+    function cookieSensitivity(name, value) {
+      if (tryDecodeJwt(value)) return 'token value (JWT) exposed in plaintext';
+      if (SENSITIVE_COOKIE_RE.test(name)) return 'name suggests session/credential material';
+      return null;
+    }
+
+    function cookieRow(k, v) {
+      const cookies = parseCookies(v);
+      const items = cookies.map(c => {
+        const block = decodeValueBlock(c.value);
+        const val = block !== null
+          ? block
+          : `<code class="cookie-val">${c.value === '' ? '—' : esc(c.value)}</code>`;
+        const reason = cookieSensitivity(c.name, c.value);
+        const nameBadge = reason ? `<span class="badge-warn" title="${esc(reason)}">sensitive</span>` : '';
+        const warn = reason
+          ? `<div class="cookie-warn"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>` +
+            `<span>${esc(reason)} — reflecting it here defeats HttpOnly; test identities only.</span></div>`
+          : '';
+        return `<div class="cookie-row${reason ? ' is-sensitive' : ''}">` +
+          `<div class="cookie-name">${esc(c.name)}${nameBadge}</div>` +
+          `<div class="cookie-value">${val}${warn}</div></div>`;
+      }).join('');
+      return `<div class="hdr-row hdr-row--decoded">` +
+        `<div class="k">${esc(k)}<span class="badge-decoded">cookies · ${cookies.length}</span></div>` +
+        `<div class="v"><div class="cookie-list">${items}</div></div></div>`;
+    }
+
     function renderHeaders(data) {
       const body = $('#hdrBody');
       body.innerHTML = '';
       const h = data.headers || {};
       const keys = Object.keys(h).sort((a, b) => a.localeCompare(b));
-      const zeta = keys.filter(k => ZETA_HEADERS.has(k.toLowerCase()));
-      const rest = keys.filter(k => !ZETA_HEADERS.has(k.toLowerCase()));
       const extra = { Host: data.host, Origin: data.origin, Proto: data.proto, Method: data.method };
-      $('#hdrCount').textContent = `${keys.length} header${keys.length === 1 ? '' : 's'} reflected` +
-        (zeta.length ? ` · ${zeta.length} decoded` : '');
 
-      for (const k of zeta) body.insertAdjacentHTML('beforeend', decodedRow(k, h[k]));
+      const special = [], plain = [];
+      let decoded = 0;
+      for (const k of keys) {
+        const lk = k.toLowerCase();
+        if (lk === 'cookie') {
+          special.push(cookieRow(k, h[k]));
+        } else if (ZETA_HEADERS.has(lk)) {
+          special.push(decodedRow(k, h[k]));
+          decoded++;
+        } else {
+          const jwt = tryDecodeJwt(h[k]);
+          const obj = jwt ? null : tryDecodeJsonValue(h[k]);
+          if (jwt) {
+            special.push(jwtRow(k, h[k], jwt));
+            decoded++;
+          } else if (obj !== null) {
+            special.push(decodedRow(k, h[k], obj));
+            decoded++;
+          } else {
+            plain.push(plainRow(k, h[k]));
+          }
+        }
+      }
+
+      $('#hdrCount').textContent = `${keys.length} header${keys.length === 1 ? '' : 's'} reflected` +
+        (decoded ? ` · ${decoded} decoded` : '');
+
+      for (const row of special) body.insertAdjacentHTML('beforeend', row);
       for (const [k, v] of Object.entries(extra)) {
         if (v) body.insertAdjacentHTML('beforeend', plainRow(k, v));
       }
-      for (const k of rest) body.insertAdjacentHTML('beforeend', plainRow(k, h[k]));
+      for (const row of plain) body.insertAdjacentHTML('beforeend', row);
     }
 
     function skeleton() {
@@ -618,8 +883,52 @@
       }
     }
 
+    function setStatus(state, label, title) {
+      const el = $('#status');
+      el.classList.remove('is-checking', 'is-down');
+      if (state !== 'up') el.classList.add(state === 'down' ? 'is-down' : 'is-checking');
+      el.querySelector('.txt').textContent = label;
+      el.title = title || label;
+    }
+
+    function fmtUptime(s) {
+      s = Math.max(0, Math.floor(s));
+      const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600);
+      const m = Math.floor(s % 3600 / 60), sec = s % 60;
+      if (d) return `${d}d ${h}h`;
+      if (h) return `${h}h ${m}m`;
+      if (m) return `${m}m ${sec}s`;
+      return `${sec}s`;
+    }
+
+    function checkHealth() {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', '/healthz', true);
+      xhr.timeout = 5000;
+      xhr.setRequestHeader('Cache-Control', 'no-store');
+      xhr.onload = () => {
+        if (xhr.status < 200 || xhr.status >= 300) {
+          setStatus('down', 'unhealthy', `HTTP ${xhr.status}`);
+          return;
+        }
+        try {
+          const d = JSON.parse(xhr.responseText);
+          const healthy = d.status === 'healthy';
+          const title = `up ${fmtUptime(d.uptimeSeconds)} · ${d.requestsServed} requests served`;
+          setStatus(healthy ? 'up' : 'down', healthy ? 'healthy' : 'unhealthy', healthy ? title : 'reported unhealthy');
+        } catch (e) {
+          setStatus('down', 'unhealthy', 'invalid response');
+        }
+      };
+      xhr.onerror = () => setStatus('down', 'unreachable', 'network error');
+      xhr.ontimeout = () => setStatus('down', 'unreachable', 'request timed out');
+      xhr.send();
+    }
+
     $('#refresh').addEventListener('click', load);
     load();
+    checkHealth();
+    setInterval(checkHealth, 10000);
   </script>
 </body>
 </html>

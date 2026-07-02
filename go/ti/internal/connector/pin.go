@@ -120,9 +120,7 @@ func startSpinner(msg string) *spinner {
 	if !common.IsTerminal() {
 		return s
 	}
-	s.done.Add(1)
-	go func() {
-		defer s.done.Done()
+	s.done.Go(func() {
 		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 		i := 0
 		ticker := time.NewTicker(80 * time.Millisecond)
@@ -137,7 +135,7 @@ func startSpinner(msg string) *spinner {
 				i++
 			}
 		}
-	}()
+	})
 	return s
 }
 

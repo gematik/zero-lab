@@ -33,20 +33,20 @@ const (
 // switch back to the generated types.
 
 type externalAuthenticateRequest struct {
-	XMLName xml.Name              `xml:"http://schemas.xmlsoap.org/soap/envelope/ Envelope"`
+	XMLName xml.Name                `xml:"http://schemas.xmlsoap.org/soap/envelope/ Envelope"`
 	Body    externalAuthRequestBody `xml:"Body"`
 }
 
 type externalAuthRequestBody struct {
-	XMLName  xml.Name                  `xml:"http://schemas.xmlsoap.org/soap/envelope/ Body"`
-	Outer    externalAuthRequestPayload `xml:"http://ws.gematik.de/conn/SignatureService/v7.4 ExternalAuthenticate"`
+	XMLName xml.Name                   `xml:"http://schemas.xmlsoap.org/soap/envelope/ Body"`
+	Outer   externalAuthRequestPayload `xml:"http://ws.gematik.de/conn/SignatureService/v7.4 ExternalAuthenticate"`
 }
 
 type externalAuthRequestPayload struct {
-	CardHandle     string                         `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 CardHandle"`
-	Context        connectorcontext20.Context     `xml:"http://ws.gematik.de/conn/ConnectorContext/v2.0 Context"`
-	OptionalInputs externalAuthOptionalInputs     `xml:"http://ws.gematik.de/conn/SignatureService/v7.4 OptionalInputs"`
-	BinaryString   externalAuthBinaryString       `xml:"http://ws.gematik.de/conn/SignatureService/v7.4 BinaryString"`
+	CardHandle     string                     `xml:"http://ws.gematik.de/conn/ConnectorCommon/v5.0 CardHandle"`
+	Context        connectorcontext20.Context `xml:"http://ws.gematik.de/conn/ConnectorContext/v2.0 Context"`
+	OptionalInputs externalAuthOptionalInputs `xml:"http://ws.gematik.de/conn/SignatureService/v7.4 OptionalInputs"`
+	BinaryString   externalAuthBinaryString   `xml:"http://ws.gematik.de/conn/SignatureService/v7.4 BinaryString"`
 }
 
 type externalAuthOptionalInputs struct {
@@ -63,12 +63,12 @@ type base64DataElem struct {
 }
 
 type externalAuthenticateResponseEnv struct {
-	XMLName xml.Name                       `xml:"http://schemas.xmlsoap.org/soap/envelope/ Envelope"`
-	Body    externalAuthResponseBody       `xml:"Body"`
+	XMLName xml.Name                 `xml:"http://schemas.xmlsoap.org/soap/envelope/ Envelope"`
+	Body    externalAuthResponseBody `xml:"Body"`
 }
 
 type externalAuthResponseBody struct {
-	XMLName  xml.Name                  `xml:"http://schemas.xmlsoap.org/soap/envelope/ Body"`
+	XMLName  xml.Name                   `xml:"http://schemas.xmlsoap.org/soap/envelope/ Body"`
 	Response *externalAuthResponseInner `xml:"ExternalAuthenticateResponse"`
 	Fault    *soapFault                 `xml:"Fault"`
 }

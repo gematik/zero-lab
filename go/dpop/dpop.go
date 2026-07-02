@@ -56,6 +56,25 @@ func NewPrivateKey() (*PrivateKey, error) {
 	return &PrivateKey{JwkPrivate: key, JwkPublic: publicKes, Thumbprint: thumbprint}, nil
 }
 
+// FromJWK wraps an existing JWK private key as a DPoP signing key (deriving its public half and base64url
+// SHA-256 thumbprint). Unlike NewPrivateKey it does not generate a key — it is used to sign proofs with a
+// key minted elsewhere, e.g. the BFF's DPoP key, to which its access tokens are cnf.jkt-bound.
+func FromJWK(key jwk.Key) (*PrivateKey, error) {
+	thumbprintBytes, err := key.Thumbprint(crypto.SHA256)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute thumbprint: %w", err)
+	}
+	publicKey, err := key.PublicKey()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create public key: %w", err)
+	}
+	return &PrivateKey{
+		JwkPrivate: key,
+		JwkPublic:  publicKey,
+		Thumbprint: base64.RawURLEncoding.EncodeToString(thumbprintBytes),
+	}, nil
+}
+
 type DPoP struct {
 	Id              string
 	HttpMethod      string
@@ -249,12 +268,18 @@ func ParseRequest(request *http.Request, options ParseOptions) (*RequestBinding,
 	}
 
 	if options.RequestURL == "" {
-		// TODO: make thois more robust, e.g. by reading the header
-		scheme := "http"
-		if request.TLS != nil {
-			scheme = "https"
+		if request.URL != nil && request.URL.IsAbs() {
+			// A client-built or proxied request carries an absolute URL; trust it as-is.
+			options.RequestURL = request.URL.String()
+		} else {
+			// A server-received request has a relative URL; reconstruct from the host and
+			// raw request URI. X-Forwarded-Proto covers a TLS-terminating proxy upstream.
+			scheme := "http"
+			if request.TLS != nil || request.Header.Get("X-Forwarded-Proto") == "https" {
+				scheme = "https"
+			}
+			options.RequestURL = scheme + "://" + request.Host + request.RequestURI
 		}
-		options.RequestURL = scheme + "://" + request.Host + request.RequestURI
 	}
 
 	// check the request URL

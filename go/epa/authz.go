@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gematik/zero-lab/go/brainpool"
+	"github.com/gematik/zero-lab/go/brainpool/josebp"
 	"github.com/gematik/zero-lab/go/gemidp"
 )
 
@@ -103,9 +103,9 @@ func (s *Session) CreateClientAttest() (string, error) {
 		return "", fmt.Errorf("ClientAssertionCertFunc: %w", err)
 	}
 
-	tk, err := brainpool.NewJWTBuilder().
+	tk, err := josebp.NewJWTBuilder().
 		Header("typ", "JWT").
-		Header("alg", brainpool.AlgorithmNameES256).
+		Header("alg", josebp.AlgorithmNameES256).
 		Header("x5c", []string{base64.StdEncoding.EncodeToString(cert.Raw)}).
 		Claim("nonce", nonce).
 		Claim("iat", time.Now().Unix()).

@@ -76,7 +76,7 @@ func isPEM(raw []byte) bool {
 		return false
 	}
 	// Find the first non-whitespace byte; if it starts the PEM marker, it's PEM.
-	for i := 0; i < len(raw); i++ {
+	for i := range raw {
 		if raw[i] == ' ' || raw[i] == '\t' || raw[i] == '\r' || raw[i] == '\n' {
 			continue
 		}

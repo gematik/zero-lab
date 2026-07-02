@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in</title>
+  {{template "styles"}}
+  <style>
+    main.card { text-align: center }
+    img.qr { display: block; margin: 1.1rem auto .2rem; border-radius: 10px; background: #fff; padding: .6rem; max-width: 100% }
+    /* On a phone the QR can't be self-scanned — hide it and lead with the on-device app. */
+    html[data-mobile] .desktop-only { display: none }
+    html:not([data-mobile]) .mobile-only { display: none }
+    body.done .desktop-only, body.done .quiet-actions { display: none }
+  </style>
+  <script>
+    // Decide phone-vs-desktop before first paint so the correct content renders (no QR flash on mobile).
+    if (/iphone|ipod|android.*mobile|windows phone|iemobile|blackberry|opera mini/i.test(navigator.userAgent)) {
+      document.documentElement.setAttribute("data-mobile", "1");
+    }
+  </script>
+</head>
+<body>
+  <main class="card">
+    <h1>Sign in{{if .ProviderName}} · {{.ProviderName}}{{end}}</h1>
+
+    <div class="desktop-only">
+      <p class="muted">Scan with your authenticator app on another device</p>
+      <img class="qr" src="{{.QRImage}}" alt="Sign-in QR code" width="320" height="320">
+    </div>
+    <p class="muted mobile-only">Opening your authenticator app…</p>
+
+    <div class="indicator waiting" id="indicator"></div>
+    <p class="status" id="status">Waiting for sign-in…</p>
+
+    <div class="quiet-actions">
+      <a id="continue" href="{{.AuthURL}}">Continue on this device</a>
+      <a href="/oauth2/sign_in{{if .ReturnTo}}?rd={{.ReturnTo | urlquery}}{{end}}">Choose another provider</a>
+    </div>
+    <p class="muted" id="disclaimer" hidden>You can close this tab.</p>
+  </main>
+  <script>
+    var AUTH_URL = "{{.AuthURL}}";
+    var pollURL = "{{.PollURL}}";
+    var isMobile = document.documentElement.hasAttribute("data-mobile");
+    var indicator = document.getElementById("indicator");
+    var statusEl = document.getElementById("status");
+
+    if (isMobile) {
+      // The deep link opens the app and the browser tab STAYS here, so we keep polling and report the result
+      // in this tab. A short delay lets the page paint first. The link is the fallback if the OS didn't launch.
+      document.getElementById("continue").textContent = "Open your authenticator app";
+      setTimeout(function () { window.location.href = AUTH_URL; }, 400);
+    }
+
+    var done = false;
+    async function tick() {
+      if (done) return;
+      try {
+        var r = await fetch(pollURL, { headers: { "X-Requested-With": "fetch" } });
+        if (r.ok) {
+          var data = await r.json();
+          if (data.authenticated) {
+            done = true;
+            document.body.classList.add("done");
+            indicator.className = "indicator success";
+            statusEl.className = "status ok";
+            if (isMobile) {
+              // The app returns the user authenticated (often in a new tab) and owns the destination; this
+              // tab just confirms in place.
+              statusEl.textContent = "Signed in";
+              document.getElementById("disclaimer").hidden = false;
+            } else {
+              // Desktop scanned with a second device — nothing else navigates here, so return to the app.
+              statusEl.textContent = "Signed in — returning…";
+              setTimeout(function () { location.href = data.return_to || "/"; }, 1000);
+            }
+            return;
+          }
+        }
+      } catch (e) { /* keep polling */ }
+      setTimeout(tick, 2000);
+    }
+    setTimeout(tick, 2000);
+  </script>
+</body>
+</html>

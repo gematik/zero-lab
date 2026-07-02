@@ -12,19 +12,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gematik/zero-lab/go/brainpool"
+	"github.com/gematik/zero-lab/go/brainpool/josebp"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwe"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"golang.org/x/oauth2"
 )
-
-func init() {
-	jwa.RegisterSignatureAlgorithm(jwa.NewSignatureAlgorithm(
-		brainpool.AlgorithmNameBP256R1,
-	))
-}
 
 // OpenID Connect metadata of the gematik IDP-Dienst
 type Metadata struct {
@@ -62,6 +56,11 @@ type ClientConfig struct {
 	Scopes            []string    `yaml:"scopes"`
 	AuthenticatorMode bool        `yaml:"authenticator_mode"`
 	UserAgent         string      `yaml:"user_agent"`
+
+	// HTTPClient is used for metadata, key, and token requests. Not serialized; supplied
+	// programmatically. When nil, a client with a default timeout is created. The configured
+	// User-Agent is layered onto the client's transport either way.
+	HTTPClient *http.Client `yaml:"-"`
 }
 
 type Client struct {
@@ -86,6 +85,10 @@ func NewClientFromConfig(config ClientConfig) (*Client, error) {
 		return nil, fmt.Errorf("at least one scope is required")
 	}
 
+	if config.UserAgent == "" {
+		config.UserAgent = defaultUserAgent
+	}
+
 	var idp Idp
 	if config.BaseURL != "" {
 		idp = NewIdp(config.Environment, config.BaseURL)
@@ -95,9 +98,14 @@ func NewClientFromConfig(config ClientConfig) (*Client, error) {
 
 	baseURL := idp.baseURL
 
-	httpClient := &http.Client{
-		Transport: &transportAddUserAgent{http.DefaultTransport, config.UserAgent},
+	httpClient := config.HTTPClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
 	}
+	// layer the gematik User-Agent onto the chosen client without mutating the caller's
+	decorated := *httpClient
+	decorated.Transport = &transportAddUserAgent{transportOrDefault(httpClient.Transport), config.UserAgent}
+	httpClient = &decorated
 
 	metadata, err := fetchMetadata(baseURL, httpClient)
 	if err != nil {
@@ -185,7 +193,7 @@ func (c *Client) ExchangeForIdentity(code, verifier string, options ...oidc.Opti
 		return nil, fmt.Errorf("generating token key: %w", err)
 	}
 
-	idpEncKey, err := fetchKey(c.Metadata.EncryptionKeyURI)
+	idpEncKey, err := fetchKey(c.Metadata.EncryptionKeyURI, c.httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("fetching challenge encryption key: %w", err)
 	}
@@ -202,7 +210,7 @@ func (c *Client) ExchangeForIdentity(code, verifier string, options ...oidc.Opti
 
 	slog.Info("Token key payload", "payload", tokenKeyPayload)
 
-	encryptedTokenKeySerialized, err := brainpool.NewJWEBuilder().
+	encryptedTokenKeySerialized, err := josebp.NewJWEBuilder().
 		Plaintext(tokenKeyPayloadBytes).
 		EncryptECDHES(idpEncKey)
 	if err != nil {
@@ -270,19 +278,19 @@ func decryptToken(token string, key []byte) (string, error) {
 }
 
 func (c *Client) parseIDToken(response *oidc.TokenResponse) (jwt.Token, error) {
-	key, err := fetchKey(c.Metadata.SigningKeyURI)
+	key, err := fetchKey(c.Metadata.SigningKeyURI, c.httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("fetching signing key: %w", err)
 	}
 
-	// check signature using the brainpool enabled library
-	_, err = brainpool.ParseToken([]byte(response.IDTokenRaw), brainpool.WithKey(key))
+	// verify the Brainpool signature with josebp (stdlib ecdsa; no jwx)
+	_, err = josebp.ParseToken([]byte(response.IDTokenRaw), josebp.WithKey(key))
 	if err != nil {
 		return nil, fmt.Errorf("parsing ID token: %w", err)
 	}
 
-	// parse the token using the jwx library, after we verified the brainpool signature
-	// since the token signature is already verified, we can skip the verification step
+	// parse the token with jwx for claim validation; signature already verified above,
+	// so verification is disabled (jwx never sees the Brainpool key/curve)
 	token, err := jwt.ParseString(
 		response.IDTokenRaw,
 		jwt.WithAcceptableSkew(time.Duration(5*time.Minute)), // allow 5 minutes skew

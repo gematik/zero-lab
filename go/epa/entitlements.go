@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gematik/zero-lab/go/brainpool"
+	"github.com/gematik/zero-lab/go/brainpool/josebp"
 )
 
 type EntitlementRequestType struct {
@@ -46,7 +46,7 @@ func (s *Session) SetEntitlementPS(insurantId string, auditEvidence string, hcv 
 		return fmt.Errorf("getting authn certificate: %w", err)
 	}
 
-	jwt, err := brainpool.NewJWTBuilder().
+	jwt, err := josebp.NewJWTBuilder().
 		Header("alg", "ES256").
 		Header("typ", "JWT").
 		Header("x5c", []string{base64.StdEncoding.EncodeToString(cert.Raw)}).

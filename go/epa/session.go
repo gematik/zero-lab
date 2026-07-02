@@ -37,6 +37,36 @@ func WithTimeout(timeout time.Duration) ClientOption {
 	}
 }
 
+// WithHTTPClient supplies the base HTTP client. The epa client layers its TLS settings and
+// User-Agent onto a copy of it; when unset, a client with a default timeout is created.
+func WithHTTPClient(client *http.Client) ClientOption {
+	return func(c *Client) {
+		c.HttpClient = client
+	}
+}
+
+const defaultHTTPTimeout = 5 * time.Second
+
+func transportOrDefault(rt http.RoundTripper) http.RoundTripper {
+	if rt == nil {
+		return http.DefaultTransport
+	}
+	return rt
+}
+
+// transportWithTLS clones the base transport (or http.DefaultTransport when the base is nil or not a
+// *http.Transport) and applies the given TLS config, layering epa's TLS settings onto the chosen
+// client without mutating it.
+func transportWithTLS(rt http.RoundTripper, tlsConfig *tls.Config) http.RoundTripper {
+	base, ok := transportOrDefault(rt).(*http.Transport)
+	if !ok {
+		base = http.DefaultTransport.(*http.Transport)
+	}
+	t := base.Clone()
+	t.TLSClientConfig = tlsConfig
+	return t
+}
+
 type SecurityFunctions struct {
 	AuthnSignFunc           brainpool.SignFunc
 	AuthnCertFunc           func() (*x509.Certificate, error)
@@ -141,24 +171,24 @@ func NewClient(env Env, provider ProviderNumber, sf *SecurityFunctions, options 
 		option(client)
 	}
 
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{
+	base := client.HttpClient
+	if base == nil {
+		base = &http.Client{Timeout: defaultHTTPTimeout}
+	}
+	// layer epa's TLS settings and User-Agent onto the chosen client without mutating the caller's
+	decorated := *base
+	decorated.Transport = &customTransport{
+		t: transportWithTLS(base.Transport, &tls.Config{
 			InsecureSkipVerify: client.insecureSkipVerify,
 			RootCAs:            client.certPool,
-		},
+		}),
 	}
-
-	client.HttpClient = &http.Client{
-		Transport: &customTransport{
-			t: transport,
-		},
-	}
-
 	if client.Timeout > 0 {
-		client.HttpClient.Timeout = client.Timeout
-	} else {
-		client.HttpClient.Timeout = 5 * time.Second
+		decorated.Timeout = client.Timeout
+	} else if decorated.Timeout == 0 {
+		decorated.Timeout = defaultHTTPTimeout
 	}
+	client.HttpClient = &decorated
 
 	client.BaseURL = ResolveBaseURL(env, provider)
 

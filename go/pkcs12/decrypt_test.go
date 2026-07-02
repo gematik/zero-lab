@@ -10,33 +10,33 @@ import (
 func TestDecryptModernPKCS12(t *testing.T) {
 	data := loadTestFile(t, "testdata/modern.p12")
 	password := []byte("test1234")
-	
+
 	pfx, err := Parse(data)
 	if err != nil {
 		t.Fatalf("Failed to parse: %v", err)
 	}
-	
+
 	// Verify MAC first
 	if err := VerifyMAC(pfx, password); err != nil {
 		t.Fatalf("MAC verification failed: %v", err)
 	}
 	t.Log("✓ MAC verification passed")
-	
+
 	// Parse authenticated safe
 	authSafe, err := ParseAuthenticatedSafe(pfx.RawAuthSafe)
 	if err != nil {
 		t.Fatalf("Failed to parse authenticated safe: %v", err)
 	}
-	
+
 	certCount := 0
 	keyCount := 0
-	
+
 	// Process each content info
 	for i, ci := range authSafe.ContentInfos {
 		t.Logf("Processing ContentInfo[%d]: %v", i, ci.ContentType)
-		
+
 		var safeContentsData []byte
-		
+
 		if ci.ContentType.Equal(OIDEncryptedData) {
 			// Decrypt encrypted data
 			decrypted, err := DecryptEncryptedData(ci, password)
@@ -46,7 +46,7 @@ func TestDecryptModernPKCS12(t *testing.T) {
 			}
 			safeContentsData = decrypted
 			t.Logf("  ✓ Decrypted %d bytes", len(decrypted))
-			
+
 		} else if ci.ContentType.Equal(OIDData) {
 			// Extract unencrypted data
 			var err error
@@ -56,18 +56,18 @@ func TestDecryptModernPKCS12(t *testing.T) {
 				continue
 			}
 		}
-		
+
 		// Parse safe contents
 		sc, err := ParseSafeContents(safeContentsData)
 		if err != nil {
 			t.Errorf("Failed to parse safe contents: %v", err)
 			continue
 		}
-		
+
 		// Process bags
 		for j, bag := range sc.Bags {
 			t.Logf("  Bag[%d]: %v", j, bag.BagID)
-			
+
 			switch {
 			case bag.BagID.Equal(OIDCertBag):
 				certCount++
@@ -76,32 +76,32 @@ func TestDecryptModernPKCS12(t *testing.T) {
 					t.Errorf("Failed to parse cert bag: %v", err)
 					continue
 				}
-				
+
 				if certBag.CertID.Equal(OIDX509Certificate) {
 					cert, err := x509.ParseCertificate(certBag.CertValue)
 					if err != nil {
 						t.Errorf("Failed to parse certificate: %v", err)
 					} else {
 						t.Logf("    ✓ Certificate: %s", cert.Subject)
-						
+
 						if name, ok := GetFriendlyName(bag.Attributes); ok {
 							t.Logf("    Friendly name: %s", name)
 						}
 					}
 				}
-				
+
 			case bag.BagID.Equal(OIDPKCS8ShroudedKeyBag):
 				keyCount++
-				
+
 				// Decrypt the key
 				pkcs8Data, err := DecryptShroudedKeyBag(bag.BagValue, password)
 				if err != nil {
 					t.Errorf("Failed to decrypt key: %v", err)
 					continue
 				}
-				
+
 				t.Logf("    ✓ Decrypted key: %d bytes", len(pkcs8Data))
-				
+
 				// Parse the private key
 				privateKey, err := x509.ParsePKCS8PrivateKey(pkcs8Data)
 				if err != nil {
@@ -112,11 +112,11 @@ func TestDecryptModernPKCS12(t *testing.T) {
 			}
 		}
 	}
-	
+
 	t.Logf("\nSummary:")
 	t.Logf("  Certificates: %d", certCount)
 	t.Logf("  Private keys: %d", keyCount)
-	
+
 	if certCount == 0 {
 		t.Error("Expected at least one certificate")
 	}
@@ -131,32 +131,32 @@ func TestDecryptRealWorldPKCS12(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to decode base64: %v", err)
 	}
-	
+
 	password := []byte(testPFXPassword)
-	
+
 	pfx, err := Parse(data)
 	if err != nil {
 		t.Fatalf("Failed to parse: %v", err)
 	}
-	
+
 	// Verify MAC
 	if err := VerifyMAC(pfx, password); err != nil {
 		t.Fatalf("MAC verification failed: %v", err)
 	}
 	t.Log("✓ MAC verification passed")
-	
+
 	// Parse authenticated safe
 	authSafe, err := ParseAuthenticatedSafe(pfx.RawAuthSafe)
 	if err != nil {
 		t.Fatalf("Failed to parse authenticated safe: %v", err)
 	}
-	
+
 	certCount := 0
 	keyCount := 0
-	
+
 	for i, ci := range authSafe.ContentInfos {
 		var safeContentsData []byte
-		
+
 		if ci.ContentType.Equal(OIDEncryptedData) {
 			decrypted, err := DecryptEncryptedData(ci, password)
 			if err != nil {
@@ -165,7 +165,7 @@ func TestDecryptRealWorldPKCS12(t *testing.T) {
 			}
 			safeContentsData = decrypted
 			t.Logf("ContentInfo[%d]: Decrypted %d bytes", i, len(decrypted))
-			
+
 		} else if ci.ContentType.Equal(OIDData) {
 			safeContentsData, err = extractOctetString(ci.Content)
 			if err != nil {
@@ -173,13 +173,13 @@ func TestDecryptRealWorldPKCS12(t *testing.T) {
 				continue
 			}
 		}
-		
+
 		sc, err := ParseSafeContents(safeContentsData)
 		if err != nil {
 			t.Logf("ContentInfo[%d]: Failed to parse safe contents: %v", i, err)
 			continue
 		}
-		
+
 		for _, bag := range sc.Bags {
 			if bag.BagID.Equal(OIDCertBag) {
 				certCount++
@@ -202,7 +202,7 @@ func TestDecryptRealWorldPKCS12(t *testing.T) {
 			}
 		}
 	}
-	
+
 	t.Logf("\nReal-world file summary:")
 	t.Logf("  Certificates: %d", certCount)
 	t.Logf("  Private keys: %d", keyCount)
@@ -212,25 +212,25 @@ func TestDecryptRealWorldPKCS12(t *testing.T) {
 func TestDecryptLegacy3DES(t *testing.T) {
 	data := loadTestFile(t, "testdata/legacy.p12")
 	password := []byte("test1234")
-	
+
 	pfx, err := Parse(data)
 	if err != nil {
 		t.Fatalf("Failed to parse: %v", err)
 	}
-	
+
 	// Verify MAC (should be SHA-1 for legacy)
 	if err := VerifyMAC(pfx, password); err != nil {
 		t.Fatalf("MAC verification failed: %v", err)
 	}
 	t.Log("✓ MAC verification passed (legacy)")
-	
+
 	authSafe, err := ParseAuthenticatedSafe(pfx.RawAuthSafe)
 	if err != nil {
 		t.Fatalf("Failed to parse authenticated safe: %v", err)
 	}
-	
+
 	decryptedCount := 0
-	
+
 	for i, ci := range authSafe.ContentInfos {
 		if ci.ContentType.Equal(OIDEncryptedData) {
 			decrypted, err := DecryptEncryptedData(ci, password)
@@ -242,7 +242,7 @@ func TestDecryptLegacy3DES(t *testing.T) {
 			t.Logf("ContentInfo[%d]: Decrypted %d bytes (3DES)", i, len(decrypted))
 		}
 	}
-	
+
 	if decryptedCount == 0 {
 		t.Error("Expected to decrypt at least one encrypted content")
 	}
@@ -252,23 +252,23 @@ func TestDecryptLegacy3DES(t *testing.T) {
 func TestDecryptEmptyPassword(t *testing.T) {
 	data := loadTestFile(t, "testdata/empty-pass.p12")
 	password := []byte("") // Empty password
-	
+
 	pfx, err := Parse(data)
 	if err != nil {
 		t.Fatalf("Failed to parse: %v", err)
 	}
-	
+
 	// Verify MAC with empty password
 	if err := VerifyMAC(pfx, password); err != nil {
 		t.Fatalf("MAC verification failed with empty password: %v", err)
 	}
 	t.Log("✓ MAC verification passed with empty password")
-	
+
 	authSafe, err := ParseAuthenticatedSafe(pfx.RawAuthSafe)
 	if err != nil {
 		t.Fatalf("Failed to parse authenticated safe: %v", err)
 	}
-	
+
 	for _, ci := range authSafe.ContentInfos {
 		if ci.ContentType.Equal(OIDEncryptedData) {
 			_, err := DecryptEncryptedData(ci, password)
@@ -285,12 +285,12 @@ func TestDecryptEmptyPassword(t *testing.T) {
 func TestMACVerificationWrongPassword(t *testing.T) {
 	data := loadTestFile(t, "testdata/modern.p12")
 	wrongPassword := []byte("wrongpassword")
-	
+
 	pfx, err := Parse(data)
 	if err != nil {
 		t.Fatalf("Failed to parse: %v", err)
 	}
-	
+
 	// Should fail with wrong password
 	err = VerifyMAC(pfx, wrongPassword)
 	if err == nil {
@@ -306,17 +306,17 @@ func TestMACVerificationWrongPassword(t *testing.T) {
 func TestDecryptionWrongPassword(t *testing.T) {
 	data := loadTestFile(t, "testdata/modern.p12")
 	wrongPassword := []byte("wrongpassword")
-	
+
 	pfx, err := Parse(data)
 	if err != nil {
 		t.Fatalf("Failed to parse: %v", err)
 	}
-	
+
 	authSafe, err := ParseAuthenticatedSafe(pfx.RawAuthSafe)
 	if err != nil {
 		t.Fatalf("Failed to parse authenticated safe: %v", err)
 	}
-	
+
 	for _, ci := range authSafe.ContentInfos {
 		if ci.ContentType.Equal(OIDEncryptedData) {
 			_, err := DecryptEncryptedData(ci, wrongPassword)
@@ -376,7 +376,7 @@ func TestPKCS7PaddingRemoval(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := removePKCS7Padding(tt.input)
@@ -414,7 +414,7 @@ func TestPasswordEncoding(t *testing.T) {
 			want:     []byte{0, '1', 0, '2', 0, '3', 0, 0},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := encodePasswordPKCS12(tt.password)
@@ -429,21 +429,21 @@ func TestPasswordEncoding(t *testing.T) {
 func TestDecryptAES128(t *testing.T) {
 	data := loadTestFile(t, "testdata/aes128.p12")
 	password := []byte("test1234")
-	
+
 	pfx, err := Parse(data)
 	if err != nil {
 		t.Fatalf("Failed to parse: %v", err)
 	}
-	
+
 	if err := VerifyMAC(pfx, password); err != nil {
 		t.Fatalf("MAC verification failed: %v", err)
 	}
-	
+
 	authSafe, err := ParseAuthenticatedSafe(pfx.RawAuthSafe)
 	if err != nil {
 		t.Fatalf("Failed to parse authenticated safe: %v", err)
 	}
-	
+
 	decrypted := false
 	for _, ci := range authSafe.ContentInfos {
 		if ci.ContentType.Equal(OIDEncryptedData) {
@@ -456,7 +456,7 @@ func TestDecryptAES128(t *testing.T) {
 			}
 		}
 	}
-	
+
 	if !decrypted {
 		t.Error("Expected to decrypt at least one AES-128 encrypted content")
 	}
@@ -466,23 +466,23 @@ func TestDecryptAES128(t *testing.T) {
 func TestDecryptNoMAC(t *testing.T) {
 	data := loadTestFile(t, "testdata/no-mac.p12")
 	password := []byte("test1234")
-	
+
 	pfx, err := Parse(data)
 	if err != nil {
 		t.Fatalf("Failed to parse: %v", err)
 	}
-	
+
 	// Should not fail with no MAC
 	if err := VerifyMAC(pfx, password); err != nil {
 		t.Errorf("MAC verification should not fail when no MAC present: %v", err)
 	}
 	t.Log("✓ No MAC verification (file has no MAC)")
-	
+
 	authSafe, err := ParseAuthenticatedSafe(pfx.RawAuthSafe)
 	if err != nil {
 		t.Fatalf("Failed to parse authenticated safe: %v", err)
 	}
-	
+
 	for _, ci := range authSafe.ContentInfos {
 		if ci.ContentType.Equal(OIDEncryptedData) {
 			_, err := DecryptEncryptedData(ci, password)
@@ -497,17 +497,17 @@ func TestDecryptNoMAC(t *testing.T) {
 func BenchmarkDecryptPBES2(b *testing.B) {
 	data := loadTestFile(b, "testdata/modern.p12")
 	password := []byte("test1234")
-	
+
 	pfx, err := Parse(data)
 	if err != nil {
 		b.Fatalf("Failed to parse: %v", err)
 	}
-	
+
 	authSafe, err := ParseAuthenticatedSafe(pfx.RawAuthSafe)
 	if err != nil {
 		b.Fatalf("Failed to parse authenticated safe: %v", err)
 	}
-	
+
 	var encryptedCI ContentInfo
 	for _, ci := range authSafe.ContentInfos {
 		if ci.ContentType.Equal(OIDEncryptedData) {
@@ -515,7 +515,7 @@ func BenchmarkDecryptPBES2(b *testing.B) {
 			break
 		}
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, err := DecryptEncryptedData(encryptedCI, password)
@@ -529,12 +529,12 @@ func BenchmarkDecryptPBES2(b *testing.B) {
 func BenchmarkVerifyMAC(b *testing.B) {
 	data := loadTestFile(b, "testdata/modern.p12")
 	password := []byte("test1234")
-	
+
 	pfx, err := Parse(data)
 	if err != nil {
 		b.Fatalf("Failed to parse: %v", err)
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		err := VerifyMAC(pfx, password)

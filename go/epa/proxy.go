@@ -60,8 +60,12 @@ type ProxyConfig struct {
 	Env     Env           `yaml:"env" validate:"required,oneof=dev test ref prod"`
 	Timeout time.Duration `yaml:"timeout" validate:"required,gt=0"`
 
-	AuthnCertPath string `yaml:"authn_cert_path" validate:"required"`
-	AuthnKeyPath  string `yaml:"authn_key_path" validate:"required"`
+	// SMC-B identity: either a PKCS#12 (authn_p12_path) or a PEM cert+key pair
+	// (authn_cert_path + authn_key_path). PKCS#12 takes precedence when set.
+	AuthnP12Path     string `yaml:"authn_p12_path"`
+	AuthnP12Password string `yaml:"authn_p12_password"`
+	AuthnCertPath    string `yaml:"authn_cert_path"`
+	AuthnKeyPath     string `yaml:"authn_key_path"`
 
 	VsdmHmacKeyHex string `yaml:"vsdm_hmac_key_hex" validate:"required"`
 	VsdmHmacKeyId  string `yaml:"vsdm_hmac_key_id" validate:"required"`
@@ -92,34 +96,51 @@ func (pc *ProxyConfig) Init() error {
 		return fmt.Errorf("failed to create ProofOfAuditEvidenceFunc: %w", err)
 	}
 
-	// read the private key and certificate for SMC-B
-	authnCertPath := resolvePath(pc.BaseDir, pc.AuthnCertPath)
-	authnPrivateKeyPath := resolvePath(pc.BaseDir, pc.AuthnKeyPath)
-	slog.Debug("Reading SMC-B private key and certificate", "private_key_path", authnPrivateKeyPath, "cert_path", authnCertPath)
+	// Load the SMC-B identity: PKCS#12 takes precedence, else PEM cert+key.
+	var authnSignFunc brainpool.SignFunc
+	var authnCert *x509.Certificate
+	switch {
+	case pc.AuthnP12Path != "":
+		p12Path := resolvePath(pc.BaseDir, pc.AuthnP12Path)
+		slog.Debug("Reading SMC-B identity from PKCS#12", "p12_path", p12Path)
+		key, cert, err := LoadIdentityP12(p12Path, pc.AuthnP12Password)
+		if err != nil {
+			return fmt.Errorf("failed to load SMC-B identity from PKCS#12: %w", err)
+		}
+		authnSignFunc = brainpool.SignFuncPrivateKey(key)
+		authnCert = cert
+	case pc.AuthnCertPath != "" && pc.AuthnKeyPath != "":
+		authnCertPath := resolvePath(pc.BaseDir, pc.AuthnCertPath)
+		authnPrivateKeyPath := resolvePath(pc.BaseDir, pc.AuthnKeyPath)
+		slog.Debug("Reading SMC-B private key and certificate", "private_key_path", authnPrivateKeyPath, "cert_path", authnCertPath)
 
-	authnCertData, err := os.ReadFile(authnCertPath)
-	if err != nil {
-		return fmt.Errorf("failed to read SMC-B certificate: %w", err)
+		authnCertData, err := os.ReadFile(authnCertPath)
+		if err != nil {
+			return fmt.Errorf("failed to read SMC-B certificate: %w", err)
+		}
+		if authnCert, err = brainpool.ParseCertificatePEM(authnCertData); err != nil {
+			return fmt.Errorf("failed to parse SMC-B certificate: %w", err)
+		}
+		authnPrivateKeyData, err := os.ReadFile(authnPrivateKeyPath)
+		if err != nil {
+			return fmt.Errorf("failed to read SMC-B private key: %w", err)
+		}
+		authnPrivateKey, err := brainpool.ParsePrivateKeyPEM(authnPrivateKeyData)
+		if err != nil {
+			return fmt.Errorf("failed to parse SMC-B private key: %w", err)
+		}
+		authnSignFunc = brainpool.SignFuncPrivateKey(authnPrivateKey)
+	default:
+		return fmt.Errorf("identity config required: set authn_p12_path, or both authn_cert_path and authn_key_path")
 	}
-	authnCert, err := brainpool.ParseCertificatePEM(authnCertData)
-	if err != nil {
-		return fmt.Errorf("failed to parse SMC-B certificate: %w", err)
-	}
-	slog.Info("Successfully read SMC-B certificate", "subject", authnCert.Subject.CommonName)
-	authnPrivateKeyData, err := os.ReadFile(authnPrivateKeyPath)
-	if err != nil {
-		return fmt.Errorf("failed to read SMC-B private key: %w", err)
-	}
-	authnPrivateKey, err := brainpool.ParsePrivateKeyPEM(authnPrivateKeyData)
-	if err != nil {
-		return fmt.Errorf("failed to parse SMC-B private key: %w", err)
-	}
+	slog.Info("Successfully loaded SMC-B certificate", "subject", authnCert.Subject.CommonName)
 
+	certFunc := func() (*x509.Certificate, error) { return authnCert, nil }
 	pc.SecurityFunctions = &SecurityFunctions{
-		AuthnSignFunc:           brainpool.SignFuncPrivateKey(authnPrivateKey),
-		AuthnCertFunc:           func() (*x509.Certificate, error) { return authnCert, nil },
-		ClientAssertionSignFunc: brainpool.SignFuncPrivateKey(authnPrivateKey),
-		ClientAssertionCertFunc: func() (*x509.Certificate, error) { return authnCert, nil },
+		AuthnSignFunc:           authnSignFunc,
+		AuthnCertFunc:           certFunc,
+		ClientAssertionSignFunc: authnSignFunc,
+		ClientAssertionCertFunc: certFunc,
 		ProvidePN:               proofOfAuditEvidenceFunc,
 		ProvideHCV:              provideHCV,
 	}

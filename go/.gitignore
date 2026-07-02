@@ -1,2 +1,14 @@
 tmp
 .claude
+dist
+go.work.sum
+# generated e2e signing key + local env
+pdp/e2e/testdata/sign.jwk
+.env
+# per-run gemidp test reports
+gemidp/test-reports/
+# per-run epa test reports
+epa/test-reports/
+
+# local PDP HITL harness (carries a test key)
+pdp/config/

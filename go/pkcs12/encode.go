@@ -16,24 +16,24 @@ import (
 type EncodeOptions struct {
 	// Encryption algorithm for private keys (default: AES-256-CBC)
 	KeyEncryption asn1.ObjectIdentifier
-	
+
 	// Encryption algorithm for certificates (default: AES-256-CBC)
 	CertEncryption asn1.ObjectIdentifier
-	
+
 	// Number of iterations for PBKDF2 (default: 2048)
 	Iterations int
-	
+
 	// MAC algorithm (default: SHA-256)
 	MacAlgorithm asn1.ObjectIdentifier
-	
+
 	// Separate encryption passwords for keys and certificates
 	// If nil, uses main password for both
 	KeyPassword  []byte
 	CertPassword []byte
-	
+
 	// Include MAC for integrity verification (default: true)
 	IncludeMAC bool
-	
+
 	// Internal: last used salt and IV (for algorithm identifier)
 	lastSalt []byte
 	lastIV   []byte
@@ -69,7 +69,7 @@ func EncodeWithOptions(bags *Bags, password []byte, opts *EncodeOptions) ([]byte
 	if opts == nil {
 		opts = DefaultEncodeOptions()
 	}
-	
+
 	// Set password defaults
 	if opts.KeyPassword == nil {
 		opts.KeyPassword = password
@@ -77,13 +77,13 @@ func EncodeWithOptions(bags *Bags, password []byte, opts *EncodeOptions) ([]byte
 	if opts.CertPassword == nil {
 		opts.CertPassword = password
 	}
-	
+
 	// Create two SafeContents:
 	// 1. Keys (encrypted)
 	// 2. Certificates (encrypted or unencrypted)
-	
+
 	var contentInfos []ContentInfo
-	
+
 	// Add encrypted private keys
 	if len(bags.PrivateKeys) > 0 {
 		keySafeBags := make([]SafeBag, 0, len(bags.PrivateKeys))
@@ -94,14 +94,14 @@ func EncodeWithOptions(bags *Bags, password []byte, opts *EncodeOptions) ([]byte
 			}
 			keySafeBags = append(keySafeBags, bag)
 		}
-		
+
 		// Serialize SafeContents
 		safeContents := SafeContents{Bags: keySafeBags}
 		safeData, err := serializeSafeContents(&safeContents)
 		if err != nil {
 			return nil, fmt.Errorf("failed to serialize key safe contents: %w", err)
 		}
-		
+
 		// Create encrypted ContentInfo
 		ci, err := createEncryptedContentInfo(safeData, opts.CertPassword, opts)
 		if err != nil {
@@ -109,7 +109,7 @@ func EncodeWithOptions(bags *Bags, password []byte, opts *EncodeOptions) ([]byte
 		}
 		contentInfos = append(contentInfos, ci)
 	}
-	
+
 	// Add certificates (unencrypted for compatibility)
 	if len(bags.Certificates) > 0 {
 		certSafeBags := make([]SafeBag, 0, len(bags.Certificates))
@@ -120,14 +120,14 @@ func EncodeWithOptions(bags *Bags, password []byte, opts *EncodeOptions) ([]byte
 			}
 			certSafeBags = append(certSafeBags, bag)
 		}
-		
+
 		// Serialize SafeContents
 		safeContents := SafeContents{Bags: certSafeBags}
 		safeData, err := serializeSafeContents(&safeContents)
 		if err != nil {
 			return nil, fmt.Errorf("failed to serialize cert safe contents: %w", err)
 		}
-		
+
 		// Create unencrypted Data ContentInfo
 		ci, err := createDataContentInfo(safeData)
 		if err != nil {
@@ -135,27 +135,27 @@ func EncodeWithOptions(bags *Bags, password []byte, opts *EncodeOptions) ([]byte
 		}
 		contentInfos = append(contentInfos, ci)
 	}
-	
+
 	// Create AuthenticatedSafe
 	authSafe := AuthenticatedSafe{ContentInfos: contentInfos}
 	authSafeData, err := serializeAuthenticatedSafe(&authSafe)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize authenticated safe: %w", err)
 	}
-	
+
 	// Wrap in Data ContentInfo
 	authSafeCI, err := createDataContentInfo(authSafeData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create authsafe content: %w", err)
 	}
-	
+
 	// Create PFX
 	pfx := PFX{
 		Version:     3,
 		AuthSafe:    authSafeCI,
 		RawAuthSafe: authSafeData,
 	}
-	
+
 	// Generate MAC if requested
 	if opts.IncludeMAC {
 		macData, err := generateMAC(authSafeData, password, opts)
@@ -164,7 +164,7 @@ func EncodeWithOptions(bags *Bags, password []byte, opts *EncodeOptions) ([]byte
 		}
 		pfx.MacData = macData
 	}
-	
+
 	// Serialize PFX
 	return serializePFX(&pfx)
 }
@@ -176,25 +176,25 @@ func createShroudedKeyBag(key PrivateKeyBag, password []byte, opts *EncodeOption
 	if err != nil {
 		return SafeBag{}, err
 	}
-	
+
 	// Build algorithm identifier for PBES2
 	algorithm, err := buildPBES2AlgorithmIdentifier(opts)
 	if err != nil {
 		return SafeBag{}, err
 	}
-	
+
 	// Create EncryptedPrivateKeyInfo
 	epki := EncryptedPrivateKeyInfo{
 		Algorithm: algorithm,
 		Data:      encrypted,
 	}
-	
+
 	// Serialize EPKI
 	epkiData, err := asn1.Marshal(epki)
 	if err != nil {
 		return SafeBag{}, fmt.Errorf("failed to marshal EPKI: %w", err)
 	}
-	
+
 	// Create attributes
 	var attrs []PKCS12Attribute
 	if key.FriendlyName != "" {
@@ -209,7 +209,7 @@ func createShroudedKeyBag(key PrivateKeyBag, password []byte, opts *EncodeOption
 			attrs = append(attrs, attr)
 		}
 	}
-	
+
 	return SafeBag{
 		BagID:      OIDPKCS8ShroudedKeyBag,
 		BagValue:   epkiData,
@@ -232,21 +232,21 @@ func createCertBag(cert CertificateBag) (SafeBag, error) {
 			Bytes:      cert.Raw,
 		},
 	}
-	
+
 	// Marshal to get the explicit tag wrapper
 	innerOctet, err := asn1.Marshal(cert.Raw)
 	if err != nil {
 		return SafeBag{}, err
 	}
-	
+
 	certBag.CertValue.Bytes = innerOctet
-	
+
 	// Serialize CertBag
 	certBagData, err := asn1.Marshal(certBag)
 	if err != nil {
 		return SafeBag{}, fmt.Errorf("failed to marshal cert bag: %w", err)
 	}
-	
+
 	// Create attributes
 	var attrs []PKCS12Attribute
 	if cert.FriendlyName != "" {
@@ -261,7 +261,7 @@ func createCertBag(cert CertificateBag) (SafeBag, error) {
 			attrs = append(attrs, attr)
 		}
 	}
-	
+
 	return SafeBag{
 		BagID:      OIDCertBag,
 		BagValue:   certBagData,
@@ -276,13 +276,13 @@ func createFriendlyNameAttribute(name string) (PKCS12Attribute, error) {
 	for _, r := range name {
 		bmpData = append(bmpData, byte(r/256), byte(r%256))
 	}
-	
+
 	// Marshal as BMPString (tag 30)
 	bmpValue, err := asn1.MarshalWithParams(bmpData, "tag:30")
 	if err != nil {
 		return PKCS12Attribute{}, err
 	}
-	
+
 	return PKCS12Attribute{
 		ID:     OIDFriendlyName,
 		Values: [][]byte{bmpValue},
@@ -296,7 +296,7 @@ func createLocalKeyIDAttribute(keyID []byte) (PKCS12Attribute, error) {
 	if err != nil {
 		return PKCS12Attribute{}, err
 	}
-	
+
 	return PKCS12Attribute{
 		ID:     OIDLocalKeyID,
 		Values: [][]byte{keyIDValue},
@@ -310,7 +310,7 @@ func createDataContentInfo(data []byte) (ContentInfo, error) {
 	if err != nil {
 		return ContentInfo{}, err
 	}
-	
+
 	return ContentInfo{
 		ContentType: OIDData,
 		Content:     octetData, // Parser expects raw OCTET STRING here
@@ -328,7 +328,7 @@ func createEncryptedContentInfo(data, password []byte, opts *EncodeOptions) (Con
 func serializeSafeContents(sc *SafeContents) ([]byte, error) {
 	// SafeContents is a SEQUENCE OF SafeBag
 	var rawBags []asn1.RawValue
-	
+
 	for _, bag := range sc.Bags {
 		// Serialize each SafeBag
 		bagData, err := serializeSafeBag(&bag)
@@ -337,7 +337,7 @@ func serializeSafeContents(sc *SafeContents) ([]byte, error) {
 		}
 		rawBags = append(rawBags, asn1.RawValue{FullBytes: bagData})
 	}
-	
+
 	return asn1.Marshal(rawBags)
 }
 
@@ -345,10 +345,10 @@ func serializeSafeContents(sc *SafeContents) ([]byte, error) {
 func serializeSafeBag(bag *SafeBag) ([]byte, error) {
 	type safeBagASN1 struct {
 		BagID      asn1.ObjectIdentifier
-		BagValue   asn1.RawValue `asn1:"tag:0,explicit"`
+		BagValue   asn1.RawValue   `asn1:"tag:0,explicit"`
 		Attributes []asn1.RawValue `asn1:"set,optional"`
 	}
-	
+
 	sb := safeBagASN1{
 		BagID: bag.BagID,
 		BagValue: asn1.RawValue{
@@ -358,7 +358,7 @@ func serializeSafeBag(bag *SafeBag) ([]byte, error) {
 			Bytes:      bag.BagValue,
 		},
 	}
-	
+
 	// Serialize attributes
 	if len(bag.Attributes) > 0 {
 		for _, attr := range bag.Attributes {
@@ -369,7 +369,7 @@ func serializeSafeBag(bag *SafeBag) ([]byte, error) {
 			sb.Attributes = append(sb.Attributes, asn1.RawValue{FullBytes: attrData})
 		}
 	}
-	
+
 	return asn1.Marshal(sb)
 }
 
@@ -379,15 +379,15 @@ func serializeAttribute(attr *PKCS12Attribute) ([]byte, error) {
 		ID     asn1.ObjectIdentifier
 		Values []asn1.RawValue `asn1:"set"`
 	}
-	
+
 	a := attributeASN1{
 		ID: attr.ID,
 	}
-	
+
 	for _, val := range attr.Values {
 		a.Values = append(a.Values, asn1.RawValue{FullBytes: val})
 	}
-	
+
 	return asn1.Marshal(a)
 }
 
@@ -395,7 +395,7 @@ func serializeAttribute(attr *PKCS12Attribute) ([]byte, error) {
 func serializeAuthenticatedSafe(authSafe *AuthenticatedSafe) ([]byte, error) {
 	// AuthenticatedSafe is a SEQUENCE OF ContentInfo
 	var rawCIs []asn1.RawValue
-	
+
 	for _, ci := range authSafe.ContentInfos {
 		ciData, err := serializeContentInfo(&ci)
 		if err != nil {
@@ -403,7 +403,7 @@ func serializeAuthenticatedSafe(authSafe *AuthenticatedSafe) ([]byte, error) {
 		}
 		rawCIs = append(rawCIs, asn1.RawValue{FullBytes: ciData})
 	}
-	
+
 	return asn1.Marshal(rawCIs)
 }
 
@@ -413,7 +413,7 @@ func serializeContentInfo(ci *ContentInfo) ([]byte, error) {
 		ContentType asn1.ObjectIdentifier
 		Content     asn1.RawValue `asn1:"optional,explicit,tag:0"`
 	}
-	
+
 	ciASN := contentInfoASN1{
 		ContentType: ci.ContentType,
 		Content: asn1.RawValue{
@@ -423,7 +423,7 @@ func serializeContentInfo(ci *ContentInfo) ([]byte, error) {
 			Bytes:      ci.Content,
 		},
 	}
-	
+
 	return asn1.Marshal(ciASN)
 }
 
@@ -434,18 +434,18 @@ func serializePFX(pfx *PFX) ([]byte, error) {
 		AuthSafe asn1.RawValue
 		MacData  asn1.RawValue `asn1:"optional"`
 	}
-	
+
 	// Serialize AuthSafe ContentInfo
 	authSafeData, err := serializeContentInfo(&pfx.AuthSafe)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	p := pfxASN1{
 		Version:  pfx.Version,
 		AuthSafe: asn1.RawValue{FullBytes: authSafeData},
 	}
-	
+
 	// Add MAC if present
 	if pfx.MacData != nil {
 		macData, err := serializeMacData(pfx.MacData)
@@ -454,7 +454,7 @@ func serializePFX(pfx *PFX) ([]byte, error) {
 		}
 		p.MacData = asn1.RawValue{FullBytes: macData}
 	}
-	
+
 	return asn1.Marshal(p)
 }
 
@@ -465,19 +465,19 @@ func serializeMacData(macData *MacData) ([]byte, error) {
 		MacSalt    []byte
 		Iterations int `asn1:"optional,default:1"`
 	}
-	
+
 	// Serialize DigestInfo
 	digestData, err := serializeDigestInfo(&macData.Mac)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	md := macDataASN1{
 		Mac:        asn1.RawValue{FullBytes: digestData},
 		MacSalt:    macData.MacSalt,
 		Iterations: macData.Iterations,
 	}
-	
+
 	return asn1.Marshal(md)
 }
 
@@ -487,12 +487,12 @@ func serializeDigestInfo(di *DigestInfo) ([]byte, error) {
 		Algorithm pkix.AlgorithmIdentifier
 		Digest    []byte
 	}
-	
+
 	d := digestInfoASN1{
 		Algorithm: di.Algorithm,
 		Digest:    di.Digest,
 	}
-	
+
 	return asn1.Marshal(d)
 }
 
@@ -503,24 +503,24 @@ func generateMAC(authSafeData, password []byte, opts *EncodeOptions) (*MacData, 
 	if _, err := rand.Read(salt); err != nil {
 		return nil, fmt.Errorf("failed to generate salt: %w", err)
 	}
-	
+
 	// Derive MAC key
 	macKey, err := deriveMACKey(opts.MacAlgorithm, password, salt, opts.Iterations)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Get hash function
 	hashFunc := getHashFunc(opts.MacAlgorithm)
 	if hashFunc == nil {
 		return nil, fmt.Errorf("%w: unsupported MAC algorithm", ErrUnsupportedAlgorithm)
 	}
-	
+
 	// Compute MAC
 	h := hmac.New(hashFunc, macKey)
 	h.Write(authSafeData)
 	digest := h.Sum(nil)
-	
+
 	return &MacData{
 		Mac: DigestInfo{
 			Algorithm: pkix.AlgorithmIdentifier{
@@ -544,18 +544,18 @@ func encryptPrivateKey(keyData, password []byte, opts *EncodeOptions) ([]byte, e
 	if _, err := rand.Read(iv); err != nil {
 		return nil, fmt.Errorf("failed to generate IV: %w", err)
 	}
-	
+
 	// Encrypt
 	ciphertext, err := encryptPBES2(keyData, password, salt, iv, opts)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Store salt and IV in opts for buildPBES2AlgorithmIdentifier to use
 	// This is a hack - better to return them
 	opts.lastSalt = salt
 	opts.lastIV = iv
-	
+
 	return ciphertext, nil
 }
 
@@ -565,92 +565,92 @@ func encryptPBES2(data, password, salt, iv []byte, opts *EncodeOptions) ([]byte,
 	if keyLen == 0 {
 		return nil, fmt.Errorf("%w: unsupported cipher", ErrUnsupportedAlgorithm)
 	}
-	
+
 	prfFunc := getPRFFunc(opts.MacAlgorithm)
 	key := pbkdf2.Key(password, salt, opts.Iterations, keyLen, prfFunc)
-	
+
 	// Encrypt with AES-CBC
 	return encryptAESCBC(key, iv, data)
 }
 
 // encryptAESCBC encrypts data using AES-CBC with PKCS#7 padding
 func encryptAESCBC(key, iv, plaintext []byte) ([]byte, error) {
-block, err := aes.NewCipher(key)
-if err != nil {
-return nil, fmt.Errorf("failed to create cipher: %w", err)
-}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create cipher: %w", err)
+	}
 
-// Add PKCS#7 padding
-padded := addPKCS7Padding(plaintext, aes.BlockSize)
+	// Add PKCS#7 padding
+	padded := addPKCS7Padding(plaintext, aes.BlockSize)
 
-// Encrypt
-ciphertext := make([]byte, len(padded))
-mode := cipher.NewCBCEncrypter(block, iv)
-mode.CryptBlocks(ciphertext, padded)
+	// Encrypt
+	ciphertext := make([]byte, len(padded))
+	mode := cipher.NewCBCEncrypter(block, iv)
+	mode.CryptBlocks(ciphertext, padded)
 
-return ciphertext, nil
+	return ciphertext, nil
 }
 
 // addPKCS7Padding adds PKCS#7 padding to data
 func addPKCS7Padding(data []byte, blockSize int) []byte {
-padding := blockSize - (len(data) % blockSize)
-padText := make([]byte, padding)
-for i := range padText {
-padText[i] = byte(padding)
-}
-return append(data, padText...)
+	padding := blockSize - (len(data) % blockSize)
+	padText := make([]byte, padding)
+	for i := range padText {
+		padText[i] = byte(padding)
+	}
+	return append(data, padText...)
 }
 
 // buildPBES2AlgorithmIdentifier builds an AlgorithmIdentifier for PBES2
 // buildPBES2AlgorithmIdentifier builds an AlgorithmIdentifier for PBES2
 func buildPBES2AlgorithmIdentifier(opts *EncodeOptions) (pkix.AlgorithmIdentifier, error) {
-// Build PBKDF2 parameters
-pbkdf2Params := struct {
-Salt           []byte
-IterationCount int
-KeyLength      int                       `asn1:"optional"`
-PRF            pkix.AlgorithmIdentifier `asn1:"optional"`
-}{
-Salt:           opts.lastSalt,
-IterationCount: opts.Iterations,
-PRF: pkix.AlgorithmIdentifier{
-Algorithm: opts.MacAlgorithm,
-},
-}
+	// Build PBKDF2 parameters
+	pbkdf2Params := struct {
+		Salt           []byte
+		IterationCount int
+		KeyLength      int                      `asn1:"optional"`
+		PRF            pkix.AlgorithmIdentifier `asn1:"optional"`
+	}{
+		Salt:           opts.lastSalt,
+		IterationCount: opts.Iterations,
+		PRF: pkix.AlgorithmIdentifier{
+			Algorithm: opts.MacAlgorithm,
+		},
+	}
 
-pbkdf2Data, err := asn1.Marshal(pbkdf2Params)
-if err != nil {
-return pkix.AlgorithmIdentifier{}, err
-}
+	pbkdf2Data, err := asn1.Marshal(pbkdf2Params)
+	if err != nil {
+		return pkix.AlgorithmIdentifier{}, err
+	}
 
-// Build cipher parameters (just IV for AES-CBC)
-cipherParams, err := asn1.Marshal(opts.lastIV)
-if err != nil {
-return pkix.AlgorithmIdentifier{}, err
-}
+	// Build cipher parameters (just IV for AES-CBC)
+	cipherParams, err := asn1.Marshal(opts.lastIV)
+	if err != nil {
+		return pkix.AlgorithmIdentifier{}, err
+	}
 
-// Build PBES2 parameters
-pbes2Params := struct {
-KeyDerivationFunc pkix.AlgorithmIdentifier
-EncryptionScheme  pkix.AlgorithmIdentifier
-}{
-KeyDerivationFunc: pkix.AlgorithmIdentifier{
-Algorithm:  OIDPBKDF2,
-Parameters: asn1.RawValue{FullBytes: pbkdf2Data},
-},
-EncryptionScheme: pkix.AlgorithmIdentifier{
-Algorithm:  opts.KeyEncryption,
-Parameters: asn1.RawValue{FullBytes: cipherParams},
-},
-}
+	// Build PBES2 parameters
+	pbes2Params := struct {
+		KeyDerivationFunc pkix.AlgorithmIdentifier
+		EncryptionScheme  pkix.AlgorithmIdentifier
+	}{
+		KeyDerivationFunc: pkix.AlgorithmIdentifier{
+			Algorithm:  OIDPBKDF2,
+			Parameters: asn1.RawValue{FullBytes: pbkdf2Data},
+		},
+		EncryptionScheme: pkix.AlgorithmIdentifier{
+			Algorithm:  opts.KeyEncryption,
+			Parameters: asn1.RawValue{FullBytes: cipherParams},
+		},
+	}
 
-pbes2Data, err := asn1.Marshal(pbes2Params)
-if err != nil {
-return pkix.AlgorithmIdentifier{}, err
-}
+	pbes2Data, err := asn1.Marshal(pbes2Params)
+	if err != nil {
+		return pkix.AlgorithmIdentifier{}, err
+	}
 
-return pkix.AlgorithmIdentifier{
-Algorithm:  OIDPBES2,
-Parameters: asn1.RawValue{FullBytes: pbes2Data},
-}, nil
+	return pkix.AlgorithmIdentifier{
+		Algorithm:  OIDPBES2,
+		Parameters: asn1.RawValue{FullBytes: pbes2Data},
+	}, nil
 }

@@ -3,6 +3,7 @@ package gempki
 import (
 	"crypto/x509"
 	"encoding/asn1"
+	"slices"
 )
 
 // CertificateType is a gemSpec_PKI Tab_PKI_405 certificate-type label
@@ -259,10 +260,8 @@ func (t CertificateType) OID() asn1.ObjectIdentifier {
 // Callers can distinguish the two with `len(ProfilesForType(t))`.
 func (t CertificateType) DefaultProfile() *Profile {
 	for _, p := range ProfileRegistry {
-		for _, dt := range p.DefaultFor {
-			if dt == t {
-				return p
-			}
+		if slices.Contains(p.DefaultFor, t) {
+			return p
 		}
 	}
 	return nil
@@ -285,12 +284,9 @@ func ProfilesForType(t CertificateType) []*Profile {
 			// twice) — skip duplicates.
 			continue
 		}
-		for _, at := range p.AcceptsTypes {
-			if at == t {
-				out = append(out, p)
-				seen[p] = struct{}{}
-				break
-			}
+		if slices.Contains(p.AcceptsTypes, t) {
+			out = append(out, p)
+			seen[p] = struct{}{}
 		}
 	}
 	sortProfilesByName(out)
@@ -313,15 +309,15 @@ func ProfilesForType(t CertificateType) []*Profile {
 //     policies, profession/institution OIDs combined with KeyUsage bits
 //     give us a best-effort label:
 //
-//   - HBA (profession OID present)  + contentCommitment → C.HP.QES
-//   - HBA + digitalSignature        + clientAuth        → C.HP.AUT
-//   - HBA + keyEncipherment/keyAgreement                → C.HP.ENC
-//   - SMC-B (institution OID present) + contentCommitment → C.HCI.OSIG
-//   - SMC-B + digitalSignature + clientAuth               → C.HCI.AUT
-//   - SMC-B + keyEncipherment/keyAgreement                → C.HCI.ENC
-//   - eGK (Versicherter OID present) + contentCommitment  → C.CH.QES
-//   - eGK + digitalSignature                              → C.CH.AUT
-//   - eGK + keyEncipherment                               → C.CH.ENC
+//     - HBA (profession OID present)  + contentCommitment → C.HP.QES
+//     - HBA + digitalSignature        + clientAuth        → C.HP.AUT
+//     - HBA + keyEncipherment/keyAgreement                → C.HP.ENC
+//     - SMC-B (institution OID present) + contentCommitment → C.HCI.OSIG
+//     - SMC-B + digitalSignature + clientAuth               → C.HCI.AUT
+//     - SMC-B + keyEncipherment/keyAgreement                → C.HCI.ENC
+//     - eGK (Versicherter OID present) + contentCommitment  → C.CH.QES
+//     - eGK + digitalSignature                              → C.CH.AUT
+//     - eGK + keyEncipherment                               → C.CH.ENC
 //
 // Phase 2 is best-effort; when in doubt it returns [CertTypeUnknown]
 // rather than guessing.

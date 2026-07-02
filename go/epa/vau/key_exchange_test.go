@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/gematik/zero-lab/go/epa/vau"
@@ -22,7 +23,10 @@ func (c *customTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func TestOpenChannel(t *testing.T) {
-	baseURL := "https://epa-as-2.ref.epa4all.de"
+	baseURL := os.Getenv("EPA_VAU_BASE_URL")
+	if baseURL == "" {
+		t.Skip("EPA_VAU_BASE_URL not set — skipping live VAU OpenChannel test")
+	}
 	// do not check the server certificate
 	httpClient := &http.Client{
 		Transport: &customTransport{

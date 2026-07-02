@@ -17,6 +17,8 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
+const defaultHTTPTimeout = 30 * time.Second
+
 type PEP struct {
 	slogger                   *slog.Logger
 	httpClient                *http.Client
@@ -44,7 +46,7 @@ func (b *builder) Build() (*PEP, error) {
 		return nil, errors.New("none of the JWKSet provider has been set")
 	}
 	if b.p.httpClient == nil {
-		b.p.httpClient = http.DefaultClient
+		b.p.httpClient = &http.Client{Timeout: defaultHTTPTimeout}
 	}
 	if b.p.slogger == nil {
 		b.p.slogger = slog.Default()
@@ -129,6 +131,9 @@ type Context interface {
 	WithDeny(deny func(c Context, err Error)) Context
 	Slogger() *slog.Logger
 	UnmarshalClaims(claims any) error
+	// SetClaims sets the raw JSON claims that UnmarshalClaims reads. A token-verifying enforcer sets these
+	// from the verified token; a session-cookie enforcer sets them from the cookie identity.
+	SetClaims(raw []byte)
 }
 
 type pepContext struct {
@@ -169,6 +174,10 @@ func (c *pepContext) Slogger() *slog.Logger {
 	return c.slogger
 }
 
+func (c *pepContext) SetClaims(raw []byte) {
+	c.claimsRaw = raw
+}
+
 func (c *pepContext) UnmarshalClaims(claims any) error {
 	if c.claimsRaw == nil {
 		return errors.New("claims not available, authorize_bearer or dpop not used")
@@ -199,7 +208,7 @@ func (c *pepContext) verifyAuthorizationDPoP(options dpop.ParseOptions) error {
 	}
 
 	// verify access token binding
-	cnf := new(map[string]interface{})
+	cnf := new(map[string]any)
 
 	c.accessToken.Get("cnf", cnf)
 	if (*cnf)["jkt"] == "" {
@@ -234,7 +243,7 @@ func (c *pepContext) parseAuthorizationScheme(scheme string) (string, error) {
 }
 
 func (c *pepContext) verifyAccessToken(accessToken string) error {
-	jwtToken, err := c.pep.verifyAccessToken(accessToken)
+	jwtToken, err := c.pep.VerifyAccessToken(accessToken)
 	if err != nil {
 		return &Error{
 			HttpStatus:  http.StatusUnauthorized,
@@ -280,23 +289,27 @@ func (p *PEP) GuardedHandlerFunc(enforcer Enforcer, next func(w http.ResponseWri
 	}
 }
 
-func (p *PEP) verifyAccessToken(tokenRaw string) (jwt.Token, error) {
+// VerifyAccessToken parses and verifies a JWT access token against the configured JWKSet. When a
+// resource is set (guarding a resource server) the token's audience must match it; with no resource
+// configured — e.g. when an authorization server reuses the PEP to verify its own tokens — the
+// audience is not restricted.
+func (p *PEP) VerifyAccessToken(tokenRaw string) (jwt.Token, error) {
 	jwks, err := p.provideJwkSetFunc()
 	if err != nil {
 		return nil, fmt.Errorf("could not get JWKSet: %w", err)
 	}
-	token, err := jwt.ParseString(
-		tokenRaw,
+	opts := []jwt.ParseOption{
 		jwt.WithAcceptableSkew(p.accessTokenAcceptableSkew),
 		jwt.WithKeySet(jwks, jws.WithInferAlgorithmFromKey(true)),
-		jwt.WithAudience(p.resource),
-	)
-
+	}
+	if p.resource != "" {
+		opts = append(opts, jwt.WithAudience(p.resource))
+	}
+	token, err := jwt.ParseString(tokenRaw, opts...)
 	if err != nil {
 		p.slogger.Warn("could not parse JWT", "error", err, "token", tokenRaw)
 		return nil, fmt.Errorf("could not parse JWT: %w", err)
 	}
 
 	return token, nil
-
 }

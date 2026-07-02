@@ -1,0 +1,37 @@
+# Local Caddy for the zero-pep-proxy forward_auth demo / e2e.
+#   /oauth2/*       → the pep proxy (login, callback, sign_out, and the /oauth2/auth subrequest)
+#   everything else → forward_auth to /oauth2/auth; on 401/403 redirect the browser to
+#                     /oauth2/start?rd=<original-uri>, otherwise reverse_proxy to the upstream app.
+{
+	auto_https off
+}
+
+:8080 {
+    # rewrite temporarily unitil new config works
+    rewrite /auth/signin-gematik-fed /oauth2/callback
+	# oauth2-proxy serves its own paths.
+	route /oauth2/* {
+		reverse_proxy {$PEP_UPSTREAM:127.0.0.1:4180}
+	}
+
+	# OIDF relying-party entity statement — public (no auth); the federation + OPs fetch it here.
+	route /.well-known/openid-federation {
+		reverse_proxy {$PEP_UPSTREAM:127.0.0.1:4180}
+	}
+
+	# Everything else: gate on auth first.
+	route {
+		forward_auth {$PEP_UPSTREAM:127.0.0.1:4180} {
+			uri /oauth2/auth
+			copy_headers X-Auth-Request-User X-Auth-Request-Email X-Auth-Request-Groups X-Auth-Request-Identity
+
+			# On 401/403 the proxy denies; send the browser to the login start with a return-to.
+			@error status 401 403
+			handle_response @error {
+				redir * /oauth2/start?rd={http.request.uri} 302
+			}
+		}
+
+		reverse_proxy {$APP_UPSTREAM:127.0.0.1:8080}
+	}
+}

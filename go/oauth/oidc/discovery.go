@@ -17,8 +17,8 @@ type DiscoveryDocument struct {
 	IdTokenSigningAlgValuesSupported []string `json:"id_token_signing_alg_values_supported"`
 }
 
-func FetchDiscoveryDocument(url string) (*DiscoveryDocument, error) {
-	resp, err := http.Get(string(url))
+func FetchDiscoveryDocument(url string, httpClient *http.Client) (*DiscoveryDocument, error) {
+	resp, err := httpClient.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get discovery document: %w", err)
 	}

@@ -44,4 +44,3 @@ func CurveForOID(oid asn1.ObjectIdentifier) (elliptic.Curve, error) {
 	}
 	return nil, fmt.Errorf("gempki: unsupported elliptic curve OID %s", oid)
 }
-

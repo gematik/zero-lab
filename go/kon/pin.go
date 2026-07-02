@@ -3,6 +3,7 @@ package kon
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/cardservice81"
@@ -37,12 +38,7 @@ func PinTypesForCardType(cardType cardservicecommon20.CardType) []PinTyp {
 }
 
 func (p PinTyp) IsValid() bool {
-	for _, v := range AllPinTypes {
-		if p == v {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(AllPinTypes, p)
 }
 
 func PinTypValues() []string {

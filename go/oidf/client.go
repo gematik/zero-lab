@@ -74,7 +74,7 @@ func (c *RelyingPartyClient) AuthenticationURL(state, nonce, verifier string, op
 	defer parResponse.Body.Close()
 
 	if parResponse.StatusCode != http.StatusCreated {
-		return "", fmt.Errorf("PAR: unexpected status '%s': %w", parResponse.Status, parseErrorResponse(parResponse.Body))
+		return "", fmt.Errorf("PAR: unexpected status '%s': %w", parResponse.Status, parseErrorResponse(parResponse.Body, c.op.Metadata.OpenidProvider.PushedAuthorizationRequestEndpoint))
 	}
 
 	var parResp pushedAuthorizationResponse
