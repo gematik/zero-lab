@@ -1,0 +1,35 @@
+{{ define "content" }}
+<h1 class="mb-2">Fehler</h1>
+<p class="text-body-secondary mb-4">
+  Fehler werden mit passenden HTTP-Statuscodes signalisiert. Direkte Provider-Antworten werden 1:1
+  durchgereicht (siehe das <code>404</code>-Beispiel bei den
+  <a href="/consent">Consent-Entscheidungen</a>).
+</p>
+
+<h2>Zusammengesetzte Provider-Fehler</h2>
+<p>
+  Schlägt die automatische Akten-Auflösung über die <code>/insurants/{kvnr}/…</code>-Routen fehl,
+  antwortet die Middleware mit einem zusammengesetzten Fehler aller Provider:
+</p>
+<p class="caption">Beispiel — unbekannte KVNR <span class="badge rounded-pill text-bg-danger">502 Bad Gateway · application/json</span></p>
+{{ template "json" "{\n  \"errors\": [\n    {\n      \"error\": \"provider_error\",\n      \"error_description\": \"http error: 400, error code: malformedRequest, error detail: \",\n      \"provider\": 2\n    },\n    {\n      \"error\": \"provider_error\",\n      \"error_description\": \"http error: 400, error code: malformedRequest, error detail: \",\n      \"provider\": 1\n    },\n    {\n      \"error\": \"provider_error\",\n      \"error_description\": \"http error: 400, error code: malformedRequest, error detail: \",\n      \"provider\": 3\n    }\n  ]\n}" }}
+
+<h2>Validierungs- und Aktionsfehler</h2>
+<p>
+  Die KVNR-Endpunkte validieren Eingaben und melden fehlgeschlagene Aktionen im einheitlichen Format
+  <code>{"error", "error_description"}</code>:
+</p>
+<p class="caption">Ungültige KVNR <span class="badge rounded-pill text-bg-danger">400 Bad Request · application/json</span></p>
+{{ template "json" "{\n  \"error\": \"invalid_kvnr\",\n  \"error_description\": \"KVNR must be an uppercase letter followed by 9 digits\"\n}" }}
+
+<p class="caption">Befugnis-Erteilung fehlgeschlagen <span class="badge rounded-pill text-bg-danger">502 Bad Gateway · application/json</span></p>
+{{ template "json" "{\n  \"error\": \"entitlement_failed\",\n  \"error_description\": \"setting entitlement PS: http error: 409, error code: statusMismatch, error detail: \"\n}" }}
+
+<h2>Provider-Fehler (durchgereicht)</h2>
+<p>
+  Antworten der Provider — auch Fehler — werden unverändert durchgereicht, inklusive Statuscode
+  und Body. Beispiel für eine Anfrage an einen Provider, der die Akte nicht hält:
+</p>
+<p class="caption">Beispiel <span class="badge rounded-pill text-bg-danger">404 Not Found · application/json</span></p>
+{{ template "json" "{\n  \"errorCode\": \"noHealthRecord\",\n  \"errorDetail\": \"89GF TLTP 4FCH HKYM\"\n}" }}
+{{ end }}

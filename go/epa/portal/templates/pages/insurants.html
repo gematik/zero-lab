@@ -1,0 +1,130 @@
+{{ define "content" }}
+<h1 class="mb-2">Versicherte (KVNR)</h1>
+<p class="text-body-secondary mb-4">
+  Ein Versicherter wird über seine <strong>KVNR</strong> (Krankenversichertennummer, Format
+  <code>X</code> + 9 Ziffern, z.B. <code>X110611629</code>) identifiziert. Welcher der drei Provider
+  die Akte hostet, ist nicht öffentlich bekannt — die Middleware fragt dazu alle Provider parallel
+  über deren Informationsdienst an.
+</p>
+
+<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap">
+  <span class="badge text-bg-success">GET</span><code>/api/proxies/{name}/insurants/{kvnr}</code>
+</div>
+<p>
+  Umfassende Informationen zu einer KVNR: welcher Provider die Akte hostet, die dort hinterlegten
+  Consent-Entscheidungen und ob über diese Middleware bereits eine Befugnis erteilt wurde.
+  <strong>Rein lesend</strong> — es wird keine Befugnis erzeugt.
+</p>
+<div class="alert alert-secondary">
+  Die Befugnis-Information stammt aus dem lokalen Cache dieser Middleware-Instanz (best effort):
+  ein Neustart leert sie, und die Gültigkeitsdauer beim Provider wird nicht abgefragt.
+</div>
+
+<div class="try card mb-4" data-method="GET" data-path="/api/proxies/{proxy}/insurants/{kvnr}" data-summary="insurant-info">
+  <div class="card-body">
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-5">
+        <label class="form-label">Proxy</label>
+        <select class="form-select" data-var="proxy"></select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">KVNR</label>
+        <input class="form-control" data-var="kvnr" value="X110611629" placeholder="X110611629">
+      </div>
+      <div class="col-auto">{{ template "execute-button" }}</div>
+    </div>
+    {{ template "curl" (.Curl (.URL "/api/proxies/%s/insurants/X110611629" .FirstProxyName)) }}
+    {{ template "result" }}
+  </div>
+</div>
+
+<p class="caption">Beispiel-Antwort <span class="badge rounded-pill text-bg-success">200 OK · application/json</span></p>
+{{ template "json" "{\n  \"insurantId\": \"X110611629\",\n  \"record\": { \"found\": true, \"provider\": 2 },\n  \"providers\": [\n    { \"number\": 1, \"recordFound\": false },\n    { \"number\": 2, \"recordFound\": true,\n      \"consentDecisions\": [\n        { \"functionId\": \"medication\", \"decision\": \"permit\" },\n        { \"functionId\": \"erp-submission\", \"decision\": \"permit\" }\n      ] },\n    { \"number\": 3, \"recordFound\": false }\n  ],\n  \"entitlement\": { \"entitled\": true, \"provider\": 2, \"entitledAt\": \"2026-07-07T10:12:00Z\" }\n}" }}
+
+<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap">
+  <span class="badge text-bg-warning">POST</span><code>/api/proxies/{name}/insurants/{kvnr}/entitlement</code>
+</div>
+<p>
+  Erteilt explizit eine Befugnis (Entitlement) für die im Proxy konfigurierte
+  Leistungserbringer-Identität. Der Provider wird automatisch ermittelt; optional kann er im
+  JSON-Body erzwungen werden (<code>{"provider": 2}</code>).
+</p>
+<div class="alert alert-warning">
+  <strong>Schreibender Vorgang:</strong> die Befugnis wird in der Akte des Versicherten hinterlegt —
+  der gewählte Proxy erhält dadurch Zugriff auf die Akte.
+</div>
+
+<div class="try card mb-4" data-method="POST" data-path="/api/proxies/{proxy}/insurants/{kvnr}/entitlement">
+  <div class="card-body">
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-4">
+        <label class="form-label">Proxy</label>
+        <select class="form-select" data-var="proxy"></select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">KVNR</label>
+        <input class="form-control" data-var="kvnr" value="X110611629" placeholder="X110611629">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Provider</label>
+        <select class="form-select" data-body="provider">
+          <option value="" selected>auto</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+        </select>
+      </div>
+      <div class="col-auto">{{ template "execute-button" }}</div>
+    </div>
+    {{ template "curl" (printf "curl -X POST %q" (.URL "/api/proxies/%s/insurants/X110611629/entitlement" .FirstProxyName)) }}
+    {{ template "result" }}
+  </div>
+</div>
+
+<p class="caption">Beispiel-Antwort <span class="badge rounded-pill text-bg-success">201 Created · application/json</span></p>
+{{ template "json" "{\n  \"insurantId\": \"X110611629\",\n  \"provider\": 2,\n  \"entitledAt\": \"2026-07-07T10:12:00Z\"\n}" }}
+
+<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap">
+  <span class="badge text-bg-success">GET</span><code>/api/proxies/{name}/insurants</code>
+</div>
+<p>
+  Listet die diesem Proxy bekannten Zuordnungen <em>KVNR → Provider</em> — also alle Versicherten,
+  deren Akte über diese Middleware-Instanz bereits aufgelöst wurde.
+</p>
+
+<div class="try card mb-4" data-method="GET" data-path="/api/proxies/{proxy}/insurants">
+  <div class="card-body">
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-8">
+        <label class="form-label">Proxy</label>
+        <select class="form-select" data-var="proxy"></select>
+      </div>
+      <div class="col-auto">{{ template "execute-button" }}</div>
+    </div>
+    {{ template "curl" (.Curl (.URL "/api/proxies/%s/insurants" .FirstProxyName)) }}
+    {{ template "result" }}
+  </div>
+</div>
+
+<h2>Zugriff auf die Akte</h2>
+<p>
+  Der Insurants-Pfad ist der bequemste Weg, eine konkrete Akte anzusprechen: man gibt nur die KVNR an,
+  die Middleware übernimmt die Routenermittlung, die Befugnis-Erteilung und das VAU-Tunneling.
+</p>
+<p>So läuft eine Anfrage intern ab:</p>
+<ol>
+  <li>Erste Anfrage für eine KVNR: die Middleware fragt parallel alle Provider, welcher die Akte hält.</li>
+  <li>Beim zuständigen Provider erzeugt sie eine Befugnis (Entitlement) für den im Proxy konfigurierten Leistungserbringer.</li>
+  <li>Das Mapping <em>KVNR → Provider</em> wird gecached, sodass Folge-Anfragen direkt zum richtigen Backend gehen.</li>
+  <li>Die Anfrage wird inklusive Method, Header, Query und Body durch den VAU-Tunnel weitergeleitet; die Antwort wird transparent zurückgegeben.</li>
+</ol>
+<div class="alert alert-info">
+  <p class="mb-2">
+    <strong>Pfad-Schema:</strong> <code>/api/proxies/{name}/insurants/{kvnr}/vau/&lt;Provider-Pfad&gt;</code>
+  </p>
+  <p class="mb-0">
+    Alles nach dem <code>/vau/</code> ist der originale Provider-Pfad — die offizielle ePA-Dokumentation
+    ist hier 1:1 anwendbar. Beispiele unter <a href="/medication" class="alert-link">Medikation</a>.
+  </p>
+</div>
+{{ end }}

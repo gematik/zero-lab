@@ -1,0 +1,60 @@
+{{ define "content" }}
+<h1 class="mb-2">Proxies</h1>
+<p class="text-body-secondary mb-4">
+  Jeder Proxy bündelt eine Leistungserbringer-Identität (SMC-B) und eine ePA-Umgebung. Alle Anfragen
+  starten mit dem Pfad-Präfix <code>/api/proxies/{name}</code>, der bestimmt, welche Identität verwendet wird.
+  Anfragen an <code>/api/…</code> ohne Präfix gehen an den ersten konfigurierten Proxy.
+</p>
+
+<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap">
+  <span class="badge text-bg-success">GET</span><code>/api/proxies</code>
+</div>
+<p>Listet alle aktuell konfigurierten Proxies.</p>
+
+<div class="try" data-method="GET" data-path="/api/proxies">
+  {{ template "curl" (.Curl (.URL "/api/proxies")) }}
+  <div class="mt-2">{{ template "execute-button" }}</div>
+  {{ template "result" }}
+</div>
+
+<p class="caption">Beispiel-Antwort <span class="badge rounded-pill text-bg-success">200 OK · application/json</span></p>
+{{ template "json" "[\n  {\n    \"name\": \"1\",\n    \"env\": \"dev\",\n    \"subject\": \"Adler ApothekeTEST-ONLY\",\n    \"admission_statement\": {\n      \"professionItems\": [\"Öffentliche Apotheke\"],\n      \"professionOids\": [\"1.2.276.0.76.4.54\"],\n      \"registrationNumber\": \"3-SMC-B-Testkarte--883110000153440\"\n    }\n  }\n]" }}
+
+<p>Aktuell auf diesem Gateway konfiguriert:</p>
+<ul class="list-unstyled">
+  {{ range .ProxyInfos }}
+  <li class="py-2">
+    <code>/api/proxies/{{ .Name }}</code>
+    <span class="badge text-bg-info text-uppercase ms-1">{{ .Env }}</span><br>
+    <span>{{ .Subject }}</span>{{ with .AdmissionStatement }} · <code>{{ .RegistrationNumber }}</code>{{ end }}
+  </li>
+  {{ else }}
+  <li><div class="alert alert-warning">Keine Proxies konfiguriert.</div></li>
+  {{ end }}
+</ul>
+
+<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap">
+  <span class="badge text-bg-success">GET</span><code>/api/proxies/{name}/info</code>
+</div>
+<p>
+  Details zu einem einzelnen Proxy — Name, Umgebung, Common Name des SMC-B-Zertifikats und
+  Admission Statement (Berufsgruppe, Registrierungsnummer).
+</p>
+
+<div class="try card mb-4" data-method="GET" data-path="/api/proxies/{proxy}/info">
+  <div class="card-body">
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-8">
+        <label class="form-label">Proxy</label>
+        <select class="form-select" data-var="proxy"></select>
+      </div>
+      <div class="col-auto">{{ template "execute-button" }}</div>
+    </div>
+    {{ template "curl" (.Curl (.URL "/api/proxies/%s/info" .FirstProxyName)) }}
+    {{ template "result" }}
+  </div>
+</div>
+
+<p class="caption">Beispiel-Antwort <span class="badge rounded-pill text-bg-success">200 OK · application/json</span></p>
+{{ template "json" "{\n  \"name\": \"1\",\n  \"env\": \"dev\",\n  \"subject\": \"Adler ApothekeTEST-ONLY\",\n  \"admission_statement\": {\n    \"professionItems\": [\"Öffentliche Apotheke\"],\n    \"professionOids\": [\"1.2.276.0.76.4.54\"],\n    \"registrationNumber\": \"3-SMC-B-Testkarte--883110000153440\"\n  }\n}" }}
+{{ end }}

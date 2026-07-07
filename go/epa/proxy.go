@@ -151,6 +151,7 @@ func (pc *ProxyConfig) Init() error {
 type PatientRecordMetadata struct {
 	InsurantID string
 	Provider   ProviderNumber
+	EntitledAt time.Time
 }
 
 func resolvePath(baseDir, path string) string {
@@ -240,6 +241,8 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 
 	// add insurants handlers
 	p.mux.Handle("/insurants", http.HandlerFunc(p.GetInsurants))
+	p.mux.Handle("GET /insurants/{insurantID}", http.HandlerFunc(p.HandleInsurantInfo))
+	p.mux.Handle("POST /insurants/{insurantID}/entitlement", http.HandlerFunc(p.HandleEntitleInsurant))
 	p.mux.Handle("/insurants/{insurantID}/vau/{path...}", http.HandlerFunc(p.HandleForwardToVAUInsurant))
 
 	// shows proxy info
@@ -378,96 +381,95 @@ func (p *Proxy) Close() {
 	p.sessionManager.Close()
 }
 
+// findRecordProvider asks all providers in parallel which one holds the
+// record for the given insurant. It performs no entitlement and touches no
+// cache; callers must not rely on any lock being held.
+func (p *Proxy) findRecordProvider(insurantID string) (*Session, *MultiProviderError) {
+	type result struct {
+		provider ProviderNumber
+		found    bool
+		session  *Session
+		err      error
+	}
+
+	results := make(chan result, len(AllProviders))
+
+	for _, provider := range AllProviders {
+		go func(provider ProviderNumber) {
+			slog.Info("Checking record status", "insurantID", insurantID, "provider", provider)
+			session, err := p.sessionManager.GetSession(provider)
+			if err != nil {
+				results <- result{provider: provider, err: err}
+				return
+			}
+			found, err := session.GetRecordStatus(insurantID)
+			results <- result{provider: provider, found: found, session: session, err: err}
+		}(provider)
+	}
+
+	multiProviderError := &MultiProviderError{
+		Errors: make([]ProvidersError, 0, len(AllProviders)),
+	}
+
+	var foundSession *Session
+	for range AllProviders {
+		r := <-results
+		if r.err != nil {
+			multiProviderError.Errors = append(multiProviderError.Errors, ProvidersError{
+				Code:           "provider_error",
+				Description:    r.err.Error(),
+				ProviderNumber: r.provider,
+			})
+			slog.Error("Failed to get record status", "provider", r.provider, "error", r.err)
+			continue
+		}
+		if !r.found {
+			slog.Info("Record not found", "provider", r.provider, "insurantID", insurantID)
+			multiProviderError.Errors = append(multiProviderError.Errors, ProvidersError{
+				Code:           "record_not_found",
+				Description:    fmt.Sprintf("record not found for insurantID '%s'", insurantID),
+				ProviderNumber: r.provider,
+			})
+			continue
+		}
+		slog.Info("Record found", "provider", r.provider, "insurantID", insurantID)
+		if foundSession == nil {
+			foundSession = r.session
+		}
+	}
+
+	if foundSession == nil {
+		return nil, multiProviderError
+	}
+	return foundSession, nil
+}
+
 func (p *Proxy) findAndCacheRecord(insurantID string) (*PatientRecordMetadata, error) {
 	p.recordsLock.RLock()
 	rm, ok := p.records[insurantID]
 	p.recordsLock.RUnlock()
-	if !ok {
-		p.recordsLock.Lock()
-		defer p.recordsLock.Unlock()
-		// try to find the record by asking every session if it has the record
-		// run in parallel
-		type result struct {
-			provider ProviderNumber
-			record   PatientRecordMetadata
-			session  *Session
-			error    error
-		}
-
-		results := make(chan result, len(AllProviders))
-
-		for _, provider := range AllProviders {
-			go func(provider ProviderNumber) {
-				slog.Info(fmt.Sprintf("Checking record status for insurantID %s with provider %d", insurantID, provider))
-				session, err := p.sessionManager.GetSession(provider)
-				if err != nil {
-					results <- result{provider: provider, error: err}
-					return
-				}
-				found, err := session.GetRecordStatus(insurantID)
-				if err != nil {
-					results <- result{provider: provider, error: err}
-					return
-				}
-				if found {
-					results <- result{
-						provider: provider,
-						record: PatientRecordMetadata{
-							InsurantID: insurantID,
-							Provider:   provider,
-						},
-						session: session,
-					}
-					return
-				} else {
-					results <- result{
-						provider: provider,
-					}
-				}
-			}(provider)
-		}
-
-		multiProviderError := &MultiProviderError{
-			Errors: make([]ProvidersError, 0, len(AllProviders)),
-		}
-
-		for range AllProviders {
-			r := <-results
-			if r.error != nil {
-				multiProviderError.Errors = append(multiProviderError.Errors, ProvidersError{
-					Code:           "provider_error",
-					Description:    r.error.Error(),
-					ProviderNumber: r.provider,
-				})
-				slog.Error("Failed to get record status", "provider", r.provider, "error", r.error)
-				continue
-			}
-			if r.record.InsurantID == "" {
-				slog.Info("Record not found", "provider", r.provider, "insurantID", insurantID)
-				multiProviderError.Errors = append(multiProviderError.Errors, ProvidersError{
-					Code:           "record_not_found",
-					Description:    fmt.Sprintf("record not found for insurantID '%s'", insurantID),
-					ProviderNumber: r.provider,
-				})
-				continue
-			}
-			slog.Info("Record status", "provider", r.provider, "insurantID", insurantID, "found", r.record.InsurantID != "")
-			// entitle
-			err := r.session.Entitle(insurantID)
-			if err != nil {
-				slog.Error("Failed to entitle", "provider", r.provider, "insurantID", insurantID, "error", err)
-			}
-
-			p.records[insurantID] = r.record
-			rm = r.record
-			break
-		}
-
-		if rm.InsurantID == "" {
-			return nil, multiProviderError
-		}
-
+	if ok {
+		return &rm, nil
 	}
+
+	session, multiErr := p.findRecordProvider(insurantID)
+	if multiErr != nil {
+		return nil, multiErr
+	}
+
+	rm = PatientRecordMetadata{
+		InsurantID: insurantID,
+		Provider:   session.ProviderNumber,
+	}
+	if err := session.Entitle(insurantID); err != nil {
+		slog.Error("Failed to entitle", "provider", session.ProviderNumber, "insurantID", insurantID, "error", err)
+	} else {
+		rm.EntitledAt = time.Now()
+	}
+
+	p.recordsLock.Lock()
+	p.records[insurantID] = rm
+	p.recordsLock.Unlock()
 
 	return &rm, nil
 }

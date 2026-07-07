@@ -22,7 +22,9 @@ type sessionManager struct {
 }
 
 func (sm *sessionManager) GetSession(provider ProviderNumber) (*Session, error) {
+	sm.lock.RLock()
 	session, ok := sm.sessions[provider]
+	sm.lock.RUnlock()
 	if !ok {
 		return sm.openSession(provider)
 	}
@@ -32,6 +34,11 @@ func (sm *sessionManager) GetSession(provider ProviderNumber) (*Session, error) 
 func (sm *sessionManager) openSession(provider ProviderNumber) (*Session, error) {
 	sm.lock.Lock()
 	defer sm.lock.Unlock()
+
+	// a concurrent caller may have opened the session while we waited
+	if session, ok := sm.sessions[provider]; ok {
+		return session, nil
+	}
 
 	var client *Client
 	var err error

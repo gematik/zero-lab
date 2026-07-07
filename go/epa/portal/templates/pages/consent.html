@@ -1,0 +1,56 @@
+{{ define "content" }}
+<h1 class="mb-2">Consent-Entscheidungen</h1>
+<p class="text-body-secondary mb-4">
+  Liefert die Consent-Entscheidungen eines Versicherten beim ausgewählten Provider — also für welche
+  ePA-Funktionen (z.B. Medikation, E-Rezept, Dokumente) der Leistungserbringer Zugriff erhalten würde.
+  Nützlich vor einem tatsächlichen Zugriff auf eine Akte.
+</p>
+
+<div class="alert alert-info">
+  <p class="mb-2">
+    <strong>Pflicht-Header:</strong> <code>x-insurantid: &lt;KVNR&gt;</code> — die KVNR des Versicherten,
+    dessen Consent abgefragt werden soll. Die KVNR hat das Format <code>X</code> + 9 Ziffern.
+  </p>
+  <p class="mb-0">
+    Da diese Information vor dem VAU-Tunnel liegt, wird der Endpunkt direkt am Provider angesprochen —
+    nicht über <code>/vau/…</code>. Welcher Provider die Akte hält, lässt sich mit der
+    <a href="/insurants" class="alert-link">KVNR-Info</a> ermitteln.
+  </p>
+</div>
+
+<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap">
+  <span class="badge text-bg-success">GET</span><code>/api/proxies/{name}/providers/{n}/information/api/v1/ehr/consentdecisions</code>
+</div>
+
+<div class="try card mb-4" data-method="GET" data-path="/api/proxies/{proxy}/providers/{n}/information/api/v1/ehr/consentdecisions">
+  <div class="card-body">
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-4">
+        <label class="form-label">Proxy</label>
+        <select class="form-select" data-var="proxy"></select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Provider</label>
+        <select class="form-select" data-var="n">
+          <option value="1">1</option>
+          <option value="2" selected>2</option>
+          <option value="3">3</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">KVNR</label>
+        <input class="form-control" data-header="x-insurantid" value="X110611629" placeholder="X110611629">
+      </div>
+      <div class="col-auto">{{ template "execute-button" }}</div>
+    </div>
+    {{ template "curl" (.Curl (.URL "/api/proxies/%s/providers/2/information/api/v1/ehr/consentdecisions" .FirstProxyName) "x-insurantid: X110611629") }}
+    {{ template "result" }}
+  </div>
+</div>
+
+<p class="caption">Beispiel-Antwort <span class="badge rounded-pill text-bg-success">200 OK · application/json</span></p>
+{{ template "json" "{\n  \"data\": [\n    { \"functionId\": \"medication\",     \"decision\": \"permit\" },\n    { \"functionId\": \"erp-submission\",  \"decision\": \"permit\" }\n  ]\n}" }}
+
+<p class="caption">Antwort bei falschem Provider <span class="badge rounded-pill text-bg-danger">404 Not Found · application/json</span></p>
+{{ template "json" "{\n  \"errorCode\": \"noHealthRecord\",\n  \"errorDetail\": \"89GF TLTP 4FCH HKYM\"\n}" }}
+{{ end }}

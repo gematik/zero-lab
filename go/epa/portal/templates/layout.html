@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="de" data-bs-theme="dark">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ .Title }} · ePA Middleware</title>
+    <link rel="icon" type="image/svg+xml" href="/static/gematik_logo.svg">
+    <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
+    <link rel="stylesheet" href="/static/vendor/github-dark.min.css">
+    <link rel="stylesheet" href="/static/portal.css">
+  </head>
+  <body data-auth-header="{{ .AuthHeader }}">
+    <header class="navbar d-lg-none border-bottom sticky-top bg-body px-3">
+      <a class="navbar-brand d-flex align-items-center gap-2 fw-semibold text-nowrap" href="/">
+        <img src="/static/gematik_logo.svg" alt="gematik" class="brand-logo">
+        ePA Middleware
+      </a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="offcanvas" data-bs-target="#portalNav" aria-controls="portalNav" aria-label="Navigation umschalten">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+    </header>
+
+    <div class="d-lg-flex">
+      <aside class="offcanvas-lg offcanvas-start sidebar border-end" tabindex="-1" id="portalNav" aria-label="Navigation">
+        <div class="offcanvas-header d-lg-none">
+          <span class="d-flex align-items-center gap-2 fs-5 fw-semibold text-nowrap">
+            <img src="/static/gematik_logo.svg" alt="gematik" class="brand-logo">
+            ePA Middleware
+          </span>
+          <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#portalNav" aria-label="Schließen"></button>
+        </div>
+        <div class="offcanvas-body d-flex flex-column p-3">
+          <a href="/" class="d-none d-lg-block text-decoration-none text-body mb-3">
+            <img src="/static/gematik_logo.svg" alt="gematik" class="brand-logo d-block mb-2">
+            <span class="fs-5 fw-semibold text-nowrap">ePA Middleware</span>
+          </a>
+          <nav class="nav nav-pills flex-column gap-1">
+            {{ range .Pages }}
+            <a class="nav-link{{ if eq .Slug $.Active }} active{{ end }}" href="{{ .Path }}">{{ .Title }}</a>
+            {{ end }}
+          </nav>
+          <div class="mt-auto pt-4">
+            <span class="badge rounded-pill border text-body-secondary bg-body-tertiary font-monospace fw-normal">v{{ .Version }}</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="flex-grow-1">
+        <div class="content-col py-4 py-lg-5 px-3 px-lg-5">
+          {{ block "content" . }}{{ end }}
+          <footer class="mt-5 pt-3 border-top text-body-secondary small">ePA Middleware · gematik</footer>
+        </div>
+      </main>
+    </div>
+
+    <script src="/static/vendor/bootstrap.bundle.min.js"></script>
+    <script src="/static/vendor/highlight.min.js"></script>
+    <script src="/static/portal.js"></script>
+  </body>
+</html>

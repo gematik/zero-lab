@@ -1,0 +1,84 @@
+{{ define "content" }}
+<h1 class="mb-2">Provider &amp; VAU</h1>
+<p class="text-body-secondary mb-4">
+  Jeder Proxy unterhält zu allen drei ePA-Providern eine VAU-Session, die im Hintergrund automatisch
+  geöffnet, überwacht und erneuert wird. Diese Sessions werden für alle Anfragen wiederverwendet,
+  sodass keine Initialisierungs-Latenz pro Aufruf entsteht.
+</p>
+
+<table class="table table-sm mb-4">
+  <thead>
+    <tr><th>Nummer</th><th>Hostname-Muster</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>1</code></td><td><code>epa-as-1.{env}.epa4all.de</code></td></tr>
+    <tr><td><code>2</code></td><td><code>epa-as-2.{env}.epa4all.de</code></td></tr>
+    <tr><td><code>3</code></td><td><code>epa-as-3.{env}.epa4all.de</code></td></tr>
+  </tbody>
+</table>
+
+<p>
+  Direkte Provider-Anfragen umgehen die automatische Akten-Auflösung und richten sich an einen
+  konkret benannten Provider <code>{n} = 1 | 2 | 3</code>:
+</p>
+<ul>
+  <li><code>/api/proxies/{name}/providers/{n}/…</code> — unverschlüsselt zum Provider (für öffentliche Endpunkte wie Informationen oder Status)</li>
+  <li><code>/api/proxies/{name}/providers/{n}/vau/…</code> — durch den VAU-Tunnel</li>
+</ul>
+
+<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap">
+  <span class="badge text-bg-success">GET</span><code>/api/proxies/{name}/providers</code>
+</div>
+<p>Aktueller Stand der Provider-Sessions des Proxy — Base-URL und Zeitpunkt der Session-Öffnung.</p>
+
+<div class="try card mb-4" data-method="GET" data-path="/api/proxies/{proxy}/providers">
+  <div class="card-body">
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-8">
+        <label class="form-label">Proxy</label>
+        <select class="form-select" data-var="proxy"></select>
+      </div>
+      <div class="col-auto">{{ template "execute-button" }}</div>
+    </div>
+    {{ template "curl" (.Curl (.URL "/api/proxies/%s/providers" .FirstProxyName)) }}
+    {{ template "result" }}
+  </div>
+</div>
+
+<p class="caption">Beispiel-Antwort <span class="badge rounded-pill text-bg-success">200 OK · application/json</span></p>
+{{ template "json" "[\n  {\n    \"number\": 1,\n    \"baseURL\": \"https://epa-as-1.dev.epa4all.de\",\n    \"sessionOpenedAt\": \"2026-05-27T20:44:34+02:00\"\n  },\n  {\n    \"number\": 2,\n    \"baseURL\": \"https://epa-as-2.dev.epa4all.de\",\n    \"sessionOpenedAt\": \"2026-05-27T20:44:37+02:00\"\n  },\n  {\n    \"number\": 3,\n    \"baseURL\": \"https://epa-as-3.dev.epa4all.de\",\n    \"sessionOpenedAt\": \"2026-05-27T20:44:39+02:00\"\n  }\n]" }}
+
+<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap">
+  <span class="badge text-bg-success">GET</span><code>/api/proxies/{name}/providers/{n}/vau/VAU-Status</code>
+</div>
+<p>
+  Sendet eine Status-Anfrage durch den VAU-Tunnel zum gewählten Provider. Eine erfolgreiche Antwort
+  bestätigt, dass die VAU-Session intakt und ent-/verschlüsselbar ist — praktisch zum Debugging.
+  <code>User-Authentication</code> enthält die ID der im Tunnel angemeldeten SMC-B Karte.
+</p>
+
+<div class="try card mb-4" data-method="GET" data-path="/api/proxies/{proxy}/providers/{n}/vau/VAU-Status">
+  <div class="card-body">
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-6">
+        <label class="form-label">Proxy</label>
+        <select class="form-select" data-var="proxy"></select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Provider</label>
+        <select class="form-select" data-var="n">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+        </select>
+      </div>
+      <div class="col-auto">{{ template "execute-button" }}</div>
+    </div>
+    {{ template "curl" (.Curl (.URL "/api/proxies/%s/providers/1/vau/VAU-Status" .FirstProxyName)) }}
+    {{ template "result" }}
+  </div>
+</div>
+
+<p class="caption">Beispiel-Antwort <span class="badge rounded-pill text-bg-success">200 OK · application/json</span></p>
+{{ template "json" "{\n  \"VAU-Type\": \"epa\",\n  \"VAU-Version\": \"v-4.31.617 Release\",\n  \"User-Authentication\": \"TID:3-SMC-B-Testkarte--883110000153440\",\n  \"KeyID\": \"9cbdf2107ae39c4705f9b41ab22d79e6f14039ee92e2ac61ac5145e6748ee208\",\n  \"Connection-Start\": \"2026-05-27T18:44:34.614738Z\"\n}" }}
+{{ end }}

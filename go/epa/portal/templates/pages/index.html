@@ -1,0 +1,120 @@
+{{ define "content" }}
+<h1 class="mb-2">ePA Middleware</h1>
+<p class="lead text-body-secondary mb-4">
+  REST-Gateway für die elektronische Patientenakte (ePA). Kapselt die SMC-B Authentifizierung,
+  den gemIDP-Flow und die VAU-Verschlüsselung — Clients sprechen einfaches HTTPS.
+</p>
+
+<div class="row row-cols-1 row-cols-md-2 g-3 mb-5">
+  <div class="col">
+    <div class="card h-100 feature-card">
+      <div class="card-body">
+        <h5 class="card-title"><a href="/medication" class="text-decoration-none">Medikation</a></h5>
+        <p class="card-text text-body-secondary">
+          Medikationsliste (eML) eines Versicherten abrufen — gerendert als
+          <a href="/medication#xhtml">HTML</a> oder <a href="/medication#pdf">PDF</a>,
+          oder maschinenlesbar als <a href="/medication#fhir">FHIR</a>.
+        </p>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card h-100 feature-card">
+      <div class="card-body">
+        <h5 class="card-title"><a href="/insurants" class="text-decoration-none">Versicherte (KVNR)</a></h5>
+        <p class="card-text text-body-secondary">
+          Zu einer KVNR ermitteln, welcher Provider die Akte hostet, welche Consent-Entscheidungen
+          gelten und ob eine Befugnis besteht — plus explizite Befugnis-Erteilung.
+        </p>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card h-100 feature-card">
+      <div class="card-body">
+        <h5 class="card-title"><a href="/consent" class="text-decoration-none">Consent-Entscheidungen</a></h5>
+        <p class="card-text text-body-secondary">
+          Vor dem Zugriff prüfen, für welche ePA-Funktionen (Medikation, E-Rezept, Dokumente)
+          der Versicherte Zugriff erlaubt hat.
+        </p>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card h-100 feature-card">
+      <div class="card-body">
+        <h5 class="card-title"><a href="/proxies" class="text-decoration-none">Proxies</a></h5>
+        <p class="card-text text-body-secondary">
+          Konfigurierte Leistungserbringer-Identitäten (SMC-B) und Umgebungen dieses Gateways
+          auflisten und inspizieren.
+        </p>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card h-100 feature-card">
+      <div class="card-body">
+        <h5 class="card-title"><a href="/providers" class="text-decoration-none">Provider &amp; VAU</a></h5>
+        <p class="card-text text-body-secondary">
+          Status der ePA-Provider-Sessions und der VAU-Tunnel — inklusive direkter
+          Provider-Anfragen zum Debugging.
+        </p>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card h-100 feature-card">
+      <div class="card-body">
+        <h5 class="card-title"><a href="/errors" class="text-decoration-none">Fehler</a></h5>
+        <p class="card-text text-body-secondary">
+          Fehlerformate der Middleware und der Provider — Statuscodes, Fehlercodes und Beispiele.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>Konzepte</h2>
+<p>
+  Die ePA ist verteilt: drei produktive Provider-Backends speichern die Akten der Versicherten.
+  Anfragen an eine Akte müssen über einen verschlüsselten Tunnel (VAU) laufen und mit einer
+  gültigen Leistungserbringer-Identität (SMC-B) autorisiert werden. Die Middleware abstrahiert all das.
+</p>
+<dl class="row concepts">
+  <dt class="col-sm-3">Proxy</dt>
+  <dd class="col-sm-9 text-body-secondary">Eine konfigurierte Identität dieser Middleware — SMC-B-Zertifikat (Arztpraxis, Krankenhaus, Apotheke) plus ePA-Umgebung (<code>dev</code>, <code>ref</code>, <code>test</code>, <code>prod</code>). Adressiert über <code>/api/proxies/{name}</code>.</dd>
+
+  <dt class="col-sm-3">Provider</dt>
+  <dd class="col-sm-9 text-body-secondary">Ein ePA-Backend. Es existieren drei produktive Provider, identifiziert durch die Nummern <code>1</code>, <code>2</code> und <code>3</code>. Welcher Provider die Akte eines Versicherten hostet, ist nicht öffentlich bekannt.</dd>
+
+  <dt class="col-sm-3">VAU</dt>
+  <dd class="col-sm-9 text-body-secondary">Vertrauenswürdige Ausführungsumgebung — verschlüsselter Tunnel zum Provider, in dem die Akten-Inhalte für den Provider unsichtbar bleiben. Die Middleware öffnet pro Proxy und Provider eine VAU-Session und hält sie offen.</dd>
+
+  <dt class="col-sm-3">Insurant</dt>
+  <dd class="col-sm-9 text-body-secondary">Ein Versicherter mit ePA, identifiziert durch eine <strong>KVNR</strong> (z.B. <code>X110611629</code>). Die Middleware ermittelt automatisch, bei welchem Provider die Akte liegt, und erzeugt die Befugnis für den Leistungserbringer.</dd>
+</dl>
+
+<h2>Authentifizierung</h2>
+<p>
+  Anfragen an diese Middleware werden über den HTTP-Header <code>Authorization</code> autorisiert.
+  Wird das Portal mit einem solchen Header geladen, erscheint der Header automatisch in allen
+  gezeigten <code>curl</code>-Befehlen.
+</p>
+<p>
+  Die Middleware selbst authentifiziert sich gegenüber gemIDP und ePA-Provider eigenständig
+  mittels des im Proxy hinterlegten SMC-B Zertifikats. Für Clients ist dieser Schritt transparent.
+</p>
+
+<h2>Konfigurierte Proxies</h2>
+<ul class="list-unstyled proxies">
+  {{ range .ProxyInfos }}
+  <li class="py-2">
+    <code>/api/proxies/{{ .Name }}</code>
+    <span class="badge text-bg-info text-uppercase ms-1">{{ .Env }}</span><br>
+    <span>{{ .Subject }}</span>{{ with .AdmissionStatement }} · <code>{{ .RegistrationNumber }}</code>{{ end }}
+  </li>
+  {{ else }}
+  <li><div class="alert alert-warning">Keine Proxies konfiguriert.</div></li>
+  {{ end }}
+</ul>
+{{ end }}

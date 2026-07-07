@@ -1,0 +1,100 @@
+{{ define "content" }}
+<h1 class="mb-2">Medikation</h1>
+<p class="text-body-secondary mb-4">
+  Die Medikationsliste (eML) eines Versicherten — gerendert als HTML oder PDF, oder maschinenlesbar
+  als FHIR. Alle Endpunkte laufen über die automatische Akten-Auflösung: nur die KVNR angeben,
+  die Middleware findet den Provider, erzeugt die Befugnis und tunnelt die Anfrage durch die VAU.
+</p>
+
+<div class="alert alert-info">
+  <p class="mb-2">
+    <strong>Pfad-Schema:</strong> <code>/api/proxies/{name}/insurants/{kvnr}/vau/&lt;Provider-Pfad&gt;</code>
+  </p>
+  <p class="mb-0">
+    Alles nach dem <code>/vau/</code> ist der originale Provider-Pfad — die offizielle ePA-Dokumentation
+    ist hier 1:1 anwendbar. HTTP-Method und Body werden ebenfalls durchgereicht. Die erste Anfrage für
+    eine KVNR erzeugt automatisch eine Befugnis (Entitlement) für den gewählten Proxy.
+  </p>
+</div>
+
+<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap" id="xhtml">
+  <span class="badge text-bg-success">GET</span><code>/api/proxies/{name}/insurants/{kvnr}/vau/epa/medication/render/v1/eml/xhtml</code>
+</div>
+<p>
+  Gerenderte Medikationsliste (eML) als <code>application/xhtml+xml</code> — geeignet zur direkten
+  Anzeige im Browser. Das Ergebnis wird unten direkt dargestellt.
+</p>
+
+<div class="try card mb-4" data-method="GET" data-path="/api/proxies/{proxy}/insurants/{kvnr}/vau/epa/medication/render/v1/eml/xhtml">
+  <div class="card-body">
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-5">
+        <label class="form-label">Proxy</label>
+        <select class="form-select" data-var="proxy"></select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">KVNR</label>
+        <input class="form-control" data-var="kvnr" value="X110611629" placeholder="X110611629">
+      </div>
+      <div class="col-auto">{{ template "execute-button" }}</div>
+    </div>
+    {{ template "curl" (.Curl (.URL "/api/proxies/%s/insurants/X110611629/vau/epa/medication/render/v1/eml/xhtml" .FirstProxyName)) }}
+    {{ template "result" }}
+  </div>
+</div>
+
+<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap" id="pdf">
+  <span class="badge text-bg-success">GET</span><code>/api/proxies/{name}/insurants/{kvnr}/vau/epa/medication/render/v1/eml/pdf</code>
+</div>
+<p>
+  Selbe Daten wie XHTML, aber als <code>application/pdf</code> — gerendert für Druck oder Archivierung.
+  Das PDF wird unten eingebettet angezeigt.
+</p>
+
+<div class="try card mb-4" data-method="GET" data-path="/api/proxies/{proxy}/insurants/{kvnr}/vau/epa/medication/render/v1/eml/pdf">
+  <div class="card-body">
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-5">
+        <label class="form-label">Proxy</label>
+        <select class="form-select" data-var="proxy"></select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">KVNR</label>
+        <input class="form-control" data-var="kvnr" value="X110600196" placeholder="X110600196">
+      </div>
+      <div class="col-auto">{{ template "execute-button" }}</div>
+    </div>
+    {{ template "curl" (.Curl (.URL "/api/proxies/%s/insurants/X110600196/vau/epa/medication/render/v1/eml/pdf" .FirstProxyName)) }}
+    {{ template "result" }}
+  </div>
+</div>
+
+<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap" id="fhir">
+  <span class="badge text-bg-success">GET</span><code>/api/proxies/{name}/insurants/{kvnr}/vau/epa/medication/api/v1/fhir/Medication</code>
+</div>
+<p>
+  FHIR-<code>Medication</code> Ressourcen des Versicherten als <code>application/fhir+json</code>.
+  Ideal für maschinelle Weiterverarbeitung.
+</p>
+
+<div class="try card mb-4" data-method="GET" data-path="/api/proxies/{proxy}/insurants/{kvnr}/vau/epa/medication/api/v1/fhir/Medication">
+  <div class="card-body">
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-5">
+        <label class="form-label">Proxy</label>
+        <select class="form-select" data-var="proxy"></select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">KVNR</label>
+        <input class="form-control" data-var="kvnr" value="X110611629" placeholder="X110611629">
+      </div>
+      <div class="col-auto">{{ template "execute-button" }}</div>
+    </div>
+    {{ template "curl" (.Curl (.URL "/api/proxies/%s/insurants/X110611629/vau/epa/medication/api/v1/fhir/Medication" .FirstProxyName)) }}
+    {{ template "result" }}
+  </div>
+</div>
+
+<p class="caption">Beispiel-Antwort (gekürzt — Bundle mit 12 Einträgen, hier 1 gezeigt) <span class="badge rounded-pill text-bg-success">200 OK · application/fhir+json</span></p>
+{{ template "json" "{\n  \"resourceType\": \"Bundle\",\n  \"type\": \"searchset\",\n  \"total\": 12,\n  \"entry\": [\n    {\n      \"fullUrl\": \"http://epa4all/epa/medication/api/v1/fhir/Medication/ba8572fd-0db1-48b1-9438-321c38131928\",\n      \"resource\": {\n        \"resourceType\": \"Medication\",\n        \"id\": \"ba8572fd-0db1-48b1-9438-321c38131928\",\n        \"code\": {\n          \"coding\": [\n            { \"system\": \"http://fhir.de/CodeSystem/ifa/pzn\", \"code\": \"00571748\" }\n          ],\n          \"text\": \"Imupret® N Dragees Beutel 2000 mg\"\n        },\n        \"status\": \"inactive\",\n        \"form\": {\n          \"coding\": [\n            { \"system\": \"https://fhir.kbv.de/CodeSystem/KBV_CS_SFHIR_KBV_DARREICHUNGSFORM\", \"code\": \"GUL\" }\n          ]\n        }\n      }\n    }\n  ]\n}" }}
+{{ end }}
