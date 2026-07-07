@@ -28,9 +28,9 @@ type Page struct {
 
 var pages = []Page{
 	{Slug: "index", Path: "/", Title: "Übersicht"},
+	{Slug: "status", Path: "/status", Title: "Status", Group: "Middleware"},
 	{Slug: "proxies", Path: "/proxies", Title: "Proxies", Group: "Middleware"},
 	{Slug: "providers", Path: "/providers", Title: "Provider & VAU", Group: "Middleware"},
-	{Slug: "status", Path: "/status", Title: "Status", Group: "Middleware"},
 	{Slug: "errors", Path: "/errors", Title: "Fehler", Group: "Middleware"},
 	{Slug: "insurants", Path: "/insurants", Title: "Versicherte (KVNR)", Group: "ePA-Dienste"},
 	{Slug: "consent", Path: "/consent", Title: "Consent-Entscheidungen", Group: "ePA-Dienste"},

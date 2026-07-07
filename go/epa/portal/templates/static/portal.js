@@ -486,6 +486,52 @@
     }
   }
 
+  /* ---- homepage status: one table per configured proxy/identity ---- */
+  async function loadStatusBrief() {
+    const el = document.querySelector('[data-status-brief]');
+    if (!el) return;
+    try {
+      const res = await fetch('/api/proxies');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const proxies = (await res.json()) || [];
+      if (!proxies.length) {
+        el.innerHTML = '<span class="text-body-secondary small">Keine Proxies konfiguriert</span>';
+        return;
+      }
+
+      const results = await Promise.all(proxies.map(async (proxy) => {
+        try {
+          const r = await fetch('/api/proxies/' + encodeURIComponent(proxy.name) + '/status');
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return { proxy, data: await r.json() };
+        } catch (e) {
+          return { proxy, error: String(e) };
+        }
+      }));
+
+      el.innerHTML = '';
+      for (const result of results) {
+        const wrap = document.createElement('div');
+        wrap.className = 'mb-2';
+        const heading = document.createElement('div');
+        heading.className = 'small text-body-secondary text-uppercase mb-1';
+        heading.textContent = 'Proxy /api/proxies/' + result.proxy.name;
+        wrap.appendChild(heading);
+        if (result.error) {
+          wrap.insertAdjacentHTML('beforeend',
+            '<div class="alert alert-danger py-2 mb-0">' + esc(result.error) + '</div>');
+        } else {
+          wrap.appendChild(renderProxyStatus(result.data));
+        }
+        el.appendChild(wrap);
+      }
+      el.insertAdjacentHTML('beforeend', '<a href="/status" class="small">Zur Status-Seite</a>');
+    } catch (e) {
+      el.innerHTML = '<span class="text-body-secondary small">Status nicht verfügbar</span> '
+        + '<a href="/status" class="small">Zur Status-Seite</a>';
+    }
+  }
+
   /* ---- proxy selects ---- */
   async function loadProxies() {
     let proxies = [];
@@ -533,4 +579,5 @@
 
   if (window.hljs) hljs.highlightAll();
   loadProxies();
+  loadStatusBrief();
 })();
