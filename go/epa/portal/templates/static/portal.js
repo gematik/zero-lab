@@ -509,23 +509,27 @@
         }
       }));
 
-      el.innerHTML = '';
+      let html = '';
       for (const result of results) {
-        const wrap = document.createElement('div');
-        wrap.className = 'mb-2';
-        const heading = document.createElement('div');
-        heading.className = 'small text-body-secondary text-uppercase mb-1';
-        heading.textContent = 'Proxy /api/proxies/' + result.proxy.name;
-        wrap.appendChild(heading);
+        const proxy = result.proxy;
+        html += '<div class="d-flex align-items-center flex-wrap gap-2 py-1">'
+          + '<code>/api/proxies/' + esc(proxy.name) + '</code>'
+          + '<span>' + esc(result.data?.subject || proxy.subject || '') + '</span>'
+          + '<span class="badge text-bg-info text-uppercase">' + esc(proxy.env || '') + '</span>';
         if (result.error) {
-          wrap.insertAdjacentHTML('beforeend',
-            '<div class="alert alert-danger py-2 mb-0">' + esc(result.error) + '</div>');
+          html += '<span class="badge text-bg-danger" title="' + esc(result.error) + '">Status-Fehler</span>';
         } else {
-          wrap.appendChild(renderProxyStatus(result.data));
+          for (const p of result.data.providers || []) {
+            const ok = !p.error;
+            html += '<span class="badge ' + (ok ? 'text-bg-success' : 'text-bg-danger')
+              + '" title="' + esc(ok ? (p.vau?.['VAU-Version'] || '') : p.error)
+              + '">Provider ' + esc(p.number) + (ok ? '' : ' ✕') + '</span>';
+          }
         }
-        el.appendChild(wrap);
+        html += '</div>';
       }
-      el.insertAdjacentHTML('beforeend', '<a href="/status" class="small">Zur Status-Seite</a>');
+      html += '<a href="/status" class="small">Zur Status-Seite</a>';
+      el.innerHTML = html;
     } catch (e) {
       el.innerHTML = '<span class="text-body-secondary small">Status nicht verfügbar</span> '
         + '<a href="/status" class="small">Zur Status-Seite</a>';
