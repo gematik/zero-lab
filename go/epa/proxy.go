@@ -248,6 +248,9 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 	// shows proxy info
 	p.mux.Handle("/info", http.HandlerFunc(p.HandleProxyInfo))
 
+	// aggregated VAU/session status of all providers
+	p.mux.Handle("GET /status", http.HandlerFunc(p.HandleProxyStatus))
+
 	return p, nil
 }
 

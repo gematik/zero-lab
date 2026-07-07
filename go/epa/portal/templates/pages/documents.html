@@ -1,0 +1,144 @@
+{{ define "content" }}
+<h1 class="mb-2">Dokumente</h1>
+<p class="text-body-secondary mb-4">
+  Lesender Zugriff auf die Dokumente einer Akte über den MHD Document Service (IHE MHD):
+  Suche nach Dokument-Metadaten (ITI-67, <code>DocumentReference</code>) und Abruf der
+  Dokumente selbst (ITI-68). Die Ergebnisse sind standardmäßig absteigend nach
+  Erstellungsdatum sortiert (neueste zuerst).
+</p>
+
+<div class="alert alert-info">
+  Das <strong>Einstellen</strong> von Dokumenten läuft über die SOAP-Schnittstelle des
+  XDS Document Service (ITI-41) und ist hier nicht abgebildet — dieses Portal deckt nur
+  die lesenden FHIR-Schnittstellen ab.
+</div>
+
+<h2>Dokumente suchen (ITI-67)</h2>
+
+<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap">
+  <span class="badge text-bg-success">GET</span><code>…/vau/epa/mhd/api/v1/fhir/DocumentReference</code>
+</div>
+<p>
+  FHIR-Suche über die Dokument-Metadaten. Die Spezifikation verlangt die Parameter
+  <code>patient.identifier</code> (wird automatisch aus der KVNR erzeugt) und
+  <code>status</code>. Treffer der Volltextsuche enthalten Text-Ausschnitte mit
+  Hervorhebungen, die unter dem Titel angezeigt werden.
+</p>
+
+<div class="try card mb-4" data-method="GET" data-summary="document-list"
+     data-path="/api/proxies/{proxy}/insurants/{kvnr}/vau/epa/mhd/api/v1/fhir/DocumentReference">
+  <div class="card-body">
+    <input type="hidden" data-param="patient.identifier" data-derived="http://fhir.de/sid/gkv/kvid-10|{kvnr}">
+    <div class="row g-2 align-items-end mb-2">
+      <div class="col-md-4">
+        <label class="form-label">Proxy</label>
+        <select class="form-select" data-var="proxy"></select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">KVNR</label>
+        <input class="form-control" data-var="kvnr" value="X110611629" placeholder="X110611629">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">status</label>
+        <select class="form-select" data-param="status">
+          <option value="current" selected>current</option>
+          <option value="superseded">superseded</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">_count</label>
+        <input class="form-control" data-param="_count" placeholder="25">
+      </div>
+    </div>
+    <div class="row g-2 align-items-end mb-2">
+      <div class="col-md-4">
+        <label class="form-label">Titel</label>
+        <input class="form-control" data-param="title" placeholder="Arztbrief">
+      </div>
+      <div class="col-md-5">
+        <label class="form-label">Volltextsuche (<code>_content</code>)</label>
+        <input class="form-control" data-param="_content" placeholder="Diabetes AND Bluthochdruck">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Erstellt (<code>creation</code>)</label>
+        <input class="form-control" data-param="creation" placeholder="ge2025-01-01">
+      </div>
+    </div>
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-4">
+        <label class="form-label">Typ (<code>type</code>, System|Code)</label>
+        <input class="form-control" data-param="type" placeholder="http://www.ihe-d.de/fhir/CodeSystem/Dokumententypen|BERI">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Autor (<code>author.family</code>)</label>
+        <input class="form-control" data-param="author.family" placeholder="Müller">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Weitere Parameter</label>
+        <input class="form-control" data-param-raw placeholder="category=…&amp;facility=…">
+      </div>
+      <div class="col-auto">{{ template "execute-button" }}</div>
+    </div>
+    {{ template "curl" (.Curl (.URL "/api/proxies/%s/insurants/X110611629/vau/epa/mhd/api/v1/fhir/DocumentReference?patient.identifier=http%%3A%%2F%%2Ffhir.de%%2Fsid%%2Fgkv%%2Fkvid-10%%7CX110611629&status=current" .FirstProxyName)) }}
+    {{ template "result" }}
+  </div>
+</div>
+
+<details class="mb-4">
+  <summary class="text-body-secondary">Alle Suchparameter der Spezifikation</summary>
+  <div class="table-responsive mt-2">
+    <table class="table table-sm">
+      <thead><tr><th>Parameter</th><th>Bedeutung</th></tr></thead>
+      <tbody>
+        <tr><td><code>_id</code>, <code>identifier</code></td><td>Aktenweit eindeutige Kennung des Dokuments (entryUUID)</td></tr>
+        <tr><td><code>_content</code></td><td>Volltextsuche in den Dokumenten — Grammatik: <code>AND</code>, <code>OR</code>, <code>NOT</code>, Phrasen in <code>"…"</code>, einfache Klammerung; unscharfe Suche mit Levenshtein-Distanz 1</td></tr>
+        <tr><td><code>title</code>, <code>description</code></td><td>Titel bzw. Freitext-Hinweise</td></tr>
+        <tr><td><code>type</code>, <code>category</code>, <code>format</code></td><td>Dokumentenart/-klasse/-format als Token <code>System|Code</code></td></tr>
+        <tr><td><code>creation</code>, <code>date</code>, <code>period</code>, <code>_lastUpdated</code></td><td>Datumsparameter, Präfixe <code>ge</code>/<code>le</code>/<code>eq</code></td></tr>
+        <tr><td><code>author.given</code>, <code>author.family</code>, <code>author.organization.name</code></td><td>Dokumenterstellende Person/Institution</td></tr>
+        <tr><td><code>contenttype</code>, <code>language</code></td><td>MIME-Type bzw. Sprache des Dokuments</td></tr>
+        <tr><td><code>event</code>, <code>facility</code>, <code>setting</code>, <code>security-label</code>, <code>related</code></td><td>Kontext: Ereignis, Einrichtung, Fachrichtung, Vertraulichkeit, assoziierte Dokumente</td></tr>
+        <tr><td><code>_count</code>, <code>_offset</code>, <code>_total</code></td><td>Paging (Default <code>_count=25</code>)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</details>
+
+<h2>Dokument abrufen (ITI-68)</h2>
+
+<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap">
+  <span class="badge text-bg-success">GET</span><code>…/vau/epa/mhd/retrieve/v1/content/{entryUUID}.{ext}</code>
+</div>
+<p>
+  Die Download-URL steht in jedem Suchtreffer unter
+  <code>DocumentReference.content.attachment.url</code> — die Öffnen-Links in der
+  Ergebnistabelle oben schreiben sie automatisch auf den Middleware-Pfad um.
+  Manuell aufgebaut sieht der Abruf so aus:
+</p>
+{{ template "curl" (.Curl (.URL "/api/proxies/%s/insurants/X110611629/vau/epa/mhd/retrieve/v1/content/2.25.140672093299439767204739633209364780218.pdf" .FirstProxyName)) }}
+
+<h2>Capability Statement</h2>
+
+<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap">
+  <span class="badge text-bg-success">GET</span><code>…/vau/epa/mhd/api/v1/fhir/metadata</code>
+</div>
+<p>Selbstauskunft des MHD Document Responder als FHIR CapabilityStatement.</p>
+
+<div class="try card mb-4" data-method="GET" data-path="/api/proxies/{proxy}/insurants/{kvnr}/vau/epa/mhd/api/v1/fhir/metadata">
+  <div class="card-body">
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-4">
+        <label class="form-label">Proxy</label>
+        <select class="form-select" data-var="proxy"></select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">KVNR</label>
+        <input class="form-control" data-var="kvnr" value="X110611629" placeholder="X110611629">
+      </div>
+      <div class="col-auto">{{ template "execute-button" }}</div>
+    </div>
+    {{ template "curl" (.Curl (.URL "/api/proxies/%s/insurants/X110611629/vau/epa/mhd/api/v1/fhir/metadata" .FirstProxyName)) }}
+    {{ template "result" }}
+  </div>
+</div>
+{{ end }}

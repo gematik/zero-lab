@@ -35,7 +35,11 @@
             <span class="fs-5 fw-semibold text-nowrap">ePA Middleware</span>
           </a>
           <nav class="nav nav-pills flex-column gap-1">
+            {{ $group := "" }}
             {{ range .Pages }}
+            {{ if and .Group (ne .Group $group) }}{{ $group = .Group }}
+            <div class="nav-group small text-body-secondary text-uppercase mt-3 mb-1">{{ .Group }}</div>
+            {{ end }}
             <a class="nav-link{{ if eq .Slug $.Active }} active{{ end }}" href="{{ .Path }}">{{ .Title }}</a>
             {{ end }}
           </nav>

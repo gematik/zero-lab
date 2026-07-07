@@ -17,6 +17,8 @@
   </p>
 </div>
 
+<h2>Gerenderte Ansichten</h2>
+
 <div class="endpoint d-flex align-items-baseline gap-2 flex-wrap" id="xhtml">
   <span class="badge text-bg-success">GET</span><code>/api/proxies/{name}/insurants/{kvnr}/vau/epa/medication/render/v1/eml/xhtml</code>
 </div>
@@ -69,15 +71,15 @@
   </div>
 </div>
 
-<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap" id="fhir">
-  <span class="badge text-bg-success">GET</span><code>/api/proxies/{name}/insurants/{kvnr}/vau/epa/medication/api/v1/fhir/Medication</code>
+<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap" id="emp-pdf">
+  <span class="badge text-bg-success">GET</span><code>/api/proxies/{name}/insurants/{kvnr}/vau/epa/medication/render/v1/emp/pdf</code>
 </div>
 <p>
-  FHIR-<code>Medication</code> Ressourcen des Versicherten als <code>application/fhir+json</code>.
-  Ideal für maschinelle Weiterverarbeitung.
+  Elektronischer Medikationsplan (eMP) als <code>application/pdf</code>. Ein XHTML-Rendering
+  existiert für den eMP nicht — die Spezifikation definiert nur diese PDF-Ansicht.
 </p>
 
-<div class="try card mb-4" data-method="GET" data-path="/api/proxies/{proxy}/insurants/{kvnr}/vau/epa/medication/api/v1/fhir/Medication">
+<div class="try card mb-4" data-method="GET" data-path="/api/proxies/{proxy}/insurants/{kvnr}/vau/epa/medication/render/v1/emp/pdf">
   <div class="card-body">
     <div class="row g-2 align-items-end mb-3">
       <div class="col-md-5">
@@ -87,6 +89,148 @@
       <div class="col-md-4">
         <label class="form-label">KVNR</label>
         <input class="form-control" data-var="kvnr" value="X110611629" placeholder="X110611629">
+      </div>
+      <div class="col-auto">{{ template "execute-button" }}</div>
+    </div>
+    {{ template "curl" (.Curl (.URL "/api/proxies/%s/insurants/X110611629/vau/epa/medication/render/v1/emp/pdf" .FirstProxyName)) }}
+    {{ template "result" }}
+  </div>
+</div>
+
+<h2>FHIR-Operationen</h2>
+<p>
+  Der Medication Service stellt die Medikationsliste (eML), den Medikationsplan (eMP) und dessen
+  Chronologie als FHIR-<code>$operations</code> bereit (<code>application/fhir+json</code>).
+</p>
+
+<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap" id="medication-list">
+  <span class="badge text-bg-success">GET</span><code>…/vau/epa/medication/api/v1/fhir/$medication-list</code>
+</div>
+<p>Elektronische Medikationsliste (eML) als FHIR-Bundle.</p>
+
+<div class="try card mb-4" data-method="GET" data-summary="medication-bundle" data-path="/api/proxies/{proxy}/insurants/{kvnr}/vau/epa/medication/api/v1/fhir/$medication-list">
+  <div class="card-body">
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-4">
+        <label class="form-label">Proxy</label>
+        <select class="form-select" data-var="proxy"></select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">KVNR</label>
+        <input class="form-control" data-var="kvnr" value="X110611629" placeholder="X110611629">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">date</label>
+        <input class="form-control" data-param="date" placeholder="ge2025-01-01">
+      </div>
+      <div class="col-md-1">
+        <label class="form-label">_count</label>
+        <input class="form-control" data-param="_count" placeholder="25">
+      </div>
+      <div class="col-auto">{{ template "execute-button" }}</div>
+    </div>
+    {{ template "curl" (.Curl (.URL "/api/proxies/%s/insurants/X110611629/vau/epa/medication/api/v1/fhir/$medication-list" .FirstProxyName)) }}
+    {{ template "result" }}
+  </div>
+</div>
+
+<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap" id="medication-plan">
+  <span class="badge text-bg-success">GET</span><code>…/vau/epa/medication/api/v1/fhir/$medication-plan</code>
+</div>
+<p>Elektronischer Medikationsplan (eMP) als FHIR. Mit <code>provenance=true</code> inklusive Herkunftsdaten.</p>
+
+<div class="try card mb-4" data-method="GET" data-summary="medication-bundle" data-path="/api/proxies/{proxy}/insurants/{kvnr}/vau/epa/medication/api/v1/fhir/$medication-plan">
+  <div class="card-body">
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-4">
+        <label class="form-label">Proxy</label>
+        <select class="form-select" data-var="proxy"></select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">KVNR</label>
+        <input class="form-control" data-var="kvnr" value="X110611629" placeholder="X110611629">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">provenance</label>
+        <select class="form-select" data-param="provenance">
+          <option value="" selected>–</option>
+          <option value="true">true</option>
+        </select>
+      </div>
+      <div class="col-auto">{{ template "execute-button" }}</div>
+    </div>
+    {{ template "curl" (.Curl (.URL "/api/proxies/%s/insurants/X110611629/vau/epa/medication/api/v1/fhir/$medication-plan" .FirstProxyName)) }}
+    {{ template "result" }}
+  </div>
+</div>
+
+<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap" id="medication-plan-log">
+  <span class="badge text-bg-success">GET</span><code>…/vau/epa/medication/api/v1/fhir/$medication-plan-log</code>
+</div>
+<p>Chronologie der Änderungen am Medikationsplan.</p>
+
+<div class="try card mb-4" data-method="GET" data-summary="medication-bundle" data-path="/api/proxies/{proxy}/insurants/{kvnr}/vau/epa/medication/api/v1/fhir/$medication-plan-log">
+  <div class="card-body">
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-4">
+        <label class="form-label">Proxy</label>
+        <select class="form-select" data-var="proxy"></select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">KVNR</label>
+        <input class="form-control" data-var="kvnr" value="X110611629" placeholder="X110611629">
+      </div>
+      <div class="col-md-1">
+        <label class="form-label">_count</label>
+        <input class="form-control" data-param="_count" placeholder="25">
+      </div>
+      <div class="col-md-1">
+        <label class="form-label">_offset</label>
+        <input class="form-control" data-param="_offset" placeholder="0">
+      </div>
+      <div class="col-auto">{{ template "execute-button" }}</div>
+    </div>
+    {{ template "curl" (.Curl (.URL "/api/proxies/%s/insurants/X110611629/vau/epa/medication/api/v1/fhir/$medication-plan-log" .FirstProxyName)) }}
+    {{ template "result" }}
+  </div>
+</div>
+
+<h2 id="fhir">Generische FHIR-Suche</h2>
+<p>
+  Lesender Zugriff auf alle FHIR-Ressourcen des Medication Service
+  (<code>application/fhir+json</code>): Suche, Einzelabruf (<code>/{id}</code>) und Historie
+  (<code>/_history</code>). Der Query-String akzeptiert die Suchparameter der Spezifikation,
+  z.B. <code>status</code>, <code>code</code>, <code>identifier</code>, <code>_lastUpdated</code>,
+  <code>_count</code>, <code>_offset</code>.
+</p>
+
+<div class="try card mb-4" data-method="GET" data-summary="medication-bundle" data-path="/api/proxies/{proxy}/insurants/{kvnr}/vau/epa/medication/api/v1/fhir/{resource}">
+  <div class="card-body">
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-4">
+        <label class="form-label">Proxy</label>
+        <select class="form-select" data-var="proxy"></select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">KVNR</label>
+        <input class="form-control" data-var="kvnr" value="X110611629" placeholder="X110611629">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Ressource</label>
+        <select class="form-select" data-var="resource">
+          <option selected>Medication</option>
+          <option>MedicationRequest</option>
+          <option>MedicationDispense</option>
+          <option>MedicationStatement</option>
+          <option>Organization</option>
+          <option>Practitioner</option>
+          <option>PractitionerRole</option>
+          <option>Provenance</option>
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Query-String (optional)</label>
+        <input class="form-control" data-param-raw placeholder="status=active&amp;_count=10">
       </div>
       <div class="col-auto">{{ template "execute-button" }}</div>
     </div>

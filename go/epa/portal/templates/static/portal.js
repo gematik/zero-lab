@@ -31,12 +31,32 @@
   /* ---- try blocks ---- */
   const tryBlocks = Array.from(document.querySelectorAll('.try'));
 
-  function buildPath(block) {
-    let path = block.dataset.path;
+  function substituteVars(block, str) {
     block.querySelectorAll('[data-var]').forEach((el) => {
       const val = el.value.trim();
-      if (val) path = path.replaceAll('{' + el.dataset.var + '}', val);
+      if (val) str = str.replaceAll('{' + el.dataset.var + '}', val);
     });
+    return str;
+  }
+
+  function buildQuery(block) {
+    const params = new URLSearchParams();
+    block.querySelectorAll('[data-param]').forEach((el) => {
+      const val = el.dataset.derived
+        ? substituteVars(block, el.dataset.derived)
+        : el.value.trim();
+      if (val) params.append(el.dataset.param, val);
+    });
+    let query = params.toString();
+    const raw = block.querySelector('[data-param-raw]')?.value.trim();
+    if (raw) query += (query ? '&' : '') + raw;
+    return query;
+  }
+
+  function buildPath(block) {
+    let path = substituteVars(block, block.dataset.path);
+    const query = buildQuery(block);
+    if (query) path += (path.includes('?') ? '&' : '?') + query;
     return path;
   }
 
@@ -142,6 +162,248 @@
     return div;
   }
 
+  function renderProxyStatus(data) {
+    const div = document.createElement('div');
+    div.className = 'mb-3';
+
+    let html = '<div class="mb-2">';
+    if (data.subject) html += '<strong>' + esc(data.subject) + '</strong> ';
+    if (data.telematikId) html += '<code>' + esc(data.telematikId) + '</code> ';
+    html += '<span class="badge text-bg-info text-uppercase">' + esc(data.env || '') + '</span> '
+      + '<span class="badge rounded-pill border text-body-secondary bg-body-tertiary fw-normal">'
+      + esc(data.insurantsCached ?? 0) + ' KVNR im Cache</span>';
+    if (data.identityError) {
+      html += '<div class="text-danger small mt-1">' + esc(data.identityError) + '</div>';
+    }
+    html += '</div>';
+
+    html += '<div class="table-responsive"><table class="table table-sm align-middle mb-2">'
+      + '<thead><tr><th>Provider</th><th>VAU-Version</th><th>User-Authentication</th>'
+      + '<th>Connection-Start</th><th>Session geöffnet</th><th>Status</th></tr></thead><tbody>';
+    for (const p of data.providers || []) {
+      const vau = p.vau || {};
+      const state = p.error
+        ? '<span class="badge text-bg-danger" title="' + esc(p.error) + '">Fehler</span>'
+        : '<span class="badge text-bg-success">OK</span>';
+      html += '<tr>'
+        + '<td>' + esc(p.number) + (p.baseURL ? '<br><span class="small text-body-secondary">' + esc(p.baseURL) + '</span>' : '') + '</td>'
+        + '<td>' + esc(vau['VAU-Version'] || '–') + '</td>'
+        + '<td><code>' + esc(vau['User-Authentication'] || '–') + '</code></td>'
+        + '<td>' + esc(vau['Connection-Start'] || '–') + '</td>'
+        + '<td>' + esc(p.sessionOpenedAt || '–') + '</td>'
+        + '<td>' + state + '</td>'
+        + '</tr>';
+      if (p.error) {
+        html += '<tr><td></td><td colspan="5" class="small text-danger">' + esc(p.error) + '</td></tr>';
+      }
+    }
+    html += '</tbody></table></div>';
+
+    div.innerHTML = html;
+    return div;
+  }
+
+  // escapes, then restores only the <mark> highlighting from full-text snippets
+  function escWithMark(value) {
+    return esc(value)
+      .replaceAll('&lt;mark&gt;', '<mark>')
+      .replaceAll('&lt;/mark&gt;', '</mark>');
+  }
+
+  function rewriteAttachmentURL(rawUrl, block) {
+    let pathname;
+    try {
+      pathname = new URL(rawUrl, location.origin).pathname;
+    } catch (e) {
+      return null;
+    }
+    const proxy = block.querySelector('select[data-var="proxy"]')?.value;
+    const kvnr = block.querySelector('[data-var="kvnr"]')?.value.trim();
+    if (!proxy || !kvnr) return null;
+    return '/api/proxies/' + encodeURIComponent(proxy) + '/insurants/'
+      + encodeURIComponent(kvnr) + '/vau' + pathname;
+  }
+
+  function documentSnippet(resource) {
+    const ext = (resource.extension || []).find((e) =>
+      (e.url || '').includes('full-text-search-match-snippet'));
+    if (!ext) return '';
+    const text = ext.valueString
+      || (ext.extension || []).find((e) => e.valueString)?.valueString;
+    return text ? '<div class="small text-body-secondary">' + escWithMark(text) + '</div>' : '';
+  }
+
+  function renderDocumentList(data, block) {
+    const div = document.createElement('div');
+    div.className = 'mb-3';
+    const entries = (data.entry || []).filter((e) => e.resource?.resourceType === 'DocumentReference');
+
+    if (!entries.length) {
+      div.innerHTML = '<div class="alert alert-warning py-2">Keine Dokumente gefunden'
+        + (data.total !== undefined ? ' (total: ' + esc(data.total) + ')' : '') + '</div>';
+      return div;
+    }
+
+    let html = '<div class="small text-body-secondary mb-2">'
+      + esc(entries.length) + ' Dokument(e)'
+      + (data.total !== undefined ? ' von insgesamt ' + esc(data.total) : '') + '</div>';
+    html += '<div class="table-responsive"><table class="table table-sm align-middle mb-2">'
+      + '<thead><tr><th>Titel</th><th>Typ</th><th>Datum</th><th>Größe</th><th>Content-Type</th><th></th></tr></thead><tbody>';
+
+    for (const entry of entries) {
+      const doc = entry.resource;
+      const attachment = doc.content?.[0]?.attachment || {};
+      const title = attachment.title || doc.description || doc.id || '–';
+      const typeCoding = doc.type?.coding?.[0] || {};
+      const type = typeCoding.display || typeCoding.code || '–';
+      const date = attachment.creation || doc.date || '–';
+      const size = attachment.size ? Math.round(attachment.size / 1024) + ' KB' : '–';
+      const href = attachment.url ? rewriteAttachmentURL(attachment.url, block) : null;
+      const action = href
+        ? '<a class="btn btn-sm btn-outline-primary" href="' + esc(href) + '" target="_blank" rel="noopener">Öffnen</a>'
+        : '';
+      html += '<tr>'
+        + '<td>' + esc(title) + documentSnippet(doc) + '</td>'
+        + '<td>' + esc(type) + '</td>'
+        + '<td>' + esc(date) + '</td>'
+        + '<td>' + esc(size) + '</td>'
+        + '<td><code>' + esc(attachment.contentType || '–') + '</code></td>'
+        + '<td>' + action + '</td>'
+        + '</tr>';
+    }
+    html += '</tbody></table></div>';
+
+    div.innerHTML = html;
+    return div;
+  }
+
+  function codeableText(concept) {
+    if (!concept) return '';
+    if (concept.text) return concept.text;
+    const coding = concept.coding?.[0];
+    return coding ? (coding.display || coding.code || '') : '';
+  }
+
+  function humanName(name) {
+    const n = Array.isArray(name) ? name[0] : name;
+    if (!n) return '';
+    if (n.text) return n.text;
+    return [(n.given || []).join(' '), n.family].filter(Boolean).join(' ');
+  }
+
+  // one table row per bundle entry; columns chosen per resource type
+  function medicationRow(res) {
+    const row = {
+      type: res.resourceType || '–',
+      name: '',
+      status: res.status || '',
+      date: '',
+      details: '',
+    };
+    switch (res.resourceType) {
+      case 'Medication': {
+        row.name = codeableText(res.code);
+        const pzn = (res.code?.coding || []).find((c) => (c.system || '').includes('/pzn'));
+        const form = codeableText(res.form);
+        row.details = [pzn ? 'PZN ' + pzn.code : '', form].filter(Boolean).join(' · ');
+        break;
+      }
+      case 'MedicationRequest':
+        row.name = codeableText(res.medicationCodeableConcept) || res.medicationReference?.display || res.medicationReference?.reference || '';
+        row.date = res.authoredOn || '';
+        row.details = res.dosageInstruction?.[0]?.text || '';
+        break;
+      case 'MedicationDispense':
+        row.name = codeableText(res.medicationCodeableConcept) || res.medicationReference?.display || res.medicationReference?.reference || '';
+        row.date = res.whenHandedOver || res.whenPrepared || '';
+        row.details = res.dosageInstruction?.[0]?.text || '';
+        break;
+      case 'MedicationStatement':
+        row.name = codeableText(res.medicationCodeableConcept) || res.medicationReference?.display || res.medicationReference?.reference || '';
+        row.date = res.effectiveDateTime || res.effectivePeriod?.start || '';
+        row.details = res.dosage?.[0]?.text || '';
+        break;
+      case 'Organization':
+        row.name = res.name || '';
+        row.details = res.identifier?.[0]?.value || '';
+        break;
+      case 'Practitioner':
+        row.name = humanName(res.name);
+        row.details = res.identifier?.[0]?.value || '';
+        break;
+      case 'PractitionerRole':
+        row.name = res.practitioner?.display || res.practitioner?.reference || '';
+        row.details = res.organization?.display || res.organization?.reference || '';
+        break;
+      case 'Provenance':
+        row.name = res.agent?.[0]?.who?.display || res.agent?.[0]?.who?.reference || '';
+        row.date = res.recorded || '';
+        row.details = (res.target || []).map((t) => t.reference).join(', ');
+        break;
+      default:
+        row.name = res.id || '';
+    }
+    return row;
+  }
+
+  function renderMedicationBundle(data) {
+    const div = document.createElement('div');
+    div.className = 'mb-3';
+
+    if (data.resourceType !== 'Bundle') {
+      div.innerHTML = '<div class="alert alert-secondary py-2">Keine tabellarische Ansicht für <code>'
+        + esc(data.resourceType || 'unbekannt') + '</code> — siehe JSON unten.</div>';
+      return div;
+    }
+    const entries = (data.entry || []).filter((e) => e.resource);
+    if (!entries.length) {
+      div.innerHTML = '<div class="alert alert-warning py-2">Keine Einträge'
+        + (data.total !== undefined ? ' (total: ' + esc(data.total) + ')' : '') + '</div>';
+      return div;
+    }
+
+    let html = '<div class="small text-body-secondary mb-2">'
+      + esc(entries.length) + ' Eintrag/Einträge'
+      + (data.total !== undefined ? ' von insgesamt ' + esc(data.total) : '') + '</div>';
+    html += '<div class="table-responsive"><table class="table table-sm align-middle mb-2">'
+      + '<thead><tr><th>Ressource</th><th>Bezeichnung</th><th>Status</th><th>Datum</th><th>Details</th></tr></thead><tbody>';
+    for (const entry of entries) {
+      const row = medicationRow(entry.resource);
+      const statusBadge = row.status
+        ? '<span class="badge ' + (row.status === 'active' || row.status === 'completed' ? 'text-bg-success' : 'text-bg-secondary')
+          + '">' + esc(row.status) + '</span>'
+        : '–';
+      html += '<tr>'
+        + '<td><code>' + esc(row.type) + '</code></td>'
+        + '<td>' + esc(row.name || '–') + '</td>'
+        + '<td>' + statusBadge + '</td>'
+        + '<td>' + esc(row.date || '–') + '</td>'
+        + '<td class="small text-body-secondary">' + esc(row.details || '–') + '</td>'
+        + '</tr>';
+    }
+    html += '</tbody></table></div>';
+
+    div.innerHTML = html;
+    return div;
+  }
+
+  function renderSummary(block, data, output) {
+    switch (block.dataset.summary) {
+      case 'insurant-info':
+        output.appendChild(renderInsurantSummary(data));
+        break;
+      case 'medication-bundle':
+        output.appendChild(renderMedicationBundle(data));
+        break;
+      case 'proxy-status':
+        output.appendChild(renderProxyStatus(data));
+        break;
+      case 'document-list':
+        output.appendChild(renderDocumentList(data, block));
+        break;
+    }
+  }
+
   async function execute(block) {
     const btn = block.querySelector('.execute');
     const spinner = btn?.querySelector('.spinner-border');
@@ -191,8 +453,8 @@
           data = JSON.parse(text);
           pretty = JSON.stringify(data, null, 2);
         } catch (e) { /* show raw text */ }
-        if (data && res.ok && block.dataset.summary === 'insurant-info') {
-          output.appendChild(renderInsurantSummary(data));
+        if (data && res.ok) {
+          renderSummary(block, data, output);
         }
         appendJSONBlock(output, pretty, !res.ok);
       } else if (contentType.includes('xhtml') || contentType.includes('html')) {
@@ -255,6 +517,11 @@
     });
 
     tryBlocks.forEach(updateCurl);
+
+    document.querySelectorAll('.try[data-autoexec]').forEach((block) => {
+      const btn = block.querySelector('.execute');
+      if (btn && !btn.disabled) execute(block);
+    });
   }
 
   /* ---- wiring ---- */

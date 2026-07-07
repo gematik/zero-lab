@@ -47,14 +47,34 @@ func TestPortalPages(t *testing.T) {
 			if !strings.Contains(body, `class="nav-link active"`) {
 				t.Errorf("GET %s: no active nav item", page.Path)
 			}
+			if !strings.Contains(body, "ePA-Dienste") {
+				t.Errorf("GET %s: nav group headings missing", page.Path)
+			}
 		})
+	}
+
+	pageContains := map[string][]string{
+		"/status":     {"data-autoexec", "proxy-status", "/api/proxies/1/status"},
+		"/documents":  {"document-list", "DocumentReference", "patient.identifier", "data-derived"},
+		"/medication": {"$medication-list", "$medication-plan", "emp/pdf", "data-param-raw", "medication-bundle"},
+	}
+	for path, wants := range pageContains {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		portal.ServeHTTP(rec, req)
+		body := rec.Body.String()
+		for _, want := range wants {
+			if !strings.Contains(body, want) {
+				t.Errorf("GET %s: missing %q", path, want)
+			}
+		}
 	}
 }
 
 func TestPortalNoProxies(t *testing.T) {
 	portal := newTestPortal(t, nil)
 
-	for _, path := range []string{"/", "/proxies", "/medication", "/insurants"} {
+	for _, path := range []string{"/", "/proxies", "/medication", "/insurants", "/status", "/documents"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
 		portal.ServeHTTP(rec, req)

@@ -22,6 +22,11 @@
   width: 260px;
   flex-shrink: 0;
 }
+.sidebar .nav-group {
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  padding-left: 1rem;
+}
 @media (min-width: 992px) {
   .sidebar {
     position: sticky;

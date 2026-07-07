@@ -1,0 +1,37 @@
+{{ define "content" }}
+<h1 class="mb-2">Status</h1>
+<p class="text-body-secondary mb-4">
+  Live-Status der VAU-Sitzungen zu allen drei Aktensystem-Providern. Die Daten kommen vom
+  Spezifikations-Endpunkt <code>GET /VAU-Status</code> — der einzige ePA-Endpunkt, der
+  Versions- und Sitzungsinformationen liefert: VAU-Software-Version, die im Tunnel angemeldete
+  Identität (<code>User-Authentication</code>, bei SMC-B <code>TID:&lt;Telematik-ID&gt;</code>)
+  und den Verbindungsbeginn. Ergänzt um lokale Informationen der Middleware:
+  Zeitpunkt der Session-Öffnung und Anzahl aufgelöster KVNRs im Cache.
+</p>
+
+<div class="endpoint d-flex align-items-baseline gap-2 flex-wrap">
+  <span class="badge text-bg-success">GET</span><code>/api/proxies/{name}/status</code>
+</div>
+<p>
+  Fragt <code>VAU-Status</code> bei allen Providern parallel ab und aggregiert das Ergebnis.
+  Provider-Fehler führen nicht zu einem HTTP-Fehler, sondern erscheinen pro Provider im Ergebnis.
+  Die erste Anfrage kann einige Sekunden dauern, wenn Sessions erst geöffnet werden müssen.
+</p>
+
+<div class="try card mb-4" data-method="GET" data-path="/api/proxies/{proxy}/status" data-summary="proxy-status" data-autoexec>
+  <div class="card-body">
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-8">
+        <label class="form-label">Proxy</label>
+        <select class="form-select" data-var="proxy"></select>
+      </div>
+      <div class="col-auto">{{ template "execute-button" }}</div>
+    </div>
+    {{ template "curl" (.Curl (.URL "/api/proxies/%s/status" .FirstProxyName)) }}
+    {{ template "result" }}
+  </div>
+</div>
+
+<p class="caption">Beispiel-Antwort <span class="badge rounded-pill text-bg-success">200 OK · application/json</span></p>
+{{ template "json" "{\n  \"name\": \"1\",\n  \"env\": \"dev\",\n  \"subject\": \"Adler ApothekeTEST-ONLY\",\n  \"telematikId\": \"3-SMC-B-Testkarte--883110000153440\",\n  \"insurantsCached\": 2,\n  \"providers\": [\n    {\n      \"number\": 1,\n      \"baseURL\": \"https://epa-as-1.dev.epa4all.de\",\n      \"sessionOpenedAt\": \"2026-07-07T10:00:00+02:00\",\n      \"vau\": {\n        \"VAU-Type\": \"epa\",\n        \"VAU-Version\": \"v-4.31.617 Release\",\n        \"User-Authentication\": \"TID:3-SMC-B-Testkarte--883110000153440\",\n        \"KeyID\": \"9cbdf2107ae39c4705f9b41ab22d79e6f14039ee92e2ac61ac5145e6748ee208\",\n        \"Connection-Start\": \"2026-07-07T08:00:00.614738Z\"\n      }\n    },\n    {\n      \"number\": 2,\n      \"error\": \"open session at provider 2: dial tcp: i/o timeout\"\n    }\n  ]\n}" }}
+{{ end }}
