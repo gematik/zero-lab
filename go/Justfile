@@ -10,8 +10,12 @@ GOVULNCHECK := "golang.org/x/vuln/cmd/govulncheck@v1.4.0"
 
 # Every module — library AND command — is versioned solely by its own git tag
 # (go/<module>/vX.Y.Z), bumped only when that module changes. The local/Docker build stamp
-# is derived from `git describe` (see `_modver`); `go install` reads the version from the
-# module build info. Bump by tagging: `just tag <module> <version>` (see `versions`/`changed`).
+# is the plain semantic version of the latest tag (see `_modver`); `go install` reads the
+# version from the module build info. Bump by tagging: `just tag <module> <version>`
+# (see `versions`/`changed`). The stamp must stay strictly SemVer: zero-epa sends it in
+# the x-useragent header, which the ePA aggregators validate (version part max 15 chars
+# of [a-zA-Z0-9.-]) — a raw `git describe` like 0.21.0-1-g978d044 is rejected with
+# "malformedRequest: x-useragent header invalid in inner request".
 
 # Upstream Caddy version, derived from zaddy/go.mod (single source of truth). Used as
 # SemVer build metadata for the zero-caddy image tag, e.g. zero-caddy:0.20.2-caddy2.11.4.
@@ -21,10 +25,12 @@ CADDY_VERSION := `grep -E 'caddyserver/caddy/v2 v[0-9]' zaddy/go.mod | head -1 |
 info:
     just --list
 
-# (internal) A module's version from its latest go/<mod>/v* tag via git describe, else "dev".
+# (internal) A module's semantic version from its latest go/<mod>/v* tag, else "dev".
+# Strips the `git describe` commit suffix (-<n>-g<sha>) so builds past the tag still
+# stamp a plain X.Y.Z.
 _modver mod:
     #!/usr/bin/env bash
-    v=$(git describe --tags --match "go/{{mod}}/v*" 2>/dev/null | sed 's|.*/v||')
+    v=$(git describe --tags --match "go/{{mod}}/v*" 2>/dev/null | sed 's|.*/v||; s/-[0-9]\{1,\}-g[0-9a-f]\{1,\}$//')
     echo "${v:-dev}"
 
 # Build all command binaries locally into ./dist (version from git tag via ldflags)
