@@ -1,11 +1,11 @@
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/gematik/zero-lab/go/brainpool v1.0.2-0.20260628170841-68cf93ff9bb8 h1:xF/Wa++Mcm3eOft0UEE7sH9zvQ7XwvDQjxFv/SGJraM=
-github.com/gematik/zero-lab/go/brainpool v1.0.2-0.20260628170841-68cf93ff9bb8/go.mod h1:TGiI/RSzM76LwiWZRMzc9t1yDfN6D4uOaeYCd8N5rCs=
-github.com/gematik/zero-lab/go/gempki v0.1.2-0.20260628170841-68cf93ff9bb8 h1:2ids14aOwtWVsaHuv+GCru4sMQzDN9UcU5snHRZPVbc=
-github.com/gematik/zero-lab/go/gempki v0.1.2-0.20260628170841-68cf93ff9bb8/go.mod h1:n173+j29OVuvjHYbcd/ZLuZHBf0kEQvt33pxZGAOsW4=
-github.com/gematik/zero-lab/go/pkcs12 v0.99.1 h1:eH5Gxlc6yVqB0IsZa0sC4uDEl6CBTh8eTuqX8buszTk=
-github.com/gematik/zero-lab/go/pkcs12 v0.99.1/go.mod h1:VNHdfm5gWuJAldR08RHteNOQaWXbuC2MtJbWCOIByVo=
+github.com/gematik/zero-lab/go/brainpool v1.0.2-0.20260707081155-7959d81d3d12 h1:Oo+2l4whCHx4Xg+KcuvAoT5rgr6dIPIzq79f6+zztuo=
+github.com/gematik/zero-lab/go/brainpool v1.0.2-0.20260707081155-7959d81d3d12/go.mod h1:TGiI/RSzM76LwiWZRMzc9t1yDfN6D4uOaeYCd8N5rCs=
+github.com/gematik/zero-lab/go/gempki v0.1.2-0.20260707081155-7959d81d3d12 h1:lUR6dLS0E9m20MzSrvuzvVCfAsjwSicJ5Z4fu7fdLR0=
+github.com/gematik/zero-lab/go/gempki v0.1.2-0.20260707081155-7959d81d3d12/go.mod h1:MDTAXP1AtTlnrzhUdME+XiWU8+hy38jrt198AEKhEig=
+github.com/gematik/zero-lab/go/pkcs12 v0.99.2-0.20260707081155-7959d81d3d12 h1:Aihm8g8OfvMUAhgX2vlJmSOKjPz8JJMCImgLtZcXcmI=
+github.com/gematik/zero-lab/go/pkcs12 v0.99.2-0.20260707081155-7959d81d3d12/go.mod h1:VNHdfm5gWuJAldR08RHteNOQaWXbuC2MtJbWCOIByVo=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=

@@ -3,9 +3,9 @@ module github.com/gematik/zero-lab/go/gemidp
 go 1.26.4
 
 require (
-	github.com/gematik/zero-lab/go/brainpool v1.0.2-0.20260628170841-68cf93ff9bb8
-	github.com/gematik/zero-lab/go/oauth v0.50.1
-	github.com/gematik/zero-lab/go/pkcs12 v0.99.1
+	github.com/gematik/zero-lab/go/brainpool v1.0.2-0.20260707081155-7959d81d3d12
+	github.com/gematik/zero-lab/go/oauth v0.50.2-0.20260707081155-7959d81d3d12
+	github.com/gematik/zero-lab/go/pkcs12 v0.99.2-0.20260707081155-7959d81d3d12
 	github.com/lestrrat-go/jwx/v3 v3.1.1
 	golang.org/x/oauth2 v0.36.0
 )
