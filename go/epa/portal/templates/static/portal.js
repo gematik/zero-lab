@@ -517,14 +517,16 @@
           + '<span>' + esc(result.data?.subject || proxy.subject || '') + '</span>'
           + '<span class="badge text-bg-info text-uppercase">' + esc(proxy.env || '') + '</span>';
         if (result.error) {
-          html += '<span class="badge text-bg-danger" title="' + esc(result.error) + '">Status-Fehler</span>';
+          html += '<span class="badge text-bg-danger ms-auto" title="' + esc(result.error) + '">Status-Fehler</span>';
         } else {
+          html += '<div class="d-flex gap-2 ms-auto">';
           for (const p of result.data.providers || []) {
             const ok = !p.error;
             html += '<span class="badge ' + (ok ? 'text-bg-success' : 'text-bg-danger')
               + '" title="' + esc(ok ? (p.vau?.['VAU-Version'] || '') : p.error)
-              + '">Provider ' + esc(p.number) + (ok ? '' : ' ✕') + '</span>';
+              + '">' + esc(p.number) + ' ' + (ok ? '✓' : '✗') + '</span>';
           }
+          html += '</div>';
         }
         html += '</div>';
       }
