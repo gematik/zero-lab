@@ -1,7 +1,7 @@
 {{ define "content" }}
 <h1 class="mb-2">Medikation</h1>
 <p class="text-body-secondary mb-4">
-  Die Medikationsliste (eML) eines Versicherten — gerendert als HTML oder PDF, oder maschinenlesbar
+  Die Medikationsliste (eML) eines Versicherten - gerendert als HTML oder PDF, oder maschinenlesbar
   als FHIR. Alle Endpunkte laufen über die automatische Akten-Auflösung: nur die KVNR angeben,
   die Middleware findet den Provider, erzeugt die Befugnis und tunnelt die Anfrage durch die VAU.
 </p>
@@ -11,7 +11,7 @@
     <strong>Pfad-Schema:</strong> <code>/api/proxies/{name}/insurants/{kvnr}/vau/&lt;Provider-Pfad&gt;</code>
   </p>
   <p class="mb-0">
-    Alles nach dem <code>/vau/</code> ist der originale Provider-Pfad — die offizielle ePA-Dokumentation
+    Alles nach dem <code>/vau/</code> ist der originale Provider-Pfad - die offizielle ePA-Dokumentation
     ist hier 1:1 anwendbar. HTTP-Method und Body werden ebenfalls durchgereicht. Die erste Anfrage für
     eine KVNR erzeugt automatisch eine Befugnis (Entitlement) für den gewählten Proxy.
   </p>
@@ -23,7 +23,7 @@
   <span class="badge text-bg-success">GET</span><code>/api/proxies/{name}/insurants/{kvnr}/vau/epa/medication/render/v1/eml/xhtml</code>
 </div>
 <p>
-  Gerenderte Medikationsliste (eML) als <code>application/xhtml+xml</code> — geeignet zur direkten
+  Gerenderte Medikationsliste (eML) als <code>application/xhtml+xml</code> - geeignet zur direkten
   Anzeige im Browser. Das Ergebnis wird unten direkt dargestellt.
 </p>
 
@@ -49,7 +49,7 @@
   <span class="badge text-bg-success">GET</span><code>/api/proxies/{name}/insurants/{kvnr}/vau/epa/medication/render/v1/eml/pdf</code>
 </div>
 <p>
-  Selbe Daten wie XHTML, aber als <code>application/pdf</code> — gerendert für Druck oder Archivierung.
+  Selbe Daten wie XHTML, aber als <code>application/pdf</code> - gerendert für Druck oder Archivierung.
   Das PDF wird unten eingebettet angezeigt.
 </p>
 
@@ -76,7 +76,7 @@
 </div>
 <p>
   Elektronischer Medikationsplan (eMP) als <code>application/pdf</code>. Ein XHTML-Rendering
-  existiert für den eMP nicht — die Spezifikation definiert nur diese PDF-Ansicht.
+  existiert für den eMP nicht - die Spezifikation definiert nur diese PDF-Ansicht.
 </p>
 
 <div class="try card mb-4" data-method="GET" data-path="/api/proxies/{proxy}/insurants/{kvnr}/vau/epa/medication/render/v1/emp/pdf">
@@ -153,7 +153,7 @@
       <div class="col-md-2">
         <label class="form-label">provenance</label>
         <select class="form-select" data-param="provenance">
-          <option value="" selected>–</option>
+          <option value="" selected>-</option>
           <option value="true">true</option>
         </select>
       </div>
@@ -238,7 +238,4 @@
     {{ template "result" }}
   </div>
 </div>
-
-<p class="caption">Beispiel-Antwort (gekürzt — Bundle mit 12 Einträgen, hier 1 gezeigt) <span class="badge rounded-pill text-bg-success">200 OK · application/fhir+json</span></p>
-{{ template "json" "{\n  \"resourceType\": \"Bundle\",\n  \"type\": \"searchset\",\n  \"total\": 12,\n  \"entry\": [\n    {\n      \"fullUrl\": \"http://epa4all/epa/medication/api/v1/fhir/Medication/ba8572fd-0db1-48b1-9438-321c38131928\",\n      \"resource\": {\n        \"resourceType\": \"Medication\",\n        \"id\": \"ba8572fd-0db1-48b1-9438-321c38131928\",\n        \"code\": {\n          \"coding\": [\n            { \"system\": \"http://fhir.de/CodeSystem/ifa/pzn\", \"code\": \"00571748\" }\n          ],\n          \"text\": \"Imupret® N Dragees Beutel 2000 mg\"\n        },\n        \"status\": \"inactive\",\n        \"form\": {\n          \"coding\": [\n            { \"system\": \"https://fhir.kbv.de/CodeSystem/KBV_CS_SFHIR_KBV_DARREICHUNGSFORM\", \"code\": \"GUL\" }\n          ]\n        }\n      }\n    }\n  ]\n}" }}
 {{ end }}

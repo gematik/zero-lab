@@ -17,9 +17,6 @@
   {{ template "result" }}
 </div>
 
-<p class="caption">Beispiel-Antwort <span class="badge rounded-pill text-bg-success">200 OK · application/json</span></p>
-{{ template "json" "[\n  {\n    \"name\": \"1\",\n    \"env\": \"dev\",\n    \"subject\": \"Adler ApothekeTEST-ONLY\",\n    \"admission_statement\": {\n      \"professionItems\": [\"Öffentliche Apotheke\"],\n      \"professionOids\": [\"1.2.276.0.76.4.54\"],\n      \"registrationNumber\": \"3-SMC-B-Testkarte--883110000153440\"\n    }\n  }\n]" }}
-
 <p>Aktuell auf diesem Gateway konfiguriert:</p>
 <ul class="list-unstyled">
   {{ range .ProxyInfos }}
@@ -37,7 +34,7 @@
   <span class="badge text-bg-success">GET</span><code>/api/proxies/{name}/info</code>
 </div>
 <p>
-  Details zu einem einzelnen Proxy — Name, Umgebung, Common Name des SMC-B-Zertifikats und
+  Details zu einem einzelnen Proxy - Name, Umgebung, Common Name des SMC-B-Zertifikats und
   Admission Statement (Berufsgruppe, Registrierungsnummer).
 </p>
 
@@ -54,7 +51,4 @@
     {{ template "result" }}
   </div>
 </div>
-
-<p class="caption">Beispiel-Antwort <span class="badge rounded-pill text-bg-success">200 OK · application/json</span></p>
-{{ template "json" "{\n  \"name\": \"1\",\n  \"env\": \"dev\",\n  \"subject\": \"Adler ApothekeTEST-ONLY\",\n  \"admission_statement\": {\n    \"professionItems\": [\"Öffentliche Apotheke\"],\n    \"professionOids\": [\"1.2.276.0.76.4.54\"],\n    \"registrationNumber\": \"3-SMC-B-Testkarte--883110000153440\"\n  }\n}" }}
 {{ end }}

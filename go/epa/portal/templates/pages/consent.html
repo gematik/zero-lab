@@ -1,18 +1,18 @@
 {{ define "content" }}
 <h1 class="mb-2">Consent-Entscheidungen</h1>
 <p class="text-body-secondary mb-4">
-  Liefert die Consent-Entscheidungen eines Versicherten beim ausgewählten Provider — also für welche
+  Liefert die Consent-Entscheidungen eines Versicherten beim ausgewählten Provider - also für welche
   ePA-Funktionen (z.B. Medikation, E-Rezept, Dokumente) der Leistungserbringer Zugriff erhalten würde.
   Nützlich vor einem tatsächlichen Zugriff auf eine Akte.
 </p>
 
 <div class="alert alert-info">
   <p class="mb-2">
-    <strong>Pflicht-Header:</strong> <code>x-insurantid: &lt;KVNR&gt;</code> — die KVNR des Versicherten,
+    <strong>Pflicht-Header:</strong> <code>x-insurantid: &lt;KVNR&gt;</code> - die KVNR des Versicherten,
     dessen Consent abgefragt werden soll. Die KVNR hat das Format <code>X</code> + 9 Ziffern.
   </p>
   <p class="mb-0">
-    Da diese Information vor dem VAU-Tunnel liegt, wird der Endpunkt direkt am Provider angesprochen —
+    Da diese Information vor dem VAU-Tunnel liegt, wird der Endpunkt direkt am Provider angesprochen -
     nicht über <code>/vau/…</code>. Welcher Provider die Akte hält, lässt sich mit der
     <a href="/insurants" class="alert-link">KVNR-Info</a> ermitteln.
   </p>
@@ -47,10 +47,4 @@
     {{ template "result" }}
   </div>
 </div>
-
-<p class="caption">Beispiel-Antwort <span class="badge rounded-pill text-bg-success">200 OK · application/json</span></p>
-{{ template "json" "{\n  \"data\": [\n    { \"functionId\": \"medication\",     \"decision\": \"permit\" },\n    { \"functionId\": \"erp-submission\",  \"decision\": \"permit\" }\n  ]\n}" }}
-
-<p class="caption">Antwort bei falschem Provider <span class="badge rounded-pill text-bg-danger">404 Not Found · application/json</span></p>
-{{ template "json" "{\n  \"errorCode\": \"noHealthRecord\",\n  \"errorDetail\": \"89GF TLTP 4FCH HKYM\"\n}" }}
 {{ end }}

@@ -147,9 +147,9 @@
         ? '<span class="text-danger" title="' + esc(p.error) + '">Fehler</span>'
         : (p.recordFound
           ? '<span class="badge text-bg-success">vorhanden</span>'
-          : '<span class="text-body-secondary">–</span>');
+          : '<span class="text-body-secondary">-</span>');
       html += '<tr><td>' + esc(p.number) + '</td><td>' + akte + '</td><td>'
-        + (consent || '<span class="text-body-secondary">–</span>') + '</td></tr>';
+        + (consent || '<span class="text-body-secondary">-</span>') + '</td></tr>';
     }
     html += '</tbody></table>';
 
@@ -187,10 +187,10 @@
         : '<span class="badge text-bg-success">OK</span>';
       html += '<tr>'
         + '<td>' + esc(p.number) + (p.baseURL ? '<br><span class="small text-body-secondary">' + esc(p.baseURL) + '</span>' : '') + '</td>'
-        + '<td>' + esc(vau['VAU-Version'] || '–') + '</td>'
-        + '<td><code>' + esc(vau['User-Authentication'] || '–') + '</code></td>'
-        + '<td>' + esc(vau['Connection-Start'] || '–') + '</td>'
-        + '<td>' + esc(p.sessionOpenedAt || '–') + '</td>'
+        + '<td>' + esc(vau['VAU-Version'] || '-') + '</td>'
+        + '<td><code>' + esc(vau['User-Authentication'] || '-') + '</code></td>'
+        + '<td>' + esc(vau['Connection-Start'] || '-') + '</td>'
+        + '<td>' + esc(p.sessionOpenedAt || '-') + '</td>'
         + '<td>' + state + '</td>'
         + '</tr>';
       if (p.error) {
@@ -253,11 +253,11 @@
     for (const entry of entries) {
       const doc = entry.resource;
       const attachment = doc.content?.[0]?.attachment || {};
-      const title = attachment.title || doc.description || doc.id || '–';
+      const title = attachment.title || doc.description || doc.id || '-';
       const typeCoding = doc.type?.coding?.[0] || {};
-      const type = typeCoding.display || typeCoding.code || '–';
-      const date = attachment.creation || doc.date || '–';
-      const size = attachment.size ? Math.round(attachment.size / 1024) + ' KB' : '–';
+      const type = typeCoding.display || typeCoding.code || '-';
+      const date = attachment.creation || doc.date || '-';
+      const size = attachment.size ? Math.round(attachment.size / 1024) + ' KB' : '-';
       const href = attachment.url ? rewriteAttachmentURL(attachment.url, block) : null;
       const action = href
         ? '<a class="btn btn-sm btn-outline-primary" href="' + esc(href) + '" target="_blank" rel="noopener">Öffnen</a>'
@@ -267,7 +267,7 @@
         + '<td>' + esc(type) + '</td>'
         + '<td>' + esc(date) + '</td>'
         + '<td>' + esc(size) + '</td>'
-        + '<td><code>' + esc(attachment.contentType || '–') + '</code></td>'
+        + '<td><code>' + esc(attachment.contentType || '-') + '</code></td>'
         + '<td>' + action + '</td>'
         + '</tr>';
     }
@@ -294,7 +294,7 @@
   // one table row per bundle entry; columns chosen per resource type
   function medicationRow(res) {
     const row = {
-      type: res.resourceType || '–',
+      type: res.resourceType || '-',
       name: '',
       status: res.status || '',
       date: '',
@@ -352,7 +352,7 @@
 
     if (data.resourceType !== 'Bundle') {
       div.innerHTML = '<div class="alert alert-secondary py-2">Keine tabellarische Ansicht für <code>'
-        + esc(data.resourceType || 'unbekannt') + '</code> — siehe JSON unten.</div>';
+        + esc(data.resourceType || 'unbekannt') + '</code> - siehe JSON unten.</div>';
       return div;
     }
     const entries = (data.entry || []).filter((e) => e.resource);
@@ -372,13 +372,13 @@
       const statusBadge = row.status
         ? '<span class="badge ' + (row.status === 'active' || row.status === 'completed' ? 'text-bg-success' : 'text-bg-secondary')
           + '">' + esc(row.status) + '</span>'
-        : '–';
+        : '-';
       html += '<tr>'
         + '<td><code>' + esc(row.type) + '</code></td>'
-        + '<td>' + esc(row.name || '–') + '</td>'
+        + '<td>' + esc(row.name || '-') + '</td>'
         + '<td>' + statusBadge + '</td>'
-        + '<td>' + esc(row.date || '–') + '</td>'
-        + '<td class="small text-body-secondary">' + esc(row.details || '–') + '</td>'
+        + '<td>' + esc(row.date || '-') + '</td>'
+        + '<td class="small text-body-secondary">' + esc(row.details || '-') + '</td>'
         + '</tr>';
     }
     html += '</tbody></table></div>';
@@ -434,7 +434,7 @@
       result.classList.remove('d-none');
       statusEl.innerHTML = '<span class="badge ' + (res.ok ? 'text-bg-success' : 'text-bg-danger') + '">'
         + esc(res.status) + '</span> <span class="text-body-secondary">'
-        + esc(res.statusText || '') + ' · ' + esc(contentType || '—') + ' · ' + esc(ms) + ' ms</span>';
+        + esc(res.statusText || '') + ' · ' + esc(contentType || '-') + ' · ' + esc(ms) + ' ms</span>';
 
       if (block._blobUrl) {
         URL.revokeObjectURL(block._blobUrl);
@@ -561,7 +561,7 @@
       for (const p of proxies) {
         const opt = document.createElement('option');
         opt.value = p.name;
-        opt.textContent = p.name + ' — ' + p.subject + ' (' + p.env + ')';
+        opt.textContent = p.name + ' - ' + p.subject + ' (' + p.env + ')';
         sel.appendChild(opt);
       }
     });

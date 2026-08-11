@@ -114,6 +114,13 @@ main {
 .try .result .response {
   margin-bottom: 0;
 }
+.output-empty {
+  border: 1px dashed var(--bs-border-color);
+  border-radius: 0.375rem;
+  padding: 1.25rem 1rem;
+  text-align: center;
+  font-size: 0.85rem;
+}
 
 .caption {
   margin: 1rem 0 0.4rem;

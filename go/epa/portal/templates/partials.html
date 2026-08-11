@@ -5,10 +5,6 @@
 </div>
 {{- end }}
 
-{{ define "json" -}}
-<div class="response"><pre><code class="language-json">{{ . }}</code></pre></div>
-{{- end }}
-
 {{ define "execute-button" -}}
 <button class="execute btn btn-primary" type="button">
   <span class="spinner-border spinner-border-sm d-none me-1" aria-hidden="true"></span>Ausführen
@@ -16,8 +12,8 @@
 {{- end }}
 
 {{ define "result" -}}
-<div class="result mt-3 d-none">
+<div class="result mt-3">
   <div class="status small mb-2"></div>
-  <div class="output"></div>
+  <div class="output"><div class="output-empty text-body-secondary">Noch keine Antwort - „Ausführen“ klicken.</div></div>
 </div>
 {{- end }}
