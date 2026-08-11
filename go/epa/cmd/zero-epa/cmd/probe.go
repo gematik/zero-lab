@@ -101,7 +101,18 @@ var probePatientCmd = &cobra.Command{
 			}
 			slog.Info("Authorized", "env", env, "provider", provider, "subject", cert.Subject.String())
 
-			if err := session.Entitle(kvnr); err != nil {
+			entitle := func() error {
+				auditEvidence, err := sf.ProvidePN(kvnr)
+				if err != nil {
+					return err
+				}
+				hcv, err := sf.ProvideHCV(kvnr)
+				if err != nil {
+					return err
+				}
+				return session.SetEntitlementPN(kvnr, auditEvidence, hcv)
+			}
+			if err := entitle(); err != nil {
 				slog.Error("Failed to entitle", "error", err)
 			} else {
 				slog.Info("Entitled", "patient", kvnr, "env", env, "provider", provider, "kvnr", kvnr)

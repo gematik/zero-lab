@@ -30,6 +30,7 @@ type InsurantEntitlementInfo struct {
 	Entitled   bool           `json:"entitled"`
 	Provider   ProviderNumber `json:"provider,omitempty"`
 	EntitledAt string         `json:"entitledAt,omitempty"`
+	ValidTo    string         `json:"validTo,omitempty"`
 }
 
 type InsurantInfo struct {
@@ -140,6 +141,9 @@ func (p *Proxy) HandleInsurantInfo(w http.ResponseWriter, r *http.Request) {
 		if !rm.EntitledAt.IsZero() {
 			info.Entitlement.EntitledAt = rm.EntitledAt.Format(time.RFC3339)
 		}
+		if !rm.ValidTo.IsZero() {
+			info.Entitlement.ValidTo = rm.ValidTo.Format(time.RFC3339)
+		}
 	}
 
 	writeJSON(w, http.StatusOK, &info)
@@ -185,7 +189,8 @@ func (p *Proxy) HandleEntitleInsurant(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := session.Entitle(insurantID); err != nil {
+	validTo, err := p.entitle(session, insurantID)
+	if err != nil {
 		slog.Error("Failed to entitle", "provider", session.ProviderNumber, "insurantID", insurantID, "error", err)
 		writeJSONError(w, http.StatusBadGateway, "entitlement_failed", err.Error())
 		return
@@ -195,14 +200,19 @@ func (p *Proxy) HandleEntitleInsurant(w http.ResponseWriter, r *http.Request) {
 		InsurantID: insurantID,
 		Provider:   session.ProviderNumber,
 		EntitledAt: time.Now(),
+		ValidTo:    validTo,
 	}
 	p.recordsLock.Lock()
 	p.records[insurantID] = rm
 	p.recordsLock.Unlock()
 
-	writeJSON(w, http.StatusCreated, map[string]any{
+	response := map[string]any{
 		"insurantId": insurantID,
 		"provider":   rm.Provider,
 		"entitledAt": rm.EntitledAt.Format(time.RFC3339),
-	})
+	}
+	if !rm.ValidTo.IsZero() {
+		response["validTo"] = rm.ValidTo.Format(time.RFC3339)
+	}
+	writeJSON(w, http.StatusCreated, response)
 }

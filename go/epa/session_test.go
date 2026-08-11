@@ -33,9 +33,10 @@ import (
 //	EPA_KVNRS_FILE         file with one KVNR per line (TestEPA_RecordsAvailability)
 //	EPA_REPORT             report output directory/prefix (default test-reports/epa-<name>-<ts>.md)
 //
-// NEVER in ./.env, shell environment only (used only by TestEPA_Entitle):
+// NEVER in ./.env, shell environment only:
 //
-//	VSDM_HMAC_KEY, VSDM_HMAC_KID
+//	VSDM_HMAC_KEY, VSDM_HMAC_KID  (TestEPA_Entitle)
+//	EPA_POPP_TOKEN                (TestEPA_EntitlePoPP; single-use — a run consumes it)
 
 type providerCase struct {
 	provider   epa.ProviderNumber
@@ -135,7 +136,7 @@ func loadEPAConfig(t *testing.T) epaTestConfig {
 }
 
 // providePNFromShellEnv reads the VSDM HMAC material from the shell environment (never from .env)
-// at call time. It is only ever invoked by Entitle, which TestEPA_Entitle gates on VSDM presence.
+// at call time. It is only ever invoked by TestEPA_Entitle, which gates on VSDM presence.
 func providePNFromShellEnv(provideHCV epa.ProvideHCVFunc) epa.ProvidePNFunc {
 	return func(insurantID string) (string, error) {
 		hmacKey := os.Getenv("VSDM_HMAC_KEY")
@@ -157,7 +158,8 @@ func debugLogger() {
 
 // establishAuthorizedSession loads the SMC-B identity from the configured PKCS#12, opens a VAU
 // channel to the given provider's aggregator, and runs the full authorization handshake (client
-// attest, IDP authentication via gemidp, auth code). No VSDM material is required.
+// attest, IDP authentication via gemidp, auth code). No VSDM material is required — entitlement
+// proof material is supplied by the caller to SetEntitlementPN/SetEntitlementPoPP.
 func establishAuthorizedSession(t *testing.T, cfg epaTestConfig, provider epa.ProviderNumber) (*epa.Session, *x509.Certificate) {
 	t.Helper()
 
@@ -167,15 +169,12 @@ func establishAuthorizedSession(t *testing.T, cfg epaTestConfig, provider epa.Pr
 	}
 	t.Logf("SMC-B AUT identity: subject=%q curve=%s", cert.Subject.String(), key.Curve.Params().Name)
 
-	provideHCV := func(string) ([]byte, error) { return epa.CalculateHCV("20241023", "Berliner Str.___") }
 	certFn := func() (*x509.Certificate, error) { return cert, nil }
 	sf := &epa.SecurityFunctions{
 		AuthnSignFunc:           brainpool.SignFuncPrivateKey(key),
 		AuthnCertFunc:           certFn,
 		ClientAssertionSignFunc: brainpool.SignFuncPrivateKey(key),
 		ClientAssertionCertFunc: certFn,
-		ProvidePN:               providePNFromShellEnv(provideHCV),
-		ProvideHCV:              provideHCV,
 	}
 
 	client, err := epa.NewClient(cfg.env, provider, sf,
@@ -285,7 +284,19 @@ func TestEPA_Entitle(t *testing.T) {
 			session, cert := establishAuthorizedSession(t, cfg, pc.provider)
 			defer session.Close()
 
-			err := session.Entitle(pc.insurantID)
+			provideHCV := func(string) ([]byte, error) { return epa.CalculateHCV("20241023", "Berliner Str.___") }
+			entitle := func() error {
+				auditEvidence, err := providePNFromShellEnv(provideHCV)(pc.insurantID)
+				if err != nil {
+					return err
+				}
+				hcv, err := provideHCV(pc.insurantID)
+				if err != nil {
+					return err
+				}
+				return session.SetEntitlementPN(pc.insurantID, auditEvidence, hcv)
+			}
+			err := entitle()
 			data := epaReportData{
 				title: "epa entitle", cert: cert, cfg: cfg,
 				provider: pc.provider, insurantID: pc.insurantID,
@@ -303,9 +314,53 @@ func TestEPA_Entitle(t *testing.T) {
 			writeEPAReport(t, cfg, fmt.Sprintf("entitle-p%d", pc.provider), buildEPAReport(data))
 
 			if err != nil {
-				t.Fatalf("Entitle(%s): %v", pc.insurantID, err)
+				t.Fatalf("SetEntitlementPN(%s): %v", pc.insurantID, err)
 			}
 		})
+	}
+}
+
+// TestEPA_EntitlePoPP registers an entitlement via setEntitlementPsV2 with a PoPP token from
+// EPA_POPP_TOKEN. Run it in a separate shell with the token exported (never stored in .env).
+// PoPP tokens are single-use, so only the first configured provider is exercised — the run
+// consumes the token whether or not it succeeds.
+func TestEPA_EntitlePoPP(t *testing.T) {
+	poppToken := os.Getenv("EPA_POPP_TOKEN")
+	if poppToken == "" {
+		t.Skip("EPA_POPP_TOKEN not set — skipping PoPP entitlement (export it in your shell, not .env)")
+	}
+	cfg := loadEPAConfig(t)
+	if len(cfg.providers) == 0 {
+		t.Skip("no providers configured — skipping PoPP entitlement")
+	}
+	debugLogger()
+
+	pc := cfg.providers[0]
+	session, cert := establishAuthorizedSession(t, cfg, pc.provider)
+	defer session.Close()
+
+	validTo, err := session.SetEntitlementPoPP(pc.insurantID, poppToken)
+	data := epaReportData{
+		title: "epa entitle (PoPP)", cert: cert, cfg: cfg,
+		provider: pc.provider, insurantID: pc.insurantID,
+		steps: []string{
+			"Loaded SMC-B AUT identity",
+			"Opened VAU channel + authorized",
+		},
+	}
+	if err != nil {
+		data.entitled = "❌ " + err.Error()
+	} else {
+		data.entitled = fmt.Sprintf("✅ success (validTo %s)", validTo.Format(time.RFC3339))
+	}
+	data.steps = append(data.steps, "Entitled insurant "+pc.insurantID+" via PoPP token: "+data.entitled)
+	writeEPAReport(t, cfg, fmt.Sprintf("entitle-popp-p%d", pc.provider), buildEPAReport(data))
+
+	if err != nil {
+		t.Fatalf("SetEntitlementPoPP(%s): %v", pc.insurantID, err)
+	}
+	if validTo.IsZero() {
+		t.Fatalf("SetEntitlementPoPP(%s): got zero validTo", pc.insurantID)
 	}
 }
 

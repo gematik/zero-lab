@@ -67,6 +67,11 @@ func transportWithTLS(rt http.RoundTripper, tlsConfig *tls.Config) http.RoundTri
 	return t
 }
 
+// SecurityFunctions bundles the SMC-B identity used by the Session for
+// signing, plus optional entitlement proof providers. The proof providers
+// (ProvidePN, ProvideHCV, ProvidePoPP) are never called by Session methods;
+// callers like the Proxy invoke them and pass the material to
+// SetEntitlementPN/SetEntitlementPoPP.
 type SecurityFunctions struct {
 	AuthnSignFunc           brainpool.SignFunc
 	AuthnCertFunc           func() (*x509.Certificate, error)
@@ -74,6 +79,7 @@ type SecurityFunctions struct {
 	ClientAssertionCertFunc func() (*x509.Certificate, error)
 	ProvidePN               ProvidePNFunc
 	ProvideHCV              func(insurantId string) ([]byte, error)
+	ProvidePoPP             ProvidePoPPFunc
 }
 
 // Client is a cheap, pre-VAU handle to an aggregator. It owns the HTTP
@@ -137,9 +143,10 @@ const (
 	ProviderNumber1 ProviderNumber = 1
 	ProviderNumber2 ProviderNumber = 2
 	ProviderNumber3 ProviderNumber = 3
+	ProviderNumber4 ProviderNumber = 4
 )
 
-var AllProviders = []ProviderNumber{ProviderNumber1, ProviderNumber2, ProviderNumber3}
+var AllProviders = []ProviderNumber{ProviderNumber1, ProviderNumber2, ProviderNumber3, ProviderNumber4}
 
 func ResolveBaseURL(env Env, provider ProviderNumber) string {
 	switch env {

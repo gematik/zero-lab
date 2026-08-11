@@ -152,6 +152,7 @@ type PatientRecordMetadata struct {
 	InsurantID string
 	Provider   ProviderNumber
 	EntitledAt time.Time
+	ValidTo    time.Time
 }
 
 func resolvePath(baseDir, path string) string {
@@ -184,8 +185,9 @@ func IDPEnvironment(env Env) gemidp.Environment {
 //
 // ProvidePN / ProvideHCV may be left nil on sf when the caller is only
 // interested in /information endpoints and the VAU handshake; VAU-bound calls
-// that need entitlement will fail at the first call with a clear nil-deref
-// error from the consuming code.
+// that need entitlement will fail at the first call with a clear error from
+// the consuming code. When sf.ProvidePoPP is set, the proxy entitles via the
+// PoPP token path and ignores ProvidePN/ProvideHCV.
 func NewProxyWithSecurityFunctions(env Env, sf *SecurityFunctions, name string, timeout time.Duration, certPool *x509.CertPool) (*Proxy, error) {
 	if sf == nil {
 		return nil, fmt.Errorf("SecurityFunctions is required")
@@ -384,6 +386,45 @@ func (p *Proxy) Close() {
 	p.sessionManager.Close()
 }
 
+// entitle registers an entitlement for the insurant on the given session,
+// choosing the proof source from the configured SecurityFunctions: a PoPP
+// token when ProvidePoPP is set, otherwise the VSDM Prüfziffer. Returns the
+// entitlement's validTo, zero on the VSDM path whose response has no body.
+func (p *Proxy) entitle(session *Session, insurantID string) (time.Time, error) {
+	sf := p.config.SecurityFunctions
+	if sf == nil {
+		return time.Time{}, fmt.Errorf("no security functions configured")
+	}
+
+	if sf.ProvidePoPP != nil {
+		poppToken, err := sf.ProvidePoPP(insurantID)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("getting PoPP token: %w", err)
+		}
+		return session.SetEntitlementPoPP(insurantID, poppToken)
+	}
+
+	if sf.ProvidePN == nil || sf.ProvideHCV == nil {
+		return time.Time{}, fmt.Errorf("no entitlement proof configured: set ProvidePoPP or ProvidePN+ProvideHCV")
+	}
+
+	auditEvidence, err := sf.ProvidePN(insurantID)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("getting proof of audit evidence: %w", err)
+	}
+
+	hcv, err := sf.ProvideHCV(insurantID)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("getting HCV: %w", err)
+	}
+
+	if err := session.SetEntitlementPN(insurantID, auditEvidence, hcv); err != nil {
+		return time.Time{}, err
+	}
+
+	return time.Time{}, nil
+}
+
 // findRecordProvider asks all providers in parallel which one holds the
 // record for the given insurant. It performs no entitlement and touches no
 // cache; callers must not rely on any lock being held.
@@ -464,10 +505,11 @@ func (p *Proxy) findAndCacheRecord(insurantID string) (*PatientRecordMetadata, e
 		InsurantID: insurantID,
 		Provider:   session.ProviderNumber,
 	}
-	if err := session.Entitle(insurantID); err != nil {
+	if validTo, err := p.entitle(session, insurantID); err != nil {
 		slog.Error("Failed to entitle", "provider", session.ProviderNumber, "insurantID", insurantID, "error", err)
 	} else {
 		rm.EntitledAt = time.Now()
+		rm.ValidTo = validTo
 	}
 
 	p.recordsLock.Lock()
