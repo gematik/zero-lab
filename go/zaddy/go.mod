@@ -4,7 +4,7 @@ go 1.26.4
 
 require (
 	github.com/caddyserver/caddy/v2 v2.11.4
-	github.com/gematik/zero-lab/go/pep v0.25.7-0.20260707081155-7959d81d3d12
+	github.com/gematik/zero-lab/go/pep v0.25.7-0.20260908072016-2ca75aa218e2
 )
 
 require (
@@ -45,7 +45,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.2 // indirect
-	github.com/gematik/zero-lab/go/dpop v0.1.2-0.20260707081155-7959d81d3d12 // indirect
+	github.com/gematik/zero-lab/go/dpop v0.1.2-0.20260908072016-2ca75aa218e2 // indirect
 	github.com/go-chi/chi/v5 v5.3.0 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect

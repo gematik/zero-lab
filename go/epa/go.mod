@@ -5,10 +5,10 @@ go 1.26.4
 require (
 	github.com/cloudflare/circl v1.6.3
 	github.com/fxamacker/cbor/v2 v2.9.2
-	github.com/gematik/zero-lab/go/brainpool v1.0.2-0.20260707081155-7959d81d3d12
-	github.com/gematik/zero-lab/go/gemidp v0.50.2-0.20260707081155-7959d81d3d12
-	github.com/gematik/zero-lab/go/gempki v0.1.2-0.20260707081155-7959d81d3d12
-	github.com/gematik/zero-lab/go/pkcs12 v0.99.2-0.20260707081155-7959d81d3d12
+	github.com/gematik/zero-lab/go/brainpool v1.0.2-0.20260908072016-2ca75aa218e2
+	github.com/gematik/zero-lab/go/gemidp v0.50.2-0.20260908072016-2ca75aa218e2
+	github.com/gematik/zero-lab/go/gempki v0.1.2-0.20260908072016-2ca75aa218e2
+	github.com/gematik/zero-lab/go/pkcs12 v0.99.2-0.20260908072016-2ca75aa218e2
 	github.com/go-playground/validator/v10 v10.30.3
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
@@ -28,7 +28,7 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
-	github.com/gematik/zero-lab/go/oauth v0.50.2-0.20260707081155-7959d81d3d12 // indirect
+	github.com/gematik/zero-lab/go/oauth v0.50.2-0.20260908072016-2ca75aa218e2 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect

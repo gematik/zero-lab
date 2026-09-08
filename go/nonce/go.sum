@@ -1,7 +1,7 @@
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/gematik/zero-lab/go/kv v0.0.1 h1:voqeTHiTTKBHzQzRJgASuU40ExdWb34dWMWwJ00v7J0=
-github.com/gematik/zero-lab/go/kv v0.0.1/go.mod h1:GRraC12SYbHcwmSVhO7hWME8VLahVz8nFb60mZ6d9bk=
+github.com/gematik/zero-lab/go/kv v0.0.2-0.20260908072016-2ca75aa218e2 h1:RmYJY+EegDLlra+IQBr/7QwKnDDCh54ipcchKDlk9pI=
+github.com/gematik/zero-lab/go/kv v0.0.2-0.20260908072016-2ca75aa218e2/go.mod h1:IEEsYgiQLrOLAlKWtE03T2drWkSMa7pN1F9j+j9G/Sk=
 github.com/hashicorp/go-secure-stdlib/nonceutil v0.1.0 h1:iJG9Q3iUme12yH+wzBMGYrw/Am4CfX3sDcA8m5OGfhQ=
 github.com/hashicorp/go-secure-stdlib/nonceutil v0.1.0/go.mod h1:s28ohJ0kU6tersf0it/WsBCyZSdziPlP+G1FRA3ar28=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
