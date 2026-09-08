@@ -54,7 +54,7 @@ func PinTypValuesString() string {
 }
 
 func (c *Client) VerifyPin(ctx context.Context, cardHandle string, pinTyp PinTyp) (*cardservice81.VerifyPinResponse, error) {
-	proxy, err := c.createLatestServiceProxy(ServiceNameCardService)
+	proxy, err := c.createServiceProxy(ServiceNameCardService, "8.1")
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func (c *Client) VerifyPin(ctx context.Context, cardHandle string, pinTyp PinTyp
 }
 
 func (c *Client) ChangePin(ctx context.Context, cardHandle string, pinTyp PinTyp) (*cardservice81.ChangePinResponse, error) {
-	proxy, err := c.createLatestServiceProxy(ServiceNameCardService)
+	proxy, err := c.createServiceProxy(ServiceNameCardService, "8.1")
 	if err != nil {
 		return nil, err
 	}

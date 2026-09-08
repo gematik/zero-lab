@@ -94,7 +94,7 @@ type soapFault struct {
 // Returns the raw signature bytes. For ECDSA over brainpool, this is the BSI
 // TR-03111 format: R||S, each padded to the curve byte length.
 func (c *Client) ExternalAuthenticate(ctx context.Context, cardHandle string, hash []byte, signatureType string) ([]byte, error) {
-	proxy, err := c.createLatestServiceProxy(ServiceNameAuthSignatureService)
+	proxy, err := c.createServiceProxy(ServiceNameAuthSignatureService, "7.4")
 	if err != nil {
 		return nil, err
 	}

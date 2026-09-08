@@ -15,17 +15,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newVerifyCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "verify",
-		Short: "Verify card PINs",
-	}
-
-	cmd.AddCommand(newVerifyPinCmd())
-
-	return cmd
-}
-
 func newVerifyPinCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pin <card-handle-or-telematik-id> [pin-type]",

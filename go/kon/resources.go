@@ -8,7 +8,7 @@ import (
 )
 
 func (c *Client) GetResourceInformation(ctx context.Context) (*eventservice72.GetResourceInformationResponse, error) {
-	proxy, err := c.createLatestServiceProxy(ServiceNameEventService)
+	proxy, err := c.createServiceProxy(ServiceNameEventService, "7.2")
 	if err != nil {
 		return nil, err
 	}

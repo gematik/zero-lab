@@ -5,11 +5,13 @@ import (
 	"crypto/x509"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/gempki"
 	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/certificateservice601"
 	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/certificateservicecommon20"
+	"github.com/gematik/zero-lab/go/kon/api/gematik/tel/error20"
 )
 
 type CardCertificate struct {
@@ -22,7 +24,7 @@ type CardCertificate struct {
 }
 
 func (c *Client) ReadCardCertificates(ctx context.Context, cardHandle string, crypt certificateservice601.CryptType, certRefs ...certificateservicecommon20.CertRefEnum) ([]*CardCertificate, error) {
-	proxy, err := c.createLatestServiceProxy(ServiceNameCertificateService)
+	proxy, err := c.createServiceProxy(ServiceNameCertificateService, "6.0")
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +99,7 @@ func (c *Client) ReadAllCardCertificates(ctx context.Context, card *Card) ([]*Ca
 }
 
 func (c *Client) CheckCertificateExpiration(ctx context.Context, crypt certificateservice601.CryptType, cardHandle string) ([]certificateservice601.CertificateExpirationType, error) {
-	proxy, err := c.createLatestServiceProxy(ServiceNameCertificateService)
+	proxy, err := c.createServiceProxy(ServiceNameCertificateService, "6.0")
 	if err != nil {
 		return nil, err
 	}
@@ -123,4 +125,49 @@ func (c *Client) CheckCertificateExpiration(ctx context.Context, crypt certifica
 	}
 
 	return resp.CheckCertificateExpirationResponse.CertificateExpiration, nil
+}
+
+// CertificateVerification is the outcome of a connector-side certificate check:
+// path validation against the TI trust space plus revocation status (OCSP).
+type CertificateVerification struct {
+	Result certificateservice601.VerificationResultType `json:"result"`
+	Roles  []string                                     `json:"roles,omitempty"`
+	Error  *error20.Error                               `json:"error,omitempty"`
+}
+
+// VerifyCertificate has the connector validate cert against the TI trust space.
+// A zero verificationTime lets the connector use its own current time.
+func (c *Client) VerifyCertificate(ctx context.Context, cert *x509.Certificate, verificationTime time.Time) (*CertificateVerification, error) {
+	proxy, err := c.createServiceProxy(ServiceNameCertificateService, "6.0")
+	if err != nil {
+		return nil, err
+	}
+
+	req := &certificateservice601.VerifyCertificate{
+		Context:         c.connectorContext(),
+		X509Certificate: cert.Raw,
+	}
+	if !verificationTime.IsZero() {
+		req.VerificationTime = verificationTime.Format(time.RFC3339)
+	}
+
+	var resp certificateservice601.VerifyCertificateResponseEnvelope
+	if err := proxy.Call(ctx, &certificateservice601.OperationVerifyCertificate,
+		&certificateservice601.VerifyCertificateEnvelope{VerifyCertificate: req}, &resp); err != nil {
+		return nil, fmt.Errorf("VerifyCertificate: %w", err)
+	}
+
+	if resp.Fault != nil {
+		return nil, fmt.Errorf("VerifyCertificate SOAP fault: %s", resp.Fault.String)
+	}
+	if resp.VerifyCertificateResponse == nil {
+		return nil, fmt.Errorf("VerifyCertificate: empty response")
+	}
+
+	r := resp.VerifyCertificateResponse
+	return &CertificateVerification{
+		Result: r.VerificationStatus.VerificationResult,
+		Roles:  r.RoleList.Role,
+		Error:  r.VerificationStatus.Error,
+	}, nil
 }

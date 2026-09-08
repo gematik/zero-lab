@@ -81,6 +81,10 @@ ti connector describe certificate <card-handle> <cert-ref>
 
 # Verify a card PIN
 ti connector verify pin <card-handle> <pin-type>
+
+# Verify a certificate against the TI trust space (path + revocation)
+ti connector verify certificate <card-handle> <cert-ref>
+ti connector verify certificate --file cert.pem
 ```
 
 ### ePA commands

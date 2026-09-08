@@ -63,7 +63,7 @@ func (c *Client) getCard(ctx context.Context, cardHandle string, withCertificate
 	}
 
 	var resp eventservice72.GetResourceInformationResponseEnvelope
-	proxy, err := c.createLatestServiceProxy(ServiceNameEventService)
+	proxy, err := c.createServiceProxy(ServiceNameEventService, "7.2")
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +105,7 @@ func (c *Client) GetCardsByType(ctx context.Context, cardTypes ...cardservicecom
 }
 
 func (c *Client) getCardsByType(ctx context.Context, cardTypes []cardservicecommon20.CardType) ([]Card, error) {
-	proxy, err := c.createLatestServiceProxy(ServiceNameEventService)
+	proxy, err := c.createServiceProxy(ServiceNameEventService, "7.2")
 	if err != nil {
 		return nil, err
 	}
@@ -173,34 +173,4 @@ func (c *Client) connectorContext() connectorcontext20.Context {
 		WorkplaceId:    c.Context.WorkplaceId,
 		UserId:         c.Context.UserId,
 	}
-}
-
-func (c *Client) createLatestServiceProxy(serviceName ServiceName) (*serviceProxy, error) {
-	var bestService *Service
-	var bestVersion *ServiceVersion
-	var bestSemver int
-
-	for i, s := range c.Services.ServiceInformation.Service {
-		if s.Name == serviceName {
-			for j, v := range s.Versions {
-				sv := semverAsNumber(v.Version)
-				if sv > bestSemver {
-					bestService = &c.Services.ServiceInformation.Service[i]
-					bestVersion = &c.Services.ServiceInformation.Service[i].Versions[j]
-					bestSemver = sv
-				}
-			}
-		}
-	}
-
-	if bestVersion == nil {
-		return nil, fmt.Errorf("service not found: %s", serviceName)
-	}
-
-	return &serviceProxy{
-		endpoint:       bestVersion.EndpointTLS.Location,
-		client:         c,
-		service:        bestService,
-		serviceVersion: bestVersion,
-	}, nil
 }

@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -76,4 +78,72 @@ func (s *serviceProxy) Call(ctx context.Context, op SOAPOperation, envelope any,
 	}
 
 	return nil
+}
+
+// createServiceProxy returns a proxy for the newest version of serviceName the
+// Konnektor advertises whose major.minor is one of supportedVersions, which the
+// caller lists according to the bindings it can actually marshal.
+//
+// Konnektors advertise versions we have no bindings for — the RISE connector
+// lists CardService 8.2.1 ahead of the 8.1.x versions — and each minor version
+// has its own XML namespace, so posting a v8.1 body to the v8.2 endpoint is
+// answered with a SOAP syntax fault. The binding, not the connector, therefore
+// decides which advertised version we talk to.
+func (c *Client) createServiceProxy(serviceName ServiceName, supportedVersions ...string) (*serviceProxy, error) {
+	var bestService *Service
+	var bestVersion *ServiceVersion
+	var bestSemver int
+	var advertised []string
+
+	for i, s := range c.Services.ServiceInformation.Service {
+		if s.Name != serviceName {
+			continue
+		}
+		for j, v := range s.Versions {
+			advertised = append(advertised, v.Version)
+			if !slices.Contains(supportedVersions, majorMinor(v.Version)) {
+				continue
+			}
+			if sv := semverAsNumber(v.Version); sv > bestSemver {
+				bestService = &c.Services.ServiceInformation.Service[i]
+				bestVersion = &c.Services.ServiceInformation.Service[i].Versions[j]
+				bestSemver = sv
+			}
+		}
+	}
+
+	if bestVersion == nil {
+		if len(advertised) == 0 {
+			return nil, fmt.Errorf("service not found: %s", serviceName)
+		}
+		return nil, fmt.Errorf("%s: connector advertises %s, none supported (supported: %s)",
+			serviceName, strings.Join(advertised, ", "), strings.Join(supportedVersions, ", "))
+	}
+
+	var endpoint string
+	switch {
+	case bestVersion.EndpointTLS != nil:
+		endpoint = bestVersion.EndpointTLS.Location
+	case bestVersion.Endpoint != nil:
+		endpoint = bestVersion.Endpoint.Location
+	}
+
+	slog.Debug("Selected service version", "service", serviceName, "version", bestVersion.Version, "endpoint", endpoint)
+
+	return &serviceProxy{
+		endpoint:       endpoint,
+		client:         c,
+		service:        bestService,
+		serviceVersion: bestVersion,
+	}, nil
+}
+
+// majorMinor reduces a service version like "8.2.1" to the "8.2" that identifies
+// its XML namespace and thus the generated binding to use.
+func majorMinor(version string) string {
+	parts := strings.SplitN(version, ".", 3)
+	if len(parts) < 2 {
+		return version
+	}
+	return parts[0] + "." + parts[1]
 }
