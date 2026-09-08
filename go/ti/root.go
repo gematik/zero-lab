@@ -44,7 +44,7 @@ func newRootCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print the version number",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println(common.Version)
+			fmt.Println(common.ResolveVersion())
 		},
 	})
 

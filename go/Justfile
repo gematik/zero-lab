@@ -50,7 +50,7 @@ build-caddy:
 
 # Build the ti CLI binary locally
 build-ti:
-    go build -ldflags "-X main.Version=$(just _modver ti)" -o dist/ti ./ti
+    go build -ldflags "-X github.com/gematik/zero-lab/go/ti/internal/common.Version=$(just _modver ti)" -o dist/ti ./ti
 
 
 # Build the zero-epa docker image

@@ -6,13 +6,14 @@ import (
 )
 
 // Version is the ti CLI release version. It defaults to "dev" and is overridden
-// at build time via -ldflags "-X main.Version=<v>".
+// at build time via
+// -ldflags "-X github.com/gematik/zero-lab/go/ti/internal/common.Version=<v>".
 var Version = "dev"
 
-// resolveVersion returns the ldflags-injected Version when set, otherwise the module
+// ResolveVersion returns the ldflags-injected Version when set, otherwise the module
 // version embedded by `go install module@vX.Y.Z` (read from the build info). This makes
 // installed binaries report their tag version without needing ldflags.
-func resolveVersion() string {
+func ResolveVersion() string {
 	if Version != "dev" {
 		return Version
 	}
