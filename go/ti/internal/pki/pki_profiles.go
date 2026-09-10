@@ -38,17 +38,35 @@ func sortedProfileNames() []string {
 	return names
 }
 
-func newPKIProfilesCmd(def common.EnvDef) *cobra.Command {
+// validateProfileName rejects a --profile value that names no profile. Without
+// this the unknown name falls through to a chain-only validator and the run
+// still reports success, as if a profile of that name had been applied.
+func validateProfileName(name string) error {
+	switch strings.ToLower(name) {
+	case "", "auto", "none":
+		return nil
+	}
+	if _, ok := gempki.ProfileRegistry[strings.ToLower(name)]; ok {
+		return nil
+	}
+	return fmt.Errorf("unknown profile %q (valid: auto, none, %s)", name, strings.Join(sortedProfileNames(), ", "))
+}
+
+func completeProfile(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	return append([]string{"auto", "none"}, sortedProfileNames()...), cobra.ShellCompDirectiveNoFileComp
+}
+
+func newPKIProfilesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "profiles",
-		Short: "List or describe the gempki profiles available to cert verify",
+		Short: "List or describe the gempki profiles available to `ti pki verify`",
 	}
-	cmd.AddCommand(newPKIProfilesListCmd(def))
-	cmd.AddCommand(newPKIProfilesDescribeCmd(def))
+	cmd.AddCommand(newPKIProfilesListCmd())
+	cmd.AddCommand(newPKIProfilesDescribeCmd())
 	return cmd
 }
 
-func newPKIProfilesListCmd(def common.EnvDef) *cobra.Command {
+func newPKIProfilesListCmd() *cobra.Command {
 	var formatRaw string
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -63,7 +81,6 @@ func newPKIProfilesListCmd(def common.EnvDef) *cobra.Command {
 			return runProfilesList(f)
 		},
 	}
-	_ = def
 	cmd.Flags().StringVar(&formatRaw, "format", string(formatText), "output format: text, json")
 	return cmd
 }
@@ -111,7 +128,7 @@ func certTypeNames(ts []gempki.CertificateType) []string {
 	return out
 }
 
-func newPKIProfilesDescribeCmd(def common.EnvDef) *cobra.Command {
+func newPKIProfilesDescribeCmd() *cobra.Command {
 	var formatRaw string
 	cmd := &cobra.Command{
 		Use:       "describe NAME",
@@ -126,12 +143,11 @@ func newPKIProfilesDescribeCmd(def common.EnvDef) *cobra.Command {
 			}
 			p, ok := gempki.ProfileRegistry[strings.ToLower(args[0])]
 			if !ok {
-				return fmt.Errorf("unknown profile %q (try `ti pki <env> profiles list`)", args[0])
+				return fmt.Errorf("unknown profile %q (try `ti pki profiles list`)", args[0])
 			}
 			return runProfilesDescribe(p, f)
 		},
 	}
-	_ = def
 	cmd.Flags().StringVar(&formatRaw, "format", string(formatText), "output format: text, json")
 	return cmd
 }
