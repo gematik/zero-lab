@@ -3,6 +3,7 @@ package pki
 import (
 	"crypto/x509"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/gematik/zero-lab/go/gempki"
@@ -43,6 +44,12 @@ func newPKIVerifyAutoCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			slog.Debug("ti: environment auto-detected",
+				"subject", certs[0].Subject.CommonName,
+				"env", envName,
+				"trustDomain", string(det.Domain),
+				"method", string(det.Method),
+				"detail", det.Detail)
 			opts.detectedEnvName = envName
 			opts.detection = &det
 			return runCertVerify(cmd.Context(), def, certs, f, opts)
@@ -65,20 +72,6 @@ func envForTrustDomain(det gempki.TrustDomainResult, leaf *x509.Certificate) (st
 	default:
 		return "", undetectableEnvError(det, leaf)
 	}
-}
-
-// describeDetection renders the header line. The ref caveat is spelled out
-// every time: ref is also dev, and a test-environment certificate lands here
-// too because ref and test publish the same roots.
-func describeDetection(envName string, det *gempki.TrustDomainResult) string {
-	detail := "no detection detail"
-	if det != nil {
-		detail = det.Detail
-	}
-	if envName == "ref" {
-		return fmt.Sprintf("ref  (detected: %s; non-prod — dev shares this domain, test not ruled out)", detail)
-	}
-	return fmt.Sprintf("%s  (detected: %s)", envName, detail)
 }
 
 // undetectableEnvError explains what was tried and how to get a verdict anyway.

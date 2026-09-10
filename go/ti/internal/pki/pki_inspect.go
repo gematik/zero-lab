@@ -116,8 +116,8 @@ type certInspect struct {
 	PublicKey          publicKeyInfo          `json:"publicKey"`
 	Type               gempki.CertificateType `json:"type,omitempty"`
 	TypeOID            string                 `json:"typeOID,omitempty"`
-	SelectedProfile    string                 `json:"selectedProfile,omitempty"`
-	CompatibleProfiles []string               `json:"compatibleProfiles,omitempty"`
+	Profile            string                 `json:"profile,omitempty"`
+	ProfileCandidates  []string               `json:"profileCandidates,omitempty"`
 	Extensions         *extensionsInfo        `json:"extensions,omitempty"`
 	Admission          *admissionInfo         `json:"admission,omitempty"`
 	Fingerprints       fingerprintsInfo       `json:"fingerprints"`
@@ -200,14 +200,16 @@ func buildCertInspect(c *x509.Certificate) certInspect {
 	if t := gempki.DetectCertificateType(c); t != gempki.CertTypeUnknown {
 		out.Type = t
 		out.TypeOID = t.OID().String()
-		// Selection, not just the type: we hold the certificate, so we can
-		// say which profile `ti pki verify` would actually pick for it
-		// rather than listing everything its type could match.
-		if sel := gempki.SelectProfileForCert(c); sel.Profile != nil {
-			out.SelectedProfile = sel.Profile.Name
+		// A profile is discriminated by more than the certificate type — the
+		// admission role today, possibly more later — so answer from the
+		// certificate. Listing every profile the *type* could match names
+		// profiles this certificate's role rules out.
+		sel := gempki.SelectProfileForCert(c)
+		if sel.Profile != nil {
+			out.Profile = sel.Profile.Name
 		}
-		for _, p := range gempki.ProfilesForType(t) {
-			out.CompatibleProfiles = append(out.CompatibleProfiles, p.Name)
+		for _, p := range sel.Candidates {
+			out.ProfileCandidates = append(out.ProfileCandidates, p.Name)
 		}
 	}
 	if ext := buildExtensionsInfo(c); ext != nil {
@@ -321,11 +323,11 @@ func writeCertInspect(kv *common.KVWriter, ci certInspect) {
 		kv.Section("Certificate Type")
 		kv.KV("Name", string(ci.Type))
 		kv.KV("OID", ci.TypeOID)
-		if ci.SelectedProfile != "" {
-			kv.KV("Selected Profile", ci.SelectedProfile)
+		if ci.Profile != "" {
+			kv.KV("Profile", ci.Profile)
 		}
-		if len(ci.CompatibleProfiles) > 0 {
-			kv.KV("Compatible Profiles", strings.Join(ci.CompatibleProfiles, ", "))
+		if len(ci.ProfileCandidates) > 0 {
+			kv.KV("Profile", strings.Join(ci.ProfileCandidates, " or ")+" (pass --profile to pick)")
 		}
 		kv.EndSection()
 	}

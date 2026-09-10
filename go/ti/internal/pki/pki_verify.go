@@ -358,7 +358,7 @@ func renderVerifyResultText(result *gempki.ValidationResult, opts certVerifyOpts
 	// Everything else the certificate contains is `ti pki inspect`'s job — this
 	// command answers one question and shows the evidence for that answer.
 	if opts.detectedEnvName != "" {
-		kv.KV("Environment", describeDetection(opts.detectedEnvName, opts.detection))
+		kv.KV("Environment", opts.detectedEnvName+" (auto)")
 	}
 	if len(result.Chain) > 0 && result.Chain[0] != nil {
 		ee := result.Chain[0]
@@ -383,7 +383,7 @@ func renderVerifyResultText(result *gempki.ValidationResult, opts certVerifyOpts
 	}
 	switch {
 	case opts.Profile != "" && opts.resolvedFrom == "auto":
-		kv.KV("Profile", opts.Profile+" (auto: "+opts.selectDetail+")")
+		kv.KV("Profile", opts.Profile+" (auto)")
 	case opts.Profile != "":
 		kv.KV("Profile", opts.Profile)
 	case opts.resolvedFrom == "none":
@@ -432,13 +432,7 @@ func renderVerifyResultText(result *gempki.ValidationResult, opts certVerifyOpts
 		kv.EndSection()
 	}
 	kv.EndSection()
-	if err := kv.Print(); err != nil {
-		return err
-	}
-	if common.IsTerminal() {
-		fmt.Println("\nRun `ti pki inspect FILE` for the full certificate body.")
-	}
-	return nil
+	return kv.Print()
 }
 
 func writeRevocationDetail(kv *common.KVWriter, rev *gempki.RevocationResult) {
