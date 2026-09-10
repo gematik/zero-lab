@@ -259,12 +259,22 @@ func (t CertificateType) OID() asn1.ObjectIdentifier {
 //
 // Callers can distinguish the two with `len(ProfilesForType(t))`.
 func (t CertificateType) DefaultProfile() *Profile {
-	for _, p := range ProfileRegistry {
-		if slices.Contains(p.DefaultFor, t) {
+	// Sorted rather than map order: [ValidateProfileRegistry] forbids two
+	// profiles claiming one type, but if one ever slips through, answering
+	// the same way every run beats a result that changes between processes.
+	for _, name := range ProfileNames() {
+		if p := ProfileRegistry[name]; slices.Contains(p.DefaultFor, t) {
 			return p
 		}
 	}
 	return nil
+}
+
+// IsKnownCertificateType reports whether t is one of the Tab_PKI_405 types
+// this package models. [CertTypeUnknown] is not.
+func IsKnownCertificateType(t CertificateType) bool {
+	_, ok := certTypeOID[t]
+	return ok
 }
 
 // ProfilesForType returns every profile in [ProfileRegistry] whose

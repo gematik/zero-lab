@@ -138,11 +138,11 @@ func TestRealWorld_SMCBValidatesEndToEnd(t *testing.T) {
 		result.Chain[2].Subject.CommonName)
 }
 
-// TestRealWorld_ProfileSmbAuthAcceptsRealCert confirms ProfileSmbAuth's
+// TestRealWorld_ProfileSmbAutAcceptsRealCert confirms ProfileSmbAut's
 // composed-from-CertTypeSpec constraints (digitalSignature KU, clientAuth EKU,
 // SMC-B institution role OIDs, OIDPolicyGemOrCP, OIDCertTypeSmcBAUT) match
 // the real SMC-B Arzt cert.
-func TestRealWorld_ProfileSmbAuthAcceptsRealCert(t *testing.T) {
+func TestRealWorld_ProfileSmbAutAcceptsRealCert(t *testing.T) {
 	t.Parallel()
 
 	rca5, _ := gempki.ParsePEMCertificates([]byte(fixtureBrainpoolRCA5PEM))
@@ -153,11 +153,11 @@ func TestRealWorld_ProfileSmbAuthAcceptsRealCert(t *testing.T) {
 	eeCerts, _ := gempki.ParsePEMCertificates([]byte(fixtureBrainpoolSMCBEEPEM))
 	ee := eeCerts[0]
 
-	v := gempki.ProfileSmbAuth.Validator(ts, gempki.CertTypeHciAUT)
+	v := gempki.ProfileSmbAut.Validator(ts, gempki.CertTypeHciAUT)
 	gempki.WithRevocationMode(gempki.RevocationModeDisabled)(v)
 
 	chain := append([]*x509.Certificate{ee}, smcbCA51...)
 	result, err := v.Validate(t.Context(), chain)
 	require.NoError(t, err)
-	assert.True(t, result.Valid, "ProfileSmbAuth rejected a real SMC-B cert: %v", result.Errors)
+	assert.True(t, result.Valid, "ProfileSmbAut rejected a real SMC-B cert: %v", result.Errors)
 }

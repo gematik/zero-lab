@@ -233,10 +233,11 @@ func TestCertificateType_DefaultProfile(t *testing.T) {
 		want  *gempki.Profile
 	}
 	cases := []tc{
-		{gempki.CertTypeHciAUT, gempki.ProfileSmbAuth},
-		{gempki.CertTypeFdSIG, gempki.ProfileIdp},
-		// C.FD.AUT is the 1:N case: accepted by both epavau and idp, no
-		// default-for. Auto mode warns; user picks.
+		{gempki.CertTypeHciAUT, gempki.ProfileSmbAut},
+		{gempki.CertTypeFdSIG, gempki.ProfileIdpSig},
+		// C.FD.AUT has no type-level owner: both profiles that accept it are
+		// told apart by an admission role, not by the type. SelectProfileForCert
+		// is what resolves it.
 		{gempki.CertTypeFdAUT, nil},
 		// Types with no profile in the slimmed registry.
 		{gempki.CertTypeHpQES, nil},
@@ -259,10 +260,11 @@ func TestProfilesForType(t *testing.T) {
 		want  []*gempki.Profile // expected, order-insensitive
 	}
 	cases := []tc{
-		{gempki.CertTypeHciAUT, []*gempki.Profile{gempki.ProfileSmbAuth}},
-		{gempki.CertTypeFdSIG, []*gempki.Profile{gempki.ProfileIdp}},
-		// 1:N — both profiles accept this type.
-		{gempki.CertTypeFdAUT, []*gempki.Profile{gempki.ProfileEpaVau, gempki.ProfileIdp}},
+		{gempki.CertTypeHciAUT, []*gempki.Profile{gempki.ProfileSmbAut}},
+		{gempki.CertTypeFdSIG, []*gempki.Profile{gempki.ProfileIdpSig}},
+		// 1:N — the type alone does not separate these two; the ZETA Guard
+		// admission role does, which is what ProfilesForCert is for.
+		{gempki.CertTypeFdAUT, []*gempki.Profile{gempki.ProfileEpaVau, gempki.ProfileZetaASL}},
 		{gempki.CertTypeHpQES, nil},
 		{gempki.CertTypeFdTLSS, nil},
 		{gempki.CertTypeUnknown, nil},

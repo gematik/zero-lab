@@ -75,9 +75,10 @@ otherwise the tag still pins the old sibling code.
   silently ignored by the linker and `ti version` prints `dev`.
 - **CA certificates are required at runtime.** `ti` talks HTTPS to connectors, IDPs and ePA
   providers. On `scratch`, copy `/etc/ssl` from the build stage.
-- **`ti` needs a writable config dir.** State (selected connector, ePA caches, TSL cache,
-  `cli-state.db`) goes to `$XDG_CONFIG_HOME/telematik`. Set `XDG_CONFIG_HOME` to a mounted
-  volume, or the CLI writes into the container's ephemeral filesystem.
+- **`ti` needs two writable dirs.** Connector configs and the selected ePA environment go
+  to `$XDG_CONFIG_HOME/telematik`; the ePA/TSL caches (`cli-state.db`) go to
+  `$XDG_STATE_HOME/telematik`. Set both to mounted volumes, or the CLI writes into the
+  container's ephemeral filesystem.
 - **Connector credentials are not baked in.** Mount the `.kon` file and pass its path via
   `-c` or `TI_CONNECTOR_CONFIG`. The file supports `${ENV_VAR}` expansion, so secrets can
   stay in the environment rather than in the image.

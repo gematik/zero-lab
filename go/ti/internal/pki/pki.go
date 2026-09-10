@@ -14,8 +14,15 @@ func NewCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pki",
 		Short: "PKI and certificate trust commands",
+		Long: "PKI and certificate trust commands.\n\n" +
+			"`inspect` decodes a certificate and prints what is in it — offline, with no\n" +
+			"trust decision. `verify` builds a chain against the gematik TI roots and\n" +
+			"reports whether the certificate is valid there.",
 	}
 	cmd.PersistentFlags().BoolVar(&common.NoCache, "no-cache", false, "bypass local cache and always fetch from network")
+	cmd.AddCommand(newPKIInspectCmd())
+	cmd.AddCommand(newPKIVerifyAutoCmd())
+	cmd.AddCommand(newPKIProfilesCmd())
 	cmd.AddCommand(newPKICacheCmd())
 
 	common.AddEnvSubcommands(cmd, func(name string, def common.EnvDef) *cobra.Command {
@@ -23,11 +30,9 @@ func NewCmd() *cobra.Command {
 			Use:   name,
 			Short: fmt.Sprintf("PKI commands for %s environment", name),
 		}
-		envCmd.AddCommand(newPKICertCmd(def))
+		envCmd.AddCommand(newPKIEnvVerifyCmd(def))
 		envCmd.AddCommand(newPKITSLCmdGroup(def))
 		envCmd.AddCommand(newPKIRootsCmdGroup(def))
-		envCmd.AddCommand(newPKIOCSPCmdGroup(def))
-		envCmd.AddCommand(newPKIProfilesCmd(def))
 		return envCmd
 	})
 

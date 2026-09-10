@@ -22,3 +22,20 @@ func XDGConfigHome() string {
 func TelematikDir() string {
 	return filepath.Join(XDGConfigHome(), "telematik")
 }
+
+// XDGStateHome returns $XDG_STATE_HOME if set, otherwise ~/.local/state.
+// Same deliberate platform-independence as [XDGConfigHome].
+func XDGStateHome() string {
+	if h := os.Getenv("XDG_STATE_HOME"); h != "" {
+		return h
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "state")
+}
+
+// TelematikStateDir returns $XDG_STATE_HOME/telematik — persistent-but-
+// regenerable data (the CLI state store) as opposed to the user-authored
+// files under [TelematikDir].
+func TelematikStateDir() string {
+	return filepath.Join(XDGStateHome(), "telematik")
+}

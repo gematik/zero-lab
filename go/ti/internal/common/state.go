@@ -3,6 +3,8 @@ package common
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"os"
 	"path/filepath"
 
 	"github.com/gematik/zero-lab/go/ti/state"
@@ -10,19 +12,58 @@ import (
 
 // CLIStateFile is the canonical path of the shared SQLite state store. The
 // store is shared by ePA and PKI caches; key prefixes (epa:, pki:) keep their
-// domains apart.
+// domains apart. Everything in it is TTL'd and re-fetchable, so it lives under
+// XDG_STATE_HOME rather than next to the user-authored files in TelematikDir.
 func CLIStateFile() string {
+	return filepath.Join(TelematikStateDir(), "cli-state.db")
+}
+
+// legacyCLIStateFile is where the store lived before it moved out of
+// XDG_CONFIG_HOME. Kept for the one-shot migration in [LoadCLIState].
+func legacyCLIStateFile() string {
 	return filepath.Join(TelematikDir(), "cli-state.db")
 }
 
 // LoadCLIState opens the SQLite-backed state store at the canonical path.
 // Callers are responsible for Close().
 func LoadCLIState() (*state.SQLiteStore, error) {
-	s, err := state.OpenSQLite(CLIStateFile())
+	path := CLIStateFile()
+	migrateCLIState(legacyCLIStateFile(), path)
+	s, err := state.OpenSQLite(path)
 	if err != nil {
 		return nil, fmt.Errorf("opening state file: %w", err)
 	}
 	return s, nil
+}
+
+// migrateCLIState moves a pre-existing store from the legacy path to the
+// current one, taking any WAL sidecars along so an unclean shutdown doesn't
+// lose the last writes. Best-effort throughout: the store holds nothing but
+// caches, so a failed move costs a re-fetch, never a broken command.
+func migrateCLIState(from, to string) {
+	if from == to {
+		return
+	}
+	if _, err := os.Stat(from); err != nil {
+		return
+	}
+	if _, err := os.Stat(to); err == nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(to), 0o700); err != nil {
+		slog.Debug("state: creating state dir failed, keeping legacy store", "dir", filepath.Dir(to), "err", err)
+		return
+	}
+	if err := os.Rename(from, to); err != nil {
+		slog.Debug("state: migrating store failed, starting fresh", "from", from, "to", to, "err", err)
+		return
+	}
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if err := os.Rename(from+suffix, to+suffix); err != nil && !os.IsNotExist(err) {
+			slog.Debug("state: migrating sidecar failed", "file", from+suffix, "err", err)
+		}
+	}
+	slog.Debug("state: migrated store", "from", from, "to", to)
 }
 
 // GetJSON reads key from the store and decodes its value into a fresh T. The
