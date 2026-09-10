@@ -83,22 +83,6 @@ func (ts *TrustStore) BySKI(ski []byte) (*x509.Certificate, bool) {
 	return c, ok
 }
 
-// CertPool returns a fresh [x509.CertPool] containing every root in the
-// TrustStore. Suitable for `tls.Config.RootCAs`.
-//
-// Note: this pool does NOT include intermediate CAs. Wiring intermediates
-// from the TSL is the responsibility of the Phase 3 chain builder.
-func (ts *TrustStore) CertPool() *x509.CertPool {
-	pool := x509.NewCertPool()
-	if ts == nil {
-		return pool
-	}
-	for _, r := range ts.all {
-		pool.AddCert(r)
-	}
-	return pool
-}
-
 // Len returns the number of distinct roots.
 func (ts *TrustStore) Len() int {
 	if ts == nil {

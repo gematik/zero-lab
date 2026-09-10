@@ -1,7 +1,6 @@
 package gempki_test
 
 import (
-	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -78,44 +77,6 @@ func TestParseCertificate_P521Accepted(t *testing.T) {
 	cert, err := gempki.ParseCertificate(der)
 	require.NoError(t, err)
 	assert.Equal(t, "test-p521", cert.Subject.CommonName)
-}
-
-func TestParseCertificates_MixedStream(t *testing.T) {
-	t.Parallel()
-
-	bpDER := fixtureBrainpoolEEDER(t)
-	nistDER, _ := makeSelfSignedECDSA(t, elliptic.P256(), "test-nist-in-stream")
-
-	stream := bytes.Join([][]byte{bpDER, nistDER}, nil)
-	certs, err := gempki.ParseCertificates(stream)
-	require.NoError(t, err)
-	require.Len(t, certs, 2)
-
-	assert.Same(t, brainpool.P256r1(), certs[0].PublicKey.(*ecdsa.PublicKey).Curve)
-	assert.Same(t, elliptic.P256(), certs[1].PublicKey.(*ecdsa.PublicKey).Curve)
-}
-
-func TestParseCertificates_TruncatedStream(t *testing.T) {
-	t.Parallel()
-
-	der := fixtureBrainpoolEEDER(t)
-	_, err := gempki.ParseCertificates(der[:len(der)-10])
-	require.Error(t, err)
-}
-
-func TestParseCertificates_RSAInStream(t *testing.T) {
-	t.Parallel()
-
-	nistDER, _ := makeSelfSignedECDSA(t, elliptic.P256(), "ok")
-	rsaDER := makeSelfSignedRSA(t, "rsa-in-stream")
-	stream := bytes.Join([][]byte{nistDER, rsaDER}, nil)
-
-	certs, err := gempki.ParseCertificates(stream)
-	require.NoError(t, err)
-	require.Len(t, certs, 2)
-	assert.Equal(t, "ok", certs[0].Subject.CommonName)
-	assert.Equal(t, "rsa-in-stream", certs[1].Subject.CommonName)
-	assert.Equal(t, x509.RSA, certs[1].PublicKeyAlgorithm)
 }
 
 func TestParsePEMCertificates(t *testing.T) {

@@ -3,6 +3,7 @@ package gempki
 import (
 	"crypto/x509"
 	"encoding/asn1"
+	"errors"
 	"fmt"
 )
 
@@ -69,11 +70,17 @@ type ProfessionInfo struct {
 	AddProfessionInfo  []byte                  `asn1:"optional"`
 }
 
-var OIDAdmissionStatement = "1.3.36.8.3.3"
+// ErrNoAdmissionStatement is returned by [ParseAdmissionStatement] when the
+// certificate carries no admission extension at all — as opposed to one that
+// could not be decoded. Callers that treat "no roles asserted" as an
+// ordinary outcome match it with errors.Is.
+var ErrNoAdmissionStatement = errors.New("gempki: certificate has no admission statement extension")
 
+// ParseAdmissionStatement decodes the gematik admission extension
+// (1.3.36.8.3.3) carrying the profession items, OIDs and registration number.
 func ParseAdmissionStatement(cert *x509.Certificate) (*AdmissionStatement, error) {
 	for _, ext := range cert.Extensions {
-		if ext.Id.String() == OIDAdmissionStatement {
+		if ext.Id.Equal(OIDAdmissionExtension) {
 			as, err := parseAdmissionSyntax(ext.Value)
 			if err != nil {
 				return nil, err
@@ -81,8 +88,7 @@ func ParseAdmissionStatement(cert *x509.Certificate) (*AdmissionStatement, error
 			return convertAdmissionSyntax(as)
 		}
 	}
-
-	return nil, fmt.Errorf("admission statement extension not found")
+	return nil, ErrNoAdmissionStatement
 }
 
 func readSeq(b []byte) ([]asn1.RawValue, error) {

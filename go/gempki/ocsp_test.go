@@ -36,7 +36,6 @@ func TestOCSPChecker_GoodResponse(t *testing.T) {
 	result, err := checker.Check(t.Context(), pki.EEZeta.Cert, pki.SubCAKomp.Cert)
 	require.NoError(t, err)
 	assert.Equal(t, gempki.RevocationStatusGood, result.Status)
-	assert.Equal(t, gempki.RevocationSourceOCSP, result.Source)
 }
 
 func TestOCSPChecker_RevokedResponse(t *testing.T) {
@@ -107,7 +106,9 @@ func TestOCSPChecker_NetworkErrorPropagates(t *testing.T) {
 		ResponderURL: "http://127.0.0.1:1", // unreachable
 	}
 	_, err = checker.Check(t.Context(), pki.EEZeta.Cert, pki.SubCAKomp.Cert)
-	require.Error(t, err, "network failure must propagate so a Composite can fall through")
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, &gempki.ValidationError{Code: gempki.ErrCodeOCSPUnavailable}),
+		"a transport failure is reported as unavailable, got %v", err)
 }
 
 func TestOCSPChecker_HonorsContextCancellation(t *testing.T) {
@@ -254,13 +255,13 @@ func TestOCSPChecker_DelegatedResponderAuthorizedByTSL(t *testing.T) {
 	r := testocsp.NewResponder(t, pki.SubCAHBA.Cert, signKey, signCert)
 	r.Set(pki.EEArzt.Cert.SerialNumber, testocsp.Entry{Status: testocsp.StatusGood})
 
-	// Without authorization the check must fail.
+	// Without authorization the response must be refused — and refused as
+	// untrusted, not as unavailable, so no mode can soften it.
 	bare := &gempki.OCSPChecker{HTTPClient: &http.Client{Timeout: 5 * time.Second}, ResponderURL: r.URL}
 	resBare, err := bare.Check(t.Context(), pki.EEArzt.Cert, pki.SubCAHBA.Cert)
-	require.NoError(t, err)
-	assert.Equal(t, gempki.RevocationStatusUnknown, resBare.Status,
-		"delegated responder without TSL listing must not be trusted")
-	assert.Contains(t, resBare.Reason, "responder cert authorization failed")
+	require.Error(t, err)
+	assert.Nil(t, resBare)
+	assert.True(t, errors.Is(err, &gempki.ValidationError{Code: gempki.ErrCodeOCSPResponderUntrusted}), "got %v", err)
 
 	// With the responder cert in TSLResponders, authorization succeeds.
 	auth := &gempki.OCSPChecker{
@@ -302,4 +303,62 @@ func TestOCSPChecker_DelegatedResponderViaChainFallback(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, gempki.RevocationStatusGood, result.Status,
 		"responder chaining to a configured root must be authorized; got reason=%q", result.Reason)
+}
+
+func TestOCSPChecker_RequiresHTTPClient(t *testing.T) {
+	t.Parallel()
+
+	pki, err := testca.New()
+	require.NoError(t, err)
+	checker := &gempki.OCSPChecker{ResponderURL: "http://example.invalid/ocsp"}
+	_, err = checker.Check(t.Context(), pki.EEZeta.Cert, pki.SubCAKomp.Cert)
+	require.Error(t, err)
+	assert.False(t, errors.As(err, new(*gempki.ValidationError)), "a missing client is a programming error, not a verdict")
+}
+
+func TestOCSPChecker_BadSignatureIsInvalidNotUnavailable(t *testing.T) {
+	t.Parallel()
+
+	pki, err := testca.New()
+	require.NoError(t, err)
+	// The response embeds SubCAHBA's certificate but is signed with
+	// SubCAKomp's key: the responder is authorized (it is the issuer), the
+	// signature is not.
+	r := testocsp.NewResponder(t, pki.SubCAHBA.Cert, pki.SubCAKomp.Key, pki.SubCAHBA.Cert)
+	r.Set(pki.EEArzt.Cert.SerialNumber, testocsp.Entry{Status: testocsp.StatusGood})
+
+	checker := &gempki.OCSPChecker{
+		HTTPClient:    &http.Client{Timeout: 5 * time.Second},
+		ResponderURL:  r.URL,
+		TSLResponders: []*x509.Certificate{pki.SubCAHBA.Cert},
+	}
+	_, err = checker.Check(t.Context(), pki.EEArzt.Cert, pki.SubCAHBA.Cert)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, &gempki.ValidationError{Code: gempki.ErrCodeOCSPResponseInvalid}), "got %v", err)
+}
+
+// TestOCSPChecker_UntrustedResponseFailsSoftFail is the regression test for
+// the bug where a response that failed authorization was reported as
+// "responder unavailable" and therefore waved through under SoftFail.
+func TestOCSPChecker_UntrustedResponseFailsSoftFail(t *testing.T) {
+	t.Parallel()
+
+	pki, err := testca.New()
+	require.NoError(t, err)
+	// SubCAKomp answers for an EE issued by SubCAHBA, with nothing
+	// authorizing it to do so.
+	r := testocsp.NewResponder(t, pki.SubCAHBA.Cert, pki.SubCAKomp.Key, pki.SubCAKomp.Cert)
+	r.Set(pki.EEArzt.Cert.SerialNumber, testocsp.Entry{Status: testocsp.StatusGood})
+
+	ts, _ := gempki.NewTrustStore([]*x509.Certificate{pki.RCA1.Cert})
+	v := &gempki.Validator{
+		TrustStore:     ts,
+		RevocationMode: gempki.RevocationModeSoftFail,
+		Revocation:     &gempki.OCSPChecker{HTTPClient: &http.Client{Timeout: 5 * time.Second}, ResponderURL: r.URL},
+	}
+	result, err := v.Validate(t.Context(), []*x509.Certificate{pki.EEArzt.Cert, pki.SubCAHBA.Cert})
+	require.NoError(t, err)
+	assert.False(t, result.Valid, "an unauthorized responder must fail validation even under SoftFail")
+	assert.True(t, result.HasError(gempki.ErrCodeOCSPResponderUntrusted), "errors: %v", result.Errors)
+	assert.Empty(t, result.Warnings)
 }

@@ -67,10 +67,6 @@ const (
 	// ErrCodeKeyUsageMismatch — required KeyUsage or ExtendedKeyUsage missing.
 	ErrCodeKeyUsageMismatch ErrorCode = "key_usage_mismatch"
 
-	// ErrCodeUnsupportedCrypto — key type or curve outside TI-PKI policy
-	// (Ed25519, P-521, secp256k1, ...). RSA is no longer flagged here.
-	ErrCodeUnsupportedCrypto ErrorCode = "unsupported_crypto"
-
 	// ErrCodeProfileNotDetected — a profile-driven verify ran in auto mode
 	// but the cert carries no Tab_PKI_405 type marker and the Admission
 	// fallback couldn't infer one. The chain-only result is still returned,
@@ -83,8 +79,6 @@ const (
 	// ownership. Validation falls back to chain-only; callers must pass
 	// --profile explicitly to pick one.
 	//
-	// The canonical example is C.FD.AUT, accepted by both `epavau` (ePA
-	// VAU authenticity) and `idp` (IDP authenticity).
 	ErrCodeProfileAmbiguous ErrorCode = "profile_ambiguous"
 
 	// ErrCodeProfileTypeMismatch — the user passed --profile X explicitly,
@@ -101,9 +95,6 @@ const (
 // ValidationError supports errors.Is by Code, so callers can write
 //
 //	if errors.Is(err, &gempki.ValidationError{Code: gempki.ErrCodeRevoked}) { ... }
-//
-// or check against the sentinel values declared below
-// ([ErrRevoked], [ErrExpired], …).
 type ValidationError struct {
 	Code    ErrorCode
 	Subject string // CommonName of the offending certificate, "" if not cert-specific
@@ -140,23 +131,9 @@ func (e *ValidationError) Is(target error) bool {
 	return e.Code == t.Code
 }
 
-// Sentinel ValidationErrors suitable as errors.Is targets. They carry only
-// the code (no Subject, no Cause) — instance-specific values are matched by
-// code equality.
-var (
-	ErrRevoked                = &ValidationError{Code: ErrCodeRevoked, Message: "certificate is revoked"}
-	ErrOCSPResponseInvalid    = &ValidationError{Code: ErrCodeOCSPResponseInvalid, Message: "OCSP response invalid"}
-	ErrOCSPResponderUntrusted = &ValidationError{Code: ErrCodeOCSPResponderUntrusted, Message: "OCSP responder untrusted"}
-	ErrOCSPUnavailable        = &ValidationError{Code: ErrCodeOCSPUnavailable, Message: "OCSP responder unavailable"}
-	ErrRoleOIDMissing         = &ValidationError{Code: ErrCodeRoleOIDMissing, Message: "required role OID missing"}
-	ErrExpired                = &ValidationError{Code: ErrCodeExpired, Message: "certificate expired"}
-	ErrNotYetValid            = &ValidationError{Code: ErrCodeNotYetValid, Message: "certificate not yet valid"}
-	ErrChainIncomplete        = &ValidationError{Code: ErrCodeChainIncomplete, Message: "chain incomplete"}
-	ErrPolicyMismatch         = &ValidationError{Code: ErrCodePolicyMismatch, Message: "certificate policy mismatch"}
-	ErrSignatureInvalid       = &ValidationError{Code: ErrCodeSignatureInvalid, Message: "signature invalid"}
-	ErrKeyUsageMismatch       = &ValidationError{Code: ErrCodeKeyUsageMismatch, Message: "key usage mismatch"}
-	ErrUnsupportedCrypto      = &ValidationError{Code: ErrCodeUnsupportedCrypto, Message: "unsupported crypto"}
-)
+// ErrChainIncomplete is the errors.Is target for chain-construction
+// failures; [BuildChain] wraps it into every error it returns.
+var ErrChainIncomplete = &ValidationError{Code: ErrCodeChainIncomplete, Message: "chain incomplete"}
 
 // WarnProfileNotDetected is the sentinel used by auto-profile callers when
 // [DetectCertificateType] returns [CertTypeUnknown]. It is a warning, not

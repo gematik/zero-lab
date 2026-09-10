@@ -254,8 +254,6 @@ func revocationModeString(m gempki.RevocationMode) string {
 		return "hard-fail"
 	case gempki.RevocationModeSoftFail:
 		return "soft-fail"
-	case gempki.RevocationModeBestEffort:
-		return "best-effort"
 	case gempki.RevocationModeDisabled:
 		return "disabled"
 	}

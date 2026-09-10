@@ -63,9 +63,9 @@ func TestProfileZetaASL_ValidatorRequiresZETARole(t *testing.T) {
 	ts := trustStoreOf(t)
 	v := gempki.ProfileZetaASL.Validator(ts, gempki.CertTypeFdAUT)
 	assert.Equal(t, []asn1.ObjectIdentifier{gempki.OIDTechRoleZETAGuard}, v.RequiredRoleOIDs)
-	assert.Equal(t, gempki.RevocationModeHardFail, v.Revocation.Mode)
+	assert.Equal(t, gempki.RevocationModeHardFail, v.RevocationMode)
 
-	check := gempki.CheckRoleOID(nil, v.RequiredRoleOIDs...)
+	check := gempki.CheckRoleOID(v.RequiredRoleOIDs...)
 	assert.NoError(t, check(context.Background(), zetaCert(t)),
 		"a C.FD.AUT asserting ZETA Guard must satisfy the profile")
 

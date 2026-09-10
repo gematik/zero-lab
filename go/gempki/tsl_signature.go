@@ -181,7 +181,7 @@ func VerifyTSLDetachedSignature(
 	if err != nil {
 		return nil, err
 	}
-	chain, err := BuildChain(sig.Signer, intermediates, ts, BuildChainOptions{})
+	chain, err := BuildChain(sig.Signer, intermediates, ts)
 	if err != nil {
 		return nil, fmt.Errorf("gempki: TSL signer chain build: %w", err)
 	}
@@ -196,22 +196,6 @@ func VerifyTSLDetachedSignature(
 		return nil, err
 	}
 	return sig, nil
-}
-
-// VerifyTSLDetachedSignatureForEnv is the convenience wrapper around
-// [VerifyTSLDetachedSignature] that constructs a [TrustStore] from the
-// embedded TSL-Signer-CA anchor for env. Use this when you want default
-// behaviour and the vendored anchor covers your use case.
-func VerifyTSLDetachedSignatureForEnv(
-	ctx context.Context,
-	env Environment,
-	tslBytes, sigBytes []byte,
-) (*TSLDetachedSignature, error) {
-	ts, err := EmbeddedTSLSignerLoader{Env: env}.Load(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("gempki: load embedded TSL signers (%s): %w", env, err)
-	}
-	return VerifyTSLDetachedSignature(ctx, tslBytes, sigBytes, nil, ts, ValidatePathOptions{})
 }
 
 // LoadTSLDetachedSignature fetches the .sig file at sigURL and parses it.

@@ -12,21 +12,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 )
-
-// Loader produces a [TrustStore]. Implementations: [EmbeddedLoader],
-// [FileLoader], [NetworkLoader], [CompositeLoader].
-//
-// A Loader's job is to source a list of root candidates and assemble them
-// into a verified TrustStore via the A_28419 cross-cert rollover protocol.
-// Verification is identical across all loaders — it lives in
-// [verifyRootsList] below; only the *source* of bytes differs.
-type Loader interface {
-	Load(ctx context.Context) (*TrustStore, error)
-}
 
 // --- Embedded data ---------------------------------------------------------
 //
@@ -131,7 +119,7 @@ type EmbeddedLoader struct {
 	Env Environment
 }
 
-// Load implements [Loader].
+// Load assembles the trust store from the compiled-in data.
 func (l EmbeddedLoader) Load(_ context.Context) (*TrustStore, error) {
 	anchor, err := EmbeddedTrustAnchor(l.Env)
 	if err != nil {
@@ -144,38 +132,18 @@ func (l EmbeddedLoader) Load(_ context.Context) (*TrustStore, error) {
 	return verifyRootsList(anchor, bytes.NewReader(data))
 }
 
-// FileLoader reads roots.json from disk. The trust anchor is supplied by the
-// caller — this loader is intended for environments where the gematik anchor
-// is delivered out-of-band.
-type FileLoader struct {
-	Path        string
-	TrustAnchor *x509.Certificate
-}
-
-// Load implements [Loader].
-func (l FileLoader) Load(_ context.Context) (*TrustStore, error) {
-	if l.TrustAnchor == nil {
-		return nil, errors.New("gempki: FileLoader requires a TrustAnchor")
-	}
-	f, err := os.Open(l.Path)
-	if err != nil {
-		return nil, fmt.Errorf("gempki: open roots file: %w", err)
-	}
-	defer f.Close()
-	return verifyRootsList(l.TrustAnchor, f)
-}
-
 // NetworkLoader fetches roots.json from the gematik distribution endpoint
-// for the configured Environment. HTTPClient is optional; nil falls back to
-// a bounded default client — production callers should pass a configured client
-// with appropriate timeouts.
+// for the configured Environment through the caller's HTTPClient.
 type NetworkLoader struct {
 	Env        Environment
 	HTTPClient *http.Client
 }
 
-// Load implements [Loader].
+// Load fetches and verifies the environment's roots.
 func (l NetworkLoader) Load(ctx context.Context) (*TrustStore, error) {
+	if l.HTTPClient == nil {
+		return nil, errors.New("gempki: NetworkLoader requires an HTTPClient")
+	}
 	anchor, err := EmbeddedTrustAnchor(l.Env)
 	if err != nil {
 		return nil, err
@@ -184,15 +152,11 @@ func (l NetworkLoader) Load(ctx context.Context) (*TrustStore, error) {
 	if !ok {
 		return nil, fmt.Errorf("gempki: no network endpoint for environment %q", l.Env)
 	}
-	client := l.HTTPClient
-	if client == nil {
-		client = defaultHTTPClient
-	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("gempki: build roots request: %w", err)
 	}
-	resp, err := client.Do(req)
+	resp, err := l.HTTPClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("gempki: fetch roots: %w", err)
 	}
@@ -213,28 +177,6 @@ func urlRootsFor(env Environment) (string, bool) {
 		return URLRootsProd, true
 	}
 	return "", false
-}
-
-// CompositeLoader tries each Loader in order and returns the first success.
-// Use to fall back from network → embedded for offline resilience.
-type CompositeLoader struct {
-	Loaders []Loader
-}
-
-// Load implements [Loader].
-func (l CompositeLoader) Load(ctx context.Context) (*TrustStore, error) {
-	if len(l.Loaders) == 0 {
-		return nil, errors.New("gempki: CompositeLoader has no Loaders")
-	}
-	errs := make([]error, 0, len(l.Loaders))
-	for i, ld := range l.Loaders {
-		ts, err := ld.Load(ctx)
-		if err == nil {
-			return ts, nil
-		}
-		errs = append(errs, fmt.Errorf("loader %d (%T): %w", i, ld, err))
-	}
-	return nil, errors.Join(errs...)
 }
 
 // --- A_28419 walk ----------------------------------------------------------

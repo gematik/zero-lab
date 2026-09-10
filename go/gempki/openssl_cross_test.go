@@ -142,10 +142,7 @@ func validateChainBaseline(t *testing.T, trustRoot, ee *x509.Certificate, interm
 	t.Helper()
 	ts, err := gempki.NewTrustStore([]*x509.Certificate{trustRoot})
 	require.NoError(t, err)
-	v := gempki.NewValidator(
-		gempki.WithTrustStore(ts),
-		gempki.WithRevocationMode(gempki.RevocationModeDisabled),
-	)
+	v := &gempki.Validator{TrustStore: ts, RevocationMode: gempki.RevocationModeDisabled}
 	chain := append([]*x509.Certificate{ee}, intermediates...)
 	result, err := v.Validate(t.Context(), chain)
 	require.NoError(t, err)

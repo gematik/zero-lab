@@ -5,13 +5,13 @@ import (
 	"fmt"
 )
 
-// VerifyCertificateSignature checks that child was signed by parent's private key.
+// verifyCertificateSignature checks that child was signed by parent's private key.
 //
 // Both public keys must be one of the TI-PKI's allowed types (ECDSA on an
 // allowed curve, or RSA). The signature itself is verified via the standard
 // library, which handles ECDSA (including Brainpool) and RSA / RSA-PSS
 // uniformly through [x509.Certificate.CheckSignatureFrom].
-func VerifyCertificateSignature(child, parent *x509.Certificate) error {
+func verifyCertificateSignature(child, parent *x509.Certificate) error {
 	if child == nil {
 		return fmt.Errorf("gempki: nil child certificate")
 	}

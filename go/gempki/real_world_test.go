@@ -121,10 +121,7 @@ func TestRealWorld_SMCBValidatesEndToEnd(t *testing.T) {
 	require.Len(t, eeCerts, 1)
 	ee := eeCerts[0]
 
-	v := gempki.NewValidator(
-		gempki.WithTrustStore(ts),
-		gempki.WithRevocationMode(gempki.RevocationModeDisabled),
-	)
+	v := &gempki.Validator{TrustStore: ts, RevocationMode: gempki.RevocationModeDisabled}
 	chain := append([]*x509.Certificate{ee}, intermediates...)
 	result, err := v.Validate(t.Context(), chain)
 	require.NoError(t, err)
@@ -154,7 +151,7 @@ func TestRealWorld_ProfileSmbAutAcceptsRealCert(t *testing.T) {
 	ee := eeCerts[0]
 
 	v := gempki.ProfileSmbAut.Validator(ts, gempki.CertTypeHciAUT)
-	gempki.WithRevocationMode(gempki.RevocationModeDisabled)(v)
+	v.RevocationMode = gempki.RevocationModeDisabled
 
 	chain := append([]*x509.Certificate{ee}, smcbCA51...)
 	result, err := v.Validate(t.Context(), chain)

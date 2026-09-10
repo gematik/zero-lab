@@ -53,7 +53,7 @@ func TestCheckCertificatePolicies_FailWhenAnyMissing(t *testing.T) {
 	check := gempki.CheckCertificatePolicies(gempki.OIDPolicyGemOrCP, gempki.OIDPolicyHbaCP)
 	err = check(t.Context(), cert)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, gempki.ErrPolicyMismatch))
+	assert.True(t, errors.Is(err, &gempki.ValidationError{Code: gempki.ErrCodePolicyMismatch}))
 	assert.Contains(t, err.Error(), "1.2.276.0.76.4.145") // OIDPolicyHbaCP (the missing one)
 }
 
@@ -64,26 +64,4 @@ func TestCheckCertificatePolicies_EmptyRequirementPasses(t *testing.T) {
 	cert := certWithPolicies(t, pki)
 	check := gempki.CheckCertificatePolicies()
 	require.NoError(t, check(t.Context(), cert))
-}
-
-func TestCheckAnyCertificatePolicy_OneMatchPasses(t *testing.T) {
-	t.Parallel()
-	pki, err := testca.New()
-	require.NoError(t, err)
-	cert := certWithPolicies(t, pki, gempki.OIDPolicyGemOrCP)
-
-	check := gempki.CheckAnyCertificatePolicy(gempki.OIDPolicyHbaCP, gempki.OIDPolicyGemOrCP)
-	require.NoError(t, check(t.Context(), cert))
-}
-
-func TestCheckAnyCertificatePolicy_NoneMatchFails(t *testing.T) {
-	t.Parallel()
-	pki, err := testca.New()
-	require.NoError(t, err)
-	cert := certWithPolicies(t, pki, gempki.OIDPolicyGemTSLSigner)
-
-	check := gempki.CheckAnyCertificatePolicy(gempki.OIDPolicyHbaCP, gempki.OIDPolicyGemOrCP)
-	err = check(t.Context(), cert)
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, gempki.ErrPolicyMismatch))
 }

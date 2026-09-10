@@ -15,7 +15,7 @@ import (
 // fatals on error, returning the result.
 func buildChainHelper(t *testing.T, leaf *x509.Certificate, mids []*x509.Certificate, ts *gempki.TrustStore) []*x509.Certificate {
 	t.Helper()
-	chain, err := gempki.BuildChain(leaf, mids, ts, gempki.BuildChainOptions{})
+	chain, err := gempki.BuildChain(leaf, mids, ts)
 	require.NoError(t, err)
 	return chain
 }

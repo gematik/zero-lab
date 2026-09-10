@@ -57,7 +57,7 @@ func (p *Profile) Matches(cert *x509.Certificate) bool {
 	if cert == nil {
 		return false
 	}
-	have, err := DefaultRoleOIDExtractor(cert)
+	have, err := roleOIDs(cert)
 	if err != nil {
 		// No admission extension, or one we cannot parse: the certificate
 		// asserts nothing, so a profile that requires a role does not apply.

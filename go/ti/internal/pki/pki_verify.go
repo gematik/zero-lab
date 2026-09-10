@@ -237,7 +237,7 @@ func runCertVerify(ctx context.Context, def common.EnvDef, certs []*x509.Certifi
 	opts.intermediates = intermediates
 	opts.roots = ts
 
-	v := buildValidator(def, ts, opts)
+	v := buildValidator(ts, opts)
 	result, err := v.Validate(ctx, append([]*x509.Certificate{certs[0]}, intermediates...))
 	if err != nil {
 		return err
@@ -307,48 +307,38 @@ func resolveTrustStoreFor(ctx context.Context, def common.EnvDef, rootsPath stri
 	return gempki.NewTrustStore(roots)
 }
 
-func buildValidator(def common.EnvDef, ts *gempki.TrustStore, opts certVerifyOpts) *gempki.Validator {
+func buildValidator(ts *gempki.TrustStore, opts certVerifyOpts) *gempki.Validator {
 	var v *gempki.Validator
 	if p, ok := gempki.LookupProfile(opts.Profile); ok {
 		v = p.Validator(ts, opts.detectedType)
 	} else {
-		v = gempki.NewValidator(gempki.WithTrustStore(ts))
+		v = &gempki.Validator{TrustStore: ts, RevocationMode: gempki.RevocationModeDisabled}
 	}
 	if opts.At != nil {
 		at := *opts.At
 		v.TimeFunc = func() time.Time { return at }
 	}
-	// Revocation policy:
-	//   - When a profile is set, the profile carries the mode — see
-	//     `ti pki profiles list`. The profile dictates; we just wire the
-	//     OCSPChecker so the mode has something to evaluate.
-	//   - When no profile is set, `--ocsp` opts in to SoftFail revocation.
-	//   - When neither is set, revocation is disabled (cheap decode + chain).
-	profileSet := opts.Profile != ""
-	if profileSet || opts.WithOCSP {
-		client := opts.httpClient
-		if client == nil {
-			client = common.NewHTTPClient()
-		}
-		maxAge := opts.OCSPMaxAge
-		if maxAge <= 0 {
-			maxAge = 48 * time.Hour
-		}
-		gempki.WithRevocationChecker(&gempki.OCSPChecker{
-			HTTPClient:     client,
-			ResponderURL:   opts.OCSPResponder,
-			MaxResponseAge: maxAge,
-			TSLResponders:  opts.tslResponders,
-			Intermediates:  opts.intermediates,
-			Roots:          opts.roots,
-		})(v)
-		if !profileSet {
-			gempki.WithRevocationMode(gempki.RevocationModeSoftFail)(v)
-		}
-	} else {
-		gempki.WithRevocationMode(gempki.RevocationModeDisabled)(v)
+	// A profile carries its own revocation mode (see `ti pki profiles list`);
+	// without one, --ocsp opts in to SoftFail and otherwise revocation stays
+	// off so a plain chain check costs no network round trip.
+	if opts.Profile == "" && !opts.WithOCSP {
+		return v
 	}
-	_ = def
+	client := opts.httpClient
+	if client == nil {
+		client = common.NewHTTPClient()
+	}
+	v.Revocation = &gempki.OCSPChecker{
+		HTTPClient:     client,
+		ResponderURL:   opts.OCSPResponder,
+		MaxResponseAge: opts.OCSPMaxAge,
+		TSLResponders:  opts.tslResponders,
+		Intermediates:  opts.intermediates,
+		Roots:          opts.roots,
+	}
+	if opts.Profile == "" {
+		v.RevocationMode = gempki.RevocationModeSoftFail
+	}
 	return v
 }
 
@@ -437,7 +427,6 @@ func renderVerifyResultText(result *gempki.ValidationResult, opts certVerifyOpts
 
 func writeRevocationDetail(kv *common.KVWriter, rev *gempki.RevocationResult) {
 	kv.KV("Status", string(rev.Status))
-	kv.KV("Source", string(rev.Source))
 	if rev.ResponderURL != "" {
 		kv.KV("Responder URL", rev.ResponderURL)
 	}
@@ -552,7 +541,6 @@ func verifyResultJSON(r *gempki.ValidationResult, opts certVerifyOpts) map[strin
 func revocationJSON(rev *gempki.RevocationResult) map[string]any {
 	out := map[string]any{
 		"status": string(rev.Status),
-		"source": string(rev.Source),
 	}
 	if rev.ResponderURL != "" {
 		out["responderURL"] = rev.ResponderURL

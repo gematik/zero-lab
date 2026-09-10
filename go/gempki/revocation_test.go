@@ -2,8 +2,8 @@ package gempki_test
 
 import (
 	"crypto/x509"
+	"errors"
 	"testing"
-	"time"
 
 	"github.com/gematik/zero-lab/go/gempki"
 	"github.com/gematik/zero-lab/go/gempki/internal/testca"
@@ -11,170 +11,135 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestEvaluateChain_DisabledShortCircuits(t *testing.T) {
-	t.Parallel()
+// validateWith runs the Brainpool fixture chain through a validator with
+// the given revocation mode and checker.
+func validateWith(t *testing.T, mode gempki.RevocationMode, checker gempki.RevocationChecker) *gempki.ValidationResult {
+	t.Helper()
 	pki, err := testca.New()
 	require.NoError(t, err)
-	chain := []*x509.Certificate{pki.EEArzt.Cert, pki.SubCAHBA.Cert, pki.RCA1.Cert}
-	out, err := gempki.EvaluateChain(t.Context(), chain, gempki.RevocationPolicy{
-		Mode: gempki.RevocationModeDisabled,
-	})
+	ts, _ := gempki.NewTrustStore([]*x509.Certificate{pki.RCA1.Cert})
+	v := &gempki.Validator{TrustStore: ts, RevocationMode: mode, Revocation: checker}
+	result, err := v.Validate(t.Context(), []*x509.Certificate{pki.EEArzt.Cert, pki.SubCAHBA.Cert})
 	require.NoError(t, err)
-	assert.Empty(t, out.Errors)
-	assert.Empty(t, out.Warnings)
+	return result
 }
 
-func TestEvaluateChain_HappyPath_EEOnly(t *testing.T) {
-	t.Parallel()
-	pki, err := testca.New()
-	require.NoError(t, err)
-	chain := []*x509.Certificate{pki.EEArzt.Cert, pki.SubCAHBA.Cert, pki.RCA1.Cert}
-
-	c := gempki.NewHashListChecker() // empty → reports Good for everything
-	out, err := gempki.EvaluateChain(t.Context(), chain, gempki.RevocationPolicy{
-		Mode:     gempki.RevocationModeHardFail,
-		Checkers: []gempki.RevocationChecker{c},
-	})
-	require.NoError(t, err)
-	assert.Empty(t, out.Errors)
-	require.Len(t, out.PerCert, 3)
-	require.NotNil(t, out.PerCert[0])
-	assert.Equal(t, gempki.RevocationStatusGood, out.PerCert[0].Status)
-	assert.Nil(t, out.PerCert[1], "SubCA skipped when CheckSubCAs=false")
+func codes(errs []*gempki.ValidationError) []gempki.ErrorCode {
+	var out []gempki.ErrorCode
+	for _, e := range errs {
+		out = append(out, e.Code)
+	}
+	return out
 }
 
-func TestEvaluateChain_RevokedEEFailsHard(t *testing.T) {
-	t.Parallel()
-	pki, err := testca.New()
-	require.NoError(t, err)
-	chain := []*x509.Certificate{pki.EERevoked.Cert, pki.SubCAHBA.Cert, pki.RCA1.Cert}
-
-	c := gempki.NewHashListChecker()
-	c.Add(pki.EERevoked.Cert, gempki.HashListEntry{
-		RevokedAt: time.Now().Add(-time.Hour),
-		Reason:    "test-keyCompromise",
-	})
-
-	out, err := gempki.EvaluateChain(t.Context(), chain, gempki.RevocationPolicy{
-		Mode:     gempki.RevocationModeHardFail,
-		Checkers: []gempki.RevocationChecker{c},
-	})
-	require.NoError(t, err)
-	require.Len(t, out.Errors, 1)
-	assert.Equal(t, gempki.ErrCodeRevoked, out.Errors[0].Code)
-	assert.Equal(t, pki.EERevoked.Cert.Subject.CommonName, out.Errors[0].Subject)
+func warningCodes(ws []*gempki.ValidationWarning) []gempki.ErrorCode {
+	var out []gempki.ErrorCode
+	for _, w := range ws {
+		out = append(out, w.Code)
+	}
+	return out
 }
 
-func TestEvaluateChain_RevokedAlwaysFailsRegardlessOfMode(t *testing.T) {
+func TestRevocation_DisabledSkipsChecker(t *testing.T) {
 	t.Parallel()
-	pki, err := testca.New()
-	require.NoError(t, err)
-	chain := []*x509.Certificate{pki.EERevoked.Cert, pki.SubCAHBA.Cert, pki.RCA1.Cert}
+	// The checker would reject; Disabled must never call it.
+	result := validateWith(t, gempki.RevocationModeDisabled, revokedChecker("must not be consulted"))
+	assert.True(t, result.Valid, "errors: %v", result.Errors)
+	assert.Empty(t, result.Warnings)
+	assert.Nil(t, result.CertResults[0].Revocation)
+}
 
-	c := gempki.NewHashListChecker()
-	c.Add(pki.EERevoked.Cert, gempki.HashListEntry{RevokedAt: time.Now().Add(-time.Hour)})
-
-	for _, mode := range []gempki.RevocationMode{
-		gempki.RevocationModeHardFail,
-		gempki.RevocationModeSoftFail,
-		gempki.RevocationModeBestEffort,
-	} {
-		out, err := gempki.EvaluateChain(t.Context(), chain, gempki.RevocationPolicy{
-			Mode:     mode,
-			Checkers: []gempki.RevocationChecker{c},
-		})
-		require.NoError(t, err)
-		assert.Len(t, out.Errors, 1, "mode %d should still hard-fail on Revoked", mode)
+func TestRevocation_GoodIsSilent(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []gempki.RevocationMode{gempki.RevocationModeHardFail, gempki.RevocationModeSoftFail} {
+		result := validateWith(t, mode, goodChecker())
+		assert.True(t, result.Valid, "mode %d: %v", mode, result.Errors)
+		assert.Empty(t, result.Warnings)
+		require.NotNil(t, result.CertResults[0].Revocation)
+		assert.Equal(t, gempki.RevocationStatusGood, result.CertResults[0].Revocation.Status)
 	}
 }
 
-func TestEvaluateChain_UnknownHardFailVsSoftFail(t *testing.T) {
+func TestRevocation_RevokedFailsUnderEveryMode(t *testing.T) {
 	t.Parallel()
-	pki, err := testca.New()
-	require.NoError(t, err)
-	chain := []*x509.Certificate{pki.EEArzt.Cert, pki.SubCAHBA.Cert, pki.RCA1.Cert}
-
-	unknownChecker := stubChecker{result: unknownResult()}
-
-	t.Run("hard_fail_rejects", func(t *testing.T) {
-		t.Parallel()
-		out, err := gempki.EvaluateChain(t.Context(), chain, gempki.RevocationPolicy{
-			Mode:     gempki.RevocationModeHardFail,
-			Checkers: []gempki.RevocationChecker{unknownChecker},
-		})
-		require.NoError(t, err)
-		assert.Len(t, out.Errors, 1)
-		assert.Equal(t, gempki.ErrCodeOCSPUnavailable, out.Errors[0].Code)
-	})
-
-	t.Run("soft_fail_warns", func(t *testing.T) {
-		t.Parallel()
-		out, err := gempki.EvaluateChain(t.Context(), chain, gempki.RevocationPolicy{
-			Mode:     gempki.RevocationModeSoftFail,
-			Checkers: []gempki.RevocationChecker{unknownChecker},
-		})
-		require.NoError(t, err)
-		assert.Empty(t, out.Errors)
-		assert.Len(t, out.Warnings, 1)
-	})
-}
-
-func TestEvaluateChain_CacheHitSkipsChecker(t *testing.T) {
-	t.Parallel()
-	pki, err := testca.New()
-	require.NoError(t, err)
-	chain := []*x509.Certificate{pki.EEArzt.Cert, pki.SubCAHBA.Cert, pki.RCA1.Cert}
-
-	preload := &gempki.RevocationResult{
-		Status:    gempki.RevocationStatusGood,
-		Source:    gempki.RevocationSourceCache,
-		CheckedAt: time.Now(),
+	for _, mode := range []gempki.RevocationMode{gempki.RevocationModeHardFail, gempki.RevocationModeSoftFail} {
+		result := validateWith(t, mode, revokedChecker("keyCompromise"))
+		assert.False(t, result.Valid, "mode %d must reject a revoked certificate", mode)
+		assert.Equal(t, []gempki.ErrorCode{gempki.ErrCodeRevoked}, codes(result.Errors))
 	}
-	cache := gempki.NewInMemoryCache(10)
-	require.NoError(t, cache.Put(t.Context(),
-		gempki.RevocationCacheKey(pki.EEArzt.Cert), preload, time.Hour))
-
-	// The checker errors so we can detect whether it was invoked.
-	misuse := stubChecker{result: nil}
-
-	out, err := gempki.EvaluateChain(t.Context(), chain, gempki.RevocationPolicy{
-		Mode:     gempki.RevocationModeHardFail,
-		Checkers: []gempki.RevocationChecker{misuse},
-		Cache:    cache,
-	})
-	require.NoError(t, err)
-	assert.Empty(t, out.Errors, "cache hit must short-circuit the checker")
-	assert.Equal(t, gempki.RevocationStatusGood, out.PerCert[0].Status)
 }
 
-func TestEvaluateChain_CheckSubCAsIncludesIntermediates(t *testing.T) {
+// TestRevocation_ModeTable pins the one table that decides how each checker
+// outcome affects the verdict. The two bottom rows are the point: a response
+// that could not be trusted is an error no matter how lenient the mode.
+func TestRevocation_ModeTable(t *testing.T) {
 	t.Parallel()
-	pki, err := testca.New()
-	require.NoError(t, err)
-	chain := []*x509.Certificate{pki.EEArzt.Cert, pki.SubCAHBA.Cert, pki.RCA1.Cert}
+	cases := []struct {
+		name         string
+		checker      gempki.RevocationChecker
+		hardErrors   []gempki.ErrorCode
+		softErrors   []gempki.ErrorCode
+		softWarnings []gempki.ErrorCode
+	}{
+		{
+			name:         "unknown",
+			checker:      unknownChecker(),
+			hardErrors:   []gempki.ErrorCode{gempki.ErrCodeOCSPUnavailable},
+			softWarnings: []gempki.ErrorCode{gempki.ErrCodeOCSPUnavailable},
+		},
+		{
+			name:         "unavailable",
+			checker:      failingChecker(gempki.ErrCodeOCSPUnavailable),
+			hardErrors:   []gempki.ErrorCode{gempki.ErrCodeOCSPUnavailable},
+			softWarnings: []gempki.ErrorCode{gempki.ErrCodeOCSPUnavailable},
+		},
+		{
+			name:       "responder untrusted",
+			checker:    failingChecker(gempki.ErrCodeOCSPResponderUntrusted),
+			hardErrors: []gempki.ErrorCode{gempki.ErrCodeOCSPResponderUntrusted},
+			softErrors: []gempki.ErrorCode{gempki.ErrCodeOCSPResponderUntrusted},
+		},
+		{
+			name:       "response invalid",
+			checker:    failingChecker(gempki.ErrCodeOCSPResponseInvalid),
+			hardErrors: []gempki.ErrorCode{gempki.ErrCodeOCSPResponseInvalid},
+			softErrors: []gempki.ErrorCode{gempki.ErrCodeOCSPResponseInvalid},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			hard := validateWith(t, gempki.RevocationModeHardFail, c.checker)
+			assert.Equal(t, c.hardErrors, codes(hard.Errors), "HardFail errors")
+			assert.Empty(t, hard.Warnings, "HardFail never warns")
+			assert.False(t, hard.Valid)
 
-	c := gempki.NewHashListChecker()
-	c.Add(pki.SubCAHBA.Cert, gempki.HashListEntry{RevokedAt: time.Now().Add(-time.Hour), Reason: "subca-bad"})
-
-	out, err := gempki.EvaluateChain(t.Context(), chain, gempki.RevocationPolicy{
-		Mode:        gempki.RevocationModeHardFail,
-		Checkers:    []gempki.RevocationChecker{c},
-		CheckSubCAs: true,
-	})
-	require.NoError(t, err)
-	require.Len(t, out.Errors, 1)
-	assert.Equal(t, gempki.ErrCodeRevoked, out.Errors[0].Code)
-	assert.Equal(t, pki.SubCAHBA.Cert.Subject.CommonName, out.Errors[0].Subject)
+			soft := validateWith(t, gempki.RevocationModeSoftFail, c.checker)
+			assert.Equal(t, c.softErrors, codes(soft.Errors), "SoftFail errors")
+			assert.Equal(t, c.softWarnings, warningCodes(soft.Warnings), "SoftFail warnings")
+			assert.Equal(t, len(c.softErrors) == 0, soft.Valid)
+		})
+	}
 }
 
-func TestEvaluateChain_NoCheckersIsError(t *testing.T) {
+func TestRevocation_NoCheckerFailsClosed(t *testing.T) {
 	t.Parallel()
+	for _, mode := range []gempki.RevocationMode{gempki.RevocationModeHardFail, gempki.RevocationModeSoftFail} {
+		result := validateWith(t, mode, nil)
+		assert.False(t, result.Valid, "mode %d with no checker must reject", mode)
+		assert.Equal(t, []gempki.ErrorCode{gempki.ErrCodeOCSPUnavailable}, codes(result.Errors))
+	}
+}
+
+func TestRevocation_CheckerContractViolationIsCallersError(t *testing.T) {
+	t.Parallel()
+	// A plain error is outside the checker contract — a bug, not a verdict —
+	// and surfaces as Validate's own error rather than a result entry.
 	pki, err := testca.New()
 	require.NoError(t, err)
-	chain := []*x509.Certificate{pki.EEArzt.Cert, pki.SubCAHBA.Cert, pki.RCA1.Cert}
-
-	_, err = gempki.EvaluateChain(t.Context(), chain, gempki.RevocationPolicy{
-		Mode: gempki.RevocationModeHardFail,
-	})
+	ts, _ := gempki.NewTrustStore([]*x509.Certificate{pki.RCA1.Cert})
+	v := &gempki.Validator{TrustStore: ts, Revocation: stubChecker{err: errors.New("nil issuer")}}
+	_, err = v.Validate(t.Context(), []*x509.Certificate{pki.EEArzt.Cert, pki.SubCAHBA.Cert})
 	require.Error(t, err)
+	assert.Contains(t, err.Error(), "nil issuer")
 }

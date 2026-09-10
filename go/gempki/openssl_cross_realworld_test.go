@@ -42,10 +42,7 @@ func TestOpenSSLCross_RealWorld_SMCB(t *testing.T) {
 	eeCerts, err := gempki.ParsePEMCertificates([]byte(fixtureBrainpoolSMCBEEPEM))
 	require.NoError(t, err)
 
-	v := gempki.NewValidator(
-		gempki.WithTrustStore(ts),
-		gempki.WithRevocationMode(gempki.RevocationModeDisabled),
-	)
+	v := &gempki.Validator{TrustStore: ts, RevocationMode: gempki.RevocationModeDisabled}
 	chain := append([]*x509.Certificate{eeCerts[0]}, smcbCA51...)
 	result, err := v.Validate(t.Context(), chain)
 	require.NoError(t, err)

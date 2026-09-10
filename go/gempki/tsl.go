@@ -55,19 +55,6 @@ func IsTSLUpdateAvailable(ctx context.Context, httpClient *http.Client, url stri
 	return true, nil
 }
 
-func UpdateTSL(ctx context.Context, httpClient *http.Client, tsl *TrustServiceStatusList) (*TrustServiceStatusList, error) {
-	updateAvailable, err := IsTSLUpdateAvailable(ctx, httpClient, tsl.Url, tsl.Hash)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check for TSL update: %w", err)
-	} else if !updateAvailable {
-		slog.Debug("No TSL update available", "url", tsl.Url)
-		return tsl, nil
-	}
-
-	slog.Info("TSL update available", "url", tsl.Url)
-	return LoadTSL(ctx, httpClient, tsl.Url)
-}
-
 func LoadTSL(ctx context.Context, httpClient *http.Client, url string) (*TrustServiceStatusList, error) {
 	slog.Info("Loading TSL", "url", url)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

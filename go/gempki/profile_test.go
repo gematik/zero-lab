@@ -24,7 +24,7 @@ func TestProfileSmbAut_AcceptsBrainpoolFixtureCert(t *testing.T) {
 	require.NoError(t, err)
 
 	v := gempki.ProfileSmbAut.Validator(ts, gempki.CertTypeHciAUT)
-	gempki.WithRevocationChecker(emptyHashListChecker())(v)
+	v.Revocation = goodChecker()
 
 	pemAll := []byte(fixtureBrainpoolSMCBEEPEM + "\n" +
 		fixtureBrainpoolSMCBCA51PEM)
@@ -52,7 +52,7 @@ func TestProfileSmbAut_RejectsHBARoleOID(t *testing.T) {
 	})
 
 	v := gempki.ProfileSmbAut.Validator(ts, gempki.CertTypeHciAUT)
-	gempki.WithRevocationChecker(emptyHashListChecker())(v)
+	v.Revocation = goodChecker()
 	result, err := v.Validate(t.Context(), []*x509.Certificate{ee, pki.SubCAHBA.Cert})
 	require.NoError(t, err)
 	assert.False(t, result.Valid)
@@ -78,7 +78,7 @@ func TestProfileIdp_AcceptsFdSIGShape(t *testing.T) {
 	})
 
 	v := gempki.ProfileIdpSig.Validator(ts, gempki.CertTypeFdSIG)
-	gempki.WithRevocationChecker(emptyHashListChecker())(v)
+	v.Revocation = goodChecker()
 	result, err := v.Validate(t.Context(), []*x509.Certificate{ee, pki.SubCAKomp.Cert})
 	require.NoError(t, err)
 	assert.False(t, result.Valid, "should reject — missing OIDCertTypeFdSIG policy")
@@ -96,13 +96,13 @@ func TestProfileEpaVau_RevocationModeIsHardFail(t *testing.T) {
 	ts, _ := gempki.NewTrustStore([]*x509.Certificate{pki.RCA7.Cert})
 
 	v := gempki.ProfileEpaVau.Validator(ts, gempki.CertTypeFdAUT)
-	assert.Equal(t, gempki.RevocationModeHardFail, v.Revocation.Mode)
+	assert.Equal(t, gempki.RevocationModeHardFail, v.RevocationMode)
 
 	v2 := gempki.ProfileSmbAut.Validator(ts, gempki.CertTypeHciAUT)
-	assert.Equal(t, gempki.RevocationModeSoftFail, v2.Revocation.Mode)
+	assert.Equal(t, gempki.RevocationModeSoftFail, v2.RevocationMode)
 
 	v3 := gempki.ProfileIdpSig.Validator(ts, gempki.CertTypeFdSIG)
-	assert.Equal(t, gempki.RevocationModeHardFail, v3.Revocation.Mode)
+	assert.Equal(t, gempki.RevocationModeHardFail, v3.RevocationMode)
 }
 
 func TestProfile_Validator_ComposesSpecBaseline(t *testing.T) {
@@ -122,7 +122,7 @@ func TestProfile_Validator_ComposesSpecBaseline(t *testing.T) {
 	assert.ElementsMatch(t, spec.EKU, v.AllowedExtKeyUsages, "baseline EKU must flow through")
 	assert.ElementsMatch(t, spec.Policies, v.RequiredPolicies, "baseline Policies must flow through")
 	assert.ElementsMatch(t, spec.RoleOIDs, v.RequiredRoleOIDs, "baseline RoleOIDs must flow through")
-	assert.Equal(t, gempki.ProfileSmbAut.RevocationMode, v.Revocation.Mode)
+	assert.Equal(t, gempki.ProfileSmbAut.RevocationMode, v.RevocationMode)
 }
 
 // customNISTEE — sibling of customEE but issued under SubCAKomp (NIST).
@@ -140,10 +140,10 @@ func customNISTEE(t *testing.T, pki *testca.TestPKI, opts testca.CertOptions) *x
 	return cert
 }
 
-func TestWithOCSPNetworkChecker_UsesProvidedHTTPClient(t *testing.T) {
+func TestProfileValidator_OCSPCheckerUsesProvidedHTTPClient(t *testing.T) {
 	t.Parallel()
-	// Confirm the convenience option installs an OCSPChecker that respects
-	// the provided http.Client — a minimal wiring smoke test, no real OCSP.
+	// The checker a profile's validator is given must own the OCSP wire —
+	// a wiring smoke test, no real OCSP.
 	called := atomic.Int32{}
 	client := &http.Client{
 		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -156,12 +156,12 @@ func TestWithOCSPNetworkChecker_UsesProvidedHTTPClient(t *testing.T) {
 	require.NoError(t, err)
 	ts, _ := gempki.NewTrustStore([]*x509.Certificate{pki.RCA7.Cert})
 
-	v := gempki.NewValidator(
-		gempki.WithTrustStore(ts),
-		gempki.WithOCSPNetworkChecker(client, "http://example.invalid/ocsp"),
-		gempki.WithRevocationMode(gempki.RevocationModeSoftFail), // tolerate the OCSP error
-	)
+	v := &gempki.Validator{
+		TrustStore:     ts,
+		RevocationMode: gempki.RevocationModeSoftFail, // tolerate the transport error
+		Revocation:     &gempki.OCSPChecker{HTTPClient: client, ResponderURL: "http://example.invalid/ocsp"},
+	}
 	_, err = v.Validate(t.Context(), []*x509.Certificate{pki.EEZeta.Cert, pki.SubCAKomp.Cert})
 	require.NoError(t, err)
-	assert.Positive(t, called.Load(), "custom http.Client must be used by OCSPChecker")
+	assert.Positive(t, called.Load(), "the supplied http.Client must be used by OCSPChecker")
 }

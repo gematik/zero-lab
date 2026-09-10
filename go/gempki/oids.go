@@ -32,10 +32,7 @@ var OIDAdmissionExtension = asn1.ObjectIdentifier{1, 3, 36, 8, 3, 3}
 
 // ECDSA signature-algorithm OIDs (RFC 5758 §3.2). RSA-with-SHA-* OIDs are
 // intentionally absent — the TI-PKI is ECC-only per gemSpec_Krypt.
-var (
-	OIDECDSAWithSHA256 = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 2}
-	OIDECDSAWithSHA384 = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 3}
-)
+var ()
 
 // --- Tab_PKI_401 — Instance OIDs ------------------------------------------
 //

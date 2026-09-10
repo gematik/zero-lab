@@ -39,28 +39,6 @@ func CheckCertificatePolicies(required ...asn1.ObjectIdentifier) CertificateChec
 	}
 }
 
-// CheckAnyCertificatePolicy returns a [CertificateCheck] that passes when
-// cert.PolicyIdentifiers contains at least one OID from allowed. Useful when
-// a profile accepts multiple policy revisions.
-func CheckAnyCertificatePolicy(allowed ...asn1.ObjectIdentifier) CertificateCheck {
-	return func(_ context.Context, cert *x509.Certificate) error {
-		if len(allowed) == 0 {
-			return nil
-		}
-		for _, want := range allowed {
-			if hasPolicyIdentifier(cert, want) {
-				return nil
-			}
-		}
-		return &ValidationError{
-			Code:    ErrCodePolicyMismatch,
-			Subject: cert.Subject.CommonName,
-			Message: fmt.Sprintf("certificate asserts none of the allowed policies: have %s, want any of %s",
-				oidsToString(cert.PolicyIdentifiers), oidsToString(allowed)),
-		}
-	}
-}
-
 func hasPolicyIdentifier(cert *x509.Certificate, want asn1.ObjectIdentifier) bool {
 	for _, have := range cert.PolicyIdentifiers {
 		if have.Equal(want) {

@@ -6,41 +6,28 @@ import (
 	"testing"
 
 	"github.com/gematik/zero-lab/go/gempki"
+	"github.com/gematik/zero-lab/go/gempki/internal/testca"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestTSL(t *testing.T) {
-	tslRef, err := gempki.LoadTSL(context.Background(), http.DefaultClient, gempki.URLTrustServiceListRef)
-	if err != nil {
-		t.Fatalf("LoadTSL failed: %v", err)
-	}
+func TestTSL_LoadsFromRef(t *testing.T) {
+	testca.RequireNetwork(t)
 
-	ok := false
+	tslRef, err := gempki.LoadTSL(context.Background(), http.DefaultClient, gempki.URLTrustServiceListRef)
+	require.NoError(t, err)
+
+	found := false
 	for _, provider := range tslRef.TrustServiceProviderList {
 		for _, service := range provider.TSPServices {
 			if service.ServiceInformation.ServiceTypeIdentifier == gempki.ServiceTypeCaPkc {
-				ok = true
-				break
+				found = true
 			}
 		}
 	}
-	if !ok {
-		t.Fatalf("CA_PKC not found")
-	}
-}
+	assert.True(t, found, "the ref TSL must publish at least one CA/PKC service")
 
-func TestTslReload(t *testing.T) {
-	tslRef, err := gempki.LoadTSL(context.Background(), http.DefaultClient, gempki.URLTrustServiceListRef)
-	require.NoError(t, err, "LoadTSL failed")
-
-	tslRefReloaded, err := gempki.LoadTSL(context.Background(), http.DefaultClient, gempki.URLTrustServiceListRef)
-	require.NoError(t, err, "reloading TSL failed")
-
-	assert.Equal(t, tslRef.Hash, tslRefReloaded.Hash, "TSL hash mismatch after reload")
-
-	tslRefReloaded2, err := gempki.UpdateTSL(context.Background(), http.DefaultClient, tslRef)
-	require.NoError(t, err, "updating TSL failed")
-
-	assert.Same(t, tslRef, tslRefReloaded2, "TSL reference should be the same after update")
+	reloaded, err := gempki.LoadTSL(context.Background(), http.DefaultClient, gempki.URLTrustServiceListRef)
+	require.NoError(t, err)
+	assert.Equal(t, tslRef.Hash, reloaded.Hash, "TSL hash must be stable across reloads")
 }

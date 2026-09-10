@@ -2,7 +2,6 @@ package gempki_test
 
 import (
 	"crypto/x509"
-	"errors"
 	"testing"
 
 	"github.com/gematik/zero-lab/go/gempki"
@@ -23,7 +22,6 @@ func TestBuildChain_BrainpoolHappyPath(t *testing.T) {
 		pki.EEArzt.Cert,
 		[]*x509.Certificate{pki.SubCAHBA.Cert},
 		ts,
-		gempki.BuildChainOptions{},
 	)
 	require.NoError(t, err)
 	require.Len(t, chain, 3, "EE → SubCA → Root")
@@ -44,7 +42,6 @@ func TestBuildChain_NISTHappyPath(t *testing.T) {
 		pki.EEZeta.Cert,
 		[]*x509.Certificate{pki.SubCAKomp.Cert},
 		ts,
-		gempki.BuildChainOptions{},
 	)
 	require.NoError(t, err)
 	require.Len(t, chain, 3)
@@ -63,7 +60,6 @@ func TestBuildChain_MixedCurveChain(t *testing.T) {
 		pki.EEMixed.Cert,
 		[]*x509.Certificate{pki.SubCAMixed.Cert},
 		ts,
-		gempki.BuildChainOptions{},
 	)
 	require.NoError(t, err)
 	require.Len(t, chain, 3, "mixed-curve chain must still build")
@@ -82,7 +78,6 @@ func TestBuildChain_RogueRootNotInTrustStore(t *testing.T) {
 		pki.EERogue.Cert,
 		nil,
 		ts,
-		gempki.BuildChainOptions{},
 	)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, gempki.ErrChainIncomplete)
@@ -101,7 +96,6 @@ func TestBuildChain_MissingIntermediate(t *testing.T) {
 		pki.EEArzt.Cert,
 		nil,
 		ts,
-		gempki.BuildChainOptions{},
 	)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, gempki.ErrChainIncomplete)
@@ -114,28 +108,9 @@ func TestBuildChain_RejectsNilInputs(t *testing.T) {
 	require.NoError(t, err)
 	ts, _ := gempki.NewTrustStore([]*x509.Certificate{pki.RCA1.Cert})
 
-	_, err = gempki.BuildChain(nil, nil, ts, gempki.BuildChainOptions{})
+	_, err = gempki.BuildChain(nil, nil, ts)
 	require.Error(t, err)
 
-	_, err = gempki.BuildChain(pki.EEArzt.Cert, nil, nil, gempki.BuildChainOptions{})
+	_, err = gempki.BuildChain(pki.EEArzt.Cert, nil, nil)
 	require.Error(t, err)
-}
-
-func TestBuildChain_RespectsMaxChainLen(t *testing.T) {
-	t.Parallel()
-
-	pki, err := testca.New()
-	require.NoError(t, err)
-	ts, err := gempki.NewTrustStore([]*x509.Certificate{pki.RCA1.Cert})
-	require.NoError(t, err)
-
-	// MaxChainLen=2 → only [EE, Root] allowed, but the real chain is 3 long.
-	_, err = gempki.BuildChain(
-		pki.EEArzt.Cert,
-		[]*x509.Certificate{pki.SubCAHBA.Cert},
-		ts,
-		gempki.BuildChainOptions{MaxChainLen: 2},
-	)
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, gempki.ErrChainIncomplete), "got %v", err)
 }

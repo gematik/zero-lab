@@ -3,12 +3,10 @@ package gempki
 import (
 	"encoding/asn1"
 	"fmt"
-	"net/http"
 	"regexp"
 	"slices"
 	"sort"
 	"strings"
-	"time"
 )
 
 // Profile is a named, type-aware validation strategy.
@@ -22,10 +20,10 @@ import (
 // Profiles are values, not factories: write
 //
 //	v := gempki.ProfileSmbAut.Validator(ts, gempki.CertTypeHciAUT)
+//	v.Revocation = &gempki.OCSPChecker{HTTPClient: client}
 //
-// then mutate v further if needed (install a custom OCSP checker, override
-// the revocation mode for dev, attach hooks). The profile sets defaults,
-// not a contract.
+// and adjust the result further if needed. The profile sets defaults, not a
+// contract.
 type Profile struct {
 	// Name is the slug used by the CLI (`--profile <name>`) and by the
 	// [ProfileRegistry]. Kebab-case, enforced by [ValidateProfileRegistry].
@@ -74,37 +72,23 @@ type Profile struct {
 	DefaultFor []CertificateType
 }
 
-// Validator builds a fresh [*Validator] for the given [TrustStore] and
-// cert type, composing the type's baseline ([CertificateType.Spec]) with
-// this profile's overlay. The returned validator has no revocation
-// checker wired — callers add one with [WithRevocationChecker] or
-// [WithOCSPNetworkChecker] before validating.
+// Validator builds a [*Validator] for the given trust store and certificate
+// type: the type's baseline (key usage, EKUs, policies, roles) with this
+// profile's overlay on top. No revocation checker is set — callers assign
+// [Validator.Revocation] before validating, or set RevocationModeDisabled.
 //
-// Passing a type that isn't in [Profile.AcceptsTypes] is allowed (the
-// caller may be deliberately forcing a profile); the resulting
-// validator simply applies the type's baseline with this profile's
-// overlay, which may or may not be appropriate. The CLI emits a
-// warning when this happens.
+// A type outside [Profile.AcceptsTypes] is allowed; the caller may be
+// deliberately forcing a profile. The CLI warns when that happens.
 func (p *Profile) Validator(ts *TrustStore, t CertificateType) *Validator {
 	spec := t.Spec()
-	policies := append(append([]asn1.ObjectIdentifier{}, spec.Policies...), p.ExtraPolicies...)
-	opts := []Option{
-		WithTrustStore(ts),
-		WithRevocationMode(p.RevocationMode),
+	return &Validator{
+		TrustStore:          ts,
+		RevocationMode:      p.RevocationMode,
+		RequiredKeyUsage:    spec.KeyUsage,
+		AllowedExtKeyUsages: spec.EKU,
+		RequiredPolicies:    append(append([]asn1.ObjectIdentifier{}, spec.Policies...), p.ExtraPolicies...),
+		RequiredRoleOIDs:    p.EffectiveRoleOIDs(t),
 	}
-	if spec.KeyUsage != 0 {
-		opts = append(opts, WithRequiredKeyUsage(spec.KeyUsage))
-	}
-	if len(spec.EKU) > 0 {
-		opts = append(opts, WithAllowedExtKeyUsages(spec.EKU...))
-	}
-	if len(policies) > 0 {
-		opts = append(opts, WithRequiredPolicies(policies...))
-	}
-	if roles := p.EffectiveRoleOIDs(t); len(roles) > 0 {
-		opts = append(opts, WithRequiredRoleOIDs(roles...))
-	}
-	return NewValidator(opts...)
 }
 
 // EffectiveRoleOIDs returns the role-OID set this profile actually enforces
@@ -305,22 +289,4 @@ func ValidateProfileRegistry() error {
 // Used by [ProfilesForType] and `pki profiles` rendering.
 func sortProfilesByName(ps []*Profile) {
 	sort.Slice(ps, func(i, j int) bool { return ps[i].Name < ps[j].Name })
-}
-
-// WithOCSPNetworkChecker is a convenience for the most common revocation
-// wire-up: an [OCSPChecker] that fetches over HTTPS through the supplied
-// http.Client. Most production callers want this together with a profile:
-//
-//	v := gempki.ProfileSmbAut.Validator(ts, gempki.CertTypeHciAUT)
-//	gempki.WithOCSPNetworkChecker(client, "")(v)         // AIA-driven
-//	gempki.WithCache(gempki.NewInMemoryCache(2000))(v)
-//
-// responderURL is optional; pass "" to read it from each EE's AIA
-// extension. MaxResponseAge defaults to 48h.
-func WithOCSPNetworkChecker(httpClient *http.Client, responderURL string) Option {
-	return WithRevocationChecker(&OCSPChecker{
-		HTTPClient:     httpClient,
-		ResponderURL:   responderURL,
-		MaxResponseAge: 48 * time.Hour,
-	})
 }

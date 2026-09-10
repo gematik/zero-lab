@@ -12,9 +12,8 @@ import (
 // [ValidatePath]. A non-nil return is recorded as a [ValidationError] in
 // the [ValidationResult].
 //
-// Checks should be cheap and side-effect-free — they may be invoked many
-// times across a hot validation path. Long-running work (e.g. OCSP) belongs
-// in the Phase 4 revocation subsystem, not in a CertificateCheck.
+// Checks should be cheap and side-effect-free. Long-running work such as
+// OCSP belongs in a [RevocationChecker], not here.
 type CertificateCheck func(ctx context.Context, cert *x509.Certificate) error
 
 // CheckKeyUsage returns a CertificateCheck that verifies cert.KeyUsage has
@@ -30,29 +29,6 @@ func CheckKeyUsage(required x509.KeyUsage) CertificateCheck {
 				Subject: cert.Subject.CommonName,
 				Message: fmt.Sprintf("required KeyUsage %s missing (have %s)",
 					describeKeyUsage(required), describeKeyUsage(cert.KeyUsage)),
-			}
-		}
-		return nil
-	}
-}
-
-// CheckExtKeyUsage returns a CertificateCheck that verifies cert.ExtKeyUsage
-// contains every entry in required. ExtKeyUsageAny in the cert satisfies any
-// required EKU (RFC 5280 §4.2.1.12 allows ANY as a wildcard).
-//
-// Returns [*ValidationError] with [ErrCodeKeyUsageMismatch] on failure.
-func CheckExtKeyUsage(required ...x509.ExtKeyUsage) CertificateCheck {
-	return func(_ context.Context, cert *x509.Certificate) error {
-		if hasExtKeyUsage(cert, x509.ExtKeyUsageAny) {
-			return nil
-		}
-		for _, want := range required {
-			if !hasExtKeyUsage(cert, want) {
-				return &ValidationError{
-					Code:    ErrCodeKeyUsageMismatch,
-					Subject: cert.Subject.CommonName,
-					Message: fmt.Sprintf("required ExtKeyUsage %s missing", describeExtKeyUsage(want)),
-				}
 			}
 		}
 		return nil

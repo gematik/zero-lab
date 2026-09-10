@@ -31,7 +31,6 @@ const (
 type TrustDomainMethod string
 
 const (
-	MethodNone         TrustDomainMethod = ""
 	MethodRootIdentity TrustDomainMethod = "root-identity"
 	MethodChain        TrustDomainMethod = "chain"
 	MethodMarkers      TrustDomainMethod = "markers"
@@ -96,7 +95,8 @@ func (r TrustDomainResult) decide(d TrustDomain, m TrustDomainMethod, format str
 func DetectTrustDomain(certs []*x509.Certificate) TrustDomainResult {
 	var res TrustDomainResult
 	if len(certs) == 0 {
-		return res.add(MethodNone, "no certificates supplied")
+		res.Detail = "no certificates supplied"
+		return res
 	}
 
 	prod, nonProd, err := embeddedStores()
@@ -157,11 +157,11 @@ func detectByRootIdentity(res TrustDomainResult, certs []*x509.Certificate, prod
 
 func detectByChain(res TrustDomainResult, certs []*x509.Certificate, prod, nonProd *TrustStore) (TrustDomainResult, bool) {
 	leaf, intermediates := certs[0], certs[1:]
-	if chain, err := BuildChain(leaf, intermediates, prod, BuildChainOptions{}); err == nil {
+	if chain, err := BuildChain(leaf, intermediates, prod); err == nil {
 		return res.decide(TrustDomainProd, MethodChain,
 			"chains to prod root %q", chain[len(chain)-1].Subject.CommonName), true
 	}
-	chain, err := BuildChain(leaf, intermediates, nonProd, BuildChainOptions{})
+	chain, err := BuildChain(leaf, intermediates, nonProd)
 	if err == nil {
 		return res.decide(TrustDomainNonProd, MethodChain,
 			"chains to non-prod root %q", chain[len(chain)-1].Subject.CommonName), true
