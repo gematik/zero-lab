@@ -2,6 +2,7 @@ package gempki
 
 import (
 	"crypto/x509"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -143,7 +144,7 @@ func SelectProfileForCert(cert *x509.Certificate) ProfileSelection {
 		return sel
 	}
 
-	if p := t.DefaultProfile(); p != nil {
+	if p := DefaultProfileFor(t); p != nil {
 		sel.Profile = p
 		sel.Reason = ProfileSelectedByDefault
 		sel.Detail = "default for type " + string(t)
@@ -171,4 +172,43 @@ func SelectProfileForCert(cert *x509.Certificate) ProfileSelection {
 	sel.Candidates = matched
 	sel.Detail = "type " + string(t) + " matches several profiles and none owns it"
 	return sel
+}
+
+// DefaultProfileFor returns the profile that owns t through
+// [Profile.DefaultFor], or nil when none does. A nil result means one of:
+//   - no profile accepts this type at all → callers should warn
+//     [WarnProfileNotDetected];
+//   - multiple profiles accept this type but none claims default ownership
+//     → callers should warn [WarnProfileAmbiguous] and ask the user to
+//     pick via [ProfilesForType].
+//
+// Callers can distinguish the two with `len(ProfilesForType(t))`.
+func DefaultProfileFor(t CertificateType) *Profile {
+	for _, p := range profiles {
+		if slices.Contains(p.DefaultFor, t) {
+			return p
+		}
+	}
+	return nil
+}
+
+// IsKnownCertificateType reports whether t is one of the Tab_PKI_405 types
+// this package models. [CertTypeUnknown] is not.
+func IsKnownCertificateType(t CertificateType) bool {
+	_, ok := certTypeOID[t]
+	return ok
+}
+
+// ProfilesForType returns every registered profile whose AcceptsTypes
+// includes t, in registry order; nil when none does. A type may legitimately
+// be accepted by several profiles — C.FD.AUT by epa-vau-aut and
+// zeta-guard-aut — which is what [ProfilesForCert] then resolves.
+func ProfilesForType(t CertificateType) []*Profile {
+	var out []*Profile
+	for _, p := range profiles {
+		if slices.Contains(p.AcceptsTypes, t) {
+			out = append(out, p)
+		}
+	}
+	return out
 }

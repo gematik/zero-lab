@@ -2,8 +2,6 @@ package gempki
 
 import (
 	"encoding/asn1"
-	"fmt"
-	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -127,7 +125,7 @@ var ProfileSmbAut = &Profile{
 // ProfileEpaVau validates the C.FD.AUT cert an ePA Aktensystem VAU
 // (Vertrauenswürdige Ausführungsumgebung) presents for authenticity.
 //
-// Like [ProfileZetaASL] it is identified by its admission role rather than
+// Like [ProfileZetaGuardAut] it is identified by its admission role rather than
 // by its cert type: oid_epa_vau also appears on the VAU's C.FD.ENC and
 // C.FD.SIG certs, so the pairing of role and type is what names this
 // profile — hence `epa-vau-aut`, leaving room for `epa-vau-enc` and
@@ -168,7 +166,7 @@ var ProfileIdpSig = &Profile{
 	RequiredRoleOIDs: []asn1.ObjectIdentifier{OIDTechRoleIDPD},
 }
 
-// ProfileZetaASL validates the C.FD.AUT cert a ZETA Guard access service
+// ProfileZetaGuardAut validates the C.FD.AUT cert a ZETA Guard access service
 // layer presents. Named for the role/type pairing like [ProfileEpaVau], and
 // after the role rather than the component so the name tracks gemSpec_OID:
 // oid_zeta-guard also covers C.FD.TLS-C, which would be
@@ -181,7 +179,7 @@ var ProfileIdpSig = &Profile{
 // the same way, by its own role.
 //
 // HardFail revocation: ZETA sits in front of the resources it guards.
-var ProfileZetaASL = &Profile{
+var ProfileZetaGuardAut = &Profile{
 	Name:             "zeta-guard-aut",
 	Description:      "ZETA Guard access service layer authenticity",
 	RevocationMode:   RevocationModeHardFail,
@@ -189,16 +187,22 @@ var ProfileZetaASL = &Profile{
 	RequiredRoleOIDs: []asn1.ObjectIdentifier{OIDTechRoleZETAGuard},
 }
 
-// ProfileRegistry is the canonical name → profile lookup. CLI `--profile
-// <name>` and `pki profiles` both read through this map. Add new
-// profiles by appending here; the rest of the CLI surface picks them up
-// automatically. [ValidateProfileRegistry] states what a well-formed
-// registry looks like.
-var ProfileRegistry = map[string]*Profile{
-	ProfileSmbAut.Name:  ProfileSmbAut,
-	ProfileEpaVau.Name:  ProfileEpaVau,
-	ProfileIdpSig.Name:  ProfileIdpSig,
-	ProfileZetaASL.Name: ProfileZetaASL,
+// profiles is the registry, in the order listings show them. Add a profile
+// here and the CLI surface picks it up; the invariants a well-formed entry
+// must satisfy are pinned by TestProfiles_Invariants.
+var profiles = []*Profile{
+	ProfileEpaVau,
+	ProfileIdpSig,
+	ProfileSmbAut,
+	ProfileZetaGuardAut,
+}
+
+// Profiles returns every registered profile, sorted by name. The slice is a
+// copy; the profiles themselves are shared.
+func Profiles() []*Profile {
+	out := append([]*Profile(nil), profiles...)
+	sortProfilesByName(out)
+	return out
 }
 
 // Pseudo-values accepted wherever a profile name is: they select a strategy
@@ -213,11 +217,10 @@ const (
 
 // ProfileNames returns every registered profile name, sorted.
 func ProfileNames() []string {
-	out := make([]string, 0, len(ProfileRegistry))
-	for name := range ProfileRegistry {
-		out = append(out, name)
+	out := make([]string, 0, len(profiles))
+	for _, p := range Profiles() {
+		out = append(out, p.Name)
 	}
-	sort.Strings(out)
 	return out
 }
 
@@ -232,61 +235,17 @@ func ProfileSelectorValues() []string {
 // [ProfileNone], "" and unknown names all return (nil, false); callers that
 // must tell those apart compare against the constants first.
 func LookupProfile(name string) (*Profile, bool) {
-	p, ok := ProfileRegistry[strings.ToLower(name)]
-	return p, ok
-}
-
-// profileNamePattern is the kebab-case shape every profile name must have.
-var profileNamePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
-
-// ValidateProfileRegistry reports the first structural problem in
-// [ProfileRegistry], or nil when it is well-formed. It exists because two
-// of the invariants are otherwise unenforced and fail silently: a type
-// claimed as [Profile.DefaultFor] by two profiles makes
-// [CertificateType.DefaultProfile] answer arbitrarily, and a DefaultFor
-// entry outside AcceptsTypes produces a default that [ProfilesForType]
-// won't even list.
-//
-// Consumers that append their own profiles should call this in a test.
-// gempki deliberately does not panic in init: a library has no business
-// killing a process over a registry its caller is still assembling.
-func ValidateProfileRegistry() error {
-	owner := map[CertificateType]string{}
-	for key, p := range ProfileRegistry {
-		switch {
-		case p == nil:
-			return fmt.Errorf("gempki: profile registry key %q is nil", key)
-		case key != p.Name:
-			return fmt.Errorf("gempki: profile registry key %q does not match profile name %q", key, p.Name)
-		case !profileNamePattern.MatchString(p.Name):
-			return fmt.Errorf("gempki: profile name %q is not kebab-case", p.Name)
-		case p.Description == "":
-			return fmt.Errorf("gempki: profile %q has no Description", p.Name)
-		case strings.ContainsAny(p.Description, "\n\r"):
-			return fmt.Errorf("gempki: profile %q Description must be a single line", p.Name)
-		case len(p.AcceptsTypes) == 0:
-			return fmt.Errorf("gempki: profile %q accepts no certificate types", p.Name)
-		}
-		for _, t := range p.AcceptsTypes {
-			if !IsKnownCertificateType(t) {
-				return fmt.Errorf("gempki: profile %q accepts unknown certificate type %q", p.Name, t)
-			}
-		}
-		for _, t := range p.DefaultFor {
-			if !slices.Contains(p.AcceptsTypes, t) {
-				return fmt.Errorf("gempki: profile %q is DefaultFor %q which it does not accept", p.Name, t)
-			}
-			if other, dup := owner[t]; dup {
-				return fmt.Errorf("gempki: certificate type %q is claimed as DefaultFor by both %q and %q", t, other, p.Name)
-			}
-			owner[t] = p.Name
+	name = strings.ToLower(name)
+	for _, p := range profiles {
+		if p.Name == name {
+			return p, true
 		}
 	}
-	return nil
+	return nil, false
 }
 
 // sortProfilesByName sorts in place by Name for deterministic output.
-// Used by [ProfilesForType] and `pki profiles` rendering.
+// Used by [Profiles] and `pki profiles` rendering.
 func sortProfilesByName(ps []*Profile) {
 	sort.Slice(ps, func(i, j int) bool { return ps[i].Name < ps[j].Name })
 }

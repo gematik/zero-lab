@@ -3,6 +3,7 @@ package gempki_test
 import (
 	"context"
 	"crypto/x509"
+	"net/http"
 	"time"
 
 	"github.com/gematik/zero-lab/go/gempki"
@@ -43,4 +44,10 @@ func unknownChecker() gempki.RevocationChecker {
 
 func failingChecker(code gempki.ErrorCode) gempki.RevocationChecker {
 	return stubChecker{err: &gempki.ValidationError{Code: code, Message: "stub: " + string(code)}}
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }

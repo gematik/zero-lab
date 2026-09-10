@@ -1,7 +1,6 @@
 package gempki
 
 import (
-	"context"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -69,7 +68,7 @@ func (r TrustDomainResult) decide(d TrustDomain, m TrustDomainMethod, format str
 
 // DetectTrustDomain works out whether certs belong to the production TI or to
 // one of the test environments. It is entirely offline: the only trust material
-// it consults is the compiled-in roots ([EmbeddedLoader]).
+// it consults is the compiled-in roots ([EmbeddedRoots]).
 //
 // certs is a chain in leaf-first order, as returned by [ParsePEMCertificates];
 // supplying the issuing CA alongside the leaf lets the chain phase decide, which
@@ -121,16 +120,15 @@ func DetectTrustDomain(certs []*x509.Certificate) TrustDomainResult {
 // non-prod store merges dev/ref and test: their roots overlap, so a hit in
 // either says the same thing.
 func embeddedStores() (prod, nonProd *TrustStore, err error) {
-	ctx := context.Background()
-	prod, err = EmbeddedLoader{Env: EnvProd}.Load(ctx)
+	prod, err = EmbeddedRoots(EnvProd)
 	if err != nil {
 		return nil, nil, fmt.Errorf("prod roots: %w", err)
 	}
-	devRef, err := EmbeddedLoader{Env: EnvRef}.Load(ctx)
+	devRef, err := EmbeddedRoots(EnvRef)
 	if err != nil {
 		return nil, nil, fmt.Errorf("ref roots: %w", err)
 	}
-	test, err := EmbeddedLoader{Env: EnvTest}.Load(ctx)
+	test, err := EmbeddedRoots(EnvTest)
 	if err != nil {
 		return nil, nil, fmt.Errorf("test roots: %w", err)
 	}

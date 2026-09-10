@@ -293,8 +293,7 @@ func profileNames(ps []*gempki.Profile) []string {
 
 func resolveTrustStoreFor(ctx context.Context, def common.EnvDef, rootsPath string, httpClient *http.Client) (*gempki.TrustStore, error) {
 	if rootsPath == "" {
-		loader := gempki.NetworkLoader{Env: def.Env, HTTPClient: httpClient}
-		return loader.Load(ctx)
+		return gempki.FetchRoots(ctx, def.Env, httpClient)
 	}
 	pemBytes, err := os.ReadFile(rootsPath)
 	if err != nil {

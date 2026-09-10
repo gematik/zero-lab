@@ -8,22 +8,22 @@ import (
 )
 
 /*
-AdmissionSyntax ::= SEQUENCE
+admissionSyntax ::= SEQUENCE
 
 	{
 	  admissionAuthority GeneralName OPTIONAL,
-	  contentsOfAdmissions SEQUENCE OF Admissions
+	  contentsOfAdmissions SEQUENCE OF admissions
 	}
 
-Admissions ::= SEQUENCE
+admissions ::= SEQUENCE
 
 	{
 	  admissionAuthority [0] EXPLICIT GeneralName OPTIONAL
-	  namingAuthority [1] EXPLICIT NamingAuthority OPTIONAL
-	  professionInfos SEQUENCE OF ProfessionInfo
+	  namingAuthority [1] EXPLICIT namingAuthority OPTIONAL
+	  professionInfos SEQUENCE OF professionInfo
 	}
 
-NamingAuthority ::= SEQUENCE
+namingAuthority ::= SEQUENCE
 
 	{
 	  namingAuthorityId OBJECT IDENTIFIER OPTIONAL,
@@ -31,10 +31,10 @@ NamingAuthority ::= SEQUENCE
 	  namingAuthorityText DirectoryString(SIZE(1..128)) OPTIONAL
 	}
 
-ProfessionInfo ::= SEQUENCE
+professionInfo ::= SEQUENCE
 
 	{
-	  namingAuthority [0] EXPLICIT NamingAuthority OPTIONAL,
+	  namingAuthority [0] EXPLICIT namingAuthority OPTIONAL,
 	  professionItems SEQUENCE OF DirectoryString (SIZE(1..128)),
 	  professionOIDs SEQUENCE OF OBJECT IDENTIFIER OPTIONAL,
 	  registrationNumber PrintableString(SIZE(1..128)) OPTIONAL,
@@ -47,23 +47,23 @@ type AdmissionStatement struct {
 	RegistrationNumber string   `json:"registrationNumber"`
 }
 
-type AdmissionSyntax struct {
+type admissionSyntax struct {
 	AdmissionAuthorityRaw *asn1.RawValue
-	ContentsOfAdmissions  []Admissions
+	ContentsOfAdmissions  []admissions
 }
 
-type Admissions struct {
+type admissions struct {
 	AdmissionAuthority asn1.RawValue    `asn1:"tag:0,optional"`
-	NamingAuthority    NamingAuthority  `asn1:"tag:1,optional"`
-	ProfessionInfos    []ProfessionInfo `asn1:"sequence"`
+	NamingAuthority    namingAuthority  `asn1:"tag:1,optional"`
+	ProfessionInfos    []professionInfo `asn1:"sequence"`
 }
-type NamingAuthority struct {
+type namingAuthority struct {
 	NamingAuthorityId   asn1.ObjectIdentifier `asn1:"optional"`
 	NamingAuthorityUrl  string                `asn1:"ia5,optional"`
 	NamingAuthorityText string                `asn1:"utf8,optional"`
 }
-type ProfessionInfo struct {
-	NamingAuthority    *NamingAuthority        `asn1:"tag:0,optional,explicit"`
+type professionInfo struct {
+	NamingAuthority    *namingAuthority        `asn1:"tag:0,optional,explicit"`
 	ProfessionItems    []string                `asn1:"directory,sequence"`
 	ProfessionOids     []asn1.ObjectIdentifier `asn1:"optional,sequence"`
 	RegistrationNumber string                  `asn1:"printable,optional"`
@@ -106,8 +106,8 @@ func readSeq(b []byte) ([]asn1.RawValue, error) {
 	return elems, nil
 }
 
-func parseAdmissionSyntax(asn1data []byte) (*AdmissionSyntax, error) {
-	admission := new(AdmissionSyntax)
+func parseAdmissionSyntax(asn1data []byte) (*admissionSyntax, error) {
+	admission := new(admissionSyntax)
 
 	raw := new(asn1.RawValue)
 
@@ -139,7 +139,7 @@ func parseAdmissionSyntax(asn1data []byte) (*AdmissionSyntax, error) {
 	return admission, nil
 }
 
-func convertAdmissionSyntax(as *AdmissionSyntax) (*AdmissionStatement, error) {
+func convertAdmissionSyntax(as *admissionSyntax) (*AdmissionStatement, error) {
 	if len(as.ContentsOfAdmissions) == 0 {
 		return nil, fmt.Errorf("no contents of admissions found")
 	}

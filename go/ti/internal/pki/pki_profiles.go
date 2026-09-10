@@ -86,8 +86,7 @@ func runProfilesList(f outputFormat) error {
 		Scope          string   `json:"scope"`
 	}
 	var rows []row
-	for _, name := range gempki.ProfileNames() {
-		p := gempki.ProfileRegistry[name]
+	for _, p := range gempki.Profiles() {
 		rows = append(rows, row{
 			Name:           p.Name,
 			Description:    p.Description,

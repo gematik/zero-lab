@@ -59,7 +59,7 @@ type cachedCertPool struct {
 // gematik PKI, so without this pool the TLS handshake to aggregators fails with
 // "certificate is not standards compliant" or "unknown authority".
 //
-// On a cache miss it loads the TI trust store via gempki's NetworkLoader,
+// On a cache miss it fetches the TI trust store via gempki.FetchRoots,
 // fetches the TSL via common.LoadTSLCached, assembles a pool of roots + TSL-listed
 // intermediates, and writes the DER bytes to the state store with a 24h TTL.
 // Subsequent calls within that window rebuild the pool from cached bytes —
@@ -71,7 +71,7 @@ func epaCertPool(ctx context.Context, env epa.Env) (*x509.CertPool, error) {
 
 	httpClient := common.NewHTTPClient()
 	gpkEnv := gempki.Environment(env)
-	ts, err := gempki.NetworkLoader{Env: gpkEnv, HTTPClient: httpClient}.Load(ctx)
+	ts, err := gempki.FetchRoots(ctx, gpkEnv, httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("loading gempki trust store for %s: %w", env, err)
 	}

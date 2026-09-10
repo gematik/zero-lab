@@ -1,7 +1,6 @@
 package gempki_test
 
 import (
-	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -18,7 +17,7 @@ import (
 // Real gematik data, no network.
 func embeddedRoot(t *testing.T, env gempki.Environment) *x509.Certificate {
 	t.Helper()
-	ts, err := gempki.EmbeddedLoader{Env: env}.Load(context.Background())
+	ts, err := gempki.EmbeddedRoots(env)
 	if err != nil {
 		t.Fatalf("loading embedded roots for %s: %v", env, err)
 	}

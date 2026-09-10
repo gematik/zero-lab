@@ -1,6 +1,7 @@
 package gempki
 
 import (
+	"crypto/x509"
 	"errors"
 	"fmt"
 )
@@ -177,4 +178,58 @@ func (w *ValidationWarning) String() string {
 		return fmt.Sprintf("gempki[%s] warning: %s: %q", w.Code, w.Message, w.Subject)
 	}
 	return fmt.Sprintf("gempki[%s] warning: %s", w.Code, w.Message)
+}
+
+// ChainPosition labels a certificate's role in a validated chain.
+type ChainPosition string
+
+const (
+	// PositionEE — end-entity certificate (the leaf the caller cares about).
+	PositionEE ChainPosition = "end_entity"
+
+	// PositionSubCA — intermediate CA between the end-entity and a trusted root.
+	PositionSubCA ChainPosition = "sub_ca"
+
+	// PositionRoot — trusted root anchor.
+	PositionRoot ChainPosition = "root"
+)
+
+// CertResult is what the validator recorded about one certificate of the
+// chain.
+type CertResult struct {
+	Subject    string
+	Position   ChainPosition
+	Revocation *RevocationResult // nil when revocation was skipped or not run for this position
+}
+
+// ValidationResult is the outcome of a single [Validator].Validate call.
+//
+// Valid is true only when every check passed; Errors enumerates the
+// problems that caused Valid to be false. Warnings record non-fatal
+// observations that did not affect the verdict.
+//
+// Chain and Positions are parallel slices indexed the same way:
+// Chain[i] is positioned at Positions[i] and detailed in CertResults[i].
+type ValidationResult struct {
+	Valid       bool
+	Chain       []*x509.Certificate
+	Positions   []ChainPosition
+	Errors      []*ValidationError
+	Warnings    []*ValidationWarning
+	CertResults []CertResult
+}
+
+// HasError reports whether the result contains at least one error with the
+// given code. Useful for callers that need to discriminate revoked-vs-expired
+// without scanning the slice manually.
+func (r *ValidationResult) HasError(code ErrorCode) bool {
+	if r == nil {
+		return false
+	}
+	for _, e := range r.Errors {
+		if e != nil && e.Code == code {
+			return true
+		}
+	}
+	return false
 }

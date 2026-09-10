@@ -46,8 +46,7 @@ func newPKIRootsListCmd(def common.EnvDef) *cobra.Command {
 }
 
 func runRootsList(ctx context.Context, def common.EnvDef, f outputFormat) error {
-	loader := gempki.NetworkLoader{Env: def.Env, HTTPClient: common.NewHTTPClient()}
-	ts, err := loader.Load(ctx)
+	ts, err := gempki.FetchRoots(ctx, def.Env, common.NewHTTPClient())
 	if err != nil {
 		return err
 	}
@@ -104,8 +103,7 @@ func newPKIRootsBundleCmd(def common.EnvDef) *cobra.Command {
 }
 
 func runRootsBundle(ctx context.Context, def common.EnvDef, f outputFormat) error {
-	loader := gempki.NetworkLoader{Env: def.Env, HTTPClient: common.NewHTTPClient()}
-	ts, err := loader.Load(ctx)
+	ts, err := gempki.FetchRoots(ctx, def.Env, common.NewHTTPClient())
 	if err != nil {
 		return err
 	}

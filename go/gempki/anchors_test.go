@@ -40,14 +40,13 @@ func TestEmbeddedTSLSignerAnchor_UnknownEnv(t *testing.T) {
 	t.Parallel()
 	_, err := gempki.EmbeddedTSLSignerAnchor(gempki.Environment("bogus"))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no embedded TSL-Signer-CA anchor")
+	assert.Contains(t, err.Error(), "unknown environment")
 }
 
-func TestEmbeddedTSLSignerLoader_ReturnsTrustStoreWithAnchor(t *testing.T) {
+func TestTSLSignerTrustStore_HoldsTheAnchor(t *testing.T) {
 	t.Parallel()
 
-	loader := gempki.EmbeddedTSLSignerLoader{Env: gempki.EnvProd}
-	ts, err := loader.Load(t.Context())
+	ts, err := gempki.TSLSignerTrustStore(gempki.EnvProd)
 	require.NoError(t, err)
 	require.NotNil(t, ts)
 	assert.Equal(t, 1, ts.Len(), "single TSL-Signer-CA today (cross-cert walk lands when there's a sibling)")
@@ -77,18 +76,16 @@ func TestEmbeddedTSLSignerAnchor_Memoised(t *testing.T) {
 func TestEmbeddedTSLSignerAnchor_DistinctFromKomponentenAnchor(t *testing.T) {
 	t.Parallel()
 
-	// Sanity: the TSL-Signer-CA and the Komponenten-PKI anchor must NOT be
-	// the same cert. If they ever are, the strategy / data are confused.
+	// The TSL-Signer-CA is a SubCA, never one of the roots. If it ever
+	// turns up in the root store the two anchor tables have been confused.
 	for _, env := range []gempki.Environment{gempki.EnvProd, gempki.EnvTest} {
 		tslAnchor, err := gempki.EmbeddedTSLSignerAnchor(env)
 		require.NoError(t, err)
-		ti, err := gempki.EmbeddedTrustAnchor(env)
-		require.NoError(t, err)
-		assert.False(t, tslAnchor.Equal(ti),
-			"%s: TSL-Signer-CA and Komponenten-PKI anchor must be different certs", env)
 		assert.True(t, strings.Contains(tslAnchor.Subject.CommonName, "TSL-CA"),
 			"%s: TSL anchor CN must contain TSL-CA, got %q", env, tslAnchor.Subject.CommonName)
-		assert.True(t, strings.Contains(ti.Subject.CommonName, "RCA"),
-			"%s: Komponenten-PKI anchor CN must contain RCA, got %q", env, ti.Subject.CommonName)
+		roots, err := gempki.EmbeddedRoots(env)
+		require.NoError(t, err)
+		_, inRoots := roots.BySKI(tslAnchor.SubjectKeyId)
+		assert.False(t, inRoots, "%s: the TSL-Signer-CA must not be in the root store", env)
 	}
 }

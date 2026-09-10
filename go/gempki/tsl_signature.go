@@ -199,9 +199,8 @@ func VerifyTSLDetachedSignature(
 }
 
 // LoadTSLDetachedSignature fetches the .sig file at sigURL and parses it.
-// Honours the caller-supplied [*http.Client] (nil → a bounded default client)
-// and propagates ctx for cancellation and timeouts — per the project's
-// HTTPS-everywhere rule.
+// Uses the caller's [*http.Client] and propagates ctx for cancellation and
+// timeouts.
 //
 // The companion of [LoadTSL]; offline / airgap callers can parse a local
 // file's contents with [ParseTSLDetachedSignature] instead.
@@ -210,7 +209,7 @@ func LoadTSLDetachedSignature(ctx context.Context, httpClient *http.Client, sigU
 		return nil, fmt.Errorf("gempki: LoadTSLDetachedSignature requires a sigURL")
 	}
 	if httpClient == nil {
-		httpClient = defaultHTTPClient
+		return nil, fmt.Errorf("gempki: LoadTSLDetachedSignature requires an HTTP client")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sigURL, http.NoBody)
 	if err != nil {

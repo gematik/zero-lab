@@ -229,7 +229,7 @@ func runTSLVerify(ctx context.Context, def common.EnvDef, f outputFormat, sigPat
 		}
 		sigBytes = sig.Raw
 	}
-	ts, err := gempki.EmbeddedTSLSignerLoader{Env: def.Env}.Load(ctx)
+	ts, err := gempki.TSLSignerTrustStore(def.Env)
 	if err != nil {
 		return err
 	}

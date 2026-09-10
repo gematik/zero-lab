@@ -250,7 +250,7 @@ func TestCertificateType_DefaultProfile(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(string(c.typed), func(t *testing.T) {
-			assert.Same(t, c.want, c.typed.DefaultProfile())
+			assert.Same(t, c.want, gempki.DefaultProfileFor(c.typed))
 		})
 	}
 }
@@ -266,7 +266,7 @@ func TestProfilesForType(t *testing.T) {
 		{gempki.CertTypeFdSIG, []*gempki.Profile{gempki.ProfileIdpSig}},
 		// 1:N — the type alone does not separate these two; the ZETA Guard
 		// admission role does, which is what ProfilesForCert is for.
-		{gempki.CertTypeFdAUT, []*gempki.Profile{gempki.ProfileEpaVau, gempki.ProfileZetaASL}},
+		{gempki.CertTypeFdAUT, []*gempki.Profile{gempki.ProfileEpaVau, gempki.ProfileZetaGuardAut}},
 		{gempki.CertTypeHpQES, nil},
 		{gempki.CertTypeFdTLSS, nil},
 		{gempki.CertTypeUnknown, nil},

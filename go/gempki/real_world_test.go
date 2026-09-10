@@ -14,7 +14,7 @@ import (
 // Real-world integration tests against actual gematik-published artifacts:
 //
 //   - the test-environment roots.json (embedded as roots-test.json,
-//     loaded via [gempki.EmbeddedLoader])
+//     loaded via [gempki.EmbeddedRoots])
 //   - a TSL snapshot (embedded in tsl_embed.go from
 //     testdata/tsl-test.xml — gematik test environment,
 //     sequence 10687)
@@ -35,20 +35,16 @@ import (
 func TestRealWorld_EmbeddedTestRootsLoad(t *testing.T) {
 	t.Parallel()
 
-	ts, err := gempki.EmbeddedLoader{Env: gempki.EnvTest}.Load(t.Context())
+	ts, err := gempki.EmbeddedRoots(gempki.EnvTest)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, ts.Len(), 1)
-	t.Logf("trust store from EmbeddedLoader{EnvTest} has %d root(s)", ts.Len())
+	t.Logf("trust store from EmbeddedRoots(EnvTest) has %d root(s)", ts.Len())
 
-	anchor, err := gempki.EmbeddedTrustAnchor(gempki.EnvTest)
-	require.NoError(t, err)
+	anchor, ok := ts.ByCommonName(anchorCN[gempki.EnvTest])
+	require.True(t, ok, "the compiled-in anchor must be in the store")
 	bySKI, ok := ts.BySKI(anchor.SubjectKeyId)
 	require.True(t, ok, "anchor must be retrievable by SKI")
 	assert.True(t, bySKI.Equal(anchor))
-
-	byCN, ok := ts.ByCommonName(anchor.Subject.CommonName)
-	require.True(t, ok, "anchor must be retrievable by CommonName")
-	assert.True(t, byCN.Equal(anchor))
 }
 
 // TestRealWorld_TSLParsesAndPublishesCAs confirms the TSL XML wire format
@@ -94,7 +90,7 @@ func TestRealWorld_SMCBValidatesEndToEnd(t *testing.T) {
 
 	// Trust anchor: real GEM.RCA5 TEST-ONLY (published by gematik in the
 	// roots distribution, brainpool P-256r1). We load via PEM fixture so
-	// we deliberately bypass the EmbeddedLoader's A_28419 walk — see the
+	// we deliberately bypass EmbeddedRoots' A_28419 walk — see the
 	// limitation documented above.
 	rca5, err := gempki.ParsePEMCertificates([]byte(fixtureBrainpoolRCA5PEM))
 	require.NoError(t, err)
