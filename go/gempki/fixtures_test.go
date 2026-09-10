@@ -1,28 +1,18 @@
 package gempki_test
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/pem"
-	"math/big"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
 
-// Brainpool TI certificate fixtures.
-// Source: gematik erp-e2e-testsuite (TEST-ONLY, not production).
-// Reused from the sibling brainpool package's test fixtures so we exercise
-// real-world TI cert formats: SMC-B EE (Arztpraxis Bernd Rosenstrauch),
-// signed by GEM.SMCB-CA51 TEST-ONLY, signed by GEM.RCA5 TEST-ONLY — all
-// Brainpool P-256r1.
+// Real TI certificates, as published. Synthetic chains come from
+// internal/testca; these exist for the cases where wire-format fidelity is
+// the point — Brainpool encodings, a genuine admission extension, an
+// RSA-keyed historical root.
 
-// fixtureBrainpoolRCA5PEM — self-signed root, brainpoolP256r1.
 const fixtureBrainpoolRCA5PEM = `-----BEGIN CERTIFICATE-----
 MIICyzCCAnKgAwIBAgIBATAKBggqhkjOPQQDAjCBgTELMAkGA1UEBhMCREUxHzAd
 BgNVBAoMFmdlbWF0aWsgR21iSCBOT1QtVkFMSUQxNDAyBgNVBAsMK1plbnRyYWxl
@@ -96,41 +86,42 @@ func fixtureBrainpoolEEDER(t *testing.T) []byte {
 
 // makeSelfSignedECDSA generates a self-signed cert on the given curve using
 // the standard library. Used for NIST and policy-rejection paths.
-func makeSelfSignedECDSA(t *testing.T, curve elliptic.Curve, cn string) (certDER []byte, key *ecdsa.PrivateKey) {
-	t.Helper()
-	k, err := ecdsa.GenerateKey(curve, rand.Reader)
-	require.NoError(t, err)
-	tmpl := &x509.Certificate{
-		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: cn},
-		NotBefore:             time.Now().Add(-time.Hour),
-		NotAfter:              time.Now().Add(24 * time.Hour),
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		BasicConstraintsValid: true,
-		IsCA:                  true,
-	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &k.PublicKey, k)
-	require.NoError(t, err)
-	return der, k
-}
 
-// makeSelfSignedRSA generates a self-signed RSA cert solely so we can test
-// that gempki rejects it loudly. RSA must never validate through this
-// library — that's a TI-PKI policy invariant.
-func makeSelfSignedRSA(t *testing.T, cn string) []byte {
+// fixtureRSARootPEM is GEM.RCA2 TEST-ONLY from gematik's test roots.json:
+// an RSA-2048 root from the era before the TI went ECC-only. Anything that
+// must keep accepting RSA material — parsing, trust stores, chain checks —
+// tests against this rather than a home-made RSA cert.
+const fixtureRSARootPEM = `-----BEGIN CERTIFICATE-----
+MIIEJjCCAw6gAwIBAgIBATANBgkqhkiG9w0BAQsFADCBgTELMAkGA1UEBhMCREUx
+HzAdBgNVBAoMFmdlbWF0aWsgR21iSCBOT1QtVkFMSUQxNDAyBgNVBAsMK1plbnRy
+YWxlIFJvb3QtQ0EgZGVyIFRlbGVtYXRpa2luZnJhc3RydWt0dXIxGzAZBgNVBAMM
+EkdFTS5SQ0EyIFRFU1QtT05MWTAeFw0xNjExMTcxNTUwNTdaFw0yNjExMTUxNTUw
+NTdaMIGBMQswCQYDVQQGEwJERTEfMB0GA1UECgwWZ2VtYXRpayBHbWJIIE5PVC1W
+QUxJRDE0MDIGA1UECwwrWmVudHJhbGUgUm9vdC1DQSBkZXIgVGVsZW1hdGlraW5m
+cmFzdHJ1a3R1cjEbMBkGA1UEAwwSR0VNLlJDQTIgVEVTVC1PTkxZMIIBIjANBgkq
+hkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAymBHUufkzEqjXvCxEPCWUp80vuk8pyXV
+v/IMngAu87GFjQW62xYtcQDWICaeLEoWIybEF/JKm6vbSCnqIFYP5BsrOPXPY6B5
+6Xb6PatxqS2AXbYxr0Jkl5K1HPWCK7jZlYep/tfhw+Xo/IoYMSkDb0CfNb5GCYJa
+uIN8lOGLbHiMg6oMLfxvTniQA3g4cfdzsbo4f9kAkDZxqmoZLduhcXv31g/JDdds
+1BIgiiu1iUbr2KOYRw2Ya0gvJ8ec2RMioC87uvyzbofuvSBK5T49pjSsgIne7OKP
+nBz1mfVD1g37IYVNFOgWyOFKKoZU7ryYdizWNcs/tzVACd5VRqMPYwIDAQABo4Gm
+MIGjMB0GA1UdDgQWBBQtaQC7ofTMjgOiJYOSydJj4dlEuDBKBggrBgEFBQcBAQQ+
+MDwwOgYIKwYBBQUHMAGGLmh0dHA6Ly9vY3NwLXRlc3RyZWYucm9vdC1jYS50aS1k
+aWVuc3RlLmRlL29jc3AwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYw
+FQYDVR0gBA4wDDAKBggqghQATASBIzANBgkqhkiG9w0BAQsFAAOCAQEAYKSf2amC
+76MNsioVHPn/s6m+5nsDwrPwJ5+GiC/Q3wCnb1RPxGqwToJ6vfkNEB5zC2ZImDXu
+LKXXiLhOef/C2+bBNk8GqWkEN/l7FBk9FvjzaS++y3Rebt5lEmxYyajls/vN++v+
+FLuz1c7t1r9XVoTBc0kEpuUwt+cm+oFAh0raaP/hEIKf6+ThsSMiKc2KLzN4Qx7J
+udYu7VFtPj41ETkX/ccSBh8rlnECtiBbvhDh9Bxo9M3yZRox7XnmZy3slYC2V2yS
+3w+NQzq8iBwsGKKXpIxUQ9+A7/IzCPn5BlzSKAI8ygnD5MqiRzCmjyvxdsrZlwvk
+lBdVL0E5pfS8Fg==
+-----END CERTIFICATE-----`
+
+func fixtureRSARoot(t *testing.T) *x509.Certificate {
 	t.Helper()
-	k, err := rsa.GenerateKey(rand.Reader, 2048)
+	block, _ := pem.Decode([]byte(fixtureRSARootPEM))
+	require.NotNil(t, block, "fixtureRSARootPEM must be a PEM block")
+	cert, err := x509.ParseCertificate(block.Bytes)
 	require.NoError(t, err)
-	tmpl := &x509.Certificate{
-		SerialNumber:          big.NewInt(2),
-		Subject:               pkix.Name{CommonName: cn},
-		NotBefore:             time.Now().Add(-time.Hour),
-		NotAfter:              time.Now().Add(24 * time.Hour),
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
-		BasicConstraintsValid: true,
-		IsCA:                  true,
-	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &k.PublicKey, k)
-	require.NoError(t, err)
-	return der
+	return cert
 }

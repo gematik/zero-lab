@@ -151,10 +151,9 @@ func TestValidatePath_RSACertSignatureMismatch(t *testing.T) {
 	pki, err := testca.New()
 	require.NoError(t, err)
 
-	rsaDER := makeSelfSignedRSA(t, "rogue-rsa-subca")
-	rsaCert, err := x509.ParseCertificate(rsaDER)
-	require.NoError(t, err)
-	chain := []*x509.Certificate{pki.EEArzt.Cert, rsaCert, pki.RCA1.Cert}
+	// A real RSA root spliced in as the EE's issuer: nothing here was signed
+	// by it, so the links on either side must fail.
+	chain := []*x509.Certificate{pki.EEArzt.Cert, fixtureRSARoot(t), pki.RCA1.Cert}
 
 	result, err := gempki.ValidatePath(t.Context(), chain, gempki.ValidatePathOptions{})
 	require.NoError(t, err)

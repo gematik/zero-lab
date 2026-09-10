@@ -1,34 +1,11 @@
 package testca
 
 import (
-	"encoding/pem"
 	"errors"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 )
-
-// WritePEMCert writes node's certificate DER as a PEM file under t.TempDir()
-// and returns the absolute path. The file is cleaned up when the test ends.
-func WritePEMCert(t *testing.T, name string, node *Node) string {
-	t.Helper()
-	block := &pem.Block{Type: "CERTIFICATE", Bytes: node.DER}
-	return WriteTemp(t, name, pem.EncodeToMemory(block))
-}
-
-// WritePEMChain writes the supplied nodes as a single concatenated PEM file
-// (one CERTIFICATE block per node, in order). Useful for assembling the
-// "-untrusted" file openssl verify wants for intermediate CAs.
-func WritePEMChain(t *testing.T, name string, nodes ...*Node) string {
-	t.Helper()
-	var out []byte
-	for _, n := range nodes {
-		out = append(out, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: n.DER})...)
-	}
-	return WriteTemp(t, name, out)
-}
 
 // RequireOpenSSL skips the test if openssl is not in PATH. Use at the top of
 // any test that shells out to openssl.
@@ -54,18 +31,6 @@ func RequireOpenSSLBrainpool(t *testing.T) {
 	}
 }
 
-// WriteTemp writes data to a temp file under t.TempDir() and returns the
-// absolute path. The file is cleaned up automatically when the test ends.
-func WriteTemp(t *testing.T, name string, data []byte) string {
-	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatalf("write temp %s: %v", path, err)
-	}
-	return path
-}
-
 // OpenSSLX509Text returns "openssl x509 -in <pemPath> -noout -text" output.
 // Useful for human-readable diffing in failure logs.
 func OpenSSLX509Text(t *testing.T, pemPath string) string {
@@ -78,10 +43,10 @@ func OpenSSLX509Text(t *testing.T, pemPath string) string {
 	return string(out)
 }
 
-// OpenSSLVerify runs `openssl verify -CAfile <rootPath> [-untrusted <chainPath>] <leafPath>`.
-// Returns ok=true and the trimmed stdout when verification succeeded.
-// Phase-7 cross-tests will use this to confirm gempki and openssl agree on
-// chain validity. chainPath may be empty when no intermediates are needed.
+// OpenSSLVerify runs `openssl verify -CAfile <rootPath> [-untrusted <chainPath>] <leafPath>`
+// and returns ok=true with the trimmed output when verification succeeded.
+// The cross-tests use it to confirm gempki and openssl agree on a chain.
+// chainPath may be empty when no intermediates are needed.
 func OpenSSLVerify(t *testing.T, leafPath, chainPath, rootPath string) (bool, string) {
 	t.Helper()
 	RequireOpenSSL(t)

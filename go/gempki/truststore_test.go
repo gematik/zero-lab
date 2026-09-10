@@ -49,14 +49,12 @@ func TestNewTrustStore_DedupAndLookup(t *testing.T) {
 func TestNewTrustStore_AcceptsRSA(t *testing.T) {
 	t.Parallel()
 
-	rsaDER := makeSelfSignedRSA(t, "rsa-root")
-	rsaCert, err := x509.ParseCertificate(rsaDER)
-	require.NoError(t, err)
+	rsaCert := fixtureRSARoot(t)
 
 	ts, err := gempki.NewTrustStore([]*x509.Certificate{rsaCert})
 	require.NoError(t, err)
 	require.Equal(t, 1, ts.Len())
-	got, ok := ts.ByCommonName("rsa-root")
+	got, ok := ts.ByCommonName("GEM.RCA2 TEST-ONLY")
 	require.True(t, ok)
 	assert.True(t, got.Equal(rsaCert))
 }

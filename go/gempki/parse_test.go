@@ -13,6 +13,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/gempki"
+	"github.com/gematik/zero-lab/go/gempki/internal/testca"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,8 +34,9 @@ func TestParseCertificate_BrainpoolFixture(t *testing.T) {
 func TestParseCertificate_NISTP256(t *testing.T) {
 	t.Parallel()
 
-	der, _ := makeSelfSignedECDSA(t, elliptic.P256(), "test-nist-p256")
-	cert, err := gempki.ParseCertificate(der)
+	pki, err := testca.New()
+	require.NoError(t, err)
+	cert, err := gempki.ParseCertificate(pki.RCA7.DER) // NIST P-256 root
 	require.NoError(t, err)
 
 	pub, ok := cert.PublicKey.(*ecdsa.PublicKey)
@@ -49,10 +51,9 @@ func TestParseCertificate_NISTP256(t *testing.T) {
 func TestParseCertificate_RSAAccepted(t *testing.T) {
 	t.Parallel()
 
-	der := makeSelfSignedRSA(t, "test-rsa")
-	cert, err := gempki.ParseCertificate(der)
+	cert, err := gempki.ParseCertificate(fixtureRSARoot(t).Raw)
 	require.NoError(t, err)
-	assert.Equal(t, "test-rsa", cert.Subject.CommonName)
+	assert.Equal(t, "GEM.RCA2 TEST-ONLY", cert.Subject.CommonName)
 	assert.Equal(t, x509.RSA, cert.PublicKeyAlgorithm)
 }
 
