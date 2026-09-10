@@ -23,7 +23,7 @@ func NewCmd() *cobra.Command {
 	cmd.AddCommand(newPKIInspectCmd())
 	cmd.AddCommand(newPKIVerifyAutoCmd())
 	cmd.AddCommand(newPKIProfilesCmd())
-	cmd.AddCommand(newPKICacheCmd())
+	cmd.AddCommand(newPKIStateCmd())
 
 	common.AddEnvSubcommands(cmd, func(name string, def common.EnvDef) *cobra.Command {
 		envCmd := &cobra.Command{

@@ -112,11 +112,11 @@ ti epa session close 2                                     # drop one provider's
 ti epa --auth-method p12 --p12-file smcb.p12 proxy --addr :8082
 # then: curl http://localhost:8082/info
 
-# Inspect the state cache (Redis-style KV with TTL)
-ti epa cache list
-ti epa cache get   <key>
-ti epa cache clear           # all
-ti epa cache clear <key>     # one
+# Inspect the stored ePA state (Redis-style KV with TTL)
+ti epa state list
+ti epa state get   <key>
+ti epa state clear           # every epa: entry
+ti epa state clear <key>     # one
 ```
 
 State is stored at `$XDG_STATE_HOME/telematik/cli-state.db` (SQLite; `~/.local/state`
@@ -127,7 +127,7 @@ session metadata lives for 15 min.
 
 #### ePA auth methods
 
-`record`, `providers`, `cache`, `env`, `use`, `session list/close` don't need
+`record`, `providers`, `state`, `env`, `use`, `session list/close` don't need
 auth. Commands that hit VAU (`connect`, `proxy`) take an auth method via
 `--auth-method connector|p12` (default `connector`, env `TI_EPA_AUTH_METHOD`):
 

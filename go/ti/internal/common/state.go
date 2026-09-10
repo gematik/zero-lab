@@ -11,8 +11,9 @@ import (
 )
 
 // CLIStateFile is the canonical path of the shared SQLite state store. The
-// store is shared by ePA and PKI caches; key prefixes (epa:, pki:) keep their
-// domains apart. Everything in it is TTL'd and re-fetchable, so it lives under
+// store is shared by the ePA and PKI command groups; key prefixes (epa:, pki:)
+// keep their domains apart, and `ti epa state` / `ti pki state` each manage
+// only their own half. Everything in it is TTL'd and re-fetchable, so it lives under
 // XDG_STATE_HOME rather than next to the user-authored files in TelematikDir.
 func CLIStateFile() string {
 	return filepath.Join(TelematikStateDir(), "cli-state.db")
