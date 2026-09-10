@@ -2,9 +2,12 @@ package gempki
 
 import (
 	"encoding/asn1"
+	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -18,15 +21,20 @@ import (
 //
 // Profiles are values, not factories: write
 //
-//	v := gempki.ProfileSmbAuth.Validator(ts, gempki.CertTypeHciAUT)
+//	v := gempki.ProfileSmbAut.Validator(ts, gempki.CertTypeHciAUT)
 //
 // then mutate v further if needed (install a custom OCSP checker, override
 // the revocation mode for dev, attach hooks). The profile sets defaults,
 // not a contract.
 type Profile struct {
 	// Name is the slug used by the CLI (`--profile <name>`) and by the
-	// [ProfileRegistry]. Lower-case kebab is the convention.
+	// [ProfileRegistry]. Kebab-case, enforced by [ValidateProfileRegistry].
 	Name string
+
+	// Description is the one-line summary the CLI prints in profile
+	// listings. Single line, no trailing period — the longer story belongs
+	// in the doc comment above each profile var.
+	Description string
 
 	// RevocationMode is the strictness layer the profile contributes on
 	// top of the type baseline.
@@ -37,6 +45,21 @@ type Profile struct {
 	// per-use-case policy assertions that aren't part of every cert of
 	// the same type.
 	ExtraPolicies []asn1.ObjectIdentifier
+
+	// RequiredRoleOIDs, when non-empty, REPLACES the type baseline's
+	// [CertTypeSpec.RoleOIDs] for this profile — see [Profile.EffectiveRoleOIDs].
+	// The EE must assert at least one of them (any-of, see [CheckRoleOID]).
+	//
+	// Replacing rather than adding is deliberate: [WithRequiredRoleOIDs]
+	// appends and the check is any-of, so accumulating the two lists would
+	// *widen* the accepted set. A profile narrows a type, never the reverse.
+	// A profile that genuinely needs "the type's roles AND mine" needs a
+	// second [CheckRoleOID] in its own checks, not this field.
+	//
+	// It doubles as the selection discriminator: a profile that declares
+	// role OIDs is only auto-selected for a cert that asserts one of them
+	// (see [SelectProfileForCert]).
+	RequiredRoleOIDs []asn1.ObjectIdentifier
 
 	// AcceptsTypes is the closed set of [CertificateType]s this profile
 	// is meant to validate. A cert whose detected type isn't in this
@@ -78,10 +101,21 @@ func (p *Profile) Validator(ts *TrustStore, t CertificateType) *Validator {
 	if len(policies) > 0 {
 		opts = append(opts, WithRequiredPolicies(policies...))
 	}
-	if len(spec.RoleOIDs) > 0 {
-		opts = append(opts, WithRequiredRoleOIDs(spec.RoleOIDs...))
+	if roles := p.EffectiveRoleOIDs(t); len(roles) > 0 {
+		opts = append(opts, WithRequiredRoleOIDs(roles...))
 	}
 	return NewValidator(opts...)
+}
+
+// EffectiveRoleOIDs returns the role-OID set this profile actually enforces
+// for t: [Profile.RequiredRoleOIDs] when the profile declares any, otherwise
+// the type baseline's. Callers rendering "what does this profile check"
+// should read this rather than `t.Spec().RoleOIDs`.
+func (p *Profile) EffectiveRoleOIDs(t CertificateType) []asn1.ObjectIdentifier {
+	if len(p.RequiredRoleOIDs) > 0 {
+		return p.RequiredRoleOIDs
+	}
+	return t.Spec().RoleOIDs
 }
 
 // Accepts reports whether t is in p.AcceptsTypes. Convenience for callers
@@ -90,7 +124,7 @@ func (p *Profile) Accepts(t CertificateType) bool {
 	return slices.Contains(p.AcceptsTypes, t)
 }
 
-// ProfileSmbAuth validates SMC-B-family institution authentication certs
+// ProfileSmbAut validates SMC-B-family institution authentication certs
 // (C.HCI.AUT today; HSM-B / SMC-B-ORG sibling types added to AcceptsTypes
 // when their cert types are defined). SMB is the umbrella ("Oberbegriff")
 // for every SMC-B variant.
@@ -98,50 +132,171 @@ func (p *Profile) Accepts(t CertificateType) bool {
 // SoftFail revocation: an unknown OCSP status downgrades to a warning so
 // transient OCSP outages don't reject an SMC-B login. Production deployments
 // can override to HardFail before validating.
-var ProfileSmbAuth = &Profile{
-	Name:           "smbauth",
+var ProfileSmbAut = &Profile{
+	Name:           "smb-aut",
+	Description:    "SMC-B institution authentication (SMB = SMC-B / HSM-B / SMC-B-ORG)",
 	RevocationMode: RevocationModeSoftFail,
 	AcceptsTypes:   []CertificateType{CertTypeHciAUT},
 	DefaultFor:     []CertificateType{CertTypeHciAUT},
 }
 
-// ProfileEpaVau validates the C.FD.AUT cert that an ePA Aktensystem VAU
+// ProfileEpaVau validates the C.FD.AUT cert an ePA Aktensystem VAU
 // (Vertrauenswürdige Ausführungsumgebung) presents for authenticity.
+//
+// Like [ProfileZetaASL] it is identified by its admission role rather than
+// by its cert type: oid_epa_vau also appears on the VAU's C.FD.ENC and
+// C.FD.SIG certs, so the pairing of role and type is what names this
+// profile — hence `epa-vau-aut`, leaving room for `epa-vau-enc` and
+// `epa-vau-sig`.
+//
+// It claims no [Profile.DefaultFor]: a C.FD.AUT that asserts neither
+// oid_epa_vau nor ZETA Guard is something else again (an IDP JWKS cert, for
+// one — see the gap on [ProfileIdpSig]), and guessing at it would validate
+// it against assertions it was never meant to carry.
 //
 // HardFail revocation: ePA backend access must reject on revocation
 // uncertainty.
-//
-// C.FD.AUT is also accepted by [ProfileIdp]; that's the 1:N case the
-// `--profile` flag exists to disambiguate. ProfileEpaVau is *not* the
-// default-for C.FD.AUT — auto mode warns and asks the user to pick.
 var ProfileEpaVau = &Profile{
-	Name:           "epavau",
-	RevocationMode: RevocationModeHardFail,
-	AcceptsTypes:   []CertificateType{CertTypeFdAUT},
+	Name:             "epa-vau-aut",
+	Description:      "ePA Aktensystem VAU backend authenticity",
+	RevocationMode:   RevocationModeHardFail,
+	AcceptsTypes:     []CertificateType{CertTypeFdAUT},
+	RequiredRoleOIDs: []asn1.ObjectIdentifier{OIDTechRoleEpaVAU},
 }
 
-// ProfileIdp validates IDP-side certs: discovery-document signing
-// (C.FD.SIG) and JWKS / authenticity (C.FD.AUT).
+// ProfileIdpSig validates the C.FD.SIG cert an IDP signs its discovery
+// document and entity statements with.
 //
 // HardFail revocation: IDP key compromise must not be soft-failed.
 //
-// `DefaultFor` only lists C.FD.SIG because C.FD.AUT is genuinely
-// ambiguous between idp and epavau; the user picks.
-var ProfileIdp = &Profile{
-	Name:           "idp",
+// Gap — IDP C.FD.AUT (JWKS / authenticity) has no profile. Its predecessor
+// `idp` accepted C.FD.SIG and C.FD.AUT together, which made every C.FD.AUT
+// ambiguous against epa-vau with nothing to break the tie. A future
+// `idp-aut` should carry the IDP's own RequiredRoleOIDs so
+// [SelectProfileForCert] can tell it apart by cert content, the way
+// [ProfileZetaASL] does.
+var ProfileIdpSig = &Profile{
+	Name:           "idp-sig",
+	Description:    "IDP discovery document and entity statement signing",
 	RevocationMode: RevocationModeHardFail,
-	AcceptsTypes:   []CertificateType{CertTypeFdSIG, CertTypeFdAUT},
+	AcceptsTypes:   []CertificateType{CertTypeFdSIG},
 	DefaultFor:     []CertificateType{CertTypeFdSIG},
+}
+
+// ProfileZetaASL validates the C.FD.AUT cert a ZETA Guard access service
+// layer presents. Named for the role/type pairing like [ProfileEpaVau]:
+// the ZETA Guard role also appears on C.FD.TLS-C, which would be
+// `zeta-asl-tls-c`.
+//
+// The cert type alone does not identify it — a ZETA ASL cert is an ordinary
+// C.FD.AUT — so the profile requires the ZETA Guard profession OID in the
+// admission extension. That role is also what makes the profile
+// auto-selectable: [ProfileEpaVau] accepts the same type and is told apart
+// the same way, by its own role.
+//
+// HardFail revocation: ZETA sits in front of the resources it guards.
+var ProfileZetaASL = &Profile{
+	Name:             "zeta-asl-aut",
+	Description:      "ZETA Guard access service layer authenticity",
+	RevocationMode:   RevocationModeHardFail,
+	AcceptsTypes:     []CertificateType{CertTypeFdAUT},
+	RequiredRoleOIDs: []asn1.ObjectIdentifier{OIDTechRoleZETAGuard},
 }
 
 // ProfileRegistry is the canonical name → profile lookup. CLI `--profile
 // <name>` and `pki profiles` both read through this map. Add new
 // profiles by appending here; the rest of the CLI surface picks them up
-// automatically.
+// automatically. [ValidateProfileRegistry] states what a well-formed
+// registry looks like.
 var ProfileRegistry = map[string]*Profile{
-	ProfileSmbAuth.Name: ProfileSmbAuth,
+	ProfileSmbAut.Name:  ProfileSmbAut,
 	ProfileEpaVau.Name:  ProfileEpaVau,
-	ProfileIdp.Name:     ProfileIdp,
+	ProfileIdpSig.Name:  ProfileIdpSig,
+	ProfileZetaASL.Name: ProfileZetaASL,
+}
+
+// Pseudo-values accepted wherever a profile name is: they select a strategy
+// rather than a profile. Defined here so callers need not spell them.
+const (
+	// ProfileAuto picks the profile from the certificate — see
+	// [SelectProfileForCert].
+	ProfileAuto = "auto"
+	// ProfileNone disables profile-driven EE checks (chain-only validation).
+	ProfileNone = "none"
+)
+
+// ProfileNames returns every registered profile name, sorted.
+func ProfileNames() []string {
+	out := make([]string, 0, len(ProfileRegistry))
+	for name := range ProfileRegistry {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// ProfileSelectorValues returns every legal `--profile` value: the two
+// pseudo-values followed by [ProfileNames]. CLIs should build their help,
+// completion and error text from this rather than repeating the list.
+func ProfileSelectorValues() []string {
+	return append([]string{ProfileAuto, ProfileNone}, ProfileNames()...)
+}
+
+// LookupProfile resolves a profile name case-insensitively. [ProfileAuto],
+// [ProfileNone], "" and unknown names all return (nil, false); callers that
+// must tell those apart compare against the constants first.
+func LookupProfile(name string) (*Profile, bool) {
+	p, ok := ProfileRegistry[strings.ToLower(name)]
+	return p, ok
+}
+
+// profileNamePattern is the kebab-case shape every profile name must have.
+var profileNamePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
+// ValidateProfileRegistry reports the first structural problem in
+// [ProfileRegistry], or nil when it is well-formed. It exists because two
+// of the invariants are otherwise unenforced and fail silently: a type
+// claimed as [Profile.DefaultFor] by two profiles makes
+// [CertificateType.DefaultProfile] answer arbitrarily, and a DefaultFor
+// entry outside AcceptsTypes produces a default that [ProfilesForType]
+// won't even list.
+//
+// Consumers that append their own profiles should call this in a test.
+// gempki deliberately does not panic in init: a library has no business
+// killing a process over a registry its caller is still assembling.
+func ValidateProfileRegistry() error {
+	owner := map[CertificateType]string{}
+	for key, p := range ProfileRegistry {
+		switch {
+		case p == nil:
+			return fmt.Errorf("gempki: profile registry key %q is nil", key)
+		case key != p.Name:
+			return fmt.Errorf("gempki: profile registry key %q does not match profile name %q", key, p.Name)
+		case !profileNamePattern.MatchString(p.Name):
+			return fmt.Errorf("gempki: profile name %q is not kebab-case", p.Name)
+		case p.Description == "":
+			return fmt.Errorf("gempki: profile %q has no Description", p.Name)
+		case strings.ContainsAny(p.Description, "\n\r"):
+			return fmt.Errorf("gempki: profile %q Description must be a single line", p.Name)
+		case len(p.AcceptsTypes) == 0:
+			return fmt.Errorf("gempki: profile %q accepts no certificate types", p.Name)
+		}
+		for _, t := range p.AcceptsTypes {
+			if !IsKnownCertificateType(t) {
+				return fmt.Errorf("gempki: profile %q accepts unknown certificate type %q", p.Name, t)
+			}
+		}
+		for _, t := range p.DefaultFor {
+			if !slices.Contains(p.AcceptsTypes, t) {
+				return fmt.Errorf("gempki: profile %q is DefaultFor %q which it does not accept", p.Name, t)
+			}
+			if other, dup := owner[t]; dup {
+				return fmt.Errorf("gempki: certificate type %q is claimed as DefaultFor by both %q and %q", t, other, p.Name)
+			}
+			owner[t] = p.Name
+		}
+	}
+	return nil
 }
 
 // sortProfilesByName sorts in place by Name for deterministic output.
@@ -154,7 +309,7 @@ func sortProfilesByName(ps []*Profile) {
 // wire-up: an [OCSPChecker] that fetches over HTTPS through the supplied
 // http.Client. Most production callers want this together with a profile:
 //
-//	v := gempki.ProfileSmbAuth.Validator(ts, gempki.CertTypeHciAUT)
+//	v := gempki.ProfileSmbAut.Validator(ts, gempki.CertTypeHciAUT)
 //	gempki.WithOCSPNetworkChecker(client, "")(v)         // AIA-driven
 //	gempki.WithCache(gempki.NewInMemoryCache(2000))(v)
 //

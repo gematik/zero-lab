@@ -15,7 +15,7 @@
 //	ts, _ := gempki.EmbeddedLoader{Env: gempki.EnvProd}.Load(ctx)
 //	cert, _ := gempki.ParseCertificatePEM(certPEM)
 //	t := gempki.DetectCertificateType(cert) // e.g. C.HCI.AUT
-//	p := t.DefaultProfile()                 // → ProfileSmbAuth, or nil if ambiguous/unknown
+//	p := t.DefaultProfile()                 // → ProfileSmbAut, or nil if ambiguous/unknown
 //	v := p.Validator(ts, t)
 //	result, _ := v.Validate(ctx, []*x509.Certificate{cert /* + intermediates */})
 //	if !result.Valid {

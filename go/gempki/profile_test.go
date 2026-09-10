@@ -16,14 +16,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestProfileSmbAuth_AcceptsBrainpoolFixtureCert(t *testing.T) {
+func TestProfileSmbAut_AcceptsBrainpoolFixtureCert(t *testing.T) {
 	t.Parallel()
 	rca5, err := gempki.ParsePEMCertificates([]byte(fixtureBrainpoolRCA5PEM))
 	require.NoError(t, err)
 	ts, err := gempki.NewTrustStore(rca5)
 	require.NoError(t, err)
 
-	v := gempki.ProfileSmbAuth.Validator(ts, gempki.CertTypeHciAUT)
+	v := gempki.ProfileSmbAut.Validator(ts, gempki.CertTypeHciAUT)
 	gempki.WithRevocationChecker(emptyHashListChecker())(v)
 
 	pemAll := []byte(fixtureBrainpoolSMCBEEPEM + "\n" +
@@ -33,7 +33,7 @@ func TestProfileSmbAuth_AcceptsBrainpoolFixtureCert(t *testing.T) {
 	assert.True(t, result.Valid, "errors: %v", result.Errors)
 }
 
-func TestProfileSmbAuth_RejectsHBARoleOID(t *testing.T) {
+func TestProfileSmbAut_RejectsHBARoleOID(t *testing.T) {
 	t.Parallel()
 	pki, err := testca.New()
 	require.NoError(t, err)
@@ -51,7 +51,7 @@ func TestProfileSmbAuth_RejectsHBARoleOID(t *testing.T) {
 		ExtraExtensions:     []pkix.Extension{admExt},
 	})
 
-	v := gempki.ProfileSmbAuth.Validator(ts, gempki.CertTypeHciAUT)
+	v := gempki.ProfileSmbAut.Validator(ts, gempki.CertTypeHciAUT)
 	gempki.WithRevocationChecker(emptyHashListChecker())(v)
 	result, err := v.Validate(t.Context(), []*x509.Certificate{ee, pki.SubCAHBA.Cert})
 	require.NoError(t, err)
@@ -77,7 +77,7 @@ func TestProfileIdp_AcceptsFdSIGShape(t *testing.T) {
 		CertificatePolicies: []asn1.ObjectIdentifier{gempki.OIDPolicyGemOrCP},
 	})
 
-	v := gempki.ProfileIdp.Validator(ts, gempki.CertTypeFdSIG)
+	v := gempki.ProfileIdpSig.Validator(ts, gempki.CertTypeFdSIG)
 	gempki.WithRevocationChecker(emptyHashListChecker())(v)
 	result, err := v.Validate(t.Context(), []*x509.Certificate{ee, pki.SubCAKomp.Cert})
 	require.NoError(t, err)
@@ -89,7 +89,7 @@ func TestProfileIdp_AcceptsFdSIGShape(t *testing.T) {
 func TestProfileEpaVau_RevocationModeIsHardFail(t *testing.T) {
 	t.Parallel()
 	// ProfileEpaVau is HardFail for ePA backend access — a sanity test
-	// against accidental downgrade. Pair with ProfileSmbAuth (SoftFail)
+	// against accidental downgrade. Pair with ProfileSmbAut (SoftFail)
 	// to confirm the matrix.
 	pki, err := testca.New()
 	require.NoError(t, err)
@@ -98,10 +98,10 @@ func TestProfileEpaVau_RevocationModeIsHardFail(t *testing.T) {
 	v := gempki.ProfileEpaVau.Validator(ts, gempki.CertTypeFdAUT)
 	assert.Equal(t, gempki.RevocationModeHardFail, v.Revocation.Mode)
 
-	v2 := gempki.ProfileSmbAuth.Validator(ts, gempki.CertTypeHciAUT)
+	v2 := gempki.ProfileSmbAut.Validator(ts, gempki.CertTypeHciAUT)
 	assert.Equal(t, gempki.RevocationModeSoftFail, v2.Revocation.Mode)
 
-	v3 := gempki.ProfileIdp.Validator(ts, gempki.CertTypeFdSIG)
+	v3 := gempki.ProfileIdpSig.Validator(ts, gempki.CertTypeFdSIG)
 	assert.Equal(t, gempki.RevocationModeHardFail, v3.Revocation.Mode)
 }
 
@@ -115,14 +115,14 @@ func TestProfile_Validator_ComposesSpecBaseline(t *testing.T) {
 	require.NoError(t, err)
 	ts, _ := gempki.NewTrustStore([]*x509.Certificate{pki.RCA1.Cert})
 
-	v := gempki.ProfileSmbAuth.Validator(ts, gempki.CertTypeHciAUT)
+	v := gempki.ProfileSmbAut.Validator(ts, gempki.CertTypeHciAUT)
 
 	spec := gempki.CertTypeHciAUT.Spec()
 	assert.Equal(t, spec.KeyUsage, v.RequiredKeyUsage, "baseline KeyUsage must flow through")
 	assert.ElementsMatch(t, spec.EKU, v.AllowedExtKeyUsages, "baseline EKU must flow through")
 	assert.ElementsMatch(t, spec.Policies, v.RequiredPolicies, "baseline Policies must flow through")
 	assert.ElementsMatch(t, spec.RoleOIDs, v.RequiredRoleOIDs, "baseline RoleOIDs must flow through")
-	assert.Equal(t, gempki.ProfileSmbAuth.RevocationMode, v.Revocation.Mode)
+	assert.Equal(t, gempki.ProfileSmbAut.RevocationMode, v.Revocation.Mode)
 }
 
 // customNISTEE — sibling of customEE but issued under SubCAKomp (NIST).
