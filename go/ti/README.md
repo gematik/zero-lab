@@ -119,7 +119,9 @@ ti epa cache clear           # all
 ti epa cache clear <key>     # one
 ```
 
-State is stored at `$XDG_CONFIG_HOME/telematik/cli-state.db` (SQLite). Entries
+State is stored at `$XDG_STATE_HOME/telematik/cli-state.db` (SQLite; `~/.local/state`
+when the variable is unset). A store left at the old
+`$XDG_CONFIG_HOME/telematik/cli-state.db` is moved there on first use. Entries
 carry a TTL and are lazily expired on read. KVNR→provider mappings live for 1h;
 session metadata lives for 15 min.
 
