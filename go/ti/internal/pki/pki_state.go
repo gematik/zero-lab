@@ -8,22 +8,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newPKICacheCmd is the `ti pki cache` parent.
-func newPKICacheCmd() *cobra.Command {
+// newPKIStateCmd is the `ti pki state` parent.
+func newPKIStateCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "cache",
-		Short: "Operate on the local PKI cache",
+		Use:   "state",
+		Short: "Operate on the locally stored PKI data",
 	}
-	cmd.AddCommand(newPKICacheClearCmd())
+	cmd.AddCommand(newPKIStateClearCmd())
 	return cmd
 }
 
-// newPKICacheClearCmd deletes all `pki:`-prefixed entries from the unified
-// state store. Replaces the previous `ti pki clear-cache` leaf.
-func newPKICacheClearCmd() *cobra.Command {
+// newPKIStateClearCmd deletes all `pki:`-prefixed entries from the shared
+// state store, leaving the `epa:` half alone.
+func newPKIStateClearCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "clear",
-		Short: "Delete all locally cached PKI data",
+		Short: "Delete all locally stored PKI data",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cmd.SilenceUsage = true
@@ -37,7 +37,7 @@ func newPKICacheClearCmd() *cobra.Command {
 				return err
 			}
 			if len(keys) == 0 {
-				fmt.Println("Cache is already empty.")
+				fmt.Println("No PKI state stored.")
 				return nil
 			}
 			for _, k := range keys {
@@ -45,7 +45,7 @@ func newPKICacheClearCmd() *cobra.Command {
 					return fmt.Errorf("deleting %q: %w", k, err)
 				}
 			}
-			fmt.Printf("Cache cleared (%d entries: %s).\n", len(keys), strings.Join(keys, ", "))
+			fmt.Printf("Cleared %d entries (%s).\n", len(keys), strings.Join(keys, ", "))
 			return nil
 		},
 	}

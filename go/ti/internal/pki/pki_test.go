@@ -20,7 +20,7 @@ func TestCommandTree(t *testing.T) {
 		"pki verify",
 		"pki profiles list",
 		"pki profiles describe",
-		"pki cache clear",
+		"pki state clear",
 		"pki ref verify",
 		"pki ref tsl show",
 		"pki ref roots list",
@@ -36,6 +36,7 @@ func TestCommandTree(t *testing.T) {
 		"pki ref cert verify",
 		"pki ref ocsp",
 		"pki ref ocsp check",
+		"pki cache",
 		"pki ref inspect",
 		"pki ref profiles",
 	} {

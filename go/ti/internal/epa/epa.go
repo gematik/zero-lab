@@ -41,7 +41,7 @@ func NewCmd() *cobra.Command {
 	cmd.AddCommand(newEpaDisconnectCmd())
 	cmd.AddCommand(newEpaSessionCmd())
 	cmd.AddCommand(newEpaProxyCmd())
-	cmd.AddCommand(newEpaCacheCmd())
+	cmd.AddCommand(newEpaStateCmd())
 
 	return cmd
 }
