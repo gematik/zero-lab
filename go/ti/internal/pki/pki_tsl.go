@@ -13,6 +13,7 @@ import (
 
 	"github.com/alecthomas/chroma/v2/quick"
 	"github.com/gematik/zero-lab/go/gempki"
+	"github.com/gematik/zero-lab/go/gempki/tsl"
 	"github.com/gematik/zero-lab/go/ti/internal/common"
 	"github.com/spf13/cobra"
 )
@@ -44,49 +45,49 @@ func newPKITSLShowCmd(def common.EnvDef) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			tsl, err := common.LoadTSLCached(cmd.Context(), common.NewHTTPClient(), def.TSLURL)
+			list, err := common.LoadTSLCached(cmd.Context(), common.NewHTTPClient(), def.TSLURL)
 			if err != nil {
 				return err
 			}
-			return runTSLShow(tsl, def.TSLURL, f)
+			return runTSLShow(list, def.TSLURL, f)
 		},
 	}
 	cmd.Flags().StringVar(&formatRaw, "format", string(formatText), "output format: text, json")
 	return cmd
 }
 
-func runTSLShow(tsl *gempki.TrustServiceStatusList, url string, f outputFormat) error {
+func runTSLShow(list *tsl.List, url string, f outputFormat) error {
 	if f == formatJSON {
-		return common.PrintJSON(tslSummaryJSON(tsl, url))
+		return common.PrintJSON(tslSummaryJSON(list, url))
 	}
-	si := tsl.SchemeInformation
+	si := list.SchemeInformation
 	kv := common.NewKVWriter()
 	kv.Section("Trust Service Status List")
 	kv.KV("URL", url)
-	kv.KV("Hash", tsl.Hash)
+	kv.KV("Hash", list.Hash)
 	kv.KV("Version", fmt.Sprintf("%d", si.TSLVersionIdentifier))
 	kv.KV("Sequence", fmt.Sprintf("%d", si.TSLSequenceNumber))
 	kv.KV("Type", si.TSLType)
 	kv.KV("Operator", tslName(si.SchemeOperatorName))
 	kv.KV("Issued", time.Time(si.ListIssueDateTime).Format("2006-01-02"))
 	kv.KV("Next Update", time.Time(si.NextUpdate).Format("2006-01-02"))
-	kv.KV("Providers", fmt.Sprintf("%d", len(tsl.TrustServiceProviderList)))
-	for i, p := range tsl.TrustServiceProviderList {
+	kv.KV("Providers", fmt.Sprintf("%d", len(list.TrustServiceProviderList)))
+	for i, p := range list.TrustServiceProviderList {
 		kv.KV(fmt.Sprintf("%d", i+1), shortProviderName(p.TSPInformation.TSPTradeName))
 	}
 	kv.EndSection()
 	return kv.Print()
 }
 
-func tslSummaryJSON(tsl *gempki.TrustServiceStatusList, url string) map[string]any {
-	si := tsl.SchemeInformation
-	providers := make([]string, len(tsl.TrustServiceProviderList))
-	for i, p := range tsl.TrustServiceProviderList {
+func tslSummaryJSON(list *tsl.List, url string) map[string]any {
+	si := list.SchemeInformation
+	providers := make([]string, len(list.TrustServiceProviderList))
+	for i, p := range list.TrustServiceProviderList {
 		providers[i] = shortProviderName(p.TSPInformation.TSPTradeName)
 	}
 	return map[string]any{
 		"url":        url,
-		"hash":       tsl.Hash,
+		"hash":       list.Hash,
 		"version":    si.TSLVersionIdentifier,
 		"sequence":   si.TSLSequenceNumber,
 		"type":       si.TSLType,
@@ -122,23 +123,23 @@ func newPKITSLFetchCmd(def common.EnvDef) *cobra.Command {
 }
 
 func runTSLFetch(ctx context.Context, def common.EnvDef, f outputFormat, outPath string, withSig bool) error {
-	tsl, err := common.LoadTSLCached(ctx, common.NewHTTPClient(), def.TSLURL)
+	list, err := common.LoadTSLCached(ctx, common.NewHTTPClient(), def.TSLURL)
 	if err != nil {
 		return err
 	}
 	if outPath != "" {
-		if err := os.WriteFile(outPath, tsl.Raw, 0o644); err != nil { //nolint:gosec // user-chosen path
+		if err := os.WriteFile(outPath, list.Raw, 0o644); err != nil { //nolint:gosec // user-chosen path
 			return fmt.Errorf("write TSL: %w", err)
 		}
-		fmt.Fprintf(os.Stderr, "wrote %d bytes to %s\n", len(tsl.Raw), outPath)
+		fmt.Fprintf(os.Stderr, "wrote %d bytes to %s\n", len(list.Raw), outPath)
 	} else {
-		if err := emitTSL(tsl, f); err != nil {
+		if err := emitTSL(list, f); err != nil {
 			return err
 		}
 	}
 	if withSig {
-		sigURL := gempki.TSLSignatureURL(def.TSLURL)
-		sig, err := gempki.LoadTSLDetachedSignature(ctx, common.NewHTTPClient(), sigURL)
+		sigURL := tsl.SignatureURL(def.TSLURL)
+		sig, err := tsl.LoadSignature(ctx, common.NewHTTPClient(), sigURL)
 		if err != nil {
 			return fmt.Errorf("fetch signature: %w", err)
 		}
@@ -155,10 +156,10 @@ func runTSLFetch(ctx context.Context, def common.EnvDef, f outputFormat, outPath
 	return nil
 }
 
-func emitTSL(tsl *gempki.TrustServiceStatusList, f outputFormat) error {
+func emitTSL(list *tsl.List, f outputFormat) error {
 	switch f {
 	case formatXML:
-		pretty, err := common.IndentXML(tsl.Raw)
+		pretty, err := common.IndentXML(list.Raw)
 		if err != nil {
 			return err
 		}
@@ -168,7 +169,7 @@ func emitTSL(tsl *gempki.TrustServiceStatusList, f outputFormat) error {
 		fmt.Print(pretty)
 		return nil
 	case formatJSON:
-		data, err := json.MarshalIndent(tsl, "", "  ")
+		data, err := json.MarshalIndent(list, "", "  ")
 		if err != nil {
 			return err
 		}
@@ -179,7 +180,7 @@ func emitTSL(tsl *gempki.TrustServiceStatusList, f outputFormat) error {
 		fmt.Print(s)
 		return nil
 	default:
-		return runTSLShow(tsl, tsl.Url, formatText)
+		return runTSLShow(list, list.Url, formatText)
 	}
 }
 
@@ -212,7 +213,7 @@ func newPKITSLVerifyCmd(def common.EnvDef) *cobra.Command {
 
 func runTSLVerify(ctx context.Context, def common.EnvDef, f outputFormat, sigPath string, at *time.Time) error {
 	httpClient := common.NewHTTPClient()
-	tsl, err := common.LoadTSLCached(ctx, httpClient, def.TSLURL)
+	list, err := common.LoadTSLCached(ctx, httpClient, def.TSLURL)
 	if err != nil {
 		return fmt.Errorf("load TSL: %w", err)
 	}
@@ -223,13 +224,13 @@ func runTSLVerify(ctx context.Context, def common.EnvDef, f outputFormat, sigPat
 			return fmt.Errorf("read --signature: %w", err)
 		}
 	} else {
-		sig, err := gempki.LoadTSLDetachedSignature(ctx, httpClient, gempki.TSLSignatureURL(def.TSLURL))
+		sig, err := tsl.LoadSignature(ctx, httpClient, tsl.SignatureURL(def.TSLURL))
 		if err != nil {
 			return fmt.Errorf("fetch .sig: %w", err)
 		}
 		sigBytes = sig.Raw
 	}
-	ts, err := gempki.TSLSignerTrustStore(def.Env)
+	ts, err := tsl.SignerTrustStore(def.Env)
 	if err != nil {
 		return err
 	}
@@ -238,7 +239,7 @@ func runTSLVerify(ctx context.Context, def common.EnvDef, f outputFormat, sigPat
 		a := *at
 		opts.TimeFunc = func() time.Time { return a }
 	}
-	parsed, err := gempki.VerifyTSLDetachedSignature(ctx, tsl.Raw, sigBytes, nil, ts, opts)
+	parsed, err := tsl.VerifySignature(ctx, list.Raw, sigBytes, nil, ts, opts)
 	verdict := "VALID"
 	var reason string
 	if err != nil {
@@ -286,11 +287,11 @@ func newPKITSLProvidersCmd(def common.EnvDef) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			tsl, err := common.LoadTSLCached(cmd.Context(), common.NewHTTPClient(), def.TSLURL)
+			list, err := common.LoadTSLCached(cmd.Context(), common.NewHTTPClient(), def.TSLURL)
 			if err != nil {
 				return err
 			}
-			return runTSLProviders(tsl, f, sti)
+			return runTSLProviders(list, f, sti)
 		},
 	}
 	cmd.Flags().StringVar(&formatRaw, "format", string(formatText), "output format: text, json")
@@ -298,7 +299,7 @@ func newPKITSLProvidersCmd(def common.EnvDef) *cobra.Command {
 	return cmd
 }
 
-func runTSLProviders(tsl *gempki.TrustServiceStatusList, f outputFormat, sti string) error {
+func runTSLProviders(list *tsl.List, f outputFormat, sti string) error {
 	type svc struct {
 		Provider    string `json:"provider"`
 		ServiceName string `json:"serviceName"`
@@ -307,8 +308,8 @@ func runTSLProviders(tsl *gempki.TrustServiceStatusList, f outputFormat, sti str
 		Cert        string `json:"cert"`
 	}
 	var rows []svc
-	for i := range tsl.TrustServiceProviderList {
-		p := &tsl.TrustServiceProviderList[i]
+	for i := range list.TrustServiceProviderList {
+		p := &list.TrustServiceProviderList[i]
 		name := shortProviderName(p.TSPInformation.TSPTradeName)
 		for j := range p.TSPServices {
 			info := &p.TSPServices[j].ServiceInformation
@@ -361,19 +362,19 @@ func newPKITSLIntermediatesCmd(def common.EnvDef) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			tsl, err := common.LoadTSLCached(cmd.Context(), common.NewHTTPClient(), def.TSLURL)
+			list, err := common.LoadTSLCached(cmd.Context(), common.NewHTTPClient(), def.TSLURL)
 			if err != nil {
 				return err
 			}
-			return runTSLIntermediates(tsl, f)
+			return runTSLIntermediates(list, f)
 		},
 	}
 	cmd.Flags().StringVar(&formatRaw, "format", string(formatText), "output format: text, json, pem")
 	return cmd
 }
 
-func runTSLIntermediates(tsl *gempki.TrustServiceStatusList, f outputFormat) error {
-	cas := gempki.IntermediateCAsFromTSL(tsl)
+func runTSLIntermediates(list *tsl.List, f outputFormat) error {
+	cas := tsl.IntermediateCAs(list)
 	switch f {
 	case formatPEM:
 		for _, c := range cas {

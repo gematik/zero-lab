@@ -7,6 +7,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/gempki"
 	"github.com/gematik/zero-lab/go/gempki/internal/testtsl"
+	"github.com/gematik/zero-lab/go/gempki/tsl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -49,19 +50,19 @@ func TestRealWorld_EmbeddedTestRootsLoad(t *testing.T) {
 
 // TestRealWorld_TSLParsesAndPublishesCAs confirms the TSL XML wire format
 // is parseable end-to-end and produces a credible volume of CA candidates.
-// Doesn't check the TSL signature (gempki.tsl.go's signature verification
-// is a known TODO); for the integration here we're concerned with parsing
-// + structural extraction, not trust attestation.
+// Doesn't check the TSL signature — that is tsl.VerifySignature's job and
+// has its own tests; here we're concerned with parsing and structural
+// extraction, not trust attestation.
 func TestRealWorld_TSLParsesAndPublishesCAs(t *testing.T) {
 	t.Parallel()
 
-	tsl, err := testtsl.EmbeddedTSL()
+	list, err := testtsl.EmbeddedTSL()
 	require.NoError(t, err)
-	require.NotNil(t, tsl)
+	require.NotNil(t, list)
 	assert.Equal(t, "TEST-ONLY gematik GmbH",
-		string(tsl.SchemeInformation.SchemeOperatorName[0].Value))
+		string(list.SchemeInformation.SchemeOperatorName[0].Value))
 
-	cas := gempki.IntermediateCAsFromTSL(tsl)
+	cas := tsl.IntermediateCAs(list)
 	require.NotEmpty(t, cas)
 	t.Logf("TSL publishes %d CA/PKC service certs", len(cas))
 
@@ -103,9 +104,9 @@ func TestRealWorld_SMCBValidatesEndToEnd(t *testing.T) {
 	// navigates a realistic candidate set, not just a hand-picked SubCA.
 	smcbCA51, err := gempki.ParsePEMCertificates([]byte(fixtureBrainpoolSMCBCA51PEM))
 	require.NoError(t, err)
-	tsl, err := testtsl.EmbeddedTSL()
+	list, err := testtsl.EmbeddedTSL()
 	require.NoError(t, err)
-	tslCAs := gempki.IntermediateCAsFromTSL(tsl)
+	tslCAs := tsl.IntermediateCAs(list)
 	intermediates := smcbCA51
 	for _, c := range tslCAs {
 		intermediates = append(intermediates, c.Cert)

@@ -6,20 +6,6 @@ import (
 	"fmt"
 )
 
-// ErrRSANotSupported is the sentinel for the one remaining RSA-rejection
-// path: the TSL detached-signature parser ([ParseTSLDetachedSignature])
-// only knows the ECDSA-Sig-Value structure. The .sig file's RSA-PSS
-// variant has a different on-disk shape that this library doesn't decode
-// yet.
-//
-// For every other surface (parsing certificates, building a TrustStore,
-// chain validation), RSA is accepted: historical TI roots (GEM.RCA1/2/6)
-// are RSA-keyed and must be loadable for end-to-end chain validation to
-// work.
-var ErrRSANotSupported = errors.New(
-	"gempki: RSA-PSS TSL signatures are not decoded yet — only the ECDSA TSL .sig file is supported",
-)
-
 // ErrorCode is a stable, machine-readable identifier for a validation failure
 // reason. Callers should switch on ErrorCode rather than parsing error strings.
 //

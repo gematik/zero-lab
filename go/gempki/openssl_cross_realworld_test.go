@@ -12,6 +12,7 @@ import (
 	"github.com/gematik/zero-lab/go/gempki"
 	"github.com/gematik/zero-lab/go/gempki/internal/testca"
 	"github.com/gematik/zero-lab/go/gempki/internal/testtsl"
+	"github.com/gematik/zero-lab/go/gempki/tsl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -60,9 +61,9 @@ func TestOpenSSLCross_RealWorld_TSLIntermediates(t *testing.T) {
 	t.Parallel()
 	testca.RequireOpenSSLBrainpool(t)
 
-	tsl, err := testtsl.EmbeddedTSL()
+	list, err := testtsl.EmbeddedTSL()
 	require.NoError(t, err)
-	cas := gempki.IntermediateCAsFromTSL(tsl)
+	cas := tsl.IntermediateCAs(list)
 	require.NotEmpty(t, cas)
 
 	dir := t.TempDir()

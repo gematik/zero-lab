@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/gematik/zero-lab/go/gempki"
+	"github.com/gematik/zero-lab/go/gempki/tsl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -46,7 +47,7 @@ func TestEmbeddedTSLSignerAnchor_UnknownEnv(t *testing.T) {
 func TestTSLSignerTrustStore_HoldsTheAnchor(t *testing.T) {
 	t.Parallel()
 
-	ts, err := gempki.TSLSignerTrustStore(gempki.EnvProd)
+	ts, err := tsl.SignerTrustStore(gempki.EnvProd)
 	require.NoError(t, err)
 	require.NotNil(t, ts)
 	assert.Equal(t, 1, ts.Len(), "single TSL-Signer-CA today (cross-cert walk lands when there's a sibling)")

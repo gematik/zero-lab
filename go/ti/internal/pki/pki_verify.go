@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/gempki"
+	"github.com/gematik/zero-lab/go/gempki/tsl"
 	"github.com/gematik/zero-lab/go/ti/internal/common"
 	"github.com/spf13/cobra"
 )
@@ -217,16 +218,16 @@ func runCertVerify(ctx context.Context, def common.EnvDef, certs []*x509.Certifi
 	// delegated responder via the TSL-match path. A TSL fetch failure is
 	// logged but not fatal; chain build proceeds with whatever we have.
 	var tslResponders []*x509.Certificate
-	tsl, terr := common.LoadTSLCached(ctx, httpClient, def.TSLURL)
+	list, terr := common.LoadTSLCached(ctx, httpClient, def.TSLURL)
 	if terr != nil {
 		slog.Warn("TSL load failed; chain build will rely on roots + supplied intermediates only", "env", def.Env, "err", terr)
 	} else {
-		for _, c := range gempki.IntermediateCAsFromTSL(tsl) {
+		for _, c := range tsl.IntermediateCAs(list) {
 			if c.Cert != nil {
 				intermediates = append(intermediates, c.Cert)
 			}
 		}
-		for _, c := range gempki.OCSPRespondersFromTSL(tsl) {
+		for _, c := range tsl.OCSPResponders(list) {
 			if c.Cert != nil {
 				tslResponders = append(tslResponders, c.Cert)
 			}

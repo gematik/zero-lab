@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gematik/zero-lab/go/gempki"
+	"github.com/gematik/zero-lab/go/gempki/tsl"
 	"github.com/gematik/zero-lab/go/ti/internal/common"
 	"github.com/spf13/cobra"
 )
@@ -52,7 +52,7 @@ type rootCertInfo struct {
 
 // tslName returns a display name from an InternationalNameList, preferring
 // German then English then the first available entry.
-func tslName(names gempki.InternationalNameList) string {
+func tslName(names tsl.InternationalNameList) string {
 	var fallback string
 	for _, n := range names {
 		if fallback == "" {
@@ -67,7 +67,7 @@ func tslName(names gempki.InternationalNameList) string {
 }
 
 // shortProviderName strips trailing legal-form suffixes (GmbH, AG, SE, …).
-func shortProviderName(names gempki.InternationalNameList) string {
+func shortProviderName(names tsl.InternationalNameList) string {
 	name := tslName(names)
 	for _, suffix := range []string{" GmbH", " AG", " SE", " KGaA", " e.V.", " Ltd.", " Inc.", " Corp.", " mbH"} {
 		if s, ok := strings.CutSuffix(name, suffix); ok {

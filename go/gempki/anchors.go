@@ -137,13 +137,3 @@ func EmbeddedTSLSignerAnchor(env Environment) (*x509.Certificate, error) {
 	}
 	return decodeAnchor("tsl:"+string(env), d.tslAnchorB64)
 }
-
-// TSLSignerTrustStore returns a [TrustStore] holding env's TSL-Signer-CA
-// anchor, for [VerifyTSLDetachedSignature].
-func TSLSignerTrustStore(env Environment) (*TrustStore, error) {
-	anchor, err := EmbeddedTSLSignerAnchor(env)
-	if err != nil {
-		return nil, err
-	}
-	return NewTrustStore([]*x509.Certificate{anchor})
-}

@@ -10,6 +10,7 @@ import (
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/epa"
 	"github.com/gematik/zero-lab/go/gempki"
+	"github.com/gematik/zero-lab/go/gempki/tsl"
 	"github.com/gematik/zero-lab/go/ti/internal/common"
 	"github.com/gematik/zero-lab/go/ti/state"
 	"github.com/spf13/cobra"
@@ -79,7 +80,7 @@ func epaCertPool(ctx context.Context, env epa.Env) (*x509.CertPool, error) {
 	if !ok {
 		return nil, fmt.Errorf("no TSL URL configured for %s", env)
 	}
-	tsl, err := common.LoadTSLCached(ctx, httpClient, def.TSLURL)
+	list, err := common.LoadTSLCached(ctx, httpClient, def.TSLURL)
 	if err != nil {
 		return nil, fmt.Errorf("loading TSL for %s: %w", env, err)
 	}
@@ -93,7 +94,7 @@ func epaCertPool(ctx context.Context, env epa.Env) (*x509.CertPool, error) {
 		pool.AddCert(root)
 		cached.CertsDER = append(cached.CertsDER, root.Raw)
 	}
-	for _, sub := range gempki.IntermediateCAsFromTSL(tsl) {
+	for _, sub := range tsl.IntermediateCAs(list) {
 		pool.AddCert(sub.Cert)
 		cached.CertsDER = append(cached.CertsDER, sub.Cert.Raw)
 	}
