@@ -52,6 +52,7 @@ var oidInfo = map[string]OIDInfo{
 	// Tab_PKI_406 — technical roles referenced by a profile.
 	OIDTechRoleZETAGuard.String(): {Ref: "oid_zeta-guard", Description: "ZETA Guard"},
 	OIDTechRoleEpaVAU.String():    {Ref: "oid_epa_vau", Description: "ePA vertrauenswürdige Ausführungsumgebung"},
+	OIDTechRoleIDPD.String():      {Ref: "oid_idpd", Description: "IDP-Dienst"},
 }
 
 // The Tab_PKI_405 certificate-type OIDs label themselves: the CertificateType

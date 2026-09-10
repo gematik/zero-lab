@@ -234,7 +234,9 @@ func TestCertificateType_DefaultProfile(t *testing.T) {
 	}
 	cases := []tc{
 		{gempki.CertTypeHciAUT, gempki.ProfileSmbAut},
-		{gempki.CertTypeFdSIG, gempki.ProfileIdpSig},
+		// C.FD.SIG is role-discriminated too now: idp-sig claims only certs
+		// asserting oid_idpd, so no profile owns the bare type.
+		{gempki.CertTypeFdSIG, nil},
 		// C.FD.AUT has no type-level owner: both profiles that accept it are
 		// told apart by an admission role, not by the type. SelectProfileForCert
 		// is what resolves it.

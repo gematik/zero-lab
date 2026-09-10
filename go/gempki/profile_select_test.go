@@ -21,19 +21,19 @@ import (
 func TestValidateProfileRegistry(t *testing.T) {
 	t.Parallel()
 	require.NoError(t, gempki.ValidateProfileRegistry())
-	assert.Equal(t, []string{"epa-vau-aut", "idp-sig", "smb-aut", "zeta-asl-aut"}, gempki.ProfileNames())
+	assert.Equal(t, []string{"epa-vau-aut", "idp-sig", "smb-aut", "zeta-guard-aut"}, gempki.ProfileNames())
 	assert.Equal(t,
-		[]string{"auto", "none", "epa-vau-aut", "idp-sig", "smb-aut", "zeta-asl-aut"},
+		[]string{"auto", "none", "epa-vau-aut", "idp-sig", "smb-aut", "zeta-guard-aut"},
 		gempki.ProfileSelectorValues())
 }
 
 func TestLookupProfile(t *testing.T) {
 	t.Parallel()
-	p, ok := gempki.LookupProfile("ZETA-ASL-AUT")
+	p, ok := gempki.LookupProfile("ZETA-GUARD-AUT")
 	require.True(t, ok)
 	assert.Same(t, gempki.ProfileZetaASL, p)
 
-	for _, name := range []string{"", "auto", "none", "idp", "epavau", "smbauth", "epa-vau", "zeta-asl"} {
+	for _, name := range []string{"", "auto", "none", "idp", "epavau", "smbauth", "epa-vau", "zeta-asl", "zeta-asl-aut"} {
 		_, ok := gempki.LookupProfile(name)
 		assert.False(t, ok, "%q must not resolve to a profile", name)
 	}
@@ -106,20 +106,28 @@ func TestSelectProfileForCert(t *testing.T) {
 			name:       "C.FD.AUT with no role is claimed by nobody",
 			cert:       fdAutCert(t),
 			wantType:   gempki.CertTypeFdAUT,
-			wantReason: gempki.ProfileSelectAmbiguous,
+			wantReason: gempki.ProfileSelectNone,
 		},
 		{
 			name:       "C.FD.AUT with an unrelated role is claimed by nobody",
 			cert:       certWith(t, []asn1.ObjectIdentifier{gempki.OIDPolicyGemOrCP, gempki.OIDCertTypeFdAUT}, gempki.OIDInstKrankenhaus, "Krankenhaus"),
 			wantType:   gempki.CertTypeFdAUT,
-			wantReason: gempki.ProfileSelectAmbiguous,
+			wantReason: gempki.ProfileSelectNone,
 		},
 		{
-			name:       "C.FD.SIG",
-			cert:       certWith(t, []asn1.ObjectIdentifier{gempki.OIDPolicyGemOrCP, gempki.OIDCertTypeFdSIG}, nil, ""),
+			name:       "IDP C.FD.SIG is claimed by its role",
+			cert:       certWith(t, []asn1.ObjectIdentifier{gempki.OIDPolicyGemOrCP, gempki.OIDCertTypeFdSIG}, gempki.OIDTechRoleIDPD, "IDP-Dienst"),
 			wantType:   gempki.CertTypeFdSIG,
 			wantProf:   gempki.ProfileIdpSig,
-			wantReason: gempki.ProfileSelectedByDefault,
+			wantReason: gempki.ProfileSelectedByCert,
+		},
+		{
+			// A Fachdienst signing cert that is not an IDP's: accepted by no
+			// profile, and that is a definite answer, not an ambiguity.
+			name:       "C.FD.SIG without the IDP role",
+			cert:       certWith(t, []asn1.ObjectIdentifier{gempki.OIDPolicyGemOrCP, gempki.OIDCertTypeFdSIG}, nil, ""),
+			wantType:   gempki.CertTypeFdSIG,
+			wantReason: gempki.ProfileSelectNone,
 		},
 		{
 			name:       "a type no profile accepts",

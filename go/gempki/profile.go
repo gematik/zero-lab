@@ -164,29 +164,31 @@ var ProfileEpaVau = &Profile{
 	RequiredRoleOIDs: []asn1.ObjectIdentifier{OIDTechRoleEpaVAU},
 }
 
-// ProfileIdpSig validates the C.FD.SIG cert an IDP signs its discovery
-// document and entity statements with.
+// ProfileIdpSig validates the C.FD.SIG certs an IDP signs with: its
+// discovery document (puk_disc_sig) and its tokens (puk_idp_sig). Both
+// carry oid_idpd, which is what tells them apart from any other
+// Fachdienst's signing cert.
 //
 // HardFail revocation: IDP key compromise must not be soft-failed.
 //
-// Gap — IDP C.FD.AUT (JWKS / authenticity) has no profile. Its predecessor
-// `idp` accepted C.FD.SIG and C.FD.AUT together, which made every C.FD.AUT
-// ambiguous against epa-vau with nothing to break the tie. A future
-// `idp-aut` should carry the IDP's own RequiredRoleOIDs so
-// [SelectProfileForCert] can tell it apart by cert content, the way
-// [ProfileZetaASL] does.
+// There is deliberately no idp-aut. An IDP publishes no C.FD.AUT at all —
+// checked against the RU IDP, whose authenticity keys are C.FD.SIG and
+// whose encryption key (puk_idp_enc) ships with no certificate. The
+// predecessor `idp` profile claimed C.FD.AUT anyway, and that claim was
+// the sole reason every C.FD.AUT counted as ambiguous.
 var ProfileIdpSig = &Profile{
-	Name:           "idp-sig",
-	Description:    "IDP discovery document and entity statement signing",
-	RevocationMode: RevocationModeHardFail,
-	AcceptsTypes:   []CertificateType{CertTypeFdSIG},
-	DefaultFor:     []CertificateType{CertTypeFdSIG},
+	Name:             "idp-sig",
+	Description:      "IDP discovery document and token signing",
+	RevocationMode:   RevocationModeHardFail,
+	AcceptsTypes:     []CertificateType{CertTypeFdSIG},
+	RequiredRoleOIDs: []asn1.ObjectIdentifier{OIDTechRoleIDPD},
 }
 
 // ProfileZetaASL validates the C.FD.AUT cert a ZETA Guard access service
-// layer presents. Named for the role/type pairing like [ProfileEpaVau]:
-// the ZETA Guard role also appears on C.FD.TLS-C, which would be
-// `zeta-asl-tls-c`.
+// layer presents. Named for the role/type pairing like [ProfileEpaVau], and
+// after the role rather than the component so the name tracks gemSpec_OID:
+// oid_zeta-guard also covers C.FD.TLS-C, which would be
+// `zeta-guard-tls-c`.
 //
 // The cert type alone does not identify it — a ZETA ASL cert is an ordinary
 // C.FD.AUT — so the profile requires the ZETA Guard profession OID in the
@@ -196,7 +198,7 @@ var ProfileIdpSig = &Profile{
 //
 // HardFail revocation: ZETA sits in front of the resources it guards.
 var ProfileZetaASL = &Profile{
-	Name:             "zeta-asl-aut",
+	Name:             "zeta-guard-aut",
 	Description:      "ZETA Guard access service layer authenticity",
 	RevocationMode:   RevocationModeHardFail,
 	AcceptsTypes:     []CertificateType{CertTypeFdAUT},
