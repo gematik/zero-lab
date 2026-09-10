@@ -3,6 +3,7 @@ package gempki
 import (
 	"crypto/x509"
 	"encoding/asn1"
+	"github.com/gematik/zero-lab/go/gempki/oid"
 )
 
 // DetectCertificateType classifies cert as one of the gemSpec_PKI
@@ -104,13 +105,13 @@ const (
 //
 // Per gemSpec_OID Tab_PKI_402 / Tab_PKI_403:
 //   - 1.2.276.0.76.4.30..48, 178, 232..324 are profession OIDs (HBA)
-//   - 1.2.276.0.76.4.49 is OIDProfVersicherter (eGK card holder)
+//   - 1.2.276.0.76.4.49 is oid.ProfVersicherter (eGK card holder)
 //   - 1.2.276.0.76.4.50..59, 187, 190, 210, 223..231, 242..318+ are
 //     institution OIDs (SMC-B); checked via a membership set built from
-//     the OIDInst* constants in oids.go.
+//     the oid.Inst* constants in oids.go.
 func classifyAdmissionFamily(professionOids []string) admFamily {
 	for _, s := range professionOids {
-		if s == OIDProfVersicherter.String() {
+		if s == oid.ProfVersicherter.String() {
 			return admEgk
 		}
 		if _, ok := smcbInstitutionSet[s]; ok {
@@ -123,50 +124,12 @@ func classifyAdmissionFamily(professionOids []string) admFamily {
 	return admUnknown
 }
 
-// smcbInstitutionSet is the membership set of institution-role OIDs that
-// identify an SMC-B's Admission. Derived from the OIDInst* constants in
-// oids.go (Tab_PKI_403). Updated in lock-step with that file.
-var smcbInstitutionSet = oidSet(
-	OIDInstArztpraxis, OIDInstZahnarztpraxis, OIDInstPraxisPsychotherapeut,
-	OIDInstKrankenhaus, OIDInstOeffentlicheApo, OIDInstKrankenhausapotheke,
-	OIDInstBundeswehrapotheke, OIDInstMobileEinrichtungRettung,
-	OIDInstGematik, OIDInstKostentraeger, OIDInstLeoZahnaerzte,
-	OIDInstAdvKtr, OIDInstLeoKassenaerztlicheVerein, OIDInstGKVSpitzenverband,
-	OIDInstLeoApothekerverband, OIDInstLeoDAV, OIDInstLeoKrankenhausverband,
-	OIDInstLeoDKTIG, OIDInstLeoDKG, OIDInstLeoBAEK,
-	OIDInstLeoAerztekammer, OIDInstLeoZahnaerztekammer, OIDInstLeoKBV,
-	OIDInstLeoBZAEK, OIDInstLeoKZBV, OIDInstPflege, OIDInstGeburtshilfe,
-	OIDInstPraxisPhysiotherapeut, OIDInstAugenoptiker, OIDInstHoerakustiker,
-	OIDInstOrthopaedieschuhmacher, OIDInstOrthopaedietechniker, OIDInstZahntechniker,
-	OIDInstRettungsleitstelle, OIDInstSanitaetsdienstBW, OIDInstOEGD,
-	OIDInstArbeitsmedizin, OIDInstVorsorgeReha, OIDInstPflegeberatung,
-	OIDInstLeoPsychotherapeuten, OIDInstLeoBPtK, OIDInstLeoLAK,
-	OIDInstLeoBAK, OIDInstLeoEGBR, OIDInstLeoHandwerkskammer,
-	OIDInstGesundheitsdatenregister, OIDInstAbrechnungsdienstleister,
-	OIDInstPKVVerband, OIDInstPraxisErgotherapeut, OIDInstPraxisLogopaede,
-	OIDInstHimi, OIDInstFriseur, OIDInstSoziother,
-)
-
-// hbaProfessionSet is the membership set of HBA profession-role OIDs.
-// Derived from the OIDProf* constants in oids.go (Tab_PKI_402). Excludes
-// OIDProfVersicherter which is the eGK marker.
-var hbaProfessionSet = oidSet(
-	OIDProfArzt, OIDProfZahnarzt, OIDProfApotheker, OIDProfApothekerassistent,
-	OIDProfPharmazieingenieur, OIDProfPharmTechnAssistent,
-	OIDProfPharmKaufmAngestellter, OIDProfApothekenhelfer,
-	OIDProfApothekenassistent, OIDProfPharmAssistent,
-	OIDProfApothekenfacharbeiter, OIDProfPharmaziepraktikant, OIDProfFamulant,
-	OIDProfPTAPraktikant, OIDProfPKAAuszubildender, OIDProfPsychotherapeut,
-	OIDProfPsPsychotherapeut, OIDProfKuJPsychotherapeut, OIDProfRettungsassistent,
-	OIDProfNotfallsanitaeter, OIDProfPflegerHPC, OIDProfAltenpflegerHPC,
-	OIDProfPflegefachkraftHPC, OIDProfHebammeHPC, OIDProfPhysiotherapeutHPC,
-	OIDProfAugenoptikerHPC, OIDProfHoerakustikerHPC,
-	OIDProfOrthopaedieschuhmacherHPC, OIDProfOrthopaedietechnikerHPC,
-	OIDProfZahntechnikerHPC, OIDProfErgotherapeutHPC, OIDProfLogopaedeHPC,
-	OIDProfPodologeHPC, OIDProfErnaehrungstherapeutHPC, OIDProfOrthopaedHPC,
-	OIDProfOptoAudioHPC, OIDProfHimiHPC, OIDProfFriseurHPC,
-	OIDProfMasseurMBMHPC, OIDProfSoziotherapeut, OIDProfSSSSTherapeut,
-	OIDProfDiaetassistent,
+// smcbInstitutionSet and hbaProfessionSet are the whole Tab_PKI_403 /
+// Tab_PKI_402 tables as membership sets: a certificate whose admission
+// extension asserts any of them is an SMC-B or an HBA respectively.
+var (
+	smcbInstitutionSet = oidSet(oid.Institutions...)
+	hbaProfessionSet   = oidSet(oid.Professions...)
 )
 
 func oidSet(oids ...asn1.ObjectIdentifier) map[string]struct{} {

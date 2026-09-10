@@ -7,6 +7,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/gempki"
 	"github.com/gematik/zero-lab/go/gempki/internal/testca"
+	"github.com/gematik/zero-lab/go/gempki/oid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,8 +18,8 @@ func TestCheckRoleOID_ReadsAdmissionExtension(t *testing.T) {
 	// The fixture SMC-B carries OIDInstArztpraxis (1.2.276.0.76.4.50) and
 	// nothing else.
 	cert := parseBrainpoolSMCBEE(t)
-	require.NoError(t, gempki.CheckRoleOID(gempki.OIDInstArztpraxis)(t.Context(), cert))
-	require.Error(t, gempki.CheckRoleOID(gempki.OIDInstKrankenhaus)(t.Context(), cert))
+	require.NoError(t, gempki.CheckRoleOID(oid.InstArztpraxis)(t.Context(), cert))
+	require.Error(t, gempki.CheckRoleOID(oid.InstKrankenhaus)(t.Context(), cert))
 }
 
 func TestCheckRoleOID_NoAdmissionExtensionAssertsNoRoles(t *testing.T) {
@@ -29,7 +30,7 @@ func TestCheckRoleOID_NoAdmissionExtensionAssertsNoRoles(t *testing.T) {
 	// EEZeta is a Komp cert without an Admission extension: no roles, which
 	// is fine when none are required and a failure when one is.
 	require.NoError(t, gempki.CheckRoleOID()(t.Context(), pki.EEZeta.Cert))
-	err = gempki.CheckRoleOID(gempki.OIDProfArzt)(t.Context(), pki.EEZeta.Cert)
+	err = gempki.CheckRoleOID(oid.ProfArzt)(t.Context(), pki.EEZeta.Cert)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, &gempki.ValidationError{Code: gempki.ErrCodeRoleOIDMissing}))
 }
@@ -39,8 +40,8 @@ func TestCheckRoleOID_PassWhenAllowedIntersects(t *testing.T) {
 
 	cert := parseBrainpoolSMCBEE(t)
 	check := gempki.CheckRoleOID(
-		gempki.OIDInstArztpraxis, // matches
-		gempki.OIDInstKrankenhaus,
+		oid.InstArztpraxis, // matches
+		oid.InstKrankenhaus,
 	)
 	require.NoError(t, check(t.Context(), cert))
 }
@@ -49,7 +50,7 @@ func TestCheckRoleOID_FailWhenAllowedDoesNotIntersect(t *testing.T) {
 	t.Parallel()
 
 	cert := parseBrainpoolSMCBEE(t)
-	check := gempki.CheckRoleOID(gempki.OIDInstKrankenhaus, gempki.OIDInstOeffentlicheApo)
+	check := gempki.CheckRoleOID(oid.InstKrankenhaus, oid.InstOeffentlicheApo)
 	err := check(t.Context(), cert)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, &gempki.ValidationError{Code: gempki.ErrCodeRoleOIDMissing}))

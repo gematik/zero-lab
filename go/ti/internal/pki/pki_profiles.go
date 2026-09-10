@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gematik/zero-lab/go/gempki"
+	"github.com/gematik/zero-lab/go/gempki/oid"
 	"github.com/gematik/zero-lab/go/ti/internal/common"
 	"github.com/spf13/cobra"
 )
@@ -36,10 +37,10 @@ func completeProfile(_ *cobra.Command, _ []string, _ string) ([]string, cobra.Sh
 // nor for a certificate lacking its role.
 func profileScope(p *gempki.Profile) string {
 	scope := strings.Join(certTypeNames(p.AcceptsTypes), ", ")
-	for _, oid := range p.RequiredRoleOIDs {
-		label := oid.String()
-		if info, ok := gempki.LookupOID(oid); ok && info.Ref != "" {
-			label = info.Ref + " (" + oid.String() + ")"
+	for _, role := range p.RequiredRoleOIDs {
+		label := role.String()
+		if info, ok := oid.Lookup(role); ok && info.Ref != "" {
+			label = info.Ref + " (" + role.String() + ")"
 		}
 		scope += " + " + label
 	}
@@ -262,8 +263,8 @@ func revocationModeString(m gempki.RevocationMode) string {
 // formatOIDs renders OIDs with their gematik names where gempki knows them.
 func formatOIDs(oids []asn1.ObjectIdentifier) []string {
 	out := make([]string, len(oids))
-	for i, oid := range oids {
-		out[i] = gempki.FormatOID(oid)
+	for i, id := range oids {
+		out[i] = oid.Format(id)
 	}
 	return out
 }

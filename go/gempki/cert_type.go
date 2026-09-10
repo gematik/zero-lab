@@ -3,6 +3,7 @@ package gempki
 import (
 	"crypto/x509"
 	"encoding/asn1"
+	"github.com/gematik/zero-lab/go/gempki/oid"
 )
 
 // CertificateType is a gemSpec_PKI Tab_PKI_405 certificate-type label
@@ -77,13 +78,13 @@ type CertTypeSpec struct {
 // C.HCI.AUT cert. Carried by the type spec, not by an individual profile —
 // every C.HCI.AUT cert is expected to assert one of these.
 var smcbInstitutionRoleOIDs = []asn1.ObjectIdentifier{
-	OIDInstArztpraxis,
-	OIDInstZahnarztpraxis,
-	OIDInstPraxisPsychotherapeut,
-	OIDInstKrankenhaus,
-	OIDInstOeffentlicheApo,
-	OIDInstKrankenhausapotheke,
-	OIDInstBundeswehrapotheke,
+	oid.InstArztpraxis,
+	oid.InstZahnarztpraxis,
+	oid.InstPraxisPsychotherapeut,
+	oid.InstKrankenhaus,
+	oid.InstOeffentlicheApo,
+	oid.InstKrankenhausapotheke,
+	oid.InstBundeswehrapotheke,
 }
 
 // hbaQESRoleOIDs are the HBA profession OIDs Tab_PKI_402 accepts on a
@@ -91,12 +92,12 @@ var smcbInstitutionRoleOIDs = []asn1.ObjectIdentifier{
 // enforces it directly, but a future QES validator can layer on top of the
 // type baseline without re-declaring this list.
 var hbaQESRoleOIDs = []asn1.ObjectIdentifier{
-	OIDProfArzt,
-	OIDProfZahnarzt,
-	OIDProfApotheker,
-	OIDProfPsychotherapeut,
-	OIDProfPsPsychotherapeut,
-	OIDProfKuJPsychotherapeut,
+	oid.ProfArzt,
+	oid.ProfZahnarzt,
+	oid.ProfApotheker,
+	oid.ProfPsychotherapeut,
+	oid.ProfPsPsychotherapeut,
+	oid.ProfKuJPsychotherapeut,
 }
 
 // certTypeSpec is the per-type baseline lookup used by [CertificateType.Spec].
@@ -109,7 +110,7 @@ var certTypeSpec = map[CertificateType]CertTypeSpec{
 	CertTypeHciAUT: {
 		KeyUsage: x509.KeyUsageDigitalSignature,
 		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDCertTypeSmcBAUT},
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeSmcBAUT},
 		RoleOIDs: smcbInstitutionRoleOIDs,
 	},
 	CertTypeHciENC:  {},
@@ -117,7 +118,7 @@ var certTypeSpec = map[CertificateType]CertTypeSpec{
 
 	CertTypeHpQES: {
 		KeyUsage: x509.KeyUsageContentCommitment,
-		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDPolicyHbaCP, OIDCertTypeHbaQES},
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.PolicyHbaCP, oid.CertTypeHbaQES},
 		RoleOIDs: hbaQESRoleOIDs,
 	},
 	CertTypeHpAUT: {},
@@ -125,21 +126,21 @@ var certTypeSpec = map[CertificateType]CertTypeSpec{
 
 	CertTypeFdAUT: {
 		KeyUsage: x509.KeyUsageDigitalSignature,
-		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDCertTypeFdAUT},
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdAUT},
 	},
 	CertTypeFdSIG: {
 		KeyUsage: x509.KeyUsageDigitalSignature,
-		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDCertTypeFdSIG},
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdSIG},
 	},
 	CertTypeFdTLSS: {
 		KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageKeyAgreement,
 		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDCertTypeFdTLSS},
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdTLSS},
 	},
 	CertTypeFdTLSC: {
 		KeyUsage: x509.KeyUsageDigitalSignature,
 		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDCertTypeFdTLSC},
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdTLSC},
 	},
 	CertTypeFdENC:  {},
 	CertTypeFdOSIG: {},
@@ -147,7 +148,7 @@ var certTypeSpec = map[CertificateType]CertTypeSpec{
 	CertTypeZdTLSS: {
 		KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageKeyAgreement,
 		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDCertTypeZdTLSS},
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeZdTLSS},
 	},
 	CertTypeZdSIG: {},
 
@@ -174,29 +175,29 @@ var certTypePairs = []struct {
 	t   CertificateType
 	oid asn1.ObjectIdentifier
 }{
-	{CertTypeChQES, OIDCertTypeEgkQES},
-	{CertTypeChSIG, OIDCertTypeEgkSIG},
-	{CertTypeChENC, OIDCertTypeEgkENC},
-	{CertTypeChENCV, OIDCertTypeEgkENCV},
-	{CertTypeChAUT, OIDCertTypeEgkAUT},
-	{CertTypeChAUTN, OIDCertTypeEgkAUTN},
-	{CertTypeHpQES, OIDCertTypeHbaQES},
-	{CertTypeHpAUT, OIDCertTypeHbaAUT},
-	{CertTypeHpENC, OIDCertTypeHbaENC},
-	{CertTypeHciAUT, OIDCertTypeSmcBAUT},
-	{CertTypeHciENC, OIDCertTypeSmcBENC},
-	{CertTypeHciOSIG, OIDCertTypeSmcBOSIG},
-	{CertTypeFdTLSS, OIDCertTypeFdTLSS},
-	{CertTypeFdTLSC, OIDCertTypeFdTLSC},
-	{CertTypeFdSIG, OIDCertTypeFdSIG},
-	{CertTypeFdENC, OIDCertTypeFdENC},
-	{CertTypeFdAUT, OIDCertTypeFdAUT},
-	{CertTypeFdOSIG, OIDCertTypeFdOSIG},
-	{CertTypeZdTLSS, OIDCertTypeZdTLSS},
-	{CertTypeZdSIG, OIDCertTypeZdSIG},
-	{CertTypeHskSIG, OIDCertTypeHskSIG},
-	{CertTypeHskENC, OIDCertTypeHskENC},
-	{CertTypeGemVER, OIDCertTypeGemVER},
+	{CertTypeChQES, oid.CertTypeEgkQES},
+	{CertTypeChSIG, oid.CertTypeEgkSIG},
+	{CertTypeChENC, oid.CertTypeEgkENC},
+	{CertTypeChENCV, oid.CertTypeEgkENCV},
+	{CertTypeChAUT, oid.CertTypeEgkAUT},
+	{CertTypeChAUTN, oid.CertTypeEgkAUTN},
+	{CertTypeHpQES, oid.CertTypeHbaQES},
+	{CertTypeHpAUT, oid.CertTypeHbaAUT},
+	{CertTypeHpENC, oid.CertTypeHbaENC},
+	{CertTypeHciAUT, oid.CertTypeSmcBAUT},
+	{CertTypeHciENC, oid.CertTypeSmcBENC},
+	{CertTypeHciOSIG, oid.CertTypeSmcBOSIG},
+	{CertTypeFdTLSS, oid.CertTypeFdTLSS},
+	{CertTypeFdTLSC, oid.CertTypeFdTLSC},
+	{CertTypeFdSIG, oid.CertTypeFdSIG},
+	{CertTypeFdENC, oid.CertTypeFdENC},
+	{CertTypeFdAUT, oid.CertTypeFdAUT},
+	{CertTypeFdOSIG, oid.CertTypeFdOSIG},
+	{CertTypeZdTLSS, oid.CertTypeZdTLSS},
+	{CertTypeZdSIG, oid.CertTypeZdSIG},
+	{CertTypeHskSIG, oid.CertTypeHskSIG},
+	{CertTypeHskENC, oid.CertTypeHskENC},
+	{CertTypeGemVER, oid.CertTypeGemVER},
 }
 
 var (

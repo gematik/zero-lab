@@ -2,6 +2,7 @@ package gempki
 
 import (
 	"crypto/x509"
+	"github.com/gematik/zero-lab/go/gempki/oid"
 	"slices"
 	"sort"
 	"strings"
@@ -135,7 +136,7 @@ func SelectProfileForCert(cert *x509.Certificate) ProfileSelection {
 		if len(top) == 1 {
 			sel.Profile = top[0]
 			sel.Reason = ProfileSelectedByCert
-			sel.Detail = "asserts role " + FormatOID(top[0].RequiredRoleOIDs[0])
+			sel.Detail = "asserts role " + oid.Format(top[0].RequiredRoleOIDs[0])
 			return sel
 		}
 		sel.Reason = ProfileSelectAmbiguous

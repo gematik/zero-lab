@@ -5,6 +5,7 @@ import (
 	"encoding/asn1"
 	"errors"
 	"fmt"
+	"github.com/gematik/zero-lab/go/gempki/oid"
 )
 
 /*
@@ -80,7 +81,7 @@ var ErrNoAdmissionStatement = errors.New("gempki: certificate has no admission s
 // (1.3.36.8.3.3) carrying the profession items, OIDs and registration number.
 func ParseAdmissionStatement(cert *x509.Certificate) (*AdmissionStatement, error) {
 	for _, ext := range cert.Extensions {
-		if ext.Id.Equal(OIDAdmissionExtension) {
+		if ext.Id.Equal(oid.AdmissionExtension) {
 			as, err := parseAdmissionSyntax(ext.Value)
 			if err != nil {
 				return nil, err

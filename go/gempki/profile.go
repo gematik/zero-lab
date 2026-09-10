@@ -2,6 +2,7 @@ package gempki
 
 import (
 	"encoding/asn1"
+	"github.com/gematik/zero-lab/go/gempki/oid"
 	"slices"
 	"sort"
 	"strings"
@@ -143,7 +144,7 @@ var ProfileEpaVau = &Profile{
 	Description:      "ePA Aktensystem VAU backend authenticity",
 	RevocationMode:   RevocationModeHardFail,
 	AcceptsTypes:     []CertificateType{CertTypeFdAUT},
-	RequiredRoleOIDs: []asn1.ObjectIdentifier{OIDTechRoleEpaVAU},
+	RequiredRoleOIDs: []asn1.ObjectIdentifier{oid.TechRoleEpaVAU},
 }
 
 // ProfileIdpSig validates the C.FD.SIG certs an IDP signs with: its
@@ -163,7 +164,7 @@ var ProfileIdpSig = &Profile{
 	Description:      "IDP discovery document and token signing",
 	RevocationMode:   RevocationModeHardFail,
 	AcceptsTypes:     []CertificateType{CertTypeFdSIG},
-	RequiredRoleOIDs: []asn1.ObjectIdentifier{OIDTechRoleIDPD},
+	RequiredRoleOIDs: []asn1.ObjectIdentifier{oid.TechRoleIDPD},
 }
 
 // ProfileZetaGuardAut validates the C.FD.AUT cert a ZETA Guard access service
@@ -184,7 +185,7 @@ var ProfileZetaGuardAut = &Profile{
 	Description:      "ZETA Guard access service layer authenticity",
 	RevocationMode:   RevocationModeHardFail,
 	AcceptsTypes:     []CertificateType{CertTypeFdAUT},
-	RequiredRoleOIDs: []asn1.ObjectIdentifier{OIDTechRoleZETAGuard},
+	RequiredRoleOIDs: []asn1.ObjectIdentifier{oid.TechRoleZETAGuard},
 }
 
 // profiles is the registry, in the order listings show them. Add a profile

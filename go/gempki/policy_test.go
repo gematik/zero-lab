@@ -11,6 +11,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/gempki"
 	"github.com/gematik/zero-lab/go/gempki/internal/testca"
+	"github.com/gematik/zero-lab/go/gempki/oid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,9 +39,9 @@ func TestCheckCertificatePolicies_PassWhenAllPresent(t *testing.T) {
 	t.Parallel()
 	pki, err := testca.New()
 	require.NoError(t, err)
-	cert := certWithPolicies(t, pki, gempki.OIDPolicyGemOrCP, gempki.OIDPolicyHbaCP)
+	cert := certWithPolicies(t, pki, oid.PolicyGemOrCP, oid.PolicyHbaCP)
 
-	check := gempki.CheckCertificatePolicies(gempki.OIDPolicyGemOrCP, gempki.OIDPolicyHbaCP)
+	check := gempki.CheckCertificatePolicies(oid.PolicyGemOrCP, oid.PolicyHbaCP)
 	require.NoError(t, check(t.Context(), cert))
 }
 
@@ -48,9 +49,9 @@ func TestCheckCertificatePolicies_FailWhenAnyMissing(t *testing.T) {
 	t.Parallel()
 	pki, err := testca.New()
 	require.NoError(t, err)
-	cert := certWithPolicies(t, pki, gempki.OIDPolicyGemOrCP)
+	cert := certWithPolicies(t, pki, oid.PolicyGemOrCP)
 
-	check := gempki.CheckCertificatePolicies(gempki.OIDPolicyGemOrCP, gempki.OIDPolicyHbaCP)
+	check := gempki.CheckCertificatePolicies(oid.PolicyGemOrCP, oid.PolicyHbaCP)
 	err = check(t.Context(), cert)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, &gempki.ValidationError{Code: gempki.ErrCodePolicyMismatch}))

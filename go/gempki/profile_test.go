@@ -12,6 +12,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/gempki"
 	"github.com/gematik/zero-lab/go/gempki/internal/testca"
+	"github.com/gematik/zero-lab/go/gempki/oid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -47,7 +48,7 @@ func TestProfileSmbAut_RejectsHBARoleOID(t *testing.T) {
 	ee := customEE(t, pki, testca.CertOptions{
 		KeyUsage:            x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:         []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-		CertificatePolicies: []asn1.ObjectIdentifier{gempki.OIDPolicyGemOrCP},
+		CertificatePolicies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP},
 		ExtraExtensions:     []pkix.Extension{admExt},
 	})
 
@@ -74,7 +75,7 @@ func TestProfileIdp_AcceptsFdSIGShape(t *testing.T) {
 	// the way the validator sees it.
 	ee := customNISTEE(t, pki, testca.CertOptions{
 		KeyUsage:            x509.KeyUsageDigitalSignature,
-		CertificatePolicies: []asn1.ObjectIdentifier{gempki.OIDPolicyGemOrCP},
+		CertificatePolicies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP},
 	})
 
 	v := gempki.ProfileIdpSig.Validator(ts, gempki.CertTypeFdSIG)

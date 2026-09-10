@@ -132,8 +132,8 @@ func describeExtKeyUsage(eku x509.ExtKeyUsage) string {
 // Empty required → no constraint (check always passes).
 //
 // The TI profiles for QES, ZETA, IDP, and Komponenten all assert
-// [OIDPolicyGemOrCP] (1.2.276.0.76.4.163), and the QES profile additionally
-// asserts [OIDPolicyHbaCP]. Use this check to fail closed when those
+// [oid.PolicyGemOrCP] (1.2.276.0.76.4.163), and the QES profile additionally
+// asserts [oid.PolicyHbaCP]. Use this check to fail closed when those
 // policies are absent.
 func CheckCertificatePolicies(required ...asn1.ObjectIdentifier) CertificateCheck {
 	return func(_ context.Context, cert *x509.Certificate) error {

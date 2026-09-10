@@ -10,6 +10,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/gempki"
 	"github.com/gematik/zero-lab/go/gempki/internal/testca"
+	"github.com/gematik/zero-lab/go/gempki/oid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -98,7 +99,7 @@ func TestValidator_RequiredRoleOID_Pass(t *testing.T) {
 	v := &gempki.Validator{
 		TrustStore:       ts,
 		Revocation:       goodChecker(),
-		RequiredRoleOIDs: []asn1.ObjectIdentifier{gempki.OIDProfArzt}, // EEArzt has this OID via testca
+		RequiredRoleOIDs: []asn1.ObjectIdentifier{oid.ProfArzt}, // EEArzt has this OID via testca
 	}
 	result, err := v.Validate(t.Context(), []*x509.Certificate{pki.EEArzt.Cert, pki.SubCAHBA.Cert})
 	require.NoError(t, err)
@@ -114,7 +115,7 @@ func TestValidator_RequiredRoleOID_Fail(t *testing.T) {
 	v := &gempki.Validator{
 		TrustStore:       ts,
 		Revocation:       goodChecker(),
-		RequiredRoleOIDs: []asn1.ObjectIdentifier{gempki.OIDProfZahnarzt}, // EEArzt has Arzt, not Zahnarzt
+		RequiredRoleOIDs: []asn1.ObjectIdentifier{oid.ProfZahnarzt}, // EEArzt has Arzt, not Zahnarzt
 	}
 	result, err := v.Validate(t.Context(), []*x509.Certificate{pki.EEArzt.Cert, pki.SubCAHBA.Cert})
 	require.NoError(t, err)
@@ -130,12 +131,12 @@ func TestValidator_RequiredPolicies_Pass(t *testing.T) {
 
 	ee := customEE(t, pki, testca.CertOptions{
 		KeyUsage:            x509.KeyUsageDigitalSignature,
-		CertificatePolicies: []asn1.ObjectIdentifier{gempki.OIDPolicyGemOrCP},
+		CertificatePolicies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP},
 	})
 	v := &gempki.Validator{
 		TrustStore:       ts,
 		Revocation:       goodChecker(),
-		RequiredPolicies: []asn1.ObjectIdentifier{gempki.OIDPolicyGemOrCP},
+		RequiredPolicies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP},
 	}
 	result, err := v.Validate(t.Context(), []*x509.Certificate{ee, pki.SubCAHBA.Cert})
 	require.NoError(t, err)
@@ -152,7 +153,7 @@ func TestValidator_RequiredPolicies_Fail(t *testing.T) {
 	v := &gempki.Validator{
 		TrustStore:       ts,
 		Revocation:       goodChecker(),
-		RequiredPolicies: []asn1.ObjectIdentifier{gempki.OIDPolicyGemOrCP},
+		RequiredPolicies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP},
 	}
 	result, err := v.Validate(t.Context(), []*x509.Certificate{ee, pki.SubCAHBA.Cert})
 	require.NoError(t, err)
