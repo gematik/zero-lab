@@ -37,7 +37,7 @@ func (vf *verifyFlags) register(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&vf.formatRaw, "format", string(formatText), "output format: text, json")
 	cmd.Flags().StringVar(&vf.rootsPath, "roots", "", "PEM file of trust anchors (default: env embedded roots)")
 	cmd.Flags().StringVar(&vf.intermediatesPath, "intermediates", "", "PEM file of additional candidate intermediates")
-	cmd.Flags().StringVar(&vf.profile, "profile", "auto", "profile-driven EE checks. 'auto' (default) detects the cert type and picks the matching profile (C.HCI.AUT → smbauth, C.FD.SIG → idp). 'none' disables profile checks (chain-only). Explicit profiles: "+strings.Join(sortedProfileNames(), " | ")+". Use --profile explicitly when the cert type matches multiple profiles (e.g. C.FD.AUT → epavau or idp).")
+	cmd.Flags().StringVar(&vf.profile, "profile", gempki.ProfileAuto, "profile-driven EE checks. '"+gempki.ProfileAuto+"' (default) picks the profile from the certificate; '"+gempki.ProfileNone+"' disables profile checks (chain-only). Explicit profiles: "+strings.Join(gempki.ProfileNames(), " | ")+". See `ti pki profiles list` for what each one validates.")
 	cmd.Flags().BoolVar(&vf.withOCSP, "ocsp", false, "evaluate revocation via OCSP (AIA-driven). Profiles enable OCSP automatically per their gemSpec policy; this flag is for use without --profile.")
 	cmd.Flags().StringVar(&vf.atRaw, "at", "", "validate at a specific time (RFC3339; default: now)")
 	cmd.Flags().StringVar(&vf.issuerPath, "issuer", "", "issuing CA certificate PEM/DER, for a CA the TSL does not publish (default: resolved from the TSL)")
@@ -135,6 +135,8 @@ type certVerifyOpts struct {
 	//   profileCandidates — when ambiguous, the profile names that match
 	detectedType      gempki.CertificateType
 	resolvedFrom      string
+	selectReason      gempki.ProfileSelectReason
+	selectDetail      string
 	profileMissing    bool
 	profileAmbiguous  bool
 	profileCandidates []string
@@ -144,41 +146,42 @@ func runCertVerify(ctx context.Context, def common.EnvDef, certs []*x509.Certifi
 	if len(certs) == 0 {
 		return fmt.Errorf("no certificate parsed from input")
 	}
-	// Resolve --profile auto / none into a concrete profile name. Detection
-	// runs against the EE (certs[0]); the result drives both the validator
-	// choice and the "Detected Type" / "Profile" surface in the output.
+	// Resolve --profile auto / none into a concrete profile name. Selection
+	// runs against the EE (certs[0]) and drives both the validator choice and
+	// the "Profile" line in the output.
 	switch strings.ToLower(opts.Profile) {
-	case "", "auto":
-		t := gempki.DetectCertificateType(certs[0])
-		opts.detectedType = t
+	case "", gempki.ProfileAuto:
+		sel := gempki.SelectProfileForCert(certs[0])
+		opts.detectedType = sel.Type
 		opts.resolvedFrom = "auto"
-		candidates := gempki.ProfilesForType(t)
-		switch {
-		case len(candidates) == 0:
-			opts.profileMissing = true
-			opts.Profile = ""
-			slog.Debug("gempki: profile auto-detection found no match",
-				"subject", certs[0].Subject.CommonName,
-				"type", string(t))
-		case t.DefaultProfile() != nil:
-			opts.Profile = t.DefaultProfile().Name
+		opts.selectReason = sel.Reason
+		opts.selectDetail = sel.Detail
+		switch sel.Reason {
+		case gempki.ProfileSelectedByCert, gempki.ProfileSelectedByDefault:
+			opts.Profile = sel.Profile.Name
 			slog.Debug("gempki: profile auto-selected",
 				"subject", certs[0].Subject.CommonName,
-				"type", string(t),
-				"profile", opts.Profile)
-		default:
+				"type", string(sel.Type),
+				"profile", opts.Profile,
+				"reason", string(sel.Reason),
+				"detail", sel.Detail)
+		case gempki.ProfileSelectAmbiguous:
 			opts.profileAmbiguous = true
 			opts.Profile = ""
-			opts.profileCandidates = make([]string, len(candidates))
-			for i, p := range candidates {
-				opts.profileCandidates[i] = p.Name
-			}
-			slog.Debug("gempki: profile auto-detection found multiple matches",
+			opts.profileCandidates = profileNames(sel.Candidates)
+			slog.Debug("gempki: profile auto-selection is ambiguous",
 				"subject", certs[0].Subject.CommonName,
-				"type", string(t),
+				"type", string(sel.Type),
 				"candidates", opts.profileCandidates)
+		default:
+			opts.profileMissing = true
+			opts.Profile = ""
+			slog.Debug("gempki: no profile matches",
+				"subject", certs[0].Subject.CommonName,
+				"type", string(sel.Type),
+				"detail", sel.Detail)
 		}
-	case "none":
+	case gempki.ProfileNone:
 		opts.resolvedFrom = "none"
 		opts.Profile = ""
 	default:
@@ -261,7 +264,7 @@ func runCertVerify(ctx context.Context, def common.EnvDef, certs []*x509.Certifi
 		result.Warnings = append(result.Warnings, &w)
 	}
 	if opts.resolvedFrom == "explicit" && opts.Profile != "" {
-		if p, ok := gempki.ProfileRegistry[strings.ToLower(opts.Profile)]; ok &&
+		if p, ok := gempki.LookupProfile(opts.Profile); ok &&
 			opts.detectedType != gempki.CertTypeUnknown && !p.Accepts(opts.detectedType) {
 			w := *gempki.WarnProfileTypeMismatch
 			w.Subject = certs[0].Subject.CommonName
@@ -277,6 +280,15 @@ func runCertVerify(ctx context.Context, def common.EnvDef, certs []*x509.Certifi
 		return common.PrintJSON(verifyResultJSON(result, opts))
 	}
 	return renderVerifyResultText(result, opts)
+}
+
+// profileNames maps profiles to their names for the candidate list.
+func profileNames(ps []*gempki.Profile) []string {
+	out := make([]string, len(ps))
+	for i, p := range ps {
+		out[i] = p.Name
+	}
+	return out
 }
 
 func resolveTrustStoreFor(ctx context.Context, def common.EnvDef, rootsPath string, httpClient *http.Client) (*gempki.TrustStore, error) {
@@ -297,7 +309,7 @@ func resolveTrustStoreFor(ctx context.Context, def common.EnvDef, rootsPath stri
 
 func buildValidator(def common.EnvDef, ts *gempki.TrustStore, opts certVerifyOpts) *gempki.Validator {
 	var v *gempki.Validator
-	if p, ok := gempki.ProfileRegistry[strings.ToLower(opts.Profile)]; ok {
+	if p, ok := gempki.LookupProfile(opts.Profile); ok {
 		v = p.Validator(ts, opts.detectedType)
 	} else {
 		v = gempki.NewValidator(gempki.WithTrustStore(ts))
@@ -307,10 +319,9 @@ func buildValidator(def common.EnvDef, ts *gempki.TrustStore, opts certVerifyOpt
 		v.TimeFunc = func() time.Time { return at }
 	}
 	// Revocation policy:
-	//   - When a profile is set, the profile carries the mode (e.g.
-	//     ProfileSmbAuth = SoftFail, ProfileIdp / ProfileEpaVau = HardFail).
-	//     The profile dictates; we just wire the OCSPChecker so the mode has
-	//     something to evaluate.
+	//   - When a profile is set, the profile carries the mode — see
+	//     `ti pki profiles list`. The profile dictates; we just wire the
+	//     OCSPChecker so the mode has something to evaluate.
 	//   - When no profile is set, `--ocsp` opts in to SoftFail revocation.
 	//   - When neither is set, revocation is disabled (cheap decode + chain).
 	profileSet := opts.Profile != ""
@@ -372,7 +383,7 @@ func renderVerifyResultText(result *gempki.ValidationResult, opts certVerifyOpts
 	}
 	switch {
 	case opts.Profile != "" && opts.resolvedFrom == "auto":
-		kv.KV("Profile", opts.Profile+" (auto)")
+		kv.KV("Profile", opts.Profile+" (auto: "+opts.selectDetail+")")
 	case opts.Profile != "":
 		kv.KV("Profile", opts.Profile)
 	case opts.resolvedFrom == "none":
@@ -534,6 +545,10 @@ func verifyResultJSON(r *gempki.ValidationResult, opts certVerifyOpts) map[strin
 	if opts.Profile != "" {
 		out["profile"] = opts.Profile
 		out["profileFrom"] = opts.resolvedFrom
+		if opts.resolvedFrom == "auto" {
+			out["profileSelectedBy"] = string(opts.selectReason)
+			out["profileSelectDetail"] = opts.selectDetail
+		}
 	} else if opts.resolvedFrom == "none" {
 		out["profile"] = "none"
 	}

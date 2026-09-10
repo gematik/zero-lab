@@ -1,11 +1,9 @@
 package pki
 
 import (
-	"crypto/x509"
 	"encoding/asn1"
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 
 	"github.com/gematik/zero-lab/go/gempki"
@@ -13,47 +11,43 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// profileShort returns a short description for a profile, used in the
-// list view. Sourced from a small lookup so the list stays one-line
-// friendly without dragging gempki package docs into the CLI.
-func profileShort(name string) string {
-	switch name {
-	case "smbauth":
-		return "SMC-B-family institution authentication (C.HCI.AUT; SMB = SMC-B / HSM-B / SMC-B-ORG umbrella)"
-	case "epavau":
-		return "ePA Aktensystem VAU backend authenticity (C.FD.AUT)"
-	case "idp":
-		return "IDP discovery / JWKS / authenticity (C.FD.SIG, C.FD.AUT)"
-	default:
-		return ""
-	}
-}
-
-func sortedProfileNames() []string {
-	names := make([]string, 0, len(gempki.ProfileRegistry))
-	for n := range gempki.ProfileRegistry {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	return names
-}
-
 // validateProfileName rejects a --profile value that names no profile. Without
 // this the unknown name falls through to a chain-only validator and the run
 // still reports success, as if a profile of that name had been applied.
 func validateProfileName(name string) error {
 	switch strings.ToLower(name) {
-	case "", "auto", "none":
+	case "", gempki.ProfileAuto, gempki.ProfileNone:
 		return nil
 	}
-	if _, ok := gempki.ProfileRegistry[strings.ToLower(name)]; ok {
+	if _, ok := gempki.LookupProfile(name); ok {
 		return nil
 	}
-	return fmt.Errorf("unknown profile %q (valid: auto, none, %s)", name, strings.Join(sortedProfileNames(), ", "))
+	return fmt.Errorf("unknown profile %q (valid: %s)", name, strings.Join(gempki.ProfileSelectorValues(), ", "))
 }
 
 func completeProfile(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-	return append([]string{"auto", "none"}, sortedProfileNames()...), cobra.ShellCompDirectiveNoFileComp
+	return gempki.ProfileSelectorValues(), cobra.ShellCompDirectiveNoFileComp
+}
+
+// autoSelectSummary says when `--profile auto` picks p, in the terms a reader
+// of the profile table needs: the types p owns outright, and the admission
+// role that makes p win a type it shares with another profile.
+func autoSelectSummary(p *gempki.Profile) string {
+	if len(p.RequiredRoleOIDs) > 0 {
+		labels := make([]string, 0, len(p.RequiredRoleOIDs))
+		for _, oid := range p.RequiredRoleOIDs {
+			if info, ok := gempki.LookupOID(oid); ok {
+				labels = append(labels, info.Description)
+				continue
+			}
+			labels = append(labels, oid.String())
+		}
+		return strings.Join(certTypeNames(p.AcceptsTypes), ", ") + " with role " + strings.Join(labels, " or ")
+	}
+	if len(p.DefaultFor) > 0 {
+		return strings.Join(certTypeNames(p.DefaultFor), ", ")
+	}
+	return "never (name it explicitly)"
 }
 
 func newPKIProfilesCmd() *cobra.Command {
@@ -92,32 +86,47 @@ func runProfilesList(f outputFormat) error {
 		RevocationMode string   `json:"revocationMode"`
 		AcceptsTypes   []string `json:"acceptsTypes"`
 		DefaultFor     []string `json:"defaultFor,omitempty"`
+		RequiredRoles  []string `json:"requiredRoleOIDs,omitempty"`
+		AutoSelectedy  string   `json:"autoSelectedFor"`
 	}
 	var rows []row
-	for _, name := range sortedProfileNames() {
+	for _, name := range gempki.ProfileNames() {
 		p := gempki.ProfileRegistry[name]
 		rows = append(rows, row{
 			Name:           p.Name,
-			Description:    profileShort(p.Name),
+			Description:    p.Description,
 			RevocationMode: revocationModeString(p.RevocationMode),
 			AcceptsTypes:   certTypeNames(p.AcceptsTypes),
 			DefaultFor:     certTypeNames(p.DefaultFor),
+			RequiredRoles:  asn1OIDStrings(p.RequiredRoleOIDs),
+			AutoSelectedy:  autoSelectSummary(p),
 		})
 	}
 	if f == formatJSON {
 		return common.PrintJSON(rows)
 	}
-	return common.PrintTable("NAME\tREVOCATION\tACCEPTS\tDEFAULT FOR\tDESCRIPTION", func(w io.Writer) {
+	if err := common.PrintTable("NAME\tVALIDATES\tAUTO-SELECTED FOR\tREVOCATION\tDESCRIPTION", func(w io.Writer) {
 		for _, r := range rows {
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
 				r.Name,
-				r.RevocationMode,
 				strings.Join(r.AcceptsTypes, ", "),
-				strings.Join(r.DefaultFor, ", "),
+				r.AutoSelectedy,
+				r.RevocationMode,
 				r.Description,
 			)
 		}
-	})
+	}); err != nil {
+		return err
+	}
+	// The two columns are the whole reason profiles are confusing, so say
+	// what they mean rather than leaving it to the gempki godoc.
+	fmt.Println()
+	fmt.Println("VALIDATES          what `ti pki verify --profile NAME` checks a certificate against.")
+	fmt.Println("AUTO-SELECTED FOR  when `--profile auto` (the default) picks this profile on its own.")
+	fmt.Println("                   A \"with role\" condition means the certificate must assert that")
+	fmt.Println("                   admission role; certificates of the same type that do not are left")
+	fmt.Println("                   to another profile, or to an explicit --profile.")
+	return nil
 }
 
 func certTypeNames(ts []gempki.CertificateType) []string {
@@ -134,16 +143,16 @@ func newPKIProfilesDescribeCmd() *cobra.Command {
 		Use:       "describe NAME",
 		Short:     "Show the configured constraints of a profile",
 		Args:      cobra.ExactArgs(1),
-		ValidArgs: sortedProfileNames(),
+		ValidArgs: gempki.ProfileNames(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
 			f, err := parseOutputFormat(formatRaw, []outputFormat{formatText, formatJSON})
 			if err != nil {
 				return err
 			}
-			p, ok := gempki.ProfileRegistry[strings.ToLower(args[0])]
+			p, ok := gempki.LookupProfile(args[0])
 			if !ok {
-				return fmt.Errorf("unknown profile %q (try `ti pki profiles list`)", args[0])
+				return fmt.Errorf("unknown profile %q (valid: %s)", args[0], strings.Join(gempki.ProfileNames(), ", "))
 			}
 			return runProfilesDescribe(p, f)
 		},
@@ -166,6 +175,9 @@ type perTypeDetail struct {
 	AllowedExtKeyUsages []string `json:"allowedExtKeyUsages,omitempty"`
 	RequiredPolicies    []string `json:"requiredPolicies,omitempty"`
 	RequiredRoleOIDs    []string `json:"requiredRoleOIDs,omitempty"`
+	// RoleOIDSource is "profile" when the profile replaces the type
+	// baseline's role OIDs, "type" when it inherits them.
+	RoleOIDSource string `json:"roleOIDSource,omitempty"`
 }
 
 type profileDetail struct {
@@ -175,26 +187,36 @@ type profileDetail struct {
 	ExtraPolicies  []string        `json:"extraPolicies,omitempty"`
 	AcceptsTypes   []string        `json:"acceptsTypes"`
 	DefaultFor     []string        `json:"defaultFor,omitempty"`
+	AutoSelectedFo string          `json:"autoSelectedFor"`
 	PerType        []perTypeDetail `json:"perType,omitempty"`
 }
 
 func describeProfile(p *gempki.Profile) profileDetail {
 	d := profileDetail{
 		Name:           p.Name,
-		Description:    profileShort(p.Name),
+		Description:    p.Description,
 		RevocationMode: revocationModeString(p.RevocationMode),
 		ExtraPolicies:  asn1OIDStrings(p.ExtraPolicies),
 		AcceptsTypes:   certTypeNames(p.AcceptsTypes),
 		DefaultFor:     certTypeNames(p.DefaultFor),
+		AutoSelectedFo: autoSelectSummary(p),
 	}
 	for _, t := range p.AcceptsTypes {
 		spec := t.Spec()
+		// EffectiveRoleOIDs, not spec.RoleOIDs: a profile's own role list
+		// replaces the type baseline, and describing the baseline would
+		// misstate what this profile checks.
+		source := "type"
+		if len(p.RequiredRoleOIDs) > 0 {
+			source = "profile"
+		}
 		d.PerType = append(d.PerType, perTypeDetail{
 			Type:                string(t),
-			RequiredKeyUsage:    keyUsageString(spec.KeyUsage),
-			AllowedExtKeyUsages: extKeyUsageStrings(spec.EKU),
-			RequiredPolicies:    asn1OIDStrings(spec.Policies),
-			RequiredRoleOIDs:    asn1OIDStrings(spec.RoleOIDs),
+			RequiredKeyUsage:    common.FormatKeyUsage(spec.KeyUsage),
+			AllowedExtKeyUsages: extKeyUsageNamesList(spec.EKU),
+			RequiredPolicies:    formatOIDs(spec.Policies),
+			RequiredRoleOIDs:    formatOIDs(p.EffectiveRoleOIDs(t)),
+			RoleOIDSource:       source,
 		})
 	}
 	return d
@@ -207,10 +229,8 @@ func renderProfileDescribeText(d profileDetail) error {
 		kv.KV("Description", d.Description)
 	}
 	kv.KV("Revocation Mode", d.RevocationMode)
-	kv.KV("Accepts Types", strings.Join(d.AcceptsTypes, ", "))
-	if len(d.DefaultFor) > 0 {
-		kv.KV("Default For", strings.Join(d.DefaultFor, ", "))
-	}
+	kv.KV("Validates", strings.Join(d.AcceptsTypes, ", ")+"   (ti pki verify --profile "+d.Name+" FILE)")
+	kv.KV("Auto-Selected For", d.AutoSelectedFo)
 	if len(d.ExtraPolicies) > 0 {
 		kv.Section("Extra Policies (added on top of type baseline)")
 		for _, p := range d.ExtraPolicies {
@@ -234,7 +254,11 @@ func renderProfileDescribeText(d profileDetail) error {
 			kv.EndSection()
 		}
 		if len(pt.RequiredRoleOIDs) > 0 {
-			kv.Section("Required Role OIDs (at least one must match)")
+			from := "from the " + pt.Type + " baseline"
+			if pt.RoleOIDSource == "profile" {
+				from = "set by this profile, replacing the " + pt.Type + " baseline"
+			}
+			kv.Section("Required Role OIDs (at least one must match; " + from + ")")
 			for _, oid := range pt.RequiredRoleOIDs {
 				kv.KV("OID", oid)
 			}
@@ -260,62 +284,11 @@ func revocationModeString(m gempki.RevocationMode) string {
 	return fmt.Sprintf("unknown(%d)", m)
 }
 
-func keyUsageString(ku x509.KeyUsage) string {
-	if ku == 0 {
-		return ""
-	}
-	var parts []string
-	if ku&x509.KeyUsageDigitalSignature != 0 {
-		parts = append(parts, "digitalSignature")
-	}
-	if ku&x509.KeyUsageContentCommitment != 0 {
-		parts = append(parts, "contentCommitment(nonRepudiation)")
-	}
-	if ku&x509.KeyUsageKeyEncipherment != 0 {
-		parts = append(parts, "keyEncipherment")
-	}
-	if ku&x509.KeyUsageDataEncipherment != 0 {
-		parts = append(parts, "dataEncipherment")
-	}
-	if ku&x509.KeyUsageKeyAgreement != 0 {
-		parts = append(parts, "keyAgreement")
-	}
-	if ku&x509.KeyUsageCertSign != 0 {
-		parts = append(parts, "keyCertSign")
-	}
-	if ku&x509.KeyUsageCRLSign != 0 {
-		parts = append(parts, "cRLSign")
-	}
-	if ku&x509.KeyUsageEncipherOnly != 0 {
-		parts = append(parts, "encipherOnly")
-	}
-	if ku&x509.KeyUsageDecipherOnly != 0 {
-		parts = append(parts, "decipherOnly")
-	}
-	return strings.Join(parts, " | ")
-}
-
-func extKeyUsageStrings(ekus []x509.ExtKeyUsage) []string {
-	out := make([]string, len(ekus))
-	for i, e := range ekus {
-		switch e {
-		case x509.ExtKeyUsageAny:
-			out[i] = "any"
-		case x509.ExtKeyUsageServerAuth:
-			out[i] = "id-kp-serverAuth"
-		case x509.ExtKeyUsageClientAuth:
-			out[i] = "id-kp-clientAuth"
-		case x509.ExtKeyUsageCodeSigning:
-			out[i] = "id-kp-codeSigning"
-		case x509.ExtKeyUsageEmailProtection:
-			out[i] = "id-kp-emailProtection"
-		case x509.ExtKeyUsageOCSPSigning:
-			out[i] = "id-kp-OCSPSigning"
-		case x509.ExtKeyUsageTimeStamping:
-			out[i] = "id-kp-timeStamping"
-		default:
-			out[i] = fmt.Sprintf("ExtKeyUsage(%d)", e)
-		}
+// formatOIDs renders OIDs with their gematik names where gempki knows them.
+func formatOIDs(oids []asn1.ObjectIdentifier) []string {
+	out := make([]string, len(oids))
+	for i, oid := range oids {
+		out[i] = gempki.FormatOID(oid)
 	}
 	return out
 }

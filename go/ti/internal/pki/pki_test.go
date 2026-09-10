@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gematik/zero-lab/go/gempki"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -70,19 +71,21 @@ func TestVerifyFlagsMatch(t *testing.T) {
 }
 
 func TestValidateProfileName(t *testing.T) {
-	for _, name := range []string{"", "auto", "none", "AUTO", "smbauth", "epavau", "idp", "SMBAuth"} {
+	valid := append([]string{""}, gempki.ProfileSelectorValues()...)
+	valid = append(valid, strings.ToUpper(gempki.ProfileNames()[0]))
+	for _, name := range valid {
 		if err := validateProfileName(name); err != nil {
 			t.Errorf("validateProfileName(%q) = %v, want nil", name, err)
 		}
 	}
-	for _, name := range []string{"xxx", "smbauth2", "chain-only"} {
+	for _, name := range []string{"xxx", "smbauth", "epavau", "idp", "chain-only"} {
 		err := validateProfileName(name)
 		if err == nil {
 			t.Errorf("validateProfileName(%q) = nil, want an error", name)
 			continue
 		}
 		// The message has to list what is valid, or it just moves the guesswork.
-		for _, want := range []string{"auto", "none", "smbauth"} {
+		for _, want := range gempki.ProfileSelectorValues() {
 			if !strings.Contains(err.Error(), want) {
 				t.Errorf("validateProfileName(%q) error %q does not mention %q", name, err, want)
 			}
