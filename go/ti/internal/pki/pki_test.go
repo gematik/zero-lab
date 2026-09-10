@@ -23,7 +23,6 @@ func TestCommandTree(t *testing.T) {
 		"pki ref verify",
 		"pki ref tsl show",
 		"pki ref roots list",
-		"pki ref ocsp check",
 		"pki prod verify",
 	} {
 		if _, err := find(root, path); err != nil {
@@ -34,6 +33,8 @@ func TestCommandTree(t *testing.T) {
 	for _, path := range []string{
 		"pki ref cert",
 		"pki ref cert verify",
+		"pki ref ocsp",
+		"pki ref ocsp check",
 		"pki ref inspect",
 		"pki ref profiles",
 	} {

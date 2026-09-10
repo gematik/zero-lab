@@ -45,5 +45,4 @@ var (
 	formatsTSLIntermediates = []outputFormat{formatText, formatJSON, formatPEM}
 	formatsRootsList        = []outputFormat{formatText, formatJSON}
 	formatsRootsBundle      = []outputFormat{formatPEM, formatJSON}
-	formatsOCSPCheck        = []outputFormat{formatText, formatJSON}
 )

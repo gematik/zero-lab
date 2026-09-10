@@ -26,6 +26,9 @@ type verifyFlags struct {
 	intermediatesPath string
 	profile           string
 	atRaw             string
+	issuerPath        string
+	ocspResponder     string
+	ocspMaxAge        time.Duration
 	withOCSP          bool
 	insecure          bool
 }
@@ -37,6 +40,9 @@ func (vf *verifyFlags) register(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&vf.profile, "profile", "auto", "profile-driven EE checks. 'auto' (default) detects the cert type and picks the matching profile (C.HCI.AUT → smbauth, C.FD.SIG → idp). 'none' disables profile checks (chain-only). Explicit profiles: "+strings.Join(sortedProfileNames(), " | ")+". Use --profile explicitly when the cert type matches multiple profiles (e.g. C.FD.AUT → epavau or idp).")
 	cmd.Flags().BoolVar(&vf.withOCSP, "ocsp", false, "evaluate revocation via OCSP (AIA-driven). Profiles enable OCSP automatically per their gemSpec policy; this flag is for use without --profile.")
 	cmd.Flags().StringVar(&vf.atRaw, "at", "", "validate at a specific time (RFC3339; default: now)")
+	cmd.Flags().StringVar(&vf.issuerPath, "issuer", "", "issuing CA certificate PEM/DER, for a CA the TSL does not publish (default: resolved from the TSL)")
+	cmd.Flags().StringVar(&vf.ocspResponder, "ocsp-responder", "", "query this OCSP responder instead of the one named in the certificate's AIA")
+	cmd.Flags().DurationVar(&vf.ocspMaxAge, "ocsp-max-age", 48*time.Hour, "reject OCSP responses older than this")
 	// Removed in v0.21; registered hidden purely so the old spelling gets a
 	// pointer at `ti pki inspect` instead of cobra's bare "unknown flag".
 	cmd.Flags().BoolVar(&vf.insecure, "insecure", false, "")
@@ -63,8 +69,11 @@ func (vf *verifyFlags) parse() (outputFormat, certVerifyOpts, error) {
 	return f, certVerifyOpts{
 		RootsPath:         vf.rootsPath,
 		IntermediatesPath: vf.intermediatesPath,
+		IssuerPath:        vf.issuerPath,
 		Profile:           vf.profile,
 		WithOCSP:          vf.withOCSP,
+		OCSPResponder:     vf.ocspResponder,
+		OCSPMaxAge:        vf.ocspMaxAge,
 		At:                at,
 	}, nil
 }
@@ -97,8 +106,11 @@ func newPKIEnvVerifyCmd(def common.EnvDef) *cobra.Command {
 type certVerifyOpts struct {
 	RootsPath         string
 	IntermediatesPath string
+	IssuerPath        string
 	Profile           string
 	WithOCSP          bool
+	OCSPResponder     string
+	OCSPMaxAge        time.Duration
 	At                *time.Time
 
 	// httpClient + TSLResponders feed the OCSP path inside buildValidator
@@ -185,6 +197,16 @@ func runCertVerify(ctx context.Context, def common.EnvDef, certs []*x509.Certifi
 			return fmt.Errorf("load intermediates: %w", err)
 		}
 		intermediates = append(intermediates, extra...)
+	}
+	// --issuer is --intermediates narrowed to the one CA that matters: the
+	// certificate's own issuer, for the case where the TSL does not publish it
+	// and the chain would otherwise not build at all.
+	if opts.IssuerPath != "" {
+		issuer, err := loadCertChain(opts.IssuerPath)
+		if err != nil {
+			return fmt.Errorf("load --issuer: %w", err)
+		}
+		intermediates = append(intermediates, issuer...)
 	}
 	// Always merge TSL intermediates — SMC-B/HBA chains rely on issuer CAs
 	// that gematik publishes through the TSL, not the embedded roots. Also
@@ -297,9 +319,14 @@ func buildValidator(def common.EnvDef, ts *gempki.TrustStore, opts certVerifyOpt
 		if client == nil {
 			client = common.NewHTTPClient()
 		}
+		maxAge := opts.OCSPMaxAge
+		if maxAge <= 0 {
+			maxAge = 48 * time.Hour
+		}
 		gempki.WithRevocationChecker(&gempki.OCSPChecker{
 			HTTPClient:     client,
-			MaxResponseAge: 48 * time.Hour,
+			ResponderURL:   opts.OCSPResponder,
+			MaxResponseAge: maxAge,
 			TSLResponders:  opts.tslResponders,
 			Intermediates:  opts.intermediates,
 			Roots:          opts.roots,

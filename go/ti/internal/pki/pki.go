@@ -33,7 +33,6 @@ func NewCmd() *cobra.Command {
 		envCmd.AddCommand(newPKIEnvVerifyCmd(def))
 		envCmd.AddCommand(newPKITSLCmdGroup(def))
 		envCmd.AddCommand(newPKIRootsCmdGroup(def))
-		envCmd.AddCommand(newPKIOCSPCmdGroup(def))
 		return envCmd
 	})
 
