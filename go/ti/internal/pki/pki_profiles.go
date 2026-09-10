@@ -41,7 +41,7 @@ func sortedProfileNames() []string {
 func newPKIProfilesCmd(def common.EnvDef) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "profiles",
-		Short: "List or describe the gempki profiles available to cert verify/lint",
+		Short: "List or describe the gempki profiles available to cert verify",
 	}
 	cmd.AddCommand(newPKIProfilesListCmd(def))
 	cmd.AddCommand(newPKIProfilesDescribeCmd(def))

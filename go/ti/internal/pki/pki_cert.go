@@ -31,7 +31,6 @@ func newPKICertCmd(def common.EnvDef) *cobra.Command {
 	}
 	cmd.AddCommand(newPKICertInspectCmd(def))
 	cmd.AddCommand(newPKICertVerifyCmd(def))
-	cmd.AddCommand(newPKICertLintCmd(def))
 	return cmd
 }
 
@@ -1022,61 +1021,4 @@ func parseAtFlag(raw string) (*time.Time, error) {
 		return nil, fmt.Errorf("--at must be RFC3339 (e.g. 2026-01-15T00:00:00Z): %w", err)
 	}
 	return &t, nil
-}
-
-// ---- lint -------------------------------------------------------------------
-
-func newPKICertLintCmd(def common.EnvDef) *cobra.Command {
-	var formatRaw, profile string
-	cmd := &cobra.Command{
-		Use:   "lint FILE|-",
-		Short: "Run gempki profile checks against a certificate",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.SilenceUsage = true
-			f, err := parseOutputFormat(formatRaw, formatsCertLint)
-			if err != nil {
-				return err
-			}
-			if profile == "" {
-				return fmt.Errorf("--profile is required (smbauth | epavau | idp)")
-			}
-			certs, err := loadCertChain(args[0])
-			if err != nil {
-				return err
-			}
-			return runCertLint(cmd.Context(), def, certs, f, profile)
-		},
-	}
-	cmd.Flags().StringVar(&formatRaw, "format", string(formatText), "output format: text, json")
-	cmd.Flags().StringVar(&profile, "profile", "", "profile: smbauth | epavau | idp")
-	return cmd
-}
-
-func runCertLint(ctx context.Context, def common.EnvDef, certs []*x509.Certificate, f outputFormat, profile string) error {
-	httpClient := common.NewHTTPClient()
-	ts, err := resolveTrustStoreFor(ctx, def, "", httpClient)
-	if err != nil {
-		return err
-	}
-	intermediates := append([]*x509.Certificate(nil), certs[1:]...)
-	if tsl, terr := common.LoadTSLCached(ctx, httpClient, def.TSLURL); terr == nil {
-		for _, c := range gempki.IntermediateCAsFromTSL(tsl) {
-			if c.Cert != nil {
-				intermediates = append(intermediates, c.Cert)
-			}
-		}
-	} else {
-		slog.Warn("TSL load failed; lint chain build will rely on roots only", "env", def.Env, "err", terr)
-	}
-	opts := certVerifyOpts{Profile: profile, WithOCSP: false, resolvedFrom: "explicit"}
-	v := buildValidator(def, ts, opts)
-	result, err := v.Validate(ctx, append([]*x509.Certificate{certs[0]}, intermediates...))
-	if err != nil {
-		return err
-	}
-	if f == formatJSON {
-		return common.PrintJSON(verifyResultJSON(result, opts))
-	}
-	return renderVerifyResultText(result, opts)
 }

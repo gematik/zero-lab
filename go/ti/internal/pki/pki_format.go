@@ -32,13 +32,12 @@ func parseOutputFormat(raw string, allowed []outputFormat) (outputFormat, error)
 	return "", fmt.Errorf("unsupported format %q (allowed: %s)", raw, strings.Join(names, ", "))
 }
 
-// formatsCertInspect / Verify / Fingerprint / Admission / Lint capture the
+// formatsCertInspect / Verify / Fingerprint / Admission capture the
 // allowed --format values for each cert subcommand; reused by their flag
 // validators and (eventually) their cobra completion.
 var (
 	formatsCertInspect      = []outputFormat{formatText, formatJSON, formatPEM}
 	formatsCertVerify       = []outputFormat{formatText, formatJSON}
-	formatsCertLint         = []outputFormat{formatText, formatJSON}
 	formatsTSLShow          = []outputFormat{formatText, formatJSON}
 	formatsTSLFetch         = []outputFormat{formatXML, formatJSON, formatText}
 	formatsTSLVerify        = []outputFormat{formatText, formatJSON}
