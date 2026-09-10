@@ -29,25 +29,21 @@ func completeProfile(_ *cobra.Command, _ []string, _ string) ([]string, cobra.Sh
 	return gempki.ProfileSelectorValues(), cobra.ShellCompDirectiveNoFileComp
 }
 
-// autoSelectSummary says when `--profile auto` picks p, in the terms a reader
-// of the profile table needs: the types p owns outright, and the admission
-// role that makes p win a type it shares with another profile.
-func autoSelectSummary(p *gempki.Profile) string {
-	if len(p.RequiredRoleOIDs) > 0 {
-		labels := make([]string, 0, len(p.RequiredRoleOIDs))
-		for _, oid := range p.RequiredRoleOIDs {
-			if info, ok := gempki.LookupOID(oid); ok {
-				labels = append(labels, info.Description)
-				continue
-			}
-			labels = append(labels, oid.String())
+// profileScope renders what a profile applies to: the certificate types it
+// accepts, plus the admission role that picks it out among profiles sharing
+// a type. Type and role together are the discriminator, so they belong in
+// one column — a profile is never selected for a type it does not accept,
+// nor for a certificate lacking its role.
+func profileScope(p *gempki.Profile) string {
+	scope := strings.Join(certTypeNames(p.AcceptsTypes), ", ")
+	for _, oid := range p.RequiredRoleOIDs {
+		label := oid.String()
+		if info, ok := gempki.LookupOID(oid); ok && info.Ref != "" {
+			label = info.Ref + " (" + oid.String() + ")"
 		}
-		return strings.Join(certTypeNames(p.AcceptsTypes), ", ") + " with role " + strings.Join(labels, " or ")
+		scope += " + " + label
 	}
-	if len(p.DefaultFor) > 0 {
-		return strings.Join(certTypeNames(p.DefaultFor), ", ")
-	}
-	return "never (name it explicitly)"
+	return scope
 }
 
 func newPKIProfilesCmd() *cobra.Command {
@@ -87,7 +83,7 @@ func runProfilesList(f outputFormat) error {
 		AcceptsTypes   []string `json:"acceptsTypes"`
 		DefaultFor     []string `json:"defaultFor,omitempty"`
 		RequiredRoles  []string `json:"requiredRoleOIDs,omitempty"`
-		AutoSelectedy  string   `json:"autoSelectedFor"`
+		Scope          string   `json:"scope"`
 	}
 	var rows []row
 	for _, name := range gempki.ProfileNames() {
@@ -99,34 +95,17 @@ func runProfilesList(f outputFormat) error {
 			AcceptsTypes:   certTypeNames(p.AcceptsTypes),
 			DefaultFor:     certTypeNames(p.DefaultFor),
 			RequiredRoles:  asn1OIDStrings(p.RequiredRoleOIDs),
-			AutoSelectedy:  autoSelectSummary(p),
+			Scope:          profileScope(p),
 		})
 	}
 	if f == formatJSON {
 		return common.PrintJSON(rows)
 	}
-	if err := common.PrintTable("NAME\tVALIDATES\tAUTO-SELECTED FOR\tREVOCATION\tDESCRIPTION", func(w io.Writer) {
+	return common.PrintTable("NAME\tSCOPE\tREVOCATION\tDESCRIPTION", func(w io.Writer) {
 		for _, r := range rows {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-				r.Name,
-				strings.Join(r.AcceptsTypes, ", "),
-				r.AutoSelectedy,
-				r.RevocationMode,
-				r.Description,
-			)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", r.Name, r.Scope, r.RevocationMode, r.Description)
 		}
-	}); err != nil {
-		return err
-	}
-	// The two columns are the whole reason profiles are confusing, so say
-	// what they mean rather than leaving it to the gempki godoc.
-	fmt.Println()
-	fmt.Println("VALIDATES          what `ti pki verify --profile NAME` checks a certificate against.")
-	fmt.Println("AUTO-SELECTED FOR  when `--profile auto` (the default) picks this profile on its own.")
-	fmt.Println("                   A \"with role\" condition means the certificate must assert that")
-	fmt.Println("                   admission role; certificates of the same type that do not are left")
-	fmt.Println("                   to another profile, or to an explicit --profile.")
-	return nil
+	})
 }
 
 func certTypeNames(ts []gempki.CertificateType) []string {
@@ -187,7 +166,7 @@ type profileDetail struct {
 	ExtraPolicies  []string        `json:"extraPolicies,omitempty"`
 	AcceptsTypes   []string        `json:"acceptsTypes"`
 	DefaultFor     []string        `json:"defaultFor,omitempty"`
-	AutoSelectedFo string          `json:"autoSelectedFor"`
+	Scope          string          `json:"scope"`
 	PerType        []perTypeDetail `json:"perType,omitempty"`
 }
 
@@ -199,7 +178,7 @@ func describeProfile(p *gempki.Profile) profileDetail {
 		ExtraPolicies:  asn1OIDStrings(p.ExtraPolicies),
 		AcceptsTypes:   certTypeNames(p.AcceptsTypes),
 		DefaultFor:     certTypeNames(p.DefaultFor),
-		AutoSelectedFo: autoSelectSummary(p),
+		Scope:          profileScope(p),
 	}
 	for _, t := range p.AcceptsTypes {
 		spec := t.Spec()
@@ -229,8 +208,7 @@ func renderProfileDescribeText(d profileDetail) error {
 		kv.KV("Description", d.Description)
 	}
 	kv.KV("Revocation Mode", d.RevocationMode)
-	kv.KV("Validates", strings.Join(d.AcceptsTypes, ", ")+"   (ti pki verify --profile "+d.Name+" FILE)")
-	kv.KV("Auto-Selected For", d.AutoSelectedFo)
+	kv.KV("Scope", d.Scope)
 	if len(d.ExtraPolicies) > 0 {
 		kv.Section("Extra Policies (added on top of type baseline)")
 		for _, p := range d.ExtraPolicies {
