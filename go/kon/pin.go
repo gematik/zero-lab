@@ -82,6 +82,38 @@ func (c *Client) VerifyPin(ctx context.Context, cardHandle string, pinTyp PinTyp
 	return resp.VerifyPinResponse, nil
 }
 
+// GetPinStatus reports whether the PIN can be presented, has been verified in
+// this session, is blocked, or is still a transport/empty PIN — the check a
+// signing flow makes before it decides whether VerifyPin is needed at all.
+func (c *Client) GetPinStatus(ctx context.Context, cardHandle string, pinTyp PinTyp) (*cardservice81.GetPinStatusResponse, error) {
+	proxy, err := c.createServiceProxy(ServiceNameCardService, "8.1")
+	if err != nil {
+		return nil, err
+	}
+
+	envelope := &cardservice81.GetPinStatusEnvelope{
+		GetPinStatus: &cardservice81.GetPinStatus{
+			Context:    c.connectorContext(),
+			CardHandle: cardHandle,
+			PinTyp:     string(pinTyp),
+		},
+	}
+
+	var resp cardservice81.GetPinStatusResponseEnvelope
+	if err := proxy.Call(ctx, &cardservice81.OperationGetPinStatus, envelope, &resp); err != nil {
+		return nil, fmt.Errorf("GetPinStatus: %w", err)
+	}
+
+	if resp.Fault != nil {
+		return nil, fmt.Errorf("GetPinStatus SOAP fault: %s", resp.Fault.String)
+	}
+	if resp.GetPinStatusResponse == nil {
+		return nil, fmt.Errorf("GetPinStatus: empty response")
+	}
+
+	return resp.GetPinStatusResponse, nil
+}
+
 func (c *Client) ChangePin(ctx context.Context, cardHandle string, pinTyp PinTyp) (*cardservice81.ChangePinResponse, error) {
 	proxy, err := c.createServiceProxy(ServiceNameCardService, "8.1")
 	if err != nil {

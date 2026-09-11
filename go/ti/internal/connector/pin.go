@@ -3,11 +3,8 @@ package connector
 import (
 	"context"
 	"fmt"
-	"os"
 	"slices"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/gematik/zero-lab/go/kon"
 	"github.com/gematik/zero-lab/go/kon/api/gematik/conn/cardservicecommon20"
@@ -97,42 +94,6 @@ func joinPinTypes(types []kon.PinTyp) string {
 	return strings.Join(s, ", ")
 }
 
-// spinner displays an animated waiting indicator on stderr.
-type spinner struct {
-	msg  string
-	stop chan struct{}
-	done sync.WaitGroup
-}
-
-func startSpinner(msg string) *spinner {
-	s := &spinner{msg: msg, stop: make(chan struct{})}
-	if !common.IsTerminal() {
-		return s
-	}
-	s.done.Go(func() {
-		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-		i := 0
-		ticker := time.NewTicker(80 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-s.stop:
-				fmt.Fprintf(os.Stderr, "\r\033[K")
-				return
-			case <-ticker.C:
-				fmt.Fprintf(os.Stderr, "\r%s %s", frames[i%len(frames)], s.msg)
-				i++
-			}
-		}
-	})
-	return s
-}
-
-func (s *spinner) Stop() {
-	close(s.stop)
-	s.done.Wait()
-}
-
 func newChangeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "change",
@@ -172,25 +133,13 @@ func newChangePinCmd() *cobra.Command {
 	return cmd
 }
 
-// pinResult displays a PIN operation result with emoji indicators.
-func pinResult(operation string, pinResult string, leftTries int) {
-	if pinResult == "OK" {
-		fmt.Fprintf(os.Stderr, "✅ %s successful\n", operation)
-	} else {
-		fmt.Fprintf(os.Stderr, "❌ %s failed: %s\n", operation, pinResult)
-		if leftTries > 0 {
-			fmt.Fprintf(os.Stderr, "   Remaining tries: %d\n", leftTries)
-		}
-	}
-}
-
 func runVerifyPin(ctx context.Context, config *kon.Dotkon, identifier string, userPinTyp kon.PinTyp) error {
 	client, err := common.LoadClient(config)
 	if err != nil {
 		return err
 	}
 
-	spin := startSpinner("Resolving card...")
+	spin := common.StartSpinner("Resolving card...")
 	cardHandle, cardType, err := common.ResolveCardHandle(ctx, client, identifier)
 	spin.Stop()
 	if err != nil {
@@ -202,7 +151,7 @@ func runVerifyPin(ctx context.Context, config *kon.Dotkon, identifier string, us
 		return err
 	}
 
-	spin = startSpinner(fmt.Sprintf("Verifying %s. Follow instructions on card terminal.", pinTyp))
+	spin = common.StartSpinner(fmt.Sprintf("Verifying %s. Follow instructions on card terminal.", pinTyp))
 	resp, err := client.VerifyPin(ctx, cardHandle, pinTyp)
 	spin.Stop()
 	if err != nil {
@@ -213,7 +162,7 @@ func runVerifyPin(ctx context.Context, config *kon.Dotkon, identifier string, us
 		return common.PrintJSON(resp)
 	}
 
-	pinResult("PIN verification", string(resp.PinResult), resp.LeftTries)
+	common.PinResult("PIN verification", string(resp.PinResult), resp.LeftTries)
 	return nil
 }
 
@@ -223,7 +172,7 @@ func runChangePin(ctx context.Context, config *kon.Dotkon, identifier string, us
 		return err
 	}
 
-	spin := startSpinner("Resolving card...")
+	spin := common.StartSpinner("Resolving card...")
 	cardHandle, cardType, err := common.ResolveCardHandle(ctx, client, identifier)
 	spin.Stop()
 	if err != nil {
@@ -235,7 +184,7 @@ func runChangePin(ctx context.Context, config *kon.Dotkon, identifier string, us
 		return err
 	}
 
-	spin = startSpinner(fmt.Sprintf("Changing %s. Follow instructions on card terminal.", pinTyp))
+	spin = common.StartSpinner(fmt.Sprintf("Changing %s. Follow instructions on card terminal.", pinTyp))
 	resp, err := client.ChangePin(ctx, cardHandle, pinTyp)
 	spin.Stop()
 	if err != nil {
@@ -246,6 +195,6 @@ func runChangePin(ctx context.Context, config *kon.Dotkon, identifier string, us
 		return common.PrintJSON(resp)
 	}
 
-	pinResult("PIN change", string(resp.PinResult), resp.LeftTries)
+	common.PinResult("PIN change", string(resp.PinResult), resp.LeftTries)
 	return nil
 }
