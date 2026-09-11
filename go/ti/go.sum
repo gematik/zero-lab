@@ -27,8 +27,8 @@ github.com/gematik/zero-lab/go/epa v0.22.2-0.20260908072016-2ca75aa218e2 h1:+18J
 github.com/gematik/zero-lab/go/epa v0.22.2-0.20260908072016-2ca75aa218e2/go.mod h1:JALnPUz1Bq9l8bPqBlBNcAr5flw+xZoJzT3oBGACzMY=
 github.com/gematik/zero-lab/go/gemidp v0.50.2-0.20260908072016-2ca75aa218e2 h1:A1mrCyyyMwni2YtA4hWK4jjCjzfI/LLby69Usq6pl8w=
 github.com/gematik/zero-lab/go/gemidp v0.50.2-0.20260908072016-2ca75aa218e2/go.mod h1:0VAPdZFHze5+pGMcaMI20Qi2DRuaP2Y+Zm5TJUMDUVQ=
-github.com/gematik/zero-lab/go/gempki v0.2.0 h1:KfYACKYY3bGT8BB+c3H+g99dydiWsm+RFuBLds5MSGE=
-github.com/gematik/zero-lab/go/gempki v0.2.0/go.mod h1:TX83ITqOFMmd7hBhetFkJHGLMEBDdrWwk5miBtTXsEo=
+github.com/gematik/zero-lab/go/gempki v0.4.0 h1:YWVNOKJCIrwEMBCiJufR4OiI0sEKWr4AvV82wQpXbHs=
+github.com/gematik/zero-lab/go/gempki v0.4.0/go.mod h1:TX83ITqOFMmd7hBhetFkJHGLMEBDdrWwk5miBtTXsEo=
 github.com/gematik/zero-lab/go/kon v0.1.2-0.20260908072016-2ca75aa218e2 h1:WYEUmbSGotLiT75KeTUDdquE/wGjKOYfUmJB1c0lhmc=
 github.com/gematik/zero-lab/go/kon v0.1.2-0.20260908072016-2ca75aa218e2/go.mod h1:xzmE/LCZRGWfsi3S5XlrB49ZwgJvdrKrxUz6W68aSvM=
 github.com/gematik/zero-lab/go/oauth v0.50.2-0.20260908072016-2ca75aa218e2 h1:Ls8nKzt2slN4zEbOuVH7nc/FizK0+2BwBnY3eLV789g=
