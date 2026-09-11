@@ -14,8 +14,8 @@ import (
 
 // Real-world integration tests against actual gematik-published artifacts:
 //
-//   - the test-environment roots.json (embedded as roots-test.json,
-//     loaded via [gempki.EmbeddedRoots])
+//   - the non-prod roots.json (embedded as roots-nonprod.json, loaded via
+//     [gempki.EmbeddedRoots])
 //   - a TSL snapshot (embedded in tsl_embed.go from
 //     testdata/tsl-test.xml — gematik test environment,
 //     sequence 10687)
@@ -25,21 +25,22 @@ import (
 // These tests prove the full stack works on actual TI wire data, not just
 // synthetic testca PKIs.
 
-// TestRealWorld_EmbeddedTestRootsLoad confirms the embedded-loader path
-// works end-to-end on real roots.json data. It also documents a known
-// limitation: the A_28419 cross-cert walk stops the first time it
-// encounters an RSA-signed cross-cert, which on the test environment means
-// only the current anchor (RCA8) and its forward successors end up in the
-// store. Pre-RCA8 ECC roots like RCA5 are not reachable via the strict
-// walk and must be loaded another way (e.g. via [NewTrustStore] from a
-// caller-supplied PEM list).
+// TestRealWorld_EmbeddedTestRootsLoad confirms the A_28419 walk over the
+// real roots.json reaches the whole generation chain from the anchor, in
+// both directions: RCA5 TEST-ONLY (issuer of the fixture SMC-B) lies before
+// the RCA8 anchor, RCA11 after it. A stale roots.json with a gap in the
+// chain silently shrinks the store to the anchor alone — that is what this
+// guards against.
 func TestRealWorld_EmbeddedTestRootsLoad(t *testing.T) {
 	t.Parallel()
 
 	ts, err := gempki.EmbeddedRoots(gempki.EnvTest)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, ts.Len(), 1)
 	t.Logf("trust store from EmbeddedRoots(EnvTest) has %d root(s)", ts.Len())
+	for _, cn := range []string{"GEM.RCA5 TEST-ONLY", "GEM.RCA11 TEST-ONLY"} {
+		_, ok := ts.ByCommonName(cn)
+		assert.True(t, ok, "%s must be reachable from the anchor", cn)
+	}
 
 	anchor, ok := ts.ByCommonName(anchorCN[gempki.EnvTest])
 	require.True(t, ok, "the compiled-in anchor must be in the store")
@@ -89,13 +90,9 @@ func TestRealWorld_TSLParsesAndPublishesCAs(t *testing.T) {
 func TestRealWorld_SMCBValidatesEndToEnd(t *testing.T) {
 	t.Parallel()
 
-	// Trust anchor: real GEM.RCA5 TEST-ONLY (published by gematik in the
-	// roots distribution, brainpool P-256r1). We load via PEM fixture so
-	// we deliberately bypass EmbeddedRoots' A_28419 walk — see the
-	// limitation documented above.
-	rca5, err := gempki.ParsePEMCertificates([]byte(fixtureBrainpoolRCA5PEM))
-	require.NoError(t, err)
-	ts, err := gempki.NewTrustStore(rca5)
+	// The EE chains to GEM.RCA5 TEST-ONLY, which the A_28419 walk reaches
+	// from the embedded anchor; this is the trust store a consumer gets.
+	ts, err := gempki.EmbeddedRoots(gempki.EnvTest)
 	require.NoError(t, err)
 
 	// Intermediates: real GEM.SMCB-CA5 (matching the EE's issuer) PLUS

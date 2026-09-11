@@ -23,7 +23,9 @@ const (
 
 // envData is everything that differs between environments. dev and ref are
 // one entry: gematik distributes a single anchor, roots.json and TSL for
-// both.
+// both. test has its own anchor and TSL but, as of 2026-09, the same
+// roots.json as ref — hence one embedded non-prod file; the download URLs
+// stay separate so [FetchRoots] notices if that changes.
 type envData struct {
 	rootsAnchorB64 string // GEM.RCA<n> — the Komponenten-PKI anchor taken on faith
 	tslAnchorB64   string // GEM.TSL-CA<n> — the TSL-Signer-CA anchor taken on faith
@@ -36,11 +38,10 @@ type envData struct {
 // earns trust by chaining to its anchor through the A_28419 cross-cert walk
 // in roots.go. All non-prod material is TEST-ONLY.
 
-//go:embed roots-test.json
-var embeddedRootsTest []byte
-
-//go:embed roots-dev-ref.json
-var embeddedRootsDevRef []byte
+// Refresh both files with `just update-roots` in go/.
+//
+//go:embed roots-nonprod.json
+var embeddedRootsNonProd []byte
 
 //go:embed roots-prod.json
 var embeddedRootsProd []byte
@@ -61,13 +62,13 @@ var envTable = map[Environment]*envData{
 	EnvTest: {
 		rootsAnchorB64: rootsAnchorTestB64,
 		tslAnchorB64:   tslAnchorTestRefB64,
-		rootsJSON:      embeddedRootsTest,
+		rootsJSON:      embeddedRootsNonProd,
 		rootsURL:       "https://download-test.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json",
 	},
 	EnvRef: {
 		rootsAnchorB64: rootsAnchorDevRefB64,
 		tslAnchorB64:   tslAnchorTestRefB64,
-		rootsJSON:      embeddedRootsDevRef,
+		rootsJSON:      embeddedRootsNonProd,
 		rootsURL:       "https://download-ref.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json",
 	},
 	EnvProd: {

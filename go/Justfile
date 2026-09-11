@@ -258,11 +258,21 @@ upgrade:
         (cd "$dir" && go get -u ./... && go mod tidy)
     done
 
-# Update roots.json files for embedded use
+# Refresh the roots.json files gempki embeds. test and ref currently publish
+# the same file, so one non-prod copy is embedded; if they ever diverge this
+# fails and gempki/anchors.go needs a separate test entry again.
 update-roots:
-    curl -o ./gempki/roots-test.json https://download-test.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json
-    curl -o ./gempki/roots-dev-ref.json https://download-ref.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json
-    curl -o ./gempki/roots-prod.json https://download.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+    base=tsl.ti-dienste.de/ECC/ROOT-CA/roots.json
+    curl -fsS -o "$tmp/test.json" "https://download-test.$base"
+    curl -fsS -o "$tmp/ref.json"  "https://download-ref.$base"
+    curl -fsS -o "$tmp/prod.json" "https://download.$base"
+    cmp -s "$tmp/test.json" "$tmp/ref.json" || { echo "test and ref roots.json differ — revisit gempki/anchors.go" >&2; exit 1; }
+    cp "$tmp/ref.json"  gempki/roots-nonprod.json
+    cp "$tmp/prod.json" gempki/roots-prod.json
+    (cd gempki && go test -run 'Roots|Anchor|RealWorld|TrustDomain' .)
 
 # --- zero-pdp e2e (see docs/e2e.md) ---
 

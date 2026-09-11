@@ -32,7 +32,7 @@ import (
 //     - eGK + digitalSignature                              → C.CH.AUT
 //     - eGK + keyEncipherment                               → C.CH.ENC
 //
-// Phase 2 is best-effort; when in doubt it returns [CertTypeUnknown]
+// The fallback is best-effort; when in doubt it returns [CertTypeUnknown]
 // rather than guessing.
 func DetectCertificateType(cert *x509.Certificate) CertificateType {
 	if cert == nil {
@@ -46,8 +46,8 @@ func DetectCertificateType(cert *x509.Certificate) CertificateType {
 	return inferFromAdmission(cert)
 }
 
-// inferFromAdmission is the Phase-2 backstop. Public surfaces should call
-// [DetectCertificateType] which guarantees the Phase-1 scan ran first.
+// inferFromAdmission is the fallback behind [DetectCertificateType], which
+// always tries the policy scan first.
 func inferFromAdmission(cert *x509.Certificate) CertificateType {
 	adm, err := ParseAdmissionStatement(cert)
 	if err != nil || adm == nil {
