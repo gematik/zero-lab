@@ -32,7 +32,7 @@ func TestCheckKeyUsage_FailWhenRequiredBitMissing(t *testing.T) {
 	check := gempki.CheckKeyUsage(x509.KeyUsageContentCommitment)
 	err = check(t.Context(), pki.EEArzt.Cert)
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, gempki.ErrKeyUsageMismatch))
+	assert.True(t, errors.Is(err, &gempki.ValidationError{Code: gempki.ErrCodeKeyUsageMismatch}))
 	assert.Contains(t, err.Error(), "contentCommitment")
 }
 
@@ -49,30 +49,6 @@ func TestCheckKeyUsage_MultipleBits(t *testing.T) {
 	// And missing one of two should fail.
 	check2 := gempki.CheckKeyUsage(x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature)
 	require.Error(t, check2(t.Context(), pki.RCA1.Cert))
-}
-
-func TestCheckExtKeyUsage_PassWhenAllPresent(t *testing.T) {
-	t.Parallel()
-
-	pki, err := testca.New()
-	require.NoError(t, err)
-
-	// EEZeta has ExtKeyUsageServerAuth.
-	check := gempki.CheckExtKeyUsage(x509.ExtKeyUsageServerAuth)
-	require.NoError(t, check(t.Context(), pki.EEZeta.Cert))
-}
-
-func TestCheckExtKeyUsage_FailWhenMissing(t *testing.T) {
-	t.Parallel()
-
-	pki, err := testca.New()
-	require.NoError(t, err)
-
-	// EEZeta doesn't have id-kp-OCSPSigning.
-	check := gempki.CheckExtKeyUsage(x509.ExtKeyUsageOCSPSigning)
-	err = check(t.Context(), pki.EEZeta.Cert)
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, gempki.ErrKeyUsageMismatch))
 }
 
 func TestCheckHasAnyExtKeyUsage(t *testing.T) {
@@ -102,7 +78,7 @@ func TestValidatePath_RunsEEChecks(t *testing.T) {
 	// must trip the EEChecks pipeline.
 	result, err := gempki.ValidatePath(t.Context(), chain, gempki.ValidatePathOptions{
 		EEChecks: []gempki.CertificateCheck{
-			gempki.CheckExtKeyUsage(x509.ExtKeyUsageServerAuth),
+			gempki.CheckHasAnyExtKeyUsage(x509.ExtKeyUsageServerAuth),
 		},
 	})
 	require.NoError(t, err)

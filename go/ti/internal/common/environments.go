@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gematik/zero-lab/go/gempki"
+	"github.com/gematik/zero-lab/go/gempki/tsl"
 	"github.com/spf13/cobra"
 )
 
@@ -22,7 +23,7 @@ type EnvDef struct {
 var EnvDefs = map[string]EnvDef{
 	"dev": {
 		Env:     gempki.EnvDev,
-		TSLURL:  gempki.URLTrustServiceListRef,
+		TSLURL:  tsl.URLRef,
 		EPAAS1:  "https://epa-as-1.dev.epa4all.de",
 		EPAAS2:  "https://epa-as-2.dev.epa4all.de",
 		EPAAS3:  "https://epa-as-3.dev.epa4all.de",
@@ -31,7 +32,7 @@ var EnvDefs = map[string]EnvDef{
 	},
 	"ref": {
 		Env:     gempki.EnvRef,
-		TSLURL:  gempki.URLTrustServiceListRef,
+		TSLURL:  tsl.URLRef,
 		EPAAS1:  "https://epa-as-1.ref.epa4all.de",
 		EPAAS2:  "https://epa-as-2.ref.epa4all.de",
 		EPAAS3:  "https://epa-as-3.ref.epa4all.de",
@@ -40,7 +41,7 @@ var EnvDefs = map[string]EnvDef{
 	},
 	"test": {
 		Env:     gempki.EnvTest,
-		TSLURL:  gempki.URLTrustServiceListTest,
+		TSLURL:  tsl.URLTest,
 		EPAAS1:  "https://epa-as-1.test.epa4all.de",
 		EPAAS2:  "https://epa-as-2.test.epa4all.de",
 		EPAAS3:  "https://epa-as-3.test.epa4all.de",
@@ -49,7 +50,7 @@ var EnvDefs = map[string]EnvDef{
 	},
 	"prod": {
 		Env:     gempki.EnvProd,
-		TSLURL:  gempki.URLTrustServiceListProd,
+		TSLURL:  tsl.URLProd,
 		EPAAS1:  "https://epa-as-1.prod.epa4all.de",
 		EPAAS2:  "https://epa-as-2.prod.epa4all.de",
 		EPAAS3:  "https://epa-as-3.prod.epa4all.de",

@@ -3,7 +3,7 @@ package gempki
 import (
 	"crypto/x509"
 	"encoding/asn1"
-	"slices"
+	"github.com/gematik/zero-lab/go/gempki/oid"
 )
 
 // CertificateType is a gemSpec_PKI Tab_PKI_405 certificate-type label
@@ -78,13 +78,13 @@ type CertTypeSpec struct {
 // C.HCI.AUT cert. Carried by the type spec, not by an individual profile —
 // every C.HCI.AUT cert is expected to assert one of these.
 var smcbInstitutionRoleOIDs = []asn1.ObjectIdentifier{
-	OIDInstArztpraxis,
-	OIDInstZahnarztpraxis,
-	OIDInstPraxisPsychotherapeut,
-	OIDInstKrankenhaus,
-	OIDInstOeffentlicheApo,
-	OIDInstKrankenhausapotheke,
-	OIDInstBundeswehrapotheke,
+	oid.InstArztpraxis,
+	oid.InstZahnarztpraxis,
+	oid.InstPraxisPsychotherapeut,
+	oid.InstKrankenhaus,
+	oid.InstOeffentlicheApo,
+	oid.InstKrankenhausapotheke,
+	oid.InstBundeswehrapotheke,
 }
 
 // hbaQESRoleOIDs are the HBA profession OIDs Tab_PKI_402 accepts on a
@@ -92,12 +92,12 @@ var smcbInstitutionRoleOIDs = []asn1.ObjectIdentifier{
 // enforces it directly, but a future QES validator can layer on top of the
 // type baseline without re-declaring this list.
 var hbaQESRoleOIDs = []asn1.ObjectIdentifier{
-	OIDProfArzt,
-	OIDProfZahnarzt,
-	OIDProfApotheker,
-	OIDProfPsychotherapeut,
-	OIDProfPsPsychotherapeut,
-	OIDProfKuJPsychotherapeut,
+	oid.ProfArzt,
+	oid.ProfZahnarzt,
+	oid.ProfApotheker,
+	oid.ProfPsychotherapeut,
+	oid.ProfPsPsychotherapeut,
+	oid.ProfKuJPsychotherapeut,
 }
 
 // certTypeSpec is the per-type baseline lookup used by [CertificateType.Spec].
@@ -110,7 +110,7 @@ var certTypeSpec = map[CertificateType]CertTypeSpec{
 	CertTypeHciAUT: {
 		KeyUsage: x509.KeyUsageDigitalSignature,
 		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDCertTypeSmcBAUT},
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeSmcBAUT},
 		RoleOIDs: smcbInstitutionRoleOIDs,
 	},
 	CertTypeHciENC:  {},
@@ -118,7 +118,7 @@ var certTypeSpec = map[CertificateType]CertTypeSpec{
 
 	CertTypeHpQES: {
 		KeyUsage: x509.KeyUsageContentCommitment,
-		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDPolicyHbaCP, OIDCertTypeHbaQES},
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.PolicyHbaCP, oid.CertTypeHbaQES},
 		RoleOIDs: hbaQESRoleOIDs,
 	},
 	CertTypeHpAUT: {},
@@ -126,21 +126,21 @@ var certTypeSpec = map[CertificateType]CertTypeSpec{
 
 	CertTypeFdAUT: {
 		KeyUsage: x509.KeyUsageDigitalSignature,
-		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDCertTypeFdAUT},
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdAUT},
 	},
 	CertTypeFdSIG: {
 		KeyUsage: x509.KeyUsageDigitalSignature,
-		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDCertTypeFdSIG},
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdSIG},
 	},
 	CertTypeFdTLSS: {
 		KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageKeyAgreement,
 		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDCertTypeFdTLSS},
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdTLSS},
 	},
 	CertTypeFdTLSC: {
 		KeyUsage: x509.KeyUsageDigitalSignature,
 		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDCertTypeFdTLSC},
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdTLSC},
 	},
 	CertTypeFdENC:  {},
 	CertTypeFdOSIG: {},
@@ -148,7 +148,7 @@ var certTypeSpec = map[CertificateType]CertTypeSpec{
 	CertTypeZdTLSS: {
 		KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageKeyAgreement,
 		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		Policies: []asn1.ObjectIdentifier{OIDPolicyGemOrCP, OIDCertTypeZdTLSS},
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeZdTLSS},
 	},
 	CertTypeZdSIG: {},
 
@@ -169,335 +169,51 @@ var certTypeSpec = map[CertificateType]CertTypeSpec{
 // that has no populated baseline yet.
 func (t CertificateType) Spec() CertTypeSpec { return certTypeSpec[t] }
 
-// certTypeByOID is the Tab_PKI_405 OID → name lookup used by the phase-1
-// CertificatePolicies scan. Keyed by OID `.String()` for cheap lookup.
-var certTypeByOID = map[string]CertificateType{
-	OIDCertTypeEgkQES.String():  CertTypeChQES,
-	OIDCertTypeEgkSIG.String():  CertTypeChSIG,
-	OIDCertTypeEgkENC.String():  CertTypeChENC,
-	OIDCertTypeEgkENCV.String(): CertTypeChENCV,
-	OIDCertTypeEgkAUT.String():  CertTypeChAUT,
-	OIDCertTypeEgkAUTN.String(): CertTypeChAUTN,
-
-	OIDCertTypeHbaQES.String(): CertTypeHpQES,
-	OIDCertTypeHbaAUT.String(): CertTypeHpAUT,
-	OIDCertTypeHbaENC.String(): CertTypeHpENC,
-
-	OIDCertTypeSmcBAUT.String():  CertTypeHciAUT,
-	OIDCertTypeSmcBENC.String():  CertTypeHciENC,
-	OIDCertTypeSmcBOSIG.String(): CertTypeHciOSIG,
-
-	OIDCertTypeFdTLSS.String(): CertTypeFdTLSS,
-	OIDCertTypeFdTLSC.String(): CertTypeFdTLSC,
-	OIDCertTypeFdSIG.String():  CertTypeFdSIG,
-	OIDCertTypeFdENC.String():  CertTypeFdENC,
-	OIDCertTypeFdAUT.String():  CertTypeFdAUT,
-	OIDCertTypeFdOSIG.String(): CertTypeFdOSIG,
-
-	OIDCertTypeZdTLSS.String(): CertTypeZdTLSS,
-	OIDCertTypeZdSIG.String():  CertTypeZdSIG,
-
-	OIDCertTypeHskSIG.String(): CertTypeHskSIG,
-	OIDCertTypeHskENC.String(): CertTypeHskENC,
-	OIDCertTypeGemVER.String(): CertTypeGemVER,
+// certTypePairs is the Tab_PKI_405 type ↔ OID table; both lookup maps
+// derive from it so they cannot disagree.
+var certTypePairs = []struct {
+	t   CertificateType
+	oid asn1.ObjectIdentifier
+}{
+	{CertTypeChQES, oid.CertTypeEgkQES},
+	{CertTypeChSIG, oid.CertTypeEgkSIG},
+	{CertTypeChENC, oid.CertTypeEgkENC},
+	{CertTypeChENCV, oid.CertTypeEgkENCV},
+	{CertTypeChAUT, oid.CertTypeEgkAUT},
+	{CertTypeChAUTN, oid.CertTypeEgkAUTN},
+	{CertTypeHpQES, oid.CertTypeHbaQES},
+	{CertTypeHpAUT, oid.CertTypeHbaAUT},
+	{CertTypeHpENC, oid.CertTypeHbaENC},
+	{CertTypeHciAUT, oid.CertTypeSmcBAUT},
+	{CertTypeHciENC, oid.CertTypeSmcBENC},
+	{CertTypeHciOSIG, oid.CertTypeSmcBOSIG},
+	{CertTypeFdTLSS, oid.CertTypeFdTLSS},
+	{CertTypeFdTLSC, oid.CertTypeFdTLSC},
+	{CertTypeFdSIG, oid.CertTypeFdSIG},
+	{CertTypeFdENC, oid.CertTypeFdENC},
+	{CertTypeFdAUT, oid.CertTypeFdAUT},
+	{CertTypeFdOSIG, oid.CertTypeFdOSIG},
+	{CertTypeZdTLSS, oid.CertTypeZdTLSS},
+	{CertTypeZdSIG, oid.CertTypeZdSIG},
+	{CertTypeHskSIG, oid.CertTypeHskSIG},
+	{CertTypeHskENC, oid.CertTypeHskENC},
+	{CertTypeGemVER, oid.CertTypeGemVER},
 }
 
-// certTypeOID is the reverse map: name → Tab_PKI_405 OID. Populated by an
-// inversion loop in the file-local init (no global init() function — see
-// the var-init below).
-var certTypeOID = func() map[CertificateType]asn1.ObjectIdentifier {
-	type pair struct {
-		oid asn1.ObjectIdentifier
-		t   CertificateType
+var (
+	certTypeByOID = map[string]CertificateType{}
+	certTypeOID   = map[CertificateType]asn1.ObjectIdentifier{}
+)
+
+func init() {
+	for _, p := range certTypePairs {
+		certTypeByOID[p.oid.String()] = p.t
+		certTypeOID[p.t] = p.oid
 	}
-	pairs := []pair{
-		{OIDCertTypeEgkQES, CertTypeChQES},
-		{OIDCertTypeEgkSIG, CertTypeChSIG},
-		{OIDCertTypeEgkENC, CertTypeChENC},
-		{OIDCertTypeEgkENCV, CertTypeChENCV},
-		{OIDCertTypeEgkAUT, CertTypeChAUT},
-		{OIDCertTypeEgkAUTN, CertTypeChAUTN},
-		{OIDCertTypeHbaQES, CertTypeHpQES},
-		{OIDCertTypeHbaAUT, CertTypeHpAUT},
-		{OIDCertTypeHbaENC, CertTypeHpENC},
-		{OIDCertTypeSmcBAUT, CertTypeHciAUT},
-		{OIDCertTypeSmcBENC, CertTypeHciENC},
-		{OIDCertTypeSmcBOSIG, CertTypeHciOSIG},
-		{OIDCertTypeFdTLSS, CertTypeFdTLSS},
-		{OIDCertTypeFdTLSC, CertTypeFdTLSC},
-		{OIDCertTypeFdSIG, CertTypeFdSIG},
-		{OIDCertTypeFdENC, CertTypeFdENC},
-		{OIDCertTypeFdAUT, CertTypeFdAUT},
-		{OIDCertTypeFdOSIG, CertTypeFdOSIG},
-		{OIDCertTypeZdTLSS, CertTypeZdTLSS},
-		{OIDCertTypeZdSIG, CertTypeZdSIG},
-		{OIDCertTypeHskSIG, CertTypeHskSIG},
-		{OIDCertTypeHskENC, CertTypeHskENC},
-		{OIDCertTypeGemVER, CertTypeGemVER},
-	}
-	m := make(map[CertificateType]asn1.ObjectIdentifier, len(pairs))
-	for _, p := range pairs {
-		m[p.t] = p.oid
-	}
-	return m
-}()
+}
 
 // OID returns the Tab_PKI_405 object identifier for this type. Returns an
 // empty OID for [CertTypeUnknown] or any type not registered in the map.
 func (t CertificateType) OID() asn1.ObjectIdentifier {
 	return certTypeOID[t]
-}
-
-// DefaultProfile returns the profile that auto-mode should pick for this
-// type, or nil if no profile in [ProfileRegistry] lists t in its
-// `DefaultFor`. A nil result means one of:
-//   - no profile accepts this type at all → callers should warn
-//     [WarnProfileNotDetected];
-//   - multiple profiles accept this type but none claims default ownership
-//     → callers should warn [WarnProfileAmbiguous] and ask the user to
-//     pick via [ProfilesForType].
-//
-// Callers can distinguish the two with `len(ProfilesForType(t))`.
-func (t CertificateType) DefaultProfile() *Profile {
-	// Sorted rather than map order: [ValidateProfileRegistry] forbids two
-	// profiles claiming one type, but if one ever slips through, answering
-	// the same way every run beats a result that changes between processes.
-	for _, name := range ProfileNames() {
-		if p := ProfileRegistry[name]; slices.Contains(p.DefaultFor, t) {
-			return p
-		}
-	}
-	return nil
-}
-
-// IsKnownCertificateType reports whether t is one of the Tab_PKI_405 types
-// this package models. [CertTypeUnknown] is not.
-func IsKnownCertificateType(t CertificateType) bool {
-	_, ok := certTypeOID[t]
-	return ok
-}
-
-// ProfilesForType returns every profile in [ProfileRegistry] whose
-// `AcceptsTypes` includes t. The result is sorted by profile name so the
-// output is deterministic for `pki profiles --for <type>` and similar
-// introspection paths. Returns nil if no profile accepts the type.
-//
-// This is the 1:N entry point: a single cert type may legitimately be
-// validated under multiple named profiles (e.g. `C.FD.AUT` is accepted
-// by both `epavau` and `idp`).
-func ProfilesForType(t CertificateType) []*Profile {
-	var out []*Profile
-	seen := map[*Profile]struct{}{}
-	for _, p := range ProfileRegistry {
-		if _, ok := seen[p]; ok {
-			// Registry aliases (e.g. "idp" pointing at the same profile
-			// twice) — skip duplicates.
-			continue
-		}
-		if slices.Contains(p.AcceptsTypes, t) {
-			out = append(out, p)
-			seen[p] = struct{}{}
-		}
-	}
-	sortProfilesByName(out)
-	return out
-}
-
-// DetectCertificateType classifies cert as one of the gemSpec_PKI
-// Tab_PKI_405 certificate types, returning [CertTypeUnknown] if the cert
-// carries no recognisable marker.
-//
-// Detection runs in two phases:
-//
-//  1. Scan cert.PolicyIdentifiers for a Tab_PKI_405 OID. This is the
-//     spec-defined location (the umbrella policy plus the type OID are
-//     both asserted in CertificatePolicies) and covers virtually every
-//     TI cert in the wild.
-//
-//  2. Fall back to the Admission extension + KeyUsage/EKU. For older
-//     fixtures or non-conforming issuers that elide the type OID from
-//     policies, profession/institution OIDs combined with KeyUsage bits
-//     give us a best-effort label:
-//
-//     - HBA (profession OID present)  + contentCommitment → C.HP.QES
-//     - HBA + digitalSignature        + clientAuth        → C.HP.AUT
-//     - HBA + keyEncipherment/keyAgreement                → C.HP.ENC
-//     - SMC-B (institution OID present) + contentCommitment → C.HCI.OSIG
-//     - SMC-B + digitalSignature + clientAuth               → C.HCI.AUT
-//     - SMC-B + keyEncipherment/keyAgreement                → C.HCI.ENC
-//     - eGK (Versicherter OID present) + contentCommitment  → C.CH.QES
-//     - eGK + digitalSignature                              → C.CH.AUT
-//     - eGK + keyEncipherment                               → C.CH.ENC
-//
-// Phase 2 is best-effort; when in doubt it returns [CertTypeUnknown]
-// rather than guessing.
-func DetectCertificateType(cert *x509.Certificate) CertificateType {
-	if cert == nil {
-		return CertTypeUnknown
-	}
-	for _, oid := range cert.PolicyIdentifiers {
-		if t, ok := certTypeByOID[oid.String()]; ok {
-			return t
-		}
-	}
-	return inferFromAdmission(cert)
-}
-
-// inferFromAdmission is the Phase-2 backstop. Public surfaces should call
-// [DetectCertificateType] which guarantees the Phase-1 scan ran first.
-func inferFromAdmission(cert *x509.Certificate) CertificateType {
-	adm, err := ParseAdmissionStatement(cert)
-	if err != nil || adm == nil {
-		return CertTypeUnknown
-	}
-	family := classifyAdmissionFamily(adm.ProfessionOids)
-	if family == admUnknown {
-		return CertTypeUnknown
-	}
-	usage := classifyKeyUsage(cert)
-	switch family {
-	case admHBA:
-		switch usage {
-		case usageQES:
-			return CertTypeHpQES
-		case usageAUT:
-			return CertTypeHpAUT
-		case usageENC:
-			return CertTypeHpENC
-		}
-	case admSMCB:
-		switch usage {
-		case usageQES:
-			return CertTypeHciOSIG
-		case usageAUT:
-			return CertTypeHciAUT
-		case usageENC:
-			return CertTypeHciENC
-		}
-	case admEgk:
-		switch usage {
-		case usageQES:
-			return CertTypeChQES
-		case usageAUT:
-			return CertTypeChAUT
-		case usageENC:
-			return CertTypeChENC
-		}
-	}
-	return CertTypeUnknown
-}
-
-type admFamily int
-
-const (
-	admUnknown admFamily = iota
-	admHBA
-	admSMCB
-	admEgk
-)
-
-// classifyAdmissionFamily looks at the role-OID arc to decide whether
-// the Admission belongs to an HBA (Heilberufsausweis profession OIDs),
-// SMC-B (institution OIDs), or eGK (Versicherter OID).
-//
-// Per gemSpec_OID Tab_PKI_402 / Tab_PKI_403:
-//   - 1.2.276.0.76.4.30..48, 178, 232..324 are profession OIDs (HBA)
-//   - 1.2.276.0.76.4.49 is OIDProfVersicherter (eGK card holder)
-//   - 1.2.276.0.76.4.50..59, 187, 190, 210, 223..231, 242..318+ are
-//     institution OIDs (SMC-B); checked via a membership set built from
-//     the OIDInst* constants in oids.go.
-func classifyAdmissionFamily(professionOids []string) admFamily {
-	for _, s := range professionOids {
-		if s == OIDProfVersicherter.String() {
-			return admEgk
-		}
-		if _, ok := smcbInstitutionSet[s]; ok {
-			return admSMCB
-		}
-		if _, ok := hbaProfessionSet[s]; ok {
-			return admHBA
-		}
-	}
-	return admUnknown
-}
-
-// smcbInstitutionSet is the membership set of institution-role OIDs that
-// identify an SMC-B's Admission. Derived from the OIDInst* constants in
-// oids.go (Tab_PKI_403). Updated in lock-step with that file.
-var smcbInstitutionSet = oidSet(
-	OIDInstArztpraxis, OIDInstZahnarztpraxis, OIDInstPraxisPsychotherapeut,
-	OIDInstKrankenhaus, OIDInstOeffentlicheApo, OIDInstKrankenhausapotheke,
-	OIDInstBundeswehrapotheke, OIDInstMobileEinrichtungRettung,
-	OIDInstGematik, OIDInstKostentraeger, OIDInstLeoZahnaerzte,
-	OIDInstAdvKtr, OIDInstLeoKassenaerztlicheVerein, OIDInstGKVSpitzenverband,
-	OIDInstLeoApothekerverband, OIDInstLeoDAV, OIDInstLeoKrankenhausverband,
-	OIDInstLeoDKTIG, OIDInstLeoDKG, OIDInstLeoBAEK,
-	OIDInstLeoAerztekammer, OIDInstLeoZahnaerztekammer, OIDInstLeoKBV,
-	OIDInstLeoBZAEK, OIDInstLeoKZBV, OIDInstPflege, OIDInstGeburtshilfe,
-	OIDInstPraxisPhysiotherapeut, OIDInstAugenoptiker, OIDInstHoerakustiker,
-	OIDInstOrthopaedieschuhmacher, OIDInstOrthopaedietechniker, OIDInstZahntechniker,
-	OIDInstRettungsleitstelle, OIDInstSanitaetsdienstBW, OIDInstOEGD,
-	OIDInstArbeitsmedizin, OIDInstVorsorgeReha, OIDInstPflegeberatung,
-	OIDInstLeoPsychotherapeuten, OIDInstLeoBPtK, OIDInstLeoLAK,
-	OIDInstLeoBAK, OIDInstLeoEGBR, OIDInstLeoHandwerkskammer,
-	OIDInstGesundheitsdatenregister, OIDInstAbrechnungsdienstleister,
-	OIDInstPKVVerband, OIDInstPraxisErgotherapeut, OIDInstPraxisLogopaede,
-	OIDInstHimi, OIDInstFriseur, OIDInstSoziother,
-)
-
-// hbaProfessionSet is the membership set of HBA profession-role OIDs.
-// Derived from the OIDProf* constants in oids.go (Tab_PKI_402). Excludes
-// OIDProfVersicherter which is the eGK marker.
-var hbaProfessionSet = oidSet(
-	OIDProfArzt, OIDProfZahnarzt, OIDProfApotheker, OIDProfApothekerassistent,
-	OIDProfPharmazieingenieur, OIDProfPharmTechnAssistent,
-	OIDProfPharmKaufmAngestellter, OIDProfApothekenhelfer,
-	OIDProfApothekenassistent, OIDProfPharmAssistent,
-	OIDProfApothekenfacharbeiter, OIDProfPharmaziepraktikant, OIDProfFamulant,
-	OIDProfPTAPraktikant, OIDProfPKAAuszubildender, OIDProfPsychotherapeut,
-	OIDProfPsPsychotherapeut, OIDProfKuJPsychotherapeut, OIDProfRettungsassistent,
-	OIDProfNotfallsanitaeter, OIDProfPflegerHPC, OIDProfAltenpflegerHPC,
-	OIDProfPflegefachkraftHPC, OIDProfHebammeHPC, OIDProfPhysiotherapeutHPC,
-	OIDProfAugenoptikerHPC, OIDProfHoerakustikerHPC,
-	OIDProfOrthopaedieschuhmacherHPC, OIDProfOrthopaedietechnikerHPC,
-	OIDProfZahntechnikerHPC, OIDProfErgotherapeutHPC, OIDProfLogopaedeHPC,
-	OIDProfPodologeHPC, OIDProfErnaehrungstherapeutHPC, OIDProfOrthopaedHPC,
-	OIDProfOptoAudioHPC, OIDProfHimiHPC, OIDProfFriseurHPC,
-	OIDProfMasseurMBMHPC, OIDProfSoziotherapeut, OIDProfSSSSTherapeut,
-	OIDProfDiaetassistent,
-)
-
-func oidSet(oids ...asn1.ObjectIdentifier) map[string]struct{} {
-	m := make(map[string]struct{}, len(oids))
-	for _, o := range oids {
-		m[o.String()] = struct{}{}
-	}
-	return m
-}
-
-// keyUsageClass collapses the cert's KeyUsage into the three meaningful
-// buckets for cert-type inference. The order of the checks matters:
-// contentCommitment (QES/OSIG) dominates over digitalSignature alone
-// (AUT), which dominates over keyEncipherment/keyAgreement (ENC).
-type keyUsageClass int
-
-const (
-	usageOther keyUsageClass = iota
-	usageQES
-	usageAUT
-	usageENC
-)
-
-func classifyKeyUsage(cert *x509.Certificate) keyUsageClass {
-	ku := cert.KeyUsage
-	if ku&x509.KeyUsageContentCommitment != 0 {
-		return usageQES
-	}
-	if ku&x509.KeyUsageDigitalSignature != 0 {
-		return usageAUT
-	}
-	if ku&(x509.KeyUsageKeyEncipherment|x509.KeyUsageKeyAgreement) != 0 {
-		return usageENC
-	}
-	return usageOther
 }

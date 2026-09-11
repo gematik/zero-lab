@@ -3,26 +3,28 @@ package gempki
 import (
 	"crypto/x509"
 	"encoding/asn1"
+	"errors"
 	"fmt"
+	"github.com/gematik/zero-lab/go/gempki/oid"
 )
 
 /*
-AdmissionSyntax ::= SEQUENCE
+admissionSyntax ::= SEQUENCE
 
 	{
 	  admissionAuthority GeneralName OPTIONAL,
-	  contentsOfAdmissions SEQUENCE OF Admissions
+	  contentsOfAdmissions SEQUENCE OF admissions
 	}
 
-Admissions ::= SEQUENCE
+admissions ::= SEQUENCE
 
 	{
 	  admissionAuthority [0] EXPLICIT GeneralName OPTIONAL
-	  namingAuthority [1] EXPLICIT NamingAuthority OPTIONAL
-	  professionInfos SEQUENCE OF ProfessionInfo
+	  namingAuthority [1] EXPLICIT namingAuthority OPTIONAL
+	  professionInfos SEQUENCE OF professionInfo
 	}
 
-NamingAuthority ::= SEQUENCE
+namingAuthority ::= SEQUENCE
 
 	{
 	  namingAuthorityId OBJECT IDENTIFIER OPTIONAL,
@@ -30,10 +32,10 @@ NamingAuthority ::= SEQUENCE
 	  namingAuthorityText DirectoryString(SIZE(1..128)) OPTIONAL
 	}
 
-ProfessionInfo ::= SEQUENCE
+professionInfo ::= SEQUENCE
 
 	{
-	  namingAuthority [0] EXPLICIT NamingAuthority OPTIONAL,
+	  namingAuthority [0] EXPLICIT namingAuthority OPTIONAL,
 	  professionItems SEQUENCE OF DirectoryString (SIZE(1..128)),
 	  professionOIDs SEQUENCE OF OBJECT IDENTIFIER OPTIONAL,
 	  registrationNumber PrintableString(SIZE(1..128)) OPTIONAL,
@@ -46,34 +48,40 @@ type AdmissionStatement struct {
 	RegistrationNumber string   `json:"registrationNumber"`
 }
 
-type AdmissionSyntax struct {
+type admissionSyntax struct {
 	AdmissionAuthorityRaw *asn1.RawValue
-	ContentsOfAdmissions  []Admissions
+	ContentsOfAdmissions  []admissions
 }
 
-type Admissions struct {
+type admissions struct {
 	AdmissionAuthority asn1.RawValue    `asn1:"tag:0,optional"`
-	NamingAuthority    NamingAuthority  `asn1:"tag:1,optional"`
-	ProfessionInfos    []ProfessionInfo `asn1:"sequence"`
+	NamingAuthority    namingAuthority  `asn1:"tag:1,optional"`
+	ProfessionInfos    []professionInfo `asn1:"sequence"`
 }
-type NamingAuthority struct {
+type namingAuthority struct {
 	NamingAuthorityId   asn1.ObjectIdentifier `asn1:"optional"`
 	NamingAuthorityUrl  string                `asn1:"ia5,optional"`
 	NamingAuthorityText string                `asn1:"utf8,optional"`
 }
-type ProfessionInfo struct {
-	NamingAuthority    *NamingAuthority        `asn1:"tag:0,optional,explicit"`
+type professionInfo struct {
+	NamingAuthority    *namingAuthority        `asn1:"tag:0,optional,explicit"`
 	ProfessionItems    []string                `asn1:"directory,sequence"`
 	ProfessionOids     []asn1.ObjectIdentifier `asn1:"optional,sequence"`
 	RegistrationNumber string                  `asn1:"printable,optional"`
 	AddProfessionInfo  []byte                  `asn1:"optional"`
 }
 
-var OIDAdmissionStatement = "1.3.36.8.3.3"
+// ErrNoAdmissionStatement is returned by [ParseAdmissionStatement] when the
+// certificate carries no admission extension at all — as opposed to one that
+// could not be decoded. Callers that treat "no roles asserted" as an
+// ordinary outcome match it with errors.Is.
+var ErrNoAdmissionStatement = errors.New("gempki: certificate has no admission statement extension")
 
+// ParseAdmissionStatement decodes the gematik admission extension
+// (1.3.36.8.3.3) carrying the profession items, OIDs and registration number.
 func ParseAdmissionStatement(cert *x509.Certificate) (*AdmissionStatement, error) {
 	for _, ext := range cert.Extensions {
-		if ext.Id.String() == OIDAdmissionStatement {
+		if ext.Id.Equal(oid.AdmissionExtension) {
 			as, err := parseAdmissionSyntax(ext.Value)
 			if err != nil {
 				return nil, err
@@ -81,8 +89,7 @@ func ParseAdmissionStatement(cert *x509.Certificate) (*AdmissionStatement, error
 			return convertAdmissionSyntax(as)
 		}
 	}
-
-	return nil, fmt.Errorf("admission statement extension not found")
+	return nil, ErrNoAdmissionStatement
 }
 
 func readSeq(b []byte) ([]asn1.RawValue, error) {
@@ -100,8 +107,8 @@ func readSeq(b []byte) ([]asn1.RawValue, error) {
 	return elems, nil
 }
 
-func parseAdmissionSyntax(asn1data []byte) (*AdmissionSyntax, error) {
-	admission := new(AdmissionSyntax)
+func parseAdmissionSyntax(asn1data []byte) (*admissionSyntax, error) {
+	admission := new(admissionSyntax)
 
 	raw := new(asn1.RawValue)
 
@@ -133,7 +140,7 @@ func parseAdmissionSyntax(asn1data []byte) (*AdmissionSyntax, error) {
 	return admission, nil
 }
 
-func convertAdmissionSyntax(as *AdmissionSyntax) (*AdmissionStatement, error) {
+func convertAdmissionSyntax(as *admissionSyntax) (*AdmissionStatement, error) {
 	if len(as.ContentsOfAdmissions) == 0 {
 		return nil, fmt.Errorf("no contents of admissions found")
 	}

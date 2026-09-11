@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -16,34 +17,15 @@ import (
 	"golang.org/x/crypto/ocsp"
 )
 
-// OCSPNoncePolicy is reserved for Phase 4 nonce enforcement.
-type OCSPNoncePolicy int
-
-const (
-	// OCSPNoncePreferred sends a nonce but accepts responses without one.
-	OCSPNoncePreferred OCSPNoncePolicy = iota
-
-	// OCSPNonceRequired rejects responses that don't echo our nonce. Not
-	// implemented yet — the request-side x/crypto/ocsp lacks nonce-extension
-	// support, so this is a TODO.
-	OCSPNonceRequired
-
-	// OCSPNonceDisabled omits the nonce extension entirely.
-	OCSPNonceDisabled
-)
-
-// OCSPChecker queries an OCSP responder for cert revocation status.
+// OCSPChecker queries an OCSP responder for a certificate's revocation
+// status. It is the one [RevocationChecker].
 //
-// Per the [feedback-https-client-and-airgap] project rule, OCSPChecker
-// always takes a caller-supplied [*http.Client] and propagates
-// [context.Context] from Check through to the HTTP layer — production
-// callers can wire timeouts, proxies, TLS pinning, and tracing via the
-// client. A nil HTTPClient falls back to a bounded default client for tests; do
-// not rely on the fallback in production.
+// The caller supplies the [*http.Client]; timeouts, proxies, TLS pinning and
+// tracing all live there, and Check threads its context through to it.
 //
 // OCSPChecker is safe for concurrent use.
 type OCSPChecker struct {
-	// HTTPClient executes the OCSP POST. Required in production; nil → DefaultClient.
+	// HTTPClient executes the OCSP POST. Required.
 	HTTPClient *http.Client
 
 	// ResponderURL overrides the AIA (Authority Information Access) URL
@@ -51,15 +33,14 @@ type OCSPChecker struct {
 	// public OCSP endpoint isn't reachable.
 	ResponderURL string
 
-	// MaxResponseAge rejects responses whose ProducedAt is older than now-MaxResponseAge.
-	// Zero disables the check.
+	// MaxResponseAge rejects responses whose ProducedAt is older than
+	// now-MaxResponseAge, reporting them as Unknown. Zero means
+	// [DefaultMaxResponseAge].
 	MaxResponseAge time.Duration
 
-	// Clock overrides time.Now for response-age comparisons. Nil → time.Now.
+	// Clock is "now" for the age check and the CheckedAt stamps. Nil means
+	// time.Now.
 	Clock func() time.Time
-
-	// NoncePolicy is recorded for forward compatibility; see [OCSPNoncePolicy].
-	NoncePolicy OCSPNoncePolicy
 
 	// TSLResponders are the OCSP responder certificates the TSL lists
 	// (see [OCSPRespondersFromTSL]). Per gemSpec_PKI the TSL is the
@@ -79,11 +60,16 @@ type OCSPChecker struct {
 	Roots         *TrustStore
 }
 
-// Check implements [RevocationChecker]. It returns Status=Unknown with the
-// failure reason filled in when the responder is unreachable, the response
-// is invalid, or the response is older than MaxResponseAge. Network errors
-// are returned as the second value so [EvaluateChain] can decide whether to
-// fall back to another checker.
+// DefaultMaxResponseAge is how old an OCSP response may be before Check
+// reports it as Unknown rather than trusting it.
+const DefaultMaxResponseAge = 48 * time.Hour
+
+// Check implements [RevocationChecker]; see the interface for the contract.
+// A missing or malformed responder URL and a stale response are reported as
+// Status=Unknown, because no other source could answer for such a
+// certificate either. Transport failures, undecodable bytes, an
+// unauthorized responder and a bad signature are returned as
+// [*ValidationError]s with the code that names them.
 //
 // Brainpool note: x/crypto/ocsp dispatches signature verification through
 // the standard library's ECDSA path, which is curve-agnostic — a Brainpool
@@ -97,27 +83,27 @@ func (c *OCSPChecker) Check(ctx context.Context, cert, issuer *x509.Certificate)
 	if cert == nil || issuer == nil {
 		return nil, fmt.Errorf("gempki: OCSPChecker.Check requires non-nil cert and issuer")
 	}
+	if c.HTTPClient == nil {
+		return nil, fmt.Errorf("gempki: OCSPChecker requires an HTTPClient")
+	}
+	now := time.Now
+	if c.Clock != nil {
+		now = c.Clock
+	}
+	maxAge := c.MaxResponseAge
+	if maxAge <= 0 {
+		maxAge = DefaultMaxResponseAge
+	}
 
 	responderURL := c.ResponderURL
 	if responderURL == "" {
 		responderURL = pickOCSPURL(cert)
 	}
 	if responderURL == "" {
-		return unknownResult("no OCSP responder URL (AIA missing and no override)"), nil
+		return unknownResult(now(), "no OCSP responder URL (AIA missing and no override)"), nil
 	}
 	if _, err := url.Parse(responderURL); err != nil {
-		// A malformed URL is a permanent failure for this cert (not a transient
-		// network problem), so we report it as Status=Unknown — the caller's
-		// RevocationMode decides whether that's fatal. Returning a non-nil err
-		// here would make a Composite checker fall through to the next source,
-		// which is the wrong semantics: nobody else can answer for a cert with
-		// an invalid AIA either.
-		return unknownResult("invalid OCSP responder URL: " + err.Error()), nil //nolint:nilerr // see above
-	}
-
-	now := time.Now
-	if c.Clock != nil {
-		now = c.Clock
+		return unknownResult(now(), "invalid OCSP responder URL: "+err.Error()), nil //nolint:nilerr // reported as Unknown by design
 	}
 
 	req, err := ocsp.CreateRequest(cert, issuer, nil)
@@ -127,31 +113,41 @@ func (c *OCSPChecker) Check(ctx context.Context, cert, issuer *x509.Certificate)
 
 	respBody, err := c.post(ctx, responderURL, req)
 	if err != nil {
-		// Network-level errors propagate so a Composite can fall through.
-		return nil, fmt.Errorf("gempki: OCSP POST to %s: %w", responderURL, err)
+		return nil, &ValidationError{
+			Code:    ErrCodeOCSPUnavailable,
+			Subject: cert.Subject.CommonName,
+			Message: "OCSP responder " + responderURL + " unreachable",
+			Cause:   err,
+		}
 	}
 
 	parsed, err := parseOCSPResponse(respBody, issuer, c.TSLResponders, c.Intermediates, c.Roots)
 	if err != nil {
-		slog.Debug("gempki: OCSP parse failed",
+		slog.Debug("gempki: OCSP response rejected",
 			"subject", cert.Subject.CommonName,
 			"responder_url", responderURL,
 			"err", err)
-		// Malformed response from the responder is Status=Unknown rather than
-		// a checker error — see the URL-parse path above for the rationale.
-		return unknownResult("parse OCSP response: " + err.Error()), nil //nolint:nilerr // see above
+		var ve *ValidationError
+		if errors.As(err, &ve) {
+			ve.Subject = cert.Subject.CommonName
+			return nil, ve
+		}
+		return nil, &ValidationError{
+			Code:    ErrCodeOCSPUnavailable,
+			Subject: cert.Subject.CommonName,
+			Message: "OCSP response from " + responderURL + " could not be decoded",
+			Cause:   err,
+		}
 	}
 
-	if c.MaxResponseAge > 0 {
-		if age := now().Sub(parsed.ProducedAt); age > c.MaxResponseAge {
-			slog.Debug("gempki: OCSP response too old",
-				"subject", cert.Subject.CommonName,
-				"responder_url", responderURL,
-				"age", age.Truncate(time.Second),
-				"max_response_age", c.MaxResponseAge)
-			return unknownResult(fmt.Sprintf("OCSP response age %s exceeds MaxResponseAge %s",
-				age.Truncate(time.Second), c.MaxResponseAge)), nil
-		}
+	if age := now().Sub(parsed.ProducedAt); age > maxAge {
+		slog.Debug("gempki: OCSP response too old",
+			"subject", cert.Subject.CommonName,
+			"responder_url", responderURL,
+			"age", age.Truncate(time.Second),
+			"max_response_age", maxAge)
+		return unknownResult(now(), fmt.Sprintf("OCSP response age %s exceeds MaxResponseAge %s",
+			age.Truncate(time.Second), maxAge)), nil
 	}
 
 	result := mapOCSPResponse(parsed, now())
@@ -181,17 +177,13 @@ func (c *OCSPChecker) Check(ctx context.Context, cert, issuer *x509.Certificate)
 // post sends body to url and returns the response body. Honours ctx + the
 // configured http.Client.
 func (c *OCSPChecker) post(ctx context.Context, urlStr string, body []byte) ([]byte, error) {
-	client := c.HTTPClient
-	if client == nil {
-		client = defaultHTTPClient
-	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, urlStr, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/ocsp-request")
 	req.Header.Set("Accept", "application/ocsp-response")
-	resp, err := client.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -229,6 +221,11 @@ func pickOCSPURL(cert *x509.Certificate) string {
 // Then verify the OCSP response signature with the responder's pubkey.
 // If there's no embedded cert, the responder is assumed to be issuer
 // itself and the response signature is verified directly under issuer.
+//
+// Authorization and signature failures come back as [*ValidationError]s
+// ([ErrCodeOCSPResponderUntrusted], [ErrCodeOCSPResponseInvalid]) so the
+// caller can tell "this response is not to be trusted" from "these bytes
+// are not an OCSP response", which is a plain error.
 func parseOCSPResponse(respBytes []byte, issuer *x509.Certificate, tslResponders []*x509.Certificate, extra []*x509.Certificate, roots *TrustStore) (*ocsp.Response, error) {
 	stripped, embeddedCerts, err := stripOCSPEmbeddedCerts(respBytes)
 	if err != nil {
@@ -252,16 +249,28 @@ func parseOCSPResponse(respBytes []byte, issuer *x509.Certificate, tslResponders
 		}
 		resp.Certificate = responder
 		if err := authorizeResponderCert(responder, issuer, tslResponders, extra, roots); err != nil {
-			return nil, fmt.Errorf("responder cert authorization failed: %w", err)
+			return nil, &ValidationError{
+				Code:    ErrCodeOCSPResponderUntrusted,
+				Message: "OCSP responder " + responder.Subject.CommonName + " is not authorized to answer",
+				Cause:   err,
+			}
 		}
 		if err := resp.CheckSignatureFrom(responder); err != nil {
-			return nil, fmt.Errorf("OCSP response signature verification failed under responder cert: %w", err)
+			return nil, &ValidationError{
+				Code:    ErrCodeOCSPResponseInvalid,
+				Message: "OCSP response signature does not verify under responder " + responder.Subject.CommonName,
+				Cause:   err,
+			}
 		}
 		return resp, nil
 	}
 	if issuer != nil {
 		if err := resp.CheckSignatureFrom(issuer); err != nil {
-			return nil, fmt.Errorf("OCSP response signature verification failed under issuer: %w", err)
+			return nil, &ValidationError{
+				Code:    ErrCodeOCSPResponseInvalid,
+				Message: "OCSP response signature does not verify under issuer " + issuer.Subject.CommonName,
+				Cause:   err,
+			}
 		}
 	}
 	return resp, nil
@@ -277,7 +286,7 @@ func authorizeResponderCert(responder, issuer *x509.Certificate, tslResponders [
 		}
 	}
 	if issuer != nil {
-		if err := VerifyCertificateSignature(responder, issuer); err == nil {
+		if err := verifyCertificateSignature(responder, issuer); err == nil {
 			return nil
 		}
 	}
@@ -295,7 +304,7 @@ func authorizeResponderCert(responder, issuer *x509.Certificate, tslResponders [
 	if issuer != nil {
 		pool = append(pool, issuer)
 	}
-	if _, err := BuildChain(responder, pool, roots, BuildChainOptions{}); err != nil {
+	if _, err := BuildChain(responder, pool, roots); err != nil {
 		return fmt.Errorf("build chain for responder %q: %w", responder.Subject.CommonName, err)
 	}
 	return nil
@@ -417,10 +426,7 @@ func stripOCSPEmbeddedCerts(respBytes []byte) (stripped []byte, embeddedCerts []
 
 // mapOCSPResponse converts an x/crypto/ocsp.Response into our RevocationResult.
 func mapOCSPResponse(resp *ocsp.Response, checkedAt time.Time) *RevocationResult {
-	r := &RevocationResult{
-		Source:    RevocationSourceOCSP,
-		CheckedAt: checkedAt,
-	}
+	r := &RevocationResult{CheckedAt: checkedAt}
 	switch resp.Status {
 	case ocsp.Good:
 		r.Status = RevocationStatusGood
@@ -435,14 +441,12 @@ func mapOCSPResponse(resp *ocsp.Response, checkedAt time.Time) *RevocationResult
 	return r
 }
 
-// unknownResult builds a Status=Unknown RevocationResult with a reason. Used
-// when we couldn't reach or parse a response — the caller decides how to
-// react via [RevocationMode].
-func unknownResult(reason string) *RevocationResult {
+// unknownResult is a Status=Unknown verdict for a certificate no responder
+// can be asked about; the caller's [RevocationMode] decides what that means.
+func unknownResult(now time.Time, reason string) *RevocationResult {
 	return &RevocationResult{
 		Status:    RevocationStatusUnknown,
-		Source:    RevocationSourceOCSP,
-		CheckedAt: time.Now(),
+		CheckedAt: now,
 		Reason:    reason,
 	}
 }

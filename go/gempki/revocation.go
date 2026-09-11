@@ -2,185 +2,127 @@ package gempki
 
 import (
 	"context"
-	"crypto/sha256"
 	"crypto/x509"
-	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 )
 
-// RevocationChecker is one source of revocation truth. Implementations live
-// elsewhere: [OCSPChecker] (online), [HashListChecker] (offline list),
-// [CompositeChecker] (fallback/agreement across sources).
+// RevocationChecker consults one source of revocation truth for cert, which
+// was issued by issuer. [OCSPChecker] is the implementation; the interface
+// exists so validator tests can substitute a stub.
 //
-// Check must be safe for concurrent use. The issuer is required so the
-// checker can compute the OCSP request's IssuerNameHash / IssuerKeyHash or
-// the hash-list key.
+// The contract separates two kinds of failure that a caller must never
+// confuse:
+//
+//   - (result, nil): the source answered. Status is Good, Revoked or Unknown
+//     — Unknown covering "the responder does not know", "no responder URL"
+//     and "the answer is too old to use".
+//   - (nil, err): the source could not be consulted, or its answer cannot be
+//     trusted. err is a [*ValidationError] whose Code says which:
+//     [ErrCodeOCSPUnavailable] for a transient failure (unreachable, HTTP
+//     error, undecodable bytes) and [ErrCodeOCSPResponderUntrusted] /
+//     [ErrCodeOCSPResponseInvalid] for a response that failed authorization
+//     or signature verification. Any other error is a programming error
+//     (nil issuer, malformed request) and is returned by [Validator.Validate]
+//     as its own error.
+//
+// Check must be safe for concurrent use.
 type RevocationChecker interface {
 	Check(ctx context.Context, cert, issuer *x509.Certificate) (*RevocationResult, error)
 }
 
-// RevocationMode controls how [EvaluateChain] reacts to non-Good outcomes.
+// RevocationMode decides how a non-Good revocation outcome affects the
+// verdict. Revoked is always an error and an untrusted response is always
+// an error; the mode only governs the transient cases.
 type RevocationMode int
 
 const (
-	// RevocationModeHardFail rejects on anything other than Status=Good.
-	// Unknown and check-errored cases become validation errors.
-	// This is the conservative default for QES / institutional validation.
+	// RevocationModeHardFail rejects on anything other than Status=Good. The
+	// zero value, so a Validator that forgets to configure revocation fails
+	// closed rather than open.
 	RevocationModeHardFail RevocationMode = iota
 
-	// RevocationModeSoftFail records Unknown / Errored as warnings and
-	// accepts the cert. Revoked is still a hard failure.
+	// RevocationModeSoftFail records Unknown and transient failures as
+	// warnings and accepts the certificate. Revoked, and any response that
+	// could not be trusted, are still errors.
 	RevocationModeSoftFail
-
-	// RevocationModeBestEffort runs checkers but never blocks on their
-	// outcome — except Revoked, which is always a hard failure.
-	RevocationModeBestEffort
 
 	// RevocationModeDisabled skips revocation checking entirely.
 	RevocationModeDisabled
 )
 
-// RevocationDecision is the per-cert verdict emitted by [ApplyMode].
-type RevocationDecision int
+// RevocationStatus is what a source said about one certificate.
+type RevocationStatus string
 
 const (
-	// RevocationDecisionAccept — caller may treat the cert as not revoked.
-	RevocationDecisionAccept RevocationDecision = iota
+	// RevocationStatusGood — the source explicitly says the certificate is valid.
+	RevocationStatusGood RevocationStatus = "good"
 
-	// RevocationDecisionReject — caller MUST reject the cert.
-	RevocationDecisionReject
+	// RevocationStatusRevoked — the source explicitly says the certificate is revoked.
+	RevocationStatusRevoked RevocationStatus = "revoked"
+
+	// RevocationStatusUnknown — the source has no usable information about
+	// this certificate.
+	RevocationStatusUnknown RevocationStatus = "unknown"
 )
 
-// RevocationPolicy bundles everything [EvaluateChain] needs.
-//
-// Checkers run in the order given. A non-nil Cache is consulted before any
-// checker runs and updated with checker results (with TTL derived from the
-// result's NextUpdate when available, else CacheDefaultTTL). CheckSubCAs=true
-// runs revocation against every cert in the chain except the trust anchor;
-// false (default) only checks the end-entity.
-type RevocationPolicy struct {
-	Mode            RevocationMode
-	Checkers        []RevocationChecker
-	Cache           RevocationCache
-	CheckSubCAs     bool
-	CacheDefaultTTL time.Duration
+// RevocationResult is the revocation outcome for one certificate.
+type RevocationResult struct {
+	Status    RevocationStatus
+	CheckedAt time.Time
+	RevokedAt time.Time // zero unless Status == Revoked
+	Reason    string    // human-readable
+
+	// OCSP detail, populated when a response decoded successfully — for
+	// display and diagnostics.
+	ResponderURL  string            // the OCSP endpoint we queried
+	ProducedAt    time.Time         // BasicOCSPResponse.tbsResponseData.producedAt
+	ThisUpdate    time.Time         // SingleResponse.thisUpdate
+	NextUpdate    time.Time         // SingleResponse.nextUpdate (zero if absent)
+	Responder     *x509.Certificate // embedded responder cert, nil if responder == issuer
+	ResponderName string            // CommonName of the signer (Responder or issuer)
+	RawResponse   []byte            // raw DER bytes of the OCSP response, kept for forensic dumps
 }
 
-// RevocationOutcome is what [EvaluateChain] returns.
+// applyRevocation maps one checker outcome onto the result vocabulary. It
+// is the single place the mode is interpreted:
 //
-// PerCert is parallel to the input chain — PerCert[i] is the verdict for
-// chain[i] (or nil if that cert was skipped, e.g. the trust anchor or a SubCA
-// when CheckSubCAs=false). Errors / Warnings already reflect Mode; callers
-// fold them directly into the surrounding [ValidationResult].
-type RevocationOutcome struct {
-	PerCert  []*RevocationResult
-	Errors   []*ValidationError
-	Warnings []*ValidationWarning
-}
-
-// EvaluateChain runs the revocation policy against chain. chain is ordered
-// [EE, SubCA…, Root] (as produced by [BuildChain]).
+//	outcome                          HardFail  SoftFail
+//	Good                             —         —
+//	Revoked                          error     error
+//	Unknown / unavailable            error     warning
+//	responder untrusted / invalid    error     error
 //
-// Behaviour:
-//   - Mode == Disabled: returns an empty outcome immediately.
-//   - The trust anchor (last element) is never checked — TI roots have no
-//     issuer to query.
-//   - SubCAs are checked iff policy.CheckSubCAs.
-//   - The cache is keyed by issuer-DN + serial. Hits skip the checker call.
-//   - Checkers run in policy.Checkers order; the first one to return a
-//     non-error result terminates the loop. To combine sources, wrap them in
-//     a [CompositeChecker] and pass that as the single checker.
-//
-// EvaluateChain never returns ctx.Err() as the outer error — context
-// cancellation is recorded as a ValidationError under the affected cert.
-func EvaluateChain(ctx context.Context, chain []*x509.Certificate, policy RevocationPolicy) (*RevocationOutcome, error) {
-	if ctx == nil {
-		return nil, fmt.Errorf("gempki: EvaluateChain requires a non-nil context")
-	}
-	if len(chain) < 2 {
-		return nil, fmt.Errorf("gempki: EvaluateChain requires a chain of at least [EE, Root]")
-	}
-	out := &RevocationOutcome{
-		PerCert: make([]*RevocationResult, len(chain)),
-	}
-	if policy.Mode == RevocationModeDisabled {
-		return out, nil
-	}
-	if len(policy.Checkers) == 0 {
-		return nil, fmt.Errorf("gempki: EvaluateChain has no Checkers and Mode is not Disabled")
+// The last row is the point: a response that failed authorization or
+// signature verification is evidence of something wrong, not of a flaky
+// responder, and no mode may turn it into a warning.
+func applyRevocation(mode RevocationMode, cn string, result *RevocationResult, err error) (*ValidationError, *ValidationWarning) {
+	if err != nil {
+		var ve *ValidationError
+		if !errors.As(err, &ve) {
+			// Not a checker verdict; the caller reports it as a failure of
+			// its own. Defensive: OCSPChecker never returns anything else.
+			return &ValidationError{
+				Code:    ErrCodeOCSPUnavailable,
+				Subject: cn,
+				Message: "revocation check failed",
+				Cause:   err,
+			}, nil
+		}
+		if ve.Subject == "" {
+			ve.Subject = cn
+		}
+		switch ve.Code {
+		case ErrCodeOCSPResponderUntrusted, ErrCodeOCSPResponseInvalid:
+			return ve, nil
+		}
+		if mode == RevocationModeSoftFail {
+			return nil, &ValidationWarning{Code: ve.Code, Subject: cn, Message: ve.Message}
+		}
+		return ve, nil
 	}
 
-	for i := 0; i < len(chain)-1; i++ {
-		cert := chain[i]
-		issuer := chain[i+1]
-		pos := positionOf(i, len(chain))
-		if pos != PositionEE && !policy.CheckSubCAs {
-			continue
-		}
-		result, ve, vw := evaluateOne(ctx, cert, issuer, policy)
-		out.PerCert[i] = result
-		if ve != nil {
-			out.Errors = append(out.Errors, ve)
-		}
-		if vw != nil {
-			out.Warnings = append(out.Warnings, vw)
-		}
-	}
-	return out, nil
-}
-
-// evaluateOne handles cache, checker dispatch, and Mode mapping for a single
-// (cert, issuer) pair.
-func evaluateOne(ctx context.Context, cert, issuer *x509.Certificate, policy RevocationPolicy) (*RevocationResult, *ValidationError, *ValidationWarning) {
-	key := RevocationCacheKey(cert)
-	if policy.Cache != nil {
-		if cached, hit, err := policy.Cache.Get(ctx, key); err == nil && hit && cached != nil {
-			ve, vw := applyMode(policy.Mode, cached, cert.Subject.CommonName)
-			return cached, ve, vw
-		}
-	}
-
-	var (
-		result  *RevocationResult
-		lastErr error
-	)
-	for _, c := range policy.Checkers {
-		result, lastErr = c.Check(ctx, cert, issuer)
-		if lastErr == nil && result != nil {
-			break
-		}
-	}
-
-	if result == nil {
-		// No checker produced a result; treat as Unknown so Mode rules apply.
-		errMsg := "no checker produced a result"
-		if lastErr != nil {
-			errMsg = lastErr.Error()
-		}
-		result = &RevocationResult{
-			Status:    RevocationStatusUnknown,
-			CheckedAt: time.Now(),
-			Reason:    errMsg,
-		}
-	}
-
-	if policy.Cache != nil && result.Status != RevocationStatusUnknown {
-		ttl := policy.CacheDefaultTTL
-		if ttl <= 0 {
-			ttl = time.Hour
-		}
-		_ = policy.Cache.Put(ctx, key, result, ttl)
-	}
-
-	ve, vw := applyMode(policy.Mode, result, cert.Subject.CommonName)
-	return result, ve, vw
-}
-
-// applyMode maps (Mode, Status) to a ValidationError / ValidationWarning.
-// Revoked is always an error regardless of Mode; Good is always silent; the
-// non-trivial cases are Unknown under Hard/Soft/BestEffort.
-func applyMode(mode RevocationMode, result *RevocationResult, cn string) (*ValidationError, *ValidationWarning) {
 	switch result.Status {
 	case RevocationStatusGood:
 		return nil, nil
@@ -191,43 +133,17 @@ func applyMode(mode RevocationMode, result *RevocationResult, cn string) (*Valid
 			Message: fmt.Sprintf("certificate revoked at %s: %s",
 				result.RevokedAt.Format(time.RFC3339), result.Reason),
 		}, nil
-	case RevocationStatusUnknown:
-		switch mode {
-		case RevocationModeHardFail:
-			return &ValidationError{
-				Code:    ErrCodeOCSPUnavailable,
-				Subject: cn,
-				Message: "revocation status unknown (Mode=HardFail): " + result.Reason,
-			}, nil
-		case RevocationModeSoftFail, RevocationModeBestEffort:
-			return nil, &ValidationWarning{
-				Code:    ErrCodeOCSPUnavailable,
-				Subject: cn,
-				Message: "revocation status unknown: " + result.Reason,
-			}
-		case RevocationModeDisabled:
-			return nil, nil
+	}
+	if mode == RevocationModeSoftFail {
+		return nil, &ValidationWarning{
+			Code:    ErrCodeOCSPUnavailable,
+			Subject: cn,
+			Message: "revocation status unknown: " + result.Reason,
 		}
 	}
-	return nil, nil
-}
-
-// RevocationCacheKey returns the stable cache key for a certificate.
-// SHA-256(issuer DN || serial) is short, collision-free in practice, and
-// independent of OCSP HashAlgorithm choice.
-func RevocationCacheKey(cert *x509.Certificate) string {
-	h := sha256.New()
-	h.Write(cert.RawIssuer)
-	h.Write(cert.SerialNumber.Bytes())
-	return hex.EncodeToString(h.Sum(nil))
-}
-
-// ApplyMode is the exported version of [applyMode] for callers (the Phase 6
-// Validator, mainly) that want to interpret a [RevocationResult] outside
-// EvaluateChain.
-func ApplyMode(mode RevocationMode, result *RevocationResult, certCN string) (*ValidationError, *ValidationWarning) {
-	if result == nil {
-		return nil, nil
-	}
-	return applyMode(mode, result, certCN)
+	return &ValidationError{
+		Code:    ErrCodeOCSPUnavailable,
+		Subject: cn,
+		Message: "revocation status unknown: " + result.Reason,
+	}, nil
 }

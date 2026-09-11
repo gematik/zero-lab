@@ -14,16 +14,13 @@ type ValidatePathOptions struct {
 	// nil. Override for historical validation (e.g. signature time).
 	TimeFunc func() time.Time
 
-	// EEChecks, SubCAChecks, RootChecks run after RFC 5280 checks pass.
-	// Each is invoked with the relevant cert; any non-nil return becomes a
-	// [ValidationError] in the result.
-	EEChecks    []CertificateCheck
-	SubCAChecks []CertificateCheck
-	RootChecks  []CertificateCheck
+	// EEChecks run against the end entity after the RFC 5280 checks. Each
+	// non-nil return becomes an entry in the result.
+	EEChecks []CertificateCheck
 }
 
 // ValidatePath validates a chain built by [BuildChain] against RFC 5280 §6
-// requirements and the caller's per-tier checks.
+// requirements and the caller's end-entity checks.
 //
 // Checks applied to every cert: notBefore ≤ now ≤ notAfter. Checks applied
 // to every non-EE cert: IsCA must be set, KeyUsage must include KeyCertSign,
@@ -75,7 +72,7 @@ func ValidatePath(ctx context.Context, chain []*x509.Certificate, opts ValidateP
 			}
 		}
 		if i+1 < len(chain) {
-			if err := VerifyCertificateSignature(cert, chain[i+1]); err != nil {
+			if err := verifyCertificateSignature(cert, chain[i+1]); err != nil {
 				result.add(&ValidationError{
 					Code:    ErrCodeSignatureInvalid,
 					Subject: cert.Subject.CommonName,
@@ -85,17 +82,11 @@ func ValidatePath(ctx context.Context, chain []*x509.Certificate, opts ValidateP
 			}
 		}
 
-		var checks []CertificateCheck
-		switch pos {
-		case PositionEE:
-			checks = opts.EEChecks
-		case PositionSubCA:
-			checks = opts.SubCAChecks
-		case PositionRoot:
-			checks = opts.RootChecks
+		if pos != PositionEE {
+			continue
 		}
-		for _, c := range checks {
-			if err := c(ctx, cert); err != nil {
+		for _, check := range opts.EEChecks {
+			if err := check(ctx, cert); err != nil {
 				result.add(toValidationError(err, cert))
 			}
 		}
@@ -187,12 +178,9 @@ func (r *ValidationResult) add(err *ValidationError) {
 	r.Valid = false
 }
 
-// toValidationError converts an arbitrary check error into a *ValidationError.
-// If err is or wraps a *ValidationError, that wrapped value is returned with
-// Subject filled in when missing. Otherwise the error is wrapped under
-// ErrCodeKeyUsageMismatch — built-in checks are expected to return
-// *ValidationError already, so this is a defensive fallback for callers'
-// custom checks.
+// toValidationError attributes a check failure to cert. Checks return
+// *ValidationError; anything else is a caller's own check failing in its own
+// way and is carried as the cause.
 func toValidationError(err error, cert *x509.Certificate) *ValidationError {
 	if ve, ok := errors.AsType[*ValidationError](err); ok {
 		if ve.Subject == "" {
@@ -203,7 +191,7 @@ func toValidationError(err error, cert *x509.Certificate) *ValidationError {
 	return &ValidationError{
 		Code:    ErrCodeKeyUsageMismatch,
 		Subject: cert.Subject.CommonName,
-		Message: "custom check failed",
+		Message: "end-entity check failed",
 		Cause:   err,
 	}
 }

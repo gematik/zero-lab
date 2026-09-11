@@ -34,15 +34,6 @@ func TestNewTrustStore_DedupAndLookup(t *testing.T) {
 		assert.Equal(t, pki.RCA7.Cert.SerialNumber, c.SerialNumber)
 	})
 
-	t.Run("CertPool", func(t *testing.T) {
-		pool := ts.CertPool()
-		require.NotNil(t, pool)
-		// CertPool is opaque; the best we can do is confirm a chain we expect
-		// to verify actually verifies.
-		_, err := pki.SubCAHBA.Cert.Verify(x509.VerifyOptions{Roots: pool})
-		require.NoError(t, err, "SubCAHBA must verify under TrustStore pool")
-	})
-
 	t.Run("Roots_returns_copy", func(t *testing.T) {
 		r := ts.Roots()
 		require.Len(t, r, 2)
@@ -58,14 +49,12 @@ func TestNewTrustStore_DedupAndLookup(t *testing.T) {
 func TestNewTrustStore_AcceptsRSA(t *testing.T) {
 	t.Parallel()
 
-	rsaDER := makeSelfSignedRSA(t, "rsa-root")
-	rsaCert, err := x509.ParseCertificate(rsaDER)
-	require.NoError(t, err)
+	rsaCert := fixtureRSARoot(t)
 
 	ts, err := gempki.NewTrustStore([]*x509.Certificate{rsaCert})
 	require.NoError(t, err)
 	require.Equal(t, 1, ts.Len())
-	got, ok := ts.ByCommonName("rsa-root")
+	got, ok := ts.ByCommonName("GEM.RCA2 TEST-ONLY")
 	require.True(t, ok)
 	assert.True(t, got.Equal(rsaCert))
 }
@@ -89,7 +78,6 @@ func TestTrustStore_NilReceiverSafe(t *testing.T) {
 	assert.False(t, ok)
 	assert.Nil(t, c2)
 	assert.Equal(t, 0, ts.Len())
-	assert.NotNil(t, ts.CertPool(), "CertPool must return empty pool, not nil")
 }
 
 func TestNewTrustStore_SkiLookupIsHexNormalised(t *testing.T) {

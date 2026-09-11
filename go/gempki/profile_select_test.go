@@ -9,31 +9,57 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"math/big"
+	"regexp"
 	"testing"
 	"time"
 
 	"github.com/gematik/zero-lab/go/gempki"
 	"github.com/gematik/zero-lab/go/gempki/internal/testca"
+	"github.com/gematik/zero-lab/go/gempki/oid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestValidateProfileRegistry(t *testing.T) {
+// TestProfiles_Invariants pins what a well-formed registry looks like. Two
+// of these fail silently otherwise: a type claimed as DefaultFor by two
+// profiles makes DefaultProfileFor answer arbitrarily, and a DefaultFor
+// entry outside AcceptsTypes is a default ProfilesForType will not list.
+func TestProfiles_Invariants(t *testing.T) {
 	t.Parallel()
-	require.NoError(t, gempki.ValidateProfileRegistry())
-	assert.Equal(t, []string{"epa-vau-aut", "idp-sig", "smb-aut", "zeta-asl-aut"}, gempki.ProfileNames())
+	name := regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+	seen := map[string]bool{}
+	owner := map[gempki.CertificateType]string{}
+	for _, p := range gempki.Profiles() {
+		assert.Regexp(t, name, p.Name, "profile names are kebab-case")
+		assert.False(t, seen[p.Name], "duplicate profile name %q", p.Name)
+		seen[p.Name] = true
+		assert.NotEmpty(t, p.Description, "%s: needs a Description", p.Name)
+		assert.NotContains(t, p.Description, "\n", "%s: Description is one line", p.Name)
+		assert.NotEmpty(t, p.AcceptsTypes, "%s: accepts no certificate types", p.Name)
+		for _, ct := range p.AcceptsTypes {
+			assert.NotEmpty(t, ct.OID(), "%s: accepts unknown type %q", p.Name, ct)
+		}
+		for _, ct := range p.DefaultFor {
+			assert.Contains(t, p.AcceptsTypes, ct, "%s: DefaultFor %q which it does not accept", p.Name, ct)
+			if other, dup := owner[ct]; dup {
+				t.Errorf("type %q is DefaultFor both %q and %q", ct, other, p.Name)
+			}
+			owner[ct] = p.Name
+		}
+	}
+	assert.Equal(t, []string{"epa-vau-aut", "idp-sig", "smb-aut", "zeta-guard-aut"}, gempki.ProfileNames())
 	assert.Equal(t,
-		[]string{"auto", "none", "epa-vau-aut", "idp-sig", "smb-aut", "zeta-asl-aut"},
+		[]string{"auto", "none", "epa-vau-aut", "idp-sig", "smb-aut", "zeta-guard-aut"},
 		gempki.ProfileSelectorValues())
 }
 
 func TestLookupProfile(t *testing.T) {
 	t.Parallel()
-	p, ok := gempki.LookupProfile("ZETA-ASL-AUT")
+	p, ok := gempki.LookupProfile("ZETA-GUARD-AUT")
 	require.True(t, ok)
-	assert.Same(t, gempki.ProfileZetaASL, p)
+	assert.Same(t, gempki.ProfileZetaGuardAut, p)
 
-	for _, name := range []string{"", "auto", "none", "idp", "epavau", "smbauth", "epa-vau", "zeta-asl"} {
+	for _, name := range []string{"", "auto", "none", "idp", "epavau", "smbauth", "epa-vau", "zeta-asl", "zeta-asl-aut"} {
 		_, ok := gempki.LookupProfile(name)
 		assert.False(t, ok, "%q must not resolve to a profile", name)
 	}
@@ -50,22 +76,22 @@ func TestEffectiveRoleOIDs(t *testing.T) {
 	// C.FD.AUT carries no baseline roles, so also assert the replacement is
 	// exactly the profile's list and not a concatenation.
 	assert.Equal(t,
-		[]asn1.ObjectIdentifier{gempki.OIDTechRoleZETAGuard},
-		gempki.ProfileZetaASL.EffectiveRoleOIDs(gempki.CertTypeFdAUT))
+		[]asn1.ObjectIdentifier{oid.TechRoleZETAGuard},
+		gempki.ProfileZetaGuardAut.EffectiveRoleOIDs(gempki.CertTypeFdAUT))
 	assert.Equal(t,
-		[]asn1.ObjectIdentifier{gempki.OIDTechRoleZETAGuard},
-		gempki.ProfileZetaASL.EffectiveRoleOIDs(gempki.CertTypeHciAUT),
+		[]asn1.ObjectIdentifier{oid.TechRoleZETAGuard},
+		gempki.ProfileZetaGuardAut.EffectiveRoleOIDs(gempki.CertTypeHciAUT),
 		"a profile's role OIDs replace the type baseline, they do not merge with it")
 }
 
 func TestProfileZetaASL_ValidatorRequiresZETARole(t *testing.T) {
 	t.Parallel()
 	ts := trustStoreOf(t)
-	v := gempki.ProfileZetaASL.Validator(ts, gempki.CertTypeFdAUT)
-	assert.Equal(t, []asn1.ObjectIdentifier{gempki.OIDTechRoleZETAGuard}, v.RequiredRoleOIDs)
-	assert.Equal(t, gempki.RevocationModeHardFail, v.Revocation.Mode)
+	v := gempki.ProfileZetaGuardAut.Validator(ts, gempki.CertTypeFdAUT)
+	assert.Equal(t, []asn1.ObjectIdentifier{oid.TechRoleZETAGuard}, v.RequiredRoleOIDs)
+	assert.Equal(t, gempki.RevocationModeHardFail, v.RevocationMode)
 
-	check := gempki.CheckRoleOID(nil, v.RequiredRoleOIDs...)
+	check := gempki.CheckRoleOID(v.RequiredRoleOIDs...)
 	assert.NoError(t, check(context.Background(), zetaCert(t)),
 		"a C.FD.AUT asserting ZETA Guard must satisfy the profile")
 
@@ -89,7 +115,7 @@ func TestSelectProfileForCert(t *testing.T) {
 			name:       "ZETA C.FD.AUT is claimed by its role",
 			cert:       zetaCert(t),
 			wantType:   gempki.CertTypeFdAUT,
-			wantProf:   gempki.ProfileZetaASL,
+			wantProf:   gempki.ProfileZetaGuardAut,
 			wantReason: gempki.ProfileSelectedByCert,
 		},
 		{
@@ -106,24 +132,32 @@ func TestSelectProfileForCert(t *testing.T) {
 			name:       "C.FD.AUT with no role is claimed by nobody",
 			cert:       fdAutCert(t),
 			wantType:   gempki.CertTypeFdAUT,
-			wantReason: gempki.ProfileSelectAmbiguous,
+			wantReason: gempki.ProfileSelectNone,
 		},
 		{
 			name:       "C.FD.AUT with an unrelated role is claimed by nobody",
-			cert:       certWith(t, []asn1.ObjectIdentifier{gempki.OIDPolicyGemOrCP, gempki.OIDCertTypeFdAUT}, gempki.OIDInstKrankenhaus, "Krankenhaus"),
+			cert:       certWith(t, []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdAUT}, oid.InstKrankenhaus, "Krankenhaus"),
 			wantType:   gempki.CertTypeFdAUT,
-			wantReason: gempki.ProfileSelectAmbiguous,
+			wantReason: gempki.ProfileSelectNone,
 		},
 		{
-			name:       "C.FD.SIG",
-			cert:       certWith(t, []asn1.ObjectIdentifier{gempki.OIDPolicyGemOrCP, gempki.OIDCertTypeFdSIG}, nil, ""),
+			name:       "IDP C.FD.SIG is claimed by its role",
+			cert:       certWith(t, []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdSIG}, oid.TechRoleIDPD, "IDP-Dienst"),
 			wantType:   gempki.CertTypeFdSIG,
 			wantProf:   gempki.ProfileIdpSig,
-			wantReason: gempki.ProfileSelectedByDefault,
+			wantReason: gempki.ProfileSelectedByCert,
+		},
+		{
+			// A Fachdienst signing cert that is not an IDP's: accepted by no
+			// profile, and that is a definite answer, not an ambiguity.
+			name:       "C.FD.SIG without the IDP role",
+			cert:       certWith(t, []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdSIG}, nil, ""),
+			wantType:   gempki.CertTypeFdSIG,
+			wantReason: gempki.ProfileSelectNone,
 		},
 		{
 			name:       "a type no profile accepts",
-			cert:       certWith(t, []asn1.ObjectIdentifier{gempki.OIDPolicyGemOrCP, gempki.OIDCertTypeFdTLSS}, nil, ""),
+			cert:       certWith(t, []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdTLSS}, nil, ""),
 			wantType:   gempki.CertTypeFdTLSS,
 			wantReason: gempki.ProfileSelectNone,
 		},
@@ -161,10 +195,10 @@ func TestProfilesForCert(t *testing.T) {
 	t.Parallel()
 	// Both profiles accept the type, only zeta-asl claims the cert.
 	assert.Equal(t,
-		[]*gempki.Profile{gempki.ProfileEpaVau, gempki.ProfileZetaASL},
+		[]*gempki.Profile{gempki.ProfileEpaVau, gempki.ProfileZetaGuardAut},
 		gempki.ProfilesForType(gempki.CertTypeFdAUT))
 	assert.Equal(t,
-		[]*gempki.Profile{gempki.ProfileZetaASL},
+		[]*gempki.Profile{gempki.ProfileZetaGuardAut},
 		gempki.ProfilesForCert(zetaCert(t)))
 	assert.Equal(t,
 		[]*gempki.Profile{gempki.ProfileEpaVau},
@@ -176,10 +210,10 @@ func TestProfilesForCert(t *testing.T) {
 
 func TestFormatOID(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, "1.2.276.0.76.4.328 (ZETA Guard)", gempki.FormatOID(gempki.OIDTechRoleZETAGuard))
-	assert.Equal(t, "1.2.3.4", gempki.FormatOID(asn1.ObjectIdentifier{1, 2, 3, 4}))
+	assert.Equal(t, "1.2.276.0.76.4.328 (ZETA Guard)", oid.Format(oid.TechRoleZETAGuard))
+	assert.Equal(t, "1.2.3.4", oid.Format(asn1.ObjectIdentifier{1, 2, 3, 4}))
 
-	info, ok := gempki.LookupOID(gempki.OIDPolicyGemTSLSigner)
+	info, ok := oid.Lookup(oid.PolicyGemTSLSigner)
 	require.True(t, ok)
 	assert.Equal(t, "oid_policy_gem_tsl_signer", info.Ref)
 	assert.Equal(t, "[gemSpec_TSL]", info.Document)
@@ -190,15 +224,15 @@ func TestFormatOID(t *testing.T) {
 // `profiles describe` degrades to bare dotted numbers.
 func TestOIDLabelsCoverValidatedOIDs(t *testing.T) {
 	t.Parallel()
-	for _, p := range gempki.ProfileRegistry {
-		for _, oid := range p.RequiredRoleOIDs {
-			_, ok := gempki.LookupOID(oid)
-			assert.True(t, ok, "profile %s requires role %s with no label", p.Name, oid)
+	for _, p := range gempki.Profiles() {
+		for _, role := range p.RequiredRoleOIDs {
+			_, ok := oid.Lookup(role)
+			assert.True(t, ok, "profile %s requires role %s with no label", p.Name, role)
 		}
 		for _, t2 := range p.AcceptsTypes {
-			for _, oid := range t2.Spec().RoleOIDs {
-				_, ok := gempki.LookupOID(oid)
-				assert.True(t, ok, "type %s requires role %s with no label", t2, oid)
+			for _, role := range t2.Spec().RoleOIDs {
+				_, ok := oid.Lookup(role)
+				assert.True(t, ok, "type %s requires role %s with no label", t2, role)
 			}
 		}
 	}
@@ -218,21 +252,21 @@ func trustStoreOf(t *testing.T) *gempki.TrustStore {
 func zetaCert(t *testing.T) *x509.Certificate {
 	t.Helper()
 	return certWith(t,
-		[]asn1.ObjectIdentifier{gempki.OIDPolicyGemOrCP, gempki.OIDCertTypeFdAUT},
-		gempki.OIDTechRoleZETAGuard, "ZETA Guard")
+		[]asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdAUT},
+		oid.TechRoleZETAGuard, "ZETA Guard")
 }
 
 func epaVauCert(t *testing.T) *x509.Certificate {
 	t.Helper()
 	return certWith(t,
-		[]asn1.ObjectIdentifier{gempki.OIDPolicyGemOrCP, gempki.OIDCertTypeFdAUT},
-		gempki.OIDTechRoleEpaVAU, "ePA VAU")
+		[]asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdAUT},
+		oid.TechRoleEpaVAU, "ePA VAU")
 }
 
 func fdAutCert(t *testing.T) *x509.Certificate {
 	t.Helper()
 	return certWith(t,
-		[]asn1.ObjectIdentifier{gempki.OIDPolicyGemOrCP, gempki.OIDCertTypeFdAUT}, nil, "")
+		[]asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdAUT}, nil, "")
 }
 
 func toX509OIDs(t *testing.T, oids []asn1.ObjectIdentifier) []x509.OID {

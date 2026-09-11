@@ -1,7 +1,6 @@
 package gempki_test
 
 import (
-	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/gempki"
+	"github.com/gematik/zero-lab/go/gempki/internal/testca"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,8 +34,9 @@ func TestParseCertificate_BrainpoolFixture(t *testing.T) {
 func TestParseCertificate_NISTP256(t *testing.T) {
 	t.Parallel()
 
-	der, _ := makeSelfSignedECDSA(t, elliptic.P256(), "test-nist-p256")
-	cert, err := gempki.ParseCertificate(der)
+	pki, err := testca.New()
+	require.NoError(t, err)
+	cert, err := gempki.ParseCertificate(pki.RCA7.DER) // NIST P-256 root
 	require.NoError(t, err)
 
 	pub, ok := cert.PublicKey.(*ecdsa.PublicKey)
@@ -50,10 +51,9 @@ func TestParseCertificate_NISTP256(t *testing.T) {
 func TestParseCertificate_RSAAccepted(t *testing.T) {
 	t.Parallel()
 
-	der := makeSelfSignedRSA(t, "test-rsa")
-	cert, err := gempki.ParseCertificate(der)
+	cert, err := gempki.ParseCertificate(fixtureRSARoot(t).Raw)
 	require.NoError(t, err)
-	assert.Equal(t, "test-rsa", cert.Subject.CommonName)
+	assert.Equal(t, "GEM.RCA2 TEST-ONLY", cert.Subject.CommonName)
 	assert.Equal(t, x509.RSA, cert.PublicKeyAlgorithm)
 }
 
@@ -78,44 +78,6 @@ func TestParseCertificate_P521Accepted(t *testing.T) {
 	cert, err := gempki.ParseCertificate(der)
 	require.NoError(t, err)
 	assert.Equal(t, "test-p521", cert.Subject.CommonName)
-}
-
-func TestParseCertificates_MixedStream(t *testing.T) {
-	t.Parallel()
-
-	bpDER := fixtureBrainpoolEEDER(t)
-	nistDER, _ := makeSelfSignedECDSA(t, elliptic.P256(), "test-nist-in-stream")
-
-	stream := bytes.Join([][]byte{bpDER, nistDER}, nil)
-	certs, err := gempki.ParseCertificates(stream)
-	require.NoError(t, err)
-	require.Len(t, certs, 2)
-
-	assert.Same(t, brainpool.P256r1(), certs[0].PublicKey.(*ecdsa.PublicKey).Curve)
-	assert.Same(t, elliptic.P256(), certs[1].PublicKey.(*ecdsa.PublicKey).Curve)
-}
-
-func TestParseCertificates_TruncatedStream(t *testing.T) {
-	t.Parallel()
-
-	der := fixtureBrainpoolEEDER(t)
-	_, err := gempki.ParseCertificates(der[:len(der)-10])
-	require.Error(t, err)
-}
-
-func TestParseCertificates_RSAInStream(t *testing.T) {
-	t.Parallel()
-
-	nistDER, _ := makeSelfSignedECDSA(t, elliptic.P256(), "ok")
-	rsaDER := makeSelfSignedRSA(t, "rsa-in-stream")
-	stream := bytes.Join([][]byte{nistDER, rsaDER}, nil)
-
-	certs, err := gempki.ParseCertificates(stream)
-	require.NoError(t, err)
-	require.Len(t, certs, 2)
-	assert.Equal(t, "ok", certs[0].Subject.CommonName)
-	assert.Equal(t, "rsa-in-stream", certs[1].Subject.CommonName)
-	assert.Equal(t, x509.RSA, certs[1].PublicKeyAlgorithm)
 }
 
 func TestParsePEMCertificates(t *testing.T) {

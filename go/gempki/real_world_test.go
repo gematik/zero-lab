@@ -7,14 +7,15 @@ import (
 
 	"github.com/gematik/zero-lab/go/gempki"
 	"github.com/gematik/zero-lab/go/gempki/internal/testtsl"
+	"github.com/gematik/zero-lab/go/gempki/tsl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // Real-world integration tests against actual gematik-published artifacts:
 //
-//   - the test-environment roots.json (embedded as roots-test.json,
-//     loaded via [gempki.EmbeddedLoader])
+//   - the non-prod roots.json (embedded as roots-nonprod.json, loaded via
+//     [gempki.EmbeddedRoots])
 //   - a TSL snapshot (embedded in tsl_embed.go from
 //     testdata/tsl-test.xml — gematik test environment,
 //     sequence 10687)
@@ -24,48 +25,45 @@ import (
 // These tests prove the full stack works on actual TI wire data, not just
 // synthetic testca PKIs.
 
-// TestRealWorld_EmbeddedTestRootsLoad confirms the embedded-loader path
-// works end-to-end on real roots.json data. It also documents a known
-// limitation: the A_28419 cross-cert walk stops the first time it
-// encounters an RSA-signed cross-cert, which on the test environment means
-// only the current anchor (RCA8) and its forward successors end up in the
-// store. Pre-RCA8 ECC roots like RCA5 are not reachable via the strict
-// walk and must be loaded another way (e.g. via [NewTrustStore] from a
-// caller-supplied PEM list).
+// TestRealWorld_EmbeddedTestRootsLoad confirms the A_28419 walk over the
+// real roots.json reaches the whole generation chain from the anchor, in
+// both directions: RCA5 TEST-ONLY (issuer of the fixture SMC-B) lies before
+// the RCA8 anchor, RCA11 after it. A stale roots.json with a gap in the
+// chain silently shrinks the store to the anchor alone — that is what this
+// guards against.
 func TestRealWorld_EmbeddedTestRootsLoad(t *testing.T) {
 	t.Parallel()
 
-	ts, err := gempki.EmbeddedLoader{Env: gempki.EnvTest}.Load(t.Context())
+	ts, err := gempki.EmbeddedRoots(gempki.EnvTest)
 	require.NoError(t, err)
-	require.GreaterOrEqual(t, ts.Len(), 1)
-	t.Logf("trust store from EmbeddedLoader{EnvTest} has %d root(s)", ts.Len())
+	t.Logf("trust store from EmbeddedRoots(EnvTest) has %d root(s)", ts.Len())
+	for _, cn := range []string{"GEM.RCA5 TEST-ONLY", "GEM.RCA11 TEST-ONLY"} {
+		_, ok := ts.ByCommonName(cn)
+		assert.True(t, ok, "%s must be reachable from the anchor", cn)
+	}
 
-	anchor, err := gempki.EmbeddedTrustAnchor(gempki.EnvTest)
-	require.NoError(t, err)
+	anchor, ok := ts.ByCommonName(anchorCN[gempki.EnvTest])
+	require.True(t, ok, "the compiled-in anchor must be in the store")
 	bySKI, ok := ts.BySKI(anchor.SubjectKeyId)
 	require.True(t, ok, "anchor must be retrievable by SKI")
 	assert.True(t, bySKI.Equal(anchor))
-
-	byCN, ok := ts.ByCommonName(anchor.Subject.CommonName)
-	require.True(t, ok, "anchor must be retrievable by CommonName")
-	assert.True(t, byCN.Equal(anchor))
 }
 
 // TestRealWorld_TSLParsesAndPublishesCAs confirms the TSL XML wire format
 // is parseable end-to-end and produces a credible volume of CA candidates.
-// Doesn't check the TSL signature (gempki.tsl.go's signature verification
-// is a known TODO); for the integration here we're concerned with parsing
-// + structural extraction, not trust attestation.
+// Doesn't check the TSL signature — that is tsl.VerifySignature's job and
+// has its own tests; here we're concerned with parsing and structural
+// extraction, not trust attestation.
 func TestRealWorld_TSLParsesAndPublishesCAs(t *testing.T) {
 	t.Parallel()
 
-	tsl, err := testtsl.EmbeddedTSL()
+	list, err := testtsl.EmbeddedTSL()
 	require.NoError(t, err)
-	require.NotNil(t, tsl)
+	require.NotNil(t, list)
 	assert.Equal(t, "TEST-ONLY gematik GmbH",
-		string(tsl.SchemeInformation.SchemeOperatorName[0].Value))
+		string(list.SchemeInformation.SchemeOperatorName[0].Value))
 
-	cas := gempki.IntermediateCAsFromTSL(tsl)
+	cas := tsl.IntermediateCAs(list)
 	require.NotEmpty(t, cas)
 	t.Logf("TSL publishes %d CA/PKC service certs", len(cas))
 
@@ -92,13 +90,9 @@ func TestRealWorld_TSLParsesAndPublishesCAs(t *testing.T) {
 func TestRealWorld_SMCBValidatesEndToEnd(t *testing.T) {
 	t.Parallel()
 
-	// Trust anchor: real GEM.RCA5 TEST-ONLY (published by gematik in the
-	// roots distribution, brainpool P-256r1). We load via PEM fixture so
-	// we deliberately bypass the EmbeddedLoader's A_28419 walk — see the
-	// limitation documented above.
-	rca5, err := gempki.ParsePEMCertificates([]byte(fixtureBrainpoolRCA5PEM))
-	require.NoError(t, err)
-	ts, err := gempki.NewTrustStore(rca5)
+	// The EE chains to GEM.RCA5 TEST-ONLY, which the A_28419 walk reaches
+	// from the embedded anchor; this is the trust store a consumer gets.
+	ts, err := gempki.EmbeddedRoots(gempki.EnvTest)
 	require.NoError(t, err)
 
 	// Intermediates: real GEM.SMCB-CA5 (matching the EE's issuer) PLUS
@@ -107,9 +101,9 @@ func TestRealWorld_SMCBValidatesEndToEnd(t *testing.T) {
 	// navigates a realistic candidate set, not just a hand-picked SubCA.
 	smcbCA51, err := gempki.ParsePEMCertificates([]byte(fixtureBrainpoolSMCBCA51PEM))
 	require.NoError(t, err)
-	tsl, err := testtsl.EmbeddedTSL()
+	list, err := testtsl.EmbeddedTSL()
 	require.NoError(t, err)
-	tslCAs := gempki.IntermediateCAsFromTSL(tsl)
+	tslCAs := tsl.IntermediateCAs(list)
 	intermediates := smcbCA51
 	for _, c := range tslCAs {
 		intermediates = append(intermediates, c.Cert)
@@ -121,10 +115,7 @@ func TestRealWorld_SMCBValidatesEndToEnd(t *testing.T) {
 	require.Len(t, eeCerts, 1)
 	ee := eeCerts[0]
 
-	v := gempki.NewValidator(
-		gempki.WithTrustStore(ts),
-		gempki.WithRevocationMode(gempki.RevocationModeDisabled),
-	)
+	v := &gempki.Validator{TrustStore: ts, RevocationMode: gempki.RevocationModeDisabled}
 	chain := append([]*x509.Certificate{ee}, intermediates...)
 	result, err := v.Validate(t.Context(), chain)
 	require.NoError(t, err)
@@ -154,7 +145,7 @@ func TestRealWorld_ProfileSmbAutAcceptsRealCert(t *testing.T) {
 	ee := eeCerts[0]
 
 	v := gempki.ProfileSmbAut.Validator(ts, gempki.CertTypeHciAUT)
-	gempki.WithRevocationMode(gempki.RevocationModeDisabled)(v)
+	v.RevocationMode = gempki.RevocationModeDisabled
 
 	chain := append([]*x509.Certificate{ee}, smcbCA51...)
 	result, err := v.Validate(t.Context(), chain)

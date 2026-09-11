@@ -19,9 +19,9 @@ func TestValidationError_ErrorsIs_MatchesByCode(t *testing.T) {
 		Subject: "CN=arzt.example",
 		Cause:   fmt.Errorf("OCSP returned revoked at 2026-06-04"),
 	}
-	assert.True(t, errors.Is(concrete, gempki.ErrRevoked),
-		"concrete error must match sentinel by code")
-	assert.False(t, errors.Is(concrete, gempki.ErrExpired),
+	assert.True(t, errors.Is(concrete, &gempki.ValidationError{Code: gempki.ErrCodeRevoked}),
+		"concrete error must match a bare-code target by code")
+	assert.False(t, errors.Is(concrete, &gempki.ValidationError{Code: gempki.ErrCodeExpired}),
 		"different code must not match")
 }
 
@@ -84,22 +84,10 @@ func TestValidationError_ErrorString(t *testing.T) {
 	}
 }
 
-func TestSentinels_AreNotEqualAcrossCodes(t *testing.T) {
+func TestErrChainIncomplete_IsWrappedByBuildChain(t *testing.T) {
 	t.Parallel()
 
-	// Each sentinel must be distinguishable by code.
-	codes := map[gempki.ErrorCode]bool{}
-	sentinels := []*gempki.ValidationError{
-		gempki.ErrRevoked, gempki.ErrOCSPResponseInvalid,
-		gempki.ErrOCSPResponderUntrusted, gempki.ErrOCSPUnavailable,
-		gempki.ErrRoleOIDMissing, gempki.ErrExpired, gempki.ErrNotYetValid,
-		gempki.ErrChainIncomplete, gempki.ErrPolicyMismatch,
-		gempki.ErrSignatureInvalid, gempki.ErrKeyUsageMismatch,
-		gempki.ErrUnsupportedCrypto,
-	}
-	for _, s := range sentinels {
-		assert.NotEmpty(t, string(s.Code), "sentinel must have a code")
-		assert.False(t, codes[s.Code], "duplicate sentinel code %q", s.Code)
-		codes[s.Code] = true
-	}
+	wrapped := fmt.Errorf("outer: %w", gempki.ErrChainIncomplete)
+	assert.True(t, errors.Is(wrapped, gempki.ErrChainIncomplete))
+	assert.True(t, errors.Is(wrapped, &gempki.ValidationError{Code: gempki.ErrCodeChainIncomplete}))
 }

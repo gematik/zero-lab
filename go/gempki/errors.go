@@ -1,22 +1,9 @@
 package gempki
 
 import (
+	"crypto/x509"
 	"errors"
 	"fmt"
-)
-
-// ErrRSANotSupported is the sentinel for the one remaining RSA-rejection
-// path: the TSL detached-signature parser ([ParseTSLDetachedSignature])
-// only knows the ECDSA-Sig-Value structure. The .sig file's RSA-PSS
-// variant has a different on-disk shape that this library doesn't decode
-// yet.
-//
-// For every other surface (parsing certificates, building a TrustStore,
-// chain validation), RSA is accepted: historical TI roots (GEM.RCA1/2/6)
-// are RSA-keyed and must be loadable for end-to-end chain validation to
-// work.
-var ErrRSANotSupported = errors.New(
-	"gempki: RSA-PSS TSL signatures are not decoded yet — only the ECDSA TSL .sig file is supported",
 )
 
 // ErrorCode is a stable, machine-readable identifier for a validation failure
@@ -67,10 +54,6 @@ const (
 	// ErrCodeKeyUsageMismatch — required KeyUsage or ExtendedKeyUsage missing.
 	ErrCodeKeyUsageMismatch ErrorCode = "key_usage_mismatch"
 
-	// ErrCodeUnsupportedCrypto — key type or curve outside TI-PKI policy
-	// (Ed25519, P-521, secp256k1, ...). RSA is no longer flagged here.
-	ErrCodeUnsupportedCrypto ErrorCode = "unsupported_crypto"
-
 	// ErrCodeProfileNotDetected — a profile-driven verify ran in auto mode
 	// but the cert carries no Tab_PKI_405 type marker and the Admission
 	// fallback couldn't infer one. The chain-only result is still returned,
@@ -83,8 +66,6 @@ const (
 	// ownership. Validation falls back to chain-only; callers must pass
 	// --profile explicitly to pick one.
 	//
-	// The canonical example is C.FD.AUT, accepted by both `epavau` (ePA
-	// VAU authenticity) and `idp` (IDP authenticity).
 	ErrCodeProfileAmbiguous ErrorCode = "profile_ambiguous"
 
 	// ErrCodeProfileTypeMismatch — the user passed --profile X explicitly,
@@ -101,9 +82,6 @@ const (
 // ValidationError supports errors.Is by Code, so callers can write
 //
 //	if errors.Is(err, &gempki.ValidationError{Code: gempki.ErrCodeRevoked}) { ... }
-//
-// or check against the sentinel values declared below
-// ([ErrRevoked], [ErrExpired], …).
 type ValidationError struct {
 	Code    ErrorCode
 	Subject string // CommonName of the offending certificate, "" if not cert-specific
@@ -140,23 +118,9 @@ func (e *ValidationError) Is(target error) bool {
 	return e.Code == t.Code
 }
 
-// Sentinel ValidationErrors suitable as errors.Is targets. They carry only
-// the code (no Subject, no Cause) — instance-specific values are matched by
-// code equality.
-var (
-	ErrRevoked                = &ValidationError{Code: ErrCodeRevoked, Message: "certificate is revoked"}
-	ErrOCSPResponseInvalid    = &ValidationError{Code: ErrCodeOCSPResponseInvalid, Message: "OCSP response invalid"}
-	ErrOCSPResponderUntrusted = &ValidationError{Code: ErrCodeOCSPResponderUntrusted, Message: "OCSP responder untrusted"}
-	ErrOCSPUnavailable        = &ValidationError{Code: ErrCodeOCSPUnavailable, Message: "OCSP responder unavailable"}
-	ErrRoleOIDMissing         = &ValidationError{Code: ErrCodeRoleOIDMissing, Message: "required role OID missing"}
-	ErrExpired                = &ValidationError{Code: ErrCodeExpired, Message: "certificate expired"}
-	ErrNotYetValid            = &ValidationError{Code: ErrCodeNotYetValid, Message: "certificate not yet valid"}
-	ErrChainIncomplete        = &ValidationError{Code: ErrCodeChainIncomplete, Message: "chain incomplete"}
-	ErrPolicyMismatch         = &ValidationError{Code: ErrCodePolicyMismatch, Message: "certificate policy mismatch"}
-	ErrSignatureInvalid       = &ValidationError{Code: ErrCodeSignatureInvalid, Message: "signature invalid"}
-	ErrKeyUsageMismatch       = &ValidationError{Code: ErrCodeKeyUsageMismatch, Message: "key usage mismatch"}
-	ErrUnsupportedCrypto      = &ValidationError{Code: ErrCodeUnsupportedCrypto, Message: "unsupported crypto"}
-)
+// ErrChainIncomplete is the errors.Is target for chain-construction
+// failures; [BuildChain] wraps it into every error it returns.
+var ErrChainIncomplete = &ValidationError{Code: ErrCodeChainIncomplete, Message: "chain incomplete"}
 
 // WarnProfileNotDetected is the sentinel used by auto-profile callers when
 // [DetectCertificateType] returns [CertTypeUnknown]. It is a warning, not
@@ -200,4 +164,58 @@ func (w *ValidationWarning) String() string {
 		return fmt.Sprintf("gempki[%s] warning: %s: %q", w.Code, w.Message, w.Subject)
 	}
 	return fmt.Sprintf("gempki[%s] warning: %s", w.Code, w.Message)
+}
+
+// ChainPosition labels a certificate's role in a validated chain.
+type ChainPosition string
+
+const (
+	// PositionEE — end-entity certificate (the leaf the caller cares about).
+	PositionEE ChainPosition = "end_entity"
+
+	// PositionSubCA — intermediate CA between the end-entity and a trusted root.
+	PositionSubCA ChainPosition = "sub_ca"
+
+	// PositionRoot — trusted root anchor.
+	PositionRoot ChainPosition = "root"
+)
+
+// CertResult is what the validator recorded about one certificate of the
+// chain.
+type CertResult struct {
+	Subject    string
+	Position   ChainPosition
+	Revocation *RevocationResult // nil when revocation was skipped or not run for this position
+}
+
+// ValidationResult is the outcome of a single [Validator].Validate call.
+//
+// Valid is true only when every check passed; Errors enumerates the
+// problems that caused Valid to be false. Warnings record non-fatal
+// observations that did not affect the verdict.
+//
+// Chain and Positions are parallel slices indexed the same way:
+// Chain[i] is positioned at Positions[i] and detailed in CertResults[i].
+type ValidationResult struct {
+	Valid       bool
+	Chain       []*x509.Certificate
+	Positions   []ChainPosition
+	Errors      []*ValidationError
+	Warnings    []*ValidationWarning
+	CertResults []CertResult
+}
+
+// HasError reports whether the result contains at least one error with the
+// given code. Useful for callers that need to discriminate revoked-vs-expired
+// without scanning the slice manually.
+func (r *ValidationResult) HasError(code ErrorCode) bool {
+	if r == nil {
+		return false
+	}
+	for _, e := range r.Errors {
+		if e != nil && e.Code == code {
+			return true
+		}
+	}
+	return false
 }

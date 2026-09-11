@@ -1,4 +1,14 @@
-package gempki
+// Package tsl reads the Trust Service Status List gematik publishes: the
+// ETSI TS 119 612 XML that names every CA and OCSP responder the TI
+// currently sanctions.
+//
+// The TSL is not a trust source for end-entity validation. Trust flows
+// from the GEM.RCA<n> anchors in package gempki; the TSL supplies the
+// intermediate CAs ([IntermediateCAs]) that let a chain reach them, and the
+// responders ([OCSPResponders]) allowed to answer for those CAs. Its own
+// authenticity is checked through the detached .sig file ([VerifySignature])
+// against the TSL-Signer-CA anchor, never through the inline XMLDSig.
+package tsl
 
 import (
 	"context"
@@ -14,17 +24,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gematik/zero-lab/go/brainpool"
+	"github.com/gematik/zero-lab/go/gempki"
 )
 
 const (
-	URLTrustServiceListTest = "https://download-test.tsl.ti-dienste.de/ECC/ECC-RSA_TSL-test.xml"
-	URLTrustServiceListRef  = "https://download-ref.tsl.ti-dienste.de/ECC/ECC-RSA_TSL-ref.xml"
-	URLTrustServiceListProd = "https://download.tsl.ti-dienste.de/ECC/ECC-RSA_TSL.xml"
+	URLTest = "https://download-test.tsl.ti-dienste.de/ECC/ECC-RSA_TSL-test.xml"
+	URLRef  = "https://download-ref.tsl.ti-dienste.de/ECC/ECC-RSA_TSL-ref.xml" // also dev
+	URLProd = "https://download.tsl.ti-dienste.de/ECC/ECC-RSA_TSL.xml"
 )
 
-func IsTSLUpdateAvailable(ctx context.Context, httpClient *http.Client, url string, hash string) (bool, error) {
-	// construct sha2 url
+// IsUpdateAvailable fetches the .sha2 digest published next to the TSL and
+// reports whether it differs from hash — the cheap check before re-downloading
+// several hundred kilobytes of XML.
+func IsUpdateAvailable(ctx context.Context, httpClient *http.Client, url string, hash string) (bool, error) {
+	if httpClient == nil {
+		return false, fmt.Errorf("tsl: IsUpdateAvailable requires an HTTP client")
+	}
 	sha2Url := strings.Replace(url, ".xml", ".sha2", 1)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sha2Url, nil)
@@ -55,20 +70,11 @@ func IsTSLUpdateAvailable(ctx context.Context, httpClient *http.Client, url stri
 	return true, nil
 }
 
-func UpdateTSL(ctx context.Context, httpClient *http.Client, tsl *TrustServiceStatusList) (*TrustServiceStatusList, error) {
-	updateAvailable, err := IsTSLUpdateAvailable(ctx, httpClient, tsl.Url, tsl.Hash)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check for TSL update: %w", err)
-	} else if !updateAvailable {
-		slog.Debug("No TSL update available", "url", tsl.Url)
-		return tsl, nil
+// Load fetches and parses the TSL at url through httpClient.
+func Load(ctx context.Context, httpClient *http.Client, url string) (*List, error) {
+	if httpClient == nil {
+		return nil, fmt.Errorf("tsl: Load requires an HTTP client")
 	}
-
-	slog.Info("TSL update available", "url", tsl.Url)
-	return LoadTSL(ctx, httpClient, tsl.Url)
-}
-
-func LoadTSL(ctx context.Context, httpClient *http.Client, url string) (*TrustServiceStatusList, error) {
 	slog.Info("Loading TSL", "url", url)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -83,10 +89,12 @@ func LoadTSL(ctx context.Context, httpClient *http.Client, url string) (*TrustSe
 	}
 	defer resp.Body.Close()
 
-	return ParseTSL(resp.Body, url)
+	return Parse(resp.Body, url)
 }
 
-func ParseTSL(input io.Reader, url string) (*TrustServiceStatusList, error) {
+// Parse decodes a TSL document. url is recorded on the result for
+// diagnostics only.
+func Parse(input io.Reader, url string) (*List, error) {
 	body, err := io.ReadAll(input)
 	if err != nil {
 		return nil, err
@@ -94,15 +102,14 @@ func ParseTSL(input io.Reader, url string) (*TrustServiceStatusList, error) {
 	hash := sha256.Sum256(body)
 	hashStr := hex.EncodeToString(hash[:])
 
-	tsl := new(TrustServiceStatusList)
-	err = xml.Unmarshal(body, tsl)
-	if err != nil {
+	list := new(List)
+	if err := xml.Unmarshal(body, list); err != nil {
 		return nil, err
 	}
-	tsl.Hash = hashStr
-	tsl.Url = url
-	tsl.Raw = body
-	return tsl, nil
+	list.Hash = hashStr
+	list.Url = url
+	list.Raw = body
+	return list, nil
 }
 
 type DateTime time.Time
@@ -139,20 +146,10 @@ func (t *DateTime) MarshalJSON() ([]byte, error) {
 	return []byte(str), nil
 }
 
+// ServiceTypeIdentifier values gempki acts on.
 const (
 	ServiceTypeCaPkc          = "http://uri.etsi.org/TrstSvc/Svctype/CA/PKC"
-	ServiceTypeCaCvc          = "http://uri.telematik/TrstSvc/Svctype/CA/CVC"
 	ServiceTypeCertstatusOcsp = "http://uri.etsi.org/TrstSvc/Svctype/Certstatus/OCSP"
-
-	// ServiceTypeTSLServiceCertChange identifies a TSPService entry that
-	// announces a *future* TSL-Signer-CA trust anchor (TUC_PKI_013, "Import
-	// TI-Vertrauensanker aus TSL"). After verifying a TSL's detached
-	// signature with the currently-trusted TSL-Signer-CA, callers can extract
-	// certs from these entries via [TSLSignerCertCandidates] and pre-stage
-	// them for verifying the next published TSL.
-	//
-	// Defined in gemSpec_PKI / gemLibPki as `STI_SRV_CERT_CHANGE`.
-	ServiceTypeTSLServiceCertChange = "http://uri.etsi.org/TrstSvc/Svctype/TSLServiceCertChange"
 )
 
 type MultiLangString struct {
@@ -236,7 +233,7 @@ func (d *DigitalId) UnmarshalXML(decoder *xml.Decoder, start xml.StartElement) e
 		if d.X509CertificateRaw, err = base64.StdEncoding.DecodeString(string(surrogate.X509CertificateBase64)); err != nil {
 			return fmt.Errorf("failed to decode base64: %w", err)
 		}
-		if d.X509Certificate, err = brainpool.ParseCertificate(d.X509CertificateRaw); err != nil {
+		if d.X509Certificate, err = gempki.ParseCertificate(d.X509CertificateRaw); err != nil {
 			return fmt.Errorf("failed to parse certificate: %w", err)
 		}
 	}
@@ -297,7 +294,9 @@ type TrustServiceProvider struct {
 	TSPServices    []TSPService   `xml:"http://uri.etsi.org/02231/v2# TSPServices>TSPService"`
 }
 
-type TrustServiceStatusList struct {
+// List is a parsed TSL. Hash, Url and Raw are what [Parse] recorded about
+// the document; everything else is the XML.
+type List struct {
 	Hash                     string                 `xml:"-"`
 	Url                      string                 `xml:"-"`
 	Raw                      []byte                 `xml:"-"`

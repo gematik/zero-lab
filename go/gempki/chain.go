@@ -8,17 +8,10 @@ import (
 	"fmt"
 )
 
-// DefaultMaxChainLen is the upper bound on a built chain's length.
-// 5 covers EE → SubCA → SubSubCA → Root rollover scenarios with headroom and
-// keeps adversarial chain construction (cyclic links, mega-chains) bounded.
-const DefaultMaxChainLen = 5
-
-// BuildChainOptions configures [BuildChain].
-type BuildChainOptions struct {
-	// MaxChainLen caps the total chain length (EE + intermediates + root).
-	// Zero means [DefaultMaxChainLen].
-	MaxChainLen int
-}
+// maxChainLen bounds a built chain. 5 covers EE → SubCA → SubSubCA → Root
+// rollover scenarios with headroom and keeps adversarial construction
+// (cyclic links, mega-chains) bounded.
+const maxChainLen = 5
 
 // BuildChain walks issuer references from leaf up through intermediates until
 // it lands on a [TrustStore] root. Returns the ordered chain [leaf, mid1, ...,
@@ -34,26 +27,21 @@ type BuildChainOptions struct {
 //     (precise: works through rollover when two roots share a CommonName);
 //   - otherwise fall back to Issuer/Subject DN match.
 //
-// Errors are wrapped [ErrChainIncomplete] when no candidate matches, or a
-// distinct error when MaxChainLen is exceeded or a cycle is detected.
-func BuildChain(leaf *x509.Certificate, intermediates []*x509.Certificate, ts *TrustStore, opts BuildChainOptions) ([]*x509.Certificate, error) {
+// Errors wrap [ErrChainIncomplete] when no candidate matches, the chain
+// exceeds the length bound, or a cycle is detected.
+func BuildChain(leaf *x509.Certificate, intermediates []*x509.Certificate, ts *TrustStore) ([]*x509.Certificate, error) {
 	if leaf == nil {
 		return nil, fmt.Errorf("gempki: BuildChain requires a non-nil leaf")
 	}
 	if ts == nil {
 		return nil, fmt.Errorf("gempki: BuildChain requires a non-nil TrustStore")
 	}
-	maxLen := opts.MaxChainLen
-	if maxLen <= 0 {
-		maxLen = DefaultMaxChainLen
-	}
-
 	chain := []*x509.Certificate{leaf}
-	seen := make(map[string]bool, maxLen)
+	seen := make(map[string]bool, maxChainLen)
 	seen[skiKey(leaf.SubjectKeyId)] = true
 
 	current := leaf
-	for len(chain) < maxLen {
+	for len(chain) < maxChainLen {
 		// Self-signed at any non-anchor position is a dead end — the only
 		// legitimate self-signed cert in a chain is a TrustStore root, which
 		// is handled inside findIssuer below.
@@ -73,8 +61,8 @@ func BuildChain(leaf *x509.Certificate, intermediates []*x509.Certificate, ts *T
 		seen[skiKey(issuer.SubjectKeyId)] = true
 		current = issuer
 	}
-	return nil, fmt.Errorf("gempki: %w: chain exceeds MaxChainLen=%d (last subject %q)",
-		ErrChainIncomplete, maxLen, current.Subject.CommonName)
+	return nil, fmt.Errorf("gempki: %w: chain exceeds %d certificates (last subject %q)",
+		ErrChainIncomplete, maxChainLen, current.Subject.CommonName)
 }
 
 type issuerSource int
@@ -122,3 +110,23 @@ func nameMatches(issuer, subject pkix.Name) bool {
 }
 
 func skiKey(ski []byte) string { return hex.EncodeToString(ski) }
+
+// verifyCertificateSignature checks that child was signed by parent's private key.
+//
+// Both public keys must be one of the TI-PKI's allowed types (ECDSA on an
+// allowed curve, or RSA). The signature itself is verified via the standard
+// library, which handles ECDSA (including Brainpool) and RSA / RSA-PSS
+// uniformly through [x509.Certificate.CheckSignatureFrom].
+func verifyCertificateSignature(child, parent *x509.Certificate) error {
+	if child == nil {
+		return fmt.Errorf("gempki: nil child certificate")
+	}
+	if parent == nil {
+		return fmt.Errorf("gempki: nil parent certificate")
+	}
+	if err := child.CheckSignatureFrom(parent); err != nil {
+		return fmt.Errorf("gempki: signature verification failed for %q (issuer %q): %w",
+			child.Subject.CommonName, parent.Subject.CommonName, err)
+	}
+	return nil
+}

@@ -12,6 +12,7 @@ import (
 	"github.com/gematik/zero-lab/go/gempki"
 	"github.com/gematik/zero-lab/go/gempki/internal/testca"
 	"github.com/gematik/zero-lab/go/gempki/internal/testtsl"
+	"github.com/gematik/zero-lab/go/gempki/tsl"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -42,10 +43,7 @@ func TestOpenSSLCross_RealWorld_SMCB(t *testing.T) {
 	eeCerts, err := gempki.ParsePEMCertificates([]byte(fixtureBrainpoolSMCBEEPEM))
 	require.NoError(t, err)
 
-	v := gempki.NewValidator(
-		gempki.WithTrustStore(ts),
-		gempki.WithRevocationMode(gempki.RevocationModeDisabled),
-	)
+	v := &gempki.Validator{TrustStore: ts, RevocationMode: gempki.RevocationModeDisabled}
 	chain := append([]*x509.Certificate{eeCerts[0]}, smcbCA51...)
 	result, err := v.Validate(t.Context(), chain)
 	require.NoError(t, err)
@@ -63,9 +61,9 @@ func TestOpenSSLCross_RealWorld_TSLIntermediates(t *testing.T) {
 	t.Parallel()
 	testca.RequireOpenSSLBrainpool(t)
 
-	tsl, err := testtsl.EmbeddedTSL()
+	list, err := testtsl.EmbeddedTSL()
 	require.NoError(t, err)
-	cas := gempki.IntermediateCAsFromTSL(tsl)
+	cas := tsl.IntermediateCAs(list)
 	require.NotEmpty(t, cas)
 
 	dir := t.TempDir()

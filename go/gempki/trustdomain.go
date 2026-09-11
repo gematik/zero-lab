@@ -1,7 +1,6 @@
 package gempki
 
 import (
-	"context"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -31,7 +30,6 @@ const (
 type TrustDomainMethod string
 
 const (
-	MethodNone         TrustDomainMethod = ""
 	MethodRootIdentity TrustDomainMethod = "root-identity"
 	MethodChain        TrustDomainMethod = "chain"
 	MethodMarkers      TrustDomainMethod = "markers"
@@ -70,7 +68,7 @@ func (r TrustDomainResult) decide(d TrustDomain, m TrustDomainMethod, format str
 
 // DetectTrustDomain works out whether certs belong to the production TI or to
 // one of the test environments. It is entirely offline: the only trust material
-// it consults is the compiled-in roots ([EmbeddedLoader]).
+// it consults is the compiled-in roots ([EmbeddedRoots]).
 //
 // certs is a chain in leaf-first order, as returned by [ParsePEMCertificates];
 // supplying the issuing CA alongside the leaf lets the chain phase decide, which
@@ -96,7 +94,8 @@ func (r TrustDomainResult) decide(d TrustDomain, m TrustDomainMethod, format str
 func DetectTrustDomain(certs []*x509.Certificate) TrustDomainResult {
 	var res TrustDomainResult
 	if len(certs) == 0 {
-		return res.add(MethodNone, "no certificates supplied")
+		res.Detail = "no certificates supplied"
+		return res
 	}
 
 	prod, nonProd, err := embeddedStores()
@@ -121,16 +120,15 @@ func DetectTrustDomain(certs []*x509.Certificate) TrustDomainResult {
 // non-prod store merges dev/ref and test: their roots overlap, so a hit in
 // either says the same thing.
 func embeddedStores() (prod, nonProd *TrustStore, err error) {
-	ctx := context.Background()
-	prod, err = EmbeddedLoader{Env: EnvProd}.Load(ctx)
+	prod, err = EmbeddedRoots(EnvProd)
 	if err != nil {
 		return nil, nil, fmt.Errorf("prod roots: %w", err)
 	}
-	devRef, err := EmbeddedLoader{Env: EnvRef}.Load(ctx)
+	devRef, err := EmbeddedRoots(EnvRef)
 	if err != nil {
 		return nil, nil, fmt.Errorf("ref roots: %w", err)
 	}
-	test, err := EmbeddedLoader{Env: EnvTest}.Load(ctx)
+	test, err := EmbeddedRoots(EnvTest)
 	if err != nil {
 		return nil, nil, fmt.Errorf("test roots: %w", err)
 	}
@@ -157,11 +155,11 @@ func detectByRootIdentity(res TrustDomainResult, certs []*x509.Certificate, prod
 
 func detectByChain(res TrustDomainResult, certs []*x509.Certificate, prod, nonProd *TrustStore) (TrustDomainResult, bool) {
 	leaf, intermediates := certs[0], certs[1:]
-	if chain, err := BuildChain(leaf, intermediates, prod, BuildChainOptions{}); err == nil {
+	if chain, err := BuildChain(leaf, intermediates, prod); err == nil {
 		return res.decide(TrustDomainProd, MethodChain,
 			"chains to prod root %q", chain[len(chain)-1].Subject.CommonName), true
 	}
-	chain, err := BuildChain(leaf, intermediates, nonProd, BuildChainOptions{})
+	chain, err := BuildChain(leaf, intermediates, nonProd)
 	if err == nil {
 		return res.decide(TrustDomainNonProd, MethodChain,
 			"chains to non-prod root %q", chain[len(chain)-1].Subject.CommonName), true

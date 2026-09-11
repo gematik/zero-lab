@@ -2,13 +2,10 @@ package gempki
 
 import (
 	"encoding/asn1"
-	"fmt"
-	"net/http"
-	"regexp"
+	"github.com/gematik/zero-lab/go/gempki/oid"
 	"slices"
 	"sort"
 	"strings"
-	"time"
 )
 
 // Profile is a named, type-aware validation strategy.
@@ -22,10 +19,10 @@ import (
 // Profiles are values, not factories: write
 //
 //	v := gempki.ProfileSmbAut.Validator(ts, gempki.CertTypeHciAUT)
+//	v.Revocation = &gempki.OCSPChecker{HTTPClient: client}
 //
-// then mutate v further if needed (install a custom OCSP checker, override
-// the revocation mode for dev, attach hooks). The profile sets defaults,
-// not a contract.
+// and adjust the result further if needed. The profile sets defaults, not a
+// contract.
 type Profile struct {
 	// Name is the slug used by the CLI (`--profile <name>`) and by the
 	// [ProfileRegistry]. Kebab-case, enforced by [ValidateProfileRegistry].
@@ -74,37 +71,23 @@ type Profile struct {
 	DefaultFor []CertificateType
 }
 
-// Validator builds a fresh [*Validator] for the given [TrustStore] and
-// cert type, composing the type's baseline ([CertificateType.Spec]) with
-// this profile's overlay. The returned validator has no revocation
-// checker wired — callers add one with [WithRevocationChecker] or
-// [WithOCSPNetworkChecker] before validating.
+// Validator builds a [*Validator] for the given trust store and certificate
+// type: the type's baseline (key usage, EKUs, policies, roles) with this
+// profile's overlay on top. No revocation checker is set — callers assign
+// [Validator.Revocation] before validating, or set RevocationModeDisabled.
 //
-// Passing a type that isn't in [Profile.AcceptsTypes] is allowed (the
-// caller may be deliberately forcing a profile); the resulting
-// validator simply applies the type's baseline with this profile's
-// overlay, which may or may not be appropriate. The CLI emits a
-// warning when this happens.
+// A type outside [Profile.AcceptsTypes] is allowed; the caller may be
+// deliberately forcing a profile. The CLI warns when that happens.
 func (p *Profile) Validator(ts *TrustStore, t CertificateType) *Validator {
 	spec := t.Spec()
-	policies := append(append([]asn1.ObjectIdentifier{}, spec.Policies...), p.ExtraPolicies...)
-	opts := []Option{
-		WithTrustStore(ts),
-		WithRevocationMode(p.RevocationMode),
+	return &Validator{
+		TrustStore:          ts,
+		RevocationMode:      p.RevocationMode,
+		RequiredKeyUsage:    spec.KeyUsage,
+		AllowedExtKeyUsages: spec.EKU,
+		RequiredPolicies:    append(append([]asn1.ObjectIdentifier{}, spec.Policies...), p.ExtraPolicies...),
+		RequiredRoleOIDs:    p.EffectiveRoleOIDs(t),
 	}
-	if spec.KeyUsage != 0 {
-		opts = append(opts, WithRequiredKeyUsage(spec.KeyUsage))
-	}
-	if len(spec.EKU) > 0 {
-		opts = append(opts, WithAllowedExtKeyUsages(spec.EKU...))
-	}
-	if len(policies) > 0 {
-		opts = append(opts, WithRequiredPolicies(policies...))
-	}
-	if roles := p.EffectiveRoleOIDs(t); len(roles) > 0 {
-		opts = append(opts, WithRequiredRoleOIDs(roles...))
-	}
-	return NewValidator(opts...)
 }
 
 // EffectiveRoleOIDs returns the role-OID set this profile actually enforces
@@ -143,7 +126,7 @@ var ProfileSmbAut = &Profile{
 // ProfileEpaVau validates the C.FD.AUT cert an ePA Aktensystem VAU
 // (Vertrauenswürdige Ausführungsumgebung) presents for authenticity.
 //
-// Like [ProfileZetaASL] it is identified by its admission role rather than
+// Like [ProfileZetaGuardAut] it is identified by its admission role rather than
 // by its cert type: oid_epa_vau also appears on the VAU's C.FD.ENC and
 // C.FD.SIG certs, so the pairing of role and type is what names this
 // profile — hence `epa-vau-aut`, leaving room for `epa-vau-enc` and
@@ -161,32 +144,34 @@ var ProfileEpaVau = &Profile{
 	Description:      "ePA Aktensystem VAU backend authenticity",
 	RevocationMode:   RevocationModeHardFail,
 	AcceptsTypes:     []CertificateType{CertTypeFdAUT},
-	RequiredRoleOIDs: []asn1.ObjectIdentifier{OIDTechRoleEpaVAU},
+	RequiredRoleOIDs: []asn1.ObjectIdentifier{oid.TechRoleEpaVAU},
 }
 
-// ProfileIdpSig validates the C.FD.SIG cert an IDP signs its discovery
-// document and entity statements with.
+// ProfileIdpSig validates the C.FD.SIG certs an IDP signs with: its
+// discovery document (puk_disc_sig) and its tokens (puk_idp_sig). Both
+// carry oid_idpd, which is what tells them apart from any other
+// Fachdienst's signing cert.
 //
 // HardFail revocation: IDP key compromise must not be soft-failed.
 //
-// Gap — IDP C.FD.AUT (JWKS / authenticity) has no profile. Its predecessor
-// `idp` accepted C.FD.SIG and C.FD.AUT together, which made every C.FD.AUT
-// ambiguous against epa-vau with nothing to break the tie. A future
-// `idp-aut` should carry the IDP's own RequiredRoleOIDs so
-// [SelectProfileForCert] can tell it apart by cert content, the way
-// [ProfileZetaASL] does.
+// There is deliberately no idp-aut. An IDP publishes no C.FD.AUT at all —
+// checked against the RU IDP, whose authenticity keys are C.FD.SIG and
+// whose encryption key (puk_idp_enc) ships with no certificate. The
+// predecessor `idp` profile claimed C.FD.AUT anyway, and that claim was
+// the sole reason every C.FD.AUT counted as ambiguous.
 var ProfileIdpSig = &Profile{
-	Name:           "idp-sig",
-	Description:    "IDP discovery document and entity statement signing",
-	RevocationMode: RevocationModeHardFail,
-	AcceptsTypes:   []CertificateType{CertTypeFdSIG},
-	DefaultFor:     []CertificateType{CertTypeFdSIG},
+	Name:             "idp-sig",
+	Description:      "IDP discovery document and token signing",
+	RevocationMode:   RevocationModeHardFail,
+	AcceptsTypes:     []CertificateType{CertTypeFdSIG},
+	RequiredRoleOIDs: []asn1.ObjectIdentifier{oid.TechRoleIDPD},
 }
 
-// ProfileZetaASL validates the C.FD.AUT cert a ZETA Guard access service
-// layer presents. Named for the role/type pairing like [ProfileEpaVau]:
-// the ZETA Guard role also appears on C.FD.TLS-C, which would be
-// `zeta-asl-tls-c`.
+// ProfileZetaGuardAut validates the C.FD.AUT cert a ZETA Guard access service
+// layer presents. Named for the role/type pairing like [ProfileEpaVau], and
+// after the role rather than the component so the name tracks gemSpec_OID:
+// oid_zeta-guard also covers C.FD.TLS-C, which would be
+// `zeta-guard-tls-c`.
 //
 // The cert type alone does not identify it — a ZETA ASL cert is an ordinary
 // C.FD.AUT — so the profile requires the ZETA Guard profession OID in the
@@ -195,24 +180,30 @@ var ProfileIdpSig = &Profile{
 // the same way, by its own role.
 //
 // HardFail revocation: ZETA sits in front of the resources it guards.
-var ProfileZetaASL = &Profile{
-	Name:             "zeta-asl-aut",
+var ProfileZetaGuardAut = &Profile{
+	Name:             "zeta-guard-aut",
 	Description:      "ZETA Guard access service layer authenticity",
 	RevocationMode:   RevocationModeHardFail,
 	AcceptsTypes:     []CertificateType{CertTypeFdAUT},
-	RequiredRoleOIDs: []asn1.ObjectIdentifier{OIDTechRoleZETAGuard},
+	RequiredRoleOIDs: []asn1.ObjectIdentifier{oid.TechRoleZETAGuard},
 }
 
-// ProfileRegistry is the canonical name → profile lookup. CLI `--profile
-// <name>` and `pki profiles` both read through this map. Add new
-// profiles by appending here; the rest of the CLI surface picks them up
-// automatically. [ValidateProfileRegistry] states what a well-formed
-// registry looks like.
-var ProfileRegistry = map[string]*Profile{
-	ProfileSmbAut.Name:  ProfileSmbAut,
-	ProfileEpaVau.Name:  ProfileEpaVau,
-	ProfileIdpSig.Name:  ProfileIdpSig,
-	ProfileZetaASL.Name: ProfileZetaASL,
+// profiles is the registry, in the order listings show them. Add a profile
+// here and the CLI surface picks it up; the invariants a well-formed entry
+// must satisfy are pinned by TestProfiles_Invariants.
+var profiles = []*Profile{
+	ProfileEpaVau,
+	ProfileIdpSig,
+	ProfileSmbAut,
+	ProfileZetaGuardAut,
+}
+
+// Profiles returns every registered profile, sorted by name. The slice is a
+// copy; the profiles themselves are shared.
+func Profiles() []*Profile {
+	out := append([]*Profile(nil), profiles...)
+	sortProfilesByName(out)
+	return out
 }
 
 // Pseudo-values accepted wherever a profile name is: they select a strategy
@@ -227,11 +218,10 @@ const (
 
 // ProfileNames returns every registered profile name, sorted.
 func ProfileNames() []string {
-	out := make([]string, 0, len(ProfileRegistry))
-	for name := range ProfileRegistry {
-		out = append(out, name)
+	out := make([]string, 0, len(profiles))
+	for _, p := range Profiles() {
+		out = append(out, p.Name)
 	}
-	sort.Strings(out)
 	return out
 }
 
@@ -246,79 +236,17 @@ func ProfileSelectorValues() []string {
 // [ProfileNone], "" and unknown names all return (nil, false); callers that
 // must tell those apart compare against the constants first.
 func LookupProfile(name string) (*Profile, bool) {
-	p, ok := ProfileRegistry[strings.ToLower(name)]
-	return p, ok
-}
-
-// profileNamePattern is the kebab-case shape every profile name must have.
-var profileNamePattern = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
-
-// ValidateProfileRegistry reports the first structural problem in
-// [ProfileRegistry], or nil when it is well-formed. It exists because two
-// of the invariants are otherwise unenforced and fail silently: a type
-// claimed as [Profile.DefaultFor] by two profiles makes
-// [CertificateType.DefaultProfile] answer arbitrarily, and a DefaultFor
-// entry outside AcceptsTypes produces a default that [ProfilesForType]
-// won't even list.
-//
-// Consumers that append their own profiles should call this in a test.
-// gempki deliberately does not panic in init: a library has no business
-// killing a process over a registry its caller is still assembling.
-func ValidateProfileRegistry() error {
-	owner := map[CertificateType]string{}
-	for key, p := range ProfileRegistry {
-		switch {
-		case p == nil:
-			return fmt.Errorf("gempki: profile registry key %q is nil", key)
-		case key != p.Name:
-			return fmt.Errorf("gempki: profile registry key %q does not match profile name %q", key, p.Name)
-		case !profileNamePattern.MatchString(p.Name):
-			return fmt.Errorf("gempki: profile name %q is not kebab-case", p.Name)
-		case p.Description == "":
-			return fmt.Errorf("gempki: profile %q has no Description", p.Name)
-		case strings.ContainsAny(p.Description, "\n\r"):
-			return fmt.Errorf("gempki: profile %q Description must be a single line", p.Name)
-		case len(p.AcceptsTypes) == 0:
-			return fmt.Errorf("gempki: profile %q accepts no certificate types", p.Name)
-		}
-		for _, t := range p.AcceptsTypes {
-			if !IsKnownCertificateType(t) {
-				return fmt.Errorf("gempki: profile %q accepts unknown certificate type %q", p.Name, t)
-			}
-		}
-		for _, t := range p.DefaultFor {
-			if !slices.Contains(p.AcceptsTypes, t) {
-				return fmt.Errorf("gempki: profile %q is DefaultFor %q which it does not accept", p.Name, t)
-			}
-			if other, dup := owner[t]; dup {
-				return fmt.Errorf("gempki: certificate type %q is claimed as DefaultFor by both %q and %q", t, other, p.Name)
-			}
-			owner[t] = p.Name
+	name = strings.ToLower(name)
+	for _, p := range profiles {
+		if p.Name == name {
+			return p, true
 		}
 	}
-	return nil
+	return nil, false
 }
 
 // sortProfilesByName sorts in place by Name for deterministic output.
-// Used by [ProfilesForType] and `pki profiles` rendering.
+// Used by [Profiles] and `pki profiles` rendering.
 func sortProfilesByName(ps []*Profile) {
 	sort.Slice(ps, func(i, j int) bool { return ps[i].Name < ps[j].Name })
-}
-
-// WithOCSPNetworkChecker is a convenience for the most common revocation
-// wire-up: an [OCSPChecker] that fetches over HTTPS through the supplied
-// http.Client. Most production callers want this together with a profile:
-//
-//	v := gempki.ProfileSmbAut.Validator(ts, gempki.CertTypeHciAUT)
-//	gempki.WithOCSPNetworkChecker(client, "")(v)         // AIA-driven
-//	gempki.WithCache(gempki.NewInMemoryCache(2000))(v)
-//
-// responderURL is optional; pass "" to read it from each EE's AIA
-// extension. MaxResponseAge defaults to 48h.
-func WithOCSPNetworkChecker(httpClient *http.Client, responderURL string) Option {
-	return WithRevocationChecker(&OCSPChecker{
-		HTTPClient:     httpClient,
-		ResponderURL:   responderURL,
-		MaxResponseAge: 48 * time.Hour,
-	})
 }

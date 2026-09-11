@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/gempki"
+	"github.com/gematik/zero-lab/go/gempki/tsl"
 	"github.com/gematik/zero-lab/go/ti/internal/common"
 	"github.com/spf13/cobra"
 )
@@ -217,16 +218,16 @@ func runCertVerify(ctx context.Context, def common.EnvDef, certs []*x509.Certifi
 	// delegated responder via the TSL-match path. A TSL fetch failure is
 	// logged but not fatal; chain build proceeds with whatever we have.
 	var tslResponders []*x509.Certificate
-	tsl, terr := common.LoadTSLCached(ctx, httpClient, def.TSLURL)
+	list, terr := common.LoadTSLCached(ctx, httpClient, def.TSLURL)
 	if terr != nil {
 		slog.Warn("TSL load failed; chain build will rely on roots + supplied intermediates only", "env", def.Env, "err", terr)
 	} else {
-		for _, c := range gempki.IntermediateCAsFromTSL(tsl) {
+		for _, c := range tsl.IntermediateCAs(list) {
 			if c.Cert != nil {
 				intermediates = append(intermediates, c.Cert)
 			}
 		}
-		for _, c := range gempki.OCSPRespondersFromTSL(tsl) {
+		for _, c := range tsl.OCSPResponders(list) {
 			if c.Cert != nil {
 				tslResponders = append(tslResponders, c.Cert)
 			}
@@ -237,7 +238,7 @@ func runCertVerify(ctx context.Context, def common.EnvDef, certs []*x509.Certifi
 	opts.intermediates = intermediates
 	opts.roots = ts
 
-	v := buildValidator(def, ts, opts)
+	v := buildValidator(ts, opts)
 	result, err := v.Validate(ctx, append([]*x509.Certificate{certs[0]}, intermediates...))
 	if err != nil {
 		return err
@@ -293,8 +294,7 @@ func profileNames(ps []*gempki.Profile) []string {
 
 func resolveTrustStoreFor(ctx context.Context, def common.EnvDef, rootsPath string, httpClient *http.Client) (*gempki.TrustStore, error) {
 	if rootsPath == "" {
-		loader := gempki.NetworkLoader{Env: def.Env, HTTPClient: httpClient}
-		return loader.Load(ctx)
+		return gempki.FetchRoots(ctx, def.Env, httpClient)
 	}
 	pemBytes, err := os.ReadFile(rootsPath)
 	if err != nil {
@@ -307,48 +307,38 @@ func resolveTrustStoreFor(ctx context.Context, def common.EnvDef, rootsPath stri
 	return gempki.NewTrustStore(roots)
 }
 
-func buildValidator(def common.EnvDef, ts *gempki.TrustStore, opts certVerifyOpts) *gempki.Validator {
+func buildValidator(ts *gempki.TrustStore, opts certVerifyOpts) *gempki.Validator {
 	var v *gempki.Validator
 	if p, ok := gempki.LookupProfile(opts.Profile); ok {
 		v = p.Validator(ts, opts.detectedType)
 	} else {
-		v = gempki.NewValidator(gempki.WithTrustStore(ts))
+		v = &gempki.Validator{TrustStore: ts, RevocationMode: gempki.RevocationModeDisabled}
 	}
 	if opts.At != nil {
 		at := *opts.At
 		v.TimeFunc = func() time.Time { return at }
 	}
-	// Revocation policy:
-	//   - When a profile is set, the profile carries the mode — see
-	//     `ti pki profiles list`. The profile dictates; we just wire the
-	//     OCSPChecker so the mode has something to evaluate.
-	//   - When no profile is set, `--ocsp` opts in to SoftFail revocation.
-	//   - When neither is set, revocation is disabled (cheap decode + chain).
-	profileSet := opts.Profile != ""
-	if profileSet || opts.WithOCSP {
-		client := opts.httpClient
-		if client == nil {
-			client = common.NewHTTPClient()
-		}
-		maxAge := opts.OCSPMaxAge
-		if maxAge <= 0 {
-			maxAge = 48 * time.Hour
-		}
-		gempki.WithRevocationChecker(&gempki.OCSPChecker{
-			HTTPClient:     client,
-			ResponderURL:   opts.OCSPResponder,
-			MaxResponseAge: maxAge,
-			TSLResponders:  opts.tslResponders,
-			Intermediates:  opts.intermediates,
-			Roots:          opts.roots,
-		})(v)
-		if !profileSet {
-			gempki.WithRevocationMode(gempki.RevocationModeSoftFail)(v)
-		}
-	} else {
-		gempki.WithRevocationMode(gempki.RevocationModeDisabled)(v)
+	// A profile carries its own revocation mode (see `ti pki profiles list`);
+	// without one, --ocsp opts in to SoftFail and otherwise revocation stays
+	// off so a plain chain check costs no network round trip.
+	if opts.Profile == "" && !opts.WithOCSP {
+		return v
 	}
-	_ = def
+	client := opts.httpClient
+	if client == nil {
+		client = common.NewHTTPClient()
+	}
+	v.Revocation = &gempki.OCSPChecker{
+		HTTPClient:     client,
+		ResponderURL:   opts.OCSPResponder,
+		MaxResponseAge: opts.OCSPMaxAge,
+		TSLResponders:  opts.tslResponders,
+		Intermediates:  opts.intermediates,
+		Roots:          opts.roots,
+	}
+	if opts.Profile == "" {
+		v.RevocationMode = gempki.RevocationModeSoftFail
+	}
 	return v
 }
 
@@ -437,7 +427,6 @@ func renderVerifyResultText(result *gempki.ValidationResult, opts certVerifyOpts
 
 func writeRevocationDetail(kv *common.KVWriter, rev *gempki.RevocationResult) {
 	kv.KV("Status", string(rev.Status))
-	kv.KV("Source", string(rev.Source))
 	if rev.ResponderURL != "" {
 		kv.KV("Responder URL", rev.ResponderURL)
 	}
@@ -552,7 +541,6 @@ func verifyResultJSON(r *gempki.ValidationResult, opts certVerifyOpts) map[strin
 func revocationJSON(rev *gempki.RevocationResult) map[string]any {
 	out := map[string]any{
 		"status": string(rev.Status),
-		"source": string(rev.Source),
 	}
 	if rev.ResponderURL != "" {
 		out["responderURL"] = rev.ResponderURL

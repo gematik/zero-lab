@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/gempki"
+	"github.com/gematik/zero-lab/go/gempki/oid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -128,7 +129,7 @@ func TestDetectCertificateType_PolicyMatches(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			cert := buildTestCert(t, buildOpts{
 				policies: []asn1.ObjectIdentifier{
-					gempki.OIDPolicyGemOrCP,
+					oid.PolicyGemOrCP,
 					c.typed.OID(),
 				},
 				keyUsage: x509.KeyUsageDigitalSignature,
@@ -149,23 +150,23 @@ func TestDetectCertificateType_AdmissionFallback(t *testing.T) {
 	}
 	cases := []tc{
 		{"SMC-B Krankenhaus AUT (digitalSignature)",
-			gempki.OIDInstKrankenhaus, x509.KeyUsageDigitalSignature, gempki.CertTypeHciAUT},
+			oid.InstKrankenhaus, x509.KeyUsageDigitalSignature, gempki.CertTypeHciAUT},
 		{"SMC-B Apotheke ENC (keyEncipherment)",
-			gempki.OIDInstOeffentlicheApo, x509.KeyUsageKeyEncipherment, gempki.CertTypeHciENC},
+			oid.InstOeffentlicheApo, x509.KeyUsageKeyEncipherment, gempki.CertTypeHciENC},
 		{"SMC-B Praxis OSIG (contentCommitment)",
-			gempki.OIDInstArztpraxis, x509.KeyUsageContentCommitment, gempki.CertTypeHciOSIG},
+			oid.InstArztpraxis, x509.KeyUsageContentCommitment, gempki.CertTypeHciOSIG},
 		{"HBA Arzt QES (contentCommitment)",
-			gempki.OIDProfArzt, x509.KeyUsageContentCommitment, gempki.CertTypeHpQES},
+			oid.ProfArzt, x509.KeyUsageContentCommitment, gempki.CertTypeHpQES},
 		{"HBA Apotheker AUT (digitalSignature)",
-			gempki.OIDProfApotheker, x509.KeyUsageDigitalSignature, gempki.CertTypeHpAUT},
+			oid.ProfApotheker, x509.KeyUsageDigitalSignature, gempki.CertTypeHpAUT},
 		{"HBA Zahnarzt ENC (keyEncipherment)",
-			gempki.OIDProfZahnarzt, x509.KeyUsageKeyEncipherment, gempki.CertTypeHpENC},
+			oid.ProfZahnarzt, x509.KeyUsageKeyEncipherment, gempki.CertTypeHpENC},
 		{"eGK Versicherter AUT",
-			gempki.OIDProfVersicherter, x509.KeyUsageDigitalSignature, gempki.CertTypeChAUT},
+			oid.ProfVersicherter, x509.KeyUsageDigitalSignature, gempki.CertTypeChAUT},
 		{"eGK Versicherter QES",
-			gempki.OIDProfVersicherter, x509.KeyUsageContentCommitment, gempki.CertTypeChQES},
+			oid.ProfVersicherter, x509.KeyUsageContentCommitment, gempki.CertTypeChQES},
 		{"eGK Versicherter ENC",
-			gempki.OIDProfVersicherter, x509.KeyUsageKeyEncipherment, gempki.CertTypeChENC},
+			oid.ProfVersicherter, x509.KeyUsageKeyEncipherment, gempki.CertTypeChENC},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -184,7 +185,7 @@ func TestDetectCertificateType_NoMatch(t *testing.T) {
 	t.Parallel()
 	t.Run("only umbrella policy, no Admission", func(t *testing.T) {
 		cert := buildTestCert(t, buildOpts{
-			policies: []asn1.ObjectIdentifier{gempki.OIDPolicyGemOrCP},
+			policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP},
 			keyUsage: x509.KeyUsageDigitalSignature,
 		})
 		assert.Equal(t, gempki.CertTypeUnknown, gempki.DetectCertificateType(cert))
@@ -234,7 +235,9 @@ func TestCertificateType_DefaultProfile(t *testing.T) {
 	}
 	cases := []tc{
 		{gempki.CertTypeHciAUT, gempki.ProfileSmbAut},
-		{gempki.CertTypeFdSIG, gempki.ProfileIdpSig},
+		// C.FD.SIG is role-discriminated too now: idp-sig claims only certs
+		// asserting oid_idpd, so no profile owns the bare type.
+		{gempki.CertTypeFdSIG, nil},
 		// C.FD.AUT has no type-level owner: both profiles that accept it are
 		// told apart by an admission role, not by the type. SelectProfileForCert
 		// is what resolves it.
@@ -248,7 +251,7 @@ func TestCertificateType_DefaultProfile(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(string(c.typed), func(t *testing.T) {
-			assert.Same(t, c.want, c.typed.DefaultProfile())
+			assert.Same(t, c.want, gempki.DefaultProfileFor(c.typed))
 		})
 	}
 }
@@ -264,7 +267,7 @@ func TestProfilesForType(t *testing.T) {
 		{gempki.CertTypeFdSIG, []*gempki.Profile{gempki.ProfileIdpSig}},
 		// 1:N — the type alone does not separate these two; the ZETA Guard
 		// admission role does, which is what ProfilesForCert is for.
-		{gempki.CertTypeFdAUT, []*gempki.Profile{gempki.ProfileEpaVau, gempki.ProfileZetaASL}},
+		{gempki.CertTypeFdAUT, []*gempki.Profile{gempki.ProfileEpaVau, gempki.ProfileZetaGuardAut}},
 		{gempki.CertTypeHpQES, nil},
 		{gempki.CertTypeFdTLSS, nil},
 		{gempki.CertTypeUnknown, nil},

@@ -2,7 +2,10 @@ package gempki
 
 import (
 	"crypto/x509"
+	"github.com/gematik/zero-lab/go/gempki/oid"
+	"slices"
 	"sort"
+	"strings"
 )
 
 // ProfileSelectReason says how [SelectProfileForCert] reached its answer.
@@ -18,8 +21,9 @@ const (
 	// ProfileSelectAmbiguous — more than one profile applies and none is
 	// more specific. The caller must ask the user to name one.
 	ProfileSelectAmbiguous ProfileSelectReason = "ambiguous"
-	// ProfileSelectNone — no profile accepts this certificate's type, or the
-	// type could not be detected.
+	// ProfileSelectNone — nothing claims this certificate: either no profile
+	// accepts its type, or the profiles that do all require a role it does
+	// not assert. Candidates carries the latter, so a caller can name them.
 	ProfileSelectNone ProfileSelectReason = "none"
 )
 
@@ -55,7 +59,7 @@ func (p *Profile) Matches(cert *x509.Certificate) bool {
 	if cert == nil {
 		return false
 	}
-	have, err := DefaultRoleOIDExtractor(cert)
+	have, err := roleOIDs(cert)
 	if err != nil {
 		// No admission extension, or one we cannot parse: the certificate
 		// asserts nothing, so a profile that requires a role does not apply.
@@ -71,6 +75,14 @@ func (p *Profile) specificity() int {
 		return 1
 	}
 	return 0
+}
+
+func profileNamesOf(ps []*Profile) []string {
+	out := make([]string, len(ps))
+	for i, p := range ps {
+		out[i] = p.Name
+	}
+	return out
 }
 
 // ProfilesForCert narrows [ProfilesForType] to the profiles whose
@@ -124,7 +136,7 @@ func SelectProfileForCert(cert *x509.Certificate) ProfileSelection {
 		if len(top) == 1 {
 			sel.Profile = top[0]
 			sel.Reason = ProfileSelectedByCert
-			sel.Detail = "asserts role " + FormatOID(top[0].RequiredRoleOIDs[0])
+			sel.Detail = "asserts role " + oid.Format(top[0].RequiredRoleOIDs[0])
 			return sel
 		}
 		sel.Reason = ProfileSelectAmbiguous
@@ -133,7 +145,7 @@ func SelectProfileForCert(cert *x509.Certificate) ProfileSelection {
 		return sel
 	}
 
-	if p := t.DefaultProfile(); p != nil {
+	if p := DefaultProfileFor(t); p != nil {
 		sel.Profile = p
 		sel.Reason = ProfileSelectedByDefault
 		sel.Detail = "default for type " + string(t)
@@ -147,11 +159,57 @@ func SelectProfileForCert(cert *x509.Certificate) ProfileSelection {
 		return sel
 	}
 
+	if len(matched) == 0 {
+		// Every profile for this type is role-discriminated and none of their
+		// roles is asserted. That is a definite "not one of these", not an
+		// ambiguity for the user to resolve.
+		sel.Reason = ProfileSelectNone
+		sel.Candidates = byType
+		sel.Detail = "type " + string(t) + " is accepted by " + strings.Join(profileNamesOf(byType), ", ") +
+			", but the certificate asserts none of their roles"
+		return sel
+	}
 	sel.Reason = ProfileSelectAmbiguous
 	sel.Candidates = matched
-	if len(sel.Candidates) == 0 {
-		sel.Candidates = byType
-	}
 	sel.Detail = "type " + string(t) + " matches several profiles and none owns it"
 	return sel
+}
+
+// DefaultProfileFor returns the profile that owns t through
+// [Profile.DefaultFor], or nil when none does. A nil result means one of:
+//   - no profile accepts this type at all → callers should warn
+//     [WarnProfileNotDetected];
+//   - multiple profiles accept this type but none claims default ownership
+//     → callers should warn [WarnProfileAmbiguous] and ask the user to
+//     pick via [ProfilesForType].
+//
+// Callers can distinguish the two with `len(ProfilesForType(t))`.
+func DefaultProfileFor(t CertificateType) *Profile {
+	for _, p := range profiles {
+		if slices.Contains(p.DefaultFor, t) {
+			return p
+		}
+	}
+	return nil
+}
+
+// IsKnownCertificateType reports whether t is one of the Tab_PKI_405 types
+// this package models. [CertTypeUnknown] is not.
+func IsKnownCertificateType(t CertificateType) bool {
+	_, ok := certTypeOID[t]
+	return ok
+}
+
+// ProfilesForType returns every registered profile whose AcceptsTypes
+// includes t, in registry order; nil when none does. A type may legitimately
+// be accepted by several profiles — C.FD.AUT by epa-vau-aut and
+// zeta-guard-aut — which is what [ProfilesForCert] then resolves.
+func ProfilesForType(t CertificateType) []*Profile {
+	var out []*Profile
+	for _, p := range profiles {
+		if slices.Contains(p.AcceptsTypes, t) {
+			out = append(out, p)
+		}
+	}
+	return out
 }
