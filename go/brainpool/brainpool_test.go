@@ -221,7 +221,7 @@ func TestParseCertificateFields(t *testing.T) {
 
 	// basic constraints
 	assertTrue(t, cert.IsCA == false, "IsCA should be false")
-	assertEqual(t, 0, cert.MaxPathLen, "MaxPathLen should be 0")
+	assertEqual(t, -1, cert.MaxPathLen, "MaxPathLen is -1 when no pathLenConstraint is present")
 
 	// ocsp
 	assertGreater(t, len(cert.OCSPServer), 0, "OCSPServer should not be empty")

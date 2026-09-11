@@ -36,7 +36,7 @@ func TestParseCertificate_RejectsInvalidPublicKeyPoint(t *testing.T) {
 
 	_, err = brainpool.ParseCertificate(tampered)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not a valid brainpoolP256r1 point")
+	assert.Contains(t, err.Error(), "not on brainpoolP256r1")
 }
 
 func indexOf(haystack, needle []byte) int {

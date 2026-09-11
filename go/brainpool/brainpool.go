@@ -46,17 +46,35 @@ func initAll() {
 	initP512r1()
 }
 
-func curveFromOID(oid asn1.ObjectIdentifier) (bool, elliptic.Curve) {
+func curveFromOID(oid asn1.ObjectIdentifier) (elliptic.Curve, bool) {
 	switch {
 	case oid.Equal(oidCurveP256r1):
-		return true, P256r1()
+		return P256r1(), true
 	case oid.Equal(oidCurveP384r1):
-		return true, P384r1()
+		return P384r1(), true
 	case oid.Equal(oidCurveP512r1):
-		return true, P512r1()
+		return P512r1(), true
 	default:
-		return false, nil
+		return nil, false
 	}
+}
+
+func oidForCurve(curve elliptic.Curve) (asn1.ObjectIdentifier, bool) {
+	switch curve.Params().Name {
+	case "brainpoolP256r1":
+		return oidCurveP256r1, true
+	case "brainpoolP384r1":
+		return oidCurveP384r1, true
+	case "brainpoolP512r1":
+		return oidCurveP512r1, true
+	default:
+		return nil, false
+	}
+}
+
+func isBrainpoolCurve(curve elliptic.Curve) bool {
+	_, ok := oidForCurve(curve)
+	return ok
 }
 
 func initP256t1() {
