@@ -86,7 +86,7 @@ func ParsePrivateKeyPEM(pemBytes []byte) (*ecdsa.PrivateKey, error) {
 		}
 		ecdsaKey, ok := key.(*ecdsa.PrivateKey)
 		if !ok {
-			return nil, nil
+			return nil, fmt.Errorf("brainpool: PKCS#8 block holds a %T, not an ECDSA key", key)
 		}
 		return ecdsaKey, nil
 	case "EC PRIVATE KEY":
@@ -129,12 +129,18 @@ type brainpoolPrivateKey struct {
 }
 
 func constructEcdsaPrivateKey(curve elliptic.Curve, pk *brainpoolPrivateKey) (*ecdsa.PrivateKey, error) {
-	k := new(ecdsa.PrivateKey)
-	k.Curve = curve
-	k.D = new(big.Int).SetBytes(pk.PrivateKey)
-	k.PublicKey.X, k.PublicKey.Y = curve.ScalarBaseMult(pk.PrivateKey)
-
-	return k, nil
+	d := new(big.Int).SetBytes(pk.PrivateKey)
+	if d.Sign() == 0 || d.Cmp(curve.Params().N) >= 0 {
+		return nil, errors.New("brainpool: private scalar out of range [1, n-1]")
+	}
+	// The public key is recomputed from d rather than trusted from the file,
+	// as the standard library does; for brainpoolP256r1 that multiplication
+	// touches the secret and goes through the constant-time core.
+	x, y, err := derivePublicKey(curve, d)
+	if err != nil {
+		return nil, err
+	}
+	return &ecdsa.PrivateKey{PublicKey: ecdsa.PublicKey{Curve: curve, X: x, Y: y}, D: d}, nil
 }
 
 var oidPublicKeyECDSA = asn1.ObjectIdentifier{1, 2, 840, 10045, 2, 1}
@@ -325,7 +331,13 @@ func parseCertificate(der []byte) (*x509.Certificate, error) {
 
 	var spkDer = cryptobyte.String(spk.RightAlign())
 
+	// Unmarshal validates length, encoding, range and the curve equation, but
+	// signals rejection with nil coordinates; a nil-keyed certificate would
+	// crash the first caller that verifies with it.
 	x, y := elliptic.Unmarshal(curve, spkDer)
+	if x == nil {
+		return nil, fmt.Errorf("brainpool: subject public key is not a valid %s point", curve.Params().Name)
+	}
 
 	cert.PublicKey = &ecdsa.PublicKey{
 		Curve: curve,

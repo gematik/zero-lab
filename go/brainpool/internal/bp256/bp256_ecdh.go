@@ -2,6 +2,16 @@ package bp256
 
 import "errors"
 
+// PublicKey returns the SEC 1 uncompressed encoding of d·G for a private
+// scalar d (32-byte big-endian, in [1, n-1]), computed in constant time.
+func PublicKey(d []byte) ([]byte, error) {
+	dE, err := scalarFromCanonical(d)
+	if err != nil || dE.IsZero() == 1 {
+		return nil, errScalarRange
+	}
+	return new(Point).ScalarBaseMult(d).Bytes(), nil
+}
+
 // ECDH computes the brainpoolP256r1 ECDH shared secret per BSI TR-03111 §3.5.1:
 // the x-coordinate of d·peer, returned as a 32-byte big-endian value. d is the
 // private scalar (32-byte big-endian, in [1, n-1]); peer is the validated peer

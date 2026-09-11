@@ -58,7 +58,7 @@ func (b *JWEBuilder) EncryptECDHES(recipient any) ([]byte, error) {
 		return nil, errors.New("unsupported key type")
 	}
 
-	ephemeralKey, err := ecdsa.GenerateKey(recipientKey.Curve, rand.Reader)
+	ephemeralKey, err := brainpool.GenerateKey(recipientKey.Curve, rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("generating ephemeral key: %w", err)
 	}

@@ -91,3 +91,41 @@ func randomScalar(rng io.Reader, n *big.Int) ([]byte, error) {
 		}
 	}
 }
+
+// derivePublicKey returns d·G. For brainpoolP256r1 the multiplication runs in
+// the constant-time core; the other curves use the generic big.Int path, which
+// is acceptable there because they are not software-signing curves.
+func derivePublicKey(curve elliptic.Curve, d *big.Int) (x, y *big.Int, err error) {
+	if !isP256r1(curve) {
+		x, y = curve.ScalarBaseMult(d.Bytes())
+		return x, y, nil
+	}
+	enc, err := bp256.PublicKey(scalarBytes(d))
+	if err != nil {
+		return nil, nil, err
+	}
+	return new(big.Int).SetBytes(enc[1:33]), new(big.Int).SetBytes(enc[33:]), nil
+}
+
+// GenerateKey returns a fresh private key on curve. Brainpool keys derive
+// their public point through derivePublicKey, so a brainpoolP256r1 key never
+// has its secret multiplied by variable-time code; any other curve is handed
+// to the standard library. A nil rng means crypto/rand.
+func GenerateKey(curve elliptic.Curve, rng io.Reader) (*ecdsa.PrivateKey, error) {
+	if !IsBrainpoolCurve(curve) {
+		return ecdsa.GenerateKey(curve, rng)
+	}
+	if rng == nil {
+		rng = rand.Reader
+	}
+	d, err := rand.Int(rng, new(big.Int).Sub(curve.Params().N, big.NewInt(1)))
+	if err != nil {
+		return nil, err
+	}
+	d.Add(d, big.NewInt(1)) // uniform in [1, n-1]
+	x, y, err := derivePublicKey(curve, d)
+	if err != nil {
+		return nil, err
+	}
+	return &ecdsa.PrivateKey{PublicKey: ecdsa.PublicKey{Curve: curve, X: x, Y: y}, D: d}, nil
+}
