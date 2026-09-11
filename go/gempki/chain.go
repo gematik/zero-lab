@@ -27,8 +27,12 @@ const maxChainLen = 5
 //     (precise: works through rollover when two roots share a CommonName);
 //   - otherwise fall back to Issuer/Subject DN match.
 //
-// Errors wrap [ErrChainIncomplete] when no candidate matches, the chain
-// exceeds the length bound, or a cycle is detected.
+// When no candidate matches, the chain exceeds the length bound, or a cycle
+// is detected, the error is a [*ValidationError] with [ErrCodeChainIncomplete]
+// (errors.Is(err, [ErrChainIncomplete]) holds) and the returned slice is the
+// partial chain walked so far, leaf first and ending at the certificate whose
+// issuer could not be found — what a caller needs to show where the walk
+// stopped. Only a nil leaf or trust store yields a nil slice.
 func BuildChain(leaf *x509.Certificate, intermediates []*x509.Certificate, ts *TrustStore) ([]*x509.Certificate, error) {
 	if leaf == nil {
 		return nil, fmt.Errorf("gempki: BuildChain requires a non-nil leaf")
@@ -47,12 +51,14 @@ func BuildChain(leaf *x509.Certificate, intermediates []*x509.Certificate, ts *T
 		// is handled inside findIssuer below.
 		issuer, source, found := findIssuer(current, intermediates, ts)
 		if !found {
-			return nil, fmt.Errorf("gempki: %w: no issuer for %q (issuer DN %q, AKI %x)",
-				ErrChainIncomplete, current.Subject.CommonName, current.Issuer.CommonName, current.AuthorityKeyId)
+			return chain, &ValidationError{
+				Code:    ErrCodeChainIncomplete,
+				Subject: current.Subject.CommonName,
+				Message: fmt.Sprintf("no issuer found (issuer DN %q, AKI %x)", current.Issuer.CommonName, current.AuthorityKeyId),
+			}
 		}
 		if seen[skiKey(issuer.SubjectKeyId)] && source != issuerSourceTrustStore {
-			return nil, fmt.Errorf("gempki: %w: cycle detected at %q",
-				ErrChainIncomplete, issuer.Subject.CommonName)
+			return chain, &ValidationError{Code: ErrCodeChainIncomplete, Subject: issuer.Subject.CommonName, Message: "cycle detected"}
 		}
 		chain = append(chain, issuer)
 		if source == issuerSourceTrustStore {
@@ -61,8 +67,11 @@ func BuildChain(leaf *x509.Certificate, intermediates []*x509.Certificate, ts *T
 		seen[skiKey(issuer.SubjectKeyId)] = true
 		current = issuer
 	}
-	return nil, fmt.Errorf("gempki: %w: chain exceeds %d certificates (last subject %q)",
-		ErrChainIncomplete, maxChainLen, current.Subject.CommonName)
+	return chain, &ValidationError{
+		Code:    ErrCodeChainIncomplete,
+		Subject: current.Subject.CommonName,
+		Message: fmt.Sprintf("chain exceeds %d certificates", maxChainLen),
+	}
 }
 
 type issuerSource int

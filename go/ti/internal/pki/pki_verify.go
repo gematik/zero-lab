@@ -382,14 +382,15 @@ func renderVerifyResultText(result *gempki.ValidationResult, opts certVerifyOpts
 	if len(result.Errors) > 0 {
 		kv.Section("Errors")
 		for _, e := range result.Errors {
-			kv.KV(string(e.Code), e.Error())
+			// The label is the code; gempki's own "gempki[code]: " prefix would only repeat it.
+			kv.KV(string(e.Code), strings.TrimPrefix(e.Error(), fmt.Sprintf("gempki[%s]: ", e.Code)))
 		}
 		kv.EndSection()
 	}
 	if len(result.Warnings) > 0 {
 		kv.Section("Warnings")
 		for _, w := range result.Warnings {
-			kv.KV(string(w.Code), w.String())
+			kv.KV(string(w.Code), strings.TrimPrefix(w.String(), fmt.Sprintf("gempki[%s] warning: ", w.Code)))
 		}
 		kv.EndSection()
 	}
