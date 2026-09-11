@@ -19,35 +19,3 @@ use (
 	./ti
 	./zaddy
 )
-
-replace (
-	github.com/gematik/zero-lab/go/brainpool v1.0.2-0.20260908072016-2ca75aa218e2 => ./brainpool
-	github.com/gematik/zero-lab/go/brainpool v1.1.0 => ./brainpool
-)
-
-replace github.com/gematik/zero-lab/go/dpop v0.1.2-0.20260908072016-2ca75aa218e2 => ./dpop
-
-replace github.com/gematik/zero-lab/go/epa v0.22.2-0.20260908072016-2ca75aa218e2 => ./epa
-
-replace github.com/gematik/zero-lab/go/gemidp v0.50.2-0.20260908072016-2ca75aa218e2 => ./gemidp
-
-replace (
-	github.com/gematik/zero-lab/go/gempki v0.1.2-0.20260908072016-2ca75aa218e2 => ./gempki
-	github.com/gematik/zero-lab/go/gempki v0.21.1 => ./gempki
-)
-
-replace github.com/gematik/zero-lab/go/kon v0.1.2-0.20260908072016-2ca75aa218e2 => ./kon
-
-replace github.com/gematik/zero-lab/go/kv v0.0.2-0.20260908072016-2ca75aa218e2 => ./kv
-
-replace github.com/gematik/zero-lab/go/nonce v0.2.3-0.20260908072016-2ca75aa218e2 => ./nonce
-
-replace github.com/gematik/zero-lab/go/oauth v0.50.2-0.20260908072016-2ca75aa218e2 => ./oauth
-
-replace github.com/gematik/zero-lab/go/oidf v0.50.2-0.20260908072016-2ca75aa218e2 => ./oidf
-
-replace github.com/gematik/zero-lab/go/pdp v0.22.2-0.20260908072016-2ca75aa218e2 => ./pdp
-
-replace github.com/gematik/zero-lab/go/pep v0.25.7-0.20260908072016-2ca75aa218e2 => ./pep
-
-replace github.com/gematik/zero-lab/go/pkcs12 v0.99.2-0.20260908072016-2ca75aa218e2 => ./pkcs12
