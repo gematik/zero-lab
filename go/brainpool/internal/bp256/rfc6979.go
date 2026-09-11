@@ -80,11 +80,10 @@ func concat(parts ...[]byte) []byte {
 	return out
 }
 
-// SignDeterministic signs prehash with private scalar d using an RFC 6979
-// deterministic nonce, and applies low-s normalisation. This is the default
-// software-signing path: no RNG is consumed, so a weak or broken RNG cannot
-// leak the key.
-func SignDeterministic(d, prehash []byte) (r, s []byte, err error) {
+// Sign signs prehash with private scalar d (32-byte big-endian, in [1, n-1])
+// using an RFC 6979 deterministic nonce, and applies low-s normalisation. No
+// RNG is consumed, so a weak or broken RNG cannot leak the key.
+func Sign(d, prehash []byte) (r, s []byte, err error) {
 	k := rfc6979Nonce(d, prehash)
 	return SignWithNonce(d, k, prehash)
 }

@@ -1,9 +1,10 @@
-package brainpool
+package bp256_test
 
 import (
 	"math/big"
 	"testing"
 
+	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/brainpool/internal/bp256"
 )
 
@@ -21,7 +22,7 @@ func diffScalars() []*big.Int {
 	seed, _ := new(big.Int).SetString(
 		"6F1E2D3C4B5A69788796A5B4C3D2E1F0123456789ABCDEF0FEDCBA9876543210", 16)
 	cur := new(big.Int).Set(seed)
-	n := P256r1().Params().N
+	n := brainpool.P256r1().Params().N
 	for i := 0; i < 10; i++ {
 		cur.Mul(cur, seed).Add(cur, big.NewInt(int64(i+1)))
 		k := new(big.Int).Mod(cur, n)
@@ -36,7 +37,7 @@ func diffScalars() []*big.Int {
 // rcurvePoint returns the affine (x,y) of k*G under rcurve, with (nil,nil) for
 // the point at infinity.
 func rcurvePoint(k *big.Int) (*big.Int, *big.Int) {
-	x, y := P256r1().ScalarBaseMult(k.Bytes())
+	x, y := brainpool.P256r1().ScalarBaseMult(k.Bytes())
 	if x.Sign() == 0 && y.Sign() == 0 {
 		return nil, nil
 	}
@@ -99,7 +100,7 @@ func TestDiffScalarBaseMultPointsLoad(t *testing.T) {
 
 func TestDiffAddMatchesRcurve(t *testing.T) {
 	ks := diffScalars()
-	curve := P256r1()
+	curve := brainpool.P256r1()
 	for _, kj := range ks {
 		xj, yj := rcurvePoint(kj)
 		if xj == nil {
@@ -123,7 +124,7 @@ func TestDiffAddMatchesRcurve(t *testing.T) {
 }
 
 func TestDiffDoubleMatchesRcurve(t *testing.T) {
-	curve := P256r1()
+	curve := brainpool.P256r1()
 	for _, k := range diffScalars() {
 		x, y := rcurvePoint(k)
 		if x == nil {
@@ -144,7 +145,7 @@ func TestDiffScalarBaseMultMatchesRcurve(t *testing.T) {
 }
 
 func TestDiffScalarMultMatchesRcurve(t *testing.T) {
-	curve := P256r1()
+	curve := brainpool.P256r1()
 	gx, gy := curve.Params().Gx, curve.Params().Gy
 	base := loadBP(t, gx, gy)
 	for _, k := range diffScalars() {
@@ -159,8 +160,8 @@ func TestDiffScalarMultMatchesRcurve(t *testing.T) {
 }
 
 func TestDiffInverseIsInfinity(t *testing.T) {
-	curve := P256r1()
-	p := P256r1().Params().P
+	curve := brainpool.P256r1()
+	p := brainpool.P256r1().Params().P
 	for _, k := range diffScalars() {
 		x, y := rcurvePoint(k)
 		if x == nil {

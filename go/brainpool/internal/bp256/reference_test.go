@@ -39,19 +39,19 @@ func TestRFC7027ECDHKnownAnswer(t *testing.T) {
 		"990C57520812BE512641E47034832106BC7D3E8DD0E4C7F1136D7006547CEC6A")
 	wantZ := "89AFC39D41D3B327814B80940B042590F96556EC91E6AE7939BCE31F3A18BF2B"
 
-	zAB, err := ECDH(dA, qB)
+	zAB, err := ECDH(dA, qB.Bytes())
 	if err != nil {
-		t.Fatalf("ECDH(dA, qB): %v", err)
+		t.Fatalf("ECDH(dA, qB.Bytes()): %v", err)
 	}
 	if got := hex.EncodeToString(zAB); !equalHexFold(got, wantZ) {
-		t.Fatalf("ECDH(dA, qB) = %s, want %s", got, wantZ)
+		t.Fatalf("ECDH(dA, qB.Bytes()) = %s, want %s", got, wantZ)
 	}
-	zBA, err := ECDH(dB, qA)
+	zBA, err := ECDH(dB, qA.Bytes())
 	if err != nil {
-		t.Fatalf("ECDH(dB, qA): %v", err)
+		t.Fatalf("ECDH(dB, qA.Bytes()): %v", err)
 	}
 	if got := hex.EncodeToString(zBA); !equalHexFold(got, wantZ) {
-		t.Fatalf("ECDH(dB, qA) = %s, want %s", got, wantZ)
+		t.Fatalf("ECDH(dB, qA.Bytes()) = %s, want %s", got, wantZ)
 	}
 }
 

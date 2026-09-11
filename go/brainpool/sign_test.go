@@ -3,6 +3,7 @@ package brainpool
 import (
 	"bytes"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"math/big"
@@ -50,21 +51,35 @@ func TestSignFuncPrivateKeyDeterministicForP256r1(t *testing.T) {
 	}
 }
 
-func TestECDHP256r1MatchesRcurve(t *testing.T) {
-	key := p256r1Key(t)
-	peer := p256r1Key(t)
+func TestECDH(t *testing.T) {
+	for _, curve := range []elliptic.Curve{P256r1(), P384r1()} {
+		key, _ := GenerateKey(curve, rand.Reader)
+		peer, _ := GenerateKey(curve, rand.Reader)
 
-	got, err := ECDHP256r1(key, peer.X, peer.Y)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wantX, _ := P256r1().ScalarMult(peer.X, peer.Y, key.D.Bytes())
-	if new(big.Int).SetBytes(got).Cmp(wantX) != 0 {
-		t.Fatalf("ECDHP256r1 = %x, want %x", got, wantX)
-	}
+		got, err := ECDH(key, &peer.PublicKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantX, _ := curve.ScalarMult(peer.X, peer.Y, key.D.Bytes())
+		if new(big.Int).SetBytes(got).Cmp(wantX) != 0 {
+			t.Fatalf("%s: ECDH = %x, want %x", curve.Params().Name, got, wantX)
+		}
+		if len(got) != (curve.Params().BitSize+7)/8 {
+			t.Fatalf("%s: shared secret has %d bytes", curve.Params().Name, len(got))
+		}
+		back, _ := ECDH(peer, &key.PublicKey)
+		if !bytes.Equal(got, back) {
+			t.Fatal("ECDH is not symmetric")
+		}
 
-	// Off-curve peer must be rejected.
-	if _, err := ECDHP256r1(key, peer.X, new(big.Int).Add(peer.Y, big.NewInt(1))); err == nil {
-		t.Fatal("ECDHP256r1 accepted an off-curve peer")
+		offCurve := &ecdsa.PublicKey{Curve: curve, X: peer.X, Y: new(big.Int).Add(peer.Y, big.NewInt(1))}
+		if _, err := ECDH(key, offCurve); err == nil {
+			t.Fatal("ECDH accepted an off-curve peer")
+		}
+	}
+	p256, _ := GenerateKey(P256r1(), rand.Reader)
+	p384, _ := GenerateKey(P384r1(), rand.Reader)
+	if _, err := ECDH(p256, &p384.PublicKey); err == nil {
+		t.Fatal("ECDH accepted keys on different curves")
 	}
 }
