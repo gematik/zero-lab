@@ -18,8 +18,8 @@ github.com/fxamacker/cbor/v2 v2.9.3 h1:oQBnFATpNdY8gJHTndDDv5Xl4QqNaz51G5LLEPhng
 github.com/fxamacker/cbor/v2 v2.9.3/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
 github.com/gabriel-vasile/mimetype v1.4.15 h1:05iP/CYtZ/w455R/KZM6rZ5ieAdh99UPtd+d3YzLmaI=
 github.com/gabriel-vasile/mimetype v1.4.15/go.mod h1:azpTcoLcDZRNgFou5j+APrqQx9HqVPWa6ijYQIIVswQ=
-github.com/gematik/zero-lab/go/brainpool v1.0.2-0.20260908072016-2ca75aa218e2 h1:WAfzPtYujR+uu7o8IlpvyT9ecb3Use21f94S3Ynwvcw=
-github.com/gematik/zero-lab/go/brainpool v1.0.2-0.20260908072016-2ca75aa218e2/go.mod h1:TGiI/RSzM76LwiWZRMzc9t1yDfN6D4uOaeYCd8N5rCs=
+github.com/gematik/zero-lab/go/brainpool v1.1.0 h1:o6Uzb+uJRDKGmo0uZgUIBlWiZDbku/RxLMAkJ819qKE=
+github.com/gematik/zero-lab/go/brainpool v1.1.0/go.mod h1:NEF6dqa3qZb0E/CPlu5FKVbo0Y93XeFfV24P7FwqGoc=
 github.com/gematik/zero-lab/go/epa v0.22.2-0.20260908072016-2ca75aa218e2 h1:+18JDstSFzC3wkLMBbzQzYp/x4MWNrHyQqjvjt9t1kk=
 github.com/gematik/zero-lab/go/epa v0.22.2-0.20260908072016-2ca75aa218e2/go.mod h1:JALnPUz1Bq9l8bPqBlBNcAr5flw+xZoJzT3oBGACzMY=
 github.com/gematik/zero-lab/go/gemidp v0.50.2-0.20260908072016-2ca75aa218e2 h1:A1mrCyyyMwni2YtA4hWK4jjCjzfI/LLby69Usq6pl8w=
