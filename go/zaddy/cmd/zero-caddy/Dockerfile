@@ -12,11 +12,14 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 	-ldflags "-X main.Version=${VERSION}" \
 	./zaddy/cmd/zero-caddy
 
-# based on https://github.com/caddyserver/caddy-docker/blob/master/2.9/alpine/Dockerfile
-FROM alpine:3.20
+# based on https://github.com/caddyserver/caddy-docker/blob/master/2.11/alpine/Dockerfile
+FROM alpine:3.23
+
+ARG VERSION=dev
 
 RUN apk add --no-cache \
 	ca-certificates \
+	curl \
 	libcap \
 	mailcap
 
@@ -27,6 +30,7 @@ RUN set -eux; \
 	/etc/caddy \
 	/usr/share/caddy \
 	; \
+	chmod 1777 /config/caddy /data/caddy; \
 	wget -O /etc/caddy/Caddyfile "https://github.com/caddyserver/dist/raw/33ae08ff08d168572df2956ed14fbc4949880d94/config/Caddyfile"; \
 	wget -O /usr/share/caddy/index.html "https://github.com/caddyserver/dist/raw/33ae08ff08d168572df2956ed14fbc4949880d94/welcome/index.html"
 
@@ -46,6 +50,11 @@ USER 1000
 # See https://caddyserver.com/docs/conventions#file-locations for details
 ENV XDG_CONFIG_HOME=/config
 ENV XDG_DATA_HOME=/data
+
+LABEL org.opencontainers.image.title=zero-caddy
+LABEL org.opencontainers.image.version=${VERSION}
+LABEL org.opencontainers.image.source="https://github.com/gematik/zero-lab"
+LABEL org.opencontainers.image.base.name="docker.io/library/alpine:3.23"
 
 EXPOSE 80
 EXPOSE 443
