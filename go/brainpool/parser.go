@@ -101,7 +101,7 @@ func ParseECPrivateKey(der []byte) (*ecdsa.PrivateKey, error) {
 		return nil, err
 	}
 
-	ok, curve := CurveFromOID(pk.NamedCurveOID)
+	ok, curve := curveFromOID(pk.NamedCurveOID)
 	if !ok {
 		return x509.ParseECPrivateKey(der)
 	}
@@ -169,7 +169,7 @@ func ParsePKCS8PrivateKey(der []byte) (any, error) {
 		return nil, errors.New("x509: failed to parse PKCS#8 private key curve OID: " + err.Error())
 	}
 
-	ok, curve := CurveFromOID(*curveOid)
+	ok, curve := curveFromOID(*curveOid)
 	if !ok {
 		return x509.ParsePKCS8PrivateKey(der)
 	}
@@ -282,7 +282,7 @@ func parseCertificate(der []byte) (*x509.Certificate, error) {
 		return nil, errors.New("brainpool: failed to read curve OID")
 	}
 
-	ok, curve := CurveFromOID(curveOid)
+	ok, curve := curveFromOID(curveOid)
 	if !ok {
 		// not a brainpool curve, return fallback to standard parser
 		return x509.ParseCertificate(der)

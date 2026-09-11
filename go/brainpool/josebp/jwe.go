@@ -19,13 +19,13 @@ import (
 )
 
 type JWEBuilder struct {
-	headers   Headers
+	headers   map[string]any
 	plaintext []byte
 }
 
 func NewJWEBuilder() *JWEBuilder {
 	return &JWEBuilder{
-		headers: make(Headers),
+		headers: make(map[string]any),
 	}
 }
 
@@ -63,7 +63,7 @@ func (b *JWEBuilder) EncryptECDHES(recipient any) ([]byte, error) {
 		return nil, fmt.Errorf("generating ephemeral key: %w", err)
 	}
 
-	cek, err := DeriveECDHES("A256GCM", []byte{}, []byte{}, ephemeralKey, recipientKey, 32)
+	cek, err := deriveECDHES("A256GCM", []byte{}, []byte{}, ephemeralKey, recipientKey, 32)
 	if err != nil {
 		return nil, fmt.Errorf("deriving ECDHES: %w", err)
 	}
@@ -99,8 +99,8 @@ func (b *JWEBuilder) EncryptECDHES(recipient any) ([]byte, error) {
 	return serialized, nil
 }
 
-// DeriveECDHES performs the ECDH-ES Concat KDF (RFC 7518 §4.6) over an elliptic curve.
-func DeriveECDHES(algorithm string, apuData, apvData []byte, privateKey *ecdsa.PrivateKey, publicKey *ecdsa.PublicKey, keySize int) ([]byte, error) {
+// deriveECDHES performs the ECDH-ES Concat KDF (RFC 7518 §4.6) over an elliptic curve.
+func deriveECDHES(algorithm string, apuData, apvData []byte, privateKey *ecdsa.PrivateKey, publicKey *ecdsa.PublicKey, keySize int) ([]byte, error) {
 	if keySize > 1<<16 {
 		return nil, errors.New("key size too large: must be less than or equal to 64 KiB")
 	}

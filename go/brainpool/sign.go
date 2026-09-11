@@ -20,7 +20,7 @@ type SignFunc func(hash []byte) ([]byte, error)
 func SignFuncPrivateKey(sigPrK *ecdsa.PrivateKey) SignFunc {
 	return func(hash []byte) ([]byte, error) {
 		if isP256r1(sigPrK.Curve) {
-			return SignP256r1(sigPrK, hash)
+			return signP256r1(sigPrK, hash)
 		}
 
 		r, s, err := ecdsa.Sign(rand.Reader, sigPrK, hash)
@@ -33,25 +33,6 @@ func SignFuncPrivateKey(sigPrK *ecdsa.PrivateKey) SignFunc {
 		sBytesPadded := padBytes(s.Bytes(), keyBytes)
 
 		return append(rBytesPadded, sBytesPadded...), nil
-	}
-}
-
-// SignFuncPrivateKeyRandom is the opt-out variant of SignFuncPrivateKey that, for
-// brainpoolP256r1, draws a random per-message nonce instead of the RFC 6979
-// deterministic one (still constant-time, still low-s). Other curves behave as
-// with SignFuncPrivateKey.
-func SignFuncPrivateKeyRandom(sigPrK *ecdsa.PrivateKey) SignFunc {
-	return func(hash []byte) ([]byte, error) {
-		if isP256r1(sigPrK.Curve) {
-			return SignP256r1Random(rand.Reader, sigPrK, hash)
-		}
-
-		r, s, err := ecdsa.Sign(rand.Reader, sigPrK, hash)
-		if err != nil {
-			return nil, err
-		}
-		keyBytes := sigPrK.Curve.Params().BitSize / 8
-		return append(padBytes(r.Bytes(), keyBytes), padBytes(s.Bytes(), keyBytes)...), nil
 	}
 }
 

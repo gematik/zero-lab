@@ -25,33 +25,14 @@ func scalarBytes(d *big.Int) []byte {
 	return b
 }
 
-// SignP256r1 signs prehash with priv using the constant-time core: an RFC 6979
+// signP256r1 signs prehash with priv using the constant-time core: an RFC 6979
 // deterministic nonce and low-s normalisation. It returns the fixed-width r‖s
 // encoding (RFC 7518 §3.4). priv must be a brainpoolP256r1 key.
-func SignP256r1(priv *ecdsa.PrivateKey, prehash []byte) ([]byte, error) {
+func signP256r1(priv *ecdsa.PrivateKey, prehash []byte) ([]byte, error) {
 	if !isP256r1(priv.Curve) {
-		return nil, errors.New("brainpool: SignP256r1 requires a brainpoolP256r1 key")
+		return nil, errors.New("brainpool: signP256r1 requires a brainpoolP256r1 key")
 	}
 	r, s, err := bp256.SignDeterministic(scalarBytes(priv.D), prehash)
-	if err != nil {
-		return nil, err
-	}
-	return append(padBytes(r, 32), padBytes(s, 32)...), nil
-}
-
-// SignP256r1Random is the opt-out variant of SignP256r1 that draws a random
-// per-message nonce from rng instead of RFC 6979. It still uses the constant-time
-// core and low-s normalisation. Prefer SignP256r1 unless a random nonce is
-// specifically required.
-func SignP256r1Random(rng io.Reader, priv *ecdsa.PrivateKey, prehash []byte) ([]byte, error) {
-	if !isP256r1(priv.Curve) {
-		return nil, errors.New("brainpool: SignP256r1Random requires a brainpoolP256r1 key")
-	}
-	k, err := randomScalar(rng, priv.Curve.Params().N)
-	if err != nil {
-		return nil, err
-	}
-	r, s, err := bp256.SignWithNonce(scalarBytes(priv.D), k, prehash)
 	if err != nil {
 		return nil, err
 	}
@@ -76,22 +57,6 @@ func ECDHP256r1(priv *ecdsa.PrivateKey, pubX, pubY *big.Int) ([]byte, error) {
 	return bp256.ECDH(scalarBytes(priv.D), peer)
 }
 
-// randomScalar returns a uniformly random 32-byte scalar in [1, n-1].
-func randomScalar(rng io.Reader, n *big.Int) ([]byte, error) {
-	if rng == nil {
-		rng = rand.Reader
-	}
-	for {
-		k, err := rand.Int(rng, n)
-		if err != nil {
-			return nil, err
-		}
-		if k.Sign() != 0 {
-			return scalarBytes(k), nil
-		}
-	}
-}
-
 // derivePublicKey returns d·G. For brainpoolP256r1 the multiplication runs in
 // the constant-time core; the other curves use the generic big.Int path, which
 // is acceptable there because they are not software-signing curves.
@@ -112,7 +77,7 @@ func derivePublicKey(curve elliptic.Curve, d *big.Int) (x, y *big.Int, err error
 // has its secret multiplied by variable-time code; any other curve is handed
 // to the standard library. A nil rng means crypto/rand.
 func GenerateKey(curve elliptic.Curve, rng io.Reader) (*ecdsa.PrivateKey, error) {
-	if !IsBrainpoolCurve(curve) {
+	if !isBrainpoolCurve(curve) {
 		return ecdsa.GenerateKey(curve, rng)
 	}
 	if rng == nil {

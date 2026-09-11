@@ -9,27 +9,24 @@ import (
 	"github.com/gematik/zero-lab/go/brainpool"
 )
 
-type Headers map[string]any
-type Claims map[string]any
-
 type JWT struct {
 	Raw         []byte
 	HeadersJson []byte
 	PayloadJson []byte
 	Signature   []byte
-	Headers     Headers
-	Claims      Claims
+	Headers     map[string]any
+	Claims      map[string]any
 }
 
 type JWTBuilder struct {
-	headers Headers
-	claims  Claims
+	headers map[string]any
+	claims  map[string]any
 }
 
 func NewJWTBuilder() *JWTBuilder {
 	return &JWTBuilder{
-		headers: make(Headers),
-		claims:  make(Claims),
+		headers: make(map[string]any),
+		claims:  make(map[string]any),
 	}
 }
 

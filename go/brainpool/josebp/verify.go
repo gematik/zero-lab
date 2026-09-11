@@ -12,28 +12,26 @@ import (
 
 type VerifierFunc func(token *JWT) error
 
-type VerifierErrorUnsupportedSignatureAlgorithm error
-
 func WithKey(key *JSONWebKey) VerifierFunc {
 	return func(token *JWT) error {
 		switch key.Key.(type) {
 		case *ecdsa.PublicKey:
-			return WithEcdsaPublicKey(key.Key.(*ecdsa.PublicKey))(token)
+			return withECDSAPublicKey(key.Key.(*ecdsa.PublicKey))(token)
 		default:
 			return fmt.Errorf("unsupported key type")
 		}
 	}
 }
 
-func WithEcdsaPublicKey(pubKey *ecdsa.PublicKey) VerifierFunc {
+func withECDSAPublicKey(pubKey *ecdsa.PublicKey) VerifierFunc {
 	return func(token *JWT) error {
 		alg, ok := token.Headers["alg"].(string)
 		if !ok {
 			return fmt.Errorf("missing alg header")
 		}
-		algBits, err := BitSizeForAlg(alg)
+		algBits, err := bitSizeForAlg(alg)
 		if err != nil {
-			return VerifierErrorUnsupportedSignatureAlgorithm(err)
+			return err
 		}
 		// Reject a token whose algorithm does not match the verifying key's
 		// curve (e.g. ES384 against a brainpoolP256r1 key). Without this an
@@ -55,7 +53,7 @@ func WithEcdsaPublicKey(pubKey *ecdsa.PublicKey) VerifierFunc {
 		// Hash the signing input (everything before the last '.').
 		rawTokenNoSig := token.Raw[:bytes.LastIndex(token.Raw, []byte{'.'})]
 
-		hashFunc, err := HashFunctionForCurve(pubKey.Curve)
+		hashFunc, err := hashForCurve(pubKey.Curve)
 		if err != nil {
 			return err
 		}

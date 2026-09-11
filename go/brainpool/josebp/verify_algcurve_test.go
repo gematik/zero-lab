@@ -30,9 +30,9 @@ func TestVerifyRejectsAlgCurveMismatch(t *testing.T) {
 
 	// alg ES384/BP384R1/ES512 all imply a non-256-bit curve, but the key is
 	// brainpoolP256r1. Each must be rejected before signature verification.
-	for _, alg := range []string{AlgorithmNameES384, AlgorithmNameBP384R1, AlgorithmNameES512, AlgorithmNameBP512R1} {
+	for _, alg := range []string{algES384, algBP384R1, algES512, algBP512R1} {
 		tok := signedTokenWithAlg(t, alg, key)
-		if _, err := ParseToken(tok, WithEcdsaPublicKey(&key.PublicKey)); err == nil {
+		if _, err := ParseToken(tok, withECDSAPublicKey(&key.PublicKey)); err == nil {
 			t.Fatalf("alg %s with P256r1 key was accepted", alg)
 		}
 	}
@@ -46,7 +46,7 @@ func TestVerifyAcceptsMatchingAlg(t *testing.T) {
 	// Both ES256 and BP256R1 are valid for a 256-bit curve in the gematik stack.
 	for _, alg := range []string{AlgorithmNameES256, AlgorithmNameBP256R1} {
 		tok := signedTokenWithAlg(t, alg, key)
-		if _, err := ParseToken(tok, WithEcdsaPublicKey(&key.PublicKey)); err != nil {
+		if _, err := ParseToken(tok, withECDSAPublicKey(&key.PublicKey)); err != nil {
 			t.Fatalf("alg %s with P256r1 key rejected: %v", alg, err)
 		}
 	}

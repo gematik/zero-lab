@@ -50,25 +50,6 @@ func TestSignFuncPrivateKeyDeterministicForP256r1(t *testing.T) {
 	}
 }
 
-func TestSignFuncPrivateKeyRandomForP256r1(t *testing.T) {
-	key := p256r1Key(t)
-	sign := SignFuncPrivateKeyRandom(key)
-	h := sha256.Sum256([]byte("bridge random"))
-
-	a, _ := sign(h[:])
-	b, _ := sign(h[:])
-	if bytes.Equal(a, b) {
-		t.Fatal("random-nonce signatures should differ")
-	}
-	for _, sig := range [][]byte{a, b} {
-		r := new(big.Int).SetBytes(sig[:32])
-		s := new(big.Int).SetBytes(sig[32:])
-		if !ecdsa.Verify(&key.PublicKey, h[:], r, s) {
-			t.Fatal("random-nonce signature did not verify")
-		}
-	}
-}
-
 func TestECDHP256r1MatchesRcurve(t *testing.T) {
 	key := p256r1Key(t)
 	peer := p256r1Key(t)

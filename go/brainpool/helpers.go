@@ -8,8 +8,8 @@ import (
 	"errors"
 )
 
-// IsBrainpoolCurve checks if the given elliptic curve is one of the brainpool curves.
-func IsBrainpoolCurve(curve elliptic.Curve) bool {
+// isBrainpoolCurve checks if the given elliptic curve is one of the brainpool curves.
+func isBrainpoolCurve(curve elliptic.Curve) bool {
 	switch curve.Params().Name {
 	case "brainpoolP256r1", "brainpoolP384r1", "brainpoolP512r1":
 		return true
@@ -18,22 +18,8 @@ func IsBrainpoolCurve(curve elliptic.Curve) bool {
 	}
 }
 
-// IsBrainpoolPublicKey checks if the given public key uses elliptic curve cryptography
-// with a brainpool curve.
-func IsBrainpoolPublicKey(pub any) bool {
-	pk, ok := pub.(*ecdsa.PublicKey)
-	return ok && IsBrainpoolCurve(pk.Curve)
-}
-
-// IsBrainpoolCertificate checks if the given certificate uses elliptic curve cryptography
-// with a brainpool curve.
-func IsBrainpoolCertificate(cert *x509.Certificate) bool {
-	pub, ok := cert.PublicKey.(*ecdsa.PublicKey)
-	return ok && IsBrainpoolCurve(pub.Curve)
-}
-
 func MarshalPKIXPublicKey(pub any) ([]byte, error) {
-	if pk, ok := pub.(*ecdsa.PublicKey); ok && IsBrainpoolCurve(pk.Curve) {
+	if pk, ok := pub.(*ecdsa.PublicKey); ok && isBrainpoolCurve(pk.Curve) {
 		return marshalPKIXPublicKeyBrainpool(pk)
 	}
 	return x509.MarshalPKIXPublicKey(pub)
@@ -43,11 +29,11 @@ func marshalPKIXPublicKeyBrainpool(pub *ecdsa.PublicKey) ([]byte, error) {
 	var curveOID asn1.ObjectIdentifier
 	switch pub.Curve.Params().Name {
 	case "brainpoolP256r1":
-		curveOID = OIDNamedCurveP256r1
+		curveOID = oidCurveP256r1
 	case "brainpoolP384r1":
-		curveOID = OIDNamedCurveP384r1
+		curveOID = oidCurveP384r1
 	case "brainpoolP512r1":
-		curveOID = OIDNamedCurveP512r1
+		curveOID = oidCurveP512r1
 	default:
 		return nil, errors.New("brainpool: unsupported curve")
 	}

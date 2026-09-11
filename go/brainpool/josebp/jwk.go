@@ -37,7 +37,7 @@ func (jwk *JSONWebKey) UnmarshalJSON(data []byte) error {
 
 	switch jwkAlias.KeyType {
 	case "EC":
-		curve, err := CurveForJWA(jwkAlias.CurveName)
+		curve, err := curveForJWA(jwkAlias.CurveName)
 		if err != nil {
 			return err
 		}
@@ -114,7 +114,7 @@ func (jwk *JSONWebKey) MarshalJSON() ([]byte, error) {
 		jwkAlias.Y = base64.RawURLEncoding.EncodeToString(key.Y.Bytes())
 	} else if key, ok := jwk.Key.(*ecdsa.PublicKey); ok {
 		jwkAlias.KeyType = "EC"
-		jwkAlias.CurveName = JWAForCurve(key.Curve)
+		jwkAlias.CurveName = jwaForCurve(key.Curve)
 		jwkAlias.X = base64.RawURLEncoding.EncodeToString(key.X.Bytes())
 		jwkAlias.Y = base64.RawURLEncoding.EncodeToString(key.Y.Bytes())
 	}

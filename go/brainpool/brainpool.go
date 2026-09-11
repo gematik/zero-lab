@@ -27,9 +27,9 @@ import (
 	"sync"
 )
 
-var OIDNamedCurveP256r1 = asn1.ObjectIdentifier{1, 3, 36, 3, 3, 2, 8, 1, 1, 7}
-var OIDNamedCurveP384r1 = asn1.ObjectIdentifier{1, 3, 36, 3, 3, 2, 8, 1, 1, 11}
-var OIDNamedCurveP512r1 = asn1.ObjectIdentifier{1, 3, 36, 3, 3, 2, 8, 1, 1, 13}
+var oidCurveP256r1 = asn1.ObjectIdentifier{1, 3, 36, 3, 3, 2, 8, 1, 1, 7}
+var oidCurveP384r1 = asn1.ObjectIdentifier{1, 3, 36, 3, 3, 2, 8, 1, 1, 11}
+var oidCurveP512r1 = asn1.ObjectIdentifier{1, 3, 36, 3, 3, 2, 8, 1, 1, 13}
 
 var (
 	once                   sync.Once
@@ -46,13 +46,13 @@ func initAll() {
 	initP512r1()
 }
 
-func CurveFromOID(oid asn1.ObjectIdentifier) (bool, elliptic.Curve) {
+func curveFromOID(oid asn1.ObjectIdentifier) (bool, elliptic.Curve) {
 	switch {
-	case oid.Equal(OIDNamedCurveP256r1):
+	case oid.Equal(oidCurveP256r1):
 		return true, P256r1()
-	case oid.Equal(OIDNamedCurveP384r1):
+	case oid.Equal(oidCurveP384r1):
 		return true, P384r1()
-	case oid.Equal(OIDNamedCurveP512r1):
+	case oid.Equal(oidCurveP512r1):
 		return true, P512r1()
 	default:
 		return false, nil
@@ -131,34 +131,16 @@ func initP512r1() {
 	p512r1 = newrcurve(twisted, params, z)
 }
 
-// P256t1 returns a Curve which implements Brainpool P256t1 (see RFC 5639, section 3.4)
-func P256t1() elliptic.Curve {
-	once.Do(initAll)
-	return p256t1
-}
-
 // P256r1 returns a Curve which implements Brainpool P256r1 (see RFC 5639, section 3.4)
 func P256r1() elliptic.Curve {
 	once.Do(initAll)
 	return p256r1
 }
 
-// P384t1 returns a Curve which implements Brainpool P384t1 (see RFC 5639, section 3.6)
-func P384t1() elliptic.Curve {
-	once.Do(initAll)
-	return p384t1
-}
-
 // P384r1 returns a Curve which implements Brainpool P384r1 (see RFC 5639, section 3.6)
 func P384r1() elliptic.Curve {
 	once.Do(initAll)
 	return p384r1
-}
-
-// P512t1 returns a Curve which implements Brainpool P512t1 (see RFC 5639, section 3.7)
-func P512t1() elliptic.Curve {
-	once.Do(initAll)
-	return p512t1
 }
 
 // P512r1 returns a Curve which implements Brainpool P512r1 (see RFC 5639, section 3.7)

@@ -31,7 +31,7 @@ func TestSignVerifyRoundTrip(t *testing.T) {
 				t.Fatalf("sign: %v", err)
 			}
 
-			tok, err := ParseToken(token, WithEcdsaPublicKey(&prk.PublicKey))
+			tok, err := ParseToken(token, withECDSAPublicKey(&prk.PublicKey))
 			if err != nil {
 				t.Fatalf("verify: %v", err)
 			}
@@ -46,7 +46,7 @@ func TestSignVerifyRoundTrip(t *testing.T) {
 
 			// tampering must fail
 			token[len(token)-1] ^= 0x01
-			if _, err := ParseToken(token, WithEcdsaPublicKey(&prk.PublicKey)); err == nil {
+			if _, err := ParseToken(token, withECDSAPublicKey(&prk.PublicKey)); err == nil {
 				t.Fatal("expected verification failure on tampered token")
 			}
 		})
@@ -85,7 +85,7 @@ func TestJWEEncryptRoundTrip(t *testing.T) {
 		t.Fatal("epk is not an ecdsa public key")
 	}
 
-	cek, err := DeriveECDHES("A256GCM", []byte{}, []byte{}, prk, epk, 32)
+	cek, err := deriveECDHES("A256GCM", []byte{}, []byte{}, prk, epk, 32)
 	if err != nil {
 		t.Fatalf("derive: %v", err)
 	}
