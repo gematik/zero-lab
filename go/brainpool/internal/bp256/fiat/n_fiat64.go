@@ -36,7 +36,7 @@
 //
 //                            if x1 & (2^256-1) < 2^255 then x1 & (2^256-1) else (x1 & (2^256-1)) - 2^256
 
-package fiatn
+package fiat
 
 import "math/bits"
 

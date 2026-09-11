@@ -1,15 +1,15 @@
-// Package fiat provides constant-time arithmetic in the brainpoolP256r1 base
-// field (integers modulo the field prime p, RFC 5639 §3.4). The arithmetic lives
-// in the generated, machine-checked bp256_fiat64.go and bp256_invert.go (Fiat
-// Cryptography); this file wraps it in an Element type, adapted from the Go
-// standard library crypto/internal/fips140/nistec/fiat wrapper template.
+// Package fiat provides constant-time arithmetic in the two fields of
+// brainpoolP256r1 (RFC 5639 §3.4): [Element] is an integer modulo the field
+// prime p, [Scalar] an integer modulo the group order n. Both wrap generated,
+// machine-checked code — p_fiat64.go and n_fiat64.go from Fiat Cryptography,
+// p_invert.go and n_invert.go from addchain — behind the wrapper shape of the
+// Go standard library's crypto/internal/fips140/nistec/fiat. Nothing outside
+// the generated files touches a limb.
 package fiat
 
 import (
 	"crypto/subtle"
-	"encoding/binary"
 	"errors"
-	"math/bits"
 )
 
 // Element is an integer modulo
@@ -65,7 +65,7 @@ func (e *Element) bytes(out *[ElementLen]byte) []byte {
 	var tmp bp256NonMontgomeryDomainFieldElement
 	bp256FromMontgomery(&tmp, &e.x)
 	bp256ToBytes(out, (*bp256UntypedFieldElement)(&tmp))
-	bp256InvertEndianness(out[:])
+	invertEndianness(out[:])
 	return out[:]
 }
 
@@ -81,13 +81,13 @@ func (e *Element) SetBytes(v []byte) (*Element, error) {
 	// the encoding of -1 mod p, so p - 1, the highest canonical encoding.
 	var minusOneEncoding = new(Element).Sub(
 		new(Element), new(Element).One()).Bytes()
-	if ctLessOrEqBytes(v, minusOneEncoding) == 0 {
+	if ConstantTimeLessOrEq(v, minusOneEncoding) == 0 {
 		return nil, errors.New("invalid Element encoding")
 	}
 
 	var in [ElementLen]byte
 	copy(in[:], v)
-	bp256InvertEndianness(in[:])
+	invertEndianness(in[:])
 	var tmp bp256NonMontgomeryDomainFieldElement
 	bp256FromBytes((*bp256UntypedFieldElement)(&tmp), &in)
 	bp256ToMontgomery(&e.x, &tmp)
@@ -123,40 +123,4 @@ func (v *Element) Select(a, b *Element, cond int) *Element {
 	bp256Selectznz((*bp256UntypedFieldElement)(&v.x), bp256Uint1(cond),
 		(*bp256UntypedFieldElement)(&b.x), (*bp256UntypedFieldElement)(&a.x))
 	return v
-}
-
-func bp256InvertEndianness(v []byte) {
-	for i := 0; i < len(v)/2; i++ {
-		v[i], v[len(v)-1-i] = v[len(v)-1-i], v[i]
-	}
-}
-
-// ctLessOrEqBytes returns 1 if x <= y and 0 otherwise, in constant time, where x
-// and y are big-endian byte strings of equal length. It mirrors the standard
-// library's internal subtle.ConstantTimeLessOrEqBytes, which is not exported.
-func ctLessOrEqBytes(x, y []byte) int {
-	if len(x) != len(y) {
-		return 0
-	}
-
-	// Do a constant time subtraction chain y - x.
-	// If there is no borrow at the end, then x <= y.
-	var b uint64
-	for len(x) > 8 {
-		x0 := binary.BigEndian.Uint64(x[len(x)-8:])
-		y0 := binary.BigEndian.Uint64(y[len(y)-8:])
-		_, b = bits.Sub64(y0, x0, b)
-		x = x[:len(x)-8]
-		y = y[:len(y)-8]
-	}
-	if len(x) > 0 {
-		xb := make([]byte, 8)
-		yb := make([]byte, 8)
-		copy(xb[8-len(x):], x)
-		copy(yb[8-len(y):], y)
-		x0 := binary.BigEndian.Uint64(xb)
-		y0 := binary.BigEndian.Uint64(yb)
-		_, b = bits.Sub64(y0, x0, b)
-	}
-	return int(b ^ 1)
 }

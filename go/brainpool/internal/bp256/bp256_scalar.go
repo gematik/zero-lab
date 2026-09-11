@@ -1,9 +1,8 @@
 package bp256
 
 import (
+	"github.com/gematik/zero-lab/go/brainpool/internal/bp256/fiat"
 	"math/bits"
-
-	"github.com/gematik/zero-lab/go/brainpool/internal/bp256/fiatn"
 )
 
 // scalarLen is the byte length of a brainpoolP256r1 scalar.
@@ -22,7 +21,7 @@ var nLimbs = [4]uint64{
 // returns it as a scalar element. Because n > 2²⁵⁵, any 256-bit input is < 2n,
 // so a single conditional subtraction of n suffices. Used for the ECDSA message
 // representative z (the hash) and for r = R.x mod n.
-func reduceModN(v []byte) *fiatn.Element {
+func reduceModN(v []byte) *fiat.Scalar {
 	var b [scalarLen]byte
 	copy(b[scalarLen-len(v):], v) // right-align (v is ≤ 32 bytes)
 
@@ -66,7 +65,7 @@ func reduceModN(v []byte) *fiatn.Element {
 		rb[scalarLen-8*i-7] = byte(out[i] >> 48)
 		rb[scalarLen-8*i-8] = byte(out[i] >> 56)
 	}
-	e, err := new(fiatn.Element).SetBytes(rb[:])
+	e, err := new(fiat.Scalar).SetBytes(rb[:])
 	if err != nil {
 		// Unreachable: rb is < n by construction.
 		panic("bp256: reduceModN produced a non-canonical scalar")
@@ -75,11 +74,11 @@ func reduceModN(v []byte) *fiatn.Element {
 }
 
 // scalarFromCanonical loads a scalar that must already be in [0, n-1].
-func scalarFromCanonical(v []byte) (*fiatn.Element, error) {
+func scalarFromCanonical(v []byte) (*fiat.Scalar, error) {
 	var b [scalarLen]byte
 	if len(v) > scalarLen {
-		return new(fiatn.Element), errScalarRange
+		return new(fiat.Scalar), errScalarRange
 	}
 	copy(b[scalarLen-len(v):], v)
-	return new(fiatn.Element).SetBytes(b[:])
+	return new(fiat.Scalar).SetBytes(b[:])
 }

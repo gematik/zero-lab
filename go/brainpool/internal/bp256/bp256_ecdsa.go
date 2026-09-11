@@ -1,12 +1,9 @@
 package bp256
 
 import (
-	"encoding/binary"
 	"errors"
+	"github.com/gematik/zero-lab/go/brainpool/internal/bp256/fiat"
 	"math/big"
-	"math/bits"
-
-	"github.com/gematik/zero-lab/go/brainpool/internal/bp256/fiatn"
 )
 
 var (
@@ -26,7 +23,7 @@ var nHalfBytes = func() []byte {
 // hashToScalar maps a prehash to the ECDSA message representative z = e mod n,
 // where e is the leftmost N=256 bits of the hash (FIPS 186-5 §6.4.1 /
 // BSI TR-03111 §5.2.1). For SHA-256 the hash is exactly 32 bytes.
-func hashToScalar(hash []byte) *fiatn.Element {
+func hashToScalar(hash []byte) *fiat.Scalar {
 	if len(hash) > scalarLen {
 		hash = hash[:scalarLen]
 	}
@@ -62,10 +59,10 @@ func SignWithNonce(d, k, prehash []byte) (r, s []byte, err error) {
 	z := hashToScalar(prehash)
 
 	// s = k⁻¹·(z + r·d) mod n.
-	rd := new(fiatn.Element).Mul(rE, dE)
-	sum := new(fiatn.Element).Add(z, rd)
-	kInv := new(fiatn.Element).Invert(kE)
-	sE := new(fiatn.Element).Mul(kInv, sum)
+	rd := new(fiat.Scalar).Mul(rE, dE)
+	sum := new(fiat.Scalar).Add(z, rd)
+	kInv := new(fiat.Scalar).Invert(kE)
+	sE := new(fiat.Scalar).Mul(kInv, sum)
 	if sE.IsZero() == 1 {
 		return nil, nil, errSignZero
 	}
@@ -77,9 +74,9 @@ func SignWithNonce(d, k, prehash []byte) (r, s []byte, err error) {
 // normalizeLowS sets s = n − s when s > n/2, so signatures are non-malleable
 // (SEC 1 §4.1.3). The compare is constant time; the conditional negation is
 // computed unconditionally and selected.
-func normalizeLowS(s *fiatn.Element) {
-	high := 1 ^ ctLessOrEqBytesScalar(s.Bytes(), nHalfBytes) // 1 if s > n/2
-	neg := new(fiatn.Element).Sub(new(fiatn.Element), s)     // n - s
+func normalizeLowS(s *fiat.Scalar) {
+	high := 1 ^ fiat.ConstantTimeLessOrEq(s.Bytes(), nHalfBytes) // 1 if s > n/2
+	neg := new(fiat.Scalar).Sub(new(fiat.Scalar), s)             // n - s
 	s.Select(neg, s, high)
 }
 
@@ -89,21 +86,3 @@ func normalizeLowS(s *fiatn.Element) {
 // parent package's bridge and josebp/verify.go). This keeps the hand-written,
 // security-sensitive code limited to the secret-scalar operations (signing and
 // ECDH) that genuinely need a constant-time implementation.
-
-// ctLessOrEqBytesScalar returns 1 if x ≤ y (both equal-length big-endian byte
-// strings) in constant time, via a subtraction chain y - x from the least
-// significant word: no final borrow means x ≤ y.
-func ctLessOrEqBytesScalar(x, y []byte) int {
-	if len(x) != len(y) {
-		return 0
-	}
-	var b uint64
-	for len(x) >= 8 {
-		x0 := binary.BigEndian.Uint64(x[len(x)-8:])
-		y0 := binary.BigEndian.Uint64(y[len(y)-8:])
-		_, b = bits.Sub64(y0, x0, b)
-		x = x[:len(x)-8]
-		y = y[:len(y)-8]
-	}
-	return int(b ^ 1)
-}
