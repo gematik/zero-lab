@@ -238,6 +238,24 @@ sync REF=`git rev-parse --abbrev-ref HEAD`:
           done )
     done
     go work sync
+    just workspace
+
+# Point go.work at the local directory for every in-repo module version some go.mod
+# requires. Go loads the go.mod of every pinned requirement even for workspace
+# modules, so without this a repin to a tag that is not on GitHub yet breaks every
+# workspace build. With it, build/test/run never need the tag to exist; only
+# `go mod tidy` and `go work sync` do (run those after pushing). Re-run after
+# `sync`, a repin, or any go.mod change to an in-repo require; commit go.work.
+workspace:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for old in $(awk '/github.com\/gematik\/zero-lab\/go\/.* => \.\// {print $(NF-3)"@"$(NF-2)}' go.work); do
+        go work edit -dropreplace="$old"
+    done
+    grep -hoE 'github\.com/gematik/zero-lab/go/[a-zA-Z0-9]+ v[^ ]+' */go.mod | sort -u | while read -r path ver; do
+        go work edit -replace="$path@$ver=./${path##*/}"
+    done
+    go build github.com/gematik/zero-lab/go/... >/dev/null && echo "workspace resolves every in-repo pin locally"
 
 # Tidy all go modules: sync go.mod/go.sum to imports. Does NOT upgrade versions.
 tidy:
