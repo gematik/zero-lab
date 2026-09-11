@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/gematik/zero-lab/go/brainpool"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // sample keys and certificates from https://github.com/gematik/erp-e2e-testsuite
@@ -149,7 +151,7 @@ func TestParseCertificatePEM(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseCertificatePEM failed: %v", err)
 	}
-	assertNotNil(t, cert)
+	require.NotNil(t, cert)
 }
 
 func TestParseCertificateFields(t *testing.T) {
@@ -159,78 +161,78 @@ func TestParseCertificateFields(t *testing.T) {
 	}
 
 	// Assert Raw fields are not empty
-	assertNotEmpty(t, cert.Raw, "Raw certificate should not be empty")
-	assertGreater(t, len(cert.Raw), 0, "Raw certificate should have meaningful length")
+	assert.NotEmpty(t, cert.Raw, "Raw certificate should not be empty")
+	assert.Greater(t, len(cert.Raw), 0, "Raw certificate should have meaningful length")
 
-	assertNotEmpty(t, cert.RawTBSCertificate, "RawTBSCertificate should not be empty")
-	assertGreater(t, len(cert.RawTBSCertificate), 0, "RawTBSCertificate should have meaningful length")
+	assert.NotEmpty(t, cert.RawTBSCertificate, "RawTBSCertificate should not be empty")
+	assert.Greater(t, len(cert.RawTBSCertificate), 0, "RawTBSCertificate should have meaningful length")
 
-	assertNotEmpty(t, cert.RawSubjectPublicKeyInfo, "RawSubjectPublicKeyInfo should not be empty")
-	assertGreater(t, len(cert.RawSubjectPublicKeyInfo), 0, "RawSubjectPublicKeyInfo should have meaningful length")
+	assert.NotEmpty(t, cert.RawSubjectPublicKeyInfo, "RawSubjectPublicKeyInfo should not be empty")
+	assert.Greater(t, len(cert.RawSubjectPublicKeyInfo), 0, "RawSubjectPublicKeyInfo should have meaningful length")
 
-	assertNotEmpty(t, cert.RawSubject, "RawSubject should not be empty")
-	assertGreater(t, len(cert.RawSubject), 0, "RawSubject should have meaningful length")
+	assert.NotEmpty(t, cert.RawSubject, "RawSubject should not be empty")
+	assert.Greater(t, len(cert.RawSubject), 0, "RawSubject should have meaningful length")
 
-	assertNotEmpty(t, cert.RawIssuer, "RawIssuer should not be empty")
-	assertGreater(t, len(cert.RawIssuer), 0, "RawIssuer should have meaningful length")
+	assert.NotEmpty(t, cert.RawIssuer, "RawIssuer should not be empty")
+	assert.Greater(t, len(cert.RawIssuer), 0, "RawIssuer should have meaningful length")
 
 	// Assert Signature fields
-	assertNotEmpty(t, cert.Signature, "Signature should not be empty")
-	assertGreater(t, len(cert.Signature), 0, "Signature should have meaningful length")
-	assertNotEqual(t, x509.UnknownSignatureAlgorithm, cert.SignatureAlgorithm, "SignatureAlgorithm should be known")
+	assert.NotEmpty(t, cert.Signature, "Signature should not be empty")
+	assert.Greater(t, len(cert.Signature), 0, "Signature should have meaningful length")
+	assert.NotEqual(t, x509.UnknownSignatureAlgorithm, cert.SignatureAlgorithm, "SignatureAlgorithm should be known")
 
 	// Assert PublicKey fields
-	assertNotEqual(t, x509.UnknownPublicKeyAlgorithm, cert.PublicKeyAlgorithm, "PublicKeyAlgorithm should be known")
-	assertNotNil(t, cert.PublicKey, "PublicKey should not be nil")
+	assert.NotEqual(t, x509.UnknownPublicKeyAlgorithm, cert.PublicKeyAlgorithm, "PublicKeyAlgorithm should be known")
+	require.NotNil(t, cert.PublicKey, "PublicKey should not be nil")
 
 	// Assert Version
-	assertGreater(t, cert.Version, 0, "Version should be greater than 0")
-	assertLessOrEqual(t, cert.Version, 3, "Version should be <= 3")
+	assert.Greater(t, cert.Version, 0, "Version should be greater than 0")
+	assert.LessOrEqual(t, cert.Version, 3, "Version should be <= 3")
 
 	// Assert SerialNumber
-	assertNotNil(t, cert.SerialNumber, "SerialNumber should not be nil")
-	assertGreater(t, cert.SerialNumber.Sign(), 0, "SerialNumber should be positive")
+	require.NotNil(t, cert.SerialNumber, "SerialNumber should not be nil")
+	assert.Greater(t, cert.SerialNumber.Sign(), 0, "SerialNumber should be positive")
 
 	// Assert Issuer
-	assertNotEmpty(t, cert.Issuer.String(), "Issuer should not be empty")
-	assertEqual(t, "Institution des Gesundheitswesens-CA der Telematikinfrastruktur", cert.Issuer.OrganizationalUnit[0], "Issuer OrganizationalUnit mismatch")
+	assert.NotEmpty(t, cert.Issuer.String(), "Issuer should not be empty")
+	assert.Equal(t, "Institution des Gesundheitswesens-CA der Telematikinfrastruktur", cert.Issuer.OrganizationalUnit[0], "Issuer OrganizationalUnit mismatch")
 
 	// Assert Subject
-	assertNotEmpty(t, cert.Subject.String(), "Subject should not be empty")
-	assertEqual(t, "Arztpraxis Bernd Rosenstrauch TEST-ONLY", cert.Subject.CommonName, "Subject CommonName mismatch")
+	assert.NotEmpty(t, cert.Subject.String(), "Subject should not be empty")
+	assert.Equal(t, "Arztpraxis Bernd Rosenstrauch TEST-ONLY", cert.Subject.CommonName, "Subject CommonName mismatch")
 
 	// Assert Validity bounds
-	assertFalse(t, cert.NotBefore.IsZero(), "NotBefore should not be zero")
-	assertFalse(t, cert.NotAfter.IsZero(), "NotAfter should not be zero")
-	assertTrue(t, cert.NotAfter.After(cert.NotBefore), "NotAfter should be after NotBefore")
+	assert.False(t, cert.NotBefore.IsZero(), "NotBefore should not be zero")
+	assert.False(t, cert.NotAfter.IsZero(), "NotAfter should not be zero")
+	assert.True(t, cert.NotAfter.After(cert.NotBefore), "NotAfter should be after NotBefore")
 
 	// test extensions
-	assertGreater(t, len(cert.Extensions), 0, "Extensions should not be empty")
+	assert.Greater(t, len(cert.Extensions), 0, "Extensions should not be empty")
 
 	// test key usage
-	assertGreater(t, cert.KeyUsage, 0, "KeyUsage should be set")
-	assertTrue(t, cert.KeyUsage&x509.KeyUsageDigitalSignature != 0, "KeyUsage should contain DigitalSignature")
+	assert.NotZero(t, cert.KeyUsage, "KeyUsage should be set")
+	assert.True(t, cert.KeyUsage&x509.KeyUsageDigitalSignature != 0, "KeyUsage should contain DigitalSignature")
 
 	// test extended key usage
-	assertGreater(t, len(cert.ExtKeyUsage), 0, "ExtKeyUsage should not be empty")
-	assertContains(t, cert.ExtKeyUsage, x509.ExtKeyUsageClientAuth, "ExtKeyUsage should contain ClientAuth")
+	assert.Greater(t, len(cert.ExtKeyUsage), 0, "ExtKeyUsage should not be empty")
+	assert.Contains(t, cert.ExtKeyUsage, x509.ExtKeyUsageClientAuth, "ExtKeyUsage should contain ClientAuth")
 
 	// skid
-	assertGreater(t, len(cert.SubjectKeyId), 0, "SubjectKeyId should not be empty")
-	assertEqual(t, []byte{0xB2, 0x12, 0xAB, 0xCE, 0x5A, 0xF9, 0x0C, 0xD4, 0xA2, 0x37, 0x3B, 0x04, 0x5D, 0x62, 0xEE, 0x49, 0xC6, 0x40, 0x37, 0x6C}, cert.SubjectKeyId, "SubjectKeyId mismatch")
+	assert.Greater(t, len(cert.SubjectKeyId), 0, "SubjectKeyId should not be empty")
+	assert.Equal(t, []byte{0xB2, 0x12, 0xAB, 0xCE, 0x5A, 0xF9, 0x0C, 0xD4, 0xA2, 0x37, 0x3B, 0x04, 0x5D, 0x62, 0xEE, 0x49, 0xC6, 0x40, 0x37, 0x6C}, cert.SubjectKeyId, "SubjectKeyId mismatch")
 
 	// basic constraints
-	assertTrue(t, cert.IsCA == false, "IsCA should be false")
-	assertEqual(t, -1, cert.MaxPathLen, "MaxPathLen is -1 when no pathLenConstraint is present")
+	assert.True(t, cert.IsCA == false, "IsCA should be false")
+	assert.Equal(t, -1, cert.MaxPathLen, "MaxPathLen is -1 when no pathLenConstraint is present")
 
 	// ocsp
-	assertGreater(t, len(cert.OCSPServer), 0, "OCSPServer should not be empty")
-	assertEqual(t, "http://ehca.gematik.de/ecc-ocsp", cert.OCSPServer[0], "OCSPServer mismatch")
+	assert.Greater(t, len(cert.OCSPServer), 0, "OCSPServer should not be empty")
+	assert.Equal(t, "http://ehca.gematik.de/ecc-ocsp", cert.OCSPServer[0], "OCSPServer mismatch")
 
 	// must contail policy identifiers 1.2.276.0.76.4.163 and 1.2.276.0.76.4.77
-	assertGreater(t, len(cert.PolicyIdentifiers), 0, "PolicyIdentifiers should not be empty")
-	assertContains(t, cert.PolicyIdentifiers, asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 163}, "PolicyIdentifiers should contain 1.2.276.0.76.4.163")
-	assertContains(t, cert.PolicyIdentifiers, asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 77}, "PolicyIdentifiers should contain 1.2.276.0.76.4.77")
+	assert.Greater(t, len(cert.PolicyIdentifiers), 0, "PolicyIdentifiers should not be empty")
+	assert.Contains(t, cert.PolicyIdentifiers, asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 163}, "PolicyIdentifiers should contain 1.2.276.0.76.4.163")
+	assert.Contains(t, cert.PolicyIdentifiers, asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 77}, "PolicyIdentifiers should contain 1.2.276.0.76.4.77")
 
 }
 
@@ -250,7 +252,7 @@ func TestRawSubjectPublicKeyInfo_FullEncoding(t *testing.T) {
 	if len(raw) < 2 {
 		t.Fatalf("RawSubjectPublicKeyInfo too short: %d bytes", len(raw))
 	}
-	assertEqual(t, byte(0x30), raw[0],
+	assert.Equal(t, byte(0x30), raw[0],
 		"RawSubjectPublicKeyInfo must start with SEQUENCE tag 0x30, got 0x%02x", raw[0])
 
 	var spki struct {
@@ -261,9 +263,9 @@ func TestRawSubjectPublicKeyInfo_FullEncoding(t *testing.T) {
 		PublicKey asn1.BitString
 	}
 	rest, err := asn1.Unmarshal(raw, &spki)
-	assertNoError(t, err, "asn1.Unmarshal of RawSubjectPublicKeyInfo must succeed")
-	assertEmpty(t, rest, "no trailing bytes after asn1.Unmarshal")
-	assertNotEmpty(t, spki.PublicKey.Bytes, "BIT STRING content must be present")
+	require.NoError(t, err, "asn1.Unmarshal of RawSubjectPublicKeyInfo must succeed")
+	assert.Empty(t, rest, "no trailing bytes after asn1.Unmarshal")
+	assert.NotEmpty(t, spki.PublicKey.Bytes, "BIT STRING content must be present")
 }
 
 func TestParseCACertificatePEM(t *testing.T) {
@@ -271,10 +273,10 @@ func TestParseCACertificatePEM(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseCertificatePEM failed: %v", err)
 	}
-	assertNotNil(t, cert)
+	require.NotNil(t, cert)
 
-	assertTrue(t, cert.IsCA, "IsCA should be true for CA certificate")
-	assertEqual(t, 0, cert.MaxPathLen, "MaxPathLen should be 0 for CA certificate")
+	assert.True(t, cert.IsCA, "IsCA should be true for CA certificate")
+	assert.Equal(t, 0, cert.MaxPathLen, "MaxPathLen should be 0 for CA certificate")
 
 	// assert brainpool curve
 	_, ok := cert.PublicKey.(*ecdsa.PublicKey)
@@ -282,12 +284,12 @@ func TestParseCACertificatePEM(t *testing.T) {
 		t.Fatal("failed to convert public key to ECDSA public key")
 	}
 	curve := cert.PublicKey.(*ecdsa.PublicKey).Curve
-	assertEqual(t, "brainpoolP256r1", curve.Params().Name, "Expected brainpoolP256r1 curve for CA certificate")
+	assert.Equal(t, "brainpoolP256r1", curve.Params().Name, "Expected brainpoolP256r1 curve for CA certificate")
 
 	// assert key usage
-	assertGreater(t, cert.KeyUsage, 0, "KeyUsage should be set for CA certificate")
-	assertTrue(t, cert.KeyUsage&x509.KeyUsageCertSign != 0, "KeyUsage should contain CertSign for CA certificate")
-	assertTrue(t, cert.KeyUsage&x509.KeyUsageCRLSign != 0, "KeyUsage should contain CRLSign for CA certificate")
+	assert.NotZero(t, cert.KeyUsage, "KeyUsage should be set for CA certificate")
+	assert.True(t, cert.KeyUsage&x509.KeyUsageCertSign != 0, "KeyUsage should contain CertSign for CA certificate")
+	assert.True(t, cert.KeyUsage&x509.KeyUsageCRLSign != 0, "KeyUsage should contain CRLSign for CA certificate")
 }
 
 func TestParseRootCACertificatePEM(t *testing.T) {
@@ -295,10 +297,10 @@ func TestParseRootCACertificatePEM(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseCertificatePEM failed: %v", err)
 	}
-	assertNotNil(t, cert)
+	require.NotNil(t, cert)
 
-	assertTrue(t, cert.IsCA, "IsCA should be true for Root CA certificate")
-	//assertEqual(t, 1, cert.MaxPathLen, "MaxPathLen should be 1 for Root CA certificate")
+	assert.True(t, cert.IsCA, "IsCA should be true for Root CA certificate")
+	//assert.Equal(t, 1, cert.MaxPathLen, "MaxPathLen should be 1 for Root CA certificate")
 
 	// assert brainpool curve
 	_, ok := cert.PublicKey.(*ecdsa.PublicKey)
@@ -306,12 +308,12 @@ func TestParseRootCACertificatePEM(t *testing.T) {
 		t.Fatal("failed to convert public key to ECDSA public key")
 	}
 	curve := cert.PublicKey.(*ecdsa.PublicKey).Curve
-	assertEqual(t, "brainpoolP256r1", curve.Params().Name, "Expected brainpoolP256r1 curve for Root CA certificate")
+	assert.Equal(t, "brainpoolP256r1", curve.Params().Name, "Expected brainpoolP256r1 curve for Root CA certificate")
 
 	// assert key usage
-	assertGreater(t, cert.KeyUsage, 0, "KeyUsage should be set for Root CA certificate")
-	assertTrue(t, cert.KeyUsage&x509.KeyUsageCertSign != 0, "KeyUsage should contain CertSign for Root CA certificate")
-	assertTrue(t, cert.KeyUsage&x509.KeyUsageCRLSign != 0, "KeyUsage should contain CRLSign for Root CA certificate")
+	assert.NotZero(t, cert.KeyUsage, "KeyUsage should be set for Root CA certificate")
+	assert.True(t, cert.KeyUsage&x509.KeyUsageCertSign != 0, "KeyUsage should contain CertSign for Root CA certificate")
+	assert.True(t, cert.KeyUsage&x509.KeyUsageCRLSign != 0, "KeyUsage should contain CRLSign for Root CA certificate")
 }
 
 func TestNilInput(t *testing.T) {
@@ -342,9 +344,9 @@ func TestSubjectParsing(t *testing.T) {
 		t.Fatalf("ParseCertificate failed: %v", err)
 	}
 
-	assertEqual(t, []string{"DE"}, cert.Subject.Country)
-	assertEqual(t, "Ullrich Angerm\u00e4nnTEST-ONLY", cert.Subject.CommonName)
-	assertEqual(t, "80276883110000163974", cert.Subject.SerialNumber)
+	assert.Equal(t, []string{"DE"}, cert.Subject.Country)
+	assert.Equal(t, "Ullrich Angerm\u00e4nnTEST-ONLY", cert.Subject.CommonName)
+	assert.Equal(t, "80276883110000163974", cert.Subject.SerialNumber)
 
 	// GivenName (2.5.4.42) and Surname (2.5.4.4) are stored in Names
 	var givenName, surname string
@@ -356,8 +358,8 @@ func TestSubjectParsing(t *testing.T) {
 			surname = name.Value.(string)
 		}
 	}
-	assertEqual(t, "Ullrich", givenName)
-	assertEqual(t, "Angerm\u00e4nn", surname)
+	assert.Equal(t, "Ullrich", givenName)
+	assert.Equal(t, "Angerm\u00e4nn", surname)
 }
 
 func TestCrossCertificateVerification(t *testing.T) {
@@ -409,7 +411,7 @@ AiA8IFHJslZ76EpSSgKQkDdsFTOHeDXzjeDd+xBcm5IrIg==
 		t.Fatalf("Failed to parse cross certificate: %v", err)
 	}
 
-	assertEqual(t, 665, len(crossCert.RawTBSCertificate), "Unexpected length of RawTBSCertificate in cross certificate")
+	assert.Equal(t, 665, len(crossCert.RawTBSCertificate), "Unexpected length of RawTBSCertificate in cross certificate")
 
 	err = crossCert.CheckSignatureFrom(anchorCert)
 	if err != nil {

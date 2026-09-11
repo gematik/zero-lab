@@ -54,7 +54,7 @@ func TestOpenSSLVerifiesOurSignature(t *testing.T) {
 
 	msg := []byte("cross-test message for openssl verify")
 	h := sha256.Sum256(msg)
-	r, s, err := bp256.SignDeterministic(d, h[:])
+	r, s, err := bp256.Sign(d, h[:])
 	if err != nil {
 		t.Fatalf("SignDeterministic: %v", err)
 	}

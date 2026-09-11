@@ -17,9 +17,10 @@ do not. Accordingly:
 |-----------|-------------|----------------|
 | ECDSA **sign** (brainpoolP256r1) | nonce *k*, key *d* | Constant-time core (`internal/bp256`) |
 | **ECDH** (brainpoolP256r1) | key *d* | Constant-time core (`internal/bp256`) |
+| Public key from private key (parsing, `GenerateKey`) (brainpoolP256r1) | key *d* | Constant-time core (`internal/bp256`) |
 | ECDSA **verify** | none (public) | Standard library `crypto/ecdsa.Verify` |
-| Certificate / key parsing | none (public) | This package (`parser.go`) |
-| brainpoolP384r1 / P512r1 sign/verify | — | Standard library `crypto/ecdsa` over `elliptic.Curve` |
+| Certificate / key parsing | none (public) | `crypto/x509` for the certificate body, this package for the Brainpool key (`x509.go`, `keys.go`) |
+| brainpoolP384r1 / P512r1 sign/verify/ECDH | — | Standard library `crypto/ecdsa` over `elliptic.Curve` |
 
 ### Why a constant-time core for brainpoolP256r1
 
@@ -155,11 +156,11 @@ OID = 1.3.36.3.3.2.8.1.1.7  (brainpoolP256r1)
 ## Package layout
 
 ```
-brainpool/                 Curves, X.509 parser, helpers, signing entry points
+brainpool/                 Curves, certificate/key parsing, SignFunc, ECDH, GenerateKey
   josebp/                  JOSE: JWS/JWE/JWK over Brainpool
-  internal/bp256/          Constant-time brainpoolP256r1 core
+  internal/bp256/          Constant-time brainpoolP256r1 core (Sign, ECDH, PublicKey)
     fiat/                  Generated arithmetic mod p and mod n (Fiat Cryptography)
-    testdata/wycheproof/   Vendored Wycheproof vectors
+  testdata/wycheproof/     Vendored Wycheproof vectors
 ```
 
 ## License and provenance of generated code
