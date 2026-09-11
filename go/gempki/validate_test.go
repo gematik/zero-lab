@@ -69,10 +69,15 @@ func TestValidator_ChainBuildFailureBecomesValidationError(t *testing.T) {
 	ts, _ := gempki.NewTrustStore([]*x509.Certificate{pki.RCA7.Cert})
 	v := &gempki.Validator{TrustStore: ts, Revocation: goodChecker()}
 
-	result, err := v.Validate(t.Context(), []*x509.Certificate{pki.EEArzt.Cert, pki.SubCAHBA.Cert})
+	result, err := v.Validate(t.Context(), []*x509.Certificate{pki.EEArzt.Cert, pki.SubCAHBA.Cert, pki.RogueRoot.Cert})
 	require.NoError(t, err, "shape-OK input should never error out")
 	assert.False(t, result.Valid)
 	assert.True(t, result.HasError(gempki.ErrCodeChainIncomplete))
+	// The chain is what was walked — EE and its SubCA — not every candidate
+	// handed in, and no position claims a root that was never reached.
+	assert.Equal(t, []*x509.Certificate{pki.EEArzt.Cert, pki.SubCAHBA.Cert}, result.Chain)
+	assert.Equal(t, []gempki.ChainPosition{gempki.PositionEE, gempki.PositionSubCA}, result.Positions)
+	assert.Len(t, result.CertResults, 2)
 }
 
 func TestValidator_ZeroValueFailsClosed(t *testing.T) {

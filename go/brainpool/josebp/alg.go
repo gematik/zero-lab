@@ -20,15 +20,15 @@ import (
 // JOSE signature algorithm names used in the gematik telematik infrastructure.
 const (
 	AlgorithmNameES256   = "ES256"
-	AlgorithmNameES384   = "ES384"
-	AlgorithmNameES512   = "ES512"
+	algES384             = "ES384"
+	algES512             = "ES512"
 	AlgorithmNameBP256R1 = "BP256R1"
-	AlgorithmNameBP384R1 = "BP384R1"
-	AlgorithmNameBP512R1 = "BP512R1"
+	algBP384R1           = "BP384R1"
+	algBP512R1           = "BP512R1"
 )
 
-// HashFunctionForCurve returns the hash to use with ECDSA for the given curve's bit size.
-func HashFunctionForCurve(curve elliptic.Curve) (hash.Hash, error) {
+// hashForCurve returns the hash to use with ECDSA for the given curve's bit size.
+func hashForCurve(curve elliptic.Curve) (hash.Hash, error) {
 	curveBits := curve.Params().BitSize
 
 	var hashFunc hash.Hash
@@ -45,25 +45,25 @@ func HashFunctionForCurve(curve elliptic.Curve) (hash.Hash, error) {
 	return hashFunc, nil
 }
 
-// BitSizeForAlg returns the curve bit size implied by a JOSE signature algorithm
+// bitSizeForAlg returns the curve bit size implied by a JOSE signature algorithm
 // name as used in the gematik stack: ES256/BP256R1 → 256, ES384/BP384R1 → 384,
 // ES512/BP512R1 → 512. It is the basis for the alg↔curve consistency check on
 // verification (rejecting e.g. ES384 with a 256-bit key).
-func BitSizeForAlg(alg string) (int, error) {
+func bitSizeForAlg(alg string) (int, error) {
 	switch alg {
 	case AlgorithmNameES256, AlgorithmNameBP256R1:
 		return 256, nil
-	case AlgorithmNameES384, AlgorithmNameBP384R1:
+	case algES384, algBP384R1:
 		return 384, nil
-	case AlgorithmNameES512, AlgorithmNameBP512R1:
+	case algES512, algBP512R1:
 		return 512, nil
 	default:
 		return 0, fmt.Errorf("unsupported signature algorithm: %s", alg)
 	}
 }
 
-// JWAForCurve maps a Brainpool elliptic curve to its JOSE "crv" name.
-func JWAForCurve(curve elliptic.Curve) string {
+// jwaForCurve maps a Brainpool elliptic curve to its JOSE "crv" name.
+func jwaForCurve(curve elliptic.Curve) string {
 	switch curve.Params().Name {
 	case "brainpoolP256r1":
 		return "BP-256"
@@ -76,8 +76,8 @@ func JWAForCurve(curve elliptic.Curve) string {
 	}
 }
 
-// CurveForJWA maps a JOSE "crv" name to a Brainpool elliptic curve.
-func CurveForJWA(name string) (elliptic.Curve, error) {
+// curveForJWA maps a JOSE "crv" name to a Brainpool elliptic curve.
+func curveForJWA(name string) (elliptic.Curve, error) {
 	switch name {
 	case "BP-256":
 		return brainpool.P256r1(), nil

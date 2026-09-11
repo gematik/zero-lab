@@ -37,7 +37,7 @@ func (jwk *JSONWebKey) UnmarshalJSON(data []byte) error {
 
 	switch jwkAlias.KeyType {
 	case "EC":
-		curve, err := CurveForJWA(jwkAlias.CurveName)
+		curve, err := curveForJWA(jwkAlias.CurveName)
 		if err != nil {
 			return err
 		}
@@ -55,7 +55,7 @@ func (jwk *JSONWebKey) UnmarshalJSON(data []byte) error {
 		// Reject points that are off-curve or out of range before constructing a
 		// key. Without this an attacker-supplied JWK can mount an invalid-curve
 		// attack against later ECDH/verify operations.
-		if err := validateECPublicCoords(curve, x, y); err != nil {
+		if err := brainpool.ValidatePublicKey(&ecdsa.PublicKey{Curve: curve, X: x, Y: y}); err != nil {
 			return err
 		}
 
@@ -114,7 +114,7 @@ func (jwk *JSONWebKey) MarshalJSON() ([]byte, error) {
 		jwkAlias.Y = base64.RawURLEncoding.EncodeToString(key.Y.Bytes())
 	} else if key, ok := jwk.Key.(*ecdsa.PublicKey); ok {
 		jwkAlias.KeyType = "EC"
-		jwkAlias.CurveName = JWAForCurve(key.Curve)
+		jwkAlias.CurveName = jwaForCurve(key.Curve)
 		jwkAlias.X = base64.RawURLEncoding.EncodeToString(key.X.Bytes())
 		jwkAlias.Y = base64.RawURLEncoding.EncodeToString(key.Y.Bytes())
 	}
@@ -127,24 +127,6 @@ func (jwk *JSONWebKey) MarshalJSON() ([]byte, error) {
 	}
 
 	return json.Marshal(jwkAlias)
-}
-
-// validateECPublicCoords checks that (x, y) is a valid affine point on curve:
-// both coordinates canonical in [0, p-1] and the point on the curve (which also
-// rejects the point at infinity, since b ≠ 0). Public-key validation per BSI
-// TR-03111 §3.2.2 / SEC 1 §3.2.2.1.
-func validateECPublicCoords(curve elliptic.Curve, x, y *big.Int) error {
-	p := curve.Params().P
-	if x.Sign() < 0 || x.Cmp(p) >= 0 {
-		return fmt.Errorf("x coordinate out of range for %s", curve.Params().Name)
-	}
-	if y.Sign() < 0 || y.Cmp(p) >= 0 {
-		return fmt.Errorf("y coordinate out of range for %s", curve.Params().Name)
-	}
-	if !curve.IsOnCurve(x, y) {
-		return fmt.Errorf("public key point is not on curve %s", curve.Params().Name)
-	}
-	return nil
 }
 
 // validateECPrivateScalar checks d ∈ [1, n-1].

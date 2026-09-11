@@ -2,6 +2,7 @@ package gempki_test
 
 import (
 	"crypto/x509"
+	"strings"
 	"testing"
 
 	"github.com/gematik/zero-lab/go/gempki"
@@ -74,13 +75,14 @@ func TestBuildChain_RogueRootNotInTrustStore(t *testing.T) {
 	ts, err := gempki.NewTrustStore([]*x509.Certificate{pki.RCA1.Cert})
 	require.NoError(t, err)
 
-	_, err = gempki.BuildChain(
+	partial, err := gempki.BuildChain(
 		pki.EERogue.Cert,
 		nil,
 		ts,
 	)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, gempki.ErrChainIncomplete)
+	assert.Equal(t, []*x509.Certificate{pki.EERogue.Cert}, partial, "the walk stopped at the leaf")
 }
 
 func TestBuildChain_MissingIntermediate(t *testing.T) {
@@ -92,13 +94,15 @@ func TestBuildChain_MissingIntermediate(t *testing.T) {
 	require.NoError(t, err)
 
 	// SubCAHBA is the missing link.
-	_, err = gempki.BuildChain(
+	partial, err := gempki.BuildChain(
 		pki.EEArzt.Cert,
 		nil,
 		ts,
 	)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, gempki.ErrChainIncomplete)
+	assert.Equal(t, []*x509.Certificate{pki.EEArzt.Cert}, partial)
+	assert.Equal(t, 1, strings.Count(err.Error(), "chain_incomplete"), "code must not be repeated in the message: %s", err)
 }
 
 func TestBuildChain_RejectsNilInputs(t *testing.T) {

@@ -5,7 +5,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
@@ -19,13 +18,13 @@ import (
 )
 
 type JWEBuilder struct {
-	headers   Headers
+	headers   map[string]any
 	plaintext []byte
 }
 
 func NewJWEBuilder() *JWEBuilder {
 	return &JWEBuilder{
-		headers: make(Headers),
+		headers: make(map[string]any),
 	}
 }
 
@@ -58,12 +57,12 @@ func (b *JWEBuilder) EncryptECDHES(recipient any) ([]byte, error) {
 		return nil, errors.New("unsupported key type")
 	}
 
-	ephemeralKey, err := ecdsa.GenerateKey(recipientKey.Curve, rand.Reader)
+	ephemeralKey, err := brainpool.GenerateKey(recipientKey.Curve, rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("generating ephemeral key: %w", err)
 	}
 
-	cek, err := DeriveECDHES("A256GCM", []byte{}, []byte{}, ephemeralKey, recipientKey, 32)
+	cek, err := deriveECDHES("A256GCM", []byte{}, []byte{}, ephemeralKey, recipientKey, 32)
 	if err != nil {
 		return nil, fmt.Errorf("deriving ECDHES: %w", err)
 	}
@@ -99,8 +98,8 @@ func (b *JWEBuilder) EncryptECDHES(recipient any) ([]byte, error) {
 	return serialized, nil
 }
 
-// DeriveECDHES performs the ECDH-ES Concat KDF (RFC 7518 §4.6) over an elliptic curve.
-func DeriveECDHES(algorithm string, apuData, apvData []byte, privateKey *ecdsa.PrivateKey, publicKey *ecdsa.PublicKey, keySize int) ([]byte, error) {
+// deriveECDHES performs the ECDH-ES Concat KDF (RFC 7518 §4.6) over an elliptic curve.
+func deriveECDHES(algorithm string, apuData, apvData []byte, privateKey *ecdsa.PrivateKey, publicKey *ecdsa.PublicKey, keySize int) ([]byte, error) {
 	if keySize > 1<<16 {
 		return nil, errors.New("key size too large: must be less than or equal to 64 KiB")
 	}
@@ -112,32 +111,9 @@ func DeriveECDHES(algorithm string, apuData, apvData []byte, privateKey *ecdsa.P
 	suppPubInfo := make([]byte, 4)
 	binary.BigEndian.PutUint32(suppPubInfo, uint32(keySize)*8)
 
-	if publicKey.Curve.Params().Name != privateKey.Curve.Params().Name {
-		return nil, errors.New("public key is not on the same curve as the private key")
-	}
-
-	var sharedSecret []byte
-	curveSize := curveCoordinateSize(privateKey.Curve)
-
-	if privateKey.Curve.Params().Name == "brainpoolP256r1" {
-		// Constant-time ECDH with full peer-point validation (on-curve, in range)
-		// performed inside ECDHP256r1.
-		secret, err := brainpool.ECDHP256r1(privateKey, publicKey.X, publicKey.Y)
-		if err != nil {
-			return nil, err
-		}
-		sharedSecret = secret
-	} else {
-		if !privateKey.Curve.IsOnCurve(publicKey.X, publicKey.Y) {
-			return nil, errors.New("public key is not on the same curve as the private key")
-		}
-		sharedX, _ := privateKey.Curve.ScalarMult(publicKey.X, publicKey.Y, privateKey.D.Bytes())
-		sharedSecret = sharedX.Bytes()
-		if len(sharedSecret) < curveSize {
-			paddedSecret := make([]byte, curveSize)
-			copy(paddedSecret[curveSize-len(sharedSecret):], sharedSecret)
-			sharedSecret = paddedSecret
-		}
+	sharedSecret, err := brainpool.ECDH(privateKey, publicKey)
+	if err != nil {
+		return nil, err
 	}
 
 	kdfReader := newKDF(crypto.SHA256, sharedSecret, algorithmID, partyUInfo, partyVInfo, suppPubInfo, nil)
@@ -148,10 +124,6 @@ func DeriveECDHES(algorithm string, apuData, apvData []byte, privateKey *ecdsa.P
 	}
 
 	return derivedKey, nil
-}
-
-func curveCoordinateSize(curve elliptic.Curve) int {
-	return (curve.Params().BitSize + 7) / 8
 }
 
 func lengthPrefixed(data []byte) []byte {

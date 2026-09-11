@@ -1,4 +1,4 @@
-package fiatn
+package fiat
 
 import (
 	"math/big"
@@ -9,18 +9,18 @@ import (
 var n, _ = new(big.Int).SetString(
 	"A9FB57DBA1EEA9BC3E660A909D838D718C397AA3B561A6F7901E0E82974856A7", 16)
 
-func fe(t *testing.T, v *big.Int) *Element {
+func fe(t *testing.T, v *big.Int) *Scalar {
 	t.Helper()
-	var buf [ElementLen]byte
+	var buf [ScalarLen]byte
 	new(big.Int).Mod(v, n).FillBytes(buf[:])
-	e, err := new(Element).SetBytes(buf[:])
+	e, err := new(Scalar).SetBytes(buf[:])
 	if err != nil {
 		t.Fatalf("SetBytes: %v", err)
 	}
 	return e
 }
 
-func toBig(e *Element) *big.Int { return new(big.Int).SetBytes(e.Bytes()) }
+func toBig(e *Scalar) *big.Int { return new(big.Int).SetBytes(e.Bytes()) }
 
 func samples(t *testing.T) []*big.Int {
 	out := []*big.Int{big.NewInt(1), big.NewInt(2), new(big.Int).Sub(n, big.NewInt(1))}
@@ -39,13 +39,13 @@ func TestScalarArithmeticMatchesBigInt(t *testing.T) {
 	for _, a := range vs {
 		for _, b := range vs {
 			ea, eb := fe(t, a), fe(t, b)
-			if got, want := toBig(new(Element).Add(ea, eb)), new(big.Int).Mod(new(big.Int).Add(a, b), n); got.Cmp(want) != 0 {
+			if got, want := toBig(new(Scalar).Add(ea, eb)), new(big.Int).Mod(new(big.Int).Add(a, b), n); got.Cmp(want) != 0 {
 				t.Fatalf("Add: got %x want %x", got, want)
 			}
-			if got, want := toBig(new(Element).Sub(ea, eb)), new(big.Int).Mod(new(big.Int).Sub(a, b), n); got.Cmp(want) != 0 {
+			if got, want := toBig(new(Scalar).Sub(ea, eb)), new(big.Int).Mod(new(big.Int).Sub(a, b), n); got.Cmp(want) != 0 {
 				t.Fatalf("Sub: got %x want %x", got, want)
 			}
-			if got, want := toBig(new(Element).Mul(ea, eb)), new(big.Int).Mod(new(big.Int).Mul(a, b), n); got.Cmp(want) != 0 {
+			if got, want := toBig(new(Scalar).Mul(ea, eb)), new(big.Int).Mod(new(big.Int).Mul(a, b), n); got.Cmp(want) != 0 {
 				t.Fatalf("Mul: got %x want %x", got, want)
 			}
 		}
@@ -54,7 +54,7 @@ func TestScalarArithmeticMatchesBigInt(t *testing.T) {
 
 func TestScalarInvertMatchesBigInt(t *testing.T) {
 	for _, v := range samples(t) {
-		got := toBig(new(Element).Invert(fe(t, v)))
+		got := toBig(new(Scalar).Invert(fe(t, v)))
 		want := new(big.Int).ModInverse(v, n)
 		if got.Cmp(want) != 0 {
 			t.Fatalf("Invert(%x): got %x want %x", v, got, want)
@@ -68,9 +68,9 @@ func TestScalarSetBytesRejectsGteN(t *testing.T) {
 		new(big.Int).Add(n, big.NewInt(1)),
 		new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1)),
 	} {
-		var buf [ElementLen]byte
+		var buf [ScalarLen]byte
 		v.FillBytes(buf[:])
-		if _, err := new(Element).SetBytes(buf[:]); err == nil {
+		if _, err := new(Scalar).SetBytes(buf[:]); err == nil {
 			t.Fatalf("SetBytes accepted value >= n: %x", buf)
 		}
 	}

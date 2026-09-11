@@ -28,6 +28,6 @@ func FuzzParseToken(f *testing.F) {
 	f.Add([]byte("a.b.c"))
 	f.Add([]byte(""))
 	f.Fuzz(func(t *testing.T, data []byte) {
-		_, _ = ParseToken(data, WithEcdsaPublicKey(&key.PublicKey))
+		_, _ = ParseToken(data, withECDSAPublicKey(&key.PublicKey))
 	})
 }

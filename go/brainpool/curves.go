@@ -1,23 +1,3 @@
-// Package brainpool implements the Brainpool elliptic curves (RFC 5639) used by
-// the gematik telematics infrastructure, together with X.509 certificate/key
-// parsing for these curves and the signing entry points used by the josebp JOSE
-// layer.
-//
-// Constant-time posture is per curve:
-//
-//   - brainpoolP256r1 secret-scalar operations (ECDSA signing via
-//     SignFuncPrivateKey, ECDH via ECDHP256r1) are routed through a
-//     constant-time, formally-verified core (see internal/bp256) using RFC 6979
-//     deterministic nonces and low-s normalisation. Signature verification uses
-//     the standard library, which is appropriate because it processes only
-//     public data.
-//   - brainpoolP384r1, brainpoolP512r1 and the twisted (t1) curves use the
-//     standard library's generic, non-constant-time crypto/elliptic
-//     implementation (the rcurve isomorphism is adapted from
-//     github.com/ebfe/brainpool). They are used for certificate handling, not as
-//     software-signing curves.
-//
-// See README.md for the full security posture and references.
 package brainpool
 
 import (
@@ -27,9 +7,55 @@ import (
 	"sync"
 )
 
-var OIDNamedCurveP256r1 = asn1.ObjectIdentifier{1, 3, 36, 3, 3, 2, 8, 1, 1, 7}
-var OIDNamedCurveP384r1 = asn1.ObjectIdentifier{1, 3, 36, 3, 3, 2, 8, 1, 1, 11}
-var OIDNamedCurveP512r1 = asn1.ObjectIdentifier{1, 3, 36, 3, 3, 2, 8, 1, 1, 13}
+// curves is the one place a Brainpool curve is identified: by the name in
+// its CurveParams, by the OID X.509 uses for it (RFC 5639 §4.1), and by
+// whether its secret-scalar operations have a constant-time implementation.
+// Only brainpoolP256r1 has one — it is the curve gematik issues software-held
+// keys on; the others occur in certificates only.
+var curves = []struct {
+	name         string
+	oid          asn1.ObjectIdentifier
+	curve        func() elliptic.Curve
+	constantTime bool
+}{
+	{"brainpoolP256r1", asn1.ObjectIdentifier{1, 3, 36, 3, 3, 2, 8, 1, 1, 7}, P256r1, true},
+	{"brainpoolP384r1", asn1.ObjectIdentifier{1, 3, 36, 3, 3, 2, 8, 1, 1, 11}, P384r1, false},
+	{"brainpoolP512r1", asn1.ObjectIdentifier{1, 3, 36, 3, 3, 2, 8, 1, 1, 13}, P512r1, false},
+}
+
+func curveFromOID(oid asn1.ObjectIdentifier) (elliptic.Curve, bool) {
+	for _, c := range curves {
+		if c.oid.Equal(oid) {
+			return c.curve(), true
+		}
+	}
+	return nil, false
+}
+
+func oidForCurve(curve elliptic.Curve) (asn1.ObjectIdentifier, bool) {
+	for _, c := range curves {
+		if c.name == curve.Params().Name {
+			return c.oid, true
+		}
+	}
+	return nil, false
+}
+
+func isBrainpoolCurve(curve elliptic.Curve) bool {
+	_, ok := oidForCurve(curve)
+	return ok
+}
+
+// hasConstantTimeCore reports whether curve's secret-scalar operations run in
+// internal/bp256 rather than on the generic big.Int path.
+func hasConstantTimeCore(curve elliptic.Curve) bool {
+	for _, c := range curves {
+		if c.name == curve.Params().Name {
+			return c.constantTime
+		}
+	}
+	return false
+}
 
 var (
 	once                   sync.Once
@@ -37,6 +63,10 @@ var (
 	p256r1, p384r1, p512r1 *rcurve
 )
 
+// The r1 curves are the ones the TI uses; each is realised as an isomorphism
+// onto its twisted t1 sibling, because the standard library's generic
+// CurveParams arithmetic assumes a = −3, which only the t1 curves satisfy
+// (adapted from github.com/ebfe/brainpool).
 func initAll() {
 	initP256t1()
 	initP384t1()
@@ -44,19 +74,6 @@ func initAll() {
 	initP256r1()
 	initP384r1()
 	initP512r1()
-}
-
-func CurveFromOID(oid asn1.ObjectIdentifier) (bool, elliptic.Curve) {
-	switch {
-	case oid.Equal(OIDNamedCurveP256r1):
-		return true, P256r1()
-	case oid.Equal(OIDNamedCurveP384r1):
-		return true, P384r1()
-	case oid.Equal(OIDNamedCurveP512r1):
-		return true, P512r1()
-	default:
-		return false, nil
-	}
 }
 
 func initP256t1() {
@@ -131,22 +148,10 @@ func initP512r1() {
 	p512r1 = newrcurve(twisted, params, z)
 }
 
-// P256t1 returns a Curve which implements Brainpool P256t1 (see RFC 5639, section 3.4)
-func P256t1() elliptic.Curve {
-	once.Do(initAll)
-	return p256t1
-}
-
 // P256r1 returns a Curve which implements Brainpool P256r1 (see RFC 5639, section 3.4)
 func P256r1() elliptic.Curve {
 	once.Do(initAll)
 	return p256r1
-}
-
-// P384t1 returns a Curve which implements Brainpool P384t1 (see RFC 5639, section 3.6)
-func P384t1() elliptic.Curve {
-	once.Do(initAll)
-	return p384t1
 }
 
 // P384r1 returns a Curve which implements Brainpool P384r1 (see RFC 5639, section 3.6)
@@ -155,14 +160,85 @@ func P384r1() elliptic.Curve {
 	return p384r1
 }
 
-// P512t1 returns a Curve which implements Brainpool P512t1 (see RFC 5639, section 3.7)
-func P512t1() elliptic.Curve {
-	once.Do(initAll)
-	return p512t1
-}
-
 // P512r1 returns a Curve which implements Brainpool P512r1 (see RFC 5639, section 3.7)
 func P512r1() elliptic.Curve {
 	once.Do(initAll)
 	return p512r1
+}
+
+var _ elliptic.Curve = (*rcurve)(nil)
+
+type rcurve struct {
+	twisted elliptic.Curve
+	params  *elliptic.CurveParams
+	z       *big.Int
+	zinv    *big.Int
+	z2      *big.Int
+	z3      *big.Int
+	zinv2   *big.Int
+	zinv3   *big.Int
+}
+
+var (
+	two   = big.NewInt(2)
+	three = big.NewInt(3)
+)
+
+func newrcurve(twisted elliptic.Curve, params *elliptic.CurveParams, z *big.Int) *rcurve {
+	zinv := new(big.Int).ModInverse(z, params.P)
+	return &rcurve{
+		twisted: twisted,
+		params:  params,
+		z:       z,
+		zinv:    zinv,
+		z2:      new(big.Int).Exp(z, two, params.P),
+		z3:      new(big.Int).Exp(z, three, params.P),
+		zinv2:   new(big.Int).Exp(zinv, two, params.P),
+		zinv3:   new(big.Int).Exp(zinv, three, params.P),
+	}
+}
+
+func (curve *rcurve) toTwisted(x, y *big.Int) (*big.Int, *big.Int) {
+	var tx, ty big.Int
+	tx.Mul(x, curve.z2)
+	tx.Mod(&tx, curve.params.P)
+	ty.Mul(y, curve.z3)
+	ty.Mod(&ty, curve.params.P)
+	return &tx, &ty
+}
+
+func (curve *rcurve) fromTwisted(tx, ty *big.Int) (*big.Int, *big.Int) {
+	var x, y big.Int
+	x.Mul(tx, curve.zinv2)
+	x.Mod(&x, curve.params.P)
+	y.Mul(ty, curve.zinv3)
+	y.Mod(&y, curve.params.P)
+	return &x, &y
+}
+
+func (curve *rcurve) Params() *elliptic.CurveParams {
+	return curve.params
+}
+
+func (curve *rcurve) IsOnCurve(x, y *big.Int) bool {
+	return curve.twisted.IsOnCurve(curve.toTwisted(x, y))
+}
+
+func (curve *rcurve) Add(x1, y1, x2, y2 *big.Int) (x, y *big.Int) {
+	tx1, ty1 := curve.toTwisted(x1, y1)
+	tx2, ty2 := curve.toTwisted(x2, y2)
+	return curve.fromTwisted(curve.twisted.Add(tx1, ty1, tx2, ty2))
+}
+
+func (curve *rcurve) Double(x1, y1 *big.Int) (x, y *big.Int) {
+	return curve.fromTwisted(curve.twisted.Double(curve.toTwisted(x1, y1)))
+}
+
+func (curve *rcurve) ScalarMult(x1, y1 *big.Int, scalar []byte) (x, y *big.Int) {
+	tx1, ty1 := curve.toTwisted(x1, y1)
+	return curve.fromTwisted(curve.twisted.ScalarMult(tx1, ty1, scalar))
+}
+
+func (curve *rcurve) ScalarBaseMult(scalar []byte) (x, y *big.Int) {
+	return curve.fromTwisted(curve.twisted.ScalarBaseMult(scalar))
 }

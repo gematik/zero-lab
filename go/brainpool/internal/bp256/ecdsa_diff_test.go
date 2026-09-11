@@ -1,4 +1,4 @@
-package brainpool
+package bp256_test
 
 import (
 	"crypto/ecdsa"
@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/brainpool/internal/bp256"
 )
 
@@ -19,11 +20,11 @@ func fill32(v *big.Int) []byte {
 // Signatures produced by bp256.SignWithNonce must verify under the stdlib ECDSA
 // over rcurve (and be low-s).
 func TestDiffSignVerifiesUnderStdlib(t *testing.T) {
-	key, err := ecdsa.GenerateKey(P256r1(), rand.Reader)
+	key, err := ecdsa.GenerateKey(brainpool.P256r1(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := P256r1().Params().N
+	n := brainpool.P256r1().Params().N
 	d := fill32(key.D)
 	for i := 0; i < 20; i++ {
 		msg := []byte{0x01, byte(i), 0xC3}
@@ -53,27 +54,27 @@ func TestDiffSignVerifiesUnderStdlib(t *testing.T) {
 }
 
 func TestDiffDeterministicSignVerifies(t *testing.T) {
-	key, err := ecdsa.GenerateKey(P256r1(), rand.Reader)
+	key, err := ecdsa.GenerateKey(brainpool.P256r1(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n := P256r1().Params().N
+	n := brainpool.P256r1().Params().N
 	d := fill32(key.D)
 
 	h1 := sha256.Sum256([]byte("message one"))
 	h2 := sha256.Sum256([]byte("message two"))
 
-	r1, s1, err := bp256.SignDeterministic(d, h1[:])
+	r1, s1, err := bp256.Sign(d, h1[:])
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Determinism: identical inputs reproduce the identical signature.
-	r1b, s1b, _ := bp256.SignDeterministic(d, h1[:])
+	r1b, s1b, _ := bp256.Sign(d, h1[:])
 	if string(r1) != string(r1b) || string(s1) != string(s1b) {
 		t.Fatal("RFC 6979 signature is not deterministic")
 	}
 	// Different message yields a different nonce/signature.
-	r2, _, _ := bp256.SignDeterministic(d, h2[:])
+	r2, _, _ := bp256.Sign(d, h2[:])
 	if string(r1) == string(r2) {
 		t.Fatal("different messages produced the same r (nonce reuse)")
 	}
@@ -87,13 +88,13 @@ func TestDiffDeterministicSignVerifies(t *testing.T) {
 }
 
 func TestDiffECDHMatchesRcurve(t *testing.T) {
-	curve := P256r1()
+	curve := brainpool.P256r1()
 	for _, k := range diffScalars() {
 		// peer = m·G for some m.
 		mx, my := curve.ScalarBaseMult(big.NewInt(0x9e3779b1).Bytes())
 		peer := loadBP(t, mx, my)
 
-		got, err := bp256.ECDH(fill32(k), peer)
+		got, err := bp256.ECDH(fill32(k), peer.Bytes())
 		if err != nil {
 			t.Fatalf("ECDH: %v", err)
 		}
@@ -105,7 +106,7 @@ func TestDiffECDHMatchesRcurve(t *testing.T) {
 }
 
 func TestDiffECDHSymmetry(t *testing.T) {
-	curve := P256r1()
+	curve := brainpool.P256r1()
 	dA, _ := rand.Int(rand.Reader, curve.Params().N)
 	dB, _ := rand.Int(rand.Reader, curve.Params().N)
 	dA.Add(dA, big.NewInt(1))
@@ -116,11 +117,11 @@ func TestDiffECDHSymmetry(t *testing.T) {
 	qa := loadBP(t, qaX, qaY)
 	qb := loadBP(t, qbX, qbY)
 
-	ab, err := bp256.ECDH(fill32(dA), qb)
+	ab, err := bp256.ECDH(fill32(dA), qb.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
-	ba, err := bp256.ECDH(fill32(dB), qa)
+	ba, err := bp256.ECDH(fill32(dB), qa.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}

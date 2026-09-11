@@ -9,7 +9,8 @@ Wycheproof (C2SP/wycheproof).
 - Schema: `ecdsa_verify_schema_v1.json` (485 tests)
 
 Each test group carries an ECDSA public key (uncompressed `04‖x‖y` hex) and a set
-of `{msg, sig (ASN.1 DER), result}` cases. The loader verifies each signature
-with `bp256.Verify` and asserts it matches `result` (`valid` must verify,
-`invalid` must not; `acceptable` may go either way and is treated as a soft
-expectation — see the loader for the exact policy).
+of `{msg, sig (ASN.1 DER), result}` cases. The loader (`wycheproof_test.go` in
+the root package) verifies each signature with `crypto/ecdsa.Verify` over
+`brainpool.P256r1()` — the verification path production uses; the constant-time
+core deliberately has no verifier — and asserts the outcome matches `result`
+(`valid` must verify, `invalid` must not; `acceptable` may go either way).

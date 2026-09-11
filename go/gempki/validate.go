@@ -65,29 +65,34 @@ func (v *Validator) Validate(ctx context.Context, chain []*x509.Certificate) (*V
 
 	fullChain, err := BuildChain(chain[0], chain[1:], v.TrustStore)
 	if err != nil {
-		// Positions and CertResults are parallel to Chain — renderers index
-		// Positions[i] while iterating Chain, so keep them in sync even on the
-		// failure path.
-		positions := make([]ChainPosition, len(chain))
-		certResults := make([]CertResult, len(chain))
-		for i, c := range chain {
-			positions[i] = positionOf(i, len(chain))
-			if c != nil {
-				certResults[i] = CertResult{Subject: c.Subject.CommonName, Position: positions[i]}
+		// The result carries what BuildChain actually walked before the dead
+		// end — not the pile of candidate intermediates the caller passed in,
+		// which for a TSL-fed caller is every CA gematik publishes. None of it
+		// reached a root, so nothing is positioned as one.
+		partial := fullChain
+		if len(partial) == 0 {
+			partial = chain[:1]
+		}
+		positions := make([]ChainPosition, len(partial))
+		certResults := make([]CertResult, len(partial))
+		for i, c := range partial {
+			positions[i] = PositionSubCA
+			if i == 0 {
+				positions[i] = PositionEE
 			}
+			certResults[i] = CertResult{Subject: c.Subject.CommonName, Position: positions[i]}
+		}
+		verr, ok := errors.AsType[*ValidationError](err)
+		if !ok {
+			verr = &ValidationError{Code: ErrCodeChainIncomplete, Subject: chain[0].Subject.CommonName, Message: "chain construction failed", Cause: err}
 		}
 		log.Info("chain build failed", "err", err)
 		return &ValidationResult{
 			Valid:       false,
-			Chain:       chain,
+			Chain:       partial,
 			Positions:   positions,
 			CertResults: certResults,
-			Errors: []*ValidationError{{
-				Code:    ErrCodeChainIncomplete,
-				Subject: chain[0].Subject.CommonName,
-				Message: "chain construction failed",
-				Cause:   err,
-			}},
+			Errors:      []*ValidationError{verr},
 		}, nil
 	}
 

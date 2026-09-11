@@ -16,9 +16,9 @@ import (
 // This validates the production verification path — the standard library's
 // crypto/ecdsa.Verify over the brainpoolP256r1 curve — against Project
 // Wycheproof's 485 edge-case vectors (zero/overflow r,s, malformed DER, etc.).
-// See internal/bp256/testdata/wycheproof/PROVENANCE.md for the source.
+// See testdata/wycheproof/PROVENANCE.md for the source.
 
-const wycheproofPath = "internal/bp256/testdata/wycheproof/ecdsa_brainpoolP256r1_sha256_test.json"
+const wycheproofPath = "testdata/wycheproof/ecdsa_brainpoolP256r1_sha256_test.json"
 
 type wpFile struct {
 	TestGroups []struct {
