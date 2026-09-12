@@ -103,13 +103,13 @@ ti epa providers
 ti epa record X110411675
 
 # Open VAU session(s) and cache the metadata
-ti epa --auth-method p12 --p12-file smcb.p12 connect       # all 3 providers in parallel
-ti epa --auth-method p12 --p12-file smcb.p12 connect 2     # just provider 2
+ti epa connect --auth-method p12 --auth-p12-file smcb.p12       # all 3 providers in parallel
+ti epa connect 2 --auth-method p12 --auth-p12-file smcb.p12     # just provider 2
 ti epa session list                                        # cached entries
 ti epa session close 2                                     # drop one provider's entry
 
 # Run the localhost forwarding proxy (long-lived)
-ti epa --auth-method p12 --p12-file smcb.p12 proxy --addr :8082
+ti epa proxy --auth-method p12 --auth-p12-file smcb.p12 --addr :8082
 # then: curl http://localhost:8082/info
 
 # Inspect the stored ePA state (Redis-style KV with TTL)
@@ -125,25 +125,56 @@ when the variable is unset). A store left at the old
 carry a TTL and are lazily expired on read. KVNR→provider mappings live for 1h;
 session metadata lives for 15 min.
 
-#### ePA auth methods
+#### SMC-B auth methods
 
 `record`, `providers`, `state`, `env`, `use`, `session list/close` don't need
-auth. Commands that hit VAU (`connect`, `proxy`) take an auth method via
-`--auth-method connector|p12` (default `connector`, env `TI_EPA_AUTH_METHOD`):
+auth. Commands that sign with an SMC-B — `epa connect`, `epa proxy`,
+`idp authenticate` — share one set of flags. `--auth-method connector|p12`
+(default `connector`, env `TI_AUTH_METHOD`) picks the source:
 
 | Flag | Default | Method |
 |---|---|---|
 | `-c`, `--connector-config` | (see connectors above) | connector |
-| `--card` | first SMC-B on the connector | connector |
-| `--p12-file` | (required) | p12 |
-| `--p12-alias` | `alias` | p12 |
-| `--p12-password` | `00` (env: `TI_EPA_P12_PASSWORD`) | p12 |
+| `--auth-card` | first SMC-B on the connector | connector |
+| `--auth-p12-file` | (required; env `TI_AUTH_P12_FILE`) | p12 |
+| `--auth-p12-alias` | `alias`; with several identities in the bundle the C.AUT pair is picked | p12 |
+| `--auth-p12-password` | `00` (env: `TI_AUTH_P12_PASSWORD`) | p12 |
+
+On the connector path the SMC-B PIN is checked first and, if the card asks
+for it, verified at the card terminal before anything is signed.
 
 > Entitlement (VAU-bound calls that need Proof-of-PN / HCV) is intentionally
 > deferred — real flows use either the VSDM PN service or a POPP token, neither
 > of which is wired in this version. `/information` endpoints and the VAU
 > handshake work fully; entitlement-bound calls will fail clearly until PN/POPP
 > is added.
+
+### IDP-Dienst commands
+
+`ti idp authenticate` stands in for the gematik Authenticator app. A client
+in authenticator mode (for example `zero-pep-proxy`) shows an
+`authenticator://?challenge_path=…` link; hand that link — or the plain IDP
+authorization URL inside it — to the command and it fetches the challenge,
+shows what the client asks for, signs it with the SMC-B and prints one JSON
+line on stdout. It never follows the redirect and never opens anything;
+delivering the redirect to the client is the caller's job.
+
+```bash
+ti idp authenticate 'authenticator://?challenge_path=…' --auth-method p12 --auth-p12-file smcb.p12
+# stderr: what is about to be attested, then "Sign with <subject>? [y/N]"
+# stdout: {"redirect_url":"https://client/oauth2/callback?code=…&state=…","code":"…","state":"…",
+#          "idp":"https://idp-ref.app.ti-dienste.de","client_id":"…","scope":"openid e-rezept",
+#          "card_type":"SMC-B","consent":{"requested_scopes":{…},"requested_claims":{…}}}
+
+# scripted: --yes skips the question; the redirect can be delivered with curl
+ti idp authenticate "$URL" --yes --auth-method p12 --auth-p12-file smcb.p12 \
+  | jq -r .redirect_url | xargs curl -s -o /dev/null -w '%{http_code}'
+```
+
+On failure stdout carries `{"error":…,"error_description":…}` (plus the
+`gematik_*` fields when the IDP sent them), the message goes to stderr and
+the exit status is 1. Only challenges from the known IDP-Dienst hosts are
+signed.
 
 ### PKCS#12 commands
 
@@ -166,7 +197,8 @@ ti pkcs12 encode <file>
 | `-o`, `--output` | `ti connector ...` | Output format: `text` (default) or `json` |
 | `-c`, `--connector-config` | connector leaf commands | Name or path of `.kon` config file (env: `TI_CONNECTOR_CONFIG`) |
 | `--epa-env` | `ti epa ...` | ePA environment: `dev`, `test`, `ref` (default), `prod` (env: `TI_EPA_ENV`) |
-| `--auth-method` | `ti epa session open / proxy` | `connector` (default) or `p12` (env: `TI_EPA_AUTH_METHOD`) |
+| `--auth-method` | `ti epa connect / proxy`, `ti idp authenticate` | `connector` (default) or `p12` (env: `TI_AUTH_METHOD`) |
+| `-y`, `--yes` | `ti idp authenticate` | sign without asking for consent on the terminal |
 
 ## Testing
 
@@ -176,6 +208,8 @@ and skip by default; pass an env var to opt in:
 ```bash
 TI_TEST_SMCB_P12=/path/to/test.p12      go test ./...    # p12 auth e2e
 TI_TEST_KON_FILE=/path/to/test.kon      go test ./...    # connector auth e2e (live Konnektor)
+TI_TEST_SMCB_P12=… TI_TEST_IDP_CLIENT_ID=… TI_TEST_IDP_REDIRECT_URI=… TI_TEST_IDP_SCOPE="openid …" \
+  go test ./internal/idp/                                # IDP challenge e2e (RU IDP)
 ```
 
 Without these vars the tests `t.Skip` so CI stays green and no fixtures are

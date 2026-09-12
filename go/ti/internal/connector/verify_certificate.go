@@ -140,7 +140,7 @@ func loadCertificateFile(path string) (*x509.Certificate, error) {
 }
 
 func verifyAndPrint(ctx context.Context, client *kon.Client, cert *x509.Certificate, at time.Time) error {
-	spin := startSpinner("Verifying certificate...")
+	spin := common.StartSpinner("Verifying certificate...")
 	result, err := client.VerifyCertificate(ctx, cert, at)
 	spin.Stop()
 	if err != nil {

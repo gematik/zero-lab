@@ -1,4 +1,4 @@
-package epa
+package smcb
 
 import (
 	"context"
@@ -16,11 +16,12 @@ import (
 // real .kon config pointed at a live Konnektor. The path is read from
 // TI_TEST_KON_FILE; without it, the test skips so CI stays unaffected.
 //
-// The test wires global flags `common.ConnectorConfig.Val` (used by common.LoadConnectorConfig
-// via the existing `-c` resolution chain) and `authCardFlagVal` (left empty so
-// the connector method auto-picks the first SMC-B). It then asks for
-// SecurityFunctions, signs a hash via ExternalAuthenticate, and verifies the
-// resulting signature against the C.AUT certificate's public key.
+// The test wires the global flag `common.ConnectorConfig.Val` (used by
+// common.LoadConnectorConfig via the existing `-c` resolution chain), lets the
+// connector method auto-pick the first SMC-B, signs a hash via
+// ExternalAuthenticate, and verifies the resulting signature against the C.AUT
+// certificate's public key. A PIN that is VERIFIABLE is verified at the card
+// terminal as part of FromConnector.
 func TestConnectorAuthE2E(t *testing.T) {
 	konPath := os.Getenv("TI_TEST_KON_FILE")
 	if konPath == "" {
@@ -28,33 +29,21 @@ func TestConnectorAuthE2E(t *testing.T) {
 	}
 
 	prevConfig := common.ConnectorConfig.Val
-	prevCard := authCardFlagVal
 	common.ConnectorConfig.Val = konPath
-	authCardFlagVal = ""
-	t.Cleanup(func() {
-		common.ConnectorConfig.Val = prevConfig
-		authCardFlagVal = prevCard
-	})
+	t.Cleanup(func() { common.ConnectorConfig.Val = prevConfig })
 
 	if _, err := kon.ParseDotkon(mustReadFile(t, konPath)); err != nil {
 		t.Fatalf("the .kon file at %s does not parse: %v", konPath, err)
 	}
 
-	am, err := newConnectorAuthMethod()
+	id, err := FromConnector(context.Background(), "")
 	if err != nil {
-		t.Fatalf("newConnectorAuthMethod: %v", err)
-	}
-	sf, err := am.SecurityFunctions(context.Background())
-	if err != nil {
-		t.Fatalf("SecurityFunctions: %v", err)
-	}
-	if sf.ProvidePN != nil || sf.ProvideHCV != nil {
-		t.Error("ProvidePN and ProvideHCV must be nil in v1")
+		t.Fatalf("FromConnector: %v", err)
 	}
 
-	cert, err := sf.AuthnCertFunc()
+	cert, err := id.Cert()
 	if err != nil {
-		t.Fatalf("AuthnCertFunc: %v", err)
+		t.Fatalf("Cert: %v", err)
 	}
 	pub, ok := cert.PublicKey.(*ecdsa.PublicKey)
 	if !ok {
@@ -63,9 +52,9 @@ func TestConnectorAuthE2E(t *testing.T) {
 
 	msg := []byte("ti epa connector auth e2e signing canary")
 	digest := sha256.Sum256(msg)
-	sig, err := sf.AuthnSignFunc(digest[:])
+	sig, err := id.Sign(digest[:])
 	if err != nil {
-		t.Fatalf("AuthnSignFunc (Konnektor ExternalAuthenticate): %v", err)
+		t.Fatalf("Sign (Konnektor ExternalAuthenticate): %v", err)
 	}
 
 	keyBytes := (pub.Curve.Params().BitSize + 7) / 8

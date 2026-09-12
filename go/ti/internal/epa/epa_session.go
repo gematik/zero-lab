@@ -11,8 +11,8 @@ import (
 	"github.com/gematik/zero-lab/go/epa"
 	"github.com/gematik/zero-lab/go/epa/vau"
 	"github.com/gematik/zero-lab/go/gemidp"
-	"github.com/gematik/zero-lab/go/gempki"
 	"github.com/gematik/zero-lab/go/ti/internal/common"
+	"github.com/gematik/zero-lab/go/ti/internal/smcb"
 	"github.com/gematik/zero-lab/go/ti/state"
 	"github.com/spf13/cobra"
 )
@@ -84,25 +84,13 @@ func obtainSession(ctx context.Context, env epa.Env, provider epa.ProviderNumber
 	return entry, false, nil
 }
 
-// telematikIDFromSecurityFunctions extracts the SMC-B Telematik-ID (the
-// admission statement's registrationNumber) from the auth cert. Best-effort:
-// returns "" if no cert is available or the extension can't be parsed, so a
-// session still opens and caches without it.
+// telematikIDFromSecurityFunctions labels a session with the SMC-B's
+// Telematik-ID; "" when the auth cert has none.
 func telematikIDFromSecurityFunctions(sf *epa.SecurityFunctions) string {
-	if sf == nil || sf.AuthnCertFunc == nil {
+	if sf == nil {
 		return ""
 	}
-	cert, err := sf.AuthnCertFunc()
-	if err != nil || cert == nil {
-		slog.Debug("telematik-id: no auth cert available", "err", err)
-		return ""
-	}
-	as, err := gempki.ParseAdmissionStatement(cert)
-	if err != nil {
-		slog.Debug("telematik-id: parsing admission statement failed", "err", err)
-		return ""
-	}
-	return as.RegistrationNumber
+	return (&smcb.Identity{Cert: sf.AuthnCertFunc}).TelematikID()
 }
 
 // tryResumeSession attempts to restore the channel from cache and verifies it

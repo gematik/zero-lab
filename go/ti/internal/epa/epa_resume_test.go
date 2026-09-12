@@ -10,6 +10,7 @@ import (
 	"github.com/gematik/zero-lab/go/epa/vau"
 	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/ti/internal/common"
+	"github.com/gematik/zero-lab/go/ti/internal/smcb"
 )
 
 // TestVAUResumptionE2E proves the snapshot/restore story end-to-end against a
@@ -24,8 +25,8 @@ import (
 // the env var it skips cleanly.
 //
 // We deliberately keep this in the `main` package (not `_test`) so it can poke
-// at the package globals common.ConnectorConfig.Val / authCardFlagVal in the same
-// way as TestConnectorAuthE2E.
+// at the package global common.ConnectorConfig.Val in the same way as
+// smcb.TestConnectorAuthE2E.
 func TestVAUResumptionE2E(t *testing.T) {
 	konPath := os.Getenv("TI_TEST_KON_FILE")
 	if konPath == "" {
@@ -33,26 +34,18 @@ func TestVAUResumptionE2E(t *testing.T) {
 	}
 
 	prevConfig := common.ConnectorConfig.Val
-	prevCard := authCardFlagVal
 	common.ConnectorConfig.Val = konPath
-	authCardFlagVal = ""
-	t.Cleanup(func() {
-		common.ConnectorConfig.Val = prevConfig
-		authCardFlagVal = prevCard
-	})
+	t.Cleanup(func() { common.ConnectorConfig.Val = prevConfig })
 
 	ctx := context.Background()
 	env := epa.EnvRef
 	provider := epa.ProviderNumber1
 
-	am, err := newConnectorAuthMethod()
+	id, err := smcb.FromConnector(ctx, "")
 	if err != nil {
-		t.Fatalf("newConnectorAuthMethod: %v", err)
+		t.Fatalf("FromConnector: %v", err)
 	}
-	sf, err := am.SecurityFunctions(ctx)
-	if err != nil {
-		t.Fatalf("SecurityFunctions: %v", err)
-	}
+	sf := securityFunctions(id)
 
 	// Fresh client for the initial handshake.
 	client1, err := newEpaClient(ctx, env, provider, sf)
@@ -172,26 +165,18 @@ func TestVAUResumeFromStaleSnapshotIsObservable(t *testing.T) {
 	}
 
 	prevConfig := common.ConnectorConfig.Val
-	prevCard := authCardFlagVal
 	common.ConnectorConfig.Val = konPath
-	authCardFlagVal = ""
-	t.Cleanup(func() {
-		common.ConnectorConfig.Val = prevConfig
-		authCardFlagVal = prevCard
-	})
+	t.Cleanup(func() { common.ConnectorConfig.Val = prevConfig })
 
 	ctx := context.Background()
 	env := epa.EnvRef
 	provider := epa.ProviderNumber2
 
-	am, err := newConnectorAuthMethod()
+	id, err := smcb.FromConnector(ctx, "")
 	if err != nil {
-		t.Fatalf("newConnectorAuthMethod: %v", err)
+		t.Fatalf("FromConnector: %v", err)
 	}
-	sf, err := am.SecurityFunctions(ctx)
-	if err != nil {
-		t.Fatalf("SecurityFunctions: %v", err)
-	}
+	sf := securityFunctions(id)
 
 	client, err := newEpaClient(ctx, env, provider, sf)
 	if err != nil {

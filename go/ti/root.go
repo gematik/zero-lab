@@ -11,6 +11,7 @@ import (
 	"github.com/gematik/zero-lab/go/ti/internal/common"
 	"github.com/gematik/zero-lab/go/ti/internal/connector"
 	"github.com/gematik/zero-lab/go/ti/internal/epa"
+	"github.com/gematik/zero-lab/go/ti/internal/idp"
 	"github.com/gematik/zero-lab/go/ti/internal/pkcs12"
 	"github.com/gematik/zero-lab/go/ti/internal/pki"
 	"github.com/gematik/zero-lab/go/ti/internal/probe"
@@ -37,6 +38,7 @@ func newRootCmd() *cobra.Command {
 
 	rootCmd.AddCommand(connector.NewCmd())
 	rootCmd.AddCommand(epa.NewCmd())
+	rootCmd.AddCommand(idp.NewCmd())
 	rootCmd.AddCommand(pkcs12.NewCmd())
 	rootCmd.AddCommand(probe.NewCmd())
 	rootCmd.AddCommand(pki.NewCmd())
