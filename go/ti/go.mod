@@ -4,15 +4,16 @@ go 1.26.4
 
 require (
 	github.com/alecthomas/chroma/v2 v2.27.0
-	github.com/gematik/zero-lab/go/brainpool v1.0.2-0.20260908072016-2ca75aa218e2
+	github.com/gematik/zero-lab/go/brainpool v1.1.0
 	github.com/gematik/zero-lab/go/epa v0.22.2-0.20260908072016-2ca75aa218e2
 	github.com/gematik/zero-lab/go/gemidp v0.50.2-0.20260908072016-2ca75aa218e2
 	github.com/gematik/zero-lab/go/gempki v0.21.1
-	github.com/gematik/zero-lab/go/kon v0.1.2-0.20260908072016-2ca75aa218e2
+	github.com/gematik/zero-lab/go/kon v0.21.2
 	github.com/gematik/zero-lab/go/pkcs12 v0.99.2-0.20260908072016-2ca75aa218e2
 	github.com/phsym/console-slog v0.3.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
+	golang.org/x/oauth2 v0.37.0
 	golang.org/x/term v0.46.0
 	modernc.org/sqlite v1.58.0
 )
@@ -49,7 +50,6 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
-	golang.org/x/oauth2 v0.37.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.50.0 // indirect
