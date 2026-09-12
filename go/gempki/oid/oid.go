@@ -1,20 +1,18 @@
 // Package oid holds the object identifiers gemSpec_OID defines for the TI,
-// as Go values, plus the spec's own names for them.
+// as Go values, each defined together with the spec's reference name and
+// description so the two can never drift; [Lookup] and [Format] give them
+// back. The tables are complete as of gemSpec_OID V3.25.0
+// (https://gemspec.gematik.de/docs/gemSpec/gemSpec_OID/latest/); the spec's
+// snake_case (`oid_arzt`) is rendered CamelCase under a family prefix:
 //
-// Values come from https://gemspec.gematik.de/docs/gemSpec/gemSpec_OID/latest/
-// (v3.24.0 at the time of writing). The spec table is recorded in each
-// group's comment; the arc base is 1.2.276.0.76.4, and any spec-listed OID
-// not here simply has not been needed yet. The spec's snake_case
-// (`oid_arzt`) is rendered CamelCase under a family prefix:
-//
+//   - Instance*  — Tab_PKI_401 organisational instances
 //   - Prof*      — Tab_PKI_402 professions (HBA persons)
 //   - Inst*      — Tab_PKI_403 institutions (SMC-B)
 //   - Policy*    — Tab_PKI_404 certificate policies
 //   - CertType*  — Tab_PKI_405 certificate types
 //   - TechRole*  — Tab_PKI_406 technical roles (Fachdienste)
-//   - Instance*  — Tab_PKI_401 organisational instances
 //
-// [Lookup] and [Format] give the spec's reference name and description back.
+// The arc base is 1.2.276.0.76.4 unless an entry spells its OID out.
 package oid
 
 import "encoding/asn1"
@@ -25,259 +23,264 @@ import "encoding/asn1"
 // profession info on SMC-B and HBA cards.
 var AdmissionExtension = asn1.ObjectIdentifier{1, 3, 36, 8, 3, 3}
 
-// --- Tab_PKI_401 — Instance OIDs ------------------------------------------
+// --- Tab_PKI_401 — Instance OIDs -----------------------------------------------
 //
 // Identify the organization that runs an actor in the TI.
 
 var (
-	InstanceKBV     = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 3, 1, 1}  // Kassenärztliche Bundesvereinigung
-	InstanceBAEK    = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 3, 1, 95} // Bundesärztekammer
-	InstanceKZBV    = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 3, 1, 99} // Kassenzahnärztliche Bundesvereinigung
-	InstanceBZAEK   = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 3, 1, 96} // Bundeszahnärztekammer
-	InstanceDKG     = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 3, 1, 49} // Deutsche Krankenhausgesellschaft
-	InstanceBPtK    = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 3, 1, 90} // Bundespsychotherapeutenkammer
-	InstanceGematik = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 3, 1, 91} // gematik GmbH
+	InstanceKBV     = defAt(asn1.ObjectIdentifier{1, 2, 276, 0, 76, 3, 1, 1}, "oid_kbv", "KBV Kassenärztliche Bundesvereinigung")
+	InstanceBAEK    = defAt(asn1.ObjectIdentifier{1, 2, 276, 0, 76, 3, 1, 95}, "oid_baek", "Bundesärztekammer")
+	InstanceKZBV    = defAt(asn1.ObjectIdentifier{1, 2, 276, 0, 76, 3, 1, 99}, "oid_kzbv", "Kassenzahnärztliche Bundesvereinigung KZBV")
+	InstanceBZAEK   = defAt(asn1.ObjectIdentifier{1, 2, 276, 0, 76, 3, 1, 96}, "oid_bzaek", "Bundeszahnärztekammer")
+	InstanceDKG     = defAt(asn1.ObjectIdentifier{1, 2, 276, 0, 76, 3, 1, 49}, "oid_dkg", "Deutsche Krankenhausgesellschaft DKG")
+	InstanceBPtK    = defAt(asn1.ObjectIdentifier{1, 2, 276, 0, 76, 3, 1, 90}, "oid_bptk", "Bundespsychotherapeutenkammer BPTK")
+	InstanceGematik = defAt(asn1.ObjectIdentifier{1, 2, 276, 0, 76, 3, 1, 91}, "oid_gematik", "gematik Gesellschaft für Telematikanwendungen der Gesundheitskarte mbH")
 )
 
-// --- Tab_PKI_402 — Profession OIDs (HBA persons) ---------------------------
+// --- Tab_PKI_402 — Profession OIDs (HBA persons) -------------------------------
 //
 // Appear in the Admission extension of HBA / health-professional cards.
 
 var (
-	ProfArzt                      = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 30}  // Ärztin/Arzt
-	ProfZahnarzt                  = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 31}  // Zahnärztin/Zahnarzt
-	ProfApotheker                 = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 32}  // Apotheker/-in
-	ProfApothekerassistent        = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 33}  // Apothekerassistent/-in
-	ProfPharmazieingenieur        = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 34}  // Pharmazieingenieur/-in
-	ProfPharmTechnAssistent       = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 35}  // pharmazeutisch-technische/-r Assistent/-in
-	ProfPharmKaufmAngestellter    = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 36}  // pharmazeutisch-kaufmännische/-r Angestellte
-	ProfApothekenhelfer           = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 37}  // Apothekenhelfer/-in
-	ProfApothekenassistent        = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 38}  // Apothekenassistent/-in
-	ProfPharmAssistent            = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 39}  // Pharmazeutische/-r Assistent/-in
-	ProfApothekenfacharbeiter     = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 40}  // Apothekenfacharbeiter/-in
-	ProfPharmaziepraktikant       = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 41}  // Pharmaziepraktikant/-in
-	ProfFamulant                  = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 42}  // Stud.pharm. / Famulant/-in
-	ProfPTAPraktikant             = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 43}  // PTA-Praktikant/-in
-	ProfPKAAuszubildender         = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 44}  // PKA Auszubildende/-r
-	ProfPsychotherapeut           = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 45}  // Psychotherapeut/-in
-	ProfPsPsychotherapeut         = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 46}  // Psychologische/-r Psychotherapeut/-in
-	ProfKuJPsychotherapeut        = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 47}  // Kinder- und Jugendlichenpsychotherapeut/-in
-	ProfRettungsassistent         = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 48}  // Rettungsassistent/-in
-	ProfVersicherter              = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 49}  // Versicherte/-r
-	ProfNotfallsanitaeter         = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 178} // Notfallsanitäter/-in
-	ProfPflegerHPC                = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 232} // Gesundheits- und Krankenpfleger/-in
-	ProfAltenpflegerHPC           = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 233} // Altenpfleger/-in
-	ProfPflegefachkraftHPC        = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 234} // Pflegefachfrauen und Pflegefachmänner
-	ProfHebammeHPC                = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 235} // Hebamme
-	ProfPhysiotherapeutHPC        = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 236} // Physiotherapeut/-in
-	ProfAugenoptikerHPC           = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 237} // Augenoptiker/-in
-	ProfHoerakustikerHPC          = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 238} // Hörakustiker/-in
-	ProfOrthopaedieschuhmacherHPC = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 239} // Orthopädieschuhmacher/-in
-	ProfOrthopaedietechnikerHPC   = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 240} // Orthopädietechniker/-in
-	ProfZahntechnikerHPC          = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 241} // Zahntechniker/-in
-	ProfErgotherapeutHPC          = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 274} // Ergotherapeut/-in
-	ProfLogopaedeHPC              = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 275} // Logopäde/Logopädin
-	ProfPodologeHPC               = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 276} // Podologe/Podologin
-	ProfErnaehrungstherapeutHPC   = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 277} // Leistungserbringer/-in Ernährungstherapie
-	ProfOrthopaedHPC              = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 305} // Orthopädieschuhmacher/-in + Orthopädietechniker/-in
-	ProfOptoAudioHPC              = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 308} // Augenoptiker/-in + Hörakustiker/-in
-	ProfHimiHPC                   = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 312} // Hilfsmittelerbringer/-in
-	ProfFriseurHPC                = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 313} // Frisör/-in
-	ProfMasseurMBMHPC             = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 315} // Masseur/-in + medizinische/-r Bademeister/-in
-	ProfSoziotherapeut            = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 316} // Leistungserbringer/-in Soziotherapie
-	ProfSSSSTherapeut             = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 318} // Stimm-, Sprech-, Sprach- und Schluck-Therapie
-	ProfDiaetassistent            = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 319} // Diätassistent/-in
+	ProfArzt                      = def(30, "oid_arzt", "Ärztin/Arzt")
+	ProfZahnarzt                  = def(31, "oid_zahnarzt", "Zahnärztin/Zahnarzt")
+	ProfApotheker                 = def(32, "oid_apotheker", "Apotheker/-in")
+	ProfApothekerassistent        = def(33, "oid_apothekerassistent", "Apothekerassistent/-in")
+	ProfPharmazieingenieur        = def(34, "oid_pharmazieingenieur", "Pharmazieingenieur/-in")
+	ProfPharmTechnAssistent       = def(35, "oid_pharm_techn_assistent", "pharmazeutisch-technische/-r Assistent/-in")
+	ProfPharmKaufmAngestellter    = def(36, "oid_pharm_kaufm_angestellter", "pharmazeutisch-kaufmännische/-r Angestellte")
+	ProfApothekenhelfer           = def(37, "oid_apothekenhelfer", "Apothekenhelfer/-in")
+	ProfApothekenassistent        = def(38, "oid_apothekenassistent", "Apothekenassistent/-in")
+	ProfPharmAssistent            = def(39, "oid_pharm_assistent", "Pharmazeutische/-r Assistent/-in")
+	ProfApothekenfacharbeiter     = def(40, "oid_apothekenfacharbeiter", "Apothekenfacharbeiter/-in")
+	ProfPharmaziepraktikant       = def(41, "oid_pharmaziepraktikant", "Pharmaziepraktikant/-in")
+	ProfFamulant                  = def(42, "oid_famulant", "Stud.pharm. oder Famulant/-in")
+	ProfPTAPraktikant             = def(43, "oid_pta_praktikant", "PTA-Praktikant/-in")
+	ProfPKAAuszubildender         = def(44, "oid_pka_auszubildender", "PKA Auszubildende/-r")
+	ProfPsychotherapeut           = def(45, "oid_psychotherapeut", "Psychotherapeut/-in")
+	ProfPsPsychotherapeut         = def(46, "oid_ps_psychotherapeut", "Psychologische/-r Psychotherapeut/-in")
+	ProfKuJPsychotherapeut        = def(47, "oid_kuj_psychotherapeut", "Kinder- und Jugendlichenpsychotherapeut/-in")
+	ProfRettungsassistent         = def(48, "oid_rettungsassistent", "Rettungsassistent/-in")
+	ProfVersicherter              = def(49, "oid_versicherter", "Versicherte/-r")
+	ProfNotfallsanitaeter         = def(178, "oid_notfallsanitaeter", "Notfallsanitäter/-in")
+	ProfPflegerHPC                = def(232, "oid_pfleger-hpc", "Gesundheits- und Krankenpfleger/-in, Gesundheits- und Kinderkrankenpfleger/-in")
+	ProfAltenpflegerHPC           = def(233, "oid_altenpfleger-hpc", "Altenpfleger/-in")
+	ProfPflegefachkraftHPC        = def(234, "oid_pflegefachkraft-hpc", "Pflegefachfrauen und Pflegefachmänner")
+	ProfHebammeHPC                = def(235, "oid_hebamme-hpc", "Hebamme")
+	ProfPhysiotherapeutHPC        = def(236, "oid_physiotherapeut-hpc", "Physiotherapeut/-in")
+	ProfAugenoptikerHPC           = def(237, "oid_augenoptiker-hpc", "Augenoptiker/-in")
+	ProfHoerakustikerHPC          = def(238, "oid_hoerakustiker-hpc", "Hörakustiker/-in")
+	ProfOrthopaedieschuhmacherHPC = def(239, "oid_orthopaedieschuhmacher-hpc", "Orthopädieschuhmacher/-in")
+	ProfOrthopaedietechnikerHPC   = def(240, "oid_orthopaedietechniker-hpc", "Orthopädietechniker/-in")
+	ProfZahntechnikerHPC          = def(241, "oid_zahntechniker-hpc", "Zahntechniker/-in")
+	ProfErgotherapeutHPC          = def(274, "oid_ergotherapeut-hpc", "Ergotherapeut/-in")
+	ProfLogopaedeHPC              = def(275, "oid_logopaede-hpc", "Logopäde/Logopädin")
+	ProfPodologeHPC               = def(276, "oid_podologe-hpc", "Podologe/Podologin")
+	ProfErnaehrungstherapeutHPC   = def(277, "oid_ernaehrungstherapeut-hpc", "Leistungserbringer/-in Ernährungstherapie")
+	ProfOptoAudioHPC              = def(308, "oid_opto-audio-hpc", "Augenoptiker/-in und Hörakustiker/-in")
+	ProfOrthopaedHPC              = def(305, "oid_orthopaed-hpc", "Orthopädieschuhmacher/-in und Orthopädietechniker/-in")
+	ProfHimiHPC                   = def(312, "oid_himi-hpc", "Hilfsmittelerbringer/-in")
+	ProfFriseurHPC                = def(313, "oid_friseur-hpc", "Frisör/-in")
+	ProfSoziotherapeut            = def(316, "oid_soziotherapeut", "Leistungserbringer/-in Soziotherapie")
+	ProfSSSSTherapeut             = def(318, "oid_ssss-therapeut", "Leistungserbringer/in Stimm-, Sprech-, Sprach- und Schluck-Therapie")
+	ProfMasseurMBMHPC             = def(315, "oid_masseur-mbm-hpc", "Masseur/-in und medizinische/-r Bademeister/-in")
+	ProfDiaetassistent            = def(319, "oid_diaetassistent", "Diätassistent/-in")
 )
 
-// --- Tab_PKI_403 — Institution OIDs (SMC-B) -------------------------------
+// --- Tab_PKI_403 — Institution OIDs (SMC-B) ------------------------------------
 //
 // Appear in the Admission extension of institutional (SMC-B) cards.
 
 var (
-	InstArztpraxis                 = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 50}  // Betriebsstätte Arzt
-	InstZahnarztpraxis             = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 51}  // Zahnarztpraxis
-	InstPraxisPsychotherapeut      = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 52}  // Betriebsstätte Psychotherapeut
-	InstKrankenhaus                = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 53}  // Krankenhaus
-	InstOeffentlicheApo            = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 54}  // Öffentliche Apotheke
-	InstKrankenhausapotheke        = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 55}  // Krankenhausapotheke
-	InstBundeswehrapotheke         = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 56}  // Bundeswehrapotheke
-	InstMobileEinrichtungRettung   = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 57}  // Mobile Einrichtung Rettungsdienst
-	InstGematik                    = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 58}  // Betriebsstätte gematik
-	InstKostentraeger              = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 59}  // Betriebsstätte Kostenträger
-	InstLeoZahnaerzte              = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 187} // LEO Vertragszahnärzte
-	InstAdvKtr                     = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 190} // AdV-Umgebung Kostenträger
-	InstLeoKassenaerztlicheVerein  = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 210} // LEO Kassenärztliche Vereinigung
-	InstGKVSpitzenverband          = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 223} // GKV-Spitzenverband
-	InstLeoApothekerverband        = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 224} // Apothekerverband
-	InstLeoDAV                     = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 225} // Deutscher Apothekerverband
-	InstLeoKrankenhausverband      = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 226} // Mitgliedsverband der Krankenhäuser
-	InstLeoDKTIG                   = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 227} // DKTIG
-	InstLeoDKG                     = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 228} // Deutsche Krankenhausgesellschaft
-	InstLeoBAEK                    = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 229} // Bundesärztekammer
-	InstLeoAerztekammer            = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 230} // Ärztekammer
-	InstLeoZahnaerztekammer        = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 231} // Zahnärztekammer
-	InstLeoKBV                     = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 242} // Kassenärztliche Bundesvereinigung
-	InstLeoBZAEK                   = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 243} // Bundeszahnärztekammer
-	InstLeoKZBV                    = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 244} // Kassenzahnärztliche Bundesvereinigung
-	InstPflege                     = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 245} // Gesundheits-, Kranken- und Altenpflege
-	InstGeburtshilfe               = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 246} // Geburtshilfe
-	InstPraxisPhysiotherapeut      = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 247} // Physiotherapie
-	InstAugenoptiker               = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 248} // Augenoptiker
-	InstHoerakustiker              = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 249} // Hörakustiker
-	InstOrthopaedieschuhmacher     = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 250} // Orthopädieschuhmacher
-	InstOrthopaedietechniker       = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 251} // Orthopädietechniker
-	InstZahntechniker              = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 252} // Zahntechniker
-	InstRettungsleitstelle         = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 253} // Rettungsleitstelle
-	InstSanitaetsdienstBW          = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 254} // Sanitätsdienst Bundeswehr
-	InstOEGD                       = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 255} // Öffentlicher Gesundheitsdienst
-	InstArbeitsmedizin             = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 256} // Arbeitsmedizin
-	InstVorsorgeReha               = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 257} // Vorsorge- und Rehabilitation
-	InstPflegeberatung             = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 262} // Pflegeberatung § 7a SGB XI
-	InstLeoPsychotherapeuten       = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 263} // Psychotherapeutenkammer
-	InstLeoBPtK                    = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 264} // Bundespsychotherapeutenkammer
-	InstLeoLAK                     = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 265} // Landesapothekerkammer
-	InstLeoBAK                     = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 266} // Bundesapothekerkammer
-	InstLeoEGBR                    = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 267} // elektronisches Gesundheitsberuferegister
-	InstLeoHandwerkskammer         = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 268} // Handwerkskammer
-	InstGesundheitsdatenregister   = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 269} // Register für Gesundheitsdaten
-	InstAbrechnungsdienstleister   = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 270} // Abrechnungsdienstleister
-	InstPKVVerband                 = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 271} // PKV-Verband
-	InstPraxisErgotherapeut        = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 278} // Ergotherapiepraxis
-	InstPraxisLogopaede            = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 279} // Logopädische Praxis
-	InstPraxisPodologe             = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 280} // Podologiepraxis
-	InstPraxisErnaehrungstherapeut = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 281} // Ernährungstherapeutische Praxis
-	InstWeitereKostentraeger       = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 284} // Weitere Kostenträger
-	InstOrgGesundheitsversorgung   = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 285} // Weitere Organisationen
-	InstKIMAnbieter                = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 286} // KIM-Hersteller / -Anbieter
-	InstDiGA                       = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 282} // DiGA-Hersteller / -Anbieter
-	InstTIMAnbieter                = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 295} // TIM-Hersteller / -Anbieter
-	InstNCPeH                      = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 292} // NCPeH Fachdienst
-	InstOmbudsstelle               = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 303} // Ombudsstelle eines Kostenträgers
-	InstOptoAudio                  = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 304} // Augenoptiker und Hörakustiker
-	InstOrthopaedHW                = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 306} // Orthopädieschuhmacher und Orthopädietechniker
-	InstHimi                       = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 311} // Hilfsmittelerbringer
-	InstFriseur                    = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 314} // Frisör
-	InstSoziother                  = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 317} // Soziotherapie
+	InstArztpraxis                 = def(50, "oid_praxis_arzt", "Betriebsstätte Arzt")
+	InstZahnarztpraxis             = def(51, "oid_zahnarztpraxis", "Zahnarztpraxis")
+	InstPraxisPsychotherapeut      = def(52, "oid_praxis_psychotherapeut", "Betriebsstätte Psychotherapeut")
+	InstKrankenhaus                = def(53, "oid_krankenhaus", "Krankenhaus")
+	InstOeffentlicheApo            = def(54, "oid_oeffentliche_apotheke", "Öffentliche Apotheke")
+	InstKrankenhausapotheke        = def(55, "oid_krankenhausapotheke", "Krankenhausapotheke")
+	InstBundeswehrapotheke         = def(56, "oid_bundeswehrapotheke", "Bundeswehrapotheke")
+	InstMobileEinrichtungRettung   = def(57, "oid_mobile_einrichtung_rettungsdienst", "Betriebsstätte Mobile Einrichtung Rettungsdienst")
+	InstGematik                    = def(58, "oid_bs_gematik", "Betriebsstätte gematik")
+	InstKostentraeger              = def(59, "oid_kostentraeger", "Betriebsstätte Kostenträger")
+	InstLeoZahnaerzte              = def(187, "oid_leo_zahnaerzte", "Betriebsstätte Leistungserbringerorganisation Vertragszahnärzte")
+	InstAdvKtr                     = def(190, "oid_adv_ktr", "AdV-Umgebung bei Kostenträger")
+	InstLeoKassenaerztlicheVerein  = def(210, "oid_leo_kassenaerztliche_vereinigung", "Betriebsstätte Leistungserbringerorganisation Kassenärztliche Vereinigung")
+	InstGKVSpitzenverband          = def(223, "oid_bs_gkv_spitzenverband", "Betriebsstätte GKV-Spitzenverband")
+	InstLeoKrankenhausverband      = def(226, "oid_leo_krankenhausverband", "Betriebsstätte Mitgliedsverband der Krankenhäuser")
+	InstLeoDKTIG                   = def(227, "oid_leo_dktig", "Betriebsstätte der Deutsche Krankenhaus TrustCenter und Informationsverarbeitung GmbH")
+	InstLeoDKG                     = def(228, "oid_leo_dkg", "Betriebsstätte der Deutschen Krankenhausgesellschaft")
+	InstLeoApothekerverband        = def(224, "oid_leo_apothekerverband", "Betriebsstätte Apothekerverband")
+	InstLeoDAV                     = def(225, "oid_leo_dav", "Betriebsstätte Deutscher Apothekerverband")
+	InstLeoBAEK                    = def(229, "oid_leo_baek", "Betriebsstätte der Bundesärztekammer")
+	InstLeoAerztekammer            = def(230, "oid_leo_aerztekammer", "Betriebsstätte einer Ärztekammer")
+	InstLeoZahnaerztekammer        = def(231, "oid_leo_zahnaerztekammer", "Betriebsstätte einer Zahnärztekammer")
+	InstLeoKBV                     = def(242, "oid_leo-kbv", "Betriebsstätte der Kassenärztlichen Bundesvereinigung")
+	InstLeoBZAEK                   = def(243, "oid_leo-bzaek", "Betriebsstätte der Bundeszahnärztekammer")
+	InstLeoKZBV                    = def(244, "oid_leo-kzbv", "Betriebsstätte der Kassenzahnärztlichen Bundesvereinigung")
+	InstPflege                     = def(245, "oid_institution-pflege", "Betriebsstätte Gesundheits-, Kranken- und Altenpflege")
+	InstGeburtshilfe               = def(246, "oid_institution-geburtshilfe", "Betriebsstätte Geburtshilfe")
+	InstPraxisPhysiotherapeut      = def(247, "oid_praxis-physiotherapeut", "Betriebsstätte Physiotherapie")
+	InstAugenoptiker               = def(248, "oid_institution-augenoptiker", "Betriebsstätte Augenoptiker")
+	InstHoerakustiker              = def(249, "oid_institution-hoerakustiker", "Betriebsstätte Hörakustiker")
+	InstOrthopaedieschuhmacher     = def(250, "oid_institution-orthopaedieschuhmacher", "Betriebsstätte Orthopädieschuhmacher")
+	InstOrthopaedietechniker       = def(251, "oid_institution-orthopaedietechniker", "Betriebsstätte Orthopädietechniker")
+	InstZahntechniker              = def(252, "oid_institution-zahntechniker", "Betriebsstätte Zahntechniker")
+	InstRettungsleitstelle         = def(253, "oid_institution-rettungsleitstellen", "Rettungsleitstelle")
+	InstSanitaetsdienstBW          = def(254, "oid_sanitaetsdienst-bundeswehr", "Betriebsstätte Sanitätsdienst Bundeswehr")
+	InstOEGD                       = def(255, "oid_institution-oegd", "Betriebsstätte Öffentlicher Gesundheitsdienst")
+	InstArbeitsmedizin             = def(256, "oid_institution-arbeitsmedizin", "Betriebsstätte Arbeitsmedizin")
+	InstVorsorgeReha               = def(257, "oid_institution-vorsorge-reha", "Betriebsstätte Vorsorge- und Rehabilitation")
+	InstPflegeberatung             = def(262, "oid_pflegeberatung", "Betriebsstätte Pflegeberatung nach § 7a SGB XI")
+	InstLeoPsychotherapeuten       = def(263, "oid_leo_psychotherapeuten", "Betriebsstätte Psychotherapeutenkammer")
+	InstLeoBPtK                    = def(264, "oid_leo_bptk", "Betriebsstätte Bundespsychotherapeutenkammer")
+	InstLeoLAK                     = def(265, "oid_leo_lak", "Betriebsstätte Landesapothekerkammer")
+	InstLeoBAK                     = def(266, "oid_leo_bak", "Betriebsstätte Bundesapothekerkammer")
+	InstLeoEGBR                    = def(267, "oid_leo_egbr", "Betriebsstätte elektronisches Gesundheitsberuferegister")
+	InstLeoHandwerkskammer         = def(268, "oid_leo_handwerkskammer", "Betriebsstätte Handwerkskammer")
+	InstGesundheitsdatenregister   = def(269, "oid_gesundheitsdatenregister", "Betriebsstätte Register für Gesundheitsdaten")
+	InstAbrechnungsdienstleister   = def(270, "oid_abrechnungsdienstleister", "Betriebsstätte Abrechnungsdienstleister")
+	InstPKVVerband                 = def(271, "oid_pkv_verband", "Betriebsstätte PKV-Verband")
+	InstPraxisErgotherapeut        = def(278, "oid_praxis-ergotherapeut", "Ergotherapiepraxis")
+	InstPraxisLogopaede            = def(279, "oid_praxis-logopaede", "Logopaedische Praxis")
+	InstPraxisPodologe             = def(280, "oid_praxis-podologe", "Podologiepraxis")
+	InstPraxisErnaehrungstherapeut = def(281, "oid_praxis-ernaehrungstherapeut", "Ernährungstherapeutische Praxis")
+	InstWeitereKostentraeger       = def(284, "oid_bs-weitere-kostentraeger", "Betriebsstätte Weitere Kostenträger im Gesundheitswesen")
+	InstOrgGesundheitsversorgung   = def(285, "oid_org-gesundheitsversorgung", "Weitere Organisationen der Gesundheitsversorgung")
+	InstKIMAnbieter                = def(286, "oid_kim-anbieter", "KIM-Hersteller und -Anbieter")
+	InstDiGA                       = def(282, "oid_diga", "DiGA-Hersteller und -Anbieter")
+	InstTIMAnbieter                = def(295, "oid_tim-anbieter", "TIM-Hersteller und -Anbieter")
+	InstNCPeH                      = def(292, "oid_ncpeh", "NCPeH Fachdienst")
+	InstOmbudsstelle               = def(303, "oid_ombudsstelle", "Ombudsstelle eines Kostenträgers")
+	InstOptoAudio                  = def(304, "oid_bs-opto-audio", "Betriebsstätte Augenoptiker und Hörakustiker")
+	InstOrthopaedHW                = def(306, "oid_bs-orthopaed-hw", "Betriebsstätte Orthopädieschuhmacher und Orthopädietechniker")
+	InstHimi                       = def(311, "oid_bs-himi", "Betriebsstätte Hilfsmittelerbringer")
+	InstFriseur                    = def(314, "oid_bs-friseur", "Betriebsstätte Frisör")
+	InstSoziother                  = def(317, "oid_bs-soziother", "Betriebsstätte Soziotherapie")
 )
 
-// --- Tab_PKI_404 — Certificate Policy OIDs --------------------------------
+// --- Tab_PKI_404 — Certificate Policy OIDs -------------------------------------
+//
+// Asserted in CertificatePolicies; the defining document rides along.
 
 var (
-	// PolicyHbaCP — CP-HPC: QES/SIG/AUT/ENC policy for HBA cards.
-	PolicyHbaCP = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 145}
-
-	// PolicyGemOrCP — policy asserted by every cert issued after the
-	// online rollout (eGK, SMC, components).
-	PolicyGemOrCP = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 163}
-
-	// PolicyGemTSLSigner — TSL signer-certificate policy.
-	PolicyGemTSLSigner = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 176}
+	PolicyHbaCP        = defIn(145, "oid_policy_hba_cp", "Policy HPC QES, SIG, AUT, ENC", "[CP-HPC]")
+	PolicyGemOrCP      = defIn(163, "oid_policy_gem_or_cp", "Policy für alle Zertifikate ab Online-Rollout (eGK, SMC, Komponentenzertifikate) außer für das TSL-Signerzertifikat", "[gemRL_TSL_SP_CP]")
+	PolicyGemTSLSigner = defIn(176, "oid_policy_gem_tsl_signer", "Policy für das TSL-Signerzertifikat", "[gemSpec_TSL]")
 )
 
-// --- Tab_PKI_405 — Certificate Type OIDs ----------------------------------
+// --- Tab_PKI_405 — Certificate Type OIDs ---------------------------------------
 //
 // Encoded in the Admission extension (or in CertificatePolicies for some
-// older profiles) to declare which TI cert profile a certificate is.
+// older profiles) to declare which TI cert profile a certificate is. The
+// description is the type name gemSpec_PKI uses.
 
 var (
-	// eGK (Versichertenkarte) certificate types.
-	CertTypeEgkQES  = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 66} // C.CH.QES
-	CertTypeEgkSIG  = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 67} // C.CH.SIG
-	CertTypeEgkENC  = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 68} // C.CH.ENC
-	CertTypeEgkENCV = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 69} // C.CH.ENCV
-	CertTypeEgkAUT  = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 70} // C.CH.AUT
-	CertTypeEgkAUTN = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 71} // C.CH.AUTN
-
-	// HBA (Heilberufsausweis) certificate types.
-	CertTypeHbaQES = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 72} // C.HP.QES
-	CertTypeHbaENC = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 74} // C.HP.ENC
-	CertTypeHbaAUT = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 75} // C.HP.AUT
-
-	// SMC-B (institution) certificate types.
-	CertTypeSmcBENC  = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 76} // C.HCI.ENC
-	CertTypeSmcBAUT  = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 77} // C.HCI.AUT
-	CertTypeSmcBOSIG = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 78} // C.HCI.OSIG
-
-	// Fachdienst (service-provider) certificate types.
-	CertTypeFdTLSS = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 169} // C.FD.TLS-S
-	CertTypeFdTLSC = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 168} // C.FD.TLS-C
-	CertTypeFdSIG  = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 203} // C.FD.SIG
-	CertTypeFdENC  = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 202} // C.FD.ENC
-	CertTypeFdAUT  = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 155} // C.FD.AUT
-	CertTypeFdOSIG = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 283} // C.FD.OSIG
-
-	// Zentraler Dienst (central service) certificate types.
-	CertTypeZdTLSS = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 157} // C.ZD.TLS-S
-	CertTypeZdSIG  = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 287} // C.ZD.SIG
-
-	// High-speed Konnektor + gematik VER.
-	CertTypeHskSIG = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 300} // C.HSK.SIG
-	CertTypeHskENC = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 301} // C.HSK.ENC
-	CertTypeGemVER = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 321} // C.GEM.VER
+	CertTypeEgkQES     = defIn(66, "oid_egk_qes", "C.CH.QES", "[gemSpec_PKI]")
+	CertTypeEgkSIG     = defIn(67, "oid_egk_sig", "C.CH.SIG", "[gemSpec_PKI]")
+	CertTypeEgkENC     = defIn(68, "oid_egk_enc", "C.CH.ENC", "[gemSpec_PKI]")
+	CertTypeEgkENCV    = defIn(69, "oid_egk_encv", "C.CH.ENCV", "[gemSpec_PKI]")
+	CertTypeEgkAUT     = defIn(70, "oid_egk_aut", "C.CH.AUT", "[gemSpec_PKI]")
+	CertTypeEgkAUTN    = defIn(71, "oid_egk_autn", "C.CH.AUTN", "[gemSpec_PKI]")
+	CertTypeEgkENCAlt  = defIn(211, "oid_egk_enc_alt", "C.CH.ENC_ALT", "")
+	CertTypeEgkAUTAlt  = defIn(212, "oid_egk_aut_alt", "C.CH.AUT_ALT", "[gemSpec_PKI]")
+	CertTypeHbaQES     = defIn(72, "oid_hba_qes", "C.HP.QES", "[CertsBÄK#1]")
+	CertTypeHbaSIG     = defIn(73, "oid_hba_sig", "C.HP.SIG", "")
+	CertTypeHbaENC     = defIn(74, "oid_hba_enc", "C.HP.ENC", "[CertsBÄK#1]")
+	CertTypeHbaAUT     = defIn(75, "oid_hba_aut", "C.HP.AUT", "[CertsBÄK#1]")
+	CertTypeSmcBENC    = defIn(76, "oid_smc_b_enc", "C.HCI.ENC", "[gemSpec_PKI]")
+	CertTypeSmcBAUT    = defIn(77, "oid_smc_b_aut", "C.HCI.AUT", "[gemSpec_PKI]")
+	CertTypeSmcBOSIG   = defIn(78, "oid_smc_b_osig", "C.HCI.OSIG", "[gemSpec_PKI]")
+	CertTypeAkAUT      = defIn(79, "oid_ak_aut", "C.AK.AUT", "[gemSpec_PKI]")
+	CertTypeNkVPN      = defIn(80, "oid_nk_vpn", "C.NK.VPN", "[gemSpec_PKI]")
+	CertTypeVpnkVPN    = defIn(81, "oid_vpnk_vpn", "C.VPNK.VPN", "[gemSpec_PKI]")
+	CertTypeSmktAUT    = defIn(82, "oid_smkt_aut", "C.SMKT.AUT", "[gemSpec_PKI]")
+	CertTypeSakAUT     = defIn(113, "oid_sak_aut", "C.SAK.AUT", "[gemSpec_PKI]")
+	CertTypeCmTLSCS    = defIn(175, "oid_cm_tls_c", "C.CM.TLS-CS", "[gemSpec_PKI]")
+	CertTypeFdTLSC     = defIn(168, "oid_fd_tls_c", "C.FD.TLS-C", "[gemSpec_PKI]")
+	CertTypeFdTLSS     = defIn(169, "oid_fd_tls_s", "C.FD.TLS-S", "[gemSpec_PKI]")
+	CertTypeFdAUT      = defIn(155, "oid_fd_aut", "C.FD.AUT", "[gemSpec_PKI]")
+	CertTypeZdTLSC     = defIn(156, "oid_zd_tls_c", "C.ZD.TLS-C", "")
+	CertTypeZdTLSS     = defIn(157, "oid_zd_tls_s", "C.ZD.TLS-S", "[gemSpec_PKI]")
+	CertTypeZdAUT      = defIn(158, "oid_zd_aut", "C.ZD.AUT", "")
+	CertTypeVpnkVPNSIS = defIn(165, "oid_vpnk_vpn_sis", "C.VPNK.VPN-SIS", "[gemSpec_PKI]")
+	CertTypeFdSIG      = defIn(203, "oid_fd_sig", "C.FD.SIG", "[gemSpec_PKI]")
+	CertTypeFdENC      = defIn(202, "oid_fd_enc", "C.FD.ENC", "[gemSpec_PKI]")
+	CertTypeWhkHsmAUT  = defIn(213, "oid_whk_hsm_aut", "C.WHK-HSM.AUT", "")
+	CertTypeVkPtENC    = defIn(62, "oid_vk_pt_enc", "C.HP.ENC", "[BÄK_ePA]")
+	CertTypeVkEaaENC   = defAtIn(asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 24796, 1, 10}, "oid_vk_eaa_enc", "C.HP.ENC", "[BÄK_eAA]")
+	CertTypeFdOSIG     = defIn(283, "oid_fd_osig", "C.FD.OSIG", "[gemSpec_PKI]")
+	CertTypeZdSIG      = defIn(287, "oid_zd_sig", "C.ZD.SIG", "[gemSpec_PKI]")
+	CertTypeHskSIG     = defIn(300, "oid_hsk_sig", "C.HSK.SIG", "[gemSpec_PKI]")
+	CertTypeHskENC     = defIn(301, "oid_hsk_enc", "C.HSK.ENC", "[gemSpec_PKI]")
+	CertTypeGemVER     = defIn(321, "oid_gem-ver", "C.GEM.VER", "[gemSpec_PKI]")
 )
 
-// --- Tab_PKI_406 — Technical Role OIDs (Fachdienste) ---------------------
+// --- Tab_PKI_406 — Technical Role OIDs (Fachdienste) ---------------------------
 //
 // Identify the role a Fachdienst certificate is asserting.
 
 var (
-	TechRoleVSDD          = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 97}  // Versichertenstammdatendienst
-	TechRoleCMS           = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 100} // Card Management System
-	TechRoleUFS           = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 101} // Update Flag Service
-	TechRoleAK            = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 103} // Anwendungskonnektor
-	TechRoleNK            = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 104} // Netzkonnektor
-	TechRoleKT            = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 105} // Kartenterminal
-	TechRoleSAK           = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 119} // Signaturanwendungskomponente
-	TechRoleIntVSDM       = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 159} // Intermediär VSDM
-	TechRoleKonfigdienst  = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 160} // Konfigurationsdienst
-	TechRoleVPNZTI        = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 161} // VPN-Zugangsdienst-TI
-	TechRoleCMFD          = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 174} // Clientmodul
-	TechRoleVZDTI         = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 171} // Verzeichnisdienst-TI
-	TechRoleKOMLE         = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 172} // KOM-LE Fachdienst
-	TechRoleStamp         = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 184} // Betriebsdatenerfassung
-	TechRoleTSLTI         = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 189} // TSL-Dienst-TI
-	TechRoleWADG          = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 198} // weitere elektronische Anwendungen
-	TechRoleEpaAuthn      = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 204} // ePA Authentisierung
-	TechRoleEpaAuthz      = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 205} // ePA Autorisierung
-	TechRoleEpaDvw        = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 206} // ePA Dokumentenverwaltung
-	TechRoleEpaMgmt       = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 207} // ePA Management
-	TechRoleEpaRecovery   = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 208} // ePA Berechtigungserhalt
-	TechRoleEpaVAU        = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 209} // ePA Vertrauenswürdige Ausführungsumgebung
-	TechRoleVzTSP         = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 215} // Zertifikatsverzeichnis TSP X.509
-	TechRoleWHK1HSM       = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 216} // HSM Wiederherstellungskomponente 1
-	TechRoleWHK2HSM       = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 217} // HSM Wiederherstellungskomponente 2
-	TechRoleWHK           = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 218} // Wiederherstellungskomponente
-	TechRoleSGD           = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 221} // Schlüsselgenerierungsdienst
-	TechRoleERPVAU        = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 258} // E-Rezept VAU
-	TechRoleERezept       = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 259} // E-Rezept-Fachdienst
-	TechRoleIDPD          = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 260} // IDP-Dienst
-	TechRoleEpaLogging    = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 261} // ePA-Aktensystem-Logging
-	TechRoleBestandsnetze = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 288} // Bestandsnetze.xml Signatur
-	TechRoleEpaVST        = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 289} // ePA Vertrauensstelle
-	TechRoleEpaFDZ        = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 290} // ePA Forschungsdatenzentrum
-	TechRoleTIM           = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 294} // TI-Messenger
-	TechRoleHSK           = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 302} // Highspeed-Konnektor
-	TechRoleIDPDSek       = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 307} // sektoraler IDP
-	TechRoleTIGWZugm      = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 309} // TI-Gateway Zugangsmodul
-	TechRoleZertSMB       = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 310} // Technische Zertifikatsausgabestelle SMC-B
-	TechRolePoPP          = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 293} // Proof of Patient Presence
-	TechRolePoPPToken     = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 320} // Token-Signatur PoPP
-	TechRolePKIVer        = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 322} // PKI Change Verifikation
-	TechRoleDipagVAU      = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 323} // Digitale Patientenrechnung VAU
-	TechRoleZETAGuard     = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 328} // ZETA Guard
-	TechRoleZETAPolicies  = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 324} // ZETA PIP/PAP Policies
-	TechRoleZETAOCI       = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 326} // OCI container image für ZETA
-	TechRoleZETAPolAuthor = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 329} // ZETA Policy Autor
-	TechRoleZETAPolApprov = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 330} // ZETA Policy Freigeber
-	TechRoleZETAPolOper   = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 331} // ZETA Policy Leitstand
-	TechRoleZETAPrvApprov = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 332} // ZETA Provisioning Container Image Freigeber
-	TechRoleTSPEgk        = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 325} // Technische Zertifikatsausgabestelle eGK
-	TechRoleCDCP15G       = asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 327} // CDC Pseudonymisierung
+	TechRoleVSDD                 = def(97, "oid_vsdd", "Versichertenstammdatendienst")
+	TechRoleOCSP                 = def(99, "oid_ocsp", "Online Certificate Status Protocol")
+	TechRoleCMS                  = def(100, "oid_cms", "Card Management System")
+	TechRoleUFS                  = def(101, "oid_ufs", "Update Flag Service")
+	TechRoleAK                   = def(103, "oid_ak", "Anwendungskonnektor")
+	TechRoleNK                   = def(104, "oid_nk", "Netzkonnektor")
+	TechRoleKT                   = def(105, "oid_kt", "Kartenterminal")
+	TechRoleSAK                  = def(119, "oid_sak", "Signaturanwendungskomponente")
+	TechRoleIntVSDM              = def(159, "oid_int_vsdm", "Intermediär VSDM")
+	TechRoleKonfigdienst         = def(160, "oid_konfigdienst", "Konfigurationsdienst")
+	TechRoleVPNZTI               = def(161, "oid_vpnz_ti", "VPN-Zugangsdienst-TI")
+	TechRoleVPNZSIS              = def(166, "oid_vpnz_sis", "VPN-Zugangsdienst-SIS")
+	TechRoleCMFD                 = def(174, "oid_cmfd", "Clientmodul")
+	TechRoleVZDTI                = def(171, "oid_vzd_ti", "Verzeichnisdienst-TI")
+	TechRoleKOMLE                = def(172, "oid_komle", "KOM-LE Fachdienst")
+	TechRoleKOMLERecipientEmails = def(173, "oid_komle-recipient-emails", "KOM-LE S/MIME Attribut recipient-emails")
+	TechRoleStamp                = def(184, "oid_stamp", "Betriebsdatenerfassung")
+	TechRoleTSLTI                = def(189, "oid_tsl_ti", "TSL-Dienst-TI")
+	TechRoleWADG                 = def(198, "oid_wadg", "Weitere elektronische Anwendungen des Gesundheitswesens sowie für die Gesundheitsforschung n. P. 291a Abs. 7 Satz 3 SGB V")
+	TechRoleEpaAuthn             = def(204, "oid_epa_authn", "ePA Authentisierung")
+	TechRoleEpaAuthz             = def(205, "oid_epa_authz", "ePA Autorisierung")
+	TechRoleEpaDvw               = def(206, "oid_epa_dvw", "ePA Dokumentenverwaltung")
+	TechRoleEpaMgmt              = def(207, "oid_epa_mgmt", "ePA Management")
+	TechRoleEpaRecovery          = def(208, "oid_epa_recovery", "ePA automatisierter Berechtigungserhalt")
+	TechRoleEpaVAU               = def(209, "oid_epa_vau", "ePA vertrauenswürdige Ausführungsumgebung")
+	TechRoleVzTSP                = def(215, "oid_vz_tsp", "Zertifikatsverzeichnis TSP X.509")
+	TechRoleWHK1HSM              = def(216, "oid_whk1_hsm", "HSM Wiederherstellungskomponente 1")
+	TechRoleWHK2HSM              = def(217, "oid_whk2_hsm", "HSM Wiederherstellungskomponente 2")
+	TechRoleWHK                  = def(218, "oid_whk", "Wiederherstellungskomponente")
+	TechRoleSGD                  = def(221, "oid_sgd", "Schlüsselgenerierungsdienst")
+	TechRoleERPVAU               = def(258, "oid_erp-vau", "E-Rezept vertrauenswürdige Ausführungsumgebung")
+	TechRoleERezept              = def(259, "oid_erezept", "E-Rezept")
+	TechRoleIDPD                 = def(260, "oid_idpd", "IDP-Dienst")
+	TechRoleEpaLogging           = def(261, "oid_epa_logging", "ePA-Aktensystem-Logging")
+	TechRoleBestandsnetze        = def(288, "oid_bestandsnetze", "Bestandsnetze.xml Signatur")
+	TechRoleEpaVST               = def(289, "oid_epa_vst", "ePA Vertrauensstelle")
+	TechRoleEpaFDZ               = def(290, "oid_epa_fdz", "ePA Forschungsdatenzentrum")
+	TechRoleTIM                  = def(294, "oid_tim", "TI-Messenger")
+	TechRoleHSK                  = def(302, "oid_hsk", "Highspeed-Konnektor")
+	TechRoleIDPDSek              = def(307, "oid_idpd_sek", "sektoraler IDP")
+	TechRoleTIGWZugm             = def(309, "oid_tigw_zugm", "TI-Gateway Zugangsmodul")
+	TechRoleZertSMB              = def(310, "oid_zert_smb", "Technische Zertifikatsausgabestelle eines Anbieters SMC-B")
+	TechRolePoPP                 = def(293, "oid_popp", "Proof of Patient Presence (PoPP) Dienst")
+	TechRolePoPPToken            = def(320, "oid_popp-token", "Token-Signatur-Identität für Proof of Patient Presence")
+	TechRolePKIVer               = def(322, "oid_pki-ver", "PKI Change Verifikation")
+	TechRoleDipagVAU             = def(323, "oid_dipag-vau", "Digitale Patientenrechnung vertrauenswürdige Ausführungsumgebung")
+	TechRoleZETAGuard            = def(328, "oid_zeta-guard", "ZETA Guard")
+	TechRoleZETAPolicies         = def(324, "oid_zeta-policies", "ZETA PIP/PAP Policies")
+	TechRoleZETAOCI              = def(326, "oid_zeta-oci", "OCI container image für ZETA")
+	TechRoleZETAPolAuthor        = def(329, "oid_zeta-pol-author", "ZETA Policy Autor")
+	TechRoleZETAPolApprov        = def(330, "oid_zeta-pol-approv", "ZETA Policy Freigeber")
+	TechRoleZETAPolOper          = def(331, "oid_zeta-pol-oper", "ZETA Policy Leitstand")
+	TechRoleTSPEgk               = def(325, "oid_tsp-egk", "Technische Zertifikatsausgabestelle eines Anbieters EGK")
+	TechRoleCDCP15G              = def(327, "oid_cdc-p15g", "Cyber Defense Center Pseudonymisierung")
+	TechRoleZETAPrvApprov        = def(332, "oid_zeta-prv-approv", "ZETA Provisioning Container Image Freigeber")
 )
 
-// Professions is the whole of Tab_PKI_402: every profession OID an HBA
-// admission extension may carry. Membership here is what makes a
-// certificate "an HBA" to the type detector.
+// Professions is Tab_PKI_402 minus ProfVersicherter: every profession OID
+// an HBA admission extension may carry. Membership here is what makes a
+// certificate "an HBA" to the type detector, and the insured person's
+// marker sits in eGK certificates, not on an HBA.
 var Professions = []asn1.ObjectIdentifier{
 	ProfArzt, ProfZahnarzt, ProfApotheker, ProfApothekerassistent,
 	ProfPharmazieingenieur, ProfPharmTechnAssistent, ProfPharmKaufmAngestellter, ProfApothekenhelfer,
@@ -287,9 +290,9 @@ var Professions = []asn1.ObjectIdentifier{
 	ProfNotfallsanitaeter, ProfPflegerHPC, ProfAltenpflegerHPC, ProfPflegefachkraftHPC,
 	ProfHebammeHPC, ProfPhysiotherapeutHPC, ProfAugenoptikerHPC, ProfHoerakustikerHPC,
 	ProfOrthopaedieschuhmacherHPC, ProfOrthopaedietechnikerHPC, ProfZahntechnikerHPC, ProfErgotherapeutHPC,
-	ProfLogopaedeHPC, ProfPodologeHPC, ProfErnaehrungstherapeutHPC, ProfOrthopaedHPC,
-	ProfOptoAudioHPC, ProfHimiHPC, ProfFriseurHPC, ProfMasseurMBMHPC,
-	ProfSoziotherapeut, ProfSSSSTherapeut, ProfDiaetassistent,
+	ProfLogopaedeHPC, ProfPodologeHPC, ProfErnaehrungstherapeutHPC, ProfOptoAudioHPC,
+	ProfOrthopaedHPC, ProfHimiHPC, ProfFriseurHPC, ProfSoziotherapeut,
+	ProfSSSSTherapeut, ProfMasseurMBMHPC, ProfDiaetassistent,
 }
 
 // Institutions is the whole of Tab_PKI_403: every institution OID an SMC-B
@@ -298,8 +301,8 @@ var Institutions = []asn1.ObjectIdentifier{
 	InstArztpraxis, InstZahnarztpraxis, InstPraxisPsychotherapeut, InstKrankenhaus,
 	InstOeffentlicheApo, InstKrankenhausapotheke, InstBundeswehrapotheke, InstMobileEinrichtungRettung,
 	InstGematik, InstKostentraeger, InstLeoZahnaerzte, InstAdvKtr,
-	InstLeoKassenaerztlicheVerein, InstGKVSpitzenverband, InstLeoApothekerverband, InstLeoDAV,
-	InstLeoKrankenhausverband, InstLeoDKTIG, InstLeoDKG, InstLeoBAEK,
+	InstLeoKassenaerztlicheVerein, InstGKVSpitzenverband, InstLeoKrankenhausverband, InstLeoDKTIG,
+	InstLeoDKG, InstLeoApothekerverband, InstLeoDAV, InstLeoBAEK,
 	InstLeoAerztekammer, InstLeoZahnaerztekammer, InstLeoKBV, InstLeoBZAEK,
 	InstLeoKZBV, InstPflege, InstGeburtshilfe, InstPraxisPhysiotherapeut,
 	InstAugenoptiker, InstHoerakustiker, InstOrthopaedieschuhmacher, InstOrthopaedietechniker,
