@@ -8,6 +8,8 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"fmt"
+	"golang.org/x/crypto/cryptobyte"
+	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 
 	"golang.org/x/crypto/pbkdf2"
 )
@@ -199,15 +201,17 @@ func createShroudedKeyBag(key PrivateKeyBag, password []byte, opts *EncodeOption
 	var attrs []PKCS12Attribute
 	if key.FriendlyName != "" {
 		attr, err := createFriendlyNameAttribute(key.FriendlyName)
-		if err == nil {
-			attrs = append(attrs, attr)
+		if err != nil {
+			return SafeBag{}, err
 		}
+		attrs = append(attrs, attr)
 	}
 	if len(key.LocalKeyID) > 0 {
 		attr, err := createLocalKeyIDAttribute(key.LocalKeyID)
-		if err == nil {
-			attrs = append(attrs, attr)
+		if err != nil {
+			return SafeBag{}, err
 		}
+		attrs = append(attrs, attr)
 	}
 
 	return SafeBag{
@@ -251,15 +255,17 @@ func createCertBag(cert CertificateBag) (SafeBag, error) {
 	var attrs []PKCS12Attribute
 	if cert.FriendlyName != "" {
 		attr, err := createFriendlyNameAttribute(cert.FriendlyName)
-		if err == nil {
-			attrs = append(attrs, attr)
+		if err != nil {
+			return SafeBag{}, err
 		}
+		attrs = append(attrs, attr)
 	}
 	if len(cert.LocalKeyID) > 0 {
 		attr, err := createLocalKeyIDAttribute(cert.LocalKeyID)
-		if err == nil {
-			attrs = append(attrs, attr)
+		if err != nil {
+			return SafeBag{}, err
 		}
+		attrs = append(attrs, attr)
 	}
 
 	return SafeBag{
@@ -269,16 +275,23 @@ func createCertBag(cert CertificateBag) (SafeBag, error) {
 	}, nil
 }
 
-// createFriendlyNameAttribute creates a friendlyName attribute
+// createFriendlyNameAttribute creates a friendlyName attribute: a BMPString
+// (UCS-2 big-endian, universal tag 30), which is what readers such as
+// GetFriendlyName and OpenSSL look for. encoding/asn1 cannot emit a
+// universal tag 30 (its "universal" parameter only applies when parsing),
+// so the TLV is built directly.
 func createFriendlyNameAttribute(name string) (PKCS12Attribute, error) {
-	// Encode as BMPString
 	bmpData := make([]byte, 0, 2*len(name))
 	for _, r := range name {
-		bmpData = append(bmpData, byte(r/256), byte(r%256))
+		if r > 0xFFFF {
+			return PKCS12Attribute{}, fmt.Errorf("friendlyName %q: %q is outside the BMPString character set", name, r)
+		}
+		bmpData = append(bmpData, byte(r>>8), byte(r))
 	}
 
-	// Marshal as BMPString (tag 30)
-	bmpValue, err := asn1.MarshalWithParams(bmpData, "tag:30")
+	var b cryptobyte.Builder
+	b.AddASN1(cryptobyte_asn1.Tag(30), func(c *cryptobyte.Builder) { c.AddBytes(bmpData) })
+	bmpValue, err := b.Bytes()
 	if err != nil {
 		return PKCS12Attribute{}, err
 	}

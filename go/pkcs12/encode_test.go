@@ -90,11 +90,9 @@ func TestEncodeAndDecode(t *testing.T) {
 		t.Fatalf("Expected 1 certificate, got %d", len(decoded.Certificates))
 	}
 
-	// TODO: FriendlyName extraction not yet working for encoded files
-	// OpenSSL files work fine, need to debug attribute serialization
-	// if decoded.Certificates[0].FriendlyName != "My Certificate" {
-	// 	t.Errorf("FriendlyName mismatch: got %q", decoded.Certificates[0].FriendlyName)
-	// }
+	if decoded.Certificates[0].FriendlyName != "My Certificate" {
+		t.Errorf("FriendlyName mismatch: got %q", decoded.Certificates[0].FriendlyName)
+	}
 
 	if !bytesEqual(decoded.Certificates[0].LocalKeyID, []byte{0x01, 0x02, 0x03}) {
 		t.Errorf("LocalKeyID mismatch")
@@ -105,10 +103,9 @@ func TestEncodeAndDecode(t *testing.T) {
 		t.Fatalf("Expected 1 private key, got %d", len(decoded.PrivateKeys))
 	}
 
-	// TODO: FriendlyName extraction not yet working for encoded files
-	// if decoded.PrivateKeys[0].FriendlyName != "My Key" {
-	// 	t.Errorf("Key FriendlyName mismatch: got %q", decoded.PrivateKeys[0].FriendlyName)
-	// }
+	if decoded.PrivateKeys[0].FriendlyName != "My Key" {
+		t.Errorf("Key FriendlyName mismatch: got %q", decoded.PrivateKeys[0].FriendlyName)
+	}
 
 	// Verify certificate content
 	origCert, _ := x509.ParseCertificate(certDER)
@@ -456,5 +453,32 @@ func TestEncodeToPEM(t *testing.T) {
 
 	if len(decoded.Certificates) == 0 {
 		t.Error("No certificates after PEM round-trip")
+	}
+}
+
+// friendlyName is a BMPString: non-ASCII names must survive the round trip
+// and characters outside the BMP must be refused rather than mangled.
+func TestEncodeFriendlyNameBMPString(t *testing.T) {
+	certDER, keyDER := generateTestCertAndKey(t)
+	name := "Praxis Dr. Müller — Zahnärztin"
+	bags := &Bags{
+		Certificates: []CertificateBag{{Raw: certDER, FriendlyName: name, LocalKeyID: []byte{9}}},
+		PrivateKeys:  []PrivateKeyBag{{Raw: keyDER, FriendlyName: name, LocalKeyID: []byte{9}}},
+	}
+	p12Data, err := Encode(bags, []byte("pw"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := Decode(p12Data, []byte("pw"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Certificates[0].FriendlyName != name || decoded.PrivateKeys[0].FriendlyName != name {
+		t.Errorf("round trip: cert %q key %q", decoded.Certificates[0].FriendlyName, decoded.PrivateKeys[0].FriendlyName)
+	}
+
+	bags.Certificates[0].FriendlyName = "emoji \U0001F511"
+	if _, err := Encode(bags, []byte("pw")); err == nil {
+		t.Error("a name outside the BMP must be rejected")
 	}
 }
