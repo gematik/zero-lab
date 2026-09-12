@@ -92,8 +92,8 @@
 //
 // # Subpackages
 //
-//   - oid: every gemSpec_OID constant this library uses, with the spec's
-//     names ([oid.Lookup], [oid.Format]).
+//   - oid: the OIDs of gemSpec_OID Tab_PKI_401–406, each declared with the
+//     spec's reference name and description ([oid.Lookup], [oid.Format]).
 //   - tsl: the Trust Service Status List — schema, loading, the detached
 //     signature, and extraction of intermediates and responders.
 //

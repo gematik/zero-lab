@@ -166,3 +166,20 @@ func TestProfileValidator_OCSPCheckerUsesProvidedHTTPClient(t *testing.T) {
 	require.NoError(t, err)
 	assert.Positive(t, called.Load(), "the supplied http.Client must be used by OCSPChecker")
 }
+
+// Tab_PKI_406 says which certificate types may carry each technical role;
+// a profile that pairs a role with a type the spec does not allow would
+// never match a real certificate.
+func TestProfiles_RolesAllowedOnTheirTypes(t *testing.T) {
+	t.Parallel()
+	for _, p := range gempki.Profiles() {
+		for _, role := range p.RequiredRoleOIDs {
+			info, ok := oid.Lookup(role)
+			require.True(t, ok, "%s: role %s has no label", p.Name, role)
+			for _, ct := range p.AcceptsTypes {
+				assert.Contains(t, info.CertificateTypes, string(ct),
+					"%s: %s may not carry %s per Tab_PKI_406", p.Name, ct, info.Ref)
+			}
+		}
+	}
+}
