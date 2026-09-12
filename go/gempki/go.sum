@@ -1,5 +1,5 @@
-github.com/gematik/zero-lab/go/brainpool v1.0.2-0.20260908072016-2ca75aa218e2 h1:WAfzPtYujR+uu7o8IlpvyT9ecb3Use21f94S3Ynwvcw=
-github.com/gematik/zero-lab/go/brainpool v1.0.2-0.20260908072016-2ca75aa218e2/go.mod h1:TGiI/RSzM76LwiWZRMzc9t1yDfN6D4uOaeYCd8N5rCs=
+github.com/gematik/zero-lab/go/brainpool v1.1.0 h1:o6Uzb+uJRDKGmo0uZgUIBlWiZDbku/RxLMAkJ819qKE=
+github.com/gematik/zero-lab/go/brainpool v1.1.0/go.mod h1:NEF6dqa3qZb0E/CPlu5FKVbo0Y93XeFfV24P7FwqGoc=
 github.com/stretchr/testify v1.12.1 h1:EuwCh5fleGS7H32xRwO3wRGT7DxrDhLAT6FF8MpWDWE=
 github.com/stretchr/testify v1.12.1/go.mod h1:MDEgiDPPsNp5cuIrHPPCyornHKgEVbtFUmoNlxoYthg=
 go.yaml.in/yaml/v3 v3.0.5 h1:N6y/pJk8buWs9NY5ERU2HSMfm+IuD/OtfdAnq6kESPw=
