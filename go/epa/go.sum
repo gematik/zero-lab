@@ -20,8 +20,8 @@ github.com/gematik/zero-lab/go/gempki v0.1.2-0.20260908072016-2ca75aa218e2 h1:ah
 github.com/gematik/zero-lab/go/gempki v0.1.2-0.20260908072016-2ca75aa218e2/go.mod h1:jd2IJqqBbXVGwIR/9u7mgnv7fNqV13CB2c/qSzNb7Hc=
 github.com/gematik/zero-lab/go/oauth v0.50.2-0.20260908072016-2ca75aa218e2 h1:Ls8nKzt2slN4zEbOuVH7nc/FizK0+2BwBnY3eLV789g=
 github.com/gematik/zero-lab/go/oauth v0.50.2-0.20260908072016-2ca75aa218e2/go.mod h1:jjMGmst3PfIVl+8P1CbIhT6KPi1XjLhtC+Rewkyr6pE=
-github.com/gematik/zero-lab/go/pkcs12 v0.99.2-0.20260908072016-2ca75aa218e2 h1:AVTasDbK/szc9h8vwARMOCIapigAuAZV+Kyw7LopgF8=
-github.com/gematik/zero-lab/go/pkcs12 v0.99.2-0.20260908072016-2ca75aa218e2/go.mod h1:2/KqBgZu8NRh2ShRUbjYSroNIKmUgFDdQCGzU9JMR0I=
+github.com/gematik/zero-lab/go/pkcs12 v0.99.3 h1:OPMZJMuR6WGdgI1KcYusRypz9OVaxIgNw+JTNYyTwpI=
+github.com/gematik/zero-lab/go/pkcs12 v0.99.3/go.mod h1:xVxUW0PA32AZQizW3Dv2HVp3uYQlYUmHZ+edcVo26f0=
 github.com/go-playground/assert/v2 v2.2.0 h1:JvknZsQTYeFEAhQwI4qEt9cyV5ONwRHC+lYKSsYSR8s=
 github.com/go-playground/assert/v2 v2.2.0/go.mod h1:VDjEfimB/XKnb+ZQfWdccd7VUvScMdVu0Titje2rxJ4=
 github.com/go-playground/locales v0.14.1 h1:EWaQ/wswjilfKLTECiXz7Rh+3BjFhfDFKv/oXslEjJA=

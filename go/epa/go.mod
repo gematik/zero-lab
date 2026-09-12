@@ -8,7 +8,7 @@ require (
 	github.com/gematik/zero-lab/go/brainpool v1.1.0
 	github.com/gematik/zero-lab/go/gemidp v0.50.2-0.20260908072016-2ca75aa218e2
 	github.com/gematik/zero-lab/go/gempki v0.1.2-0.20260908072016-2ca75aa218e2
-	github.com/gematik/zero-lab/go/pkcs12 v0.99.2-0.20260908072016-2ca75aa218e2
+	github.com/gematik/zero-lab/go/pkcs12 v0.99.3
 	github.com/go-playground/validator/v10 v10.30.4
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
