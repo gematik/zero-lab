@@ -2,8 +2,11 @@
 // as Go values, each defined together with the spec's reference name and
 // description so the two can never drift; [Lookup] and [Format] give them
 // back. The tables are complete as of gemSpec_OID V3.25.0
-// (https://gemspec.gematik.de/docs/gemSpec/gemSpec_OID/latest/); the spec's
-// snake_case (`oid_arzt`) is rendered CamelCase under a family prefix:
+// (https://gemspec.gematik.de/docs/gemSpec/gemSpec_OID/latest/) with the
+// pending change C_12646 to Tab_PKI_406 applied
+// (https://gemspec.gematik.de/downloads/prereleases/Draft_CI_26_3/C_12646_Anlage_V1.0.0.html);
+// the spec's snake_case (`oid_arzt`) is rendered CamelCase under a family
+// prefix:
 //
 //   - Instance*  — Tab_PKI_401 organisational instances
 //   - Prof*      — Tab_PKI_402 professions (HBA persons)
@@ -215,66 +218,69 @@ var (
 	CertTypeGemVER     = defIn(321, "oid_gem-ver", "C.GEM.VER", "[gemSpec_PKI]")
 )
 
-// --- Tab_PKI_406 — Technical Role OIDs (Fachdienste) ---------------------------
+// --- Tab_PKI_406 — Technical Role OIDs (Fachdienste) ------------------------
 //
-// Identify the role a Fachdienst certificate is asserting.
+// Identify the role a Fachdienst certificate is asserting, and which
+// certificate types may carry it in their Admission extension. This table
+// is the one amended by change C_12646 (Draft_CI_26_3, pending for
+// gemSpec_OID): ZETA Guard moves to C.FD.AUT / C.FD.TLS-C, the OCI image
+// role is renamed, and the provisioning-approver role is withdrawn.
 
 var (
-	TechRoleVSDD                 = def(97, "oid_vsdd", "Versichertenstammdatendienst")
-	TechRoleOCSP                 = def(99, "oid_ocsp", "Online Certificate Status Protocol")
-	TechRoleCMS                  = def(100, "oid_cms", "Card Management System")
-	TechRoleUFS                  = def(101, "oid_ufs", "Update Flag Service")
-	TechRoleAK                   = def(103, "oid_ak", "Anwendungskonnektor")
-	TechRoleNK                   = def(104, "oid_nk", "Netzkonnektor")
-	TechRoleKT                   = def(105, "oid_kt", "Kartenterminal")
-	TechRoleSAK                  = def(119, "oid_sak", "Signaturanwendungskomponente")
-	TechRoleIntVSDM              = def(159, "oid_int_vsdm", "Intermediär VSDM")
-	TechRoleKonfigdienst         = def(160, "oid_konfigdienst", "Konfigurationsdienst")
-	TechRoleVPNZTI               = def(161, "oid_vpnz_ti", "VPN-Zugangsdienst-TI")
-	TechRoleVPNZSIS              = def(166, "oid_vpnz_sis", "VPN-Zugangsdienst-SIS")
-	TechRoleCMFD                 = def(174, "oid_cmfd", "Clientmodul")
-	TechRoleVZDTI                = def(171, "oid_vzd_ti", "Verzeichnisdienst-TI")
-	TechRoleKOMLE                = def(172, "oid_komle", "KOM-LE Fachdienst")
-	TechRoleKOMLERecipientEmails = def(173, "oid_komle-recipient-emails", "KOM-LE S/MIME Attribut recipient-emails")
-	TechRoleStamp                = def(184, "oid_stamp", "Betriebsdatenerfassung")
-	TechRoleTSLTI                = def(189, "oid_tsl_ti", "TSL-Dienst-TI")
-	TechRoleWADG                 = def(198, "oid_wadg", "Weitere elektronische Anwendungen des Gesundheitswesens sowie für die Gesundheitsforschung n. P. 291a Abs. 7 Satz 3 SGB V")
-	TechRoleEpaAuthn             = def(204, "oid_epa_authn", "ePA Authentisierung")
-	TechRoleEpaAuthz             = def(205, "oid_epa_authz", "ePA Autorisierung")
-	TechRoleEpaDvw               = def(206, "oid_epa_dvw", "ePA Dokumentenverwaltung")
-	TechRoleEpaMgmt              = def(207, "oid_epa_mgmt", "ePA Management")
-	TechRoleEpaRecovery          = def(208, "oid_epa_recovery", "ePA automatisierter Berechtigungserhalt")
-	TechRoleEpaVAU               = def(209, "oid_epa_vau", "ePA vertrauenswürdige Ausführungsumgebung")
-	TechRoleVzTSP                = def(215, "oid_vz_tsp", "Zertifikatsverzeichnis TSP X.509")
-	TechRoleWHK1HSM              = def(216, "oid_whk1_hsm", "HSM Wiederherstellungskomponente 1")
-	TechRoleWHK2HSM              = def(217, "oid_whk2_hsm", "HSM Wiederherstellungskomponente 2")
-	TechRoleWHK                  = def(218, "oid_whk", "Wiederherstellungskomponente")
-	TechRoleSGD                  = def(221, "oid_sgd", "Schlüsselgenerierungsdienst")
-	TechRoleERPVAU               = def(258, "oid_erp-vau", "E-Rezept vertrauenswürdige Ausführungsumgebung")
-	TechRoleERezept              = def(259, "oid_erezept", "E-Rezept")
-	TechRoleIDPD                 = def(260, "oid_idpd", "IDP-Dienst")
-	TechRoleEpaLogging           = def(261, "oid_epa_logging", "ePA-Aktensystem-Logging")
-	TechRoleBestandsnetze        = def(288, "oid_bestandsnetze", "Bestandsnetze.xml Signatur")
-	TechRoleEpaVST               = def(289, "oid_epa_vst", "ePA Vertrauensstelle")
-	TechRoleEpaFDZ               = def(290, "oid_epa_fdz", "ePA Forschungsdatenzentrum")
-	TechRoleTIM                  = def(294, "oid_tim", "TI-Messenger")
-	TechRoleHSK                  = def(302, "oid_hsk", "Highspeed-Konnektor")
-	TechRoleIDPDSek              = def(307, "oid_idpd_sek", "sektoraler IDP")
-	TechRoleTIGWZugm             = def(309, "oid_tigw_zugm", "TI-Gateway Zugangsmodul")
-	TechRoleZertSMB              = def(310, "oid_zert_smb", "Technische Zertifikatsausgabestelle eines Anbieters SMC-B")
-	TechRolePoPP                 = def(293, "oid_popp", "Proof of Patient Presence (PoPP) Dienst")
-	TechRolePoPPToken            = def(320, "oid_popp-token", "Token-Signatur-Identität für Proof of Patient Presence")
-	TechRolePKIVer               = def(322, "oid_pki-ver", "PKI Change Verifikation")
-	TechRoleDipagVAU             = def(323, "oid_dipag-vau", "Digitale Patientenrechnung vertrauenswürdige Ausführungsumgebung")
-	TechRoleZETAGuard            = def(328, "oid_zeta-guard", "ZETA Guard")
-	TechRoleZETAPolicies         = def(324, "oid_zeta-policies", "ZETA PIP/PAP Policies")
-	TechRoleZETAOCI              = def(326, "oid_zeta-oci", "OCI container image für ZETA")
-	TechRoleZETAPolAuthor        = def(329, "oid_zeta-pol-author", "ZETA Policy Autor")
-	TechRoleZETAPolApprov        = def(330, "oid_zeta-pol-approv", "ZETA Policy Freigeber")
-	TechRoleZETAPolOper          = def(331, "oid_zeta-pol-oper", "ZETA Policy Leitstand")
-	TechRoleTSPEgk               = def(325, "oid_tsp-egk", "Technische Zertifikatsausgabestelle eines Anbieters EGK")
-	TechRoleCDCP15G              = def(327, "oid_cdc-p15g", "Cyber Defense Center Pseudonymisierung")
-	TechRoleZETAPrvApprov        = def(332, "oid_zeta-prv-approv", "ZETA Provisioning Container Image Freigeber")
+	TechRoleVSDD                 = defRole(97, "oid_vsdd", "Versichertenstammdatendienst", "C.FD.TLS-S")
+	TechRoleOCSP                 = defRole(99, "oid_ocsp", "Online Certificate Status Protocol")
+	TechRoleCMS                  = defRole(100, "oid_cms", "Card Management System", "C.FD.TLS-S")
+	TechRoleUFS                  = defRole(101, "oid_ufs", "Update Flag Service", "C.FD.TLS-S")
+	TechRoleAK                   = defRole(103, "oid_ak", "Anwendungskonnektor", "C.AK.AUT")
+	TechRoleNK                   = defRole(104, "oid_nk", "Netzkonnektor", "C.NK.VPN")
+	TechRoleKT                   = defRole(105, "oid_kt", "Kartenterminal", "C.SMKT.AUT")
+	TechRoleSAK                  = defRole(119, "oid_sak", "Signaturanwendungskomponente", "C.SAK.AUT")
+	TechRoleIntVSDM              = defRole(159, "oid_int_vsdm", "Intermediär VSDM", "C.FD.TLS-S", "C.FD.TLS-C")
+	TechRoleKonfigdienst         = defRole(160, "oid_konfigdienst", "Konfigurationsdienst", "C.ZD.TLS-S")
+	TechRoleVPNZTI               = defRole(161, "oid_vpnz_ti", "VPN-Zugangsdienst-TI", "C.VPNK.VPN", "C.ZD.TLS-S")
+	TechRoleVPNZSIS              = defRole(166, "oid_vpnz_sis", "VPN-Zugangsdienst-SIS", "C.VPNK.VPN-SIS")
+	TechRoleCMFD                 = defRole(174, "oid_cmfd", "Clientmodul", "C.CM.TLS-CS")
+	TechRoleVZDTI                = defRole(171, "oid_vzd_ti", "Verzeichnisdienst-TI", "C.ZD.TLS-S", "C.FD.SIG")
+	TechRoleKOMLE                = defRole(172, "oid_komle", "KOM-LE Fachdienst", "C.FD.TLS-S", "C.FD.TLS-C")
+	TechRoleKOMLERecipientEmails = defRole(173, "oid_komle-recipient-emails", "KOM-LE S/MIME Attribut recipient-emails")
+	TechRoleStamp                = defRole(184, "oid_stamp", "Betriebsdatenerfassung", "C.ZD.TLS-S")
+	TechRoleTSLTI                = defRole(189, "oid_tsl_ti", "TSL-Dienst-TI", "C.ZD.TLS-S")
+	TechRoleWADG                 = defRole(198, "oid_wadg", "Weitere elektronische Anwendungen des Gesundheitswesens sowie für die Gesundheitsforschung n. P. 291a Abs. 7 Satz 3 SGB V", "C.FD.TLS-S", "C.FD.SIG", "C.FD.AUT", "C.FD.ENC")
+	TechRoleEpaAuthn             = defRole(204, "oid_epa_authn", "ePA Authentisierung", "C.FD.TLS-S", "C.FD.SIG")
+	TechRoleEpaAuthz             = defRole(205, "oid_epa_authz", "ePA Autorisierung", "C.FD.TLS-S", "C.FD.SIG")
+	TechRoleEpaDvw               = defRole(206, "oid_epa_dvw", "ePA Dokumentenverwaltung", "C.FD.TLS-S")
+	TechRoleEpaMgmt              = defRole(207, "oid_epa_mgmt", "ePA Management", "C.FD.TLS-S", "C.FD.TLS-C")
+	TechRoleEpaRecovery          = defRole(208, "oid_epa_recovery", "ePA automatisierter Berechtigungserhalt", "C.FD.ENC")
+	TechRoleEpaVAU               = defRole(209, "oid_epa_vau", "ePA vertrauenswürdige Ausführungsumgebung", "C.FD.AUT", "C.FD.ENC", "C.FD.SIG")
+	TechRoleVzTSP                = defRole(215, "oid_vz_tsp", "Zertifikatsverzeichnis TSP X.509")
+	TechRoleWHK1HSM              = defRole(216, "oid_whk1_hsm", "HSM Wiederherstellungskomponente 1")
+	TechRoleWHK2HSM              = defRole(217, "oid_whk2_hsm", "HSM Wiederherstellungskomponente 2")
+	TechRoleWHK                  = defRole(218, "oid_whk", "Wiederherstellungskomponente")
+	TechRoleSGD                  = defRole(221, "oid_sgd", "Schlüsselgenerierungsdienst", "C.FD.TLS-S")
+	TechRoleERPVAU               = defRole(258, "oid_erp-vau", "E-Rezept vertrauenswürdige Ausführungsumgebung", "C.FD.ENC", "C.FD.AUT")
+	TechRoleERezept              = defRole(259, "oid_erezept", "E-Rezept", "C.FD.TLS-S", "C.FD.SIG", "C.FD.OSIG", "C.FD.TLS-C")
+	TechRoleIDPD                 = defRole(260, "oid_idpd", "IDP-Dienst", "C.FD.TLS-S", "C.FD.SIG")
+	TechRoleEpaLogging           = defRole(261, "oid_epa_logging", "ePA-Aktensystem-Logging", "C.FD.SIG")
+	TechRoleBestandsnetze        = defRole(288, "oid_bestandsnetze", "Bestandsnetze.xml Signatur", "C.ZD.SIG")
+	TechRoleEpaVST               = defRole(289, "oid_epa_vst", "ePA Vertrauensstelle", "C.FD.TLS-S", "C.FD.ENC", "C.FD.AUT")
+	TechRoleEpaFDZ               = defRole(290, "oid_epa_fdz", "ePA Forschungsdatenzentrum", "C.FD.TLS-S", "C.FD.ENC", "C.FD.AUT")
+	TechRoleTIM                  = defRole(294, "oid_tim", "TI-Messenger", "C.FD.SIG")
+	TechRoleHSK                  = defRole(302, "oid_hsk", "Highspeed-Konnektor", "C.HSK.SIG", "C.HSK.ENC")
+	TechRoleIDPDSek              = defRole(307, "oid_idpd_sek", "sektoraler IDP", "C.FD.SIG")
+	TechRoleTIGWZugm             = defRole(309, "oid_tigw_zugm", "TI-Gateway Zugangsmodul", "C.FD.OSIG", "C.FD.TLS-S")
+	TechRoleZertSMB              = defRole(310, "oid_zert_smb", "Technische Zertifikatsausgabestelle eines Anbieters SMC-B", "C.FD.TLS-C")
+	TechRolePoPP                 = defRole(293, "oid_popp", "Proof of Patient Presence (PoPP) Dienst", "C.ZD.SIG")
+	TechRolePoPPToken            = defRole(320, "oid_popp-token", "Token-Signatur-Identität für Proof of Patient Presence", "C.ZD.SIG")
+	TechRolePKIVer               = defRole(322, "oid_pki-ver", "PKI Change Verifikation", "C.GEM.VER")
+	TechRoleDipagVAU             = defRole(323, "oid_dipag-vau", "Digitale Patientenrechnung vertrauenswürdige Ausführungsumgebung", "C.FD.AUT")
+	TechRoleZETAGuard            = defRole(328, "oid_zeta-guard", "ZETA Guard", "C.FD.AUT", "C.FD.TLS-C")
+	TechRoleZETAPolicies         = defRole(324, "oid_zeta-policies", "ZETA PIP/PAP Policies", "C.FD.SIG")
+	TechRoleZETAOCI              = defRole(326, "oid_zeta-oci", "OCI container image für ZETA", "C.FD.SIG")
+	TechRoleZETAPolAuthor        = defRole(329, "oid_zeta-pol-author", "ZETA Policy Autor", "C.FD.SIG")
+	TechRoleZETAPolApprov        = defRole(330, "oid_zeta-pol-approv", "ZETA Policy Freigeber", "C.FD.SIG")
+	TechRoleZETAPolOper          = defRole(331, "oid_zeta-pol-oper", "ZETA Policy Leitstand", "C.FD.SIG")
+	TechRoleTSPEgk               = defRole(325, "oid_tsp-egk", "Technische Zertifikatsausgabestelle eines Anbieters EGK", "C.FD.OSIG", "C.FD.TLS-C")
+	TechRoleCDCP15G              = defRole(327, "oid_cdc-p15g", "Cyber Defense Center Pseudonymisierung", "C.FD.ENC")
 )
 
 // Professions is Tab_PKI_402 minus ProfVersicherter: every profession OID

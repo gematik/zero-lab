@@ -14,6 +14,10 @@ type Info struct {
 	// Document is the defining document, e.g. `[gemSpec_TSL]`. Empty when
 	// the table names none.
 	Document string
+	// CertificateTypes lists, for a technical role (Tab_PKI_406), the
+	// certificate types whose Admission extension may carry it, e.g.
+	// C.FD.AUT. Nil for every other table and for roles no profile uses.
+	CertificateTypes []string
 }
 
 // infos is keyed by the dotted form so lookup needs no OID comparison. It
@@ -37,6 +41,16 @@ func def(arc int, ref, description string) asn1.ObjectIdentifier {
 
 func defIn(arc int, ref, description, document string) asn1.ObjectIdentifier {
 	return defAtIn(asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, arc}, ref, description, document)
+}
+
+// defRole declares a Tab_PKI_406 role with the certificate types allowed to
+// carry it.
+func defRole(arc int, ref, description string, certificateTypes ...string) asn1.ObjectIdentifier {
+	oid := def(arc, ref, description)
+	info := infos[oid.String()]
+	info.CertificateTypes = certificateTypes
+	infos[oid.String()] = info
+	return oid
 }
 
 // Lookup returns what gemSpec_OID says about oid; ok is false for an OID
