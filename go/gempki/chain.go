@@ -120,12 +120,12 @@ func nameMatches(issuer, subject pkix.Name) bool {
 
 func skiKey(ski []byte) string { return hex.EncodeToString(ski) }
 
-// verifyCertificateSignature checks that child was signed by parent's private key.
-//
-// Both public keys must be one of the TI-PKI's allowed types (ECDSA on an
-// allowed curve, or RSA). The signature itself is verified via the standard
-// library, which handles ECDSA (including Brainpool) and RSA / RSA-PSS
-// uniformly through [x509.Certificate.CheckSignatureFrom].
+// verifyCertificateSignature checks that child was signed by parent's private
+// key, and nothing else: the standard library handles ECDSA (including
+// Brainpool, once the certificate came through [ParseCertificate]) and
+// RSA / RSA-PSS uniformly through [x509.Certificate.CheckSignatureFrom].
+// Whether a key is one the TI admits is [ClassifyKey]'s question, asked of
+// the end entity by [Validator].
 func verifyCertificateSignature(child, parent *x509.Certificate) error {
 	if child == nil {
 		return fmt.Errorf("gempki: nil child certificate")

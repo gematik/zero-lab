@@ -29,8 +29,11 @@ import (
 //     - SMC-B + digitalSignature + clientAuth               → C.HCI.AUT
 //     - SMC-B + keyEncipherment/keyAgreement                → C.HCI.ENC
 //     - eGK (Versicherter OID present) + contentCommitment  → C.CH.QES
-//     - eGK + digitalSignature                              → C.CH.AUT
-//     - eGK + keyEncipherment                               → C.CH.ENC
+//
+// An eGK's authentication and encryption certificates have pseudonymous
+// siblings (C.CH.AUTN, C.CH.ENCV) with the same admission statement and
+// key usage, so without the type OID those four are undecidable and the
+// fallback returns [CertTypeUnknown] for them.
 //
 // The fallback is best-effort; when in doubt it returns [CertTypeUnknown]
 // rather than guessing.
@@ -78,13 +81,8 @@ func inferFromAdmission(cert *x509.Certificate) CertificateType {
 			return CertTypeHciENC
 		}
 	case admEgk:
-		switch usage {
-		case usageQES:
+		if usage == usageQES {
 			return CertTypeChQES
-		case usageAUT:
-			return CertTypeChAUT
-		case usageENC:
-			return CertTypeChENC
 		}
 	}
 	return CertTypeUnknown

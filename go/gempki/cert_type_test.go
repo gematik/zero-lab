@@ -161,12 +161,12 @@ func TestDetectCertificateType_AdmissionFallback(t *testing.T) {
 			oid.ProfApotheker, x509.KeyUsageDigitalSignature, gempki.CertTypeHpAUT},
 		{"HBA Zahnarzt ENC (keyEncipherment)",
 			oid.ProfZahnarzt, x509.KeyUsageKeyEncipherment, gempki.CertTypeHpENC},
-		{"eGK Versicherter AUT",
-			oid.ProfVersicherter, x509.KeyUsageDigitalSignature, gempki.CertTypeChAUT},
+		{"eGK Versicherter AUT is undecidable (could be AUTN)",
+			oid.ProfVersicherter, x509.KeyUsageDigitalSignature, gempki.CertTypeUnknown},
 		{"eGK Versicherter QES",
 			oid.ProfVersicherter, x509.KeyUsageContentCommitment, gempki.CertTypeChQES},
-		{"eGK Versicherter ENC",
-			oid.ProfVersicherter, x509.KeyUsageKeyEncipherment, gempki.CertTypeChENC},
+		{"eGK Versicherter ENC is undecidable (could be ENCV)",
+			oid.ProfVersicherter, x509.KeyUsageKeyEncipherment, gempki.CertTypeUnknown},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

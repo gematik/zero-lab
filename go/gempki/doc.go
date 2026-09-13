@@ -116,9 +116,11 @@
 //	chain.go              BuildChain, signature verification between links
 //	path.go               ValidatePath (RFC 5280 §6)
 //	checks.go             CertificateCheck and the key-usage / policy / role checks
+//	key.go                ClassifyKey, the gemSpec_Krypt key admissibility tiers
 //	validate.go           Validator
 //	revocation.go         RevocationChecker, RevocationMode, the mode table
 //	ocsp.go               OCSPChecker, including Brainpool responder handling
+//	ocsp_certid.go        CertID and certHash verification of a response
 //	errors.go             ErrorCode, ValidationError, ValidationResult
 //	cert_type.go          CertificateType and its Tab_PKI_405 table
 //	cert_type_detect.go   DetectCertificateType

@@ -18,8 +18,9 @@ import (
 // it while Validate calls are in flight.
 //
 // Validate runs [BuildChain] (topology), [ValidatePath] (RFC 5280 §6 plus the
-// end-entity checks below) and finally the revocation check, and folds the
-// findings into one [ValidationResult].
+// end-entity checks below), the gemSpec_Krypt key check ([ClassifyKey]) and
+// finally the revocation check, and folds the findings into one
+// [ValidationResult].
 type Validator struct {
 	// TrustStore holds the roots a chain must end in. Required.
 	TrustStore *TrustStore
@@ -104,6 +105,8 @@ func (v *Validator) Validate(ctx context.Context, chain []*x509.Certificate) (*V
 		return nil, fmt.Errorf("gempki: ValidatePath: %w", err)
 	}
 
+	v.checkKey(fullChain[0], result)
+
 	if err := v.checkRevocation(ctx, fullChain, result); err != nil {
 		return nil, err
 	}
@@ -133,6 +136,32 @@ func (v *Validator) eeChecks() []CertificateCheck {
 		checks = append(checks, CheckHasAnyExtKeyUsage(v.AllowedExtKeyUsages...))
 	}
 	return checks
+}
+
+// checkKey holds the end-entity key to gemSpec_Krypt. Only the end entity:
+// which CAs may sign is the TSL's and the trust store's business, and the
+// historical RSA roots must keep validating chains issued under them.
+func (v *Validator) checkKey(ee *x509.Certificate, result *ValidationResult) {
+	now := time.Now
+	if v.TimeFunc != nil {
+		now = v.TimeFunc
+	}
+	status, desc := ClassifyKey(ee.PublicKey, now())
+	switch status {
+	case KeyNotAdmissible:
+		result.Valid = false
+		result.Errors = append(result.Errors, &ValidationError{
+			Code:    ErrCodeKeyNotAdmissible,
+			Subject: ee.Subject.CommonName,
+			Message: "public key " + desc + " is not admissible for a TI certificate (gemSpec_Krypt)",
+		})
+	case KeyPhasedOut:
+		result.Warnings = append(result.Warnings, &ValidationWarning{
+			Code:    ErrCodeKeyPhasedOut,
+			Subject: ee.Subject.CommonName,
+			Message: "public key " + desc + " is past its gemSpec_Krypt admissibility date",
+		})
+	}
 }
 
 // checkRevocation runs the revocation check for the end entity and folds
