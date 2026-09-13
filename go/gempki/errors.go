@@ -54,6 +54,14 @@ const (
 	// ErrCodeKeyUsageMismatch — required KeyUsage or ExtendedKeyUsage missing.
 	ErrCodeKeyUsageMismatch ErrorCode = "key_usage_mismatch"
 
+	// ErrCodeKeyNotAdmissible — the end-entity public key is of a kind
+	// gemSpec_Krypt never admitted for a TI certificate (see [ClassifyKey]).
+	ErrCodeKeyNotAdmissible ErrorCode = "key_not_admissible"
+
+	// ErrCodeKeyPhasedOut — warning only: the end-entity public key is past
+	// its gemSpec_Krypt "zulässig bis" date (see [ClassifyKey]).
+	ErrCodeKeyPhasedOut ErrorCode = "key_phased_out"
+
 	// ErrCodeProfileNotDetected — a profile-driven verify ran in auto mode
 	// but the cert carries no Tab_PKI_405 type marker and the Admission
 	// fallback couldn't infer one. The chain-only result is still returned,
