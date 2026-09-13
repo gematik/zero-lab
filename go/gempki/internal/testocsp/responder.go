@@ -2,19 +2,23 @@
 // tests. The responder serves OCSP responses over HTTP (httptest.Server),
 // signed with an ECDSA key supplied by the test.
 //
-// Phase 0 scope: NIST P-256 / P-384 OCSP signer keys only, and no nonce
-// echo (the parsed ocsp.Request does not expose extensions; manual ASN.1
-// extraction lands in Phase 4 alongside the production OCSPChecker, where
-// nonce policy is actually consumed). Brainpool OCSP signing also lands in
-// Phase 4 because golang.org/x/crypto/ocsp does not handle Brainpool signers.
+// Responses are assembled here rather than by x/crypto/ocsp.CreateResponse
+// because that rounds producedAt to the minute, refuses Brainpool signers,
+// and gives no way to answer with a CertID or timestamps the test chooses —
+// and gempki's checker rejects exactly those deviations.
 //
 // The responder is intended for unit tests. It does NOT enforce request
 // validity beyond what is needed to drive gempki's revocation logic.
 package testocsp
 
 import (
+	"crypto"
 	"crypto/ecdsa"
+	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"fmt"
 	"io"
 	"math/big"
@@ -42,6 +46,27 @@ type Entry struct {
 	Status    EntryStatus
 	RevokedAt time.Time // honored when Status == StatusRevoked
 	Reason    int       // RFC 5280 revocation reason; 0 = unspecified
+
+	// ProducedAt, ThisUpdate and NextUpdate override the defaults of now,
+	// now and now+24h. NextUpdate is omitted when NoNextUpdate is set.
+	ProducedAt   time.Time
+	ThisUpdate   time.Time
+	NextUpdate   time.Time
+	NoNextUpdate bool
+
+	// CertHash, when set, is emitted as the id-isismtt-at-certHash single
+	// extension (SHA-256) — see [CertHash] for the matching value.
+	CertHash []byte
+
+	// AnswerSerial, when set, replaces the requested serial in the
+	// response's CertID, so the answer is about another certificate.
+	AnswerSerial *big.Int
+}
+
+// CertHash is the certHash value a TI responder would emit for cert.
+func CertHash(cert *x509.Certificate) []byte {
+	sum := sha256.Sum256(cert.Raw)
+	return sum[:]
 }
 
 // NonceMode is reserved for future nonce-policy testing. In Phase 0 the
@@ -76,9 +101,9 @@ type Responder struct {
 
 // NewResponder starts a mock OCSP responder.
 //
-// issuer is the CA whose serial numbers will be answered.
-// signerKey + signerCert sign each response. The signer's curve must be NIST
-// P-256 or P-384 — see the package doc for why Brainpool isn't supported yet.
+// issuer is the CA whose serial numbers will be answered; its name and key
+// hashes go into every CertID. signerKey + signerCert sign each response,
+// on any ECDSA curve.
 //
 // The returned responder is registered with t.Cleanup, so callers don't need
 // to close it explicitly.
@@ -90,10 +115,6 @@ func NewResponder(t *testing.T, issuer *x509.Certificate, signerKey *ecdsa.Priva
 	if signerKey == nil || signerCert == nil {
 		t.Fatal("testocsp: signerKey and signerCert are required")
 	}
-	// All ECDSA curves are accepted — x/crypto/ocsp.CreateResponse signs
-	// via stdlib's curve-agnostic ECDSA path, and gempki.parseOCSPResponse
-	// handles brainpool-keyed responder certs (the prior Phase-0 NIST-only
-	// gate is removed).
 
 	r := &Responder{
 		Issuer:     issuer,
@@ -181,50 +202,190 @@ func (r *Responder) handle(w http.ResponseWriter, req *http.Request) {
 	_, _ = w.Write(respBytes)
 }
 
+// The ASN.1 mirrors RFC 6960 §4.2.1; only the fields the mock emits are
+// modelled.
+type ocspResponse struct {
+	Status   asn1.Enumerated
+	Response responseBytes `asn1:"explicit,tag:0,optional"`
+}
+
+type responseBytes struct {
+	ResponseType asn1.ObjectIdentifier
+	Response     []byte
+}
+
+type basicResponse struct {
+	TBSResponseData    asn1.RawValue
+	SignatureAlgorithm pkix.AlgorithmIdentifier
+	Signature          asn1.BitString
+	Certificates       []asn1.RawValue `asn1:"explicit,tag:0,optional"`
+}
+
+type responseData struct {
+	ResponderID asn1.RawValue
+	ProducedAt  time.Time `asn1:"generalized"`
+	Responses   []singleResponse
+}
+
+type singleResponse struct {
+	CertID     certID
+	Good       asn1.Flag        `asn1:"tag:0,optional"`
+	Revoked    revokedInfo      `asn1:"tag:1,optional"`
+	Unknown    asn1.Flag        `asn1:"tag:2,optional"`
+	ThisUpdate time.Time        `asn1:"generalized"`
+	NextUpdate time.Time        `asn1:"generalized,explicit,tag:0,optional"`
+	Extensions []pkix.Extension `asn1:"explicit,tag:1,optional"`
+}
+
+type certID struct {
+	HashAlgorithm  pkix.AlgorithmIdentifier
+	IssuerNameHash []byte
+	IssuerKeyHash  []byte
+	SerialNumber   *big.Int
+}
+
+type revokedInfo struct {
+	RevocationTime time.Time       `asn1:"generalized"`
+	Reason         asn1.Enumerated `asn1:"explicit,tag:0,optional"`
+}
+
+type certHash struct {
+	HashAlgorithm pkix.AlgorithmIdentifier
+	Hash          []byte
+}
+
+var (
+	oidBasicResponse   = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 48, 1, 1}
+	oidSHA256          = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
+	oidECDSAWithSHA256 = asn1.ObjectIdentifier{1, 2, 840, 10045, 4, 3, 2}
+	oidCertHash        = asn1.ObjectIdentifier{1, 3, 36, 8, 3, 13}
+)
+
 func (r *Responder) buildResponse(req *ocsp.Request) ([]byte, error) {
 	r.mu.RLock()
 	e, found := r.entries[req.SerialNumber.String()]
 	r.mu.RUnlock()
 
-	now := time.Now()
-	tmpl := ocsp.Response{
-		Status:       ocsp.Unknown,
-		SerialNumber: req.SerialNumber,
-		ThisUpdate:   now,
-		NextUpdate:   now.Add(24 * time.Hour),
-		IssuerHash:   req.HashAlgorithm,
+	now := time.Now().UTC().Truncate(time.Second)
+	single := singleResponse{
+		Unknown:    true,
+		ThisUpdate: now,
+		NextUpdate: now.Add(24 * time.Hour),
 	}
-	// Embed the signer cert in the response whenever it's distinct from
-	// the issuer cert — that's the delegated-responder case real OCSP
-	// responders use, and the only way to exercise our embedded-cert
-	// parsing path in unit tests.
-	if r.SignerCert != nil && r.Issuer != nil && !r.SignerCert.Equal(r.Issuer) {
-		tmpl.Certificate = r.SignerCert
-	}
+	producedAt := now
 	if found {
 		switch e.Status {
 		case StatusGood:
-			tmpl.Status = ocsp.Good
+			single.Unknown = false
+			single.Good = true
 		case StatusRevoked:
-			tmpl.Status = ocsp.Revoked
-			tmpl.RevokedAt = e.RevokedAt
-			if tmpl.RevokedAt.IsZero() {
-				tmpl.RevokedAt = now.Add(-time.Hour)
+			single.Unknown = false
+			single.Revoked = revokedInfo{RevocationTime: e.RevokedAt.UTC(), Reason: asn1.Enumerated(e.Reason)}
+			if e.RevokedAt.IsZero() {
+				single.Revoked.RevocationTime = now.Add(-time.Hour)
 			}
-			tmpl.RevocationReason = e.Reason
 		case StatusUnknown:
-			tmpl.Status = ocsp.Unknown
 		default:
 			return nil, fmt.Errorf("testocsp: unknown entry status %d", e.Status)
 		}
+		if !e.ProducedAt.IsZero() {
+			producedAt = e.ProducedAt.UTC()
+		}
+		if !e.ThisUpdate.IsZero() {
+			single.ThisUpdate = e.ThisUpdate.UTC()
+		}
+		if !e.NextUpdate.IsZero() {
+			single.NextUpdate = e.NextUpdate.UTC()
+		}
+		if e.NoNextUpdate {
+			single.NextUpdate = time.Time{}
+		}
+		if e.CertHash != nil {
+			value, err := asn1.Marshal(certHash{
+				HashAlgorithm: pkix.AlgorithmIdentifier{Algorithm: oidSHA256},
+				Hash:          e.CertHash,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("testocsp: marshal certHash: %w", err)
+			}
+			single.Extensions = []pkix.Extension{{Id: oidCertHash, Value: value}}
+		}
 	}
 
-	if isStdlibSignableCurve(r.SignerKey.Curve) {
-		return ocsp.CreateResponse(r.Issuer, r.SignerCert, tmpl, r.SignerKey)
+	id, err := r.certID(req, e.AnswerSerial)
+	if err != nil {
+		return nil, err
 	}
-	// x/crypto/ocsp's signingParamsForPublicKey switches on stdlib elliptic
-	// curves only and refuses brainpool. Re-sign the TBSResponseData with
-	// the brainpool key after letting x/crypto do the structural work via
-	// a swapped-in NIST signer.
-	return createBrainpoolOCSPResponse(r.Issuer, r.SignerCert, tmpl, r.SignerKey)
+	single.CertID = id
+
+	tbs, err := asn1.Marshal(responseData{
+		ResponderID: asn1.RawValue{Class: asn1.ClassContextSpecific, Tag: 1, IsCompound: true, Bytes: r.SignerCert.RawSubject},
+		ProducedAt:  producedAt,
+		Responses:   []singleResponse{single},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("testocsp: marshal tbsResponseData: %w", err)
+	}
+	digest := sha256.Sum256(tbs)
+	sig, err := ecdsa.SignASN1(rand.Reader, r.SignerKey, digest[:])
+	if err != nil {
+		return nil, fmt.Errorf("testocsp: sign: %w", err)
+	}
+	basic := basicResponse{
+		TBSResponseData:    asn1.RawValue{FullBytes: tbs},
+		SignatureAlgorithm: pkix.AlgorithmIdentifier{Algorithm: oidECDSAWithSHA256},
+		Signature:          asn1.BitString{Bytes: sig, BitLength: len(sig) * 8},
+	}
+	// Embed the signer cert whenever it's distinct from the issuer — the
+	// delegated-responder case real OCSP responders use, and the only way
+	// to exercise the embedded-cert parsing path in unit tests.
+	if r.Issuer != nil && !r.SignerCert.Equal(r.Issuer) {
+		basic.Certificates = []asn1.RawValue{{FullBytes: r.SignerCert.Raw}}
+	}
+	basicDER, err := asn1.Marshal(basic)
+	if err != nil {
+		return nil, fmt.Errorf("testocsp: marshal BasicOCSPResponse: %w", err)
+	}
+	return asn1.Marshal(ocspResponse{
+		Status:   0,
+		Response: responseBytes{ResponseType: oidBasicResponse, Response: basicDER},
+	})
+}
+
+// certID answers with the hash algorithm the request used, over the
+// responder's issuer, as a real responder would.
+func (r *Responder) certID(req *ocsp.Request, serial *big.Int) (certID, error) {
+	if serial == nil {
+		serial = req.SerialNumber
+	}
+	var spki struct {
+		Algorithm pkix.AlgorithmIdentifier
+		PublicKey asn1.BitString
+	}
+	if _, err := asn1.Unmarshal(r.Issuer.RawSubjectPublicKeyInfo, &spki); err != nil {
+		return certID{}, fmt.Errorf("testocsp: issuer SPKI: %w", err)
+	}
+	h := req.HashAlgorithm.New()
+	h.Write(r.Issuer.RawSubject)
+	nameHash := h.Sum(nil)
+	h.Reset()
+	h.Write(spki.PublicKey.RightAlign())
+	keyHash := h.Sum(nil)
+	hashOID, ok := hashOIDs[req.HashAlgorithm]
+	if !ok {
+		return certID{}, fmt.Errorf("testocsp: unsupported request hash %v", req.HashAlgorithm)
+	}
+	return certID{
+		HashAlgorithm:  pkix.AlgorithmIdentifier{Algorithm: hashOID, Parameters: asn1.NullRawValue},
+		IssuerNameHash: nameHash,
+		IssuerKeyHash:  keyHash,
+		SerialNumber:   serial,
+	}, nil
+}
+
+var hashOIDs = map[crypto.Hash]asn1.ObjectIdentifier{
+	crypto.SHA1:   {1, 3, 14, 3, 2, 26},
+	crypto.SHA256: oidSHA256,
+	crypto.SHA384: {2, 16, 840, 1, 101, 3, 4, 2, 2},
+	crypto.SHA512: {2, 16, 840, 1, 101, 3, 4, 2, 3},
 }

@@ -33,13 +33,26 @@ type OCSPChecker struct {
 	// public OCSP endpoint isn't reachable.
 	ResponderURL string
 
-	// MaxResponseAge rejects responses whose ProducedAt is older than
-	// now-MaxResponseAge, reporting them as Unknown. Zero means
-	// [DefaultMaxResponseAge].
+	// MaxResponseAge is how far producedAt may lie in the past before the
+	// response is reported as Unknown. TI responders sign every response
+	// on demand, so the default is the same tight window the gematik
+	// reference implementation applies; raise it when responses are
+	// served from a cache. Zero means [DefaultMaxResponseAge].
 	MaxResponseAge time.Duration
 
-	// Clock is "now" for the age check and the CheckedAt stamps. Nil means
-	// time.Now.
+	// ClockTolerance is the skew allowed between the responder's clock
+	// and ours: thisUpdate and producedAt may lie this far in the future
+	// and nextUpdate this far in the past. Zero means
+	// [DefaultClockTolerance].
+	ClockTolerance time.Duration
+
+	// RequireCertHash rejects a response that carries no certHash
+	// extension. gemSpec_PKI mandates the extension for TI responders;
+	// a certHash that is present is verified regardless of this flag.
+	RequireCertHash bool
+
+	// Clock is "now" for the time-window checks and the CheckedAt stamps.
+	// Nil means time.Now.
 	Clock func() time.Time
 
 	// TSLResponders are the OCSP responder certificates the TSL lists
@@ -60,16 +73,24 @@ type OCSPChecker struct {
 	Roots         *TrustStore
 }
 
+// DefaultClockTolerance is the clock skew TUC_PKI_006 grants an OCSP
+// responder (gemSpec_PKI, 37.5 s); the gematik reference implementation
+// applies the same value to producedAt in the past, hence
+// [DefaultMaxResponseAge].
+const DefaultClockTolerance = 37500 * time.Millisecond
+
 // DefaultMaxResponseAge is how old an OCSP response may be before Check
 // reports it as Unknown rather than trusting it.
-const DefaultMaxResponseAge = 48 * time.Hour
+const DefaultMaxResponseAge = DefaultClockTolerance
 
 // Check implements [RevocationChecker]; see the interface for the contract.
-// A missing or malformed responder URL and a stale response are reported as
-// Status=Unknown, because no other source could answer for such a
-// certificate either. Transport failures, undecodable bytes, an
-// unauthorized responder and a bad signature are returned as
-// [*ValidationError]s with the code that names them.
+// A missing or malformed responder URL and a response outside the time
+// window (MaxResponseAge, ClockTolerance) are reported as Status=Unknown,
+// because no other source could answer for such a certificate either.
+// Transport failures, undecodable bytes, an unauthorized responder, a bad
+// signature, a CertID that does not name cert under issuer and a certHash
+// that does not match cert are returned as [*ValidationError]s with the
+// code that names them.
 //
 // Brainpool note: x/crypto/ocsp dispatches signature verification through
 // the standard library's ECDSA path, which is curve-agnostic — a Brainpool
@@ -93,6 +114,10 @@ func (c *OCSPChecker) Check(ctx context.Context, cert, issuer *x509.Certificate)
 	maxAge := c.MaxResponseAge
 	if maxAge <= 0 {
 		maxAge = DefaultMaxResponseAge
+	}
+	skew := c.ClockTolerance
+	if skew <= 0 {
+		skew = DefaultClockTolerance
 	}
 
 	responderURL := c.ResponderURL
@@ -121,7 +146,10 @@ func (c *OCSPChecker) Check(ctx context.Context, cert, issuer *x509.Certificate)
 		}
 	}
 
-	parsed, err := parseOCSPResponse(respBody, issuer, c.TSLResponders, c.Intermediates, c.Roots)
+	parsed, err := parseOCSPResponse(respBody, cert, issuer, c.TSLResponders, c.Intermediates, c.Roots)
+	if err == nil {
+		err = verifyCertHash(parsed, cert, c.RequireCertHash)
+	}
 	if err != nil {
 		slog.Debug("gempki: OCSP response rejected",
 			"subject", cert.Subject.CommonName,
@@ -140,14 +168,15 @@ func (c *OCSPChecker) Check(ctx context.Context, cert, issuer *x509.Certificate)
 		}
 	}
 
-	if age := now().Sub(parsed.ProducedAt); age > maxAge {
-		slog.Debug("gempki: OCSP response too old",
+	if reason := checkResponseTimes(parsed, now(), maxAge, skew); reason != "" {
+		slog.Debug("gempki: OCSP response outside time window",
 			"subject", cert.Subject.CommonName,
 			"responder_url", responderURL,
-			"age", age.Truncate(time.Second),
-			"max_response_age", maxAge)
-		return unknownResult(now(), fmt.Sprintf("OCSP response age %s exceeds MaxResponseAge %s",
-			age.Truncate(time.Second), maxAge)), nil
+			"reason", reason,
+			"produced_at", parsed.ProducedAt,
+			"this_update", parsed.ThisUpdate,
+			"next_update", parsed.NextUpdate)
+		return unknownResult(now(), reason), nil
 	}
 
 	result := mapOCSPResponse(parsed, now())
@@ -194,6 +223,28 @@ func (c *OCSPChecker) post(ctx context.Context, urlStr string, body []byte) ([]b
 	return io.ReadAll(resp.Body)
 }
 
+// checkResponseTimes applies the TUC_PKI_006 time window and returns the
+// reason a response falls outside it, or "" when it is acceptable:
+// producedAt within [now-maxAge, now+skew], thisUpdate at most skew in
+// the future, nextUpdate (if present) at most skew in the past.
+func checkResponseTimes(resp *ocsp.Response, now time.Time, maxAge, skew time.Duration) string {
+	if age := now.Sub(resp.ProducedAt); age > maxAge {
+		return fmt.Sprintf("OCSP response age %s exceeds MaxResponseAge %s", age.Truncate(time.Second), maxAge)
+	}
+	if ahead := resp.ProducedAt.Sub(now); ahead > skew {
+		return fmt.Sprintf("OCSP producedAt lies %s in the future", ahead.Truncate(time.Second))
+	}
+	if ahead := resp.ThisUpdate.Sub(now); ahead > skew {
+		return fmt.Sprintf("OCSP thisUpdate lies %s in the future", ahead.Truncate(time.Second))
+	}
+	if !resp.NextUpdate.IsZero() {
+		if behind := now.Sub(resp.NextUpdate); behind > skew {
+			return fmt.Sprintf("OCSP nextUpdate passed %s ago", behind.Truncate(time.Second))
+		}
+	}
+	return ""
+}
+
 // pickOCSPURL returns the first AIA OCSP URL from cert, or "" if none.
 func pickOCSPURL(cert *x509.Certificate) string {
 	if len(cert.OCSPServer) == 0 {
@@ -222,19 +273,35 @@ func pickOCSPURL(cert *x509.Certificate) string {
 // If there's no embedded cert, the responder is assumed to be issuer
 // itself and the response signature is verified directly under issuer.
 //
-// Authorization and signature failures come back as [*ValidationError]s
-// ([ErrCodeOCSPResponderUntrusted], [ErrCodeOCSPResponseInvalid]) so the
-// caller can tell "this response is not to be trusted" from "these bytes
-// are not an OCSP response", which is a plain error.
-func parseOCSPResponse(respBytes []byte, issuer *x509.Certificate, tslResponders []*x509.Certificate, extra []*x509.Certificate, roots *TrustStore) (*ocsp.Response, error) {
-	stripped, embeddedCerts, err := stripOCSPEmbeddedCerts(respBytes)
+// Before any of that the CertID of the single response is compared with
+// the one we asked about (serial, issuer name hash and issuer key hash
+// under the responder's hash algorithm), so a replayed answer for another
+// certificate of the same CA cannot stand in for this one.
+//
+// Authorization, signature and CertID failures come back as
+// [*ValidationError]s ([ErrCodeOCSPResponderUntrusted],
+// [ErrCodeOCSPResponseInvalid]) so the caller can tell "this response is
+// not to be trusted" from "these bytes are not an OCSP response", which
+// is a plain error.
+func parseOCSPResponse(respBytes []byte, cert, issuer *x509.Certificate, tslResponders []*x509.Certificate, extra []*x509.Certificate, roots *TrustStore) (*ocsp.Response, error) {
+	split, err := splitOCSPResponse(respBytes)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := ocsp.ParseResponse(stripped, nil)
+	resp, err := ocsp.ParseResponse(split.stripped, nil)
 	if err != nil {
 		return nil, err
 	}
+	if cert != nil && issuer != nil {
+		if err := verifyCertID(split.tbs, cert, issuer); err != nil {
+			return nil, &ValidationError{
+				Code:    ErrCodeOCSPResponseInvalid,
+				Message: "OCSP response does not answer for this certificate",
+				Cause:   err,
+			}
+		}
+	}
+	embeddedCerts := split.certs
 
 	if len(embeddedCerts) > 0 {
 		var responder *x509.Certificate
@@ -310,11 +377,19 @@ func authorizeResponderCert(responder, issuer *x509.Certificate, tslResponders [
 	return nil
 }
 
-// stripOCSPEmbeddedCerts walks an OCSPResponse DER and returns:
-//   - stripped: the same DER with the BasicOCSPResponse's optional certs [0]
-//     EXPLICIT section removed (re-encoded with corrected outer lengths)
-//   - embeddedCerts: the DER bytes of each Certificate that was in that
-//     section, in order
+// ocspSplit is what [splitOCSPResponse] takes an OCSPResponse apart into.
+type ocspSplit struct {
+	// stripped is the response DER with the BasicOCSPResponse's optional
+	// certs [0] EXPLICIT section removed (outer lengths re-encoded).
+	stripped []byte
+	// tbs is the tbsResponseData element, the part the CertID lives in.
+	tbs []byte
+	// certs holds the DER of each Certificate from the certs section.
+	certs [][]byte
+}
+
+// splitOCSPResponse walks an OCSPResponse DER and separates the parts
+// [parseOCSPResponse] needs.
 //
 // The structure being walked is RFC 6960:
 //
@@ -331,72 +406,73 @@ func authorizeResponderCert(responder, issuer *x509.Certificate, tslResponders [
 //	    certs          [0] EXPLICIT SEQUENCE OF Certificate OPTIONAL }
 //
 // If there's no responseBytes (error response) or no certs section, the
-// original bytes are returned unchanged and embeddedCerts is empty.
-func stripOCSPEmbeddedCerts(respBytes []byte) (stripped []byte, embeddedCerts [][]byte, err error) {
+// original bytes are returned unchanged and certs is empty.
+func splitOCSPResponse(respBytes []byte) (ocspSplit, error) {
+	var empty ocspSplit
 	outer := cryptobyte.String(respBytes)
 	var ocspResp cryptobyte.String
 	if !outer.ReadASN1(&ocspResp, cryptobyte_asn1.SEQUENCE) {
-		return nil, nil, fmt.Errorf("malformed OCSPResponse outer SEQUENCE")
+		return empty, fmt.Errorf("malformed OCSPResponse outer SEQUENCE")
 	}
 
 	var statusElem cryptobyte.String
 	if !ocspResp.ReadASN1Element(&statusElem, cryptobyte_asn1.ENUM) {
-		return nil, nil, fmt.Errorf("missing responseStatus")
+		return empty, fmt.Errorf("missing responseStatus")
 	}
 
 	if ocspResp.Empty() {
 		// Error response with no responseBytes — nothing to strip.
-		return respBytes, nil, nil
+		return ocspSplit{stripped: respBytes}, nil
 	}
 
 	var responseBytesContent cryptobyte.String
 	if !ocspResp.ReadASN1(&responseBytesContent, cryptobyte_asn1.Tag(0).Constructed().ContextSpecific()) {
-		return nil, nil, fmt.Errorf("malformed responseBytes [0] EXPLICIT")
+		return empty, fmt.Errorf("malformed responseBytes [0] EXPLICIT")
 	}
 	var rb cryptobyte.String
 	if !responseBytesContent.ReadASN1(&rb, cryptobyte_asn1.SEQUENCE) {
-		return nil, nil, fmt.Errorf("malformed responseBytes SEQUENCE")
+		return empty, fmt.Errorf("malformed responseBytes SEQUENCE")
 	}
 	var respTypeElem cryptobyte.String
 	if !rb.ReadASN1Element(&respTypeElem, cryptobyte_asn1.OBJECT_IDENTIFIER) {
-		return nil, nil, fmt.Errorf("missing responseType")
+		return empty, fmt.Errorf("missing responseType")
 	}
 	var basicRespOctets cryptobyte.String
 	if !rb.ReadASN1(&basicRespOctets, cryptobyte_asn1.OCTET_STRING) {
-		return nil, nil, fmt.Errorf("missing response OCTET STRING")
+		return empty, fmt.Errorf("missing response OCTET STRING")
 	}
 
 	var basicResp cryptobyte.String
 	if !basicRespOctets.ReadASN1(&basicResp, cryptobyte_asn1.SEQUENCE) {
-		return nil, nil, fmt.Errorf("malformed BasicOCSPResponse")
+		return empty, fmt.Errorf("malformed BasicOCSPResponse")
 	}
 	var tbsElem, sigAlgElem, sigElem cryptobyte.String
 	if !basicResp.ReadASN1Element(&tbsElem, cryptobyte_asn1.SEQUENCE) {
-		return nil, nil, fmt.Errorf("missing tbsResponseData")
+		return empty, fmt.Errorf("missing tbsResponseData")
 	}
 	if !basicResp.ReadASN1Element(&sigAlgElem, cryptobyte_asn1.SEQUENCE) {
-		return nil, nil, fmt.Errorf("missing signatureAlgorithm")
+		return empty, fmt.Errorf("missing signatureAlgorithm")
 	}
 	if !basicResp.ReadASN1Element(&sigElem, cryptobyte_asn1.BIT_STRING) {
-		return nil, nil, fmt.Errorf("missing signature BIT STRING")
+		return empty, fmt.Errorf("missing signature BIT STRING")
 	}
 
-	hasCerts := !basicResp.Empty()
-	if !hasCerts {
-		return respBytes, nil, nil
+	if basicResp.Empty() {
+		return ocspSplit{stripped: respBytes, tbs: []byte(tbsElem)}, nil
 	}
 	var certsExplicit cryptobyte.String
 	if !basicResp.ReadASN1(&certsExplicit, cryptobyte_asn1.Tag(0).Constructed().ContextSpecific()) {
-		return nil, nil, fmt.Errorf("malformed certs [0] EXPLICIT")
+		return empty, fmt.Errorf("malformed certs [0] EXPLICIT")
 	}
 	var certsSeq cryptobyte.String
 	if !certsExplicit.ReadASN1(&certsSeq, cryptobyte_asn1.SEQUENCE) {
-		return nil, nil, fmt.Errorf("malformed certs SEQUENCE OF Certificate")
+		return empty, fmt.Errorf("malformed certs SEQUENCE OF Certificate")
 	}
+	var embeddedCerts [][]byte
 	for !certsSeq.Empty() {
 		var certElem cryptobyte.String
 		if !certsSeq.ReadASN1Element(&certElem, cryptobyte_asn1.SEQUENCE) {
-			return nil, nil, fmt.Errorf("malformed Certificate in certs section")
+			return empty, fmt.Errorf("malformed Certificate in certs section")
 		}
 		embeddedCerts = append(embeddedCerts, []byte(certElem))
 	}
@@ -417,11 +493,11 @@ func stripOCSPEmbeddedCerts(respBytes []byte) (stripped []byte, embeddedCerts []
 			})
 		})
 	})
-	stripped, err = b.Bytes()
+	stripped, err := b.Bytes()
 	if err != nil {
-		return nil, nil, fmt.Errorf("re-encode stripped OCSP response: %w", err)
+		return empty, fmt.Errorf("re-encode stripped OCSP response: %w", err)
 	}
-	return stripped, embeddedCerts, nil
+	return ocspSplit{stripped: stripped, tbs: []byte(tbsElem), certs: embeddedCerts}, nil
 }
 
 // mapOCSPResponse converts an x/crypto/ocsp.Response into our RevocationResult.

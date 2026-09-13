@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"io"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -361,4 +362,138 @@ func TestOCSPChecker_UntrustedResponseFailsSoftFail(t *testing.T) {
 	assert.False(t, result.Valid, "an unauthorized responder must fail validation even under SoftFail")
 	assert.True(t, result.HasError(gempki.ErrCodeOCSPResponderUntrusted), "errors: %v", result.Errors)
 	assert.Empty(t, result.Warnings)
+}
+
+// A response whose CertID names another serial of the same CA must not
+// pass as an answer for the certificate under check, whatever its status.
+func TestOCSPChecker_CertIDSerialMismatchIsInvalid(t *testing.T) {
+	t.Parallel()
+
+	pki, err := testca.New()
+	require.NoError(t, err)
+	resp := testocsp.NewResponder(t, pki.SubCAKomp.Cert, pki.SubCAKomp.Key, pki.SubCAKomp.Cert)
+	resp.Set(pki.EEZeta.Cert.SerialNumber, testocsp.Entry{
+		Status:       testocsp.StatusGood,
+		AnswerSerial: new(big.Int).Add(pki.EEZeta.Cert.SerialNumber, big.NewInt(1)),
+	})
+
+	checker := &gempki.OCSPChecker{HTTPClient: &http.Client{Timeout: 5 * time.Second}, ResponderURL: resp.URL}
+	result, err := checker.Check(t.Context(), pki.EEZeta.Cert, pki.SubCAKomp.Cert)
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.True(t, errors.Is(err, &gempki.ValidationError{Code: gempki.ErrCodeOCSPResponseInvalid}), "got %v", err)
+	assert.Contains(t, err.Error(), "serial")
+}
+
+// The issuer hashes in the CertID are checked too: a TSL-authorized
+// responder answering under one CA does not answer for a certificate we
+// attribute to another, even though its signature verifies.
+func TestOCSPChecker_CertIDIssuerMismatchIsInvalid(t *testing.T) {
+	t.Parallel()
+
+	pki, err := testca.New()
+	require.NoError(t, err)
+	resp := testocsp.NewResponder(t, pki.SubCAHBA.Cert, pki.SubCAKomp.Key, pki.SubCAKomp.Cert)
+	resp.Set(pki.EEArzt.Cert.SerialNumber, testocsp.Entry{Status: testocsp.StatusGood})
+
+	checker := &gempki.OCSPChecker{
+		HTTPClient:    &http.Client{Timeout: 5 * time.Second},
+		ResponderURL:  resp.URL,
+		TSLResponders: []*x509.Certificate{pki.SubCAKomp.Cert},
+	}
+	result, err := checker.Check(t.Context(), pki.EEArzt.Cert, pki.SubCAKomp.Cert)
+	require.Error(t, err)
+	assert.Nil(t, result)
+	assert.True(t, errors.Is(err, &gempki.ValidationError{Code: gempki.ErrCodeOCSPResponseInvalid}), "got %v", err)
+	assert.Contains(t, err.Error(), "issuerNameHash")
+}
+
+func TestOCSPChecker_CertHash(t *testing.T) {
+	t.Parallel()
+
+	pki, err := testca.New()
+	require.NoError(t, err)
+	wrong := testocsp.CertHash(pki.EEArzt.Cert)
+
+	cases := []struct {
+		name     string
+		entry    testocsp.Entry
+		require  bool
+		wantGood bool
+	}{
+		{"matching hash", testocsp.Entry{Status: testocsp.StatusGood, CertHash: testocsp.CertHash(pki.EEZeta.Cert)}, true, true},
+		{"mismatching hash", testocsp.Entry{Status: testocsp.StatusGood, CertHash: wrong}, false, false},
+		{"missing, required", testocsp.Entry{Status: testocsp.StatusGood}, true, false},
+		{"missing, optional", testocsp.Entry{Status: testocsp.StatusGood}, false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			resp := testocsp.NewResponder(t, pki.SubCAKomp.Cert, pki.SubCAKomp.Key, pki.SubCAKomp.Cert)
+			resp.Set(pki.EEZeta.Cert.SerialNumber, tc.entry)
+			checker := &gempki.OCSPChecker{
+				HTTPClient:      &http.Client{Timeout: 5 * time.Second},
+				ResponderURL:    resp.URL,
+				RequireCertHash: tc.require,
+			}
+			result, err := checker.Check(t.Context(), pki.EEZeta.Cert, pki.SubCAKomp.Cert)
+			if tc.wantGood {
+				require.NoError(t, err)
+				assert.Equal(t, gempki.RevocationStatusGood, result.Status)
+				return
+			}
+			require.Error(t, err)
+			assert.Nil(t, result)
+			assert.True(t, errors.Is(err, &gempki.ValidationError{Code: gempki.ErrCodeOCSPResponseInvalid}), "got %v", err)
+			assert.Contains(t, err.Error(), "certHash")
+		})
+	}
+}
+
+// The TUC_PKI_006 time window: producedAt may not be older than
+// MaxResponseAge, producedAt and thisUpdate may not lie more than
+// ClockTolerance in the future, and nextUpdate may not lie more than
+// ClockTolerance in the past. Outside the window the verdict is Unknown,
+// the same class as an unreachable responder.
+func TestOCSPChecker_TimeWindow(t *testing.T) {
+	t.Parallel()
+
+	pki, err := testca.New()
+	require.NoError(t, err)
+	now := time.Now()
+
+	cases := []struct {
+		name       string
+		entry      testocsp.Entry
+		wantReason string
+	}{
+		{"fresh", testocsp.Entry{Status: testocsp.StatusGood}, ""},
+		{"no nextUpdate", testocsp.Entry{Status: testocsp.StatusGood, NoNextUpdate: true}, ""},
+		{"within tolerance", testocsp.Entry{Status: testocsp.StatusGood,
+			ProducedAt: now.Add(-30 * time.Second), ThisUpdate: now.Add(30 * time.Second), NextUpdate: now.Add(-30 * time.Second)}, ""},
+		{"producedAt too old", testocsp.Entry{Status: testocsp.StatusGood, ProducedAt: now.Add(-time.Minute)}, "exceeds MaxResponseAge"},
+		{"producedAt in the future", testocsp.Entry{Status: testocsp.StatusGood, ProducedAt: now.Add(time.Minute)}, "producedAt lies"},
+		{"thisUpdate in the future", testocsp.Entry{Status: testocsp.StatusGood, ThisUpdate: now.Add(time.Minute)}, "thisUpdate lies"},
+		{"nextUpdate passed", testocsp.Entry{Status: testocsp.StatusGood, NextUpdate: now.Add(-time.Minute)}, "nextUpdate passed"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			resp := testocsp.NewResponder(t, pki.SubCAKomp.Cert, pki.SubCAKomp.Key, pki.SubCAKomp.Cert)
+			resp.Set(pki.EEZeta.Cert.SerialNumber, tc.entry)
+			checker := &gempki.OCSPChecker{
+				HTTPClient:   &http.Client{Timeout: 5 * time.Second},
+				ResponderURL: resp.URL,
+				Clock:        func() time.Time { return now },
+			}
+			result, err := checker.Check(t.Context(), pki.EEZeta.Cert, pki.SubCAKomp.Cert)
+			require.NoError(t, err)
+			if tc.wantReason == "" {
+				assert.Equal(t, gempki.RevocationStatusGood, result.Status, "reason=%q", result.Reason)
+				return
+			}
+			assert.Equal(t, gempki.RevocationStatusUnknown, result.Status)
+			assert.Contains(t, result.Reason, tc.wantReason)
+		})
+	}
 }

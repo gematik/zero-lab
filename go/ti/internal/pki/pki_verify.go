@@ -43,7 +43,7 @@ func (vf *verifyFlags) register(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&vf.atRaw, "at", "", "validate at a specific time (RFC3339; default: now)")
 	cmd.Flags().StringVar(&vf.issuerPath, "issuer", "", "issuing CA certificate PEM/DER, for a CA the TSL does not publish (default: resolved from the TSL)")
 	cmd.Flags().StringVar(&vf.ocspResponder, "ocsp-responder", "", "query this OCSP responder instead of the one named in the certificate's AIA")
-	cmd.Flags().DurationVar(&vf.ocspMaxAge, "ocsp-max-age", 48*time.Hour, "reject OCSP responses older than this")
+	cmd.Flags().DurationVar(&vf.ocspMaxAge, "ocsp-max-age", gempki.DefaultMaxResponseAge, "treat OCSP responses whose producedAt is older than this as unknown (TI responders sign on demand; raise it for cached responses)")
 	// Removed in v0.21; registered hidden purely so the old spelling gets a
 	// pointer at `ti pki inspect` instead of cobra's bare "unknown flag".
 	cmd.Flags().BoolVar(&vf.insecure, "insecure", false, "")
