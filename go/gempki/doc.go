@@ -71,8 +71,11 @@
 //
 // [CertificateType] is the gemSpec_PKI Tab_PKI_405 type — C.HCI.AUT,
 // C.FD.SIG and so on — with the baseline every certificate of that type must
-// satisfy in [CertificateType.Spec]. [DetectCertificateType] reads it off a
-// certificate's policies, falling back to the admission extension.
+// satisfy in [CertificateType.Spec], transcribed from gemSpec_PKI's profile
+// tables for all 23 types (ECDSA branch; every value is a floor the checks
+// require, never an equality). [DetectCertificateType] reads the type off a
+// certificate's policies, falling back to the admission extension; the role
+// lists it detects with are the ones the baselines validate with.
 //
 // A [Profile] is a validation strategy for one TI use case: the types it
 // accepts, its revocation strictness, and optionally the admission role

@@ -74,56 +74,106 @@ type CertTypeSpec struct {
 	RoleOIDs []asn1.ObjectIdentifier
 }
 
-// smcbInstitutionRoleOIDs are the institution OIDs Tab_PKI_403 accepts on a
-// C.HCI.AUT cert. Carried by the type spec, not by an individual profile —
-// every C.HCI.AUT cert is expected to assert one of these.
-var smcbInstitutionRoleOIDs = []asn1.ObjectIdentifier{
-	oid.InstArztpraxis,
-	oid.InstZahnarztpraxis,
-	oid.InstPraxisPsychotherapeut,
-	oid.InstKrankenhaus,
-	oid.InstOeffentlicheApo,
-	oid.InstKrankenhausapotheke,
-	oid.InstBundeswehrapotheke,
-}
+// egkInsurantRoleOIDs is the one profession OID every eGK certificate
+// asserts. Unlike the HBA and SMC-B tables it is not a choice: an eGK
+// names an insurant or it is not an eGK.
+var egkInsurantRoleOIDs = []asn1.ObjectIdentifier{oid.ProfVersicherter}
 
-// hbaQESRoleOIDs are the HBA profession OIDs Tab_PKI_402 accepts on a
-// C.HP.QES cert. Carried by the type spec; no profile in the current set
-// enforces it directly, but a future QES validator can layer on top of the
-// type baseline without re-declaring this list.
-var hbaQESRoleOIDs = []asn1.ObjectIdentifier{
-	oid.ProfArzt,
-	oid.ProfZahnarzt,
-	oid.ProfApotheker,
-	oid.ProfPsychotherapeut,
-	oid.ProfPsPsychotherapeut,
-	oid.ProfKuJPsychotherapeut,
-}
+// hskRoleOIDs is the technical role a Highspeed-Konnektor certificate
+// carries in its Admission extension (Tab_PKI_284/285).
+var hskRoleOIDs = []asn1.ObjectIdentifier{oid.TechRoleHSK}
 
-// certTypeSpec is the per-type baseline lookup used by [CertificateType.Spec].
-// Entries populated for the types currently consumed by a profile (HCI.AUT,
-// FD.AUT, FD.SIG, HP.QES) plus the TLS family (TLS-S, TLS-C, ZD.TLS-S) for
-// documentation. The remaining 16 entries are empty placeholders that still
-// signal "known type" to callers; populate them when a real consumer needs
-// the baseline.
+// certTypeSpec is the per-type baseline behind [CertificateType.Spec],
+// transcribed from the X.509 profile tables of gemSpec_PKI (Tab_PKI_232–297,
+// one per type) with the ECDSA branch of each — the TI issues no RSA cards
+// any more, and an RSA baseline (keyEncipherment for ENC, keyEncipherment
+// beside digitalSignature for AUT) would not fit the checks' "every bit must
+// be set" reading anyway.
+//
+// Every value is a floor, not an equality: [CheckKeyUsage] requires the
+// listed bits, [CheckHasAnyExtKeyUsage] one of the listed purposes,
+// [CheckCertificatePolicies] every listed policy, [CheckRoleOID] one of the
+// listed roles. Optional entries of a profile (C.CH.AUT's clientAuth, the
+// TSP-specific policy OIDs, the ETSI QSCD policy on C.HP.QES) are therefore
+// left out. Role lists are the whole spec tables — every institution of
+// Tab_PKI_403 holds an SMC-B, every profession of Tab_PKI_402 an HBA — so
+// detection ([DetectCertificateType], which uses the same tables) and
+// validation cannot disagree about a certificate. Fachdienst types carry no
+// baseline role: the technical role is what a [Profile] discriminates on.
 var certTypeSpec = map[CertificateType]CertTypeSpec{
+	// eGK — Tab_PKI_232–236, 297. gematik's umbrella policy plus the type.
+	CertTypeChQES: {
+		KeyUsage: x509.KeyUsageContentCommitment,
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeEgkQES},
+		RoleOIDs: egkInsurantRoleOIDs,
+	},
+	CertTypeChSIG: {
+		KeyUsage: x509.KeyUsageContentCommitment,
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeEgkSIG},
+		RoleOIDs: egkInsurantRoleOIDs,
+	},
+	CertTypeChENC: {
+		KeyUsage: x509.KeyUsageKeyAgreement,
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeEgkENC},
+		RoleOIDs: egkInsurantRoleOIDs,
+	},
+	CertTypeChENCV: {
+		KeyUsage: x509.KeyUsageKeyAgreement,
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeEgkENCV},
+		RoleOIDs: egkInsurantRoleOIDs,
+	},
+	// C.CH.AUT may carry clientAuth; C.CH.AUTN — the pseudonymous credential
+	// that opens TLS sessions in which the holder must stay unidentified —
+	// must.
+	CertTypeChAUT: {
+		KeyUsage: x509.KeyUsageDigitalSignature,
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeEgkAUT},
+		RoleOIDs: egkInsurantRoleOIDs,
+	},
+	CertTypeChAUTN: {
+		KeyUsage: x509.KeyUsageDigitalSignature,
+		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeEgkAUTN},
+		RoleOIDs: egkInsurantRoleOIDs,
+	},
+
+	// HBA — Tab_PKI_268–270. The HBA policy, not gematik's umbrella one.
+	CertTypeHpQES: {
+		KeyUsage: x509.KeyUsageContentCommitment,
+		Policies: []asn1.ObjectIdentifier{oid.PolicyHbaCP, oid.CertTypeHbaQES},
+		RoleOIDs: oid.Professions,
+	},
+	CertTypeHpAUT: {
+		KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageKeyAgreement,
+		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageEmailProtection},
+		Policies: []asn1.ObjectIdentifier{oid.PolicyHbaCP, oid.CertTypeHbaAUT},
+		RoleOIDs: oid.Professions,
+	},
+	CertTypeHpENC: {
+		KeyUsage: x509.KeyUsageKeyAgreement,
+		Policies: []asn1.ObjectIdentifier{oid.PolicyHbaCP, oid.CertTypeHbaENC},
+		RoleOIDs: oid.Professions,
+	},
+
+	// SMC-B — Tab_PKI_238–240.
 	CertTypeHciAUT: {
 		KeyUsage: x509.KeyUsageDigitalSignature,
 		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeSmcBAUT},
-		RoleOIDs: smcbInstitutionRoleOIDs,
+		RoleOIDs: oid.Institutions,
 	},
-	CertTypeHciENC:  {},
-	CertTypeHciOSIG: {},
-
-	CertTypeHpQES: {
+	CertTypeHciENC: {
+		KeyUsage: x509.KeyUsageKeyAgreement,
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeSmcBENC},
+		RoleOIDs: oid.Institutions,
+	},
+	CertTypeHciOSIG: {
 		KeyUsage: x509.KeyUsageContentCommitment,
-		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.PolicyHbaCP, oid.CertTypeHbaQES},
-		RoleOIDs: hbaQESRoleOIDs,
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeSmcBOSIG},
+		RoleOIDs: oid.Institutions,
 	},
-	CertTypeHpAUT: {},
-	CertTypeHpENC: {},
 
+	// Fachdienst — Tab_PKI_241–246.
 	CertTypeFdAUT: {
 		KeyUsage: x509.KeyUsageDigitalSignature,
 		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdAUT},
@@ -132,8 +182,16 @@ var certTypeSpec = map[CertificateType]CertTypeSpec{
 		KeyUsage: x509.KeyUsageDigitalSignature,
 		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdSIG},
 	},
+	CertTypeFdENC: {
+		KeyUsage: x509.KeyUsageKeyAgreement,
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdENC},
+	},
+	CertTypeFdOSIG: {
+		KeyUsage: x509.KeyUsageContentCommitment,
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdOSIG},
+	},
 	CertTypeFdTLSS: {
-		KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageKeyAgreement,
+		KeyUsage: x509.KeyUsageDigitalSignature,
 		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdTLSS},
 	},
@@ -142,26 +200,35 @@ var certTypeSpec = map[CertificateType]CertTypeSpec{
 		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeFdTLSC},
 	},
-	CertTypeFdENC:  {},
-	CertTypeFdOSIG: {},
 
+	// Zentrale Dienste — Tab_PKI_247, 296.
 	CertTypeZdTLSS: {
-		KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageKeyAgreement,
+		KeyUsage: x509.KeyUsageDigitalSignature,
 		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeZdTLSS},
 	},
-	CertTypeZdSIG: {},
+	CertTypeZdSIG: {
+		KeyUsage: x509.KeyUsageContentCommitment,
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeZdSIG},
+	},
 
-	CertTypeChQES:  {},
-	CertTypeChSIG:  {},
-	CertTypeChENC:  {},
-	CertTypeChENCV: {},
-	CertTypeChAUT:  {},
-	CertTypeChAUTN: {},
-
-	CertTypeHskSIG: {},
-	CertTypeHskENC: {},
-	CertTypeGemVER: {},
+	// Highspeed-Konnektor — Tab_PKI_284/285 — and gematik's verification
+	// certificate (Tab_PKI_300), which asserts no key usage at all.
+	CertTypeHskSIG: {
+		KeyUsage: x509.KeyUsageContentCommitment,
+		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeHskSIG},
+		RoleOIDs: hskRoleOIDs,
+	},
+	CertTypeHskENC: {
+		KeyUsage: x509.KeyUsageKeyAgreement,
+		EKU:      []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeHskENC},
+		RoleOIDs: hskRoleOIDs,
+	},
+	CertTypeGemVER: {
+		Policies: []asn1.ObjectIdentifier{oid.PolicyGemOrCP, oid.CertTypeGemVER},
+	},
 }
 
 // Spec returns the gemSpec_PKI-mandated baseline rules for this type. The
