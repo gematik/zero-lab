@@ -8,9 +8,9 @@ use cases.
 
 ## Status
 
-Skeleton. The module layout, the environments, the error codes, the certificate types and
-the revocation modes are declared; there is no validation logic yet. Do not use this crate
-to make trust decisions.
+Skeleton. The trust configuration is implemented; the module layout, the error codes, the
+certificate types and the revocation modes are declared, but there is no validation logic
+yet. Do not use this crate to make trust decisions.
 
 The reference implementation is the Go package
 [`gempki`](https://github.com/gematik/zero-lab/tree/main/go/gempki); this crate ports it
@@ -21,9 +21,26 @@ module by module and keeps its error codes, certificate-type names and revocatio
 ti-pki = { git = "https://github.com/gematik/zero-lab", tag = "rust/ti-pki/v0.1.0" }
 ```
 
+## Configuration
+
+Everything that differs between TI environments is a field of `TrustConfig`. Start from a
+preset, override fields with struct update, and validate for the tier you run in:
+
 ```rust
-use ti_pki::Env;
+use ti_pki::{Tier, TrustConfig};
+
+let config = TrustConfig::preset_prod();
+config.validate(Tier::Prod)?;
 ```
+
+Presets for the non-production environments (`TrustConfig::preset(Env::Test)` and so on)
+carry TEST-ONLY anchors and exist only with the `dangerous-nonprod` feature; production
+builds leave it off.
+
+| Feature | Effect |
+| --- | --- |
+| `dangerous-nonprod` | Non-production presets, anchors and roots |
+| `test-util` | `TrustConfig::for_lab_ca` for tests in downstream crates |
 
 ## License
 

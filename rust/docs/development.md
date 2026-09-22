@@ -61,7 +61,7 @@ cargo metadata --format-version 1 | jq -r '.packages[] | select(.name == "ti-pki
 Checks come in two tiers:
 
 ```console
-just check    # tier 1, every PR: fmt, clippy, doc, test, features, machete, deny
+just check    # tier 1, every PR: fmt, clippy, doc, test, features, nonprod-absent, machete, deny
 just audit    # tier 2, before tagging: advisories, vet, msrv, semver
 ```
 
@@ -72,6 +72,44 @@ its name, version, description, keywords and categories, and inherits the rest w
 `[workspace.dependencies]` and inherited the same way. `Cargo.lock` is committed. Adding or updating a dependency makes
 `just vet` fail until the new version is audited (`cargo vet certify`) or covered by an
 imported audit; `just vet-suggest` lists what is outstanding.
+
+## Shared types
+
+Vocabulary every `ti-*` crate must agree on — today the environment (`Env`) and its
+production split (`Tier`) — lives in `ti-types`. Its admission rule:
+
+> If it compiles in `no_std` and has no I/O, it may go into `ti-types`; otherwise it doesn't.
+
+No HTTP, no crypto, no async, no product constants (URLs, anchors), no helper functions;
+the default build has no dependencies.
+
+`ti-types` goes to 1.0 soon and is additive only from then on. Every enum is
+`#[non_exhaustive]`, except `Tier`, whose split is binary by definition. A breaking
+redesign gets a new type instead of a major bump: a major bump would split consumers into
+incompatible `Env` types that no longer interoperate.
+
+## Environments
+
+Environments are data, not behaviour. Library code never branches on `Env`; everything
+that differs between environments — anchor, roots.json, TSL location, the policy
+relaxations — is a named field of `ti_pki::TrustConfig`, and `Env` only picks a preset.
+The one decision code may make is the `Tier`, and it is made in one place:
+`TrustConfig::validate(tier)` rejects TEST-ONLY anchors and every relaxation under
+`Tier::Prod`.
+
+The non-production presets and their TEST-ONLY anchors and roots are compiled in only
+with the `dangerous-nonprod` feature. A production binary is built without it, and
+`just nonprod-absent` proves the compiled crate then contains none of those bytes.
+
+Operators override fields on a preset rather than adding environments — a TSL mirror, a
+tighter clock skew, an anchor delivered out of band:
+
+```rust
+let config = TrustConfig { tsl_url: mirror.into(), ..TrustConfig::preset_prod() };
+config.validate(Tier::Prod)?;
+```
+
+Tests in downstream crates use `TrustConfig::for_lab_ca` from the `test-util` feature.
 
 ## Part B — Tag & reproducible builds
 
@@ -138,7 +176,8 @@ above; afterwards `release-plz update` does the version, sibling-pin and changel
 | Recipe | Purpose |
 | --- | --- |
 | `tools` | Install the pinned cargo tools (via cargo-binstall when available) |
-| `check` | Tier 1: `fmt`, `clippy`, `doc`, `test`, `features`, `machete`, `deny` |
+| `check` | Tier 1: `fmt`, `clippy`, `doc`, `test`, `features`, `nonprod-absent`, `machete`, `deny` |
+| `nonprod-absent` | Prove ti-pki without `dangerous-nonprod` contains no non-prod trust material |
 | `audit` | Tier 2: `advisories`, `vet`, `msrv`, `semver` |
 | `vet-suggest` | Dependencies still awaiting a cargo vet audit |
 | `miri`, `mutants <crate>` | On demand: Miri (nightly), mutation testing |

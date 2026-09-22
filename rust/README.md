@@ -5,6 +5,7 @@ Rust libraries for the gematik Telematikinfrastruktur, developed alongside the G
 
 | Crate | Purpose |
 | --- | --- |
+| [`ti-types`](./ti-types) | Shared vocabulary types (`Env`, `Tier`), `no_std`, no dependencies |
 | [`ti-pki`](./ti-pki) | X.509 certificate validation against the TI PKI (port of `go/gempki`) |
 
 Every crate is versioned independently by its own git tag `rust/<crate>/vX.Y.Z`. The
