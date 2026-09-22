@@ -8,6 +8,7 @@
 
 - [Development & Release Guide](./docs/development.md)
 - [Release Notes](./ReleaseNotes.md)
+- [Rust workspace](./rust/README.md)
 
 ## License
 
