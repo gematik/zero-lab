@@ -1,6 +1,8 @@
 //! The `GEM.RCA<n>` trust anchors compiled into the crate, as the exact DER gematik
 //! publishes. Everything else in a trust store earns its place by chaining to one of
-//! them. If gematik rotates an anchor, the file changes and the crate is rebuilt.
+//! them. If gematik rotates an anchor, the file changes and the crate is rebuilt;
+//! operators who need a different anchor set it on a
+//! [`TrustConfig`](crate::TrustConfig) instead.
 //!
 //! The TEST-ONLY anchors exist only with the `dangerous-nonprod` feature, so a
 //! production build contains no non-production trust material.

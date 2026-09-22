@@ -11,6 +11,14 @@ pub enum Error {
     /// DER input could not be decoded.
     #[error("DER decoding failed: {0}")]
     Der(#[from] der::Error),
+
+    /// The parts of a [`TrustConfig`](crate::TrustConfig) contradict each other or
+    /// the tier it is used in.
+    #[error("inconsistent trust configuration: {reason}")]
+    InconsistentConfig {
+        /// Which rule the configuration broke.
+        reason: &'static str,
+    },
 }
 
 /// Stable identifier for a validation failure reason. Callers match on the

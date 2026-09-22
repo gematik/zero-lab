@@ -14,9 +14,11 @@
 //! The intended shape of the API, not yet implemented:
 //!
 //! ```ignore
-//! use ti_pki::{Env, TrustStore, tsl};
+//! use ti_pki::{Tier, TrustConfig, TrustStore, tsl};
 //!
-//! let ts = TrustStore::embedded(Env::Prod)?;
+//! let config = TrustConfig::preset_prod();
+//! config.validate(Tier::Prod)?;
+//! let ts = TrustStore::from_config(&config)?;
 //! let list = tsl::parse(&tsl_xml)?;
 //! let intermediates = tsl::intermediate_cas(&list);
 //!
@@ -55,13 +57,16 @@
 //!
 //! # Environments
 //!
-//! [`Env`] selects the anchors, the embedded roots and the download endpoints.
-//! It is fixed when a trust store is built; nothing reconfigures it at
-//! runtime.
+//! Everything that differs between environments is a field of [`TrustConfig`]:
+//! the anchor, the roots, the TSL location and the policy relaxations. [`Env`]
+//! only picks a preset, and [`TrustConfig::validate`] fences production
+//! ([`Tier::Prod`]) from non-production material. Presets for non-production
+//! environments exist only with the `dangerous-nonprod` feature ([`config`]).
 
 pub mod anchors;
 pub mod cert_type;
 pub mod chain;
+pub mod config;
 pub mod error;
 pub mod ocsp;
 pub mod oid;
@@ -74,6 +79,7 @@ pub mod tsl;
 pub mod validate;
 
 pub use cert_type::CertificateType;
+pub use config::TrustConfig;
 pub use error::{Error, ErrorCode};
 pub use revocation::RevocationMode;
 pub use ti_types::{Env, Tier};

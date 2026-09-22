@@ -29,7 +29,7 @@ tools:
 # ---- Tier 1: every PR --------------------------------------------------------------
 
 # Everything a PR must pass, in the order that fails fastest
-check: fmt clippy doc test features machete deny
+check: fmt clippy doc test features nonprod-absent machete deny
 
 # Formatting (rustfmt.toml is the source of truth)
 fmt:
@@ -47,6 +47,29 @@ doc:
 test:
     cargo nextest run --workspace --all-features
     cargo test --workspace --all-features --doc
+
+# Without dangerous-nonprod, the compiled ti-pki must contain none of the non-prod trust
+# files. Compares their bytes, not a marker string (the marker legitimately occurs in
+# code and docs), and repeats with the feature on so the check cannot pass vacuously.
+nonprod-absent:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    files=(ti-pki/src/anchors/GEM.RCA7-TEST-ONLY.der ti-pki/src/anchors/GEM.RCA8-TEST-ONLY.der ti-pki/src/roots-nonprod.json)
+    rlib() {
+        cargo build -p ti-pki --message-format=json "$@" 2>/dev/null \
+            | jq -r 'select(.reason == "compiler-artifact" and .target.name == "ti_pki") | .filenames[] | select(endswith(".rlib"))'
+    }
+    # Exact byte-substring search: does file $2 occur inside file $1?
+    contains() { perl -0777 -e 'open(my $h, "<:raw", $ARGV[0]) or die; open(my $n, "<:raw", $ARGV[1]) or die; exit(index(<$h>, <$n>) < 0)' "$1" "$2"; }
+    lib=$(rlib)
+    for f in "${files[@]}"; do
+        if contains "$lib" "$f"; then echo "non-prod material in $lib: $f" >&2; exit 1; fi
+    done
+    lib=$(rlib --features dangerous-nonprod)
+    for f in "${files[@]}"; do
+        contains "$lib" "$f" || { echo "check is blind: $f not found with dangerous-nonprod" >&2; exit 1; }
+    done
+    echo "no non-prod trust material without dangerous-nonprod"
 
 # Every feature combination must compile (catches feature-gated breakage)
 features:
