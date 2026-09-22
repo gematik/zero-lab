@@ -19,8 +19,28 @@ url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 [imports.zcash]
 url = "https://raw.githubusercontent.com/zcash/rust-ecosystem/main/supply-chain/audits.toml"
 
+[[exemptions.anstyle]]
+version = "1.0.14"
+criteria = "safe-to-deploy"
+
 [[exemptions.base64ct]]
 version = "1.8.3"
+criteria = "safe-to-deploy"
+
+[[exemptions.clap]]
+version = "4.6.7"
+criteria = "safe-to-deploy"
+
+[[exemptions.clap_builder]]
+version = "4.6.7"
+criteria = "safe-to-deploy"
+
+[[exemptions.clap_derive]]
+version = "4.6.7"
+criteria = "safe-to-deploy"
+
+[[exemptions.clap_lex]]
+version = "1.1.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.const-oid]]
@@ -39,6 +59,14 @@ criteria = "safe-to-deploy"
 version = "0.4.7"
 criteria = "safe-to-deploy"
 
+[[exemptions.itoa]]
+version = "1.0.18"
+criteria = "safe-to-run"
+
+[[exemptions.memchr]]
+version = "2.8.3"
+criteria = "safe-to-run"
+
 [[exemptions.pem-rfc7468]]
 version = "1.0.0"
 criteria = "safe-to-deploy"
@@ -46,6 +74,22 @@ criteria = "safe-to-deploy"
 [[exemptions.proc-macro2]]
 version = "1.0.107"
 criteria = "safe-to-deploy"
+
+[[exemptions.serde]]
+version = "1.0.229"
+criteria = "safe-to-deploy"
+
+[[exemptions.serde_core]]
+version = "1.0.229"
+criteria = "safe-to-deploy"
+
+[[exemptions.serde_derive]]
+version = "1.0.229"
+criteria = "safe-to-deploy"
+
+[[exemptions.serde_json]]
+version = "1.0.151"
+criteria = "safe-to-run"
 
 [[exemptions.spki]]
 version = "0.8.0"
@@ -90,3 +134,7 @@ criteria = "safe-to-deploy"
 [[exemptions.zeroize_derive]]
 version = "1.5.0"
 criteria = "safe-to-deploy"
+
+[[exemptions.zmij]]
+version = "1.0.23"
+criteria = "safe-to-run"

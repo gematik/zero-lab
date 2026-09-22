@@ -1,0 +1,29 @@
+[package]
+name = "ti-types"
+version = "0.1.0"
+description = "Shared vocabulary types for the gematik Telematikinfrastruktur (TI): environments, identifiers"
+keywords = ["gematik", "telematik", "types"]
+categories = ["data-structures", "no-std"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[features]
+default = []
+std = []
+serde = ["dep:serde"]
+# clap has no no_std build, so this feature pulls in std on both sides.
+clap = ["dep:clap", "clap/std", "std"]
+
+[dependencies]
+serde = { workspace = true, optional = true }
+clap = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true
