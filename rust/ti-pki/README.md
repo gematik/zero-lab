@@ -27,13 +27,11 @@ use ti_pki::Env;
 
 ## License
 
-Copyright 2023-2026 gematik GmbH
+Copyright 2026 gematik GmbH
 
-EUROPEAN UNION PUBLIC LICENCE v. 1.2
+Apache License, Version 2.0
 
-EUPL © the European Union 2007, 2016
-
-See the [LICENSE](https://github.com/gematik/zero-lab/blob/main/LICENSE) for the specific language governing permissions and limitations under the License
+See the [LICENSE](https://github.com/gematik/zero-lab/blob/main/rust/LICENSE) for the specific language governing permissions and limitations under the License
 
 ## Additional Notes and Disclaimer from gematik GmbH
 

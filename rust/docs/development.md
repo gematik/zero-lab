@@ -95,7 +95,7 @@ just push-tags
 
 Only tag what actually changed — `just changed` lists crates with commits since their last
 tag. Unchanged crates keep their existing tag. Check what a release would contain with
-`just package-list <crate>`: only the crate's `Cargo.toml`, `README.md`, `CHANGELOG.md` and
+`just package-list <crate>`: only the crate's `Cargo.toml`, `README.md`, `CHANGELOG.md`, `LICENSE` and
 `src/` may appear.
 
 ### Reproducible library consumption from another project

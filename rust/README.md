@@ -20,5 +20,13 @@ just check    # what every PR must pass
 
 ## License
 
-Same licence and disclaimer as the repository: see the [root README](../README.md#license)
-and [LICENSE](../LICENSE).
+Copyright 2026 gematik GmbH
+
+Apache License, Version 2.0
+
+See the [LICENSE](./LICENSE) for the specific language governing permissions and limitations
+under the License. Unlike the Go modules (EUPL-1.2), the Rust crates are licensed under
+Apache-2.0, like gematik's other library projects.
+
+The [Additional Notes and Disclaimer from gematik GmbH](../README.md#additional-notes-and-disclaimer-from-gematik-gmbh)
+in the root README apply here too.
