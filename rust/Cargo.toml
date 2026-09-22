@@ -10,6 +10,8 @@ rust-version = "1.96"
 license = "Apache-2.0"
 repository = "https://github.com/gematik/zero-lab"
 authors = ["gematik GmbH"]
+# Until the registry/crates.io decision; flipped here once for every crate.
+publish = false
 
 [workspace.dependencies]
 # In-repo crates: path for local development, version for registry resolution.

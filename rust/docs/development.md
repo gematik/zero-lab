@@ -65,8 +65,11 @@ just check    # tier 1, every PR: fmt, clippy, doc, test, features, machete, den
 just audit    # tier 2, before tagging: advisories, vet, msrv, semver
 ```
 
-External dependencies are pinned once in `[workspace.dependencies]` and inherited with
-`<dep>.workspace = true`. `Cargo.lock` is committed. Adding or updating a dependency makes
+Shared metadata (edition, rust-version, license, repository, authors, publish) lives in
+`[workspace.package]` and lints in `[workspace.lints]`; a crate's `Cargo.toml` only states
+its name, version, description, keywords and categories, and inherits the rest with
+`<field>.workspace = true`. External dependencies are pinned once in
+`[workspace.dependencies]` and inherited the same way. `Cargo.lock` is committed. Adding or updating a dependency makes
 `just vet` fail until the new version is audited (`cargo vet certify`) or covered by an
 imported audit; `just vet-suggest` lists what is outstanding.
 
@@ -112,7 +115,8 @@ ti-pki = "0.1"
 ```
 
 A git dependency is exact: the tag names one commit, and the consumer's `Cargo.lock`
-records its hash. Crates are `publish = false` until the registry decision is made.
+records its hash. `[workspace.package]` sets `publish = false` for every crate until the
+registry decision is made; flipping it there opens them all.
 
 ### release-plz
 

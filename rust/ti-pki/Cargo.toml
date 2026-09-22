@@ -2,15 +2,14 @@
 name = "ti-pki"
 version = "0.1.0"
 description = "X.509 certificate validation against the gematik Telematikinfrastruktur (TI) PKI"
-readme = "README.md"
 keywords = ["x509", "pki", "gematik", "telematik", "ocsp"]
 categories = ["cryptography", "authentication"]
-publish = false            # until registry/crates.io decision; name is reserved separately
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+publish.workspace = true
 
 [dependencies]
 der.workspace = true
