@@ -1,6 +1,62 @@
-//! The trust anchors compiled into the crate, one root certificate per
-//! environment: GEM.RCA8 for prod, GEM.RCA7 TEST-ONLY for dev and ref,
-//! GEM.RCA8 TEST-ONLY for test, plus the TSL-Signer-CA anchor that verifies
-//! the TSL's detached signature. They are taken straight from gematik's
-//! distribution; if gematik rotates one, the constant changes and the crate
-//! is rebuilt, there is no runtime override.
+//! The `GEM.RCA<n>` trust anchors compiled into the crate, as the exact DER gematik
+//! publishes. Everything else in a trust store earns its place by chaining to one of
+//! them. If gematik rotates an anchor, the file changes and the crate is rebuilt.
+//!
+//! The TEST-ONLY anchors exist only with the `dangerous-nonprod` feature, so a
+//! production build contains no non-production trust material.
+
+/// GEM.RCA8, the production anchor.
+pub const GEM_RCA8: &[u8] = include_bytes!("anchors/GEM.RCA8.der");
+
+/// GEM.RCA7 TEST-ONLY, the anchor of the reference and development environments.
+#[cfg(feature = "dangerous-nonprod")]
+pub const GEM_RCA7_TEST_ONLY: &[u8] = include_bytes!("anchors/GEM.RCA7-TEST-ONLY.der");
+
+/// GEM.RCA8 TEST-ONLY, the anchor of the test environment.
+#[cfg(feature = "dangerous-nonprod")]
+pub const GEM_RCA8_TEST_ONLY: &[u8] = include_bytes!("anchors/GEM.RCA8-TEST-ONLY.der");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+    use std::fmt::Write;
+
+    // Fingerprints from `openssl x509 -inform DER -fingerprint -sha256` over the
+    // base64 constants in go/gempki/anchors.go; a wrong or swapped file fails here.
+    fn assert_fingerprint(der: &[u8], expected: &str) {
+        let actual = Sha256::digest(der)
+            .iter()
+            .fold(String::new(), |mut hex, b| {
+                write!(hex, "{b:02X}").unwrap();
+                hex
+            });
+        assert_eq!(actual, expected.replace(':', ""));
+    }
+
+    #[test]
+    fn gem_rca8_fingerprint() {
+        assert_fingerprint(
+            GEM_RCA8,
+            "21:58:F5:B9:C0:17:10:FA:F6:8A:F8:C7:EB:A3:DA:5D:C5:6A:62:D1:29:10:38:CC:A7:A2:7B:7A:6E:BD:13:86",
+        );
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn gem_rca7_test_only_fingerprint() {
+        assert_fingerprint(
+            GEM_RCA7_TEST_ONLY,
+            "B5:4E:52:69:14:07:56:B2:AC:15:37:8C:F7:00:FA:BB:BD:A8:22:F8:A4:FB:FC:7D:6F:4B:DA:9B:E7:CA:28:35",
+        );
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn gem_rca8_test_only_fingerprint() {
+        assert_fingerprint(
+            GEM_RCA8_TEST_ONLY,
+            "D4:E6:2B:45:8C:84:66:91:90:0C:07:D2:1A:70:C0:94:27:EF:E7:6E:73:33:C3:91:FB:C4:51:67:FC:79:3F:94",
+        );
+    }
+}

@@ -27,6 +27,14 @@ criteria = "safe-to-deploy"
 version = "1.8.3"
 criteria = "safe-to-deploy"
 
+[[exemptions.block-buffer]]
+version = "0.12.1"
+criteria = "safe-to-run"
+
+[[exemptions.cfg-if]]
+version = "1.0.5"
+criteria = "safe-to-run"
+
 [[exemptions.clap]]
 version = "4.6.7"
 criteria = "safe-to-deploy"
@@ -47,6 +55,14 @@ criteria = "safe-to-deploy"
 version = "0.10.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.cpufeatures]]
+version = "0.3.1"
+criteria = "safe-to-run"
+
+[[exemptions.crypto-common]]
+version = "0.2.2"
+criteria = "safe-to-run"
+
 [[exemptions.der]]
 version = "0.8.2"
 criteria = "safe-to-deploy"
@@ -55,12 +71,24 @@ criteria = "safe-to-deploy"
 version = "0.8.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.digest]]
+version = "0.11.3"
+criteria = "safe-to-run"
+
 [[exemptions.flagset]]
 version = "0.4.7"
 criteria = "safe-to-deploy"
 
+[[exemptions.hybrid-array]]
+version = "0.4.15"
+criteria = "safe-to-run"
+
 [[exemptions.itoa]]
 version = "1.0.18"
+criteria = "safe-to-run"
+
+[[exemptions.libc]]
+version = "0.2.189"
 criteria = "safe-to-run"
 
 [[exemptions.memchr]]
@@ -91,6 +119,10 @@ criteria = "safe-to-deploy"
 version = "1.0.151"
 criteria = "safe-to-run"
 
+[[exemptions.sha2]]
+version = "0.11.0"
+criteria = "safe-to-run"
+
 [[exemptions.spki]]
 version = "0.8.0"
 criteria = "safe-to-deploy"
@@ -118,6 +150,10 @@ criteria = "safe-to-deploy"
 [[exemptions.tls_codec_derive]]
 version = "0.4.2"
 criteria = "safe-to-deploy"
+
+[[exemptions.typenum]]
+version = "1.20.1"
+criteria = "safe-to-run"
 
 [[exemptions.unicode-ident]]
 version = "1.0.26"
