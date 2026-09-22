@@ -1,0 +1,5 @@
+[workspace]
+git_tag_name = "rust/{{ package }}/v{{ version }}"
+git_release_enable = false
+publish = false            # flipped once the registry decision is made
+changelog_update = true
