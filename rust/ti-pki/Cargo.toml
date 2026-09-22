@@ -12,6 +12,7 @@ authors.workspace = true
 publish.workspace = true
 
 [dependencies]
+ti-types.workspace = true
 der.workspace = true
 x509-cert.workspace = true
 spki.workspace = true

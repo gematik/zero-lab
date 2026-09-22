@@ -8,10 +8,6 @@
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
-    /// The environment name is not one of `prod`, `test`, `ref`, `dev`.
-    #[error("unknown environment {0:?}, expected one of prod, test, ref, dev")]
-    UnknownEnvironment(String),
-
     /// DER input could not be decoded.
     #[error("DER decoding failed: {0}")]
     Der(#[from] der::Error),

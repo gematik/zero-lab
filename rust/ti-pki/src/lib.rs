@@ -73,28 +73,8 @@ pub mod truststore;
 pub mod tsl;
 pub mod validate;
 
-pub use anchors::Env;
 pub use cert_type::CertificateType;
 pub use error::{Error, ErrorCode};
 pub use revocation::RevocationMode;
+pub use ti_types::{Env, Tier};
 pub use truststore::TrustStore;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn env_round_trips_through_display_and_from_str() {
-        for env in [Env::Prod, Env::Test, Env::Ref, Env::Dev] {
-            assert_eq!(env.to_string().parse::<Env>().unwrap(), env);
-        }
-    }
-
-    #[test]
-    fn env_rejects_unknown_name() {
-        assert!(matches!(
-            "staging".parse::<Env>(),
-            Err(Error::UnknownEnvironment(name)) if name == "staging"
-        ));
-    }
-}

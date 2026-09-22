@@ -237,6 +237,7 @@ dependencies = [
  "pem-rfc7468",
  "spki",
  "thiserror",
+ "ti-types",
  "x509-cert",
 ]
 
