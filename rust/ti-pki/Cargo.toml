@@ -1,0 +1,29 @@
+[package]
+name = "ti-pki"
+version = "0.1.0"
+description = "X.509 certificate validation against the gematik Telematikinfrastruktur (TI) PKI"
+readme = "README.md"
+keywords = ["x509", "pki", "gematik", "telematik", "ocsp"]
+categories = ["cryptography", "authentication"]
+publish = false            # until registry/crates.io decision; name is reserved separately
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+der.workspace = true
+x509-cert.workspace = true
+spki.workspace = true
+const-oid.workspace = true
+pem-rfc7468.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true
+
+# Declared for the parsing layer the port adds next; remove each entry once the
+# crate uses it, so machete guards it from then on.
+[package.metadata.cargo-machete]
+ignored = ["spki", "pem-rfc7468"]
