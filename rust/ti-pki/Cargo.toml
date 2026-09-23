@@ -10,9 +10,15 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 publish.workspace = true
+# Wycheproof vectors are test data only.
+exclude = ["tests/"]
 
 [features]
-default = []
+# The TI's anchors are brainpool keys, so the TI path needs it; turn default features
+# off to build without it.
+default = ["brainpool"]
+# ECDSA on brainpoolP256r1 / brainpoolP384r1, added to the default algorithm set.
+brainpool = ["dep:bp256", "dep:bp384"]
 # Presets carrying TEST-ONLY anchors and relaxed policies. A production binary is built
 # without this feature and therefore contains no non-prod trust material.
 dangerous-nonprod = []
@@ -36,6 +42,12 @@ spki.workspace = true
 const-oid.workspace = true
 pem-rfc7468.workspace = true
 thiserror.workspace = true
+rustls-pki-types.workspace = true
+ecdsa.workspace = true
+p256.workspace = true
+p384.workspace = true
+bp256 = { workspace = true, optional = true }
+bp384 = { workspace = true, optional = true }
 arc-swap = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 minicbor = { workspace = true, optional = true }
@@ -46,6 +58,8 @@ tracing = { workspace = true, optional = true }
 [dev-dependencies]
 sha2.workspace = true
 futures-lite.workspace = true
+serde_json.workspace = true
+base64ct.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]

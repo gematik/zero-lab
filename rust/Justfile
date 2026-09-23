@@ -52,15 +52,17 @@ test:
 wasm32:
     cargo check -p ti-pki --target wasm32-unknown-unknown --features load,reqwest
 
-# ti-pki's core (everything but the reqwest/tokio adapter features) pulls in no HTTP
-# client, executor or file watcher; cargo-deny bans are workspace-wide, so this is a tree check
+# ti-pki's core (everything but the optional adapter and algorithm features) pulls in no
+# HTTP client, executor, file watcher or brainpool arithmetic; cargo-deny bans are
+# workspace-wide, so this is a tree check
 core-deps:
     #!/usr/bin/env bash
     set -euo pipefail
-    found=$(cargo tree -p ti-pki -e normal --prefix none --features load,os,test-util,dangerous-nonprod \
-        | grep -E '^(reqwest|tokio|hyper|notify) ' || true)
+    found=$(cargo tree -p ti-pki -e normal --prefix none --no-default-features \
+            --features load,os,test-util,dangerous-nonprod \
+        | grep -E '^(reqwest|tokio|hyper|notify|bp256|bp384) ' || true)
     if [ -n "$found" ]; then echo "ti-pki core depends on: $found" >&2; exit 1; fi
-    echo "ti-pki core is free of HTTP clients, executors and file watchers"
+    echo "ti-pki core is free of HTTP clients, executors, file watchers and brainpool"
 
 # Without dangerous-nonprod, the compiled ti-pki must contain none of the non-prod trust
 # files. Compares their bytes, not a marker string (the marker legitimately occurs in

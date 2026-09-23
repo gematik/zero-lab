@@ -252,7 +252,7 @@ mod tests {
     fn loads_at_start_and_on_trigger() {
         let reloader = Arc::new(
             Reloader::new(
-                TrustConfig::preset_prod(),
+                crate::config::tests::nist_prod_config(),
                 Tier::Prod,
                 Counting(0.into()),
                 FixedClock::new(Timestamp(1_000)),

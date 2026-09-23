@@ -20,6 +20,11 @@
 //!    each other and with the [`Tier`]; everything downstream assumes a consistent
 //!    configuration.
 //!
+//! Signature algorithms are part of the configuration too ([`TrustConfig::algorithms`],
+//! see [`crate::algorithms`]): the presets use the default set, which covers
+//! the TI's brainpool anchors only with the `brainpool` feature, and `validate` refuses
+//! an anchor no configured algorithm can check.
+//!
 //! Operators adjust fields on a preset rather than inventing environments: a
 //! private mirror of the TSL is `TrustConfig { tsl_url: ..., ..TrustConfig::preset_prod() }`.
 //!
@@ -30,11 +35,12 @@
 use std::borrow::Cow;
 use std::time::Duration;
 
-use der::Decode;
+use der::{Decode, Encode};
 use x509_cert::Certificate;
 
 #[cfg(feature = "dangerous-nonprod")]
 use crate::Env;
+use crate::algorithms::{self, AlgorithmSet};
 use crate::{Error, RevocationMode, Tier, anchors, roots, tsl};
 
 /// Clock skew tolerated between us and a responder or issuer. The value the Go
@@ -57,8 +63,9 @@ const TEST_ONLY_MARKER: &str = "TEST-ONLY";
 ///     revocation: RevocationMode::Disabled,
 ///     ..TrustConfig::for_anchor(der)
 /// };
-/// assert!(config.validate(Tier::NonProd).is_ok());
 /// assert!(config.validate(Tier::Prod).is_err());
+/// # #[cfg(feature = "brainpool")] // GEM.RCA8 is a brainpool key
+/// assert!(config.validate(Tier::NonProd).is_ok());
 /// ```
 #[derive(Clone, Debug)]
 pub struct TrustConfig {
@@ -79,11 +86,14 @@ pub struct TrustConfig {
     pub allow_expired: bool,
     /// Clock skew tolerated in validity and freshness checks.
     pub max_clock_skew: Duration,
+    /// The signature algorithms every check may use; nothing outside this set verifies.
+    pub algorithms: Cow<'static, AlgorithmSet>,
 }
 
 impl TrustConfig {
     /// Only the anchor is required; every policy field at its strictest value,
-    /// `roots` empty and both URLs set to production. The intended base
+    /// `roots` empty, both URLs set to production and the
+    /// [default algorithms](algorithms::DEFAULT). The intended base
     /// for struct update.
     pub fn for_anchor(anchor: impl Into<Cow<'static, [u8]>>) -> Self {
         TrustConfig {
@@ -95,6 +105,7 @@ impl TrustConfig {
             accept_test_only_policies: false,
             allow_expired: false,
             max_clock_skew: DEFAULT_MAX_CLOCK_SKEW,
+            algorithms: Cow::Borrowed(algorithms::DEFAULT),
         }
     }
 
@@ -144,7 +155,9 @@ impl TrustConfig {
     /// # Errors
     ///
     /// [`Error::Der`] if the anchor is not a DER certificate.
-    /// [`Error::InconsistentConfig`] if either URL is not `https://`, or, under
+    /// [`Error::InconsistentConfig`] if either URL is not `https://`, if no configured
+    /// algorithm handles the anchor's key type (a brainpool anchor without the
+    /// `brainpool` feature, say), or, under
     /// [`Tier::Prod`], if the anchor is a TEST-ONLY root, revocation is not
     /// [`HardFail`](RevocationMode::HardFail), or either relaxation is on.
     pub fn validate(&self, tier: Tier) -> Result<(), Error> {
@@ -154,6 +167,17 @@ impl TrustConfig {
         }
         if !self.tsl_url.starts_with("https://") {
             return Err(inconsistent("tsl_url must be an https URL"));
+        }
+        let key_alg = anchor
+            .tbs_certificate()
+            .subject_public_key_info()
+            .algorithm
+            .to_der()?;
+        let key_alg = der::asn1::AnyRef::from_der(&key_alg)?;
+        if !algorithms::supports_key(&self.algorithms, key_alg.value()) {
+            return Err(inconsistent(
+                "no configured signature algorithm handles the anchor's key type",
+            ));
         }
         match tier {
             Tier::NonProd => Ok(()),
@@ -200,8 +224,15 @@ fn inconsistent(reason: &'static str) -> Error {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    /// A production-valid configuration that needs no optional algorithm: the GEM.RCA10
+    /// root (P-256) as anchor. For tests about everything but the presets.
+    pub(crate) fn nist_prod_config() -> TrustConfig {
+        let (rca10, ..) = crate::algorithms::tests::prod_root("GEM.RCA10");
+        TrustConfig::for_anchor(rca10.to_der().unwrap())
+    }
 
     fn reason(result: Result<(), Error>) -> &'static str {
         match result {
@@ -221,16 +252,49 @@ mod tests {
         assert!(config.roots.is_empty());
     }
 
+    #[cfg(feature = "brainpool")]
     #[test]
     fn preset_prod_validates_for_prod() {
         TrustConfig::preset_prod().validate(Tier::Prod).unwrap();
+    }
+
+    #[cfg(not(feature = "brainpool"))]
+    #[test]
+    fn preset_prod_needs_brainpool() {
+        assert_eq!(
+            reason(TrustConfig::preset_prod().validate(Tier::Prod)),
+            "no configured signature algorithm handles the anchor's key type"
+        );
+    }
+
+    #[test]
+    fn nist_config_validates_for_prod() {
+        nist_prod_config().validate(Tier::Prod).unwrap();
+    }
+
+    #[test]
+    fn anchor_without_a_matching_algorithm_is_rejected() {
+        let nist_only = TrustConfig {
+            algorithms: Cow::Borrowed(algorithms::STANDARD),
+            ..TrustConfig::preset_prod()
+        };
+        assert_eq!(
+            reason(nist_only.validate(Tier::NonProd)),
+            "no configured signature algorithm handles the anchor's key type"
+        );
+    }
+
+    #[test]
+    fn default_algorithms_are_configured() {
+        let config = TrustConfig::for_anchor(anchors::GEM_RCA8);
+        assert_eq!(config.algorithms.len(), algorithms::DEFAULT.len());
     }
 
     #[test]
     fn soft_fail_is_rejected_in_prod() {
         let config = TrustConfig {
             revocation: RevocationMode::SoftFail,
-            ..TrustConfig::preset_prod()
+            ..nist_prod_config()
         };
         assert_eq!(
             reason(config.validate(Tier::Prod)),
@@ -243,12 +307,12 @@ mod tests {
     fn relaxations_are_rejected_in_prod() {
         let test_only = TrustConfig {
             accept_test_only_policies: true,
-            ..TrustConfig::preset_prod()
+            ..nist_prod_config()
         };
         assert!(test_only.validate(Tier::Prod).is_err());
         let expired = TrustConfig {
             allow_expired: true,
-            ..TrustConfig::preset_prod()
+            ..nist_prod_config()
         };
         assert!(expired.validate(Tier::Prod).is_err());
     }
@@ -257,7 +321,7 @@ mod tests {
     fn plain_http_tsl_is_rejected() {
         let config = TrustConfig {
             tsl_url: Cow::Borrowed("http://download.tsl.ti-dienste.de/ECC/ECC-RSA_TSL.xml"),
-            ..TrustConfig::preset_prod()
+            ..nist_prod_config()
         };
         assert_eq!(
             reason(config.validate(Tier::NonProd)),
@@ -271,7 +335,7 @@ mod tests {
         assert!(matches!(config.validate(Tier::NonProd), Err(Error::Der(_))));
     }
 
-    #[cfg(feature = "dangerous-nonprod")]
+    #[cfg(all(feature = "dangerous-nonprod", feature = "brainpool"))]
     #[test]
     fn nonprod_presets_are_fenced_from_prod() {
         let test = TrustConfig::preset(Env::Test);
@@ -292,7 +356,7 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "dangerous-nonprod")]
+    #[cfg(all(feature = "dangerous-nonprod", feature = "brainpool"))]
     #[test]
     fn nonprod_presets_accept_test_only_policies() {
         for env in [Env::Dev, Env::Test, Env::Ref] {
@@ -322,7 +386,8 @@ mod tests {
     #[cfg(feature = "test-util")]
     #[test]
     fn lab_ca_is_nonprod_only() {
-        let config = TrustConfig::for_lab_ca(anchors::GEM_RCA8);
+        let anchor = nist_prod_config().anchor;
+        let config = TrustConfig::for_lab_ca(&anchor);
         config.validate(Tier::NonProd).unwrap();
         assert!(config.validate(Tier::Prod).is_err());
     }

@@ -69,6 +69,7 @@
 //! and the TSL through pluggable loaders; the `reqwest` and `tokio` features add a
 //! transport and a background driver.
 
+pub mod algorithms;
 pub mod anchors;
 pub mod cert_type;
 pub mod chain;

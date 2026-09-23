@@ -574,7 +574,7 @@ mod tests {
         script: impl IntoIterator<Item = Result<TrustMaterial, LoadError>>,
     ) -> Reloader<VecLoader, &FixedClock> {
         Reloader::new(
-            TrustConfig::preset_prod(),
+            crate::config::tests::nist_prod_config(),
             Tier::Prod,
             VecLoader::new(script),
             clock,
@@ -731,7 +731,7 @@ mod tests {
     fn jitter_stays_within_bounds() {
         let clock = FixedClock::new(T0);
         let r = Reloader::new(
-            TrustConfig::preset_prod(),
+            crate::config::tests::nist_prod_config(),
             Tier::Prod,
             VecLoader::new([Ok(material("a", T0))]),
             &clock,
