@@ -78,6 +78,8 @@ pub mod profile;
 pub mod reqwest;
 pub mod revocation;
 pub mod roots;
+#[cfg(feature = "tokio")]
+pub mod tokio;
 pub mod truststore;
 pub mod tsl;
 pub mod validate;
