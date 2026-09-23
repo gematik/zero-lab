@@ -111,6 +111,33 @@ config.validate(Tier::Prod)?;
 
 Tests in downstream crates use `TrustConfig::for_lab_ca` from the `test-util` feature.
 
+## Signature algorithms
+
+Every signature `ti-pki` checks goes through one trait,
+`rustls_pki_types::SignatureVerificationAlgorithm`, the one rustls and webpki use. A
+verifier is picked by the exact pair of key algorithm and signature algorithm;
+validation code never names a curve. `TrustConfig::algorithms` holds the set.
+
+| Set | Contents | Backend |
+| --- | --- | --- |
+| `algorithms::STANDARD` | ECDSA P-256/SHA-256, P-384/SHA-384 | RustCrypto `p256`, `p384` |
+| `algorithms::brainpool::ALL` (feature `brainpool`, default) | ECDSA brainpoolP256r1/SHA-256, brainpoolP384r1/SHA-384 | RustCrypto `bp256`, `bp384` |
+| `algorithms::DEFAULT` | `STANDARD` plus brainpool when enabled; what the presets use | — |
+
+Brainpool is isolated: its own module behind its own feature, referenced only by
+`DEFAULT`, and `just core-deps` proves the crate without it contains no brainpool
+arithmetic. The TI's anchors are brainpool keys, so the feature is on by default; without
+it, `validate` refuses a brainpool anchor instead of failing later. Other
+implementations — webpki's FIPS-validated aws-lc-rs set, ML-DSA once post-quantum
+certificates appear — plug into the same set without touching the core.
+
+`bp256`/`bp384` gained curve arithmetic only in 0.14 (September 2026) and are not
+audited. Verification handles public data, so timing is irrelevant; correctness is
+covered by the Wycheproof vectors (`ti-pki/tests/wycheproof/`, excluded from the package)
+and by the real TI roots in the unit tests. RSA is not supported: the `rsa` crate has an
+unpatched advisory (RUSTSEC-2023-0071), and the historical RSA roots GEM.RCA2/6/9 are
+then unreachable, as in `gempki` when a cross-certificate check fails.
+
 ## Trust material loading
 
 roots.json and the TSL are loaded, cached and hot-reloaded by `ti_pki::load` (feature

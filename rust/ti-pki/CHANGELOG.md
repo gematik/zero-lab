@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- `algorithms`: signature verification through `rustls_pki_types::SignatureVerificationAlgorithm`;
+  `STANDARD` (ECDSA P-256, P-384), `brainpool` module (brainpoolP256r1, brainpoolP384r1,
+  default feature `brainpool`), `DEFAULT`, `find`. `TrustConfig::algorithms`, checked by
+  `validate` against the anchor's key type. Wycheproof vectors for all four.
 - `load` feature: `Transport`, `CacheStore`, `Clock` and `Loader` traits; `HttpLoader`,
   `CachingLoader`, `StaticLoader` with CBOR `Bundle`, `FallbackLoader`, `FileTransport`
   (`os`); `Reloader` with `TrustStoreHandle`, `ReloadPolicy` (production `hard_expiry`

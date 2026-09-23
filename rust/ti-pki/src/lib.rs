@@ -63,6 +63,12 @@
 //! ([`Tier::Prod`]) from non-production material. Presets for non-production
 //! environments exist only with the `dangerous-nonprod` feature ([`config`]).
 //!
+//! # Signature algorithms
+//!
+//! Signatures are verified through [`rustls_pki_types::SignatureVerificationAlgorithm`]
+//! implementations picked from [`TrustConfig::algorithms`]; [`algorithms`] holds the
+//! built-in sets, with brainpool behind its own (default) feature.
+//!
 //! # Loading
 //!
 //! With the `load` feature, `load` fetches, caches, verifies and hot-reloads roots.json

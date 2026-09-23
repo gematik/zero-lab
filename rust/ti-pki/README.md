@@ -84,12 +84,28 @@ let offline = CachingLoader::new(
 let loader = FallbackLoader::new(offline, bundle);
 ```
 
+## Signature algorithms
+
+Signatures are verified through `rustls_pki_types::SignatureVerificationAlgorithm`
+implementations, chosen by key and signature algorithm. `TrustConfig::algorithms`
+defaults to `ti_pki::algorithms::DEFAULT`: ECDSA on P-256, P-384, and, with the default
+`brainpool` feature, brainpoolP256r1 and brainpoolP384r1. Further implementations of
+the trait (a FIPS-validated set, post-quantum algorithms) can be added to the set:
+
+```rust
+let config = TrustConfig {
+    algorithms: [ti_pki::algorithms::DEFAULT, my_extra_algorithms].concat().into(),
+    ..TrustConfig::preset_prod()
+};
+```
+
 ## Features
 
 | Feature | Effect |
 | --- | --- |
 | `dangerous-nonprod` | Non-production presets, anchors and roots |
 | `test-util` | `TrustConfig::for_lab_ca`, `FixedClock` and `MockTransport` for tests in downstream crates |
+| `brainpool` (default) | ECDSA on brainpoolP256r1 / brainpoolP384r1 in the default algorithm set; the TI's anchors need it |
 | `load` | Loaders, cache, reloader; no HTTP client or executor; builds for wasm32 |
 | `os` | `FileTransport`, `SystemClock`, bundle files |
 | `reqwest` | `ti_pki::reqwest::ReqwestTransport` over a caller-provided client (native and wasm32) |
