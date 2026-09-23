@@ -23,6 +23,8 @@ test-util = []
 load = ["dep:arc-swap", "dep:sha2", "dep:minicbor"]
 # Operating-system facilities: file transport, system clock, bundle files.
 os = ["load"]
+# Transport over a caller-provided reqwest::Client (native and wasm32).
+reqwest = ["load", "dep:reqwest"]
 
 [dependencies]
 ti-types.workspace = true
@@ -35,10 +37,12 @@ thiserror.workspace = true
 arc-swap = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 minicbor = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
 
 [dev-dependencies]
 sha2.workspace = true
 futures-lite.workspace = true
+tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]
 workspace = true

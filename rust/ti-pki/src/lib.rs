@@ -74,6 +74,8 @@ pub mod ocsp;
 pub mod oid;
 pub mod path;
 pub mod profile;
+#[cfg(feature = "reqwest")]
+pub mod reqwest;
 pub mod revocation;
 pub mod roots;
 pub mod truststore;

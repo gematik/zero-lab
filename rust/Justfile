@@ -48,9 +48,9 @@ test:
     cargo nextest run --workspace --all-features
     cargo test --workspace --all-features --doc
 
-# The loading layer builds for the browser
+# The loading layer and the reqwest transport build for the browser
 wasm32:
-    cargo check -p ti-pki --target wasm32-unknown-unknown --features load
+    cargo check -p ti-pki --target wasm32-unknown-unknown --features load,reqwest
 
 # ti-pki's core (everything but the reqwest/tokio adapter features) pulls in no HTTP
 # client, executor or file watcher; cargo-deny bans are workspace-wide, so this is a tree check
