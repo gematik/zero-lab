@@ -16,6 +16,9 @@ allow = [
     "ISC",
     "Unicode-3.0",
 ]
+# minicbor (bundle format) is BlueOak-1.0.0: permissive and OSI approved; allowed for
+# that crate only rather than for the whole graph.
+exceptions = [{ crate = "minicbor", allow = ["BlueOak-1.0.0"] }]
 
 [bans]
 multiple-versions = "warn"

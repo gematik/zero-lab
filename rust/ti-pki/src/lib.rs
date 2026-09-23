@@ -68,6 +68,8 @@ pub mod cert_type;
 pub mod chain;
 pub mod config;
 pub mod error;
+#[cfg(feature = "load")]
+pub mod load;
 pub mod ocsp;
 pub mod oid;
 pub mod path;

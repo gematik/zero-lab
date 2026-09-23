@@ -22,3 +22,13 @@ pub const ROOTS_PROD: &[u8] = include_bytes!("roots-prod.json");
 /// the same file, so one copy serves dev, ref and test.
 #[cfg(feature = "dangerous-nonprod")]
 pub const ROOTS_NONPROD: &[u8] = include_bytes!("roots-nonprod.json");
+
+/// Verifies roots.json against `anchor` with the A_28419 cross-certificate walk and
+/// returns the roots that chain to it.
+#[cfg(feature = "load")]
+pub(crate) fn verify_roots_json(
+    _anchor: &[u8],
+    _roots_json: &[u8],
+) -> Result<Vec<x509_cert::Certificate>, crate::load::VerifyError> {
+    todo!("gempki-port: A_28419 cross-certificate walk from go/gempki/roots.go")
+}

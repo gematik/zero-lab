@@ -29,7 +29,7 @@ tools:
 # ---- Tier 1: every PR --------------------------------------------------------------
 
 # Everything a PR must pass, in the order that fails fastest
-check: fmt clippy doc test features nonprod-absent machete deny
+check: fmt clippy doc test features wasm32 core-deps nonprod-absent machete deny
 
 # Formatting (rustfmt.toml is the source of truth)
 fmt:
@@ -47,6 +47,20 @@ doc:
 test:
     cargo nextest run --workspace --all-features
     cargo test --workspace --all-features --doc
+
+# The loading layer builds for the browser
+wasm32:
+    cargo check -p ti-pki --target wasm32-unknown-unknown --features load
+
+# ti-pki's core (everything but the reqwest/tokio adapter features) pulls in no HTTP
+# client, executor or file watcher; cargo-deny bans are workspace-wide, so this is a tree check
+core-deps:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    found=$(cargo tree -p ti-pki -e normal --prefix none --features load,os,test-util,dangerous-nonprod \
+        | grep -E '^(reqwest|tokio|hyper|notify) ' || true)
+    if [ -n "$found" ]; then echo "ti-pki core depends on: $found" >&2; exit 1; fi
+    echo "ti-pki core is free of HTTP clients, executors and file watchers"
 
 # Without dangerous-nonprod, the compiled ti-pki must contain none of the non-prod trust
 # files. Compares their bytes, not a marker string (the marker legitimately occurs in

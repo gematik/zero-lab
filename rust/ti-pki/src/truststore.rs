@@ -18,3 +18,12 @@ impl TrustStore {
         &self.roots
     }
 }
+
+#[cfg(feature = "load")]
+impl TrustStore {
+    pub(crate) fn from_verified(verified: crate::load::Verified) -> Self {
+        TrustStore {
+            roots: verified.roots,
+        }
+    }
+}
