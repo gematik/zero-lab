@@ -75,6 +75,36 @@ impl TestPki {
     }
 }
 
+/// One roots.json entry for [`roots_json`]: a root and its cross certificates.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct RootsEntry<'a> {
+    pub(crate) cert: &'a Certificate,
+    pub(crate) prev: Option<&'a Certificate>,
+    pub(crate) next: Option<&'a Certificate>,
+}
+
+/// A roots.json in gematik's array form over `entries`.
+pub(crate) fn roots_json(entries: &[RootsEntry<'_>]) -> Vec<u8> {
+    use base64ct::{Base64, Encoding};
+    let items: Vec<serde_json::Value> = entries
+        .iter()
+        .map(|e| {
+            let mut item = serde_json::json!({
+                "cert": Base64::encode_string(e.cert.der()),
+                "cn": e.cert.subject_cn(),
+            });
+            if let Some(prev) = e.prev {
+                item["prev"] = Base64::encode_string(prev.der()).into();
+            }
+            if let Some(next) = e.next {
+                item["next"] = Base64::encode_string(next.der()).into();
+            }
+            item
+        })
+        .collect();
+    serde_json::to_vec(&items).expect("JSON encodes")
+}
+
 #[test]
 fn fixtures_are_consistent() {
     let pki = TestPki::new();
@@ -93,14 +123,7 @@ fn fixtures_are_consistent() {
         (&pki.rca7, &pki.cross_rca7_for_rca1),
         (&pki.rca1, &pki.cross_rca1_not_rca),
     ] {
-        let alg = crate::algorithms::find(
-            algorithms,
-            &issuer.public_key_alg_id(),
-            &subject.signature_alg_id(),
-        )
-        .unwrap();
-        alg.verify_signature(issuer.public_key(), subject.tbs_der(), subject.signature())
-            .unwrap();
+        subject.verify_signed_by(issuer, algorithms).unwrap();
     }
     assert!(pki.ee_arzt.is_valid_at(TestPki::NOW));
     assert!(!pki.ee_expired.is_valid_at(TestPki::NOW));

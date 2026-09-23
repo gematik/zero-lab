@@ -76,6 +76,8 @@ pub struct TrustConfig {
     pub roots: Cow<'static, [u8]>,
     /// Where a fresh roots.json is downloaded from. Must be `https://`.
     pub roots_url: Cow<'static, str>,
+    /// The TSL-Signer-CA the TSL's detached signature must verify against, as DER.
+    pub tsl_anchor: Cow<'static, [u8]>,
     /// Where the TSL is downloaded from. Must be `https://`.
     pub tsl_url: Cow<'static, str>,
     /// How a non-Good revocation outcome affects the verdict.
@@ -100,6 +102,7 @@ impl TrustConfig {
             anchor: anchor.into(),
             roots: Cow::Borrowed(&[]),
             roots_url: Cow::Borrowed(roots::URL_PROD),
+            tsl_anchor: Cow::Borrowed(anchors::GEM_TSL_CA3),
             tsl_url: Cow::Borrowed(tsl::URL_PROD),
             revocation: RevocationMode::HardFail,
             accept_test_only_policies: false,
@@ -127,6 +130,7 @@ impl TrustConfig {
             |anchor: &'static [u8], roots_url: &'static str, tsl_url: &'static str| TrustConfig {
                 roots: Cow::Borrowed(roots::ROOTS_NONPROD),
                 roots_url: Cow::Borrowed(roots_url),
+                tsl_anchor: Cow::Borrowed(anchors::GEM_TSL_CA28_TEST_ONLY),
                 tsl_url: Cow::Borrowed(tsl_url),
                 accept_test_only_policies: true,
                 ..Self::for_anchor(anchor)
@@ -154,30 +158,33 @@ impl TrustConfig {
     ///
     /// # Errors
     ///
-    /// [`Error::Der`] if the anchor is not a DER certificate.
+    /// [`Error::Der`] if the anchor or the TSL anchor is not a DER certificate.
     /// [`Error::InconsistentConfig`] if either URL is not `https://`, if no configured
     /// algorithm handles the anchor's key type (a brainpool anchor without the
     /// `brainpool` feature, say), or, under
-    /// [`Tier::Prod`], if the anchor is a TEST-ONLY root, revocation is not
+    /// [`Tier::Prod`], if either anchor is TEST-ONLY, revocation is not
     /// [`HardFail`](RevocationMode::HardFail), or either relaxation is on.
     pub fn validate(&self, tier: Tier) -> Result<(), Error> {
         let anchor = Certificate::from_der(&self.anchor)?;
+        let tsl_anchor = Certificate::from_der(&self.tsl_anchor)?;
         if !self.roots_url.starts_with("https://") {
             return Err(inconsistent("roots_url must be an https URL"));
         }
         if !self.tsl_url.starts_with("https://") {
             return Err(inconsistent("tsl_url must be an https URL"));
         }
-        let key_alg = anchor
-            .tbs_certificate()
-            .subject_public_key_info()
-            .algorithm
-            .to_der()?;
-        let key_alg = der::asn1::AnyRef::from_der(&key_alg)?;
-        if !algorithms::supports_key(&self.algorithms, key_alg.value()) {
-            return Err(inconsistent(
-                "no configured signature algorithm handles the anchor's key type",
-            ));
+        for cert in [&anchor, &tsl_anchor] {
+            let key_alg = cert
+                .tbs_certificate()
+                .subject_public_key_info()
+                .algorithm
+                .to_der()?;
+            let key_alg = der::asn1::AnyRef::from_der(&key_alg)?;
+            if !algorithms::supports_key(&self.algorithms, key_alg.value()) {
+                return Err(inconsistent(
+                    "no configured signature algorithm handles the anchor's key type",
+                ));
+            }
         }
         match tier {
             Tier::NonProd => Ok(()),
@@ -185,6 +192,10 @@ impl TrustConfig {
                 let subject = anchor.tbs_certificate().subject().to_string();
                 if subject.contains(TEST_ONLY_MARKER) {
                     return Err(inconsistent("TEST-ONLY anchor in production"));
+                }
+                let tsl_subject = tsl_anchor.tbs_certificate().subject().to_string();
+                if tsl_subject.contains(TEST_ONLY_MARKER) {
+                    return Err(inconsistent("TEST-ONLY TSL anchor in production"));
                 }
                 if self.revocation != RevocationMode::HardFail {
                     return Err(inconsistent("production requires HardFail revocation"));
@@ -367,6 +378,22 @@ pub(crate) mod tests {
         }
     }
 
+    #[test]
+    fn test_only_tsl_anchor_is_rejected_in_prod() {
+        assert_eq!(nist_prod_config().tsl_anchor, anchors::GEM_TSL_CA3);
+        #[cfg(feature = "dangerous-nonprod")]
+        {
+            let config = TrustConfig {
+                tsl_anchor: Cow::Borrowed(anchors::GEM_TSL_CA28_TEST_ONLY),
+                ..nist_prod_config()
+            };
+            assert_eq!(
+                reason(config.validate(Tier::Prod)),
+                "TEST-ONLY TSL anchor in production"
+            );
+        }
+    }
+
     #[cfg(feature = "dangerous-nonprod")]
     #[test]
     fn preset_maps_environments_like_gempki() {
@@ -380,7 +407,12 @@ pub(crate) mod tests {
             assert_eq!(config.anchor, anchors::GEM_RCA7_TEST_ONLY, "{env}");
             assert_eq!(config.roots_url, roots::URL_REF, "{env}");
             assert_eq!(config.tsl_url, tsl::URL_REF, "{env}");
+            assert_eq!(config.tsl_anchor, anchors::GEM_TSL_CA28_TEST_ONLY, "{env}");
         }
+        assert_eq!(
+            TrustConfig::preset(Env::Prod).tsl_anchor,
+            anchors::GEM_TSL_CA3
+        );
     }
 
     #[cfg(feature = "test-util")]

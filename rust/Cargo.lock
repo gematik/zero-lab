@@ -1130,6 +1130,7 @@ dependencies = [
  "reqwest",
  "rsa",
  "rustls-pki-types",
+ "serde",
  "serde_json",
  "sha2",
  "thiserror",

@@ -137,6 +137,11 @@ audited. Verification handles public data, so timing is irrelevant; correctness 
 covered by the Wycheproof vectors (`ti-pki/tests/wycheproof/`, excluded from the package)
 and by the real TI roots in the unit tests.
 
+RSA is needed even for an ECC-only deployment: the historical roots GEM.RCA2/6/9 are RSA
+keys, and the A_28419 walk passes through them to reach GEM.RCA3–5 and GEM.RCA10–11.
+Without the `rsa` feature the walk stops at the first RSA root. With it, `ti-pki` builds
+the same ten-root store as `gempki` from the same roots.json.
+
 ## Known compromises
 
 Accepted trade-offs of a long-lived project whose dependencies are still maturing. Each

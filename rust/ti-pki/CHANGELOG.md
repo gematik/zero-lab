@@ -2,8 +2,16 @@
 
 ## [Unreleased]
 
+- gempki port, phase 1 (roots): `TrustStore` (dedup by key identifier, lookup by
+  common name and key identifier), roots.json parsing (both document forms), the
+  A_28419 cross-certificate walk with a per-direction stop report and a loop guard
+  (`roots::walk`, `roots::load`, `roots::verify_cross_signed`),
+  `Certificate::verify_signed_by`, the TSL-Signer-CA anchors (`TrustConfig::tsl_anchor`,
+  GEM.TSL-CA3; GEM.TSL-CA28 TEST-ONLY behind `dangerous-nonprod`). The loading layer's
+  roots verification is real now. `roots` example.
 - `algorithms::rsa` (default feature `rsa`): RSA PKCS#1 v1.5 and PSS with SHA-256/384/512,
-  with Wycheproof vectors.
+  with Wycheproof vectors. The embedded prod roots.json now yields the same ten roots as
+  `gempki`.
 - Tests run on an OpenSSL-generated test PKI (`just test-pki`); the Rust certificate
   builder is gone and `test-util` no longer pulls in `sha2`.
 - gempki port, phase 0 (foundations): `Certificate` (parsed once, original DER kept,

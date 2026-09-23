@@ -21,6 +21,7 @@ use x509_cert::name::Name;
 use x509_cert::spki::SubjectPublicKeyInfoOwned;
 
 use crate::admission::AdmissionStatement;
+use crate::algorithms::{self, AlgorithmSet};
 use crate::time::Timestamp;
 use crate::{Error, oid};
 
@@ -134,7 +135,7 @@ impl Certificate {
     }
 
     /// DER contents (without the outer SEQUENCE) of the signature `AlgorithmIdentifier`,
-    /// the form [`algorithms::find`](crate::algorithms::find) takes.
+    /// the form [`algorithms::find`] takes.
     ///
     /// # Panics
     ///
@@ -156,7 +157,7 @@ impl Certificate {
     }
 
     /// DER contents (without the outer SEQUENCE) of the public key `AlgorithmIdentifier`,
-    /// the form [`algorithms::find`](crate::algorithms::find) takes.
+    /// the form [`algorithms::find`] takes.
     ///
     /// # Panics
     ///
@@ -300,9 +301,71 @@ impl Certificate {
         self.0.policies.contains(policy)
     }
 
+    /// Checks that `issuer`'s key signed this certificate, with an algorithm from
+    /// `algorithms`.
+    ///
+    /// # Errors
+    ///
+    /// [`SignatureError::UnsupportedAlgorithm`] if no algorithm in the set handles the
+    /// issuer's key with this certificate's signature algorithm (an RSA issuer without
+    /// RSA support, say), [`SignatureError::Invalid`] if the signature does not verify.
+    pub fn verify_signed_by(
+        &self,
+        issuer: &Certificate,
+        algorithms: &AlgorithmSet,
+    ) -> Result<(), SignatureError> {
+        let alg = algorithms::find(
+            algorithms,
+            &issuer.public_key_alg_id(),
+            &self.signature_alg_id(),
+        )
+        .ok_or_else(|| SignatureError::UnsupportedAlgorithm {
+            key: crate::key::classify_key(issuer.public_key_info(), Timestamp(0)).1,
+            signature: signature_name(&self.inner().signature_algorithm().oid),
+        })?;
+        alg.verify_signature(issuer.public_key(), self.tbs_der(), self.signature())
+            .map_err(|_| SignatureError::Invalid)
+    }
+
+    /// Whether the certificate is self-signed: issuer equals subject and its own key
+    /// verifies its signature.
+    pub fn is_self_signed(&self, algorithms: &AlgorithmSet) -> bool {
+        self.issuer_der() == self.subject_der() && self.verify_signed_by(self, algorithms).is_ok()
+    }
+
     /// Whether the certificate has a certificate policies extension at all.
     pub fn has_policies_extension(&self) -> bool {
         self.has_extension(&ID_CE_CERTIFICATE_POLICIES)
+    }
+}
+
+/// Why [`Certificate::verify_signed_by`] failed.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum SignatureError {
+    /// No configured algorithm handles this key and signature algorithm.
+    #[error(
+        "no configured algorithm verifies a {signature} signature by an issuer key of type {key}"
+    )]
+    UnsupportedAlgorithm {
+        /// The issuer key, e.g. `RSA 2048`.
+        key: String,
+        /// The signature algorithm, e.g. `sha256WithRSAEncryption`.
+        signature: String,
+    },
+    /// The signature does not verify.
+    #[error("signature does not verify")]
+    Invalid,
+}
+
+fn signature_name(oid: &ObjectIdentifier) -> String {
+    match oid.to_string().as_str() {
+        "1.2.840.10045.4.3.2" => "ecdsa-with-SHA256".into(),
+        "1.2.840.10045.4.3.3" => "ecdsa-with-SHA384".into(),
+        "1.2.840.113549.1.1.11" => "sha256WithRSAEncryption".into(),
+        "1.2.840.113549.1.1.12" => "sha384WithRSAEncryption".into(),
+        "1.2.840.113549.1.1.10" => "RSASSA-PSS".into(),
+        other => other.to_owned(),
     }
 }
 
@@ -404,15 +467,9 @@ pub(crate) mod tests {
     }
 
     fn verify(issuer: &Certificate, subject: &Certificate) -> bool {
-        algorithms::find(
-            algorithms::DEFAULT,
-            &issuer.public_key_alg_id(),
-            &subject.signature_alg_id(),
-        )
-        .is_some_and(|alg| {
-            alg.verify_signature(issuer.public_key(), subject.tbs_der(), subject.signature())
-                .is_ok()
-        })
+        subject
+            .verify_signed_by(issuer, algorithms::DEFAULT)
+            .is_ok()
     }
 
     #[test]
@@ -469,6 +526,20 @@ pub(crate) mod tests {
         let pki = crate::testing::TestPki::new();
         assert!(verify(&pki.rca_rsa, &pki.rca_rsa));
         assert!(verify(&pki.rca_rsa, &pki.ee_rsa_pss));
+    }
+
+    #[test]
+    fn rsa_issuer_needs_an_rsa_algorithm() {
+        let rca2 = fixture(RCA2_RSA);
+        assert_eq!(
+            rca2.verify_signed_by(&rca2, algorithms::STANDARD),
+            Err(SignatureError::UnsupportedAlgorithm {
+                key: "RSA 2048".into(),
+                signature: "sha256WithRSAEncryption".into(),
+            })
+        );
+        #[cfg(feature = "rsa")]
+        assert_eq!(rca2.verify_signed_by(&rca2, algorithms::DEFAULT), Ok(()));
     }
 
     #[test]

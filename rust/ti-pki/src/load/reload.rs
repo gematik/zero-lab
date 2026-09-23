@@ -383,7 +383,7 @@ where
             self.handle.attempts().succeeded = true;
             return ReloadOutcome::Unchanged;
         }
-        match (self.verify)(&self.config, &material) {
+        match (self.verify)(&self.config, &material, now) {
             Ok(verified) => self.swap(&material, verified),
             Err(error) => self.fail(now, error.into()),
         }
@@ -517,7 +517,11 @@ mod tests {
 
     /// Accepts anything except roots `tampered`; a TSL body that is a number is its
     /// `NextUpdate`.
-    fn test_verify(_: &TrustConfig, m: &TrustMaterial) -> Result<Verified, VerifyError> {
+    fn test_verify(
+        _: &TrustConfig,
+        m: &TrustMaterial,
+        _: Timestamp,
+    ) -> Result<Verified, VerifyError> {
         if m.roots == b"tampered" {
             return Err(VerifyError {
                 reason: "roots do not chain to the anchor".into(),

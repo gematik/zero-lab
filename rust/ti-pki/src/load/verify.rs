@@ -1,13 +1,11 @@
-//! The bridge from loaded bytes to verified trust material. The two checks it calls,
-//! the A_28419 roots walk and the TSL signature, are not ported from `go/gempki` yet;
-//! until they are, [`verify_material`] panics, and the loading layer's tests inject
-//! their own verifier.
-
-use x509_cert::Certificate;
+//! The bridge from loaded bytes to verified trust material: the A_28419 roots walk
+//! from the configured anchor, and the TSL signature. The TSL check is not ported from
+//! `go/gempki` yet; until it is, [`verify_material`] panics, and the loading layer's
+//! tests inject their own verifier.
 
 use super::artifact::TrustMaterial;
-use crate::TrustConfig;
 use crate::time::Timestamp;
+use crate::{Certificate, TrustConfig};
 
 /// Loaded material that passed verification.
 #[derive(Clone, Debug)]
@@ -26,13 +24,16 @@ pub struct VerifyError {
     pub reason: String,
 }
 
-pub(crate) type VerifyFn = fn(&TrustConfig, &TrustMaterial) -> Result<Verified, VerifyError>;
+pub(crate) type VerifyFn =
+    fn(&TrustConfig, &TrustMaterial, Timestamp) -> Result<Verified, VerifyError>;
 
 pub(crate) fn verify_material(
     config: &TrustConfig,
     material: &TrustMaterial,
+    now: Timestamp,
 ) -> Result<Verified, VerifyError> {
-    let roots = crate::roots::verify_roots_json(&config.anchor, &material.roots)?;
+    let roots =
+        crate::roots::verify_roots_json(&config.anchor, &material.roots, now, &config.algorithms)?;
     let tsl = crate::tsl::verify_tsl(&material.tsl)?;
     Ok(Verified {
         roots,
@@ -56,6 +57,6 @@ mod tests {
             source: super::super::Source::Embedded,
         };
         let material = TrustMaterial::new(config.roots.to_vec(), meta.clone(), Vec::new(), meta);
-        verify_material(&config, &material).unwrap();
+        verify_material(&config, &material, Timestamp(0)).unwrap();
     }
 }

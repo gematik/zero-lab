@@ -43,6 +43,9 @@ x509-cert.workspace = true
 const-oid.workspace = true
 pem-rfc7468.workspace = true
 thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+base64ct.workspace = true
 rustls-pki-types.workspace = true
 ecdsa.workspace = true
 p256.workspace = true
@@ -61,8 +64,6 @@ tracing = { workspace = true, optional = true }
 [dev-dependencies]
 sha2.workspace = true
 futures-lite.workspace = true
-serde_json.workspace = true
-base64ct.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]

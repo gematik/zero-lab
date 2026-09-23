@@ -241,7 +241,7 @@ mod tests {
         clippy::unnecessary_wraps,
         reason = "must match the verifier signature"
     )]
-    fn accept(_: &TrustConfig, _: &TrustMaterial) -> Result<Verified, VerifyError> {
+    fn accept(_: &TrustConfig, _: &TrustMaterial, _: Timestamp) -> Result<Verified, VerifyError> {
         Ok(Verified {
             roots: Vec::new(),
             tsl_next_update: None,
