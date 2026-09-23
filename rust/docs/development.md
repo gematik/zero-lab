@@ -122,7 +122,8 @@ validation code never names a curve. `TrustConfig::algorithms` holds the set.
 | --- | --- | --- |
 | `algorithms::STANDARD` | ECDSA P-256/SHA-256, P-384/SHA-384 | RustCrypto `p256`, `p384` |
 | `algorithms::brainpool::ALL` (feature `brainpool`, default) | ECDSA brainpoolP256r1/SHA-256, brainpoolP384r1/SHA-384 | RustCrypto `bp256`, `bp384` |
-| `algorithms::DEFAULT` | `STANDARD` plus brainpool when enabled; what the presets use | — |
+| `algorithms::rsa::ALL` (feature `rsa`, default) | RSA PKCS#1 v1.5 and PSS with SHA-256/384/512 | RustCrypto `rsa` |
+| `algorithms::DEFAULT` | `STANDARD` plus brainpool and RSA when enabled; what the presets use | — |
 
 Brainpool is isolated: its own module behind its own feature, referenced only by
 `DEFAULT`, and `just core-deps` proves the crate without it contains no brainpool
@@ -134,9 +135,18 @@ certificates appear — plug into the same set without touching the core.
 `bp256`/`bp384` gained curve arithmetic only in 0.14 (September 2026) and are not
 audited. Verification handles public data, so timing is irrelevant; correctness is
 covered by the Wycheproof vectors (`ti-pki/tests/wycheproof/`, excluded from the package)
-and by the real TI roots in the unit tests. RSA is not supported: the `rsa` crate has an
-unpatched advisory (RUSTSEC-2023-0071), and the historical RSA roots GEM.RCA2/6/9 are
-then unreachable, as in `gempki` when a cross-certificate check fails.
+and by the real TI roots in the unit tests.
+
+## Known compromises
+
+Accepted trade-offs of a long-lived project whose dependencies are still maturing. Each
+names the trigger for removing it.
+
+| Compromise | Why | Remove when |
+| --- | --- | --- |
+| `rsa = "=0.10.0-rc.18"`, a release candidate | the only `rsa` line on the current RustCrypto stack (`crypto-bigint` 0.7, `sha2` 0.11); 0.9 would pull in a second, older stack | `rsa` 0.10 is released: switch to `"0.10"` |
+| RUSTSEC-2023-0071 ignored (`deny.toml`, `.cargo/audit.toml`) | the Marvin attack targets RSA private-key operations; `ti-pki` only verifies, on public data | a patched `rsa` is released |
+| `minicbor` licence BlueOak-1.0.0 allowed for that crate only | permissive, OSI-approved; the lightest CBOR codec for the offline bundle | never, unless the licence policy changes |
 
 ## Trust material loading
 

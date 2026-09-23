@@ -107,6 +107,10 @@ criteria = "safe-to-deploy"
 version = "0.2.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.crypto-primes]]
+version = "0.7.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.ctutils]]
 version = "0.4.2"
 criteria = "safe-to-deploy"
@@ -299,6 +303,14 @@ criteria = "safe-to-deploy"
 version = "0.2.17"
 criteria = "safe-to-deploy"
 
+[[exemptions.pkcs1]]
+version = "0.8.0-rc.4"
+criteria = "safe-to-deploy"
+
+[[exemptions.pkcs8]]
+version = "0.11.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.potential_utf]]
 version = "0.1.6"
 criteria = "safe-to-deploy"
@@ -325,6 +337,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.rfc6979]]
 version = "0.6.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.rsa]]
+version = "0.10.0-rc.18"
 criteria = "safe-to-deploy"
 
 [[exemptions.rustls-pki-types]]
@@ -354,6 +370,10 @@ criteria = "safe-to-deploy"
 [[exemptions.serde_json]]
 version = "1.0.151"
 criteria = "safe-to-run"
+
+[[exemptions.serdect]]
+version = "0.4.3"
+criteria = "safe-to-deploy"
 
 [[exemptions.sha2]]
 version = "0.11.0"

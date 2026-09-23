@@ -11,26 +11,28 @@
 //! - [`brainpool`] (feature `brainpool`, on by default): ECDSA on brainpoolP256r1 /
 //!   SHA-256 and brainpoolP384r1 / SHA-384 (RustCrypto `bp256`/`bp384`). The TI's
 //!   anchors are brainpool keys.
-//! - [`DEFAULT`]: what the presets use; `STANDARD` plus brainpool when enabled.
+//! - [`rsa`] (feature `rsa`, on by default): RSA PKCS#1 v1.5 and PSS with SHA-256,
+//!   SHA-384 and SHA-512 (RustCrypto `rsa`). The historical roots GEM.RCA2/6/9 are RSA
+//!   keys, so the cross-certificate walk needs it to reach the roots behind them.
+//! - [`DEFAULT`]: what the presets use; `STANDARD` plus brainpool and RSA when enabled.
 //!
-//! Anything else — FIPS-validated implementations such as webpki's aws-lc-rs set, RSA,
+//! Anything else — FIPS-validated implementations such as webpki's aws-lc-rs set,
 //! ML-DSA later — plugs in the same way, as further implementations of the trait in the
 //! configuration's set. The implementations here are pure Rust and build for wasm32.
 //!
-//! RSA is deliberately absent: the `rsa` crate carries an unpatched advisory
-//! (RUSTSEC-2023-0071). The historical RSA roots (GEM.RCA2/6/9) are then simply not
-//! reachable, as in `gempki` when a cross-certificate check fails.
 
 use rustls_pki_types::{AlgorithmIdentifier, InvalidSignature, SignatureVerificationAlgorithm};
 
 #[cfg(feature = "brainpool")]
 pub mod brainpool;
+#[cfg(feature = "rsa")]
+pub mod rsa;
 
 /// A set of algorithms, in the form [`TrustConfig::algorithms`](crate::TrustConfig::algorithms) holds.
 pub type AlgorithmSet = [&'static dyn SignatureVerificationAlgorithm];
 
 /// ECDSA on NIST P-256 with SHA-256.
-pub static ECDSA_P256_SHA256: &dyn SignatureVerificationAlgorithm = &Ecdsa {
+pub static ECDSA_P256_SHA256: &dyn SignatureVerificationAlgorithm = &Builtin {
     name: "ECDSA P-256 SHA-256",
     public_key_alg_id: rustls_pki_types::alg_id::ECDSA_P256,
     signature_alg_id: rustls_pki_types::alg_id::ECDSA_SHA256,
@@ -38,7 +40,7 @@ pub static ECDSA_P256_SHA256: &dyn SignatureVerificationAlgorithm = &Ecdsa {
 };
 
 /// ECDSA on NIST P-384 with SHA-384.
-pub static ECDSA_P384_SHA384: &dyn SignatureVerificationAlgorithm = &Ecdsa {
+pub static ECDSA_P384_SHA384: &dyn SignatureVerificationAlgorithm = &Builtin {
     name: "ECDSA P-384 SHA-384",
     public_key_alg_id: rustls_pki_types::alg_id::ECDSA_P384,
     signature_alg_id: rustls_pki_types::alg_id::ECDSA_SHA384,
@@ -48,8 +50,24 @@ pub static ECDSA_P384_SHA384: &dyn SignatureVerificationAlgorithm = &Ecdsa {
 /// The NIST curves.
 pub static STANDARD: &AlgorithmSet = &[ECDSA_P256_SHA256, ECDSA_P384_SHA384];
 
-/// The presets' set: [`STANDARD`] and, with the `brainpool` feature, [`brainpool::ALL`].
-#[cfg(feature = "brainpool")]
+/// The presets' set: [`STANDARD`], plus [`brainpool::ALL`] and [`rsa::ALL`] with their
+/// (default) features.
+#[cfg(all(feature = "brainpool", feature = "rsa"))]
+pub static DEFAULT: &AlgorithmSet = &[
+    ECDSA_P256_SHA256,
+    ECDSA_P384_SHA384,
+    brainpool::ECDSA_BP256R1_SHA256,
+    brainpool::ECDSA_BP384R1_SHA384,
+    rsa::RSA_PKCS1_SHA256,
+    rsa::RSA_PKCS1_SHA384,
+    rsa::RSA_PKCS1_SHA512,
+    rsa::RSA_PSS_SHA256,
+    rsa::RSA_PSS_SHA384,
+    rsa::RSA_PSS_SHA512,
+];
+
+/// The presets' set: [`STANDARD`] plus [`brainpool::ALL`].
+#[cfg(all(feature = "brainpool", not(feature = "rsa")))]
 pub static DEFAULT: &AlgorithmSet = &[
     ECDSA_P256_SHA256,
     ECDSA_P384_SHA384,
@@ -57,8 +75,21 @@ pub static DEFAULT: &AlgorithmSet = &[
     brainpool::ECDSA_BP384R1_SHA384,
 ];
 
-/// The presets' set: [`STANDARD`] and, with the `brainpool` feature, `brainpool::ALL`.
-#[cfg(not(feature = "brainpool"))]
+/// The presets' set: [`STANDARD`] plus [`rsa::ALL`].
+#[cfg(all(not(feature = "brainpool"), feature = "rsa"))]
+pub static DEFAULT: &AlgorithmSet = &[
+    ECDSA_P256_SHA256,
+    ECDSA_P384_SHA384,
+    rsa::RSA_PKCS1_SHA256,
+    rsa::RSA_PKCS1_SHA384,
+    rsa::RSA_PKCS1_SHA512,
+    rsa::RSA_PSS_SHA256,
+    rsa::RSA_PSS_SHA384,
+    rsa::RSA_PSS_SHA512,
+];
+
+/// The presets' set: [`STANDARD`] only.
+#[cfg(not(any(feature = "brainpool", feature = "rsa")))]
 pub static DEFAULT: &AlgorithmSet = STANDARD;
 
 /// The algorithm in `set` for a key with `public_key_alg_id` and a signature with
@@ -84,21 +115,22 @@ pub fn supports_key(set: &AlgorithmSet, public_key_alg_id: &[u8]) -> bool {
 /// `verify_signature` of one curve and hash: (public key, message, signature).
 pub(crate) type VerifyFn = fn(&[u8], &[u8], &[u8]) -> Result<(), InvalidSignature>;
 
-/// ECDSA over one curve and hash; the curve arithmetic comes from a RustCrypto crate.
-pub(crate) struct Ecdsa {
+/// One built-in algorithm: fixed identifiers and a verify function over a RustCrypto
+/// backend.
+pub(crate) struct Builtin {
     pub(crate) name: &'static str,
     pub(crate) public_key_alg_id: AlgorithmIdentifier,
     pub(crate) signature_alg_id: AlgorithmIdentifier,
     pub(crate) verify: VerifyFn,
 }
 
-impl core::fmt::Debug for Ecdsa {
+impl core::fmt::Debug for Builtin {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(self.name)
     }
 }
 
-impl SignatureVerificationAlgorithm for Ecdsa {
+impl SignatureVerificationAlgorithm for Builtin {
     fn verify_signature(
         &self,
         public_key: &[u8],

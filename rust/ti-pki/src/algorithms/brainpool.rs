@@ -7,7 +7,7 @@
 
 use rustls_pki_types::{AlgorithmIdentifier, SignatureVerificationAlgorithm, alg_id};
 
-use super::{Ecdsa, ecdsa_verify_fn};
+use super::{Builtin, ecdsa_verify_fn};
 
 /// `id-ecPublicKey` with `brainpoolP256r1` (1.3.36.3.3.2.8.1.1.7), as the DER contents of
 /// the `AlgorithmIdentifier`.
@@ -24,7 +24,7 @@ pub const BRAINPOOL_P384R1: AlgorithmIdentifier = AlgorithmIdentifier::from_slic
 ]);
 
 /// ECDSA on brainpoolP256r1 with SHA-256; what the TI roots and CAs sign with.
-pub static ECDSA_BP256R1_SHA256: &dyn SignatureVerificationAlgorithm = &Ecdsa {
+pub static ECDSA_BP256R1_SHA256: &dyn SignatureVerificationAlgorithm = &Builtin {
     name: "ECDSA brainpoolP256r1 SHA-256",
     public_key_alg_id: BRAINPOOL_P256R1,
     signature_alg_id: alg_id::ECDSA_SHA256,
@@ -32,7 +32,7 @@ pub static ECDSA_BP256R1_SHA256: &dyn SignatureVerificationAlgorithm = &Ecdsa {
 };
 
 /// ECDSA on brainpoolP384r1 with SHA-384.
-pub static ECDSA_BP384R1_SHA384: &dyn SignatureVerificationAlgorithm = &Ecdsa {
+pub static ECDSA_BP384R1_SHA384: &dyn SignatureVerificationAlgorithm = &Builtin {
     name: "ECDSA brainpoolP384r1 SHA-384",
     public_key_alg_id: BRAINPOOL_P384R1,
     signature_alg_id: alg_id::ECDSA_SHA384,

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- `algorithms::rsa` (default feature `rsa`): RSA PKCS#1 v1.5 and PSS with SHA-256/384/512,
+  with Wycheproof vectors.
 - gempki port, phase 0 (foundations): `Certificate` (parsed once, original DER kept,
   extensions decoded), `parse_pem_certificates`, admission statement, `key::classify_key`
   (gemSpec_Krypt tiers), the full gemSpec_OID tables with names (`oid::lookup`,

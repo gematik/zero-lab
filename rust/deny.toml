@@ -4,6 +4,10 @@ all-features = true
 [advisories]
 version = 2
 yanked = "deny"
+# Marvin timing attack on RSA private-key operations, unpatched in every rsa release.
+# ti-pki only verifies signatures (public data); see docs/development.md, "Known
+# compromises". Remove once a patched rsa is released.
+ignore = [{ id = "RUSTSEC-2023-0071", reason = "verification only, no private-key operations" }]
 
 [licenses]
 version = 2

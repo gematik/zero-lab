@@ -16,9 +16,11 @@ exclude = ["tests/"]
 [features]
 # The TI's anchors are brainpool keys, so the TI path needs it; turn default features
 # off to build without it.
-default = ["brainpool"]
+default = ["brainpool", "rsa"]
 # ECDSA on brainpoolP256r1 / brainpoolP384r1, added to the default algorithm set.
 brainpool = ["dep:bp256", "dep:bp384"]
+# RSA PKCS#1 v1.5 and PSS in the default algorithm set; the TI's historical roots are RSA.
+rsa = ["dep:rsa", "dep:sha2", "dep:digest"]
 # Presets carrying TEST-ONLY anchors and relaxed policies. A production binary is built
 # without this feature and therefore contains no non-prod trust material.
 dangerous-nonprod = []
@@ -47,6 +49,8 @@ p256.workspace = true
 p384.workspace = true
 bp256 = { workspace = true, optional = true }
 bp384 = { workspace = true, optional = true }
+rsa = { workspace = true, optional = true }
+digest = { workspace = true, optional = true }
 arc-swap = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 minicbor = { workspace = true, optional = true }

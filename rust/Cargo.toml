@@ -36,6 +36,9 @@ p256 = { version = "0.14.0", default-features = false, features = ["ecdsa"] }
 p384 = { version = "0.14.0", default-features = false, features = ["ecdsa"] }
 bp256 = { version = "0.14.0", default-features = false, features = ["arithmetic", "ecdsa", "sha256"] }
 bp384 = { version = "0.14.0", default-features = false, features = ["arithmetic", "ecdsa", "sha384"] }
+# Release candidate: the only rsa line on the current RustCrypto stack (docs/development.md).
+rsa = { version = "=0.10.0-rc.18", default-features = false, features = ["encoding", "sha2"] }
+digest = "0.11"
 # Adapters behind ti-pki features; the caller's own reqwest dependency brings TLS.
 reqwest = { version = "0.13.5", default-features = false }
 tokio = { version = "1.53.1", default-features = false }

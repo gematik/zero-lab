@@ -1,0 +1,4 @@
+# Same exception as in deny.toml: RUSTSEC-2023-0071 (Marvin) concerns RSA private-key
+# operations; ti-pki only verifies. See docs/development.md, "Known compromises".
+[advisories]
+ignore = ["RUSTSEC-2023-0071"]
