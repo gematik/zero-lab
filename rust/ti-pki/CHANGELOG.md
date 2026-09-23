@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- gempki port, phase 4 (OCSP): `ocsp::request` (SHA-1 CertID, as TI responders
+  require), `ocsp::verify_response` (CertID binding, RFC 6960 responder authorization,
+  certHash, the TUC_PKI_006 time window) and `ocsp::OcspChecker` (feature `load`);
+  `revocation::{RevocationChecker, RevocationResult, RevocationStatus, apply_revocation}`
+  with `gempki`'s revocation table; `load::Transport::post` with `PostRequest`, for
+  reqwest, files and the mock. The OCSP ASN.1 types are the crate's own. `sha2` is no
+  longer optional; `sha1` is new. OpenSSL-generated OCSP fixtures. `ocsp` example.
 - gempki port, phase 3 (TSL): `tsl::Tsl::parse` (quick-xml and serde; sequence number,
   issue and next-update times, every service with its certificate, status and supply
   points), `Tsl::intermediate_cas`, `tsl::match_to_roots` (keeps a CA only if a root

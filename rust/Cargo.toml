@@ -29,6 +29,8 @@ clap = { version = "4.6.7", default-features = false, features = ["derive"] }
 arc-swap = "1.9.2"
 minicbor = { version = "2.3.0", default-features = false, features = ["alloc"] }
 sha2 = "0.11"
+# OCSP CertIDs only: TI responders expect SHA-1 there (RFC 5019); never for integrity.
+sha1 = { version = "0.11", default-features = false }
 # Signature verification: one trait (pki-types), RustCrypto implementations behind it.
 rustls-pki-types = { version = "1.15.1", default-features = false }
 ecdsa = { version = "0.17.0", default-features = false, features = ["der", "algorithm"] }

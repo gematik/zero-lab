@@ -153,6 +153,8 @@ names the trigger for removing it.
 | RUSTSEC-2023-0071 ignored (`deny.toml`, `.cargo/audit.toml`) | the Marvin attack targets RSA private-key operations; `ti-pki` only verifies, on public data | a patched `rsa` is released |
 | The TSL is not authenticated: neither its inline XMLDSig nor the detached `.sig` is checked | the TSL is only a source of candidate intermediates, and a candidate is kept only if a root from the A_28419 walk signed it, so a forged TSL can withhold CAs but not add one. XMLDSig needs exclusive C14N, which no maintained Rust crate provides, and the detached signature exists for production only | never, unless the TSL becomes a trust source (e.g. for its per-CA type lists) |
 | The TSL's per-CA metadata is unused: allowed certificate types (SE_1061), and OCSP responders the TSL lists | both would need an authenticated TSL. A certificate's type is checked by its own policies; a CA's standing by OCSP at its root; a responder must be authorised under RFC 6960 (the CA itself or a delegate it certified with id-kp-OCSPSigning) | same as above |
+| OCSP responders are authorized by RFC 6960 alone: the issuing CA or a delegate it certified with id-kp-OCSPSigning | the TSL, which lists the responders gemSpec_PKI authorizes, is not authenticated. TI responders that sign with a delegate of another CA are rejected as untrusted: gematik's test SMC-B responder (ehca, a GEM.KOMP-CA51 delegate answering for GEM.SMCB-CA51) and the D-Trust responders under GEM.OCSP-CA1/3 | the TSL is authenticated, or gematik aligns responder issuance with RFC 6960 |
+| OCSP CertIDs use SHA-1 (`sha1` crate) | TI responders reject SHA-256 CertIDs as malformed (RFC 5019 profile). SHA-1 only names the certificate there; integrity rests on the response signature and the SHA-256 certHash | TI responders accept SHA-256 CertIDs |
 | `minicbor` licence BlueOak-1.0.0 allowed for that crate only | permissive, OSI-approved; the lightest CBOR codec for the offline bundle | never, unless the licence policy changes |
 
 ## Test PKI
@@ -176,6 +178,21 @@ Known compromises. The production list of September 2026 lists 90 CAs, of which 
 kept; the six others are self-signed legacy eGK CAs and two expired SMC-B CAs under the
 retired GEM.RCA1. The `tsl` example prints this for any environment, and `chain --tsl`
 builds chains from it.
+
+## OCSP
+
+`ti_pki::ocsp` builds requests and verifies responses in the core; `OcspChecker` (feature
+`load`) posts them through the same `Transport` that fetches roots.json and the TSL.
+The RFC 6960 structures are the crate's own `der` derives rather than `x509-ocsp`, whose
+0.2 release sits on the previous RustCrypto stack: the signature must be checked over
+the received bytes anyway, and the dozen structures are smaller than the glue between
+two `der` versions. A response is accepted only with a matching CertID, an authorized
+responder, a certHash over the certificate and within the TUC_PKI_006 window (37.5 s);
+`revocation::apply_revocation` holds `gempki`'s table of what each outcome means under
+HardFail and SoftFail. The test PKI script produces fixed-time responses (good, revoked,
+unknown and the failure cases) signed by OpenSSL, and `tests/fixtures` holds two live
+answers of the reference root responder. The `ocsp` example checks every link of a
+chain live, the end entity at its CA and each CA at its root.
 
 ## Trust material loading
 

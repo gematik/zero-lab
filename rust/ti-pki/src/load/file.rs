@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use super::artifact::{
     Artifact, ArtifactRequest, ArtifactResponse, ResponseMeta, Source, content_etag,
 };
-use super::transport::{Transport, TransportError, TransportErrorKind};
+use super::transport::{PostRequest, Transport, TransportError, TransportErrorKind};
 
 /// Reads each artefact from a configured path. The entity tag is the SHA-256 of the
 /// contents, so rewriting a file with identical bytes answers "not modified".
@@ -64,6 +64,14 @@ impl Transport for FileTransport {
             return Ok(ArtifactResponse::NotModified { meta });
         }
         Ok(ArtifactResponse::Fresh { body, meta })
+    }
+
+    async fn post(&self, req: &PostRequest<'_>) -> Result<Vec<u8>, TransportError> {
+        Err(TransportError {
+            kind: TransportErrorKind::Other,
+            message: format!("files cannot answer a POST to {}", req.url),
+            retryable: false,
+        })
     }
 }
 

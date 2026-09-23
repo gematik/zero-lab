@@ -80,5 +80,5 @@ pub use reload::{
 pub use static_::{Bundle, StaticLoader};
 #[cfg(any(test, feature = "test-util"))]
 pub use transport::{MockRequest, MockTransport};
-pub use transport::{Transport, TransportError, TransportErrorKind};
+pub use transport::{PostRequest, Transport, TransportError, TransportErrorKind};
 pub use verify::{Verified, VerifyError};

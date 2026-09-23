@@ -112,7 +112,7 @@ pub use checks::CertificateCheck;
 pub use config::TrustConfig;
 pub use error::{Error, ErrorCode, ValidationError, ValidationWarning};
 pub use path::{PathOptions, validate_path};
-pub use revocation::RevocationMode;
+pub use revocation::{RevocationChecker, RevocationMode, RevocationResult, RevocationStatus};
 pub use ti_types::{Env, Tier};
 pub use time::{Clock, Timestamp};
 pub use truststore::TrustStore;
