@@ -42,6 +42,10 @@ pub(crate) struct TestPki {
     pub(crate) ee_rogue: Certificate,
     pub(crate) rca_rsa: Certificate,
     pub(crate) ee_rsa_pss: Certificate,
+    pub(crate) sub_ca_pathlen0: Certificate,
+    pub(crate) sub_sub_ca: Certificate,
+    pub(crate) ee_deep: Certificate,
+    pub(crate) ee_under_ee: Certificate,
 }
 
 impl TestPki {
@@ -71,7 +75,56 @@ impl TestPki {
             ee_rogue: fixture!("ee-rogue"),
             rca_rsa: fixture!("rca-rsa"),
             ee_rsa_pss: fixture!("ee-rsa-pss"),
+            sub_ca_pathlen0: fixture!("sub-ca-pathlen0"),
+            sub_sub_ca: fixture!("sub-sub-ca"),
+            ee_deep: fixture!("ee-deep"),
+            ee_under_ee: fixture!("ee-under-ee"),
         }
+    }
+}
+
+/// A certificate-type fixture from `tests/pki/types`, by file name without `.pem`.
+pub(crate) fn typed(name: &str) -> Certificate {
+    match name {
+        "fallback-ch-aut-undecidable" => fixture!("types/fallback-ch-aut-undecidable"),
+        "fallback-ch-enc-undecidable" => fixture!("types/fallback-ch-enc-undecidable"),
+        "fallback-ch-qes" => fixture!("types/fallback-ch-qes"),
+        "fallback-hci-aut-krankenhaus" => fixture!("types/fallback-hci-aut-krankenhaus"),
+        "fallback-hci-enc-apotheke" => fixture!("types/fallback-hci-enc-apotheke"),
+        "fallback-hci-osig-praxis" => fixture!("types/fallback-hci-osig-praxis"),
+        "fallback-hp-aut-apotheker" => fixture!("types/fallback-hp-aut-apotheker"),
+        "fallback-hp-enc-zahnarzt" => fixture!("types/fallback-hp-enc-zahnarzt"),
+        "fallback-hp-qes-arzt" => fixture!("types/fallback-hp-qes-arzt"),
+        "none-umbrella-only" => fixture!("types/none-umbrella-only"),
+        "none-unrelated-admission" => fixture!("types/none-unrelated-admission"),
+        "role-hci-aut-kim-anbieter" => fixture!("types/role-hci-aut-kim-anbieter"),
+        "role-hci-aut-kostentraeger" => fixture!("types/role-hci-aut-kostentraeger"),
+        "role-hp-qes-hebamme" => fixture!("types/role-hp-qes-hebamme"),
+        "role-hp-qes-notfallsanitaeter" => fixture!("types/role-hp-qes-notfallsanitaeter"),
+        "type-ch-aut" => fixture!("types/type-ch-aut"),
+        "type-ch-autn" => fixture!("types/type-ch-autn"),
+        "type-ch-enc" => fixture!("types/type-ch-enc"),
+        "type-ch-encv" => fixture!("types/type-ch-encv"),
+        "type-ch-qes" => fixture!("types/type-ch-qes"),
+        "type-ch-sig" => fixture!("types/type-ch-sig"),
+        "type-fd-aut" => fixture!("types/type-fd-aut"),
+        "type-fd-enc" => fixture!("types/type-fd-enc"),
+        "type-fd-osig" => fixture!("types/type-fd-osig"),
+        "type-fd-sig" => fixture!("types/type-fd-sig"),
+        "type-fd-tls-c" => fixture!("types/type-fd-tls-c"),
+        "type-fd-tls-s" => fixture!("types/type-fd-tls-s"),
+        "type-gem-ver" => fixture!("types/type-gem-ver"),
+        "type-hci-aut" => fixture!("types/type-hci-aut"),
+        "type-hci-enc" => fixture!("types/type-hci-enc"),
+        "type-hci-osig" => fixture!("types/type-hci-osig"),
+        "type-hp-aut" => fixture!("types/type-hp-aut"),
+        "type-hp-enc" => fixture!("types/type-hp-enc"),
+        "type-hp-qes" => fixture!("types/type-hp-qes"),
+        "type-hsk-enc" => fixture!("types/type-hsk-enc"),
+        "type-hsk-sig" => fixture!("types/type-hsk-sig"),
+        "type-zd-sig" => fixture!("types/type-zd-sig"),
+        "type-zd-tls-s" => fixture!("types/type-zd-tls-s"),
+        other => panic!("no type fixture {other}"),
     }
 }
 
@@ -122,6 +175,11 @@ fn fixtures_are_consistent() {
         (&pki.sub_ca_expired, &pki.ee_under_expired),
         (&pki.rca7, &pki.cross_rca7_for_rca1),
         (&pki.rca1, &pki.cross_rca1_not_rca),
+        (&pki.rca1, &pki.sub_ca_pathlen0),
+        (&pki.sub_ca_pathlen0, &pki.sub_sub_ca),
+        (&pki.sub_sub_ca, &pki.ee_deep),
+        (&pki.ee_arzt, &pki.ee_under_ee),
+        (&pki.sub_ca_komp, &typed("type-hci-aut")),
     ] {
         subject.verify_signed_by(issuer, algorithms).unwrap();
     }

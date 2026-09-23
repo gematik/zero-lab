@@ -75,6 +75,12 @@ impl ValidationResult {
         self.errors.iter().any(|e| e.code == code)
     }
 
+    /// Records `error` and marks the result invalid.
+    pub fn add_error(&mut self, error: ValidationError) {
+        self.errors.push(error);
+        self.valid = false;
+    }
+
     /// Whether any warning carries `code`.
     pub fn has_warning(&self, code: ErrorCode) -> bool {
         self.warnings.iter().any(|w| w.code == code)

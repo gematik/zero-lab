@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- gempki port, phase 2 (chains): `build_chain` (authority key identifier first, name
+  fallback, bounded, cycle-safe, partial chain on failure), `validate_path` (validity, CA
+  constraints, path length, link signatures, end-entity checks), `checks` (key usage,
+  extended key usage, policies, roles), the Tab_PKI_405 type table with gemSpec_PKI
+  baselines (`CertificateType::spec`) and `detect_certificate_type` (policies, then the
+  admission fallback). `chain` example.
 - gempki port, phase 1 (roots): `TrustStore` (dedup by key identifier, lookup by
   common name and key identifier), roots.json parsing (both document forms), the
   A_28419 cross-certificate walk with a per-direction stop report and a loop guard
