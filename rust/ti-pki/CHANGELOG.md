@@ -4,6 +4,8 @@
 
 - `algorithms::rsa` (default feature `rsa`): RSA PKCS#1 v1.5 and PSS with SHA-256/384/512,
   with Wycheproof vectors.
+- Tests run on an OpenSSL-generated test PKI (`just test-pki`); the Rust certificate
+  builder is gone and `test-util` no longer pulls in `sha2`.
 - gempki port, phase 0 (foundations): `Certificate` (parsed once, original DER kept,
   extensions decoded), `parse_pem_certificates`, admission statement, `key::classify_key`
   (gemSpec_Krypt tiers), the full gemSpec_OID tables with names (`oid::lookup`,

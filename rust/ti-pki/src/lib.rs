@@ -94,8 +94,8 @@ pub mod profile;
 pub mod reqwest;
 pub mod revocation;
 pub mod roots;
-#[cfg(any(test, feature = "test-util"))]
-pub mod testing;
+#[cfg(all(test, feature = "brainpool"))]
+mod testing;
 pub mod time;
 #[cfg(feature = "tokio")]
 pub mod tokio;

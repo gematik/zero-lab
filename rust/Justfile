@@ -87,6 +87,10 @@ nonprod-absent:
     done
     echo "no non-prod trust material without dangerous-nonprod"
 
+# Regenerate the OpenSSL test PKI in ti-pki/tests/pki (fresh keys, same topology)
+test-pki:
+    ti-pki/tests/pki/generate.sh
+
 # Every feature combination must compile (catches feature-gated breakage)
 features:
     cargo hack check --workspace --feature-powerset --no-dev-deps

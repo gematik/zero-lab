@@ -24,9 +24,9 @@ rsa = ["dep:rsa", "dep:sha2", "dep:digest"]
 # Presets carrying TEST-ONLY anchors and relaxed policies. A production binary is built
 # without this feature and therefore contains no non-prod trust material.
 dangerous-nonprod = []
-# Config helpers, clocks, a scripted transport and a test PKI builder for tests in
-# downstream crates. Never a default feature.
-test-util = ["dep:sha2"]
+# Config helpers, clocks and a scripted transport for tests in downstream crates.
+# Never a default feature.
+test-util = []
 # Loading layer: traits, loaders, cache and reloader. Runtime-agnostic, builds for wasm32.
 load = ["dep:arc-swap", "dep:sha2", "dep:minicbor"]
 # Operating-system facilities: file transport, system clock, bundle files.

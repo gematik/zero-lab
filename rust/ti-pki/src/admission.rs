@@ -74,41 +74,6 @@ impl AdmissionStatement {
     }
 }
 
-#[cfg(any(test, feature = "test-util"))]
-impl AdmissionStatement {
-    /// The DER value of an admission extension carrying this statement; for building
-    /// test certificates.
-    ///
-    /// # Panics
-    ///
-    /// If the registration number is not a valid PrintableString.
-    pub fn to_der(&self) -> Vec<u8> {
-        use der::Encode;
-        let syntax = AdmissionSyntax {
-            admission_authority: None,
-            contents_of_admissions: vec![Admissions {
-                admission_authority: None,
-                naming_authority: None,
-                profession_infos: vec![ProfessionInfo {
-                    naming_authority: None,
-                    profession_items: self
-                        .profession_items
-                        .iter()
-                        .map(|item| DirectoryString::Utf8String(item.clone()))
-                        .collect(),
-                    profession_oids: Some(self.profession_oids.clone()),
-                    registration_number: self
-                        .registration_number
-                        .as_ref()
-                        .map(|n| PrintableString::new(n).expect("printable")),
-                    add_profession_info: None,
-                }],
-            }],
-        };
-        syntax.to_der().expect("admission encodes")
-    }
-}
-
 fn malformed(reason: &str) -> Error {
     Error::Malformed {
         what: "admission extension",
@@ -197,17 +162,22 @@ mod tests {
         assert_eq!(fixture(SMCB_CA51).admission().unwrap(), None);
     }
 
+    #[cfg(feature = "brainpool")]
     #[test]
-    fn round_trip_and_malformed() {
-        let statement = AdmissionStatement {
-            profession_items: vec!["Ärztin/Arzt".into()],
-            profession_oids: vec![crate::oid::PROF_ARZT],
-            registration_number: Some("1-HBA-Testkarte-883110000129068".into()),
-        };
+    fn openssl_encoded_admission() {
+        let pki = crate::testing::TestPki::new();
         assert_eq!(
-            AdmissionStatement::from_der(&statement.to_der()).unwrap(),
-            statement
+            pki.ee_arzt.admission().unwrap().unwrap(),
+            AdmissionStatement {
+                profession_items: vec!["Arzt".into()],
+                profession_oids: vec![crate::oid::PROF_ARZT],
+                registration_number: Some("80276001081234567890".into()),
+            }
         );
+    }
+
+    #[test]
+    fn malformed() {
         assert!(matches!(
             AdmissionStatement::from_der(&[0x30, 0x02, 0x30, 0x00]),
             Err(Error::Malformed { .. })

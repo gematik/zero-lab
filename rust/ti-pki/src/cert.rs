@@ -391,7 +391,6 @@ fn common_name(name: &Name) -> String {
 pub(crate) mod tests {
     use super::*;
     use crate::algorithms;
-    use crate::testing::{CertSpec, Curve, Node};
 
     pub(crate) const RCA5: &str = include_str!("../tests/fixtures/rca5-test-only.pem");
     pub(crate) const SMCB_CA51: &str = include_str!("../tests/fixtures/smcb-ca51-test-only.pem");
@@ -445,23 +444,31 @@ pub(crate) mod tests {
         assert!(!verify(&rca5, &ee));
     }
 
+    #[cfg(feature = "brainpool")]
     #[test]
-    fn nist_p256_test_certificate() {
-        let root = Node::root(
-            Curve::P256,
-            "root",
-            &CertSpec::ca("CN=Test Root", Timestamp(0), Timestamp(2_000_000_000)),
+    fn openssl_nist_chain() {
+        let pki = crate::testing::TestPki::new();
+        assert_eq!(pki.ee_zeta.subject_cn(), "zeta.ti-dienste.de TEST-ONLY");
+        assert_eq!(pki.ee_zeta.issuer_cn(), "GEM.SubCA-Komp TEST-ONLY");
+        assert!(verify(&pki.sub_ca_komp, &pki.ee_zeta));
+        assert!(verify(&pki.rca7, &pki.rca7));
+        assert!(!verify(&pki.rca7, &pki.ee_zeta));
+        assert_eq!(
+            pki.ee_zeta.authority_key_id(),
+            pki.sub_ca_komp.subject_key_id()
         );
-        let ee = root.issue(
-            Curve::P256,
-            "ee",
-            &CertSpec::ee("CN=Test EE", Timestamp(0), Timestamp(2_000_000_000)),
+        assert_eq!(
+            pki.ee_zeta.ext_key_usage(),
+            [const_oid::db::rfc5280::ID_KP_SERVER_AUTH]
         );
-        assert_eq!(ee.cert.subject_cn(), "Test EE");
-        assert_eq!(ee.cert.issuer_cn(), "Test Root");
-        assert!(verify(&root.cert, &ee.cert));
-        assert!(verify(&root.cert, &root.cert));
-        assert_eq!(ee.cert.authority_key_id(), root.cert.subject_key_id());
+    }
+
+    #[cfg(all(feature = "brainpool", feature = "rsa"))]
+    #[test]
+    fn openssl_rsa_pss_chain() {
+        let pki = crate::testing::TestPki::new();
+        assert!(verify(&pki.rca_rsa, &pki.rca_rsa));
+        assert!(verify(&pki.rca_rsa, &pki.ee_rsa_pss));
     }
 
     #[test]
@@ -474,20 +481,16 @@ pub(crate) mod tests {
         );
     }
 
+    #[cfg(feature = "brainpool")]
     #[test]
     fn foreign_key_types_parse() {
-        let root = Node::root(
-            Curve::P256,
-            "root",
-            &CertSpec::ca("CN=Test Root", Timestamp(0), Timestamp(2_000_000_000)),
+        let pki = crate::testing::TestPki::new();
+        let (status, key) = crate::key::classify_key(pki.ee_p521.public_key_info(), Timestamp(0));
+        assert_eq!(
+            (status, key.as_str()),
+            (crate::key::KeyStatus::NotAdmissible, "ECDSA P-521")
         );
-        let p521 = crate::key::tests::ec_spki("1.3.132.0.35", 133);
-        let cert = root.issue_for(
-            &p521,
-            &CertSpec::ee("CN=P-521", Timestamp(0), Timestamp(2_000_000_000)),
-        );
-        let reparsed = Certificate::from_der(cert.der()).unwrap();
-        assert_eq!(reparsed.public_key_info(), &p521);
+        assert!(verify(&pki.rca7, &pki.ee_p521));
     }
 
     #[test]
