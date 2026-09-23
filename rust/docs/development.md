@@ -61,7 +61,7 @@ cargo metadata --format-version 1 | jq -r '.packages[] | select(.name == "ti-pki
 Checks come in two tiers:
 
 ```console
-just check    # tier 1, every PR: fmt, clippy, doc, test, features, nonprod-absent, machete, deny
+just check    # tier 1: fmt, clippy, doc, test, features, wasm32, core-deps, nonprod-absent, machete, deny
 just audit    # tier 2, before tagging: advisories, vet, msrv, semver
 ```
 
@@ -110,6 +110,61 @@ config.validate(Tier::Prod)?;
 ```
 
 Tests in downstream crates use `TrustConfig::for_lab_ca` from the `test-util` feature.
+
+## Trust material loading
+
+roots.json and the TSL are loaded, cached and hot-reloaded by `ti_pki::load` (feature
+`load`). Loaders are untrusted: whatever the source — HTTP, a mounted file, an offline
+bundle, a cache — the bytes are verified against the embedded anchors before use, so a
+misbehaving source can only deny service or serve stale data, and the freshness policy
+catches staleness. The module docs carry the composition and the failure table.
+
+The core has no HTTP client and no executor. Runtime glue is opt-in: the `reqwest`
+feature provides a transport over a caller-provided `reqwest::Client` (native and
+wasm32), the `tokio` feature a background driver with SIGHUP and an admin trigger.
+`just core-deps` proves the rest of the crate stays free of them, and `just wasm32`
+that the loading layer builds for the browser. The adapters are features rather than
+separate crates while everything is 0.x; once `ti-pki` aims for 1.0, `reqwest` (itself
+0.x) moves to its own crate so its breaking releases stop forcing `ti-pki` majors.
+
+### Reload strategies
+
+- **Periodic with jitter** (default): `ReloadPolicy::interval` plus a per-process random
+  share of `jitter`, so a fleet started together does not reload in lockstep.
+- **TSL `NextUpdate` deadline**: with `honor_tsl_next_update`, the next reload is due
+  `next_update_lead` before the current TSL's `NextUpdate` if that comes first.
+- **External trigger**: SIGHUP (`ti_pki::tokio::on_sighup`) or an admin endpoint / exec
+  probe calling `AdminTrigger::trigger`, e.g. right after a ConfigMap update.
+- **Lazy on use** — rejected: reloading from `snapshot()` would put network I/O,
+  verification latency and their failures into the request path, need an executor
+  there, and stampede the origin when many requests notice staleness at once.
+  `snapshot()` stays a lock-free read and only refuses expired material.
+
+Production caps `hard_expiry` at `MAX_PROD_HARD_EXPIRY` (24 h); `ReloadPolicy::validate`
+and `Reloader::new` enforce it.
+
+### Kubernetes
+
+- A ConfigMap volume updates by atomically repointing its `..data` symlink.
+  `FileTransport` reads through the configured path on every call, so it follows the
+  swap; never cache a canonicalised path or an open file.
+- `subPath` mounts never receive updates; mount the whole volume.
+- Updates arrive after the kubelet sync period plus its cache TTL (about a minute by
+  default), then on the next reload tick — or trigger one.
+- Put roots.json and the TSL in one ConfigMap so they change together.
+- Poll, don't watch: inotify is unreliable on these mounts because the files themselves
+  never change, only the symlink.
+
+### Offline bundle
+
+For air-gapped deployments, export both artefacts with their metadata on a connected
+machine (`Bundle::new(&config, label, material).write(path)`, from material any loader
+produced), transfer the CBOR file, and serve it with
+`StaticLoader::from_bundle(Bundle::read(path)?, &config)?`, alone or as the backup of a
+`FallbackLoader`. The bundle is not signed and needs no signature: it is verified on
+import like any other source, and its anchor hash rejects a bundle meant for another
+environment up front. It carries `fetched_at`, so it ages out by `hard_expiry` like any
+material — in production that means a fresh bundle at least daily.
 
 ## Part B — Tag & reproducible builds
 
@@ -176,7 +231,9 @@ above; afterwards `release-plz update` does the version, sibling-pin and changel
 | Recipe | Purpose |
 | --- | --- |
 | `tools` | Install the pinned cargo tools (via cargo-binstall when available) |
-| `check` | Tier 1: `fmt`, `clippy`, `doc`, `test`, `features`, `nonprod-absent`, `machete`, `deny` |
+| `check` | Tier 1: `fmt`, `clippy`, `doc`, `test`, `features`, `wasm32`, `core-deps`, `nonprod-absent`, `machete`, `deny` |
+| `wasm32` | `cargo check` of ti-pki's loading layer and reqwest transport for wasm32 |
+| `core-deps` | Prove ti-pki's core pulls in no HTTP client, executor or file watcher |
 | `nonprod-absent` | Prove ti-pki without `dangerous-nonprod` contains no non-prod trust material |
 | `audit` | Tier 2: `advisories`, `vet`, `msrv`, `semver` |
 | `vet-suggest` | Dependencies still awaiting a cargo vet audit |

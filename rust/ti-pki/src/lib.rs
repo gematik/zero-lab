@@ -62,6 +62,12 @@
 //! only picks a preset, and [`TrustConfig::validate`] fences production
 //! ([`Tier::Prod`]) from non-production material. Presets for non-production
 //! environments exist only with the `dangerous-nonprod` feature ([`config`]).
+//!
+//! # Loading
+//!
+//! With the `load` feature, `load` fetches, caches, verifies and hot-reloads roots.json
+//! and the TSL through pluggable loaders; the `reqwest` and `tokio` features add a
+//! transport and a background driver.
 
 pub mod anchors;
 pub mod cert_type;

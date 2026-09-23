@@ -37,10 +37,66 @@ Presets for the non-production environments (`TrustConfig::preset(Env::Test)` an
 carry TEST-ONLY anchors and exist only with the `dangerous-nonprod` feature; production
 builds leave it off.
 
+## Loading and hot reload
+
+With the `load` feature, `ti_pki::load` loads roots.json and the TSL through pluggable,
+untrusted loaders, verifies them, and swaps them into a shared trust store. A production
+wiring with a cache, an offline fallback and a background reloader:
+
+```rust
+use std::sync::Arc;
+use ti_pki::load::{
+    Bundle, CachePolicy, CachingLoader, FallbackLoader, HttpLoader, ReloadOutcome,
+    ReloadPolicy, Reloader, StaticLoader, SystemClock,
+};
+use ti_pki::reqwest::ReqwestTransport;
+use ti_pki::{Tier, TrustConfig};
+
+let cfg = TrustConfig::preset_prod();
+let transport = ReqwestTransport::new(client); // proxy, timeouts, TLS set by the caller
+let online = CachingLoader::new(
+    HttpLoader::new(&cfg, transport, SystemClock),
+    my_kv, // any CacheStore
+    SystemClock,
+    CachePolicy::default(),
+);
+let bundle = StaticLoader::from_bundle(Bundle::read("/etc/ti-pki/bundle.cbor")?, &cfg)?;
+let loader = FallbackLoader::new(online, bundle);
+let reloader = Arc::new(Reloader::new(cfg, Tier::Prod, loader, SystemClock, ReloadPolicy::default())?);
+if let ReloadOutcome::Expired { error } = reloader.tick().await {
+    return Err(error.into()); // fail startup
+}
+let task = ti_pki::tokio::spawn_reloader(Arc::clone(&reloader))?;
+let store = reloader.handle().snapshot()?; // per request
+```
+
+Air-gapped, never touching the network: serve a pre-populated store and fall back to
+the bundle.
+
+```rust
+let bundle = StaticLoader::from_bundle(Bundle::read("/etc/ti-pki/bundle.cbor")?, &cfg)?;
+let offline = CachingLoader::new(
+    bundle.clone(),
+    my_kv,
+    SystemClock,
+    CachePolicy { offline: true, ..CachePolicy::default() },
+);
+let loader = FallbackLoader::new(offline, bundle);
+```
+
+## Features
+
 | Feature | Effect |
 | --- | --- |
 | `dangerous-nonprod` | Non-production presets, anchors and roots |
-| `test-util` | `TrustConfig::for_lab_ca` for tests in downstream crates |
+| `test-util` | `TrustConfig::for_lab_ca`, `FixedClock` and `MockTransport` for tests in downstream crates |
+| `load` | Loaders, cache, reloader; no HTTP client or executor; builds for wasm32 |
+| `os` | `FileTransport`, `SystemClock`, bundle files |
+| `reqwest` | `ti_pki::reqwest::ReqwestTransport` over a caller-provided client (native and wasm32) |
+| `tokio` | `ti_pki::tokio`: background reloader, SIGHUP, admin trigger |
+
+The roots walk and TSL signature check are not ported yet; until they are, the reloader
+panics when it verifies changed material.
 
 ## License
 
