@@ -67,6 +67,8 @@ pub struct TrustConfig {
     /// roots.json bytes, from a preset or fetched by the operator. Empty means the
     /// anchor is the only root.
     pub roots: Cow<'static, [u8]>,
+    /// Where a fresh roots.json is downloaded from. Must be `https://`.
+    pub roots_url: Cow<'static, str>,
     /// Where the TSL is downloaded from. Must be `https://`.
     pub tsl_url: Cow<'static, str>,
     /// How a non-Good revocation outcome affects the verdict.
@@ -81,12 +83,13 @@ pub struct TrustConfig {
 
 impl TrustConfig {
     /// Only the anchor is required; every policy field at its strictest value,
-    /// `roots` empty and `tsl_url` set to the production TSL. The intended base
+    /// `roots` empty and both URLs set to production. The intended base
     /// for struct update.
     pub fn for_anchor(anchor: impl Into<Cow<'static, [u8]>>) -> Self {
         TrustConfig {
             anchor: anchor.into(),
             roots: Cow::Borrowed(&[]),
+            roots_url: Cow::Borrowed(roots::URL_PROD),
             tsl_url: Cow::Borrowed(tsl::URL_PROD),
             revocation: RevocationMode::HardFail,
             accept_test_only_policies: false,
@@ -109,16 +112,20 @@ impl TrustConfig {
     /// strict, since the test environments run OCSP responders too.
     #[cfg(feature = "dangerous-nonprod")]
     pub fn preset(env: Env) -> Self {
-        let nonprod = |anchor: &'static [u8], tsl_url: &'static str| TrustConfig {
-            roots: Cow::Borrowed(roots::ROOTS_NONPROD),
-            tsl_url: Cow::Borrowed(tsl_url),
-            accept_test_only_policies: true,
-            ..Self::for_anchor(anchor)
-        };
+        let nonprod =
+            |anchor: &'static [u8], roots_url: &'static str, tsl_url: &'static str| TrustConfig {
+                roots: Cow::Borrowed(roots::ROOTS_NONPROD),
+                roots_url: Cow::Borrowed(roots_url),
+                tsl_url: Cow::Borrowed(tsl_url),
+                accept_test_only_policies: true,
+                ..Self::for_anchor(anchor)
+            };
         match env {
             Env::Prod => Self::preset_prod(),
-            Env::Test => nonprod(anchors::GEM_RCA8_TEST_ONLY, tsl::URL_TEST),
-            Env::Ref | Env::Dev => nonprod(anchors::GEM_RCA7_TEST_ONLY, tsl::URL_REF),
+            Env::Test => nonprod(anchors::GEM_RCA8_TEST_ONLY, roots::URL_TEST, tsl::URL_TEST),
+            Env::Ref | Env::Dev => {
+                nonprod(anchors::GEM_RCA7_TEST_ONLY, roots::URL_REF, tsl::URL_REF)
+            }
             _ => {
                 // Env::tier maps every variant other than Prod to NonProd, so an
                 // environment added to ti-types later is non-production by
@@ -137,11 +144,14 @@ impl TrustConfig {
     /// # Errors
     ///
     /// [`Error::Der`] if the anchor is not a DER certificate.
-    /// [`Error::InconsistentConfig`] if `tsl_url` is not `https://`, or, under
+    /// [`Error::InconsistentConfig`] if either URL is not `https://`, or, under
     /// [`Tier::Prod`], if the anchor is a TEST-ONLY root, revocation is not
     /// [`HardFail`](RevocationMode::HardFail), or either relaxation is on.
     pub fn validate(&self, tier: Tier) -> Result<(), Error> {
         let anchor = Certificate::from_der(&self.anchor)?;
+        if !self.roots_url.starts_with("https://") {
+            return Err(inconsistent("roots_url must be an https URL"));
+        }
         if !self.tsl_url.starts_with("https://") {
             return Err(inconsistent("tsl_url must be an https URL"));
         }
@@ -206,6 +216,7 @@ mod tests {
         assert_eq!(config.revocation, RevocationMode::HardFail);
         assert!(!config.accept_test_only_policies);
         assert!(!config.allow_expired);
+        assert_eq!(config.roots_url, roots::URL_PROD);
         assert_eq!(config.tsl_url, tsl::URL_PROD);
         assert!(config.roots.is_empty());
     }
@@ -303,6 +314,7 @@ mod tests {
         for env in [Env::Ref, Env::Dev] {
             let config = TrustConfig::preset(env);
             assert_eq!(config.anchor, anchors::GEM_RCA7_TEST_ONLY, "{env}");
+            assert_eq!(config.roots_url, roots::URL_REF, "{env}");
             assert_eq!(config.tsl_url, tsl::URL_REF, "{env}");
         }
     }

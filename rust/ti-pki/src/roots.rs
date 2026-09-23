@@ -6,6 +6,15 @@
 //! the anchor's successors forward and its predecessors backward, so a
 //! download can only ever add roots that chain to the anchor.
 
+/// Download point of the production roots.json.
+pub const URL_PROD: &str = "https://download.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json";
+
+/// Download point of the reference roots.json, which the development environment shares.
+pub const URL_REF: &str = "https://download-ref.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json";
+
+/// Download point of the test roots.json.
+pub const URL_TEST: &str = "https://download-test.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json";
+
 /// gematik's roots.json for production, as published.
 pub const ROOTS_PROD: &[u8] = include_bytes!("roots-prod.json");
 
