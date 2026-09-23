@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- gempki port, phase 0 (foundations): `Certificate` (parsed once, original DER kept,
+  extensions decoded), `parse_pem_certificates`, admission statement, `key::classify_key`
+  (gemSpec_Krypt tiers), the full gemSpec_OID tables with names (`oid::lookup`,
+  `oid::format`), `ValidationError`/`ValidationWarning`/`ValidationResult`, `time` (moved
+  from `load`, RFC 3339 display) and the `testing` test-PKI builder (`test-util`).
+  `inspect` example.
 - `algorithms`: signature verification through `rustls_pki_types::SignatureVerificationAlgorithm`;
   `STANDARD` (ECDSA P-256, P-384), `brainpool` module (brainpoolP256r1, brainpoolP384r1,
   default feature `brainpool`), `DEFAULT`, `find`. `TrustConfig::algorithms`, checked by

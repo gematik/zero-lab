@@ -1,5 +1,6 @@
-//! Time as an injected dependency. The loading layer reads the time only through
-//! [`Clock`], so tests drive it with a fixed clock and wasm32 builds need no system time.
+//! Time as an injected dependency. Validity checks and the loading layer read the time
+//! only through [`Clock`], so tests drive it with a fixed clock and wasm32 builds need no
+//! system time.
 
 use core::ops::{Add, Sub};
 use core::time::Duration;
@@ -13,6 +14,37 @@ impl Timestamp {
     pub const fn since(self, earlier: Timestamp) -> Duration {
         Duration::from_secs(self.0.saturating_sub(earlier.0))
     }
+}
+
+impl core::fmt::Display for Timestamp {
+    /// RFC 3339 in UTC, e.g. `2025-12-31T23:59:59Z`.
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let days = self.0 / 86_400;
+        let secs = self.0 % 86_400;
+        let (year, month, day) = civil_from_days(days);
+        write!(
+            f,
+            "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+            secs / 3600,
+            secs / 60 % 60,
+            secs % 60
+        )
+    }
+}
+
+/// Proleptic Gregorian date of the day `days` after 1970-01-01 (Howard Hinnant's
+/// `civil_from_days`, restricted to non-negative days).
+fn civil_from_days(days: u64) -> (u64, u64, u64) {
+    let z = days + 719_468;
+    let era = z / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + u64::from(month <= 2);
+    (year, month, day)
 }
 
 impl Add<Duration> for Timestamp {
@@ -93,5 +125,18 @@ impl FixedClock {
 impl Clock for FixedClock {
     fn now(&self) -> Timestamp {
         Timestamp(self.0.load(std::sync::atomic::Ordering::SeqCst))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_is_rfc3339_utc() {
+        assert_eq!(Timestamp(0).to_string(), "1970-01-01T00:00:00Z");
+        assert_eq!(Timestamp(1_767_225_599).to_string(), "2025-12-31T23:59:59Z");
+        assert_eq!(Timestamp(951_782_400).to_string(), "2000-02-29T00:00:00Z");
+        assert_eq!(Timestamp(4_102_444_800).to_string(), "2100-01-01T00:00:00Z");
     }
 }

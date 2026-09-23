@@ -6,7 +6,7 @@ use core::time::Duration;
 
 use sha2::{Digest, Sha256};
 
-use super::clock::Timestamp;
+use crate::time::Timestamp;
 
 /// One of the two artefacts a trust store is built from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

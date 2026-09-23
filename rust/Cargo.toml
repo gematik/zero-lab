@@ -19,9 +19,8 @@ ti-types = { version = "0.1", path = "ti-types" }
 ti-pki = { version = "0.1", path = "ti-pki" }
 
 # External. Pinned here once, inherited by every crate.
-der = "0.8"
+der = { version = "0.8", features = ["alloc", "derive", "oid"] }
 x509-cert = "0.3"
-spki = "0.8"
 const-oid = "0.10"
 pem-rfc7468 = "1"
 thiserror = "2"

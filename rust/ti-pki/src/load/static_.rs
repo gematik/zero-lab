@@ -14,9 +14,9 @@ use minicbor::{Decoder, Encoder};
 use sha2::{Digest, Sha256};
 
 use super::artifact::{Artifact, Meta, Source, TrustMaterial};
-use super::clock::Timestamp;
 use super::loader::{Conditional, Fetched, LoadError, Loaded, Loader};
 use crate::TrustConfig;
+use crate::time::Timestamp;
 
 const FORMAT_VERSION: u32 = 1;
 

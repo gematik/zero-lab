@@ -44,7 +44,6 @@
 mod artifact;
 mod cache;
 mod caching;
-mod clock;
 mod fallback;
 #[cfg(feature = "os")]
 mod file;
@@ -56,17 +55,17 @@ mod static_;
 mod transport;
 mod verify;
 
+#[cfg(any(test, feature = "test-util"))]
+pub use crate::time::FixedClock;
+#[cfg(feature = "os")]
+pub use crate::time::SystemClock;
+pub use crate::time::{Clock, Timestamp};
 pub use artifact::{
     Artifact, ArtifactRequest, ArtifactResponse, Meta, ResponseMeta, Source, TrustMaterial,
     content_etag,
 };
 pub use cache::{CacheEntry, CacheError, CachePolicy, CacheStore, MemoryCacheStore};
 pub use caching::CachingLoader;
-#[cfg(any(test, feature = "test-util"))]
-pub use clock::FixedClock;
-#[cfg(feature = "os")]
-pub use clock::SystemClock;
-pub use clock::{Clock, Timestamp};
 pub use fallback::FallbackLoader;
 #[cfg(feature = "os")]
 pub use file::FileTransport;

@@ -1070,7 +1070,6 @@ dependencies = [
  "rustls-pki-types",
  "serde_json",
  "sha2",
- "spki",
  "thiserror",
  "ti-types",
  "tokio",

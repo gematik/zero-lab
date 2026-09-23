@@ -2,9 +2,9 @@
 
 use super::artifact::{Artifact, Meta, Source};
 use super::cache::{CacheEntry, CachePolicy, CacheStore};
-use super::clock::Clock;
 use super::loader::{Conditional, Fetched, LoadError, Loaded, Loader};
 use super::maybe_send::{MaybeSend, MaybeSync};
+use crate::time::Clock;
 
 /// Serves fresh entries from `store`, revalidates stale ones with the inner loader's
 /// validators, and falls back to the cached copy for `stale_if_error` when the inner

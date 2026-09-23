@@ -6,8 +6,8 @@
 use x509_cert::Certificate;
 
 use super::artifact::TrustMaterial;
-use super::clock::Timestamp;
 use crate::TrustConfig;
+use crate::time::Timestamp;
 
 /// Loaded material that passed verification.
 #[derive(Clone, Debug)]

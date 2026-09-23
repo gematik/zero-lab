@@ -22,9 +22,9 @@ brainpool = ["dep:bp256", "dep:bp384"]
 # Presets carrying TEST-ONLY anchors and relaxed policies. A production binary is built
 # without this feature and therefore contains no non-prod trust material.
 dangerous-nonprod = []
-# Config helpers, clocks and a scripted transport for tests in downstream crates.
-# Never a default feature.
-test-util = []
+# Config helpers, clocks, a scripted transport and a test PKI builder for tests in
+# downstream crates. Never a default feature.
+test-util = ["dep:sha2"]
 # Loading layer: traits, loaders, cache and reloader. Runtime-agnostic, builds for wasm32.
 load = ["dep:arc-swap", "dep:sha2", "dep:minicbor"]
 # Operating-system facilities: file transport, system clock, bundle files.
@@ -38,7 +38,6 @@ tokio = ["load", "os", "dep:tokio", "dep:tracing"]
 ti-types.workspace = true
 der.workspace = true
 x509-cert.workspace = true
-spki.workspace = true
 const-oid.workspace = true
 pem-rfc7468.workspace = true
 thiserror.workspace = true
@@ -64,8 +63,3 @@ tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]
 workspace = true
-
-# Declared for the parsing layer the port adds next; remove each entry once the
-# crate uses it, so machete guards it from then on.
-[package.metadata.cargo-machete]
-ignored = ["spki", "pem-rfc7468"]

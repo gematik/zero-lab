@@ -75,12 +75,15 @@
 //! and the TSL through pluggable loaders; the `reqwest` and `tokio` features add a
 //! transport and a background driver.
 
+pub mod admission;
 pub mod algorithms;
 pub mod anchors;
+pub mod cert;
 pub mod cert_type;
 pub mod chain;
 pub mod config;
 pub mod error;
+pub mod key;
 #[cfg(feature = "load")]
 pub mod load;
 pub mod ocsp;
@@ -91,15 +94,21 @@ pub mod profile;
 pub mod reqwest;
 pub mod revocation;
 pub mod roots;
+#[cfg(any(test, feature = "test-util"))]
+pub mod testing;
+pub mod time;
 #[cfg(feature = "tokio")]
 pub mod tokio;
 pub mod truststore;
 pub mod tsl;
 pub mod validate;
 
+pub use cert::{Certificate, parse_pem_certificates};
 pub use cert_type::CertificateType;
 pub use config::TrustConfig;
-pub use error::{Error, ErrorCode};
+pub use error::{Error, ErrorCode, ValidationError, ValidationWarning};
 pub use revocation::RevocationMode;
 pub use ti_types::{Env, Tier};
+pub use time::{Clock, Timestamp};
 pub use truststore::TrustStore;
+pub use validate::{CertResult, ChainPosition, ValidationResult};
