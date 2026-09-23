@@ -45,6 +45,8 @@ tokio = { version = "1.53.1", default-features = false }
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 
 serde_json = "1.0.151"
+# XML through serde, matching local names (as in the zero-lab generator projects).
+quick-xml = { version = "0.42.0", default-features = false, features = ["serialize", "overlapped-lists"] }
 base64ct = { version = "1.8.3", features = ["alloc"] }
 
 # Test-only.

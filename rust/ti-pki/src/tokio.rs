@@ -244,6 +244,7 @@ mod tests {
     fn accept(_: &TrustConfig, _: &TrustMaterial, _: Timestamp) -> Result<Verified, VerifyError> {
         Ok(Verified {
             roots: Vec::new(),
+            intermediates: Vec::new(),
             tsl_next_update: None,
         })
     }

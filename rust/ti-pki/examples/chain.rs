@@ -4,29 +4,37 @@
 //!
 //! ```console
 //! cargo run -p ti-pki --example chain -- ee.pem [ca.pem ...]
+//! cargo run -p ti-pki --example chain -- --tsl ECC-RSA_TSL.xml ee.pem
 //! cargo run -p ti-pki --features dangerous-nonprod --example chain -- --env ref ee.pem ca.pem
 //! ```
 //!
 //! The first certificate is the end entity; the others (in any order, several per file
-//! allowed) are candidate intermediates, e.g. the issuing CA from the TSL.
+//! allowed) are candidate intermediates. With `--tsl`, the TSL's CAs that a root signed
+//! are candidates too.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ti_pki::key::classify_key;
+use ti_pki::tsl::{self, Tsl};
 use ti_pki::{
-    Certificate, CertificateCheck, Env, PathOptions, Timestamp, TrustConfig, build_chain, checks,
-    detect_certificate_type, roots, validate_path,
+    Certificate, CertificateCheck, CertificateType, Env, PathOptions, Timestamp, TrustConfig,
+    build_chain, checks, detect_certificate_type, roots, validate_path,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let mut env = Env::Prod;
-    if args.first().map(String::as_str) == Some("--env") && args.len() > 1 {
-        env = args[1].parse()?;
+    let mut tsl_path = None;
+    loop {
+        match args.first().map(String::as_str) {
+            Some("--env") if args.len() > 1 => env = args[1].parse()?,
+            Some("--tsl") if args.len() > 1 => tsl_path = Some(args[1].clone()),
+            _ => break,
+        }
         args.drain(..2);
     }
     if args.is_empty() {
-        eprintln!("usage: chain [--env <env>] <end entity> [intermediates...]");
+        eprintln!("usage: chain [--env <env>] [--tsl <tsl.xml>] <end entity> [intermediates...]");
         std::process::exit(2);
     }
     let mut certs = Vec::new();
@@ -49,8 +57,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         return Err(format!("{env} needs --features dangerous-nonprod").into());
     };
-    let store = roots::load(&config, now)?.store();
+    let mut store = roots::load(&config, now)?.store();
     println!("environment   {env} ({} trusted roots)", store.len());
+    if let Some(path) = tsl_path {
+        let list = Tsl::parse(&std::fs::read(path)?)?;
+        let matched = tsl::match_to_roots(list.intermediate_cas(), &store, &config.algorithms);
+        println!(
+            "tsl           #{}, {} CAs chain to the roots",
+            list.sequence_number,
+            matched.intermediates.len()
+        );
+        store = store.with_intermediates(matched.intermediates);
+    }
+    certs.extend(store.intermediates().iter().cloned());
 
     let t = detect_certificate_type(&ee);
     let (status, key) = classify_key(ee.public_key_info(), now);
@@ -69,8 +88,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("              {}", e.error);
             if let Some(last) = e.partial.last() {
                 println!(
-                    "hint          pass the issuing CA {:?} as a further argument; \
-                     intermediates only come from the TSL once that is ported",
+                    "hint          pass the issuing CA {:?} as a further argument \
+                     or the environment's TSL with --tsl",
                     last.issuer_cn()
                 );
             }
@@ -80,18 +99,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let names: Vec<&str> = chain.iter().map(Certificate::subject_cn).collect();
     println!("chain         {}", names.join(" -> "));
 
-    let ee_checks: Vec<CertificateCheck> = t.map_or_else(Vec::new, |t| {
-        let spec = t.spec();
-        let mut ee_checks = vec![
-            checks::key_usage(spec.key_usage),
-            checks::certificate_policies(spec.policies),
-            checks::role_oid(spec.role_oids),
-        ];
-        if !spec.ext_key_usage.is_empty() {
-            ee_checks.push(checks::any_ext_key_usage(spec.ext_key_usage));
-        }
-        ee_checks
-    });
+    let ee_checks = t.map_or_else(Vec::new, baseline_checks);
     let result = validate_path(
         &chain,
         &PathOptions {
@@ -108,4 +116,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  error       {error}");
     }
     Ok(())
+}
+
+/// The type's gemSpec_PKI baseline as end-entity checks.
+fn baseline_checks(t: CertificateType) -> Vec<CertificateCheck> {
+    let spec = t.spec();
+    let mut ee_checks = vec![
+        checks::key_usage(spec.key_usage),
+        checks::certificate_policies(spec.policies),
+        checks::role_oid(spec.role_oids),
+    ];
+    if !spec.ext_key_usage.is_empty() {
+        ee_checks.push(checks::any_ext_key_usage(spec.ext_key_usage));
+    }
+    ee_checks
 }

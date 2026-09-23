@@ -14,18 +14,19 @@
 //! The intended shape of the API, not yet implemented:
 //!
 //! ```ignore
-//! use ti_pki::{Tier, TrustConfig, TrustStore, tsl};
+//! use ti_pki::{Tier, TrustConfig, roots, tsl};
 //!
 //! let config = TrustConfig::preset_prod();
 //! config.validate(Tier::Prod)?;
-//! let ts = TrustStore::from_config(&config)?;
-//! let list = tsl::parse(&tsl_xml)?;
-//! let intermediates = tsl::intermediate_cas(&list);
+//! let store = roots::load(&config, now)?.store();
+//! let list = tsl::Tsl::parse(&tsl_xml)?;
+//! let matched = tsl::match_to_roots(list.intermediate_cas(), &store, &config.algorithms);
+//! let ts = store.with_intermediates(matched.intermediates);
 //!
 //! let certs = ti_pki::parse_pem_certificates(&pem)?; // leaf first
 //! let sel = ti_pki::profile::select_for_cert(&certs[0]); // e.g. smb-aut for a C.HCI.AUT
 //! let validator = sel.profile.validator(&ts, sel.cert_type);
-//! let result = validator.validate(&certs, &intermediates)?;
+//! let result = validator.validate(&certs, ts.intermediates())?;
 //! if !result.valid {
 //!     eprintln!("rejected: {:?}", result.errors);
 //! }
@@ -36,8 +37,8 @@
 //! Trust starts at one root certificate per environment, compiled into the
 //! crate ([`anchors`]). Every other root in a [`TrustStore`] earns its place by
 //! chaining back to the anchor through the A_28419 cross-certificate protocol
-//! ([`roots`]). The TSL is not a trust source: it names the SubCAs gematik
-//! currently sanctions and the OCSP responders allowed to answer for them
+//! ([`roots`]). The TSL is not a trust source and is not authenticated: it
+//! supplies candidate intermediates, of which only those a root signed are kept
 //! ([`tsl`]); trust still flows from the anchor.
 //!
 //! # Validation

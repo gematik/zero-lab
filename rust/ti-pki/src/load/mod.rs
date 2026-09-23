@@ -2,10 +2,11 @@
 //!
 //! Loaders are untrusted. Trust never comes from where bytes were obtained.
 //! roots.json is verified by the cross-certificate walk against the embedded anchor,
-//! the TSL by its signature against the embedded TSL-CA, regardless of whether the
-//! bytes came from HTTP, a mounted file, an offline bundle or a cache. A misbehaving
-//! loader can therefore only deny service or serve stale data, and staleness is caught
-//! by the freshness policy.
+//! regardless of whether the bytes came from HTTP, a mounted file, an offline bundle or
+//! a cache. The TSL is not authenticated at all; of its CAs only those a verified root
+//! signed are kept ([`crate::tsl`]). A misbehaving loader can therefore only deny
+//! service (withhold roots or CAs) or serve stale data, and staleness is caught by the
+//! freshness policy.
 //!
 //! # Composition
 //!

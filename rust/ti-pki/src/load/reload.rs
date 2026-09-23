@@ -349,8 +349,7 @@ where
 
     /// One reload attempt. Single-flight: a tick that starts while another is running
     /// returns [`ReloadOutcome::Unchanged`] at once. Always records the attempt in the
-    /// status. Until the roots walk and TSL signature check are ported from `gempki`,
-    /// verifying changed material panics.
+    /// status.
     pub async fn tick(&self) -> ReloadOutcome {
         if self.in_flight.swap(true, Ordering::AcqRel) {
             return ReloadOutcome::Unchanged;
@@ -533,6 +532,7 @@ mod tests {
             .map(Timestamp);
         Ok(Verified {
             roots: Vec::new(),
+            intermediates: Vec::new(),
             tsl_next_update,
         })
     }

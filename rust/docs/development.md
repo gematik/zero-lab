@@ -151,6 +151,8 @@ names the trigger for removing it.
 | --- | --- | --- |
 | `rsa = "=0.10.0-rc.18"`, a release candidate | the only `rsa` line on the current RustCrypto stack (`crypto-bigint` 0.7, `sha2` 0.11); 0.9 would pull in a second, older stack | `rsa` 0.10 is released: switch to `"0.10"` |
 | RUSTSEC-2023-0071 ignored (`deny.toml`, `.cargo/audit.toml`) | the Marvin attack targets RSA private-key operations; `ti-pki` only verifies, on public data | a patched `rsa` is released |
+| The TSL is not authenticated: neither its inline XMLDSig nor the detached `.sig` is checked | the TSL is only a source of candidate intermediates, and a candidate is kept only if a root from the A_28419 walk signed it, so a forged TSL can withhold CAs but not add one. XMLDSig needs exclusive C14N, which no maintained Rust crate provides, and the detached signature exists for production only | never, unless the TSL becomes a trust source (e.g. for its per-CA type lists) |
+| The TSL's per-CA metadata is unused: allowed certificate types (SE_1061), and OCSP responders the TSL lists | both would need an authenticated TSL. A certificate's type is checked by its own policies; a CA's standing by OCSP at its root; a responder must be authorised under RFC 6960 (the CA itself or a delegate it certified with id-kp-OCSPSigning) | same as above |
 | `minicbor` licence BlueOak-1.0.0 allowed for that crate only | permissive, OSI-approved; the lightest CBOR codec for the offline bundle | never, unless the licence policy changes |
 
 ## Test PKI
@@ -163,13 +165,26 @@ looping and a misnamed cross certificate) as PEM files, with validity fixed arou
 2026-01-01 so they never go stale. Keys exist only while the script runs. The real TI
 certificates in `ti-pki/tests/fixtures/` and the Wycheproof vectors complement them.
 
+## The TSL
+
+`ti_pki::tsl` reads gematik's ETSI TS 119 612 list with quick-xml and serde, matching
+element names without their namespace prefix. It is used as a directory of candidate
+intermediates, not as a trust source: `match_to_roots` keeps a CA only if a root of the
+trust store issued and signed it, and the loading layer stores exactly those
+(`TrustStore::intermediates`). What the list also says, and why it is not relied on, is in
+Known compromises. The production list of September 2026 lists 90 CAs, of which 84 are
+kept; the six others are self-signed legacy eGK CAs and two expired SMC-B CAs under the
+retired GEM.RCA1. The `tsl` example prints this for any environment, and `chain --tsl`
+builds chains from it.
+
 ## Trust material loading
 
 roots.json and the TSL are loaded, cached and hot-reloaded by `ti_pki::load` (feature
 `load`). Loaders are untrusted: whatever the source — HTTP, a mounted file, an offline
-bundle, a cache — the bytes are verified against the embedded anchors before use, so a
-misbehaving source can only deny service or serve stale data, and the freshness policy
-catches staleness. The module docs carry the composition and the failure table.
+bundle, a cache — roots.json is verified against the embedded anchor before use, and only
+the TSL's CAs that a verified root signed are kept. A misbehaving source can therefore only
+deny service or serve stale data, and the freshness policy catches staleness. The module
+docs carry the composition and the failure table.
 
 The core has no HTTP client and no executor. Runtime glue is opt-in: the `reqwest`
 feature provides a transport over a caller-provided `reqwest::Client` (native and

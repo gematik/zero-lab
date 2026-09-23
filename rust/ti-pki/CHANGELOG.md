@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- gempki port, phase 3 (TSL): `tsl::Tsl::parse` (quick-xml and serde; sequence number,
+  issue and next-update times, every service with its certificate, status and supply
+  points), `Tsl::intermediate_cas`, `tsl::match_to_roots` (keeps a CA only if a root
+  signed it; reports the others with a `Rejection`), `TrustStore::with_intermediates` and
+  `TrustStore::intermediates`, `Timestamp::parse_rfc3339`. The loading layer parses the
+  TSL and stores the matched intermediates. The TSL is not authenticated: the TSL-Signer
+  anchors and `TrustConfig::tsl_anchor` are removed. `tsl` example; `chain --tsl`.
 - gempki port, phase 2 (chains): `build_chain` (authority key identifier first, name
   fallback, bounded, cycle-safe, partial chain on failure), `validate_path` (validity, CA
   constraints, path length, link signatures, end-entity checks), `checks` (key usage,
@@ -12,9 +19,8 @@
   common name and key identifier), roots.json parsing (both document forms), the
   A_28419 cross-certificate walk with a per-direction stop report and a loop guard
   (`roots::walk`, `roots::load`, `roots::verify_cross_signed`),
-  `Certificate::verify_signed_by`, the TSL-Signer-CA anchors (`TrustConfig::tsl_anchor`,
-  GEM.TSL-CA3; GEM.TSL-CA28 TEST-ONLY behind `dangerous-nonprod`). The loading layer's
-  roots verification is real now. `roots` example.
+  `Certificate::verify_signed_by`. The loading layer's roots verification is real now.
+  `roots` example.
 - `algorithms::rsa` (default feature `rsa`): RSA PKCS#1 v1.5 and PSS with SHA-256/384/512,
   with Wycheproof vectors. The embedded prod roots.json now yields the same ten roots as
   `gempki`.

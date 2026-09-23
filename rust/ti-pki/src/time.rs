@@ -32,6 +32,91 @@ impl core::fmt::Display for Timestamp {
     }
 }
 
+impl Timestamp {
+    /// Parses an RFC 3339 / XML Schema `dateTime` with a time zone, e.g.
+    /// `2026-10-13T23:00:08Z` or `2026-10-14T01:00:08.5+02:00`; fractions of a second
+    /// are dropped. `None` for anything else, including instants before 1970.
+    pub fn parse_rfc3339(s: &str) -> Option<Timestamp> {
+        let b = s.as_bytes();
+        let num = |range: core::ops::Range<usize>| -> Option<u64> {
+            let digits = b.get(range)?;
+            digits
+                .iter()
+                .all(u8::is_ascii_digit)
+                .then(|| digits.iter().fold(0, |n, d| n * 10 + u64::from(d - b'0')))
+        };
+        if b.len() < 20 || b[4] != b'-' || b[7] != b'-' || !matches!(b[10], b'T' | b't') {
+            return None;
+        }
+        if b[13] != b':' || b[16] != b':' {
+            return None;
+        }
+        let (year, month, day) = (num(0..4)?, num(5..7)?, num(8..10)?);
+        let (hour, minute, second) = (num(11..13)?, num(14..16)?, num(17..19)?);
+        if !(1..=12).contains(&month) || day == 0 || day > days_in_month(year, month) {
+            return None;
+        }
+        if hour > 23 || minute > 59 || second > 60 {
+            return None;
+        }
+        let mut rest = &s[19..];
+        if let Some(fraction) = rest.strip_prefix('.') {
+            let digits = fraction.bytes().take_while(u8::is_ascii_digit).count();
+            if digits == 0 {
+                return None;
+            }
+            rest = &fraction[digits..];
+        }
+        let offset: i64 = match rest.as_bytes() {
+            [b'Z' | b'z'] => 0,
+            [sign @ (b'+' | b'-'), h1, h2, b':', m1, m2] => {
+                let hm = [h1, h2, m1, m2];
+                if !hm.iter().all(|d| d.is_ascii_digit()) {
+                    return None;
+                }
+                let value = |d: &u8| i64::from(d - b'0');
+                let minutes = (value(h1) * 10 + value(h2)) * 60 + value(m1) * 10 + value(m2);
+                if *sign == b'+' {
+                    minutes * 60
+                } else {
+                    -minutes * 60
+                }
+            }
+            _ => return None,
+        };
+        let days = days_from_civil(year, month, day)?;
+        let local = i64::try_from(days * 86_400 + hour * 3600 + minute * 60 + second).ok()?;
+        u64::try_from(local - offset).ok().map(Timestamp)
+    }
+}
+
+fn days_in_month(year: u64, month: u64) -> u64 {
+    match month {
+        2 if year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400)) => {
+            29
+        }
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
+/// Days from 1970-01-01 to the given date (Howard Hinnant's `days_from_civil`), `None`
+/// before 1970.
+fn days_from_civil(year: u64, month: u64, day: u64) -> Option<u64> {
+    let year = if month <= 2 {
+        year.checked_sub(1)?
+    } else {
+        year
+    };
+    let era = year / 400;
+    let yoe = year - era * 400;
+    let mp = (month + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    (era * 146_097 + doe).checked_sub(719_468)
+}
+
 /// Proleptic Gregorian date of the day `days` after 1970-01-01 (Howard Hinnant's
 /// `civil_from_days`, restricted to non-negative days).
 fn civil_from_days(days: u64) -> (u64, u64, u64) {
@@ -138,5 +223,38 @@ mod tests {
         assert_eq!(Timestamp(1_767_225_599).to_string(), "2025-12-31T23:59:59Z");
         assert_eq!(Timestamp(951_782_400).to_string(), "2000-02-29T00:00:00Z");
         assert_eq!(Timestamp(4_102_444_800).to_string(), "2100-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn parse_is_the_inverse_of_display() {
+        for t in [0, 951_782_400, 1_767_225_599, 1_789_340_408, 4_102_444_800] {
+            let ts = Timestamp(t);
+            assert_eq!(Timestamp::parse_rfc3339(&ts.to_string()), Some(ts));
+        }
+    }
+
+    #[test]
+    fn parse_offsets_fractions_and_garbage() {
+        let utc = Timestamp::parse_rfc3339("2026-10-13T23:00:08Z").unwrap();
+        assert_eq!(
+            Timestamp::parse_rfc3339("2026-10-14T01:00:08.123+02:00"),
+            Some(utc)
+        );
+        assert_eq!(
+            Timestamp::parse_rfc3339("2026-10-13T20:30:08-02:30"),
+            Some(utc)
+        );
+        for bad in [
+            "",
+            "2026-10-13",
+            "2026-10-13T23:00:08",
+            "2026-02-30T00:00:00Z",
+            "2026-13-01T00:00:00Z",
+            "2026-10-13T24:00:00Z",
+            "2026-10-13T23:00:08.Z",
+            "1969-12-31T23:59:59Z",
+        ] {
+            assert_eq!(Timestamp::parse_rfc3339(bad), None, "{bad:?}");
+        }
     }
 }

@@ -1,7 +1,8 @@
-//! The set of root certificates a chain must end in. A trust store is
-//! immutable once built and safe to share across threads; refreshing trust
-//! means building a new store and swapping it in. Intermediate CAs are never
-//! part of it: they come from the TSL or from the candidate chain.
+//! The set of root certificates a chain must end in, with the intermediates known to
+//! chain to them. A trust store is immutable once built and safe to share across
+//! threads; refreshing trust means building a new store and swapping it in.
+//! Intermediates are never trust anchors: they only help build a chain, which path
+//! validation then checks up to a root.
 
 use crate::Certificate;
 
@@ -13,6 +14,7 @@ use crate::Certificate;
 #[derive(Clone, Debug)]
 pub struct TrustStore {
     roots: Vec<Certificate>,
+    intermediates: Vec<Certificate>,
 }
 
 impl TrustStore {
@@ -37,7 +39,23 @@ impl TrustStore {
                 unique.push(root);
             }
         }
-        TrustStore { roots: unique }
+        TrustStore {
+            roots: unique,
+            intermediates: Vec::new(),
+        }
+    }
+
+    /// The store with `intermediates` as the candidates chain building draws on,
+    /// typically the TSL's CAs as kept by [`tsl::match_to_roots`](crate::tsl::match_to_roots).
+    #[must_use]
+    pub fn with_intermediates(mut self, intermediates: Vec<Certificate>) -> Self {
+        self.intermediates = intermediates;
+        self
+    }
+
+    /// The intermediates set with [`with_intermediates`](Self::with_intermediates).
+    pub fn intermediates(&self) -> &[Certificate] {
+        &self.intermediates
     }
 
     /// The trusted roots, in the order they were added.
@@ -77,7 +95,7 @@ impl TrustStore {
 #[cfg(feature = "load")]
 impl TrustStore {
     pub(crate) fn from_verified(verified: crate::load::Verified) -> Self {
-        TrustStore::new(verified.roots)
+        TrustStore::new(verified.roots).with_intermediates(verified.intermediates)
     }
 }
 
