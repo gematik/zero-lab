@@ -56,6 +56,10 @@ pub enum ErrorCode {
     OcspResponderUntrusted,
     /// The OCSP responder is unreachable or returned non-success. (SE_1029)
     OcspUnavailable,
+    /// Warning only: the OCSP responder is not authorized under RFC 6960, but was
+    /// accepted as a delegate of another CA of the same TSP. `ti-pki`'s own code; Go
+    /// has no equivalent.
+    OcspResponderNotRfc6960,
     /// A required profession or role OID is not present in the admission
     /// extension. (SE_1036)
     RoleOidMissing,
@@ -98,6 +102,7 @@ impl ErrorCode {
             ErrorCode::OcspResponseInvalid => "ocsp_response_invalid",
             ErrorCode::OcspResponderUntrusted => "ocsp_responder_untrusted",
             ErrorCode::OcspUnavailable => "ocsp_unavailable",
+            ErrorCode::OcspResponderNotRfc6960 => "ocsp_responder_not_rfc6960",
             ErrorCode::RoleOidMissing => "role_oid_missing",
             ErrorCode::Expired => "expired",
             ErrorCode::NotYetValid => "not_yet_valid",

@@ -13,7 +13,7 @@ pub struct Verified {
     /// The roots that chain to the anchor.
     pub(crate) roots: Vec<Certificate>,
     /// The TSL's CAs that a root signed.
-    pub(crate) intermediates: Vec<Certificate>,
+    pub(crate) intermediates: Vec<crate::tsl::Intermediate>,
     /// The TSL's `NextUpdate`.
     pub(crate) tsl_next_update: Option<Timestamp>,
 }

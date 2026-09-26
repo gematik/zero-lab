@@ -67,13 +67,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         matched.rejected.len()
     );
     let mut per_root: BTreeMap<&str, usize> = BTreeMap::new();
-    for ca in &matched.intermediates {
+    for ca in matched.intermediates.iter().map(|i| &i.certificate) {
         *per_root.entry(ca.issuer_cn()).or_default() += 1;
     }
     for (root, count) in per_root {
         println!("  {count:>4}        under {root}");
     }
-    for (ca, reason) in &matched.rejected {
+    for (ca, reason) in matched.rejected.iter().map(|(i, r)| (&i.certificate, r)) {
         let expired = if ca.is_valid_at(now) { "" } else { ", expired" };
         println!(
             "  rejected    {} (issuer {}{expired}): {reason}",
@@ -84,7 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let expired = matched
         .intermediates
         .iter()
-        .filter(|ca| !ca.is_valid_at(now))
+        .filter(|ca| !ca.certificate.is_valid_at(now))
         .count();
     if expired > 0 {
         println!("  note        {expired} kept CAs are expired; path validation rejects them");

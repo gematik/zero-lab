@@ -5,6 +5,7 @@
 //! validation then checks up to a root.
 
 use crate::Certificate;
+use crate::tsl::Intermediate;
 
 /// An immutable set of trusted root certificates, each of which either is an
 /// environment's anchor or chains back to it (see [`crate::roots`]).
@@ -15,6 +16,8 @@ use crate::Certificate;
 pub struct TrustStore {
     roots: Vec<Certificate>,
     intermediates: Vec<Certificate>,
+    /// The TSP of `intermediates[i]`, same index.
+    providers: Vec<String>,
 }
 
 impl TrustStore {
@@ -42,20 +45,33 @@ impl TrustStore {
         TrustStore {
             roots: unique,
             intermediates: Vec::new(),
+            providers: Vec::new(),
         }
     }
 
     /// The store with `intermediates` as the candidates chain building draws on,
     /// typically the TSL's CAs as kept by [`tsl::match_to_roots`](crate::tsl::match_to_roots).
     #[must_use]
-    pub fn with_intermediates(mut self, intermediates: Vec<Certificate>) -> Self {
-        self.intermediates = intermediates;
+    pub fn with_intermediates(mut self, intermediates: Vec<Intermediate>) -> Self {
+        (self.intermediates, self.providers) = intermediates
+            .into_iter()
+            .map(|i| (i.certificate, i.provider))
+            .unzip();
         self
     }
 
     /// The intermediates set with [`with_intermediates`](Self::with_intermediates).
     pub fn intermediates(&self) -> &[Certificate] {
         &self.intermediates
+    }
+
+    /// The TSP an intermediate is listed under; `None` for a certificate that is not
+    /// one of the intermediates, such as a root.
+    pub fn provider_of(&self, cert: &Certificate) -> Option<&str> {
+        self.intermediates
+            .iter()
+            .position(|c| c == cert)
+            .map(|i| self.providers[i].as_str())
     }
 
     /// The trusted roots, in the order they were added.

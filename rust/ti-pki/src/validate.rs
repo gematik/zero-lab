@@ -19,7 +19,8 @@ use crate::error::{ErrorCode, ValidationError, ValidationWarning};
 use crate::key::{KeyStatus, classify_key};
 use crate::path::{PathOptions, validate_path};
 use crate::revocation::{
-    RevocationChecker, RevocationFinding, RevocationMode, RevocationResult, apply_revocation,
+    ResponderAuthorization, RevocationChecker, RevocationFinding, RevocationMode, RevocationResult,
+    apply_revocation,
 };
 use crate::time::Timestamp;
 use crate::{Certificate, Error, TrustConfig, TrustStore, build_chain};
@@ -272,8 +273,11 @@ impl Validator {
         };
         for (i, link) in chain.windows(2).take(links).enumerate() {
             let (cert, issuer) = (&link[0], &link[1]);
-            let outcome = checker.check(cert, issuer).await;
+            let outcome = checker.check(cert, issuer, &self.store).await;
             if let Ok(revocation) = &outcome {
+                if let Some(warning) = not_rfc6960(revocation, cert, issuer) {
+                    result.warnings.push(warning);
+                }
                 result.cert_results[i].revocation = Some(revocation.clone());
             }
             match apply_revocation(self.revocation, cert.subject_cn(), &outcome) {
@@ -283,6 +287,31 @@ impl Validator {
             }
         }
     }
+}
+
+/// The warning for a response whose signer only the same-TSP rule authorized, so the
+/// deviation from RFC 6960 is visible in every result that relied on it.
+fn not_rfc6960(
+    revocation: &RevocationResult,
+    cert: &Certificate,
+    issuer: &Certificate,
+) -> Option<ValidationWarning> {
+    let Some(ResponderAuthorization::SameTspDelegate { ca, tsp }) = &revocation.authorization
+    else {
+        return None;
+    };
+    Some(
+        ValidationWarning::new(
+            ErrorCode::OcspResponderNotRfc6960,
+            format!(
+                "OCSP responder {:?} is not RFC 6960 conform: certified by {ca:?}, not by the \
+                 issuing CA {:?}; accepted as a delegate of the same TSP {tsp:?}",
+                revocation.responder_name,
+                issuer.subject_cn()
+            ),
+        )
+        .with_subject(cert.subject_cn()),
+    )
 }
 
 /// The result for a chain that reached no root: what the walk found, nothing
@@ -412,10 +441,12 @@ mod tests {
             );
             assert_eq!(alone.positions, [ChainPosition::EndEntity]);
 
-            v.store = Arc::new(
-                TrustStore::new([pki.rca1.clone()])
-                    .with_intermediates(vec![pki.sub_ca_hba.clone()]),
-            );
+            v.store = Arc::new(TrustStore::new([pki.rca1.clone()]).with_intermediates(vec![
+                crate::tsl::Intermediate {
+                    certificate: pki.sub_ca_hba.clone(),
+                    provider: "Test TSP".into(),
+                },
+            ]));
             let result = offline(&v, std::slice::from_ref(&pki.ee_arzt));
             assert!(result.valid, "{:?}", result.errors);
             assert_eq!(result.chain.len(), 3);
@@ -530,10 +561,44 @@ mod tests {
                 ]
             );
 
-            let (result, _) = check(&pki.ee_revoked, vec![revoked, ca_good]);
+            let (result, _) = check(&pki.ee_revoked, vec![revoked, ca_good.clone()]);
             assert_eq!(
                 codes(&result),
                 [(ErrorCode::Revoked, "EE-Revoked TEST-ONLY")]
+            );
+
+            // A delegate of another CA of the same TSP: accepted, with a warning.
+            let foreign = include_bytes!("../tests/pki/ocsp/foreign-responder.der").to_vec();
+            let transport = MockTransport::posting([Ok(foreign), Ok(ca_good)]);
+            let checker = OcspChecker::new(&config, &transport, FixedClock::new(TestPki::NOW))
+                .with_responder_url("http://ocsp.test/");
+            let intermediate = |ca: &Certificate| crate::tsl::Intermediate {
+                certificate: ca.clone(),
+                provider: "TSP A".into(),
+            };
+            let v = Validator {
+                store: Arc::new(
+                    TrustStore::new([pki.rca1.clone(), pki.rca7.clone()]).with_intermediates(vec![
+                        intermediate(&pki.sub_ca_hba),
+                        intermediate(&pki.sub_ca_komp),
+                    ]),
+                ),
+                ..validator(&pki, RevocationMode::HardFail)
+            };
+            let result =
+                block_on(v.validate(std::slice::from_ref(&pki.ee_arzt), TestPki::NOW, &checker))
+                    .unwrap();
+            assert!(result.valid, "{:?}", result.errors);
+            let warnings: Vec<String> = result.warnings.iter().map(ToString::to_string).collect();
+            assert_eq!(
+                warnings,
+                [
+                    "ti-pki[ocsp_responder_not_rfc6960] warning: OCSP responder \
+                     \"SubCA-Komp OCSP-Signer TEST-ONLY\" is not RFC 6960 conform: certified by \
+                     \"GEM.SubCA-Komp TEST-ONLY\", not by the issuing CA \"GEM.SubCA-HBA \
+                     TEST-ONLY\"; accepted as a delegate of the same TSP \"TSP A\": \
+                     \"Dr. Arzt TEST-ONLY\""
+                ]
             );
         }
     }

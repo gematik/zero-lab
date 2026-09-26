@@ -142,9 +142,9 @@ fn live_trust_material_of_every_environment() {
 
 /// A real SMC-B of the reference environment: chain from the live TSL, profile picked
 /// automatically, OCSP for the CA at the root responder and for the end entity at its
-/// TSP. The TSP answers with a delegate of another CA (ehca, GEM.KOMP-CA51), which
-/// RFC 6960 does not authorize; that is the only failure accepted here, so the test
-/// notices when gematik changes either side.
+/// TSP. The TSP answers with a delegate of another of its CAs (ehca, GEM.KOMP-CA51),
+/// which RFC 6960 does not authorize and the same-TSP rule does, with a warning. The
+/// test pins exactly that, so it notices when gematik changes either side.
 #[test]
 #[ignore = "network: gematik download endpoints and OCSP responders"]
 fn live_smcb_end_to_end() {
@@ -173,6 +173,9 @@ fn live_smcb_end_to_end() {
     for error in &result.errors {
         println!("error: {error}");
     }
+    for warning in &result.warnings {
+        println!("warning: {warning}");
+    }
     assert_eq!(result.chain.len(), 3);
     let ca = result.cert_results[1]
         .revocation
@@ -183,14 +186,18 @@ fn live_smcb_end_to_end() {
         RevocationStatus::Good,
         "TUC_PKI_006 at the root responder"
     );
-    let unexpected: Vec<_> = result
-        .errors
+    assert!(result.valid, "{:?}", result.errors);
+    let not_rfc6960: Vec<_> = result
+        .warnings
         .iter()
-        .filter(|e| {
-            !(e.code == ErrorCode::OcspResponderUntrusted && e.message.contains("GEM.KOMP-CA51"))
-        })
+        .filter(|w| w.code == ErrorCode::OcspResponderNotRfc6960)
         .collect();
-    assert!(unexpected.is_empty(), "{unexpected:?}");
+    assert_eq!(not_rfc6960.len(), 1, "{:?}", result.warnings);
+    assert!(
+        not_rfc6960[0].message.contains("GEM.KOMP-CA51"),
+        "{}",
+        not_rfc6960[0]
+    );
 }
 
 /// A production SubCA from the live TSL, checked at the production root responder.
@@ -213,7 +220,7 @@ fn live_prod_sub_ca_at_its_root() {
                 && ca.verify_signed_by(root, &config.algorithms).is_ok()
         })
         .expect("its root");
-    let result = block_on(checker.check(ca, root)).unwrap();
+    let result = block_on(checker.check(ca, root, &store)).unwrap();
     println!(
         "{} at {}: {} by {}",
         ca.subject_cn(),

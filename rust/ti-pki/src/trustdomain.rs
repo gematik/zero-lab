@@ -329,8 +329,9 @@ mod tests {
             let ca = tsl
                 .intermediate_cas()
                 .into_iter()
-                .find(|c| c.subject_cn() == "MESIG.SMCB-CA1")
-                .unwrap();
+                .find(|c| c.certificate.subject_cn() == "MESIG.SMCB-CA1")
+                .unwrap()
+                .certificate;
             let result = detect_trust_domain(&[ca], NOW);
             assert_eq!(result.domain, Some(Tier::Prod));
             assert_eq!(result.method, Some(TrustDomainMethod::Chain));

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+- OCSP responders that are not RFC 6960 conform are accepted as delegates of the same
+  TSP: id-kp-OCSPSigning, valid, certified by a TSL CA a root signed, both CAs under one
+  TSP. `RevocationResult::authorization` records how a responder was authorized, and the
+  validator reports the deviation as an `ocsp_responder_not_rfc6960` warning. For that,
+  `tsl::Intermediate` carries each CA's TSP, `TrustStore::provider_of` looks it up, and
+  `RevocationChecker::check` receives the trust store.
 - `TrustConfig::accept_test_only_policies` is removed: gematik's test cards carry the
   production policy OIDs, so there was nothing for it to relax.
 - gempki port, phase 6 (parity): OpenSSL cross-validation tests (test PKI chains, the

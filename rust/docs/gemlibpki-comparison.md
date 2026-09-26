@@ -24,7 +24,7 @@ therefore out of scope:
 | Trust-anchor change announced in the TSL (TUC_PKI_013) | Roots come from roots.json |
 | A SubCA's standing is its TSL listing | Each SubCA is checked by OCSP at its root's responder, on by default |
 | OCSP responder URL from the TSL supply point | AIA URL from the certificate, overridable (`OcspChecker::with_responder_url`) |
-| OCSP responder authorized by its TSL listing | RFC 6960 only: the issuing CA or a delegate it certified with id-kp-OCSPSigning. Delegates of other CAs are rejected, e.g. ehca (a GEM.KOMP-CA51 delegate answering for GEM.SMCB-CA51) and the D-Trust responders under GEM.OCSP-CA1/3; gempki also accepts TSL-listed responders and a chain to any root |
+| OCSP responder authorized by its TSL listing (byte-identical to a listed OCSP service, any TSP) | RFC 6960 (the issuing CA, or a delegate it certified with id-kp-OCSPSigning), else a delegate of another CA of the same TSP: id-kp-OCSPSigning, valid now, certificate verified under a TSL CA a root signed, both CAs listed under one TSP; reported as an `ocsp_responder_not_rfc6960` warning. This accepts ehca (a GEM.KOMP-CA51 delegate answering for GEM.SMCB-CA51); the D-Trust responders under GEM.OCSP-CA1/3 stay rejected, as their CA is not in the TSL |
 | QES time-based validation with historical TSLs (TUC_PKI_030) | Not implemented; validation at a past instant uses the current roots and TSL |
 | RSA profile variants | RSA signatures verify (PKCS#1 v1.5, PSS); the type baselines are the ECDSA branch |
 | OCSP response cache | Left to the caller; `OcspChecker::with_max_response_age` accepts cached answers |

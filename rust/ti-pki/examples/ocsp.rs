@@ -15,7 +15,8 @@ use ti_pki::load::SystemClock;
 use ti_pki::ocsp::OcspChecker;
 use ti_pki::reqwest::ReqwestTransport;
 use ti_pki::revocation::{
-    RevocationChecker, RevocationFinding, RevocationMode, RevocationStatus, apply_revocation,
+    ResponderAuthorization, RevocationChecker, RevocationFinding, RevocationMode, RevocationStatus,
+    apply_revocation,
 };
 use ti_pki::time::Clock;
 use ti_pki::tsl::{self, Tsl};
@@ -83,7 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (cert, issuer) = (&link[0], &link[1]);
         println!();
         println!("certificate   {}", cert.subject_cn());
-        let outcome = runtime.block_on(checker.check(cert, issuer));
+        let outcome = runtime.block_on(checker.check(cert, issuer, &store));
         match &outcome {
             Ok(result) => {
                 println!("responder     {}", or_dash(&result.responder_url));
@@ -95,10 +96,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("revoked at    {revoked_at}");
                 }
                 if !result.responder_name.is_empty() {
-                    let kind = if result.responder.is_some() {
-                        "delegate"
-                    } else {
-                        "the CA"
+                    let kind = match &result.authorization {
+                        Some(ResponderAuthorization::Issuer) => "the CA".to_owned(),
+                        Some(ResponderAuthorization::SameTspDelegate { ca, tsp }) => format!(
+                            "delegate of {ca}, same TSP {tsp:?}; WARNING: not RFC 6960 conform"
+                        ),
+                        _ => "delegate".to_owned(),
                     };
                     println!("signed by     {} ({kind})", result.responder_name);
                 }

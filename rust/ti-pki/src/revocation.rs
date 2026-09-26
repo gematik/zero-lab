@@ -15,9 +15,9 @@
 
 use core::fmt;
 
-use crate::Certificate;
 use crate::error::{ErrorCode, ValidationError, ValidationWarning};
 use crate::time::Timestamp;
+use crate::{Certificate, TrustStore};
 
 /// How a non-Good revocation outcome affects the verdict. Revoked and an
 /// untrusted response are always errors; the mode only governs the
@@ -64,6 +64,25 @@ impl fmt::Display for RevocationStatus {
     }
 }
 
+/// Why the signer of an OCSP response was allowed to answer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ResponderAuthorization {
+    /// The issuing CA signed the response itself.
+    Issuer,
+    /// A delegate the issuing CA certified with id-kp-OCSPSigning (RFC 6960 §4.2.2.2).
+    Delegate,
+    /// Not RFC 6960 conform: a delegate certified by another CA of the issuing CA's
+    /// TSP. TI TSPs run one responder for several of their CAs, which the TSL
+    /// authorizes; the delegate's CA must be a TSL CA a root signed.
+    SameTspDelegate {
+        /// Common name of the CA that certified the delegate.
+        ca: String,
+        /// The TSP both CAs are listed under.
+        tsp: String,
+    },
+}
+
 /// The revocation outcome for one certificate, with the OCSP detail for display and
 /// diagnostics.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -88,6 +107,8 @@ pub struct RevocationResult {
     pub responder: Option<Certificate>,
     /// Common name of whoever signed the response.
     pub responder_name: String,
+    /// Why the signer was allowed to answer; `None` without a verified response.
+    pub authorization: Option<ResponderAuthorization>,
     /// The DER response as received, for forensic dumps.
     pub raw_response: Vec<u8>,
 }
@@ -107,6 +128,7 @@ impl RevocationResult {
             next_update: None,
             responder: None,
             responder_name: String::new(),
+            authorization: None,
             raw_response: Vec::new(),
         }
     }
@@ -129,11 +151,14 @@ impl RevocationResult {
     reason = "no Send bound on purpose: implementable on wasm32"
 )]
 pub trait RevocationChecker {
-    /// The status of `cert`, which `issuer` issued.
+    /// The status of `cert`, which `issuer` issued. `store` is the trust store the
+    /// chain was built against; a checker may use its intermediates, e.g. to authorize
+    /// an OCSP responder.
     async fn check(
         &self,
         cert: &Certificate,
         issuer: &Certificate,
+        store: &TrustStore,
     ) -> Result<RevocationResult, ValidationError>;
 }
 
@@ -149,6 +174,7 @@ impl RevocationChecker for Unchecked {
         &self,
         cert: &Certificate,
         _issuer: &Certificate,
+        _store: &TrustStore,
     ) -> Result<RevocationResult, ValidationError> {
         Err(ValidationError::new(
             ErrorCode::OcspUnavailable,

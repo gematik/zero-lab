@@ -6,12 +6,25 @@
 //!
 //! - one of its single responses carries the CertID of the certificate asked about
 //!   (serial, and issuer name and key hashed with the algorithm the responder chose),
-//! - it is signed by an authorized responder in the sense of RFC 6960 §4.2.2.2: the
+//! - it is signed by an authorized responder: in the sense of RFC 6960 §4.2.2.2 the
 //!   issuing CA itself, or a delegate the CA certified directly with
-//!   `id-kp-OCSPSigning` and that is valid now. Responders the TSL lists are not
-//!   authorized by that fact, since the TSL is not authenticated (see [`crate::tsl`]),
+//!   `id-kp-OCSPSigning` and that is valid now; otherwise, given a trust store, a
+//!   delegate of the same kind certified by another CA of the issuing CA's TSP (see
+//!   below),
 //! - its certHash extension (gemSpec_PKI; Common PKI) hashes this very certificate, and
 //! - it lies within the TUC_PKI_006 time window.
+//!
+//! # Delegates of the same TSP
+//!
+//! TI TSPs run one responder for several of their CAs: gematik's ehca, for one, signs
+//! answers for GEM.SMCB-CA51 with a delegate of GEM.KOMP-CA51. gemSpec_PKI authorizes
+//! such responders by their TSL listing, which presumes an authenticated TSL; this crate
+//! does not authenticate the TSL (see [`crate::tsl`]). It accepts such a delegate
+//! instead when its certificate verifies under a TSL CA that a trusted root signed and
+//! that CA is listed under the same TSP as the issuing CA. The TSL contributes only the
+//! grouping of CAs into TSPs. [`RevocationResult::authorization`] records the
+//! deviation, and the [`Validator`](crate::Validator) reports it as an
+//! [`ErrorCode::OcspResponderNotRfc6960`] warning.
 //!
 //! Failures come back with the codes the [`revocation`](crate::revocation) table
 //! decides on; a response outside the time window is an
@@ -40,11 +53,11 @@ use x509_cert::ext::pkix::crl::CrlReason;
 use x509_cert::serial_number::SerialNumber;
 use x509_cert::spki::AlgorithmIdentifierOwned;
 
-use crate::Certificate;
 use crate::algorithms::{self, AlgorithmSet};
 use crate::error::{ErrorCode, ValidationError};
-use crate::revocation::{RevocationResult, RevocationStatus};
+use crate::revocation::{ResponderAuthorization, RevocationResult, RevocationStatus};
 use crate::time::Timestamp;
+use crate::{Certificate, TrustStore};
 
 /// The clock skew TUC_PKI_006 grants an OCSP responder (gemSpec_PKI: 37.5 s):
 /// `thisUpdate` and `producedAt` may lie this far in the future, `nextUpdate` this far
@@ -82,6 +95,9 @@ pub struct ResponseCheck<'a> {
     pub allow_missing_cert_hash: bool,
     /// The algorithms the response signature and a delegate's certificate may use.
     pub algorithms: &'a AlgorithmSet,
+    /// The trust store whose intermediates may authorize a delegate of another CA of
+    /// the issuing CA's TSP. Without it, only RFC 6960 authorization applies.
+    pub store: Option<&'a TrustStore>,
 }
 
 impl<'a> ResponseCheck<'a> {
@@ -93,6 +109,7 @@ impl<'a> ResponseCheck<'a> {
             clock_tolerance: DEFAULT_CLOCK_TOLERANCE,
             allow_missing_cert_hash: false,
             algorithms,
+            store: None,
         }
     }
 }
@@ -218,10 +235,11 @@ fn verify(
         })
         .collect::<Result<Vec<_>, _>>()?;
     let responder = pick_responder(&data.responder_id, &embedded);
-    if let Some(responder) = responder {
-        authorize(responder, issuer, check)
-            .map_err(|message| ValidationError::new(ErrorCode::OcspResponderUntrusted, message))?;
-    }
+    let authorization = match responder {
+        Some(responder) => authorize(responder, issuer, check)
+            .map_err(|message| ValidationError::new(ErrorCode::OcspResponderUntrusted, message))?,
+        None => ResponderAuthorization::Issuer,
+    };
     let signer = responder.unwrap_or(issuer);
     verify_signature(signer, &basic, &tbs_der, check.algorithms).map_err(|reason| {
         invalid(format!(
@@ -241,6 +259,7 @@ fn verify(
     result.this_update = Some(single.this_update.0);
     result.next_update = single.next_update.map(|t| t.0);
     result.responder = responder.cloned();
+    result.authorization = Some(authorization);
     signer.subject_cn().clone_into(&mut result.responder_name);
     der.clone_into(&mut result.raw_response);
     Ok(with_status(result, &single.cert_status, check))
@@ -338,48 +357,98 @@ fn authorize(
     responder: &Certificate,
     issuer: &Certificate,
     check: &ResponseCheck<'_>,
-) -> Result<(), String> {
+) -> Result<ResponderAuthorization, String> {
     if responder.subject_der() == issuer.subject_der()
         && responder.public_key() == issuer.public_key()
     {
-        return Ok(());
+        return Ok(ResponderAuthorization::Issuer);
     }
     let (name, ca) = (responder.subject_cn(), issuer.subject_cn());
-    if responder.issuer_der() != issuer.subject_der() {
-        return Err(format!(
-            "OCSP responder {name:?} was certified by {:?}, but the certificate was issued \
-             by {ca:?}; RFC 6960 accepts only the issuing CA or a responder it certified \
-             directly (the responder's own chain is not followed to a root)",
-            responder.issuer_cn()
-        ));
-    }
-    responder
-        .verify_signed_by(issuer, check.algorithms)
-        .map_err(|e| {
-            format!(
-                "OCSP responder {name:?} names the issuing CA {ca:?} as its issuer, but its \
-             certificate does not verify under the CA's key: {e}"
-            )
+    if responder.issuer_der() == issuer.subject_der() {
+        responder
+            .verify_signed_by(issuer, check.algorithms)
+            .map_err(|e| {
+                format!(
+                    "OCSP responder {name:?} names the issuing CA {ca:?} as its issuer, but its \
+                 certificate does not verify under the CA's key: {e}"
+                )
+            })?;
+        delegate_usable(responder, check).map_err(|reason| {
+            format!("OCSP responder {name:?}, certified by the issuing CA {ca:?}, {reason}")
         })?;
-    if !responder.ext_key_usage().contains(&ID_KP_OCSP_SIGNING) {
+        return Ok(ResponderAuthorization::Delegate);
+    }
+    let not_rfc6960 = format!(
+        "OCSP responder {name:?} was certified by {:?}, but the certificate was issued by \
+         {ca:?}; RFC 6960 accepts only the issuing CA or a responder it certified directly",
+        responder.issuer_cn()
+    );
+    let Some(store) = check.store else {
         return Err(format!(
-            "OCSP responder {name:?}, certified by the issuing CA {ca:?}, lacks \
-             id-kp-OCSPSigning"
+            "{not_rfc6960}, and no trust store is at hand to accept a delegate of the same TSP"
         ));
+    };
+    same_tsp_delegate(responder, issuer, store, check)
+        .map_err(|reason| format!("{not_rfc6960}; nor is it a delegate of the same TSP: {reason}"))
+}
+
+/// What RFC 6960 asks of any delegate: id-kp-OCSPSigning, and validity now.
+fn delegate_usable(responder: &Certificate, check: &ResponseCheck<'_>) -> Result<(), String> {
+    if !responder.ext_key_usage().contains(&ID_KP_OCSP_SIGNING) {
+        return Err("lacks id-kp-OCSPSigning".into());
     }
     let skew = check.clock_tolerance.as_secs();
     let valid = responder.is_valid_at(Timestamp(check.now.0.saturating_add(skew)))
         || responder.is_valid_at(Timestamp(check.now.0.saturating_sub(skew)));
     if !valid {
         return Err(format!(
-            "OCSP responder {name:?}, certified by the issuing CA {ca:?}, is not valid at {} \
-             (valid {} to {})",
+            "is not valid at {} (valid {} to {})",
             check.now,
             responder.not_before(),
             responder.not_after()
         ));
     }
     Ok(())
+}
+
+/// The TI's responder model without an authenticated TSL: a delegate usable under RFC
+/// 6960 rules, certified (signature verified) by a TSL CA that a root signed, whose TSP
+/// is the issuing CA's. The TSL contributes only the grouping of CAs into TSPs, so a
+/// forged TSL could regroup CAs the roots already vouch for, but not add a key.
+fn same_tsp_delegate(
+    responder: &Certificate,
+    issuer: &Certificate,
+    store: &TrustStore,
+    check: &ResponseCheck<'_>,
+) -> Result<ResponderAuthorization, String> {
+    delegate_usable(responder, check).map_err(|reason| format!("it {reason}"))?;
+    let responder_ca = store
+        .intermediates()
+        .iter()
+        .find(|ca| {
+            ca.subject_der() == responder.issuer_der()
+                && responder.verify_signed_by(ca, check.algorithms).is_ok()
+        })
+        .ok_or_else(|| {
+            format!(
+                "{:?} is not a TSL CA under the trusted roots whose signature on it verifies",
+                responder.issuer_cn()
+            )
+        })?;
+    let issuer_tsp = store
+        .provider_of(issuer)
+        .ok_or_else(|| format!("the issuing CA {:?} is not a TSL CA", issuer.subject_cn()))?;
+    let responder_tsp = store.provider_of(responder_ca).unwrap_or_default();
+    if responder_tsp != issuer_tsp {
+        return Err(format!(
+            "{:?} belongs to TSP {responder_tsp:?}, the issuing CA to {issuer_tsp:?}",
+            responder_ca.subject_cn()
+        ));
+    }
+    Ok(ResponderAuthorization::SameTspDelegate {
+        ca: responder_ca.subject_cn().to_owned(),
+        tsp: issuer_tsp.to_owned(),
+    })
 }
 
 fn verify_signature(
@@ -498,7 +567,7 @@ mod checker {
     use crate::load::{PostRequest, Transport};
     use crate::revocation::{RevocationChecker, RevocationResult};
     use crate::time::Clock;
-    use crate::{Certificate, TrustConfig};
+    use crate::{Certificate, TrustConfig, TrustStore};
 
     /// Queries a certificate's OCSP responder through a [`Transport`] and verifies the
     /// answer with [`verify_response`](super::verify_response). The transport owns
@@ -561,6 +630,7 @@ mod checker {
             &self,
             cert: &Certificate,
             issuer: &Certificate,
+            store: &TrustStore,
         ) -> Result<RevocationResult, ValidationError> {
             let Some(url) = self
                 .responder_url
@@ -596,6 +666,7 @@ mod checker {
                 clock_tolerance: self.clock_tolerance,
                 allow_missing_cert_hash: self.allow_missing_cert_hash,
                 algorithms: &self.algorithms,
+                store: Some(store),
             };
             let mut result = verify_response(&response, cert, issuer, &check)?;
             url.clone_into(&mut result.responder_url);
@@ -929,8 +1000,8 @@ mod tests {
                     "OCSP responder \"SubCA-Komp OCSP-Signer TEST-ONLY\" was certified by \
                      \"GEM.SubCA-Komp TEST-ONLY\", but the certificate was issued by \
                      \"GEM.SubCA-HBA TEST-ONLY\"; RFC 6960 accepts only the issuing CA or a \
-                     responder it certified directly (the responder's own chain is not \
-                     followed to a root)",
+                     responder it certified directly, and no trust store is at hand to \
+                     accept a delegate of the same TSP",
                 ),
                 (
                     response!("expired-responder"),
@@ -944,6 +1015,77 @@ mod tests {
                 assert_eq!(error.message, message);
                 assert_eq!(error.subject, "Dr. Arzt TEST-ONLY");
             }
+        }
+
+        fn store_with(pki: &TestPki, cas: &[(&Certificate, &str)]) -> TrustStore {
+            TrustStore::new([pki.rca1.clone(), pki.rca7.clone()]).with_intermediates(
+                cas.iter()
+                    .map(|(ca, tsp)| crate::tsl::Intermediate {
+                        certificate: (*ca).clone(),
+                        provider: (*tsp).to_owned(),
+                    })
+                    .collect(),
+            )
+        }
+
+        /// ocsp-signer-komp, certified by GEM.SubCA-Komp, answers for a certificate of
+        /// GEM.SubCA-HBA: not RFC 6960, acceptable only if both CAs share a TSP.
+        #[test]
+        fn delegates_of_the_same_tsp() {
+            let pki = TestPki::new();
+            let (hba, komp) = (&pki.sub_ca_hba, &pki.sub_ca_komp);
+            let verify_with = |store: &TrustStore| {
+                let check = ResponseCheck {
+                    store: Some(store),
+                    ..ResponseCheck::new(TestPki::NOW, algorithms::DEFAULT)
+                };
+                verify_response(response!("foreign-responder"), &pki.ee_arzt, hba, &check)
+            };
+
+            let same = verify_with(&store_with(&pki, &[(hba, "TSP A"), (komp, "TSP A")])).unwrap();
+            assert_eq!(same.status, RevocationStatus::Good);
+            assert_eq!(
+                same.authorization,
+                Some(ResponderAuthorization::SameTspDelegate {
+                    ca: "GEM.SubCA-Komp TEST-ONLY".into(),
+                    tsp: "TSP A".into(),
+                })
+            );
+
+            for (store, reason) in [
+                (
+                    store_with(&pki, &[(hba, "TSP A"), (komp, "TSP B")]),
+                    "\"GEM.SubCA-Komp TEST-ONLY\" belongs to TSP \"TSP B\", the issuing CA to \
+                     \"TSP A\"",
+                ),
+                (
+                    store_with(&pki, &[(hba, "TSP A")]),
+                    "\"GEM.SubCA-Komp TEST-ONLY\" is not a TSL CA under the trusted roots \
+                     whose signature on it verifies",
+                ),
+                (
+                    store_with(&pki, &[(komp, "TSP A")]),
+                    "the issuing CA \"GEM.SubCA-HBA TEST-ONLY\" is not a TSL CA",
+                ),
+            ] {
+                let error = verify_with(&store).unwrap_err();
+                assert_eq!(error.code, ErrorCode::OcspResponderUntrusted);
+                assert!(
+                    error
+                        .message
+                        .ends_with(&format!("nor is it a delegate of the same TSP: {reason}")),
+                    "{error}"
+                );
+            }
+        }
+
+        #[test]
+        fn rfc6960_authorizations_are_recorded() {
+            let pki = TestPki::new();
+            let direct = verify(response!("good"), &pki.ee_arzt, &pki.sub_ca_hba).unwrap();
+            assert_eq!(direct.authorization, Some(ResponderAuthorization::Delegate));
+            let by_ca = verify(response!("issuer-signed"), &pki.sub_ca_hba, &pki.rca1).unwrap();
+            assert_eq!(by_ca.authorization, Some(ResponderAuthorization::Issuer));
         }
 
         #[test]
@@ -1086,20 +1228,27 @@ mod tests {
                     retryable: true,
                 }),
             ]);
+            let store = TrustStore::new([pki.rca1.clone()]);
             let checker = OcspChecker::new(&config, &transport, FixedClock::new(TestPki::NOW))
                 .with_responder_url("http://ocsp.test/");
-            let result =
-                futures_lite::future::block_on(checker.check(&pki.ee_arzt, &pki.sub_ca_hba))
-                    .unwrap();
+            let result = futures_lite::future::block_on(checker.check(
+                &pki.ee_arzt,
+                &pki.sub_ca_hba,
+                &store,
+            ))
+            .unwrap();
             assert_eq!(result.status, RevocationStatus::Good);
             assert_eq!(result.responder_url, "http://ocsp.test/");
             let posts = transport.posts();
             assert_eq!(posts[0].0, "http://ocsp.test/");
             assert_eq!(posts[0].1, request(&pki.ee_arzt, &pki.sub_ca_hba));
 
-            let error =
-                futures_lite::future::block_on(checker.check(&pki.ee_arzt, &pki.sub_ca_hba))
-                    .unwrap_err();
+            let error = futures_lite::future::block_on(checker.check(
+                &pki.ee_arzt,
+                &pki.sub_ca_hba,
+                &store,
+            ))
+            .unwrap_err();
             assert_eq!(error.code, ErrorCode::OcspUnavailable);
             assert_eq!(
                 error.to_string(),
@@ -1108,9 +1257,12 @@ mod tests {
             );
 
             let without_url = OcspChecker::new(&config, &transport, FixedClock::new(TestPki::NOW));
-            let result =
-                futures_lite::future::block_on(without_url.check(&pki.ee_arzt, &pki.sub_ca_hba))
-                    .unwrap();
+            let result = futures_lite::future::block_on(without_url.check(
+                &pki.ee_arzt,
+                &pki.sub_ca_hba,
+                &store,
+            ))
+            .unwrap();
             assert_eq!(result.status, RevocationStatus::Unknown);
             assert!(result.reason.starts_with("no OCSP responder URL"));
         }

@@ -114,24 +114,43 @@ impl Tsl {
         })
     }
 
-    /// The certificates of the CA services in accord, in document order: the candidate
-    /// intermediates. Untrusted until [`match_to_roots`] has kept them.
-    pub fn intermediate_cas(&self) -> Vec<Certificate> {
+    /// The CA services in accord, in document order, with their providers: the
+    /// candidate intermediates. Untrusted until [`match_to_roots`] has kept them.
+    pub fn intermediate_cas(&self) -> Vec<Intermediate> {
         self.services
             .iter()
             .filter(|s| s.service_type == SERVICE_TYPE_CA_PKC && s.is_in_accord())
-            .filter_map(|s| s.certificate.clone())
+            .filter_map(|s| {
+                s.certificate.clone().map(|certificate| Intermediate {
+                    certificate,
+                    provider: s.provider.clone(),
+                })
+            })
             .collect()
     }
+}
+
+/// A CA the TSL lists, with the trust service provider (TSP) it is listed under.
+///
+/// The provider groups the CAs of one TSP; OCSP uses it to accept a responder one of
+/// the TSP's CAs certified for another of its CAs (see [`crate::ocsp`]). Only the
+/// grouping is taken from the TSL: whether the CAs themselves are trusted is decided by
+/// [`match_to_roots`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Intermediate {
+    /// The CA certificate.
+    pub certificate: Certificate,
+    /// The provider's `TSPName`, e.g. `gematik GmbH`.
+    pub provider: String,
 }
 
 /// Candidate intermediates split by whether a root signed them.
 #[derive(Clone, Debug, Default)]
 pub struct Matched {
-    /// CA certificates issued and signed by a root of the store.
-    pub intermediates: Vec<Certificate>,
+    /// CAs issued and signed by a root of the store.
+    pub intermediates: Vec<Intermediate>,
     /// The others, with the reason.
-    pub rejected: Vec<(Certificate, Rejection)>,
+    pub rejected: Vec<(Intermediate, Rejection)>,
 }
 
 /// Why [`match_to_roots`] did not keep a candidate.
@@ -165,13 +184,13 @@ impl fmt::Display for Rejection {
 /// validation reports an expired intermediate with a precise error instead of
 /// "incomplete chain".
 pub fn match_to_roots(
-    candidates: impl IntoIterator<Item = Certificate>,
+    candidates: impl IntoIterator<Item = Intermediate>,
     store: &TrustStore,
     algorithms: &AlgorithmSet,
 ) -> Matched {
     let mut matched = Matched::default();
     for candidate in candidates {
-        match check_candidate(&candidate, store, algorithms) {
+        match check_candidate(&candidate.certificate, store, algorithms) {
             Ok(()) => matched.intermediates.push(candidate),
             Err(reason) => matched.rejected.push((candidate, reason)),
         }
@@ -421,7 +440,7 @@ mod tests {
         let rejected: Vec<String> = matched
             .rejected
             .iter()
-            .map(|(cert, reason)| format!("{}: {reason}", cert.subject_cn()))
+            .map(|(ca, reason)| format!("{}: {reason}", ca.certificate.subject_cn()))
             .collect();
         assert_eq!(
             rejected,
@@ -546,12 +565,23 @@ mod tests {
 
         let store = TrustStore::new([pki.rca1.clone()]);
         let matched = match_to_roots(tsl.intermediate_cas(), &store, crate::algorithms::DEFAULT);
-        assert_eq!(
-            matched.intermediates,
-            core::slice::from_ref(&pki.sub_ca_hba)
+        let kept: Vec<&Certificate> = matched
+            .intermediates
+            .iter()
+            .map(|i| &i.certificate)
+            .collect();
+        assert_eq!(kept, [&pki.sub_ca_hba]);
+        assert!(
+            matched
+                .intermediates
+                .iter()
+                .all(|i| i.provider == "Test TSP")
         );
-        let rejected: Vec<(&Certificate, Rejection)> =
-            matched.rejected.iter().map(|(c, r)| (c, *r)).collect();
+        let rejected: Vec<(&Certificate, Rejection)> = matched
+            .rejected
+            .iter()
+            .map(|(i, r)| (&i.certificate, *r))
+            .collect();
         assert_eq!(
             rejected,
             [
