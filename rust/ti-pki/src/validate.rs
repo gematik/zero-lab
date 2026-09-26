@@ -377,7 +377,7 @@ mod tests {
         use futures_lite::future::block_on;
 
         use super::*;
-        use crate::revocation::{RevocationStatus, Unchecked};
+        use crate::revocation::Unchecked;
         use crate::testing::{TestPki, typed};
 
         fn validator(pki: &TestPki, revocation: RevocationMode) -> Validator {
@@ -495,6 +495,7 @@ mod tests {
         fn ocsp_for_the_end_entity_and_its_ca() {
             use crate::load::MockTransport;
             use crate::ocsp::OcspChecker;
+            use crate::revocation::RevocationStatus;
             use crate::time::FixedClock;
 
             let pki = TestPki::new();

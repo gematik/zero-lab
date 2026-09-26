@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- gempki port, phase 6 (parity): OpenSSL cross-validation tests (test PKI chains, the
+  real reference SMC-B chain, every production TSL CA, the OCSP fixtures); live tests
+  against gematik's endpoints behind `just real-world`; invariant tests for OID labels
+  and profile roles; `docs/gemlibpki-comparison.md`.
 - gempki port, phase 5 (validator): `Validator` (chain building through the supplied and
   the store's TSL intermediates, path validation with the end-entity requirements, the
   gemSpec_Krypt key check, revocation for the end entity and, unless

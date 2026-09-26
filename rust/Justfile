@@ -87,6 +87,11 @@ nonprod-absent:
     done
     echo "no non-prod trust material without dangerous-nonprod"
 
+# Live tests against gematik's endpoints: roots.json and TSL of every environment,
+# OCSP at real responders (network and curl required; not part of `check`)
+real-world:
+    cargo test -p ti-pki --features load,os,dangerous-nonprod --test real_world -- --ignored --nocapture --test-threads 1
+
 # Regenerate the OpenSSL test PKI in ti-pki/tests/pki (fresh keys, same topology)
 test-pki:
     ti-pki/tests/pki/generate.sh

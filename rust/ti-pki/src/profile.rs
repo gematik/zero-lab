@@ -455,6 +455,36 @@ mod tests {
     }
 
     #[test]
+    fn every_oid_a_profile_or_baseline_uses_is_labelled() {
+        for t in CertificateType::ALL {
+            let info = oid::lookup(&t.oid()).unwrap_or_else(|| panic!("{t} has no label"));
+            assert!(!info.reference.is_empty(), "{t}");
+            for policy in t.spec().policies {
+                assert!(oid::lookup(policy).is_some(), "{t}: policy {policy}");
+            }
+            for role in t.spec().role_oids {
+                assert!(oid::lookup(role).is_some(), "{t}: role {role}");
+            }
+        }
+    }
+
+    #[test]
+    fn profile_roles_are_allowed_on_their_types() {
+        for profile in PROFILES {
+            for role in profile.required_role_oids {
+                let allowed = oid::lookup(role).unwrap().certificate_types;
+                for t in profile.accepts_types {
+                    assert!(
+                        allowed.contains(&t.as_str()),
+                        "{profile}: {} is not allowed on {t}",
+                        oid::format(role)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn automatic_selection() {
         assert_eq!(
             select("type-hci-aut"),

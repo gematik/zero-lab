@@ -207,6 +207,18 @@ configured one but never loosen it, so production stays HardFail even for smb-au
 whose Go default is SoftFail. `trustdomain` tells production from test certificates
 offline, for picking a configuration. The `validate` example strings it all together.
 
+## Parity and live tests
+
+`tests/openssl_cross.rs` runs `openssl verify` and `openssl ocsp` next to `ti-pki` on the
+same bytes and requires the same verdict: the test PKI's happy and failing chains, the
+real reference SMC-B chain, every CA of the production TSL fixture, and the OCSP
+fixtures. It skips when `openssl` or its brainpool curves are missing. `just real-world`
+runs the ignored tests in `tests/real_world.rs` against gematik's endpoints: roots.json
+and TSL of every environment through `HttpLoader` and `Reloader`, a reference SMC-B end
+to end with OCSP, and a production SubCA at its root responder. The deliberate
+differences to gematik's reference implementation are in
+[gemlibpki-comparison.md](gemlibpki-comparison.md).
+
 ## Trust material loading
 
 roots.json and the TSL are loaded, cached and hot-reloaded by `ti_pki::load` (feature

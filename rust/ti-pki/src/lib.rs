@@ -51,6 +51,9 @@
 //! # fn main() {}
 //! ```
 //!
+//! How `ti-pki` differs from gematik's reference implementation GemLibPki, and why, is
+//! recorded in `docs/gemlibpki-comparison.md` in the repository.
+//!
 //! # Trust anchors
 //!
 //! Trust starts at one root certificate per environment, compiled into the
