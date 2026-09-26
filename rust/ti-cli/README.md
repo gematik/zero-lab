@@ -12,7 +12,22 @@ tir pki inspect card.pem > card.md  # piped output is Markdown
 tir --format json pki inspect card.pem | jq '.certificates[0].certificate_type'
 tir pki profiles list
 tir pki profiles describe smb-aut
+tir pki verify card.pem --issuer ca.pem   # exit 0 valid, 1 not valid
 ```
+
+## Verify
+
+`tir pki verify` builds the chain to the TI roots and validates it: RFC 5280 path,
+gemSpec_Krypt key, and the requirements of the profile (`--profile auto|none|<name>`).
+The environment comes from `--env` (`TI_ENV`) or, with `auto`, from the certificates:
+production only on evidence from the production roots, otherwise ref. `--at` validates
+at another time.
+
+It currently works offline: the roots are the ones embedded and verified against the
+anchor, there is no TSL, so the issuing CA must be supplied (in the file, `--issuer` or
+`--intermediates`), and revocation is not checked. The report says so
+(`"revocation_checked": false`); a valid result is not yet a statement about
+revocation.
 
 ## Conventions
 

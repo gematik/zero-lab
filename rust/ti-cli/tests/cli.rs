@@ -8,6 +8,7 @@ fn tir(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_tir"))
         .args(args)
         .env_remove("TI_FORMAT")
+        .env_remove("TI_ENV")
         .env_remove("NO_COLOR")
         .env_remove("CLICOLOR_FORCE")
         .output()
@@ -300,4 +301,124 @@ fn a_closed_pipe_is_not_an_error() {
     std::fs::remove_dir_all(&dir).unwrap();
     assert_eq!(status.code(), Some(0), "{err}");
     assert!(err.is_empty(), "{err}");
+}
+
+fn verify_json(extra: &[&str]) -> (Option<i32>, serde_json::Value) {
+    let ee = fixture("admission-1.pem");
+    let mut args = vec!["--format", "json", "pki", "verify", ee.as_str()];
+    args.extend_from_slice(extra);
+    let out = tir(&args);
+    (
+        out.status.code(),
+        serde_json::from_slice(&out.stdout).unwrap(),
+    )
+}
+
+#[test]
+fn verify_with_the_issuer_is_valid_but_says_revocation_was_not_checked() {
+    let ca = fixture("smcb-ca51-test-only.pem");
+    let (code, json) = verify_json(&["--issuer", &ca, "--at", "2026-06-01T00:00:00Z"]);
+    assert_eq!(code, Some(0), "{json}");
+    assert_eq!(json["schema"], 1);
+    assert_eq!(json["valid"], true);
+    assert_eq!(json["revocation_checked"], false);
+    assert_eq!(json["at"], "2026-06-01T00:00:00Z");
+    assert_eq!(json["environment"]["name"], "ref");
+    assert_eq!(json["environment"]["detection"]["method"], "chain");
+    assert_eq!(json["profile"]["name"], "smb-aut");
+    let positions: Vec<&str> = json["chain"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["position"].as_str().unwrap())
+        .collect();
+    assert_eq!(positions, ["end_entity", "sub_ca", "root"]);
+
+    let text = stdout(&tir(&[
+        "pki",
+        "verify",
+        &fixture("admission-1.pem"),
+        "--issuer",
+        &ca,
+        "--at",
+        "2026-06-01T00:00:00Z",
+    ]));
+    assert!(text.contains("| **result** | **VALID** |"), "{text}");
+    assert!(text.contains("**not checked** (offline)"), "{text}");
+}
+
+#[test]
+fn verify_without_the_issuer_is_incomplete_with_a_hint() {
+    let (code, json) = verify_json(&["--env", "ref"]);
+    assert_eq!(code, Some(1));
+    assert_eq!(json["valid"], false);
+    assert_eq!(json["environment"]["detection"], serde_json::Value::Null);
+    assert_eq!(json["errors"][0]["code"], "chain_incomplete");
+    let text = stdout(&tir(&[
+        "pki",
+        "verify",
+        &fixture("admission-1.pem"),
+        "--env",
+        "ref",
+    ]));
+    assert!(
+        text.contains("pass the issuing CA with `--issuer`"),
+        "{text}"
+    );
+}
+
+#[test]
+fn verify_under_a_foreign_profile_misses_its_role() {
+    let ca = fixture("smcb-ca51-test-only.pem");
+    let (code, json) = verify_json(&[
+        "--issuer",
+        &ca,
+        "--profile",
+        "idp-sig",
+        "--at",
+        "2026-06-01T00:00:00Z",
+    ]);
+    assert_eq!(code, Some(1));
+    assert_eq!(json["profile"]["reason"], "forced");
+    let codes = |key: &str| -> Vec<String> {
+        json[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f["code"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    assert!(codes("errors").contains(&"role_oid_missing".to_owned()));
+    assert_eq!(codes("warnings"), ["profile_type_mismatch"]);
+}
+
+#[test]
+fn verify_after_the_end_entity_expired() {
+    let ca = fixture("smcb-ca51-test-only.pem");
+    let (code, json) = verify_json(&["--issuer", &ca, "--at", "2029-01-01T00:00:00Z"]);
+    assert_eq!(code, Some(1));
+    assert_eq!(json["errors"][0]["code"], "expired", "{json}");
+}
+
+#[test]
+fn verify_usage_errors() {
+    let ee = fixture("admission-1.pem");
+    let bad_time = tir(&["pki", "verify", &ee, "--at", "yesterday"]);
+    assert_eq!(bad_time.status.code(), Some(2));
+    assert!(stderr(&bad_time).contains("RFC 3339"));
+    let bad_profile = tir(&["pki", "verify", &ee, "--profile", "nope"]);
+    assert_eq!(bad_profile.status.code(), Some(2));
+    let pu = tir(&["pki", "verify", &ee, "--env", "pu"]);
+    assert_eq!(pu.status.code(), Some(1), "pu is an alias of prod");
+}
+
+#[test]
+fn verify_asks_for_the_environment_when_nothing_tells() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../ti-pki/tests/pki/rogue-root.pem");
+    let out = tir(&["--format", "json", "pki", "verify", root.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(out.stdout.is_empty());
+    let error: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
+    assert_eq!(error["error"]["kind"], "environment_undetected");
+    assert_eq!(error["error"]["hint"], "pass --env prod, ref, test or dev");
 }

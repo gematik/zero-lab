@@ -18,6 +18,7 @@ Exit codes:
 
 Environment:
   TI_FORMAT       default for --format (auto, text, markdown, json)
+  TI_ENV          default for verify --env (auto, prod, ref, test, dev)
   TI_CACHE_DIR    default for --cache-dir
   NO_COLOR        disables colors; CLICOLOR_FORCE=1 forces them
 
@@ -26,7 +27,9 @@ Examples:
   tir pki inspect - < card.pem
   tir pki inspect card.pem > card.md          # Markdown, as piped output is
   tir --format json pki inspect card.pem | jq .certificates[0].certificate_type
-  tir pki profiles describe smb-aut";
+  tir pki profiles describe smb-aut
+  tir pki verify card.pem --issuer ca.pem
+  tir pki verify card.pem --env ref --profile none --at 2026-06-01T00:00:00Z";
 
 /// The gematik TI command-line tool (Rust).
 ///
@@ -122,6 +125,60 @@ pub enum PkiCommand {
     /// List the validation profiles or show what one requires
     #[command(subcommand)]
     Profiles(ProfilesCommand),
+    /// Build the chain to the TI roots and validate it (exit 0 valid, 1 not valid)
+    Verify(VerifyArgs),
+}
+
+/// `tir pki verify`.
+#[derive(Debug, Args)]
+pub struct VerifyArgs {
+    /// PEM or DER file, the end entity first; further certificates are candidate
+    /// intermediates; "-" reads stdin
+    #[arg(value_name = "FILE")]
+    pub file: PathBuf,
+    /// TI environment; auto detects production or test from the certificates
+    #[arg(long, value_enum, default_value_t = Environment::Auto, env = "TI_ENV")]
+    pub env: Environment,
+    /// Issuing CA certificate (PEM or DER), when the TSL does not provide it
+    #[arg(long, value_name = "FILE")]
+    pub issuer: Option<PathBuf>,
+    /// Further candidate intermediates (PEM or DER); repeatable
+    #[arg(long, value_name = "FILE")]
+    pub intermediates: Vec<PathBuf>,
+    /// Validation profile: auto picks it from the certificate, none checks the chain only
+    #[arg(long, default_value = "auto", value_parser = profile_selectors())]
+    pub profile: String,
+    /// Validate at this time instead of now (RFC 3339, e.g. 2026-06-01T00:00:00+02:00)
+    #[arg(long, value_name = "TIME", value_parser = timestamp)]
+    pub at: Option<ti_pki::Timestamp>,
+}
+
+/// `--env`: an environment, or auto-detection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum Environment {
+    /// Production if the certificates chain to production roots, else test/reference.
+    Auto,
+    /// Production.
+    #[value(alias = "pu")]
+    Prod,
+    /// Reference environment.
+    #[value(alias = "ru")]
+    Ref,
+    /// Test environment.
+    #[value(alias = "tu")]
+    Test,
+    /// Development; shares the reference trust material.
+    Dev,
+}
+
+fn profile_selectors() -> PossibleValuesParser {
+    PossibleValuesParser::new(ti_pki::profile::selector_values())
+}
+
+fn timestamp(value: &str) -> Result<ti_pki::Timestamp, String> {
+    ti_pki::Timestamp::parse_rfc3339(value).ok_or_else(|| {
+        format!("{value:?} is not an RFC 3339 time with a zone, e.g. 2026-06-01T00:00:00Z")
+    })
 }
 
 /// `tir pki profiles …`.

@@ -55,6 +55,12 @@ pub enum CliError {
         #[source]
         source: ti_pki::Error,
     },
+    /// `--env auto` found no evidence for production or test.
+    #[error("cannot tell the TI environment from the certificates: {0}")]
+    EnvironmentUndetected(String),
+    /// The trust material of the environment could not be used.
+    #[error("trust material unavailable: {0}")]
+    Trust(#[source] ti_pki::Error),
     /// No cache directory can be derived from the environment.
     #[error("cannot determine the cache directory: {0}")]
     CacheDir(&'static str),
@@ -70,6 +76,8 @@ impl CliError {
             CliError::Read { .. } => "input_unreadable",
             CliError::NoCertificate { .. } => "no_certificate",
             CliError::Certificate { .. } => "certificate_malformed",
+            CliError::EnvironmentUndetected(_) => "environment_undetected",
+            CliError::Trust(_) => "trust_material_unavailable",
             CliError::CacheDir(_) => "cache_dir_unknown",
             CliError::Output(_) => "output_failed",
         }
@@ -82,8 +90,9 @@ impl CliError {
             CliError::NoCertificate { .. } | CliError::Certificate { .. } => {
                 Some("expected PEM (-----BEGIN CERTIFICATE-----) or DER")
             }
+            CliError::EnvironmentUndetected(_) => Some("pass --env prod, ref, test or dev"),
             CliError::CacheDir(_) => Some("set --cache-dir or TI_CACHE_DIR"),
-            CliError::Output(_) => None,
+            CliError::Trust(_) | CliError::Output(_) => None,
         }
     }
 
@@ -93,7 +102,8 @@ impl CliError {
             CliError::Read { .. }
             | CliError::NoCertificate { .. }
             | CliError::Certificate { .. } => Exit::Input,
-            CliError::CacheDir(_) => Exit::Usage,
+            CliError::EnvironmentUndetected(_) | CliError::CacheDir(_) => Exit::Usage,
+            CliError::Trust(_) => Exit::TrustUnavailable,
             CliError::Output(_) => Exit::Output,
         }
     }

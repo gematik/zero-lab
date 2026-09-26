@@ -46,7 +46,9 @@ pub fn render(doc: &Document, w: &mut impl Write) -> io::Result<()> {
                 }
             }
             Block::Items(label, items) => {
-                writeln!(w, "**{}**\n", escape(label))?;
+                if !label.is_empty() {
+                    writeln!(w, "**{}**\n", escape(label))?;
+                }
                 for item in items {
                     writeln!(w, "- {}", inline(item))?;
                 }
@@ -138,6 +140,13 @@ mod tests {
              Policy\n\n## Revocation\n\n| | |\n| --- | --- |\n| **OCSP** | \
              <http://ehca.gematik.de/ocsp/> |\n"
         );
+    }
+
+    #[test]
+    fn unlabelled_lists_are_plain_lists() {
+        let mut doc = Document::default();
+        doc.section("Errors").items("", [Line::text("a")]);
+        assert_eq!(markdown(&doc), "## Errors\n\n- a\n");
     }
 
     #[test]

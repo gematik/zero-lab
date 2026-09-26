@@ -30,12 +30,13 @@ pub fn render(doc: &Document, w: &mut impl Write, width: Option<usize>) -> io::R
             }
             Block::Items(label, items) => {
                 for (i, item) in items.iter().enumerate() {
-                    let shown = if i == 0 { label.as_str() } else { "" };
-                    out.line(&format!(
-                        "{INDENT}{}- {}",
-                        label_column(shown),
-                        styled(item)
-                    ))?;
+                    // An unlabelled list under its own heading needs no label column.
+                    let column = match (label.is_empty(), i) {
+                        (true, _) => String::new(),
+                        (false, 0) => label_column(label),
+                        (false, _) => label_column(""),
+                    };
+                    out.line(&format!("{INDENT}{column}- {}", styled(item)))?;
                 }
             }
         }
@@ -168,6 +169,14 @@ mod tests {
             "Certificate 1 of 1\n  card.pem\n\nKey\n  algorithm      ECDSA admissible\n  \
              policies       - 1.2.3\n                 - 1.2.4\n"
         );
+    }
+
+    #[test]
+    fn unlabelled_lists_have_no_label_column() {
+        let mut doc = Document::default();
+        doc.section("Errors")
+            .items("", [Line::text("a"), Line::text("b")]);
+        assert_eq!(plain(&doc, None), "Errors\n  - a\n  - b\n");
     }
 
     #[test]

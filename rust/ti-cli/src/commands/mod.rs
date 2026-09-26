@@ -3,6 +3,7 @@
 
 mod inspect;
 mod profiles;
+mod verify;
 
 use crate::cli::{Cli, Command, PkiCommand, ProfilesCommand};
 use crate::error::{CliError, Exit};
@@ -18,6 +19,7 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
     out.verbose(1, &cli.global.net);
     match &cli.command {
         Command::Pki(PkiCommand::Inspect { file }) => inspect::run(file, out),
+        Command::Pki(PkiCommand::Verify(args)) => verify::run(args, out),
         Command::Pki(PkiCommand::Profiles(ProfilesCommand::List)) => profiles::list(out),
         Command::Pki(PkiCommand::Profiles(ProfilesCommand::Describe { name })) => {
             profiles::describe(name, out)
