@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- `TrustConfig::accept_test_only_policies` is removed: gematik's test cards carry the
+  production policy OIDs, so there was nothing for it to relax.
 - gempki port, phase 6 (parity): OpenSSL cross-validation tests (test PKI chains, the
   real reference SMC-B chain, every production TSL CA, the OCSP fixtures); live tests
   against gematik's endpoints behind `just real-world`; invariant tests for OID labels

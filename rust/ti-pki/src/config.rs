@@ -8,8 +8,8 @@
 //!    is a named field of [`TrustConfig`]; `Env` appears in [`TrustConfig::preset`]
 //!    and nowhere else in the crate.
 //! 2. Relaxations are named negatively and default to strict: `revocation` is
-//!    [`HardFail`](RevocationMode::HardFail), `accept_test_only_policies` and
-//!    `allow_expired` are `false`. A forgotten field fails closed.
+//!    [`HardFail`](RevocationMode::HardFail), `allow_expired` is `false`. A forgotten
+//!    field fails closed.
 //! 3. [`TrustConfig`] is plainly constructible, so tests can build it from scratch.
 //!    Adding a field is therefore a breaking change for this crate; the
 //!    forward-compatible construction is struct update on
@@ -81,8 +81,6 @@ pub struct TrustConfig {
     pub tsl_url: Cow<'static, str>,
     /// How a non-Good revocation outcome affects the verdict.
     pub revocation: RevocationMode,
-    /// Accept the certificate policies gematik reserves for test cards.
-    pub accept_test_only_policies: bool,
     /// Accept certificates outside their validity window.
     pub allow_expired: bool,
     /// Clock skew tolerated in validity and freshness checks.
@@ -103,7 +101,6 @@ impl TrustConfig {
             roots_url: Cow::Borrowed(roots::URL_PROD),
             tsl_url: Cow::Borrowed(tsl::URL_PROD),
             revocation: RevocationMode::HardFail,
-            accept_test_only_policies: false,
             allow_expired: false,
             max_clock_skew: DEFAULT_MAX_CLOCK_SKEW,
             algorithms: Cow::Borrowed(algorithms::DEFAULT),
@@ -120,8 +117,8 @@ impl TrustConfig {
     }
 
     /// Preset for any environment. Non-production presets use the TEST-ONLY anchor
-    /// and roots of that environment and accept test-only policies; revocation stays
-    /// strict, since the test environments run OCSP responders too.
+    /// and roots of that environment; revocation stays strict, since the test
+    /// environments run OCSP responders too.
     #[cfg(feature = "dangerous-nonprod")]
     pub fn preset(env: Env) -> Self {
         let nonprod =
@@ -129,7 +126,6 @@ impl TrustConfig {
                 roots: Cow::Borrowed(roots::ROOTS_NONPROD),
                 roots_url: Cow::Borrowed(roots_url),
                 tsl_url: Cow::Borrowed(tsl_url),
-                accept_test_only_policies: true,
                 ..Self::for_anchor(anchor)
             };
         match env {
@@ -160,7 +156,7 @@ impl TrustConfig {
     /// algorithm handles the anchor's key type (a brainpool anchor without the
     /// `brainpool` feature, say), or, under
     /// [`Tier::Prod`], if the anchor is TEST-ONLY, revocation is not
-    /// [`HardFail`](RevocationMode::HardFail), or either relaxation is on.
+    /// [`HardFail`](RevocationMode::HardFail), or expired certificates are allowed.
     pub fn validate(&self, tier: Tier) -> Result<(), Error> {
         let anchor = Certificate::from_der(&self.anchor)?;
         if !self.roots_url.starts_with("https://") {
@@ -190,11 +186,6 @@ impl TrustConfig {
                 if self.revocation != RevocationMode::HardFail {
                     return Err(inconsistent("production requires HardFail revocation"));
                 }
-                if self.accept_test_only_policies {
-                    return Err(inconsistent(
-                        "production must not accept test-only policies",
-                    ));
-                }
                 if self.allow_expired {
                     return Err(inconsistent(
                         "production must not allow expired certificates",
@@ -209,12 +200,11 @@ impl TrustConfig {
 #[cfg(feature = "test-util")]
 impl TrustConfig {
     /// Lab CA configuration for tests in downstream crates: the given anchor,
-    /// revocation off, test-only policies accepted. Validates only under
+    /// revocation off. Validates only under
     /// [`Tier::NonProd`].
     pub fn for_lab_ca(anchor_der: &[u8]) -> Self {
         TrustConfig {
             revocation: RevocationMode::Disabled,
-            accept_test_only_policies: true,
             ..Self::for_anchor(anchor_der.to_vec())
         }
     }
@@ -246,7 +236,6 @@ pub(crate) mod tests {
     fn for_anchor_is_strict() {
         let config = TrustConfig::for_anchor(anchors::GEM_RCA8);
         assert_eq!(config.revocation, RevocationMode::HardFail);
-        assert!(!config.accept_test_only_policies);
         assert!(!config.allow_expired);
         assert_eq!(config.roots_url, roots::URL_PROD);
         assert_eq!(config.tsl_url, tsl::URL_PROD);
@@ -306,11 +295,6 @@ pub(crate) mod tests {
 
     #[test]
     fn relaxations_are_rejected_in_prod() {
-        let test_only = TrustConfig {
-            accept_test_only_policies: true,
-            ..nist_prod_config()
-        };
-        assert!(test_only.validate(Tier::Prod).is_err());
         let expired = TrustConfig {
             allow_expired: true,
             ..nist_prod_config()
@@ -359,10 +343,10 @@ pub(crate) mod tests {
 
     #[cfg(all(feature = "dangerous-nonprod", feature = "brainpool"))]
     #[test]
-    fn nonprod_presets_accept_test_only_policies() {
+    fn nonprod_presets_stay_strict() {
         for env in [Env::Dev, Env::Test, Env::Ref] {
             let config = TrustConfig::preset(env);
-            assert!(config.accept_test_only_policies, "{env}");
+            assert!(!config.allow_expired, "{env}");
             assert_eq!(config.revocation, RevocationMode::HardFail, "{env}");
             config.validate(Tier::NonProd).unwrap();
         }
