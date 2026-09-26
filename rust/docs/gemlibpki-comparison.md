@@ -40,11 +40,20 @@ responders require), certHash verification (required by default, unlike gempki),
 the TUC_PKI_006 time window on producedAt, thisUpdate and nextUpdate with the 37.5 s
 tolerance.
 
+Critical extensions: `ti-pki` applies RFC 5280 §4.2 to every certificate of the chain but
+the root, rejecting a critical extension it does not process
+(`unrecognized_critical_extension`; name and policy constraints count as unprocessed).
+GemLibPki's `CriticalExtensionsValidator` is stricter on the end entity: its critical
+extensions must be exactly basicConstraints and keyUsage, reported as
+`CUSTOM_CERTIFICATE_EXCEPTION`. Real TI certificates mark exactly those two, a few also
+extendedKeyUsage, which `ti-pki` accepts. (gempki's comparison files this under SE_1018,
+which in GemLibPki is `CERT_TYPE_MISMATCH`, the type-OID check `ti-pki` performs as
+`policy_mismatch`.)
+
 ## Open
 
 Not intended and not yet done:
 
-- Unknown critical extensions are not rejected (SE_1018).
 - The OCSP request carries no nonce, so a nonce in the response is not compared
   (TE_1057); TI responders sign on demand, and the time window bounds replay.
 - An OCSP status of Unknown is a result; GemLibPki fails it outright (TE_1060). The

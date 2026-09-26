@@ -272,6 +272,18 @@ impl Certificate {
         self.extension_value(oid).is_some()
     }
 
+    /// The OIDs of the extensions marked critical, in certificate order.
+    pub fn critical_extensions(&self) -> impl Iterator<Item = ObjectIdentifier> + '_ {
+        self.0
+            .inner
+            .tbs_certificate()
+            .extensions()
+            .into_iter()
+            .flatten()
+            .filter(|ext| ext.critical)
+            .map(|ext| ext.extn_id)
+    }
+
     /// The DER value of the extension with `oid`, if present.
     pub fn extension_value(&self, oid: &ObjectIdentifier) -> Option<&[u8]> {
         self.0

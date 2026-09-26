@@ -46,6 +46,10 @@ pub(crate) struct TestPki {
     pub(crate) sub_sub_ca: Certificate,
     pub(crate) ee_deep: Certificate,
     pub(crate) ee_under_ee: Certificate,
+    pub(crate) ee_critical_unknown: Certificate,
+    pub(crate) ee_critical_eku: Certificate,
+    pub(crate) sub_ca_name_constraints: Certificate,
+    pub(crate) ee_under_name_constraints: Certificate,
 }
 
 impl TestPki {
@@ -79,6 +83,10 @@ impl TestPki {
             sub_sub_ca: fixture!("sub-sub-ca"),
             ee_deep: fixture!("ee-deep"),
             ee_under_ee: fixture!("ee-under-ee"),
+            ee_critical_unknown: fixture!("ee-critical-unknown"),
+            ee_critical_eku: fixture!("ee-critical-eku"),
+            sub_ca_name_constraints: fixture!("sub-ca-name-constraints"),
+            ee_under_name_constraints: fixture!("ee-under-name-constraints"),
         }
     }
 }
@@ -182,6 +190,10 @@ fn fixtures_are_consistent() {
         (&pki.sub_ca_pathlen0, &pki.sub_sub_ca),
         (&pki.sub_sub_ca, &pki.ee_deep),
         (&pki.ee_arzt, &pki.ee_under_ee),
+        (&pki.sub_ca_hba, &pki.ee_critical_unknown),
+        (&pki.sub_ca_hba, &pki.ee_critical_eku),
+        (&pki.rca1, &pki.sub_ca_name_constraints),
+        (&pki.sub_ca_name_constraints, &pki.ee_under_name_constraints),
         (&pki.sub_ca_komp, &typed("type-hci-aut")),
     ] {
         subject.verify_signed_by(issuer, algorithms).unwrap();

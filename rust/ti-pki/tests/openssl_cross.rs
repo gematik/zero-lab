@@ -196,6 +196,20 @@ fn test_pki_verdicts_agree() {
             &["rca1"],
             false,
         ),
+        (
+            "unknown critical extension",
+            "ee-critical-unknown",
+            &["sub-ca-hba"],
+            &["rca1"],
+            false,
+        ),
+        (
+            "critical extendedKeyUsage",
+            "ee-critical-eku",
+            &["sub-ca-hba"],
+            &["rca1"],
+            true,
+        ),
     ] {
         assert_agree(scenario, leaf, intermediates, roots, valid);
     }

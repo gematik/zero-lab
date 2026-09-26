@@ -56,6 +56,10 @@ pub enum ErrorCode {
     OcspResponderUntrusted,
     /// The OCSP responder is unreachable or returned non-success. (SE_1029)
     OcspUnavailable,
+    /// A certificate of the chain carries a critical extension this crate does not
+    /// process, which RFC 5280 §4.2 requires to reject. `ti-pki`'s own code; gemLibPki
+    /// reports its stricter variant as a custom exception, without an SE code.
+    UnrecognizedCriticalExtension,
     /// Warning only: the OCSP responder is not authorized under RFC 6960, but was
     /// accepted as a delegate of another CA of the same TSP. `ti-pki`'s own code; Go
     /// has no equivalent.
@@ -103,6 +107,7 @@ impl ErrorCode {
             ErrorCode::OcspResponderUntrusted => "ocsp_responder_untrusted",
             ErrorCode::OcspUnavailable => "ocsp_unavailable",
             ErrorCode::OcspResponderNotRfc6960 => "ocsp_responder_not_rfc6960",
+            ErrorCode::UnrecognizedCriticalExtension => "unrecognized_critical_extension",
             ErrorCode::RoleOidMissing => "role_oid_missing",
             ErrorCode::Expired => "expired",
             ErrorCode::NotYetValid => "not_yet_valid",

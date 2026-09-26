@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- Path validation rejects a critical extension this crate does not process (RFC 5280
+  §4.2) in every certificate but the root: `ErrorCode::UnrecognizedCriticalExtension`,
+  `path::PROCESSED_EXTENSIONS`, `Certificate::critical_extensions`. New OpenSSL fixtures
+  and cross-checks.
 - OCSP responders that are not RFC 6960 conform are accepted as delegates of the same
   TSP: id-kp-OCSPSigning, valid, certified by a TSL CA a root signed, both CAs under one
   TSP. `RevocationResult::authorization` records how a responder was authorized, and the

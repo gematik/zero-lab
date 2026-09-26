@@ -1,10 +1,18 @@
 //! Path validation of a built chain per RFC 5280 §6, plus the end-entity
 //! checks a profile requires. Every certificate must be within its validity
-//! window; every CA must be marked as such, allow certificate signing and
+//! window and carry no critical extension outside [`PROCESSED_EXTENSIONS`];
+//! every CA must be marked as such, allow certificate signing and
 //! respect its path-length constraint; each link's signature is verified
 //! under its issuer's key, for ECDSA on Brainpool and NIST curves and for RSA.
 
 use core::time::Duration;
+
+use const_oid::ObjectIdentifier;
+use const_oid::db::rfc5280::{
+    ID_CE_AUTHORITY_KEY_IDENTIFIER, ID_CE_BASIC_CONSTRAINTS, ID_CE_CERTIFICATE_POLICIES,
+    ID_CE_EXT_KEY_USAGE, ID_CE_KEY_USAGE, ID_CE_SUBJECT_ALT_NAME, ID_CE_SUBJECT_KEY_IDENTIFIER,
+    ID_PE_AUTHORITY_INFO_ACCESS,
+};
 
 use crate::algorithms::AlgorithmSet;
 use crate::checks::CertificateCheck;
@@ -12,6 +20,22 @@ use crate::error::{ErrorCode, ValidationError};
 use crate::time::Timestamp;
 use crate::validate::{CertResult, ChainPosition, ValidationResult};
 use crate::{Certificate, Error};
+
+/// The extensions this crate processes, and so the only ones a certificate may mark
+/// critical (RFC 5280 §4.2). Real TI certificates mark basicConstraints and keyUsage
+/// critical, a few also extendedKeyUsage. Name constraints and policy constraints are
+/// not implemented, so a CA marking them critical is rejected rather than half-checked.
+pub const PROCESSED_EXTENSIONS: &[ObjectIdentifier] = &[
+    ID_CE_BASIC_CONSTRAINTS,
+    ID_CE_KEY_USAGE,
+    ID_CE_EXT_KEY_USAGE,
+    ID_CE_CERTIFICATE_POLICIES,
+    ID_CE_SUBJECT_ALT_NAME,
+    ID_CE_AUTHORITY_KEY_IDENTIFIER,
+    ID_CE_SUBJECT_KEY_IDENTIFIER,
+    ID_PE_AUTHORITY_INFO_ACCESS,
+    crate::oid::ADMISSION_EXTENSION,
+];
 
 /// What [`validate_path`] checks against.
 #[derive(Clone, Copy)]
@@ -33,7 +57,9 @@ pub struct PathOptions<'a> {
 /// Validates `chain` (end entity first, root last, as [`build_chain`] returns it)
 /// against RFC 5280 §6 and the end-entity checks.
 ///
-/// Every certificate must be valid at `now`. Every CA below the end entity must be
+/// Every certificate must be valid at `now`, and every certificate but the root may mark
+/// only [`PROCESSED_EXTENSIONS`] critical; the root is the trust anchor, whose extensions
+/// RFC 5280 leaves to the relying party. Every CA below the end entity must be
 /// marked as a CA, must allow certificate signing if it restricts key usage, and must
 /// not have more intermediates beneath it than its path length constraint allows. Every
 /// link's signature must verify under the next certificate's key. All findings are
@@ -79,6 +105,23 @@ pub fn validate_path(
     for (i, cert) in chain.iter().enumerate() {
         if let Err(e) = check_validity(cert, options.now, options.max_clock_skew) {
             result.add_error(e);
+        }
+        if i + 1 < chain.len() {
+            for extension in cert
+                .critical_extensions()
+                .filter(|oid| !PROCESSED_EXTENSIONS.contains(oid))
+            {
+                result.add_error(
+                    ValidationError::new(
+                        ErrorCode::UnrecognizedCriticalExtension,
+                        format!(
+                            "critical extension {} is not processed (RFC 5280 §4.2)",
+                            crate::oid::format(&extension)
+                        ),
+                    )
+                    .with_subject(cert.subject_cn()),
+                );
+            }
         }
         if i > 0
             && let Err(e) = check_ca_constraints(cert, i.saturating_sub(1))
@@ -276,6 +319,49 @@ mod tests {
         };
         assert!(within(86_400));
         assert!(!within(86_399));
+    }
+
+    #[test]
+    fn critical_extensions_must_be_processed() {
+        let pki = TestPki::new();
+        let validate = |chain: &[Certificate]| validate_path(chain, &options(NOW)).unwrap();
+
+        let unknown = validate(&[
+            pki.ee_critical_unknown.clone(),
+            pki.sub_ca_hba.clone(),
+            pki.rca1.clone(),
+        ]);
+        assert_eq!(
+            codes(&unknown),
+            [(
+                ErrorCode::UnrecognizedCriticalExtension,
+                "EE-Critical-Unknown TEST-ONLY"
+            )]
+        );
+        assert_eq!(
+            unknown.errors[0].message,
+            "critical extension 1.3.6.1.4.1.99999.1 is not processed (RFC 5280 §4.2)"
+        );
+
+        let eku = validate(&[
+            pki.ee_critical_eku.clone(),
+            pki.sub_ca_hba.clone(),
+            pki.rca1.clone(),
+        ]);
+        assert!(eku.valid, "{:?}", eku.errors);
+
+        let constrained = validate(&[
+            pki.ee_under_name_constraints.clone(),
+            pki.sub_ca_name_constraints.clone(),
+            pki.rca1.clone(),
+        ]);
+        assert_eq!(
+            codes(&constrained),
+            [(
+                ErrorCode::UnrecognizedCriticalExtension,
+                "GEM.SubCA-NameConstraints TEST-ONLY"
+            )]
+        );
     }
 
     #[test]

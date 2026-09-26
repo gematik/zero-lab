@@ -19,6 +19,9 @@
 #   cross-rca1-not-rca (RCA7's key under a non-GEM.RCA name, signed by RCA1)
 #   rca1 ── sub-ca-pathlen0 (pathLen 0) ── sub-sub-ca ── ee-deep: a path-length violation
 #   ee-arzt ── ee-under-ee: an end entity used as an issuer
+#   sub-ca-hba ── ee-critical-unknown (a critical extension nobody knows),
+#                 ee-critical-eku (extendedKeyUsage critical, as some TI certificates have)
+#   rca1 ── sub-ca-name-constraints (critical nameConstraints) ── ee-under-name-constraints
 #   sub-ca-hba ── ocsp-signer-hba (id-kp-OCSPSigning), ocsp-signer-no-eku,
 #                 ocsp-signer-expired; sub-ca-komp ── ocsp-signer-komp (a foreign CA's)
 #
@@ -81,6 +84,26 @@ authorityKeyIdentifier = keyid:always
 
 [ocsp_no_eku]
 keyUsage = critical, digitalSignature
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+
+[ee_critical_unknown]
+keyUsage = critical, digitalSignature
+extendedKeyUsage = clientAuth
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+1.3.6.1.4.1.99999.1 = critical, ASN1:NULL
+
+[ee_critical_eku]
+keyUsage = critical, digitalSignature
+extendedKeyUsage = critical, clientAuth
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+
+[ca_name_constraints]
+basicConstraints = critical, CA:true
+keyUsage = critical, keyCertSign, cRLSign
+nameConstraints = critical, permitted;DNS:ti-dienste.de
 subjectKeyIdentifier = hash
 authorityKeyIdentifier = keyid:always
 
@@ -180,6 +203,14 @@ cert sub-ca-pathlen0 sub-ca-pathlen0 "GEM.SubCA-PathLen0 TEST-ONLY" rca1 "$NOW" 
 key sub-sub-ca bp256;    cert sub-sub-ca sub-sub-ca "GEM.SubSubCA TEST-ONLY" sub-ca-pathlen0 "$NOW" "$FIVE_YEARS" ca
 key ee-deep bp256;       cert ee-deep ee-deep "EE-Deep TEST-ONLY" sub-sub-ca "$NOW" "$FIVE_YEARS" ee
 key ee-under-ee bp256;   cert ee-under-ee ee-under-ee "EE-Under-EE TEST-ONLY" ee-arzt "$NOW" "$FIVE_YEARS" ee
+key ee-critical-unknown bp256
+cert ee-critical-unknown ee-critical-unknown "EE-Critical-Unknown TEST-ONLY" sub-ca-hba "$NOW" "$FIVE_YEARS" ee_critical_unknown
+key ee-critical-eku bp256
+cert ee-critical-eku ee-critical-eku "EE-Critical-EKU TEST-ONLY" sub-ca-hba "$NOW" "$FIVE_YEARS" ee_critical_eku
+key sub-ca-name-constraints bp256
+cert sub-ca-name-constraints sub-ca-name-constraints "GEM.SubCA-NameConstraints TEST-ONLY" rca1 "$NOW" "$FIVE_YEARS" ca_name_constraints
+key ee-under-name-constraints bp256
+cert ee-under-name-constraints ee-under-name-constraints "EE-Under-NameConstraints TEST-ONLY" sub-ca-name-constraints "$NOW" "$FIVE_YEARS" ee
 
 # --- OCSP -------------------------------------------------------------------------------
 
