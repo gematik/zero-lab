@@ -66,7 +66,7 @@ impl fmt::Display for RevocationStatus {
 
 /// The revocation outcome for one certificate, with the OCSP detail for display and
 /// diagnostics.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RevocationResult {
     /// What the source said.
     pub status: RevocationStatus,
@@ -135,6 +135,27 @@ pub trait RevocationChecker {
         cert: &Certificate,
         issuer: &Certificate,
     ) -> Result<RevocationResult, ValidationError>;
+}
+
+/// The checker for a validator that has no revocation source: every check fails with
+/// [`ErrorCode::OcspUnavailable`], so under [`HardFail`](RevocationMode::HardFail) a
+/// forgotten checker rejects instead of silently accepting. Pair it with
+/// [`RevocationMode::Disabled`] to validate offline on purpose.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Unchecked;
+
+impl RevocationChecker for Unchecked {
+    async fn check(
+        &self,
+        cert: &Certificate,
+        _issuer: &Certificate,
+    ) -> Result<RevocationResult, ValidationError> {
+        Err(ValidationError::new(
+            ErrorCode::OcspUnavailable,
+            "no revocation checker configured (disable revocation to skip it)",
+        )
+        .with_subject(cert.subject_cn()))
+    }
 }
 
 /// What [`apply_revocation`] makes of an outcome.

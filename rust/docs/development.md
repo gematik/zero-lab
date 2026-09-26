@@ -194,6 +194,19 @@ unknown and the failure cases) signed by OpenSSL, and `tests/fixtures` holds two
 answers of the reference root responder. The `ocsp` example checks every link of a
 chain live, the end entity at its CA and each CA at its root.
 
+## Validation and profiles
+
+`Validator` is the entry point: built from a `TrustConfig` and a `TrustStore`, it
+validates an end entity through chain building, path validation, the gemSpec_Krypt key
+check and OCSP for the end entity and every CA below the root (the TSL is not
+authenticated, so a CA's standing comes from OCSP at its root). A profile
+(`ti_pki::profile`) fills in a use case's end-entity requirements on top of the type
+baseline; automatic selection matches a profile's role before the type's default and
+reports ambiguity instead of guessing. A profile's revocation mode can tighten the
+configured one but never loosen it, so production stays HardFail even for smb-aut,
+whose Go default is SoftFail. `trustdomain` tells production from test certificates
+offline, for picking a configuration. The `validate` example strings it all together.
+
 ## Trust material loading
 
 roots.json and the TSL are loaded, cached and hot-reloaded by `ti_pki::load` (feature

@@ -71,5 +71,9 @@ tokio = { workspace = true, features = ["rt", "macros"] }
 name = "ocsp"
 required-features = ["reqwest", "os"]
 
+[[example]]
+name = "validate"
+required-features = ["reqwest", "os"]
+
 [lints]
 workspace = true

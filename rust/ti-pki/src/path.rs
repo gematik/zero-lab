@@ -4,6 +4,8 @@
 //! respect its path-length constraint; each link's signature is verified
 //! under its issuer's key, for ECDSA on Brainpool and NIST curves and for RSA.
 
+use core::time::Duration;
+
 use crate::algorithms::AlgorithmSet;
 use crate::checks::CertificateCheck;
 use crate::error::{ErrorCode, ValidationError};
@@ -19,6 +21,11 @@ pub struct PathOptions<'a> {
     pub now: Timestamp,
     /// The algorithms signatures may be verified with.
     pub algorithms: &'a AlgorithmSet,
+    /// How far `now` may lie outside a validity window before it counts: the skew
+    /// between the issuer's clock and ours ([`TrustConfig::max_clock_skew`]).
+    ///
+    /// [`TrustConfig::max_clock_skew`]: crate::TrustConfig::max_clock_skew
+    pub max_clock_skew: Duration,
     /// Checks run on the end entity after the RFC 5280 checks.
     pub ee_checks: &'a [CertificateCheck],
 }
@@ -62,6 +69,7 @@ pub fn validate_path(
             .map(|(cert, position)| CertResult {
                 subject: cert.subject_cn().to_owned(),
                 position: *position,
+                revocation: None,
             })
             .collect(),
         positions,
@@ -69,7 +77,7 @@ pub fn validate_path(
     };
 
     for (i, cert) in chain.iter().enumerate() {
-        if let Err(e) = check_validity(cert, options.now) {
+        if let Err(e) = check_validity(cert, options.now, options.max_clock_skew) {
             result.add_error(e);
         }
         if i > 0
@@ -113,15 +121,20 @@ fn position_of(i: usize, len: usize) -> ChainPosition {
     }
 }
 
-fn check_validity(cert: &Certificate, now: Timestamp) -> Result<(), ValidationError> {
-    if now < cert.not_before() {
+fn check_validity(
+    cert: &Certificate,
+    now: Timestamp,
+    skew: Duration,
+) -> Result<(), ValidationError> {
+    let skew = skew.as_secs();
+    if now.0.saturating_add(skew) < cert.not_before().0 {
         return Err(ValidationError::new(
             ErrorCode::NotYetValid,
             format!("notBefore={}, now={now}", cert.not_before()),
         )
         .with_subject(cert.subject_cn()));
     }
-    if now > cert.not_after() {
+    if now.0.saturating_sub(skew) > cert.not_after().0 {
         return Err(ValidationError::new(
             ErrorCode::Expired,
             format!("notAfter={}, now={now}", cert.not_after()),
@@ -180,6 +193,7 @@ mod tests {
         PathOptions {
             now,
             algorithms: DEFAULT,
+            max_clock_skew: Duration::ZERO,
             ee_checks: &[],
         }
     }
@@ -242,6 +256,26 @@ mod tests {
             assert!(!result.valid);
             assert_eq!(codes(&result), [(code, ee.subject_cn())]);
         }
+    }
+
+    #[test]
+    fn clock_skew_widens_the_validity_window() {
+        let pki = TestPki::new();
+        // ee-not-yet-valid starts a day after NOW.
+        let chain = [
+            pki.ee_not_yet_valid.clone(),
+            pki.sub_ca_hba.clone(),
+            pki.rca1.clone(),
+        ];
+        let within = |skew| {
+            let options = PathOptions {
+                max_clock_skew: Duration::from_secs(skew),
+                ..options(NOW)
+            };
+            validate_path(&chain, &options).unwrap().valid
+        };
+        assert!(within(86_400));
+        assert!(!within(86_399));
     }
 
     #[test]

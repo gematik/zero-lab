@@ -219,16 +219,8 @@ fn verify(
         .collect::<Result<Vec<_>, _>>()?;
     let responder = pick_responder(&data.responder_id, &embedded);
     if let Some(responder) = responder {
-        authorize(responder, issuer, check).map_err(|reason| {
-            ValidationError::new(
-                ErrorCode::OcspResponderUntrusted,
-                format!(
-                    "OCSP responder {:?} is not authorized to answer for {:?}: {reason}",
-                    responder.subject_cn(),
-                    issuer.subject_cn()
-                ),
-            )
-        })?;
+        authorize(responder, issuer, check)
+            .map_err(|message| ValidationError::new(ErrorCode::OcspResponderUntrusted, message))?;
     }
     let signer = responder.unwrap_or(issuer);
     verify_signature(signer, &basic, &tbs_der, check.algorithms).map_err(|reason| {
@@ -352,24 +344,36 @@ fn authorize(
     {
         return Ok(());
     }
+    let (name, ca) = (responder.subject_cn(), issuer.subject_cn());
     if responder.issuer_der() != issuer.subject_der() {
         return Err(format!(
-            "issued by {:?}, not by the CA",
+            "OCSP responder {name:?} was certified by {:?}, but the certificate was issued \
+             by {ca:?}; RFC 6960 accepts only the issuing CA or a responder it certified \
+             directly (the responder's own chain is not followed to a root)",
             responder.issuer_cn()
         ));
     }
     responder
         .verify_signed_by(issuer, check.algorithms)
-        .map_err(|e| format!("its certificate does not verify under the CA: {e}"))?;
+        .map_err(|e| {
+            format!(
+                "OCSP responder {name:?} names the issuing CA {ca:?} as its issuer, but its \
+             certificate does not verify under the CA's key: {e}"
+            )
+        })?;
     if !responder.ext_key_usage().contains(&ID_KP_OCSP_SIGNING) {
-        return Err("its certificate lacks id-kp-OCSPSigning".into());
+        return Err(format!(
+            "OCSP responder {name:?}, certified by the issuing CA {ca:?}, lacks \
+             id-kp-OCSPSigning"
+        ));
     }
     let skew = check.clock_tolerance.as_secs();
     let valid = responder.is_valid_at(Timestamp(check.now.0.saturating_add(skew)))
         || responder.is_valid_at(Timestamp(check.now.0.saturating_sub(skew)));
     if !valid {
         return Err(format!(
-            "its certificate is not valid at {} ({} to {})",
+            "OCSP responder {name:?}, certified by the issuing CA {ca:?}, is not valid at {} \
+             (valid {} to {})",
             check.now,
             responder.not_before(),
             responder.not_after()
@@ -914,24 +918,30 @@ mod tests {
         #[test]
         fn unauthorized_responders() {
             let pki = TestPki::new();
-            for (der, reason) in [
+            for (der, message) in [
                 (
                     response!("no-eku"),
-                    "its certificate lacks id-kp-OCSPSigning",
+                    "OCSP responder \"SubCA-HBA No-EKU-Signer TEST-ONLY\", certified by the \
+                     issuing CA \"GEM.SubCA-HBA TEST-ONLY\", lacks id-kp-OCSPSigning",
                 ),
                 (
                     response!("foreign-responder"),
-                    "issued by \"GEM.SubCA-Komp TEST-ONLY\", not by the CA",
+                    "OCSP responder \"SubCA-Komp OCSP-Signer TEST-ONLY\" was certified by \
+                     \"GEM.SubCA-Komp TEST-ONLY\", but the certificate was issued by \
+                     \"GEM.SubCA-HBA TEST-ONLY\"; RFC 6960 accepts only the issuing CA or a \
+                     responder it certified directly (the responder's own chain is not \
+                     followed to a root)",
                 ),
                 (
                     response!("expired-responder"),
-                    "its certificate is not valid at 2026-01-01T00:00:00Z \
-                     (2024-01-01T00:00:00Z to 2025-12-31T00:00:00Z)",
+                    "OCSP responder \"SubCA-HBA Expired-Signer TEST-ONLY\", certified by the \
+                     issuing CA \"GEM.SubCA-HBA TEST-ONLY\", is not valid at \
+                     2026-01-01T00:00:00Z (valid 2024-01-01T00:00:00Z to 2025-12-31T00:00:00Z)",
                 ),
             ] {
                 let error = verify(der, &pki.ee_arzt, &pki.sub_ca_hba).unwrap_err();
                 assert_eq!(error.code, ErrorCode::OcspResponderUntrusted, "{error}");
-                assert!(error.message.ends_with(reason), "{error}");
+                assert_eq!(error.message, message);
                 assert_eq!(error.subject, "Dr. Arzt TEST-ONLY");
             }
         }

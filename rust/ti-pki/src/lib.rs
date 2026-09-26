@@ -5,31 +5,50 @@
 //! gemSpec_OID attaches to each certificate type, packaged as named profiles
 //! for the common TI use cases.
 //!
-//! This crate is a skeleton. The module layout and the types below are fixed;
-//! the validation logic is being ported from the Go reference implementation
-//! `gempki` in the same repository.
-//!
 //! # Quick start
 //!
-//! The intended shape of the API, not yet implemented:
+//! Validating an SMC-B certificate of the reference environment offline, with the
+//! profile picked from the certificate. In production, use [`TrustConfig::preset_prod`]
+//! (whose revocation is HardFail), the TSL's intermediates ([`tsl`]) and an
+//! [`ocsp::OcspChecker`] (feature `load`) in place of [`revocation::Unchecked`].
 //!
-//! ```ignore
-//! use ti_pki::{Tier, TrustConfig, roots, tsl};
+//! ```
+//! # #[cfg(all(feature = "dangerous-nonprod", feature = "brainpool"))]
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! use std::sync::Arc;
 //!
-//! let config = TrustConfig::preset_prod();
-//! config.validate(Tier::Prod)?;
-//! let store = roots::load(&config, now)?.store();
-//! let list = tsl::Tsl::parse(&tsl_xml)?;
-//! let matched = tsl::match_to_roots(list.intermediate_cas(), &store, &config.algorithms);
-//! let ts = store.with_intermediates(matched.intermediates);
+//! use ti_pki::revocation::{RevocationMode, Unchecked};
+//! use ti_pki::{Env, Tier, Timestamp, TrustConfig, profile, roots};
 //!
-//! let certs = ti_pki::parse_pem_certificates(&pem)?; // leaf first
-//! let sel = ti_pki::profile::select_for_cert(&certs[0]); // e.g. smb-aut for a C.HCI.AUT
-//! let validator = sel.profile.validator(&ts, sel.cert_type);
-//! let result = validator.validate(&certs, ts.intermediates())?;
-//! if !result.valid {
-//!     eprintln!("rejected: {:?}", result.errors);
-//! }
+//! let config = TrustConfig {
+//!     revocation: RevocationMode::Disabled,
+//!     ..TrustConfig::preset(Env::Ref)
+//! };
+//! config.validate(Tier::NonProd)?;
+//! let now = Timestamp::parse_rfc3339("2026-06-01T00:00:00Z").unwrap();
+//! let store = Arc::new(roots::load(&config, now)?.store());
+//!
+//! // The end entity first, then its CA; normally the CA comes from the TSL.
+//! let pem = [
+//!     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/admission-1.pem")),
+//!     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/smcb-ca51-test-only.pem")),
+//! ]
+//! .concat();
+//! let certs = ti_pki::parse_pem_certificates(pem.as_bytes())?;
+//!
+//! let selection = profile::select_for_cert(&certs[0]);
+//! let (Some(profile), Some(cert_type)) = (selection.profile, selection.cert_type) else {
+//!     return Err(format!("no profile: {}", selection.detail).into());
+//! };
+//! assert_eq!((profile.name, cert_type.as_str()), ("smb-aut", "C.HCI.AUT"));
+//!
+//! let validator = profile.validator(&config, store, cert_type);
+//! let result = futures_lite::future::block_on(validator.validate(&certs, now, &Unchecked))?;
+//! assert!(result.valid, "{:?}", result.errors);
+//! # Ok(())
+//! # }
+//! # #[cfg(not(all(feature = "dangerous-nonprod", feature = "brainpool")))]
+//! # fn main() {}
 //! ```
 //!
 //! # Trust anchors
@@ -43,10 +62,12 @@
 //!
 //! # Validation
 //!
-//! A validator runs chain building ([`chain`], topology only), path
-//! validation ([`path`], RFC 5280 §6 plus the end-entity checks) and the
-//! revocation check ([`revocation`], [`ocsp`]), and folds every finding into
-//! one result, each error carrying an [`ErrorCode`] ([`validate`]).
+//! A [`Validator`] runs chain building ([`chain`], topology only), path
+//! validation ([`path`], RFC 5280 §6 plus the end-entity checks), the gemSpec_Krypt
+//! key check ([`key`]) and the revocation check for the end entity and every CA
+//! ([`revocation`], [`ocsp`]), and folds every finding into one result, each error
+//! carrying an [`ErrorCode`] ([`validate`]). [`trustdomain`] tells production from
+//! test certificates before a configuration is chosen.
 //!
 //! # Profiles and types
 //!
@@ -101,6 +122,7 @@ mod testing;
 pub mod time;
 #[cfg(feature = "tokio")]
 pub mod tokio;
+pub mod trustdomain;
 pub mod truststore;
 pub mod tsl;
 pub mod validate;
@@ -116,4 +138,4 @@ pub use revocation::{RevocationChecker, RevocationMode, RevocationResult, Revoca
 pub use ti_types::{Env, Tier};
 pub use time::{Clock, Timestamp};
 pub use truststore::TrustStore;
-pub use validate::{CertResult, ChainPosition, ValidationResult};
+pub use validate::{CertResult, ChainPosition, ValidationResult, Validator};

@@ -105,6 +105,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &PathOptions {
             now,
             algorithms: &config.algorithms,
+            max_clock_skew: config.max_clock_skew,
             ee_checks: &ee_checks,
         },
     )?;

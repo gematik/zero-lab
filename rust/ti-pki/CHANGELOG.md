@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+- gempki port, phase 5 (validator): `Validator` (chain building through the supplied and
+  the store's TSL intermediates, path validation with the end-entity requirements, the
+  gemSpec_Krypt key check, revocation for the end entity and, unless
+  `skip_sub_ca_revocation`, every CA; `allow_expired` and `max_clock_skew` from the
+  configuration), `validate_pem`; `profile` with smb-aut, epa-vau-aut, idp-sig and
+  zeta-guard-aut, `lookup`, `select_for_cert` and `Profile::validator` (a profile can
+  tighten the configured revocation mode, never loosen it); `trustdomain` (production vs
+  non-production from the embedded roots, the chain or gematik's markers);
+  `revocation::Unchecked`; `PathOptions::max_clock_skew`; `CertResult::revocation`. A
+  quick-start doctest on real reference certificates; `validate` example.
 - gempki port, phase 4 (OCSP): `ocsp::request` (SHA-1 CertID, as TI responders
   require), `ocsp::verify_response` (CertID binding, RFC 6960 responder authorization,
   certHash, the TUC_PKI_006 time window) and `ocsp::OcspChecker` (feature `load`);
