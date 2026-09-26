@@ -26,6 +26,16 @@ tools:
         if command -v cargo-binstall >/dev/null; then cargo binstall -y "$t"; else cargo install --locked "$t"; fi
     done
 
+# ---- The tir command-line tool ------------------------------------------------------
+
+# Install `tir` (the Rust ti, until it covers the Go ti) into ~/.cargo/bin
+install:
+    cargo install --path ti-cli --locked --force
+
+# Run the development build: just tir pki inspect card.pem
+tir *ARGS:
+    cargo run -q -p ti-cli -- {{ARGS}}
+
 # ---- Tier 1: every PR --------------------------------------------------------------
 
 # Everything a PR must pass, in the order that fails fastest

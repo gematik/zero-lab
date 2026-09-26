@@ -46,7 +46,7 @@ pub fn any_ext_key_usage(allowed: &[ObjectIdentifier]) -> CertificateCheck {
         if have.contains(&ANY_EXTENDED_KEY_USAGE) || allowed.iter().any(|eku| have.contains(eku)) {
             return Ok(());
         }
-        let names: Vec<String> = allowed.iter().map(describe_ext_key_usage).collect();
+        let names: Vec<String> = allowed.iter().map(ext_key_usage_name).collect();
         Err(ValidationError::new(
             ErrorCode::KeyUsageMismatch,
             format!(
@@ -116,20 +116,24 @@ pub fn role_oid(allowed: &[ObjectIdentifier]) -> CertificateCheck {
     })
 }
 
+/// The RFC 5280 name of a key usage bit, e.g. `digitalSignature`; `contentCommitment`
+/// for the bit formerly called nonRepudiation.
+pub const fn key_usage_name(bit: KeyUsages) -> &'static str {
+    match bit {
+        KeyUsages::DigitalSignature => "digitalSignature",
+        KeyUsages::NonRepudiation => "contentCommitment",
+        KeyUsages::KeyEncipherment => "keyEncipherment",
+        KeyUsages::DataEncipherment => "dataEncipherment",
+        KeyUsages::KeyAgreement => "keyAgreement",
+        KeyUsages::KeyCertSign => "keyCertSign",
+        KeyUsages::CRLSign => "cRLSign",
+        KeyUsages::EncipherOnly => "encipherOnly",
+        KeyUsages::DecipherOnly => "decipherOnly",
+    }
+}
+
 fn describe_key_usage(bits: impl Iterator<Item = KeyUsages>) -> String {
-    let names: Vec<&str> = bits
-        .map(|bit| match bit {
-            KeyUsages::DigitalSignature => "digitalSignature",
-            KeyUsages::NonRepudiation => "contentCommitment",
-            KeyUsages::KeyEncipherment => "keyEncipherment",
-            KeyUsages::DataEncipherment => "dataEncipherment",
-            KeyUsages::KeyAgreement => "keyAgreement",
-            KeyUsages::KeyCertSign => "keyCertSign",
-            KeyUsages::CRLSign => "cRLSign",
-            KeyUsages::EncipherOnly => "encipherOnly",
-            KeyUsages::DecipherOnly => "decipherOnly",
-        })
-        .collect();
+    let names: Vec<&str> = bits.map(key_usage_name).collect();
     if names.is_empty() {
         "(none)".into()
     } else {
@@ -137,7 +141,9 @@ fn describe_key_usage(bits: impl Iterator<Item = KeyUsages>) -> String {
     }
 }
 
-fn describe_ext_key_usage(eku: &ObjectIdentifier) -> String {
+/// The name of an extended key usage, e.g. `id-kp-clientAuth`; the OID for one this
+/// crate does not name.
+pub fn ext_key_usage_name(eku: &ObjectIdentifier) -> String {
     let name = match eku.to_string().as_str() {
         "2.5.29.37.0" => "any",
         "1.3.6.1.5.5.7.3.1" => "id-kp-serverAuth",

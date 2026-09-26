@@ -1,5 +1,5 @@
 [workspace]
-members = ["ti-types", "ti-pki"]
+members = ["ti-types", "ti-pki", "ti-cli"]
 resolver = "3"
 
 # Shared metadata only. Deliberately no workspace.package.version: every crate is
@@ -26,6 +26,12 @@ pem-rfc7468 = "1"
 thiserror = "2"
 serde = { version = "1.0.229", default-features = false, features = ["derive", "alloc"] }
 clap = { version = "4.6.7", default-features = false, features = ["derive"] }
+# Terminal styling for the CLI; the same crates clap renders its own help with.
+anstream = "1.0.0"
+anstyle = "1.0.14"
+terminal_size = "0.4.4"
+# Local time zone for timestamps in text output (system zone, DST-correct, Windows too).
+jiff = "0.2.37"
 arc-swap = "1.9.2"
 minicbor = { version = "2.3.0", default-features = false, features = ["alloc"] }
 sha2 = "0.11"

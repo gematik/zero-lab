@@ -119,6 +119,12 @@ impl Certificate {
         &self.0.inner
     }
 
+    /// The signature algorithm's name, e.g. `ecdsa-with-SHA256`; the OID for one this
+    /// crate does not name.
+    pub fn signature_algorithm(&self) -> String {
+        signature_name(&self.0.inner.signature_algorithm().oid)
+    }
+
     /// The original DER encoding.
     pub fn der(&self) -> &[u8] {
         &self.0.der

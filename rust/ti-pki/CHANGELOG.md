@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- `Certificate::signature_algorithm`, `checks::key_usage_name` and
+  `checks::ext_key_usage_name`, for tools that display certificates.
 - Path validation rejects a critical extension this crate does not process (RFC 5280
   §4.2) in every certificate but the root: `ErrorCode::UnrecognizedCriticalExtension`,
   `path::PROCESSED_EXTENSIONS`, `Certificate::critical_extensions`. New OpenSSL fixtures

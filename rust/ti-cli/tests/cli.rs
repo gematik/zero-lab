@@ -1,0 +1,303 @@
+//! The `tir` binary as a user or an agent sees it: arguments, stdout, stderr, exit codes.
+
+use std::io::{Read, Write};
+use std::path::PathBuf;
+use std::process::{Command, Output, Stdio};
+
+fn tir(args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_tir"))
+        .args(args)
+        .env_remove("TI_FORMAT")
+        .env_remove("NO_COLOR")
+        .env_remove("CLICOLOR_FORCE")
+        .output()
+        .unwrap()
+}
+
+fn tir_with_stdin(args: &[&str], stdin: &[u8]) -> Output {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_tir"))
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(stdin).unwrap();
+    child.wait_with_output().unwrap()
+}
+
+fn fixture(name: &str) -> String {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../ti-pki/tests/fixtures")
+        .join(name)
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn stdout(output: &Output) -> String {
+    String::from_utf8(output.stdout.clone()).unwrap()
+}
+
+fn stderr(output: &Output) -> String {
+    String::from_utf8(output.stderr.clone()).unwrap()
+}
+
+#[test]
+fn piped_output_is_markdown_and_text_on_request() {
+    let file = fixture("admission-1.pem");
+    let markdown = stdout(&tir(&["pki", "inspect", &file]));
+    assert!(markdown.starts_with("## Subject\n"), "{markdown}");
+    assert!(
+        markdown.contains("| **type** | `C.HCI.AUT` |"),
+        "{markdown}"
+    );
+    assert!(
+        markdown.contains("**Arztpraxis Bernd Rosenstrauch TEST-ONLY**"),
+        "{markdown}"
+    );
+
+    let text = stdout(&tir(&["--format", "text", "pki", "inspect", &file]));
+    assert!(text.contains("  type           C.HCI.AUT"), "{text}");
+    assert!(!text.contains('|'), "{text}");
+}
+
+#[test]
+fn timestamps_in_the_system_zone() {
+    let out = Command::new(env!("CARGO_BIN_EXE_tir"))
+        .args([
+            "--format",
+            "text",
+            "pki",
+            "inspect",
+            &fixture("admission-1.pem"),
+        ])
+        .env("TZ", "Europe/Berlin")
+        .output()
+        .unwrap();
+    let text = stdout(&out);
+    // notBefore 2023-11-09T23:00:00Z is midnight in Berlin.
+    assert!(text.contains("2023-11-10 00:00:00 +01:00 (CET)"), "{text}");
+}
+
+#[test]
+fn inspect_prints_plain_text_when_piped() {
+    let out = tir(&["pki", "inspect", &fixture("admission-1.pem")]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(
+        text.contains("Arztpraxis Bernd Rosenstrauch TEST-ONLY"),
+        "{text}"
+    );
+    assert!(text.contains("C.HCI.AUT"), "{text}");
+    assert!(!text.contains('\x1b'), "no escape codes when piped");
+}
+
+#[test]
+fn colors_can_be_forced_and_disabled() {
+    let file = fixture("admission-1.pem");
+    let forced = tir(&[
+        "--format", "text", "--color", "always", "pki", "inspect", &file,
+    ]);
+    assert!(stdout(&forced).contains('\x1b'));
+    let never = Command::new(env!("CARGO_BIN_EXE_tir"))
+        .args(["--format", "text", "pki", "inspect", &file])
+        .env("CLICOLOR_FORCE", "1")
+        .env("NO_COLOR", "1")
+        .output()
+        .unwrap();
+    assert!(!stdout(&never).contains('\x1b'), "NO_COLOR wins");
+}
+
+#[test]
+fn inspect_json_is_the_contract() {
+    let out = tir(&[
+        "--format",
+        "json",
+        "pki",
+        "inspect",
+        &fixture("admission-1.pem"),
+    ]);
+    assert_eq!(out.status.code(), Some(0));
+    let text = stdout(&out);
+    assert_eq!(text.lines().count(), 1, "compact when piped");
+    let json: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(json["schema"], 1);
+    let cert = &json["certificates"][0];
+    assert_eq!(cert["certificate_type"], "C.HCI.AUT");
+    assert_eq!(cert["key"]["status"], "admissible");
+    assert_eq!(cert["profile"]["name"], "smb-aut");
+    assert_eq!(
+        cert["admission"]["profession_oids"][0]["oid"],
+        "1.2.276.0.76.4.50"
+    );
+    assert_eq!(cert["sha256"].as_str().unwrap().len(), 95);
+}
+
+#[test]
+fn format_from_the_environment() {
+    let out = Command::new(env!("CARGO_BIN_EXE_tir"))
+        .args(["pki", "profiles", "list"])
+        .env("TI_FORMAT", "json")
+        .output()
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["profiles"].as_array().unwrap().len(), 4);
+}
+
+#[test]
+fn stdin_pem_and_der() {
+    let pem = std::fs::read(fixture("admission-1.pem")).unwrap();
+    let from_pem = tir_with_stdin(&["pki", "inspect", "-"], &pem);
+    assert_eq!(from_pem.status.code(), Some(0), "{}", stderr(&from_pem));
+    assert!(stdout(&from_pem).contains("Arztpraxis Bernd Rosenstrauch"));
+    let json = tir_with_stdin(&["--format", "json", "pki", "inspect", "-"], &pem);
+    let json: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+    assert_eq!(json["source"], "<stdin>");
+
+    let der = ti_pki::parse_pem_certificates(&pem).unwrap()[0]
+        .der()
+        .to_vec();
+    let from_der = tir_with_stdin(&["--format", "json", "pki", "inspect", "-"], &der);
+    let json: serde_json::Value = serde_json::from_slice(&from_der.stdout).unwrap();
+    assert_eq!(json["certificates"][0]["certificate_type"], "C.HCI.AUT");
+}
+
+#[test]
+fn unreadable_input_is_exit_4_with_a_hint() {
+    let out = tir(&["pki", "inspect", "/nonexistent/card.pem"]);
+    assert_eq!(out.status.code(), Some(4));
+    assert!(stdout(&out).is_empty());
+    let err = stderr(&out);
+    assert!(err.contains("cannot read /nonexistent/card.pem"), "{err}");
+    assert!(err.contains("hint:"), "{err}");
+
+    let json = tir(&[
+        "--format",
+        "json",
+        "pki",
+        "inspect",
+        "/nonexistent/card.pem",
+    ]);
+    assert_eq!(json.status.code(), Some(4));
+    let error: serde_json::Value = serde_json::from_slice(&json.stderr).unwrap();
+    assert_eq!(error["schema"], 1);
+    assert_eq!(error["error"]["kind"], "input_unreadable");
+    assert!(error["error"]["hint"].is_string());
+
+    let empty = tir_with_stdin(&["pki", "inspect", "-"], b"");
+    assert_eq!(empty.status.code(), Some(4));
+    assert!(stderr(&empty).contains("no certificate found"));
+}
+
+#[test]
+fn profiles() {
+    let list = stdout(&tir(&["pki", "profiles", "list"]));
+    for name in ["epa-vau-aut", "idp-sig", "smb-aut", "zeta-guard-aut"] {
+        assert!(list.contains(name), "{list}");
+    }
+    let describe = tir(&[
+        "--format",
+        "json",
+        "pki",
+        "profiles",
+        "describe",
+        "zeta-guard-aut",
+    ]);
+    let json: serde_json::Value = serde_json::from_slice(&describe.stdout).unwrap();
+    assert_eq!(json["types"][0]["certificate_type"], "C.FD.AUT");
+    assert_eq!(
+        json["types"][0]["role_oids"][0]["oid"],
+        "1.2.276.0.76.4.328"
+    );
+
+    let unknown = tir(&["pki", "profiles", "describe", "idp"]);
+    assert_eq!(unknown.status.code(), Some(2));
+    assert!(
+        stderr(&unknown).contains("smb-aut"),
+        "lists the valid values"
+    );
+}
+
+#[test]
+fn http_options_are_validated_and_shown_with_verbose() {
+    let dir = std::env::temp_dir().join("tir-cli-test-cache");
+    let out = Command::new(env!("CARGO_BIN_EXE_tir"))
+        .args([
+            "-v",
+            "-x",
+            "http://user:secret@proxy:3128",
+            "-m",
+            "5",
+            "pki",
+            "profiles",
+            "list",
+        ])
+        .env("TI_CACHE_DIR", &dir)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let err = stderr(&out);
+    assert!(err.contains(&format!("cache {}", dir.display())), "{err}");
+    assert!(err.contains("proxy http://***@proxy:3128"), "{err}");
+    assert!(!err.contains("secret"), "{err}");
+    assert!(err.contains("max 5s"), "{err}");
+
+    for bad in [
+        &["-x", "proxy:3128"][..],
+        &["--max-time", "0"],
+        &["--connect-timeout", "x"],
+    ] {
+        let args: Vec<&str> = bad
+            .iter()
+            .copied()
+            .chain(["pki", "profiles", "list"])
+            .collect();
+        assert_eq!(tir(&args).status.code(), Some(2), "{bad:?}");
+    }
+}
+
+#[test]
+fn help_documents_exit_codes() {
+    let help = tir(&["--help"]);
+    assert_eq!(help.status.code(), Some(0));
+    let text = stdout(&help);
+    assert!(text.contains("Exit codes:"), "{text}");
+    assert!(text.contains("HTTP options"), "{text}");
+}
+
+/// `tir … | head` must end quietly: a closed stdout is not an error.
+#[test]
+fn a_closed_pipe_is_not_an_error() {
+    let pem = std::fs::read(fixture("admission-1.pem")).unwrap();
+    // Enough certificates to overflow any pipe buffer.
+    let many: Vec<u8> = std::iter::repeat_n(pem.as_slice(), 400)
+        .flatten()
+        .copied()
+        .collect();
+    let dir = std::env::temp_dir().join(format!("tir-pipe-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("many.pem");
+    std::fs::write(&file, &many).unwrap();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_tir"))
+        .args(["pki", "inspect"])
+        .arg(&file)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut first = [0u8; 16];
+    child.stdout.take().unwrap().read_exact(&mut first).unwrap();
+    // Dropping the read end closes the pipe while tir is still writing.
+    let status = child.wait().unwrap();
+    let mut err = String::new();
+    child
+        .stderr
+        .take()
+        .unwrap()
+        .read_to_string(&mut err)
+        .unwrap();
+    std::fs::remove_dir_all(&dir).unwrap();
+    assert_eq!(status.code(), Some(0), "{err}");
+    assert!(err.is_empty(), "{err}");
+}
