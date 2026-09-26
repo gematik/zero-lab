@@ -35,17 +35,21 @@ check: fmt clippy doc test features wasm32 core-deps nonprod-absent machete deny
 fmt:
     cargo fmt --all -- --check
 
-# Clippy on all targets and features; warnings are errors
+# Clippy on all targets with all features and with the defaults; warnings are errors.
+# The default pass catches code that only a feature makes used (e.g. test imports).
 clippy:
     cargo clippy --workspace --all-targets --all-features -- -D warnings
+    cargo clippy --workspace --all-targets -- -D warnings
 
 # Rustdoc must build warning-free (broken intra-doc links, missing docs)
 doc:
     RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
 
-# Tests via nextest (parallel, per-test timeouts, better failure output), then doctests
+# Tests via nextest (parallel, per-test timeouts, better failure output) with all
+# features and with the defaults, then doctests
 test:
     cargo nextest run --workspace --all-features
+    cargo nextest run --workspace
     cargo test --workspace --all-features --doc
 
 # The loading layer and the reqwest transport build for the browser
