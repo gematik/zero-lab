@@ -7,11 +7,6 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ## Unreleased
 
-### ti-cli
-
-#### removed
-- `-V`/`--version`: `ti version` shows the version, as in the Go `ti`.
-
 ### ti-connector-client
 
 #### added
@@ -179,6 +174,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 #### added
 - `Env`, `Tier`, `EnvParseError`; `serde` and `clap` features.
 - `Timestamp` and `Clock` (moved from ti-pki), `SystemClock` behind `std`.
+
+## Release ti-cli 0.1.1, 2026-09-27
+
+### removed
+- `-V`/`--version`: `ti version` shows the version, as in the Go `ti`.
 
 ## Release ti-cli 0.1.0, 2026-09-27
 
