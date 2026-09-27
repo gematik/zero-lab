@@ -168,6 +168,13 @@ impl CliError {
             CliError::Connector(ti_connector_client::Error::Transport(_)) => Some(
                 "check the .kon url, the network and the Konnektor's TLS certificate (-v shows each call)",
             ),
+            CliError::Connector(ti_connector_client::Error::Fault(fault))
+                if fault.trace.iter().any(|t| t.code == Some(4263)) =>
+            {
+                Some(
+                    "comfort signature is switched off in the Konnektor; an administrator enables it in its management interface",
+                )
+            }
             CliError::Connector(ti_connector_client::Error::Fault(_)) => {
                 Some("the Konnektor refused the call; its code and text say why")
             }

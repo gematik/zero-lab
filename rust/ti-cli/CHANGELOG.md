@@ -11,6 +11,14 @@
   `card_restricted`, `pin_type`. Exit 3 now also means the Konnektor failed.
   PIN entry shows a spinner, the terminal's progress state (OSC 9;4) and a desktop
   notification (OSC 9) while the card terminal waits.
+- `connector sign` (CAdES detached, PAdES for PDF/A; ECC by default), `verify
+  signature`, `encrypt` (CMS for recipients' certificates) and `decrypt` (plaintext
+  mode 0600), `comfort activate|status|deactivate` with a random user ID per activation
+  (A_20073-01, A_20074) kept owner-only in the state directory and masked in `-vv`;
+  `--comfort-user-id`/`TI_COMFORT_USER_ID`. Output files are never replaced without
+  `--force`.
+- `connector export certificate CARD [REF]`: a card's certificates as PEM on stdout (or
+  `-o FILE`, `--der`); `encrypt --to-card CARD` encrypts for a card's C.ENC directly.
 - `cache clear` also removes cached Konnektor service directories.
 - `tir`, the Rust `ti` command-line tool: `pki inspect` (PEM, DER or stdin; type,
   profile, admission, policies, key admissibility), `pki profiles list|describe`.

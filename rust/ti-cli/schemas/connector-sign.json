@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "connector sign",
+  "description": "A file signed with a card.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "input": {
+      "type": "string"
+    },
+    "output": {
+      "type": "string"
+    },
+    "format": {
+      "enum": [
+        "cades",
+        "pades"
+      ]
+    },
+    "card": {
+      "$ref": "#/$defs/card"
+    },
+    "comfort": {
+      "type": "boolean",
+      "description": "Signed within a comfort signature session, without a PIN entry."
+    }
+  },
+  "required": [
+    "schema",
+    "input",
+    "output",
+    "format",
+    "card",
+    "comfort"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "card": {
+      "type": "object",
+      "properties": {
+        "handle": {
+          "type": "string"
+        },
+        "card_type": {
+          "type": "string",
+          "description": "e.g. SMC-B, HBA, EGK, SMC-KT"
+        },
+        "iccsn": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "terminal": {
+          "type": "string",
+          "description": "The card terminal's CtId."
+        },
+        "slot": {
+          "type": "integer"
+        },
+        "holder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kvnr": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inserted": {
+          "type": "string"
+        },
+        "certificate_expiration": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cos_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "major.minor.revision"
+        },
+        "object_system_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "handle",
+        "card_type",
+        "iccsn",
+        "terminal",
+        "slot",
+        "holder",
+        "kvnr",
+        "inserted",
+        "certificate_expiration",
+        "cos_version",
+        "object_system_version"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

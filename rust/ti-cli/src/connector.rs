@@ -201,7 +201,10 @@ impl<T: Transport> Transport for Logged<T> {
             },
         );
         if self.verbosity >= 2 && !request.body.is_empty() {
-            diagnostic(format_args!("request {what}\n{}", shorten(request.body)));
+            diagnostic(format_args!(
+                "request {what}\n{}",
+                shorten(&mask_user_id(request.body))
+            ));
         }
         let start = Instant::now();
         let result = self.inner.send(request).await;
@@ -227,6 +230,33 @@ impl<T: Transport> Transport for Logged<T> {
 
 fn millis(d: Duration) -> String {
     format!("{} ms", d.as_millis())
+}
+
+/// The body with the content of `UserId` elements masked: in a comfort signature
+/// session it lets anyone with the same context sign without a PIN.
+fn mask_user_id(body: &[u8]) -> Vec<u8> {
+    let text = String::from_utf8_lossy(body);
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text.as_ref();
+    while let Some(start) = rest.find("UserId>") {
+        let open = start + "UserId>".len();
+        // `<…UserId>` opens the element and `</…UserId>` closes it; only an opening
+        // tag is followed by the value.
+        let closing = rest[..start]
+            .rfind('<')
+            .is_some_and(|lt| rest[lt + 1..].starts_with('/'));
+        out.push_str(&rest[..open]);
+        rest = &rest[open..];
+        if !closing {
+            let end = rest.find('<').unwrap_or(rest.len());
+            if end > 0 {
+                out.push_str("***");
+            }
+            rest = &rest[end..];
+        }
+    }
+    out.push_str(rest);
+    out.into_bytes()
 }
 
 /// The body as text, each base64-looking run over 120 characters replaced by its
@@ -259,6 +289,16 @@ fn shorten(body: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn user_ids_are_masked() {
+        let body =
+            b"<c:Context><c:UserId>2b0a-secret</c:UserId><c:MandantId>M</c:MandantId></c:Context>";
+        assert_eq!(
+            String::from_utf8(mask_user_id(body)).unwrap(),
+            "<c:Context><c:UserId>***</c:UserId><c:MandantId>M</c:MandantId></c:Context>"
+        );
+    }
 
     #[test]
     fn long_base64_runs_are_shortened() {

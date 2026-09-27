@@ -4,6 +4,7 @@
 mod agent;
 mod cache;
 mod connector;
+mod documents;
 mod inspect;
 mod pkcs12;
 mod profiles;
@@ -131,4 +132,41 @@ fn trust_line(trust: &TrustInfo) -> Line {
         line = line.and_dim(format!(" · {note}"));
     }
     line
+}
+
+/// Writes `bytes` to `path`; readable by the owner only when `private` (keys, decrypted
+/// documents). Never replaces an existing file unless `force`.
+fn write_file(
+    path: &std::path::Path,
+    bytes: &[u8],
+    force: bool,
+    private: bool,
+) -> Result<(), CliError> {
+    use std::io::Write as _;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true);
+    if force {
+        options.create(true).truncate(true);
+    } else {
+        options.create_new(true);
+    }
+    #[cfg(unix)]
+    if private {
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    }
+    #[cfg(not(unix))]
+    let _ = private;
+    let mut file = options.open(path).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::AlreadyExists {
+            CliError::OutputExists(path.display().to_string())
+        } else {
+            CliError::Output(std::io::Error::new(
+                error.kind(),
+                format!("{}: {error}", path.display()),
+            ))
+        }
+    })?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    Ok(())
 }

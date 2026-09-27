@@ -373,6 +373,16 @@ pub struct ConnectorArgs {
     /// Load the service directory from the Konnektor instead of the cache
     #[arg(long, global = true)]
     pub no_cache: bool,
+    /// The comfort signature session's user ID, instead of the one `comfort activate`
+    /// stored; lets anyone with the same context sign without a PIN, keep it secret
+    #[arg(
+        long,
+        value_name = "UUID",
+        env = "TI_COMFORT_USER_ID",
+        hide_env_values = true,
+        global = true
+    )]
+    pub comfort_user_id: Option<String>,
 }
 
 fn seconds(value: &str) -> Result<Duration, String> {
@@ -405,6 +415,167 @@ pub enum ConnectorCommand {
     /// Change a PIN at the card terminal
     #[command(subcommand)]
     Change(ConnectorChange),
+    /// Sign a file with a card: CAdES (detached, FILE.p7s) or, for a PDF/A, PAdES
+    /// (FILE.signed.pdf)
+    Sign(SignArgs),
+    /// Encrypt a file for the holders of certificates (CMS, FILE.p7m)
+    Encrypt(EncryptArgs),
+    /// Decrypt a CMS file with a card's C.ENC key
+    Decrypt(DecryptArgs),
+    /// Comfort signature of an HBA: one PIN.QES entry for many signatures
+    #[command(subcommand)]
+    Comfort(ConnectorComfort),
+    /// Save certificates of a card (PEM to stdout, or a file)
+    #[command(subcommand)]
+    Export(ConnectorExport),
+}
+
+/// `ti connector export …`.
+#[derive(Debug, Subcommand)]
+pub enum ConnectorExport {
+    /// A card's certificate as PEM (or DER); without REF all of them as a PEM bundle
+    Certificate(ExportArgs),
+}
+
+/// `ti connector export certificate`.
+#[derive(Debug, Args)]
+pub struct ExportArgs {
+    /// ICCSN, Telematik-ID or card handle
+    #[arg(value_name = CARD)]
+    pub card: String,
+    /// C.AUT, C.ENC, C.SIG or C.QES [default: all]
+    #[arg(value_name = "REF", value_parser = cert_ref)]
+    pub cert_ref: Option<ti_connector_client::types::CertRef>,
+    /// Key type [default: ecc with REF, both without]
+    #[arg(long, value_enum)]
+    pub crypt: Option<CryptArg>,
+    /// Write to OUT instead of stdout
+    #[arg(short, long, value_name = "OUT")]
+    pub output: Option<PathBuf>,
+    /// DER instead of PEM (one certificate only)
+    #[arg(long, requires = "cert_ref")]
+    pub der: bool,
+    /// Replace OUT if it exists
+    #[arg(long)]
+    pub force: bool,
+}
+
+/// `ti connector sign`.
+#[derive(Debug, Args)]
+pub struct SignArgs {
+    /// The file to sign; a .pdf must be PDF/A
+    #[arg(value_name = "FILE")]
+    pub file: PathBuf,
+    /// The signing card: ICCSN, Telematik-ID or card handle (SMC-B, or an HBA for a QES)
+    #[arg(long, value_name = "CARD")]
+    pub card: String,
+    /// Signature format [default: pades for .pdf, cades otherwise]
+    #[arg(long, value_enum, value_name = "FORMAT")]
+    pub signature_format: Option<FormatArg>,
+    /// Where to write the signature or signed PDF [default: FILE.p7s or FILE.signed.pdf]
+    #[arg(short, long, value_name = "OUT")]
+    pub output: Option<PathBuf>,
+    /// Media type of FILE [default: from its extension]
+    #[arg(long, value_name = "TYPE")]
+    pub mime_type: Option<String>,
+    /// What the card terminal shows at PIN.QES entry, up to 30 characters; required by
+    /// the Konnektor for a qualified signature [default: FILE's name]
+    #[arg(long, value_name = "TEXT")]
+    pub short_text: Option<String>,
+    /// Key type
+    #[arg(long, value_enum, default_value_t = CryptArg::Ecc)]
+    pub crypt: CryptArg,
+    /// Replace OUT if it exists
+    #[arg(long)]
+    pub force: bool,
+}
+
+/// `--signature-format` of `sign`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum FormatArg {
+    /// CMS, detached: the signature without the document.
+    Cades,
+    /// PDF signature in the PDF/A.
+    Pades,
+}
+
+/// `ti connector encrypt`.
+#[derive(Debug, Args)]
+pub struct EncryptArgs {
+    /// The file to encrypt
+    #[arg(value_name = "FILE")]
+    pub file: PathBuf,
+    /// A recipient's encryption certificate (PEM, DER or PKCS#12); repeatable
+    #[arg(
+        long = "to",
+        value_name = "CERT",
+        required_unless_present = "recipient_cards"
+    )]
+    pub recipients: Vec<PathBuf>,
+    /// A card to encrypt for, with its C.ENC (ECC) read from the Konnektor: ICCSN,
+    /// Telematik-ID or card handle; repeatable
+    #[arg(long = "to-card", value_name = "CARD")]
+    pub recipient_cards: Vec<String>,
+    /// Password of PKCS#12 recipient files
+    #[arg(long, value_name = "PASSWORD", default_value = "00")]
+    pub p12_password: String,
+    /// Where to write the CMS [default: FILE.p7m]
+    #[arg(short, long, value_name = "OUT")]
+    pub output: Option<PathBuf>,
+    /// Media type of FILE, needed again to decrypt [default: from its extension]
+    #[arg(long, value_name = "TYPE")]
+    pub mime_type: Option<String>,
+    /// Replace OUT if it exists
+    #[arg(long)]
+    pub force: bool,
+}
+
+/// `ti connector decrypt`.
+#[derive(Debug, Args)]
+pub struct DecryptArgs {
+    /// The CMS file
+    #[arg(value_name = "FILE")]
+    pub file: PathBuf,
+    /// The card whose C.ENC key decrypts: ICCSN, Telematik-ID or card handle
+    #[arg(long, value_name = "CARD")]
+    pub card: String,
+    /// Where to write the plaintext (mode 0600) [default: FILE without .p7m]
+    #[arg(short, long, value_name = "OUT")]
+    pub output: Option<PathBuf>,
+    /// Media type of the plaintext, as given to encrypt; the Konnektor checks it
+    /// [default: from OUT's extension]
+    #[arg(long, value_name = "TYPE")]
+    pub mime_type: Option<String>,
+    /// Key type
+    #[arg(long, value_enum, default_value_t = CryptArg::Ecc)]
+    pub crypt: CryptArg,
+    /// Replace OUT if it exists
+    #[arg(long)]
+    pub force: bool,
+}
+
+/// `ti connector comfort …`.
+#[derive(Debug, Subcommand)]
+pub enum ConnectorComfort {
+    /// Activate comfort signature (PIN.QES once at the card terminal) with a new random
+    /// user ID, kept for later `sign` calls
+    Activate {
+        /// The HBA: ICCSN, Telematik-ID or card handle
+        #[arg(value_name = "CARD")]
+        card: String,
+    },
+    /// Whether comfort signature is enabled, and what is left of the session
+    Status {
+        /// The HBA: ICCSN, Telematik-ID or card handle
+        #[arg(value_name = "CARD")]
+        card: String,
+    },
+    /// End comfort signature and forget the session's user ID
+    Deactivate {
+        /// The HBA: ICCSN, Telematik-ID or card handle
+        #[arg(value_name = "CARD")]
+        card: String,
+    },
 }
 
 /// A card: its ICCSN (20 digits), a Telematik-ID from its C.AUT, or its card handle.
@@ -512,6 +683,19 @@ fn pin_type(value: &str) -> Result<ti_connector_client::PinType, String> {
 pub enum ConnectorVerify {
     /// Enter a PIN at the card terminal (exit 0 accepted, 1 not)
     Pin(PinArgs),
+    /// The Konnektor's check of a signature: CAdES with --signature, PAdES from the PDF
+    /// alone (exit 0 valid, 1 not)
+    Signature {
+        /// The signed document (for PAdES: the signed PDF)
+        #[arg(value_name = "FILE")]
+        file: PathBuf,
+        /// The detached CAdES signature (.p7s)
+        #[arg(long, value_name = "SIG")]
+        signature: Option<PathBuf>,
+        /// Media type of FILE [default: from its extension]
+        #[arg(long, value_name = "TYPE")]
+        mime_type: Option<String>,
+    },
     /// The Konnektor's check of a certificate: path to the TI roots and OCSP (exit 0
     /// valid, 1 not)
     Certificate {

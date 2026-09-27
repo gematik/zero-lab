@@ -19,6 +19,31 @@ pub fn cache_dir(explicit: Option<&Path>) -> Result<PathBuf, CliError> {
     default_cache_base().map(|base| base.join(GROUP).join(TOOL))
 }
 
+/// The state directory: kept across runs, unlike the cache (`cache clear` never
+/// touches it); `$XDG_STATE_HOME/telematik/ti`, or `~/.local/state/telematik/ti`, or the
+/// local application data on Windows.
+pub fn state_dir() -> Result<PathBuf, CliError> {
+    default_state_base().map(|base| base.join(GROUP).join(TOOL))
+}
+
+#[cfg(windows)]
+fn default_state_base() -> Result<PathBuf, CliError> {
+    default_cache_base().map(|base| base.join("state"))
+}
+
+#[cfg(not(windows))]
+fn default_state_base() -> Result<PathBuf, CliError> {
+    if let Some(xdg) = std::env::var_os("XDG_STATE_HOME").map(PathBuf::from)
+        && xdg.is_absolute()
+    {
+        return Ok(xdg);
+    }
+    std::env::home_dir()
+        .filter(|home| home.is_absolute())
+        .map(|home| home.join(".local").join("state"))
+        .ok_or(CliError::CacheDir("no home directory"))
+}
+
 #[cfg(windows)]
 fn default_cache_base() -> Result<PathBuf, CliError> {
     std::env::var_os("LOCALAPPDATA")

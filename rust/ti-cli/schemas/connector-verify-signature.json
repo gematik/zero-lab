@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "connector verify signature",
+  "description": "The Konnektor's check of a signature; exit 0 for VALID, 1 otherwise.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "document": {
+      "type": "string"
+    },
+    "signature": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "format": {
+      "enum": [
+        "cades",
+        "pades"
+      ]
+    },
+    "result": {
+      "enum": [
+        "VALID",
+        "INCONCLUSIVE",
+        "INVALID"
+      ]
+    },
+    "timestamp_type": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "document",
+    "signature",
+    "format",
+    "result",
+    "timestamp_type",
+    "timestamp"
+  ],
+  "additionalProperties": false
+}

@@ -53,6 +53,28 @@ pub fn run(cli: &ConnectorCli, global: &GlobalArgs, out: &Output) -> Result<Exit
         ConnectorCommand::Change(ConnectorChange::Pin(args)) => {
             pin(&open()?, &cli.args, args, true, out)
         }
+        ConnectorCommand::Sign(args) => super::documents::sign(&open()?, &cli.args, args, out),
+        ConnectorCommand::Encrypt(args) => super::documents::encrypt(&open()?, args, out),
+        ConnectorCommand::Decrypt(args) => {
+            super::documents::decrypt(&open()?, &cli.args, args, out)
+        }
+        ConnectorCommand::Export(crate::cli::ConnectorExport::Certificate(args)) => {
+            super::documents::export(&open()?, args, out)
+        }
+        ConnectorCommand::Comfort(command) => {
+            super::documents::comfort(&open()?, &cli.args, command, out)
+        }
+        ConnectorCommand::Verify(ConnectorVerify::Signature {
+            file,
+            signature,
+            mime_type,
+        }) => super::documents::verify_signature(
+            &open()?,
+            file,
+            signature.as_deref(),
+            mime_type.as_deref(),
+            out,
+        ),
         ConnectorCommand::Verify(ConnectorVerify::Certificate {
             card,
             cert_ref,
@@ -75,7 +97,7 @@ pub fn run(cli: &ConnectorCli, global: &GlobalArgs, out: &Output) -> Result<Exit
 }
 
 /// The report as JSON with the `schema` version, or `view` rendered as text.
-fn emit<T: Serialize>(
+pub(super) fn emit<T: Serialize>(
     out: &Output,
     exit: Exit,
     report: &T,
@@ -106,13 +128,13 @@ fn cell(value: Option<&str>) -> Line {
 }
 
 /// Runs a Konnektor call.
-fn call<T>(future: impl Future<Output = Result<T, Error>>) -> Result<T, CliError> {
+pub(super) fn call<T>(future: impl Future<Output = Result<T, Error>>) -> Result<T, CliError> {
     block_on(future).map_err(CliError::Connector)
 }
 
 /// Runs a call about `card`; a refusal for a card type the Konnektor restricts on its
 /// SOAP API (SMC-KT, KVK, eGK) says so.
-fn card_call<T>(
+pub(super) fn card_call<T>(
     card: &Card,
     future: impl Future<Output = Result<T, Error>>,
 ) -> Result<T, CliError> {
@@ -127,19 +149,19 @@ fn card_call<T>(
     })
 }
 
-fn find(session: &Session, card: &str) -> Result<Card, CliError> {
+pub(super) fn find(session: &Session, card: &str) -> Result<Card, CliError> {
     call(session.connector.cards().find(card))
 }
 
 /// `SMC-B 80276001011699910102`, or the handle for a card without ICCSN.
-fn card_label(card: &Card) -> String {
+pub(super) fn card_label(card: &Card) -> String {
     let id = card.iccsn.as_deref().unwrap_or(&card.card_handle);
     format!("{} {id}", card.card_type)
 }
 
 /// Certificate `cert_ref` of `crypt` from `card`, with a description of where it came
 /// from.
-fn card_certificate(
+pub(super) fn card_certificate(
     session: &Session,
     card: &str,
     cert_ref: CertRef,
@@ -159,7 +181,10 @@ fn card_certificate(
     }
 }
 
-fn from_file(file: &Path, p12_password: &str) -> Result<(String, Certificate), CliError> {
+pub(super) fn from_file(
+    file: &Path,
+    p12_password: &str,
+) -> Result<(String, Certificate), CliError> {
     let input = input::read(file)?;
     let first = input::certificates(&input, p12_password)?.remove(0);
     Ok((input.name, first.certificate))
@@ -424,7 +449,7 @@ fn services(session: &Session, out: &Output) -> Result<Exit, CliError> {
 }
 
 #[derive(Serialize)]
-struct CardInfo {
+pub(super) struct CardInfo {
     handle: String,
     card_type: &'static str,
     iccsn: Option<String>,

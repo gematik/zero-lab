@@ -14,6 +14,22 @@ use serde_json::Value;
 use support::assert_conforms;
 
 const SDS: &str = include_str!("../../ti-connector-client/tests/fixtures/ehex-connector.sds");
+/// Answers recorded from an eHEX Konnektor (ti-connector-client's replayed session).
+const RECORDED_JOB: &str = include_str!(
+    "../../ti-connector-client/tests/fixtures/recorded/ehex-6.0.2/07-GetJobNumber.response-200.xml"
+);
+const RECORDED_CADES: &str = include_str!(
+    "../../ti-connector-client/tests/fixtures/recorded/ehex-6.0.2/08-SignDocument.response-200.xml"
+);
+const RECORDED_VERIFY: &str = include_str!(
+    "../../ti-connector-client/tests/fixtures/recorded/ehex-6.0.2/09-VerifyDocument.response-200.xml"
+);
+const RECORDED_ENCRYPT: &str = include_str!(
+    "../../ti-connector-client/tests/fixtures/recorded/ehex-6.0.2/14-EncryptDocument.response-200.xml"
+);
+const RECORDED_DECRYPT: &str = include_str!(
+    "../../ti-connector-client/tests/fixtures/recorded/ehex-6.0.2/15-DecryptDocument.response-200.xml"
+);
 /// An OpenSSL-generated certificate with an admission (ti-pki's test PKI).
 const EE_ARZT: &str = include_str!("../../ti-pki/tests/pki/ee-arzt.pem");
 
@@ -41,18 +57,9 @@ fn fault(code: u32, text: &str) -> String {
     ))
 }
 
-/// The answer to one request: `(status, body)`.
-fn answer(path: &str, action: &str, body: &str) -> (u16, String) {
-    if path == "/connector.sds" {
-        return (200, SDS.to_owned());
-    }
-    let operation = action
-        .rsplit('#')
-        .next()
-        .unwrap_or_default()
-        .trim_matches('"');
-    // GetCards filters by the card type in the request, if any.
-    let cards: String = [
+/// The fake's cards; GetCards filters by the card type in the request, if any.
+fn cards(body: &str) -> String {
+    [
         (
             "SMC-B",
             card(
@@ -81,11 +88,27 @@ fn answer(path: &str, action: &str, body: &str) -> (u16, String) {
     .into_iter()
     .filter(|(kind, _)| !body.contains("CardType>") || body.contains(&format!(">{kind}<")))
     .map(|(_, xml)| xml)
-    .collect();
+    .collect()
+}
+
+/// The answer to one request: `(status, body)`.
+fn answer(path: &str, action: &str, body: &str) -> (u16, String) {
+    if path == "/connector.sds" {
+        return (200, SDS.to_owned());
+    }
+    let operation = action
+        .rsplit('#')
+        .next()
+        .unwrap_or_default()
+        .trim_matches('"');
+    let cards = cards(body);
     let der_b64: String = EE_ARZT
         .lines()
         .filter(|l| !l.starts_with("-----"))
         .collect();
+    if let Some(answer) = document_answer(operation, body) {
+        return answer;
+    }
     let response = match operation {
         "GetCards" => format!(
             "<E:GetCardsResponse xmlns:E=\"e\">{OK}<Cards>{cards}</Cards></E:GetCardsResponse>"
@@ -144,6 +167,47 @@ fn answer(path: &str, action: &str, body: &str) -> (u16, String) {
         other => return (500, fault(4000, &format!("unexpected {other}"))),
     };
     (200, envelope(&response))
+}
+
+/// The answers to the signature, encryption and comfort signature operations.
+fn document_answer(operation: &str, body: &str) -> Option<(u16, String)> {
+    Some(match operation {
+        "GetJobNumber" => (200, RECORDED_JOB.to_owned()),
+        "SignDocument" if body.contains("http://uri.etsi.org/02778/3") => (
+            200,
+            envelope(&format!(
+                "<S:SignDocumentResponse xmlns:S=\"s\" xmlns:D=\"urn:oasis:names:tc:dss:1.0:core:schema\"><S:SignResponse RequestID=\"request-0\">{OK}\
+             <D:SignatureObject><D:Base64Signature Type=\"http://uri.etsi.org/02778/3\">JVBERi1zaWduZWQ=</D:Base64Signature></D:SignatureObject>\
+             </S:SignResponse></S:SignDocumentResponse>"
+            )),
+        ),
+        "SignDocument" => (200, RECORDED_CADES.to_owned()),
+        "VerifyDocument" => (200, RECORDED_VERIFY.to_owned()),
+        "EncryptDocument" => (200, RECORDED_ENCRYPT.to_owned()),
+        "DecryptDocument" => (200, RECORDED_DECRYPT.to_owned()),
+        "ActivateComfortSignature" => (
+            200,
+            envelope(&format!(
+                "<S:ActivateComfortSignatureResponse xmlns:S=\"s\">{OK}<S:SignatureMode>COMFORT</S:SignatureMode></S:ActivateComfortSignatureResponse>"
+            )),
+        ),
+        "GetSignatureMode" => (
+            200,
+            envelope(&format!(
+                "<S:GetSignatureModeResponse xmlns:S=\"s\">{OK}<S:ComfortSignatureStatus>ENABLED</S:ComfortSignatureStatus>\
+             <S:ComfortSignatureMax>250</S:ComfortSignatureMax><S:ComfortSignatureTimer>PT24H</S:ComfortSignatureTimer>\
+             <S:SessionInfo><S:SignatureMode>COMFORT</S:SignatureMode><S:CountRemaining>249</S:CountRemaining><S:TimeRemaining>PT23H</S:TimeRemaining></S:SessionInfo>\
+             </S:GetSignatureModeResponse>"
+            )),
+        ),
+        "DeactivateComfortSignature" => (
+            200,
+            envelope(&format!(
+                "<S:DeactivateComfortSignatureResponse xmlns:S=\"s\">{OK}</S:DeactivateComfortSignatureResponse>"
+            )),
+        ),
+        _ => return None,
+    })
 }
 
 fn handle(stream: TcpStream) -> Option<()> {
@@ -217,6 +281,8 @@ impl Fake {
             .env_remove("TI_CONNECTOR_CONFIG")
             .env("XDG_CONFIG_HOME", self.dir.join("config"))
             .env("TI_CACHE_DIR", self.dir.join("cache"))
+            .env("XDG_STATE_HOME", self.dir.join("state"))
+            .env_remove("TI_COMFORT_USER_ID")
             .env("KON_TEST_PASSWORD", "p")
             .output()
             .unwrap()
@@ -226,6 +292,11 @@ impl Fake {
         let mut all = vec!["--format", "json", "connector", "-c", "praxis"];
         all.extend_from_slice(args);
         let out = self.tir(&all);
+        assert!(
+            !out.stdout.is_empty(),
+            "{schema}: no output; stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         assert_conforms(schema, &out.stdout);
         (
             serde_json::from_slice(&out.stdout).unwrap(),
@@ -438,4 +509,181 @@ fn the_selection_and_the_cache_are_used() {
         "no second directory request: {stderr}"
     );
     assert!(fake.dir.join("cache/ti-connector/v1/sds").is_dir());
+}
+
+#[test]
+fn documents_are_signed_verified_encrypted_and_decrypted() {
+    let fake = Fake::start("documents");
+    let text = fake.dir.join("letter.txt");
+    std::fs::write(&text, "ti-connector-client e2e").unwrap();
+    let text = path_str(&text);
+
+    let (signed, code) = fake.json("connector sign", &["sign", text, "--card", "card-smcb"]);
+    assert_eq!((signed["format"].as_str(), code), (Some("cades"), Some(0)));
+    let p7s = format!("{text}.p7s");
+    assert!(
+        std::fs::metadata(&p7s).unwrap().len() > 1000,
+        "the recorded CMS"
+    );
+    let again = fake.tir(&[
+        "connector",
+        "-c",
+        "praxis",
+        "sign",
+        text,
+        "--card",
+        "card-smcb",
+    ]);
+    assert_eq!(again.status.code(), Some(2), "no overwrite without --force");
+
+    let (verdict, code) = fake.json(
+        "connector verify signature",
+        &["verify", "signature", text, "--signature", &p7s],
+    );
+    assert_eq!((verdict["result"].as_str(), code), (Some("VALID"), Some(0)));
+
+    let pdf = fake.dir.join("report.pdf");
+    std::fs::write(&pdf, "%PDF-1.4").unwrap();
+    let (signed, _) = fake.json(
+        "connector sign",
+        &["sign", path_str(&pdf), "--card", "card-smcb"],
+    );
+    assert_eq!(signed["format"], "pades");
+    assert_eq!(
+        std::fs::read(fake.dir.join("report.signed.pdf")).unwrap(),
+        b"%PDF-signed"
+    );
+
+    let cert = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../ti-pki/tests/pki/ee-arzt.pem"
+    );
+    let (encrypted, _) = fake.json("connector encrypt", &["encrypt", text, "--to", cert]);
+    assert_eq!(encrypted["recipients"][0], "Dr. Arzt TEST-ONLY");
+    let p7m = format!("{text}.p7m");
+    let out = fake.dir.join("plain.txt");
+    let (decrypted, _) = fake.json(
+        "connector decrypt",
+        &["decrypt", &p7m, "--card", "card-smcb", "-o", path_str(&out)],
+    );
+    assert_eq!(decrypted["mime_type"], "text/plain");
+    assert_eq!(
+        std::fs::read_to_string(&out).unwrap(),
+        "ti-connector-client e2e"
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode = std::fs::metadata(&out).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600, "plaintext is the owner's only");
+    }
+}
+
+#[test]
+fn comfort_signature_keeps_a_random_user_id_per_card() {
+    let fake = Fake::start("comfort");
+    let stored = fake
+        .dir
+        .join("state/telematik/ti/comfort/praxis/80276001011699910103");
+
+    let (report, _) = fake.json("connector comfort", &["comfort", "activate", "card-hba"]);
+    assert_eq!(report["user_id_stored"], true);
+    assert_eq!(report["session"]["signatures_left"], 249);
+    let user = std::fs::read_to_string(&stored).unwrap();
+    assert!(
+        ti_connector_client::ComfortUserId::parse(&user).is_some(),
+        "a UUID: {user}"
+    );
+
+    let (signed, _) = {
+        let text = fake.dir.join("a.txt");
+        std::fs::write(&text, "x").unwrap();
+        fake.json(
+            "connector sign",
+            &["sign", path_str(&text), "--card", "card-hba"],
+        )
+    };
+    assert_eq!(signed["comfort"], true, "the stored session is used");
+
+    let out = fake.tir(&[
+        "-vv",
+        "connector",
+        "-c",
+        "praxis",
+        "comfort",
+        "status",
+        "card-hba",
+    ]);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !stderr.contains(user.trim()),
+        "-vv masks the user ID: {stderr}"
+    );
+    assert!(stderr.contains("UserId>***<"), "{stderr}");
+
+    let (report, _) = fake.json("connector comfort", &["comfort", "deactivate", "card-hba"]);
+    assert_eq!(
+        (
+            report["comfort_signature"].is_null(),
+            report["user_id_stored"].as_bool()
+        ),
+        (true, Some(false))
+    );
+    assert!(!stored.exists());
+}
+
+#[test]
+fn certificates_are_exported_without_json() {
+    let fake = Fake::start("export");
+    let out = fake.tir(&[
+        "connector",
+        "-c",
+        "praxis",
+        "export",
+        "certificate",
+        "card-smcb",
+        "C.AUT",
+    ]);
+    let pem = String::from_utf8(out.stdout).unwrap();
+    assert!(
+        pem.starts_with("-----BEGIN CERTIFICATE-----"),
+        "PEM on stdout, also piped: {pem}"
+    );
+    assert_eq!(pem.matches("BEGIN CERTIFICATE").count(), 1);
+
+    let der = fake.dir.join("aut.der");
+    let (report, _) = fake.json(
+        "connector export certificate",
+        &[
+            "export",
+            "certificate",
+            "card-smcb",
+            "c.aut",
+            "--der",
+            "-o",
+            path_str(&der),
+        ],
+    );
+    assert_eq!(report["output"], path_str(&der));
+    assert_eq!(std::fs::read(&der).unwrap()[0], 0x30, "DER");
+
+    let (report, _) = fake.json(
+        "connector export certificate",
+        &["export", "certificate", "card-smcb"],
+    );
+    assert!(report["output"].is_null());
+    assert!(
+        report["certificates"][0]["pem"]
+            .as_str()
+            .unwrap()
+            .contains("BEGIN CERTIFICATE")
+    );
+
+    let text = fake.dir.join("t.txt");
+    std::fs::write(&text, "x").unwrap();
+    let (encrypted, _) = fake.json(
+        "connector encrypt",
+        &["encrypt", path_str(&text), "--to-card", "card-smcb"],
+    );
+    assert_eq!(encrypted["recipients"][0], "Dr. Arzt TEST-ONLY");
 }

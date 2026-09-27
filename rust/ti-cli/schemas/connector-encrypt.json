@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "connector encrypt",
+  "description": "A file encrypted (CMS) for the holders of certificates.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "input": {
+      "type": "string"
+    },
+    "output": {
+      "type": "string"
+    },
+    "recipients": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "mime_type": {
+      "type": "string",
+      "description": "The plaintext's media type, needed again to decrypt."
+    }
+  },
+  "required": [
+    "schema",
+    "input",
+    "output",
+    "recipients",
+    "mime_type"
+  ],
+  "additionalProperties": false
+}

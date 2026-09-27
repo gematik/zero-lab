@@ -107,6 +107,13 @@ never on `message`.
 {bin} --format json connector verify certificate CARD C.AUT     # or --file; exit 0/1
 {bin} --format json connector verify pin CARD [PIN]             # exit 0/1
 {bin} --format json connector change pin CARD [PIN]
+{bin} --format json connector sign FILE --card CARD            # CAdES → FILE.p7s; .pdf (PDF/A) → PAdES
+{bin} --format json connector verify signature FILE --signature FILE.p7s   # PAdES: the PDF alone; exit 0/1
+{bin} --format json connector encrypt FILE --to CERT [--to-card CARD …]  # CMS → FILE.p7m
+{bin} connector export certificate CARD C.ENC > enc.pem         # PEM on stdout; -o FILE, --der
+{bin} connector export certificate CARD > all.pem               # every certificate, one bundle
+{bin} --format json connector decrypt FILE.p7m --card CARD      # plaintext mode 0600
+{bin} --format json connector comfort activate|status|deactivate HBA
 ```
 
 - The configuration: `-c NAME|PATH` or `TI_CONNECTOR_CONFIG`, else the one
@@ -132,4 +139,17 @@ never on `message`.
 - The service directory is cached like the trust material (`--no-cache` bypasses it,
   `cache clear` removes it). A proxy is used only when `-x` is given; proxy
   environment variables do not apply to the Konnektor.
+- Signing and decrypting use the card: an HBA asks for PIN.QES at the card terminal
+  for each signature (never run it unasked); an SMC-B's PIN must be verified before.
+  Signatures are made with the ECC key unless `--crypt rsa`. PAdES needs PDF/A, and the
+  Konnektor refuses an already signed PDF. Output files are never replaced without
+  `--force` (error kind `output_exists`).
+- `decrypt` needs the plaintext's media type as given to `encrypt` (`encrypt` reports
+  it as `mime_type`); by default both take it from the file extension.
+- Comfort signature: `comfort activate` asks for PIN.QES once and stores a new random
+  user ID for that HBA; `sign` then uses it and needs no PIN until the session's count
+  or time runs out. The ID lets anyone with the same context sign without a PIN: it is
+  kept owner-only in the state directory (`~/.local/state/telematik/ti/comfort/`),
+  masked in `-vv`, and removed by `comfort deactivate`. `--comfort-user-id` or
+  `TI_COMFORT_USER_ID` supplies one instead.
 

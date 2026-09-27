@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "connector comfort",
+  "description": "Comfort signature of an HBA (activate, status, deactivate).",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "card": {
+      "$ref": "#/$defs/card"
+    },
+    "comfort_signature": {
+      "enum": [
+        "ENABLED",
+        "DISABLED",
+        null
+      ],
+      "description": "Whether the HBA allows comfort signature; null after deactivate."
+    },
+    "max_signatures": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "max_duration": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "session": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "enum": [
+                "COMFORT",
+                "PIN"
+              ]
+            },
+            "signatures_left": {
+              "type": "integer"
+            },
+            "time_left": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode",
+            "signatures_left",
+            "time_left"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "user_id_stored": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "schema",
+    "card",
+    "comfort_signature",
+    "max_signatures",
+    "max_duration",
+    "session",
+    "user_id_stored"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "card": {
+      "type": "object",
+      "properties": {
+        "handle": {
+          "type": "string"
+        },
+        "card_type": {
+          "type": "string",
+          "description": "e.g. SMC-B, HBA, EGK, SMC-KT"
+        },
+        "iccsn": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "terminal": {
+          "type": "string",
+          "description": "The card terminal's CtId."
+        },
+        "slot": {
+          "type": "integer"
+        },
+        "holder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kvnr": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inserted": {
+          "type": "string"
+        },
+        "certificate_expiration": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cos_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "major.minor.revision"
+        },
+        "object_system_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "handle",
+        "card_type",
+        "iccsn",
+        "terminal",
+        "slot",
+        "holder",
+        "kvnr",
+        "inserted",
+        "certificate_expiration",
+        "cos_version",
+        "object_system_version"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

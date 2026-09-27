@@ -2,8 +2,7 @@
 //! accepts them (DER, PBES2 AES-256, SHA-256 MAC). `ti pki inspect` shows what a file
 //! holds.
 
-use std::fs::OpenOptions;
-use std::io::{self, Write};
+use std::io;
 use std::path::Path;
 
 use serde::Serialize;
@@ -47,7 +46,7 @@ pub fn convert(
     let source = input::read(input_path)?;
     let p12 = decode(&source, password)?;
     let converted = reencode(&p12, password, &source.name)?;
-    write_private(output_path, &converted, force)?;
+    super::write_file(output_path, &converted, force, true)?;
     let after = ti_pkcs12::decode(&converted, password).map_err(|error| CliError::Pkcs12 {
         source_name: output_path.display().to_string(),
         source: error,
@@ -115,33 +114,6 @@ fn reencode(p12: &Pkcs12, password: &str, name: &str) -> Result<Vec<u8>, CliErro
         source_name: name.to_owned(),
         source: error,
     })
-}
-
-/// Writes `bytes` to `path` readable by the owner only, as keys deserve; refuses to
-/// replace an existing file unless `force`.
-fn write_private(path: &Path, bytes: &[u8], force: bool) -> Result<(), CliError> {
-    let mut options = OpenOptions::new();
-    options.write(true);
-    if force {
-        options.create(true).truncate(true);
-    } else {
-        options.create_new(true);
-    }
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    let mut file = options.open(path).map_err(|error| {
-        if error.kind() == io::ErrorKind::AlreadyExists {
-            CliError::OutputExists(path.display().to_string())
-        } else {
-            CliError::Output(io::Error::new(
-                error.kind(),
-                format!("{}: {error}", path.display()),
-            ))
-        }
-    })?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    Ok(())
 }
 
 fn protection(bytes: &[u8], p12: &Pkcs12) -> Protection {

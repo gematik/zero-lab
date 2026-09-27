@@ -32,6 +32,14 @@ ti connector get cards
 ti connector get certificates 80276883110000163974   # ICCSN, Telematik-ID or handle
 ti connector describe certificate 1-SMC-B-Testkarte-883110000129072 C.AUT
 ti connector verify pin 80276883110000163974         # at the card terminal; exit 0/1
+ti connector sign letter.txt --card 80276883110000163974  # CAdES → letter.txt.p7s
+ti connector sign report.pdf --card 80276883110000163974  # PDF/A → report.signed.pdf (PAdES)
+ti connector verify signature letter.txt --signature letter.txt.p7s
+ti connector encrypt letter.txt --to recipient.pem      # → letter.txt.p7m
+ti connector encrypt letter.txt --to-card 80276883110000162094   # for a card's C.ENC
+ti connector export certificate 80276883110000162094 C.ENC > enc.pem
+ti connector decrypt letter.txt.p7m --card 80276883110000163974
+ti connector comfort activate 80276883110000163974   # PIN.QES once, then signatures without
 ti cache clear
 ti schema pki verify                # JSON Schema of a command's output
 ti agent                            # usage guide for scripts and agents
@@ -96,7 +104,8 @@ KVK and eGK are restricted on the Konnektor's SOAP API; calls about them fail wi
 explanation. While a PIN is entered, a terminal shows a spinner on stderr, a busy
 tab (OSC 9;4: Ghostty, iTerm2, Windows Terminal, cmux) and one desktop notification (OSC
 9). PKCS#12 client certificates must be P-256, P-384 or RSA for now (TLS runs
-on ring, which has no brainpool).
+on ring, which has no brainpool). Comfort signature keeps each session's random user ID
+owner-only in `~/.local/state/telematik/ti/comfort/` until a secure store replaces it.
 
 ## Conventions
 
