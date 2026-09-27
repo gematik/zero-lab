@@ -34,6 +34,11 @@ tools:
 install:
     cargo install --path ti-cli --locked --force
 
+# Install a quicker build of `ti` for testing turnarounds (profile `local`: thin LTO, incremental)
+install-fast:
+    cargo build --profile local --locked -p ti-cli
+    install -m 755 target/local/ti "${CARGO_HOME:-$HOME/.cargo}/bin/ti"
+
 # Linux (static musl) and Windows are built through cross in Docker, macOS natively on
 # a Mac; needs `just tools` and a running Docker daemon.
 # Release binaries of the CLI for every distributed platform into target/dist

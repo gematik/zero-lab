@@ -109,3 +109,11 @@ strip = "symbols"
 lto = "fat"
 codegen-units = 1
 panic = "abort"
+
+# `just install-fast`: the release profile, built for quick turnarounds while testing (thin
+# LTO, parallel and incremental codegen); `just install` and releases use `release`.
+[profile.local]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+incremental = true

@@ -401,6 +401,8 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | Recipe | Purpose |
 | --- | --- |
 | `tools` | Install the pinned cargo tools (via cargo-binstall when available) |
+| `install` | Install `ti` into `~/.cargo/bin`, built like a release |
+| `install-fast` | Install `ti` from the `local` profile (thin LTO, incremental): a change in ti-cli rebuilds in about 20 s instead of about 45 s |
 | `check` | Tier 1: `fmt`, `clippy`, `doc`, `test`, `features`, `wasm32`, `core-deps`, `nonprod-absent`, `machete`, `deny` |
 | `wasm32` | `cargo check` of ti-pki's loading layer and reqwest transport for wasm32 |
 | `core-deps` | Prove ti-pki's core pulls in no HTTP client, executor or file watcher |

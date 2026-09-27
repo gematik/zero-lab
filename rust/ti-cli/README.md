@@ -6,6 +6,7 @@ grouped by subsystem: `pki` and `connector`.
 
 ```sh
 just install                        # cargo install into ~/.cargo/bin
+just install-fast                   # a quicker build for testing, same place
 ti pki inspect card.pem             # what the TI reads from a certificate
 ti pki inspect - < card.der
 ti pki inspect identity.p12         # PKCS#12; password 00 unless --p12-password
