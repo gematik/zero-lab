@@ -54,7 +54,7 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
             force,
         })) => pkcs12::convert(input, output, p12_password, *force, out),
         Command::Connector(connector) => connector::run(connector, &cli.global, out),
-        Command::Probe { env } => probe::run(*env, &cli.global, out),
+        Command::Probe { env } => probe::run(env.env, env.def, &cli.global, out),
         Command::Cache(CacheCommand::Clear) => cache::clear(&cli.global, out),
         Command::Schema { command } => schema::run(command, out),
         Command::Agent => agent::run(),

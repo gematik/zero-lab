@@ -7,6 +7,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ## Unreleased
 
+### ti-cli
+
+#### added
+- Experimental: `probe def`, a slip for `dev`, probes dev under a banner.
+
 ### ti-connector-client
 
 #### added

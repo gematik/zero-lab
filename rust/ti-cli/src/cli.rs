@@ -131,8 +131,8 @@ pub enum Command {
     /// Check that the TI services of an environment answer, in parallel (exit 0 or 1)
     Probe {
         /// prod, ref, test or dev (also pu, ru, tu)
-        #[arg(value_name = "ENV", value_parser = env_name)]
-        env: ti_pki::Env,
+        #[arg(value_name = "ENV", value_parser = probe_env)]
+        env: ProbeEnv,
     },
     /// The download cache
     #[command(subcommand)]
@@ -315,6 +315,25 @@ impl Environment {
             Environment::Dev => Some(ti_pki::Env::Dev),
         }
     }
+}
+
+/// The environment `probe` checks, as typed.
+#[derive(Clone, Copy, Debug)]
+pub struct ProbeEnv {
+    /// The environment probed.
+    pub env: ti_pki::Env,
+    /// Typed as `def`: a slip for `dev`, probed as dev and greeted with a banner.
+    pub def: bool,
+}
+
+fn probe_env(value: &str) -> Result<ProbeEnv, String> {
+    if value.eq_ignore_ascii_case("def") {
+        return Ok(ProbeEnv {
+            env: ti_pki::Env::Dev,
+            def: true,
+        });
+    }
+    env_name(value).map(|env| ProbeEnv { env, def: false })
 }
 
 fn env_name(value: &str) -> Result<ti_pki::Env, String> {

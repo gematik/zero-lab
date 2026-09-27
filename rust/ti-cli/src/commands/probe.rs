@@ -36,6 +36,21 @@ const EPA_USER_AGENT: &str = concat!("ti-cli/", env!("CARGO_PKG_VERSION"));
 /// Information Service answers `noHealthRecord` for it.
 const EPA_INSURANT: &str = "X000000000";
 
+/// `probe def`, a slip for `dev`, answered with a banner before the dev probes: tall
+/// letters with spiked ends, filled yellow-orange and edged red.
+const DEF: [&str; 8] = [
+    "◢◣     ◢◣    ◢◣       ◢◣    ◢◣    ◢◣    ◢◣      ◢◣   ◢◣     ◢◣",
+    "███◣   ████◣ ████◣    ██    ████◣ ███◣  ███◣   ◢██◣  ███◣   ███◣",
+    "██◥█◣  ██    ██       ██    ██    ██◥█◣ ██◥█◣ ◢█◤◥█◣ ██◥█◣  ██◥█◣",
+    "██ ◥█◣ ███◣  ███◣     ██    ███◣  ██◢█◤ ██◢█◤ ██████ ██◢█◤  ██ ◥█◣",
+    "██ ◢█◤ ███◤  ███◤     ██    ███◤  ███◤  ███◤  ██  ██ ███◣   ██ ◢█◤",
+    "██◢█◤  ██    ██       ██    ██    ██    ██    ██  ██ ██◥█◣  ██◢█◤",
+    "███◤   ████◤ ██       ████◣ ████◤ ██    ██    ██  ██ ██ ◥█◣ ███◤",
+    "◥◤     ◥◤    ◥◤       ◥◤    ◥◤    ◥◤    ◥◤    ◥◤  ◥◤ ◥◤  ◥◤ ◥◤",
+];
+const DEF_FILL: anstyle::Style = anstyle::RgbColor(255, 170, 0).on_default().bold();
+const DEF_EDGE: anstyle::Style = anstyle::RgbColor(220, 20, 20).on_default().bold();
+
 /// Largest body read; discovery documents and catalogs are a few KiB.
 const MAX_BODY: u64 = 1024 * 1024;
 
@@ -124,7 +139,7 @@ struct ProbeInfo {
 }
 
 /// Runs `ti probe`.
-pub fn run(env: Env, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
+pub fn run(env: Env, def: bool, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     let endpoints = endpoints(env)?;
     let agent = agent(global)?;
     let start = Instant::now();
@@ -141,6 +156,13 @@ pub fn run(env: Env, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError
     let text = !out.is_json() && !out.is_markdown();
     let mut live = Live::new();
     let live_view = text && live.enabled();
+    if def && live_view {
+        for line in DEF {
+            print_line(&def_line(line));
+        }
+        let dim = style::DIM;
+        print_line(&format!("{dim}pour some sugar on dev{dim:#}\n"));
+    }
     let mut tick = 0usize;
     while rows.iter().any(|r| r.outcome.is_none()) {
         if let Ok((index, outcome)) = rx.recv_timeout(Duration::from_millis(100)) {
@@ -247,6 +269,17 @@ fn spawn(
 }
 
 /// A styled line on stdout, through the stream that strips styles where colors are off.
+/// A banner line: blocks in the fill colour, the triangles that edge them in red.
+fn def_line(line: &str) -> String {
+    line.chars()
+        .map(|c| match c {
+            '█' => format!("{DEF_FILL}{c}{DEF_FILL:#}"),
+            '◢' | '◣' | '◤' | '◥' => format!("{DEF_EDGE}{c}{DEF_EDGE:#}"),
+            _ => c.to_string(),
+        })
+        .collect()
+}
+
 fn print_line(line: &str) {
     use std::io::Write as _;
     // A closed stdout (`| head`) ends the output, not the probes' outcome.
