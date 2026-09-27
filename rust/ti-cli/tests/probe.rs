@@ -1,4 +1,4 @@
-//! `tir probe` against a local fake of the TI services (plain HTTP, endpoints from
+//! `ti probe` against a local fake of the TI services (plain HTTP, endpoints from
 //! `TI_PROBE_ENDPOINTS_PATH`): the protocol checks, the catalog's instances, a
 //! timeout, the JSON contract and the exit code.
 
@@ -74,7 +74,7 @@ fn probes_protocols_catalog_instances_and_timeouts() {
             std::thread::spawn(move || serve(stream, &base));
         }
     });
-    let dir = std::env::temp_dir().join(format!("tir-probe-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ti-probe-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let endpoints = dir.join("endpoints.json");
     std::fs::write(
@@ -92,7 +92,7 @@ fn probes_protocols_catalog_instances_and_timeouts() {
     .unwrap();
 
     let start = Instant::now();
-    let out = Command::new(env!("CARGO_BIN_EXE_tir"))
+    let out = Command::new(env!("CARGO_BIN_EXE_ti"))
         .args(["--format", "json", "probe", "dev"])
         .env("TI_PROBE_ENDPOINTS_PATH", &endpoints)
         .env_remove("HTTPS_PROXY")

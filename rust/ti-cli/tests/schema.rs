@@ -1,4 +1,4 @@
-//! The JSON contract: every command's real output against the schema `tir schema`
+//! The JSON contract: every command's real output against the schema `ti schema`
 //! publishes for it, offline, from a cache seeded with the production fixtures.
 
 mod support;
@@ -19,8 +19,8 @@ fn manifest(path: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(path)
 }
 
-fn tir(cache: &Path, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_tir"))
+fn ti(cache: &Path, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_ti"))
         .args(args)
         .env_remove("TI_FORMAT")
         .env_remove("TI_ENV")
@@ -35,7 +35,7 @@ struct SeededCache(PathBuf);
 
 impl SeededCache {
     fn new(name: &str) -> Self {
-        let dir = std::env::temp_dir().join(format!("tir-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("ti-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -80,7 +80,7 @@ impl Drop for SeededCache {
 fn json_of(cache: &Path, name: &str, args: &[&str]) -> Output {
     let mut all = vec!["--format", "json"];
     all.extend_from_slice(args);
-    let out = tir(cache, &all);
+    let out = ti(cache, &all);
     assert_conforms(name, &out.stdout);
     out
 }
@@ -168,7 +168,7 @@ fn every_command_matches_its_schema() {
             .all(|ca| !ca["rejection"].is_null())
     );
 
-    let error = tir(
+    let error = ti(
         c,
         &["--format", "json", "pki", "inspect", "/nonexistent.pem"],
     );
@@ -220,14 +220,14 @@ fn cache_clear_removes_only_the_downloads() {
     let sds = cache.0.join("ti-connector/v1/sds");
     std::fs::create_dir_all(&sds).unwrap();
     std::fs::write(sds.join("0123456789abcdef.body"), "<sds/>").unwrap();
-    let out = tir(&cache.0, &["--format", "json", "cache", "clear"]);
+    let out = ti(&cache.0, &["--format", "json", "cache", "clear"]);
     let report: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(report["removed_files"], 5);
     assert!(!cache.0.join("ti-pki").exists());
     assert!(!cache.0.join("ti-connector").exists());
     assert!(cache.0.join("keep.txt").exists(), "other files stay");
 
-    let again = tir(&cache.0, &["--format", "json", "cache", "clear"]);
+    let again = ti(&cache.0, &["--format", "json", "cache", "clear"]);
     let again: Value = serde_json::from_slice(&again.stdout).unwrap();
     assert_eq!(again["removed_files"], 0);
 }
@@ -235,19 +235,19 @@ fn cache_clear_removes_only_the_downloads() {
 #[test]
 fn schemas_are_published_by_name() {
     let dir = std::env::temp_dir();
-    let all = tir(&dir, &["schema"]);
+    let all = ti(&dir, &["schema"]);
     let all: Value = serde_json::from_slice(&all.stdout).unwrap();
     let commands = all["commands"].as_object().unwrap();
     assert_eq!(commands.len(), 33);
     assert_eq!(commands["pki verify"], schema("pki verify"));
 
-    let one = tir(&dir, &["schema", "pki", "tsl", "show"]);
+    let one = ti(&dir, &["schema", "pki", "tsl", "show"]);
     assert_eq!(
         serde_json::from_slice::<Value>(&one.stdout).unwrap(),
         schema("pki tsl show")
     );
 
-    let unknown = tir(&dir, &["--format", "json", "schema", "pki", "nope"]);
+    let unknown = ti(&dir, &["--format", "json", "schema", "pki", "nope"]);
     assert_eq!(unknown.status.code(), Some(2));
     assert_conforms("error", &unknown.stderr);
 }
@@ -255,7 +255,7 @@ fn schemas_are_published_by_name() {
 #[test]
 fn roots_and_tsl_need_a_concrete_environment() {
     let cache = SeededCache::new("auto");
-    let out = tir(
+    let out = ti(
         &cache.0,
         &["pki", "roots", "list", "--offline", "--env", "auto"],
     );
@@ -264,15 +264,15 @@ fn roots_and_tsl_need_a_concrete_environment() {
 
 #[test]
 fn offline_tsl_without_a_cache_says_how_to_fix_it() {
-    let dir = std::env::temp_dir().join(format!("tir-empty-{}", std::process::id()));
-    let out = tir(&dir, &["pki", "tsl", "show", "--offline"]);
+    let dir = std::env::temp_dir().join(format!("ti-empty-{}", std::process::id()));
+    let out = ti(&dir, &["pki", "tsl", "show", "--offline"]);
     assert_eq!(out.status.code(), Some(3));
     assert!(String::from_utf8_lossy(&out.stderr).contains("without --offline"));
 }
 
 #[test]
 fn the_agent_guide_is_the_embedded_file() {
-    let out = tir(&std::env::temp_dir(), &["agent"]);
+    let out = ti(&std::env::temp_dir(), &["agent"]);
     let guide = std::fs::read_to_string(manifest("AGENTS.md")).unwrap();
     assert_eq!(
         String::from_utf8(out.stdout).unwrap(),
@@ -283,7 +283,7 @@ fn the_agent_guide_is_the_embedded_file() {
 
 #[test]
 fn the_name_comes_from_one_place() {
-    let exe = PathBuf::from(env!("CARGO_BIN_EXE_tir"));
+    let exe = PathBuf::from(env!("CARGO_BIN_EXE_ti"));
     assert_eq!(
         exe.file_stem().unwrap().to_str(),
         Some(ti_cli::BIN),
@@ -291,12 +291,12 @@ fn the_name_comes_from_one_place() {
     );
     let dir = std::env::temp_dir();
     let version: Value =
-        serde_json::from_slice(&tir(&dir, &["--format", "json", "version"]).stdout).unwrap();
+        serde_json::from_slice(&ti(&dir, &["--format", "json", "version"]).stdout).unwrap();
     assert_eq!(version["name"], ti_cli::BIN);
-    let guide = String::from_utf8(tir(&dir, &["agent"]).stdout).unwrap();
+    let guide = String::from_utf8(ti(&dir, &["agent"]).stdout).unwrap();
     assert!(!guide.contains("{bin}"), "every placeholder is filled");
     assert!(guide.contains(&format!("{} --format json pki verify", ti_cli::BIN)));
-    let help = String::from_utf8(tir(&dir, &["--help"]).stdout).unwrap();
+    let help = String::from_utf8(ti(&dir, &["--help"]).stdout).unwrap();
     assert!(!help.contains("{bin}"), "{help}");
     assert!(help.contains(&format!("Usage: {} ", ti_cli::BIN)), "{help}");
 }

@@ -11,9 +11,8 @@ repository.workspace = true
 authors.workspace = true
 publish.workspace = true
 
-# `tir` ("ti in Rust") until it covers what the Go `ti` does; then it becomes `ti`.
 [[bin]]
-name = "tir"
+name = "ti"
 path = "src/main.rs"
 
 [dependencies]

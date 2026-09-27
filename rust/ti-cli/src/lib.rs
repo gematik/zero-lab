@@ -1,4 +1,4 @@
-//! The `ti` command-line tool (built as [`BIN`] for now) as a library: [`run`] parses the arguments, runs the
+//! The `ti` command-line tool as a library: [`run`] parses the arguments, runs the
 //! command and returns the exit code, so tests can drive it without a process.
 //!
 //! Conventions every command follows: results on stdout, diagnostics and errors on
@@ -25,11 +25,9 @@ use clap::{CommandFactory, FromArgMatches};
 
 pub use error::Exit;
 
-/// The executable's name. `tir` while the Rust tool catches up with the Go `ti`, `ti`
-/// from then on: everything the user sees (help, user agent, diagnostics, the agent
-/// guide) takes the name from here, so the rename is this constant and the `[[bin]]`
-/// name in Cargo.toml.
-pub const BIN: &str = "tir";
+/// The executable's name: everything the user sees (help, user agent, diagnostics, the
+/// agent guide) takes it from here; it must match the `[[bin]]` name in Cargo.toml.
+pub const BIN: &str = "ti";
 
 use cli::Cli;
 use output::Output;

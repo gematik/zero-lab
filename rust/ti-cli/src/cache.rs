@@ -121,7 +121,7 @@ mod tests {
 
     #[test]
     fn round_trip_as_cache_source() {
-        let dir = std::env::temp_dir().join(format!("tir-cache-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("ti-cache-{}", std::process::id()));
         let store = FileCacheStore::new(&dir);
         let key = "ti-pki/v1/tsl/0123456789abcdef";
         assert!(run(store.get(key)).unwrap().is_none());

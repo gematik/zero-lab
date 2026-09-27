@@ -4,11 +4,6 @@
 on [`ti-pki`](../ti-pki) and [`ti-connector-client`](../ti-connector-client). Commands are
 grouped by subsystem: `pki` and `connector`.
 
-> Until it covers what the Go `ti` does, the executable is called `tir` so both can be
-> installed side by side: read `tir` for `ti` in the examples. The name lives in one
-> place (`ti_cli::BIN` and the `[[bin]]` target), and help, user agent, diagnostics and
-> `ti agent` all take it from there.
-
 ```sh
 just install                        # cargo install into ~/.cargo/bin
 ti pki inspect card.pem             # what the TI reads from a certificate

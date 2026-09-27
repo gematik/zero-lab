@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn paths_are_used_as_given() {
-        let dir = std::env::temp_dir().join(format!("tir-kon-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("ti-kon-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("praxis.kon");
         std::fs::write(&file, "{}").unwrap();

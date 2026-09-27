@@ -1,4 +1,4 @@
-//! `tir connector …` against a fake Konnektor on loopback (plain HTTP, the eHEX service
+//! `ti connector …` against a fake Konnektor on loopback (plain HTTP, the eHEX service
 //! directory with rewritten endpoints, answers shaped like the Konnektor's): every
 //! command's JSON against its schema, exit codes, and restricted card types.
 
@@ -257,7 +257,7 @@ impl Fake {
                 std::thread::spawn(move || handle(stream));
             }
         });
-        let dir = std::env::temp_dir().join(format!("tir-connector-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("ti-connector-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("config/telematik/connectors")).unwrap();
         let kon = dir.join("config/telematik/connectors/praxis.kon");
@@ -273,8 +273,8 @@ impl Fake {
         Fake { dir, kon }
     }
 
-    fn tir(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_tir"))
+    fn ti(&self, args: &[&str]) -> Output {
+        Command::new(env!("CARGO_BIN_EXE_ti"))
             .args(args)
             .current_dir(&self.dir)
             .env_remove("TI_FORMAT")
@@ -291,7 +291,7 @@ impl Fake {
     fn json(&self, schema: &str, args: &[&str]) -> (Value, Option<i32>) {
         let mut all = vec!["--format", "json", "connector", "-c", "praxis"];
         all.extend_from_slice(args);
-        let out = self.tir(&all);
+        let out = self.ti(&all);
         assert!(
             !out.stdout.is_empty(),
             "{schema}: no output; stderr: {}",
@@ -418,7 +418,7 @@ fn every_connector_command_matches_its_schema() {
 #[test]
 fn restricted_cards_and_usage_errors_say_what_to_do() {
     let fake = Fake::start("errors");
-    let out = fake.tir(&[
+    let out = fake.ti(&[
         "--format",
         "json",
         "connector",
@@ -440,7 +440,7 @@ fn restricted_cards_and_usage_errors_say_what_to_do() {
             .contains("SMC-KT")
     );
 
-    let out = fake.tir(&[
+    let out = fake.ti(&[
         "--format",
         "json",
         "connector",
@@ -462,7 +462,7 @@ fn restricted_cards_and_usage_errors_say_what_to_do() {
             .contains("PIN.CH, PIN.QES")
     );
 
-    let out = fake.tir(&[
+    let out = fake.ti(&[
         "--format",
         "json",
         "connector",
@@ -482,10 +482,10 @@ fn restricted_cards_and_usage_errors_say_what_to_do() {
 fn the_selection_and_the_cache_are_used() {
     let fake = Fake::start("selection");
     assert_eq!(
-        fake.tir(&["connector", "use", "praxis"]).status.code(),
+        fake.ti(&["connector", "use", "praxis"]).status.code(),
         Some(0)
     );
-    let out = fake.tir(&["-v", "--format", "json", "connector", "get", "cards"]);
+    let out = fake.ti(&["-v", "--format", "json", "connector", "get", "cards"]);
     assert_eq!(out.status.code(), Some(0));
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
@@ -501,7 +501,7 @@ fn the_selection_and_the_cache_are_used() {
         "never the authorization header: {stderr}"
     );
 
-    let again = fake.tir(&["-v", "--format", "json", "connector", "get", "cards"]);
+    let again = fake.ti(&["-v", "--format", "json", "connector", "get", "cards"]);
     let stderr = String::from_utf8_lossy(&again.stderr);
     assert!(stderr.contains("service directory from Cache"), "{stderr}");
     assert!(
@@ -525,7 +525,7 @@ fn documents_are_signed_verified_encrypted_and_decrypted() {
         std::fs::metadata(&p7s).unwrap().len() > 1000,
         "the recorded CMS"
     );
-    let again = fake.tir(&[
+    let again = fake.ti(&[
         "connector",
         "-c",
         "praxis",
@@ -605,7 +605,7 @@ fn comfort_signature_keeps_a_random_user_id_per_card() {
     };
     assert_eq!(signed["comfort"], true, "the stored session is used");
 
-    let out = fake.tir(&[
+    let out = fake.ti(&[
         "-vv",
         "connector",
         "-c",
@@ -635,7 +635,7 @@ fn comfort_signature_keeps_a_random_user_id_per_card() {
 #[test]
 fn certificates_are_exported_without_json() {
     let fake = Fake::start("export");
-    let out = fake.tir(&[
+    let out = fake.ti(&[
         "connector",
         "-c",
         "praxis",

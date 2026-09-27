@@ -27,7 +27,7 @@
 - `connector export certificate CARD [REF]`: a card's certificates as PEM on stdout (or
   `-o FILE`, `--der`); `encrypt --to-card CARD` encrypts for a card's C.ENC directly.
 - `cache clear` also removes cached Konnektor service directories.
-- `tir`, the Rust `ti` command-line tool: `pki inspect` (PEM, DER or stdin; type,
+- `ti`, the command-line tool: `pki inspect` (PEM, DER or stdin; type,
   profile, admission, policies, key admissibility), `pki profiles list|describe`.
   Output: `--format auto|text|markdown|json` (`TI_FORMAT`); auto is colored text on a
   terminal and Markdown when piped; times in the system time zone. Global options:
@@ -68,4 +68,4 @@
 - `completions bash|zsh|fish|elvish|powershell`.
 - `just cli-targets`: release binaries for Linux (musl), Windows and macOS.
 - Release builds are stripped, fully LTO-optimised and abort on panic (6.2 → 3.5 MB).
-- The executable's name comes from `ti_cli::BIN` (`tir` until parity with the Go `ti`).
+- The executable's name comes from `ti_cli::BIN`.
