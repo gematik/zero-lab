@@ -87,8 +87,8 @@ never on `message`.
   - `trust.note` is set when the trust material is less than the full set, e.g.
     offline with nothing cached. Then pass the issuing CA with `--issuer`.
 - The TSL is not authenticated. `tsl show` takes only certificates and provider names
-  from it. What it reports about a CA comes from the CA's signed certificate, and a CA
-  counts only if a verified root signed it.
+  from it (the provider only in JSON, for filtering). What it reports about a CA comes
+  from the CA's signed certificate, and a CA counts only if a verified root signed it.
 
 ## Subsystem connector: the Konnektor
 

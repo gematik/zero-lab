@@ -209,6 +209,36 @@ configured one but never loosen it, so production stays HardFail even for smb-au
 whose Go default is SoftFail. `trustdomain` tells production from test certificates
 offline, for picking a configuration. The `validate` example strings it all together.
 
+## CLI output: lists are tables
+
+`ti-cli` shows a list of objects as a table: aligned columns under UPPERCASE headings
+on a terminal, a Markdown table when piped. A single object is label/value fields in
+sections. Every view is written for its command; a generic JSON-to-text renderer was
+tried and read worse.
+
+Each table's columns are a decision, not a dump of the JSON:
+- the focus column first: what the reader passes to the next command or looks for;
+- then the columns that tell rows apart, then one or two details;
+- everything else stays in `--format json`;
+- nothing the source does not authenticate: `pki tsl show` shows only what the CA
+  certificates say, never the TSL's own metadata (provider names, listed types,
+  policies).
+
+| Command | Focus | Further columns | Left to JSON |
+| --- | --- | --- | --- |
+| `pki profiles list` | PROFILE (the `--profile` value) | TYPES, DEFAULT FOR, REVOCATION, ROLES, DESCRIPTION | role OIDs |
+| `pki roots list` | ROOT, by generation | ORGANIZATION, KEY, VALIDITY, anchor mark | subject, SHA-256, PEM, walk order |
+| `pki tsl show` | CA | ORGANIZATION (subject O=), ROOT (or the reason there is none), VALIDITY | policies, path length, TSL provider, PEM |
+| `connector configs` | `*` for the selected one, NAME (the `-c` value) | URL, CONTEXT | path |
+| `connector get cards` | HANDLE (what every card command takes) | TYPE, ICCSN, HOLDER | terminal, slot, versions, insert time |
+| `connector get certificates` | REF | KEY, SUBJECT, TELEMATIK-ID, VALIDITY, ALGORITHM | profession, dates, PEM |
+| `connector get services` | SERVICE | VERSION, used mark, ENDPOINT | product |
+| `connector get identities` | TELEMATIK-ID | TYPE, HOLDER, ICCSN, HANDLE | |
+| `connector get expiration` | VALID UNTIL | SUBJECT, ICCSN, SERIAL, HANDLE | terminal |
+| `connector get status`, errors | CONDITION | SEVERITY, TYPE, SINCE | inactive states |
+
+A new list command adds its row here with its choice.
+
 ## Parity and live tests
 
 `tests/openssl_cross.rs` runs `openssl verify` and `openssl ocsp` next to `ti-pki` on the

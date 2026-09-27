@@ -94,16 +94,37 @@ pub fn list(out: &Output) -> Result<Exit, CliError> {
         out.json(&report)?;
         return Ok(Exit::Ok);
     }
+    let rows = report.profiles.iter().map(|p| {
+        let roles: Vec<&str> = p
+            .required_role_oids
+            .iter()
+            .map(|o| o.name.unwrap_or(&o.oid))
+            .collect();
+        vec![
+            Line::strong(p.name),
+            codes(&p.accepts_types),
+            codes(&p.default_for),
+            Line::text(p.revocation),
+            Line::text(if roles.is_empty() {
+                "any".to_owned()
+            } else {
+                roles.join(", ")
+            }),
+            Line::dim(p.description),
+        ]
+    });
     let mut doc = Document::default();
-    doc.title("Profiles");
-    for p in &report.profiles {
-        doc.section(p.name)
-            .paragraph(p.description)
-            .field("types", codes(&p.accepts_types))
-            .field("default for", codes(&p.default_for))
-            .field("revocation", p.revocation)
-            .items("roles (one of)", p.required_role_oids.iter().map(oid_line));
-    }
+    doc.table(
+        &[
+            "PROFILE",
+            "TYPES",
+            "DEFAULT FOR",
+            "REVOCATION",
+            "ROLES (ONE OF)",
+            "DESCRIPTION",
+        ],
+        rows.collect(),
+    );
     out.render(&doc)?;
     Ok(Exit::Ok)
 }

@@ -31,15 +31,16 @@
   `--capath`, `-k`, proxies, timeouts, `--retry`, user agent); `-v` logs each request.
 - Text output no longer cuts lines to the terminal width.
 - `pki roots list` and `pki tsl show` (`--ca`, `--provider`, `--root`, `--rejected`):
-  the trust material behind `verify`, per environment; the TSL's CAs as a tree under
-  the roots that signed them, described from their certificates only.
+  the trust material behind `verify`, per environment; the TSL's CAs with the roots
+  that signed them, described from their certificates only.
 - `cache clear`: deletes the downloaded trust material (only the `ti-pki/` subtree).
 - `schema [COMMAND]`: JSON Schema of every command's output and of errors, embedded
   and tested against real output; `agent`: the embedded AGENTS.md usage guide for the
   whole tool; `version`.
-- Output: sectioned terminal views, compact Markdown (a summary, then one list; no
-  tables), trees for hierarchies, PEM for certificates in JSON and Markdown, dates alone in lists and
-  `2023-02-09 00:00 CET` elsewhere.
+- Output: sectioned terminal views; lists of objects as tables with a chosen focus
+  column first, on the terminal and in Markdown; compact Markdown otherwise; PEM for
+  certificates in JSON and Markdown; dates alone in lists and `2023-02-09 00:00 CET`
+  elsewhere.
 - `pki inspect` and `pki verify` read PKCS#12 (`.p12`/`.pfx`, DER or BER, legacy
   encryption included) through ti-pkcs12, with `--p12-password` (default `00`). The
   certificate with its key comes first and is `verify`'s end entity; `inspect` reports

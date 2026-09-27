@@ -619,7 +619,7 @@ pub(super) fn split_name(name: &str) -> (Option<&str>, String) {
 
 /// The components of an RFC 4514 name; a comma escaped with a backslash is part of its
 /// value.
-fn dn_parts(name: &str) -> Vec<String> {
+pub(super) fn dn_parts(name: &str) -> Vec<String> {
     let mut parts = Vec::new();
     let mut current = String::new();
     let mut escaped = false;

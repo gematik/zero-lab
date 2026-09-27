@@ -95,6 +95,23 @@ fn expiry(not_after: Timestamp, validity: &str) -> Line {
     }
 }
 
+/// The `O=` of a distinguished name.
+fn organization(name: &str) -> Option<String> {
+    inspect::dn_parts(name)
+        .into_iter()
+        .find_map(|part| part.strip_prefix("O=").map(str::to_owned))
+}
+
+/// `until 2029-11-06`, or `expired 2022-10-25` / `not yet valid` in red: the validity
+/// cell of a table.
+fn validity_cell(not_after: Timestamp, validity: &str) -> Line {
+    match validity {
+        "valid" => Line::text(format!("until {}", date(not_after))),
+        "expired" => Line::status(Tone::Bad, format!("expired {}", date(not_after))),
+        _ => Line::status(Tone::Bad, "not yet valid"),
+    }
+}
+
 /// Counts, source, age and gaps of the trust material, for the `trust` field.
 fn trust_line(trust: &TrustInfo) -> Line {
     let counts = format!("{} roots, {} TSL CAs", trust.roots, trust.intermediates);

@@ -55,15 +55,14 @@ ti completions powershell >> $PROFILE                   # also: elvish
 
 `pki roots list` and `pki tsl show` show what `verify` works with, for one environment
 (`--env`, default `prod`; `auto` has nothing to detect from here). `roots list` gives the
-roots the A_28419 walk reaches from the embedded anchor. `tsl show` draws the TSL's CAs
-as a tree under the verified root that signed each, and gives those no verified root
-signed their own group, with the reason. Filter with `--ca`, `--provider`, `--root` and
-`--rejected`.
+roots the A_28419 walk reaches from the embedded anchor. `tsl show` lists the TSL's CAs
+with the verified root that signed each, or in red why none did. Filter with `--ca`,
+`--provider`, `--root` and `--rejected`.
 
-The TSL is not authenticated. Of each entry only the certificate and the provider name
-are used, and the TSL's own metadata (such as the certificate types it lists per CA) is
-ignored: what is shown about a CA, its policies and path length, comes from its signed
-certificate. `--offline` works from the cache.
+The TSL is not authenticated. Of each entry the view shows only what the CA certificate
+says (name, organization, validity) and which verified root signed it; the TSL's own
+metadata (provider names, certificate types per CA) is never shown as fact. The provider
+name is in the JSON, for filtering. `--offline` works from the cache.
 
 ## Verify
 
@@ -107,9 +106,11 @@ The tool is meant for people and for agents alike:
 - `--format auto|text|markdown|json` (or `TI_FORMAT`). `auto` gives aligned, colored text
   on a terminal and Markdown when piped: readable in notes, chats and by agents.
   The terminal view is sectioned and complete (Subject, Issuer, Validity, …; Result,
-  Chain, Errors). Markdown is compact: a summary, then one list, no tables and few
-  headings, and certificates as fenced PEM blocks, which the terminal view leaves out.
-  Hierarchies are trees on the terminal and nested lists in Markdown.
+  Chain, Errors). Lists of objects (cards, roots, CAs, profiles, …) are tables with the
+  focus column first, on the terminal and in Markdown; see "CLI output" in
+  [docs/development.md](../docs/development.md) for the columns of each. Markdown is
+  otherwise compact, with certificates as fenced PEM blocks, which the terminal view
+  leaves out.
 - `json` writes one document with a `"schema"` version; fields are only added within a
   schema version. Certificates are in `pem` fields. `ti schema [COMMAND]` prints the
   JSON Schema of each command's output (kept in `schemas/`, checked against real output

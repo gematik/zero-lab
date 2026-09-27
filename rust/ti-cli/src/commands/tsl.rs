@@ -11,7 +11,7 @@ use ti_pki::{Certificate, Clock, Timestamp, TrustConfig, TrustStore};
 
 use crate::cli::{GlobalArgs, TslShowArgs};
 use crate::error::{CliError, Exit};
-use crate::output::document::{Node, date, when};
+use crate::output::document::{date, when};
 use crate::output::{Document, Line, OidInfo, Output, SCHEMA, Tone, hex, pem};
 use crate::trust::Session;
 
@@ -64,8 +64,6 @@ struct Counts {
 struct RootEntry {
     common_name: String,
     not_after: String,
-    #[serde(skip)]
-    not_after_at: Timestamp,
     validity: &'static str,
     cas: Vec<CaInfo>,
 }
@@ -127,7 +125,6 @@ pub fn show(args: &TslShowArgs, global: &GlobalArgs, out: &Output) -> Result<Exi
         .map(|root| RootEntry {
             common_name: root.subject_cn().to_owned(),
             not_after: root.not_after().to_string(),
-            not_after_at: root.not_after(),
             validity: super::validity(root, now),
             cas: matched
                 .intermediates
@@ -255,29 +252,26 @@ fn document(report: &Report, with_pem: bool) -> Document {
     }
     doc.paragraph(summary);
 
-    let mut nodes: Vec<Node> = report
-        .roots
+    let kept = report.roots.iter().flat_map(|root| {
+        root.cas
+            .iter()
+            .map(move |ca| (ca, Line::text(&root.common_name)))
+    });
+    let rejected = report
+        .rejected
         .iter()
-        .map(|root| {
-            let line = Line::strong(&root.common_name)
-                .and_dim(" · root")
-                .and_line(super::expiry(root.not_after_at, root.validity));
-            Node {
-                line,
-                details: Vec::new(),
-                children: root.cas.iter().map(ca_node).collect(),
-            }
-        })
-        .collect();
-    if !report.rejected.is_empty() {
-        nodes.push(Node {
-            line: Line::status(Tone::Bad, "no verified root")
-                .and_dim(format!(" ({})", report.rejected.len())),
-            details: Vec::new(),
-            children: report.rejected.iter().map(ca_node).collect(),
-        });
-    }
-    doc.tree(nodes);
+        .map(|ca| (ca, Line::status(Tone::Bad, rejection_text(ca))));
+    // Only what the CA certificates say: the TSL's own metadata is not authenticated.
+    let rows = kept.chain(rejected).map(|(ca, root)| {
+        let organization = super::organization(&ca.subject).unwrap_or_else(|| "-".to_owned());
+        vec![
+            Line::strong(&ca.common_name),
+            Line::text(organization),
+            root,
+            super::validity_cell(ca.not_after_at, ca.validity),
+        ]
+    });
+    doc.table(&["CA", "ORGANIZATION", "ROOT", "VALIDITY"], rows.collect());
 
     if with_pem {
         let cas = report
@@ -293,45 +287,15 @@ fn document(report: &Report, with_pem: bool) -> Document {
     doc
 }
 
-/// A CA: name, provider and expiry; below, what its certificate says it is for, or
-/// why no verified root signed it.
-fn ca_node(ca: &CaInfo) -> Node {
-    let line = Line::strong(&ca.common_name)
-        .and_dim(format!(" · {}", ca.provider))
-        .and_line(super::expiry(ca.not_after_at, ca.validity));
-    let mut details = Vec::new();
-    if let Some(reason) = ca.rejection {
-        let (issuer, _) = super::inspect::split_name(&ca.issuer);
-        let issuer = issuer.unwrap_or(&ca.issuer);
-        details.push(Line::status(
-            Tone::Bad,
-            match reason {
-                "self_signed" => "self-signed".to_owned(),
-                "unknown_issuer" => format!("issuer {issuer} is no verified root"),
-                "bad_signature" => format!("signature of {issuer} does not verify"),
-                "not_ca" => "not a CA certificate".to_owned(),
-                other => other.to_owned(),
-            },
-        ));
-    }
-    let mut about = Line::default();
-    for (i, policy) in ca.policies.iter().enumerate() {
-        about = about
-            .and_dim(if i == 0 { "policy " } else { ", " })
-            .and_code(&policy.oid);
-    }
-    if let Some(n) = ca.path_len {
-        about = about.and_dim(format!(
-            "{}path length {n}",
-            if ca.policies.is_empty() { "" } else { " · " }
-        ));
-    }
-    if !about.0.is_empty() {
-        details.push(about);
-    }
-    Node {
-        line,
-        details,
-        children: Vec::new(),
+/// Why no verified root signed `ca`, for the ROOT column.
+fn rejection_text(ca: &CaInfo) -> String {
+    let (issuer, _) = super::inspect::split_name(&ca.issuer);
+    let issuer = issuer.unwrap_or(&ca.issuer);
+    match ca.rejection.unwrap_or_default() {
+        "self_signed" => "none: self-signed".to_owned(),
+        "unknown_issuer" => format!("none: {issuer} is no verified root"),
+        "bad_signature" => format!("none: signature of {issuer} fails"),
+        "not_ca" => "none: not a CA certificate".to_owned(),
+        other => format!("none: {other}"),
     }
 }

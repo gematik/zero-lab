@@ -154,23 +154,10 @@ pub enum Block {
     Field(String, Line),
     /// A labelled list of values.
     Items(String, Vec<Line>),
-    /// A hierarchy, e.g. roots and the CAs they signed.
-    Tree(Vec<Node>),
     /// A PEM document: a fenced block in Markdown, left out of terminal text.
     Pem(String),
     /// Rows under column headings: aligned columns in text, a table in Markdown.
     Table(Vec<String>, Vec<Vec<Line>>),
-}
-
-/// One entry of a [`Block::Tree`].
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Node {
-    /// The entry itself.
-    pub line: Line,
-    /// Further lines about it, shown below it.
-    pub details: Vec<Line>,
-    /// Its children.
-    pub children: Vec<Node>,
 }
 
 /// A command's output as blocks.
@@ -202,14 +189,6 @@ impl Document {
     /// `label: value`.
     pub fn field(&mut self, label: impl Into<String>, value: impl Into<Line>) -> &mut Self {
         self.blocks.push(Block::Field(label.into(), value.into()));
-        self
-    }
-
-    /// A tree; nothing for no nodes.
-    pub fn tree(&mut self, nodes: Vec<Node>) -> &mut Self {
-        if !nodes.is_empty() {
-            self.blocks.push(Block::Tree(nodes));
-        }
         self
     }
 

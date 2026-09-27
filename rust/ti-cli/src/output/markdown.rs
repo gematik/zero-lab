@@ -1,10 +1,10 @@
 //! Renders a [`Document`] as compact CommonMark: a title as `##`, a section as a bold
-//! lead-in, fields and labelled lists as one bullet list (`- label: value`), trees as
-//! nested lists, listings as tables, PEM as a fenced block. Never cut, never colored.
+//! lead-in, fields and labelled lists as one bullet list (`- label: value`), listings as
+//! tables, PEM as a fenced block. Never cut, never colored.
 
 use std::io::{self, Write};
 
-use super::document::{Block, Document, Line, Node, Span};
+use super::document::{Block, Document, Line, Span};
 
 /// Writes `doc` to `w`.
 pub fn render(doc: &Document, w: &mut impl Write) -> io::Result<()> {
@@ -51,11 +51,6 @@ pub fn render(doc: &Document, w: &mut impl Write) -> io::Result<()> {
                     current = blocks.next_if(|b| matches!(b, Block::Field(..) | Block::Items(..)));
                 }
             }
-            Block::Tree(nodes) => {
-                for node in nodes {
-                    tree(w, node, 0)?;
-                }
-            }
             Block::Pem(pem) => writeln!(w, "```pem\n{}\n```", pem.trim_end())?,
             Block::Table(headings, rows) => {
                 let cell = |text: String| text.replace('|', "\\|");
@@ -70,20 +65,6 @@ pub fn render(doc: &Document, w: &mut impl Write) -> io::Result<()> {
         }
     }
     w.flush()
-}
-
-/// A node as a list item at `depth`, its details as hard-broken lines of the item.
-fn tree(w: &mut impl Write, node: &Node, depth: usize) -> io::Result<()> {
-    let indent = "  ".repeat(depth);
-    write!(w, "{indent}- {}", inline(&node.line))?;
-    for detail in &node.details {
-        write!(w, "  \n{indent}  {}", inline(detail))?;
-    }
-    writeln!(w)?;
-    for child in &node.children {
-        tree(w, child, depth + 1)?;
-    }
-    Ok(())
 }
 
 fn inline(line: &Line) -> String {
@@ -132,7 +113,7 @@ fn escape(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::output::document::{Node, Tone};
+    use crate::output::document::Tone;
 
     fn markdown(doc: &Document) -> String {
         let mut out = Vec::new();
@@ -154,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn lists_paragraphs_trees_and_pem() {
+    fn lists_paragraphs_and_pem() {
         let mut doc = Document::default();
         doc.paragraph(Line::strong("Krankenhaus Farn Schneerose"))
             .paragraph("O=202309022 NOT-VALID · C=DE")
@@ -167,23 +148,12 @@ mod tests {
                 "policies",
                 [Line::code("1.2.276.0.76.4.163").and_dim(" Policy")],
             )
-            .section("CAs")
-            .tree(vec![Node {
-                line: Line::strong("RCA"),
-                details: Vec::new(),
-                children: vec![Node {
-                    line: Line::strong("CA"),
-                    details: vec![Line::dim("policy 1.2.3")],
-                    children: Vec::new(),
-                }],
-            }])
             .pem("-----BEGIN CERTIFICATE-----\nMII=\n-----END CERTIFICATE-----\n");
         assert_eq!(
             markdown(&doc),
             "**Krankenhaus Farn Schneerose**  \nO=202309022 NOT-VALID · C=DE\n\n\
              - type: `C.HCI.AUT`\n- status: **valid**, 1 year left\n- policies:\n  - \
-             `1.2.276.0.76.4.163` Policy\n\n**CAs**\n\n- **RCA**\n  - **CA**  \n    \
-             policy 1.2.3\n\n```pem\n-----BEGIN CERTIFICATE-----\nMII=\n-----END \
+             `1.2.276.0.76.4.163` Policy\n\n```pem\n-----BEGIN CERTIFICATE-----\nMII=\n-----END \
              CERTIFICATE-----\n```\n"
         );
     }

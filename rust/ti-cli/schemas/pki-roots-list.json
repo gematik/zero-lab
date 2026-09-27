@@ -54,6 +54,10 @@
             "type": "boolean",
             "description": "The embedded anchor the walk started from"
           },
+          "key": {
+            "type": "string",
+            "description": "The key, e.g. ECDSA brainpoolP256r1."
+          },
           "sha256": {
             "type": "string"
           },
@@ -69,6 +73,7 @@
           "not_after",
           "validity",
           "anchor",
+          "key",
           "sha256",
           "pem"
         ],

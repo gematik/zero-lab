@@ -6,7 +6,7 @@
 use core::fmt::Write as _;
 use std::io::{self, Write};
 
-use super::document::{Block, Document, Line, Node, Span, Tone};
+use super::document::{Block, Document, Line, Span, Tone};
 use super::style;
 
 /// Width of the label column.
@@ -15,7 +15,7 @@ const LABEL_WIDTH: usize = 14;
 const INDENT: &str = "  ";
 
 /// Writes `doc` to `w`. Content below a heading is indented; a blank line separates
-/// paragraphs, field runs, lists and trees from each other.
+/// paragraphs, field runs, lists and tables from each other.
 pub fn render(doc: &Document, w: &mut impl Write) -> io::Result<()> {
     let mut out = Lines {
         w,
@@ -51,14 +51,6 @@ pub fn render(doc: &Document, w: &mut impl Write) -> io::Result<()> {
                     out.line(&format!("{column}- {}", styled(item)))?;
                 }
             }
-            Block::Tree(nodes) => {
-                out.group(Group::Tree)?;
-                for node in nodes {
-                    out.line(&styled(&node.line))?;
-                    out.details(node, "")?;
-                    out.children(&node.children, "")?;
-                }
-            }
             Block::Table(headings, rows) => {
                 out.group(Group::Table)?;
                 let mut widths: Vec<usize> = headings.iter().map(|h| h.chars().count()).collect();
@@ -90,7 +82,6 @@ enum Group {
     Paragraph,
     Fields,
     List,
-    Tree,
     Table,
 }
 
@@ -118,7 +109,7 @@ impl<W: Write> Lines<'_, W> {
         Ok(())
     }
 
-    /// Separates a paragraph run, fields, a list and a tree by a blank line in a
+    /// Separates a paragraph run, fields, a list and a table by a blank line in a
     /// document without headings; under a heading, the section holds them together.
     fn group(&mut self, group: Group) -> io::Result<()> {
         if self.indent.is_empty() && self.group.is_some_and(|g| g != group) {
@@ -132,52 +123,21 @@ impl<W: Write> Lines<'_, W> {
         self.started = true;
         writeln!(self.w, "{}{line}", self.indent)
     }
-
-    fn details(&mut self, node: &Node, prefix: &str) -> io::Result<()> {
-        let bar = if node.children.is_empty() {
-            "  "
-        } else {
-            "│ "
-        };
-        for detail in &node.details {
-            let dim = style::DIM;
-            self.line(&format!("{prefix}{dim}{bar}{dim:#}{}", styled(detail)))?;
-        }
-        Ok(())
-    }
-
-    fn children(&mut self, children: &[Node], prefix: &str) -> io::Result<()> {
-        let dim = style::DIM;
-        for (i, child) in children.iter().enumerate() {
-            let last = i + 1 == children.len();
-            let (branch, rest) = if last {
-                ("└─ ", "   ")
-            } else {
-                ("├─ ", "│  ")
-            };
-            self.line(&format!(
-                "{prefix}{dim}{branch}{dim:#}{}",
-                styled(&child.line)
-            ))?;
-            let prefix = format!("{prefix}{dim}{rest}{dim:#}");
-            self.details(child, &prefix)?;
-            self.children(&child.children, &prefix)?;
-        }
-        Ok(())
-    }
 }
 
-/// Styled cells padded to `widths` by their visible length, two spaces apart; the last
-/// cell unpadded.
+/// Styled cells padded to `widths` by their visible length, two spaces apart; nothing
+/// after the last non-empty cell.
 fn table_row(cells: impl Iterator<Item = (String, usize)>, widths: &[usize]) -> String {
+    let cells: Vec<(String, usize)> = cells.collect();
+    let last = cells.iter().rposition(|(_, len)| *len > 0).unwrap_or(0);
     let mut line = String::new();
-    for (i, (cell, len)) in cells.enumerate() {
-        line.push_str(&cell);
-        if i + 1 < widths.len() {
+    for (i, (cell, len)) in cells.iter().enumerate().take(last + 1) {
+        line.push_str(cell);
+        if i < last {
             let _ = write!(line, "{:pad$}", "", pad = widths[i] - len + 2);
         }
     }
-    line.trim_end().to_owned()
+    line
 }
 
 fn label_column(label: &str) -> String {

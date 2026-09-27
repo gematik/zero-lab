@@ -33,6 +33,8 @@ struct RootInfo {
     validity: &'static str,
     /// The embedded anchor the walk started from.
     anchor: bool,
+    /// The key, e.g. `ECDSA brainpoolP256r1`.
+    key: String,
     sha256: String,
     pem: String,
 }
@@ -74,6 +76,7 @@ fn describe(root: &Certificate, config: &TrustConfig, now: Timestamp) -> RootInf
         not_after_at: root.not_after(),
         validity: super::validity(root, now),
         anchor: root.der() == &*config.anchor,
+        key: super::inspect::key_algorithm(root, now),
         sha256: hex(&Sha256::digest(root.der())),
         pem: pem(root.der()),
     }
@@ -86,16 +89,40 @@ fn document(report: &Report) -> Document {
             .and_text(format!(" · {}", report.environment)),
     );
     doc.paragraph(Line::dim("trust ").and_line(super::trust_line(&report.trust)));
-    doc.items(
-        "",
-        report.roots.iter().map(|root| {
-            let mut line = Line::strong(&root.common_name)
-                .and_line(super::expiry(root.not_after_at, root.validity));
+    // By generation (GEM.RCA2 … GEM.RCA11), not in the order the walk reached them.
+    let mut roots: Vec<&RootInfo> = report.roots.iter().collect();
+    roots.sort_by_key(|root| generation(&root.common_name));
+    let rows = roots.into_iter().map(|root| {
+        vec![
+            Line::strong(&root.common_name),
+            Line::text(super::organization(&root.subject).unwrap_or_else(|| "-".to_owned())),
+            Line::text(&root.key),
+            super::validity_cell(root.not_after_at, root.validity),
             if root.anchor {
-                line = line.and_text(" · ").and_status(Tone::Good, "anchor");
-            }
-            line
-        }),
+                Line::status(Tone::Good, "anchor")
+            } else {
+                Line::text("")
+            },
+        ]
+    });
+    doc.table(
+        &["ROOT", "ORGANIZATION", "KEY", "VALIDITY", ""],
+        rows.collect(),
     );
     doc
+}
+
+/// The name with its first number as a number, so `RCA10` sorts after `RCA9`.
+fn generation(name: &str) -> (String, u64, String) {
+    let start = name
+        .find(|c: char| c.is_ascii_digit())
+        .unwrap_or(name.len());
+    let digits = name[start..]
+        .find(|c: char| !c.is_ascii_digit())
+        .map_or(name.len(), |n| start + n);
+    (
+        name[..start].to_owned(),
+        name[start..digits].parse().unwrap_or(0),
+        name[digits..].to_owned(),
+    )
 }

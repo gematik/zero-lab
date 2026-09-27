@@ -227,12 +227,11 @@ fn configs(args: &ConnectorArgs, out: &Output) -> Result<Exit, CliError> {
     };
     emit(out, Exit::Ok, &report, |doc| {
         let rows = report.configurations.iter().map(|c| {
+            // `*` first marks the configuration commands use without -c.
             let name = if c.name == report.selected {
-                Line::strong(&c.name)
-                    .and_text(" ")
-                    .and_status(Tone::Good, "*")
+                Line::strong(format!("* {}", c.name))
             } else {
-                Line::text(&c.name)
+                Line::text(format!("  {}", c.name))
             };
             let (url, context) = match &c.error {
                 Some(error) => (Line::status(Tone::Bad, error), Line::text("")),
@@ -241,9 +240,9 @@ fn configs(args: &ConnectorArgs, out: &Output) -> Result<Exit, CliError> {
                     cell(c.context.as_deref()),
                 ),
             };
-            vec![name, url, context, Line::dim(&c.path)]
+            vec![name, url, context]
         });
-        doc.table(&["NAME", "URL", "CONTEXT", "PATH"], rows.collect());
+        doc.table(&["  NAME", "URL", "CONTEXT"], rows.collect());
         if report.configurations.is_empty() {
             doc.paragraph(Line::dim(
                 "no .kon files here or in ~/.config/telematik/connectors",
@@ -555,11 +554,7 @@ fn certificates(session: &Session, card: &str, out: &Output) -> Result<Exit, Cli
         doc.section("Card");
         card_table(doc, &[&report.card]);
         let rows = report.certificates.iter().map(|c| {
-            let until = match c.validity {
-                "valid" => Line::text(format!("until {}", date(c.not_after_at))),
-                "expired" => Line::status(Tone::Bad, format!("expired {}", date(c.not_after_at))),
-                _ => Line::status(Tone::Bad, "not yet valid"),
-            };
+            let until = super::validity_cell(c.not_after_at, c.validity);
             vec![
                 Line::strong(c.cert_ref),
                 Line::text(c.crypt),
