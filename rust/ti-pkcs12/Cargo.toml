@@ -18,6 +18,8 @@ exclude = ["tests/"]
 # OpenSSL's `-legacy`, Java keystores and gematik's card vendors still produce.
 default = ["legacy"]
 legacy = ["dep:cbc", "dep:des", "dep:rc2", "pkcs5/3des", "pkcs5/sha1-insecure"]
+# Writing PKCS#12 (PBES2/AES-256, SHA-256 MAC); the caller supplies the randomness.
+encode = []
 
 [dependencies]
 # BER: Java keystores and card vendors write indefinite lengths and constructed strings.

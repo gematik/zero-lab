@@ -251,13 +251,27 @@ fn reports_mac_and_encryption() {
     let modern = decode(&read("modern.p12"), "test1234").unwrap();
     let mac = modern.mac.unwrap();
     assert_eq!((mac.digest.as_str(), mac.iterations), ("SHA-256", 2048));
-    assert!(modern.encryption.iter().all(|e| e == "PBES2 AES-256-CBC"));
+    assert!(
+        modern
+            .encryption
+            .iter()
+            .all(|e| e.algorithm == "PBES2 AES-256-CBC")
+    );
 
     let path = fixtures().join("legacy/cgm.p12");
     let vendor = decode(&std::fs::read(&path).unwrap(), &password(&path)).unwrap();
     assert_eq!(vendor.mac.unwrap().iterations, 102_400);
-    assert!(vendor.encryption.contains(&"PKCS#12 RC2-40".to_owned()));
-    assert!(vendor.encryption.contains(&"PKCS#12 3DES".to_owned()));
+    let used = |target, algorithm: &str| {
+        vendor.encryption.contains(&ti_pkcs12::Encryption {
+            target,
+            algorithm: algorithm.to_owned(),
+        })
+    };
+    assert!(
+        used(ti_pkcs12::Target::Safe, "PKCS#12 RC2-40"),
+        "certificates"
+    );
+    assert!(used(ti_pkcs12::Target::Key, "PKCS#12 3DES"), "key");
 
     let (algorithm, curve) = decode(&read("ec.p12"), "test1234").unwrap().keys[0]
         .algorithm()

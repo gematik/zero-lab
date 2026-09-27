@@ -31,7 +31,10 @@ fn main() {
         None => println!("mac          none"),
     }
     for encryption in &p12.encryption {
-        println!("encryption   {encryption}");
+        println!(
+            "encryption   {:?}: {}",
+            encryption.target, encryption.algorithm
+        );
     }
     for (i, cert) in p12.certificates.iter().enumerate() {
         println!(

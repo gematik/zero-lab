@@ -29,6 +29,8 @@
 
 mod asn1;
 mod decrypt;
+#[cfg(feature = "encode")]
+mod encode;
 mod kdf;
 mod mac;
 
@@ -39,6 +41,8 @@ use der::asn1::{Any, ObjectIdentifier};
 use zeroize::Zeroizing;
 
 use crate::asn1::{CertBag, Content, ContentInfo, EncryptedPrivateKeyInfo, Pfx, SafeBag, reparse};
+#[cfg(feature = "encode")]
+pub use crate::encode::{ITERATIONS, encode};
 
 /// The object identifiers of RFC 7292 and the algorithms PKCS#12 files use.
 pub mod oids {
@@ -154,7 +158,26 @@ pub struct Pkcs12 {
     pub mac: Option<MacInfo>,
     /// The encryption of each encrypted safe and shrouded key, in file order: what the
     /// file is protected with.
-    pub encryption: Vec<String>,
+    pub encryption: Vec<Encryption>,
+}
+
+/// How one part of a file is encrypted.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Encryption {
+    /// What is encrypted.
+    pub target: Target,
+    /// The algorithm, e.g. `PBES2 AES-256-CBC` or `PKCS#12 RC2-40`.
+    pub algorithm: String,
+}
+
+/// The part of a file an [`Encryption`] protects.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Target {
+    /// An encrypted safe: usually the certificates.
+    Safe,
+    /// A shrouded private key.
+    Key,
 }
 
 /// A certificate bag.
@@ -292,7 +315,10 @@ pub fn decode(bytes: &[u8], password: &str) -> Result<Pkcs12, Error> {
         let contents = match safe.content {
             Content::Data(octets) => Zeroizing::new(octets),
             Content::Encrypted(encrypted) => {
-                p12.encryption.push(decrypt::name(&encrypted.algorithm));
+                p12.encryption.push(Encryption {
+                    target: Target::Safe,
+                    algorithm: decrypt::name(&encrypted.algorithm),
+                });
                 decrypt::decrypt(&encrypted.algorithm, password, &encrypted.ciphertext)?
             }
             // Enveloped safes (public-key privacy mode) need the recipient's key.
@@ -320,8 +346,10 @@ fn collect(bags: &[SafeBag], password: &str, p12: &mut Pkcs12) -> Result<(), Err
             }
             oids::SHROUDED_KEY_BAG => {
                 let shrouded: EncryptedPrivateKeyInfo = reparse(&bag.value)?;
-                p12.encryption
-                    .push(decrypt::name(&shrouded.encryption_algorithm));
+                p12.encryption.push(Encryption {
+                    target: Target::Key,
+                    algorithm: decrypt::name(&shrouded.encryption_algorithm),
+                });
                 let pkcs8 = decrypt::decrypt(
                     &shrouded.encryption_algorithm,
                     password,

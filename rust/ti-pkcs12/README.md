@@ -40,6 +40,17 @@ Not supported:
 
 Keys stay PKCS#8 DER in zeroized memory; the crate does no key cryptography.
 
+With the `encode` feature, `encode` writes a file as OpenSSL 3 does by default:
+- certificates in a safe encrypted with PBES2 AES-256-CBC (PBKDF2-HMAC-SHA-256, 2048
+  iterations);
+- keys in shrouded key bags with the same encryption;
+- an HMAC-SHA-256 MAC;
+- attributes kept.
+
+Such files need no `-legacy` in OpenSSL 3, and the Go module decodes them without its
+OpenSSL conversion. The caller supplies the randomness for salts and IVs, so the crate
+has no OS dependency.
+
 The crate builds for `wasm32-unknown-unknown`.
 
 ## Tests
