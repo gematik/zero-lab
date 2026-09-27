@@ -28,7 +28,7 @@
   timeouts, basic auth. `Error::Config` for unusable credentials or trust stores.
 - Environment-gated tests against a real Konnektor (`tests/e2e.rs`).
 - `Connector::signatures` (SignatureService 7.5): `sign` (CAdES detached, PAdES for
-  PDF/A; several documents per job), `verify`, `job_number`, `stop`, comfort signature
+  PDF/A; several documents per job, each a `ToSign` with the short text a QES needs), `verify`, `job_number`, `stop`, comfort signature
   (`activate_comfort`, `deactivate_comfort`, `mode`). `Connector::encryption`
   (EncryptionService 6.1): `encrypt` (CMS for recipients' certificates) and `decrypt`
   (with the card's C.ENC; the plaintext's media type is required, the Konnektor checks

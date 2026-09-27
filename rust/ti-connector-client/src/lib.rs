@@ -31,7 +31,7 @@ pub use encryption::Encryption;
 pub use error::{DiscoveryError, Error, Fault, TraceEntry};
 pub use pins::{PinType, Pins};
 pub use sds::{Binding, Product, Service, ServiceDirectory, ServiceVersion, Target, sds_url};
-pub use signatures::{SignatureFormat, Signatures, Signed};
+pub use signatures::{ComfortUserId, SignatureFormat, Signatures, Signed, ToSign};
 pub use soap::{Method, Request, Response, Timeouts, Transport, TransportError};
 
 /// The services and `major.minor` versions this crate has bindings for, as

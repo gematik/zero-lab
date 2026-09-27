@@ -11,7 +11,8 @@ use ti_connector_client::types::{
     CardType, CertRef, Crypt, PinResult, PinState, StatusResult, VerificationResult,
 };
 use ti_connector_client::{
-    Connector, Dotkon, Error, PinType, ServiceDirectory, SignatureFormat, SignatureType, Timeouts,
+    ComfortUserId, Connector, Dotkon, Error, PinType, ServiceDirectory, SignatureFormat,
+    SignatureType, Timeouts, ToSign,
 };
 
 use support::{Scripted, ok};
@@ -342,8 +343,16 @@ fn signs_cades_detached_and_pades() {
         SignatureFormat::Cades,
         Some(Crypt::Ecc),
         &[
-            (b"one".as_slice(), "text/plain"),
-            (b"two".as_slice(), "text/plain"),
+            ToSign {
+                content: b"one",
+                mime_type: "text/plain",
+                short_text: Some("Brief"),
+            },
+            ToSign {
+                content: b"two",
+                mime_type: "text/plain",
+                short_text: None,
+            },
         ],
     ))
     .unwrap();
@@ -358,7 +367,11 @@ fn signs_cades_detached_and_pades() {
         "card-1",
         SignatureFormat::Pades,
         None,
-        &[(b"%PDF".as_slice(), "application/pdf-a")],
+        &[ToSign {
+            content: b"%PDF",
+            mime_type: "application/pdf-a",
+            short_text: Some("Arztbrief"),
+        }],
     ))
     .unwrap();
     assert_eq!(
@@ -374,6 +387,7 @@ fn signs_cades_detached_and_pades() {
         "<signatureservice75:TvMode>NONE</signatureservice75:TvMode>",
         "<signatureservice75:Crypt>ECC</signatureservice75:Crypt>",
         "<dss10core:SignatureType>urn:ietf:rfc:5652</dss10core:SignatureType>",
+        r#"<signatureservice75:Document ID="doc-0" ShortText="Brief">"#,
         &format!(
             r#"<dss10core:Base64Data MimeType="text/plain">{}</dss10core:Base64Data>"#,
             b64(b"one")
@@ -438,7 +452,8 @@ fn verifies_encrypts_decrypts_and_reads_the_signature_mode() {
     )
     .unwrap();
     assert_eq!(plain, b"plain");
-    let mode = block_on(connector.signatures().mode("card-hba")).unwrap();
+    let user = ComfortUserId::generate(|b| b.fill(0x11));
+    let mode = block_on(connector.signatures().mode("card-hba", &user)).unwrap();
     assert_eq!(
         (mode.comfort_signature_max, &*mode.comfort_signature_timer),
         (250, "PT24H")
@@ -462,5 +477,12 @@ fn verifies_encrypts_decrypts_and_reads_the_signature_mode() {
     assert_eq!(
         seen.iter().map(|s| s.timeout).collect::<Vec<_>>(),
         [TIMEOUTS.long, TIMEOUTS.long, TIMEOUTS.long, TIMEOUTS.short]
+    );
+    assert!(
+        seen[3].body.contains(&format!(
+            "<connectorcommon50:UserId>{user}</connectorcommon50:UserId>"
+        )),
+        "the comfort session's user replaces the .kon user: {}",
+        seen[3].body
     );
 }

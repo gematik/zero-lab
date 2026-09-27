@@ -11,8 +11,8 @@ use futures_lite::future::block_on;
 use sha2::{Digest, Sha256};
 use ti_connector_client::types::{CardType, CertRef, Crypt, PinState};
 use ti_connector_client::{
-    Connector, Dotkon, Request, Response, SignatureFormat, SignatureType, Timeouts, Transport,
-    TransportError,
+    Connector, Dotkon, Request, Response, SignatureFormat, SignatureType, Timeouts, ToSign,
+    Transport, TransportError,
 };
 
 const DIR: &str = concat!(
@@ -131,7 +131,11 @@ fn the_recorded_ehex_session_replays() {
         handle,
         SignatureFormat::Cades,
         Some(Crypt::Ecc),
-        &[(message.as_slice(), "text/plain")],
+        &[ToSign {
+            content: message.as_slice(),
+            mime_type: "text/plain",
+            short_text: None,
+        }],
     ))
     .unwrap();
     let cms = signed[0].signature.clone().expect("a CMS signature");

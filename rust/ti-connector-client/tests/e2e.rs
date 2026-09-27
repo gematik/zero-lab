@@ -25,7 +25,8 @@ use sha2::{Digest, Sha256};
 use ti_connector_client::types::{Card, CardType, CertRef, Crypt, PinState};
 use ti_connector_client::ureq::UreqTransport;
 use ti_connector_client::{
-    Connector, Dotkon, Error, PinType, SignatureFormat, SignatureType, Timeouts,
+    ComfortUserId, Connector, Dotkon, Error, PinType, SignatureFormat, SignatureType, Timeouts,
+    ToSign,
 };
 
 use support::Recorder;
@@ -198,7 +199,14 @@ fn pin_and_external_authenticate() {
     }
     let hbas = block_on(connector.cards().list(&[CardType::Hba])).expect("GetCards");
     if let Some(hba) = hbas.first() {
-        match block_on(connector.signatures().mode(&hba.card_handle)) {
+        // A new random UserId, as for an activation; GetSignatureMode takes the session's.
+        let user = ComfortUserId::generate(|b| {
+            rustls::crypto::ring::default_provider()
+                .secure_random
+                .fill(b)
+                .expect("system randomness");
+        });
+        match block_on(connector.signatures().mode(&hba.card_handle, &user)) {
             Ok(mode) => eprintln!(
                 "comfort signature: {:?}, up to {} signatures, {}",
                 mode.comfort_signature_status,
@@ -247,8 +255,16 @@ fn sign_and_verify_one(
     mime_type: &str,
 ) -> Result<String, Error> {
     let signatures = connector.signatures();
-    let signed =
-        block_on(signatures.sign(handle, format, Some(Crypt::Ecc), &[(document, mime_type)]))?;
+    let signed = block_on(signatures.sign(
+        handle,
+        format,
+        Some(Crypt::Ecc),
+        &[ToSign {
+            content: document,
+            mime_type,
+            short_text: None,
+        }],
+    ))?;
     let signed = signed.into_iter().next().expect("one result");
     let verdict = if format == SignatureFormat::Cades {
         block_on(signatures.verify(format, document, mime_type, signed.signature.as_deref()))?
