@@ -60,7 +60,9 @@ cli-targets:
     fi
     # A release uploads everything here, so nothing from an earlier build may remain.
     rm -rf target/dist && mkdir -p target/dist
-    for t in "${targets[@]}" "${native[@]}"; do
+    all=("${targets[@]}" "${native[@]}"); n=0
+    for t in "${all[@]}"; do
+        n=$((n + 1)); echo "==> $t ($n/${#all[@]})"
         if [[ " ${native[*]} " == *" $t "* ]]; then
             rustup target add "$t" >/dev/null
             cargo build --release --locked -p ti-cli --target "$t"
@@ -151,14 +153,30 @@ release version tap=TAP_OWNER:
         s/\n+\z/\n/' ReleaseNotes.md
     # One line per step; the full output of each goes to a log.
     logs=target/release-logs; mkdir -p "$logs"
+    # On a terminal, a status line shows the elapsed time, the current "==>" stage and the
+    # log's latest line while a step runs.
     step() {
-        local name=$1 start=$SECONDS; shift
+        local name=$1 start=$SECONDS log="$logs/$1.log" pid width stage last ok=0; shift
+        "$@" > "$log" 2>&1 &
+        pid=$!
+        if [[ -t 1 ]]; then
+            width=$(( $(tput cols 2>/dev/null || echo 100) - 22 ))
+            while kill -0 "$pid" 2>/dev/null; do
+                stage=$(grep '^==> ' "$log" | tail -n 1 | cut -c5-)
+                last=$(tail -n 1 "$log" | awk -F'\r' '{print $NF}' | sed 's/^[[:space:]]*//')
+                [[ -z "$stage" ]] || last="$stage · $last"
+                printf '\r\033[K%-12s%5d s  %s' "$name" $((SECONDS - start)) "${last:0:width}"
+                sleep 1
+            done
+            printf '\r\033[K'
+        fi
+        wait "$pid" || ok=$?
         printf '%-12s' "$name"
-        if "$@" > "$logs/$name.log" 2>&1; then
+        if [[ $ok -eq 0 ]]; then
             echo "ok, $((SECONDS - start)) s"
         else
-            echo "failed after $((SECONDS - start)) s; the end of $logs/$name.log:"
-            tail -n 30 "$logs/$name.log"
+            echo "failed after $((SECONDS - start)) s; the end of $log:"
+            tail -n 30 "$log"
             return 1
         fi
     }
