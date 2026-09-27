@@ -44,6 +44,11 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
         Command::Schema { command } => schema::run(command, out),
         Command::Agent => agent::run(),
         Command::Version => version::run(out),
+        Command::Completions { shell } => {
+            let mut stdout = std::io::stdout().lock();
+            clap_complete::generate(*shell, &mut crate::command(), crate::BIN, &mut stdout);
+            Ok(Exit::Ok)
+        }
     }
 }
 

@@ -30,4 +30,7 @@
 - Output: sectioned terminal views, compact Markdown (a summary, then one list; no
   tables), trees for hierarchies, PEM for certificates in JSON and Markdown, dates alone in lists and
   `2023-02-09 00:00 CET` elsewhere.
+- `completions bash|zsh|fish|elvish|powershell`.
+- `just cli-targets`: release binaries for Linux (musl), Windows and macOS.
+- Release builds are stripped, fully LTO-optimised and abort on panic (6.2 → 3.5 MB).
 - The executable's name comes from `ti_cli::BIN` (`tir` until parity with the Go `ti`).

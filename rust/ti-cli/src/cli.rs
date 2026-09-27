@@ -36,7 +36,8 @@ Examples:
   {bin} pki tsl show --ca SMCB-CA51 --format markdown   # with the CA's PEM
   {bin} schema pki verify                       # the JSON contract of one command
   {bin} agent                                   # usage guide for scripts and agents
-  {bin} version";
+  {bin} version
+  {bin} completions zsh > ~/.zfunc/_{bin}      # also bash, fish, elvish, powershell";
 
 /// The command-line tool for the gematik Telematikinfrastruktur (TI).
 ///
@@ -130,6 +131,12 @@ pub enum Command {
     Agent,
     /// Version and build of this tool
     Version,
+    /// Shell completion script for bash, zsh, fish, elvish or powershell
+    Completions {
+        /// The shell
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
 }
 
 /// `ti cache …`.

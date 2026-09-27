@@ -9,6 +9,7 @@ SEMVER_CHECKS := "cargo-semver-checks@0.50.0"
 MSRV          := "cargo-msrv@0.19.3"
 MUTANTS       := "cargo-mutants@27.1.0"
 RELEASE_PLZ   := "release-plz@0.3.169"
+CROSS         := "cross@0.2.5"
 
 # Every crate is versioned solely by its own git tag (rust/<crate>/vX.Y.Z), bumped only
 # when that crate changes. Siblings resolve each other through the `version` in
@@ -22,7 +23,7 @@ info:
 tools:
     #!/usr/bin/env bash
     set -euo pipefail
-    for t in {{NEXTEST}} {{DENY}} {{AUDIT}} {{VET}} {{HACK}} {{MACHETE}} {{SEMVER_CHECKS}} {{MSRV}} {{MUTANTS}} {{RELEASE_PLZ}}; do
+    for t in {{NEXTEST}} {{DENY}} {{AUDIT}} {{VET}} {{HACK}} {{MACHETE}} {{SEMVER_CHECKS}} {{MSRV}} {{MUTANTS}} {{RELEASE_PLZ}} {{CROSS}}; do
         if command -v cargo-binstall >/dev/null; then cargo binstall -y "$t"; else cargo install --locked "$t"; fi
     done
 
@@ -31,6 +32,34 @@ tools:
 # Install `tir` (the Rust ti, until it covers the Go ti) into ~/.cargo/bin
 install:
     cargo install --path ti-cli --locked --force
+
+# Linux (static musl) and Windows are built through cross in Docker, macOS natively on
+# a Mac; needs `just tools` and a running Docker daemon.
+# Release binaries of the CLI for every distributed platform into target/dist
+cli-targets:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    command -v cross >/dev/null || { echo "cross is missing: just tools" >&2; exit 1; }
+    docker info >/dev/null 2>&1 || { echo "the Docker daemon is not running" >&2; exit 1; }
+    meta=$(cargo metadata --no-deps --format-version 1 \
+        | jq -r '.packages[] | select(.name == "ti-cli")
+                 | "\(.version) \(.targets[] | select(.kind[] == "bin") | .name)"')
+    read -r version bin <<< "$meta"
+    targets=(x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-pc-windows-gnu)
+    native=()
+    if [[ "$(uname -s)" == Darwin ]]; then native=(aarch64-apple-darwin x86_64-apple-darwin); fi
+    mkdir -p target/dist
+    for t in "${targets[@]}" "${native[@]}"; do
+        if [[ " ${native[*]} " == *" $t "* ]]; then
+            rustup target add "$t" >/dev/null
+            cargo build --release --locked -p ti-cli --target "$t"
+        else
+            cross build --release --locked -p ti-cli --target "$t"
+        fi
+        ext=""; [[ "$t" == *windows* ]] && ext=".exe"
+        cp "target/$t/release/$bin$ext" "target/dist/$bin-$version-$t$ext"
+        echo "target/dist/$bin-$version-$t$ext"
+    done
 
 # Run the development build: just tir pki inspect card.pem
 tir *ARGS:

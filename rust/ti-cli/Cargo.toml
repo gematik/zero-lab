@@ -25,6 +25,7 @@ ti-pki = { workspace = true, features = ["os", "dangerous-nonprod"] }
 ureq = { workspace = true, features = ["rustls-no-provider", "platform-verifier", "socks-proxy"] }
 rustls.workspace = true
 clap = { workspace = true, features = ["std", "help", "usage", "error-context", "suggestions", "color", "env"] }
+clap_complete.workspace = true
 anstream.workspace = true
 anstyle.workspace = true
 jiff.workspace = true

@@ -26,6 +26,7 @@ pem-rfc7468 = "1"
 thiserror = "2"
 serde = { version = "1.0.229", default-features = false, features = ["derive", "alloc"] }
 clap = { version = "4.6.7", default-features = false, features = ["derive"] }
+clap_complete = { version = "4.6.11", default-features = false }
 # Terminal styling for the CLI; the same crates clap renders its own help with.
 anstream = "1.0.0"
 anstyle = "1.0.14"
@@ -78,3 +79,12 @@ doc_markdown = "allow"
 # Async trait impls must be async even when an implementation never awaits (memory
 # store, file transport); the trait, not the impl, decides.
 unused_async_trait_impl = "allow"
+
+# Release builds are what `just install` and distributed binaries use: stripped, whole
+# program optimised, aborting on panic (nothing catches one; the CLI's only panics are
+# programming errors). ti-cli shrinks from 6.2 to 3.5 MB on aarch64-apple-darwin.
+[profile.release]
+strip = "symbols"
+lto = "fat"
+codegen-units = 1
+panic = "abort"

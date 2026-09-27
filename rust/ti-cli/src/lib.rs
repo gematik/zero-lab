@@ -33,6 +33,14 @@ pub const BIN: &str = "tir";
 use cli::Cli;
 use output::Output;
 
+/// The command line as clap sees it, named [`BIN`].
+fn command() -> clap::Command {
+    Cli::command()
+        .name(BIN)
+        .bin_name(BIN)
+        .after_long_help(cli::AFTER_HELP.replace("{bin}", BIN))
+}
+
 /// Runs the tool with `args` (the program name first, as `std::env::args_os` yields
 /// them).
 pub fn run<I, T>(args: I) -> ExitCode
@@ -40,11 +48,7 @@ where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    let command = Cli::command()
-        .name(BIN)
-        .bin_name(BIN)
-        .after_long_help(cli::AFTER_HELP.replace("{bin}", BIN));
-    let parsed = command
+    let parsed = command()
         .try_get_matches_from(args)
         .and_then(|matches| Cli::from_arg_matches(&matches));
     let cli = match parsed {

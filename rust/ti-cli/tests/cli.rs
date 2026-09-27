@@ -491,3 +491,15 @@ fn unusable_http_options_are_usage_errors() {
     let error: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(error["error"]["kind"], "http_setup");
 }
+
+#[test]
+fn completions_for_every_shell() {
+    for shell in ["bash", "zsh", "fish", "elvish", "powershell"] {
+        let out = tir(&["completions", shell]);
+        assert_eq!(out.status.code(), Some(0), "{shell}");
+        let script = stdout(&out);
+        assert!(script.contains(ti_cli::BIN), "{shell} names the executable");
+        assert!(script.contains("verify"), "{shell} knows the subcommands");
+    }
+    assert_eq!(tir(&["completions", "tcsh"]).status.code(), Some(2));
+}

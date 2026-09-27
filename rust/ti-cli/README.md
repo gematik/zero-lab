@@ -28,6 +28,19 @@ ti agent                            # usage guide for scripts and agents
 ti version
 ```
 
+`just cli-targets` builds release binaries into `target/dist` for Linux x86_64 and
+aarch64 (static musl), Windows x86_64 and, on a Mac, macOS aarch64 and x86_64: the
+foreign ones through [cross](https://github.com/cross-rs/cross) in Docker.
+
+Shell completion comes from the binary itself, so it always matches its commands:
+
+```sh
+ti completions zsh > ~/.zfunc/_ti                       # zsh (with fpath+=~/.zfunc)
+ti completions bash > ~/.local/share/bash-completion/completions/ti
+ti completions fish > ~/.config/fish/completions/ti.fish
+ti completions powershell >> $PROFILE                   # also: elvish
+```
+
 ## Trust material
 
 `pki roots list` and `pki tsl show` show what `verify` works with, for one environment
