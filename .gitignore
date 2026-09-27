@@ -7,5 +7,4 @@ secrets
 /.vscode
 /tmp
 .claude
-CLAUDE.md
 /go/ti/ti
