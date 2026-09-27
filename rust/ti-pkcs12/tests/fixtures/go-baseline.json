@@ -1,0 +1,242 @@
+[
+  {
+    "file": "aes128.p12",
+    "certificates": [
+      {
+        "subject": "test.example.com",
+        "friendly_name": "",
+        "local_key_id": "c6e77619251b6b0effb3e3e629f93eb0ac20f35d",
+        "sha256": "bf8ebf976c78be623ca14702abefda6c897b1f2765aaa5556388b87e1ba1c202"
+      }
+    ],
+    "keys": [
+      {
+        "friendly_name": "",
+        "local_key_id": "c6e77619251b6b0effb3e3e629f93eb0ac20f35d",
+        "sha256": "1fcb21233cdaeeb8ae63b9f25b05b67d12d1a71c6fcf053248079715a3ce65a1"
+      }
+    ],
+    "pairs": 1
+  },
+  {
+    "file": "cert-only.p12",
+    "certificates": [
+      {
+        "subject": "test.example.com",
+        "friendly_name": "",
+        "local_key_id": "",
+        "sha256": "bf8ebf976c78be623ca14702abefda6c897b1f2765aaa5556388b87e1ba1c202"
+      }
+    ],
+    "keys": [],
+    "pairs": 0
+  },
+  {
+    "file": "ec.p12",
+    "certificates": [
+      {
+        "subject": "ec.example.com",
+        "friendly_name": "EC Test Certificate",
+        "local_key_id": "ce88bd7abccef1dd03654d2bb2596f335376d7d6",
+        "sha256": "3f9751530a32c95a8f4486aed5687da3308f56ce08e38ce4dc71237d6f7c8413"
+      }
+    ],
+    "keys": [
+      {
+        "friendly_name": "EC Test Certificate",
+        "local_key_id": "ce88bd7abccef1dd03654d2bb2596f335376d7d6",
+        "sha256": "530875c443c29a178cb8723fc64f88cd213ac2c8bcfb31ea879f270a712cbb0d"
+      }
+    ],
+    "pairs": 1
+  },
+  {
+    "file": "empty-pass.p12",
+    "certificates": [
+      {
+        "subject": "test.example.com",
+        "friendly_name": "",
+        "local_key_id": "c6e77619251b6b0effb3e3e629f93eb0ac20f35d",
+        "sha256": "bf8ebf976c78be623ca14702abefda6c897b1f2765aaa5556388b87e1ba1c202"
+      }
+    ],
+    "keys": [
+      {
+        "friendly_name": "",
+        "local_key_id": "c6e77619251b6b0effb3e3e629f93eb0ac20f35d",
+        "sha256": "1fcb21233cdaeeb8ae63b9f25b05b67d12d1a71c6fcf053248079715a3ce65a1"
+      }
+    ],
+    "pairs": 1
+  },
+  {
+    "file": "high-iter.p12",
+    "certificates": [
+      {
+        "subject": "test.example.com",
+        "friendly_name": "",
+        "local_key_id": "c6e77619251b6b0effb3e3e629f93eb0ac20f35d",
+        "sha256": "bf8ebf976c78be623ca14702abefda6c897b1f2765aaa5556388b87e1ba1c202"
+      }
+    ],
+    "keys": [
+      {
+        "friendly_name": "",
+        "local_key_id": "c6e77619251b6b0effb3e3e629f93eb0ac20f35d",
+        "sha256": "1fcb21233cdaeeb8ae63b9f25b05b67d12d1a71c6fcf053248079715a3ce65a1"
+      }
+    ],
+    "pairs": 1
+  },
+  {
+    "file": "legacy.p12",
+    "certificates": [
+      {
+        "subject": "test.example.com",
+        "friendly_name": "",
+        "local_key_id": "c6e77619251b6b0effb3e3e629f93eb0ac20f35d",
+        "sha256": "bf8ebf976c78be623ca14702abefda6c897b1f2765aaa5556388b87e1ba1c202"
+      }
+    ],
+    "keys": [
+      {
+        "friendly_name": "",
+        "local_key_id": "c6e77619251b6b0effb3e3e629f93eb0ac20f35d",
+        "sha256": "1fcb21233cdaeeb8ae63b9f25b05b67d12d1a71c6fcf053248079715a3ce65a1"
+      }
+    ],
+    "pairs": 1
+  },
+  {
+    "file": "legacy/cgm.p12",
+    "certificates": [
+      {
+        "friendly_name": "",
+        "local_key_id": "6f1fa0b65163110854bed9e8c833bb03cd11274e",
+        "sha256": "0933a917958c818107528d747fe480c5fc9b92556bdb46a0295aca3f5d5aa944"
+      },
+      {
+        "friendly_name": "",
+        "local_key_id": "",
+        "sha256": "2a928a370c23ee5029da2a6fef49bdca457fc13673a7c83a5f9265bf334a938a"
+      }
+    ],
+    "keys": [
+      {
+        "friendly_name": "",
+        "local_key_id": "6f1fa0b65163110854bed9e8c833bb03cd11274e",
+        "sha256": "c9dda78bb9ce411f743bcd2c1f47d64bee1fd7b385c3076240737072cd03e950"
+      }
+    ],
+    "pairs": 1
+  },
+  {
+    "file": "legacy/secunet.p12",
+    "certificates": [
+      {
+        "subject": "cs200",
+        "friendly_name": "",
+        "local_key_id": "202281541b6404934da77ff27f7982e0cc65b0d9",
+        "sha256": "ea5011332622957771eb448cfba188951d59f8fdc9b39bf4bd242b3c4f153341"
+      }
+    ],
+    "keys": [
+      {
+        "friendly_name": "",
+        "local_key_id": "202281541b6404934da77ff27f7982e0cc65b0d9",
+        "sha256": "fb7b0227d5c933c6273aa46e4d4afdc32953985abb5d6a90c9609f63e91af910"
+      }
+    ],
+    "pairs": 1
+  },
+  {
+    "file": "modern.p12",
+    "certificates": [
+      {
+        "subject": "test.example.com",
+        "friendly_name": "Modern Test Certificate",
+        "local_key_id": "c6e77619251b6b0effb3e3e629f93eb0ac20f35d",
+        "sha256": "bf8ebf976c78be623ca14702abefda6c897b1f2765aaa5556388b87e1ba1c202"
+      },
+      {
+        "subject": "Test CA",
+        "friendly_name": "",
+        "local_key_id": "",
+        "sha256": "04b658c44ff1334594bf0a3b78cde93f5c1195586a4a775927318bea5793b08c"
+      }
+    ],
+    "keys": [
+      {
+        "friendly_name": "Modern Test Certificate",
+        "local_key_id": "c6e77619251b6b0effb3e3e629f93eb0ac20f35d",
+        "sha256": "1fcb21233cdaeeb8ae63b9f25b05b67d12d1a71c6fcf053248079715a3ce65a1"
+      }
+    ],
+    "pairs": 1
+  },
+  {
+    "file": "multi-cert.p12",
+    "certificates": [
+      {
+        "subject": "test.example.com",
+        "friendly_name": "Multi-Cert Test",
+        "local_key_id": "c6e77619251b6b0effb3e3e629f93eb0ac20f35d",
+        "sha256": "bf8ebf976c78be623ca14702abefda6c897b1f2765aaa5556388b87e1ba1c202"
+      },
+      {
+        "subject": "Test CA",
+        "friendly_name": "",
+        "local_key_id": "",
+        "sha256": "04b658c44ff1334594bf0a3b78cde93f5c1195586a4a775927318bea5793b08c"
+      }
+    ],
+    "keys": [
+      {
+        "friendly_name": "Multi-Cert Test",
+        "local_key_id": "c6e77619251b6b0effb3e3e629f93eb0ac20f35d",
+        "sha256": "1fcb21233cdaeeb8ae63b9f25b05b67d12d1a71c6fcf053248079715a3ce65a1"
+      }
+    ],
+    "pairs": 1
+  },
+  {
+    "file": "no-mac.p12",
+    "certificates": [
+      {
+        "subject": "test.example.com",
+        "friendly_name": "",
+        "local_key_id": "c6e77619251b6b0effb3e3e629f93eb0ac20f35d",
+        "sha256": "bf8ebf976c78be623ca14702abefda6c897b1f2765aaa5556388b87e1ba1c202"
+      }
+    ],
+    "keys": [
+      {
+        "friendly_name": "",
+        "local_key_id": "c6e77619251b6b0effb3e3e629f93eb0ac20f35d",
+        "sha256": "1fcb21233cdaeeb8ae63b9f25b05b67d12d1a71c6fcf053248079715a3ce65a1"
+      }
+    ],
+    "pairs": 1
+  },
+  {
+    "file": "not-pkcs12.p12",
+    "certificates": [],
+    "keys": [],
+    "pairs": 0,
+    "error": "failed to parse PKCS#12: pkcs12: invalid PFX structure: invalid DER structure, expected SEQUENCE tag (0x30), got 0x2d. File may be corrupted or not a PKCS#12 file"
+  },
+  {
+    "file": "random.p12",
+    "certificates": [],
+    "keys": [],
+    "pairs": 0,
+    "error": "failed to parse PKCS#12: pkcs12: invalid PFX structure: invalid DER structure, expected SEQUENCE tag (0x30), got 0x9b. File may be corrupted or not a PKCS#12 file"
+  },
+  {
+    "file": "truncated.p12",
+    "certificates": [],
+    "keys": [],
+    "pairs": 0,
+    "error": "failed to parse PKCS#12: pkcs12: invalid PFX structure: failed to read PFX SEQUENCE at offset 0. File may use unsupported encoding or be corrupted"
+  }
+]

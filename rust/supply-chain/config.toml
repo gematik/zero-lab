@@ -19,6 +19,18 @@ url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 [imports.zcash]
 url = "https://raw.githubusercontent.com/zcash/rust-ecosystem/main/supply-chain/audits.toml"
 
+[[exemptions.aead]]
+version = "0.6.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.aes]]
+version = "0.9.3"
+criteria = "safe-to-deploy"
+
+[[exemptions.aes-gcm]]
+version = "0.11.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.anstream]]
 version = "1.0.0"
 criteria = "safe-to-deploy"
@@ -71,6 +83,10 @@ criteria = "safe-to-deploy"
 version = "0.12.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.block-padding]]
+version = "0.4.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.bp256]]
 version = "0.14.0"
 criteria = "safe-to-deploy"
@@ -83,12 +99,20 @@ criteria = "safe-to-deploy"
 version = "1.12.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.cbc]]
+version = "0.2.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.cc]]
 version = "1.5.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.cfg-if]]
 version = "1.0.5"
+criteria = "safe-to-deploy"
+
+[[exemptions.cipher]]
+version = "0.5.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.clap]]
@@ -151,6 +175,10 @@ criteria = "safe-to-deploy"
 version = "0.7.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.ctr]]
+version = "0.10.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.ctutils]]
 version = "0.4.2"
 criteria = "safe-to-deploy"
@@ -173,6 +201,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.der_derive]]
 version = "0.8.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.des]]
+version = "0.9.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.digest]]
@@ -233,6 +265,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.getrandom]]
 version = "0.2.17"
+criteria = "safe-to-deploy"
+
+[[exemptions.ghash]]
+version = "0.6.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.group]]
@@ -407,6 +443,10 @@ criteria = "safe-to-deploy"
 version = "0.14.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.pbkdf2]]
+version = "0.13.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.pem-rfc7468]]
 version = "1.0.0"
 criteria = "safe-to-deploy"
@@ -419,8 +459,16 @@ criteria = "safe-to-deploy"
 version = "0.8.0-rc.4"
 criteria = "safe-to-deploy"
 
+[[exemptions.pkcs5]]
+version = "0.8.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.pkcs8]]
 version = "0.11.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.polyval]]
+version = "0.7.3"
 criteria = "safe-to-deploy"
 
 [[exemptions.portable-atomic]]
@@ -453,6 +501,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.rand_core]]
 version = "0.10.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.rc2]]
+version = "0.9.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.reqwest]]
@@ -503,12 +555,20 @@ criteria = "safe-to-deploy"
 version = "1.0.23"
 criteria = "safe-to-deploy"
 
+[[exemptions.salsa20]]
+version = "0.11.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.same-file]]
 version = "1.0.6"
 criteria = "safe-to-deploy"
 
 [[exemptions.schannel]]
 version = "0.1.29"
+criteria = "safe-to-deploy"
+
+[[exemptions.scrypt]]
+version = "0.12.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.sec1]]
@@ -665,6 +725,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.unicode-ident]]
 version = "1.0.26"
+criteria = "safe-to-deploy"
+
+[[exemptions.universal-hash]]
+version = "0.6.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.untrusted]]

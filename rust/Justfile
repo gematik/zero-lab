@@ -91,9 +91,10 @@ test:
     cargo nextest run --workspace
     cargo test --workspace --all-features --doc
 
-# The loading layer and the reqwest transport build for the browser
+# The loading layer, the reqwest transport and PKCS#12 decoding build for the browser
 wasm32:
     cargo check -p ti-pki --target wasm32-unknown-unknown --features load,reqwest
+    cargo check -p ti-pkcs12 --target wasm32-unknown-unknown
 
 # ti-pki's core (everything but the optional adapter and algorithm features) pulls in no
 # HTTP client, executor, file watcher or brainpool arithmetic; cargo-deny bans are
