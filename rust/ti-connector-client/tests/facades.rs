@@ -278,3 +278,30 @@ fn external_authenticate_returns_raw_signatures() {
         assert!(seen[0].body.contains(part), "{part} in {}", seen[0].body);
     }
 }
+
+const GO_CARDS: &str = include_str!("fixtures/go-get-cards.xml");
+
+#[test]
+fn find_resolves_iccsn_and_falls_back_to_the_handle() {
+    let transport = Scripted::new([ok(200, GO_CARDS)]);
+    let first = connector(&transport);
+    let card = block_on(first.cards().find("80276123456789020001")).unwrap();
+    assert_eq!(card.card_handle, "card-hba-1");
+
+    // An unknown ICCSN is still tried as a handle, and the Konnektor's answer counts.
+    let transport = Scripted::new([
+        ok(200, GO_CARDS),
+        ok(500, &fault(4101, "Karten-Handle ungültig")),
+    ]);
+    let second = connector(&transport);
+    let Err(Error::Fault(fault)) = block_on(second.cards().find("80276000000000000000")) else {
+        panic!("the handle lookup's fault");
+    };
+    assert_eq!(fault.trace[0].code, Some(4101));
+    let seen = transport.seen.borrow();
+    assert!(
+        seen[1]
+            .body
+            .contains(">80276000000000000000</connectorcommon50:CardHandle>")
+    );
+}

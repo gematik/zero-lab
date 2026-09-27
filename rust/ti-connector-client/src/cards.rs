@@ -6,7 +6,7 @@ use crate::api::gematik::conn::eventservice72::{
 use crate::connector::Connector;
 use crate::error::Error;
 use crate::soap::Transport;
-use crate::types::{Card, CardType};
+use crate::types::{Card, CardType, CertRef, Crypt, ResourceInformation};
 
 /// The cards facade; see [`Connector::cards`].
 #[derive(Debug)]
@@ -54,6 +54,47 @@ impl<T: Transport> Cards<'_, T> {
         Ok(cards)
     }
 
+    /// The card an identifier names: a card handle or ICCSN of a listed card, a
+    /// Telematik-ID (`<1-2 digits>-…`, looked up in the C.AUT of the HBAs and SMC-Bs),
+    /// or else a handle the Konnektor resolves itself. Listing first also finds cards
+    /// the Konnektor answers no resource query for (SMC-KT).
+    ///
+    /// # Errors
+    ///
+    /// As [`Error`]; the error of the handle lookup when nothing matches.
+    pub async fn find(&self, identifier: &str) -> Result<Card, Error> {
+        let cards = self.list(&[]).await?;
+        if let Some(card) = cards
+            .iter()
+            .find(|c| c.card_handle == identifier || c.iccsn.as_deref() == Some(identifier))
+        {
+            return Ok(card.clone());
+        }
+        let telematik_id = identifier.split_once('-').is_some_and(|(prefix, rest)| {
+            (1..=2).contains(&prefix.len())
+                && prefix.bytes().all(|b| b.is_ascii_digit())
+                && !rest.is_empty()
+        });
+        if telematik_id {
+            let holders = cards
+                .into_iter()
+                .filter(|c| matches!(c.card_type, CardType::Hba | CardType::SmcB));
+            for card in holders {
+                let certificates = self
+                    .connector
+                    .certificates()
+                    .read(&card.card_handle, Crypt::Ecc, &[CertRef::CAut])
+                    .await;
+                if certificates
+                    .is_ok_and(|c| c.iter().any(|c| c.telematik_id() == Some(identifier)))
+                {
+                    return Ok(card);
+                }
+            }
+        }
+        self.get(identifier).await
+    }
+
     /// The card with `handle`.
     ///
     /// # Errors
@@ -73,5 +114,24 @@ impl<T: Transport> Cards<'_, T> {
         response
             .card
             .ok_or_else(|| Error::Decode(format!("GetResourceInformation: no card for {handle}")))
+    }
+}
+
+impl<T: Transport> Connector<T> {
+    /// The Konnektor's own state: VPN connections and operating errors
+    /// (GetResourceInformation without a card or terminal).
+    ///
+    /// # Errors
+    ///
+    /// As [`Error`].
+    pub async fn status(&self) -> Result<ResourceInformation, Error> {
+        self.call::<GetResourceInformationInput>(GetResourceInformation {
+            context: self.context(),
+            ct_id: None,
+            slot_id: None,
+            iccsn: None,
+            card_handle: None,
+        })
+        .await
     }
 }

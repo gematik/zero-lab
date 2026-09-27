@@ -9,7 +9,8 @@
 - `Connector` over a caller-supplied `Transport` with short and long `Timeouts`;
   one generic SOAP call for every generated operation; faults with the gematik error
   trace read leniently.
-- `Connector::cards`: `list` and `get` (EventService 7.2).
+- `Connector::cards`: `list`, `get`, and `find` by ICCSN, Telematik-ID or handle
+  (EventService 7.2); `Connector::status`, the Konnektor's VPN and operating state.
 - `Connector::certificates`: `read`, `read_all` (ECC, then RSA where present),
   `expiration`, `verify` (CertificateService 6.0); `CardCertificate` with the parsed
   certificate, its admission and Telematik-ID.

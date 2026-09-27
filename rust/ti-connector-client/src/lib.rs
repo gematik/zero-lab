@@ -59,7 +59,10 @@ pub mod types {
         VerifyCertificateResponse as CertificateVerification,
     };
     pub use crate::api::gematik::conn::certificateservicecommon20::CertRefEnum as CertRef;
-    pub use crate::api::gematik::conn::connectorcommon50::{Result as StatusResult, Status};
+    pub use crate::api::gematik::conn::connectorcommon50::{
+        Connector as ConnectorStatus, ErrorState, Result as StatusResult, Status,
+    };
+    pub use crate::api::gematik::conn::eventservice72::GetResourceInformationResponse as ResourceInformation;
     pub use crate::api::gematik::tel::error20::{Error as ErrorDetail, ErrorTrace};
     pub use crate::api::soap::{SoapOperation, Timeout};
 }
