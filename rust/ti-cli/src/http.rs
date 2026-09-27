@@ -409,7 +409,7 @@ mod tests {
             "HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\nresp",
         ]);
         // No proxy, whatever the environment of the test run says.
-        let http = transport(&Args::parse_from(["tir", "-x", ""]).net, 0).unwrap();
+        let http = transport(&Args::parse_from([crate::BIN, "-x", ""]).net, 0).unwrap();
         let get = |etag| {
             http.get_once(&ArtifactRequest {
                 artifact: Artifact::Tsl,

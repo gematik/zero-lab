@@ -1,4 +1,4 @@
-//! `tir pki inspect`: what the TI reads from a certificate, without validating it.
+//! `ti pki inspect`: what the TI reads from a certificate, without validating it.
 
 use std::path::Path;
 
@@ -14,7 +14,7 @@ use x509_cert::der::oid::ObjectIdentifier;
 use crate::error::{CliError, Exit};
 use crate::input;
 use crate::output::document::{span, when};
-use crate::output::{Document, Line, OidInfo, Output, SCHEMA, Tone, hex};
+use crate::output::{Document, Line, OidInfo, Output, SCHEMA, Tone, hex, pem};
 
 /// The JSON document.
 #[derive(Serialize)]
@@ -55,6 +55,7 @@ struct CertificateInfo {
     subject_key_id: Option<String>,
     authority_key_id: Option<String>,
     sha256: String,
+    pem: String,
 }
 
 #[derive(Serialize)]
@@ -91,7 +92,7 @@ pub fn run(file: &Path, out: &Output) -> Result<Exit, CliError> {
     if out.is_json() {
         out.json(&report)?;
     } else {
-        out.render(&document(&report))?;
+        out.render_views(&sections(&report), &summary(&report))?;
     }
     Ok(Exit::Ok)
 }
@@ -108,13 +109,7 @@ fn describe(cert: &Certificate, now: Timestamp) -> CertificateInfo {
         not_after: cert.not_after().to_string(),
         not_before_at: cert.not_before(),
         not_after_at: cert.not_after(),
-        validity: if now < cert.not_before() {
-            "not_yet_valid"
-        } else if now > cert.not_after() {
-            "expired"
-        } else {
-            "valid"
-        },
+        validity: super::validity(cert, now),
         key: KeyInfo {
             algorithm,
             status: status.as_str(),
@@ -151,6 +146,7 @@ fn describe(cert: &Certificate, now: Timestamp) -> CertificateInfo {
         subject_key_id: cert.subject_key_id().map(hex),
         authority_key_id: cert.authority_key_id().map(hex),
         sha256: hex(&Sha256::digest(cert.der())),
+        pem: pem(cert.der()),
     }
 }
 
@@ -173,7 +169,8 @@ fn extension_name(oid: &ObjectIdentifier) -> String {
     name.to_owned()
 }
 
-fn document(report: &Report) -> Document {
+/// The terminal view: a section per aspect, every detail.
+fn sections(report: &Report) -> Document {
     let mut doc = Document::default();
     let count = report.certificates.len();
     for (i, cert) in report.certificates.iter().enumerate() {
@@ -202,7 +199,6 @@ fn document(report: &Report) -> Document {
                 Line::code(p.name).and_dim(format!(" ({})", p.detail)),
             );
         }
-        // Fields first, lists after, so Markdown gets one table per section.
         if let Some(a) = &cert.admission {
             doc.field("admission", a.profession_items.join(", "));
             if let Some(number) = &a.registration_number {
@@ -248,19 +244,115 @@ fn document(report: &Report) -> Document {
 
 /// A distinguished name as a section: the common name first and strong, the other
 /// components on one line.
-fn name_section(doc: &mut Document, title: &str, name: &str) {
-    let parts = dn_parts(name);
-    let (cn, rest): (Vec<&str>, Vec<&str>) = parts
-        .iter()
-        .map(String::as_str)
-        .partition(|part| part.starts_with("CN="));
+pub(super) fn name_section(doc: &mut Document, title: &str, name: &str) {
+    let (cn, rest) = split_name(name);
     doc.section(title);
-    if let Some(cn) = cn.first() {
-        doc.paragraph(Line::strong(&cn[3..]));
+    if let Some(cn) = cn {
+        doc.paragraph(Line::strong(cn));
     }
     if !rest.is_empty() {
-        doc.paragraph(Line::dim(rest.join(" · ")));
+        doc.paragraph(Line::dim(rest));
     }
+}
+
+/// The Markdown view: a summary, then one list, then the PEM.
+fn summary(report: &Report) -> Document {
+    let mut doc = Document::default();
+    let count = report.certificates.len();
+    for (i, cert) in report.certificates.iter().enumerate() {
+        // The file is the user's own argument; a title only separates several certificates.
+        if count > 1 {
+            doc.title(format!("Certificate {} of {count}", i + 1));
+        }
+        let (cn, rest) = split_name(&cert.subject);
+        doc.paragraph(
+            Line::strong(cn.unwrap_or("(no common name)"))
+                .and_text(" · ")
+                .and_line(
+                    cert.certificate_type
+                        .map_or_else(|| Line::dim("type not detected"), Line::code),
+                )
+                .and_text(" · ")
+                .and_line(validity(cert, report.now)),
+        );
+        if !rest.is_empty() {
+            doc.paragraph(Line::dim(rest));
+        }
+        let (issuer, _) = split_name(&cert.issuer);
+        doc.paragraph(
+            Line::text("issued by ")
+                .and_text(issuer.unwrap_or(&cert.issuer))
+                .and_dim(" · serial ")
+                .and_code(&cert.serial),
+        );
+
+        doc.field(
+            "valid",
+            format!("{} → {}", when(cert.not_before_at), when(cert.not_after_at)),
+        );
+        if let Some(p) = &cert.profile {
+            doc.field(
+                "profile",
+                Line::code(p.name).and_dim(format!(" ({})", p.detail)),
+            );
+        }
+        if let Some(a) = &cert.admission {
+            let mut line = Line::text(a.profession_items.join(", "));
+            if let Some(number) = &a.registration_number {
+                line = line.and_dim(" · registration ").and_code(number);
+            }
+            doc.field("admission", line);
+            doc.items("profession", a.profession_oids.iter().map(oid_line));
+        }
+        doc.items("policies", cert.policies.iter().map(oid_line));
+        let key_tone = match cert.key.status {
+            s if s == KeyStatus::Admissible.as_str() => Tone::Good,
+            s if s == KeyStatus::PhasedOut.as_str() => Tone::Warn,
+            _ => Tone::Bad,
+        };
+        doc.field(
+            "key",
+            Line::text(format!("{} ", cert.key.algorithm))
+                .and_status(key_tone, cert.key.status)
+                .and_dim(format!(" · signed {}", cert.signature_algorithm)),
+        );
+        doc.field("key usage", codes(&cert.key_usage));
+        if !cert.extended_key_usage.is_empty() {
+            doc.field("ext. usage", codes(&cert.extended_key_usage));
+        }
+        if cert.ca {
+            doc.field(
+                "CA",
+                cert.path_len
+                    .map_or_else(|| "yes".to_owned(), |n| format!("yes, path length {n}")),
+            );
+        }
+        if !cert.critical_extensions.is_empty() {
+            doc.field("critical", codes(&cert.critical_extensions));
+        }
+        for url in &cert.ocsp_urls {
+            doc.field("OCSP", Line::link(url));
+        }
+        doc.pem(&cert.pem);
+    }
+    doc
+}
+
+/// The common name of an RFC 4514 name, and its other components joined by ` · `.
+pub(super) fn split_name(name: &str) -> (Option<&str>, String) {
+    let mut cn = None;
+    let mut rest = Vec::new();
+    let mut start = 0;
+    for part in dn_parts(name) {
+        let len = part.len();
+        let part = &name[start..start + len];
+        start += len + 1;
+        match part.strip_prefix("CN=") {
+            Some(value) if cn.is_none() => cn = Some(value),
+            _ => rest.push(part),
+        }
+    }
+    (cn, rest.join(" · "))
 }
 
 /// The components of an RFC 4514 name; a comma escaped with a backslash is part of its

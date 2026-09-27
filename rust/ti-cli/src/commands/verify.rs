@@ -1,4 +1,4 @@
-//! `tir pki verify`: builds the chain to the TI roots through the TSL's CAs and
+//! `ti pki verify`: builds the chain to the TI roots through the TSL's CAs and
 //! validates it the way a relying party would, OCSP included. `--offline` uses cached
 //! or embedded trust material and skips revocation, and the report says so rather than
 //! passing silently.
@@ -21,10 +21,10 @@ use ti_pki::{
 use crate::block::block_on;
 use crate::cli::{Environment, GlobalArgs, VerifyArgs};
 use crate::error::{CliError, Exit};
+use crate::input;
 use crate::output::document::when;
-use crate::output::{Document, Line, Output, SCHEMA, Tone, warning};
-use crate::trust::{self, NoNetwork, TrustInfo};
-use crate::{http, input, paths};
+use crate::output::{Document, Line, Output, SCHEMA, Tone, pem};
+use crate::trust::{Session, TrustInfo};
 
 /// The JSON document.
 #[derive(Serialize)]
@@ -36,6 +36,10 @@ struct Report {
     at: String,
     #[serde(skip)]
     at_ts: Timestamp,
+    /// The end entity's subject, also when no chain could be built; JSON has it in
+    /// `chain[0]`.
+    #[serde(skip)]
+    subject: String,
     certificate_type: Option<String>,
     profile: ProfileInfo,
     trust: TrustInfo,
@@ -79,8 +83,12 @@ struct ChainEntry {
     position: &'static str,
     subject: String,
     common_name: String,
+    not_after: String,
+    #[serde(skip)]
+    not_after_at: Timestamp,
     /// What OCSP said; absent when not asked (offline, the root, or not reached).
     revocation: Option<RevocationEntry>,
+    pem: String,
 }
 
 #[derive(Serialize)]
@@ -132,29 +140,8 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
     let (env, detection) = environment(args.env, &certs, at)?;
     let config = TrustConfig::preset(env);
     config.validate(env.tier()).map_err(CliError::Trust)?;
-    let cache_dir = match paths::cache_dir(global.cache_dir.as_deref()) {
-        Ok(dir) => Some(dir),
-        Err(error) => {
-            out.verbose(1, format_args!("{error}; caching in memory only"));
-            None
-        }
-    };
-    let insecure = global.net.insecure && !args.offline;
-    if insecure {
-        warning("-k: TLS certificates of downloads are not checked");
-    }
-
-    let transport = if args.offline {
-        None
-    } else {
-        Some(http::transport(&global.net, out.verbosity())?)
-    };
-    let material = block_on(async {
-        match &transport {
-            Some(transport) => trust::load(&config, env.tier(), transport, cache_dir, false).await,
-            None => trust::load(&config, env.tier(), NoNetwork, cache_dir, true).await,
-        }
-    })?;
+    let session = Session::new(global, args.offline, out)?;
+    let material = session.load(&config, env.tier())?;
     out.verbose(
         1,
         format_args!(
@@ -172,7 +159,7 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
         &mut warnings,
     );
     let validated = block_on(async {
-        if let Some(transport) = &transport {
+        if let Some(transport) = session.transport() {
             let checker = OcspChecker::new(&config, transport, SystemClock);
             validator.validate(&certs, at, &checker).await
         } else {
@@ -197,14 +184,14 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
         trust: material.info,
         revocation: validator.revocation,
         offline: args.offline,
-        insecure,
+        insecure: session.insecure,
         warnings,
     };
     let report = report(run, &certs[0], &result);
     if out.is_json() {
         out.json(&report)?;
     } else {
-        out.render(&document(&report))?;
+        out.render_views(&sections(&report), &summary(&report))?;
     }
     Ok(if report.valid {
         Exit::Ok
@@ -229,35 +216,29 @@ fn environment(
     certs: &[Certificate],
     at: Timestamp,
 ) -> Result<(Env, Option<Detection>), CliError> {
-    let env = match choice {
-        Environment::Prod => Env::Prod,
-        Environment::Ref => Env::Ref,
-        Environment::Test => Env::Test,
-        Environment::Dev => Env::Dev,
-        Environment::Auto => {
-            let found = detect_trust_domain(certs, at);
-            let (Some(tier), Some(method)) = (found.domain, found.method) else {
-                let tried: Vec<String> = found
-                    .steps
-                    .iter()
-                    .map(|step| format!("{}: {}", step.method, step.outcome))
-                    .collect();
-                return Err(CliError::EnvironmentUndetected(tried.join("; ")));
-            };
-            let env = match tier {
-                Tier::Prod => Env::Prod,
-                Tier::NonProd => Env::Ref,
-            };
-            return Ok((
-                env,
-                Some(Detection {
-                    method: method.as_str(),
-                    detail: found.detail,
-                }),
-            ));
-        }
+    if let Some(env) = choice.concrete() {
+        return Ok((env, None));
+    }
+    let found = detect_trust_domain(certs, at);
+    let (Some(tier), Some(method)) = (found.domain, found.method) else {
+        let tried: Vec<String> = found
+            .steps
+            .iter()
+            .map(|step| format!("{}: {}", step.method, step.outcome))
+            .collect();
+        return Err(CliError::EnvironmentUndetected(tried.join("; ")));
     };
-    Ok((env, None))
+    let env = match tier {
+        Tier::Prod => Env::Prod,
+        Tier::NonProd => Env::Ref,
+    };
+    Ok((
+        env,
+        Some(Detection {
+            method: method.as_str(),
+            detail: found.detail,
+        }),
+    ))
 }
 
 fn validator(
@@ -358,6 +339,7 @@ fn report(run: Run, ee: &Certificate, result: &ValidationResult) -> Report {
         },
         at: run.at.to_string(),
         at_ts: run.at,
+        subject: ee.subject().to_string(),
         certificate_type: detect_certificate_type(ee).map(|t| t.to_string()),
         profile: run.profile,
         trust: run.trust,
@@ -373,11 +355,14 @@ fn report(run: Run, ee: &Certificate, result: &ValidationResult) -> Report {
                 position: position.as_str(),
                 subject: cert.subject().to_string(),
                 common_name: cert.subject_cn().to_owned(),
+                not_after: cert.not_after().to_string(),
+                not_after_at: cert.not_after(),
                 revocation: result
                     .cert_results
                     .get(i)
                     .and_then(|r| r.revocation.as_ref())
                     .map(revocation_entry),
+                pem: pem(cert.der()),
             })
             .collect(),
         errors: result
@@ -418,8 +403,10 @@ fn mode_name(mode: RevocationMode) -> &'static str {
     }
 }
 
-fn document(report: &Report) -> Document {
+/// The terminal view: result, chain and findings as sections.
+fn sections(report: &Report) -> Document {
     let mut doc = Document::default();
+    super::inspect::name_section(&mut doc, "Subject", &report.subject);
     doc.section("Result");
     doc.field("result", {
         let mut line = if report.valid {
@@ -449,7 +436,7 @@ fn document(report: &Report) -> Document {
             .map_or_else(|| Line::dim("not detected"), Line::code),
     );
     doc.field("profile", profile_line(&report.profile));
-    doc.field("trust", trust_line(&report.trust));
+    doc.field("trust", super::trust_line(&report.trust));
     if report.insecure_transport {
         doc.field(
             "transport",
@@ -462,9 +449,12 @@ fn document(report: &Report) -> Document {
         doc.paragraph(Line::dim("no chain to a trusted root"));
     }
     for entry in &report.chain {
-        let mut line = Line::strong(&entry.common_name);
+        let mut line = Line::strong(&entry.common_name).and_line(super::expiry(
+            entry.not_after_at,
+            validity_at(entry, report),
+        ));
         if let Some(r) = &entry.revocation {
-            line = line.and_text("  ").and_line(ocsp_line(r));
+            line = line.and_text(" · ").and_line(ocsp_line(r));
         }
         doc.field(position_label(entry.position), line);
     }
@@ -490,6 +480,114 @@ fn document(report: &Report) -> Document {
     if !report.warnings.is_empty() {
         doc.section("Warnings");
         doc.items("", report.warnings.iter().map(|f| finding(Tone::Warn, f)));
+    }
+    doc
+}
+
+fn position_label(position: &str) -> &'static str {
+    match position {
+        p if p == ChainPosition::EndEntity.as_str() => "end entity",
+        p if p == ChainPosition::Root.as_str() => "root",
+        _ => "CA",
+    }
+}
+
+/// `expired` when the certificate had expired at the instant validated at.
+fn validity_at(entry: &ChainEntry, report: &Report) -> &'static str {
+    if entry.not_after_at < report.at_ts {
+        "expired"
+    } else {
+        "valid"
+    }
+}
+
+/// The Markdown view: the verdict and context as lines, the chain as a list, the
+/// findings, the chain as PEM.
+fn summary(report: &Report) -> Document {
+    let mut doc = Document::default();
+    let mut verdict = if report.valid {
+        Line::status(Tone::Good, "VALID")
+    } else {
+        Line::status(Tone::Bad, "INVALID")
+            .and_dim(format!(", {}", count(report.errors.len(), "error")))
+    };
+    if !report.warnings.is_empty() {
+        verdict = verdict.and_dim(format!(", {}", count(report.warnings.len(), "warning")));
+    }
+    if let Some(ee) = report.chain.first() {
+        verdict = verdict.and_text(" · ").and_strong(&ee.common_name);
+    }
+    if let Some(t) = &report.certificate_type {
+        verdict = verdict.and_text(" · ").and_code(t);
+    }
+    doc.paragraph(verdict);
+
+    let env = &report.environment;
+    let mut context = Line::text(env.name);
+    if env.detection.is_some() {
+        context = context.and_dim(" (detected)");
+    }
+    context = context
+        .and_dim(format!(" · at {}", when(report.at_ts)))
+        .and_dim(" · profile ")
+        .and_line(profile_line(&report.profile));
+    doc.paragraph(context);
+    doc.paragraph(Line::dim("revocation ").and_line(revocation_line(report)));
+    doc.paragraph(Line::dim("trust ").and_line(super::trust_line(&report.trust)));
+    if report.insecure_transport {
+        doc.paragraph(Line::status(Tone::Warn, "TLS of downloads not verified").and_dim(" (-k)"));
+    }
+
+    if report.chain.is_empty() {
+        doc.items("", [Line::dim("no chain to a trusted root")]);
+    }
+    doc.items(
+        "",
+        report.chain.iter().map(|entry| {
+            let mut line = Line::strong(&entry.common_name);
+            if entry.position == ChainPosition::Root.as_str() {
+                line = line.and_dim(" · root");
+            }
+            line = line.and_line(super::expiry(
+                entry.not_after_at,
+                validity_at(entry, report),
+            ));
+            if let Some(r) = &entry.revocation {
+                line = line.and_text(" · ").and_line(ocsp_line(r));
+            }
+            line
+        }),
+    );
+
+    if !report.errors.is_empty() || !report.warnings.is_empty() {
+        let findings = report
+            .errors
+            .iter()
+            .map(|f| finding(Tone::Bad, f))
+            .chain(report.warnings.iter().map(|f| finding(Tone::Warn, f)));
+        doc.section("Findings").items("", findings);
+    }
+    // Only a missing issuer of the end entity is fixed by --issuer; a CA without its
+    // root means the roots walk did not reach one at that time.
+    if report.chain.len() == 1
+        && report
+            .errors
+            .iter()
+            .any(|e| e.code == ErrorCode::ChainIncomplete.as_str())
+    {
+        doc.paragraph(
+            Line::dim("hint: ")
+                .and_text("the issuing CA is not among the trusted CAs; pass it with ")
+                .and_code("--issuer"),
+        );
+    }
+    let chain: String = report
+        .chain
+        .iter()
+        .map(|entry| entry.pem.as_str())
+        .collect();
+    if !chain.is_empty() {
+        doc.pem(chain);
     }
     doc
 }
@@ -537,26 +635,6 @@ fn revocation_line(report: &Report) -> Line {
     }
 }
 
-fn trust_line(trust: &TrustInfo) -> Line {
-    let counts = format!("{} roots, {} TSL CAs", trust.roots, trust.intermediates);
-    let mut line = if trust.note.is_some() {
-        Line::status(Tone::Warn, counts)
-    } else {
-        Line::text(counts)
-    };
-    line = match trust.fetched_at_ts {
-        Some(at) => line.and_dim(format!(" · {} {}", trust.source, when(at))),
-        None => line.and_dim(format!(" · {}", trust.source)),
-    };
-    if let Some(next) = trust.tsl_next_update_ts {
-        line = line.and_dim(format!(" · TSL next update {}", when(next)));
-    }
-    if let Some(note) = &trust.note {
-        line = line.and_dim(format!(" · {note}"));
-    }
-    line
-}
-
 fn ocsp_line(r: &RevocationEntry) -> Line {
     let tone = match r.status {
         s if s == RevocationStatus::Good.as_str() => Tone::Good,
@@ -585,14 +663,6 @@ fn profile_line(profile: &ProfileInfo) -> Line {
     match profile.name {
         Some(name) => Line::code(name).and_dim(format!(" ({why})")),
         None => Line::dim(format!("none ({why})")),
-    }
-}
-
-fn position_label(position: &str) -> &'static str {
-    match position {
-        p if p == ChainPosition::EndEntity.as_str() => "end entity",
-        p if p == ChainPosition::Root.as_str() => "root",
-        _ => "CA",
     }
 }
 

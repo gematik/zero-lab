@@ -1,4 +1,4 @@
-//! `tir`: the command-line tool for the gematik Telematikinfrastruktur, in Rust.
+//! `ti` (built as `tir` for now): the command-line tool for the gematik Telematikinfrastruktur, in Rust.
 
 use std::process::ExitCode;
 

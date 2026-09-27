@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pki profiles list",
+  "description": "The validation profiles.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "profiles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/profile"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "profiles"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "oid": {
+      "type": "object",
+      "properties": {
+        "oid": {
+          "type": "string",
+          "description": "Dotted form"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "gemSpec_OID description, where the TI defines one"
+        }
+      },
+      "required": [
+        "oid",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "profile": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "revocation": {
+          "enum": [
+            "hard-fail",
+            "soft-fail",
+            "disabled"
+          ]
+        },
+        "accepts_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "default_for": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "required_role_oids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/oid"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "revocation",
+        "accepts_types",
+        "default_for",
+        "required_role_oids"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

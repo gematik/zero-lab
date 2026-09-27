@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pki roots list",
+  "description": "The roots an environment trusts.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "environment": {
+      "enum": [
+        "prod",
+        "ref",
+        "test",
+        "dev"
+      ]
+    },
+    "trust": {
+      "$ref": "#/$defs/trust"
+    },
+    "insecure_transport": {
+      "type": "boolean"
+    },
+    "roots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "common_name": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "not_before": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC 3339, UTC"
+          },
+          "not_after": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC 3339, UTC"
+          },
+          "validity": {
+            "enum": [
+              "valid",
+              "expired",
+              "not_yet_valid"
+            ]
+          },
+          "anchor": {
+            "type": "boolean",
+            "description": "The embedded anchor the walk started from"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "pem": {
+            "type": "string",
+            "description": "The certificate as PEM"
+          }
+        },
+        "required": [
+          "common_name",
+          "subject",
+          "not_before",
+          "not_after",
+          "validity",
+          "anchor",
+          "sha256",
+          "pem"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "environment",
+    "trust",
+    "insecure_transport",
+    "roots"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "trust": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "enum": [
+            "http",
+            "cache",
+            "file",
+            "bundle",
+            "embedded"
+          ],
+          "description": "Where roots.json and the TSL came from; trust never depends on it"
+        },
+        "fetched_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "When downloaded or last confirmed; null when embedded"
+        },
+        "tsl_next_update": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        },
+        "roots": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Roots reached from the embedded anchor"
+        },
+        "intermediates": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "TSL CAs a verified root signed"
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Why the material is less than the environment's full set"
+        }
+      },
+      "required": [
+        "source",
+        "fetched_at",
+        "tsl_next_update",
+        "roots",
+        "intermediates",
+        "note"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

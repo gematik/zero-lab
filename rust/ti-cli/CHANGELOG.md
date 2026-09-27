@@ -20,3 +20,14 @@
   HTTP options take effect over ureq (TLS on rustls/ring with the OS store, `--cacert`,
   `--capath`, `-k`, proxies, timeouts, `--retry`, user agent); `-v` logs each request.
 - Text output no longer cuts lines to the terminal width.
+- `pki roots list` and `pki tsl show` (`--ca`, `--provider`, `--root`, `--rejected`):
+  the trust material behind `verify`, per environment; the TSL's CAs as a tree under
+  the roots that signed them, described from their certificates only.
+- `cache clear`: deletes the downloaded trust material (only the `ti-pki/` subtree).
+- `schema [COMMAND]`: JSON Schema of every command's output and of errors, embedded
+  and tested against real output; `agent`: the embedded AGENTS.md usage guide for the
+  whole tool; `version`.
+- Output: sectioned terminal views, compact Markdown (a summary, then one list; no
+  tables), trees for hierarchies, PEM for certificates in JSON and Markdown, dates alone in lists and
+  `2023-02-09 00:00 CET` elsewhere.
+- The executable's name comes from `ti_cli::BIN` (`tir` until parity with the Go `ti`).

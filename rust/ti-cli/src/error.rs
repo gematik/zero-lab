@@ -64,6 +64,9 @@ pub enum CliError {
     /// roots.json or the TSL could not be loaded or failed verification.
     #[error("trust material unavailable: {0}")]
     TrustLoad(String),
+    /// `ti schema` was asked for a command that has none.
+    #[error("no JSON schema for {0:?}")]
+    UnknownSchema(String),
     /// The HTTP client could not be set up from the options.
     #[error("HTTP setup: {0}")]
     HttpSetup(String),
@@ -85,6 +88,7 @@ impl CliError {
             CliError::EnvironmentUndetected(_) => "environment_undetected",
             CliError::Trust(_) | CliError::TrustLoad(_) => "trust_material_unavailable",
             CliError::HttpSetup(_) => "http_setup",
+            CliError::UnknownSchema(_) => "unknown_schema",
             CliError::CacheDir(_) => "cache_dir_unknown",
             CliError::Output(_) => "output_failed",
         }
@@ -102,6 +106,7 @@ impl CliError {
                 Some("check the network and the HTTP options (-v shows them), or pass --offline")
             }
             CliError::HttpSetup(_) => Some("check --cacert, --capath and --proxy"),
+            CliError::UnknownSchema(_) => Some("the schema command without COMMAND lists them all"),
             CliError::CacheDir(_) => Some("set --cache-dir or TI_CACHE_DIR"),
             CliError::Trust(_) | CliError::Output(_) => None,
         }
@@ -113,15 +118,16 @@ impl CliError {
             CliError::Read { .. }
             | CliError::NoCertificate { .. }
             | CliError::Certificate { .. } => Exit::Input,
-            CliError::EnvironmentUndetected(_) | CliError::HttpSetup(_) | CliError::CacheDir(_) => {
-                Exit::Usage
-            }
+            CliError::EnvironmentUndetected(_)
+            | CliError::HttpSetup(_)
+            | CliError::UnknownSchema(_)
+            | CliError::CacheDir(_) => Exit::Usage,
             CliError::Trust(_) | CliError::TrustLoad(_) => Exit::TrustUnavailable,
             CliError::Output(_) => Exit::Output,
         }
     }
 
-    /// Whether the reader of stdout went away (`tir … | head`), which is not an error.
+    /// Whether the reader of stdout went away (`ti … | head`), which is not an error.
     pub fn is_broken_pipe(&self) -> bool {
         matches!(self, CliError::Output(e) if e.kind() == io::ErrorKind::BrokenPipe)
     }

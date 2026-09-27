@@ -1,24 +1,50 @@
 # ti-cli
 
-`tir`, the command-line tool for the gematik Telematikinfrastruktur (TI), in Rust. It
-builds on [`ti-pki`](../ti-pki) and is called `tir` until it covers what the Go `ti`
-does; then it becomes `ti`.
+`ti`, the command-line tool for the gematik Telematikinfrastruktur (TI), in Rust, built
+on [`ti-pki`](../ti-pki). Commands are grouped by subsystem; `pki` is the first.
+
+> Until it covers what the Go `ti` does, the executable is called `tir` so both can be
+> installed side by side: read `tir` for `ti` in the examples. The name lives in one
+> place (`ti_cli::BIN` and the `[[bin]]` target), and help, user agent, diagnostics and
+> `ti agent` all take it from there.
 
 ```sh
-just install                      # cargo install into ~/.cargo/bin/tir
-tir pki inspect card.pem          # what the TI reads from a certificate
-tir pki inspect - < card.der
-tir pki inspect card.pem > card.md  # piped output is Markdown
-tir --format json pki inspect card.pem | jq '.certificates[0].certificate_type'
-tir pki profiles list
-tir pki profiles describe smb-aut
-tir pki verify card.pem                   # exit 0 valid, 1 not valid
-tir pki verify card.pem --offline         # cached trust material, no OCSP
+just install                        # cargo install into ~/.cargo/bin
+ti pki inspect card.pem             # what the TI reads from a certificate
+ti pki inspect - < card.der
+ti pki inspect card.pem > card.md   # piped output is Markdown, with the PEM
+ti --format json pki inspect card.pem | jq '.certificates[0].certificate_type'
+ti pki profiles list
+ti pki profiles describe smb-aut
+ti pki verify card.pem              # exit 0 valid, 1 not valid
+ti pki verify card.pem --offline    # cached trust material, no OCSP
+ti pki roots list --env ref         # the roots reached from the anchor
+ti pki tsl show                     # the TSL's CAs under the roots that signed them
+ti pki tsl show --rejected          # the CAs no verified root signed, and why
+ti pki tsl show --ca SMCB-CA51      # one CA; Markdown adds its PEM
+ti cache clear
+ti schema pki verify                # JSON Schema of a command's output
+ti agent                            # usage guide for scripts and agents
+ti version
 ```
+
+## Trust material
+
+`pki roots list` and `pki tsl show` show what `verify` works with, for one environment
+(`--env`, default `prod`; `auto` has nothing to detect from here). `roots list` gives the
+roots the A_28419 walk reaches from the embedded anchor. `tsl show` draws the TSL's CAs
+as a tree under the verified root that signed each, and gives those no verified root
+signed their own group, with the reason. Filter with `--ca`, `--provider`, `--root` and
+`--rejected`.
+
+The TSL is not authenticated. Of each entry only the certificate and the provider name
+are used, and the TSL's own metadata (such as the certificate types it lists per CA) is
+ignored: what is shown about a CA, its policies and path length, comes from its signed
+certificate. `--offline` works from the cache.
 
 ## Verify
 
-`tir pki verify` builds the chain to the TI roots through the CAs of the TSL and
+`ti pki verify` builds the chain to the TI roots through the CAs of the TSL and
 validates it: RFC 5280 path, gemSpec_Krypt key, the requirements of the profile
 (`--profile auto|none|<name>`), and OCSP for the end entity and every CA below the root.
 The environment comes from `--env` (`TI_ENV`) or, with `auto`, from the certificates:
@@ -41,14 +67,19 @@ The tool is meant for people and for agents alike:
 
 - Results go to stdout, diagnostics (`-v`, `-vv`) and errors to stderr.
 - `--format auto|text|markdown|json` (or `TI_FORMAT`). `auto` gives aligned, colored text
-  on a terminal and Markdown (CommonMark with GFM tables) when piped: readable in notes,
-  chats and by agents. Commands describe their output once; text and Markdown are two
-  renderings of the same document.
+  on a terminal and Markdown when piped: readable in notes, chats and by agents.
+  The terminal view is sectioned and complete (Subject, Issuer, Validity, …; Result,
+  Chain, Errors). Markdown is compact: a summary, then one list, no tables and few
+  headings, and certificates as fenced PEM blocks, which the terminal view leaves out.
+  Hierarchies are trees on the terminal and nested lists in Markdown.
 - `json` writes one document with a `"schema"` version; fields are only added within a
-  schema version. Errors in JSON mode are `{"schema":1,"error":{"kind","message","hint"}}`
+  schema version. Certificates are in `pem` fields. `ti schema [COMMAND]` prints the
+  JSON Schema of each command's output (kept in `schemas/`, checked against real output
+  by the tests), and `ti agent` prints [AGENTS.md](AGENTS.md), the guide for scripts
+  and agents. Errors in JSON mode are `{"schema":1,"error":{"kind","message","hint"}}`
   on stderr.
-- Times in text and Markdown are in the system time zone with offset and abbreviation,
-  e.g. `2023-02-09 00:00:00 +01:00 (CET)` (`TZ` is honoured); JSON keeps RFC 3339 in UTC.
+- Times in text and Markdown are in the system time zone: `2023-02-09 00:00 CET` for a
+  single instant, the date alone in lists (`TZ` is honoured). JSON keeps RFC 3339 in UTC.
 - Colors and JSON highlighting only on a terminal; `--color`, `NO_COLOR` and
   `CLICOLOR_FORCE` override. Long lines are never cut; the terminal wraps them.
 - Never interactive. Every input is a flag, an environment variable, a file or stdin.

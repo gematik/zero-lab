@@ -1,4 +1,4 @@
-//! `tir pki profiles list|describe`: the validation profiles and what they require.
+//! `ti pki profiles list|describe`: the validation profiles and what they require.
 
 use serde::Serialize;
 use ti_pki::profile::{self, Profile};

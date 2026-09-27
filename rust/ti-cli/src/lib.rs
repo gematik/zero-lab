@@ -1,9 +1,9 @@
-//! The `tir` command-line tool as a library: [`run`] parses the arguments, runs the
+//! The `ti` command-line tool (built as [`BIN`] for now) as a library: [`run`] parses the arguments, runs the
 //! command and returns the exit code, so tests can drive it without a process.
 //!
 //! Conventions every command follows: results on stdout, diagnostics and errors on
 //! stderr; `--format json` gives one JSON document with a `"schema"` version; colors
-//! only on a terminal; never a prompt; exit codes as listed in `tir --help`.
+//! only on a terminal; never a prompt; exit codes as listed in `ti --help`.
 
 mod block;
 mod cache;
@@ -20,20 +20,34 @@ mod trust;
 use std::ffi::OsString;
 use std::process::ExitCode;
 
-use clap::Parser;
+use clap::{CommandFactory, FromArgMatches};
 
 pub use error::Exit;
+
+/// The executable's name. `tir` while the Rust tool catches up with the Go `ti`, `ti`
+/// from then on: everything the user sees (help, user agent, diagnostics, the agent
+/// guide) takes the name from here, so the rename is this constant and the `[[bin]]`
+/// name in Cargo.toml.
+pub const BIN: &str = "tir";
 
 use cli::Cli;
 use output::Output;
 
-/// Runs `tir` with `args` (the program name first, as `std::env::args_os` yields them).
+/// Runs the tool with `args` (the program name first, as `std::env::args_os` yields
+/// them).
 pub fn run<I, T>(args: I) -> ExitCode
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    let cli = match Cli::try_parse_from(args) {
+    let command = Cli::command()
+        .name(BIN)
+        .bin_name(BIN)
+        .after_long_help(cli::AFTER_HELP.replace("{bin}", BIN));
+    let parsed = command
+        .try_get_matches_from(args)
+        .and_then(|matches| Cli::from_arg_matches(&matches));
+    let cli = match parsed {
         Ok(cli) => cli,
         Err(error) => {
             // clap prints help and version to stdout (exit 0) and errors to stderr (exit 2).

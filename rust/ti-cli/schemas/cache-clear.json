@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "cache clear",
+  "description": "What was deleted.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "path": {
+      "type": "string"
+    },
+    "removed_files": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "removed_bytes": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "schema",
+    "path",
+    "removed_files",
+    "removed_bytes"
+  ],
+  "additionalProperties": false
+}

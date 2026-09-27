@@ -7,7 +7,8 @@ use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 use crate::net::NetArgs;
 
-const AFTER_HELP: &str = "\
+/// Exit codes, variables and examples; `{bin}` stands for [`crate::BIN`].
+pub const AFTER_HELP: &str = "\
 Exit codes:
   0  success; for verify: the certificate is valid
   1  the certificate is not valid
@@ -23,20 +24,25 @@ Environment:
   NO_COLOR        disables colors; CLICOLOR_FORCE=1 forces them
 
 Examples:
-  tir pki inspect card.pem
-  tir pki inspect - < card.pem
-  tir pki inspect card.pem > card.md          # Markdown, as piped output is
-  tir --format json pki inspect card.pem | jq .certificates[0].certificate_type
-  tir pki profiles describe smb-aut
-  tir pki verify card.pem --issuer ca.pem
-  tir pki verify card.pem --env ref --profile none --at 2026-06-01T00:00:00Z";
+  {bin} pki inspect card.pem
+  {bin} pki inspect - < card.pem
+  {bin} pki inspect card.pem > card.md          # Markdown, as piped output is
+  {bin} --format json pki inspect card.pem | jq .certificates[0].certificate_type
+  {bin} pki profiles describe smb-aut
+  {bin} pki verify card.pem --issuer ca.pem
+  {bin} pki verify card.pem --env ref --profile none --at 2026-06-01T00:00:00Z
+  {bin} pki roots list --env ref
+  {bin} pki tsl show --rejected
+  {bin} pki tsl show --ca SMCB-CA51 --format markdown   # with the CA's PEM
+  {bin} schema pki verify                       # the JSON contract of one command
+  {bin} agent                                   # usage guide for scripts and agents
+  {bin} version";
 
-/// The gematik TI command-line tool (Rust).
+/// The command-line tool for the gematik Telematikinfrastruktur (TI).
 ///
 /// Offline by default where possible; every command is non-interactive.
 #[derive(Debug, Parser)]
 #[command(
-    name = "tir",
     version,
     propagate_version = true,
     after_long_help = AFTER_HELP,
@@ -111,9 +117,29 @@ pub enum Command {
     /// Certificates and PKI trust
     #[command(subcommand)]
     Pki(PkiCommand),
+    /// The download cache
+    #[command(subcommand)]
+    Cache(CacheCommand),
+    /// JSON Schema of each command's --format json output; all of them without COMMAND
+    Schema {
+        /// A command, e.g. "pki verify"
+        #[arg(value_name = "COMMAND", num_args = 0..)]
+        command: Vec<String>,
+    },
+    /// How to use this tool from scripts and AI agents (Markdown)
+    Agent,
+    /// Version and build of this tool
+    Version,
 }
 
-/// `tir pki …`.
+/// `ti cache …`.
+#[derive(Debug, Subcommand)]
+pub enum CacheCommand {
+    /// Delete the downloaded trust material; the next run downloads it again
+    Clear,
+}
+
+/// `ti pki …`.
 #[derive(Debug, Subcommand)]
 pub enum PkiCommand {
     /// Decode certificates and show what the TI reads from them (offline; does not validate)
@@ -127,9 +153,59 @@ pub enum PkiCommand {
     Profiles(ProfilesCommand),
     /// Build the chain to the TI roots and validate it (exit 0 valid, 1 not valid)
     Verify(VerifyArgs),
+    /// The roots of an environment: roots.json, verified from the embedded anchor
+    #[command(subcommand)]
+    Roots(RootsCommand),
+    /// The TSL of an environment and the CAs taken from it
+    #[command(subcommand)]
+    Tsl(TslCommand),
 }
 
-/// `tir pki verify`.
+/// `ti pki roots …`.
+#[derive(Debug, Subcommand)]
+pub enum RootsCommand {
+    /// List the trusted roots
+    List(TrustArgs),
+}
+
+/// `ti pki tsl …`.
+#[derive(Debug, Subcommand)]
+pub enum TslCommand {
+    /// The TSL's CAs under the roots that signed them, and those no verified root signed
+    Show(TslShowArgs),
+}
+
+/// The environment whose trust material a command shows.
+#[derive(Debug, Args)]
+pub struct TrustArgs {
+    /// TI environment
+    #[arg(long, value_enum, default_value_t = Environment::Prod, env = "TI_ENV")]
+    pub env: Environment,
+    /// No network: the cached trust material, else the embedded roots
+    #[arg(long)]
+    pub offline: bool,
+}
+
+/// `ti pki tsl show`. Filters match case-insensitive substrings and combine.
+#[derive(Debug, Args)]
+pub struct TslShowArgs {
+    #[command(flatten)]
+    pub trust: TrustArgs,
+    /// Only the CAs no verified root signed
+    #[arg(long)]
+    pub rejected: bool,
+    /// Only CAs whose common name contains TEXT; Markdown then includes their PEM
+    #[arg(long, value_name = "TEXT")]
+    pub ca: Option<String>,
+    /// Only CAs of providers whose name contains TEXT
+    #[arg(long, value_name = "TEXT")]
+    pub provider: Option<String>,
+    /// Only CAs under roots whose common name contains TEXT
+    #[arg(long, value_name = "TEXT")]
+    pub root: Option<String>,
+}
+
+/// `ti pki verify`.
 #[derive(Debug, Args)]
 pub struct VerifyArgs {
     /// PEM or DER file, the end entity first; further certificates are candidate
@@ -175,6 +251,19 @@ pub enum Environment {
     Dev,
 }
 
+impl Environment {
+    /// The environment, or `None` for auto.
+    pub fn concrete(self) -> Option<ti_pki::Env> {
+        match self {
+            Environment::Auto => None,
+            Environment::Prod => Some(ti_pki::Env::Prod),
+            Environment::Ref => Some(ti_pki::Env::Ref),
+            Environment::Test => Some(ti_pki::Env::Test),
+            Environment::Dev => Some(ti_pki::Env::Dev),
+        }
+    }
+}
+
 fn profile_selectors() -> PossibleValuesParser {
     PossibleValuesParser::new(ti_pki::profile::selector_values())
 }
@@ -185,7 +274,7 @@ fn timestamp(value: &str) -> Result<ti_pki::Timestamp, String> {
     })
 }
 
-/// `tir pki profiles …`.
+/// `ti pki profiles …`.
 #[derive(Debug, Subcommand)]
 pub enum ProfilesCommand {
     /// List the profiles

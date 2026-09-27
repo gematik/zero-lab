@@ -1,4 +1,4 @@
-//! Trust material for validation: roots.json and the TSL, downloaded or cached, and
+//! Trust material for commands: roots.json and the TSL, downloaded or cached, and
 //! verified by ti-pki against the embedded anchor either way; the embedded roots alone
 //! when offline with nothing cached.
 
@@ -8,14 +8,19 @@ use std::time::Duration;
 
 use serde::Serialize;
 use ti_pki::load::{
-    ArtifactRequest, ArtifactResponse, CacheEntry, CacheError, CachePolicy, CacheStore,
-    CachingLoader, HttpLoader, LoadError, MemoryCacheStore, PostRequest, ReloadError,
+    Artifact, ArtifactRequest, ArtifactResponse, CacheEntry, CacheError, CachePolicy, CacheStore,
+    CachingLoader, HttpLoader, LoadError, Loader, MemoryCacheStore, Meta, PostRequest, ReloadError,
     ReloadOutcome, ReloadPolicy, Reloader, Source, SystemClock, Transport, TransportError,
     TransportErrorKind,
 };
 use ti_pki::{Clock, Tier, Timestamp, TrustConfig, TrustStore, roots};
 
+use crate::block::block_on;
+use crate::cli::GlobalArgs;
 use crate::error::CliError;
+use crate::http::{self, Http};
+use crate::output::{Output, warning};
+use crate::paths;
 
 /// How long downloaded material may be used without the network. Production keeps
 /// ti-pki's maximum; elsewhere a week, so `--offline` stays useful on a laptop.
@@ -50,31 +55,144 @@ pub struct TrustInfo {
     pub note: Option<String>,
 }
 
-/// Loads `config`'s trust material: from the cache while fresh, else from the network
-/// (revalidating the cached copy), never from the network when `offline`.
-pub async fn load<T>(
+/// How a command reaches trust material: over the network or not, and where the cache
+/// is. One per invocation, so every load shares the cache and the transport.
+pub struct Session {
+    transport: Option<Http>,
+    cache_dir: Option<PathBuf>,
+    /// Stands in for the cache directory when none can be derived.
+    memory: Arc<MemoryCacheStore>,
+    /// `-k` is in effect for downloads.
+    pub insecure: bool,
+}
+
+impl Session {
+    /// A session for `global`'s cache and HTTP options; with `offline`, no request is
+    /// ever made. Warns on stderr when `-k` is in effect.
+    pub fn new(global: &GlobalArgs, offline: bool, out: &Output) -> Result<Self, CliError> {
+        let cache_dir = match paths::cache_dir(global.cache_dir.as_deref()) {
+            Ok(dir) => Some(dir),
+            Err(error) => {
+                out.verbose(1, format_args!("{error}; caching in memory only"));
+                None
+            }
+        };
+        let insecure = global.net.insecure && !offline;
+        if insecure {
+            warning("-k: TLS certificates of downloads are not checked");
+        }
+        let transport = if offline {
+            None
+        } else {
+            Some(http::transport(&global.net, out.verbosity())?)
+        };
+        Ok(Session {
+            transport,
+            cache_dir,
+            memory: Arc::default(),
+            insecure,
+        })
+    }
+
+    /// The transport for OCSP; `None` offline.
+    pub fn transport(&self) -> Option<&Http> {
+        self.transport.as_ref()
+    }
+
+    /// Whether requests are made.
+    pub fn is_offline(&self) -> bool {
+        self.transport.is_none()
+    }
+
+    /// `config`'s trust material, verified: from the cache while fresh, else from the
+    /// network (revalidating the cached copy). Offline, the cache or else the embedded
+    /// roots.
+    pub fn load(&self, config: &TrustConfig, tier: Tier) -> Result<Material, CliError> {
+        block_on(async {
+            if let Some(transport) = &self.transport {
+                let reloader = reloader(config, tier, self.loader(config, transport))?;
+                first_tick(&reloader).await.map_err(CliError::from)
+            } else {
+                let reloader = reloader(config, tier, self.loader(config, NoNetwork))?;
+                match first_tick(&reloader).await {
+                    Err(Expired(ReloadError::Load(LoadError::Offline(_)))) => embedded(
+                        config,
+                        "offline and nothing cached: embedded roots only, no TSL",
+                    ),
+                    Err(Expired(ReloadError::TooOld { age })) => embedded(
+                        config,
+                        &format!(
+                            "cached material is {} old: embedded roots only, no TSL",
+                            crate::output::document::span(age.as_secs())
+                        ),
+                    ),
+                    other => other.map_err(CliError::from),
+                }
+            }
+        })
+    }
+
+    /// The TSL as loaded (unverified bytes; see [`ti_pki::tsl`]), with where it came
+    /// from. Call after [`load`](Self::load), which has refreshed the cache.
+    pub fn tsl(&self, config: &TrustConfig) -> Result<(Vec<u8>, Meta), CliError> {
+        let loaded = block_on(async {
+            match &self.transport {
+                Some(transport) => self.loader(config, transport).load(Artifact::Tsl).await,
+                None => self.loader(config, NoNetwork).load(Artifact::Tsl).await,
+            }
+        });
+        match loaded {
+            Ok(loaded) => Ok((loaded.body, loaded.meta)),
+            Err(LoadError::Offline(_)) => Err(CliError::TrustLoad(
+                "offline and no TSL cached; run once without --offline".into(),
+            )),
+            Err(error) => Err(CliError::TrustLoad(error.to_string())),
+        }
+    }
+
+    fn loader<T: Transport + Send + Sync>(
+        &self,
+        config: &TrustConfig,
+        transport: T,
+    ) -> CachingLoader<HttpLoader<T, SystemClock>, Store, SystemClock> {
+        let store = match &self.cache_dir {
+            Some(dir) => Store::File(crate::cache::FileCacheStore::new(dir)),
+            None => Store::Memory(Arc::clone(&self.memory)),
+        };
+        CachingLoader::new(
+            HttpLoader::new(config, transport, SystemClock),
+            store,
+            SystemClock,
+            CachePolicy {
+                offline: self.is_offline(),
+                ..CachePolicy::default()
+            },
+        )
+    }
+}
+
+/// A first tick that left no material, with why.
+struct Expired(ReloadError);
+
+impl From<Expired> for CliError {
+    fn from(Expired(error): Expired) -> Self {
+        match error {
+            ReloadError::Verify(error) => {
+                CliError::TrustLoad(format!("downloaded material failed verification: {error}"))
+            }
+            error => CliError::TrustLoad(error.to_string()),
+        }
+    }
+}
+
+fn reloader<L>(
     config: &TrustConfig,
     tier: Tier,
-    transport: T,
-    cache_dir: Option<PathBuf>,
-    offline: bool,
-) -> Result<Material, CliError>
+    loader: L,
+) -> Result<Reloader<L, SystemClock>, CliError>
 where
-    T: Transport + Send + Sync,
+    L: Loader + Send + Sync,
 {
-    let store = match cache_dir {
-        Some(dir) => Store::File(crate::cache::FileCacheStore::new(dir)),
-        None => Store::Memory(MemoryCacheStore::new()),
-    };
-    let loader = CachingLoader::new(
-        HttpLoader::new(config, transport, SystemClock),
-        store,
-        SystemClock,
-        CachePolicy {
-            offline,
-            ..CachePolicy::default()
-        },
-    );
     let hard_expiry = match tier {
         Tier::Prod => ReloadPolicy::default().hard_expiry,
         Tier::NonProd => NONPROD_HARD_EXPIRY,
@@ -83,34 +201,22 @@ where
         hard_expiry,
         ..ReloadPolicy::default()
     };
-    let reloader = Reloader::new(config.clone(), tier, loader, SystemClock, policy)
-        .map_err(CliError::Trust)?;
+    Reloader::new(config.clone(), tier, loader, SystemClock, policy).map_err(CliError::Trust)
+}
 
+async fn first_tick<L>(reloader: &Reloader<L, SystemClock>) -> Result<Material, Expired>
+where
+    L: Loader + Send + Sync,
+{
     // The first tick either swaps in material or expires; any other outcome (one added
     // to ti-pki later) is read through the snapshot below.
     if let ReloadOutcome::Expired { error } = reloader.tick().await {
-        return match error {
-            ReloadError::Load(LoadError::Offline(_)) if offline => embedded(
-                config,
-                "offline and nothing cached: embedded roots only, no TSL",
-            ),
-            ReloadError::TooOld { age } if offline => embedded(
-                config,
-                &format!(
-                    "cached material is {} old: embedded roots only, no TSL",
-                    crate::output::document::span(age.as_secs())
-                ),
-            ),
-            ReloadError::Verify(error) => Err(CliError::TrustLoad(format!(
-                "downloaded material failed verification: {error}"
-            ))),
-            error => Err(CliError::TrustLoad(error.to_string())),
-        };
+        return Err(Expired(error));
     }
     let store = reloader
         .handle()
         .snapshot()
-        .map_err(|e| CliError::TrustLoad(e.to_string()))?;
+        .map_err(|_| Expired(ReloadError::Load(LoadError::Unavailable(Artifact::Roots))))?;
     let status = reloader.handle().status();
     Ok(Material {
         info: TrustInfo {
@@ -159,7 +265,7 @@ fn source_name(source: Option<Source>) -> &'static str {
 /// The cache on disk, or in memory when no cache directory can be derived.
 enum Store {
     File(crate::cache::FileCacheStore),
-    Memory(MemoryCacheStore),
+    Memory(Arc<MemoryCacheStore>),
 }
 
 impl CacheStore for Store {
@@ -180,7 +286,7 @@ impl CacheStore for Store {
 
 /// The transport of `--offline`: every request fails, so nothing leaves the machine
 /// even where a component would otherwise ask the network.
-pub struct NoNetwork;
+struct NoNetwork;
 
 impl Transport for NoNetwork {
     async fn get(&self, req: &ArtifactRequest<'_>) -> Result<ArtifactResponse, TransportError> {

@@ -53,19 +53,27 @@ fn stderr(output: &Output) -> String {
 fn piped_output_is_markdown_and_text_on_request() {
     let file = fixture("admission-1.pem");
     let markdown = stdout(&tir(&["pki", "inspect", &file]));
-    assert!(markdown.starts_with("## Subject\n"), "{markdown}");
     assert!(
-        markdown.contains("| **type** | `C.HCI.AUT` |"),
+        markdown.starts_with("**Arztpraxis Bernd Rosenstrauch TEST-ONLY** · `C.HCI.AUT`"),
         "{markdown}"
     );
+    assert!(markdown.contains("\n- key: "), "{markdown}");
     assert!(
-        markdown.contains("**Arztpraxis Bernd Rosenstrauch TEST-ONLY**"),
+        markdown.contains("```pem\n-----BEGIN CERTIFICATE-----\n"),
         "{markdown}"
     );
+    assert!(!markdown.contains("| "), "no tables: {markdown}");
 
     let text = stdout(&tir(&["--format", "text", "pki", "inspect", &file]));
-    assert!(text.contains("  type           C.HCI.AUT"), "{text}");
-    assert!(!text.contains('|'), "{text}");
+    assert!(
+        text.starts_with("Subject\n"),
+        "sections on a terminal: {text}"
+    );
+    assert!(text.contains("\n  type           C.HCI.AUT\n"), "{text}");
+    assert!(
+        !text.contains("BEGIN CERTIFICATE"),
+        "no PEM on a terminal: {text}"
+    );
 }
 
 #[test]
@@ -83,7 +91,7 @@ fn timestamps_in_the_system_zone() {
         .unwrap();
     let text = stdout(&out);
     // notBefore 2023-11-09T23:00:00Z is midnight in Berlin.
-    assert!(text.contains("2023-11-10 00:00:00 +01:00 (CET)"), "{text}");
+    assert!(text.contains("2023-11-10 00:00 CET"), "{text}");
 }
 
 #[test]
@@ -357,8 +365,16 @@ fn verify_with_the_issuer_is_valid_but_says_revocation_was_not_checked() {
         "--at",
         "2026-06-01T00:00:00Z",
     ]));
-    assert!(text.contains("| **result** | **VALID** |"), "{text}");
-    assert!(text.contains("**not checked** (offline)"), "{text}");
+    assert!(text.starts_with("**VALID** · **Arztpraxis"), "{text}");
+    assert!(
+        text.contains("revocation **not checked** (offline)"),
+        "{text}"
+    );
+    assert_eq!(
+        text.matches("-----BEGIN CERTIFICATE-----").count(),
+        3,
+        "the chain"
+    );
 }
 
 #[test]

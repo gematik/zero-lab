@@ -54,6 +54,17 @@ impl Output {
         Ok(())
     }
 
+    /// Writes a report that reads differently on a terminal and in Markdown: `text`
+    /// with sections for the terminal, `markdown` compact for notes and chats.
+    pub fn render_views(&self, text: &Document, markdown: &Document) -> Result<(), CliError> {
+        if self.format == Format::Markdown {
+            markdown::render(markdown, &mut io::stdout().lock())?;
+        } else {
+            text::render(text, &mut stdout())?;
+        }
+        Ok(())
+    }
+
     /// Whether results are JSON.
     pub fn is_json(&self) -> bool {
         self.format == Format::Json
@@ -112,7 +123,7 @@ impl Output {
 pub fn diagnostic(message: impl Display) {
     let dim = style::DIM;
     // A diagnostic that cannot be written is not worth failing the command.
-    let _ = writeln!(anstream::stderr(), "{dim}tir: {message}{dim:#}");
+    let _ = writeln!(anstream::stderr(), "{dim}{}: {message}{dim:#}", crate::BIN);
 }
 
 /// A warning on stderr, whatever the verbosity: something the user should not miss.
@@ -124,6 +135,12 @@ pub fn warning(message: impl Display) {
 /// Stdout for text output; styles are stripped where they do not belong.
 pub fn stdout() -> AutoStream<StdoutLock<'static>> {
     anstream::stdout().lock()
+}
+
+/// `der` as a PEM `CERTIFICATE` block, LF line endings.
+pub fn pem(der: &[u8]) -> String {
+    pem_rfc7468::encode_string("CERTIFICATE", pem_rfc7468::LineEnding::LF, der)
+        .expect("base64 of a certificate held in memory cannot fail")
 }
 
 /// An OID with its gemSpec_OID description, where the TI defines one.

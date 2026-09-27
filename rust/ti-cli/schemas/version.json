@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "version",
+  "description": "Which build this is.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "name": {
+      "type": "string",
+      "description": "The executable's name"
+    },
+    "version": {
+      "type": "string",
+      "description": "Semantic version"
+    },
+    "os": {
+      "type": "string",
+      "description": "e.g. macos, linux, windows"
+    },
+    "arch": {
+      "type": "string",
+      "description": "e.g. aarch64, x86_64"
+    }
+  },
+  "required": ["schema", "name", "version", "os", "arch"],
+  "additionalProperties": false
+}

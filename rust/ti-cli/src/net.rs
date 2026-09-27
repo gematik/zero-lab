@@ -38,7 +38,7 @@ pub struct NetArgs {
     /// Retries on transient failures (connection errors, HTTP 5xx and 429)
     #[arg(long, value_name = "N", default_value_t = 0, global = true)]
     pub retry: u32,
-    /// User-Agent header [default: tir/VERSION]
+    /// User-Agent header [default: NAME/VERSION]
     #[arg(short = 'A', long, value_name = "STRING", global = true)]
     pub user_agent: Option<String>,
 }
@@ -86,7 +86,7 @@ impl NetArgs {
     pub fn user_agent(&self) -> String {
         self.user_agent
             .clone()
-            .unwrap_or_else(|| concat!("tir/", env!("CARGO_PKG_VERSION")).to_owned())
+            .unwrap_or_else(|| format!("{}/{}", crate::BIN, env!("CARGO_PKG_VERSION")))
     }
 }
 

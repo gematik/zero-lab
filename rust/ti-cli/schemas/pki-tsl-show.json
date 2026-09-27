@@ -1,0 +1,253 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pki tsl show",
+  "description": "The TSL's CAs under the verified roots that signed them, and those no verified root signed. Only certificates and provider names are taken from the unauthenticated TSL.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "environment": {
+      "enum": [
+        "prod",
+        "ref",
+        "test",
+        "dev"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "enum": [
+            "http",
+            "cache"
+          ]
+        },
+        "fetched_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        }
+      },
+      "required": [
+        "source",
+        "fetched_at"
+      ],
+      "additionalProperties": false
+    },
+    "insecure_transport": {
+      "type": "boolean"
+    },
+    "sequence_number": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339, UTC"
+    },
+    "next_update": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "RFC 3339, UTC"
+    },
+    "overdue": {
+      "type": "boolean"
+    },
+    "counts": {
+      "type": "object",
+      "properties": {
+        "listed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "kept": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rejected": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "listed",
+        "kept",
+        "rejected"
+      ],
+      "additionalProperties": false,
+      "description": "Over the whole list, whatever the filters"
+    },
+    "roots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "common_name": {
+            "type": "string"
+          },
+          "not_after": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC 3339, UTC"
+          },
+          "validity": {
+            "enum": [
+              "valid",
+              "expired",
+              "not_yet_valid"
+            ]
+          },
+          "cas": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/ca"
+            }
+          }
+        },
+        "required": [
+          "common_name",
+          "not_after",
+          "validity",
+          "cas"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "rejected": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ca"
+      }
+    },
+    "filtered": {
+      "type": "boolean",
+      "description": "Filters left CAs out"
+    }
+  },
+  "required": [
+    "schema",
+    "environment",
+    "source",
+    "insecure_transport",
+    "sequence_number",
+    "issued_at",
+    "next_update",
+    "overdue",
+    "counts",
+    "roots",
+    "rejected",
+    "filtered"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "oid": {
+      "type": "object",
+      "properties": {
+        "oid": {
+          "type": "string",
+          "description": "Dotted form"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "gemSpec_OID description, where the TI defines one"
+        }
+      },
+      "required": [
+        "oid",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "ca": {
+      "type": "object",
+      "properties": {
+        "common_name": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string",
+          "description": "The TSPName the TSL lists the CA under (unauthenticated)"
+        },
+        "not_before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        },
+        "not_after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        },
+        "validity": {
+          "enum": [
+            "valid",
+            "expired",
+            "not_yet_valid"
+          ]
+        },
+        "policies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/oid"
+          },
+          "description": "The policies the CA certificate asserts"
+        },
+        "path_len": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "rejection": {
+          "enum": [
+            "not_ca",
+            "self_signed",
+            "unknown_issuer",
+            "bad_signature",
+            "other",
+            null
+          ],
+          "description": "Why no verified root signed it; null for kept CAs"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "pem": {
+          "type": "string",
+          "description": "The certificate as PEM"
+        }
+      },
+      "required": [
+        "common_name",
+        "subject",
+        "issuer",
+        "provider",
+        "not_before",
+        "not_after",
+        "validity",
+        "policies",
+        "path_len",
+        "rejection",
+        "sha256",
+        "pem"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

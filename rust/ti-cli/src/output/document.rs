@@ -83,6 +83,13 @@ impl Line {
         self
     }
 
+    /// Appends emphasis.
+    #[must_use]
+    pub fn and_strong(mut self, text: impl Into<String>) -> Self {
+        self.0.push(Span::Strong(text.into()));
+        self
+    }
+
     /// Appends secondary detail.
     #[must_use]
     pub fn and_dim(mut self, text: impl Into<String>) -> Self {
@@ -130,6 +137,21 @@ pub enum Block {
     Field(String, Line),
     /// A labelled list of values.
     Items(String, Vec<Line>),
+    /// A hierarchy, e.g. roots and the CAs they signed.
+    Tree(Vec<Node>),
+    /// A PEM document: a fenced block in Markdown, left out of terminal text.
+    Pem(String),
+}
+
+/// One entry of a [`Block::Tree`].
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Node {
+    /// The entry itself.
+    pub line: Line,
+    /// Further lines about it, shown below it.
+    pub details: Vec<Line>,
+    /// Its children.
+    pub children: Vec<Node>,
 }
 
 /// A command's output as blocks.
@@ -161,6 +183,20 @@ impl Document {
     /// `label: value`.
     pub fn field(&mut self, label: impl Into<String>, value: impl Into<Line>) -> &mut Self {
         self.blocks.push(Block::Field(label.into(), value.into()));
+        self
+    }
+
+    /// A tree; nothing for no nodes.
+    pub fn tree(&mut self, nodes: Vec<Node>) -> &mut Self {
+        if !nodes.is_empty() {
+            self.blocks.push(Block::Tree(nodes));
+        }
+        self
+    }
+
+    /// A PEM document.
+    pub fn pem(&mut self, pem: impl Into<String>) -> &mut Self {
+        self.blocks.push(Block::Pem(pem.into()));
         self
     }
 
@@ -212,24 +248,25 @@ pub fn span(seconds: u64) -> String {
     }
 }
 
-/// `at` in the system time zone with its offset and abbreviation, e.g.
-/// `2023-02-09 00:00:00 +01:00 (CET)`. Text and Markdown always show local time; JSON
-/// keeps RFC 3339 UTC.
+/// `at` in the system time zone to the minute, with the zone's abbreviation (its
+/// offset where it has none), e.g. `2023-02-09 00:00 CET`. Text and Markdown always
+/// show local time; JSON keeps RFC 3339 UTC.
 pub fn when(at: Timestamp) -> String {
-    when_in(at, &TimeZone::system())
+    local(at, &TimeZone::system(), "%Y-%m-%d %H:%M %Z")
 }
 
-fn when_in(at: Timestamp, zone: &TimeZone) -> String {
+/// The local date of `at`, e.g. `2023-02-09`: for lists, where the day is what counts.
+pub fn date(at: Timestamp) -> String {
+    local(at, &TimeZone::system(), "%Y-%m-%d")
+}
+
+fn local(at: Timestamp, zone: &TimeZone, format: &str) -> String {
     i64::try_from(at.0)
         .ok()
         .and_then(|secs| jiff::Timestamp::from_second(secs).ok())
         .map_or_else(
             || at.to_string(),
-            |ts| {
-                ts.to_zoned(zone.clone())
-                    .strftime("%Y-%m-%d %H:%M:%S %:z (%Z)")
-                    .to_string()
-            },
+            |ts| ts.to_zoned(zone.clone()).strftime(format).to_string(),
         )
 }
 
@@ -266,20 +303,26 @@ mod tests {
     }
 
     #[test]
-    fn timestamps_in_a_zone_with_offset_and_abbreviation() {
+    fn timestamps_in_a_zone_with_its_abbreviation() {
         let berlin = TimeZone::get("Europe/Berlin").unwrap();
+        let minutes = "%Y-%m-%d %H:%M %Z";
         // 2023-02-08T23:00:00Z, winter time, and 2023-07-01T12:00:00Z, summer time.
         assert_eq!(
-            when_in(Timestamp(1_675_897_200), &berlin),
-            "2023-02-09 00:00:00 +01:00 (CET)"
+            local(Timestamp(1_675_897_200), &berlin, minutes),
+            "2023-02-09 00:00 CET"
         );
         assert_eq!(
-            when_in(Timestamp(1_688_212_800), &berlin),
-            "2023-07-01 14:00:00 +02:00 (CEST)"
+            local(Timestamp(1_688_212_800), &berlin, minutes),
+            "2023-07-01 14:00 CEST"
         );
         assert_eq!(
-            when_in(Timestamp(0), &TimeZone::UTC),
-            "1970-01-01 00:00:00 +00:00 (UTC)"
+            local(Timestamp(1_675_897_200), &berlin, "%Y-%m-%d"),
+            "2023-02-09",
+            "the local date, not the UTC one"
+        );
+        assert_eq!(
+            local(Timestamp(0), &TimeZone::UTC, minutes),
+            "1970-01-01 00:00 UTC"
         );
     }
 }

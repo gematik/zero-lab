@@ -28,6 +28,7 @@ clap = { workspace = true, features = ["std", "help", "usage", "error-context", 
 anstream.workspace = true
 anstyle.workspace = true
 jiff.workspace = true
+pem-rfc7468 = { workspace = true, features = ["alloc"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

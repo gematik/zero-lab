@@ -1,14 +1,26 @@
 //! One module per command. A command builds a serde report, which is the JSON contract,
 //! and renders the same report as text, so the two views cannot disagree.
 
+mod agent;
+mod cache;
 mod inspect;
 mod profiles;
+mod roots;
+mod schema;
+mod tsl;
 mod verify;
+mod version;
 
-use crate::cli::{Cli, Command, PkiCommand, ProfilesCommand};
+use ti_pki::{Certificate, Env, Timestamp};
+
+use crate::cli::{
+    CacheCommand, Cli, Command, Environment, PkiCommand, ProfilesCommand, RootsCommand, TslCommand,
+};
 use crate::error::{CliError, Exit};
-use crate::output::Output;
+use crate::output::document::{date, when};
+use crate::output::{Line, Output, Tone};
 use crate::paths;
+use crate::trust::TrustInfo;
 
 /// Runs the parsed command line.
 pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
@@ -24,5 +36,65 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
         Command::Pki(PkiCommand::Profiles(ProfilesCommand::Describe { name })) => {
             profiles::describe(name, out)
         }
+        Command::Pki(PkiCommand::Roots(RootsCommand::List(args))) => {
+            roots::list(args, &cli.global, out)
+        }
+        Command::Pki(PkiCommand::Tsl(TslCommand::Show(args))) => tsl::show(args, &cli.global, out),
+        Command::Cache(CacheCommand::Clear) => cache::clear(&cli.global, out),
+        Command::Schema { command } => schema::run(command, out),
+        Command::Agent => agent::run(),
+        Command::Version => version::run(out),
     }
+}
+
+/// The environment of a command about one environment's trust material; auto has
+/// nothing to detect from there.
+fn concrete(env: Environment) -> Result<Env, CliError> {
+    env.concrete().ok_or_else(|| {
+        CliError::EnvironmentUndetected(
+            "auto needs certificates to look at; this command shows one environment".into(),
+        )
+    })
+}
+
+/// `valid`, `expired` or `not_yet_valid` at `now`.
+fn validity(cert: &Certificate, now: Timestamp) -> &'static str {
+    if now < cert.not_before() {
+        "not_yet_valid"
+    } else if now > cert.not_after() {
+        "expired"
+    } else {
+        "valid"
+    }
+}
+
+/// ` · until 2029-11-06`, or ` · expired 2022-10-25` / ` · not yet valid` in red: the
+/// expiry part of a list entry.
+fn expiry(not_after: Timestamp, validity: &str) -> Line {
+    match validity {
+        "valid" => Line::dim(format!(" · until {}", date(not_after))),
+        "expired" => Line::dim(" · ").and_status(Tone::Bad, format!("expired {}", date(not_after))),
+        _ => Line::dim(" · ").and_status(Tone::Bad, "not yet valid"),
+    }
+}
+
+/// Counts, source, age and gaps of the trust material, for the `trust` field.
+fn trust_line(trust: &TrustInfo) -> Line {
+    let counts = format!("{} roots, {} TSL CAs", trust.roots, trust.intermediates);
+    let mut line = if trust.note.is_some() {
+        Line::status(Tone::Warn, counts)
+    } else {
+        Line::text(counts)
+    };
+    line = match trust.fetched_at_ts {
+        Some(at) => line.and_dim(format!(" · {} {}", trust.source, when(at))),
+        None => line.and_dim(format!(" · {}", trust.source)),
+    };
+    if let Some(next) = trust.tsl_next_update_ts {
+        line = line.and_dim(format!(" · TSL next update {}", when(next)));
+    }
+    if let Some(note) = &trust.note {
+        line = line.and_dim(format!(" · {note}"));
+    }
+    line
 }

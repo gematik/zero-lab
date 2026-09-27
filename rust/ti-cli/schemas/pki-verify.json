@@ -1,0 +1,333 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pki verify",
+  "description": "The verdict, the chain and why. Exit 0 when valid, 1 when not.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "source": {
+      "type": "string"
+    },
+    "valid": {
+      "type": "boolean"
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "enum": [
+            "prod",
+            "ref",
+            "test",
+            "dev"
+          ]
+        },
+        "production": {
+          "type": "boolean"
+        },
+        "detection": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "enum": [
+                    "root-identity",
+                    "chain",
+                    "markers"
+                  ]
+                },
+                "detail": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "method",
+                "detail"
+              ],
+              "additionalProperties": false
+            }
+          ],
+          "description": "How --env auto decided; null when given"
+        }
+      },
+      "required": [
+        "name",
+        "production",
+        "detection"
+      ],
+      "additionalProperties": false
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "The instant validated at"
+    },
+    "certificate_type": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "profile": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "description": "cert, default, forced, ambiguous, none or disabled"
+        },
+        "detail": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "reason",
+        "detail"
+      ],
+      "additionalProperties": false
+    },
+    "trust": {
+      "$ref": "#/$defs/trust"
+    },
+    "revocation_checked": {
+      "type": "boolean",
+      "description": "False offline; the verdict then says nothing about revocation"
+    },
+    "revocation_mode": {
+      "enum": [
+        "hard-fail",
+        "soft-fail",
+        "disabled"
+      ]
+    },
+    "insecure_transport": {
+      "type": "boolean",
+      "description": "-k: TLS of downloads not verified"
+    },
+    "chain": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "position": {
+            "enum": [
+              "end_entity",
+              "sub_ca",
+              "root"
+            ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "common_name": {
+            "type": "string"
+          },
+          "not_after": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC 3339, UTC"
+          },
+          "revocation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "good",
+                      "revoked",
+                      "unknown"
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "responder_url": {
+                    "type": "string"
+                  },
+                  "responder": {
+                    "type": "string"
+                  },
+                  "authorization": {
+                    "enum": [
+                      "issuer",
+                      "delegate",
+                      "same_tsp_delegate",
+                      "other",
+                      null
+                    ]
+                  },
+                  "produced_at": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date-time",
+                    "description": "RFC 3339, UTC"
+                  },
+                  "revoked_at": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "date-time",
+                    "description": "RFC 3339, UTC"
+                  }
+                },
+                "required": [
+                  "status",
+                  "reason",
+                  "responder_url",
+                  "responder",
+                  "authorization",
+                  "produced_at",
+                  "revoked_at"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "pem": {
+            "type": "string",
+            "description": "The certificate as PEM"
+          }
+        },
+        "required": [
+          "position",
+          "subject",
+          "common_name",
+          "not_after",
+          "revocation",
+          "pem"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "source",
+    "valid",
+    "environment",
+    "at",
+    "certificate_type",
+    "profile",
+    "trust",
+    "revocation_checked",
+    "revocation_mode",
+    "insecure_transport",
+    "chain",
+    "errors",
+    "warnings"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "trust": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "enum": [
+            "http",
+            "cache",
+            "file",
+            "bundle",
+            "embedded"
+          ],
+          "description": "Where roots.json and the TSL came from; trust never depends on it"
+        },
+        "fetched_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "When downloaded or last confirmed; null when embedded"
+        },
+        "tsl_next_update": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        },
+        "roots": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Roots reached from the embedded anchor"
+        },
+        "intermediates": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "TSL CAs a verified root signed"
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Why the material is less than the environment's full set"
+        }
+      },
+      "required": [
+        "source",
+        "fetched_at",
+        "tsl_next_update",
+        "roots",
+        "intermediates",
+        "note"
+      ],
+      "additionalProperties": false
+    },
+    "finding": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Stable snake_case code, as in gempki"
+        },
+        "subject": {
+          "type": "string",
+          "description": "Common name of the certificate concerned; empty if none"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "subject",
+        "message"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
