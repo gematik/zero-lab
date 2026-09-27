@@ -76,6 +76,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `just cli-targets`: release binaries for Linux (musl), Windows and macOS.
 - Release builds are stripped, fully LTO-optimised and abort on panic.
 - The executable's name comes from `ti_cli::BIN`.
+- Releases: `just release X.Y.Z` (checks, five binaries, `SHA256SUMS`, commit and tag,
+  GitHub release with these notes, then the Homebrew formula): `brew install
+  spilikin/tap/ti` installs the release binaries.
 
 #### changed
 - Text output no longer cuts lines to the terminal width.

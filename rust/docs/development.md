@@ -150,6 +150,7 @@ names the trigger for removing it.
 | Compromise | Why | Remove when |
 | --- | --- | --- |
 | `rsa = "=0.10.0-rc.18"`, a release candidate | the only `rsa` line on the current RustCrypto stack (`crypto-bigint` 0.7, `sha2` 0.11); 0.9 would pull in a second, older stack | `rsa` 0.10 is released: switch to `"0.10"` |
+| ti releases carry unsigned `SHA256SUMS` | signing was deferred; the checksums catch broken downloads and Homebrew pins them in the formula, but a replaced release could replace them too | a release key exists: sign `SHA256SUMS` in `just release` and verify it in `publish-brew` |
 | RUSTSEC-2023-0071 ignored (`deny.toml`, `.cargo/audit.toml`) | the Marvin attack targets RSA private-key operations; `ti-pki` only verifies, on public data | a patched `rsa` is released |
 | The TSL is not authenticated: neither its inline XMLDSig nor the detached `.sig` is checked | the TSL is only a source of candidate intermediates, and a candidate is kept only if a root from the A_28419 walk signed it, so a forged TSL can withhold CAs but not add one. XMLDSig needs exclusive C14N, which no maintained Rust crate provides, and the detached signature exists for production only | never, unless the TSL becomes a trust source (e.g. for its per-CA type lists) |
 | The TSL's per-CA metadata is unused: allowed certificate types (SE_1061), and OCSP responders the TSL lists | both would need an authenticated TSL. A certificate's type is checked by its own policies; a CA's standing by OCSP at its root; a responder must be authorised under RFC 6960 or as a verified delegate of the same TSP (next row) | same as above |
@@ -363,6 +364,35 @@ is not at the repository root. Until a registry is in place, bumps are done by h
 above; afterwards `release-plz update` does the version and sibling-pin edits (it writes only
 `CHANGELOG.md`, so its changelog updates stay off; release notes are `ReleaseNotes.md`).
 
+## Releasing ti
+
+`ti` is the one crate with binaries. `just release X.Y.Z [OWNER]` does its whole release
+from `main`, and stops at the first problem:
+
+1. **Preflight:** on `main`, clean, equal to `origin/main`; the tag is new and above the
+   last `rust/ti-cli/v*`; `ReleaseNotes.md` has a `### ti-cli` block under `## Unreleased`;
+   `cross`, Docker and `gh` are there.
+2. **Bump:** `version` in `ti-cli/Cargo.toml` and `Cargo.lock`; the `### ti-cli` block
+   leaves `## Unreleased` and becomes `## Release ti-cli X.Y.Z, YYYY-MM-DD` below it.
+3. **Gate and build:** `just check`, `just audit`, `just cli-targets` (five binaries in
+   `target/dist`), then `SHA256SUMS`. A failure here leaves only the bump to undo;
+   the recipe prints the `git checkout` for it.
+4. **Commit and tag:** `ti-cli: release X.Y.Z` and `rust/ti-cli/vX.Y.Z`.
+5. **Confirm:** the release notes and assets are shown; nothing is pushed without a `y`.
+6. **Publish:** `git push --atomic origin main <tag>`; `gh release create` with the
+   binaries, the checksums and the release notes of that version (plus install and
+   verify lines); then `just publish-brew OWNER X.Y.Z`. `OWNER` defaults to
+   `TAP_OWNER` in the Justfile (`spilikin`).
+
+`publish-brew` takes the checksums from the published release, fills
+`ti-cli/Formula/ti.rb` with each platform's asset URL and hash, and pushes it to
+`OWNER/homebrew-tap`. The formula installs the release binaries; nothing
+is compiled on the user's machine. The checksums are not signed yet (see "Known
+compromises").
+
+**Dry runs:** `GH` replaces the `gh` CLI (e.g. a script that records its arguments), and
+a scratch clone with a local bare repository as `origin` takes the push.
+
 ## The golden rule
 
 - **Develop** against the workspace — local, fast, no tags, no version edits.
@@ -388,3 +418,6 @@ above; afterwards `release-plz update` does the version and sibling-pin edits (i
 | `tag <crate> <ver>` | Create the `rust/<crate>/v<ver>` release tag |
 | `push-tags` | Push all local tags to origin |
 | `package-list <crate>` | Show the files a release of the crate would contain |
+| `release <ver> [<tap owner>]` | Release ti (see "Releasing ti") |
+| `release-notes [<ver> [<crate>]]` | A crate's notes from `ReleaseNotes.md` (default: ti-cli's pending ones) |
+| `publish-brew [<owner> [<ver>]]` | Point the formula in `<owner>/homebrew-tap` (default `spilikin`) at a ti release |

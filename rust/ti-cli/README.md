@@ -55,6 +55,24 @@ ti completions fish > ~/.config/fish/completions/ti.fish
 ti completions powershell >> $PROFILE                   # also: elvish
 ```
 
+## Install
+
+Releases are on [GitHub](https://github.com/gematik/zero-lab/releases), tagged
+`rust/ti-cli/vX.Y.Z`, with a binary for macOS and Linux (arm64, x86_64; static on Linux)
+and Windows (x86_64).
+
+- **Homebrew** (macOS, Linux): `brew install spilikin/tap/ti`; `brew upgrade ti`
+  updates, `brew autoupdate` keeps it current. `ti` itself never checks for updates.
+- **Download:** take the binary for your platform with `SHA256SUMS`, then check it:
+
+  ```sh
+  shasum -a 256 -c SHA256SUMS --ignore-missing
+  chmod +x ti-*-* && mv ti-X.Y.Z-<target> ~/.local/bin/ti
+  ```
+
+- **From source:** `cargo install --locked --git https://github.com/gematik/zero-lab --tag
+  rust/ti-cli/vX.Y.Z ti-cli`, or `just install` in a checkout.
+
 ## Trust material
 
 `pki roots list` and `pki tsl show` show what `verify` works with, for one environment
