@@ -156,7 +156,7 @@ release version:
     echo "Committed and tagged $tag, nothing pushed. Publish with: just publish $v"
     echo "or undo: git tag -d $tag && git reset --keep HEAD~1"
 
-# Publish a ti release made by `just release`: push main and its tag, the GitHub release with target/dist, the formula in <tap>/homebrew-tap
+# Publish a ti release made by `just release`: push main and its tag, the GitHub release with target/dist, the formula in <tap>/homebrew-tap; safe to re-run
 publish version tap=TAP_OWNER:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -174,8 +174,13 @@ publish version tap=TAP_OWNER:
         echo "**Verify** a download: \`shasum -a 256 -c SHA256SUMS --ignore-missing\`"
     } > "$notes"
     git push --atomic origin main "$tag"
-    gh release create "$tag" --repo {{REPO}} --verify-tag --title "ti $v" --notes-file "$notes" \
-        target/dist/SHA256SUMS target/dist/ti-"$v"-*
+    # Re-running after a partial publish skips what is already there.
+    if gh release view "$tag" --repo {{REPO}} >/dev/null 2>&1; then
+        echo "GitHub release $tag exists"
+    else
+        gh release create "$tag" --repo {{REPO}} --verify-tag --title "ti $v" --notes-file "$notes" \
+            target/dist/SHA256SUMS target/dist/ti-"$v"-*
+    fi
     just publish-brew {{tap}} "$v"
 
 # Point the ti formula in <owner>/homebrew-tap at a published release, from its checksums
