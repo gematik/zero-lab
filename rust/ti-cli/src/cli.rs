@@ -54,8 +54,6 @@ Examples:
 /// Offline by default where possible; every command is non-interactive.
 #[derive(Debug, Parser)]
 #[command(
-    version,
-    propagate_version = true,
     after_long_help = AFTER_HELP,
     max_term_width = 100
 )]

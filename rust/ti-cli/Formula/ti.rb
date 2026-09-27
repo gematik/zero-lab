@@ -26,6 +26,6 @@ class Ti < Formula
   end
 
   test do
-    assert_match "ti #{version}", shell_output("#{bin}/ti --version")
+    assert_match "ti #{version}", shell_output("#{bin}/ti --format text version")
   end
 end

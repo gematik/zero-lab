@@ -7,6 +7,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ## Unreleased
 
+### ti-cli
+
+#### removed
+- `-V`/`--version`: `ti version` shows the version, as in the Go `ti`.
+
 ### ti-connector-client
 
 #### added

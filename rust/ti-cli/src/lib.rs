@@ -53,7 +53,7 @@ where
     let cli = match parsed {
         Ok(cli) => cli,
         Err(error) => {
-            // clap prints help and version to stdout (exit 0) and errors to stderr (exit 2).
+            // clap prints help to stdout (exit 0) and errors to stderr (exit 2).
             let _ = error.print();
             return ExitCode::from(u8::try_from(error.exit_code()).unwrap_or(2));
         }
