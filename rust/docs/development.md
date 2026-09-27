@@ -23,7 +23,7 @@ latest tag (or the upcoming one, on the release commit).
   `[workspace.dependencies]` carries both a `path` and a `version`
   (`ti-pki = { version = "0.1", path = "ti-pki" }`). The path is used locally; the version is
   what a packaged or published crate records for its dependency. A library bump therefore
-  has to update that line together with the crate version and changelog. This replaces
+  has to update that line together with the crate version and release notes. This replaces
   `just sync` from the Go side.
 - **Rust code always uses the snake_case form** of a crate name: the package is `ti-pki`,
   the import is `use ti_pki::...;`.
@@ -319,7 +319,8 @@ dependent's version requirement raised.
 # 1. Land the change on main (PR, review, merge)
 
 # 2. Bump the changed crates: `version` in <crate>/Cargo.toml, its line in
-#    [workspace.dependencies] when siblings need the new version, and CHANGELOG.md
+#    [workspace.dependencies] when siblings need the new version, and in ReleaseNotes.md
+#    the crate's block under "Unreleased" becomes "## Release <crate> X.Y.Z, <date>"
 just changed                       # what changed since each crate's last tag
 git add -A && git commit -m "ti-pki: release 0.1.1"
 
@@ -333,8 +334,8 @@ just push-tags
 
 Only tag what actually changed — `just changed` lists crates with commits since their last
 tag. Unchanged crates keep their existing tag. Check what a release would contain with
-`just package-list <crate>`: only the crate's `Cargo.toml`, `README.md`, `CHANGELOG.md`, `LICENSE` and
-`src/` may appear.
+`just package-list <crate>`: only the crate's `Cargo.toml`, `README.md`, `LICENSE` and
+`src/` may appear. The release notes of all crates are one file, `ReleaseNotes.md`.
 
 ### Reproducible library consumption from another project
 
@@ -355,16 +356,17 @@ registry decision is made; flipping it there opens them all.
 
 ### release-plz
 
-`release-plz.toml` is prepared (tag format `rust/<crate>/v<ver>`, changelog updates) but
+`release-plz.toml` is prepared (tag format `rust/<crate>/v<ver>`) but
 not yet usable: release-plz derives the next version from the registry, which it skips for
 `publish = false` crates, and its `git_only` mode (as of 0.3.169) fails for a workspace that
 is not at the repository root. Until a registry is in place, bumps are done by hand as
-above; afterwards `release-plz update` does the version, sibling-pin and changelog edits.
+above; afterwards `release-plz update` does the version and sibling-pin edits (it writes only
+`CHANGELOG.md`, so its changelog updates stay off; release notes are `ReleaseNotes.md`).
 
 ## The golden rule
 
 - **Develop** against the workspace — local, fast, no tags, no version edits.
-- **Release** = land the change → bump version, sibling pin and changelog → `just audit` →
+- **Release** = land the change → bump version, sibling pin and release notes → `just audit` →
   `just tag <crate> <version>` for each changed crate → `just push-tags`. Only then do git-tag
   consumers see the new code, because those builds bypass the workspace paths.
 

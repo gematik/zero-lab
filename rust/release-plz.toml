@@ -2,4 +2,5 @@
 git_tag_name = "rust/{{ package }}/v{{ version }}"
 git_release_enable = false
 publish = false            # flipped once the registry decision is made
-changelog_update = true
+# Release notes are ReleaseNotes.md in the gematik template, which release-plz cannot write.
+changelog_update = false
