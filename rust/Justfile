@@ -10,6 +10,7 @@ MSRV          := "cargo-msrv@0.19.3"
 MUTANTS       := "cargo-mutants@27.1.0"
 RELEASE_PLZ   := "release-plz@0.3.169"
 CROSS         := "cross@0.2.5"
+BLOAT         := "cargo-bloat@0.12.1"
 
 # Every crate is versioned solely by its own git tag (rust/<crate>/vX.Y.Z), bumped only
 # when that crate changes. Siblings resolve each other through the `version` in
@@ -23,7 +24,7 @@ info:
 tools:
     #!/usr/bin/env bash
     set -euo pipefail
-    for t in {{NEXTEST}} {{DENY}} {{AUDIT}} {{VET}} {{HACK}} {{MACHETE}} {{SEMVER_CHECKS}} {{MSRV}} {{MUTANTS}} {{RELEASE_PLZ}} {{CROSS}}; do
+    for t in {{NEXTEST}} {{DENY}} {{AUDIT}} {{VET}} {{HACK}} {{MACHETE}} {{SEMVER_CHECKS}} {{MSRV}} {{MUTANTS}} {{RELEASE_PLZ}} {{CROSS}} {{BLOAT}}; do
         if command -v cargo-binstall >/dev/null; then cargo binstall -y "$t"; else cargo install --locked "$t"; fi
     done
 
@@ -222,6 +223,12 @@ miri:
 # Mutation testing for a crate; slow, run before a release of that crate
 mutants crate:
     cargo mutants -p {{crate}} --in-place
+
+# The CLI's release binary is built with symbols in target/bloat, so the normal build stays
+# stripped.
+# What takes the space in the CLI's release binary, per crate (top N)
+bloat n="25":
+    CARGO_PROFILE_RELEASE_STRIP=none CARGO_TARGET_DIR=target/bloat cargo bloat --release -p ti-cli --crates -n {{n}}
 
 # Show the latest release tag for every crate
 versions:
