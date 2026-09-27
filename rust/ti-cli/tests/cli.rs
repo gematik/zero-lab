@@ -578,3 +578,108 @@ fn verify_takes_the_certificate_with_its_key_as_end_entity() {
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(json["chain"][0]["common_name"], "test-cs2", "{json}");
 }
+
+#[test]
+fn inspect_shows_the_pkcs12_container() {
+    let (file, password) = p12_fixture();
+    let out = tir(&[
+        "--format",
+        "json",
+        "pki",
+        "inspect",
+        &file,
+        "--p12-password",
+        &password,
+    ]);
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let p12 = &json["pkcs12"];
+    assert_eq!(p12["encoding"], "BER");
+    assert_eq!(p12["mac"]["iterations"], 102_400);
+    assert_eq!(p12["keys"][0]["curve"], "brainpoolP256r1");
+    assert_eq!(p12["keys"][0]["certificate"], 0);
+    assert_eq!(json["certificates"][0]["friendly_name"], "test-cs2");
+    let pem = tir(&[
+        "--format",
+        "json",
+        "pki",
+        "inspect",
+        &fixture("admission-1.pem"),
+    ]);
+    let pem: serde_json::Value = serde_json::from_slice(&pem.stdout).unwrap();
+    assert_eq!(pem["pkcs12"], serde_json::Value::Null);
+}
+
+#[test]
+fn convert_writes_a_modern_private_file_and_keeps_existing_ones() {
+    let (file, password) = p12_fixture();
+    let dir = std::env::temp_dir().join(format!("tir-convert-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let target = dir.join("modern.p12");
+    let target = target.to_str().unwrap();
+    let args = [
+        "--format",
+        "json",
+        "pki",
+        "pkcs12",
+        "convert",
+        &file,
+        target,
+        "--p12-password",
+        &password,
+    ];
+    let out = tir(&args);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["before"]["encoding"], "BER");
+    assert_eq!(report["after"]["mac"], "SHA-256 × 2048");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(target).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+    // The converted file reads like the original, now as DER.
+    let inspected = tir(&[
+        "--format",
+        "json",
+        "pki",
+        "inspect",
+        target,
+        "--p12-password",
+        &password,
+    ]);
+    let inspected: serde_json::Value = serde_json::from_slice(&inspected.stdout).unwrap();
+    assert_eq!(inspected["pkcs12"]["encoding"], "DER");
+    assert_eq!(inspected["certificates"][0]["friendly_name"], "test-cs2");
+
+    let again = tir(&args);
+    assert_eq!(again.status.code(), Some(2), "no overwrite without --force");
+    let mut forced = args.to_vec();
+    forced.push("--force");
+    assert_eq!(tir(&forced).status.code(), Some(0));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn encode_prints_kon_credentials() {
+    let (file, password) = p12_fixture();
+    let out = tir(&[
+        "pki",
+        "pkcs12",
+        "encode",
+        &file,
+        "--p12-password",
+        &password,
+    ]);
+    assert_eq!(out.status.code(), Some(0));
+    let credentials: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(credentials["type"], "pkcs12");
+    assert_eq!(credentials["password"], password.as_str());
+    assert!(
+        stderr(&out).contains("re-encoded"),
+        "a legacy file is converted"
+    );
+    // Piped output is otherwise Markdown; the credentials stay JSON.
+    assert!(credentials.get("schema").is_none());
+}

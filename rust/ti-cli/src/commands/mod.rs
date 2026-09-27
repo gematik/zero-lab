@@ -4,6 +4,7 @@
 mod agent;
 mod cache;
 mod inspect;
+mod pkcs12;
 mod profiles;
 mod roots;
 mod schema;
@@ -14,7 +15,8 @@ mod version;
 use ti_pki::{Certificate, Env, Timestamp};
 
 use crate::cli::{
-    CacheCommand, Cli, Command, Environment, PkiCommand, ProfilesCommand, RootsCommand, TslCommand,
+    CacheCommand, Cli, Command, Environment, Pkcs12Command, PkiCommand, ProfilesCommand,
+    RootsCommand, TslCommand,
 };
 use crate::error::{CliError, Exit};
 use crate::output::document::{date, when};
@@ -42,6 +44,15 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
             roots::list(args, &cli.global, out)
         }
         Command::Pki(PkiCommand::Tsl(TslCommand::Show(args))) => tsl::show(args, &cli.global, out),
+        Command::Pki(PkiCommand::Pkcs12(Pkcs12Command::Convert {
+            input,
+            output,
+            p12_password,
+            force,
+        })) => pkcs12::convert(input, output, p12_password, *force, out),
+        Command::Pki(PkiCommand::Pkcs12(Pkcs12Command::Encode { file, p12_password })) => {
+            pkcs12::encode(file, p12_password, out)
+        }
         Command::Cache(CacheCommand::Clear) => cache::clear(&cli.global, out),
         Command::Schema { command } => schema::run(command, out),
         Command::Agent => agent::run(),

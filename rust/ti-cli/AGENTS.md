@@ -66,7 +66,16 @@ never on `message`.
   private key comes first and is the end entity for `verify`, and `inspect` marks it
   `"private_key": true`. The password is `00` (gematik's test cards) unless
   `--p12-password` gives another. A wrong password fails with exit 4 and the error kind
-  `p12_password`.
+  `p12_password`. For PKCS#12 input, `inspect` also reports the container in `pkcs12`:
+  encoding, MAC, encryption per part, and the keys with the certificate each belongs
+  to.
+- `{bin} pki pkcs12 convert IN OUT` re-encodes a PKCS#12 file as DER with PBES2 AES-256
+  and an SHA-256 MAC, which OpenSSL 3 and the Go tools read without `-legacy`. OUT is
+  written with mode 0600 and never replaced without `--force` (error kind
+  `output_exists`).
+- `{bin} pki pkcs12 encode FILE` prints the credentials object of a `.kon` file,
+  `{"type":"pkcs12","data":…,"password":…}`, whatever `--format` says, and without a
+  `schema` field so it can be pasted as is. It contains the password.
 - Certificates come back as PEM in `pem` fields (`inspect`, and `verify`'s `chain`),
   ready to save or to pass on.
 - Reading a verify report:

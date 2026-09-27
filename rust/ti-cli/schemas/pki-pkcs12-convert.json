@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pki pkcs12 convert",
+  "description": "A PKCS#12 file re-encoded as DER with PBES2 AES-256 and an SHA-256 MAC.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "input": {
+      "type": "string"
+    },
+    "output": {
+      "type": "string"
+    },
+    "before": {
+      "$ref": "#/$defs/protection"
+    },
+    "after": {
+      "$ref": "#/$defs/protection"
+    },
+    "certificates": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "keys": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "schema",
+    "input",
+    "output",
+    "before",
+    "after",
+    "certificates",
+    "keys"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "protection": {
+      "type": "object",
+      "properties": {
+        "encoding": {
+          "enum": [
+            "DER",
+            "BER"
+          ]
+        },
+        "mac": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "e.g. SHA-256 × 2048; null without a MAC"
+        },
+        "encryption": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "e.g. key: PBES2 AES-256-CBC"
+          }
+        }
+      },
+      "required": [
+        "encoding",
+        "mac",
+        "encryption"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

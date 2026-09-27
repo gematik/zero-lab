@@ -279,6 +279,45 @@ fn every_command_matches_its_schema() {
 }
 
 #[test]
+fn pkcs12_commands_match_their_schemas() {
+    let cache = SeededCache::new("pkcs12");
+    let c = &cache.0;
+    let (p12, password) = (
+        manifest("../ti-pkcs12/tests/fixtures/legacy/cgm.p12"),
+        std::fs::read_to_string(manifest(
+            "../ti-pkcs12/tests/fixtures/legacy/cgm-password.txt",
+        ))
+        .unwrap(),
+    );
+    let p12 = p12.to_str().unwrap();
+    let password = password.trim();
+    json_of(
+        c,
+        "pki inspect",
+        &["pki", "inspect", p12, "--p12-password", password],
+    );
+    let converted = cache.0.join("converted.p12");
+    json_of(
+        c,
+        "pki pkcs12 convert",
+        &[
+            "pki",
+            "pkcs12",
+            "convert",
+            p12,
+            converted.to_str().unwrap(),
+            "--p12-password",
+            password,
+        ],
+    );
+    json_of(
+        c,
+        "pki pkcs12 encode",
+        &["pki", "pkcs12", "encode", p12, "--p12-password", password],
+    );
+}
+
+#[test]
 fn cache_clear_removes_only_the_downloads() {
     let cache = SeededCache::new("clear");
     std::fs::write(cache.0.join("keep.txt"), "not ours").unwrap();
@@ -299,7 +338,7 @@ fn schemas_are_published_by_name() {
     let all = tir(&dir, &["schema"]);
     let all: Value = serde_json::from_slice(&all.stdout).unwrap();
     let commands = all["commands"].as_object().unwrap();
-    assert_eq!(commands.len(), 9);
+    assert_eq!(commands.len(), 11);
     assert_eq!(commands["pki verify"], schema("pki verify"));
 
     let one = tir(&dir, &["schema", "pki", "tsl", "show"]);

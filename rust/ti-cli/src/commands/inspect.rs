@@ -6,9 +6,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use ti_pki::key::{KeyStatus, classify_key};
 use ti_pki::load::SystemClock;
-use ti_pki::{
-    Certificate, CertificateType, Clock, Timestamp, checks, detect_certificate_type, profile,
-};
+use ti_pki::{CertificateType, Clock, Timestamp, checks, detect_certificate_type, profile};
 use x509_cert::der::oid::ObjectIdentifier;
 
 use crate::error::{CliError, Exit};
@@ -22,9 +20,46 @@ struct Report {
     schema: u32,
     source: String,
     certificates: Vec<CertificateInfo>,
+    /// The container, when the input is a PKCS#12 file.
+    pkcs12: Option<Pkcs12Info>,
     /// The instant validity was judged at, for the remaining-time text.
     #[serde(skip)]
     now: Timestamp,
+}
+
+#[derive(Serialize)]
+struct Pkcs12Info {
+    /// `DER`, or `BER` as Java keystores and card vendors write it.
+    encoding: &'static str,
+    mac: Option<MacInfo>,
+    /// The encryption of each encrypted safe and shrouded key, in file order.
+    encryption: Vec<EncryptionInfo>,
+    keys: Vec<P12KeyInfo>,
+}
+
+#[derive(Serialize)]
+struct EncryptionInfo {
+    /// `certificates` (an encrypted safe) or `key` (a shrouded key).
+    target: &'static str,
+    algorithm: String,
+}
+
+#[derive(Serialize)]
+struct MacInfo {
+    digest: String,
+    iterations: u32,
+}
+
+#[derive(Serialize)]
+struct P12KeyInfo {
+    /// `EC`, `RSA`, or the algorithm OID.
+    algorithm: String,
+    /// The named curve of an EC key, e.g. `brainpoolP256r1`.
+    curve: Option<String>,
+    friendly_name: Option<String>,
+    local_key_id: Option<String>,
+    /// Index into `certificates` of the certificate this key belongs to.
+    certificate: Option<usize>,
 }
 
 #[derive(Serialize)]
@@ -57,6 +92,10 @@ struct CertificateInfo {
     sha256: String,
     /// The input is a PKCS#12 file that also holds this certificate's private key.
     private_key: bool,
+    /// The `friendlyName` of its bag, in a PKCS#12 file.
+    friendly_name: Option<String>,
+    /// The `localKeyId` of its bag, in a PKCS#12 file.
+    local_key_id: Option<String>,
     pem: String,
 }
 
@@ -83,15 +122,22 @@ struct AdmissionInfo {
 
 pub fn run(file: &Path, p12_password: &str, out: &Output) -> Result<Exit, CliError> {
     let source = input::read(file)?;
-    let certs = input::certificates(&source, p12_password)?;
+    let input = input::load(&source, p12_password)?;
     let now = SystemClock.now();
+    let certificates: Vec<CertificateInfo> = input
+        .certificates
+        .iter()
+        .map(|loaded| describe(loaded, now))
+        .collect();
+    let pkcs12 = input
+        .pkcs12
+        .as_ref()
+        .map(|p12| container(&source.bytes, p12, &certificates));
     let report = Report {
         schema: SCHEMA,
         source: source.name,
-        certificates: certs
-            .iter()
-            .map(|loaded| describe(&loaded.certificate, loaded.private_key, now))
-            .collect(),
+        certificates,
+        pkcs12,
         now,
     };
     if out.is_json() {
@@ -102,7 +148,90 @@ pub fn run(file: &Path, p12_password: &str, out: &Output) -> Result<Exit, CliErr
     Ok(Exit::Ok)
 }
 
-fn describe(cert: &Certificate, private_key: bool, now: Timestamp) -> CertificateInfo {
+/// What the PKCS#12 container says beyond its certificates: encoding, protection, and
+/// its keys with the certificate each belongs to.
+fn container(bytes: &[u8], p12: &ti_pkcs12::Pkcs12, certs: &[CertificateInfo]) -> Pkcs12Info {
+    let keys = p12
+        .keys
+        .iter()
+        .map(|key| {
+            let (algorithm, curve) = key
+                .algorithm()
+                .map_or((String::from("unknown"), None), |(a, c)| {
+                    (algorithm_name(&a), c.map(|c| curve_name(&c)))
+                });
+            let local_key_id = key.local_key_id.as_deref().map(hex_id);
+            P12KeyInfo {
+                algorithm,
+                curve,
+                friendly_name: key.friendly_name.clone(),
+                certificate: local_key_id.as_ref().and_then(|id| {
+                    certs
+                        .iter()
+                        .position(|c| c.local_key_id.as_ref() == Some(id))
+                }),
+                local_key_id,
+            }
+        })
+        .collect();
+    Pkcs12Info {
+        encoding: if bytes.get(1) == Some(&0x80) {
+            "BER"
+        } else {
+            "DER"
+        },
+        mac: p12.mac.as_ref().map(|mac| MacInfo {
+            digest: mac.digest.clone(),
+            iterations: mac.iterations,
+        }),
+        encryption: p12
+            .encryption
+            .iter()
+            .map(|e| EncryptionInfo {
+                target: if e.target == ti_pkcs12::Target::Key {
+                    "key"
+                } else {
+                    "certificates"
+                },
+                algorithm: e.algorithm.clone(),
+            })
+            .collect(),
+        keys,
+    }
+}
+
+/// `localKeyId`s are opaque bytes; lower-case hex without separators, as OpenSSL
+/// prints them compactly.
+fn hex_id(bytes: &[u8]) -> String {
+    hex(bytes).replace(':', "").to_lowercase()
+}
+
+fn algorithm_name(oid: &ObjectIdentifier) -> String {
+    match oid.to_string().as_str() {
+        "1.2.840.10045.2.1" => "EC".to_owned(),
+        "1.2.840.113549.1.1.1" => "RSA".to_owned(),
+        other => other.to_owned(),
+    }
+}
+
+fn curve_name(oid: &ObjectIdentifier) -> String {
+    match oid.to_string().as_str() {
+        "1.3.36.3.3.2.8.1.1.7" => "brainpoolP256r1".to_owned(),
+        "1.3.36.3.3.2.8.1.1.11" => "brainpoolP384r1".to_owned(),
+        "1.3.36.3.3.2.8.1.1.13" => "brainpoolP512r1".to_owned(),
+        "1.2.840.10045.3.1.7" => "P-256".to_owned(),
+        "1.3.132.0.34" => "P-384".to_owned(),
+        "1.3.132.0.35" => "P-521".to_owned(),
+        other => other.to_owned(),
+    }
+}
+
+fn describe(loaded: &input::Loaded, now: Timestamp) -> CertificateInfo {
+    let cert = &loaded.certificate;
+    let private_key = loaded.private_key;
+    let (friendly_name, local_key_id) = loaded.bag.as_ref().map_or((None, None), |(name, id)| {
+        (name.clone(), id.as_deref().map(hex_id))
+    });
     let (status, algorithm) = classify_key(cert.public_key_info(), now);
     let selection = profile::select_for_cert(cert);
     let basic = cert.basic_constraints();
@@ -152,6 +281,8 @@ fn describe(cert: &Certificate, private_key: bool, now: Timestamp) -> Certificat
         authority_key_id: cert.authority_key_id().map(hex),
         sha256: hex(&Sha256::digest(cert.der())),
         private_key,
+        friendly_name,
+        local_key_id,
         pem: pem(cert.der()),
     }
 }
@@ -178,6 +309,27 @@ fn extension_name(oid: &ObjectIdentifier) -> String {
 /// The terminal view: a section per aspect, every detail.
 fn sections(report: &Report) -> Document {
     let mut doc = Document::default();
+    if let Some(p12) = &report.pkcs12 {
+        doc.section("PKCS#12");
+        doc.field("encoding", p12.encoding);
+        doc.field(
+            "MAC",
+            p12.mac.as_ref().map_or_else(
+                || Line::status(Tone::Warn, "none"),
+                |mac| Line::text(format!("{}, {} iterations", mac.digest, mac.iterations)),
+            ),
+        );
+        doc.items("encryption", p12.encryption.iter().map(encryption_line));
+        doc.items(
+            "certificates",
+            report
+                .certificates
+                .iter()
+                .enumerate()
+                .map(|(i, c)| bag_line(i, c)),
+        );
+        doc.items("keys", p12.keys.iter().map(key_line));
+    }
     let count = report.certificates.len();
     for (i, cert) in report.certificates.iter().enumerate() {
         // The file is the user's own argument; a title only separates several certificates.
@@ -249,6 +401,48 @@ fn sections(report: &Report) -> Document {
     doc
 }
 
+fn encryption_line(e: &EncryptionInfo) -> Line {
+    let line = Line::dim(format!("{}: ", e.target));
+    // The PKCS#12 PBEs (RC2, 3DES) are what OpenSSL 3 only reads with -legacy.
+    if e.algorithm.starts_with("PKCS#12") {
+        line.and_status(Tone::Warn, &e.algorithm)
+            .and_dim(" (legacy)")
+    } else {
+        line.and_text(&e.algorithm)
+    }
+}
+
+fn bag_line(index: usize, cert: &CertificateInfo) -> Line {
+    let (cn, _) = split_name(&cert.subject);
+    let mut line = Line::text(format!("#{} ", index + 1)).and_strong(cn.unwrap_or(&cert.subject));
+    if let Some(name) = &cert.friendly_name {
+        line = line.and_dim(format!(" · name {name}"));
+    }
+    if let Some(id) = &cert.local_key_id {
+        line = line.and_dim(" · key id ").and_code(id);
+    }
+    if cert.private_key {
+        line = line.and_dim(" · with its key");
+    }
+    line
+}
+
+fn key_line(key: &P12KeyInfo) -> Line {
+    let mut line = Line::text(key.curve.as_deref().map_or_else(
+        || key.algorithm.clone(),
+        |curve| format!("{} {curve}", key.algorithm),
+    ));
+    if let Some(name) = &key.friendly_name {
+        line = line.and_dim(format!(" · name {name}"));
+    }
+    match key.certificate {
+        Some(i) => line.and_dim(format!(" · for certificate #{}", i + 1)),
+        None => line
+            .and_text(" · ")
+            .and_status(Tone::Warn, "no certificate"),
+    }
+}
+
 /// A distinguished name as a section: the common name first and strong, the other
 /// components on one line.
 pub(super) fn name_section(doc: &mut Document, title: &str, name: &str) {
@@ -265,6 +459,24 @@ pub(super) fn name_section(doc: &mut Document, title: &str, name: &str) {
 /// The Markdown view: a summary, then one list, then the PEM.
 fn summary(report: &Report) -> Document {
     let mut doc = Document::default();
+    if let Some(p12) = &report.pkcs12 {
+        let mut head = Line::strong("PKCS#12").and_text(format!(" · {}", p12.encoding));
+        head = match &p12.mac {
+            Some(mac) => head.and_dim(format!(" · MAC {} × {}", mac.digest, mac.iterations)),
+            None => head.and_text(" · ").and_status(Tone::Warn, "no MAC"),
+        };
+        let mut encryption: Vec<&str> = Vec::new();
+        for e in &p12.encryption {
+            if !encryption.contains(&e.algorithm.as_str()) {
+                encryption.push(&e.algorithm);
+            }
+        }
+        if !encryption.is_empty() {
+            head = head.and_dim(format!(" · {}", encryption.join(", ")));
+        }
+        doc.paragraph(head);
+        doc.items("", p12.keys.iter().map(key_line));
+    }
     let count = report.certificates.len();
     for (i, cert) in report.certificates.iter().enumerate() {
         // The file is the user's own argument; a title only separates several certificates.

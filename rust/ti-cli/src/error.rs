@@ -64,6 +64,9 @@ pub enum CliError {
         #[source]
         source: ti_pkcs12::Error,
     },
+    /// An output file exists and `--force` was not given.
+    #[error("{0} exists")]
+    OutputExists(String),
     /// `--env auto` found no evidence for production or test.
     #[error("cannot tell the TI environment from the certificates: {0}")]
     EnvironmentUndetected(String),
@@ -96,6 +99,7 @@ impl CliError {
             CliError::Certificate { .. } => "certificate_malformed",
             CliError::Pkcs12 { source, .. } if source.is_wrong_password() => "p12_password",
             CliError::Pkcs12 { .. } => "p12_unreadable",
+            CliError::OutputExists(_) => "output_exists",
             CliError::EnvironmentUndetected(_) => "environment_undetected",
             CliError::Trust(_) | CliError::TrustLoad(_) => "trust_material_unavailable",
             CliError::HttpSetup(_) => "http_setup",
@@ -116,6 +120,9 @@ impl CliError {
                 Some("pass the file's password with --p12-password (default 00)")
             }
             CliError::Pkcs12 { .. } => Some("expected a PKCS#12 (.p12, .pfx) file"),
+            CliError::OutputExists(_) => {
+                Some("choose another OUTPUT, or pass --force to replace it")
+            }
             CliError::EnvironmentUndetected(_) => Some("pass --env prod, ref, test or dev"),
             CliError::TrustLoad(_) => {
                 Some("check the network and the HTTP options (-v shows them), or pass --offline")
@@ -135,6 +142,7 @@ impl CliError {
             | CliError::Certificate { .. }
             | CliError::Pkcs12 { .. } => Exit::Input,
             CliError::EnvironmentUndetected(_)
+            | CliError::OutputExists(_)
             | CliError::HttpSetup(_)
             | CliError::UnknownSchema(_)
             | CliError::CacheDir(_) => Exit::Usage,

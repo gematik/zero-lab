@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pki pkcs12 encode",
+  "description": "The credentials object of a .kon file, exactly as Konnektor clients read it; unlike every other output it has no schema field, so it can be pasted as is.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "const": "pkcs12"
+    },
+    "data": {
+      "type": "string",
+      "description": "The PKCS#12 file, base64; BER and legacy files re-encoded"
+    },
+    "password": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "type",
+    "data",
+    "password"
+  ],
+  "additionalProperties": false
+}

@@ -34,6 +34,12 @@
   encryption included) through ti-pkcs12, with `--p12-password` (default `00`). The
   certificate with its key comes first and is `verify`'s end entity; `inspect` reports
   `private_key`. A wrong password is error kind `p12_password`, exit 4.
+- `pki inspect` reports the PKCS#12 container (`pkcs12`: encoding, MAC, encryption per
+  part, keys with their certificate; `friendly_name` and `local_key_id` per
+  certificate).
+- `pki pkcs12 convert` (re-encode as DER, PBES2 AES-256, SHA-256 MAC, mode 0600,
+  `--force` to replace) and `pki pkcs12 encode` (`.kon` credentials JSON; legacy files
+  re-encoded first).
 - `completions bash|zsh|fish|elvish|powershell`.
 - `just cli-targets`: release binaries for Linux (musl), Windows and macOS.
 - Release builds are stripped, fully LTO-optimised and abort on panic (6.2 → 3.5 MB).

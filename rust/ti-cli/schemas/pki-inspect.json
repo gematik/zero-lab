@@ -17,12 +17,24 @@
       "items": {
         "$ref": "#/$defs/certificate"
       }
+    },
+    "pkcs12": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/pkcs12"
+        }
+      ],
+      "description": "The container, when the input is a PKCS#12 file"
     }
   },
   "required": [
     "schema",
     "source",
-    "certificates"
+    "certificates",
+    "pkcs12"
   ],
   "additionalProperties": false,
   "$defs": {
@@ -225,6 +237,20 @@
           "type": "boolean",
           "description": "The input is a PKCS#12 file that also holds this certificate's private key"
         },
+        "friendly_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "friendlyName of its bag, in a PKCS#12 file"
+        },
+        "local_key_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "localKeyId of its bag (hex), in a PKCS#12 file"
+        },
         "pem": {
           "type": "string",
           "description": "The certificate as PEM"
@@ -253,7 +279,119 @@
         "authority_key_id",
         "sha256",
         "private_key",
+        "friendly_name",
+        "local_key_id",
         "pem"
+      ],
+      "additionalProperties": false
+    },
+    "pkcs12": {
+      "type": "object",
+      "properties": {
+        "encoding": {
+          "enum": [
+            "DER",
+            "BER"
+          ]
+        },
+        "mac": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "digest": {
+                  "type": "string"
+                },
+                "iterations": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "digest",
+                "iterations"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "encryption": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "enum": [
+                  "certificates",
+                  "key"
+                ]
+              },
+              "algorithm": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "target",
+              "algorithm"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "algorithm": {
+                "type": "string",
+                "description": "EC, RSA or the algorithm OID"
+              },
+              "curve": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "friendly_name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "local_key_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "certificate": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0,
+                "description": "Index into certificates of the key's certificate"
+              }
+            },
+            "required": [
+              "algorithm",
+              "curve",
+              "friendly_name",
+              "local_key_id",
+              "certificate"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "encoding",
+        "mac",
+        "encryption",
+        "keys"
       ],
       "additionalProperties": false
     }

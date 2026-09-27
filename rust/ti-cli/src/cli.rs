@@ -34,6 +34,8 @@ Examples:
   {bin} pki roots list --env ref
   {bin} pki tsl show --rejected
   {bin} pki tsl show --ca SMCB-CA51 --format markdown   # with the CA's PEM
+  {bin} pki inspect identity.p12                # password 00 unless --p12-password
+  {bin} pki pkcs12 convert legacy.p12 modern.p12
   {bin} schema pki verify                       # the JSON contract of one command
   {bin} agent                                   # usage guide for scripts and agents
   {bin} version
@@ -169,6 +171,41 @@ pub enum PkiCommand {
     /// The TSL of an environment and the CAs taken from it
     #[command(subcommand)]
     Tsl(TslCommand),
+    /// PKCS#12 files: re-encode with modern encryption, or as Konnektor credentials
+    #[command(subcommand)]
+    Pkcs12(Pkcs12Command),
+}
+
+/// `ti pki pkcs12 …`. `pki inspect` shows what a PKCS#12 file holds.
+#[derive(Debug, Subcommand)]
+pub enum Pkcs12Command {
+    /// Re-encode a PKCS#12 file as DER with PBES2 AES-256 and an SHA-256 MAC, which
+    /// OpenSSL 3 and the Go tools read without -legacy
+    Convert {
+        /// The PKCS#12 file; "-" reads stdin
+        #[arg(value_name = "INPUT")]
+        input: PathBuf,
+        /// Where to write the new file (mode 0600)
+        #[arg(value_name = "OUTPUT")]
+        output: PathBuf,
+        /// Password of INPUT, kept for OUTPUT
+        #[arg(long, value_name = "PASSWORD", default_value = "00")]
+        p12_password: String,
+        /// Replace OUTPUT if it exists
+        #[arg(long)]
+        force: bool,
+    },
+    /// Print a PKCS#12 file as the credentials of a .kon file:
+    /// {"type":"pkcs12","data":BASE64,"password":…}; BER and legacy files are
+    /// re-encoded first so every Konnektor client reads them
+    Encode {
+        /// The PKCS#12 file; "-" reads stdin
+        #[arg(value_name = "FILE")]
+        file: PathBuf,
+        /// Password of FILE, included in the output
+        #[arg(long, value_name = "PASSWORD", default_value = "00")]
+        p12_password: String,
+    },
 }
 
 /// `ti pki roots …`.
