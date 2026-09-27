@@ -142,6 +142,8 @@ impl<T: Transport> Certificates<'_, T> {
 
     /// Expiry dates of the certificates of the card with `handle`, or of all cards and
     /// the Konnektor's own when `handle` is `None`.
+    /// Without a handle a Konnektor fails as a whole (4132) when any card it knows
+    /// lacks a certificate of `crypt`, so prefer one call per card.
     ///
     /// # Errors
     ///

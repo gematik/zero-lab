@@ -13,6 +13,11 @@ publish.workspace = true
 # Captured Konnektor responses are test data only.
 exclude = ["tests/"]
 
+[features]
+# The transport over blocking ureq with rustls and ring: mutual TLS from PKCS#12
+# credentials, the `.kon` trust store, basic auth. Not for wasm32.
+ureq = ["dep:ureq", "dep:rustls", "dep:rustls-pki-types", "dep:rustls-platform-verifier", "dep:ti-pkcs12", "dep:p256", "dep:p384"]
+
 [dependencies]
 ti-types.workspace = true
 ti-cache.workspace = true
@@ -24,9 +29,30 @@ quick-xml.workspace = true
 base64.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+ureq = { workspace = true, optional = true, features = ["rustls-no-provider"] }
+rustls = { workspace = true, optional = true }
+rustls-pki-types = { workspace = true, optional = true, features = ["std"] }
+rustls-platform-verifier = { workspace = true, optional = true }
+ti-pkcs12 = { workspace = true, optional = true }
+# Completes EC client keys that lack their public key, which ring requires.
+p256 = { workspace = true, optional = true, features = ["pkcs8", "alloc"] }
+p384 = { workspace = true, optional = true, features = ["pkcs8", "alloc"] }
 
 [dev-dependencies]
 futures-lite.workspace = true
+rustls.workspace = true
+rustls-pki-types = { workspace = true, features = ["std"] }
+ureq.workspace = true
+# The e2e test checks an ExternalAuthenticate signature against the card's C.AUT.
+ti-pki = { workspace = true, features = ["brainpool"] }
+
+[[test]]
+name = "tls"
+required-features = ["ureq"]
+
+[[test]]
+name = "e2e"
+required-features = ["ureq"]
 
 [lints]
 workspace = true

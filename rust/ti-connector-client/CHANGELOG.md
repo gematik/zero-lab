@@ -19,3 +19,10 @@
 - Generated bindings (`api`) for EventService 7.2, CardService 8.1 and 8.2,
   CertificateService 6.0, AuthSignatureService 7.4, SignatureService 7.5 and 7.4,
   EncryptionService 6.1.
+- Feature `ureq`: `ureq::UreqTransport` over blocking ureq with rustls and ring;
+  mutual TLS from `pkcs12` credentials (read by ti-pkcs12; P-256/P-384 keys without
+  their public key, as Java keystores write them, are completed), the `.kon` trust store
+  with Go's semantics (pins by equality, CA chains checked for `expectedHost`, also
+  sent as SNI; the system's roots when empty), `insecureSkipVerify`, per-request
+  timeouts, basic auth. `Error::Config` for unusable credentials or trust stores.
+- Environment-gated tests against a real Konnektor (`tests/e2e.rs`).

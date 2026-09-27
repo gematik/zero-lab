@@ -503,6 +503,7 @@ dependencies = [
  "elliptic-curve",
  "rfc6979",
  "signature",
+ "spki",
  "zeroize",
 ]
 
@@ -519,6 +520,7 @@ dependencies = [
  "ff",
  "group",
  "hybrid-array",
+ "pkcs8",
  "rand_core",
  "sec1",
  "subtle",
@@ -1242,6 +1244,7 @@ checksum = "5c9f42978c78a00e3d68f69fc03e57a234debae69da4020a4fb588fcdcd07b06"
 dependencies = [
  "elliptic-curve",
  "primefield",
+ "serdect",
  "wnaf",
 ]
 
@@ -1809,14 +1812,21 @@ version = "0.1.0"
 dependencies = [
  "base64 0.23.1",
  "futures-lite",
+ "p256",
+ "p384",
  "quick-xml",
+ "rustls",
+ "rustls-pki-types",
+ "rustls-platform-verifier",
  "serde",
  "serde_json",
  "sha2",
  "thiserror",
  "ti-cache",
+ "ti-pkcs12",
  "ti-pki",
  "ti-types",
+ "ureq",
 ]
 
 [[package]]

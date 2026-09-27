@@ -45,6 +45,27 @@ for card in connector.cards().list(&[]).await? {
 - **Caching:** the service directory can be loaded through a `ti_cache::Cache`
   (`Connector::connect_cached`). Card data, PIN state and signatures are never cached.
 
+## Features
+
+| Feature | Effect |
+| --- | --- |
+| `ureq` | `ureq::UreqTransport`: blocking ureq with rustls and ring, mutual TLS from `pkcs12` credentials, the `.kon` trust store (pins by equality, CA chains checked for `expectedHost`), basic auth. Not for wasm32 |
+
+Brainpool keys are not supported for TLS yet (ring has no brainpool): client
+certificates and Konnektor server certificates must be P-256, P-384 or RSA.
+
+## Tests against a real Konnektor
+
+```sh
+TI_TEST_KON_PATH=praxis.kon cargo test -p ti-connector-client --features ureq --test e2e -- --nocapture
+```
+
+reads the service directory, the cards, their certificates and PIN states, certificate
+expiry and the Konnektor's check of each C.AUT. With `TI_TEST_KON_INTERACTIVE=1` it
+also verifies the PIN of an SMC-B (or else an HBA), entered at the card terminal, and
+checks an ExternalAuthenticate signature against the card's C.AUT. `tests/tls/generate.sh`
+regenerates the OpenSSL certificates of the TLS tests.
+
 ## Adding an operation
 
 1. Add it with its timeout class to `api.select.json` and run `just generate-connector`.

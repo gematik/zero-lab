@@ -31,6 +31,9 @@ pub enum Error {
     /// The response could not be read, or the request not written.
     #[error("decode: {0}")]
     Decode(String),
+    /// The `.kon` credentials or trust store cannot be used by the transport.
+    #[error("configuration: {0}")]
+    Config(String),
     /// The cache store failed, or offline with nothing cached.
     #[error("cache: {0}")]
     Cache(String),

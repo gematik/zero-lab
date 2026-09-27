@@ -203,7 +203,7 @@ fn fault(xml: &str) -> Option<Fault> {
             severity: t.severity,
             event_id: t.event_id,
             comp_type: t.comp_type,
-            detail: t.detail.map(|d| d.text),
+            detail: t.detail.map(|d| d.text).filter(|d| !d.trim().is_empty()),
         })
         .collect();
     Some(Fault {

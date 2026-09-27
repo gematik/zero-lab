@@ -17,6 +17,8 @@ mod error;
 mod pins;
 mod sds;
 mod soap;
+#[cfg(feature = "ureq")]
+pub mod ureq;
 
 pub use auth::{Auth, SignatureType};
 pub use cards::Cards;
