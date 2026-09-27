@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+- `Timestamp`, `Clock` and `SystemClock` come from `ti-types`, so every TI crate
+  shares them; the paths `ti_pki::{Timestamp, Clock}` and `ti_pki::load::SystemClock`
+  stay as re-exports.
+
 - reqwest transport errors carry their causes (refused, timed out, unknown issuer),
   not only reqwest's "error sending request".
 - `Certificate::signature_algorithm`, `checks::key_usage_name` and

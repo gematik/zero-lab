@@ -30,7 +30,7 @@ test-util = []
 # Loading layer: traits, loaders, cache and reloader. Runtime-agnostic, builds for wasm32.
 load = ["dep:arc-swap", "dep:minicbor"]
 # Operating-system facilities: file transport, system clock, bundle files.
-os = ["load"]
+os = ["load", "ti-types/std"]
 # Transport over a caller-provided reqwest::Client (native and wasm32).
 reqwest = ["load", "dep:reqwest"]
 # Background reloader, SIGHUP and admin trigger on tokio. Not for wasm32.

@@ -1,7 +1,11 @@
 # ti-types
 
 Shared vocabulary types for the gematik Telematikinfrastruktur (TI), used by every `ti-*`
-crate so that they agree on what an environment is.
+crate so that they agree on what an environment is and what time it is:
+- `Env` and `Tier`;
+- `Timestamp`, seconds since the Unix epoch, with RFC 3339 parsing and formatting;
+- `Clock`, the injected time source: libraries never read the system time directly,
+  so tests use a fixed clock and wasm32 builds need no system time.
 
 ```rust
 use ti_types::{Env, Tier};
@@ -31,7 +35,7 @@ split consumers into incompatible `Env` types.
 
 | Feature | Effect |
 | --- | --- |
-| `std` | Links `std`; required by `clap`, otherwise nothing extra |
+| `std` | Links `std`; adds `SystemClock`, the operating system's wall clock; required by `clap` |
 | `serde` | `Serialize`/`Deserialize` for `Env` as lowercase names; also accepts `pu`, `ru`, `tu` |
 | `clap` | `clap::ValueEnum` for `Env`, including the aliases (implies `std`) |
 
