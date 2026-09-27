@@ -7,6 +7,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ## Unreleased
 
+### ti-cli
+
+#### removed
+- `probe` no longer checks ePA 3, for the time being.
+
 ### ti-connector-client
 
 #### added

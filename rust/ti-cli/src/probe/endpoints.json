@@ -21,11 +21,6 @@
       "url": "https://epa-as-2.prod.epa4all.de"
     },
     {
-      "name": "ePA 3",
-      "kind": "epa",
-      "url": "https://epa-as-3.prod.epa4all.de"
-    },
-    {
       "name": "PoPP",
       "kind": "zeta",
       "url": "https://popp.prod.poppservice.de"
@@ -56,11 +51,6 @@
       "name": "ePA 2",
       "kind": "epa",
       "url": "https://epa-as-2.ref.epa4all.de"
-    },
-    {
-      "name": "ePA 3",
-      "kind": "epa",
-      "url": "https://epa-as-3.ref.epa4all.de"
     },
     {
       "name": "PoPP",
@@ -95,11 +85,6 @@
       "url": "https://epa-as-2.test.epa4all.de"
     },
     {
-      "name": "ePA 3",
-      "kind": "epa",
-      "url": "https://epa-as-3.test.epa4all.de"
-    },
-    {
       "name": "PoPP",
       "kind": "zeta",
       "url": "https://popp.test.poppservice.de"
@@ -130,11 +115,6 @@
       "name": "ePA 2",
       "kind": "epa",
       "url": "https://epa-as-2.dev.epa4all.de"
-    },
-    {
-      "name": "ePA 3",
-      "kind": "epa",
-      "url": "https://epa-as-3.dev.epa4all.de"
     },
     {
       "name": "PoPP",
