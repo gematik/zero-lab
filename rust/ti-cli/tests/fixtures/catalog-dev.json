@@ -1,0 +1,25 @@
+{
+  "format_version": "0.9.2",
+  "updated_at": 1789711293,
+  "env": "dev",
+  "service_instances": {
+    "vsdm-1": {"type": "vsdm", "url": "https://vsdm-dev.tk.de"},
+    "vsdm-2": {"type": "vsdm", "url": "https://vsdm-rudev.apimisc.de"},
+    "vsdm-3": {"type": "vsdm", "url": "https://dienst.vsdd2.rudev.service-ti.de"},
+    "vsdm-4": {"type": "vsdm", "url": "https://fd.ru-dev.vsdm-bm.de"},
+    "popp-1": {"type": "popp", "url": "https://popp.dev.poppservice.de"},
+    "dipag-1": {"type": "dipag", "url": "https://dev.digitale-patientenrechnung.de"}
+  },
+  "const": ["popp-1", "dipag-1"],
+  "routing": {
+    "vsdm": {
+      "101575519": "vsdm-1",
+      "101097008": "vsdm-2",
+      "101520078": "vsdm-2",
+      "104526376": "vsdm-2",
+      "104940005": "vsdm-3",
+      "109900019": "vsdm-4",
+      "104593982": "vsdm-4"
+    }
+  }
+}

@@ -43,6 +43,7 @@ Examples:
   {bin} connector -c praxis get cards
   {bin} connector get certificates 80276883110000163974   # ICCSN, Telematik-ID or handle
   {bin} connector verify pin 1-SMC-B-Testkarte-883110000129072
+  {bin} probe ref                               # which TI services of ref answer
   {bin} schema pki verify                       # the JSON contract of one command
   {bin} agent                                   # usage guide for scripts and agents
   {bin} version
@@ -129,6 +130,12 @@ pub enum Command {
     Pki(PkiCommand),
     /// The Konnektor: cards, certificates, PINs
     Connector(ConnectorCli),
+    /// Check that the TI services of an environment answer, in parallel (exit 0 or 1)
+    Probe {
+        /// prod, ref, test or dev (also pu, ru, tu)
+        #[arg(value_name = "ENV", value_parser = env_name)]
+        env: ti_pki::Env,
+    },
     /// The download cache
     #[command(subcommand)]
     Cache(CacheCommand),
@@ -310,6 +317,12 @@ impl Environment {
             Environment::Dev => Some(ti_pki::Env::Dev),
         }
     }
+}
+
+fn env_name(value: &str) -> Result<ti_pki::Env, String> {
+    value
+        .parse()
+        .map_err(|_| format!("{value:?} is not prod, ref, test or dev (or pu, ru, tu)"))
 }
 
 fn profile_selectors() -> PossibleValuesParser {

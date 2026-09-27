@@ -8,7 +8,7 @@ use crate::error::{CliError, Exit};
 use crate::output::{Output, SCHEMA};
 
 /// Every command with JSON output, and the error document.
-pub const SCHEMAS: [(&str, &str); 32] = [
+pub const SCHEMAS: [(&str, &str); 33] = [
     (
         "pki inspect",
         include_str!("../../schemas/pki-inspect.json"),
@@ -126,6 +126,7 @@ pub const SCHEMAS: [(&str, &str); 32] = [
         "connector export certificate",
         include_str!("../../schemas/connector-export-certificate.json"),
     ),
+    ("probe", include_str!("../../schemas/probe.json")),
     ("version", include_str!("../../schemas/version.json")),
     ("error", include_str!("../../schemas/error.json")),
 ];

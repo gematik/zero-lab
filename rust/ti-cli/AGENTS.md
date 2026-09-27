@@ -153,3 +153,26 @@ never on `message`.
   masked in `-vv`, and removed by `comfort deactivate`. `--comfort-user-id` or
   `TI_COMFORT_USER_ID` supplies one instead.
 
+## Subsystem probe: are the TI services reachable
+
+```sh
+{bin} probe ref                      # live table on a terminal; exit 0 none failed, 1 otherwise
+{bin} --format json probe prod       # one document once all probes are done
+```
+
+- `ENV` is `prod`, `ref`, `test` or `dev` (also `pu`, `ru`, `tu`).
+- Every probe runs in parallel with a 3 s limit per request; TLS is not verified (the
+  question is reachability, and TI services use TI-internal CAs).
+- Each service is checked with its protocol: `oidc` (the IDP's OpenID discovery, JSON
+  or signed), `zeta` (RFC 9728 protected-resource metadata of ZETA-protected services
+  such as PoPP, VSDM and DiPag), `erp` (the E-Rezept Fachdienst's VAU certificate), `epa` (the
+  ePA Information Service's record status for an insurant ID of nobody, `X000000000`:
+  `noHealthRecord`), `catalog`
+  (the TI platform's service-discovery `catalog.json`), `http` (any answer).
+- The catalog's `service_instances` are probed too (`source: "catalog"`).
+- `status`: `ok` the expected answer, `warn` an answer but not the expected one, `fail`
+  no answer; `detail` is `{kind} …` when ok (`oidc discovery`, `catalog, 6 instances`,
+  `http 403`), otherwise the cause (`HTTP 404`, `issuer … differs`, `DNS lookup failed`,
+  `timeout`, `connection refused`, `TLS error`). Hosts
+  under `splitdns.ti-dienste.de` resolve only inside the TI.
+

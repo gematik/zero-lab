@@ -3,6 +3,7 @@
 
 pub mod document;
 mod json;
+pub mod live;
 mod markdown;
 pub mod style;
 mod text;
@@ -65,6 +66,11 @@ impl Output {
             text::render(text, &mut stdout())?;
         }
         Ok(())
+    }
+
+    /// Whether results are Markdown (chosen, or stdout piped with `auto`).
+    pub fn is_markdown(&self) -> bool {
+        self.format == Format::Markdown
     }
 
     /// Whether results are JSON.

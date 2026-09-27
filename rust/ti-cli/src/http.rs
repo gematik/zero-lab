@@ -92,7 +92,7 @@ fn pem_certificates(path: &Path) -> Result<Vec<Certificate<'static>>, CliError> 
 /// The proxy for URLs of `scheme`, as curl picks it: `-x`, else `<scheme>_proxy`, else
 /// `ALL_PROXY`, each variable lower case first; `--noproxy`, else `NO_PROXY`, exempts
 /// hosts. `-x ""` or a no-proxy list of `*` turns proxies off.
-fn proxy(net: &NetArgs, scheme: &str) -> Result<Option<ureq::Proxy>, CliError> {
+pub(crate) fn proxy(net: &NetArgs, scheme: &str) -> Result<Option<ureq::Proxy>, CliError> {
     let env = |name: &str| {
         [name.to_ascii_lowercase(), name.to_ascii_uppercase()]
             .iter()

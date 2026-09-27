@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+- `probe ENV`, the Go `ti probe` with protocol checks: OIDC discovery (IDP), RFC 9728
+  (ZETA-protected PoPP, VSDM and DiPag), the eRX VAU certificate, the ePA
+  Information Service, the TI platform's
+  service-discovery catalog and every instance it lists; parallel, 3 s per request, TLS
+  unverified; a live table on a terminal, lines as they finish when piped, JSON or
+  Markdown once all are done; exit 1 when a probe failed. Endpoints are embedded
+  (`TI_PROBE_ENDPOINTS_PATH` replaces them).
 - `connector`, the Go `ti connector` with the same `.kon` files: `configs`, `use`,
   `get info|services|cards|certificates|status|identities|expiration`,
   `describe card|certificate` (the latter as `pki inspect`), `verify pin|certificate`,

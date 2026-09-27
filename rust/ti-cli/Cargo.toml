@@ -21,6 +21,8 @@ path = "src/main.rs"
 # still fences production from TEST-ONLY material.
 ti-pkcs12 = { workspace = true, features = ["encode"] }
 ti-connector-client = { workspace = true, features = ["ureq"] }
+# base64url of the IDP's signed discovery document in `probe`.
+base64ct.workspace = true
 ti-pki = { workspace = true, features = ["brainpool", "rsa", "os", "dangerous-nonprod"] }
 # rustls without a built-in provider (ring is passed in), the OS trust store via the
 # platform verifier, and SOCKS for -x socks5://.

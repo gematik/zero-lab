@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "probe",
+  "description": "Which TI services of an environment answered; exit 0 when none failed, 1 otherwise.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "environment": {
+      "enum": [
+        "prod",
+        "ref",
+        "test",
+        "dev"
+      ]
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "counts": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "integer"
+        },
+        "warn": {
+          "type": "integer"
+        },
+        "fail": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ok",
+        "warn",
+        "fail"
+      ],
+      "additionalProperties": false
+    },
+    "probes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "oidc",
+              "zeta",
+              "catalog",
+              "erp",
+              "epa",
+              "http"
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "host": {
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "builtin",
+              "catalog"
+            ],
+            "description": "builtin, or an instance the service-discovery catalog lists."
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "warn",
+              "fail"
+            ],
+            "description": "ok: the expected answer; warn: an answer, not the expected one; fail: no answer."
+          },
+          "detail": {
+            "type": "string"
+          },
+          "http_status": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "url",
+          "host",
+          "source",
+          "status",
+          "detail",
+          "http_status",
+          "duration_ms"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "environment",
+    "duration_ms",
+    "counts",
+    "probes"
+  ],
+  "additionalProperties": false
+}

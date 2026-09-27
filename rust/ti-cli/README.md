@@ -40,6 +40,7 @@ ti connector encrypt letter.txt --to-card 80276883110000162094   # for a card's 
 ti connector export certificate 80276883110000162094 C.ENC > enc.pem
 ti connector decrypt letter.txt.p7m --card 80276883110000163974
 ti connector comfort activate 80276883110000163974   # PIN.QES once, then signatures without
+ti probe ref                        # which TI services of ref answer, live
 ti cache clear
 ti schema pki verify                # JSON Schema of a command's output
 ti agent                            # usage guide for scripts and agents

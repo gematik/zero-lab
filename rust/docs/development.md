@@ -236,6 +236,7 @@ Each table's columns are a decision, not a dump of the JSON:
 | `connector get identities` | TELEMATIK-ID | TYPE, HOLDER, ICCSN, HANDLE | |
 | `connector get expiration` | VALID UNTIL | SUBJECT, ICCSN, SERIAL, HANDLE | terminal |
 | `connector get status`, errors | CONDITION | SEVERITY, TYPE, SINCE | inactive states |
+| `probe` | SERVICE, status mark | HOST, TIME, DETAIL (`{kind} …` on success, the cause otherwise) | kind, URL, source, HTTP status |
 
 A new list command adds its row here with its choice.
 

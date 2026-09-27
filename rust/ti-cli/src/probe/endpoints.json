@@ -1,0 +1,150 @@
+{
+  "prod": [
+    {
+      "name": "IDP",
+      "kind": "oidc",
+      "url": "https://idp.zentral.idp.splitdns.ti-dienste.de"
+    },
+    {
+      "name": "eRX",
+      "kind": "erp",
+      "url": "https://erp.zentral.erp.splitdns.ti-dienste.de"
+    },
+    {
+      "name": "ePA 1",
+      "kind": "epa",
+      "url": "https://epa-as-1.prod.epa4all.de"
+    },
+    {
+      "name": "ePA 2",
+      "kind": "epa",
+      "url": "https://epa-as-2.prod.epa4all.de"
+    },
+    {
+      "name": "ePA 3",
+      "kind": "epa",
+      "url": "https://epa-as-3.prod.epa4all.de"
+    },
+    {
+      "name": "PoPP",
+      "kind": "zeta",
+      "url": "https://popp.prod.poppservice.de"
+    },
+    {
+      "name": "Catalog",
+      "kind": "catalog",
+      "url": "https://service-discovery.prod.ti-platform.de/catalog.json"
+    }
+  ],
+  "ref": [
+    {
+      "name": "IDP",
+      "kind": "oidc",
+      "url": "https://idp-ref.zentral.idp.splitdns.ti-dienste.de"
+    },
+    {
+      "name": "eRX",
+      "kind": "erp",
+      "url": "https://erp-ref.zentral.erp.splitdns.ti-dienste.de"
+    },
+    {
+      "name": "ePA 1",
+      "kind": "epa",
+      "url": "https://epa-as-1.ref.epa4all.de"
+    },
+    {
+      "name": "ePA 2",
+      "kind": "epa",
+      "url": "https://epa-as-2.ref.epa4all.de"
+    },
+    {
+      "name": "ePA 3",
+      "kind": "epa",
+      "url": "https://epa-as-3.ref.epa4all.de"
+    },
+    {
+      "name": "PoPP",
+      "kind": "zeta",
+      "url": "https://popp.ref.poppservice.de"
+    },
+    {
+      "name": "Catalog",
+      "kind": "catalog",
+      "url": "https://service-discovery.ref.ti-platform.de/catalog.json"
+    }
+  ],
+  "test": [
+    {
+      "name": "IDP",
+      "kind": "oidc",
+      "url": "https://idp-ref.zentral.idp.splitdns.ti-dienste.de"
+    },
+    {
+      "name": "eRX",
+      "kind": "erp",
+      "url": "https://erp-test.zentral.erp.splitdns.ti-dienste.de"
+    },
+    {
+      "name": "ePA 1",
+      "kind": "epa",
+      "url": "https://epa-as-1.test.epa4all.de"
+    },
+    {
+      "name": "ePA 2",
+      "kind": "epa",
+      "url": "https://epa-as-2.test.epa4all.de"
+    },
+    {
+      "name": "ePA 3",
+      "kind": "epa",
+      "url": "https://epa-as-3.test.epa4all.de"
+    },
+    {
+      "name": "PoPP",
+      "kind": "zeta",
+      "url": "https://popp.test.poppservice.de"
+    },
+    {
+      "name": "Catalog",
+      "kind": "catalog",
+      "url": "https://service-discovery.test.ti-platform.de/catalog.json"
+    }
+  ],
+  "dev": [
+    {
+      "name": "IDP",
+      "kind": "oidc",
+      "url": "https://idp-ref.zentral.idp.splitdns.ti-dienste.de"
+    },
+    {
+      "name": "eRX",
+      "kind": "erp",
+      "url": "https://erp-ref.zentral.erp.splitdns.ti-dienste.de"
+    },
+    {
+      "name": "ePA 1",
+      "kind": "epa",
+      "url": "https://epa-as-1.dev.epa4all.de"
+    },
+    {
+      "name": "ePA 2",
+      "kind": "epa",
+      "url": "https://epa-as-2.dev.epa4all.de"
+    },
+    {
+      "name": "ePA 3",
+      "kind": "epa",
+      "url": "https://epa-as-3.dev.epa4all.de"
+    },
+    {
+      "name": "PoPP",
+      "kind": "zeta",
+      "url": "https://popp.dev.poppservice.de"
+    },
+    {
+      "name": "Catalog",
+      "kind": "catalog",
+      "url": "https://service-discovery.dev.ti-platform.de/catalog.json"
+    }
+  ]
+}
