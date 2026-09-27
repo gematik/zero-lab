@@ -36,7 +36,7 @@ const EPA_USER_AGENT: &str = concat!("ti-cli/", env!("CARGO_PKG_VERSION"));
 /// Information Service answers `noHealthRecord` for it.
 const EPA_INSURANT: &str = "X000000000";
 
-/// `probe def`, a slip for `dev`, answered with a banner before the dev probes: tall
+/// Easter egg: `probe def`, a slip for `dev`, answered with a banner before the dev probes: tall
 /// letters with spiked ends, filled yellow-orange and edged red.
 const DEF: [&str; 8] = [
     "◢◣     ◢◣    ◢◣       ◢◣    ◢◣    ◢◣    ◢◣      ◢◣   ◢◣     ◢◣",

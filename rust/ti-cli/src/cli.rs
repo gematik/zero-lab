@@ -322,7 +322,7 @@ impl Environment {
 pub struct ProbeEnv {
     /// The environment probed.
     pub env: ti_pki::Env,
-    /// Typed as `def`: a slip for `dev`, probed as dev and greeted with a banner.
+    /// Typed as `def` (an easter egg): a slip for `dev`, probed as dev under a banner.
     pub def: bool,
 }
 
