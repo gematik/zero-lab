@@ -1,12 +1,12 @@
-//! A dumb key/value store for loaded bodies. HTTP cache semantics (freshness,
-//! revalidation, serving stale) live in [`CachingLoader`](super::CachingLoader), not
-//! in the store, so a store is trivial to back with Redis, a file or a browser API.
+//! A dumb key/value store for bodies and their metadata. HTTP cache semantics
+//! (freshness, revalidation, serving stale) live in [`Cache`](crate::Cache), not in the
+//! store, so a store is trivial to back with Redis, a file or a browser API.
 
 use core::time::Duration;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, MutexGuard};
 
-use super::artifact::Meta;
+use ti_types::Timestamp;
 
 /// Persists cache entries by key.
 #[allow(
@@ -30,7 +30,7 @@ impl<S: CacheStore + ?Sized> CacheStore for &S {
     }
 }
 
-impl<S: CacheStore + ?Sized> CacheStore for std::sync::Arc<S> {
+impl<S: CacheStore + ?Sized> CacheStore for Arc<S> {
     async fn get(&self, key: &str) -> Result<Option<CacheEntry>, CacheError> {
         (**self).get(key).await
     }
@@ -40,7 +40,7 @@ impl<S: CacheStore + ?Sized> CacheStore for std::sync::Arc<S> {
     }
 }
 
-/// A cached body with its metadata.
+/// A body with its metadata.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CacheEntry {
     /// The bytes.
@@ -49,35 +49,56 @@ pub struct CacheEntry {
     pub meta: Meta,
 }
 
+/// Metadata of a body.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Meta {
+    /// HTTP `ETag`, or `sha256:<hex>` of the body for sources without HTTP validators.
+    pub etag: Option<String>,
+    /// HTTP `Last-Modified`, verbatim.
+    pub last_modified: Option<String>,
+    /// When the body was obtained from its origin; revalidation moves it forward.
+    pub fetched_at: Timestamp,
+    /// `Cache-Control: max-age` of the response, if any.
+    pub max_age: Option<Duration>,
+    /// Where the body came from.
+    pub source: Source,
+}
+
+impl Meta {
+    /// Metadata without validators or `max-age`.
+    pub fn new(fetched_at: Timestamp, source: Source) -> Self {
+        Meta {
+            etag: None,
+            last_modified: None,
+            fetched_at,
+            max_age: None,
+            source,
+        }
+    }
+}
+
+/// Where a body came from. Informational only: trust never depends on it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum Source {
+    /// Fetched over HTTP.
+    Http,
+    /// Read from a file.
+    File,
+    /// Taken from an offline bundle.
+    Bundle,
+    /// Served by a cache store.
+    Cache,
+    /// Compiled into the binary.
+    Embedded,
+}
+
 /// A cache store failure.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("cache store: {message}")]
 pub struct CacheError {
     /// Human-readable detail.
     pub message: String,
-}
-
-/// How [`CachingLoader`](super::CachingLoader) uses its store.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CachePolicy {
-    /// Serve from the cache without asking the origin while an entry is younger than this.
-    pub max_age: Duration,
-    /// When the origin fails, keep serving an entry for this long past `max_age`.
-    pub stale_if_error: Duration,
-    /// Never contact the origin; serve whatever the store holds. For air-gapped setups
-    /// with a pre-populated store. The reloader's freshness policy still ages it out.
-    pub offline: bool,
-}
-
-impl Default for CachePolicy {
-    /// One hour fresh, a day of grace on origin errors, online.
-    fn default() -> Self {
-        CachePolicy {
-            max_age: Duration::from_hours(1),
-            stale_if_error: Duration::from_hours(24),
-            offline: false,
-        }
-    }
 }
 
 /// An in-process [`CacheStore`].
@@ -92,7 +113,7 @@ impl MemoryCacheStore {
         Self::default()
     }
 
-    fn lock(&self) -> Result<std::sync::MutexGuard<'_, HashMap<String, CacheEntry>>, CacheError> {
+    fn lock(&self) -> Result<MutexGuard<'_, HashMap<String, CacheEntry>>, CacheError> {
         self.entries.lock().map_err(|_| CacheError {
             message: "memory store lock poisoned".into(),
         })

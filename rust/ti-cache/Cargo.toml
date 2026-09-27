@@ -1,0 +1,22 @@
+[package]
+name = "ti-cache"
+version = "0.1.0"
+description = "HTTP-style caching (freshness, revalidation, stale-on-error) over pluggable stores for gematik Telematikinfrastruktur (TI) clients"
+keywords = ["cache", "etag", "gematik", "telematik"]
+categories = ["caching", "wasm"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+ti-types.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+futures-lite.workspace = true
+
+[lints]
+workspace = true

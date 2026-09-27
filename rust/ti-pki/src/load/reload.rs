@@ -9,12 +9,13 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use arc_swap::ArcSwapOption;
 
-use super::artifact::{Artifact, Source, TrustMaterial};
+use super::artifact::{Artifact, TrustMaterial};
 use super::loader::{LoadError, Loader};
 use super::maybe_send::{MaybeSend, MaybeSync};
 use super::verify::{VerifyError, VerifyFn, verify_material};
 use crate::time::{Clock, Timestamp};
 use crate::{Error, Tier, TrustConfig, TrustStore};
+use ti_cache::Source;
 
 /// The longest a production deployment may keep using trust material it could not
 /// refresh. Past it, the TSL may list CAs that have since been withdrawn.

@@ -1,33 +1,8 @@
 //! The [`Loader`] trait every source and wrapper implements.
 
-use super::artifact::{Artifact, Meta, TrustMaterial};
-use super::cache::CacheError;
+use super::artifact::{Artifact, TrustMaterial};
 use super::transport::TransportError;
-
-/// Validators for a conditional load.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Conditional<'a> {
-    /// The `ETag` of the copy the caller holds.
-    pub etag: Option<&'a str>,
-    /// The `Last-Modified` of the copy the caller holds.
-    pub last_modified: Option<&'a str>,
-}
-
-impl<'a> Conditional<'a> {
-    /// No validators: always load a body.
-    pub const NONE: Conditional<'static> = Conditional {
-        etag: None,
-        last_modified: None,
-    };
-
-    /// The validators of `meta`.
-    pub fn from_meta(meta: &'a Meta) -> Self {
-        Conditional {
-            etag: meta.etag.as_deref(),
-            last_modified: meta.last_modified.as_deref(),
-        }
-    }
-}
+use ti_cache::{CacheError, Conditional, Meta};
 
 /// A loaded body.
 #[derive(Clone, Debug)]

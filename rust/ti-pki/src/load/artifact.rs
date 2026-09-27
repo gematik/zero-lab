@@ -5,6 +5,7 @@ use core::fmt;
 use core::time::Duration;
 
 use sha2::{Digest, Sha256};
+use ti_cache::{Meta, Source};
 
 use crate::time::Timestamp;
 
@@ -41,37 +42,6 @@ impl fmt::Display for Artifact {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
-}
-
-/// Where a body came from. Informational only: trust never depends on it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-pub enum Source {
-    /// Fetched over HTTP.
-    Http,
-    /// Read from a file.
-    File,
-    /// Taken from an offline bundle.
-    Bundle,
-    /// Served by a cache store.
-    Cache,
-    /// Compiled into the binary.
-    Embedded,
-}
-
-/// Metadata of a loaded body.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Meta {
-    /// HTTP `ETag`, or `sha256:<hex>` of the body for file and bundle sources.
-    pub etag: Option<String>,
-    /// HTTP `Last-Modified`, verbatim.
-    pub last_modified: Option<String>,
-    /// When the body was obtained from its origin; revalidation moves it forward.
-    pub fetched_at: Timestamp,
-    /// `Cache-Control: max-age` of the response, if any.
-    pub max_age: Option<Duration>,
-    /// Where the body came from.
-    pub source: Source,
 }
 
 /// What a transport reports alongside a response; [`Meta`] without the time, which the

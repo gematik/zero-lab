@@ -1,5 +1,5 @@
 [workspace]
-members = ["ti-types", "ti-pki", "ti-pkcs12", "ti-cli"]
+members = ["ti-types", "ti-cache", "ti-pki", "ti-pkcs12", "ti-cli"]
 resolver = "3"
 
 # Shared metadata only. Deliberately no workspace.package.version: every crate is
@@ -16,6 +16,7 @@ publish = false
 [workspace.dependencies]
 # In-repo crates: path for local development, version for registry resolution.
 ti-types = { version = "0.1", path = "ti-types" }
+ti-cache = { version = "0.1", path = "ti-cache" }
 ti-pki = { version = "0.1", path = "ti-pki" }
 ti-pkcs12 = { version = "0.1", path = "ti-pkcs12" }
 

@@ -1773,6 +1773,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ti-cache"
+version = "0.1.0"
+dependencies = [
+ "futures-lite",
+ "thiserror",
+ "ti-types",
+]
+
+[[package]]
 name = "ti-cli"
 version = "0.1.0"
 dependencies = [
@@ -1839,6 +1848,7 @@ dependencies = [
  "sha1",
  "sha2",
  "thiserror",
+ "ti-cache",
  "ti-types",
  "tokio",
  "tracing",

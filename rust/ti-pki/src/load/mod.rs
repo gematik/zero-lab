@@ -22,6 +22,10 @@
 //! [`Reloader`] verifies whatever the stack returns and swaps both artefacts together;
 //! request handlers read the result through [`TrustStoreHandle::snapshot`].
 //!
+//! The caching layer is [`ti_cache`], re-exported here: [`CachingLoader`] applies its
+//! [`Cache`] to a [`Loader`], and other crates cache their own artefacts with the same
+//! [`CacheStore`] and [`CachePolicy`].
+//!
 //! The traits ([`Transport`], [`CacheStore`], [`Loader`], [`Clock`]) have no `Send`
 //! bounds, so they can be implemented over single-threaded browser APIs; the loader
 //! structs bound their parameters with [`MaybeSend`]/[`MaybeSync`] instead.
@@ -43,7 +47,6 @@
 //! `Degraded` on. The `tokio` feature's driver logs exactly that.
 
 mod artifact;
-mod cache;
 mod caching;
 mod fallback;
 #[cfg(feature = "os")]
@@ -62,22 +65,24 @@ pub use crate::time::FixedClock;
 pub use crate::time::SystemClock;
 pub use crate::time::{Clock, Timestamp};
 pub use artifact::{
-    Artifact, ArtifactRequest, ArtifactResponse, Meta, ResponseMeta, Source, TrustMaterial,
-    content_etag,
+    Artifact, ArtifactRequest, ArtifactResponse, ResponseMeta, TrustMaterial, content_etag,
 };
-pub use cache::{CacheEntry, CacheError, CachePolicy, CacheStore, MemoryCacheStore};
 pub use caching::CachingLoader;
 pub use fallback::FallbackLoader;
 #[cfg(feature = "os")]
 pub use file::FileTransport;
 pub use http::HttpLoader;
-pub use loader::{Conditional, Fetched, LoadError, Loaded, Loader};
+pub use loader::{Fetched, LoadError, Loaded, Loader};
 pub use maybe_send::{MaybeSend, MaybeSync};
 pub use reload::{
     Expired, MAX_PROD_HARD_EXPIRY, ReloadError, ReloadOutcome, ReloadPolicy, ReloadStatus,
     Reloader, State, TrustStoreHandle,
 };
 pub use static_::{Bundle, StaticLoader};
+pub use ti_cache::{
+    Cache, CacheEntry, CacheError, CacheLookupError, CachePolicy, CacheStore, Cached, Conditional,
+    MemoryCacheStore, Meta, Source,
+};
 #[cfg(any(test, feature = "test-util"))]
 pub use transport::{MockRequest, MockTransport};
 pub use transport::{PostRequest, Transport, TransportError, TransportErrorKind};

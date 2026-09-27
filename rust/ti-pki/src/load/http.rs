@@ -3,11 +3,12 @@
 use std::borrow::Cow;
 
 use super::artifact::{Artifact, ArtifactRequest, ArtifactResponse};
-use super::loader::{Conditional, Fetched, LoadError, Loaded, Loader};
+use super::loader::{Fetched, LoadError, Loaded, Loader};
 use super::maybe_send::{MaybeSend, MaybeSync};
 use super::transport::Transport;
 use crate::TrustConfig;
 use crate::time::Clock;
+use ti_cache::Conditional;
 
 /// Loads the artefacts from the URLs in a [`TrustConfig`] through any [`Transport`],
 /// HTTP or not ([`FileTransport`](super::FileTransport) ignores the URL). No caching and

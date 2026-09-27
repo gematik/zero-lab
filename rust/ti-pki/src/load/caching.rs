@@ -1,20 +1,19 @@
-//! [`CachingLoader`]: HTTP-style caching over any loader and [`CacheStore`].
+//! [`CachingLoader`]: [`ti_cache::Cache`] applied to a trust-material [`Loader`].
 
-use super::artifact::{Artifact, Meta, Source};
-use super::cache::{CacheEntry, CachePolicy, CacheStore};
-use super::loader::{Conditional, Fetched, LoadError, Loaded, Loader};
+use ti_cache::{
+    Cache, CacheEntry, CacheLookupError, CachePolicy, CacheStore, Conditional, OriginResponse,
+};
+
+use super::artifact::Artifact;
+use super::loader::{Fetched, LoadError, Loaded, Loader};
 use super::maybe_send::{MaybeSend, MaybeSync};
 use crate::time::Clock;
 
-/// Serves fresh entries from `store`, revalidates stale ones with the inner loader's
-/// validators, and falls back to the cached copy for `stale_if_error` when the inner
-/// loader fails.
+/// [`Cache`] over a [`Loader`]: the trust-material stack's caching layer.
 #[derive(Debug)]
 pub struct CachingLoader<L, S, C> {
     inner: L,
-    store: S,
-    clock: C,
-    policy: CachePolicy,
+    cache: Cache<S, C>,
 }
 
 impl<L, S, C> CachingLoader<L, S, C>
@@ -27,20 +26,7 @@ where
     pub fn new(inner: L, store: S, clock: C, policy: CachePolicy) -> Self {
         CachingLoader {
             inner,
-            store,
-            clock,
-            policy,
-        }
-    }
-
-    fn from_cache(entry: CacheEntry, stale: Option<LoadError>) -> Loaded {
-        Loaded {
-            body: entry.body,
-            meta: Meta {
-                source: Source::Cache,
-                ..entry.meta
-            },
-            stale,
+            cache: Cache::new(store, clock, policy),
         }
     }
 }
@@ -53,49 +39,32 @@ where
 {
     async fn fetch(&self, artifact: Artifact, cond: Conditional<'_>) -> Result<Fetched, LoadError> {
         let key = self.inner.cache_key(artifact);
-        let cached = self.store.get(&key).await?;
-        let now = self.clock.now();
-
-        if let Some(entry) = &cached {
-            let age = now.since(entry.meta.fetched_at);
-            if age < self.policy.max_age || self.policy.offline {
-                return Ok(answer(Self::from_cache(entry.clone(), None), cond));
-            }
-        } else if self.policy.offline {
-            return Err(LoadError::Offline(artifact));
-        }
-
-        let validators = cached.as_ref().map_or(Conditional::NONE, |entry| {
-            Conditional::from_meta(&entry.meta)
-        });
-        match self.inner.fetch(artifact, validators).await {
-            Ok(Fetched::Body(loaded)) => {
-                let entry = CacheEntry {
-                    body: loaded.body.clone(),
-                    meta: loaded.meta.clone(),
-                };
-                self.store.put(&key, &entry).await?;
-                Ok(answer(loaded, cond))
-            }
-            Ok(Fetched::NotModified(meta)) => {
-                let Some(mut entry) = cached else {
-                    return Err(LoadError::UnexpectedNotModified(artifact));
-                };
-                entry.meta.fetched_at = meta.fetched_at;
-                entry.meta.max_age = meta.max_age.or(entry.meta.max_age);
-                self.store.put(&key, &entry).await?;
-                Ok(answer(Self::from_cache(entry, None), cond))
-            }
-            Err(error) => match cached {
-                Some(entry)
-                    if now.since(entry.meta.fetched_at)
-                        < self.policy.max_age + self.policy.stale_if_error =>
-                {
-                    Ok(answer(Self::from_cache(entry, Some(error)), cond))
+        let cached = self
+            .cache
+            .get(&key, async |validators| {
+                Ok(match self.inner.fetch(artifact, validators).await? {
+                    Fetched::Body(loaded) => OriginResponse::Body(CacheEntry {
+                        body: loaded.body,
+                        meta: loaded.meta,
+                    }),
+                    Fetched::NotModified(meta) => OriginResponse::NotModified(meta),
+                })
+            })
+            .await
+            .map_err(|error| match error {
+                CacheLookupError::Store(e) => LoadError::Cache(e),
+                CacheLookupError::OfflineMiss => LoadError::Offline(artifact),
+                CacheLookupError::UnexpectedNotModified => {
+                    LoadError::UnexpectedNotModified(artifact)
                 }
-                _ => Err(error),
-            },
-        }
+                CacheLookupError::Origin(e) => e,
+            })?;
+        let loaded = Loaded {
+            body: cached.body,
+            meta: cached.meta,
+            stale: cached.stale,
+        };
+        Ok(answer(loaded, cond))
     }
 
     fn cache_key(&self, artifact: Artifact) -> String {
@@ -122,8 +91,8 @@ mod tests {
     use super::*;
     use crate::TrustConfig;
     use crate::load::{
-        ArtifactResponse, FixedClock, HttpLoader, MemoryCacheStore, MockTransport, ResponseMeta,
-        Timestamp, TransportError, TransportErrorKind,
+        ArtifactResponse, FixedClock, HttpLoader, MemoryCacheStore, Meta, MockTransport,
+        ResponseMeta, Source, Timestamp, TransportError, TransportErrorKind,
     };
 
     const HOUR: Duration = Duration::from_hours(1);

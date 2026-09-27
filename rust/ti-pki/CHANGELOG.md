@@ -5,6 +5,12 @@
 - `Timestamp`, `Clock` and `SystemClock` come from `ti-types`, so every TI crate
   shares them; the paths `ti_pki::{Timestamp, Clock}` and `ti_pki::load::SystemClock`
   stay as re-exports.
+- The caching layer lives in `ti-cache`, so other crates cache their own artefacts
+  (e.g. a Konnektor's service directory) with the same store and policy.
+  `load::{CacheStore, CacheEntry, CacheError, CachePolicy, MemoryCacheStore, Meta,
+  Source, Conditional}` are re-exports of it, joined by `Cache`, `Cached` and
+  `CacheLookupError`; `CachingLoader` is built on `ti_cache::Cache`, unchanged in
+  behaviour.
 
 - reqwest transport errors carry their causes (refused, timed out, unknown issuer),
   not only reqwest's "error sending request".

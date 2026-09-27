@@ -1,8 +1,9 @@
 //! [`FallbackLoader`]: a primary source with a backup.
 
 use super::artifact::Artifact;
-use super::loader::{Conditional, Fetched, LoadError, Loader};
+use super::loader::{Fetched, LoadError, Loader};
 use super::maybe_send::{MaybeSend, MaybeSync};
+use ti_cache::Conditional;
 
 /// Tries `primary`; when it fails, loads from `backup` and records the primary's error
 /// in [`Loaded::stale`](super::Loaded::stale).

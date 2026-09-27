@@ -13,10 +13,11 @@ use minicbor::data::Type;
 use minicbor::{Decoder, Encoder};
 use sha2::{Digest, Sha256};
 
-use super::artifact::{Artifact, Meta, Source, TrustMaterial};
-use super::loader::{Conditional, Fetched, LoadError, Loaded, Loader};
+use super::artifact::{Artifact, TrustMaterial};
+use super::loader::{Fetched, LoadError, Loaded, Loader};
 use crate::TrustConfig;
 use crate::time::Timestamp;
+use ti_cache::{Conditional, Meta, Source};
 
 const FORMAT_VERSION: u32 = 1;
 
@@ -249,9 +250,11 @@ fn source_code(source: Source) -> u8 {
     match source {
         Source::Http => 0,
         Source::File => 1,
-        Source::Bundle => 2,
         Source::Cache => 3,
         Source::Embedded => 4,
+        // Also any source added to ti-cache after this format: informational only, and
+        // read back from here the body did come from a bundle.
+        _ => 2,
     }
 }
 
