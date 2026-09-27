@@ -132,7 +132,15 @@ release version tap=TAP_OWNER:
     docker info >/dev/null 2>&1 || die "the Docker daemon is not running"
     "$GH" auth status >/dev/null 2>&1 || die "gh is not logged in: gh auth login"
 
-    trap 'echo "release: stopped before the commit; undo the bump with: git checkout -- ti-cli/Cargo.toml Cargo.lock ReleaseNotes.md" >&2' ERR
+    # The bumped files were clean at the preflight, so any stop before the commit restores them.
+    ticker=""
+    undo() {
+        [[ -z "$ticker" ]] || kill "$ticker" 2>/dev/null || true
+        git checkout -q -- ti-cli/Cargo.toml Cargo.lock ReleaseNotes.md
+        echo "release: stopped before the commit; the version bump is undone" >&2
+    }
+    trap undo ERR
+    trap 'echo; undo; exit 130' INT TERM
     if [[ "$v" != "$current" ]]; then
         perl -0pi -e 's/^version = "[^"]*"/version = "'"$v"'"/m' ti-cli/Cargo.toml
         cargo update -q -p ti-cli --offline
@@ -154,23 +162,30 @@ release version tap=TAP_OWNER:
     # One line per step; the full output of each goes to a log.
     logs=target/release-logs; mkdir -p "$logs"
     # On a terminal, a status line shows the elapsed time, the current "==>" stage and the
-    # log's latest line while a step runs.
+    # log's latest line while a step runs. The step runs in the foreground, so Ctrl-C
+    # reaches it; the status line is a background job that ends with it.
     step() {
-        local name=$1 start=$SECONDS log="$logs/$1.log" pid width stage last ok=0; shift
-        "$@" > "$log" 2>&1 &
-        pid=$!
+        local name=$1 start=$SECONDS log="$logs/$1.log" ok=0; shift
+        : > "$log"
         if [[ -t 1 ]]; then
-            width=$(( $(tput cols 2>/dev/null || echo 100) - 22 ))
-            while kill -0 "$pid" 2>/dev/null; do
-                stage=$(grep '^==> ' "$log" | tail -n 1 | cut -c5-)
-                last=$(tail -n 1 "$log" | awk -F'\r' '{print $NF}' | sed 's/^[[:space:]]*//')
-                [[ -z "$stage" ]] || last="$stage · $last"
-                printf '\r\033[K%-12s%5d s  %s' "$name" $((SECONDS - start)) "${last:0:width}"
-                sleep 1
-            done
+            (
+                width=$(( $(tput cols 2>/dev/null || echo 100) - 22 ))
+                while sleep 1; do
+                    stage=$(grep '^==> ' "$log" | tail -n 1 | cut -c5-)
+                    last=$(tail -n 1 "$log" | awk -F'\r' '{print $NF}' | sed 's/^[[:space:]]*//')
+                    [[ -z "$stage" ]] || last="$stage · $last"
+                    printf '\r\033[K%-12s%5d s  %s' "$name" $((SECONDS - start)) "${last:0:width}"
+                done
+            ) &
+            ticker=$!
+        fi
+        "$@" > "$log" 2>&1 || ok=$?
+        if [[ -n "$ticker" ]]; then
+            kill "$ticker" 2>/dev/null || true
+            wait "$ticker" 2>/dev/null || true
+            ticker=""
             printf '\r\033[K'
         fi
-        wait "$pid" || ok=$?
         printf '%-12s' "$name"
         if [[ $ok -eq 0 ]]; then
             echo "ok, $((SECONDS - start)) s"
@@ -185,7 +200,7 @@ release version tap=TAP_OWNER:
     step audit just audit
     step cli-targets just cli-targets
     (cd target/dist && shasum -a 256 "ti-$v-"* > SHA256SUMS)
-    trap - ERR
+    trap - ERR INT TERM
 
     git add ti-cli/Cargo.toml Cargo.lock ReleaseNotes.md
     git commit -q -m "ti-cli: release $v"
