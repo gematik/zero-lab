@@ -149,9 +149,23 @@ release version tap=TAP_OWNER:
             "## Unreleased\n$u\n$h\n$b\n"
         }mse;
         s/\n+\z/\n/' ReleaseNotes.md
-    just check
-    just audit
-    just cli-targets
+    # One line per step; the full output of each goes to a log.
+    logs=target/release-logs; mkdir -p "$logs"
+    step() {
+        local name=$1 start=$SECONDS; shift
+        printf '%-12s' "$name"
+        if "$@" > "$logs/$name.log" 2>&1; then
+            echo "ok, $((SECONDS - start)) s"
+        else
+            echo "failed after $((SECONDS - start)) s; the end of $logs/$name.log:"
+            tail -n 30 "$logs/$name.log"
+            return 1
+        fi
+    }
+    echo "Gate and build, several minutes each (details in $logs):"
+    step check just check
+    step audit just audit
+    step cli-targets just cli-targets
     (cd target/dist && shasum -a 256 "ti-$v-"* > SHA256SUMS)
     trap - ERR
 
@@ -311,9 +325,10 @@ generate-connector:
 test-pki:
     ti-pki/tests/pki/generate.sh
 
-# Every feature combination must compile (catches feature-gated breakage)
+# Every feature alone and every pair of features must compile (catches feature-gated
+# breakage); all features together are built by clippy --all-features
 features:
-    cargo hack check --workspace --feature-powerset --no-dev-deps
+    cargo hack check --workspace --feature-powerset --depth 2 --no-dev-deps
 
 # Unused dependencies in Cargo.toml
 machete:
