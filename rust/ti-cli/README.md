@@ -12,22 +12,28 @@ tir pki inspect card.pem > card.md  # piped output is Markdown
 tir --format json pki inspect card.pem | jq '.certificates[0].certificate_type'
 tir pki profiles list
 tir pki profiles describe smb-aut
-tir pki verify card.pem --issuer ca.pem   # exit 0 valid, 1 not valid
+tir pki verify card.pem                   # exit 0 valid, 1 not valid
+tir pki verify card.pem --offline         # cached trust material, no OCSP
 ```
 
 ## Verify
 
-`tir pki verify` builds the chain to the TI roots and validates it: RFC 5280 path,
-gemSpec_Krypt key, and the requirements of the profile (`--profile auto|none|<name>`).
+`tir pki verify` builds the chain to the TI roots through the CAs of the TSL and
+validates it: RFC 5280 path, gemSpec_Krypt key, the requirements of the profile
+(`--profile auto|none|<name>`), and OCSP for the end entity and every CA below the root.
 The environment comes from `--env` (`TI_ENV`) or, with `auto`, from the certificates:
 production only on evidence from the production roots, otherwise ref. `--at` validates
-at another time.
+at another time (OCSP still answers for now).
 
-It currently works offline: the roots are the ones embedded and verified against the
-anchor, there is no TSL, so the issuing CA must be supplied (in the file, `--issuer` or
-`--intermediates`), and revocation is not checked. The report says so
-(`"revocation_checked": false`); a valid result is not yet a statement about
-revocation.
+roots.json and the TSL are downloaded from the environment's URLs and verified by
+`ti-pki` against the embedded anchor; a CA from the TSL counts only if a verified root
+signed it. Where they came from does not matter, so the cache is as untrusted as the
+network. The revocation line reports the outcome over the chain (`not revoked`,
+`revoked`, `unknown`, `incomplete`); `revocation_mode` in JSON names the policy.
+
+`--offline` makes no request: it uses the cached material, or the embedded roots
+without a TSL when nothing usable is cached (then pass the issuing CA with `--issuer`),
+and does not check revocation. The report says so (`"revocation_checked": false`).
 
 ## Conventions
 
@@ -44,8 +50,7 @@ The tool is meant for people and for agents alike:
 - Times in text and Markdown are in the system time zone with offset and abbreviation,
   e.g. `2023-02-09 00:00:00 +01:00 (CET)` (`TZ` is honoured); JSON keeps RFC 3339 in UTC.
 - Colors and JSON highlighting only on a terminal; `--color`, `NO_COLOR` and
-  `CLICOLOR_FORCE` override. Text lines are cut to the terminal width; nothing is cut
-  when piped.
+  `CLICOLOR_FORCE` override. Long lines are never cut; the terminal wraps them.
 - Never interactive. Every input is a flag, an environment variable, a file or stdin.
 - Exit codes: `0` success (or: the certificate is valid), `1` not valid, `2` usage,
   `3` trust material unavailable, `4` input unreadable, `5` output failed.
@@ -59,7 +64,11 @@ Unix including macOS:
 | --- | --- | --- |
 | Cache | `$XDG_CACHE_HOME/telematik/ti` (`~/.cache/telematik/ti`) | `%LOCALAPPDATA%\telematik\ti` |
 
-`--cache-dir` or `TI_CACHE_DIR` override it.
+`--cache-dir` or `TI_CACHE_DIR` override it. Downloaded trust material lives below it
+in `ti-pki/v1/{roots,tsl}/<id>.body` with its HTTP validators in `<id>.json`, `<id>`
+derived from the URL. An entry is used without asking for an hour, then revalidated
+with its `ETag`; when the network fails it serves for up to a day more. Material older
+than 24 hours (production) or 7 days (elsewhere) is not used.
 
 ## HTTP
 
@@ -67,9 +76,14 @@ The HTTP options follow curl: `-k/--insecure`, `--cacert`, `--capath`, `-x/--pro
 `--noproxy`, `--connect-timeout` (default 10 s), `-m/--max-time` (default 60 s),
 `--retry`, `-A/--user-agent`, and the usual environment variables (`HTTPS_PROXY`,
 `HTTP_PROXY`, `ALL_PROXY`, `NO_PROXY`, `CURL_CA_BUNDLE`, `SSL_CERT_FILE`,
-`SSL_CERT_DIR`). TLS is rustls with the ring provider, as in kartos, trusting the
-operating system's store unless `--cacert`/`--capath` name another. `-k` affects only the
-transport: trust material is verified cryptographically either way.
+`SSL_CERT_DIR`). As in curl, `http://` and `https://` URLs have their own proxy
+variable with `ALL_PROXY` as fallback, and the operating system's proxy settings are not
+read. The client is ureq, blocking and without an async runtime: a command makes a few
+sequential requests. TLS is rustls with the ring provider passed explicitly, as in
+kartos, trusting the operating system's store unless `--cacert`/`--capath` (or the
+variables) name another, which then replaces it as in curl. `-k` affects only
+the transport, prints a warning and sets `insecure_transport` in JSON: trust material is
+verified cryptographically either way.
 
 ## License
 

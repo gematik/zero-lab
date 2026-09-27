@@ -90,6 +90,13 @@ impl Line {
         self
     }
 
+    /// Appends another line's parts.
+    #[must_use]
+    pub fn and_line(mut self, other: Line) -> Self {
+        self.0.extend(other.0);
+        self
+    }
+
     /// Appends a verdict.
     #[must_use]
     pub fn and_status(mut self, tone: Tone, text: impl Into<String>) -> Self {

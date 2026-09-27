@@ -20,10 +20,13 @@ path = "src/main.rs"
 # A tool for every environment: the non-prod presets are in; TrustConfig::validate
 # still fences production from TEST-ONLY material.
 ti-pki = { workspace = true, features = ["os", "dangerous-nonprod"] }
+# rustls without a built-in provider (ring is passed in), the OS trust store via the
+# platform verifier, and SOCKS for -x socks5://.
+ureq = { workspace = true, features = ["rustls-no-provider", "platform-verifier", "socks-proxy"] }
+rustls.workspace = true
 clap = { workspace = true, features = ["std", "help", "usage", "error-context", "suggestions", "color", "env"] }
 anstream.workspace = true
 anstyle.workspace = true
-terminal_size.workspace = true
 jiff.workspace = true
 serde.workspace = true
 serde_json.workspace = true

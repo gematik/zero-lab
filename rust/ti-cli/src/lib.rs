@@ -5,13 +5,17 @@
 //! stderr; `--format json` gives one JSON document with a `"schema"` version; colors
 //! only on a terminal; never a prompt; exit codes as listed in `tir --help`.
 
+mod block;
+mod cache;
 mod cli;
 mod commands;
 mod error;
+mod http;
 mod input;
 mod net;
 mod output;
 mod paths;
+mod trust;
 
 use std::ffi::OsString;
 use std::process::ExitCode;

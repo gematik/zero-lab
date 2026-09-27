@@ -61,6 +61,12 @@ pub enum CliError {
     /// The trust material of the environment could not be used.
     #[error("trust material unavailable: {0}")]
     Trust(#[source] ti_pki::Error),
+    /// roots.json or the TSL could not be loaded or failed verification.
+    #[error("trust material unavailable: {0}")]
+    TrustLoad(String),
+    /// The HTTP client could not be set up from the options.
+    #[error("HTTP setup: {0}")]
+    HttpSetup(String),
     /// No cache directory can be derived from the environment.
     #[error("cannot determine the cache directory: {0}")]
     CacheDir(&'static str),
@@ -77,7 +83,8 @@ impl CliError {
             CliError::NoCertificate { .. } => "no_certificate",
             CliError::Certificate { .. } => "certificate_malformed",
             CliError::EnvironmentUndetected(_) => "environment_undetected",
-            CliError::Trust(_) => "trust_material_unavailable",
+            CliError::Trust(_) | CliError::TrustLoad(_) => "trust_material_unavailable",
+            CliError::HttpSetup(_) => "http_setup",
             CliError::CacheDir(_) => "cache_dir_unknown",
             CliError::Output(_) => "output_failed",
         }
@@ -91,6 +98,10 @@ impl CliError {
                 Some("expected PEM (-----BEGIN CERTIFICATE-----) or DER")
             }
             CliError::EnvironmentUndetected(_) => Some("pass --env prod, ref, test or dev"),
+            CliError::TrustLoad(_) => {
+                Some("check the network and the HTTP options (-v shows them), or pass --offline")
+            }
+            CliError::HttpSetup(_) => Some("check --cacert, --capath and --proxy"),
             CliError::CacheDir(_) => Some("set --cache-dir or TI_CACHE_DIR"),
             CliError::Trust(_) | CliError::Output(_) => None,
         }
@@ -102,8 +113,10 @@ impl CliError {
             CliError::Read { .. }
             | CliError::NoCertificate { .. }
             | CliError::Certificate { .. } => Exit::Input,
-            CliError::EnvironmentUndetected(_) | CliError::CacheDir(_) => Exit::Usage,
-            CliError::Trust(_) => Exit::TrustUnavailable,
+            CliError::EnvironmentUndetected(_) | CliError::HttpSetup(_) | CliError::CacheDir(_) => {
+                Exit::Usage
+            }
+            CliError::Trust(_) | CliError::TrustLoad(_) => Exit::TrustUnavailable,
             CliError::Output(_) => Exit::Output,
         }
     }

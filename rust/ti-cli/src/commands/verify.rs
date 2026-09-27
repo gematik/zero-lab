@@ -1,26 +1,30 @@
-//! `tir pki verify`: builds the chain to the embedded TI roots and validates it the way
-//! a relying party would, except for revocation. Stage 2 is offline: no TSL, no OCSP,
-//! and the report says so rather than passing silently.
+//! `tir pki verify`: builds the chain to the TI roots through the TSL's CAs and
+//! validates it the way a relying party would, OCSP included. `--offline` uses cached
+//! or embedded trust material and skips revocation, and the report says so rather than
+//! passing silently.
 
-use core::pin::pin;
-use core::task::{Context, Poll, Waker};
 use std::sync::Arc;
 
 use serde::Serialize;
 use ti_pki::load::SystemClock;
+use ti_pki::ocsp::OcspChecker;
 use ti_pki::profile::{self, SelectReason};
-use ti_pki::revocation::{RevocationMode, Unchecked};
+use ti_pki::revocation::{
+    ResponderAuthorization, RevocationMode, RevocationResult, RevocationStatus, Unchecked,
+};
 use ti_pki::trustdomain::detect_trust_domain;
 use ti_pki::{
     Certificate, ChainPosition, Clock, Env, ErrorCode, Tier, Timestamp, TrustConfig, TrustStore,
-    ValidationResult, Validator, detect_certificate_type, roots,
+    ValidationResult, Validator, detect_certificate_type,
 };
 
-use crate::cli::{Environment, VerifyArgs};
+use crate::block::block_on;
+use crate::cli::{Environment, GlobalArgs, VerifyArgs};
 use crate::error::{CliError, Exit};
-use crate::input;
 use crate::output::document::when;
-use crate::output::{Document, Line, Output, SCHEMA, Tone};
+use crate::output::{Document, Line, Output, SCHEMA, Tone, warning};
+use crate::trust::{self, NoNetwork, TrustInfo};
+use crate::{http, input, paths};
 
 /// The JSON document.
 #[derive(Serialize)]
@@ -34,8 +38,14 @@ struct Report {
     at_ts: Timestamp,
     certificate_type: Option<String>,
     profile: ProfileInfo,
-    /// Always false offline; the verdict then says nothing about revocation.
+    trust: TrustInfo,
+    /// False offline or with revocation disabled; the verdict then says nothing about
+    /// revocation.
     revocation_checked: bool,
+    /// `hard-fail`, `soft-fail` or `disabled`.
+    revocation_mode: &'static str,
+    /// TLS certificates of downloads were not checked (`-k`).
+    insecure_transport: bool,
     chain: Vec<ChainEntry>,
     errors: Vec<Finding>,
     warnings: Vec<Finding>,
@@ -69,6 +79,23 @@ struct ChainEntry {
     position: &'static str,
     subject: String,
     common_name: String,
+    /// What OCSP said; absent when not asked (offline, the root, or not reached).
+    revocation: Option<RevocationEntry>,
+}
+
+#[derive(Serialize)]
+struct RevocationEntry {
+    /// `good`, `revoked` or `unknown`.
+    status: &'static str,
+    /// Revocation reason, or why the status is unknown.
+    reason: String,
+    responder_url: String,
+    /// Common name of the response's signer.
+    responder: String,
+    /// `issuer`, `delegate` or `same_tsp_delegate`; absent without a verified response.
+    authorization: Option<&'static str>,
+    produced_at: Option<String>,
+    revoked_at: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -79,8 +106,22 @@ struct Finding {
     message: String,
 }
 
+/// What one run established, for the report.
+struct Run {
+    source: String,
+    env: Env,
+    detection: Option<Detection>,
+    at: Timestamp,
+    profile: ProfileInfo,
+    trust: TrustInfo,
+    revocation: RevocationMode,
+    offline: bool,
+    insecure: bool,
+    warnings: Vec<Finding>,
+}
+
 /// Runs the command; exit 0 when valid, 1 when not.
-pub fn run(args: &VerifyArgs, out: &Output) -> Result<Exit, CliError> {
+pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     let source = input::read(&args.file)?;
     let mut certs = input::certificates(&source)?;
     for path in args.issuer.iter().chain(&args.intermediates) {
@@ -91,40 +132,75 @@ pub fn run(args: &VerifyArgs, out: &Output) -> Result<Exit, CliError> {
     let (env, detection) = environment(args.env, &certs, at)?;
     let config = TrustConfig::preset(env);
     config.validate(env.tier()).map_err(CliError::Trust)?;
-    let store = roots::load(&config, at).map_err(CliError::Trust)?.store();
+    let cache_dir = match paths::cache_dir(global.cache_dir.as_deref()) {
+        Ok(dir) => Some(dir),
+        Err(error) => {
+            out.verbose(1, format_args!("{error}; caching in memory only"));
+            None
+        }
+    };
+    let insecure = global.net.insecure && !args.offline;
+    if insecure {
+        warning("-k: TLS certificates of downloads are not checked");
+    }
+
+    let transport = if args.offline {
+        None
+    } else {
+        Some(http::transport(&global.net, out.verbosity())?)
+    };
+    let material = block_on(async {
+        match &transport {
+            Some(transport) => trust::load(&config, env.tier(), transport, cache_dir, false).await,
+            None => trust::load(&config, env.tier(), NoNetwork, cache_dir, true).await,
+        }
+    })?;
     out.verbose(
         1,
-        format_args!("{} roots of {env} trusted at {at}", store.len()),
+        format_args!(
+            "{env}: {} roots, {} TSL CAs from {}",
+            material.info.roots, material.info.intermediates, material.info.source
+        ),
     );
 
     let mut warnings = Vec::new();
     let (mut validator, profile) = validator(
         &args.profile,
         &config,
-        Arc::new(store),
+        material.store,
         &certs[0],
         &mut warnings,
     );
-    // No OCSP offline. Set explicitly: config.validate rejects Disabled under Prod, so
-    // this is the only place the relaxation happens, and the report states it.
-    validator.revocation = RevocationMode::Disabled;
-    let result = offline(validator.validate(&certs, at, &Unchecked)).map_err(|source| {
-        CliError::Certificate {
-            source_name: source_name(&args.file),
-            source,
+    let validated = block_on(async {
+        if let Some(transport) = &transport {
+            let checker = OcspChecker::new(&config, transport, SystemClock);
+            validator.validate(&certs, at, &checker).await
+        } else {
+            // No OCSP offline. Set here, after the profile: config.validate rejects
+            // Disabled under Prod, so this is the one place the relaxation happens, and
+            // the report states it.
+            validator.revocation = RevocationMode::Disabled;
+            validator.validate(&certs, at, &Unchecked).await
         }
+    });
+    let result = validated.map_err(|source| CliError::Certificate {
+        source_name: source_name(&args.file),
+        source,
     })?;
 
-    let report = report(
-        source.name,
+    let run = Run {
+        source: source.name,
         env,
         detection,
         at,
-        &certs[0],
         profile,
-        &result,
+        trust: material.info,
+        revocation: validator.revocation,
+        offline: args.offline,
+        insecure,
         warnings,
-    );
+    };
+    let report = report(run, &certs[0], &result);
     if out.is_json() {
         out.json(&report)?;
     } else {
@@ -263,56 +339,45 @@ fn validator(
     (p.validator(config, store, t), forced(String::new()))
 }
 
-/// Drives a validation whose revocation checker is [`Unchecked`]: nothing in it waits,
-/// so the first poll completes and no executor is needed.
-fn offline<F: Future>(future: F) -> F::Output {
-    match pin!(future).poll(&mut Context::from_waker(Waker::noop())) {
-        Poll::Ready(output) => output,
-        Poll::Pending => unreachable!("offline validation does no I/O"),
-    }
-}
-
-#[allow(
-    clippy::too_many_arguments,
-    reason = "one call site; a struct would only rename the parameters"
-)]
-fn report(
-    source: String,
-    env: Env,
-    detection: Option<Detection>,
-    at: Timestamp,
-    ee: &Certificate,
-    profile: ProfileInfo,
-    result: &ValidationResult,
-    mut warnings: Vec<Finding>,
-) -> Report {
+fn report(run: Run, ee: &Certificate, result: &ValidationResult) -> Report {
+    let mut warnings = run.warnings;
     warnings.extend(result.warnings.iter().map(|w| Finding {
         code: w.code.to_string(),
         subject: w.subject.clone(),
         message: w.message.clone(),
     }));
+    let checked = !run.offline && run.revocation != RevocationMode::Disabled;
     Report {
         schema: SCHEMA,
-        source,
+        source: run.source,
         valid: result.valid,
         environment: EnvironmentInfo {
-            name: env.as_str(),
-            production: env.is_prod(),
-            detection,
+            name: run.env.as_str(),
+            production: run.env.is_prod(),
+            detection: run.detection,
         },
-        at: at.to_string(),
-        at_ts: at,
+        at: run.at.to_string(),
+        at_ts: run.at,
         certificate_type: detect_certificate_type(ee).map(|t| t.to_string()),
-        profile,
-        revocation_checked: false,
+        profile: run.profile,
+        trust: run.trust,
+        revocation_checked: checked,
+        revocation_mode: mode_name(run.revocation),
+        insecure_transport: run.insecure,
         chain: result
             .chain
             .iter()
             .zip(&result.positions)
-            .map(|(cert, position)| ChainEntry {
+            .enumerate()
+            .map(|(i, (cert, position))| ChainEntry {
                 position: position.as_str(),
                 subject: cert.subject().to_string(),
                 common_name: cert.subject_cn().to_owned(),
+                revocation: result
+                    .cert_results
+                    .get(i)
+                    .and_then(|r| r.revocation.as_ref())
+                    .map(revocation_entry),
             })
             .collect(),
         errors: result
@@ -328,17 +393,46 @@ fn report(
     }
 }
 
+fn revocation_entry(r: &RevocationResult) -> RevocationEntry {
+    RevocationEntry {
+        status: r.status.as_str(),
+        reason: r.reason.clone(),
+        responder_url: r.responder_url.clone(),
+        responder: r.responder_name.clone(),
+        authorization: r.authorization.as_ref().map(|a| match a {
+            ResponderAuthorization::Issuer => "issuer",
+            ResponderAuthorization::Delegate => "delegate",
+            ResponderAuthorization::SameTspDelegate { .. } => "same_tsp_delegate",
+            _ => "other",
+        }),
+        produced_at: r.produced_at.map(|t| t.to_string()),
+        revoked_at: r.revoked_at.map(|t| t.to_string()),
+    }
+}
+
+fn mode_name(mode: RevocationMode) -> &'static str {
+    match mode {
+        RevocationMode::HardFail => "hard-fail",
+        RevocationMode::SoftFail => "soft-fail",
+        RevocationMode::Disabled => "disabled",
+    }
+}
+
 fn document(report: &Report) -> Document {
     let mut doc = Document::default();
     doc.section("Result");
-    doc.field(
-        "result",
-        if report.valid {
+    doc.field("result", {
+        let mut line = if report.valid {
             Line::status(Tone::Good, "VALID")
         } else {
             Line::status(Tone::Bad, "INVALID")
-        },
-    );
+                .and_dim(format!(", {}", count(report.errors.len(), "error")))
+        };
+        if !report.warnings.is_empty() {
+            line = line.and_dim(format!(", {}", count(report.warnings.len(), "warning")));
+        }
+        line
+    });
     doc.field("revocation", revocation_line(report));
     let env = &report.environment;
     let mut env_line = Line::code(env.name);
@@ -355,16 +449,24 @@ fn document(report: &Report) -> Document {
             .map_or_else(|| Line::dim("not detected"), Line::code),
     );
     doc.field("profile", profile_line(&report.profile));
+    doc.field("trust", trust_line(&report.trust));
+    if report.insecure_transport {
+        doc.field(
+            "transport",
+            Line::status(Tone::Warn, "TLS not verified").and_dim(" (-k)"),
+        );
+    }
 
     doc.section("Chain");
     if report.chain.is_empty() {
         doc.paragraph(Line::dim("no chain to a trusted root"));
     }
     for entry in &report.chain {
-        doc.field(
-            position_label(entry.position),
-            Line::strong(&entry.common_name),
-        );
+        let mut line = Line::strong(&entry.common_name);
+        if let Some(r) = &entry.revocation {
+            line = line.and_text("  ").and_line(ocsp_line(r));
+        }
+        doc.field(position_label(entry.position), line);
     }
 
     if !report.errors.is_empty() {
@@ -380,7 +482,7 @@ fn document(report: &Report) -> Document {
         {
             doc.paragraph(
                 Line::dim("hint: ")
-                    .and_text("offline, only the roots are known; pass the issuing CA with ")
+                    .and_text("the issuing CA is not among the trusted CAs; pass it with ")
                     .and_code("--issuer"),
             );
         }
@@ -392,12 +494,86 @@ fn document(report: &Report) -> Document {
     doc
 }
 
+/// The outcome over the chain: the worst OCSP answer, not the mode. The mode is
+/// named only when it is soft-fail, where a missing answer does not invalidate.
 fn revocation_line(report: &Report) -> Line {
-    if report.revocation_checked {
-        Line::status(Tone::Good, "checked")
-    } else {
-        Line::status(Tone::Warn, "not checked").and_dim(" (offline)")
+    if !report.revocation_checked {
+        return Line::status(Tone::Warn, "not checked").and_dim(" (offline)");
     }
+    let answers: Vec<&RevocationEntry> = report
+        .chain
+        .iter()
+        .filter_map(|entry| entry.revocation.as_ref())
+        .collect();
+    let has = |status: RevocationStatus| answers.iter().any(|r| r.status == status.as_str());
+    let line = if answers.is_empty() {
+        Line::status(Tone::Warn, "not checked").and_dim(" (no chain to check)")
+    } else if has(RevocationStatus::Revoked) {
+        Line::status(Tone::Bad, "revoked")
+    } else if has(RevocationStatus::Unknown) {
+        Line::status(Tone::Warn, "unknown").and_dim(" (no usable OCSP answer, see chain)")
+    } else {
+        // The root has no issuer to ask; every other certificate needs an answer.
+        let needed = report
+            .chain
+            .iter()
+            .filter(|entry| entry.position != ChainPosition::Root.as_str())
+            .count();
+        let n = answers.len();
+        if n < needed {
+            Line::status(Tone::Warn, "incomplete")
+                .and_dim(format!(" (OCSP answered for {n} of {needed} certificates)"))
+        } else {
+            Line::status(Tone::Good, "not revoked").and_dim(format!(
+                " (OCSP for {n} certificate{})",
+                if n == 1 { "" } else { "s" }
+            ))
+        }
+    };
+    if report.revocation_mode == mode_name(RevocationMode::SoftFail) {
+        line.and_dim(" · soft-fail: a missing answer does not invalidate")
+    } else {
+        line
+    }
+}
+
+fn trust_line(trust: &TrustInfo) -> Line {
+    let counts = format!("{} roots, {} TSL CAs", trust.roots, trust.intermediates);
+    let mut line = if trust.note.is_some() {
+        Line::status(Tone::Warn, counts)
+    } else {
+        Line::text(counts)
+    };
+    line = match trust.fetched_at_ts {
+        Some(at) => line.and_dim(format!(" · {} {}", trust.source, when(at))),
+        None => line.and_dim(format!(" · {}", trust.source)),
+    };
+    if let Some(next) = trust.tsl_next_update_ts {
+        line = line.and_dim(format!(" · TSL next update {}", when(next)));
+    }
+    if let Some(note) = &trust.note {
+        line = line.and_dim(format!(" · {note}"));
+    }
+    line
+}
+
+fn ocsp_line(r: &RevocationEntry) -> Line {
+    let tone = match r.status {
+        s if s == RevocationStatus::Good.as_str() => Tone::Good,
+        s if s == RevocationStatus::Revoked.as_str() => Tone::Bad,
+        _ => Tone::Warn,
+    };
+    let mut line = Line::status(tone, format!("OCSP {}", r.status));
+    if !r.responder.is_empty() {
+        let how = r
+            .authorization
+            .map_or(String::new(), |a| format!(", {}", a.replace('_', " ")));
+        line = line.and_dim(format!(" by {}{how}", r.responder));
+    }
+    if !r.reason.is_empty() {
+        line = line.and_dim(format!(": {}", r.reason));
+    }
+    line
 }
 
 fn profile_line(profile: &ProfileInfo) -> Line {
@@ -420,12 +596,24 @@ fn position_label(position: &str) -> &'static str {
     }
 }
 
+/// `error <code> · <subject>: <message>`: the leading word keeps errors and warnings
+/// apart without color, in Markdown and when copied.
 fn finding(tone: Tone, f: &Finding) -> Line {
-    let line = Line::status(tone, &f.code);
+    let kind = if tone == Tone::Bad {
+        "error"
+    } else {
+        "warning"
+    };
+    let line = Line::status(tone, kind).and_text(" ").and_code(&f.code);
     let line = if f.subject.is_empty() {
         line
     } else {
-        line.and_text(" ").and_code(&f.subject)
+        line.and_dim(format!(" · {}", f.subject))
     };
     line.and_text(format!(": {}", f.message))
+}
+
+/// `2 errors`, `1 warning`.
+fn count(n: usize, what: &str) -> String {
+    format!("{n} {what}{}", if n == 1 { "" } else { "s" })
 }

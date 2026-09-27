@@ -9,6 +9,12 @@ fn tir(args: &[&str]) -> Output {
         .args(args)
         .env_remove("TI_FORMAT")
         .env_remove("TI_ENV")
+        // Nothing cached: --offline runs see the embedded roots only, whatever an
+        // earlier run on this machine downloaded.
+        .env(
+            "TI_CACHE_DIR",
+            std::env::temp_dir().join("tir-tests-no-cache"),
+        )
         .env_remove("NO_COLOR")
         .env_remove("CLICOLOR_FORCE")
         .output()
@@ -305,7 +311,14 @@ fn a_closed_pipe_is_not_an_error() {
 
 fn verify_json(extra: &[&str]) -> (Option<i32>, serde_json::Value) {
     let ee = fixture("admission-1.pem");
-    let mut args = vec!["--format", "json", "pki", "verify", ee.as_str()];
+    let mut args = vec![
+        "--format",
+        "json",
+        "pki",
+        "verify",
+        "--offline",
+        ee.as_str(),
+    ];
     args.extend_from_slice(extra);
     let out = tir(&args);
     (
@@ -337,6 +350,7 @@ fn verify_with_the_issuer_is_valid_but_says_revocation_was_not_checked() {
     let text = stdout(&tir(&[
         "pki",
         "verify",
+        "--offline",
         &fixture("admission-1.pem"),
         "--issuer",
         &ca,
@@ -357,14 +371,12 @@ fn verify_without_the_issuer_is_incomplete_with_a_hint() {
     let text = stdout(&tir(&[
         "pki",
         "verify",
+        "--offline",
         &fixture("admission-1.pem"),
         "--env",
         "ref",
     ]));
-    assert!(
-        text.contains("pass the issuing CA with `--issuer`"),
-        "{text}"
-    );
+    assert!(text.contains("pass it with `--issuer`"), "{text}");
 }
 
 #[test]
@@ -403,22 +415,63 @@ fn verify_after_the_end_entity_expired() {
 #[test]
 fn verify_usage_errors() {
     let ee = fixture("admission-1.pem");
-    let bad_time = tir(&["pki", "verify", &ee, "--at", "yesterday"]);
+    let bad_time = tir(&["pki", "verify", "--offline", &ee, "--at", "yesterday"]);
     assert_eq!(bad_time.status.code(), Some(2));
     assert!(stderr(&bad_time).contains("RFC 3339"));
-    let bad_profile = tir(&["pki", "verify", &ee, "--profile", "nope"]);
+    let bad_profile = tir(&["pki", "verify", "--offline", &ee, "--profile", "nope"]);
     assert_eq!(bad_profile.status.code(), Some(2));
-    let pu = tir(&["pki", "verify", &ee, "--env", "pu"]);
+    let pu = tir(&["pki", "verify", "--offline", &ee, "--env", "pu"]);
     assert_eq!(pu.status.code(), Some(1), "pu is an alias of prod");
 }
 
 #[test]
 fn verify_asks_for_the_environment_when_nothing_tells() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../ti-pki/tests/pki/rogue-root.pem");
-    let out = tir(&["--format", "json", "pki", "verify", root.to_str().unwrap()]);
+    let out = tir(&[
+        "--format",
+        "json",
+        "pki",
+        "verify",
+        "--offline",
+        root.to_str().unwrap(),
+    ]);
     assert_eq!(out.status.code(), Some(2));
     assert!(out.stdout.is_empty());
     let error: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(error["error"]["kind"], "environment_undetected");
     assert_eq!(error["error"]["hint"], "pass --env prod, ref, test or dev");
+}
+
+#[test]
+fn verify_offline_without_a_cache_says_what_it_used() {
+    let ca = fixture("smcb-ca51-test-only.pem");
+    let (_, json) = verify_json(&["--issuer", &ca, "--at", "2026-06-01T00:00:00Z"]);
+    assert_eq!(json["trust"]["source"], "embedded");
+    assert_eq!(json["trust"]["intermediates"], 0);
+    assert!(
+        json["trust"]["note"]
+            .as_str()
+            .unwrap()
+            .contains("nothing cached")
+    );
+    assert_eq!(json["revocation_mode"], "disabled");
+    assert_eq!(json["insecure_transport"], false);
+    assert_eq!(json["chain"][0]["revocation"], serde_json::Value::Null);
+}
+
+#[test]
+fn unusable_http_options_are_usage_errors() {
+    let ee = fixture("admission-1.pem");
+    let out = tir(&[
+        "--format",
+        "json",
+        "--cacert",
+        "/nonexistent/ca.pem",
+        "pki",
+        "verify",
+        &ee,
+    ]);
+    assert_eq!(out.status.code(), Some(2));
+    let error: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
+    assert_eq!(error["error"]["kind"], "http_setup");
 }

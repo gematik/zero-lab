@@ -26,8 +26,6 @@ pub struct Output {
     format: Format,
     /// Pretty, highlighted JSON on a terminal; compact when piped.
     pretty: bool,
-    /// The terminal's width, only when stdout is one.
-    width: Option<usize>,
     verbose: u8,
 }
 
@@ -42,7 +40,6 @@ impl Output {
                 chosen => chosen,
             },
             pretty: terminal,
-            width: terminal.then(terminal_width).flatten(),
             verbose: global.verbose,
         }
     }
@@ -52,7 +49,7 @@ impl Output {
         if self.format == Format::Markdown {
             markdown::render(doc, &mut io::stdout().lock())?;
         } else {
-            text::render(doc, &mut stdout(), self.width)?;
+            text::render(doc, &mut stdout())?;
         }
         Ok(())
     }
@@ -78,10 +75,13 @@ impl Output {
     /// A diagnostic on stderr, shown from verbosity `level` on.
     pub fn verbose(&self, level: u8, message: impl Display) {
         if self.verbose >= level {
-            let dim = style::DIM;
-            // A diagnostic that cannot be written is not worth failing the command.
-            let _ = writeln!(anstream::stderr(), "{dim}tir: {message}{dim:#}");
+            diagnostic(message);
         }
+    }
+
+    /// The `-v` count, for components that log on their own.
+    pub fn verbosity(&self) -> u8 {
+        self.verbose
     }
 
     /// Reports `error` on stderr: text with a hint, or a JSON document.
@@ -106,6 +106,19 @@ impl Output {
             })
         };
     }
+}
+
+/// A diagnostic line on stderr, dimmed.
+pub fn diagnostic(message: impl Display) {
+    let dim = style::DIM;
+    // A diagnostic that cannot be written is not worth failing the command.
+    let _ = writeln!(anstream::stderr(), "{dim}tir: {message}{dim:#}");
+}
+
+/// A warning on stderr, whatever the verbosity: something the user should not miss.
+pub fn warning(message: impl Display) {
+    let warn = style::WARN;
+    let _ = writeln!(anstream::stderr(), "{warn}warning:{warn:#} {message}");
 }
 
 /// Stdout for text output; styles are stripped where they do not belong.
@@ -149,12 +162,4 @@ impl Display for OidInfo {
 pub fn hex(bytes: &[u8]) -> String {
     let pairs: Vec<String> = bytes.iter().map(|b| format!("{b:02X}")).collect();
     pairs.join(":")
-}
-
-/// `COLUMNS` if set, else what the terminal reports.
-fn terminal_width() -> Option<usize> {
-    std::env::var("COLUMNS")
-        .ok()
-        .and_then(|c| c.parse().ok())
-        .or_else(|| terminal_size::terminal_size().map(|(w, _)| usize::from(w.0)))
 }

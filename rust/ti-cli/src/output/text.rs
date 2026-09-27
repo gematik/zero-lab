@@ -1,6 +1,7 @@
 //! Renders a [`Document`] as aligned text: headings as styled text (no Markdown marks;
 //! piped output and `--format markdown` carry those), labels in a quiet column, color on
-//! the content. On a terminal every line is cut to its width.
+//! the content. Long lines are left to the terminal to wrap: a verdict's detail must not
+//! be cut off.
 
 use core::fmt::Write as _;
 use std::io::{self, Write};
@@ -13,13 +14,9 @@ const LABEL_WIDTH: usize = 14;
 /// Indent below a heading.
 const INDENT: &str = "  ";
 
-/// Writes `doc` to `w`, cutting lines to `width` when given (a terminal).
-pub fn render(doc: &Document, w: &mut impl Write, width: Option<usize>) -> io::Result<()> {
-    let mut out = Lines {
-        w,
-        width,
-        started: false,
-    };
+/// Writes `doc` to `w`.
+pub fn render(doc: &Document, w: &mut impl Write) -> io::Result<()> {
+    let mut out = Lines { w, started: false };
     for block in &doc.blocks {
         match block {
             Block::Title(text) => out.heading(1, text)?,
@@ -46,7 +43,6 @@ pub fn render(doc: &Document, w: &mut impl Write, width: Option<usize>) -> io::R
 
 struct Lines<'a, W: Write> {
     w: &'a mut W,
-    width: Option<usize>,
     started: bool,
 }
 
@@ -65,10 +61,7 @@ impl<W: Write> Lines<'_, W> {
 
     fn line(&mut self, line: &str) -> io::Result<()> {
         self.started = true;
-        match self.width {
-            Some(width) => writeln!(self.w, "{}", truncate_styled(line, width)),
-            None => writeln!(self.w, "{line}"),
-        }
+        writeln!(self.w, "{line}")
     }
 }
 
@@ -98,58 +91,13 @@ fn styled(line: &Line) -> String {
     out
 }
 
-/// `line` cut to `width` visible characters, ending in `…`; ANSI escape sequences do not
-/// count and are kept, and a reset closes any style left open by the cut.
-fn truncate_styled(line: &str, width: usize) -> String {
-    if width == 0 || visible_len(line) <= width {
-        return line.to_owned();
-    }
-    let mut out = String::with_capacity(line.len());
-    let mut shown = 0;
-    let mut chars = line.chars();
-    while let Some(c) = chars.next() {
-        if c == '\x1b' {
-            out.push(c);
-            for c in chars.by_ref() {
-                out.push(c);
-                if c.is_ascii_alphabetic() {
-                    break;
-                }
-            }
-            continue;
-        }
-        if shown + 1 == width {
-            out.push('…');
-            out.push_str("\x1b[0m");
-            return out;
-        }
-        out.push(c);
-        shown += 1;
-    }
-    out
-}
-
-fn visible_len(line: &str) -> usize {
-    let mut len = 0;
-    let mut in_escape = false;
-    for c in line.chars() {
-        match (in_escape, c) {
-            (false, '\x1b') => in_escape = true,
-            (true, c) if c.is_ascii_alphabetic() => in_escape = false,
-            (true, _) => {}
-            (false, _) => len += 1,
-        }
-    }
-    len
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn plain(doc: &Document, width: Option<usize>) -> String {
+    fn plain(doc: &Document) -> String {
         let mut out = Vec::new();
-        render(doc, &mut out, width).unwrap();
+        render(doc, &mut out).unwrap();
         anstream::adapter::strip_str(core::str::from_utf8(&out).unwrap()).to_string()
     }
 
@@ -165,7 +113,7 @@ mod tests {
             )
             .items("policies", [Line::code("1.2.3"), Line::code("1.2.4")]);
         assert_eq!(
-            plain(&doc, None),
+            plain(&doc),
             "Certificate 1 of 1\n  card.pem\n\nKey\n  algorithm      ECDSA admissible\n  \
              policies       - 1.2.3\n                 - 1.2.4\n"
         );
@@ -176,24 +124,6 @@ mod tests {
         let mut doc = Document::default();
         doc.section("Errors")
             .items("", [Line::text("a"), Line::text("b")]);
-        assert_eq!(plain(&doc, None), "Errors\n  - a\n  - b\n");
-    }
-
-    #[test]
-    fn truncation_counts_only_visible_characters() {
-        let styled = "\x1b[1mabcdef\x1b[0m ghij";
-        assert_eq!(truncate_styled(styled, 20), styled);
-        let cut = truncate_styled(styled, 5);
-        assert_eq!(anstream::adapter::strip_str(&cut).to_string(), "abcd…");
-        assert!(cut.ends_with("\x1b[0m"), "closes the open style");
-        assert_eq!(truncate_styled("äöüßabc", 4), "äöü…\x1b[0m");
-    }
-
-    #[test]
-    fn cut_to_the_terminal_width_only() {
-        let mut doc = Document::default();
-        doc.paragraph("x".repeat(50));
-        assert!(plain(&doc, None).contains(&"x".repeat(50)));
-        assert_eq!(plain(&doc, Some(10)), format!("  {}…\n", "x".repeat(7)));
+        assert_eq!(plain(&doc), "Errors\n  - a\n  - b\n");
     }
 }

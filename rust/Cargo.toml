@@ -29,7 +29,6 @@ clap = { version = "4.6.7", default-features = false, features = ["derive"] }
 # Terminal styling for the CLI; the same crates clap renders its own help with.
 anstream = "1.0.0"
 anstyle = "1.0.14"
-terminal_size = "0.4.4"
 # Local time zone for timestamps in text output (system zone, DST-correct, Windows too).
 jiff = "0.2.37"
 arc-swap = "1.9.2"
@@ -51,6 +50,10 @@ digest = "0.11"
 reqwest = { version = "0.13.5", default-features = false }
 tokio = { version = "1.53.1", default-features = false }
 tracing = { version = "0.1.44", default-features = false, features = ["std"] }
+# ti-cli's HTTP: blocking ureq on rustls with ring passed explicitly, as in kartos; no
+# async runtime, no aws-lc build.
+ureq = { version = "3.4.2", default-features = false }
+rustls = { version = "0.23.45", default-features = false, features = ["std", "tls12", "ring"] }
 
 serde_json = "1.0.151"
 # XML through serde, matching local names (as in the zero-lab generator projects).

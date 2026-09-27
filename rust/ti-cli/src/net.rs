@@ -67,6 +67,21 @@ fn proxy_url(value: &str) -> Result<String, String> {
 }
 
 impl NetArgs {
+    /// The CA files and directory that replace the OS store: the options, else curl's
+    /// environment variables (`CURL_CA_BUNDLE`, then `SSL_CERT_FILE`; `SSL_CERT_DIR`).
+    pub fn ca_sources(&self) -> (Vec<PathBuf>, Option<PathBuf>) {
+        if !self.cacert.is_empty() || self.capath.is_some() {
+            return (self.cacert.clone(), self.capath.clone());
+        }
+        let var = |name| {
+            std::env::var_os(name)
+                .filter(|v| !v.is_empty())
+                .map(PathBuf::from)
+        };
+        let file = var("CURL_CA_BUNDLE").or_else(|| var("SSL_CERT_FILE"));
+        (file.into_iter().collect(), var("SSL_CERT_DIR"))
+    }
+
     /// The effective user agent.
     pub fn user_agent(&self) -> String {
         self.user_agent
@@ -80,16 +95,18 @@ impl fmt::Display for NetArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let trust = if self.insecure {
             "NOT VERIFIED (-k)".to_owned()
-        } else if self.cacert.is_empty() && self.capath.is_none() {
-            "OS trust store".to_owned()
         } else {
-            let files: Vec<String> = self
-                .cacert
-                .iter()
-                .map(|p| p.display().to_string())
-                .collect();
-            let dir = self.capath.iter().map(|p| p.display().to_string());
-            files.into_iter().chain(dir).collect::<Vec<_>>().join(", ")
+            let (files, dir) = self.ca_sources();
+            if files.is_empty() && dir.is_none() {
+                "OS trust store".to_owned()
+            } else {
+                files
+                    .iter()
+                    .chain(dir.iter())
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }
         };
         let proxy = match self.proxy.as_deref() {
             None => "from environment".to_owned(),
@@ -111,7 +128,7 @@ impl fmt::Display for NetArgs {
 }
 
 /// `scheme://user:secret@host` → `scheme://***@host`.
-fn redact(url: &str) -> String {
+pub fn redact(url: &str) -> String {
     let Some((scheme, rest)) = url.split_once("://") else {
         return url.to_owned();
     };

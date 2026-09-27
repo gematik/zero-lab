@@ -148,6 +148,10 @@ pub struct VerifyArgs {
     /// Validation profile: auto picks it from the certificate, none checks the chain only
     #[arg(long, default_value = "auto", value_parser = profile_selectors())]
     pub profile: String,
+    /// No network: cached trust material, else the embedded roots; revocation is not
+    /// checked
+    #[arg(long)]
+    pub offline: bool,
     /// Validate at this time instead of now (RFC 3339, e.g. 2026-06-01T00:00:00+02:00)
     #[arg(long, value_name = "TIME", value_parser = timestamp)]
     pub at: Option<ti_pki::Timestamp>,
