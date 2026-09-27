@@ -221,6 +221,10 @@
         "sha256": {
           "type": "string"
         },
+        "private_key": {
+          "type": "boolean",
+          "description": "The input is a PKCS#12 file that also holds this certificate's private key"
+        },
         "pem": {
           "type": "string",
           "description": "The certificate as PEM"
@@ -248,6 +252,7 @@
         "subject_key_id",
         "authority_key_id",
         "sha256",
+        "private_key",
         "pem"
       ],
       "additionalProperties": false

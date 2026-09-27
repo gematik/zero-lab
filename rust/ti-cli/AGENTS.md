@@ -61,8 +61,12 @@ never on `message`.
 {bin} --format json pki tsl show --ca SMCB-CA51   # filter by name, also --provider, --root
 ```
 
-- `-` reads the certificate from stdin (PEM or DER). A PEM file may carry the chain,
-  with the end entity first.
+- Input is PEM, DER or PKCS#12 (`.p12`, `.pfx`); `-` reads stdin. A PEM file may carry
+  the chain with the end entity first. In a PKCS#12 file, the certificate with its
+  private key comes first and is the end entity for `verify`, and `inspect` marks it
+  `"private_key": true`. The password is `00` (gematik's test cards) unless
+  `--p12-password` gives another. A wrong password fails with exit 4 and the error kind
+  `p12_password`.
 - Certificates come back as PEM in `pem` fields (`inspect`, and `verify`'s `chain`),
   ready to save or to pass on.
 - Reading a verify report:

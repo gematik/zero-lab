@@ -30,6 +30,10 @@
 - Output: sectioned terminal views, compact Markdown (a summary, then one list; no
   tables), trees for hierarchies, PEM for certificates in JSON and Markdown, dates alone in lists and
   `2023-02-09 00:00 CET` elsewhere.
+- `pki inspect` and `pki verify` read PKCS#12 (`.p12`/`.pfx`, DER or BER, legacy
+  encryption included) through ti-pkcs12, with `--p12-password` (default `00`). The
+  certificate with its key comes first and is `verify`'s end entity; `inspect` reports
+  `private_key`. A wrong password is error kind `p12_password`, exit 4.
 - `completions bash|zsh|fish|elvish|powershell`.
 - `just cli-targets`: release binaries for Linux (musl), Windows and macOS.
 - Release builds are stripped, fully LTO-optimised and abort on panic (6.2 → 3.5 MB).

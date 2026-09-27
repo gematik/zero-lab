@@ -30,7 +30,9 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
     }
     out.verbose(1, &cli.global.net);
     match &cli.command {
-        Command::Pki(PkiCommand::Inspect { file }) => inspect::run(file, out),
+        Command::Pki(PkiCommand::Inspect { file, p12_password }) => {
+            inspect::run(file, p12_password, out)
+        }
         Command::Pki(PkiCommand::Verify(args)) => verify::run(args, &cli.global, out),
         Command::Pki(PkiCommand::Profiles(ProfilesCommand::List)) => profiles::list(out),
         Command::Pki(PkiCommand::Profiles(ProfilesCommand::Describe { name })) => {

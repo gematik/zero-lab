@@ -12,11 +12,13 @@ on [`ti-pki`](../ti-pki). Commands are grouped by subsystem; `pki` is the first.
 just install                        # cargo install into ~/.cargo/bin
 ti pki inspect card.pem             # what the TI reads from a certificate
 ti pki inspect - < card.der
+ti pki inspect identity.p12         # PKCS#12; password 00 unless --p12-password
 ti pki inspect card.pem > card.md   # piped output is Markdown, with the PEM
 ti --format json pki inspect card.pem | jq '.certificates[0].certificate_type'
 ti pki profiles list
 ti pki profiles describe smb-aut
 ti pki verify card.pem              # exit 0 valid, 1 not valid
+ti pki verify smcb.p12              # the certificate with its key is the end entity
 ti pki verify card.pem --offline    # cached trust material, no OCSP
 ti pki roots list --env ref         # the roots reached from the anchor
 ti pki tsl show                     # the TSL's CAs under the roots that signed them

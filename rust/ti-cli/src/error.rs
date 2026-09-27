@@ -55,6 +55,15 @@ pub enum CliError {
         #[source]
         source: ti_pki::Error,
     },
+    /// A PKCS#12 file could not be opened.
+    #[error("{source_name}: {source}")]
+    Pkcs12 {
+        /// The file name, or `<stdin>`.
+        source_name: String,
+        /// Why.
+        #[source]
+        source: ti_pkcs12::Error,
+    },
     /// `--env auto` found no evidence for production or test.
     #[error("cannot tell the TI environment from the certificates: {0}")]
     EnvironmentUndetected(String),
@@ -85,6 +94,8 @@ impl CliError {
             CliError::Read { .. } => "input_unreadable",
             CliError::NoCertificate { .. } => "no_certificate",
             CliError::Certificate { .. } => "certificate_malformed",
+            CliError::Pkcs12 { source, .. } if source.is_wrong_password() => "p12_password",
+            CliError::Pkcs12 { .. } => "p12_unreadable",
             CliError::EnvironmentUndetected(_) => "environment_undetected",
             CliError::Trust(_) | CliError::TrustLoad(_) => "trust_material_unavailable",
             CliError::HttpSetup(_) => "http_setup",
@@ -101,6 +112,10 @@ impl CliError {
             CliError::NoCertificate { .. } | CliError::Certificate { .. } => {
                 Some("expected PEM (-----BEGIN CERTIFICATE-----) or DER")
             }
+            CliError::Pkcs12 { source, .. } if source.is_wrong_password() => {
+                Some("pass the file's password with --p12-password (default 00)")
+            }
+            CliError::Pkcs12 { .. } => Some("expected a PKCS#12 (.p12, .pfx) file"),
             CliError::EnvironmentUndetected(_) => Some("pass --env prod, ref, test or dev"),
             CliError::TrustLoad(_) => {
                 Some("check the network and the HTTP options (-v shows them), or pass --offline")
@@ -117,7 +132,8 @@ impl CliError {
         match self {
             CliError::Read { .. }
             | CliError::NoCertificate { .. }
-            | CliError::Certificate { .. } => Exit::Input,
+            | CliError::Certificate { .. }
+            | CliError::Pkcs12 { .. } => Exit::Input,
             CliError::EnvironmentUndetected(_)
             | CliError::HttpSetup(_)
             | CliError::UnknownSchema(_)

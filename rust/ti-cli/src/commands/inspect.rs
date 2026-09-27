@@ -55,6 +55,8 @@ struct CertificateInfo {
     subject_key_id: Option<String>,
     authority_key_id: Option<String>,
     sha256: String,
+    /// The input is a PKCS#12 file that also holds this certificate's private key.
+    private_key: bool,
     pem: String,
 }
 
@@ -79,14 +81,17 @@ struct AdmissionInfo {
     registration_number: Option<String>,
 }
 
-pub fn run(file: &Path, out: &Output) -> Result<Exit, CliError> {
+pub fn run(file: &Path, p12_password: &str, out: &Output) -> Result<Exit, CliError> {
     let source = input::read(file)?;
-    let certs = input::certificates(&source)?;
+    let certs = input::certificates(&source, p12_password)?;
     let now = SystemClock.now();
     let report = Report {
         schema: SCHEMA,
         source: source.name,
-        certificates: certs.iter().map(|cert| describe(cert, now)).collect(),
+        certificates: certs
+            .iter()
+            .map(|loaded| describe(&loaded.certificate, loaded.private_key, now))
+            .collect(),
         now,
     };
     if out.is_json() {
@@ -97,7 +102,7 @@ pub fn run(file: &Path, out: &Output) -> Result<Exit, CliError> {
     Ok(Exit::Ok)
 }
 
-fn describe(cert: &Certificate, now: Timestamp) -> CertificateInfo {
+fn describe(cert: &Certificate, private_key: bool, now: Timestamp) -> CertificateInfo {
     let (status, algorithm) = classify_key(cert.public_key_info(), now);
     let selection = profile::select_for_cert(cert);
     let basic = cert.basic_constraints();
@@ -146,6 +151,7 @@ fn describe(cert: &Certificate, now: Timestamp) -> CertificateInfo {
         subject_key_id: cert.subject_key_id().map(hex),
         authority_key_id: cert.authority_key_id().map(hex),
         sha256: hex(&Sha256::digest(cert.der())),
+        private_key,
         pem: pem(cert.der()),
     }
 }
@@ -213,13 +219,14 @@ fn sections(report: &Report) -> Document {
             s if s == KeyStatus::PhasedOut.as_str() => Tone::Warn,
             _ => Tone::Bad,
         };
-        doc.section("Key")
-            .field(
-                "algorithm",
-                Line::text(format!("{} ", cert.key.algorithm))
-                    .and_status(key_tone, cert.key.status),
-            )
-            .field("signature", cert.signature_algorithm.as_str())
+        doc.section("Key").field(
+            "algorithm",
+            Line::text(format!("{} ", cert.key.algorithm)).and_status(key_tone, cert.key.status),
+        );
+        if cert.private_key {
+            doc.field("private key", "in this file");
+        }
+        doc.field("signature", cert.signature_algorithm.as_str())
             .field("key usage", codes(&cert.key_usage))
             .field("ext. usage", codes(&cert.extended_key_usage))
             .field(
@@ -316,6 +323,9 @@ fn summary(report: &Report) -> Document {
                 .and_status(key_tone, cert.key.status)
                 .and_dim(format!(" · signed {}", cert.signature_algorithm)),
         );
+        if cert.private_key {
+            doc.field("private key", "in this file");
+        }
         doc.field("key usage", codes(&cert.key_usage));
         if !cert.extended_key_usage.is_empty() {
             doc.field("ext. usage", codes(&cert.extended_key_usage));

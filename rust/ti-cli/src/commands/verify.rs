@@ -131,9 +131,15 @@ struct Run {
 /// Runs the command; exit 0 when valid, 1 when not.
 pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     let source = input::read(&args.file)?;
-    let mut certs = input::certificates(&source)?;
+    let certificates = |source: &input::Source| -> Result<Vec<Certificate>, CliError> {
+        Ok(input::certificates(source, &args.p12_password)?
+            .into_iter()
+            .map(|loaded| loaded.certificate)
+            .collect())
+    };
+    let mut certs = certificates(&source)?;
     for path in args.issuer.iter().chain(&args.intermediates) {
-        certs.extend(input::certificates(&input::read(path)?)?);
+        certs.extend(certificates(&input::read(path)?)?);
     }
     let at = args.at.unwrap_or_else(|| SystemClock.now());
 

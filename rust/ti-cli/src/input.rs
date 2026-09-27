@@ -1,4 +1,4 @@
-//! Reading certificates from a file or stdin, PEM or DER.
+//! Reading certificates from a file or stdin: PEM, DER or PKCS#12.
 
 use std::io::Read;
 use std::path::Path;
@@ -40,19 +40,58 @@ pub fn read(path: &Path) -> Result<Source, CliError> {
         })
 }
 
-/// The certificates in `source`: every CERTIFICATE block of a PEM file, or one DER
-/// certificate.
-pub fn certificates(source: &Source) -> Result<Vec<Certificate>, CliError> {
+/// A certificate from the input, and whether the input also holds its private key.
+pub struct Loaded {
+    /// The certificate.
+    pub certificate: Certificate,
+    /// The input is a PKCS#12 file with this certificate's key.
+    pub private_key: bool,
+}
+
+/// The certificates in `source`: every CERTIFICATE block of a PEM file, one DER
+/// certificate, or the certificates of a PKCS#12 file decoded with `p12_password`. Of a
+/// PKCS#12 file, the certificates with their key come first: they are the identity, the
+/// others its chain.
+pub fn certificates(source: &Source, p12_password: &str) -> Result<Vec<Loaded>, CliError> {
     let certificate_error = |error| CliError::Certificate {
         source_name: source.name.clone(),
         source: error,
     };
-    let certs = if source.bytes.windows(11).any(|w| w == b"-----BEGIN ") {
-        ti_pki::parse_pem_certificates(&source.bytes).map_err(certificate_error)?
+    let without_key = |certificate| Loaded {
+        certificate,
+        private_key: false,
+    };
+    let certs: Vec<Loaded> = if ti_pkcs12::is_pkcs12(&source.bytes) {
+        let p12 =
+            ti_pkcs12::decode(&source.bytes, p12_password).map_err(|error| CliError::Pkcs12 {
+                source_name: source.name.clone(),
+                source: error,
+            })?;
+        let paired: Vec<usize> = p12.pairs().iter().map(|pair| pair.certificate).collect();
+        let mut order: Vec<usize> = paired.clone();
+        order.extend((0..p12.certificates.len()).filter(|i| !paired.contains(i)));
+        order
+            .into_iter()
+            .map(|i| {
+                Ok(Loaded {
+                    certificate: Certificate::from_der(&p12.certificates[i].der)
+                        .map_err(certificate_error)?,
+                    private_key: paired.contains(&i),
+                })
+            })
+            .collect::<Result<_, CliError>>()?
+    } else if source.bytes.windows(11).any(|w| w == b"-----BEGIN ") {
+        ti_pki::parse_pem_certificates(&source.bytes)
+            .map_err(certificate_error)?
+            .into_iter()
+            .map(without_key)
+            .collect()
     } else if source.bytes.is_empty() {
         Vec::new()
     } else {
-        vec![Certificate::from_der(&source.bytes).map_err(certificate_error)?]
+        vec![without_key(
+            Certificate::from_der(&source.bytes).map_err(certificate_error)?,
+        )]
     };
     if certs.is_empty() {
         return Err(CliError::NoCertificate {

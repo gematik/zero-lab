@@ -129,6 +129,14 @@ impl Error {
     }
 }
 
+impl Error {
+    /// Whether the password is the likely cause: the MAC or, in a file without one, the
+    /// decryption failed.
+    pub fn is_wrong_password(&self) -> bool {
+        matches!(self, Error::MacMismatch | Error::DecryptFailed)
+    }
+}
+
 impl From<der::Error> for Error {
     fn from(error: der::Error) -> Self {
         Error::malformed("ASN.1", error.to_string())

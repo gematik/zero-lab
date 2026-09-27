@@ -151,9 +151,12 @@ pub enum CacheCommand {
 pub enum PkiCommand {
     /// Decode certificates and show what the TI reads from them (offline; does not validate)
     Inspect {
-        /// PEM or DER file with one or more certificates; "-" reads stdin
+        /// PEM, DER or PKCS#12 file with one or more certificates; "-" reads stdin
         #[arg(value_name = "FILE")]
         file: PathBuf,
+        /// Password of a PKCS#12 file
+        #[arg(long, value_name = "PASSWORD", default_value = "00")]
+        p12_password: String,
     },
     /// List the validation profiles or show what one requires
     #[command(subcommand)]
@@ -215,17 +218,20 @@ pub struct TslShowArgs {
 /// `ti pki verify`.
 #[derive(Debug, Args)]
 pub struct VerifyArgs {
-    /// PEM or DER file, the end entity first; further certificates are candidate
-    /// intermediates; "-" reads stdin
+    /// PEM, DER or PKCS#12 file, the end entity first (in PKCS#12: the certificate with
+    /// its key); further certificates are candidate intermediates; "-" reads stdin
     #[arg(value_name = "FILE")]
     pub file: PathBuf,
+    /// Password of PKCS#12 input (FILE, --issuer, --intermediates)
+    #[arg(long, value_name = "PASSWORD", default_value = "00")]
+    pub p12_password: String,
     /// TI environment; auto detects production or test from the certificates
     #[arg(long, value_enum, default_value_t = Environment::Auto, env = "TI_ENV")]
     pub env: Environment,
-    /// Issuing CA certificate (PEM or DER), when the TSL does not provide it
+    /// Issuing CA certificate (PEM, DER or PKCS#12), when the TSL does not provide it
     #[arg(long, value_name = "FILE")]
     pub issuer: Option<PathBuf>,
-    /// Further candidate intermediates (PEM or DER); repeatable
+    /// Further candidate intermediates (PEM, DER or PKCS#12); repeatable
     #[arg(long, value_name = "FILE")]
     pub intermediates: Vec<PathBuf>,
     /// Validation profile: auto picks it from the certificate, none checks the chain only

@@ -6,3 +6,4 @@
   integrity mode (HMAC-SHA-1/2), PBES2 with AES-CBC, and behind the default `legacy`
   feature the PKCS#12 PBEs with 3DES and RC2. Parity with `go/pkcs12` on its fixtures,
   without its OpenSSL conversion for BER files.
+- `Error::is_wrong_password`.

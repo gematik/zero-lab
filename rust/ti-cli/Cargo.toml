@@ -19,6 +19,7 @@ path = "src/main.rs"
 [dependencies]
 # A tool for every environment: the non-prod presets are in; TrustConfig::validate
 # still fences production from TEST-ONLY material.
+ti-pkcs12.workspace = true
 ti-pki = { workspace = true, features = ["os", "dangerous-nonprod"] }
 # rustls without a built-in provider (ring is passed in), the OS trust store via the
 # platform verifier, and SOCKS for -x socks5://.

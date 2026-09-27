@@ -503,3 +503,78 @@ fn completions_for_every_shell() {
     }
     assert_eq!(tir(&["completions", "tcsh"]).status.code(), Some(2));
 }
+
+fn p12_fixture() -> (String, String) {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../ti-pkcs12/tests/fixtures/legacy");
+    let password = std::fs::read_to_string(dir.join("cgm-password.txt")).unwrap();
+    (
+        dir.join("cgm.p12").to_string_lossy().into_owned(),
+        password.trim().to_owned(),
+    )
+}
+
+#[test]
+fn inspect_reads_pkcs12_with_its_key_first() {
+    let (file, password) = p12_fixture();
+    let out = tir(&[
+        "--format",
+        "json",
+        "pki",
+        "inspect",
+        &file,
+        "--p12-password",
+        &password,
+    ]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let certificates = json["certificates"].as_array().unwrap();
+    assert_eq!(certificates.len(), 2);
+    assert_eq!(certificates[0]["subject"], "CN=test-cs2");
+    assert_eq!(certificates[0]["private_key"], true);
+    assert_eq!(certificates[1]["private_key"], false);
+    let text = stdout(&tir(&[
+        "--format",
+        "text",
+        "pki",
+        "inspect",
+        &file,
+        "--p12-password",
+        &password,
+    ]));
+    assert!(text.contains("private key    in this file"), "{text}");
+}
+
+#[test]
+fn a_wrong_p12_password_is_an_input_error_with_a_hint() {
+    let (file, _) = p12_fixture();
+    // The default password 00 is not this vendor file's.
+    let out = tir(&["--format", "json", "pki", "inspect", &file]);
+    assert_eq!(out.status.code(), Some(4));
+    let error: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
+    assert_eq!(error["error"]["kind"], "p12_password");
+    assert!(
+        error["error"]["hint"]
+            .as_str()
+            .unwrap()
+            .contains("--p12-password")
+    );
+}
+
+#[test]
+fn verify_takes_the_certificate_with_its_key_as_end_entity() {
+    let (file, password) = p12_fixture();
+    let out = tir(&[
+        "--format",
+        "json",
+        "pki",
+        "verify",
+        "--offline",
+        "--env",
+        "ref",
+        &file,
+        "--p12-password",
+        &password,
+    ]);
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["chain"][0]["common_name"], "test-cs2", "{json}");
+}

@@ -1787,6 +1787,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
+ "ti-pkcs12",
  "ti-pki",
  "ureq",
  "x509-cert",
