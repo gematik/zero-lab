@@ -114,6 +114,11 @@ impl<S: CacheStore, C: Clock> Cache<S, C> {
         }
     }
 
+    /// The clock the cache ages entries by; origins stamp `fetched_at` with it.
+    pub fn clock(&self) -> &C {
+        &self.clock
+    }
+
     /// The body under `key`: from the store while fresh (or offline), otherwise from
     /// `origin`, which receives the stored copy's validators and may answer "not
     /// modified". A failing origin is answered with the stored copy while it is within
