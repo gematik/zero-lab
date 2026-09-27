@@ -60,9 +60,8 @@ cli-targets:
     fi
     # A release uploads everything here, so nothing from an earlier build may remain.
     rm -rf target/dist && mkdir -p target/dist
-    all=("${targets[@]}" "${native[@]}"); n=0
-    for t in "${all[@]}"; do
-        n=$((n + 1)); echo "==> $t ($n/${#all[@]})"
+    for t in "${targets[@]}" "${native[@]}"; do
+        echo "==> $t"
         if [[ " ${native[*]} " == *" $t "* ]]; then
             rustup target add "$t" >/dev/null
             cargo build --release --locked -p ti-cli --target "$t"
@@ -83,8 +82,8 @@ ti *ARGS:
     cargo run -q -p ti-cli -- {{ARGS}}
 
 # ---- Releasing ti -----------------------------------------------------------------
-# The binaries are attached to a GitHub release of REPO with their SHA256SUMS. GH
-# replaces the gh CLI for dry runs.
+# `just release` works locally (gate, bump, build, commit, tag); `just publish` pushes and
+# publishes the GitHub release with the binaries, then the Homebrew formula.
 
 REPO := "gematik/zero-lab"
 # The GitHub user or organization whose homebrew-tap repository carries the formula.
@@ -104,164 +103,106 @@ release-notes version="Unreleased" crate="ti-cli":
         } else {
             print $1 if /^## Release \Q$c $v\E,[^\n]*\n(.*?)(?=^## |\z)/ms;
         }' ReleaseNotes.md | sed -e '/[^[:space:]]/,$!d')
-    [[ -n "$notes" ]] || { echo "release-notes: no notes for {{crate}} {{version}} in ReleaseNotes.md" >&2; exit 1; }
+    [[ -n "$notes" ]] || { echo "release-notes: no notes for {{crate}} {{version}}" >&2; exit 1; }
     printf '%s\n' "$notes"
 
-# Release ti from main: bump, check, build, commit, tag, push, GitHub release and the Homebrew formula in <tap>/homebrew-tap
-release version tap=TAP_OWNER:
+# Prepare a ti release from main, locally: gate, version bump, release notes, binaries in target/dist, commit and tag
+release version:
     #!/usr/bin/env bash
     set -euo pipefail
-    GH="${GH:-gh}"
-    v="{{version}}"; tag="rust/ti-cli/v$v"; tap="{{tap}}"
+    v="{{version}}"; tag="rust/ti-cli/v$v"
     die() { echo "release: $*" >&2; exit 1; }
-    newer() { [[ "$1" != "$2" && "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" == "$1" ]]; }
-
-    [[ "$v" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || die "VERSION must be X.Y.Z, not '$v'"
     [[ "$(git branch --show-current)" == main ]] || die "releases start from main"
     [[ -z "$(git status --porcelain)" ]] || die "the working tree is not clean"
     git fetch -q origin main
     [[ "$(git rev-parse main)" == "$(git rev-parse origin/main)" ]] || die "main and origin/main differ"
     ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null || die "$tag exists"
-    [[ -z "$(git ls-remote --tags origin "refs/tags/$tag")" ]] || die "$tag exists on origin"
     last=$(git tag -l 'rust/ti-cli/v*' | sed 's|.*/v||' | sort -V | tail -1)
-    [[ -z "$last" ]] || newer "$v" "$last" || die "$v is not above the last release $last"
-    current=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "ti-cli") | .version')
-    [[ "$v" == "$current" ]] || newer "$v" "$current" || die "$v is below ti-cli's version $current"
-    just release-notes Unreleased >/dev/null || die "write the release notes first"
-    command -v cross >/dev/null || die "cross is missing: just tools"
-    docker info >/dev/null 2>&1 || die "the Docker daemon is not running"
-    "$GH" auth status >/dev/null 2>&1 || die "gh is not logged in: gh auth login"
+    [[ -z "$last" || "$(printf '%s\n%s\n' "$last" "$v" | sort -V | tail -1)" == "$v" && "$v" != "$last" ]] \
+        || die "$v is not above the last release $last"
+    just release-notes >/dev/null || die "write the release notes first"
 
-    # The bumped files were clean at the preflight, so any stop before the commit restores them.
-    ticker=""
-    undo() {
-        [[ -z "$ticker" ]] || kill "$ticker" 2>/dev/null || true
-        git checkout -q -- ti-cli/Cargo.toml Cargo.lock ReleaseNotes.md
-        echo "release: stopped before the commit; the version bump is undone" >&2
-    }
+    echo "==> just check"; just check
+    echo "==> just audit"; just audit
+
+    # From here the working tree changes; a failure or Ctrl-C before the commit undoes it.
+    undo() { git checkout -q -- ti-cli/Cargo.toml Cargo.lock ReleaseNotes.md; echo "release: stopped, the bump is undone" >&2; }
     trap undo ERR
-    trap 'echo; undo; exit 130' INT TERM
-    if [[ "$v" != "$current" ]]; then
-        perl -0pi -e 's/^version = "[^"]*"/version = "'"$v"'"/m' ti-cli/Cargo.toml
-        cargo update -q -p ti-cli --offline
-    fi
+    trap 'undo; exit 130' INT
+    perl -0pi -e 's/^version = "[^"]*"/version = "'"$v"'"/m' ti-cli/Cargo.toml
+    cargo update -q -p ti-cli --offline
     # ti-cli's block leaves "Unreleased" and becomes the section of this release.
     CRATE=ti-cli HEADING="## Release ti-cli $v, $(date +%F)" perl -0777 -i -pe '
         my ($c, $h) = ($ENV{CRATE}, $ENV{HEADING});
         s{^## Unreleased\n(.*?)(?=^## |\z)}{
             my $u = $1;
-            $u =~ s{^### \Q$c\E\n(.*?)(?=^### |\z)}{}ms or die "no $c under Unreleased\n";
+            $u =~ s{^### \Q$c\E\n(.*?)(?=^### |\z)}{}ms;
             my $b = $1;
             $b =~ s/^####/###/mg;
-            $b =~ s/\s+\z/\n/;
             $u =~ s/\s+\z/\n/;
             $u = "" unless $u =~ /\S/;
-            "## Unreleased\n$u\n$h\n$b\n"
+            "## Unreleased\n$u\n$h\n$b"
         }mse;
         s/\n+\z/\n/' ReleaseNotes.md
-    # One line per step; the full output of each goes to a log.
-    logs=target/release-logs; mkdir -p "$logs"
-    # On a terminal, a status line shows the elapsed time, the current "==>" stage and the
-    # log's latest line while a step runs. The step runs in the foreground, so Ctrl-C
-    # reaches it; the status line is a background job that ends with it.
-    step() {
-        local name=$1 start=$SECONDS log="$logs/$1.log" ok=0; shift
-        : > "$log"
-        if [[ -t 1 ]]; then
-            (
-                width=$(( $(tput cols 2>/dev/null || echo 100) - 22 ))
-                while sleep 1; do
-                    stage=$(grep '^==> ' "$log" | tail -n 1 | cut -c5-)
-                    last=$(tail -n 1 "$log" | awk -F'\r' '{print $NF}' | sed 's/^[[:space:]]*//')
-                    [[ -z "$stage" ]] || last="$stage · $last"
-                    printf '\r\033[K%-12s%5d s  %s' "$name" $((SECONDS - start)) "${last:0:width}"
-                done
-            ) &
-            ticker=$!
-        fi
-        "$@" > "$log" 2>&1 || ok=$?
-        if [[ -n "$ticker" ]]; then
-            kill "$ticker" 2>/dev/null || true
-            wait "$ticker" 2>/dev/null || true
-            ticker=""
-            printf '\r\033[K'
-        fi
-        printf '%-12s' "$name"
-        if [[ $ok -eq 0 ]]; then
-            echo "ok, $((SECONDS - start)) s"
-        else
-            echo "failed after $((SECONDS - start)) s; the end of $log:"
-            tail -n 30 "$log"
-            return 1
-        fi
-    }
-    echo "Gate and build, several minutes each (details in $logs):"
-    step check just check
-    step audit just audit
-    step cli-targets just cli-targets
+    echo "==> just cli-targets"; just cli-targets
     (cd target/dist && shasum -a 256 "ti-$v-"* > SHA256SUMS)
-    trap - ERR INT TERM
+    trap - ERR INT
 
     git add ti-cli/Cargo.toml Cargo.lock ReleaseNotes.md
     git commit -q -m "ti-cli: release $v"
     just tag ti-cli "$v"
+    echo; just release-notes "$v"; echo; ls -l target/dist
+    echo
+    echo "Committed and tagged $tag, nothing pushed. Publish with: just publish $v"
+    echo "or undo: git tag -d $tag && git reset --keep HEAD~1"
 
+# Publish a ti release made by `just release`: push main and its tag, the GitHub release with target/dist, the formula in <tap>/homebrew-tap
+publish version tap=TAP_OWNER:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v="{{version}}"; tag="rust/ti-cli/v$v"
+    git rev-parse -q --verify "refs/tags/$tag" >/dev/null || { echo "publish: no tag $tag" >&2; exit 1; }
+    [[ -f target/dist/SHA256SUMS ]] || { echo "publish: no binaries in target/dist" >&2; exit 1; }
     notes=$(mktemp); trap 'rm -f "$notes"' EXIT
     {
-        just release-notes "$v" ti-cli
+        just release-notes "$v"
         echo
         echo "---"
         echo
-        echo "**Install** on macOS and Linux: \`brew install $tap/tap/ti\`, update with \`brew upgrade ti\`."
+        echo "**Install** on macOS and Linux: \`brew install {{tap}}/tap/ti\`, update with \`brew upgrade ti\`."
         echo
         echo "**Verify** a download: \`shasum -a 256 -c SHA256SUMS --ignore-missing\`"
     } > "$notes"
-    echo; cat "$notes"; echo; ls -l target/dist; echo
-    read -r -p "Push main and $tag, and publish? [y/N] " answer
-    if [[ "$answer" != [yY] ]]; then
-        echo "Not published. Undo with: git tag -d $tag && git reset --keep HEAD~1"
-        exit 1
-    fi
-
     git push --atomic origin main "$tag"
-    "$GH" release create "$tag" --repo {{REPO}} --verify-tag --title "ti $v" --notes-file "$notes" target/dist/*
-    just publish-brew "$tap" "$v"
+    gh release create "$tag" --repo {{REPO}} --verify-tag --title "ti $v" --notes-file "$notes" \
+        target/dist/SHA256SUMS target/dist/ti-"$v"-*
+    just publish-brew {{tap}} "$v"
 
-# Point the ti formula in <owner>/homebrew-tap at a release (default: the newest), from its checksums
-publish-brew owner=TAP_OWNER version="":
+# Point the ti formula in <owner>/homebrew-tap at a published release, from its checksums
+publish-brew owner version:
     #!/usr/bin/env bash
     set -euo pipefail
-    GH="${GH:-gh}"
-    die() { echo "publish-brew: $*" >&2; exit 1; }
-    v="{{version}}"
-    [[ -n "$v" ]] || v=$(git tag -l 'rust/ti-cli/v*' | sed 's|.*/v||' | sort -V | tail -1)
-    [[ -n "$v" ]] || die "no ti release yet"
-    tag="rust/ti-cli/v$v"
+    v="{{version}}"; tag="rust/ti-cli/v$v"
     work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
-
-    "$GH" release download "$tag" --repo {{REPO}} -p SHA256SUMS -D "$work"
-    assets=$("$GH" release view "$tag" --repo {{REPO}} --json assets --jq '.assets[] | "\(.name) \(.url)"')
+    gh release download "$tag" --repo {{REPO}} -p SHA256SUMS -D "$work"
+    assets=$(gh release view "$tag" --repo {{REPO}} --json assets --jq '.assets[] | "\(.name) \(.url)"')
     args=(-e "s|@VERSION@|$v|g")
     for target in aarch64-apple-darwin x86_64-unknown-linux-musl; do
         name="ti-$v-$target"
         sum=$(awk -v f="$name" '$2 == f {print $1}' "$work/SHA256SUMS")
         url=$(awk -v f="$name" '$1 == f {print $2}' <<< "$assets")
-        [[ -n "$sum" && -n "$url" ]] || die "$tag has no $name"
+        [[ -n "$sum" && -n "$url" ]] || { echo "publish-brew: $tag has no $name" >&2; exit 1; }
         args+=(-e "s|@URL_$target@|$url|" -e "s|@SHA256_$target@|$sum|")
     done
-
-    "$GH" repo clone "{{owner}}/homebrew-tap" "$work/tap" -- -q --depth 1
+    gh repo clone "{{owner}}/homebrew-tap" "$work/tap" -- -q --depth 1
     mkdir -p "$work/tap/Formula"
     sed "${args[@]}" ti-cli/Formula/ti.rb > "$work/tap/Formula/ti.rb"
-    ! grep -q '@[A-Z0-9_a-z-]*@' "$work/tap/Formula/ti.rb" || die "unfilled placeholders in the formula"
     git -C "$work/tap" add Formula/ti.rb
-    if git -C "$work/tap" diff --cached --quiet; then
-        echo "{{owner}}/homebrew-tap already has ti $v"
-    else
+    git -C "$work/tap" diff --cached --quiet || {
         git -C "$work/tap" commit -q -m "ti $v"
         git -C "$work/tap" push -q
-        echo "{{owner}}/homebrew-tap: ti $v. Install: brew install {{owner}}/tap/ti"
-    fi
+    }
+    echo "brew install {{owner}}/tap/ti"
 
 # ---- Tier 1: every PR --------------------------------------------------------------
 
