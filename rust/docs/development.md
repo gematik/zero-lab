@@ -374,7 +374,7 @@ from `main`, and stops at the first problem:
    `cross`, Docker and `gh` are there.
 2. **Bump:** `version` in `ti-cli/Cargo.toml` and `Cargo.lock`; the `### ti-cli` block
    leaves `## Unreleased` and becomes `## Release ti-cli X.Y.Z, YYYY-MM-DD` below it.
-3. **Gate and build:** `just check`, `just audit`, `just cli-targets` (five binaries in
+3. **Gate and build:** `just check`, `just audit`, `just cli-targets` (three binaries in
    `target/dist`), then `SHA256SUMS`. A failure here leaves only the bump to undo;
    the recipe prints the `git checkout` for it.
 4. **Commit and tag:** `ti-cli: release X.Y.Z` and `rust/ti-cli/vX.Y.Z`.

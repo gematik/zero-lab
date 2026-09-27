@@ -46,9 +46,9 @@ cli-targets:
         | jq -r '.packages[] | select(.name == "ti-cli")
                  | "\(.version) \(.targets[] | select(.kind[] == "bin") | .name)"')
     read -r version bin <<< "$meta"
-    targets=(x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-pc-windows-gnu)
+    targets=(x86_64-unknown-linux-musl x86_64-pc-windows-gnu)
     native=()
-    if [[ "$(uname -s)" == Darwin ]]; then native=(aarch64-apple-darwin x86_64-apple-darwin); fi
+    if [[ "$(uname -s)" == Darwin ]]; then native=(aarch64-apple-darwin); fi
     # cross runs a Linux toolchain inside its container; rustup refuses to install one on
     # a non-Linux host unless forced, and cross 0.2.5 does not force it.
     if [[ "$(uname -s)" != Linux ]]; then
@@ -209,7 +209,7 @@ publish-brew owner=TAP_OWNER version="":
     "$GH" release download "$tag" --repo {{REPO}} -p SHA256SUMS -D "$work"
     assets=$("$GH" release view "$tag" --repo {{REPO}} --json assets --jq '.assets[] | "\(.name) \(.url)"')
     args=(-e "s|@VERSION@|$v|g")
-    for target in aarch64-apple-darwin x86_64-apple-darwin aarch64-unknown-linux-musl x86_64-unknown-linux-musl; do
+    for target in aarch64-apple-darwin x86_64-unknown-linux-musl; do
         name="ti-$v-$target"
         sum=$(awk -v f="$name" '$2 == f {print $1}' "$work/SHA256SUMS")
         url=$(awk -v f="$name" '$1 == f {print $2}' <<< "$assets")

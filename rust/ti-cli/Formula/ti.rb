@@ -5,26 +5,17 @@ class Ti < Formula
   version "@VERSION@"
   license "Apache-2.0"
 
+  # Released for Apple silicon Macs and x86_64 Linux only.
   on_macos do
-    on_arm do
-      url "@URL_aarch64-apple-darwin@"
-      sha256 "@SHA256_aarch64-apple-darwin@"
-    end
-    on_intel do
-      url "@URL_x86_64-apple-darwin@"
-      sha256 "@SHA256_x86_64-apple-darwin@"
-    end
+    depends_on arch: :arm64
+    url "@URL_aarch64-apple-darwin@"
+    sha256 "@SHA256_aarch64-apple-darwin@"
   end
 
   on_linux do
-    on_arm do
-      url "@URL_aarch64-unknown-linux-musl@"
-      sha256 "@SHA256_aarch64-unknown-linux-musl@"
-    end
-    on_intel do
-      url "@URL_x86_64-unknown-linux-musl@"
-      sha256 "@SHA256_x86_64-unknown-linux-musl@"
-    end
+    depends_on arch: :x86_64
+    url "@URL_x86_64-unknown-linux-musl@"
+    sha256 "@SHA256_x86_64-unknown-linux-musl@"
   end
 
   def install

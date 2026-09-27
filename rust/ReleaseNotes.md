@@ -73,10 +73,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `pki pkcs12 convert` (re-encode as DER, PBES2 AES-256, SHA-256 MAC, mode 0600,
   `--force` to replace).
 - `completions bash|zsh|fish|elvish|powershell`.
-- `just cli-targets`: release binaries for Linux (musl), Windows and macOS.
+- `just cli-targets`: release binaries for Linux x86_64 (musl), Windows x86_64 and macOS
+  on Apple silicon.
 - Release builds are stripped, fully LTO-optimised and abort on panic.
 - The executable's name comes from `ti_cli::BIN`.
-- Releases: `just release X.Y.Z` (checks, five binaries, `SHA256SUMS`, commit and tag,
+- Releases: `just release X.Y.Z` (checks, three binaries, `SHA256SUMS`, commit and tag,
   GitHub release with these notes, then the Homebrew formula): `brew install
   spilikin/tap/ti` installs the release binaries.
 

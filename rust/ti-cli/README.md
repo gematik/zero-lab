@@ -42,9 +42,9 @@ ti agent                            # usage guide for scripts and agents
 ti version
 ```
 
-`just cli-targets` builds release binaries into `target/dist` for Linux x86_64 and
-aarch64 (static musl), Windows x86_64 and, on a Mac, macOS aarch64 and x86_64: the
-foreign ones through [cross](https://github.com/cross-rs/cross) in Docker.
+`just cli-targets` builds release binaries into `target/dist` for Linux x86_64 (static
+musl), Windows x86_64 and, on a Mac, macOS on Apple silicon: the foreign ones through
+[cross](https://github.com/cross-rs/cross) in Docker.
 
 Shell completion comes from the binary itself, so it always matches its commands:
 
@@ -58,8 +58,8 @@ ti completions powershell >> $PROFILE                   # also: elvish
 ## Install
 
 Releases are on [GitHub](https://github.com/gematik/zero-lab/releases), tagged
-`rust/ti-cli/vX.Y.Z`, with a binary for macOS and Linux (arm64, x86_64; static on Linux)
-and Windows (x86_64).
+`rust/ti-cli/vX.Y.Z`, with a binary for macOS on Apple silicon, Linux x86_64 (static)
+and Windows x86_64.
 
 - **Homebrew** (macOS, Linux): `brew install spilikin/tap/ti`; `brew upgrade ti`
   updates, `brew autoupdate` keeps it current. `ti` itself never checks for updates.
