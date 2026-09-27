@@ -93,10 +93,22 @@ fn status_error(status: StatusCode, url: &str) -> TransportError {
     }
 }
 
+/// The error with its causes: reqwest's own message ("error sending request") names
+/// only the URL, the reason (refused, timed out, unknown issuer) is in the sources.
 fn network(error: &::reqwest::Error) -> TransportError {
+    let mut message = error.to_string();
+    let mut source = std::error::Error::source(error);
+    while let Some(cause) = source {
+        let cause_text = cause.to_string();
+        if !message.contains(&cause_text) {
+            message.push_str(": ");
+            message.push_str(&cause_text);
+        }
+        source = cause.source();
+    }
     TransportError {
         kind: TransportErrorKind::Network,
-        message: error.to_string(),
+        message,
         retryable: true,
     }
 }

@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- reqwest transport errors carry their causes (refused, timed out, unknown issuer),
+  not only reqwest's "error sending request".
 - `Certificate::signature_algorithm`, `checks::key_usage_name` and
   `checks::ext_key_usage_name`, for tools that display certificates.
 - Path validation rejects a critical extension this crate does not process (RFC 5280
