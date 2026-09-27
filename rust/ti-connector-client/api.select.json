@@ -1,0 +1,22 @@
+{
+  "ports": false,
+  "services": [
+    { "module": "gematik.conn.eventservice72", "service": "EventService", "version": "7.2",
+      "operations": { "GetCards": "short", "GetResourceInformation": "short" } },
+    { "module": "gematik.conn.cardservice812", "service": "CardService", "version": "8.1",
+      "operations": { "VerifyPin": "long", "ChangePin": "long", "GetPinStatus": "short" } },
+    { "module": "gematik.conn.cardservice821", "service": "CardService", "version": "8.2",
+      "operations": { "StartCardSession": "short", "StopCardSession": "short", "SecureSendAPDU": "long" } },
+    { "module": "gematik.conn.certificateservice602", "service": "CertificateService", "version": "6.0",
+      "operations": { "ReadCardCertificate": "short", "CheckCertificateExpiration": "short", "VerifyCertificate": "long" } },
+    { "module": "gematik.conn.authsignatureservice741", "service": "AuthSignatureService", "version": "7.4",
+      "operations": { "ExternalAuthenticate": "long" } },
+    { "module": "gematik.conn.signatureservice75", "service": "SignatureService", "version": "7.5",
+      "operations": { "SignDocument": "long", "VerifyDocument": "long", "StopSignature": "long", "GetJobNumber": "short",
+                      "ActivateComfortSignature": "long", "DeactivateComfortSignature": "short", "GetSignatureMode": "short" } },
+    { "module": "gematik.conn.signatureservice74", "service": "SignatureService", "version": "7.4",
+      "operations": { "SignDocument": "long", "VerifyDocument": "long", "StopSignature": "long", "GetJobNumber": "short" } },
+    { "module": "gematik.conn.encryptionservice611", "service": "EncryptionService", "version": "6.1",
+      "operations": { "EncryptDocument": "long", "DecryptDocument": "long" } }
+  ]
+}

@@ -1,0 +1,31 @@
+[package]
+name = "ti-connector-client"
+version = "0.1.0"
+description = "Client for the gematik Konnektor's SOAP services in the Telematikinfrastruktur (TI), with pluggable HTTP transport"
+keywords = ["gematik", "telematik", "konnektor", "soap"]
+categories = ["api-bindings", "wasm"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+# Captured Konnektor responses are test data only.
+exclude = ["tests/"]
+
+[dependencies]
+ti-types.workspace = true
+ti-cache.workspace = true
+serde = { workspace = true, features = ["std"] }
+serde_json.workspace = true
+quick-xml.workspace = true
+# The generated code's xs:base64Binary; the same version ureq already brings.
+base64.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+futures-lite.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <ns4:GetCardsResponse xmlns:ns4="http://ws.gematik.de/conn/EventService/v7.2"
+                          xmlns:ns2="http://ws.gematik.de/conn/ConnectorCommon/v5.0"
+                          xmlns:ns3="http://ws.gematik.de/conn/CardService/v8.1"
+                          xmlns:ns5="http://ws.gematik.de/conn/CardServiceCommon/v2.0">
+      <ns2:Status>
+        <Result>OK</Result>
+      </ns2:Status>
+      <ns3:Cards>
+        <ns3:Card>
+          <ns2:CardHandle>card-smcb-1</ns2:CardHandle>
+          <ns5:CardType>SMC-B</ns5:CardType>
+          <ns5:Iccsn>80276123456789010001</ns5:Iccsn>
+          <ns5:CtId>CT_ID_1</ns5:CtId>
+          <ns5:SlotId>1</ns5:SlotId>
+          <InsertTime>2024-01-15T10:30:00Z</InsertTime>
+          <CardHolderName>Test Practice</CardHolderName>
+        </ns3:Card>
+        <ns3:Card>
+          <ns2:CardHandle>card-hba-1</ns2:CardHandle>
+          <ns5:CardType>HBA</ns5:CardType>
+          <ns5:Iccsn>80276123456789020001</ns5:Iccsn>
+          <ns5:CtId>CT_ID_1</ns5:CtId>
+          <ns5:SlotId>2</ns5:SlotId>
+          <InsertTime>2024-01-15T11:00:00Z</InsertTime>
+          <CardHolderName>Dr. Test</CardHolderName>
+        </ns3:Card>
+      </ns3:Cards>
+    </ns4:GetCardsResponse>
+  </soap:Body>
+</soap:Envelope>
