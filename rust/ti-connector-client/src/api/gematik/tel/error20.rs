@@ -36,6 +36,6 @@ pub struct ErrorTrace {
 pub struct ErrorTraceDetail {
     #[serde(rename = "@Encoding", default, skip_serializing_if = "Option::is_none")]
     pub encoding: Option<String>,
-    #[serde(rename = "$text")]
+    #[serde(rename = "$text", default)]
     pub char_data: String,
 }

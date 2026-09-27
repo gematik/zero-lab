@@ -24,6 +24,8 @@ for card in connector.cards().list(&[]).await? {
 | `certificates()` | CertificateService 6.0 | read, read_all, expiration, verify |
 | `pins()` | CardService 8.1 | status, verify, change |
 | `auth()` | AuthSignatureService 7.4 | external_authenticate |
+| `signatures()` | SignatureService 7.5 | sign (CAdES detached, PAdES), verify, job_number, stop, comfort signature |
+| `encryption()` | EncryptionService 6.1 | encrypt (CMS), decrypt |
 
 ## Design
 
@@ -62,8 +64,14 @@ TI_TEST_KON_PATH=praxis.kon cargo test -p ti-connector-client --features ureq --
 
 reads the service directory, the cards, their certificates and PIN states, certificate
 expiry and the Konnektor's check of each C.AUT. With `TI_TEST_KON_INTERACTIVE=1` it
-also verifies the PIN of an SMC-B (or else an HBA), entered at the card terminal, and
-checks an ExternalAuthenticate signature against the card's C.AUT. `tests/tls/generate.sh`
+also verifies the PIN of an SMC-B (or else an HBA), entered at the card terminal,
+checks an ExternalAuthenticate signature against the card's C.AUT, and with an SMC-B
+signs and verifies CAdES and, given an unsigned PDF/A in `TI_TEST_PDFA_PATH`, PAdES
+(Konnektors validate PDF/A conformance; the eHEX Konnektor answered 4111 for an already
+signed one), then encrypts and decrypts.
+`TI_TEST_KON_RECORD_DIR=DIR` writes every exchange (bodies only, never credentials) for
+offline fixtures such as `tests/fixtures/recorded/`, which `tests/recorded.rs` replays
+byte for byte. `tests/tls/generate.sh`
 regenerates the OpenSSL certificates of the TLS tests.
 
 ## Adding an operation

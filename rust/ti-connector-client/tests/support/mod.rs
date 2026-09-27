@@ -68,3 +68,48 @@ pub fn ok(status: u16, body: &str) -> Response {
         ..Response::default()
     }
 }
+
+/// Writes every exchange of the inner transport to `dir`, when given, as
+/// `NN-Operation.request.xml` and `NN-Operation.response-STATUS.xml` (`connector.sds` for
+/// the service directory): bodies only, so credentials, which travel in headers, never
+/// reach the files.
+#[derive(Debug)]
+pub struct Recorder<T> {
+    inner: T,
+    dir: Option<std::path::PathBuf>,
+    count: std::cell::Cell<u32>,
+}
+
+impl<T> Recorder<T> {
+    pub fn new(inner: T, dir: Option<std::path::PathBuf>) -> Self {
+        if let Some(dir) = &dir {
+            std::fs::create_dir_all(dir).expect("recording directory");
+        }
+        Recorder {
+            inner,
+            dir,
+            count: std::cell::Cell::new(0),
+        }
+    }
+}
+
+impl<T: Transport> Transport for Recorder<T> {
+    async fn send(&self, request: &Request<'_>) -> Result<Response, TransportError> {
+        let result = self.inner.send(request).await;
+        if let Some(dir) = &self.dir {
+            let n = self.count.get() + 1;
+            self.count.set(n);
+            let name = request.operation.map_or("connector-sds", |op| op.name);
+            let file = |suffix: &str| dir.join(format!("{n:02}-{name}.{suffix}"));
+            if !request.body.is_empty() {
+                std::fs::write(file("request.xml"), request.body).expect("recording");
+            }
+            match &result {
+                Ok(r) => std::fs::write(file(&format!("response-{}.xml", r.status)), &r.body),
+                Err(e) => std::fs::write(file("error.txt"), e.to_string()),
+            }
+            .expect("recording");
+        }
+        result
+    }
+}

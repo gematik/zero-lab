@@ -11,7 +11,7 @@ use ti_connector_client::types::{
     CardType, CertRef, Crypt, PinResult, PinState, StatusResult, VerificationResult,
 };
 use ti_connector_client::{
-    Connector, Dotkon, Error, PinType, ServiceDirectory, SignatureType, Timeouts,
+    Connector, Dotkon, Error, PinType, ServiceDirectory, SignatureFormat, SignatureType, Timeouts,
 };
 
 use support::{Scripted, ok};
@@ -303,5 +303,164 @@ fn find_resolves_iccsn_and_falls_back_to_the_handle() {
         seen[1]
             .body
             .contains(">80276000000000000000</connectorcommon50:CardHandle>")
+    );
+}
+
+fn b64(bytes: &[u8]) -> String {
+    base64::engine::general_purpose::STANDARD.encode(bytes)
+}
+
+const JOB: &str = r#"<SIG:GetJobNumberResponse xmlns:SIG="http://ws.gematik.de/conn/SignatureService/v7.5"><SIG:JobNumber>ABC-123</SIG:JobNumber></SIG:GetJobNumberResponse>"#;
+
+#[test]
+fn signs_cades_detached_and_pades() {
+    let cades = envelope(&format!(
+        r#"<SIG:SignDocumentResponse xmlns:SIG="http://ws.gematik.de/conn/SignatureService/v7.5" xmlns:dss="urn:oasis:names:tc:dss:1.0:core:schema">
+          <SIG:SignResponse RequestID="request-0">{STATUS_OK}<dss:SignatureObject><dss:Base64Signature Type="urn:ietf:rfc:5652">{}</dss:Base64Signature></dss:SignatureObject></SIG:SignResponse>
+          <SIG:SignResponse RequestID="request-1">{STATUS_OK}<dss:SignatureObject><dss:Base64Signature Type="urn:ietf:rfc:5652">{}</dss:Base64Signature></dss:SignatureObject></SIG:SignResponse>
+        </SIG:SignDocumentResponse>"#,
+        b64(b"cms-0"),
+        b64(b"cms-1")
+    ));
+    let pades = envelope(&format!(
+        r#"<SIG:SignDocumentResponse xmlns:SIG="http://ws.gematik.de/conn/SignatureService/v7.5" xmlns:dss="urn:oasis:names:tc:dss:1.0:core:schema">
+          <SIG:SignResponse RequestID="request-0">{STATUS_OK}<SIG:OptionalOutputs><SIG:DocumentWithSignature ID="doc-0"><dss:Base64Data MimeType="application/pdf">{}</dss:Base64Data></SIG:DocumentWithSignature></SIG:OptionalOutputs></SIG:SignResponse>
+        </SIG:SignDocumentResponse>"#,
+        b64(b"%PDF-signed")
+    ));
+    let transport = Scripted::new([
+        ok(200, &envelope(JOB)),
+        ok(200, &cades),
+        ok(200, &envelope(JOB)),
+        ok(200, &pades),
+    ]);
+    let connector = connector(&transport);
+    let signatures = connector.signatures();
+
+    let signed = block_on(signatures.sign(
+        "card-1",
+        SignatureFormat::Cades,
+        Some(Crypt::Ecc),
+        &[
+            (b"one".as_slice(), "text/plain"),
+            (b"two".as_slice(), "text/plain"),
+        ],
+    ))
+    .unwrap();
+    assert_eq!(
+        signed
+            .iter()
+            .map(|s| s.signature.clone().unwrap())
+            .collect::<Vec<_>>(),
+        [b"cms-0".to_vec(), b"cms-1".to_vec()]
+    );
+    let signed = block_on(signatures.sign(
+        "card-1",
+        SignatureFormat::Pades,
+        None,
+        &[(b"%PDF".as_slice(), "application/pdf-a")],
+    ))
+    .unwrap();
+    assert_eq!(
+        signed[0].signed_document.as_deref(),
+        Some(&b"%PDF-signed"[..])
+    );
+    assert_eq!(signed[0].signature, None);
+
+    let seen = transport.seen.borrow();
+    assert_eq!(seen[1].timeout, TIMEOUTS.long);
+    for part in [
+        "<signatureservice75:JobNumber>ABC-123</signatureservice75:JobNumber>",
+        "<signatureservice75:TvMode>NONE</signatureservice75:TvMode>",
+        "<signatureservice75:Crypt>ECC</signatureservice75:Crypt>",
+        "<dss10core:SignatureType>urn:ietf:rfc:5652</dss10core:SignatureType>",
+        &format!(
+            r#"<dss10core:Base64Data MimeType="text/plain">{}</dss10core:Base64Data>"#,
+            b64(b"one")
+        ),
+    ] {
+        assert!(seen[1].body.contains(part), "{part} in {}", seen[1].body);
+    }
+    assert!(seen[3].body.contains(
+        "<dss10core:SignatureType>http://uri.etsi.org/02778/3</dss10core:SignatureType>"
+    ));
+}
+
+#[test]
+fn verifies_encrypts_decrypts_and_reads_the_signature_mode() {
+    let verified = envelope(&format!(
+        r#"<SIG:VerifyDocumentResponse xmlns:SIG="http://ws.gematik.de/conn/SignatureService/v7.5">{STATUS_OK}
+          <SIG:VerificationResult><SIG:HighLevelResult>VALID</SIG:HighLevelResult><SIG:TimestampType>SYSTEM_TIMESTAMP</SIG:TimestampType>
+          <SIG:Timestamp>2026-09-27T12:00:00Z</SIG:Timestamp></SIG:VerificationResult></SIG:VerifyDocumentResponse>"#
+    ));
+    let encrypted = envelope(&format!(
+        r#"<CRYPT:EncryptDocumentResponse xmlns:CRYPT="http://ws.gematik.de/conn/EncryptionService/v6.1" xmlns:CONN="http://ws.gematik.de/conn/ConnectorCommon/v5.0" xmlns:dss="urn:oasis:names:tc:dss:1.0:core:schema">{STATUS_OK}
+          <CONN:Document><dss:Base64Data MimeType="application/pkcs7-mime">{}</dss:Base64Data></CONN:Document></CRYPT:EncryptDocumentResponse>"#,
+        b64(b"enveloped")
+    ));
+    let decrypted = envelope(&format!(
+        r#"<CRYPT:DecryptDocumentResponse xmlns:CRYPT="http://ws.gematik.de/conn/EncryptionService/v6.1" xmlns:CONN="http://ws.gematik.de/conn/ConnectorCommon/v5.0" xmlns:dss="urn:oasis:names:tc:dss:1.0:core:schema">{STATUS_OK}
+          <CONN:Document><dss:Base64Data MimeType="text/plain">{}</dss:Base64Data></CONN:Document></CRYPT:DecryptDocumentResponse>"#,
+        b64(b"plain")
+    ));
+    let mode = envelope(&format!(
+        r#"<SIG:GetSignatureModeResponse xmlns:SIG="http://ws.gematik.de/conn/SignatureService/v7.5">{STATUS_OK}
+          <SIG:ComfortSignatureStatus>ENABLED</SIG:ComfortSignatureStatus><SIG:ComfortSignatureMax>250</SIG:ComfortSignatureMax>
+          <SIG:ComfortSignatureTimer>PT24H</SIG:ComfortSignatureTimer></SIG:GetSignatureModeResponse>"#
+    ));
+    let transport = Scripted::new([
+        ok(200, &verified),
+        ok(200, &encrypted),
+        ok(200, &decrypted),
+        ok(200, &mode),
+    ]);
+    let connector = connector(&transport);
+
+    let result = block_on(connector.signatures().verify(
+        SignatureFormat::Cades,
+        b"one",
+        "text/plain",
+        Some(b"cms-0"),
+    ))
+    .unwrap();
+    assert_eq!(result.verification_result.high_level_result, "VALID");
+    let cms = block_on(
+        connector
+            .encryption()
+            .encrypt(&[&ee_arzt_der()], b"plain", "text/plain"),
+    )
+    .unwrap();
+    assert_eq!(cms, b"enveloped");
+    let plain = block_on(
+        connector
+            .encryption()
+            .decrypt("card-1", None, &cms, "text/plain"),
+    )
+    .unwrap();
+    assert_eq!(plain, b"plain");
+    let mode = block_on(connector.signatures().mode("card-hba")).unwrap();
+    assert_eq!(
+        (mode.comfort_signature_max, &*mode.comfort_signature_timer),
+        (250, "PT24H")
+    );
+
+    let seen = transport.seen.borrow();
+    assert!(
+        seen[0]
+            .body
+            .contains(r#"<dss10core:Base64Signature Type="urn:ietf:rfc:5652">"#)
+    );
+    assert!(seen[1].body.contains("<encryptionservice611:EncryptionType>urn:ietf:rfc:5652</encryptionservice611:EncryptionType>"), "{}", seen[1].body);
+    assert!(seen[1].body.contains(&b64(&ee_arzt_der())));
+    assert!(
+        seen[2]
+            .body
+            .contains("<connectorcommon50:CardHandle>card-1</connectorcommon50:CardHandle>"),
+        "{}",
+        seen[2].body
+    );
+    assert_eq!(
+        seen.iter().map(|s| s.timeout).collect::<Vec<_>>(),
+        [TIMEOUTS.long, TIMEOUTS.long, TIMEOUTS.long, TIMEOUTS.short]
     );
 }

@@ -13,9 +13,11 @@ mod cards;
 mod certificates;
 mod connector;
 mod dotkon;
+mod encryption;
 mod error;
 mod pins;
 mod sds;
+mod signatures;
 mod soap;
 #[cfg(feature = "ureq")]
 pub mod ureq;
@@ -25,9 +27,11 @@ pub use cards::Cards;
 pub use certificates::{CardCertificate, Certificates, cert_refs};
 pub use connector::Connector;
 pub use dotkon::{Credentials, Dotkon, DotkonError};
+pub use encryption::Encryption;
 pub use error::{DiscoveryError, Error, Fault, TraceEntry};
 pub use pins::{PinType, Pins};
 pub use sds::{Binding, Product, Service, ServiceDirectory, ServiceVersion, Target, sds_url};
+pub use signatures::{SignatureFormat, Signatures, Signed};
 pub use soap::{Method, Request, Response, Timeouts, Transport, TransportError};
 
 /// The services and `major.minor` versions this crate has bindings for, as
@@ -63,6 +67,12 @@ pub mod types {
         Connector as ConnectorStatus, ErrorState, Result as StatusResult, Status,
     };
     pub use crate::api::gematik::conn::eventservice72::GetResourceInformationResponse as ResourceInformation;
+    pub use crate::api::gematik::conn::signatureservice75::{
+        ComfortSignatureStatusEnum as ComfortSignatureStatus,
+        GetSignatureModeResponse as SignatureModeInfo, SessionInfo,
+        SignatureModeEnum as SignatureMode, VerificationResultType as SignatureVerificationResult,
+        VerifyDocumentResponse as DocumentVerification,
+    };
     pub use crate::api::gematik::tel::error20::{Error as ErrorDetail, ErrorTrace};
     pub use crate::api::soap::{SoapOperation, Timeout};
 }

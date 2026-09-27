@@ -27,3 +27,12 @@
   sent as SNI; the system's roots when empty), `insecureSkipVerify`, per-request
   timeouts, basic auth. `Error::Config` for unusable credentials or trust stores.
 - Environment-gated tests against a real Konnektor (`tests/e2e.rs`).
+- `Connector::signatures` (SignatureService 7.5): `sign` (CAdES detached, PAdES for
+  PDF/A; several documents per job), `verify`, `job_number`, `stop`, comfort signature
+  (`activate_comfort`, `deactivate_comfort`, `mode`). `Connector::encryption`
+  (EncryptionService 6.1): `encrypt` (CMS for recipients' certificates) and `decrypt`
+  (with the card's C.ENC; the plaintext's media type is required, the Konnektor checks
+  it).
+- A session recorded with an eHEX Konnektor replayed offline (`tests/recorded.rs`):
+  every request byte for byte as the Konnektor accepted it. The e2e tests record new
+  sessions with `TI_TEST_KON_RECORD_DIR`.

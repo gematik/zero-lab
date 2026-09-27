@@ -4,7 +4,7 @@
 pub struct Base64Data {
     #[serde(rename = "@MimeType", default, skip_serializing_if = "Option::is_none")]
     pub mime_type: Option<String>,
-    #[serde(rename = "$text")]
+    #[serde(rename = "$text", default)]
     pub char_data: String,
 }
 
@@ -55,7 +55,7 @@ pub struct SignatureObject {
 pub struct Base64Signature {
     #[serde(rename = "@Type", default, skip_serializing_if = "Option::is_none")]
     pub r#type: Option<String>,
-    #[serde(rename = "$text")]
+    #[serde(rename = "$text", default)]
     pub char_data: String,
 }
 
@@ -262,7 +262,7 @@ pub struct AnyType {
 pub struct InternationalStringType {
     #[serde(rename = "@xml:lang", default, skip_serializing_if = "Option::is_none")]
     pub lang: Option<String>,
-    #[serde(rename = "$text")]
+    #[serde(rename = "$text", default)]
     pub char_data: String,
 }
 
@@ -392,7 +392,7 @@ pub struct AdditionalTimeInfoType {
     pub r#type: String,
     #[serde(rename = "@Ref", default, skip_serializing_if = "Option::is_none")]
     pub r#ref: Option<String>,
-    #[serde(rename = "$text")]
+    #[serde(rename = "$text", default)]
     pub char_data: String,
 }
 

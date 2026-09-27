@@ -65,7 +65,7 @@ pub struct SignatureType {
 pub struct SignatureValueType {
     #[serde(rename = "@Id", default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    #[serde(rename = "$text")]
+    #[serde(rename = "$text", default)]
     pub char_data: String,
 }
 

@@ -62,7 +62,7 @@ pub struct InternationalNamesType {
 pub struct MultiLangNormStringType {
     #[serde(rename = "@xml:lang", default, skip_serializing_if = "Option::is_none")]
     pub lang: Option<String>,
-    #[serde(rename = "$text")]
+    #[serde(rename = "$text", default)]
     pub char_data: String,
 }
 
@@ -70,7 +70,7 @@ pub struct MultiLangNormStringType {
 pub struct MultiLangStringType {
     #[serde(rename = "@xml:lang", default, skip_serializing_if = "Option::is_none")]
     pub lang: Option<String>,
-    #[serde(rename = "$text")]
+    #[serde(rename = "$text", default)]
     pub char_data: String,
 }
 
@@ -154,7 +154,7 @@ pub struct ExtensionsListType {
 pub struct NonEmptyMultiLangUriType {
     #[serde(rename = "@xml:lang", default, skip_serializing_if = "Option::is_none")]
     pub lang: Option<String>,
-    #[serde(rename = "$text")]
+    #[serde(rename = "$text", default)]
     pub char_data: String,
 }
 
