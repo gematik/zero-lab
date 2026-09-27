@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "connector get expiration",
+  "description": "Certificate expiry dates as the Konnektor states them.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "certificates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "terminal": {
+            "type": "string"
+          },
+          "handle": {
+            "type": "string"
+          },
+          "iccsn": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          },
+          "serial": {
+            "type": "string"
+          },
+          "validity": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "terminal",
+          "handle",
+          "iccsn",
+          "subject",
+          "serial",
+          "validity"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "certificates"
+  ],
+  "additionalProperties": false
+}

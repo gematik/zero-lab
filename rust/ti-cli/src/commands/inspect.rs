@@ -148,6 +148,46 @@ pub fn run(file: &Path, p12_password: &str, out: &Output) -> Result<Exit, CliErr
     Ok(Exit::Ok)
 }
 
+/// Shows `certificates` as `pki inspect` does, `source` naming where they came from:
+/// `connector describe certificate`, whose JSON is therefore `pki inspect`'s.
+pub fn show(
+    source: String,
+    certificates: Vec<ti_pki::Certificate>,
+    out: &Output,
+) -> Result<Exit, CliError> {
+    let now = SystemClock.now();
+    let report = Report {
+        schema: SCHEMA,
+        source,
+        certificates: certificates
+            .into_iter()
+            .map(|certificate| {
+                describe(
+                    &input::Loaded {
+                        certificate,
+                        private_key: false,
+                        bag: None,
+                    },
+                    now,
+                )
+            })
+            .collect(),
+        pkcs12: None,
+        now,
+    };
+    if out.is_json() {
+        out.json(&report)?;
+    } else {
+        out.render_views(&sections(&report), &summary(&report))?;
+    }
+    Ok(Exit::Ok)
+}
+
+/// The key of `cert` in words, e.g. `ECDSA brainpoolP256r1`.
+pub fn key_algorithm(cert: &ti_pki::Certificate, now: Timestamp) -> String {
+    classify_key(cert.public_key_info(), now).1
+}
+
 /// What the PKCS#12 container says beyond its certificates: encoding, protection, and
 /// its keys with the certificate each belongs to.
 fn container(bytes: &[u8], p12: &ti_pkcs12::Pkcs12, certs: &[CertificateInfo]) -> Pkcs12Info {

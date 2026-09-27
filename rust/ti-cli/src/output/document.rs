@@ -112,6 +112,23 @@ impl Line {
     }
 }
 
+impl Line {
+    /// The text without styles.
+    pub fn plain(&self) -> String {
+        self.0
+            .iter()
+            .map(|span| match span {
+                Span::Text(t)
+                | Span::Code(t)
+                | Span::Strong(t)
+                | Span::Dim(t)
+                | Span::Link(t)
+                | Span::Status(_, t) => t.as_str(),
+            })
+            .collect()
+    }
+}
+
 impl From<&str> for Line {
     fn from(text: &str) -> Self {
         Line::text(text)
@@ -141,6 +158,8 @@ pub enum Block {
     Tree(Vec<Node>),
     /// A PEM document: a fenced block in Markdown, left out of terminal text.
     Pem(String),
+    /// Rows under column headings: aligned columns in text, a table in Markdown.
+    Table(Vec<String>, Vec<Vec<Line>>),
 }
 
 /// One entry of a [`Block::Tree`].
@@ -197,6 +216,15 @@ impl Document {
     /// A PEM document.
     pub fn pem(&mut self, pem: impl Into<String>) -> &mut Self {
         self.blocks.push(Block::Pem(pem.into()));
+        self
+    }
+
+    /// A table with `headings`; nothing for no rows.
+    pub fn table(&mut self, headings: &[&str], rows: Vec<Vec<Line>>) -> &mut Self {
+        if !rows.is_empty() {
+            let headings = headings.iter().map(|h| (*h).to_owned()).collect();
+            self.blocks.push(Block::Table(headings, rows));
+        }
         self
     }
 

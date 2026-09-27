@@ -8,7 +8,7 @@ use crate::error::{CliError, Exit};
 use crate::output::{Output, SCHEMA};
 
 /// Every command with JSON output, and the error document.
-pub const SCHEMAS: [(&str, &str); 11] = [
+pub const SCHEMAS: [(&str, &str); 24] = [
     (
         "pki inspect",
         include_str!("../../schemas/pki-inspect.json"),
@@ -39,8 +39,60 @@ pub const SCHEMAS: [(&str, &str); 11] = [
         include_str!("../../schemas/pki-pkcs12-convert.json"),
     ),
     (
-        "pki pkcs12 encode",
-        include_str!("../../schemas/pki-pkcs12-encode.json"),
+        "connector configs",
+        include_str!("../../schemas/connector-configs.json"),
+    ),
+    (
+        "connector use",
+        include_str!("../../schemas/connector-use.json"),
+    ),
+    (
+        "connector get info",
+        include_str!("../../schemas/connector-get-info.json"),
+    ),
+    (
+        "connector get services",
+        include_str!("../../schemas/connector-get-services.json"),
+    ),
+    (
+        "connector get cards",
+        include_str!("../../schemas/connector-get-cards.json"),
+    ),
+    (
+        "connector get certificates",
+        include_str!("../../schemas/connector-get-certificates.json"),
+    ),
+    (
+        "connector get status",
+        include_str!("../../schemas/connector-get-status.json"),
+    ),
+    (
+        "connector get identities",
+        include_str!("../../schemas/connector-get-identities.json"),
+    ),
+    (
+        "connector get expiration",
+        include_str!("../../schemas/connector-get-expiration.json"),
+    ),
+    (
+        "connector describe card",
+        include_str!("../../schemas/connector-describe-card.json"),
+    ),
+    (
+        "connector describe certificate",
+        include_str!("../../schemas/pki-inspect.json"),
+    ),
+    (
+        "connector verify pin",
+        include_str!("../../schemas/connector-pin.json"),
+    ),
+    (
+        "connector change pin",
+        include_str!("../../schemas/connector-pin.json"),
+    ),
+    (
+        "connector verify certificate",
+        include_str!("../../schemas/connector-verify-certificate.json"),
     ),
     ("version", include_str!("../../schemas/version.json")),
     ("error", include_str!("../../schemas/error.json")),

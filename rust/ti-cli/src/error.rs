@@ -13,8 +13,9 @@ pub enum Exit {
     Invalid = 1,
     /// Wrong arguments or options.
     Usage = 2,
-    /// Trust material (roots.json, TSL) could not be obtained.
-    TrustUnavailable = 3,
+    /// A remote party failed: trust material (roots.json, TSL) could not be obtained, or
+    /// the Konnektor did not answer or refused the call.
+    Remote = 3,
     /// An input file could not be read or holds no certificate.
     Input = 4,
     /// Output could not be written.
@@ -85,6 +86,24 @@ pub enum CliError {
     /// No cache directory can be derived from the environment.
     #[error("cannot determine the cache directory: {0}")]
     CacheDir(&'static str),
+    /// No usable `.kon` file, or one the transport cannot use.
+    #[error("{0}")]
+    ConnectorConfig(String),
+    /// A Konnektor call failed.
+    #[error("Konnektor: {0}")]
+    Connector(#[source] ti_connector_client::Error),
+    /// The Konnektor refused a call for a card it restricts on its SOAP API.
+    #[error("Konnektor, {card_type} card: {source}")]
+    CardRestricted {
+        /// The card type, e.g. `SMC-KT`.
+        card_type: String,
+        /// The Konnektor's answer.
+        #[source]
+        source: ti_connector_client::Error,
+    },
+    /// A PIN type that does not fit the card, or none where the card has two.
+    #[error("{0}")]
+    PinType(String),
     /// Writing to stdout failed.
     #[error("cannot write output: {0}")]
     Output(#[from] io::Error),
@@ -105,6 +124,18 @@ impl CliError {
             CliError::HttpSetup(_) => "http_setup",
             CliError::UnknownSchema(_) => "unknown_schema",
             CliError::CacheDir(_) => "cache_dir_unknown",
+            CliError::ConnectorConfig(_)
+            | CliError::Connector(ti_connector_client::Error::Config(_)) => "connector_config",
+            CliError::Connector(ti_connector_client::Error::Transport(_)) => {
+                "connector_unreachable"
+            }
+            CliError::Connector(ti_connector_client::Error::Fault(_)) => "connector_fault",
+            CliError::Connector(ti_connector_client::Error::Discovery(_)) => {
+                "connector_unsupported"
+            }
+            CliError::Connector(_) => "connector_failed",
+            CliError::CardRestricted { .. } => "card_restricted",
+            CliError::PinType(_) => "pin_type",
             CliError::Output(_) => "output_failed",
         }
     }
@@ -130,7 +161,21 @@ impl CliError {
             CliError::HttpSetup(_) => Some("check --cacert, --capath and --proxy"),
             CliError::UnknownSchema(_) => Some("the schema command without COMMAND lists them all"),
             CliError::CacheDir(_) => Some("set --cache-dir or TI_CACHE_DIR"),
-            CliError::Trust(_) | CliError::Output(_) => None,
+            CliError::ConnectorConfig(_)
+            | CliError::Connector(ti_connector_client::Error::Config(_)) => Some(
+                "`connector configs` lists the configurations; select one with -c NAME or `connector use NAME`",
+            ),
+            CliError::Connector(ti_connector_client::Error::Transport(_)) => Some(
+                "check the .kon url, the network and the Konnektor's TLS certificate (-v shows each call)",
+            ),
+            CliError::Connector(ti_connector_client::Error::Fault(_)) => {
+                Some("the Konnektor refused the call; its code and text say why")
+            }
+            CliError::CardRestricted { .. } => Some(
+                "SMC-KT, KVK and eGK are restricted on the Konnektor's SOAP API; use an HBA or SMC-B",
+            ),
+            CliError::PinType(_) => Some("name the PIN: PIN.CH, PIN.QES or PIN.SMC"),
+            CliError::Trust(_) | CliError::Output(_) | CliError::Connector(_) => None,
         }
     }
 
@@ -145,8 +190,14 @@ impl CliError {
             | CliError::OutputExists(_)
             | CliError::HttpSetup(_)
             | CliError::UnknownSchema(_)
-            | CliError::CacheDir(_) => Exit::Usage,
-            CliError::Trust(_) | CliError::TrustLoad(_) => Exit::TrustUnavailable,
+            | CliError::CacheDir(_)
+            | CliError::PinType(_)
+            | CliError::ConnectorConfig(_)
+            | CliError::Connector(ti_connector_client::Error::Config(_)) => Exit::Usage,
+            CliError::Trust(_)
+            | CliError::TrustLoad(_)
+            | CliError::Connector(_)
+            | CliError::CardRestricted { .. } => Exit::Remote,
             CliError::Output(_) => Exit::Output,
         }
     }

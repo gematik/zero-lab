@@ -1,6 +1,7 @@
 //! The command line: global options, HTTP options and the command tree.
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use clap::builder::PossibleValuesParser;
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
@@ -10,10 +11,10 @@ use crate::net::NetArgs;
 /// Exit codes, variables and examples; `{bin}` stands for [`crate::BIN`].
 pub const AFTER_HELP: &str = "\
 Exit codes:
-  0  success; for verify: the certificate is valid
-  1  the certificate is not valid
-  2  wrong arguments or options
-  3  trust material (roots.json, TSL) unavailable
+  0  success; for verify: the certificate is valid, or the PIN was accepted
+  1  the certificate is not valid, or the PIN was not accepted
+  2  wrong arguments, options or connector configuration
+  3  trust material (roots.json, TSL) unavailable, or the Konnektor failed
   4  input unreadable or without a certificate
   5  output could not be written
 
@@ -21,6 +22,8 @@ Environment:
   TI_FORMAT       default for --format (auto, text, markdown, json)
   TI_ENV          default for verify --env (auto, prod, ref, test, dev)
   TI_CACHE_DIR    default for --cache-dir
+  TI_CONNECTOR_CONFIG, TI_CONNECTOR_TIMEOUT, TI_CARD_TIMEOUT
+                  defaults for connector -c, --connector-timeout, --card-timeout
   NO_COLOR        disables colors; CLICOLOR_FORCE=1 forces them
 
 Examples:
@@ -36,6 +39,10 @@ Examples:
   {bin} pki tsl show --ca SMCB-CA51 --format markdown   # with the CA's PEM
   {bin} pki inspect identity.p12                # password 00 unless --p12-password
   {bin} pki pkcs12 convert legacy.p12 modern.p12
+  {bin} connector configs                       # the .kon files, shared with the Go ti
+  {bin} connector -c praxis get cards
+  {bin} connector get certificates 80276883110000163974   # ICCSN, Telematik-ID or handle
+  {bin} connector verify pin 1-SMC-B-Testkarte-883110000129072
   {bin} schema pki verify                       # the JSON contract of one command
   {bin} agent                                   # usage guide for scripts and agents
   {bin} version
@@ -120,6 +127,8 @@ pub enum Command {
     /// Certificates and PKI trust
     #[command(subcommand)]
     Pki(PkiCommand),
+    /// The Konnektor: cards, certificates, PINs
+    Connector(ConnectorCli),
     /// The download cache
     #[command(subcommand)]
     Cache(CacheCommand),
@@ -171,7 +180,7 @@ pub enum PkiCommand {
     /// The TSL of an environment and the CAs taken from it
     #[command(subcommand)]
     Tsl(TslCommand),
-    /// PKCS#12 files: re-encode with modern encryption, or as Konnektor credentials
+    /// PKCS#12 files: re-encode with modern encryption
     #[command(subcommand)]
     Pkcs12(Pkcs12Command),
 }
@@ -194,17 +203,6 @@ pub enum Pkcs12Command {
         /// Replace OUTPUT if it exists
         #[arg(long)]
         force: bool,
-    },
-    /// Print a PKCS#12 file as the credentials of a .kon file:
-    /// {"type":"pkcs12","data":BASE64,"password":…}; BER and legacy files are
-    /// re-encoded first so every Konnektor client reads them
-    Encode {
-        /// The PKCS#12 file; "-" reads stdin
-        #[arg(value_name = "FILE")]
-        file: PathBuf,
-        /// Password of FILE, included in the output
-        #[arg(long, value_name = "PASSWORD", default_value = "00")]
-        p12_password: String,
     },
 }
 
@@ -339,4 +337,208 @@ pub enum ProfilesCommand {
 
 fn profile_names() -> PossibleValuesParser {
     PossibleValuesParser::new(ti_pki::profile::PROFILES.iter().map(|p| p.name))
+}
+
+/// `ti connector …`.
+#[derive(Debug, Args)]
+pub struct ConnectorCli {
+    /// Options of every connector command.
+    #[command(flatten)]
+    pub args: ConnectorArgs,
+    /// What to do.
+    #[command(subcommand)]
+    pub command: ConnectorCommand,
+}
+
+/// Options of every connector command.
+#[derive(Debug, Args)]
+pub struct ConnectorArgs {
+    /// Connector configuration: NAME(.kon) here or in ~/.config/telematik/connectors, or
+    /// a path [default: the one `connector use` selected, else "default"]
+    #[arg(
+        short = 'c',
+        long,
+        value_name = "NAME|PATH",
+        env = "TI_CONNECTOR_CONFIG",
+        global = true
+    )]
+    pub connector_config: Option<String>,
+    /// Seconds a Konnektor call may take
+    #[arg(long, value_name = "SECS", default_value = "10", value_parser = seconds, env = "TI_CONNECTOR_TIMEOUT", global = true)]
+    pub connector_timeout: Duration,
+    /// Seconds a call may take that waits for the card terminal (PIN entry, card
+    /// cryptography)
+    #[arg(long, value_name = "SECS", default_value = "300", value_parser = seconds, env = "TI_CARD_TIMEOUT", global = true)]
+    pub card_timeout: Duration,
+    /// Load the service directory from the Konnektor instead of the cache
+    #[arg(long, global = true)]
+    pub no_cache: bool,
+}
+
+fn seconds(value: &str) -> Result<Duration, String> {
+    match value.parse::<u64>() {
+        Ok(secs) if secs > 0 => Ok(Duration::from_secs(secs)),
+        _ => Err(format!("{value:?} is not a positive number of seconds")),
+    }
+}
+
+/// `ti connector …` commands.
+#[derive(Debug, Subcommand)]
+pub enum ConnectorCommand {
+    /// List the .kon files (here and in ~/.config/telematik/connectors)
+    Configs,
+    /// Select the configuration later commands use without -c
+    Use {
+        /// NAME or path
+        #[arg(value_name = "NAME|PATH")]
+        name: String,
+    },
+    /// Read from the Konnektor
+    #[command(subcommand)]
+    Get(ConnectorGet),
+    /// One card or certificate in detail
+    #[command(subcommand)]
+    Describe(ConnectorDescribe),
+    /// Verify a PIN at the card terminal, or a certificate at the Konnektor (exit 0 or 1)
+    #[command(subcommand)]
+    Verify(ConnectorVerify),
+    /// Change a PIN at the card terminal
+    #[command(subcommand)]
+    Change(ConnectorChange),
+}
+
+/// A card: its ICCSN (20 digits), a Telematik-ID from its C.AUT, or its card handle.
+const CARD: &str = "CARD";
+
+/// `ti connector get …`.
+#[derive(Debug, Subcommand)]
+pub enum ConnectorGet {
+    /// The configuration and the Konnektor's product information
+    Info,
+    /// The services and versions the Konnektor offers, and which this tool uses
+    Services,
+    /// The cards in the card terminals
+    Cards,
+    /// The certificates of a card (ECC and RSA)
+    Certificates {
+        /// ICCSN, Telematik-ID or card handle
+        #[arg(value_name = CARD)]
+        card: String,
+    },
+    /// The Konnektor's state: VPN connections and operating errors
+    Status,
+    /// The Telematik-IDs of the HBAs and SMC-Bs
+    Identities,
+    /// Certificate expiry dates of a card, or of all cards and the Konnektor
+    Expiration {
+        /// ICCSN, Telematik-ID or card handle
+        #[arg(value_name = CARD)]
+        card: Option<String>,
+        /// Key type
+        #[arg(long, value_enum, default_value_t = CryptArg::Ecc)]
+        crypt: CryptArg,
+    },
+}
+
+/// `ti connector describe …`.
+#[derive(Debug, Subcommand)]
+pub enum ConnectorDescribe {
+    /// A card: type, terminal, versions
+    Card {
+        /// ICCSN, Telematik-ID or card handle
+        #[arg(value_name = CARD)]
+        card: String,
+    },
+    /// A certificate of a card, as `pki inspect` shows it
+    Certificate(CardCertificateArgs),
+}
+
+/// A certificate on a card.
+#[derive(Debug, Args)]
+pub struct CardCertificateArgs {
+    /// ICCSN, Telematik-ID or card handle
+    #[arg(value_name = CARD)]
+    pub card: String,
+    /// C.AUT, C.ENC, C.SIG or C.QES
+    #[arg(value_name = "REF", value_parser = cert_ref)]
+    pub cert_ref: ti_connector_client::types::CertRef,
+    /// Key type
+    #[arg(long, value_enum, default_value_t = CryptArg::Ecc)]
+    pub crypt: CryptArg,
+}
+
+fn cert_ref(value: &str) -> Result<ti_connector_client::types::CertRef, String> {
+    value
+        .to_ascii_uppercase()
+        .parse()
+        .map_err(|_| format!("{value:?} is not C.AUT, C.ENC, C.SIG or C.QES"))
+}
+
+/// `--crypt`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum CryptArg {
+    /// Elliptic curves (brainpool).
+    Ecc,
+    /// RSA, on older cards.
+    Rsa,
+}
+
+impl From<CryptArg> for ti_connector_client::types::Crypt {
+    fn from(crypt: CryptArg) -> Self {
+        match crypt {
+            CryptArg::Ecc => ti_connector_client::types::Crypt::Ecc,
+            CryptArg::Rsa => ti_connector_client::types::Crypt::Rsa,
+        }
+    }
+}
+
+/// A PIN of a card.
+#[derive(Debug, Args)]
+pub struct PinArgs {
+    /// ICCSN, Telematik-ID or card handle
+    #[arg(value_name = CARD)]
+    pub card: String,
+    /// PIN.CH, PIN.QES or PIN.SMC; needed only for an HBA, which has two
+    #[arg(value_name = "PIN", value_parser = pin_type)]
+    pub pin: Option<ti_connector_client::PinType>,
+}
+
+fn pin_type(value: &str) -> Result<ti_connector_client::PinType, String> {
+    value.parse()
+}
+
+/// `ti connector verify …`.
+#[derive(Debug, Subcommand)]
+pub enum ConnectorVerify {
+    /// Enter a PIN at the card terminal (exit 0 accepted, 1 not)
+    Pin(PinArgs),
+    /// The Konnektor's check of a certificate: path to the TI roots and OCSP (exit 0
+    /// valid, 1 not)
+    Certificate {
+        /// ICCSN, Telematik-ID or card handle; or --file
+        #[arg(value_name = CARD, required_unless_present = "file", requires = "cert_ref")]
+        card: Option<String>,
+        /// C.AUT, C.ENC, C.SIG or C.QES
+        #[arg(value_name = "REF", value_parser = cert_ref)]
+        cert_ref: Option<ti_connector_client::types::CertRef>,
+        /// A certificate from a PEM, DER or PKCS#12 file instead of a card; "-" reads stdin
+        #[arg(long, short, value_name = "FILE", conflicts_with = "card")]
+        file: Option<PathBuf>,
+        /// Password of a PKCS#12 --file
+        #[arg(long, value_name = "PASSWORD", default_value = "00")]
+        p12_password: String,
+        /// Key type of the card certificate
+        #[arg(long, value_enum, default_value_t = CryptArg::Ecc)]
+        crypt: CryptArg,
+        /// Verify at this time instead of the Konnektor's now (RFC 3339)
+        #[arg(long, value_name = "TIME", value_parser = timestamp)]
+        at: Option<ti_pki::Timestamp>,
+    },
+}
+
+/// `ti connector change …`.
+#[derive(Debug, Subcommand)]
+pub enum ConnectorChange {
+    /// Change a PIN at the card terminal (exit 0 changed, 1 not)
+    Pin(PinArgs),
 }

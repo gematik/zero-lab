@@ -1790,7 +1790,6 @@ version = "0.1.0"
 dependencies = [
  "anstream",
  "anstyle",
- "base64ct",
  "clap",
  "clap_complete",
  "jiff",
@@ -1800,6 +1799,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
+ "ti-connector-client",
  "ti-pkcs12",
  "ti-pki",
  "ureq",

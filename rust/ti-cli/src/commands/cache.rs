@@ -1,6 +1,7 @@
-//! `ti cache clear`: deletes the downloaded trust material. Only the `ti-pki/` subtree
-//! this tool writes is removed, never the cache directory itself: `--cache-dir` may
-//! point anywhere, and other TI tools share the folder.
+//! `ti cache clear`: deletes the downloaded trust material and Konnektor service
+//! directories. Only the subtrees this tool writes are removed, never the cache
+//! directory itself: `--cache-dir` may point anywhere, and other TI tools share the
+//! folder.
 
 use std::io;
 use std::path::Path;
@@ -12,14 +13,15 @@ use crate::error::{CliError, Exit};
 use crate::output::{Document, Line, Output, SCHEMA};
 use crate::paths;
 
-/// The subtree the cache store writes (see [`crate::cache`]).
-const SUBTREE: &str = "ti-pki";
+/// The subtrees the cache store writes (see [`crate::cache`]): ti-pki's trust material
+/// and ti-connector-client's service directories.
+const SUBTREES: [&str; 2] = ["ti-pki", "ti-connector"];
 
 /// The JSON document.
 #[derive(Serialize)]
 struct Report {
     schema: u32,
-    /// The directory that was cleared.
+    /// The cache directory whose subtrees were cleared.
     path: String,
     removed_files: u64,
     removed_bytes: u64,
@@ -27,16 +29,21 @@ struct Report {
 
 /// Runs `ti cache clear`.
 pub fn clear(global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
-    let dir = paths::cache_dir(global.cache_dir.as_deref())?.join(SUBTREE);
-    let (files, bytes) = size(&dir).map_err(|e| cache_error(&dir, &e))?;
-    match std::fs::remove_dir_all(&dir) {
-        Ok(()) => {}
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-        Err(e) => return Err(cache_error(&dir, &e)),
+    let base = paths::cache_dir(global.cache_dir.as_deref())?;
+    let (mut files, mut bytes) = (0, 0);
+    for dir in SUBTREES.map(|subtree| base.join(subtree)) {
+        let (f, b) = size(&dir).map_err(|e| cache_error(&dir, &e))?;
+        match std::fs::remove_dir_all(&dir) {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(cache_error(&dir, &e)),
+        }
+        files += f;
+        bytes += b;
     }
     let report = Report {
         schema: SCHEMA,
-        path: dir.display().to_string(),
+        path: base.display().to_string(),
         removed_files: files,
         removed_bytes: bytes,
     };

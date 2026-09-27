@@ -1,7 +1,6 @@
 //! Renders a [`Document`] as compact CommonMark: a title as `##`, a section as a bold
 //! lead-in, fields and labelled lists as one bullet list (`- label: value`), trees as
-//! nested lists, PEM as a fenced block. No tables: they cost more than they align in a
-//! note or a chat. Never cut, never colored.
+//! nested lists, listings as tables, PEM as a fenced block. Never cut, never colored.
 
 use std::io::{self, Write};
 
@@ -58,6 +57,16 @@ pub fn render(doc: &Document, w: &mut impl Write) -> io::Result<()> {
                 }
             }
             Block::Pem(pem) => writeln!(w, "```pem\n{}\n```", pem.trim_end())?,
+            Block::Table(headings, rows) => {
+                let cell = |text: String| text.replace('|', "\\|");
+                let heads: Vec<String> = headings.iter().map(|h| cell(escape(h))).collect();
+                writeln!(w, "| {} |", heads.join(" | "))?;
+                writeln!(w, "|{}", " --- |".repeat(headings.len()))?;
+                for row in rows {
+                    let cells: Vec<String> = row.iter().map(|c| cell(inline(c))).collect();
+                    writeln!(w, "| {} |", cells.join(" | "))?;
+                }
+            }
         }
     }
     w.flush()
@@ -129,6 +138,19 @@ mod tests {
         let mut out = Vec::new();
         render(doc, &mut out).unwrap();
         String::from_utf8(out).unwrap()
+    }
+
+    #[test]
+    fn tables_escape_pipes() {
+        let mut doc = Document::default();
+        doc.table(
+            &["NAME", "URL"],
+            vec![vec![Line::text("a|b"), Line::code("https://k")]],
+        );
+        assert_eq!(
+            markdown(&doc),
+            "| NAME | URL |\n| --- | --- |\n| a\\|b | `https://k` |\n"
+        );
     }
 
     #[test]

@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "connector verify pin",
+  "description": "The outcome of a PIN entry at the card terminal (verify pin, change pin); exit 0 for OK, 1 otherwise.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "card": {
+      "$ref": "#/$defs/card"
+    },
+    "pin": {
+      "enum": [
+        "PIN.CH",
+        "PIN.QES",
+        "PIN.SMC"
+      ]
+    },
+    "result": {
+      "enum": [
+        "OK",
+        "ERROR",
+        "REJECTED",
+        "WASBLOCKED",
+        "NOWBLOCKED",
+        "TRANSPORT_PIN"
+      ]
+    },
+    "left_tries": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "card",
+    "pin",
+    "result",
+    "left_tries"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "card": {
+      "type": "object",
+      "properties": {
+        "handle": {
+          "type": "string"
+        },
+        "card_type": {
+          "type": "string",
+          "description": "e.g. SMC-B, HBA, EGK, SMC-KT"
+        },
+        "iccsn": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "terminal": {
+          "type": "string",
+          "description": "The card terminal's CtId."
+        },
+        "slot": {
+          "type": "integer"
+        },
+        "holder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kvnr": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inserted": {
+          "type": "string"
+        },
+        "certificate_expiration": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cos_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "major.minor.revision"
+        },
+        "object_system_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "handle",
+        "card_type",
+        "iccsn",
+        "terminal",
+        "slot",
+        "holder",
+        "kvnr",
+        "inserted",
+        "certificate_expiration",
+        "cos_version",
+        "object_system_version"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

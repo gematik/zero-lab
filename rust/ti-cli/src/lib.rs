@@ -9,6 +9,7 @@ mod block;
 mod cache;
 mod cli;
 mod commands;
+mod connector;
 mod error;
 mod http;
 mod input;

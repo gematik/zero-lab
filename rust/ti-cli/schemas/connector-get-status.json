@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "connector get status",
+  "description": "The Konnektor's VPN connections and operating errors.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "vpn_ti": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/vpn"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "vpn_sis": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/vpn"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "condition": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "since": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "condition",
+          "severity",
+          "type",
+          "active",
+          "since"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "vpn_ti",
+    "vpn_sis",
+    "errors"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "vpn": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "since": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "since"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

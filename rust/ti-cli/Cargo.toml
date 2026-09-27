@@ -20,7 +20,7 @@ path = "src/main.rs"
 # A tool for every environment: the non-prod presets are in; TrustConfig::validate
 # still fences production from TEST-ONLY material.
 ti-pkcs12 = { workspace = true, features = ["encode"] }
-base64ct.workspace = true
+ti-connector-client = { workspace = true, features = ["ureq"] }
 ti-pki = { workspace = true, features = ["brainpool", "rsa", "os", "dangerous-nonprod"] }
 # rustls without a built-in provider (ring is passed in), the OS trust store via the
 # platform verifier, and SOCKS for -x socks5://.

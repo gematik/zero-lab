@@ -59,6 +59,24 @@ pub fn render(doc: &Document, w: &mut impl Write) -> io::Result<()> {
                     out.children(&node.children, "")?;
                 }
             }
+            Block::Table(headings, rows) => {
+                out.group(Group::Table)?;
+                let mut widths: Vec<usize> = headings.iter().map(|h| h.chars().count()).collect();
+                for row in rows {
+                    for (width, cell) in widths.iter_mut().zip(row) {
+                        *width = (*width).max(cell.plain().chars().count());
+                    }
+                }
+                let label = style::LABEL;
+                let heading = headings
+                    .iter()
+                    .map(|h| (format!("{label}{h}{label:#}"), h.chars().count()));
+                out.line(&table_row(heading, &widths))?;
+                for row in rows {
+                    let cells = row.iter().map(|c| (styled(c), c.plain().chars().count()));
+                    out.line(&table_row(cells, &widths))?;
+                }
+            }
             // A certificate's base64 helps nobody reading a terminal; Markdown and JSON
             // carry it.
             Block::Pem(_) => {}
@@ -73,6 +91,7 @@ enum Group {
     Fields,
     List,
     Tree,
+    Table,
 }
 
 struct Lines<'a, W: Write> {
@@ -148,6 +167,19 @@ impl<W: Write> Lines<'_, W> {
     }
 }
 
+/// Styled cells padded to `widths` by their visible length, two spaces apart; the last
+/// cell unpadded.
+fn table_row(cells: impl Iterator<Item = (String, usize)>, widths: &[usize]) -> String {
+    let mut line = String::new();
+    for (i, (cell, len)) in cells.enumerate() {
+        line.push_str(&cell);
+        if i + 1 < widths.len() {
+            let _ = write!(line, "{:pad$}", "", pad = widths[i] - len + 2);
+        }
+    }
+    line.trim_end().to_owned()
+}
+
 fn label_column(label: &str) -> String {
     let dim = style::LABEL;
     format!("{dim}{label:<LABEL_WIDTH$}{dim:#} ")
@@ -182,6 +214,26 @@ mod tests {
         let mut out = Vec::new();
         render(doc, &mut out).unwrap();
         anstream::adapter::strip_str(core::str::from_utf8(&out).unwrap()).to_string()
+    }
+
+    #[test]
+    fn tables_align_columns_by_visible_width() {
+        let mut doc = Document::default();
+        doc.table(
+            &["TYPE", "HOLDER", "ID"],
+            vec![
+                vec![
+                    Line::strong("SMC-B"),
+                    Line::text("Praxis Müller"),
+                    Line::code("1"),
+                ],
+                vec![Line::strong("HBA"), Line::text("Dr. A"), Line::code("22")],
+            ],
+        );
+        assert_eq!(
+            plain(&doc),
+            "TYPE   HOLDER         ID\nSMC-B  Praxis Müller  1\nHBA    Dr. A          22\n"
+        );
     }
 
     #[test]

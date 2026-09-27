@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "connector get services",
+  "description": "The Konnektor's service directory, and the versions this tool calls.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "product": {
+      "$ref": "#/$defs/product"
+    },
+    "services": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "version": {
+                  "type": "string"
+                },
+                "endpoint": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "used": {
+                  "type": "boolean",
+                  "description": "This tool calls this version."
+                }
+              },
+              "required": [
+                "version",
+                "endpoint",
+                "used"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "name",
+          "versions"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "product",
+    "services"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "product": {
+      "type": "object",
+      "properties": {
+        "product_type": {
+          "type": "string"
+        },
+        "product_type_version": {
+          "type": "string"
+        },
+        "vendor_id": {
+          "type": "string"
+        },
+        "product_code": {
+          "type": "string"
+        },
+        "hw_version": {
+          "type": "string"
+        },
+        "fw_version": {
+          "type": "string"
+        },
+        "vendor_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "product_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "product_type",
+        "product_type_version",
+        "vendor_id",
+        "product_code",
+        "hw_version",
+        "fw_version",
+        "vendor_name",
+        "product_name"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

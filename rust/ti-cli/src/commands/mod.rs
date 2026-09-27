@@ -3,6 +3,7 @@
 
 mod agent;
 mod cache;
+mod connector;
 mod inspect;
 mod pkcs12;
 mod profiles;
@@ -50,9 +51,7 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
             p12_password,
             force,
         })) => pkcs12::convert(input, output, p12_password, *force, out),
-        Command::Pki(PkiCommand::Pkcs12(Pkcs12Command::Encode { file, p12_password })) => {
-            pkcs12::encode(file, p12_password, out)
-        }
+        Command::Connector(connector) => connector::run(connector, &cli.global, out),
         Command::Cache(CacheCommand::Clear) => cache::clear(&cli.global, out),
         Command::Schema { command } => schema::run(command, out),
         Command::Agent => agent::run(),

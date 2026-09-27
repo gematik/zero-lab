@@ -6,6 +6,7 @@ mod json;
 mod markdown;
 pub mod style;
 mod text;
+mod waiting;
 
 use core::fmt::Display;
 use std::io::{self, IsTerminal, StdoutLock, Write};
@@ -17,6 +18,7 @@ use x509_cert::der::oid::ObjectIdentifier;
 use crate::cli::{Format, GlobalArgs};
 use crate::error::CliError;
 pub use document::{Document, Line, Tone};
+pub use waiting::Waiting;
 
 /// The JSON contract version every document carries as `"schema"`.
 pub const SCHEMA: u32 = 1;
@@ -122,6 +124,10 @@ impl Output {
 /// A diagnostic line on stderr, dimmed.
 pub fn diagnostic(message: impl Display) {
     let dim = style::DIM;
+    // Starts on a clean line where a waiting spinner may be drawing.
+    if io::stderr().is_terminal() {
+        let _ = write!(io::stderr(), "\r\x1b[2K");
+    }
     // A diagnostic that cannot be written is not worth failing the command.
     let _ = writeln!(anstream::stderr(), "{dim}{}: {message}{dim:#}", crate::BIN);
 }

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "connector configs",
+  "description": "The .kon files in the current directory and in ~/.config/telematik/connectors.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "selected": {
+      "type": "string",
+      "description": "The configuration commands use without -c."
+    },
+    "configurations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "context": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "mandant/workplace/client system"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the file cannot be used."
+          }
+        },
+        "required": [
+          "name",
+          "path",
+          "url",
+          "context",
+          "error"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "selected",
+    "configurations"
+  ],
+  "additionalProperties": false
+}

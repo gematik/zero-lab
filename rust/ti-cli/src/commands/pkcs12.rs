@@ -1,18 +1,17 @@
-//! `ti pki pkcs12 convert|encode`: PKCS#12 files re-encoded the way every current reader
-//! accepts them (DER, PBES2 AES-256, SHA-256 MAC), for use as a file or as the
-//! credentials of a Konnektor configuration. `ti pki inspect` shows what a file holds.
+//! `ti pki pkcs12 convert`: PKCS#12 files re-encoded the way every current reader
+//! accepts them (DER, PBES2 AES-256, SHA-256 MAC). `ti pki inspect` shows what a file
+//! holds.
 
 use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::path::Path;
 
-use base64ct::{Base64, Encoding};
 use serde::Serialize;
 use ti_pkcs12::{Pkcs12, Target};
 
 use crate::error::{CliError, Exit};
 use crate::input;
-use crate::output::{Document, Line, Output, SCHEMA, warning};
+use crate::output::{Document, Line, Output, SCHEMA};
 
 /// `ti pki pkcs12 convert` as JSON.
 #[derive(Serialize)]
@@ -35,15 +34,6 @@ struct Protection {
     mac: Option<String>,
     /// Distinct algorithms, e.g. `certificates: PBES2 AES-256-CBC`.
     encryption: Vec<String>,
-}
-
-/// The credentials object of a `.kon` file, exactly as Konnektor clients read it.
-#[derive(Serialize)]
-struct Credentials<'a> {
-    #[serde(rename = "type")]
-    kind: &'static str,
-    data: String,
-    password: &'a str,
 }
 
 /// Runs `ti pki pkcs12 convert`.
@@ -98,44 +88,11 @@ pub fn convert(
     Ok(Exit::Ok)
 }
 
-/// Runs `ti pki pkcs12 encode`: always the credentials JSON, whatever `--format` says,
-/// since it is meant to be pasted into a `.kon` file.
-pub fn encode(path: &Path, password: &str, out: &Output) -> Result<Exit, CliError> {
-    let source = input::read(path)?;
-    let p12 = decode(&source, password)?;
-    let data = if needs_conversion(&source.bytes, &p12) {
-        warning(format_args!(
-            "{} is BER or uses legacy encryption; re-encoded (PBES2 AES-256, SHA-256 MAC) \
-             so every Konnektor client reads it",
-            source.name
-        ));
-        reencode(&p12, password, &source.name)?
-    } else {
-        source.bytes
-    };
-    out.json(&Credentials {
-        kind: "pkcs12",
-        data: Base64::encode_string(&data),
-        password,
-    })?;
-    Ok(Exit::Ok)
-}
-
 fn decode(source: &input::Source, password: &str) -> Result<Pkcs12, CliError> {
     ti_pkcs12::decode(&source.bytes, password).map_err(|error| CliError::Pkcs12 {
         source_name: source.name.clone(),
         source: error,
     })
-}
-
-/// BER, or encryption that OpenSSL 3 reads only with `-legacy` and the Go decoder not
-/// at all (RC2).
-fn needs_conversion(bytes: &[u8], p12: &Pkcs12) -> bool {
-    is_ber(bytes)
-        || p12
-            .encryption
-            .iter()
-            .any(|e| e.algorithm.starts_with("PKCS#12"))
 }
 
 fn is_ber(bytes: &[u8]) -> bool {

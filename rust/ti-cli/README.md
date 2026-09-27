@@ -1,7 +1,8 @@
 # ti-cli
 
 `ti`, the command-line tool for the gematik Telematikinfrastruktur (TI), in Rust, built
-on [`ti-pki`](../ti-pki). Commands are grouped by subsystem; `pki` is the first.
+on [`ti-pki`](../ti-pki) and [`ti-connector-client`](../ti-connector-client). Commands are
+grouped by subsystem: `pki` and `connector`.
 
 > Until it covers what the Go `ti` does, the executable is called `tir` so both can be
 > installed side by side: read `tir` for `ti` in the examples. The name lives in one
@@ -20,12 +21,17 @@ ti pki profiles describe smb-aut
 ti pki verify card.pem              # exit 0 valid, 1 not valid
 ti pki verify smcb.p12              # the certificate with its key is the end entity
 ti pki pkcs12 convert old.p12 new.p12   # DER, PBES2 AES-256, SHA-256 MAC; mode 0600
-ti pki pkcs12 encode smcb.p12       # credentials JSON for a .kon file
 ti pki verify card.pem --offline    # cached trust material, no OCSP
 ti pki roots list --env ref         # the roots reached from the anchor
 ti pki tsl show                     # the TSL's CAs under the roots that signed them
 ti pki tsl show --rejected          # the CAs no verified root signed, and why
 ti pki tsl show --ca SMCB-CA51      # one CA; Markdown adds its PEM
+ti connector configs                # the .kon files, shared with the Go ti
+ti connector use praxis             # the configuration later commands use
+ti connector get cards
+ti connector get certificates 80276883110000163974   # ICCSN, Telematik-ID or handle
+ti connector describe certificate 1-SMC-B-Testkarte-883110000129072 C.AUT
+ti connector verify pin 80276883110000163974         # at the card terminal; exit 0/1
 ti cache clear
 ti schema pki verify                # JSON Schema of a command's output
 ti agent                            # usage guide for scripts and agents
@@ -77,6 +83,21 @@ network. The revocation line reports the outcome over the chain (`not revoked`,
 `--offline` makes no request: it uses the cached material, or the embedded roots
 without a TSL when nothing usable is cached (then pass the issuing CA with `--issuer`),
 and does not check revocation. The report says so (`"revocation_checked": false`).
+
+## Connector
+
+`ti connector` talks to a Konnektor as the Go `ti connector` does, with the same `.kon`
+files: `-c NAME|PATH` or `TI_CONNECTOR_CONFIG`, else the one `connector use` selected,
+else `default`; names are looked up here and in `~/.config/telematik/connectors/`.
+`${NAME}` in a `.kon` file is expanded only in the credentials, so a file from someone
+else cannot send environment variables to a foreign host. Calls time out after
+`--connector-timeout` (10 s), calls that wait for the card terminal after
+`--card-timeout` (300 s); `-v` prints one line per call, `-vv` the SOAP bodies. SMC-KT,
+KVK and eGK are restricted on the Konnektor's SOAP API; calls about them fail with an
+explanation. While a PIN is entered, a terminal shows a spinner on stderr, a busy
+tab (OSC 9;4: Ghostty, iTerm2, Windows Terminal, cmux) and one desktop notification (OSC
+9). PKCS#12 client certificates must be P-256, P-384 or RSA for now (TLS runs
+on ring, which has no brainpool).
 
 ## Conventions
 

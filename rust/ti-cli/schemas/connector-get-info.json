@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "connector get info",
+  "description": "The configuration and the Konnektor's product information.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "name": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    },
+    "mandant_id": {
+      "type": "string"
+    },
+    "workplace_id": {
+      "type": "string"
+    },
+    "client_system_id": {
+      "type": "string"
+    },
+    "user_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "credentials": {
+      "enum": [
+        "basic",
+        "pkcs12"
+      ]
+    },
+    "environment": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "product": {
+      "$ref": "#/$defs/product"
+    }
+  },
+  "required": [
+    "schema",
+    "name",
+    "url",
+    "mandant_id",
+    "workplace_id",
+    "client_system_id",
+    "user_id",
+    "credentials",
+    "environment",
+    "product"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "product": {
+      "type": "object",
+      "properties": {
+        "product_type": {
+          "type": "string"
+        },
+        "product_type_version": {
+          "type": "string"
+        },
+        "vendor_id": {
+          "type": "string"
+        },
+        "product_code": {
+          "type": "string"
+        },
+        "hw_version": {
+          "type": "string"
+        },
+        "fw_version": {
+          "type": "string"
+        },
+        "vendor_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "product_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "product_type",
+        "product_type_version",
+        "vendor_id",
+        "product_code",
+        "hw_version",
+        "fw_version",
+        "vendor_name",
+        "product_name"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

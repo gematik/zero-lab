@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "connector get identities",
+  "description": "The Telematik-IDs of the HBAs and SMC-Bs, from their C.AUT.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "identities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "telematik_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "card_type": {
+            "type": "string"
+          },
+          "holder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "iccsn": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "handle": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "telematik_id",
+          "card_type",
+          "holder",
+          "iccsn",
+          "handle"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "identities"
+  ],
+  "additionalProperties": false
+}

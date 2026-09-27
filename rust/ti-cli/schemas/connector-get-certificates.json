@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "connector get certificates",
+  "description": "The certificates of a card, ECC and RSA.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "card": {
+      "$ref": "#/$defs/card"
+    },
+    "certificates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "cert_ref": {
+            "enum": [
+              "C.AUT",
+              "C.ENC",
+              "C.SIG",
+              "C.QES"
+            ]
+          },
+          "crypt": {
+            "enum": [
+              "ECC",
+              "RSA"
+            ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "telematik_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "profession": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "not_before": {
+            "type": "string"
+          },
+          "not_after": {
+            "type": "string"
+          },
+          "validity": {
+            "enum": [
+              "valid",
+              "expired",
+              "not_yet_valid"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "pem": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "cert_ref",
+          "crypt",
+          "subject",
+          "telematik_id",
+          "profession",
+          "not_before",
+          "not_after",
+          "validity",
+          "key",
+          "pem"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "card",
+    "certificates"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "card": {
+      "type": "object",
+      "properties": {
+        "handle": {
+          "type": "string"
+        },
+        "card_type": {
+          "type": "string",
+          "description": "e.g. SMC-B, HBA, EGK, SMC-KT"
+        },
+        "iccsn": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "terminal": {
+          "type": "string",
+          "description": "The card terminal's CtId."
+        },
+        "slot": {
+          "type": "integer"
+        },
+        "holder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kvnr": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inserted": {
+          "type": "string"
+        },
+        "certificate_expiration": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cos_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "major.minor.revision"
+        },
+        "object_system_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "handle",
+        "card_type",
+        "iccsn",
+        "terminal",
+        "slot",
+        "holder",
+        "kvnr",
+        "inserted",
+        "certificate_expiration",
+        "cos_version",
+        "object_system_version"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

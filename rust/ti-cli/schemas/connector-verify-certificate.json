@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "connector verify certificate",
+  "description": "The Konnektor's check of a certificate (path and OCSP); exit 0 for VALID, 1 otherwise.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "source": {
+      "type": "string"
+    },
+    "subject": {
+      "type": "string"
+    },
+    "result": {
+      "enum": [
+        "VALID",
+        "INCONCLUSIVE",
+        "INVALID"
+      ]
+    },
+    "roles": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The profession OIDs the Konnektor read from the certificate."
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The Konnektor's reasons for a result other than VALID."
+    }
+  },
+  "required": [
+    "schema",
+    "source",
+    "subject",
+    "result",
+    "roles",
+    "errors"
+  ],
+  "additionalProperties": false
+}

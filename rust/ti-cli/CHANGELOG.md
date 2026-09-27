@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+- `connector`, the Go `ti connector` with the same `.kon` files: `configs`, `use`,
+  `get info|services|cards|certificates|status|identities|expiration`,
+  `describe card|certificate` (the latter as `pki inspect`), `verify pin|certificate`,
+  `change pin`. Cards by ICCSN, Telematik-ID or handle; `-c`/`TI_CONNECTOR_CONFIG`,
+  `--connector-timeout`, `--card-timeout`, `--no-cache`; the service directory cached;
+  `-v` one line per call, `-vv` the SOAP bodies; error kinds `connector_*`,
+  `card_restricted`, `pin_type`. Exit 3 now also means the Konnektor failed.
+  PIN entry shows a spinner, the terminal's progress state (OSC 9;4) and a desktop
+  notification (OSC 9) while the card terminal waits.
+- `cache clear` also removes cached Konnektor service directories.
 - `tir`, the Rust `ti` command-line tool: `pki inspect` (PEM, DER or stdin; type,
   profile, admission, policies, key admissibility), `pki profiles list|describe`.
   Output: `--format auto|text|markdown|json` (`TI_FORMAT`); auto is colored text on a
@@ -38,8 +48,7 @@
   part, keys with their certificate; `friendly_name` and `local_key_id` per
   certificate).
 - `pki pkcs12 convert` (re-encode as DER, PBES2 AES-256, SHA-256 MAC, mode 0600,
-  `--force` to replace) and `pki pkcs12 encode` (`.kon` credentials JSON; legacy files
-  re-encoded first).
+  `--force` to replace).
 - `completions bash|zsh|fish|elvish|powershell`.
 - `just cli-targets`: release binaries for Linux (musl), Windows and macOS.
 - Release builds are stripped, fully LTO-optimised and abort on panic (6.2 → 3.5 MB).

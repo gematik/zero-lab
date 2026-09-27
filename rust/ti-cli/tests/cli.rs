@@ -660,26 +660,3 @@ fn convert_writes_a_modern_private_file_and_keeps_existing_ones() {
     assert_eq!(tir(&forced).status.code(), Some(0));
     let _ = std::fs::remove_dir_all(&dir);
 }
-
-#[test]
-fn encode_prints_kon_credentials() {
-    let (file, password) = p12_fixture();
-    let out = tir(&[
-        "pki",
-        "pkcs12",
-        "encode",
-        &file,
-        "--p12-password",
-        &password,
-    ]);
-    assert_eq!(out.status.code(), Some(0));
-    let credentials: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(credentials["type"], "pkcs12");
-    assert_eq!(credentials["password"], password.as_str());
-    assert!(
-        stderr(&out).contains("re-encoded"),
-        "a legacy file is converted"
-    );
-    // Piped output is otherwise Markdown; the credentials stay JSON.
-    assert!(credentials.get("schema").is_none());
-}

@@ -23,10 +23,10 @@ or stdin.
 
 | Code | Meaning |
 | --- | --- |
-| 0 | success; for a verification: valid |
-| 1 | a verification ran and the result is not valid (the report is still on stdout) |
-| 2 | wrong arguments, or the environment cannot be told |
-| 3 | trust material or another remote resource unavailable, or failed verification |
+| 0 | success; for a verification: valid, or the PIN was accepted |
+| 1 | a verification ran and the result is not valid, or the PIN was not accepted (the report is still on stdout) |
+| 2 | wrong arguments, the environment cannot be told, or no usable connector configuration |
+| 3 | trust material unavailable or failed verification, or the Konnektor did not answer or refused the call |
 | 4 | input unreadable or without the expected content |
 | 5 | output could not be written |
 
@@ -73,9 +73,6 @@ never on `message`.
   and an SHA-256 MAC, which OpenSSL 3 and the Go tools read without `-legacy`. OUT is
   written with mode 0600 and never replaced without `--force` (error kind
   `output_exists`).
-- `{bin} pki pkcs12 encode FILE` prints the credentials object of a `.kon` file,
-  `{"type":"pkcs12","data":…,"password":…}`, whatever `--format` says, and without a
-  `schema` field so it can be pasted as is. It contains the password.
 - Certificates come back as PEM in `pem` fields (`inspect`, and `verify`'s `chain`),
   ready to save or to pass on.
 - Reading a verify report:
@@ -92,3 +89,47 @@ never on `message`.
 - The TSL is not authenticated. `tsl show` takes only certificates and provider names
   from it. What it reports about a CA comes from the CA's signed certificate, and a CA
   counts only if a verified root signed it.
+
+## Subsystem connector: the Konnektor
+
+```sh
+{bin} --format json connector configs                   # the .kon files; "selected" is the default
+{bin} connector use praxis                              # select one for later commands
+{bin} --format json connector -c praxis get info        # configuration and product
+{bin} --format json connector get services              # "used": the versions this tool calls
+{bin} --format json connector get cards
+{bin} --format json connector get identities            # Telematik-IDs of HBAs and SMC-Bs
+{bin} --format json connector get certificates CARD     # ECC and RSA, with PEM
+{bin} --format json connector get status                # VPN and operating errors
+{bin} --format json connector get expiration [CARD]
+{bin} --format json connector describe card CARD
+{bin} --format json connector describe certificate CARD C.AUT   # as pki inspect
+{bin} --format json connector verify certificate CARD C.AUT     # or --file; exit 0/1
+{bin} --format json connector verify pin CARD [PIN]             # exit 0/1
+{bin} --format json connector change pin CARD [PIN]
+```
+
+- The configuration: `-c NAME|PATH` or `TI_CONNECTOR_CONFIG`, else the one
+  `connector use` selected, else `default`. A name is looked up as `NAME` and
+  `NAME.kon` in the current directory, then in `~/.config/telematik/connectors/`
+  (`$XDG_CONFIG_HOME` if set). The files are shared with the Go `ti`.
+- In a `.kon` file, `${NAME}` is expanded only in `credentials.username`, `.password`
+  and `.data`, from the environment; `-v` names the variables, never their values.
+- CARD is an ICCSN, a Telematik-ID (as in the card's C.AUT) or a card handle. Handles
+  change when a card is re-inserted; prefer the ICCSN or the Telematik-ID.
+- PIN is `PIN.CH`, `PIN.QES` or `PIN.SMC`; needed only for an HBA, which has two. PIN
+  commands wait for the user at the card terminal: never run them unasked. A
+  `REJECTED` result costs a try; `left_tries` says how many remain.
+- SMC-KT, KVK and eGK are restricted on the Konnektor's SOAP API: calls about them fail
+  with error kind `card_restricted`.
+- Error kinds: `connector_config` (exit 2), `connector_unreachable`,
+  `connector_fault` (the Konnektor's code and text are in the message),
+  `connector_unsupported` (it offers no version of a service this tool speaks),
+  `connector_failed`, `card_restricted` (exit 3), `pin_type` (exit 2).
+- `--connector-timeout SECS` (default 10) bounds each call, `--card-timeout SECS`
+  (default 300) calls that wait for the card terminal. `-v` prints one line per call,
+  `-vv` the SOAP bodies; the `Authorization` header never appears.
+- The service directory is cached like the trust material (`--no-cache` bypasses it,
+  `cache clear` removes it). A proxy is used only when `-x` is given; proxy
+  environment variables do not apply to the Konnektor.
+
