@@ -16,6 +16,15 @@ for card in connector.cards().list(&[]).await? {
 # Ok(()) }
 ```
 
+## Services
+
+| Facade | Service | Operations |
+| --- | --- | --- |
+| `cards()` | EventService 7.2 | list, get |
+| `certificates()` | CertificateService 6.0 | read, read_all, expiration, verify |
+| `pins()` | CardService 8.1 | status, verify, change |
+| `auth()` | AuthSignatureService 7.4 | external_authenticate |
+
 ## Design
 
 - **No HTTP code.** Requests go through the caller's `Transport`, which owns TLS

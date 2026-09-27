@@ -1815,6 +1815,7 @@ dependencies = [
  "sha2",
  "thiserror",
  "ti-cache",
+ "ti-pki",
  "ti-types",
 ]
 

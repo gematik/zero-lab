@@ -16,6 +16,7 @@ exclude = ["tests/"]
 [dependencies]
 ti-types.workspace = true
 ti-cache.workspace = true
+ti-pki.workspace = true
 serde = { workspace = true, features = ["std"] }
 serde_json.workspace = true
 quick-xml.workspace = true

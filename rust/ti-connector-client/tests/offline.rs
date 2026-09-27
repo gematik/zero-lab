@@ -1,18 +1,21 @@
 //! The client against a scripted transport, with the Go client's fixtures
 //! (`go/kon/cards_test.go`) and a captured eHEX service directory.
 
-use std::cell::{Cell, RefCell};
-use std::collections::VecDeque;
+mod support;
+
+use std::cell::Cell;
 use std::time::Duration;
 
 use futures_lite::future::block_on;
 use ti_cache::{Cache, CachePolicy, MemoryCacheStore, Source};
 use ti_connector_client::types::CardType;
 use ti_connector_client::{
-    Connector, DiscoveryError, Dotkon, Error, Method, Request, Response, ServiceDirectory,
-    Timeouts, Transport, TransportError,
+    Connector, DiscoveryError, Dotkon, Error, Method, Response, ServiceDirectory, Timeouts,
+    TransportError,
 };
 use ti_types::{Clock, Timestamp};
+
+use support::{Scripted, ok};
 
 const GO_SDS: &str = include_str!("fixtures/go-connector.sds");
 const GO_CARDS: &str = include_str!("fixtures/go-get-cards.xml");
@@ -24,67 +27,6 @@ const KON: &str = r#"{
     "mandantId": "M1", "workplaceId": "W1", "clientSystemId": "C1",
     "credentials": {"type": "basic", "username": "u", "password": "p"}
 }"#;
-
-/// What a request looked like, owned.
-#[derive(Debug)]
-struct Seen {
-    method: Method,
-    url: String,
-    soap_action: Option<String>,
-    authorization: Option<String>,
-    if_none_match: Option<String>,
-    body: String,
-    timeout: Duration,
-}
-
-/// Answers from a script and records every request.
-#[derive(Debug, Default)]
-struct Scripted {
-    answers: RefCell<VecDeque<Result<Response, TransportError>>>,
-    seen: RefCell<Vec<Seen>>,
-}
-
-impl Scripted {
-    fn new(responses: impl IntoIterator<Item = Response>) -> Self {
-        Scripted {
-            answers: RefCell::new(responses.into_iter().map(Ok).collect()),
-            seen: RefCell::default(),
-        }
-    }
-
-    fn failing(error: TransportError) -> Self {
-        Scripted {
-            answers: RefCell::new([Err(error)].into()),
-            seen: RefCell::default(),
-        }
-    }
-}
-
-impl Transport for Scripted {
-    async fn send(&self, request: &Request<'_>) -> Result<Response, TransportError> {
-        self.seen.borrow_mut().push(Seen {
-            method: request.method,
-            url: request.url.to_owned(),
-            soap_action: request.soap_action.map(str::to_owned),
-            authorization: request.authorization.map(str::to_owned),
-            if_none_match: request.if_none_match.map(str::to_owned),
-            body: String::from_utf8(request.body.to_vec()).unwrap(),
-            timeout: request.timeout,
-        });
-        self.answers
-            .borrow_mut()
-            .pop_front()
-            .expect("the script has an answer for every request")
-    }
-}
-
-fn ok(status: u16, body: &str) -> Response {
-    Response {
-        status,
-        body: body.as_bytes().to_vec(),
-        ..Response::default()
-    }
-}
 
 fn go_sds() -> String {
     GO_SDS.replace("%%ENDPOINT%%", "https://konnektor.test")

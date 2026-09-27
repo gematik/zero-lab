@@ -17,7 +17,8 @@ publish = false
 # In-repo crates: path for local development, version for registry resolution.
 ti-types = { version = "0.1", path = "ti-types" }
 ti-cache = { version = "0.1", path = "ti-cache" }
-ti-pki = { version = "0.1", path = "ti-pki" }
+# Without its default algorithm features: parsing certificates needs none.
+ti-pki = { version = "0.1", path = "ti-pki", default-features = false }
 ti-pkcs12 = { version = "0.1", path = "ti-pkcs12" }
 ti-connector-client = { version = "0.1", path = "ti-connector-client" }
 

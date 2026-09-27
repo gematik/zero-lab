@@ -21,7 +21,7 @@ path = "src/main.rs"
 # still fences production from TEST-ONLY material.
 ti-pkcs12 = { workspace = true, features = ["encode"] }
 base64ct.workspace = true
-ti-pki = { workspace = true, features = ["os", "dangerous-nonprod"] }
+ti-pki = { workspace = true, features = ["brainpool", "rsa", "os", "dangerous-nonprod"] }
 # rustls without a built-in provider (ring is passed in), the OS trust store via the
 # platform verifier, and SOCKS for -x socks5://.
 ureq = { workspace = true, features = ["rustls-no-provider", "platform-verifier", "socks-proxy"] }
