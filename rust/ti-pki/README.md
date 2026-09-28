@@ -8,9 +8,11 @@ use cases.
 
 ## Status
 
-Skeleton. The trust configuration is implemented; the module layout, the error codes, the
-certificate types and the revocation modes are declared, but there is no validation logic
-yet. Do not use this crate to make trust decisions.
+Implemented: roots.json verified from the embedded anchor (the A_28419 cross-certificate
+walk), the TSL's CAs kept only when a verified root signed them, chain building, path
+validation, the gemSpec_Krypt key check, certificate types and profiles, OCSP for the end
+entity and every CA below the root, and loading with cache, bundle and reload. The TSL
+itself is deliberately not authenticated: it is only a source of candidate intermediates.
 
 The reference implementation is the Go package
 [`gempki`](https://github.com/gematik/zero-lab/tree/main/go/gempki); this crate ports it
@@ -89,7 +91,8 @@ let loader = FallbackLoader::new(offline, bundle);
 Signatures are verified through `rustls_pki_types::SignatureVerificationAlgorithm`
 implementations, chosen by key and signature algorithm. `TrustConfig::algorithms`
 defaults to `ti_pki::algorithms::DEFAULT`: ECDSA on P-256, P-384, and, with the default
-`brainpool` feature, brainpoolP256r1 and brainpoolP384r1. Further implementations of
+features, ECDSA on brainpoolP256r1 and brainpoolP384r1 (`brainpool`) and RSA PKCS#1 v1.5
+and PSS (`rsa`). Further implementations of
 the trait (a FIPS-validated set, post-quantum algorithms) can be added to the set:
 
 ```rust
@@ -106,13 +109,11 @@ let config = TrustConfig {
 | `dangerous-nonprod` | Non-production presets, anchors and roots |
 | `test-util` | `TrustConfig::for_lab_ca`, `FixedClock` and `MockTransport` for tests in downstream crates |
 | `brainpool` (default) | ECDSA on brainpoolP256r1 / brainpoolP384r1 in the default algorithm set; the TI's anchors need it |
+| `rsa` (default) | RSA PKCS#1 v1.5 and PSS in the default algorithm set; the historical RSA roots GEM.RCA2/6/9 need it for the roots walk |
 | `load` | Loaders, cache, reloader; no HTTP client or executor; builds for wasm32 |
 | `os` | `FileTransport`, `SystemClock`, bundle files |
 | `reqwest` | `ti_pki::reqwest::ReqwestTransport` over a caller-provided client (native and wasm32) |
 | `tokio` | `ti_pki::tokio`: background reloader, SIGHUP, admin trigger |
-
-The roots walk and TSL signature check are not ported yet; until they are, the reloader
-panics when it verifies changed material.
 
 ## License
 
