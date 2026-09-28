@@ -34,8 +34,8 @@ import (
 // repository (tslService/detachedSignature/README.md).
 type DetachedSignature struct {
 	// Signer is the TSL-Signer certificate embedded in the .sig file.
-	// Already passed through [gempki.ParseCertificate], so the ECC-only crypto
-	// policy applies.
+	// Already passed through [gempki.ParseCertificate], so brainpool keys
+	// parse; no key-type policy is applied.
 	Signer *x509.Certificate
 
 	// Raw is the original .sig DER. Useful for callers that cache the file
@@ -167,7 +167,7 @@ func (s *DetachedSignature) VerifyOver(tslBytes []byte) error {
 // (with the supplied intermediates), and verify the signature over tslBytes.
 //
 // The gempki.TrustStore passed here must contain the TSL-Signer-CA — typically
-// obtained from [EmbeddedTSLSignerLoader] — NOT the GEM.RCA<n> Komponenten-PKI
+// obtained from [SignerTrustStore] — NOT the GEM.RCA<n> Komponenten-PKI
 // anchors. The TSL-Signer-CA is structurally a SubCA under GEM.RCA<n>, but
 // for TSL verification we treat it as its own trust anchor so callers
 // don't need the full Komponenten-PKI loaded.

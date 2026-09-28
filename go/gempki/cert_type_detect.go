@@ -17,16 +17,16 @@ import (
 //     both asserted in CertificatePolicies) and covers virtually every
 //     TI cert in the wild.
 //
-//  2. Fall back to the Admission extension + KeyUsage/EKU. For older
+//  2. Fall back to the Admission extension + KeyUsage. For older
 //     fixtures or non-conforming issuers that elide the type OID from
 //     policies, profession/institution OIDs combined with KeyUsage bits
 //     give us a best-effort label:
 //
 //     - HBA (profession OID present)  + contentCommitment → C.HP.QES
-//     - HBA + digitalSignature        + clientAuth        → C.HP.AUT
+//     - HBA + digitalSignature                            → C.HP.AUT
 //     - HBA + keyEncipherment/keyAgreement                → C.HP.ENC
 //     - SMC-B (institution OID present) + contentCommitment → C.HCI.OSIG
-//     - SMC-B + digitalSignature + clientAuth               → C.HCI.AUT
+//     - SMC-B + digitalSignature                            → C.HCI.AUT
 //     - SMC-B + keyEncipherment/keyAgreement                → C.HCI.ENC
 //     - eGK (Versicherter OID present) + contentCommitment  → C.CH.QES
 //

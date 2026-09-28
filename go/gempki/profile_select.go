@@ -112,8 +112,9 @@ func ProfilesForCert(cert *x509.Certificate) []*Profile {
 // of what `--profile auto` means, so every caller resolves it identically.
 //
 // A profile matched on a discriminator outranks one that owns the type by
-// default: that is what lets a ZETA Guard C.FD.AUT reach zeta-asl while a
-// plain C.FD.AUT reaches epa-vau. Ambiguity is reported, never guessed.
+// default: a C.FD.AUT with the ZETA Guard role selects zeta-guard-aut and one
+// with the ePA VAU role selects epa-vau-aut, while a plain C.FD.AUT, which no
+// profile owns by default, selects none. Ambiguity is reported, never guessed.
 func SelectProfileForCert(cert *x509.Certificate) ProfileSelection {
 	t := DetectCertificateType(cert)
 	sel := ProfileSelection{Type: t, Reason: ProfileSelectNone}

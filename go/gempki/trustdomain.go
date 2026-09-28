@@ -12,7 +12,7 @@ import (
 // non-production environments.
 //
 // It stops at prod vs non-prod on purpose: dev and ref are one and the same
-// trust domain (identical anchor, roots and TSL — see [trustAnchorB64For]), and
+// trust domain (identical anchor, roots and TSL — dev reuses ref's envData), and
 // ref and test publish the same GEM.RCA* TEST-ONLY roots, so no amount of
 // inspection separates the three. Pinning the environment beyond this needs
 // the TSL of a specific environment, which is the caller's business.

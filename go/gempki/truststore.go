@@ -11,7 +11,7 @@ import (
 // via the TSL ([BuildChain]) or in the candidate chain itself.
 //
 // TrustStore is safe for concurrent use. Once constructed, its contents
-// never change; callers wanting hot-reload semantics use [TrustStoreHolder].
+// never change; new trust material means a new TrustStore.
 type TrustStore struct {
 	all          []*x509.Certificate
 	byCommonName map[string]*x509.Certificate

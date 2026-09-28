@@ -111,9 +111,9 @@ type parsedEntry struct {
 // pick up rollover successors, then backward via "prev" links to pick up the
 // predecessors that are still within their validity window.
 //
-// Out-of-validity predecessors are dropped with a warning rather than failing
-// the whole load; expired anchors are normal during the long tail of a
-// rollover.
+// A cross certificate that fails any A_28419 step ends the walk in that
+// direction, logged at debug level, rather than failing the whole load;
+// expired predecessors are normal during the long tail of a rollover.
 func verifyRootsList(anchor *x509.Certificate, r io.Reader) (*TrustStore, error) {
 	entries, err := decodeRootsJSON(r)
 	if err != nil {
