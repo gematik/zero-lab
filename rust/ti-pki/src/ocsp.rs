@@ -69,6 +69,14 @@ pub const DEFAULT_CLOCK_TOLERANCE: Duration = Duration::from_millis(37_500);
 /// only when responses are served from a cache.
 pub const DEFAULT_MAX_RESPONSE_AGE: Duration = DEFAULT_CLOCK_TOLERANCE;
 
+/// How often `OcspChecker` repeats a query after an OCSP status error: a transport
+/// failure or an answer other than `successful` (A_30044 (4), A_30046 (3) of C_12791).
+pub const OCSP_STATUS_RETRIES: u32 = 3;
+
+/// How long `OcspChecker` leaves a responder alone once the query and all its
+/// repetitions failed (A_30044 (4), A_30046 (3) of C_12791).
+pub const OCSP_STATUS_PAUSE: Duration = Duration::from_secs(300);
+
 /// `Content-Type` of an OCSP request.
 pub const CONTENT_TYPE_REQUEST: &str = "application/ocsp-request";
 
@@ -561,21 +569,28 @@ pub use checker::OcspChecker;
 #[cfg(feature = "load")]
 mod checker {
     use std::borrow::Cow;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, PoisonError};
+
+    use der::Decode as _;
 
     use super::{
-        CONTENT_TYPE_REQUEST, CONTENT_TYPE_RESPONSE, DEFAULT_MAX_RESPONSE_AGE, ResponseCheck,
-        request, verify_response,
+        CONTENT_TYPE_REQUEST, CONTENT_TYPE_RESPONSE, DEFAULT_MAX_RESPONSE_AGE, OCSP_STATUS_PAUSE,
+        OCSP_STATUS_RETRIES, OcspResponse, ResponseCheck, ResponseStatus, request, verify_response,
     };
     use crate::algorithms::AlgorithmSet;
     use crate::error::{ErrorCode, ValidationError};
     use crate::load::{PostRequest, Transport};
     use crate::revocation::{RevocationChecker, RevocationResult};
-    use crate::time::Clock;
+    use crate::time::{Clock, Timestamp};
     use crate::{Certificate, TrustConfig, TrustStore};
 
     /// Queries a certificate's OCSP responder through a [`Transport`] and verifies the
     /// answer with [`verify_response`](super::verify_response). The transport owns
-    /// timeouts, proxies and retries.
+    /// timeouts and proxies. An OCSP status error (the transport failed, or the
+    /// responder answered `tryLater`, `internalError` and the like) is repeated up to
+    /// [`OCSP_STATUS_RETRIES`] times; after that the responder rests for
+    /// [`OCSP_STATUS_PAUSE`], shared by the checker's clones.
     #[derive(Clone, Debug)]
     pub struct OcspChecker<T, C> {
         transport: T,
@@ -585,6 +600,7 @@ mod checker {
         max_response_age: core::time::Duration,
         allow_missing_cert_hash: bool,
         responder_url: Option<String>,
+        resting: Arc<Mutex<HashMap<String, Timestamp>>>,
     }
 
     impl<T: Transport, C: Clock> OcspChecker<T, C> {
@@ -599,6 +615,7 @@ mod checker {
                 max_response_age: DEFAULT_MAX_RESPONSE_AGE,
                 allow_missing_cert_hash: false,
                 responder_url: None,
+                resting: Arc::default(),
             }
         }
 
@@ -624,12 +641,88 @@ mod checker {
             self.allow_missing_cert_hash = true;
             self
         }
+
+        /// When the responder at `url` may be asked again, if it is resting.
+        fn resting_until(&self, url: &str, now: Timestamp) -> Option<Timestamp> {
+            let mut resting = self.resting.lock().unwrap_or_else(PoisonError::into_inner);
+            match resting.get(url) {
+                Some(&until) if until > now => Some(until),
+                Some(_) => {
+                    resting.remove(url);
+                    None
+                }
+                None => None,
+            }
+        }
+
+        fn rest(&self, url: &str, until: Timestamp) {
+            self.resting
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .insert(url.to_owned(), until);
+        }
+
+        /// POSTs `body` to `url` until an answer is `successful`, at most
+        /// 1 + [`OCSP_STATUS_RETRIES`] times. The error is the last attempt's.
+        async fn query(
+            &self,
+            url: &str,
+            body: &[u8],
+            cert: &Certificate,
+        ) -> Result<Vec<u8>, ValidationError> {
+            let mut failure = None;
+            for _ in 0..=OCSP_STATUS_RETRIES {
+                let posted = self
+                    .transport
+                    .post(&PostRequest {
+                        url,
+                        content_type: CONTENT_TYPE_REQUEST,
+                        accept: CONTENT_TYPE_RESPONSE,
+                        body,
+                    })
+                    .await;
+                failure = Some(match posted {
+                    Ok(answer) => match OcspResponse::from_der(&answer) {
+                        Ok(r) if r.response_status == ResponseStatus::Successful => {
+                            return Ok(answer);
+                        }
+                        Ok(r) => ValidationError::new(
+                            ErrorCode::OcspUnavailable,
+                            format!("OCSP responder {url} answered {:?}", r.response_status),
+                        ),
+                        Err(e) => ValidationError::new(
+                            ErrorCode::OcspUnavailable,
+                            format!("OCSP responder {url} sent no OCSP response"),
+                        )
+                        .with_cause(e),
+                    },
+                    Err(e) => ValidationError::new(
+                        ErrorCode::OcspUnavailable,
+                        format!("OCSP responder {url} unreachable"),
+                    )
+                    .with_cause(e),
+                });
+            }
+            let until = Timestamp(self.clock.now().0 + OCSP_STATUS_PAUSE.as_secs());
+            self.rest(url, until);
+            let failure = failure.expect("at least one attempt was made");
+            Err(ValidationError {
+                message: format!(
+                    "{} ({} attempts; resting until {until})",
+                    failure.message,
+                    OCSP_STATUS_RETRIES + 1
+                ),
+                ..failure
+            }
+            .with_subject(cert.subject_cn()))
+        }
     }
 
     impl<T: Transport, C: Clock> RevocationChecker for OcspChecker<T, C> {
         /// No responder URL is an [`Unknown`](crate::revocation::RevocationStatus::Unknown)
-        /// result: no other source could answer for such a certificate either. A
-        /// transport failure is [`ErrorCode::OcspUnavailable`].
+        /// result: no other source could answer for such a certificate either. An OCSP
+        /// status error that outlasts the repetitions, and any query while the
+        /// responder rests, is [`ErrorCode::OcspUnavailable`].
         async fn check(
             &self,
             cert: &Certificate,
@@ -646,24 +739,14 @@ mod checker {
                     "no OCSP responder URL (no authority information access, no override)",
                 ));
             };
-            let body = request(cert, issuer);
-            let response = self
-                .transport
-                .post(&PostRequest {
-                    url,
-                    content_type: CONTENT_TYPE_REQUEST,
-                    accept: CONTENT_TYPE_RESPONSE,
-                    body: &body,
-                })
-                .await
-                .map_err(|e| {
-                    ValidationError::new(
-                        ErrorCode::OcspUnavailable,
-                        format!("OCSP responder {url} unreachable"),
-                    )
-                    .with_subject(cert.subject_cn())
-                    .with_cause(e)
-                })?;
+            if let Some(until) = self.resting_until(url, self.clock.now()) {
+                return Err(ValidationError::new(
+                    ErrorCode::OcspUnavailable,
+                    format!("OCSP responder {url} rests until {until} after repeated failures"),
+                )
+                .with_subject(cert.subject_cn()));
+            }
+            let response = self.query(url, &request(cert, issuer), cert).await?;
             let check = ResponseCheck {
                 now: self.clock.now(),
                 max_response_age: self.max_response_age,
@@ -1238,13 +1321,19 @@ mod tests {
 
             let pki = TestPki::new();
             let config = crate::TrustConfig::for_anchor(pki.rca1.der().to_vec());
-            let transport = MockTransport::posting([
-                Ok(response!("good").to_vec()),
+            let refused = || {
                 Err(TransportError {
                     kind: TransportErrorKind::Network,
                     message: "connection refused".into(),
                     retryable: true,
-                }),
+                })
+            };
+            let transport = MockTransport::posting([
+                Ok(response!("good").to_vec()),
+                refused(),
+                refused(),
+                refused(),
+                refused(),
             ]);
             let store = TrustStore::new([pki.rca1.clone()]);
             let checker = OcspChecker::new(&config, &transport, FixedClock::new(TestPki::NOW))
@@ -1270,9 +1359,11 @@ mod tests {
             assert_eq!(error.code, ErrorCode::OcspUnavailable);
             assert_eq!(
                 error.to_string(),
-                "ti-pki[ocsp_unavailable]: OCSP responder http://ocsp.test/ unreachable: \
-                 \"Dr. Arzt TEST-ONLY\": network error: connection refused"
+                "ti-pki[ocsp_unavailable]: OCSP responder http://ocsp.test/ unreachable \
+                 (4 attempts; resting until 2026-01-01T00:05:00Z): \"Dr. Arzt TEST-ONLY\": \
+                 network error: connection refused"
             );
+            assert_eq!(transport.posts().len(), 5);
 
             let without_url = OcspChecker::new(&config, &transport, FixedClock::new(TestPki::NOW));
             let result = futures_lite::future::block_on(without_url.check(
@@ -1283,6 +1374,74 @@ mod tests {
             .unwrap();
             assert_eq!(result.status, RevocationStatus::Unknown);
             assert!(result.reason.starts_with("no OCSP responder URL"));
+        }
+
+        /// A_30044 (4), A_30046 (3): an OCSP status error is repeated up to three times,
+        /// then the responder rests for five minutes.
+        #[cfg(feature = "load")]
+        #[test]
+        fn status_errors_are_repeated_then_the_responder_rests() {
+            use crate::load::MockTransport;
+            use crate::revocation::RevocationChecker;
+            use crate::time::FixedClock;
+
+            const TRY_LATER: [u8; 5] = [0x30, 0x03, 0x0a, 0x01, 0x03];
+            let pki = TestPki::new();
+            let config = crate::TrustConfig::for_anchor(pki.rca1.der().to_vec());
+            let store = TrustStore::new([pki.rca1.clone()]);
+            let try_later = || Ok(TRY_LATER.to_vec());
+            let transport = MockTransport::posting([
+                try_later(),
+                try_later(),
+                Ok(response!("good").to_vec()),
+                try_later(),
+                try_later(),
+                try_later(),
+                try_later(),
+                Ok(response!("good").to_vec()),
+            ]);
+            let clock = FixedClock::new(TestPki::NOW);
+            let checker = OcspChecker::new(&config, &transport, &clock)
+                .with_responder_url("http://ocsp.test/");
+            let check = || {
+                futures_lite::future::block_on(checker.check(&pki.ee_arzt, &pki.sub_ca_hba, &store))
+            };
+
+            assert_eq!(check().unwrap().status, RevocationStatus::Good);
+            assert_eq!(transport.posts().len(), 3);
+
+            let error = check().unwrap_err();
+            assert_eq!(error.code, ErrorCode::OcspUnavailable);
+            assert_eq!(
+                error.message,
+                "OCSP responder http://ocsp.test/ answered TryLater \
+                 (4 attempts; resting until 2026-01-01T00:05:00Z)"
+            );
+            assert_eq!(transport.posts().len(), 7);
+
+            clock.advance(Duration::from_secs(299));
+            let resting = check().unwrap_err();
+            assert_eq!(
+                resting.message,
+                "OCSP responder http://ocsp.test/ rests until 2026-01-01T00:05:00Z after \
+                 repeated failures"
+            );
+            assert_eq!(
+                transport.posts().len(),
+                7,
+                "a resting responder is not asked"
+            );
+
+            clock.advance(Duration::from_secs(1));
+            // The answer is from NOW; five minutes on it is too old for the window.
+            let result = check().unwrap();
+            assert_eq!(transport.posts().len(), 8);
+            assert_eq!(result.status, RevocationStatus::Unknown);
+            assert!(
+                result.reason.ends_with("more than the 37 s allowed"),
+                "{}",
+                result.reason
+            );
         }
     }
 }

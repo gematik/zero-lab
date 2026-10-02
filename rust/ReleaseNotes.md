@@ -133,6 +133,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - Embedded GEM.RCA8 anchor and production roots.json; TEST-ONLY anchors and non-prod
   roots.json behind `dangerous-nonprod`.
 - Crate skeleton.
+- `OcspChecker` repeats a query after an OCSP status error (transport failure, `tryLater`,
+  `internalError`, no OCSP response) up to `OCSP_STATUS_RETRIES` (3) times; if all fail,
+  the responder rests for `OCSP_STATUS_PAUSE` (5 min) and is not asked meanwhile (A_30044
+  (4), A_30046 (3), C_12791).
 
 #### changed
 - `Timestamp`, `Clock` and `SystemClock` come from `ti-types`, so every TI crate
