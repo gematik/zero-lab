@@ -1,5 +1,6 @@
 //! Per-certificate predicates run by path validation on the end entity: key usage,
-//! extended key usage, certificate policies and admission roles. Each failure is a
+//! extended key usage, certificate policies, the name the end entity must carry, and
+//! admission roles. Each failure is a
 //! [`ValidationError`] whose message names what was required and what was present.
 
 use std::sync::Arc;
@@ -80,6 +81,47 @@ pub fn certificate_policies(required: &[ObjectIdentifier]) -> CertificateCheck {
         )
         .with_subject(cert.subject_cn()))
     })
+}
+
+/// Requires the fully qualified domain name the end entity's commonName leads with to
+/// be `expected`, ignoring case and a trailing dot (A_30046 (5) of C_12791). A
+/// commonName that does not start with a domain name (`Dr. Arzt`, an address) passes:
+/// the requirement covers only certificates that name a host.
+pub fn fqdn(expected: &str) -> CertificateCheck {
+    let expected = expected.trim_end_matches('.').to_ascii_lowercase();
+    Arc::new(move |cert| {
+        let Some(named) = leading_fqdn(cert.subject_cn()) else {
+            return Ok(());
+        };
+        if named.trim_end_matches('.').eq_ignore_ascii_case(&expected) {
+            return Ok(());
+        }
+        Err(ValidationError::new(
+            ErrorCode::FqdnMismatch,
+            format!("commonName names {named}, expected {expected}"),
+        )
+        .with_subject(cert.subject_cn()))
+    })
+}
+
+/// The domain name a commonName starts with: the first word, if it has at least two
+/// labels of letters, digits and hyphens, and a top-level label that is not all digits
+/// (which rules out IPv4 addresses). TI test certificates append ` TEST-ONLY`.
+fn leading_fqdn(common_name: &str) -> Option<&str> {
+    let name = common_name.split_whitespace().next()?;
+    let labels: Vec<&str> = name.trim_end_matches('.').split('.').collect();
+    let is_label = |l: &&str| {
+        (1..=63).contains(&l.len())
+            && l.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+            && !l.starts_with('-')
+            && !l.ends_with('-')
+    };
+    let top = labels.last()?;
+    (labels.len() >= 2
+        && name.len() <= 254
+        && labels.iter().all(is_label)
+        && !top.bytes().all(|b| b.is_ascii_digit()))
+    .then_some(name)
 }
 
 /// Requires one of `allowed` among the admission roles; empty means no requirement. A
@@ -169,6 +211,38 @@ fn oids(list: &[ObjectIdentifier]) -> String {
 mod tests {
     use super::*;
     use crate::testing::{TestPki, typed};
+
+    #[test]
+    fn fqdn_in_the_common_name() {
+        let pki = TestPki::new();
+        // CN "zeta.ti-dienste.de TEST-ONLY"
+        fqdn("zeta.ti-dienste.de")(&pki.ee_zeta).unwrap();
+        fqdn("ZETA.ti-dienste.de.")(&pki.ee_zeta).unwrap();
+        let error = fqdn("popp.ti-dienste.de")(&pki.ee_zeta).unwrap_err();
+        assert_eq!(error.code, ErrorCode::FqdnMismatch);
+        assert_eq!(
+            error.message,
+            "commonName names zeta.ti-dienste.de, expected popp.ti-dienste.de"
+        );
+        // "Dr. Arzt TEST-ONLY" names no host.
+        fqdn("zeta.ti-dienste.de")(&pki.ee_arzt).unwrap();
+
+        for (cn, named) in [
+            (
+                "erp.zentral.erp.splitdns.ti-dienste.de",
+                Some("erp.zentral.erp.splitdns.ti-dienste.de"),
+            ),
+            ("host.example. TEST-ONLY", Some("host.example.")),
+            ("Dr. Arzt", None),
+            ("10.0.0.1", None),
+            ("localhost", None),
+            ("-bad.example", None),
+            ("*.ti-dienste.de", None),
+            ("", None),
+        ] {
+            assert_eq!(leading_fqdn(cn), named, "{cn:?}");
+        }
+    }
 
     #[test]
     fn key_usage_requires_every_bit() {

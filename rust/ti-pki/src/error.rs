@@ -64,6 +64,9 @@ pub enum ErrorCode {
     /// accepted as a delegate of another CA of the same TSP. `ti-pki`'s own code; Go
     /// has no equivalent.
     OcspResponderNotRfc6960,
+    /// The fully qualified domain name in the end entity's commonName is not the one
+    /// expected (A_30046 (5) of C_12791). `ti-pki`'s own code; Go has no equivalent.
+    FqdnMismatch,
     /// A required profession or role OID is not present in the admission
     /// extension. (SE_1036)
     RoleOidMissing,
@@ -108,6 +111,7 @@ impl ErrorCode {
             ErrorCode::OcspUnavailable => "ocsp_unavailable",
             ErrorCode::OcspResponderNotRfc6960 => "ocsp_responder_not_rfc6960",
             ErrorCode::UnrecognizedCriticalExtension => "unrecognized_critical_extension",
+            ErrorCode::FqdnMismatch => "fqdn_mismatch",
             ErrorCode::RoleOidMissing => "role_oid_missing",
             ErrorCode::Expired => "expired",
             ErrorCode::NotYetValid => "not_yet_valid",

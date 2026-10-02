@@ -164,6 +164,7 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
         &certs[0],
         &mut warnings,
     );
+    validator.expected_fqdn.clone_from(&args.fqdn);
     let validated = block_on(async {
         if let Some(transport) = session.transport() {
             let checker = OcspChecker::new(&config, transport, SystemClock);

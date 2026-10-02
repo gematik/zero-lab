@@ -53,6 +53,7 @@ never on `message`.
 {bin} --format json pki inspect card.pem          # what the TI reads from a certificate
 {bin} --format json pki verify card.pem           # chain, profile, OCSP; exit 0/1
 {bin} --format json pki verify card.pem --offline # no network, no OCSP
+{bin} --format json pki verify tls.pem --fqdn erp.zentral.erp.splitdns.ti-dienste.de
 {bin} --format json pki profiles list
 {bin} --format json pki profiles describe smb-aut
 {bin} --format json pki roots list --env ref

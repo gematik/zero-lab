@@ -284,6 +284,10 @@ pub struct VerifyArgs {
     /// Validate at this time instead of now (RFC 3339, e.g. 2026-06-01T00:00:00+02:00)
     #[arg(long, value_name = "TIME", value_parser = timestamp)]
     pub at: Option<ti_pki::Timestamp>,
+    /// The host the certificate must name if its commonName names one, e.g. the server
+    /// you connected to
+    #[arg(long, value_name = "NAME")]
+    pub fqdn: Option<String>,
 }
 
 /// `--env`: an environment, or auto-detection.

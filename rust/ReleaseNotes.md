@@ -9,6 +9,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-cli
 
+#### added
+- `pki verify --fqdn NAME`: the certificate must name `NAME` if its commonName names a
+  host (`fqdn_mismatch` otherwise).
+
 #### removed
 - `probe` no longer checks ePA 3, for the time being.
 
@@ -140,6 +144,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `OcspChecker` reuses `good` and `revoked` results for `OCSP_CACHE_TTL` (1 h, after
   A_23225), at most until the response's `nextUpdate`; `with_cache_ttl` changes it, zero
   turns it off. Unknown results and errors are not cached (A_30046 (6), C_12791).
+- `Validator::expected_fqdn` / `with_expected_fqdn` and `checks::fqdn`: a host named in
+  the end entity's commonName must be the expected one, ignoring case and a trailing dot;
+  new error code `fqdn_mismatch` (A_30046 (5), C_12791).
 
 #### changed
 - `Timestamp`, `Clock` and `SystemClock` come from `ti-types`, so every TI crate

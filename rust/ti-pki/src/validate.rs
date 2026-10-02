@@ -139,6 +139,9 @@ pub struct Validator {
     pub required_policies: Vec<ObjectIdentifier>,
     /// Admission roles of which the end entity must assert one; empty for none.
     pub required_role_oids: Vec<ObjectIdentifier>,
+    /// The host the end entity must name if its commonName names one (A_30046 (5) of
+    /// C_12791), e.g. the server a TLS connection went to.
+    pub expected_fqdn: Option<String>,
 }
 
 impl Validator {
@@ -157,7 +160,15 @@ impl Validator {
             allowed_ext_key_usages: Vec::new(),
             required_policies: Vec::new(),
             required_role_oids: Vec::new(),
+            expected_fqdn: None,
         }
+    }
+
+    /// Requires the end entity's commonName, if it names a host, to name `fqdn`.
+    #[must_use]
+    pub fn with_expected_fqdn(mut self, fqdn: impl Into<String>) -> Self {
+        self.expected_fqdn = Some(fqdn.into());
+        self
     }
 
     /// Requires of the end entity what gemSpec_PKI requires of every certificate of
@@ -185,6 +196,9 @@ impl Validator {
         }
         if !self.allowed_ext_key_usages.is_empty() {
             ee_checks.push(checks::any_ext_key_usage(&self.allowed_ext_key_usages));
+        }
+        if let Some(fqdn) = &self.expected_fqdn {
+            ee_checks.push(checks::fqdn(fqdn));
         }
         ee_checks
     }
@@ -484,6 +498,21 @@ mod tests {
                 ..validator(&pki, RevocationMode::HardFail)
             };
             assert_eq!(offline(&ee_only, &chain).errors.len(), 1);
+        }
+
+        /// A_30046 (5): a host named in the commonName must be the expected one.
+        #[test]
+        fn expected_fqdn() {
+            let pki = TestPki::new();
+            let chain = [pki.ee_zeta.clone(), pki.sub_ca_komp.clone()];
+            let v = validator(&pki, RevocationMode::Disabled);
+            let right = v.clone().with_expected_fqdn("zeta.ti-dienste.de");
+            assert!(offline(&right, &chain).valid);
+            let wrong = v.with_expected_fqdn("popp.ti-dienste.de");
+            assert_eq!(
+                codes(&offline(&wrong, &chain)),
+                [(ErrorCode::FqdnMismatch, "zeta.ti-dienste.de TEST-ONLY")]
+            );
         }
 
         #[test]
