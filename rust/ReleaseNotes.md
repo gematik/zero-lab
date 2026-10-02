@@ -12,6 +12,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 #### added
 - `pki verify --fqdn NAME`: the certificate must name `NAME` if its commonName names a
   host (`fqdn_mismatch` otherwise).
+- `pki inspect` and `pki verify` show the subject alternative names (`alt. names`); `pki
+  inspect` JSON has `subject_alt_names`.
 
 #### changed
 - The `pki verify` schema lists the possible `code`s of errors and warnings as an `enum`,
@@ -165,6 +167,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   the same TSP, not by a TSL listing (A_30046 (7), C_12791).
 - Profile `fd-tls-s`: the C.FD.TLS-S certificate of a Fachdienst TLS server, the type
   baseline without a role, default for the type; pair it with the expected FQDN.
+- `Certificate::subject_alt_names`: the subject alternative names in OpenSSL notation
+  (`DNS:…`, `IP:…`, `email:…`, `URI:…`), for display.
 
 #### changed
 - `Timestamp`, `Clock` and `SystemClock` come from `ti-types`, so every TI crate

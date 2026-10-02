@@ -65,6 +65,13 @@
         "subject": {
           "type": "string"
         },
+        "subject_alt_names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Subject alternative names in OpenSSL notation, e.g. DNS:host"
+        },
         "issuer": {
           "type": "string"
         },
@@ -258,6 +265,7 @@
       },
       "required": [
         "subject",
+        "subject_alt_names",
         "issuer",
         "serial",
         "not_before",

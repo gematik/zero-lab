@@ -71,6 +71,8 @@ struct P12KeyInfo {
 #[derive(Serialize)]
 pub(super) struct CertificateInfo {
     subject: String,
+    /// In OpenSSL's notation, e.g. `DNS:host`.
+    subject_alt_names: Vec<String>,
     issuer: String,
     serial: String,
     not_before: String,
@@ -350,6 +352,7 @@ pub(super) fn describe(loaded: &input::Loaded, now: Timestamp) -> CertificateInf
     let basic = cert.basic_constraints();
     CertificateInfo {
         subject: cert.subject().to_string(),
+        subject_alt_names: cert.subject_alt_names(),
         issuer: cert.issuer().to_string(),
         serial: hex(cert.serial()),
         not_before: cert.not_before().to_string(),
@@ -462,6 +465,7 @@ fn sections(report: &Report) -> Document {
 /// them: subject, issuer, validity at `now`, what the TI reads, key, revocation sources.
 pub(super) fn certificate_sections(doc: &mut Document, cert: &CertificateInfo, now: Timestamp) {
     name_section(doc, "Subject", &cert.subject);
+    doc.items("alt. names", cert.subject_alt_names.iter().map(Line::code));
     name_section(doc, "Issuer", &cert.issuer);
     // Issuer and serial identify the certificate; the hashes stay in JSON only.
     doc.field("serial", Line::code(&cert.serial));
@@ -655,6 +659,7 @@ fn summary(report: &Report) -> Document {
                 .and_dim(" · serial ")
                 .and_code(&cert.serial),
         );
+        doc.items("alt. names", cert.subject_alt_names.iter().map(Line::code));
 
         doc.field(
             "valid",

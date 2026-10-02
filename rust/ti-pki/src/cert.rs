@@ -273,6 +273,33 @@ impl Certificate {
         &self.0.ocsp_urls
     }
 
+    /// The subject alternative names in OpenSSL's notation (`DNS:host`, `IP:10.0.0.1`,
+    /// `email:name@host`, `URI:…`); empty without the extension, or when it does not
+    /// decode: names for display, not for a trust decision.
+    pub fn subject_alt_names(&self) -> Vec<String> {
+        use const_oid::db::rfc5280::ID_CE_SUBJECT_ALT_NAME;
+        use x509_cert::ext::pkix::SubjectAltName;
+        let Some(san) = self
+            .extension_value(&ID_CE_SUBJECT_ALT_NAME)
+            .and_then(|value| SubjectAltName::from_der(value).ok())
+        else {
+            return Vec::new();
+        };
+        san.0
+            .iter()
+            .map(|name| match name {
+                GeneralName::DnsName(n) => format!("DNS:{n}"),
+                GeneralName::Rfc822Name(n) => format!("email:{n}"),
+                GeneralName::UniformResourceIdentifier(n) => format!("URI:{n}"),
+                GeneralName::IpAddress(ip) => format!("IP:{}", ip_text(ip.as_bytes())),
+                GeneralName::DirectoryName(n) => format!("dirName:{n}"),
+                GeneralName::RegisteredId(oid) => format!("registeredID:{oid}"),
+                GeneralName::OtherName(other) => format!("otherName:{}", other.type_id),
+                GeneralName::EdiPartyName(_) => "ediPartyName".to_owned(),
+            })
+            .collect()
+    }
+
     /// Whether the certificate carries an extension with `oid`.
     pub fn has_extension(&self, oid: &ObjectIdentifier) -> bool {
         self.extension_value(oid).is_some()
@@ -468,6 +495,21 @@ fn common_name(name: &Name) -> String {
         .unwrap_or_default()
 }
 
+/// An IP address from a subject alternative name: IPv4, IPv6, else its bytes in hex.
+fn ip_text(bytes: &[u8]) -> String {
+    if let Ok(v4) = <[u8; 4]>::try_from(bytes) {
+        std::net::Ipv4Addr::from(v4).to_string()
+    } else if let Ok(v6) = <[u8; 16]>::try_from(bytes) {
+        std::net::Ipv6Addr::from(v6).to_string()
+    } else {
+        bytes.iter().fold(String::new(), |mut text, b| {
+            use core::fmt::Write as _;
+            let _ = write!(text, "{b:02x}");
+            text
+        })
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -488,6 +530,18 @@ pub(crate) mod tests {
         subject
             .verify_signed_by(issuer, algorithms::DEFAULT)
             .is_ok()
+    }
+
+    #[test]
+    fn subject_alt_names_in_openssl_notation() {
+        let pki = crate::testing::TestPki::new();
+        assert_eq!(pki.ee_zeta.subject_alt_names(), ["DNS:zeta.ti-dienste.de"]);
+        assert!(pki.ee_arzt.subject_alt_names().is_empty());
+        assert_eq!(ip_text(&[10, 0, 0, 1]), "10.0.0.1");
+        let mut v6 = [0u8; 16];
+        v6[15] = 1;
+        assert_eq!(ip_text(&v6), "::1");
+        assert_eq!(ip_text(&[1, 2]), "0102");
     }
 
     #[test]
