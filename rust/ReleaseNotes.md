@@ -157,6 +157,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - An OCSP answer with status unknown is taken as is, without a certHash check (A_30046
   (2), C_12791): it used to fail as `ocsp_response_invalid`, which no revocation mode
   downgrades.
+- `Validator::validate` checks the required admission roles last, and only for a
+  certificate that is valid otherwise (A_30046 (4), C_12791); `ee_checks` no longer
+  contains the role check. A certificate that fails elsewhere no longer reports
+  `role_oid_missing` as well.
 
 #### removed
 - `TrustConfig::accept_test_only_policies` is removed: gematik's test cards carry the

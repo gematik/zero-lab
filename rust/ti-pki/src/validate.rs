@@ -172,14 +172,13 @@ impl Validator {
         self
     }
 
-    /// The end-entity requirements as the checks path validation runs.
+    /// The end-entity requirements as the checks path validation runs. The admission
+    /// roles are not among them: [`validate`](Self::validate) checks them only once
+    /// everything else succeeded.
     pub fn ee_checks(&self) -> Vec<CertificateCheck> {
         let mut ee_checks = Vec::new();
         if !self.required_policies.is_empty() {
             ee_checks.push(checks::certificate_policies(&self.required_policies));
-        }
-        if !self.required_role_oids.is_empty() {
-            ee_checks.push(checks::role_oid(&self.required_role_oids));
         }
         if !self.required_key_usage.is_empty() {
             ee_checks.push(checks::key_usage(&self.required_key_usage));
@@ -196,7 +195,9 @@ impl Validator {
     /// [`Unchecked`](crate::revocation::Unchecked) with
     /// [`RevocationMode::Disabled`] to validate offline.
     ///
-    /// Every policy-level failure lands in the result's errors.
+    /// Every policy-level failure lands in the result's errors. The required admission
+    /// roles are checked last, and only for a certificate that is valid otherwise
+    /// (A_30046 (4) of C_12791).
     ///
     /// # Errors
     ///
@@ -237,6 +238,15 @@ impl Validator {
         }
         check_key(&chain[0], now, &mut result);
         self.check_revocation(&chain, checker, &mut result).await;
+        if result.valid
+            && !self.required_role_oids.is_empty()
+            && let Err(mut error) = checks::role_oid(&self.required_role_oids)(&chain[0])
+        {
+            if error.subject.is_empty() {
+                chain[0].subject_cn().clone_into(&mut error.subject);
+            }
+            result.add_error(error);
+        }
         Ok(result)
     }
 
@@ -503,7 +513,24 @@ mod tests {
             assert!(typed_ok.valid, "{:?}", typed_ok.errors);
             let wrong = offline(&hci, &[typed("type-hp-aut"), pki.sub_ca_komp.clone()]);
             assert!(wrong.has_error(ErrorCode::PolicyMismatch));
-            assert!(wrong.has_error(ErrorCode::RoleOidMissing));
+            assert!(
+                !wrong.has_error(ErrorCode::RoleOidMissing),
+                "roles are checked only for an otherwise valid certificate"
+            );
+            let other_role = offline(
+                &hci,
+                &[typed("role-hci-aut-kim-anbieter"), pki.sub_ca_komp.clone()],
+            );
+            assert!(other_role.valid, "{:?}", other_role.errors);
+            let roleless = Validator {
+                required_role_oids: vec![crate::oid::PROF_VERSICHERTER],
+                ..hci.clone()
+            };
+            let missing = offline(&roleless, &[typed("type-hci-aut"), pki.sub_ca_komp.clone()]);
+            assert_eq!(
+                codes(&missing),
+                [(ErrorCode::RoleOidMissing, "type-hci-aut TEST-ONLY")]
+            );
         }
 
         #[test]
