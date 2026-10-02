@@ -22,7 +22,7 @@ use crate::cli::{
     RootsCommand, TslCommand,
 };
 use crate::error::{CliError, Exit};
-use crate::output::document::{date, when};
+use crate::output::document::{TreeRow, date, when};
 use crate::output::{Line, Output, Tone};
 use crate::paths;
 use crate::trust::TrustInfo;
@@ -36,7 +36,7 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
     out.verbose(1, &cli.global.net);
     match &cli.command {
         Command::Pki(PkiCommand::Inspect { file, p12_password }) => {
-            inspect::run(file, p12_password, out)
+            inspect::run(file, p12_password, &cli.global, out)
         }
         Command::Pki(PkiCommand::Verify(args)) => verify::run(args, &cli.global, out),
         Command::Pki(PkiCommand::Profiles(ProfilesCommand::List)) => profiles::list(out),
@@ -96,6 +96,52 @@ fn expiry(not_after: Timestamp, validity: &str) -> Line {
         "expired" => Line::dim(" · ").and_status(Tone::Bad, format!("expired {}", date(not_after))),
         _ => Line::dim(" · ").and_status(Tone::Bad, "not yet valid"),
     }
+}
+
+/// A chain as rows of a tree, the first certificate at the top and the root at the
+/// bottom: each with `mark(i)` before its common name, then its place in the chain and
+/// validity at `at`, then `extra(i)`. An incomplete chain ends with the issuer that was
+/// not found.
+fn chain_tree(
+    chain: &[Certificate],
+    complete: bool,
+    at: Timestamp,
+    mark: impl Fn(usize) -> Line,
+    extra: impl Fn(usize) -> Line,
+) -> Vec<TreeRow> {
+    let last = chain.len().saturating_sub(1);
+    let mut rows: Vec<TreeRow> = chain
+        .iter()
+        .enumerate()
+        .map(|(i, cert)| {
+            let place = match i {
+                i if i == last && complete && i > 0 => "root",
+                0 if cert.is_ca() && complete && chain.len() == 1 => "root",
+                0 if !cert.is_ca() => "end entity",
+                _ => "CA",
+            };
+            let name = if i == 0 {
+                Line::strong(cert.subject_cn())
+            } else {
+                Line::text(cert.subject_cn())
+            };
+            TreeRow {
+                name: mark(i).and_line(name),
+                detail: Line::dim(place)
+                    .and_line(expiry(cert.not_after(), validity(cert, at)))
+                    .and_line(extra(i)),
+            }
+        })
+        .collect();
+    if !complete && let Some(last) = chain.last() {
+        let issuer_name = last.issuer().to_string();
+        let (issuer, _) = inspect::split_name(&issuer_name);
+        rows.push(TreeRow {
+            name: Line::status(Tone::Warn, "? ").and_text(issuer.unwrap_or("unnamed issuer")),
+            detail: Line::status(Tone::Warn, "issuer not among the trusted CAs"),
+        });
+    }
+    rows
 }
 
 /// The `O=` of a distinguished name.

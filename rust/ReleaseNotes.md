@@ -16,6 +16,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 #### changed
 - The `pki verify` schema lists the possible `code`s of errors and warnings as an `enum`,
   kept equal to ti-pki's `ErrorCode::ALL` by a test; schema version 1 may add codes.
+- `pki inspect` and `pki verify` share one layout: subject and issuer as labelled fields
+  (common name, organization, …), lists without dashes, then a "Trust" tree from the
+  certificate down to its root. `inspect` builds it from the cached or embedded trust
+  material without validating it and says so; `verify` marks each certificate ✓ or ✗ and
+  adds its OCSP answer, replacing the "Chain" section. JSON is unchanged.
 
 #### removed
 - `probe` no longer checks ePA 3, for the time being.

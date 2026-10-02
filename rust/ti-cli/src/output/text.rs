@@ -42,13 +42,14 @@ pub fn render(doc: &Document, w: &mut impl Write) -> io::Result<()> {
                     Group::Fields
                 })?;
                 for (i, item) in items.iter().enumerate() {
-                    // An unlabelled list needs no label column.
+                    // A labelled list is a field with several values, one per line under
+                    // the value column; an unlabelled one is a list of statements.
                     let column = match (label.is_empty(), i) {
-                        (true, _) => String::new(),
+                        (true, _) => "- ".to_owned(),
                         (false, 0) => label_column(label),
                         (false, _) => label_column(""),
                     };
-                    out.line(&format!("{column}- {}", styled(item)))?;
+                    out.line(&format!("{column}{}", styled(item)))?;
                 }
             }
             Block::Table(headings, rows) => {
@@ -67,6 +68,31 @@ pub fn render(doc: &Document, w: &mut impl Write) -> io::Result<()> {
                 for row in rows {
                     let cells = row.iter().map(|c| (styled(c), c.plain().chars().count()));
                     out.line(&table_row(cells, &widths))?;
+                }
+            }
+            Block::Tree(rows) => {
+                out.group(Group::Table)?;
+                let drawn = super::document::tree_prefixes(rows.len());
+                let width = rows
+                    .iter()
+                    .zip(&drawn)
+                    .map(|(row, prefix)| prefix.chars().count() + row.name.plain().chars().count())
+                    .max()
+                    .unwrap_or(0);
+                for (row, prefix) in rows.iter().zip(&drawn) {
+                    let used = prefix.chars().count() + row.name.plain().chars().count();
+                    let label = style::LABEL;
+                    let mut line = format!("{label}{prefix}{label:#}{}", styled(&row.name));
+                    if !row.detail.0.is_empty() {
+                        let _ = write!(
+                            line,
+                            "{:pad$}{}",
+                            "",
+                            styled(&row.detail),
+                            pad = width - used + 3
+                        );
+                    }
+                    out.line(&line)?;
                 }
             }
             // A certificate's base64 helps nobody reading a terminal; Markdown and JSON
@@ -210,7 +236,26 @@ mod tests {
         assert_eq!(
             plain(&doc),
             "Certificate 1 of 1\n  card.pem\n\nKey\n  algorithm      ECDSA admissible\n  \
-             policies       - 1.2.3\n                 - 1.2.4\n"
+             policies       1.2.3\n                 1.2.4\n"
+        );
+    }
+
+    #[test]
+    fn trees_draw_branches_and_align_details() {
+        use crate::output::document::TreeRow;
+        let row = |name: &str, detail: &str| TreeRow {
+            name: Line::strong(name),
+            detail: Line::dim(detail),
+        };
+        let mut doc = Document::default();
+        doc.section("Trust").tree(vec![
+            row("Praxis", "end entity"),
+            row("SMCB-CA51", "CA"),
+            row("RCA5", "root"),
+        ]);
+        assert_eq!(
+            plain(&doc),
+            "Trust\n  Praxis          end entity\n  └── SMCB-CA51   CA\n      └── RCA5    root\n"
         );
     }
 

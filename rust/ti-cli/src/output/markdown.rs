@@ -52,6 +52,27 @@ pub fn render(doc: &Document, w: &mut impl Write) -> io::Result<()> {
                 }
             }
             Block::Pem(pem) => writeln!(w, "```pem\n{}\n```", pem.trim_end())?,
+            Block::Tree(rows) => {
+                let drawn = super::document::tree_prefixes(rows.len());
+                let width = rows
+                    .iter()
+                    .zip(&drawn)
+                    .map(|(row, prefix)| prefix.chars().count() + row.name.plain().chars().count())
+                    .max()
+                    .unwrap_or(0);
+                writeln!(w, "```text")?;
+                for (row, prefix) in rows.iter().zip(&drawn) {
+                    let name = format!("{prefix}{}", row.name.plain());
+                    let detail = row.detail.plain();
+                    if detail.is_empty() {
+                        writeln!(w, "{name}")?;
+                    } else {
+                        let pad = width - name.chars().count() + 3;
+                        writeln!(w, "{name}{:pad$}{detail}", "")?;
+                    }
+                }
+                writeln!(w, "```")?;
+            }
             Block::Table(headings, rows) => {
                 let cell = |text: String| text.replace('|', "\\|");
                 let heads: Vec<String> = headings.iter().map(|h| cell(escape(h))).collect();

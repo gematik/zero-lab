@@ -9,10 +9,12 @@ use ti_pki::load::SystemClock;
 use ti_pki::{CertificateType, Clock, Timestamp, checks, detect_certificate_type, profile};
 use x509_cert::der::oid::ObjectIdentifier;
 
+use crate::cli::{Environment, GlobalArgs};
 use crate::error::{CliError, Exit};
 use crate::input;
-use crate::output::document::{span, when};
+use crate::output::document::{TreeRow, span, when};
 use crate::output::{Document, Line, OidInfo, Output, SCHEMA, Tone, hex, pem};
+use crate::trust::Session;
 
 /// The JSON document.
 #[derive(Serialize)]
@@ -25,6 +27,10 @@ struct Report {
     /// The instant validity was judged at, for the remaining-time text.
     #[serde(skip)]
     now: Timestamp,
+    /// Per certificate, the path to a trusted root as the trust material suggests it,
+    /// not validated; for the views only.
+    #[serde(skip)]
+    trees: Vec<Vec<TreeRow>>,
 }
 
 #[derive(Serialize)]
@@ -63,7 +69,7 @@ struct P12KeyInfo {
 }
 
 #[derive(Serialize)]
-struct CertificateInfo {
+pub(super) struct CertificateInfo {
     subject: String,
     issuer: String,
     serial: String,
@@ -120,7 +126,12 @@ struct AdmissionInfo {
     registration_number: Option<String>,
 }
 
-pub fn run(file: &Path, p12_password: &str, out: &Output) -> Result<Exit, CliError> {
+pub fn run(
+    file: &Path,
+    p12_password: &str,
+    global: &GlobalArgs,
+    out: &Output,
+) -> Result<Exit, CliError> {
     let source = input::read(file)?;
     let input = input::load(&source, p12_password)?;
     let now = SystemClock.now();
@@ -133,12 +144,23 @@ pub fn run(file: &Path, p12_password: &str, out: &Output) -> Result<Exit, CliErr
         .pkcs12
         .as_ref()
         .map(|p12| container(&source.bytes, p12, &certificates));
+    let trees = if out.is_json() {
+        Vec::new()
+    } else {
+        let certs: Vec<ti_pki::Certificate> = input
+            .certificates
+            .iter()
+            .map(|l| l.certificate.clone())
+            .collect();
+        trees(&certs, global, out, now)
+    };
     let report = Report {
         schema: SCHEMA,
         source: source.name,
         certificates,
         pkcs12,
         now,
+        trees,
     };
     if out.is_json() {
         out.json(&report)?;
@@ -153,9 +175,15 @@ pub fn run(file: &Path, p12_password: &str, out: &Output) -> Result<Exit, CliErr
 pub fn show(
     source: String,
     certificates: Vec<ti_pki::Certificate>,
+    global: &GlobalArgs,
     out: &Output,
 ) -> Result<Exit, CliError> {
     let now = SystemClock.now();
+    let trees = if out.is_json() {
+        Vec::new()
+    } else {
+        trees(&certificates, global, out, now)
+    };
     let report = Report {
         schema: SCHEMA,
         source,
@@ -174,6 +202,7 @@ pub fn show(
             .collect(),
         pkcs12: None,
         now,
+        trees,
     };
     if out.is_json() {
         out.json(&report)?;
@@ -181,6 +210,50 @@ pub fn show(
         out.render_views(&sections(&report), &summary(&report))?;
     }
     Ok(Exit::Ok)
+}
+
+/// For each of `certs`, the path to a trusted root as the trust material suggests it:
+/// built from the cache or the embedded roots (never the network), the other
+/// certificates of the file and the TSL's CAs, by name and key identifier only. Nothing
+/// is validated; `pki verify` does that.
+fn trees(
+    certs: &[ti_pki::Certificate],
+    global: &GlobalArgs,
+    out: &Output,
+    now: Timestamp,
+) -> Vec<Vec<TreeRow>> {
+    let store = (|| {
+        let (env, _) = super::verify::environment(Environment::Auto, certs, now).ok()?;
+        let session = Session::new(global, true, out).ok()?;
+        let config = ti_pki::TrustConfig::preset(env);
+        session.load(&config, env.tier()).ok().map(|m| m.store)
+    })();
+    certs
+        .iter()
+        .map(|cert| {
+            let others: Vec<ti_pki::Certificate> = certs
+                .iter()
+                .filter(|c| c.der() != cert.der())
+                .chain(store.iter().flat_map(|s| s.intermediates()))
+                .cloned()
+                .collect();
+            let built = store
+                .as_deref()
+                .map(|store| ti_pki::chain::build_chain(cert, &others, store));
+            let (chain, complete) = match built {
+                Some(Ok(chain)) => (chain, true),
+                Some(Err(e)) => (e.partial, false),
+                None => (vec![cert.clone()], false),
+            };
+            super::chain_tree(
+                &chain,
+                complete,
+                now,
+                |_| Line::default(),
+                |_| Line::default(),
+            )
+        })
+        .collect()
 }
 
 /// The key of `cert` in words, e.g. `ECDSA brainpoolP256r1`.
@@ -266,7 +339,7 @@ fn curve_name(oid: &ObjectIdentifier) -> String {
     }
 }
 
-fn describe(loaded: &input::Loaded, now: Timestamp) -> CertificateInfo {
+pub(super) fn describe(loaded: &input::Loaded, now: Timestamp) -> CertificateInfo {
     let cert = &loaded.certificate;
     let private_key = loaded.private_key;
     let (friendly_name, local_key_id) = loaded.bag.as_ref().map_or((None, None), |(name, id)| {
@@ -376,69 +449,79 @@ fn sections(report: &Report) -> Document {
         if count > 1 {
             doc.title(format!("Certificate {} of {count}", i + 1));
         }
-        name_section(&mut doc, "Subject", &cert.subject);
-        name_section(&mut doc, "Issuer", &cert.issuer);
-        // Issuer and serial identify the certificate; the hashes stay in JSON only.
-        doc.field("serial", Line::code(&cert.serial));
-
-        doc.section("Validity")
-            .field("not before", when(cert.not_before_at))
-            .field("not after", when(cert.not_after_at))
-            .field("status", validity(cert, report.now));
-
-        doc.section("TI").field(
-            "type",
-            cert.certificate_type
-                .map_or_else(|| Line::dim("not detected"), Line::code),
-        );
-        if let Some(p) = &cert.profile {
-            doc.field(
-                "profile",
-                Line::code(p.name).and_dim(format!(" ({})", p.detail)),
-            );
-        }
-        if let Some(a) = &cert.admission {
-            doc.field("admission", a.profession_items.join(", "));
-            if let Some(number) = &a.registration_number {
-                doc.field("registration", Line::code(number));
-            }
-            doc.items("profession", a.profession_oids.iter().map(oid_line));
-        }
-        doc.items("policies", cert.policies.iter().map(oid_line));
-
-        let key_tone = match cert.key.status {
-            s if s == KeyStatus::Admissible.as_str() => Tone::Good,
-            s if s == KeyStatus::PhasedOut.as_str() => Tone::Warn,
-            _ => Tone::Bad,
-        };
-        doc.section("Key").field(
-            "algorithm",
-            Line::text(format!("{} ", cert.key.algorithm)).and_status(key_tone, cert.key.status),
-        );
-        if cert.private_key {
-            doc.field("private key", "in this file");
-        }
-        doc.field("signature", cert.signature_algorithm.as_str())
-            .field("key usage", codes(&cert.key_usage))
-            .field("ext. usage", codes(&cert.extended_key_usage))
-            .field(
-                "CA",
-                match (cert.ca, cert.path_len) {
-                    (true, Some(n)) => format!("yes, path length {n}"),
-                    (true, None) => "yes".to_owned(),
-                    (false, _) => "no".to_owned(),
-                },
-            )
-            .field("critical", codes(&cert.critical_extensions));
-
-        if !cert.ocsp_urls.is_empty() {
-            doc.section("Revocation");
-            for url in &cert.ocsp_urls {
-                doc.field("OCSP", Line::link(url));
-            }
+        certificate_sections(&mut doc, cert, report.now);
+        doc.section("Trust (not validated)");
+        if let Some(rows) = report.trees.get(i) {
+            doc.tree(rows.clone());
         }
     }
     doc
+}
+
+/// The sections that describe one certificate, as `pki inspect` and `pki verify` show
+/// them: subject, issuer, validity at `now`, what the TI reads, key, revocation sources.
+pub(super) fn certificate_sections(doc: &mut Document, cert: &CertificateInfo, now: Timestamp) {
+    name_section(doc, "Subject", &cert.subject);
+    name_section(doc, "Issuer", &cert.issuer);
+    // Issuer and serial identify the certificate; the hashes stay in JSON only.
+    doc.field("serial", Line::code(&cert.serial));
+
+    doc.section("Validity")
+        .field("not before", when(cert.not_before_at))
+        .field("not after", when(cert.not_after_at))
+        .field("status", validity(cert, now));
+
+    doc.section("TI").field(
+        "type",
+        cert.certificate_type
+            .map_or_else(|| Line::dim("not detected"), Line::code),
+    );
+    if let Some(p) = &cert.profile {
+        doc.field(
+            "profile",
+            Line::code(p.name).and_dim(format!(" ({})", p.detail)),
+        );
+    }
+    if let Some(a) = &cert.admission {
+        doc.field("admission", a.profession_items.join(", "));
+        if let Some(number) = &a.registration_number {
+            doc.field("registration", Line::code(number));
+        }
+        doc.items("profession", a.profession_oids.iter().map(oid_line));
+    }
+    doc.items("policies", cert.policies.iter().map(oid_line));
+
+    let key_tone = match cert.key.status {
+        s if s == KeyStatus::Admissible.as_str() => Tone::Good,
+        s if s == KeyStatus::PhasedOut.as_str() => Tone::Warn,
+        _ => Tone::Bad,
+    };
+    doc.section("Key").field(
+        "algorithm",
+        Line::text(format!("{} ", cert.key.algorithm)).and_status(key_tone, cert.key.status),
+    );
+    if cert.private_key {
+        doc.field("private key", "in this file");
+    }
+    doc.field("signature", cert.signature_algorithm.as_str())
+        .field("key usage", codes(&cert.key_usage))
+        .field("ext. usage", codes(&cert.extended_key_usage))
+        .field(
+            "CA",
+            match (cert.ca, cert.path_len) {
+                (true, Some(n)) => format!("yes, path length {n}"),
+                (true, None) => "yes".to_owned(),
+                (false, _) => "no".to_owned(),
+            },
+        )
+        .field("critical", codes(&cert.critical_extensions));
+
+    if !cert.ocsp_urls.is_empty() {
+        doc.section("Revocation");
+        for url in &cert.ocsp_urls {
+            doc.field("OCSP", Line::link(url));
+        }
+    }
 }
 
 fn encryption_line(e: &EncryptionInfo) -> Line {
@@ -483,39 +566,67 @@ fn key_line(key: &P12KeyInfo) -> Line {
     }
 }
 
-/// A distinguished name as a section: the common name first and strong, the other
-/// components on one line.
+/// A distinguished name as a section, one field per component in the name's order:
+/// `common name`, `organization` and so on; the common name strong.
 pub(super) fn name_section(doc: &mut Document, title: &str, name: &str) {
-    let (cn, rest) = split_name(name);
     doc.section(title);
-    if let Some(cn) = cn {
-        doc.paragraph(Line::strong(cn));
+    for part in dn_parts(name) {
+        let (key, value) = part.split_once('=').unwrap_or(("", part.as_str()));
+        let value = value.replace("\\,", ",");
+        let line = if key == "CN" {
+            Line::strong(value)
+        } else {
+            Line::text(value)
+        };
+        doc.field(attribute_label(key), line);
     }
-    if !rest.is_empty() {
-        doc.paragraph(Line::dim(rest));
+}
+
+/// The label of a name component: its attribute in words, else the attribute as
+/// written.
+fn attribute_label(key: &str) -> &str {
+    match key {
+        "CN" => "common name",
+        "GN" | "givenName" => "given name",
+        "SN" | "surname" => "surname",
+        "O" => "organization",
+        "OU" => "org. unit",
+        "C" => "country",
+        "L" => "locality",
+        "ST" => "state",
+        "STREET" | "street" => "street",
+        "postalCode" | "2.5.4.17" => "postal code",
+        "title" => "title",
+        "serialNumber" | "SERIALNUMBER" | "2.5.4.5" => "serialNumber",
+        other => other,
     }
+}
+
+/// The PKCS#12 container in one line, then its keys.
+fn p12_summary(doc: &mut Document, p12: &Pkcs12Info) {
+    let mut head = Line::strong("PKCS#12").and_text(format!(" · {}", p12.encoding));
+    head = match &p12.mac {
+        Some(mac) => head.and_dim(format!(" · MAC {} × {}", mac.digest, mac.iterations)),
+        None => head.and_text(" · ").and_status(Tone::Warn, "no MAC"),
+    };
+    let mut encryption: Vec<&str> = Vec::new();
+    for e in &p12.encryption {
+        if !encryption.contains(&e.algorithm.as_str()) {
+            encryption.push(&e.algorithm);
+        }
+    }
+    if !encryption.is_empty() {
+        head = head.and_dim(format!(" · {}", encryption.join(", ")));
+    }
+    doc.paragraph(head);
+    doc.items("", p12.keys.iter().map(key_line));
 }
 
 /// The Markdown view: a summary, then one list, then the PEM.
 fn summary(report: &Report) -> Document {
     let mut doc = Document::default();
     if let Some(p12) = &report.pkcs12 {
-        let mut head = Line::strong("PKCS#12").and_text(format!(" · {}", p12.encoding));
-        head = match &p12.mac {
-            Some(mac) => head.and_dim(format!(" · MAC {} × {}", mac.digest, mac.iterations)),
-            None => head.and_text(" · ").and_status(Tone::Warn, "no MAC"),
-        };
-        let mut encryption: Vec<&str> = Vec::new();
-        for e in &p12.encryption {
-            if !encryption.contains(&e.algorithm.as_str()) {
-                encryption.push(&e.algorithm);
-            }
-        }
-        if !encryption.is_empty() {
-            head = head.and_dim(format!(" · {}", encryption.join(", ")));
-        }
-        doc.paragraph(head);
-        doc.items("", p12.keys.iter().map(key_line));
+        p12_summary(&mut doc, p12);
     }
     let count = report.certificates.len();
     for (i, cert) in report.certificates.iter().enumerate() {
@@ -594,6 +705,9 @@ fn summary(report: &Report) -> Document {
         }
         for url in &cert.ocsp_urls {
             doc.field("OCSP", Line::link(url));
+        }
+        if let Some(rows) = report.trees.get(i) {
+            doc.tree(rows.clone());
         }
         doc.pem(&cert.pem);
     }

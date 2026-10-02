@@ -45,7 +45,7 @@ pub fn run(cli: &ConnectorCli, global: &GlobalArgs, out: &Output) -> Result<Exit
             let session = open()?;
             let (what, certificate) =
                 card_certificate(&session, &args.card, args.cert_ref, args.crypt)?;
-            inspect::show(what, vec![certificate], out)
+            inspect::show(what, vec![certificate], global, out)
         }
         ConnectorCommand::Verify(ConnectorVerify::Pin(args)) => {
             pin(&open()?, &cli.args, args, false, out)

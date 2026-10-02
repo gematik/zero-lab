@@ -158,6 +158,18 @@ pub enum Block {
     Pem(String),
     /// Rows under column headings: aligned columns in text, a table in Markdown.
     Table(Vec<String>, Vec<Vec<Line>>),
+    /// A path drawn as a tree, each row one level below the previous: a certificate
+    /// chain. Text draws it with `└──` and aligns the details; Markdown as a text block.
+    Tree(Vec<TreeRow>),
+}
+
+/// A row of a [`Block::Tree`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TreeRow {
+    /// What the row is, e.g. a certificate's common name.
+    pub name: Line,
+    /// What is said about it, after the names.
+    pub detail: Line,
 }
 
 /// A command's output as blocks.
@@ -207,6 +219,14 @@ impl Document {
         self
     }
 
+    /// A path, the first row at the top; nothing for no rows.
+    pub fn tree(&mut self, rows: Vec<TreeRow>) -> &mut Self {
+        if !rows.is_empty() {
+            self.blocks.push(Block::Tree(rows));
+        }
+        self
+    }
+
     /// A labelled list; nothing for no items.
     pub fn items(
         &mut self,
@@ -219,6 +239,17 @@ impl Document {
         }
         self
     }
+}
+
+/// The branch drawn before each of `rows` rows of a [`Block::Tree`]: nothing for the
+/// first, then `└── ` one level deeper per row.
+pub fn tree_prefixes(rows: usize) -> Vec<String> {
+    (0..rows)
+        .map(|depth| match depth {
+            0 => String::new(),
+            d => format!("{}└── ", "    ".repeat(d - 1)),
+        })
+        .collect()
 }
 
 /// A span of seconds in words, the two largest adjacent units: `1 year 4 months`,
