@@ -232,6 +232,23 @@ fn cache_clear_removes_only_the_downloads() {
     assert_eq!(again["removed_files"], 0);
 }
 
+/// The codes a verify report may carry are exactly ti-pki's.
+#[test]
+fn verify_codes_are_ti_pkis() {
+    let schema: Value = serde_json::from_str(
+        &std::fs::read_to_string(manifest("schemas/pki-verify.json")).unwrap(),
+    )
+    .unwrap();
+    let listed: Vec<&str> = schema["$defs"]["finding"]["properties"]["code"]["enum"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c.as_str().unwrap())
+        .collect();
+    let codes: Vec<&str> = ti_pki::ErrorCode::ALL.iter().map(|c| c.as_str()).collect();
+    assert_eq!(listed, codes);
+}
+
 #[test]
 fn schemas_are_published_by_name() {
     let dir = std::env::temp_dir();

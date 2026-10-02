@@ -312,7 +312,28 @@
       "properties": {
         "code": {
           "type": "string",
-          "description": "Stable snake_case code, as in gempki"
+          "description": "Stable snake_case code, as in gempki; schema version 1 may add codes",
+          "enum": [
+            "revoked",
+            "ocsp_response_invalid",
+            "ocsp_responder_untrusted",
+            "ocsp_unavailable",
+            "unrecognized_critical_extension",
+            "ocsp_responder_not_rfc6960",
+            "fqdn_mismatch",
+            "role_oid_missing",
+            "expired",
+            "not_yet_valid",
+            "chain_incomplete",
+            "policy_mismatch",
+            "signature_invalid",
+            "key_usage_mismatch",
+            "key_not_admissible",
+            "key_phased_out",
+            "profile_not_detected",
+            "profile_ambiguous",
+            "profile_type_mismatch"
+          ]
         },
         "subject": {
           "type": "string",

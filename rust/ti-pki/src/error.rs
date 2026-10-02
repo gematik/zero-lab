@@ -102,6 +102,29 @@ pub enum ErrorCode {
 }
 
 impl ErrorCode {
+    /// Every code, in declaration order: for schemas and documentation that list them.
+    pub const ALL: &[ErrorCode] = &[
+        ErrorCode::Revoked,
+        ErrorCode::OcspResponseInvalid,
+        ErrorCode::OcspResponderUntrusted,
+        ErrorCode::OcspUnavailable,
+        ErrorCode::UnrecognizedCriticalExtension,
+        ErrorCode::OcspResponderNotRfc6960,
+        ErrorCode::FqdnMismatch,
+        ErrorCode::RoleOidMissing,
+        ErrorCode::Expired,
+        ErrorCode::NotYetValid,
+        ErrorCode::ChainIncomplete,
+        ErrorCode::PolicyMismatch,
+        ErrorCode::SignatureInvalid,
+        ErrorCode::KeyUsageMismatch,
+        ErrorCode::KeyNotAdmissible,
+        ErrorCode::KeyPhasedOut,
+        ErrorCode::ProfileNotDetected,
+        ErrorCode::ProfileAmbiguous,
+        ErrorCode::ProfileTypeMismatch,
+    ];
+
     /// The stable string form, as used in logs and by the Go implementation.
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -231,6 +254,37 @@ impl fmt::Display for ValidationWarning {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A new variant does not compile here until it has a place, and fails the
+    /// assertions until `ALL` holds it there.
+    #[test]
+    fn all_lists_every_code_once() {
+        let place = |code: ErrorCode| match code {
+            ErrorCode::Revoked => 0,
+            ErrorCode::OcspResponseInvalid => 1,
+            ErrorCode::OcspResponderUntrusted => 2,
+            ErrorCode::OcspUnavailable => 3,
+            ErrorCode::UnrecognizedCriticalExtension => 4,
+            ErrorCode::OcspResponderNotRfc6960 => 5,
+            ErrorCode::FqdnMismatch => 6,
+            ErrorCode::RoleOidMissing => 7,
+            ErrorCode::Expired => 8,
+            ErrorCode::NotYetValid => 9,
+            ErrorCode::ChainIncomplete => 10,
+            ErrorCode::PolicyMismatch => 11,
+            ErrorCode::SignatureInvalid => 12,
+            ErrorCode::KeyUsageMismatch => 13,
+            ErrorCode::KeyNotAdmissible => 14,
+            ErrorCode::KeyPhasedOut => 15,
+            ErrorCode::ProfileNotDetected => 16,
+            ErrorCode::ProfileAmbiguous => 17,
+            ErrorCode::ProfileTypeMismatch => 18,
+        };
+        assert_eq!(ErrorCode::ALL.len(), 19);
+        for (i, code) in ErrorCode::ALL.iter().enumerate() {
+            assert_eq!(place(*code), i, "{code}");
+        }
+    }
 
     #[test]
     fn display_names_code_message_subject_and_cause() {

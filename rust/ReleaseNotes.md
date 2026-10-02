@@ -13,6 +13,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `pki verify --fqdn NAME`: the certificate must name `NAME` if its commonName names a
   host (`fqdn_mismatch` otherwise).
 
+#### changed
+- The `pki verify` schema lists the possible `code`s of errors and warnings as an `enum`,
+  kept equal to ti-pki's `ErrorCode::ALL` by a test; schema version 1 may add codes.
+
 #### removed
 - `probe` no longer checks ePA 3, for the time being.
 
@@ -147,6 +151,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `Validator::expected_fqdn` / `with_expected_fqdn` and `checks::fqdn`: a host named in
   the end entity's commonName must be the expected one, ignoring case and a trailing dot;
   new error code `fqdn_mismatch` (A_30046 (5), C_12791).
+- `ErrorCode::ALL`: every code in declaration order, for schemas and documentation.
 
 #### changed
 - `Timestamp`, `Clock` and `SystemClock` come from `ti-types`, so every TI crate
