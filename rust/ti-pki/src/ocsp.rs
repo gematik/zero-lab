@@ -55,7 +55,9 @@ use x509_cert::spki::AlgorithmIdentifierOwned;
 
 use crate::algorithms::{self, AlgorithmSet};
 use crate::error::{ErrorCode, ValidationError};
-use crate::revocation::{ResponderAuthorization, RevocationResult, RevocationStatus};
+use crate::revocation::{
+    ResponderAuthorization, RevocationChecker, RevocationResult, RevocationStatus,
+};
 use crate::time::Timestamp;
 use crate::{Certificate, TrustStore};
 
@@ -110,6 +112,11 @@ pub struct ResponseCheck<'a> {
     /// The trust store whose intermediates may authorize a delegate of another CA of
     /// the issuing CA's TSP. Without it, only RFC 6960 authorization applies.
     pub store: Option<&'a TrustStore>,
+    /// The response came with the object being checked (embedded in a signature, sent
+    /// in an ASL handshake): it must be valid at `now`, the reference time
+    /// (`thisUpdate` ≤ `now` ≤ `nextUpdate`), without tolerance or maximum age, and an
+    /// eGK certificate needs no certHash (A_30046 (7) of C_12791).
+    pub stapled: bool,
 }
 
 impl<'a> ResponseCheck<'a> {
@@ -122,6 +129,15 @@ impl<'a> ResponseCheck<'a> {
             allow_missing_cert_hash: false,
             algorithms,
             store: None,
+            stapled: false,
+        }
+    }
+
+    /// The check of a response supplied with the object, at the `reference` time.
+    pub fn stapled(reference: Timestamp, algorithms: &'a AlgorithmSet) -> Self {
+        ResponseCheck {
+            stapled: true,
+            ..ResponseCheck::new(reference, algorithms)
         }
     }
 }
@@ -265,7 +281,7 @@ fn verify(
         verify_cert_hash(
             single.single_extensions.as_ref(),
             cert,
-            check.allow_missing_cert_hash,
+            check.allow_missing_cert_hash || (check.stapled && is_egk(cert)),
         )
         .map_err(invalid)?;
     }
@@ -515,6 +531,24 @@ fn verify_cert_hash(
 /// `thisUpdate` at most the tolerance in the future, `nextUpdate` (if set) at most the
 /// tolerance in the past. `None` inside it.
 fn outside_window(result: &RevocationResult, check: &ResponseCheck<'_>) -> Option<String> {
+    if check.stapled {
+        let this_update = result.this_update?;
+        if this_update > check.now {
+            return Some(format!(
+                "OCSP thisUpdate {this_update} lies after the reference time {}",
+                check.now
+            ));
+        }
+        if let Some(next_update) = result.next_update
+            && next_update < check.now
+        {
+            return Some(format!(
+                "OCSP nextUpdate {next_update} lies before the reference time {}",
+                check.now
+            ));
+        }
+        return None;
+    }
     let millis = |t: Timestamp| i128::from(t.0) * 1000;
     let now = millis(check.now);
     let max_age = i128::try_from(check.max_response_age.as_millis()).unwrap_or(i128::MAX);
@@ -550,6 +584,89 @@ fn outside_window(result: &RevocationResult, check: &ResponseCheck<'_>) -> Optio
         ));
     }
     None
+}
+
+/// An eGK certificate: of a `C.CH.*` type, or untyped with the Versicherter role.
+fn is_egk(cert: &Certificate) -> bool {
+    use crate::cert_type::{CertificateType as T, detect_certificate_type};
+    matches!(
+        detect_certificate_type(cert),
+        Some(T::ChQes | T::ChSig | T::ChEnc | T::ChEncv | T::ChAut | T::ChAutn)
+    ) || cert
+        .admission()
+        .ok()
+        .flatten()
+        .is_some_and(|a| a.profession_oids.contains(&crate::oid::PROF_VERSICHERTER))
+}
+
+/// Whether `der` is an OCSP response with a single response about `cert`.
+fn answers_for(der: &[u8], cert: &Certificate, issuer: &Certificate) -> bool {
+    let answers = || -> Option<bool> {
+        let response = OcspResponse::from_der(der).ok()?;
+        let bytes = response.response_bytes?;
+        let basic = BasicOcspResponse::from_der(bytes.response.as_bytes()).ok()?;
+        let tbs = basic.tbs_response_data.to_der().ok()?;
+        let data = ResponseData::from_der(&tbs).ok()?;
+        Some(
+            data.responses
+                .iter()
+                .any(|single| cert_id_matches(&single.cert_id, cert, issuer).is_ok()),
+        )
+    };
+    answers().unwrap_or(false)
+}
+
+/// Answers revocation questions from OCSP responses supplied with the object being
+/// checked (embedded in a signature, sent in an ASL handshake) instead of asking a
+/// responder: the one about the certificate is verified at the reference time as
+/// [`ResponseCheck::stapled`] describes (A_30046 (7) of C_12791). A certificate none of
+/// them answers for is [`Unknown`](RevocationStatus::Unknown).
+#[derive(Clone, Debug)]
+pub struct StapledOcsp {
+    responses: Vec<Vec<u8>>,
+    reference: Timestamp,
+    algorithms: std::borrow::Cow<'static, AlgorithmSet>,
+}
+
+impl StapledOcsp {
+    /// Checks against `responses` at `reference`, verifying signatures with
+    /// `algorithms` (usually the configuration's).
+    pub fn new(
+        responses: impl IntoIterator<Item = Vec<u8>>,
+        reference: Timestamp,
+        algorithms: std::borrow::Cow<'static, AlgorithmSet>,
+    ) -> Self {
+        StapledOcsp {
+            responses: responses.into_iter().collect(),
+            reference,
+            algorithms,
+        }
+    }
+}
+
+impl RevocationChecker for StapledOcsp {
+    async fn check(
+        &self,
+        cert: &Certificate,
+        issuer: &Certificate,
+        store: &TrustStore,
+    ) -> Result<RevocationResult, ValidationError> {
+        let check = ResponseCheck {
+            store: Some(store),
+            ..ResponseCheck::stapled(self.reference, &self.algorithms)
+        };
+        match self
+            .responses
+            .iter()
+            .find(|der| answers_for(der, cert, issuer))
+        {
+            Some(der) => verify_response(der, cert, issuer, &check),
+            None => Ok(RevocationResult::unknown(
+                self.reference,
+                "no supplied OCSP response answers for this certificate",
+            )),
+        }
+    }
 }
 
 fn reason_name(reason: CrlReason) -> &'static str {
@@ -814,6 +931,7 @@ mod checker {
                 allow_missing_cert_hash: self.allow_missing_cert_hash,
                 algorithms: &self.algorithms,
                 store: Some(store),
+                stapled: false,
             };
             let mut result = verify_response(&response, cert, issuer, &check)?;
             url.clone_into(&mut result.responder_url);
@@ -1313,6 +1431,97 @@ mod tests {
             assert_eq!(
                 error.message,
                 "OCSP certHash does not match the certificate"
+            );
+        }
+
+        /// A_30046 (7): a supplied response is valid at the reference time, without
+        /// tolerance or maximum age.
+        #[test]
+        fn stapled_responses_at_a_reference_time() {
+            let pki = TestPki::new();
+            let (ee, ca) = (&pki.ee_arzt, &pki.sub_ca_hba);
+            let stapled = |reference: Timestamp| {
+                verify_response(
+                    response!("good"),
+                    ee,
+                    ca,
+                    &ResponseCheck::stapled(reference, algorithms::DEFAULT),
+                )
+                .unwrap()
+            };
+            let hours_later = Timestamp(TestPki::NOW.0 + 3 * 3600);
+            assert_eq!(stapled(hours_later).status, RevocationStatus::Good);
+            assert_eq!(
+                verify_at(response!("good"), ee, ca, hours_later)
+                    .unwrap()
+                    .status,
+                RevocationStatus::Unknown,
+                "too old for an online answer"
+            );
+            assert_eq!(
+                stapled(Timestamp(TestPki::NOW.0 - 1)).reason,
+                "OCSP thisUpdate 2026-01-01T00:00:00Z lies after the reference time \
+                 2025-12-31T23:59:59Z"
+            );
+            assert_eq!(
+                stapled(at("2026-01-02T00:00:01Z")).reason,
+                "OCSP nextUpdate 2026-01-02T00:00:00Z lies before the reference time \
+                 2026-01-02T00:00:01Z"
+            );
+        }
+
+        /// A_30046 (7): an eGK certificate's supplied response needs no certHash; any
+        /// other's does, and online answers always do.
+        #[test]
+        fn stapled_egk_responses_need_no_cert_hash() {
+            let pki = TestPki::new();
+            let egk = crate::testing::typed("type-ch-aut");
+            let stapled = ResponseCheck::stapled(TestPki::NOW, algorithms::DEFAULT);
+            let result = verify_response(
+                response!("egk-no-cert-hash"),
+                &egk,
+                &pki.sub_ca_komp,
+                &stapled,
+            )
+            .unwrap();
+            assert_eq!(result.status, RevocationStatus::Good);
+            let online = verify(response!("egk-no-cert-hash"), &egk, &pki.sub_ca_komp).unwrap_err();
+            assert_eq!(
+                online.message,
+                "OCSP response carries no certHash extension"
+            );
+            let other = verify_response(
+                response!("no-cert-hash"),
+                &pki.ee_arzt,
+                &pki.sub_ca_hba,
+                &stapled,
+            )
+            .unwrap_err();
+            assert_eq!(other.message, "OCSP response carries no certHash extension");
+        }
+
+        #[test]
+        fn stapled_checker_picks_the_response_about_the_certificate() {
+            let pki = TestPki::new();
+            let store = TrustStore::new([pki.rca1.clone()]);
+            let checker = StapledOcsp::new(
+                [
+                    response!("egk-no-cert-hash").to_vec(),
+                    response!("good").to_vec(),
+                ],
+                TestPki::NOW,
+                algorithms::DEFAULT.into(),
+            );
+            let check = |cert: &Certificate| {
+                futures_lite::future::block_on(checker.check(cert, &pki.sub_ca_hba, &store))
+                    .unwrap()
+            };
+            assert_eq!(check(&pki.ee_arzt).status, RevocationStatus::Good);
+            let none = check(&pki.ee_revoked);
+            assert_eq!(none.status, RevocationStatus::Unknown);
+            assert_eq!(
+                none.reason,
+                "no supplied OCSP response answers for this certificate"
             );
         }
 

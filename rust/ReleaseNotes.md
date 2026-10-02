@@ -152,6 +152,12 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   the end entity's commonName must be the expected one, ignoring case and a trailing dot;
   new error code `fqdn_mismatch` (A_30046 (5), C_12791).
 - `ErrorCode::ALL`: every code in declaration order, for schemas and documentation.
+- Supplied OCSP responses (embedded in a signature, sent in an ASL handshake):
+  `ResponseCheck::stapled` checks a response at a reference time (`thisUpdate` ≤ t ≤
+  `nextUpdate`, no tolerance, no maximum age), with no certHash required for eGK
+  certificates; `ocsp::StapledOcsp` is a `RevocationChecker` over such responses. The
+  signer is still authorized by its issuer, as an RFC 6960 delegate or as a delegate of
+  the same TSP, not by a TSL listing (A_30046 (7), C_12791).
 
 #### changed
 - `Timestamp`, `Clock` and `SystemClock` come from `ti-types`, so every TI crate
