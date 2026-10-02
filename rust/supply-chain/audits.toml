@@ -1,4 +1,8 @@
 
 # cargo-vet audits file
 
-[audits]
+[[audits.yoke-derive]]
+who = "Sergej Suskov <108782+spilikin@users.noreply.github.com>"
+criteria = "safe-to-deploy"
+delta = "0.8.3 -> 0.8.4"
+notes = "Adds rust-version 1.82 and builds the lifetime underscores with str::repeat instead of from_utf8 with expect; no behavioural change."
