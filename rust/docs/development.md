@@ -262,6 +262,10 @@ the TSL's CAs that a verified root signed are kept. A misbehaving source can the
 deny service or serve stale data, and the freshness policy catches staleness. The module
 docs carry the composition and the failure table.
 
+Over HTTP the TSL is not downloaded while the SHA-256 published next to it (`.sha2`)
+matches the list in hand; a download must match that hash (A_30044 (2) of C_12791). The
+hash only saves the download: the list is verified as before, whatever it says.
+
 The core has no HTTP client and no executor. Runtime glue is opt-in: the `reqwest`
 feature provides a transport over a caller-provided `reqwest::Client` (native and
 wasm32), the `tokio` feature a background driver with SIGHUP and an admin trigger.

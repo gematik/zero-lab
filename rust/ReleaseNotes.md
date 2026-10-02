@@ -179,6 +179,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   certificate that is valid otherwise (A_30046 (4), C_12791); `ee_checks` no longer
   contains the role check. A certificate that fails elsewhere no longer reports
   `role_oid_missing` as well.
+- `HttpLoader` compares the TSL by the SHA-256 published next to it (`.sha2`) before
+  downloading: the list in hand with that hash (entity tag `sha256:<hex>`) is "not
+  modified", and a download must match the hash. Without a readable hash over HTTP the TSL
+  is fetched as before (A_30044 (2), C_12791).
 
 #### removed
 - `TrustConfig::accept_test_only_policies` is removed: gematik's test cards carry the

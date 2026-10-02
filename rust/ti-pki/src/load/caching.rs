@@ -156,23 +156,23 @@ mod tests {
     #[test]
     fn miss_then_hit_within_max_age() {
         let (transport, store, clock) = (
-            MockTransport::new([Ok(fresh(b"tsl-1", "e1"))]),
+            MockTransport::new([Ok(fresh(b"roots-1", "e1"))]),
             MemoryCacheStore::new(),
             FixedClock::new(T0),
         );
         let loader = stack(&transport, &store, &clock, false);
 
-        let first = block_on(loader.load(Artifact::Tsl)).unwrap();
+        let first = block_on(loader.load(Artifact::Roots)).unwrap();
         assert_eq!(
             (first.body.as_slice(), first.meta.source),
-            (&b"tsl-1"[..], Source::Http)
+            (&b"roots-1"[..], Source::Http)
         );
 
         clock.advance(HOUR / 2);
-        let second = block_on(loader.load(Artifact::Tsl)).unwrap();
+        let second = block_on(loader.load(Artifact::Roots)).unwrap();
         assert_eq!(
             (second.body.as_slice(), second.meta.source),
-            (&b"tsl-1"[..], Source::Cache)
+            (&b"roots-1"[..], Source::Cache)
         );
         assert_eq!(transport.requests().len(), 1);
     }
@@ -180,20 +180,20 @@ mod tests {
     #[test]
     fn revalidation_not_modified_moves_fetched_at() {
         let (transport, store, clock) = (
-            MockTransport::new([Ok(fresh(b"tsl-1", "e1")), Ok(not_modified("e1"))]),
+            MockTransport::new([Ok(fresh(b"roots-1", "e1")), Ok(not_modified("e1"))]),
             MemoryCacheStore::new(),
             FixedClock::new(T0),
         );
         let loader = stack(&transport, &store, &clock, false);
-        block_on(loader.load(Artifact::Tsl)).unwrap();
+        block_on(loader.load(Artifact::Roots)).unwrap();
 
         clock.advance(2 * HOUR);
-        let revalidated = block_on(loader.load(Artifact::Tsl)).unwrap();
-        assert_eq!(revalidated.body, b"tsl-1");
+        let revalidated = block_on(loader.load(Artifact::Roots)).unwrap();
+        assert_eq!(revalidated.body, b"roots-1");
         assert_eq!(revalidated.meta.fetched_at, T0 + 2 * HOUR);
         assert_eq!(transport.requests()[1].etag.as_deref(), Some("e1"));
 
-        let key = loader.cache_key(Artifact::Tsl);
+        let key = loader.cache_key(Artifact::Roots);
         let entry = block_on(store.get(&key)).unwrap().unwrap();
         assert_eq!(entry.meta.fetched_at, T0 + 2 * HOUR);
     }
@@ -238,21 +238,21 @@ mod tests {
     #[test]
     fn stale_if_error_window_then_propagate() {
         let (transport, store, clock) = (
-            MockTransport::new([Ok(fresh(b"tsl-1", "e1")), unreachable(), unreachable()]),
+            MockTransport::new([Ok(fresh(b"roots-1", "e1")), unreachable(), unreachable()]),
             MemoryCacheStore::new(),
             FixedClock::new(T0),
         );
         let loader = stack(&transport, &store, &clock, false);
-        block_on(loader.load(Artifact::Tsl)).unwrap();
+        block_on(loader.load(Artifact::Roots)).unwrap();
 
         clock.set(T0 + 5 * HOUR);
-        let stale = block_on(loader.load(Artifact::Tsl)).unwrap();
-        assert_eq!(stale.body, b"tsl-1");
+        let stale = block_on(loader.load(Artifact::Roots)).unwrap();
+        assert_eq!(stale.body, b"roots-1");
         assert!(matches!(stale.stale, Some(LoadError::Transport(_))));
 
         clock.set(T0 + 6 * HOUR);
         assert!(matches!(
-            block_on(loader.load(Artifact::Tsl)),
+            block_on(loader.load(Artifact::Roots)),
             Err(LoadError::Transport(_))
         ));
     }
