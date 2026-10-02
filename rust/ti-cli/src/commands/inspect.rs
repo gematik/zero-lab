@@ -465,7 +465,7 @@ fn sections(report: &Report) -> Document {
 /// them: subject, issuer, validity at `now`, what the TI reads, key, revocation sources.
 pub(super) fn certificate_sections(doc: &mut Document, cert: &CertificateInfo, now: Timestamp) {
     name_section(doc, "Subject", &cert.subject);
-    doc.items("alt. names", cert.subject_alt_names.iter().map(Line::code));
+    alt_names(doc, &cert.subject_alt_names);
     name_section(doc, "Issuer", &cert.issuer);
     // Issuer and serial identify the certificate; the hashes stay in JSON only.
     doc.field("serial", Line::code(&cert.serial));
@@ -525,6 +525,15 @@ pub(super) fn certificate_sections(doc: &mut Document, cert: &CertificateInfo, n
         for url in &cert.ocsp_urls {
             doc.field("OCSP", Line::link(url));
         }
+    }
+}
+
+/// The subject alternative names, one per line; `none` without any.
+fn alt_names(doc: &mut Document, names: &[String]) {
+    if names.is_empty() {
+        doc.field("alt. names", Line::dim("none"));
+    } else {
+        doc.items("alt. names", names.iter().map(Line::code));
     }
 }
 
@@ -659,7 +668,7 @@ fn summary(report: &Report) -> Document {
                 .and_dim(" · serial ")
                 .and_code(&cert.serial),
         );
-        doc.items("alt. names", cert.subject_alt_names.iter().map(Line::code));
+        alt_names(&mut doc, &cert.subject_alt_names);
 
         doc.field(
             "valid",
