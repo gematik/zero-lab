@@ -73,6 +73,20 @@ pub static EPA_VAU_AUT: Profile = Profile {
     default_for: &[],
 };
 
+/// The C.FD.TLS-S certificate a Fachdienst presents as a TLS server, e.g. an ePA
+/// Aktensystem: the type baseline (digitalSignature, serverAuth, its policies), no role.
+/// The default for the type. A caller that knows the server's name passes it as the
+/// expected FQDN, which the commonName must match (A_30046 (5) of C_12791).
+pub static FD_TLS_S: Profile = Profile {
+    name: "fd-tls-s",
+    description: "Fachdienst TLS server",
+    revocation: RevocationMode::HardFail,
+    extra_policies: &[],
+    required_role_oids: &[],
+    accepts_types: &[CertificateType::FdTlsS],
+    default_for: &[CertificateType::FdTlsS],
+};
+
 /// The C.FD.SIG certificates an IDP signs its discovery document and tokens with,
 /// identified by oid_idpd. There is deliberately no idp-aut: an IDP publishes no
 /// C.FD.AUT.
@@ -99,7 +113,7 @@ pub static ZETA_GUARD_AUT: Profile = Profile {
 };
 
 /// Every profile, sorted by name.
-pub static PROFILES: &[&Profile] = &[&EPA_VAU_AUT, &IDP_SIG, &SMB_AUT, &ZETA_GUARD_AUT];
+pub static PROFILES: &[&Profile] = &[&EPA_VAU_AUT, &FD_TLS_S, &IDP_SIG, &SMB_AUT, &ZETA_GUARD_AUT];
 
 /// Selector value for automatic selection ([`select_for_cert`]).
 pub const AUTO: &str = "auto";
@@ -427,6 +441,7 @@ mod tests {
                 "auto",
                 "none",
                 "epa-vau-aut",
+                "fd-tls-s",
                 "idp-sig",
                 "smb-aut",
                 "zeta-guard-aut"
@@ -517,14 +532,10 @@ mod tests {
                     .into()
             )
         );
+        let (profile, reason, _, _) = select("type-fd-tls-s");
         assert_eq!(
-            select("type-fd-tls-s"),
-            (
-                None,
-                SelectReason::Unclaimed,
-                vec![],
-                "no profile accepts type C.FD.TLS-S".into()
-            )
+            (profile, reason),
+            (Some("fd-tls-s"), SelectReason::ByDefault)
         );
         let undetected = select_for_cert(&typed("none-umbrella-only"));
         assert_eq!(undetected.cert_type, None);

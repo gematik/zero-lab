@@ -156,7 +156,10 @@ fn format_from_the_environment() {
         .output()
         .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(json["profiles"].as_array().unwrap().len(), 4);
+    assert_eq!(
+        json["profiles"].as_array().unwrap().len(),
+        ti_pki::profile::PROFILES.len()
+    );
 }
 
 #[test]
@@ -207,7 +210,13 @@ fn unreadable_input_is_exit_4_with_a_hint() {
 #[test]
 fn profiles() {
     let list = stdout(&ti(&["pki", "profiles", "list"]));
-    for name in ["epa-vau-aut", "idp-sig", "smb-aut", "zeta-guard-aut"] {
+    for name in [
+        "epa-vau-aut",
+        "fd-tls-s",
+        "idp-sig",
+        "smb-aut",
+        "zeta-guard-aut",
+    ] {
         assert!(list.contains(name), "{list}");
     }
     let describe = ti(&[

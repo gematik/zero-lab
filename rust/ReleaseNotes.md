@@ -163,6 +163,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   certificates; `ocsp::StapledOcsp` is a `RevocationChecker` over such responses. The
   signer is still authorized by its issuer, as an RFC 6960 delegate or as a delegate of
   the same TSP, not by a TSL listing (A_30046 (7), C_12791).
+- Profile `fd-tls-s`: the C.FD.TLS-S certificate of a Fachdienst TLS server, the type
+  baseline without a role, default for the type; pair it with the expected FQDN.
 
 #### changed
 - `Timestamp`, `Clock` and `SystemClock` come from `ti-types`, so every TI crate
