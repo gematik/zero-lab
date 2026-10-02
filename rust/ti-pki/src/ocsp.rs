@@ -77,6 +77,10 @@ pub const OCSP_STATUS_RETRIES: u32 = 3;
 /// repetitions failed (A_30044 (4), A_30046 (3) of C_12791).
 pub const OCSP_STATUS_PAUSE: Duration = Duration::from_secs(300);
 
+/// How long `OcspChecker` reuses a `good` or `revoked` result, at most until the
+/// response's `nextUpdate` (A_30046 (6) of C_12791, after A_23225: one hour by default).
+pub const OCSP_CACHE_TTL: Duration = Duration::from_secs(3600);
+
 /// `Content-Type` of an OCSP request.
 pub const CONTENT_TYPE_REQUEST: &str = "application/ocsp-request";
 
@@ -575,15 +579,20 @@ mod checker {
     use der::Decode as _;
 
     use super::{
-        CONTENT_TYPE_REQUEST, CONTENT_TYPE_RESPONSE, DEFAULT_MAX_RESPONSE_AGE, OCSP_STATUS_PAUSE,
-        OCSP_STATUS_RETRIES, OcspResponse, ResponseCheck, ResponseStatus, request, verify_response,
+        CONTENT_TYPE_REQUEST, CONTENT_TYPE_RESPONSE, DEFAULT_MAX_RESPONSE_AGE, OCSP_CACHE_TTL,
+        OCSP_STATUS_PAUSE, OCSP_STATUS_RETRIES, OcspResponse, ResponseCheck, ResponseStatus,
+        request, verify_response,
     };
     use crate::algorithms::AlgorithmSet;
     use crate::error::{ErrorCode, ValidationError};
     use crate::load::{PostRequest, Transport};
-    use crate::revocation::{RevocationChecker, RevocationResult};
+    use crate::revocation::{RevocationChecker, RevocationResult, RevocationStatus};
     use crate::time::{Clock, Timestamp};
     use crate::{Certificate, TrustConfig, TrustStore};
+
+    /// Results with the instant they expire, keyed by the DER request: its CertID names
+    /// the certificate and its issuer.
+    type ResultCache = HashMap<Vec<u8>, (RevocationResult, Timestamp)>;
 
     /// Queries a certificate's OCSP responder through a [`Transport`] and verifies the
     /// answer with [`verify_response`](super::verify_response). The transport owns
@@ -591,6 +600,10 @@ mod checker {
     /// responder answered `tryLater`, `internalError` and the like) is repeated up to
     /// [`OCSP_STATUS_RETRIES`] times; after that the responder rests for
     /// [`OCSP_STATUS_PAUSE`], shared by the checker's clones.
+    ///
+    /// `good` and `revoked` results are reused for [`OCSP_CACHE_TTL`], at most until the
+    /// response's `nextUpdate`; the cache is shared by the clones too. An `unknown` result
+    /// or an error is never cached.
     #[derive(Clone, Debug)]
     pub struct OcspChecker<T, C> {
         transport: T,
@@ -601,6 +614,8 @@ mod checker {
         allow_missing_cert_hash: bool,
         responder_url: Option<String>,
         resting: Arc<Mutex<HashMap<String, Timestamp>>>,
+        cache_ttl: core::time::Duration,
+        cache: Arc<Mutex<ResultCache>>,
     }
 
     impl<T: Transport, C: Clock> OcspChecker<T, C> {
@@ -616,7 +631,17 @@ mod checker {
                 allow_missing_cert_hash: false,
                 responder_url: None,
                 resting: Arc::default(),
+                cache_ttl: OCSP_CACHE_TTL,
+                cache: Arc::default(),
             }
+        }
+
+        /// Reuses `good` and `revoked` results for `ttl` instead of [`OCSP_CACHE_TTL`];
+        /// zero turns the cache off.
+        #[must_use]
+        pub fn with_cache_ttl(mut self, ttl: core::time::Duration) -> Self {
+            self.cache_ttl = ttl;
+            self
         }
 
         /// Sends every request to `url` instead of the certificate's own responder,
@@ -640,6 +665,37 @@ mod checker {
         pub fn allowing_missing_cert_hash(mut self) -> Self {
             self.allow_missing_cert_hash = true;
             self
+        }
+
+        fn cached(&self, key: &[u8], now: Timestamp) -> Option<RevocationResult> {
+            let mut cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
+            match cache.get(key) {
+                Some((result, until)) if *until > now => Some(result.clone()),
+                Some(_) => {
+                    cache.remove(key);
+                    None
+                }
+                None => None,
+            }
+        }
+
+        fn remember(&self, key: Vec<u8>, result: &RevocationResult, now: Timestamp) {
+            if self.cache_ttl.is_zero()
+                || !matches!(
+                    result.status,
+                    RevocationStatus::Good | RevocationStatus::Revoked
+                )
+            {
+                return;
+            }
+            let ttl_end = Timestamp(now.0 + self.cache_ttl.as_secs());
+            let until = result.next_update.map_or(ttl_end, |next| next.min(ttl_end));
+            if until > now {
+                self.cache
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .insert(key, (result.clone(), until));
+            }
         }
 
         /// When the responder at `url` may be asked again, if it is resting.
@@ -739,6 +795,10 @@ mod checker {
                     "no OCSP responder URL (no authority information access, no override)",
                 ));
             };
+            let body = request(cert, issuer);
+            if let Some(result) = self.cached(&body, self.clock.now()) {
+                return Ok(result);
+            }
             if let Some(until) = self.resting_until(url, self.clock.now()) {
                 return Err(ValidationError::new(
                     ErrorCode::OcspUnavailable,
@@ -746,7 +806,7 @@ mod checker {
                 )
                 .with_subject(cert.subject_cn()));
             }
-            let response = self.query(url, &request(cert, issuer), cert).await?;
+            let response = self.query(url, &body, cert).await?;
             let check = ResponseCheck {
                 now: self.clock.now(),
                 max_response_age: self.max_response_age,
@@ -757,6 +817,7 @@ mod checker {
             };
             let mut result = verify_response(&response, cert, issuer, &check)?;
             url.clone_into(&mut result.responder_url);
+            self.remember(body, &result, check.now);
             Ok(result)
         }
     }
@@ -1337,7 +1398,8 @@ mod tests {
             ]);
             let store = TrustStore::new([pki.rca1.clone()]);
             let checker = OcspChecker::new(&config, &transport, FixedClock::new(TestPki::NOW))
-                .with_responder_url("http://ocsp.test/");
+                .with_responder_url("http://ocsp.test/")
+                .with_cache_ttl(Duration::ZERO);
             let result = futures_lite::future::block_on(checker.check(
                 &pki.ee_arzt,
                 &pki.sub_ca_hba,
@@ -1402,7 +1464,8 @@ mod tests {
             ]);
             let clock = FixedClock::new(TestPki::NOW);
             let checker = OcspChecker::new(&config, &transport, &clock)
-                .with_responder_url("http://ocsp.test/");
+                .with_responder_url("http://ocsp.test/")
+                .with_cache_ttl(Duration::ZERO);
             let check = || {
                 futures_lite::future::block_on(checker.check(&pki.ee_arzt, &pki.sub_ca_hba, &store))
             };
@@ -1441,6 +1504,52 @@ mod tests {
                 result.reason.ends_with("more than the 37 s allowed"),
                 "{}",
                 result.reason
+            );
+        }
+
+        /// A_30046 (6): good and revoked results are reused for an hour, at most until
+        /// nextUpdate; unknown results and errors are not.
+        #[cfg(feature = "load")]
+        #[test]
+        fn results_are_cached() {
+            use crate::load::MockTransport;
+            use crate::revocation::RevocationChecker;
+            use crate::time::FixedClock;
+
+            let pki = TestPki::new();
+            let config = crate::TrustConfig::for_anchor(pki.rca1.der().to_vec());
+            let store = TrustStore::new([pki.rca1.clone()]);
+            let transport = MockTransport::posting([
+                Ok(response!("good").to_vec()),
+                Ok(response!("unknown").to_vec()),
+                Ok(response!("unknown").to_vec()),
+            ]);
+            let clock = FixedClock::new(TestPki::NOW);
+            let checker = OcspChecker::new(&config, &transport, &clock)
+                .with_responder_url("http://ocsp.test/");
+            let check = |ee: &Certificate| {
+                futures_lite::future::block_on(checker.check(ee, &pki.sub_ca_hba, &store))
+            };
+
+            let first = check(&pki.ee_arzt).unwrap();
+            assert_eq!(first.status, RevocationStatus::Good);
+            clock.advance(Duration::from_secs(3599));
+            assert_eq!(
+                check(&pki.ee_arzt).unwrap(),
+                first,
+                "reused within the hour"
+            );
+            assert_eq!(transport.posts().len(), 1);
+
+            clock.advance(Duration::from_secs(1));
+            let after = check(&pki.ee_arzt).unwrap();
+            assert_eq!(after.status, RevocationStatus::Unknown, "{}", after.reason);
+            assert_eq!(transport.posts().len(), 2, "asked again after the hour");
+            check(&pki.ee_arzt).unwrap();
+            assert_eq!(
+                transport.posts().len(),
+                3,
+                "an unknown result is not reused"
             );
         }
     }

@@ -137,6 +137,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `internalError`, no OCSP response) up to `OCSP_STATUS_RETRIES` (3) times; if all fail,
   the responder rests for `OCSP_STATUS_PAUSE` (5 min) and is not asked meanwhile (A_30044
   (4), A_30046 (3), C_12791).
+- `OcspChecker` reuses `good` and `revoked` results for `OCSP_CACHE_TTL` (1 h, after
+  A_23225), at most until the response's `nextUpdate`; `with_cache_ttl` changes it, zero
+  turns it off. Unknown results and errors are not cached (A_30046 (6), C_12791).
 
 #### changed
 - `Timestamp`, `Clock` and `SystemClock` come from `ti-types`, so every TI crate
