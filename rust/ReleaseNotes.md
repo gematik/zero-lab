@@ -14,6 +14,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   host (`fqdn_mismatch` otherwise).
 - `pki inspect` and `pki verify` show the subject alternative names (`alt. names`); `pki
   inspect` JSON has `subject_alt_names`.
+- `pki verify --connect HOST[:PORT]`: verifies the chain a TLS server presents, fetched
+  directly or through an HTTP proxy; the server must prove it holds the key (its handshake
+  signature is verified with ti-pki's algorithms, brainpool included), and `--fqdn`
+  defaults to HOST. Error kind `server_unreachable`, exit 3.
 
 #### changed
 - The `pki verify` schema lists the possible `code`s of errors and warnings as an `enum`,

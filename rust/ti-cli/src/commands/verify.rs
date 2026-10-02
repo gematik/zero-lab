@@ -130,16 +130,14 @@ struct Run {
 
 /// Runs the command; exit 0 when valid, 1 when not.
 pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
-    let source = input::read(&args.file)?;
-    let certificates = |source: &input::Source| -> Result<Vec<Certificate>, CliError> {
-        Ok(input::certificates(source, &args.p12_password)?
-            .into_iter()
-            .map(|loaded| loaded.certificate)
-            .collect())
-    };
-    let mut certs = certificates(&source)?;
+    let (source_label, mut certs) = chain_to_verify(args, global, out)?;
     for path in args.issuer.iter().chain(&args.intermediates) {
-        certs.extend(certificates(&input::read(path)?)?);
+        let source = input::read(path)?;
+        certs.extend(
+            input::certificates(&source, &args.p12_password)?
+                .into_iter()
+                .map(|loaded| loaded.certificate),
+        );
     }
     let at = args.at.unwrap_or_else(|| SystemClock.now());
 
@@ -164,7 +162,13 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
         &certs[0],
         &mut warnings,
     );
-    validator.expected_fqdn.clone_from(&args.fqdn);
+    // A server reached by name must carry that name, unless another is given.
+    validator.expected_fqdn = args.fqdn.clone().or_else(|| {
+        args.connect
+            .as_ref()
+            .filter(|(host, _)| host.parse::<std::net::IpAddr>().is_err())
+            .map(|(host, _)| host.clone())
+    });
     let validated = block_on(async {
         if let Some(transport) = session.transport() {
             let checker = OcspChecker::new(&config, transport, SystemClock);
@@ -178,12 +182,12 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
         }
     });
     let result = validated.map_err(|source| CliError::Certificate {
-        source_name: source_name(&args.file),
+        source_name: source_label.clone(),
         source,
     })?;
 
     let run = Run {
-        source: source.name,
+        source: source_label,
         env,
         detection,
         at,
@@ -215,11 +219,40 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
     })
 }
 
-fn source_name(path: &std::path::Path) -> String {
-    if path == std::path::Path::new("-") {
-        "<stdin>".to_owned()
-    } else {
-        path.display().to_string()
+/// The certificates to verify and where they came from: FILE, or the chain the
+/// `--connect` server presents.
+fn chain_to_verify(
+    args: &VerifyArgs,
+    global: &GlobalArgs,
+    out: &Output,
+) -> Result<(String, Vec<Certificate>), CliError> {
+    let certificates = |source: &input::Source| -> Result<Vec<Certificate>, CliError> {
+        Ok(input::certificates(source, &args.p12_password)?
+            .into_iter()
+            .map(|loaded| loaded.certificate)
+            .collect())
+    };
+    match (&args.connect, &args.file) {
+        (Some((host, port)), _) => {
+            let label = format!("{host}:{port}");
+            let chain = crate::peer::server_chain(host, *port, &global.net)?;
+            out.verbose(1, format_args!("{label}: {} certificates", chain.len()));
+            let certs = chain
+                .iter()
+                .map(|der| Certificate::from_der(der))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|source| CliError::Certificate {
+                    source_name: label.clone(),
+                    source,
+                })?;
+            Ok((label, certs))
+        }
+        (None, Some(file)) => {
+            let source = input::read(file)?;
+            let certs = certificates(&source)?;
+            Ok((source.name, certs))
+        }
+        (None, None) => unreachable!("clap requires FILE or --connect"),
     }
 }
 

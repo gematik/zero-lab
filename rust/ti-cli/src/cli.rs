@@ -260,8 +260,16 @@ pub struct TslShowArgs {
 pub struct VerifyArgs {
     /// PEM, DER or PKCS#12 file, the end entity first (in PKCS#12: the certificate with
     /// its key); further certificates are candidate intermediates; "-" reads stdin
-    #[arg(value_name = "FILE")]
-    pub file: PathBuf,
+    #[arg(
+        value_name = "FILE",
+        required_unless_present = "connect",
+        conflicts_with = "connect"
+    )]
+    pub file: Option<PathBuf>,
+    /// Fetch the chain from this TLS server instead of a file (port 443 by default); the
+    /// server must prove it holds the key, and --fqdn defaults to HOST
+    #[arg(long, value_name = "HOST[:PORT]", value_parser = crate::peer::target)]
+    pub connect: Option<(String, u16)>,
     /// Password of PKCS#12 input (FILE, --issuer, --intermediates)
     #[arg(long, value_name = "PASSWORD", default_value = "00")]
     pub p12_password: String,

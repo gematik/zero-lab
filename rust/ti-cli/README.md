@@ -18,6 +18,7 @@ ti pki verify card.pem              # exit 0 valid, 1 not valid
 ti pki verify smcb.p12              # the certificate with its key is the end entity
 ti pki pkcs12 convert old.p12 new.p12   # DER, PBES2 AES-256, SHA-256 MAC; mode 0600
 ti pki verify card.pem --offline    # cached trust material, no OCSP
+ti pki verify --connect epa-as-1.ref.epa4all.de   # a TLS server's chain, its name as --fqdn
 ti pki roots list --env ref         # the roots reached from the anchor
 ti pki tsl show                     # the TSL's CAs under the roots that signed them
 ti pki tsl show --rejected          # the CAs no verified root signed, and why

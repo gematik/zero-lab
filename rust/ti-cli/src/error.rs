@@ -80,6 +80,9 @@ pub enum CliError {
     /// `ti schema` was asked for a command that has none.
     #[error("no JSON schema for {0:?}")]
     UnknownSchema(String),
+    /// `pki verify --connect` could not reach the server or finish the handshake.
+    #[error("{0}")]
+    ServerUnreachable(String),
     /// The HTTP client could not be set up from the options.
     #[error("HTTP setup: {0}")]
     HttpSetup(String),
@@ -122,6 +125,7 @@ impl CliError {
             CliError::EnvironmentUndetected(_) => "environment_undetected",
             CliError::Trust(_) | CliError::TrustLoad(_) => "trust_material_unavailable",
             CliError::HttpSetup(_) => "http_setup",
+            CliError::ServerUnreachable(_) => "server_unreachable",
             CliError::UnknownSchema(_) => "unknown_schema",
             CliError::CacheDir(_) => "cache_dir_unknown",
             CliError::ConnectorConfig(_)
@@ -159,6 +163,9 @@ impl CliError {
                 Some("check the network and the HTTP options (-v shows them), or pass --offline")
             }
             CliError::HttpSetup(_) => Some("check --cacert, --capath and --proxy"),
+            CliError::ServerUnreachable(_) => Some(
+                "check the host and port, the network and --proxy; or save the chain and pass it as FILE",
+            ),
             CliError::UnknownSchema(_) => Some("the schema command without COMMAND lists them all"),
             CliError::CacheDir(_) => Some("set --cache-dir or TI_CACHE_DIR"),
             CliError::ConnectorConfig(_)
@@ -203,6 +210,7 @@ impl CliError {
             | CliError::Connector(ti_connector_client::Error::Config(_)) => Exit::Usage,
             CliError::Trust(_)
             | CliError::TrustLoad(_)
+            | CliError::ServerUnreachable(_)
             | CliError::Connector(_)
             | CliError::CardRestricted { .. } => Exit::Remote,
             CliError::Output(_) => Exit::Output,

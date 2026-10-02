@@ -16,6 +16,7 @@ mod input;
 mod net;
 mod output;
 mod paths;
+mod peer;
 mod trust;
 
 use std::ffi::OsString;
