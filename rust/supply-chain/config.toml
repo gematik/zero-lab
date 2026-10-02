@@ -519,6 +519,10 @@ criteria = "safe-to-deploy"
 version = "0.17.14"
 criteria = "safe-to-deploy"
 
+[[exemptions.roxmltree]]
+version = "0.21.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.rsa]]
 version = "0.10.0-rc.18"
 criteria = "safe-to-deploy"

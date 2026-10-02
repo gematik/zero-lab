@@ -152,7 +152,7 @@ the detail names the cause.
 
 | ID | Rule | Code |
 |---|---|---|
-| TSLSIG-001 | The input MUST be well-formed XML 1.0 in UTF-8. A document type declaration, entity declarations and references to external entities MUST be rejected. Processing instructions and comments outside the root element are allowed and not signed. Limits: at most 16 MiB, nesting depth 64, 64 attributes and namespace declarations per element. | `tsl_not_wellformed` |
+| TSLSIG-001 | The input MUST be well-formed XML 1.0 in UTF-8. A document type declaration, entity declarations and references to external entities MUST be rejected. Processing instructions and comments outside the root element are allowed and not signed. Limits: at most 16 MiB, nesting depth 64 (depth MUST be bounded before a recursive parser descends), 64 attributes per element, 64 namespaces in scope, 4 000 000 nodes. | `tsl_not_wellformed` |
 | TSLSIG-010 | The root element MUST be `TrustServiceStatusList` (namespace `http://uri.etsi.org/02231/v2#`) and MUST have exactly one `ds:Signature` element in the whole document, as its last element child. | |
 | TSLSIG-011 | `CanonicalizationMethod` MUST be `http://www.w3.org/2001/10/xml-exc-c14n#` without child elements (no `InclusiveNamespaces PrefixList`). | |
 | TSLSIG-012 | `SignatureMethod` MUST be `http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha256` without child elements, and the signer key MUST be on brainpoolP256r1 (A_17205, A_17206). P-256, other curves, RSA and RSASSA-PSS MUST be rejected. | |

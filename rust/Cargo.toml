@@ -1,5 +1,5 @@
 [workspace]
-members = ["ti-types", "ti-cache", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-cli"]
+members = ["ti-types", "ti-cache", "ti-xmldsig", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-cli"]
 resolver = "3"
 
 # Shared metadata only. Deliberately no workspace.package.version: every crate is
@@ -17,6 +17,7 @@ publish = false
 # In-repo crates: path for local development, version for registry resolution.
 ti-types = { version = "0.1", path = "ti-types" }
 ti-cache = { version = "0.1", path = "ti-cache" }
+ti-xmldsig = { version = "0.1", path = "ti-xmldsig" }
 # Without its default algorithm features: parsing certificates needs none.
 ti-pki = { version = "0.1", path = "ti-pki", default-features = false }
 ti-pkcs12 = { version = "0.1", path = "ti-pkcs12" }
@@ -76,6 +77,9 @@ rustls = { version = "0.23.45", default-features = false, features = ["std", "tl
 rustls-platform-verifier = "0.7.1"
 
 serde_json = "1.0.151"
+# Strict XML tree for canonicalization in ti-xmldsig: keeps source positions, so the
+# prefixes C14N must render can be read back; rejects DTDs.
+roxmltree = { version = "0.21.1", default-features = false, features = ["positions"] }
 # XML through serde, matching local names (as in the zero-lab generator projects).
 quick-xml = { version = "0.42.0", default-features = false, features = ["serialize", "overlapped-lists"] }
 base64ct = { version = "1.8.3", features = ["alloc"] }

@@ -1,0 +1,18 @@
+[package]
+name = "ti-xmldsig"
+version = "0.1.0"
+description = "Exclusive XML canonicalization and verification of the enveloped XMLDSig/XAdES profile of the gematik TSL"
+keywords = ["gematik", "telematik", "xmldsig", "c14n", "tsl"]
+categories = ["cryptography", "parser-implementations", "no-std"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+roxmltree.workspace = true
+
+[lints]
+workspace = true

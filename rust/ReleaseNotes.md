@@ -7,6 +7,13 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ## Unreleased
 
+### ti-xmldsig
+
+#### added
+- `Document::parse`: strict XML 1.0 in UTF-8 without DTDs, bounded by `Limits` (size,
+  depth checked before parsing, attributes, namespaces, nodes); errors name the rule of
+  `spec/tsl-xmldsig` they enforce.
+
 ### ti-connector-client
 
 #### added
