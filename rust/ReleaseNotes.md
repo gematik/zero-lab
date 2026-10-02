@@ -7,30 +7,6 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ## Unreleased
 
-### ti-cli
-
-#### added
-- `pki verify --fqdn NAME`: the certificate must name `NAME` if its commonName names a
-  host (`fqdn_mismatch` otherwise).
-- `pki inspect` and `pki verify` show the subject alternative names (`alt. names`); `pki
-  inspect` JSON has `subject_alt_names`.
-- `pki verify --connect HOST[:PORT]`: verifies the chain a TLS server presents, fetched
-  directly or through an HTTP proxy; the server must prove it holds the key (its handshake
-  signature is verified with ti-pki's algorithms, brainpool included), and `--fqdn`
-  defaults to HOST. Error kind `server_unreachable`, exit 3.
-
-#### changed
-- The `pki verify` schema lists the possible `code`s of errors and warnings as an `enum`,
-  kept equal to ti-pki's `ErrorCode::ALL` by a test; schema version 1 may add codes.
-- `pki inspect` and `pki verify` share one layout: subject and issuer as labelled fields
-  (common name, organization, …), lists without dashes, then a "Trust" tree from the
-  certificate down to its root. `inspect` builds it from the cached or embedded trust
-  material without validating it and says so; `verify` marks each certificate ✓ or ✗ and
-  adds its OCSP answer, replacing the "Chain" section. JSON is unchanged.
-
-#### removed
-- `probe` no longer checks ePA 3, for the time being.
-
 ### ti-connector-client
 
 #### added
@@ -230,6 +206,30 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 #### added
 - `Env`, `Tier`, `EnvParseError`; `serde` and `clap` features.
 - `Timestamp` and `Clock` (moved from ti-pki), `SystemClock` behind `std`.
+
+## Release ti-cli 0.1.2, 2026-10-02
+
+### added
+- `pki verify --fqdn NAME`: the certificate must name `NAME` if its commonName names a
+  host (`fqdn_mismatch` otherwise).
+- `pki inspect` and `pki verify` show the subject alternative names (`alt. names`); `pki
+  inspect` JSON has `subject_alt_names`.
+- `pki verify --connect HOST[:PORT]`: verifies the chain a TLS server presents, fetched
+  directly or through an HTTP proxy; the server must prove it holds the key (its handshake
+  signature is verified with ti-pki's algorithms, brainpool included), and `--fqdn`
+  defaults to HOST. Error kind `server_unreachable`, exit 3.
+
+### changed
+- The `pki verify` schema lists the possible `code`s of errors and warnings as an `enum`,
+  kept equal to ti-pki's `ErrorCode::ALL` by a test; schema version 1 may add codes.
+- `pki inspect` and `pki verify` share one layout: subject and issuer as labelled fields
+  (common name, organization, …), lists without dashes, then a "Trust" tree from the
+  certificate down to its root. `inspect` builds it from the cached or embedded trust
+  material without validating it and says so; `verify` marks each certificate ✓ or ✗ and
+  adds its OCSP answer, replacing the "Chain" section. JSON is unchanged.
+
+### removed
+- `probe` no longer checks ePA 3, for the time being.
 
 ## Release ti-cli 0.1.1, 2026-09-27
 
