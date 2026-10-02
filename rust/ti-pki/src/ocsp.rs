@@ -247,12 +247,16 @@ fn verify(
             signer.subject_cn()
         ))
     })?;
-    verify_cert_hash(
-        single.single_extensions.as_ref(),
-        cert,
-        check.allow_missing_cert_hash,
-    )
-    .map_err(invalid)?;
+    // An "unknown" answer has no certificate to vouch for, so it carries no certHash;
+    // its status stands (A_30046 (2)).
+    if !matches!(single.cert_status, CertStatus::Unknown(_)) {
+        verify_cert_hash(
+            single.single_extensions.as_ref(),
+            cert,
+            check.allow_missing_cert_hash,
+        )
+        .map_err(invalid)?;
+    }
 
     let mut result = RevocationResult::unknown(check.now, "");
     result.produced_at = Some(data.produced_at.0);
@@ -975,6 +979,20 @@ mod tests {
             let unknown = verify(response!("unknown"), &pki.ee_arzt, &pki.sub_ca_hba).unwrap();
             assert_eq!(unknown.status, RevocationStatus::Unknown);
             assert_eq!(unknown.reason, "OCSP status: unknown");
+        }
+
+        /// A_30046 (2): an unknown answer needs no certHash, even where one is required.
+        #[test]
+        fn unknown_without_cert_hash() {
+            let pki = TestPki::new();
+            let result = verify(
+                response!("unknown-no-cert-hash"),
+                &pki.ee_arzt,
+                &pki.sub_ca_hba,
+            )
+            .unwrap();
+            assert_eq!(result.status, RevocationStatus::Unknown);
+            assert_eq!(result.reason, "OCSP status: unknown");
         }
 
         #[test]

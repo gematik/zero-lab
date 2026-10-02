@@ -147,6 +147,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - reqwest transport errors carry their causes (refused, timed out, unknown issuer),
   not only reqwest's "error sending request".
 - `Env` and `Tier` now come from `ti-types` and are re-exported.
+- An OCSP answer with status unknown is taken as is, without a certHash check (A_30046
+  (2), C_12791): it used to fail as `ocsp_response_invalid`, which no revocation mode
+  downgrades.
 
 #### removed
 - `TrustConfig::accept_test_only_policies` is removed: gematik's test cards carry the
