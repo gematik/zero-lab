@@ -1161,6 +1161,7 @@ mod tests {
     use super::*;
     use crate::cert::tests::{RCA5, SMCB_CA51, fixture};
 
+    #[cfg(feature = "brainpool")]
     macro_rules! response {
         ($name:literal) => {
             include_bytes!(concat!("../tests/pki/ocsp/", $name, ".der")).as_slice()
@@ -1188,6 +1189,7 @@ mod tests {
 
     /// A live answer of the reference environment's root responder for GEM.SMCB-CA51
     /// TEST-ONLY: a delegate of GEM.RCA5 TEST-ONLY with certHash, no nextUpdate.
+    #[cfg(feature = "brainpool")]
     #[test]
     fn real_root_responder_answer() {
         let (ca, root) = (fixture(SMCB_CA51), fixture(RCA5));

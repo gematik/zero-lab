@@ -94,11 +94,10 @@ fn verify_tsl(_: &TrustConfig, _: &[u8], _: Timestamp) -> Result<VerifiedTsl, Ve
     ))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "brainpool"))]
 mod tests {
     use super::*;
 
-    #[cfg(feature = "brainpool")]
     #[test]
     fn embedded_prod_material_verifies() {
         let config = TrustConfig::preset_prod();

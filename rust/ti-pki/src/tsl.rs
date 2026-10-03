@@ -482,7 +482,8 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "brainpool")]
+    // The walk reaches the production roots past the RSA roots GEM.RCA2/6/9.
+    #[cfg(all(feature = "brainpool", feature = "rsa"))]
     #[test]
     fn production_cas_are_matched_to_production_roots() {
         let tsl = Tsl::parse(PROD).unwrap();
@@ -508,6 +509,7 @@ mod tests {
         assert_eq!(matched.intermediates.len(), 84);
     }
 
+    #[cfg(feature = "brainpool")]
     fn b64(cert: &Certificate) -> String {
         Base64::encode_string(cert.der())
     }

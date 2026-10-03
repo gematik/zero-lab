@@ -976,6 +976,7 @@ mod tests {
     }
 
     /// 2026-10-03T00:00:00Z.
+    #[cfg(feature = "brainpool")]
     const OCT_3: Timestamp = Timestamp(1_790_985_600);
 
     /// TSLSIG-051, 053, 043: a verified list replaces the CAs, an older one never does,

@@ -37,7 +37,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 #### changed
 - Trust material is loaded with the TSL verified (`spec/tsl-xmldsig`), the signer's OCSP
   status queried online, and the TSL's `Id` and sequence number kept in the state
-  directory so an older list stays rejected. `trust.tsl_warnings` reports
+  directory so an older list stays rejected (`-v` shows the file; one that cannot be read
+  or written is a warning). `trust.tsl_warnings` reports
   `no_ocsp_check`; `pki tsl show` names the signer and its CA. `pki roots list` and
   `pki tsl show` take `--at`, and `pki verify --at` verifies the trust material at that
   time too.

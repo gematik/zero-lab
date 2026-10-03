@@ -53,38 +53,88 @@ impl Clock for At {
 
 /// The `Id` and sequence number of the TSL last used from one URL, in the state
 /// directory: `cache clear` leaves it, so an older list stays rejected (TSLSIG-053).
-struct TslStateFile(PathBuf);
+/// Losing it only weakens that check to what one run sees, so problems with the file
+/// are warnings, never errors.
+struct TslStateFile {
+    path: PathBuf,
+    verbose: u8,
+}
 
 impl TslStateFile {
-    fn new(config: &TrustConfig) -> Option<Self> {
+    fn new(config: &TrustConfig, verbose: u8) -> Option<Self> {
         let key = Artifact::Tsl.cache_key(&config.tsl_url);
         let id = key.rsplit('/').next()?;
-        let dir = crate::paths::state_dir().ok()?;
-        Some(TslStateFile(dir.join("tsl").join(format!("{id}.json"))))
-    }
-
-    /// The stored state; none if the file is missing or unreadable, which only weakens
-    /// the check to what this run sees.
-    fn read(&self) -> Option<TslState> {
-        let bytes = std::fs::read(&self.0).ok()?;
-        serde_json::from_slice(&bytes).ok()
-    }
-
-    /// Best effort: a state that cannot be written is checked from the cache next time.
-    fn write(&self, state: &TslState) {
-        if self.read().as_ref() == Some(state) {
-            return;
-        }
-        let Ok(json) = serde_json::to_vec(state) else {
-            return;
-        };
-        if let Some(dir) = self.0.parent()
-            && std::fs::create_dir_all(dir).is_ok()
-        {
-            let tmp = self.0.with_extension("json.tmp");
-            if std::fs::write(&tmp, json).is_ok() {
-                let _ = std::fs::rename(&tmp, &self.0);
+        match crate::paths::state_dir() {
+            Ok(dir) => Some(TslStateFile {
+                path: dir.join("tsl").join(format!("{id}.json")),
+                verbose,
+            }),
+            Err(error) => {
+                warning(format_args!(
+                    "{error}: the TSL seen before is not kept, an older one is not rejected"
+                ));
+                None
             }
+        }
+    }
+
+    /// The stored state; none before the first run.
+    fn read(&self) -> Option<TslState> {
+        let path = self.path.display();
+        let bytes = match std::fs::read(&self.path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                self.verbose(format_args!("TSL state {path}: none yet"));
+                return None;
+            }
+            Err(error) => {
+                warning(format_args!("cannot read the TSL state {path}: {error}"));
+                return None;
+            }
+        };
+        match serde_json::from_slice::<TslState>(&bytes) {
+            Ok(state) => {
+                self.verbose(format_args!(
+                    "TSL state {path}: #{} {}",
+                    state.sequence_number, state.id
+                ));
+                Some(state)
+            }
+            Err(error) => {
+                warning(format_args!(
+                    "the TSL state {path} is unreadable ({error}); it is replaced"
+                ));
+                None
+            }
+        }
+    }
+
+    fn write(&self, state: &TslState) {
+        let path = self.path.display();
+        match self.store(state) {
+            Ok(()) => self.verbose(format_args!(
+                "TSL state {path}: kept #{} {}",
+                state.sequence_number, state.id
+            )),
+            Err(error) => warning(format_args!(
+                "cannot keep the TSL state in {path}: {error}; an older list is not rejected \
+                 next time"
+            )),
+        }
+    }
+
+    fn store(&self, state: &TslState) -> std::io::Result<()> {
+        if let Some(dir) = self.path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let tmp = self.path.with_extension("json.tmp");
+        std::fs::write(&tmp, serde_json::to_vec(state)?)?;
+        std::fs::rename(&tmp, &self.path)
+    }
+
+    fn verbose(&self, message: impl std::fmt::Display) {
+        if self.verbose >= 1 {
+            crate::output::diagnostic(message);
         }
     }
 }
@@ -122,6 +172,8 @@ pub struct Session {
     memory: Arc<MemoryCacheStore>,
     /// `-k` is in effect for downloads.
     pub insecure: bool,
+    /// The `-v` count.
+    verbose: u8,
 }
 
 impl Session {
@@ -149,6 +201,7 @@ impl Session {
             cache_dir,
             memory: Arc::default(),
             insecure,
+            verbose: out.verbosity(),
         })
     }
 
@@ -175,12 +228,20 @@ impl Session {
         let clock = At(at);
         // The list seen before guards against an older one, but only for the current
         // time: a past instant may well need an older list.
-        let state = at.is_none().then(|| TslStateFile::new(config)).flatten();
+        let state = at
+            .is_none()
+            .then(|| TslStateFile::new(config, self.verbose))
+            .flatten();
         let stored = state.as_ref().and_then(TslStateFile::read);
         block_on(async {
             let material = if let Some(transport) = &self.transport {
-                let reloader =
-                    reloader(config, tier, self.loader(config, transport), clock, stored)?;
+                let reloader = reloader(
+                    config,
+                    tier,
+                    self.loader(config, transport),
+                    clock,
+                    stored.clone(),
+                )?;
                 if at.is_none() {
                     let checker = OcspChecker::new(config, transport, SystemClock);
                     first_tick(&reloader.with_signer_status(checker)).await
@@ -189,8 +250,13 @@ impl Session {
                 }
                 .map_err(CliError::from)
             } else {
-                let reloader =
-                    reloader(config, tier, self.loader(config, NoNetwork), clock, stored)?;
+                let reloader = reloader(
+                    config,
+                    tier,
+                    self.loader(config, NoNetwork),
+                    clock,
+                    stored.clone(),
+                )?;
                 match first_tick(&reloader).await {
                     Err(Expired(ReloadError::Load(LoadError::Offline(_)))) => embedded(
                         config,
@@ -206,7 +272,9 @@ impl Session {
                     other => other.map_err(CliError::from),
                 }
             }?;
-            if let (Some(file), Some(current)) = (&state, &material.tsl_state) {
+            if let (Some(file), Some(current)) = (&state, &material.tsl_state)
+                && stored.as_ref() != Some(current)
+            {
                 file.write(current);
             }
             Ok(material)

@@ -526,12 +526,14 @@ pub(crate) mod tests {
         certs.remove(0)
     }
 
+    #[cfg(feature = "brainpool")]
     fn verify(issuer: &Certificate, subject: &Certificate) -> bool {
         subject
             .verify_signed_by(issuer, algorithms::DEFAULT)
             .is_ok()
     }
 
+    #[cfg(feature = "brainpool")]
     #[test]
     fn subject_alt_names_in_openssl_notation() {
         let pki = crate::testing::TestPki::new();

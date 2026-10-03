@@ -316,6 +316,8 @@ test-pki:
 # breakage); all features together are built by clippy --all-features
 features:
     cargo hack check --workspace --feature-powerset --depth 2 --no-dev-deps
+    # The tests too, where gating mistakes hide: ti-pki with none of its algorithm features.
+    cargo test -p ti-pki --no-default-features --quiet
 
 # Unused dependencies in Cargo.toml
 machete:

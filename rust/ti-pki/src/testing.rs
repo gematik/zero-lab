@@ -40,7 +40,9 @@ pub(crate) struct TestPki {
     pub(crate) cross_rca1_not_rca: Certificate,
     pub(crate) rogue_root: Certificate,
     pub(crate) ee_rogue: Certificate,
+    #[cfg_attr(not(feature = "rsa"), allow(dead_code, reason = "RSA tests only"))]
     pub(crate) rca_rsa: Certificate,
+    #[cfg_attr(not(feature = "rsa"), allow(dead_code, reason = "RSA tests only"))]
     pub(crate) ee_rsa_pss: Certificate,
     pub(crate) sub_ca_pathlen0: Certificate,
     pub(crate) sub_sub_ca: Certificate,
