@@ -1991,9 +1991,13 @@ name = "ti-xmldsig"
 version = "0.1.0"
 dependencies = [
  "base64ct",
+ "bp256",
+ "ecdsa",
  "proptest",
  "roxmltree",
  "sha2",
+ "subtle",
+ "x509-cert",
 ]
 
 [[package]]

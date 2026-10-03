@@ -13,11 +13,15 @@ publish.workspace = true
 
 [dependencies]
 roxmltree.workspace = true
+sha2.workspace = true
+base64ct.workspace = true
+subtle.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
-sha2.workspace = true
-base64ct.workspace = true
+bp256.workspace = true
+ecdsa.workspace = true
+x509-cert.workspace = true
 
 [lints]
 workspace = true

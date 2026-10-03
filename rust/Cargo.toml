@@ -83,6 +83,8 @@ roxmltree = { version = "0.21.1", default-features = false, features = ["positio
 # XML through serde, matching local names (as in the zero-lab generator projects).
 quick-xml = { version = "0.42.0", default-features = false, features = ["serialize", "overlapped-lists"] }
 base64ct = { version = "1.8.3", features = ["alloc"] }
+# Constant-time comparison of the digests of ti-xmldsig (TSLSIG-017).
+subtle = { version = "2.6.1", default-features = false }
 # Only for the generated Konnektor bindings, which are written against it.
 base64 = "0.23.1"
 

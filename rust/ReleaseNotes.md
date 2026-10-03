@@ -17,6 +17,13 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `exc_c14n_by_id`, `exc_c14n_by_name`; checked against the C14N and Exc-C14N
   specification examples, the W3C `merlin-exc-c14n-one` vectors, the reference digests of
   published TSLs, property tests and Kani proofs (`just verify-formal`).
+- `Document::verify_tsl_signature`: the enveloped XMLDSig/XAdES signature of a TSL
+  against the fixed profile (TSLSIG-010 – 015, 019 – 022, nothing outside it accepted) and
+  the SHA-256 digests of both references, compared in constant time (TSLSIG-017). Returns
+  `SignedTsl`: canonical `SignedInfo`, range-checked `r ‖ s`, the signer certificate bound
+  by `CertDigest`, its serial number as written, and the canonical content to read
+  (TSLSIG-023). The ECDSA check and the certificate are left to the caller; the
+  `verify` example shows both.
 
 ### ti-connector-client
 

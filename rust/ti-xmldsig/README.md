@@ -17,6 +17,13 @@ checks the signer.
 - Documents with a DTD are rejected; input size, depth, attribute, namespace and node
   counts are bounded (`Limits::TSL`).
 
+```console
+cargo run -p ti-xmldsig --example verify -- ../spec/tsl-xmldsig/testdata/tsl/real/pu-10334.xml
+```
+
+checks a TSL's signature against the profile and, as a caller would, its ECDSA value with
+the signer certificate's key.
+
 ## License
 
 Copyright 2026 gematik GmbH

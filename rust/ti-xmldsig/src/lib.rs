@@ -32,6 +32,8 @@ mod error;
 mod parse;
 #[cfg(kani)]
 mod proofs;
+mod verify;
 
 pub use error::{Error, ErrorKind};
 pub use parse::{Document, Limits};
+pub use verify::SignedTsl;

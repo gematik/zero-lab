@@ -133,10 +133,10 @@ follows from XMLDSig 1.1 §6.4.3, the version gemSpec_Krypt references.
 </TrustServiceStatusList>
 ```
 
-Free in the profile: the values of the `Id` attributes, the presence of the `Id` on the
-first reference, the namespace prefixes and redundant namespace declarations, whitespace
-between elements, line breaks and `&#xD;` inside base64 content, further XAdES namespace
-declarations (`xades141`), the form of `SigningTime` (gematik writes
+Free in the profile: the values of the `Id` attributes, the presence of the `Id` on either
+reference (published TSLs carry both), the namespace prefixes and redundant namespace
+declarations, whitespace between elements, line breaks and `&#xD;` inside base64 content,
+further XAdES namespace declarations (`xades141`), the form of `SigningTime` (gematik writes
 `2026-09-27T23:00:07Z`, GemLibPki `2026-04-09T08:19:03.300+02:00`) and of
 `X509IssuerName` (gematik `CN=GEM.TSL-CA3,…`, GemLibPki `cn=GEM.TSL-CA51 TEST-ONLY,…`).
 `SignedDataObjectProperties` MAY be absent; if present, its `DataObjectFormat` MUST point
