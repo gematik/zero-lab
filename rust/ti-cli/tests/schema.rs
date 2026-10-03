@@ -25,6 +25,7 @@ fn ti(cache: &Path, args: &[&str]) -> Output {
         .env_remove("TI_FORMAT")
         .env_remove("TI_ENV")
         .env("TI_CACHE_DIR", cache)
+        .env("XDG_STATE_HOME", cache.join("state"))
         .output()
         .unwrap()
 }
@@ -128,13 +129,23 @@ fn every_command_matches_its_schema() {
     );
     assert_eq!(invalid.status.code(), Some(1));
 
-    let roots = json_of(c, "pki roots list", &["pki", "roots", "list", "--offline"]);
+    // The fixture TSL's validity, whenever the tests run.
+    let at = ["--at", "2026-10-01T00:00:00Z"];
+    let roots = json_of(
+        c,
+        "pki roots list",
+        &[&["pki", "roots", "list", "--offline"][..], &at].concat(),
+    );
     let roots: Value = serde_json::from_slice(&roots.stdout).unwrap();
     assert_eq!(roots["trust"]["source"], "cache");
     assert_eq!(roots["roots"].as_array().unwrap().len(), 10);
     assert_eq!(roots["roots"][0]["anchor"], true);
 
-    let show = json_of(c, "pki tsl show", &["pki", "tsl", "show", "--offline"]);
+    let show = json_of(
+        c,
+        "pki tsl show",
+        &[&["pki", "tsl", "show", "--offline"][..], &at].concat(),
+    );
     let show: Value = serde_json::from_slice(&show.stdout).unwrap();
     assert_eq!(
         show["counts"]["kept"], 84,
@@ -155,7 +166,7 @@ fn every_command_matches_its_schema() {
     let rejected = json_of(
         c,
         "pki tsl show",
-        &["pki", "tsl", "show", "--offline", "--rejected"],
+        &[&["pki", "tsl", "show", "--offline", "--rejected"][..], &at].concat(),
     );
     let rejected: Value = serde_json::from_slice(&rejected.stdout).unwrap();
     assert_eq!(rejected["roots"].as_array().unwrap().len(), 0);
@@ -275,6 +286,83 @@ fn tsl_verify_matches_its_schema() {
     assert_eq!(expired["code"], "certificate_not_valid_time");
     assert_eq!(expired["code_number"], 1021);
     assert!(expired["signer"].is_null());
+}
+
+/// Offline: the warning instead of the signer's status; --previous decides the sequence.
+#[test]
+fn tsl_verify_offline_with_a_previous_list() {
+    let dir = std::env::temp_dir().join(format!("ti-tsl-previous-{}", std::process::id()));
+    let real = |name: &str| {
+        manifest(&format!("../../spec/tsl-xmldsig/testdata/tsl/real/{name}"))
+            .to_str()
+            .unwrap()
+            .to_owned()
+    };
+    let (older, newer) = (real("pu-10333.xml"), real("pu-10334.xml"));
+    let at = "2026-10-01T00:00:00Z";
+    let newer_out = json_of(
+        &dir,
+        "pki tsl verify",
+        &[
+            "pki",
+            "tsl",
+            "verify",
+            &newer,
+            "--previous",
+            &older,
+            "--offline",
+            "--at",
+            at,
+        ],
+    );
+    assert_eq!(newer_out.status.code(), Some(0));
+    let report: Value = serde_json::from_slice(&newer_out.stdout).unwrap();
+    assert_eq!(report["sequence"], "newer");
+    assert_eq!(report["warnings"][0]["code"], "no_ocsp_check");
+    assert_eq!(report["warnings"][0]["code_number"], 1039);
+    assert!(report["signer_status"].is_null());
+
+    let rollback = json_of(
+        &dir,
+        "pki tsl verify",
+        &[
+            "pki",
+            "tsl",
+            "verify",
+            &older,
+            "--previous",
+            &newer,
+            "--offline",
+            "--at",
+            at,
+        ],
+    );
+    assert_eq!(rollback.status.code(), Some(1));
+    let report: Value = serde_json::from_slice(&rollback.stdout).unwrap();
+    assert_eq!(report["code"], "tsl_id_incorrect");
+    assert_eq!(report["rule"], "TSLSIG-053");
+
+    let overdue = json_of(
+        &dir,
+        "pki tsl verify",
+        &[
+            "pki",
+            "tsl",
+            "verify",
+            &older,
+            "--offline",
+            "--at",
+            "2026-10-15T00:00:00Z",
+            "--grace",
+            "3",
+        ],
+    );
+    assert_eq!(overdue.status.code(), Some(0));
+    let report: Value = serde_json::from_slice(&overdue.stdout).unwrap();
+    assert_eq!(report["warnings"][0]["code"], "validity_warning_1");
+
+    let grace = ti(&dir, &["pki", "tsl", "verify", &older, "--grace", "31"]);
+    assert_eq!(grace.status.code(), Some(2));
 }
 
 /// The codes a TSL verify report may carry are exactly ti-pki's.

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "pki tsl show",
-  "description": "The TSL's CAs under the verified roots that signed them, and those no verified root signed. Only certificates and provider names are taken from the unauthenticated TSL.",
+  "description": "The TSL's CAs under the verified roots that signed them, and those no verified root signed. The list is read from its signed bytes after its signature, its signer under the embedded TSL signer CA and its NextUpdate verified (spec/tsl-xmldsig); a CA counts only if a verified root signed it.",
   "type": "object",
   "properties": {
     "schema": {
@@ -39,6 +39,24 @@
     },
     "insecure_transport": {
       "type": "boolean"
+    },
+    "signer": {
+      "type": "string",
+      "description": "Common name of the C.TSL.SIG certificate the list is signed with"
+    },
+    "tsl_signer_ca": {
+      "type": "string",
+      "description": "Common name of the TSL signer CA that issued it"
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "no_ocsp_check",
+          "validity_warning_1"
+        ]
+      },
+      "description": "Warnings about the TSL: no_ocsp_check when its signer's OCSP status was not queried (offline, --at), validity_warning_1 past NextUpdate within the grace period."
     },
     "sequence_number": {
       "type": "integer",
@@ -136,6 +154,9 @@
     "environment",
     "source",
     "insecure_transport",
+    "signer",
+    "tsl_signer_ca",
+    "warnings",
     "sequence_number",
     "issued_at",
     "next_update",

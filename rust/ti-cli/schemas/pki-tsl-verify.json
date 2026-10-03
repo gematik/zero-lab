@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "pki tsl verify",
-  "description": "A TSL file verified offline against the embedded TSL signer CA of an environment: the XMLDSig/XAdES signature and a C.TSL.SIG signer that CA issued (spec/tsl-xmldsig parts A and B). Not covered: the signer's OCSP status, sequence number and grace period, anchor change. The list fields are read from the signed bytes and are null for an invalid list.",
+  "description": "A TSL file verified against the embedded TSL signer CA of an environment (spec/tsl-xmldsig parts A to D): the XMLDSig/XAdES signature, a C.TSL.SIG signer that CA issued, NextUpdate and the grace period, the sequence against --previous, and online the signer's OCSP status. Not covered: anchor change. The list fields are read from the signed bytes and are null or empty for an invalid list.",
   "type": "object",
   "properties": {
     "schema": {
@@ -52,6 +52,17 @@
         "wrong_keyusage",
         "wrong_extendedkeyusage",
         "tsl_signer_profile_violation",
+        "no_ocsp_check",
+        "ocsp_signature_error",
+        "certhash_extension_missing",
+        "certhash_mismatch",
+        "cert_unknown",
+        "cert_revoked",
+        "ocsp_status_error",
+        "ocsp_check_revocation_error",
+        "tsl_id_incorrect",
+        "validity_warning_1",
+        "validity_warning_2",
         null
       ],
       "description": "The result code of an invalid list: the gemSpec_PKI Tab_PKI_274 short name in lower case, or tsl_signer_profile_violation."
@@ -134,6 +145,77 @@
         "null"
       ],
       "description": "CA services in accord with a certificate."
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      },
+      "description": "Warnings about a valid list."
+    },
+    "skipped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "name",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Services of a valid list left out because they could not be processed (TSLSIG-052)."
+    },
+    "signer_status": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "good"
+            },
+            "responder_url": {
+              "type": "string"
+            },
+            "produced_at": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "status",
+            "responder_url",
+            "produced_at"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The signer's OCSP status, when it was queried."
+    },
+    "sequence": {
+      "enum": [
+        "newer",
+        "same",
+        null
+      ],
+      "description": "Against --previous; null without it or for an invalid list."
     }
   },
   "required": [
@@ -153,7 +235,11 @@
     "signing_time",
     "anchor",
     "signer",
-    "cas"
+    "cas",
+    "warnings",
+    "skipped",
+    "signer_status",
+    "sequence"
   ],
   "additionalProperties": false,
   "$defs": {
@@ -192,6 +278,36 @@
         "not_before",
         "not_after",
         "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "finding": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "enum": [
+            "no_ocsp_check",
+            "validity_warning_1"
+          ]
+        },
+        "code_number": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "rule": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "code_number",
+        "rule",
+        "detail"
       ],
       "additionalProperties": false
     }

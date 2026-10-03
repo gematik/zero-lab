@@ -29,9 +29,18 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 #### added
 - `ti pki tsl verify FILE`: a TSL file's signature and signer under the embedded TSL
-  signer CA, offline; `--env auto` (default) detects production or not, `--at` sets the
-  validation time. Exit 0 valid, 1 not valid with the gemSpec_PKI result code and the
+  signer CA, `NextUpdate` (`--grace DAYS`), the signer's OCSP status unless `--offline`
+  or `--at`, and with `--previous` the sequence; `--env auto` (default) detects
+  production or not. Exit 0 valid, 1 not valid with the gemSpec_PKI result code and the
   `spec/tsl-xmldsig` rule.
+
+#### changed
+- Trust material is loaded with the TSL verified (`spec/tsl-xmldsig`), the signer's OCSP
+  status queried online, and the TSL's `Id` and sequence number kept in the state
+  directory so an older list stays rejected. `trust.tsl_warnings` reports
+  `no_ocsp_check`; `pki tsl show` names the signer and its CA. `pki roots list` and
+  `pki tsl show` take `--at`, and `pki verify --at` verifies the trust material at that
+  time too.
 
 ### ti-connector-client
 
@@ -186,19 +195,36 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   ExtendedKeyUsage exactly `id-tsl-kp-tslSigning`, and the rest of Tab_PKI_252_01; the
   list is then parsed from the signed bytes. `parse_verified_prod` verifies for
   production; `parse_verified_auto` for whichever environment's embedded TSL signer CA
-  issued the signer, reporting the `Tier`. The signer's OCSP status, sequence number,
-  grace period and anchor change are not checked yet; loading still uses the
-  unauthenticated `Tsl::parse`.
+  issued the signer, reporting the `Tier`; `tsl_signature::embedded_config_for` returns
+  that preset for adjustment.
+- TSL update rules (`spec/tsl-xmldsig` parts C and D): `VerifiedTsl::check_signer_status`
+  queries the signer's OCSP status through any `RevocationChecker`, RFC 6960
+  authorization only, with the result codes of TSLSIG-041/042 (`cert_revoked`,
+  `certhash_mismatch`, `ocsp_status_error`, …); without it the list carries the warning
+  `no_ocsp_check`. `VerifiedTsl::check_sequence` against a stored `TslState` (`Id`,
+  sequence number ≥ 10000). `NextUpdate` with `TrustConfig::tsl_grace_period`
+  (`validity_warning_1`, `validity_warning_2`). A verified list skips services it cannot
+  process (`Tsl::skipped`); `Tsl::id` is the list's `Id`.
+- Loading verifies the TSL: `Reloader` swaps in a list only after its signature, signer,
+  `NextUpdate` and sequence verified; `Reloader::with_signer_status` adds the signer's
+  OCSP status, `Reloader::with_stored_tsl` the state to persist across restarts
+  (`ReloadStatus::tsl_state`, `ReloadStatus::tsl_warnings`). `VerifyError::tsl` carries
+  the result code. `ReloadPolicy::validate` caps the interval at 24 h
+  (`MAX_RELOAD_INTERVAL`).
 - `anchors::GEM_TSL_CA3` and, with `dangerous-nonprod`, `anchors::GEM_TSL_CA28_TEST_ONLY`:
   the TSL signer CAs, pinned by SHA-256.
 - Certificate type `C.TSL.SIG` (`CertificateType::TslSig`, identified by
   `oid_policy_gem_tsl_signer`) and profile `tsl-sig`.
 
 #### changed
-- `TrustConfig` has a new field `tsl_signer_anchor` (breaking for struct literals; struct
-  update on a preset or `for_anchor` is unaffected): GEM.TSL-CA3 in production, GEM.TSL-CA28
-  TEST-ONLY in the non-production presets. `validate(Tier::Prod)` rejects a TEST-ONLY
-  TSL signer anchor.
+- `TrustConfig` has new fields `tsl_signer_anchor` and `tsl_grace_period` (breaking for
+  struct literals; struct update on a preset or `for_anchor` is unaffected): GEM.TSL-CA3
+  in production, GEM.TSL-CA28 TEST-ONLY in the non-production presets; grace 0, at most
+  30 days. `validate(Tier::Prod)` rejects a TEST-ONLY TSL signer anchor.
+- `Reloader` has a third type parameter, the signer status checker (default `Unchecked`,
+  i.e. none); `tokio::spawn_reloader` takes any. The TSL is no longer loaded
+  unauthenticated: a list that fails verification is never used.
+- `Tsl` has new fields `id` and `skipped`.
 - `Timestamp`, `Clock` and `SystemClock` come from `ti-types`, so every TI crate
   shares them; the paths `ti_pki::{Timestamp, Clock}` and `ti_pki::load::SystemClock`
   stay as re-exports.

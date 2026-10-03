@@ -15,6 +15,12 @@ fn ti(args: &[&str]) -> Output {
             "TI_CACHE_DIR",
             std::env::temp_dir().join("ti-tests-no-cache"),
         )
+        // The TSL state of an earlier list must not reject the fixtures, nor may the
+        // tests leave one in the user's state directory.
+        .env(
+            "XDG_STATE_HOME",
+            std::env::temp_dir().join("ti-tests-state"),
+        )
         .env_remove("NO_COLOR")
         .env_remove("CLICOLOR_FORCE")
         .output()
@@ -24,6 +30,10 @@ fn ti(args: &[&str]) -> Output {
 fn ti_with_stdin(args: &[&str], stdin: &[u8]) -> Output {
     let mut child = Command::new(env!("CARGO_BIN_EXE_ti"))
         .args(args)
+        .env(
+            "XDG_STATE_HOME",
+            std::env::temp_dir().join("ti-tests-state"),
+        )
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

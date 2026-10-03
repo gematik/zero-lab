@@ -18,8 +18,8 @@
 //!
 //! TI TSPs run one responder for several of their CAs: gematik's ehca, for one, signs
 //! answers for GEM.SMCB-CA51 with a delegate of GEM.KOMP-CA51. gemSpec_PKI authorizes
-//! such responders by their TSL listing, which presumes an authenticated TSL; this crate
-//! does not authenticate the TSL (see [`crate::tsl`]). It accepts such a delegate
+//! such responders by their TSL listing; this crate does not use the TSL's listings for
+//! trust decisions (see [`crate::tsl`]). It accepts such a delegate
 //! instead when its certificate verifies under a TSL CA that a trusted root signed and
 //! that CA is listed under the same TSP as the issuing CA. The TSL contributes only the
 //! grouping of CAs into TSPs. [`RevocationResult::authorization`] records the
@@ -244,6 +244,7 @@ fn verify(
             invalid(format!(
                 "OCSP response does not answer for this certificate: {reason}"
             ))
+            .with_defect(ResponseDefect::WrongCertificate)
         })?;
 
     let embedded = basic
@@ -274,6 +275,7 @@ fn verify(
             "OCSP response signature does not verify under {:?}: {reason}",
             signer.subject_cn()
         ))
+        .with_defect(ResponseDefect::Signature)
     })?;
     // An "unknown" answer has no certificate to vouch for, so it carries no certHash;
     // its status stands (A_30046 (2)).
@@ -283,7 +285,7 @@ fn verify(
             cert,
             check.allow_missing_cert_hash || (check.stapled && is_egk(cert)),
         )
-        .map_err(invalid)?;
+        .map_err(|(defect, message)| invalid(message).with_defect(defect))?;
     }
 
     let mut result = RevocationResult::unknown(check.now, "");
@@ -317,9 +319,35 @@ fn with_status(
                 .map_or("unspecified", reason_name)
                 .clone_into(&mut result.reason);
         }
-        CertStatus::Unknown(_) => result.reason = "OCSP status: unknown".into(),
+        CertStatus::Unknown(_) => UNKNOWN_STATUS.clone_into(&mut result.reason),
     }
     result
+}
+
+/// The reason of a result whose responder answered `unknown`, as opposed to one that is
+/// unknown because the response lies outside the time window.
+pub(crate) const UNKNOWN_STATUS: &str = "OCSP status: unknown";
+
+/// What exactly made [`verify_response`] reject a response as
+/// [`ErrorCode::OcspResponseInvalid`], kept on the error for the finer result codes of
+/// the TSL signer's status (`spec/tsl-xmldsig` TSLSIG-041, 042).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ResponseDefect {
+    /// No single response is about the certificate asked about.
+    WrongCertificate,
+    /// The response signature does not verify.
+    Signature,
+    /// The certHash extension is missing.
+    CertHashMissing,
+    /// The certHash does not hash the certificate, or cannot be read.
+    CertHashMismatch,
+}
+
+impl ValidationError {
+    pub(crate) fn with_defect(mut self, defect: ResponseDefect) -> Self {
+        self.defect = Some(defect);
+        self
+    }
 }
 
 fn invalid(message: impl Into<String>) -> ValidationError {
@@ -504,7 +532,8 @@ fn verify_cert_hash(
     extensions: Option<&Extensions>,
     cert: &Certificate,
     allow_missing: bool,
-) -> Result<(), String> {
+) -> Result<(), (ResponseDefect, String)> {
+    let mismatch = |message: String| (ResponseDefect::CertHashMismatch, message);
     let Some(extension) = extensions
         .into_iter()
         .flatten()
@@ -513,16 +542,24 @@ fn verify_cert_hash(
         return if allow_missing {
             Ok(())
         } else {
-            Err("OCSP response carries no certHash extension".into())
+            Err((
+                ResponseDefect::CertHashMissing,
+                "OCSP response carries no certHash extension".into(),
+            ))
         };
     };
     let cert_hash = CertHash::from_der(extension.extn_value.as_bytes())
-        .map_err(|e| format!("OCSP certHash extension is malformed: {e}"))?;
+        .map_err(|e| mismatch(format!("OCSP certHash extension is malformed: {e}")))?;
     let algorithm = cert_hash.hash_algorithm.oid;
-    let expected = digest(&algorithm, cert.der())
-        .ok_or_else(|| format!("OCSP certHash uses unsupported hash algorithm {algorithm}"))?;
+    let expected = digest(&algorithm, cert.der()).ok_or_else(|| {
+        mismatch(format!(
+            "OCSP certHash uses unsupported hash algorithm {algorithm}"
+        ))
+    })?;
     if expected != cert_hash.certificate_hash.as_bytes() {
-        return Err("OCSP certHash does not match the certificate".into());
+        return Err(mismatch(
+            "OCSP certHash does not match the certificate".into(),
+        ));
     }
     Ok(())
 }

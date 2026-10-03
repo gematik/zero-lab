@@ -13,13 +13,19 @@ use super::artifact::{Artifact, TrustMaterial};
 use super::loader::{LoadError, Loader};
 use super::maybe_send::{MaybeSend, MaybeSync};
 use super::verify::{VerifyError, VerifyFn, verify_material};
+use crate::revocation::{RevocationChecker, Unchecked};
 use crate::time::{Clock, Timestamp};
+use crate::tsl_signature::{Sequence, TslError, TslState};
 use crate::{Error, Tier, TrustConfig, TrustStore};
 use ti_cache::Source;
 
 /// The longest a production deployment may keep using trust material it could not
 /// refresh. Past it, the TSL may list CAs that have since been withdrawn.
 pub const MAX_PROD_HARD_EXPIRY: Duration = Duration::from_hours(24);
+
+/// The longest interval between two checks for a new TSL (GS-A_4899, `spec/tsl-xmldsig`
+/// TSLSIG-055).
+pub const MAX_RELOAD_INTERVAL: Duration = Duration::from_hours(24);
 
 /// When to reload and how long old material stays usable.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -61,13 +67,17 @@ impl ReloadPolicy {
     ///
     /// # Errors
     ///
-    /// [`Error::InconsistentConfig`] if the interval is zero, `stale_if_error` exceeds
+    /// [`Error::InconsistentConfig`] if the interval is zero or exceeds
+    /// [`MAX_RELOAD_INTERVAL`], `stale_if_error` exceeds
     /// `hard_expiry`, or, under [`Tier::Prod`], `hard_expiry` exceeds
     /// [`MAX_PROD_HARD_EXPIRY`].
     pub fn validate(&self, tier: Tier) -> Result<(), Error> {
         let inconsistent = |reason| Err(Error::InconsistentConfig { reason });
         if self.interval.is_zero() {
             return inconsistent("reload interval must not be zero");
+        }
+        if self.interval > MAX_RELOAD_INTERVAL {
+            return inconsistent("reload interval exceeds MAX_RELOAD_INTERVAL (24 h)");
         }
         if self.stale_if_error > self.hard_expiry {
             return inconsistent("stale_if_error must not exceed hard_expiry");
@@ -114,6 +124,13 @@ pub struct ReloadStatus {
     pub staleness: Duration,
     /// See [`State`].
     pub state: State,
+    /// `Id` and sequence number of the current TSL, to persist for the next start
+    /// (TSLSIG-053); before the first swap, the state the reloader was given.
+    pub tsl_state: Option<TslState>,
+    /// Warnings about the current TSL: [`no_ocsp_check`](crate::tsl_signature::TslCode::NoOcspCheck)
+    /// without a signer status checker, [`validity_warning_1`](crate::tsl_signature::TslCode::ValidityWarning1)
+    /// within the grace period.
+    pub tsl_warnings: Vec<TslError>,
 }
 
 /// What a [`Reloader::tick`] did.
@@ -178,8 +195,26 @@ struct Current {
     etags: [Option<String>; 2],
     fetched_at: Timestamp,
     tsl_next_update: Option<Timestamp>,
+    tsl_state: Option<TslState>,
+    tsl_warnings: Vec<TslError>,
     source: Source,
     generation: u64,
+}
+
+impl Current {
+    /// The same store, confirmed by a load of `material`.
+    fn confirmed(&self, material: &TrustMaterial) -> Self {
+        Current {
+            store: Arc::clone(&self.store),
+            etags: [material.meta[0].etag.clone(), material.meta[1].etag.clone()],
+            fetched_at: self.fetched_at.max(material.fetched_at),
+            tsl_next_update: self.tsl_next_update,
+            tsl_state: self.tsl_state.clone(),
+            tsl_warnings: self.tsl_warnings.clone(),
+            source: self.source,
+            generation: self.generation,
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -193,6 +228,8 @@ struct Attempts {
 #[derive(Debug)]
 pub struct TrustStoreHandle<C> {
     current: ArcSwapOption<Current>,
+    /// The TSL state given at construction, until the first swap replaces it.
+    stored_tsl: Option<TslState>,
     attempts: Mutex<Attempts>,
     clock: C,
     stale_if_error: Duration,
@@ -243,6 +280,14 @@ impl<C: Clock> TrustStoreHandle<C> {
             last_error: attempts.error.clone(),
             staleness,
             state,
+            tsl_state: current
+                .as_ref()
+                .and_then(|c| c.tsl_state.clone())
+                .or_else(|| self.stored_tsl.clone()),
+            tsl_warnings: current
+                .as_ref()
+                .map(|c| c.tsl_warnings.clone())
+                .unwrap_or_default(),
         }
     }
 
@@ -258,7 +303,15 @@ impl<C: Clock> TrustStoreHandle<C> {
 /// Loads, verifies and swaps trust material. It has no timer of its own: call
 /// [`tick`](Self::tick) when [`due`](Self::due), from whatever runtime the application
 /// uses (see the `tokio` feature for a ready-made driver).
-pub struct Reloader<L, C> {
+///
+/// The TSL is verified as `spec/tsl-xmldsig` requires before its CAs are used: signature
+/// and signer under [`TrustConfig::tsl_signer_anchor`], `NextUpdate` and
+/// [`TrustConfig::tsl_grace_period`], and `Id` and sequence number against the list
+/// before ([`with_stored_tsl`](Self::with_stored_tsl) carries it across restarts). With a
+/// checker from [`with_signer_status`](Self::with_signer_status), the signer's OCSP
+/// status too; without, the status reports [`no_ocsp_check`](crate::tsl_signature::TslCode::NoOcspCheck).
+/// A list that fails any of it is never swapped in.
+pub struct Reloader<L, C, R = Unchecked> {
     config: TrustConfig,
     loader: L,
     handle: TrustStoreHandle<C>,
@@ -266,9 +319,10 @@ pub struct Reloader<L, C> {
     jitter_seed: RandomState,
     in_flight: AtomicBool,
     verify: VerifyFn,
+    signer_status: Option<R>,
 }
 
-impl<L, C> core::fmt::Debug for Reloader<L, C> {
+impl<L, C, R> core::fmt::Debug for Reloader<L, C, R> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Reloader")
             .field("policy", &self.policy)
@@ -281,8 +335,8 @@ where
     L: Loader + MaybeSend + MaybeSync,
     C: Clock + MaybeSend + MaybeSync,
 {
-    /// A reloader for `config` in `tier`. Nothing is loaded until the first
-    /// [`tick`](Self::tick).
+    /// A reloader for `config` in `tier`, without a signer status checker. Nothing is
+    /// loaded until the first [`tick`](Self::tick).
     ///
     /// # Errors
     ///
@@ -302,6 +356,7 @@ where
             loader,
             handle: TrustStoreHandle {
                 current: ArcSwapOption::empty(),
+                stored_tsl: None,
                 attempts: Mutex::default(),
                 clock,
                 stale_if_error: policy.stale_if_error,
@@ -311,7 +366,41 @@ where
             jitter_seed: RandomState::new(),
             in_flight: AtomicBool::new(false),
             verify: verify_material,
+            signer_status: None,
         })
+    }
+}
+
+impl<L, C, R> Reloader<L, C, R>
+where
+    L: Loader + MaybeSend + MaybeSync,
+    C: Clock + MaybeSend + MaybeSync,
+    R: RevocationChecker + MaybeSend + MaybeSync,
+{
+    /// Checks the TSL signer's OCSP status with `checker` before a list is swapped in
+    /// (TSLSIG-040 – 042), normally an [`OcspChecker`](crate::ocsp::OcspChecker) over the
+    /// loader's network.
+    #[must_use]
+    pub fn with_signer_status<R2>(self, checker: R2) -> Reloader<L, C, R2> {
+        Reloader {
+            config: self.config,
+            loader: self.loader,
+            handle: self.handle,
+            policy: self.policy,
+            jitter_seed: self.jitter_seed,
+            in_flight: self.in_flight,
+            verify: self.verify,
+            signer_status: Some(checker),
+        }
+    }
+
+    /// The `Id` and sequence number of the list in use before this process started, as
+    /// persisted from [`ReloadStatus::tsl_state`]: an older list is then rejected even
+    /// on the first load (TSLSIG-053).
+    #[must_use]
+    pub fn with_stored_tsl(mut self, state: TslState) -> Self {
+        self.handle.stored_tsl = Some(state);
+        self
     }
 
     /// Read access for request handlers.
@@ -369,24 +458,41 @@ where
         if age >= self.policy.hard_expiry {
             return self.fail(now, ReloadError::TooOld { age });
         }
-        if let Some(current) = self.handle.current.load_full()
+        let current = self.handle.current.load_full();
+        if let Some(current) = &current
             && same_etags(&current.etags, &material)
         {
-            self.handle.current.store(Some(Arc::new(Current {
-                store: Arc::clone(&current.store),
-                etags: current.etags.clone(),
-                fetched_at: current.fetched_at.max(material.fetched_at),
-                tsl_next_update: current.tsl_next_update,
-                source: current.source,
-                generation: current.generation,
-            })));
-            self.handle.attempts().succeeded = true;
-            return ReloadOutcome::Unchanged;
+            return self.confirm(current, &material);
         }
-        match (self.verify)(&self.config, &material, now) {
-            Ok(verified) => self.swap(&material, verified),
-            Err(error) => self.fail(now, error.into()),
+        let stored = current
+            .as_ref()
+            .and_then(|c| c.tsl_state.clone())
+            .or_else(|| self.handle.stored_tsl.clone());
+        let mut verified = match (self.verify)(&self.config, &material, now, stored.as_ref()) {
+            Ok(verified) => verified,
+            Err(error) => return self.fail(now, error.into()),
+        };
+        // The list in use, under new validators: nothing to swap and nothing to ask.
+        if verified.sequence == Sequence::Same
+            && let Some(current) = &current
+        {
+            return self.confirm(current, &material);
         }
+        if let (Some(checker), Some(tsl)) = (&self.signer_status, verified.tsl.as_mut())
+            && let Err(error) = tsl.check_signer_status(checker).await
+        {
+            return self.fail(self.handle.clock.now(), VerifyError::from(error).into());
+        }
+        self.swap(&material, verified)
+    }
+
+    /// Keeps the current store, confirmed by `material`.
+    fn confirm(&self, current: &Current, material: &TrustMaterial) -> ReloadOutcome {
+        self.handle
+            .current
+            .store(Some(Arc::new(current.confirmed(material))));
+        self.handle.attempts().succeeded = true;
+        ReloadOutcome::Unchanged
     }
 
     fn swap(&self, material: &TrustMaterial, verified: super::Verified) -> ReloadOutcome {
@@ -398,8 +504,14 @@ where
             .map_or(0, |c| c.generation)
             + 1;
         let tsl_meta = material.meta(Artifact::Tsl);
+        let (tsl_state, tsl_warnings) = verified.tsl.as_ref().map_or_else(
+            || (None, Vec::new()),
+            |tsl| (Some(TslState::of(&tsl.tsl)), tsl.warnings.clone()),
+        );
         self.handle.current.store(Some(Arc::new(Current {
             tsl_next_update: verified.tsl_next_update,
+            tsl_state,
+            tsl_warnings,
             store: Arc::new(TrustStore::from_verified(verified)),
             etags: [material.meta[0].etag.clone(), material.meta[1].etag.clone()],
             fetched_at: material.fetched_at,
@@ -521,11 +633,10 @@ mod tests {
         _: &TrustConfig,
         m: &TrustMaterial,
         _: Timestamp,
+        _: Option<&TslState>,
     ) -> Result<Verified, VerifyError> {
         if m.roots == b"tampered" {
-            return Err(VerifyError {
-                reason: "roots do not chain to the anchor".into(),
-            });
+            return Err(VerifyError::new("roots do not chain to the anchor"));
         }
         let tsl_next_update = std::str::from_utf8(&m.tsl)
             .ok()
@@ -535,6 +646,8 @@ mod tests {
             roots: Vec::new(),
             intermediates: Vec::new(),
             tsl_next_update,
+            tsl: None,
+            sequence: Sequence::Newer,
         })
     }
 
@@ -789,5 +902,212 @@ mod tests {
         };
         assert!(inverted.validate(Tier::NonProd).is_err());
         ReloadPolicy::default().validate(Tier::Prod).unwrap();
+    }
+
+    /// TSLSIG-055: at most a day between checks, in every tier.
+    #[test]
+    fn the_interval_is_at_most_a_day() {
+        let daily = ReloadPolicy {
+            interval: MAX_RELOAD_INTERVAL,
+            ..policy()
+        };
+        daily.validate(Tier::Prod).unwrap();
+        let longer = ReloadPolicy {
+            interval: MAX_RELOAD_INTERVAL + Duration::from_secs(1),
+            ..policy()
+        };
+        assert!(longer.validate(Tier::NonProd).is_err());
+    }
+
+    /// The production roots.json with a published TSL, as loaded at `fetched_at`.
+    #[cfg(feature = "brainpool")]
+    fn published(tsl: &str, fetched_at: Timestamp) -> TrustMaterial {
+        let path = format!(
+            "{}/../../spec/tsl-xmldsig/testdata/tsl/real/{tsl}",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let meta = |etag: &str| Meta {
+            etag: Some(etag.to_owned()),
+            last_modified: None,
+            fetched_at,
+            max_age: None,
+            source: Source::Http,
+        };
+        TrustMaterial::new(
+            crate::roots::ROOTS_PROD.to_vec(),
+            meta("roots"),
+            std::fs::read(path).unwrap(),
+            meta(tsl),
+        )
+    }
+
+    #[cfg(feature = "brainpool")]
+    fn production(
+        clock: &FixedClock,
+        script: impl IntoIterator<Item = Result<TrustMaterial, LoadError>>,
+    ) -> Reloader<VecLoader, &FixedClock> {
+        Reloader::new(
+            TrustConfig::preset_prod(),
+            Tier::Prod,
+            VecLoader::new(script),
+            clock,
+            policy(),
+        )
+        .unwrap()
+    }
+
+    #[cfg(feature = "brainpool")]
+    fn codes(status: &ReloadStatus) -> Vec<crate::tsl_signature::TslCode> {
+        status.tsl_warnings.iter().map(|w| w.code).collect()
+    }
+
+    #[cfg(feature = "brainpool")]
+    fn verify_code(outcome: &ReloadOutcome) -> Option<crate::tsl_signature::TslCode> {
+        match outcome {
+            ReloadOutcome::Expired {
+                error: ReloadError::Verify(e),
+            }
+            | ReloadOutcome::KeptStale {
+                error: ReloadError::Verify(e),
+                ..
+            } => e.tsl.as_ref().map(|t| t.code),
+            _ => None,
+        }
+    }
+
+    /// 2026-10-03T00:00:00Z.
+    const OCT_3: Timestamp = Timestamp(1_790_985_600);
+
+    /// TSLSIG-051, 053, 043: a verified list replaces the CAs, an older one never does,
+    /// the same one under new validators changes nothing.
+    #[cfg(feature = "brainpool")]
+    #[test]
+    fn the_tsl_is_verified_and_follows_its_sequence() {
+        use crate::tsl_signature::TslCode;
+        let clock = FixedClock::new(OCT_3);
+        let r = production(
+            &clock,
+            [
+                Ok(published("pu-10333.xml", OCT_3)),
+                Ok(published("pu-10334.xml", OCT_3)),
+                Ok(published("pu-10333.xml", OCT_3)),
+                Ok(TrustMaterial {
+                    meta: [
+                        published("pu-10334.xml", OCT_3).meta[0].clone(),
+                        Meta {
+                            etag: Some("revalidated".into()),
+                            ..published("pu-10334.xml", OCT_3).meta[1].clone()
+                        },
+                    ],
+                    ..published("pu-10334.xml", OCT_3)
+                }),
+            ],
+        );
+        assert!(matches!(
+            block_on(r.tick()),
+            ReloadOutcome::Swapped { generation: 1 }
+        ));
+        let status = r.handle().status();
+        assert_eq!(
+            status.tsl_state.as_ref().map(|s| s.sequence_number),
+            Some(10333)
+        );
+        assert_eq!(codes(&status), [TslCode::NoOcspCheck]);
+        assert_eq!(r.handle().snapshot().unwrap().intermediates().len(), 84);
+
+        assert!(matches!(
+            block_on(r.tick()),
+            ReloadOutcome::Swapped { generation: 2 }
+        ));
+        let outcome = block_on(r.tick());
+        assert_eq!(
+            verify_code(&outcome),
+            Some(TslCode::TslIdIncorrect),
+            "{outcome:?}"
+        );
+        assert_eq!(r.handle().status().generation, 2);
+
+        assert!(matches!(block_on(r.tick()), ReloadOutcome::Unchanged));
+        assert_eq!(r.handle().status().generation, 2);
+    }
+
+    /// TSLSIG-053 across a restart: the persisted state rejects an older list at once.
+    #[cfg(feature = "brainpool")]
+    #[test]
+    fn a_stored_state_survives_a_restart() {
+        let clock = FixedClock::new(OCT_3);
+        let stored = TslState {
+            id: "ID31033420260927230007Z".into(),
+            sequence_number: 10334,
+        };
+        let r = production(&clock, [Ok(published("pu-10333.xml", OCT_3))])
+            .with_stored_tsl(stored.clone());
+        assert_eq!(r.handle().status().tsl_state, Some(stored));
+        let outcome = block_on(r.tick());
+        assert!(
+            matches!(outcome, ReloadOutcome::Expired { .. }),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            verify_code(&outcome),
+            Some(crate::tsl_signature::TslCode::TslIdIncorrect)
+        );
+    }
+
+    /// TSLSIG-054: a list past its NextUpdate, without grace period, is not used.
+    #[cfg(feature = "brainpool")]
+    #[test]
+    fn an_overdue_tsl_is_not_used() {
+        let after = Timestamp::parse_rfc3339("2026-10-14T00:00:00Z").unwrap();
+        let clock = FixedClock::new(after);
+        let r = production(&clock, [Ok(published("pu-10333.xml", after))]);
+        let outcome = block_on(r.tick());
+        assert_eq!(
+            verify_code(&outcome),
+            Some(crate::tsl_signature::TslCode::ValidityWarning2)
+        );
+        assert!(r.handle().snapshot().is_err());
+    }
+
+    /// Answers every signer status check with one scripted status.
+    #[cfg(feature = "brainpool")]
+    struct SignerStatus(crate::revocation::RevocationStatus);
+
+    #[cfg(feature = "brainpool")]
+    impl RevocationChecker for SignerStatus {
+        async fn check(
+            &self,
+            _: &crate::Certificate,
+            _: &crate::Certificate,
+            _: &TrustStore,
+        ) -> Result<crate::revocation::RevocationResult, crate::error::ValidationError> {
+            let mut result = crate::revocation::RevocationResult::unknown(OCT_3, "");
+            result.status = self.0;
+            Ok(result)
+        }
+    }
+
+    /// TSLSIG-040, 041: with a checker, the signer's status decides.
+    #[cfg(feature = "brainpool")]
+    #[test]
+    fn the_signer_status_decides() {
+        use crate::revocation::RevocationStatus;
+        let clock = FixedClock::new(OCT_3);
+        let good = production(&clock, [Ok(published("pu-10334.xml", OCT_3))])
+            .with_signer_status(SignerStatus(RevocationStatus::Good));
+        assert!(matches!(
+            block_on(good.tick()),
+            ReloadOutcome::Swapped { .. }
+        ));
+        assert!(good.handle().status().tsl_warnings.is_empty());
+
+        let revoked = production(&clock, [Ok(published("pu-10334.xml", OCT_3))])
+            .with_signer_status(SignerStatus(RevocationStatus::Revoked));
+        let outcome = block_on(revoked.tick());
+        assert_eq!(
+            verify_code(&outcome),
+            Some(crate::tsl_signature::TslCode::CertRevoked)
+        );
+        assert!(revoked.handle().snapshot().is_err());
     }
 }

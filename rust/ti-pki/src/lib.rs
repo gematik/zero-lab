@@ -59,9 +59,10 @@
 //! Trust starts at one root certificate per environment, compiled into the
 //! crate ([`anchors`]). Every other root in a [`TrustStore`] earns its place by
 //! chaining back to the anchor through the A_28419 cross-certificate protocol
-//! ([`roots`]). The TSL is not a trust source and is not authenticated: it
-//! supplies candidate intermediates, of which only those a root signed are kept
-//! ([`tsl`]); trust still flows from the anchor.
+//! ([`roots`]). The TSL is verified against the TSL signer CA of the
+//! environment ([`tsl_signature`]) but is not a trust source: it supplies candidate
+//! intermediates, of which only those a root signed are kept ([`tsl`]); trust still
+//! flows from the anchor.
 //!
 //! # Validation
 //!
@@ -128,7 +129,6 @@ pub mod tokio;
 pub mod trustdomain;
 pub mod truststore;
 pub mod tsl;
-#[cfg(feature = "brainpool")]
 pub mod tsl_signature;
 pub mod validate;
 

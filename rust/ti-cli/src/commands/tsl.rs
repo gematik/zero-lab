@@ -1,18 +1,23 @@
 //! `ti pki tsl show`: the TSL's CAs under the verified roots that signed them, and the
-//! ones no verified root signed. The TSL is not authenticated: of each entry only the
-//! certificate and the provider name are used, and everything shown about a CA comes
-//! from its signed certificate, never from the TSL's own metadata.
+//! ones no verified root signed. The list is read from its signed bytes once its
+//! signature, signer and `NextUpdate` verified (`spec/tsl-xmldsig`); a CA still counts
+//! only if a verified root signed it, and what is shown about a CA comes from its
+//! certificate.
 //!
 //! `ti pki tsl verify`: a TSL file's signature and signer under the embedded TSL signer
 //! CA of an environment (`spec/tsl-xmldsig` parts A and B), offline.
 
+use std::time::Duration;
+
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use ti_pki::load::{Meta, Source, SystemClock};
+use ti_pki::ocsp::OcspChecker;
 use ti_pki::tsl::{self, Intermediate, Rejection, Tsl};
-use ti_pki::tsl_signature::{TslError, VerifiedTsl};
+use ti_pki::tsl_signature::{Sequence, TslError, TslState, VerifiedTsl, embedded_config_for};
 use ti_pki::{Certificate, Clock, Tier, Timestamp, TrustConfig, TrustStore};
 
+use crate::block::block_on;
 use crate::cli::{Environment, GlobalArgs, TslShowArgs, TslVerifyArgs};
 use crate::error::{CliError, Exit};
 use crate::output::document::{date, when};
@@ -26,6 +31,12 @@ struct Report {
     environment: &'static str,
     source: SourceInfo,
     insecure_transport: bool,
+    /// The C.TSL.SIG certificate the list is signed with.
+    signer: String,
+    /// The TSL signer CA that issued it.
+    tsl_signer_ca: String,
+    /// `no_ocsp_check`, `validity_warning_1`.
+    warnings: Vec<&'static str>,
     sequence_number: u64,
     issued_at: String,
     #[serde(skip)]
@@ -104,16 +115,18 @@ pub fn show(args: &TslShowArgs, global: &GlobalArgs, out: &Output) -> Result<Exi
     let session = Session::new(global, args.trust.offline, out)?;
     // The roots first: they decide which of the TSL's CAs count, and loading them
     // refreshes the cached TSL too.
-    let material = session.load(&config, env.tier())?;
+    let material = session.load(&config, env.tier(), args.trust.at)?;
+    let now = args.trust.at.unwrap_or_else(|| SystemClock.now());
     let (bytes, meta) = session.tsl(&config)?;
-    let list = Tsl::parse(&bytes).map_err(|e| CliError::TrustLoad(format!("TSL: {e}")))?;
+    let verified = Tsl::parse_verified(&bytes, &config, now)
+        .map_err(|e| CliError::TrustLoad(format!("TSL: {e}")))?;
+    let list = &verified.tsl;
     let roots = material.store.roots();
     let matched = tsl::match_to_roots(
         list.intermediate_cas(),
         &TrustStore::new(roots.iter().cloned()),
         &config.algorithms,
     );
-    let now = SystemClock.now();
 
     let contains = |filter: &Option<String>, text: &str| {
         filter
@@ -158,6 +171,9 @@ pub fn show(args: &TslShowArgs, global: &GlobalArgs, out: &Output) -> Result<Exi
             fetched_at_ts: meta.fetched_at,
         },
         insecure_transport: session.insecure,
+        signer: verified.signer.subject_cn().to_owned(),
+        tsl_signer_ca: verified.anchor.subject_cn().to_owned(),
+        warnings: material.info.tsl_warnings.clone(),
         sequence_number: list.sequence_number,
         issued_at: list.issued_at.to_string(),
         issued_at_ts: list.issued_at,
@@ -211,6 +227,48 @@ struct VerifyReport {
     signer: Option<CertSummary>,
     /// CA services in accord with a certificate.
     cas: Option<usize>,
+    /// Warnings about a valid list: `no_ocsp_check`, `validity_warning_1`.
+    warnings: Vec<Finding>,
+    /// Services of a valid list that could not be processed and were left out.
+    skipped: Vec<SkippedInfo>,
+    /// The signer's OCSP status, when it was queried.
+    signer_status: Option<SignerStatus>,
+    /// `newer` or `same` against `--previous`; null without it or for an invalid list.
+    sequence: Option<&'static str>,
+}
+
+#[derive(Serialize)]
+struct Finding {
+    code: &'static str,
+    code_number: Option<u16>,
+    rule: &'static str,
+    detail: String,
+}
+
+impl Finding {
+    fn new(e: &TslError) -> Self {
+        Finding {
+            code: e.code.as_str(),
+            code_number: e.code.number(),
+            rule: e.rule,
+            detail: e.detail.clone(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct SkippedInfo {
+    provider: String,
+    name: String,
+    reason: String,
+}
+
+#[derive(Serialize)]
+struct SignerStatus {
+    /// `good`; anything else makes the list invalid.
+    status: &'static str,
+    responder_url: String,
+    produced_at: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -238,18 +296,57 @@ impl CertSummary {
 }
 
 /// Runs `ti pki tsl verify`.
-pub fn verify(args: &TslVerifyArgs, out: &Output) -> Result<Exit, CliError> {
+pub fn verify(args: &TslVerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     let source = crate::input::read(&args.file)?;
+    let previous = args
+        .previous
+        .as_deref()
+        .map(|path| {
+            let previous = crate::input::read(path)?;
+            Tsl::parse(&previous.bytes)
+                .map(|tsl| TslState::of(&tsl))
+                .map_err(|e| CliError::TrustLoad(format!("{}: {e}", previous.name)))
+        })
+        .transpose()?;
     let now = args.at.unwrap_or_else(|| SystemClock.now());
-    let result = match args.env.concrete() {
-        None => Tsl::parse_verified_auto(&source.bytes, now),
-        Some(env) => {
-            let config = TrustConfig::preset(env);
-            config.validate(env.tier()).map_err(CliError::Trust)?;
-            Tsl::parse_verified(&source.bytes, &config, now)
-        }
+    let grace = Duration::from_hours(24 * u64::from(args.grace));
+    let config = match args.env.concrete() {
+        Some(env) => Ok(TrustConfig {
+            tsl_grace_period: grace,
+            ..TrustConfig::preset(env)
+        }),
+        None => embedded_config_for(&source.bytes).map(|config| TrustConfig {
+            tsl_grace_period: grace,
+            ..config
+        }),
     };
-    let report = verify_report(source.name, args.env, now, &result);
+    if let (Ok(config), Some(env)) = (&config, args.env.concrete()) {
+        config.validate(env.tier()).map_err(CliError::Trust)?;
+    }
+    let mut sequence = None;
+    let result = config.map_err(VerifyFailure::from).and_then(|config| {
+        let mut verified = Tsl::parse_verified(&source.bytes, &config, now)?;
+        if previous.is_some() {
+            sequence = Some(verified.check_sequence(previous.as_ref())?);
+        }
+        // The status now says nothing about another time.
+        if !args.offline && args.at.is_none() {
+            let transport = crate::http::transport(&global.net, out.verbosity())?;
+            let checker = OcspChecker::new(&config, &transport, SystemClock);
+            block_on(verified.check_signer_status(&checker))?;
+        }
+        Ok(verified)
+    });
+    let result = match result {
+        Err(VerifyFailure::Cli(e)) => return Err(e),
+        Err(VerifyFailure::Tsl(e)) => Err(e),
+        Ok(verified) => Ok(verified),
+    };
+    let mut report = verify_report(source.name, args.env, now, &result);
+    report.sequence = sequence.map(|s| match s {
+        Sequence::Same => "same",
+        _ => "newer",
+    });
     if out.is_json() {
         out.json(&report)?;
     } else {
@@ -260,6 +357,24 @@ pub fn verify(args: &TslVerifyArgs, out: &Output) -> Result<Exit, CliError> {
     } else {
         Exit::Invalid
     })
+}
+
+/// What can stop `tsl verify`: a verdict on the list, or the tool itself.
+enum VerifyFailure {
+    Tsl(TslError),
+    Cli(CliError),
+}
+
+impl From<TslError> for VerifyFailure {
+    fn from(e: TslError) -> Self {
+        VerifyFailure::Tsl(e)
+    }
+}
+
+impl From<CliError> for VerifyFailure {
+    fn from(e: CliError) -> Self {
+        VerifyFailure::Cli(e)
+    }
 }
 
 fn verify_report(
@@ -286,6 +401,10 @@ fn verify_report(
         anchor: None,
         signer: None,
         cas: None,
+        warnings: Vec::new(),
+        skipped: Vec::new(),
+        signer_status: None,
+        sequence: None,
     };
     match result {
         Ok(verified) => {
@@ -301,6 +420,22 @@ fn verify_report(
             report.anchor = Some(CertSummary::new(&verified.anchor));
             report.signer = Some(CertSummary::new(&verified.signer));
             report.cas = Some(verified.tsl.intermediate_cas().len());
+            report.warnings = verified.warnings.iter().map(Finding::new).collect();
+            report.skipped = verified
+                .tsl
+                .skipped
+                .iter()
+                .map(|s| SkippedInfo {
+                    provider: s.provider.clone(),
+                    name: s.name.clone(),
+                    reason: s.reason.clone(),
+                })
+                .collect();
+            report.signer_status = verified.signer_status.as_ref().map(|r| SignerStatus {
+                status: r.status.as_str(),
+                responder_url: r.responder_url.clone(),
+                produced_at: r.produced_at.map(|t| t.to_string()),
+            });
         }
         Err(e) => {
             report.code = Some(e.code.as_str());
@@ -365,7 +500,30 @@ fn verify_document(report: &VerifyReport) -> Document {
         "CAs",
         Line::text(report.cas.unwrap_or_default().to_string()),
     );
+    if let Some(status) = &report.signer_status {
+        doc.field(
+            "signer status",
+            Line::status(Tone::Good, status.status).and_dim(format!(" · {}", status.responder_url)),
+        );
+    }
+    if let Some(sequence) = report.sequence {
+        doc.field("previous", Line::text(format!("this list is {sequence}")));
+    }
     doc.field("verified at", Line::text(at));
+    for warning in &report.warnings {
+        doc.field(
+            "warning",
+            Line::status(Tone::Warn, super::tsl_warning_text(warning.code))
+                .and_dim(format!(" {} · {}", warning.rule, warning.detail)),
+        );
+    }
+    for skipped in &report.skipped {
+        doc.field(
+            "skipped",
+            Line::text(format!("{} · {}", skipped.provider, skipped.name))
+                .and_dim(format!(" · {}", skipped.reason)),
+        );
+    }
     doc
 }
 
@@ -429,6 +587,16 @@ fn document(report: &Report, with_pem: bool) -> Document {
         report.source.source,
         when(report.source.fetched_at_ts)
     )));
+    let mut signed = Line::text(format!(
+        "signed by {} under {}",
+        report.signer, report.tsl_signer_ca
+    ));
+    for warning in &report.warnings {
+        signed = signed
+            .and_text(" ")
+            .and_status(Tone::Warn, super::tsl_warning_text(warning));
+    }
+    doc.paragraph(signed);
     let counts = &report.counts;
     let mut summary = Line::text(format!(
         "{} CAs: {} under a verified root, ",
@@ -453,7 +621,7 @@ fn document(report: &Report, with_pem: bool) -> Document {
         .rejected
         .iter()
         .map(|ca| (ca, Line::status(Tone::Bad, rejection_text(ca))));
-    // Only what the CA certificates say: the TSL's own metadata is not authenticated.
+    // Only what the CA certificates say: the TSL's per-CA metadata decides nothing.
     let rows = kept.chain(rejected).map(|(ca, root)| {
         let organization = super::organization(&ca.subject).unwrap_or_else(|| "-".to_owned());
         vec![

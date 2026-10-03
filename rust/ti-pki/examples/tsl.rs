@@ -1,5 +1,6 @@
 //! Reads a TSL and matches its CAs to the environment's roots: what the TSL contributes
-//! to a trust store. The TSL is not authenticated; only CAs a root signed are kept.
+//! to a trust store. The list is read unverified here (see the `tsl_signature` example);
+//! only CAs a root signed are kept.
 //!
 //! ```console
 //! curl -sO https://download.tsl.ti-dienste.de/ECC/ECC-RSA_TSL.xml

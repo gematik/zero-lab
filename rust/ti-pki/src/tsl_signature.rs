@@ -1,4 +1,5 @@
-//! The signature of a TSL and its signer (`spec/tsl-xmldsig`, parts A and B).
+//! The signature of a TSL, its signer and the rules of an update (`spec/tsl-xmldsig`,
+//! parts A to D).
 //!
 //! [`verify`] is part A: `ti-xmldsig` checks the XML against the fixed XMLDSig/XAdES
 //! profile and the reference digests; this module parses the signer certificate, binds
@@ -8,27 +9,52 @@
 //!
 //! [`Tsl::parse_verified`] adds part B: the signer must be a C.TSL.SIG certificate the
 //! configured TSL signer CA ([`TrustConfig::tsl_signer_anchor`]) issued, valid now; only
-//! then is the list parsed, from the signed bytes. [`Tsl::parse_verified_prod`] does so
-//! for production, [`Tsl::parse_verified_auto`] for whichever environment's embedded
-//! TSL signer CA issued the signer.
+//! then is the list parsed, from the signed bytes, skipping what cannot be processed.
+//! A list past its `NextUpdate` and the grace period is rejected, within the grace
+//! period it carries a warning (part D). [`Tsl::parse_verified_prod`] does so for
+//! production, [`Tsl::parse_verified_auto`] for whichever environment's embedded TSL
+//! signer CA issued the signer.
 //!
-//! Not yet covered: the signer's OCSP status (part C), sequence number and grace period
-//! (part D), an announced anchor and the path through roots.json (part E).
+//! [`VerifiedTsl::check_signer_status`] is part C, with a network: the signer's OCSP
+//! status at the responder in its certificate, which only its CA or a responder that CA
+//! certified may answer. Without it the result carries the warning
+//! [`TslCode::NoOcspCheck`]. [`VerifiedTsl::check_sequence`] compares the list with the
+//! one stored before (part D).
+//!
+//! Not yet covered: an announced anchor and the path through roots.json (part E).
 
 use core::fmt;
 
+#[cfg(feature = "brainpool")]
 use bp256::BrainpoolP256r1;
+#[cfg(feature = "brainpool")]
 use rustls_pki_types::alg_id;
-use ti_xmldsig::{Document, ErrorKind, Limits};
+use ti_xmldsig::ErrorKind;
+#[cfg(feature = "brainpool")]
+use ti_xmldsig::{Document, Limits};
+#[cfg(feature = "brainpool")]
 use x509_cert::ext::pkix::KeyUsages;
 
+#[cfg(feature = "brainpool")]
 use crate::algorithms::brainpool::BRAINPOOL_P256R1;
+#[cfg(feature = "brainpool")]
 use crate::algorithms::{AlgorithmSet, find};
+#[cfg(feature = "brainpool")]
 use crate::cert_type::TSL_SIGNING;
+#[cfg(feature = "brainpool")]
 use crate::config::TEST_ONLY_MARKER;
+use crate::error::{ErrorCode, ValidationError};
+use crate::ocsp::{ResponseDefect, UNKNOWN_STATUS};
+use crate::revocation::{RevocationChecker, RevocationResult, RevocationStatus};
+#[cfg(feature = "brainpool")]
 use crate::time::Timestamp;
 use crate::tsl::Tsl;
-use crate::{Certificate, Tier, TrustConfig, oid};
+use crate::{Certificate, Tier, TrustStore};
+#[cfg(feature = "brainpool")]
+use crate::{TrustConfig, oid};
+
+/// The lowest sequence number of a TSL(ECC-RSA) (A_17685).
+pub const MIN_SEQUENCE_NUMBER: u64 = 10_000;
 
 /// The result codes of `spec/tsl-xmldsig` this module produces: the message short names
 /// of gemSpec_PKI Tab_PKI_274, in lower case.
@@ -56,6 +82,32 @@ pub enum TslCode {
     /// The signer does not match the rest of C.TSL.SIG; `spec/tsl-xmldsig`'s own code,
     /// Tab_PKI_274 has none.
     TslSignerProfileViolation,
+    /// Warning: the signer's OCSP status was not queried, for want of a network (1039).
+    NoOcspCheck,
+    /// The OCSP responder signed with a key that does not verify or is not authorized
+    /// for the signer's CA (1031).
+    OcspSignatureError,
+    /// The OCSP response lacks the certHash extension (1040).
+    CerthashExtensionMissing,
+    /// The OCSP certHash is not the signer certificate's (1041).
+    CerthashMismatch,
+    /// The responder does not know the signer (1044).
+    CertUnknown,
+    /// The signer is revoked (1047).
+    CertRevoked,
+    /// The responder answered with an OCSP status error, also after repetition (1058).
+    OcspStatusError,
+    /// The responder could not be reached, or its answer does not fit the request or the
+    /// time (1029).
+    OcspCheckRevocationError,
+    /// The list's `Id` and sequence number do not follow the stored ones, or the sequence
+    /// number is below 10000 (1007).
+    TslIdIncorrect,
+    /// Warning: the list is past its `NextUpdate`, within the grace period (1008).
+    ValidityWarning1,
+    /// The list is past its `NextUpdate` and the grace period; nothing from it may be
+    /// used (1009, a warning in Tab_PKI_274 that stops the use of the list).
+    ValidityWarning2,
 }
 
 impl TslCode {
@@ -71,6 +123,17 @@ impl TslCode {
         TslCode::WrongKeyusage,
         TslCode::WrongExtendedkeyusage,
         TslCode::TslSignerProfileViolation,
+        TslCode::NoOcspCheck,
+        TslCode::OcspSignatureError,
+        TslCode::CerthashExtensionMissing,
+        TslCode::CerthashMismatch,
+        TslCode::CertUnknown,
+        TslCode::CertRevoked,
+        TslCode::OcspStatusError,
+        TslCode::OcspCheckRevocationError,
+        TslCode::TslIdIncorrect,
+        TslCode::ValidityWarning1,
+        TslCode::ValidityWarning2,
     ];
 
     /// The code's name, e.g. `xml_signature_error`.
@@ -85,7 +148,23 @@ impl TslCode {
             TslCode::WrongKeyusage => "wrong_keyusage",
             TslCode::WrongExtendedkeyusage => "wrong_extendedkeyusage",
             TslCode::TslSignerProfileViolation => "tsl_signer_profile_violation",
+            TslCode::NoOcspCheck => "no_ocsp_check",
+            TslCode::OcspSignatureError => "ocsp_signature_error",
+            TslCode::CerthashExtensionMissing => "certhash_extension_missing",
+            TslCode::CerthashMismatch => "certhash_mismatch",
+            TslCode::CertUnknown => "cert_unknown",
+            TslCode::CertRevoked => "cert_revoked",
+            TslCode::OcspStatusError => "ocsp_status_error",
+            TslCode::OcspCheckRevocationError => "ocsp_check_revocation_error",
+            TslCode::TslIdIncorrect => "tsl_id_incorrect",
+            TslCode::ValidityWarning1 => "validity_warning_1",
+            TslCode::ValidityWarning2 => "validity_warning_2",
         }
+    }
+
+    /// Whether the code is a warning, which leaves the list usable.
+    pub const fn is_warning(self) -> bool {
+        matches!(self, TslCode::NoOcspCheck | TslCode::ValidityWarning1)
     }
 
     /// The message number of Tab_PKI_274; `None` for a code it does not define.
@@ -100,6 +179,17 @@ impl TslCode {
             TslCode::WrongKeyusage => Some(1016),
             TslCode::WrongExtendedkeyusage => Some(1017),
             TslCode::TslSignerProfileViolation => None,
+            TslCode::NoOcspCheck => Some(1039),
+            TslCode::OcspSignatureError => Some(1031),
+            TslCode::CerthashExtensionMissing => Some(1040),
+            TslCode::CerthashMismatch => Some(1041),
+            TslCode::CertUnknown => Some(1044),
+            TslCode::CertRevoked => Some(1047),
+            TslCode::OcspStatusError => Some(1058),
+            TslCode::OcspCheckRevocationError => Some(1029),
+            TslCode::TslIdIncorrect => Some(1007),
+            TslCode::ValidityWarning1 => Some(1008),
+            TslCode::ValidityWarning2 => Some(1009),
         }
     }
 }
@@ -110,8 +200,8 @@ impl fmt::Display for TslCode {
     }
 }
 
-/// A rejected TSL: the result code, the rule of `spec/tsl-xmldsig` that failed, and what
-/// exactly failed.
+/// A rejected TSL, or a warning about a usable one: the result code, the rule of
+/// `spec/tsl-xmldsig`, and what exactly happened.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{code}: {rule}: {detail}")]
 pub struct TslError {
@@ -132,6 +222,7 @@ impl TslError {
         }
     }
 
+    #[cfg(feature = "brainpool")]
     fn signature(rule: &'static str, detail: impl Into<String>) -> Self {
         TslError::new(TslCode::XmlSignatureError, rule, detail)
     }
@@ -166,6 +257,7 @@ pub struct SignedTsl {
     pub signing_time: String,
 }
 
+#[cfg(feature = "brainpool")]
 /// Verifies the signature of the TSL `xml` with the algorithms of `algorithms`
 /// (TSLSIG-001, 010 – 023).
 ///
@@ -241,8 +333,164 @@ pub struct VerifiedTsl {
     pub signer: Certificate,
     /// `SigningTime` as written; informational (TSLSIG-021).
     pub signing_time: String,
+    /// What leaves the list usable but deserves attention: [`TslCode::NoOcspCheck`] until
+    /// [`check_signer_status`](Self::check_signer_status) succeeded,
+    /// [`TslCode::ValidityWarning1`] within the grace period.
+    pub warnings: Vec<TslError>,
+    /// The signer's OCSP result, once [`check_signer_status`](Self::check_signer_status)
+    /// succeeded.
+    pub signer_status: Option<RevocationResult>,
 }
 
+/// What is kept of a TSL between updates to judge the next one (TSLSIG-053). Persist it:
+/// it must survive restarts.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TslState {
+    /// The root element's `Id`.
+    pub id: String,
+    /// `TSLSequenceNumber`.
+    pub sequence_number: u64,
+}
+
+impl TslState {
+    /// The state of `tsl`.
+    pub fn of(tsl: &Tsl) -> Self {
+        TslState {
+            id: tsl.id.clone(),
+            sequence_number: tsl.sequence_number,
+        }
+    }
+}
+
+/// How a verified list relates to the stored one (TSLSIG-053).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Sequence {
+    /// A newer list, or the first one: update.
+    Newer,
+    /// The stored list again: no update, no error.
+    Same,
+}
+
+impl VerifiedTsl {
+    /// The signer's OCSP status (part C, TSLSIG-040 – 042), from `checker`, normally an
+    /// [`OcspChecker`](crate::ocsp::OcspChecker) over a network transport: asked at the
+    /// responder named in the signer certificate, with the TSL signer CA as issuer. Only
+    /// that CA or a responder it certified may answer (RFC 6960): no trust store is
+    /// offered for delegates of the same provider. `good` removes the
+    /// [`TslCode::NoOcspCheck`] warning.
+    ///
+    /// # Errors
+    ///
+    /// [`TslError`] with the code of TSLSIG-041 or 042; the list must not be used.
+    pub async fn check_signer_status(
+        &mut self,
+        checker: &impl RevocationChecker,
+    ) -> Result<(), TslError> {
+        let result = checker
+            .check(&self.signer, &self.anchor, &TrustStore::new([]))
+            .await
+            .map_err(|e| status_error(&e))?;
+        let detail = |what: &str| format!("{what} ({})", result.responder_url);
+        match result.status {
+            RevocationStatus::Good => {}
+            RevocationStatus::Revoked => {
+                return Err(TslError::new(
+                    TslCode::CertRevoked,
+                    "TSLSIG-041",
+                    detail(&format!("the signer is revoked: {}", result.reason)),
+                ));
+            }
+            RevocationStatus::Unknown if result.reason == UNKNOWN_STATUS => {
+                return Err(TslError::new(
+                    TslCode::CertUnknown,
+                    "TSLSIG-041",
+                    detail("the responder does not know the signer"),
+                ));
+            }
+            RevocationStatus::Unknown => {
+                return Err(TslError::new(
+                    TslCode::OcspCheckRevocationError,
+                    "TSLSIG-042",
+                    detail(&result.reason),
+                ));
+            }
+        }
+        self.warnings.retain(|w| w.code != TslCode::NoOcspCheck);
+        self.signer_status = Some(result);
+        Ok(())
+    }
+
+    /// Compares the list with the `stored` one (TSLSIG-053): none stored, or another
+    /// `Id` and a greater sequence number, is [`Sequence::Newer`]; the same `Id` and
+    /// sequence number is [`Sequence::Same`].
+    ///
+    /// # Errors
+    ///
+    /// [`TslCode::TslIdIncorrect`] for a sequence number below [`MIN_SEQUENCE_NUMBER`] and
+    /// for anything else: an older list, the same number under another `Id`, or the same
+    /// `Id` under another number.
+    pub fn check_sequence(&self, stored: Option<&TslState>) -> Result<Sequence, TslError> {
+        let (id, number) = (&self.tsl.id, self.tsl.sequence_number);
+        let incorrect =
+            |detail: String| TslError::new(TslCode::TslIdIncorrect, "TSLSIG-053", detail);
+        if number < MIN_SEQUENCE_NUMBER {
+            return Err(incorrect(format!(
+                "sequence number {number} is below {MIN_SEQUENCE_NUMBER}"
+            )));
+        }
+        let Some(stored) = stored else {
+            return Ok(Sequence::Newer);
+        };
+        if *id == stored.id && number == stored.sequence_number {
+            Ok(Sequence::Same)
+        } else if *id != stored.id && number > stored.sequence_number {
+            Ok(Sequence::Newer)
+        } else {
+            Err(incorrect(format!(
+                "Id {id:?} with sequence number {number} does not follow Id {:?} with {}",
+                stored.id, stored.sequence_number
+            )))
+        }
+    }
+}
+
+/// TSLSIG-040 – 042 for a check that failed, by what exactly failed.
+fn status_error(error: &ValidationError) -> TslError {
+    let (code, rule) = match (error.code, error.defect) {
+        (ErrorCode::OcspResponseInvalid, Some(ResponseDefect::CertHashMissing)) => {
+            (TslCode::CerthashExtensionMissing, "TSLSIG-041")
+        }
+        (ErrorCode::OcspResponseInvalid, Some(ResponseDefect::CertHashMismatch)) => {
+            (TslCode::CerthashMismatch, "TSLSIG-041")
+        }
+        (ErrorCode::OcspResponseInvalid, Some(ResponseDefect::Signature))
+        | (ErrorCode::OcspResponderUntrusted, _) => (TslCode::OcspSignatureError, "TSLSIG-040"),
+        (ErrorCode::OcspUnavailable, _) if !unreachable(error) => {
+            (TslCode::OcspStatusError, "TSLSIG-042")
+        }
+        _ => (TslCode::OcspCheckRevocationError, "TSLSIG-042"),
+    };
+    TslError::new(code, rule, error.message.clone())
+}
+
+/// Whether the responder could not be reached at all, as opposed to answering with an
+/// error status.
+fn unreachable(error: &ValidationError) -> bool {
+    #[cfg(feature = "load")]
+    return error.cause.as_deref().is_some_and(|cause| {
+        cause
+            .downcast_ref::<crate::load::TransportError>()
+            .is_some()
+    });
+    #[cfg(not(feature = "load"))]
+    {
+        let _ = error;
+        false
+    }
+}
+
+#[cfg(feature = "brainpool")]
 impl Tsl {
     /// Verifies the TSL `xml` against `config` at `now` and parses it from the signed
     /// bytes: the signature (part A) and a signer issued by
@@ -266,13 +514,35 @@ impl Tsl {
         })?;
         let signed = verify(xml, &config.algorithms)?;
         check_signer(&signed.signer, &anchor, &config.algorithms, now)?;
-        let tsl = Tsl::parse(&signed.content).map_err(|e| {
+        let tsl = Tsl::parse_with(&signed.content, true).map_err(|e| {
             TslError::new(
                 TslCode::TslNotWellformed,
                 "TSLSIG-023",
                 format!("signed content: {e}"),
             )
         })?;
+        let mut warnings = Vec::new();
+        if let Some(next_update) = tsl.next_update
+            && now >= next_update
+        {
+            let past = format!("NextUpdate {next_update} has passed at {now}");
+            if now >= next_update + config.tsl_grace_period {
+                return Err(TslError::new(
+                    TslCode::ValidityWarning2,
+                    "TSLSIG-054",
+                    format!(
+                        "{past}, beyond the grace period of {} s",
+                        config.tsl_grace_period.as_secs()
+                    ),
+                ));
+            }
+            warnings.push(TslError::new(TslCode::ValidityWarning1, "TSLSIG-054", past));
+        }
+        warnings.push(TslError::new(
+            TslCode::NoOcspCheck,
+            "TSLSIG-043",
+            "the signer's OCSP status was not queried",
+        ));
         let tier = if anchor.subject().to_string().contains(TEST_ONLY_MARKER) {
             Tier::NonProd
         } else {
@@ -284,6 +554,8 @@ impl Tsl {
             anchor,
             signer: signed.signer,
             signing_time: signed.signing_time,
+            warnings,
+            signer_status: None,
         })
     }
 
@@ -307,29 +579,43 @@ impl Tsl {
     /// [`TslCode::CertificateNotValidMath`] if no embedded TSL signer CA has the signer's
     /// issuer name and key identifier; otherwise as [`Tsl::parse_verified`].
     pub fn parse_verified_auto(xml: &[u8], now: Timestamp) -> Result<VerifiedTsl, TslError> {
-        let signed = verify(xml, crate::algorithms::DEFAULT)?;
-        let config = embedded_configs()
-            .into_iter()
-            .find(|config| {
-                Certificate::from_der(&config.tsl_signer_anchor).is_ok_and(|anchor| {
-                    anchor.subject_der() == signed.signer.issuer_der()
-                        && anchor.subject_key_id() == signed.signer.authority_key_id()
-                })
-            })
-            .ok_or_else(|| {
-                TslError::new(
-                    TslCode::CertificateNotValidMath,
-                    "TSLSIG-031",
-                    format!(
-                        "the signer's issuer {} is no embedded TSL signer CA",
-                        signed.signer.issuer()
-                    ),
-                )
-            })?;
-        Tsl::parse_verified(xml, &config, now)
+        Tsl::parse_verified(xml, &embedded_config_for(xml)?, now)
     }
 }
 
+#[cfg(feature = "brainpool")]
+/// The preset whose embedded TSL signer CA has the name and key identifier of the issuer
+/// of `xml`'s signer, as [`Tsl::parse_verified_auto`] picks it; a caller adjusts it, e.g.
+/// [`TrustConfig::tsl_grace_period`], before [`Tsl::parse_verified`]. Only the signature
+/// is verified here.
+///
+/// # Errors
+///
+/// As [`verify`], and [`TslCode::CertificateNotValidMath`] if no embedded TSL signer CA
+/// fits.
+pub fn embedded_config_for(xml: &[u8]) -> Result<TrustConfig, TslError> {
+    let signed = verify(xml, crate::algorithms::DEFAULT)?;
+    embedded_configs()
+        .into_iter()
+        .find(|config| {
+            Certificate::from_der(&config.tsl_signer_anchor).is_ok_and(|anchor| {
+                anchor.subject_der() == signed.signer.issuer_der()
+                    && anchor.subject_key_id() == signed.signer.authority_key_id()
+            })
+        })
+        .ok_or_else(|| {
+            TslError::new(
+                TslCode::CertificateNotValidMath,
+                "TSLSIG-031",
+                format!(
+                    "the signer's issuer {} is no embedded TSL signer CA",
+                    signed.signer.issuer()
+                ),
+            )
+        })
+}
+
+#[cfg(feature = "brainpool")]
 /// The configurations whose TSL signer CAs [`Tsl::parse_verified_auto`] tries.
 fn embedded_configs() -> Vec<TrustConfig> {
     #[cfg(feature = "dangerous-nonprod")]
@@ -341,6 +627,7 @@ fn embedded_configs() -> Vec<TrustConfig> {
     vec![TrustConfig::preset_prod()]
 }
 
+#[cfg(feature = "brainpool")]
 /// Part B for the signer of a verified signature: issued by `anchor` (TSLSIG-031), both
 /// valid at `now` (032), and C.TSL.SIG (033 – 035).
 fn check_signer(
@@ -443,6 +730,7 @@ fn check_signer(
     Ok(())
 }
 
+#[cfg(feature = "brainpool")]
 /// Whether the decimal `written` (`X509SerialNumber`, an `xsd:integer`) is the serial
 /// number whose big-endian two's-complement bytes are `serial`.
 fn serial_matches(written: &str, serial: &[u8]) -> bool {
@@ -472,7 +760,7 @@ fn serial_matches(written: &str, serial: &[u8]) -> bool {
     significant(&value) == significant(serial)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "brainpool"))]
 mod tests {
     use super::*;
     use crate::algorithms::DEFAULT;
@@ -745,8 +1033,11 @@ mod tests {
     #[cfg(feature = "dangerous-nonprod")]
     #[test]
     fn test_tsls_verify_for_non_production() {
-        let now = at("2026-10-03T00:00:00Z");
-        for name in ["tu-10687.xml", "tu-10713.xml"] {
+        // Each within its own validity: tu-10687 expired on 2026-07-02.
+        for (name, now) in [
+            ("tu-10687.xml", at("2026-06-03T00:00:00Z")),
+            ("tu-10713.xml", at("2026-10-03T00:00:00Z")),
+        ] {
             let config = TrustConfig::preset(crate::Env::Test);
             let verified = Tsl::parse_verified(&real(name), &config, now).unwrap();
             assert_eq!(verified.tier, Tier::NonProd);
@@ -756,6 +1047,7 @@ mod tests {
             assert_eq!(auto.tsl.sequence_number, verified.tsl.sequence_number);
         }
         // And a production TSL under the non-production anchor fails.
+        let now = at("2026-10-03T00:00:00Z");
         let e = Tsl::parse_verified(
             &real("pu-10334.xml"),
             &TrustConfig::preset(crate::Env::Ref),
@@ -774,6 +1066,190 @@ mod tests {
             (e.code, e.rule),
             (TslCode::CertificateNotValidMath, "TSLSIG-031"),
             "{e}"
+        );
+    }
+
+    /// pu-10334: issued 2026-09-27T23:00:07Z, NextUpdate 2026-10-27T23:00:07Z.
+    fn pu_10334(now: &str, grace_days: u64) -> Result<VerifiedTsl, TslError> {
+        let config = TrustConfig {
+            tsl_grace_period: core::time::Duration::from_hours(grace_days * 24),
+            ..TrustConfig::preset_prod()
+        };
+        Tsl::parse_verified(&real("pu-10334.xml"), &config, at(now))
+    }
+
+    fn codes(warnings: &[TslError]) -> Vec<TslCode> {
+        warnings.iter().map(|w| w.code).collect()
+    }
+
+    #[test]
+    fn tslsig_054_next_update_and_grace_period() {
+        let before = pu_10334("2026-10-27T23:00:06Z", 0).unwrap();
+        assert_eq!(codes(&before.warnings), [TslCode::NoOcspCheck]);
+
+        let e = pu_10334("2026-10-27T23:00:07Z", 0).unwrap_err();
+        assert_eq!(
+            (e.code, e.rule),
+            (TslCode::ValidityWarning2, "TSLSIG-054"),
+            "{e}"
+        );
+        assert!(!e.code.is_warning());
+
+        let within = pu_10334("2026-11-01T00:00:00Z", 7).unwrap();
+        assert_eq!(
+            codes(&within.warnings),
+            [TslCode::ValidityWarning1, TslCode::NoOcspCheck]
+        );
+        assert!(TslCode::ValidityWarning1.is_warning());
+        let e = pu_10334("2026-11-03T23:00:07Z", 7).unwrap_err();
+        assert_eq!(e.code, TslCode::ValidityWarning2);
+    }
+
+    #[test]
+    fn tslsig_052_the_published_lists_skip_nothing() {
+        let verified = pu_10334("2026-10-03T00:00:00Z", 0).unwrap();
+        assert!(verified.tsl.skipped.is_empty());
+        assert_eq!(verified.tsl.id, "ID31033420260927230007Z");
+    }
+
+    #[test]
+    fn tslsig_053_sequence() {
+        let mut verified = pu_10334("2026-10-03T00:00:00Z", 0).unwrap();
+        let state = |id: &str, sequence_number| TslState {
+            id: id.to_owned(),
+            sequence_number,
+        };
+        let previous = TslState::of(
+            &Tsl::parse_verified_prod(&real("pu-10333.xml"), at("2026-10-03T00:00:00Z"))
+                .unwrap()
+                .tsl,
+        );
+        assert_eq!(verified.check_sequence(None), Ok(Sequence::Newer));
+        assert_eq!(
+            verified.check_sequence(Some(&previous)),
+            Ok(Sequence::Newer)
+        );
+        let current = TslState::of(&verified.tsl);
+        assert_eq!(verified.check_sequence(Some(&current)), Ok(Sequence::Same));
+        for stored in [
+            state("ID31033420260927230007Z", 10333),
+            state("other", 10334),
+            state("other", 10335),
+        ] {
+            let e = verified.check_sequence(Some(&stored)).unwrap_err();
+            assert_eq!(
+                (e.code, e.rule),
+                (TslCode::TslIdIncorrect, "TSLSIG-053"),
+                "{stored:?}"
+            );
+        }
+        verified.tsl.sequence_number = 9999;
+        let e = verified.check_sequence(None).unwrap_err();
+        assert_eq!(e.code, TslCode::TslIdIncorrect);
+    }
+
+    /// Answers every check with one scripted outcome.
+    struct Scripted(Result<RevocationResult, ValidationError>);
+
+    impl RevocationChecker for Scripted {
+        async fn check(
+            &self,
+            _cert: &Certificate,
+            _issuer: &Certificate,
+            store: &TrustStore,
+        ) -> Result<RevocationResult, ValidationError> {
+            assert!(store.is_empty(), "RFC 6960 only: no store for delegates");
+            self.0.clone()
+        }
+    }
+
+    fn result(status: RevocationStatus, reason: &str) -> RevocationResult {
+        let mut result = RevocationResult::unknown(at("2026-10-03T00:00:00Z"), reason);
+        result.status = status;
+        result.responder_url = "http://ocsp.tsl.ti-dienste.de/ocsp".into();
+        result
+    }
+
+    fn status(outcome: Result<RevocationResult, ValidationError>) -> Result<VerifiedTsl, TslError> {
+        let mut verified = pu_10334("2026-10-03T00:00:00Z", 0).unwrap();
+        futures_lite::future::block_on(verified.check_signer_status(&Scripted(outcome)))?;
+        Ok(verified)
+    }
+
+    #[test]
+    fn tslsig_040_043_a_good_status_lifts_the_warning() {
+        let verified = status(Ok(result(RevocationStatus::Good, ""))).unwrap();
+        assert!(verified.warnings.is_empty());
+        assert_eq!(
+            verified.signer_status.map(|r| r.status),
+            Some(RevocationStatus::Good)
+        );
+    }
+
+    #[test]
+    fn tslsig_041_042_what_stops_the_update() {
+        let invalid = |defect| {
+            Err(ValidationError::new(ErrorCode::OcspResponseInvalid, "x").with_defect(defect))
+        };
+        let unavailable = || ValidationError::new(ErrorCode::OcspUnavailable, "tryLater");
+        let cases = [
+            (
+                Ok(result(RevocationStatus::Revoked, "keyCompromise")),
+                TslCode::CertRevoked,
+            ),
+            (
+                Ok(result(RevocationStatus::Unknown, UNKNOWN_STATUS)),
+                TslCode::CertUnknown,
+            ),
+            (
+                Ok(result(
+                    RevocationStatus::Unknown,
+                    "OCSP producedAt lies 60 s in the future",
+                )),
+                TslCode::OcspCheckRevocationError,
+            ),
+            (
+                invalid(ResponseDefect::CertHashMissing),
+                TslCode::CerthashExtensionMissing,
+            ),
+            (
+                invalid(ResponseDefect::CertHashMismatch),
+                TslCode::CerthashMismatch,
+            ),
+            (
+                invalid(ResponseDefect::Signature),
+                TslCode::OcspSignatureError,
+            ),
+            (
+                invalid(ResponseDefect::WrongCertificate),
+                TslCode::OcspCheckRevocationError,
+            ),
+            (
+                Err(ValidationError::new(ErrorCode::OcspResponderUntrusted, "x")),
+                TslCode::OcspSignatureError,
+            ),
+            (Err(unavailable()), TslCode::OcspStatusError),
+        ];
+        for (outcome, code) in cases {
+            let e = status(outcome).unwrap_err();
+            assert_eq!(e.code, code, "{e}");
+            assert!(!e.code.is_warning());
+        }
+    }
+
+    #[cfg(feature = "load")]
+    #[test]
+    fn tslsig_042_an_unreachable_responder() {
+        let unreachable = ValidationError::new(ErrorCode::OcspUnavailable, "unreachable")
+            .with_cause(crate::load::TransportError {
+                kind: crate::load::TransportErrorKind::Other,
+                message: "connection refused".into(),
+                retryable: true,
+            });
+        let e = status(Err(unreachable)).unwrap_err();
+        assert_eq!(
+            (e.code, e.rule),
+            (TslCode::OcspCheckRevocationError, "TSLSIG-042")
         );
     }
 }

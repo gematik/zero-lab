@@ -45,8 +45,8 @@ pub fn list(args: &TrustArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
     let config = TrustConfig::preset(env);
     config.validate(env.tier()).map_err(CliError::Trust)?;
     let session = Session::new(global, args.offline, out)?;
-    let material = session.load(&config, env.tier())?;
-    let now = SystemClock.now();
+    let material = session.load(&config, env.tier(), args.at)?;
+    let now = args.at.unwrap_or_else(|| SystemClock.now());
     let report = Report {
         schema: SCHEMA,
         environment: env.as_str(),

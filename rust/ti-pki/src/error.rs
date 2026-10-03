@@ -170,6 +170,9 @@ pub struct ValidationError {
     /// The underlying error, if any.
     #[source]
     pub cause: Option<Arc<dyn std::error::Error + Send + Sync>>,
+    /// What exactly is wrong with a rejected OCSP response, for the finer result codes
+    /// of the TSL signer's status.
+    pub(crate) defect: Option<crate::ocsp::ResponseDefect>,
 }
 
 impl ValidationError {
@@ -180,6 +183,7 @@ impl ValidationError {
             subject: String::new(),
             message: message.into(),
             cause: None,
+            defect: None,
         }
     }
 

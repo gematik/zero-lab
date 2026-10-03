@@ -47,7 +47,9 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
             roots::list(args, &cli.global, out)
         }
         Command::Pki(PkiCommand::Tsl(TslCommand::Show(args))) => tsl::show(args, &cli.global, out),
-        Command::Pki(PkiCommand::Tsl(TslCommand::Verify(args))) => tsl::verify(args, out),
+        Command::Pki(PkiCommand::Tsl(TslCommand::Verify(args))) => {
+            tsl::verify(args, &cli.global, out)
+        }
         Command::Pki(PkiCommand::Pkcs12(Pkcs12Command::Convert {
             input,
             output,
@@ -177,10 +179,24 @@ fn trust_line(trust: &TrustInfo) -> Line {
     if let Some(next) = trust.tsl_next_update_ts {
         line = line.and_dim(format!(" · TSL next update {}", when(next)));
     }
+    for warning in &trust.tsl_warnings {
+        line = line
+            .and_dim(" · ")
+            .and_status(Tone::Warn, format!("TSL {}", tsl_warning_text(warning)));
+    }
     if let Some(note) = &trust.note {
         line = line.and_dim(format!(" · {note}"));
     }
     line
+}
+
+/// A TSL warning code in words.
+fn tsl_warning_text(code: &str) -> &str {
+    match code {
+        "no_ocsp_check" => "signer status not checked",
+        "validity_warning_1" => "past NextUpdate, in the grace period",
+        other => other,
+    }
 }
 
 /// Writes `bytes` to `path`; readable by the owner only when `private` (keys, decrypted

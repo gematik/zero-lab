@@ -135,6 +135,16 @@
             "null"
           ],
           "description": "Why the material is less than the environment's full set"
+        },
+        "tsl_warnings": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "no_ocsp_check",
+              "validity_warning_1"
+            ]
+          },
+          "description": "Warnings about the TSL: no_ocsp_check when its signer's OCSP status was not queried (offline, --at), validity_warning_1 past NextUpdate within the grace period."
         }
       },
       "required": [
@@ -143,6 +153,7 @@
         "tsl_next_update",
         "roots",
         "intermediates",
+        "tsl_warnings",
         "note"
       ],
       "additionalProperties": false

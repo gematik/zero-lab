@@ -10,17 +10,17 @@ differently from `gempki`.
 ## Deliberate deviations
 
 `ti-pki` targets TI 2.0, where trust management is reduced to the gematik root CAs:
-chains are built to the roots from the A_28419 cross-certificate walk, and the TSL is
-not authenticated at all. It only supplies candidate intermediates, each kept only if a
-verified root signed it. Everything GemLibPki derives from an authenticated TSL is
+chains are built to the roots from the A_28419 cross-certificate walk. The TSL is
+verified (`spec/tsl-xmldsig`) but only supplies candidate intermediates, each kept only
+if a verified root signed it. What GemLibPki derives from the TSL's per-CA entries is
 therefore out of scope:
 
 | GemLibPki | ti-pki |
 |---|---|
 | Issuer must be a TSL service with ServiceStatus `inaccord`, certificate NotBefore after StatusStartingTime (SE_1036, SE_1032) | Only `inaccord` CAs are candidates, and a root must have signed them; StatusStartingTime is parsed, not enforced |
 | Certificate-type OID must appear in the issuer's TSL `ExtensionOID` list (SE_1061) | Not enforced; the certificate's own policies decide its type baseline |
-| TSL XAdES signature, XSD validation, TSL ID and SequenceNumber against the current list (TE_1013, TE_1014) | No signature is checked, neither XMLDSig nor the detached `.sig` (gempki verifies the latter); the sequence number is parsed |
-| TSL NextUpdate with grace period (TE_1015) | Schedules the next reload; staleness is bounded by `ReloadPolicy::hard_expiry` |
+| TSL XAdES signature, XSD validation, TSL ID and SequenceNumber against the current list (TE_1013, TE_1014) | The XMLDSig/XAdES signature against a fixed profile, the signer under the embedded TSL signer CA and its OCSP status, `Id` and sequence number against the stored list (`spec/tsl-xmldsig` A – D); no XSD validation |
+| TSL NextUpdate with grace period (TE_1015) | The same (`TrustConfig::tsl_grace_period`, default 0); it also schedules the next reload |
 | Trust-anchor change announced in the TSL (TUC_PKI_013) | Roots come from roots.json |
 | Only the end entity's validity period is checked; a CA's standing is its TSL status (a `revoked` status before the end entity's notBefore rejects, SE_1036), its own validity period is never checked | RFC 5280 path validation: every certificate of the chain must be valid at validation time, so an expired CA still listed in the TSL invalidates its certificates (e.g. GEM.SMCB-CA9 TEST-ONLY, expired 2025-08-28, while its SMC-Bs run until 2028). Kept deliberately, like gempki and zeta-sdk; keycloak-zeta follows the reference |
 | A SubCA's standing is its TSL listing | Each SubCA is checked by OCSP at its root's responder, on by default |

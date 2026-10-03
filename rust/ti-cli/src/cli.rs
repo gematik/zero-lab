@@ -238,6 +238,10 @@ pub struct TrustArgs {
     /// No network: the cached trust material, else the embedded roots
     #[arg(long)]
     pub offline: bool,
+    /// Verify the trust material at this time instead of now (RFC 3339); the TSL signer's
+    /// OCSP status is then not queried
+    #[arg(long, value_name = "TIME", value_parser = timestamp)]
+    pub at: Option<ti_pki::Timestamp>,
 }
 
 /// `ti pki tsl show`. Filters match case-insensitive substrings and combine.
@@ -259,8 +263,8 @@ pub struct TslShowArgs {
     pub root: Option<String>,
 }
 
-/// `ti pki tsl verify`. Offline: the file is checked against the embedded TSL signer CA
-/// of the environment.
+/// `ti pki tsl verify`: the file against the embedded TSL signer CA of the environment;
+/// online, the signer's OCSP status too.
 #[derive(Debug, Args)]
 pub struct TslVerifyArgs {
     /// The TSL (XML); "-" reads stdin
@@ -269,9 +273,21 @@ pub struct TslVerifyArgs {
     /// TI environment; auto takes the one whose TSL signer CA issued the signer
     #[arg(long, value_enum, default_value_t = Environment::Auto, env = "TI_ENV")]
     pub env: Environment,
-    /// Verify at this time instead of now (RFC 3339, e.g. 2026-06-01T00:00:00+02:00)
+    /// Verify at this time instead of now (RFC 3339, e.g. 2026-06-01T00:00:00+02:00); the
+    /// signer's OCSP status is then not queried
     #[arg(long, value_name = "TIME", value_parser = timestamp)]
     pub at: Option<ti_pki::Timestamp>,
+    /// No network: the signer's OCSP status is not queried (warning no_ocsp_check)
+    #[arg(long)]
+    pub offline: bool,
+    /// The list used before: this one must have another Id and a greater sequence
+    /// number, or be the same list
+    #[arg(long, value_name = "FILE")]
+    pub previous: Option<PathBuf>,
+    /// Days the list may still be used after its NextUpdate, with a warning (0 – 30)
+    #[arg(long, value_name = "DAYS", default_value_t = 0,
+          value_parser = clap::value_parser!(u8).range(0..=30))]
+    pub grace: u8,
 }
 
 /// `ti pki verify`.

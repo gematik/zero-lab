@@ -111,9 +111,8 @@ impl ValidationResult {
 /// end-entity requirements below, the gemSpec_Krypt key check and revocation.
 ///
 /// Revocation is checked for the end entity at its CA and, unless
-/// `skip_sub_ca_revocation`, for every CA at its issuer: the TSL is not authenticated,
-/// so a CA's standing comes from OCSP rather than from its listing. The root has no
-/// issuer to ask.
+/// `skip_sub_ca_revocation`, for every CA at its issuer: a CA's standing comes from OCSP
+/// rather than from its TSL listing. The root has no issuer to ask.
 ///
 /// Built from a [`TrustConfig`] with [`Validator::new`] and adjusted by struct update;
 /// a [`Profile`](crate::profile::Profile) fills in the end-entity requirements.

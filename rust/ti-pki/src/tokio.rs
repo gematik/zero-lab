@@ -36,6 +36,7 @@ use std::thread;
 use ::tokio::sync::{mpsc, oneshot};
 
 use crate::load::{Clock, Loader, ReloadError, ReloadOutcome, Reloader, State};
+use crate::revocation::RevocationChecker;
 
 /// A running background reloader. Dropping it stops the task; [`shutdown`](Self::shutdown)
 /// also waits for the thread.
@@ -102,10 +103,11 @@ impl AdminTrigger {
 /// # Errors
 ///
 /// If the runtime or the thread cannot be created.
-pub fn spawn_reloader<L, C>(reloader: Arc<Reloader<L, C>>) -> std::io::Result<ReloaderTask>
+pub fn spawn_reloader<L, C, R>(reloader: Arc<Reloader<L, C, R>>) -> std::io::Result<ReloaderTask>
 where
     L: Loader + Send + Sync + 'static,
     C: Clock + Send + Sync + 'static,
+    R: RevocationChecker + Send + Sync + 'static,
 {
     let (requests, mut incoming) = mpsc::channel::<oneshot::Sender<ReloadOutcome>>(8);
     let (stop, mut stopped) = oneshot::channel::<()>();
@@ -241,11 +243,18 @@ mod tests {
         clippy::unnecessary_wraps,
         reason = "must match the verifier signature"
     )]
-    fn accept(_: &TrustConfig, _: &TrustMaterial, _: Timestamp) -> Result<Verified, VerifyError> {
+    fn accept(
+        _: &TrustConfig,
+        _: &TrustMaterial,
+        _: Timestamp,
+        _: Option<&crate::tsl_signature::TslState>,
+    ) -> Result<Verified, VerifyError> {
         Ok(Verified {
             roots: Vec::new(),
             intermediates: Vec::new(),
             tsl_next_update: None,
+            tsl: None,
+            sequence: crate::tsl_signature::Sequence::Newer,
         })
     }
 

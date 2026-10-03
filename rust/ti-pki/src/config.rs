@@ -43,6 +43,9 @@ use crate::Env;
 use crate::algorithms::{self, AlgorithmSet};
 use crate::{Error, RevocationMode, Tier, anchors, roots, tsl};
 
+/// The longest grace period a TSL may be used for after its `NextUpdate` (GS-A_4898).
+pub const MAX_TSL_GRACE_PERIOD: Duration = Duration::from_hours(30 * 24);
+
 /// Clock skew tolerated between us and a responder or issuer. The value the Go
 /// implementation and the gematik reference implementation apply.
 pub const DEFAULT_MAX_CLOCK_SKEW: Duration = Duration::from_millis(37_500);
@@ -76,14 +79,18 @@ pub struct TrustConfig {
     pub roots: Cow<'static, [u8]>,
     /// Where a fresh roots.json is downloaded from. Must be `https://`.
     pub roots_url: Cow<'static, str>,
-    /// Where the TSL is downloaded from. Must be `https://`. The TSL is not
-    /// authenticated; it only supplies candidate intermediates (see [`tsl`]).
+    /// Where the TSL is downloaded from. Must be `https://`. The TSL is verified against
+    /// `tsl_signer_anchor` and supplies candidate intermediates (see [`tsl`]).
     pub tsl_url: Cow<'static, str>,
     /// The `GEM.TSL-CA<n>` TSL signer CA, as DER, that a TSL's signer must be issued by
     /// (GS-A_4640, `spec/tsl-xmldsig` TSLSIG-030). Separate from `anchor`: gemSpec_PKI
     /// installs the TSL signer CA itself as the TSL's trust anchor, without a path to a
     /// root.
     pub tsl_signer_anchor: Cow<'static, [u8]>,
+    /// How long after its `NextUpdate` a TSL may still be used, with a warning
+    /// (GS-A_4898, `spec/tsl-xmldsig` TSLSIG-054): 0 for central services, at most
+    /// [`MAX_TSL_GRACE_PERIOD`]. Past it, nothing from the TSL is used.
+    pub tsl_grace_period: Duration,
     /// How a non-Good revocation outcome affects the verdict.
     pub revocation: RevocationMode,
     /// Accept certificates outside their validity window.
@@ -106,6 +113,7 @@ impl TrustConfig {
             roots_url: Cow::Borrowed(roots::URL_PROD),
             tsl_url: Cow::Borrowed(tsl::URL_PROD),
             tsl_signer_anchor: Cow::Borrowed(anchors::GEM_TSL_CA3),
+            tsl_grace_period: Duration::ZERO,
             revocation: RevocationMode::HardFail,
             allow_expired: false,
             max_clock_skew: DEFAULT_MAX_CLOCK_SKEW,
@@ -160,7 +168,8 @@ impl TrustConfig {
     /// # Errors
     ///
     /// [`Error::Der`] if the anchor or the TSL signer anchor is not a DER certificate.
-    /// [`Error::InconsistentConfig`] if either URL is not `https://`, if no configured
+    /// [`Error::InconsistentConfig`] if either URL is not `https://`, the TSL grace period
+    /// exceeds [`MAX_TSL_GRACE_PERIOD`], if no configured
     /// algorithm handles the anchor's key type (a brainpool anchor without the
     /// `brainpool` feature, say), or, under
     /// [`Tier::Prod`], if either anchor is TEST-ONLY, revocation is not
@@ -173,6 +182,11 @@ impl TrustConfig {
         }
         if !self.tsl_url.starts_with("https://") {
             return Err(inconsistent("tsl_url must be an https URL"));
+        }
+        if self.tsl_grace_period > MAX_TSL_GRACE_PERIOD {
+            return Err(inconsistent(
+                "tsl_grace_period exceeds MAX_TSL_GRACE_PERIOD (30 days)",
+            ));
         }
         let key_alg = anchor
             .tbs_certificate()
@@ -253,6 +267,7 @@ pub(crate) mod tests {
         assert_eq!(config.roots_url, roots::URL_PROD);
         assert_eq!(config.tsl_url, tsl::URL_PROD);
         assert_eq!(config.tsl_signer_anchor.as_ref(), anchors::GEM_TSL_CA3);
+        assert_eq!(config.tsl_grace_period, Duration::ZERO);
         assert!(config.roots.is_empty());
     }
 
@@ -349,6 +364,23 @@ pub(crate) mod tests {
             ..nist_prod_config()
         };
         assert!(matches!(config.validate(Tier::NonProd), Err(Error::Der(_))));
+    }
+
+    #[test]
+    fn tsl_grace_period_is_at_most_30_days() {
+        let config = TrustConfig {
+            tsl_grace_period: MAX_TSL_GRACE_PERIOD,
+            ..nist_prod_config()
+        };
+        config.validate(Tier::Prod).unwrap();
+        let config = TrustConfig {
+            tsl_grace_period: MAX_TSL_GRACE_PERIOD + Duration::from_secs(1),
+            ..nist_prod_config()
+        };
+        assert_eq!(
+            reason(config.validate(Tier::NonProd)),
+            "tsl_grace_period exceeds MAX_TSL_GRACE_PERIOD (30 days)"
+        );
     }
 
     #[test]

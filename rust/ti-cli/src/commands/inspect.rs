@@ -228,7 +228,10 @@ fn trees(
         let (env, _) = super::verify::environment(Environment::Auto, certs, now).ok()?;
         let session = Session::new(global, true, out).ok()?;
         let config = ti_pki::TrustConfig::preset(env);
-        session.load(&config, env.tier()).ok().map(|m| m.store)
+        session
+            .load(&config, env.tier(), None)
+            .ok()
+            .map(|m| m.store)
     })();
     certs
         .iter()
