@@ -1972,6 +1972,7 @@ dependencies = [
  "thiserror",
  "ti-cache",
  "ti-types",
+ "ti-xmldsig",
  "tokio",
  "tracing",
  "x509-cert",

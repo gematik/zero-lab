@@ -167,6 +167,12 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   baseline without a role, default for the type; pair it with the expected FQDN.
 - `Certificate::subject_alt_names`: the subject alternative names in OpenSSL notation
   (`DNS:…`, `IP:…`, `email:…`, `URI:…`), for display.
+- `tsl_signature::verify` (feature `brainpool`): the signature of a TSL, part A of
+  `spec/tsl-xmldsig` — the XML profile and digests through `ti-xmldsig`, the signer
+  certificate bound by serial number, a brainpoolP256r1 key, and the ECDSA value over
+  the canonical `SignedInfo` through the configured algorithm set. Failures carry the
+  result code of Tab_PKI_274 (`TslCode`) and the rule. The signer is not yet checked
+  against the TSL signer CA; the TSL used for loading is still unauthenticated.
 
 #### changed
 - `Timestamp`, `Clock` and `SystemClock` come from `ti-types`, so every TI crate

@@ -128,6 +128,8 @@ pub mod tokio;
 pub mod trustdomain;
 pub mod truststore;
 pub mod tsl;
+#[cfg(feature = "brainpool")]
+pub mod tsl_signature;
 pub mod validate;
 
 pub use cert::{Certificate, parse_pem_certificates};
