@@ -37,6 +37,7 @@ Examples:
   {bin} pki roots list --env ref
   {bin} pki tsl show --rejected
   {bin} pki tsl show --ca SMCB-CA51 --format markdown   # with the CA's PEM
+  {bin} pki tsl verify ECC-RSA_TSL.xml          # signature and signer, env detected
   {bin} pki inspect identity.p12                # password 00 unless --p12-password
   {bin} pki pkcs12 convert legacy.p12 modern.p12
   {bin} connector configs                       # the .kon files, shared with the Go ti
@@ -223,6 +224,9 @@ pub enum RootsCommand {
 pub enum TslCommand {
     /// The TSL's CAs under the roots that signed them, and those no verified root signed
     Show(TslShowArgs),
+    /// Verify a TSL file: its signature and its signer under the TSL signer CA (exit 0
+    /// valid, 1 not valid)
+    Verify(TslVerifyArgs),
 }
 
 /// The environment whose trust material a command shows.
@@ -253,6 +257,21 @@ pub struct TslShowArgs {
     /// Only CAs under roots whose common name contains TEXT
     #[arg(long, value_name = "TEXT")]
     pub root: Option<String>,
+}
+
+/// `ti pki tsl verify`. Offline: the file is checked against the embedded TSL signer CA
+/// of the environment.
+#[derive(Debug, Args)]
+pub struct TslVerifyArgs {
+    /// The TSL (XML); "-" reads stdin
+    #[arg(value_name = "FILE")]
+    pub file: PathBuf,
+    /// TI environment; auto takes the one whose TSL signer CA issued the signer
+    #[arg(long, value_enum, default_value_t = Environment::Auto, env = "TI_ENV")]
+    pub env: Environment,
+    /// Verify at this time instead of now (RFC 3339, e.g. 2026-06-01T00:00:00+02:00)
+    #[arg(long, value_name = "TIME", value_parser = timestamp)]
+    pub at: Option<ti_pki::Timestamp>,
 }
 
 /// `ti pki verify`.

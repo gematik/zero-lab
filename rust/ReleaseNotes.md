@@ -25,6 +25,14 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   (TSLSIG-023). The ECDSA check and the certificate are left to the caller; the
   `verify` example shows both.
 
+### ti-cli
+
+#### added
+- `ti pki tsl verify FILE`: a TSL file's signature and signer under the embedded TSL
+  signer CA, offline; `--env auto` (default) detects production or not, `--at` sets the
+  validation time. Exit 0 valid, 1 not valid with the gemSpec_PKI result code and the
+  `spec/tsl-xmldsig` rule.
+
 ### ti-connector-client
 
 #### added
@@ -171,10 +179,26 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `spec/tsl-xmldsig` — the XML profile and digests through `ti-xmldsig`, the signer
   certificate bound by serial number, a brainpoolP256r1 key, and the ECDSA value over
   the canonical `SignedInfo` through the configured algorithm set. Failures carry the
-  result code of Tab_PKI_274 (`TslCode`) and the rule. The signer is not yet checked
-  against the TSL signer CA; the TSL used for loading is still unauthenticated.
+  result code of Tab_PKI_274 (`TslCode`) and the rule.
+- `Tsl::parse_verified` (feature `brainpool`), part B: a C.TSL.SIG signer issued by
+  `TrustConfig::tsl_signer_anchor` (name, AuthorityKeyIdentifier, signature), signer and
+  anchor valid at the given time without skew, KeyUsage exactly nonRepudiation,
+  ExtendedKeyUsage exactly `id-tsl-kp-tslSigning`, and the rest of Tab_PKI_252_01; the
+  list is then parsed from the signed bytes. `parse_verified_prod` verifies for
+  production; `parse_verified_auto` for whichever environment's embedded TSL signer CA
+  issued the signer, reporting the `Tier`. The signer's OCSP status, sequence number,
+  grace period and anchor change are not checked yet; loading still uses the
+  unauthenticated `Tsl::parse`.
+- `anchors::GEM_TSL_CA3` and, with `dangerous-nonprod`, `anchors::GEM_TSL_CA28_TEST_ONLY`:
+  the TSL signer CAs, pinned by SHA-256.
+- Certificate type `C.TSL.SIG` (`CertificateType::TslSig`, identified by
+  `oid_policy_gem_tsl_signer`) and profile `tsl-sig`.
 
 #### changed
+- `TrustConfig` has a new field `tsl_signer_anchor` (breaking for struct literals; struct
+  update on a preset or `for_anchor` is unaffected): GEM.TSL-CA3 in production, GEM.TSL-CA28
+  TEST-ONLY in the non-production presets. `validate(Tier::Prod)` rejects a TEST-ONLY
+  TSL signer anchor.
 - `Timestamp`, `Clock` and `SystemClock` come from `ti-types`, so every TI crate
   shares them; the paths `ti_pki::{Timestamp, Clock}` and `ti_pki::load::SystemClock`
   stay as re-exports.

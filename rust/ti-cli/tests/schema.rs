@@ -249,13 +249,53 @@ fn verify_codes_are_ti_pkis() {
     assert_eq!(listed, codes);
 }
 
+/// Offline and without a cache: the file and the embedded TSL signer CA are all it needs.
+#[test]
+fn tsl_verify_matches_its_schema() {
+    let dir = std::env::temp_dir().join(format!("ti-tsl-verify-{}", std::process::id()));
+    let c = &dir;
+    let tsl = manifest("../ti-pki/tests/fixtures/tsl/ECC-RSA_TSL.xml");
+    let tsl = tsl.to_str().unwrap();
+    let verified = json_of(
+        c,
+        "pki tsl verify",
+        &["pki", "tsl", "verify", tsl, "--at", "2026-10-01T00:00:00Z"],
+    );
+    assert_eq!(verified.status.code(), Some(0));
+    let verified: Value = serde_json::from_slice(&verified.stdout).unwrap();
+    assert_eq!(verified["tier"], "prod");
+    assert_eq!(verified["anchor"]["common_name"], "GEM.TSL-CA3");
+    let expired = json_of(
+        c,
+        "pki tsl verify",
+        &["pki", "tsl", "verify", tsl, "--at", "2028-06-01T00:00:00Z"],
+    );
+    assert_eq!(expired.status.code(), Some(1));
+    let expired: Value = serde_json::from_slice(&expired.stdout).unwrap();
+    assert_eq!(expired["code"], "certificate_not_valid_time");
+    assert_eq!(expired["code_number"], 1021);
+    assert!(expired["signer"].is_null());
+}
+
+/// The codes a TSL verify report may carry are exactly ti-pki's.
+#[test]
+fn tsl_verify_codes_are_ti_pkis() {
+    let listed = schema("pki tsl verify")["properties"]["code"]["enum"].clone();
+    let mut codes: Vec<Value> = ti_pki::tsl_signature::TslCode::ALL
+        .iter()
+        .map(|c| Value::from(c.as_str()))
+        .collect();
+    codes.push(Value::Null);
+    assert_eq!(listed, Value::Array(codes));
+}
+
 #[test]
 fn schemas_are_published_by_name() {
     let dir = std::env::temp_dir();
     let all = ti(&dir, &["schema"]);
     let all: Value = serde_json::from_slice(&all.stdout).unwrap();
     let commands = all["commands"].as_object().unwrap();
-    assert_eq!(commands.len(), 33);
+    assert_eq!(commands.len(), 34);
     assert_eq!(commands["pki verify"], schema("pki verify"));
 
     let one = ti(&dir, &["schema", "pki", "tsl", "show"]);

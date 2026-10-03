@@ -65,11 +65,14 @@ pub enum CertificateType {
     HskEnc,
     /// `C.GEM.VER`
     GemVer,
+    /// `C.TSL.SIG`, the TSL signer (Tab_PKI_252_01). Not in Tab_PKI_405: its policy
+    /// `oid_policy_gem_tsl_signer` identifies it.
+    TslSig,
 }
 
 impl CertificateType {
-    /// Every type, in Tab_PKI_405 order.
-    pub const ALL: [CertificateType; 23] = [
+    /// Every type, in Tab_PKI_405 order, then C.TSL.SIG.
+    pub const ALL: [CertificateType; 24] = [
         CertificateType::ChQes,
         CertificateType::ChSig,
         CertificateType::ChEnc,
@@ -93,6 +96,7 @@ impl CertificateType {
         CertificateType::HskSig,
         CertificateType::HskEnc,
         CertificateType::GemVer,
+        CertificateType::TslSig,
     ];
 
     /// The gemSpec_PKI name, e.g. `C.HCI.AUT`.
@@ -100,7 +104,8 @@ impl CertificateType {
         self.entry().0
     }
 
-    /// The Tab_PKI_405 object identifier.
+    /// The Tab_PKI_405 object identifier; for C.TSL.SIG, which has none, the policy
+    /// that identifies it.
     pub const fn oid(self) -> ObjectIdentifier {
         self.entry().1
     }
@@ -140,6 +145,7 @@ impl CertificateType {
             CertificateType::HskSig => ("C.HSK.SIG", oid::CERT_TYPE_HSK_SIG, &HSK_SIG),
             CertificateType::HskEnc => ("C.HSK.ENC", oid::CERT_TYPE_HSK_ENC, &HSK_ENC),
             CertificateType::GemVer => ("C.GEM.VER", oid::CERT_TYPE_GEM_VER, &GEM_VER),
+            CertificateType::TslSig => ("C.TSL.SIG", oid::POLICY_GEM_TSL_SIGNER, &TSL_SIG),
         }
     }
 }
@@ -189,6 +195,8 @@ pub const SERVER_AUTH: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.6.1.
 pub const CLIENT_AUTH: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.6.1.5.5.7.3.2");
 /// `id-kp-emailProtection`.
 pub const EMAIL_PROTECTION: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.6.1.5.5.7.3.4");
+/// `id-tsl-kp-tslSigning` (ETSI TS 119 612 / TS 102 231).
+pub const TSL_SIGNING: ObjectIdentifier = ObjectIdentifier::new_unwrap("0.4.0.2231.3.0");
 
 const CC: &[KeyUsages] = &[KeyUsages::NonRepudiation];
 const DS: &[KeyUsages] = &[KeyUsages::DigitalSignature];
@@ -371,6 +379,11 @@ const GEM_VER: TypeSpec = spec(
     &[],
 );
 
+// The TSL signer, Tab_PKI_252_01: its own policy instead of gematik's umbrella one, which
+// excludes it ("außer für das TSL-Signerzertifikat"). Verifying a TSL checks the key
+// usages for equality and the rest of the profile (`tsl_signature`).
+const TSL_SIG: TypeSpec = spec(CC, &[TSL_SIGNING], &[oid::POLICY_GEM_TSL_SIGNER], &[]);
+
 /// Classifies `cert` as a Tab_PKI_405 type; `None` if it carries no recognisable marker.
 ///
 /// 1. The type OID in the certificate policies, where gemSpec_PKI puts it next to the
@@ -454,7 +467,7 @@ mod tests {
             T,
             &'a [KeyUsages],
             &'a [ObjectIdentifier],
-            [ObjectIdentifier; 2],
+            &'a [ObjectIdentifier],
             &'a [ObjectIdentifier],
         );
         use KeyUsages::{DigitalSignature as Ds, KeyAgreement as Ka, NonRepudiation as Cc};
@@ -463,30 +476,31 @@ mod tests {
         let hsk: &[ObjectIdentifier] = &[oid::TECH_ROLE_HSK];
         let (hba_roles, smcb_roles) = (oid::PROFESSIONS, oid::INSTITUTIONS);
         #[rustfmt::skip]
-        let table: [Row<'_>; 23] = [
-            (T::ChQes, &[Cc], &[], [GEM, oid::CERT_TYPE_EGK_QES], egk),
-            (T::ChSig, &[Cc], &[], [GEM, oid::CERT_TYPE_EGK_SIG], egk),
-            (T::ChEnc, &[Ka], &[], [GEM, oid::CERT_TYPE_EGK_ENC], egk),
-            (T::ChEncv, &[Ka], &[], [GEM, oid::CERT_TYPE_EGK_ENCV], egk),
-            (T::ChAut, &[Ds], &[], [GEM, oid::CERT_TYPE_EGK_AUT], egk),
-            (T::ChAutn, &[Ds], &[client], [GEM, oid::CERT_TYPE_EGK_AUTN], egk),
-            (T::HpQes, &[Cc], &[], [HBA, oid::CERT_TYPE_HBA_QES], hba_roles),
-            (T::HpAut, &[Ds, Ka], &[client, mail], [HBA, oid::CERT_TYPE_HBA_AUT], hba_roles),
-            (T::HpEnc, &[Ka], &[], [HBA, oid::CERT_TYPE_HBA_ENC], hba_roles),
-            (T::HciAut, &[Ds], &[client], [GEM, oid::CERT_TYPE_SMC_B_AUT], smcb_roles),
-            (T::HciEnc, &[Ka], &[], [GEM, oid::CERT_TYPE_SMC_B_ENC], smcb_roles),
-            (T::HciOsig, &[Cc], &[], [GEM, oid::CERT_TYPE_SMC_B_OSIG], smcb_roles),
-            (T::FdTlsS, &[Ds], &[server], [GEM, oid::CERT_TYPE_FD_TLS_S], &[]),
-            (T::FdTlsC, &[Ds], &[client], [GEM, oid::CERT_TYPE_FD_TLS_C], &[]),
-            (T::FdSig, &[Ds], &[], [GEM, oid::CERT_TYPE_FD_SIG], &[]),
-            (T::FdEnc, &[Ka], &[], [GEM, oid::CERT_TYPE_FD_ENC], &[]),
-            (T::FdAut, &[Ds], &[], [GEM, oid::CERT_TYPE_FD_AUT], &[]),
-            (T::FdOsig, &[Cc], &[], [GEM, oid::CERT_TYPE_FD_OSIG], &[]),
-            (T::ZdTlsS, &[Ds], &[server], [GEM, oid::CERT_TYPE_ZD_TLS_S], &[]),
-            (T::ZdSig, &[Cc], &[], [GEM, oid::CERT_TYPE_ZD_SIG], &[]),
-            (T::HskSig, &[Cc], &[client, server], [GEM, oid::CERT_TYPE_HSK_SIG], hsk),
-            (T::HskEnc, &[Ka], &[client, server], [GEM, oid::CERT_TYPE_HSK_ENC], hsk),
-            (T::GemVer, &[], &[], [GEM, oid::CERT_TYPE_GEM_VER], &[]),
+        let table: [Row<'_>; 24] = [
+            (T::ChQes, &[Cc], &[], &[GEM, oid::CERT_TYPE_EGK_QES], egk),
+            (T::ChSig, &[Cc], &[], &[GEM, oid::CERT_TYPE_EGK_SIG], egk),
+            (T::ChEnc, &[Ka], &[], &[GEM, oid::CERT_TYPE_EGK_ENC], egk),
+            (T::ChEncv, &[Ka], &[], &[GEM, oid::CERT_TYPE_EGK_ENCV], egk),
+            (T::ChAut, &[Ds], &[], &[GEM, oid::CERT_TYPE_EGK_AUT], egk),
+            (T::ChAutn, &[Ds], &[client], &[GEM, oid::CERT_TYPE_EGK_AUTN], egk),
+            (T::HpQes, &[Cc], &[], &[HBA, oid::CERT_TYPE_HBA_QES], hba_roles),
+            (T::HpAut, &[Ds, Ka], &[client, mail], &[HBA, oid::CERT_TYPE_HBA_AUT], hba_roles),
+            (T::HpEnc, &[Ka], &[], &[HBA, oid::CERT_TYPE_HBA_ENC], hba_roles),
+            (T::HciAut, &[Ds], &[client], &[GEM, oid::CERT_TYPE_SMC_B_AUT], smcb_roles),
+            (T::HciEnc, &[Ka], &[], &[GEM, oid::CERT_TYPE_SMC_B_ENC], smcb_roles),
+            (T::HciOsig, &[Cc], &[], &[GEM, oid::CERT_TYPE_SMC_B_OSIG], smcb_roles),
+            (T::FdTlsS, &[Ds], &[server], &[GEM, oid::CERT_TYPE_FD_TLS_S], &[]),
+            (T::FdTlsC, &[Ds], &[client], &[GEM, oid::CERT_TYPE_FD_TLS_C], &[]),
+            (T::FdSig, &[Ds], &[], &[GEM, oid::CERT_TYPE_FD_SIG], &[]),
+            (T::FdEnc, &[Ka], &[], &[GEM, oid::CERT_TYPE_FD_ENC], &[]),
+            (T::FdAut, &[Ds], &[], &[GEM, oid::CERT_TYPE_FD_AUT], &[]),
+            (T::FdOsig, &[Cc], &[], &[GEM, oid::CERT_TYPE_FD_OSIG], &[]),
+            (T::ZdTlsS, &[Ds], &[server], &[GEM, oid::CERT_TYPE_ZD_TLS_S], &[]),
+            (T::ZdSig, &[Cc], &[], &[GEM, oid::CERT_TYPE_ZD_SIG], &[]),
+            (T::HskSig, &[Cc], &[client, server], &[GEM, oid::CERT_TYPE_HSK_SIG], hsk),
+            (T::HskEnc, &[Ka], &[client, server], &[GEM, oid::CERT_TYPE_HSK_ENC], hsk),
+            (T::GemVer, &[], &[], &[GEM, oid::CERT_TYPE_GEM_VER], &[]),
+            (T::TslSig, &[Cc], &[TSL_SIGNING], &[oid::POLICY_GEM_TSL_SIGNER], &[]),
         ];
         for (t, key_usage, ext_key_usage, policies, roles) in table {
             let spec = t.spec();
@@ -494,7 +508,7 @@ mod tests {
             assert_eq!(spec.ext_key_usage, ext_key_usage, "{t}");
             assert_eq!(spec.policies, policies, "{t}");
             assert_eq!(spec.role_oids, roles, "{t}");
-            assert_eq!(t.oid(), policies[1], "{t}");
+            assert_eq!(Some(&t.oid()), policies.last(), "{t}");
         }
         assert_eq!(CertificateType::ALL.len(), table.len());
     }

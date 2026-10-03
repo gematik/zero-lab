@@ -23,6 +23,7 @@ ti pki roots list --env ref         # the roots reached from the anchor
 ti pki tsl show                     # the TSL's CAs under the roots that signed them
 ti pki tsl show --rejected          # the CAs no verified root signed, and why
 ti pki tsl show --ca SMCB-CA51      # one CA; Markdown adds its PEM
+ti pki tsl verify ECC-RSA_TSL.xml   # a TSL file's signature and signer; exit 0 valid
 ti connector configs                # the .kon files, shared with the Go ti
 ti connector use praxis             # the configuration later commands use
 ti connector get cards
@@ -87,6 +88,14 @@ The TSL is not authenticated. Of each entry the view shows only what the CA cert
 says (name, organization, validity) and which verified root signed it; the TSL's own
 metadata (provider names, certificate types per CA) is never shown as fact. The provider
 name is in the JSON, for filtering. `--offline` works from the cache.
+
+`pki tsl verify FILE` checks a TSL file offline: its XMLDSig/XAdES signature and a
+C.TSL.SIG signer issued by the embedded TSL signer CA (GEM.TSL-CA3 in production,
+GEM.TSL-CA28 TEST-ONLY elsewhere), valid at `--at` or now. `--env auto`, the default,
+takes the environment whose TSL signer CA issued the signer; `--env prod` accepts a
+production TSL only. An invalid list is exit 1 with the gemSpec_PKI result code and the
+rule of `spec/tsl-xmldsig` that failed. Not yet checked: the signer's OCSP status, the
+sequence number and the grace period.
 
 ## Verify
 

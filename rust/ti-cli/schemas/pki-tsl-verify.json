@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pki tsl verify",
+  "description": "A TSL file verified offline against the embedded TSL signer CA of an environment: the XMLDSig/XAdES signature and a C.TSL.SIG signer that CA issued (spec/tsl-xmldsig parts A and B). Not covered: the signer's OCSP status, sequence number and grace period, anchor change. The list fields are read from the signed bytes and are null for an invalid list.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "source": {
+      "type": "string",
+      "description": "The file name, or <stdin>."
+    },
+    "environment": {
+      "enum": [
+        "auto",
+        "prod",
+        "ref",
+        "test",
+        "dev"
+      ],
+      "description": "--env as given."
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "The validation time, RFC 3339, UTC"
+    },
+    "result": {
+      "enum": [
+        "valid",
+        "invalid"
+      ]
+    },
+    "tier": {
+      "enum": [
+        "prod",
+        "nonprod",
+        null
+      ],
+      "description": "From the TSL signer CA: the non-production environments share one."
+    },
+    "code": {
+      "enum": [
+        "tsl_not_wellformed",
+        "xml_signature_error",
+        "tsl_cert_extraction_error",
+        "certificate_not_valid_math",
+        "authoritykeyid_different",
+        "certificate_not_valid_time",
+        "wrong_keyusage",
+        "wrong_extendedkeyusage",
+        "tsl_signer_profile_violation",
+        null
+      ],
+      "description": "The result code of an invalid list: the gemSpec_PKI Tab_PKI_274 short name in lower case, or tsl_signer_profile_violation."
+    },
+    "code_number": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "The Tab_PKI_274 number of the code, e.g. 1013; null for tsl_signer_profile_violation."
+    },
+    "rule": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The rule of spec/tsl-xmldsig that failed, e.g. TSLSIG-018."
+    },
+    "detail": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "What failed, for humans; not stable."
+    },
+    "sequence_number": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "issued_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "RFC 3339, UTC"
+    },
+    "next_update": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "RFC 3339, UTC; null for a closed list"
+    },
+    "signing_time": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "XAdES SigningTime as written."
+    },
+    "anchor": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/certificate"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The TSL signer CA, e.g. GEM.TSL-CA3."
+    },
+    "signer": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/certificate"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The C.TSL.SIG certificate the list is signed with."
+    },
+    "cas": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "CA services in accord with a certificate."
+    }
+  },
+  "required": [
+    "schema",
+    "source",
+    "environment",
+    "at",
+    "result",
+    "tier",
+    "code",
+    "code_number",
+    "rule",
+    "detail",
+    "sequence_number",
+    "issued_at",
+    "next_update",
+    "signing_time",
+    "anchor",
+    "signer",
+    "cas"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "certificate": {
+      "type": "object",
+      "properties": {
+        "common_name": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "serial": {
+          "type": "string",
+          "description": "Hexadecimal."
+        },
+        "not_before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        },
+        "not_after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        },
+        "sha256": {
+          "type": "string",
+          "description": "Fingerprint of the DER, hexadecimal."
+        }
+      },
+      "required": [
+        "common_name",
+        "subject",
+        "serial",
+        "not_before",
+        "not_after",
+        "sha256"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -271,7 +271,8 @@ core-deps:
 nonprod-absent:
     #!/usr/bin/env bash
     set -euo pipefail
-    files=(ti-pki/src/anchors/GEM.RCA7-TEST-ONLY.der ti-pki/src/anchors/GEM.RCA8-TEST-ONLY.der ti-pki/src/roots-nonprod.json)
+    files=(ti-pki/src/anchors/GEM.RCA7-TEST-ONLY.der ti-pki/src/anchors/GEM.RCA8-TEST-ONLY.der
+           ti-pki/src/anchors/GEM.TSL-CA28-TEST-ONLY.der ti-pki/src/roots-nonprod.json)
     rlib() {
         cargo build -p ti-pki --message-format=json "$@" 2>/dev/null \
             | jq -r 'select(.reason == "compiler-artifact" and .target.name == "ti_pki") | .filenames[] | select(endswith(".rlib"))'
@@ -309,6 +310,7 @@ generate-connector:
 # Regenerate the OpenSSL test PKI in ti-pki/tests/pki (fresh keys, same topology)
 test-pki:
     ti-pki/tests/pki/generate.sh
+    ti-pki/tests/pki/tsl-signer/generate.sh
 
 # Every feature alone and every pair of features must compile (catches feature-gated
 # breakage); all features together are built by clippy --all-features

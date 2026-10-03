@@ -47,6 +47,7 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
             roots::list(args, &cli.global, out)
         }
         Command::Pki(PkiCommand::Tsl(TslCommand::Show(args))) => tsl::show(args, &cli.global, out),
+        Command::Pki(PkiCommand::Tsl(TslCommand::Verify(args))) => tsl::verify(args, out),
         Command::Pki(PkiCommand::Pkcs12(Pkcs12Command::Convert {
             input,
             output,

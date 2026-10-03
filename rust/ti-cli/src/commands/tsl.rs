@@ -2,14 +2,18 @@
 //! ones no verified root signed. The TSL is not authenticated: of each entry only the
 //! certificate and the provider name are used, and everything shown about a CA comes
 //! from its signed certificate, never from the TSL's own metadata.
+//!
+//! `ti pki tsl verify`: a TSL file's signature and signer under the embedded TSL signer
+//! CA of an environment (`spec/tsl-xmldsig` parts A and B), offline.
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use ti_pki::load::{Meta, Source, SystemClock};
 use ti_pki::tsl::{self, Intermediate, Rejection, Tsl};
-use ti_pki::{Certificate, Clock, Timestamp, TrustConfig, TrustStore};
+use ti_pki::tsl_signature::{TslError, VerifiedTsl};
+use ti_pki::{Certificate, Clock, Tier, Timestamp, TrustConfig, TrustStore};
 
-use crate::cli::{GlobalArgs, TslShowArgs};
+use crate::cli::{Environment, GlobalArgs, TslShowArgs, TslVerifyArgs};
 use crate::error::{CliError, Exit};
 use crate::output::document::{date, when};
 use crate::output::{Document, Line, OidInfo, Output, SCHEMA, Tone, hex, pem};
@@ -175,6 +179,194 @@ pub fn show(args: &TslShowArgs, global: &GlobalArgs, out: &Output) -> Result<Exi
         out.render(&document(&report, args.ca.is_some()))?;
     }
     Ok(Exit::Ok)
+}
+
+/// The JSON document of `ti pki tsl verify`.
+#[derive(Serialize)]
+struct VerifyReport {
+    schema: u32,
+    /// The file name, or `<stdin>`.
+    source: String,
+    /// `--env`: `auto` or the environment asked for.
+    environment: &'static str,
+    /// The validation time.
+    at: String,
+    /// `valid` or `invalid`.
+    result: &'static str,
+    /// `prod` or `nonprod`, from the TSL signer CA; valid lists only.
+    tier: Option<&'static str>,
+    /// The result code of an invalid list, e.g. `xml_signature_error`.
+    code: Option<&'static str>,
+    /// Its gemSpec_PKI Tab_PKI_274 number, if it has one.
+    code_number: Option<u16>,
+    /// The rule of `spec/tsl-xmldsig` that failed, e.g. `TSLSIG-018`.
+    rule: Option<&'static str>,
+    detail: Option<String>,
+    /// From here on, valid lists only, read from the signed bytes.
+    sequence_number: Option<u64>,
+    issued_at: Option<String>,
+    next_update: Option<String>,
+    signing_time: Option<String>,
+    anchor: Option<CertSummary>,
+    signer: Option<CertSummary>,
+    /// CA services in accord with a certificate.
+    cas: Option<usize>,
+}
+
+#[derive(Serialize)]
+struct CertSummary {
+    common_name: String,
+    subject: String,
+    /// Hexadecimal.
+    serial: String,
+    not_before: String,
+    not_after: String,
+    sha256: String,
+}
+
+impl CertSummary {
+    fn new(cert: &Certificate) -> Self {
+        CertSummary {
+            common_name: cert.subject_cn().to_owned(),
+            subject: cert.subject().to_string(),
+            serial: hex(cert.serial()),
+            not_before: cert.not_before().to_string(),
+            not_after: cert.not_after().to_string(),
+            sha256: hex(&Sha256::digest(cert.der())),
+        }
+    }
+}
+
+/// Runs `ti pki tsl verify`.
+pub fn verify(args: &TslVerifyArgs, out: &Output) -> Result<Exit, CliError> {
+    let source = crate::input::read(&args.file)?;
+    let now = args.at.unwrap_or_else(|| SystemClock.now());
+    let result = match args.env.concrete() {
+        None => Tsl::parse_verified_auto(&source.bytes, now),
+        Some(env) => {
+            let config = TrustConfig::preset(env);
+            config.validate(env.tier()).map_err(CliError::Trust)?;
+            Tsl::parse_verified(&source.bytes, &config, now)
+        }
+    };
+    let report = verify_report(source.name, args.env, now, &result);
+    if out.is_json() {
+        out.json(&report)?;
+    } else {
+        out.render(&verify_document(&report))?;
+    }
+    Ok(if result.is_ok() {
+        Exit::Ok
+    } else {
+        Exit::Invalid
+    })
+}
+
+fn verify_report(
+    source: String,
+    env: Environment,
+    now: Timestamp,
+    result: &Result<VerifiedTsl, TslError>,
+) -> VerifyReport {
+    let mut report = VerifyReport {
+        schema: SCHEMA,
+        source,
+        environment: env.concrete().map_or("auto", |e| e.as_str()),
+        at: now.to_string(),
+        result: "invalid",
+        tier: None,
+        code: None,
+        code_number: None,
+        rule: None,
+        detail: None,
+        sequence_number: None,
+        issued_at: None,
+        next_update: None,
+        signing_time: None,
+        anchor: None,
+        signer: None,
+        cas: None,
+    };
+    match result {
+        Ok(verified) => {
+            report.result = "valid";
+            report.tier = Some(match verified.tier {
+                Tier::Prod => "prod",
+                Tier::NonProd => "nonprod",
+            });
+            report.sequence_number = Some(verified.tsl.sequence_number);
+            report.issued_at = Some(verified.tsl.issued_at.to_string());
+            report.next_update = verified.tsl.next_update.map(|t| t.to_string());
+            report.signing_time = Some(verified.signing_time.clone());
+            report.anchor = Some(CertSummary::new(&verified.anchor));
+            report.signer = Some(CertSummary::new(&verified.signer));
+            report.cas = Some(verified.tsl.intermediate_cas().len());
+        }
+        Err(e) => {
+            report.code = Some(e.code.as_str());
+            report.code_number = e.code.number();
+            report.rule = Some(e.rule);
+            report.detail = Some(e.detail.clone());
+        }
+    }
+    report
+}
+
+fn verify_document(report: &VerifyReport) -> Document {
+    let mut doc = Document::default();
+    let at = Timestamp::parse_rfc3339(&report.at).map_or_else(|| report.at.clone(), date);
+    let Some(sequence) = report.sequence_number else {
+        let code = report.code.unwrap_or_default();
+        let number = report
+            .code_number
+            .map_or_else(String::new, |n| format!(" ({n})"));
+        doc.paragraph(
+            Line::strong("TSL")
+                .and_text(format!(" · {} · ", report.source))
+                .and_status(Tone::Bad, "invalid"),
+        );
+        doc.field(
+            "reason",
+            Line::code(format!("{code}{number}"))
+                .and_dim(format!(" {}", report.rule.unwrap_or_default())),
+        );
+        doc.field(
+            "detail",
+            Line::text(report.detail.clone().unwrap_or_default()),
+        );
+        doc.field("environment", Line::text(report.environment));
+        doc.field("verified at", Line::text(at));
+        return doc;
+    };
+    doc.paragraph(
+        Line::strong(format!("TSL #{sequence}"))
+            .and_text(format!(" · {} · ", report.tier.unwrap_or_default()))
+            .and_status(Tone::Good, "valid"),
+    );
+    if let Some(anchor) = &report.anchor {
+        doc.field("TSL signer CA", Line::text(&anchor.common_name));
+    }
+    if let Some(signer) = &report.signer {
+        doc.field(
+            "signer",
+            Line::text(&signer.common_name).and_dim(format!(" · serial {}", signer.serial)),
+        );
+    }
+    if let Some(signing_time) = &report.signing_time {
+        doc.field("signed", Line::text(signing_time));
+    }
+    let next = report.next_update.as_deref().unwrap_or("closed list");
+    doc.field(
+        "issued",
+        Line::text(report.issued_at.clone().unwrap_or_default())
+            .and_dim(format!(" · next update {next}")),
+    );
+    doc.field(
+        "CAs",
+        Line::text(report.cas.unwrap_or_default().to_string()),
+    );
+    doc.field("verified at", Line::text(at));
+    doc
 }
 
 /// Whether `root` issued `ca`: its subject is the CA's issuer. The CA is among the kept

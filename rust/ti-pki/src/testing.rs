@@ -135,6 +135,9 @@ pub(crate) fn typed(name: &str) -> Certificate {
         "type-hsk-sig" => fixture!("types/type-hsk-sig"),
         "type-zd-sig" => fixture!("types/type-zd-sig"),
         "type-zd-tls-s" => fixture!("types/type-zd-tls-s"),
+        // C.TSL.SIG is the published TSL signer, from the production TSL: the generated
+        // PKI has no issuer for it, and the real one is the reference anyway.
+        "type-tsl-sig" => load(include_str!("../tests/fixtures/tsl-signing-unit-6.pem")),
         other => panic!("no type fixture {other}"),
     }
 }
