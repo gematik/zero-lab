@@ -1399,4 +1399,181 @@ mod tests {
         tsl.services.push(announcement(None));
         assert_eq!(announced_anchors(&tsl, &[ca3]).len(), 2);
     }
+
+    /// Live answers of the TSL OCSP responders, recorded at their `producedAt`: each a
+    /// delegate of its TSL signer CA, with certHash and without nextUpdate.
+    #[cfg(feature = "load")]
+    mod recorded_ocsp {
+        use super::*;
+        use crate::load::{FixedClock, MockTransport, TransportError, TransportErrorKind};
+        use crate::ocsp::OcspChecker;
+        use crate::revocation::ResponderAuthorization;
+
+        const PU: &[u8] = include_bytes!("../tests/fixtures/ocsp-tsl-signing-unit-6.der");
+        const TU: &[u8] =
+            include_bytes!("../tests/fixtures/ocsp-tsl-signing-unit-12-test-only.der");
+        const PRODUCED: &str = "2026-10-03T18:10:21Z";
+
+        /// The requests the responder received: URL and body.
+        type Posted = Vec<(String, Vec<u8>)>;
+
+        fn checked(
+            tsl: &str,
+            config: &TrustConfig,
+            now: &str,
+            answers: Vec<Result<Vec<u8>, TransportError>>,
+        ) -> (Result<VerifiedTsl, TslError>, Posted) {
+            let clock = FixedClock::new(at(now));
+            let transport = MockTransport::posting(answers);
+            let checker = OcspChecker::new(config, &transport, &clock);
+            let mut verified = Tsl::parse_verified(&real(tsl), config, at(now)).unwrap();
+            let result = futures_lite::future::block_on(verified.check_signer_status(&checker))
+                .map(|()| verified);
+            (result, transport.posts())
+        }
+
+        #[track_caller]
+        fn fails(result: Result<VerifiedTsl, TslError>, code: TslCode, rule: &str) {
+            let e = result.map(|_| ()).unwrap_err();
+            assert_eq!((e.code, e.rule), (code, rule), "{e}");
+        }
+
+        #[test]
+        fn tslsig_040_production_signer_is_good() {
+            let (result, posts) = checked(
+                "pu-10334.xml",
+                &TrustConfig::preset_prod(),
+                PRODUCED,
+                vec![Ok(PU.to_vec())],
+            );
+            let verified = result.unwrap();
+            assert!(verified.warnings.is_empty());
+            let status = verified.signer_status.unwrap();
+            assert_eq!(status.status, RevocationStatus::Good);
+            assert_eq!(status.responder_name, "TSL-CA3 OCSP-Signer2");
+            assert_eq!(status.authorization, Some(ResponderAuthorization::Delegate));
+            // Asked at the address in the signer certificate, never one from the TSL.
+            assert_eq!(posts.len(), 1);
+            assert_eq!(posts[0].0, "http://ocsp.tsl.ti-dienste.de/ocsp");
+        }
+
+        #[cfg(feature = "dangerous-nonprod")]
+        #[test]
+        fn tslsig_040_test_signer_is_good() {
+            let (result, posts) = checked(
+                "tu-10713.xml",
+                &TrustConfig::preset(crate::Env::Test),
+                PRODUCED,
+                vec![Ok(TU.to_vec())],
+            );
+            let status = result.unwrap().signer_status.unwrap();
+            assert_eq!(status.responder_name, "TSL-CA OCSP-Signer10 TEST-ONLY");
+            assert_eq!(posts[0].0, "http://ocsp-testref.tsl.ti-dienste.de/ocsp");
+        }
+
+        #[test]
+        fn tslsig_042_an_answer_about_another_signer() {
+            let (result, _) = checked(
+                "pu-10334.xml",
+                &TrustConfig::preset_prod(),
+                PRODUCED,
+                vec![Ok(TU.to_vec())],
+            );
+            fails(result, TslCode::OcspCheckRevocationError, "TSLSIG-042");
+        }
+
+        #[test]
+        fn tslsig_040_a_broken_responder_certificate() {
+            // BasicOCSPResponse ends with the embedded responder certificate, whose
+            // signature this breaks: the responder is no longer certified by the CA.
+            let mut broken = PU.to_vec();
+            let last = broken.len() - 1;
+            broken[last] ^= 1;
+            let (result, _) = checked(
+                "pu-10334.xml",
+                &TrustConfig::preset_prod(),
+                PRODUCED,
+                vec![Ok(broken)],
+            );
+            let e = result.map(|_| ()).unwrap_err();
+            assert_eq!(
+                (e.code, e.rule),
+                (TslCode::OcspSignatureError, "TSLSIG-040")
+            );
+            assert!(
+                e.detail.contains("does not verify under the CA's key"),
+                "{e}"
+            );
+        }
+
+        #[test]
+        fn tslsig_040_a_broken_response_signature() {
+            // The response signature's BIT STRING directly precedes the certificates
+            // ([0] EXPLICIT, tag 0xa0); its last byte is the one before that tag.
+            let certs = PU
+                .windows(2)
+                .rposition(|w| w == [0xa0, 0x82])
+                .expect("the response embeds its responder certificate");
+            let mut broken = PU.to_vec();
+            broken[certs - 1] ^= 1;
+            let (result, _) = checked(
+                "pu-10334.xml",
+                &TrustConfig::preset_prod(),
+                PRODUCED,
+                vec![Ok(broken)],
+            );
+            let e = result.map(|_| ()).unwrap_err();
+            assert_eq!(
+                (e.code, e.rule),
+                (TslCode::OcspSignatureError, "TSLSIG-040")
+            );
+            assert!(
+                e.detail.contains("response signature does not verify"),
+                "{e}"
+            );
+        }
+
+        #[test]
+        fn tslsig_042_an_answer_too_old() {
+            let (result, _) = checked(
+                "pu-10334.xml",
+                &TrustConfig::preset_prod(),
+                "2026-10-03T18:20:21Z",
+                vec![Ok(PU.to_vec())],
+            );
+            fails(result, TslCode::OcspCheckRevocationError, "TSLSIG-042");
+        }
+
+        #[test]
+        fn tslsig_042_try_later_after_every_repetition() {
+            // OCSPResponse { responseStatus tryLater }.
+            let try_later = vec![0x30, 0x03, 0x0a, 0x01, 0x03];
+            let (result, posts) = checked(
+                "pu-10334.xml",
+                &TrustConfig::preset_prod(),
+                PRODUCED,
+                vec![Ok(try_later); 4],
+            );
+            fails(result, TslCode::OcspStatusError, "TSLSIG-042");
+            assert_eq!(posts.len(), 4, "the query and three repetitions");
+        }
+
+        #[test]
+        fn tslsig_042_an_unreachable_responder() {
+            let refused = || {
+                Err(TransportError {
+                    kind: TransportErrorKind::Network,
+                    message: "connection refused".into(),
+                    retryable: true,
+                })
+            };
+            let (result, _) = checked(
+                "pu-10334.xml",
+                &TrustConfig::preset_prod(),
+                PRODUCED,
+                (0..4).map(|_| refused()).collect(),
+            );
+            fails(result, TslCode::OcspCheckRevocationError, "TSLSIG-042");
+        }
+    }
 }
