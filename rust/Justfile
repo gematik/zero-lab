@@ -366,6 +366,15 @@ semver:
 
 # ---- Optional, on demand -----------------------------------------------------------
 
+# Kani proofs of ti-xmldsig (escaping, namespace rendering, depth scan); slow, not part
+# of `check`. Needs `cargo install --locked kani-verifier && cargo kani setup`.
+verify-formal:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd ti-xmldsig
+    # A long proof run must not be cut short by the Mac going to sleep.
+    if command -v caffeinate >/dev/null; then caffeinate -i cargo kani; else cargo kani; fi
+
 # Miri on the test suite (only meaningful if a crate ever allows unsafe; nightly required)
 miri:
     cargo +nightly miri test --workspace

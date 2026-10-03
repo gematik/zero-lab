@@ -88,10 +88,14 @@ base64 = "0.23.1"
 
 # Test-only.
 futures-lite = "2.6.1"
+# Property tests in ti-xmldsig; without process forking and its tempfile/rusty-fork tree.
+proptest = { version = "1.11.0", default-features = false, features = ["std"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
 missing_docs = "warn"
+# Kani proofs (`just verify-formal`) are compiled under `cfg(kani)`.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }

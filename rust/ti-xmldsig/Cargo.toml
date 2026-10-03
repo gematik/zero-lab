@@ -14,5 +14,10 @@ publish.workspace = true
 [dependencies]
 roxmltree.workspace = true
 
+[dev-dependencies]
+proptest.workspace = true
+sha2.workspace = true
+base64ct.workspace = true
+
 [lints]
 workspace = true

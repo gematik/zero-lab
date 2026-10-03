@@ -27,8 +27,11 @@
 
 extern crate alloc;
 
+mod c14n;
 mod error;
 mod parse;
+#[cfg(kani)]
+mod proofs;
 
 pub use error::{Error, ErrorKind};
 pub use parse::{Document, Limits};

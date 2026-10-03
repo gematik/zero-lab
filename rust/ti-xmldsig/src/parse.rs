@@ -121,7 +121,7 @@ impl<'a> Document<'a> {
     }
 
     /// The element's name as written, `prefix:local` or `local`.
-    pub(crate) fn element_qname(&self, node: Node<'a, '_>) -> Result<&'a str, Error> {
+    pub(crate) fn element_qname(&self, node: Node<'_, 'a>) -> Result<&'a str, Error> {
         let text = self.tree.input_text();
         let start = node.range().start.saturating_add(1);
         let tail = text
@@ -137,7 +137,7 @@ impl<'a> Document<'a> {
     /// The attribute's name as written, `prefix:local` or `local`.
     pub(crate) fn attribute_qname(
         &self,
-        attribute: &roxmltree::Attribute<'a, '_>,
+        attribute: &roxmltree::Attribute<'_, 'a>,
     ) -> Result<&'a str, Error> {
         let qname = self
             .tree
@@ -148,11 +148,18 @@ impl<'a> Document<'a> {
     }
 }
 
+/// The part of a name as written after its last `:`.
+pub(crate) fn local_part(qname: &[u8]) -> &[u8] {
+    match qname.iter().rposition(|b| *b == b':') {
+        Some(colon) => qname.get(colon.saturating_add(1)..).unwrap_or_default(),
+        None => qname,
+    }
+}
+
 /// `qname`, if its local part is `local`. Guards the source positions the prefixes are
 /// read from against any disagreement with the parsed tree.
 fn qname_matches<'a>(qname: &'a str, local: &str) -> Result<&'a str, Error> {
-    let written = qname.rsplit_once(':').map_or(qname, |(_, l)| l);
-    if written == local {
+    if local_part(qname.as_bytes()) == local.as_bytes() {
         Ok(qname)
     } else {
         Err(Error::not_well_formed(format!(
@@ -168,7 +175,18 @@ fn qname_matches<'a>(qname: &'a str, local: &str) -> Result<&'a str, Error> {
 /// occur without opening or closing an element. It never counts fewer levels than the
 /// parser descends; whether the input is well-formed is left to the parser.
 fn check_depth(xml: &[u8], max_depth: usize) -> Result<(), Error> {
-    let too_deep = || Error::not_well_formed(format!("elements nest deeper than {max_depth}"));
+    if nests_deeper(xml, max_depth) {
+        Err(Error::not_well_formed(format!(
+            "elements nest deeper than {max_depth}"
+        )))
+    } else {
+        Ok(())
+    }
+}
+
+/// Whether elements in `xml` nest deeper than `max_depth`, by the lexical scan of
+/// [`check_depth`].
+pub(crate) fn nests_deeper(xml: &[u8], max_depth: usize) -> bool {
     let mut depth = 0usize;
     let mut rest = xml;
     while let Some(lt) = memchr_lt(rest) {
@@ -188,14 +206,14 @@ fn check_depth(xml: &[u8], max_depth: usize) -> Result<(), Error> {
             let (after, empty) = skip_tag(rest.get(1..).unwrap_or_default());
             rest = after;
             if depth >= max_depth {
-                return Err(too_deep());
+                return true;
             }
             if !empty {
                 depth = depth.saturating_add(1);
             }
         }
     }
-    Ok(())
+    false
 }
 
 fn memchr_lt(bytes: &[u8]) -> Option<usize> {

@@ -13,6 +13,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `Document::parse`: strict XML 1.0 in UTF-8 without DTDs, bounded by `Limits` (size,
   depth checked before parsing, attributes, namespaces, nodes); errors name the rule of
   `spec/tsl-xmldsig` they enforce.
+- Exclusive XML Canonicalization 1.0 without comments: `Document::exc_c14n`,
+  `exc_c14n_by_id`, `exc_c14n_by_name`; checked against the C14N and Exc-C14N
+  specification examples, the W3C `merlin-exc-c14n-one` vectors, the reference digests of
+  published TSLs, property tests and Kani proofs (`just verify-formal`).
 
 ### ti-connector-client
 
