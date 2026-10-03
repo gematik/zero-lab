@@ -80,13 +80,14 @@ pub struct TrustConfig {
     /// Where a fresh roots.json is downloaded from. Must be `https://`.
     pub roots_url: Cow<'static, str>,
     /// Where the TSL is downloaded from. Must be `https://`. The TSL is verified against
-    /// `tsl_signer_anchor` and supplies candidate intermediates (see [`tsl`]).
+    /// `tsl_signer_anchors` and supplies candidate intermediates (see [`tsl`]).
     pub tsl_url: Cow<'static, str>,
-    /// The `GEM.TSL-CA<n>` TSL signer CA, as DER, that a TSL's signer must be issued by
-    /// (GS-A_4640, `spec/tsl-xmldsig` TSLSIG-030). Separate from `anchor`: gemSpec_PKI
-    /// installs the TSL signer CA itself as the TSL's trust anchor, without a path to a
-    /// root.
-    pub tsl_signer_anchor: Cow<'static, [u8]>,
+    /// The `GEM.TSL-CA<n>` TSL signer CAs, as DER, one of which must have issued a TSL's
+    /// signer (GS-A_4640, `spec/tsl-xmldsig` TSLSIG-030). Separate from `anchor`:
+    /// gemSpec_PKI installs the TSL signer CA itself as the TSL's trust anchor, without a
+    /// path to a root. A list, so that a newly announced CA is added beside the current
+    /// one; nothing is adopted from a TSL.
+    pub tsl_signer_anchors: Vec<Cow<'static, [u8]>>,
     /// How long after its `NextUpdate` a TSL may still be used, with a warning
     /// (GS-A_4898, `spec/tsl-xmldsig` TSLSIG-054): 0 for central services, at most
     /// [`MAX_TSL_GRACE_PERIOD`]. Past it, nothing from the TSL is used.
@@ -112,7 +113,7 @@ impl TrustConfig {
             roots: Cow::Borrowed(&[]),
             roots_url: Cow::Borrowed(roots::URL_PROD),
             tsl_url: Cow::Borrowed(tsl::URL_PROD),
-            tsl_signer_anchor: Cow::Borrowed(anchors::GEM_TSL_CA3),
+            tsl_signer_anchors: borrowed(anchors::TSL_SIGNER_CAS_PROD),
             tsl_grace_period: Duration::ZERO,
             revocation: RevocationMode::HardFail,
             allow_expired: false,
@@ -141,7 +142,7 @@ impl TrustConfig {
                 roots: Cow::Borrowed(roots::ROOTS_NONPROD),
                 roots_url: Cow::Borrowed(roots_url),
                 tsl_url: Cow::Borrowed(tsl_url),
-                tsl_signer_anchor: Cow::Borrowed(anchors::GEM_TSL_CA28_TEST_ONLY),
+                tsl_signer_anchors: borrowed(anchors::TSL_SIGNER_CAS_NONPROD),
                 ..Self::for_anchor(anchor)
             };
         match env {
@@ -167,16 +168,23 @@ impl TrustConfig {
     ///
     /// # Errors
     ///
-    /// [`Error::Der`] if the anchor or the TSL signer anchor is not a DER certificate.
+    /// [`Error::Der`] if the anchor or a TSL signer anchor is not a DER certificate.
     /// [`Error::InconsistentConfig`] if either URL is not `https://`, the TSL grace period
     /// exceeds [`MAX_TSL_GRACE_PERIOD`], if no configured
     /// algorithm handles the anchor's key type (a brainpool anchor without the
     /// `brainpool` feature, say), or, under
-    /// [`Tier::Prod`], if either anchor is TEST-ONLY, revocation is not
+    /// [`Tier::Prod`], if an anchor is TEST-ONLY, revocation is not
     /// [`HardFail`](RevocationMode::HardFail), or expired certificates are allowed.
     pub fn validate(&self, tier: Tier) -> Result<(), Error> {
         let anchor = Certificate::from_der(&self.anchor)?;
-        let tsl_signer_anchor = Certificate::from_der(&self.tsl_signer_anchor)?;
+        let tsl_signer_anchors = self
+            .tsl_signer_anchors
+            .iter()
+            .map(|der| Certificate::from_der(der))
+            .collect::<Result<Vec<_>, _>>()?;
+        if tsl_signer_anchors.is_empty() {
+            return Err(inconsistent("no TSL signer anchor"));
+        }
         if !self.roots_url.starts_with("https://") {
             return Err(inconsistent("roots_url must be an https URL"));
         }
@@ -206,8 +214,13 @@ impl TrustConfig {
                 if subject.contains(TEST_ONLY_MARKER) {
                     return Err(inconsistent("TEST-ONLY anchor in production"));
                 }
-                let tsl_subject = tsl_signer_anchor.tbs_certificate().subject().to_string();
-                if tsl_subject.contains(TEST_ONLY_MARKER) {
+                if tsl_signer_anchors.iter().any(|anchor| {
+                    anchor
+                        .tbs_certificate()
+                        .subject()
+                        .to_string()
+                        .contains(TEST_ONLY_MARKER)
+                }) {
                     return Err(inconsistent("TEST-ONLY TSL signer anchor in production"));
                 }
                 if self.revocation != RevocationMode::HardFail {
@@ -235,6 +248,10 @@ impl TrustConfig {
             ..Self::for_anchor(anchor_der.to_vec())
         }
     }
+}
+
+fn borrowed(ders: &'static [&'static [u8]]) -> Vec<Cow<'static, [u8]>> {
+    ders.iter().map(|der| Cow::Borrowed(*der)).collect()
 }
 
 fn inconsistent(reason: &'static str) -> Error {
@@ -266,7 +283,7 @@ pub(crate) mod tests {
         assert!(!config.allow_expired);
         assert_eq!(config.roots_url, roots::URL_PROD);
         assert_eq!(config.tsl_url, tsl::URL_PROD);
-        assert_eq!(config.tsl_signer_anchor.as_ref(), anchors::GEM_TSL_CA3);
+        assert_eq!(config.tsl_signer_anchors, [anchors::GEM_TSL_CA3]);
         assert_eq!(config.tsl_grace_period, Duration::ZERO);
         assert!(config.roots.is_empty());
     }
@@ -347,7 +364,10 @@ pub(crate) mod tests {
     #[test]
     fn test_only_tsl_signer_anchor_is_rejected_in_prod() {
         let config = TrustConfig {
-            tsl_signer_anchor: Cow::Borrowed(anchors::GEM_TSL_CA28_TEST_ONLY),
+            tsl_signer_anchors: vec![
+                Cow::Borrowed(anchors::GEM_TSL_CA3),
+                Cow::Borrowed(anchors::GEM_TSL_CA28_TEST_ONLY),
+            ],
             ..nist_prod_config()
         };
         assert_eq!(
@@ -360,10 +380,15 @@ pub(crate) mod tests {
     #[test]
     fn garbage_tsl_signer_anchor_is_a_der_error() {
         let config = TrustConfig {
-            tsl_signer_anchor: Cow::Borrowed(b"not a certificate"),
+            tsl_signer_anchors: vec![Cow::Borrowed(b"not a certificate")],
             ..nist_prod_config()
         };
         assert!(matches!(config.validate(Tier::NonProd), Err(Error::Der(_))));
+        let none = TrustConfig {
+            tsl_signer_anchors: Vec::new(),
+            ..nist_prod_config()
+        };
+        assert_eq!(reason(none.validate(Tier::NonProd)), "no TSL signer anchor");
     }
 
     #[test]

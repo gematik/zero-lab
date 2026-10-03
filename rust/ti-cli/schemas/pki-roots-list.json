@@ -141,10 +141,11 @@
           "items": {
             "enum": [
               "no_ocsp_check",
-              "validity_warning_1"
+              "validity_warning_1",
+              "tsl_anchor_announced"
             ]
           },
-          "description": "Warnings about the TSL: no_ocsp_check when its signer's OCSP status was not queried (offline, --at), validity_warning_1 past NextUpdate within the grace period."
+          "description": "Warnings about the TSL: no_ocsp_check when its signer's OCSP status was not queried (offline, --at), validity_warning_1 past NextUpdate within the grace period, tsl_anchor_announced when it announces a TSL signer CA this tool does not know yet."
         }
       },
       "required": [

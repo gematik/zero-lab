@@ -190,7 +190,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   the canonical `SignedInfo` through the configured algorithm set. Failures carry the
   result code of Tab_PKI_274 (`TslCode`) and the rule.
 - `Tsl::parse_verified` (feature `brainpool`), part B: a C.TSL.SIG signer issued by
-  `TrustConfig::tsl_signer_anchor` (name, AuthorityKeyIdentifier, signature), signer and
+  one of `TrustConfig::tsl_signer_anchors` (name, AuthorityKeyIdentifier, signature), signer and
   anchor valid at the given time without skew, KeyUsage exactly nonRepudiation,
   ExtendedKeyUsage exactly `id-tsl-kp-tslSigning`, and the rest of Tab_PKI_252_01; the
   list is then parsed from the signed bytes. `parse_verified_prod` verifies for
@@ -212,12 +212,16 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   the result code. `ReloadPolicy::validate` caps the interval at 24 h
   (`MAX_RELOAD_INTERVAL`).
 - `anchors::GEM_TSL_CA3` and, with `dangerous-nonprod`, `anchors::GEM_TSL_CA28_TEST_ONLY`:
-  the TSL signer CAs, pinned by SHA-256.
+  the TSL signer CAs, pinned by SHA-256; `anchors::TSL_SIGNER_CAS_PROD` and
+  `TSL_SIGNER_CAS_NONPROD` list them per tier.
+- A TSL signer CA the TSL announces (`TSLServiceCertChange`) that is not configured is
+  the warning `tsl_anchor_announced`, logged by the tokio driver; it is never adopted, a
+  release adds it to the list (part E of `spec/tsl-xmldsig` is not implemented).
 - Certificate type `C.TSL.SIG` (`CertificateType::TslSig`, identified by
   `oid_policy_gem_tsl_signer`) and profile `tsl-sig`.
 
 #### changed
-- `TrustConfig` has new fields `tsl_signer_anchor` and `tsl_grace_period` (breaking for
+- `TrustConfig` has new fields `tsl_signer_anchors`, a list, and `tsl_grace_period` (breaking for
   struct literals; struct update on a preset or `for_anchor` is unaffected): GEM.TSL-CA3
   in production, GEM.TSL-CA28 TEST-ONLY in the non-production presets; grace 0, at most
   30 days. `validate(Tier::Prod)` rejects a TEST-ONLY TSL signer anchor.

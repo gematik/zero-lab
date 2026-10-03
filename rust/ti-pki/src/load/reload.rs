@@ -305,7 +305,7 @@ impl<C: Clock> TrustStoreHandle<C> {
 /// uses (see the `tokio` feature for a ready-made driver).
 ///
 /// The TSL is verified as `spec/tsl-xmldsig` requires before its CAs are used: signature
-/// and signer under [`TrustConfig::tsl_signer_anchor`], `NextUpdate` and
+/// and signer under [`TrustConfig::tsl_signer_anchors`], `NextUpdate` and
 /// [`TrustConfig::tsl_grace_period`], and `Id` and sequence number against the list
 /// before ([`with_stored_tsl`](Self::with_stored_tsl) carries it across restarts). With a
 /// checker from [`with_signer_status`](Self::with_signer_status), the signer's OCSP

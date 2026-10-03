@@ -28,6 +28,17 @@ pub const GEM_TSL_CA3: &[u8] = include_bytes!("anchors/GEM.TSL-CA3.der");
 #[cfg(feature = "dangerous-nonprod")]
 pub const GEM_TSL_CA28_TEST_ONLY: &[u8] = include_bytes!("anchors/GEM.TSL-CA28-TEST-ONLY.der");
 
+/// The TSL signer CAs of production. When gematik announces a new one in the TSL (a
+/// `TSLServiceCertChange` service, which verification reports as
+/// [`TslCode::TslAnchorAnnounced`](crate::tsl_signature::TslCode::TslAnchorAnnounced)),
+/// it is added here; the old one stays until it expires.
+pub const TSL_SIGNER_CAS_PROD: &[&[u8]] = &[GEM_TSL_CA3];
+
+/// The TSL signer CAs of the reference, test and development environments; as
+/// [`TSL_SIGNER_CAS_PROD`].
+#[cfg(feature = "dangerous-nonprod")]
+pub const TSL_SIGNER_CAS_NONPROD: &[&[u8]] = &[GEM_TSL_CA28_TEST_ONLY];
+
 #[cfg(test)]
 mod tests {
     use super::*;

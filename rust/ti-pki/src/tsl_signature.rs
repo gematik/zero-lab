@@ -8,7 +8,7 @@
 //! list.
 //!
 //! [`Tsl::parse_verified`] adds part B: the signer must be a C.TSL.SIG certificate the
-//! configured TSL signer CA ([`TrustConfig::tsl_signer_anchor`]) issued, valid now; only
+//! configured TSL signer CAs ([`TrustConfig::tsl_signer_anchors`]) issued, valid now; only
 //! then is the list parsed, from the signed bytes, skipping what cannot be processed.
 //! A list past its `NextUpdate` and the grace period is rejected, within the grace
 //! period it carries a warning (part D). [`Tsl::parse_verified_prod`] does so for
@@ -21,7 +21,9 @@
 //! [`TslCode::NoOcspCheck`]. [`VerifiedTsl::check_sequence`] compares the list with the
 //! one stored before (part D).
 //!
-//! Not yet covered: an announced anchor and the path through roots.json (part E).
+//! An anchor change is not adopted from the TSL (part E is not implemented): a TSL signer
+//! CA the list announces is reported as [`TslCode::TslAnchorAnnounced`] until it is added
+//! to the configured anchors, and a signer under a CA that is not configured fails.
 
 use core::fmt;
 
@@ -105,6 +107,9 @@ pub enum TslCode {
     TslIdIncorrect,
     /// Warning: the list is past its `NextUpdate`, within the grace period (1008).
     ValidityWarning1,
+    /// Warning: the list announces a TSL signer CA that is not configured; `ti-pki`'s own
+    /// code. Add it to [`TrustConfig::tsl_signer_anchors`] before it signs.
+    TslAnchorAnnounced,
     /// The list is past its `NextUpdate` and the grace period; nothing from it may be
     /// used (1009, a warning in Tab_PKI_274 that stops the use of the list).
     ValidityWarning2,
@@ -134,6 +139,7 @@ impl TslCode {
         TslCode::TslIdIncorrect,
         TslCode::ValidityWarning1,
         TslCode::ValidityWarning2,
+        TslCode::TslAnchorAnnounced,
     ];
 
     /// The code's name, e.g. `xml_signature_error`.
@@ -159,12 +165,16 @@ impl TslCode {
             TslCode::TslIdIncorrect => "tsl_id_incorrect",
             TslCode::ValidityWarning1 => "validity_warning_1",
             TslCode::ValidityWarning2 => "validity_warning_2",
+            TslCode::TslAnchorAnnounced => "tsl_anchor_announced",
         }
     }
 
     /// Whether the code is a warning, which leaves the list usable.
     pub const fn is_warning(self) -> bool {
-        matches!(self, TslCode::NoOcspCheck | TslCode::ValidityWarning1)
+        matches!(
+            self,
+            TslCode::NoOcspCheck | TslCode::ValidityWarning1 | TslCode::TslAnchorAnnounced
+        )
     }
 
     /// The message number of Tab_PKI_274; `None` for a code it does not define.
@@ -178,7 +188,6 @@ impl TslCode {
             TslCode::CertificateNotValidTime => Some(1021),
             TslCode::WrongKeyusage => Some(1016),
             TslCode::WrongExtendedkeyusage => Some(1017),
-            TslCode::TslSignerProfileViolation => None,
             TslCode::NoOcspCheck => Some(1039),
             TslCode::OcspSignatureError => Some(1031),
             TslCode::CerthashExtensionMissing => Some(1040),
@@ -190,6 +199,7 @@ impl TslCode {
             TslCode::TslIdIncorrect => Some(1007),
             TslCode::ValidityWarning1 => Some(1008),
             TslCode::ValidityWarning2 => Some(1009),
+            TslCode::TslSignerProfileViolation | TslCode::TslAnchorAnnounced => None,
         }
     }
 }
@@ -494,7 +504,7 @@ fn unreachable(error: &ValidationError) -> bool {
 impl Tsl {
     /// Verifies the TSL `xml` against `config` at `now` and parses it from the signed
     /// bytes: the signature (part A) and a signer issued by
-    /// [`TrustConfig::tsl_signer_anchor`] (part B, TSLSIG-030 – 035), with the
+    /// one of [`TrustConfig::tsl_signer_anchors`] (part B, TSLSIG-030 – 035), with the
     /// configuration's algorithms. Validity is checked without clock skew.
     ///
     /// # Errors
@@ -505,14 +515,20 @@ impl Tsl {
         config: &TrustConfig,
         now: Timestamp,
     ) -> Result<VerifiedTsl, TslError> {
-        let anchor = Certificate::from_der(&config.tsl_signer_anchor).map_err(|e| {
-            TslError::new(
-                TslCode::CertificateNotValidMath,
-                "TSLSIG-030",
-                format!("TSL signer anchor: {e}"),
-            )
-        })?;
+        let anchors = config
+            .tsl_signer_anchors
+            .iter()
+            .map(|der| Certificate::from_der(der))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| {
+                TslError::new(
+                    TslCode::CertificateNotValidMath,
+                    "TSLSIG-030",
+                    format!("TSL signer anchor: {e}"),
+                )
+            })?;
         let signed = verify(xml, &config.algorithms)?;
+        let anchor = issuing_anchor(&anchors, &signed.signer)?.clone();
         check_signer(&signed.signer, &anchor, &config.algorithms, now)?;
         let tsl = Tsl::parse_with(&signed.content, true).map_err(|e| {
             TslError::new(
@@ -538,6 +554,7 @@ impl Tsl {
             }
             warnings.push(TslError::new(TslCode::ValidityWarning1, "TSLSIG-054", past));
         }
+        warnings.extend(announced_anchors(&tsl, &anchors));
         warnings.push(TslError::new(
             TslCode::NoOcspCheck,
             "TSLSIG-043",
@@ -598,9 +615,11 @@ pub fn embedded_config_for(xml: &[u8]) -> Result<TrustConfig, TslError> {
     embedded_configs()
         .into_iter()
         .find(|config| {
-            Certificate::from_der(&config.tsl_signer_anchor).is_ok_and(|anchor| {
-                anchor.subject_der() == signed.signer.issuer_der()
-                    && anchor.subject_key_id() == signed.signer.authority_key_id()
+            config.tsl_signer_anchors.iter().any(|der| {
+                Certificate::from_der(der).is_ok_and(|anchor| {
+                    anchor.subject_der() == signed.signer.issuer_der()
+                        && anchor.subject_key_id() == signed.signer.authority_key_id()
+                })
             })
         })
         .ok_or_else(|| {
@@ -615,8 +634,77 @@ pub fn embedded_config_for(xml: &[u8]) -> Result<TrustConfig, TslError> {
         })
 }
 
+/// The anchor whose name is the signer's issuer, preferring the one whose key identifier
+/// the signer names: [`check_signer`] then tells a wrong key identifier from a wrong CA.
 #[cfg(feature = "brainpool")]
+fn issuing_anchor<'a>(
+    anchors: &'a [Certificate],
+    signer: &Certificate,
+) -> Result<&'a Certificate, TslError> {
+    let named = || {
+        anchors
+            .iter()
+            .filter(|a| a.subject_der() == signer.issuer_der())
+    };
+    named()
+        .find(|a| a.subject_key_id().is_some() && a.subject_key_id() == signer.authority_key_id())
+        .or_else(|| named().next())
+        .ok_or_else(|| {
+            TslError::new(
+                TslCode::CertificateNotValidMath,
+                "TSLSIG-031",
+                format!(
+                    "the signer's issuer {} is no configured TSL signer CA",
+                    signer.issuer()
+                ),
+            )
+        })
+}
+
+/// A warning for each TSL signer CA the list announces that is not configured yet
+/// (TSLSIG-060): it is not adopted, an operator adds it to
+/// [`TrustConfig::tsl_signer_anchors`].
+#[cfg(feature = "brainpool")]
+fn announced_anchors(tsl: &Tsl, anchors: &[Certificate]) -> Vec<TslError> {
+    tsl.services
+        .iter()
+        .filter(|s| s.service_type == crate::tsl::SERVICE_TYPE_TSL_CERT_CHANGE)
+        .filter(|s| {
+            s.certificate
+                .as_ref()
+                .is_none_or(|c| anchors.iter().all(|a| a.der() != c.der()))
+        })
+        .map(|s| {
+            let from = s
+                .status_starting_time
+                .map_or_else(|| "an unstated time".to_owned(), |t| t.to_string());
+            let what = s.certificate.as_ref().map_or_else(
+                || format!("{:?} without a certificate", s.name),
+                |c| {
+                    use sha2::Digest as _;
+                    let sha256 = sha2::Sha256::digest(c.der());
+                    let hex = sha256.iter().fold(String::new(), |mut hex, b| {
+                        use core::fmt::Write as _;
+                        let _ = write!(hex, "{b:02x}");
+                        hex
+                    });
+                    format!("{} (SHA-256 {hex})", c.subject())
+                },
+            );
+            TslError::new(
+                TslCode::TslAnchorAnnounced,
+                "TSLSIG-060",
+                format!(
+                    "the TSL announces the TSL signer CA {what} from {from}; add it to the \
+                     configured TSL signer anchors"
+                ),
+            )
+        })
+        .collect()
+}
+
 /// The configurations whose TSL signer CAs [`Tsl::parse_verified_auto`] tries.
+#[cfg(feature = "brainpool")]
 fn embedded_configs() -> Vec<TrustConfig> {
     #[cfg(feature = "dangerous-nonprod")]
     return vec![
@@ -1012,7 +1100,7 @@ mod tests {
     #[test]
     fn tslsig_030_an_unusable_anchor_is_an_error() {
         let config = TrustConfig {
-            tsl_signer_anchor: std::borrow::Cow::Borrowed(b"not a certificate"),
+            tsl_signer_anchors: vec![std::borrow::Cow::Borrowed(b"not a certificate")],
             ..TrustConfig::preset_prod()
         };
         let e = Tsl::parse_verified(&real("pu-10334.xml"), &config, at("2026-10-03T00:00:00Z"))
@@ -1251,5 +1339,64 @@ mod tests {
             (e.code, e.rule),
             (TslCode::OcspCheckRevocationError, "TSLSIG-042")
         );
+    }
+
+    /// TSLSIG-030: one of several configured anchors issued the signer, in any order.
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tslsig_030_any_configured_anchor() {
+        use std::borrow::Cow;
+        let config = TrustConfig {
+            tsl_signer_anchors: vec![
+                Cow::Borrowed(crate::anchors::GEM_TSL_CA28_TEST_ONLY),
+                Cow::Borrowed(crate::anchors::GEM_TSL_CA3),
+            ],
+            ..TrustConfig::preset_prod()
+        };
+        let now = at("2026-10-03T00:00:00Z");
+        let prod = Tsl::parse_verified(&real("pu-10334.xml"), &config, now).unwrap();
+        assert_eq!(prod.anchor.subject_cn(), "GEM.TSL-CA3");
+        assert_eq!(prod.tier, Tier::Prod);
+        let test = Tsl::parse_verified(&real("tu-10713.xml"), &config, now).unwrap();
+        assert_eq!(test.anchor.subject_cn(), "GEM.TSL-CA28 TEST-ONLY");
+        assert_eq!(test.tier, Tier::NonProd);
+    }
+
+    /// TSLSIG-060: an announced TSL signer CA is reported until it is configured, never
+    /// adopted.
+    #[test]
+    fn tslsig_060_announced_anchors_are_reported() {
+        let ca3 = Certificate::from_der(crate::anchors::GEM_TSL_CA3).unwrap();
+        let new_ca = signer_fixture!("ca");
+        let announcement = |certificate: Option<Certificate>| crate::tsl::Service {
+            provider: "gematik GmbH".into(),
+            name: "TSL signer CA change".into(),
+            service_type: crate::tsl::SERVICE_TYPE_TSL_CERT_CHANGE.into(),
+            status: crate::tsl::SERVICE_STATUS_IN_ACCORD.into(),
+            status_starting_time: Some(at("2027-01-01T00:00:00Z")),
+            certificate,
+            supply_points: Vec::new(),
+        };
+        let mut tsl = Tsl::parse_verified_prod(&real("pu-10334.xml"), at("2026-10-03T00:00:00Z"))
+            .unwrap()
+            .tsl;
+        assert!(announced_anchors(&tsl, std::slice::from_ref(&ca3)).is_empty());
+
+        tsl.services.push(announcement(Some(new_ca.clone())));
+        let warnings = announced_anchors(&tsl, std::slice::from_ref(&ca3));
+        assert_eq!(codes(&warnings), [TslCode::TslAnchorAnnounced]);
+        assert!(
+            warnings[0].detail.contains("GEM.TSL-CA99 TEST-ONLY"),
+            "{}",
+            warnings[0].detail
+        );
+        assert!(warnings[0].detail.contains("2027-01-01T00:00:00Z"));
+        assert!(TslCode::TslAnchorAnnounced.is_warning());
+
+        // Configured: nothing to report.
+        assert!(announced_anchors(&tsl, &[ca3.clone(), new_ca]).is_empty());
+
+        tsl.services.push(announcement(None));
+        assert_eq!(announced_anchors(&tsl, &[ca3]).len(), 2);
     }
 }

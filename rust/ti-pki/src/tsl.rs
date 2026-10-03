@@ -32,6 +32,10 @@ pub const URL_TEST: &str = "https://download-test.tsl.ti-dienste.de/ECC/ECC-RSA_
 /// `ServiceTypeIdentifier` of a certificate authority.
 pub const SERVICE_TYPE_CA_PKC: &str = "http://uri.etsi.org/TrstSvc/Svctype/CA/PKC";
 
+/// `ServiceTypeIdentifier` of a TSL signer CA the list announces (TUC_PKI_013).
+pub const SERVICE_TYPE_TSL_CERT_CHANGE: &str =
+    "http://uri.etsi.org/TrstSvc/Svctype/TSLServiceCertChange";
+
 /// `ServiceTypeIdentifier` of an OCSP responder.
 pub const SERVICE_TYPE_OCSP: &str = "http://uri.etsi.org/TrstSvc/Svctype/Certstatus/OCSP";
 

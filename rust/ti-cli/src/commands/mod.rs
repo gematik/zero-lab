@@ -195,6 +195,7 @@ fn tsl_warning_text(code: &str) -> &str {
     match code {
         "no_ocsp_check" => "signer status not checked",
         "validity_warning_1" => "past NextUpdate, in the grace period",
+        "tsl_anchor_announced" => "announces a new TSL signer CA",
         other => other,
     }
 }

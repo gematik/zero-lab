@@ -10,7 +10,8 @@
 //!
 //! Every tick is logged with `tracing`: a verification failure at error level (possible
 //! tampering), a load failure at warn while the material is `Stale` and at error from
-//! `Degraded` on, a swap at info, no change at debug.
+//! `Degraded` on, a swap at info with each TSL warning at warn (among them a newly
+//! announced TSL signer CA to configure), no change at debug.
 //!
 //! ```no_run
 //! # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,7 +36,7 @@ use std::thread;
 
 use ::tokio::sync::{mpsc, oneshot};
 
-use crate::load::{Clock, Loader, ReloadError, ReloadOutcome, Reloader, State};
+use crate::load::{Clock, Loader, ReloadError, ReloadOutcome, ReloadStatus, Reloader, State};
 use crate::revocation::RevocationChecker;
 
 /// A running background reloader. Dropping it stops the task; [`shutdown`](Self::shutdown)
@@ -121,11 +122,11 @@ where
                 loop {
                     ::tokio::select! {
                         () = ::tokio::time::sleep(reloader.until_due()) => {
-                            log(&reloader.tick().await);
+                            log(&reloader.tick().await, &reloader.handle().status());
                         }
                         Some(reply) = incoming.recv() => {
                             let outcome = reloader.tick().await;
-                            log(&outcome);
+                            log(&outcome, &reloader.handle().status());
                             // The requester may have given up waiting; nothing to do then.
                             let _ = reply.send(outcome);
                         }
@@ -162,11 +163,20 @@ pub fn on_sighup(trigger: AdminTrigger) -> std::io::Result<::tokio::task::JoinHa
     }))
 }
 
-fn log(outcome: &ReloadOutcome) {
+fn log(outcome: &ReloadOutcome, status: &ReloadStatus) {
     match outcome {
         ReloadOutcome::Unchanged => tracing::debug!("trust material unchanged"),
         ReloadOutcome::Swapped { generation } => {
             tracing::info!(generation, "trust material updated");
+            // Once per new list: an announced TSL signer CA needs an operator.
+            for warning in &status.tsl_warnings {
+                tracing::warn!(
+                    code = warning.code.as_str(),
+                    rule = warning.rule,
+                    detail = %warning.detail,
+                    "TSL warning"
+                );
+            }
         }
         ReloadOutcome::KeptStale {
             error: error @ ReloadError::Verify(_),
