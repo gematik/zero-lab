@@ -130,6 +130,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pki
 
 #### added
+- `oid::CV_ROOTCERT` and `oid::CV_CERT` (`oid_cv_rootcert`, `oid_cv_cert`, gemSpec_OID):
+  the types the TSL states for its CV certificate services, which had no name.
 - `Certificate::signature_algorithm`, `checks::key_usage_name` and
   `checks::ext_key_usage_name`, for tools that display certificates.
 - Path validation rejects a critical extension this crate does not process (RFC 5280

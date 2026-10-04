@@ -56,6 +56,17 @@ fn production_list_for_production() {
     assert!(root_names(&v).iter().all(|cn| !cn.contains("TEST-ONLY")));
     assert!(v["counts"]["cas_kept"].as_u64().unwrap() > 0);
 
+    // Every type the list states has its gemSpec_OID name, the CV types included.
+    for t in v["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|p| p["services"].as_array().unwrap())
+        .flat_map(|s| s["type_oids"].as_array().unwrap())
+    {
+        assert!(t["reference"].is_string(), "unnamed type {}", t["oid"]);
+    }
+
     let certificates = v["certificates"].as_object().unwrap();
     let signer = v["signature"]["signer"].as_str().unwrap();
     assert_eq!(certificates[signer]["certificate_type"], "C.TSL.SIG");

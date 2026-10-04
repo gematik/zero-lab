@@ -248,6 +248,11 @@ oids! {
     CERT_TYPE_HSK_ENC = "1.2.276.0.76.4.301", "oid_hsk_enc", "C.HSK.ENC", "[gemSpec_PKI]", [];
     CERT_TYPE_GEM_VER = "1.2.276.0.76.4.321", "oid_gem-ver", "C.GEM.VER", "[gemSpec_PKI]", [];
 
+    // gemSpec_OID, OIDs of the TSL — the types a TSL states for its CV certificate
+    // services (service type CA/CVC).
+    CV_ROOTCERT = "1.2.276.0.76.4.185", "oid_cv_rootcert", "Root-CV-Zertifikat", "[gemSpec_TSL]", [];
+    CV_CERT = "1.2.276.0.76.4.186", "oid_cv_cert", "Cross-CV-Zertifikat", "[gemSpec_TSL]", [];
+
     // Tab_PKI_406 — technical role OIDs (Fachdienste), with the certificate types allowed
     // to carry them. Amended by change C_12646 (Draft_CI_26_3): ZETA Guard moves to
     // C.FD.AUT / C.FD.TLS-C, the OCI image role is renamed, the provisioning-approver role
@@ -453,6 +458,8 @@ mod tests {
             (TECH_ROLE_EPA_VAU, "1.2.276.0.76.4.209"),
             (TECH_ROLE_EREZEPT, "1.2.276.0.76.4.259"),
             (TECH_ROLE_ZETA_GUARD, "1.2.276.0.76.4.328"),
+            (CV_ROOTCERT, "1.2.276.0.76.4.185"),
+            (CV_CERT, "1.2.276.0.76.4.186"),
         ] {
             assert_eq!(got.to_string(), want);
         }
