@@ -14,6 +14,7 @@ ti pki inspect card.pem > card.md   # piped output is Markdown, with the PEM
 ti --format json pki inspect card.pem | jq '.certificates[0].certificate_type'
 ti pki profiles list
 ti pki profiles describe smb-aut
+ti pki profiles describe smb-aut --env ref   # and the TSL CAs that may issue its types
 ti pki verify card.pem              # exit 0 valid, 1 not valid
 ti pki verify smcb.p12              # the certificate with its key is the end entity
 ti pki pkcs12 convert old.p12 new.p12   # DER, PBES2 AES-256, SHA-256 MAC; mode 0600

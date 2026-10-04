@@ -4,6 +4,8 @@
 //! Intermediates are never trust anchors: they only help build a chain, which path
 //! validation then checks up to a root.
 
+use const_oid::ObjectIdentifier;
+
 use crate::Certificate;
 use crate::tsl::Intermediate;
 
@@ -20,6 +22,9 @@ pub struct TrustStore {
     providers: Vec<String>,
     /// OCSP responder certificates a verified TSL lists, with their TSP.
     listed_responders: Vec<(Certificate, String)>,
+    /// The certificate types a verified TSL states for its CAs; `None` without a
+    /// verified TSL.
+    ca_types: Option<Vec<(Certificate, Vec<ObjectIdentifier>)>>,
 }
 
 impl TrustStore {
@@ -49,6 +54,7 @@ impl TrustStore {
             intermediates: Vec::new(),
             providers: Vec::new(),
             listed_responders: Vec::new(),
+            ca_types: None,
         }
     }
 
@@ -69,6 +75,33 @@ impl TrustStore {
     pub(crate) fn with_listed_responders(mut self, responders: Vec<(Certificate, String)>) -> Self {
         self.listed_responders = responders;
         self
+    }
+
+    /// The certificate types a verified TSL states for its CAs. Only the loader sets
+    /// them, from a TSL whose signature and signer verified.
+    #[must_use]
+    pub(crate) fn with_ca_types(
+        mut self,
+        types: Vec<(Certificate, Vec<ObjectIdentifier>)>,
+    ) -> Self {
+        self.ca_types = Some(types);
+        self
+    }
+
+    /// The certificate types (Tab_PKI_405 OIDs) the verified TSL lets `ca` issue
+    /// (TUC_PKI_007): `None` without a verified TSL, or if it does not list `ca` or states
+    /// no types for it.
+    pub fn tsl_types_of(&self, ca: &Certificate) -> Option<&[ObjectIdentifier]> {
+        self.ca_types
+            .as_ref()?
+            .iter()
+            .find(|(listed, types)| listed == ca && !types.is_empty())
+            .map(|(_, types)| types.as_slice())
+    }
+
+    /// Whether the store holds the certificate types of a verified TSL.
+    pub fn has_tsl_types(&self) -> bool {
+        self.ca_types.is_some()
     }
 
     /// The TSPs under which a verified TSL lists `responder` as an OCSP service; the
@@ -137,6 +170,7 @@ impl TrustStore {
         TrustStore::new(verified.roots)
             .with_intermediates(verified.intermediates)
             .with_listed_responders(verified.ocsp_responders)
+            .with_ca_types(verified.ca_types)
     }
 }
 

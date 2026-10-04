@@ -15,6 +15,7 @@
 use core::fmt;
 
 use base64ct::{Base64, Encoding};
+use const_oid::ObjectIdentifier;
 
 use crate::algorithms::AlgorithmSet;
 use crate::time::Timestamp;
@@ -31,6 +32,10 @@ pub const URL_TEST: &str = "https://download-test.tsl.ti-dienste.de/ECC/ECC-RSA_
 
 /// `ServiceTypeIdentifier` of a certificate authority.
 pub const SERVICE_TYPE_CA_PKC: &str = "http://uri.etsi.org/TrstSvc/Svctype/CA/PKC";
+
+/// `oid_tsl_placeholder`: the `ExtensionOID` of a TSL entry with no extension to state
+/// (gemSpec_TSL TIP1-A_4108).
+pub const TSL_PLACEHOLDER: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.276.0.76.4.124");
 
 /// `ServiceTypeIdentifier` of a TSL signer CA the list announces (TUC_PKI_013).
 pub const SERVICE_TYPE_TSL_CERT_CHANGE: &str =
@@ -94,6 +99,10 @@ pub struct Service {
     pub certificate: Option<Certificate>,
     /// `ServiceSupplyPoints`; for a CA, the OCSP responder of its certificates.
     pub supply_points: Vec<String>,
+    /// The `ExtensionOID`s of `ServiceInformationExtensions`: for a CA, the certificate
+    /// types (Tab_PKI_405) it may issue (TUC_PKI_007, gemSpec_TSL 7.3.2.1); without
+    /// [`TSL_PLACEHOLDER`], which marks an entry with nothing to say (TIP1-A_4108).
+    pub type_oids: Vec<ObjectIdentifier>,
 }
 
 impl Service {
@@ -286,6 +295,18 @@ fn convert(provider: &str, info: xml::ServiceInformation) -> Result<Service, Err
                 .map_err(|e| malformed(format!("certificate of {name:?}: {e}")))
         })
         .transpose()?;
+    let type_oids = info
+        .extensions
+        .map(|e| e.extensions)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|e| e.oid)
+        .map(|oid| {
+            ObjectIdentifier::new(oid.trim())
+                .map_err(|e| malformed(format!("ExtensionOID {oid:?} of {name:?}: {e}")))
+        })
+        .filter(|oid| oid.as_ref().map_or(true, |oid| *oid != TSL_PLACEHOLDER))
+        .collect::<Result<_, _>>()?;
     Ok(Service {
         provider: provider.to_owned(),
         status_starting_time: info
@@ -300,6 +321,7 @@ fn convert(provider: &str, info: xml::ServiceInformation) -> Result<Service, Err
             .supply_points
             .map(|p| p.points.into_iter().map(|s| s.trim().to_owned()).collect())
             .unwrap_or_default(),
+        type_oids,
     })
 }
 
@@ -407,6 +429,20 @@ mod xml {
         pub(super) status_starting_time: Option<String>,
         #[serde(rename = "ServiceSupplyPoints")]
         pub(super) supply_points: Option<SupplyPoints>,
+        #[serde(rename = "ServiceInformationExtensions")]
+        pub(super) extensions: Option<Extensions>,
+    }
+
+    #[derive(Deserialize)]
+    pub(super) struct Extensions {
+        #[serde(rename = "Extension", default)]
+        pub(super) extensions: Vec<Extension>,
+    }
+
+    #[derive(Deserialize)]
+    pub(super) struct Extension {
+        #[serde(rename = "ExtensionOID")]
+        pub(super) oid: Option<String>,
     }
 
     #[derive(Clone, Deserialize)]
@@ -479,6 +515,25 @@ mod tests {
         assert_eq!(
             smcb.status_starting_time.map(|t| t.to_string()).as_deref(),
             Some("2018-06-12T05:32:34Z")
+        );
+        // TUC_PKI_007: the types the CA may issue; the placeholder states none.
+        assert_eq!(
+            smcb.type_oids,
+            [
+                crate::oid::CERT_TYPE_SMC_B_ENC,
+                crate::oid::CERT_TYPE_SMC_B_AUT,
+                crate::oid::CERT_TYPE_SMC_B_OSIG,
+            ]
+        );
+        let tsl_ca = of_type(SERVICE_TYPE_CA_PKC)
+            .find(|s| s.name.starts_with("CN=GEM.TSL-CA3,"))
+            .unwrap();
+        assert!(tsl_ca.type_oids.is_empty());
+        assert!(of_type(SERVICE_TYPE_OCSP).all(|s| s.type_oids.is_empty()));
+        assert!(
+            of_type(SERVICE_TYPE_CA_PKC)
+                .filter(|s| s.name != tsl_ca.name)
+                .all(|s| !s.type_oids.is_empty())
         );
     }
 

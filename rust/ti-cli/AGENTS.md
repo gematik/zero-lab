@@ -61,6 +61,7 @@ never on `message`.
 {bin} --format json pki verify --connect epa-as-1.ref.epa4all.de   # the server's chain; --fqdn is the host
 {bin} --format json pki profiles list
 {bin} --format json pki profiles describe smb-aut
+{bin} --format json pki profiles describe smb-aut --env ref   # tsl.cas: CAs the TSL allows for its types
 {bin} --format json pki roots list --env ref
 {bin} --format json pki tsl show --env ref        # CAs under the roots that signed them
 {bin} --format json pki tsl show --rejected       # CAs no verified root signed

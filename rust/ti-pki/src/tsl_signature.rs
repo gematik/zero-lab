@@ -1376,6 +1376,7 @@ mod tests {
             status_starting_time: Some(at("2027-01-01T00:00:00Z")),
             certificate,
             supply_points: Vec::new(),
+            type_oids: Vec::new(),
         };
         let mut tsl = Tsl::parse_verified_prod(&real("pu-10334.xml"), at("2026-10-03T00:00:00Z"))
             .unwrap()

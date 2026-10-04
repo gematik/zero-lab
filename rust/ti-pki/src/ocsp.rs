@@ -29,6 +29,13 @@
 //! [`Validator`](crate::Validator) reports as an [`ErrorCode::OcspResponderNotRfc6960`]
 //! warning.
 //!
+//! gemSpec_PKI itself only requires the responder certificate to be among the TSL's OCSP
+//! services (TUC_PKI_006 step 5); the TSL binds an OCSP service to no CA and no
+//! certificate type (its extension is `oid_tsl_placeholder`, gemSpec_TSL TIP1-A_4108).
+//! Responders do cross certificate families within a TSP (ehca's GEM.KOMP-CA51 delegate
+//! answers for GEM.SMCB-CA51), so the TSP is the narrowest boundary the data supports.
+//! New responder certificates must follow RFC 6960 option 2 (A_23142-01).
+//!
 //! Failures come back with the codes the [`revocation`](crate::revocation) table
 //! decides on; a response outside the time window is an
 //! [`Unknown`](RevocationStatus::Unknown) result.

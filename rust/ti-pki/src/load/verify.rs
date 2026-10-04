@@ -20,6 +20,8 @@ pub struct Verified {
     pub(crate) tsl_next_update: Option<Timestamp>,
     /// The OCSP responders the TSL lists in accord, with their TSP.
     pub(crate) ocsp_responders: Vec<(Certificate, String)>,
+    /// The certificate types the TSL states for its CAs.
+    pub(crate) ca_types: Vec<(Certificate, Vec<const_oid::ObjectIdentifier>)>,
     /// The verified TSL; `None` only for test material.
     pub(crate) tsl: Option<VerifiedTsl>,
     /// How the TSL relates to the stored one.
@@ -77,11 +79,19 @@ pub(crate) fn verify_material(
         .filter(|s| s.service_type == crate::tsl::SERVICE_TYPE_OCSP && s.is_in_accord())
         .filter_map(|s| Some((s.certificate.clone()?, s.provider.clone())))
         .collect();
+    let ca_types = tsl
+        .tsl
+        .services
+        .iter()
+        .filter(|s| s.service_type == crate::tsl::SERVICE_TYPE_CA_PKC)
+        .filter_map(|s| Some((s.certificate.clone()?, s.type_oids.clone())))
+        .collect();
     Ok(Verified {
         roots,
         intermediates: matched.intermediates,
         tsl_next_update: tsl.tsl.next_update,
         ocsp_responders,
+        ca_types,
         tsl: Some(tsl),
         sequence,
     })

@@ -40,8 +40,8 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
         }
         Command::Pki(PkiCommand::Verify(args)) => verify::run(args, &cli.global, out),
         Command::Pki(PkiCommand::Profiles(ProfilesCommand::List)) => profiles::list(out),
-        Command::Pki(PkiCommand::Profiles(ProfilesCommand::Describe { name })) => {
-            profiles::describe(name, out)
+        Command::Pki(PkiCommand::Profiles(ProfilesCommand::Describe { name, env, offline })) => {
+            profiles::describe(name, *env, *offline, &cli.global, out)
         }
         Command::Pki(PkiCommand::Roots(RootsCommand::List(args))) => {
             roots::list(args, &cli.global, out)

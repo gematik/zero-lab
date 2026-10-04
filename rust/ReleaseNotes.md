@@ -47,6 +47,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   with an explicit `--env`. `TI_ENV=auto` means `prod` for `pki roots list` and
   `pki tsl show`, which have nothing to detect from; `--env auto` there, and `auto` for
   `probe`, are usage errors (`environment_invalid`).
+- `pki profiles describe NAME --env ENV` lists the CAs the environment's verified TSL
+  allows to issue the profile's types; `pki verify` reports `cert_type_ca_not_authorized`
+  and `cert_type_unchecked`.
 - `pki verify` shows the TSL as a trust chain of its own under the certificate chain:
   the list, its signer with its OCSP status, and the TSL signer CA (`trust.tsl` in the
   JSON). A responder the TSL lists for the issuing CA's TSP reads "listed in the TSL"
@@ -192,6 +195,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   the same TSP, not by a TSL listing (A_30046 (7), C_12791).
 - Profile `fd-tls-s`: the C.FD.TLS-S certificate of a Fachdienst TLS server, the type
   baseline without a role, default for the type; pair it with the expected FQDN.
+- TUC_PKI_007 against the verified TSL: an end entity whose type the issuing CA's TSL
+  entry does not list fails with `ErrorCode::CertTypeCaNotAuthorized` (1061,
+  CERT_TYPE_CA_NOT_AUTHORIZED); one whose issuer has no stated types is the warning
+  `CertTypeUnchecked`. `Service::type_oids`, `TrustStore::tsl_types_of`,
+  `Validator::cert_type` (set by `with_type_baseline`).
 - OCSP responders the verified TSL lists as an OCSP service of the issuing CA's TSP,
   certified by a CA of that TSP that a root signed, are authorized as
   `ResponderAuthorization::TslListed`, without the `ocsp_responder_not_rfc6960` warning

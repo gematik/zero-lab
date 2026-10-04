@@ -418,6 +418,13 @@ pub enum ProfilesCommand {
         /// Profile name
         #[arg(value_parser = profile_names())]
         name: String,
+        /// Also list the CAs whose entry in this environment's TSL allows the profile's
+        /// types (TUC_PKI_007); loads the environment's trust material
+        #[arg(long, value_enum, value_name = "ENV")]
+        env: Option<Environment>,
+        /// With --env: no network, the cached trust material
+        #[arg(long, requires = "env")]
+        offline: bool,
     },
 }
 
