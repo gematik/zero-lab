@@ -410,7 +410,9 @@
             "key_phased_out",
             "profile_not_detected",
             "profile_ambiguous",
-            "profile_type_mismatch"
+            "profile_type_mismatch",
+            "cert_type_ca_not_authorized",
+            "cert_type_unchecked"
           ]
         },
         "subject": {

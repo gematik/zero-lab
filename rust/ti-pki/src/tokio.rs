@@ -264,6 +264,7 @@ mod tests {
             intermediates: Vec::new(),
             tsl_next_update: None,
             ocsp_responders: Vec::new(),
+            ca_types: Vec::new(),
             tsl: None,
             sequence: crate::tsl_signature::Sequence::Newer,
         })

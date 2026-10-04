@@ -37,7 +37,11 @@ never on `message`.
 ## Common options and environment
 
 - `TI_FORMAT` sets the default format.
-- `TI_ENV` sets the default environment: `auto`, `prod`, `ref`, `test` or `dev`.
+- `TI_ENV` sets the default of `--env`: `auto`, `prod`, `ref`, `test` or `dev`. Every
+  command that needs an environment takes `--env`. `pki verify` and `pki tsl verify`
+  detect it with `auto` (their default); `pki roots list` and `pki tsl show` cannot, so
+  `auto` from `TI_ENV` means `prod` there and `--env auto` is an error (exit 2,
+  `environment_invalid`).
 - `TI_CACHE_DIR` sets the cache directory.
 - The HTTP options and variables follow curl: `-x`/`HTTPS_PROXY`/`HTTP_PROXY`/
   `ALL_PROXY`, `--noproxy`/`NO_PROXY`, `--cacert`/`CURL_CA_BUNDLE`/`SSL_CERT_FILE`,
@@ -57,6 +61,7 @@ never on `message`.
 {bin} --format json pki verify --connect epa-as-1.ref.epa4all.de   # the server's chain; --fqdn is the host
 {bin} --format json pki profiles list
 {bin} --format json pki profiles describe smb-aut
+{bin} --format json pki profiles describe smb-aut --env ref   # tsl.cas: CAs the TSL allows for its types
 {bin} --format json pki roots list --env ref
 {bin} --format json pki tsl show --env ref        # CAs under the roots that signed them
 {bin} --format json pki tsl show --rejected       # CAs no verified root signed
@@ -174,7 +179,9 @@ never on `message`.
 {bin} --format json probe prod       # one document once all probes are done
 ```
 
-- `ENV` is `prod`, `ref`, `test` or `dev` (also `pu`, `ru`, `tu`).
+- `ENV` is `prod`, `ref`, `test` or `dev` (also `pu`, `ru`, `tu`), positional or as
+  `--env`; without either, `TI_ENV`. A positional `ENV` wins over `TI_ENV`; one that
+  disagrees with an explicit `--env` is exit 2.
 - Every probe runs in parallel with a 3 s limit per request; TLS is not verified (the
   question is reachability, and TI services use TI-internal CAs).
 - Each service is checked with its protocol: `oidc` (the IDP's OpenID discovery, JSON

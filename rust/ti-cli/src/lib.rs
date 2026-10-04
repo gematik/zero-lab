@@ -41,6 +41,16 @@ fn command() -> clap::Command {
         .after_long_help(cli::AFTER_HELP.replace("{bin}", BIN))
 }
 
+/// Whether the command's `--env` took its value from `TI_ENV`.
+fn env_from_variable(matches: &clap::ArgMatches) -> bool {
+    let mut command = matches;
+    while let Some((_, sub)) = command.subcommand() {
+        command = sub;
+    }
+    command.ids().any(|id| id == "env")
+        && command.value_source("env") == Some(clap::parser::ValueSource::EnvVariable)
+}
+
 /// Runs the tool with `args` (the program name first, as `std::env::args_os` yields
 /// them).
 pub fn run<I, T>(args: I) -> ExitCode
@@ -48,9 +58,11 @@ where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    let parsed = command()
-        .try_get_matches_from(args)
-        .and_then(|matches| Cli::from_arg_matches(&matches));
+    let parsed = command().try_get_matches_from(args).and_then(|matches| {
+        let mut cli = Cli::from_arg_matches(&matches)?;
+        cli.global.env_from_variable = env_from_variable(&matches);
+        Ok(cli)
+    });
     let cli = match parsed {
         Ok(cli) => cli,
         Err(error) => {

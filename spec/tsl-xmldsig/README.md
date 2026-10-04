@@ -62,10 +62,10 @@ Everything outside the [signature profile](#signature-profile) fails closed.
 | TS 102 231 | ETSI TS 102 231 V3.1.2, Annex B (TSL format), B.6 (signature) |
 | TS 119 612 | ETSI TS 119 612 V2.4.1, 6.1 (hash file `.sha2` only) |
 | RFC 5280, RFC 6960 | X.509 path validation, OCSP |
-| gemSpec_PKI | gemSpec_PKI V2.28.0 (with C_12791: A_28419, A_30044, A_30046) |
-| gemSpec_TSL | gemSpec_TSL V1.25.0 |
-| gemSpec_Krypt | gemSpec_Krypt V2.50.0 |
-| gemKPT_PKI_TIP | gemKPT_PKI_TIP V2.14.0 |
+| gemSpec_PKI | [gemSpec_PKI V2.28.0](https://gemspec.gematik.de/downloads/gemSpec/gemSpec_PKI/gemSpec_PKI_V2.28.0.html) (with C_12791: A_28419, A_30044, A_30046) |
+| gemSpec_TSL | [gemSpec_TSL V1.25.0](https://gemspec.gematik.de/downloads/gemSpec/gemSpec_TSL/gemSpec_TSL_V1.25.0.html) |
+| gemSpec_Krypt | [gemSpec_Krypt V2.50.0](https://gemspec.gematik.de/downloads/gemSpec/gemSpec_Krypt/gemSpec_Krypt_V2.50.0.html) |
+| gemKPT_PKI_TIP | [gemKPT_PKI_TIP V2.14.0](https://gemspec.gematik.de/downloads/gemKPT/gemKPT_PKI_TIP/gemKPT_PKI_TIP_V2.14.0.html) |
 | GemLibPki | gematik ref-GemLibPki 5.0.2, the Java reference implementation |
 
 The gematik documents do not fix the canonicalization method, the transforms, the

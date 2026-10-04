@@ -5,8 +5,10 @@ use ti_pki::profile::{self, Profile};
 use ti_pki::revocation::RevocationMode;
 use ti_pki::{CertificateType, checks};
 
+use crate::cli::{Environment, GlobalArgs};
 use crate::error::{CliError, Exit};
 use crate::output::{Document, Line, OidInfo, Output, SCHEMA};
+use crate::trust::Session;
 
 #[derive(Serialize)]
 struct ListReport {
@@ -20,6 +22,24 @@ struct DescribeReport {
     profile: ProfileInfo,
     /// The baseline each accepted type imposes, with the profile's overlay applied.
     types: Vec<TypeRequirements>,
+    /// With `--env`: the CAs whose TSL entry allows one of the profile's types.
+    tsl: Option<TslCas>,
+}
+
+#[derive(Serialize)]
+struct TslCas {
+    environment: &'static str,
+    /// CAs under the verified roots, in TSL order.
+    cas: Vec<TslCa>,
+}
+
+#[derive(Serialize)]
+struct TslCa {
+    common_name: String,
+    /// The TSP the TSL lists the CA under.
+    provider: String,
+    /// Of the profile's types, those the TSL entry names.
+    types: Vec<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -129,8 +149,17 @@ pub fn list(out: &Output) -> Result<Exit, CliError> {
     Ok(Exit::Ok)
 }
 
-pub fn describe(name: &str, out: &Output) -> Result<Exit, CliError> {
+pub fn describe(
+    name: &str,
+    env: Option<Environment>,
+    offline: bool,
+    global: &GlobalArgs,
+    out: &Output,
+) -> Result<Exit, CliError> {
     let p = profile::lookup(name).expect("clap only accepts registered profile names");
+    let tsl = env
+        .map(|env| tsl_cas(p, env, offline, global, out))
+        .transpose()?;
     let report = DescribeReport {
         schema: SCHEMA,
         profile: info(p),
@@ -139,6 +168,7 @@ pub fn describe(name: &str, out: &Output) -> Result<Exit, CliError> {
             .iter()
             .map(|t| requirements(p, *t))
             .collect(),
+        tsl,
     };
     if out.is_json() {
         out.json(&report)?;
@@ -156,8 +186,70 @@ pub fn describe(name: &str, out: &Output) -> Result<Exit, CliError> {
             .items("policies (all)", t.policies.iter().map(oid_line))
             .items("roles (one of)", t.role_oids.iter().map(oid_line));
     }
+    if let Some(tsl) = &report.tsl {
+        doc.section(format!("TSL CAs · {}", tsl.environment));
+        if tsl.cas.is_empty() {
+            doc.paragraph(Line::dim("no CA of the TSL may issue these types"));
+        }
+        doc.table(
+            &["CA", "PROVIDER", "TYPES"],
+            tsl.cas
+                .iter()
+                .map(|ca| {
+                    vec![
+                        Line::strong(&ca.common_name),
+                        Line::text(&ca.provider),
+                        Line::text(ca.types.join(", ")),
+                    ]
+                })
+                .collect(),
+        );
+    }
     out.render(&doc)?;
     Ok(Exit::Ok)
+}
+
+/// The CAs under the verified roots whose entry in `env`'s verified TSL names one of
+/// `p`'s types.
+fn tsl_cas(
+    p: &Profile,
+    env: Environment,
+    offline: bool,
+    global: &GlobalArgs,
+    out: &Output,
+) -> Result<TslCas, CliError> {
+    let env = super::concrete(env, global)?;
+    let config = ti_pki::TrustConfig::preset(env);
+    config.validate(env.tier()).map_err(CliError::Trust)?;
+    let session = Session::new(global, offline, out)?;
+    let store = session.load(&config, env.tier(), None)?.store;
+    if !store.has_tsl_types() {
+        return Err(CliError::TrustLoad(
+            "no verified TSL: offline and nothing cached; run once without --offline".into(),
+        ));
+    }
+    let cas = store
+        .intermediates()
+        .iter()
+        .filter_map(|ca| {
+            let listed = store.tsl_types_of(ca)?;
+            let types: Vec<&'static str> = p
+                .accepts_types
+                .iter()
+                .filter(|t| listed.contains(&t.oid()))
+                .map(|t| t.as_str())
+                .collect();
+            (!types.is_empty()).then(|| TslCa {
+                common_name: ca.subject_cn().to_owned(),
+                provider: store.provider_of(ca).unwrap_or_default().to_owned(),
+                types,
+            })
+        })
+        .collect();
+    Ok(TslCas {
+        environment: env.as_str(),
+        cas,
+    })
 }
 
 fn oid_line(o: &OidInfo) -> Line {

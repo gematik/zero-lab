@@ -99,6 +99,13 @@ pub enum ErrorCode {
     /// An explicitly chosen profile does not accept the detected type;
     /// validation ran under it anyway.
     ProfileTypeMismatch,
+    /// The issuing CA's entry in the verified TSL does not list the end entity's
+    /// certificate type (TUC_PKI_007 step 9a, CERT_TYPE_CA_NOT_AUTHORIZED, 1061).
+    CertTypeCaNotAuthorized,
+    /// Warning only: a verified TSL is at hand, but it states no certificate types for
+    /// the issuing CA, so the end entity's type was not checked against it (TUC_PKI_007
+    /// variant 7a). `ti-pki`'s own code.
+    CertTypeUnchecked,
 }
 
 impl ErrorCode {
@@ -123,6 +130,8 @@ impl ErrorCode {
         ErrorCode::ProfileNotDetected,
         ErrorCode::ProfileAmbiguous,
         ErrorCode::ProfileTypeMismatch,
+        ErrorCode::CertTypeCaNotAuthorized,
+        ErrorCode::CertTypeUnchecked,
     ];
 
     /// The stable string form, as used in logs and by the Go implementation.
@@ -147,6 +156,8 @@ impl ErrorCode {
             ErrorCode::ProfileNotDetected => "profile_not_detected",
             ErrorCode::ProfileAmbiguous => "profile_ambiguous",
             ErrorCode::ProfileTypeMismatch => "profile_type_mismatch",
+            ErrorCode::CertTypeCaNotAuthorized => "cert_type_ca_not_authorized",
+            ErrorCode::CertTypeUnchecked => "cert_type_unchecked",
         }
     }
 }
@@ -283,8 +294,10 @@ mod tests {
             ErrorCode::ProfileNotDetected => 16,
             ErrorCode::ProfileAmbiguous => 17,
             ErrorCode::ProfileTypeMismatch => 18,
+            ErrorCode::CertTypeCaNotAuthorized => 19,
+            ErrorCode::CertTypeUnchecked => 20,
         };
-        assert_eq!(ErrorCode::ALL.len(), 19);
+        assert_eq!(ErrorCode::ALL.len(), 21);
         for (i, code) in ErrorCode::ALL.iter().enumerate() {
             assert_eq!(place(*code), i, "{code}");
         }

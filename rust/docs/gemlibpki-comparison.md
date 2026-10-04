@@ -18,7 +18,7 @@ therefore out of scope:
 | GemLibPki | ti-pki |
 |---|---|
 | Issuer must be a TSL service with ServiceStatus `inaccord`, certificate NotBefore after StatusStartingTime (SE_1036, SE_1032) | Only `inaccord` CAs are candidates, and a root must have signed them; StatusStartingTime is parsed, not enforced |
-| Certificate-type OID must appear in the issuer's TSL `ExtensionOID` list (SE_1061) | Not enforced; the certificate's own policies decide its type baseline |
+| Certificate-type OID must appear in the issuer's TSL `ExtensionOID` list (SE_1061) | The same (TUC_PKI_007 steps 7 – 9, `cert_type_ca_not_authorized`), against the verified TSL; an issuer for which the TSL states no types (placeholder only, or not a TSL CA) is reported as `cert_type_unchecked` (variant 7a). The TSL signer is checked by TUC_PKI_011 instead |
 | TSL XAdES signature, XSD validation, TSL ID and SequenceNumber against the current list (TE_1013, TE_1014) | The XMLDSig/XAdES signature against a fixed profile, the signer under the embedded TSL signer CA and its OCSP status, `Id` and sequence number against the stored list (`spec/tsl-xmldsig` A – D); no XSD validation |
 | TSL NextUpdate with grace period (TE_1015) | The same (`TrustConfig::tsl_grace_period`, default 0); it also schedules the next reload |
 | Trust-anchor change announced in the TSL (TUC_PKI_013) | Roots come from roots.json |

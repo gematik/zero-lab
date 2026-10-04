@@ -667,6 +667,7 @@ mod tests {
             intermediates: Vec::new(),
             tsl_next_update,
             ocsp_responders: Vec::new(),
+            ca_types: Vec::new(),
             tsl: None,
             sequence: Sequence::Newer,
         })

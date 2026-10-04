@@ -18,8 +18,8 @@ mod version;
 use ti_pki::{Certificate, Env, Timestamp};
 
 use crate::cli::{
-    CacheCommand, Cli, Command, Environment, Pkcs12Command, PkiCommand, ProfilesCommand,
-    RootsCommand, TslCommand,
+    CacheCommand, Cli, Command, Environment, GlobalArgs, Pkcs12Command, PkiCommand, ProbeEnv,
+    ProfilesCommand, RootsCommand, TslCommand,
 };
 use crate::error::{CliError, Exit};
 use crate::output::document::{TreeRow, date, when};
@@ -40,8 +40,8 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
         }
         Command::Pki(PkiCommand::Verify(args)) => verify::run(args, &cli.global, out),
         Command::Pki(PkiCommand::Profiles(ProfilesCommand::List)) => profiles::list(out),
-        Command::Pki(PkiCommand::Profiles(ProfilesCommand::Describe { name })) => {
-            profiles::describe(name, out)
+        Command::Pki(PkiCommand::Profiles(ProfilesCommand::Describe { name, env, offline })) => {
+            profiles::describe(name, *env, *offline, &cli.global, out)
         }
         Command::Pki(PkiCommand::Roots(RootsCommand::List(args))) => {
             roots::list(args, &cli.global, out)
@@ -57,7 +57,10 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
             force,
         })) => pkcs12::convert(input, output, p12_password, *force, out),
         Command::Connector(connector) => connector::run(connector, &cli.global, out),
-        Command::Probe { env } => probe::run(env.env, env.def, &cli.global, out),
+        Command::Probe { target, env } => {
+            let (env, def) = probe_target(*target, *env, &cli.global)?;
+            probe::run(env, def, &cli.global, out)
+        }
         Command::Cache(CacheCommand::Clear) => cache::clear(&cli.global, out),
         Command::Schema { command } => schema::run(command, out),
         Command::Agent => agent::run(),
@@ -70,14 +73,48 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
     }
 }
 
-/// The environment of a command about one environment's trust material; auto has
-/// nothing to detect from there.
-fn concrete(env: Environment) -> Result<Env, CliError> {
-    env.concrete().ok_or_else(|| {
-        CliError::EnvironmentUndetected(
-            "auto needs certificates to look at; this command shows one environment".into(),
-        )
-    })
+/// The environment of a command about one environment's trust material. There is
+/// nothing to detect from, so `auto` from `TI_ENV` is the default, production; an `auto`
+/// on the command line is an error.
+fn concrete(env: Environment, global: &GlobalArgs) -> Result<Env, CliError> {
+    match env.concrete() {
+        Some(env) => Ok(env),
+        None if global.env_from_variable => Ok(Env::Prod),
+        None => Err(CliError::Environment(
+            "--env auto needs certificates to look at; this command shows one environment".into(),
+        )),
+    }
+}
+
+/// The environment `probe` checks: ENV, else `--env`, else `TI_ENV`. ENV and an `--env`
+/// on the command line must agree; ENV wins over `TI_ENV`, and `auto` from `TI_ENV`
+/// counts as unset.
+fn probe_target(
+    target: Option<ProbeEnv>,
+    option: Option<Environment>,
+    global: &GlobalArgs,
+) -> Result<(Env, bool), CliError> {
+    let option = match option {
+        Some(Environment::Auto) if global.env_from_variable => None,
+        Some(env) => Some(env.concrete().ok_or_else(|| {
+            CliError::Environment("probe checks one environment; auto has nothing to detect".into())
+        })?),
+        None => None,
+    };
+    match (target, option) {
+        (Some(target), Some(env)) if !global.env_from_variable && target.env != env => {
+            Err(CliError::Environment(format!(
+                "ENV {} and --env {} disagree",
+                target.env.as_str(),
+                env.as_str()
+            )))
+        }
+        (Some(target), _) => Ok((target.env, target.def)),
+        (None, Some(env)) => Ok((env, false)),
+        (None, None) => Err(CliError::Environment(
+            "probe needs an environment: ENV, --env or TI_ENV".into(),
+        )),
+    }
 }
 
 /// `valid`, `expired` or `not_yet_valid` at `now`.
@@ -272,4 +309,79 @@ fn write_file(
     file.write_all(bytes)?;
     file.sync_all()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::*;
+    use crate::cli::ProbeEnv;
+
+    fn global(env_from_variable: bool) -> GlobalArgs {
+        let mut global = Cli::try_parse_from(["ti", "version"]).unwrap().global;
+        global.env_from_variable = env_from_variable;
+        global
+    }
+
+    fn target(env: Env) -> ProbeEnv {
+        ProbeEnv { env, def: false }
+    }
+
+    #[test]
+    fn auto_from_ti_env_is_production_where_nothing_is_detected() {
+        assert_eq!(
+            concrete(Environment::Auto, &global(true)).unwrap(),
+            Env::Prod
+        );
+        assert!(concrete(Environment::Auto, &global(false)).is_err());
+        assert_eq!(concrete(Environment::Ref, &global(true)).unwrap(), Env::Ref);
+    }
+
+    #[test]
+    fn probe_env_argument_wins_over_ti_env_only() {
+        let from_variable = global(true);
+        let on_command_line = global(false);
+        assert_eq!(
+            probe_target(
+                Some(target(Env::Ref)),
+                Some(Environment::Test),
+                &from_variable
+            )
+            .unwrap(),
+            (Env::Ref, false)
+        );
+        assert!(
+            probe_target(
+                Some(target(Env::Ref)),
+                Some(Environment::Test),
+                &on_command_line
+            )
+            .is_err()
+        );
+        assert_eq!(
+            probe_target(
+                Some(target(Env::Ref)),
+                Some(Environment::Ref),
+                &on_command_line
+            )
+            .unwrap(),
+            (Env::Ref, false)
+        );
+        assert_eq!(
+            probe_target(None, Some(Environment::Test), &from_variable).unwrap(),
+            (Env::Test, false)
+        );
+        assert_eq!(
+            probe_target(
+                Some(target(Env::Dev)),
+                Some(Environment::Auto),
+                &from_variable
+            )
+            .unwrap(),
+            (Env::Dev, false)
+        );
+        assert!(probe_target(None, Some(Environment::Auto), &from_variable).is_err());
+        assert!(probe_target(None, None, &on_command_line).is_err());
+    }
 }

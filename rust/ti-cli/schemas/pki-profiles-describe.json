@@ -57,12 +57,67 @@
         ],
         "additionalProperties": false
       }
+    },
+    "tsl": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "environment": {
+              "enum": [
+                "prod",
+                "ref",
+                "test",
+                "dev"
+              ]
+            },
+            "cas": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "common_name": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "type": "string",
+                    "description": "The TSP the TSL lists the CA under"
+                  },
+                  "types": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Of the profile's types, those the CA's TSL entry names (TUC_PKI_007)"
+                  }
+                },
+                "required": [
+                  "common_name",
+                  "provider",
+                  "types"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "environment",
+            "cas"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "With --env: the CAs under the verified roots whose entry in the verified TSL allows one of the profile's types; null without --env"
     }
   },
   "required": [
     "schema",
     "profile",
-    "types"
+    "types",
+    "tsl"
   ],
   "additionalProperties": false,
   "$defs": {

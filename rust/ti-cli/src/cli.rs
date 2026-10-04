@@ -20,7 +20,8 @@ Exit codes:
 
 Environment:
   TI_FORMAT       default for --format (auto, text, markdown, json)
-  TI_ENV          default for verify --env (auto, prod, ref, test, dev)
+  TI_ENV          default for --env (auto, prod, ref, test, dev); commands that cannot
+                  detect (roots list, tsl show) read auto as prod, probe as unset
   TI_CACHE_DIR    default for --cache-dir
   TI_CONNECTOR_CONFIG, TI_CONNECTOR_TIMEOUT, TI_CARD_TIMEOUT
                   defaults for connector -c, --connector-timeout, --card-timeout
@@ -82,6 +83,10 @@ pub struct GlobalArgs {
     /// Cache directory [default: ~/.cache/telematik/ti, %LOCALAPPDATA%\telematik\ti on Windows]
     #[arg(long, value_name = "DIR", env = "TI_CACHE_DIR", global = true)]
     pub cache_dir: Option<PathBuf>,
+    /// The command's `--env` came from `TI_ENV`, not from the command line: a default,
+    /// which commands that cannot detect the environment read `auto` of as their own.
+    #[arg(skip)]
+    pub env_from_variable: bool,
     /// HTTP options.
     #[command(flatten)]
     pub net: NetArgs,
@@ -131,9 +136,12 @@ pub enum Command {
     Connector(ConnectorCli),
     /// Check that the TI services of an environment answer, in parallel (exit 0 or 1)
     Probe {
-        /// prod, ref, test or dev (also pu, ru, tu)
+        /// prod, ref, test or dev (also pu, ru, tu); short for --env
         #[arg(value_name = "ENV", value_parser = probe_env)]
-        env: ProbeEnv,
+        target: Option<ProbeEnv>,
+        /// TI environment
+        #[arg(long, value_enum, value_name = "ENV", env = "TI_ENV")]
+        env: Option<Environment>,
     },
     /// The download cache
     #[command(subcommand)]
@@ -232,7 +240,8 @@ pub enum TslCommand {
 /// The environment whose trust material a command shows.
 #[derive(Debug, Args)]
 pub struct TrustArgs {
-    /// TI environment
+    /// TI environment; nothing to detect from here, so auto is only accepted from TI_ENV,
+    /// as prod
     #[arg(long, value_enum, default_value_t = Environment::Prod, env = "TI_ENV")]
     pub env: Environment,
     /// No network: the cached trust material, else the embedded roots
@@ -409,6 +418,13 @@ pub enum ProfilesCommand {
         /// Profile name
         #[arg(value_parser = profile_names())]
         name: String,
+        /// Also list the CAs whose entry in this environment's TSL allows the profile's
+        /// types (TUC_PKI_007); loads the environment's trust material
+        #[arg(long, value_enum, value_name = "ENV")]
+        env: Option<Environment>,
+        /// With --env: no network, the cached trust material
+        #[arg(long, requires = "env")]
+        offline: bool,
     },
 }
 

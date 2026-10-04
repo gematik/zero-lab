@@ -141,6 +141,10 @@ pub struct Validator {
     /// The host the end entity must name if its commonName names one (A_30046 (5) of
     /// C_12791), e.g. the server a TLS connection went to.
     pub expected_fqdn: Option<String>,
+    /// The certificate type the end entity is validated as; its OID must be among the
+    /// types the verified TSL lets the issuing CA issue (TUC_PKI_007). Without it, the
+    /// type detected from the certificate is checked.
+    pub cert_type: Option<CertificateType>,
 }
 
 impl Validator {
@@ -160,6 +164,7 @@ impl Validator {
             required_policies: Vec::new(),
             required_role_oids: Vec::new(),
             expected_fqdn: None,
+            cert_type: None,
         }
     }
 
@@ -174,6 +179,7 @@ impl Validator {
     /// type `t` ([`CertificateType::spec`]).
     #[must_use]
     pub fn with_type_baseline(mut self, t: CertificateType) -> Self {
+        self.cert_type = Some(t);
         let spec = t.spec();
         self.required_key_usage = spec.key_usage.to_vec();
         self.allowed_ext_key_usages = spec.ext_key_usage.to_vec();
@@ -250,6 +256,7 @@ impl Validator {
             downgrade_validity_errors(&mut result);
         }
         check_key(&chain[0], now, &mut result);
+        self.check_tsl_type(&chain, &mut result);
         self.check_revocation(&chain, checker, &mut result).await;
         if result.valid
             && !self.required_role_oids.is_empty()
@@ -308,6 +315,52 @@ impl Validator {
                 Some(RevocationFinding::Warning(w)) => result.warnings.push(w),
                 None => {}
             }
+        }
+    }
+}
+
+impl Validator {
+    /// TUC_PKI_007 steps 7 – 9 against the verified TSL in the store: the end entity's
+    /// type OID must be among those its issuing CA's TSL entry lists. Without a verified
+    /// TSL nothing is checked; with one that states no types for the issuer, a warning
+    /// says the type went unchecked (variant 7a). The TSL signer is checked by
+    /// TUC_PKI_011 instead.
+    fn check_tsl_type(&self, chain: &[Certificate], result: &mut ValidationResult) {
+        let (Some(leaf), Some(issuer)) = (chain.first(), chain.get(1)) else {
+            return;
+        };
+        if !self.store.has_tsl_types() {
+            return;
+        }
+        let Some(cert_type) = self
+            .cert_type
+            .or_else(|| crate::cert_type::detect_certificate_type(leaf))
+        else {
+            return;
+        };
+        if cert_type == CertificateType::TslSig {
+            return;
+        }
+        match self.store.tsl_types_of(issuer) {
+            Some(types) if types.contains(&cert_type.oid()) => {}
+            Some(_) => result.add_error(
+                ValidationError::new(
+                    ErrorCode::CertTypeCaNotAuthorized,
+                    format!(
+                        "the TSL does not list {cert_type} among the types {:?} may issue",
+                        issuer.subject_cn()
+                    ),
+                )
+                .with_subject(leaf.subject_cn()),
+            ),
+            None => result.warnings.push(ValidationWarning::new(
+                ErrorCode::CertTypeUnchecked,
+                format!(
+                    "{cert_type} not checked against the TSL: it states no certificate types \
+                     for {:?}",
+                    issuer.subject_cn()
+                ),
+            )),
         }
     }
 }
@@ -559,6 +612,53 @@ mod tests {
                 codes(&missing),
                 [(ErrorCode::RoleOidMissing, "type-hci-aut TEST-ONLY")]
             );
+        }
+
+        /// TUC_PKI_007: the verified TSL must list the end entity's type for its CA.
+        #[test]
+        fn tsl_states_the_types_a_ca_may_issue() {
+            let pki = TestPki::new();
+            let chain = [typed("type-hci-aut"), pki.sub_ca_komp.clone()];
+            let with_types = |types: Vec<ObjectIdentifier>| Validator {
+                store: Arc::new(
+                    TrustStore::new([pki.rca1.clone(), pki.rca7.clone()])
+                        .with_ca_types(vec![(pki.sub_ca_komp.clone(), types)]),
+                ),
+                ..validator(&pki, RevocationMode::Disabled)
+                    .with_type_baseline(CertificateType::HciAut)
+            };
+
+            let listed = offline(&with_types(vec![crate::oid::CERT_TYPE_SMC_B_AUT]), &chain);
+            assert!(listed.valid, "{:?}", listed.errors);
+            assert!(listed.warnings.is_empty(), "{:?}", listed.warnings);
+
+            let other = offline(&with_types(vec![crate::oid::CERT_TYPE_FD_SIG]), &chain);
+            assert_eq!(
+                codes(&other),
+                [(ErrorCode::CertTypeCaNotAuthorized, "type-hci-aut TEST-ONLY")]
+            );
+
+            // The placeholder only: the TSL states nothing, so the type goes unchecked.
+            let unstated = offline(&with_types(Vec::new()), &chain);
+            assert!(unstated.valid);
+            assert!(unstated.has_warning(ErrorCode::CertTypeUnchecked));
+
+            // Without a verified TSL there is nothing to check against.
+            let hci = validator(&pki, RevocationMode::Disabled)
+                .with_type_baseline(CertificateType::HciAut);
+            let none = offline(&hci, &chain);
+            assert!(
+                none.valid && none.warnings.is_empty(),
+                "{:?}",
+                none.warnings
+            );
+
+            // Without a profile, the detected type is the one checked.
+            let detected = Validator {
+                store: with_types(vec![crate::oid::CERT_TYPE_FD_SIG]).store,
+                ..validator(&pki, RevocationMode::Disabled)
+            };
+            assert!(offline(&detected, &chain).has_error(ErrorCode::CertTypeCaNotAuthorized));
         }
 
         #[test]
