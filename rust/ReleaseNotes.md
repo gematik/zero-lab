@@ -137,6 +137,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pki
 
 #### added
+- `checks::ext_key_usage_name` names `id-tsl-kp-tslSigning` (0.4.0.2231.3.0), the TSL
+  signer's extended key usage, which showed as the bare OID.
 - `TrustStore::from_material(config, roots_json, tsl_xml, now)` (feature `load`): the trust
   store and verified TSL from documents already in memory, synchronously, as the loaders
   verify them, without going through the `Reloader`.
