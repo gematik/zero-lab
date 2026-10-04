@@ -493,6 +493,8 @@ pub(super) fn name_section(doc: &mut Document, title: &str, name: &str) {
 /// The label of a name component: its attribute in words, else the attribute as
 /// written.
 fn attribute_label(key: &str) -> &str {
+    // x509-cert prints the attributes RFC 4514 has no short name for in upper case
+    // (SERIALNUMBER, TITLE) and unknown ones as dotted OIDs.
     match key {
         "CN" => "common name",
         "GN" | "givenName" => "given name",
@@ -503,9 +505,17 @@ fn attribute_label(key: &str) -> &str {
         "L" => "locality",
         "ST" => "state",
         "STREET" | "street" => "street",
-        "postalCode" | "2.5.4.17" => "postal code",
-        "title" => "title",
+        "POSTALCODE" | "postalCode" | "2.5.4.17" => "postal code",
+        "TITLE" | "title" | "2.5.4.12" => "title",
         "serialNumber" | "SERIALNUMBER" | "2.5.4.5" => "serialNumber",
+        "2.5.4.97" => "org. id",
+        "EMAIL" | "emailAddress" => "email",
+        "PSEUDONYM" | "2.5.4.65" => "pseudonym",
+        "INITIALS" | "2.5.4.43" => "initials",
+        "DESCRIPTION" | "2.5.4.13" => "description",
+        "DNQUALIFIER" | "2.5.4.46" => "dn qualifier",
+        "UID" => "user id",
+        "DC" => "domain",
         other => other,
     }
 }
@@ -677,9 +687,13 @@ pub(super) fn dn_parts(name: &str) -> Vec<String> {
     parts
 }
 
-/// An RFC 4514 attribute value as text: `\,` becomes `,`, and `\C3\A4` the UTF-8 it
-/// encodes.
+/// An RFC 4514 attribute value as text: `\,` becomes `,`, `\C3\A4` the UTF-8 it encodes,
+/// and a `#`-hex DER string (an attribute without a short name, such as
+/// organizationIdentifier) its text.
 pub(super) fn unescape(value: &str) -> String {
+    if let Some(text) = value.strip_prefix('#').and_then(der_string) {
+        return text;
+    }
     let mut bytes = Vec::with_capacity(value.len());
     let mut rest = value.as_bytes();
     while let Some((&b, tail)) = rest.split_first() {
@@ -746,6 +760,25 @@ fn codes<T: AsRef<str>>(values: &[T]) -> Line {
     }
 }
 
+/// The text of a hex-encoded DER UTF8String, PrintableString, TeletexString or
+/// IA5String with a short-form length; `None` for anything else, which is then shown as
+/// written.
+fn der_string(hex: &str) -> Option<String> {
+    if !hex.len().is_multiple_of(2) || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
+        .collect::<Option<_>>()?;
+    let (&[tag, len], content) = bytes.split_first_chunk::<2>()?;
+    let string_tag = matches!(tag, 0x0c | 0x13 | 0x14 | 0x16);
+    if !string_tag || len >= 0x80 || usize::from(len) != content.len() {
+        return None;
+    }
+    String::from_utf8(content.to_vec()).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -787,5 +820,8 @@ mod tests {
         assert_eq!(unescape(r"A\, B\+C"), "A, B+C");
         assert_eq!(unescape(r"Angerm\C3\A4nn"), "Angermänn");
         assert_eq!(unescape(r"trailing\"), "trailing");
+        assert_eq!(unescape("#0c0756415444452d31"), "VATDE-1");
+        assert_eq!(unescape("#300100"), "#300100");
+        assert_eq!(unescape("#0c05ab"), "#0c05ab");
     }
 }

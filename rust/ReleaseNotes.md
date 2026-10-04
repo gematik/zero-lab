@@ -85,6 +85,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   names in chains and `tsl show` fell back to the full DN. Every value is now its own field,
   RFC 4514 escapes (`\+`, `\C3\A4`) are undone, and a name without a common name shows as
   "given name surname".
+- `pki inspect` labels every name attribute x509-cert prints: TITLE, POSTALCODE, EMAIL,
+  PSEUDONYM, INITIALS, DESCRIPTION, DNQUALIFIER, UID, DC and organizationIdentifier
+  showed unlabelled, the latter as hex DER (`#0c07…`), which is now decoded to its text.
 
 ### ti-connector-client
 
