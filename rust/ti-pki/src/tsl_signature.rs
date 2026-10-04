@@ -1577,4 +1577,70 @@ mod tests {
             fails(result, TslCode::OcspCheckRevocationError, "TSLSIG-042");
         }
     }
+
+    /// Generated answers of the test TSL signer CA's responder about its signer
+    /// (`tests/pki/tsl-signer/ocsp`), produced at 2026-01-01: every outcome the live
+    /// responders, whose signers are good, cannot be recorded for.
+    #[cfg(feature = "load")]
+    mod generated_ocsp {
+        use super::*;
+        use crate::load::{FixedClock, MockTransport};
+        use crate::ocsp::OcspChecker;
+        use crate::revocation::ResponderAuthorization;
+
+        macro_rules! answer {
+            ($name:literal) => {
+                include_bytes!(concat!("../tests/pki/tsl-signer/ocsp/", $name, ".der")).to_vec()
+            };
+        }
+
+        /// The test signer's status from `answer`: a verified list whose signer and
+        /// anchor are the test PKI's, checked at the answers' producedAt.
+        fn status_of(answer: Vec<u8>) -> Result<VerifiedTsl, TslError> {
+            let mut verified =
+                Tsl::parse_verified_prod(&real("pu-10334.xml"), at("2026-10-03T00:00:00Z"))
+                    .unwrap();
+            verified.signer = signer_fixture!("signer");
+            verified.anchor = signer_fixture!("ca");
+            let clock = FixedClock::new(at("2026-01-01T00:00:00Z"));
+            let transport = MockTransport::posting([Ok(answer)]);
+            let checker = OcspChecker::new(&TrustConfig::preset_prod(), &transport, &clock);
+            futures_lite::future::block_on(verified.check_signer_status(&checker))?;
+            assert_eq!(
+                transport.posts()[0].0,
+                "http://ocsp-testref.tsl.ti-dienste.de/ocsp"
+            );
+            Ok(verified)
+        }
+
+        #[track_caller]
+        fn fails(answer: Vec<u8>, code: TslCode) {
+            let e = status_of(answer).map(|_| ()).unwrap_err();
+            assert_eq!((e.code, e.rule), (code, "TSLSIG-041"), "{e}");
+        }
+
+        #[test]
+        fn tslsig_040_good_from_a_delegate_or_the_ca_itself() {
+            let delegate = status_of(answer!("good")).unwrap();
+            assert!(delegate.warnings.is_empty());
+            let status = delegate.signer_status.unwrap();
+            assert_eq!(status.status, RevocationStatus::Good);
+            assert_eq!(status.authorization, Some(ResponderAuthorization::Delegate));
+            assert_eq!(status.responder_name, "TSL-CA99 OCSP-Signer TEST-ONLY");
+
+            let issuer = status_of(answer!("issuer-signed")).unwrap();
+            assert_eq!(
+                issuer.signer_status.unwrap().authorization,
+                Some(ResponderAuthorization::Issuer)
+            );
+        }
+
+        #[test]
+        fn tslsig_041_what_stops_the_update() {
+            fails(answer!("revoked"), TslCode::CertRevoked);
+            fails(answer!("unknown"), TslCode::CertUnknown);
+            fails(answer!("no-cert-hash"), TslCode::CerthashExtensionMissing);
+            fails(answer!("wrong-cert-hash"), TslCode::CerthashMismatch);
+        }
+    }
 }
