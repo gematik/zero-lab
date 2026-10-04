@@ -444,7 +444,8 @@ fn encryption_line(e: &EncryptionInfo) -> Line {
 
 fn bag_line(index: usize, cert: &CertificateInfo) -> Line {
     let (cn, _) = split_name(&cert.subject);
-    let mut line = Line::text(format!("#{} ", index + 1)).and_strong(cn.unwrap_or(&cert.subject));
+    let mut line = Line::text(format!("#{} ", index + 1))
+        .and_strong(cn.unwrap_or_else(|| cert.subject.clone()));
     if let Some(name) = &cert.friendly_name {
         line = line.and_dim(format!(" · name {name}"));
     }
@@ -479,7 +480,7 @@ pub(super) fn name_section(doc: &mut Document, title: &str, name: &str) {
     doc.section(title);
     for part in dn_parts(name) {
         let (key, value) = part.split_once('=').unwrap_or(("", part.as_str()));
-        let value = value.replace("\\,", ",");
+        let value = unescape(value);
         let line = if key == "CN" {
             Line::strong(value)
         } else {
@@ -543,7 +544,7 @@ fn summary(report: &Report) -> Document {
         }
         let (cn, rest) = split_name(&cert.subject);
         doc.paragraph(
-            Line::strong(cn.unwrap_or("(no common name)"))
+            Line::strong(cn.unwrap_or_else(|| "(no name)".to_owned()))
                 .and_text(" · ")
                 .and_line(
                     cert.certificate_type
@@ -558,7 +559,7 @@ fn summary(report: &Report) -> Document {
         let (issuer, _) = split_name(&cert.issuer);
         doc.paragraph(
             Line::text("issued by ")
-                .and_text(issuer.unwrap_or(&cert.issuer))
+                .and_text(issuer.unwrap_or_else(|| cert.issuer.clone()))
                 .and_dim(" · serial ")
                 .and_code(&cert.serial),
         );
@@ -622,25 +623,36 @@ fn summary(report: &Report) -> Document {
     doc
 }
 
-/// The common name of an RFC 4514 name, and its other components joined by ` · `.
-pub(super) fn split_name(name: &str) -> (Option<&str>, String) {
+/// The name to show for an RFC 4514 name: its common name, else `given name surname`
+/// (from `GN`/`SN`), and the other components joined by ` · `.
+pub(super) fn split_name(name: &str) -> (Option<String>, String) {
     let mut cn = None;
+    let (mut given, mut surname) = (None, None);
     let mut rest = Vec::new();
-    let mut start = 0;
     for part in dn_parts(name) {
-        let len = part.len();
-        let part = &name[start..start + len];
-        start += len + 1;
-        match part.strip_prefix("CN=") {
-            Some(value) if cn.is_none() => cn = Some(value),
-            _ => rest.push(part),
+        let (key, value) = part.split_once('=').unwrap_or(("", part.as_str()));
+        let value = unescape(value);
+        match key {
+            "CN" if cn.is_none() => {
+                cn = Some(value);
+                continue;
+            }
+            "GN" | "givenName" if given.is_none() => given = Some(value.clone()),
+            "SN" | "surname" if surname.is_none() => surname = Some(value.clone()),
+            _ => {}
         }
+        rest.push(format!("{key}={value}"));
     }
-    (cn, rest.join(" · "))
+    let person = match (given, surname) {
+        (Some(given), Some(surname)) => Some(format!("{given} {surname}")),
+        (given, surname) => given.or(surname),
+    };
+    (cn.or(person), rest.join(" · "))
 }
 
-/// The components of an RFC 4514 name; a comma escaped with a backslash is part of its
-/// value.
+/// The attribute=value components of an RFC 4514 name in its order, the values of a
+/// multi-valued RDN (`GN=…+SN=…+CN=…`, as on an HBA) one by one; an escaped `,` or `+`
+/// is part of its value.
 pub(super) fn dn_parts(name: &str) -> Vec<String> {
     let mut parts = Vec::new();
     let mut current = String::new();
@@ -655,7 +667,7 @@ pub(super) fn dn_parts(name: &str) -> Vec<String> {
                 current.push(c);
                 escaped = true;
             }
-            (false, ',') => parts.push(core::mem::take(&mut current)),
+            (false, ',' | '+') => parts.push(core::mem::take(&mut current)),
             (false, _) => current.push(c),
         }
     }
@@ -663,6 +675,34 @@ pub(super) fn dn_parts(name: &str) -> Vec<String> {
         parts.push(current);
     }
     parts
+}
+
+/// An RFC 4514 attribute value as text: `\,` becomes `,`, and `\C3\A4` the UTF-8 it
+/// encodes.
+pub(super) fn unescape(value: &str) -> String {
+    let mut bytes = Vec::with_capacity(value.len());
+    let mut rest = value.as_bytes();
+    while let Some((&b, tail)) = rest.split_first() {
+        rest = tail;
+        if b != b'\\' {
+            bytes.push(b);
+            continue;
+        }
+        // Two hex digits exactly: from_str_radix would also take a sign, as in `\+C`.
+        let hex = rest
+            .get(..2)
+            .filter(|h| h.iter().all(u8::is_ascii_hexdigit))
+            .and_then(|h| std::str::from_utf8(h).ok())
+            .and_then(|h| u8::from_str_radix(h, 16).ok());
+        if let Some(byte) = hex {
+            bytes.push(byte);
+            rest = &rest[2..];
+        } else if let Some((&next, tail)) = rest.split_first() {
+            bytes.push(next);
+            rest = tail;
+        }
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 fn validity(cert: &CertificateInfo, now: Timestamp) -> Line {
@@ -711,11 +751,41 @@ mod tests {
     use super::*;
 
     #[test]
-    fn distinguished_names_split_on_unescaped_commas() {
+    fn distinguished_names_split_on_unescaped_commas_and_pluses() {
         assert_eq!(
             dn_parts(r"CN=Praxis Dr. A\, B,O=X,C=DE"),
             [r"CN=Praxis Dr. A\, B", "O=X", "C=DE"]
         );
+        assert_eq!(
+            dn_parts(r"GN=Ullrich+SN=A\+B+CN=Ullrich A,C=DE"),
+            ["GN=Ullrich", r"SN=A\+B", "CN=Ullrich A", "C=DE"]
+        );
         assert_eq!(dn_parts(""), Vec::<String>::new());
+    }
+
+    #[test]
+    fn the_common_name_of_a_multi_valued_rdn() {
+        let (cn, rest) = split_name(
+            "GN=Ullrich+SN=Angermänn+SERIALNUMBER=80276883110000129084+CN=Ullrich AngermännTEST-ONLY,C=DE",
+        );
+        assert_eq!(cn.as_deref(), Some("Ullrich AngermännTEST-ONLY"));
+        assert_eq!(
+            rest,
+            "GN=Ullrich · SN=Angermänn · SERIALNUMBER=80276883110000129084 · C=DE"
+        );
+    }
+
+    #[test]
+    fn without_a_common_name_the_given_name_and_surname() {
+        let (name, _) = split_name("GN=Erika+SN=Mustermann+SERIALNUMBER=1,C=DE");
+        assert_eq!(name.as_deref(), Some("Erika Mustermann"));
+        assert_eq!(split_name("O=X,C=DE").0, None);
+    }
+
+    #[test]
+    fn escaped_values() {
+        assert_eq!(unescape(r"A\, B\+C"), "A, B+C");
+        assert_eq!(unescape(r"Angerm\C3\A4nn"), "Angermänn");
+        assert_eq!(unescape(r"trailing\"), "trailing");
     }
 }

@@ -1,0 +1,38 @@
+[package]
+name = "ti-wasm"
+version = "0.1.0"
+description = "gematik Telematikinfrastruktur (TI) TSL and certificate reports as WebAssembly: pure functions, no network, no clock"
+keywords = ["gematik", "telematik", "pki", "tsl", "wasm"]
+categories = ["cryptography", "wasm"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# No load/os/reqwest: the module cannot reach the network by construction. The web view
+# shows the test environments, hence the TEST-ONLY presets.
+ti-pki = { workspace = true, features = ["brainpool", "rsa", "dangerous-nonprod"] }
+ti-report.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# Must equal the installed wasm-bindgen-cli (`just tools`).
+wasm-bindgen = "=0.2.128"
+
+# The workspace table minus `unsafe_code`: `#[wasm_bindgen]` expands to unsafe glue, so
+# src/ holds only the wrappers and `just wasm-unsafe-free` keeps `unsafe` out of them.
+[lints.rust]
+missing_docs = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+doc_markdown = "allow"

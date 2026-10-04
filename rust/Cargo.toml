@@ -1,5 +1,5 @@
 [workspace]
-members = ["ti-types", "ti-cache", "ti-xmldsig", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-report", "ti-cli"]
+members = ["ti-types", "ti-cache", "ti-xmldsig", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-report", "ti-cli", "ti-wasm"]
 resolver = "3"
 
 # Shared metadata only. Deliberately no workspace.package.version: every crate is
@@ -128,3 +128,8 @@ inherits = "release"
 lto = "thin"
 codegen-units = 16
 incremental = true
+
+# `just wasm-build`: the release profile for wasm32. Speed stays ahead of size: opt-level
+# 3 like release, and wasm-opt -O3; `just wasm-size` holds the size budget.
+[profile.wasm]
+inherits = "release"

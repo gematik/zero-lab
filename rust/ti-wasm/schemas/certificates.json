@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ti-wasm describe_certificate",
+  "description": "Every certificate of the input as ti pki inspect describes it; no validation.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "certificates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/certificate"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "certificates"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "oid": {
+      "type": "object",
+      "properties": {
+        "oid": {
+          "type": "string",
+          "description": "Dotted form"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "gemSpec_OID description, where the TI defines one"
+        }
+      },
+      "required": [
+        "oid",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "certificate": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string"
+        },
+        "subject_alt_names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Subject alternative names in OpenSSL notation, e.g. DNS:host"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "serial": {
+          "type": "string",
+          "description": "Upper-case hex, colon-separated"
+        },
+        "not_before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        },
+        "not_after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        },
+        "validity": {
+          "enum": [
+            "valid",
+            "expired",
+            "not_yet_valid"
+          ]
+        },
+        "key": {
+          "type": "object",
+          "properties": {
+            "algorithm": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "description": "gemSpec_Krypt admissibility"
+            }
+          },
+          "required": [
+            "algorithm",
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        "signature_algorithm": {
+          "type": "string"
+        },
+        "certificate_type": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "gemSpec_PKI type, e.g. C.HCI.AUT"
+        },
+        "profile": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "reason",
+                "detail"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "admission": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "profession_items": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "profession_oids": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/oid"
+                  }
+                },
+                "registration_number": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "profession_items",
+                "profession_oids",
+                "registration_number"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "policies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/oid"
+          }
+        },
+        "key_usage": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "extended_key_usage": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ca": {
+          "type": "boolean"
+        },
+        "path_len": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ocsp_urls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "critical_extensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "subject_key_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authority_key_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "pem": {
+          "type": "string",
+          "description": "The certificate as PEM"
+        }
+      },
+      "required": [
+        "subject",
+        "subject_alt_names",
+        "issuer",
+        "serial",
+        "not_before",
+        "not_after",
+        "validity",
+        "key",
+        "signature_algorithm",
+        "certificate_type",
+        "profile",
+        "admission",
+        "policies",
+        "key_usage",
+        "extended_key_usage",
+        "ca",
+        "path_len",
+        "ocsp_urls",
+        "critical_extensions",
+        "subject_key_id",
+        "authority_key_id",
+        "sha256",
+        "pem"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

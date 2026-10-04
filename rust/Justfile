@@ -11,6 +11,8 @@ MUTANTS       := "cargo-mutants@27.1.0"
 RELEASE_PLZ   := "release-plz@0.3.169"
 CROSS         := "cross@0.2.5"
 BLOAT         := "cargo-bloat@0.12.1"
+# Must equal the wasm-bindgen pin in ti-wasm/Cargo.toml.
+WASM_BINDGEN  := "wasm-bindgen-cli@0.2.128"
 
 # Every crate is versioned solely by its own git tag (rust/<crate>/vX.Y.Z), bumped only
 # when that crate changes. Siblings resolve each other through the `version` in
@@ -24,7 +26,7 @@ info:
 tools:
     #!/usr/bin/env bash
     set -euo pipefail
-    for t in {{NEXTEST}} {{DENY}} {{AUDIT}} {{VET}} {{HACK}} {{MACHETE}} {{SEMVER_CHECKS}} {{MSRV}} {{MUTANTS}} {{RELEASE_PLZ}} {{CROSS}} {{BLOAT}}; do
+    for t in {{NEXTEST}} {{DENY}} {{AUDIT}} {{VET}} {{HACK}} {{MACHETE}} {{SEMVER_CHECKS}} {{MSRV}} {{MUTANTS}} {{RELEASE_PLZ}} {{CROSS}} {{BLOAT}} {{WASM_BINDGEN}}; do
         if command -v cargo-binstall >/dev/null; then cargo binstall -y "$t"; else cargo install --locked "$t"; fi
     done
 
@@ -214,10 +216,83 @@ publish-brew owner version:
     }
     echo "brew install {{owner}}/tap/ti"
 
+# ---- WebAssembly (ti-wasm) ----------------------------------------------------------
+
+WASM_PKG := "target/ti-wasm/pkg"
+
+# wasm-bindgen ES module, wasm-opt when binaryen is installed (brew install binaryen),
+# package.json, types, schemas and VERSION.json
+# Build the ti-wasm package into target/ti-wasm/pkg
+wasm-build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    want=$(sed -n 's/^wasm-bindgen = "=\(.*\)"$/\1/p' ti-wasm/Cargo.toml)
+    have=$(wasm-bindgen --version 2>/dev/null | awk '{print $2}') || true
+    [[ "$have" == "$want" ]] || { echo "wasm-build: wasm-bindgen-cli $want needed, found '${have:-none}': just tools" >&2; exit 1; }
+    cargo build --profile wasm --locked -p ti-wasm --target wasm32-unknown-unknown
+    rm -rf {{WASM_PKG}} && mkdir -p {{WASM_PKG}}
+    wasm-bindgen --target web --out-dir {{WASM_PKG}} target/wasm32-unknown-unknown/wasm/ti_wasm.wasm
+    opt=null
+    if command -v wasm-opt >/dev/null; then
+        # The features rustc's wasm32 target emits by default; speed over size (-O3).
+        wasm-opt -O3 --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext \
+            --enable-mutable-globals --enable-reference-types --enable-multivalue \
+            -o {{WASM_PKG}}/ti_wasm_bg.wasm {{WASM_PKG}}/ti_wasm_bg.wasm
+        opt="\"$(wasm-opt --version | awk '{print $3}')\""
+    else
+        echo "wasm-build: wasm-opt not found, the module is not optimized (brew install binaryen)" >&2
+    fi
+    cp ti-wasm/js/package.json ti-wasm/js/types.d.ts ti-wasm/js/README.md ti-wasm/schemas/*.json {{WASM_PKG}}/
+    version=$(sed -n 's/^version = "\(.*\)"$/\1/p' ti-wasm/Cargo.toml | head -1)
+    dirty=false; [[ -z "$(git status --porcelain -- . ../spec)" ]] || dirty=true
+    cat > {{WASM_PKG}}/VERSION.json <<JSON
+    {
+      "ti_wasm": "$version",
+      "commit": "$(git rev-parse HEAD)",
+      "dirty": $dirty,
+      "rustc": "$(rustc --version | awk '{print $2}')",
+      "wasm_bindgen": "$have",
+      "wasm_opt": $opt,
+      "wasm_sha256": "$(shasum -a 256 {{WASM_PKG}}/ti_wasm_bg.wasm | awk '{print $1}')"
+    }
+    JSON
+    echo "built {{WASM_PKG}}"
+
+# Size of the built module, raw and compressed; fails over the budget (2.0 MB raw, 700 KB gzip)
+wasm-size:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    wasm={{WASM_PKG}}/ti_wasm_bg.wasm
+    [[ -f "$wasm" ]] || { echo "wasm-size: no $wasm: just wasm-build" >&2; exit 1; }
+    raw=$(wc -c < "$wasm" | tr -d ' ')
+    gz=$(gzip -9c "$wasm" | wc -c | tr -d ' ')
+    br=$(command -v brotli >/dev/null && brotli -c "$wasm" | wc -c | tr -d ' ' || echo "-")
+    printf 'ti_wasm_bg.wasm  raw %s  gzip %s  brotli %s bytes\n' "$raw" "$gz" "$br"
+    (( raw <= 2000000 )) || { echo "wasm-size: raw $raw over 2000000" >&2; exit 1; }
+    (( gz <= 700000 )) || { echo "wasm-size: gzip $gz over 700000" >&2; exit 1; }
+
+# Run the built package in Node on the real TSLs, cross-checked with `ti pki tsl verify`
+wasm-smoke: wasm-build
+    cargo build --locked -q -p ti-cli
+    node ti-wasm/js/smoke.mjs {{WASM_PKG}} ../spec/tsl-xmldsig/testdata/tsl/real target/debug/ti
+
+# Refuses an unoptimized or dirty build.
+# Copy the package into a consumer as vendor/ti-wasm, after smoke and size pass
+wasm-vendor dest="../../gemiverse": wasm-smoke wasm-size
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v={{WASM_PKG}}/VERSION.json
+    grep -q '"dirty": false' "$v" || { echo "wasm-vendor: built from a dirty tree; commit first" >&2; exit 1; }
+    grep -q '"wasm_opt": null' "$v" && { echo "wasm-vendor: not optimized; brew install binaryen" >&2; exit 1; }
+    [[ -d "{{dest}}" ]] || { echo "wasm-vendor: no {{dest}}" >&2; exit 1; }
+    mkdir -p "{{dest}}/vendor/ti-wasm"
+    rsync -a --delete {{WASM_PKG}}/ "{{dest}}/vendor/ti-wasm/"
+    cat "{{dest}}/vendor/ti-wasm/VERSION.json"
+
 # ---- Tier 1: every PR --------------------------------------------------------------
 
 # Everything a PR must pass, in the order that fails fastest
-check: fmt clippy doc test features wasm32 core-deps nonprod-absent machete deny
+check: fmt clippy doc test features wasm32 wasm-unsafe-free core-deps nonprod-absent machete deny
 
 # Formatting (rustfmt.toml is the source of truth)
 fmt:
@@ -248,6 +323,14 @@ wasm32:
     cargo check -p ti-connector-client --target wasm32-unknown-unknown
     cargo check -p ti-pki --target wasm32-unknown-unknown --features load,reqwest
     cargo check -p ti-pkcs12 --target wasm32-unknown-unknown
+    cargo check -p ti-report --target wasm32-unknown-unknown
+    cargo check -p ti-wasm --target wasm32-unknown-unknown
+
+# ti-wasm allows the unsafe glue `#[wasm_bindgen]` expands to; everything else forbids it
+# through the workspace lints.
+# No `unsafe` in ti-wasm's own sources
+wasm-unsafe-free:
+    ! grep -rnw unsafe ti-wasm/src
 
 # ti-pki's and ti-connector-client's cores (everything but the optional adapter and
 # algorithm features) pull in no HTTP client, TLS, executor, file watcher or brainpool

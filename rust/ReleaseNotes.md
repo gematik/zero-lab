@@ -33,6 +33,21 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   shows it (`CertificateInfo`, `OidInfo`); `tsl::Finding`, `tsl::CertSummary` and
   `tsl::rejection_code` give the TSL findings as `ti pki tsl verify` and `tsl show` report
   them. No I/O, no clock; builds for `wasm32-unknown-unknown`.
+- `tsl_view(xml, env, config, roots, now)`: a TSL verified for one environment as one
+  document for web views (`TslView`): signature verdict and warnings, list and scheme
+  metadata, the roots walked from the anchor with the CAs each signed, every service by
+  provider with its certificate types (`TypeOid`) and the chain of its certificate, and
+  every certificate named, keyed by `fingerprint` (lower-case SHA-256 hex).
+
+### ti-wasm
+
+#### added
+- New crate: `ti-report` for JavaScript through wasm-bindgen, server and browser alike.
+  `verify_tsl`, `describe_certificate`, `trust_urls` and `version` return JSON
+  (`schemas/tsl-view.json`, `schemas/certificates.json`, typed in `js/types.d.ts`); the
+  caller passes the bytes and the instant, the module has no network and no clock.
+  `just wasm-build`, `wasm-size`, `wasm-smoke` (Node on the real TSLs, cross-checked with
+  `ti pki tsl verify`) and `wasm-vendor`.
 
 ### ti-cli
 
@@ -63,6 +78,13 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   the list, its signer with its OCSP status, and the TSL signer CA (`trust.tsl` in the
   JSON). A responder the TSL lists for the issuing CA's TSP reads "listed in the TSL"
   (`tsl_listed`) and no longer warns.
+
+#### fixed
+- Names with a multi-valued RDN, such as an HBA's `GN=…+SN=…+SERIALNUMBER=…+CN=…`: `pki
+  inspect` showed the whole RDN as the given name and found no common name, and issuer
+  names in chains and `tsl show` fell back to the full DN. Every value is now its own field,
+  RFC 4514 escapes (`\+`, `\C3\A4`) are undone, and a name without a common name shows as
+  "given name surname".
 
 ### ti-connector-client
 

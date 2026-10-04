@@ -7,12 +7,16 @@
 pub mod certificate;
 pub mod oid;
 pub mod tsl;
+pub mod tsl_view;
+
+use std::fmt::Write;
 
 use sha2::{Digest, Sha256};
 use ti_pki::{Certificate, Timestamp};
 
 pub use certificate::{CertificateInfo, describe};
-pub use oid::OidInfo;
+pub use oid::{OidInfo, TypeOid};
+pub use tsl_view::{TslView, tsl_view};
 
 /// The version of every JSON report; fields are only added within it.
 pub const SCHEMA: u32 = 1;
@@ -26,6 +30,17 @@ pub fn hex(bytes: &[u8]) -> String {
 /// The SHA-256 of `der` in [`hex`].
 pub fn sha256(der: &[u8]) -> String {
     hex(&Sha256::digest(der))
+}
+
+/// The SHA-256 of `der` as lower-case hex without separators: the key the TSL view
+/// files certificates under, safe in URLs.
+pub fn fingerprint(der: &[u8]) -> String {
+    Sha256::digest(der)
+        .iter()
+        .fold(String::with_capacity(64), |mut out, b| {
+            let _ = write!(out, "{b:02x}");
+            out
+        })
 }
 
 /// `der` as a PEM `CERTIFICATE` block, LF line endings.

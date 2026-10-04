@@ -1,0 +1,841 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ti-wasm verify_tsl",
+  "description": "A TSL verified for one environment, with its services, chains and certificates. An invalid list carries the verdict only.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "environment": {
+      "enum": [
+        "prod",
+        "ref",
+        "test",
+        "dev"
+      ]
+    },
+    "tier": {
+      "enum": [
+        "prod",
+        "nonprod"
+      ],
+      "description": "The environment's tier, which the TSL signer CA had to match"
+    },
+    "result": {
+      "enum": [
+        "valid",
+        "invalid"
+      ]
+    },
+    "error": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/finding"
+        }
+      ]
+    },
+    "signature": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/signature"
+        }
+      ]
+    },
+    "list": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/list"
+        }
+      ]
+    },
+    "roots": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/roots"
+        }
+      ]
+    },
+    "counts": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/counts"
+        }
+      ]
+    },
+    "providers": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/provider"
+      }
+    },
+    "skipped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "name",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "certificates": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/certificate"
+      },
+      "description": "Every certificate referred to, by fingerprint"
+    }
+  },
+  "required": [
+    "schema",
+    "environment",
+    "tier",
+    "result",
+    "error",
+    "signature",
+    "list",
+    "roots",
+    "counts",
+    "providers",
+    "skipped",
+    "certificates"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "oid": {
+      "type": "object",
+      "properties": {
+        "oid": {
+          "type": "string",
+          "description": "Dotted form"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "gemSpec_OID description, where the TI defines one"
+        }
+      },
+      "required": [
+        "oid",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "certificate": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string"
+        },
+        "subject_alt_names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Subject alternative names in OpenSSL notation, e.g. DNS:host"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "serial": {
+          "type": "string",
+          "description": "Upper-case hex, colon-separated"
+        },
+        "not_before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        },
+        "not_after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        },
+        "validity": {
+          "enum": [
+            "valid",
+            "expired",
+            "not_yet_valid"
+          ]
+        },
+        "key": {
+          "type": "object",
+          "properties": {
+            "algorithm": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "description": "gemSpec_Krypt admissibility"
+            }
+          },
+          "required": [
+            "algorithm",
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        "signature_algorithm": {
+          "type": "string"
+        },
+        "certificate_type": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "gemSpec_PKI type, e.g. C.HCI.AUT"
+        },
+        "profile": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "reason",
+                "detail"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "admission": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "profession_items": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "profession_oids": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/oid"
+                  }
+                },
+                "registration_number": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "profession_items",
+                "profession_oids",
+                "registration_number"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "policies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/oid"
+          }
+        },
+        "key_usage": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "extended_key_usage": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ca": {
+          "type": "boolean"
+        },
+        "path_len": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ocsp_urls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "critical_extensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "subject_key_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authority_key_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "pem": {
+          "type": "string",
+          "description": "The certificate as PEM"
+        }
+      },
+      "required": [
+        "subject",
+        "subject_alt_names",
+        "issuer",
+        "serial",
+        "not_before",
+        "not_after",
+        "validity",
+        "key",
+        "signature_algorithm",
+        "certificate_type",
+        "profile",
+        "admission",
+        "policies",
+        "key_usage",
+        "extended_key_usage",
+        "ca",
+        "path_len",
+        "ocsp_urls",
+        "critical_extensions",
+        "subject_key_id",
+        "authority_key_id",
+        "sha256",
+        "pem"
+      ],
+      "additionalProperties": false
+    },
+    "finding": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Result code, e.g. xml_signature_error"
+        },
+        "code_number": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Tab_PKI_274 number"
+        },
+        "rule": {
+          "type": "string",
+          "description": "Rule of spec/tsl-xmldsig, e.g. TSLSIG-018"
+        },
+        "detail": {
+          "type": "string",
+          "description": "For humans; not stable"
+        }
+      },
+      "required": [
+        "code",
+        "code_number",
+        "rule",
+        "detail"
+      ],
+      "additionalProperties": false
+    },
+    "signature": {
+      "type": "object",
+      "properties": {
+        "signer": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "The C.TSL.SIG certificate"
+        },
+        "tsl_signer_ca": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "The TSL signer CA that issued it"
+        },
+        "signing_time": {
+          "type": "string",
+          "description": "XAdES SigningTime as signed"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        }
+      },
+      "required": [
+        "signer",
+        "tsl_signer_ca",
+        "signing_time",
+        "warnings"
+      ],
+      "additionalProperties": false
+    },
+    "list": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "sequence_number": {
+          "type": "integer"
+        },
+        "issued_at": {
+          "type": "string",
+          "description": "RFC 3339"
+        },
+        "next_update": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "RFC 3339"
+        },
+        "overdue": {
+          "type": "boolean",
+          "description": "Past next_update, within the grace period"
+        },
+        "scheme": {
+          "$ref": "#/$defs/scheme"
+        }
+      },
+      "required": [
+        "id",
+        "sequence_number",
+        "issued_at",
+        "next_update",
+        "overdue",
+        "scheme"
+      ],
+      "additionalProperties": false
+    },
+    "scheme": {
+      "type": "object",
+      "properties": {
+        "version_identifier": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "tsl_type": {
+          "type": "string"
+        },
+        "scheme_name": {
+          "type": "string"
+        },
+        "operator_name": {
+          "type": "string"
+        },
+        "postal_addresses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "street": {
+                "type": "string"
+              },
+              "postal_code": {
+                "type": "string"
+              },
+              "locality": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "country": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "street",
+              "postal_code",
+              "locality",
+              "state",
+              "country"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "electronic_addresses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "primary_location": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "backup_location": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pointers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "location": {
+                "type": "string"
+              },
+              "additional_information": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "location",
+              "additional_information"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "version_identifier",
+        "tsl_type",
+        "scheme_name",
+        "operator_name",
+        "postal_addresses",
+        "electronic_addresses",
+        "primary_location",
+        "backup_location",
+        "pointers"
+      ],
+      "additionalProperties": false
+    },
+    "roots": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "enum": [
+            "supplied",
+            "embedded"
+          ]
+        },
+        "warning": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Why the supplied roots.json was not used"
+        },
+        "trusted": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "fingerprint": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$",
+                "description": "Lower-case SHA-256 hex of the DER: a key of certificates"
+              },
+              "common_name": {
+                "type": "string"
+              },
+              "not_after": {
+                "type": "string",
+                "description": "RFC 3339"
+              },
+              "validity": {
+                "enum": [
+                  "valid",
+                  "expired",
+                  "not_yet_valid"
+                ]
+              },
+              "cas": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$",
+                  "description": "Lower-case SHA-256 hex of the DER: a key of certificates"
+                }
+              }
+            },
+            "required": [
+              "fingerprint",
+              "common_name",
+              "not_after",
+              "validity",
+              "cas"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "source",
+        "warning",
+        "trusted"
+      ],
+      "additionalProperties": false
+    },
+    "counts": {
+      "type": "object",
+      "properties": {
+        "providers": {
+          "type": "integer"
+        },
+        "services": {
+          "type": "integer"
+        },
+        "cas_listed": {
+          "type": "integer"
+        },
+        "cas_kept": {
+          "type": "integer"
+        },
+        "cas_rejected": {
+          "type": "integer"
+        },
+        "ocsp": {
+          "type": "integer"
+        },
+        "skipped": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "providers",
+        "services",
+        "cas_listed",
+        "cas_kept",
+        "cas_rejected",
+        "ocsp",
+        "skipped"
+      ],
+      "additionalProperties": false
+    },
+    "provider": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "TSPName"
+        },
+        "services": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/service"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "services"
+      ],
+      "additionalProperties": false
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "service_type": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "ca",
+            "ocsp",
+            "tsl_cert_change",
+            "other"
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "in_accord": {
+          "type": "boolean"
+        },
+        "status_starting_time": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "RFC 3339"
+        },
+        "supply_points": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "type_oids": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "oid": {
+                "type": "string",
+                "description": "Dotted form"
+              },
+              "reference": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "gemSpec_OID reference name, e.g. oid_smc_b_osig"
+              },
+              "name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Type name"
+              }
+            },
+            "required": [
+              "oid",
+              "reference",
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "certificate": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "description": "Lower-case SHA-256 hex of the DER: a key of certificates"
+            }
+          ]
+        },
+        "chain": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/chain"
+            }
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "service_type",
+        "kind",
+        "status",
+        "in_accord",
+        "status_starting_time",
+        "supply_points",
+        "type_oids",
+        "certificate",
+        "chain"
+      ],
+      "additionalProperties": false
+    },
+    "chain": {
+      "type": "object",
+      "properties": {
+        "trusted": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "Lower-case SHA-256 hex of the DER: a key of certificates"
+          },
+          "description": "The service certificate first, up to the root as far as built"
+        },
+        "rejection": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "enum": [
+                "not_ca",
+                "self_signed",
+                "unknown_issuer",
+                "bad_signature",
+                "other"
+              ]
+            }
+          ]
+        }
+      },
+      "required": [
+        "trusted",
+        "path",
+        "rejection"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -598,7 +598,7 @@ fn document(report: &Report, with_pem: bool) -> Document {
 /// Why no verified root signed `ca`, for the ROOT column.
 fn rejection_text(ca: &CaInfo) -> String {
     let (issuer, _) = super::inspect::split_name(&ca.issuer);
-    let issuer = issuer.unwrap_or(&ca.issuer);
+    let issuer = issuer.unwrap_or_else(|| ca.issuer.clone());
     match ca.rejection.unwrap_or_default() {
         "self_signed" => "none: self-signed".to_owned(),
         "unknown_issuer" => format!("none: {issuer} is no verified root"),

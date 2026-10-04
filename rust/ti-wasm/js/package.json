@@ -1,0 +1,33 @@
+{
+  "name": "ti-wasm",
+  "version": "0.1.0",
+  "description": "gematik TI TSL verification and certificate reports as WebAssembly: pure functions, no network, no clock",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "main": "./ti_wasm.js",
+  "types": "./ti_wasm.d.ts",
+  "exports": {
+    ".": {
+      "types": "./ti_wasm.d.ts",
+      "default": "./ti_wasm.js"
+    },
+    "./types": {
+      "types": "./types.d.ts"
+    },
+    "./ti_wasm_bg.wasm": "./ti_wasm_bg.wasm",
+    "./VERSION.json": "./VERSION.json"
+  },
+  "files": [
+    "ti_wasm.js",
+    "ti_wasm.d.ts",
+    "ti_wasm_bg.wasm",
+    "ti_wasm_bg.wasm.d.ts",
+    "types.d.ts",
+    "tsl-view.json",
+    "certificates.json",
+    "VERSION.json",
+    "README.md"
+  ],
+  "sideEffects": false
+}

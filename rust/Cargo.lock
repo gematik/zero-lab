@@ -2000,6 +2000,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ti-wasm"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "ti-pki",
+ "ti-report",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "ti-xmldsig"
 version = "0.1.0"
 dependencies = [

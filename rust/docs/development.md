@@ -253,6 +253,27 @@ to end with OCSP, and a production SubCA at its root responder. The deliberate
 differences to gematik's reference implementation are in
 [gemlibpki-comparison.md](gemlibpki-comparison.md).
 
+## WebAssembly (ti-wasm)
+
+`ti-wasm` exposes `ti-report` to JavaScript: `verify_tsl` gives the TSL view (signature
+verdict, roots, services with chains, certificate details), `describe_certificate` what `ti
+pki inspect` shows. Its exports are pure; downloads, caching and the clock belong to the
+caller, since the TI download hosts send no CORS headers and the OCSP responders speak
+plain HTTP. One module serves Node (`initSync` with the bytes) and the browser (`init`
+with a URL).
+
+`#[wasm_bindgen]` expands to `unsafe` glue, so ti-wasm has its own lint table without
+`unsafe_code = "forbid"`; its sources are thin wrappers, `just wasm-unsafe-free` keeps
+`unsafe` out of them, and all logic stays in `ti-report` under the workspace lints.
+
+The `wasm` profile is `release` (opt-level 3) and `wasm-build` runs `wasm-opt -O3`:
+verification speed before size. `wasm-build` needs `wasm-bindgen-cli` at the version
+`ti-wasm/Cargo.toml` pins (`just tools`) and binaryen's `wasm-opt` (`brew install
+binaryen`); without it the build works but `wasm-vendor` refuses the result. A consumer
+gets the package with `just wasm-vendor <dir>` into `<dir>/vendor/ti-wasm`, after the smoke
+test and the size budget pass, from a clean tree only; `VERSION.json` names the commit and
+the module's SHA-256.
+
 ## Trust material loading
 
 roots.json and the TSL are loaded, cached and hot-reloaded by `ti_pki::load` (feature
@@ -407,8 +428,13 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `tools` | Install the pinned cargo tools (via cargo-binstall when available) |
 | `install` | Install `ti` into `~/.cargo/bin`, built like a release |
 | `install-fast` | Install `ti` from the `local` profile (thin LTO, incremental): a change in ti-cli rebuilds in about 20 s instead of about 45 s |
-| `check` | Tier 1: `fmt`, `clippy`, `doc`, `test`, `features`, `wasm32`, `core-deps`, `nonprod-absent`, `machete`, `deny` |
-| `wasm32` | `cargo check` of ti-pki's loading layer and reqwest transport for wasm32 |
+| `check` | Tier 1: `fmt`, `clippy`, `doc`, `test`, `features`, `wasm32`, `wasm-unsafe-free`, `core-deps`, `nonprod-absent`, `machete`, `deny` |
+| `wasm32` | `cargo check` of ti-pki's loading layer and reqwest transport, ti-report and ti-wasm for wasm32 |
+| `wasm-unsafe-free` | No `unsafe` in ti-wasm's own sources |
+| `wasm-build` | Build the ti-wasm package into `target/ti-wasm/pkg` |
+| `wasm-size` | Module size raw, gzip, brotli; fails over 2.0 MB raw or 700 KB gzip |
+| `wasm-smoke` | The package in Node on the real TSLs, cross-checked with `ti pki tsl verify` |
+| `wasm-vendor [<dir>]` | Copy the package into `<dir>/vendor/ti-wasm` (default `../../gemiverse`) |
 | `core-deps` | Prove ti-pki's core pulls in no HTTP client, executor or file watcher |
 | `test-pki` | Regenerate the OpenSSL test PKI in `ti-pki/tests/pki` |
 | `nonprod-absent` | Prove ti-pki without `dangerous-nonprod` contains no non-prod trust material |
