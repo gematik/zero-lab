@@ -309,6 +309,8 @@ mod tests {
         // Within the validity of the embedded cross certificates (2026-06-01).
         const NOW: Timestamp = Timestamp(1_780_272_000);
 
+        // The walk reaches the production roots past the RSA roots GEM.RCA2/6/9.
+        #[cfg(feature = "rsa")]
         #[test]
         fn prod_by_root_and_by_chain() {
             let (rca10, ..) = crate::algorithms::tests::prod_root("GEM.RCA10");

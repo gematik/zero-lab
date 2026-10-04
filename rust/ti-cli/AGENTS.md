@@ -61,6 +61,7 @@ never on `message`.
 {bin} --format json pki tsl show --env ref        # CAs under the roots that signed them
 {bin} --format json pki tsl show --rejected       # CAs no verified root signed
 {bin} --format json pki tsl show --ca SMCB-CA51   # filter by name, also --provider, --root
+{bin} --format json pki tsl verify tsl.xml --previous old.xml   # exit 0 valid, 1 not
 ```
 
 - Input is PEM, DER or PKCS#12 (`.p12`, `.pfx`); `-` reads stdin. A PEM file may carry
@@ -88,9 +89,20 @@ never on `message`.
     when you already know it.
   - `trust.note` is set when the trust material is less than the full set, e.g.
     offline with nothing cached. Then pass the issuing CA with `--issuer`.
-- The TSL is not authenticated. `tsl show` takes only certificates and provider names
-  from it (the provider only in JSON, for filtering). What it reports about a CA comes
-  from the CA's signed certificate, and a CA counts only if a verified root signed it.
+- The TSL is verified whenever trust material is loaded; a list that fails is not used.
+  `trust.tsl` names the list, its signer and the TSL signer CA; `trust.tsl_warnings`
+  holds `no_ocsp_check` when the signer's OCSP status was not queried (offline, `--at`).
+  `revocation.authorization` is `tsl_listed` for a responder the TSL lists for the
+  issuing CA's TSP. `tsl show` takes only certificates and provider names from
+  it (the provider only in JSON, for filtering); a CA counts only if a verified root
+  signed it.
+- `tsl verify` checks a TSL file: signature, signer under the embedded TSL signer CA,
+  `NextUpdate` (`--grace`), the signer's OCSP status (not with `--offline` or `--at`),
+  and with `--previous` the sequence. `result` is `valid` or `invalid`; an invalid one
+  has `code` (gemSpec_PKI Tab_PKI_274, e.g. `xml_signature_error`), `rule`
+  (`TSLSIG-nnn`) and `detail`, and the list fields are null. A valid one may carry
+  `warnings` and `skipped` entries. `tier` is `prod` or `nonprod`: ref, test and dev
+  share one TSL signer CA.
 
 ## Subsystem connector: the Konnektor
 

@@ -72,9 +72,18 @@ pub enum ResponderAuthorization {
     Issuer,
     /// A delegate the issuing CA certified with id-kp-OCSPSigning (RFC 6960 §4.2.2.2).
     Delegate,
+    /// A responder a verified TSL lists as an OCSP service under the issuing CA's TSP,
+    /// certified by a CA of that TSP that a root signed: how gemSpec_PKI authorizes the
+    /// responders TI TSPs run for several of their CAs.
+    TslListed {
+        /// Common name of the CA that certified the responder.
+        ca: String,
+        /// The TSP the TSL lists the responder and both CAs under.
+        tsp: String,
+    },
     /// Not RFC 6960 conform: a delegate certified by another CA of the issuing CA's
-    /// TSP. TI TSPs run one responder for several of their CAs, which the TSL
-    /// authorizes; the delegate's CA must be a TSL CA a root signed.
+    /// TSP, accepted without a TSL listing; the delegate's CA must be a TSL CA a root
+    /// signed.
     SameTspDelegate {
         /// Common name of the CA that certified the delegate.
         ca: String,

@@ -158,9 +158,10 @@ pub enum Block {
     Pem(String),
     /// Rows under column headings: aligned columns in text, a table in Markdown.
     Table(Vec<String>, Vec<Vec<Line>>),
-    /// A path drawn as a tree, each row one level below the previous: a certificate
-    /// chain. Text draws it with `└──` and aligns the details; Markdown as a text block.
-    Tree(Vec<TreeRow>),
+    /// Paths drawn as trees, each row one level below the previous: certificate chains.
+    /// Text draws them with `└──` and aligns the details of all of them; Markdown as one
+    /// text block.
+    Tree(Vec<Vec<TreeRow>>),
 }
 
 /// A row of a [`Block::Tree`].
@@ -219,10 +220,16 @@ impl Document {
         self
     }
 
-    /// A path, the first row at the top; nothing for no rows.
+    /// A path, the first row at the top; nothing for no rows. Right after another tree it
+    /// joins that block, so their details align.
     pub fn tree(&mut self, rows: Vec<TreeRow>) -> &mut Self {
-        if !rows.is_empty() {
-            self.blocks.push(Block::Tree(rows));
+        if rows.is_empty() {
+            return self;
+        }
+        if let Some(Block::Tree(trees)) = self.blocks.last_mut() {
+            trees.push(rows);
+        } else {
+            self.blocks.push(Block::Tree(vec![rows]));
         }
         self
     }

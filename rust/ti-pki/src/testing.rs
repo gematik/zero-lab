@@ -40,7 +40,9 @@ pub(crate) struct TestPki {
     pub(crate) cross_rca1_not_rca: Certificate,
     pub(crate) rogue_root: Certificate,
     pub(crate) ee_rogue: Certificate,
+    #[cfg_attr(not(feature = "rsa"), allow(dead_code, reason = "RSA tests only"))]
     pub(crate) rca_rsa: Certificate,
+    #[cfg_attr(not(feature = "rsa"), allow(dead_code, reason = "RSA tests only"))]
     pub(crate) ee_rsa_pss: Certificate,
     pub(crate) sub_ca_pathlen0: Certificate,
     pub(crate) sub_sub_ca: Certificate,
@@ -135,6 +137,9 @@ pub(crate) fn typed(name: &str) -> Certificate {
         "type-hsk-sig" => fixture!("types/type-hsk-sig"),
         "type-zd-sig" => fixture!("types/type-zd-sig"),
         "type-zd-tls-s" => fixture!("types/type-zd-tls-s"),
+        // C.TSL.SIG is the published TSL signer, from the production TSL: the generated
+        // PKI has no issuer for it, and the real one is the reference anyway.
+        "type-tsl-sig" => load(include_str!("../tests/fixtures/tsl-signing-unit-6.pem")),
         other => panic!("no type fixture {other}"),
     }
 }

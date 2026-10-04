@@ -38,6 +38,7 @@ tokio = ["load", "os", "dep:tokio", "dep:tracing"]
 
 [dependencies]
 ti-types.workspace = true
+ti-xmldsig.workspace = true
 ti-cache = { workspace = true, optional = true }
 der.workspace = true
 x509-cert.workspace = true
@@ -75,6 +76,10 @@ required-features = ["reqwest", "os"]
 [[example]]
 name = "validate"
 required-features = ["reqwest", "os"]
+
+[[example]]
+name = "tsl_signature"
+required-features = ["brainpool"]
 
 [lints]
 workspace = true

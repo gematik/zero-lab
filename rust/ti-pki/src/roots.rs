@@ -347,9 +347,7 @@ pub(crate) fn verify_roots_json(
     now: Timestamp,
     algorithms: &AlgorithmSet,
 ) -> Result<Vec<Certificate>, crate::load::VerifyError> {
-    let to_verify_error = |e: Error| crate::load::VerifyError {
-        reason: e.to_string(),
-    };
+    let to_verify_error = |e: Error| crate::load::VerifyError::new(e.to_string());
     let anchor = Certificate::from_der(anchor).map_err(to_verify_error)?;
     let entries = parse(roots_json).map_err(to_verify_error)?;
     Ok(walk(&anchor, &entries, now, algorithms)

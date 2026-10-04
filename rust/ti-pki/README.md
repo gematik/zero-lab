@@ -12,7 +12,9 @@ Implemented: roots.json verified from the embedded anchor (the A_28419 cross-cer
 walk), the TSL's CAs kept only when a verified root signed them, chain building, path
 validation, the gemSpec_Krypt key check, certificate types and profiles, OCSP for the end
 entity and every CA below the root, and loading with cache, bundle and reload. The TSL
-itself is deliberately not authenticated: it is only a source of candidate intermediates.
+is verified as `spec/tsl-xmldsig` requires (signature, signer under the TSL signer CA,
+signer OCSP, `NextUpdate`, sequence) but stays a source of candidate intermediates, not
+of trust.
 
 The reference implementation is the Go package
 [`gempki`](https://github.com/gematik/zero-lab/tree/main/go/gempki); this crate ports it

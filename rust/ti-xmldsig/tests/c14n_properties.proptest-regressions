@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc d6a8662b6f335b6fbf4a20087f21fa20e1a2783b012c29e17442f59eb6f71231 # shrinks to e = Element { prefix: None, local: 0, attributes: [], declarations: [(0, 0)], default: None, children: [] }, s = Style { reverse_attributes: false, single_quotes: false, self_close_empty: false, redundant_declarations: false, escape_gt: false, char_refs: false }
+cc a9cf527f4ae4319fc27e4626ab46f8828b96108486695ace6edb289fd22fdad9 # shrinks to e = Element { prefix: None, local: 0, attributes: [], declarations: [(0, 0)], default: None, children: [] }, s = Style { reverse_attributes: false, single_quotes: false, self_close_empty: false, redundant_declarations: false, escape_gt: false, char_refs: false }, t = Style { reverse_attributes: false, single_quotes: false, self_close_empty: false, redundant_declarations: false, escape_gt: false, char_refs: false }

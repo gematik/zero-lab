@@ -1,16 +1,16 @@
 //! The Trust Service Status List gematik publishes: the ETSI TS 119 612 XML naming
 //! every CA and OCSP responder the TI currently sanctions.
 //!
-//! The TSL is used as a directory, not as a trust source, and it is not authenticated:
-//! neither the inline XMLDSig nor the detached signature is checked. What it
-//! contributes are candidate intermediates ([`Tsl::intermediate_cas`]), and a candidate
-//! is only kept if a root in the [`TrustStore`] signed it ([`match_to_roots`]). A
-//! forged or tampered TSL can therefore withhold CAs, but cannot introduce one that
-//! does not already chain to gematik's roots.
+//! [`Tsl::parse`] reads a list without authenticating it;
+//! [`Tsl::parse_verified`](crate::tsl_signature) verifies its signature, signer, validity
+//! and sequence first (`spec/tsl-xmldsig`), as loading does. Either way the TSL is used as
+//! a directory, not as a trust source: it contributes candidate intermediates
+//! ([`Tsl::intermediate_cas`]), and a candidate is only kept if a root in the
+//! [`TrustStore`] signed it ([`match_to_roots`]).
 //!
-//! What an unauthenticated TSL cannot provide is left to other mechanisms: a SubCA's
-//! standing is checked by OCSP at its root's responder, and a certificate's type by its
-//! policies rather than by the types the TSL lists per CA.
+//! The TSL's per-CA metadata is not used for trust decisions: a SubCA's standing is
+//! checked by OCSP at its root's responder, and a certificate's type by its policies
+//! rather than by the types the TSL lists per CA.
 
 use core::fmt;
 
@@ -32,6 +32,10 @@ pub const URL_TEST: &str = "https://download-test.tsl.ti-dienste.de/ECC/ECC-RSA_
 /// `ServiceTypeIdentifier` of a certificate authority.
 pub const SERVICE_TYPE_CA_PKC: &str = "http://uri.etsi.org/TrstSvc/Svctype/CA/PKC";
 
+/// `ServiceTypeIdentifier` of a TSL signer CA the list announces (TUC_PKI_013).
+pub const SERVICE_TYPE_TSL_CERT_CHANGE: &str =
+    "http://uri.etsi.org/TrstSvc/Svctype/TSLServiceCertChange";
+
 /// `ServiceTypeIdentifier` of an OCSP responder.
 pub const SERVICE_TYPE_OCSP: &str = "http://uri.etsi.org/TrstSvc/Svctype/Certstatus/OCSP";
 
@@ -46,6 +50,8 @@ pub const SERVICE_STATUS_GRANTED: &str = "http://uri.etsi.org/TrstSvc/Svcstatus/
 /// order.
 #[derive(Clone, Debug)]
 pub struct Tsl {
+    /// The root element's `Id`, which changes with every issue; empty if absent.
+    pub id: String,
     /// `TSLSequenceNumber`, incremented with every issue.
     pub sequence_number: u64,
     /// `ListIssueDateTime`.
@@ -54,6 +60,21 @@ pub struct Tsl {
     pub next_update: Option<Timestamp>,
     /// Every service of every trust service provider.
     pub services: Vec<Service>,
+    /// Services left out because they could not be processed; only a verified list
+    /// skips ([`Tsl::parse_verified`](crate::tsl_signature), TSLSIG-052), [`Tsl::parse`]
+    /// rejects instead.
+    pub skipped: Vec<Skipped>,
+}
+
+/// A service of a verified TSL that could not be processed, and why.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Skipped {
+    /// The provider's first `TSPName`.
+    pub provider: String,
+    /// The service's first `ServiceName`, empty if it has none.
+    pub name: String,
+    /// Why it was left out.
+    pub reason: String,
 }
 
 /// One trust service of a provider.
@@ -91,18 +112,36 @@ impl Tsl {
     /// does not parse. One broken entry rejects the whole list, as in `gempki`: a
     /// partially read list would silently drop CAs.
     pub fn parse(xml: &[u8]) -> Result<Tsl, Error> {
+        Tsl::parse_with(xml, false)
+    }
+
+    /// As [`Tsl::parse`], but with `skip`, a service that cannot be processed is left
+    /// out and recorded in [`Tsl::skipped`] instead of rejecting the list. Only for a
+    /// list whose signature verified (TSLSIG-052).
+    pub(crate) fn parse_with(xml: &[u8], skip: bool) -> Result<Tsl, Error> {
         let xml = core::str::from_utf8(xml).map_err(|e| malformed(e.to_string()))?;
         let list: xml::TrustServiceStatusList =
             quick_xml::de::from_str(xml).map_err(|e| malformed(e.to_string()))?;
         let scheme = list.scheme_information;
         let mut services = Vec::new();
+        let mut skipped = Vec::new();
         for provider in list.provider_list.map(|l| l.providers).unwrap_or_default() {
             let provider_name = first_name(provider.information.name);
             for service in provider.services.map(|s| s.services).unwrap_or_default() {
-                services.push(convert(&provider_name, service.information)?);
+                let name = first_name(service.information.name.clone());
+                match convert(&provider_name, service.information) {
+                    Ok(service) => services.push(service),
+                    Err(e) if skip => skipped.push(Skipped {
+                        provider: provider_name.clone(),
+                        name,
+                        reason: e.to_string(),
+                    }),
+                    Err(e) => return Err(e),
+                }
             }
         }
         Ok(Tsl {
+            id: list.id.unwrap_or_default().trim().to_owned(),
             sequence_number: scheme.sequence_number,
             issued_at: timestamp(&scheme.list_issue_date_time, "ListIssueDateTime")?,
             next_update: scheme
@@ -111,6 +150,7 @@ impl Tsl {
                 .map(|t| timestamp(&t, "NextUpdate"))
                 .transpose()?,
             services,
+            skipped,
         })
     }
 
@@ -160,7 +200,7 @@ pub enum Rejection {
     /// Not a CA certificate (no `cA` basic constraint).
     NotCa,
     /// A self-signed CA, which only the TSL vouches for (gematik still lists a few
-    /// legacy eGK CAs this way). An unauthenticated TSL cannot add a trust anchor.
+    /// legacy eGK CAs this way). The TSL does not add trust anchors.
     SelfSigned,
     /// No root in the store has the candidate's issuer as its subject.
     UnknownIssuer,
@@ -227,8 +267,15 @@ fn check_candidate(
 
 fn convert(provider: &str, info: xml::ServiceInformation) -> Result<Service, Error> {
     let name = first_name(info.name);
-    let certificate = info
+    let missing = |element: &str| malformed(format!("service {name:?} has no {element}"));
+    let service_type = info
+        .service_type
+        .ok_or_else(|| missing("ServiceTypeIdentifier"))?;
+    let status = info.status.ok_or_else(|| missing("ServiceStatus"))?;
+    let digital_identity = info
         .digital_identity
+        .ok_or_else(|| missing("ServiceDigitalIdentity"))?;
+    let certificate = digital_identity
         .digital_ids
         .into_iter()
         .find_map(|id| id.x509_certificate)
@@ -246,8 +293,8 @@ fn convert(provider: &str, info: xml::ServiceInformation) -> Result<Service, Err
             .map(|t| timestamp(&t, "StatusStartingTime"))
             .transpose()?,
         name,
-        service_type: info.service_type.trim().to_owned(),
-        status: info.status.trim().to_owned(),
+        service_type: service_type.trim().to_owned(),
+        status: status.trim().to_owned(),
         certificate,
         supply_points: info
             .supply_points
@@ -288,6 +335,8 @@ mod xml {
 
     #[derive(Deserialize)]
     pub(super) struct TrustServiceStatusList {
+        #[serde(rename = "@Id")]
+        pub(super) id: Option<String>,
         #[serde(rename = "SchemeInformation")]
         pub(super) scheme_information: SchemeInformation,
         #[serde(rename = "TrustServiceProviderList")]
@@ -342,29 +391,31 @@ mod xml {
         pub(super) information: ServiceInformation,
     }
 
+    // Required elements are optional here so that a verified list can skip a service
+    // that lacks one instead of failing as a whole (TSLSIG-052).
     #[derive(Deserialize)]
     pub(super) struct ServiceInformation {
         #[serde(rename = "ServiceTypeIdentifier")]
-        pub(super) service_type: String,
+        pub(super) service_type: Option<String>,
         #[serde(rename = "ServiceName")]
         pub(super) name: Option<Names>,
         #[serde(rename = "ServiceDigitalIdentity")]
-        pub(super) digital_identity: DigitalIdentity,
+        pub(super) digital_identity: Option<DigitalIdentity>,
         #[serde(rename = "ServiceStatus")]
-        pub(super) status: String,
+        pub(super) status: Option<String>,
         #[serde(rename = "StatusStartingTime")]
         pub(super) status_starting_time: Option<String>,
         #[serde(rename = "ServiceSupplyPoints")]
         pub(super) supply_points: Option<SupplyPoints>,
     }
 
-    #[derive(Deserialize)]
+    #[derive(Clone, Deserialize)]
     pub(super) struct Names {
         #[serde(rename = "Name", default)]
         pub(super) names: Vec<Text>,
     }
 
-    #[derive(Deserialize)]
+    #[derive(Clone, Deserialize)]
     pub(super) struct Text {
         #[serde(rename = "$text", default)]
         pub(super) value: String,
@@ -398,6 +449,7 @@ mod tests {
     #[test]
     fn parses_the_production_tsl() {
         let tsl = Tsl::parse(PROD).unwrap();
+        assert_eq!(tsl.id, "ID31033320260913230008Z");
         assert_eq!(tsl.sequence_number, 10333);
         assert_eq!(tsl.issued_at.to_string(), "2026-09-13T23:00:08Z");
         assert_eq!(
@@ -430,7 +482,8 @@ mod tests {
         );
     }
 
-    #[cfg(feature = "brainpool")]
+    // The walk reaches the production roots past the RSA roots GEM.RCA2/6/9.
+    #[cfg(all(feature = "brainpool", feature = "rsa"))]
     #[test]
     fn production_cas_are_matched_to_production_roots() {
         let tsl = Tsl::parse(PROD).unwrap();
@@ -456,6 +509,7 @@ mod tests {
         assert_eq!(matched.intermediates.len(), 84);
     }
 
+    #[cfg(feature = "brainpool")]
     fn b64(cert: &Certificate) -> String {
         Base64::encode_string(cert.der())
     }
@@ -630,5 +684,44 @@ mod tests {
             let error = Tsl::parse(&xml).unwrap_err().to_string();
             assert!(error.contains(want), "{error:?} lacks {want:?}");
         }
+    }
+
+    /// TSLSIG-052: a verified list skips what it cannot process, and an unspecified
+    /// service type is no reason to.
+    #[test]
+    fn a_verified_list_skips_broken_services() {
+        let broken_certificate = service(SERVICE_TYPE_CA_PKC, SERVICE_STATUS_IN_ACCORD, "AAAA");
+        let unspecified = service(
+            "http://uri.etsi.org/TrstSvc/Svctype/unspecified",
+            SERVICE_STATUS_IN_ACCORD,
+            "",
+        )
+        .replace(
+            "<DigitalId><X509Certificate>\n\n   </X509Certificate></DigitalId>",
+            "",
+        );
+        let no_type = "<TSPService><ServiceInformation><ServiceName><Name>untyped</Name>\
+                       </ServiceName><ServiceStatus>s</ServiceStatus></ServiceInformation>\
+                       </TSPService>";
+        let xml = document(
+            &[broken_certificate, unspecified, no_type.to_owned()].concat(),
+            "",
+        );
+
+        assert!(Tsl::parse(xml.as_bytes()).is_err());
+        let tsl = Tsl::parse_with(xml.as_bytes(), true).unwrap();
+        assert_eq!(tsl.id, "x");
+        assert_eq!(tsl.services.len(), 1);
+        assert_eq!(
+            tsl.services[0].service_type,
+            "http://uri.etsi.org/TrstSvc/Svctype/unspecified"
+        );
+        let skipped: Vec<(&str, bool)> = tsl
+            .skipped
+            .iter()
+            .map(|s| (s.name.as_str(), s.provider == "Test TSP"))
+            .collect();
+        assert_eq!(skipped, [("svc", true), ("untyped", true)]);
+        assert!(tsl.skipped[1].reason.contains("ServiceTypeIdentifier"));
     }
 }

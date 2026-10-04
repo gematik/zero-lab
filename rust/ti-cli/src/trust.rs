@@ -1,6 +1,8 @@
 //! Trust material for commands: roots.json and the TSL, downloaded or cached, and
-//! verified by ti-pki against the embedded anchor either way; the embedded roots alone
-//! when offline with nothing cached.
+//! verified by ti-pki either way: the roots against the embedded anchor, the TSL against
+//! the embedded TSL signer CA, its `NextUpdate`, the list seen before and, online, its
+//! signer's OCSP status (`spec/tsl-xmldsig`). The embedded roots alone when offline with
+//! nothing cached.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -13,6 +15,9 @@ use ti_pki::load::{
     ReloadOutcome, ReloadPolicy, Reloader, Source, SystemClock, Transport, TransportError,
     TransportErrorKind,
 };
+use ti_pki::ocsp::OcspChecker;
+use ti_pki::revocation::RevocationChecker;
+use ti_pki::tsl_signature::TslState;
 use ti_pki::{Clock, Tier, Timestamp, TrustConfig, TrustStore, roots};
 
 use crate::block::block_on;
@@ -32,6 +37,106 @@ pub struct Material {
     pub store: Arc<TrustStore>,
     /// For the report.
     pub info: TrustInfo,
+    /// The TSL's `Id` and sequence number, to keep for the next run.
+    tsl_state: Option<TslState>,
+}
+
+/// `--at`, or the system clock.
+#[derive(Clone, Copy)]
+struct At(Option<Timestamp>);
+
+impl Clock for At {
+    fn now(&self) -> Timestamp {
+        self.0.unwrap_or_else(|| SystemClock.now())
+    }
+}
+
+/// The `Id` and sequence number of the TSL last used from one URL, in the state
+/// directory: `cache clear` leaves it, so an older list stays rejected (TSLSIG-053).
+/// Losing it only weakens that check to what one run sees, so problems with the file
+/// are warnings, never errors.
+struct TslStateFile {
+    path: PathBuf,
+    verbose: u8,
+}
+
+impl TslStateFile {
+    fn new(config: &TrustConfig, verbose: u8) -> Option<Self> {
+        let key = Artifact::Tsl.cache_key(&config.tsl_url);
+        let id = key.rsplit('/').next()?;
+        match crate::paths::state_dir() {
+            Ok(dir) => Some(TslStateFile {
+                path: dir.join("tsl").join(format!("{id}.json")),
+                verbose,
+            }),
+            Err(error) => {
+                warning(format_args!(
+                    "{error}: the TSL seen before is not kept, an older one is not rejected"
+                ));
+                None
+            }
+        }
+    }
+
+    /// The stored state; none before the first run.
+    fn read(&self) -> Option<TslState> {
+        let path = self.path.display();
+        let bytes = match std::fs::read(&self.path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                self.verbose(format_args!("TSL state {path}: none yet"));
+                return None;
+            }
+            Err(error) => {
+                warning(format_args!("cannot read the TSL state {path}: {error}"));
+                return None;
+            }
+        };
+        match serde_json::from_slice::<TslState>(&bytes) {
+            Ok(state) => {
+                self.verbose(format_args!(
+                    "TSL state {path}: #{} {}",
+                    state.sequence_number, state.id
+                ));
+                Some(state)
+            }
+            Err(error) => {
+                warning(format_args!(
+                    "the TSL state {path} is unreadable ({error}); it is replaced"
+                ));
+                None
+            }
+        }
+    }
+
+    fn write(&self, state: &TslState) {
+        let path = self.path.display();
+        match self.store(state) {
+            Ok(()) => self.verbose(format_args!(
+                "TSL state {path}: kept #{} {}",
+                state.sequence_number, state.id
+            )),
+            Err(error) => warning(format_args!(
+                "cannot keep the TSL state in {path}: {error}; an older list is not rejected \
+                 next time"
+            )),
+        }
+    }
+
+    fn store(&self, state: &TslState) -> std::io::Result<()> {
+        if let Some(dir) = self.path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let tmp = self.path.with_extension("json.tmp");
+        std::fs::write(&tmp, serde_json::to_vec(state)?)?;
+        std::fs::rename(&tmp, &self.path)
+    }
+
+    fn verbose(&self, message: impl std::fmt::Display) {
+        if self.verbose >= 1 {
+            crate::output::diagnostic(message);
+        }
+    }
 }
 
 /// Where the trust material came from, for the report.
@@ -51,8 +156,46 @@ pub struct TrustInfo {
     pub roots: usize,
     /// TSL CAs a root signed.
     pub intermediates: usize,
+    /// Warnings about the TSL: `no_ocsp_check` when its signer's status was not
+    /// queried, `validity_warning_1` within the grace period.
+    pub tsl_warnings: Vec<&'static str>,
+    /// The TSL the CAs come from and what its trust rests on; absent with the embedded
+    /// roots alone.
+    pub tsl: Option<TslTrust>,
     /// Why the material is less than the environment's full set, if it is.
     pub note: Option<String>,
+}
+
+/// The verified TSL as a trust chain of its own: the list, its signer, the TSL signer CA.
+#[derive(Serialize)]
+pub struct TslTrust {
+    /// `TSLSequenceNumber`.
+    pub sequence_number: u64,
+    /// The C.TSL.SIG certificate the list is signed with.
+    pub signer: CertRef,
+    /// `good` when the signer's OCSP status was queried, else absent.
+    pub signer_ocsp: Option<&'static str>,
+    /// The configured TSL signer CA that issued the signer.
+    pub tsl_signer_ca: CertRef,
+}
+
+/// A certificate named in a report.
+#[derive(Serialize)]
+pub struct CertRef {
+    pub common_name: String,
+    pub not_after: String,
+    #[serde(skip)]
+    pub certificate: ti_pki::Certificate,
+}
+
+impl CertRef {
+    fn new(certificate: &ti_pki::Certificate) -> Self {
+        CertRef {
+            common_name: certificate.subject_cn().to_owned(),
+            not_after: certificate.not_after().to_string(),
+            certificate: certificate.clone(),
+        }
+    }
 }
 
 /// How a command reaches trust material: over the network or not, and where the cache
@@ -64,6 +207,8 @@ pub struct Session {
     memory: Arc<MemoryCacheStore>,
     /// `-k` is in effect for downloads.
     pub insecure: bool,
+    /// The `-v` count.
+    verbose: u8,
 }
 
 impl Session {
@@ -91,6 +236,7 @@ impl Session {
             cache_dir,
             memory: Arc::default(),
             insecure,
+            verbose: out.verbosity(),
         })
     }
 
@@ -104,16 +250,48 @@ impl Session {
         self.transport.is_none()
     }
 
-    /// `config`'s trust material, verified: from the cache while fresh, else from the
-    /// network (revalidating the cached copy). Offline, the cache or else the embedded
-    /// roots.
-    pub fn load(&self, config: &TrustConfig, tier: Tier) -> Result<Material, CliError> {
+    /// `config`'s trust material, verified at `at` or now: from the cache while fresh,
+    /// else from the network (revalidating the cached copy). Offline, the cache or else
+    /// the embedded roots. The TSL signer's OCSP status is queried online and at the
+    /// current time only; it says nothing about another.
+    pub fn load(
+        &self,
+        config: &TrustConfig,
+        tier: Tier,
+        at: Option<Timestamp>,
+    ) -> Result<Material, CliError> {
+        let clock = At(at);
+        // The list seen before guards against an older one, but only for the current
+        // time: a past instant may well need an older list.
+        let state = at
+            .is_none()
+            .then(|| TslStateFile::new(config, self.verbose))
+            .flatten();
+        let stored = state.as_ref().and_then(TslStateFile::read);
         block_on(async {
-            if let Some(transport) = &self.transport {
-                let reloader = reloader(config, tier, self.loader(config, transport))?;
-                first_tick(&reloader).await.map_err(CliError::from)
+            let material = if let Some(transport) = &self.transport {
+                let reloader = reloader(
+                    config,
+                    tier,
+                    self.loader(config, transport),
+                    clock,
+                    stored.clone(),
+                )?;
+                if at.is_none() {
+                    let checker = OcspChecker::new(config, transport, SystemClock);
+                    first_tick(&reloader.with_signer_status(checker)).await
+                } else {
+                    first_tick(&reloader).await
+                }
+                .map_err(CliError::from)
             } else {
-                let reloader = reloader(config, tier, self.loader(config, NoNetwork))?;
+                let reloader = reloader(
+                    config,
+                    tier,
+                    self.loader(config, NoNetwork),
+                    clock,
+                    stored.clone(),
+                )?;
                 match first_tick(&reloader).await {
                     Err(Expired(ReloadError::Load(LoadError::Offline(_)))) => embedded(
                         config,
@@ -128,7 +306,13 @@ impl Session {
                     ),
                     other => other.map_err(CliError::from),
                 }
+            }?;
+            if let (Some(file), Some(current)) = (&state, &material.tsl_state)
+                && stored.as_ref() != Some(current)
+            {
+                file.write(current);
             }
+            Ok(material)
         })
     }
 
@@ -189,7 +373,9 @@ fn reloader<L>(
     config: &TrustConfig,
     tier: Tier,
     loader: L,
-) -> Result<Reloader<L, SystemClock>, CliError>
+    clock: At,
+    stored: Option<TslState>,
+) -> Result<Reloader<L, At>, CliError>
 where
     L: Loader + Send + Sync,
 {
@@ -201,12 +387,18 @@ where
         hard_expiry,
         ..ReloadPolicy::default()
     };
-    Reloader::new(config.clone(), tier, loader, SystemClock, policy).map_err(CliError::Trust)
+    let reloader =
+        Reloader::new(config.clone(), tier, loader, clock, policy).map_err(CliError::Trust)?;
+    Ok(match stored {
+        Some(state) => reloader.with_stored_tsl(state),
+        None => reloader,
+    })
 }
 
-async fn first_tick<L>(reloader: &Reloader<L, SystemClock>) -> Result<Material, Expired>
+async fn first_tick<L, R>(reloader: &Reloader<L, At, R>) -> Result<Material, Expired>
 where
     L: Loader + Send + Sync,
+    R: RevocationChecker + Send + Sync,
 {
     // The first tick either swaps in material or expires; any other outcome (one added
     // to ti-pki later) is read through the snapshot below.
@@ -227,8 +419,26 @@ where
             tsl_next_update_ts: status.tsl_next_update,
             roots: store.len(),
             intermediates: store.intermediates().len(),
+            tsl_warnings: status
+                .tsl_warnings
+                .iter()
+                .filter(|w| w.code.is_warning())
+                .map(|w| w.code.as_str())
+                .collect(),
+            tsl: match (&status.tsl_state, &status.tsl_signer) {
+                (Some(state), Some((signer, ca))) => Some(TslTrust {
+                    sequence_number: state.sequence_number,
+                    signer: CertRef::new(signer),
+                    signer_ocsp: status
+                        .tsl_signer_status
+                        .map(ti_pki::RevocationStatus::as_str),
+                    tsl_signer_ca: CertRef::new(ca),
+                }),
+                _ => None,
+            },
             note: None,
         },
+        tsl_state: status.tsl_state,
         store,
     })
 }
@@ -246,8 +456,11 @@ fn embedded(config: &TrustConfig, note: &str) -> Result<Material, CliError> {
             tsl_next_update_ts: None,
             roots: store.len(),
             intermediates: 0,
+            tsl_warnings: Vec::new(),
+            tsl: None,
             note: Some(note.to_owned()),
         },
+        tsl_state: None,
         store: Arc::new(store),
     })
 }

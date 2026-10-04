@@ -240,10 +240,11 @@ test:
     cargo nextest run --workspace
     cargo test --workspace --all-features --doc
 
-# The cache, the loading layer, the reqwest transport and PKCS#12 decoding build for
+# The cache, XML signature checking, the loading layer, the reqwest transport and PKCS#12 decoding build for
 # the browser
 wasm32:
     cargo check -p ti-cache --target wasm32-unknown-unknown
+    cargo check -p ti-xmldsig --target wasm32-unknown-unknown
     cargo check -p ti-connector-client --target wasm32-unknown-unknown
     cargo check -p ti-pki --target wasm32-unknown-unknown --features load,reqwest
     cargo check -p ti-pkcs12 --target wasm32-unknown-unknown
@@ -270,7 +271,8 @@ core-deps:
 nonprod-absent:
     #!/usr/bin/env bash
     set -euo pipefail
-    files=(ti-pki/src/anchors/GEM.RCA7-TEST-ONLY.der ti-pki/src/anchors/GEM.RCA8-TEST-ONLY.der ti-pki/src/roots-nonprod.json)
+    files=(ti-pki/src/anchors/GEM.RCA7-TEST-ONLY.der ti-pki/src/anchors/GEM.RCA8-TEST-ONLY.der
+           ti-pki/src/anchors/GEM.TSL-CA28-TEST-ONLY.der ti-pki/src/roots-nonprod.json)
     rlib() {
         cargo build -p ti-pki --message-format=json "$@" 2>/dev/null \
             | jq -r 'select(.reason == "compiler-artifact" and .target.name == "ti_pki") | .filenames[] | select(endswith(".rlib"))'
@@ -308,11 +310,14 @@ generate-connector:
 # Regenerate the OpenSSL test PKI in ti-pki/tests/pki (fresh keys, same topology)
 test-pki:
     ti-pki/tests/pki/generate.sh
+    ti-pki/tests/pki/tsl-signer/generate.sh
 
 # Every feature alone and every pair of features must compile (catches feature-gated
 # breakage); all features together are built by clippy --all-features
 features:
     cargo hack check --workspace --feature-powerset --depth 2 --no-dev-deps
+    # The tests too, where gating mistakes hide: ti-pki with none of its algorithm features.
+    cargo test -p ti-pki --no-default-features --quiet
 
 # Unused dependencies in Cargo.toml
 machete:
@@ -364,6 +369,15 @@ semver:
     done
 
 # ---- Optional, on demand -----------------------------------------------------------
+
+# Kani proofs of ti-xmldsig (escaping, namespace rendering, depth scan); slow, not part
+# of `check`. Needs `cargo install --locked kani-verifier && cargo kani setup`.
+verify-formal:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd ti-xmldsig
+    # A long proof run must not be cut short by the Mac going to sleep.
+    if command -v caffeinate >/dev/null; then caffeinate -i cargo kani; else cargo kani; fi
 
 # Miri on the test suite (only meaningful if a crate ever allows unsafe; nightly required)
 miri:

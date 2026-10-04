@@ -211,6 +211,9 @@ fn test_pki_verdicts_agree() {
             true,
         ),
     ] {
+        if leaf == "ee-rsa-pss" && !cfg!(feature = "rsa") {
+            continue;
+        }
         assert_agree(scenario, leaf, intermediates, roots, valid);
     }
 }

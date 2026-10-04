@@ -267,6 +267,10 @@ criteria = "safe-to-deploy"
 version = "0.2.17"
 criteria = "safe-to-deploy"
 
+[[exemptions.getrandom]]
+version = "0.3.4"
+criteria = "safe-to-run"
+
 [[exemptions.ghash]]
 version = "0.6.0"
 criteria = "safe-to-deploy"
@@ -483,6 +487,10 @@ criteria = "safe-to-deploy"
 version = "0.1.6"
 criteria = "safe-to-deploy"
 
+[[exemptions.ppv-lite86]]
+version = "0.2.21"
+criteria = "safe-to-run"
+
 [[exemptions.primefield]]
 version = "0.14.0"
 criteria = "safe-to-deploy"
@@ -495,17 +503,45 @@ criteria = "safe-to-deploy"
 version = "1.0.107"
 criteria = "safe-to-deploy"
 
+[[exemptions.proptest]]
+version = "1.11.0"
+criteria = "safe-to-run"
+
 [[exemptions.quick-xml]]
 version = "0.42.0"
 criteria = "safe-to-deploy"
+
+[[exemptions.r-efi]]
+version = "5.3.0"
+criteria = "safe-to-run"
+
+[[exemptions.rand]]
+version = "0.9.5"
+criteria = "safe-to-run"
+
+[[exemptions.rand_chacha]]
+version = "0.9.0"
+criteria = "safe-to-run"
+
+[[exemptions.rand_core]]
+version = "0.9.5"
+criteria = "safe-to-run"
 
 [[exemptions.rand_core]]
 version = "0.10.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.rand_xorshift]]
+version = "0.4.0"
+criteria = "safe-to-run"
+
 [[exemptions.rc2]]
 version = "0.9.0"
 criteria = "safe-to-deploy"
+
+[[exemptions.regex-syntax]]
+version = "0.8.11"
+criteria = "safe-to-run"
 
 [[exemptions.reqwest]]
 version = "0.13.5"
@@ -517,6 +553,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.ring]]
 version = "0.17.14"
+criteria = "safe-to-deploy"
+
+[[exemptions.roxmltree]]
+version = "0.21.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.rsa]]
@@ -723,6 +763,10 @@ criteria = "safe-to-deploy"
 version = "1.20.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.unarray]]
+version = "0.1.4"
+criteria = "safe-to-run"
+
 [[exemptions.unicode-ident]]
 version = "1.0.26"
 criteria = "safe-to-deploy"
@@ -762,6 +806,10 @@ criteria = "safe-to-deploy"
 [[exemptions.wasi]]
 version = "0.11.0+wasi-snapshot-preview1"
 criteria = "safe-to-deploy"
+
+[[exemptions.wasip2]]
+version = "1.0.4+wasi-0.2.12"
+criteria = "safe-to-run"
 
 [[exemptions.wasm-bindgen]]
 version = "0.2.128"
@@ -851,6 +899,10 @@ criteria = "safe-to-deploy"
 version = "0.52.6"
 criteria = "safe-to-deploy"
 
+[[exemptions.wit-bindgen]]
+version = "0.57.1"
+criteria = "safe-to-run"
+
 [[exemptions.wnaf]]
 version = "0.14.1"
 criteria = "safe-to-deploy"
@@ -870,6 +922,14 @@ criteria = "safe-to-deploy"
 [[exemptions.yoke-derive]]
 version = "0.8.3"
 criteria = "safe-to-deploy"
+
+[[exemptions.zerocopy]]
+version = "0.8.59"
+criteria = "safe-to-run"
+
+[[exemptions.zerocopy-derive]]
+version = "0.8.59"
+criteria = "safe-to-run"
 
 [[exemptions.zerofrom]]
 version = "0.1.8"

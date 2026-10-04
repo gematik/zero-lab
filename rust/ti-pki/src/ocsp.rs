@@ -14,17 +14,20 @@
 //! - its certHash extension (gemSpec_PKI; Common PKI) hashes this very certificate, and
 //! - it lies within the TUC_PKI_006 time window.
 //!
-//! # Delegates of the same TSP
+//! # Responders of the same TSP
 //!
 //! TI TSPs run one responder for several of their CAs: gematik's ehca, for one, signs
 //! answers for GEM.SMCB-CA51 with a delegate of GEM.KOMP-CA51. gemSpec_PKI authorizes
-//! such responders by their TSL listing, which presumes an authenticated TSL; this crate
-//! does not authenticate the TSL (see [`crate::tsl`]). It accepts such a delegate
-//! instead when its certificate verifies under a TSL CA that a trusted root signed and
-//! that CA is listed under the same TSP as the issuing CA. The TSL contributes only the
-//! grouping of CAs into TSPs. [`RevocationResult::authorization`] records the
-//! deviation, and the [`Validator`](crate::Validator) reports it as an
-//! [`ErrorCode::OcspResponderNotRfc6960`] warning.
+//! such responders by their TSL listing; the TSL ties a responder to CAs only by the TSP
+//! it lists both under. Such a responder is accepted when its certificate verifies under
+//! a TSL CA that a trusted root signed and that CA is listed under the same TSP as the
+//! issuing CA, so a listing never lets a responder answer for another TSP's CAs. If the
+//! verified TSL also lists the responder as an OCSP service of that TSP
+//! ([`TrustStore::listed_responder_tsps`]), it is
+//! [`ResponderAuthorization::TslListed`]; otherwise
+//! [`ResponderAuthorization::SameTspDelegate`], a deviation the
+//! [`Validator`](crate::Validator) reports as an [`ErrorCode::OcspResponderNotRfc6960`]
+//! warning.
 //!
 //! Failures come back with the codes the [`revocation`](crate::revocation) table
 //! decides on; a response outside the time window is an
@@ -244,6 +247,7 @@ fn verify(
             invalid(format!(
                 "OCSP response does not answer for this certificate: {reason}"
             ))
+            .with_defect(ResponseDefect::WrongCertificate)
         })?;
 
     let embedded = basic
@@ -274,6 +278,7 @@ fn verify(
             "OCSP response signature does not verify under {:?}: {reason}",
             signer.subject_cn()
         ))
+        .with_defect(ResponseDefect::Signature)
     })?;
     // An "unknown" answer has no certificate to vouch for, so it carries no certHash;
     // its status stands (A_30046 (2)).
@@ -283,7 +288,7 @@ fn verify(
             cert,
             check.allow_missing_cert_hash || (check.stapled && is_egk(cert)),
         )
-        .map_err(invalid)?;
+        .map_err(|(defect, message)| invalid(message).with_defect(defect))?;
     }
 
     let mut result = RevocationResult::unknown(check.now, "");
@@ -317,9 +322,35 @@ fn with_status(
                 .map_or("unspecified", reason_name)
                 .clone_into(&mut result.reason);
         }
-        CertStatus::Unknown(_) => result.reason = "OCSP status: unknown".into(),
+        CertStatus::Unknown(_) => UNKNOWN_STATUS.clone_into(&mut result.reason),
     }
     result
+}
+
+/// The reason of a result whose responder answered `unknown`, as opposed to one that is
+/// unknown because the response lies outside the time window.
+pub(crate) const UNKNOWN_STATUS: &str = "OCSP status: unknown";
+
+/// What exactly made [`verify_response`] reject a response as
+/// [`ErrorCode::OcspResponseInvalid`], kept on the error for the finer result codes of
+/// the TSL signer's status (`spec/tsl-xmldsig` TSLSIG-041, 042).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ResponseDefect {
+    /// No single response is about the certificate asked about.
+    WrongCertificate,
+    /// The response signature does not verify.
+    Signature,
+    /// The certHash extension is missing.
+    CertHashMissing,
+    /// The certHash does not hash the certificate, or cannot be read.
+    CertHashMismatch,
+}
+
+impl ValidationError {
+    pub(crate) fn with_defect(mut self, defect: ResponseDefect) -> Self {
+        self.defect = Some(defect);
+        self
+    }
 }
 
 fn invalid(message: impl Into<String>) -> ValidationError {
@@ -420,8 +451,17 @@ fn authorize(
             "{not_rfc6960}, and no trust store is at hand to accept a delegate of the same TSP"
         ));
     };
-    same_tsp_delegate(responder, issuer, store, check)
-        .map_err(|reason| format!("{not_rfc6960}; nor is it a delegate of the same TSP: {reason}"))
+    let (ca, tsp) = same_tsp_delegate(responder, issuer, store, check).map_err(|reason| {
+        format!("{not_rfc6960}; nor is it a delegate of the same TSP: {reason}")
+    })?;
+    // The TSL ties a responder to CAs only by its TSP: listed under the issuing CA's.
+    Ok(
+        if store.listed_responder_tsps(responder).any(|t| t == tsp) {
+            ResponderAuthorization::TslListed { ca, tsp }
+        } else {
+            ResponderAuthorization::SameTspDelegate { ca, tsp }
+        },
+    )
 }
 
 /// What RFC 6960 asks of any delegate: id-kp-OCSPSigning, and validity now.
@@ -443,16 +483,16 @@ fn delegate_usable(responder: &Certificate, check: &ResponseCheck<'_>) -> Result
     Ok(())
 }
 
-/// The TI's responder model without an authenticated TSL: a delegate usable under RFC
-/// 6960 rules, certified (signature verified) by a TSL CA that a root signed, whose TSP
-/// is the issuing CA's. The TSL contributes only the grouping of CAs into TSPs, so a
-/// forged TSL could regroup CAs the roots already vouch for, but not add a key.
+/// The TI's responder model: a delegate usable under RFC 6960 rules, certified
+/// (signature verified) by a TSL CA that a root signed, whose TSP is the issuing CA's.
+/// Returns that CA's common name and the TSP; whether the TSL also lists the responder
+/// decides between a listed responder and a mere delegate of the same TSP.
 fn same_tsp_delegate(
     responder: &Certificate,
     issuer: &Certificate,
     store: &TrustStore,
     check: &ResponseCheck<'_>,
-) -> Result<ResponderAuthorization, String> {
+) -> Result<(String, String), String> {
     delegate_usable(responder, check).map_err(|reason| format!("it {reason}"))?;
     let responder_ca = store
         .intermediates()
@@ -477,10 +517,7 @@ fn same_tsp_delegate(
             responder_ca.subject_cn()
         ));
     }
-    Ok(ResponderAuthorization::SameTspDelegate {
-        ca: responder_ca.subject_cn().to_owned(),
-        tsp: issuer_tsp.to_owned(),
-    })
+    Ok((responder_ca.subject_cn().to_owned(), issuer_tsp.to_owned()))
 }
 
 fn verify_signature(
@@ -504,7 +541,8 @@ fn verify_cert_hash(
     extensions: Option<&Extensions>,
     cert: &Certificate,
     allow_missing: bool,
-) -> Result<(), String> {
+) -> Result<(), (ResponseDefect, String)> {
+    let mismatch = |message: String| (ResponseDefect::CertHashMismatch, message);
     let Some(extension) = extensions
         .into_iter()
         .flatten()
@@ -513,16 +551,24 @@ fn verify_cert_hash(
         return if allow_missing {
             Ok(())
         } else {
-            Err("OCSP response carries no certHash extension".into())
+            Err((
+                ResponseDefect::CertHashMissing,
+                "OCSP response carries no certHash extension".into(),
+            ))
         };
     };
     let cert_hash = CertHash::from_der(extension.extn_value.as_bytes())
-        .map_err(|e| format!("OCSP certHash extension is malformed: {e}"))?;
+        .map_err(|e| mismatch(format!("OCSP certHash extension is malformed: {e}")))?;
     let algorithm = cert_hash.hash_algorithm.oid;
-    let expected = digest(&algorithm, cert.der())
-        .ok_or_else(|| format!("OCSP certHash uses unsupported hash algorithm {algorithm}"))?;
+    let expected = digest(&algorithm, cert.der()).ok_or_else(|| {
+        mismatch(format!(
+            "OCSP certHash uses unsupported hash algorithm {algorithm}"
+        ))
+    })?;
     if expected != cert_hash.certificate_hash.as_bytes() {
-        return Err("OCSP certHash does not match the certificate".into());
+        return Err(mismatch(
+            "OCSP certHash does not match the certificate".into(),
+        ));
     }
     Ok(())
 }
@@ -1124,6 +1170,7 @@ mod tests {
     use super::*;
     use crate::cert::tests::{RCA5, SMCB_CA51, fixture};
 
+    #[cfg(feature = "brainpool")]
     macro_rules! response {
         ($name:literal) => {
             include_bytes!(concat!("../tests/pki/ocsp/", $name, ".der")).as_slice()
@@ -1151,6 +1198,7 @@ mod tests {
 
     /// A live answer of the reference environment's root responder for GEM.SMCB-CA51
     /// TEST-ONLY: a delegate of GEM.RCA5 TEST-ONLY with certHash, no nextUpdate.
+    #[cfg(feature = "brainpool")]
     #[test]
     fn real_root_responder_answer() {
         let (ca, root) = (fixture(SMCB_CA51), fixture(RCA5));
@@ -1331,6 +1379,36 @@ mod tests {
                     tsp: "TSP A".into(),
                 })
             );
+
+            // Listed by the TSL as an OCSP service of the issuing CA's TSP: authorized as
+            // gemSpec_PKI does. Listed under another TSP: only the same-TSP fallback.
+            let responder = crate::parse_pem_certificates(
+                include_str!("../tests/pki/ocsp-signer-komp.pem").as_bytes(),
+            )
+            .unwrap()
+            .remove(0);
+            let listed = |tsp: &str| {
+                store_with(&pki, &[(hba, "TSP A"), (komp, "TSP A")])
+                    .with_listed_responders(vec![(responder.clone(), tsp.to_owned())])
+            };
+            assert_eq!(
+                verify_with(&listed("TSP A")).unwrap().authorization,
+                Some(ResponderAuthorization::TslListed {
+                    ca: "GEM.SubCA-Komp TEST-ONLY".into(),
+                    tsp: "TSP A".into(),
+                })
+            );
+            assert!(matches!(
+                verify_with(&listed("TSP B")).unwrap().authorization,
+                Some(ResponderAuthorization::SameTspDelegate { .. })
+            ));
+            // A listing never replaces the certification by a CA of the same TSP.
+            let other_tsp = store_with(&pki, &[(hba, "TSP A"), (komp, "TSP B")])
+                .with_listed_responders(vec![(responder.clone(), "TSP A".to_owned())]);
+            assert!(verify_with(&other_tsp).is_err());
+            let uncertified = store_with(&pki, &[(hba, "TSP A")])
+                .with_listed_responders(vec![(responder, "TSP A".to_owned())]);
+            assert!(verify_with(&uncertified).is_err());
 
             for (store, reason) in [
                 (

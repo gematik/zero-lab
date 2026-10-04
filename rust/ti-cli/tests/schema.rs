@@ -25,6 +25,7 @@ fn ti(cache: &Path, args: &[&str]) -> Output {
         .env_remove("TI_FORMAT")
         .env_remove("TI_ENV")
         .env("TI_CACHE_DIR", cache)
+        .env("XDG_STATE_HOME", cache.join("state"))
         .output()
         .unwrap()
 }
@@ -128,13 +129,23 @@ fn every_command_matches_its_schema() {
     );
     assert_eq!(invalid.status.code(), Some(1));
 
-    let roots = json_of(c, "pki roots list", &["pki", "roots", "list", "--offline"]);
+    // The fixture TSL's validity, whenever the tests run.
+    let at = ["--at", "2026-10-01T00:00:00Z"];
+    let roots = json_of(
+        c,
+        "pki roots list",
+        &[&["pki", "roots", "list", "--offline"][..], &at].concat(),
+    );
     let roots: Value = serde_json::from_slice(&roots.stdout).unwrap();
     assert_eq!(roots["trust"]["source"], "cache");
     assert_eq!(roots["roots"].as_array().unwrap().len(), 10);
     assert_eq!(roots["roots"][0]["anchor"], true);
 
-    let show = json_of(c, "pki tsl show", &["pki", "tsl", "show", "--offline"]);
+    let show = json_of(
+        c,
+        "pki tsl show",
+        &[&["pki", "tsl", "show", "--offline"][..], &at].concat(),
+    );
     let show: Value = serde_json::from_slice(&show.stdout).unwrap();
     assert_eq!(
         show["counts"]["kept"], 84,
@@ -155,7 +166,7 @@ fn every_command_matches_its_schema() {
     let rejected = json_of(
         c,
         "pki tsl show",
-        &["pki", "tsl", "show", "--offline", "--rejected"],
+        &[&["pki", "tsl", "show", "--offline", "--rejected"][..], &at].concat(),
     );
     let rejected: Value = serde_json::from_slice(&rejected.stdout).unwrap();
     assert_eq!(rejected["roots"].as_array().unwrap().len(), 0);
@@ -249,13 +260,130 @@ fn verify_codes_are_ti_pkis() {
     assert_eq!(listed, codes);
 }
 
+/// Offline and without a cache: the file and the embedded TSL signer CA are all it needs.
+#[test]
+fn tsl_verify_matches_its_schema() {
+    let dir = std::env::temp_dir().join(format!("ti-tsl-verify-{}", std::process::id()));
+    let c = &dir;
+    let tsl = manifest("../ti-pki/tests/fixtures/tsl/ECC-RSA_TSL.xml");
+    let tsl = tsl.to_str().unwrap();
+    let verified = json_of(
+        c,
+        "pki tsl verify",
+        &["pki", "tsl", "verify", tsl, "--at", "2026-10-01T00:00:00Z"],
+    );
+    assert_eq!(verified.status.code(), Some(0));
+    let verified: Value = serde_json::from_slice(&verified.stdout).unwrap();
+    assert_eq!(verified["tier"], "prod");
+    assert_eq!(verified["anchor"]["common_name"], "GEM.TSL-CA3");
+    let expired = json_of(
+        c,
+        "pki tsl verify",
+        &["pki", "tsl", "verify", tsl, "--at", "2028-06-01T00:00:00Z"],
+    );
+    assert_eq!(expired.status.code(), Some(1));
+    let expired: Value = serde_json::from_slice(&expired.stdout).unwrap();
+    assert_eq!(expired["code"], "certificate_not_valid_time");
+    assert_eq!(expired["code_number"], 1021);
+    assert!(expired["signer"].is_null());
+}
+
+/// Offline: the warning instead of the signer's status; --previous decides the sequence.
+#[test]
+fn tsl_verify_offline_with_a_previous_list() {
+    let dir = std::env::temp_dir().join(format!("ti-tsl-previous-{}", std::process::id()));
+    let real = |name: &str| {
+        manifest(&format!("../../spec/tsl-xmldsig/testdata/tsl/real/{name}"))
+            .to_str()
+            .unwrap()
+            .to_owned()
+    };
+    let (older, newer) = (real("pu-10333.xml"), real("pu-10334.xml"));
+    let at = "2026-10-01T00:00:00Z";
+    let newer_out = json_of(
+        &dir,
+        "pki tsl verify",
+        &[
+            "pki",
+            "tsl",
+            "verify",
+            &newer,
+            "--previous",
+            &older,
+            "--offline",
+            "--at",
+            at,
+        ],
+    );
+    assert_eq!(newer_out.status.code(), Some(0));
+    let report: Value = serde_json::from_slice(&newer_out.stdout).unwrap();
+    assert_eq!(report["sequence"], "newer");
+    assert_eq!(report["warnings"][0]["code"], "no_ocsp_check");
+    assert_eq!(report["warnings"][0]["code_number"], 1039);
+    assert!(report["signer_status"].is_null());
+
+    let rollback = json_of(
+        &dir,
+        "pki tsl verify",
+        &[
+            "pki",
+            "tsl",
+            "verify",
+            &older,
+            "--previous",
+            &newer,
+            "--offline",
+            "--at",
+            at,
+        ],
+    );
+    assert_eq!(rollback.status.code(), Some(1));
+    let report: Value = serde_json::from_slice(&rollback.stdout).unwrap();
+    assert_eq!(report["code"], "tsl_id_incorrect");
+    assert_eq!(report["rule"], "TSLSIG-053");
+
+    let overdue = json_of(
+        &dir,
+        "pki tsl verify",
+        &[
+            "pki",
+            "tsl",
+            "verify",
+            &older,
+            "--offline",
+            "--at",
+            "2026-10-15T00:00:00Z",
+            "--grace",
+            "3",
+        ],
+    );
+    assert_eq!(overdue.status.code(), Some(0));
+    let report: Value = serde_json::from_slice(&overdue.stdout).unwrap();
+    assert_eq!(report["warnings"][0]["code"], "validity_warning_1");
+
+    let grace = ti(&dir, &["pki", "tsl", "verify", &older, "--grace", "31"]);
+    assert_eq!(grace.status.code(), Some(2));
+}
+
+/// The codes a TSL verify report may carry are exactly ti-pki's.
+#[test]
+fn tsl_verify_codes_are_ti_pkis() {
+    let listed = schema("pki tsl verify")["properties"]["code"]["enum"].clone();
+    let mut codes: Vec<Value> = ti_pki::tsl_signature::TslCode::ALL
+        .iter()
+        .map(|c| Value::from(c.as_str()))
+        .collect();
+    codes.push(Value::Null);
+    assert_eq!(listed, Value::Array(codes));
+}
+
 #[test]
 fn schemas_are_published_by_name() {
     let dir = std::env::temp_dir();
     let all = ti(&dir, &["schema"]);
     let all: Value = serde_json::from_slice(&all.stdout).unwrap();
     let commands = all["commands"].as_object().unwrap();
-    assert_eq!(commands.len(), 33);
+    assert_eq!(commands.len(), 34);
     assert_eq!(commands["pki verify"], schema("pki verify"));
 
     let one = ti(&dir, &["schema", "pki", "tsl", "show"]);

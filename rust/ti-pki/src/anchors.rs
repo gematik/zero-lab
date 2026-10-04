@@ -1,6 +1,7 @@
-//! The `GEM.RCA<n>` trust anchors compiled into the crate, as the exact DER gematik
-//! publishes. Everything else in a trust store earns its place by chaining to one of
-//! them. If gematik rotates an anchor, the file changes and the crate is rebuilt;
+//! The trust anchors compiled into the crate, as the exact DER gematik publishes: the
+//! `GEM.RCA<n>` roots, which everything else in a trust store earns its place by
+//! chaining to, and the `GEM.TSL-CA<n>` TSL signer CAs, which a TSL's signer must be
+//! issued by (GS-A_4640, `spec/tsl-xmldsig` TSLSIG-030). If gematik rotates an anchor, the file changes and the crate is rebuilt;
 //! operators who need a different anchor set it on a
 //! [`TrustConfig`](crate::TrustConfig) instead.
 //!
@@ -17,6 +18,26 @@ pub const GEM_RCA7_TEST_ONLY: &[u8] = include_bytes!("anchors/GEM.RCA7-TEST-ONLY
 /// GEM.RCA8 TEST-ONLY, the anchor of the test environment.
 #[cfg(feature = "dangerous-nonprod")]
 pub const GEM_RCA8_TEST_ONLY: &[u8] = include_bytes!("anchors/GEM.RCA8-TEST-ONLY.der");
+
+/// GEM.TSL-CA3, the TSL signer CA of production, issued by GEM.RCA4; valid until
+/// 2028-05-25.
+pub const GEM_TSL_CA3: &[u8] = include_bytes!("anchors/GEM.TSL-CA3.der");
+
+/// GEM.TSL-CA28 TEST-ONLY, the TSL signer CA of the reference, test and development
+/// environments, issued by GEM.RCA4 TEST-ONLY; valid until 2028-04-06.
+#[cfg(feature = "dangerous-nonprod")]
+pub const GEM_TSL_CA28_TEST_ONLY: &[u8] = include_bytes!("anchors/GEM.TSL-CA28-TEST-ONLY.der");
+
+/// The TSL signer CAs of production. When gematik announces a new one in the TSL (a
+/// `TSLServiceCertChange` service, which verification reports as
+/// [`TslCode::TslAnchorAnnounced`](crate::tsl_signature::TslCode::TslAnchorAnnounced)),
+/// it is added here; the old one stays until it expires.
+pub const TSL_SIGNER_CAS_PROD: &[&[u8]] = &[GEM_TSL_CA3];
+
+/// The TSL signer CAs of the reference, test and development environments; as
+/// [`TSL_SIGNER_CAS_PROD`].
+#[cfg(feature = "dangerous-nonprod")]
+pub const TSL_SIGNER_CAS_NONPROD: &[&[u8]] = &[GEM_TSL_CA28_TEST_ONLY];
 
 #[cfg(test)]
 mod tests {
@@ -59,6 +80,23 @@ mod tests {
         assert_fingerprint(
             GEM_RCA8_TEST_ONLY,
             "D4:E6:2B:45:8C:84:66:91:90:0C:07:D2:1A:70:C0:94:27:EF:E7:6E:73:33:C3:91:FB:C4:51:67:FC:79:3F:94",
+        );
+    }
+
+    #[test]
+    fn gem_tsl_ca3_fingerprint() {
+        assert_fingerprint(
+            GEM_TSL_CA3,
+            "E2:99:2D:C2:92:F6:AA:8D:9E:46:2A:77:23:F5:4C:16:28:53:B4:05:6C:27:72:60:B8:2C:E5:89:21:40:84:48",
+        );
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn gem_tsl_ca28_test_only_fingerprint() {
+        assert_fingerprint(
+            GEM_TSL_CA28_TEST_ONLY,
+            "43:85:3A:0E:92:BF:D6:E9:E9:9F:02:C1:D1:65:A6:88:AA:94:F0:DF:74:D8:EA:0D:DF:84:9E:CD:01:BE:1D:6A",
         );
     }
 }

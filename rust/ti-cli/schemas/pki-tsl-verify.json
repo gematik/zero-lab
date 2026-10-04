@@ -1,0 +1,317 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pki tsl verify",
+  "description": "A TSL file verified against the embedded TSL signer CA of an environment (spec/tsl-xmldsig parts A to D): the XMLDSig/XAdES signature, a C.TSL.SIG signer that CA issued, NextUpdate and the grace period, the sequence against --previous, and online the signer's OCSP status. Not covered: anchor change. The list fields are read from the signed bytes and are null or empty for an invalid list.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "source": {
+      "type": "string",
+      "description": "The file name, or <stdin>."
+    },
+    "environment": {
+      "enum": [
+        "auto",
+        "prod",
+        "ref",
+        "test",
+        "dev"
+      ],
+      "description": "--env as given."
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "The validation time, RFC 3339, UTC"
+    },
+    "result": {
+      "enum": [
+        "valid",
+        "invalid"
+      ]
+    },
+    "tier": {
+      "enum": [
+        "prod",
+        "nonprod",
+        null
+      ],
+      "description": "From the TSL signer CA: the non-production environments share one."
+    },
+    "code": {
+      "enum": [
+        "tsl_not_wellformed",
+        "xml_signature_error",
+        "tsl_cert_extraction_error",
+        "certificate_not_valid_math",
+        "authoritykeyid_different",
+        "certificate_not_valid_time",
+        "wrong_keyusage",
+        "wrong_extendedkeyusage",
+        "tsl_signer_profile_violation",
+        "no_ocsp_check",
+        "ocsp_signature_error",
+        "certhash_extension_missing",
+        "certhash_mismatch",
+        "cert_unknown",
+        "cert_revoked",
+        "ocsp_status_error",
+        "ocsp_check_revocation_error",
+        "tsl_id_incorrect",
+        "validity_warning_1",
+        "validity_warning_2",
+        "tsl_anchor_announced",
+        null
+      ],
+      "description": "The result code of an invalid list: the gemSpec_PKI Tab_PKI_274 short name in lower case, or tsl_signer_profile_violation."
+    },
+    "code_number": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "The Tab_PKI_274 number of the code, e.g. 1013; null for tsl_signer_profile_violation."
+    },
+    "rule": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The rule of spec/tsl-xmldsig that failed, e.g. TSLSIG-018."
+    },
+    "detail": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "What failed, for humans; not stable."
+    },
+    "sequence_number": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "issued_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "RFC 3339, UTC"
+    },
+    "next_update": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "RFC 3339, UTC; null for a closed list"
+    },
+    "signing_time": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "XAdES SigningTime as written."
+    },
+    "anchor": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/certificate"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The TSL signer CA, e.g. GEM.TSL-CA3."
+    },
+    "signer": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/certificate"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The C.TSL.SIG certificate the list is signed with."
+    },
+    "cas": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "CA services in accord with a certificate."
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      },
+      "description": "Warnings about a valid list."
+    },
+    "skipped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "name",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "description": "Services of a valid list left out because they could not be processed (TSLSIG-052)."
+    },
+    "signer_status": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "good"
+            },
+            "responder_url": {
+              "type": "string"
+            },
+            "produced_at": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          },
+          "required": [
+            "status",
+            "responder_url",
+            "produced_at"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The signer's OCSP status, when it was queried."
+    },
+    "sequence": {
+      "enum": [
+        "newer",
+        "same",
+        null
+      ],
+      "description": "Against --previous; null without it or for an invalid list."
+    }
+  },
+  "required": [
+    "schema",
+    "source",
+    "environment",
+    "at",
+    "result",
+    "tier",
+    "code",
+    "code_number",
+    "rule",
+    "detail",
+    "sequence_number",
+    "issued_at",
+    "next_update",
+    "signing_time",
+    "anchor",
+    "signer",
+    "cas",
+    "warnings",
+    "skipped",
+    "signer_status",
+    "sequence"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "certificate": {
+      "type": "object",
+      "properties": {
+        "common_name": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "serial": {
+          "type": "string",
+          "description": "Hexadecimal."
+        },
+        "not_before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        },
+        "not_after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        },
+        "sha256": {
+          "type": "string",
+          "description": "Fingerprint of the DER, hexadecimal."
+        }
+      },
+      "required": [
+        "common_name",
+        "subject",
+        "serial",
+        "not_before",
+        "not_after",
+        "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "finding": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "enum": [
+            "no_ocsp_check",
+            "validity_warning_1",
+            "tsl_anchor_announced"
+          ]
+        },
+        "code_number": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "rule": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "code_number",
+        "rule",
+        "detail"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

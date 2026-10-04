@@ -100,7 +100,8 @@ struct RevocationEntry {
     responder_url: String,
     /// Common name of the response's signer.
     responder: String,
-    /// `issuer`, `delegate` or `same_tsp_delegate`; absent without a verified response.
+    /// `issuer`, `delegate`, `tsl_listed` or `same_tsp_delegate`; absent without a verified
+    /// response.
     authorization: Option<&'static str>,
     produced_at: Option<String>,
     revoked_at: Option<String>,
@@ -145,7 +146,7 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
     let config = TrustConfig::preset(env);
     config.validate(env.tier()).map_err(CliError::Trust)?;
     let session = Session::new(global, args.offline, out)?;
-    let material = session.load(&config, env.tier())?;
+    let material = session.load(&config, env.tier(), args.at)?;
     out.verbose(
         1,
         format_args!(
@@ -465,6 +466,7 @@ fn revocation_entry(r: &RevocationResult) -> RevocationEntry {
         authorization: r.authorization.as_ref().map(|a| match a {
             ResponderAuthorization::Issuer => "issuer",
             ResponderAuthorization::Delegate => "delegate",
+            ResponderAuthorization::TslListed { .. } => "tsl_listed",
             ResponderAuthorization::SameTspDelegate { .. } => "same_tsp_delegate",
             _ => "other",
         }),
@@ -510,6 +512,7 @@ fn sections(report: &Report) -> Document {
         doc.paragraph(Line::dim("no chain to a trusted root"));
     }
     doc.tree(report.tree.clone());
+    doc.tree(super::tsl_tree(&report.trust, report.at_ts));
 
     if !report.errors.is_empty() {
         doc.section("Errors");
@@ -588,6 +591,7 @@ fn summary(report: &Report) -> Document {
         doc.items("", [Line::dim("no chain to a trusted root")]);
     }
     doc.tree(report.tree.clone());
+    doc.tree(super::tsl_tree(&report.trust, report.at_ts));
 
     if !report.errors.is_empty() || !report.warnings.is_empty() {
         let findings = report
@@ -662,9 +666,10 @@ fn ocsp_line(r: &RevocationEntry) -> Line {
     };
     let mut line = Line::status(tone, format!("OCSP {}", r.status));
     if !r.responder.is_empty() {
-        let how = r
-            .authorization
-            .map_or(String::new(), |a| format!(", {}", a.replace('_', " ")));
+        let how = r.authorization.map_or(String::new(), |a| match a {
+            "tsl_listed" => ", listed in the TSL".to_owned(),
+            other => format!(", {}", other.replace('_', " ")),
+        });
         line = line.and_dim(format!(" by {}{how}", r.responder));
     }
     if !r.reason.is_empty() {

@@ -47,6 +47,9 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
             roots::list(args, &cli.global, out)
         }
         Command::Pki(PkiCommand::Tsl(TslCommand::Show(args))) => tsl::show(args, &cli.global, out),
+        Command::Pki(PkiCommand::Tsl(TslCommand::Verify(args))) => {
+            tsl::verify(args, &cli.global, out)
+        }
         Command::Pki(PkiCommand::Pkcs12(Pkcs12Command::Convert {
             input,
             output,
@@ -144,6 +147,43 @@ fn chain_tree(
     rows
 }
 
+/// The verified TSL as its own trust chain, for the Trust section: the list, its signer
+/// and the TSL signer CA, valid at `at` since the list verified then.
+fn tsl_tree(trust: &TrustInfo, at: Timestamp) -> Vec<TreeRow> {
+    let Some(tsl) = &trust.tsl else {
+        return Vec::new();
+    };
+    let ok = || Line::status(Tone::Good, "✓ ");
+    let next_update = trust.tsl_next_update_ts.map_or_else(
+        || " · closed list".to_owned(),
+        |t| format!(" · next update {}", date(t)),
+    );
+    let ocsp = match tsl.signer_ocsp {
+        Some(status) => Line::text(" · ").and_status(Tone::Good, format!("OCSP {status}")),
+        None => Line::text(" · ").and_status(Tone::Warn, "OCSP not checked"),
+    };
+    let row = |cert: &Certificate, place: &str| {
+        Line::dim(place.to_owned()).and_line(expiry(cert.not_after(), validity(cert, at)))
+    };
+    vec![
+        TreeRow {
+            name: ok().and_line(Line::strong(format!("TSL #{}", tsl.sequence_number))),
+            detail: Line::dim(format!(
+                "list{next_update} · {} CAs under the roots",
+                trust.intermediates
+            )),
+        },
+        TreeRow {
+            name: ok().and_text(&tsl.signer.common_name),
+            detail: row(&tsl.signer.certificate, "TSL signer").and_line(ocsp),
+        },
+        TreeRow {
+            name: ok().and_text(&tsl.tsl_signer_ca.common_name),
+            detail: row(&tsl.tsl_signer_ca.certificate, "TSL signer CA · embedded"),
+        },
+    ]
+}
+
 /// The `O=` of a distinguished name.
 fn organization(name: &str) -> Option<String> {
     inspect::dn_parts(name)
@@ -176,10 +216,25 @@ fn trust_line(trust: &TrustInfo) -> Line {
     if let Some(next) = trust.tsl_next_update_ts {
         line = line.and_dim(format!(" · TSL next update {}", when(next)));
     }
+    for warning in &trust.tsl_warnings {
+        line = line
+            .and_dim(" · ")
+            .and_status(Tone::Warn, format!("TSL {}", tsl_warning_text(warning)));
+    }
     if let Some(note) = &trust.note {
         line = line.and_dim(format!(" · {note}"));
     }
     line
+}
+
+/// A TSL warning code in words.
+fn tsl_warning_text(code: &str) -> &str {
+    match code {
+        "no_ocsp_check" => "signer status not checked",
+        "validity_warning_1" => "past NextUpdate, in the grace period",
+        "tsl_anchor_announced" => "announces a new TSL signer CA",
+        other => other,
+    }
 }
 
 /// Writes `bytes` to `path`; readable by the owner only when `private` (keys, decrypted

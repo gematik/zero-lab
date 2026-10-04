@@ -7,6 +7,46 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ## Unreleased
 
+### ti-xmldsig
+
+#### added
+- `Document::parse`: strict XML 1.0 in UTF-8 without DTDs, bounded by `Limits` (size,
+  depth checked before parsing, attributes, namespaces, nodes); errors name the rule of
+  `spec/tsl-xmldsig` they enforce.
+- Exclusive XML Canonicalization 1.0 without comments: `Document::exc_c14n`,
+  `exc_c14n_by_id`, `exc_c14n_by_name`; checked against the C14N and Exc-C14N
+  specification examples, the W3C `merlin-exc-c14n-one` vectors, the reference digests of
+  published TSLs, property tests and Kani proofs (`just verify-formal`).
+- `Document::verify_tsl_signature`: the enveloped XMLDSig/XAdES signature of a TSL
+  against the fixed profile (TSLSIG-010 – 015, 019 – 022, nothing outside it accepted) and
+  the SHA-256 digests of both references, compared in constant time (TSLSIG-017). Returns
+  `SignedTsl`: canonical `SignedInfo`, range-checked `r ‖ s`, the signer certificate bound
+  by `CertDigest`, its serial number as written, and the canonical content to read
+  (TSLSIG-023). The ECDSA check and the certificate are left to the caller; the
+  `verify` example shows both.
+
+### ti-cli
+
+#### added
+- `ti pki tsl verify FILE`: a TSL file's signature and signer under the embedded TSL
+  signer CA, `NextUpdate` (`--grace DAYS`), the signer's OCSP status unless `--offline`
+  or `--at`, and with `--previous` the sequence; `--env auto` (default) detects
+  production or not. Exit 0 valid, 1 not valid with the gemSpec_PKI result code and the
+  `spec/tsl-xmldsig` rule.
+
+#### changed
+- Trust material is loaded with the TSL verified (`spec/tsl-xmldsig`), the signer's OCSP
+  status queried online, and the TSL's `Id` and sequence number kept in the state
+  directory so an older list stays rejected (`-v` shows the file; one that cannot be read
+  or written is a warning). `trust.tsl_warnings` reports
+  `no_ocsp_check`; `pki tsl show` names the signer and its CA. `pki roots list` and
+  `pki tsl show` take `--at`, and `pki verify --at` verifies the trust material at that
+  time too.
+- `pki verify` shows the TSL as a trust chain of its own under the certificate chain:
+  the list, its signer with its OCSP status, and the TSL signer CA (`trust.tsl` in the
+  JSON). A responder the TSL lists for the issuing CA's TSP reads "listed in the TSL"
+  (`tsl_listed`) and no longer warns.
+
 ### ti-connector-client
 
 #### added
@@ -147,10 +187,58 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   the same TSP, not by a TSL listing (A_30046 (7), C_12791).
 - Profile `fd-tls-s`: the C.FD.TLS-S certificate of a Fachdienst TLS server, the type
   baseline without a role, default for the type; pair it with the expected FQDN.
+- OCSP responders the verified TSL lists as an OCSP service of the issuing CA's TSP,
+  certified by a CA of that TSP that a root signed, are authorized as
+  `ResponderAuthorization::TslListed`, without the `ocsp_responder_not_rfc6960` warning
+  (`TrustStore::listed_responder_tsps`; the loader fills the listing from the verified
+  TSL). A listing under another TSP authorizes nothing.
 - `Certificate::subject_alt_names`: the subject alternative names in OpenSSL notation
   (`DNS:…`, `IP:…`, `email:…`, `URI:…`), for display.
+- `tsl_signature::verify` (feature `brainpool`): the signature of a TSL, part A of
+  `spec/tsl-xmldsig` — the XML profile and digests through `ti-xmldsig`, the signer
+  certificate bound by serial number, a brainpoolP256r1 key, and the ECDSA value over
+  the canonical `SignedInfo` through the configured algorithm set. Failures carry the
+  result code of Tab_PKI_274 (`TslCode`) and the rule.
+- `Tsl::parse_verified` (feature `brainpool`), part B: a C.TSL.SIG signer issued by
+  one of `TrustConfig::tsl_signer_anchors` (name, AuthorityKeyIdentifier, signature), signer and
+  anchor valid at the given time without skew, KeyUsage exactly nonRepudiation,
+  ExtendedKeyUsage exactly `id-tsl-kp-tslSigning`, and the rest of Tab_PKI_252_01; the
+  list is then parsed from the signed bytes. `parse_verified_prod` verifies for
+  production; `parse_verified_auto` for whichever environment's embedded TSL signer CA
+  issued the signer, reporting the `Tier`; `tsl_signature::embedded_config_for` returns
+  that preset for adjustment.
+- TSL update rules (`spec/tsl-xmldsig` parts C and D): `VerifiedTsl::check_signer_status`
+  queries the signer's OCSP status through any `RevocationChecker`, RFC 6960
+  authorization only, with the result codes of TSLSIG-041/042 (`cert_revoked`,
+  `certhash_mismatch`, `ocsp_status_error`, …); without it the list carries the warning
+  `no_ocsp_check`. `VerifiedTsl::check_sequence` against a stored `TslState` (`Id`,
+  sequence number ≥ 10000). `NextUpdate` with `TrustConfig::tsl_grace_period`
+  (`validity_warning_1`, `validity_warning_2`). A verified list skips services it cannot
+  process (`Tsl::skipped`); `Tsl::id` is the list's `Id`.
+- Loading verifies the TSL: `Reloader` swaps in a list only after its signature, signer,
+  `NextUpdate` and sequence verified; `Reloader::with_signer_status` adds the signer's
+  OCSP status, `Reloader::with_stored_tsl` the state to persist across restarts
+  (`ReloadStatus::tsl_state`, `ReloadStatus::tsl_warnings`). `VerifyError::tsl` carries
+  the result code. `ReloadPolicy::validate` caps the interval at 24 h
+  (`MAX_RELOAD_INTERVAL`).
+- `anchors::GEM_TSL_CA3` and, with `dangerous-nonprod`, `anchors::GEM_TSL_CA28_TEST_ONLY`:
+  the TSL signer CAs, pinned by SHA-256; `anchors::TSL_SIGNER_CAS_PROD` and
+  `TSL_SIGNER_CAS_NONPROD` list them per tier.
+- A TSL signer CA the TSL announces (`TSLServiceCertChange`) that is not configured is
+  the warning `tsl_anchor_announced`, logged by the tokio driver; it is never adopted, a
+  release adds it to the list (part E of `spec/tsl-xmldsig` is not implemented).
+- Certificate type `C.TSL.SIG` (`CertificateType::TslSig`, identified by
+  `oid_policy_gem_tsl_signer`) and profile `tsl-sig`.
 
 #### changed
+- `TrustConfig` has new fields `tsl_signer_anchors`, a list, and `tsl_grace_period` (breaking for
+  struct literals; struct update on a preset or `for_anchor` is unaffected): GEM.TSL-CA3
+  in production, GEM.TSL-CA28 TEST-ONLY in the non-production presets; grace 0, at most
+  30 days. `validate(Tier::Prod)` rejects a TEST-ONLY TSL signer anchor.
+- `Reloader` has a third type parameter, the signer status checker (default `Unchecked`,
+  i.e. none); `tokio::spawn_reloader` takes any. The TSL is no longer loaded
+  unauthenticated: a list that fails verification is never used.
+- `Tsl` has new fields `id` and `skipped`.
 - `Timestamp`, `Clock` and `SystemClock` come from `ti-types`, so every TI crate
   shares them; the paths `ti_pki::{Timestamp, Clock}` and `ti_pki::load::SystemClock`
   stay as re-exports.

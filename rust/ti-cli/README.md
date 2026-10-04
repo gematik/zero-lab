@@ -23,6 +23,7 @@ ti pki roots list --env ref         # the roots reached from the anchor
 ti pki tsl show                     # the TSL's CAs under the roots that signed them
 ti pki tsl show --rejected          # the CAs no verified root signed, and why
 ti pki tsl show --ca SMCB-CA51      # one CA; Markdown adds its PEM
+ti pki tsl verify ECC-RSA_TSL.xml   # signature, signer, signer OCSP; exit 0 valid
 ti connector configs                # the .kon files, shared with the Go ti
 ti connector use praxis             # the configuration later commands use
 ti connector get cards
@@ -83,10 +84,25 @@ roots the A_28419 walk reaches from the embedded anchor. `tsl show` lists the TS
 with the verified root that signed each, or in red why none did. Filter with `--ca`,
 `--provider`, `--root` and `--rejected`.
 
-The TSL is not authenticated. Of each entry the view shows only what the CA certificate
-says (name, organization, validity) and which verified root signed it; the TSL's own
+The TSL is verified wherever it is loaded (`spec/tsl-xmldsig`): signature, signer under
+the embedded TSL signer CA, `NextUpdate`, the list seen before (kept in the state
+directory, so an older list stays rejected), and online the signer's OCSP status;
+offline or with `--at` the trust line says the status was not checked. A list that
+fails is not used at all. Of each entry the view shows only what the CA certificate says
+(name, organization, validity) and which verified root signed it; the TSL's per-CA
 metadata (provider names, certificate types per CA) is never shown as fact. The provider
-name is in the JSON, for filtering. `--offline` works from the cache.
+name is in the JSON, for filtering. `--offline` works from the cache; `--at` shows the
+material as of another time.
+
+`pki tsl verify FILE` checks a TSL file: its XMLDSig/XAdES signature, a C.TSL.SIG
+signer issued by the embedded TSL signer CA (GEM.TSL-CA3 in production, GEM.TSL-CA28
+TEST-ONLY elsewhere), `NextUpdate` with `--grace DAYS` (default 0), and the signer's OCSP
+status unless `--offline` or `--at`. `--previous OLD.xml` requires another `Id` and a
+greater sequence number, or the same list. `--env auto`, the default, takes the
+environment whose TSL signer CA issued the signer; `--env prod` accepts a production TSL
+only. An invalid list is exit 1 with the gemSpec_PKI result code and the rule of
+`spec/tsl-xmldsig` that failed; entries that cannot be processed are skipped and
+listed.
 
 ## Verify
 

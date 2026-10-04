@@ -18,6 +18,8 @@ pub struct TrustStore {
     intermediates: Vec<Certificate>,
     /// The TSP of `intermediates[i]`, same index.
     providers: Vec<String>,
+    /// OCSP responder certificates a verified TSL lists, with their TSP.
+    listed_responders: Vec<(Certificate, String)>,
 }
 
 impl TrustStore {
@@ -46,6 +48,7 @@ impl TrustStore {
             roots: unique,
             intermediates: Vec::new(),
             providers: Vec::new(),
+            listed_responders: Vec::new(),
         }
     }
 
@@ -58,6 +61,26 @@ impl TrustStore {
             .map(|i| (i.certificate, i.provider))
             .unzip();
         self
+    }
+
+    /// The OCSP responders a verified TSL lists. Only the loader sets them, from a TSL
+    /// whose signature and signer verified.
+    #[must_use]
+    pub(crate) fn with_listed_responders(mut self, responders: Vec<(Certificate, String)>) -> Self {
+        self.listed_responders = responders;
+        self
+    }
+
+    /// The TSPs under which a verified TSL lists `responder` as an OCSP service; the
+    /// certificates must be identical.
+    pub fn listed_responder_tsps<'a>(
+        &'a self,
+        responder: &'a Certificate,
+    ) -> impl Iterator<Item = &'a str> + 'a {
+        self.listed_responders
+            .iter()
+            .filter(move |(listed, _)| listed == responder)
+            .map(|(_, tsp)| tsp.as_str())
     }
 
     /// The intermediates set with [`with_intermediates`](Self::with_intermediates).
@@ -111,7 +134,9 @@ impl TrustStore {
 #[cfg(feature = "load")]
 impl TrustStore {
     pub(crate) fn from_verified(verified: crate::load::Verified) -> Self {
-        TrustStore::new(verified.roots).with_intermediates(verified.intermediates)
+        TrustStore::new(verified.roots)
+            .with_intermediates(verified.intermediates)
+            .with_listed_responders(verified.ocsp_responders)
     }
 }
 

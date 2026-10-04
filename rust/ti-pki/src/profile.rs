@@ -1,5 +1,5 @@
 //! Named validation profiles for the common TI use cases (smb-aut, idp-sig,
-//! epa-vau-aut, zeta-guard-aut) and their selection. A profile states the
+//! epa-vau-aut, zeta-guard-aut, tsl-sig) and their selection. A profile states the
 //! certificate types it accepts, its revocation strictness and optionally the
 //! admission role that identifies it. Automatic selection prefers a profile
 //! matched on its role over one that merely owns the type, and reports an
@@ -112,8 +112,29 @@ pub static ZETA_GUARD_AUT: Profile = Profile {
     default_for: &[],
 };
 
+/// The C.TSL.SIG certificate a TSL is signed with. As a certificate, it chains to a GEM
+/// root like any other; a TSL itself is verified against the configured TSL signer CA
+/// instead ([`crate::tsl_signature`], feature `brainpool`), which also checks the key
+/// usages for equality and the rest of Tab_PKI_252_01.
+pub static TSL_SIG: Profile = Profile {
+    name: "tsl-sig",
+    description: "TSL signer",
+    revocation: RevocationMode::HardFail,
+    extra_policies: &[],
+    required_role_oids: &[],
+    accepts_types: &[CertificateType::TslSig],
+    default_for: &[CertificateType::TslSig],
+};
+
 /// Every profile, sorted by name.
-pub static PROFILES: &[&Profile] = &[&EPA_VAU_AUT, &FD_TLS_S, &IDP_SIG, &SMB_AUT, &ZETA_GUARD_AUT];
+pub static PROFILES: &[&Profile] = &[
+    &EPA_VAU_AUT,
+    &FD_TLS_S,
+    &IDP_SIG,
+    &SMB_AUT,
+    &TSL_SIG,
+    &ZETA_GUARD_AUT,
+];
 
 /// Selector value for automatic selection ([`select_for_cert`]).
 pub const AUTO: &str = "auto";
@@ -444,6 +465,7 @@ mod tests {
                 "fd-tls-s",
                 "idp-sig",
                 "smb-aut",
+                "tsl-sig",
                 "zeta-guard-aut"
             ]
         );

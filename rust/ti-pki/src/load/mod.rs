@@ -3,10 +3,11 @@
 //! Loaders are untrusted. Trust never comes from where bytes were obtained.
 //! roots.json is verified by the cross-certificate walk against the embedded anchor,
 //! regardless of whether the bytes came from HTTP, a mounted file, an offline bundle or
-//! a cache. The TSL is not authenticated at all; of its CAs only those a verified root
-//! signed are kept ([`crate::tsl`]). A misbehaving loader can therefore only deny
-//! service (withhold roots or CAs) or serve stale data, and staleness is caught by the
-//! freshness policy.
+//! a cache. The TSL is verified against the configured TSL signer CA, its `NextUpdate` and
+//! the list before it, and online its signer's OCSP status ([`crate::tsl_signature`]);
+//! of its CAs only those a verified root signed are kept ([`crate::tsl`]). A
+//! misbehaving loader can therefore only deny service (withhold roots or CAs) or serve
+//! stale data, and staleness is caught by the freshness policy.
 //!
 //! # Composition
 //!
@@ -75,8 +76,8 @@ pub use http::HttpLoader;
 pub use loader::{Fetched, LoadError, Loaded, Loader};
 pub use maybe_send::{MaybeSend, MaybeSync};
 pub use reload::{
-    Expired, MAX_PROD_HARD_EXPIRY, ReloadError, ReloadOutcome, ReloadPolicy, ReloadStatus,
-    Reloader, State, TrustStoreHandle,
+    Expired, MAX_PROD_HARD_EXPIRY, MAX_RELOAD_INTERVAL, ReloadError, ReloadOutcome, ReloadPolicy,
+    ReloadStatus, Reloader, State, TrustStoreHandle,
 };
 pub use static_::{Bundle, StaticLoader};
 pub use ti_cache::{
