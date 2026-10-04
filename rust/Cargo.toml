@@ -1,5 +1,5 @@
 [workspace]
-members = ["ti-types", "ti-cache", "ti-xmldsig", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-cli"]
+members = ["ti-types", "ti-cache", "ti-xmldsig", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-report", "ti-cli"]
 resolver = "3"
 
 # Shared metadata only. Deliberately no workspace.package.version: every crate is
@@ -22,6 +22,7 @@ ti-xmldsig = { version = "0.1", path = "ti-xmldsig" }
 ti-pki = { version = "0.1", path = "ti-pki", default-features = false }
 ti-pkcs12 = { version = "0.1", path = "ti-pkcs12" }
 ti-connector-client = { version = "0.1", path = "ti-connector-client" }
+ti-report = { version = "0.1", path = "ti-report" }
 
 # External. Pinned here once, inherited by every crate.
 der = { version = "0.8", features = ["alloc", "derive", "oid"] }

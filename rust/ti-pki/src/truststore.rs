@@ -72,6 +72,7 @@ impl TrustStore {
     /// The OCSP responders a verified TSL lists. Only the loader sets them, from a TSL
     /// whose signature and signer verified.
     #[must_use]
+    #[cfg(any(feature = "load", all(test, feature = "brainpool")))]
     pub(crate) fn with_listed_responders(mut self, responders: Vec<(Certificate, String)>) -> Self {
         self.listed_responders = responders;
         self
@@ -80,6 +81,7 @@ impl TrustStore {
     /// The certificate types a verified TSL states for its CAs. Only the loader sets
     /// them, from a TSL whose signature and signer verified.
     #[must_use]
+    #[cfg(any(feature = "load", all(test, feature = "brainpool")))]
     pub(crate) fn with_ca_types(
         mut self,
         types: Vec<(Certificate, Vec<ObjectIdentifier>)>,

@@ -3,17 +3,16 @@
 use std::path::Path;
 
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use ti_pki::key::{KeyStatus, classify_key};
 use ti_pki::load::SystemClock;
-use ti_pki::{CertificateType, Clock, Timestamp, checks, detect_certificate_type, profile};
+use ti_pki::{Clock, Timestamp};
 use x509_cert::der::oid::ObjectIdentifier;
 
 use crate::cli::{Environment, GlobalArgs};
 use crate::error::{CliError, Exit};
 use crate::input;
 use crate::output::document::{TreeRow, span, when};
-use crate::output::{Document, Line, OidInfo, Output, SCHEMA, Tone, hex, pem};
+use crate::output::{Document, Line, OidInfo, Output, SCHEMA, Tone, hex};
 use crate::trust::Session;
 
 /// The JSON document.
@@ -68,64 +67,25 @@ struct P12KeyInfo {
     certificate: Option<usize>,
 }
 
+/// A certificate as `ti_report` describes it, with what a PKCS#12 file adds.
 #[derive(Serialize)]
 pub(super) struct CertificateInfo {
-    subject: String,
-    /// In OpenSSL's notation, e.g. `DNS:host`.
-    subject_alt_names: Vec<String>,
-    issuer: String,
-    serial: String,
-    not_before: String,
-    not_after: String,
-    #[serde(skip)]
-    not_before_at: Timestamp,
-    #[serde(skip)]
-    not_after_at: Timestamp,
-    /// `valid`, `expired` or `not_yet_valid`, now.
-    validity: &'static str,
-    key: KeyInfo,
-    signature_algorithm: String,
-    certificate_type: Option<&'static str>,
-    profile: Option<ProfileHint>,
-    admission: Option<AdmissionInfo>,
-    policies: Vec<OidInfo>,
-    key_usage: Vec<&'static str>,
-    extended_key_usage: Vec<String>,
-    ca: bool,
-    path_len: Option<u8>,
-    ocsp_urls: Vec<String>,
-    critical_extensions: Vec<String>,
-    subject_key_id: Option<String>,
-    authority_key_id: Option<String>,
-    sha256: String,
+    #[serde(flatten)]
+    info: ti_report::CertificateInfo,
     /// The input is a PKCS#12 file that also holds this certificate's private key.
     private_key: bool,
     /// The `friendlyName` of its bag, in a PKCS#12 file.
     friendly_name: Option<String>,
     /// The `localKeyId` of its bag, in a PKCS#12 file.
     local_key_id: Option<String>,
-    pem: String,
 }
 
-#[derive(Serialize)]
-struct KeyInfo {
-    algorithm: String,
-    /// gemSpec_Krypt: `admissible`, `phased out`, `not admissible`.
-    status: &'static str,
-}
+impl core::ops::Deref for CertificateInfo {
+    type Target = ti_report::CertificateInfo;
 
-#[derive(Serialize)]
-struct ProfileHint {
-    name: &'static str,
-    reason: &'static str,
-    detail: String,
-}
-
-#[derive(Serialize)]
-struct AdmissionInfo {
-    profession_items: Vec<String>,
-    profession_oids: Vec<OidInfo>,
-    registration_number: Option<String>,
+    fn deref(&self) -> &Self::Target {
+        &self.info
+    }
 }
 
 pub fn run(
@@ -345,84 +305,15 @@ fn curve_name(oid: &ObjectIdentifier) -> String {
 }
 
 pub(super) fn describe(loaded: &input::Loaded, now: Timestamp) -> CertificateInfo {
-    let cert = &loaded.certificate;
-    let private_key = loaded.private_key;
     let (friendly_name, local_key_id) = loaded.bag.as_ref().map_or((None, None), |(name, id)| {
         (name.clone(), id.as_deref().map(hex_id))
     });
-    let (status, algorithm) = classify_key(cert.public_key_info(), now);
-    let selection = profile::select_for_cert(cert);
-    let basic = cert.basic_constraints();
     CertificateInfo {
-        subject: cert.subject().to_string(),
-        subject_alt_names: cert.subject_alt_names(),
-        issuer: cert.issuer().to_string(),
-        serial: hex(cert.serial()),
-        not_before: cert.not_before().to_string(),
-        not_after: cert.not_after().to_string(),
-        not_before_at: cert.not_before(),
-        not_after_at: cert.not_after(),
-        validity: super::validity(cert, now),
-        key: KeyInfo {
-            algorithm,
-            status: status.as_str(),
-        },
-        signature_algorithm: cert.signature_algorithm(),
-        certificate_type: detect_certificate_type(cert).map(CertificateType::as_str),
-        profile: selection.profile.map(|p| ProfileHint {
-            name: p.name,
-            reason: selection.reason.as_str(),
-            detail: selection.detail.clone(),
-        }),
-        admission: cert.admission().ok().flatten().map(|a| AdmissionInfo {
-            profession_items: a.profession_items,
-            profession_oids: a.profession_oids.iter().map(OidInfo::new).collect(),
-            registration_number: a.registration_number,
-        }),
-        policies: cert.policies().iter().map(OidInfo::new).collect(),
-        key_usage: cert
-            .key_usage()
-            .map(|ku| ku.0.into_iter().map(checks::key_usage_name).collect())
-            .unwrap_or_default(),
-        extended_key_usage: cert
-            .ext_key_usage()
-            .iter()
-            .map(checks::ext_key_usage_name)
-            .collect(),
-        ca: cert.is_ca(),
-        path_len: basic.and_then(|b| b.path_len_constraint),
-        ocsp_urls: cert.ocsp_urls().to_vec(),
-        critical_extensions: cert
-            .critical_extensions()
-            .map(|oid| extension_name(&oid))
-            .collect(),
-        subject_key_id: cert.subject_key_id().map(hex),
-        authority_key_id: cert.authority_key_id().map(hex),
-        sha256: hex(&Sha256::digest(cert.der())),
-        private_key,
+        info: ti_report::describe(&loaded.certificate, now),
+        private_key: loaded.private_key,
         friendly_name,
         local_key_id,
-        pem: pem(cert.der()),
     }
-}
-
-/// The RFC 5280 name of the extensions a TI certificate carries; the OID otherwise.
-fn extension_name(oid: &ObjectIdentifier) -> String {
-    let name = match oid.to_string().as_str() {
-        "2.5.29.14" => "subjectKeyIdentifier",
-        "2.5.29.15" => "keyUsage",
-        "2.5.29.17" => "subjectAltName",
-        "2.5.29.19" => "basicConstraints",
-        "2.5.29.30" => "nameConstraints",
-        "2.5.29.32" => "certificatePolicies",
-        "2.5.29.35" => "authorityKeyIdentifier",
-        "2.5.29.36" => "policyConstraints",
-        "2.5.29.37" => "extKeyUsage",
-        "1.3.6.1.5.5.7.1.1" => "authorityInfoAccess",
-        "1.3.36.8.3.3" => "admission",
-        other => return other.to_owned(),
-    };
-    name.to_owned()
 }
 
 /// The terminal view: a section per aspect, every detail.

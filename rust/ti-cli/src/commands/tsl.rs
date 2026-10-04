@@ -13,9 +13,10 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use ti_pki::load::{Meta, Source, SystemClock};
 use ti_pki::ocsp::OcspChecker;
-use ti_pki::tsl::{self, Intermediate, Rejection, Tsl};
+use ti_pki::tsl::{self, Intermediate, Tsl};
 use ti_pki::tsl_signature::{Sequence, TslError, TslState, VerifiedTsl, embedded_config_for};
 use ti_pki::{Certificate, Clock, Tier, Timestamp, TrustConfig, TrustStore};
+use ti_report::tsl::{CertSummary, Finding, rejection_code};
 
 use crate::block::block_on;
 use crate::cli::{Environment, GlobalArgs, TslShowArgs, TslVerifyArgs};
@@ -159,7 +160,7 @@ pub fn show(args: &TslShowArgs, global: &GlobalArgs, out: &Output) -> Result<Exi
         .rejected
         .iter()
         .filter(|(ca, _)| args.root.is_none() && wanted(ca))
-        .map(|(ca, reason)| describe(ca, Some(rejection(*reason)), now))
+        .map(|(ca, reason)| describe(ca, Some(rejection_code(*reason)), now))
         .collect();
 
     let report = Report {
@@ -238,25 +239,6 @@ struct VerifyReport {
 }
 
 #[derive(Serialize)]
-struct Finding {
-    code: &'static str,
-    code_number: Option<u16>,
-    rule: &'static str,
-    detail: String,
-}
-
-impl Finding {
-    fn new(e: &TslError) -> Self {
-        Finding {
-            code: e.code.as_str(),
-            code_number: e.code.number(),
-            rule: e.rule,
-            detail: e.detail.clone(),
-        }
-    }
-}
-
-#[derive(Serialize)]
 struct SkippedInfo {
     provider: String,
     name: String,
@@ -269,30 +251,6 @@ struct SignerStatus {
     status: &'static str,
     responder_url: String,
     produced_at: Option<String>,
-}
-
-#[derive(Serialize)]
-struct CertSummary {
-    common_name: String,
-    subject: String,
-    /// Hexadecimal.
-    serial: String,
-    not_before: String,
-    not_after: String,
-    sha256: String,
-}
-
-impl CertSummary {
-    fn new(cert: &Certificate) -> Self {
-        CertSummary {
-            common_name: cert.subject_cn().to_owned(),
-            subject: cert.subject().to_string(),
-            serial: hex(cert.serial()),
-            not_before: cert.not_before().to_string(),
-            not_after: cert.not_after().to_string(),
-            sha256: hex(&Sha256::digest(cert.der())),
-        }
-    }
 }
 
 /// Runs `ti pki tsl verify`.
@@ -420,7 +378,7 @@ fn verify_report(
             report.anchor = Some(CertSummary::new(&verified.anchor));
             report.signer = Some(CertSummary::new(&verified.signer));
             report.cas = Some(verified.tsl.intermediate_cas().len());
-            report.warnings = verified.warnings.iter().map(Finding::new).collect();
+            report.warnings = verified.warnings.iter().map(Finding::from).collect();
             report.skipped = verified
                 .tsl
                 .skipped
@@ -556,16 +514,6 @@ fn source_name(meta: &Meta) -> &'static str {
     match meta.source {
         Source::Http => "http",
         _ => "cache",
-    }
-}
-
-fn rejection(reason: Rejection) -> &'static str {
-    match reason {
-        Rejection::NotCa => "not_ca",
-        Rejection::SelfSigned => "self_signed",
-        Rejection::UnknownIssuer => "unknown_issuer",
-        Rejection::BadSignature => "bad_signature",
-        _ => "other",
     }
 }
 

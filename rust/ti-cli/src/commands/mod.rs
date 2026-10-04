@@ -119,13 +119,7 @@ fn probe_target(
 
 /// `valid`, `expired` or `not_yet_valid` at `now`.
 fn validity(cert: &Certificate, now: Timestamp) -> &'static str {
-    if now < cert.not_before() {
-        "not_yet_valid"
-    } else if now > cert.not_after() {
-        "expired"
-    } else {
-        "valid"
-    }
+    ti_report::validity(cert, now)
 }
 
 /// ` · until 2029-11-06`, or ` · expired 2022-10-25` / ` · not yet valid` in red: the

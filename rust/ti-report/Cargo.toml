@@ -1,0 +1,23 @@
+[package]
+name = "ti-report"
+version = "0.1.0"
+description = "JSON reports on gematik Telematikinfrastruktur (TI) certificates and TSLs, shared by the ti CLI and its WebAssembly build"
+keywords = ["gematik", "telematik", "pki", "tsl", "json"]
+categories = ["cryptography", "encoding"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The TSL signature is verified on brainpoolP256r1, and the roots walk passes RSA roots.
+ti-pki = { workspace = true, features = ["brainpool", "rsa"] }
+const-oid.workspace = true
+pem-rfc7468 = { workspace = true, features = ["alloc"] }
+serde.workspace = true
+sha2.workspace = true
+
+[lints]
+workspace = true

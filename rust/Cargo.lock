@@ -1898,6 +1898,7 @@ dependencies = [
  "ti-connector-client",
  "ti-pkcs12",
  "ti-pki",
+ "ti-report",
  "ureq",
  "x509-cert",
 ]
@@ -1976,6 +1977,17 @@ dependencies = [
  "tokio",
  "tracing",
  "x509-cert",
+]
+
+[[package]]
+name = "ti-report"
+version = "0.1.0"
+dependencies = [
+ "const-oid",
+ "pem-rfc7468",
+ "serde",
+ "sha2",
+ "ti-pki",
 ]
 
 [[package]]

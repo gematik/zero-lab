@@ -14,11 +14,11 @@ use std::io::{self, IsTerminal, StdoutLock, Write};
 
 use anstream::AutoStream;
 use serde::Serialize;
-use x509_cert::der::oid::ObjectIdentifier;
 
 use crate::cli::{Format, GlobalArgs};
 use crate::error::CliError;
 pub use document::{Document, Line, Tone};
+pub use ti_report::{OidInfo, hex, pem};
 pub use waiting::Waiting;
 
 /// The JSON contract version every document carries as `"schema"`.
@@ -147,48 +147,4 @@ pub fn warning(message: impl Display) {
 /// Stdout for text output; styles are stripped where they do not belong.
 pub fn stdout() -> AutoStream<StdoutLock<'static>> {
     anstream::stdout().lock()
-}
-
-/// `der` as a PEM `CERTIFICATE` block, LF line endings.
-pub fn pem(der: &[u8]) -> String {
-    pem_rfc7468::encode_string("CERTIFICATE", pem_rfc7468::LineEnding::LF, der)
-        .expect("base64 of a certificate held in memory cannot fail")
-}
-
-/// An OID with its gemSpec_OID description, where the TI defines one.
-#[derive(Serialize)]
-pub struct OidInfo {
-    /// Dotted form.
-    pub oid: String,
-    /// The description from gemSpec_OID.
-    pub name: Option<&'static str>,
-}
-
-impl OidInfo {
-    /// Looks `oid` up in the gemSpec_OID tables.
-    pub fn new(oid: &ObjectIdentifier) -> Self {
-        OidInfo {
-            oid: oid.to_string(),
-            name: ti_pki::oid::lookup(oid)
-                .map(|info| info.description)
-                .filter(|d| !d.is_empty()),
-        }
-    }
-}
-
-impl Display for OidInfo {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let (id, dim) = (style::ID, style::DIM);
-        write!(f, "{id}{}{id:#}", self.oid)?;
-        match self.name {
-            Some(name) => write!(f, "  {dim}{name}{dim:#}"),
-            None => Ok(()),
-        }
-    }
-}
-
-/// `bytes` as upper-case hex pairs separated by `:`, as OpenSSL prints fingerprints.
-pub fn hex(bytes: &[u8]) -> String {
-    let pairs: Vec<String> = bytes.iter().map(|b| format!("{b:02X}")).collect();
-    pairs.join(":")
 }

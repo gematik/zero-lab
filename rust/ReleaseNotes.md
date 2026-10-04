@@ -25,6 +25,15 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   (TSLSIG-023). The ECDSA check and the certificate are left to the caller; the
   `verify` example shows both.
 
+### ti-report
+
+#### added
+- New crate: the JSON reports on certificates and TSLs that the `ti` CLI and its
+  WebAssembly build share. `describe(cert, now)` gives a certificate as `ti pki inspect`
+  shows it (`CertificateInfo`, `OidInfo`); `tsl::Finding`, `tsl::CertSummary` and
+  `tsl::rejection_code` give the TSL findings as `ti pki tsl verify` and `tsl show` report
+  them. No I/O, no clock; builds for `wasm32-unknown-unknown`.
+
 ### ti-cli
 
 #### added
@@ -251,7 +260,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `Reloader` has a third type parameter, the signer status checker (default `Unchecked`,
   i.e. none); `tokio::spawn_reloader` takes any. The TSL is no longer loaded
   unauthenticated: a list that fails verification is never used.
-- `Tsl` has new fields `id` and `skipped`.
+- `Tsl` has new fields `id`, `skipped` and `scheme` (`SchemeInfo`: version, type, scheme
+  and operator name, postal and electronic addresses, `PointersToOtherTSL` with
+  `primary_location()` / `backup_location()`).
 - `Timestamp`, `Clock` and `SystemClock` come from `ti-types`, so every TI crate
   shares them; the paths `ti_pki::{Timestamp, Clock}` and `ti_pki::load::SystemClock`
   stay as re-exports.
