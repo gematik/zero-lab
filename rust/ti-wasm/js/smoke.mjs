@@ -1,10 +1,13 @@
 // The built package in Node on the real TSLs: the expected verdicts, each one
-// cross-checked with `ti pki tsl verify` of the same checkout.
+// cross-checked with `ti pki tsl verify` of the same checkout; then certificates checked
+// with `TrustContext`, each cross-checked with `ti pki verify --offline` on a cache seeded
+// with the same TSL and roots.
 //
 //   node ti-wasm/js/smoke.mjs <pkg dir> <dir of real TSLs> <ti binary>
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -97,6 +100,87 @@ for (const call of [
       failed++;
     }
   }
+}
+
+// ---- TrustContext ------------------------------------------------------------------
+
+const rust = resolve(new URL('../..', import.meta.url).pathname);
+const fixture = (name) => join(rust, 'ti-pki/tests/fixtures', name);
+
+/** A ti cache holding `tsl` and the embedded roots of `env`, as if just downloaded. */
+function seededCache(env, tslFile) {
+  const dir = mkdtempSync(join(tmpdir(), `ti-wasm-check-${env}-`));
+  const urls = JSON.parse(wasm.trust_urls(env));
+  const roots = join(rust, 'ti-pki/src', env === 'prod' ? 'roots-prod.json' : 'roots-nonprod.json');
+  for (const [kind, url, body] of [
+    ['roots', urls.roots_url, roots],
+    ['tsl', urls.tsl_url, join(real, tslFile)],
+  ]) {
+    const id = createHash('sha256').update(url).digest().subarray(0, 8).toString('hex');
+    const base = join(dir, 'ti-pki/v1', kind);
+    mkdirSync(base, { recursive: true });
+    writeFileSync(join(base, `${id}.body`), readFileSync(body));
+    const meta = { etag: '"fixture"', last_modified: null, fetched_at: Math.floor(Date.now() / 1000), max_age_secs: null };
+    writeFileSync(join(base, `${id}.json`), JSON.stringify(meta));
+  }
+  return dir;
+}
+
+/** A certificate of the production TSL view, as PEM, by its common name. */
+function listedPem(cn) {
+  const view = JSON.parse(wasm.verify_tsl(readFileSync(join(real, 'pu-10334.xml')), 'prod', NOW, undefined, 0));
+  return Object.values(view.certificates).find((c) => c.subject.startsWith(`CN=${cn},`)).pem;
+}
+
+const checks = [
+  { env: 'ref', tsl: 'tu-10713.xml', file: fixture('smcb-ee-test-only.pem'), result: 'valid' },
+  { env: 'ref', tsl: 'tu-10713.xml', file: fixture('admission-2.pem'), result: 'valid' },
+  { env: 'prod', tsl: 'pu-10334.xml', file: fixture('tsl-signing-unit-6.pem'), result: 'valid' },
+  { env: 'prod', tsl: 'pu-10334.xml', file: fixture('smcb-ee-test-only.pem'), result: 'invalid' },
+  { env: 'prod', tsl: 'pu-10334.xml', pem: 'MESIG.SMCB-OCSP2', result: 'invalid' },
+];
+
+const contexts = new Map();
+const scratch = mkdtempSync(join(tmpdir(), 'ti-wasm-pem-'));
+for (const c of checks) {
+  let ctx = contexts.get(c.env);
+  if (!ctx) {
+    started = performance.now();
+    ctx = new wasm.TrustContext(readFileSync(join(real, c.tsl)), c.env, NOW, undefined, 0);
+    console.log(`TrustContext ${c.env} ${(performance.now() - started).toFixed(0)} ms ${ctx.tsl()}`);
+    contexts.set(c.env, ctx);
+  }
+  let file = c.file;
+  if (c.pem) {
+    file = join(scratch, `${c.pem}.pem`);
+    writeFileSync(file, listedPem(c.pem));
+  }
+  started = performance.now();
+  const report = JSON.parse(ctx.check(readFileSync(file), NOW));
+  const ms = (performance.now() - started).toFixed(0);
+
+  const cache = seededCache(c.env, c.tsl);
+  let cli;
+  try {
+    cli = JSON.parse(
+      execFileSync(ti, ['pki', 'verify', file, '--env', c.env, '--offline', '--at', NOW, '--format', 'json'], {
+        env: { ...process.env, TI_CACHE_DIR: cache, XDG_STATE_HOME: cache },
+      }),
+    );
+  } catch (e) {
+    cli = JSON.parse(e.stdout);
+  }
+
+  const names = report.tree.filter((n) => n.role !== 'issuer').map((n) => n.name);
+  const errors = report.errors.map((e) => e.code);
+  console.log(
+    `check ${c.env.padEnd(4)} ${report.tree[0].name.padEnd(40)} ${report.result.padEnd(7)} ${(report.certificate_type ?? '-').padEnd(10)} ${(errors.join(',') || '-').padEnd(20)} ${ms} ms`,
+  );
+  expect('check result', report.result, c.result);
+  expect('cli valid', cli.valid, report.result === 'valid');
+  expect('cli type', cli.certificate_type, report.certificate_type);
+  expect('cli chain', cli.chain.map((link) => link.common_name), names);
+  expect('cli errors', cli.errors.map((e) => e.code).sort(), [...errors].sort());
 }
 
 if (failed) {

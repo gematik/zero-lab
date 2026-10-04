@@ -12,10 +12,16 @@ headers, the OCSP responders speak plain HTTP).
 | `trust_urls(env)` | `{environment, tsl_url, roots_url}` |
 | `verify_tsl(xml, env, now, roots_json?, grace_seconds)` | the TSL view, [`schemas/tsl-view.json`](schemas/tsl-view.json) |
 | `describe_certificate(der_or_pem, now)` | [`schemas/certificates.json`](schemas/certificates.json), as `ti pki inspect` |
+| `new TrustContext(xml, env, now, roots_json?, grace_seconds)` | verifies the TSL and roots once; `.tsl()` their state |
+| `TrustContext.check(der_or_pem, now)` | [`schemas/check.json`](schemas/check.json): a certificate as `ti pki verify --profile auto --offline` judges it, with its trust tree |
 
 `env` is `prod`, `ref`, `test` or `dev`; `now` is RFC 3339. A thrown `Error` means a
 wrong call (unknown environment, bad time, grace period over 30 days, no certificate);
 every verification verdict, including an invalid list, is inside the JSON.
+
+`TrustContext` is meant for the browser: the TSL and roots are verified once (about 100 ms),
+then each certificate in a few milliseconds, and nothing leaves the page. Revocation is not
+checked (OCSP needs a network); the report says `revocation: "not_checked"`.
 
 The TSL view verifies the list's signature and signer under the TSL signer CA of the
 environment's tier (`spec/tsl-xmldsig`), matches its CAs against the roots walked from the

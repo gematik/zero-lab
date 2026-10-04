@@ -58,7 +58,7 @@ mod maybe_send;
 mod reload;
 mod static_;
 mod transport;
-mod verify;
+pub(crate) mod verify;
 
 #[cfg(any(test, feature = "test-util"))]
 pub use crate::time::FixedClock;

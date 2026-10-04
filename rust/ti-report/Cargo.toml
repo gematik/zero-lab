@@ -13,7 +13,8 @@ publish.workspace = true
 
 [dependencies]
 # The TSL signature is verified on brainpoolP256r1, and the roots walk passes RSA roots.
-ti-pki = { workspace = true, features = ["brainpool", "rsa"] }
+# `load` verifies roots.json and TSL into a trust store; it has no network of its own.
+ti-pki = { workspace = true, features = ["brainpool", "rsa", "load"] }
 const-oid.workspace = true
 pem-rfc7468 = { workspace = true, features = ["alloc"] }
 serde.workspace = true

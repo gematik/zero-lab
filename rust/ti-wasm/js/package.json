@@ -26,6 +26,7 @@
     "types.d.ts",
     "tsl-view.json",
     "certificates.json",
+    "check.json",
     "VERSION.json",
     "README.md"
   ],

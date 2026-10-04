@@ -168,6 +168,32 @@ impl TrustStore {
 
 #[cfg(feature = "load")]
 impl TrustStore {
+    /// The store a roots.json and a TSL yield at `now`, verified as the loaders verify
+    /// them (the A_28419 roots walk from `config`'s anchor, the TSL's signature, signer and
+    /// `NextUpdate` under `config`'s TSL signer CAs), with the TSL's CAs, OCSP responders
+    /// and certificate types; also the verified TSL. Synchronous and without a network, for
+    /// callers that hold both documents already, such as a browser. The signer's OCSP
+    /// status is not checked and no stored TSL is compared.
+    ///
+    /// # Errors
+    ///
+    /// [`VerifyError`](crate::load::VerifyError), with the TSL's result code when the TSL
+    /// failed.
+    pub fn from_material(
+        config: &crate::TrustConfig,
+        roots_json: &[u8],
+        tsl_xml: &[u8],
+        now: crate::Timestamp,
+    ) -> Result<(Self, crate::tsl_signature::VerifiedTsl), crate::load::VerifyError> {
+        let mut verified =
+            crate::load::verify::verify_bytes(config, roots_json, tsl_xml, now, None)?;
+        let tsl = verified
+            .tsl
+            .take()
+            .ok_or_else(|| crate::load::VerifyError::new("no TSL was verified"))?;
+        Ok((TrustStore::from_verified(verified), tsl))
+    }
+
     pub(crate) fn from_verified(verified: crate::load::Verified) -> Self {
         TrustStore::new(verified.roots)
             .with_intermediates(verified.intermediates)

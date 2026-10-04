@@ -28,6 +28,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-report
 
 #### added
+- `check::CheckContext`: an environment's TSL and roots verified once, then any number of
+  certificates checked against them offline as `ti pki verify --profile auto` does
+  (`CheckReport`: verdict, profile, type, errors, warnings and the trust tree, end entity
+  first). Revocation is not checked.
 - New crate: the JSON reports on certificates and TSLs that the `ti` CLI and its
   WebAssembly build share. `describe(cert, now)` gives a certificate as `ti pki inspect`
   shows it (`CertificateInfo`, `OidInfo`); `tsl::Finding`, `tsl::CertSummary` and
@@ -42,6 +46,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-wasm
 
 #### added
+- `TrustContext`: `new TrustContext(xml, env, now, roots_json?, grace)` verifies once,
+  `check(der_or_pem, now)` returns `schemas/check.json`; for certificate checks in the
+  browser. The smoke test cross-checks it with `ti pki verify --offline`.
 - New crate: `ti-report` for JavaScript through wasm-bindgen, server and browser alike.
   `verify_tsl`, `describe_certificate`, `trust_urls` and `version` return JSON
   (`schemas/tsl-view.json`, `schemas/certificates.json`, typed in `js/types.d.ts`); the
@@ -130,6 +137,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pki
 
 #### added
+- `TrustStore::from_material(config, roots_json, tsl_xml, now)` (feature `load`): the trust
+  store and verified TSL from documents already in memory, synchronously, as the loaders
+  verify them, without going through the `Reloader`.
 - `oid::CV_ROOTCERT` and `oid::CV_CERT` (`oid_cv_rootcert`, `oid_cv_cert`, gemSpec_OID):
   the types the TSL states for its CV certificate services, which had no name.
 - `Certificate::signature_algorithm`, `checks::key_usage_name` and

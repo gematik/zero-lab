@@ -14,6 +14,18 @@ initSync({ module: readFileSync(new URL('./ti_wasm_bg.wasm', import.meta.url)) }
 const view = JSON.parse(verify_tsl(xmlBytes, 'prod', new Date().toISOString(), rootsJsonBytes, 7 * 86400));
 ```
 
-Every function returns a JSON string, described by `tsl-view.json` and `certificates.json`
+In a browser, load the module from its URL and check certificates locally:
+
+```js
+import init, { TrustContext } from './ti_wasm.js';
+
+await init(new URL('./ti_wasm_bg.wasm', import.meta.url));
+const now = new Date().toISOString();
+const context = new TrustContext(tslBytes, 'prod', now, rootsJsonBytes, 7 * 86400);
+/** @type {import('./types').CheckReport} */
+const report = JSON.parse(context.check(certificateBytes, now));
+```
+
+Every function returns a JSON string, described by `tsl-view.json`, `certificates.json` and `check.json`
 and typed in `types.d.ts`. A thrown `Error` is a wrong call, never a verdict. The module
 aborts on a panic; instantiate it anew after a trap.

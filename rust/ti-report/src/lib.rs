@@ -5,6 +5,7 @@
 //! No I/O and no clock: every function that judges validity takes the instant.
 
 pub mod certificate;
+pub mod check;
 pub mod oid;
 pub mod tsl;
 pub mod tsl_view;
@@ -15,6 +16,7 @@ use sha2::{Digest, Sha256};
 use ti_pki::{Certificate, Timestamp};
 
 pub use certificate::{CertificateInfo, describe};
+pub use check::{CheckContext, CheckReport};
 pub use oid::{OidInfo, TypeOid};
 pub use tsl_view::{TslView, tsl_view};
 

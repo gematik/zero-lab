@@ -169,3 +169,46 @@ export interface Certificates {
   schema: 1;
   certificates: CertificateInfo[];
 }
+
+/** The trust material a check ran against. */
+export interface CheckTsl {
+  result: 'valid' | 'invalid';
+  error: Finding | null;
+  sequence_number: number | null;
+  next_update: string | null;
+  roots_source: 'supplied' | 'embedded';
+  roots_warning: string | null;
+}
+
+export interface Issue {
+  /** e.g. expired, chain_incomplete */
+  code: string;
+  /** Common name of the certificate concerned; empty for the chain */
+  subject: string;
+  message: string;
+}
+
+/** A node of a trust tree: the end entity first, the root (or missing issuer) last. */
+export interface TrustNode {
+  /** Fingerprint when the TSL lists the certificate as a service */
+  id: string | null;
+  name: string;
+  role: string;
+  note: string;
+  state: 'ok' | 'warn' | 'bad';
+}
+
+/** `TrustContext.check`: a certificate checked offline; revocation is never checked. */
+export interface CheckReport {
+  schema: 1;
+  environment: Environment;
+  result: 'valid' | 'invalid';
+  tsl: CheckTsl;
+  profile: { name: string; reason: string; detail: string } | null;
+  certificate_type: string | null;
+  errors: Issue[];
+  warnings: Issue[];
+  revocation: 'not_checked';
+  tree: TrustNode[];
+  certificates: CertificateInfo[];
+}
