@@ -147,6 +147,43 @@ fn chain_tree(
     rows
 }
 
+/// The verified TSL as its own trust chain, for the Trust section: the list, its signer
+/// and the TSL signer CA, valid at `at` since the list verified then.
+fn tsl_tree(trust: &TrustInfo, at: Timestamp) -> Vec<TreeRow> {
+    let Some(tsl) = &trust.tsl else {
+        return Vec::new();
+    };
+    let ok = || Line::status(Tone::Good, "✓ ");
+    let next_update = trust.tsl_next_update_ts.map_or_else(
+        || " · closed list".to_owned(),
+        |t| format!(" · next update {}", date(t)),
+    );
+    let ocsp = match tsl.signer_ocsp {
+        Some(status) => Line::text(" · ").and_status(Tone::Good, format!("OCSP {status}")),
+        None => Line::text(" · ").and_status(Tone::Warn, "OCSP not checked"),
+    };
+    let row = |cert: &Certificate, place: &str| {
+        Line::dim(place.to_owned()).and_line(expiry(cert.not_after(), validity(cert, at)))
+    };
+    vec![
+        TreeRow {
+            name: ok().and_line(Line::strong(format!("TSL #{}", tsl.sequence_number))),
+            detail: Line::dim(format!(
+                "list{next_update} · {} CAs under the roots",
+                trust.intermediates
+            )),
+        },
+        TreeRow {
+            name: ok().and_text(&tsl.signer.common_name),
+            detail: row(&tsl.signer.certificate, "TSL signer").and_line(ocsp),
+        },
+        TreeRow {
+            name: ok().and_text(&tsl.tsl_signer_ca.common_name),
+            detail: row(&tsl.tsl_signer_ca.certificate, "TSL signer CA · embedded"),
+        },
+    ]
+}
+
 /// The `O=` of a distinguished name.
 fn organization(name: &str) -> Option<String> {
     inspect::dn_parts(name)

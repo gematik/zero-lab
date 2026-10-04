@@ -42,6 +42,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `no_ocsp_check`; `pki tsl show` names the signer and its CA. `pki roots list` and
   `pki tsl show` take `--at`, and `pki verify --at` verifies the trust material at that
   time too.
+- `pki verify` shows the TSL as a trust chain of its own under the certificate chain:
+  the list, its signer with its OCSP status, and the TSL signer CA (`trust.tsl` in the
+  JSON). A responder the TSL lists for the issuing CA's TSP reads "listed in the TSL"
+  (`tsl_listed`) and no longer warns.
 
 ### ti-connector-client
 
@@ -183,6 +187,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   the same TSP, not by a TSL listing (A_30046 (7), C_12791).
 - Profile `fd-tls-s`: the C.FD.TLS-S certificate of a Fachdienst TLS server, the type
   baseline without a role, default for the type; pair it with the expected FQDN.
+- OCSP responders the verified TSL lists as an OCSP service of the issuing CA's TSP,
+  certified by a CA of that TSP that a root signed, are authorized as
+  `ResponderAuthorization::TslListed`, without the `ocsp_responder_not_rfc6960` warning
+  (`TrustStore::listed_responder_tsps`; the loader fills the listing from the verified
+  TSL). A listing under another TSP authorizes nothing.
 - `Certificate::subject_alt_names`: the subject alternative names in OpenSSL notation
   (`DNS:…`, `IP:…`, `email:…`, `URI:…`), for display.
 - `tsl_signature::verify` (feature `brainpool`): the signature of a TSL, part A of

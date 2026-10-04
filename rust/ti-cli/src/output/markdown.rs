@@ -52,16 +52,18 @@ pub fn render(doc: &Document, w: &mut impl Write) -> io::Result<()> {
                 }
             }
             Block::Pem(pem) => writeln!(w, "```pem\n{}\n```", pem.trim_end())?,
-            Block::Tree(rows) => {
-                let drawn = super::document::tree_prefixes(rows.len());
+            Block::Tree(trees) => {
+                let rows: Vec<(&super::document::TreeRow, String)> = trees
+                    .iter()
+                    .flat_map(|rows| rows.iter().zip(super::document::tree_prefixes(rows.len())))
+                    .collect();
                 let width = rows
                     .iter()
-                    .zip(&drawn)
                     .map(|(row, prefix)| prefix.chars().count() + row.name.plain().chars().count())
                     .max()
                     .unwrap_or(0);
                 writeln!(w, "```text")?;
-                for (row, prefix) in rows.iter().zip(&drawn) {
+                for (row, prefix) in rows {
                     let name = format!("{prefix}{}", row.name.plain());
                     let detail = row.detail.plain();
                     if detail.is_empty() {

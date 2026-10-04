@@ -6,7 +6,7 @@
 use core::fmt::Write as _;
 use std::io::{self, Write};
 
-use super::document::{Block, Document, Line, Span, Tone};
+use super::document::{Block, Document, Line, Span, Tone, TreeRow};
 use super::style;
 
 /// Width of the label column.
@@ -70,16 +70,18 @@ pub fn render(doc: &Document, w: &mut impl Write) -> io::Result<()> {
                     out.line(&table_row(cells, &widths))?;
                 }
             }
-            Block::Tree(rows) => {
+            Block::Tree(trees) => {
                 out.group(Group::Table)?;
-                let drawn = super::document::tree_prefixes(rows.len());
+                let rows: Vec<(&TreeRow, String)> = trees
+                    .iter()
+                    .flat_map(|rows| rows.iter().zip(super::document::tree_prefixes(rows.len())))
+                    .collect();
                 let width = rows
                     .iter()
-                    .zip(&drawn)
                     .map(|(row, prefix)| prefix.chars().count() + row.name.plain().chars().count())
                     .max()
                     .unwrap_or(0);
-                for (row, prefix) in rows.iter().zip(&drawn) {
+                for (row, prefix) in rows {
                     let used = prefix.chars().count() + row.name.plain().chars().count();
                     let label = style::LABEL;
                     let mut line = format!("{label}{prefix}{label:#}{}", styled(&row.name));
@@ -242,7 +244,6 @@ mod tests {
 
     #[test]
     fn trees_draw_branches_and_align_details() {
-        use crate::output::document::TreeRow;
         let row = |name: &str, detail: &str| TreeRow {
             name: Line::strong(name),
             detail: Line::dim(detail),
@@ -256,6 +257,13 @@ mod tests {
         assert_eq!(
             plain(&doc),
             "Trust\n  Praxis          end entity\n  └── SMCB-CA51   CA\n      └── RCA5    root\n"
+        );
+        // A second tree right after joins the block: one column for both.
+        doc.tree(vec![row("TSL #1", "list"), row("Signer", "TSL signer")]);
+        assert_eq!(
+            plain(&doc),
+            "Trust\n  Praxis          end entity\n  └── SMCB-CA51   CA\n      └── RCA5    root\n  \
+             TSL #1          list\n  └── Signer      TSL signer\n"
         );
     }
 

@@ -18,6 +18,8 @@ pub struct Verified {
     pub(crate) intermediates: Vec<crate::tsl::Intermediate>,
     /// The TSL's `NextUpdate`.
     pub(crate) tsl_next_update: Option<Timestamp>,
+    /// The OCSP responders the TSL lists in accord, with their TSP.
+    pub(crate) ocsp_responders: Vec<(Certificate, String)>,
     /// The verified TSL; `None` only for test material.
     pub(crate) tsl: Option<VerifiedTsl>,
     /// How the TSL relates to the stored one.
@@ -68,10 +70,18 @@ pub(crate) fn verify_material(
     let store = crate::TrustStore::new(roots.iter().cloned());
     let matched =
         crate::tsl::match_to_roots(tsl.tsl.intermediate_cas(), &store, &config.algorithms);
+    let ocsp_responders = tsl
+        .tsl
+        .services
+        .iter()
+        .filter(|s| s.service_type == crate::tsl::SERVICE_TYPE_OCSP && s.is_in_accord())
+        .filter_map(|s| Some((s.certificate.clone()?, s.provider.clone())))
+        .collect();
     Ok(Verified {
         roots,
         intermediates: matched.intermediates,
         tsl_next_update: tsl.tsl.next_update,
+        ocsp_responders,
         tsl: Some(tsl),
         sequence,
     })
@@ -114,6 +124,7 @@ mod tests {
         let verified = verify_material(&config, &material, Timestamp(1_789_340_408), None).unwrap();
         assert_eq!(verified.roots.len(), 10);
         assert_eq!(verified.intermediates.len(), 84);
+        assert_eq!(verified.ocsp_responders.len(), 115);
         assert_eq!(
             verified.tsl_next_update.map(|t| t.to_string()).as_deref(),
             Some("2026-10-13T23:00:08Z")

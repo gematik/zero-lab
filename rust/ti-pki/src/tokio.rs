@@ -263,6 +263,7 @@ mod tests {
             roots: Vec::new(),
             intermediates: Vec::new(),
             tsl_next_update: None,
+            ocsp_responders: Vec::new(),
             tsl: None,
             sequence: crate::tsl_signature::Sequence::Newer,
         })

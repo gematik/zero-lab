@@ -159,8 +159,43 @@ pub struct TrustInfo {
     /// Warnings about the TSL: `no_ocsp_check` when its signer's status was not
     /// queried, `validity_warning_1` within the grace period.
     pub tsl_warnings: Vec<&'static str>,
+    /// The TSL the CAs come from and what its trust rests on; absent with the embedded
+    /// roots alone.
+    pub tsl: Option<TslTrust>,
     /// Why the material is less than the environment's full set, if it is.
     pub note: Option<String>,
+}
+
+/// The verified TSL as a trust chain of its own: the list, its signer, the TSL signer CA.
+#[derive(Serialize)]
+pub struct TslTrust {
+    /// `TSLSequenceNumber`.
+    pub sequence_number: u64,
+    /// The C.TSL.SIG certificate the list is signed with.
+    pub signer: CertRef,
+    /// `good` when the signer's OCSP status was queried, else absent.
+    pub signer_ocsp: Option<&'static str>,
+    /// The configured TSL signer CA that issued the signer.
+    pub tsl_signer_ca: CertRef,
+}
+
+/// A certificate named in a report.
+#[derive(Serialize)]
+pub struct CertRef {
+    pub common_name: String,
+    pub not_after: String,
+    #[serde(skip)]
+    pub certificate: ti_pki::Certificate,
+}
+
+impl CertRef {
+    fn new(certificate: &ti_pki::Certificate) -> Self {
+        CertRef {
+            common_name: certificate.subject_cn().to_owned(),
+            not_after: certificate.not_after().to_string(),
+            certificate: certificate.clone(),
+        }
+    }
 }
 
 /// How a command reaches trust material: over the network or not, and where the cache
@@ -390,6 +425,17 @@ where
                 .filter(|w| w.code.is_warning())
                 .map(|w| w.code.as_str())
                 .collect(),
+            tsl: match (&status.tsl_state, &status.tsl_signer) {
+                (Some(state), Some((signer, ca))) => Some(TslTrust {
+                    sequence_number: state.sequence_number,
+                    signer: CertRef::new(signer),
+                    signer_ocsp: status
+                        .tsl_signer_status
+                        .map(ti_pki::RevocationStatus::as_str),
+                    tsl_signer_ca: CertRef::new(ca),
+                }),
+                _ => None,
+            },
             note: None,
         },
         tsl_state: status.tsl_state,
@@ -411,6 +457,7 @@ fn embedded(config: &TrustConfig, note: &str) -> Result<Material, CliError> {
             roots: store.len(),
             intermediates: 0,
             tsl_warnings: Vec::new(),
+            tsl: None,
             note: Some(note.to_owned()),
         },
         tsl_state: None,

@@ -90,8 +90,10 @@ never on `message`.
   - `trust.note` is set when the trust material is less than the full set, e.g.
     offline with nothing cached. Then pass the issuing CA with `--issuer`.
 - The TSL is verified whenever trust material is loaded; a list that fails is not used.
-  `trust.tsl_warnings` holds `no_ocsp_check` when its signer's OCSP status was not
-  queried (offline, `--at`). `tsl show` takes only certificates and provider names from
+  `trust.tsl` names the list, its signer and the TSL signer CA; `trust.tsl_warnings`
+  holds `no_ocsp_check` when the signer's OCSP status was not queried (offline, `--at`).
+  `revocation.authorization` is `tsl_listed` for a responder the TSL lists for the
+  issuing CA's TSP. `tsl show` takes only certificates and provider names from
   it (the provider only in JSON, for filtering); a CA counts only if a verified root
   signed it.
 - `tsl verify` checks a TSL file: signature, signer under the embedded TSL signer CA,

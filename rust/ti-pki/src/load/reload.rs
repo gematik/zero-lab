@@ -13,10 +13,10 @@ use super::artifact::{Artifact, TrustMaterial};
 use super::loader::{LoadError, Loader};
 use super::maybe_send::{MaybeSend, MaybeSync};
 use super::verify::{VerifyError, VerifyFn, verify_material};
-use crate::revocation::{RevocationChecker, Unchecked};
+use crate::revocation::{RevocationChecker, RevocationStatus, Unchecked};
 use crate::time::{Clock, Timestamp};
 use crate::tsl_signature::{Sequence, TslError, TslState};
-use crate::{Error, Tier, TrustConfig, TrustStore};
+use crate::{Certificate, Error, Tier, TrustConfig, TrustStore};
 use ti_cache::Source;
 
 /// The longest a production deployment may keep using trust material it could not
@@ -131,6 +131,10 @@ pub struct ReloadStatus {
     /// without a signer status checker, [`validity_warning_1`](crate::tsl_signature::TslCode::ValidityWarning1)
     /// within the grace period.
     pub tsl_warnings: Vec<TslError>,
+    /// The current TSL's signer and the TSL signer CA that issued it.
+    pub tsl_signer: Option<(Certificate, Certificate)>,
+    /// The signer's OCSP status, when it was queried.
+    pub tsl_signer_status: Option<RevocationStatus>,
 }
 
 /// What a [`Reloader::tick`] did.
@@ -197,6 +201,8 @@ struct Current {
     tsl_next_update: Option<Timestamp>,
     tsl_state: Option<TslState>,
     tsl_warnings: Vec<TslError>,
+    tsl_signer: Option<(Certificate, Certificate)>,
+    tsl_signer_status: Option<RevocationStatus>,
     source: Source,
     generation: u64,
 }
@@ -211,6 +217,8 @@ impl Current {
             tsl_next_update: self.tsl_next_update,
             tsl_state: self.tsl_state.clone(),
             tsl_warnings: self.tsl_warnings.clone(),
+            tsl_signer: self.tsl_signer.clone(),
+            tsl_signer_status: self.tsl_signer_status,
             source: self.source,
             generation: self.generation,
         }
@@ -288,6 +296,8 @@ impl<C: Clock> TrustStoreHandle<C> {
                 .as_ref()
                 .map(|c| c.tsl_warnings.clone())
                 .unwrap_or_default(),
+            tsl_signer: current.as_ref().and_then(|c| c.tsl_signer.clone()),
+            tsl_signer_status: current.as_ref().and_then(|c| c.tsl_signer_status),
         }
     }
 
@@ -508,10 +518,20 @@ where
             || (None, Vec::new()),
             |tsl| (Some(TslState::of(&tsl.tsl)), tsl.warnings.clone()),
         );
+        let tsl_signer = verified
+            .tsl
+            .as_ref()
+            .map(|tsl| (tsl.signer.clone(), tsl.anchor.clone()));
+        let tsl_signer_status = verified
+            .tsl
+            .as_ref()
+            .and_then(|tsl| tsl.signer_status.as_ref().map(|r| r.status));
         self.handle.current.store(Some(Arc::new(Current {
             tsl_next_update: verified.tsl_next_update,
             tsl_state,
             tsl_warnings,
+            tsl_signer,
+            tsl_signer_status,
             store: Arc::new(TrustStore::from_verified(verified)),
             etags: [material.meta[0].etag.clone(), material.meta[1].etag.clone()],
             fetched_at: material.fetched_at,
@@ -646,6 +666,7 @@ mod tests {
             roots: Vec::new(),
             intermediates: Vec::new(),
             tsl_next_update,
+            ocsp_responders: Vec::new(),
             tsl: None,
             sequence: Sequence::Newer,
         })

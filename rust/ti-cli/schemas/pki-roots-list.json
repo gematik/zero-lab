@@ -146,6 +146,70 @@
             ]
           },
           "description": "Warnings about the TSL: no_ocsp_check when its signer's OCSP status was not queried (offline, --at), validity_warning_1 past NextUpdate within the grace period, tsl_anchor_announced when it announces a TSL signer CA this tool does not know yet."
+        },
+        "tsl": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "sequence_number": {
+                  "type": "integer"
+                },
+                "signer": {
+                  "type": "object",
+                  "properties": {
+                    "common_name": {
+                      "type": "string"
+                    },
+                    "not_after": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "common_name",
+                    "not_after"
+                  ],
+                  "additionalProperties": false
+                },
+                "signer_ocsp": {
+                  "enum": [
+                    "good",
+                    null
+                  ],
+                  "description": "The signer's OCSP status when it was queried; null offline or with --at"
+                },
+                "tsl_signer_ca": {
+                  "type": "object",
+                  "properties": {
+                    "common_name": {
+                      "type": "string"
+                    },
+                    "not_after": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "common_name",
+                    "not_after"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "sequence_number",
+                "signer",
+                "signer_ocsp",
+                "tsl_signer_ca"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The verified TSL the CAs come from, its signer and the TSL signer CA; null with the embedded roots alone"
         }
       },
       "required": [
@@ -155,6 +219,7 @@
         "roots",
         "intermediates",
         "tsl_warnings",
+        "tsl",
         "note"
       ],
       "additionalProperties": false
