@@ -41,7 +41,7 @@ struct RootInfo {
 
 /// Runs `ti pki roots list`.
 pub fn list(args: &TrustArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
-    let env = super::concrete(args.env)?;
+    let env = super::concrete(args.env, global)?;
     let config = TrustConfig::preset(env);
     config.validate(env.tier()).map_err(CliError::Trust)?;
     let session = Session::new(global, args.offline, out)?;

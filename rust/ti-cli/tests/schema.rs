@@ -405,6 +405,28 @@ fn roots_and_tsl_need_a_concrete_environment() {
         &["pki", "roots", "list", "--offline", "--env", "auto"],
     );
     assert_eq!(out.status.code(), Some(2));
+    assert_conforms(
+        "error",
+        &ti(
+            &cache.0,
+            &["--format", "json", "pki", "tsl", "show", "--env", "auto"],
+        )
+        .stderr,
+    );
+
+    // From TI_ENV, auto is a default: production, where nothing can be detected.
+    let from_variable = Command::new(env!("CARGO_BIN_EXE_ti"))
+        .args(["--format", "json", "pki", "roots", "list", "--offline"])
+        .args(["--at", "2026-10-01T00:00:00Z"])
+        .env_remove("TI_FORMAT")
+        .env("TI_ENV", "auto")
+        .env("TI_CACHE_DIR", &cache.0)
+        .env("XDG_STATE_HOME", cache.0.join("state"))
+        .output()
+        .unwrap();
+    assert_eq!(from_variable.status.code(), Some(0));
+    let report: Value = serde_json::from_slice(&from_variable.stdout).unwrap();
+    assert_eq!(report["environment"], "prod");
 }
 
 #[test]

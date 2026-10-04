@@ -71,6 +71,9 @@ pub enum CliError {
     /// `--env auto` found no evidence for production or test.
     #[error("cannot tell the TI environment from the certificates: {0}")]
     EnvironmentUndetected(String),
+    /// The environment given does not fit the command.
+    #[error("{0}")]
+    Environment(String),
     /// The trust material of the environment could not be used.
     #[error("trust material unavailable: {0}")]
     Trust(#[source] ti_pki::Error),
@@ -123,6 +126,7 @@ impl CliError {
             CliError::Pkcs12 { .. } => "p12_unreadable",
             CliError::OutputExists(_) => "output_exists",
             CliError::EnvironmentUndetected(_) => "environment_undetected",
+            CliError::Environment(_) => "environment_invalid",
             CliError::Trust(_) | CliError::TrustLoad(_) => "trust_material_unavailable",
             CliError::HttpSetup(_) => "http_setup",
             CliError::ServerUnreachable(_) => "server_unreachable",
@@ -158,7 +162,9 @@ impl CliError {
             CliError::OutputExists(_) => {
                 Some("choose another OUTPUT, or pass --force to replace it")
             }
-            CliError::EnvironmentUndetected(_) => Some("pass --env prod, ref, test or dev"),
+            CliError::EnvironmentUndetected(_) | CliError::Environment(_) => {
+                Some("pass --env prod, ref, test or dev")
+            }
             CliError::TrustLoad(_) => {
                 Some("check the network and the HTTP options (-v shows them), or pass --offline")
             }
@@ -201,6 +207,7 @@ impl CliError {
             | CliError::Certificate { .. }
             | CliError::Pkcs12 { .. } => Exit::Input,
             CliError::EnvironmentUndetected(_)
+            | CliError::Environment(_)
             | CliError::OutputExists(_)
             | CliError::HttpSetup(_)
             | CliError::UnknownSchema(_)

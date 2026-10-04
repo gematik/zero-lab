@@ -42,6 +42,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `no_ocsp_check`; `pki tsl show` names the signer and its CA. `pki roots list` and
   `pki tsl show` take `--at`, and `pki verify --at` verifies the trust material at that
   time too.
+- Every command that needs an environment takes `--env` with `TI_ENV` as its default;
+  `probe` too, besides its positional `ENV`, which wins over `TI_ENV` and must agree
+  with an explicit `--env`. `TI_ENV=auto` means `prod` for `pki roots list` and
+  `pki tsl show`, which have nothing to detect from; `--env auto` there, and `auto` for
+  `probe`, are usage errors (`environment_invalid`).
 - `pki verify` shows the TSL as a trust chain of its own under the certificate chain:
   the list, its signer with its OCSP status, and the TSL signer CA (`trust.tsl` in the
   JSON). A responder the TSL lists for the issuing CA's TSP reads "listed in the TSL"

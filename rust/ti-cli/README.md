@@ -38,7 +38,7 @@ ti connector encrypt letter.txt --to-card 80276883110000162094   # for a card's 
 ti connector export certificate 80276883110000162094 C.ENC > enc.pem
 ti connector decrypt letter.txt.p7m --card 80276883110000163974
 ti connector comfort activate 80276883110000163974   # PIN.QES once, then signatures without
-ti probe ref                        # which TI services of ref answer, live
+ti probe ref                        # which TI services of ref answer, live (or --env ref)
 ti cache clear
 ti schema pki verify                # JSON Schema of a command's output
 ti agent                            # usage guide for scripts and agents
@@ -79,7 +79,8 @@ and Windows x86_64.
 ## Trust material
 
 `pki roots list` and `pki tsl show` show what `verify` works with, for one environment
-(`--env`, default `prod`; `auto` has nothing to detect from here). `roots list` gives the
+(`--env`, default `prod`; there is nothing to detect from here, so `TI_ENV=auto` means
+`prod` and `--env auto` is an error). `roots list` gives the
 roots the A_28419 walk reaches from the embedded anchor. `tsl show` lists the TSL's CAs
 with the verified root that signed each, or in red why none did. Filter with `--ca`,
 `--provider`, `--root` and `--rejected`.

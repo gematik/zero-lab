@@ -109,7 +109,7 @@ struct CaInfo {
 
 /// Runs `ti pki tsl show`.
 pub fn show(args: &TslShowArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
-    let env = super::concrete(args.trust.env)?;
+    let env = super::concrete(args.trust.env, global)?;
     let config = TrustConfig::preset(env);
     config.validate(env.tier()).map_err(CliError::Trust)?;
     let session = Session::new(global, args.trust.offline, out)?;

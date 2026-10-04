@@ -511,6 +511,39 @@ fn unusable_http_options_are_usage_errors() {
     assert_eq!(error["error"]["kind"], "http_setup");
 }
 
+/// `probe ENV` and `--env` (and `TI_ENV`) name the same thing; these all fail before a
+/// request is made.
+#[test]
+fn probe_takes_the_environment_as_argument_or_option() {
+    let probe = |args: &[&str], ti_env: Option<&str>| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_ti"));
+        command
+            .args(["--format", "json", "probe"])
+            .args(args)
+            .env_remove("TI_ENV");
+        if let Some(value) = ti_env {
+            command.env("TI_ENV", value);
+        }
+        let out = command.output().unwrap();
+        (out.status.code(), stderr(&out))
+    };
+    for (args, ti_env, says) in [
+        (&[][..], None, "probe needs an environment"),
+        (&[], Some("auto"), "probe needs an environment"),
+        (&["--env", "auto"], None, "auto has nothing to detect"),
+        (
+            &["ref", "--env", "test"],
+            None,
+            "ENV ref and --env test disagree",
+        ),
+    ] {
+        let (code, err) = probe(args, ti_env);
+        assert_eq!(code, Some(2), "{args:?} {ti_env:?}: {err}");
+        assert!(err.contains(says), "{args:?} {ti_env:?}: {err}");
+        assert!(err.contains("environment_invalid"), "{err}");
+    }
+}
+
 #[test]
 fn completions_for_every_shell() {
     for shell in ["bash", "zsh", "fish", "elvish", "powershell"] {
