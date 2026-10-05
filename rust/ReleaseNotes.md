@@ -56,46 +56,6 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `just wasm-build`, `wasm-size`, `wasm-smoke` (Node on the real TSLs, cross-checked with
   `ti pki tsl verify`) and `wasm-vendor`.
 
-### ti-cli
-
-#### added
-- `ti pki tsl verify FILE`: a TSL file's signature and signer under the embedded TSL
-  signer CA, `NextUpdate` (`--grace DAYS`), the signer's OCSP status unless `--offline`
-  or `--at`, and with `--previous` the sequence; `--env auto` (default) detects
-  production or not. Exit 0 valid, 1 not valid with the gemSpec_PKI result code and the
-  `spec/tsl-xmldsig` rule.
-
-#### changed
-- Trust material is loaded with the TSL verified (`spec/tsl-xmldsig`), the signer's OCSP
-  status queried online, and the TSL's `Id` and sequence number kept in the state
-  directory so an older list stays rejected (`-v` shows the file; one that cannot be read
-  or written is a warning). `trust.tsl_warnings` reports
-  `no_ocsp_check`; `pki tsl show` names the signer and its CA. `pki roots list` and
-  `pki tsl show` take `--at`, and `pki verify --at` verifies the trust material at that
-  time too.
-- Every command that needs an environment takes `--env` with `TI_ENV` as its default;
-  `probe` too, besides its positional `ENV`, which wins over `TI_ENV` and must agree
-  with an explicit `--env`. `TI_ENV=auto` means `prod` for `pki roots list` and
-  `pki tsl show`, which have nothing to detect from; `--env auto` there, and `auto` for
-  `probe`, are usage errors (`environment_invalid`).
-- `pki profiles describe NAME --env ENV` lists the CAs the environment's verified TSL
-  allows to issue the profile's types; `pki verify` reports `cert_type_ca_not_authorized`
-  and `cert_type_unchecked`.
-- `pki verify` shows the TSL as a trust chain of its own under the certificate chain:
-  the list, its signer with its OCSP status, and the TSL signer CA (`trust.tsl` in the
-  JSON). A responder the TSL lists for the issuing CA's TSP reads "listed in the TSL"
-  (`tsl_listed`) and no longer warns.
-
-#### fixed
-- Names with a multi-valued RDN, such as an HBA's `GN=…+SN=…+SERIALNUMBER=…+CN=…`: `pki
-  inspect` showed the whole RDN as the given name and found no common name, and issuer
-  names in chains and `tsl show` fell back to the full DN. Every value is now its own field,
-  RFC 4514 escapes (`\+`, `\C3\A4`) are undone, and a name without a common name shows as
-  "given name surname".
-- `pki inspect` labels every name attribute x509-cert prints: TITLE, POSTALCODE, EMAIL,
-  PSEUDONYM, INITIALS, DESCRIPTION, DNQUALIFIER, UID, DC and organizationIdentifier
-  showed unlabelled, the latter as hex DER (`#0c07…`), which is now decoded to its text.
-
 ### ti-connector-client
 
 #### added
@@ -357,6 +317,46 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 #### added
 - `Env`, `Tier`, `EnvParseError`; `serde` and `clap` features.
 - `Timestamp` and `Clock` (moved from ti-pki), `SystemClock` behind `std`.
+
+## Release ti-cli 0.2.0, 2026-10-05
+
+### added
+- `ti pki tsl verify FILE`: a TSL file's signature and signer under the embedded TSL
+  signer CA, `NextUpdate` (`--grace DAYS`), the signer's OCSP status unless `--offline`
+  or `--at`, and with `--previous` the sequence; `--env auto` (default) detects
+  production or not. Exit 0 valid, 1 not valid with the gemSpec_PKI result code and the
+  `spec/tsl-xmldsig` rule.
+
+### changed
+- Trust material is loaded with the TSL verified (`spec/tsl-xmldsig`), the signer's OCSP
+  status queried online, and the TSL's `Id` and sequence number kept in the state
+  directory so an older list stays rejected (`-v` shows the file; one that cannot be read
+  or written is a warning). `trust.tsl_warnings` reports
+  `no_ocsp_check`; `pki tsl show` names the signer and its CA. `pki roots list` and
+  `pki tsl show` take `--at`, and `pki verify --at` verifies the trust material at that
+  time too.
+- Every command that needs an environment takes `--env` with `TI_ENV` as its default;
+  `probe` too, besides its positional `ENV`, which wins over `TI_ENV` and must agree
+  with an explicit `--env`. `TI_ENV=auto` means `prod` for `pki roots list` and
+  `pki tsl show`, which have nothing to detect from; `--env auto` there, and `auto` for
+  `probe`, are usage errors (`environment_invalid`).
+- `pki profiles describe NAME --env ENV` lists the CAs the environment's verified TSL
+  allows to issue the profile's types; `pki verify` reports `cert_type_ca_not_authorized`
+  and `cert_type_unchecked`.
+- `pki verify` shows the TSL as a trust chain of its own under the certificate chain:
+  the list, its signer with its OCSP status, and the TSL signer CA (`trust.tsl` in the
+  JSON). A responder the TSL lists for the issuing CA's TSP reads "listed in the TSL"
+  (`tsl_listed`) and no longer warns.
+
+### fixed
+- Names with a multi-valued RDN, such as an HBA's `GN=…+SN=…+SERIALNUMBER=…+CN=…`: `pki
+  inspect` showed the whole RDN as the given name and found no common name, and issuer
+  names in chains and `tsl show` fell back to the full DN. Every value is now its own field,
+  RFC 4514 escapes (`\+`, `\C3\A4`) are undone, and a name without a common name shows as
+  "given name surname".
+- `pki inspect` labels every name attribute x509-cert prints: TITLE, POSTALCODE, EMAIL,
+  PSEUDONYM, INITIALS, DESCRIPTION, DNQUALIFIER, UID, DC and organizationIdentifier
+  showed unlabelled, the latter as hex DER (`#0c07…`), which is now decoded to its text.
 
 ## Release ti-cli 0.1.2, 2026-10-02
 
