@@ -194,6 +194,8 @@ pub fn ext_key_usage_name(eku: &ObjectIdentifier) -> String {
         "1.3.6.1.5.5.7.3.4" => "id-kp-emailProtection",
         "1.3.6.1.5.5.7.3.8" => "id-kp-timeStamping",
         "1.3.6.1.5.5.7.3.9" => "id-kp-OCSPSigning",
+        // ETSI TS 102 231, the C.TSL.SIG certificate's only extended key usage.
+        "0.4.0.2231.3.0" => "id-tsl-kp-tslSigning",
         other => return other.to_owned(),
     };
     name.to_owned()
@@ -211,6 +213,18 @@ fn oids(list: &[ObjectIdentifier]) -> String {
 mod tests {
     use super::*;
     use crate::testing::{TestPki, typed};
+
+    #[test]
+    fn extended_key_usage_names() {
+        assert_eq!(
+            ext_key_usage_name(&crate::cert_type::TSL_SIGNING),
+            "id-tsl-kp-tslSigning"
+        );
+        assert_eq!(
+            ext_key_usage_name(&ObjectIdentifier::new_unwrap("1.2.3")),
+            "1.2.3"
+        );
+    }
 
     #[test]
     fn fqdn_in_the_common_name() {

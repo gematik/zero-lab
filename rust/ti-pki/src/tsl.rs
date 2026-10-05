@@ -69,6 +69,80 @@ pub struct Tsl {
     /// skips ([`Tsl::parse_verified`](crate::tsl_signature), TSLSIG-052), [`Tsl::parse`]
     /// rejects instead.
     pub skipped: Vec<Skipped>,
+    /// What `SchemeInformation` says about the list and its operator.
+    pub scheme: SchemeInfo,
+}
+
+/// `SchemeInformation` beyond sequence number and dates: what the list is and who
+/// publishes it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct SchemeInfo {
+    /// `TSLVersionIdentifier`.
+    pub version_identifier: Option<u32>,
+    /// `TSLType`, e.g. `http://uri.etsi.org/TrstSvc/TSLtype/generic`.
+    pub tsl_type: String,
+    /// The first `SchemeName`.
+    pub scheme_name: String,
+    /// The first `SchemeOperatorName`, e.g. `gematik GmbH`.
+    pub operator_name: String,
+    /// `SchemeOperatorAddress/PostalAddresses`.
+    pub postal_addresses: Vec<PostalAddress>,
+    /// `SchemeOperatorAddress/ElectronicAddress`, e.g. `mailto:…`.
+    pub electronic_addresses: Vec<String>,
+    /// `PointersToOtherTSL`: where the list is published.
+    pub pointers: Vec<TslPointer>,
+}
+
+impl SchemeInfo {
+    /// The TSL's primary download point (pointer marked `1.2.276.0.76.4.120`).
+    pub fn primary_location(&self) -> Option<&str> {
+        self.location_marked(PRIMARY_LOCATION)
+    }
+
+    /// The TSL's backup download point (pointer marked `1.2.276.0.76.4.121`).
+    pub fn backup_location(&self) -> Option<&str> {
+        self.location_marked(BACKUP_LOCATION)
+    }
+
+    fn location_marked(&self, oid: &str) -> Option<&str> {
+        self.pointers
+            .iter()
+            .find(|p| p.additional_information.iter().any(|i| i == oid))
+            .map(|p| p.location.as_str())
+    }
+}
+
+/// The `AdditionalInformation` of the pointer to the primary download point.
+const PRIMARY_LOCATION: &str = "1.2.276.0.76.4.120";
+/// The `AdditionalInformation` of the pointer to the backup download point.
+const BACKUP_LOCATION: &str = "1.2.276.0.76.4.121";
+
+/// A postal address of the scheme operator.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct PostalAddress {
+    /// `StreetAddress`.
+    pub street: String,
+    /// `PostalCode`.
+    pub postal_code: String,
+    /// `Locality`.
+    pub locality: String,
+    /// `StateOrProvince`.
+    pub state: String,
+    /// `CountryName`.
+    pub country: String,
+}
+
+/// An `OtherTSLPointer`: a location of the list and what it is.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct TslPointer {
+    /// `TSLLocation`.
+    pub location: String,
+    /// `AdditionalInformation/TextualInformation`, e.g. the OID marking the primary
+    /// location.
+    pub additional_information: Vec<String>,
 }
 
 /// A service of a verified TSL that could not be processed, and why.
@@ -131,7 +205,7 @@ impl Tsl {
         let xml = core::str::from_utf8(xml).map_err(|e| malformed(e.to_string()))?;
         let list: xml::TrustServiceStatusList =
             quick_xml::de::from_str(xml).map_err(|e| malformed(e.to_string()))?;
-        let scheme = list.scheme_information;
+        let mut scheme = list.scheme_information;
         let mut services = Vec::new();
         let mut skipped = Vec::new();
         for provider in list.provider_list.map(|l| l.providers).unwrap_or_default() {
@@ -155,11 +229,13 @@ impl Tsl {
             issued_at: timestamp(&scheme.list_issue_date_time, "ListIssueDateTime")?,
             next_update: scheme
                 .next_update
+                .take()
                 .and_then(|n| n.date_time)
                 .map(|t| timestamp(&t, "NextUpdate"))
                 .transpose()?,
             services,
             skipped,
+            scheme: scheme_info(scheme),
         })
     }
 
@@ -325,6 +401,55 @@ fn convert(provider: &str, info: xml::ServiceInformation) -> Result<Service, Err
     })
 }
 
+fn scheme_info(details: xml::SchemeInformation) -> SchemeInfo {
+    let trimmed = |s: Option<String>| s.map(|s| s.trim().to_owned()).unwrap_or_default();
+    let (postal, electronic) = details
+        .operator_address
+        .map_or((None, None), |a| (a.postal, a.electronic));
+    SchemeInfo {
+        version_identifier: details
+            .version_identifier
+            .and_then(|v| v.trim().parse().ok()),
+        tsl_type: trimmed(details.tsl_type),
+        scheme_name: first_name(details.scheme_name),
+        operator_name: first_name(details.operator_name),
+        postal_addresses: postal
+            .map(|p| p.addresses)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|a| PostalAddress {
+                street: trimmed(a.street),
+                postal_code: trimmed(a.postal_code),
+                locality: trimmed(a.locality),
+                state: trimmed(a.state),
+                country: trimmed(a.country),
+            })
+            .collect(),
+        electronic_addresses: electronic
+            .map(|e| e.uris)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|u| u.value.trim().to_owned())
+            .collect(),
+        pointers: details
+            .pointers
+            .map(|p| p.pointers)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|p| TslPointer {
+                location: trimmed(p.location),
+                additional_information: p
+                    .additional
+                    .map(|a| a.texts)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|t| t.value.trim().to_owned())
+                    .collect(),
+            })
+            .collect(),
+    }
+}
+
 fn first_name(names: Option<xml::Names>) -> String {
     names
         .and_then(|n| n.names.into_iter().next())
@@ -373,6 +498,74 @@ mod xml {
         pub(super) list_issue_date_time: String,
         #[serde(rename = "NextUpdate")]
         pub(super) next_update: Option<NextUpdate>,
+        // The descriptive part, every element optional. Not a flattened struct: serde's
+        // flatten loses quick-xml's number parsing.
+        #[serde(rename = "TSLVersionIdentifier")]
+        pub(super) version_identifier: Option<String>,
+        #[serde(rename = "TSLType")]
+        pub(super) tsl_type: Option<String>,
+        #[serde(rename = "SchemeOperatorName")]
+        pub(super) operator_name: Option<Names>,
+        #[serde(rename = "SchemeOperatorAddress")]
+        pub(super) operator_address: Option<OperatorAddress>,
+        #[serde(rename = "SchemeName")]
+        pub(super) scheme_name: Option<Names>,
+        #[serde(rename = "PointersToOtherTSL")]
+        pub(super) pointers: Option<Pointers>,
+    }
+
+    #[derive(Deserialize)]
+    pub(super) struct OperatorAddress {
+        #[serde(rename = "PostalAddresses")]
+        pub(super) postal: Option<PostalAddresses>,
+        #[serde(rename = "ElectronicAddress")]
+        pub(super) electronic: Option<ElectronicAddress>,
+    }
+
+    #[derive(Deserialize)]
+    pub(super) struct PostalAddresses {
+        #[serde(rename = "PostalAddress", default)]
+        pub(super) addresses: Vec<PostalAddress>,
+    }
+
+    #[derive(Deserialize)]
+    pub(super) struct PostalAddress {
+        #[serde(rename = "StreetAddress")]
+        pub(super) street: Option<String>,
+        #[serde(rename = "Locality")]
+        pub(super) locality: Option<String>,
+        #[serde(rename = "StateOrProvince")]
+        pub(super) state: Option<String>,
+        #[serde(rename = "PostalCode")]
+        pub(super) postal_code: Option<String>,
+        #[serde(rename = "CountryName")]
+        pub(super) country: Option<String>,
+    }
+
+    #[derive(Deserialize)]
+    pub(super) struct ElectronicAddress {
+        #[serde(rename = "URI", default)]
+        pub(super) uris: Vec<Text>,
+    }
+
+    #[derive(Deserialize)]
+    pub(super) struct Pointers {
+        #[serde(rename = "OtherTSLPointer", default)]
+        pub(super) pointers: Vec<Pointer>,
+    }
+
+    #[derive(Deserialize)]
+    pub(super) struct Pointer {
+        #[serde(rename = "TSLLocation")]
+        pub(super) location: Option<String>,
+        #[serde(rename = "AdditionalInformation")]
+        pub(super) additional: Option<AdditionalInformation>,
+    }
+
+    #[derive(Deserialize)]
+    pub(super) struct AdditionalInformation {
+        #[serde(rename = "TextualInformation", default)]
+        pub(super) texts: Vec<Text>,
     }
 
     #[derive(Deserialize)]
@@ -486,6 +679,35 @@ mod tests {
     fn parses_the_production_tsl() {
         let tsl = Tsl::parse(PROD).unwrap();
         assert_eq!(tsl.id, "ID31033320260913230008Z");
+        assert_eq!(tsl.scheme.version_identifier, Some(3));
+        assert_eq!(
+            tsl.scheme.tsl_type,
+            "http://uri.etsi.org/TrstSvc/TSLtype/generic"
+        );
+        assert_eq!(tsl.scheme.scheme_name, "gematik TSL Scheme");
+        assert_eq!(tsl.scheme.operator_name, "gematik GmbH");
+        assert_eq!(
+            tsl.scheme.postal_addresses,
+            [PostalAddress {
+                street: "Rosenthaler Strasse 30".into(),
+                postal_code: "10178".into(),
+                locality: "Berlin".into(),
+                state: "Berlin".into(),
+                country: "DE".into(),
+            }]
+        );
+        assert_eq!(
+            tsl.scheme.electronic_addresses,
+            ["mailto:PKI-Registrierung@gematik.de"]
+        );
+        assert_eq!(
+            tsl.scheme.primary_location(),
+            Some("http://download.tsl.telematik/ECC/ECC-RSA_TSL.xml")
+        );
+        assert_eq!(
+            tsl.scheme.backup_location(),
+            Some("http://download-bak.tsl.telematik/ECC/ECC-RSA_TSL.xml")
+        );
         assert_eq!(tsl.sequence_number, 10333);
         assert_eq!(tsl.issued_at.to_string(), "2026-09-13T23:00:08Z");
         assert_eq!(
@@ -739,6 +961,25 @@ mod tests {
             let error = Tsl::parse(&xml).unwrap_err().to_string();
             assert!(error.contains(want), "{error:?} lacks {want:?}");
         }
+    }
+
+    /// The scheme of a test-environment list: its own operator name and locations.
+    #[test]
+    fn scheme_of_the_test_tsl() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../spec/tsl-xmldsig/testdata/tsl/real/tu-10713.xml"
+        );
+        let tsl = Tsl::parse(&std::fs::read(path).unwrap()).unwrap();
+        assert_eq!(tsl.scheme.operator_name, "TEST-ONLY gematik GmbH");
+        assert_eq!(
+            tsl.scheme.primary_location(),
+            Some("http://download-ref.tsl.telematik-test/ECC/ECC-RSA_TSL-ref.xml")
+        );
+        assert_eq!(
+            tsl.scheme.backup_location(),
+            Some("http://download-bak-ref.tsl.telematik-test/ECC/ECC-RSA_TSL-ref.xml")
+        );
     }
 
     /// TSLSIG-052: a verified list skips what it cannot process, and an unspecified

@@ -25,6 +25,37 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   (TSLSIG-023). The ECDSA check and the certificate are left to the caller; the
   `verify` example shows both.
 
+### ti-report
+
+#### added
+- `check::CheckContext`: an environment's TSL and roots verified once, then any number of
+  certificates checked against them offline as `ti pki verify --profile auto` does
+  (`CheckReport`: verdict, profile, type, errors, warnings and the trust tree, end entity
+  first). Revocation is not checked.
+- New crate: the JSON reports on certificates and TSLs that the `ti` CLI and its
+  WebAssembly build share. `describe(cert, now)` gives a certificate as `ti pki inspect`
+  shows it (`CertificateInfo`, `OidInfo`); `tsl::Finding`, `tsl::CertSummary` and
+  `tsl::rejection_code` give the TSL findings as `ti pki tsl verify` and `tsl show` report
+  them. No I/O, no clock; builds for `wasm32-unknown-unknown`.
+- `tsl_view(xml, env, config, roots, now)`: a TSL verified for one environment as one
+  document for web views (`TslView`): signature verdict and warnings, list and scheme
+  metadata, the roots walked from the anchor with the CAs each signed, every service by
+  provider with its certificate types (`TypeOid`) and the chain of its certificate, and
+  every certificate named, keyed by `fingerprint` (lower-case SHA-256 hex).
+
+### ti-wasm
+
+#### added
+- `TrustContext`: `new TrustContext(xml, env, now, roots_json?, grace)` verifies once,
+  `check(der_or_pem, now)` returns `schemas/check.json`; for certificate checks in the
+  browser. The smoke test cross-checks it with `ti pki verify --offline`.
+- New crate: `ti-report` for JavaScript through wasm-bindgen, server and browser alike.
+  `verify_tsl`, `describe_certificate`, `trust_urls` and `version` return JSON
+  (`schemas/tsl-view.json`, `schemas/certificates.json`, typed in `js/types.d.ts`); the
+  caller passes the bytes and the instant, the module has no network and no clock.
+  `just wasm-build`, `wasm-size`, `wasm-smoke` (Node on the real TSLs, cross-checked with
+  `ti pki tsl verify`) and `wasm-vendor`.
+
 ### ti-cli
 
 #### added
@@ -54,6 +85,16 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   the list, its signer with its OCSP status, and the TSL signer CA (`trust.tsl` in the
   JSON). A responder the TSL lists for the issuing CA's TSP reads "listed in the TSL"
   (`tsl_listed`) and no longer warns.
+
+#### fixed
+- Names with a multi-valued RDN, such as an HBA's `GN=…+SN=…+SERIALNUMBER=…+CN=…`: `pki
+  inspect` showed the whole RDN as the given name and found no common name, and issuer
+  names in chains and `tsl show` fell back to the full DN. Every value is now its own field,
+  RFC 4514 escapes (`\+`, `\C3\A4`) are undone, and a name without a common name shows as
+  "given name surname".
+- `pki inspect` labels every name attribute x509-cert prints: TITLE, POSTALCODE, EMAIL,
+  PSEUDONYM, INITIALS, DESCRIPTION, DNQUALIFIER, UID, DC and organizationIdentifier
+  showed unlabelled, the latter as hex DER (`#0c07…`), which is now decoded to its text.
 
 ### ti-connector-client
 
@@ -96,6 +137,13 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pki
 
 #### added
+- `checks::ext_key_usage_name` names `id-tsl-kp-tslSigning` (0.4.0.2231.3.0), the TSL
+  signer's extended key usage, which showed as the bare OID.
+- `TrustStore::from_material(config, roots_json, tsl_xml, now)` (feature `load`): the trust
+  store and verified TSL from documents already in memory, synchronously, as the loaders
+  verify them, without going through the `Reloader`.
+- `oid::CV_ROOTCERT` and `oid::CV_CERT` (`oid_cv_rootcert`, `oid_cv_cert`, gemSpec_OID):
+  the types the TSL states for its CV certificate services, which had no name.
 - `Certificate::signature_algorithm`, `checks::key_usage_name` and
   `checks::ext_key_usage_name`, for tools that display certificates.
 - Path validation rejects a critical extension this crate does not process (RFC 5280
@@ -251,7 +299,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `Reloader` has a third type parameter, the signer status checker (default `Unchecked`,
   i.e. none); `tokio::spawn_reloader` takes any. The TSL is no longer loaded
   unauthenticated: a list that fails verification is never used.
-- `Tsl` has new fields `id` and `skipped`.
+- `Tsl` has new fields `id`, `skipped` and `scheme` (`SchemeInfo`: version, type, scheme
+  and operator name, postal and electronic addresses, `PointersToOtherTSL` with
+  `primary_location()` / `backup_location()`).
 - `Timestamp`, `Clock` and `SystemClock` come from `ti-types`, so every TI crate
   shares them; the paths `ti_pki::{Timestamp, Clock}` and `ti_pki::load::SystemClock`
   stay as re-exports.

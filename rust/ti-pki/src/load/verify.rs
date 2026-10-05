@@ -65,9 +65,19 @@ pub(crate) fn verify_material(
     now: Timestamp,
     stored: Option<&TslState>,
 ) -> Result<Verified, VerifyError> {
+    verify_bytes(config, &material.roots, &material.tsl, now, stored)
+}
+
+pub(crate) fn verify_bytes(
+    config: &TrustConfig,
+    roots_json: &[u8],
+    tsl_xml: &[u8],
+    now: Timestamp,
+    stored: Option<&TslState>,
+) -> Result<Verified, VerifyError> {
     let roots =
-        crate::roots::verify_roots_json(&config.anchor, &material.roots, now, &config.algorithms)?;
-    let tsl = verify_tsl(config, &material.tsl, now)?;
+        crate::roots::verify_roots_json(&config.anchor, roots_json, now, &config.algorithms)?;
+    let tsl = verify_tsl(config, tsl_xml, now)?;
     let sequence = tsl.check_sequence(stored)?;
     let store = crate::TrustStore::new(roots.iter().cloned());
     let matched =

@@ -3,17 +3,16 @@
 use std::path::Path;
 
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use ti_pki::key::{KeyStatus, classify_key};
 use ti_pki::load::SystemClock;
-use ti_pki::{CertificateType, Clock, Timestamp, checks, detect_certificate_type, profile};
+use ti_pki::{Clock, Timestamp};
 use x509_cert::der::oid::ObjectIdentifier;
 
 use crate::cli::{Environment, GlobalArgs};
 use crate::error::{CliError, Exit};
 use crate::input;
 use crate::output::document::{TreeRow, span, when};
-use crate::output::{Document, Line, OidInfo, Output, SCHEMA, Tone, hex, pem};
+use crate::output::{Document, Line, OidInfo, Output, SCHEMA, Tone, hex};
 use crate::trust::Session;
 
 /// The JSON document.
@@ -68,64 +67,25 @@ struct P12KeyInfo {
     certificate: Option<usize>,
 }
 
+/// A certificate as `ti_report` describes it, with what a PKCS#12 file adds.
 #[derive(Serialize)]
 pub(super) struct CertificateInfo {
-    subject: String,
-    /// In OpenSSL's notation, e.g. `DNS:host`.
-    subject_alt_names: Vec<String>,
-    issuer: String,
-    serial: String,
-    not_before: String,
-    not_after: String,
-    #[serde(skip)]
-    not_before_at: Timestamp,
-    #[serde(skip)]
-    not_after_at: Timestamp,
-    /// `valid`, `expired` or `not_yet_valid`, now.
-    validity: &'static str,
-    key: KeyInfo,
-    signature_algorithm: String,
-    certificate_type: Option<&'static str>,
-    profile: Option<ProfileHint>,
-    admission: Option<AdmissionInfo>,
-    policies: Vec<OidInfo>,
-    key_usage: Vec<&'static str>,
-    extended_key_usage: Vec<String>,
-    ca: bool,
-    path_len: Option<u8>,
-    ocsp_urls: Vec<String>,
-    critical_extensions: Vec<String>,
-    subject_key_id: Option<String>,
-    authority_key_id: Option<String>,
-    sha256: String,
+    #[serde(flatten)]
+    info: ti_report::CertificateInfo,
     /// The input is a PKCS#12 file that also holds this certificate's private key.
     private_key: bool,
     /// The `friendlyName` of its bag, in a PKCS#12 file.
     friendly_name: Option<String>,
     /// The `localKeyId` of its bag, in a PKCS#12 file.
     local_key_id: Option<String>,
-    pem: String,
 }
 
-#[derive(Serialize)]
-struct KeyInfo {
-    algorithm: String,
-    /// gemSpec_Krypt: `admissible`, `phased out`, `not admissible`.
-    status: &'static str,
-}
+impl core::ops::Deref for CertificateInfo {
+    type Target = ti_report::CertificateInfo;
 
-#[derive(Serialize)]
-struct ProfileHint {
-    name: &'static str,
-    reason: &'static str,
-    detail: String,
-}
-
-#[derive(Serialize)]
-struct AdmissionInfo {
-    profession_items: Vec<String>,
-    profession_oids: Vec<OidInfo>,
-    registration_number: Option<String>,
+    fn deref(&self) -> &Self::Target {
+        &self.info
+    }
 }
 
 pub fn run(
@@ -345,84 +305,15 @@ fn curve_name(oid: &ObjectIdentifier) -> String {
 }
 
 pub(super) fn describe(loaded: &input::Loaded, now: Timestamp) -> CertificateInfo {
-    let cert = &loaded.certificate;
-    let private_key = loaded.private_key;
     let (friendly_name, local_key_id) = loaded.bag.as_ref().map_or((None, None), |(name, id)| {
         (name.clone(), id.as_deref().map(hex_id))
     });
-    let (status, algorithm) = classify_key(cert.public_key_info(), now);
-    let selection = profile::select_for_cert(cert);
-    let basic = cert.basic_constraints();
     CertificateInfo {
-        subject: cert.subject().to_string(),
-        subject_alt_names: cert.subject_alt_names(),
-        issuer: cert.issuer().to_string(),
-        serial: hex(cert.serial()),
-        not_before: cert.not_before().to_string(),
-        not_after: cert.not_after().to_string(),
-        not_before_at: cert.not_before(),
-        not_after_at: cert.not_after(),
-        validity: super::validity(cert, now),
-        key: KeyInfo {
-            algorithm,
-            status: status.as_str(),
-        },
-        signature_algorithm: cert.signature_algorithm(),
-        certificate_type: detect_certificate_type(cert).map(CertificateType::as_str),
-        profile: selection.profile.map(|p| ProfileHint {
-            name: p.name,
-            reason: selection.reason.as_str(),
-            detail: selection.detail.clone(),
-        }),
-        admission: cert.admission().ok().flatten().map(|a| AdmissionInfo {
-            profession_items: a.profession_items,
-            profession_oids: a.profession_oids.iter().map(OidInfo::new).collect(),
-            registration_number: a.registration_number,
-        }),
-        policies: cert.policies().iter().map(OidInfo::new).collect(),
-        key_usage: cert
-            .key_usage()
-            .map(|ku| ku.0.into_iter().map(checks::key_usage_name).collect())
-            .unwrap_or_default(),
-        extended_key_usage: cert
-            .ext_key_usage()
-            .iter()
-            .map(checks::ext_key_usage_name)
-            .collect(),
-        ca: cert.is_ca(),
-        path_len: basic.and_then(|b| b.path_len_constraint),
-        ocsp_urls: cert.ocsp_urls().to_vec(),
-        critical_extensions: cert
-            .critical_extensions()
-            .map(|oid| extension_name(&oid))
-            .collect(),
-        subject_key_id: cert.subject_key_id().map(hex),
-        authority_key_id: cert.authority_key_id().map(hex),
-        sha256: hex(&Sha256::digest(cert.der())),
-        private_key,
+        info: ti_report::describe(&loaded.certificate, now),
+        private_key: loaded.private_key,
         friendly_name,
         local_key_id,
-        pem: pem(cert.der()),
     }
-}
-
-/// The RFC 5280 name of the extensions a TI certificate carries; the OID otherwise.
-fn extension_name(oid: &ObjectIdentifier) -> String {
-    let name = match oid.to_string().as_str() {
-        "2.5.29.14" => "subjectKeyIdentifier",
-        "2.5.29.15" => "keyUsage",
-        "2.5.29.17" => "subjectAltName",
-        "2.5.29.19" => "basicConstraints",
-        "2.5.29.30" => "nameConstraints",
-        "2.5.29.32" => "certificatePolicies",
-        "2.5.29.35" => "authorityKeyIdentifier",
-        "2.5.29.36" => "policyConstraints",
-        "2.5.29.37" => "extKeyUsage",
-        "1.3.6.1.5.5.7.1.1" => "authorityInfoAccess",
-        "1.3.36.8.3.3" => "admission",
-        other => return other.to_owned(),
-    };
-    name.to_owned()
 }
 
 /// The terminal view: a section per aspect, every detail.
@@ -553,7 +444,8 @@ fn encryption_line(e: &EncryptionInfo) -> Line {
 
 fn bag_line(index: usize, cert: &CertificateInfo) -> Line {
     let (cn, _) = split_name(&cert.subject);
-    let mut line = Line::text(format!("#{} ", index + 1)).and_strong(cn.unwrap_or(&cert.subject));
+    let mut line = Line::text(format!("#{} ", index + 1))
+        .and_strong(cn.unwrap_or_else(|| cert.subject.clone()));
     if let Some(name) = &cert.friendly_name {
         line = line.and_dim(format!(" · name {name}"));
     }
@@ -588,7 +480,7 @@ pub(super) fn name_section(doc: &mut Document, title: &str, name: &str) {
     doc.section(title);
     for part in dn_parts(name) {
         let (key, value) = part.split_once('=').unwrap_or(("", part.as_str()));
-        let value = value.replace("\\,", ",");
+        let value = unescape(value);
         let line = if key == "CN" {
             Line::strong(value)
         } else {
@@ -601,6 +493,8 @@ pub(super) fn name_section(doc: &mut Document, title: &str, name: &str) {
 /// The label of a name component: its attribute in words, else the attribute as
 /// written.
 fn attribute_label(key: &str) -> &str {
+    // x509-cert prints the attributes RFC 4514 has no short name for in upper case
+    // (SERIALNUMBER, TITLE) and unknown ones as dotted OIDs.
     match key {
         "CN" => "common name",
         "GN" | "givenName" => "given name",
@@ -611,9 +505,17 @@ fn attribute_label(key: &str) -> &str {
         "L" => "locality",
         "ST" => "state",
         "STREET" | "street" => "street",
-        "postalCode" | "2.5.4.17" => "postal code",
-        "title" => "title",
+        "POSTALCODE" | "postalCode" | "2.5.4.17" => "postal code",
+        "TITLE" | "title" | "2.5.4.12" => "title",
         "serialNumber" | "SERIALNUMBER" | "2.5.4.5" => "serialNumber",
+        "2.5.4.97" => "org. id",
+        "EMAIL" | "emailAddress" => "email",
+        "PSEUDONYM" | "2.5.4.65" => "pseudonym",
+        "INITIALS" | "2.5.4.43" => "initials",
+        "DESCRIPTION" | "2.5.4.13" => "description",
+        "DNQUALIFIER" | "2.5.4.46" => "dn qualifier",
+        "UID" => "user id",
+        "DC" => "domain",
         other => other,
     }
 }
@@ -652,7 +554,7 @@ fn summary(report: &Report) -> Document {
         }
         let (cn, rest) = split_name(&cert.subject);
         doc.paragraph(
-            Line::strong(cn.unwrap_or("(no common name)"))
+            Line::strong(cn.unwrap_or_else(|| "(no name)".to_owned()))
                 .and_text(" · ")
                 .and_line(
                     cert.certificate_type
@@ -667,7 +569,7 @@ fn summary(report: &Report) -> Document {
         let (issuer, _) = split_name(&cert.issuer);
         doc.paragraph(
             Line::text("issued by ")
-                .and_text(issuer.unwrap_or(&cert.issuer))
+                .and_text(issuer.unwrap_or_else(|| cert.issuer.clone()))
                 .and_dim(" · serial ")
                 .and_code(&cert.serial),
         );
@@ -731,25 +633,36 @@ fn summary(report: &Report) -> Document {
     doc
 }
 
-/// The common name of an RFC 4514 name, and its other components joined by ` · `.
-pub(super) fn split_name(name: &str) -> (Option<&str>, String) {
+/// The name to show for an RFC 4514 name: its common name, else `given name surname`
+/// (from `GN`/`SN`), and the other components joined by ` · `.
+pub(super) fn split_name(name: &str) -> (Option<String>, String) {
     let mut cn = None;
+    let (mut given, mut surname) = (None, None);
     let mut rest = Vec::new();
-    let mut start = 0;
     for part in dn_parts(name) {
-        let len = part.len();
-        let part = &name[start..start + len];
-        start += len + 1;
-        match part.strip_prefix("CN=") {
-            Some(value) if cn.is_none() => cn = Some(value),
-            _ => rest.push(part),
+        let (key, value) = part.split_once('=').unwrap_or(("", part.as_str()));
+        let value = unescape(value);
+        match key {
+            "CN" if cn.is_none() => {
+                cn = Some(value);
+                continue;
+            }
+            "GN" | "givenName" if given.is_none() => given = Some(value.clone()),
+            "SN" | "surname" if surname.is_none() => surname = Some(value.clone()),
+            _ => {}
         }
+        rest.push(format!("{key}={value}"));
     }
-    (cn, rest.join(" · "))
+    let person = match (given, surname) {
+        (Some(given), Some(surname)) => Some(format!("{given} {surname}")),
+        (given, surname) => given.or(surname),
+    };
+    (cn.or(person), rest.join(" · "))
 }
 
-/// The components of an RFC 4514 name; a comma escaped with a backslash is part of its
-/// value.
+/// The attribute=value components of an RFC 4514 name in its order, the values of a
+/// multi-valued RDN (`GN=…+SN=…+CN=…`, as on an HBA) one by one; an escaped `,` or `+`
+/// is part of its value.
 pub(super) fn dn_parts(name: &str) -> Vec<String> {
     let mut parts = Vec::new();
     let mut current = String::new();
@@ -764,7 +677,7 @@ pub(super) fn dn_parts(name: &str) -> Vec<String> {
                 current.push(c);
                 escaped = true;
             }
-            (false, ',') => parts.push(core::mem::take(&mut current)),
+            (false, ',' | '+') => parts.push(core::mem::take(&mut current)),
             (false, _) => current.push(c),
         }
     }
@@ -772,6 +685,38 @@ pub(super) fn dn_parts(name: &str) -> Vec<String> {
         parts.push(current);
     }
     parts
+}
+
+/// An RFC 4514 attribute value as text: `\,` becomes `,`, `\C3\A4` the UTF-8 it encodes,
+/// and a `#`-hex DER string (an attribute without a short name, such as
+/// organizationIdentifier) its text.
+pub(super) fn unescape(value: &str) -> String {
+    if let Some(text) = value.strip_prefix('#').and_then(der_string) {
+        return text;
+    }
+    let mut bytes = Vec::with_capacity(value.len());
+    let mut rest = value.as_bytes();
+    while let Some((&b, tail)) = rest.split_first() {
+        rest = tail;
+        if b != b'\\' {
+            bytes.push(b);
+            continue;
+        }
+        // Two hex digits exactly: from_str_radix would also take a sign, as in `\+C`.
+        let hex = rest
+            .get(..2)
+            .filter(|h| h.iter().all(u8::is_ascii_hexdigit))
+            .and_then(|h| std::str::from_utf8(h).ok())
+            .and_then(|h| u8::from_str_radix(h, 16).ok());
+        if let Some(byte) = hex {
+            bytes.push(byte);
+            rest = &rest[2..];
+        } else if let Some((&next, tail)) = rest.split_first() {
+            bytes.push(next);
+            rest = tail;
+        }
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 fn validity(cert: &CertificateInfo, now: Timestamp) -> Line {
@@ -815,16 +760,68 @@ fn codes<T: AsRef<str>>(values: &[T]) -> Line {
     }
 }
 
+/// The text of a hex-encoded DER UTF8String, PrintableString, TeletexString or
+/// IA5String with a short-form length; `None` for anything else, which is then shown as
+/// written.
+fn der_string(hex: &str) -> Option<String> {
+    if !hex.len().is_multiple_of(2) || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
+        .collect::<Option<_>>()?;
+    let (&[tag, len], content) = bytes.split_first_chunk::<2>()?;
+    let string_tag = matches!(tag, 0x0c | 0x13 | 0x14 | 0x16);
+    if !string_tag || len >= 0x80 || usize::from(len) != content.len() {
+        return None;
+    }
+    String::from_utf8(content.to_vec()).ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn distinguished_names_split_on_unescaped_commas() {
+    fn distinguished_names_split_on_unescaped_commas_and_pluses() {
         assert_eq!(
             dn_parts(r"CN=Praxis Dr. A\, B,O=X,C=DE"),
             [r"CN=Praxis Dr. A\, B", "O=X", "C=DE"]
         );
+        assert_eq!(
+            dn_parts(r"GN=Ullrich+SN=A\+B+CN=Ullrich A,C=DE"),
+            ["GN=Ullrich", r"SN=A\+B", "CN=Ullrich A", "C=DE"]
+        );
         assert_eq!(dn_parts(""), Vec::<String>::new());
+    }
+
+    #[test]
+    fn the_common_name_of_a_multi_valued_rdn() {
+        let (cn, rest) = split_name(
+            "GN=Ullrich+SN=Angermänn+SERIALNUMBER=80276883110000129084+CN=Ullrich AngermännTEST-ONLY,C=DE",
+        );
+        assert_eq!(cn.as_deref(), Some("Ullrich AngermännTEST-ONLY"));
+        assert_eq!(
+            rest,
+            "GN=Ullrich · SN=Angermänn · SERIALNUMBER=80276883110000129084 · C=DE"
+        );
+    }
+
+    #[test]
+    fn without_a_common_name_the_given_name_and_surname() {
+        let (name, _) = split_name("GN=Erika+SN=Mustermann+SERIALNUMBER=1,C=DE");
+        assert_eq!(name.as_deref(), Some("Erika Mustermann"));
+        assert_eq!(split_name("O=X,C=DE").0, None);
+    }
+
+    #[test]
+    fn escaped_values() {
+        assert_eq!(unescape(r"A\, B\+C"), "A, B+C");
+        assert_eq!(unescape(r"Angerm\C3\A4nn"), "Angermänn");
+        assert_eq!(unescape(r"trailing\"), "trailing");
+        assert_eq!(unescape("#0c0756415444452d31"), "VATDE-1");
+        assert_eq!(unescape("#300100"), "#300100");
+        assert_eq!(unescape("#0c05ab"), "#0c05ab");
     }
 }

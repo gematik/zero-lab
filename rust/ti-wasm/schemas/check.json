@@ -1,0 +1,494 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ti-wasm TrustContext.check",
+  "description": "A certificate checked offline against an environment's verified TSL and roots, as ti pki verify --profile auto --offline decides. Revocation is never checked.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "environment": {
+      "enum": [
+        "prod",
+        "ref",
+        "test",
+        "dev"
+      ]
+    },
+    "result": {
+      "enum": [
+        "valid",
+        "invalid"
+      ]
+    },
+    "tsl": {
+      "$ref": "#/$defs/tsl"
+    },
+    "profile": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "e.g. smb-aut"
+            },
+            "reason": {
+              "type": "string",
+              "description": "How it was chosen"
+            },
+            "detail": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "reason",
+            "detail"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "description": "Absent when none was detected and only the chain was checked"
+    },
+    "certificate_type": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "gemSpec_PKI type, e.g. C.HCI.AUT"
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/issue"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/issue"
+      }
+    },
+    "revocation": {
+      "const": "not_checked"
+    },
+    "tree": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/node"
+      },
+      "description": "The end entity first, each issuer below it, the root (or the missing issuer) last"
+    },
+    "certificates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/certificate"
+      },
+      "description": "The input, end entity first"
+    }
+  },
+  "required": [
+    "schema",
+    "environment",
+    "result",
+    "tsl",
+    "profile",
+    "certificate_type",
+    "errors",
+    "warnings",
+    "revocation",
+    "tree",
+    "certificates"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "oid": {
+      "type": "object",
+      "properties": {
+        "oid": {
+          "type": "string",
+          "description": "Dotted form"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "gemSpec_OID description, where the TI defines one"
+        }
+      },
+      "required": [
+        "oid",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "certificate": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string"
+        },
+        "subject_alt_names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Subject alternative names in OpenSSL notation, e.g. DNS:host"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "serial": {
+          "type": "string",
+          "description": "Upper-case hex, colon-separated"
+        },
+        "not_before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        },
+        "not_after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        },
+        "validity": {
+          "enum": [
+            "valid",
+            "expired",
+            "not_yet_valid"
+          ]
+        },
+        "key": {
+          "type": "object",
+          "properties": {
+            "algorithm": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "description": "gemSpec_Krypt admissibility"
+            }
+          },
+          "required": [
+            "algorithm",
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        "signature_algorithm": {
+          "type": "string"
+        },
+        "certificate_type": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "gemSpec_PKI type, e.g. C.HCI.AUT"
+        },
+        "profile": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "reason",
+                "detail"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "admission": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "profession_items": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "profession_oids": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/oid"
+                  }
+                },
+                "registration_number": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "profession_items",
+                "profession_oids",
+                "registration_number"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "policies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/oid"
+          }
+        },
+        "key_usage": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "extended_key_usage": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ca": {
+          "type": "boolean"
+        },
+        "path_len": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ocsp_urls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "critical_extensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "subject_key_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authority_key_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "pem": {
+          "type": "string",
+          "description": "The certificate as PEM"
+        }
+      },
+      "required": [
+        "subject",
+        "subject_alt_names",
+        "issuer",
+        "serial",
+        "not_before",
+        "not_after",
+        "validity",
+        "key",
+        "signature_algorithm",
+        "certificate_type",
+        "profile",
+        "admission",
+        "policies",
+        "key_usage",
+        "extended_key_usage",
+        "ca",
+        "path_len",
+        "ocsp_urls",
+        "critical_extensions",
+        "subject_key_id",
+        "authority_key_id",
+        "sha256",
+        "pem"
+      ],
+      "additionalProperties": false
+    },
+    "finding": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Result code, e.g. xml_signature_error"
+        },
+        "code_number": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Tab_PKI_274 number"
+        },
+        "rule": {
+          "type": "string",
+          "description": "Rule of spec/tsl-xmldsig, e.g. TSLSIG-018"
+        },
+        "detail": {
+          "type": "string",
+          "description": "For humans; not stable"
+        }
+      },
+      "required": [
+        "code",
+        "code_number",
+        "rule",
+        "detail"
+      ],
+      "additionalProperties": false
+    },
+    "issue": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Stable code, e.g. expired, chain_incomplete"
+        },
+        "subject": {
+          "type": "string",
+          "description": "Common name of the certificate concerned; empty for the chain"
+        },
+        "message": {
+          "type": "string",
+          "description": "For humans; not stable"
+        }
+      },
+      "required": [
+        "code",
+        "subject",
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "tsl": {
+      "description": "The trust material the check ran against",
+      "type": "object",
+      "properties": {
+        "result": {
+          "enum": [
+            "valid",
+            "invalid"
+          ]
+        },
+        "error": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/finding"
+            }
+          ]
+        },
+        "sequence_number": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "next_update": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "RFC 3339"
+        },
+        "roots_source": {
+          "enum": [
+            "supplied",
+            "embedded"
+          ]
+        },
+        "roots_warning": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Why the supplied roots.json was not used"
+        }
+      },
+      "required": [
+        "result",
+        "error",
+        "sequence_number",
+        "next_update",
+        "roots_source",
+        "roots_warning"
+      ],
+      "additionalProperties": false
+    },
+    "node": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Fingerprint when the TSL lists the certificate as a service"
+        },
+        "name": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string",
+          "description": "End entity type, CA, root or issuer"
+        },
+        "note": {
+          "type": "string",
+          "description": "Validity or why not trusted"
+        },
+        "state": {
+          "enum": [
+            "ok",
+            "warn",
+            "bad"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "role",
+        "note",
+        "state"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

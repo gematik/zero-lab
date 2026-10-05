@@ -119,13 +119,7 @@ fn probe_target(
 
 /// `valid`, `expired` or `not_yet_valid` at `now`.
 fn validity(cert: &Certificate, now: Timestamp) -> &'static str {
-    if now < cert.not_before() {
-        "not_yet_valid"
-    } else if now > cert.not_after() {
-        "expired"
-    } else {
-        "valid"
-    }
+    ti_report::validity(cert, now)
 }
 
 /// ` · until 2029-11-06`, or ` · expired 2022-10-25` / ` · not yet valid` in red: the
@@ -177,7 +171,8 @@ fn chain_tree(
         let issuer_name = last.issuer().to_string();
         let (issuer, _) = inspect::split_name(&issuer_name);
         rows.push(TreeRow {
-            name: Line::status(Tone::Warn, "? ").and_text(issuer.unwrap_or("unnamed issuer")),
+            name: Line::status(Tone::Warn, "? ")
+                .and_text(issuer.unwrap_or_else(|| "unnamed issuer".to_owned())),
             detail: Line::status(Tone::Warn, "issuer not among the trusted CAs"),
         });
     }
@@ -225,7 +220,7 @@ fn tsl_tree(trust: &TrustInfo, at: Timestamp) -> Vec<TreeRow> {
 fn organization(name: &str) -> Option<String> {
     inspect::dn_parts(name)
         .into_iter()
-        .find_map(|part| part.strip_prefix("O=").map(str::to_owned))
+        .find_map(|part| part.strip_prefix("O=").map(inspect::unescape))
 }
 
 /// `until 2029-11-06`, or `expired 2022-10-25` / `not yet valid` in red: the validity

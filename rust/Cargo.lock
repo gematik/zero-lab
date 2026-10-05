@@ -1898,6 +1898,7 @@ dependencies = [
  "ti-connector-client",
  "ti-pkcs12",
  "ti-pki",
+ "ti-report",
  "ureq",
  "x509-cert",
 ]
@@ -1979,12 +1980,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "ti-report"
+version = "0.1.0"
+dependencies = [
+ "const-oid",
+ "pem-rfc7468",
+ "serde",
+ "sha2",
+ "ti-pki",
+]
+
+[[package]]
 name = "ti-types"
 version = "0.1.0"
 dependencies = [
  "clap",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "ti-wasm"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "ti-pki",
+ "ti-report",
+ "wasm-bindgen",
 ]
 
 [[package]]
