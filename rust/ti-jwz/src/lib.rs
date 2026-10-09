@@ -11,7 +11,6 @@
 //! | JWE `ECDH-ES` with `A256GCM` | gemSpec_IDP_Dienst V2.2.0 A_20699-03, A_20321-01 |
 //! | `epk` on P-256 | gemSpec_Krypt V2.50.0 Tab_KRYPT_002a |
 //! | JWE `dir` with `A256GCM` | gemSpec_IDP_Dienst V2.2.0 A_21321 |
-//! | `epk` on `BP-256` (legacy) | gemSpec_IDP_Dienst V2.2.0 §7.8: `puk_idp_enc` is a `BP-256` key |
 //! | `x5c` allowed in headers | gemSpec_Krypt V2.50.0 A_24658-01, gemSpec_IDP_Dienst V2.2.0 §7.7 |
 //!
 //! ePA's AUT signatures use `ES256` with a brainpoolP256r1 key: that is a key choice, not
@@ -72,9 +71,10 @@ pub fn ti() -> Profile {
     }
 }
 
-/// [`ti`] widened by brainpoolP256r1 for existing interfaces: `BP256R1` signatures (the
-/// IDP) and ECDH-ES with an `epk` on `BP-256`. Use it with [`registry`], which knows the
-/// brainpool names.
+/// [`ti`] widened by `BP256R1` signatures for existing interfaces (the IDP). Use it with
+/// [`registry`], which knows the brainpool names. Brainpool JWE is encryption only (to
+/// the IDP's `BP-256` key, gemSpec_IDP_Dienst V2.2.0 §7.8): no profile accepts an `epk`
+/// on `BP-256` for decryption yet.
 #[cfg(feature = "legacy")]
 pub fn ti_legacy() -> Profile {
     let mut profile = ti();
@@ -83,10 +83,6 @@ pub fn ti_legacy() -> Profile {
         .policy
         .signature_algorithms
         .push(jwz_brainpool::BP256R1);
-    profile
-        .policy
-        .key_agreement_curves
-        .push(jwz_brainpool::BP_256);
     profile.keys.curves.push(jwz_brainpool::BP_256);
     profile
 }

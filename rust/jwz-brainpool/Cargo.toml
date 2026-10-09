@@ -22,7 +22,7 @@ elliptic-curve = { workspace = true, features = ["ecdh", "alloc"] }
 signature = { workspace = true, features = ["alloc"] }
 
 [dev-dependencies]
-jwz = { workspace = true, features = ["std", "jws", "jwe", "jwt", "crypto-rustcrypto"] }
+jwz = { workspace = true, features = ["std", "jws", "jwe", "jwt", "crypto-rustcrypto", "test-util"] }
 serde_json.workspace = true
 
 [lints]

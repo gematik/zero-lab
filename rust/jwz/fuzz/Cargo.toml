@@ -1,0 +1,59 @@
+# cargo-fuzz targets for jwz's parsers (nightly; `just fuzz-jwz`). Outside the workspace
+# so that libfuzzer never enters the workspace's lock file and checks.
+[package]
+name = "jwz-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+jwz = { path = "..", features = ["std", "jws", "jwe", "jwt", "crypto-rustcrypto", "hmac"] }
+
+[[bin]]
+name = "jws_compact"
+path = "fuzz_targets/jws_compact.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "jws_json"
+path = "fuzz_targets/jws_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "jwe_compact"
+path = "fuzz_targets/jwe_compact.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "jwe_json"
+path = "fuzz_targets/jwe_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "jwk"
+path = "fuzz_targets/jwk.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "claims"
+path = "fuzz_targets/claims.rs"
+test = false
+doc = false
+bench = false

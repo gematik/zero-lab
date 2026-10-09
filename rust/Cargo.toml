@@ -1,5 +1,7 @@
 [workspace]
 members = ["ti-types", "ti-cache", "ti-xmldsig", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-report", "ti-cli", "ti-wasm", "jwz", "jwz-brainpool", "ti-jwz"]
+# cargo-fuzz targets need nightly and a dependency tree of their own.
+exclude = ["jwz/fuzz"]
 resolver = "3"
 
 # Shared metadata only. Deliberately no workspace.package.version: every crate is

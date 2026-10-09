@@ -1,6 +1,6 @@
 //! Brainpool through jwz's own JWS and JWE code: `BP256R1` signatures, `ES256` on a
-//! brainpool key (ePA), ECDH-ES with an `epk` on `BP-256` (IDP), and the boundaries
-//! between brainpool and P-256 keys.
+//! brainpool key (ePA), ECDH-ES encryption to a `BP-256` key (the IDP client; brainpool
+//! JWE is encryption only), and the boundaries between brainpool and P-256 keys.
 
 use std::sync::Arc;
 
@@ -11,7 +11,7 @@ use jwz::header::HeaderParams;
 use jwz::jwa::{
     ContentEncryptionAlgorithm as Enc, Curve, KeyEncryptionAlgorithm as Alg, SignatureAlgorithm,
 };
-use jwz::jwe::{self, DecryptionKey, EncryptionKey, Jwe};
+use jwz::jwe::{self, EncryptionKey, Jwe};
 use jwz::jws::{self, Jws};
 use jwz::keys::{SoftwareAgreementKey, SoftwareKey};
 use jwz::profile::{Policy, Profile};
@@ -105,50 +105,70 @@ fn epa_es256_on_a_brainpool_key() {
     assert!(BrainpoolEs256Key::from_point(&[4; 65]).is_err());
 }
 
+/// Encryption to the IDP's `BP-256` key, from its public JWK only (as a TI client has
+/// it). That the token decrypts is shown by Python jwcrypto in the interop fixtures
+/// (`tests/interop.rs`); jwz does not decrypt brainpool JWE yet.
 #[test]
-fn ecdh_es_with_a_bp256_epk_like_the_idp() {
+fn ecdh_es_encryption_to_a_bp256_key_like_the_idp_client() {
     let registry = jwz_brainpool::registry();
     let backend = Arc::new(jwz_brainpool::backend(RustCrypto::new()));
-    let idp_enc = SoftwareAgreementKey::generate(BP_256, Arc::clone(&backend)).unwrap();
+    let idp_enc = SoftwareAgreementKey::generate(BP_256, Arc::clone(&backend))
+        .unwrap()
+        .public_jwk();
+    let mut epks = Vec::new();
     for alg in [Alg::ECDH_ES, Alg::ECDH_ES_A256KW] {
         let token = jwe::encrypt(
             b"KEY_VERIFIER",
             alg,
             Enc::A256GCM,
-            EncryptionKey::Public(&idp_enc.public_jwk()),
+            EncryptionKey::Public(&idp_enc),
             HeaderParams::new().cty("JSON"),
             &registry,
             backend.as_ref(),
         )
         .unwrap();
         let jwe = Jwe::parse(&token, &interop(), &registry).unwrap();
-        assert_eq!(jwe.header().epk().unwrap().unwrap().crv(), Some("BP-256"));
-        let plaintext = jwe
-            .decrypt(DecryptionKey::Agreement(&idp_enc), backend.as_ref())
-            .unwrap();
-        assert_eq!(plaintext.plaintext(), b"KEY_VERIFIER");
+        assert_eq!(jwe.algorithm(), alg);
+        assert_eq!(jwe.content_encryption(), Enc::A256GCM);
+        let epk = jwe.header().epk().unwrap().unwrap();
+        assert!(!epk.is_private());
+        let jwz::jwk::KeyMaterial::Ec(point) = &epk.material else {
+            panic!("epk is EC");
+        };
+        assert_eq!(point.crv, "BP-256");
+        // A valid point on brainpoolP256r1, fresh for every token.
+        assert!(BrainpoolEs256Key::from_point(&point.point()).is_ok());
+        epks.push(point.point());
     }
+    assert_ne!(epks[0], epks[1]);
 
-    // A BP-256 epk for a P-256 key, and the other way round: refused before ECDH.
+    // A recipient key on P-256 gets a P-256 epk, not a brainpool one.
     let p256 = SoftwareAgreementKey::generate(Curve::P256, Arc::clone(&backend)).unwrap();
     let token = jwe::encrypt(
         b"x",
         Alg::ECDH_ES,
         Enc::A256GCM,
-        EncryptionKey::Public(&idp_enc.public_jwk()),
+        EncryptionKey::Public(&p256.public_jwk()),
         HeaderParams::new(),
         &registry,
         backend.as_ref(),
     )
     .unwrap();
     let jwe = Jwe::parse(&token, &interop(), &registry).unwrap();
-    assert_eq!(
-        code(jwe.decrypt(DecryptionKey::Agreement(&p256), backend.as_ref())).map(|_| ()),
-        Err(ErrorCode::KeyMismatch)
-    );
+    assert_eq!(jwe.header().epk().unwrap().unwrap().crv(), Some("P-256"));
 
-    // Without the brainpool registry, BP-256 is an unknown curve; under strict, a
-    // known but disallowed one.
+    // A brainpool token is refused without the brainpool registry (unknown curve) and
+    // under strict (a known curve the policy does not allow).
+    let token = jwe::encrypt(
+        b"x",
+        Alg::ECDH_ES,
+        Enc::A256GCM,
+        EncryptionKey::Public(&idp_enc),
+        HeaderParams::new(),
+        &registry,
+        backend.as_ref(),
+    )
+    .unwrap();
     assert_eq!(
         code(Jwe::parse(
             &token,

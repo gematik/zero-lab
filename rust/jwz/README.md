@@ -20,8 +20,9 @@ Status: milestone 1 in progress. Available:
 - `jwz::profile`: `Policy` (the single acceptance check) and the `strict` and
   `rfc7518-interop` profiles; `jwz::x5c`: chain decoding and the `ChainValidator` seam.
 
-Coming in this milestone: brainpool and the TI profiles, interop fixtures, fuzzing and
-formal verification.
+Brainpool (`jwz-brainpool`) is checked against Go josebp and Python jwcrypto
+(`jwz-brainpool/interop`); every parser has a fuzz target (`fuzz/`, `just fuzz-jwz`).
+Coming in this milestone: formal verification.
 Design: [`docs/adr/0001-jwz.md`](docs/adr/0001-jwz.md); dependencies:
 [`docs/dependencies.md`](docs/dependencies.md).
 

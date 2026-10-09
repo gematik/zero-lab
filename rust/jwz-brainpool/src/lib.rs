@@ -5,8 +5,9 @@
 //!
 //! Neither identifier is registered with IANA; they are gematik's (gemSpec_IDP_Dienst
 //! V2.2.0, A_20591-01, A_20695-01, A_20327-02), mirrored by `go/brainpool/josebp` in this
-//! repository. Brainpool ECDH-ES uses the standard `ECDH-ES` names with an `epk` on
-//! `BP-256` (A_21321).
+//! repository. Brainpool JWE uses the standard `ECDH-ES` names with an `epk` on `BP-256`;
+//! jwz-brainpool supports encrypting to a `BP-256` key (as `go/gemidp` does for the IDP),
+//! not yet decrypting.
 //!
 //! The crate is names plus primitives: [`register`] adds the names to a registry, and
 //! [`Bp256`] implements jwz's [`Ecdsa`] and [`Ecdh`] traits, which [`backend`] adds to any

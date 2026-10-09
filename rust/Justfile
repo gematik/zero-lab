@@ -407,6 +407,40 @@ check-jwz:
     just brainpool-absent jwz
     just brainpool-absent ti-jwz
 
+# Brainpool interop fixtures against Go josebp and Python jwcrypto (design time; Go and
+# Python 3 required): jwz's tokens, the oracles' tokens and verdicts, the coverage table
+jwz-interop:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    data="$PWD/jwz-brainpool/tests/data/interop"
+    cargo run -q -p jwz-brainpool --example interop -- tokens
+    (cd jwz-brainpool/interop/go && GOWORK=off go run . gen "$data/keys.json" "$data/go.json" \
+        && GOWORK=off go run . check "$data/keys.json" "$data/jwz.json" "$data/go-verdicts.json")
+    py=jwz-brainpool/interop/python
+    [ -x "$py/.venv/bin/python" ] || python3 -m venv "$py/.venv"
+    "$py/.venv/bin/pip" install -q -r "$py/requirements.txt"
+    "$py/.venv/bin/python" "$py/interop.py" gen "$data/keys.json" "$data/python.json"
+    "$py/.venv/bin/python" "$py/interop.py" check "$data/keys.json" "$data/jwz.json" "$data/python-verdicts.json"
+    cargo run -q -p jwz-brainpool --example interop -- coverage
+    cargo test -q -p jwz-brainpool --test interop
+
+# Nightly for cargo-fuzz; override with JWZ_NIGHTLY=<toolchain>
+JWZ_NIGHTLY := env_var_or_default("JWZ_NIGHTLY", "nightly-2026-08-21")
+
+# Fuzz every jwz parser for `seconds` each (design time; nightly and cargo-fuzz).
+# Corpora start from jwz/fuzz/seeds and grow in jwz/fuzz/corpus (not committed).
+fuzz-jwz seconds="30":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd jwz/fuzz
+    for target in jws_compact jws_json jwe_compact jwe_json jwk claims; do
+        mkdir -p "corpus/$target"
+        cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
+            -max_total_time={{seconds}} -max_len=65536 -print_final_stats=1 2>&1 \
+            | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
+        [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
+    done
+
 # rustls brings ring into ti-cli and ti-connector-client for TLS, so this is a tree check
 # for the jwz crates rather than a deny ban (ADR 0001, principle 8).
 # No openssl, ring, aws-lc or cryptoki under jwz, jwz-brainpool or ti-jwz

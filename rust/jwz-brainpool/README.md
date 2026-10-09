@@ -6,8 +6,10 @@ handshakes, SMC-B and HBA keys). **Legacy only: new components use P-256 and mus
 depend on this crate.**
 
 - `jwz_brainpool::registry()` (or `register`) adds the names; `jwz_brainpool::backend(base)`
-  adds BP-256 ECDSA and ECDH to any jwz backend. JWS, JWE (ECDH-ES with an `epk` on
-  `BP-256`), keys and policies are jwz's own code, the same as for P-256.
+  adds BP-256 ECDSA and ECDH to any jwz backend. JWS, keys and policies are jwz's own
+  code, the same as for P-256.
+- JWE: encryption only, ECDH-ES to a `BP-256` key (as `go/gemidp` encrypts to the IDP).
+  Decrypting brainpool JWE is not supported yet; no profile accepts an `epk` on `BP-256`.
 - `BrainpoolEs256Key`: ePA signs with `ES256` on a brainpoolP256r1 key; this key is that
   exception, chosen by the verifier, so a token cannot move ES256 onto brainpool.
 - Enable it through `ti-jwz`'s `legacy` feature for `ti_legacy()`.

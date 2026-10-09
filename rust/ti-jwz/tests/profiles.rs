@@ -1,4 +1,5 @@
-//! Stage S5 proof: `ti()` refuses brainpool tokens at parse, `ti_legacy()` accepts them;
+//! Stage S5 proof: `ti()` refuses `BP256R1` tokens at parse, `ti_legacy()` accepts them;
+//! no profile decrypts brainpool JWE;
 //! ePA's ES256 on brainpool keys needs no legacy profile, only the legacy key.
 #![cfg(feature = "legacy")]
 
@@ -11,7 +12,7 @@ use jwz::header::HeaderParams;
 use jwz::jwa::{
     ContentEncryptionAlgorithm as Enc, Curve, KeyEncryptionAlgorithm as Alg, SignatureAlgorithm,
 };
-use jwz::jwe::{self, DecryptionKey, EncryptionKey, Jwe};
+use jwz::jwe::{self, EncryptionKey, Jwe};
 use jwz::jws::{self, Jws};
 use jwz::jwt::{Claims, FixedClock};
 use jwz::keys::{SoftwareAgreementKey, SoftwareKey, SymmetricKey};
@@ -47,10 +48,11 @@ fn ti_refuses_a_valid_bp256r1_token_and_ti_legacy_accepts_it() {
 }
 
 #[test]
-fn ti_refuses_a_bp256_epk_and_ti_legacy_accepts_it() {
+fn brainpool_jwe_is_encryption_only() {
     let registry = registry();
     let backend = Arc::new(jwz_brainpool::backend(RustCrypto::new()));
     let idp_enc = SoftwareAgreementKey::generate(BP_256, Arc::clone(&backend)).unwrap();
+    // A TI client encrypts to the IDP's BP-256 key...
     let token = jwe::encrypt(
         b"challenge",
         Alg::ECDH_ES,
@@ -61,15 +63,15 @@ fn ti_refuses_a_bp256_epk_and_ti_legacy_accepts_it() {
         backend.as_ref(),
     )
     .unwrap();
-    assert_eq!(
-        code(Jwe::parse(&token, &ti().policy, &registry)).map(|_| ()),
-        Err(ErrorCode::PolicyViolation)
-    );
-    let jwe = Jwe::parse(&token, &ti_legacy().policy, &registry).unwrap();
-    let decrypted = jwe
-        .decrypt(DecryptionKey::Agreement(&idp_enc), backend.as_ref())
-        .unwrap();
-    assert_eq!(decrypted.plaintext(), b"challenge");
+    // ...but no TI profile accepts a BP-256 epk for decryption yet.
+    for profile in [ti(), ti_legacy()] {
+        assert_eq!(
+            code(Jwe::parse(&token, &profile.policy, &registry)).map(|_| ()),
+            Err(ErrorCode::PolicyViolation),
+            "{}",
+            profile.name
+        );
+    }
 }
 
 #[test]

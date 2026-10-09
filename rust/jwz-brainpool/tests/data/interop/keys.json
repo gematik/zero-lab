@@ -1,0 +1,26 @@
+{
+  "bp256r1": {
+    "crv": "BP-256",
+    "d": "UKDCUCHKC2SN2nSUonkbvj0ad7C-z5pll9yETguGdy4",
+    "kid": "bp256r1",
+    "kty": "EC",
+    "x": "WgBvCmzLFwDVuMXwa9GbMcV17P9efvbIeqOKAcUdSdE",
+    "y": "Cq5pwduBiBI79TBzy1jp-slOEm3s5HD8VfIOUoYvbWg"
+  },
+  "ecdh-bp256": {
+    "crv": "BP-256",
+    "d": "IUbGQLO2kp3iC-N31oI6hI_2QgEJFLXCcxvJn3d5Qkc",
+    "kid": "ecdh-bp256",
+    "kty": "EC",
+    "x": "WHEdZBX8S495rwZRC_SAj1je5lkrZtxJmR_tEaEwAJ8",
+    "y": "eeKiPSj4MjApiZJo3WI6HDAP1D4Cu_W26h2rB4upaaI"
+  },
+  "es256-bp": {
+    "crv": "BP-256",
+    "d": "otrED8Q9_FNXWkZIFiHGRLXkHTAKd6kLRYabXak2BRc",
+    "kid": "es256-bp",
+    "kty": "EC",
+    "x": "polJtJiahckqKxJgAlumGJoIS9f_DRv-PGVg5qT8_gI",
+    "y": "Lptar7uFCHit7wX0cyZKqhiGwHHb9xIp3KBzzaU2heA"
+  }
+}

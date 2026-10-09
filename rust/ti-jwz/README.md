@@ -5,8 +5,9 @@ gemSpec_IDP_Dienst V2.2.0:
 
 - `ti_jwz::ti()` for new components: ES256; ECDH-ES on P-256 and `dir`, both with
   A256GCM; `x5c` allowed; a JWT needs `exp`.
-- `ti_jwz::ti_legacy()` (feature `legacy`): `ti()` plus `BP256R1` signatures and ECDH-ES
-  with an `epk` on `BP-256`, for the IDP and other existing interfaces.
+- `ti_jwz::ti_legacy()` (feature `legacy`): `ti()` plus `BP256R1` signatures, for the IDP
+  and other existing interfaces. Brainpool JWE is encryption only (to the IDP's `BP-256`
+  key); decrypting it is not supported yet.
 - `ti_jwz::registry()`: the registry to parse with (brainpool names with `legacy`).
 
 ePA's `ES256` signatures on brainpool keys pass `ti()`: the curve is the key's, chosen

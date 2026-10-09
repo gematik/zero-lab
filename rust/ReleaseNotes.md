@@ -39,19 +39,23 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   (now part of `Profile`), `Clock`, `SystemClock`, `FixedClock`.
 - `Policy::key_agreement_curves`: the curves an ECDH-ES `epk` may be on, checked by
   `Policy::check_jwe`.
+- Fuzz targets for every parser (`fuzz/`: JWS and JWE compact and JSON, JWK, claims),
+  run with `just fuzz-jwz`.
 
 ### jwz-brainpool
 
 #### added
 - New crate: gematik's `BP256R1` and `BP-256` for jwz, legacy only: `register`/`registry`,
-  `Bp256` (ECDSA and ECDH on bp256), `backend` (any jwz backend plus BP-256), and
-  `BrainpoolEs256Key` for ePA's `ES256` on brainpool keys.
+  `Bp256` (ECDSA and ECDH on bp256), `backend` (any jwz backend plus BP-256),
+  `BrainpoolEs256Key` for ePA's `ES256` on brainpool keys; JWE encryption to `BP-256`
+  keys (decryption not yet supported). Interop fixtures against Go josebp and Python
+  jwcrypto in both directions (`just jwz-interop`, checked by `cargo test`).
 
 ### ti-jwz
 
 #### added
-- New crate: the gematik TI profiles for jwz, `ti()` and (feature `legacy`) `ti_legacy()`,
-  with `registry()`.
+- New crate: the gematik TI profiles for jwz, `ti()` and (feature `legacy`) `ti_legacy()`
+  (adds `BP256R1`), with `registry()`.
 
 ### ti-xmldsig
 

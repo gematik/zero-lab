@@ -435,6 +435,8 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `jwz-backends` | No openssl, ring, aws-lc or cryptoki under jwz, jwz-brainpool or ti-jwz |
 | `jwz-rsa-guard` | jwz's reserved `rsa` feature still refuses to build |
 | `brainpool-absent <crate>` | No brainpool in a crate's tree (run for every new component) |
+| `jwz-interop` | Design time (Go, Python 3): brainpool interop fixtures against Go josebp and Python jwcrypto, both directions, and their coverage table (`jwz-brainpool/interop`) |
+| `fuzz-jwz [seconds]` | Design time (nightly, cargo-fuzz): every jwz parser, `seconds` each (default 30), from the committed seeds |
 | `wasm-build` | Build the ti-wasm package into `target/ti-wasm/pkg` |
 | `wasm-size` | Module size raw, gzip, brotli; fails over 2.0 MB raw or 700 KB gzip |
 | `wasm-smoke` | The package in Node on the real TSLs, cross-checked with `ti pki tsl verify` |
