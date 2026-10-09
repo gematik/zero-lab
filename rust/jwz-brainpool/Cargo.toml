@@ -1,0 +1,18 @@
+[package]
+name = "jwz-brainpool"
+version = "0.1.0"
+description = "Legacy brainpoolP256r1 for jwz: BP256R1 signatures and BP-256 ECDH-ES as used by existing gematik TI interfaces. Not for new components."
+keywords = ["jose", "brainpool", "gematik", "telematik"]
+categories = ["cryptography", "no-std"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+jwz.workspace = true
+
+[lints]
+workspace = true

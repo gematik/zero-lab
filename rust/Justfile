@@ -13,6 +13,9 @@ CROSS         := "cross@0.2.5"
 BLOAT         := "cargo-bloat@0.12.1"
 # Must equal the wasm-bindgen pin in ti-wasm/Cargo.toml.
 WASM_BINDGEN  := "wasm-bindgen-cli@0.2.128"
+# jwz with every feature but `rsa`, which refuses to build until RSA is implemented
+# (`jwz-rsa-guard` proves that); workspace-wide `--all-features` runs exclude jwz.
+JWZ_FEATURES  := "std,jws,jwe,jwt,crypto-rustcrypto,hmac,test-util"
 
 # Every crate is versioned solely by its own git tag (rust/<crate>/vX.Y.Z), bumped only
 # when that crate changes. Siblings resolve each other through the `version` in
@@ -292,7 +295,9 @@ wasm-vendor dest="../../gemiverse": wasm-smoke wasm-size
 # ---- Tier 1: every PR --------------------------------------------------------------
 
 # Everything a PR must pass, in the order that fails fastest
-check: fmt clippy doc test features wasm32 wasm-unsafe-free core-deps nonprod-absent machete deny
+check: fmt clippy doc test features wasm32 wasm-unsafe-free core-deps nonprod-absent jwz-backends jwz-rsa-guard machete deny
+    just brainpool-absent jwz
+    just brainpool-absent ti-jwz
 
 # Formatting (rustfmt.toml is the source of truth)
 fmt:
@@ -301,19 +306,23 @@ fmt:
 # Clippy on all targets with all features and with the defaults; warnings are errors.
 # The default pass catches code that only a feature makes used (e.g. test imports).
 clippy:
-    cargo clippy --workspace --all-targets --all-features -- -D warnings
+    cargo clippy --workspace --exclude jwz --all-targets --all-features -- -D warnings
+    cargo clippy -p jwz --all-targets --features {{JWZ_FEATURES}} -- -D warnings
     cargo clippy --workspace --all-targets -- -D warnings
 
 # Rustdoc must build warning-free (broken intra-doc links, missing docs)
 doc:
-    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --exclude jwz --no-deps --all-features
+    RUSTDOCFLAGS="-D warnings" cargo doc -p jwz --no-deps --features {{JWZ_FEATURES}}
 
 # Tests via nextest (parallel, per-test timeouts, better failure output) with all
 # features and with the defaults, then doctests
 test:
-    cargo nextest run --workspace --all-features
+    cargo nextest run --workspace --exclude jwz --all-features
+    cargo nextest run -p jwz --features {{JWZ_FEATURES}}
     cargo nextest run --workspace
-    cargo test --workspace --all-features --doc
+    cargo test --workspace --exclude jwz --all-features --doc
+    cargo test -p jwz --features {{JWZ_FEATURES}} --doc
 
 # The cache, XML signature checking, the loading layer, the reqwest transport and PKCS#12 decoding build for
 # the browser
@@ -325,6 +334,10 @@ wasm32:
     cargo check -p ti-pkcs12 --target wasm32-unknown-unknown
     cargo check -p ti-report --target wasm32-unknown-unknown
     cargo check -p ti-wasm --target wasm32-unknown-unknown
+    cargo check -p jwz --target wasm32-unknown-unknown --features {{JWZ_FEATURES}}
+    cargo check -p jwz --target wasm32-unknown-unknown --no-default-features
+    cargo check -p jwz-brainpool --target wasm32-unknown-unknown
+    cargo check -p ti-jwz --target wasm32-unknown-unknown --all-features
 
 # ti-wasm allows the unsafe glue `#[wasm_bindgen]` expands to; everything else forbids it
 # through the workspace lints.
@@ -372,6 +385,60 @@ nonprod-absent:
     done
     echo "no non-prod trust material without dangerous-nonprod"
 
+# Only the jwz crates: the loop while working on jwz; `check` stays the gate before a commit.
+# fmt, clippy, docs, tests, feature matrix, wasm32 and the guards for jwz, jwz-brainpool, ti-jwz
+check-jwz:
+    cargo fmt -p jwz -p jwz-brainpool -p ti-jwz -- --check
+    cargo clippy -p jwz --all-targets --features {{JWZ_FEATURES}} -- -D warnings
+    cargo clippy -p jwz -p jwz-brainpool -p ti-jwz --all-targets -- -D warnings
+    cargo clippy -p jwz-brainpool -p ti-jwz --all-targets --all-features -- -D warnings
+    RUSTDOCFLAGS="-D warnings" cargo doc -p jwz --no-deps --features {{JWZ_FEATURES}}
+    RUSTDOCFLAGS="-D warnings" cargo doc -p jwz-brainpool -p ti-jwz --no-deps --all-features
+    cargo nextest run -p jwz --features {{JWZ_FEATURES}}
+    cargo nextest run -p jwz-brainpool -p ti-jwz --all-features
+    cargo test -p jwz --features {{JWZ_FEATURES}} --doc
+    cargo test -p jwz-brainpool -p ti-jwz --all-features --doc
+    cargo hack check -p jwz --each-feature --exclude-features rsa --no-dev-deps
+    cargo check -p jwz --target wasm32-unknown-unknown --features {{JWZ_FEATURES}}
+    cargo check -p jwz --target wasm32-unknown-unknown --no-default-features
+    cargo check -p jwz-brainpool --target wasm32-unknown-unknown
+    cargo check -p ti-jwz --target wasm32-unknown-unknown --all-features
+    just jwz-backends jwz-rsa-guard
+    just brainpool-absent jwz
+    just brainpool-absent ti-jwz
+
+# rustls brings ring into ti-cli and ti-connector-client for TLS, so this is a tree check
+# for the jwz crates rather than a deny ban (ADR 0001, principle 8).
+# No openssl, ring, aws-lc or cryptoki under jwz, jwz-brainpool or ti-jwz
+jwz-backends:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for crate in jwz jwz-brainpool ti-jwz; do
+        found=$(cargo tree -p "$crate" -e normal --prefix none --all-features \
+            | grep -E '^(openssl|openssl-sys|ring|aws-lc-rs|aws-lc-sys|cryptoki) ' || true)
+        if [ -n "$found" ]; then echo "$crate depends on: $found" >&2; exit 1; fi
+    done
+    echo "jwz, jwz-brainpool and ti-jwz are free of openssl, ring, aws-lc and cryptoki"
+
+# jwz's `rsa` feature refuses to build until RSA crypto exists (milestone 1)
+jwz-rsa-guard:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if out=$(cargo check -q -p jwz --features rsa 2>&1); then
+        echo "jwz builds with the rsa feature; the guard is gone" >&2; exit 1
+    fi
+    grep -q "rsa: not yet implemented" <<<"$out" || { echo "jwz --features rsa failed for another reason:" >&2; echo "$out" >&2; exit 1; }
+    echo "jwz refuses the rsa feature"
+
+# New components must not carry brainpool (ADR 0001); jwz-brainpool itself fails.
+# No bp256, bp384 or jwz-brainpool in CRATE's tree with its default features
+brainpool-absent crate:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    found=$(cargo tree -p {{crate}} -e normal --prefix none | grep -E '^(bp256|bp384|jwz-brainpool) ' || true)
+    if [ -n "$found" ]; then echo "{{crate}} depends on brainpool: $found" >&2; exit 1; fi
+    echo "{{crate}} is free of brainpool"
+
 # Live tests against gematik's endpoints: roots.json and TSL of every environment,
 # OCSP at real responders (network and curl required; not part of `check`)
 real-world:
@@ -398,7 +465,8 @@ test-pki:
 # Every feature alone and every pair of features must compile (catches feature-gated
 # breakage); all features together are built by clippy --all-features
 features:
-    cargo hack check --workspace --feature-powerset --depth 2 --no-dev-deps
+    cargo hack check --workspace --exclude jwz --feature-powerset --depth 2 --no-dev-deps
+    cargo hack check -p jwz --each-feature --exclude-features rsa --no-dev-deps
     # The tests too, where gating mistakes hide: ti-pki with none of its algorithm features.
     cargo test -p ti-pki --no-default-features --quiet
 

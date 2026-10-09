@@ -1030,6 +1030,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "jwz"
+version = "0.1.0"
+dependencies = [
+ "futures-lite",
+ "zeroize",
+]
+
+[[package]]
+name = "jwz-brainpool"
+version = "0.1.0"
+dependencies = [
+ "jwz",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1925,6 +1940,10 @@ dependencies = [
  "ti-types",
  "ureq",
 ]
+
+[[package]]
+name = "ti-jwz"
+version = "0.1.0"
 
 [[package]]
 name = "ti-pkcs12"

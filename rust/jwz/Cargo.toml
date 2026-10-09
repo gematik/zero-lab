@@ -1,0 +1,42 @@
+[package]
+name = "jwz"
+version = "0.1.0"
+description = "JOSE (JWS, JWE, JWK, JWT) with an open algorithm registry, pluggable keys and crypto backends, and validation profiles"
+keywords = ["jose", "jws", "jwe", "jwk", "jwt"]
+categories = ["cryptography", "authentication", "no-std", "wasm"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+homepage = "https://github.com/gematik/zero-lab/blob/main/rust/jwz/README.md"
+
+[features]
+default = ["std", "jws", "jwe", "jwt", "crypto-rustcrypto"]
+# SystemClock and std error integration; the core is no_std + alloc.
+std = []
+jws = []
+jwe = []
+jwt = []
+# The pure-Rust default backend (RustCrypto 0.14 line). Exactly one in-crate backend
+# may be enabled; external backends implement `jwz::crypto` without a feature here.
+crypto-rustcrypto = []
+# Reserved: RSA crypto is not implemented in milestone 1 (src/lib.rs refuses the build).
+rsa = []
+# HMAC (HS256/384/512); off by default because shared-secret JWS is rarely what a
+# public-key protocol wants.
+hmac = []
+# MockHsmSigner, TestKmsSigner and fixed RNGs for tests in downstream crates.
+test-util = []
+
+
+[dependencies]
+# Secret outputs of the crypto traits (CEKs, shared secrets, private scalars).
+zeroize.workspace = true
+
+[dev-dependencies]
+futures-lite.workspace = true
+
+[lints]
+workspace = true

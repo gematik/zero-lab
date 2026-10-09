@@ -1,5 +1,5 @@
 [workspace]
-members = ["ti-types", "ti-cache", "ti-xmldsig", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-report", "ti-cli", "ti-wasm"]
+members = ["ti-types", "ti-cache", "ti-xmldsig", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-report", "ti-cli", "ti-wasm", "jwz", "jwz-brainpool", "ti-jwz"]
 resolver = "3"
 
 # Shared metadata only. Deliberately no workspace.package.version: every crate is
@@ -23,6 +23,8 @@ ti-pki = { version = "0.1", path = "ti-pki", default-features = false }
 ti-pkcs12 = { version = "0.1", path = "ti-pkcs12" }
 ti-connector-client = { version = "0.1", path = "ti-connector-client" }
 ti-report = { version = "0.1", path = "ti-report" }
+jwz = { version = "0.1", path = "jwz", default-features = false }
+jwz-brainpool = { version = "0.1", path = "jwz-brainpool" }
 
 # External. Pinned here once, inherited by every crate.
 der = { version = "0.8", features = ["alloc", "derive", "oid"] }
@@ -88,6 +90,16 @@ base64ct = { version = "1.8.3", features = ["alloc"] }
 subtle = { version = "2.6.1", default-features = false }
 # Only for the generated Konnektor bindings, which are written against it.
 base64 = "0.23.1"
+
+# jwz (JOSE): the RustCrypto 0.14 line, no_std; features chosen per crate.
+elliptic-curve = { version = "0.14.1", default-features = false }
+ed25519-dalek = { version = "3.0.0", default-features = false }
+signature = { version = "3.0.0", default-features = false }
+aes-gcm = { version = "0.11.1", default-features = false }
+aes-kw = { version = "0.3.1", default-features = false }
+hkdf = { version = "0.13.0", default-features = false }
+rand_core = { version = "0.10.1", default-features = false }
+getrandom = { version = "0.4.3", default-features = false }
 
 # Test-only.
 futures-lite = "2.6.1"

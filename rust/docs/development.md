@@ -428,9 +428,13 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `tools` | Install the pinned cargo tools (via cargo-binstall when available) |
 | `install` | Install `ti` into `~/.cargo/bin`, built like a release |
 | `install-fast` | Install `ti` from the `local` profile (thin LTO, incremental): a change in ti-cli rebuilds in about 20 s instead of about 45 s |
-| `check` | Tier 1: `fmt`, `clippy`, `doc`, `test`, `features`, `wasm32`, `wasm-unsafe-free`, `core-deps`, `nonprod-absent`, `machete`, `deny` |
+| `check` | Tier 1: `fmt`, `clippy`, `doc`, `test`, `features`, `wasm32`, `wasm-unsafe-free`, `core-deps`, `nonprod-absent`, `jwz-backends`, `jwz-rsa-guard`, `machete`, `deny`, `brainpool-absent` for jwz and ti-jwz |
 | `wasm32` | `cargo check` of ti-pki's loading layer and reqwest transport, ti-report and ti-wasm for wasm32 |
 | `wasm-unsafe-free` | No `unsafe` in ti-wasm's own sources |
+| `check-jwz` | The jwz crates only (fmt, clippy, doc, test, feature matrix, wasm32, guards): the loop while working on jwz |
+| `jwz-backends` | No openssl, ring, aws-lc or cryptoki under jwz, jwz-brainpool or ti-jwz |
+| `jwz-rsa-guard` | jwz's reserved `rsa` feature still refuses to build |
+| `brainpool-absent <crate>` | No brainpool in a crate's tree (run for every new component) |
 | `wasm-build` | Build the ti-wasm package into `target/ti-wasm/pkg` |
 | `wasm-size` | Module size raw, gzip, brotli; fails over 2.0 MB raw or 700 KB gzip |
 | `wasm-smoke` | The package in Node on the real TSLs, cross-checked with `ti pki tsl verify` |
