@@ -23,5 +23,12 @@ extern crate std;
 #[cfg(feature = "rsa")]
 compile_error!("rsa: not yet implemented (jwz milestone 1 has the RSA key data model only)");
 
+pub mod b64;
 pub mod crypto;
+mod error;
+mod json;
 pub mod jwa;
+pub mod jwk;
+pub mod keys;
+
+pub use error::{Error, ErrorCode};

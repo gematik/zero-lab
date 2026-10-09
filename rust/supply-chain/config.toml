@@ -31,6 +31,10 @@ criteria = "safe-to-deploy"
 version = "0.11.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.aes-kw]]
+version = "0.3.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.anstream]]
 version = "1.0.0"
 criteria = "safe-to-deploy"
@@ -183,6 +187,14 @@ criteria = "safe-to-deploy"
 version = "0.4.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.curve25519-dalek]]
+version = "5.0.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.curve25519-dalek-derive]]
+version = "0.1.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.defmt]]
 version = "1.1.1"
 criteria = "safe-to-deploy"
@@ -217,6 +229,14 @@ criteria = "safe-to-deploy"
 
 [[exemptions.ecdsa]]
 version = "0.17.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.ed25519]]
+version = "3.0.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.ed25519-dalek]]
+version = "3.0.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.elliptic-curve]]
@@ -271,12 +291,20 @@ criteria = "safe-to-deploy"
 version = "0.3.4"
 criteria = "safe-to-run"
 
+[[exemptions.getrandom]]
+version = "0.4.3"
+criteria = "safe-to-deploy"
+
 [[exemptions.ghash]]
 version = "0.6.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.group]]
 version = "0.14.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.hkdf]]
+version = "0.13.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.hmac]]
@@ -514,6 +542,10 @@ criteria = "safe-to-deploy"
 [[exemptions.r-efi]]
 version = "5.3.0"
 criteria = "safe-to-run"
+
+[[exemptions.r-efi]]
+version = "6.0.0"
+criteria = "safe-to-deploy"
 
 [[exemptions.rand]]
 version = "0.9.5"

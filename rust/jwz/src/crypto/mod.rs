@@ -21,6 +21,8 @@
 //! cloud KMS answer asynchronously; every synchronous backend is also an asynchronous one.
 
 pub mod asynchronous;
+#[cfg(feature = "crypto-rustcrypto")]
+pub mod rustcrypto;
 
 use alloc::vec::Vec;
 use core::fmt;

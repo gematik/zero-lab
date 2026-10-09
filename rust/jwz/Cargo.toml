@@ -21,22 +21,44 @@ jwe = []
 jwt = []
 # The pure-Rust default backend (RustCrypto 0.14 line). Exactly one in-crate backend
 # may be enabled; external backends implement `jwz::crypto` without a feature here.
-crypto-rustcrypto = []
+crypto-rustcrypto = ["dep:p256", "dep:sha2", "dep:ed25519-dalek", "dep:aes-gcm", "dep:aes-kw", "dep:getrandom"]
 # Reserved: RSA crypto is not implemented in milestone 1 (src/lib.rs refuses the build).
 rsa = []
 # HMAC (HS256/384/512); off by default because shared-secret JWS is rarely what a
 # public-key protocol wants.
-hmac = []
+hmac = ["dep:hmac", "dep:subtle"]
 # MockHsmSigner, TestKmsSigner and fixed RNGs for tests in downstream crates.
 test-util = []
 
 
 [dependencies]
+# JSON for JOSE objects; serde_json directly (not the workspace entry) to stay no_std.
+serde = { workspace = true }
+serde_json = { version = "1.0.151", default-features = false, features = ["alloc"] }
+# Strict, constant-time base64url.
+base64ct = { workspace = true }
+# RustCrypto's signature traits, which jwz's Signer and Verifier build on.
+signature = { workspace = true, features = ["alloc"] }
 # Secret outputs of the crypto traits (CEKs, shared secrets, private scalars).
 zeroize.workspace = true
+# The crypto-rustcrypto backend; each crate is one family of primitives.
+p256 = { workspace = true, optional = true, features = ["ecdh", "alloc"] }
+sha2 = { workspace = true, optional = true }
+ed25519-dalek = { workspace = true, optional = true, features = ["fast", "zeroize"] }
+aes-gcm = { workspace = true, optional = true, features = ["aes"] }
+aes-kw = { workspace = true, optional = true }
+getrandom = { workspace = true, optional = true }
+hmac = { workspace = true, optional = true }
+# Constant-time comparison of MACs, tags and thumbprints.
+subtle = { workspace = true, optional = true }
+
+# A browser has no OS random source: getrandom uses Crypto.getRandomValues there.
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+getrandom = { workspace = true, optional = true, features = ["wasm_js"] }
 
 [dev-dependencies]
 futures-lite.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true

@@ -16,6 +16,14 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   unrepresentable), and `crypto`, the backend traits (ECDSA, EdDSA, ECDH, AEAD, key wrap,
   HMAC, hash, RNG) with async counterparts. The `rsa` feature refuses to build until RSA
   is implemented.
+- `crypto::rustcrypto::RustCrypto` (feature `crypto-rustcrypto`): P-256 ECDSA and ECDH,
+  Ed25519, AES-GCM, AES Key Wrap, SHA-2 and (feature `hmac`) HMAC on the RustCrypto 0.14
+  line; `Send + Sync`; browser randomness on `wasm32-unknown-unknown`.
+- `jwk`: JWK (EC, OKP, oct, RSA data model) and JWK Set, RFC 7638 thumbprints, strict
+  parsing (duplicate members, base64url) and `Jwk::check` against a registry.
+- `keys`: `Signer`, `Verifier`, `KeyAgreement` on RustCrypto's `signature` traits with
+  `dyn`-compatible async forms; `SoftwareKey` and `SoftwareAgreementKey` over any
+  backend; `MockHsm`, `TestKms` and `FixedRng` (feature `test-util`).
 
 ### jwz-brainpool
 
