@@ -24,11 +24,17 @@ extern crate std;
 compile_error!("rsa: not yet implemented (jwz milestone 1 has the RSA key data model only)");
 
 pub mod b64;
+pub mod compact;
 pub mod crypto;
 mod error;
+pub mod header;
 mod json;
 pub mod jwa;
 pub mod jwk;
+#[cfg(feature = "jws")]
+pub mod jws;
 pub mod keys;
+pub mod profile;
+pub mod x5c;
 
 pub use error::{Error, ErrorCode};

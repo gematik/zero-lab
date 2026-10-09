@@ -24,6 +24,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `keys`: `Signer`, `Verifier`, `KeyAgreement` on RustCrypto's `signature` traits with
   `dyn`-compatible async forms; `SoftwareKey` and `SoftwareAgreementKey` over any
   backend; `MockHsm`, `TestKms` and `FixedRng` (feature `test-util`).
+- `jws` (feature `jws`): compact and JSON serializations (RFC 7515), parse under a
+  policy, `Jws<Unverified>` → `Jws<Verified>`, `sign`/`sign_async`; `header`: `Header` and
+  `HeaderParams`; `profile`: `Policy::check_jws`, `Profile::strict`,
+  `Profile::rfc7518_interop`, composition with `with`; `x5c`: chain and `x5t#S256`
+  handling, `ChainValidator`.
 
 ### jwz-brainpool
 

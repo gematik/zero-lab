@@ -87,7 +87,7 @@ fn rfc_8037_a_3_thumbprint_and_a_4_signature() {
 const RFC7515_A3_KEY: &str = r#"{"kty":"EC","crv":"P-256",
   "x":"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
   "y":"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0",
-  "d":"jpsQnnGQmL-YBIffH1136cLSG3o_YWpthLB2rW1ULUo"}"#;
+  "d":"jpsQnnGQmL-YBIffH1136cspYG6-0iY7X1fCE9-E9LI"}"#;
 const RFC7515_A3_INPUT: &[u8] = b"eyJhbGciOiJFUzI1NiJ9.eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb290Ijp0cnVlfQ";
 const RFC7515_A3_SIG: &str =
     "DtEhU3ljbEg8L38VWAfUAqOyKAM6-Xx-F4GawxaepmXFCgfTjDxw5djxLa8ISlSApmWQxfKTUJqPP3-Kg6NU1Q";
@@ -156,6 +156,8 @@ fn rfc_7518_3_2_hmac_key_shorter_than_the_hash_is_refused() {
 fn rfc_7517_4_4_a_key_is_bound_to_its_algorithm() {
     let registry = Registry::standard();
     let ec = Jwk::parse(RFC7515_A3_KEY).unwrap();
+    // The RFC's private key belongs to its public key and loads.
+    SoftwareKey::from_jwk(&ec, SignatureAlgorithm::ES256, &registry, backend()).unwrap();
     let err = |jwk: &Jwk, alg| {
         SoftwareKey::from_jwk(jwk, alg, &registry, backend())
             .map(|_| ())

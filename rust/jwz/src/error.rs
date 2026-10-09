@@ -35,6 +35,15 @@ pub enum ErrorCode {
     MissingPrivateKey,
     /// A signature or authentication tag does not verify.
     VerificationFailed,
+    /// The token is larger than the policy allows; checked before anything is decoded.
+    TokenTooLarge,
+    /// The token's structure is wrong (number of parts, header not an object).
+    Malformed,
+    /// The policy does not allow what the token uses (an algorithm, a header parameter).
+    PolicyViolation,
+    /// A `crit` header parameter is not understood, or `crit` itself is malformed
+    /// (RFC 7515 §4.1.11).
+    Critical,
     /// A cryptographic primitive failed.
     Crypto(CryptoError),
 }

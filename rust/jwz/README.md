@@ -11,9 +11,13 @@ Status: milestone 1 in progress. Available:
   (P-256 ES256 and ECDH, Ed25519, AES-GCM, AES Key Wrap, SHA-2, HMAC);
 - `jwz::jwk`: JWK and JWK Set, RFC 7638 thumbprints, strict parsing;
 - `jwz::keys`: key traits on RustCrypto's `signature` traits, `SoftwareKey`, and test
-  doubles for HSM and KMS signers (`test-util`).
+  doubles for HSM and KMS signers (`test-util`);
+- `jwz::jws`: compact and JSON serializations, `Jws<Unverified>` → `Jws<Verified>`,
+  sync and async signing;
+- `jwz::profile`: `Policy` (the single acceptance check) and the `strict` and
+  `rfc7518-interop` profiles; `jwz::x5c`: chain decoding and the `ChainValidator` seam.
 
-Coming in this milestone: JWS, JWE (ECDH-ES with Concat KDF), JWT and profiles.
+Coming in this milestone: JWE (ECDH-ES with Concat KDF), JWT claims and the TI profiles.
 Design: [`docs/adr/0001-jwz.md`](docs/adr/0001-jwz.md); dependencies:
 [`docs/dependencies.md`](docs/dependencies.md).
 
