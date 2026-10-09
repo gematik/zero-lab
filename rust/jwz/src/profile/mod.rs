@@ -18,8 +18,8 @@ use crate::error::{Error, ErrorCode};
 use crate::header::{Header, REGISTERED};
 use crate::jwa::{
     ContentEncryptionAlgorithm, ContentEncryptionEntry, ContentEncryptionKind, Curve,
-    KeyEncryptionAlgorithm, KeyEncryptionEntry, KeyManagementMode, Registry, SignatureAlgorithm,
-    Support,
+    KeyEncryptionAlgorithm, KeyEncryptionEntry, KeyManagementMode, KeyType, Registry,
+    SignatureAlgorithm, Support,
 };
 
 /// Header parameters that point at or carry a key; each must be opted into, because a
@@ -68,6 +68,8 @@ pub struct Policy {
     pub key_encryption_algorithms: Vec<KeyEncryptionAlgorithm>,
     /// JWE `enc` values accepted.
     pub content_encryption_algorithms: Vec<ContentEncryptionAlgorithm>,
+    /// Curves the `epk` of an ECDH-ES JWE may be on.
+    pub key_agreement_curves: Vec<Curve>,
     /// Largest token accepted, in bytes; checked before anything is decoded.
     pub max_token_len: usize,
     /// Extension parameters this application understands and so may appear in `crit`.
@@ -158,6 +160,14 @@ impl Policy {
         if !self.content_encryption_algorithms.contains(&cee.enc) {
             return Err(Error::new(ErrorCode::PolicyViolation, "enc not allowed"));
         }
+        if let Some(curve) = epk_curve(header, registry)
+            && !self.key_agreement_curves.contains(&curve)
+        {
+            return Err(Error::new(
+                ErrorCode::PolicyViolation,
+                "epk curve not allowed",
+            ));
+        }
         // RFC 7516 §4.1.3: compression before encryption leaks the plaintext's
         // redundancy and makes decryption a decompression bomb; jwz does not implement it.
         if header.get("zip").is_some() {
@@ -246,6 +256,7 @@ impl Policy {
             &mut self.content_encryption_algorithms,
             &other.content_encryption_algorithms,
         );
+        union_into(&mut self.key_agreement_curves, &other.key_agreement_curves);
         union_into(&mut self.understood_critical, &other.understood_critical);
         self.max_token_len = self.max_token_len.max(other.max_token_len);
         self.key_references = self.key_references.union(other.key_references);
@@ -254,6 +265,13 @@ impl Policy {
         }
         self
     }
+}
+
+/// The registered curve `epk` names, if any; whether `epk` is otherwise well-formed is
+/// JWE's structural check, not policy.
+fn epk_curve(header: &Header, registry: &Registry) -> Option<Curve> {
+    let crv = header.get("epk")?.get("crv")?.as_str()?;
+    registry.curve(crv).map(|e| e.crv)
 }
 
 /// RFC 7515 §4.1.9: media types are compared case-insensitively, and `application/` may
@@ -379,6 +397,7 @@ impl Profile {
                     ContentEncryptionAlgorithm::A128GCM,
                     ContentEncryptionAlgorithm::A256GCM,
                 ],
+                key_agreement_curves: alloc::vec![Curve::P256],
                 max_token_len: DEFAULT_MAX_TOKEN_LEN,
                 understood_critical: Vec::new(),
                 key_references: KeyReferences::default(),
@@ -424,6 +443,12 @@ impl Profile {
                     .iter()
                     .filter(|e| available(e.support))
                     .map(|e| e.enc)
+                    .collect(),
+                key_agreement_curves: registry
+                    .curves()
+                    .iter()
+                    .filter(|e| available(e.support) && e.key_type == KeyType::EC)
+                    .map(|e| e.crv)
                     .collect(),
                 max_token_len: 1024 * 1024,
                 understood_critical: Vec::new(),

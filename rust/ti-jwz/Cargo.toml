@@ -1,7 +1,7 @@
 [package]
 name = "ti-jwz"
 version = "0.1.0"
-description = "gematik TI profiles for jwz (gemSpec_Krypt V2.50.0): Profile::ti() for new components, Profile::ti_legacy() with brainpool for existing interfaces"
+description = "gematik TI profiles for jwz (gemSpec_Krypt V2.50.0, gemSpec_IDP_Dienst V2.2.0): ti() for new components, ti_legacy() with brainpool for existing interfaces"
 keywords = ["jose", "gematik", "telematik", "profile"]
 categories = ["cryptography", "no-std"]
 edition.workspace = true
@@ -13,8 +13,15 @@ publish.workspace = true
 
 [features]
 default = []
-# Profile::ti_legacy(): brainpool (BP256R1, BP-256 ECDH-ES) through jwz-brainpool.
-legacy = []
+# ti_legacy(): brainpool (BP256R1, BP-256 ECDH-ES) through jwz-brainpool.
+legacy = ["dep:jwz-brainpool"]
+
+[dependencies]
+jwz.workspace = true
+jwz-brainpool = { workspace = true, optional = true }
+
+[dev-dependencies]
+jwz = { workspace = true, features = ["std", "jws", "jwe", "jwt", "crypto-rustcrypto"] }
 
 [lints]
 workspace = true

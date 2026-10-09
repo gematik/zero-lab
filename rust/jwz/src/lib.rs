@@ -1,6 +1,6 @@
-//! JOSE for Rust in the spirit of Go's `jwx`: an open algorithm registry ([`jwa`]),
-//! pluggable cryptography ([`crypto`]) and keys ([`keys`]), JWS, JWE, JWT claims and
-//! validation profiles ([`profile`]).
+//! JOSE for Rust: an open algorithm registry ([`jwa`]), pluggable cryptography
+//! ([`crypto`]) and keys ([`keys`]), JWS, JWE, JWT claims and validation profiles
+//! ([`profile`]).
 //!
 //! Design decisions and their reasons: `docs/adr/0001-jwz.md`.
 #![no_std]

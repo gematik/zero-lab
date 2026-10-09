@@ -1134,7 +1134,12 @@ dependencies = [
 name = "jwz-brainpool"
 version = "0.1.0"
 dependencies = [
+ "bp256",
+ "ecdsa",
+ "elliptic-curve",
  "jwz",
+ "serde_json",
+ "signature",
 ]
 
 [[package]]
@@ -2043,6 +2048,10 @@ dependencies = [
 [[package]]
 name = "ti-jwz"
 version = "0.1.0"
+dependencies = [
+ "jwz",
+ "jwz-brainpool",
+]
 
 [[package]]
 name = "ti-pkcs12"

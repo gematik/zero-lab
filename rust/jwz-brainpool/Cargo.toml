@@ -13,6 +13,17 @@ publish.workspace = true
 
 [dependencies]
 jwz.workspace = true
+# brainpoolP256r1 arithmetic, ECDSA with SHA-256 (RFC 6979 nonces) and ECDH, on the same
+# RustCrypto 0.14 line as jwz's own backend.
+bp256 = { workspace = true, features = ["alloc"] }
+ecdsa.workspace = true
+elliptic-curve = { workspace = true, features = ["ecdh", "alloc"] }
+# BrainpoolEs256Key implements RustCrypto's signature traits, as jwz's keys do.
+signature = { workspace = true, features = ["alloc"] }
+
+[dev-dependencies]
+jwz = { workspace = true, features = ["std", "jws", "jwe", "jwt", "crypto-rustcrypto"] }
+serde_json.workspace = true
 
 [lints]
 workspace = true

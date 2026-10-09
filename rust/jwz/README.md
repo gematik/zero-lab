@@ -1,9 +1,8 @@
 # jwz
 
-JOSE for Rust in the spirit of Go's [`jwx`](https://github.com/lestrrat-go/jwx): JWS, JWE,
-JWK and JWT with an open algorithm registry, pluggable keys and crypto backends, and
-validation profiles as a policy layer. Pure Rust on the RustCrypto 0.14 line by default,
-`no_std` + `alloc`, every crate builds for `wasm32-unknown-unknown`.
+JOSE for Rust: JWS, JWE, JWK and JWT with an open algorithm registry, pluggable keys and
+crypto backends, and validation profiles as a policy layer. Pure Rust on the RustCrypto
+0.14 line by default, `no_std` + `alloc`, every crate builds for `wasm32-unknown-unknown`.
 
 Status: milestone 1 in progress. Available:
 - `jwz::jwa`: the algorithm registry;

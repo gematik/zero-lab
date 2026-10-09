@@ -10,7 +10,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### jwz
 
 #### added
-- New crate: JOSE in the spirit of Go's jwx (ADR `jwz/docs/adr/0001-jwz.md`). Milestone 1
+- New crate: JOSE with an open algorithm registry, pluggable keys and crypto backends, and
+  validation profiles (ADR `jwz/docs/adr/0001-jwz.md`). Milestone 1
   starts with `jwa`, an open registry of algorithm, curve and key-type names
   (RFC 7518, RFC 8037; RSA, PBES2, CBC-HMAC and post-quantum names reserved; `none`
   unrepresentable), and `crypto`, the backend traits (ECDSA, EdDSA, ECDH, AEAD, key wrap,
@@ -36,16 +37,21 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `crypto::Extended` for curves the base backend lacks.
 - `jwt` (feature `jwt`): `Claims` with `validate` against `profile::ClaimsPolicy`
   (now part of `Profile`), `Clock`, `SystemClock`, `FixedClock`.
+- `Policy::key_agreement_curves`: the curves an ECDH-ES `epk` may be on, checked by
+  `Policy::check_jwe`.
 
 ### jwz-brainpool
 
 #### added
-- New crate: registers gematik's `BP256R1` and `BP-256` with a jwz registry. Legacy only.
+- New crate: gematik's `BP256R1` and `BP-256` for jwz, legacy only: `register`/`registry`,
+  `Bp256` (ECDSA and ECDH on bp256), `backend` (any jwz backend plus BP-256), and
+  `BrainpoolEs256Key` for ePA's `ES256` on brainpool keys.
 
 ### ti-jwz
 
 #### added
-- New crate, placeholder for the gematik TI profiles of jwz.
+- New crate: the gematik TI profiles for jwz, `ti()` and (feature `legacy`) `ti_legacy()`,
+  with `registry()`.
 
 ### ti-xmldsig
 

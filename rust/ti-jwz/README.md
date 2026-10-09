@@ -1,11 +1,17 @@
 # ti-jwz
 
-The gematik TI profiles for [jwz](../jwz/README.md), from gemSpec_Krypt V2.50.0:
-`Profile::ti()` for new components (ES256, ECDH-ES on P-256, A256GCM) and, behind the
-`legacy` feature, `Profile::ti_legacy()`, which also accepts brainpool (`BP256R1`,
-`BP-256`) for existing interfaces. No RSA, no HMAC. Every rule cites its source.
+The gematik TI profiles for [jwz](../jwz/README.md), from gemSpec_Krypt V2.50.0 and
+gemSpec_IDP_Dienst V2.2.0:
 
-Status: the profiles arrive in jwz milestone 1 stage S5.
+- `ti_jwz::ti()` for new components: ES256; ECDH-ES on P-256 and `dir`, both with
+  A256GCM; `x5c` allowed; a JWT needs `exp`.
+- `ti_jwz::ti_legacy()` (feature `legacy`): `ti()` plus `BP256R1` signatures and ECDH-ES
+  with an `epk` on `BP-256`, for the IDP and other existing interfaces.
+- `ti_jwz::registry()`: the registry to parse with (brainpool names with `legacy`).
+
+ePA's `ES256` signatures on brainpool keys pass `ti()`: the curve is the key's, chosen
+with `jwz_brainpool::BrainpoolEs256Key`. No RSA, no HMAC, no CBC-HMAC. Every rule cites
+its source in the crate documentation.
 
 ## License
 

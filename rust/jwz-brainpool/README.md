@@ -5,12 +5,17 @@ brainpoolP256r1 for [jwz](../jwz/README.md): the JWS algorithm `BP256R1` and the
 handshakes, SMC-B and HBA keys). **Legacy only: new components use P-256 and must not
 depend on this crate.**
 
-- Enable it through `ti-jwz`'s `legacy` feature, or call `jwz_brainpool::register` on the
-  registry a parse uses.
+- `jwz_brainpool::registry()` (or `register`) adds the names; `jwz_brainpool::backend(base)`
+  adds BP-256 ECDSA and ECDH to any jwz backend. JWS, JWE (ECDH-ES with an `epk` on
+  `BP-256`), keys and policies are jwz's own code, the same as for P-256.
+- `BrainpoolEs256Key`: ePA signs with `ES256` on a brainpoolP256r1 key; this key is that
+  exception, chosen by the verifier, so a token cannot move ES256 onto brainpool.
+- Enable it through `ti-jwz`'s `legacy` feature for `ti_legacy()`.
 - `just brainpool-absent <crate>` fails if a crate's dependency tree contains brainpool;
   run it for every new component.
-- Neither identifier is IANA-registered; both are gematik's (gemSpec_Krypt V2.50.0) and
-  match `go/brainpool/josebp`.
+- Neither identifier is IANA-registered; both are gematik's (gemSpec_IDP_Dienst V2.2.0,
+  A_20591-01, A_20695-01, A_20327-02) and match `go/brainpool/josebp`.
+- Checked against the Wycheproof brainpoolP256r1 ECDSA and ECDH vectors.
 
 ## License
 

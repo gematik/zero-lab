@@ -268,8 +268,8 @@ fn rfc_7518_4_6_1_epk_apu_apv_negatives() {
         ),
         (
             with("epk.crv", json!("P-384")),
-            ErrorCode::KeyLength,
-            "coordinates of another curve",
+            ErrorCode::PolicyViolation,
+            "a registered curve the policy does not allow",
         ),
         (
             with("epk.crv", json!("brainpoolP256r1")),

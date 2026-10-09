@@ -5,7 +5,7 @@
 //! [`KeyEncryptionAlgorithm`], [`ContentEncryptionAlgorithm`], [`Curve`] or [`KeyType`].
 //! Names are open: any crate can define one with `Name::new`, and a [`Registry`]
 //! decides which names a program knows. [`Registry::standard`] holds RFC 7518 and
-//! RFC 8037; an extension crate adds its own, as jwx's `jwa.Register*` functions do.
+//! RFC 8037; an extension crate adds its own.
 //! This module holds no cryptography and depends on nothing else in the crate.
 //!
 //! The registry is a value, not a global: every parse is given the registry and the
