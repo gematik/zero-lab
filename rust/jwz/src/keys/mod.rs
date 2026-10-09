@@ -56,6 +56,8 @@ mod test_util;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
+#[cfg(feature = "jwe")]
+pub use software::SymmetricKey;
 pub use software::{SoftwareAgreementKey, SoftwareKey};
 #[cfg(feature = "test-util")]
 pub use test_util::{FixedRng, MockHsm, MockHsmSigner, TestKms, TestKmsSigner};
@@ -199,6 +201,10 @@ pub trait KeyAgreement {
 pub trait AsyncKeyAgreement {
     /// The curve.
     fn curve(&self) -> Curve;
+    /// The key ID, if it has one.
+    fn key_id(&self) -> Option<&str> {
+        None
+    }
     /// The shared secret Z with the SEC1 public point `peer`.
     fn agree_async<'a>(
         &'a self,
@@ -209,6 +215,9 @@ pub trait AsyncKeyAgreement {
 impl<T: KeyAgreement + ?Sized> AsyncKeyAgreement for T {
     fn curve(&self) -> Curve {
         KeyAgreement::curve(self)
+    }
+    fn key_id(&self) -> Option<&str> {
+        KeyAgreement::key_id(self)
     }
     fn agree_async<'a>(
         &'a self,

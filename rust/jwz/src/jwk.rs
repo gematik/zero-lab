@@ -54,6 +54,30 @@ pub struct EcKey {
     pub d: Option<Secret>,
 }
 
+impl EcKey {
+    /// The public key `x`, `y` on `crv` from the SEC1 uncompressed point `point`
+    /// (`0x04 || x || y`).
+    pub fn from_point(crv: &str, point: &[u8]) -> EcKey {
+        let coordinates = point.get(1..).unwrap_or_default();
+        let (x, y) = coordinates.split_at(coordinates.len() / 2);
+        EcKey {
+            crv: crv.to_string(),
+            x: x.to_vec(),
+            y: y.to_vec(),
+            d: None,
+        }
+    }
+
+    /// The public key as a SEC1 uncompressed point, the form the crypto traits take.
+    pub fn point(&self) -> Vec<u8> {
+        let mut point = Vec::with_capacity(1 + self.x.len() + self.y.len());
+        point.push(0x04);
+        point.extend_from_slice(&self.x);
+        point.extend_from_slice(&self.y);
+        point
+    }
+}
+
 /// An octet key pair (RFC 8037 §2): Ed25519, Ed448, X25519, X448.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OkpKey {

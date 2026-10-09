@@ -1,6 +1,6 @@
 //! JOSE for Rust in the spirit of Go's `jwx`: an open algorithm registry ([`jwa`]),
-//! pluggable cryptography ([`crypto`]) and, in later stages of milestone 1, keys, JWS,
-//! JWE, JWT and validation profiles.
+//! pluggable cryptography ([`crypto`]) and keys ([`keys`]), JWS, JWE, JWT claims and
+//! validation profiles ([`profile`]).
 //!
 //! Design decisions and their reasons: `docs/adr/0001-jwz.md`.
 #![no_std]
@@ -30,9 +30,13 @@ mod error;
 pub mod header;
 mod json;
 pub mod jwa;
+#[cfg(feature = "jwe")]
+pub mod jwe;
 pub mod jwk;
 #[cfg(feature = "jws")]
 pub mod jws;
+#[cfg(feature = "jwt")]
+pub mod jwt;
 pub mod keys;
 pub mod profile;
 pub mod x5c;

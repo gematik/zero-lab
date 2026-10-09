@@ -21,12 +21,14 @@
 //! cloud KMS answer asynchronously; every synchronous backend is also an asynchronous one.
 
 pub mod asynchronous;
+mod extended;
 #[cfg(feature = "crypto-rustcrypto")]
 pub mod rustcrypto;
 
 use alloc::vec::Vec;
 use core::fmt;
 
+pub use extended::Extended;
 pub use zeroize::Zeroizing;
 
 use crate::jwa::{ContentEncryptionAlgorithm, Curve, HashAlgorithm};

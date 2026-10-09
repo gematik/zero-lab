@@ -14,10 +14,15 @@ Status: milestone 1 in progress. Available:
   doubles for HSM and KMS signers (`test-util`);
 - `jwz::jws`: compact and JSON serializations, `Jws<Unverified>` → `Jws<Verified>`,
   sync and async signing;
+- `jwz::jwe`: compact and JSON serializations, ECDH-ES (direct and with A128/192/256KW),
+  `dir`, A128/192/256KW, A128/192/256GCM; `Jwe<Encrypted>` → `Jwe<Decrypted>`, async key
+  agreement; further curves through `crypto::Extended`;
+- `jwz::jwt`: claims, `ClaimsPolicy`, `Clock`;
 - `jwz::profile`: `Policy` (the single acceptance check) and the `strict` and
   `rfc7518-interop` profiles; `jwz::x5c`: chain decoding and the `ChainValidator` seam.
 
-Coming in this milestone: JWE (ECDH-ES with Concat KDF), JWT claims and the TI profiles.
+Coming in this milestone: brainpool and the TI profiles, interop fixtures, fuzzing and
+formal verification.
 Design: [`docs/adr/0001-jwz.md`](docs/adr/0001-jwz.md); dependencies:
 [`docs/dependencies.md`](docs/dependencies.md).
 

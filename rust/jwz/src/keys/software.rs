@@ -147,15 +147,10 @@ impl<B: Backend> SoftwareKey<B> {
                 curve,
                 public,
                 secret,
-            } => {
-                let (x, y) = split_sec1(public);
-                KeyMaterial::Ec(EcKey {
-                    crv: curve.as_str().into(),
-                    x,
-                    y,
-                    d: secret.clone(),
-                })
-            }
+            } => KeyMaterial::Ec(EcKey {
+                d: secret.clone(),
+                ..EcKey::from_point(curve.as_str(), public)
+            }),
             Kind::EdDsa {
                 curve,
                 public,
@@ -250,6 +245,77 @@ impl<B: Backend> signature::Verifier<Signature> for SoftwareKey<B> {
     }
 }
 
+/// A symmetric JWE key in memory: the CEK for `dir`, the key encryption key for
+/// `A128KW`/`A192KW`/`A256KW` (RFC 7518 §4.4, §4.5).
+#[cfg(feature = "jwe")]
+#[derive(Clone)]
+pub struct SymmetricKey {
+    key: Secret,
+    kid: Option<String>,
+    alg: Option<String>,
+}
+
+#[cfg(feature = "jwe")]
+impl SymmetricKey {
+    /// The key `bytes`.
+    pub fn new(bytes: Vec<u8>) -> Self {
+        SymmetricKey {
+            key: Secret::new(bytes),
+            kid: None,
+            alg: None,
+        }
+    }
+
+    /// The `oct` key in `jwk`, with its `kid` and `alg`.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::KeyMismatch`] for a key that is not `oct`, the errors of
+    /// [`Jwk::check`].
+    pub fn from_jwk(jwk: &Jwk, registry: &Registry) -> Result<Self, Error> {
+        jwk.check(registry)?;
+        let KeyMaterial::Oct(k) = &jwk.material else {
+            return Err(MISMATCH);
+        };
+        Ok(SymmetricKey {
+            key: k.k.clone(),
+            kid: jwk.kid.clone(),
+            alg: jwk.alg.clone(),
+        })
+    }
+
+    /// This key with the key ID `kid`.
+    #[must_use]
+    pub fn with_kid(mut self, kid: &str) -> Self {
+        self.kid = Some(kid.into());
+        self
+    }
+
+    /// The key ID, if it has one.
+    pub fn key_id(&self) -> Option<&str> {
+        self.kid.as_deref()
+    }
+
+    /// The `alg` the key was published for, if any.
+    pub fn algorithm(&self) -> Option<&str> {
+        self.alg.as_deref()
+    }
+
+    pub(crate) fn expose(&self) -> &[u8] {
+        self.key.expose()
+    }
+}
+
+#[cfg(feature = "jwe")]
+impl core::fmt::Debug for SymmetricKey {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("SymmetricKey")
+            .field("kid", &self.kid)
+            .field("alg", &self.alg)
+            .finish_non_exhaustive()
+    }
+}
+
 /// The private side of ECDH-ES in memory (RFC 7518 §4.6).
 pub struct SoftwareAgreementKey<B: Backend> {
     backend: Arc<B>,
@@ -277,7 +343,7 @@ impl<B: Backend> SoftwareAgreementKey<B> {
         let secret =
             k.d.clone()
                 .ok_or(Error::new(ErrorCode::MissingPrivateKey, "key agreement"))?;
-        let public = sec1(&k.x, &k.y);
+        let public = k.point();
         if let Some(ecdsa) = backend.ecdsa(curve)
             && ecdsa.public_key(secret.expose())? != public
         {
@@ -313,13 +379,10 @@ impl<B: Backend> SoftwareAgreementKey<B> {
 
     /// The public key as a JWK.
     pub fn public_jwk(&self) -> Jwk {
-        let (x, y) = split_sec1(&self.public);
-        let mut jwk = Jwk::new(KeyMaterial::Ec(EcKey {
-            crv: self.curve.as_str().into(),
-            x,
-            y,
-            d: None,
-        }));
+        let mut jwk = Jwk::new(KeyMaterial::Ec(EcKey::from_point(
+            self.curve.as_str(),
+            &self.public,
+        )));
         jwk.kid.clone_from(&self.kid);
         jwk
     }
@@ -351,7 +414,7 @@ fn ecdsa_kind<B: Backend>(
         return Err(MISMATCH);
     }
     let ecdsa = backend.ecdsa(curve).ok_or(UNSUPPORTED)?;
-    let public = sec1(&k.x, &k.y);
+    let public = k.point();
     if let Some(d) = &k.d
         && ecdsa.public_key(d.expose())? != public
     {
@@ -420,20 +483,4 @@ fn random_scalar<B: Backend>(
         }
     }
     Err(Error::from(CryptoError::Rng))
-}
-
-/// The SEC1 uncompressed point `0x04 || x || y`.
-fn sec1(x: &[u8], y: &[u8]) -> Vec<u8> {
-    let mut point = Vec::with_capacity(1 + x.len() + y.len());
-    point.push(0x04);
-    point.extend_from_slice(x);
-    point.extend_from_slice(y);
-    point
-}
-
-/// `x` and `y` of a SEC1 uncompressed point.
-fn split_sec1(point: &[u8]) -> (Vec<u8>, Vec<u8>) {
-    let coordinates = point.get(1..).unwrap_or_default();
-    let (x, y) = coordinates.split_at(coordinates.len() / 2);
-    (x.to_vec(), y.to_vec())
 }

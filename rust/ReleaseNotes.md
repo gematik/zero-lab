@@ -29,6 +29,13 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `HeaderParams`; `profile`: `Policy::check_jws`, `Profile::strict`,
   `Profile::rfc7518_interop`, composition with `with`; `x5c`: chain and `x5t#S256`
   handling, `ChainValidator`.
+- `jwe` (feature `jwe`): compact and JSON serializations (RFC 7516), ECDH-ES with the
+  Concat KDF (RFC 7518 §4.6), ECDH-ES+A128/192/256KW, `dir`, A128/192/256KW,
+  A128/192/256GCM; `Jwe<Encrypted>` → `Jwe<Decrypted>`, `decrypt_async`; `zip`, RSA,
+  PBES2 and CBC-HMAC refused by `Policy::check_jwe`; `keys::SymmetricKey`;
+  `crypto::Extended` for curves the base backend lacks.
+- `jwt` (feature `jwt`): `Claims` with `validate` against `profile::ClaimsPolicy`
+  (now part of `Profile`), `Clock`, `SystemClock`, `FixedClock`.
 
 ### jwz-brainpool
 

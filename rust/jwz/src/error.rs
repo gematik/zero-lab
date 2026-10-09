@@ -44,6 +44,12 @@ pub enum ErrorCode {
     /// A `crit` header parameter is not understood, or `crit` itself is malformed
     /// (RFC 7515 §4.1.11).
     Critical,
+    /// A JWT whose `exp` has passed, or whose `iat` is older than the policy allows.
+    Expired,
+    /// A JWT whose `nbf` or `iat` lies in the future.
+    NotYetValid,
+    /// A JWT claim has the wrong type or a value the policy does not accept.
+    InvalidClaim,
     /// A cryptographic primitive failed.
     Crypto(CryptoError),
 }

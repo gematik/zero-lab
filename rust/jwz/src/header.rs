@@ -41,7 +41,7 @@ impl Header {
 
     /// A header from members already parsed (the unprotected part of a JSON
     /// serialization).
-    #[cfg(any(feature = "jws", test))]
+    #[cfg(any(feature = "jws", feature = "jwe", test))]
     pub(crate) fn from_members(members: Map<String, Value>) -> Header {
         Header { members }
     }
@@ -81,6 +81,11 @@ impl Header {
         self.str("cty")
     }
 
+    /// `enc`, the JWE content encryption algorithm.
+    pub fn enc(&self) -> Option<&str> {
+        self.str("enc")
+    }
+
     /// `x5t#S256`.
     pub fn x5t_s256(&self) -> Option<&str> {
         self.str("x5t#S256")
@@ -118,10 +123,23 @@ impl Header {
     /// [`ErrorCode::InvalidMember`] if it is not an object, or the errors of
     /// [`Jwk::parse`].
     pub fn jwk(&self) -> Result<Option<Jwk>, Error> {
-        match self.members.get("jwk") {
+        self.embedded_key("jwk")
+    }
+
+    /// `epk`, the ephemeral public key of ECDH-ES (RFC 7518 §4.6.1.1).
+    ///
+    /// # Errors
+    ///
+    /// As [`jwk`](Self::jwk).
+    pub fn epk(&self) -> Result<Option<Jwk>, Error> {
+        self.embedded_key("epk")
+    }
+
+    fn embedded_key(&self, name: &'static str) -> Result<Option<Jwk>, Error> {
+        match self.members.get(name) {
             None => Ok(None),
             Some(value @ Value::Object(_)) => Jwk::parse(&value.to_string()).map(Some),
-            Some(_) => Err(Error::new(ErrorCode::InvalidMember, "jwk")),
+            Some(_) => Err(Error::new(ErrorCode::InvalidMember, name)),
         }
     }
 }
@@ -190,9 +208,10 @@ impl HeaderParams {
     ///
     /// # Errors
     ///
-    /// [`ErrorCode::InvalidMember`] for `alg`, `enc` or `crit`, which jwz sets itself.
+    /// [`ErrorCode::InvalidMember`] for `alg`, `enc`, `crit` and `epk`, which jwz sets
+    /// itself, and `zip`, which it does not implement.
     pub fn param(mut self, name: &str, value: Value) -> Result<Self, Error> {
-        if matches!(name, "alg" | "enc" | "crit") {
+        if matches!(name, "alg" | "enc" | "crit" | "epk" | "zip") {
             return Err(Error::new(
                 ErrorCode::InvalidMember,
                 "header parameter set by jwz",
@@ -232,7 +251,7 @@ impl HeaderParams {
     }
 
     /// The header object with `alg` (and further members jwz sets) added.
-    #[cfg(feature = "jws")]
+    #[cfg(any(feature = "jws", feature = "jwe"))]
     pub(crate) fn into_members(mut self, set: &[(&str, &str)]) -> Map<String, Value> {
         for (name, value) in set {
             self.members
