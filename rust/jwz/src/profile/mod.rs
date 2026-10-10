@@ -1,10 +1,9 @@
 //! Validation profiles: a [`Profile`] is a named, versioned bundle of a [`Policy`] (what
-//! a token may use), [`KeyConstraints`] (what keys may be used) and a [`ClaimsPolicy`]
-//! (what a JWT must claim).
+//! a token may use) and a [`ClaimsPolicy`] (what a JWT must claim).
 //!
 //! [`Policy::check_jws`] and [`Policy::check_jwe`] are the one place where a header is
-//! accepted: its algorithms, its `crit` list, its key-reference parameters and its
-//! `typ`. Parsing calls them before any cryptography runs; nothing else in jwz decides
+//! accepted: its algorithms, its `crit` list, its key-reference parameters, its `kid`
+//! and its `typ`. Parsing calls them before any cryptography runs; nothing else in jwz decides
 //! whether an algorithm is acceptable.
 //!
 //! Profiles are data and compose: [`Profile::with`] widens one profile by another (the
@@ -76,6 +75,8 @@ pub struct Policy {
     pub understood_critical: Vec<String>,
     /// Which key-reference header parameters may appear.
     pub key_references: KeyReferences,
+    /// Whether a token must name its key with a non-empty `kid`.
+    pub require_kid: bool,
     /// The `typ` a token must have, if any (compared as RFC 7515 §4.1.9 says).
     pub typ: Option<String>,
 }
@@ -181,6 +182,9 @@ impl Policy {
     fn check_common(&self, header: &Header) -> Result<(), Error> {
         self.check_critical(header)?;
         self.check_key_references(header)?;
+        if self.require_kid && header.kid().is_none_or(str::is_empty) {
+            return Err(Error::new(ErrorCode::PolicyViolation, "kid required"));
+        }
         // RFC 7797 (`b64`) changes the signing input; jwz does not implement it.
         if header.get("b64").is_some() {
             return Err(Error::new(ErrorCode::PolicyViolation, "b64 unsupported"));
@@ -243,8 +247,8 @@ impl Policy {
     }
 
     /// The union of both policies: every algorithm and extension either allows, the
-    /// larger size limit, every key reference either opts into, and `typ` only where
-    /// both require the same one.
+    /// larger size limit, every key reference either opts into, and `kid` and `typ` only
+    /// where both require them (the same `typ`).
     #[must_use]
     pub fn with(mut self, other: &Policy) -> Policy {
         union_into(&mut self.signature_algorithms, &other.signature_algorithms);
@@ -260,6 +264,7 @@ impl Policy {
         union_into(&mut self.understood_critical, &other.understood_critical);
         self.max_token_len = self.max_token_len.max(other.max_token_len);
         self.key_references = self.key_references.union(other.key_references);
+        self.require_kid = self.require_kid && other.require_kid;
         if self.typ != other.typ {
             self.typ = None;
         }
@@ -295,23 +300,6 @@ pub(crate) fn union_into<T: Clone + PartialEq>(into: &mut Vec<T>, from: &[T]) {
         if !into.contains(item) {
             into.push(item.clone());
         }
-    }
-}
-
-/// What keys may be used.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct KeyConstraints {
-    /// Curves keys may be on (`crv` of EC and OKP keys, `epk` of ECDH-ES).
-    pub curves: Vec<Curve>,
-    /// Whether a token must name its key with `kid`.
-    pub require_kid: bool,
-}
-
-impl KeyConstraints {
-    fn with(mut self, other: &KeyConstraints) -> KeyConstraints {
-        union_into(&mut self.curves, &other.curves);
-        self.require_kid = self.require_kid && other.require_kid;
-        self
     }
 }
 
@@ -365,8 +353,6 @@ pub struct Profile {
     pub version: u32,
     /// What a token may use.
     pub policy: Policy,
-    /// What keys may be used.
-    pub keys: KeyConstraints,
     /// What a JWT must claim.
     pub claims: ClaimsPolicy,
 }
@@ -401,11 +387,8 @@ impl Profile {
                 max_token_len: DEFAULT_MAX_TOKEN_LEN,
                 understood_critical: Vec::new(),
                 key_references: KeyReferences::default(),
-                typ: None,
-            },
-            keys: KeyConstraints {
-                curves: alloc::vec![Curve::P256, Curve::ED25519],
                 require_kid: false,
+                typ: None,
             },
             claims: ClaimsPolicy {
                 issuer: None,
@@ -453,16 +436,8 @@ impl Profile {
                 max_token_len: 1024 * 1024,
                 understood_critical: Vec::new(),
                 key_references: KeyReferences::ALL,
-                typ: None,
-            },
-            keys: KeyConstraints {
-                curves: registry
-                    .curves()
-                    .iter()
-                    .filter(|e| available(e.support))
-                    .map(|e| e.crv)
-                    .collect(),
                 require_kid: false,
+                typ: None,
             },
             claims: ClaimsPolicy {
                 issuer: None,
@@ -498,7 +473,6 @@ impl Profile {
             name: alloc::format!("{}+{}", self.name, other.name),
             version: self.version.max(other.version),
             policy: self.policy.with(&other.policy),
-            keys: self.keys.with(&other.keys),
             claims: self.claims.with(&other.claims),
         }
     }
@@ -623,6 +597,31 @@ mod tests {
                 .check_jws(&header(json!({"alg": "ES256"})), &registry)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn require_kid() {
+        let registry = Registry::standard();
+        let mut policy = Profile::strict().policy;
+        policy.require_kid = true;
+        let jws = |h: serde_json::Value| {
+            policy
+                .check_jws(&header(h), &registry)
+                .map(|_| ())
+                .map_err(|e| e.code())
+        };
+        assert_eq!(jws(json!({"alg": "ES256", "kid": "k1"})), Ok(()));
+        for h in [json!({"alg": "ES256"}), json!({"alg": "ES256", "kid": ""})] {
+            assert_eq!(jws(h.clone()), Err(ErrorCode::PolicyViolation), "{h}");
+        }
+        let jwe = |h: serde_json::Value| policy.check_jwe(&header(h), &registry).is_ok();
+        assert!(jwe(
+            json!({"alg": "ECDH-ES", "enc": "A256GCM", "kid": "k1"})
+        ));
+        assert!(!jwe(json!({"alg": "ECDH-ES", "enc": "A256GCM"})));
+        // Required only if both sides of a composition require it.
+        assert!(policy.clone().with(&policy).require_kid);
+        assert!(!policy.with(&Profile::strict().policy).require_kid);
     }
 
     #[test]

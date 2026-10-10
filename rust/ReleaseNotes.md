@@ -40,6 +40,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   std has no clock and every call would panic), `FixedClock`.
 - `Policy::key_agreement_curves`: the curves an ECDH-ES `epk` may be on, checked by
   `Policy::check_jwe`.
+- `Policy::require_kid`: a token must name its key with a non-empty `kid`. It replaces
+  `Profile::keys` (`KeyConstraints`), which no check ever read: a JWS key's curve is the
+  key the caller chooses, and an `epk`'s curve is `key_agreement_curves`.
 - Fuzz targets for every parser (`fuzz/`: JWS and JWE compact and JSON, JWK, claims),
   run with `just fuzz-jwz`.
 - Verification (`docs/VERIFIED.md`): the Concat KDF core proven equal to SP 800-56A

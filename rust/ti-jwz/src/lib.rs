@@ -30,9 +30,7 @@ use alloc::vec::Vec;
 use jwz::jwa::{
     ContentEncryptionAlgorithm, Curve, KeyEncryptionAlgorithm, Registry, SignatureAlgorithm,
 };
-use jwz::profile::{
-    ClaimsPolicy, DEFAULT_MAX_TOKEN_LEN, KeyConstraints, KeyReferences, Policy, Profile,
-};
+use jwz::profile::{ClaimsPolicy, DEFAULT_MAX_TOKEN_LEN, KeyReferences, Policy, Profile};
 
 /// The TI profile for new components: ES256; ECDH-ES on P-256 and `dir`, both with
 /// A256GCM; `x5c` allowed; a JWT must have `exp`, with 60 seconds of clock skew.
@@ -54,11 +52,8 @@ pub fn ti() -> Profile {
                 x5c: true,
                 ..KeyReferences::default()
             },
-            typ: None,
-        },
-        keys: KeyConstraints {
-            curves: vec![Curve::P256],
             require_kid: false,
+            typ: None,
         },
         claims: ClaimsPolicy {
             issuer: None,
@@ -83,7 +78,6 @@ pub fn ti_legacy() -> Profile {
         .policy
         .signature_algorithms
         .push(jwz_brainpool::BP256R1);
-    profile.keys.curves.push(jwz_brainpool::BP_256);
     profile
 }
 
