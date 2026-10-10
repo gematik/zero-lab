@@ -161,6 +161,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pki
 
 #### added
+- `anchors::GEM_RCA7`, the production anchor, and `algorithms::NIST`: everything but
+  brainpool, to verify as a client without brainpool would (the roots walk ends at
+  GEM.RCA8 and GEM.RCA5; no TSL verifies).
 - `checks::ext_key_usage_name` names `id-tsl-kp-tslSigning` (0.4.0.2231.3.0), the TSL
   signer's extended key usage, which showed as the bare OID.
 - `TrustStore::from_material(config, roots_json, tsl_xml, now)` (feature `load`): the trust
@@ -245,7 +248,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `TrustConfig::roots_url`.
 - `TrustConfig`: environment as data, with `preset_prod`, `preset` (behind
   `dangerous-nonprod`), `for_anchor`, `for_lab_ca` (behind `test-util`) and `validate`.
-- Embedded GEM.RCA8 anchor and production roots.json; TEST-ONLY anchors and non-prod
+- Embedded anchor and production roots.json; TEST-ONLY anchors and non-prod
   roots.json behind `dangerous-nonprod`.
 - Crate skeleton.
 - `OcspChecker` repeats a query after an OCSP status error (transport failure, `tryLater`,
@@ -316,6 +319,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `oid_policy_gem_tsl_signer`) and profile `tsl-sig`.
 
 #### changed
+- Every preset is anchored at GEM.RCA7 (P-256; TEST-ONLY outside prod) instead of the
+  brainpool GEM.RCA8 (prod) and GEM.RCA8 TEST-ONLY (test). The trusted roots are the same:
+  GEM.RCA8 cross-certifies GEM.RCA7, and the walk from it reaches every root; it now
+  lists GEM.RCA7 first.
 - `TrustConfig` has new fields `tsl_signer_anchors`, a list, and `tsl_grace_period` (breaking for
   struct literals; struct update on a preset or `for_anchor` is unaffected): GEM.TSL-CA3
   in production, GEM.TSL-CA28 TEST-ONLY in the non-production presets; grace 0, at most

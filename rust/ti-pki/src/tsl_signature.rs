@@ -905,12 +905,14 @@ mod tests {
 
     #[test]
     fn tslsig_012_needs_brainpool_in_the_algorithm_set() {
-        let e = verify(&real("pu-10334.xml"), crate::algorithms::STANDARD).unwrap_err();
-        assert_eq!(
-            (e.code, e.rule),
-            (TslCode::XmlSignatureError, "TSLSIG-012"),
-            "{e}"
-        );
+        for algorithms in [crate::algorithms::STANDARD, crate::algorithms::NIST] {
+            let e = verify(&real("pu-10334.xml"), algorithms).unwrap_err();
+            assert_eq!(
+                (e.code, e.rule),
+                (TslCode::XmlSignatureError, "TSLSIG-012"),
+                "{e}"
+            );
+        }
     }
 
     #[test]

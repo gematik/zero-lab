@@ -544,17 +544,18 @@ mod tests {
 
     #[cfg(feature = "rsa")]
     #[test]
-    fn embedded_prod_roots_match_gempki() {
-        // The store `go/gempki` builds from the same roots.json, in the same order.
+    fn embedded_prod_roots_walk_from_gem_rca7() {
+        // The roots `go/gempki` trusts from the same roots.json (it walks from GEM.RCA8):
+        // the anchor, then forwards, then backwards.
         let result = load(&TrustConfig::preset_prod(), REAL_NOW).unwrap();
         assert_eq!(
             cns(&result.trusted),
             [
+                "GEM.RCA7",
                 "GEM.RCA8",
                 "GEM.RCA9",
                 "GEM.RCA10",
                 "GEM.RCA11",
-                "GEM.RCA7",
                 "GEM.RCA6",
                 "GEM.RCA5",
                 "GEM.RCA4",
@@ -569,9 +570,24 @@ mod tests {
     #[test]
     fn embedded_prod_roots_without_rsa_stop_at_the_rsa_roots() {
         let result = load(&TrustConfig::preset_prod(), REAL_NOW).unwrap();
-        assert_eq!(cns(&result.trusted), ["GEM.RCA8", "GEM.RCA7"]);
+        assert_eq!(cns(&result.trusted), ["GEM.RCA7", "GEM.RCA8"]);
         assert!(result.forward_stop.unwrap().contains("GEM.RCA9"));
         assert!(result.backward_stop.unwrap().contains("GEM.RCA6"));
+    }
+
+    #[cfg(feature = "rsa")]
+    #[test]
+    fn without_brainpool_the_walk_ends_at_the_first_brainpool_root() {
+        // GEM.RCA8 and GEM.RCA5 are brainpool: their self-signatures do not verify, so
+        // neither they nor anything past them is trusted.
+        let config = TrustConfig {
+            algorithms: std::borrow::Cow::Borrowed(crate::algorithms::NIST),
+            ..TrustConfig::preset_prod()
+        };
+        let result = load(&config, REAL_NOW).unwrap();
+        assert_eq!(cns(&result.trusted), ["GEM.RCA7", "GEM.RCA6"]);
+        assert!(result.forward_stop.unwrap().contains("GEM.RCA8"));
+        assert!(result.backward_stop.unwrap().contains("GEM.RCA5"));
     }
 
     #[cfg(feature = "dangerous-nonprod")]
@@ -579,7 +595,7 @@ mod tests {
     fn embedded_nonprod_roots_contain_their_anchor() {
         use crate::Env;
         for (env, anchor) in [
-            (Env::Test, "GEM.RCA8 TEST-ONLY"),
+            (Env::Test, "GEM.RCA7 TEST-ONLY"),
             (Env::Ref, "GEM.RCA7 TEST-ONLY"),
             (Env::Dev, "GEM.RCA7 TEST-ONLY"),
         ] {
@@ -590,8 +606,8 @@ mod tests {
 
     #[test]
     fn config_without_roots_json_trusts_the_anchor_alone() {
-        let config = TrustConfig::for_anchor(crate::anchors::GEM_RCA8);
+        let config = TrustConfig::for_anchor(crate::anchors::GEM_RCA7);
         let result = load(&config, REAL_NOW).unwrap();
-        assert_eq!(cns(&result.trusted), ["GEM.RCA8"]);
+        assert_eq!(cns(&result.trusted), ["GEM.RCA7"]);
     }
 }

@@ -14,8 +14,9 @@ publish.workspace = true
 exclude = ["tests/"]
 
 [features]
-# The TI's anchors are brainpool keys, so the TI path needs it; turn default features
-# off to build without it.
+# Most of the TI's roots and CAs and both TSL signer CAs are brainpool keys, so the TI
+# path needs it (the anchor, GEM.RCA7, is P-256); turn default features off to build
+# without it.
 default = ["brainpool", "rsa"]
 # ECDSA on brainpoolP256r1 / brainpoolP384r1, added to the default algorithm set.
 brainpool = ["dep:bp256", "dep:bp384"]

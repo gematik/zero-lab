@@ -159,4 +159,31 @@ mod tests {
         let error = verify_material(&config, &broken, Timestamp(1_789_340_408), None).unwrap_err();
         assert!(error.reason.contains("TSL"), "{error}");
     }
+
+    /// Without brainpool no TSL verifies (TSLSIG-012), and a TSL that does not verify
+    /// fails the load: a caller that wants roots without the TSL loads them alone.
+    #[test]
+    fn without_brainpool_the_material_does_not_load() {
+        let config = TrustConfig {
+            algorithms: std::borrow::Cow::Borrowed(crate::algorithms::NIST),
+            ..TrustConfig::preset_prod()
+        };
+        let meta = super::super::Meta {
+            etag: None,
+            last_modified: None,
+            fetched_at: Timestamp(0),
+            max_age: None,
+            source: super::super::Source::Embedded,
+        };
+        let tsl = include_bytes!("../../tests/fixtures/tsl/ECC-RSA_TSL.xml");
+        let material = TrustMaterial::new(config.roots.to_vec(), meta.clone(), tsl.to_vec(), meta);
+        let error =
+            verify_material(&config, &material, Timestamp(1_789_340_408), None).unwrap_err();
+        assert_eq!(
+            error.tsl.map(|e| e.rule),
+            Some("TSLSIG-012"),
+            "{}",
+            error.reason
+        );
+    }
 }
