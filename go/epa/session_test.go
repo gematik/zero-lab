@@ -2,8 +2,7 @@ package epa_test
 
 import (
 	"bufio"
-	"crypto/ecdsa"
-	"crypto/x509"
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,19 +11,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/epa"
-	"github.com/gematik/zero-lab/go/gemidp"
+	"github.com/gematik/zero-lab/go/epa/ti"
+	"github.com/gematik/zero-lab/go/epa/vau"
 )
 
-// The epa integration tests are env-guarded (like gemidp/smcb_test.go): they skip unless an SMC-B
-// PKCS#12 and the ePA config are provided, and they go as far as the available config allows. The
-// only operation needing VSDM material is Entitle, which lives in its own test (TestEPA_Entitle).
+// The epa integration tests are env-guarded: they skip unless an SMC-B PKCS#12 and the ePA config
+// are provided, and they go as far as the available config allows. The identity lives with the
+// Rust `ti` tool (EPA_TI_BIN, else `ti` on the PATH); without it the tests skip too. The only
+// operation needing VSDM material is Entitle, which lives in its own test (TestEPA_Entitle).
 //
 // Config via env (safe in ./.env):
 //
-//	EPA_SMCB_P12           path to the SMC-B .p12/.pfx file (gate; or use EPA_SMCB_CERT+KEY)
-//	EPA_SMCB_P12_PASSWORD  P12 password (default "00")
+//	EPA_TI_BIN                  the ti tool (default: `ti` on the PATH)
+//	EPA_SMCB_P12                path to the SMC-B .p12/.pfx file (gate; or use EPA_SMCB_CERT+KEY)
+//	EPA_SMCB_P12_PASSWORD_PATH  file holding the P12 password (default "00" without it)
+//	EPA_SMCB_P12_PASSWORD       the P12 password itself (shows in the process list; prefer the file)
 //	EPA_SMCB_CERT          PEM certificate path (alternative to P12; needs EPA_SMCB_KEY)
 //	EPA_SMCB_KEY           PEM private-key path (alternative to P12; needs EPA_SMCB_CERT)
 //	EPA_ENV                ePA environment: dev|test|ref|prod (default "ref")
@@ -44,45 +46,31 @@ type providerCase struct {
 }
 
 type epaTestConfig struct {
-	p12Path    string
-	p12Pass    string
-	certPath   string
-	keyPath    string
+	source     ti.IdentitySource
 	env        epa.Env
 	providers  []providerCase
 	reportPath string
 }
 
-// loadIdentity loads the SMC-B AUT identity from the configured PKCS#12 (preferred) or PEM pair.
-func (cfg epaTestConfig) loadIdentity() (*ecdsa.PrivateKey, *x509.Certificate, error) {
-	if cfg.p12Path != "" {
-		return epa.LoadIdentityP12(cfg.p12Path, cfg.p12Pass)
-	}
-	certData, err := os.ReadFile(cfg.certPath)
+// loadIdentity selects the SMC-B AUT identity through the ti tool, skipping the test when the tool
+// is not installed.
+func (cfg epaTestConfig) loadIdentity(t *testing.T) (*ti.Identity, *ti.Binary) {
+	t.Helper()
+	runner, err := ti.NewBinary()
 	if err != nil {
-		return nil, nil, err
+		t.Skipf("ti tool not found — skipping epa integration test (%v)", err)
 	}
-	cert, err := brainpool.ParseCertificatePEM(certData)
+	runner.Verbose = true
+	identity, err := ti.NewIdentity(context.Background(), runner, cfg.source)
 	if err != nil {
-		return nil, nil, fmt.Errorf("parsing %s: %w", cfg.certPath, err)
+		t.Fatalf("load SMC-B identity from %s: %v", cfg.identitySource(), err)
 	}
-	keyData, err := os.ReadFile(cfg.keyPath)
-	if err != nil {
-		return nil, nil, err
-	}
-	key, err := brainpool.ParsePrivateKeyPEM(keyData)
-	if err != nil {
-		return nil, nil, fmt.Errorf("parsing %s: %w", cfg.keyPath, err)
-	}
-	return key, cert, nil
+	return identity, runner
 }
 
 // identitySource is a human label for the loaded identity (for reports).
 func (cfg epaTestConfig) identitySource() string {
-	if cfg.p12Path != "" {
-		return cfg.p12Path
-	}
-	return cfg.certPath + " + " + cfg.keyPath
+	return cfg.source.String()
 }
 
 func envOr(key, def string) string {
@@ -125,10 +113,13 @@ func loadEPAConfig(t *testing.T) epaTestConfig {
 	}
 
 	return epaTestConfig{
-		p12Path:    p12,
-		p12Pass:    envOr("EPA_SMCB_P12_PASSWORD", "00"),
-		certPath:   certPath,
-		keyPath:    keyPath,
+		source: ti.IdentitySource{
+			P12Path:         p12,
+			P12PasswordPath: os.Getenv("EPA_SMCB_P12_PASSWORD_PATH"),
+			P12Password:     os.Getenv("EPA_SMCB_P12_PASSWORD"),
+			CertPath:        certPath,
+			KeyPath:         keyPath,
+		},
 		env:        env,
 		providers:  providers,
 		reportPath: os.Getenv("EPA_REPORT"),
@@ -156,29 +147,21 @@ func debugLogger() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})))
 }
 
-// establishAuthorizedSession loads the SMC-B identity from the configured PKCS#12, opens a VAU
-// channel to the given provider's aggregator, and runs the full authorization handshake (client
-// attest, IDP authentication via gemidp, auth code). No VSDM material is required — entitlement
-// proof material is supplied by the caller to SetEntitlementPN/SetEntitlementPoPP.
-func establishAuthorizedSession(t *testing.T, cfg epaTestConfig, provider epa.ProviderNumber) (*epa.Session, *x509.Certificate) {
+// establishAuthorizedSession loads the SMC-B identity through the ti tool, opens a VAU channel to
+// the given provider's aggregator (the VAU's certificates verified by ti, warn mode), and runs
+// the full authorization handshake (client attest, IDP authentication via `ti idpd authenticate`,
+// auth code). No VSDM material is required — entitlement proof material is supplied by the caller
+// to SetEntitlementPN/SetEntitlementPoPP.
+func establishAuthorizedSession(t *testing.T, cfg epaTestConfig, provider epa.ProviderNumber) (*epa.Session, *ti.Identity) {
 	t.Helper()
 
-	key, cert, err := cfg.loadIdentity()
-	if err != nil {
-		t.Fatalf("load SMC-B identity from %s: %v", cfg.identitySource(), err)
-	}
-	t.Logf("SMC-B AUT identity: subject=%q curve=%s", cert.Subject.String(), key.Curve.Params().Name)
+	identity, runner := cfg.loadIdentity(t)
+	t.Logf("SMC-B AUT identity: subject=%q telematik_id=%s curve=%s", identity.Subject(), identity.TelematikID(), identity.Curve())
 
-	certFn := func() (*x509.Certificate, error) { return cert, nil }
-	sf := &epa.SecurityFunctions{
-		AuthnSignFunc:           brainpool.SignFuncPrivateKey(key),
-		AuthnCertFunc:           certFn,
-		ClientAssertionSignFunc: brainpool.SignFuncPrivateKey(key),
-		ClientAssertionCertFunc: certFn,
-	}
-
+	sf := epa.SecurityFunctionsFromIdentity(identity, nil, nil)
 	client, err := epa.NewClient(cfg.env, provider, sf,
-		epa.WithInsecureSkipVerify(), epa.WithTimeout(30*time.Second))
+		epa.WithInsecureSkipVerify(), epa.WithTimeout(30*time.Second),
+		epa.WithVAUVerification(&ti.Verifier{Runner: runner}, vauVerifyMode()))
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
@@ -199,15 +182,8 @@ func establishAuthorizedSession(t *testing.T, cfg epaTestConfig, provider epa.Pr
 	}
 	t.Logf("authorization URI: %s", authzURI)
 
-	authenticator, err := gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
-		Idp:        gemidp.GetIdpByEnvironment(epa.IDPEnvironment(cfg.env)),
-		SignerFunc: gemidp.SignWithSoftkey(key, cert),
-	})
-	if err != nil {
-		t.Fatalf("NewAuthenticator: %v", err)
-	}
-
-	codeRedirectURL, err := authenticator.Authenticate(authzURI)
+	authenticator := &ti.Authenticator{Runner: runner, Source: cfg.source, Env: epa.IDPEnvironment(cfg.env)}
+	codeRedirectURL, err := authenticator.Authenticate(context.Background(), authzURI)
 	if err != nil {
 		t.Fatalf("authenticate with gematik IDP: %v", err)
 	}
@@ -219,7 +195,19 @@ func establishAuthorizedSession(t *testing.T, cfg epaTestConfig, provider epa.Pr
 		t.Fatalf("SendAuthCodeSC: %v", err)
 	}
 
-	return session, cert
+	return session, identity
+}
+
+// vauVerifyMode is EPA_VAU_CERT_VERIFY (off, warn, enforce), warn by default.
+func vauVerifyMode() vau.VerifyMode {
+	switch os.Getenv("EPA_VAU_CERT_VERIFY") {
+	case "off":
+		return vau.VerifyOff
+	case "enforce":
+		return vau.VerifyEnforce
+	default:
+		return vau.VerifyWarn
+	}
 }
 
 // TestEPA_Connect runs the full connect/authorize flow plus record-status and consent queries for
@@ -390,17 +378,8 @@ func TestEPA_RecordsAvailability(t *testing.T) {
 		t.Fatalf("reading %s: %v", kvnrsFile, err)
 	}
 
-	key, cert, err := cfg.loadIdentity()
-	if err != nil {
-		t.Fatalf("load SMC-B identity from %s: %v", cfg.identitySource(), err)
-	}
-	certFn := func() (*x509.Certificate, error) { return cert, nil }
-	sf := &epa.SecurityFunctions{
-		AuthnSignFunc:           brainpool.SignFuncPrivateKey(key),
-		AuthnCertFunc:           certFn,
-		ClientAssertionSignFunc: brainpool.SignFuncPrivateKey(key),
-		ClientAssertionCertFunc: certFn,
-	}
+	identity, _ := cfg.loadIdentity(t)
+	sf := epa.SecurityFunctionsFromIdentity(identity, nil, nil)
 	client, err := epa.NewClient(cfg.env, epa.ProviderNumber1, sf,
 		epa.WithInsecureSkipVerify(), epa.WithTimeout(30*time.Second))
 	if err != nil {
@@ -422,7 +401,7 @@ func TestEPA_RecordsAvailability(t *testing.T) {
 
 type epaReportData struct {
 	title           string
-	cert            *x509.Certificate
+	cert            *ti.Identity
 	cfg             epaTestConfig
 	provider        epa.ProviderNumber
 	insurantID      string
@@ -438,12 +417,12 @@ func buildEPAReport(d epaReportData) string {
 	fmt.Fprintf(&b, "# %s — provider %d — test report\n\n", d.title, d.provider)
 	fmt.Fprintf(&b, "_Generated %s_\n\n", time.Now().UTC().Format(time.RFC3339))
 
-	fmt.Fprintf(&b, "## SMC-B identity (PKCS#12)\n\n")
+	fmt.Fprintf(&b, "## SMC-B identity (via ti)\n\n")
 	fmt.Fprintf(&b, "- Identity: `%s`\n", d.cfg.identitySource())
-	fmt.Fprintf(&b, "- Subject CN: %s\n", d.cert.Subject.CommonName)
-	fmt.Fprintf(&b, "- Organization: %s\n", strings.Join(d.cert.Subject.Organization, ", "))
-	fmt.Fprintf(&b, "- Signing curve: %s\n", curveName(d.cert))
-	fmt.Fprintf(&b, "- Certificate validity: %s – %s\n\n", d.cert.NotBefore.Format("2006-01-02"), d.cert.NotAfter.Format("2006-01-02"))
+	fmt.Fprintf(&b, "- Subject CN: %s\n", d.cert.CommonName())
+	fmt.Fprintf(&b, "- Subject: %s\n", d.cert.Subject())
+	fmt.Fprintf(&b, "- Telematik-ID: %s\n", d.cert.TelematikID())
+	fmt.Fprintf(&b, "- Signing curve: %s\n\n", d.cert.Curve())
 
 	fmt.Fprintf(&b, "## ePA connection\n\n")
 	fmt.Fprintf(&b, "- Environment: `%s`\n", d.cfg.env)
@@ -469,13 +448,6 @@ func buildEPAReport(d epaReportData) string {
 
 	fmt.Fprintf(&b, "\n## Result: ✅ PASS\n")
 	return b.String()
-}
-
-func curveName(cert *x509.Certificate) string {
-	if pub, ok := cert.PublicKey.(*ecdsa.PublicKey); ok {
-		return pub.Curve.Params().Name
-	}
-	return cert.SignatureAlgorithm.String()
 }
 
 func writeEPAReport(t *testing.T, cfg epaTestConfig, name, report string) {

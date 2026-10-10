@@ -1,53 +1,25 @@
 package cmd
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/epa"
-	"github.com/gematik/zero-lab/go/gempki"
+	"github.com/gematik/zero-lab/go/epa/epatest"
 )
 
 func TestRouterPrecedence(t *testing.T) {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "Test SMC-B"},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(time.Hour),
-	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cert, err := x509.ParseCertificate(der)
-	if err != nil {
-		t.Fatal(err)
-	}
+	sf := &epa.SecurityFunctions{Identity: &epatest.Identity{
+		SubjectDN: "CN=Test SMC-B",
+		Admitted:  &epa.Admission{RegistrationNumber: "test"},
+	}}
 
-	sf := &epa.SecurityFunctions{
-		AuthnSignFunc:           brainpool.SignFuncPrivateKey(key),
-		AuthnCertFunc:           func() (*x509.Certificate, error) { return cert, nil },
-		ClientAssertionSignFunc: brainpool.SignFuncPrivateKey(key),
-		ClientAssertionCertFunc: func() (*x509.Certificate, error) { return cert, nil },
-	}
-
-	proxy, err := epa.NewProxyWithSecurityFunctions(epa.EnvDev, sf, "test", 5*time.Second, nil)
+	proxy, err := epa.NewProxyWithSecurityFunctions(epa.EnvDev, sf, &epatest.Authenticator{Code: "c"}, "test", 5*time.Second, nil)
 	if err != nil {
-		t.Skipf("cannot build proxy (likely no network for IDP metadata): %v", err)
+		t.Fatal(err)
 	}
 	defer proxy.Close()
 
@@ -55,7 +27,7 @@ func TestRouterPrecedence(t *testing.T) {
 		Name:               "test",
 		Env:                epa.EnvDev,
 		Subject:            "Test SMC-B",
-		AdmissionStatement: &gempki.AdmissionStatement{RegistrationNumber: "test"},
+		AdmissionStatement: &epa.Admission{RegistrationNumber: "test"},
 	}}
 
 	e, err := buildRouter([]*epa.Proxy{proxy}, infos)

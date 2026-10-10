@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gematik/zero-lab/go/gemidp"
+	"github.com/gematik/zero-lab/go/epa/vau"
 )
 
 type sessionManager struct {
@@ -17,7 +17,9 @@ type sessionManager struct {
 	env               Env
 	certPool          *x509.CertPool
 	securityFunctions *SecurityFunctions
-	authenticator     *gemidp.Authenticator
+	authenticator     Authenticator
+	vauVerifier       vau.CertVerifier
+	vauVerify         vau.VerifyMode
 	sessions          map[ProviderNumber]*Session
 }
 
@@ -40,13 +42,13 @@ func (sm *sessionManager) openSession(provider ProviderNumber) (*Session, error)
 		return session, nil
 	}
 
-	var client *Client
-	var err error
+	options := []ClientOption{WithTimeout(sm.timeout), WithVAUVerification(sm.vauVerifier, sm.vauVerify)}
 	if sm.certPool == nil {
-		client, err = NewClient(sm.env, provider, sm.securityFunctions, WithTimeout(sm.timeout), WithInsecureSkipVerify())
+		options = append(options, WithInsecureSkipVerify())
 	} else {
-		client, err = NewClient(sm.env, provider, sm.securityFunctions, WithTimeout(sm.timeout), WithCertPool(sm.certPool))
+		options = append(options, WithCertPool(sm.certPool))
 	}
+	client, err := NewClient(sm.env, provider, sm.securityFunctions, options...)
 	if err != nil {
 		return nil, fmt.Errorf("new client at provider %d: %w", provider, err)
 	}

@@ -4,7 +4,6 @@ import (
 	"log/slog"
 
 	"github.com/gematik/zero-lab/go/epa"
-	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -51,21 +50,14 @@ var probePatientCmd = &cobra.Command{
 		err := proxyConfig.Init()
 		cobra.CheckErr(err)
 		sf := proxyConfig.SecurityFunctions
-
-		cert, err := sf.AuthnCertFunc()
-		cobra.CheckErr(err)
+		authenticator := proxyConfig.Authenticator
+		subject := sf.Identity.Subject()
 
 		env := proxyConfig.Env
-		idpEnv := epa.IDPEnvironment(env)
-
-		authenticator, err := gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
-			Idp:        gemidp.GetIdpByEnvironment(idpEnv),
-			SignerFunc: gemidp.SignWith(sf.AuthnSignFunc, sf.AuthnCertFunc),
-		})
-		cobra.CheckErr(err)
 
 		for _, provider := range epa.AllProviders {
-			client, err := epa.NewClient(env, provider, sf, epa.WithInsecureSkipVerify(), epa.WithTimeout(proxyConfig.Timeout))
+			client, err := epa.NewClient(env, provider, sf, epa.WithInsecureSkipVerify(), epa.WithTimeout(proxyConfig.Timeout),
+				proxyConfig.VAUVerification())
 			if err != nil {
 				slog.Error("Failed to create client", "error", err)
 				continue
@@ -99,7 +91,7 @@ var probePatientCmd = &cobra.Command{
 				client.Close()
 				continue
 			}
-			slog.Info("Authorized", "env", env, "provider", provider, "subject", cert.Subject.String())
+			slog.Info("Authorized", "env", env, "provider", provider, "subject", subject)
 
 			entitle := func() error {
 				auditEvidence, err := sf.ProvidePN(kvnr)

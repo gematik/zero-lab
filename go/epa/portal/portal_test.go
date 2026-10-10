@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/gematik/zero-lab/go/epa"
-	"github.com/gematik/zero-lab/go/gempki"
 )
 
 func newTestPortal(t *testing.T, proxyInfos []*epa.ProxyInfo) *Portal {
@@ -25,7 +24,7 @@ func TestPortalPages(t *testing.T) {
 			Name:    "1",
 			Env:     epa.EnvDev,
 			Subject: "Adler ApothekeTEST-ONLY",
-			AdmissionStatement: &gempki.AdmissionStatement{
+			AdmissionStatement: &epa.Admission{
 				RegistrationNumber: "3-SMC-B-Testkarte--883110000153440",
 			},
 		},

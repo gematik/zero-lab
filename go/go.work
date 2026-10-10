@@ -7,7 +7,6 @@ use (
 	./epa
 	./gemidp
 	./gempki
-	./kon
 	./kv
 	./metsubushi
 	./nonce
@@ -16,6 +15,5 @@ use (
 	./pdp
 	./pep
 	./pkcs12
-	./ti
 	./zaddy
 )

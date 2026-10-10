@@ -2,6 +2,7 @@ package vau
 
 import (
 	"bytes"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/elliptic"
@@ -43,7 +44,49 @@ func GenerateKeyPairs() (*KeyPairs, error) {
 	}, nil
 }
 
+// VerifyMode says what a verdict on the VAU's certificates and host keys means.
+type VerifyMode string
+
+const (
+	// VerifyOff skips the check.
+	VerifyOff VerifyMode = "off"
+	// VerifyWarn logs the verdict and goes on, bad or not.
+	VerifyWarn VerifyMode = "warn"
+	// VerifyEnforce fails the handshake on a bad verdict.
+	VerifyEnforce VerifyMode = "enforce"
+)
+
+// CertVerifier judges the VAU's CertData (the chain to the TI roots, the VAU
+// certificate's profile) and the ECDSA signature over its signed public keys.
+type CertVerifier interface {
+	VerifyVAU(ctx context.Context, certData *CertData, signedPubKeys, signature []byte) (*Verdict, error)
+}
+
+// Verdict is what a CertVerifier found.
+type Verdict struct {
+	ChainValid      bool
+	ChainErrors     []string
+	ChainWarnings   []string
+	Environment     string
+	Profile         string
+	SignatureValid  bool
+	SignatureFormat string
+}
+
+// OK is true when both the chain and the host keys' signature verified.
+func (v *Verdict) OK() bool {
+	return v.ChainValid && v.SignatureValid
+}
+
+// OpenChannel opens a VAU channel without verifying the VAU's certificates: a warning
+// says so. Use OpenChannelVerified with a CertVerifier.
 func OpenChannel(baseURLString string, env Env, httpClient *http.Client) (*Channel, error) {
+	return OpenChannelVerified(baseURLString, env, httpClient, nil, VerifyWarn)
+}
+
+// OpenChannelVerified opens a VAU channel and, when verifier is given and mode is not
+// off, checks the VAU's CertData and host keys with it.
+func OpenChannelVerified(baseURLString string, env Env, httpClient *http.Client, verifier CertVerifier, mode VerifyMode) (*Channel, error) {
 	// validate base URL
 	baseURL, err := url.Parse(baseURLString)
 	if err != nil {
@@ -114,7 +157,7 @@ func OpenChannel(baseURLString string, env Env, httpClient *http.Client) (*Chann
 
 	signedPubKeys.SignedPubKeys = pubKeys
 
-	if err := validateSignedPublicVAUKeys(httpClient, baseURL, signedPubKeys); err != nil {
+	if err := validateSignedPublicVAUKeys(httpClient, baseURL, signedPubKeys, verifier, mode); err != nil {
 		return nil, fmt.Errorf("validating signed public VAU keys: %w", err)
 	}
 
@@ -305,7 +348,11 @@ func AEADDecrypt(key []byte, ciphertext []byte) ([]byte, error) {
 	return aesGCM.Open(nil, nonce, cypertext, nil)
 }
 
-func validateSignedPublicVAUKeys(httpClient *http.Client, baseURL *url.URL, signedPubKeys *SignedPublicVAUKeys) error {
+func validateSignedPublicVAUKeys(httpClient *http.Client, baseURL *url.URL, signedPubKeys *SignedPublicVAUKeys, verifier CertVerifier, mode VerifyMode) error {
+	if mode == VerifyOff {
+		slog.Debug("VAU certificate verification is off")
+		return nil
+	}
 	if len(signedPubKeys.CertHash) == 0 {
 		// Without a certificate hash there is no CertData document to retrieve; a real VAU
 		// server always supplies one. Nothing to fetch or validate, so skip.
@@ -333,17 +380,36 @@ func validateSignedPublicVAUKeys(httpClient *http.Client, baseURL *url.URL, sign
 
 	rcaChain := make([]string, len(certData.RCAChain))
 	for i, cert := range certData.RCAChain {
-		rcaChain[i] = base64.StdEncoding.EncodeToString(cert.Raw)
+		rcaChain[i] = base64.StdEncoding.EncodeToString(cert)
 	}
-	slog.Debug("Received CertData", "cert", base64.StdEncoding.EncodeToString(certData.Cert.Raw), "ca", base64.StdEncoding.EncodeToString(certData.CACert.Raw), "rcaChain", rcaChain)
+	slog.Debug("Received CertData", "cert", base64.StdEncoding.EncodeToString(certData.Cert), "ca", base64.StdEncoding.EncodeToString(certData.CA), "rcaChain", rcaChain)
 
-	slog.Warn("VAU Cert validation is not implemented", "cert", certData.Cert.Subject.CommonName)
-	slog.Warn("VAU CA validation is not implemented", "ca", certData.CACert.Subject.CommonName)
-
-	for _, cert := range certData.RCAChain {
-		slog.Warn("VAU Root CA validation is not implemented", "cert", cert.Subject.CommonName)
+	if verifier == nil {
+		slog.Warn("VAU certificates and host keys not verified: no verifier configured", "url", certDataURL.String())
+		return nil
 	}
 
-	slog.Warn("VAU Host keys validation is not implemented")
+	verdict, err := verifier.VerifyVAU(context.Background(), certData, signedPubKeys.SignedPubKeysRaw, signedPubKeys.Signature)
+	if err != nil {
+		if mode == VerifyEnforce {
+			return fmt.Errorf("verifying VAU certificates: %w", err)
+		}
+		slog.Warn("VAU certificates could not be verified", "error", err)
+		return nil
+	}
+	attrs := []any{
+		"chain_valid", verdict.ChainValid, "signature_valid", verdict.SignatureValid,
+		"environment", verdict.Environment, "profile", verdict.Profile,
+		"errors", verdict.ChainErrors, "warnings", verdict.ChainWarnings,
+	}
+	if verdict.OK() {
+		slog.Info("VAU certificates and host keys verified", attrs...)
+		return nil
+	}
+	if mode == VerifyEnforce {
+		return fmt.Errorf("VAU certificates or host keys not valid: chain %v (%v), signature %v",
+			verdict.ChainValid, verdict.ChainErrors, verdict.SignatureValid)
+	}
+	slog.Warn("VAU certificates or host keys not valid", attrs...)
 	return nil
 }

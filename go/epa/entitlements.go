@@ -2,7 +2,7 @@ package epa
 
 import (
 	"bytes"
-	"crypto/sha256"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gematik/zero-lab/go/brainpool/josebp"
 	"github.com/google/uuid"
 )
 
@@ -35,28 +34,23 @@ type ProvidePoPPFunc func(insurantId string) (string, error)
 // Prüfziffer (auditEvidence) and hash check value. The session only signs
 // and transports; obtaining the proof is the caller's concern.
 func (s *Session) SetEntitlementPN(insurantId string, auditEvidence string, hcv []byte) error {
-	if s.securityFunctions == nil || s.securityFunctions.AuthnCertFunc == nil || s.securityFunctions.AuthnSignFunc == nil {
-		return fmt.Errorf("no SMC-B authn identity configured")
+	identity, err := s.identity()
+	if err != nil {
+		return err
 	}
 	if s.VAUChannel == nil {
 		return fmt.Errorf("no open VAU channel")
 	}
 
 	iat := time.Now().Add(-60 * time.Second)
-	cert, err := s.securityFunctions.AuthnCertFunc()
-	if err != nil {
-		return fmt.Errorf("getting authn certificate: %w", err)
-	}
-
-	jwt, err := josebp.NewJWTBuilder().
-		Header("alg", "ES256").
-		Header("typ", "JWT").
-		Header("x5c", []string{base64.StdEncoding.EncodeToString(cert.Raw)}).
-		Claim("iat", iat.Unix()).
-		Claim("exp", iat.Add(20*time.Minute).Unix()).
-		Claim("auditEvidence", auditEvidence).
-		Claim("hcv", base64.StdEncoding.EncodeToString(hcv)).
-		Sign(sha256.New(), s.securityFunctions.AuthnSignFunc)
+	jwt, err := identity.SignJWT(context.Background(),
+		map[string]any{"typ": "JWT"},
+		map[string]any{
+			"iat":           iat.Unix(),
+			"exp":           iat.Add(20 * time.Minute).Unix(),
+			"auditEvidence": auditEvidence,
+			"hcv":           base64.StdEncoding.EncodeToString(hcv),
+		})
 	if err != nil {
 		return fmt.Errorf("signing JWT: %w", err)
 	}

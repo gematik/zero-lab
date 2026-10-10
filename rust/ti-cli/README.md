@@ -30,7 +30,7 @@ ti identity inspect --p12 smcb.p12 --p12-password-path pw.txt   # the AUT certif
 ti identity sign --p12 smcb.p12 --claims - < claims.json         # ES256 JWS, x5c the certificate
 ti identity sign --card 80276883110000163974 --claims claims.json   # the selected Konnektor signs
 ti idpd authenticate --env ref --p12 smcb.p12 --auth-url "$AUTHZ_URI"   # IDP-Dienst → authorization code
-ti connector configs                # the .kon files, shared with the Go ti
+ti connector configs                # the .kon files (~/.config/telematik/connectors)
 ti connector use praxis             # the configuration later commands use
 ti connector get cards
 ti connector get certificates 80276883110000163974   # ICCSN, Telematik-ID or handle
@@ -181,8 +181,8 @@ the report says so in `warnings`.
 
 ## Connector
 
-`ti connector` talks to a Konnektor as the Go `ti connector` does, with the same `.kon`
-files: `-c NAME|PATH` or `TI_CONNECTOR_CONFIG`, else the one `connector use` selected,
+`ti connector` talks to a Konnektor configured by a `.kon` file (the format the former Go
+`ti` introduced): `-c NAME|PATH` or `TI_CONNECTOR_CONFIG`, else the one `connector use` selected,
 else `default`; names are looked up here and in `~/.config/telematik/connectors/`.
 `${NAME}` in a `.kon` file is expanded only in the credentials, so a file from someone
 else cannot send environment variables to a foreign host. Calls time out after

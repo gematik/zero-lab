@@ -1,13 +1,11 @@
 package vau
 
 import (
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
 
 	"github.com/fxamacker/cbor/v2"
-	"github.com/gematik/zero-lab/go/brainpool"
 )
 
 type Message1 struct {
@@ -58,57 +56,32 @@ type SignedPublicVAUKeys struct {
 	OcspResponse     []byte         `cbor:"ocsp_response"`
 }
 
+// CertData is the VAU's certificate chain as the aggregator publishes it: the VAU
+// certificate, its CA and the cross-certificates up to the root, as DER. They are
+// brainpool certificates, which Go's x509 cannot parse; the verifier (the ti tool)
+// reads them.
 type CertData struct {
-	Cert     *x509.Certificate
-	CACert   *x509.Certificate
-	RCAChain []*x509.Certificate
-}
-
-type certDataRaw struct {
 	Cert     []byte   `cbor:"cert"`
 	CA       []byte   `cbor:"ca"`
 	RCAChain [][]byte `cbor:"rca_chain"`
 }
 
 func (c *CertData) UnmarshalCBOR(data []byte) error {
-
-	raw := new(certDataRaw)
-	if err := cbor.Unmarshal(data, raw); err != nil {
+	type raw CertData
+	var decoded raw
+	if err := cbor.Unmarshal(data, &decoded); err != nil {
 		return err
 	}
-
-	var err error
-
-	if raw.Cert == nil {
+	if decoded.Cert == nil {
 		return errors.New("missing certificate")
 	}
-
-	c.Cert, err = brainpool.ParseCertificate(raw.Cert)
-	if err != nil {
-		return fmt.Errorf("parsing certificate: %w", err)
-	}
-
-	if raw.CA == nil {
+	if decoded.CA == nil {
 		return errors.New("missing CA certificate")
 	}
-
-	c.CACert, err = brainpool.ParseCertificate(raw.CA)
-	if err != nil {
-		return fmt.Errorf("parsing CA certificate: %w", err)
-	}
-
-	if len(raw.RCAChain) == 0 {
+	if len(decoded.RCAChain) == 0 {
 		slog.Warn("CertData missing RCA chain")
 	}
-	c.RCAChain = make([]*x509.Certificate, 0, len(raw.RCAChain))
-	for _, cert := range raw.RCAChain {
-		rca, err := brainpool.ParseCertificate(cert)
-		if err != nil {
-			return fmt.Errorf("parsing RCA certificate: %w", err)
-		}
-		c.RCAChain = append(c.RCAChain, rca)
-	}
-
+	*c = CertData(decoded)
 	return nil
 }
 

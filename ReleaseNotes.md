@@ -25,9 +25,12 @@ Commands are installable directly (the `@` takes the bare semver; Go maps the `g
 subdirectory to the tag):
 
 ```
-go install github.com/gematik/zero-lab/go/ti@v0.20.2
 go install github.com/gematik/zero-lab/go/epa/cmd/zero-epa@v0.20.2
+go install github.com/gematik/zero-lab/go/pdp/cmd/zero-pdp@v0.22.2
 ```
+
+The `ti` command-line tool is the Rust one (`rust/ti-cli`, `cd rust && just install`); the
+Go `ti` and `kon` modules are archived at `go/ti/v0.23.4` and `go/kon/v0.21.4`.
 
 `zero-caddy` combines its version with the upstream Caddy version as SemVer build metadata,
 e.g. the binary reports `zero-caddy 0.20.2+caddy2.11.4` and the Docker image is tagged

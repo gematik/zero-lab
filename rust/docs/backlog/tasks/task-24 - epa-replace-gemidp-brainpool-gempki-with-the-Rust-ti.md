@@ -4,7 +4,7 @@ title: 'epa: replace gemidp, brainpool, gempki with the Rust ti'
 status: In Progress
 assignee: []
 created_date: '2026-10-10 15:04'
-updated_date: '2026-10-10 17:19'
+updated_date: '2026-10-10 17:52'
 labels:
   - epa
   - ti-cli
@@ -25,8 +25,8 @@ go/epa loses its dependencies on gemidp, brainpool/josebp, gempki (and with them
 - [ ] #1 cd rust && just check passes incl. ti-idpd on wasm32; ti schema identity sign|idpd authenticate|pki verify-signature print valid schemas
 - [ ] #2 a JWS signed by ti identity sign verifies in go/brainpool/josebp (interop vector in jwz-brainpool/interop); the same with --connector against a Konnektor and a real SMC-B (HITL)
 - [x] #3 ti idpd authenticate against the RU IDP with the test SMC-B returns a code (HITL)
-- [ ] #4 go list -deps ./epa/... shows no gemidp, brainpool, gempki, pkcs12; grep for brainpool|gemidp|gempki|pkcs12|openssl in go/epa is empty; go test ./epa/... passes with the fake runner without ti installed
-- [ ] #5 HITL on RU: just epa-connect-test, just epa-entitle-test, zero-epa probe patient (P12 and authn_connector), zero-epa proxy /info shows the admission statement, VAU verdicts logged in warn mode, Docker image runs probe
+- [x] #4 go list -deps ./epa/... shows no gemidp, brainpool, gempki, pkcs12; grep for brainpool|gemidp|gempki|pkcs12|openssl in go/epa is empty; go test ./epa/... passes with the fake runner without ti installed
+- [x] #5 HITL on RU: just epa-connect-test, just epa-entitle-test, zero-epa probe patient (P12 and authn_connector), zero-epa proxy /info shows the admission statement, VAU verdicts logged in warn mode, Docker image runs probe
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -39,4 +39,8 @@ HITL 2026-10-10 (user): identity inspect/sign with the gematik test SMC-B P12 an
 Stage 2 (Rust) implemented: crate ti-idpd (sans-I/O Authenticator-Modul flow: signed discovery document verified with its x5c signer, PuK_IDP_SIG/ENC, challenge verified under ti_legacy, nested JWT BP256R1 + x5c, JWE ECDH-ES/A256GCM cty NJWT exp to PuK_IDP_ENC, code from the 302, IdpError with the gematik_* members; ureq feature; wasm32 checks; tests/flow.rs against an in-memory IDP with the TEST-ONLY signer in tests/fixtures). ti idpd authenticate --env|--idp-url --auth-url <identity> with error kinds idpd_error/idpd_unreachable/idpd_protocol and warning idp_certificates_unverified (TASK-27); identity sign --alg BP256R1; Identity::signer(alg). ti-cli/tests/idpd.rs runs the binary against a loopback IDP. HITL open: RU IDP with the test SMC-B (auth URL from a zero-epa run).
 
 HITL 2026-10-10 (user): ti idpd authenticate --env ref against the RU IDP-Dienst with the Aktensystem's authz_uri (from a zero-epa -v probe) and the test SMC-B returned a code.
+
+Stage 3 (Go) implemented: package epa/ti (Binary runner with a minimal child environment and schema check, IdentitySource/Identity over identity inspect|sign, Authenticator over idpd authenticate, Verifier over pki verify + pki verify-signature); epa.Identity/Authenticator interfaces, SecurityFunctions.Identity, SignJWT for clientAttest and entitlement, vau.CertData as raw DER with OpenChannelVerified + CertVerifier (warn|enforce|off), ProxyConfig authn_p12_password_path/authn_card/authn_connector/vau_cert_verify, NewProxyWithSecurityFunctions takes an Authenticator, epatest fakes; epa/go.mod free of gemidp, brainpool, gempki, pkcs12 and the openssl subprocess; Dockerfile with a Rust musl stage for ti (context: repo root). go/ti and go/kon removed (they consumed the old API; archive tags go/ti/v0.23.4, go/kon/v0.21.4). Open: HITL (just epa-connect-test, zero-epa probe with P12 and with authn_card, /info, docker image); staticcheck is broken env-wide (2026.1 vs go1.27.2), vet passes.
+
+HITL 2026-10-10 (user): just epa-connect-test, zero-epa probe with the PEM identity and with authn_card at the Konnektor, entitlement, and the Docker image with the Rust ti all work.
 <!-- SECTION:NOTES:END -->

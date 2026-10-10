@@ -1,13 +1,13 @@
 package epa
 
 import (
+	"context"
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"maps"
 	"net/http"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -15,11 +15,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gematik/zero-lab/go/brainpool"
+	"github.com/gematik/zero-lab/go/epa/ti"
+	"github.com/gematik/zero-lab/go/epa/vau"
 	"github.com/google/uuid"
-
-	"github.com/gematik/zero-lab/go/gemidp"
-	"github.com/gematik/zero-lab/go/gempki"
 )
 
 type ProvidersError struct {
@@ -47,7 +45,7 @@ func (e *MultiProviderError) Error() string {
 type Proxy struct {
 	Env            Env
 	config         *ProxyConfig
-	Authenticator  *gemidp.Authenticator
+	Authenticator  Authenticator
 	mux            *http.ServeMux
 	sessionManager *sessionManager
 	records        map[string]PatientRecordMetadata
@@ -60,23 +58,82 @@ type ProxyConfig struct {
 	Env     Env           `yaml:"env" validate:"required,oneof=dev test ref prod"`
 	Timeout time.Duration `yaml:"timeout" validate:"required,gt=0"`
 
-	// SMC-B identity: either a PKCS#12 (authn_p12_path) or a PEM cert+key pair
-	// (authn_cert_path + authn_key_path). PKCS#12 takes precedence when set.
-	AuthnP12Path     string `yaml:"authn_p12_path"`
-	AuthnP12Password string `yaml:"authn_p12_password"`
-	AuthnCertPath    string `yaml:"authn_cert_path"`
-	AuthnKeyPath     string `yaml:"authn_key_path"`
+	// SMC-B identity, loaded and used by the `ti` tool: a PKCS#12 (authn_p12_path, its
+	// password in the file authn_p12_password_path names, default 00), a PEM cert+key
+	// pair (authn_cert_path + authn_key_path), or a card at the Konnektor (authn_card,
+	// with authn_connector naming the .kon configuration, else the selected one).
+	// authn_p12_password passes the password itself and is kept for old configurations;
+	// prefer the file, which stays out of the process list.
+	AuthnP12Path         string `yaml:"authn_p12_path"`
+	AuthnP12PasswordPath string `yaml:"authn_p12_password_path"`
+	AuthnP12Password     string `yaml:"authn_p12_password"`
+	AuthnCertPath        string `yaml:"authn_cert_path"`
+	AuthnKeyPath         string `yaml:"authn_key_path"`
+	AuthnCard            string `yaml:"authn_card"`
+	AuthnConnector       string `yaml:"authn_connector"`
+
+	// VAUCertVerify is what to do with the verdict on the VAU's certificates and host
+	// keys: warn (default) logs it, enforce fails the handshake on a bad one, off skips
+	// the check.
+	VAUCertVerify string `yaml:"vau_cert_verify" validate:"omitempty,oneof=off warn enforce"`
 
 	VsdmHmacKeyHex string `yaml:"vsdm_hmac_key_hex" validate:"required"`
 	VsdmHmacKeyId  string `yaml:"vsdm_hmac_key_id" validate:"required"`
 
 	SecurityFunctions *SecurityFunctions `yaml:"-"`
+	// Authenticator answers the IDP-Dienst's challenges; Init sets it up over the
+	// identity, callers of NewProxyWithSecurityFunctions bring their own.
+	Authenticator Authenticator `yaml:"-"`
+	// TI is the tool; nil means EPA_TI_BIN or `ti` on the PATH.
+	TI *ti.Binary `yaml:"-"`
 
 	// CertPool is the TLS root pool used when connecting to ePA aggregators.
 	// When nil, the session manager falls back to InsecureSkipVerify — fine for
 	// demos, wrong for anything real. Callers should populate this from the
-	// gematik TI roots (e.g. via gempki.EmbeddedRoots(env)).
+	// gematik TI roots (`ti pki roots bundle`).
 	CertPool *x509.CertPool `yaml:"-"`
+
+	vauVerifier vau.CertVerifier
+}
+
+// identitySource is the `ti` identity the configuration names.
+func (pc *ProxyConfig) identitySource() ti.IdentitySource {
+	source := ti.IdentitySource{
+		P12Password: pc.AuthnP12Password,
+		Card:        pc.AuthnCard,
+		Connector:   pc.AuthnConnector,
+	}
+	if pc.AuthnP12Path != "" {
+		source.P12Path = resolvePath(pc.BaseDir, pc.AuthnP12Path)
+	}
+	if pc.AuthnP12PasswordPath != "" {
+		source.P12PasswordPath = resolvePath(pc.BaseDir, pc.AuthnP12PasswordPath)
+	}
+	if pc.AuthnCertPath != "" {
+		source.CertPath = resolvePath(pc.BaseDir, pc.AuthnCertPath)
+	}
+	if pc.AuthnKeyPath != "" {
+		source.KeyPath = resolvePath(pc.BaseDir, pc.AuthnKeyPath)
+	}
+	return source
+}
+
+// VAUVerification is the client option carrying the configured VAU certificate check,
+// for callers that build clients themselves (the probe).
+func (pc *ProxyConfig) VAUVerification() ClientOption {
+	return WithVAUVerification(pc.vauVerifier, pc.vauVerifyMode())
+}
+
+// vauVerifyMode is the configured mode, warn by default.
+func (pc *ProxyConfig) vauVerifyMode() vau.VerifyMode {
+	switch pc.VAUCertVerify {
+	case "off":
+		return vau.VerifyOff
+	case "enforce":
+		return vau.VerifyEnforce
+	default:
+		return vau.VerifyWarn
+	}
 }
 
 func (pc *ProxyConfig) Init() error {
@@ -96,53 +153,34 @@ func (pc *ProxyConfig) Init() error {
 		return fmt.Errorf("failed to create ProofOfAuditEvidenceFunc: %w", err)
 	}
 
-	// Load the SMC-B identity: PKCS#12 takes precedence, else PEM cert+key.
-	var authnSignFunc brainpool.SignFunc
-	var authnCert *x509.Certificate
-	switch {
-	case pc.AuthnP12Path != "":
-		p12Path := resolvePath(pc.BaseDir, pc.AuthnP12Path)
-		slog.Debug("Reading SMC-B identity from PKCS#12", "p12_path", p12Path)
-		key, cert, err := LoadIdentityP12(p12Path, pc.AuthnP12Password)
+	// The SMC-B identity lives with the ti tool; this process only learns the
+	// certificate.
+	runner := pc.TI
+	if runner == nil {
+		runner, err = ti.NewBinary()
 		if err != nil {
-			return fmt.Errorf("failed to load SMC-B identity from PKCS#12: %w", err)
+			return err
 		}
-		authnSignFunc = brainpool.SignFuncPrivateKey(key)
-		authnCert = cert
-	case pc.AuthnCertPath != "" && pc.AuthnKeyPath != "":
-		authnCertPath := resolvePath(pc.BaseDir, pc.AuthnCertPath)
-		authnPrivateKeyPath := resolvePath(pc.BaseDir, pc.AuthnKeyPath)
-		slog.Debug("Reading SMC-B private key and certificate", "private_key_path", authnPrivateKeyPath, "cert_path", authnCertPath)
-
-		authnCertData, err := os.ReadFile(authnCertPath)
-		if err != nil {
-			return fmt.Errorf("failed to read SMC-B certificate: %w", err)
-		}
-		if authnCert, err = brainpool.ParseCertificatePEM(authnCertData); err != nil {
-			return fmt.Errorf("failed to parse SMC-B certificate: %w", err)
-		}
-		authnPrivateKeyData, err := os.ReadFile(authnPrivateKeyPath)
-		if err != nil {
-			return fmt.Errorf("failed to read SMC-B private key: %w", err)
-		}
-		authnPrivateKey, err := brainpool.ParsePrivateKeyPEM(authnPrivateKeyData)
-		if err != nil {
-			return fmt.Errorf("failed to parse SMC-B private key: %w", err)
-		}
-		authnSignFunc = brainpool.SignFuncPrivateKey(authnPrivateKey)
-	default:
-		return fmt.Errorf("identity config required: set authn_p12_path, or both authn_cert_path and authn_key_path")
 	}
-	slog.Info("Successfully loaded SMC-B certificate", "subject", authnCert.Subject.CommonName)
+	ctx := context.Background()
+	version, err := runner.Version(ctx)
+	if err != nil {
+		return fmt.Errorf("ti at %s: %w", runner.Path, err)
+	}
+	slog.Debug("Using ti", "path", runner.Path, "version", version.Version)
 
-	certFunc := func() (*x509.Certificate, error) { return authnCert, nil }
-	pc.SecurityFunctions = &SecurityFunctions{
-		AuthnSignFunc:           authnSignFunc,
-		AuthnCertFunc:           certFunc,
-		ClientAssertionSignFunc: authnSignFunc,
-		ClientAssertionCertFunc: certFunc,
-		ProvidePN:               proofOfAuditEvidenceFunc,
-		ProvideHCV:              provideHCV,
+	source := pc.identitySource()
+	slog.Debug("Loading SMC-B identity", "source", source.String())
+	identity, err := ti.NewIdentity(ctx, runner, source)
+	if err != nil {
+		return fmt.Errorf("failed to load SMC-B identity: %w", err)
+	}
+	slog.Info("Successfully loaded SMC-B certificate", "subject", identity.CommonName(), "telematik_id", identity.TelematikID(), "curve", identity.Curve())
+
+	pc.SecurityFunctions = SecurityFunctionsFromIdentity(identity, provideHCV, proofOfAuditEvidenceFunc)
+	pc.Authenticator = &ti.Authenticator{Runner: runner, Source: source, Env: IDPEnvironment(pc.Env)}
+	if pc.vauVerifyMode() != vau.VerifyOff {
+		pc.vauVerifier = &ti.Verifier{Runner: runner}
 	}
 
 	return nil
@@ -162,64 +200,59 @@ func resolvePath(baseDir, path string) string {
 	return filepath.Join(baseDir, path)
 }
 
-func IDPEnvironment(env Env) gemidp.Environment {
+// IDPEnvironment is the TI environment whose IDP-Dienst serves the ePA environment,
+// as `ti idpd authenticate --env` takes it: dev shares the reference IDP.
+func IDPEnvironment(env Env) string {
 	switch env {
-	case EnvDev:
-		return gemidp.EnvironmentReference
-	case EnvRef:
-		return gemidp.EnvironmentReference
 	case EnvTest:
-		return gemidp.EnvironmentTest
+		return "test"
 	case EnvProd:
-		return gemidp.EnvironmentProduction
+		return "prod"
 	default:
-		return gemidp.EnvironmentReference
+		return "ref"
 	}
 }
 
 // NewProxyWithSecurityFunctions builds a Proxy from a pre-assembled
-// SecurityFunctions, skipping ProxyConfig.Init() (which reads cert+key files
-// from disk and assembles a VSDM-HMAC ProvidePN). Use this from callers that
-// already produced SecurityFunctions through some other identity backend
-// (e.g. a Konnektor-backed signer or a PKCS#12 loaded in another process).
+// SecurityFunctions and Authenticator, skipping ProxyConfig.Init() (which loads
+// the identity through the ti tool and assembles a VSDM-HMAC ProvidePN). Use
+// this from callers that bring their own identity backend.
 //
 // ProvidePN / ProvideHCV may be left nil on sf when the caller is only
 // interested in /information endpoints and the VAU handshake; VAU-bound calls
 // that need entitlement will fail at the first call with a clear error from
 // the consuming code. When sf.ProvidePoPP is set, the proxy entitles via the
-// PoPP token path and ignores ProvidePN/ProvideHCV.
-func NewProxyWithSecurityFunctions(env Env, sf *SecurityFunctions, name string, timeout time.Duration, certPool *x509.CertPool) (*Proxy, error) {
+// PoPP token path and ignores ProvidePN/ProvideHCV. The VAU's certificates are
+// not verified on this path.
+func NewProxyWithSecurityFunctions(env Env, sf *SecurityFunctions, authenticator Authenticator, name string, timeout time.Duration, certPool *x509.CertPool) (*Proxy, error) {
 	if sf == nil {
 		return nil, fmt.Errorf("SecurityFunctions is required")
+	}
+	if authenticator == nil {
+		return nil, fmt.Errorf("Authenticator is required")
 	}
 	return NewProxy(&ProxyConfig{
 		Env:               env,
 		Name:              name,
 		Timeout:           timeout,
 		SecurityFunctions: sf,
+		Authenticator:     authenticator,
 		CertPool:          certPool,
+		VAUCertVerify:     "off",
 	})
 }
 
 func NewProxy(config *ProxyConfig) (*Proxy, error) {
-	var err error
-
-	p := &Proxy{
-		Env:         config.Env,
-		config:      config,
-		mux:         http.NewServeMux(),
-		records:     make(map[string]PatientRecordMetadata),
-		recordsLock: sync.RWMutex{},
+	if config.SecurityFunctions == nil || config.Authenticator == nil {
+		return nil, fmt.Errorf("proxy %q: identity not loaded (ProxyConfig.Init)", config.Name)
 	}
-
-	idpEnv := IDPEnvironment(p.Env)
-
-	p.Authenticator, err = gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
-		Idp:        gemidp.GetIdpByEnvironment(idpEnv),
-		SignerFunc: gemidp.SignWith(config.SecurityFunctions.AuthnSignFunc, config.SecurityFunctions.AuthnCertFunc),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("creating authenticator: %w", err)
+	p := &Proxy{
+		Env:           config.Env,
+		config:        config,
+		Authenticator: config.Authenticator,
+		mux:           http.NewServeMux(),
+		records:       make(map[string]PatientRecordMetadata),
+		recordsLock:   sync.RWMutex{},
 	}
 
 	p.sessionManager = &sessionManager{
@@ -228,6 +261,8 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 		securityFunctions: config.SecurityFunctions,
 		authenticator:     p.Authenticator,
 		certPool:          config.CertPool,
+		vauVerifier:       config.vauVerifier,
+		vauVerify:         config.vauVerifyMode(),
 		sessions:          make(map[ProviderNumber]*Session),
 	}
 
@@ -545,26 +580,26 @@ func (p *Proxy) HandleForwardToVAUInsurant(w http.ResponseWriter, r *http.Reques
 }
 
 type ProxyInfo struct {
-	Name               string                     `json:"name"`
-	Env                Env                        `json:"env"`
-	Subject            string                     `json:"subject"`
-	AdmissionStatement *gempki.AdmissionStatement `json:"admission_statement"`
+	Name               string     `json:"name"`
+	Env                Env        `json:"env"`
+	Subject            string     `json:"subject"`
+	AdmissionStatement *Admission `json:"admission_statement"`
 }
 
 func (p *Proxy) GetProxyInfo() (*ProxyInfo, error) {
-	cert, err := p.config.SecurityFunctions.AuthnCertFunc()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get authn cert: %w", err)
+	identity := p.config.SecurityFunctions.Identity
+	if identity == nil {
+		return nil, fmt.Errorf("no SMC-B authn identity configured")
 	}
-	admissionStatement, err := gempki.ParseAdmissionStatement(cert)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse admission statement: %w", err)
+	admission := identity.Admission()
+	if admission == nil {
+		return nil, fmt.Errorf("the SMC-B certificate has no admission statement")
 	}
 	return &ProxyInfo{
 		Name:               p.config.Name,
 		Env:                p.Env,
-		Subject:            cert.Subject.CommonName,
-		AdmissionStatement: admissionStatement,
+		Subject:            CommonName(identity.Subject()),
+		AdmissionStatement: admission,
 	}, nil
 }
 

@@ -231,7 +231,8 @@ never on `message`.
 - The configuration: `-c NAME|PATH` or `TI_CONNECTOR_CONFIG`, else the one
   `connector use` selected, else `default`. A name is looked up as `NAME` and
   `NAME.kon` in the current directory, then in `~/.config/telematik/connectors/`
-  (`$XDG_CONFIG_HOME` if set). The files are shared with the Go `ti`.
+  (`$XDG_CONFIG_HOME` if set). The format is the one the former Go `ti` used, so its files
+  keep working.
 - In a `.kon` file, `${NAME}` is expanded only in `credentials.username`, `.password`
   and `.data`, from the environment; `-v` names the variables, never their values.
 - CARD is an ICCSN, a Telematik-ID (as in the card's C.AUT) or a card handle. Handles
