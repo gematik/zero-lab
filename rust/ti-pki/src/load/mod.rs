@@ -62,7 +62,10 @@ pub(crate) mod verify;
 
 #[cfg(any(test, feature = "test-util"))]
 pub use crate::time::FixedClock;
-#[cfg(feature = "os")]
+#[cfg(all(
+    feature = "os",
+    not(all(target_family = "wasm", target_os = "unknown"))
+))]
 pub use crate::time::SystemClock;
 pub use crate::time::{Clock, Timestamp};
 pub use artifact::{

@@ -429,7 +429,7 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `install` | Install `ti` into `~/.cargo/bin`, built like a release |
 | `install-fast` | Install `ti` from the `local` profile (thin LTO, incremental): a change in ti-cli rebuilds in about 20 s instead of about 45 s |
 | `check` | Tier 1: `fmt`, `clippy`, `doc`, `test`, `features`, `wasm32`, `wasm-unsafe-free`, `core-deps`, `nonprod-absent`, `jwz-backends`, `jwz-rsa-guard`, `machete`, `deny`, `brainpool-absent` for jwz and ti-jwz |
-| `wasm32` | `cargo check` of ti-pki's loading layer and reqwest transport, ti-report and ti-wasm for wasm32 |
+| `wasm32` | `cargo check` for wasm32 of ti-types with `std`, ti-pki's loading layer and reqwest transport, ti-report, ti-wasm and the jwz crates |
 | `wasm-unsafe-free` | No `unsafe` in ti-wasm's own sources |
 | `check-jwz` | The jwz crates only (fmt, clippy, doc, test, feature matrix, wasm32, guards): the loop while working on jwz |
 | `jwz-backends` | No openssl, ring, aws-lc or cryptoki under jwz, jwz-brainpool or ti-jwz |

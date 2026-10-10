@@ -327,6 +327,7 @@ test:
 # The cache, XML signature checking, the loading layer, the reqwest transport and PKCS#12 decoding build for
 # the browser
 wasm32:
+    cargo check -p ti-types --target wasm32-unknown-unknown --features std
     cargo check -p ti-cache --target wasm32-unknown-unknown
     cargo check -p ti-xmldsig --target wasm32-unknown-unknown
     cargo check -p ti-connector-client --target wasm32-unknown-unknown

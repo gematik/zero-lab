@@ -4,7 +4,10 @@
 #[cfg(any(test, feature = "test-util"))]
 use core::time::Duration;
 
-#[cfg(feature = "os")]
+#[cfg(all(
+    feature = "os",
+    not(all(target_family = "wasm", target_os = "unknown"))
+))]
 pub use ti_types::time::SystemClock;
 pub use ti_types::time::{Clock, Timestamp};
 

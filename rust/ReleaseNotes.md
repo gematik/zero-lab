@@ -380,7 +380,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 #### added
 - `Env`, `Tier`, `EnvParseError`; `serde` and `clap` features.
-- `Timestamp` and `Clock` (moved from ti-pki), `SystemClock` behind `std`.
+- `Timestamp` and `Clock` (moved from ti-pki), `SystemClock` behind `std` (not on
+  wasm32-unknown-unknown, where std has no clock and every call would panic).
 
 ## Release ti-cli 0.2.0, 2026-10-05
 

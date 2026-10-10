@@ -35,7 +35,7 @@ split consumers into incompatible `Env` types.
 
 | Feature | Effect |
 | --- | --- |
-| `std` | Links `std`; adds `SystemClock`, the operating system's wall clock; required by `clap` |
+| `std` | Links `std`; adds `SystemClock`, the operating system's wall clock (not on wasm32-unknown-unknown, where std has none); required by `clap` |
 | `serde` | `Serialize`/`Deserialize` for `Env` as lowercase names; also accepts `pu`, `ru`, `tu` |
 | `clap` | `clap::ValueEnum` for `Env`, including the aliases (implies `std`) |
 
