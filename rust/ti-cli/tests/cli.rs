@@ -457,6 +457,18 @@ fn verify_usage_errors() {
     assert_eq!(bad_profile.status.code(), Some(2));
     let pu = ti(&["pki", "verify", "--offline", &ee, "--env", "pu"]);
     assert_eq!(pu.status.code(), Some(1), "pu is an alias of prod");
+    for ocsp in [
+        ["--ocsp-responder", "http://ocsp.example/"],
+        ["--ocsp-max-age", "5m"],
+    ] {
+        let offline = ti(&["pki", "verify", "--offline", &ee, ocsp[0], ocsp[1]]);
+        assert_eq!(offline.status.code(), Some(2), "{ocsp:?} needs the network");
+    }
+    let bad_age = ti(&["pki", "verify", &ee, "--ocsp-max-age", "5"]);
+    assert_eq!(bad_age.status.code(), Some(2));
+    assert!(stderr(&bad_age).contains("500ms, 30s, 5m or 1h"));
+    let bad_url = ti(&["pki", "verify", &ee, "--ocsp-responder", "ocsp.example"]);
+    assert_eq!(bad_url.status.code(), Some(2));
 }
 
 #[test]

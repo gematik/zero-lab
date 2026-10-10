@@ -129,7 +129,11 @@ roots.json and the TSL are downloaded from the environment's URLs and verified b
 `ti-pki` against the embedded anchor; a CA from the TSL counts only if a verified root
 signed it. Where they came from does not matter, so the cache is as untrusted as the
 network. The revocation line reports the outcome over the chain (`not revoked`,
-`revoked`, `unknown`, `incomplete`); `revocation_mode` in JSON names the policy.
+`revoked`, `unknown`, `incomplete`, `failed`); `revocation_mode` in JSON names the
+policy. `--ocsp-responder URL` sends every OCSP request of the chain to one responder,
+e.g. a relay where the TI responders are not reachable, and `--ocsp-max-age DURATION`
+(`500ms`, `30s`, `5m`, `1h`) accepts responses older than the default 37.5 s, for
+responders that answer from a cache; the TSL signer's check keeps the defaults.
 
 `--offline` makes no request: it uses the cached material, or the embedded roots
 without a TSL when nothing usable is cached (then pass the issuing CA with `--issuer`),

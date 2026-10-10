@@ -35,6 +35,7 @@ Examples:
   {bin} pki profiles describe smb-aut
   {bin} pki verify card.pem --issuer ca.pem
   {bin} pki verify card.pem --env ref --profile none --at 2026-06-01T00:00:00Z
+  {bin} pki verify card.pem --ocsp-responder http://ocsp-relay:8080/ --ocsp-max-age 5m
   {bin} pki roots list --env ref
   {bin} pki tsl show --rejected
   {bin} pki tsl show --ca SMCB-CA51 --format markdown   # with the CA's PEM
@@ -424,6 +425,44 @@ pub struct VerifyArgs {
     /// signature (GEM.RCA7, GEM.RCA6) and no TSL, whose signer CAs are brainpool
     #[arg(long)]
     pub nist_only: bool,
+    /// Send the chain's OCSP requests to this responder instead of each certificate's
+    /// own, e.g. a relay where the TI responders are not reachable directly
+    #[arg(long, value_name = "URL", value_parser = http_url, conflicts_with = "offline")]
+    pub ocsp_responder: Option<String>,
+    /// Accept OCSP responses up to this old (ms, s, m or h, e.g. 5m), for responders
+    /// that answer from a cache; default 37.5s
+    #[arg(long, value_name = "DURATION", value_parser = duration, conflicts_with = "offline")]
+    pub ocsp_max_age: Option<Duration>,
+}
+
+/// `--ocsp-responder`: OCSP goes over plain HTTP or HTTPS (RFC 6960 Appendix A).
+fn http_url(value: &str) -> Result<String, String> {
+    if value.starts_with("http://") || value.starts_with("https://") {
+        Ok(value.to_owned())
+    } else {
+        Err(format!("{value:?} is not an http:// or https:// URL"))
+    }
+}
+
+/// A positive whole number with a unit: `ms`, `s`, `m` or `h`.
+fn duration(value: &str) -> Result<Duration, String> {
+    let invalid = || format!("{value:?} is not a duration like 500ms, 30s, 5m or 1h");
+    let split = value
+        .find(|c: char| !c.is_ascii_digit())
+        .ok_or_else(invalid)?;
+    let (number, unit) = value.split_at(split);
+    let n: u64 = number.parse().map_err(|_| invalid())?;
+    let millis = match unit {
+        "ms" => Some(n),
+        "s" => n.checked_mul(1_000),
+        "m" => n.checked_mul(60_000),
+        "h" => n.checked_mul(3_600_000),
+        _ => None,
+    };
+    match millis {
+        Some(ms) if ms > 0 => Ok(Duration::from_millis(ms)),
+        _ => Err(invalid()),
+    }
 }
 
 /// `--env`: an environment, or auto-detection.
@@ -902,4 +941,32 @@ pub enum ConnectorVerify {
 pub enum ConnectorChange {
     /// Change a PIN at the card terminal (exit 0 changed, 1 not)
     Pin(PinArgs),
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::duration;
+
+    #[test]
+    fn durations_take_a_unit() {
+        assert_eq!(duration("1ms"), Ok(Duration::from_millis(1)));
+        assert_eq!(duration("30s"), Ok(Duration::from_secs(30)));
+        assert_eq!(duration("5m"), Ok(Duration::from_secs(300)));
+        assert_eq!(duration("2h"), Ok(Duration::from_secs(7_200)));
+        for bad in [
+            "",
+            "30",
+            "s",
+            "0s",
+            "1.5s",
+            "-1s",
+            "1d",
+            "1 s",
+            "99999999999999999h",
+        ] {
+            assert!(duration(bad).is_err(), "{bad:?}");
+        }
+    }
 }

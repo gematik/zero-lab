@@ -102,6 +102,10 @@ never on `message`.
   - `revocation_checked: false` means revocation was not checked (`--offline`). A
     valid result then says nothing about revocation.
   - `chain[].revocation` holds the OCSP answer per certificate. The root has none.
+    Under hard-fail an unreachable responder leaves no answer but an
+    `ocsp_unavailable` error naming its URL.
+  - `ocsp` is present with `--ocsp-responder` or `--ocsp-max-age`: the responder every
+    request went to (`null`: each certificate's own) and `max_response_age_ms`.
   - `environment.detection` says how `--env auto` chose the environment. Pass `--env`
     when you already know it.
   - `trust.note` is set when the trust material is less than the full set, e.g.

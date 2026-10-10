@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use serde::Serialize;
 use ti_pki::load::SystemClock;
-use ti_pki::ocsp::OcspChecker;
+use ti_pki::ocsp::{DEFAULT_MAX_RESPONSE_AGE, OcspChecker};
 use ti_pki::profile::{self, SelectReason};
 use ti_pki::revocation::{
     ResponderAuthorization, RevocationMode, RevocationResult, RevocationStatus, Unchecked,
@@ -46,6 +46,9 @@ struct Report {
     revocation_mode: &'static str,
     /// TLS certificates of downloads were not checked (`-k`).
     insecure_transport: bool,
+    /// The OCSP settings given; absent with the defaults.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ocsp: Option<OcspSettings>,
     chain: Vec<ChainEntry>,
     errors: Vec<Finding>,
     warnings: Vec<Finding>,
@@ -78,6 +81,13 @@ struct ProfileInfo {
     /// `cert`, `default`, `forced`, `ambiguous`, `none` or `disabled`.
     reason: &'static str,
     detail: String,
+}
+
+#[derive(Serialize)]
+struct OcspSettings {
+    /// Where every request of the chain went; absent: each certificate's own responder.
+    responder_url: Option<String>,
+    max_response_age_ms: u64,
 }
 
 #[derive(Serialize)]
@@ -126,6 +136,7 @@ struct Run {
     revocation: RevocationMode,
     offline: bool,
     insecure: bool,
+    ocsp: Option<OcspSettings>,
     warnings: Vec<Finding>,
 }
 
@@ -172,7 +183,13 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
     });
     let validated = block_on(async {
         if let Some(transport) = session.transport() {
-            let checker = OcspChecker::new(&config, transport, SystemClock);
+            let mut checker = OcspChecker::new(&config, transport, SystemClock);
+            if let Some(url) = &args.ocsp_responder {
+                checker = checker.with_responder_url(url.clone());
+            }
+            if let Some(age) = args.ocsp_max_age {
+                checker = checker.with_max_response_age(age);
+            }
             validator.validate(&certs, at, &checker).await
         } else {
             // No OCSP offline. Set here, after the profile: config.validate rejects
@@ -197,6 +214,17 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
         revocation: validator.revocation,
         offline: args.offline,
         insecure: session.insecure,
+        ocsp: (args.ocsp_responder.is_some() || args.ocsp_max_age.is_some()).then(|| {
+            OcspSettings {
+                responder_url: args.ocsp_responder.clone(),
+                max_response_age_ms: u64::try_from(
+                    args.ocsp_max_age
+                        .unwrap_or(DEFAULT_MAX_RESPONSE_AGE)
+                        .as_millis(),
+                )
+                .unwrap_or(u64::MAX),
+            }
+        }),
         warnings,
     };
     let details = super::inspect::describe(
@@ -424,6 +452,7 @@ fn report(
         revocation_checked: checked,
         revocation_mode: mode_name(run.revocation),
         insecure_transport: run.insecure,
+        ocsp: run.ocsp,
         chain: result
             .chain
             .iter()
@@ -500,6 +529,9 @@ fn sections(report: &Report) -> Document {
     doc.field("at", when(report.at_ts));
     doc.field("profile", profile_line(&report.profile));
     doc.field("trust", super::trust_line(&report.trust));
+    if let Some(ocsp) = &report.ocsp {
+        doc.field("ocsp", ocsp_settings_line(ocsp));
+    }
     if report.insecure_transport {
         doc.field(
             "transport",
@@ -583,6 +615,9 @@ fn summary(report: &Report) -> Document {
     doc.paragraph(context);
     doc.paragraph(Line::dim("revocation ").and_line(revocation_line(report)));
     doc.paragraph(Line::dim("trust ").and_line(super::trust_line(&report.trust)));
+    if let Some(ocsp) = &report.ocsp {
+        doc.paragraph(Line::dim("ocsp ").and_line(ocsp_settings_line(ocsp)));
+    }
     if report.insecure_transport {
         doc.paragraph(Line::status(Tone::Warn, "TLS of downloads not verified").and_dim(" (-k)"));
     }
@@ -627,7 +662,14 @@ fn revocation_line(report: &Report) -> Line {
         .filter_map(|entry| entry.revocation.as_ref())
         .collect();
     let has = |status: RevocationStatus| answers.iter().any(|r| r.status == status.as_str());
-    let line = if answers.is_empty() {
+    // Under hard-fail a failed query leaves no answer, only an error.
+    let failed = report
+        .errors
+        .iter()
+        .any(|e| e.code == ErrorCode::OcspUnavailable.as_str());
+    let line = if answers.is_empty() && failed {
+        Line::status(Tone::Bad, "failed").and_dim(" (no OCSP answer, see findings)")
+    } else if answers.is_empty() {
         Line::status(Tone::Warn, "not checked").and_dim(" (no chain to check)")
     } else if has(RevocationStatus::Revoked) {
         Line::status(Tone::Bad, "revoked")
@@ -676,6 +718,23 @@ fn ocsp_line(r: &RevocationEntry) -> Line {
         line = line.and_dim(format!(": {}", r.reason));
     }
     line
+}
+
+fn ocsp_settings_line(ocsp: &OcspSettings) -> Line {
+    let responder = ocsp
+        .responder_url
+        .as_ref()
+        .map_or_else(|| Line::text("each certificate's responder"), Line::code);
+    let ms = ocsp.max_response_age_ms;
+    let age = if ms.is_multiple_of(1_000) {
+        format!("{}s", ms / 1_000)
+    } else if ms < 1_000 {
+        format!("{ms}ms")
+    } else {
+        let fraction = format!("{:03}", ms % 1_000);
+        format!("{}.{}s", ms / 1_000, fraction.trim_end_matches('0'))
+    };
+    responder.and_dim(format!(" · responses up to {age} old"))
 }
 
 fn profile_line(profile: &ProfileInfo) -> Line {
