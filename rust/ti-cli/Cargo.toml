@@ -1,6 +1,6 @@
 [package]
 name = "ti-cli"
-version = "0.2.0"
+version = "0.3.0"
 description = "Command-line tool for the gematik Telematikinfrastruktur (TI): certificates and trust material"
 keywords = ["gematik", "telematik", "pki", "cli"]
 categories = ["command-line-utilities", "cryptography"]
