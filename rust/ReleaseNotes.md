@@ -7,6 +7,35 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ## Unreleased
 
+### ti-cli
+
+#### added
+- `directory login --env|--url --idp-url <identity>`: the FHIR-Directory's (VZD) owner
+  authentication (ti-directory) from `GET /owner-authenticate` through the IDP-Dienst's
+  Authenticator-Modul flow to the owner access token for `/owner` and `/search`
+  (`access_token`, `expires_in`, `expires_at`, the token's claims as decoded). Error
+  kinds `directory_error` (the directory refused, with its `message` and `errors`),
+  `directory_unreachable`, `directory_protocol` (also when the directory redirects to a
+  foreign IDP or the IDP redirects elsewhere than the directory); IDP failures keep the
+  `idpd_*` kinds. Schema `directory login`.
+- `probe` checks the environment's FHIR-Directory (kind `directory`): its
+  `/owner-authenticate` must redirect to an IDP-Dienst authorization URL.
+- `-v` on `idpd authenticate` and `directory login` says up front that the IDP's
+  certificates are not yet checked against the TSL, also when the flow fails; `-vv`
+  logs the body of every non-2xx answer.
+
+### ti-directory
+
+#### added
+- New crate: the gematik FHIR-Directory (gemSpec_VZD_FHIR_Directory V1.7.0, I_VZD_Owner)
+  as an owner's client sees it, sans I/O over ti-idpd's HTTP types: `Directory::for_env`
+  (PU, RU, TU with the environment's IDP-Dienst), `owner::start`, `authorization_url`
+  (the redirect must go to the directory's IDP), `sign_in` (the IDP's redirect must go
+  to the directory's `/signin-gematik-idp-dienst`), `token` (`OwnerToken` with the
+  decoded `TokenClaims`), and `owner::login` running the whole flow over a `Transport`;
+  `DirectoryError` with `message` and `errors`. The decoupled variants for the gematik
+  Authenticator app are not implemented.
+
 ### jwz
 
 #### added

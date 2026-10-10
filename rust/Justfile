@@ -340,6 +340,7 @@ wasm32:
     cargo check -p jwz-brainpool --target wasm32-unknown-unknown
     cargo check -p ti-jwz --target wasm32-unknown-unknown --all-features
     cargo check -p ti-idpd --target wasm32-unknown-unknown
+    cargo check -p ti-directory --target wasm32-unknown-unknown
 
 # ti-wasm allows the unsafe glue `#[wasm_bindgen]` expands to; everything else forbids it
 # through the workspace lints.
@@ -366,6 +367,10 @@ core-deps:
         | grep -E '^(reqwest|ureq|rustls|tokio|hyper) ' || true)
     if [ -n "$found" ]; then echo "ti-idpd core depends on: $found" >&2; exit 1; fi
     echo "ti-idpd core is free of HTTP clients, TLS and executors"
+    found=$(cargo tree -p ti-directory -e normal --prefix none \
+        | grep -E '^(reqwest|ureq|rustls|tokio|hyper) ' || true)
+    if [ -n "$found" ]; then echo "ti-directory depends on: $found" >&2; exit 1; fi
+    echo "ti-directory is free of HTTP clients, TLS and executors"
 
 # Without dangerous-nonprod, the compiled ti-pki must contain none of the non-prod trust
 # files. Compares their bytes, not a marker string (the marker legitimately occurs in

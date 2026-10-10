@@ -5,8 +5,6 @@
 use jwz::jwt::{Clock, SystemClock};
 use serde::Serialize;
 use ti_idpd::authenticator;
-use ti_idpd::http::{Request, Response, Transport, TransportError};
-use ti_idpd::ureq::UreqTransport;
 use ti_idpd::{Idp, Warning};
 
 use crate::cli::{GlobalArgs, IdpdAuthenticateArgs};
@@ -14,6 +12,10 @@ use crate::error::{CliError, Exit};
 use crate::http;
 use crate::identity::Identity;
 use crate::output::{Document, Line, Output, SCHEMA, Tone};
+
+/// What `-v` says before the flow starts, because a flow that fails never renders the
+/// report's `warnings`.
+pub const UNVERIFIED_NOTE: &str = "the IDP's signed discovery document and keys are verified by signature, but their certificates are not yet checked against the TSL (idp_certificates_unverified, backlog TASK-27)";
 
 /// The JSON document.
 #[derive(Serialize)]
@@ -72,11 +74,9 @@ pub fn authenticate(
     };
     let identity = Identity::load(&args.identity, global, out)?;
     let signer = identity.signer(jwz_brainpool::BP256R1)?;
-    let transport = Logged {
-        inner: UreqTransport::new(http::idp_agent(&global.net)?),
-        out,
-    };
+    let transport = http::Logged::new(&global.net, out)?;
     out.verbose(1, format_args!("IDP-Dienst {}", idp.base_url()));
+    out.verbose(1, UNVERIFIED_NOTE);
     let done = authenticator::authenticate(
         &transport,
         &idp,
@@ -140,32 +140,4 @@ pub fn authenticate(
     }
     out.render(&doc)?;
     Ok(Exit::Ok)
-}
-
-/// The transport with one `-v` line per request.
-struct Logged<'a> {
-    inner: UreqTransport,
-    out: &'a Output,
-}
-
-impl Transport for Logged<'_> {
-    fn send(&self, request: &Request) -> Result<Response, TransportError> {
-        let response = self.inner.send(request);
-        match &response {
-            Ok(r) => self.out.verbose(
-                1,
-                format_args!(
-                    "{} {} → {} ({} bytes)",
-                    request.method,
-                    request.url,
-                    r.status,
-                    r.body.len()
-                ),
-            ),
-            Err(e) => self
-                .out
-                .verbose(1, format_args!("{} {} → {e}", request.method, request.url)),
-        }
-        response
-    }
 }

@@ -132,6 +132,10 @@ pub enum CliError {
     /// outside the protocol.
     #[error("IDP-Dienst: {0}")]
     Idpd(#[source] ti_idpd::Error),
+    /// The FHIR-Directory refused, did not answer, or answered outside the protocol;
+    /// a failure of the IDP-Dienst flow inside it is reported as [`CliError::Idpd`].
+    #[error("{0}")]
+    Directory(#[source] Box<ti_directory::Error>),
     /// Writing to stdout failed.
     #[error("cannot write output: {0}")]
     Output(#[from] io::Error),
@@ -175,6 +179,11 @@ impl CliError {
             CliError::Idpd(ti_idpd::Error::Idp(_)) => "idpd_error",
             CliError::Idpd(ti_idpd::Error::Transport { .. }) => "idpd_unreachable",
             CliError::Idpd(_) => "idpd_protocol",
+            CliError::Directory(error) => match **error {
+                ti_directory::Error::Directory(_) => "directory_error",
+                ti_directory::Error::Transport { .. } => "directory_unreachable",
+                _ => "directory_protocol",
+            },
             CliError::Output(_) => "output_failed",
         }
     }
@@ -248,6 +257,17 @@ impl CliError {
             CliError::Idpd(_) => {
                 Some("the IDP's answer departs from gemSpec_IDP_Dienst; -v shows the exchange")
             }
+            CliError::Directory(error) => Some(match **error {
+                ti_directory::Error::Directory(_) => {
+                    "the FHIR-Directory refused; its message says why (an identity without an entry in the directory, a code it did not issue)"
+                }
+                ti_directory::Error::Transport { .. } => {
+                    "check the network, --proxy and the directory URL; -v shows each request"
+                }
+                _ => {
+                    "the directory's answer departs from gemSpec_VZD_FHIR_Directory, or sends the identity to a foreign IDP; -v shows the exchange"
+                }
+            }),
             CliError::Trust(_)
             | CliError::Output(_)
             | CliError::Connector(_)
@@ -282,7 +302,8 @@ impl CliError {
             | CliError::Connector(_)
             | CliError::CardRestricted { .. }
             | CliError::Signing(_)
-            | CliError::Idpd(_) => Exit::Remote,
+            | CliError::Idpd(_)
+            | CliError::Directory(_) => Exit::Remote,
             CliError::Output(_) => Exit::Output,
         }
     }

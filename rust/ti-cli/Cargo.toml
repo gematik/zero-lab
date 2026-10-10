@@ -30,6 +30,8 @@ jwz = { workspace = true, features = ["std", "jws", "jwt", "crypto-rustcrypto"] 
 jwz-brainpool.workspace = true
 # `idpd authenticate`: the IDP-Dienst flow over this tool's ureq.
 ti-idpd = { workspace = true, features = ["ureq"] }
+# `directory login`: the FHIR-Directory's owner authentication over the same transport.
+ti-directory.workspace = true
 pkcs8.workspace = true
 sec1.workspace = true
 der.workspace = true

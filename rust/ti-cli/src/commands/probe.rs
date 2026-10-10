@@ -77,6 +77,9 @@ enum Kind {
     /// The ePA Information Service (`/information/api/v1/ehr`): asked without an insurant,
     /// it answers with its JSON error, which a front page or gateway does not.
     Epa,
+    /// The FHIR-Directory's owner authentication (`/owner-authenticate`): without a token
+    /// it redirects to the IDP-Dienst, which a front page or gateway does not.
+    Directory,
     /// Any HTTP answer.
     Http,
 }
@@ -298,6 +301,7 @@ fn probe(agent: &Agent, env: Env, endpoint: &Endpoint) -> Outcome {
         Kind::Zeta => format!("{base}/.well-known/oauth-protected-resource"),
         Kind::Erp => format!("{base}/VAUCertificate"),
         Kind::Epa => format!("{base}/information/api/v1/ehr"),
+        Kind::Directory => format!("{base}/owner-authenticate"),
         Kind::Catalog | Kind::Http => endpoint.url.clone(),
     };
     let start = Instant::now();
@@ -307,8 +311,20 @@ fn probe(agent: &Agent, env: Env, endpoint: &Endpoint) -> Outcome {
             .header("x-useragent", EPA_USER_AGENT)
             .header("x-insurantid", EPA_INSURANT);
     }
+    // The redirect is the answer; following it would probe the IDP instead.
+    if endpoint.kind == Kind::Directory {
+        request = request.config().max_redirects(0).build();
+    }
     let answer = request.call().and_then(|mut response| {
         let status = response.status().as_u16();
+        if endpoint.kind == Kind::Directory {
+            let location = response
+                .headers()
+                .get("location")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or_default();
+            return Ok((status, location.as_bytes().to_vec()));
+        }
         let body = response
             .body_mut()
             .with_config()
@@ -351,6 +367,9 @@ fn judge(
     if kind == Kind::Http {
         return (Status::Ok, format!("http {status}"), Vec::new());
     }
+    if kind == Kind::Directory {
+        return directory(status, body);
+    }
     if kind == Kind::Epa {
         let code = serde_json::from_slice::<serde_json::Value>(body)
             .ok()
@@ -390,7 +409,31 @@ fn judge(
             Ok(_) => (Status::Ok, "erp VAU certificate".into(), Vec::new()),
             Err(_) => warn("no VAU certificate".into()),
         },
-        Kind::Epa | Kind::Http => unreachable!("answered above"),
+        Kind::Epa | Kind::Directory | Kind::Http => unreachable!("answered above"),
+    }
+}
+
+/// The FHIR-Directory's answer to `/owner-authenticate`; `location` is the redirect's
+/// `Location` (the body is not read).
+fn directory(status: u16, location: &[u8]) -> (Status, String, Vec<Endpoint>) {
+    let location = String::from_utf8_lossy(location);
+    let authorization = location.starts_with("https://") && location.contains("client_id=");
+    match status {
+        300..=399 if authorization => (
+            Status::Ok,
+            format!("owner-authenticate → {}", host(&location)),
+            Vec::new(),
+        ),
+        300..=399 => (
+            Status::Warn,
+            format!("HTTP {status}, no IDP authorization URL"),
+            Vec::new(),
+        ),
+        _ => (
+            Status::Warn,
+            format!("HTTP {status}, no owner-authenticate redirect"),
+            Vec::new(),
+        ),
     }
 }
 
@@ -711,6 +754,24 @@ mod tests {
         assert_eq!(status, Status::Warn);
         assert_eq!(detail, "HTTP 400, malformedRequest");
         assert_eq!(judge(Kind::Epa, Env::Dev, "x", 404, b"4o4").0, Status::Warn);
+    }
+
+    #[test]
+    fn directory_owner_authenticate_redirects_to_the_idp() {
+        let idp = b"https://idp-ref.app.ti-dienste.de/auth?response_type=code&client_id=GEMx";
+        let (status, detail, _) = judge(Kind::Directory, Env::Ref, "x", 302, idp);
+        assert_eq!(status, Status::Ok);
+        assert_eq!(detail, "owner-authenticate → idp-ref.app.ti-dienste.de");
+        let (status, detail, _) = judge(Kind::Directory, Env::Ref, "x", 302, b"/login");
+        assert_eq!(
+            (status, detail.as_str()),
+            (Status::Warn, "HTTP 302, no IDP authorization URL")
+        );
+        let (status, detail, _) = judge(Kind::Directory, Env::Ref, "x", 200, b"");
+        assert_eq!(
+            (status, detail.as_str()),
+            (Status::Warn, "HTTP 200, no owner-authenticate redirect")
+        );
     }
 
     #[test]
