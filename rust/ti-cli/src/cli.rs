@@ -31,6 +31,7 @@ Examples:
   {bin} pki inspect card.pem
   {bin} pki inspect - < card.pem
   {bin} pki inspect card.pem > card.md          # Markdown, as piped output is
+  {bin} pki inspect roots.pem --short           # a row per certificate
   {bin} --format json pki inspect card.pem | jq .certificates[0].certificate_type
   {bin} pki profiles describe smb-aut
   {bin} pki verify card.pem --issuer ca.pem
@@ -450,6 +451,10 @@ pub struct InspectArgs {
     pub file: PathBuf,
     #[command(flatten)]
     pub password: P12PasswordArgs,
+    /// One table row per certificate: subject, expiry, Telematik-ID; JSON stays the full
+    /// report
+    #[arg(long)]
+    pub short: bool,
 }
 
 /// The password of PKCS#12 input: given, read from a file, or `00` (gematik's test

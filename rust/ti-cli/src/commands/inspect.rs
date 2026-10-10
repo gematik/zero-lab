@@ -11,7 +11,7 @@ use x509_cert::der::oid::ObjectIdentifier;
 use crate::cli::{Environment, GlobalArgs};
 use crate::error::{CliError, Exit};
 use crate::input;
-use crate::output::document::{TreeRow, span, when};
+use crate::output::document::{TreeRow, date, span, when};
 use crate::output::{Document, Line, OidInfo, Output, SCHEMA, Tone, hex};
 use crate::trust::Session;
 
@@ -91,6 +91,7 @@ impl core::ops::Deref for CertificateInfo {
 pub fn run(
     file: &Path,
     p12_password: &str,
+    short: bool,
     global: &GlobalArgs,
     out: &Output,
 ) -> Result<Exit, CliError> {
@@ -106,7 +107,7 @@ pub fn run(
         .pkcs12
         .as_ref()
         .map(|p12| container(&source.bytes, p12, &certificates));
-    let trees = if out.is_json() {
+    let trees = if out.is_json() || short {
         Vec::new()
     } else {
         let certs: Vec<ti_pki::Certificate> = input
@@ -126,10 +127,50 @@ pub fn run(
     };
     if out.is_json() {
         out.json(&report)?;
+    } else if short {
+        let table = short_table(&report);
+        out.render_views(&table, &table)?;
     } else {
         out.render_views(&sections(&report), &summary(&report))?;
     }
     Ok(Exit::Ok)
+}
+
+/// `--short`: a row per certificate. The Telematik-ID is the admission's registration
+/// number; CAs never carry one, so its column appears only when a certificate does.
+fn short_table(report: &Report) -> Document {
+    let telematik_id = |cert: &CertificateInfo| {
+        cert.admission
+            .as_ref()
+            .and_then(|a| a.registration_number.clone())
+    };
+    let with_id = report
+        .certificates
+        .iter()
+        .any(|c| telematik_id(c).is_some());
+    let rows = report
+        .certificates
+        .iter()
+        .map(|cert| {
+            let (cn, _) = split_name(&cert.subject);
+            let mut row = vec![
+                Line::strong(cn.unwrap_or_else(|| cert.subject.clone())),
+                Line::text(date(cert.not_after_at)),
+            ];
+            if with_id {
+                row.push(telematik_id(cert).map_or_else(|| Line::dim("-"), Line::code));
+            }
+            row
+        })
+        .collect();
+    let headers: &[&str] = if with_id {
+        &["SUBJECT", "NOT AFTER", "TELEMATIK-ID"]
+    } else {
+        &["SUBJECT", "NOT AFTER"]
+    };
+    let mut doc = Document::default();
+    doc.table(headers, rows);
+    doc
 }
 
 /// Shows `certificates` as `pki inspect` does, `source` naming where they came from:

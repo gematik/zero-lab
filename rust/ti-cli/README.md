@@ -11,6 +11,7 @@ ti pki inspect card.pem             # what the TI reads from a certificate
 ti pki inspect - < card.der
 ti pki inspect identity.p12         # PKCS#12; password 00 unless --p12-password
 ti pki inspect card.pem > card.md   # piped output is Markdown, with the PEM
+ti pki inspect roots.pem --short    # a row per certificate: subject, expiry, Telematik-ID
 ti --format json pki inspect card.pem | jq '.certificates[0].certificate_type'
 ti pki profiles list
 ti pki profiles describe smb-aut

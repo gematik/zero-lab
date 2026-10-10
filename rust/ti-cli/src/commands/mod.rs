@@ -41,7 +41,7 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
     match &cli.command {
         Command::Pki(PkiCommand::Inspect(args)) => {
             let password = crate::input::p12_password(&args.password)?;
-            inspect::run(&args.file, &password, &cli.global, out)
+            inspect::run(&args.file, &password, args.short, &cli.global, out)
         }
         Command::Pki(PkiCommand::Verify(args)) => verify::run(args, &cli.global, out),
         Command::Pki(PkiCommand::VerifySignature(args)) => verify_signature::run(args, out),
