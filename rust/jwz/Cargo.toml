@@ -52,6 +52,11 @@ hmac = { workspace = true, optional = true }
 # Constant-time comparison of MACs, tags and thumbprints.
 subtle = { workspace = true, optional = true }
 
+# hax annotations (pre- and postconditions of the Concat KDF core); compiled only when
+# hax extracts jwz (`just verify-hax-jwz`), never in a normal build.
+[target.'cfg(hax)'.dependencies]
+hax-lib = { version = "0.4.2", default-features = false, features = ["macros"] }
+
 # A browser has no OS random source: getrandom uses Crypto.getRandomValues there.
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 getrandom = { workspace = true, optional = true, features = ["wasm_js"] }

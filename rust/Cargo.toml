@@ -111,8 +111,9 @@ proptest = { version = "1.11.0", default-features = false, features = ["std"] }
 [workspace.lints.rust]
 unsafe_code = "forbid"
 missing_docs = "warn"
-# Kani proofs (`just verify-formal`) are compiled under `cfg(kani)`.
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
+# Kani proofs (`just verify-formal`, `just verify-formal-jwz`) are compiled under
+# `cfg(kani)`, hax extraction (`just verify-hax-jwz`) under `cfg(hax)`.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)", "cfg(hax)"] }
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }

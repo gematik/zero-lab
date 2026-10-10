@@ -21,8 +21,10 @@ Status: milestone 1 in progress. Available:
   `rfc7518-interop` profiles; `jwz::x5c`: chain decoding and the `ChainValidator` seam.
 
 Brainpool (`jwz-brainpool`) is checked against Go josebp and Python jwcrypto
-(`jwz-brainpool/interop`); every parser has a fuzz target (`fuzz/`, `just fuzz-jwz`).
-Coming in this milestone: formal verification.
+(`jwz-brainpool/interop`); every parser has a fuzz target (`fuzz/`, `just fuzz-jwz`). The
+Concat KDF is proven correct in F* (hax), parsing invariants with Kani: see
+[`docs/VERIFIED.md`](docs/VERIFIED.md); specification references and their tests:
+[`docs/traceability.md`](docs/traceability.md).
 Design: [`docs/adr/0001-jwz.md`](docs/adr/0001-jwz.md); dependencies:
 [`docs/dependencies.md`](docs/dependencies.md).
 

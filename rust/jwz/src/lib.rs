@@ -17,7 +17,7 @@
 )]
 
 extern crate alloc;
-#[cfg(any(feature = "std", test))]
+#[cfg(any(feature = "std", test, hax))]
 extern crate std;
 
 #[cfg(feature = "rsa")]
@@ -39,6 +39,8 @@ pub mod jws;
 pub mod jwt;
 pub mod keys;
 pub mod profile;
+#[cfg(kani)]
+mod proofs;
 pub mod x5c;
 
 pub use error::{Error, ErrorCode};

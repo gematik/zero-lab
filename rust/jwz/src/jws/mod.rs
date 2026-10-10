@@ -27,6 +27,14 @@
 //! # }
 //! # Ok::<(), jwz::Error>(())
 //! ```
+//!
+//! An unverified JWS has no payload accessor; this does not compile:
+//!
+//! ```compile_fail,E0599
+//! fn leak(jws: jwz::jws::Jws<jwz::jws::Unverified>) -> Vec<u8> {
+//!     jws.into_payload()
+//! }
+//! ```
 
 pub mod json;
 

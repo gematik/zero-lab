@@ -1,0 +1,12 @@
+# Written by `just jwz-recheck`; checked by `cargo test -p jwz --test stamps`.
+check = "hax"
+command = "just verify-hax-jwz"
+tool = "hax 0.4.2, F* 2025.10.06"
+outcome = "passed"
+
+[inputs]
+"src/jwe/ecdh.rs" = "c9f26ab259a0916bdd865037062d0301500173cd17525ffae1267e5d9db053d6"
+"verification/hax/Makefile" = "e906ee73eecdd0acea6c507bd56e5c622853e4cbc5bc5d13710c66637d004f94"
+"verification/hax/Jwz.Kdf.Spec.fst" = "e391639b9c1a95d5e3f43673db230a2a9b81382b8351d1f433712219571d82d7"
+"verification/hax/extraction/Jwz.Jwe.Ecdh.Kdf.Digest.fst" = "468073ee8251bb287d0f307a473387bc60fe24d604d7037af0a03ee5e2cd1e7f"
+"verification/hax/extraction/Jwz.Jwe.Ecdh.Kdf.fst" = "a8ca565946a9d3ab8b91e2b635a211082bae7222d7e253ec440934d0620d5eb1"

@@ -49,7 +49,7 @@ impl KeyReferences {
         x5c: true,
     };
 
-    fn union(self, other: KeyReferences) -> KeyReferences {
+    pub(crate) fn union(self, other: KeyReferences) -> KeyReferences {
         KeyReferences {
             jwk: self.jwk || other.jwk,
             jku: self.jku || other.jku,
@@ -276,7 +276,7 @@ fn epk_curve(header: &Header, registry: &Registry) -> Option<Curve> {
 
 /// RFC 7515 §4.1.9: media types are compared case-insensitively, and `application/` may
 /// be omitted when there is no other `/`.
-fn same_media_type(a: &str, b: &str) -> bool {
+pub(crate) fn same_media_type(a: &str, b: &str) -> bool {
     fn normal(t: &str) -> &str {
         let lower_prefix = t
             .get(..12)
@@ -290,7 +290,7 @@ fn same_media_type(a: &str, b: &str) -> bool {
     normal(a).eq_ignore_ascii_case(normal(b))
 }
 
-fn union_into<T: Clone + PartialEq>(into: &mut Vec<T>, from: &[T]) {
+pub(crate) fn union_into<T: Clone + PartialEq>(into: &mut Vec<T>, from: &[T]) {
     for item in from {
         if !into.contains(item) {
             into.push(item.clone());

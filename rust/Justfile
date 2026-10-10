@@ -564,6 +564,68 @@ verify-formal:
     # A long proof run must not be cut short by the Mac going to sleep.
     if command -v caffeinate >/dev/null; then caffeinate -i cargo kani; else cargo kani; fi
 
+# Kani proofs of jwz (src/proofs.rs; design time, stamped as verification/stamps/kani.toml)
+verify-formal-jwz:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd jwz
+    if command -v caffeinate >/dev/null; then run=(caffeinate -i); else run=(); fi
+    "${run[@]}" cargo kani --features std,jws,jwe,jwt,crypto-rustcrypto
+
+# hax extraction of jwz's Concat KDF core to F* and its proof against SP 800-56A §5.8.1
+# (design time: cargo-hax and hax-engine in the opam switch HAX_SWITCH, hax's proof
+# libraries in HAX_HOME, F* in FSTAR_HOME; stamped as verification/stamps/hax.toml)
+verify-hax-jwz:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd jwz
+    eval "$(opam env --switch="${HAX_SWITCH:-hax-0.4.2}")"
+    # hax's toolchain is older than the workspace's rust-version; the KDF core needs nothing newer.
+    cargo hax -C --no-default-features --features jwe --ignore-rust-version \; \
+        into -i '-** +jwz::jwe::ecdh::kdf::**' --output-dir verification/hax/extraction fstar
+    make -C verification/hax verify
+
+# Re-run the design-time checks whose inputs changed since their stamp (all with --all)
+# and rewrite the stamps; `cargo test -p jwz --test stamps` fails on a stale one
+jwz-recheck *flags:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd jwz
+    all=false; [ "{{flags}}" = "--all" ] && all=true
+    mkdir -p verification/stamps
+    # recheck <name> <recipe> <tool version> <input>...
+    recheck() {
+        local name=$1 recipe=$2 tool=$3; shift 3
+        local file="verification/stamps/$name.toml" fresh=true
+        if $all || [ ! -f "$file" ] || [ "$(grep -c '^"' "$file")" != "$#" ]; then fresh=false; fi
+        for input in "$@"; do
+            local hash; hash=$(shasum -a 256 "$input" | cut -d' ' -f1)
+            grep -qxF "\"$input\" = \"$hash\"" "$file" 2>/dev/null || fresh=false
+        done
+        if $fresh; then echo "$name: fresh"; return; fi
+        echo "$name: running just $recipe"
+        (cd .. && just "$recipe")
+        {
+            echo "# Written by \`just jwz-recheck\`; checked by \`cargo test -p jwz --test stamps\`."
+            echo "check = \"$name\""
+            echo "command = \"just $recipe\""
+            echo "tool = \"$tool\""
+            echo "outcome = \"passed\""
+            echo
+            echo "[inputs]"
+            for input in "$@"; do
+                echo "\"$input\" = \"$(shasum -a 256 "$input" | cut -d' ' -f1)\""
+            done
+        } > "$file"
+        echo "$name: passed, stamp written"
+    }
+    recheck kani verify-formal-jwz "$(cargo kani --version | head -1)" \
+        src/proofs.rs src/b64.rs src/compact.rs src/profile/mod.rs src/jwe/ecdh.rs
+    hax_version=$(eval "$(opam env --switch="${HAX_SWITCH:-hax-0.4.2}")" && cargo hax --version | sed -n 's/^version=//p')
+    recheck hax verify-hax-jwz "hax $hax_version, $(make -s -C verification/hax version)" \
+        src/jwe/ecdh.rs verification/hax/Makefile verification/hax/Jwz.Kdf.Spec.fst \
+        $(ls verification/hax/extraction/*.fst)
+
 # Miri on the test suite (only meaningful if a crate ever allows unsafe; nightly required)
 miri:
     cargo +nightly miri test --workspace

@@ -38,6 +38,14 @@
 //! # }
 //! # Ok::<(), jwz::Error>(())
 //! ```
+//!
+//! An encrypted JWE has no plaintext accessor; this does not compile:
+//!
+//! ```compile_fail,E0599
+//! fn leak(jwe: &jwz::jwe::Jwe<jwz::jwe::Encrypted>) -> &[u8] {
+//!     jwe.plaintext()
+//! }
+//! ```
 
 pub mod ecdh;
 pub mod json;

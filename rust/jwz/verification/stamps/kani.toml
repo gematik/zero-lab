@@ -1,0 +1,12 @@
+# Written by `just jwz-recheck`; checked by `cargo test -p jwz --test stamps`.
+check = "kani"
+command = "just verify-formal-jwz"
+tool = "Kani Rust Verifier 0.68.0 (cargo plugin)"
+outcome = "passed"
+
+[inputs]
+"src/proofs.rs" = "eb2ae764a11e382c09ea3d7b5933c0b14dc2608a5e3c0a1bf06299532df24312"
+"src/b64.rs" = "c45a479425f155bc55397ff7eeb54d644c91eefeb31ab25fc2d1d28942989014"
+"src/compact.rs" = "449d79d59c8f609b2bb650f67f1a08229484fa81d7db924f0556f3bfa71a735f"
+"src/profile/mod.rs" = "31f33bb3dc82f9a0ca7d00d9c2f1acc9bfd9e6867ccee9ea16320a43c166fb74"
+"src/jwe/ecdh.rs" = "c9f26ab259a0916bdd865037062d0301500173cd17525ffae1267e5d9db053d6"

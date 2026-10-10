@@ -35,6 +35,12 @@ only), `wasm-bindgen`/`js-sys` (browser randomness only).
 | `hmac` | `hmac` | HS256/384/512 | exempted |
 | `subtle` | `hmac` | constant-time MAC comparison | exempted |
 
+## Proof only (`cfg(hax)`)
+
+| Crate | What for | Vet |
+| --- | --- | --- |
+| `hax-lib` (`macros`) | the pre- and postconditions of the Concat KDF core that F* proves (`docs/VERIFIED.md`); compiled only when hax extracts jwz, never in a build, but present in `Cargo.lock` with `hax-lib-macros`, `hax-lib-macros-types`, `num-bigint`, `num-integer` and `uuid` | exempted |
+
 ## Development only
 
 `futures-lite` (driving async tests), `serde_json` with `std` (reading test vectors).

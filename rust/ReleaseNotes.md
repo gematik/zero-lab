@@ -41,6 +41,13 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `Policy::check_jwe`.
 - Fuzz targets for every parser (`fuzz/`: JWS and JWE compact and JSON, JWK, claims),
   run with `just fuzz-jwz`.
+- Verification (`docs/VERIFIED.md`): the Concat KDF core proven equal to SP 800-56A
+  §5.8.1 / RFC 7518 §4.6.2 and panic-free in F* (hax), Kani proofs of the base64url round
+  trip, the compact splitter, policy and claims composition and the KDF layout,
+  compile-fail tests of the type-state; `docs/traceability.md` generated and checked by
+  a test; design-time results stamped (`verification/stamps`, `just jwz-recheck`).
+- `concat_kdf` refuses an OtherInfo longer than `usize` (reachable only on 32-bit
+  targets), which the F* proof showed the 32-bit length checks alone do not exclude.
 
 ### jwz-brainpool
 
