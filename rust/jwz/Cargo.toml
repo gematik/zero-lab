@@ -65,5 +65,8 @@ getrandom = { workspace = true, optional = true, features = ["wasm_js"] }
 futures-lite.workspace = true
 serde_json.workspace = true
 
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dev-dependencies]
+wasm-bindgen-test.workspace = true
+
 [lints]
 workspace = true

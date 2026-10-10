@@ -2,7 +2,9 @@
 //! ([`crypto`]) and keys ([`keys`]), JWS, JWE, JWT claims and validation profiles
 //! ([`profile`]).
 //!
-//! Design decisions and their reasons: `docs/adr/0001-jwz.md`.
+//! Start with the [`guide`]: verifying a JWT from a JWK Set, choosing a profile,
+//! encrypting, keys in HSMs, further algorithms, the browser. Design decisions and their
+//! reasons: `docs/adr/0001-jwz.md`.
 #![no_std]
 #![forbid(unsafe_code)]
 // Input never panics the library (ADR 0001, auditability): tests may unwrap.
@@ -39,6 +41,17 @@ pub mod jws;
 pub mod jwt;
 pub mod keys;
 pub mod profile;
+// Documentation only; compiled for rustdoc and its doctests, which need every format.
+#[cfg(all(
+    any(doc, doctest),
+    feature = "std",
+    feature = "jws",
+    feature = "jwe",
+    feature = "jwt",
+    feature = "crypto-rustcrypto"
+))]
+#[doc = include_str!("../docs/guide.md")]
+pub mod guide {}
 #[cfg(kani)]
 mod proofs;
 pub mod x5c;

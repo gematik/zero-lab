@@ -127,11 +127,15 @@ pub fn pretty(value: &Value) -> String {
 
 /// The library and cases of a tokens file.
 pub fn read_cases(path: &Path) -> Result<(String, Vec<Case>), String> {
-    let file = read_json(path)?;
+    parse_cases(&read_json(path)?).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// The library and the cases of an `<oracle>.json` or `jwz.json`.
+pub fn parse_cases(file: &Value) -> Result<(String, Vec<Case>), String> {
     let library = file["library"].as_str().unwrap_or("unknown").to_string();
     let cases = file["cases"]
         .as_array()
-        .ok_or_else(|| format!("{}: no cases", path.display()))?
+        .ok_or("no cases")?
         .iter()
         .map(Case::from_json)
         .collect::<Result<_, _>>()?;
@@ -139,7 +143,11 @@ pub fn read_cases(path: &Path) -> Result<(String, Vec<Case>), String> {
 }
 
 pub fn read_keys(path: &Path) -> Result<BTreeMap<String, Jwk>, String> {
-    let file = read_json(path)?;
+    parse_keys(&read_json(path)?)
+}
+
+/// The keys of `keys.json`, by name.
+pub fn parse_keys(file: &Value) -> Result<BTreeMap<String, Jwk>, String> {
     file.as_object()
         .ok_or("keys.json is not an object")?
         .iter()

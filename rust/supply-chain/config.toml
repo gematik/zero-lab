@@ -59,6 +59,11 @@ criteria = "safe-to-deploy"
 version = "1.9.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.async-trait]]
+version = "0.1.92"
+criteria = "safe-to-run"
+notes = "jwz's browser tests (just jwz-browser): a wasm32 dev-dependency of wasm-bindgen-test"
+
 [[exemptions.autocfg]]
 version = "1.5.1"
 criteria = "safe-to-deploy"
@@ -102,6 +107,11 @@ criteria = "safe-to-deploy"
 [[exemptions.bytes]]
 version = "1.12.1"
 criteria = "safe-to-deploy"
+
+[[exemptions.cast]]
+version = "0.3.0"
+criteria = "safe-to-run"
+notes = "jwz's browser tests (just jwz-browser): a wasm32 dev-dependency of wasm-bindgen-test"
 
 [[exemptions.cbc]]
 version = "0.2.1"
@@ -446,6 +456,11 @@ criteria = "safe-to-deploy"
 version = "0.2.189"
 criteria = "safe-to-deploy"
 
+[[exemptions.libm]]
+version = "0.2.16"
+criteria = "safe-to-deploy"
+notes = "wasm-bindgen-test turns on num-traits' libm feature; compiled only for jwz's browser tests (just jwz-browser)"
+
 [[exemptions.linux-raw-sys]]
 version = "0.12.1"
 criteria = "safe-to-deploy"
@@ -466,9 +481,19 @@ criteria = "safe-to-deploy"
 version = "2.3.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.minicov]]
+version = "0.3.8"
+criteria = "safe-to-run"
+notes = "jwz's browser tests (just jwz-browser): a wasm32 dev-dependency of wasm-bindgen-test"
+
 [[exemptions.mio]]
 version = "1.2.3"
 criteria = "safe-to-deploy"
+
+[[exemptions.nu-ansi-term]]
+version = "0.50.3"
+criteria = "safe-to-run"
+notes = "jwz's browser tests (just jwz-browser): a wasm32 dev-dependency of wasm-bindgen-test"
 
 [[exemptions.num-bigint]]
 version = "0.4.8"
@@ -487,6 +512,11 @@ criteria = "safe-to-deploy"
 [[exemptions.once_cell_polyfill]]
 version = "1.70.2"
 criteria = "safe-to-deploy"
+
+[[exemptions.oorandom]]
+version = "11.1.5"
+criteria = "safe-to-run"
+notes = "jwz's browser tests (just jwz-browser): a wasm32 dev-dependency of wasm-bindgen-test"
 
 [[exemptions.openssl-probe]]
 version = "0.2.1"
@@ -892,6 +922,21 @@ criteria = "safe-to-deploy"
 [[exemptions.wasm-bindgen-shared]]
 version = "0.2.128"
 criteria = "safe-to-deploy"
+
+[[exemptions.wasm-bindgen-test]]
+version = "0.3.78"
+criteria = "safe-to-run"
+notes = "jwz's browser tests (just jwz-browser)"
+
+[[exemptions.wasm-bindgen-test-macro]]
+version = "0.3.78"
+criteria = "safe-to-run"
+notes = "jwz's browser tests (just jwz-browser)"
+
+[[exemptions.wasm-bindgen-test-shared]]
+version = "0.2.128"
+criteria = "safe-to-run"
+notes = "jwz's browser tests (just jwz-browser)"
 
 [[exemptions.web-sys]]
 version = "0.3.105"

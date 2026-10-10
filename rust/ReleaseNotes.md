@@ -36,7 +36,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   PBES2 and CBC-HMAC refused by `Policy::check_jwe`; `keys::SymmetricKey`;
   `crypto::Extended` for curves the base backend lacks.
 - `jwt` (feature `jwt`): `Claims` with `validate` against `profile::ClaimsPolicy`
-  (now part of `Profile`), `Clock`, `SystemClock`, `FixedClock`.
+  (now part of `Profile`), `Clock`, `SystemClock` (not on wasm32-unknown-unknown, where
+  std has no clock and every call would panic), `FixedClock`.
 - `Policy::key_agreement_curves`: the curves an ECDH-ES `epk` may be on, checked by
   `Policy::check_jwe`.
 - Fuzz targets for every parser (`fuzz/`: JWS and JWE compact and JSON, JWK, claims),
@@ -46,6 +47,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   trip, the compact splitter, policy and claims composition and the KDF layout,
   compile-fail tests of the type-state; `docs/traceability.md` generated and checked by
   a test; design-time results stamped (`verification/stamps`, `just jwz-recheck`).
+- Browser tests (`tests/browser.rs`, `just jwz-browser`, stamped): RFC 7515, RFC 8037 and
+  RFC 7520 known answers, key generation, JWS and JWE round trips in headless Chrome.
+- `guide`: a guide across the modules, compiled by the doc tests.
 - `concat_kdf` refuses an OtherInfo longer than `usize` (reachable only on 32-bit
   targets), which the F* proof showed the 32-bit length checks alone do not exclude.
 

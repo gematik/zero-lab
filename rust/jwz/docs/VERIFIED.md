@@ -1,6 +1,6 @@
 # What is verified in jwz, and how
 
-Three kinds of evidence, each with a clear boundary. Every design-time result is stamped
+Four kinds of evidence, each with a clear boundary. Every design-time result is stamped
 in `verification/stamps/` with the SHA-256 of its inputs; `cargo test -p jwz --test
 stamps` (part of `just check`) fails when an input changed after the proof last ran, and
 `just jwz-recheck` reruns what is stale.
@@ -64,6 +64,22 @@ JSON is covered by tests, the RFC vectors and fuzzing instead.
 An unverified JWS has no payload accessor and an encrypted JWE no plaintext accessor:
 two `compile_fail` doc tests (`src/jws/mod.rs`, `src/jwe/mod.rs`) fail to compile with
 E0599 exactly, and run with every `cargo test`.
+
+## 4. In the browser
+
+`tests/browser.rs` of jwz and jwz-brainpool, `just jwz-browser`: wasm32-unknown-unknown in
+headless Chrome (Chrome for Testing), random numbers from `Crypto.getRandomValues`.
+
+- jwz: RFC 7515 A.3 (ES256), RFC 8037 A.4 (EdDSA) and RFC 7520 §5.8 (A128KW, A128GCM)
+  known answers; generated ES256 and EdDSA keys sign and verify, and differ; ECDH-ES,
+  ECDH-ES+A256KW and A256KW round trips; claims with a caller's clock.
+- jwz-brainpool: every Go josebp and Python jwcrypto JWS of the interop fixtures
+  verifies; the browser makes the same tokens as the native build, byte for byte; ePA's
+  ES256 on a generated brainpool key.
+
+Stamped as `verification/stamps/browser.toml`. Its inputs are the backend, the clock,
+brainpool, the manifests and the tests: a change elsewhere in jwz does not ask for a new
+browser run, because the same code is already tested natively.
 
 ## Not verified, but tested
 

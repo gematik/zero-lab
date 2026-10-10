@@ -32,11 +32,21 @@ pub trait Clock {
 }
 
 /// The system clock.
-#[cfg(feature = "std")]
+///
+/// Not on wasm32-unknown-unknown: std has no clock there and would panic on every call. A
+/// browser caller implements [`Clock`] over `Date.now()`, which jwz cannot reach without
+/// a JavaScript binding.
+#[cfg(all(
+    feature = "std",
+    not(all(target_family = "wasm", target_os = "unknown"))
+))]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SystemClock;
 
-#[cfg(feature = "std")]
+#[cfg(all(
+    feature = "std",
+    not(all(target_family = "wasm", target_os = "unknown"))
+))]
 impl Clock for SystemClock {
     fn now(&self) -> u64 {
         std::time::SystemTime::now()

@@ -43,7 +43,10 @@ only), `wasm-bindgen`/`js-sys` (browser randomness only).
 
 ## Development only
 
-`futures-lite` (driving async tests), `serde_json` with `std` (reading test vectors).
+`futures-lite` (driving async tests), `serde_json` with `std` (reading test vectors),
+`wasm-bindgen-test` (the browser tests, `just jwz-browser`; a dev-dependency for
+`wasm32-unknown-unknown` only, which brings `minicov`, `oorandom`, `cast`, `nu-ansi-term`,
+`async-trait` and num-traits' `libm` into `Cargo.lock`).
 
 ## Never
 

@@ -107,6 +107,9 @@ getrandom = { version = "0.4.3", default-features = false }
 futures-lite = "2.6.1"
 # Property tests in ti-xmldsig; without process forking and its tempfile/rusty-fork tree.
 proptest = { version = "1.11.0", default-features = false, features = ["std"] }
+# Browser tests of the jwz crates (`just jwz-browser`). 0.3.78 requires wasm-bindgen
+# =0.2.128, the version ti-wasm pins and wasm-bindgen-test-runner must equal.
+wasm-bindgen-test = "=0.3.78"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

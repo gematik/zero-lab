@@ -441,6 +441,41 @@ fuzz-jwz seconds="30":
         [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
     done
 
+# Chrome for Testing (headless shell and its chromedriver) for `jwz-browser`; override
+# the location with JWZ_CHROME_DIR=<dir>
+JWZ_CHROME_DIR := env_var_or_default("JWZ_CHROME_DIR", env_var("HOME") / "Development/tools/chrome")
+
+# Download Chrome for Testing's current stable headless shell and chromedriver (node required)
+jwz-browser-tools:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p "{{JWZ_CHROME_DIR}}"
+    cd "{{JWZ_CHROME_DIR}}"
+    # A NODE_OPTIONS preload from the calling shell must not leak into npx.
+    env -u NODE_OPTIONS npx -y @puppeteer/browsers install chrome-headless-shell@stable
+    env -u NODE_OPTIONS npx -y @puppeteer/browsers install chromedriver@stable
+
+# Design time, stamped as jwz/verification/stamps/browser.toml.
+# The browser tests of jwz and jwz-brainpool, wasm32-unknown-unknown in headless Chrome
+jwz-browser:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    want=$(sed -n 's/^wasm-bindgen = "=\(.*\)"$/\1/p' ti-wasm/Cargo.toml)
+    have=$(wasm-bindgen-test-runner --version 2>/dev/null | awk '{print $2}') || true
+    [[ "$have" == "$want" ]] || { echo "jwz-browser: wasm-bindgen-cli $want needed, found '${have:-none}': just tools" >&2; exit 1; }
+    dir="{{JWZ_CHROME_DIR}}"
+    shell=$(ls -d "$dir"/chrome-headless-shell/*/chrome-headless-shell-*/chrome-headless-shell 2>/dev/null | sort -V | tail -1) || true
+    [[ -n "$shell" ]] || { echo "jwz-browser: no headless shell in $dir: just jwz-browser-tools" >&2; exit 1; }
+    # chromedriver must be the shell's version.
+    version=$("$shell" --version | awk '{print $NF}')
+    driver=$(ls -d "$dir"/chromedriver/*-"$version"/chromedriver-*/chromedriver 2>/dev/null | tail -1) || true
+    [[ -n "$driver" ]] || { echo "jwz-browser: no chromedriver $version in $dir: just jwz-browser-tools" >&2; exit 1; }
+    mkdir -p target/jwz-browser
+    printf '{"goog:chromeOptions":{"binary":"%s"}}\n' "$shell" > target/jwz-browser/webdriver.json
+    WASM_BINDGEN_TEST_WEBDRIVER_JSON="$PWD/target/jwz-browser/webdriver.json" CHROMEDRIVER="$driver" \
+        CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+        cargo test --locked --target wasm32-unknown-unknown -p jwz -p jwz-brainpool --test browser
+
 # rustls brings ring into ti-cli and ti-connector-client for TLS, so this is a tree check
 # for the jwz crates rather than a deny ban (ADR 0001, principle 8).
 # No openssl, ring, aws-lc or cryptoki under jwz, jwz-brainpool or ti-jwz
@@ -625,6 +660,13 @@ jwz-recheck *flags:
     recheck hax verify-hax-jwz "hax $hax_version, $(make -s -C verification/hax version)" \
         src/jwe/ecdh.rs verification/hax/Makefile verification/hax/Jwz.Kdf.Spec.fst \
         $(ls verification/hax/extraction/*.fst)
+    shell=$(ls -d "{{JWZ_CHROME_DIR}}"/chrome-headless-shell/*/chrome-headless-shell-*/chrome-headless-shell | sort -V | tail -1)
+    # What differs in the browser: the backend and its random source, the clock, the
+    # dependency versions and features, brainpool arithmetic; and the tests themselves.
+    recheck browser jwz-browser "$("$shell" --version), $(wasm-bindgen-test-runner --version)" \
+        tests/browser.rs src/crypto/rustcrypto.rs src/jwt.rs Cargo.toml ../Cargo.toml \
+        ../jwz-brainpool/tests/browser.rs ../jwz-brainpool/Cargo.toml $(ls ../jwz-brainpool/src/*.rs) \
+        $(ls ../jwz-brainpool/tests/data/interop/{keys,jwz,go,python}.json)
 
 # Miri on the test suite (only meaningful if a crate ever allows unsafe; nightly required)
 miri:

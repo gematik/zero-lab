@@ -437,7 +437,9 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `brainpool-absent <crate>` | No brainpool in a crate's tree (run for every new component) |
 | `verify-formal-jwz` | Design time (Kani): the bounded proofs in `jwz/src/proofs.rs` |
 | `verify-hax-jwz` | Design time (hax, F*): extracts jwz's Concat KDF core and proves it against SP 800-56A §5.8.1 (`jwz/verification/hax`) |
-| `jwz-recheck [--all]` | Reruns the design-time proofs whose inputs changed and rewrites `jwz/verification/stamps`; `just check` fails on a stale stamp without needing the tools |
+| `jwz-recheck [--all]` | Reruns the design-time checks (Kani, hax and F*, browser) whose inputs changed and rewrites `jwz/verification/stamps`; `just check` fails on a stale stamp without needing the tools |
+| `jwz-browser` | Design time (Chrome for Testing): the browser tests of jwz and jwz-brainpool, wasm32 in headless Chrome |
+| `jwz-browser-tools` | Download Chrome for Testing's headless shell and chromedriver into `JWZ_CHROME_DIR` (default `~/Development/tools/chrome`) |
 | `jwz-interop` | Design time (Go, Python 3): brainpool interop fixtures against Go josebp and Python jwcrypto, both directions, and their coverage table (`jwz-brainpool/interop`) |
 | `fuzz-jwz [seconds]` | Design time (nightly, cargo-fuzz): every jwz parser, `seconds` each (default 30), from the committed seeds |
 | `wasm-build` | Build the ti-wasm package into `target/ti-wasm/pkg` |

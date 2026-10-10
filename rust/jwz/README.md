@@ -2,9 +2,12 @@
 
 JOSE for Rust: JWS, JWE, JWK and JWT with an open algorithm registry, pluggable keys and
 crypto backends, and validation profiles as a policy layer. Pure Rust on the RustCrypto
-0.14 line by default, `no_std` + `alloc`, every crate builds for `wasm32-unknown-unknown`.
+0.14 line by default, `no_std` + `alloc`; every crate builds for `wasm32-unknown-unknown`
+and is tested in headless Chrome.
 
-Status: milestone 1 in progress. Available:
+Start with the guide (`jwz::guide` in the API documentation, [`docs/guide.md`](docs/guide.md)).
+
+Milestone 1:
 - `jwz::jwa`: the algorithm registry;
 - `jwz::crypto`: the backend traits (sync and async) and the RustCrypto backend
   (P-256 ES256 and ECDH, Ed25519, AES-GCM, AES Key Wrap, SHA-2, HMAC);
@@ -38,7 +41,7 @@ Design: [`docs/adr/0001-jwz.md`](docs/adr/0001-jwz.md); dependencies:
 
 | Feature | Default | What |
 | --- | --- | --- |
-| `std` | yes | `SystemClock`, std error integration |
+| `std` | yes | `SystemClock` (not on wasm32-unknown-unknown), std error integration |
 | `jws`, `jwe`, `jwt` | yes | the token formats |
 | `crypto-rustcrypto` | yes | the pure-Rust backend |
 | `hmac` | no | HS256/384/512 |
