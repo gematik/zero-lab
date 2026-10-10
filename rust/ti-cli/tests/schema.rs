@@ -190,6 +190,52 @@ fn every_command_matches_its_schema() {
     json_of(c, "version", &["version"]);
 }
 
+/// The identity commands, offline, on the TEST-ONLY SMC-B fixture.
+#[test]
+fn identity_commands_match_their_schemas() {
+    let cache = SeededCache::new("identity-schema");
+    let c = &cache.0;
+    let identity = |name: &str| {
+        manifest(&format!("tests/fixtures/identity/{name}"))
+            .to_string_lossy()
+            .into_owned()
+    };
+    json_of(
+        c,
+        "identity inspect",
+        &["identity", "inspect", "--p12", &identity("aut.p12")],
+    );
+    let claims = c.join("claims.json");
+    std::fs::write(&claims, br#"{"nonce":"n"}"#).unwrap();
+    json_of(
+        c,
+        "identity sign",
+        &[
+            "identity",
+            "sign",
+            "--p12",
+            &identity("aut.p12"),
+            "--claims",
+            &claims.to_string_lossy(),
+        ],
+    );
+    let signature = json_of(
+        c,
+        "pki verify-signature",
+        &[
+            "pki",
+            "verify-signature",
+            "--cert",
+            &identity("aut.pem"),
+            "--data",
+            &identity("data.bin"),
+            "--signature",
+            &identity("sig.der"),
+        ],
+    );
+    assert_eq!(signature.status.code(), Some(0));
+}
+
 /// `args`, offline and in the fixture TSL's validity, whenever the tests run.
 fn offline<'a>(args: &[&'a str]) -> Vec<&'a str> {
     [args, &["--offline", "--at", "2026-10-01T00:00:00Z"]].concat()
@@ -588,7 +634,7 @@ fn schemas_are_published_by_name() {
     let all = ti(&dir, &["schema"]);
     let all: Value = serde_json::from_slice(&all.stdout).unwrap();
     let commands = all["commands"].as_object().unwrap();
-    assert_eq!(commands.len(), 37);
+    assert_eq!(commands.len(), 41);
     assert_eq!(commands["pki verify"], schema("pki verify"));
 
     let one = ti(&dir, &["schema", "pki", "tsl", "show"]);

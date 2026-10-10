@@ -43,19 +43,54 @@ $EDITOR brainpool/parser.go
 # Build / test / run — the change is already in effect via go.work
 go build ./...
 (cd brainpool && go test ./...)
-go run ./ti version
+go run ./epa/cmd/zero-epa version
 
 # Build a stamped binary locally (version from the module's git tag)
-just build-ti        # ./dist/ti
-just build           # all four commands into ./dist/
+just build-epa       # ./dist/zero-epa
+just build           # all three commands into ./dist/
 ```
 
 Confirm the workspace is wiring local source:
 
 ```console
-(cd ti && go list -m -f '{{.Path}} => {{.Dir}}' github.com/gematik/zero-lab/go/brainpool)
+(cd pdp && go list -m -f '{{.Path}} => {{.Dir}}' github.com/gematik/zero-lab/go/brainpool)
 # => …/zero-lab/go/brainpool   (a local directory = go.work resolving it locally)
 ```
+
+## Module status
+
+Rust is the maintained core of zero-lab (`../rust`; `docs/backlog/docs/doc-1` there has
+the architecture). Go keeps the servers and relying parties, and the ePA client.
+
+| Status | Modules | Notes |
+| --- | --- | --- |
+| Active | `pdp`, `pep`, `bff`, `zaddy`, `kv`, `nonce`, `dpop`, `oauth`, `oidf`, `gemidp`, `epa`, `metsubushi` | `gemidp` serves the servers' relying-party role only; `epa` gets its SMC-B identity, the IDP-Dienst flow and the VAU certificate checks from the Rust `ti` (below) |
+| Frozen | `brainpool`, `gempki`, `pkcs12` | bugfix and security only; `gempki` and `pkcs12` stay for `gemidp`'s tests and external consumers, their Rust successors are `ti-pki`/`ti-xmldsig` and `ti-pkcs12` |
+| Archived | `ti` (`go/ti/v0.23.4`), `kon` (`go/kon/v0.21.4`), `asl` (`go/asl/v0.0.2`), `libzero` (`go/libzero/v0.1.0`) | removed from the workspace; the tag keeps each `go get`-able; the Rust `ti` and `ti-connector-client` replace the first two |
+
+Archiving a module: tag its last version, remove it from `go.work` and this Justfile,
+delete the directory (as commit 9b4054a did for `asl` and `libzero`).
+
+### `epa` needs the Rust `ti`
+
+`epa` runs the `ti` tool (`../rust/ti-cli`) as a subprocess for everything that needs
+brainpool or the TI's protocols: `ti identity inspect|sign` for the SMC-B identity and
+its signatures, `ti idpd authenticate` for the IDP-Dienst, `ti pki verify` and
+`ti pki verify-signature` for the VAU's certificates and host keys. The private key never
+enters the Go process.
+
+- Install it: `cd ../rust && just install` (into `~/.cargo/bin`), or set `EPA_TI_BIN` to
+  the binary. `zero-epa` checks `ti version` at start-up.
+- The identity in `zero-epa.yaml`: `authn_p12_path` with `authn_p12_password_path` (a
+  file holding the password; default `00`), or `authn_cert_path` + `authn_key_path`, or
+  `authn_card` (+ `authn_connector`) for an SMC-B at the Konnektor. `vau_cert_verify:
+  warn|enforce|off` (default `warn`) says what a bad verdict on the VAU's certificates
+  does.
+- The Docker image builds `ti` in a Rust stage; its build context is the repository root
+  (`just docker-build-epa`).
+- Tests: `go test ./epa/...` needs no `ti` (the unit tests use fakes); the env-guarded
+  `just epa-connect-test` and `just epa-entitle-test` need it and skip when it is
+  missing.
 
 Keep modules tidy (no version changes):
 
@@ -95,20 +130,19 @@ tag. Unchanged modules keep their existing tag.
 the module build info:
 
 ```console
-go install github.com/gematik/zero-lab/go/ti@v0.20.3
 go install github.com/gematik/zero-lab/go/epa/cmd/zero-epa@v0.20.3
-ti version        # -> "0.20.3"
+zero-epa version  # -> "0.20.3"
 ```
 
-The `@` takes the bare semver (`v0.20.3`); Go maps the module's `go/ti` subdirectory to the
-`go/ti/v0.20.3` tag automatically.
+The `@` takes the bare semver (`v0.20.3`); Go maps the module's `go/epa` subdirectory to the
+`go/epa/v0.20.3` tag automatically.
 
 If `proxy.golang.org` returns "unknown revision"/404 right after tagging (it negatively
 caches a version that didn't exist yet), fetch directly:
 
 ```console
 go env -w GOPRIVATE=github.com/gematik/zero-lab   # once; installs bypass the proxy/sumdb
-go install github.com/gematik/zero-lab/go/ti@v0.20.3
+go install github.com/gematik/zero-lab/go/epa/cmd/zero-epa@v0.20.3
 ```
 
 ### Reproducible library consumption from another project

@@ -2,16 +2,12 @@ package epa
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/base64"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
-
-	"github.com/gematik/zero-lab/go/brainpool/josebp"
-	"github.com/gematik/zero-lab/go/gemidp"
 )
 
 type Nonce struct {
@@ -92,34 +88,42 @@ type SendAuthCodeSCtype struct {
 	ClientAttest      string `json:"clientAttest"`
 }
 
+// identity is the session's signing identity, or an error naming what is missing.
+func (s *Session) identity() (Identity, error) {
+	if s.securityFunctions == nil || s.securityFunctions.Identity == nil {
+		return nil, fmt.Errorf("no SMC-B authn identity configured")
+	}
+	return s.securityFunctions.Identity, nil
+}
+
+// CreateClientAttest signs the VAU's nonce with the SMC-B: `alg ES256`, `x5c` the AUT
+// certificate, 20 minutes of validity.
 func (s *Session) CreateClientAttest() (string, error) {
 	nonce, err := s.GetNonce()
 	if err != nil {
 		return "", fmt.Errorf("GetNonce: %w", err)
 	}
-
-	cert, err := s.securityFunctions.ClientAssertionCertFunc()
+	identity, err := s.identity()
 	if err != nil {
-		return "", fmt.Errorf("ClientAssertionCertFunc: %w", err)
+		return "", err
 	}
-
-	tk, err := josebp.NewJWTBuilder().
-		Header("typ", "JWT").
-		Header("alg", josebp.AlgorithmNameES256).
-		Header("x5c", []string{base64.StdEncoding.EncodeToString(cert.Raw)}).
-		Claim("nonce", nonce).
-		Claim("iat", time.Now().Unix()).
-		Claim("exp", time.Now().Add(20*time.Minute).Unix()).
-		Sign(sha256.New(), s.securityFunctions.ClientAssertionSignFunc)
-
+	now := time.Now()
+	jws, err := identity.SignJWT(context.Background(),
+		map[string]any{"typ": "JWT"},
+		map[string]any{
+			"nonce": nonce,
+			"iat":   now.Unix(),
+			"exp":   now.Add(20 * time.Minute).Unix(),
+		})
 	if err != nil {
 		return "", fmt.Errorf("signing client attest: %w", err)
 	}
-
-	return string(tk), nil
+	return jws, nil
 }
 
-func (s *Session) Authorize(authenticator *gemidp.Authenticator) error {
+// Authorize runs the authorization: client attest, the Aktensystem's authorization
+// request, the IDP-Dienst through authenticator, and the code back to the Aktensystem.
+func (s *Session) Authorize(authenticator Authenticator) error {
 	clientAttest, err := s.CreateClientAttest()
 	if err != nil {
 		return fmt.Errorf("creating client attest: %w", err)
@@ -132,12 +136,12 @@ func (s *Session) Authorize(authenticator *gemidp.Authenticator) error {
 
 	slog.Debug("Authorize", "authz_uri", authz_uri)
 
-	codeRedirectURL, err := authenticator.Authenticate(authz_uri)
+	codeRedirectURL, err := authenticator.Authenticate(context.Background(), authz_uri)
 	if err != nil {
 		return fmt.Errorf("authenticate: %w", err)
 	}
 
-	slog.Debug("Authorize", "code_redirect_url", codeRedirectURL)
+	slog.Debug("Authorize", "code_redirect_url", codeRedirectURL.URL)
 
 	err = s.SendAuthCodeSC(SendAuthCodeSCtype{
 		AuthorizationCode: codeRedirectURL.Code,

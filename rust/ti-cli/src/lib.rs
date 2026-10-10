@@ -12,6 +12,7 @@ mod commands;
 mod connector;
 mod error;
 mod http;
+mod identity;
 mod input;
 mod net;
 mod output;

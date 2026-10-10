@@ -174,9 +174,40 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `pki verify --ocsp-responder URL` sends the chain's OCSP requests to one responder,
   e.g. a relay; `--ocsp-max-age DURATION` accepts older responses than ti-pki's 37.5 s.
   The report carries `ocsp` when either is given.
+- `identity inspect` and `identity sign`: the SMC-B AUT identity (digitalSignature, no
+  contentCommitment, key present) from a PKCS#12 file, a PEM certificate and key, or a
+  card at the Konnektor (ExternalAuthenticate); `sign` makes a compact ES256 JWS with
+  `x5c` from a JSON object of claims, on brainpoolP256r1 (jwz-brainpool) or P-256. Error
+  kinds `identity_not_found`, `key_unsupported`, `claims_invalid`, `header_invalid`,
+  `signing_failed`. For `epa` (TASK-24).
+- `pki verify-signature --cert --data --signature`: one ECDSA-SHA256 signature, DER or
+  r‖s, against a certificate's key (exit 0/1; `signature_malformed`).
+- `--p12-password-path FILE` / `TI_P12_PASSWORD_PATH` on `pki inspect`, `pki verify` and
+  the identity commands: the PKCS#12 password from a file's first line, off the command
+  line. `--p12-password` still wins when given; the default stays `00`.
+- `idpd authenticate --env|--idp-url --auth-url <identity>`: the IDP-Dienst's
+  Authenticator-Modul flow (ti-idpd) from the relying party's authorization URL to the
+  authorization code, with the identity's key signing `BP256R1`. Error kinds
+  `idpd_error` (the IDP refused, with its `gematik_*` fields in the message),
+  `idpd_unreachable`, `idpd_protocol`; `warnings` carries `idp_certificates_unverified`
+  until TASK-27. `identity sign --alg BP256R1` for the IDP's algorithm name.
 
 #### changed
 - The trust anchor is GEM.RCA7 (ti-pki): `pki roots list` marks it and lists it first.
+
+### ti-idpd
+
+#### added
+- New crate: the gematik IDP-Dienst as a Primärsystem's Authenticator-Modul sees it
+  (gemSpec_IDP_Dienst V2.2.0, gemSpec_IDP_Frontend V1.7.1). Sans I/O: `discovery`
+  (the signed discovery document, verified with its `x5c` signer; `PuK_IDP_SIG` and
+  `PuK_IDP_ENC`), `challenge` (the challenge verified and valid, the nested JWT signed
+  by a jwz `Signer` and encrypted `ECDH-ES`/`A256GCM` to `PuK_IDP_ENC`, the code from
+  the redirect, the IDP's `gematik_*` error members as `IdpError`), `authenticator`
+  (the whole flow over a `Transport`), `http` (requests and responses as data). The
+  `ureq` feature adds a blocking transport. The IDP's certificates are reported as
+  `Warning::IdpCertificatesUnverified` until they are checked against the TSL
+  (TASK-27); the relying-party side, SSO and pairing are out of scope.
 
 ### ti-pki
 

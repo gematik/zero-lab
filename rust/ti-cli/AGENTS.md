@@ -127,6 +127,80 @@ never on `message`.
   (`TSLSIG-nnn`) and `detail`, and the list fields are null. A valid one may carry
   `warnings` and `skipped` entries. `tier` is `prod` or `nonprod`: ref, test and dev
   share one TSL signer CA.
+- `{bin} pki verify-signature --cert CERT --data FILE --signature FILE` checks one
+  ECDSA-SHA256 signature against the key of CERT (PEM or DER; `-` reads stdin): exit 0
+  valid, 1 not, with `valid`, `signature_format` (`der`, or `raw` for r‖s of 64 bytes)
+  and the signer's `certificate`. It says nothing about the certificate itself; that is
+  `pki verify`. ePA clients check a VAU's `signed_pub_keys` with it.
+- The password of PKCS#12 input: `--p12-password`, else the first line of the file
+  `--p12-password-path` (or `TI_P12_PASSWORD_PATH`) names, else `00`. Prefer the file
+  from scripts: it keeps the password out of the command line and the process list.
+
+## Subsystem identity: the SMC-B identity
+
+```sh
+{bin} --format json identity inspect --p12 smcb.p12 --p12-password-path pw.txt
+{bin} --format json identity inspect --cert smcb-aut.pem --key smcb-aut.key
+{bin} --format json identity inspect --card 80276883110000163974            # the selected Konnektor
+{bin} --format json identity inspect --card SMC-B-7 --connector praxis      # another one
+{bin} --format json identity sign --p12 smcb.p12 --claims - < claims.json     # ES256 JWS, x5c
+{bin} --format json identity sign --p12 smcb.p12 --claims claims.json --typ JWT --header kid=aut
+```
+
+- An identity is the AUT certificate (digitalSignature set, contentCommitment not set)
+  together with its key, from one of `--p12 FILE` (several certificates and keys are
+  fine: the AUT pair is selected; a card vendor's export), `--cert FILE --key FILE`
+  (PEM; the key as PKCS#8 `PRIVATE KEY` or `EC PRIVATE KEY`; further certificates in
+  the file are its chain) or `--card CARD` (ICCSN, Telematik-ID or handle at the
+  Konnektor the `connector` commands use: `--connector NAME|PATH` or
+  `TI_CONNECTOR_CONFIG`, else the selection of `connector use`, else `default`; the
+  card's C.AUT ECC certificate; signing goes through the Konnektor's
+  ExternalAuthenticate, so the card's PIN.SMC must be verified before, `connector
+  verify pin`). Keys are ECDSA on
+  brainpoolP256r1 or P-256; nothing else signs (error kind `key_unsupported`).
+- `inspect` reports `telematik_id` (the admission statement's registration number),
+  `signing` (`alg` ES256, `curve`), the `certificate` as `pki inspect` describes it and
+  `chain`, the CAs found with it. No source holds an AUT pair: exit 4,
+  `identity_not_found`.
+- `sign` takes the claims as a JSON object from `--claims FILE` (`-`: stdin) and returns
+  `jws`, the compact serialization, with `header` as sent: `alg` ES256 (the key's,
+  never yours), `typ` (`--typ`, default `JWT`), `x5c` the certificate, and every
+  `--header NAME=VALUE` (VALUE is JSON, else text). `iat`, `exp` and `nonce` are claims
+  you pass; the tool adds none. A header the tool sets (`alg`, `x5c`, `crit`, …): exit
+  2, `header_invalid`; claims that are not an object: exit 4, `claims_invalid`. A
+  Konnektor that refuses to sign is a `connector_*` error (exit 3), e.g. a fault for an
+  unverified PIN.
+- `--alg ES256` (default) or `--alg BP256R1`: the same ECDSA with SHA-256 under RFC
+  7518's name (ePA) or gematik's (the IDP-Dienst); `BP256R1` needs a brainpool key.
+- ePA's `clientAttest` and entitlement JWTs are `identity sign` with the respective
+  claims; the IDP-Dienst's challenge response is `idpd authenticate`.
+
+## Subsystem idpd: the IDP-Dienst
+
+```sh
+{bin} --format json idpd authenticate --env ref --p12 smcb.p12 --auth-url "$AUTHZ_URI"
+{bin} --format json idpd authenticate --env ref --card SMC-B-7 --auth-url "$AUTHZ_URI"
+{bin} --format json idpd authenticate --idp-url https://idp.example --auth-url "$URL" --p12 smcb.p12
+```
+
+- `authenticate` runs the Authenticator-Modul flow of gemSpec_IDP_Frontend for the
+  authorization URL a relying party made (for ePA, the Aktensystem's `authz_uri`): it
+  fetches and verifies the IDP's signed discovery document and keys, fetches the
+  challenge, signs the nested JWT with the identity's key (`BP256R1`, `x5c`), encrypts
+  the answer to `PuK_IDP_ENC` and posts it, and returns `code` (and `state`) from the
+  IDP's redirect, with `idp`, `identity` and the challenge's `client_id`, `scope`,
+  `redirect_uri`. The identity is given as for `identity`; a card's PIN.SMC must be
+  verified before.
+- The IDP is `--env` (`TI_ENV`; `prod`, `ref`, `test`, `dev` as ref; `auto` is exit 2)
+  or `--idp-url BASE`. `--auth-url` must be https (http only on 127.0.0.1, for tests).
+  Redirects are not followed: a 302 is the answer.
+- Exit 3 when the IDP refuses: error kind `idpd_error`, the message carries `error`,
+  `gematik_error_text` and `gematik_code` (e.g. `access_denied: Karte unbekannt
+  (gematik_code 2030, …)`). `idpd_unreachable` when no answer came, `idpd_protocol`
+  when the answer is not what the specification says (`-v` shows each request).
+- `warnings` carries `idp_certificates_unverified`: the IDP's certificates are used
+  with verified signatures but are not yet checked against the TSL (backlog TASK-27).
+  SSO tokens and alternative authentication (pairing) are not implemented.
 
 ## Subsystem connector: the Konnektor
 
@@ -157,7 +231,8 @@ never on `message`.
 - The configuration: `-c NAME|PATH` or `TI_CONNECTOR_CONFIG`, else the one
   `connector use` selected, else `default`. A name is looked up as `NAME` and
   `NAME.kon` in the current directory, then in `~/.config/telematik/connectors/`
-  (`$XDG_CONFIG_HOME` if set). The files are shared with the Go `ti`.
+  (`$XDG_CONFIG_HOME` if set). The format is the one the former Go `ti` used, so its files
+  keep working.
 - In a `.kon` file, `${NAME}` is expanded only in `credentials.username`, `.password`
   and `.data`, from the environment; `-v` names the variables, never their values.
 - CARD is an ICCSN, a Telematik-ID (as in the card's C.AUT) or a card handle. Handles

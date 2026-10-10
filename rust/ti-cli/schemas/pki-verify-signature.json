@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pki verify-signature",
+  "description": "Whether an ECDSA-SHA256 signature over DATA was made by the key of CERT (exit 0) or not (exit 1). No chain or status check: that is pki verify.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "valid": {
+      "type": "boolean"
+    },
+    "hash": {
+      "const": "SHA-256"
+    },
+    "signature_format": {
+      "enum": [
+        "der",
+        "raw"
+      ],
+      "description": "DER ECDSA-Sig-Value, or r‖s of the curve's size"
+    },
+    "data_bytes": {
+      "type": "integer"
+    },
+    "certificate": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "key": {
+          "type": "object",
+          "properties": {
+            "algorithm": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "algorithm",
+            "status"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "subject",
+        "sha256",
+        "key"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "valid",
+    "hash",
+    "signature_format",
+    "data_bytes",
+    "certificate"
+  ],
+  "additionalProperties": false
+}

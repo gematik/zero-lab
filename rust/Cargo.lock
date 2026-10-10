@@ -2114,19 +2114,27 @@ dependencies = [
  "base64ct",
  "clap",
  "clap_complete",
+ "der",
  "jiff",
+ "jwz",
+ "jwz-brainpool",
  "pem-rfc7468",
+ "pkcs8",
  "rustls",
+ "sec1",
  "serde",
  "serde_json",
  "sha2",
+ "signature",
  "thiserror",
  "ti-connector-client",
+ "ti-idpd",
  "ti-pkcs12",
  "ti-pki",
  "ti-report",
  "ureq",
  "x509-cert",
+ "zeroize",
 ]
 
 [[package]]
@@ -2147,6 +2155,24 @@ dependencies = [
  "thiserror",
  "ti-cache",
  "ti-pkcs12",
+ "ti-pki",
+ "ti-types",
+ "ureq",
+]
+
+[[package]]
+name = "ti-idpd"
+version = "0.1.0"
+dependencies = [
+ "base64ct",
+ "jwz",
+ "jwz-brainpool",
+ "pem-rfc7468",
+ "sec1",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "ti-jwz",
  "ti-pki",
  "ti-types",
  "ureq",

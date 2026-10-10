@@ -110,6 +110,28 @@ pub enum CliError {
     /// A PIN type that does not fit the card, or none where the card has two.
     #[error("{0}")]
     PinType(String),
+    /// The source holds no authentication certificate together with its key.
+    #[error("no AUT identity: {0}")]
+    IdentityNotFound(String),
+    /// A private key that is not ECDSA on brainpoolP256r1 or P-256.
+    #[error("unsupported key: {0}")]
+    KeyUnsupported(String),
+    /// The claims to sign are not a JSON object.
+    #[error("claims: {0}")]
+    Claims(String),
+    /// A header parameter jwz sets itself, or one that does not parse.
+    #[error("header: {0}")]
+    Header(String),
+    /// Signing failed for a reason other than the Konnektor refusing.
+    #[error("signing failed: {0}")]
+    Signing(String),
+    /// A signature file that is neither DER nor the curve's r‖s.
+    #[error("signature: {0}")]
+    SignatureMalformed(String),
+    /// The IDP-Dienst flow failed: the IDP refused, did not answer, or answered
+    /// outside the protocol.
+    #[error("IDP-Dienst: {0}")]
+    Idpd(#[source] ti_idpd::Error),
     /// Writing to stdout failed.
     #[error("cannot write output: {0}")]
     Output(#[from] io::Error),
@@ -144,6 +166,15 @@ impl CliError {
             CliError::Connector(_) => "connector_failed",
             CliError::CardRestricted { .. } => "card_restricted",
             CliError::PinType(_) => "pin_type",
+            CliError::IdentityNotFound(_) => "identity_not_found",
+            CliError::KeyUnsupported(_) => "key_unsupported",
+            CliError::Claims(_) => "claims_invalid",
+            CliError::Header(_) => "header_invalid",
+            CliError::Signing(_) => "signing_failed",
+            CliError::SignatureMalformed(_) => "signature_malformed",
+            CliError::Idpd(ti_idpd::Error::Idp(_)) => "idpd_error",
+            CliError::Idpd(ti_idpd::Error::Transport { .. }) => "idpd_unreachable",
+            CliError::Idpd(_) => "idpd_protocol",
             CliError::Output(_) => "output_failed",
         }
     }
@@ -195,7 +226,32 @@ impl CliError {
                 "SMC-KT, KVK and eGK are restricted on the Konnektor's SOAP API; use an HBA or SMC-B",
             ),
             CliError::PinType(_) => Some("name the PIN: PIN.CH, PIN.QES or PIN.SMC"),
-            CliError::Trust(_) | CliError::Output(_) | CliError::Connector(_) => None,
+            CliError::IdentityNotFound(_) => Some(
+                "the AUT certificate (digitalSignature, no contentCommitment) must be present together with its private key",
+            ),
+            CliError::KeyUnsupported(_) => Some(
+                "identities sign with ECDSA on brainpoolP256r1 or P-256 (PKCS#8 or EC PRIVATE KEY)",
+            ),
+            CliError::Claims(_) => Some("pass the claims as a JSON object; '-' reads stdin"),
+            CliError::Header(_) => {
+                Some("alg, enc, crit, epk and zip are set by the tool; values are JSON or text")
+            }
+            CliError::SignatureMalformed(_) => {
+                Some("expected a DER ECDSA-Sig-Value or r‖s of the curve's size (64 bytes)")
+            }
+            CliError::Idpd(ti_idpd::Error::Idp(_)) => Some(
+                "the IDP refused; gematik_error_text says why (client_id, redirect_uri, an expired challenge, an unknown card)",
+            ),
+            CliError::Idpd(ti_idpd::Error::Transport { .. }) => {
+                Some("check the network, --proxy and the IDP URL; -v shows each request")
+            }
+            CliError::Idpd(_) => {
+                Some("the IDP's answer departs from gemSpec_IDP_Dienst; -v shows the exchange")
+            }
+            CliError::Trust(_)
+            | CliError::Output(_)
+            | CliError::Connector(_)
+            | CliError::Signing(_) => None,
         }
     }
 
@@ -205,7 +261,11 @@ impl CliError {
             CliError::Read { .. }
             | CliError::NoCertificate { .. }
             | CliError::Certificate { .. }
-            | CliError::Pkcs12 { .. } => Exit::Input,
+            | CliError::Pkcs12 { .. }
+            | CliError::IdentityNotFound(_)
+            | CliError::KeyUnsupported(_)
+            | CliError::Claims(_)
+            | CliError::SignatureMalformed(_) => Exit::Input,
             CliError::EnvironmentUndetected(_)
             | CliError::Environment(_)
             | CliError::OutputExists(_)
@@ -213,13 +273,16 @@ impl CliError {
             | CliError::UnknownSchema(_)
             | CliError::CacheDir(_)
             | CliError::PinType(_)
+            | CliError::Header(_)
             | CliError::ConnectorConfig(_)
             | CliError::Connector(ti_connector_client::Error::Config(_)) => Exit::Usage,
             CliError::Trust(_)
             | CliError::TrustLoad(_)
             | CliError::ServerUnreachable(_)
             | CliError::Connector(_)
-            | CliError::CardRestricted { .. } => Exit::Remote,
+            | CliError::CardRestricted { .. }
+            | CliError::Signing(_)
+            | CliError::Idpd(_) => Exit::Remote,
             CliError::Output(_) => Exit::Output,
         }
     }

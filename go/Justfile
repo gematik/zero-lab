@@ -34,7 +34,7 @@ _modver mod:
     echo "${v:-dev}"
 
 # Build all command binaries locally into ./dist (version from git tag via ldflags)
-build: build-epa build-pdp build-caddy build-ti
+build: build-epa build-pdp build-caddy
 
 # Build the zero-epa binary locally
 build-epa:
@@ -48,17 +48,14 @@ build-pdp:
 build-caddy:
     go build -ldflags "-X main.Version=$(just _modver zaddy)" -o dist/zero-caddy ./zaddy/cmd/zero-caddy
 
-# Build the ti CLI binary locally
-build-ti:
-    go build -ldflags "-X github.com/gematik/zero-lab/go/ti/internal/common.Version=$(just _modver ti)" -o dist/ti ./ti
-
 
 # Build the zero-epa docker image
 docker-build-epa:
     #!/usr/bin/env bash
     set -euo pipefail
     v=$(just _modver epa)
-    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/zero-epa:$v" -f ./epa/cmd/zero-epa/Dockerfile .
+    # Context is the repository root: the image builds the Rust ti the client drives.
+    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/zero-epa:$v" -f ./epa/cmd/zero-epa/Dockerfile ..
     docker tag "{{DOCKER_USER}}/zero-epa:$v" "{{DOCKER_USER}}/zero-epa:latest"
 
 # Push the zero-epa docker image to the docker hub

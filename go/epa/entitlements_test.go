@@ -1,11 +1,11 @@
 package epa_test
 
 import (
-	"crypto/x509"
 	"strings"
 	"testing"
 
 	"github.com/gematik/zero-lab/go/epa"
+	"github.com/gematik/zero-lab/go/epa/epatest"
 )
 
 // offlineSession builds a Session without an open VAU channel — the tests
@@ -32,10 +32,7 @@ func TestSetEntitlementPN_NoIdentity(t *testing.T) {
 }
 
 func TestSetEntitlementPN_NoVAUChannel(t *testing.T) {
-	sf := &epa.SecurityFunctions{
-		AuthnSignFunc: func([]byte) ([]byte, error) { return nil, nil },
-		AuthnCertFunc: func() (*x509.Certificate, error) { return nil, nil },
-	}
+	sf := &epa.SecurityFunctions{Identity: &epatest.Identity{SubjectDN: "CN=Test"}}
 	session := offlineSession(t, sf)
 
 	err := session.SetEntitlementPN("X110600196", "audit-evidence", []byte{0x01})

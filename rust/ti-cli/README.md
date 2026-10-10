@@ -1,8 +1,8 @@
 # ti-cli
 
 `ti`, the command-line tool for the gematik Telematikinfrastruktur (TI), in Rust, built
-on [`ti-pki`](../ti-pki) and [`ti-connector-client`](../ti-connector-client). Commands are
-grouped by subsystem: `pki` and `connector`.
+on [`ti-pki`](../ti-pki), [`ti-connector-client`](../ti-connector-client) and
+[`jwz`](../jwz). Commands are grouped by subsystem: `pki`, `identity` and `connector`.
 
 ```sh
 just install                        # cargo install into ~/.cargo/bin
@@ -26,7 +26,12 @@ ti pki tsl show                     # the TSL's CAs under the roots that signed 
 ti pki tsl show --rejected          # the CAs no verified root signed, and why
 ti pki tsl show --ca SMCB-CA51      # one CA; Markdown adds its PEM
 ti pki tsl verify ECC-RSA_TSL.xml   # signature, signer, signer OCSP; exit 0 valid
-ti connector configs                # the .kon files, shared with the Go ti
+ti pki verify-signature --cert vau.pem --data keys.cbor --signature sig.bin   # one ECDSA signature
+ti identity inspect --p12 smcb.p12 --p12-password-path pw.txt   # the AUT certificate and key
+ti identity sign --p12 smcb.p12 --claims - < claims.json         # ES256 JWS, x5c the certificate
+ti identity sign --card 80276883110000163974 --claims claims.json   # the selected Konnektor signs
+ti idpd authenticate --env ref --p12 smcb.p12 --auth-url "$AUTHZ_URI"   # IDP-Dienst → authorization code
+ti connector configs                # the .kon files (~/.config/telematik/connectors)
 ti connector use praxis             # the configuration later commands use
 ti connector get cards
 ti connector get certificates 80276883110000163974   # ICCSN, Telematik-ID or handle
@@ -146,10 +151,39 @@ at the first brainpool signature, leaving GEM.RCA7 and GEM.RCA6, and no TSL is u
 its signer CAs are brainpool. Most TI chains are brainpool and come out invalid; the
 report carries `"nist_only": true`.
 
+`ti pki verify-signature` checks a single ECDSA-SHA256 signature (DER, or r‖s) against
+a certificate's key with ti-pki's verifiers, and nothing about the certificate: an ePA
+client checks the VAU's `signed_pub_keys` this way and the certificate with `pki verify`.
+
+## Identity
+
+`ti identity` is the SMC-B as a client uses it: the AUT certificate (digitalSignature,
+no contentCommitment) with its key, from a PKCS#12 file (`--p12`, the AUT pair selected
+among a card export's certificates), a PEM certificate and key (`--cert --key`), or a
+card at the Konnektor (`--card`, the Konnektor resolved as the `connector` commands do,
+`--connector` naming another; signing through ExternalAuthenticate with the PIN verified
+before). `inspect` shows what was selected, the Telematik-ID and the
+curve; `sign` turns a JSON object of claims into a compact ES256 JWS with `x5c`, the
+form ePA's `clientAttest` and entitlement JWTs and the IDP-Dienst's nested challenge
+take. The key lives only in the `ti` process for the duration of the call; callers
+such as `epa` pass the PKCS#12 password by file (`--p12-password-path`,
+`TI_P12_PASSWORD_PATH`), never on the command line.
+
+## IDP-Dienst
+
+`ti idpd authenticate` is the Authenticator-Modul of gemSpec_IDP_Frontend, built on
+[`ti-idpd`](../ti-idpd): given the authorization URL a relying party made (for ePA, the
+Aktensystem's `authz_uri`) and an identity, it fetches and verifies the IDP's signed
+discovery document and keys, signs the challenge with the card (`BP256R1`, `x5c`),
+encrypts the answer to `PuK_IDP_ENC` and returns the authorization code from the IDP's
+redirect — what `epa` sends on in `send_authcode_sc`. The IDP is the environment's
+(`--env`) or `--idp-url`. The IDP's certificates are not yet checked against the TSL;
+the report says so in `warnings`.
+
 ## Connector
 
-`ti connector` talks to a Konnektor as the Go `ti connector` does, with the same `.kon`
-files: `-c NAME|PATH` or `TI_CONNECTOR_CONFIG`, else the one `connector use` selected,
+`ti connector` talks to a Konnektor configured by a `.kon` file (the format the former Go
+`ti` introduced): `-c NAME|PATH` or `TI_CONNECTOR_CONFIG`, else the one `connector use` selected,
 else `default`; names are looked up here and in `~/.config/telematik/connectors/`.
 `${NAME}` in a `.kon` file is expanded only in the credentials, so a file from someone
 else cannot send environment variables to a foreign host. Calls time out after

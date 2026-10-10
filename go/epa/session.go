@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/epa/vau"
 )
 
@@ -73,13 +72,12 @@ func transportWithTLS(rt http.RoundTripper, tlsConfig *tls.Config) http.RoundTri
 // callers like the Proxy invoke them and pass the material to
 // SetEntitlementPN/SetEntitlementPoPP.
 type SecurityFunctions struct {
-	AuthnSignFunc           brainpool.SignFunc
-	AuthnCertFunc           func() (*x509.Certificate, error)
-	ClientAssertionSignFunc brainpool.SignFunc
-	ClientAssertionCertFunc func() (*x509.Certificate, error)
-	ProvidePN               ProvidePNFunc
-	ProvideHCV              func(insurantId string) ([]byte, error)
-	ProvidePoPP             ProvidePoPPFunc
+	// Identity signs the client attest and the entitlement JWT; nil means the session
+	// can only reach the /information endpoints.
+	Identity    Identity
+	ProvidePN   ProvidePNFunc
+	ProvideHCV  func(insurantId string) ([]byte, error)
+	ProvidePoPP ProvidePoPPFunc
 }
 
 // Client is a cheap, pre-VAU handle to an aggregator. It owns the HTTP
@@ -98,6 +96,18 @@ type Client struct {
 	insecureSkipVerify bool
 	certPool           *x509.CertPool
 	Timeout            time.Duration
+	vauVerifier        vau.CertVerifier
+	vauVerify          vau.VerifyMode
+}
+
+// WithVAUVerification checks the VAU's CertData and host keys with verifier when a
+// channel opens: in warn mode the verdict is logged, in enforce mode a bad one fails
+// the handshake. Without it the keys are used unchecked, with a warning.
+func WithVAUVerification(verifier vau.CertVerifier, mode vau.VerifyMode) ClientOption {
+	return func(c *Client) {
+		c.vauVerifier = verifier
+		c.vauVerify = mode
+	}
 }
 
 // Session is a Client with an open VAU channel. Authorize must be called
@@ -206,7 +216,7 @@ func NewClient(env Env, provider ProviderNumber, sf *SecurityFunctions, options 
 // Authorized for VAU-bound calls. The underlying Client (HTTP transport,
 // identity) is shared with the returned Session via embedding.
 func (c *Client) OpenSession() (*Session, error) {
-	vauChannel, err := vau.OpenChannel(c.BaseURL, vau.EnvNonPU, c.HttpClient)
+	vauChannel, err := vau.OpenChannelVerified(c.BaseURL, vau.EnvNonPU, c.HttpClient, c.vauVerifier, c.vauVerify)
 	if err != nil {
 		return nil, err
 	}

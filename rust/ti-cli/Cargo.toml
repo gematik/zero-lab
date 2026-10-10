@@ -24,6 +24,18 @@ ti-connector-client = { workspace = true, features = ["ureq"] }
 base64ct.workspace = true
 ti-pki = { workspace = true, features = ["brainpool", "rsa", "os", "dangerous-nonprod"] }
 ti-report.workspace = true
+# `identity sign`: JWS with the SMC-B key, ES256 on brainpoolP256r1 (jwz-brainpool) or
+# P-256 (jwz's own backend); the keys come from PKCS#8 (`pkcs8`, `sec1`), not from JWKs.
+jwz = { workspace = true, features = ["std", "jws", "jwt", "crypto-rustcrypto"] }
+jwz-brainpool.workspace = true
+# `idpd authenticate`: the IDP-Dienst flow over this tool's ureq.
+ti-idpd = { workspace = true, features = ["ureq"] }
+pkcs8.workspace = true
+sec1.workspace = true
+der.workspace = true
+# The Konnektor signer implements RustCrypto's signature traits, as jwz's keys do.
+signature.workspace = true
+zeroize.workspace = true
 # rustls without a built-in provider (ring is passed in), the OS trust store via the
 # platform verifier, and SOCKS for -x socks5://.
 ureq = { workspace = true, features = ["rustls-no-provider", "platform-verifier", "socks-proxy"] }
