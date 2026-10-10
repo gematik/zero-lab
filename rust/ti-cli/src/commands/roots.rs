@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use ti_pki::load::SystemClock;
 use ti_pki::{Certificate, Clock, Timestamp, TrustConfig};
 
-use crate::cli::{GlobalArgs, TrustArgs};
+use crate::cli::{GlobalArgs, RootsArgs};
 use crate::error::{CliError, Exit};
 use crate::output::{Document, Line, Output, SCHEMA, Tone, hex, pem};
 use crate::trust::{Session, TrustInfo};
@@ -40,13 +40,13 @@ struct RootInfo {
 }
 
 /// Runs `ti pki roots list`.
-pub fn list(args: &TrustArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
-    let env = super::concrete(args.env, global)?;
-    let config = TrustConfig::preset(env);
+pub fn list(args: &RootsArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
+    let (trust, env) = (&args.trust, super::concrete(args.trust.env, global)?);
+    let config = super::trust_config(env, args.nist_only);
     config.validate(env.tier()).map_err(CliError::Trust)?;
-    let session = Session::new(global, args.offline, out)?;
-    let material = session.load(&config, env.tier(), args.at)?;
-    let now = args.at.unwrap_or_else(|| SystemClock.now());
+    let session = Session::new(global, trust.offline, out)?;
+    let material = session.load(&config, env.tier(), trust.at)?;
+    let now = trust.at.unwrap_or_else(|| SystemClock.now());
     let report = Report {
         schema: SCHEMA,
         environment: env.as_str(),

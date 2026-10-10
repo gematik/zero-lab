@@ -224,7 +224,7 @@ pub enum Pkcs12Command {
 #[derive(Debug, Subcommand)]
 pub enum RootsCommand {
     /// List the trusted roots
-    List(TrustArgs),
+    List(RootsArgs),
 }
 
 /// `ti pki tsl …`.
@@ -251,6 +251,17 @@ pub struct TrustArgs {
     /// OCSP status is then not queried
     #[arg(long, value_name = "TIME", value_parser = timestamp)]
     pub at: Option<ti_pki::Timestamp>,
+}
+
+/// `ti pki roots list`.
+#[derive(Debug, Args)]
+pub struct RootsArgs {
+    #[command(flatten)]
+    pub trust: TrustArgs,
+    /// Verify as a client without brainpool would: the roots up to the first brainpool
+    /// signature (GEM.RCA7, GEM.RCA6) and no TSL, whose signer CAs are brainpool
+    #[arg(long)]
+    pub nist_only: bool,
 }
 
 /// `ti pki tsl show`. Filters match case-insensitive substrings and combine.
@@ -340,6 +351,10 @@ pub struct VerifyArgs {
     /// you connected to
     #[arg(long, value_name = "NAME")]
     pub fqdn: Option<String>,
+    /// Verify as a client without brainpool would: the roots up to the first brainpool
+    /// signature (GEM.RCA7, GEM.RCA6) and no TSL, whose signer CAs are brainpool
+    #[arg(long)]
+    pub nist_only: bool,
 }
 
 /// `--env`: an environment, or auto-detection.

@@ -164,6 +164,9 @@ pub struct TrustInfo {
     pub tsl: Option<TslTrust>,
     /// Why the material is less than the environment's full set, if it is.
     pub note: Option<String>,
+    /// Verified without brainpool (`--nist-only`): roots only, no TSL.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub nist_only: bool,
 }
 
 /// The verified TSL as a trust chain of its own: the list, its signer, the TSL signer CA.
@@ -260,6 +263,9 @@ impl Session {
         tier: Tier,
         at: Option<Timestamp>,
     ) -> Result<Material, CliError> {
+        if !verifies_tsls(config) {
+            return self.roots_only(config, at);
+        }
         let clock = At(at);
         // The list seen before guards against an older one, but only for the current
         // time: a past instant may well need an older list.
@@ -313,6 +319,58 @@ impl Session {
                 file.write(current);
             }
             Ok(material)
+        })
+    }
+
+    /// The roots alone, for algorithms that verify no TSL: roots.json from the cache or
+    /// the network (else the embedded one), walked from the anchor at `at` or now.
+    /// ti-pki fails a load whose TSL does not verify, rightly, since that may be
+    /// tampering; here the TSL is left out by configuration, and the report says so.
+    fn roots_only(
+        &self,
+        config: &TrustConfig,
+        at: Option<Timestamp>,
+    ) -> Result<Material, CliError> {
+        let loaded = block_on(async {
+            match &self.transport {
+                Some(transport) => self.loader(config, transport).load(Artifact::Roots).await,
+                None => self.loader(config, NoNetwork).load(Artifact::Roots).await,
+            }
+        });
+        let (config, meta) = match loaded {
+            Ok(loaded) => (
+                TrustConfig {
+                    roots: loaded.body.into(),
+                    ..config.clone()
+                },
+                Some(loaded.meta),
+            ),
+            Err(LoadError::Offline(_)) => (config.clone(), None),
+            Err(error) => return Err(CliError::TrustLoad(error.to_string())),
+        };
+        let store = roots::load(&config, at.unwrap_or_else(|| SystemClock.now()))
+            .map_err(CliError::Trust)?
+            .store();
+        Ok(Material {
+            info: TrustInfo {
+                source: source_name(meta.as_ref().map(|m| m.source)),
+                fetched_at: meta.as_ref().map(|m| m.fetched_at.to_string()),
+                fetched_at_ts: meta.as_ref().map(|m| m.fetched_at),
+                tsl_next_update: None,
+                tsl_next_update_ts: None,
+                roots: store.len(),
+                intermediates: 0,
+                tsl_warnings: Vec::new(),
+                tsl: None,
+                note: Some(
+                    "without brainpool: roots up to the first brainpool signature, no TSL \
+                     (its signer CAs are brainpool)"
+                        .into(),
+                ),
+                nist_only: true,
+            },
+            tsl_state: None,
+            store: Arc::new(store),
         })
     }
 
@@ -437,6 +495,7 @@ where
                 _ => None,
             },
             note: None,
+            nist_only: false,
         },
         tsl_state: status.tsl_state,
         store,
@@ -459,6 +518,7 @@ fn embedded(config: &TrustConfig, note: &str) -> Result<Material, CliError> {
             tsl_warnings: Vec::new(),
             tsl: None,
             note: Some(note.to_owned()),
+            nist_only: false,
         },
         tsl_state: None,
         store: Arc::new(store),
@@ -517,4 +577,13 @@ fn refused(url: &str) -> TransportError {
         message: format!("offline: not requesting {url}"),
         retryable: false,
     }
+}
+
+/// Whether `config`'s algorithms can check a TSL at all: every TSL is signed on
+/// brainpoolP256r1 (TSLSIG-012), so without brainpool none verifies.
+pub fn verifies_tsls(config: &TrustConfig) -> bool {
+    ti_pki::algorithms::supports_key(
+        &config.algorithms,
+        ti_pki::algorithms::brainpool::BRAINPOOL_P256R1.as_ref(),
+    )
 }

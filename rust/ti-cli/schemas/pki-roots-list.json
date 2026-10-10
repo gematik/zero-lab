@@ -136,6 +136,10 @@
           ],
           "description": "Why the material is less than the environment's full set"
         },
+        "nist_only": {
+          "const": true,
+          "description": "Present with --nist-only: verified without brainpool, as a client without it would; the roots up to the first brainpool signature and no TSL"
+        },
         "tsl_warnings": {
           "type": "array",
           "items": {

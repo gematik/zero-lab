@@ -158,6 +158,16 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   every request byte for byte as the Konnektor accepted it. The e2e tests record new
   sessions with `TI_TEST_KON_RECORD_DIR`.
 
+### ti-cli
+
+#### added
+- `--nist-only` on `pki verify` and `pki roots list`: verify as a client without brainpool
+  would (roots up to the first brainpool signature, no TSL); reports carry
+  `trust.nist_only`.
+
+#### changed
+- The trust anchor is GEM.RCA7 (ti-pki): `pki roots list` marks it and lists it first.
+
 ### ti-pki
 
 #### added

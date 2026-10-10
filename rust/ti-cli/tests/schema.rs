@@ -190,6 +190,72 @@ fn every_command_matches_its_schema() {
     json_of(c, "version", &["version"]);
 }
 
+/// `--nist-only` verifies as a client without brainpool would: from GEM.RCA7 the walk
+/// ends at the first brainpool root, and no TSL is loaded.
+#[test]
+fn nist_only_verifies_without_brainpool() {
+    let cache = SeededCache::new("nist-only");
+    let c = &cache.0;
+    let fixture = |name: &str| {
+        manifest(&format!("../ti-pki/tests/fixtures/{name}"))
+            .to_string_lossy()
+            .into_owned()
+    };
+
+    let roots = json_of(
+        c,
+        "pki roots list",
+        &[
+            "pki",
+            "roots",
+            "list",
+            "--offline",
+            "--nist-only",
+            "--at",
+            "2026-10-01T00:00:00Z",
+        ],
+    );
+    let roots: Value = serde_json::from_slice(&roots.stdout).unwrap();
+    let names: Vec<&str> = roots["roots"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|root| root["common_name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["GEM.RCA7", "GEM.RCA6"]);
+    assert_eq!(roots["trust"]["nist_only"], true);
+    assert_eq!(roots["trust"]["intermediates"], 0);
+    assert!(roots["trust"]["tsl"].is_null());
+
+    // The SMC-B CA under the brainpool GEM.RCA5 TEST-ONLY has no trusted issuer.
+    let verify = json_of(
+        c,
+        "pki verify",
+        &[
+            "pki",
+            "verify",
+            "--offline",
+            "--nist-only",
+            &fixture("admission-1.pem"),
+            "--issuer",
+            &fixture("smcb-ca51-test-only.pem"),
+            "--at",
+            "2026-06-01T00:00:00Z",
+        ],
+    );
+    assert_eq!(verify.status.code(), Some(1));
+    let verify: Value = serde_json::from_slice(&verify.stdout).unwrap();
+    assert_eq!(verify["errors"][0]["code"], "chain_incomplete");
+    assert_eq!(verify["trust"]["nist_only"], true);
+
+    let tsl = ti(c, &["pki", "tsl", "show", "--nist-only"]);
+    assert_eq!(
+        tsl.status.code(),
+        Some(2),
+        "no such option on the TSL commands"
+    );
+}
+
 #[test]
 fn pkcs12_commands_match_their_schemas() {
     let cache = SeededCache::new("pkcs12");

@@ -94,6 +94,9 @@ never on `message`.
     when you already know it.
   - `trust.note` is set when the trust material is less than the full set, e.g.
     offline with nothing cached. Then pass the issuing CA with `--issuer`.
+  - `trust.nist_only: true` with `--nist-only` (`pki verify`, `pki roots list`): verified
+    as a client without brainpool would, so only the roots up to the first brainpool
+    signature (GEM.RCA7, GEM.RCA6) and no TSL. A brainpool chain is then not valid.
 - The TSL is verified whenever trust material is loaded; a list that fails is not used.
   `trust.tsl` names the list, its signer and the TSL signer CA; `trust.tsl_warnings`
   holds `no_ocsp_check` when the signer's OCSP status was not queried (offline, `--at`).

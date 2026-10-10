@@ -86,6 +86,20 @@ fn concrete(env: Environment, global: &GlobalArgs) -> Result<Env, CliError> {
     }
 }
 
+/// The preset of `env`; with `nist_only`, verifying without brainpool, as a client
+/// without it would.
+fn trust_config(env: Env, nist_only: bool) -> ti_pki::TrustConfig {
+    let config = ti_pki::TrustConfig::preset(env);
+    if nist_only {
+        ti_pki::TrustConfig {
+            algorithms: std::borrow::Cow::Borrowed(ti_pki::algorithms::NIST),
+            ..config
+        }
+    } else {
+        config
+    }
+}
+
 /// The environment `probe` checks: ENV, else `--env`, else `TI_ENV`. ENV and an `--env`
 /// on the command line must agree; ENV wins over `TI_ENV`, and `auto` from `TI_ENV`
 /// counts as unset.
