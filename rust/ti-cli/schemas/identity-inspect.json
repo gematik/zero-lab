@@ -1,0 +1,318 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "identity inspect",
+  "description": "The SMC-B authentication identity (AUT) selected from a PKCS#12 file, a PEM certificate and key, or a Konnektor card: the certificate with digitalSignature and without contentCommitment whose key is present.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "source": {
+      "type": "object",
+      "description": "Where the identity came from",
+      "properties": {
+        "kind": {
+          "enum": [
+            "p12",
+            "pem",
+            "connector"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "description": "The file, or the connector configuration and card"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "telematik_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The admission statement's registration number, for an SMC-B the Telematik-ID"
+    },
+    "signing": {
+      "type": "object",
+      "description": "How this identity signs",
+      "properties": {
+        "alg": {
+          "const": "ES256",
+          "description": "JWS algorithm: ECDSA with SHA-256, r‖s"
+        },
+        "curve": {
+          "enum": [
+            "brainpoolP256r1",
+            "P-256"
+          ]
+        }
+      },
+      "required": [
+        "alg",
+        "curve"
+      ],
+      "additionalProperties": false
+    },
+    "certificate": {
+      "$ref": "#/$defs/certificate",
+      "description": "The AUT certificate, as pki inspect describes it"
+    },
+    "chain": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/certificate"
+      },
+      "description": "The other certificates found with it (CAs), as candidates for a chain"
+    }
+  },
+  "required": [
+    "schema",
+    "source",
+    "telematik_id",
+    "signing",
+    "certificate",
+    "chain"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "oid": {
+      "type": "object",
+      "properties": {
+        "oid": {
+          "type": "string",
+          "description": "Dotted form"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "gemSpec_OID description, where the TI defines one"
+        }
+      },
+      "required": [
+        "oid",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "certificate": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string"
+        },
+        "subject_alt_names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Subject alternative names in OpenSSL notation, e.g. DNS:host"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "serial": {
+          "type": "string",
+          "description": "Upper-case hex, colon-separated"
+        },
+        "not_before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        },
+        "not_after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        },
+        "validity": {
+          "enum": [
+            "valid",
+            "expired",
+            "not_yet_valid"
+          ]
+        },
+        "key": {
+          "type": "object",
+          "properties": {
+            "algorithm": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "description": "gemSpec_Krypt admissibility"
+            }
+          },
+          "required": [
+            "algorithm",
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        "signature_algorithm": {
+          "type": "string"
+        },
+        "certificate_type": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "gemSpec_PKI type, e.g. C.HCI.AUT"
+        },
+        "profile": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "reason",
+                "detail"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "admission": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "profession_items": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "profession_oids": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/oid"
+                  }
+                },
+                "registration_number": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "profession_items",
+                "profession_oids",
+                "registration_number"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "policies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/oid"
+          }
+        },
+        "key_usage": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "extended_key_usage": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ca": {
+          "type": "boolean"
+        },
+        "path_len": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "ocsp_urls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "critical_extensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "subject_key_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authority_key_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "pem": {
+          "type": "string",
+          "description": "The certificate as PEM"
+        }
+      },
+      "required": [
+        "subject",
+        "subject_alt_names",
+        "issuer",
+        "serial",
+        "not_before",
+        "not_after",
+        "validity",
+        "key",
+        "signature_algorithm",
+        "certificate_type",
+        "profile",
+        "admission",
+        "policies",
+        "key_usage",
+        "extended_key_usage",
+        "ca",
+        "path_len",
+        "ocsp_urls",
+        "critical_extensions",
+        "subject_key_id",
+        "authority_key_id",
+        "sha256",
+        "pem"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

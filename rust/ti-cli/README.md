@@ -1,8 +1,8 @@
 # ti-cli
 
 `ti`, the command-line tool for the gematik Telematikinfrastruktur (TI), in Rust, built
-on [`ti-pki`](../ti-pki) and [`ti-connector-client`](../ti-connector-client). Commands are
-grouped by subsystem: `pki` and `connector`.
+on [`ti-pki`](../ti-pki), [`ti-connector-client`](../ti-connector-client) and
+[`jwz`](../jwz). Commands are grouped by subsystem: `pki`, `identity` and `connector`.
 
 ```sh
 just install                        # cargo install into ~/.cargo/bin
@@ -25,6 +25,10 @@ ti pki tsl show                     # the TSL's CAs under the roots that signed 
 ti pki tsl show --rejected          # the CAs no verified root signed, and why
 ti pki tsl show --ca SMCB-CA51      # one CA; Markdown adds its PEM
 ti pki tsl verify ECC-RSA_TSL.xml   # signature, signer, signer OCSP; exit 0 valid
+ti pki verify-signature --cert vau.pem --data keys.cbor --signature sig.bin   # one ECDSA signature
+ti identity inspect --p12 smcb.p12 --p12-password-path pw.txt   # the AUT certificate and key
+ti identity sign --p12 smcb.p12 --claims - < claims.json         # ES256 JWS, x5c the certificate
+ti identity sign --card 80276883110000163974 --claims claims.json   # the selected Konnektor signs
 ti connector configs                # the .kon files, shared with the Go ti
 ti connector use praxis             # the configuration later commands use
 ti connector get cards
@@ -144,6 +148,24 @@ such as a browser, Go's crypto/x509 or rustls with ring: the roots walk from GEM
 at the first brainpool signature, leaving GEM.RCA7 and GEM.RCA6, and no TSL is used, since
 its signer CAs are brainpool. Most TI chains are brainpool and come out invalid; the
 report carries `"nist_only": true`.
+
+`ti pki verify-signature` checks a single ECDSA-SHA256 signature (DER, or r‖s) against
+a certificate's key with ti-pki's verifiers, and nothing about the certificate: an ePA
+client checks the VAU's `signed_pub_keys` this way and the certificate with `pki verify`.
+
+## Identity
+
+`ti identity` is the SMC-B as a client uses it: the AUT certificate (digitalSignature,
+no contentCommitment) with its key, from a PKCS#12 file (`--p12`, the AUT pair selected
+among a card export's certificates), a PEM certificate and key (`--cert --key`), or a
+card at the Konnektor (`--card`, the Konnektor resolved as the `connector` commands do,
+`--connector` naming another; signing through ExternalAuthenticate with the PIN verified
+before). `inspect` shows what was selected, the Telematik-ID and the
+curve; `sign` turns a JSON object of claims into a compact ES256 JWS with `x5c`, the
+form ePA's `clientAttest` and entitlement JWTs and the IDP-Dienst's nested challenge
+take. The key lives only in the `ti` process for the duration of the call; callers
+such as `epa` pass the PKCS#12 password by file (`--p12-password-path`,
+`TI_P12_PASSWORD_PATH`), never on the command line.
 
 ## Connector
 

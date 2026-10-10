@@ -127,6 +127,51 @@ never on `message`.
   (`TSLSIG-nnn`) and `detail`, and the list fields are null. A valid one may carry
   `warnings` and `skipped` entries. `tier` is `prod` or `nonprod`: ref, test and dev
   share one TSL signer CA.
+- `{bin} pki verify-signature --cert CERT --data FILE --signature FILE` checks one
+  ECDSA-SHA256 signature against the key of CERT (PEM or DER; `-` reads stdin): exit 0
+  valid, 1 not, with `valid`, `signature_format` (`der`, or `raw` for r‖s of 64 bytes)
+  and the signer's `certificate`. It says nothing about the certificate itself; that is
+  `pki verify`. ePA clients check a VAU's `signed_pub_keys` with it.
+- The password of PKCS#12 input: `--p12-password`, else the first line of the file
+  `--p12-password-path` (or `TI_P12_PASSWORD_PATH`) names, else `00`. Prefer the file
+  from scripts: it keeps the password out of the command line and the process list.
+
+## Subsystem identity: the SMC-B identity
+
+```sh
+{bin} --format json identity inspect --p12 smcb.p12 --p12-password-path pw.txt
+{bin} --format json identity inspect --cert smcb-aut.pem --key smcb-aut.key
+{bin} --format json identity inspect --card 80276883110000163974            # the selected Konnektor
+{bin} --format json identity inspect --card SMC-B-7 --connector praxis      # another one
+{bin} --format json identity sign --p12 smcb.p12 --claims - < claims.json     # ES256 JWS, x5c
+{bin} --format json identity sign --p12 smcb.p12 --claims claims.json --typ JWT --header kid=aut
+```
+
+- An identity is the AUT certificate (digitalSignature set, contentCommitment not set)
+  together with its key, from one of `--p12 FILE` (several certificates and keys are
+  fine: the AUT pair is selected; a card vendor's export), `--cert FILE --key FILE`
+  (PEM; the key as PKCS#8 `PRIVATE KEY` or `EC PRIVATE KEY`; further certificates in
+  the file are its chain) or `--card CARD` (ICCSN, Telematik-ID or handle at the
+  Konnektor the `connector` commands use: `--connector NAME|PATH` or
+  `TI_CONNECTOR_CONFIG`, else the selection of `connector use`, else `default`; the
+  card's C.AUT ECC certificate; signing goes through the Konnektor's
+  ExternalAuthenticate, so the card's PIN.SMC must be verified before, `connector
+  verify pin`). Keys are ECDSA on
+  brainpoolP256r1 or P-256; nothing else signs (error kind `key_unsupported`).
+- `inspect` reports `telematik_id` (the admission statement's registration number),
+  `signing` (`alg` ES256, `curve`), the `certificate` as `pki inspect` describes it and
+  `chain`, the CAs found with it. No source holds an AUT pair: exit 4,
+  `identity_not_found`.
+- `sign` takes the claims as a JSON object from `--claims FILE` (`-`: stdin) and returns
+  `jws`, the compact serialization, with `header` as sent: `alg` ES256 (the key's,
+  never yours), `typ` (`--typ`, default `JWT`), `x5c` the certificate, and every
+  `--header NAME=VALUE` (VALUE is JSON, else text). `iat`, `exp` and `nonce` are claims
+  you pass; the tool adds none. A header the tool sets (`alg`, `x5c`, `crit`, …): exit
+  2, `header_invalid`; claims that are not an object: exit 4, `claims_invalid`. A
+  Konnektor that refuses to sign is a `connector_*` error (exit 3), e.g. a fault for an
+  unverified PIN.
+- ePA's `clientAttest` and entitlement JWTs, and the IDP-Dienst's nested challenge
+  JWT, are `identity sign` with the respective claims.
 
 ## Subsystem connector: the Konnektor
 

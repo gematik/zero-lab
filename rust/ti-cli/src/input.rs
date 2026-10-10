@@ -5,7 +5,25 @@ use std::path::Path;
 
 use ti_pki::Certificate;
 
+use crate::cli::P12PasswordArgs;
 use crate::error::CliError;
+
+/// The password of PKCS#12 input: `--p12-password`, else the first line of the file
+/// `--p12-password-path` (or `TI_P12_PASSWORD_PATH`) names, else `00`.
+pub fn p12_password(args: &P12PasswordArgs) -> Result<String, CliError> {
+    if let Some(password) = &args.p12_password {
+        return Ok(password.clone());
+    }
+    let Some(path) = &args.p12_password_path else {
+        return Ok("00".to_owned());
+    };
+    let source = read(path)?;
+    let text = String::from_utf8(source.bytes).map_err(|error| CliError::Read {
+        source_name: source.name,
+        source: std::io::Error::new(std::io::ErrorKind::InvalidData, error),
+    })?;
+    Ok(text.lines().next().unwrap_or_default().to_owned())
+}
 
 /// The bytes of a FILE argument, with a name for messages.
 pub struct Source {

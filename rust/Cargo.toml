@@ -38,6 +38,9 @@ pem-rfc7468 = "1"
 # (3DES, RC2) that gematik's test cards still use sit behind ti-pkcs12's `legacy` feature.
 pkcs5 = { version = "0.8.1", default-features = false, features = ["alloc", "pbes2"] }
 pkcs8 = { version = "0.11.0", default-features = false, features = ["alloc"] }
+# The `ECPrivateKey` inside a PKCS#8 EC key (ti-cli's identity loader); already in the
+# tree through elliptic-curve.
+sec1 = { version = "0.8.1", default-features = false, features = ["der", "alloc"] }
 hmac = "0.13.0"
 cbc = { version = "0.2.1", default-features = false, features = ["alloc", "block-padding"] }
 des = "0.9.0"

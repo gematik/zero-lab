@@ -142,11 +142,12 @@ struct Run {
 
 /// Runs the command; exit 0 when valid, 1 when not.
 pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
-    let (source_label, mut certs) = chain_to_verify(args, global, out)?;
+    let p12_password = input::p12_password(&args.password)?;
+    let (source_label, mut certs) = chain_to_verify(args, &p12_password, global, out)?;
     for path in args.issuer.iter().chain(&args.intermediates) {
         let source = input::read(path)?;
         certs.extend(
-            input::certificates(&source, &args.p12_password)?
+            input::certificates(&source, &p12_password)?
                 .into_iter()
                 .map(|loaded| loaded.certificate),
         );
@@ -252,11 +253,12 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
 /// `--connect` server presents.
 fn chain_to_verify(
     args: &VerifyArgs,
+    p12_password: &str,
     global: &GlobalArgs,
     out: &Output,
 ) -> Result<(String, Vec<Certificate>), CliError> {
     let certificates = |source: &input::Source| -> Result<Vec<Certificate>, CliError> {
-        Ok(input::certificates(source, &args.p12_password)?
+        Ok(input::certificates(source, p12_password)?
             .into_iter()
             .map(|loaded| loaded.certificate)
             .collect())

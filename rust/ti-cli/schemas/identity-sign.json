@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "identity sign",
+  "description": "A compact JWS over the given claims, signed with the identity's key: alg from the key, x5c the certificate.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "jws": {
+      "type": "string",
+      "description": "The compact serialization"
+    },
+    "alg": {
+      "const": "ES256"
+    },
+    "header": {
+      "type": "object",
+      "description": "The protected header as sent, alg and x5c included",
+      "properties": {
+        "alg": {
+          "const": "ES256"
+        },
+        "typ": {
+          "type": "string"
+        },
+        "x5c": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The certificate, base64 DER"
+        }
+      },
+      "required": [
+        "alg",
+        "x5c"
+      ]
+    },
+    "identity": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string"
+        },
+        "telematik_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The admission statement's registration number, for an SMC-B the Telematik-ID"
+        },
+        "sha256": {
+          "type": "string",
+          "description": "Fingerprint of the certificate"
+        }
+      },
+      "required": [
+        "subject",
+        "telematik_id",
+        "sha256"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "jws",
+    "alg",
+    "header",
+    "identity"
+  ],
+  "additionalProperties": false
+}

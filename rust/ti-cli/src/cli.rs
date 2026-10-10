@@ -46,6 +46,10 @@ Examples:
   {bin} pki tsl export -o ECC-RSA_TSL.xml       # the TSL as published, once it verified
   {bin} pki inspect identity.p12                # password 00 unless --p12-password
   {bin} pki pkcs12 convert legacy.p12 modern.p12
+  {bin} identity inspect --p12 smcb.p12 --p12-password-path pw.txt   # the AUT identity
+  {bin} identity sign --p12 smcb.p12 --claims - < claims.json        # ES256 JWS with x5c
+  {bin} identity sign --card 80276883110000163974 --claims c.json   # the selected Konnektor
+  {bin} pki verify-signature --cert vau.pem --data keys.cbor --signature sig.bin
   {bin} connector configs                       # the .kon files, shared with the Go ti
   {bin} connector -c praxis get cards
   {bin} connector get certificates 80276883110000163974   # ICCSN, Telematik-ID or handle
@@ -137,6 +141,9 @@ pub enum Command {
     /// Certificates and PKI trust
     #[command(subcommand)]
     Pki(PkiCommand),
+    /// An SMC-B identity: its AUT certificate, and signing with its key
+    #[command(subcommand)]
+    Identity(IdentityCommand),
     /// The Konnektor: cards, certificates, PINs
     Connector(ConnectorCli),
     /// Check that the TI services of an environment answer, in parallel (exit 0 or 1)
@@ -180,19 +187,15 @@ pub enum CacheCommand {
 #[derive(Debug, Subcommand)]
 pub enum PkiCommand {
     /// Decode certificates and show what the TI reads from them (offline; does not validate)
-    Inspect {
-        /// PEM, DER or PKCS#12 file with one or more certificates; "-" reads stdin
-        #[arg(value_name = "FILE")]
-        file: PathBuf,
-        /// Password of a PKCS#12 file
-        #[arg(long, value_name = "PASSWORD", default_value = "00")]
-        p12_password: String,
-    },
+    Inspect(InspectArgs),
     /// List the validation profiles or show what one requires
     #[command(subcommand)]
     Profiles(ProfilesCommand),
     /// Build the chain to the TI roots and validate it (exit 0 valid, 1 not valid)
     Verify(VerifyArgs),
+    /// Check an ECDSA-SHA256 signature over a file against a certificate's key (exit 0
+    /// valid, 1 not valid); the chain is pki verify's business
+    VerifySignature(VerifySignatureArgs),
     /// The roots of an environment: roots.json, verified from the embedded anchor
     #[command(subcommand)]
     Roots(RootsCommand),
@@ -395,9 +398,9 @@ pub struct VerifyArgs {
     /// server must prove it holds the key, and --fqdn defaults to HOST
     #[arg(long, value_name = "HOST[:PORT]", value_parser = crate::peer::target)]
     pub connect: Option<(String, u16)>,
-    /// Password of PKCS#12 input (FILE, --issuer, --intermediates)
-    #[arg(long, value_name = "PASSWORD", default_value = "00")]
-    pub p12_password: String,
+    /// Password of PKCS#12 input (FILE, --issuer, --intermediates).
+    #[command(flatten)]
+    pub password: P12PasswordArgs,
     /// TI environment; auto detects production or test from the certificates
     #[arg(long, value_enum, default_value_t = Environment::Auto, env = "TI_ENV")]
     pub env: Environment,
@@ -433,6 +436,102 @@ pub struct VerifyArgs {
     /// that answer from a cache; default 37.5s
     #[arg(long, value_name = "DURATION", value_parser = duration, conflicts_with = "offline")]
     pub ocsp_max_age: Option<Duration>,
+}
+
+/// `ti pki inspect`.
+#[derive(Debug, Args)]
+pub struct InspectArgs {
+    /// PEM, DER or PKCS#12 file with one or more certificates; "-" reads stdin
+    #[arg(value_name = "FILE")]
+    pub file: PathBuf,
+    #[command(flatten)]
+    pub password: P12PasswordArgs,
+}
+
+/// The password of PKCS#12 input: given, read from a file, or `00` (gematik's test
+/// cards). A given password wins over a file; the file keeps secrets off the command
+/// line for callers such as `epa`.
+#[derive(Debug, Args)]
+pub struct P12PasswordArgs {
+    /// Password of PKCS#12 input [default: 00]
+    #[arg(long, value_name = "PASSWORD")]
+    pub p12_password: Option<String>,
+    /// Read the password of PKCS#12 input from this file (its first line), so it stays out
+    /// of the command line and the process list
+    #[arg(long, value_name = "FILE", env = "TI_P12_PASSWORD_PATH")]
+    pub p12_password_path: Option<PathBuf>,
+}
+
+/// `ti pki verify-signature`.
+#[derive(Debug, Args)]
+pub struct VerifySignatureArgs {
+    /// The signer's certificate (PEM or DER); "-" reads stdin
+    #[arg(long, value_name = "FILE")]
+    pub cert: PathBuf,
+    /// The signed data, as it was signed (hashed with SHA-256 here)
+    #[arg(long, value_name = "FILE")]
+    pub data: PathBuf,
+    /// The signature: a DER ECDSA-Sig-Value, or r‖s (64 bytes)
+    #[arg(long, value_name = "FILE")]
+    pub signature: PathBuf,
+}
+
+/// `ti identity …`.
+#[derive(Debug, Subcommand)]
+pub enum IdentityCommand {
+    /// Which identity a source yields: the AUT certificate, its Telematik-ID and key
+    /// (offline; the Konnektor is asked for the certificate only)
+    Inspect(IdentityArgs),
+    /// Sign claims as a compact JWS with the identity's key: ES256, x5c the certificate
+    Sign(IdentitySignArgs),
+}
+
+/// Where the identity comes from: a PKCS#12 file, a PEM certificate and key, or a card
+/// at the Konnektor. The AUT certificate is the one with digitalSignature and without
+/// contentCommitment whose key is present.
+#[derive(Debug, Args)]
+#[group(id = "identity_source", required = true, multiple = true)]
+pub struct IdentityArgs {
+    /// PKCS#12 file with the identity's certificate(s) and key(s), e.g. a test card export
+    #[arg(long, value_name = "FILE", group = "identity_source", conflicts_with_all = ["cert", "key", "connector", "card"])]
+    pub p12: Option<PathBuf>,
+    #[command(flatten)]
+    pub password: P12PasswordArgs,
+    /// PEM file with the identity's certificate first, then its chain
+    #[arg(long, value_name = "FILE", group = "identity_source", requires = "key", conflicts_with_all = ["connector", "card"])]
+    pub cert: Option<PathBuf>,
+    /// PEM file with the private key (PKCS#8 "PRIVATE KEY" or "EC PRIVATE KEY")
+    #[arg(long, value_name = "FILE", requires = "cert")]
+    pub key: Option<PathBuf>,
+    /// A card at the Konnektor: ICCSN, Telematik-ID or card handle; its C.AUT key signs
+    /// through the Konnektor (PIN verified before)
+    #[arg(long, value_name = "CARD", group = "identity_source")]
+    pub card: Option<String>,
+    /// The Konnektor of --card: NAME(.kon) here or in ~/.config/telematik/connectors, or a
+    /// path [default: the one `connector use` selected, else "default"]
+    #[arg(
+        long,
+        value_name = "NAME|PATH",
+        env = "TI_CONNECTOR_CONFIG",
+        requires = "card"
+    )]
+    pub connector: Option<String>,
+}
+
+/// `ti identity sign`.
+#[derive(Debug, Args)]
+pub struct IdentitySignArgs {
+    #[command(flatten)]
+    pub identity: IdentityArgs,
+    /// The claims, a JSON object; "-" reads stdin
+    #[arg(long, value_name = "FILE")]
+    pub claims: PathBuf,
+    /// The `typ` header
+    #[arg(long, value_name = "TYP", default_value = "JWT")]
+    pub typ: String,
+    /// A further header parameter; VALUE is JSON, or text if it is not; repeatable
+    #[arg(long, value_name = "NAME=VALUE")]
+    pub header: Vec<String>,
 }
 
 /// `--ocsp-responder`: OCSP goes over plain HTTP or HTTPS (RFC 6960 Appendix A).
@@ -599,6 +698,21 @@ pub struct ConnectorArgs {
         global = true
     )]
     pub comfort_user_id: Option<String>,
+}
+
+impl ConnectorArgs {
+    /// The options an identity's Konnektor is opened with: configuration `name` (none:
+    /// the selected one, else `default`), the default timeouts, the cached service
+    /// directory.
+    pub fn for_identity(name: Option<&str>) -> Self {
+        ConnectorArgs {
+            connector_config: name.map(str::to_owned),
+            connector_timeout: Duration::from_secs(10),
+            card_timeout: Duration::from_secs(300),
+            no_cache: false,
+            comfort_user_id: None,
+        }
+    }
 }
 
 fn seconds(value: &str) -> Result<Duration, String> {

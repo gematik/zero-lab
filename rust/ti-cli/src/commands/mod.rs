@@ -6,6 +6,7 @@ mod bundle;
 mod cache;
 mod connector;
 mod documents;
+mod identity;
 mod inspect;
 mod pkcs12;
 mod probe;
@@ -14,13 +15,14 @@ mod roots;
 mod schema;
 mod tsl;
 mod verify;
+mod verify_signature;
 mod version;
 
 use ti_pki::{Certificate, Env, Timestamp};
 
 use crate::cli::{
-    CacheCommand, Cli, Command, Environment, GlobalArgs, Pkcs12Command, PkiCommand, ProbeEnv,
-    ProfilesCommand, RootsCommand, TslCommand,
+    CacheCommand, Cli, Command, Environment, GlobalArgs, IdentityCommand, Pkcs12Command,
+    PkiCommand, ProbeEnv, ProfilesCommand, RootsCommand, TslCommand,
 };
 use crate::error::{CliError, Exit};
 use crate::output::document::{TreeRow, date, when};
@@ -36,10 +38,16 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
     }
     out.verbose(1, &cli.global.net);
     match &cli.command {
-        Command::Pki(PkiCommand::Inspect { file, p12_password }) => {
-            inspect::run(file, p12_password, &cli.global, out)
+        Command::Pki(PkiCommand::Inspect(args)) => {
+            let password = crate::input::p12_password(&args.password)?;
+            inspect::run(&args.file, &password, &cli.global, out)
         }
         Command::Pki(PkiCommand::Verify(args)) => verify::run(args, &cli.global, out),
+        Command::Pki(PkiCommand::VerifySignature(args)) => verify_signature::run(args, out),
+        Command::Identity(IdentityCommand::Inspect(args)) => {
+            identity::inspect(args, &cli.global, out)
+        }
+        Command::Identity(IdentityCommand::Sign(args)) => identity::sign(args, &cli.global, out),
         Command::Pki(PkiCommand::Profiles(ProfilesCommand::List)) => profiles::list(out),
         Command::Pki(PkiCommand::Profiles(ProfilesCommand::Describe { name, env, offline })) => {
             profiles::describe(name, *env, *offline, &cli.global, out)

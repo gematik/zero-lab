@@ -172,6 +172,17 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `pki verify --ocsp-responder URL` sends the chain's OCSP requests to one responder,
   e.g. a relay; `--ocsp-max-age DURATION` accepts older responses than ti-pki's 37.5 s.
   The report carries `ocsp` when either is given.
+- `identity inspect` and `identity sign`: the SMC-B AUT identity (digitalSignature, no
+  contentCommitment, key present) from a PKCS#12 file, a PEM certificate and key, or a
+  card at the Konnektor (ExternalAuthenticate); `sign` makes a compact ES256 JWS with
+  `x5c` from a JSON object of claims, on brainpoolP256r1 (jwz-brainpool) or P-256. Error
+  kinds `identity_not_found`, `key_unsupported`, `claims_invalid`, `header_invalid`,
+  `signing_failed`. For `epa` (TASK-24).
+- `pki verify-signature --cert --data --signature`: one ECDSA-SHA256 signature, DER or
+  r‖s, against a certificate's key (exit 0/1; `signature_malformed`).
+- `--p12-password-path FILE` / `TI_P12_PASSWORD_PATH` on `pki inspect`, `pki verify` and
+  the identity commands: the PKCS#12 password from a file's first line, off the command
+  line. `--p12-password` still wins when given; the default stays `00`.
 
 #### changed
 - The trust anchor is GEM.RCA7 (ti-pki): `pki roots list` marks it and lists it first.
