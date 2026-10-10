@@ -4,7 +4,7 @@ This lab project ist yet to yield a first release. Stay tuned!
 
 **Every module — library and command — is versioned solely by its own git tag**
 `go/<module>/vX.Y.Z`, bumped only when that module changes. There is no shared version and
-no version variables. See the [Development & Release Guide](./docs/development.md) for the
+no version variables. See the [Development & Release Guide](./go/docs/development.md) for the
 step-by-step workflow.
 
 ### Local development (go.work)

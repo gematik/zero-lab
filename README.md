@@ -6,7 +6,7 @@
 
 ## Documentation
 
-- [Development & Release Guide](./docs/development.md)
+- [Development & Release Guide (Go)](./go/docs/development.md)
 - [Release Notes](./ReleaseNotes.md)
 - [Rust workspace](./rust/README.md)
 
