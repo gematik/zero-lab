@@ -117,6 +117,29 @@
       "type": "boolean",
       "description": "-k: TLS of downloads not verified"
     },
+    "ocsp": {
+      "description": "The OCSP settings given with --ocsp-responder or --ocsp-max-age; absent with the defaults.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "responder_url",
+        "max_response_age_ms"
+      ],
+      "properties": {
+        "responder_url": {
+          "description": "Where every OCSP request of the chain went; null: each certificate's own responder.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "max_response_age_ms": {
+          "description": "How old a response may be, in milliseconds.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
     "chain": {
       "type": "array",
       "items": {

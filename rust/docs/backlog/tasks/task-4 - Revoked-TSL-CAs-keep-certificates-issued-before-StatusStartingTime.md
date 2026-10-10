@@ -4,6 +4,7 @@ title: 'Revoked TSL CAs: keep certificates issued before StatusStartingTime'
 status: To Do
 assignee: []
 created_date: '2026-10-09 13:55'
+updated_date: '2026-10-10 09:27'
 labels:
   - ti-pki
   - tsl
@@ -11,10 +12,9 @@ labels:
 dependencies: []
 references:
   - ti-pki/src/tsl.rs
-priority: low
+priority: high
 ordinal: 4000
 ---
-
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->

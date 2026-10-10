@@ -4,14 +4,14 @@ title: 'jwz: WebCrypto backend'
 status: To Do
 assignee: []
 created_date: '2026-10-10 05:58'
+updated_date: '2026-10-10 09:27'
 labels:
   - jwz
   - wasm
 dependencies: []
-priority: low
+priority: high
 ordinal: 20000
 ---
-
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->

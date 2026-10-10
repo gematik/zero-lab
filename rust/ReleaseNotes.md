@@ -169,6 +169,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   a PKCS#12 truststore for Java. `pki tsl export`: the TSL as published, once it
   verified. To stdout or `-o FILE`; the Go `ti`'s `roots bundle`, `tsl intermediates` and
   `tsl fetch`.
+- `pki verify --ocsp-responder URL` sends the chain's OCSP requests to one responder,
+  e.g. a relay; `--ocsp-max-age DURATION` accepts older responses than ti-pki's 37.5 s.
+  The report carries `ocsp` when either is given.
 
 #### changed
 - The trust anchor is GEM.RCA7 (ti-pki): `pki roots list` marks it and lists it first.
