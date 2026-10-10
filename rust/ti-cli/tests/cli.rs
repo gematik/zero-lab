@@ -87,6 +87,59 @@ fn piped_output_is_markdown_and_text_on_request() {
 }
 
 #[test]
+fn inspect_short_is_a_row_per_certificate_and_leaves_json_alone() {
+    let pem = [
+        fixture("admission-1.pem"),
+        fixture("smcb-ca51-test-only.pem"),
+    ]
+    .iter()
+    .map(|path| std::fs::read_to_string(path).unwrap())
+    .collect::<String>();
+    let file = std::env::temp_dir().join(format!("ti-inspect-short-{}.pem", std::process::id()));
+    std::fs::write(&file, pem).unwrap();
+    let file = file.to_str().unwrap();
+
+    let text = stdout(&ti(&[
+        "--format", "text", "pki", "inspect", file, "--short",
+    ]));
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 3, "{text}");
+    assert!(lines[0].starts_with("SUBJECT"), "{text}");
+    assert!(
+        lines[1].starts_with("Arztpraxis Bernd Rosenstrauch TEST-ONLY"),
+        "{text}"
+    );
+    assert!(lines[0].ends_with("TELEMATIK-ID"), "{text}");
+    assert!(
+        !lines[1].ends_with(" -"),
+        "the practice has a Telematik-ID: {text}"
+    );
+    assert!(lines[2].starts_with("GEM.SMCB-CA51 TEST-ONLY"), "{text}");
+    assert!(lines[2].ends_with(" -"), "a CA has none: {text}");
+
+    let markdown = stdout(&ti(&["pki", "inspect", file, "--short"]));
+    assert!(
+        markdown.starts_with("| SUBJECT | NOT AFTER | TELEMATIK-ID |\n"),
+        "{markdown}"
+    );
+
+    let ca = fixture("smcb-ca51-test-only.pem");
+    let cas = stdout(&ti(&["--format", "text", "pki", "inspect", &ca, "--short"]));
+    assert!(
+        cas.starts_with("SUBJECT") && !cas.contains("TELEMATIK-ID"),
+        "no column without a Telematik-ID: {cas}"
+    );
+
+    let json = |extra: &[&str]| {
+        let mut args = vec!["--format", "json", "pki", "inspect", file];
+        args.extend_from_slice(extra);
+        stdout(&ti(&args))
+    };
+    assert_eq!(json(&["--short"]), json(&[]));
+    std::fs::remove_file(file).unwrap();
+}
+
+#[test]
 fn timestamps_in_the_system_zone() {
     let out = Command::new(env!("CARGO_BIN_EXE_ti"))
         .args([

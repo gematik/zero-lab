@@ -161,6 +161,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-cli
 
 #### added
+- `pki inspect --short`: a table row per certificate (subject, expiry, Telematik-ID);
+  JSON stays the full report.
 - `--nist-only` on `pki verify` and `pki roots list`: verify as a client without brainpool
   would (roots up to the first brainpool signature, no TSL); reports carry
   `trust.nist_only`.
