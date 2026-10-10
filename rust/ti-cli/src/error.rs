@@ -128,6 +128,10 @@ pub enum CliError {
     /// A signature file that is neither DER nor the curve's r‖s.
     #[error("signature: {0}")]
     SignatureMalformed(String),
+    /// The IDP-Dienst flow failed: the IDP refused, did not answer, or answered
+    /// outside the protocol.
+    #[error("IDP-Dienst: {0}")]
+    Idpd(#[source] ti_idpd::Error),
     /// Writing to stdout failed.
     #[error("cannot write output: {0}")]
     Output(#[from] io::Error),
@@ -168,6 +172,9 @@ impl CliError {
             CliError::Header(_) => "header_invalid",
             CliError::Signing(_) => "signing_failed",
             CliError::SignatureMalformed(_) => "signature_malformed",
+            CliError::Idpd(ti_idpd::Error::Idp(_)) => "idpd_error",
+            CliError::Idpd(ti_idpd::Error::Transport { .. }) => "idpd_unreachable",
+            CliError::Idpd(_) => "idpd_protocol",
             CliError::Output(_) => "output_failed",
         }
     }
@@ -232,6 +239,15 @@ impl CliError {
             CliError::SignatureMalformed(_) => {
                 Some("expected a DER ECDSA-Sig-Value or r‖s of the curve's size (64 bytes)")
             }
+            CliError::Idpd(ti_idpd::Error::Idp(_)) => Some(
+                "the IDP refused; gematik_error_text says why (client_id, redirect_uri, an expired challenge, an unknown card)",
+            ),
+            CliError::Idpd(ti_idpd::Error::Transport { .. }) => {
+                Some("check the network, --proxy and the IDP URL; -v shows each request")
+            }
+            CliError::Idpd(_) => {
+                Some("the IDP's answer departs from gemSpec_IDP_Dienst; -v shows the exchange")
+            }
             CliError::Trust(_)
             | CliError::Output(_)
             | CliError::Connector(_)
@@ -265,7 +281,8 @@ impl CliError {
             | CliError::ServerUnreachable(_)
             | CliError::Connector(_)
             | CliError::CardRestricted { .. }
-            | CliError::Signing(_) => Exit::Remote,
+            | CliError::Signing(_)
+            | CliError::Idpd(_) => Exit::Remote,
             CliError::Output(_) => Exit::Output,
         }
     }

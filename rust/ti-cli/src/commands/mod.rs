@@ -7,6 +7,7 @@ mod cache;
 mod connector;
 mod documents;
 mod identity;
+mod idpd;
 mod inspect;
 mod pkcs12;
 mod probe;
@@ -21,8 +22,8 @@ mod version;
 use ti_pki::{Certificate, Env, Timestamp};
 
 use crate::cli::{
-    CacheCommand, Cli, Command, Environment, GlobalArgs, IdentityCommand, Pkcs12Command,
-    PkiCommand, ProbeEnv, ProfilesCommand, RootsCommand, TslCommand,
+    CacheCommand, Cli, Command, Environment, GlobalArgs, IdentityCommand, IdpdCommand,
+    Pkcs12Command, PkiCommand, ProbeEnv, ProfilesCommand, RootsCommand, TslCommand,
 };
 use crate::error::{CliError, Exit};
 use crate::output::document::{TreeRow, date, when};
@@ -48,6 +49,9 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
             identity::inspect(args, &cli.global, out)
         }
         Command::Identity(IdentityCommand::Sign(args)) => identity::sign(args, &cli.global, out),
+        Command::Idpd(IdpdCommand::Authenticate(args)) => {
+            idpd::authenticate(args, &cli.global, out)
+        }
         Command::Pki(PkiCommand::Profiles(ProfilesCommand::List)) => profiles::list(out),
         Command::Pki(PkiCommand::Profiles(ProfilesCommand::Describe { name, env, offline })) => {
             profiles::describe(name, *env, *offline, &cli.global, out)

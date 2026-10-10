@@ -29,6 +29,7 @@ ti pki verify-signature --cert vau.pem --data keys.cbor --signature sig.bin   # 
 ti identity inspect --p12 smcb.p12 --p12-password-path pw.txt   # the AUT certificate and key
 ti identity sign --p12 smcb.p12 --claims - < claims.json         # ES256 JWS, x5c the certificate
 ti identity sign --card 80276883110000163974 --claims claims.json   # the selected Konnektor signs
+ti idpd authenticate --env ref --p12 smcb.p12 --auth-url "$AUTHZ_URI"   # IDP-Dienst → authorization code
 ti connector configs                # the .kon files, shared with the Go ti
 ti connector use praxis             # the configuration later commands use
 ti connector get cards
@@ -166,6 +167,17 @@ form ePA's `clientAttest` and entitlement JWTs and the IDP-Dienst's nested chall
 take. The key lives only in the `ti` process for the duration of the call; callers
 such as `epa` pass the PKCS#12 password by file (`--p12-password-path`,
 `TI_P12_PASSWORD_PATH`), never on the command line.
+
+## IDP-Dienst
+
+`ti idpd authenticate` is the Authenticator-Modul of gemSpec_IDP_Frontend, built on
+[`ti-idpd`](../ti-idpd): given the authorization URL a relying party made (for ePA, the
+Aktensystem's `authz_uri`) and an identity, it fetches and verifies the IDP's signed
+discovery document and keys, signs the challenge with the card (`BP256R1`, `x5c`),
+encrypts the answer to `PuK_IDP_ENC` and returns the authorization code from the IDP's
+redirect — what `epa` sends on in `send_authcode_sc`. The IDP is the environment's
+(`--env`) or `--idp-url`. The IDP's certificates are not yet checked against the TSL;
+the report says so in `warnings`.
 
 ## Connector
 

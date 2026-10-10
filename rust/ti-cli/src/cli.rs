@@ -49,6 +49,7 @@ Examples:
   {bin} identity inspect --p12 smcb.p12 --p12-password-path pw.txt   # the AUT identity
   {bin} identity sign --p12 smcb.p12 --claims - < claims.json        # ES256 JWS with x5c
   {bin} identity sign --card 80276883110000163974 --claims c.json   # the selected Konnektor
+  {bin} idpd authenticate --env ref --p12 smcb.p12 --auth-url \"$AUTHZ_URI\"   # → code
   {bin} pki verify-signature --cert vau.pem --data keys.cbor --signature sig.bin
   {bin} connector configs                       # the .kon files, shared with the Go ti
   {bin} connector -c praxis get cards
@@ -144,6 +145,9 @@ pub enum Command {
     /// An SMC-B identity: its AUT certificate, and signing with its key
     #[command(subcommand)]
     Identity(IdentityCommand),
+    /// The gematik IDP-Dienst: authenticate with an identity
+    #[command(subcommand)]
+    Idpd(IdpdCommand),
     /// The Konnektor: cards, certificates, PINs
     Connector(ConnectorCli),
     /// Check that the TI services of an environment answer, in parallel (exit 0 or 1)
@@ -532,6 +536,65 @@ pub struct IdentitySignArgs {
     /// A further header parameter; VALUE is JSON, or text if it is not; repeatable
     #[arg(long, value_name = "NAME=VALUE")]
     pub header: Vec<String>,
+    /// The JWS algorithm name: ES256 (ePA) or BP256R1 (IDP-Dienst), both ECDSA with
+    /// SHA-256; BP256R1 needs a brainpoolP256r1 key
+    #[arg(long, value_enum, default_value_t = SignAlg::Es256)]
+    pub alg: SignAlg,
+}
+
+/// `--alg` of `identity sign`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum SignAlg {
+    /// `ES256`: RFC 7518's name, which ePA uses with brainpool keys too.
+    #[value(name = "ES256")]
+    Es256,
+    /// `BP256R1`: gematik's name for ECDSA-SHA256 on brainpoolP256r1 (the IDP-Dienst).
+    #[value(name = "BP256R1")]
+    Bp256r1,
+}
+
+/// `ti idpd …`: the gematik IDP-Dienst.
+#[derive(Debug, Subcommand)]
+pub enum IdpdCommand {
+    /// Run the Authenticator-Modul flow for an authorization URL with an identity:
+    /// challenge, signed challenge, authorization code (exit 0; 3 when the IDP refuses)
+    Authenticate(IdpdAuthenticateArgs),
+}
+
+/// `ti idpd authenticate`.
+#[derive(Debug, Args)]
+pub struct IdpdAuthenticateArgs {
+    #[command(flatten)]
+    pub identity: IdentityArgs,
+    /// The authorization URL the relying party made (for ePA: the Aktensystem's
+    /// authz_uri); https, or http on 127.0.0.1 for tests
+    #[arg(long, value_name = "URL", value_parser = idp_url)]
+    pub auth_url: String,
+    /// The TI environment whose IDP-Dienst to use (dev shares ref); auto is not an option
+    #[arg(
+        long,
+        value_enum,
+        value_name = "ENV",
+        env = "TI_ENV",
+        required_unless_present = "idp_url",
+        conflicts_with = "idp_url"
+    )]
+    pub env: Option<Environment>,
+    /// Another IDP-Dienst, by base URL (e.g. a reference implementation)
+    #[arg(long, value_name = "URL", value_parser = idp_url)]
+    pub idp_url: Option<String>,
+}
+
+/// An IDP or authorization URL: https, or plain http on the loopback for tests.
+fn idp_url(value: &str) -> Result<String, String> {
+    let loopback = ["http://127.0.0.1", "http://localhost", "http://[::1]"]
+        .iter()
+        .any(|prefix| value.starts_with(prefix));
+    if value.starts_with("https://") || loopback {
+        Ok(value.to_owned())
+    } else {
+        Err(format!("{value:?} is not an https:// URL"))
+    }
 }
 
 /// `--ocsp-responder`: OCSP goes over plain HTTP or HTTPS (RFC 6960 Appendix A).

@@ -170,8 +170,37 @@ never on `message`.
   2, `header_invalid`; claims that are not an object: exit 4, `claims_invalid`. A
   Konnektor that refuses to sign is a `connector_*` error (exit 3), e.g. a fault for an
   unverified PIN.
-- ePA's `clientAttest` and entitlement JWTs, and the IDP-Dienst's nested challenge
-  JWT, are `identity sign` with the respective claims.
+- `--alg ES256` (default) or `--alg BP256R1`: the same ECDSA with SHA-256 under RFC
+  7518's name (ePA) or gematik's (the IDP-Dienst); `BP256R1` needs a brainpool key.
+- ePA's `clientAttest` and entitlement JWTs are `identity sign` with the respective
+  claims; the IDP-Dienst's challenge response is `idpd authenticate`.
+
+## Subsystem idpd: the IDP-Dienst
+
+```sh
+{bin} --format json idpd authenticate --env ref --p12 smcb.p12 --auth-url "$AUTHZ_URI"
+{bin} --format json idpd authenticate --env ref --card SMC-B-7 --auth-url "$AUTHZ_URI"
+{bin} --format json idpd authenticate --idp-url https://idp.example --auth-url "$URL" --p12 smcb.p12
+```
+
+- `authenticate` runs the Authenticator-Modul flow of gemSpec_IDP_Frontend for the
+  authorization URL a relying party made (for ePA, the Aktensystem's `authz_uri`): it
+  fetches and verifies the IDP's signed discovery document and keys, fetches the
+  challenge, signs the nested JWT with the identity's key (`BP256R1`, `x5c`), encrypts
+  the answer to `PuK_IDP_ENC` and posts it, and returns `code` (and `state`) from the
+  IDP's redirect, with `idp`, `identity` and the challenge's `client_id`, `scope`,
+  `redirect_uri`. The identity is given as for `identity`; a card's PIN.SMC must be
+  verified before.
+- The IDP is `--env` (`TI_ENV`; `prod`, `ref`, `test`, `dev` as ref; `auto` is exit 2)
+  or `--idp-url BASE`. `--auth-url` must be https (http only on 127.0.0.1, for tests).
+  Redirects are not followed: a 302 is the answer.
+- Exit 3 when the IDP refuses: error kind `idpd_error`, the message carries `error`,
+  `gematik_error_text` and `gematik_code` (e.g. `access_denied: Karte unbekannt
+  (gematik_code 2030, …)`). `idpd_unreachable` when no answer came, `idpd_protocol`
+  when the answer is not what the specification says (`-v` shows each request).
+- `warnings` carries `idp_certificates_unverified`: the IDP's certificates are used
+  with verified signatures but are not yet checked against the TSL (backlog TASK-27).
+  SSO tokens and alternative authentication (pairing) are not implemented.
 
 ## Subsystem connector: the Konnektor
 

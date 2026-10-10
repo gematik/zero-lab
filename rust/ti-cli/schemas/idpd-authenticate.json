@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "idpd authenticate",
+  "description": "The IDP-Dienst's Authenticator-Modul flow run for an authorization URL with an identity: the authorization code the relying party exchanges, and what the exchange rested on.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "code": {
+      "type": "string",
+      "description": "The authorization code (itself a JWE of the IDP's)"
+    },
+    "state": {
+      "type": ["string", "null"],
+      "description": "The relying party's state, echoed by the IDP"
+    },
+    "redirect_url": {
+      "type": "string",
+      "description": "The Location the IDP answered with"
+    },
+    "idp": {
+      "type": "object",
+      "properties": {
+        "base_url": {"type": "string"},
+        "issuer": {"type": "string"},
+        "authorization_endpoint": {"type": "string"}
+      },
+      "required": ["base_url", "issuer", "authorization_endpoint"],
+      "additionalProperties": false
+    },
+    "identity": {
+      "type": "object",
+      "properties": {
+        "subject": {"type": "string"},
+        "telematik_id": {"type": ["string", "null"]}
+      },
+      "required": ["subject", "telematik_id"],
+      "additionalProperties": false
+    },
+    "challenge": {
+      "type": "object",
+      "description": "Claims of the IDP's challenge: who asked and for what",
+      "properties": {
+        "client_id": {"type": ["string", "null"]},
+        "scope": {"type": ["string", "null"]},
+        "redirect_uri": {"type": ["string", "null"]}
+      },
+      "required": ["client_id", "scope", "redirect_uri"],
+      "additionalProperties": false
+    },
+    "warnings": {
+      "type": "array",
+      "items": {"enum": ["idp_certificates_unverified"]},
+      "description": "What was not proven: the IDP's certificates are not yet checked against the TSL"
+    }
+  },
+  "required": ["schema", "code", "state", "redirect_url", "idp", "identity", "challenge", "warnings"],
+  "additionalProperties": false
+}

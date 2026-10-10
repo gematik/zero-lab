@@ -3,6 +3,7 @@
 
 use base64ct::{Base64UrlUnpadded, Encoding};
 use jwz::header::HeaderParams;
+use jwz::jwa::SignatureAlgorithm;
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -150,11 +151,12 @@ pub fn sign(args: &IdentitySignArgs, global: &GlobalArgs, out: &Output) -> Resul
     let params = header_params(args)?;
     let identity = Identity::load(&args.identity, global, out)?;
     let payload = serde_json::to_vec(&claims)?;
-    let jws = identity.sign(&payload, params)?;
+    let alg = SignatureAlgorithm::from(args.alg);
+    let jws = identity.sign(&payload, params, alg)?;
     let header = protected_header(&jws)?;
     let report = SignReport {
         schema: SCHEMA,
-        alg: "ES256",
+        alg: alg.as_str(),
         header,
         identity: IdentityInfo {
             subject: identity.certificate.subject().to_string(),

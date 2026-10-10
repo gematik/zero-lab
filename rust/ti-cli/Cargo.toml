@@ -28,6 +28,8 @@ ti-report.workspace = true
 # P-256 (jwz's own backend); the keys come from PKCS#8 (`pkcs8`, `sec1`), not from JWKs.
 jwz = { workspace = true, features = ["std", "jws", "jwt", "crypto-rustcrypto"] }
 jwz-brainpool.workspace = true
+# `idpd authenticate`: the IDP-Dienst flow over this tool's ureq.
+ti-idpd = { workspace = true, features = ["ureq"] }
 pkcs8.workspace = true
 sec1.workspace = true
 der.workspace = true

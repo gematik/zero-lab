@@ -54,6 +54,19 @@ pub fn transport(net: &NetArgs, verbose: u8) -> Result<Http, CliError> {
     })
 }
 
+/// The agent for the IDP-Dienst flow: TLS, proxy, timeouts and user agent as for
+/// downloads, but redirects are not followed and no status is an error — a `302` is the
+/// flow's answer.
+pub fn idp_agent(net: &NetArgs) -> Result<Agent, CliError> {
+    let builder = Agent::config_builder()
+        .timeout_connect(Some(net.connect_timeout))
+        .timeout_global(Some(net.max_time))
+        .user_agent(net.user_agent())
+        .tls_config(tls_config(net)?)
+        .proxy(proxy(net, "https")?);
+    Ok(ti_idpd::ureq::UreqTransport::agent(builder))
+}
+
 fn tls_config(net: &NetArgs) -> Result<TlsConfig, CliError> {
     let (files, dir) = net.ca_sources();
     let roots = if net.insecure || (files.is_empty() && dir.is_none()) {

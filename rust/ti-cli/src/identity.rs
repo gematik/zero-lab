@@ -1,7 +1,8 @@
 //! The SMC-B authentication identity (AUT): a certificate with digitalSignature and
 //! without contentCommitment, and the key that signs for it. From a PKCS#12 file, a PEM
 //! certificate and key, or a card at the Konnektor; the commands see one [`Identity`]
-//! whichever it was.
+//! whichever it was, and ask it for a signer under the algorithm an interface wants:
+//! `ES256` (ePA) or `BP256R1` (the IDP-Dienst), the same ECDSA-SHA256 under two names.
 
 use std::cell::RefCell;
 use std::path::Path;
@@ -24,7 +25,7 @@ use x509_cert::ext::pkix::KeyUsages;
 use zeroize::Zeroizing;
 
 use crate::block::block_on;
-use crate::cli::{ConnectorArgs, GlobalArgs, IdentityArgs};
+use crate::cli::{ConnectorArgs, GlobalArgs, IdentityArgs, SignAlg};
 use crate::connector::{self, Session};
 use crate::error::CliError;
 use crate::input;
@@ -82,6 +83,22 @@ impl Curve {
             .ok()?;
         Curve::from_oid(&oid)
     }
+
+    /// Whether a key on this curve signs `alg`: `ES256` on either, `BP256R1` on
+    /// brainpool only.
+    fn signs(self, alg: SignatureAlgorithm) -> bool {
+        alg == SignatureAlgorithm::ES256
+            || (alg == jwz_brainpool::BP256R1 && self == Curve::Brainpool)
+    }
+}
+
+impl From<SignAlg> for SignatureAlgorithm {
+    fn from(alg: SignAlg) -> Self {
+        match alg {
+            SignAlg::Es256 => SignatureAlgorithm::ES256,
+            SignAlg::Bp256r1 => jwz_brainpool::BP256R1,
+        }
+    }
 }
 
 /// Where an identity came from.
@@ -96,7 +113,7 @@ pub enum SourceKind {
     Connector,
 }
 
-/// The identity: its certificate, the certificates found with it, and its signer.
+/// The identity: its certificate, the certificates found with it, and its key.
 pub struct Identity {
     /// Where it came from.
     pub kind: SourceKind,
@@ -108,8 +125,15 @@ pub struct Identity {
     pub chain: Vec<Certificate>,
     /// The key's curve.
     pub curve: Curve,
-    signer: Box<dyn Signer>,
-    connector: Option<Rc<ConnectorKey>>,
+    key: Key,
+}
+
+/// Where the private key is.
+enum Key {
+    /// In this process, decoded from the source.
+    Soft(PrivateKey),
+    /// On the card; the Konnektor signs.
+    Connector(Rc<ConnectorKey>),
 }
 
 impl Identity {
@@ -148,21 +172,57 @@ impl Identity {
             .and_then(|a| a.registration_number)
     }
 
-    /// `payload` as a compact JWS signed by this identity: `alg` from the key, `x5c`
-    /// the certificate, the rest from `params`.
+    /// A signer for `alg` with this identity's key.
     ///
     /// # Errors
     ///
-    /// [`CliError::Connector`] when the Konnektor refused to sign;
-    /// [`CliError::Signing`] otherwise.
-    pub fn sign(&self, payload: &[u8], params: HeaderParams) -> Result<String, CliError> {
+    /// [`CliError::KeyUnsupported`] when the key's curve does not sign `alg` (`BP256R1`
+    /// needs brainpoolP256r1).
+    pub fn signer(&self, alg: SignatureAlgorithm) -> Result<Box<dyn Signer>, CliError> {
+        if !self.curve.signs(alg) {
+            return Err(CliError::KeyUnsupported(format!(
+                "{}: a key on {} does not sign {}",
+                self.name,
+                self.curve.name(),
+                alg.as_str()
+            )));
+        }
+        match &self.key {
+            Key::Soft(key) => key.signer_for(&self.certificate, alg),
+            Key::Connector(key) => Ok(Box::new(ConnectorSigner {
+                key: Rc::clone(key),
+                alg,
+            })),
+        }
+    }
+
+    /// `payload` as a compact JWS under `alg`: `x5c` the certificate, the rest from
+    /// `params`.
+    ///
+    /// # Errors
+    ///
+    /// [`CliError::KeyUnsupported`] as [`Identity::signer`]; [`CliError::Connector`]
+    /// when the Konnektor refused to sign; [`CliError::Signing`] otherwise.
+    pub fn sign(
+        &self,
+        payload: &[u8],
+        params: HeaderParams,
+        alg: SignatureAlgorithm,
+    ) -> Result<String, CliError> {
+        let signer = self.signer(alg)?;
         let params = params.x5c(&[self.certificate.der()]);
-        jwz::jws::sign(payload, params, &*self.signer).map_err(|error| {
-            match self.connector.as_ref().and_then(|key| key.take_error()) {
+        jwz::jws::sign(payload, params, &*signer).map_err(|error| self.signing_error(error))
+    }
+
+    /// A Konnektor's refusal as such, anything else as a signing failure.
+    fn signing_error(&self, error: jwz::Error) -> CliError {
+        match &self.key {
+            Key::Connector(key) => match key.take_error() {
                 Some(connector) => CliError::Connector(connector),
                 None => CliError::Signing(error.to_string()),
-            }
-        })
+            },
+            Key::Soft(_) => CliError::Signing(error.to_string()),
+        }
     }
 }
 
@@ -233,28 +293,44 @@ impl PrivateKey {
         }
     }
 
-    /// A signer for `cert`, if this is its key: the public point is the certificate's.
-    fn signer_for(&self, cert: &Certificate) -> Option<Box<dyn Signer>> {
-        if Curve::of_certificate(cert) != Some(self.curve) {
-            return None;
-        }
+    /// The key as a private JWK on `cert`'s point: the constructors below refuse a
+    /// scalar that does not belong to the point, which is how a key is matched to its
+    /// certificate.
+    fn jwk_on(&self, cert: &Certificate) -> Jwk {
         let mut material = EcKey::from_point(self.curve.crv(), cert.public_key());
         material.d = Some(Secret::new(self.scalar.to_vec()));
-        let jwk = Jwk::new(KeyMaterial::Ec(material));
-        // Both constructors refuse a private scalar that does not belong to the point.
-        match self.curve {
-            Curve::Brainpool => BrainpoolEs256Key::from_jwk(&jwk)
-                .ok()
-                .map(|key| Box::new(key) as Box<dyn Signer>),
-            Curve::P256 => SoftwareKey::from_jwk(
-                &jwk,
-                SignatureAlgorithm::ES256,
-                &jwz_brainpool::registry(),
-                Arc::new(RustCrypto::new()),
-            )
-            .ok()
-            .map(|key| Box::new(key) as Box<dyn Signer>),
+        Jwk::new(KeyMaterial::Ec(material))
+    }
+
+    /// Whether this is `cert`'s key.
+    fn matches(&self, cert: &Certificate) -> bool {
+        Curve::of_certificate(cert) == Some(self.curve)
+            && self.signer_for(cert, SignatureAlgorithm::ES256).is_ok()
+    }
+
+    /// A signer for `alg` as `cert`'s key.
+    fn signer_for(
+        &self,
+        cert: &Certificate,
+        alg: SignatureAlgorithm,
+    ) -> Result<Box<dyn Signer>, CliError> {
+        let jwk = self.jwk_on(cert);
+        let mismatch = |e: jwz::Error| {
+            CliError::IdentityNotFound(format!("key does not match the certificate: {e}"))
+        };
+        if alg == SignatureAlgorithm::ES256 && self.curve == Curve::Brainpool {
+            return Ok(Box::new(
+                BrainpoolEs256Key::from_jwk(&jwk).map_err(mismatch)?,
+            ));
         }
+        let key = SoftwareKey::from_jwk(
+            &jwk,
+            alg,
+            &jwz_brainpool::registry(),
+            Arc::new(jwz_brainpool::backend(RustCrypto::new())),
+        )
+        .map_err(mismatch)?;
+        Ok(Box::new(key))
     }
 }
 
@@ -267,8 +343,8 @@ fn is_aut(cert: &Certificate) -> bool {
     })
 }
 
-/// The AUT pair among `candidates` (certificates with a key each), the rest as the chain
-/// together with `others`.
+/// The AUT pair among `candidates` (certificates with a key each); `others` are the
+/// chain.
 fn select(
     kind: SourceKind,
     name: &str,
@@ -278,12 +354,13 @@ fn select(
     let mut seen = Vec::new();
     // A sibling identity (OSIG, ENC) is not a chain candidate; only the CAs are.
     let chain = others;
-    let mut found: Option<(Certificate, Box<dyn Signer>, Curve)> = None;
+    let mut found: Option<(Certificate, PrivateKey)> = None;
     for (cert, key) in candidates {
         if found.is_none() && is_aut(&cert) {
-            match key.signer_for(&cert) {
-                Some(signer) => found = Some((cert, signer, key.curve)),
-                None => seen.push(format!("{} (key does not match)", cert.subject_cn())),
+            if key.matches(&cert) {
+                found = Some((cert, key));
+            } else {
+                seen.push(format!("{} (key does not match)", cert.subject_cn()));
             }
         } else {
             seen.push(format!(
@@ -297,7 +374,7 @@ fn select(
             ));
         }
     }
-    let Some((certificate, signer, curve)) = found else {
+    let Some((certificate, key)) = found else {
         let what = if seen.is_empty() {
             "no certificate with its key".to_owned()
         } else {
@@ -310,9 +387,8 @@ fn select(
         name: name.to_owned(),
         certificate,
         chain,
-        curve,
-        signer,
-        connector: None,
+        curve: key.curve,
+        key: Key::Soft(key),
     })
 }
 
@@ -353,11 +429,10 @@ fn from_pem(cert_path: &Path, key_path: &Path) -> Result<Identity, CliError> {
     select(SourceKind::Pem, &certs.name, vec![(first, key)], others)
 }
 
-/// The card's C.AUT key, signing through the Konnektor's AuthSignatureService.
+/// The card's C.AUT key at the Konnektor.
 struct ConnectorKey {
     session: Session,
     handle: String,
-    curve: Curve,
     /// The last failure, for the command to report as a Konnektor error.
     error: RefCell<Option<ti_connector_client::Error>>,
 }
@@ -366,21 +441,10 @@ impl ConnectorKey {
     fn take_error(&self) -> Option<ti_connector_client::Error> {
         self.error.borrow_mut().take()
     }
-}
 
-impl JwsKey for ConnectorKey {
-    fn algorithm(&self) -> SignatureAlgorithm {
-        SignatureAlgorithm::ES256
-    }
-
-    fn key_id(&self) -> Option<&str> {
-        None
-    }
-}
-
-impl signature::Signer<Signature> for ConnectorKey {
-    fn try_sign(&self, msg: &[u8]) -> Result<Signature, signature::Error> {
-        // ExternalAuthenticate signs the hash as given: SHA-256 for ES256.
+    /// ExternalAuthenticate over the SHA-256 of `msg`: the Konnektor signs the hash as
+    /// given, raw r‖s comes back.
+    fn sign(&self, msg: &[u8]) -> Result<Signature, signature::Error> {
         let hash = Sha256::digest(msg);
         let auth = self.session.connector.auth();
         match block_on(auth.external_authenticate(&self.handle, &hash, SignatureType::Ecdsa)) {
@@ -398,23 +462,25 @@ impl signature::Signer<Signature> for ConnectorKey {
     }
 }
 
-/// The signer side of a [`ConnectorKey`] shared with the identity, so a failure can be
-/// read back after `jws::sign` has turned it into a jwz error.
-struct SharedConnectorKey(Rc<ConnectorKey>);
+/// A [`ConnectorKey`] under one JWS algorithm name: ECDSA-SHA256 either way.
+struct ConnectorSigner {
+    key: Rc<ConnectorKey>,
+    alg: SignatureAlgorithm,
+}
 
-impl JwsKey for SharedConnectorKey {
+impl JwsKey for ConnectorSigner {
     fn algorithm(&self) -> SignatureAlgorithm {
-        self.0.algorithm()
+        self.alg
     }
 
     fn key_id(&self) -> Option<&str> {
-        self.0.key_id()
+        None
     }
 }
 
-impl signature::Signer<Signature> for SharedConnectorKey {
+impl signature::Signer<Signature> for ConnectorSigner {
     fn try_sign(&self, msg: &[u8]) -> Result<Signature, signature::Error> {
-        signature::Signer::try_sign(&*self.0, msg)
+        self.key.sign(msg)
     }
 }
 
@@ -453,20 +519,17 @@ fn from_connector(
             "{label}: C.AUT key is not on brainpoolP256r1 or P-256"
         ))
     })?;
-    let key = Rc::new(ConnectorKey {
-        session,
-        handle: found.card_handle.clone(),
-        curve,
-        error: RefCell::new(None),
-    });
     Ok(Identity {
         kind: SourceKind::Connector,
         name: label,
         certificate,
         chain: Vec::new(),
-        curve: key.curve,
-        signer: Box::new(SharedConnectorKey(Rc::clone(&key))),
-        connector: Some(key),
+        curve,
+        key: Key::Connector(Rc::new(ConnectorKey {
+            session,
+            handle: found.card_handle,
+            error: RefCell::new(None),
+        })),
     })
 }
 
@@ -535,10 +598,20 @@ mod tests {
     }
 
     #[test]
-    fn a_key_signs_only_for_its_own_certificate() {
+    fn a_key_signs_only_for_its_own_certificate_under_both_names() {
         let key = PrivateKey::from_pem(&fixture("aut.key"), "aut.key").unwrap();
         assert_eq!(key.curve, Curve::Brainpool);
-        assert!(key.signer_for(&cert("aut.pem")).is_some());
-        assert!(key.signer_for(&cert("osig.pem")).is_none());
+        assert!(key.matches(&cert("aut.pem")));
+        assert!(!key.matches(&cert("osig.pem")));
+        let es256 = key
+            .signer_for(&cert("aut.pem"), SignatureAlgorithm::ES256)
+            .unwrap();
+        assert_eq!(es256.algorithm(), SignatureAlgorithm::ES256);
+        let bp = key
+            .signer_for(&cert("aut.pem"), jwz_brainpool::BP256R1)
+            .unwrap();
+        assert_eq!(bp.algorithm(), jwz_brainpool::BP256R1);
+        assert!(Curve::P256.signs(SignatureAlgorithm::ES256));
+        assert!(!Curve::P256.signs(jwz_brainpool::BP256R1));
     }
 }

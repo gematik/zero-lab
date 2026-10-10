@@ -634,7 +634,7 @@ fn schemas_are_published_by_name() {
     let all = ti(&dir, &["schema"]);
     let all: Value = serde_json::from_slice(&all.stdout).unwrap();
     let commands = all["commands"].as_object().unwrap();
-    assert_eq!(commands.len(), 40);
+    assert_eq!(commands.len(), 41);
     assert_eq!(commands["pki verify"], schema("pki verify"));
 
     let one = ti(&dir, &["schema", "pki", "tsl", "show"]);
