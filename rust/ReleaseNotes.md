@@ -7,6 +7,70 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ## Unreleased
 
+### jwz
+
+#### added
+- New crate: JOSE with an open algorithm registry, pluggable keys and crypto backends, and
+  validation profiles (ADR `jwz/docs/adr/0001-jwz.md`). Milestone 1
+  starts with `jwa`, an open registry of algorithm, curve and key-type names
+  (RFC 7518, RFC 8037; RSA, PBES2, CBC-HMAC and post-quantum names reserved; `none`
+  unrepresentable), and `crypto`, the backend traits (ECDSA, EdDSA, ECDH, AEAD, key wrap,
+  HMAC, hash, RNG) with async counterparts. The `rsa` feature refuses to build until RSA
+  is implemented.
+- `crypto::rustcrypto::RustCrypto` (feature `crypto-rustcrypto`): P-256 ECDSA and ECDH,
+  Ed25519, AES-GCM, AES Key Wrap, SHA-2 and (feature `hmac`) HMAC on the RustCrypto 0.14
+  line; `Send + Sync`; browser randomness on `wasm32-unknown-unknown`.
+- `jwk`: JWK (EC, OKP, oct, RSA data model) and JWK Set, RFC 7638 thumbprints, strict
+  parsing (duplicate members, base64url) and `Jwk::check` against a registry.
+- `keys`: `Signer`, `Verifier`, `KeyAgreement` on RustCrypto's `signature` traits with
+  `dyn`-compatible async forms; `SoftwareKey` and `SoftwareAgreementKey` over any
+  backend; `MockHsm`, `TestKms` and `FixedRng` (feature `test-util`).
+- `jws` (feature `jws`): compact and JSON serializations (RFC 7515), parse under a
+  policy, `Jws<Unverified>` → `Jws<Verified>`, `sign`/`sign_async`; `header`: `Header` and
+  `HeaderParams`; `profile`: `Policy::check_jws`, `Profile::strict`,
+  `Profile::rfc7518_interop`, composition with `with`; `x5c`: chain and `x5t#S256`
+  handling, `ChainValidator`.
+- `jwe` (feature `jwe`): compact and JSON serializations (RFC 7516), ECDH-ES with the
+  Concat KDF (RFC 7518 §4.6), ECDH-ES+A128/192/256KW, `dir`, A128/192/256KW,
+  A128/192/256GCM; `Jwe<Encrypted>` → `Jwe<Decrypted>`, `decrypt_async`; `zip`, RSA,
+  PBES2 and CBC-HMAC refused by `Policy::check_jwe`; `keys::SymmetricKey`;
+  `crypto::Extended` for curves the base backend lacks.
+- `jwt` (feature `jwt`): `Claims` with `validate` against `profile::ClaimsPolicy`
+  (now part of `Profile`), `Clock`, `SystemClock` (not on wasm32-unknown-unknown, where
+  std has no clock and every call would panic), `FixedClock`.
+- `Policy::key_agreement_curves`: the curves an ECDH-ES `epk` may be on, checked by
+  `Policy::check_jwe`.
+- `Policy::require_kid`: a token must name its key with a non-empty `kid`. It replaces
+  `Profile::keys` (`KeyConstraints`), which no check ever read: a JWS key's curve is the
+  key the caller chooses, and an `epk`'s curve is `key_agreement_curves`.
+- Fuzz targets for every parser (`fuzz/`: JWS and JWE compact and JSON, JWK, claims),
+  run with `just fuzz-jwz`.
+- Verification (`docs/VERIFIED.md`): the Concat KDF core proven equal to SP 800-56A
+  §5.8.1 / RFC 7518 §4.6.2 and panic-free in F* (hax), Kani proofs of the base64url round
+  trip, the compact splitter, policy and claims composition and the KDF layout,
+  compile-fail tests of the type-state; `docs/traceability.md` generated and checked by
+  a test; design-time results stamped (`verification/stamps`, `just jwz-recheck`).
+- Browser tests (`tests/browser.rs`, `just jwz-browser`, stamped): RFC 7515, RFC 8037 and
+  RFC 7520 known answers, key generation, JWS and JWE round trips in headless Chrome.
+- `guide`: a guide across the modules, compiled by the doc tests.
+- `concat_kdf` refuses an OtherInfo longer than `usize` (reachable only on 32-bit
+  targets), which the F* proof showed the 32-bit length checks alone do not exclude.
+
+### jwz-brainpool
+
+#### added
+- New crate: gematik's `BP256R1` and `BP-256` for jwz, legacy only: `register`/`registry`,
+  `Bp256` (ECDSA and ECDH on bp256), `backend` (any jwz backend plus BP-256),
+  `BrainpoolEs256Key` for ePA's `ES256` on brainpool keys; JWE encryption to `BP-256`
+  keys (decryption not yet supported). Interop fixtures against Go josebp and Python
+  jwcrypto in both directions (`just jwz-interop`, checked by `cargo test`).
+
+### ti-jwz
+
+#### added
+- New crate: the gematik TI profiles for jwz, `ti()` and (feature `legacy`) `ti_legacy()`
+  (adds `BP256R1`), with `registry()`.
+
 ### ti-xmldsig
 
 #### added

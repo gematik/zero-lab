@@ -1,0 +1,59 @@
+//! JOSE for Rust: an open algorithm registry ([`jwa`]), pluggable cryptography
+//! ([`crypto`]) and keys ([`keys`]), JWS, JWE, JWT claims and validation profiles
+//! ([`profile`]).
+//!
+//! Start with the [`guide`]: verifying a JWT from a JWK Set, choosing a profile,
+//! encrypting, keys in HSMs, further algorithms, the browser. Design decisions and their
+//! reasons: `docs/adr/0001-jwz.md`.
+#![no_std]
+#![forbid(unsafe_code)]
+// Input never panics the library (ADR 0001, auditability): tests may unwrap.
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::unwrap_used,
+        clippy::expect_used,
+        clippy::panic,
+        clippy::indexing_slicing
+    )
+)]
+
+extern crate alloc;
+#[cfg(any(feature = "std", test, hax))]
+extern crate std;
+
+#[cfg(feature = "rsa")]
+compile_error!("rsa: not yet implemented (jwz milestone 1 has the RSA key data model only)");
+
+pub mod b64;
+pub mod compact;
+pub mod crypto;
+mod error;
+pub mod header;
+mod json;
+pub mod jwa;
+#[cfg(feature = "jwe")]
+pub mod jwe;
+pub mod jwk;
+#[cfg(feature = "jws")]
+pub mod jws;
+#[cfg(feature = "jwt")]
+pub mod jwt;
+pub mod keys;
+pub mod profile;
+// Documentation only; compiled for rustdoc and its doctests, which need every format.
+#[cfg(all(
+    any(doc, doctest),
+    feature = "std",
+    feature = "jws",
+    feature = "jwe",
+    feature = "jwt",
+    feature = "crypto-rustcrypto"
+))]
+#[doc = include_str!("../docs/guide.md")]
+pub mod guide {}
+#[cfg(kani)]
+mod proofs;
+pub mod x5c;
+
+pub use error::{Error, ErrorCode};

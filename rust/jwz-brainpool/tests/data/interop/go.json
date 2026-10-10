@@ -1,0 +1,31 @@
+{
+  "library": "go/brainpool/josebp (go1.27.2)",
+  "cases": [
+    {
+      "id": "jws-compact-BP256R1",
+      "kind": "jws",
+      "serialization": "compact",
+      "algs": [
+        "BP256R1"
+      ],
+      "keys": [
+        "bp256r1"
+      ],
+      "payload": "{\"case\":\"jws-compact-BP256R1\",\"iss\":\"jwz-interop\"}",
+      "token": "eyJhbGciOiJCUDI1NlIxIiwia2lkIjoiYnAyNTZyMSIsInR5cCI6IkpXVCJ9.eyJjYXNlIjoiandzLWNvbXBhY3QtQlAyNTZSMSIsImlzcyI6Imp3ei1pbnRlcm9wIn0.FtmIBlFHhGuqM_-rbH6S9JTtWgyDn7ASGa-EjJxMawgHOu6jV42MVZ6mjuAC9T70xFsDAVpQ_mSWy_xw9qOWpQ"
+    },
+    {
+      "id": "jws-compact-ES256-brainpool",
+      "kind": "jws",
+      "serialization": "compact",
+      "algs": [
+        "ES256"
+      ],
+      "keys": [
+        "es256-bp"
+      ],
+      "payload": "{\"case\":\"jws-compact-ES256-brainpool\",\"iss\":\"jwz-interop\"}",
+      "token": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVzMjU2LWJwIiwidHlwIjoiSldUIn0.eyJjYXNlIjoiandzLWNvbXBhY3QtRVMyNTYtYnJhaW5wb29sIiwiaXNzIjoiand6LWludGVyb3AifQ.ekxeZ0YE0vBRXpffn8XS3s1tT7IYsWwpCxIh2rpBdlA5IA-l2QaXH3CSk-TXDwHS9h18varGb2OhrNrE5bR5EA"
+    }
+  ]
+}

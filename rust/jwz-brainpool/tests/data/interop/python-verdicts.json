@@ -1,0 +1,14 @@
+{
+  "library": "jwcrypto 1.6.1 (Python 3.14.8, cryptography 50.0.2)",
+  "results": {
+    "jwe-compact-ECDH-ES+A256KW-A256GCM": "ok",
+    "jwe-compact-ECDH-ES-A256GCM": "ok",
+    "jwe-flattened-ECDH-ES+A128KW-A256GCM": "ok",
+    "jwe-general-ECDH-ES+A128KW+ECDH-ES+A256KW-A256GCM": "ok",
+    "jws-compact-BP256R1": "ok",
+    "jws-compact-ES256-brainpool": "skipped: jwcrypto binds ES256 to P-256",
+    "jws-flattened-BP256R1": "ok",
+    "jws-general-BP256R1+BP256R1": "ok"
+  },
+  "source": "b25ba96d20f84f80fb51a93f66f1e18f90528ddf9454d4f8a07c80b3e2e2128d"
+}

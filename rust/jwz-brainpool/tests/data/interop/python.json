@@ -1,0 +1,46 @@
+{
+  "cases": [
+    {
+      "algs": [
+        "BP256R1"
+      ],
+      "id": "jws-compact-BP256R1",
+      "keys": [
+        "bp256r1"
+      ],
+      "kind": "jws",
+      "payload": "{\"case\":\"jws-compact-BP256R1\",\"iss\":\"jwz-interop\"}",
+      "serialization": "compact",
+      "token": "eyJhbGciOiAiQlAyNTZSMSIsICJraWQiOiAiYnAyNTZyMSIsICJ0eXAiOiAiSldUIn0.eyJjYXNlIjoiandzLWNvbXBhY3QtQlAyNTZSMSIsImlzcyI6Imp3ei1pbnRlcm9wIn0.URs9NP2wekGSpyDJW_zPlfPNe-mWchTANmnBYaN-mygrivDx--kwnYsjlD618z2if_xVOOxcB8o49G_PZMakAw"
+    },
+    {
+      "algs": [
+        "BP256R1"
+      ],
+      "id": "jws-flattened-BP256R1",
+      "keys": [
+        "bp256r1"
+      ],
+      "kind": "jws",
+      "payload": "{\"case\":\"jws-flattened-BP256R1\",\"iss\":\"jwz-interop\"}",
+      "serialization": "flattened",
+      "token": "{\"payload\":\"eyJjYXNlIjoiandzLWZsYXR0ZW5lZC1CUDI1NlIxIiwiaXNzIjoiand6LWludGVyb3AifQ\",\"protected\":\"eyJhbGciOiAiQlAyNTZSMSIsICJraWQiOiAiYnAyNTZyMSJ9\",\"signature\":\"MTPqFdUWhPIba20W8g1qmrhS0MkYqXYmIpnUsCrHmd9vlKz8V_kXNUTbsOe1VW3vOx-q-rVJiNW6GFlSWfiGtQ\"}"
+    },
+    {
+      "algs": [
+        "BP256R1",
+        "BP256R1"
+      ],
+      "id": "jws-general-BP256R1+BP256R1",
+      "keys": [
+        "bp256r1",
+        "bp256r1"
+      ],
+      "kind": "jws",
+      "payload": "{\"case\":\"jws-general-BP256R1+BP256R1\",\"iss\":\"jwz-interop\"}",
+      "serialization": "general",
+      "token": "{\"payload\":\"eyJjYXNlIjoiandzLWdlbmVyYWwtQlAyNTZSMStCUDI1NlIxIiwiaXNzIjoiand6LWludGVyb3AifQ\",\"signatures\":[{\"protected\":\"eyJhbGciOiAiQlAyNTZSMSIsICJraWQiOiAiYnAyNTZyMSJ9\",\"signature\":\"mNEbAo51kEE2MFo3HIxrLn6qr4TpfltWjsRheK2ePdUDeTZPfJY_8PM4jugJvialg_dm0A5TBwAaO97SZLqfnQ\"},{\"protected\":\"eyJhbGciOiAiQlAyNTZSMSIsICJraWQiOiAiYnAyNTZyMSJ9\",\"signature\":\"SVIlJLhIGvrqzGYuBR_eLzTfCk4-H3UiSYJgNxKTvwRF42-yP6tmOO6rBxjGWSZ8nftkZ5lLOMq24EGC0hDmqw\"}]}"
+    }
+  ],
+  "library": "jwcrypto 1.6.1 (Python 3.14.8, cryptography 50.0.2)"
+}

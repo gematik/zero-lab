@@ -1,0 +1,117 @@
+{
+  "cases": [
+    {
+      "algs": [
+        "BP256R1"
+      ],
+      "id": "jws-compact-BP256R1",
+      "keys": [
+        "bp256r1"
+      ],
+      "kind": "jws",
+      "payload": "{\"case\":\"jws-compact-BP256R1\",\"iss\":\"jwz-interop\"}",
+      "serialization": "compact",
+      "token": "eyJhbGciOiJCUDI1NlIxIiwia2lkIjoiYnAyNTZyMSIsInR5cCI6IkpXVCJ9.eyJjYXNlIjoiandzLWNvbXBhY3QtQlAyNTZSMSIsImlzcyI6Imp3ei1pbnRlcm9wIn0.FtmIBlFHhGuqM_-rbH6S9JTtWgyDn7ASGa-EjJxMawgHOu6jV42MVZ6mjuAC9T70xFsDAVpQ_mSWy_xw9qOWpQ"
+    },
+    {
+      "algs": [
+        "ES256"
+      ],
+      "id": "jws-compact-ES256-brainpool",
+      "keys": [
+        "es256-bp"
+      ],
+      "kind": "jws",
+      "payload": "{\"case\":\"jws-compact-ES256-brainpool\",\"iss\":\"jwz-interop\"}",
+      "serialization": "compact",
+      "token": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImVzMjU2LWJwIiwidHlwIjoiSldUIn0.eyJjYXNlIjoiandzLWNvbXBhY3QtRVMyNTYtYnJhaW5wb29sIiwiaXNzIjoiand6LWludGVyb3AifQ.ekxeZ0YE0vBRXpffn8XS3s1tT7IYsWwpCxIh2rpBdlA5IA-l2QaXH3CSk-TXDwHS9h18varGb2OhrNrE5bR5EA"
+    },
+    {
+      "algs": [
+        "BP256R1"
+      ],
+      "id": "jws-flattened-BP256R1",
+      "keys": [
+        "bp256r1"
+      ],
+      "kind": "jws",
+      "payload": "{\"case\":\"jws-flattened-BP256R1\",\"iss\":\"jwz-interop\"}",
+      "serialization": "flattened",
+      "token": "{\"payload\":\"eyJjYXNlIjoiandzLWZsYXR0ZW5lZC1CUDI1NlIxIiwiaXNzIjoiand6LWludGVyb3AifQ\",\"protected\":\"eyJhbGciOiJCUDI1NlIxIiwia2lkIjoiYnAyNTZyMSJ9\",\"signature\":\"qEIAcMAbrWfUpkICmUeTzbzdrZl9FgjQC4SiqfFgjNh19ERhXHT8OIFXr79nNp19lsn-bFRQeRZS30Duw80VKA\"}"
+    },
+    {
+      "algs": [
+        "BP256R1",
+        "BP256R1"
+      ],
+      "id": "jws-general-BP256R1+BP256R1",
+      "keys": [
+        "bp256r1",
+        "bp256r1"
+      ],
+      "kind": "jws",
+      "payload": "{\"case\":\"jws-general-BP256R1+BP256R1\",\"iss\":\"jwz-interop\"}",
+      "serialization": "general",
+      "token": "{\"payload\":\"eyJjYXNlIjoiandzLWdlbmVyYWwtQlAyNTZSMStCUDI1NlIxIiwiaXNzIjoiand6LWludGVyb3AifQ\",\"signatures\":[{\"protected\":\"eyJhbGciOiJCUDI1NlIxIiwia2lkIjoiYnAyNTZyMSJ9\",\"signature\":\"U6xxMHzTjJhsRNojlLmBuj3hlDnegHzinC3siZr2F8dVmaxk9ESKvUkxM3yyCCnoaEYWlg5DsE6uHKC46ZrNeQ\"},{\"protected\":\"eyJhbGciOiJCUDI1NlIxIiwia2lkIjoiYnAyNTZyMSJ9\",\"signature\":\"U6xxMHzTjJhsRNojlLmBuj3hlDnegHzinC3siZr2F8dVmaxk9ESKvUkxM3yyCCnoaEYWlg5DsE6uHKC46ZrNeQ\"}]}"
+    },
+    {
+      "algs": [
+        "ECDH-ES"
+      ],
+      "enc": "A256GCM",
+      "id": "jwe-compact-ECDH-ES-A256GCM",
+      "keys": [
+        "ecdh-bp256"
+      ],
+      "kind": "jwe",
+      "payload": "{\"case\":\"jwe-compact-ECDH-ES-A256GCM\",\"iss\":\"jwz-interop\"}",
+      "serialization": "compact",
+      "token": "eyJhbGciOiJFQ0RILUVTIiwiZW5jIjoiQTI1NkdDTSIsImVwayI6eyJjcnYiOiJCUC0yNTYiLCJrdHkiOiJFQyIsIngiOiJXZ0J2Q216TEZ3RFZ1TVh3YTlHYk1jVjE3UDllZnZiSWVxT0tBY1VkU2RFIiwieSI6IkNxNXB3ZHVCaUJJNzlUQnp5MWpwLXNsT0VtM3M1SEQ4VmZJT1VvWXZiV2cifSwia2lkIjoiZWNkaC1icDI1NiJ9..otrED8Q9_FNXWkZI.25wFT6iSG71YlA--wI8t4mDu_UmoRD5zYAhFplKy_iWNfpzrR1xVzYC1M2UeLpq_cnovc7_sUSfHTA.-HWy3KrtCP9jEpQCG2Q0kg"
+    },
+    {
+      "algs": [
+        "ECDH-ES+A256KW"
+      ],
+      "enc": "A256GCM",
+      "id": "jwe-compact-ECDH-ES+A256KW-A256GCM",
+      "keys": [
+        "ecdh-bp256"
+      ],
+      "kind": "jwe",
+      "payload": "{\"case\":\"jwe-compact-ECDH-ES+A256KW-A256GCM\",\"iss\":\"jwz-interop\"}",
+      "serialization": "compact",
+      "token": "eyJhbGciOiJFQ0RILUVTK0EyNTZLVyIsImVuYyI6IkEyNTZHQ00iLCJlcGsiOnsiY3J2IjoiQlAtMjU2Iiwia3R5IjoiRUMiLCJ4IjoiVTlwUlNuc0dzUXhhSUp3SzBCNEpvRGp3NGVPRWlCU3gzMllHWnBPdTBGcyIsInkiOiJwTDRKX3U0WTItNWZFTXlWZldQbHl6X3lrbHFWUHNyYTQzM01HOVZLc1ZVIn0sImtpZCI6ImVjZGgtYnAyNTYifQ.HDJxcYbTXducR31RuV5d5EBZaE6i6r_fkoTz1nOzGau0nhGr2HFlnw.aQ9_a1hp9PyIDZaT.qHsAv4LMCKk3wNOU1lvgiOZYDBrA7Ro2vWX4hgMl0aMpqGfm0CCfE3FhWp2Rfp8UuTO2pBcz7xVgr6ljJMtwON8.CdZpvhjX-qp9OL7uF9MnCw"
+    },
+    {
+      "algs": [
+        "ECDH-ES+A128KW"
+      ],
+      "enc": "A256GCM",
+      "id": "jwe-flattened-ECDH-ES+A128KW-A256GCM",
+      "keys": [
+        "ecdh-bp256"
+      ],
+      "kind": "jwe",
+      "payload": "{\"case\":\"jwe-flattened-ECDH-ES+A128KW-A256GCM\",\"iss\":\"jwz-interop\"}",
+      "serialization": "flattened",
+      "token": "{\"ciphertext\":\"_RdRNa82AC6K0LTvBp6dLtsgPMvwqkg3O5LLch2sXgSGvn6QQdXieMn3lFRSmRaDCqPNr-FpODsIS5et2qTEZyZIvg\",\"encrypted_key\":\"BwIcQrW7k62b_C5QE1jBla53ZbqaOy2mmR3iz2u9dxv9dvH-1NqtsQ\",\"header\":{\"alg\":\"ECDH-ES+A128KW\",\"epk\":{\"crv\":\"BP-256\",\"kty\":\"EC\",\"x\":\"kL873p-Iz84JQ_heWrFoCT43CwEPQnIrGG7L7f9WYok\",\"y\":\"KGqe2Auhc1X7ANuFSIyUtw0GJTwmNgJiKZ47UNMmVz0\"},\"kid\":\"ecdh-bp256\"},\"iv\":\"3HfxsOy9nL62MUEG\",\"protected\":\"eyJlbmMiOiJBMjU2R0NNIn0\",\"tag\":\"CDcUlTILRAwIYyuG_ES9Mg\"}"
+    },
+    {
+      "algs": [
+        "ECDH-ES+A128KW",
+        "ECDH-ES+A256KW"
+      ],
+      "enc": "A256GCM",
+      "id": "jwe-general-ECDH-ES+A128KW+ECDH-ES+A256KW-A256GCM",
+      "keys": [
+        "ecdh-bp256",
+        "ecdh-bp256"
+      ],
+      "kind": "jwe",
+      "payload": "{\"case\":\"jwe-general-ECDH-ES+A128KW+ECDH-ES+A256KW-A256GCM\",\"iss\":\"jwz-interop\"}",
+      "serialization": "general",
+      "token": "{\"ciphertext\":\"sa7O9n0UQo8oMw_zamlZNT6B1LpTX9QZAcICTBT7oYtOCLPjZkINuhIHZ5JYCHv_Ey_5IYWA7bqDa65oGRJDfaH_i4cIfXwPFHjEnDlvuWc\",\"iv\":\"m0jXIIOk43U2Ab4T\",\"protected\":\"eyJlbmMiOiJBMjU2R0NNIn0\",\"recipients\":[{\"encrypted_key\":\"zx8k91szwgX1zlrWYiBfzXQHE7HmRXu8na3JVqLqEwzKRE0hurHxiQ\",\"header\":{\"alg\":\"ECDH-ES+A128KW\",\"epk\":{\"crv\":\"BP-256\",\"kty\":\"EC\",\"x\":\"D0nqcGMk2wB-BtWdsyL4M7SgOFXz3H3MGUX3PLP_Pyc\",\"y\":\"Oer3AXU_unqlH0-bD5iYA1FY9oyEgnWh71VYc7PUQ8E\"},\"kid\":\"ecdh-bp256\"}},{\"encrypted_key\":\"OPfNrgBmAW2STLpnX0FP8MUQUr5sl_SGsFi0AJpmuWMxw_rIxIUBhg\",\"header\":{\"alg\":\"ECDH-ES+A256KW\",\"epk\":{\"crv\":\"BP-256\",\"kty\":\"EC\",\"x\":\"baI3rBNgBqwwg4UlHcoVsu81Um782X3Xvy20xh_3ph4\",\"y\":\"SIMlEkWBjQO6GPx-4f75UzOMrv2LcaL-HWJLtnc2AnA\"},\"kid\":\"ecdh-bp256\"}}],\"tag\":\"J-dcqcjRhvALJico-B02Jg\"}"
+    }
+  ],
+  "library": "jwz 0.1"
+}

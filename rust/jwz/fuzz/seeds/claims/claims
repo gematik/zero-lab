@@ -1,0 +1,1 @@
+{"iss": "https://idp", "aud": ["client"], "exp": 1000, "nbf": 10, "iat": 20.5, "sub": "x", "jti": "y"}

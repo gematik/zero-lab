@@ -31,6 +31,10 @@ criteria = "safe-to-deploy"
 version = "0.11.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.aes-kw]]
+version = "0.3.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.anstream]]
 version = "1.0.0"
 criteria = "safe-to-deploy"
@@ -54,6 +58,11 @@ criteria = "safe-to-deploy"
 [[exemptions.arc-swap]]
 version = "1.9.2"
 criteria = "safe-to-deploy"
+
+[[exemptions.async-trait]]
+version = "0.1.92"
+criteria = "safe-to-run"
+notes = "jwz's browser tests (just jwz-browser): a wasm32 dev-dependency of wasm-bindgen-test"
 
 [[exemptions.autocfg]]
 version = "1.5.1"
@@ -98,6 +107,11 @@ criteria = "safe-to-deploy"
 [[exemptions.bytes]]
 version = "1.12.1"
 criteria = "safe-to-deploy"
+
+[[exemptions.cast]]
+version = "0.3.0"
+criteria = "safe-to-run"
+notes = "jwz's browser tests (just jwz-browser): a wasm32 dev-dependency of wasm-bindgen-test"
 
 [[exemptions.cbc]]
 version = "0.2.1"
@@ -183,6 +197,14 @@ criteria = "safe-to-deploy"
 version = "0.4.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.curve25519-dalek]]
+version = "5.0.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.curve25519-dalek-derive]]
+version = "0.1.1"
+criteria = "safe-to-deploy"
+
 [[exemptions.defmt]]
 version = "1.1.1"
 criteria = "safe-to-deploy"
@@ -217,6 +239,14 @@ criteria = "safe-to-deploy"
 
 [[exemptions.ecdsa]]
 version = "0.17.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.ed25519]]
+version = "3.0.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.ed25519-dalek]]
+version = "3.0.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.elliptic-curve]]
@@ -271,12 +301,35 @@ criteria = "safe-to-deploy"
 version = "0.3.4"
 criteria = "safe-to-run"
 
+[[exemptions.getrandom]]
+version = "0.4.3"
+criteria = "safe-to-deploy"
+
 [[exemptions.ghash]]
 version = "0.6.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.group]]
 version = "0.14.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.hax-lib]]
+version = "0.4.2"
+criteria = "safe-to-deploy"
+notes = "jwz's hax annotations, a cfg(hax) dependency: compiled only when hax extracts jwz for proof"
+
+[[exemptions.hax-lib-macros]]
+version = "0.4.2"
+criteria = "safe-to-deploy"
+notes = "jwz's hax annotations, a cfg(hax) dependency: compiled only when hax extracts jwz for proof"
+
+[[exemptions.hax-lib-macros-types]]
+version = "0.4.2"
+criteria = "safe-to-deploy"
+notes = "jwz's hax annotations, a cfg(hax) dependency: compiled only when hax extracts jwz for proof"
+
+[[exemptions.hkdf]]
+version = "0.13.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.hmac]]
@@ -403,6 +456,11 @@ criteria = "safe-to-deploy"
 version = "0.2.189"
 criteria = "safe-to-deploy"
 
+[[exemptions.libm]]
+version = "0.2.16"
+criteria = "safe-to-deploy"
+notes = "wasm-bindgen-test turns on num-traits' libm feature; compiled only for jwz's browser tests (just jwz-browser)"
+
 [[exemptions.linux-raw-sys]]
 version = "0.12.1"
 criteria = "safe-to-deploy"
@@ -423,9 +481,29 @@ criteria = "safe-to-deploy"
 version = "2.3.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.minicov]]
+version = "0.3.8"
+criteria = "safe-to-run"
+notes = "jwz's browser tests (just jwz-browser): a wasm32 dev-dependency of wasm-bindgen-test"
+
 [[exemptions.mio]]
 version = "1.2.3"
 criteria = "safe-to-deploy"
+
+[[exemptions.nu-ansi-term]]
+version = "0.50.3"
+criteria = "safe-to-run"
+notes = "jwz's browser tests (just jwz-browser): a wasm32 dev-dependency of wasm-bindgen-test"
+
+[[exemptions.num-bigint]]
+version = "0.4.8"
+criteria = "safe-to-deploy"
+notes = "jwz's hax annotations, a cfg(hax) dependency: compiled only when hax extracts jwz for proof"
+
+[[exemptions.num-integer]]
+version = "0.1.47"
+criteria = "safe-to-deploy"
+notes = "jwz's hax annotations, a cfg(hax) dependency: compiled only when hax extracts jwz for proof"
 
 [[exemptions.once_cell]]
 version = "1.12.0"
@@ -434,6 +512,11 @@ criteria = "safe-to-deploy"
 [[exemptions.once_cell_polyfill]]
 version = "1.70.2"
 criteria = "safe-to-deploy"
+
+[[exemptions.oorandom]]
+version = "11.1.5"
+criteria = "safe-to-run"
+notes = "jwz's browser tests (just jwz-browser): a wasm32 dev-dependency of wasm-bindgen-test"
 
 [[exemptions.openssl-probe]]
 version = "0.2.1"
@@ -514,6 +597,10 @@ criteria = "safe-to-deploy"
 [[exemptions.r-efi]]
 version = "5.3.0"
 criteria = "safe-to-run"
+
+[[exemptions.r-efi]]
+version = "6.0.0"
+criteria = "safe-to-deploy"
 
 [[exemptions.rand]]
 version = "0.9.5"
@@ -799,6 +886,11 @@ criteria = "safe-to-deploy"
 version = "0.2.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.uuid]]
+version = "1.27.0"
+criteria = "safe-to-deploy"
+notes = "jwz's hax annotations, a cfg(hax) dependency: compiled only when hax extracts jwz for proof"
+
 [[exemptions.walkdir]]
 version = "2.5.0"
 criteria = "safe-to-deploy"
@@ -830,6 +922,21 @@ criteria = "safe-to-deploy"
 [[exemptions.wasm-bindgen-shared]]
 version = "0.2.128"
 criteria = "safe-to-deploy"
+
+[[exemptions.wasm-bindgen-test]]
+version = "0.3.78"
+criteria = "safe-to-run"
+notes = "jwz's browser tests (just jwz-browser)"
+
+[[exemptions.wasm-bindgen-test-macro]]
+version = "0.3.78"
+criteria = "safe-to-run"
+notes = "jwz's browser tests (just jwz-browser)"
+
+[[exemptions.wasm-bindgen-test-shared]]
+version = "0.2.128"
+criteria = "safe-to-run"
+notes = "jwz's browser tests (just jwz-browser)"
 
 [[exemptions.web-sys]]
 version = "0.3.105"
