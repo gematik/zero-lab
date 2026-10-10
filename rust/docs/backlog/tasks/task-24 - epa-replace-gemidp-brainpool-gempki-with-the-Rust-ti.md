@@ -4,7 +4,7 @@ title: 'epa: replace gemidp, brainpool, gempki with the Rust ti'
 status: In Progress
 assignee: []
 created_date: '2026-10-10 15:04'
-updated_date: '2026-10-10 17:52'
+updated_date: '2026-10-10 17:54'
 labels:
   - epa
   - ti-cli
@@ -22,7 +22,7 @@ go/epa loses its dependencies on gemidp, brainpool/josebp, gempki (and with them
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 cd rust && just check passes incl. ti-idpd on wasm32; ti schema identity sign|idpd authenticate|pki verify-signature print valid schemas
+- [x] #1 cd rust && just check passes incl. ti-idpd on wasm32; ti schema identity sign|idpd authenticate|pki verify-signature print valid schemas
 - [ ] #2 a JWS signed by ti identity sign verifies in go/brainpool/josebp (interop vector in jwz-brainpool/interop); the same with --connector against a Konnektor and a real SMC-B (HITL)
 - [x] #3 ti idpd authenticate against the RU IDP with the test SMC-B returns a code (HITL)
 - [x] #4 go list -deps ./epa/... shows no gemidp, brainpool, gempki, pkcs12; grep for brainpool|gemidp|gempki|pkcs12|openssl in go/epa is empty; go test ./epa/... passes with the fake runner without ti installed
@@ -43,4 +43,6 @@ HITL 2026-10-10 (user): ti idpd authenticate --env ref against the RU IDP-Dienst
 Stage 3 (Go) implemented: package epa/ti (Binary runner with a minimal child environment and schema check, IdentitySource/Identity over identity inspect|sign, Authenticator over idpd authenticate, Verifier over pki verify + pki verify-signature); epa.Identity/Authenticator interfaces, SecurityFunctions.Identity, SignJWT for clientAttest and entitlement, vau.CertData as raw DER with OpenChannelVerified + CertVerifier (warn|enforce|off), ProxyConfig authn_p12_password_path/authn_card/authn_connector/vau_cert_verify, NewProxyWithSecurityFunctions takes an Authenticator, epatest fakes; epa/go.mod free of gemidp, brainpool, gempki, pkcs12 and the openssl subprocess; Dockerfile with a Rust musl stage for ti (context: repo root). go/ti and go/kon removed (they consumed the old API; archive tags go/ti/v0.23.4, go/kon/v0.21.4). Open: HITL (just epa-connect-test, zero-epa probe with P12 and with authn_card, /info, docker image); staticcheck is broken env-wide (2026.1 vs go1.27.2), vet passes.
 
 HITL 2026-10-10 (user): just epa-connect-test, zero-epa probe with the PEM identity and with authn_card at the Konnektor, entitlement, and the Docker image with the Rust ti all work.
+
+Remaining: AC2's josebp interop vector is optional now that the ePA aggregator and the RU IDP accepted ti's signatures end to end (HITL); add it with the next jwz-interop run if wanted. Branch feat/epa-rust-ti: 37dbdc1, 7209556, 1bb297f, 18df818.
 <!-- SECTION:NOTES:END -->

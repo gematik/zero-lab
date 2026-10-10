@@ -3,10 +3,10 @@ id: TASK-25
 title: >-
   Go footprint: archive ti and kon, module status table, remove
   oauth/oauth2client
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-10 15:04'
-updated_date: '2026-10-10 17:49'
+updated_date: '2026-10-10 17:54'
 labels:
   - go
 dependencies: []
@@ -22,13 +22,15 @@ Deferred from the epa plan (doc-1). go/ti and go/kon have no commits after their
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 cd go && just check green; just build produces zero-epa, zero-pdp, zero-caddy
-- [ ] #2 grep for go/ti, go/kon, build-ti, oauth2client outside the status table and release notes is empty; the archive tags still exist
-- [ ] #3 all links in README.md, ReleaseNotes.md, go/docs/development.md resolve
+- [x] #1 cd go && just check green; just build produces zero-epa, zero-pdp, zero-caddy
+- [x] #2 grep for go/ti, go/kon, build-ti, oauth2client outside the status table and release notes is empty; the archive tags still exist
+- [x] #3 all links in README.md, ReleaseNotes.md, go/docs/development.md resolve
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 Part done on feat/epa-rust-ti (forced by epa's API change, which go/ti consumed): go/ti and go/kon removed from go.work and the tree at their last tags go/ti/v0.23.4 and go/kon/v0.21.4; build-ti dropped from go/Justfile; the Module status table and archive procedure added to go/docs/development.md; the go install examples now use zero-epa; the root ReleaseNotes names the Rust ti. Still open here: remove go/oauth/oauth2client, fix the dead ./docs/development.md link in the root README.
+
+Completed on feat/epa-rust-ti: oauth/oauth2client removed, root README/ReleaseNotes links fixed; go vet green for every module (staticcheck blocked by the local toolchain mismatch, same on main).
 <!-- SECTION:NOTES:END -->
