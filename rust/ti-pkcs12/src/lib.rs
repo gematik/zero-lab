@@ -74,6 +74,13 @@ pub mod oids {
     /// `localKeyId`.
     pub const LOCAL_KEY_ID: ObjectIdentifier =
         ObjectIdentifier::new_unwrap("1.2.840.113549.1.9.21");
+    /// Oracle's trusted key usage: Java reads a certificate bag as a trusted certificate
+    /// entry only with this attribute (OpenSSL's `-jdktrust`).
+    pub const TRUSTED_KEY_USAGE: ObjectIdentifier =
+        ObjectIdentifier::new_unwrap("2.16.840.1.113894.746875.1.1");
+    /// `anyExtendedKeyUsage`, the trusted key usage of a CA trusted for every purpose.
+    pub const ANY_EXTENDED_KEY_USAGE: ObjectIdentifier =
+        ObjectIdentifier::new_unwrap("2.5.29.37.0");
     /// PBES2 (RFC 8018).
     pub const PBES2: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.5.13");
     /// `pbeWithSHAAnd3-KeyTripleDES-CBC`.
@@ -189,6 +196,9 @@ pub struct CertificateBag {
     pub friendly_name: Option<String>,
     /// The `localKeyId` attribute, which ties a certificate to its key.
     pub local_key_id: Option<Vec<u8>>,
+    /// The trusted key usage ([`oids::TRUSTED_KEY_USAGE`]) that makes the bag a trusted
+    /// certificate entry in Java, usually [`oids::ANY_EXTENDED_KEY_USAGE`].
+    pub trusted_key_usage: Option<ObjectIdentifier>,
 }
 
 /// A private key bag, decrypted.
@@ -331,7 +341,7 @@ pub fn decode(bytes: &[u8], password: &str) -> Result<Pkcs12, Error> {
 
 fn collect(bags: &[SafeBag], password: &str, p12: &mut Pkcs12) -> Result<(), Error> {
     for bag in bags {
-        let (friendly_name, local_key_id) = attributes(bag);
+        let (friendly_name, local_key_id, trusted_key_usage) = attributes(bag);
         match bag.id {
             oids::CERT_BAG => {
                 let cert: CertBag = reparse(&bag.value)?;
@@ -342,6 +352,7 @@ fn collect(bags: &[SafeBag], password: &str, p12: &mut Pkcs12) -> Result<(), Err
                     der: cert.cert_value.into_bytes().into_vec(),
                     friendly_name,
                     local_key_id,
+                    trusted_key_usage,
                 });
             }
             oids::SHROUDED_KEY_BAG => {
@@ -378,10 +389,12 @@ fn collect(bags: &[SafeBag], password: &str, p12: &mut Pkcs12) -> Result<(), Err
     Ok(())
 }
 
-/// `friendlyName` (a BMPString) and `localKeyId` (an OCTET STRING) of a bag.
-fn attributes(bag: &SafeBag) -> (Option<String>, Option<Vec<u8>>) {
+/// `friendlyName` (a BMPString), `localKeyId` (an OCTET STRING) and the trusted key usage
+/// (an OBJECT IDENTIFIER) of a bag.
+fn attributes(bag: &SafeBag) -> (Option<String>, Option<Vec<u8>>, Option<ObjectIdentifier>) {
     let mut friendly_name = None;
     let mut local_key_id = None;
+    let mut trusted_key_usage = None;
     for attribute in bag.attributes.iter().flat_map(|set| set.iter()) {
         let Some(value) = attribute.attr_values.iter().next() else {
             continue;
@@ -389,10 +402,11 @@ fn attributes(bag: &SafeBag) -> (Option<String>, Option<Vec<u8>>) {
         match attribute.attr_id {
             oids::FRIENDLY_NAME => friendly_name = bmp_string(value),
             oids::LOCAL_KEY_ID => local_key_id = Some(value.value().to_vec()),
+            oids::TRUSTED_KEY_USAGE => trusted_key_usage = value.decode_as().ok(),
             _ => {}
         }
     }
-    (friendly_name, local_key_id)
+    (friendly_name, local_key_id, trusted_key_usage)
 }
 
 fn bmp_string(value: &Any) -> Option<String> {

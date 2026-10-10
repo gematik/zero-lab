@@ -19,7 +19,10 @@ use ti_pki::{Certificate, Clock, Tier, Timestamp, TrustConfig, TrustStore};
 use ti_report::tsl::{CertSummary, Finding, rejection_code};
 
 use crate::block::block_on;
-use crate::cli::{Environment, GlobalArgs, TslShowArgs, TslVerifyArgs};
+use crate::cli::{
+    CaFilterArgs, Environment, GlobalArgs, TrustArgs, TslBundleArgs, TslExportArgs, TslShowArgs,
+    TslVerifyArgs,
+};
 use crate::error::{CliError, Exit};
 use crate::output::document::{date, when};
 use crate::output::{Document, Line, OidInfo, Output, SCHEMA, Tone, hex, pem};
@@ -110,36 +113,23 @@ struct CaInfo {
 
 /// Runs `ti pki tsl show`.
 pub fn show(args: &TslShowArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
-    let env = super::concrete(args.trust.env, global)?;
-    let config = TrustConfig::preset(env);
-    config.validate(env.tier()).map_err(CliError::Trust)?;
-    let session = Session::new(global, args.trust.offline, out)?;
-    // The roots first: they decide which of the TSL's CAs count, and loading them
-    // refreshes the cached TSL too.
-    let material = session.load(&config, env.tier(), args.trust.at)?;
-    let now = args.trust.at.unwrap_or_else(|| SystemClock.now());
-    let (bytes, meta) = session.tsl(&config)?;
-    let verified = Tsl::parse_verified(&bytes, &config, now)
-        .map_err(|e| CliError::TrustLoad(format!("TSL: {e}")))?;
+    let Loaded {
+        env,
+        session,
+        material,
+        meta,
+        verified,
+        matched,
+        now,
+        ..
+    } = load(&args.trust, global, out)?;
     let list = &verified.tsl;
     let roots = material.store.roots();
-    let matched = tsl::match_to_roots(
-        list.intermediate_cas(),
-        &TrustStore::new(roots.iter().cloned()),
-        &config.algorithms,
-    );
 
-    let contains = |filter: &Option<String>, text: &str| {
-        filter
-            .as_deref()
-            .is_none_or(|f| text.to_lowercase().contains(&f.to_lowercase()))
-    };
-    let wanted = |ca: &Intermediate| {
-        contains(&args.ca, ca.certificate.subject_cn()) && contains(&args.provider, &ca.provider)
-    };
+    let wanted = |ca: &Intermediate| args.filter.wants(ca);
     let mut root_entries: Vec<RootEntry> = roots
         .iter()
-        .filter(|root| !args.rejected && contains(&args.root, root.subject_cn()))
+        .filter(|root| !args.rejected && args.filter.wants_root(root))
         .map(|root| RootEntry {
             common_name: root.subject_cn().to_owned(),
             not_after: root.not_after().to_string(),
@@ -152,14 +142,14 @@ pub fn show(args: &TslShowArgs, global: &GlobalArgs, out: &Output) -> Result<Exi
                 .collect(),
         })
         .collect();
-    let any_ca_filter = args.ca.is_some() || args.provider.is_some();
+    let any_ca_filter = args.filter.ca.is_some() || args.filter.provider.is_some();
     if any_ca_filter {
         root_entries.retain(|root| !root.cas.is_empty());
     }
     let rejected: Vec<CaInfo> = matched
         .rejected
         .iter()
-        .filter(|(ca, _)| args.root.is_none() && wanted(ca))
+        .filter(|(ca, _)| args.filter.root.is_none() && wanted(ca))
         .map(|(ca, reason)| describe(ca, Some(rejection_code(*reason)), now))
         .collect();
 
@@ -188,12 +178,12 @@ pub fn show(args: &TslShowArgs, global: &GlobalArgs, out: &Output) -> Result<Exi
         },
         roots: root_entries,
         rejected,
-        filtered: args.rejected || any_ca_filter || args.root.is_some(),
+        filtered: args.rejected || any_ca_filter || args.filter.root.is_some(),
     };
     if out.is_json() {
         out.json(&report)?;
     } else {
-        out.render(&document(&report, args.ca.is_some()))?;
+        out.render(&document(&report, args.filter.ca.is_some()))?;
     }
     Ok(Exit::Ok)
 }
@@ -487,6 +477,182 @@ fn verify_document(report: &VerifyReport) -> Document {
 
 /// Whether `root` issued `ca`: its subject is the CA's issuer. The CA is among the kept
 /// ones, so a root of that name has verified its signature.
+/// Runs `ti pki tsl bundle`: the CAs `tsl show` keeps under the verified roots, with its
+/// filters; the rejected ones never.
+pub fn bundle(args: &TslBundleArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
+    super::bundle::refuse_existing(&args.bundle)?;
+    let Loaded {
+        env,
+        session,
+        material,
+        verified,
+        matched,
+        ..
+    } = load(&args.trust, global, out)?;
+    let roots = material.store.roots();
+    let certificates = matched
+        .intermediates
+        .iter()
+        .filter(|ca| {
+            args.filter.wants(ca)
+                && roots
+                    .iter()
+                    .any(|root| issued_by(&ca.certificate, root) && args.filter.wants_root(root))
+        })
+        .map(|ca| ca.certificate.clone())
+        .collect();
+    super::bundle::write(
+        super::bundle::Found {
+            environment: env.as_str(),
+            certificates,
+            tsl_sequence_number: Some(verified.tsl.sequence_number),
+            trust: material.info,
+            insecure_transport: session.insecure,
+        },
+        &args.bundle,
+        out,
+    )
+}
+
+/// The JSON document of `ti pki tsl export`; `schema` is added on output.
+#[derive(Serialize)]
+struct ExportReport {
+    environment: &'static str,
+    /// The list's `Id`.
+    id: String,
+    sequence_number: u64,
+    issued_at: String,
+    next_update: Option<String>,
+    /// Of the bytes as published.
+    sha256: String,
+    bytes: usize,
+    url: String,
+    /// `http`, `cache`, …: where the bytes came from.
+    source: &'static str,
+    fetched_at: String,
+    /// The file written; absent when the TSL went to stdout.
+    output: Option<String>,
+}
+
+/// Runs `ti pki tsl export`: the TSL's bytes as published, once they verified, to stdout
+/// or `-o`; what was written as a report.
+pub fn export(args: &TslExportArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
+    if let Some(path) = &args.output
+        && !args.force
+        && path.exists()
+    {
+        return Err(CliError::OutputExists(path.display().to_string()));
+    }
+    let Loaded {
+        env,
+        config,
+        bytes,
+        meta,
+        verified,
+        ..
+    } = load(&args.trust, global, out)?;
+    if let Some(path) = &args.output {
+        super::write_file(path, &bytes, args.force, false)?;
+    } else if !out.is_json() {
+        use std::io::Write as _;
+        let mut stdout = std::io::stdout().lock();
+        stdout.write_all(&bytes)?;
+        stdout.flush()?;
+        return Ok(Exit::Ok);
+    }
+    let list = &verified.tsl;
+    let report = ExportReport {
+        environment: env.as_str(),
+        id: list.id.clone(),
+        sequence_number: list.sequence_number,
+        issued_at: list.issued_at.to_string(),
+        next_update: list.next_update.map(|t| t.to_string()),
+        sha256: hex(&Sha256::digest(&bytes)),
+        bytes: bytes.len(),
+        url: config.tsl_url.to_string(),
+        source: source_name(&meta),
+        fetched_at: meta.fetched_at.to_string(),
+        output: args.output.as_ref().map(|p| p.display().to_string()),
+    };
+    super::connector::emit(out, Exit::Ok, &report, |doc| {
+        doc.paragraph(
+            Line::strong(format!("TSL {}", report.sequence_number))
+                .and_text(format!(" · {}", report.environment)),
+        );
+        doc.field("id", Line::code(&report.id));
+        doc.field("issued", when(list.issued_at));
+        if let Some(next) = list.next_update {
+            doc.field("next update", when(next));
+        }
+        doc.field("sha-256", Line::code(&report.sha256));
+        doc.field("bytes", report.bytes.to_string());
+        if let Some(output) = &report.output {
+            doc.field("to", Line::code(output));
+        }
+    })
+}
+
+/// The verified TSL of an environment and what its verified roots make of it.
+struct Loaded {
+    env: ti_pki::Env,
+    config: TrustConfig,
+    session: Session,
+    material: crate::trust::Material,
+    /// The TSL as published.
+    bytes: Vec<u8>,
+    meta: Meta,
+    verified: VerifiedTsl,
+    matched: tsl::Matched,
+    now: Timestamp,
+}
+
+/// The roots first: they decide which of the TSL's CAs count, and loading them refreshes
+/// the cached TSL too. The TSL is then read from its signed bytes once it verified.
+fn load(trust: &TrustArgs, global: &GlobalArgs, out: &Output) -> Result<Loaded, CliError> {
+    let env = super::concrete(trust.env, global)?;
+    let config = TrustConfig::preset(env);
+    config.validate(env.tier()).map_err(CliError::Trust)?;
+    let session = Session::new(global, trust.offline, out)?;
+    let material = session.load(&config, env.tier(), trust.at)?;
+    let now = trust.at.unwrap_or_else(|| SystemClock.now());
+    let (bytes, meta) = session.tsl(&config)?;
+    let verified = Tsl::parse_verified(&bytes, &config, now)
+        .map_err(|e| CliError::TrustLoad(format!("TSL: {e}")))?;
+    let matched = tsl::match_to_roots(
+        verified.tsl.intermediate_cas(),
+        &TrustStore::new(material.store.roots().iter().cloned()),
+        &config.algorithms,
+    );
+    Ok(Loaded {
+        env,
+        config,
+        session,
+        material,
+        bytes,
+        meta,
+        verified,
+        matched,
+        now,
+    })
+}
+
+impl CaFilterArgs {
+    /// Whether `ca` passes `--ca` and `--provider`.
+    fn wants(&self, ca: &Intermediate) -> bool {
+        contains(self.ca.as_deref(), ca.certificate.subject_cn())
+            && contains(self.provider.as_deref(), &ca.provider)
+    }
+
+    /// Whether `root` passes `--root`.
+    fn wants_root(&self, root: &Certificate) -> bool {
+        contains(self.root.as_deref(), root.subject_cn())
+    }
+}
+
+fn contains(filter: Option<&str>, text: &str) -> bool {
+    filter.is_none_or(|f| text.to_lowercase().contains(&f.to_lowercase()))
+}
+
 fn issued_by(ca: &Certificate, root: &Certificate) -> bool {
     root.subject() == ca.issuer()
 }

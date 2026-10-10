@@ -45,7 +45,7 @@ pub fn convert(
 ) -> Result<Exit, CliError> {
     let source = input::read(input_path)?;
     let p12 = decode(&source, password)?;
-    let converted = reencode(&p12, password, &source.name)?;
+    let converted = encode(&p12, password, &source.name)?;
     super::write_file(output_path, &converted, force, true)?;
     let after = ti_pkcs12::decode(&converted, password).map_err(|error| CliError::Pkcs12 {
         source_name: output_path.display().to_string(),
@@ -98,7 +98,9 @@ fn is_ber(bytes: &[u8]) -> bool {
     bytes.get(1) == Some(&0x80)
 }
 
-fn reencode(p12: &Pkcs12, password: &str, name: &str) -> Result<Vec<u8>, CliError> {
+/// `p12` encoded with `password`, salts and IVs from the system's randomness; `name`
+/// names it in errors.
+pub(super) fn encode(p12: &Pkcs12, password: &str, name: &str) -> Result<Vec<u8>, CliError> {
     // Salt and IV for each key and the certificate safe, and the MAC salt.
     let mut pool = vec![0u8; 32 * (p12.keys.len() + 1) + 8];
     rustls::crypto::ring::default_provider()

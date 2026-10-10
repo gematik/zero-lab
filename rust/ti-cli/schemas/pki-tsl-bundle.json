@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "pki roots list",
-  "description": "The roots an environment trusts.",
+  "title": "pki tsl bundle",
+  "description": "The TSL's CAs a verified root signed, filtered by --ca, --provider and --root, as a CA bundle. Without --format json and -o the bundle itself goes to stdout; with --format json the report, carrying each PEM unless a file was written.",
   "type": "object",
   "properties": {
     "schema": {
@@ -16,13 +16,14 @@
         "dev"
       ]
     },
-    "trust": {
-      "$ref": "#/$defs/trust"
+    "format": {
+      "enum": [
+        "pem",
+        "p12"
+      ],
+      "description": "pem: concatenated PEM certificates; p12: a PKCS#12 truststore for Java, each certificate a trustedCertEntry"
     },
-    "insecure_transport": {
-      "type": "boolean"
-    },
-    "roots": {
+    "certificates": {
       "type": "array",
       "items": {
         "type": "object",
@@ -30,63 +31,61 @@
           "common_name": {
             "type": "string"
           },
-          "subject": {
-            "type": "string"
-          },
-          "not_before": {
-            "type": "string",
-            "format": "date-time",
-            "description": "RFC 3339, UTC"
-          },
           "not_after": {
             "type": "string",
             "format": "date-time",
             "description": "RFC 3339, UTC"
           },
-          "validity": {
-            "enum": [
-              "valid",
-              "expired",
-              "not_yet_valid"
-            ]
-          },
-          "anchor": {
-            "type": "boolean",
-            "description": "The embedded anchor the walk started from"
-          },
-          "key": {
-            "type": "string",
-            "description": "The key, e.g. ECDSA brainpoolP256r1."
-          },
           "sha256": {
-            "type": "string"
+            "type": "string",
+            "description": "SHA-256 of the certificate, colon-separated hex"
+          },
+          "alias": {
+            "type": "string",
+            "description": "The truststore alias: the common name in lower case, unique within the file; with --p12 only"
           },
           "pem": {
             "type": "string",
-            "description": "The certificate as PEM"
+            "description": "The certificate; PEM bundles not written to a file only"
           }
         },
         "required": [
           "common_name",
-          "subject",
-          "not_before",
           "not_after",
-          "validity",
-          "anchor",
-          "key",
-          "sha256",
-          "pem"
+          "sha256"
         ],
         "additionalProperties": false
-      }
+      },
+      "minItems": 1
+    },
+    "output": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The file written (-o); null when the bundle went to stdout"
+    },
+    "trust": {
+      "$ref": "#/$defs/trust"
+    },
+    "insecure_transport": {
+      "type": "boolean",
+      "description": "-k was in effect for downloads"
+    },
+    "tsl_sequence_number": {
+      "type": "integer",
+      "description": "TSLSequenceNumber of the list the CAs come from"
     }
   },
   "required": [
     "schema",
     "environment",
+    "format",
+    "certificates",
+    "output",
     "trust",
     "insecure_transport",
-    "roots"
+    "tsl_sequence_number"
   ],
   "additionalProperties": false,
   "$defs": {

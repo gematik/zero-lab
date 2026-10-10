@@ -39,6 +39,10 @@ Examples:
   {bin} pki tsl show --rejected
   {bin} pki tsl show --ca SMCB-CA51 --format markdown   # with the CA's PEM
   {bin} pki tsl verify ECC-RSA_TSL.xml          # signature and signer, env detected
+  {bin} pki roots bundle > roots.pem            # CA bundle for curl --cacert, openssl -CAfile
+  {bin} pki roots bundle --p12 --p12-password changeit -o roots.p12   # Java truststore
+  {bin} pki tsl bundle --ca SMCB -o smcb.pem    # the TSL's CAs, as tsl show filters them
+  {bin} pki tsl export -o ECC-RSA_TSL.xml       # the TSL as published, once it verified
   {bin} pki inspect identity.p12                # password 00 unless --p12-password
   {bin} pki pkcs12 convert legacy.p12 modern.p12
   {bin} connector configs                       # the .kon files, shared with the Go ti
@@ -224,7 +228,9 @@ pub enum Pkcs12Command {
 #[derive(Debug, Subcommand)]
 pub enum RootsCommand {
     /// List the trusted roots
-    List(TrustArgs),
+    List(RootsArgs),
+    /// The trusted roots as a CA bundle: PEM, or a Java truststore with --p12
+    Bundle(RootsBundleArgs),
 }
 
 /// `ti pki tsl …`.
@@ -235,6 +241,11 @@ pub enum TslCommand {
     /// Verify a TSL file: its signature and its signer under the TSL signer CA (exit 0
     /// valid, 1 not valid)
     Verify(TslVerifyArgs),
+    /// The TSL's CAs a verified root signed, as a CA bundle: PEM, or a Java truststore
+    /// with --p12
+    Bundle(TslBundleArgs),
+    /// The TSL as published, once it verified
+    Export(TslExportArgs),
 }
 
 /// The environment whose trust material a command shows.
@@ -253,15 +264,48 @@ pub struct TrustArgs {
     pub at: Option<ti_pki::Timestamp>,
 }
 
-/// `ti pki tsl show`. Filters match case-insensitive substrings and combine.
+/// `ti pki roots list`.
 #[derive(Debug, Args)]
-pub struct TslShowArgs {
+pub struct RootsArgs {
     #[command(flatten)]
     pub trust: TrustArgs,
-    /// Only the CAs no verified root signed
+    /// Verify as a client without brainpool would: the roots up to the first brainpool
+    /// signature (GEM.RCA7, GEM.RCA6) and no TSL, whose signer CAs are brainpool
     #[arg(long)]
-    pub rejected: bool,
-    /// Only CAs whose common name contains TEXT; Markdown then includes their PEM
+    pub nist_only: bool,
+}
+
+/// `ti pki roots bundle`.
+#[derive(Debug, Args)]
+pub struct RootsBundleArgs {
+    #[command(flatten)]
+    pub roots: RootsArgs,
+    #[command(flatten)]
+    pub bundle: BundleArgs,
+}
+
+/// Where and how a CA bundle is written.
+#[derive(Debug, Args)]
+pub struct BundleArgs {
+    /// Write to OUT instead of stdout
+    #[arg(short, long, value_name = "OUT")]
+    pub output: Option<PathBuf>,
+    /// Replace OUT if it exists
+    #[arg(long)]
+    pub force: bool,
+    /// A PKCS#12 truststore for Java (each certificate a trustedCertEntry, its alias the
+    /// common name) instead of PEM
+    #[arg(long, requires = "p12_password")]
+    pub p12: bool,
+    /// Password of the truststore
+    #[arg(long, value_name = "PASSWORD", requires = "p12")]
+    pub p12_password: Option<String>,
+}
+
+/// Which of the TSL's CAs. Filters match case-insensitive substrings and combine.
+#[derive(Debug, Args)]
+pub struct CaFilterArgs {
+    /// Only CAs whose common name contains TEXT; tsl show's Markdown then includes their PEM
     #[arg(long, value_name = "TEXT")]
     pub ca: Option<String>,
     /// Only CAs of providers whose name contains TEXT
@@ -270,6 +314,42 @@ pub struct TslShowArgs {
     /// Only CAs under roots whose common name contains TEXT
     #[arg(long, value_name = "TEXT")]
     pub root: Option<String>,
+}
+
+/// `ti pki tsl bundle`.
+#[derive(Debug, Args)]
+pub struct TslBundleArgs {
+    #[command(flatten)]
+    pub trust: TrustArgs,
+    #[command(flatten)]
+    pub filter: CaFilterArgs,
+    #[command(flatten)]
+    pub bundle: BundleArgs,
+}
+
+/// `ti pki tsl export`.
+#[derive(Debug, Args)]
+pub struct TslExportArgs {
+    #[command(flatten)]
+    pub trust: TrustArgs,
+    /// Write to OUT instead of stdout
+    #[arg(short, long, value_name = "OUT")]
+    pub output: Option<PathBuf>,
+    /// Replace OUT if it exists
+    #[arg(long)]
+    pub force: bool,
+}
+
+/// `ti pki tsl show`.
+#[derive(Debug, Args)]
+pub struct TslShowArgs {
+    #[command(flatten)]
+    pub trust: TrustArgs,
+    /// Only the CAs no verified root signed
+    #[arg(long)]
+    pub rejected: bool,
+    #[command(flatten)]
+    pub filter: CaFilterArgs,
 }
 
 /// `ti pki tsl verify`: the file against the embedded TSL signer CA of the environment;
@@ -340,6 +420,10 @@ pub struct VerifyArgs {
     /// you connected to
     #[arg(long, value_name = "NAME")]
     pub fqdn: Option<String>,
+    /// Verify as a client without brainpool would: the roots up to the first brainpool
+    /// signature (GEM.RCA7, GEM.RCA6) and no TSL, whose signer CAs are brainpool
+    #[arg(long)]
+    pub nist_only: bool,
 }
 
 /// `--env`: an environment, or auto-detection.

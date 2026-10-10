@@ -8,14 +8,21 @@
 //! The TEST-ONLY anchors exist only with the `dangerous-nonprod` feature, so a
 //! production build contains no non-production trust material.
 
-/// GEM.RCA8, the production anchor.
+/// GEM.RCA7, the production anchor: a P-256 root, so the roots walk starts without
+/// brainpool, and GEM.RCA8 (the anchor before it) vouches for its key with a cross
+/// certificate.
+pub const GEM_RCA7: &[u8] = include_bytes!("anchors/GEM.RCA7.der");
+
+/// GEM.RCA8, a brainpool root; the production anchor before [`GEM_RCA7`], which it
+/// cross-certifies.
 pub const GEM_RCA8: &[u8] = include_bytes!("anchors/GEM.RCA8.der");
 
-/// GEM.RCA7 TEST-ONLY, the anchor of the reference and development environments.
+/// GEM.RCA7 TEST-ONLY, the anchor of every non-production environment.
 #[cfg(feature = "dangerous-nonprod")]
 pub const GEM_RCA7_TEST_ONLY: &[u8] = include_bytes!("anchors/GEM.RCA7-TEST-ONLY.der");
 
-/// GEM.RCA8 TEST-ONLY, the anchor of the test environment.
+/// GEM.RCA8 TEST-ONLY, a brainpool root; the test environment's anchor before
+/// [`GEM_RCA7_TEST_ONLY`].
 #[cfg(feature = "dangerous-nonprod")]
 pub const GEM_RCA8_TEST_ONLY: &[u8] = include_bytes!("anchors/GEM.RCA8-TEST-ONLY.der");
 
@@ -55,6 +62,37 @@ mod tests {
                 hex
             });
         assert_eq!(actual, expected.replace(':', ""));
+    }
+
+    #[test]
+    fn gem_rca7_fingerprint() {
+        assert_fingerprint(
+            GEM_RCA7,
+            "30:4F:0D:89:71:53:5A:81:13:DE:67:5C:9C:4E:05:38:2A:5B:C6:7E:5D:4C:B8:32:A9:4B:A9:8F:D9:A3:65:51",
+        );
+    }
+
+    /// The anchor changed from GEM.RCA8 to GEM.RCA7; the old anchor's cross certificate
+    /// for RCA7 carries the new anchor's key, so trust carries over rather than being
+    /// taken on faith a second time.
+    #[cfg(feature = "brainpool")]
+    #[test]
+    fn gem_rca8_vouches_for_gem_rca7() {
+        use crate::Certificate;
+        use der::Encode;
+
+        let (_, _, cross) = crate::algorithms::tests::prod_root("GEM.RCA8");
+        let cross = Certificate::from_der(&cross.unwrap().to_der().unwrap()).unwrap();
+        // 2026-06-01, inside the cross certificate's validity.
+        let now = crate::Timestamp(1_780_272_000);
+        crate::roots::verify_cross_signed(
+            &Certificate::from_der(GEM_RCA8).unwrap(),
+            &cross,
+            &Certificate::from_der(GEM_RCA7).unwrap(),
+            now,
+            crate::algorithms::DEFAULT,
+        )
+        .unwrap();
     }
 
     #[test]

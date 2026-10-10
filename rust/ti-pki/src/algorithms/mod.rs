@@ -50,6 +50,26 @@ pub static ECDSA_P384_SHA384: &dyn SignatureVerificationAlgorithm = &Builtin {
 /// The NIST curves.
 pub static STANDARD: &AlgorithmSet = &[ECDSA_P256_SHA256, ECDSA_P384_SHA384];
 
+/// Everything but brainpool: [`STANDARD`] plus [`rsa::ALL`] with its feature. What a
+/// client without brainpool verifies (browsers, Go's crypto/x509, rustls with ring): the
+/// roots walk from GEM.RCA7 stops at the first brainpool signature, and no TSL verifies,
+/// since its signer CAs are brainpool.
+#[cfg(feature = "rsa")]
+pub static NIST: &AlgorithmSet = &[
+    ECDSA_P256_SHA256,
+    ECDSA_P384_SHA384,
+    rsa::RSA_PKCS1_SHA256,
+    rsa::RSA_PKCS1_SHA384,
+    rsa::RSA_PKCS1_SHA512,
+    rsa::RSA_PSS_SHA256,
+    rsa::RSA_PSS_SHA384,
+    rsa::RSA_PSS_SHA512,
+];
+
+/// Everything but brainpool: [`STANDARD`], since the `rsa` feature is off.
+#[cfg(not(feature = "rsa"))]
+pub static NIST: &AlgorithmSet = STANDARD;
+
 /// The presets' set: [`STANDARD`], plus [`brainpool::ALL`] and [`rsa::ALL`] with their
 /// (default) features.
 #[cfg(all(feature = "brainpool", feature = "rsa"))]

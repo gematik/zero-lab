@@ -21,9 +21,11 @@
 //!    configuration.
 //!
 //! Signature algorithms are part of the configuration too ([`TrustConfig::algorithms`],
-//! see [`crate::algorithms`]): the presets use the default set, which covers
-//! the TI's brainpool anchors only with the `brainpool` feature, and `validate` refuses
-//! an anchor no configured algorithm can check.
+//! see [`crate::algorithms`]): the presets use the default set. Their anchors are P-256
+//! roots (GEM.RCA7), but most of the roots, CAs and both TSL signer CAs are brainpool,
+//! so the TI path needs the `brainpool` feature; [`algorithms::NIST`] verifies as a
+//! client without brainpool would. `validate` refuses an anchor no configured algorithm
+//! can check.
 //!
 //! Operators adjust fields on a preset rather than inventing environments: a
 //! private mirror of the TSL is `TrustConfig { tsl_url: ..., ..TrustConfig::preset_prod() }`.
@@ -61,13 +63,12 @@ pub(crate) const TEST_ONLY_MARKER: &str = "TEST-ONLY";
 /// ```
 /// use ti_pki::{RevocationMode, Tier, TrustConfig};
 ///
-/// let der = ti_pki::anchors::GEM_RCA8;
+/// let der = ti_pki::anchors::GEM_RCA7;
 /// let config = TrustConfig {
 ///     revocation: RevocationMode::Disabled,
 ///     ..TrustConfig::for_anchor(der)
 /// };
 /// assert!(config.validate(Tier::Prod).is_err());
-/// # #[cfg(feature = "brainpool")] // GEM.RCA8 is a brainpool key
 /// assert!(config.validate(Tier::NonProd).is_ok());
 /// ```
 #[derive(Clone, Debug)]
@@ -122,12 +123,12 @@ impl TrustConfig {
         }
     }
 
-    /// Production preset: GEM.RCA8, the embedded production roots.json, the production
+    /// Production preset: GEM.RCA7, the embedded production roots.json, the production
     /// TSL and its signer CA GEM.TSL-CA3. Always available.
     pub fn preset_prod() -> Self {
         TrustConfig {
             roots: Cow::Borrowed(roots::ROOTS_PROD),
-            ..Self::for_anchor(anchors::GEM_RCA8)
+            ..Self::for_anchor(anchors::GEM_RCA7)
         }
     }
 
@@ -147,7 +148,7 @@ impl TrustConfig {
             };
         match env {
             Env::Prod => Self::preset_prod(),
-            Env::Test => nonprod(anchors::GEM_RCA8_TEST_ONLY, roots::URL_TEST, tsl::URL_TEST),
+            Env::Test => nonprod(anchors::GEM_RCA7_TEST_ONLY, roots::URL_TEST, tsl::URL_TEST),
             Env::Ref | Env::Dev => {
                 nonprod(anchors::GEM_RCA7_TEST_ONLY, roots::URL_REF, tsl::URL_REF)
             }
@@ -278,7 +279,7 @@ pub(crate) mod tests {
 
     #[test]
     fn for_anchor_is_strict() {
-        let config = TrustConfig::for_anchor(anchors::GEM_RCA8);
+        let config = TrustConfig::for_anchor(anchors::GEM_RCA7);
         assert_eq!(config.revocation, RevocationMode::HardFail);
         assert!(!config.allow_expired);
         assert_eq!(config.roots_url, roots::URL_PROD);
@@ -288,19 +289,18 @@ pub(crate) mod tests {
         assert!(config.roots.is_empty());
     }
 
-    #[cfg(feature = "brainpool")]
     #[test]
     fn preset_prod_validates_for_prod() {
         TrustConfig::preset_prod().validate(Tier::Prod).unwrap();
     }
 
-    #[cfg(not(feature = "brainpool"))]
     #[test]
-    fn preset_prod_needs_brainpool() {
-        assert_eq!(
-            reason(TrustConfig::preset_prod().validate(Tier::Prod)),
-            "no configured signature algorithm handles the anchor's key type"
-        );
+    fn preset_prod_validates_without_brainpool() {
+        let nist_only = TrustConfig {
+            algorithms: Cow::Borrowed(algorithms::NIST),
+            ..TrustConfig::preset_prod()
+        };
+        nist_only.validate(Tier::Prod).unwrap();
     }
 
     #[test]
@@ -312,7 +312,7 @@ pub(crate) mod tests {
     fn anchor_without_a_matching_algorithm_is_rejected() {
         let nist_only = TrustConfig {
             algorithms: Cow::Borrowed(algorithms::STANDARD),
-            ..TrustConfig::preset_prod()
+            ..TrustConfig::for_anchor(anchors::GEM_RCA8)
         };
         assert_eq!(
             reason(nist_only.validate(Tier::NonProd)),
@@ -322,7 +322,7 @@ pub(crate) mod tests {
 
     #[test]
     fn default_algorithms_are_configured() {
-        let config = TrustConfig::for_anchor(anchors::GEM_RCA8);
+        let config = TrustConfig::for_anchor(anchors::GEM_RCA7);
         assert_eq!(config.algorithms.len(), algorithms::DEFAULT.len());
     }
 
@@ -448,11 +448,11 @@ pub(crate) mod tests {
 
     #[cfg(feature = "dangerous-nonprod")]
     #[test]
-    fn preset_maps_environments_like_gempki() {
-        assert_eq!(TrustConfig::preset(Env::Prod).anchor, anchors::GEM_RCA8);
+    fn preset_maps_environments() {
+        assert_eq!(TrustConfig::preset(Env::Prod).anchor, anchors::GEM_RCA7);
         assert_eq!(
             TrustConfig::preset(Env::Test).anchor,
-            anchors::GEM_RCA8_TEST_ONLY
+            anchors::GEM_RCA7_TEST_ONLY
         );
         for env in [Env::Ref, Env::Dev] {
             let config = TrustConfig::preset(env);

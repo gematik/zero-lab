@@ -124,11 +124,16 @@ validation code never names a curve. `TrustConfig::algorithms` holds the set.
 | `algorithms::brainpool::ALL` (feature `brainpool`, default) | ECDSA brainpoolP256r1/SHA-256, brainpoolP384r1/SHA-384 | RustCrypto `bp256`, `bp384` |
 | `algorithms::rsa::ALL` (feature `rsa`, default) | RSA PKCS#1 v1.5 and PSS with SHA-256/384/512 | RustCrypto `rsa` |
 | `algorithms::DEFAULT` | `STANDARD` plus brainpool and RSA when enabled; what the presets use | — |
+| `algorithms::NIST` | `STANDARD` plus RSA when enabled, never brainpool; how a client without brainpool verifies | — |
 
 Brainpool is isolated: its own module behind its own feature, referenced only by
 `DEFAULT`, and `just core-deps` proves the crate without it contains no brainpool
-arithmetic. The TI's anchors are brainpool keys, so the feature is on by default; without
-it, `validate` refuses a brainpool anchor instead of failing later. Other
+arithmetic. The anchor of every environment is GEM.RCA7 (P-256), but most roots and CAs
+and both TSL signer CAs are brainpool keys, so the feature is on by default. Without
+brainpool (the feature off, or `NIST` configured) the roots walk ends at the first
+brainpool root, GEM.RCA8 forwards and GEM.RCA5 backwards, leaving GEM.RCA7 and GEM.RCA6,
+and no TSL verifies (TSLSIG-012), which fails a load of roots and TSL together;
+`validate` still refuses a brainpool anchor instead of failing later. Other
 implementations — webpki's FIPS-validated aws-lc-rs set, ML-DSA once post-quantum
 certificates appear — plug into the same set without touching the core.
 
@@ -230,6 +235,7 @@ Each table's columns are a decision, not a dump of the JSON:
 | `pki profiles list` | PROFILE (the `--profile` value) | TYPES, DEFAULT FOR, REVOCATION, ROLES, DESCRIPTION | role OIDs |
 | `pki roots list` | ROOT, by generation | ORGANIZATION, KEY, VALIDITY, anchor mark | subject, SHA-256, PEM, walk order |
 | `pki tsl show` | CA | ORGANIZATION (subject O=), ROOT (or the reason there is none), VALIDITY | policies, path length, TSL provider, PEM |
+| `pki roots bundle`, `pki tsl bundle` (with `-o`) | CERTIFICATE | NOT AFTER, ALIAS (`--p12`) | SHA-256, PEM |
 | `connector configs` | `*` for the selected one, NAME (the `-c` value) | URL, CONTEXT | path |
 | `connector get cards` | HANDLE (what every card command takes) | TYPE, ICCSN, HOLDER | terminal, slot, versions, insert time |
 | `connector get certificates` | REF | KEY, SUBJECT, TELEMATIK-ID, VALIDITY, ALGORITHM | profession, dates, PEM |

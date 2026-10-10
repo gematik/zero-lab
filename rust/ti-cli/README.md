@@ -84,7 +84,17 @@ and Windows x86_64.
 `prod` and `--env auto` is an error). `roots list` gives the
 roots the A_28419 walk reaches from the embedded anchor. `tsl show` lists the TSL's CAs
 with the verified root that signed each, or in red why none did. Filter with `--ca`,
-`--provider`, `--root` and `--rejected`.
+`--provider`, `--root` and `--rejected`. The anchor is GEM.RCA7 (TEST-ONLY outside
+production), a P-256 root.
+
+`pki roots bundle` and `pki tsl bundle` write those certificates as a CA bundle for
+other tools: PEM by default (curl `--cacert`, openssl `-CAfile`, Go, rustls), or with
+`--p12 --p12-password PASSWORD` a PKCS#12 truststore for Java, each certificate a
+`trustedCertEntry` under its common name in lower case (the bag attributes OpenSSL's
+`-caname` and `-jdktrust anyExtendedKeyUsage` write). `tsl bundle` takes `tsl show`'s
+`--ca`, `--provider` and `--root` and never bundles a rejected CA. `pki tsl export`
+writes the TSL as published, after it verified. All three go to stdout, or to `-o FILE`
+(`--force` replaces it), and report as JSON with `--format json`.
 
 The TSL is verified wherever it is loaded (`spec/tsl-xmldsig`): signature, signer under
 the embedded TSL signer CA, `NextUpdate`, the list seen before (kept in the state
@@ -124,6 +134,12 @@ network. The revocation line reports the outcome over the chain (`not revoked`,
 `--offline` makes no request: it uses the cached material, or the embedded roots
 without a TSL when nothing usable is cached (then pass the issuing CA with `--issuer`),
 and does not check revocation. The report says so (`"revocation_checked": false`).
+
+`--nist-only` (also on `pki roots list`) verifies as a client without brainpool would,
+such as a browser, Go's crypto/x509 or rustls with ring: the roots walk from GEM.RCA7 ends
+at the first brainpool signature, leaving GEM.RCA7 and GEM.RCA6, and no TSL is used, since
+its signer CAs are brainpool. Most TI chains are brainpool and come out invalid; the
+report carries `"nist_only": true`.
 
 ## Connector
 

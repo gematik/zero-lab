@@ -102,7 +102,9 @@ Signatures are verified through `rustls_pki_types::SignatureVerificationAlgorith
 implementations, chosen by key and signature algorithm. `TrustConfig::algorithms`
 defaults to `ti_pki::algorithms::DEFAULT`: ECDSA on P-256, P-384, and, with the default
 features, ECDSA on brainpoolP256r1 and brainpoolP384r1 (`brainpool`) and RSA PKCS#1 v1.5
-and PSS (`rsa`). Further implementations of
+and PSS (`rsa`). `ti_pki::algorithms::NIST` is everything but brainpool: what a client
+without brainpool verifies, from the anchor GEM.RCA7 (P-256) down to the first brainpool
+signature, and no TSL. Further implementations of
 the trait (a FIPS-validated set, post-quantum algorithms) can be added to the set:
 
 ```rust
@@ -118,7 +120,7 @@ let config = TrustConfig {
 | --- | --- |
 | `dangerous-nonprod` | Non-production presets, anchors and roots |
 | `test-util` | `TrustConfig::for_lab_ca`, `FixedClock` and `MockTransport` for tests in downstream crates |
-| `brainpool` (default) | ECDSA on brainpoolP256r1 / brainpoolP384r1 in the default algorithm set; the TI's anchors need it |
+| `brainpool` (default) | ECDSA on brainpoolP256r1 / brainpoolP384r1 in the default algorithm set; most TI roots and CAs and both TSL signer CAs need it |
 | `rsa` (default) | RSA PKCS#1 v1.5 and PSS in the default algorithm set; the historical RSA roots GEM.RCA2/6/9 need it for the roots walk |
 | `load` | Loaders, cache, reloader; no HTTP client or executor; builds for wasm32 |
 | `os` | `FileTransport`, `SystemClock`, bundle files |

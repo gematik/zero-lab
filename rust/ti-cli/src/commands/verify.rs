@@ -143,7 +143,7 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
     let at = args.at.unwrap_or_else(|| SystemClock.now());
 
     let (env, detection) = environment(args.env, &certs, at)?;
-    let config = TrustConfig::preset(env);
+    let config = super::trust_config(env, args.nist_only);
     config.validate(env.tier()).map_err(CliError::Trust)?;
     let session = Session::new(global, args.offline, out)?;
     let material = session.load(&config, env.tier(), args.at)?;
