@@ -235,6 +235,7 @@ Each table's columns are a decision, not a dump of the JSON:
 | `pki profiles list` | PROFILE (the `--profile` value) | TYPES, DEFAULT FOR, REVOCATION, ROLES, DESCRIPTION | role OIDs |
 | `pki roots list` | ROOT, by generation | ORGANIZATION, KEY, VALIDITY, anchor mark | subject, SHA-256, PEM, walk order |
 | `pki tsl show` | CA | ORGANIZATION (subject O=), ROOT (or the reason there is none), VALIDITY | policies, path length, TSL provider, PEM |
+| `pki inspect --short` | SUBJECT (common name) | NOT AFTER (date), TELEMATIK-ID (only when a certificate has one; CAs never do) | everything else: JSON is the full report |
 | `pki roots bundle`, `pki tsl bundle` (with `-o`) | CERTIFICATE | NOT AFTER, ALIAS (`--p12`) | SHA-256, PEM |
 | `connector configs` | `*` for the selected one, NAME (the `-c` value) | URL, CONTEXT | path |
 | `connector get cards` | HANDLE (what every card command takes) | TYPE, ICCSN, HOLDER | terminal, slot, versions, insert time |

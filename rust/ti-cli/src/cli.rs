@@ -31,6 +31,7 @@ Examples:
   {bin} pki inspect card.pem
   {bin} pki inspect - < card.pem
   {bin} pki inspect card.pem > card.md          # Markdown, as piped output is
+  {bin} pki inspect roots.pem --short           # a row per certificate
   {bin} --format json pki inspect card.pem | jq .certificates[0].certificate_type
   {bin} pki profiles describe smb-aut
   {bin} pki verify card.pem --issuer ca.pem
@@ -187,6 +188,10 @@ pub enum PkiCommand {
         /// Password of a PKCS#12 file
         #[arg(long, value_name = "PASSWORD", default_value = "00")]
         p12_password: String,
+        /// One table row per certificate: subject, expiry, Telematik-ID; JSON stays the full
+        /// report
+        #[arg(long)]
+        short: bool,
     },
     /// List the validation profiles or show what one requires
     #[command(subcommand)]

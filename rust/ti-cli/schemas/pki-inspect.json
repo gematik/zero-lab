@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "pki inspect",
-  "description": "What the TI reads from each certificate; no validation.",
+  "description": "What the TI reads from each certificate; no validation. --short shortens only the text and Markdown views; the JSON is this full report.",
   "type": "object",
   "properties": {
     "schema": {
