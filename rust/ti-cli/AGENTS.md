@@ -67,7 +67,19 @@ never on `message`.
 {bin} --format json pki tsl show --rejected       # CAs no verified root signed
 {bin} --format json pki tsl show --ca SMCB-CA51   # filter by name, also --provider, --root
 {bin} --format json pki tsl verify tsl.xml --previous old.xml   # exit 0 valid, 1 not
+{bin} pki roots bundle --env ref > roots.pem      # CA bundle (PEM) for curl, openssl, Go
+{bin} pki tsl bundle --env ref --ca SMCB -o smcb.pem   # the TSL's CAs, tsl show's filters
+{bin} pki roots bundle --p12 --p12-password changeit -o roots.p12   # Java truststore
+{bin} pki tsl export --env ref -o tsl.xml         # the TSL as published, once it verified
 ```
+
+- `roots bundle`, `tsl bundle` and `tsl export` write the bundle or the TSL to stdout,
+  or with `-o` to a file (`--force` replaces it). With `--format json` they report
+  instead: each certificate's `pem` when nothing was written, `output` when a file was;
+  `tsl export`'s report never carries the XML. `--p12` writes a PKCS#12 truststore
+  (each certificate a Java `trustedCertEntry`, alias the common name in lower case) and
+  needs `--p12-password`. `roots bundle --nist-only` holds what a client without
+  brainpool can verify itself: GEM.RCA6 and GEM.RCA7.
 
 - Input is PEM, DER or PKCS#12 (`.p12`, `.pfx`); `-` reads stdin. A PEM file may carry
   the chain with the end entity first. In a PKCS#12 file, the certificate with its

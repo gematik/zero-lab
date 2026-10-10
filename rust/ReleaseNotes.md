@@ -164,6 +164,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `--nist-only` on `pki verify` and `pki roots list`: verify as a client without brainpool
   would (roots up to the first brainpool signature, no TSL); reports carry
   `trust.nist_only`.
+- `pki roots bundle` and `pki tsl bundle`: the trusted roots, and the TSL's CAs a
+  verified root signed (with `tsl show`'s filters), as a CA bundle: PEM, or with `--p12`
+  a PKCS#12 truststore for Java. `pki tsl export`: the TSL as published, once it
+  verified. To stdout or `-o FILE`; the Go `ti`'s `roots bundle`, `tsl intermediates` and
+  `tsl fetch`.
 
 #### changed
 - The trust anchor is GEM.RCA7 (ti-pki): `pki roots list` marks it and lists it first.
@@ -374,6 +379,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pkcs12
 
 #### added
+- `CertificateBag::trusted_key_usage` and `oids::TRUSTED_KEY_USAGE`: Oracle's trusted key
+  usage attribute, read and written, which makes a certificate bag a trusted certificate
+  entry in Java (OpenSSL's `-jdktrust`). A new field: breaking for struct literals.
 - PKCS#12 decoding (`decode`, `is_pkcs12`, `Pkcs12::pairs`): DER and BER, the password
   integrity mode (HMAC-SHA-1/2), PBES2 with AES-CBC, and behind the default `legacy`
   feature the PKCS#12 PBEs with 3DES and RC2. Parity with `go/pkcs12` on its fixtures,

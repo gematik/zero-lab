@@ -190,6 +190,145 @@ fn every_command_matches_its_schema() {
     json_of(c, "version", &["version"]);
 }
 
+/// `args`, offline and in the fixture TSL's validity, whenever the tests run.
+fn offline<'a>(args: &[&'a str]) -> Vec<&'a str> {
+    [args, &["--offline", "--at", "2026-10-01T00:00:00Z"]].concat()
+}
+
+/// The roots bundle, PEM and truststore: what it writes, and its report.
+#[test]
+fn roots_bundle_writes_what_it_reports() {
+    let cache = SeededCache::new("roots-bundle");
+    let c = &cache.0;
+    let run = offline;
+
+    let roots = json_of(c, "pki roots bundle", &run(&["pki", "roots", "bundle"]));
+    let roots: Value = serde_json::from_slice(&roots.stdout).unwrap();
+    assert_eq!(roots["format"], "pem");
+    let certificates = roots["certificates"].as_array().unwrap();
+    assert_eq!(certificates.len(), 10);
+    assert!(certificates.iter().all(|c| c["pem"].is_string()));
+
+    let pem = ti(c, &run(&["pki", "roots", "bundle"]));
+    assert_eq!(pem.status.code(), Some(0));
+    let pem = String::from_utf8(pem.stdout).unwrap();
+    assert_eq!(pem.matches("-----BEGIN CERTIFICATE-----").count(), 10);
+
+    let nist = json_of(
+        c,
+        "pki roots bundle",
+        &run(&["pki", "roots", "bundle", "--nist-only"]),
+    );
+    let nist: Value = serde_json::from_slice(&nist.stdout).unwrap();
+    let names: Vec<&str> = nist["certificates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["common_name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["GEM.RCA6", "GEM.RCA7"]);
+
+    let p12 = c.join("roots.p12").to_string_lossy().into_owned();
+    let written = json_of(
+        c,
+        "pki roots bundle",
+        &run(&[
+            "pki",
+            "roots",
+            "bundle",
+            "--p12",
+            "--p12-password",
+            "changeit",
+            "-o",
+            &p12,
+        ]),
+    );
+    let written: Value = serde_json::from_slice(&written.stdout).unwrap();
+    assert_eq!(written["output"], p12.as_str());
+    assert!(written["certificates"][0]["pem"].is_null());
+    let store = ti_pkcs12::decode(&std::fs::read(&p12).unwrap(), "changeit").unwrap();
+    assert_eq!(store.certificates.len(), 10);
+    assert!(store.keys.is_empty());
+    for bag in &store.certificates {
+        assert_eq!(
+            bag.trusted_key_usage,
+            Some(ti_pkcs12::oids::ANY_EXTENDED_KEY_USAGE)
+        );
+        assert!(bag.friendly_name.as_deref().unwrap().starts_with("gem.rca"));
+    }
+    let again = ti(
+        c,
+        &run(&[
+            "pki",
+            "roots",
+            "bundle",
+            "--p12",
+            "--p12-password",
+            "x",
+            "-o",
+            &p12,
+        ]),
+    );
+    assert_eq!(
+        again.status.code(),
+        Some(2),
+        "an existing file without --force"
+    );
+    let no_password = ti(c, &run(&["pki", "roots", "bundle", "--p12"]));
+    assert_eq!(
+        no_password.status.code(),
+        Some(2),
+        "--p12 needs --p12-password"
+    );
+}
+
+/// The TSL's CA bundle and the TSL export: what they write, and their reports.
+#[test]
+fn tsl_bundle_and_export_write_what_they_report() {
+    let cache = SeededCache::new("tsl-bundle");
+    let c = &cache.0;
+    let run = offline;
+    let cas = json_of(
+        c,
+        "pki tsl bundle",
+        &run(&["pki", "tsl", "bundle", "--ca", "atos.smcb"]),
+    );
+    let cas: Value = serde_json::from_slice(&cas.stdout).unwrap();
+    let names: Vec<&str> = cas["certificates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["common_name"].as_str().unwrap())
+        .collect();
+    assert!(!names.is_empty());
+    assert!(
+        names.iter().all(|n| n.starts_with("ATOS.SMCB-CA")),
+        "{names:?}"
+    );
+    assert!(cas["tsl_sequence_number"].is_u64());
+    let none = ti(c, &run(&["pki", "tsl", "bundle", "--ca", "no such CA"]));
+    assert_ne!(none.status.code(), Some(0));
+
+    let tsl = c.join("tsl.xml").to_string_lossy().into_owned();
+    let exported = json_of(
+        c,
+        "pki tsl export",
+        &run(&["pki", "tsl", "export", "-o", &tsl]),
+    );
+    let exported: Value = serde_json::from_slice(&exported.stdout).unwrap();
+    let published =
+        std::fs::read(manifest("../ti-pki/tests/fixtures/tsl/ECC-RSA_TSL.xml")).unwrap();
+    assert_eq!(
+        std::fs::read(&tsl).unwrap(),
+        published,
+        "the bytes as published"
+    );
+    assert_eq!(exported["bytes"], published.len());
+    json_of(c, "pki tsl export", &run(&["pki", "tsl", "export"]));
+    let raw = ti(c, &run(&["pki", "tsl", "export"]));
+    assert_eq!(raw.stdout, published);
+}
+
 /// `--nist-only` verifies as a client without brainpool would: from GEM.RCA7 the walk
 /// ends at the first brainpool root, and no TSL is loaded.
 #[test]
@@ -449,7 +588,7 @@ fn schemas_are_published_by_name() {
     let all = ti(&dir, &["schema"]);
     let all: Value = serde_json::from_slice(&all.stdout).unwrap();
     let commands = all["commands"].as_object().unwrap();
-    assert_eq!(commands.len(), 34);
+    assert_eq!(commands.len(), 37);
     assert_eq!(commands["pki verify"], schema("pki verify"));
 
     let one = ti(&dir, &["schema", "pki", "tsl", "show"]);

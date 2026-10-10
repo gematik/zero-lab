@@ -2,6 +2,7 @@
 //! and renders the same report as text, so the two views cannot disagree.
 
 mod agent;
+mod bundle;
 mod cache;
 mod connector;
 mod documents;
@@ -46,7 +47,16 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
         Command::Pki(PkiCommand::Roots(RootsCommand::List(args))) => {
             roots::list(args, &cli.global, out)
         }
+        Command::Pki(PkiCommand::Roots(RootsCommand::Bundle(args))) => {
+            bundle::roots(args, &cli.global, out)
+        }
         Command::Pki(PkiCommand::Tsl(TslCommand::Show(args))) => tsl::show(args, &cli.global, out),
+        Command::Pki(PkiCommand::Tsl(TslCommand::Bundle(args))) => {
+            tsl::bundle(args, &cli.global, out)
+        }
+        Command::Pki(PkiCommand::Tsl(TslCommand::Export(args))) => {
+            tsl::export(args, &cli.global, out)
+        }
         Command::Pki(PkiCommand::Tsl(TslCommand::Verify(args))) => {
             tsl::verify(args, &cli.global, out)
         }

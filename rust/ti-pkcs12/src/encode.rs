@@ -10,7 +10,7 @@ use spki::AlgorithmIdentifierOwned;
 
 use crate::asn1::{Attribute, DigestInfo, MacData};
 use crate::kdf::{self, Purpose};
-use crate::{Error, Pkcs12, oids};
+use crate::{CertificateBag, Error, Pkcs12, oids};
 
 /// PBKDF2 and MAC iterations, OpenSSL 3's default.
 pub const ITERATIONS: u32 = 2048;
@@ -49,18 +49,11 @@ pub fn encode(
         Ok((algorithm, ciphertext))
     };
 
-    let mut cert_bags = Vec::new();
-    for cert in &p12.certificates {
-        let value = CertBagOut {
-            cert_id: oids::X509_CERTIFICATE,
-            cert_value: OctetString::new(cert.der.clone())?,
-        };
-        cert_bags.push(SafeBagOut {
-            id: oids::CERT_BAG,
-            value: Any::encode_from(&value)?,
-            attributes: attributes(cert.friendly_name.as_deref(), cert.local_key_id.as_deref())?,
-        });
-    }
+    let cert_bags = p12
+        .certificates
+        .iter()
+        .map(cert_bag)
+        .collect::<Result<Vec<_>, _>>()?;
     let mut key_bags = Vec::new();
     for key in &p12.keys {
         let (algorithm, ciphertext) = encrypt(&key.pkcs8)?;
@@ -71,7 +64,11 @@ pub fn encode(
         key_bags.push(SafeBagOut {
             id: oids::SHROUDED_KEY_BAG,
             value: Any::encode_from(&value)?,
-            attributes: attributes(key.friendly_name.as_deref(), key.local_key_id.as_deref())?,
+            attributes: attributes(
+                key.friendly_name.as_deref(),
+                key.local_key_id.as_deref(),
+                None,
+            )?,
         });
     }
 
@@ -134,9 +131,26 @@ pub fn encode(
     .to_der()?)
 }
 
+fn cert_bag(cert: &CertificateBag) -> Result<SafeBagOut, Error> {
+    let value = CertBagOut {
+        cert_id: oids::X509_CERTIFICATE,
+        cert_value: OctetString::new(cert.der.clone())?,
+    };
+    Ok(SafeBagOut {
+        id: oids::CERT_BAG,
+        value: Any::encode_from(&value)?,
+        attributes: attributes(
+            cert.friendly_name.as_deref(),
+            cert.local_key_id.as_deref(),
+            cert.trusted_key_usage,
+        )?,
+    })
+}
+
 fn attributes(
     friendly_name: Option<&str>,
     local_key_id: Option<&[u8]>,
+    trusted_key_usage: Option<ObjectIdentifier>,
 ) -> Result<Option<SetOfVec<Attribute>>, Error> {
     let mut set = SetOfVec::new();
     if let Some(name) = friendly_name {
@@ -149,6 +163,12 @@ fn attributes(
         set.insert(Attribute {
             attr_id: oids::LOCAL_KEY_ID,
             attr_values: SetOfVec::from_iter([Any::encode_from(&OctetString::new(id.to_vec())?)?])?,
+        })?;
+    }
+    if let Some(usage) = trusted_key_usage {
+        set.insert(Attribute {
+            attr_id: oids::TRUSTED_KEY_USAGE,
+            attr_values: SetOfVec::from_iter([Any::encode_from(&usage)?])?,
         })?;
     }
     Ok((!set.is_empty()).then_some(set))
@@ -219,6 +239,36 @@ mod tests {
                 next = next.wrapping_add(1);
             }
         }
+    }
+
+    /// A Java truststore: OpenSSL's `-jdktrust` attributes decode, and encoding writes them
+    /// back unchanged, so a truststore written here reads as OpenSSL's does.
+    #[test]
+    fn truststore_attributes_round_trip() {
+        let fixture = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/truststore/openssl-jdktrust.p12"
+        ))
+        .unwrap();
+        let openssl = decode(&fixture, "changeit").unwrap();
+        assert!(openssl.keys.is_empty());
+        let names: Vec<_> = openssl
+            .certificates
+            .iter()
+            .map(|c| (c.friendly_name.as_deref(), c.trusted_key_usage))
+            .collect();
+        assert_eq!(
+            names,
+            [
+                (Some("test ca"), Some(oids::ANY_EXTENDED_KEY_USAGE)),
+                (Some("ec.example.com"), Some(oids::ANY_EXTENDED_KEY_USAGE)),
+            ]
+        );
+        let encoded = encode(&openssl, "changeit", counter()).unwrap();
+        assert_eq!(
+            decode(&encoded, "changeit").unwrap().certificates,
+            openssl.certificates
+        );
     }
 
     #[test]

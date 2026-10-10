@@ -1,0 +1,226 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pki roots bundle",
+  "description": "The trusted roots as a CA bundle. Without --format json and -o the bundle itself goes to stdout; with --format json the report, carrying each PEM unless a file was written.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "environment": {
+      "enum": [
+        "prod",
+        "ref",
+        "test",
+        "dev"
+      ]
+    },
+    "format": {
+      "enum": [
+        "pem",
+        "p12"
+      ],
+      "description": "pem: concatenated PEM certificates; p12: a PKCS#12 truststore for Java, each certificate a trustedCertEntry"
+    },
+    "certificates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "common_name": {
+            "type": "string"
+          },
+          "not_after": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC 3339, UTC"
+          },
+          "sha256": {
+            "type": "string",
+            "description": "SHA-256 of the certificate, colon-separated hex"
+          },
+          "alias": {
+            "type": "string",
+            "description": "The truststore alias: the common name in lower case, unique within the file; with --p12 only"
+          },
+          "pem": {
+            "type": "string",
+            "description": "The certificate; PEM bundles not written to a file only"
+          }
+        },
+        "required": [
+          "common_name",
+          "not_after",
+          "sha256"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "output": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The file written (-o); null when the bundle went to stdout"
+    },
+    "trust": {
+      "$ref": "#/$defs/trust"
+    },
+    "insecure_transport": {
+      "type": "boolean",
+      "description": "-k was in effect for downloads"
+    }
+  },
+  "required": [
+    "schema",
+    "environment",
+    "format",
+    "certificates",
+    "output",
+    "trust",
+    "insecure_transport"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "trust": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "enum": [
+            "http",
+            "cache",
+            "file",
+            "bundle",
+            "embedded"
+          ],
+          "description": "Where roots.json and the TSL came from; trust never depends on it"
+        },
+        "fetched_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "When downloaded or last confirmed; null when embedded"
+        },
+        "tsl_next_update": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        },
+        "roots": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Roots reached from the embedded anchor"
+        },
+        "intermediates": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "TSL CAs a verified root signed"
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Why the material is less than the environment's full set"
+        },
+        "nist_only": {
+          "const": true,
+          "description": "Present with --nist-only: verified without brainpool, as a client without it would; the roots up to the first brainpool signature and no TSL"
+        },
+        "tsl_warnings": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "no_ocsp_check",
+              "validity_warning_1",
+              "tsl_anchor_announced"
+            ]
+          },
+          "description": "Warnings about the TSL: no_ocsp_check when its signer's OCSP status was not queried (offline, --at), validity_warning_1 past NextUpdate within the grace period, tsl_anchor_announced when it announces a TSL signer CA this tool does not know yet."
+        },
+        "tsl": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "sequence_number": {
+                  "type": "integer"
+                },
+                "signer": {
+                  "type": "object",
+                  "properties": {
+                    "common_name": {
+                      "type": "string"
+                    },
+                    "not_after": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "common_name",
+                    "not_after"
+                  ],
+                  "additionalProperties": false
+                },
+                "signer_ocsp": {
+                  "enum": [
+                    "good",
+                    null
+                  ],
+                  "description": "The signer's OCSP status when it was queried; null offline or with --at"
+                },
+                "tsl_signer_ca": {
+                  "type": "object",
+                  "properties": {
+                    "common_name": {
+                      "type": "string"
+                    },
+                    "not_after": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "common_name",
+                    "not_after"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "sequence_number",
+                "signer",
+                "signer_ocsp",
+                "tsl_signer_ca"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The verified TSL the CAs come from, its signer and the TSL signer CA; null with the embedded roots alone"
+        }
+      },
+      "required": [
+        "source",
+        "fetched_at",
+        "tsl_next_update",
+        "roots",
+        "intermediates",
+        "tsl_warnings",
+        "tsl",
+        "note"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

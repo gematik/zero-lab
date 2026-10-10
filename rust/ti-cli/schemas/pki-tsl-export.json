@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pki tsl export",
+  "description": "The TSL as published, written once it verified. Without --format json and -o the XML itself goes to stdout; the report never carries it.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "environment": {
+      "enum": [
+        "prod",
+        "ref",
+        "test",
+        "dev"
+      ]
+    },
+    "id": {
+      "type": "string",
+      "description": "The list's Id"
+    },
+    "sequence_number": {
+      "type": "integer",
+      "description": "TSLSequenceNumber"
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ListIssueDateTime, RFC 3339, UTC"
+    },
+    "next_update": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "NextUpdate, RFC 3339, UTC"
+    },
+    "sha256": {
+      "type": "string",
+      "description": "SHA-256 of the bytes as published, colon-separated hex"
+    },
+    "bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "url": {
+      "type": "string",
+      "description": "Where the environment's TSL is published"
+    },
+    "source": {
+      "enum": [
+        "http",
+        "cache"
+      ],
+      "description": "Where the bytes came from; trust never depends on it"
+    },
+    "fetched_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When downloaded or last confirmed"
+    },
+    "output": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The file written (-o); null when the TSL went to stdout"
+    }
+  },
+  "required": [
+    "schema",
+    "environment",
+    "id",
+    "sequence_number",
+    "issued_at",
+    "next_update",
+    "sha256",
+    "bytes",
+    "url",
+    "source",
+    "fetched_at",
+    "output"
+  ],
+  "additionalProperties": false
+}

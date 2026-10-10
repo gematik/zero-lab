@@ -113,7 +113,7 @@ fn document(report: &Report) -> Document {
 }
 
 /// The name with its first number as a number, so `RCA10` sorts after `RCA9`.
-fn generation(name: &str) -> (String, u64, String) {
+pub(super) fn generation(name: &str) -> (String, u64, String) {
     let start = name
         .find(|c: char| c.is_ascii_digit())
         .unwrap_or(name.len());

@@ -8,7 +8,7 @@ use crate::error::{CliError, Exit};
 use crate::output::{Output, SCHEMA};
 
 /// Every command with JSON output, and the error document.
-pub const SCHEMAS: [(&str, &str); 34] = [
+pub const SCHEMAS: [(&str, &str); 37] = [
     (
         "pki inspect",
         include_str!("../../schemas/pki-inspect.json"),
@@ -27,8 +27,20 @@ pub const SCHEMAS: [(&str, &str); 34] = [
         include_str!("../../schemas/pki-roots-list.json"),
     ),
     (
+        "pki roots bundle",
+        include_str!("../../schemas/pki-roots-bundle.json"),
+    ),
+    (
         "pki tsl show",
         include_str!("../../schemas/pki-tsl-show.json"),
+    ),
+    (
+        "pki tsl bundle",
+        include_str!("../../schemas/pki-tsl-bundle.json"),
+    ),
+    (
+        "pki tsl export",
+        include_str!("../../schemas/pki-tsl-export.json"),
     ),
     (
         "pki tsl verify",

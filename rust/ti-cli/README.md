@@ -87,6 +87,15 @@ with the verified root that signed each, or in red why none did. Filter with `--
 `--provider`, `--root` and `--rejected`. The anchor is GEM.RCA7 (TEST-ONLY outside
 production), a P-256 root.
 
+`pki roots bundle` and `pki tsl bundle` write those certificates as a CA bundle for
+other tools: PEM by default (curl `--cacert`, openssl `-CAfile`, Go, rustls), or with
+`--p12 --p12-password PASSWORD` a PKCS#12 truststore for Java, each certificate a
+`trustedCertEntry` under its common name in lower case (the bag attributes OpenSSL's
+`-caname` and `-jdktrust anyExtendedKeyUsage` write). `tsl bundle` takes `tsl show`'s
+`--ca`, `--provider` and `--root` and never bundles a rejected CA. `pki tsl export`
+writes the TSL as published, after it verified. All three go to stdout, or to `-o FILE`
+(`--force` replaces it), and report as JSON with `--format json`.
+
 The TSL is verified wherever it is loaded (`spec/tsl-xmldsig`): signature, signer under
 the embedded TSL signer CA, `NextUpdate`, the list seen before (kept in the state
 directory, so an older list stays rejected), and online the signer's OCSP status;
