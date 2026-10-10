@@ -166,11 +166,21 @@ impl<C: Clock + ?Sized> Clock for alloc::sync::Arc<C> {
 }
 
 /// The operating system's wall clock.
-#[cfg(feature = "std")]
+///
+/// Not on wasm32-unknown-unknown: std has no clock there and would panic on every call.
+/// A browser caller passes the time in (as ti-wasm does) or implements [`Clock`] over
+/// `Date.now()`.
+#[cfg(all(
+    feature = "std",
+    not(all(target_family = "wasm", target_os = "unknown"))
+))]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SystemClock;
 
-#[cfg(feature = "std")]
+#[cfg(all(
+    feature = "std",
+    not(all(target_family = "wasm", target_os = "unknown"))
+))]
 impl Clock for SystemClock {
     fn now(&self) -> Timestamp {
         let since_epoch = std::time::SystemTime::now()
