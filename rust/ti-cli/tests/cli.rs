@@ -203,7 +203,7 @@ fn inspect_json_is_the_contract() {
     let cert = &json["certificates"][0];
     assert_eq!(cert["certificate_type"], "C.HCI.AUT");
     assert_eq!(cert["key"]["status"], "admissible");
-    assert_eq!(cert["profile"]["name"], "smb-aut");
+    assert_eq!(cert["profile"]["name"], "hci-aut");
     assert_eq!(
         cert["admission"]["profession_oids"][0]["oid"],
         "1.2.276.0.76.4.50"
@@ -276,8 +276,8 @@ fn profiles() {
     for name in [
         "epa-vau-aut",
         "fd-tls-s",
-        "idp-sig",
-        "smb-aut",
+        "idpd-sig",
+        "hci-aut",
         "zeta-guard-aut",
     ] {
         assert!(list.contains(name), "{list}");
@@ -300,7 +300,7 @@ fn profiles() {
     let unknown = ti(&["pki", "profiles", "describe", "idp"]);
     assert_eq!(unknown.status.code(), Some(2));
     assert!(
-        stderr(&unknown).contains("smb-aut"),
+        stderr(&unknown).contains("hci-aut"),
         "lists the valid values"
     );
 }
@@ -418,7 +418,7 @@ fn verify_with_the_issuer_is_valid_but_says_revocation_was_not_checked() {
     assert_eq!(json["at"], "2026-06-01T00:00:00Z");
     assert_eq!(json["environment"]["name"], "ref");
     assert_eq!(json["environment"]["detection"]["method"], "chain");
-    assert_eq!(json["profile"]["name"], "smb-aut");
+    assert_eq!(json["profile"]["name"], "hci-aut");
     let positions: Vec<&str> = json["chain"]
         .as_array()
         .unwrap()
@@ -474,7 +474,7 @@ fn verify_under_a_foreign_profile_misses_its_role() {
         "--issuer",
         &ca,
         "--profile",
-        "idp-sig",
+        "idpd-sig",
         "--at",
         "2026-06-01T00:00:00Z",
     ]);

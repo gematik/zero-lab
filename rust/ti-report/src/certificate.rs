@@ -77,7 +77,7 @@ pub struct KeyInfo {
 /// The validation profile the certificate would be checked under.
 #[derive(Clone, Debug, Serialize)]
 pub struct ProfileHint {
-    /// The profile's name, e.g. `smb-aut`.
+    /// The profile's name, e.g. `hci-aut`.
     pub name: &'static str,
     /// How it was selected, e.g. `default`.
     pub reason: &'static str,

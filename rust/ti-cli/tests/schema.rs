@@ -105,7 +105,7 @@ fn every_command_matches_its_schema() {
     json_of(
         c,
         "pki profiles describe",
-        &["pki", "profiles", "describe", "smb-aut"],
+        &["pki", "profiles", "describe", "hci-aut"],
     );
     let valid = json_of(
         c,
@@ -451,7 +451,7 @@ fn tsl_bundle_subsets() {
     assert_eq!(shown.len(), tls);
     assert!(tls > 0);
     assert!(shown.iter().all(|ca| {
-        ca["issues"]
+        ca["issuable_types"]
             .as_array()
             .unwrap()
             .iter()

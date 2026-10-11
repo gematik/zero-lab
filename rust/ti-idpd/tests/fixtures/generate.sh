@@ -30,15 +30,15 @@ oid = OID:1.2.276.0.76.4.260
 CNF
 
 openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:brainpoolP256r1 \
-    -pkeyopt ec_param_enc:named_curve -out idp-sig.p8 2>/dev/null
+    -pkeyopt ec_param_enc:named_curve -out idpd-sig.p8 2>/dev/null
 # As SEC1 "EC PRIVATE KEY": what the tests decode.
-openssl ec -in idp-sig.p8 -out idp-sig.key 2>/dev/null
-rm idp-sig.p8
-openssl req -new -key idp-sig.key -subj "/C=DE/O=gematik TEST-ONLY/CN=IDP-Dienst Signer TEST-ONLY" -out idp-sig.csr
-openssl x509 -req -in idp-sig.csr -key idp-sig.key -set_serial 7 \
+openssl ec -in idpd-sig.p8 -out idpd-sig.key 2>/dev/null
+rm idpd-sig.p8
+openssl req -new -key idpd-sig.key -subj "/C=DE/O=gematik TEST-ONLY/CN=IDP-Dienst Signer TEST-ONLY" -out idpd-sig.csr
+openssl x509 -req -in idpd-sig.csr -key idpd-sig.key -set_serial 7 \
     -not_before 20260101000000Z -not_after 20310101000000Z \
-    -extfile ext.cnf -extensions idp_sig -out idp-sig.pem 2>/dev/null
-rm idp-sig.csr ext.cnf
+    -extfile ext.cnf -extensions idp_sig -out idpd-sig.pem 2>/dev/null
+rm idpd-sig.csr ext.cnf
 
 {
     echo "# Provenance"
@@ -48,7 +48,7 @@ rm idp-sig.csr ext.cnf
     echo
     echo "| File | SHA-256 |"
     echo "|---|---|"
-    for f in idp-sig.key idp-sig.pem; do
+    for f in idpd-sig.key idpd-sig.pem; do
         printf '| `%s` | `%s` |\n' "$f" "$(openssl dgst -sha256 -r "$f" | cut -d' ' -f1)"
     done
 } > PROVENANCE.md

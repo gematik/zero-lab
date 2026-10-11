@@ -37,7 +37,7 @@
         },
         "certificates": {
           "type": "array",
-          "description": "The IDP's certificates: the discovery document's signer and PuK_IDP_SIG's, checked against the TSL with the idp-sig profile and OCSP unless --idp-unverified",
+          "description": "The IDP's certificates: the discovery document's signer and PuK_IDP_SIG's, checked against the TSL with the idpd-sig profile and OCSP unless --idp-unverified",
           "items": {
             "type": "object",
             "properties": {

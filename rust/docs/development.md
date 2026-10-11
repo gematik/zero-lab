@@ -211,7 +211,7 @@ authenticated, so a CA's standing comes from OCSP at its root). A profile
 (`ti_pki::profile`) fills in a use case's end-entity requirements on top of the type
 baseline; automatic selection matches a profile's role before the type's default and
 reports ambiguity instead of guessing. A profile's revocation mode can tighten the
-configured one but never loosen it, so production stays HardFail even for smb-aut,
+configured one but never loosen it, so production stays HardFail even for hci-aut,
 whose Go default is SoftFail. `trustdomain` tells production from test certificates
 offline, for picking a configuration. The `validate` example strings it all together.
 

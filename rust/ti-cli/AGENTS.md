@@ -55,6 +55,17 @@ never on `message`.
   answers and errors are not cached. Every command that checks OCSP uses it.
 - `{bin} cache clear` empties the cache.
 
+## Names
+
+Certificate types are the gemSpec_PKI Tab_PKI_405 names (`C.HCI.AUT`, `C.FD.TLS-S`,
+`C.NK.VPN`), in `certificate_type` and every `…_types` list. Profiles are named after
+their type without `C.` (`hci-aut`, `fd-tls-s`, `tsl-sig`) or after their technical
+role plus usage (`idpd-sig`, `epa-vau-aut`, `zeta-guard-aut`). Type and profile
+arguments ignore case, treat `.` and `-` alike and accept a leading `C.`: `--profile
+C.HCI.AUT` is `hci-aut`. Cards keep their own names where a card is meant (`EGK`,
+`HBA`, `SMC-B`, `C.AUT` in `connector`); eGK certificates are `C.CH.*`, HBA `C.HP.*`,
+SM-B (SMC-B, HSM-B) `C.HCI.*`.
+
 ## Subsystem pki: certificates and trust
 
 ```sh
@@ -64,8 +75,8 @@ never on `message`.
 {bin} --format json pki verify tls.pem --fqdn epa-as-1.ref.epa4all.de
 {bin} --format json pki verify --connect epa-as-1.ref.epa4all.de   # the server's chain; --fqdn is the host
 {bin} --format json pki profiles list
-{bin} --format json pki profiles describe smb-aut
-{bin} --format json pki profiles describe smb-aut --env ref   # tsl.cas: CAs the TSL allows for its types
+{bin} --format json pki profiles describe hci-aut
+{bin} --format json pki profiles describe hci-aut --env ref   # tsl.cas: CAs the TSL allows for its types
 {bin} --format json pki roots list --env ref
 {bin} --format json pki tsl show --env ref        # CAs under the roots that signed them
 {bin} --format json pki tsl show --rejected       # CAs no verified root signed
@@ -95,8 +106,8 @@ never on `message`.
   `--issues TYPE` keeps the CAs the TSL lets issue a certificate type whose name
   contains TYPE, ignoring case and `.` versus `-` (`C.FD.TLS-S` as in `certificate_type`,
   `fd-tls-s` as in the profile names): `TLS-S` for every TLS server CA (C.FD.TLS-S, C.ZD.TLS-S), `TLS` with the
-  client type, `HCI.AUT` for SMC-B authentication. `tsl show` takes the same filters and
-  reports each CA's `issues`. `--connect HOST[:PORT]`
+  client type, `HCI.AUT` for SMC-B authentication; names are those of Tab_PKI_405. `tsl show` takes the same filters and
+  reports each CA's `issuable_types`. `--connect HOST[:PORT]`
   and `--cert FILE` (both repeatable) keep only the CAs that issued those certificates
   or are among them: the bundle a client of that server needs. TI servers such as the
   ePA Aktensysteme send only their own certificate, so clients need the issuing CA from
@@ -227,7 +238,7 @@ never on `message`.
   when the answer is not what the specification says (`-v` shows each request).
 - Before the card signs, the IDP's certificates are checked against the TSL: the
   discovery document's signer (`puk_disc_sig`, its `x5c`) and `PuK_IDP_SIG` (the JWK's
-  `x5c`, whose key must be the JWK's), each with the idp-sig profile (C.FD.SIG, role
+  `x5c`, whose key must be the JWK's), each with the idpd-sig profile (C.FD.SIG, role
   `oid_idpd`) and OCSP, in the environment of `--env`, or with `--idp-url` the one the
   certificate shows. `PuK_IDP_ENC` has no certificate; the verified discovery document
   names it. `idp.certificates` lists both with `key`, `subject`, `sha256`, `verified`.

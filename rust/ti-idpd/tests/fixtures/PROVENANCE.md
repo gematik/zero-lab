@@ -5,5 +5,5 @@ TEST-ONLY material: a random key and a self-signed certificate, no relation to a
 
 | File | SHA-256 |
 |---|---|
-| `idp-sig.key` | `d45d5d7b62b71a536a2cfbe6782d9d8e2c27f94b209e444e73e5ccfd10f22ae5` |
-| `idp-sig.pem` | `3285bdf48f4c032cdee3ef075faad11ccf12fb98f22f3f0fea997dd8711f16e1` |
+| `idpd-sig.key` | `d45d5d7b62b71a536a2cfbe6782d9d8e2c27f94b209e444e73e5ccfd10f22ae5` |
+| `idpd-sig.pem` | `3285bdf48f4c032cdee3ef075faad11ccf12fb98f22f3f0fea997dd8711f16e1` |

@@ -17,11 +17,16 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `tsl show` and `tsl bundle` are repeatable (any of the values).
 - `--issues TYPE` on `tsl show` and `tsl bundle` (repeatable): the CAs the TSL lets issue
   a certificate type whose name contains TYPE, e.g. `TLS-S` for every TLS server CA;
-  `tsl show` reports each CA's `issues`.
+  `tsl show` reports each CA's `issuable_types`.
 - `tsl bundle --nist-only`: only the TSL CAs (and with `--with-roots` roots) whose own
   key is not brainpool.
 
 #### changed
+- Names follow gemSpec (decision-5): the profiles `smb-aut` and `idp-sig` are now
+  `hci-aut` (Tab_PKI_405 C.HCI.AUT) and `idpd-sig` (role `oid_idpd`); `--profile` and
+  `profiles describe` accept a type or profile name in any case, with `.` or `-` and an
+  optional `C.` (`C.HCI.AUT`); the `tsl show` field is `issuable_types`; every TSL type
+  shows its Tab_PKI_405 name.
 - `--nist-only` no longer verifies the trust material without brainpool: the roots walk
   and the TSL are always verified with brainpool, and only the result is narrowed to the
   roots and TSL CAs whose own key is not brainpool. GEM.RCA9 and GEM.RCA10 (reached only
@@ -230,6 +235,12 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pki
 
 #### added
+- `cert_type::fold_name`: the one input rule for type and profile names;
+  `CertificateType::from_str` and `profile::lookup` use it.
+- Renamed after their gemSpec references (decision-5): profiles `SMB_AUT`/`smb-aut` to
+  `HCI_AUT`/`hci-aut`, `IDP_SIG`/`idp-sig` to `IDPD_SIG`/`idpd-sig`, 24 `oid::INST_*`
+  constants (e.g. `INST_ARZTPRAXIS` to `INST_PRAXIS_ARZT`, `INST_GEMATIK` to
+  `INST_BS_GEMATIK`), `CERT_TYPE_CM_TLSCS` to `CERT_TYPE_CM_TLS_C`.
 - `TrustStore::subset(algorithms)`: the roots and intermediates whose own key the set
   supports, e.g. `algorithms::NIST` for a client without brainpool.
 - `OcspChecker::with_store`: keeps `good` and `revoked` responses in a `CacheStore`

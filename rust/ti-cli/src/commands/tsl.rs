@@ -107,7 +107,7 @@ struct CaInfo {
     path_len: Option<u8>,
     /// The certificate types the TSL lets it issue (`C.FD.TLS-S`, …); OIDs it names no
     /// type for appear as dotted strings. Empty when the TSL states none.
-    issues: Vec<String>,
+    issuable_types: Vec<String>,
     /// Why no verified root signed it: `not_ca`, `self_signed`, `unknown_issuer`,
     /// `bad_signature`; absent for kept CAs.
     rejection: Option<&'static str>,
@@ -735,8 +735,7 @@ impl CaFilterArgs {
         if self.issues.is_empty() {
             return true;
         }
-        // gemSpec names (C.FD.TLS-S) and profile names (fd-tls-s) spell the same type.
-        let fold = |text: &str| text.to_lowercase().replace('.', "-");
+        let fold = ti_pki::cert_type::fold_name;
         type_names(types).iter().any(|name| {
             let name = fold(name);
             self.issues.iter().any(|f| name.contains(&fold(f)))
@@ -749,14 +748,17 @@ impl CaFilterArgs {
     }
 }
 
-/// The gemSpec_PKI names of `types`, an OID without one as its dotted string.
+/// The Tab_PKI_405 names of `types` (gemSpec_OID's certificate type table, `C.FD.TLS-S`),
+/// an OID the table does not name as its dotted string.
 fn type_names(types: Option<&[ObjectIdentifier]>) -> Vec<String> {
     types
         .unwrap_or_default()
         .iter()
         .map(|oid| {
-            ti_pki::CertificateType::from_oid(oid)
-                .map_or_else(|| oid.to_string(), |t| t.as_str().to_owned())
+            ti_pki::oid::lookup(oid)
+                .map(|info| info.description)
+                .filter(|name| name.starts_with("C."))
+                .map_or_else(|| oid.to_string(), str::to_owned)
         })
         .collect()
 }
@@ -779,7 +781,7 @@ fn describe(
 ) -> CaInfo {
     let cert = &ca.certificate;
     CaInfo {
-        issues: type_names(store.tsl_types_of(cert)),
+        issuable_types: type_names(store.tsl_types_of(cert)),
         common_name: cert.subject_cn().to_owned(),
         subject: cert.subject().to_string(),
         issuer: cert.issuer().to_string(),

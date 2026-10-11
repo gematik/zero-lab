@@ -89,7 +89,7 @@ fn smcb_on_reference() {
         let report = check(&ctx, &fixture(file));
         assert_eq!(report["result"], "valid", "{file}: {}", report["errors"]);
         assert_eq!(report["certificate_type"], "C.HCI.AUT");
-        assert_eq!(report["profile"]["name"], "smb-aut");
+        assert_eq!(report["profile"]["name"], "hci-aut");
         assert_eq!(report["revocation"], "not_checked");
         let nodes = tree(&report);
         assert_eq!(nodes[0].1, "C.HCI.AUT");

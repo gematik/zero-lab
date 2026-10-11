@@ -155,7 +155,7 @@ fn live_smcb_end_to_end() {
     let (Some(profile), Some(t)) = (selection.profile, selection.cert_type) else {
         panic!("no profile: {}", selection.detail)
     };
-    assert_eq!(profile.name, "smb-aut");
+    assert_eq!(profile.name, "hci-aut");
     let validator = profile.validator(&config, store, t);
     let checker = OcspChecker::new(&config, Curl, SystemClock);
     let result = block_on(validator.validate(&certs, SystemClock.now(), &checker)).unwrap();

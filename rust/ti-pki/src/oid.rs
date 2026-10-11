@@ -137,20 +137,20 @@ oids! {
 
     // Tab_PKI_403 — institution OIDs, in the admission extension of institutional (SMC-B)
     // cards.
-    INST_ARZTPRAXIS = "1.2.276.0.76.4.50", "oid_praxis_arzt", "Betriebsstätte Arzt", "", [];
+    INST_PRAXIS_ARZT = "1.2.276.0.76.4.50", "oid_praxis_arzt", "Betriebsstätte Arzt", "", [];
     INST_ZAHNARZTPRAXIS = "1.2.276.0.76.4.51", "oid_zahnarztpraxis", "Zahnarztpraxis", "", [];
     INST_PRAXIS_PSYCHOTHERAPEUT = "1.2.276.0.76.4.52", "oid_praxis_psychotherapeut", "Betriebsstätte Psychotherapeut", "", [];
     INST_KRANKENHAUS = "1.2.276.0.76.4.53", "oid_krankenhaus", "Krankenhaus", "", [];
-    INST_OEFFENTLICHE_APO = "1.2.276.0.76.4.54", "oid_oeffentliche_apotheke", "Öffentliche Apotheke", "", [];
+    INST_OEFFENTLICHE_APOTHEKE = "1.2.276.0.76.4.54", "oid_oeffentliche_apotheke", "Öffentliche Apotheke", "", [];
     INST_KRANKENHAUSAPOTHEKE = "1.2.276.0.76.4.55", "oid_krankenhausapotheke", "Krankenhausapotheke", "", [];
     INST_BUNDESWEHRAPOTHEKE = "1.2.276.0.76.4.56", "oid_bundeswehrapotheke", "Bundeswehrapotheke", "", [];
-    INST_MOBILE_EINRICHTUNG_RETTUNG = "1.2.276.0.76.4.57", "oid_mobile_einrichtung_rettungsdienst", "Betriebsstätte Mobile Einrichtung Rettungsdienst", "", [];
-    INST_GEMATIK = "1.2.276.0.76.4.58", "oid_bs_gematik", "Betriebsstätte gematik", "", [];
+    INST_MOBILE_EINRICHTUNG_RETTUNGSDIENST = "1.2.276.0.76.4.57", "oid_mobile_einrichtung_rettungsdienst", "Betriebsstätte Mobile Einrichtung Rettungsdienst", "", [];
+    INST_BS_GEMATIK = "1.2.276.0.76.4.58", "oid_bs_gematik", "Betriebsstätte gematik", "", [];
     INST_KOSTENTRAEGER = "1.2.276.0.76.4.59", "oid_kostentraeger", "Betriebsstätte Kostenträger", "", [];
     INST_LEO_ZAHNAERZTE = "1.2.276.0.76.4.187", "oid_leo_zahnaerzte", "Betriebsstätte Leistungserbringerorganisation Vertragszahnärzte", "", [];
     INST_ADV_KTR = "1.2.276.0.76.4.190", "oid_adv_ktr", "AdV-Umgebung bei Kostenträger", "", [];
-    INST_LEO_KASSENAERZTLICHE_VEREIN = "1.2.276.0.76.4.210", "oid_leo_kassenaerztliche_vereinigung", "Betriebsstätte Leistungserbringerorganisation Kassenärztliche Vereinigung", "", [];
-    INST_GKV_SPITZENVERBAND = "1.2.276.0.76.4.223", "oid_bs_gkv_spitzenverband", "Betriebsstätte GKV-Spitzenverband", "", [];
+    INST_LEO_KASSENAERZTLICHE_VEREINIGUNG = "1.2.276.0.76.4.210", "oid_leo_kassenaerztliche_vereinigung", "Betriebsstätte Leistungserbringerorganisation Kassenärztliche Vereinigung", "", [];
+    INST_BS_GKV_SPITZENVERBAND = "1.2.276.0.76.4.223", "oid_bs_gkv_spitzenverband", "Betriebsstätte GKV-Spitzenverband", "", [];
     INST_LEO_KRANKENHAUSVERBAND = "1.2.276.0.76.4.226", "oid_leo_krankenhausverband", "Betriebsstätte Mitgliedsverband der Krankenhäuser", "", [];
     INST_LEO_DKTIG = "1.2.276.0.76.4.227", "oid_leo_dktig", "Betriebsstätte der Deutsche Krankenhaus TrustCenter und Informationsverarbeitung GmbH", "", [];
     INST_LEO_DKG = "1.2.276.0.76.4.228", "oid_leo_dkg", "Betriebsstätte der Deutschen Krankenhausgesellschaft", "", [];
@@ -170,8 +170,8 @@ oids! {
     INST_ORTHOPAEDIESCHUHMACHER = "1.2.276.0.76.4.250", "oid_institution-orthopaedieschuhmacher", "Betriebsstätte Orthopädieschuhmacher", "", [];
     INST_ORTHOPAEDIETECHNIKER = "1.2.276.0.76.4.251", "oid_institution-orthopaedietechniker", "Betriebsstätte Orthopädietechniker", "", [];
     INST_ZAHNTECHNIKER = "1.2.276.0.76.4.252", "oid_institution-zahntechniker", "Betriebsstätte Zahntechniker", "", [];
-    INST_RETTUNGSLEITSTELLE = "1.2.276.0.76.4.253", "oid_institution-rettungsleitstellen", "Rettungsleitstelle", "", [];
-    INST_SANITAETSDIENST_BW = "1.2.276.0.76.4.254", "oid_sanitaetsdienst-bundeswehr", "Betriebsstätte Sanitätsdienst Bundeswehr", "", [];
+    INST_RETTUNGSLEITSTELLEN = "1.2.276.0.76.4.253", "oid_institution-rettungsleitstellen", "Rettungsleitstelle", "", [];
+    INST_SANITAETSDIENST_BUNDESWEHR = "1.2.276.0.76.4.254", "oid_sanitaetsdienst-bundeswehr", "Betriebsstätte Sanitätsdienst Bundeswehr", "", [];
     INST_OEGD = "1.2.276.0.76.4.255", "oid_institution-oegd", "Betriebsstätte Öffentlicher Gesundheitsdienst", "", [];
     INST_ARBEITSMEDIZIN = "1.2.276.0.76.4.256", "oid_institution-arbeitsmedizin", "Betriebsstätte Arbeitsmedizin", "", [];
     INST_VORSORGE_REHA = "1.2.276.0.76.4.257", "oid_institution-vorsorge-reha", "Betriebsstätte Vorsorge- und Rehabilitation", "", [];
@@ -189,18 +189,18 @@ oids! {
     INST_PRAXIS_LOGOPAEDE = "1.2.276.0.76.4.279", "oid_praxis-logopaede", "Logopaedische Praxis", "", [];
     INST_PRAXIS_PODOLOGE = "1.2.276.0.76.4.280", "oid_praxis-podologe", "Podologiepraxis", "", [];
     INST_PRAXIS_ERNAEHRUNGSTHERAPEUT = "1.2.276.0.76.4.281", "oid_praxis-ernaehrungstherapeut", "Ernährungstherapeutische Praxis", "", [];
-    INST_WEITERE_KOSTENTRAEGER = "1.2.276.0.76.4.284", "oid_bs-weitere-kostentraeger", "Betriebsstätte Weitere Kostenträger im Gesundheitswesen", "", [];
+    INST_BS_WEITERE_KOSTENTRAEGER = "1.2.276.0.76.4.284", "oid_bs-weitere-kostentraeger", "Betriebsstätte Weitere Kostenträger im Gesundheitswesen", "", [];
     INST_ORG_GESUNDHEITSVERSORGUNG = "1.2.276.0.76.4.285", "oid_org-gesundheitsversorgung", "Weitere Organisationen der Gesundheitsversorgung", "", [];
     INST_KIM_ANBIETER = "1.2.276.0.76.4.286", "oid_kim-anbieter", "KIM-Hersteller und -Anbieter", "", [];
     INST_DIGA = "1.2.276.0.76.4.282", "oid_diga", "DiGA-Hersteller und -Anbieter", "", [];
     INST_TIM_ANBIETER = "1.2.276.0.76.4.295", "oid_tim-anbieter", "TIM-Hersteller und -Anbieter", "", [];
     INST_NCPEH = "1.2.276.0.76.4.292", "oid_ncpeh", "NCPeH Fachdienst", "", [];
     INST_OMBUDSSTELLE = "1.2.276.0.76.4.303", "oid_ombudsstelle", "Ombudsstelle eines Kostenträgers", "", [];
-    INST_OPTO_AUDIO = "1.2.276.0.76.4.304", "oid_bs-opto-audio", "Betriebsstätte Augenoptiker und Hörakustiker", "", [];
-    INST_ORTHOPAED_HW = "1.2.276.0.76.4.306", "oid_bs-orthopaed-hw", "Betriebsstätte Orthopädieschuhmacher und Orthopädietechniker", "", [];
-    INST_HIMI = "1.2.276.0.76.4.311", "oid_bs-himi", "Betriebsstätte Hilfsmittelerbringer", "", [];
-    INST_FRISEUR = "1.2.276.0.76.4.314", "oid_bs-friseur", "Betriebsstätte Frisör", "", [];
-    INST_SOZIOTHER = "1.2.276.0.76.4.317", "oid_bs-soziother", "Betriebsstätte Soziotherapie", "", [];
+    INST_BS_OPTO_AUDIO = "1.2.276.0.76.4.304", "oid_bs-opto-audio", "Betriebsstätte Augenoptiker und Hörakustiker", "", [];
+    INST_BS_ORTHOPAED_HW = "1.2.276.0.76.4.306", "oid_bs-orthopaed-hw", "Betriebsstätte Orthopädieschuhmacher und Orthopädietechniker", "", [];
+    INST_BS_HIMI = "1.2.276.0.76.4.311", "oid_bs-himi", "Betriebsstätte Hilfsmittelerbringer", "", [];
+    INST_BS_FRISEUR = "1.2.276.0.76.4.314", "oid_bs-friseur", "Betriebsstätte Frisör", "", [];
+    INST_BS_SOZIOTHER = "1.2.276.0.76.4.317", "oid_bs-soziother", "Betriebsstätte Soziotherapie", "", [];
 
     // Tab_PKI_404 — certificate policy OIDs, asserted in CertificatePolicies.
     POLICY_HBA_CP = "1.2.276.0.76.4.145", "oid_policy_hba_cp", "Policy HPC QES, SIG, AUT, ENC", "[CP-HPC]", [];
@@ -229,7 +229,7 @@ oids! {
     CERT_TYPE_VPNK_VPN = "1.2.276.0.76.4.81", "oid_vpnk_vpn", "C.VPNK.VPN", "[gemSpec_PKI]", [];
     CERT_TYPE_SMKT_AUT = "1.2.276.0.76.4.82", "oid_smkt_aut", "C.SMKT.AUT", "[gemSpec_PKI]", [];
     CERT_TYPE_SAK_AUT = "1.2.276.0.76.4.113", "oid_sak_aut", "C.SAK.AUT", "[gemSpec_PKI]", [];
-    CERT_TYPE_CM_TLSCS = "1.2.276.0.76.4.175", "oid_cm_tls_c", "C.CM.TLS-CS", "[gemSpec_PKI]", [];
+    CERT_TYPE_CM_TLS_C = "1.2.276.0.76.4.175", "oid_cm_tls_c", "C.CM.TLS-CS", "[gemSpec_PKI]", [];
     CERT_TYPE_FD_TLS_C = "1.2.276.0.76.4.168", "oid_fd_tls_c", "C.FD.TLS-C", "[gemSpec_PKI]", [];
     CERT_TYPE_FD_TLS_S = "1.2.276.0.76.4.169", "oid_fd_tls_s", "C.FD.TLS-S", "[gemSpec_PKI]", [];
     CERT_TYPE_FD_AUT = "1.2.276.0.76.4.155", "oid_fd_aut", "C.FD.AUT", "[gemSpec_PKI]", [];
@@ -364,20 +364,20 @@ pub const PROFESSIONS: &[ObjectIdentifier] = &[
 /// The whole of Tab_PKI_403: every institution OID an SMC-B admission extension may
 /// carry.
 pub const INSTITUTIONS: &[ObjectIdentifier] = &[
-    INST_ARZTPRAXIS,
+    INST_PRAXIS_ARZT,
     INST_ZAHNARZTPRAXIS,
     INST_PRAXIS_PSYCHOTHERAPEUT,
     INST_KRANKENHAUS,
-    INST_OEFFENTLICHE_APO,
+    INST_OEFFENTLICHE_APOTHEKE,
     INST_KRANKENHAUSAPOTHEKE,
     INST_BUNDESWEHRAPOTHEKE,
-    INST_MOBILE_EINRICHTUNG_RETTUNG,
-    INST_GEMATIK,
+    INST_MOBILE_EINRICHTUNG_RETTUNGSDIENST,
+    INST_BS_GEMATIK,
     INST_KOSTENTRAEGER,
     INST_LEO_ZAHNAERZTE,
     INST_ADV_KTR,
-    INST_LEO_KASSENAERZTLICHE_VEREIN,
-    INST_GKV_SPITZENVERBAND,
+    INST_LEO_KASSENAERZTLICHE_VEREINIGUNG,
+    INST_BS_GKV_SPITZENVERBAND,
     INST_LEO_KRANKENHAUSVERBAND,
     INST_LEO_DKTIG,
     INST_LEO_DKG,
@@ -397,8 +397,8 @@ pub const INSTITUTIONS: &[ObjectIdentifier] = &[
     INST_ORTHOPAEDIESCHUHMACHER,
     INST_ORTHOPAEDIETECHNIKER,
     INST_ZAHNTECHNIKER,
-    INST_RETTUNGSLEITSTELLE,
-    INST_SANITAETSDIENST_BW,
+    INST_RETTUNGSLEITSTELLEN,
+    INST_SANITAETSDIENST_BUNDESWEHR,
     INST_OEGD,
     INST_ARBEITSMEDIZIN,
     INST_VORSORGE_REHA,
@@ -416,18 +416,18 @@ pub const INSTITUTIONS: &[ObjectIdentifier] = &[
     INST_PRAXIS_LOGOPAEDE,
     INST_PRAXIS_PODOLOGE,
     INST_PRAXIS_ERNAEHRUNGSTHERAPEUT,
-    INST_WEITERE_KOSTENTRAEGER,
+    INST_BS_WEITERE_KOSTENTRAEGER,
     INST_ORG_GESUNDHEITSVERSORGUNG,
     INST_KIM_ANBIETER,
     INST_DIGA,
     INST_TIM_ANBIETER,
     INST_NCPEH,
     INST_OMBUDSSTELLE,
-    INST_OPTO_AUDIO,
-    INST_ORTHOPAED_HW,
-    INST_HIMI,
-    INST_FRISEUR,
-    INST_SOZIOTHER,
+    INST_BS_OPTO_AUDIO,
+    INST_BS_ORTHOPAED_HW,
+    INST_BS_HIMI,
+    INST_BS_FRISEUR,
+    INST_BS_SOZIOTHER,
 ];
 
 #[cfg(test)]
@@ -445,10 +445,10 @@ mod tests {
             (PROF_PSYCHOTHERAPEUT, "1.2.276.0.76.4.45"),
             (PROF_NOTFALLSANITAETER, "1.2.276.0.76.4.178"),
             (PROF_PFLEGER_HPC, "1.2.276.0.76.4.232"),
-            (INST_ARZTPRAXIS, "1.2.276.0.76.4.50"),
+            (INST_PRAXIS_ARZT, "1.2.276.0.76.4.50"),
             (INST_KRANKENHAUS, "1.2.276.0.76.4.53"),
-            (INST_OEFFENTLICHE_APO, "1.2.276.0.76.4.54"),
-            (INST_GEMATIK, "1.2.276.0.76.4.58"),
+            (INST_OEFFENTLICHE_APOTHEKE, "1.2.276.0.76.4.54"),
+            (INST_BS_GEMATIK, "1.2.276.0.76.4.58"),
             (POLICY_HBA_CP, "1.2.276.0.76.4.145"),
             (POLICY_GEM_OR_CP, "1.2.276.0.76.4.163"),
             (CERT_TYPE_HBA_QES, "1.2.276.0.76.4.72"),
@@ -473,7 +473,7 @@ mod tests {
             }
             assert!(table.len() > 40, "{name} looks truncated");
         }
-        assert!(INSTITUTIONS.contains(&INST_ARZTPRAXIS));
+        assert!(INSTITUTIONS.contains(&INST_PRAXIS_ARZT));
         assert!(PROFESSIONS.contains(&PROF_ARZT));
         assert!(
             !PROFESSIONS.contains(&PROF_VERSICHERTER),

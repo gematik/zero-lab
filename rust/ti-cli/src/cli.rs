@@ -3,7 +3,6 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use clap::builder::PossibleValuesParser;
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 use crate::net::NetArgs;
@@ -33,7 +32,7 @@ Examples:
   {bin} pki inspect card.pem > card.md          # Markdown, as piped output is
   {bin} pki inspect roots.pem --short           # a row per certificate
   {bin} --format json pki inspect card.pem | jq .certificates[0].certificate_type
-  {bin} pki profiles describe smb-aut
+  {bin} pki profiles describe hci-aut
   {bin} pki verify card.pem --issuer ca.pem
   {bin} pki verify card.pem --env ref --profile none --at 2026-06-01T00:00:00Z
   {bin} pki verify card.pem --ocsp-responder http://ocsp-relay:8080/ --ocsp-max-age 5m
@@ -759,8 +758,76 @@ fn env_name(value: &str) -> Result<ti_pki::Env, String> {
         .map_err(|_| format!("{value:?} is not prod, ref, test or dev (or pu, ru, tu)"))
 }
 
-fn profile_selectors() -> PossibleValuesParser {
-    PossibleValuesParser::new(ti_pki::profile::selector_values())
+/// `--profile`: auto, none or a profile, spelled as [`ti_pki::cert_type::fold_name`]
+/// allows (`hci-aut`, `C.HCI.AUT`); the canonical name comes out. The listed values keep
+/// help and completions.
+fn profile_selectors() -> ProfileSelector {
+    ProfileSelector { selectors: true }
+}
+
+/// A profile name, or with `selectors` also auto and none.
+#[derive(Clone, Copy)]
+struct ProfileSelector {
+    selectors: bool,
+}
+
+impl ProfileSelector {
+    fn values(self) -> Vec<&'static str> {
+        if self.selectors {
+            ti_pki::profile::selector_values()
+        } else {
+            ti_pki::profile::PROFILES.iter().map(|p| p.name).collect()
+        }
+    }
+}
+
+impl clap::builder::TypedValueParser for ProfileSelector {
+    type Value = String;
+
+    fn parse_ref(
+        &self,
+        cmd: &clap::Command,
+        arg: Option<&clap::Arg>,
+        value: &std::ffi::OsStr,
+    ) -> Result<String, clap::Error> {
+        let text = value.to_string_lossy();
+        let wanted = ti_pki::cert_type::fold_name(&text);
+        self.values()
+            .into_iter()
+            .find(|name| ti_pki::cert_type::fold_name(name) == wanted)
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                let mut error =
+                    clap::Error::new(clap::error::ErrorKind::InvalidValue).with_cmd(cmd);
+                if let Some(arg) = arg {
+                    error.insert(
+                        clap::error::ContextKind::InvalidArg,
+                        clap::error::ContextValue::String(arg.to_string()),
+                    );
+                }
+                error.insert(
+                    clap::error::ContextKind::InvalidValue,
+                    clap::error::ContextValue::String(text.into_owned()),
+                );
+                error.insert(
+                    clap::error::ContextKind::ValidValue,
+                    clap::error::ContextValue::Strings(
+                        self.values().into_iter().map(str::to_owned).collect(),
+                    ),
+                );
+                error
+            })
+    }
+
+    fn possible_values(
+        &self,
+    ) -> Option<Box<dyn Iterator<Item = clap::builder::PossibleValue> + '_>> {
+        Some(Box::new(
+            self.values()
+                .into_iter()
+                .map(clap::builder::PossibleValue::new),
+        ))
+    }
 }
 
 fn timestamp(value: &str) -> Result<ti_pki::Timestamp, String> {
@@ -789,8 +856,8 @@ pub enum ProfilesCommand {
     },
 }
 
-fn profile_names() -> PossibleValuesParser {
-    PossibleValuesParser::new(ti_pki::profile::PROFILES.iter().map(|p| p.name))
+fn profile_names() -> ProfileSelector {
+    ProfileSelector { selectors: false }
 }
 
 /// `ti connector …`.

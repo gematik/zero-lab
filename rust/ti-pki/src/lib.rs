@@ -40,7 +40,7 @@
 //! let (Some(profile), Some(cert_type)) = (selection.profile, selection.cert_type) else {
 //!     return Err(format!("no profile: {}", selection.detail).into());
 //! };
-//! assert_eq!((profile.name, cert_type.as_str()), ("smb-aut", "C.HCI.AUT"));
+//! assert_eq!((profile.name, cert_type.as_str()), ("hci-aut", "C.HCI.AUT"));
 //!
 //! let validator = profile.validator(&config, store, cert_type);
 //! let result = futures_lite::future::block_on(validator.validate(&certs, now, &Unchecked))?;

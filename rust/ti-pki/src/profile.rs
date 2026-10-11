@@ -1,4 +1,4 @@
-//! Named validation profiles for the common TI use cases (smb-aut, idp-sig,
+//! Named validation profiles for the common TI use cases (hci-aut, idpd-sig,
 //! epa-vau-aut, zeta-guard-aut, tsl-sig) and their selection. A profile states the
 //! certificate types it accepts, its revocation strictness and optionally the
 //! admission role that identifies it. Automatic selection prefers a profile
@@ -22,7 +22,7 @@ use crate::{Certificate, TrustConfig, TrustStore, oid};
 /// A named, type-aware validation strategy.
 #[derive(Debug)]
 pub struct Profile {
-    /// Kebab-case slug, e.g. `smb-aut`.
+    /// Kebab-case slug, e.g. `hci-aut`.
     pub name: &'static str,
     /// One-line summary for listings.
     pub description: &'static str,
@@ -46,12 +46,12 @@ pub struct Profile {
     pub default_for: &'static [CertificateType],
 }
 
-/// SMC-B-family institution authentication (C.HCI.AUT). SMB is the umbrella for every
-/// SMC-B variant (SMC-B, HSM-B, SMC-B-ORG). SoftFail, so an OCSP outage does not
-/// reject an SMC-B login where the configuration allows it.
-pub static SMB_AUT: Profile = Profile {
-    name: "smb-aut",
-    description: "SMC-B institution authentication (SMB = SMC-B / HSM-B / SMC-B-ORG)",
+/// Institution authentication with an SM-B (gemSpec_PKI: SMC-B or HSM-B), the type
+/// C.HCI.AUT. SoftFail, so an OCSP outage does not reject an SMC-B login where the
+/// configuration allows it.
+pub static HCI_AUT: Profile = Profile {
+    name: "hci-aut",
+    description: "Institution authentication, SM-B (SMC-B, HSM-B)",
     revocation: RevocationMode::SoftFail,
     extra_policies: &[],
     required_role_oids: &[],
@@ -88,10 +88,10 @@ pub static FD_TLS_S: Profile = Profile {
 };
 
 /// The C.FD.SIG certificates an IDP signs its discovery document and tokens with,
-/// identified by oid_idpd. There is deliberately no idp-aut: an IDP publishes no
+/// identified by oid_idpd. There is deliberately no idpd-aut: an IDP publishes no
 /// C.FD.AUT.
-pub static IDP_SIG: Profile = Profile {
-    name: "idp-sig",
+pub static IDPD_SIG: Profile = Profile {
+    name: "idpd-sig",
     description: "IDP discovery document and token signing",
     revocation: RevocationMode::HardFail,
     extra_policies: &[],
@@ -130,8 +130,8 @@ pub static TSL_SIG: Profile = Profile {
 pub static PROFILES: &[&Profile] = &[
     &EPA_VAU_AUT,
     &FD_TLS_S,
-    &IDP_SIG,
-    &SMB_AUT,
+    &HCI_AUT,
+    &IDPD_SIG,
     &TSL_SIG,
     &ZETA_GUARD_AUT,
 ];
@@ -151,13 +151,15 @@ pub fn selector_values() -> Vec<&'static str> {
         .collect()
 }
 
-/// The profile named `name`, case-insensitively. [`AUTO`], [`NONE`] and unknown names
-/// are `None`; callers compare against those first.
+/// The profile named `name`, compared as [`fold_name`](crate::cert_type::fold_name)
+/// does: `hci-aut`, `HCI.AUT` and `C.HCI.AUT` find the same profile. [`AUTO`],
+/// [`NONE`] and unknown names are `None`; callers compare against those first.
 pub fn lookup(name: &str) -> Option<&'static Profile> {
+    let wanted = crate::cert_type::fold_name(name);
     PROFILES
         .iter()
         .copied()
-        .find(|p| p.name.eq_ignore_ascii_case(name))
+        .find(|p| crate::cert_type::fold_name(p.name) == wanted)
 }
 
 impl Profile {
@@ -444,6 +446,14 @@ mod tests {
                 "{profile} is kebab-case"
             );
             assert!(!profile.description.ends_with('.'), "{profile}");
+            // decision-5: a profile without a role is named after its one type.
+            if let ([t], []) = (profile.accepts_types, profile.required_role_oids) {
+                assert_eq!(
+                    profile.name,
+                    crate::cert_type::fold_name(t.as_str()),
+                    "{profile} is named after {t}"
+                );
+            }
             for t in profile.default_for {
                 assert!(
                     profile.accepts(*t),
@@ -463,13 +473,14 @@ mod tests {
                 "none",
                 "epa-vau-aut",
                 "fd-tls-s",
-                "idp-sig",
-                "smb-aut",
+                "hci-aut",
+                "idpd-sig",
                 "tsl-sig",
                 "zeta-guard-aut"
             ]
         );
-        assert_eq!(lookup("SMB-Aut").map(|p| p.name), Some("smb-aut"));
+        assert_eq!(lookup("C.Hci.Aut").map(|p| p.name), Some("hci-aut"));
+        assert!(lookup("smb-aut").is_none(), "renamed without an alias");
         assert!(lookup(AUTO).is_none());
         assert!(lookup("idp").is_none());
     }
@@ -526,7 +537,7 @@ mod tests {
         assert_eq!(
             select("type-hci-aut"),
             (
-                Some("smb-aut"),
+                Some("hci-aut"),
                 SelectReason::ByDefault,
                 vec![],
                 "default for type C.HCI.AUT".into()
@@ -542,7 +553,7 @@ mod tests {
             )
         );
         assert_eq!(select("role-fd-aut-epa-vau").0, Some("epa-vau-aut"));
-        assert_eq!(select("role-fd-sig-idpd").0, Some("idp-sig"));
+        assert_eq!(select("role-fd-sig-idpd").0, Some("idpd-sig"));
         assert_eq!(
             select("type-fd-aut"),
             (
@@ -623,8 +634,8 @@ mod tests {
         };
         let hci = CertificateType::HciAut;
         let fd = CertificateType::FdAut;
-        assert_eq!(mode(HardFail, &SMB_AUT, hci), HardFail);
-        assert_eq!(mode(SoftFail, &SMB_AUT, hci), SoftFail);
+        assert_eq!(mode(HardFail, &HCI_AUT, hci), HardFail);
+        assert_eq!(mode(SoftFail, &HCI_AUT, hci), SoftFail);
         assert_eq!(mode(SoftFail, &ZETA_GUARD_AUT, fd), HardFail);
         assert_eq!(mode(Disabled, &ZETA_GUARD_AUT, fd), Disabled);
     }
@@ -653,7 +664,7 @@ mod tests {
         let plain = run("type-fd-aut");
         assert!(plain.has_error(crate::ErrorCode::RoleOidMissing));
         assert_eq!(
-            SMB_AUT.effective_role_oids(CertificateType::HciAut),
+            HCI_AUT.effective_role_oids(CertificateType::HciAut),
             CertificateType::HciAut.spec().role_oids
         );
     }
