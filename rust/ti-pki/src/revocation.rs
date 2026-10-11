@@ -120,6 +120,9 @@ pub struct RevocationResult {
     pub authorization: Option<ResponderAuthorization>,
     /// The DER response as received, for forensic dumps.
     pub raw_response: Vec<u8>,
+    /// The response was not asked for now but taken from a cache (the checker's memory
+    /// or a persistent store); `checked_at` is when it was.
+    pub from_cache: bool,
 }
 
 impl RevocationResult {
@@ -139,6 +142,7 @@ impl RevocationResult {
             responder_name: String::new(),
             authorization: None,
             raw_response: Vec::new(),
+            from_cache: false,
         }
     }
 }

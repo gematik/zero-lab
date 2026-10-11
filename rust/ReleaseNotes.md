@@ -10,6 +10,37 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-cli
 
 #### added
+- `pki tsl bundle --connect HOST[:PORT]` and `--cert FILE` (repeatable): only the TSL
+  CAs that issued those certificates or are among them, the bundle a client of a TI
+  server needs (the ePA Aktensysteme send only their own certificate); `--with-roots`
+  adds the roots the selected CAs chain to. `--ca`, `--provider` and `--root` of
+  `tsl show` and `tsl bundle` are repeatable (any of the values).
+- `--issues TYPE` on `tsl show` and `tsl bundle` (repeatable): the CAs the TSL lets issue
+  a certificate type whose name contains TYPE, e.g. `TLS-S` for every TLS server CA;
+  `tsl show` reports each CA's `issuable_types`.
+- `tsl bundle --nist-only`: only the TSL CAs (and with `--with-roots` roots) whose own
+  key is not brainpool.
+
+#### changed
+- Names follow gemSpec (decision-5): the profiles `smb-aut` and `idp-sig` are now
+  `hci-aut` (Tab_PKI_405 C.HCI.AUT) and `idpd-sig` (role `oid_idpd`); `--profile` and
+  `profiles describe` accept a type or profile name in any case, with `.` or `-` and an
+  optional `C.` (`C.HCI.AUT`); the `tsl show` field is `issuable_types`; every TSL type
+  shows its Tab_PKI_405 name.
+- `--nist-only` no longer verifies the trust material without brainpool: the roots walk
+  and the TSL are always verified with brainpool, and only the result is narrowed to the
+  roots and TSL CAs whose own key is not brainpool. GEM.RCA9 and GEM.RCA10 (reached only
+  through brainpool cross certificates) and the TSL's non-brainpool CAs are now part of
+  it; `pki verify --nist-only` validates against that subset (TASK-28, TASK-29).
+- OCSP responses are cached on disk with the trust material (one hour, never past
+  `nextUpdate`; `good` and `revoked` only), for `pki verify`, the TSL signer's status,
+  and the IDP certificates of `idpd authenticate` and `directory login`: a second run
+  within the hour asks no responder. `pki verify` marks such answers `cached` (JSON
+  `chain[].revocation.cached`). `cache clear` removes them too (TASK-2).
+
+### ti-cli
+
+#### added
 - `directory login --env|--url --idp-url <identity>`: the FHIR-Directory's (VZD) owner
   authentication (ti-directory) from `GET /owner-authenticate` through the IDP-Dienst's
   Authenticator-Modul flow to the owner access token for `/owner` and `/search`
@@ -204,6 +235,19 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pki
 
 #### added
+- `cert_type::fold_name`: the one input rule for type and profile names;
+  `CertificateType::from_str` and `profile::lookup` use it.
+- Renamed after their gemSpec references (decision-5): profiles `SMB_AUT`/`smb-aut` to
+  `HCI_AUT`/`hci-aut`, `IDP_SIG`/`idp-sig` to `IDPD_SIG`/`idpd-sig`, 24 `oid::INST_*`
+  constants (e.g. `INST_ARZTPRAXIS` to `INST_PRAXIS_ARZT`, `INST_GEMATIK` to
+  `INST_BS_GEMATIK`), `CERT_TYPE_CM_TLSCS` to `CERT_TYPE_CM_TLS_C`.
+- `TrustStore::subset(algorithms)`: the roots and intermediates whose own key the set
+  supports, e.g. `algorithms::NIST` for a client without brainpool.
+- `OcspChecker::with_store`: keeps `good` and `revoked` responses in a `CacheStore`
+  as well, so separate processes share them; the store holds the DER response, which is
+  verified again as of its fetch time when read, so a shared store can withhold a
+  response but not forge one. `OcspChecker` gains a third type parameter, defaulting to
+  `NoStore`. `RevocationResult::from_cache` tells a reused answer from a fresh one.
 - `anchors::GEM_RCA7`, the production anchor, and `algorithms::NIST`: everything but
   brainpool, to verify as a client without brainpool would (the roots walk ends at
   GEM.RCA8 and GEM.RCA5; no TSL verifies).

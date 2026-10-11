@@ -118,6 +118,31 @@ impl TrustStore {
             .map(|(_, tsp)| tsp.as_str())
     }
 
+    /// The roots and intermediates whose own public key `algorithms` supports, e.g.
+    /// [`algorithms::NIST`](crate::algorithms::NIST): what a client without brainpool
+    /// can use as trust anchors. The store itself is built and verified with every
+    /// algorithm first; this only narrows what comes out of it.
+    #[must_use]
+    pub fn subset(&self, algorithms: &crate::algorithms::AlgorithmSet) -> TrustStore {
+        let usable = |cert: &Certificate| {
+            crate::algorithms::supports_key(algorithms, &cert.public_key_alg_id())
+        };
+        let (intermediates, providers) = self
+            .intermediates
+            .iter()
+            .zip(&self.providers)
+            .filter(|(cert, _)| usable(cert))
+            .map(|(cert, provider)| (cert.clone(), provider.clone()))
+            .unzip();
+        TrustStore {
+            roots: self.roots.iter().filter(|r| usable(r)).cloned().collect(),
+            intermediates,
+            providers,
+            listed_responders: self.listed_responders.clone(),
+            ca_types: self.ca_types.clone(),
+        }
+    }
+
     /// The intermediates set with [`with_intermediates`](Self::with_intermediates).
     pub fn intermediates(&self) -> &[Certificate] {
         &self.intermediates

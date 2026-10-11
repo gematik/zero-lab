@@ -3,7 +3,6 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use clap::builder::PossibleValuesParser;
 use clap::{ArgAction, Args, Parser, Subcommand, ValueEnum};
 
 use crate::net::NetArgs;
@@ -33,7 +32,7 @@ Examples:
   {bin} pki inspect card.pem > card.md          # Markdown, as piped output is
   {bin} pki inspect roots.pem --short           # a row per certificate
   {bin} --format json pki inspect card.pem | jq .certificates[0].certificate_type
-  {bin} pki profiles describe smb-aut
+  {bin} pki profiles describe hci-aut
   {bin} pki verify card.pem --issuer ca.pem
   {bin} pki verify card.pem --env ref --profile none --at 2026-06-01T00:00:00Z
   {bin} pki verify card.pem --ocsp-responder http://ocsp-relay:8080/ --ocsp-max-age 5m
@@ -188,7 +187,8 @@ pub enum Command {
 /// `ti cache …`.
 #[derive(Debug, Subcommand)]
 pub enum CacheCommand {
-    /// Delete the downloaded trust material; the next run downloads it again
+    /// Delete the downloaded trust material and cached OCSP responses; the next run
+    /// fetches them again
     Clear,
 }
 
@@ -282,8 +282,8 @@ pub struct TrustArgs {
 pub struct RootsArgs {
     #[command(flatten)]
     pub trust: TrustArgs,
-    /// Verify as a client without brainpool would: the roots up to the first brainpool
-    /// signature (GEM.RCA7, GEM.RCA6) and no TSL, whose signer CAs are brainpool
+    /// Only the roots a client without brainpool can use: those whose own key is not
+    /// brainpool, after the walk verified them all
     #[arg(long)]
     pub nist_only: bool,
 }
@@ -315,18 +315,26 @@ pub struct BundleArgs {
     pub p12_password: Option<String>,
 }
 
-/// Which of the TSL's CAs. Filters match case-insensitive substrings and combine.
+/// Which of the TSL's CAs. Filters match case-insensitive substrings; a repeated filter
+/// matches any of its values, different filters must all match.
 #[derive(Debug, Args)]
 pub struct CaFilterArgs {
-    /// Only CAs whose common name contains TEXT; tsl show's Markdown then includes their PEM
+    /// Only CAs whose common name contains TEXT (repeatable); tsl show's Markdown then
+    /// includes their PEM
     #[arg(long, value_name = "TEXT")]
-    pub ca: Option<String>,
-    /// Only CAs of providers whose name contains TEXT
+    pub ca: Vec<String>,
+    /// Only CAs of providers whose name contains TEXT (repeatable)
     #[arg(long, value_name = "TEXT")]
-    pub provider: Option<String>,
-    /// Only CAs under roots whose common name contains TEXT
+    pub provider: Vec<String>,
+    /// Only CAs under roots whose common name contains TEXT (repeatable)
     #[arg(long, value_name = "TEXT")]
-    pub root: Option<String>,
+    pub root: Vec<String>,
+    /// Only CAs the TSL lets issue a certificate type whose name contains TYPE
+    /// (repeatable; case and . or - do not matter, so C.FD.TLS-S and fd-tls-s are one),
+    /// e.g. TLS-S for C.FD.TLS-S and C.ZD.TLS-S, TLS for the client type too, HCI.AUT
+    /// for SMC-B authentication
+    #[arg(long, value_name = "TYPE")]
+    pub issues: Vec<String>,
 }
 
 /// `ti pki tsl bundle`.
@@ -336,6 +344,22 @@ pub struct TslBundleArgs {
     pub trust: TrustArgs,
     #[command(flatten)]
     pub filter: CaFilterArgs,
+    /// Only the CAs that issued this TLS server's certificates, or that it sends (port
+    /// 443 by default; repeatable): the bundle a client of that server needs
+    #[arg(long, value_name = "HOST[:PORT]", value_parser = crate::peer::target)]
+    pub connect: Vec<(String, u16)>,
+    /// Only the CAs that issued the certificates in FILE, or that FILE holds (PEM or DER;
+    /// repeatable)
+    #[arg(long, value_name = "FILE")]
+    pub cert: Vec<PathBuf>,
+    /// Add the roots the selected CAs chain to, for clients that accept only a
+    /// self-signed certificate as trust anchor
+    #[arg(long)]
+    pub with_roots: bool,
+    /// Only CAs and roots whose own key is not brainpool, for a client without it; the
+    /// TSL and the roots are still verified with brainpool
+    #[arg(long)]
+    pub nist_only: bool,
     #[command(flatten)]
     pub bundle: BundleArgs,
 }
@@ -433,8 +457,9 @@ pub struct VerifyArgs {
     /// you connected to
     #[arg(long, value_name = "NAME")]
     pub fqdn: Option<String>,
-    /// Verify as a client without brainpool would: the roots up to the first brainpool
-    /// signature (GEM.RCA7, GEM.RCA6) and no TSL, whose signer CAs are brainpool
+    /// Validate as a client without brainpool would: against the roots and TSL CAs whose
+    /// own key is not brainpool (trust material is still verified with brainpool), and
+    /// with no brainpool signature in the chain
     #[arg(long)]
     pub nist_only: bool,
     /// Send the chain's OCSP requests to this responder instead of each certificate's
@@ -733,8 +758,76 @@ fn env_name(value: &str) -> Result<ti_pki::Env, String> {
         .map_err(|_| format!("{value:?} is not prod, ref, test or dev (or pu, ru, tu)"))
 }
 
-fn profile_selectors() -> PossibleValuesParser {
-    PossibleValuesParser::new(ti_pki::profile::selector_values())
+/// `--profile`: auto, none or a profile, spelled as [`ti_pki::cert_type::fold_name`]
+/// allows (`hci-aut`, `C.HCI.AUT`); the canonical name comes out. The listed values keep
+/// help and completions.
+fn profile_selectors() -> ProfileSelector {
+    ProfileSelector { selectors: true }
+}
+
+/// A profile name, or with `selectors` also auto and none.
+#[derive(Clone, Copy)]
+struct ProfileSelector {
+    selectors: bool,
+}
+
+impl ProfileSelector {
+    fn values(self) -> Vec<&'static str> {
+        if self.selectors {
+            ti_pki::profile::selector_values()
+        } else {
+            ti_pki::profile::PROFILES.iter().map(|p| p.name).collect()
+        }
+    }
+}
+
+impl clap::builder::TypedValueParser for ProfileSelector {
+    type Value = String;
+
+    fn parse_ref(
+        &self,
+        cmd: &clap::Command,
+        arg: Option<&clap::Arg>,
+        value: &std::ffi::OsStr,
+    ) -> Result<String, clap::Error> {
+        let text = value.to_string_lossy();
+        let wanted = ti_pki::cert_type::fold_name(&text);
+        self.values()
+            .into_iter()
+            .find(|name| ti_pki::cert_type::fold_name(name) == wanted)
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                let mut error =
+                    clap::Error::new(clap::error::ErrorKind::InvalidValue).with_cmd(cmd);
+                if let Some(arg) = arg {
+                    error.insert(
+                        clap::error::ContextKind::InvalidArg,
+                        clap::error::ContextValue::String(arg.to_string()),
+                    );
+                }
+                error.insert(
+                    clap::error::ContextKind::InvalidValue,
+                    clap::error::ContextValue::String(text.into_owned()),
+                );
+                error.insert(
+                    clap::error::ContextKind::ValidValue,
+                    clap::error::ContextValue::Strings(
+                        self.values().into_iter().map(str::to_owned).collect(),
+                    ),
+                );
+                error
+            })
+    }
+
+    fn possible_values(
+        &self,
+    ) -> Option<Box<dyn Iterator<Item = clap::builder::PossibleValue> + '_>> {
+        Some(Box::new(
+            self.values()
+                .into_iter()
+                .map(clap::builder::PossibleValue::new),
+        ))
+    }
 }
 
 fn timestamp(value: &str) -> Result<ti_pki::Timestamp, String> {
@@ -763,8 +856,8 @@ pub enum ProfilesCommand {
     },
 }
 
-fn profile_names() -> PossibleValuesParser {
-    PossibleValuesParser::new(ti_pki::profile::PROFILES.iter().map(|p| p.name))
+fn profile_names() -> ProfileSelector {
+    ProfileSelector { selectors: false }
 }
 
 /// `ti connector …`.

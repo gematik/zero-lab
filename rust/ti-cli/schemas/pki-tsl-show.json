@@ -253,6 +253,13 @@
         "pem": {
           "type": "string",
           "description": "The certificate as PEM"
+        },
+        "issuable_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The certificate types the TSL lets the CA issue, by their Tab_PKI_405 names (C.FD.TLS-S, C.NK.VPN, …); an OID the table does not name as its dotted string; empty when the TSL states none"
         }
       },
       "required": [
@@ -267,7 +274,8 @@
         "path_len",
         "rejection",
         "sha256",
-        "pem"
+        "pem",
+        "issuable_types"
       ],
       "additionalProperties": false
     }

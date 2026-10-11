@@ -737,8 +737,10 @@ fn reason_name(reason: CrlReason) -> &'static str {
     }
 }
 
+#[cfg(all(test, feature = "load"))]
+use checker::store_key as checker_store_key;
 #[cfg(feature = "load")]
-pub use checker::OcspChecker;
+pub use checker::{NoStore, OcspChecker};
 
 #[cfg(feature = "load")]
 mod checker {
@@ -755,7 +757,7 @@ mod checker {
     };
     use crate::algorithms::AlgorithmSet;
     use crate::error::{ErrorCode, ValidationError};
-    use crate::load::{PostRequest, Transport};
+    use crate::load::{CacheEntry, CacheError, CacheStore, Meta, PostRequest, Source, Transport};
     use crate::revocation::{RevocationChecker, RevocationResult, RevocationStatus};
     use crate::time::{Clock, Timestamp};
     use crate::{Certificate, TrustConfig, TrustStore};
@@ -774,8 +776,14 @@ mod checker {
     /// `good` and `revoked` results are reused for [`OCSP_CACHE_TTL`], at most until the
     /// response's `nextUpdate`; the cache is shared by the clones too. An `unknown` result
     /// or an error is never cached.
+    ///
+    /// [`with_store`](Self::with_store) also keeps them in a [`CacheStore`], so separate
+    /// processes share them. The store holds the DER response, not the verdict: what is
+    /// read back is verified again (signature, responder, certificate binding) as of the
+    /// instant it was fetched, so a store that is written to by others can withhold a
+    /// response but not forge one.
     #[derive(Clone, Debug)]
-    pub struct OcspChecker<T, C> {
+    pub struct OcspChecker<T, C, S = NoStore> {
         transport: T,
         clock: C,
         algorithms: Cow<'static, AlgorithmSet>,
@@ -786,6 +794,33 @@ mod checker {
         resting: Arc<Mutex<HashMap<String, Timestamp>>>,
         cache_ttl: core::time::Duration,
         cache: Arc<Mutex<ResultCache>>,
+        store: S,
+    }
+
+    /// The store of a checker that keeps results in memory only.
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct NoStore;
+
+    impl CacheStore for NoStore {
+        async fn get(&self, _: &str) -> Result<Option<CacheEntry>, CacheError> {
+            Ok(None)
+        }
+
+        async fn put(&self, _: &str, _: &CacheEntry) -> Result<(), CacheError> {
+            Ok(())
+        }
+    }
+
+    /// The store key of a request: its CertID names the certificate and its issuer.
+    pub(super) fn store_key(request: &[u8]) -> String {
+        use sha2::{Digest, Sha256};
+        let hash = Sha256::digest(request);
+        let mut key = String::from("ti-pki/v1/ocsp/");
+        for byte in hash {
+            key.push(char::from(b"0123456789abcdef"[usize::from(byte >> 4)]));
+            key.push(char::from(b"0123456789abcdef"[usize::from(byte & 0xf)]));
+        }
+        key
     }
 
     impl<T: Transport, C: Clock> OcspChecker<T, C> {
@@ -803,6 +838,28 @@ mod checker {
                 resting: Arc::default(),
                 cache_ttl: OCSP_CACHE_TTL,
                 cache: Arc::default(),
+                store: NoStore,
+            }
+        }
+    }
+
+    impl<T: Transport, C: Clock, S: CacheStore> OcspChecker<T, C, S> {
+        /// Keeps `good` and `revoked` responses in `store` too, under the same bounds as
+        /// in memory, and asks it before the responder. A store that fails is passed
+        /// over: the responder answers instead.
+        pub fn with_store<S2: CacheStore>(self, store: S2) -> OcspChecker<T, C, S2> {
+            OcspChecker {
+                transport: self.transport,
+                clock: self.clock,
+                algorithms: self.algorithms,
+                clock_tolerance: self.clock_tolerance,
+                max_response_age: self.max_response_age,
+                allow_missing_cert_hash: self.allow_missing_cert_hash,
+                responder_url: self.responder_url,
+                resting: self.resting,
+                cache_ttl: self.cache_ttl,
+                cache: self.cache,
+                store,
             }
         }
 
@@ -840,7 +897,10 @@ mod checker {
         fn cached(&self, key: &[u8], now: Timestamp) -> Option<RevocationResult> {
             let mut cache = self.cache.lock().unwrap_or_else(PoisonError::into_inner);
             match cache.get(key) {
-                Some((result, until)) if *until > now => Some(result.clone()),
+                Some((result, until)) if *until > now => Some(RevocationResult {
+                    from_cache: true,
+                    ..result.clone()
+                }),
                 Some(_) => {
                     cache.remove(key);
                     None
@@ -849,23 +909,80 @@ mod checker {
             }
         }
 
-        fn remember(&self, key: Vec<u8>, result: &RevocationResult, now: Timestamp) {
+        /// Until when `result`, obtained at `now`, may be reused; `None` if not at all.
+        fn reusable_until(&self, result: &RevocationResult, now: Timestamp) -> Option<Timestamp> {
             if self.cache_ttl.is_zero()
                 || !matches!(
                     result.status,
                     RevocationStatus::Good | RevocationStatus::Revoked
                 )
             {
-                return;
+                return None;
             }
             let ttl_end = Timestamp(now.0 + self.cache_ttl.as_secs());
             let until = result.next_update.map_or(ttl_end, |next| next.min(ttl_end));
-            if until > now {
-                self.cache
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .insert(key, (result.clone(), until));
+            (until > now).then_some(until)
+        }
+
+        fn remember(&self, key: Vec<u8>, result: &RevocationResult, until: Timestamp) {
+            self.cache
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .insert(key, (result.clone(), until));
+        }
+
+        /// A response from the store, verified again as of when it was fetched, if it is
+        /// still within its bounds and still `good` or `revoked`.
+        async fn stored(
+            &self,
+            request: &[u8],
+            cert: &Certificate,
+            issuer: &Certificate,
+            store: &TrustStore,
+            now: Timestamp,
+        ) -> Option<(RevocationResult, Timestamp)> {
+            let entry = self.store.get(&store_key(request)).await.ok()??;
+            let fetched = entry.meta.fetched_at;
+            let until = Timestamp(fetched.0.saturating_add(entry.meta.max_age?.as_secs()));
+            // A fetch time in the future is a damaged or planted entry.
+            if fetched > now || until <= now {
+                return None;
             }
+            let check = ResponseCheck {
+                now: fetched,
+                max_response_age: self.max_response_age,
+                clock_tolerance: self.clock_tolerance,
+                allow_missing_cert_hash: self.allow_missing_cert_hash,
+                algorithms: &self.algorithms,
+                store: Some(store),
+                stapled: false,
+            };
+            let result = verify_response(&entry.body, cert, issuer, &check).ok()?;
+            // The stored bounds are the writer's; the response's own bound them again.
+            let bound = self.reusable_until(&result, fetched)?;
+            (bound > now).then_some((
+                RevocationResult {
+                    from_cache: true,
+                    ..result
+                },
+                until.min(bound),
+            ))
+        }
+
+        async fn keep(&self, request: &[u8], response: Vec<u8>, now: Timestamp, until: Timestamp) {
+            let mut meta = Meta::new(now, Source::Http);
+            meta.max_age = Some(core::time::Duration::from_secs(until.0 - now.0));
+            // Best effort: a store that cannot write costs a later request, nothing else.
+            let _ = self
+                .store
+                .put(
+                    &store_key(request),
+                    &CacheEntry {
+                        body: response,
+                        meta,
+                    },
+                )
+                .await;
         }
 
         /// When the responder at `url` may be asked again, if it is resting.
@@ -944,7 +1061,7 @@ mod checker {
         }
     }
 
-    impl<T: Transport, C: Clock> RevocationChecker for OcspChecker<T, C> {
+    impl<T: Transport, C: Clock, S: CacheStore> RevocationChecker for OcspChecker<T, C, S> {
         /// No responder URL is an [`Unknown`](crate::revocation::RevocationStatus::Unknown)
         /// result: no other source could answer for such a certificate either. An OCSP
         /// status error that outlasts the repetitions, and any query while the
@@ -969,6 +1086,14 @@ mod checker {
             if let Some(result) = self.cached(&body, self.clock.now()) {
                 return Ok(result);
             }
+            if let Some((mut result, until)) = self
+                .stored(&body, cert, issuer, store, self.clock.now())
+                .await
+            {
+                url.clone_into(&mut result.responder_url);
+                self.remember(body, &result, until);
+                return Ok(result);
+            }
             if let Some(until) = self.resting_until(url, self.clock.now()) {
                 return Err(ValidationError::new(
                     ErrorCode::OcspUnavailable,
@@ -988,7 +1113,10 @@ mod checker {
             };
             let mut result = verify_response(&response, cert, issuer, &check)?;
             url.clone_into(&mut result.responder_url);
-            self.remember(body, &result, check.now);
+            if let Some(until) = self.reusable_until(&result, check.now) {
+                self.keep(&body, response, check.now, until).await;
+                self.remember(body, &result, until);
+            }
             Ok(result)
         }
     }
@@ -1827,10 +1955,14 @@ mod tests {
 
             let first = check(&pki.ee_arzt).unwrap();
             assert_eq!(first.status, RevocationStatus::Good);
+            assert!(!first.from_cache);
             clock.advance(Duration::from_secs(3599));
             assert_eq!(
                 check(&pki.ee_arzt).unwrap(),
-                first,
+                RevocationResult {
+                    from_cache: true,
+                    ..first
+                },
                 "reused within the hour"
             );
             assert_eq!(transport.posts().len(), 1);
@@ -1845,6 +1977,74 @@ mod tests {
                 3,
                 "an unknown result is not reused"
             );
+        }
+
+        #[cfg(feature = "load")]
+        #[test]
+        fn results_persist_in_a_store_and_are_verified_again_when_read() {
+            use crate::load::{CacheStore, MemoryCacheStore, MockTransport};
+            use crate::revocation::RevocationChecker;
+            use crate::time::FixedClock;
+
+            let pki = TestPki::new();
+            let config = crate::TrustConfig::for_anchor(pki.rca1.der().to_vec());
+            let store = TrustStore::new([pki.rca1.clone()]);
+            let shared = std::sync::Arc::new(MemoryCacheStore::new());
+            let clock = FixedClock::new(TestPki::NOW);
+            // A process: its own checker and memory, the shared store.
+            let run = |answers: Vec<Result<Vec<u8>, crate::load::TransportError>>| {
+                let transport = MockTransport::posting(answers);
+                let checker = OcspChecker::new(&config, &transport, &clock)
+                    .with_responder_url("http://ocsp.test/")
+                    .with_store(std::sync::Arc::clone(&shared));
+                let result = futures_lite::future::block_on(checker.check(
+                    &pki.ee_arzt,
+                    &pki.sub_ca_hba,
+                    &store,
+                ));
+                (result, transport.posts().len())
+            };
+
+            let (first, posts) = run(vec![Ok(response!("good").to_vec())]);
+            let first = first.unwrap();
+            assert_eq!(
+                (first.status, first.from_cache, posts),
+                (RevocationStatus::Good, false, 1)
+            );
+
+            clock.advance(Duration::from_mins(30));
+            let (second, posts) = run(vec![]);
+            let second = second.unwrap();
+            assert_eq!(posts, 0, "a second process asks nobody within the hour");
+            assert_eq!(
+                (second.status, second.from_cache),
+                (RevocationStatus::Good, true)
+            );
+            assert_eq!(second.checked_at, first.checked_at, "as of the fetch");
+            assert_eq!(second.responder_url, "http://ocsp.test/");
+
+            // A planted entry under the same key does not verify and is passed over.
+            let key = futures_lite::future::block_on(async {
+                let request = super::request(&pki.ee_arzt, &pki.sub_ca_hba);
+                let key = super::checker_store_key(&request);
+                (key.clone(), shared.get(&key).await.unwrap().unwrap())
+            });
+            let mut planted = key.1.clone();
+            let last = planted.body.len() - 1;
+            planted.body[last] ^= 1;
+            futures_lite::future::block_on(shared.put(&key.0, &planted)).unwrap();
+            let (third, posts) = run(vec![Ok(response!("good").to_vec())]);
+            assert_eq!(
+                (third.unwrap().from_cache, posts),
+                (false, 1),
+                "the responder answered"
+            );
+
+            clock.advance(Duration::from_secs(3600));
+            let (_, posts) = run(vec![Ok(response!("unknown").to_vec())]);
+            assert_eq!(posts, 1, "asked again once the hour is over");
+            let (_, posts) = run(vec![Ok(response!("unknown").to_vec())]);
+            assert_eq!(posts, 1, "an unknown result is not stored");
         }
     }
 }

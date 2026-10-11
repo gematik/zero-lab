@@ -156,6 +156,17 @@ impl fmt::Display for CertificateType {
     }
 }
 
+/// A certificate type or profile name as a user may type it, folded for comparison: case
+/// ignored, `.` and `-` alike, a leading `C.` dropped. So `C.FD.TLS-S`, `FD.TLS-S` and
+/// `fd-tls-s` (the profile) compare equal, and `C.HCI.AUT` equals the profile
+/// `hci-aut`.
+pub fn fold_name(name: &str) -> String {
+    let folded = name.trim().to_lowercase().replace('.', "-");
+    folded
+        .strip_prefix("c-")
+        .map_or_else(|| folded.clone(), str::to_owned)
+}
+
 /// The input to [`CertificateType::from_str`] names no Tab_PKI_405 type.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("unknown certificate type {0:?}")]
@@ -164,11 +175,12 @@ pub struct UnknownCertificateType(pub String);
 impl FromStr for CertificateType {
     type Err = UnknownCertificateType;
 
-    /// Parses the gemSpec_PKI name, e.g. `C.HCI.AUT`.
+    /// Parses the gemSpec_PKI name, e.g. `C.HCI.AUT`, folded by [`fold_name`].
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let wanted = fold_name(s);
         Self::ALL
             .into_iter()
-            .find(|t| t.as_str() == s)
+            .find(|t| fold_name(t.as_str()) == wanted)
             .ok_or_else(|| UnknownCertificateType(s.to_owned()))
     }
 }
@@ -456,6 +468,26 @@ mod tests {
     use super::*;
 
     const GEM: ObjectIdentifier = oid::POLICY_GEM_OR_CP;
+
+    #[test]
+    fn names_fold_to_one_spelling() {
+        for spelling in [
+            "C.FD.TLS-S",
+            "c.fd.tls-s",
+            "FD.TLS-S",
+            "fd-tls-s",
+            " fd.tls-s ",
+        ] {
+            assert_eq!(fold_name(spelling), "fd-tls-s", "{spelling}");
+            assert_eq!(spelling.parse(), Ok(CertificateType::FdTlsS), "{spelling}");
+        }
+        assert_eq!(fold_name("C.HCI.AUT"), crate::profile::HCI_AUT.name);
+        let name = |n: &str| crate::profile::lookup(n).map(|p| p.name);
+        assert_eq!(name("C.HCI.AUT"), Some("hci-aut"));
+        assert_eq!(name("IDPD.SIG"), Some("idpd-sig"));
+        assert!(crate::profile::lookup("smb-aut").is_none());
+        assert!("C.FD".parse::<CertificateType>().is_err());
+    }
     const HBA: ObjectIdentifier = oid::POLICY_HBA_CP;
 
     /// gemSpec_PKI's baselines transcribed a second time, independently of the table

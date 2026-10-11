@@ -210,10 +210,10 @@ fn read_request(stream: &TcpStream) -> Seen {
 /// ti-idpd's TEST-ONLY IDP signer under `kid`, and its certificate.
 pub fn idp_signer(kid: &str) -> (SoftwareKey<Backend>, Vec<u8>) {
     let dir = manifest("../ti-idpd/tests/fixtures");
-    let cert = ti_pki::parse_pem_certificates(&std::fs::read(dir.join("idp-sig.pem")).unwrap())
+    let cert = ti_pki::parse_pem_certificates(&std::fs::read(dir.join("idpd-sig.pem")).unwrap())
         .unwrap()
         .remove(0);
-    let pem = std::fs::read(dir.join("idp-sig.key")).unwrap();
+    let pem = std::fs::read(dir.join("idpd-sig.key")).unwrap();
     let (_, der) = pem_rfc7468::decode_vec(&pem).unwrap();
     let scalar = sec1::EcPrivateKey::try_from(der.as_slice())
         .unwrap()

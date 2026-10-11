@@ -139,12 +139,12 @@ mod tests {
             (
                 include_str!("../tests/fixtures/admission-1.pem"),
                 "1-2-ARZTPRAXIS-BerndRosenstrauch01",
-                crate::oid::INST_ARZTPRAXIS,
+                crate::oid::INST_PRAXIS_ARZT,
             ),
             (
                 include_str!("../tests/fixtures/admission-2.pem"),
                 "3-SMC-B-Testkarte--883110000153440",
-                crate::oid::INST_OEFFENTLICHE_APO,
+                crate::oid::INST_OEFFENTLICHE_APOTHEKE,
             ),
         ] {
             let statement = fixture(pem).admission().unwrap().unwrap();

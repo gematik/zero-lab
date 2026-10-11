@@ -1,9 +1,10 @@
 ---
 id: TASK-28
 title: No TSL verifies without brainpool
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-10 17:08'
+updated_date: '2026-10-11 07:49'
 labels:
   - ti-pki
 dependencies: []
@@ -19,5 +20,11 @@ Both TSL signer CAs (GEM.TSL-CA3, GEM.TSL-CA28 TEST-ONLY) are brainpool, so unde
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 a NIST-only client gets TSL CAs once gematik publishes a TSL with a NIST signer CA, or the task is closed as out of our hands
+- [x] #1 a NIST-only client gets TSL CAs once gematik publishes a TSL with a NIST signer CA, or the task is closed as out of our hands
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Resolved with TASK-29 (2026-10-11): the TSL is always verified with brainpool; --nist-only narrows the result to the TSL's non-brainpool CAs, so a NIST-only client gets TSL CAs without a NIST TSL signer.
+<!-- SECTION:NOTES:END -->

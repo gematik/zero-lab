@@ -35,7 +35,7 @@
           "properties": {
             "name": {
               "type": "string",
-              "description": "e.g. smb-aut"
+              "description": "e.g. hci-aut"
             },
             "reason": {
               "type": "string",

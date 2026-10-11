@@ -164,9 +164,31 @@ pub struct TrustInfo {
     pub tsl: Option<TslTrust>,
     /// Why the material is less than the environment's full set, if it is.
     pub note: Option<String>,
-    /// Verified without brainpool (`--nist-only`): roots only, no TSL.
+    /// Narrowed to what a client without brainpool can use (`--nist-only`): the roots
+    /// and TSL CAs whose own key is not brainpool, after a full verification.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub nist_only: bool,
+}
+
+impl Material {
+    /// The material narrowed to the roots and TSL CAs a client without brainpool can use
+    /// as anchors. Loading and verifying always use every algorithm: the root walk
+    /// reaches the newer roots through brainpool cross certificates, and the TSL is
+    /// signed on brainpool.
+    #[must_use]
+    pub fn nist_only(mut self) -> Material {
+        let store = self.store.subset(ti_pki::algorithms::NIST);
+        self.info.roots = store.len();
+        self.info.intermediates = store.intermediates().len();
+        self.info.nist_only = true;
+        self.info.note = Some(
+            "without brainpool: the roots and TSL CAs whose own key is not brainpool, \
+             after a verification with brainpool"
+                .into(),
+        );
+        self.store = Arc::new(store);
+        self
+    }
 }
 
 /// The verified TSL as a trust chain of its own: the list, its signer, the TSL signer CA.
@@ -263,9 +285,6 @@ impl Session {
         tier: Tier,
         at: Option<Timestamp>,
     ) -> Result<Material, CliError> {
-        if !verifies_tsls(config) {
-            return self.roots_only(config, at);
-        }
         let clock = At(at);
         // The list seen before guards against an older one, but only for the current
         // time: a past instant may well need an older list.
@@ -284,7 +303,8 @@ impl Session {
                     stored.clone(),
                 )?;
                 if at.is_none() {
-                    let checker = OcspChecker::new(config, transport, SystemClock);
+                    let checker =
+                        OcspChecker::new(config, transport, SystemClock).with_store(self.store());
                     first_tick(&reloader.with_signer_status(checker)).await
                 } else {
                     first_tick(&reloader).await
@@ -322,58 +342,6 @@ impl Session {
         })
     }
 
-    /// The roots alone, for algorithms that verify no TSL: roots.json from the cache or
-    /// the network (else the embedded one), walked from the anchor at `at` or now.
-    /// ti-pki fails a load whose TSL does not verify, rightly, since that may be
-    /// tampering; here the TSL is left out by configuration, and the report says so.
-    fn roots_only(
-        &self,
-        config: &TrustConfig,
-        at: Option<Timestamp>,
-    ) -> Result<Material, CliError> {
-        let loaded = block_on(async {
-            match &self.transport {
-                Some(transport) => self.loader(config, transport).load(Artifact::Roots).await,
-                None => self.loader(config, NoNetwork).load(Artifact::Roots).await,
-            }
-        });
-        let (config, meta) = match loaded {
-            Ok(loaded) => (
-                TrustConfig {
-                    roots: loaded.body.into(),
-                    ..config.clone()
-                },
-                Some(loaded.meta),
-            ),
-            Err(LoadError::Offline(_)) => (config.clone(), None),
-            Err(error) => return Err(CliError::TrustLoad(error.to_string())),
-        };
-        let store = roots::load(&config, at.unwrap_or_else(|| SystemClock.now()))
-            .map_err(CliError::Trust)?
-            .store();
-        Ok(Material {
-            info: TrustInfo {
-                source: source_name(meta.as_ref().map(|m| m.source)),
-                fetched_at: meta.as_ref().map(|m| m.fetched_at.to_string()),
-                fetched_at_ts: meta.as_ref().map(|m| m.fetched_at),
-                tsl_next_update: None,
-                tsl_next_update_ts: None,
-                roots: store.len(),
-                intermediates: 0,
-                tsl_warnings: Vec::new(),
-                tsl: None,
-                note: Some(
-                    "without brainpool: roots up to the first brainpool signature, no TSL \
-                     (its signer CAs are brainpool)"
-                        .into(),
-                ),
-                nist_only: true,
-            },
-            tsl_state: None,
-            store: Arc::new(store),
-        })
-    }
-
     /// The TSL as loaded (unverified bytes; see [`ti_pki::tsl`]), with where it came
     /// from. Call after [`load`](Self::load), which has refreshed the cache.
     pub fn tsl(&self, config: &TrustConfig) -> Result<(Vec<u8>, Meta), CliError> {
@@ -392,15 +360,21 @@ impl Session {
         }
     }
 
+    /// The cache on disk, or this session's memory when there is no cache directory:
+    /// trust material and OCSP responses.
+    pub fn store(&self) -> Store {
+        match &self.cache_dir {
+            Some(dir) => Store::File(crate::cache::FileCacheStore::new(dir)),
+            None => Store::Memory(Arc::clone(&self.memory)),
+        }
+    }
+
     fn loader<T: Transport + Send + Sync>(
         &self,
         config: &TrustConfig,
         transport: T,
     ) -> CachingLoader<HttpLoader<T, SystemClock>, Store, SystemClock> {
-        let store = match &self.cache_dir {
-            Some(dir) => Store::File(crate::cache::FileCacheStore::new(dir)),
-            None => Store::Memory(Arc::clone(&self.memory)),
-        };
+        let store = self.store();
         CachingLoader::new(
             HttpLoader::new(config, transport, SystemClock),
             store,
@@ -536,7 +510,7 @@ fn source_name(source: Option<Source>) -> &'static str {
 }
 
 /// The cache on disk, or in memory when no cache directory can be derived.
-enum Store {
+pub enum Store {
     File(crate::cache::FileCacheStore),
     Memory(Arc<MemoryCacheStore>),
 }
@@ -577,13 +551,4 @@ fn refused(url: &str) -> TransportError {
         message: format!("offline: not requesting {url}"),
         retryable: false,
     }
-}
-
-/// Whether `config`'s algorithms can check a TSL at all: every TSL is signed on
-/// brainpoolP256r1 (TSLSIG-012), so without brainpool none verifies.
-pub fn verifies_tsls(config: &TrustConfig) -> bool {
-    ti_pki::algorithms::supports_key(
-        &config.algorithms,
-        ti_pki::algorithms::brainpool::BRAINPOOL_P256R1.as_ref(),
-    )
 }

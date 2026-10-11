@@ -1,5 +1,5 @@
 //! The IDP-Dienst's certificates checked against the TSL, as gemSpec_IDP_Dienst asks of
-//! every client: the idp-sig profile (C.FD.SIG with the role `oid_idpd`), the chain to
+//! every client: the idpd-sig profile (C.FD.SIG with the role `oid_idpd`), the chain to
 //! the environment's TSL CAs, and OCSP. One trust material load serves both
 //! certificates of a run.
 
@@ -10,7 +10,7 @@ use serde::Serialize;
 use ti_idpd::trust::{CertificateTrust, Checked, IdpCertificate};
 use ti_pki::load::SystemClock;
 use ti_pki::ocsp::OcspChecker;
-use ti_pki::profile::IDP_SIG;
+use ti_pki::profile::IDPD_SIG;
 use ti_pki::revocation::{RevocationMode, Unchecked};
 use ti_pki::{Certificate, CertificateType, Clock, Env, TrustConfig, TrustStore};
 
@@ -119,14 +119,15 @@ impl TslTrust<'_> {
         let Some(loaded) = loaded.as_ref() else {
             unreachable!("loaded above");
         };
-        let mut validator = IDP_SIG.validator(
+        let mut validator = IDPD_SIG.validator(
             &loaded.config,
             Arc::clone(&loaded.store),
             CertificateType::FdSig,
         );
         let result = block_on(async {
             if let Some(transport) = loaded.session.transport() {
-                let checker = OcspChecker::new(&loaded.config, transport, SystemClock);
+                let checker = OcspChecker::new(&loaded.config, transport, SystemClock)
+                    .with_store(loaded.session.store());
                 validator.validate(&certs, at, &checker).await
             } else {
                 validator.revocation = RevocationMode::Disabled;
@@ -139,8 +140,18 @@ impl TslTrust<'_> {
             self.out.verbose(
                 1,
                 format_args!(
-                    "{which}: {subject} valid for an IDP-Dienst in {} (idp-sig, OCSP)",
-                    loaded.env
+                    "{which}: {subject} valid for an IDP-Dienst in {} (idpd-sig, OCSP{})",
+                    loaded.env,
+                    if result
+                        .cert_results
+                        .first()
+                        .and_then(|r| r.revocation.as_ref())
+                        .is_some_and(|r| r.from_cache)
+                    {
+                        " from the cache"
+                    } else {
+                        ""
+                    }
                 ),
             );
             Ok(Checked::Verified)
@@ -167,10 +178,8 @@ impl TslTrust<'_> {
             None => Environment::Auto,
         };
         let (env, _) = super::verify::environment(choice, certs, at)?;
-        let config = super::trust_config(env, false);
-        config.validate(env.tier()).map_err(CliError::Trust)?;
         let session = Session::new(self.global, false, self.out)?;
-        let material = session.load(&config, env.tier(), None)?;
+        let (config, material) = super::load_trust(&session, env, false, None)?;
         self.out.verbose(
             1,
             format_args!(

@@ -39,10 +39,10 @@ fn fixture(name: &str) -> Vec<u8> {
 /// The IDP's signing key from the fixture: the SEC1 key's scalar on the certificate's
 /// point.
 fn idp_sig_key(kid: &str) -> (SoftwareKey<Backend>, Vec<u8>) {
-    let cert = ti_pki::parse_pem_certificates(&fixture("idp-sig.pem"))
+    let cert = ti_pki::parse_pem_certificates(&fixture("idpd-sig.pem"))
         .unwrap()
         .remove(0);
-    let pem = fixture("idp-sig.key");
+    let pem = fixture("idpd-sig.key");
     let (label, der) = pem_rfc7468::decode_vec(&pem).unwrap();
     assert_eq!(label, "EC PRIVATE KEY");
     let scalar = sec1::EcPrivateKey::try_from(der.as_slice())

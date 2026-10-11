@@ -113,8 +113,9 @@ fn concrete(env: Environment, global: &GlobalArgs) -> Result<Env, CliError> {
     }
 }
 
-/// The preset of `env`; with `nist_only`, verifying without brainpool, as a client
-/// without it would.
+/// The preset of `env`; with `nist_only`, validating without brainpool, as a client
+/// without it would. Trust material is loaded with the full preset regardless
+/// ([`load_trust`]).
 fn trust_config(env: Env, nist_only: bool) -> ti_pki::TrustConfig {
     let config = ti_pki::TrustConfig::preset(env);
     if nist_only {
@@ -124,6 +125,25 @@ fn trust_config(env: Env, nist_only: bool) -> ti_pki::TrustConfig {
         }
     } else {
         config
+    }
+}
+
+/// `env`'s trust material, loaded and verified with every algorithm, then narrowed to
+/// what a client without brainpool can use when `nist_only`; and the configuration to
+/// validate with.
+fn load_trust(
+    session: &crate::trust::Session,
+    env: Env,
+    nist_only: bool,
+    at: Option<Timestamp>,
+) -> Result<(ti_pki::TrustConfig, crate::trust::Material), CliError> {
+    let full = trust_config(env, false);
+    full.validate(env.tier()).map_err(CliError::Trust)?;
+    let material = session.load(&full, env.tier(), at)?;
+    if nist_only {
+        Ok((trust_config(env, true), material.nist_only()))
+    } else {
+        Ok((full, material))
     }
 }
 

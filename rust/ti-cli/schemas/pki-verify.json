@@ -212,6 +212,10 @@
                     ],
                     "format": "date-time",
                     "description": "RFC 3339, UTC"
+                  },
+                  "cached": {
+                    "type": "boolean",
+                    "description": "The response came from the cache (an earlier run, within the hour and its nextUpdate) and was verified again, not asked for now"
                   }
                 },
                 "required": [
@@ -221,7 +225,8 @@
                   "responder",
                   "authorization",
                   "produced_at",
-                  "revoked_at"
+                  "revoked_at",
+                  "cached"
                 ],
                 "additionalProperties": false
               }
