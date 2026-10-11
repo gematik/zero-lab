@@ -53,7 +53,7 @@ mod tests {
     use std::fmt::Write;
 
     // Fingerprints from `openssl x509 -inform DER -fingerprint -sha256` over the
-    // base64 constants in go/gempki/anchors.go; a wrong or swapped file fails here.
+    // base64 constants in go/gempki/anchors.go (archived at go/gempki/v0.23.1); a wrong or swapped file fails here.
     fn assert_fingerprint(der: &[u8], expected: &str) {
         let actual = Sha256::digest(der)
             .iter()

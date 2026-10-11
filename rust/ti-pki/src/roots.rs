@@ -545,7 +545,7 @@ mod tests {
     #[cfg(feature = "rsa")]
     #[test]
     fn embedded_prod_roots_walk_from_gem_rca7() {
-        // The roots `go/gempki` trusts from the same roots.json (it walks from GEM.RCA8):
+        // The roots `go/gempki` (archived at go/gempki/v0.23.1) trusts from the same roots.json (it walks from GEM.RCA8):
         // the anchor, then forwards, then backwards.
         let result = load(&TrustConfig::preset_prod(), REAL_NOW).unwrap();
         assert_eq!(
