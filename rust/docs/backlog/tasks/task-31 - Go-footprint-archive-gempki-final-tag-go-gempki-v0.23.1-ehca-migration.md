@@ -4,7 +4,7 @@ title: 'Go footprint: archive gempki (final tag go/gempki/v0.23.1), ehca migrati
 status: In Progress
 assignee: []
 created_date: '2026-10-11 11:20'
-updated_date: '2026-10-11 11:25'
+updated_date: '2026-10-11 11:36'
 labels:
   - go
   - gempki
@@ -21,7 +21,7 @@ go/gempki (6.5k lines: certificates, types, admission, OID tables, roots, TSL, O
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 go/gempki/v0.23.1 tagged and pushed; ./gempki removed from go.work and the tree; go vet and tests green for every remaining module
+- [x] #1 go/gempki/v0.23.1 tagged and pushed; ./gempki removed from go.work and the tree; go vet and tests green for every remaining module
 - [x] #2 go/docs/development.md lists gempki as Archived with its tag; ReleaseNotes says so; nothing in the repo refers to go/gempki as current
 - [ ] #3 ehca owners have the migration proposal (issue or MR in ehca-go); ehca keeps building on the tag meanwhile
 <!-- AC:END -->
