@@ -280,8 +280,15 @@ pub fn verify(args: &TslVerifyArgs, global: &GlobalArgs, out: &Output) -> Result
         // The status now says nothing about another time.
         if !args.offline && args.at.is_none() {
             let transport = crate::http::transport(&global.net, out.verbosity())?;
+            let store = match crate::paths::cache_dir(global.cache_dir.as_deref()) {
+                Ok(dir) => Some(crate::cache::FileCacheStore::new(dir)),
+                Err(_) => None,
+            };
             let checker = OcspChecker::new(&config, &transport, SystemClock);
-            block_on(verified.check_signer_status(&checker))?;
+            match store {
+                Some(store) => block_on(verified.check_signer_status(&checker.with_store(store)))?,
+                None => block_on(verified.check_signer_status(&checker))?,
+            }
         }
         Ok(verified)
     });

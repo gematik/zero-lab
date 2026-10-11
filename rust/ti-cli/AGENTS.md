@@ -49,6 +49,10 @@ never on `message`.
 - `-k` skips TLS checks for downloads only. Do not use it unless asked to.
 - Downloads are cached in `~/.cache/telematik/ti` (`%LOCALAPPDATA%\telematik\ti` on
   Windows). `--offline` makes no request and works from the cache.
+- OCSP responses (`good`, `revoked`) are cached there too, for one hour and never past
+  the response's `nextUpdate`, so the next run within the hour asks no responder. What
+  is read back is verified again (signature, responder, certificate); `unknown`
+  answers and errors are not cached. Every command that checks OCSP uses it.
 - `{bin} cache clear` empties the cache.
 
 ## Subsystem pki: certificates and trust
@@ -102,6 +106,8 @@ never on `message`.
   - `revocation_checked: false` means revocation was not checked (`--offline`). A
     valid result then says nothing about revocation.
   - `chain[].revocation` holds the OCSP answer per certificate. The root has none.
+    `cached: true` when it came from the cache of an earlier run (`produced_at` says
+    how old it is) rather than from the responder now.
     Under hard-fail an unreachable responder leaves no answer but an
     `ocsp_unavailable` error naming its URL.
   - `ocsp` is present with `--ocsp-responder` or `--ocsp-max-age`: the responder every

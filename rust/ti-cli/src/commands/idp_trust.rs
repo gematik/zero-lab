@@ -126,7 +126,8 @@ impl TslTrust<'_> {
         );
         let result = block_on(async {
             if let Some(transport) = loaded.session.transport() {
-                let checker = OcspChecker::new(&loaded.config, transport, SystemClock);
+                let checker = OcspChecker::new(&loaded.config, transport, SystemClock)
+                    .with_store(loaded.session.store());
                 validator.validate(&certs, at, &checker).await
             } else {
                 validator.revocation = RevocationMode::Disabled;
@@ -139,8 +140,18 @@ impl TslTrust<'_> {
             self.out.verbose(
                 1,
                 format_args!(
-                    "{which}: {subject} valid for an IDP-Dienst in {} (idp-sig, OCSP)",
-                    loaded.env
+                    "{which}: {subject} valid for an IDP-Dienst in {} (idp-sig, OCSP{})",
+                    loaded.env,
+                    if result
+                        .cert_results
+                        .first()
+                        .and_then(|r| r.revocation.as_ref())
+                        .is_some_and(|r| r.from_cache)
+                    {
+                        " from the cache"
+                    } else {
+                        ""
+                    }
                 ),
             );
             Ok(Checked::Verified)

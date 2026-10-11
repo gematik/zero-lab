@@ -188,7 +188,8 @@ pub enum Command {
 /// `ti cache …`.
 #[derive(Debug, Subcommand)]
 pub enum CacheCommand {
-    /// Delete the downloaded trust material; the next run downloads it again
+    /// Delete the downloaded trust material and cached OCSP responses; the next run
+    /// fetches them again
     Clear,
 }
 

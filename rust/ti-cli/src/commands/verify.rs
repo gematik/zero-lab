@@ -115,6 +115,9 @@ struct RevocationEntry {
     authorization: Option<&'static str>,
     produced_at: Option<String>,
     revoked_at: Option<String>,
+    /// The response came from the cache (an earlier run, within the hour and its
+    /// `nextUpdate`) and was verified again, not asked for now.
+    cached: bool,
 }
 
 #[derive(Serialize)]
@@ -184,7 +187,8 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
     });
     let validated = block_on(async {
         if let Some(transport) = session.transport() {
-            let mut checker = OcspChecker::new(&config, transport, SystemClock);
+            let mut checker =
+                OcspChecker::new(&config, transport, SystemClock).with_store(session.store());
             if let Some(url) = &args.ocsp_responder {
                 checker = checker.with_responder_url(url.clone());
             }
@@ -503,6 +507,7 @@ fn revocation_entry(r: &RevocationResult) -> RevocationEntry {
         }),
         produced_at: r.produced_at.map(|t| t.to_string()),
         revoked_at: r.revoked_at.map(|t| t.to_string()),
+        cached: r.from_cache,
     }
 }
 
@@ -718,6 +723,10 @@ fn ocsp_line(r: &RevocationEntry) -> Line {
     }
     if !r.reason.is_empty() {
         line = line.and_dim(format!(": {}", r.reason));
+    }
+    if r.cached {
+        let at = r.produced_at.as_deref().unwrap_or("earlier");
+        line = line.and_dim(format!(" · cached, produced {at}"));
     }
     line
 }

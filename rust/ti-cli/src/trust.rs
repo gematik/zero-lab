@@ -284,7 +284,8 @@ impl Session {
                     stored.clone(),
                 )?;
                 if at.is_none() {
-                    let checker = OcspChecker::new(config, transport, SystemClock);
+                    let checker =
+                        OcspChecker::new(config, transport, SystemClock).with_store(self.store());
                     first_tick(&reloader.with_signer_status(checker)).await
                 } else {
                     first_tick(&reloader).await
@@ -392,15 +393,21 @@ impl Session {
         }
     }
 
+    /// The cache on disk, or this session's memory when there is no cache directory:
+    /// trust material and OCSP responses.
+    pub fn store(&self) -> Store {
+        match &self.cache_dir {
+            Some(dir) => Store::File(crate::cache::FileCacheStore::new(dir)),
+            None => Store::Memory(Arc::clone(&self.memory)),
+        }
+    }
+
     fn loader<T: Transport + Send + Sync>(
         &self,
         config: &TrustConfig,
         transport: T,
     ) -> CachingLoader<HttpLoader<T, SystemClock>, Store, SystemClock> {
-        let store = match &self.cache_dir {
-            Some(dir) => Store::File(crate::cache::FileCacheStore::new(dir)),
-            None => Store::Memory(Arc::clone(&self.memory)),
-        };
+        let store = self.store();
         CachingLoader::new(
             HttpLoader::new(config, transport, SystemClock),
             store,
@@ -536,7 +543,7 @@ fn source_name(source: Option<Source>) -> &'static str {
 }
 
 /// The cache on disk, or in memory when no cache directory can be derived.
-enum Store {
+pub enum Store {
     File(crate::cache::FileCacheStore),
     Memory(Arc<MemoryCacheStore>),
 }

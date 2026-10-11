@@ -10,6 +10,15 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-cli
 
 #### added
+- OCSP responses are cached on disk with the trust material (one hour, never past
+  `nextUpdate`; `good` and `revoked` only), for `pki verify`, the TSL signer's status,
+  and the IDP certificates of `idpd authenticate` and `directory login`: a second run
+  within the hour asks no responder. `pki verify` marks such answers `cached` (JSON
+  `chain[].revocation.cached`). `cache clear` removes them too (TASK-2).
+
+### ti-cli
+
+#### added
 - `directory login --env|--url --idp-url <identity>`: the FHIR-Directory's (VZD) owner
   authentication (ti-directory) from `GET /owner-authenticate` through the IDP-Dienst's
   Authenticator-Modul flow to the owner access token for `/owner` and `/search`
@@ -204,6 +213,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pki
 
 #### added
+- `OcspChecker::with_store`: keeps `good` and `revoked` responses in a `CacheStore`
+  as well, so separate processes share them; the store holds the DER response, which is
+  verified again as of its fetch time when read, so a shared store can withhold a
+  response but not forge one. `OcspChecker` gains a third type parameter, defaulting to
+  `NoStore`. `RevocationResult::from_cache` tells a reused answer from a fresh one.
 - `anchors::GEM_RCA7`, the production anchor, and `algorithms::NIST`: everything but
   brainpool, to verify as a client without brainpool would (the roots walk ends at
   GEM.RCA8 and GEM.RCA5; no TSL verifies).
