@@ -405,10 +405,11 @@ one crate with binaries. A release takes two commands from `main`:
    `just release ti-cli=0.4.0 ti-idpd=0.2.0 ti-directory=0.1.0`. It stops unless `main`
    is clean and equal to `origin/main`, each tag is new and above the crate's last
    `rust/<crate>/v*`, and `ReleaseNotes.md` has exactly one `### <crate>` block under
-   `## Unreleased` for each. Then `just check`, `just audit`; per crate the version in
+   `## Unreleased` for each. Then `just check` and `just advisories vet msrv`; per crate the version in
    its `Cargo.toml`, the workspace requirement on it in `Cargo.toml` (`"0.2"` for 0.x,
    the major from 1.0) and its block becoming `## Release <crate> X.Y.Z, YYYY-MM-DD`;
-   `Cargo.lock`; `just jwz-recheck`, because `Cargo.toml` changed; when `ti-cli` is in
+   `Cargo.lock`; `just semver` for the released crates at their new versions;
+   `just jwz-recheck`, because `Cargo.toml` changed; when `ti-cli` is in
    it, `just cli-targets` builds the three binaries into `target/dist` with their
    `SHA256SUMS`. One commit `release: <crate> X.Y.Z, …`, one tag `rust/<crate>/vX.Y.Z`
    per crate. A failure or Ctrl-C after the gate undoes the bumps.

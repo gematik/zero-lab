@@ -142,7 +142,8 @@ release +releases:
     done
 
     echo "==> just check"; just check
-    echo "==> just audit"; just audit
+    # The semver step waits for the bumps: it judges the released crates' new versions.
+    echo "==> just advisories vet msrv"; just advisories vet msrv
 
     # From here the working tree changes; a failure or Ctrl-C before the commit undoes it.
     undo() { git checkout -q -- .; echo "release: stopped, the bumps are undone" >&2; }
@@ -170,6 +171,7 @@ release +releases:
             s/\n+\z/\n/' ReleaseNotes.md
     done
     cargo update -q --workspace --offline
+    echo "==> just semver ${crates[*]}"; just semver "${crates[@]}"
     # Cargo.toml changed, so jwz's design-time stamps are stale until rechecked.
     echo "==> just jwz-recheck"; just jwz-recheck
     cli=""
@@ -616,11 +618,13 @@ msrv:
 # contract is its JSON schemas (tested against real output), and semver-checks rebuilds it
 # without Cargo.lock, which picks a pkcs1 release candidate the pinned rsa rc does not fit.
 #
-# Public API changes match the version bump, against each crate's last tag
-semver:
+# Public API changes match the version bump, against each crate's last tag (all crates, or those named)
+semver *crates:
     #!/usr/bin/env bash
     set -euo pipefail
-    for crate in $(cargo metadata --no-deps --format-version 1 | jq -r '.packages[].name' | sort); do
+    names="{{crates}}"
+    [ -n "$names" ] || names=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[].name' | sort)
+    for crate in $names; do
         if [ "$crate" = ti-cli ]; then
             echo "ti-cli: a binary, its contract is the JSON schemas; skipped"
             continue
