@@ -1,10 +1,10 @@
 ---
 id: TASK-38
 title: 'Go tooling: staticcheck fails against the go1.27 toolchain; tag brainpool'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-10-11 11:48'
-updated_date: '2026-10-11 12:01'
+updated_date: '2026-10-11 12:09'
 labels:
   - go
   - tooling
