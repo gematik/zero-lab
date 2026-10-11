@@ -444,7 +444,9 @@
             "profile_ambiguous",
             "profile_type_mismatch",
             "cert_type_ca_not_authorized",
-            "cert_type_unchecked"
+            "cert_type_unchecked",
+            "ca_revoked_in_tsl",
+            "issued_before_ca_revocation"
           ]
         },
         "subject": {

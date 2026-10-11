@@ -41,9 +41,51 @@ pub enum Error {
         /// What is wrong.
         detail: String,
     },
+    /// The directory's Keycloak refused the client credentials.
+    #[error("FHIR-Directory Keycloak refused: {0}")]
+    AuthServer(OAuthError),
+    /// A client-credentials path without a Keycloak URL.
+    #[error("FHIR-Directory: no Keycloak URL for the {0} endpoint")]
+    NoAuthUrl(&'static str),
     /// The IDP-Dienst flow failed.
     #[error(transparent)]
     Idpd(#[from] ti_idpd::Error),
+}
+
+/// An OAuth error document (RFC 6749 §5.2): Keycloak's answer to bad client
+/// credentials.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+pub struct OAuthError {
+    /// The HTTP status it came with.
+    #[serde(skip)]
+    pub http_status: u16,
+    /// `invalid_client`, `unauthorized_client`, …
+    pub error: String,
+    /// What went wrong.
+    #[serde(default)]
+    pub error_description: Option<String>,
+}
+
+impl OAuthError {
+    /// From a JSON body, when it is one with an `error`.
+    pub(crate) fn from_body(status: u16, body: &[u8]) -> Option<OAuthError> {
+        let mut error: OAuthError = serde_json::from_slice(body).ok()?;
+        if error.error.is_empty() {
+            return None;
+        }
+        error.http_status = status;
+        Some(error)
+    }
+}
+
+impl fmt::Display for OAuthError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "HTTP {} {}", self.http_status, self.error)?;
+        if let Some(description) = &self.error_description {
+            write!(f, ": {description}")?;
+        }
+        Ok(())
+    }
 }
 
 impl Error {

@@ -106,6 +106,12 @@ pub enum ErrorCode {
     /// the issuing CA, so the end entity's type was not checked against it (TUC_PKI_007
     /// variant 7a). `ti-pki`'s own code.
     CertTypeUnchecked,
+    /// The TSL lists the issuing CA as revoked, and the end entity was issued at or
+    /// after its `StatusStartingTime` (Tab_PKI_271, TUC_PKI_002 step 5).
+    CaRevokedInTsl,
+    /// Warning only: the TSL lists the issuing CA as revoked, but the end entity was
+    /// issued before its `StatusStartingTime`, so it is treated as usual (Tab_PKI_271).
+    IssuedBeforeCaRevocation,
 }
 
 impl ErrorCode {
@@ -132,6 +138,8 @@ impl ErrorCode {
         ErrorCode::ProfileTypeMismatch,
         ErrorCode::CertTypeCaNotAuthorized,
         ErrorCode::CertTypeUnchecked,
+        ErrorCode::CaRevokedInTsl,
+        ErrorCode::IssuedBeforeCaRevocation,
     ];
 
     /// The stable string form, as used in logs and by the Go implementation.
@@ -158,6 +166,8 @@ impl ErrorCode {
             ErrorCode::ProfileTypeMismatch => "profile_type_mismatch",
             ErrorCode::CertTypeCaNotAuthorized => "cert_type_ca_not_authorized",
             ErrorCode::CertTypeUnchecked => "cert_type_unchecked",
+            ErrorCode::CaRevokedInTsl => "ca_revoked_in_tsl",
+            ErrorCode::IssuedBeforeCaRevocation => "issued_before_ca_revocation",
         }
     }
 }
@@ -296,8 +306,10 @@ mod tests {
             ErrorCode::ProfileTypeMismatch => 18,
             ErrorCode::CertTypeCaNotAuthorized => 19,
             ErrorCode::CertTypeUnchecked => 20,
+            ErrorCode::CaRevokedInTsl => 21,
+            ErrorCode::IssuedBeforeCaRevocation => 22,
         };
-        assert_eq!(ErrorCode::ALL.len(), 21);
+        assert_eq!(ErrorCode::ALL.len(), 23);
         for (i, code) in ErrorCode::ALL.iter().enumerate() {
             assert_eq!(place(*code), i, "{code}");
         }

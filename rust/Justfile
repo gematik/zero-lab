@@ -116,57 +116,82 @@ release-notes version="Unreleased" crate="ti-cli":
     [[ -n "$notes" ]] || { echo "release-notes: no notes for {{crate}} {{version}}" >&2; exit 1; }
     printf '%s\n' "$notes"
 
-# Prepare a ti release from main, locally: gate, version bump, release notes, binaries in target/dist, commit and tag
-release version:
+# Prepare a release from main, locally, of one or more crates (just release ti-cli=0.4.0 ti-idpd=0.2.0): gate, version bumps, release notes, ti binaries in target/dist when ti-cli is in it, one commit, a tag per crate
+release +releases:
     #!/usr/bin/env bash
     set -euo pipefail
-    v="{{version}}"; tag="rust/ti-cli/v$v"
     die() { echo "release: $*" >&2; exit 1; }
     [[ "$(git branch --show-current)" == main ]] || die "releases start from main"
     [[ -z "$(git status --porcelain)" ]] || die "the working tree is not clean"
     git fetch -q origin main
     [[ "$(git rev-parse main)" == "$(git rev-parse origin/main)" ]] || die "main and origin/main differ"
-    ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null || die "$tag exists"
-    last=$(git tag -l 'rust/ti-cli/v*' | sed 's|.*/v||' | sort -V | tail -1)
-    [[ -z "$last" || "$(printf '%s\n%s\n' "$last" "$v" | sort -V | tail -1)" == "$v" && "$v" != "$last" ]] \
-        || die "$v is not above the last release $last"
-    just release-notes >/dev/null || die "write the release notes first"
+    crates=(); versions=()
+    for pair in {{releases}}; do
+        crate="${pair%%=*}"; v="${pair#*=}"
+        [[ "$crate" != "$pair" && -n "$v" ]] || die "$pair is not crate=version"
+        [[ -f "$crate/Cargo.toml" ]] || die "no crate $crate"
+        tag="rust/$crate/v$v"
+        ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null || die "$tag exists"
+        last=$(git tag -l "rust/$crate/v*" | sed 's|.*/v||' | sort -V | tail -1)
+        [[ -z "$last" || ( "$(printf '%s\n%s\n' "$last" "$v" | sort -V | tail -1)" == "$v" && "$v" != "$last" ) ]] \
+            || die "$crate $v is not above its last release $last"
+        just release-notes Unreleased "$crate" >/dev/null || die "no Unreleased notes for $crate"
+        blocks=$(awk -v c="### $crate" '/^## Unreleased/{u=1; next} /^## /{u=0} u && $0 == c {n++} END {print n+0}' ReleaseNotes.md)
+        [[ "$blocks" == 1 ]] || die "$crate has $blocks blocks under Unreleased; merge them into one"
+        crates+=("$crate"); versions+=("$v")
+    done
 
     echo "==> just check"; just check
     echo "==> just audit"; just audit
 
     # From here the working tree changes; a failure or Ctrl-C before the commit undoes it.
-    undo() { git checkout -q -- ti-cli/Cargo.toml Cargo.lock ReleaseNotes.md; echo "release: stopped, the bump is undone" >&2; }
+    undo() { git checkout -q -- .; echo "release: stopped, the bumps are undone" >&2; }
     trap undo ERR
     trap 'undo; exit 130' INT
-    perl -0pi -e 's/^version = "[^"]*"/version = "'"$v"'"/m' ti-cli/Cargo.toml
-    cargo update -q -p ti-cli --offline
-    # ti-cli's block leaves "Unreleased" and becomes the section of this release.
-    CRATE=ti-cli HEADING="## Release ti-cli $v, $(date +%F)" perl -0777 -i -pe '
-        my ($c, $h) = ($ENV{CRATE}, $ENV{HEADING});
-        s{^## Unreleased\n(.*?)(?=^## |\z)}{
-            my $u = $1;
-            $u =~ s{^### \Q$c\E\n(.*?)(?=^### |\z)}{}ms;
-            my $b = $1;
-            $b =~ s/^####/###/mg;
-            $u =~ s/\s+\z/\n/;
-            $u = "" unless $u =~ /\S/;
-            "## Unreleased\n$u\n$h\n$b"
-        }mse;
-        s/\n+\z/\n/' ReleaseNotes.md
-    echo "==> just cli-targets"; just cli-targets
-    (cd target/dist && shasum -a 256 "ti-$v-"* > SHA256SUMS)
+    date=$(date +%F)
+    for i in "${!crates[@]}"; do
+        crate="${crates[$i]}"; v="${versions[$i]}"
+        perl -0pi -e 's/^version = "[^"]*"/version = "'"$v"'"/m' "$crate/Cargo.toml"
+        # The workspace's requirement on the crate follows its new minor (0.x) or major.
+        req=$(echo "$v" | awk -F. '{ print ($1 == 0) ? $1 "." $2 : $1 }')
+        perl -pi -e 's/^(\Q'"$crate"'\E = \{ version = ")[^"]*(")/${1}'"$req"'${2}/' Cargo.toml
+        # The crate's block leaves "Unreleased" and becomes the section of this release.
+        CRATE="$crate" HEADING="## Release $crate $v, $date" perl -0777 -i -pe '
+            my ($c, $h) = ($ENV{CRATE}, $ENV{HEADING});
+            s{^## Unreleased\n(.*?)(?=^## |\z)}{
+                my $u = $1;
+                $u =~ s{^### \Q$c\E\n(.*?)(?=^### |\z)}{}ms;
+                my $b = $1;
+                $b =~ s/^####/###/mg;
+                $u =~ s/\s+\z/\n/;
+                $u = "" unless $u =~ /\S/;
+                "## Unreleased\n$u\n$h\n$b"
+            }mse;
+            s/\n+\z/\n/' ReleaseNotes.md
+    done
+    cargo update -q --workspace --offline
+    # Cargo.toml changed, so jwz's design-time stamps are stale until rechecked.
+    echo "==> just jwz-recheck"; just jwz-recheck
+    cli=""
+    for i in "${!crates[@]}"; do [[ "${crates[$i]}" == ti-cli ]] && cli="${versions[$i]}"; done
+    if [[ -n "$cli" ]]; then
+        echo "==> just cli-targets"; just cli-targets
+        (cd target/dist && shasum -a 256 "ti-$cli-"* > SHA256SUMS)
+    fi
     trap - ERR INT
 
-    git add ti-cli/Cargo.toml Cargo.lock ReleaseNotes.md
-    git commit -q -m "ti-cli: release $v"
-    just tag ti-cli "$v"
-    echo; just release-notes "$v"; echo; ls -l target/dist
+    summary=$(for i in "${!crates[@]}"; do printf '%s %s, ' "${crates[$i]}" "${versions[$i]}"; done)
+    summary="${summary%, }"
+    git add -A Cargo.toml Cargo.lock ReleaseNotes.md jwz/verification/stamps "${crates[@]/%//Cargo.toml}"
+    git commit -q -m "release: $summary"
+    for i in "${!crates[@]}"; do just tag "${crates[$i]}" "${versions[$i]}"; done
     echo
-    echo "Committed and tagged $tag, nothing pushed. Publish with: just publish $v"
-    echo "or undo: git tag -d $tag && git reset --keep HEAD~1"
+    echo "Committed and tagged $summary; nothing pushed."
+    [[ -n "$cli" ]] && { ls -l target/dist; echo "Publish with: just publish $cli"; } \
+        || echo "Push with: git push --atomic origin main $(git tag --points-at HEAD | tr '\n' ' ')"
+    echo "or undo: git tag -d $(git tag --points-at HEAD | tr '\n' ' ')&& git reset --keep HEAD~1"
 
-# Publish a ti release made by `just release`: push main and its tag, the GitHub release with target/dist, the formula in <tap>/homebrew-tap; safe to re-run
+# Publish a ti release made by `just release`: push main and every crate tag of the release commit, the GitHub release with target/dist, the formula in <tap>/homebrew-tap; safe to re-run
 publish version tap=TAP_OWNER:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -183,7 +208,8 @@ publish version tap=TAP_OWNER:
         echo
         echo "**Verify** a download: \`shasum -a 256 -c SHA256SUMS --ignore-missing\`"
     } > "$notes"
-    git push --atomic origin main "$tag"
+    # Every crate released with ti-cli shares its release commit.
+    git push --atomic origin main $(git tag --points-at "$tag^{commit}" | grep '^rust/')
     # Re-running after a partial publish skips what is already there.
     if gh release view "$tag" --repo {{REPO}} >/dev/null 2>&1; then
         echo "GitHub release $tag exists"
@@ -586,11 +612,19 @@ msrv:
 
 # Public API changes vs. the crate's last rust/<crate>/v* tag must match the version bump.
 # The baseline is the tag, not a registry, because nothing is published yet; a crate that
-# was never tagged has no baseline and is skipped.
+# was never tagged has no baseline and is skipped. ti-cli is skipped too: a binary whose
+# contract is its JSON schemas (tested against real output), and semver-checks rebuilds it
+# without Cargo.lock, which picks a pkcs1 release candidate the pinned rsa rc does not fit.
+#
+# Public API changes match the version bump, against each crate's last tag
 semver:
     #!/usr/bin/env bash
     set -euo pipefail
     for crate in $(cargo metadata --no-deps --format-version 1 | jq -r '.packages[].name' | sort); do
+        if [ "$crate" = ti-cli ]; then
+            echo "ti-cli: a binary, its contract is the JSON schemas; skipped"
+            continue
+        fi
         latest=$(git tag -l "rust/$crate/v*" | sort -V | tail -1)
         if [ -z "$latest" ]; then
             echo "$crate: no baseline tag, skipped"
