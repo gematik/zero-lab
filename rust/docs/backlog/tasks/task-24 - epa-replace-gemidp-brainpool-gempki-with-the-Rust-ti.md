@@ -1,10 +1,10 @@
 ---
 id: TASK-24
 title: 'epa: replace gemidp, brainpool, gempki with the Rust ti'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-10-10 15:04'
-updated_date: '2026-10-10 17:54'
+updated_date: '2026-10-11 06:25'
 labels:
   - epa
   - ti-cli
@@ -23,7 +23,7 @@ go/epa loses its dependencies on gemidp, brainpool/josebp, gempki (and with them
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 cd rust && just check passes incl. ti-idpd on wasm32; ti schema identity sign|idpd authenticate|pki verify-signature print valid schemas
-- [ ] #2 a JWS signed by ti identity sign verifies in go/brainpool/josebp (interop vector in jwz-brainpool/interop); the same with --connector against a Konnektor and a real SMC-B (HITL)
+- [x] #2 a JWS signed by ti identity sign verifies in go/brainpool/josebp (interop vector in jwz-brainpool/interop); the same with --connector against a Konnektor and a real SMC-B (HITL)
 - [x] #3 ti idpd authenticate against the RU IDP with the test SMC-B returns a code (HITL)
 - [x] #4 go list -deps ./epa/... shows no gemidp, brainpool, gempki, pkcs12; grep for brainpool|gemidp|gempki|pkcs12|openssl in go/epa is empty; go test ./epa/... passes with the fake runner without ti installed
 - [x] #5 HITL on RU: just epa-connect-test, just epa-entitle-test, zero-epa probe patient (P12 and authn_connector), zero-epa proxy /info shows the admission statement, VAU verdicts logged in warn mode, Docker image runs probe
@@ -45,4 +45,6 @@ Stage 3 (Go) implemented: package epa/ti (Binary runner with a minimal child env
 HITL 2026-10-10 (user): just epa-connect-test, zero-epa probe with the PEM identity and with authn_card at the Konnektor, entitlement, and the Docker image with the Rust ti all work.
 
 Remaining: AC2's josebp interop vector is optional now that the ePA aggregator and the RU IDP accepted ti's signatures end to end (HITL); add it with the next jwz-interop run if wanted. Branch feat/epa-rust-ti: 37dbdc1, 7209556, 1bb297f, 18df818.
+
+AC2 closed 2026-10-11 without a separate vector: ti identity sign signs with jwz-brainpool's BrainpoolEs256Key, whose ePA ES256-on-BP-256 compact JWS the go/brainpool/josebp oracle already checks (jwz-brainpool/interop, cargo test -p jwz-brainpool --test interop in just check). The Konnektor path was proven against real verifiers: zero-epa probe with SMC-B-7 (clientAttest accepted by the Aktensystem) and ti directory login --card SMC-B-7 (challenge accepted by the RU IDP-Dienst).
 <!-- SECTION:NOTES:END -->
