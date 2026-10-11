@@ -6,7 +6,6 @@ use (
 	./dpop
 	./epa
 	./gemidp
-	./gempki
 	./kv
 	./metsubushi
 	./nonce

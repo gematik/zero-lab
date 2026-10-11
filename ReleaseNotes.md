@@ -10,7 +10,7 @@ step-by-step workflow.
 ### Local development (go.work)
 
 The tracked `go.work` workspace resolves every in-repo module from its local source. Edit any
-library (e.g. `brainpool`) and the change is immediately used by every command (e.g. `ti`)
+library (e.g. `brainpool`) and the change is immediately used by every command (e.g. `zero-epa`)
 when you build, test, or run inside the workspace — no tags, no go.mod edits.
 
 ### Versions come from git tags
@@ -30,7 +30,7 @@ go install github.com/gematik/zero-lab/go/pdp/cmd/zero-pdp@v0.22.2
 ```
 
 The `ti` command-line tool is the Rust one (`rust/ti-cli`, `cd rust && just install`); the
-Go `ti` and `kon` modules are archived at `go/ti/v0.23.4` and `go/kon/v0.21.4`.
+Go `ti` and `kon` modules are archived at `go/ti/v0.23.4` and `go/kon/v0.21.4`. `gempki` is archived at `go/gempki/v0.23.1`; its successor is the Rust `ti-pki`, and the tag keeps it `go get`-able for external consumers.
 
 `zero-caddy` combines its version with the upstream Caddy version as SemVer build metadata,
 e.g. the binary reports `zero-caddy 0.20.2+caddy2.11.4` and the Docker image is tagged

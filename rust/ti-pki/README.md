@@ -25,7 +25,7 @@ The TSL signature rules derived from them are in
 [`spec/tsl-xmldsig`](../../spec/tsl-xmldsig/README.md).
 
 The reference implementation is the Go package
-[`gempki`](https://github.com/gematik/zero-lab/tree/main/go/gempki); this crate ports it
+[`gempki`](https://github.com/gematik/zero-lab/tree/go/gempki/v0.23.1/go/gempki) (archived); this crate ports it
 module by module and keeps its error codes, certificate-type names and revocation table.
 
 ```toml

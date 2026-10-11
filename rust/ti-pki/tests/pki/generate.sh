@@ -3,7 +3,7 @@
 # every certificate the tests validate. Run with `just test-pki` from rust/; the output
 # (PEM certificates, no keys) is committed, keys live only in a temporary directory.
 #
-# The topology mirrors go/gempki/internal/testca, validated at a fixed instant
+# The topology mirrors go/gempki/internal/testca (archived at go/gempki/v0.23.1), validated at a fixed instant
 # (TestPki::NOW, 2026-01-01T00:00:00Z) so the files never go stale:
 #
 #   rca1 (brainpoolP256r1) ── sub-ca-hba ── ee-arzt (admission: Arzt)

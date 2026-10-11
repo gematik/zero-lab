@@ -4,7 +4,7 @@ Comparison of `ti-pki` with gematik's Java reference implementation
 [ref-GemLibPki](https://github.com/gematik/ref-GemLibPki) (v5.0.2), which implements
 TUC_PKI_018 (certificate check), TUC_PKI_006 (OCSP) and TUC_PKI_001 (TSL) of
 gemSpec_PKI. Recorded so the deliberate deviations are not mistaken for gaps. It
-follows `go/gempki/docs/gemlibpki-comparison.md` and notes where `ti-pki` decided
+follows `go/gempki/docs/gemlibpki-comparison.md` (archived at go/gempki/v0.23.1) and notes where `ti-pki` decided
 differently from `gempki`.
 
 ## Deliberate deviations

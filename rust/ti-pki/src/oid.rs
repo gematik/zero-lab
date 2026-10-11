@@ -4,7 +4,8 @@
 //! (<https://gemspec.gematik.de/docs/gemSpec/gemSpec_OID/latest/>) with the pending change
 //! C_12646 to Tab_PKI_406 applied
 //! (<https://gemspec.gematik.de/downloads/prereleases/Draft_CI_26_3/C_12646_Anlage_V1.0.0.html>).
-//! Constant names follow `go/gempki/oid` under a family prefix:
+//! Constant names are the gemSpec_OID reference name without `oid_`, uppercased, `-` as
+//! `_` (decision-5), under a family prefix:
 //!
 //! - `INSTANCE_*`  — Tab_PKI_401 organisational instances
 //! - `PROF_*`      — Tab_PKI_402 professions (HBA persons)
