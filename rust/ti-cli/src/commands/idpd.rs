@@ -5,10 +5,9 @@
 use jwz::jwt::{Clock, SystemClock};
 use serde::Serialize;
 use ti_idpd::authenticator;
-use ti_idpd::http::{Request, Response, Transport, TransportError};
-use ti_idpd::ureq::UreqTransport;
 use ti_idpd::{Idp, Warning};
 
+use super::idp_trust::{CertificateInfo, IdpTrust, certificate_infos};
 use crate::cli::{GlobalArgs, IdpdAuthenticateArgs};
 use crate::error::{CliError, Exit};
 use crate::http;
@@ -29,8 +28,7 @@ struct Report {
     identity: IdentityInfo,
     /// Claims of the challenge, for the record.
     challenge: ChallengeInfo,
-    /// What was not proven: `idp_certificates_unverified` until the IDP's certificates
-    /// are checked against the TSL.
+    /// What was not proven: `idp_certificates_unverified` with `--idp-unverified`.
     warnings: Vec<&'static str>,
 }
 
@@ -39,6 +37,8 @@ struct IdpInfo {
     base_url: String,
     issuer: String,
     authorization_endpoint: String,
+    /// The discovery document's and `PuK_IDP_SIG`'s certificates.
+    certificates: Vec<CertificateInfo>,
 }
 
 #[derive(Serialize)]
@@ -72,11 +72,9 @@ pub fn authenticate(
     };
     let identity = Identity::load(&args.identity, global, out)?;
     let signer = identity.signer(jwz_brainpool::BP256R1)?;
-    let transport = Logged {
-        inner: UreqTransport::new(http::idp_agent(&global.net)?),
-        out,
-    };
+    let transport = http::Logged::new(&global.net, out)?;
     out.verbose(1, format_args!("IDP-Dienst {}", idp.base_url()));
+    let trust = IdpTrust::new(args.idp_unverified, args.env, global, out);
     let done = authenticator::authenticate(
         &transport,
         &idp,
@@ -86,8 +84,9 @@ pub fn authenticate(
         },
         &args.auth_url,
         SystemClock.now(),
+        &trust,
     )
-    .map_err(CliError::Idpd)?;
+    .map_err(|error| trust.take_error().unwrap_or(CliError::Idpd(error)))?;
     let claim = |name: &str| {
         done.challenge_claims
             .get(name)
@@ -103,6 +102,7 @@ pub fn authenticate(
             base_url: idp.base_url().to_owned(),
             issuer: done.discovery.metadata.issuer,
             authorization_endpoint: done.discovery.metadata.authorization_endpoint,
+            certificates: certificate_infos(&done.certificates),
         },
         identity: IdentityInfo {
             subject: identity.certificate.subject().to_string(),
@@ -122,6 +122,7 @@ pub fn authenticate(
     let mut doc = Document::default();
     doc.field("authenticated", Line::status(Tone::Good, "code received"));
     doc.field("IDP", Line::text(&report.idp.issuer));
+    certificate_lines(&mut doc, &report.idp.certificates);
     doc.field(
         "client",
         Line::text(report.challenge.client_id.as_deref().unwrap_or("-")),
@@ -142,30 +143,14 @@ pub fn authenticate(
     Ok(Exit::Ok)
 }
 
-/// The transport with one `-v` line per request.
-struct Logged<'a> {
-    inner: UreqTransport,
-    out: &'a Output,
-}
-
-impl Transport for Logged<'_> {
-    fn send(&self, request: &Request) -> Result<Response, TransportError> {
-        let response = self.inner.send(request);
-        match &response {
-            Ok(r) => self.out.verbose(
-                1,
-                format_args!(
-                    "{} {} → {} ({} bytes)",
-                    request.method,
-                    request.url,
-                    r.status,
-                    r.body.len()
-                ),
-            ),
-            Err(e) => self
-                .out
-                .verbose(1, format_args!("{} {} → {e}", request.method, request.url)),
-        }
-        response
+/// One line per IDP certificate: verified against the TSL, or not checked.
+pub(super) fn certificate_lines(doc: &mut Document, certificates: &[CertificateInfo]) {
+    for c in certificates {
+        let line = if c.verified {
+            Line::status(Tone::Good, "valid (TSL, OCSP)")
+        } else {
+            Line::status(Tone::Warn, "not checked")
+        };
+        doc.field(c.key, line.and_dim(" · ").and_line(Line::text(&c.subject)));
     }
 }

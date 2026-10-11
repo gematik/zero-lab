@@ -51,6 +51,7 @@ Examples:
   {bin} identity sign --p12 smcb.p12 --claims - < claims.json        # ES256 JWS with x5c
   {bin} identity sign --card 80276883110000163974 --claims c.json   # the selected Konnektor
   {bin} idpd authenticate --env ref --p12 smcb.p12 --auth-url \"$AUTHZ_URI\"   # → code
+  {bin} directory login --env ref --p12 smcb.p12   # FHIR-Directory owner access token
   {bin} pki verify-signature --cert vau.pem --data keys.cbor --signature sig.bin
   {bin} connector configs                       # the .kon files, shared with the Go ti
   {bin} connector -c praxis get cards
@@ -149,6 +150,9 @@ pub enum Command {
     /// The gematik IDP-Dienst: authenticate with an identity
     #[command(subcommand)]
     Idpd(IdpdCommand),
+    /// The FHIR-Directory (VZD): the owner access token for an identity
+    #[command(subcommand)]
+    Directory(DirectoryCommand),
     /// The Konnektor: cards, certificates, PINs
     Connector(ConnectorCli),
     /// Check that the TI services of an environment answer, in parallel (exit 0 or 1)
@@ -585,9 +589,50 @@ pub struct IdpdAuthenticateArgs {
         conflicts_with = "idp_url"
     )]
     pub env: Option<Environment>,
-    /// Another IDP-Dienst, by base URL (e.g. a reference implementation)
+    /// Another IDP-Dienst, by base URL (e.g. a reference implementation); its
+    /// certificates are checked against the TSL of --env, or of the environment they show
     #[arg(long, value_name = "URL", value_parser = idp_url)]
     pub idp_url: Option<String>,
+    /// Use the IDP's certificates without checking them against the TSL (an IDP outside
+    /// the TI PKI, e.g. a reference implementation); the report warns
+    #[arg(long)]
+    pub idp_unverified: bool,
+}
+
+/// `ti directory …`: the FHIR-Directory.
+#[derive(Debug, Subcommand)]
+pub enum DirectoryCommand {
+    /// Obtain an owner access token: the directory's redirect to the IDP-Dienst, the
+    /// Authenticator-Modul flow with the identity, the token (exit 0; 3 when refused)
+    Login(DirectoryLoginArgs),
+}
+
+/// `ti directory login`.
+#[derive(Debug, Args)]
+pub struct DirectoryLoginArgs {
+    #[command(flatten)]
+    pub identity: IdentityArgs,
+    /// The TI environment whose FHIR-Directory and IDP-Dienst to use (dev shares ref);
+    /// auto is not an option
+    #[arg(
+        long,
+        value_enum,
+        value_name = "ENV",
+        env = "TI_ENV",
+        required_unless_present = "url",
+        conflicts_with = "url"
+    )]
+    pub env: Option<Environment>,
+    /// Another FHIR-Directory, by base URL; with --idp-url, the IDP it may redirect to
+    #[arg(long, value_name = "URL", value_parser = idp_url, requires = "idp_url")]
+    pub url: Option<String>,
+    /// The IDP-Dienst of a directory given by --url, by base URL
+    #[arg(long, value_name = "URL", value_parser = idp_url, requires = "url")]
+    pub idp_url: Option<String>,
+    /// Use the IDP's certificates without checking them against the TSL (an IDP outside
+    /// the TI PKI, e.g. a reference implementation); the report warns
+    #[arg(long)]
+    pub idp_unverified: bool,
 }
 
 /// An IDP or authorization URL: https, or plain http on the loopback for tests.

@@ -22,9 +22,14 @@
 //!    `signed_challenge`.
 //! 5. `302 Location` with `code` (and `state`), or the IDP's error in the query.
 //!
-//! What this crate does not do yet: verify the IDP's certificates against the TSL (it
-//! reports [`Warning::IdpCertificatesUnverified`]; backlog TASK-27), the relying-party
-//! side (`key_verifier`, token decryption), SSO tokens, pairing.
+//! The IDP's certificates (the discovery document's signer and `PuK_IDP_SIG`'s) are
+//! handed to a [`trust::CertificateTrust`] the caller provides, since checking them
+//! against the TSL needs trust material this crate does not load;
+//! [`trust::Unverified`] skips the check and the result says so
+//! ([`Warning::IdpCertificatesUnverified`]).
+//!
+//! What this crate does not do: the relying-party side (`key_verifier`, token
+//! decryption), SSO tokens, pairing.
 
 #![forbid(unsafe_code)]
 
@@ -34,6 +39,7 @@ pub mod discovery;
 mod error;
 pub mod http;
 mod query;
+pub mod trust;
 #[cfg(feature = "ureq")]
 pub mod ureq;
 
@@ -76,9 +82,9 @@ impl Idp {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum Warning {
-    /// The discovery document's signer and the key certificates were used without a
-    /// check against the TSL and OCSP (gemSpec_IDP_Dienst requires one): the
-    /// signatures verified, the signer's standing did not.
+    /// The IDP's certificates were used without a check against the TSL and OCSP
+    /// (gemSpec_IDP_Dienst requires one; [`trust::Unverified`]): the signatures
+    /// verified, the signers' standing did not.
     IdpCertificatesUnverified,
 }
 

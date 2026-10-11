@@ -15,6 +15,7 @@ use jwz::keys::{Signer, SoftwareAgreementKey, SoftwareKey};
 use serde_json::{Value, json};
 use ti_idpd::authenticator::{self, Identity};
 use ti_idpd::http::{Method, Request, Response, Transport, TransportError};
+use ti_idpd::trust::{CertificateTrust, Checked, IdpCertificate, Unverified};
 use ti_idpd::{Error, Idp, Warning, challenge, discovery};
 use ti_pki::Certificate;
 
@@ -77,6 +78,7 @@ struct FakeIdp {
     disc_sig: SoftwareKey<Backend>,
     disc_cert: Vec<u8>,
     idp_sig: SoftwareKey<Backend>,
+    idp_sig_cert: Vec<u8>,
     /// `PuK_IDP_ENC` as published: the public JWK with its `kid`.
     idp_enc: Jwk,
     /// Tweaks for the failure cases.
@@ -94,12 +96,15 @@ enum Behaviour {
     ChallengeSignedByOtherKey,
     ChallengeExpired,
     DiscoveryWithoutX5c,
+    IdpSigWithoutX5c,
+    /// `PuK_IDP_SIG`'s `x5c` is a certificate for another key.
+    IdpSigX5cOfOtherKey,
 }
 
 impl FakeIdp {
     fn new(behaviour: Behaviour) -> FakeIdp {
         let (disc_sig, disc_cert) = idp_sig_key("puk_disc_sig");
-        let (idp_sig, _) = idp_sig_key("puk_idp_sig");
+        let (idp_sig, idp_sig_cert) = idp_sig_key("puk_idp_sig");
         let mut idp_enc = SoftwareAgreementKey::generate(jwz_brainpool::BP_256, backend())
             .unwrap()
             .public_jwk();
@@ -108,6 +113,7 @@ impl FakeIdp {
             disc_sig,
             disc_cert,
             idp_sig,
+            idp_sig_cert,
             idp_enc,
             behaviour,
             posted: RefCell::new(Vec::new()),
@@ -196,7 +202,14 @@ impl Transport for FakeIdp {
                 self.discovery_document(),
             ),
             (Method::Get, "https://idp.test/idpSig/jwk.json") => {
-                Self::respond(200, &[], self.idp_sig.public_jwk().to_json())
+                use base64ct::{Base64, Encoding};
+                let mut jwk = self.idp_sig.public_jwk();
+                jwk.x5c = match self.behaviour {
+                    Behaviour::IdpSigWithoutX5c => None,
+                    Behaviour::IdpSigX5cOfOtherKey => Some(vec![Base64::encode_string(&card().1)]),
+                    _ => Some(vec![Base64::encode_string(&self.idp_sig_cert)]),
+                };
+                Self::respond(200, &[], jwk.to_json())
             }
             (Method::Get, "https://idp.test/idpEnc/jwk.json") => {
                 Self::respond(200, &[], self.idp_enc.to_json())
@@ -263,6 +276,7 @@ fn the_flow_yields_the_code_and_posts_a_well_formed_signed_challenge() {
         &identity,
         AUTH_URL,
         NOW,
+        &Unverified,
     )
     .unwrap();
     assert_eq!(done.redirect.code, "CODE.jwe.value");
@@ -359,6 +373,7 @@ fn the_idps_refusals_are_reported_with_their_gematik_fields() {
         &identity,
         AUTH_URL,
         NOW,
+        &Unverified,
     )
     .unwrap_err();
     let Error::Idp(refusal) = error else {
@@ -384,6 +399,7 @@ fn the_idps_refusals_are_reported_with_their_gematik_fields() {
         &identity,
         AUTH_URL,
         NOW,
+        &Unverified,
     )
     .unwrap_err();
     let Error::Idp(refusal) = error else {
@@ -411,6 +427,7 @@ fn a_challenge_that_does_not_verify_or_has_expired_is_refused() {
             &identity,
             AUTH_URL,
             NOW,
+            &Unverified,
         )
         .unwrap_err();
         assert!(
@@ -440,6 +457,117 @@ fn a_challenge_that_does_not_verify_or_has_expired_is_refused() {
         ),
         "{error}"
     );
+}
+
+/// A trust check that records what it saw and answers with `answer`.
+struct Recording {
+    answer: Result<Checked, String>,
+    seen: RefCell<Vec<(IdpCertificate, Vec<u8>)>>,
+}
+
+impl CertificateTrust for Recording {
+    fn check(&self, which: IdpCertificate, der: &[u8], _: &[Vec<u8>]) -> Result<Checked, String> {
+        self.seen.borrow_mut().push((which, der.to_vec()));
+        self.answer.clone()
+    }
+}
+
+#[test]
+fn both_idp_certificates_go_to_the_trust_check_and_verified_ones_leave_no_warning() {
+    let idp = FakeIdp::new(Behaviour::default());
+    let (key, cert) = card();
+    let identity = Identity {
+        signer: &key,
+        certificate_der: &cert,
+    };
+    let trust = Recording {
+        answer: Ok(Checked::Verified),
+        seen: RefCell::new(Vec::new()),
+    };
+    let done = authenticator::authenticate(
+        &idp,
+        &Idp::new("https://idp.test"),
+        &identity,
+        AUTH_URL,
+        NOW,
+        &trust,
+    )
+    .unwrap();
+    assert!(done.warnings.is_empty());
+    let seen = trust.seen.borrow();
+    assert_eq!(
+        seen.iter().map(|(w, _)| *w).collect::<Vec<_>>(),
+        [IdpCertificate::DiscoverySigner, IdpCertificate::TokenSigner]
+    );
+    assert_eq!(seen[0].1, idp.disc_cert);
+    assert_eq!(seen[1].1, idp.idp_sig_cert);
+    assert_eq!(done.certificates.len(), 2);
+    assert!(
+        done.certificates
+            .iter()
+            .all(|c| c.checked == Checked::Verified)
+    );
+}
+
+#[test]
+fn a_refused_idp_certificate_stops_the_flow_before_the_card_signs() {
+    let idp = FakeIdp::new(Behaviour::default());
+    let (key, cert) = card();
+    let identity = Identity {
+        signer: &key,
+        certificate_der: &cert,
+    };
+    let trust = Recording {
+        answer: Err("revoked".into()),
+        seen: RefCell::new(Vec::new()),
+    };
+    let error = authenticator::authenticate(
+        &idp,
+        &Idp::new("https://idp.test"),
+        &identity,
+        AUTH_URL,
+        NOW,
+        &trust,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(&error, Error::Untrusted { which: IdpCertificate::DiscoverySigner, detail } if detail == "revoked"),
+        "{error}"
+    );
+    assert_eq!(
+        error.to_string(),
+        "the IDP's puk_disc_sig certificate is not trusted: revoked"
+    );
+    assert!(idp.posted.borrow().is_empty());
+}
+
+#[test]
+fn puk_idp_sig_must_come_with_its_own_certificate() {
+    let (key, cert) = card();
+    let identity = Identity {
+        signer: &key,
+        certificate_der: &cert,
+    };
+    for (behaviour, detail) in [
+        (Behaviour::IdpSigWithoutX5c, "no x5c"),
+        (Behaviour::IdpSigX5cOfOtherKey, "another key"),
+    ] {
+        let idp = FakeIdp::new(behaviour);
+        let error = authenticator::authenticate(
+            &idp,
+            &Idp::new("https://idp.test"),
+            &identity,
+            AUTH_URL,
+            NOW,
+            &Unverified,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(&error, Error::Malformed { what: "PuK_IDP_SIG", detail: d } if d.contains(detail)),
+            "{error}"
+        );
+        assert!(idp.posted.borrow().is_empty());
+    }
 }
 
 #[test]

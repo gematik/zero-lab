@@ -6,6 +6,11 @@
       "url": "https://idp.zentral.idp.splitdns.ti-dienste.de"
     },
     {
+      "name": "Directory",
+      "kind": "directory",
+      "url": "https://fhir-directory.vzd.ti-dienste.de"
+    },
+    {
       "name": "eRX",
       "kind": "erp",
       "url": "https://erp.zentral.erp.splitdns.ti-dienste.de"
@@ -36,6 +41,11 @@
       "name": "IDP",
       "kind": "oidc",
       "url": "https://idp-ref.zentral.idp.splitdns.ti-dienste.de"
+    },
+    {
+      "name": "Directory",
+      "kind": "directory",
+      "url": "https://fhir-directory-ref.vzd.ti-dienste.de"
     },
     {
       "name": "eRX",
@@ -70,6 +80,11 @@
       "url": "https://idp-ref.zentral.idp.splitdns.ti-dienste.de"
     },
     {
+      "name": "Directory",
+      "kind": "directory",
+      "url": "https://fhir-directory-tu.vzd.ti-dienste.de"
+    },
+    {
       "name": "eRX",
       "kind": "erp",
       "url": "https://erp-test.zentral.erp.splitdns.ti-dienste.de"
@@ -100,6 +115,11 @@
       "name": "IDP",
       "kind": "oidc",
       "url": "https://idp-ref.zentral.idp.splitdns.ti-dienste.de"
+    },
+    {
+      "name": "Directory",
+      "kind": "directory",
+      "url": "https://fhir-directory-ref.vzd.ti-dienste.de"
     },
     {
       "name": "eRX",

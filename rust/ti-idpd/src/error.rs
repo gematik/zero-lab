@@ -47,6 +47,15 @@ pub enum Error {
         #[source]
         source: jwz::Error,
     },
+    /// One of the IDP's certificates was refused by the caller's
+    /// [`crate::trust::CertificateTrust`].
+    #[error("the IDP's {which} certificate is not trusted: {detail}")]
+    Untrusted {
+        /// Which certificate.
+        which: crate::trust::IdpCertificate,
+        /// Why.
+        detail: String,
+    },
     /// The identity's signer does not sign the algorithm the IDP requires.
     #[error("the identity signs {found}, the IDP needs {needed}")]
     SignerAlgorithm {

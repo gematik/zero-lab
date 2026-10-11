@@ -23,7 +23,7 @@ use ureq::tls::{Certificate, PemItem, RootCerts, TlsConfig, TlsProvider};
 
 use crate::error::CliError;
 use crate::net::{NetArgs, redact};
-use crate::output::diagnostic;
+use crate::output::{Output, diagnostic};
 
 /// curl's retry back-off: one second, doubling, capped at ten minutes.
 const FIRST_RETRY_DELAY: Duration = Duration::from_secs(1);
@@ -65,6 +65,53 @@ pub fn idp_agent(net: &NetArgs) -> Result<Agent, CliError> {
         .tls_config(tls_config(net)?)
         .proxy(proxy(net, "https")?);
     Ok(ti_idpd::ureq::UreqTransport::agent(builder))
+}
+
+/// The IDP agent as a [`ti_idpd::http::Transport`] with one `-v` line per request.
+pub struct Logged<'a> {
+    inner: ti_idpd::ureq::UreqTransport,
+    out: &'a Output,
+}
+
+impl<'a> Logged<'a> {
+    /// The transport over [`idp_agent`].
+    pub fn new(net: &NetArgs, out: &'a Output) -> Result<Logged<'a>, CliError> {
+        Ok(Logged {
+            inner: ti_idpd::ureq::UreqTransport::new(idp_agent(net)?),
+            out,
+        })
+    }
+}
+
+impl ti_idpd::http::Transport for Logged<'_> {
+    fn send(
+        &self,
+        request: &ti_idpd::http::Request,
+    ) -> Result<ti_idpd::http::Response, ti_idpd::http::TransportError> {
+        let response = self.inner.send(request);
+        match &response {
+            Ok(r) => {
+                self.out.verbose(
+                    1,
+                    format_args!(
+                        "{} {} → {} ({} bytes)",
+                        request.method,
+                        request.url,
+                        r.status,
+                        r.body.len()
+                    ),
+                );
+                if !(200..400).contains(&r.status) && !r.body.is_empty() {
+                    self.out
+                        .verbose(2, String::from_utf8_lossy(&r.body).trim_end());
+                }
+            }
+            Err(e) => self
+                .out
+                .verbose(1, format_args!("{} {} → {e}", request.method, request.url)),
+        }
+        response
+    }
 }
 
 fn tls_config(net: &NetArgs) -> Result<TlsConfig, CliError> {

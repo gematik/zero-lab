@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "directory login",
+  "description": "The FHIR-Directory's owner authentication run with an identity: the directory's redirect to the IDP-Dienst, the Authenticator-Modul flow, and the owner access token the directory issued for its /owner and /search endpoints.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "access_token": {
+      "type": "string",
+      "description": "The owner access token (an ES256 JWT of the directory's), for Authorization: Bearer"
+    },
+    "token_type": {
+      "type": "string",
+      "description": "Bearer"
+    },
+    "expires_in": {
+      "type": "integer",
+      "description": "Seconds of validity, as the directory announced (24 hours by specification)"
+    },
+    "expires_at": {
+      "type": "integer",
+      "description": "When the token expires, seconds since the epoch: the local clock plus expires_in"
+    },
+    "token": {
+      "type": "object",
+      "description": "The token's payload, decoded for the record and not verified: it came from the directory over TLS. Members the token lacks are null or empty.",
+      "properties": {
+        "iss": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The directory's owner-authenticate URL"
+        },
+        "sub": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The Telematik-ID"
+        },
+        "aud": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The directory endpoints the token is for"
+        },
+        "scope": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "owner:read owner:write search:read …"
+        },
+        "iat": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "exp": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "iss",
+        "sub",
+        "aud",
+        "scope",
+        "iat",
+        "exp"
+      ],
+      "additionalProperties": false
+    },
+    "directory": {
+      "type": "object",
+      "properties": {
+        "base_url": {
+          "type": "string"
+        },
+        "authorization_url": {
+          "type": "string",
+          "description": "The IDP-Dienst authorization URL the directory redirected to"
+        }
+      },
+      "required": [
+        "base_url",
+        "authorization_url"
+      ],
+      "additionalProperties": false
+    },
+    "idp": {
+      "type": "object",
+      "properties": {
+        "base_url": {
+          "type": "string"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "certificates": {
+          "type": "array",
+          "description": "The IDP's certificates: the discovery document's signer and PuK_IDP_SIG's, checked against the TSL with the idp-sig profile and OCSP unless --idp-unverified",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "enum": [
+                  "puk_disc_sig",
+                  "puk_idp_sig"
+                ]
+              },
+              "subject": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "verified": {
+                "type": "boolean",
+                "description": "Valid for an IDP-Dienst in the environment's TSL; false only with --idp-unverified"
+              }
+            },
+            "required": [
+              "key",
+              "subject",
+              "sha256",
+              "verified"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "base_url",
+        "issuer",
+        "certificates"
+      ],
+      "additionalProperties": false
+    },
+    "identity": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string"
+        },
+        "telematik_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "subject",
+        "telematik_id"
+      ],
+      "additionalProperties": false
+    },
+    "challenge": {
+      "type": "object",
+      "description": "Claims of the IDP's challenge, for the record; client_id is the directory's and opaque",
+      "properties": {
+        "client_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "client_id",
+        "scope"
+      ],
+      "additionalProperties": false
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "idp_certificates_unverified"
+        ]
+      },
+      "description": "What was not proven: idp_certificates_unverified when the IDP's certificates were not checked (--idp-unverified)"
+    }
+  },
+  "required": [
+    "schema",
+    "access_token",
+    "token_type",
+    "expires_in",
+    "expires_at",
+    "token",
+    "directory",
+    "idp",
+    "identity",
+    "challenge",
+    "warnings"
+  ],
+  "additionalProperties": false
+}

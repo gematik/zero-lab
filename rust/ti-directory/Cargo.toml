@@ -1,0 +1,29 @@
+[package]
+name = "ti-directory"
+version = "0.1.0"
+description = "Client of the gematik FHIR-Directory (VZD): owner authentication with a smartcard identity through the IDP-Dienst, sans I/O"
+keywords = ["gematik", "telematik", "fhir", "vzd", "oidc"]
+categories = ["authentication", "wasm"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The IDP-Dienst flow the directory delegates to, and the HTTP types every step shares.
+ti-idpd.workspace = true
+serde = { workspace = true, features = ["std"] }
+serde_json.workspace = true
+thiserror.workspace = true
+# The owner token's payload, for the record.
+base64ct.workspace = true
+
+[dev-dependencies]
+# The guard tests need some BP256R1 signer; it never gets to sign.
+jwz = { workspace = true, features = ["std", "jws", "crypto-rustcrypto"] }
+jwz-brainpool.workspace = true
+
+[lints]
+workspace = true

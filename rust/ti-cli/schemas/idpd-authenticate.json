@@ -13,7 +13,10 @@
       "description": "The authorization code (itself a JWE of the IDP's)"
     },
     "state": {
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "The relying party's state, echoed by the IDP"
     },
     "redirect_url": {
@@ -23,39 +26,124 @@
     "idp": {
       "type": "object",
       "properties": {
-        "base_url": {"type": "string"},
-        "issuer": {"type": "string"},
-        "authorization_endpoint": {"type": "string"}
+        "base_url": {
+          "type": "string"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "authorization_endpoint": {
+          "type": "string"
+        },
+        "certificates": {
+          "type": "array",
+          "description": "The IDP's certificates: the discovery document's signer and PuK_IDP_SIG's, checked against the TSL with the idp-sig profile and OCSP unless --idp-unverified",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "enum": [
+                  "puk_disc_sig",
+                  "puk_idp_sig"
+                ]
+              },
+              "subject": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              },
+              "verified": {
+                "type": "boolean",
+                "description": "Valid for an IDP-Dienst in the environment's TSL; false only with --idp-unverified"
+              }
+            },
+            "required": [
+              "key",
+              "subject",
+              "sha256",
+              "verified"
+            ],
+            "additionalProperties": false
+          }
+        }
       },
-      "required": ["base_url", "issuer", "authorization_endpoint"],
+      "required": [
+        "base_url",
+        "issuer",
+        "authorization_endpoint",
+        "certificates"
+      ],
       "additionalProperties": false
     },
     "identity": {
       "type": "object",
       "properties": {
-        "subject": {"type": "string"},
-        "telematik_id": {"type": ["string", "null"]}
+        "subject": {
+          "type": "string"
+        },
+        "telematik_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       },
-      "required": ["subject", "telematik_id"],
+      "required": [
+        "subject",
+        "telematik_id"
+      ],
       "additionalProperties": false
     },
     "challenge": {
       "type": "object",
       "description": "Claims of the IDP's challenge: who asked and for what",
       "properties": {
-        "client_id": {"type": ["string", "null"]},
-        "scope": {"type": ["string", "null"]},
-        "redirect_uri": {"type": ["string", "null"]}
+        "client_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "redirect_uri": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       },
-      "required": ["client_id", "scope", "redirect_uri"],
+      "required": [
+        "client_id",
+        "scope",
+        "redirect_uri"
+      ],
       "additionalProperties": false
     },
     "warnings": {
       "type": "array",
-      "items": {"enum": ["idp_certificates_unverified"]},
-      "description": "What was not proven: the IDP's certificates are not yet checked against the TSL"
+      "items": {
+        "enum": [
+          "idp_certificates_unverified"
+        ]
+      },
+      "description": "What was not proven: idp_certificates_unverified when the IDP's certificates were not checked (--idp-unverified)"
     }
   },
-  "required": ["schema", "code", "state", "redirect_url", "idp", "identity", "challenge", "warnings"],
+  "required": [
+    "schema",
+    "code",
+    "state",
+    "redirect_url",
+    "idp",
+    "identity",
+    "challenge",
+    "warnings"
+  ],
   "additionalProperties": false
 }

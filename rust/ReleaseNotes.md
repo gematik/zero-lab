@@ -7,6 +7,49 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ## Unreleased
 
+### ti-cli
+
+#### added
+- `directory login --env|--url --idp-url <identity>`: the FHIR-Directory's (VZD) owner
+  authentication (ti-directory) from `GET /owner-authenticate` through the IDP-Dienst's
+  Authenticator-Modul flow to the owner access token for `/owner` and `/search`
+  (`access_token`, `expires_in`, `expires_at`, the token's claims as decoded). Error
+  kinds `directory_error` (the directory refused, with its `message` and `errors`),
+  `directory_unreachable`, `directory_protocol` (also when the directory redirects to a
+  foreign IDP or the IDP redirects elsewhere than the directory); IDP failures keep the
+  `idpd_*` kinds. Schema `directory login`.
+- `probe` checks the environment's FHIR-Directory (kind `directory`): its
+  `/owner-authenticate` must redirect to an IDP-Dienst authorization URL.
+- `idpd authenticate` and `directory login` check the IDP's certificates (the discovery
+  document's signer and `PuK_IDP_SIG`'s) against the TSL with the idp-sig profile and
+  OCSP before the card signs (TASK-27): `idp.certificates` in the report, error kind
+  `idpd_untrusted`; `--idp-unverified` skips the check and keeps the
+  `idp_certificates_unverified` warning. `-vv` logs the body of every non-2xx answer.
+
+### ti-idpd
+
+#### changed
+- `authenticator::authenticate` takes a `trust::CertificateTrust` and hands it the
+  discovery document's signer and `PuK_IDP_SIG`'s certificate before anything is
+  signed; a refusal is `Error::Untrusted`. `trust::Unverified` keeps the former
+  behaviour and its warning. `Authenticated::certificates` records what was checked;
+  `Discovery::warnings` is gone, `Discovery::signer_chain_der` is new.
+- `PuK_IDP_SIG` must carry `x5c` with a certificate for the JWK's key
+  (`discovery::key_certificates`).
+
+### ti-directory
+
+#### added
+- New crate: the gematik FHIR-Directory (gemSpec_VZD_FHIR_Directory V1.7.0, I_VZD_Owner)
+  as an owner's client sees it, sans I/O over ti-idpd's HTTP types: `Directory::for_env`
+  (PU, RU, TU with the environment's IDP-Dienst), `owner::start`, `authorization_url`
+  (the redirect must go to the directory's IDP), `sign_in` (the IDP's redirect must go
+  to the directory's `/signin-gematik-idp-dienst`), `token` (`OwnerToken` with the
+  decoded `TokenClaims`), and `owner::login` running the whole flow over a `Transport`
+  with the caller's `CertificateTrust` for the IDP;
+  `DirectoryError` with `message` and `errors`. The decoupled variants for the gematik
+  Authenticator app are not implemented.
+
 ### jwz
 
 #### added

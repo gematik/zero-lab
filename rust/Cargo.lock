@@ -2128,6 +2128,7 @@ dependencies = [
  "signature",
  "thiserror",
  "ti-connector-client",
+ "ti-directory",
  "ti-idpd",
  "ti-pkcs12",
  "ti-pki",
@@ -2158,6 +2159,19 @@ dependencies = [
  "ti-pki",
  "ti-types",
  "ureq",
+]
+
+[[package]]
+name = "ti-directory"
+version = "0.1.0"
+dependencies = [
+ "base64ct",
+ "jwz",
+ "jwz-brainpool",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "ti-idpd",
 ]
 
 [[package]]

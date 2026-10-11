@@ -31,6 +31,7 @@ ti identity inspect --p12 smcb.p12 --p12-password-path pw.txt   # the AUT certif
 ti identity sign --p12 smcb.p12 --claims - < claims.json         # ES256 JWS, x5c the certificate
 ti identity sign --card 80276883110000163974 --claims claims.json   # the selected Konnektor signs
 ti idpd authenticate --env ref --p12 smcb.p12 --auth-url "$AUTHZ_URI"   # IDP-Dienst → authorization code
+ti directory login --env ref --p12 smcb.p12   # FHIR-Directory → owner access token
 ti connector configs                # the .kon files (~/.config/telematik/connectors)
 ti connector use praxis             # the configuration later commands use
 ti connector get cards
@@ -177,8 +178,22 @@ Aktensystem's `authz_uri`) and an identity, it fetches and verifies the IDP's si
 discovery document and keys, signs the challenge with the card (`BP256R1`, `x5c`),
 encrypts the answer to `PuK_IDP_ENC` and returns the authorization code from the IDP's
 redirect — what `epa` sends on in `send_authcode_sc`. The IDP is the environment's
-(`--env`) or `--idp-url`. The IDP's certificates are not yet checked against the TSL;
-the report says so in `warnings`.
+(`--env`) or `--idp-url`. Before the card signs, the IDP's certificates (the
+discovery document's signer and `PuK_IDP_SIG`'s) are checked against the environment's
+TSL with the idp-sig profile and OCSP, as gemSpec_IDP_Dienst requires;
+`--idp-unverified` skips that for an IDP outside the TI PKI, and the report warns.
+
+## FHIR-Directory
+
+`ti directory login` obtains the owner access token of the FHIR-Directory (VZD) for an
+identity, built on [`ti-directory`](../ti-directory): the directory's
+`/owner-authenticate` redirects to the IDP-Dienst, the Authenticator-Modul flow of
+`idpd authenticate` runs for that URL, and the IDP's redirect to the directory's
+`/signin-gematik-idp-dienst` is exchanged for the token (an ES256 JWT, 24 hours, `sub`
+the Telematik-ID) that the `/owner` and `/search` endpoints take as a bearer. The
+directory and its IDP are the environment's (`--env`) or `--url` with `--idp-url`; the
+redirects must stay between the two, or the flow stops before the card signs. The token
+is not cached: `--format json | jq -r .access_token` hands it to `curl`.
 
 ## Connector
 

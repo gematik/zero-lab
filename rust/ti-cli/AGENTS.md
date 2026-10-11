@@ -198,9 +198,58 @@ never on `message`.
   `gematik_error_text` and `gematik_code` (e.g. `access_denied: Karte unbekannt
   (gematik_code 2030, …)`). `idpd_unreachable` when no answer came, `idpd_protocol`
   when the answer is not what the specification says (`-v` shows each request).
-- `warnings` carries `idp_certificates_unverified`: the IDP's certificates are used
-  with verified signatures but are not yet checked against the TSL (backlog TASK-27).
+- Before the card signs, the IDP's certificates are checked against the TSL: the
+  discovery document's signer (`puk_disc_sig`, its `x5c`) and `PuK_IDP_SIG` (the JWK's
+  `x5c`, whose key must be the JWK's), each with the idp-sig profile (C.FD.SIG, role
+  `oid_idpd`) and OCSP, in the environment of `--env`, or with `--idp-url` the one the
+  certificate shows. `PuK_IDP_ENC` has no certificate; the verified discovery document
+  names it. `idp.certificates` lists both with `key`, `subject`, `sha256`, `verified`.
+  A certificate the TSL does not vouch for: exit 3, `idpd_untrusted`, nothing signed.
+  Trust material that cannot be had is `trust_material_unavailable` as for `pki verify`.
+- `--idp-unverified` skips the check (an IDP outside the TI PKI, e.g. a reference
+  implementation): `verified` is false and `warnings` carries
+  `idp_certificates_unverified`.
   SSO tokens and alternative authentication (pairing) are not implemented.
+
+## Subsystem directory: the FHIR-Directory (VZD)
+
+```sh
+{bin} --format json directory login --env ref --p12 smcb.p12
+{bin} --format json directory login --env ref --card SMC-B-7
+{bin} --format json directory login --url https://directory.example --idp-url https://idp.example --p12 smcb.p12
+{bin} --format json directory login --env ref --p12 smcb.p12 | jq -r .access_token
+```
+
+- `login` obtains the owner access token of gemSpec_VZD_FHIR_Directory for the identity:
+  `GET {directory}/owner-authenticate` (not following redirects) answers with the
+  IDP-Dienst authorization URL the directory made (its `client_id`, `scope`,
+  `redirect_uri`, `state`, PKCE — opaque, passed on as is); the Authenticator-Modul flow
+  of `idpd authenticate` runs for it; the IDP's redirect to
+  `{directory}/signin-gematik-idp-dienst?code=…&state=…` is fetched and answers with the
+  token. The report has `access_token` (`Authorization: Bearer`), `token_type`,
+  `expires_in`, `expires_at` (seconds since the epoch, local clock), `token` (the
+  payload as decoded, not verified: `iss`, `sub` the Telematik-ID, `aud`, `scope`, `iat`,
+  `exp`), `directory`, `idp`, `identity`, the challenge's `client_id` and `scope`, and
+  `warnings` as for `idpd authenticate`. The token is valid 24 hours and is not cached:
+  a bearer token is a secret, and the caller keeps it.
+- The directory and its IDP are `--env` (`TI_ENV`; `prod`, `ref`, `test`, `dev` as ref;
+  `auto` is exit 2: `fhir-directory[-ref|-tu].vzd.ti-dienste.de` with the environment's
+  IDP-Dienst), or `--url BASE --idp-url BASE` together. The directory's redirect must go
+  to that IDP and the IDP's redirect back to that directory's sign-in endpoint; otherwise
+  the flow stops before anything is signed or sent (`directory_protocol`).
+- Exit 3 when the directory refuses: error kind `directory_error`, the message carries
+  the HTTP status, the directory's `message` and its `errors` (`attributeName:
+  attributeError`). `directory_unreachable` when no answer came, `directory_protocol`
+  when the answer is not what the specification says. A failure inside the IDP-Dienst
+  flow keeps its own kinds (`idpd_error`, `idpd_unreachable`, `idpd_protocol`). A
+  status without the directory's JSON document is `directory_protocol` with the body as
+  text in the message; `-vv` logs every non-2xx body. An identity the directory has no
+  entry for is refused at the sign-in: HTTP 403 `Validation Failure: Unknown Telematik
+  ID`.
+- The IDP's certificates are checked as for `idpd authenticate` (`--idp-unverified`,
+  `idpd_untrusted`, `idp.certificates`); `-v` shows each verdict.
+- The decoupled variants (`owner-authenticate-decoupled`, `owner-authenticate-poll`, for
+  the gematik Authenticator app) are not implemented.
 
 ## Subsystem connector: the Konnektor
 
@@ -282,7 +331,8 @@ never on `message`.
   or signed), `zeta` (RFC 9728 protected-resource metadata of ZETA-protected services
   such as PoPP, VSDM and DiPag), `erp` (the E-Rezept Fachdienst's VAU certificate), `epa` (the
   ePA Information Service's record status for an insurant ID of nobody, `X000000000`:
-  `noHealthRecord`), `catalog`
+  `noHealthRecord`), `directory` (the FHIR-Directory's `/owner-authenticate`, which
+  without a token redirects to the IDP-Dienst; not followed), `catalog`
   (the TI platform's service-discovery `catalog.json`), `http` (any answer).
 - The catalog's `service_instances` are probed too (`source: "catalog"`).
 - `status`: `ok` the expected answer, `warn` an answer but not the expected one, `fail`

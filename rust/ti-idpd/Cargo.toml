@@ -28,6 +28,8 @@ ti-types.workspace = true
 serde = { workspace = true, features = ["std"] }
 serde_json.workspace = true
 thiserror.workspace = true
+# The `x5c` of `PuK_IDP_SIG`'s JWK (standard base64).
+base64ct.workspace = true
 ureq = { workspace = true, optional = true, features = ["rustls-no-provider"] }
 
 [dev-dependencies]
@@ -35,7 +37,6 @@ ti-pki = { workspace = true, features = ["brainpool"] }
 # The TEST-ONLY IDP signer's key (tests/fixtures/idp-sig.key, SEC1 PEM).
 sec1.workspace = true
 pem-rfc7468 = { workspace = true, features = ["alloc"] }
-base64ct.workspace = true
 
 [lints]
 workspace = true
