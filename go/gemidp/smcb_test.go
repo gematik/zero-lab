@@ -266,7 +266,7 @@ func loadSMCBAuthIdentity(path, password string) (*ecdsa.PrivateKey, *x509.Certi
 			continue
 		}
 		for _, k := range keys {
-			if k.PublicKey.X.Cmp(pub.X) == 0 && k.PublicKey.Y.Cmp(pub.Y) == 0 {
+			if k.PublicKey.Equal(pub) {
 				return k, cert, nil
 			}
 		}

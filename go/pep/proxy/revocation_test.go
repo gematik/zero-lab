@@ -10,8 +10,7 @@ import (
 
 func TestMemBusPubSub(t *testing.T) {
 	bus := kv.NewMemBus()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ch, err := bus.Subscribe(ctx, "c")
 	if err != nil {
 		t.Fatal(err)

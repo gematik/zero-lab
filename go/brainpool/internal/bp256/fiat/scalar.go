@@ -103,9 +103,9 @@ func (e *Scalar) Square(t *Scalar) *Scalar {
 	return e
 }
 
-// Select sets v to a if cond == 1, and to b if cond == 0.
-func (v *Scalar) Select(a, b *Scalar, cond int) *Scalar {
-	bp256nSelectznz((*bp256nUntypedFieldElement)(&v.x), bp256nUint1(cond),
+// Select sets e to a if cond == 1, and to b if cond == 0.
+func (e *Scalar) Select(a, b *Scalar, cond int) *Scalar {
+	bp256nSelectznz((*bp256nUntypedFieldElement)(&e.x), bp256nUint1(cond),
 		(*bp256nUntypedFieldElement)(&b.x), (*bp256nUntypedFieldElement)(&a.x))
-	return v
+	return e
 }

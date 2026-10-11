@@ -458,7 +458,7 @@ type SessionView struct {
 	IDToken     map[string]any `json:"id_token,omitempty"`     // decoded id_token claims (not the raw JWT)
 	Scope       string         `json:"scope,omitempty"`
 	ClientID    string         `json:"client_id,omitempty"`
-	ExpiresAt   time.Time      `json:"expires_at,omitempty"`
+	ExpiresAt   time.Time      `json:"expires_at"`
 }
 
 // newSessionView decodes the access token and id_token to their claims and copies the non-secret

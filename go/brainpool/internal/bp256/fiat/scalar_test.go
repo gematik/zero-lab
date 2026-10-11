@@ -27,7 +27,7 @@ func samples(t *testing.T) []*big.Int {
 	seed, _ := new(big.Int).SetString(
 		"0FEDCBA9876543210123456789ABCDEF6F1E2D3C4B5A69788796A5B4C3D2E1F0", 16)
 	cur := new(big.Int).Set(seed)
-	for i := 0; i < 24; i++ {
+	for i := range 24 {
 		cur.Mul(cur, seed).Add(cur, big.NewInt(int64(i+3)))
 		out = append(out, new(big.Int).Mod(cur, n))
 	}

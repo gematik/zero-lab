@@ -118,9 +118,9 @@ func (e *Element) Square(t *Element) *Element {
 	return e
 }
 
-// Select sets v to a if cond == 1, and to b if cond == 0.
-func (v *Element) Select(a, b *Element, cond int) *Element {
-	bp256Selectznz((*bp256UntypedFieldElement)(&v.x), bp256Uint1(cond),
+// Select sets e to a if cond == 1, and to b if cond == 0.
+func (e *Element) Select(a, b *Element, cond int) *Element {
+	bp256Selectznz((*bp256UntypedFieldElement)(&e.x), bp256Uint1(cond),
 		(*bp256UntypedFieldElement)(&b.x), (*bp256UntypedFieldElement)(&a.x))
-	return v
+	return e
 }

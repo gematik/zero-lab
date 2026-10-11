@@ -106,7 +106,7 @@ func (jwk *JSONWebKey) UnmarshalJSON(data []byte) error {
 
 func (jwk *JSONWebKey) MarshalJSON() ([]byte, error) {
 	type Alias JSONWebKey
-	var jwkAlias Alias = Alias(*jwk)
+	jwkAlias := Alias(*jwk)
 
 	if key, ok := jwk.Key.(*ecdsa.PrivateKey); ok {
 		jwkAlias.D = base64.RawURLEncoding.EncodeToString(key.D.Bytes())

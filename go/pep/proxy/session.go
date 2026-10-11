@@ -41,7 +41,7 @@ type Session struct {
 	CodeChallengeMethod  string         `json:"code_challenge_method"`
 	AccessToken          string         `json:"access_token,omitempty"`
 	RefreshToken         string         `json:"refresh_token,omitempty"`
-	AccessTokenExpiresAt time.Time      `json:"access_token_expires_at,omitempty"`
+	AccessTokenExpiresAt time.Time      `json:"access_token_expires_at"`
 	Identity             map[string]any `json:"identity,omitempty"`
 	ReturnTo             string         `json:"return_to,omitempty"`
 	CreatedAt            time.Time      `json:"created_at"`
@@ -57,7 +57,7 @@ type Session struct {
 type TokenEntry struct {
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token,omitempty"`
-	ExpiresAt    time.Time `json:"expires_at,omitempty"`
+	ExpiresAt    time.Time `json:"expires_at"`
 }
 
 // SetTokens stores the token set for an authorization server on the session.

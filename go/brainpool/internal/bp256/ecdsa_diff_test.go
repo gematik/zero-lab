@@ -26,7 +26,7 @@ func TestDiffSignVerifiesUnderStdlib(t *testing.T) {
 	}
 	n := brainpool.P256r1().Params().N
 	d := fill32(key.D)
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		msg := []byte{0x01, byte(i), 0xC3}
 		h := sha256.Sum256(msg)
 

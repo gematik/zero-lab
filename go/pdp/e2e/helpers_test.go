@@ -104,15 +104,6 @@ func env(key, def string) string {
 
 func httpClient() *http.Client { return &http.Client{Timeout: 20 * time.Second} }
 
-// noRedirectClient returns a client that does not follow redirects (so 3xx Location can be
-// inspected).
-func noRedirectClient() *http.Client {
-	return &http.Client{
-		Timeout:       20 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
-}
-
 // getMetadata fetches and decodes the RFC 8414 authorization-server metadata.
 func getMetadata(t *testing.T, base string) authzserver.ExtendedMetadata {
 	t.Helper()

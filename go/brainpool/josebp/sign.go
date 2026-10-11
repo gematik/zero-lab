@@ -10,8 +10,10 @@ import (
 )
 
 type JWT struct {
-	Raw         []byte
+	Raw []byte
+	//lint:ignore ST1003 exported since v1; the Go-style name would break the module's API
 	HeadersJson []byte
+	//lint:ignore ST1003 exported since v1; the Go-style name would break the module's API
 	PayloadJson []byte
 	Signature   []byte
 	Headers     map[string]any
@@ -44,19 +46,19 @@ func (b *JWTBuilder) Claim(key string, value any) *JWTBuilder {
 // hashFunc and signing the digest with signFunc (an opaque SignFunc — software key, smartcard, or
 // connector). The signature is the raw fixed-width r‖s ECDSA encoding (RFC 7518 §3.4).
 func (b *JWTBuilder) Sign(hashFunc hash.Hash, signFunc brainpool.SignFunc) ([]byte, error) {
-	headersJson, err := json.Marshal(b.headers)
+	headersJSON, err := json.Marshal(b.headers)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling headers: %w", err)
 	}
 
-	claimsJson, err := json.Marshal(b.claims)
+	claimsJSON, err := json.Marshal(b.claims)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling claims: %w", err)
 	}
 
-	payload := base64.RawURLEncoding.AppendEncode(nil, headersJson)
+	payload := base64.RawURLEncoding.AppendEncode(nil, headersJSON)
 	payload = append(payload, '.')
-	payload = base64.RawURLEncoding.AppendEncode(payload, claimsJson)
+	payload = base64.RawURLEncoding.AppendEncode(payload, claimsJSON)
 
 	hashFunc.Write(payload)
 	digest := hashFunc.Sum(nil)
