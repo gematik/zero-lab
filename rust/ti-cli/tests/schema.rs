@@ -272,7 +272,10 @@ fn roots_bundle_writes_what_it_reports() {
         .iter()
         .map(|c| c["common_name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, ["GEM.RCA6", "GEM.RCA7"]);
+    assert_eq!(
+        names,
+        ["GEM.RCA2", "GEM.RCA6", "GEM.RCA7", "GEM.RCA9", "GEM.RCA10"]
+    );
 
     let p12 = c.join("roots.p12").to_string_lossy().into_owned();
     let written = json_of(
@@ -375,8 +378,117 @@ fn tsl_bundle_and_export_write_what_they_report() {
     assert_eq!(raw.stdout, published);
 }
 
-/// `--nist-only` verifies as a client without brainpool would: from GEM.RCA7 the walk
-/// ends at the first brainpool root, and no TSL is loaded.
+/// The subsets of `tsl bundle`: repeated filters, `--issues`, `--cert`, `--with-roots`.
+#[test]
+fn tsl_bundle_subsets() {
+    let cache = SeededCache::new("tsl-subsets");
+    let c = &cache.0;
+    let run = offline;
+    let cas = json_of(
+        c,
+        "pki tsl bundle",
+        &run(&["pki", "tsl", "bundle", "--ca", "atos.smcb"]),
+    );
+    let cas: Value = serde_json::from_slice(&cas.stdout).unwrap();
+    let names: Vec<&str> = cas["certificates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["common_name"].as_str().unwrap())
+        .collect();
+
+    // A repeated filter matches any of its values.
+    let both = json_of(
+        c,
+        "pki tsl bundle",
+        &run(&[
+            "pki",
+            "tsl",
+            "bundle",
+            "--ca",
+            "atos.smcb",
+            "--ca",
+            "atos.hba",
+        ]),
+    );
+    let both: Value = serde_json::from_slice(&both.stdout).unwrap();
+    let both: Vec<&str> = both["certificates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["common_name"].as_str().unwrap())
+        .collect();
+    assert!(
+        both.iter().any(|n| n.starts_with("ATOS.SMCB-CA")),
+        "{both:?}"
+    );
+    assert!(
+        both.iter().any(|n| n.starts_with("ATOS.HBA-CA")),
+        "{both:?}"
+    );
+    assert!(both.len() > names.len());
+
+    // --issues: the CAs the TSL lets issue a type; tsl show reports the types.
+    let tls = json_of(
+        c,
+        "pki tsl bundle",
+        &run(&["pki", "tsl", "bundle", "--issues", "TLS-S"]),
+    );
+    let tls: Value = serde_json::from_slice(&tls.stdout).unwrap();
+    let tls = tls["certificates"].as_array().unwrap().len();
+    let shown = json_of(
+        c,
+        "pki tsl show",
+        &run(&["pki", "tsl", "show", "--issues", "TLS-S"]),
+    );
+    let shown: Value = serde_json::from_slice(&shown.stdout).unwrap();
+    let shown: Vec<&Value> = shown["roots"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|root| root["cas"].as_array().unwrap())
+        .collect();
+    assert_eq!(shown.len(), tls);
+    assert!(tls > 0);
+    assert!(shown.iter().all(|ca| {
+        ca["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|t| t.as_str().unwrap().contains("TLS-S"))
+    }));
+    assert!(
+        names
+            .iter()
+            .all(|smcb| shown.iter().all(|ca| ca["common_name"] != *smcb))
+    );
+
+    // --cert selects the CAs of a chain file; --with-roots adds the root they chain to.
+    let first = cas["certificates"][0]["pem"].as_str().unwrap();
+    let chain = c.join("chain.pem");
+    std::fs::write(&chain, first).unwrap();
+    let chain = chain.to_string_lossy().into_owned();
+    let selected = json_of(
+        c,
+        "pki tsl bundle",
+        &run(&["pki", "tsl", "bundle", "--cert", &chain, "--with-roots"]),
+    );
+    let selected: Value = serde_json::from_slice(&selected.stdout).unwrap();
+    let selected: Vec<&str> = selected["certificates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["common_name"].as_str().unwrap())
+        .collect();
+    assert_eq!(selected.len(), 2, "{selected:?}");
+    assert_eq!(selected[0], names[0]);
+    assert!(selected[1].starts_with("GEM.RCA"), "{selected:?}");
+}
+
+/// `--nist-only` narrows to what a client without brainpool can use, after the walk and
+/// the TSL were verified with brainpool: every non-brainpool root (GEM.RCA9 and
+/// GEM.RCA10 are reached only through brainpool cross certificates) and the TSL's
+/// non-brainpool CAs.
 #[test]
 fn nist_only_verifies_without_brainpool() {
     let cache = SeededCache::new("nist-only");
@@ -407,10 +519,16 @@ fn nist_only_verifies_without_brainpool() {
         .iter()
         .map(|root| root["common_name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, ["GEM.RCA7", "GEM.RCA6"]);
+    assert_eq!(
+        names,
+        ["GEM.RCA7", "GEM.RCA9", "GEM.RCA10", "GEM.RCA6", "GEM.RCA2"]
+    );
     assert_eq!(roots["trust"]["nist_only"], true);
-    assert_eq!(roots["trust"]["intermediates"], 0);
-    assert!(roots["trust"]["tsl"].is_null());
+    assert!(roots["trust"]["intermediates"].as_u64().unwrap() > 0);
+    assert!(
+        roots["trust"]["tsl"].is_object(),
+        "the TSL verified with brainpool"
+    );
 
     // The SMC-B CA under the brainpool GEM.RCA5 TEST-ONLY has no trusted issuer.
     let verify = json_of(
@@ -433,12 +551,14 @@ fn nist_only_verifies_without_brainpool() {
     assert_eq!(verify["errors"][0]["code"], "chain_incomplete");
     assert_eq!(verify["trust"]["nist_only"], true);
 
-    let tsl = ti(c, &["pki", "tsl", "show", "--nist-only"]);
-    assert_eq!(
-        tsl.status.code(),
-        Some(2),
-        "no such option on the TSL commands"
-    );
+    let count = |extra: &[&str]| {
+        let args = [&["pki", "tsl", "bundle"][..], extra].concat();
+        let out = json_of(c, "pki tsl bundle", &offline(&args));
+        let out: Value = serde_json::from_slice(&out.stdout).unwrap();
+        out["certificates"].as_array().unwrap().len()
+    };
+    let (all, nist) = (count(&[]), count(&["--nist-only"]));
+    assert!(0 < nist && nist < all, "{nist} of {all}");
 }
 
 #[test]

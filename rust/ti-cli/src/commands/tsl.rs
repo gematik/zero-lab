@@ -9,6 +9,7 @@
 
 use std::time::Duration;
 
+use der::asn1::ObjectIdentifier;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use ti_pki::load::{Meta, Source, SystemClock};
@@ -104,6 +105,9 @@ struct CaInfo {
     policies: Vec<OidInfo>,
     /// The certificate's path length constraint.
     path_len: Option<u8>,
+    /// The certificate types the TSL lets it issue (`C.FD.TLS-S`, …); OIDs it names no
+    /// type for appear as dotted strings. Empty when the TSL states none.
+    issues: Vec<String>,
     /// Why no verified root signed it: `not_ca`, `self_signed`, `unknown_issuer`,
     /// `bad_signature`; absent for kept CAs.
     rejection: Option<&'static str>,
@@ -126,7 +130,10 @@ pub fn show(args: &TslShowArgs, global: &GlobalArgs, out: &Output) -> Result<Exi
     let list = &verified.tsl;
     let roots = material.store.roots();
 
-    let wanted = |ca: &Intermediate| args.filter.wants(ca);
+    let store = &material.store;
+    let wanted = |ca: &Intermediate| {
+        args.filter.wants(ca) && args.filter.wants_types(store.tsl_types_of(&ca.certificate))
+    };
     let mut root_entries: Vec<RootEntry> = roots
         .iter()
         .filter(|root| !args.rejected && args.filter.wants_root(root))
@@ -138,19 +145,21 @@ pub fn show(args: &TslShowArgs, global: &GlobalArgs, out: &Output) -> Result<Exi
                 .intermediates
                 .iter()
                 .filter(|ca| issued_by(&ca.certificate, root) && wanted(ca))
-                .map(|ca| describe(ca, None, now))
+                .map(|ca| describe(ca, None, now, store))
                 .collect(),
         })
         .collect();
-    let any_ca_filter = args.filter.ca.is_some() || args.filter.provider.is_some();
+    let any_ca_filter = !args.filter.ca.is_empty()
+        || !args.filter.provider.is_empty()
+        || !args.filter.issues.is_empty();
     if any_ca_filter {
         root_entries.retain(|root| !root.cas.is_empty());
     }
     let rejected: Vec<CaInfo> = matched
         .rejected
         .iter()
-        .filter(|(ca, _)| args.filter.root.is_none() && wanted(ca))
-        .map(|(ca, reason)| describe(ca, Some(rejection_code(*reason)), now))
+        .filter(|(ca, _)| args.filter.root.is_empty() && wanted(ca))
+        .map(|(ca, reason)| describe(ca, Some(rejection_code(*reason)), now, store))
         .collect();
 
     let report = Report {
@@ -178,12 +187,12 @@ pub fn show(args: &TslShowArgs, global: &GlobalArgs, out: &Output) -> Result<Exi
         },
         roots: root_entries,
         rejected,
-        filtered: args.rejected || any_ca_filter || args.filter.root.is_some(),
+        filtered: args.rejected || any_ca_filter || !args.filter.root.is_empty(),
     };
     if out.is_json() {
         out.json(&report)?;
     } else {
-        out.render(&document(&report, args.filter.ca.is_some()))?;
+        out.render(&document(&report, !args.filter.ca.is_empty()))?;
     }
     Ok(Exit::Ok)
 }
@@ -496,18 +505,57 @@ pub fn bundle(args: &TslBundleArgs, global: &GlobalArgs, out: &Output) -> Result
         matched,
         ..
     } = load(&args.trust, global, out)?;
+    let usable = |cert: &Certificate| {
+        !args.nist_only
+            || ti_pki::algorithms::supports_key(ti_pki::algorithms::NIST, &cert.public_key_alg_id())
+    };
     let roots = material.store.roots();
-    let certificates = matched
+    let issued = issued_certificates(args, global, out)?;
+    // A CA counts when it issued one of the certificates, or is one of them (a chain
+    // file, or a server that sends its CA).
+    let issuer_wanted = |ca: &Certificate| {
+        issued.is_empty()
+            || issued
+                .iter()
+                .any(|cert| cert.issuer() == ca.subject() || cert.der() == ca.der())
+    };
+    let mut certificates: Vec<Certificate> = matched
         .intermediates
         .iter()
         .filter(|ca| {
             args.filter.wants(ca)
+                && args
+                    .filter
+                    .wants_types(material.store.tsl_types_of(&ca.certificate))
+                && usable(&ca.certificate)
+                && issuer_wanted(&ca.certificate)
                 && roots
                     .iter()
                     .any(|root| issued_by(&ca.certificate, root) && args.filter.wants_root(root))
         })
         .map(|ca| ca.certificate.clone())
         .collect();
+    for cert in &issued {
+        let known = certificates
+            .iter()
+            .any(|ca| cert.issuer() == ca.subject() || cert.der() == ca.der())
+            || roots.iter().any(|root| cert.issuer() == root.subject());
+        if !known {
+            crate::output::warning(format_args!(
+                "{}: its issuer is neither a selected TSL CA nor a root of {env}",
+                cert.subject_cn()
+            ));
+        }
+    }
+    if args.with_roots {
+        let mut chained: Vec<Certificate> = roots
+            .iter()
+            .filter(|root| usable(root) && certificates.iter().any(|ca| issued_by(ca, root)))
+            .cloned()
+            .collect();
+        chained.sort_by_key(|root| super::roots::generation(root.subject_cn()));
+        certificates.extend(chained);
+    }
     super::bundle::write(
         super::bundle::Found {
             environment: env.as_str(),
@@ -519,6 +567,38 @@ pub fn bundle(args: &TslBundleArgs, global: &GlobalArgs, out: &Output) -> Result
         &args.bundle,
         out,
     )
+}
+
+/// The certificates of `--connect` servers and `--cert` files, whose issuers select the
+/// CAs; empty when neither is given.
+fn issued_certificates(
+    args: &TslBundleArgs,
+    global: &GlobalArgs,
+    out: &Output,
+) -> Result<Vec<Certificate>, CliError> {
+    let mut found = Vec::new();
+    for (host, port) in &args.connect {
+        let label = format!("{host}:{port}");
+        let chain = crate::peer::server_chain(host, *port, &global.net)?;
+        out.verbose(1, format_args!("{label}: {} certificates", chain.len()));
+        for der in chain {
+            found.push(
+                Certificate::from_der(&der).map_err(|source| CliError::Certificate {
+                    source_name: label.clone(),
+                    source,
+                })?,
+            );
+        }
+    }
+    for path in &args.cert {
+        let source = crate::input::read(path)?;
+        found.extend(
+            crate::input::certificates(&source, "00")?
+                .into_iter()
+                .map(|loaded| loaded.certificate),
+        );
+    }
+    Ok(found)
 }
 
 /// The JSON document of `ti pki tsl export`; `schema` is added on output.
@@ -646,27 +726,60 @@ fn load(trust: &TrustArgs, global: &GlobalArgs, out: &Output) -> Result<Loaded, 
 impl CaFilterArgs {
     /// Whether `ca` passes `--ca` and `--provider`.
     fn wants(&self, ca: &Intermediate) -> bool {
-        contains(self.ca.as_deref(), ca.certificate.subject_cn())
-            && contains(self.provider.as_deref(), &ca.provider)
+        contains(&self.ca, ca.certificate.subject_cn()) && contains(&self.provider, &ca.provider)
+    }
+
+    /// Whether a CA the TSL lets issue `types` passes `--issues`; one it states no types
+    /// for passes only without the filter.
+    fn wants_types(&self, types: Option<&[ObjectIdentifier]>) -> bool {
+        if self.issues.is_empty() {
+            return true;
+        }
+        // gemSpec names (C.FD.TLS-S) and profile names (fd-tls-s) spell the same type.
+        let fold = |text: &str| text.to_lowercase().replace('.', "-");
+        type_names(types).iter().any(|name| {
+            let name = fold(name);
+            self.issues.iter().any(|f| name.contains(&fold(f)))
+        })
     }
 
     /// Whether `root` passes `--root`.
     fn wants_root(&self, root: &Certificate) -> bool {
-        contains(self.root.as_deref(), root.subject_cn())
+        contains(&self.root, root.subject_cn())
     }
 }
 
-fn contains(filter: Option<&str>, text: &str) -> bool {
-    filter.is_none_or(|f| text.to_lowercase().contains(&f.to_lowercase()))
+/// The gemSpec_PKI names of `types`, an OID without one as its dotted string.
+fn type_names(types: Option<&[ObjectIdentifier]>) -> Vec<String> {
+    types
+        .unwrap_or_default()
+        .iter()
+        .map(|oid| {
+            ti_pki::CertificateType::from_oid(oid)
+                .map_or_else(|| oid.to_string(), |t| t.as_str().to_owned())
+        })
+        .collect()
+}
+
+/// Whether `text` contains any of `filters`, ignoring case; true without filters.
+fn contains(filters: &[String], text: &str) -> bool {
+    let text = text.to_lowercase();
+    filters.is_empty() || filters.iter().any(|f| text.contains(&f.to_lowercase()))
 }
 
 fn issued_by(ca: &Certificate, root: &Certificate) -> bool {
     root.subject() == ca.issuer()
 }
 
-fn describe(ca: &Intermediate, rejection: Option<&'static str>, now: Timestamp) -> CaInfo {
+fn describe(
+    ca: &Intermediate,
+    rejection: Option<&'static str>,
+    now: Timestamp,
+    store: &TrustStore,
+) -> CaInfo {
     let cert = &ca.certificate;
     CaInfo {
+        issues: type_names(store.tsl_types_of(cert)),
         common_name: cert.subject_cn().to_owned(),
         subject: cert.subject().to_string(),
         issuer: cert.issuer().to_string(),

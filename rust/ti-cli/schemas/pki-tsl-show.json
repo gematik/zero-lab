@@ -253,6 +253,13 @@
         "pem": {
           "type": "string",
           "description": "The certificate as PEM"
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The certificate types the TSL lets the CA issue (C.FD.TLS-S, …); OIDs without a known type as dotted strings; empty when the TSL states none"
         }
       },
       "required": [
@@ -267,7 +274,8 @@
         "path_len",
         "rejection",
         "sha256",
-        "pem"
+        "pem",
+        "issues"
       ],
       "additionalProperties": false
     }

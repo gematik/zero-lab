@@ -42,10 +42,8 @@ struct RootInfo {
 /// Runs `ti pki roots list`.
 pub fn list(args: &RootsArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     let (trust, env) = (&args.trust, super::concrete(args.trust.env, global)?);
-    let config = super::trust_config(env, args.nist_only);
-    config.validate(env.tier()).map_err(CliError::Trust)?;
     let session = Session::new(global, trust.offline, out)?;
-    let material = session.load(&config, env.tier(), trust.at)?;
+    let (config, material) = super::load_trust(&session, env, args.nist_only, trust.at)?;
     let now = trust.at.unwrap_or_else(|| SystemClock.now());
     let report = Report {
         schema: SCHEMA,

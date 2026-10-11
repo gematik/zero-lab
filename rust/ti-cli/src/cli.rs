@@ -283,8 +283,8 @@ pub struct TrustArgs {
 pub struct RootsArgs {
     #[command(flatten)]
     pub trust: TrustArgs,
-    /// Verify as a client without brainpool would: the roots up to the first brainpool
-    /// signature (GEM.RCA7, GEM.RCA6) and no TSL, whose signer CAs are brainpool
+    /// Only the roots a client without brainpool can use: those whose own key is not
+    /// brainpool, after the walk verified them all
     #[arg(long)]
     pub nist_only: bool,
 }
@@ -316,18 +316,26 @@ pub struct BundleArgs {
     pub p12_password: Option<String>,
 }
 
-/// Which of the TSL's CAs. Filters match case-insensitive substrings and combine.
+/// Which of the TSL's CAs. Filters match case-insensitive substrings; a repeated filter
+/// matches any of its values, different filters must all match.
 #[derive(Debug, Args)]
 pub struct CaFilterArgs {
-    /// Only CAs whose common name contains TEXT; tsl show's Markdown then includes their PEM
+    /// Only CAs whose common name contains TEXT (repeatable); tsl show's Markdown then
+    /// includes their PEM
     #[arg(long, value_name = "TEXT")]
-    pub ca: Option<String>,
-    /// Only CAs of providers whose name contains TEXT
+    pub ca: Vec<String>,
+    /// Only CAs of providers whose name contains TEXT (repeatable)
     #[arg(long, value_name = "TEXT")]
-    pub provider: Option<String>,
-    /// Only CAs under roots whose common name contains TEXT
+    pub provider: Vec<String>,
+    /// Only CAs under roots whose common name contains TEXT (repeatable)
     #[arg(long, value_name = "TEXT")]
-    pub root: Option<String>,
+    pub root: Vec<String>,
+    /// Only CAs the TSL lets issue a certificate type whose name contains TYPE
+    /// (repeatable; case and . or - do not matter, so C.FD.TLS-S and fd-tls-s are one),
+    /// e.g. TLS-S for C.FD.TLS-S and C.ZD.TLS-S, TLS for the client type too, HCI.AUT
+    /// for SMC-B authentication
+    #[arg(long, value_name = "TYPE")]
+    pub issues: Vec<String>,
 }
 
 /// `ti pki tsl bundle`.
@@ -337,6 +345,22 @@ pub struct TslBundleArgs {
     pub trust: TrustArgs,
     #[command(flatten)]
     pub filter: CaFilterArgs,
+    /// Only the CAs that issued this TLS server's certificates, or that it sends (port
+    /// 443 by default; repeatable): the bundle a client of that server needs
+    #[arg(long, value_name = "HOST[:PORT]", value_parser = crate::peer::target)]
+    pub connect: Vec<(String, u16)>,
+    /// Only the CAs that issued the certificates in FILE, or that FILE holds (PEM or DER;
+    /// repeatable)
+    #[arg(long, value_name = "FILE")]
+    pub cert: Vec<PathBuf>,
+    /// Add the roots the selected CAs chain to, for clients that accept only a
+    /// self-signed certificate as trust anchor
+    #[arg(long)]
+    pub with_roots: bool,
+    /// Only CAs and roots whose own key is not brainpool, for a client without it; the
+    /// TSL and the roots are still verified with brainpool
+    #[arg(long)]
+    pub nist_only: bool,
     #[command(flatten)]
     pub bundle: BundleArgs,
 }
@@ -434,8 +458,9 @@ pub struct VerifyArgs {
     /// you connected to
     #[arg(long, value_name = "NAME")]
     pub fqdn: Option<String>,
-    /// Verify as a client without brainpool would: the roots up to the first brainpool
-    /// signature (GEM.RCA7, GEM.RCA6) and no TSL, whose signer CAs are brainpool
+    /// Validate as a client without brainpool would: against the roots and TSL CAs whose
+    /// own key is not brainpool (trust material is still verified with brainpool), and
+    /// with no brainpool signature in the chain
     #[arg(long)]
     pub nist_only: bool,
     /// Send the chain's OCSP requests to this responder instead of each certificate's

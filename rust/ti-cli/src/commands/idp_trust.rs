@@ -178,10 +178,8 @@ impl TslTrust<'_> {
             None => Environment::Auto,
         };
         let (env, _) = super::verify::environment(choice, certs, at)?;
-        let config = super::trust_config(env, false);
-        config.validate(env.tier()).map_err(CliError::Trust)?;
         let session = Session::new(self.global, false, self.out)?;
-        let material = session.load(&config, env.tier(), None)?;
+        let (config, material) = super::load_trust(&session, env, false, None)?;
         self.out.verbose(
             1,
             format_args!(

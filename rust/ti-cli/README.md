@@ -99,7 +99,11 @@ other tools: PEM by default (curl `--cacert`, openssl `-CAfile`, Go, rustls), or
 `--p12 --p12-password PASSWORD` a PKCS#12 truststore for Java, each certificate a
 `trustedCertEntry` under its common name in lower case (the bag attributes OpenSSL's
 `-caname` and `-jdktrust anyExtendedKeyUsage` write). `tsl bundle` takes `tsl show`'s
-`--ca`, `--provider` and `--root` and never bundles a rejected CA. `pki tsl export`
+`--ca`, `--provider`, `--root` and `--issues` (each repeatable; `--issues TLS-S` keeps
+every CA the TSL lets issue TLS server certificates) and never bundles a rejected CA;
+`--connect HOST` and `--cert FILE` narrow it to the CAs a given server or chain needs
+(TI servers send only their own certificate), and `--with-roots` adds the roots they
+chain to. `pki tsl export`
 writes the TSL as published, after it verified. All three go to stdout, or to `-o FILE`
 (`--force` replaces it), and report as JSON with `--format json`.
 
@@ -146,11 +150,14 @@ responders that answer from a cache; the TSL signer's check keeps the defaults.
 without a TSL when nothing usable is cached (then pass the issuing CA with `--issuer`),
 and does not check revocation. The report says so (`"revocation_checked": false`).
 
-`--nist-only` (also on `pki roots list`) verifies as a client without brainpool would,
-such as a browser, Go's crypto/x509 or rustls with ring: the roots walk from GEM.RCA7 ends
-at the first brainpool signature, leaving GEM.RCA7 and GEM.RCA6, and no TSL is used, since
-its signer CAs are brainpool. Most TI chains are brainpool and come out invalid; the
-report carries `"nist_only": true`.
+`--nist-only` (also on `pki roots list`, `pki roots bundle` and `pki tsl bundle`) is for
+a client without brainpool, such as a browser, Go's crypto/x509 or rustls with ring. The
+trust material is still walked and verified with brainpool, since the newer roots are
+reached through brainpool cross certificates and the TSL is signed on brainpool; only
+the result is narrowed to the roots and TSL CAs whose own key is not brainpool
+(GEM.RCA2, 6, 7, 9 and 10 and their CAs). `pki verify --nist-only` then validates against
+that subset with no brainpool signature allowed in the chain; brainpool chains come out
+invalid. The report carries `"nist_only": true`.
 
 `ti pki verify-signature` checks a single ECDSA-SHA256 signature (DER, or r‖s) against
 a certificate's key with ti-pki's verifiers, and nothing about the certificate: an ePA

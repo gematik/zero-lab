@@ -62,10 +62,8 @@ pub fn roots(args: &RootsBundleArgs, global: &GlobalArgs, out: &Output) -> Resul
     refuse_existing(&args.bundle)?;
     let roots = &args.roots;
     let env = super::concrete(roots.trust.env, global)?;
-    let config = super::trust_config(env, roots.nist_only);
-    config.validate(env.tier()).map_err(CliError::Trust)?;
     let session = Session::new(global, roots.trust.offline, out)?;
-    let material = session.load(&config, env.tier(), roots.trust.at)?;
+    let (_, material) = super::load_trust(&session, env, roots.nist_only, roots.trust.at)?;
     let mut certificates = material.store.roots().to_vec();
     certificates.sort_by_key(|root| super::roots::generation(root.subject_cn()));
     write(

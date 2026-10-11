@@ -73,6 +73,11 @@ never on `message`.
 {bin} --format json pki tsl verify tsl.xml --previous old.xml   # exit 0 valid, 1 not
 {bin} pki roots bundle --env ref > roots.pem      # CA bundle (PEM) for curl, openssl, Go
 {bin} pki tsl bundle --env ref --ca SMCB -o smcb.pem   # the TSL's CAs, tsl show's filters
+{bin} pki tsl bundle --env ref --ca KOMP-CA54 --ca KOMP-CA55 -o komp.pem   # repeated: any of
+{bin} pki tsl bundle --env ref --connect epa-as-1.ref.epa4all.de --with-roots -o epa.pem
+{bin} pki tsl bundle --env ref --cert chain.pem --p12 --p12-password changeit -o ts.p12
+{bin} pki tsl bundle --env prod --issues TLS-S --with-roots -o tls.pem   # every TLS server CA
+{bin} pki tsl bundle --env prod --issues TLS-S --with-roots --nist-only -o tls-nist.pem
 {bin} pki roots bundle --p12 --p12-password changeit -o roots.p12   # Java truststore
 {bin} pki tsl export --env ref -o tsl.xml         # the TSL as published, once it verified
 ```
@@ -82,8 +87,23 @@ never on `message`.
   instead: each certificate's `pem` when nothing was written, `output` when a file was;
   `tsl export`'s report never carries the XML. `--p12` writes a PKCS#12 truststore
   (each certificate a Java `trustedCertEntry`, alias the common name in lower case) and
-  needs `--p12-password`. `roots bundle --nist-only` holds what a client without
-  brainpool can verify itself: GEM.RCA6 and GEM.RCA7.
+  needs `--p12-password`. `--nist-only` on `roots bundle` and `tsl bundle` keeps only
+  the roots and CAs whose own key is not brainpool (GEM.RCA2, 6, 7, 9, 10 and their
+  CAs); the walk and the TSL are still verified with brainpool.
+- `tsl bundle` subsets: `--ca`, `--provider`, `--root` and `--issues` are repeatable (a
+  repeated filter matches any of its values; different filters must all match).
+  `--issues TYPE` keeps the CAs the TSL lets issue a certificate type whose name
+  contains TYPE, ignoring case and `.` versus `-` (`C.FD.TLS-S` as in `certificate_type`,
+  `fd-tls-s` as in the profile names): `TLS-S` for every TLS server CA (C.FD.TLS-S, C.ZD.TLS-S), `TLS` with the
+  client type, `HCI.AUT` for SMC-B authentication. `tsl show` takes the same filters and
+  reports each CA's `issues`. `--connect HOST[:PORT]`
+  and `--cert FILE` (both repeatable) keep only the CAs that issued those certificates
+  or are among them: the bundle a client of that server needs. TI servers such as the
+  ePA Aktensysteme send only their own certificate, so clients need the issuing CA from
+  the TSL; curl, OpenSSL and Java accept such a CA as trust anchor by itself.
+  `--with-roots` adds the roots the selected CAs chain to, for clients that accept only
+  a self-signed anchor. A certificate whose issuer is neither a selected CA nor a root
+  is named on stderr.
 
 - Input is PEM, DER or PKCS#12 (`.p12`, `.pfx`); `-` reads stdin. A PEM file may carry
   the chain with the end entity first. In a PKCS#12 file, the certificate with its
@@ -116,9 +136,10 @@ never on `message`.
     when you already know it.
   - `trust.note` is set when the trust material is less than the full set, e.g.
     offline with nothing cached. Then pass the issuing CA with `--issuer`.
-  - `trust.nist_only: true` with `--nist-only` (`pki verify`, `pki roots list`): verified
-    as a client without brainpool would, so only the roots up to the first brainpool
-    signature (GEM.RCA7, GEM.RCA6) and no TSL. A brainpool chain is then not valid.
+  - `trust.nist_only: true` with `--nist-only` (`pki verify`, `pki roots list`): the
+    trust material, verified with brainpool, narrowed to the roots and TSL CAs whose
+    own key is not brainpool, and the chain validated without brainpool. A brainpool
+    chain is then not valid.
 - The TSL is verified whenever trust material is loaded; a list that fails is not used.
   `trust.tsl` names the list, its signer and the TSL signer CA; `trust.tsl_warnings`
   holds `no_ocsp_check` when the signer's OCSP status was not queried (offline, `--at`).
