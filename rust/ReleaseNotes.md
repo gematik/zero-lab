@@ -7,57 +7,6 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ## Unreleased
 
-### ti-cli
-
-#### added
-- `tsl show` reports `revoked_since` for a CA the TSL lists as revoked (shown in the
-  table); `tsl bundle` leaves such CAs out. `pki verify` knows the codes
-  `ca_revoked_in_tsl` and `issued_before_ca_revocation`.
-- `pki tsl bundle --connect HOST[:PORT]` and `--cert FILE` (repeatable): only the TSL
-  CAs that issued those certificates or are among them, the bundle a client of a TI
-  server needs (the ePA Aktensysteme send only their own certificate); `--with-roots`
-  adds the roots the selected CAs chain to. `--ca`, `--provider` and `--root` of
-  `tsl show` and `tsl bundle` are repeatable (any of the values).
-- `--issues TYPE` on `tsl show` and `tsl bundle` (repeatable): the CAs the TSL lets issue
-  a certificate type whose name contains TYPE, e.g. `TLS-S` for every TLS server CA;
-  `tsl show` reports each CA's `issuable_types`.
-- `tsl bundle --nist-only`: only the TSL CAs (and with `--with-roots` roots) whose own
-  key is not brainpool.
-- `directory login owner|holder|service|ti-provider`: a FHIR-Directory (VZD) access
-  token from each Auth-Service endpoint (ti-directory). `owner` by card through the
-  IDP-Dienst's Authenticator-Modul flow, or `--regservice-token-path` (a TI-Messenger RegService-OpenID-Token); `holder`,
-  `service` and `ti-provider` with client credentials at the directory's Keycloak
-  (`--client-id`, `--client-secret-path`, `TI_DIRECTORY_CLIENT_*`). One report for every
-  path (`endpoint`, `method`, `access_token`, `expires_at`, the decoded claims), `--token`
-  for the bare bearer. Error kinds `directory_error`, `directory_auth_server_error`,
-  `directory_unreachable`, `directory_protocol`; IDP failures keep the `idpd_*` kinds;
-  `arguments_invalid` for argument combinations clap cannot check. Schema
-  `directory login`.
-- `probe` checks the environment's FHIR-Directory (kind `directory`): its
-  `/owner-authenticate` must redirect to an IDP-Dienst authorization URL.
-- `idpd authenticate` and `directory login` check the IDP's certificates (the discovery
-  document's signer and `PuK_IDP_SIG`'s) against the TSL with the idp-sig profile and
-  OCSP before the card signs (TASK-27): `idp.certificates` in the report, error kind
-  `idpd_untrusted`; `--idp-unverified` skips the check and keeps the
-  `idp_certificates_unverified` warning. `-vv` logs the body of every non-2xx answer.
-
-#### changed
-- Names follow gemSpec (decision-5): the profiles `smb-aut` and `idp-sig` are now
-  `hci-aut` (Tab_PKI_405 C.HCI.AUT) and `idpd-sig` (role `oid_idpd`); `--profile` and
-  `profiles describe` accept a type or profile name in any case, with `.` or `-` and an
-  optional `C.` (`C.HCI.AUT`); the `tsl show` field is `issuable_types`; every TSL type
-  shows its Tab_PKI_405 name.
-- `--nist-only` no longer verifies the trust material without brainpool: the roots walk
-  and the TSL are always verified with brainpool, and only the result is narrowed to the
-  roots and TSL CAs whose own key is not brainpool. GEM.RCA9 and GEM.RCA10 (reached only
-  through brainpool cross certificates) and the TSL's non-brainpool CAs are now part of
-  it; `pki verify --nist-only` validates against that subset (TASK-28, TASK-29).
-- OCSP responses are cached on disk with the trust material (one hour, never past
-  `nextUpdate`; `good` and `revoked` only), for `pki verify`, the TSL signer's status,
-  and the IDP certificates of `idpd authenticate` and `directory login`: a second run
-  within the hour asks no responder. `pki verify` marks such answers `cached` (JSON
-  `chain[].revocation.cached`). `cache clear` removes them too (TASK-2).
-
 ### ti-idpd
 
 #### changed
@@ -484,6 +433,57 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `Env`, `Tier`, `EnvParseError`; `serde` and `clap` features.
 - `Timestamp` and `Clock` (moved from ti-pki), `SystemClock` behind `std` (not on
   wasm32-unknown-unknown, where std has no clock and every call would panic).
+
+## Release ti-cli 0.4.0, 2026-10-11
+
+### added
+- `tsl show` reports `revoked_since` for a CA the TSL lists as revoked (shown in the
+  table); `tsl bundle` leaves such CAs out. `pki verify` knows the codes
+  `ca_revoked_in_tsl` and `issued_before_ca_revocation`.
+- `pki tsl bundle --connect HOST[:PORT]` and `--cert FILE` (repeatable): only the TSL
+  CAs that issued those certificates or are among them, the bundle a client of a TI
+  server needs (the ePA Aktensysteme send only their own certificate); `--with-roots`
+  adds the roots the selected CAs chain to. `--ca`, `--provider` and `--root` of
+  `tsl show` and `tsl bundle` are repeatable (any of the values).
+- `--issues TYPE` on `tsl show` and `tsl bundle` (repeatable): the CAs the TSL lets issue
+  a certificate type whose name contains TYPE, e.g. `TLS-S` for every TLS server CA;
+  `tsl show` reports each CA's `issuable_types`.
+- `tsl bundle --nist-only`: only the TSL CAs (and with `--with-roots` roots) whose own
+  key is not brainpool.
+- `directory login owner|holder|service|ti-provider`: a FHIR-Directory (VZD) access
+  token from each Auth-Service endpoint (ti-directory). `owner` by card through the
+  IDP-Dienst's Authenticator-Modul flow, or `--regservice-token-path` (a TI-Messenger RegService-OpenID-Token); `holder`,
+  `service` and `ti-provider` with client credentials at the directory's Keycloak
+  (`--client-id`, `--client-secret-path`, `TI_DIRECTORY_CLIENT_*`). One report for every
+  path (`endpoint`, `method`, `access_token`, `expires_at`, the decoded claims), `--token`
+  for the bare bearer. Error kinds `directory_error`, `directory_auth_server_error`,
+  `directory_unreachable`, `directory_protocol`; IDP failures keep the `idpd_*` kinds;
+  `arguments_invalid` for argument combinations clap cannot check. Schema
+  `directory login`.
+- `probe` checks the environment's FHIR-Directory (kind `directory`): its
+  `/owner-authenticate` must redirect to an IDP-Dienst authorization URL.
+- `idpd authenticate` and `directory login` check the IDP's certificates (the discovery
+  document's signer and `PuK_IDP_SIG`'s) against the TSL with the idp-sig profile and
+  OCSP before the card signs (TASK-27): `idp.certificates` in the report, error kind
+  `idpd_untrusted`; `--idp-unverified` skips the check and keeps the
+  `idp_certificates_unverified` warning. `-vv` logs the body of every non-2xx answer.
+
+### changed
+- Names follow gemSpec (decision-5): the profiles `smb-aut` and `idp-sig` are now
+  `hci-aut` (Tab_PKI_405 C.HCI.AUT) and `idpd-sig` (role `oid_idpd`); `--profile` and
+  `profiles describe` accept a type or profile name in any case, with `.` or `-` and an
+  optional `C.` (`C.HCI.AUT`); the `tsl show` field is `issuable_types`; every TSL type
+  shows its Tab_PKI_405 name.
+- `--nist-only` no longer verifies the trust material without brainpool: the roots walk
+  and the TSL are always verified with brainpool, and only the result is narrowed to the
+  roots and TSL CAs whose own key is not brainpool. GEM.RCA9 and GEM.RCA10 (reached only
+  through brainpool cross certificates) and the TSL's non-brainpool CAs are now part of
+  it; `pki verify --nist-only` validates against that subset (TASK-28, TASK-29).
+- OCSP responses are cached on disk with the trust material (one hour, never past
+  `nextUpdate`; `good` and `revoked` only), for `pki verify`, the TSL signer's status,
+  and the IDP certificates of `idpd authenticate` and `directory login`: a second run
+  within the hour asks no responder. `pki verify` marks such answers `cached` (JSON
+  `chain[].revocation.cached`). `cache clear` removes them too (TASK-2).
 
 ## Release ti-cli 0.3.0, 2026-10-10
 
