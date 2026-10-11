@@ -260,6 +260,14 @@
             "type": "string"
           },
           "description": "The certificate types the TSL lets the CA issue, by their Tab_PKI_405 names (C.FD.TLS-S, C.NK.VPN, …); an OID the table does not name as its dotted string; empty when the TSL states none"
+        },
+        "revoked_since": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "For a CA the TSL lists as revoked, its StatusStartingTime: end entities issued before stay valid (Tab_PKI_271), later ones do not; null for a CA in accord"
         }
       },
       "required": [
@@ -275,7 +283,8 @@
         "rejection",
         "sha256",
         "pem",
-        "issuable_types"
+        "issuable_types",
+        "revoked_since"
       ],
       "additionalProperties": false
     }

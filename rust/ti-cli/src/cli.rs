@@ -50,7 +50,7 @@ Examples:
   {bin} identity sign --p12 smcb.p12 --claims - < claims.json        # ES256 JWS with x5c
   {bin} identity sign --card 80276883110000163974 --claims c.json   # the selected Konnektor
   {bin} idpd authenticate --env ref --p12 smcb.p12 --auth-url \"$AUTHZ_URI\"   # → code
-  {bin} directory login --env ref --p12 smcb.p12   # FHIR-Directory owner access token
+  {bin} directory login owner --env ref --p12 smcb.p12   # FHIR-Directory owner token
   {bin} pki verify-signature --cert vau.pem --data keys.cbor --signature sig.bin
   {bin} connector configs                       # the .kon files, shared with the Go ti
   {bin} connector -c praxis get cards
@@ -627,18 +627,35 @@ pub struct IdpdAuthenticateArgs {
 /// `ti directory …`: the FHIR-Directory.
 #[derive(Debug, Subcommand)]
 pub enum DirectoryCommand {
-    /// Obtain an owner access token: the directory's redirect to the IDP-Dienst, the
-    /// Authenticator-Modul flow with the identity, the token (exit 0; 3 when refused)
-    Login(DirectoryLoginArgs),
+    /// Obtain a directory access token at one of its Auth-Service endpoints (exit 0; 3
+    /// when refused)
+    #[command(subcommand)]
+    Login(DirectoryLoginCommand),
 }
 
-/// `ti directory login`.
+/// `ti directory login …`: one subcommand per Auth-Service endpoint, named as the
+/// token's `iss` names it.
+#[derive(Debug, Subcommand)]
+pub enum DirectoryLoginCommand {
+    /// /owner-authenticate: a card through the IDP-Dienst, or a TI-Messenger
+    /// RegService-OpenID-Token
+    Owner(DirectoryOwnerArgs),
+    /// /holder-authenticate: client credentials of a registration service (Keycloak
+    /// realm RSDirectoryAdministration)
+    Holder(DirectoryClientArgs),
+    /// /service-authenticate: client credentials of a Fachdienst or FdV provider
+    /// (Keycloak realm Service-Authenticate)
+    Service(DirectoryClientArgs),
+    /// /ti-provider-authenticate: client credentials of a TI-Messenger provider
+    /// (Keycloak realm TI-Provider)
+    TiProvider(DirectoryClientArgs),
+}
+
+/// Which FHIR-Directory, and how the token is shown.
 #[derive(Debug, Args)]
-pub struct DirectoryLoginArgs {
-    #[command(flatten)]
-    pub identity: IdentityArgs,
-    /// The TI environment whose FHIR-Directory and IDP-Dienst to use (dev shares ref);
-    /// auto is not an option
+pub struct DirectoryTargetArgs {
+    /// The TI environment whose FHIR-Directory, IDP-Dienst and Keycloak to use (dev
+    /// shares ref); auto is not an option
     #[arg(
         long,
         value_enum,
@@ -648,16 +665,51 @@ pub struct DirectoryLoginArgs {
         conflicts_with = "url"
     )]
     pub env: Option<Environment>,
-    /// Another FHIR-Directory, by base URL; with --idp-url, the IDP it may redirect to
-    #[arg(long, value_name = "URL", value_parser = idp_url, requires = "idp_url")]
+    /// Another FHIR-Directory, by base URL
+    #[arg(long, value_name = "URL", value_parser = idp_url)]
     pub url: Option<String>,
-    /// The IDP-Dienst of a directory given by --url, by base URL
+    /// The IDP-Dienst of a directory given by --url (owner by card)
     #[arg(long, value_name = "URL", value_parser = idp_url, requires = "url")]
     pub idp_url: Option<String>,
+    /// The Keycloak of a directory given by --url, scheme, host and port (client
+    /// credentials)
+    #[arg(long, value_name = "URL", value_parser = idp_url, requires = "url")]
+    pub auth_url: Option<String>,
+    /// Print only the access token, for `Authorization: Bearer $(…)`
+    #[arg(long)]
+    pub token: bool,
+}
+
+/// `ti directory login owner`. The card is optional here: `--regservice-token-path`
+/// works without one.
+#[derive(Debug, Args)]
+#[command(mut_group("identity_source", |group| group.required(false)))]
+pub struct DirectoryOwnerArgs {
+    #[command(flatten)]
+    pub identity: Option<IdentityArgs>,
+    #[command(flatten)]
+    pub target: DirectoryTargetArgs,
+    /// A TI-Messenger RegService-OpenID-Token (a JWT, file content) to exchange instead
+    /// of a card
+    #[arg(long, value_name = "FILE", conflicts_with = "identity_source")]
+    pub regservice_token_path: Option<PathBuf>,
     /// Use the IDP's certificates without checking them against the TSL (an IDP outside
     /// the TI PKI, e.g. a reference implementation); the report warns
     #[arg(long)]
     pub idp_unverified: bool,
+}
+
+/// `ti directory login holder|service|ti-provider`.
+#[derive(Debug, Args)]
+pub struct DirectoryClientArgs {
+    #[command(flatten)]
+    pub target: DirectoryTargetArgs,
+    /// The client ID at the directory's Keycloak
+    #[arg(long, value_name = "ID", env = "TI_DIRECTORY_CLIENT_ID")]
+    pub client_id: String,
+    /// File holding the client secret (first line); secrets are never taken as values
+    #[arg(long, value_name = "FILE", env = "TI_DIRECTORY_CLIENT_SECRET_PATH")]
+    pub client_secret_path: PathBuf,
 }
 
 /// An IDP or authorization URL: https, or plain http on the loopback for tests.

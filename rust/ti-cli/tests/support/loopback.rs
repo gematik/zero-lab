@@ -43,10 +43,20 @@ pub struct Seen {
     pub method: String,
     /// The target, query included.
     pub target: String,
+    /// Names as received.
+    pub headers: Vec<(String, String)>,
     pub body: String,
 }
 
 impl Seen {
+    /// The first header named `name`, case-insensitive.
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(n, _)| n.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
+    }
+
     pub fn path(&self) -> &str {
         self.target.split('?').next().unwrap()
     }
@@ -183,6 +193,7 @@ fn read_request(stream: &TcpStream) -> Seen {
     let method = parts.next().unwrap_or_default().to_owned();
     let target = parts.next().unwrap_or_default().to_owned();
     let mut length = 0usize;
+    let mut headers = Vec::new();
     loop {
         let mut header = String::new();
         reader.read_line(&mut header).unwrap();
@@ -190,12 +201,11 @@ fn read_request(stream: &TcpStream) -> Seen {
         if header.is_empty() {
             break;
         }
-        if let Some(value) = header
-            .split_once(':')
-            .filter(|(name, _)| name.eq_ignore_ascii_case("content-length"))
-            .map(|(_, v)| v.trim())
-        {
-            length = value.parse().unwrap();
+        if let Some((name, value)) = header.split_once(':') {
+            if name.eq_ignore_ascii_case("content-length") {
+                length = value.trim().parse().unwrap();
+            }
+            headers.push((name.trim().to_owned(), value.trim().to_owned()));
         }
     }
     let mut body = vec![0; length];
@@ -203,6 +213,7 @@ fn read_request(stream: &TcpStream) -> Seen {
     Seen {
         method,
         target,
+        headers,
         body: String::from_utf8(body).unwrap(),
     }
 }

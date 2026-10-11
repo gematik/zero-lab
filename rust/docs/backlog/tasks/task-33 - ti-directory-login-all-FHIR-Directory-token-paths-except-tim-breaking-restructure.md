@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-10-11 11:40'
-updated_date: '2026-10-11 11:48'
+updated_date: '2026-10-11 12:57'
 labels:
   - ti-directory
   - ti-cli
@@ -28,3 +28,9 @@ ti directory login covers only the owner path by card. The FHIR-Directory (gemSp
 - [ ] #3 one directory login schema for every path, --token prints the bare token; loopback tests with fake Keycloak and directory for each path; just check green
 - [ ] #4 HITL against RU for owner by card and for every client-credentials realm credentials exist for
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-10-11: --decoupled removed again at the user's request: this tool is the Authenticator-Modul itself, and answering an IDP authorization URL belongs to ti idpd (idpd authenticate --auth-url), not to directory login. AC1's decoupled part is dropped.
+<!-- SECTION:NOTES:END -->

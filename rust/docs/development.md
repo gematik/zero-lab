@@ -396,25 +396,34 @@ is not at the repository root. Until a registry is in place, bumps are done by h
 above; afterwards `release-plz update` does the version and sibling-pin edits (it writes only
 `CHANGELOG.md`, so its changelog updates stay off; release notes are `ReleaseNotes.md`).
 
-## Releasing ti
+## Releasing
 
-`ti` is the one crate with binaries. Its release takes two commands from `main`:
+Crates are released together or alone, each with its own version and tag; `ti` is the
+one crate with binaries. A release takes two commands from `main`:
 
-1. **`just release X.Y.Z`**, local only. It stops unless `main` is clean and equal to
-   `origin/main`, the tag is new and above the last `rust/ti-cli/v*`, and
-   `ReleaseNotes.md` has a `### ti-cli` block under `## Unreleased`. Then `just check`,
-   `just audit`; the version bump in `ti-cli/Cargo.toml` and `Cargo.lock`; the ti-cli
-   block becomes `## Release ti-cli X.Y.Z, YYYY-MM-DD`; `just cli-targets` builds the
-   three binaries into `target/dist` with their `SHA256SUMS`; commit `ti-cli: release
-   X.Y.Z` and tag `rust/ti-cli/vX.Y.Z`. A failure or Ctrl-C after the gate undoes the
-   bump.
-2. **`just publish X.Y.Z [OWNER]`**: `git push --atomic origin main <tag>`, `gh release
-   create` with the binaries, the checksums and that version's notes (plus install and
-   verify lines), then `just publish-brew OWNER X.Y.Z`. `OWNER` defaults to `TAP_OWNER`
-   in the Justfile (`spilikin`).
+1. **`just release CRATE=X.Y.Z …`**, local only, e.g.
+   `just release ti-cli=0.4.0 ti-idpd=0.2.0 ti-directory=0.1.0`. It stops unless `main`
+   is clean and equal to `origin/main`, each tag is new and above the crate's last
+   `rust/<crate>/v*`, and `ReleaseNotes.md` has exactly one `### <crate>` block under
+   `## Unreleased` for each. Then `just check`, `just audit`; per crate the version in
+   its `Cargo.toml`, the workspace requirement on it in `Cargo.toml` (`"0.2"` for 0.x,
+   the major from 1.0) and its block becoming `## Release <crate> X.Y.Z, YYYY-MM-DD`;
+   `Cargo.lock`; `just jwz-recheck`, because `Cargo.toml` changed; when `ti-cli` is in
+   it, `just cli-targets` builds the three binaries into `target/dist` with their
+   `SHA256SUMS`. One commit `release: <crate> X.Y.Z, …`, one tag `rust/<crate>/vX.Y.Z`
+   per crate. A failure or Ctrl-C after the gate undoes the bumps.
+2. **`just publish X.Y.Z [OWNER]`** (the `ti-cli` version): `git push --atomic origin
+   main` with every crate tag of the release commit, `gh release create` with the
+   binaries, the checksums and that version's notes (plus install and verify lines), then
+   `just publish-brew OWNER X.Y.Z`. `OWNER` defaults to `TAP_OWNER` in the Justfile
+   (`spilikin`). A release without `ti-cli` is pushed as the recipe prints it.
 
-To drop a release that is not published yet: `git tag -d rust/ti-cli/vX.Y.Z && git reset
---keep HEAD~1`.
+`just audit`'s semver step compares each tagged crate's public API with its last tag
+(0.x: a breaking change needs the next minor). It skips `ti-cli`, a binary whose contract
+is its JSON schemas, and crates never tagged.
+
+To drop a release that is not published yet: `git tag -d <its tags> && git reset --keep
+HEAD~1` (the recipe prints the line).
 
 `publish-brew` takes the checksums from the published release, fills
 `ti-cli/Formula/ti.rb` with each platform's asset URL and hash, and pushes it to
@@ -464,7 +473,7 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `tag <crate> <ver>` | Create the `rust/<crate>/v<ver>` release tag |
 | `push-tags` | Push all local tags to origin |
 | `package-list <crate>` | Show the files a release of the crate would contain |
-| `release <ver>` | Prepare a ti release locally (see "Releasing ti") |
+| `release <crate=ver>…` | Prepare a release of one or more crates locally (see "Releasing") |
 | `release-notes [<ver> [<crate>]]` | A crate's notes from `ReleaseNotes.md` (default: ti-cli's pending ones) |
 | `publish <ver> [<tap owner>]` | Push and publish a prepared ti release |
 | `publish-brew <owner> <ver>` | Point the formula in `<owner>/homebrew-tap` at a ti release |

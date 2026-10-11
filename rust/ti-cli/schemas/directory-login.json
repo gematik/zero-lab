@@ -1,16 +1,33 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "directory login",
-  "description": "The FHIR-Directory's owner authentication run with an identity: the directory's redirect to the IDP-Dienst, the Authenticator-Modul flow, and the owner access token the directory issued for its /owner and /search endpoints.",
+  "description": "A FHIR-Directory access token from one of its Auth-Service endpoints: owner by card through the IDP-Dienst, owner with a TI-Messenger RegService-OpenID-Token, or holder, service and ti-provider with client credentials at the directory's Keycloak. One document for every path; what does not apply is null.",
   "type": "object",
   "properties": {
     "schema": {
       "const": 1,
       "description": "The JSON contract version; fields are only added within it."
     },
+    "endpoint": {
+      "enum": [
+        "owner",
+        "holder",
+        "service",
+        "ti-provider"
+      ],
+      "description": "The Auth-Service endpoint that issued the token"
+    },
+    "method": {
+      "enum": [
+        "card",
+        "regservice",
+        "client_credentials"
+      ],
+      "description": "How the token was obtained"
+    },
     "access_token": {
       "type": "string",
-      "description": "The owner access token (an ES256 JWT of the directory's), for Authorization: Bearer"
+      "description": "The directory's access token (an ES256 JWT), for Authorization: Bearer"
     },
     "token_type": {
       "type": "string",
@@ -85,107 +102,146 @@
         "base_url": {
           "type": "string"
         },
-        "authorization_url": {
+        "endpoint_url": {
           "type": "string",
-          "description": "The IDP-Dienst authorization URL the directory redirected to"
+          "description": "The endpoint that issued the token"
+        },
+        "authorization_url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The IDP-Dienst authorization URL the directory sent the card to; null without a card"
         }
       },
       "required": [
         "base_url",
+        "endpoint_url",
         "authorization_url"
       ],
       "additionalProperties": false
     },
     "idp": {
-      "type": "object",
-      "properties": {
-        "base_url": {
-          "type": "string"
+      "oneOf": [
+        {
+          "type": "null"
         },
-        "issuer": {
-          "type": "string"
-        },
-        "certificates": {
-          "type": "array",
-          "description": "The IDP's certificates: the discovery document's signer and PuK_IDP_SIG's, checked against the TSL with the idpd-sig profile and OCSP unless --idp-unverified",
-          "items": {
-            "type": "object",
-            "properties": {
-              "key": {
-                "enum": [
-                  "puk_disc_sig",
-                  "puk_idp_sig"
-                ]
-              },
-              "subject": {
-                "type": "string"
-              },
-              "sha256": {
-                "type": "string"
-              },
-              "verified": {
-                "type": "boolean",
-                "description": "Valid for an IDP-Dienst in the environment's TSL; false only with --idp-unverified"
-              }
+        {
+          "type": "object",
+          "properties": {
+            "base_url": {
+              "type": "string"
             },
-            "required": [
-              "key",
-              "subject",
-              "sha256",
-              "verified"
-            ],
-            "additionalProperties": false
-          }
+            "issuer": {
+              "type": "string"
+            },
+            "certificates": {
+              "type": "array",
+              "description": "The IDP's certificates: the discovery document's signer and PuK_IDP_SIG's, checked against the TSL with the idpd-sig profile and OCSP unless --idp-unverified",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "enum": [
+                      "puk_disc_sig",
+                      "puk_idp_sig"
+                    ]
+                  },
+                  "subject": {
+                    "type": "string"
+                  },
+                  "sha256": {
+                    "type": "string"
+                  },
+                  "verified": {
+                    "type": "boolean",
+                    "description": "Valid for an IDP-Dienst in the environment's TSL; false only with --idp-unverified"
+                  }
+                },
+                "required": [
+                  "key",
+                  "subject",
+                  "sha256",
+                  "verified"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "base_url",
+            "issuer",
+            "certificates"
+          ],
+          "additionalProperties": false
         }
-      },
-      "required": [
-        "base_url",
-        "issuer",
-        "certificates"
       ],
-      "additionalProperties": false
+      "description": "The IDP-Dienst a card answered; null for the other methods"
     },
     "identity": {
-      "type": "object",
-      "properties": {
-        "subject": {
-          "type": "string"
+      "oneOf": [
+        {
+          "type": "null"
         },
-        "telematik_id": {
-          "type": [
-            "string",
-            "null"
-          ]
+        {
+          "type": "object",
+          "properties": {
+            "subject": {
+              "type": "string"
+            },
+            "telematik_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "subject",
+            "telematik_id"
+          ],
+          "additionalProperties": false
         }
-      },
-      "required": [
-        "subject",
-        "telematik_id"
       ],
-      "additionalProperties": false
+      "description": "The card identity; null without one"
     },
     "challenge": {
-      "type": "object",
-      "description": "Claims of the IDP's challenge, for the record; client_id is the directory's and opaque",
-      "properties": {
-        "client_id": {
-          "type": [
-            "string",
-            "null"
-          ]
+      "oneOf": [
+        {
+          "type": "null"
         },
-        "scope": {
-          "type": [
-            "string",
-            "null"
-          ]
+        {
+          "type": "object",
+          "description": "Claims of the IDP's challenge, for the record; client_id is the directory's and opaque",
+          "properties": {
+            "client_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "scope": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "client_id",
+            "scope"
+          ],
+          "additionalProperties": false
         }
-      },
-      "required": [
-        "client_id",
-        "scope"
       ],
-      "additionalProperties": false
+      "description": "Claims of the IDP's challenge; null without a card"
+    },
+    "client_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The client ID of client credentials; null for the owner methods"
     },
     "warnings": {
       "type": "array",
@@ -199,6 +255,8 @@
   },
   "required": [
     "schema",
+    "endpoint",
+    "method",
     "access_token",
     "token_type",
     "expires_in",
@@ -208,6 +266,7 @@
     "idp",
     "identity",
     "challenge",
+    "client_id",
     "warnings"
   ],
   "additionalProperties": false

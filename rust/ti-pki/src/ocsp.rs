@@ -1486,6 +1486,7 @@ mod tests {
                     .map(|(ca, tsp)| crate::tsl::Intermediate {
                         certificate: (*ca).clone(),
                         provider: (*tsp).to_owned(),
+                        revoked_since: None,
                     })
                     .collect(),
             )

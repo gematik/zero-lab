@@ -54,8 +54,8 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
         Command::Idpd(IdpdCommand::Authenticate(args)) => {
             idpd::authenticate(args, &cli.global, out)
         }
-        Command::Directory(DirectoryCommand::Login(args)) => {
-            directory::login(args, &cli.global, out)
+        Command::Directory(DirectoryCommand::Login(command)) => {
+            directory::login(command, &cli.global, out)
         }
         Command::Pki(PkiCommand::Profiles(ProfilesCommand::List)) => profiles::list(out),
         Command::Pki(PkiCommand::Profiles(ProfilesCommand::Describe { name, env, offline })) => {

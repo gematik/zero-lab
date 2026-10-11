@@ -155,9 +155,12 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   `trust.tsl` names the list, its signer and the TSL signer CA; `trust.tsl_warnings`
   holds `no_ocsp_check` when the signer's OCSP status was not queried (offline, `--at`).
   `revocation.authorization` is `tsl_listed` for a responder the TSL lists for the
-  issuing CA's TSP. `tsl show` takes only certificates and provider names from
-  it (the provider only in JSON, for filtering); a CA counts only if a verified root
-  signed it.
+  issuing CA's TSP. A CA counts only if a verified root signed it. A CA the TSL lists
+  as revoked still vouches for what it issued before its `StatusStartingTime`
+  (gemSpec_PKI Tab_PKI_271, TUC_PKI_002): such an end entity is valid with the warning
+  `issued_before_ca_revocation`, a later one fails with `ca_revoked_in_tsl`. `tsl show`
+  reports the time as `revoked_since`; `tsl bundle` leaves revoked CAs out, because
+  curl and Java cannot apply the date rule.
 - `tsl verify` checks a TSL file: signature, signer under the embedded TSL signer CA,
   `NextUpdate` (`--grace`), the signer's OCSP status (not with `--offline` or `--at`),
   and with `--previous` the sequence. `result` is `valid` or `invalid`; an invalid one
@@ -252,42 +255,55 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 ## Subsystem directory: the FHIR-Directory (VZD)
 
 ```sh
-{bin} --format json directory login --env ref --p12 smcb.p12
-{bin} --format json directory login --env ref --card SMC-B-7
-{bin} --format json directory login --url https://directory.example --idp-url https://idp.example --p12 smcb.p12
-{bin} --format json directory login --env ref --p12 smcb.p12 | jq -r .access_token
+{bin} --format json directory login owner --env ref --p12 smcb.p12        # card via the IDP-Dienst
+{bin} --format json directory login owner --env ref --card SMC-B-7
+{bin} --format json directory login owner --env ref --regservice-token-path reg.jwt
+{bin} --format json directory login service --env ref --client-id ID --client-secret-path secret.txt
+{bin} directory login holder --env ref --client-id ID --client-secret-path secret.txt --token
 ```
 
-- `login` obtains the owner access token of gemSpec_VZD_FHIR_Directory for the identity:
-  `GET {directory}/owner-authenticate` (not following redirects) answers with the
-  IDP-Dienst authorization URL the directory made (its `client_id`, `scope`,
-  `redirect_uri`, `state`, PKCE — opaque, passed on as is); the Authenticator-Modul flow
-  of `idpd authenticate` runs for it; the IDP's redirect to
-  `{directory}/signin-gematik-idp-dienst?code=…&state=…` is fetched and answers with the
-  token. The report has `access_token` (`Authorization: Bearer`), `token_type`,
-  `expires_in`, `expires_at` (seconds since the epoch, local clock), `token` (the
-  payload as decoded, not verified: `iss`, `sub` the Telematik-ID, `aud`, `scope`, `iat`,
-  `exp`), `directory`, `idp`, `identity`, the challenge's `client_id` and `scope`, and
-  `warnings` as for `idpd authenticate`. The token is valid 24 hours and is not cached:
-  a bearer token is a secret, and the caller keeps it.
-- The directory and its IDP are `--env` (`TI_ENV`; `prod`, `ref`, `test`, `dev` as ref;
-  `auto` is exit 2: `fhir-directory[-ref|-tu].vzd.ti-dienste.de` with the environment's
-  IDP-Dienst), or `--url BASE --idp-url BASE` together. The directory's redirect must go
-  to that IDP and the IDP's redirect back to that directory's sign-in endpoint; otherwise
-  the flow stops before anything is signed or sent (`directory_protocol`).
-- Exit 3 when the directory refuses: error kind `directory_error`, the message carries
-  the HTTP status, the directory's `message` and its `errors` (`attributeName:
-  attributeError`). `directory_unreachable` when no answer came, `directory_protocol`
-  when the answer is not what the specification says. A failure inside the IDP-Dienst
-  flow keeps its own kinds (`idpd_error`, `idpd_unreachable`, `idpd_protocol`). A
-  status without the directory's JSON document is `directory_protocol` with the body as
-  text in the message; `-vv` logs every non-2xx body. An identity the directory has no
-  entry for is refused at the sign-in: HTTP 403 `Validation Failure: Unknown Telematik
-  ID`.
-- The IDP's certificates are checked as for `idpd authenticate` (`--idp-unverified`,
-  `idpd_untrusted`, `idp.certificates`); `-v` shows each verdict.
-- The decoupled variants (`owner-authenticate-decoupled`, `owner-authenticate-poll`, for
-  the gematik Authenticator app) are not implemented.
+- `login` has one subcommand per Auth-Service endpoint of gemSpec_VZD_FHIR_Directory,
+  named as the token's `iss` names it; every one ends in the directory's access token
+  (an ES256 JWT) and the same report: `endpoint`, `method` (`card`, `regservice`,
+  `client_credentials`), `access_token` (`Authorization: Bearer`),
+  `token_type`, `expires_in`, `expires_at` (seconds since the epoch, local clock),
+  `token` (the payload as decoded, not verified: `iss`, `sub`, `aud`, `scope`, `iat`,
+  `exp`), `directory` (`base_url`, `endpoint_url`, `authorization_url`), and, where they
+  apply, `idp`, `identity`, `challenge` (card) or `client_id` (client credentials), else
+  null; `warnings` as for `idpd authenticate`. `--token` prints only the access token.
+  Tokens are not cached: a bearer token is a secret, and the caller keeps it.
+- `owner` with a card (`--p12`, `--cert --key`, `--card`): `GET /owner-authenticate`
+  redirects to the IDP-Dienst authorization URL the directory made (its `client_id`,
+  `scope`, `redirect_uri`, `state`, PKCE — opaque, passed on as is); the
+  Authenticator-Modul flow of `idpd authenticate` runs for it; the IDP's redirect to
+  `/signin-gematik-idp-dienst` answers with the token (24 h, `sub` the Telematik-ID). The
+  redirects must stay between the directory and its IDP, or the flow stops before
+  anything is signed (`directory_protocol`). The IDP's certificates are checked as for
+  `idpd authenticate` (`--idp-unverified`, `idpd_untrusted`, `idp.certificates`).
+- `owner --regservice-token-path FILE`: exchanges a TI-Messenger RegService-OpenID-Token
+  (BP256R1, C.FD.SIG with role `oid_tim`) at `/owner-authenticate` as a bearer.
+- `holder`, `service`, `ti-provider`: client credentials at the directory's Keycloak
+  (realms `RSDirectoryAdministration`, `Service-Authenticate`, `TI-Provider`; Basic
+  authentication), the Keycloak token exchanged at `/holder-authenticate`,
+  `/service-authenticate`, `/ti-provider-authenticate`. `--client-id` or
+  `TI_DIRECTORY_CLIENT_ID`; the secret only from a file, `--client-secret-path` or
+  `TI_DIRECTORY_CLIENT_SECRET_PATH` (first line). Keycloak's refusal is exit 3,
+  `directory_auth_server_error`, with its `error` and `error_description`.
+- The directory is `--env` (`TI_ENV`; `prod`, `ref`, `test`, `dev` as ref; `auto` is
+  exit 2): `fhir-directory[-ref|-tu].vzd.ti-dienste.de`, its IDP-Dienst, and Keycloak at
+  `auth[-ref|-test].vzd.ti-dienste.de:9443`. Or `--url BASE` with `--idp-url` for a card
+  and `--auth-url` for client credentials; a missing one is exit 2,
+  `arguments_invalid`, before anything is sent.
+- Exit 3 when the directory refuses: `directory_error`, the message carries the HTTP
+  status, the directory's `message` and its `errors` (`attributeName: attributeError`);
+  `directory_unreachable` when no answer came; `directory_protocol` when the answer is
+  not what the specification says (a status without the directory's JSON document
+  carries the body as text; `-vv` logs every non-2xx body). IDP failures keep their
+  kinds (`idpd_*`). An identity the directory has no entry for is refused at the
+  sign-in: HTTP 403 `Validation Failure: Unknown Telematik ID`.
+- Not implemented: `/tim-authenticate` (a Matrix OpenID token), and the decoupled variant
+  for the gematik Authenticator app: this tool is the Authenticator-Modul itself; an
+  authorization URL from elsewhere is `idpd authenticate --auth-url`.
 
 ## Subsystem connector: the Konnektor
 

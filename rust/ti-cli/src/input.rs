@@ -25,6 +25,26 @@ pub fn p12_password(args: &P12PasswordArgs) -> Result<String, CliError> {
     Ok(text.lines().next().unwrap_or_default().to_owned())
 }
 
+/// The first line of a secret file (`--client-secret-path`, a token file): secrets are
+/// read from files, never taken as values.
+pub fn first_line(path: &std::path::Path) -> Result<String, CliError> {
+    let source = read(path)?;
+    let unreadable = |error: std::io::Error| CliError::Read {
+        source_name: source.name.clone(),
+        source: error,
+    };
+    let text = String::from_utf8(source.bytes.clone())
+        .map_err(|error| unreadable(std::io::Error::new(std::io::ErrorKind::InvalidData, error)))?;
+    let line = text.lines().next().unwrap_or_default().trim().to_owned();
+    if line.is_empty() {
+        return Err(unreadable(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "empty",
+        )));
+    }
+    Ok(line)
+}
+
 /// The bytes of a FILE argument, with a name for messages.
 pub struct Source {
     /// The file name, or `<stdin>`.

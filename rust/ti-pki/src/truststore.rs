@@ -20,6 +20,9 @@ pub struct TrustStore {
     intermediates: Vec<Certificate>,
     /// The TSP of `intermediates[i]`, same index.
     providers: Vec<String>,
+    /// The `StatusStartingTime` of `intermediates[i]` if the TSL lists it as revoked,
+    /// same index.
+    revoked_since: Vec<Option<crate::Timestamp>>,
     /// OCSP responder certificates a verified TSL lists, with their TSP.
     listed_responders: Vec<(Certificate, String)>,
     /// The certificate types a verified TSL states for its CAs; `None` without a
@@ -53,6 +56,7 @@ impl TrustStore {
             roots: unique,
             intermediates: Vec::new(),
             providers: Vec::new(),
+            revoked_since: Vec::new(),
             listed_responders: Vec::new(),
             ca_types: None,
         }
@@ -62,11 +66,24 @@ impl TrustStore {
     /// typically the TSL's CAs as kept by [`tsl::match_to_roots`](crate::tsl::match_to_roots).
     #[must_use]
     pub fn with_intermediates(mut self, intermediates: Vec<Intermediate>) -> Self {
-        (self.intermediates, self.providers) = intermediates
-            .into_iter()
-            .map(|i| (i.certificate, i.provider))
-            .unzip();
+        self.intermediates = Vec::with_capacity(intermediates.len());
+        self.providers = Vec::with_capacity(intermediates.len());
+        self.revoked_since = Vec::with_capacity(intermediates.len());
+        for i in intermediates {
+            self.intermediates.push(i.certificate);
+            self.providers.push(i.provider);
+            self.revoked_since.push(i.revoked_since);
+        }
         self
+    }
+
+    /// When the TSL revoked `ca`, if it lists it as revoked: end entities it issued
+    /// before stay valid (Tab_PKI_271).
+    pub fn revoked_since(&self, ca: &Certificate) -> Option<crate::Timestamp> {
+        self.intermediates
+            .iter()
+            .position(|c| c == ca)
+            .and_then(|i| self.revoked_since[i])
     }
 
     /// The OCSP responders a verified TSL lists. Only the loader sets them, from a TSL
@@ -127,17 +144,17 @@ impl TrustStore {
         let usable = |cert: &Certificate| {
             crate::algorithms::supports_key(algorithms, &cert.public_key_alg_id())
         };
-        let (intermediates, providers) = self
-            .intermediates
-            .iter()
-            .zip(&self.providers)
-            .filter(|(cert, _)| usable(cert))
-            .map(|(cert, provider)| (cert.clone(), provider.clone()))
-            .unzip();
+        let kept: Vec<usize> = (0..self.intermediates.len())
+            .filter(|&i| usable(&self.intermediates[i]))
+            .collect();
         TrustStore {
             roots: self.roots.iter().filter(|r| usable(r)).cloned().collect(),
-            intermediates,
-            providers,
+            intermediates: kept
+                .iter()
+                .map(|&i| self.intermediates[i].clone())
+                .collect(),
+            providers: kept.iter().map(|&i| self.providers[i].clone()).collect(),
+            revoked_since: kept.iter().map(|&i| self.revoked_since[i]).collect(),
             listed_responders: self.listed_responders.clone(),
             ca_types: self.ca_types.clone(),
         }

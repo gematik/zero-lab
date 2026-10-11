@@ -74,6 +74,9 @@ pub enum CliError {
     /// The environment given does not fit the command.
     #[error("{0}")]
     Environment(String),
+    /// Arguments that clap cannot reject alone: a combination the command needs.
+    #[error("{0}")]
+    Arguments(String),
     /// The trust material of the environment could not be used.
     #[error("trust material unavailable: {0}")]
     Trust(#[source] ti_pki::Error),
@@ -153,6 +156,7 @@ impl CliError {
             CliError::OutputExists(_) => "output_exists",
             CliError::EnvironmentUndetected(_) => "environment_undetected",
             CliError::Environment(_) => "environment_invalid",
+            CliError::Arguments(_) => "arguments_invalid",
             CliError::Trust(_) | CliError::TrustLoad(_) => "trust_material_unavailable",
             CliError::HttpSetup(_) => "http_setup",
             CliError::ServerUnreachable(_) => "server_unreachable",
@@ -182,6 +186,7 @@ impl CliError {
             CliError::Idpd(_) => "idpd_protocol",
             CliError::Directory(error) => match **error {
                 ti_directory::Error::Directory(_) => "directory_error",
+                ti_directory::Error::AuthServer(_) => "directory_auth_server_error",
                 ti_directory::Error::Transport { .. } => "directory_unreachable",
                 _ => "directory_protocol",
             },
@@ -263,7 +268,10 @@ impl CliError {
             }
             CliError::Directory(error) => Some(match **error {
                 ti_directory::Error::Directory(_) => {
-                    "the FHIR-Directory refused; its message says why (an identity without an entry in the directory, a code it did not issue)"
+                    "the FHIR-Directory refused; its message says why (an identity without an entry in the directory, a code it did not issue, a token it does not accept)"
+                }
+                ti_directory::Error::AuthServer(_) => {
+                    "the directory's Keycloak refused the client credentials: check --client-id, the secret file and the endpoint (holder, service, ti-provider have their own realms)"
                 }
                 ti_directory::Error::Transport { .. } => {
                     "check the network, --proxy and the directory URL; -v shows each request"
@@ -273,6 +281,7 @@ impl CliError {
                 }
             }),
             CliError::Trust(_)
+            | CliError::Arguments(_)
             | CliError::Output(_)
             | CliError::Connector(_)
             | CliError::Signing(_) => None,
@@ -292,6 +301,7 @@ impl CliError {
             | CliError::SignatureMalformed(_) => Exit::Input,
             CliError::EnvironmentUndetected(_)
             | CliError::Environment(_)
+            | CliError::Arguments(_)
             | CliError::OutputExists(_)
             | CliError::HttpSetup(_)
             | CliError::UnknownSchema(_)

@@ -257,6 +257,7 @@ impl Validator {
         }
         check_key(&chain[0], now, &mut result);
         self.check_tsl_type(&chain, &mut result);
+        self.check_ca_revoked_in_tsl(&chain, &mut result);
         self.check_revocation(&chain, checker, &mut result).await;
         if result.valid
             && !self.required_role_oids.is_empty()
@@ -325,6 +326,41 @@ impl Validator {
     /// TSL nothing is checked; with one that states no types for the issuer, a warning
     /// says the type went unchecked (variant 7a). The TSL signer is checked by
     /// TUC_PKI_011 instead.
+    /// A CA the TSL lists as revoked still vouches for the end entities it issued
+    /// before its `StatusStartingTime` (gemSpec_PKI Tab_PKI_271, TUC_PKI_002 step 5:
+    /// the end entity's `notBefore` against the time), not for later ones.
+    fn check_ca_revoked_in_tsl(&self, chain: &[Certificate], result: &mut ValidationResult) {
+        let (Some(leaf), Some(issuer)) = (chain.first(), chain.get(1)) else {
+            return;
+        };
+        let Some(revoked) = self.store.revoked_since(issuer) else {
+            return;
+        };
+        if leaf.not_before() < revoked {
+            result.warnings.push(
+                ValidationWarning::new(
+                    ErrorCode::IssuedBeforeCaRevocation,
+                    format!(
+                        "the TSL lists {:?} as revoked since {revoked}; issued before, so treated as usual",
+                        issuer.subject_cn()
+                    ),
+                )
+                .with_subject(leaf.subject_cn()),
+            );
+        } else {
+            result.add_error(
+                ValidationError::new(
+                    ErrorCode::CaRevokedInTsl,
+                    format!(
+                        "the TSL lists {:?} as revoked since {revoked}, and the certificate was issued at or after that",
+                        issuer.subject_cn()
+                    ),
+                )
+                .with_subject(leaf.subject_cn()),
+            );
+        }
+    }
+
     fn check_tsl_type(&self, chain: &[Certificate], result: &mut ValidationResult) {
         let (Some(leaf), Some(issuer)) = (chain.first(), chain.get(1)) else {
             return;
@@ -506,6 +542,48 @@ mod tests {
             block_on(validator.validate(certs, TestPki::NOW, &Unchecked)).unwrap()
         }
 
+        /// Tab_PKI_271 and TUC_PKI_002 step 5: under a CA the TSL lists as revoked, an
+        /// end entity issued before the CA's StatusStartingTime is treated as usual,
+        /// one issued at or after it is not valid.
+        #[test]
+        fn a_revoked_tsl_ca_vouches_only_for_what_it_issued_before() {
+            let pki = TestPki::new();
+            let issued = pki.ee_mixed.not_before();
+            let store = |revoked_since| {
+                Arc::new(TrustStore::new([pki.rca1.clone()]).with_intermediates(vec![
+                    crate::tsl::Intermediate {
+                        certificate: pki.sub_ca_mixed.clone(),
+                        provider: "Test TSP".into(),
+                        revoked_since,
+                    },
+                ]))
+            };
+            let run = |revoked_since| {
+                let v = Validator {
+                    store: store(revoked_since),
+                    ..validator(&pki, RevocationMode::Disabled)
+                };
+                offline(&v, std::slice::from_ref(&pki.ee_mixed))
+            };
+
+            let before = run(Some(Timestamp(issued.0 + 1)));
+            assert!(before.valid, "{:?}", before.errors);
+            assert!(before.has_warning(ErrorCode::IssuedBeforeCaRevocation));
+
+            for since in [issued, Timestamp(issued.0 - 1)] {
+                let after = run(Some(since));
+                assert_eq!(
+                    codes(&after),
+                    [(ErrorCode::CaRevokedInTsl, pki.ee_mixed.subject_cn())],
+                    "revoked since {since}"
+                );
+            }
+
+            let in_accord = run(None);
+            assert!(in_accord.valid, "{:?}", in_accord.errors);
+            assert!(!in_accord.has_warning(ErrorCode::IssuedBeforeCaRevocation));
+        }
+
         #[test]
         fn offline_validation_with_the_stores_intermediates() {
             let pki = TestPki::new();
@@ -521,6 +599,7 @@ mod tests {
                 crate::tsl::Intermediate {
                     certificate: pki.sub_ca_hba.clone(),
                     provider: "Test TSP".into(),
+                    revoked_since: None,
                 },
             ]));
             let result = offline(&v, std::slice::from_ref(&pki.ee_arzt));
@@ -730,6 +809,7 @@ mod tests {
             let intermediate = |ca: &Certificate| crate::tsl::Intermediate {
                 certificate: ca.clone(),
                 provider: "TSP A".into(),
+                revoked_since: None,
             };
             let v = Validator {
                 store: Arc::new(

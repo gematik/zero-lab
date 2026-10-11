@@ -51,6 +51,11 @@ pub const SERVICE_STATUS_IN_ACCORD: &str = "http://uri.etsi.org/TrstSvc/Svcstatu
 /// The ETSI TS 119 612 v2 name of [`SERVICE_STATUS_IN_ACCORD`].
 pub const SERVICE_STATUS_GRANTED: &str = "http://uri.etsi.org/TrstSvc/Svcstatus/granted";
 
+/// A CA whose approval was withdrawn for a non-security incident: it issues no more
+/// end-entity certificates, and those it issued before `StatusStartingTime` stay valid
+/// (gemSpec_PKI Tab_PKI_271, TUC_PKI_002 step 5).
+pub const SERVICE_STATUS_REVOKED: &str = "http://uri.etsi.org/TrstSvc/Svcstatus/revoked";
+
 /// A parsed TSL: its sequence, its validity window and every trust service in document
 /// order.
 #[derive(Clone, Debug)]
@@ -239,16 +244,26 @@ impl Tsl {
         })
     }
 
-    /// The CA services in accord, in document order, with their providers: the
-    /// candidate intermediates. Untrusted until [`match_to_roots`] has kept them.
+    /// The CA services in accord, and the revoked ones with a `StatusStartingTime`, in
+    /// document order, with their providers: the candidate intermediates. Untrusted
+    /// until [`match_to_roots`] has kept them. A revoked CA without the time is left
+    /// out: nothing tells which of its certificates still count.
     pub fn intermediate_cas(&self) -> Vec<Intermediate> {
         self.services
             .iter()
-            .filter(|s| s.service_type == SERVICE_TYPE_CA_PKC && s.is_in_accord())
+            .filter(|s| s.service_type == SERVICE_TYPE_CA_PKC)
             .filter_map(|s| {
+                let revoked_since = if s.is_in_accord() {
+                    None
+                } else if s.status == SERVICE_STATUS_REVOKED {
+                    Some(s.status_starting_time?)
+                } else {
+                    return None;
+                };
                 s.certificate.clone().map(|certificate| Intermediate {
                     certificate,
                     provider: s.provider.clone(),
+                    revoked_since,
                 })
             })
             .collect()
@@ -267,6 +282,9 @@ pub struct Intermediate {
     pub certificate: Certificate,
     /// The provider's `TSPName`, e.g. `gematik GmbH`.
     pub provider: String,
+    /// For a revoked CA, its `StatusStartingTime`: end entities issued before it stay
+    /// valid, later ones do not.
+    pub revoked_since: Option<Timestamp>,
 }
 
 /// Candidate intermediates split by whether a root signed them.
@@ -901,7 +919,17 @@ mod tests {
             .iter()
             .map(|i| &i.certificate)
             .collect();
-        assert_eq!(kept, [&pki.sub_ca_hba]);
+        // The revoked CA stays, with its StatusStartingTime (Tab_PKI_271).
+        assert_eq!(kept, [&pki.sub_ca_hba, &pki.sub_ca_mixed]);
+        let since: Vec<Option<Timestamp>> = matched
+            .intermediates
+            .iter()
+            .map(|i| i.revoked_since)
+            .collect();
+        assert_eq!(
+            since,
+            [None, Timestamp::parse_rfc3339("2025-01-01T00:00:00Z")]
+        );
         assert!(
             matched
                 .intermediates

@@ -105,6 +105,9 @@ struct CaInfo {
     policies: Vec<OidInfo>,
     /// The certificate's path length constraint.
     path_len: Option<u8>,
+    /// For a CA the TSL lists as revoked, its `StatusStartingTime` (RFC 3339): end
+    /// entities issued before stay valid, later ones do not. Null for a CA in accord.
+    revoked_since: Option<String>,
     /// The certificate types the TSL lets it issue (`C.FD.TLS-S`, …); OIDs it names no
     /// type for appear as dotted strings. Empty when the TSL states none.
     issuable_types: Vec<String>,
@@ -522,6 +525,9 @@ pub fn bundle(args: &TslBundleArgs, global: &GlobalArgs, out: &Output) -> Result
     let mut certificates: Vec<Certificate> = matched
         .intermediates
         .iter()
+        // A bundle cannot carry the rule for revoked CAs (only what they issued before
+        // their StatusStartingTime counts), so they stay out.
+        .filter(|ca| ca.revoked_since.is_none())
         .filter(|ca| {
             args.filter.wants(ca)
                 && args
@@ -782,6 +788,7 @@ fn describe(
     let cert = &ca.certificate;
     CaInfo {
         issuable_types: type_names(store.tsl_types_of(cert)),
+        revoked_since: ca.revoked_since.map(|t| t.to_string()),
         common_name: cert.subject_cn().to_owned(),
         subject: cert.subject().to_string(),
         issuer: cert.issuer().to_string(),
@@ -864,7 +871,19 @@ fn document(report: &Report, with_pem: bool) -> Document {
             Line::strong(&ca.common_name),
             Line::text(organization),
             root,
-            super::validity_cell(ca.not_after_at, ca.validity),
+            match &ca.revoked_since {
+                // The verified TSL's status: it decides what the CA still vouches for.
+                Some(since) => {
+                    super::validity_cell(ca.not_after_at, ca.validity).and_line(Line::status(
+                        Tone::Warn,
+                        format!(
+                            " · revoked in the TSL since {}",
+                            since.get(..10).unwrap_or(since)
+                        ),
+                    ))
+                }
+                None => super::validity_cell(ca.not_after_at, ca.validity),
+            },
         ]
     });
     doc.table(&["CA", "ORGANIZATION", "ROOT", "VALIDITY"], rows.collect());

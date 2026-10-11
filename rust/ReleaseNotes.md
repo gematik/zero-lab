@@ -10,6 +10,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-cli
 
 #### added
+- `tsl show` reports `revoked_since` for a CA the TSL lists as revoked (shown in the
+  table); `tsl bundle` leaves such CAs out. `pki verify` knows the codes
+  `ca_revoked_in_tsl` and `issued_before_ca_revocation`.
 - `pki tsl bundle --connect HOST[:PORT]` and `--cert FILE` (repeatable): only the TSL
   CAs that issued those certificates or are among them, the bundle a client of a TI
   server needs (the ePA Aktensysteme send only their own certificate); `--with-roots`
@@ -20,6 +23,23 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `tsl show` reports each CA's `issuable_types`.
 - `tsl bundle --nist-only`: only the TSL CAs (and with `--with-roots` roots) whose own
   key is not brainpool.
+- `directory login owner|holder|service|ti-provider`: a FHIR-Directory (VZD) access
+  token from each Auth-Service endpoint (ti-directory). `owner` by card through the
+  IDP-Dienst's Authenticator-Modul flow, or `--regservice-token-path` (a TI-Messenger RegService-OpenID-Token); `holder`,
+  `service` and `ti-provider` with client credentials at the directory's Keycloak
+  (`--client-id`, `--client-secret-path`, `TI_DIRECTORY_CLIENT_*`). One report for every
+  path (`endpoint`, `method`, `access_token`, `expires_at`, the decoded claims), `--token`
+  for the bare bearer. Error kinds `directory_error`, `directory_auth_server_error`,
+  `directory_unreachable`, `directory_protocol`; IDP failures keep the `idpd_*` kinds;
+  `arguments_invalid` for argument combinations clap cannot check. Schema
+  `directory login`.
+- `probe` checks the environment's FHIR-Directory (kind `directory`): its
+  `/owner-authenticate` must redirect to an IDP-Dienst authorization URL.
+- `idpd authenticate` and `directory login` check the IDP's certificates (the discovery
+  document's signer and `PuK_IDP_SIG`'s) against the TSL with the idp-sig profile and
+  OCSP before the card signs (TASK-27): `idp.certificates` in the report, error kind
+  `idpd_untrusted`; `--idp-unverified` skips the check and keeps the
+  `idp_certificates_unverified` warning. `-vv` logs the body of every non-2xx answer.
 
 #### changed
 - Names follow gemSpec (decision-5): the profiles `smb-aut` and `idp-sig` are now
@@ -38,25 +58,6 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   within the hour asks no responder. `pki verify` marks such answers `cached` (JSON
   `chain[].revocation.cached`). `cache clear` removes them too (TASK-2).
 
-### ti-cli
-
-#### added
-- `directory login --env|--url --idp-url <identity>`: the FHIR-Directory's (VZD) owner
-  authentication (ti-directory) from `GET /owner-authenticate` through the IDP-Dienst's
-  Authenticator-Modul flow to the owner access token for `/owner` and `/search`
-  (`access_token`, `expires_in`, `expires_at`, the token's claims as decoded). Error
-  kinds `directory_error` (the directory refused, with its `message` and `errors`),
-  `directory_unreachable`, `directory_protocol` (also when the directory redirects to a
-  foreign IDP or the IDP redirects elsewhere than the directory); IDP failures keep the
-  `idpd_*` kinds. Schema `directory login`.
-- `probe` checks the environment's FHIR-Directory (kind `directory`): its
-  `/owner-authenticate` must redirect to an IDP-Dienst authorization URL.
-- `idpd authenticate` and `directory login` check the IDP's certificates (the discovery
-  document's signer and `PuK_IDP_SIG`'s) against the TSL with the idp-sig profile and
-  OCSP before the card signs (TASK-27): `idp.certificates` in the report, error kind
-  `idpd_untrusted`; `--idp-unverified` skips the check and keeps the
-  `idp_certificates_unverified` warning. `-vv` logs the body of every non-2xx answer.
-
 ### ti-idpd
 
 #### changed
@@ -71,15 +72,14 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-directory
 
 #### added
-- New crate: the gematik FHIR-Directory (gemSpec_VZD_FHIR_Directory V1.7.0, I_VZD_Owner)
-  as an owner's client sees it, sans I/O over ti-idpd's HTTP types: `Directory::for_env`
-  (PU, RU, TU with the environment's IDP-Dienst), `owner::start`, `authorization_url`
-  (the redirect must go to the directory's IDP), `sign_in` (the IDP's redirect must go
-  to the directory's `/signin-gematik-idp-dienst`), `token` (`OwnerToken` with the
-  decoded `TokenClaims`), and `owner::login` running the whole flow over a `Transport`
-  with the caller's `CertificateTrust` for the IDP;
-  `DirectoryError` with `message` and `errors`. The decoupled variants for the gematik
-  Authenticator app are not implemented.
+- New crate: the gematik FHIR-Directory's Auth-Service (gemSpec_VZD_FHIR_Directory
+  V1.7.0, I_VZD_Owner) as its clients see it, sans I/O over ti-idpd's HTTP types:
+  `Directory::for_env` (PU, RU, TU with the environment's IDP-Dienst and Keycloak),
+  `Endpoint` (owner, holder, service, ti-provider with path and realm), `owner` (the card
+  flow with its redirect guards), `keycloak`
+  (client credentials with Basic authentication), `exchange` (the bearer exchange,
+  `login_client_credentials`, `login_bearer`), `token` (`AccessToken`, `TokenClaims`),
+  `DirectoryError` and `OAuthError`. `/tim-authenticate` is not implemented.
 
 ### jwz
 
@@ -235,6 +235,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pki
 
 #### added
+- A CA the TSL lists as revoked (`SERVICE_STATUS_REVOKED`) with a `StatusStartingTime`
+  is no longer dropped: end entities it issued before that time validate, with the
+  warning `issued_before_ca_revocation`; later ones fail with `ca_revoked_in_tsl`
+  (gemSpec_PKI Tab_PKI_271, TUC_PKI_002 step 5; TASK-4). `tsl::Intermediate` gains
+  `revoked_since`, `TrustStore::revoked_since` reads it.
 - `cert_type::fold_name`: the one input rule for type and profile names;
   `CertificateType::from_str` and `profile::lookup` use it.
 - Renamed after their gemSpec references (decision-5): profiles `SMB_AUT`/`smb-aut` to

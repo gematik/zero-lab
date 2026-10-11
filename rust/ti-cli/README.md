@@ -31,7 +31,7 @@ ti identity inspect --p12 smcb.p12 --p12-password-path pw.txt   # the AUT certif
 ti identity sign --p12 smcb.p12 --claims - < claims.json         # ES256 JWS, x5c the certificate
 ti identity sign --card 80276883110000163974 --claims claims.json   # the selected Konnektor signs
 ti idpd authenticate --env ref --p12 smcb.p12 --auth-url "$AUTHZ_URI"   # IDP-Dienst → authorization code
-ti directory login --env ref --p12 smcb.p12   # FHIR-Directory → owner access token
+ti directory login owner --env ref --p12 smcb.p12   # FHIR-Directory → owner access token
 ti connector configs                # the .kon files (~/.config/telematik/connectors)
 ti connector use praxis             # the configuration later commands use
 ti connector get cards
@@ -192,15 +192,15 @@ TSL with the idpd-sig profile and OCSP, as gemSpec_IDP_Dienst requires;
 
 ## FHIR-Directory
 
-`ti directory login` obtains the owner access token of the FHIR-Directory (VZD) for an
-identity, built on [`ti-directory`](../ti-directory): the directory's
-`/owner-authenticate` redirects to the IDP-Dienst, the Authenticator-Modul flow of
-`idpd authenticate` runs for that URL, and the IDP's redirect to the directory's
-`/signin-gematik-idp-dienst` is exchanged for the token (an ES256 JWT, 24 hours, `sub`
-the Telematik-ID) that the `/owner` and `/search` endpoints take as a bearer. The
-directory and its IDP are the environment's (`--env`) or `--url` with `--idp-url`; the
-redirects must stay between the two, or the flow stops before the card signs. The token
-is not cached: `--format json | jq -r .access_token` hands it to `curl`.
+`ti directory login` obtains an access token of the FHIR-Directory (VZD), built on
+[`ti-directory`](../ti-directory), with one subcommand per Auth-Service endpoint:
+`owner` by card through the IDP-Dienst, `owner` with a TI-Messenger
+RegService-OpenID-Token, and `holder`, `service` and `ti-provider` with
+client credentials at the directory's Keycloak (the secret only from a file). Every
+path reports the same document; `--token` prints only the bearer for `curl`. The
+directory, its IDP and its Keycloak are the environment's (`--env`) or given by
+`--url`, `--idp-url`, `--auth-url`; card redirects must stay between the directory and
+its IDP, or the flow stops before the card signs.
 
 ## Connector
 
