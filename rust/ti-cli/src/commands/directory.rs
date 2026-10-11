@@ -8,6 +8,8 @@ use ti_directory::{Directory, Idp};
 use ti_idpd::{Warning, authenticator};
 use ti_pki::Timestamp;
 
+use super::idp_trust::{CertificateInfo, IdpTrust, certificate_infos};
+use super::idpd::certificate_lines;
 use crate::cli::{DirectoryLoginArgs, GlobalArgs};
 use crate::error::{CliError, Exit};
 use crate::http;
@@ -33,8 +35,7 @@ struct Report {
     identity: IdentityInfo,
     /// Claims of the IDP's challenge, for the record; `client_id` is the directory's.
     challenge: ChallengeInfo,
-    /// What was not proven: `idp_certificates_unverified` until the IDP's certificates
-    /// are checked against the TSL.
+    /// What was not proven: `idp_certificates_unverified` with `--idp-unverified`.
     warnings: Vec<&'static str>,
 }
 
@@ -49,6 +50,8 @@ struct DirectoryInfo {
 struct IdpInfo {
     base_url: String,
     issuer: String,
+    /// The discovery document's and `PuK_IDP_SIG`'s certificates.
+    certificates: Vec<CertificateInfo>,
 }
 
 #[derive(Serialize)]
@@ -94,7 +97,7 @@ pub fn login(
             directory.idp().base_url()
         ),
     );
-    out.verbose(1, crate::commands::idpd::UNVERIFIED_NOTE);
+    let trust = IdpTrust::new(args.idp_unverified, args.env, global, out);
     let now = SystemClock.now();
     let done = owner::login(
         &transport,
@@ -104,9 +107,10 @@ pub fn login(
             certificate_der: identity.certificate.der(),
         },
         now,
+        &trust,
     )
     .map_err(|error| match error {
-        ti_directory::Error::Idpd(inner) => CliError::Idpd(inner),
+        ti_directory::Error::Idpd(inner) => trust.take_error().unwrap_or(CliError::Idpd(inner)),
         other => CliError::Directory(Box::new(other)),
     })?;
     let claim = |name: &str| {
@@ -130,6 +134,7 @@ pub fn login(
         idp: IdpInfo {
             base_url: directory.idp().base_url().to_owned(),
             issuer: done.authenticated.discovery.metadata.issuer,
+            certificates: certificate_infos(&done.authenticated.certificates),
         },
         identity: IdentityInfo {
             subject: identity.certificate.subject().to_string(),
@@ -163,6 +168,7 @@ fn document(report: &Report) -> Document {
     );
     doc.field("directory", Line::link(&report.directory.base_url));
     doc.field("IDP", Line::text(&report.idp.issuer));
+    certificate_lines(&mut doc, &report.idp.certificates);
     doc.field("identity", Line::text(&report.identity.subject));
     if let Some(id) = &report.identity.telematik_id {
         doc.field("Telematik-ID", Line::code(id));

@@ -250,7 +250,7 @@ pub struct FakeIdp {
 impl FakeIdp {
     pub fn start(answer: Answer) -> FakeIdp {
         let (disc_sig, disc_cert) = idp_signer("puk_disc_sig");
-        let (idp_sig, _) = idp_signer("puk_idp_sig");
+        let (idp_sig, idp_sig_cert) = idp_signer("puk_idp_sig");
         let mut idp_enc = SoftwareAgreementKey::generate(jwz_brainpool::BP_256, backend())
             .unwrap()
             .public_jwk();
@@ -278,12 +278,12 @@ impl FakeIdp {
                     .unwrap();
                     http(200, "application/jwt", token.as_bytes(), None)
                 }
-                ("GET", "/idpSig/jwk.json") => http(
-                    200,
-                    "application/json",
-                    idp_sig.public_jwk().to_json().as_bytes(),
-                    None,
-                ),
+                ("GET", "/idpSig/jwk.json") => {
+                    use base64ct::{Base64, Encoding};
+                    let mut jwk = idp_sig.public_jwk();
+                    jwk.x5c = Some(vec![Base64::encode_string(&idp_sig_cert)]);
+                    http(200, "application/json", jwk.to_json().as_bytes(), None)
+                }
                 ("GET", "/idpEnc/jwk.json") => {
                     http(200, "application/json", idp_enc.to_json().as_bytes(), None)
                 }

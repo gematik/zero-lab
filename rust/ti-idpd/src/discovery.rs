@@ -13,9 +13,9 @@ use jwz::profile::ClaimsPolicy;
 use serde::Deserialize;
 use ti_pki::Certificate;
 
+use crate::Idp;
 use crate::error::{Error, IdpError};
 use crate::http::{Request, Response};
-use crate::{Idp, Warning};
 
 /// The brainpool-capable backend every verification and encryption here runs on.
 pub(crate) type Backend = Extended<RustCrypto>;
@@ -62,13 +62,12 @@ pub struct Metadata {
 pub struct Discovery {
     /// The metadata.
     pub metadata: Metadata,
-    /// The signer's certificate (the `x5c` leaf), DER, for a later check against the
-    /// TSL.
+    /// The signer's certificate (the `x5c` leaf), DER, for the check against the TSL.
     pub signer_der: Vec<u8>,
+    /// The rest of the `x5c`, issuer first; usually empty.
+    pub signer_chain_der: Vec<Vec<u8>>,
     /// The signer's `kid`, `puk_disc_sig`.
     pub kid: Option<String>,
-    /// What was not proven.
-    pub warnings: Vec<Warning>,
 }
 
 /// The request for `idp`'s discovery document.
@@ -121,8 +120,8 @@ pub fn parse(response: &Response, now: u64) -> Result<Discovery, Error> {
     Ok(Discovery {
         metadata,
         signer_der: leaf.clone(),
+        signer_chain_der: chain[1..].to_vec(),
         kid,
-        warnings: vec![Warning::IdpCertificatesUnverified],
     })
 }
 
@@ -182,6 +181,45 @@ pub fn parse_key(what: &'static str, response: &Response) -> Result<Jwk, Error> 
         return Err(Error::malformed(what, "not an EC key"));
     }
     Ok(jwk)
+}
+
+/// The certificate in `jwk`'s `x5c`, leaf first, after checking that the leaf carries
+/// `jwk`'s public key: `PuK_IDP_SIG` is trusted through it.
+///
+/// # Errors
+///
+/// [`Error::Malformed`] when there is no `x5c`, it does not decode or parse, or the
+/// leaf's key is another.
+pub fn key_certificates(what: &'static str, jwk: &Jwk) -> Result<Vec<Vec<u8>>, Error> {
+    use base64ct::{Base64, Encoding};
+    let x5c = jwk
+        .x5c
+        .as_deref()
+        .filter(|chain| !chain.is_empty())
+        .ok_or_else(|| Error::malformed(what, "no x5c: the key's certificate is unknown"))?;
+    let chain = x5c
+        .iter()
+        .map(|b64| Base64::decode_vec(b64))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| Error::malformed(what, format!("x5c: {e}")))?;
+    let leaf = Certificate::from_der(&chain[0])
+        .map_err(|e| Error::malformed(what, format!("x5c: {e}")))?;
+    let KeyMaterial::Ec(ec) = &jwk.material else {
+        return Err(Error::malformed(what, "not an EC key"));
+    };
+    let point = leaf.public_key();
+    let size = ec.x.len();
+    let matches = point.len() == 1 + 2 * size
+        && point[0] == 0x04
+        && point[1..=size] == ec.x[..]
+        && point[1 + size..] == ec.y[..];
+    if !matches {
+        return Err(Error::malformed(
+            what,
+            "the x5c certificate carries another key than the JWK",
+        ));
+    }
+    Ok(chain)
 }
 
 /// 200, or the IDP's error.

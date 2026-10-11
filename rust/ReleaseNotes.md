@@ -20,9 +20,22 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `idpd_*` kinds. Schema `directory login`.
 - `probe` checks the environment's FHIR-Directory (kind `directory`): its
   `/owner-authenticate` must redirect to an IDP-Dienst authorization URL.
-- `-v` on `idpd authenticate` and `directory login` says up front that the IDP's
-  certificates are not yet checked against the TSL, also when the flow fails; `-vv`
-  logs the body of every non-2xx answer.
+- `idpd authenticate` and `directory login` check the IDP's certificates (the discovery
+  document's signer and `PuK_IDP_SIG`'s) against the TSL with the idp-sig profile and
+  OCSP before the card signs (TASK-27): `idp.certificates` in the report, error kind
+  `idpd_untrusted`; `--idp-unverified` skips the check and keeps the
+  `idp_certificates_unverified` warning. `-vv` logs the body of every non-2xx answer.
+
+### ti-idpd
+
+#### changed
+- `authenticator::authenticate` takes a `trust::CertificateTrust` and hands it the
+  discovery document's signer and `PuK_IDP_SIG`'s certificate before anything is
+  signed; a refusal is `Error::Untrusted`. `trust::Unverified` keeps the former
+  behaviour and its warning. `Authenticated::certificates` records what was checked;
+  `Discovery::warnings` is gone, `Discovery::signer_chain_der` is new.
+- `PuK_IDP_SIG` must carry `x5c` with a certificate for the JWK's key
+  (`discovery::key_certificates`).
 
 ### ti-directory
 
@@ -32,7 +45,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   (PU, RU, TU with the environment's IDP-Dienst), `owner::start`, `authorization_url`
   (the redirect must go to the directory's IDP), `sign_in` (the IDP's redirect must go
   to the directory's `/signin-gematik-idp-dienst`), `token` (`OwnerToken` with the
-  decoded `TokenClaims`), and `owner::login` running the whole flow over a `Transport`;
+  decoded `TokenClaims`), and `owner::login` running the whole flow over a `Transport`
+  with the caller's `CertificateTrust` for the IDP;
   `DirectoryError` with `message` and `errors`. The decoupled variants for the gematik
   Authenticator app are not implemented.
 

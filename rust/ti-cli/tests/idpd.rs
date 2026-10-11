@@ -55,6 +55,7 @@ fn authenticate_turns_an_authorization_url_into_a_code() {
         "authenticate",
         "--idp-url",
         &idp.base_url,
+        "--idp-unverified",
         "--auth-url",
         &auth_url,
         "--p12",
@@ -77,6 +78,11 @@ fn authenticate_turns_an_authorization_url_into_a_code() {
     );
     assert_eq!(report["challenge"]["client_id"], "gematikTestPs");
     assert_eq!(report["warnings"], json!(["idp_certificates_unverified"]));
+    let certificates = report["idp"]["certificates"].as_array().unwrap();
+    assert_eq!(certificates.len(), 2);
+    assert_eq!(certificates[0]["key"], "puk_disc_sig");
+    assert_eq!(certificates[1]["key"], "puk_idp_sig");
+    assert!(certificates.iter().all(|c| c["verified"] == false));
 
     // The IDP received one signed challenge: a JWE for PuK_IDP_ENC with the profile's
     // header.
@@ -103,6 +109,7 @@ fn the_idps_refusal_is_an_idpd_error_with_its_text() {
         "authenticate",
         "--idp-url",
         &idp.base_url,
+        "--idp-unverified",
         "--auth-url",
         &auth_url,
         "--cert",

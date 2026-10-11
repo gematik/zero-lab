@@ -178,8 +178,10 @@ Aktensystem's `authz_uri`) and an identity, it fetches and verifies the IDP's si
 discovery document and keys, signs the challenge with the card (`BP256R1`, `x5c`),
 encrypts the answer to `PuK_IDP_ENC` and returns the authorization code from the IDP's
 redirect — what `epa` sends on in `send_authcode_sc`. The IDP is the environment's
-(`--env`) or `--idp-url`. The IDP's certificates are not yet checked against the TSL;
-the report says so in `warnings`.
+(`--env`) or `--idp-url`. Before the card signs, the IDP's certificates (the
+discovery document's signer and `PuK_IDP_SIG`'s) are checked against the environment's
+TSL with the idp-sig profile and OCSP, as gemSpec_IDP_Dienst requires;
+`--idp-unverified` skips that for an IDP outside the TI PKI, and the report warns.
 
 ## FHIR-Directory
 

@@ -114,6 +114,7 @@ fn login(directory: &Server, idp: &FakeIdp, identity: &[&str]) -> Output {
         &directory.base_url,
         "--idp-url",
         &idp.base_url,
+        "--idp-unverified",
     ];
     args.extend_from_slice(identity);
     ti(&args)

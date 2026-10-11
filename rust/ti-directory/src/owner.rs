@@ -5,6 +5,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use ti_idpd::authenticator::{self, Authenticated, Identity};
 use ti_idpd::challenge::CodeRedirect;
 use ti_idpd::http::{Method, Request, Response, Transport};
+use ti_idpd::trust::CertificateTrust;
 
 use crate::Directory;
 use crate::error::{DirectoryError, Error};
@@ -156,7 +157,7 @@ pub fn token(response: &Response) -> Result<OwnerToken, Error> {
 
 /// The whole authentication over `transport`: the directory's redirect, the IDP-Dienst
 /// flow with `identity`, the token; `now` is seconds since the epoch, for the IDP's
-/// token validity.
+/// token validity; `trust` decides about the IDP's certificates.
 ///
 /// # Errors
 ///
@@ -166,6 +167,7 @@ pub fn login<T: Transport>(
     directory: &Directory,
     identity: &Identity<'_>,
     now: u64,
+    trust: &dyn CertificateTrust,
 ) -> Result<Login, Error> {
     let send = |what: &'static str, request: &Request| {
         transport
@@ -180,6 +182,7 @@ pub fn login<T: Transport>(
         identity,
         &authorization_url,
         now,
+        trust,
     )?;
     let request = sign_in(directory, &authenticated.redirect)?;
     let token = token(&send("signin-gematik-idp-dienst", &request)?)?;

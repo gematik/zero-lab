@@ -198,8 +198,17 @@ never on `message`.
   `gematik_error_text` and `gematik_code` (e.g. `access_denied: Karte unbekannt
   (gematik_code 2030, …)`). `idpd_unreachable` when no answer came, `idpd_protocol`
   when the answer is not what the specification says (`-v` shows each request).
-- `warnings` carries `idp_certificates_unverified`: the IDP's certificates are used
-  with verified signatures but are not yet checked against the TSL (backlog TASK-27).
+- Before the card signs, the IDP's certificates are checked against the TSL: the
+  discovery document's signer (`puk_disc_sig`, its `x5c`) and `PuK_IDP_SIG` (the JWK's
+  `x5c`, whose key must be the JWK's), each with the idp-sig profile (C.FD.SIG, role
+  `oid_idpd`) and OCSP, in the environment of `--env`, or with `--idp-url` the one the
+  certificate shows. `PuK_IDP_ENC` has no certificate; the verified discovery document
+  names it. `idp.certificates` lists both with `key`, `subject`, `sha256`, `verified`.
+  A certificate the TSL does not vouch for: exit 3, `idpd_untrusted`, nothing signed.
+  Trust material that cannot be had is `trust_material_unavailable` as for `pki verify`.
+- `--idp-unverified` skips the check (an IDP outside the TI PKI, e.g. a reference
+  implementation): `verified` is false and `warnings` carries
+  `idp_certificates_unverified`.
   SSO tokens and alternative authentication (pairing) are not implemented.
 
 ## Subsystem directory: the FHIR-Directory (VZD)
@@ -237,8 +246,8 @@ never on `message`.
   text in the message; `-vv` logs every non-2xx body. An identity the directory has no
   entry for is refused at the sign-in: HTTP 403 `Validation Failure: Unknown Telematik
   ID`.
-- `-v` says before the flow starts that the IDP's certificates are not yet checked
-  against the TSL, so the note is there also when the flow fails before the report.
+- The IDP's certificates are checked as for `idpd authenticate` (`--idp-unverified`,
+  `idpd_untrusted`, `idp.certificates`); `-v` shows each verdict.
 - The decoupled variants (`owner-authenticate-decoupled`, `owner-authenticate-poll`, for
   the gematik Authenticator app) are not implemented.
 

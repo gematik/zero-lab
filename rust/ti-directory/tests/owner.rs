@@ -13,6 +13,7 @@ use ti_directory::owner::{self, SIGN_IN_PATH, TokenClaims};
 use ti_directory::{Directory, Env, Error, Idp};
 use ti_idpd::authenticator::Identity;
 use ti_idpd::challenge::CodeRedirect;
+use ti_idpd::trust::Unverified;
 
 const DIRECTORY: &str = "https://directory.test";
 const IDP: &str = "https://idp.test";
@@ -306,7 +307,14 @@ fn login_stops_at_the_directorys_redirect_when_it_is_not_the_idps() {
         ),
         seen: RefCell::new(Vec::new()),
     };
-    let error = owner::login(&transport, &directory(), &identity, 1_760_000_000).unwrap_err();
+    let error = owner::login(
+        &transport,
+        &directory(),
+        &identity,
+        1_760_000_000,
+        &Unverified,
+    )
+    .unwrap_err();
     assert!(
         matches!(
             error,
@@ -325,6 +333,13 @@ fn login_stops_at_the_directorys_redirect_when_it_is_not_the_idps() {
         first: response(401, &[], r#"{"message":"nope"}"#),
         seen: RefCell::new(Vec::new()),
     };
-    let error = owner::login(&transport, &directory(), &identity, 1_760_000_000).unwrap_err();
+    let error = owner::login(
+        &transport,
+        &directory(),
+        &identity,
+        1_760_000_000,
+        &Unverified,
+    )
+    .unwrap_err();
     assert!(matches!(error, Error::Directory(_)), "{error}");
 }

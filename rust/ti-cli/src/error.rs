@@ -178,6 +178,7 @@ impl CliError {
             CliError::SignatureMalformed(_) => "signature_malformed",
             CliError::Idpd(ti_idpd::Error::Idp(_)) => "idpd_error",
             CliError::Idpd(ti_idpd::Error::Transport { .. }) => "idpd_unreachable",
+            CliError::Idpd(ti_idpd::Error::Untrusted { .. }) => "idpd_untrusted",
             CliError::Idpd(_) => "idpd_protocol",
             CliError::Directory(error) => match **error {
                 ti_directory::Error::Directory(_) => "directory_error",
@@ -254,6 +255,9 @@ impl CliError {
             CliError::Idpd(ti_idpd::Error::Transport { .. }) => {
                 Some("check the network, --proxy and the IDP URL; -v shows each request")
             }
+            CliError::Idpd(ti_idpd::Error::Untrusted { .. }) => Some(
+                "the IDP's certificate is not valid in the environment's TSL (wrong --env, revoked, expired); `pki verify` explains, --idp-unverified skips the check",
+            ),
             CliError::Idpd(_) => {
                 Some("the IDP's answer departs from gemSpec_IDP_Dienst; -v shows the exchange")
             }

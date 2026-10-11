@@ -589,9 +589,14 @@ pub struct IdpdAuthenticateArgs {
         conflicts_with = "idp_url"
     )]
     pub env: Option<Environment>,
-    /// Another IDP-Dienst, by base URL (e.g. a reference implementation)
+    /// Another IDP-Dienst, by base URL (e.g. a reference implementation); its
+    /// certificates are checked against the TSL of --env, or of the environment they show
     #[arg(long, value_name = "URL", value_parser = idp_url)]
     pub idp_url: Option<String>,
+    /// Use the IDP's certificates without checking them against the TSL (an IDP outside
+    /// the TI PKI, e.g. a reference implementation); the report warns
+    #[arg(long)]
+    pub idp_unverified: bool,
 }
 
 /// `ti directory …`: the FHIR-Directory.
@@ -624,6 +629,10 @@ pub struct DirectoryLoginArgs {
     /// The IDP-Dienst of a directory given by --url, by base URL
     #[arg(long, value_name = "URL", value_parser = idp_url, requires = "url")]
     pub idp_url: Option<String>,
+    /// Use the IDP's certificates without checking them against the TSL (an IDP outside
+    /// the TI PKI, e.g. a reference implementation); the report warns
+    #[arg(long)]
+    pub idp_unverified: bool,
 }
 
 /// An IDP or authorization URL: https, or plain http on the loopback for tests.
