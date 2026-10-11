@@ -11,7 +11,7 @@ references:
   - Justfile
   - docs/development.md
 priority: low
-ordinal: 7000
+ordinal: 27000
 ---
 
 ## Description

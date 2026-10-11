@@ -10,7 +10,7 @@ labels:
   - gempki
 dependencies: []
 priority: medium
-ordinal: 29000
+ordinal: 6000
 ---
 
 ## Description

@@ -6,12 +6,13 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-10-11 11:40'
+updated_date: '2026-10-11 11:48'
 labels:
   - ti-directory
   - ti-cli
 dependencies: []
-priority: medium
-ordinal: 31000
+priority: high
+ordinal: 1000
 ---
 
 ## Description
