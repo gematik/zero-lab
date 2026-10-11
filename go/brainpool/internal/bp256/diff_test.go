@@ -23,7 +23,7 @@ func diffScalars() []*big.Int {
 		"6F1E2D3C4B5A69788796A5B4C3D2E1F0123456789ABCDEF0FEDCBA9876543210", 16)
 	cur := new(big.Int).Set(seed)
 	n := brainpool.P256r1().Params().N
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		cur.Mul(cur, seed).Add(cur, big.NewInt(int64(i+1)))
 		k := new(big.Int).Mod(cur, n)
 		if k.Sign() == 0 {

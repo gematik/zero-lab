@@ -12,7 +12,7 @@ dependencies: []
 references:
   - ti-cli/src/commands/verify.rs
 priority: medium
-ordinal: 1000
+ordinal: 10000
 ---
 
 ## Description

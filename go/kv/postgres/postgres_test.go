@@ -67,21 +67,19 @@ func TestPostgres_TakeSingleUseConcurrent(t *testing.T) {
 	s, p := testStore(t)
 
 	const n = 100
-	for i := 0; i < n; i++ {
+	for i := range n {
 		key := fmt.Sprintf("%sonce:%d", p, i)
 		if err := s.Set(ctx, key, []byte(`1`), time.Minute); err != nil {
 			t.Fatal(err)
 		}
 		var wins int64
 		var wg sync.WaitGroup
-		for g := 0; g < 8; g++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range 8 {
+			wg.Go(func() {
 				if _, found, err := s.Take(ctx, key); err == nil && found {
 					atomic.AddInt64(&wins, 1)
 				}
-			}()
+			})
 		}
 		wg.Wait()
 		if wins != 1 {

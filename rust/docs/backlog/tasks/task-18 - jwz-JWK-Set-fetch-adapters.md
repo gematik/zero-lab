@@ -4,11 +4,12 @@ title: 'jwz: JWK Set fetch adapters'
 status: To Do
 assignee: []
 created_date: '2026-10-10 05:58'
+updated_date: '2026-10-11 11:48'
 labels:
   - jwz
 dependencies: []
-priority: medium
-ordinal: 18000
+priority: high
+ordinal: 5000
 ---
 
 ## Description

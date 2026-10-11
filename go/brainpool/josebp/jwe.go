@@ -73,12 +73,12 @@ func (b *JWEBuilder) EncryptECDHES(recipient any) ([]byte, error) {
 		Key: &ephemeralKey.PublicKey,
 	}
 
-	headersJson, err := json.Marshal(b.headers)
+	headersJSON, err := json.Marshal(b.headers)
 	if err != nil {
 		return nil, fmt.Errorf("marshalling headers: %w", err)
 	}
 
-	aad := []byte(base64.RawURLEncoding.EncodeToString(headersJson))
+	aad := []byte(base64.RawURLEncoding.EncodeToString(headersJSON))
 
 	iv, tag, ciphertext, err := encryptAESGCMWithIVAndAAD(cek, b.plaintext, aad)
 	if err != nil {
@@ -86,7 +86,7 @@ func (b *JWEBuilder) EncryptECDHES(recipient any) ([]byte, error) {
 	}
 
 	// Compact serialization: header..iv.ciphertext.tag (empty encrypted-key for ECDH-ES direct).
-	serialized := []byte(base64.RawURLEncoding.EncodeToString(headersJson))
+	serialized := []byte(base64.RawURLEncoding.EncodeToString(headersJSON))
 	serialized = append(serialized, '.')
 	serialized = append(serialized, '.')
 	serialized = append(serialized, base64.RawURLEncoding.EncodeToString(iv)...)

@@ -51,13 +51,13 @@ type testContext struct {
 	denyErr   Error
 }
 
-func (c *testContext) Writer() http.ResponseWriter             { return httptest.NewRecorder() }
-func (c *testContext) Request() *http.Request                  { return c.r }
-func (c *testContext) Deny(err Error)                          { c.denied = true; c.denyErr = err }
-func (c *testContext) WithDeny(func(Context, Error)) Context   { return c }
-func (c *testContext) Slogger() *slog.Logger                   { return slog.Default() }
-func (c *testContext) UnmarshalClaims(v any) error             { return json.Unmarshal(c.claimsRaw, v) }
-func (c *testContext) SetClaims(raw []byte)                    { c.claimsRaw = raw }
+func (c *testContext) Writer() http.ResponseWriter           { return httptest.NewRecorder() }
+func (c *testContext) Request() *http.Request                { return c.r }
+func (c *testContext) Deny(err Error)                        { c.denied = true; c.denyErr = err }
+func (c *testContext) WithDeny(func(Context, Error)) Context { return c }
+func (c *testContext) Slogger() *slog.Logger                 { return slog.Default() }
+func (c *testContext) UnmarshalClaims(v any) error           { return json.Unmarshal(c.claimsRaw, v) }
+func (c *testContext) SetClaims(raw []byte)                  { c.claimsRaw = raw }
 
 func TestEnforcerSessionCookie(t *testing.T) {
 	key := bytes.Repeat([]byte{7}, 32)

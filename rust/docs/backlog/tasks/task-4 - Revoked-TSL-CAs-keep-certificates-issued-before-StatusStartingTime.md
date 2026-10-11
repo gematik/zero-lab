@@ -13,8 +13,9 @@ dependencies: []
 references:
   - ti-pki/src/tsl.rs
 priority: high
-ordinal: 4000
+ordinal: 3000
 ---
+
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->

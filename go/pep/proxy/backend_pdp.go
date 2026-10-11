@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -295,9 +296,7 @@ func (b *pdpBackend) pushAuthorizationRequest(ctx context.Context, sess *Session
 		return "", err
 	}
 	form := url.Values{}
-	for k, v := range params {
-		form[k] = v
-	}
+	maps.Copy(form, params)
 	form.Set("client_assertion_type", clientAssertionTypeJWTBearer)
 	form.Set("client_assertion", assertion)
 

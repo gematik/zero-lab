@@ -154,6 +154,8 @@ func (p *Point) Negate(q *Point) *Point {
 // elliptic curves" (https://eprint.iacr.org/2015/1060), Algorithm 1. Constants
 // a and b3 = 3b are the curve parameters. brainpoolP256r1 has a ≠ −3, so the
 // general Algorithm 1 is required rather than the a = −3 specialisation.
+//
+//lint:ignore ST1016 q receives the result where p names an operand, as in the standard library's nistec
 func (q *Point) Add(p1, p2 *Point) *Point {
 	a, _, b3 := curveConsts()
 

@@ -6,7 +6,6 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"fmt"
-	"math/big"
 )
 
 type ECDHData struct {
@@ -16,13 +15,15 @@ type ECDHData struct {
 }
 
 func (ed *ECDHData) PublicKey() (*ecdh.PublicKey, error) {
-	ecdsaPublicKey := ecdsa.PublicKey{
-		Curve: elliptic.P256(),
-		X:     new(big.Int).SetBytes(ed.X),
-		Y:     new(big.Int).SetBytes(ed.Y),
+	if len(ed.X) > 32 || len(ed.Y) > 32 {
+		return nil, fmt.Errorf("parsing ECDH public key: coordinates longer than 32 bytes")
 	}
-
-	ecdhPublicKey, err := ecdsaPublicKey.ECDH()
+	// The uncompressed SEC 1 point, coordinates left-padded to the field size.
+	point := make([]byte, 65)
+	point[0] = 4
+	copy(point[1+32-len(ed.X):33], ed.X)
+	copy(point[33+32-len(ed.Y):], ed.Y)
+	ecdhPublicKey, err := ecdh.P256().NewPublicKey(point)
 	if err != nil {
 		return nil, fmt.Errorf("parsing ECDH public key: %w", err)
 	}

@@ -41,7 +41,7 @@ func TestSignInChooserRender(t *testing.T) {
 		t.Fatal(err)
 	}
 	var many []Provider
-	for i := 0; i < 8; i++ { // > 6 → search shows
+	for i := range 8 { // > 6 → search shows
 		many = append(many, Provider{Issuer: "https://idp" + strconv.Itoa(i), Name: "IdP " + strconv.Itoa(i), Type: "oidf"})
 	}
 	rec := httptest.NewRecorder()

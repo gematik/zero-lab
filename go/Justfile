@@ -5,7 +5,9 @@ DOCKER_USER := "spilikin"
 
 # Pinned Go code-analysis tools (run via `go run`; not added to any go.mod)
 MODERNIZE := "golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.22.0"
-STATICCHECK := "honnef.co/go/tools/cmd/staticcheck@v0.7.0"
+# Development build: no release reads go1.27 export data yet (2026.2.1 stops at
+# version 4); move to the first release that does.
+STATICCHECK := "honnef.co/go/tools/cmd/staticcheck@v0.7.0-0.dev.0.20261009230814-452d5bb86b45"
 GOVULNCHECK := "golang.org/x/vuln/cmd/govulncheck@v1.4.0"
 
 # Every module — library AND command — is versioned solely by its own git tag
@@ -310,9 +312,14 @@ modernize:
     #!/usr/bin/env bash
     set -uo pipefail
     fail=0
+    # Findings in generated files (Code generated ... DO NOT EDIT) are not ours to fix.
+    generated() { [ -f "$1" ] && head -5 "$1" | grep -q '^// Code generated .* DO NOT EDIT\.$'; }
     for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
         echo "==> modernize $dir"
-        ( cd "$dir" && go run {{MODERNIZE}} ./... ) || fail=1
+        found=$( (cd "$dir" && go run {{MODERNIZE}} ./... 2>&1) | grep -v '^exit status' | while IFS= read -r line; do
+            generated "${line%%:*}" || printf '%s\n' "$line"
+        done )
+        if [ -n "$found" ]; then echo "$found"; fail=1; fi
     done
     exit $fail
 
@@ -323,6 +330,10 @@ modernize-fix:
     for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
         echo "==> modernize -fix $dir"
         ( cd "$dir" && go run {{MODERNIZE}} -fix -test ./... || true; gofmt -w . )
+    done
+    # Generated files keep their generator's output.
+    git diff --name-only --relative -- . | while IFS= read -r f; do
+        if head -5 "$f" | grep -q '^// Code generated .* DO NOT EDIT\.$'; then git checkout -- "$f"; fi
     done
 
 # Static analysis: go vet + staticcheck
