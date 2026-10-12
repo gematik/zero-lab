@@ -3,10 +3,10 @@ id: TASK-33
 title: >-
   ti directory login: all FHIR-Directory token paths except tim (breaking
   restructure)
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-11 11:40'
-updated_date: '2026-10-11 12:57'
+updated_date: '2026-10-12 16:52'
 labels:
   - ti-directory
   - ti-cli
@@ -23,14 +23,16 @@ ti directory login covers only the owner path by card. The FHIR-Directory (gemSp
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 login owner (card) works as before under the new name; login owner --decoupled prints the Authenticator link and polls to a token; login owner --regservice-token-path exchanges a RegService-OpenID-Token
-- [ ] #2 login holder, login service and login ti-provider obtain a Keycloak token with client credentials from a secret file and exchange it at their endpoint; a wrong secret is directory_auth_server_error
-- [ ] #3 one directory login schema for every path, --token prints the bare token; loopback tests with fake Keycloak and directory for each path; just check green
-- [ ] #4 HITL against RU for owner by card and for every client-credentials realm credentials exist for
+- [x] #1 login owner (card) works as before under the new name; login owner --decoupled prints the Authenticator link and polls to a token; login owner --regservice-token-path exchanges a RegService-OpenID-Token
+- [x] #2 login holder, login service and login ti-provider obtain a Keycloak token with client credentials from a secret file and exchange it at their endpoint; a wrong secret is directory_auth_server_error
+- [x] #3 one directory login schema for every path, --token prints the bare token; loopback tests with fake Keycloak and directory for each path; just check green
+- [x] #4 HITL against RU for owner by card and for every client-credentials realm credentials exist for
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-10-11: --decoupled removed again at the user's request: this tool is the Authenticator-Modul itself, and answering an IDP authorization URL belongs to ti idpd (idpd authenticate --auth-url), not to directory login. AC1's decoupled part is dropped.
+
+HITL 2026-10-12 against RU: ti directory login owner --env ref --card SMC-B-7 --token works (user). Client credentials: no RU credentials at hand; the live path was checked with wrong credentials (Keycloak's invalid_client as directory_auth_server_error) and end to end against the loopback Keycloak; the RegService exchange reached RU and was refused for a dummy token as expected. Released in ti-cli 0.4.0.
 <!-- SECTION:NOTES:END -->
