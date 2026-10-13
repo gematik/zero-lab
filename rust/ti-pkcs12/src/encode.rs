@@ -1,3 +1,24 @@
+/*
+ * Copyright (Change Date see Readme), gematik GmbH
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * *******
+ *
+ * For additional notes and disclaimer from gematik and in case of changes
+ * by gematik, find details in the "Readme" file.
+ */
+
 //! Writing PKCS#12 the way OpenSSL 3 does by default: certificates in a PBES2-encrypted
 //! safe, keys in shrouded key bags, both PBKDF2-HMAC-SHA-256 with AES-256-CBC, and an
 //! HMAC-SHA-256 MAC. Files written so need no `-legacy` anywhere.
