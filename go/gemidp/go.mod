@@ -5,7 +5,7 @@ go 1.26.4
 require (
 	github.com/gematik/zero-lab/go/brainpool v1.1.0
 	github.com/gematik/zero-lab/go/oauth v0.50.2-0.20260908072016-2ca75aa218e2
-	github.com/gematik/zero-lab/go/pkcs12 v0.99.3
+	github.com/gematik/zero-lab/go/pkcs12 v0.100.0
 	github.com/lestrrat-go/jwx/v3 v3.3.0
 	golang.org/x/oauth2 v0.37.0
 )
@@ -21,6 +21,6 @@ require (
 	github.com/lestrrat-go/option/v2 v2.0.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/valyala/fastjson v1.6.10 // indirect
-	golang.org/x/crypto v0.57.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 )
