@@ -1,0 +1,988 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "openssl-default",
+      "description": "OpenSSL 3 default export: PBES2 AES-256-CBC, PBKDF2-HMAC-SHA-256, HMAC-SHA-256 MAC",
+      "rules": [
+        "P12-001",
+        "P12-002",
+        "P12-010",
+        "P12-012",
+        "P12-030",
+        "P12-031",
+        "P12-040",
+        "P12-041",
+        "P12-045"
+      ],
+      "profile": "modern",
+      "openssl": [],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": "sha256"
+      }
+    },
+    {
+      "id": "pbes2-aes128",
+      "description": "PBES2 with AES-128-CBC for keys and certificates",
+      "rules": [
+        "P12-031"
+      ],
+      "profile": "modern",
+      "openssl": [
+        "-keypbe",
+        "AES-128-CBC",
+        "-certpbe",
+        "AES-128-CBC"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": "sha256"
+      }
+    },
+    {
+      "id": "pbes2-aes192",
+      "description": "PBES2 with AES-192-CBC for keys and certificates",
+      "rules": [
+        "P12-031"
+      ],
+      "profile": "modern",
+      "openssl": [
+        "-keypbe",
+        "AES-192-CBC",
+        "-certpbe",
+        "AES-192-CBC"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": "sha256"
+      }
+    },
+    {
+      "id": "pbes2-des-ede3",
+      "description": "PBES2 with DES-EDE3-CBC, as some vendors write it",
+      "rules": [
+        "P12-031"
+      ],
+      "profile": "legacy",
+      "openssl": [
+        "-keypbe",
+        "DES-EDE3-CBC",
+        "-certpbe",
+        "DES-EDE3-CBC"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": "sha256"
+      }
+    },
+    {
+      "id": "legacy-rc2-40-3des",
+      "description": "OpenSSL -legacy: certificates with pbeWithSHAAnd40BitRC2-CBC, key with pbeWithSHAAnd3-KeyTripleDES-CBC, HMAC-SHA-1 MAC",
+      "rules": [
+        "P12-033",
+        "P12-013",
+        "P12-020"
+      ],
+      "profile": "legacy",
+      "openssl": [
+        "-legacy"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": "sha1"
+      }
+    },
+    {
+      "id": "legacy-rc2-128-2des",
+      "description": "pbeWithSHAAnd128BitRC2-CBC for certificates, pbeWithSHAAnd2-KeyTripleDES-CBC for the key",
+      "rules": [
+        "P12-033"
+      ],
+      "profile": "legacy",
+      "openssl": [
+        "-legacy",
+        "-certpbe",
+        "PBE-SHA1-RC2-128",
+        "-keypbe",
+        "PBE-SHA1-2DES"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": "sha1"
+      }
+    },
+    {
+      "id": "mac-sha1",
+      "description": "HMAC-SHA1 MAC with PBES2 AES-256-CBC",
+      "rules": [
+        "P12-012",
+        "P12-013"
+      ],
+      "profile": "modern",
+      "openssl": [
+        "-macalg",
+        "sha1"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": "sha1"
+      }
+    },
+    {
+      "id": "mac-sha224",
+      "description": "HMAC-SHA224 MAC with PBES2 AES-256-CBC",
+      "rules": [
+        "P12-012",
+        "P12-013"
+      ],
+      "profile": "modern",
+      "openssl": [
+        "-macalg",
+        "sha224"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": "sha224"
+      }
+    },
+    {
+      "id": "mac-sha384",
+      "description": "HMAC-SHA384 MAC with PBES2 AES-256-CBC",
+      "rules": [
+        "P12-012",
+        "P12-013"
+      ],
+      "profile": "modern",
+      "openssl": [
+        "-macalg",
+        "sha384"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": "sha384"
+      }
+    },
+    {
+      "id": "mac-sha512",
+      "description": "HMAC-SHA512 MAC with PBES2 AES-256-CBC",
+      "rules": [
+        "P12-012",
+        "P12-013"
+      ],
+      "profile": "modern",
+      "openssl": [
+        "-macalg",
+        "sha512"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": "sha512"
+      }
+    },
+    {
+      "id": "no-mac",
+      "description": "No MacData: no integrity protection",
+      "rules": [
+        "P12-015"
+      ],
+      "profile": "modern",
+      "openssl": [
+        "-nomac"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": null
+      }
+    },
+    {
+      "id": "mac-iterations-default",
+      "description": "MacData without iterations, which then default to 1",
+      "rules": [
+        "P12-013"
+      ],
+      "profile": "modern",
+      "openssl": [
+        "-nomaciter"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": "sha256"
+      }
+    },
+    {
+      "id": "high-iterations",
+      "description": "100000 iterations for PBKDF2 and the MAC",
+      "rules": [
+        "P12-036"
+      ],
+      "profile": "modern",
+      "openssl": [
+        "-iter",
+        "100000"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": "sha256"
+      }
+    },
+    {
+      "id": "empty-password",
+      "description": "The empty password: the PKCS#12 KDF gets the two-byte terminator only",
+      "rules": [
+        "P12-020",
+        "P12-021"
+      ],
+      "profile": "modern",
+      "openssl": [],
+      "key": "rsa",
+      "chain": true,
+      "password": "",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": "sha256"
+      }
+    },
+    {
+      "id": "unicode-password",
+      "description": "A password with umlauts and a character outside the BMP (UTF-16 surrogate pair)",
+      "rules": [
+        "P12-020",
+        "P12-021"
+      ],
+      "profile": "modern",
+      "openssl": [],
+      "key": "rsa",
+      "chain": true,
+      "password": "päss😀",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": "sha256"
+      }
+    },
+    {
+      "id": "ec-key",
+      "description": "A P-256 key",
+      "rules": [
+        "P12-041"
+      ],
+      "profile": "modern",
+      "openssl": [],
+      "key": "ec",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": "sha256"
+      }
+    },
+    {
+      "id": "certificates-only",
+      "description": "No key: -nokeys",
+      "rules": [
+        "P12-040"
+      ],
+      "profile": "modern",
+      "openssl": [
+        "-nokeys"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [],
+        "pairs": 0,
+        "mac": "sha256"
+      }
+    },
+    {
+      "id": "key-only",
+      "description": "No certificate: -nocerts",
+      "rules": [
+        "P12-041"
+      ],
+      "profile": "modern",
+      "openssl": [
+        "-nocerts"
+      ],
+      "key": "rsa",
+      "password": "test",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 0,
+        "mac": "sha256"
+      }
+    },
+    {
+      "id": "plain-bags",
+      "description": "An unencrypted keyBag and an unencrypted certificate safe",
+      "rules": [
+        "P12-041"
+      ],
+      "profile": "modern",
+      "openssl": [
+        "-keypbe",
+        "NONE",
+        "-certpbe",
+        "NONE"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": "sha256"
+      }
+    },
+    {
+      "id": "friendly-names",
+      "description": "friendlyName attributes with non-ASCII characters",
+      "rules": [
+        "P12-044"
+      ],
+      "profile": "modern",
+      "openssl": [
+        "-name",
+        "Schlüssel ä",
+        "-caname",
+        "Wurzel-CA"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": "sha256",
+        "friendly_names": {
+          "leaf": "Schlüssel ä",
+          "leaf-key": "Schlüssel ä",
+          "ca": "Wurzel-CA"
+        }
+      }
+    },
+    {
+      "id": "vendor-cgm",
+      "description": "CGM KoCoBox client identity as delivered: BER, RC2-40, 3DES, HMAC-SHA-1 with 102400 iterations, brainpoolP256r1 key",
+      "rules": [
+        "P12-002",
+        "P12-005",
+        "P12-011",
+        "P12-033"
+      ],
+      "profile": "legacy",
+      "password": "test",
+      "file": "vendor/cgm.p12",
+      "password_file": "vendor/cgm-password.txt",
+      "encodings": [
+        "as-is"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates_sha256": [
+          "0933a917958c818107528d747fe480c5fc9b92556bdb46a0295aca3f5d5aa944",
+          "2a928a370c23ee5029da2a6fef49bdca457fc13673a7c83a5f9265bf334a938a"
+        ],
+        "keys_sha256": [
+          "7e0400d186a404b0f6b30e0b4d49e369e4b818aa1ea9cc3e4c6cbe2a3d0976d8"
+        ],
+        "keys_public_key_sha256": [
+          "4bb32166ef1239d0c38eb37b7044ec639448ebc6b1f5524d51c9ff6d9c420e6b"
+        ],
+        "pairs": 1,
+        "mac": "sha1",
+        "friendly_names": {
+          "0933a917958c818107528d747fe480c5fc9b92556bdb46a0295aca3f5d5aa944": "test-cs2",
+          "7e0400d186a404b0f6b30e0b4d49e369e4b818aa1ea9cc3e4c6cbe2a3d0976d8": "test-cs2"
+        }
+      }
+    },
+    {
+      "id": "vendor-secunet",
+      "description": "secunet connector client identity as delivered: BER, RC2-40, 3DES, HMAC-SHA-1 with 102400 iterations, P-256 key",
+      "rules": [
+        "P12-002",
+        "P12-005",
+        "P12-011",
+        "P12-033"
+      ],
+      "profile": "legacy",
+      "password": "test",
+      "file": "vendor/secunet.p12",
+      "password_file": "vendor/secunet-password.txt",
+      "encodings": [
+        "as-is"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates_sha256": [
+          "ea5011332622957771eb448cfba188951d59f8fdc9b39bf4bd242b3c4f153341"
+        ],
+        "keys_sha256": [
+          "c152053c871dfe33c242f4b90b982b6989795a33797020677fd7ce3a30ff2696"
+        ],
+        "keys_public_key_sha256": [
+          "65e0ff21d53821dd702d7d67cccb4aba93fbd832b9014974810f34f14a367ebd"
+        ],
+        "pairs": 1,
+        "mac": "sha1",
+        "friendly_names": {
+          "ea5011332622957771eb448cfba188951d59f8fdc9b39bf4bd242b3c4f153341": "valid_ec",
+          "c152053c871dfe33c242f4b90b982b6989795a33797020677fd7ce3a30ff2696": "valid_ec"
+        }
+      }
+    },
+    {
+      "id": "wrong-password",
+      "description": "Wrong password on a file with MAC",
+      "rules": [
+        "P12-010"
+      ],
+      "profile": "modern",
+      "openssl": [],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "decode_password": "wrong",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "mac_mismatch"
+      }
+    },
+    {
+      "id": "wrong-password-no-mac",
+      "description": "Wrong password on a file without MAC: padding or structure fails",
+      "rules": [
+        "P12-034"
+      ],
+      "profile": "modern",
+      "openssl": [
+        "-nomac"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "decode_password": "wrong",
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "codes": [
+          "decryption_failed",
+          "malformed"
+        ]
+      }
+    },
+    {
+      "id": "tampered",
+      "description": "One bit flipped inside the authSafe",
+      "rules": [
+        "P12-010"
+      ],
+      "profile": "modern",
+      "openssl": [],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "mutation": {
+        "kind": "flip",
+        "offset": 200
+      },
+      "encodings": [
+        "der"
+      ],
+      "expect": {
+        "code": "mac_mismatch"
+      }
+    },
+    {
+      "id": "truncated",
+      "description": "The first half of a file",
+      "rules": [
+        "P12-001"
+      ],
+      "profile": "modern",
+      "openssl": [],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "mutation": {
+        "kind": "truncate"
+      },
+      "encodings": [
+        "der"
+      ],
+      "expect": {
+        "code": "malformed"
+      }
+    },
+    {
+      "id": "trailing-byte",
+      "description": "A zero byte after the PFX",
+      "rules": [
+        "P12-003"
+      ],
+      "profile": "modern",
+      "openssl": [],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "mutation": {
+        "kind": "append",
+        "hex": "00"
+      },
+      "encodings": [
+        "der"
+      ],
+      "expect": {
+        "code": "malformed"
+      }
+    },
+    {
+      "id": "random",
+      "description": "1024 random bytes starting with 0x30",
+      "rules": [
+        "P12-001"
+      ],
+      "profile": "modern",
+      "password": "test",
+      "raw": "random",
+      "encodings": [
+        "der"
+      ],
+      "expect": {
+        "code": "malformed"
+      }
+    },
+    {
+      "id": "pem",
+      "description": "A PEM certificate instead of a PKCS#12 file",
+      "rules": [
+        "P12-001"
+      ],
+      "profile": "modern",
+      "password": "test",
+      "raw": "pem",
+      "encodings": [
+        "der"
+      ],
+      "expect": {
+        "code": "malformed"
+      }
+    },
+    {
+      "id": "unknown-prf",
+      "description": "PBKDF2 with an unknown PRF (hmacWithSHA256 patched to 1.2.840.113549.2.127), no MAC",
+      "rules": [
+        "P12-030"
+      ],
+      "profile": "modern",
+      "openssl": [
+        "-nomac"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "mutation": {
+        "kind": "patch",
+        "find": "06082a864886f70d0209",
+        "replace": "06082a864886f70d027f"
+      },
+      "encodings": [
+        "der"
+      ],
+      "expect": {
+        "code": "unsupported_algorithm"
+      }
+    },
+    {
+      "id": "unknown-mac-algorithm",
+      "description": "MAC digest patched to the unknown OID 1.3.14.3.2.127",
+      "rules": [
+        "P12-012"
+      ],
+      "profile": "modern",
+      "openssl": [
+        "-macalg",
+        "sha1"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "mutation": {
+        "kind": "patch",
+        "find": "06052b0e03021a",
+        "replace": "06052b0e03027f"
+      },
+      "encodings": [
+        "der"
+      ],
+      "expect": {
+        "code": "unsupported_algorithm"
+      }
+    },
+    {
+      "id": "pbmac1",
+      "description": "PBMAC1 integrity (RFC 9579): outside this specification; a decoder either rejects it or decodes it correctly",
+      "rules": [
+        "P12-012"
+      ],
+      "profile": "modern",
+      "openssl": [
+        "-pbmac1_pbkdf2"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der"
+      ],
+      "expect": {
+        "codes": [
+          "unsupported_algorithm",
+          "ok"
+        ],
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": "pbmac1"
+      }
+    },
+    {
+      "id": "rc4",
+      "description": "pbeWithSHAAnd128BitRC4 for certificates: outside this specification; a decoder either rejects it or decodes it correctly",
+      "rules": [
+        "P12-033"
+      ],
+      "profile": "legacy",
+      "openssl": [
+        "-legacy",
+        "-certpbe",
+        "PBE-SHA1-RC4-128"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der"
+      ],
+      "expect": {
+        "codes": [
+          "unsupported_algorithm",
+          "ok"
+        ],
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": "sha256"
+      }
+    },
+    {
+      "id": "mac-iterations-limit",
+      "description": "MAC iterations set to 2147483647",
+      "rules": [
+        "P12-036"
+      ],
+      "profile": "modern",
+      "openssl": [],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "mutation": {
+        "kind": "mac-iterations",
+        "value": 2147483647
+      },
+      "encodings": [
+        "der"
+      ],
+      "expect": {
+        "code": "limit_exceeded"
+      }
+    }
+  ]
+}

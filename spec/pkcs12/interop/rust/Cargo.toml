@@ -1,0 +1,13 @@
+[package]
+name = "p12-decoder-rust"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "rust/ti-pkcs12 adapter of the PKCS#12 conformance harness"
+
+# Not part of the rust/ workspace: an adapter, built only by interop/run.sh.
+[workspace]
+
+[dependencies]
+ti-pkcs12 = { path = "../../../../rust/ti-pkcs12" }
+sha2 = "0.11"
