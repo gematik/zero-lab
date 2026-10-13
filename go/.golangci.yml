@@ -1,0 +1,58 @@
+# golangci-lint v2 configuration for every module of the Go workspace; run
+# through `just golangci`, which pins the version.
+version: "2"
+
+run:
+  # Paths in rules below are relative to this file.
+  relative-path-mode: cfg
+
+linters:
+  default: standard
+  enable:
+    - errorlint
+    - gocritic
+    - gosec
+    - misspell
+    - nolintlint
+    - perfsprint
+    - revive
+    - unparam
+    - usestdlibvars
+  settings:
+    gosec:
+      excludes:
+        # Byte-wise encoding (lengths, UTF-16 units, big-endian sums) truncates
+        # on purpose; such conversions are masked or bounded beforehand.
+        - G115
+    nolintlint:
+      require-specific: true
+      require-explanation: true
+  exclusions:
+    # Generated code (Code generated ... DO NOT EDIT) keeps its generator's output.
+    generated: strict
+    presets:
+      - common-false-positives
+      - std-error-handling
+    rules:
+      # OID blocks carry one comment per group, as go doc renders them.
+      - linters: [revive]
+        text: "exported: (comment on exported var|exported var) OID"
+      # pkcs12.PKCS12Attribute is public API since v0.5 and keeps its name.
+      - path: pkcs12/pkcs12\.go
+        linters: [revive]
+        text: stutters
+      # pkcs12/legacy exists to read the weak algorithms of old files.
+      - path: pkcs12/legacy/
+        linters: [gosec]
+        text: "G40[15]"
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/gematik/zero-lab
+  exclusions:
+    generated: strict

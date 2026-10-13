@@ -1,5 +1,31 @@
 # Release Notes
 
+# Release go/pkcs12 v0.100.0
+
+### features
+- `legacy.Decode` reads BER-encoded files and RC2-40/128, two-key Triple DES and DES-EDE3-CBC
+  in PBES2 in pure Go; no OpenSSL subprocess any more. New subpackages `legacy/ber` (BER to DER)
+  and `legacy/rc2` (RFC 2268).
+- `ErrLimitExceeded`: iteration counts above 10,000,000 are refused before any key derivation.
+- MAC with SHA-224; friendly names with UTF-16 surrogate pairs; passwords outside the BMP
+  encoded as surrogate pairs, as OpenSSL and Java do.
+- Language-neutral specification, generated conformance corpus and interoperability matrix in
+  `spec/pkcs12`.
+
+### fixed
+- An unknown PBKDF2 PRF fails with `ErrUnsupportedAlgorithm` instead of falling back to SHA-1.
+- `EncodeWithOptions` no longer modifies the caller's options, honours `CertEncryption`
+  (certificates are now encrypted by default, as OpenSSL does) and writes `hmacWithSHA*` as
+  PBKDF2 PRF instead of the digest OID. Files written by earlier versions stay readable.
+- Trailing data, unsupported public-key modes and unknown safe content types are rejected
+  instead of ignored.
+
+### changed
+- `legacy.ConvertWithOpenSSL` is deprecated and converts in Go.
+- Test fixtures with private keys removed; keys are generated per test run.
+- License headers in every source file.
+- update golang.org/x/crypto to v0.58.0
+
 This lab project ist yet to yield a first release. Stay tuned!
 
 **Every module — library and command — is versioned solely by its own git tag**

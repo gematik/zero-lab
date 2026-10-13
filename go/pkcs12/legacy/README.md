@@ -1,58 +1,26 @@
-# legacy - BER/Legacy PKCS#12 Converter
+# pkcs12/legacy
 
-This package provides OpenSSL-based utilities to convert BER-encoded (legacy) PKCS#12 files to DER format.
+Reads the PKCS#12 files that [`pkcs12`](..) rejects:
 
-## Problem
-
-The main `pkcs12` package requires DER encoding (RFC 7292 mandate). However, legacy PKCS#12 files (from Windows, Java keystores, older OpenSSL versions) often use BER indefinite-length encoding, causing parsing to fail.
-
-## Solution
-
-This package provides an OpenSSL-based converter that reliably converts BER→DER while preserving MAC integrity:
+- **BER encoding**: indefinite lengths and constructed strings, as Java keystores, Windows and the
+  card vendors of the telematics infrastructure write them;
+- **RC2** with 40 or 128 bits and **two-key Triple DES** (PKCS#12 PBEs, RFC 7292 appendix C), as
+  `openssl pkcs12 -legacy` writes them;
+- **DES-EDE3-CBC in PBES2**.
 
 ```go
-// Check if file is BER
-if legacy.IsBER(data) {
-    // Convert BER to DER using OpenSSL
-    derData, err := legacy.ConvertWithOpenSSL(berData, password)
-    if err != nil {
-        log.Fatal(err)
-    }
-    
-    // Now parse with main package
-    pfx, err := pkcs12.Parse(derData)
-    if err != nil {
-        log.Fatal(err)
-    }
-}
+bags, err := legacy.Decode(data, password)
 ```
 
-## API
+`Decode` accepts everything `pkcs12.Decode` accepts and returns the same `pkcs12.Bags` and error
+values. It mirrors `pkcs12.ExtractBags` and reuses the parsers of package `pkcs12`: each nested layer
+is converted from BER to DER by [`ber`](ber) first, and the legacy schemes are decrypted here, RC2
+by [`rc2`](rc2). The legacy algorithms are read-only; to write a file, pass the bags to
+`pkcs12.Encode`.
 
-### `IsBER(data []byte) bool`
-Detects if data is BER-encoded by checking for the indefinite-length SEQUENCE tag (0x30 0x80).
+`ConvertWithOpenSSL` is deprecated. It no longer runs OpenSSL: it decodes with `Decode` and writes
+the result with `pkcs12.Encode`. `IsBER` reports whether data starts with an indefinite-length
+SEQUENCE.
 
-### `ConvertWithOpenSSL(berData []byte, password string) ([]byte, error)`
-Converts BER-encoded PKCS#12 to DER format using OpenSSL command-line tool.
-
-This is the recommended (and only) approach because it:
-- Reliably handles complex legacy formats
-- Preserves MAC integrity
-- Works with all standard PKCS#12 structures
-
-## Requirements
-
-- OpenSSL 3.x installed and in PATH
-- OpenSSL must support the `-legacy` flag for BER decoding
-
-## Testing
-
-The package includes integration tests with real PKCS#12 files:
-- `cgm.p12` - CGM KoCo Konnektor Client Cert (password in `cgm-password.txt`)
-- `secunet.p12` - Secunet Konnektor Client Cert (password in `secunet-password.txt`)
-
-Run tests with:
-```bash
-go test -v
-```
-
+The tests decode every case of the [`spec/pkcs12`](../../../spec/pkcs12) corpus and the two vendor
+files in `spec/pkcs12/testdata/vendor`.

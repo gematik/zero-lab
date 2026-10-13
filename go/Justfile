@@ -9,6 +9,8 @@ MODERNIZE := "golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize
 # version 4); move to the first release that does.
 STATICCHECK := "honnef.co/go/tools/cmd/staticcheck@v0.7.0-0.dev.0.20261009230814-452d5bb86b45"
 GOVULNCHECK := "golang.org/x/vuln/cmd/govulncheck@v1.4.0"
+# golangci-lint v2.14 is the first release that reads Go 1.27 export data.
+GOLANGCI := "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0"
 
 # Every module — library AND command — is versioned solely by its own git tag
 # (go/<module>/vX.Y.Z), bumped only when that module changes. The local/Docker build stamp
@@ -355,6 +357,19 @@ vuln:
     for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
         echo "==> govulncheck $dir"
         ( cd "$dir" && go run {{GOVULNCHECK}} ./... ) || fail=1
+    done
+    exit $fail
+
+# golangci-lint with .golangci.yml (linters and formatters) in every module, or in MODULES
+golangci *MODULES:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    fail=0
+    dirs="{{MODULES}}"
+    [ -n "$dirs" ] || dirs=$(find . -name 'go.mod' -exec dirname {} \; | sed 's|^\./||' | sort)
+    for dir in $dirs; do
+        echo "==> golangci-lint $dir"
+        ( cd "$dir" && go run {{GOLANGCI}} run ./... && go run {{GOLANGCI}} fmt --diff ./... ) || fail=1
     done
     exit $fail
 

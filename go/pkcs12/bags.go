@@ -22,295 +22,186 @@
 package pkcs12
 
 import (
+	"bytes"
 	"fmt"
 )
 
-// CertificateBag represents a certificate from a PKCS#12 file with metadata
+// CertificateBag is a certificate of a PKCS#12 file with its attributes.
 type CertificateBag struct {
-	// Raw certificate data (DER-encoded X.509)
+	// Raw is the DER-encoded X.509 certificate.
 	Raw []byte
-
-	// FriendlyName is a human-readable name for the certificate
+	// FriendlyName is the friendlyName attribute, empty when absent.
 	FriendlyName string
-
-	// LocalKeyID links this certificate to its corresponding private key
+	// LocalKeyID is the localKeyId attribute that links the certificate to
+	// its private key, nil when absent.
 	LocalKeyID []byte
 }
 
-// PrivateKeyBag represents a private key from a PKCS#12 file with metadata
+// PrivateKeyBag is a private key of a PKCS#12 file with its attributes.
 type PrivateKeyBag struct {
-	// Raw private key data (DER-encoded PKCS#8)
+	// Raw is the DER-encoded PKCS#8 PrivateKeyInfo.
 	Raw []byte
-
-	// FriendlyName is a human-readable name for the key
+	// FriendlyName is the friendlyName attribute, empty when absent.
 	FriendlyName string
-
-	// LocalKeyID links this key to its corresponding certificate
+	// LocalKeyID is the localKeyId attribute that links the key to its
+	// certificate, nil when absent.
 	LocalKeyID []byte
 }
 
-// Bags contains all certificates and keys extracted from a PKCS#12 file
+// Bags holds the certificates and private keys of a PKCS#12 file.
 type Bags struct {
 	Certificates []CertificateBag
 	PrivateKeys  []PrivateKeyBag
 }
 
-// ExtractBags extracts all certificates and private keys from a PKCS#12 file
-// It decrypts encrypted bags using the provided password and returns raw certificate
-// and key data along with their metadata (friendlyName, localKeyID).
-//
-// The returned raw data can be parsed using crypto/x509:
-//   - For certificates: x509.ParseCertificate(cert.Raw)
-//   - For keys: x509.ParsePKCS8PrivateKey(key.Raw)
-//
-// Example:
-//
-//	pfx, _ := pkcs12.Parse(data)
-//	bags, _ := pkcs12.ExtractBags(pfx, password)
-//	for _, cert := range bags.Certificates {
-//	    x509Cert, _ := x509.ParseCertificate(cert.Raw)
-//	    fmt.Println("Cert:", x509Cert.Subject)
-//	}
-func ExtractBags(pfx *PFX, password []byte) (*Bags, error) {
-	bags := &Bags{
-		Certificates: make([]CertificateBag, 0),
-		PrivateKeys:  make([]PrivateKeyBag, 0),
-	}
-
-	// Verify MAC if present
-	if err := VerifyMAC(pfx, password); err != nil {
-		return nil, fmt.Errorf("MAC verification failed: %w", err)
-	}
-
-	// Parse authenticated safe
-	authSafe, err := ParseAuthenticatedSafe(pfx.RawAuthSafe)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse authenticated safe: %w", err)
-	}
-
-	// Process each ContentInfo
-	for _, ci := range authSafe.ContentInfos {
-		var safeContents []byte
-
-		if ci.ContentType.Equal(OIDData) {
-			// Unencrypted data
-			safeContents, err = extractOctetString(ci.Content)
-			if err != nil {
-				return nil, fmt.Errorf("failed to extract safe contents: %w", err)
-			}
-		} else if ci.ContentType.Equal(OIDEncryptedData) {
-			// Encrypted data - decrypt it
-			safeContents, err = DecryptEncryptedData(ci, password)
-			if err != nil {
-				return nil, fmt.Errorf("failed to decrypt safe contents: %w", err)
-			}
-		} else {
-			// Unknown content type - skip
-			continue
-		}
-
-		// Parse safe contents
-		sc, err := ParseSafeContents(safeContents)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse safe contents: %w", err)
-		}
-
-		// Extract bags
-		if err := extractFromSafeContents(sc, password, bags); err != nil {
-			return nil, err
-		}
-	}
-
-	return bags, nil
+// CertKeyPair is a certificate and the private key with the same localKeyId.
+type CertKeyPair struct {
+	Certificate *CertificateBag
+	PrivateKey  *PrivateKeyBag
 }
 
-// Decode reads PKCS#12 data and extracts all bags (certificates and private keys).
-// This is a convenience function that combines Parse and ExtractBags.
+// Decode verifies, decrypts and extracts a PKCS#12 file in one step; it is
+// Parse followed by ExtractBags. DER and BER encodings are accepted.
 //
-// Example:
-//
-//	data, _ := os.ReadFile("keystore.p12")
-//	bags, err := pkcs12.Decode(data, []byte("password"))
-//	if err != nil {
-//		log.Fatal(err)
-//	}
-//	for _, certBag := range bags.Certificates {
-//		cert, _ := x509.ParseCertificate(certBag.Raw)
-//		fmt.Println("Cert:", cert.Subject)
-//	}
+// Parse the results with crypto/x509: x509.ParseCertificate(cert.Raw) and
+// x509.ParsePKCS8PrivateKey(key.Raw).
 func Decode(data, password []byte) (*Bags, error) {
 	pfx, err := Parse(data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse PKCS#12: %w", err)
 	}
-
 	return ExtractBags(pfx, password)
 }
 
-// extractFromSafeContents processes SafeContents and extracts certificates and keys
-func extractFromSafeContents(sc *SafeContents, password []byte, bags *Bags) error {
+// ExtractBags verifies the MAC of pfx, if present, then decrypts every safe
+// and returns the certificates and keys. Only the password integrity and
+// privacy modes are supported; a signed authSafe or an enveloped safe yields
+// ErrUnsupportedAlgorithm. CRL, secret and unknown bags are skipped.
+func ExtractBags(pfx *PFX, password []byte) (*Bags, error) {
+	if !pfx.AuthSafe.ContentType.Equal(OIDData) {
+		return nil, fmt.Errorf("%w: authSafe content type %v (public-key integrity mode)", ErrUnsupportedAlgorithm, pfx.AuthSafe.ContentType)
+	}
+	// The MAC is checked before anything inside the authSafe is parsed, so
+	// a tampered file never reaches the decoders.
+	if err := VerifyMAC(pfx, password); err != nil {
+		return nil, fmt.Errorf("MAC verification failed: %w", err)
+	}
+
+	authSafe, err := ParseAuthenticatedSafe(pfx.RawAuthSafe)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse authenticated safe: %w", err)
+	}
+
+	bags := &Bags{
+		Certificates: make([]CertificateBag, 0),
+		PrivateKeys:  make([]PrivateKeyBag, 0),
+	}
+	for _, ci := range authSafe.ContentInfos {
+		var safe []byte
+		switch {
+		case ci.ContentType.Equal(OIDData):
+			if safe, err = extractOctetString(ci.Content); err != nil {
+				return nil, fmt.Errorf("failed to extract safe contents: %w", err)
+			}
+		case ci.ContentType.Equal(OIDEncryptedData):
+			if safe, err = DecryptEncryptedData(ci, password); err != nil {
+				return nil, fmt.Errorf("failed to decrypt safe contents: %w", err)
+			}
+		default:
+			return nil, fmt.Errorf("%w: safe content type %v (public-key privacy mode)", ErrUnsupportedAlgorithm, ci.ContentType)
+		}
+
+		sc, err := ParseSafeContents(safe)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse safe contents: %w", err)
+		}
+		if err := collectBags(sc, password, bags); err != nil {
+			return nil, err
+		}
+	}
+	return bags, nil
+}
+
+// collectBags adds the certificates and keys of sc to bags, descending into
+// nested safe contents bags.
+func collectBags(sc *SafeContents, password []byte, bags *Bags) error {
 	for _, bag := range sc.Bags {
+		friendlyName, _ := GetFriendlyName(bag.Attributes)
+		localKeyID, _ := GetLocalKeyID(bag.Attributes)
+
 		switch {
 		case bag.BagID.Equal(OIDCertBag):
-			// Certificate bag
-			cert, err := extractCertificate(bag)
+			cb, err := ParseCertBag(bag.BagValue)
 			if err != nil {
 				return fmt.Errorf("failed to extract certificate: %w", err)
 			}
-			bags.Certificates = append(bags.Certificates, cert)
+			if !cb.CertID.Equal(OIDX509Certificate) {
+				return fmt.Errorf("failed to extract certificate: %w: certificate type %v", ErrUnsupportedAlgorithm, cb.CertID)
+			}
+			bags.Certificates = append(bags.Certificates, CertificateBag{
+				Raw: cb.CertValue, FriendlyName: friendlyName, LocalKeyID: localKeyID,
+			})
 
 		case bag.BagID.Equal(OIDPKCS8ShroudedKeyBag):
-			// Encrypted private key
-			key, err := extractShroudedKey(bag, password)
+			key, err := DecryptShroudedKeyBag(bag.BagValue, password)
 			if err != nil {
 				return fmt.Errorf("failed to extract shrouded key: %w", err)
 			}
-			bags.PrivateKeys = append(bags.PrivateKeys, key)
+			bags.PrivateKeys = append(bags.PrivateKeys, PrivateKeyBag{
+				Raw: key, FriendlyName: friendlyName, LocalKeyID: localKeyID,
+			})
 
 		case bag.BagID.Equal(OIDKeyBag):
-			// Unencrypted private key (PKCS#8)
-			key, err := extractKeyBag(bag)
-			if err != nil {
-				return fmt.Errorf("failed to extract key bag: %w", err)
-			}
-			bags.PrivateKeys = append(bags.PrivateKeys, key)
+			// A KeyBag holds the PKCS#8 PrivateKeyInfo in the clear.
+			bags.PrivateKeys = append(bags.PrivateKeys, PrivateKeyBag{
+				Raw: bag.BagValue, FriendlyName: friendlyName, LocalKeyID: localKeyID,
+			})
 
 		case bag.BagID.Equal(OIDSafeContentsBag):
-			// Nested safe contents
-			nestedSC, err := ParseSafeContents(bag.BagValue)
+			nested, err := ParseSafeContents(bag.BagValue)
 			if err != nil {
 				return fmt.Errorf("failed to parse nested safe contents: %w", err)
 			}
-			if err := extractFromSafeContents(nestedSC, password, bags); err != nil {
+			if err := collectBags(nested, password, bags); err != nil {
 				return err
 			}
 		}
 	}
-
 	return nil
 }
 
-// extractCertificate extracts a certificate from a CertBag
-func extractCertificate(bag SafeBag) (CertificateBag, error) {
-	cert := CertificateBag{}
-
-	// Parse CertBag
-	certBag, err := ParseCertBag(bag.BagValue)
-	if err != nil {
-		return cert, err
-	}
-
-	// Only support X.509 certificates
-	if !certBag.CertID.Equal(OIDX509Certificate) {
-		return cert, fmt.Errorf("%w: unsupported certificate type %v",
-			ErrUnsupportedAlgorithm, certBag.CertID)
-	}
-
-	// CertValue is already the raw DER-encoded certificate
-	cert.Raw = certBag.CertValue
-
-	// Extract attributes
-	cert.FriendlyName, cert.LocalKeyID = extractAttributes(bag.Attributes)
-
-	return cert, nil
-}
-
-// extractShroudedKey extracts and decrypts a PKCS8ShroudedKeyBag
-func extractShroudedKey(bag SafeBag, password []byte) (PrivateKeyBag, error) {
-	key := PrivateKeyBag{}
-
-	// Decrypt the shrouded key bag
-	decrypted, err := DecryptShroudedKeyBag(bag.BagValue, password)
-	if err != nil {
-		return key, err
-	}
-
-	key.Raw = decrypted
-
-	// Extract attributes
-	key.FriendlyName, key.LocalKeyID = extractAttributes(bag.Attributes)
-
-	return key, nil
-}
-
-// extractKeyBag extracts an unencrypted KeyBag
-func extractKeyBag(bag SafeBag) (PrivateKeyBag, error) {
-	key := PrivateKeyBag{
-		Raw: bag.BagValue, // Already in PKCS#8 format
-	}
-
-	// Extract attributes
-	key.FriendlyName, key.LocalKeyID = extractAttributes(bag.Attributes)
-
-	return key, nil
-}
-
-// extractAttributes extracts friendlyName and localKeyID from bag attributes
-func extractAttributes(attrs []PKCS12Attribute) (friendlyName string, localKeyID []byte) {
-	if name, ok := GetFriendlyName(attrs); ok {
-		friendlyName = name
-	}
-	if keyID, ok := GetLocalKeyID(attrs); ok {
-		localKeyID = keyID
-	}
-	return
-}
-
-// FindCertificate finds a certificate by localKeyID
+// FindCertificate returns the certificate with the given localKeyId, or nil.
 func (b *Bags) FindCertificate(localKeyID []byte) *CertificateBag {
 	for i := range b.Certificates {
-		if bytesEqual(b.Certificates[i].LocalKeyID, localKeyID) {
+		if bytes.Equal(b.Certificates[i].LocalKeyID, localKeyID) {
 			return &b.Certificates[i]
 		}
 	}
 	return nil
 }
 
-// FindPrivateKey finds a private key by localKeyID
+// FindPrivateKey returns the private key with the given localKeyId, or nil.
 func (b *Bags) FindPrivateKey(localKeyID []byte) *PrivateKeyBag {
 	for i := range b.PrivateKeys {
-		if bytesEqual(b.PrivateKeys[i].LocalKeyID, localKeyID) {
+		if bytes.Equal(b.PrivateKeys[i].LocalKeyID, localKeyID) {
 			return &b.PrivateKeys[i]
 		}
 	}
 	return nil
 }
 
-// FindMatchingPairs returns pairs of certificates and their corresponding private keys
-// based on localKeyID matching
+// FindMatchingPairs pairs every certificate that has a localKeyId with the
+// private key of the same localKeyId, in certificate order.
 func (b *Bags) FindMatchingPairs() []CertKeyPair {
 	pairs := make([]CertKeyPair, 0)
-
 	for i := range b.Certificates {
 		cert := &b.Certificates[i]
-		if len(cert.LocalKeyID) > 0 {
-			if key := b.FindPrivateKey(cert.LocalKeyID); key != nil {
-				pairs = append(pairs, CertKeyPair{
-					Certificate: cert,
-					PrivateKey:  key,
-				})
-			}
+		if len(cert.LocalKeyID) == 0 {
+			continue
+		}
+		if key := b.FindPrivateKey(cert.LocalKeyID); key != nil {
+			pairs = append(pairs, CertKeyPair{Certificate: cert, PrivateKey: key})
 		}
 	}
-
 	return pairs
-}
-
-// CertKeyPair represents a matched certificate and private key pair
-type CertKeyPair struct {
-	Certificate *CertificateBag
-	PrivateKey  *PrivateKeyBag
-}
-
-// bytesEqual compares two byte slices
-func bytesEqual(a, b []byte) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }

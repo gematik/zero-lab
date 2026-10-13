@@ -22,47 +22,50 @@
 package pkcs12
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/hmac"
+	"crypto/pbkdf2"
 	"crypto/rand"
-	"crypto/x509/pkix"
 	"encoding/asn1"
+	"errors"
 	"fmt"
+	"slices"
+
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
-
-	"golang.org/x/crypto/pbkdf2"
 )
 
-// EncodeOptions configures PKCS#12 encoding
+// EncodeOptions configures EncodeWithOptions. Start from
+// DefaultEncodeOptions; the zero value has no iterations and fails.
 type EncodeOptions struct {
-	// Encryption algorithm for private keys (default: AES-256-CBC)
+	// KeyEncryption is the PBES2 cipher for private keys: OIDAes128CBC,
+	// OIDAes192CBC or OIDAes256CBC.
 	KeyEncryption asn1.ObjectIdentifier
 
-	// Encryption algorithm for certificates (default: AES-256-CBC)
+	// CertEncryption is the PBES2 cipher for the certificate safe, one of the
+	// AES OIDs; nil writes the certificates unencrypted.
 	CertEncryption asn1.ObjectIdentifier
 
-	// Number of iterations for PBKDF2 (default: 2048)
+	// Iterations is the PBKDF2 and MAC iteration count.
 	Iterations int
 
-	// MAC algorithm (default: SHA-256)
+	// MacAlgorithm is the MAC digest: OIDSHA256, OIDSHA384 or OIDSHA512. The
+	// PBKDF2 PRF is HMAC with the same digest.
 	MacAlgorithm asn1.ObjectIdentifier
 
-	// Separate encryption passwords for keys and certificates
-	// If nil, uses main password for both
+	// KeyPassword and CertPassword encrypt keys and certificates; nil means
+	// the password passed to EncodeWithOptions.
 	KeyPassword  []byte
 	CertPassword []byte
 
-	// Include MAC for integrity verification (default: true)
+	// IncludeMAC adds the integrity MAC, computed with the main password.
 	IncludeMAC bool
-
-	// Internal: last used salt and IV (for algorithm identifier)
-	lastSalt []byte
-	lastIV   []byte
 }
 
-// DefaultEncodeOptions returns secure default encoding options
+// DefaultEncodeOptions returns the options of OpenSSL 3's default export:
+// PBES2 with AES-256-CBC and PBKDF2-HMAC-SHA-256 for keys and certificates,
+// 2048 iterations, an HMAC-SHA-256 MAC.
 func DefaultEncodeOptions() *EncodeOptions {
 	return &EncodeOptions{
 		KeyEncryption:  OIDAes256CBC,
@@ -73,618 +76,343 @@ func DefaultEncodeOptions() *EncodeOptions {
 	}
 }
 
-// Encode creates a PKCS#12 file from bags with default options.
-// For more control, use EncodeWithOptions.
-//
-// Example:
-//
-//	p12Data, err := pkcs12.Encode(bags, []byte("password"))
-//	if err != nil {
-//		log.Fatal(err)
-//	}
-//	os.WriteFile("keystore.p12", p12Data, 0600)
+// Encode writes bags as a PKCS#12 file with DefaultEncodeOptions.
 func Encode(bags *Bags, password []byte) ([]byte, error) {
 	return EncodeWithOptions(bags, password, DefaultEncodeOptions())
 }
 
-// EncodeWithOptions creates a PKCS#12 file from bags with custom options
+// EncodeWithOptions writes bags as a DER-encoded PKCS#12 file. Salts and IVs
+// are random. opts is not modified; nil means DefaultEncodeOptions.
 func EncodeWithOptions(bags *Bags, password []byte, opts *EncodeOptions) ([]byte, error) {
-	if opts == nil {
-		opts = DefaultEncodeOptions()
+	if bags == nil {
+		return nil, errors.New("pkcs12: bags is nil")
+	}
+	o := DefaultEncodeOptions()
+	if opts != nil {
+		o = new(EncodeOptions)
+		*o = *opts
+	}
+	if o.KeyPassword == nil {
+		o.KeyPassword = password
+	}
+	if o.CertPassword == nil {
+		o.CertPassword = password
+	}
+	p, err := newEncodeParams(o)
+	if err != nil {
+		return nil, err
 	}
 
-	// Set password defaults
-	if opts.KeyPassword == nil {
-		opts.KeyPassword = password
-	}
-	if opts.CertPassword == nil {
-		opts.CertPassword = password
-	}
-
-	// Create two SafeContents:
-	// 1. Keys (encrypted)
-	// 2. Certificates (encrypted or unencrypted)
-
-	var contentInfos []ContentInfo
-
-	// Add encrypted private keys
-	if len(bags.PrivateKeys) > 0 {
-		keySafeBags := make([]SafeBag, 0, len(bags.PrivateKeys))
-		for _, key := range bags.PrivateKeys {
-			bag, err := createShroudedKeyBag(key, opts.KeyPassword, opts)
+	var authSafe cryptobyte.Builder
+	authSafe.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+		if len(bags.PrivateKeys) > 0 {
+			keys, err := p.keySafe(bags.PrivateKeys, o.KeyPassword)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create key bag: %w", err)
+				b.SetError(err)
+				return
 			}
-			keySafeBags = append(keySafeBags, bag)
+			addDataContentInfo(b, keys)
 		}
-
-		// Serialize SafeContents
-		safeContents := SafeContents{Bags: keySafeBags}
-		safeData, err := serializeSafeContents(&safeContents)
-		if err != nil {
-			return nil, fmt.Errorf("failed to serialize key safe contents: %w", err)
-		}
-
-		// Create encrypted ContentInfo
-		ci, err := createEncryptedContentInfo(safeData, opts.CertPassword, opts)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create encrypted content: %w", err)
-		}
-		contentInfos = append(contentInfos, ci)
-	}
-
-	// Add certificates (unencrypted for compatibility)
-	if len(bags.Certificates) > 0 {
-		certSafeBags := make([]SafeBag, 0, len(bags.Certificates))
-		for _, cert := range bags.Certificates {
-			bag, err := createCertBag(cert)
+		if len(bags.Certificates) > 0 {
+			certs, err := certSafe(bags.Certificates)
 			if err != nil {
-				return nil, fmt.Errorf("failed to create cert bag: %w", err)
+				b.SetError(err)
+				return
 			}
-			certSafeBags = append(certSafeBags, bag)
+			if o.CertEncryption == nil {
+				addDataContentInfo(b, certs)
+				return
+			}
+			p.addEncryptedContentInfo(b, certs, o.CertPassword)
 		}
-
-		// Serialize SafeContents
-		safeContents := SafeContents{Bags: certSafeBags}
-		safeData, err := serializeSafeContents(&safeContents)
-		if err != nil {
-			return nil, fmt.Errorf("failed to serialize cert safe contents: %w", err)
-		}
-
-		// Create unencrypted Data ContentInfo
-		ci, err := createDataContentInfo(safeData)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create data content: %w", err)
-		}
-		contentInfos = append(contentInfos, ci)
-	}
-
-	// Create AuthenticatedSafe
-	authSafe := AuthenticatedSafe{ContentInfos: contentInfos}
-	authSafeData, err := serializeAuthenticatedSafe(&authSafe)
+	})
+	authSafeDER, err := authSafe.Bytes()
 	if err != nil {
-		return nil, fmt.Errorf("failed to serialize authenticated safe: %w", err)
+		return nil, err
 	}
 
-	// Wrap in Data ContentInfo
-	authSafeCI, err := createDataContentInfo(authSafeData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create authsafe content: %w", err)
-	}
-
-	// Create PFX
-	pfx := PFX{
-		Version:     3,
-		AuthSafe:    authSafeCI,
-		RawAuthSafe: authSafeData,
-	}
-
-	// Generate MAC if requested
-	if opts.IncludeMAC {
-		macData, err := generateMAC(authSafeData, password, opts)
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate MAC: %w", err)
+	var pfx cryptobyte.Builder
+	pfx.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+		b.AddASN1Int64(3)
+		addDataContentInfo(b, authSafeDER)
+		if o.IncludeMAC {
+			p.addMacData(b, authSafeDER, password)
 		}
-		pfx.MacData = macData
-	}
-
-	// Serialize PFX
-	return serializePFX(&pfx)
+	})
+	return pfx.Bytes()
 }
 
-// createShroudedKeyBag creates an encrypted PKCS8ShroudedKeyBag
-func createShroudedKeyBag(key PrivateKeyBag, password []byte, opts *EncodeOptions) (SafeBag, error) {
-	// Encrypt the private key
-	encrypted, err := encryptPrivateKey(key.Raw, password, opts)
-	if err != nil {
-		return SafeBag{}, err
-	}
-
-	// Build algorithm identifier for PBES2
-	algorithm, err := buildPBES2AlgorithmIdentifier(opts)
-	if err != nil {
-		return SafeBag{}, err
-	}
-
-	// Create EncryptedPrivateKeyInfo
-	epki := EncryptedPrivateKeyInfo{
-		Algorithm: algorithm,
-		Data:      encrypted,
-	}
-
-	// Serialize EPKI
-	epkiData, err := asn1.Marshal(epki)
-	if err != nil {
-		return SafeBag{}, fmt.Errorf("failed to marshal EPKI: %w", err)
-	}
-
-	// Create attributes
-	var attrs []PKCS12Attribute
-	if key.FriendlyName != "" {
-		attr, err := createFriendlyNameAttribute(key.FriendlyName)
-		if err != nil {
-			return SafeBag{}, err
-		}
-		attrs = append(attrs, attr)
-	}
-	if len(key.LocalKeyID) > 0 {
-		attr, err := createLocalKeyIDAttribute(key.LocalKeyID)
-		if err != nil {
-			return SafeBag{}, err
-		}
-		attrs = append(attrs, attr)
-	}
-
-	return SafeBag{
-		BagID:      OIDPKCS8ShroudedKeyBag,
-		BagValue:   epkiData,
-		Attributes: attrs,
-	}, nil
+// encodeParams are the validated algorithm choices of one encoding.
+type encodeParams struct {
+	iterations int
+	keyCipher  pbes2Cipher
+	keyOID     asn1.ObjectIdentifier
+	certCipher pbes2Cipher
+	certOID    asn1.ObjectIdentifier
+	macOID     asn1.ObjectIdentifier
+	prfOID     asn1.ObjectIdentifier
 }
 
-// createCertBag creates a CertBag
-func createCertBag(cert CertificateBag) (SafeBag, error) {
-	// Create CertBag structure
-	certBag := struct {
-		CertID    asn1.ObjectIdentifier
-		CertValue asn1.RawValue `asn1:"tag:0,explicit"`
-	}{
-		CertID: OIDX509Certificate,
-		CertValue: asn1.RawValue{
-			Class:      asn1.ClassContextSpecific,
-			Tag:        0,
-			IsCompound: true,
-			Bytes:      cert.Raw,
-		},
+func encodeCipher(oid asn1.ObjectIdentifier, what string) (pbes2Cipher, error) {
+	if c, ok := pbes2CipherFor(oid); ok {
+		return c, nil
 	}
-
-	// Marshal to get the explicit tag wrapper
-	innerOctet, err := asn1.Marshal(cert.Raw)
-	if err != nil {
-		return SafeBag{}, err
-	}
-
-	certBag.CertValue.Bytes = innerOctet
-
-	// Serialize CertBag
-	certBagData, err := asn1.Marshal(certBag)
-	if err != nil {
-		return SafeBag{}, fmt.Errorf("failed to marshal cert bag: %w", err)
-	}
-
-	// Create attributes
-	var attrs []PKCS12Attribute
-	if cert.FriendlyName != "" {
-		attr, err := createFriendlyNameAttribute(cert.FriendlyName)
-		if err != nil {
-			return SafeBag{}, err
-		}
-		attrs = append(attrs, attr)
-	}
-	if len(cert.LocalKeyID) > 0 {
-		attr, err := createLocalKeyIDAttribute(cert.LocalKeyID)
-		if err != nil {
-			return SafeBag{}, err
-		}
-		attrs = append(attrs, attr)
-	}
-
-	return SafeBag{
-		BagID:      OIDCertBag,
-		BagValue:   certBagData,
-		Attributes: attrs,
-	}, nil
+	return pbes2Cipher{}, fmt.Errorf("%w: %s %v (want AES-CBC)", ErrUnsupportedAlgorithm, what, oid)
 }
 
-// createFriendlyNameAttribute creates a friendlyName attribute: a BMPString
-// (UCS-2 big-endian, universal tag 30), which is what readers such as
-// GetFriendlyName and OpenSSL look for. encoding/asn1 cannot emit a
-// universal tag 30 (its "universal" parameter only applies when parsing),
-// so the TLV is built directly.
-func createFriendlyNameAttribute(name string) (PKCS12Attribute, error) {
-	bmpData := make([]byte, 0, 2*len(name))
+func newEncodeParams(o *EncodeOptions) (*encodeParams, error) {
+	if err := checkIterations(o.Iterations); err != nil {
+		return nil, err
+	}
+	p := &encodeParams{iterations: o.Iterations, keyOID: o.KeyEncryption, certOID: o.CertEncryption}
+	var err error
+	if p.keyCipher, err = encodeCipher(o.KeyEncryption, "KeyEncryption"); err != nil {
+		return nil, err
+	}
+	if o.CertEncryption != nil {
+		if p.certCipher, err = encodeCipher(o.CertEncryption, "CertEncryption"); err != nil {
+			return nil, err
+		}
+	}
+	// SHA-1 and SHA-224 remain readable but are not written.
+	switch {
+	case o.MacAlgorithm.Equal(OIDSHA256):
+		p.macOID, p.prfOID = OIDSHA256, OIDHMACSHA256
+	case o.MacAlgorithm.Equal(OIDSHA384):
+		p.macOID, p.prfOID = OIDSHA384, OIDHMACSHA384
+	case o.MacAlgorithm.Equal(OIDSHA512):
+		p.macOID, p.prfOID = OIDSHA512, OIDHMACSHA512
+	default:
+		return nil, fmt.Errorf("%w: MacAlgorithm %v (want SHA-256, SHA-384 or SHA-512)", ErrUnsupportedAlgorithm, o.MacAlgorithm)
+	}
+	return p, nil
+}
+
+// keySafe returns a SafeContents of shrouded key bags.
+func (p *encodeParams) keySafe(keys []PrivateKeyBag, password []byte) ([]byte, error) {
+	var b cryptobyte.Builder
+	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+		for _, key := range keys {
+			var epki cryptobyte.Builder
+			epki.AddASN1(cryptobyte_asn1.SEQUENCE, func(e *cryptobyte.Builder) {
+				ciphertext, err := p.addPBES2(e, p.keyCipher, p.keyOID, password, key.Raw)
+				if err != nil {
+					e.SetError(err)
+					return
+				}
+				e.AddASN1OctetString(ciphertext)
+			})
+			value, err := epki.Bytes()
+			if err != nil {
+				b.SetError(err)
+				return
+			}
+			if err := addSafeBag(b, OIDPKCS8ShroudedKeyBag, value, key.FriendlyName, key.LocalKeyID); err != nil {
+				b.SetError(err)
+				return
+			}
+		}
+	})
+	return b.Bytes()
+}
+
+// certSafe returns a SafeContents of X.509 certificate bags.
+func certSafe(certs []CertificateBag) ([]byte, error) {
+	var b cryptobyte.Builder
+	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+		for _, cert := range certs {
+			var cb cryptobyte.Builder
+			cb.AddASN1(cryptobyte_asn1.SEQUENCE, func(c *cryptobyte.Builder) {
+				c.AddASN1ObjectIdentifier(OIDX509Certificate)
+				c.AddASN1(tagContext0Explicit, func(c *cryptobyte.Builder) {
+					c.AddASN1OctetString(cert.Raw)
+				})
+			})
+			value, err := cb.Bytes()
+			if err != nil {
+				b.SetError(err)
+				return
+			}
+			if err := addSafeBag(b, OIDCertBag, value, cert.FriendlyName, cert.LocalKeyID); err != nil {
+				b.SetError(err)
+				return
+			}
+		}
+	})
+	return b.Bytes()
+}
+
+// addSafeBag adds a SafeBag with the friendlyName and localKeyId attributes
+// that are set.
+func addSafeBag(b *cryptobyte.Builder, id asn1.ObjectIdentifier, value []byte, friendlyName string, localKeyID []byte) error {
+	var attributes [][]byte
+	if friendlyName != "" {
+		attr, err := friendlyNameAttribute(friendlyName)
+		if err != nil {
+			return err
+		}
+		attributes = append(attributes, attr)
+	}
+	if len(localKeyID) > 0 {
+		attr, err := attribute(OIDLocalKeyID, func(b *cryptobyte.Builder) { b.AddASN1OctetString(localKeyID) })
+		if err != nil {
+			return err
+		}
+		attributes = append(attributes, attr)
+	}
+	// DER orders the elements of a SET OF by their encoding (X.690 §11.6).
+	slices.SortFunc(attributes, bytes.Compare)
+
+	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+		b.AddASN1ObjectIdentifier(id)
+		b.AddASN1(tagContext0Explicit, func(b *cryptobyte.Builder) { b.AddBytes(value) })
+		if len(attributes) > 0 {
+			b.AddASN1(cryptobyte_asn1.SET, func(b *cryptobyte.Builder) {
+				for _, attr := range attributes {
+					b.AddBytes(attr)
+				}
+			})
+		}
+	})
+	return nil
+}
+
+// attribute encodes a PKCS12Attribute with a single value.
+func attribute(id asn1.ObjectIdentifier, value cryptobyte.BuilderContinuation) ([]byte, error) {
+	var b cryptobyte.Builder
+	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+		b.AddASN1ObjectIdentifier(id)
+		b.AddASN1(cryptobyte_asn1.SET, value)
+	})
+	return b.Bytes()
+}
+
+// friendlyNameAttribute encodes friendlyName as a BMPString, which is UCS-2:
+// characters outside the BMP cannot be written.
+func friendlyNameAttribute(name string) ([]byte, error) {
+	bmp := make([]byte, 0, 2*len(name))
 	for _, r := range name {
 		if r > 0xFFFF {
-			return PKCS12Attribute{}, fmt.Errorf("friendlyName %q: %q is outside the BMPString character set", name, r)
+			return nil, fmt.Errorf("pkcs12: friendlyName %q: %q is outside the BMPString character set", name, r)
 		}
-		bmpData = append(bmpData, byte(r>>8), byte(r))
+		bmp = append(bmp, byte(r>>8), byte(r))
 	}
-
-	var b cryptobyte.Builder
-	b.AddASN1(cryptobyte_asn1.Tag(30), func(c *cryptobyte.Builder) { c.AddBytes(bmpData) })
-	bmpValue, err := b.Bytes()
-	if err != nil {
-		return PKCS12Attribute{}, err
-	}
-
-	return PKCS12Attribute{
-		ID:     OIDFriendlyName,
-		Values: [][]byte{bmpValue},
-	}, nil
+	return attribute(OIDFriendlyName, func(b *cryptobyte.Builder) {
+		b.AddASN1(tagBMPString, func(b *cryptobyte.Builder) { b.AddBytes(bmp) })
+	})
 }
 
-// createLocalKeyIDAttribute creates a localKeyID attribute
-func createLocalKeyIDAttribute(keyID []byte) (PKCS12Attribute, error) {
-	// Marshal as OCTET STRING
-	keyIDValue, err := asn1.Marshal(keyID)
-	if err != nil {
-		return PKCS12Attribute{}, err
-	}
-
-	return PKCS12Attribute{
-		ID:     OIDLocalKeyID,
-		Values: [][]byte{keyIDValue},
-	}, nil
+// addDataContentInfo adds a ContentInfo of type Data holding content.
+func addDataContentInfo(b *cryptobyte.Builder, content []byte) {
+	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+		b.AddASN1ObjectIdentifier(OIDData)
+		b.AddASN1(tagContext0Explicit, func(b *cryptobyte.Builder) {
+			b.AddASN1OctetString(content)
+		})
+	})
 }
 
-// createDataContentInfo creates an unencrypted Data ContentInfo
-func createDataContentInfo(data []byte) (ContentInfo, error) {
-	// Wrap data in OCTET STRING and then context-specific [0]
-	octetData, err := asn1.Marshal(data)
-	if err != nil {
-		return ContentInfo{}, err
-	}
-
-	return ContentInfo{
-		ContentType: OIDData,
-		Content:     octetData, // Parser expects raw OCTET STRING here
-	}, nil
+// addEncryptedContentInfo adds a ContentInfo of type EncryptedData holding
+// content encrypted with PBES2.
+func (p *encodeParams) addEncryptedContentInfo(b *cryptobyte.Builder, content, password []byte) {
+	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+		b.AddASN1ObjectIdentifier(OIDEncryptedData)
+		b.AddASN1(tagContext0Explicit, func(b *cryptobyte.Builder) {
+			b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+				b.AddASN1Int64(0)
+				b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+					b.AddASN1ObjectIdentifier(OIDData)
+					ciphertext, err := p.addPBES2(b, p.certCipher, p.certOID, password, content)
+					if err != nil {
+						b.SetError(err)
+						return
+					}
+					b.AddASN1(tagContext0Implicit, func(b *cryptobyte.Builder) { b.AddBytes(ciphertext) })
+				})
+			})
+		})
+	})
 }
 
-// createEncryptedContentInfo creates an encrypted EncryptedData ContentInfo
-func createEncryptedContentInfo(data, password []byte, opts *EncodeOptions) (ContentInfo, error) {
-	// For now, use unencrypted for certificates (common practice)
-	// In the future, can add encryption support
-	return createDataContentInfo(data)
-}
-
-// serializeSafeContents serializes SafeContents to DER
-func serializeSafeContents(sc *SafeContents) ([]byte, error) {
-	// SafeContents is a SEQUENCE OF SafeBag
-	var rawBags []asn1.RawValue
-
-	for _, bag := range sc.Bags {
-		// Serialize each SafeBag
-		bagData, err := serializeSafeBag(&bag)
-		if err != nil {
-			return nil, err
-		}
-		rawBags = append(rawBags, asn1.RawValue{FullBytes: bagData})
-	}
-
-	return asn1.Marshal(rawBags)
-}
-
-// serializeSafeBag serializes a SafeBag to DER
-func serializeSafeBag(bag *SafeBag) ([]byte, error) {
-	type safeBagASN1 struct {
-		BagID      asn1.ObjectIdentifier
-		BagValue   asn1.RawValue   `asn1:"tag:0,explicit"`
-		Attributes []asn1.RawValue `asn1:"set,optional"`
-	}
-
-	sb := safeBagASN1{
-		BagID: bag.BagID,
-		BagValue: asn1.RawValue{
-			Class:      asn1.ClassContextSpecific,
-			Tag:        0,
-			IsCompound: true,
-			Bytes:      bag.BagValue,
-		},
-	}
-
-	// Serialize attributes
-	if len(bag.Attributes) > 0 {
-		for _, attr := range bag.Attributes {
-			attrData, err := serializeAttribute(&attr)
-			if err != nil {
-				return nil, err
-			}
-			sb.Attributes = append(sb.Attributes, asn1.RawValue{FullBytes: attrData})
-		}
-	}
-
-	return asn1.Marshal(sb)
-}
-
-// serializeAttribute serializes a PKCS12Attribute to DER
-func serializeAttribute(attr *PKCS12Attribute) ([]byte, error) {
-	type attributeASN1 struct {
-		ID     asn1.ObjectIdentifier
-		Values []asn1.RawValue `asn1:"set"`
-	}
-
-	a := attributeASN1{
-		ID: attr.ID,
-	}
-
-	for _, val := range attr.Values {
-		a.Values = append(a.Values, asn1.RawValue{FullBytes: val})
-	}
-
-	return asn1.Marshal(a)
-}
-
-// serializeAuthenticatedSafe serializes AuthenticatedSafe to DER
-func serializeAuthenticatedSafe(authSafe *AuthenticatedSafe) ([]byte, error) {
-	// AuthenticatedSafe is a SEQUENCE OF ContentInfo
-	var rawCIs []asn1.RawValue
-
-	for _, ci := range authSafe.ContentInfos {
-		ciData, err := serializeContentInfo(&ci)
-		if err != nil {
-			return nil, err
-		}
-		rawCIs = append(rawCIs, asn1.RawValue{FullBytes: ciData})
-	}
-
-	return asn1.Marshal(rawCIs)
-}
-
-// serializeContentInfo serializes ContentInfo to DER
-func serializeContentInfo(ci *ContentInfo) ([]byte, error) {
-	type contentInfoASN1 struct {
-		ContentType asn1.ObjectIdentifier
-		Content     asn1.RawValue `asn1:"optional,explicit,tag:0"`
-	}
-
-	ciASN := contentInfoASN1{
-		ContentType: ci.ContentType,
-		Content: asn1.RawValue{
-			Class:      asn1.ClassContextSpecific,
-			Tag:        0,
-			IsCompound: true,
-			Bytes:      ci.Content,
-		},
-	}
-
-	return asn1.Marshal(ciASN)
-}
-
-// serializePFX serializes PFX to DER
-func serializePFX(pfx *PFX) ([]byte, error) {
-	type pfxASN1 struct {
-		Version  int
-		AuthSafe asn1.RawValue
-		MacData  asn1.RawValue `asn1:"optional"`
-	}
-
-	// Serialize AuthSafe ContentInfo
-	authSafeData, err := serializeContentInfo(&pfx.AuthSafe)
-	if err != nil {
-		return nil, err
-	}
-
-	p := pfxASN1{
-		Version:  pfx.Version,
-		AuthSafe: asn1.RawValue{FullBytes: authSafeData},
-	}
-
-	// Add MAC if present
-	if pfx.MacData != nil {
-		macData, err := serializeMacData(pfx.MacData)
-		if err != nil {
-			return nil, err
-		}
-		p.MacData = asn1.RawValue{FullBytes: macData}
-	}
-
-	return asn1.Marshal(p)
-}
-
-// serializeMacData serializes MacData to DER
-func serializeMacData(macData *MacData) ([]byte, error) {
-	type macDataASN1 struct {
-		Mac        asn1.RawValue
-		MacSalt    []byte
-		Iterations int `asn1:"optional,default:1"`
-	}
-
-	// Serialize DigestInfo
-	digestData, err := serializeDigestInfo(&macData.Mac)
-	if err != nil {
-		return nil, err
-	}
-
-	md := macDataASN1{
-		Mac:        asn1.RawValue{FullBytes: digestData},
-		MacSalt:    macData.MacSalt,
-		Iterations: macData.Iterations,
-	}
-
-	return asn1.Marshal(md)
-}
-
-// serializeDigestInfo serializes DigestInfo to DER
-func serializeDigestInfo(di *DigestInfo) ([]byte, error) {
-	type digestInfoASN1 struct {
-		Algorithm pkix.AlgorithmIdentifier
-		Digest    []byte
-	}
-
-	d := digestInfoASN1{
-		Algorithm: di.Algorithm,
-		Digest:    di.Digest,
-	}
-
-	return asn1.Marshal(d)
-}
-
-// generateMAC generates MAC for authenticated safe
-func generateMAC(authSafeData, password []byte, opts *EncodeOptions) (*MacData, error) {
-	// Generate random salt
+// addPBES2 encrypts plaintext with PBES2 and adds its AlgorithmIdentifier.
+func (p *encodeParams) addPBES2(b *cryptobyte.Builder, c pbes2Cipher, cipherOID asn1.ObjectIdentifier, password, plaintext []byte) ([]byte, error) {
 	salt := make([]byte, 16)
+	iv := make([]byte, aes.BlockSize)
 	if _, err := rand.Read(salt); err != nil {
-		return nil, fmt.Errorf("failed to generate salt: %w", err)
-	}
-
-	// Derive MAC key
-	macKey, err := deriveMACKey(opts.MacAlgorithm, password, salt, opts.Iterations)
-	if err != nil {
 		return nil, err
-	}
-
-	// Get hash function
-	hashFunc := getHashFunc(opts.MacAlgorithm)
-	if hashFunc == nil {
-		return nil, fmt.Errorf("%w: unsupported MAC algorithm", ErrUnsupportedAlgorithm)
-	}
-
-	// Compute MAC
-	h := hmac.New(hashFunc, macKey)
-	h.Write(authSafeData)
-	digest := h.Sum(nil)
-
-	return &MacData{
-		Mac: DigestInfo{
-			Algorithm: pkix.AlgorithmIdentifier{
-				Algorithm: opts.MacAlgorithm,
-			},
-			Digest: digest,
-		},
-		MacSalt:    salt,
-		Iterations: opts.Iterations,
-	}, nil
-}
-
-// encryptPrivateKey encrypts a private key using PBES2
-func encryptPrivateKey(keyData, password []byte, opts *EncodeOptions) ([]byte, error) {
-	// Generate random salt and IV
-	salt := make([]byte, 16)
-	iv := make([]byte, 16)
-	if _, err := rand.Read(salt); err != nil {
-		return nil, fmt.Errorf("failed to generate salt: %w", err)
 	}
 	if _, err := rand.Read(iv); err != nil {
-		return nil, fmt.Errorf("failed to generate IV: %w", err)
+		return nil, err
 	}
-
-	// Encrypt
-	ciphertext, err := encryptPBES2(keyData, password, salt, iv, opts)
+	prf, err := pbkdf2PRF(p.prfOID)
 	if err != nil {
 		return nil, err
 	}
-
-	// Store salt and IV in opts for buildPBES2AlgorithmIdentifier to use
-	// This is a hack - better to return them
-	opts.lastSalt = salt
-	opts.lastIV = iv
-
-	return ciphertext, nil
-}
-
-func encryptPBES2(data, password, salt, iv []byte, opts *EncodeOptions) ([]byte, error) {
-	// Derive key using PBKDF2
-	keyLen := getKeyLength(opts.KeyEncryption)
-	if keyLen == 0 {
-		return nil, fmt.Errorf("%w: unsupported cipher", ErrUnsupportedAlgorithm)
-	}
-
-	prfFunc := getPRFFunc(opts.MacAlgorithm)
-	key := pbkdf2.Key(password, salt, opts.Iterations, keyLen, prfFunc)
-
-	// Encrypt with AES-CBC
-	return encryptAESCBC(key, iv, data)
-}
-
-// encryptAESCBC encrypts data using AES-CBC with PKCS#7 padding
-func encryptAESCBC(key, iv, plaintext []byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
+	key, err := pbkdf2.Key(prf, string(password), salt, p.iterations, c.keySize)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create cipher: %w", err)
+		return nil, err
 	}
-
-	// Add PKCS#7 padding
-	padded := addPKCS7Padding(plaintext, aes.BlockSize)
-
-	// Encrypt
+	block, err := c.newBlock(key)
+	if err != nil {
+		return nil, err
+	}
+	padded := addPKCS7Padding(plaintext, block.BlockSize())
 	ciphertext := make([]byte, len(padded))
-	mode := cipher.NewCBCEncrypter(block, iv)
-	mode.CryptBlocks(ciphertext, padded)
+	cipher.NewCBCEncrypter(block, iv).CryptBlocks(ciphertext, padded)
 
+	// AlgorithmIdentifier { pbes2, PBES2-params { { pbkdf2, PBKDF2-params }, { cipher, iv } } }
+	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+		b.AddASN1ObjectIdentifier(OIDPBES2)
+		b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+			b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+				b.AddASN1ObjectIdentifier(OIDPBKDF2)
+				b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+					b.AddASN1OctetString(salt)
+					b.AddASN1Int64(int64(p.iterations))
+					addAlgorithmWithNULL(b, p.prfOID)
+				})
+			})
+			b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+				b.AddASN1ObjectIdentifier(cipherOID)
+				b.AddASN1OctetString(iv)
+			})
+		})
+	})
 	return ciphertext, nil
 }
 
-// addPKCS7Padding adds PKCS#7 padding to data
-func addPKCS7Padding(data []byte, blockSize int) []byte {
-	padding := blockSize - (len(data) % blockSize)
-	padText := make([]byte, padding)
-	for i := range padText {
-		padText[i] = byte(padding)
+// addMacData adds the MacData over authSafe.
+func (p *encodeParams) addMacData(b *cryptobyte.Builder, authSafe, password []byte) {
+	salt := make([]byte, 16)
+	if _, err := rand.Read(salt); err != nil {
+		b.SetError(err)
+		return
 	}
-	return append(data, padText...)
+	mac, err := computeMAC(p.macOID, password, salt, p.iterations, authSafe)
+	if err != nil {
+		b.SetError(err)
+		return
+	}
+	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+		b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+			addAlgorithmWithNULL(b, p.macOID)
+			b.AddASN1OctetString(mac)
+		})
+		b.AddASN1OctetString(salt)
+		b.AddASN1Int64(int64(p.iterations))
+	})
 }
 
-// buildPBES2AlgorithmIdentifier builds an AlgorithmIdentifier for PBES2
-// buildPBES2AlgorithmIdentifier builds an AlgorithmIdentifier for PBES2
-func buildPBES2AlgorithmIdentifier(opts *EncodeOptions) (pkix.AlgorithmIdentifier, error) {
-	// Build PBKDF2 parameters
-	pbkdf2Params := struct {
-		Salt           []byte
-		IterationCount int
-		KeyLength      int                      `asn1:"optional"`
-		PRF            pkix.AlgorithmIdentifier `asn1:"optional"`
-	}{
-		Salt:           opts.lastSalt,
-		IterationCount: opts.Iterations,
-		PRF: pkix.AlgorithmIdentifier{
-			Algorithm: opts.MacAlgorithm,
-		},
-	}
+// addAlgorithmWithNULL adds an AlgorithmIdentifier with NULL parameters, the
+// form OpenSSL writes for digests and HMAC PRFs.
+func addAlgorithmWithNULL(b *cryptobyte.Builder, oid asn1.ObjectIdentifier) {
+	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
+		b.AddASN1ObjectIdentifier(oid)
+		b.AddASN1NULL()
+	})
+}
 
-	pbkdf2Data, err := asn1.Marshal(pbkdf2Params)
-	if err != nil {
-		return pkix.AlgorithmIdentifier{}, err
-	}
-
-	// Build cipher parameters (just IV for AES-CBC)
-	cipherParams, err := asn1.Marshal(opts.lastIV)
-	if err != nil {
-		return pkix.AlgorithmIdentifier{}, err
-	}
-
-	// Build PBES2 parameters
-	pbes2Params := struct {
-		KeyDerivationFunc pkix.AlgorithmIdentifier
-		EncryptionScheme  pkix.AlgorithmIdentifier
-	}{
-		KeyDerivationFunc: pkix.AlgorithmIdentifier{
-			Algorithm:  OIDPBKDF2,
-			Parameters: asn1.RawValue{FullBytes: pbkdf2Data},
-		},
-		EncryptionScheme: pkix.AlgorithmIdentifier{
-			Algorithm:  opts.KeyEncryption,
-			Parameters: asn1.RawValue{FullBytes: cipherParams},
-		},
-	}
-
-	pbes2Data, err := asn1.Marshal(pbes2Params)
-	if err != nil {
-		return pkix.AlgorithmIdentifier{}, err
-	}
-
-	return pkix.AlgorithmIdentifier{
-		Algorithm:  OIDPBES2,
-		Parameters: asn1.RawValue{FullBytes: pbes2Data},
-	}, nil
+func addPKCS7Padding(data []byte, blockSize int) []byte {
+	n := blockSize - len(data)%blockSize
+	return append(slices.Clip(data), bytes.Repeat([]byte{byte(n)}, n)...)
 }

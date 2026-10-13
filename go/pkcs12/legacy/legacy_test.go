@@ -22,154 +22,201 @@
 package legacy
 
 import (
-	"crypto/x509"
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"golang.org/x/crypto/cryptobyte"
+
 	"github.com/gematik/zero-lab/go/pkcs12"
+	"github.com/gematik/zero-lab/go/pkcs12/internal/conformance"
 )
 
-func loadFile(t *testing.T, filename string) []byte {
+// TestConformance decodes every case of the spec/pkcs12 corpus.
+func TestConformance(t *testing.T) {
+	for _, c := range conformance.Corpus(t) {
+		t.Run(c.ID+"/"+c.Encoding, func(t *testing.T) {
+			bags, err := Decode(c.Data, c.Password)
+			conformance.Check(t, c, bags, err)
+		})
+	}
+}
+
+func vendorFile(t testing.TB, name string) (data, password []byte) {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("testdata", filename))
+	dir := filepath.Join("..", "..", "..", "spec", "pkcs12", "testdata", "vendor")
+	data, err := os.ReadFile(filepath.Join(dir, name+".p12"))
 	if err != nil {
-		t.Fatalf("failed to read %s: %v", filename, err)
+		t.Fatal(err)
 	}
-	return data
+	password, err = os.ReadFile(filepath.Join(dir, name+"-password.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data, bytes.TrimRight(password, "\r\n")
 }
 
-func loadPassword(t *testing.T, filename string) string {
-	t.Helper()
-	data := loadFile(t, filename)
-	return strings.TrimSpace(string(data))
-}
-
-func TestIsBER(t *testing.T) {
+// TestVendorFiles reads the two connector client identities without OpenSSL;
+// it runs where the corpus cannot be generated.
+func TestVendorFiles(t *testing.T) {
 	tests := []struct {
-		name string
-		data []byte
-		want bool
+		name     string
+		certs    int
+		leafName string
+		leafSHA  string
 	}{
-		{
-			name: "BER indefinite length",
-			data: []byte{0x30, 0x80, 0x01, 0x02},
-			want: true,
-		},
-		{
-			name: "DER definite length",
-			data: []byte{0x30, 0x10, 0x01, 0x02},
-			want: false,
-		},
-		{
-			name: "too short",
-			data: []byte{0x30},
-			want: false,
-		},
-		{
-			name: "empty",
-			data: []byte{},
-			want: false,
-		},
+		{"cgm", 2, "test-cs2", "0933a917958c818107528d747fe480c5fc9b92556bdb46a0295aca3f5d5aa944"},
+		{"secunet", 1, "valid_ec", "ea5011332622957771eb448cfba188951d59f8fdc9b39bf4bd242b3c4f153341"},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := IsBER(tt.data)
-			if got != tt.want {
-				t.Errorf("IsBER() = %v, want %v", got, tt.want)
+			data, password := vendorFile(t, tt.name)
+			if !IsBER(data) {
+				t.Fatal("vendor file is expected to be BER")
+			}
+			if _, err := pkcs12.Decode(data, password); !errors.Is(err, pkcs12.ErrInvalidPFX) {
+				t.Errorf("pkcs12.Decode error = %v, want ErrInvalidPFX", err)
+			}
+
+			bags, err := Decode(data, password)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(bags.Certificates) != tt.certs || len(bags.PrivateKeys) != 1 {
+				t.Fatalf("%d certificates and %d keys, want %d and 1", len(bags.Certificates), len(bags.PrivateKeys), tt.certs)
+			}
+			pairs := bags.FindMatchingPairs()
+			if len(pairs) != 1 {
+				t.Fatalf("%d pairs, want 1", len(pairs))
+			}
+			sum := sha256.Sum256(pairs[0].Certificate.Raw)
+			if got := hex.EncodeToString(sum[:]); got != tt.leafSHA {
+				t.Errorf("paired certificate %s, want %s", got, tt.leafSHA)
+			}
+			if pairs[0].Certificate.FriendlyName != tt.leafName || pairs[0].PrivateKey.FriendlyName != tt.leafName {
+				t.Errorf("friendly names %q/%q, want %q", pairs[0].Certificate.FriendlyName, pairs[0].PrivateKey.FriendlyName, tt.leafName)
+			}
+
+			if _, err := Decode(data, []byte("wrong")); !errors.Is(err, pkcs12.ErrAuthentication) {
+				t.Errorf("wrong password: error = %v, want ErrAuthentication", err)
 			}
 		})
 	}
 }
 
-func TestConvertWithOpenSSL_CGM(t *testing.T) {
-	berData := loadFile(t, "cgm.p12")
-	password := loadPassword(t, "cgm-password.txt")
-
-	if !IsBER(berData) {
-		t.Skip("cgm.p12 is not BER encoded")
-	}
-
-	derData, err := ConvertWithOpenSSL(berData, password)
+func TestConvertWithOpenSSL(t *testing.T) {
+	data, password := vendorFile(t, "secunet")
+	modern, err := ConvertWithOpenSSL(data, string(password))
 	if err != nil {
-		t.Fatalf("ConvertWithOpenSSL failed: %v", err)
+		t.Fatal(err)
 	}
-
-	if len(derData) == 0 {
-		t.Fatal("converted data is empty")
+	if IsBER(modern) {
+		t.Error("converted file is BER")
 	}
-
-	pfx, err := pkcs12.Parse(derData)
+	want, err := Decode(data, password)
 	if err != nil {
-		t.Fatalf("Parse failed: %v", err)
+		t.Fatal(err)
 	}
-
-	bags, err := pkcs12.ExtractBags(pfx, []byte(password))
+	got, err := pkcs12.Decode(modern, password)
 	if err != nil {
-		t.Fatalf("ExtractBags failed: %v", err)
+		t.Fatalf("pkcs12.Decode of the converted file: %v", err)
 	}
-
-	if len(bags.Certificates) == 0 {
-		t.Error("no certificates found")
+	if !bytes.Equal(got.Certificates[0].Raw, want.Certificates[0].Raw) || !bytes.Equal(got.PrivateKeys[0].Raw, want.PrivateKeys[0].Raw) {
+		t.Error("converted file holds other contents")
 	}
-
-	t.Logf("Certificates: %d", len(bags.Certificates))
-	for i, certBag := range bags.Certificates {
-		cert, err := x509.ParseCertificate(certBag.Raw)
-		if err != nil {
-			t.Logf("  Certificate %d: parse error: %v", i, err)
-			continue
-		}
-		t.Logf("  Certificate %d: %s", i, cert.Subject.CommonName)
-	}
-
-	t.Logf("Keys: %d", len(bags.PrivateKeys))
-	t.Logf("Pairs: %d", len(bags.FindMatchingPairs()))
 }
 
-func TestConvertWithOpenSSL_Secunet(t *testing.T) {
-	berData := loadFile(t, "secunet.p12")
-	password := loadPassword(t, "secunet-password.txt")
-
-	if !IsBER(berData) {
-		t.Skip("secunet.p12 is not BER encoded")
-	}
-
-	derData, err := ConvertWithOpenSSL(berData, password)
-	if err != nil {
-		t.Fatalf("ConvertWithOpenSSL failed: %v", err)
-	}
-
-	if len(derData) == 0 {
-		t.Fatal("converted data is empty")
-	}
-
-	pfx, err := pkcs12.Parse(derData)
-	if err != nil {
-		t.Fatalf("Parse failed: %v", err)
-	}
-
-	bags, err := pkcs12.ExtractBags(pfx, []byte(password))
-	if err != nil {
-		t.Fatalf("ExtractBags failed: %v", err)
-	}
-
-	if len(bags.Certificates) == 0 {
-		t.Error("no certificates found")
-	}
-
-	t.Logf("Certificates: %d", len(bags.Certificates))
-	for i, certBag := range bags.Certificates {
-		cert, err := x509.ParseCertificate(certBag.Raw)
-		if err != nil {
-			t.Logf("  Certificate %d: parse error: %v", i, err)
-			continue
+func TestIsBER(t *testing.T) {
+	for _, tt := range []struct {
+		data []byte
+		want bool
+	}{
+		{[]byte{0x30, 0x80, 0x01}, true},
+		{[]byte{0x30, 0x10, 0x01}, false},
+		{[]byte{0x30}, false},
+		{nil, false},
+	} {
+		if got := IsBER(tt.data); got != tt.want {
+			t.Errorf("IsBER(% x) = %v, want %v", tt.data, got, tt.want)
 		}
-		t.Logf("  Certificate %d: %s", i, cert.Subject.CommonName)
 	}
+}
 
-	t.Logf("Keys: %d", len(bags.PrivateKeys))
-	t.Logf("Pairs: %d", len(bags.FindMatchingPairs()))
+// TestEncryptedContentSegments covers the constructed form of
+// encryptedContent, which only the schema can join.
+func TestEncryptedContentSegments(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"primitive", "80 03 01 02 03", "01 02 03"},
+		{"constructed", "A0 08 04 02 01 02 04 02 03 04", "01 02 03 04"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := unhex(t, tt.in)
+			s := cryptobyteString(in)
+			got, err := encryptedContent(&s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := unhex(t, tt.want); !bytes.Equal(got, want) {
+				t.Errorf("got % x, want % x", got, want)
+			}
+		})
+	}
+	s := cryptobyteString(unhex(t, "A0 03 0C 01 41"))
+	if _, err := encryptedContent(&s); !errors.Is(err, pkcs12.ErrParse) {
+		t.Errorf("segment of another type: error = %v, want ErrParse", err)
+	}
+}
+
+func FuzzDecode(f *testing.F) {
+	data, password := vendorFile(f, "secunet")
+	f.Add(data, password)
+	f.Fuzz(func(t *testing.T, data, password []byte) {
+		bags, err := Decode(data, password)
+		if err == nil && bags == nil {
+			t.Fatal("nil Bags without error")
+		}
+	})
+}
+
+func unhex(t *testing.T, s string) []byte {
+	t.Helper()
+	b, err := hex.DecodeString(strings.ReplaceAll(s, " ", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func cryptobyteString(b []byte) cryptobyte.String { return cryptobyte.String(b) }
+
+func ExampleDecode() {
+	data, err := os.ReadFile("../../../spec/pkcs12/testdata/vendor/secunet.p12")
+	if err != nil {
+		log.Fatal(err)
+	}
+	password, err := os.ReadFile("../../../spec/pkcs12/testdata/vendor/secunet-password.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+	// legacy.Decode reads BER and RC2 as well as everything pkcs12.Decode reads.
+	bags, err := Decode(data, bytes.TrimSpace(password))
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, pair := range bags.FindMatchingPairs() {
+		fmt.Println(pair.Certificate.FriendlyName)
+	}
+	// Output: valid_ec
 }
