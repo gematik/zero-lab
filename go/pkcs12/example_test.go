@@ -25,142 +25,105 @@ import (
 	"crypto/x509"
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/gematik/zero-lab/go/pkcs12"
 )
 
-// ExampleParse demonstrates basic PKCS#12 file parsing
-func ExampleParse() {
-	// Assume we have PKCS#12 DER-encoded data
-	var p12Data []byte // load from file
-
-	// Parse the PFX structure
-	pfx, err := pkcs12.Parse(p12Data)
+func ExampleEncode() {
+	certDER, keyDER := exampleIdentity()
+	bags := &pkcs12.Bags{
+		Certificates: []pkcs12.CertificateBag{{Raw: certDER, FriendlyName: "client", LocalKeyID: []byte{1}}},
+		PrivateKeys:  []pkcs12.PrivateKeyBag{{Raw: keyDER, FriendlyName: "client", LocalKeyID: []byte{1}}},
+	}
+	data, err := pkcs12.Encode(bags, []byte("password"))
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	fmt.Printf("PFX Version: %d\n", pfx.Version)
-	fmt.Printf("Has MAC: %v\n", pfx.MacData != nil)
+	pfx, err := pkcs12.Parse(data)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("version:", pfx.Version, "MAC:", pfx.MacData.Mac.Algorithm.Algorithm.Equal(pkcs12.OIDSHA256))
+	// Output: version: 3 MAC: true
 }
 
-// ExampleDecode demonstrates the simple high-level decode API
 func ExampleDecode() {
-	// Read PKCS#12 data (from file, HTTP response, embedded data, etc.)
-	data, err := os.ReadFile("keystore.p12")
-	if err != nil {
-		log.Fatal(err)
-	}
+	data := exampleFile()
 
-	// One-step decode
 	bags, err := pkcs12.Decode(data, []byte("password"))
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	// Use certificates
-	for _, certBag := range bags.Certificates {
-		cert, _ := x509.ParseCertificate(certBag.Raw)
-		fmt.Println("Certificate:", cert.Subject)
+	for _, pair := range bags.FindMatchingPairs() {
+		cert, err := x509.ParseCertificate(pair.Certificate.Raw)
+		if err != nil {
+			log.Fatal(err)
+		}
+		key, err := x509.ParsePKCS8PrivateKey(pair.PrivateKey.Raw)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("%s: %s with %T\n", pair.Certificate.FriendlyName, cert.Subject.CommonName, key)
 	}
-
-	// Use private keys
-	for _, keyBag := range bags.PrivateKeys {
-		key, _ := x509.ParsePKCS8PrivateKey(keyBag.Raw)
-		fmt.Printf("Key: %T\n", key)
-	}
+	// Output: client: pkcs12 test ec TEST-ONLY with *ecdsa.PrivateKey
 }
 
-// ExampleEncode demonstrates creating PKCS#12 data
-func ExampleEncode() {
-	// Assume we have certificate and key DER bytes
-	var certDER, keyDER []byte
-
-	bags := &pkcs12.Bags{
-		Certificates: []pkcs12.CertificateBag{{
-			Raw:        certDER,
-			LocalKeyID: []byte{1, 2, 3, 4},
-		}},
-		PrivateKeys: []pkcs12.PrivateKeyBag{{
-			Raw:        keyDER,
-			LocalKeyID: []byte{1, 2, 3, 4},
-		}},
-	}
-
-	// Encode to bytes
-	p12Data, err := pkcs12.Encode(bags, []byte("password"))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Write to file
-	os.WriteFile("keystore.p12", p12Data, 0600)
-
-	fmt.Printf("Encoded %d bytes\n", len(p12Data))
-}
-
-// ExampleExtractBags demonstrates extracting certificates and keys with low-level API
-func ExampleExtractBags() {
-	var p12Data []byte // load from file
-	password := []byte("mypassword")
-
-	// Parse the PKCS#12 file
-	pfx, err := pkcs12.Parse(p12Data)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Extract all certificates and keys in one call
-	bags, err := pkcs12.ExtractBags(pfx, password)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Access certificates with metadata
-	for i, certBag := range bags.Certificates {
-		fmt.Printf("Certificate %d:\n", i)
-		fmt.Printf("  FriendlyName: %s\n", certBag.FriendlyName)
-		fmt.Printf("  LocalKeyID: %x\n", certBag.LocalKeyID)
-	}
-
-	// Access private keys with metadata
-	for i, keyBag := range bags.PrivateKeys {
-		fmt.Printf("Private Key %d:\n", i)
-		fmt.Printf("  FriendlyName: %s\n", keyBag.FriendlyName)
-		fmt.Printf("  LocalKeyID: %x\n", keyBag.LocalKeyID)
-	}
-
-	// Find matching certificate/key pairs
-	pairs := bags.FindMatchingPairs()
-	for i, pair := range pairs {
-		fmt.Printf("Pair %d: cert and key with LocalKeyID %x\n",
-			i, pair.Certificate.LocalKeyID)
-	}
-}
-
-// ExampleEncodeWithOptions demonstrates custom encoding options
 func ExampleEncodeWithOptions() {
-	var certDER, keyDER []byte
-
+	certDER, keyDER := exampleIdentity()
 	bags := &pkcs12.Bags{
 		Certificates: []pkcs12.CertificateBag{{Raw: certDER}},
 		PrivateKeys:  []pkcs12.PrivateKeyBag{{Raw: keyDER}},
 	}
-
-	// Customize security parameters
 	opts := pkcs12.DefaultEncodeOptions()
-	opts.Iterations = 10000              // Higher iterations for more security
-	opts.MacAlgorithm = pkcs12.OIDSHA512 // Use SHA-512 for MAC
+	opts.Iterations = 100_000
+	opts.MacAlgorithm = pkcs12.OIDSHA512
 
-	password := []byte("very-secure-password")
-
-	p12Data, err := pkcs12.EncodeWithOptions(bags, password, opts)
+	data, err := pkcs12.EncodeWithOptions(bags, []byte("password"), opts)
 	if err != nil {
 		log.Fatal(err)
 	}
+	pfx, err := pkcs12.Parse(data)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("MAC iterations:", pfx.MacData.Iterations)
+	// Output: MAC iterations: 100000
+}
 
-	os.WriteFile("secure-keystore.p12", p12Data, 0600)
+func ExampleExtractBags() {
+	data := exampleFile()
 
-	fmt.Println("PKCS#12 file created with custom security parameters")
+	pfx, err := pkcs12.Parse(data)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if pfx.MacData == nil {
+		log.Fatal("file has no integrity protection")
+	}
+	bags, err := pkcs12.ExtractBags(pfx, []byte("password"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(len(bags.Certificates), "certificate,", len(bags.PrivateKeys), "key")
+	// Output: 1 certificate, 1 key
+}
+
+func exampleFile() []byte {
+	certDER, keyDER := exampleIdentity()
+	data, err := pkcs12.Encode(&pkcs12.Bags{
+		Certificates: []pkcs12.CertificateBag{{Raw: certDER, FriendlyName: "client", LocalKeyID: []byte{1}}},
+		PrivateKeys:  []pkcs12.PrivateKeyBag{{Raw: keyDER, FriendlyName: "client", LocalKeyID: []byte{1}}},
+	}, []byte("password"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	return data
+}
+
+func exampleIdentity() (certDER, keyDER []byte) {
+	certDER, keyDER, err := newIdentity("ec")
+	if err != nil {
+		log.Fatal(err)
+	}
+	return certDER, keyDER
 }

@@ -19,189 +19,63 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-// Package pkcs12 implements PKCS#12 (RFC 7292) encoding and decoding.
+// Package pkcs12 encodes and decodes PKCS#12 files (RFC 7292), the .p12 and
+// .pfx containers of X.509 certificates and their private keys.
 //
-// PKCS#12 is a binary format for storing and transporting X.509 certificates
-// and their associated private keys, typically in .p12 or .pfx files.
+// The package works on byte slices, has no platform dependencies and builds
+// for WebAssembly. Certificates come back as DER (x509.ParseCertificate),
+// keys as PKCS#8 DER (x509.ParsePKCS8PrivateKey).
 //
-// # Features
+// # Decoding
 //
-// This package provides:
-//   - Full RFC 7292 compliant parsing and encoding
-//   - Modern cryptography: PBES2/PBKDF2 with AES-128/192/256-CBC
-//   - Legacy support: 3DES-CBC for compatibility
-//   - MAC verification with SHA-256/384/512
-//   - Zero-copy parsing using cryptobytes
-//   - Byte-oriented API (no file I/O dependencies)
+// Decode verifies the MAC, decrypts every safe and returns the bags:
 //
-// # Quick Start
+//	bags, err := pkcs12.Decode(data, password)
+//	for _, pair := range bags.FindMatchingPairs() {
+//		cert, _ := x509.ParseCertificate(pair.Certificate.Raw)
+//		key, _ := x509.ParsePKCS8PrivateKey(pair.PrivateKey.Raw)
+//	}
 //
-// Read PKCS#12 data:
+// Parse and ExtractBags split this in two steps, e.g. to insist on a MAC
+// (pfx.MacData != nil) before decrypting. ParseAuthenticatedSafe,
+// ParseSafeContents, DecryptEncryptedData, DecryptShroudedKeyBag and
+// VerifyMAC give access to every layer.
 //
-// data, _ := os.ReadFile("keystore.p12")
-// bags, err := pkcs12.Decode(data, []byte("password"))
-// if err != nil {
-// log.Fatal(err)
-// }
+// This package reads DER. Files in BER encoding, or encrypted with RC2,
+// two-key Triple DES or DES-EDE3 in PBES2, as Java keystores, Windows,
+// OpenSSL -legacy and the card vendors of the telematics infrastructure write
+// them, are read by package legacy, whose Decode returns the same Bags.
 //
-// for _, certBag := range bags.Certificates {
-// cert, _ := x509.ParseCertificate(certBag.Raw)
-// fmt.Println("Certificate:", cert.Subject)
-// }
+// # Encoding
 //
-// Create PKCS#12 data:
+// Encode writes the format of OpenSSL 3's default export: PBES2 with
+// AES-256-CBC and PBKDF2-HMAC-SHA-256 for keys and the certificate safe,
+// 2048 iterations, an HMAC-SHA-256 MAC, random salts and IVs, DER.
+// EncodeWithOptions selects AES-128/192, SHA-384/512, more iterations,
+// separate passwords, unencrypted certificates or no MAC.
 //
-// bags := &pkcs12.Bags{
-// Certificates: []pkcs12.CertificateBag{{
-// Raw:        certDER,
-// LocalKeyID: []byte{1, 2, 3, 4},
-// }},
-// PrivateKeys: []pkcs12.PrivateKeyBag{{
-// Raw:        keyDER,
-// LocalKeyID: []byte{1, 2, 3, 4},
-// }},
-// }
+// # Security posture
 //
-// p12Data, err := pkcs12.Encode(bags, []byte("password"))
-// os.WriteFile("keystore.p12", p12Data, 0600)
+// Accepted when reading:
+//   - integrity: HMAC with SHA-1, SHA-224, SHA-256, SHA-384 or SHA-512 and the
+//     PKCS#12 key derivation (RFC 7292 appendix B); a file without MAC is
+//     accepted and has pfx.MacData == nil;
+//   - privacy: PBES2 with PBKDF2 (HMAC-SHA-1 to -SHA-512) and AES-CBC, and
+//     pbeWithSHAAnd3-KeyTripleDES-CBC.
 //
-// # API Levels
+// Rejected: the public-key integrity and privacy modes, PBMAC1 (RFC 9579),
+// RC4, single DES, unknown PRFs and ciphers (ErrUnsupportedAlgorithm), and
+// iteration counts above 10,000,000 (ErrLimitExceeded). The MAC is checked
+// before anything inside the authSafe is parsed. Legacy algorithms are never
+// written.
 //
-// The package provides three levels of API:
+// # Errors
 //
-// High-Level (Recommended):
+// Test errors with errors.Is: ErrInvalidPFX and ErrParse for structure,
+// ErrAuthentication for a MAC mismatch (wrong password or altered file),
+// ErrDecryption for ciphertext that does not decrypt (wrong password in a
+// file without MAC), ErrUnsupportedAlgorithm and ErrLimitExceeded.
 //
-// Decode(data, password) - Parse and extract in one step
-// Encode(bags, password) - Create PKCS#12 with secure defaults
-// EncodeWithOptions(bags, password, opts) - Custom options
-//
-// Mid-Level:
-//
-// Parse(data) + ExtractBags(pfx, password) - Two-step decode
-// Individual bag extraction functions
-//
-// Low-Level:
-//
-// ParseAuthenticatedSafe(data) - Parse structure
-// ParseSafeContents(data) - Parse bags
-// DecryptShroudedKeyBag(bag, password) - Decrypt keys
-// VerifyMAC(pfx, password) - Verify integrity
-//
-// # WASM Compatibility
-//
-// This package is designed to work in WebAssembly:
-//   - No file I/O - works with []byte
-//   - No platform-specific syscalls
-//   - Pure Go cryptography
-//
-// Example WASM usage:
-//
-// //export decodePKCS12
-// func decodePKCS12(data []byte, password []byte) []byte {
-// bags, _ := pkcs12.Decode(data, password)
-// // Return serialized bags
-// }
-//
-// # Security
-//
-// Default encoding uses modern cryptography:
-//
-// Encryption:  AES-256-CBC with PBKDF2
-// KDF:         PBKDF2 with 2048 iterations
-// MAC:         HMAC-SHA256
-//
-// Supported algorithms:
-//   - PBES2 with AES-128/192/256-CBC
-//   - PBKDF2 with SHA-256/384/512
-//   - 3DES-CBC (legacy compatibility)
-//
-// Intentionally unsupported (insecure):
-//   - MD5-based algorithms
-//   - RC4
-//   - Single DES
-//   - Weak RC2 variants
-//
-// # Structure
-//
-// PKCS#12 follows this hierarchy:
-//
-// PFX
-// ├── Version (3)
-// ├── AuthSafe (ContentInfo)
-// │   └── AuthenticatedSafe
-// │       └── [ContentInfo...]
-// │           ├── Data (unencrypted SafeContents)
-// │           └── EncryptedData (encrypted SafeContents)
-// │               └── SafeContents
-// │                   └── [SafeBag...]
-// │                       ├── CertBag
-// │                       ├── PKCS8ShroudedKeyBag (encrypted)
-// │                       ├── KeyBag (unencrypted)
-// │                       └── Attributes (FriendlyName, LocalKeyID)
-// └── MacData (optional integrity check)
-//
-// # Types
-//
-// Core structures (low-level):
-//
-// PFX - Top-level PKCS#12 structure
-// ContentInfo - Container for encrypted or unencrypted data
-// SafeContents - Collection of SafeBags
-// SafeBag - Individual item (certificate or key)
-// MacData - MAC for integrity verification
-//
-// High-level types:
-//
-// Bags - Collection of certificates and keys
-// CertificateBag - Certificate with metadata
-// PrivateKeyBag - Private key with metadata
-// CertKeyPair - Matched certificate and key
-//
-// # Examples
-//
-// Custom encoding options:
-//
-// opts := pkcs12.DefaultEncodeOptions()
-// opts.Iterations = 10000                    // More iterations
-// opts.MacAlgorithm = pkcs12.OIDSHA512       // SHA-512 for MAC
-//
-// p12Data, _ := pkcs12.EncodeWithOptions(bags, password, opts)
-//
-// Find matching certificates and keys:
-//
-// pairs := bags.FindMatchingPairs()
-// for _, pair := range pairs {
-// cert, _ := x509.ParseCertificate(pair.Certificate.Raw)
-// key, _ := x509.ParsePKCS8PrivateKey(pair.PrivateKey.Raw)
-// // Use matched cert and key
-// }
-//
-// Low-level parsing:
-//
-// pfx, _ := pkcs12.Parse(data)
-//
-// // Verify MAC
-// if err := pkcs12.VerifyMAC(pfx, password); err != nil {
-// log.Fatal("MAC verification failed:", err)
-// }
-//
-// // Parse authenticated safe
-// authSafe, _ := pkcs12.ParseAuthenticatedSafe(pfx.RawAuthSafe)
-//
-// // Process each ContentInfo
-// for _, ci := range authSafe.ContentInfos {
-// if ci.ContentType.Equal(pkcs12.OIDData) {
-// // Unencrypted data
-// safeContents, _ := pkcs12.ParseSafeContents(ci.Content)
-// // Process bags...
-// }
-// }
-//
-// # References
-//
-// RFC 7292: PKCS #12: Personal Information Exchange Syntax v1.1
-// https://tools.ietf.org/html/rfc7292
-//
-// RFC 8018: PKCS #5: Password-Based Cryptography Specification Version 2.1
-// https://tools.ietf.org/html/rfc8018
+// The language-neutral specification and conformance corpus this package is
+// tested against are in spec/pkcs12 of the repository.
 package pkcs12
