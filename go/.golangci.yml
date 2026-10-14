@@ -51,13 +51,6 @@ linters:
       - path: brainpool/
         linters: [staticcheck]
         text: "QF1008: could remove embedded field \"(Curve|PublicKey)\""
-      # josebp.JWT.HeadersJson/PayloadJson and JSONWebKey.Algortihm are public API since v1.
-      - path: brainpool/josebp/
-        linters: [revive]
-        text: "var-naming: struct field (HeadersJson|PayloadJson)"
-      - path: brainpool/josebp/
-        linters: [misspell]
-        text: Algortihm
       # Point methods name the destination q and the operand p, as nistec does.
       - path: brainpool/internal/bp256/point\.go
         linters: [revive]

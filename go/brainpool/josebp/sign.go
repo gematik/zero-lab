@@ -33,11 +33,9 @@ import (
 // JWT is a parsed compact JWS: the raw token, its decoded header and payload
 // JSON, the raw r‖s signature and the unmarshaled header and claims.
 type JWT struct {
-	Raw []byte
-	//lint:ignore ST1003 exported since v1; the Go-style name would break the module's API
-	HeadersJson []byte
-	//lint:ignore ST1003 exported since v1; the Go-style name would break the module's API
-	PayloadJson []byte
+	Raw         []byte
+	HeadersJSON []byte
+	PayloadJSON []byte
 	Signature   []byte
 	Headers     map[string]any
 	Claims      map[string]any

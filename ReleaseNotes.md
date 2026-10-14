@@ -1,6 +1,10 @@
 # Release Notes
 
-# Release go/brainpool v1.1.1
+# Release go/brainpool v1.2.0
+
+### breaking
+- `josebp.JWT.HeadersJson` and `PayloadJson` are renamed to `HeadersJSON` and `PayloadJSON`;
+  `josebp.JSONWebKey.Algortihm` is renamed to `Algorithm`. The JSON encoding of a JWK is unchanged.
 
 ### fixed
 - `josebp.ParseToken` with `WithKey` no longer panics on a signature that is shorter than the

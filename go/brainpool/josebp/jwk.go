@@ -38,7 +38,7 @@ import (
 type JSONWebKey struct {
 	KeyType         string              `json:"kty"`
 	Use             string              `json:"use,omitempty"`
-	Algortihm       string              `json:"alg,omitempty"`
+	Algorithm       string              `json:"alg,omitempty"`
 	KeyID           string              `json:"kid,omitempty"`
 	Key             any                 `json:"-"`
 	CertificatesRaw [][]byte            `json:"x5c,omitempty"`

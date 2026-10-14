@@ -142,7 +142,7 @@ func fetchMetadata(baseURL string, httpClient *http.Client) (*Metadata, error) {
 	slog.Warn("Certificate of discovery document not verified. Don't trust it in production.", "url", resp.Request.URL.String())
 
 	metadata := new(Metadata)
-	err = json.Unmarshal(token.PayloadJson, metadata)
+	err = json.Unmarshal(token.PayloadJSON, metadata)
 	if err != nil {
 		return nil, fmt.Errorf("parsing discovery document: %w", err)
 	}

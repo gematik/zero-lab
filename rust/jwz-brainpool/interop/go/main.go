@@ -180,7 +180,7 @@ func verdict(c testCase, keys map[string]*josebp.JSONWebKey) string {
 	if err != nil {
 		return "failed: " + err.Error()
 	}
-	if string(token.PayloadJson) != c.Payload {
+	if string(token.PayloadJSON) != c.Payload {
 		return "failed: payload differs"
 	}
 	return "ok"

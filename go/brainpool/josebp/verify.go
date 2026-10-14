@@ -117,19 +117,19 @@ func ParseToken(rawToken []byte, verifiers ...VerifierFunc) (*JWT, error) {
 
 	var err error
 
-	if token.HeadersJson, err = base64.RawURLEncoding.DecodeString(string(parts[0])); err != nil {
+	if token.HeadersJSON, err = base64.RawURLEncoding.DecodeString(string(parts[0])); err != nil {
 		return nil, fmt.Errorf("decoding headers: %w", err)
 	}
 
-	if err = json.Unmarshal(token.HeadersJson, &token.Headers); err != nil {
+	if err = json.Unmarshal(token.HeadersJSON, &token.Headers); err != nil {
 		return nil, fmt.Errorf("unmarshaling headers: %w", err)
 	}
 
-	if token.PayloadJson, err = base64.RawURLEncoding.DecodeString(string(parts[1])); err != nil {
+	if token.PayloadJSON, err = base64.RawURLEncoding.DecodeString(string(parts[1])); err != nil {
 		return nil, fmt.Errorf("decoding claims: %w", err)
 	}
 
-	if err = json.Unmarshal(token.PayloadJson, &token.Claims); err != nil {
+	if err = json.Unmarshal(token.PayloadJSON, &token.Claims); err != nil {
 		return nil, fmt.Errorf("unmarshaling claims: %w", err)
 	}
 
