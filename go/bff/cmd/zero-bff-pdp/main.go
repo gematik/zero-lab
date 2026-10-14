@@ -36,14 +36,18 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"log"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/gematik/zero-lab/go/bff"
@@ -153,12 +157,27 @@ func main() {
 	top.HandleFunc("/bff/", bffSlot)
 	top.HandleFunc("/", bffSlot)
 
-	// Serve now so the bff can discover the local AS in this process.
+	// Proxied uploads and downloads may legitimately take long, so there is no whole-request
+	// read or write deadline; slow headers and idle connections are bounded here, and
+	// upstream calls by the proxy's transport.
+	srv := &http.Server{
+		Addr:              p.BindAddress,
+		Handler:           top,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
+	// Serve now so the bff can discover the local AS in this process. Binding first makes a
+	// taken port fatal at once instead of leaving buildBFF retrying discovery forever.
+	ln, err := net.Listen("tcp", p.BindAddress)
+	if err != nil {
+		log.Fatalf("listen: %v", err)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	errc := make(chan error, 1)
 	go func() {
 		slog.Info("pdp-bff listening", "addr", p.BindAddress)
-		if err := http.ListenAndServe(p.BindAddress, top); err != nil {
-			log.Fatalf("serve: %v", err)
-		}
+		errc <- srv.Serve(ln)
 	}()
 
 	h := bff.RecoverMiddleware(buildBFF(bffParams{
@@ -173,7 +192,30 @@ func main() {
 	bffHandler.Store(&h)
 
 	slog.Info("pdp-bff ready", "public_url", publicURL)
-	select {}
+	err = waitAndShutdown(ctx, srv, errc)
+	stop()
+	if err != nil {
+		log.Fatalf("serve: %v", err)
+	}
+}
+
+// waitAndShutdown waits for ctx (SIGINT or SIGTERM) or for the server to fail, then drains
+// in-flight requests within the Kubernetes termination grace period (30 s by default).
+func waitAndShutdown(ctx context.Context, srv *http.Server, errc <-chan error) error {
+	select {
+	case err := <-errc:
+		return err
+	case <-ctx.Done():
+	}
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return err
+	}
+	if err := <-errc; !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
 
 type bffParams struct {

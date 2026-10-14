@@ -24,10 +24,14 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gematik/zero-lab/go/bff"
 	"github.com/gematik/zero-lab/go/bff/gateway"
@@ -102,8 +106,45 @@ func main() {
 		log.Fatalf("build handler: %v", err)
 	}
 
+	// Proxied uploads and downloads may legitimately take long, so there is no whole-request
+	// read or write deadline; slow headers and idle connections are bounded here, and
+	// upstream calls by the proxy's transport.
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           bff.RecoverMiddleware(handler),
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
 	slog.Info("bff listening", "addr", addr, "public_url", publicURL, "gateway", len(routes) > 0)
-	log.Fatal(http.ListenAndServe(addr, bff.RecoverMiddleware(handler)))
+	if err := serve(srv); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// serve runs srv until SIGINT or SIGTERM, then drains in-flight requests within the
+// Kubernetes termination grace period (30 s by default).
+func serve(srv *http.Server) error {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	errc := make(chan error, 1)
+	go func() { errc <- srv.ListenAndServe() }()
+
+	select {
+	case err := <-errc:
+		return err
+	case <-ctx.Done():
+	}
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return err
+	}
+	if err := <-errc; !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
 
 // openStore returns the kv backend: Postgres when DATABASE_URL is set, otherwise an in-memory store
