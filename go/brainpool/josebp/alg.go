@@ -50,20 +50,16 @@ const (
 
 // hashForCurve returns the hash to use with ECDSA for the given curve's bit size.
 func hashForCurve(curve elliptic.Curve) (hash.Hash, error) {
-	curveBits := curve.Params().BitSize
-
-	var hashFunc hash.Hash
-	if curveBits == 256 {
-		hashFunc = sha256.New()
-	} else if curveBits == 384 {
-		hashFunc = sha512.New384()
-	} else if curveBits == 512 {
-		hashFunc = sha512.New()
-	} else {
+	switch curveBits := curve.Params().BitSize; curveBits {
+	case 256:
+		return sha256.New(), nil
+	case 384:
+		return sha512.New384(), nil
+	case 512:
+		return sha512.New(), nil
+	default:
 		return nil, fmt.Errorf("unsupported curve bit size: %d", curveBits)
 	}
-
-	return hashFunc, nil
 }
 
 // bitSizeForAlg returns the curve bit size implied by a JOSE signature algorithm

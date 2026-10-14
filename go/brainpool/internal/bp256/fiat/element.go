@@ -23,6 +23,7 @@ type Element struct {
 	x bp256MontgomeryDomainFieldElement
 }
 
+// ElementLen is the length of the big-endian encoding of an Element.
 const ElementLen = 32
 
 type bp256UntypedFieldElement = [4]uint64
@@ -79,7 +80,7 @@ func (e *Element) SetBytes(v []byte) (*Element, error) {
 
 	// Check for non-canonical encodings (p + k, 2p + k, etc.) by comparing to
 	// the encoding of -1 mod p, so p - 1, the highest canonical encoding.
-	var minusOneEncoding = new(Element).Sub(
+	minusOneEncoding := new(Element).Sub(
 		new(Element), new(Element).One()).Bytes()
 	if ConstantTimeLessOrEq(v, minusOneEncoding) == 0 {
 		return nil, errors.New("invalid Element encoding")

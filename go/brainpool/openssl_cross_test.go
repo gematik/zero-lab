@@ -38,9 +38,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/gematik/zero-lab/go/brainpool/internal/bp256"
 	"golang.org/x/crypto/cryptobyte"
 	cbasn1 "golang.org/x/crypto/cryptobyte/asn1"
+
+	"github.com/gematik/zero-lab/go/brainpool/internal/bp256"
 )
 
 func opensslBin(t *testing.T) string {
@@ -149,8 +150,10 @@ func readOpenSSLKey(t *testing.T, openssl, keyPEM string) ([]byte, *ecdsa.Public
 	if err != nil || len(pb) != 65 || pb[0] != 0x04 {
 		t.Fatalf("pub hex: %v (len %d)", err, len(pb))
 	}
-	pub := &ecdsa.PublicKey{Curve: P256r1(),
-		X: new(big.Int).SetBytes(pb[1:33]), Y: new(big.Int).SetBytes(pb[33:])}
+	pub := &ecdsa.PublicKey{
+		Curve: P256r1(),
+		X:     new(big.Int).SetBytes(pb[1:33]), Y: new(big.Int).SetBytes(pb[33:]),
+	}
 	return d, pub
 }
 
@@ -193,7 +196,7 @@ func run(t *testing.T, name string, args ...string) []byte {
 
 func write(t *testing.T, path string, data []byte) {
 	t.Helper()
-	if err := os.WriteFile(path, data, 0600); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 }

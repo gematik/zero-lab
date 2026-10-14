@@ -135,7 +135,7 @@ func TestDiffAddMatchesRcurve(t *testing.T) {
 			// rcurve oracle: (kj*G) + (kk*G).
 			rx, ry := curve.Add(xj, yj, xk, yk)
 			var orx, ory *big.Int
-			if !(rx.Sign() == 0 && ry.Sign() == 0) {
+			if rx.Sign() != 0 || ry.Sign() != 0 {
 				orx, ory = rx, ry
 			}
 			got := new(bp256.Point).Add(loadBP(t, xj, yj), loadBP(t, xk, yk))
@@ -172,7 +172,7 @@ func TestDiffScalarMultMatchesRcurve(t *testing.T) {
 	for _, k := range diffScalars() {
 		rx, ry := curve.ScalarMult(gx, gy, k.Bytes())
 		var orx, ory *big.Int
-		if !(rx.Sign() == 0 && ry.Sign() == 0) {
+		if rx.Sign() != 0 || ry.Sign() != 0 {
 			orx, ory = rx, ry
 		}
 		got := new(bp256.Point).ScalarMult(base, k.Bytes())
@@ -191,7 +191,7 @@ func TestDiffInverseIsInfinity(t *testing.T) {
 		negY := new(big.Int).Sub(p, y)
 		// rcurve: P + (-P) = infinity, represented (0,0).
 		rx, ry := curve.Add(x, y, x, negY)
-		if !(rx.Sign() == 0 && ry.Sign() == 0) {
+		if rx.Sign() != 0 || ry.Sign() != 0 {
 			t.Fatalf("rcurve P+(-P) not infinity: (%x,%x)", rx, ry)
 		}
 		got := new(bp256.Point).Add(loadBP(t, x, y), loadBP(t, x, negY))

@@ -22,6 +22,7 @@
 package brainpool_test
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -31,11 +32,10 @@ import (
 	"encoding/asn1"
 	"encoding/pem"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/gematik/zero-lab/go/brainpool"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // A certificate whose subject public key does not decode to a point on the
@@ -44,42 +44,47 @@ func TestParseCertificate_RejectsInvalidPublicKeyPoint(t *testing.T) {
 	block, _ := pem.Decode(testCertBytes)
 	der := append([]byte(nil), block.Bytes...)
 	cert, err := brainpool.ParseCertificate(der)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// The SPKI ends with the uncompressed point 0x04‖X‖Y; corrupt the last
 	// byte of Y so (X, Y) is no longer on the curve.
 	spki := cert.RawSubjectPublicKeyInfo
-	require.Equal(t, byte(0x04), spki[len(spki)-64-1])
+	if len(spki) < 65 || spki[len(spki)-64-1] != 0x04 {
+		t.Fatalf("SPKI does not end with an uncompressed P-256 point: %X", spki)
+	}
 	tampered := append([]byte(nil), der...)
-	off := indexOf(der, spki)
-	require.GreaterOrEqual(t, off, 0)
+	off := bytes.Index(der, spki)
+	if off < 0 {
+		t.Fatal("RawSubjectPublicKeyInfo is not a slice of the DER")
+	}
 	tampered[off+len(spki)-1] ^= 0x01
 
 	_, err = brainpool.ParseCertificate(tampered)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not on brainpoolP256r1")
-}
-
-func indexOf(haystack, needle []byte) int {
-	for i := 0; i+len(needle) <= len(haystack); i++ {
-		if string(haystack[i:i+len(needle)]) == string(needle) {
-			return i
-		}
+	if err == nil || !strings.Contains(err.Error(), "not on brainpoolP256r1") {
+		t.Fatalf("ParseCertificate(tampered) = %v, want an error about a point not on brainpoolP256r1", err)
 	}
-	return -1
 }
 
 func TestParsePrivateKeyPEM_NonECPKCS8IsAnError(t *testing.T) {
 	_, priv, err := ed25519.GenerateKey(rand.Reader)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	der, err := x509.MarshalPKCS8PrivateKey(priv)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
 
 	key, err := brainpool.ParsePrivateKeyPEM(pemBytes)
-	require.Error(t, err)
-	assert.Nil(t, key)
-	assert.Contains(t, err.Error(), "not an ECDSA key")
+	if err == nil || !strings.Contains(err.Error(), "not an ECDSA key") {
+		t.Fatalf("ParsePrivateKeyPEM(Ed25519) error = %v, want \"not an ECDSA key\"", err)
+	}
+	if key != nil {
+		t.Error("ParsePrivateKeyPEM returned a key along with the error")
+	}
 }
 
 // The public key is recomputed from d; it must agree with the point the SEC1
@@ -87,7 +92,9 @@ func TestParsePrivateKeyPEM_NonECPKCS8IsAnError(t *testing.T) {
 func TestParseECPrivateKey_PublicKeyMatchesEmbedded(t *testing.T) {
 	block, _ := pem.Decode(testKeyBytes)
 	key, err := brainpool.ParseECPrivateKey(block.Bytes)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var sec1 struct {
 		Version    int
@@ -95,35 +102,54 @@ func TestParseECPrivateKey_PublicKeyMatchesEmbedded(t *testing.T) {
 		NamedCurve asn1.ObjectIdentifier `asn1:"optional,explicit,tag:0"`
 		PublicKey  asn1.BitString        `asn1:"optional,explicit,tag:1"`
 	}
-	_, err = asn1.Unmarshal(block.Bytes, &sec1)
-	require.NoError(t, err)
+	if _, err := asn1.Unmarshal(block.Bytes, &sec1); err != nil {
+		t.Fatal(err)
+	}
 	pub := sec1.PublicKey.RightAlign()
-	require.Len(t, pub, 65)
-	assert.Equal(t, 0, key.X.Cmp(new(big.Int).SetBytes(pub[1:33])))
-	assert.Equal(t, 0, key.Y.Cmp(new(big.Int).SetBytes(pub[33:])))
+	if len(pub) != 65 {
+		t.Fatalf("embedded public key is %d bytes, want 65", len(pub))
+	}
+	if key.X.Cmp(new(big.Int).SetBytes(pub[1:33])) != 0 || key.Y.Cmp(new(big.Int).SetBytes(pub[33:])) != 0 {
+		t.Error("recomputed public key differs from the embedded one")
+	}
 
 	ox, oy := brainpool.P256r1().ScalarBaseMult(key.D.Bytes())
-	assert.Equal(t, 0, key.X.Cmp(ox))
-	assert.Equal(t, 0, key.Y.Cmp(oy))
+	if key.X.Cmp(ox) != 0 || key.Y.Cmp(oy) != 0 {
+		t.Error("recomputed public key differs from the big.Int oracle")
+	}
 }
 
 func TestGenerateKey(t *testing.T) {
 	for _, curve := range []elliptic.Curve{brainpool.P256r1(), brainpool.P384r1(), brainpool.P512r1(), elliptic.P256()} {
 		t.Run(curve.Params().Name, func(t *testing.T) {
 			key, err := brainpool.GenerateKey(curve, rand.Reader)
-			require.NoError(t, err)
-			assert.Equal(t, curve, key.Curve)
-			assert.Equal(t, 1, key.D.Sign())
-			assert.Less(t, key.D.Cmp(curve.Params().N), 0)
-			assert.True(t, curve.IsOnCurve(key.X, key.Y))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if key.Curve != curve {
+				t.Errorf("key.Curve = %s, want %s", key.Curve.Params().Name, curve.Params().Name)
+			}
+			if key.D.Sign() != 1 || key.D.Cmp(curve.Params().N) >= 0 {
+				t.Error("d is not in [1, n-1]")
+			}
+			if !curve.IsOnCurve(key.X, key.Y) {
+				t.Error("public key is not on the curve")
+			}
 
 			h := sha256.Sum256([]byte("generated key signs"))
 			sig, err := brainpool.SignFuncPrivateKey(key)(h[:])
-			require.NoError(t, err)
+			if err != nil {
+				t.Fatal(err)
+			}
 			n := (curve.Params().BitSize + 7) / 8
+			if len(sig) != 2*n {
+				t.Fatalf("signature is %d bytes, want %d", len(sig), 2*n)
+			}
 			r := new(big.Int).SetBytes(sig[:n])
 			s := new(big.Int).SetBytes(sig[n:])
-			assert.True(t, ecdsa.Verify(&key.PublicKey, h[:], r, s))
+			if !ecdsa.Verify(&key.PublicKey, h[:], r, s) {
+				t.Error("signature does not verify")
+			}
 		})
 	}
 }

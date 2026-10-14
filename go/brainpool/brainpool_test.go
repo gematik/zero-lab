@@ -22,17 +22,17 @@
 package brainpool_test
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/pem"
+	"slices"
 	"testing"
 
 	"github.com/gematik/zero-lab/go/brainpool"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // sample keys and certificates from https://github.com/gematik/erp-e2e-testsuite
@@ -172,7 +172,9 @@ func TestParseCertificatePEM(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseCertificatePEM failed: %v", err)
 	}
-	require.NotNil(t, cert)
+	if cert == nil {
+		t.Fatal("ParseCertificatePEM returned a nil certificate")
+	}
 }
 
 func TestParseCertificateFields(t *testing.T) {
@@ -181,80 +183,91 @@ func TestParseCertificateFields(t *testing.T) {
 		t.Fatalf("ParseCertificatePEM failed: %v", err)
 	}
 
-	// Assert Raw fields are not empty
-	assert.NotEmpty(t, cert.Raw, "Raw certificate should not be empty")
-	assert.Greater(t, len(cert.Raw), 0, "Raw certificate should have meaningful length")
+	for name, raw := range map[string][]byte{
+		"Raw":                     cert.Raw,
+		"RawTBSCertificate":       cert.RawTBSCertificate,
+		"RawSubjectPublicKeyInfo": cert.RawSubjectPublicKeyInfo,
+		"RawSubject":              cert.RawSubject,
+		"RawIssuer":               cert.RawIssuer,
+		"Signature":               cert.Signature,
+	} {
+		if len(raw) == 0 {
+			t.Errorf("%s should not be empty", name)
+		}
+	}
+	if cert.SignatureAlgorithm == x509.UnknownSignatureAlgorithm {
+		t.Error("SignatureAlgorithm should be known")
+	}
+	if cert.PublicKeyAlgorithm == x509.UnknownPublicKeyAlgorithm {
+		t.Error("PublicKeyAlgorithm should be known")
+	}
+	if cert.PublicKey == nil {
+		t.Fatal("PublicKey should not be nil")
+	}
+	if cert.Version < 1 || cert.Version > 3 {
+		t.Errorf("Version = %d, want 1..3", cert.Version)
+	}
+	if cert.SerialNumber == nil {
+		t.Fatal("SerialNumber should not be nil")
+	}
+	if cert.SerialNumber.Sign() <= 0 {
+		t.Error("SerialNumber should be positive")
+	}
 
-	assert.NotEmpty(t, cert.RawTBSCertificate, "RawTBSCertificate should not be empty")
-	assert.Greater(t, len(cert.RawTBSCertificate), 0, "RawTBSCertificate should have meaningful length")
+	if cert.Issuer.String() == "" {
+		t.Error("Issuer should not be empty")
+	}
+	if len(cert.Issuer.OrganizationalUnit) == 0 {
+		t.Fatal("Issuer OrganizationalUnit should not be empty")
+	}
+	if got, want := cert.Issuer.OrganizationalUnit[0], "Institution des Gesundheitswesens-CA der Telematikinfrastruktur"; got != want {
+		t.Errorf("Issuer OrganizationalUnit = %q, want %q", got, want)
+	}
+	if cert.Subject.String() == "" {
+		t.Error("Subject should not be empty")
+	}
+	if got, want := cert.Subject.CommonName, "Arztpraxis Bernd Rosenstrauch TEST-ONLY"; got != want {
+		t.Errorf("Subject CommonName = %q, want %q", got, want)
+	}
 
-	assert.NotEmpty(t, cert.RawSubjectPublicKeyInfo, "RawSubjectPublicKeyInfo should not be empty")
-	assert.Greater(t, len(cert.RawSubjectPublicKeyInfo), 0, "RawSubjectPublicKeyInfo should have meaningful length")
+	if cert.NotBefore.IsZero() || cert.NotAfter.IsZero() {
+		t.Error("NotBefore and NotAfter should be set")
+	}
+	if !cert.NotAfter.After(cert.NotBefore) {
+		t.Error("NotAfter should be after NotBefore")
+	}
 
-	assert.NotEmpty(t, cert.RawSubject, "RawSubject should not be empty")
-	assert.Greater(t, len(cert.RawSubject), 0, "RawSubject should have meaningful length")
+	if len(cert.Extensions) == 0 {
+		t.Error("Extensions should not be empty")
+	}
+	if cert.KeyUsage&x509.KeyUsageDigitalSignature == 0 {
+		t.Errorf("KeyUsage = %v, should contain DigitalSignature", cert.KeyUsage)
+	}
+	if !slices.Contains(cert.ExtKeyUsage, x509.ExtKeyUsageClientAuth) {
+		t.Errorf("ExtKeyUsage = %v, should contain ClientAuth", cert.ExtKeyUsage)
+	}
 
-	assert.NotEmpty(t, cert.RawIssuer, "RawIssuer should not be empty")
-	assert.Greater(t, len(cert.RawIssuer), 0, "RawIssuer should have meaningful length")
+	wantSKID := []byte{0xB2, 0x12, 0xAB, 0xCE, 0x5A, 0xF9, 0x0C, 0xD4, 0xA2, 0x37, 0x3B, 0x04, 0x5D, 0x62, 0xEE, 0x49, 0xC6, 0x40, 0x37, 0x6C}
+	if !bytes.Equal(cert.SubjectKeyId, wantSKID) {
+		t.Errorf("SubjectKeyId = %X, want %X", cert.SubjectKeyId, wantSKID)
+	}
 
-	// Assert Signature fields
-	assert.NotEmpty(t, cert.Signature, "Signature should not be empty")
-	assert.Greater(t, len(cert.Signature), 0, "Signature should have meaningful length")
-	assert.NotEqual(t, x509.UnknownSignatureAlgorithm, cert.SignatureAlgorithm, "SignatureAlgorithm should be known")
+	if cert.IsCA {
+		t.Error("IsCA should be false")
+	}
+	if cert.MaxPathLen != -1 {
+		t.Errorf("MaxPathLen = %d, want -1 when no pathLenConstraint is present", cert.MaxPathLen)
+	}
 
-	// Assert PublicKey fields
-	assert.NotEqual(t, x509.UnknownPublicKeyAlgorithm, cert.PublicKeyAlgorithm, "PublicKeyAlgorithm should be known")
-	require.NotNil(t, cert.PublicKey, "PublicKey should not be nil")
+	if !slices.Equal(cert.OCSPServer, []string{"http://ehca.gematik.de/ecc-ocsp"}) {
+		t.Errorf("OCSPServer = %v", cert.OCSPServer)
+	}
 
-	// Assert Version
-	assert.Greater(t, cert.Version, 0, "Version should be greater than 0")
-	assert.LessOrEqual(t, cert.Version, 3, "Version should be <= 3")
-
-	// Assert SerialNumber
-	require.NotNil(t, cert.SerialNumber, "SerialNumber should not be nil")
-	assert.Greater(t, cert.SerialNumber.Sign(), 0, "SerialNumber should be positive")
-
-	// Assert Issuer
-	assert.NotEmpty(t, cert.Issuer.String(), "Issuer should not be empty")
-	assert.Equal(t, "Institution des Gesundheitswesens-CA der Telematikinfrastruktur", cert.Issuer.OrganizationalUnit[0], "Issuer OrganizationalUnit mismatch")
-
-	// Assert Subject
-	assert.NotEmpty(t, cert.Subject.String(), "Subject should not be empty")
-	assert.Equal(t, "Arztpraxis Bernd Rosenstrauch TEST-ONLY", cert.Subject.CommonName, "Subject CommonName mismatch")
-
-	// Assert Validity bounds
-	assert.False(t, cert.NotBefore.IsZero(), "NotBefore should not be zero")
-	assert.False(t, cert.NotAfter.IsZero(), "NotAfter should not be zero")
-	assert.True(t, cert.NotAfter.After(cert.NotBefore), "NotAfter should be after NotBefore")
-
-	// test extensions
-	assert.Greater(t, len(cert.Extensions), 0, "Extensions should not be empty")
-
-	// test key usage
-	assert.NotZero(t, cert.KeyUsage, "KeyUsage should be set")
-	assert.True(t, cert.KeyUsage&x509.KeyUsageDigitalSignature != 0, "KeyUsage should contain DigitalSignature")
-
-	// test extended key usage
-	assert.Greater(t, len(cert.ExtKeyUsage), 0, "ExtKeyUsage should not be empty")
-	assert.Contains(t, cert.ExtKeyUsage, x509.ExtKeyUsageClientAuth, "ExtKeyUsage should contain ClientAuth")
-
-	// skid
-	assert.Greater(t, len(cert.SubjectKeyId), 0, "SubjectKeyId should not be empty")
-	assert.Equal(t, []byte{0xB2, 0x12, 0xAB, 0xCE, 0x5A, 0xF9, 0x0C, 0xD4, 0xA2, 0x37, 0x3B, 0x04, 0x5D, 0x62, 0xEE, 0x49, 0xC6, 0x40, 0x37, 0x6C}, cert.SubjectKeyId, "SubjectKeyId mismatch")
-
-	// basic constraints
-	assert.True(t, cert.IsCA == false, "IsCA should be false")
-	assert.Equal(t, -1, cert.MaxPathLen, "MaxPathLen is -1 when no pathLenConstraint is present")
-
-	// ocsp
-	assert.Greater(t, len(cert.OCSPServer), 0, "OCSPServer should not be empty")
-	assert.Equal(t, "http://ehca.gematik.de/ecc-ocsp", cert.OCSPServer[0], "OCSPServer mismatch")
-
-	// must contail policy identifiers 1.2.276.0.76.4.163 and 1.2.276.0.76.4.77
-	assert.Greater(t, len(cert.PolicyIdentifiers), 0, "PolicyIdentifiers should not be empty")
-	assert.Contains(t, cert.PolicyIdentifiers, asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 163}, "PolicyIdentifiers should contain 1.2.276.0.76.4.163")
-	assert.Contains(t, cert.PolicyIdentifiers, asn1.ObjectIdentifier{1, 2, 276, 0, 76, 4, 77}, "PolicyIdentifiers should contain 1.2.276.0.76.4.77")
-
+	for _, oid := range []asn1.ObjectIdentifier{{1, 2, 276, 0, 76, 4, 163}, {1, 2, 276, 0, 76, 4, 77}} {
+		if !slices.ContainsFunc(cert.PolicyIdentifiers, oid.Equal) {
+			t.Errorf("PolicyIdentifiers = %v, should contain %v", cert.PolicyIdentifiers, oid)
+		}
+	}
 }
 
 // TestRawSubjectPublicKeyInfo_FullEncoding pins the on-disk shape of
@@ -273,8 +286,9 @@ func TestRawSubjectPublicKeyInfo_FullEncoding(t *testing.T) {
 	if len(raw) < 2 {
 		t.Fatalf("RawSubjectPublicKeyInfo too short: %d bytes", len(raw))
 	}
-	assert.Equal(t, byte(0x30), raw[0],
-		"RawSubjectPublicKeyInfo must start with SEQUENCE tag 0x30, got 0x%02x", raw[0])
+	if raw[0] != 0x30 {
+		t.Errorf("RawSubjectPublicKeyInfo must start with SEQUENCE tag 0x30, got 0x%02x", raw[0])
+	}
 
 	var spki struct {
 		Algorithm struct {
@@ -284,57 +298,50 @@ func TestRawSubjectPublicKeyInfo_FullEncoding(t *testing.T) {
 		PublicKey asn1.BitString
 	}
 	rest, err := asn1.Unmarshal(raw, &spki)
-	require.NoError(t, err, "asn1.Unmarshal of RawSubjectPublicKeyInfo must succeed")
-	assert.Empty(t, rest, "no trailing bytes after asn1.Unmarshal")
-	assert.NotEmpty(t, spki.PublicKey.Bytes, "BIT STRING content must be present")
+	if err != nil {
+		t.Fatalf("asn1.Unmarshal of RawSubjectPublicKeyInfo must succeed: %v", err)
+	}
+	if len(rest) != 0 {
+		t.Errorf("%d trailing bytes after asn1.Unmarshal", len(rest))
+	}
+	if len(spki.PublicKey.Bytes) == 0 {
+		t.Error("BIT STRING content must be present")
+	}
 }
 
 func TestParseCACertificatePEM(t *testing.T) {
-	cert, err := brainpool.ParseCertificatePEM(testCaCertBytes)
-	if err != nil {
-		t.Fatalf("ParseCertificatePEM failed: %v", err)
+	cert := parseCA(t, testCaCertBytes)
+	if cert.MaxPathLen != 0 {
+		t.Errorf("MaxPathLen = %d, want 0 for CA certificate", cert.MaxPathLen)
 	}
-	require.NotNil(t, cert)
-
-	assert.True(t, cert.IsCA, "IsCA should be true for CA certificate")
-	assert.Equal(t, 0, cert.MaxPathLen, "MaxPathLen should be 0 for CA certificate")
-
-	// assert brainpool curve
-	_, ok := cert.PublicKey.(*ecdsa.PublicKey)
-	if !ok {
-		t.Fatal("failed to convert public key to ECDSA public key")
-	}
-	curve := cert.PublicKey.(*ecdsa.PublicKey).Curve
-	assert.Equal(t, "brainpoolP256r1", curve.Params().Name, "Expected brainpoolP256r1 curve for CA certificate")
-
-	// assert key usage
-	assert.NotZero(t, cert.KeyUsage, "KeyUsage should be set for CA certificate")
-	assert.True(t, cert.KeyUsage&x509.KeyUsageCertSign != 0, "KeyUsage should contain CertSign for CA certificate")
-	assert.True(t, cert.KeyUsage&x509.KeyUsageCRLSign != 0, "KeyUsage should contain CRLSign for CA certificate")
 }
 
 func TestParseRootCACertificatePEM(t *testing.T) {
-	cert, err := brainpool.ParseCertificatePEM(testRootCaCertBytes)
+	parseCA(t, testRootCaCertBytes)
+}
+
+// parseCA parses a Brainpool CA certificate and checks what every TI CA
+// carries: CA basic constraints, a brainpoolP256r1 key, certSign and cRLSign.
+func parseCA(t *testing.T, pemBytes []byte) *x509.Certificate {
+	t.Helper()
+	cert, err := brainpool.ParseCertificatePEM(pemBytes)
 	if err != nil {
 		t.Fatalf("ParseCertificatePEM failed: %v", err)
 	}
-	require.NotNil(t, cert)
-
-	assert.True(t, cert.IsCA, "IsCA should be true for Root CA certificate")
-	//assert.Equal(t, 1, cert.MaxPathLen, "MaxPathLen should be 1 for Root CA certificate")
-
-	// assert brainpool curve
-	_, ok := cert.PublicKey.(*ecdsa.PublicKey)
-	if !ok {
-		t.Fatal("failed to convert public key to ECDSA public key")
+	if !cert.IsCA {
+		t.Error("IsCA should be true")
 	}
-	curve := cert.PublicKey.(*ecdsa.PublicKey).Curve
-	assert.Equal(t, "brainpoolP256r1", curve.Params().Name, "Expected brainpoolP256r1 curve for Root CA certificate")
-
-	// assert key usage
-	assert.NotZero(t, cert.KeyUsage, "KeyUsage should be set for Root CA certificate")
-	assert.True(t, cert.KeyUsage&x509.KeyUsageCertSign != 0, "KeyUsage should contain CertSign for Root CA certificate")
-	assert.True(t, cert.KeyUsage&x509.KeyUsageCRLSign != 0, "KeyUsage should contain CRLSign for Root CA certificate")
+	pub, ok := cert.PublicKey.(*ecdsa.PublicKey)
+	if !ok {
+		t.Fatalf("public key is %T, want *ecdsa.PublicKey", cert.PublicKey)
+	}
+	if got := pub.Curve.Params().Name; got != "brainpoolP256r1" {
+		t.Errorf("curve = %s, want brainpoolP256r1", got)
+	}
+	if want := x509.KeyUsageCertSign | x509.KeyUsageCRLSign; cert.KeyUsage&want != want {
+		t.Errorf("KeyUsage = %v, should contain CertSign and CRLSign", cert.KeyUsage)
+	}
+	return cert
 }
 
 func TestNilInput(t *testing.T) {
@@ -365,9 +372,15 @@ func TestSubjectParsing(t *testing.T) {
 		t.Fatalf("ParseCertificate failed: %v", err)
 	}
 
-	assert.Equal(t, []string{"DE"}, cert.Subject.Country)
-	assert.Equal(t, "Ullrich Angerm\u00e4nnTEST-ONLY", cert.Subject.CommonName)
-	assert.Equal(t, "80276883110000163974", cert.Subject.SerialNumber)
+	if !slices.Equal(cert.Subject.Country, []string{"DE"}) {
+		t.Errorf("Country = %v, want [DE]", cert.Subject.Country)
+	}
+	if got, want := cert.Subject.CommonName, "Ullrich Angerm\u00e4nnTEST-ONLY"; got != want {
+		t.Errorf("CommonName = %q, want %q", got, want)
+	}
+	if got, want := cert.Subject.SerialNumber, "80276883110000163974"; got != want {
+		t.Errorf("SerialNumber = %q, want %q", got, want)
+	}
 
 	// GivenName (2.5.4.42) and Surname (2.5.4.4) are stored in Names
 	var givenName, surname string
@@ -379,12 +392,13 @@ func TestSubjectParsing(t *testing.T) {
 			surname = name.Value.(string)
 		}
 	}
-	assert.Equal(t, "Ullrich", givenName)
-	assert.Equal(t, "Angerm\u00e4nn", surname)
+	if givenName != "Ullrich" || surname != "Angerm\u00e4nn" {
+		t.Errorf("GivenName, Surname = %q, %q, want Ullrich, Angerm\u00e4nn", givenName, surname)
+	}
 }
 
 func TestCrossCertificateVerification(t *testing.T) {
-	var anchorPEM = `-----BEGIN CERTIFICATE-----
+	anchorPEM := `-----BEGIN CERTIFICATE-----
 MIICzTCCAnOgAwIBAgIBATAKBggqhkjOPQQDAjCBgjELMAkGA1UEBhMCREUxHzAd
 BgNVBAoMFmdlbWF0aWsgR21iSCBOT1QtVkFMSUQxNDAyBgNVBAsMK1plbnRyYWxl
 IFJvb3QtQ0EgZGVyIFRlbGVtYXRpa2luZnJhc3RydWt0dXIxHDAaBgNVBAMME0dF
@@ -403,7 +417,7 @@ rvVY8gsiooXO+gwODNfiAiByRfTY1l2QB3UGWrgyDZs8SAkKPAltj0zNKuuhj8uF
 DQ==
 -----END CERTIFICATE-----`
 
-	var crossCertPEM = `-----BEGIN CERTIFICATE-----
+	crossCertPEM := `-----BEGIN CERTIFICATE-----
 MIIC7jCCApWgAwIBAgIBBjAKBggqhkjOPQQDAjCBgjELMAkGA1UEBhMCREUxHzAd
 BgNVBAoMFmdlbWF0aWsgR21iSCBOT1QtVkFMSUQxNDAyBgNVBAsMK1plbnRyYWxl
 IFJvb3QtQ0EgZGVyIFRlbGVtYXRpa2luZnJhc3RydWt0dXIxHDAaBgNVBAMME0dF
@@ -432,7 +446,9 @@ AiA8IFHJslZ76EpSSgKQkDdsFTOHeDXzjeDd+xBcm5IrIg==
 		t.Fatalf("Failed to parse cross certificate: %v", err)
 	}
 
-	assert.Equal(t, 665, len(crossCert.RawTBSCertificate), "Unexpected length of RawTBSCertificate in cross certificate")
+	if got := len(crossCert.RawTBSCertificate); got != 665 {
+		t.Errorf("len(RawTBSCertificate) = %d, want 665", got)
+	}
 
 	err = crossCert.CheckSignatureFrom(anchorCert)
 	if err != nil {

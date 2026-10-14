@@ -30,6 +30,8 @@ import (
 	"github.com/gematik/zero-lab/go/brainpool"
 )
 
+// JWT is a parsed compact JWS: the raw token, its decoded header and payload
+// JSON, the raw r‖s signature and the unmarshaled header and claims.
 type JWT struct {
 	Raw []byte
 	//lint:ignore ST1003 exported since v1; the Go-style name would break the module's API
@@ -41,11 +43,13 @@ type JWT struct {
 	Claims      map[string]any
 }
 
+// JWTBuilder collects header parameters and claims for a token signed with Sign.
 type JWTBuilder struct {
 	headers map[string]any
 	claims  map[string]any
 }
 
+// NewJWTBuilder returns a builder with an empty header and no claims.
 func NewJWTBuilder() *JWTBuilder {
 	return &JWTBuilder{
 		headers: make(map[string]any),
@@ -53,11 +57,13 @@ func NewJWTBuilder() *JWTBuilder {
 	}
 }
 
+// Header sets a JOSE header parameter.
 func (b *JWTBuilder) Header(key string, value any) *JWTBuilder {
 	b.headers[key] = value
 	return b
 }
 
+// Claim sets a claim of the payload.
 func (b *JWTBuilder) Claim(key string, value any) *JWTBuilder {
 	b.claims[key] = value
 	return b
@@ -88,8 +94,6 @@ func (b *JWTBuilder) Sign(hashFunc hash.Hash, signFunc brainpool.SignFunc) ([]by
 		return nil, fmt.Errorf("signing payload: %w", err)
 	}
 
-	token := append(payload, '.')
-	token = base64.RawURLEncoding.AppendEncode(token, signature)
-
-	return token, nil
+	payload = append(payload, '.')
+	return base64.RawURLEncoding.AppendEncode(payload, signature), nil
 }

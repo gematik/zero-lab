@@ -22,6 +22,7 @@
 package brainpool_test
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -29,11 +30,10 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"slices"
 	"testing"
 
 	"github.com/gematik/zero-lab/go/brainpool"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // The Raw* fields must be the original encoding, not the copy with the
@@ -42,72 +42,115 @@ import (
 func TestParseCertificate_RawFieldsAreOriginalBytes(t *testing.T) {
 	block, _ := pem.Decode(testCertBytes)
 	cert, err := brainpool.ParseCertificate(block.Bytes)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	assert.Equal(t, block.Bytes, cert.Raw)
+	if !bytes.Equal(cert.Raw, block.Bytes) {
+		t.Error("Raw is not the original DER")
+	}
 	for name, raw := range map[string][]byte{
 		"RawTBSCertificate":       cert.RawTBSCertificate,
 		"RawSubjectPublicKeyInfo": cert.RawSubjectPublicKeyInfo,
 		"RawSubject":              cert.RawSubject,
 		"RawIssuer":               cert.RawIssuer,
 	} {
-		assert.True(t, contains(block.Bytes, raw), "%s is not a slice of the original DER", name)
+		if !bytes.Contains(block.Bytes, raw) {
+			t.Errorf("%s is not a slice of the original DER", name)
+		}
 	}
 	// The swapped OID never leaks: the SPKI still names id-ecPublicKey.
-	assert.Contains(t, string(cert.RawSubjectPublicKeyInfo), string([]byte{0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01}))
-	assert.Equal(t, x509.ECDSA, cert.PublicKeyAlgorithm)
-	assert.Equal(t, x509.ECDSAWithSHA256, cert.SignatureAlgorithm)
+	if !bytes.Contains(cert.RawSubjectPublicKeyInfo, []byte{0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01}) {
+		t.Error("RawSubjectPublicKeyInfo does not name id-ecPublicKey")
+	}
+	if cert.PublicKeyAlgorithm != x509.ECDSA {
+		t.Errorf("PublicKeyAlgorithm = %v, want ECDSA", cert.PublicKeyAlgorithm)
+	}
+	if cert.SignatureAlgorithm != x509.ECDSAWithSHA256 {
+		t.Errorf("SignatureAlgorithm = %v, want ECDSA-SHA256", cert.SignatureAlgorithm)
+	}
 }
-
-func contains(haystack, needle []byte) bool { return indexOf(haystack, needle) >= 0 }
 
 // Extensions the hand-written parser never decoded now come from crypto/x509.
 func TestParseCertificate_DecodesEveryExtension(t *testing.T) {
 	cert, err := brainpool.ParseCertificatePEM(testCertBytes)
-	require.NoError(t, err)
-	assert.Equal(t, []string{"http://ehca.gematik.de/crl/"}, cert.CRLDistributionPoints)
-	assert.Equal(t, []string{"http://ehca.gematik.de/ecc-ocsp"}, cert.OCSPServer)
-	assert.Len(t, cert.Policies, 2)
-	assert.Equal(t, 3, cert.Version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(cert.CRLDistributionPoints, []string{"http://ehca.gematik.de/crl/"}) {
+		t.Errorf("CRLDistributionPoints = %v", cert.CRLDistributionPoints)
+	}
+	if !slices.Equal(cert.OCSPServer, []string{"http://ehca.gematik.de/ecc-ocsp"}) {
+		t.Errorf("OCSPServer = %v", cert.OCSPServer)
+	}
+	if len(cert.Policies) != 2 {
+		t.Errorf("%d policies, want 2", len(cert.Policies))
+	}
+	if cert.Version != 3 {
+		t.Errorf("Version = %d, want 3", cert.Version)
+	}
 }
 
 // A Brainpool-signed chain verifies through the standard library's own
 // CheckSignatureFrom, which still has a big.Int path for custom curves.
 func TestParseCertificate_ChainVerifiesWithStdlib(t *testing.T) {
-	leaf, err := brainpool.ParseCertificatePEM(testCertBytes)
-	require.NoError(t, err)
-	ca, err := brainpool.ParseCertificatePEM(testCaCertBytes)
-	require.NoError(t, err)
-	root, err := brainpool.ParseCertificatePEM(testRootCaCertBytes)
-	require.NoError(t, err)
+	var chain [3]*x509.Certificate
+	for i, pemBytes := range [][]byte{testCertBytes, testCaCertBytes, testRootCaCertBytes} {
+		cert, err := brainpool.ParseCertificatePEM(pemBytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		chain[i] = cert
+	}
+	leaf, ca, root := chain[0], chain[1], chain[2]
 
-	require.NoError(t, leaf.CheckSignatureFrom(ca))
-	require.NoError(t, ca.CheckSignatureFrom(root))
-	assert.Error(t, leaf.CheckSignatureFrom(root), "leaf is not signed by the root")
+	if err := leaf.CheckSignatureFrom(ca); err != nil {
+		t.Errorf("leaf from CA: %v", err)
+	}
+	if err := ca.CheckSignatureFrom(root); err != nil {
+		t.Errorf("CA from root: %v", err)
+	}
+	if leaf.CheckSignatureFrom(root) == nil {
+		t.Error("leaf is not signed by the root, but its signature verified")
+	}
 }
 
 // Certificates on other curves take the plain crypto/x509 path unchanged.
 func TestParseCertificate_NonBrainpoolFallsThrough(t *testing.T) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
 		Subject:      pkix.Name{CommonName: "nist"},
 		DNSNames:     []string{"nist.example"},
 	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	cert, err := brainpool.ParseCertificate(der)
-	require.NoError(t, err)
-	assert.Equal(t, []string{"nist.example"}, cert.DNSNames)
-	assert.Equal(t, elliptic.P256(), cert.PublicKey.(*ecdsa.PublicKey).Curve)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(cert.DNSNames, []string{"nist.example"}) {
+		t.Errorf("DNSNames = %v", cert.DNSNames)
+	}
+	if pub, ok := cert.PublicKey.(*ecdsa.PublicKey); !ok || pub.Curve != elliptic.P256() {
+		t.Errorf("PublicKey = %T, want a P-256 *ecdsa.PublicKey", cert.PublicKey)
+	}
 }
 
 func TestValidatePublicKey(t *testing.T) {
 	key, err := brainpool.GenerateKey(brainpool.P256r1(), rand.Reader)
-	require.NoError(t, err)
-	require.NoError(t, brainpool.ValidatePublicKey(&key.PublicKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := brainpool.ValidatePublicKey(&key.PublicKey); err != nil {
+		t.Fatalf("generated key: %v", err)
+	}
 
 	p := brainpool.P256r1().Params().P
 	for name, pub := range map[string]*ecdsa.PublicKey{
@@ -116,6 +159,8 @@ func TestValidatePublicKey(t *testing.T) {
 		"off curve":    {Curve: brainpool.P256r1(), X: key.X, Y: new(big.Int).Add(key.Y, big.NewInt(1))},
 		"out of range": {Curve: brainpool.P256r1(), X: new(big.Int).Add(key.X, p), Y: key.Y},
 	} {
-		assert.Error(t, brainpool.ValidatePublicKey(pub), name)
+		if brainpool.ValidatePublicKey(pub) == nil {
+			t.Errorf("%s: accepted", name)
+		}
 	}
 }
