@@ -99,6 +99,25 @@ just tidy            # go mod tidy per module
 just upgrade         # ONLY when deliberately bumping external deps to latest
 ```
 
+## Gated tests
+
+Tests that need a live system are gated by environment variables and skip without them,
+so `go test ./...` and CI stay green; a green CI says nothing about them. Before a module
+is tagged, every suite listed for it below runs green against the real system, and the
+release PR records which suites ran, against what and on which commit. A suite that
+cannot run blocks the release or is waived in the release PR with the reason. The rules
+are in the root `CLAUDE.md`, "Env-gated tests run before every release".
+
+| Suite | Run with | Needs | Proves | Required for |
+|---|---|---|---|---|
+| PDP end to end | `just pdp-e2e-serve` then `just pdp-e2e` | `ZERO_PDP_E2E_URL` (and the client variables in `docs/e2e.md`) | the authorization server over HTTP: metadata, JWKS, nonce, entity statement, OAuth error shapes, `client_credentials`, and the flows up to the IdP's pushed authorization request (`docs/e2e.md`) | `pdp`, `bff` |
+| PDP HITL | `just pdp-e2e-hitl URL` | `ZERO_PDP_E2E_URL`, `ZERO_PDP_E2E_HITL=1`, a person | a full login with a real OpenID provider | `pdp` |
+| gemidp SMC-B | `just gemidp-smcb-test` | `GEMIDP_*`, an SMC-B identity (`GEMIDP_SMCB_P12`) | authentication at the gematik IDP-Dienst with an SMC-B | `gemidp` |
+| ePA connect | `just epa-connect-test` | `EPA_*`, the Rust `ti` (`EPA_TI_BIN`), an SMC-B identity | VAU, authorization, record status and consent at both providers | `epa` |
+| ePA entitlement | `just epa-entitle-test` | as ePA connect, plus `VSDM_HMAC_KEY` / `VSDM_HMAC_KID` | entitlement with a VSDM proof | `epa` |
+| OpenID Federation | `just oidf-test` | `OIDF_FEDMASTER_URL` | entity statements and trust chains against a live federation master | `oidf`, `pep` |
+| kv on Postgres | `TEST_DATABASE_URL=… go test ./kv/postgres` | a Postgres database | the Postgres store: round trip, expiry, `Take` single-use under concurrency | `kv`, `pdp`, `pep`, `bff` |
+
 ## Part B — Tag & reproducible builds
 
 `go install <cmd>@<tag>` and tag-pinned Docker builds run **outside** `go.work`, so a
@@ -115,7 +134,10 @@ just sync                         # default REF = current branch; or: just sync 
 git add -A && git commit -m "sync: pin in-repo deps to branch tip"
 git push
 
-# 3. Tag the modules that changed (check with `just changed`), then push the tags
+# 3. Run every gated suite listed for the modules being tagged (see "Gated tests") and
+#    record the results in the release PR
+
+# 4. Tag the modules that changed (check with `just changed`), then push the tags
 just tag brainpool 0.3.1          # the changed library
 just tag ti 0.20.3                # any command whose release you're cutting
 just push-tags

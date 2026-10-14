@@ -283,10 +283,15 @@ our own next to it.
 - Fakes over mocks: small hand-written implementations of the consumer's interface.
 - `net/http/httptest` for handlers and clients, `testing/synctest` for code that waits
   or times out, golden files under `testdata/` for wire formats.
-- Spec rules carry IDs (`spec/<topic>`); a test names the rule it covers, and fixtures
-  are the shared corpora in `spec/` so Go and Rust are held to the same cases.
-- Integration tests that need the TI, a Konnektor, a database or the Rust `ti` are
-  guarded by environment variables and skip without them; the unit suite needs nothing.
+- Spec rules carry IDs (`spec/<topic>`); a test is named after the requirement it proves
+  (`TestP12_036…`, or the subtest name `t.Run("P12-036 …")`), the implementing code cites
+  it in a comment, and fixtures are the shared corpora in `spec/`, so Go and Rust are
+  held to the same cases. The naming rules are in the root `CLAUDE.md`.
+- Integration tests that need the TI, a Konnektor, a database, an IdP or the Rust `ti` are
+  gated by environment variables and skip loudly without them
+  (`t.Skipf("set X to run: <what this proves>")`); the unit suite needs nothing. Each
+  suite has a `just` recipe and a row in `development.md` "Gated tests", and runs green
+  before the modules listed for it are tagged; the release PR records the runs.
 
 ## Tooling that makes the sources safe and secure
 
@@ -370,6 +375,11 @@ The policy is the root `CLAUDE.md`. In Go terms:
 - **Health and admin plane:** the servers have header and idle timeouts and shut down
   gracefully on SIGTERM, but no liveness, readiness or metrics endpoints and so no admin
   listener yet.
+- **Tests and requirements:** 15 of the 75 test files cite any requirement (spec rule,
+  gematik afo, RFC), and none follows the naming convention yet.
+- **Gated tests:** `GEMIDP_SMCB_P12` and `EPA_SMCB_P12` hold paths without the `_PATH`
+  suffix, and `VSDM_HMAC_KEY` carries a secret as the variable's value (to come from a
+  file); the skips do not all say what the test would prove.
 - **Nonces are stored, not sealed:** `pdp` issues every nonce into `kv`
   (`nonce.NewKVService`), a store round trip per nonce. The alternative
   `HashicorpNonceService` seals nonces with a key generated in process memory, so a
