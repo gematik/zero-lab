@@ -82,7 +82,7 @@ tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 # `~`: ti-connector-client's TLS connector uses ureq's semver-exempt `unversioned`
 # transport API (docs/development.md, Known compromises).
 ureq = { version = "~3.4.2", default-features = false }
-rustls = { version = "0.23.45", default-features = false, features = ["std", "tls12", "ring"] }
+rustls = { version = "0.23.46", default-features = false, features = ["std", "tls12", "ring"] }
 # The operating system's trust store for a Konnektor without a `.kon` trust store; the
 # version ureq's `platform-verifier` feature brings.
 rustls-platform-verifier = "0.7.1"
