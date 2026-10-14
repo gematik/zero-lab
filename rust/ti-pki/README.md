@@ -72,7 +72,7 @@ let online = CachingLoader::new(
     SystemClock,
     CachePolicy::default(),
 );
-let bundle = StaticLoader::from_bundle(Bundle::read("/etc/ti-pki/bundle.cbor")?, &cfg)?;
+let bundle = StaticLoader::from_bundle(Bundle::read("/etc/ti-pki/bundle.json")?, &cfg)?;
 let loader = FallbackLoader::new(online, bundle);
 let reloader = Arc::new(Reloader::new(cfg, Tier::Prod, loader, SystemClock, ReloadPolicy::default())?);
 if let ReloadOutcome::Expired { error } = reloader.tick().await {
@@ -86,7 +86,7 @@ Air-gapped, never touching the network: serve a pre-populated store and fall bac
 the bundle.
 
 ```rust
-let bundle = StaticLoader::from_bundle(Bundle::read("/etc/ti-pki/bundle.cbor")?, &cfg)?;
+let bundle = StaticLoader::from_bundle(Bundle::read("/etc/ti-pki/bundle.json")?, &cfg)?;
 let offline = CachingLoader::new(
     bundle.clone(),
     my_kv,

@@ -161,7 +161,6 @@ names the trigger for removing it.
 | The TSL's per-CA metadata is unused: allowed certificate types (SE_1061) | the TSL is verified (`spec/tsl-xmldsig`), but a CA from it is kept only if a root from the A_28419 walk signed it, and nothing else in it decides trust. A certificate's type is checked by its own policies; a CA's standing by OCSP at its root; for OCSP responders see the next row | the TSL becomes a trust source (e.g. for its per-CA type lists) |
 | OCSP responders beyond RFC 6960 must be certified by a CA of the issuing CA's TSP that a root signed, not only listed in the TSL: id-kp-OCSPSigning, valid now, signature verified under that TSL CA. Listed by the verified TSL under that TSP they are authorized (`tsl_listed`); not listed, they are accepted with an `ocsp_responder_not_rfc6960` warning | the TSL ties a responder to CAs only by the TSP it is listed under (its supply point and extension are placeholders), and TI TSPs sign for their CAs with delegates of other CAs (ehca: a GEM.KOMP-CA51 delegate answers for GEM.SMCB-CA51 and GEM.SMCB-CA9). Requiring the certification by a CA of the same TSP keeps a listed responder from answering for another TSP's CAs. The D-Trust responders under GEM.OCSP-CA1/3 stay rejected (their CA is not in the TSL) | gematik aligns responder issuance with RFC 6960 (then the fallback without listing goes) |
 | OCSP CertIDs use SHA-1 (`sha1` crate) | TI responders reject SHA-256 CertIDs as malformed (RFC 5019 profile). SHA-1 only names the certificate there; integrity rests on the response signature and the SHA-256 certHash | TI responders accept SHA-256 CertIDs |
-| `minicbor` licence BlueOak-1.0.0 allowed for that crate only | permissive, OSI-approved; the lightest CBOR codec for the offline bundle | never, unless the licence policy changes |
 | `ureq`'s `unversioned` transport API in `ti_connector_client::ureq`, `ureq` pinned `~3.4` | `TlsConfig` takes no certificate verifier, and a Konnektor needs Go's: `.kon` pins accepted by equality, CA chains checked for `expectedHost`, which is also the SNI. A 60-line connector in ureq's chain does the TLS with our rustls config | ureq accepts a custom verifier or rustls config, or the adapter moves to a crate of its own before ti-connector-client 1.0 |
 | `webpki-root-certs` licence CDLA-Permissive-2.0 allowed for that crate only | a permissive data licence for Mozilla's root certificates, which `rustls-platform-verifier` bundles for platforms without a usable OS store; only `ti-cli` depends on it | never, unless the licence policy changes |
 
@@ -334,7 +333,7 @@ and `Reloader::new` enforce it.
 
 For air-gapped deployments, export both artefacts with their metadata on a connected
 machine (`Bundle::new(&config, label, material).write(path)`, from material any loader
-produced), transfer the CBOR file, and serve it with
+produced), transfer the JSON file, and serve it with
 `StaticLoader::from_bundle(Bundle::read(path)?, &config)?`, alone or as the backup of a
 `FallbackLoader`. The bundle is not signed and needs no signature: it is verified on
 import like any other source, and its anchor hash rejects a bundle meant for another
