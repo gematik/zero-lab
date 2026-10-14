@@ -21,7 +21,8 @@ crate:
 5. **Pluggable cryptography, private keys as functions.** Primitives sit behind traits a
    backend implements, and a private key is never passed by value: code that signs,
    decrypts or agrees on a key holds something it can ask to do so, so the key can stay
-   in an HSM, a smartcard, a Konnektor, WebCrypto or a cloud KMS.
+   in a security key (FIDO SK), the Secure Enclave, a TPM, a smartcard behind a
+   Konnektor, an HSM, WebCrypto or a cloud KMS.
 6. **Testable logic.** Every decision is a pure function of its inputs (bytes, time,
    configuration), so it is tested without a network, a card or a clock, and the same
    tests run natively, under wasm and against shared spec corpora.
@@ -101,6 +102,34 @@ Two rules, for every crate:
    another. Async forms exist because HSMs, KMS and WebCrypto answer asynchronously;
    every sync key is also an async one.
 
+The private-key rules in the root `CLAUDE.md` bind Rust and Go alike; this section
+explains them. Hardware-bound keys are first-class, behind the same abstraction: security keys (FIDO
+SK), the Secure Enclave, TPM 2.0, smartcards (SMC-B, HBA, eGK via a Konnektor), HSMs and
+cloud KMS. What they share, and what the abstraction therefore must not assume away:
+
+- **Not exportable.** There is no private key to read, copy, serialise or zeroize; the
+  key is a handle and the public key. No API may need more.
+- **Algorithms are the device's.** The Secure Enclave and most TPMs sign P-256 only (TPMs
+  also RSA, some P-384); security keys P-256 and Ed25519; brainpool only smartcards and
+  HSMs. A key reports what it can do, and protocol code picks from that set or fails
+  with a clear error; it never falls back to a software key.
+- **Digest or message.** The Secure Enclave and TPMs sign a digest, Ed25519 and some
+  HSM mechanisms the whole message. The signer interface says which it takes, and the
+  hashing for prehashed keys happens once, in shared code.
+- **Not every key signs arbitrary data.** A FIDO security key signs WebAuthn or SSH
+  structures (authenticator data with a client-data hash), not raw messages; it can
+  serve protocols built for it (WebAuthn, SSH), not a plain JWS. The abstraction exposes this instead of hiding it.
+- **Slow, asynchronous and interactive.** A signature can wait for a touch, a PIN, a
+  biometric or a card in a reader, and can be cancelled or time out. Signing is async,
+  cancellable, and errors distinguish "user cancelled", "device absent", "PIN blocked"
+  and "not permitted" from cryptographic failure.
+- **Attestation.** Where the device provides it (TPM, Secure Enclave via App Attest or
+  DeviceCheck, FIDO), the key can present attestation of where it lives; protocols that
+  rely on hardware binding verify it and do not trust a claim.
+- **Platform glue stays at the edge.** Enclave, TPM and FIDO access needs platform APIs
+  (Security.framework, TSS or the kernel's TPM device, CTAP over HID); each is an
+  adapter crate or package implementing the key traits, never a dependency of a core.
+
 Private key bytes exist only inside software key implementations (`SoftwareKey`) and the
 file formats that carry them (`ti-pkcs12`, PEM in `ti-cli`), always in `Zeroizing`
 buffers. Loading a key from a file yields a key object, and the rest of the code cannot
@@ -127,6 +156,9 @@ Open:
   (`with_client_auth_cert`). rustls supports keys as functions through
   `sign::SigningKey` and a client certificate resolver; the transport should take a
   signing key from there, so the Konnektor client certificate can live in an HSM.
+- The key traits do not yet report capabilities (algorithms, digest or message, user
+  interaction) or attestation, and their errors do not distinguish a cancelled touch or
+  a blocked PIN from a cryptographic failure; there are no Enclave, TPM or FIDO adapters.
 - Signature verification is pluggable only at the algorithm level; a verifier backend
   trait like jwz's would let a FIPS or WebCrypto host verify certificates too.
 
@@ -272,5 +304,6 @@ Gaps against that today:
 ## Bindings (planned)
 
 Hosts do HTTP, engines stay sans I/O: uniffi for Swift and Kotlin/Java, wasm-bindgen for
-the browser, and `ti serve` (JSON-RPC over stdio or a Unix socket) for Go and server
-Java. See backlog doc-1 for the trade-offs and the roadmap.
+the browser, and `ti serve` over a Unix socket or stdio for Go and server Java, built for
+latency; its protocol (CBOR, protobuf or PKCS#11 semantics) is open. Go never links Rust (no cgo); where Go needs a function natively, both sides
+implement a shared specification in `spec/` ([Go design](../../go/docs/design.md#go-and-rust)). See backlog doc-1 for the trade-offs and the roadmap.
