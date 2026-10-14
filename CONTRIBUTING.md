@@ -11,7 +11,7 @@ Report bugs, questions and suggestions as [GitHub Issues](https://github.com/gem
 1. Fork the repository and create a branch from `main`.
 2. Work inside the workspace you change, as described in its development guide: [Go](./go/docs/development.md) or [Rust](./rust/docs/development.md).
 3. Run the checks of that workspace: `gofmt`, `go vet ./...` and `go test ./...` in every Go module you touched, `just check` in `rust/`.
-4. Start every new source file with the license header used by the existing files of its workspace, beginning with `Copyright (Change Date see Readme), gematik GmbH`: EUPL-1.2 in `go/`, Apache-2.0 in `rust/`.
+4. Start every new source file with the EUPL-1.2 license header used by the existing files, beginning with `Copyright (Change Date see Readme), gematik GmbH`.
 5. Open a pull request against `main` with a short description of the change and its motivation.
 
-By submitting a contribution, you agree that it is licensed under the license of the workspace it belongs to: [EUPL-1.2](./LICENSE) for `go/`, [Apache-2.0](./rust/LICENSE) for `rust/`.
+By submitting a contribution, you agree that it is licensed under the [EUPL-1.2](./LICENSE).

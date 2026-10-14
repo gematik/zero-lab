@@ -2,7 +2,4 @@
 # shape of the Go standard library's nistec/fiat package.
 ./go/brainpool/internal/bp256/fiat/*
 
-# Apache-2.0 under its own LICENSE; checked with the script run on rust/.
-./rust/*
-
 ./spec/*

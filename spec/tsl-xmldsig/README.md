@@ -447,7 +447,7 @@ From gemSpec_PKI:
 
 ## Licence
 
-Copyright 2026 gematik GmbH. Apache License, Version 2.0, see
+Copyright 2026 gematik GmbH. EUPL-1.2, see
 [rust/LICENSE](../../rust/LICENSE). The test data under `testdata/gemlibpki/` comes from
 gematik ref-GemLibPki (Apache-2.0, see its `NOTICE`); the W3C test vectors under
 `testdata/w3c/` are under the W3C Software and Document License (see its README).

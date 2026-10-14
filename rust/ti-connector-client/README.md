@@ -85,7 +85,9 @@ regenerates the OpenSSL certificates of the TLS tests.
 
 Copyright 2026 gematik GmbH
 
-Apache License, Version 2.0
+EUROPEAN UNION PUBLIC LICENCE v. 1.2
+
+EUPL © the European Union 2007, 2016
 
 See the [LICENSE](https://github.com/gematik/zero-lab/blob/main/rust/LICENSE) for the specific language governing permissions and limitations under the License
 
