@@ -59,13 +59,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gematik/zero-lab/go/kv"
@@ -210,6 +213,43 @@ func main() {
 		log.Fatalf("create proxy: %v", err)
 	}
 
+	// Proxied uploads and downloads may legitimately take long, so there is no whole-request
+	// read or write deadline; slow headers and idle connections are bounded here, and
+	// upstream calls by the proxy's transport.
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           server.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
 	slog.Info("zero-pep-proxy listening", "version", pep.Version, "addr", addr, "public_url", publicURL)
-	log.Fatal(http.ListenAndServe(addr, server.Handler()))
+	if err := serve(srv); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// serve runs srv until SIGINT or SIGTERM, then drains in-flight requests within the
+// Kubernetes termination grace period (30 s by default).
+func serve(srv *http.Server) error {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	errc := make(chan error, 1)
+	go func() { errc <- srv.ListenAndServe() }()
+
+	select {
+	case err := <-errc:
+		return err
+	case <-ctx.Done():
+	}
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return err
+	}
+	if err := <-errc; !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
