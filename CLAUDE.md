@@ -327,6 +327,56 @@ before any work. Never weaken a lint, a check or a proof to get a change through
 stamp is rerun (`just jwz-recheck`), not edited. Inventory and gaps:
 `rust/docs/design.md`, "Making the sources safe and secure".
 
+### Tests name the requirement they prove
+
+Every test of a rule says which rule, so that a requirement can be traced to the code
+that implements it and the tests that prove it, and a requirement without a test shows.
+
+- **In the name.** The test is named after the requirement, normalised to an identifier,
+  then what it shows: `p12_036_mac_iterations_above_the_limit_are_refused`,
+  `tslsig_066_…`, `a_28419_…` (gematik afo), `tuc_pki_002_…`, `rfc_7516_5_2_…`. In Go,
+  the test function or the subtest name carries it (`TestP12_036…`, `t.Run("P12-036 …")`).
+  Several requirements: the most specific one in the name, the others in the doc comment.
+- **In the source.** The code that implements a requirement cites it in a comment
+  (`// P12-036: …`, `// RFC 7516 §5.2: …`, `// gemSpec_PKI A_28419: …`), in the form the
+  traceability tables parse.
+- **Kinds of reference**, most specific first: a rule of our own spec (`spec/<topic>`,
+  `TOPIC-nnn`), a gematik requirement (afo `A_nnnnn`, `TUC_…`, `GS-A_…`, with the document
+  and version it is from), an RFC or standard section, an ADR or design rule of this
+  repository. A test of an internal invariant with no external requirement says so in its
+  doc comment.
+- **Traced, not only named.** Where a crate has a traceability table (jwz's
+  `docs/traceability.md`, generated and checked by a test), new references and tests
+  appear there; a spec's `CONFORMANCE.md` maps its rules to corpus cases. A requirement
+  that is implemented but has no test is a gap, listed until it has one.
+
+### Env-gated tests run before every release
+
+Tests that need something outside the repository (the TI test environments, a Konnektor,
+a smartcard, the IDP-Dienst, a database, a real browser, a human) are gated, never
+deleted, never faked away, and never skipped silently.
+
+- **One gate, named for what it needs.** An environment variable per resource, prefixed
+  by the component (`TI_TEST_KON_PATH`, `ZERO_PDP_E2E_URL`, `GEMIDP_SMCB_P12_PATH`);
+  paths end in `_PATH` or `_DIR`; secrets come from files, never from the variable's
+  value. Test material is TEST-ONLY.
+- **Loud when skipped.** Go: `t.Skipf("set ZERO_PDP_E2E_URL to run: <what this proves>")`.
+  Rust: `#[ignore = "needs TI_TEST_KON_PATH: just <recipe>"]` for tests that need a live
+  system, so they show as ignored rather than passed; a gated test that is run without
+  its configuration fails with the variable it needs instead of passing.
+- **One recipe per suite.** Each gated suite has a `just` recipe that checks its
+  variables, says what is missing and runs it (`just real-world`, `just pdp-e2e`,
+  `just epa-connect-test`, …). Human-in-the-loop suites are marked HITL and need a person.
+- **Documented in one table** per workspace (`rust/docs/development.md`,
+  `go/docs/development.md`, "Gated tests"): suite, recipe, variables, prerequisites, what
+  it proves, and the crates or modules whose release requires it.
+- **Required before a release.** `just check` and CI never run them, so a green CI says
+  nothing about these paths. Before tagging a crate or module, every gated suite listed
+  for it runs green against the real system, and the release notes or the release PR
+  record which suites ran, against what, on which commit. A suite that cannot run blocks
+  the release or is waived explicitly, with the reason, in the release PR; never
+  silently.
+
 ## Dependencies: as few as possible, only stable, evaluated, secure
 
 Every dependency is code we ship and vouch for without having written it. The default

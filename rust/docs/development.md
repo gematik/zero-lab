@@ -259,6 +259,22 @@ to end with OCSP, and a production SubCA at its root responder. The deliberate
 differences to gematik's reference implementation are in
 [gemlibpki-comparison.md](gemlibpki-comparison.md).
 
+## Gated tests
+
+Tests that need a live system are gated and never run by `just check` or CI; a green CI
+says nothing about them. Before a crate is released, every suite listed for it below
+runs green against the real system, and the release PR records which suites ran,
+against what (environment, Konnektor, card) and on which commit. A suite that cannot run
+blocks the release or is waived in the release PR with the reason. The rules are in the
+root `CLAUDE.md`, "Env-gated tests run before every release".
+
+| Suite | Run with | Needs | Proves | Required for |
+|---|---|---|---|---|
+| `ti-pki` real world (`tests/real_world.rs`, `#[ignore]`) | `just real-world` | network, `curl` | roots.json and TSL of every environment through `HttpLoader` and `Reloader`, a reference SMC-B end to end with OCSP, a production SubCA at its root responder | `ti-pki`, `ti-cli` |
+| `ti-pki` OpenSSL parity (`tests/openssl_cross.rs`) | `just test` | `openssl` with brainpool curves | the same verdict as `openssl verify` / `openssl ocsp` on the same bytes | `ti-pki` |
+| Konnektor end to end (`ti-connector-client/tests/e2e.rs`) | `TI_TEST_KON_PATH=… cargo test -p ti-connector-client --test e2e` | `TI_TEST_KON_PATH` (a `.kon`), optional `TI_TEST_KON_INTERACTIVE=1` (PIN entry, HITL), `TI_TEST_PDFA_PATH`, `TI_TEST_KON_RECORD_DIR` (records the run for `tests/recorded.rs`) | the facades against a real Konnektor and card | `ti-connector-client`, `ti-cli` |
+| jwz in the browser | `just jwz-browser` (design time, stamped) | Chrome for Testing, `wasm-bindgen-test-runner` | jwz and jwz-brainpool in `wasm32` in a real browser | `jwz`, `jwz-brainpool` (the stamp is checked by `just check`) |
+
 ## WebAssembly (ti-wasm)
 
 `ti-wasm` exposes `ti-report` to JavaScript: `verify_tsl` gives the TSL view (signature
@@ -358,6 +374,8 @@ git add -A && git commit -m "ti-pki: release 0.1.1"
 
 # 3. Tier 2 must be green before tagging (semver compares against the last tag)
 just audit
+#    and every gated suite listed for the crates being released (see "Gated tests"),
+#    recorded in the release PR
 
 # 4. Tag the crates that changed, then push the tags
 just tag ti-pki 0.1.1
@@ -400,6 +418,9 @@ above; afterwards `release-plz update` does the version and sibling-pin edits (i
 Crates are released together or alone, each with its own version and tag; `ti` is the
 one crate with binaries. A release takes two commands from `main`:
 
+0. **Gated tests first.** Run every suite of "Gated tests" listed for the crates in the
+   release against the real systems and record the results in the release PR; `just
+   release` cannot do this for you.
 1. **`just release CRATE=X.Y.Z …`**, local only, e.g.
    `just release ti-cli=0.4.0 ti-idpd=0.2.0 ti-directory=0.1.0`. It stops unless `main`
    is clean and equal to `origin/main`, each tag is new and above the crate's last

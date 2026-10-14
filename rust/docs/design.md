@@ -206,14 +206,23 @@ Sans I/O is what makes the logic testable, and the tests are designed in, not ad
   stores and mock HSM signers instead of patching globals.
 - **Results explain themselves.** Outcomes carry the reason (error codes, warnings,
   `ReloadOutcome`), so a test asserts *why* something was rejected, not only that it was.
-- **Specs drive tests.** Rules carry IDs in `spec/<topic>` with a corpus and a
-  `CONFORMANCE.md`; a test names the rule it covers and `traceability` fails on a rule
-  claimed without a test. Fixtures are canonical in `spec/`, copies are hash-pinned.
+- **Specs drive tests, and tests name them.** Rules carry IDs in `spec/<topic>` with a
+  corpus and a `CONFORMANCE.md`. A test is named after the requirement it proves
+  (`p12_036_…`, `tslsig_066_…`, `a_28419_…`, `rfc_7516_5_2_…`), the implementing code
+  cites it in a comment, and a generated traceability table (jwz's
+  `docs/traceability.md`) shows which requirement has code and tests; one without a
+  test is a gap. Fixtures are canonical in `spec/`, copies are hash-pinned. The naming
+  rules are in the root `CLAUDE.md`.
 - **Test vectors from outside.** Wycheproof for every primitive, the W3C C14N suites,
   gematik's reference data (ref-GemLibPki), and interop fixtures cross-checked against
   independent implementations (Go, Python, OpenSSL).
 - **Same tests everywhere.** Native, `wasm32` in headless Chrome (`just jwz-browser`),
   and live tests against the TI test environments kept apart from the offline suite.
+- **Live tests are gated, loud and required for releases.** A test that needs a live
+  system (TI environments, Konnektor, card, browser) is `#[ignore = "needs …: just …"]`
+  or fails without its configuration; it never passes silently. Each suite has a
+  recipe, a row in `development.md` "Gated tests" and the crates whose release requires
+  it; the release PR records the runs.
 
 ## Making the sources safe and secure
 
@@ -290,6 +299,12 @@ Gaps against that today:
   and responses from outside before any signature is checked.
 - ti-pkcs12 accepts any KDF the file names and any iteration count; it needs PBKDF2
   only and caps on iterations before decrypting.
+- Requirement naming is new: only jwz has a traceability table, and 57 of its 82
+  references have no test named after them; the other crates' tests do not yet carry
+  requirement IDs in their names.
+- The Konnektor end-to-end tests (`ti-connector-client/tests/e2e.rs`) return early when
+  `TI_TEST_KON_PATH` is unset and so show as passed; they should be `#[ignore]` with
+  their variable and get a `just` recipe.
 - Mutation testing runs by hand; a mutation score per crate before release would make it
   a gate.
 - No coverage measurement (`cargo llvm-cov`) to show which rules lack tests.
