@@ -40,7 +40,7 @@
 //! Reloader ── tick() ──► FallbackLoader
 //!                         ├─ primary: CachingLoader ── CacheStore (memory, Redis, …)
 //!                         │            └─ HttpLoader ── Transport (reqwest, files, …)
-//!                         └─ backup:  StaticLoader ◄── Bundle (offline CBOR file)
+//!                         └─ backup:  StaticLoader ◄── Bundle (offline JSON file)
 //! ```
 //!
 //! [`Reloader`] verifies whatever the stack returns and swaps both artefacts together;

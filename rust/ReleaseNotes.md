@@ -360,6 +360,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `oid_policy_gem_tsl_signer`) and profile `tsl-sig`.
 
 #### changed
+- `Bundle` is JSON (format version 2) instead of CBOR, with the bodies in base64 and
+  the anchor hash in hex; minicbor is no longer a dependency. Version-1 bundles are
+  rejected: export them again.
 - Every preset is anchored at GEM.RCA7 (P-256; TEST-ONLY outside prod) instead of the
   brainpool GEM.RCA8 (prod) and GEM.RCA8 TEST-ONLY (test). The trusted roots are the same:
   GEM.RCA8 cross-certifies GEM.RCA7, and the walk from it reaches every root; it now

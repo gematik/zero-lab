@@ -22,10 +22,8 @@ allow = [
     "ISC",
     "Unicode-3.0",
 ]
-# minicbor (bundle format) is BlueOak-1.0.0: permissive and OSI approved; allowed for
-# that crate only rather than for the whole graph.
+# Allowed for single crates only rather than for the whole graph.
 exceptions = [
-    { crate = "minicbor", allow = ["BlueOak-1.0.0"] },
     # Mozilla's root store as data, via rustls-platform-verifier (ti-cli only).
     { crate = "webpki-root-certs", allow = ["CDLA-Permissive-2.0"] },
 ]
