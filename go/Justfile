@@ -12,6 +12,12 @@ GOVULNCHECK := "golang.org/x/vuln/cmd/govulncheck@v1.4.0"
 # golangci-lint v2.14 is the first release that reads Go 1.27 export data.
 GOLANGCI := "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0"
 
+# The gematik OpenAPI ruleset lives in the internal GitLab project dev-portal/api-tools and
+# has no licence, so it is never copied here: `api-lint` runs it from a local clone at
+# GEMATIK_API_TOOLS_DIR, pinned to this revision and the Spectral version it is tested with.
+API_RULESET_REV := "d698980"
+SPECTRAL := "@stoplight/spectral-cli@6.11.1"
+
 # Every module — library AND command — is versioned solely by its own git tag
 # (go/<module>/vX.Y.Z), bumped only when that module changes. The local/Docker build stamp
 # is the plain semantic version of the latest tag (see `_modver`); `go install` reads the
@@ -373,5 +379,30 @@ golangci *MODULES:
     done
     exit $fail
 
-# One-shot static checks: go vet + staticcheck + modernize report
-check: lint modernize
+# Lint every OpenAPI contract in the repository with the gematik ruleset; skipped without
+# GEMATIK_API_TOOLS_DIR unless REQUIRE_API_LINT=1 (internal CI)
+api-lint:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir="${GEMATIK_API_TOOLS_DIR:-}"
+    if [[ -z "$dir" || ! -f "$dir/openapi/spectral/ruleset.yml" ]]; then
+        msg="api-lint: no gematik ruleset; set GEMATIK_API_TOOLS_DIR to a clone of dev-portal/api-tools"
+        if [[ "${REQUIRE_API_LINT:-}" == 1 ]]; then echo "$msg" >&2; exit 1; fi
+        echo "$msg (skipped)"; exit 0
+    fi
+    head=$(git -C "$dir" rev-parse HEAD)
+    if [[ "$head" != {{API_RULESET_REV}}* ]]; then
+        echo "api-lint: $dir is at ${head:0:7}, pinned {{API_RULESET_REV}}: git -C \"$dir\" checkout {{API_RULESET_REV}}" >&2
+        exit 1
+    fi
+    root=$(git rev-parse --show-toplevel)
+    specs=()
+    while IFS= read -r f; do
+        grep -qE '^openapi:|"openapi"[[:space:]]*:' "$root/$f" && specs+=("$root/$f")
+    done < <(git -C "$root" ls-files '*.yaml' '*.yml' '*.json')
+    if (( ${#specs[@]} == 0 )); then echo "api-lint: no OpenAPI contracts"; exit 0; fi
+    # Warnings are conventions to follow too, so they fail the lint as errors do.
+    npx -y {{SPECTRAL}} lint --fail-severity=warn --ruleset "$dir/openapi/spectral/ruleset.yml" "${specs[@]}"
+
+# One-shot static checks: go vet + staticcheck + modernize report + gematik API lint
+check: lint modernize api-lint
