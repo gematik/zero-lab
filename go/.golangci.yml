@@ -41,6 +41,20 @@ linters:
       - path: pkcs12/pkcs12\.go
         linters: [revive]
         text: stutters
+      # Brainpool keys only exist on the deprecated crypto/elliptic and big.Int
+      # API; secret scalars go through internal/bp256 (see brainpool/staticcheck.conf).
+      - path: brainpool/
+        linters: [staticcheck]
+        text: SA1019
+      # priv.Curve.ScalarMult reads as curve arithmetic; priv.ScalarMult would
+      # read as a method of the key.
+      - path: brainpool/
+        linters: [staticcheck]
+        text: "QF1008: could remove embedded field \"(Curve|PublicKey)\""
+      # Point methods name the destination q and the operand p, as nistec does.
+      - path: brainpool/internal/bp256/point\.go
+        linters: [revive]
+        text: receiver-naming
       # pkcs12/legacy exists to read the weak algorithms of old files.
       - path: pkcs12/legacy/
         linters: [gosec]

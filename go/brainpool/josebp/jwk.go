@@ -38,7 +38,7 @@ import (
 type JSONWebKey struct {
 	KeyType         string              `json:"kty"`
 	Use             string              `json:"use,omitempty"`
-	Algortihm       string              `json:"alg,omitempty"`
+	Algorithm       string              `json:"alg,omitempty"`
 	KeyID           string              `json:"kid,omitempty"`
 	Key             any                 `json:"-"`
 	CertificatesRaw [][]byte            `json:"x5c,omitempty"`
@@ -49,6 +49,8 @@ type JSONWebKey struct {
 	CurveName       string              `json:"crv"`
 }
 
+// UnmarshalJSON decodes an EC JWK with a NIST or Brainpool crv, validates the
+// public point and parses the x5c certificates with brainpool.ParseCertificate.
 func (jwk *JSONWebKey) UnmarshalJSON(data []byte) error {
 	type Alias JSONWebKey
 	var jwkAlias Alias
@@ -125,6 +127,8 @@ func (jwk *JSONWebKey) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// MarshalJSON encodes the key, including d for a private key, with the
+// Brainpool crv names and the certificates as x5c.
 func (jwk *JSONWebKey) MarshalJSON() ([]byte, error) {
 	type Alias JSONWebKey
 	jwkAlias := Alias(*jwk)

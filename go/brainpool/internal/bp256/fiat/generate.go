@@ -33,12 +33,16 @@ var fields = map[string]struct {
 	symbol   string // p or n, for the doc comment
 	hex, dec string
 }{
-	"p": {"bp256", "Element", "p",
+	"p": {
+		"bp256", "Element", "p",
 		"0xA9FB57DBA1EEA9BC3E660A909D838D726E3BF623D52620282013481D1F6E5377",
-		"76884956397045344220809746629001649093037950200943055203735601445031516197751"},
-	"n": {"bp256n", "Scalar", "n",
+		"76884956397045344220809746629001649093037950200943055203735601445031516197751",
+	},
+	"n": {
+		"bp256n", "Scalar", "n",
 		"0xA9FB57DBA1EEA9BC3E660A909D838D718C397AA3B561A6F7901E0E82974856A7",
-		"76884956397045344220809746629001649092737531784414529538755519063063536359079"},
+		"76884956397045344220809746629001649092737531784414529538755519063063536359079",
+	},
 }
 
 func main() {
@@ -69,7 +73,7 @@ func main() {
 	if out, err = format.Source(out); err != nil {
 		log.Fatal(err)
 	}
-	if err := os.WriteFile(*which+"_fiat64.go", out, 0644); err != nil {
+	if err := os.WriteFile(*which+"_fiat64.go", out, 0o644); err != nil {
 		log.Fatal(err)
 	}
 
@@ -97,7 +101,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer os.Remove(tmplFile.Name())
-	if err := os.WriteFile(tmplFile.Name(), []byte(tmpl), 0644); err != nil {
+	if err := os.WriteFile(tmplFile.Name(), []byte(tmpl), 0o644); err != nil {
 		log.Fatal(err)
 	}
 	gen := exec.Command("addchain", "gen", "-tmpl", tmplFile.Name(), chainFile.Name())
@@ -109,7 +113,7 @@ func main() {
 	if out, err = format.Source(bytes.TrimSpace(out)); err != nil {
 		log.Fatal(err)
 	}
-	if err := os.WriteFile(*which+"_invert.go", out, 0644); err != nil {
+	if err := os.WriteFile(*which+"_invert.go", out, 0o644); err != nil {
 		log.Fatal(err)
 	}
 	log.Println("Done.")

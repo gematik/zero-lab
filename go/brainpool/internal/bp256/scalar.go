@@ -24,8 +24,9 @@ package bp256
 import (
 	"crypto/subtle"
 	"encoding/binary"
-	"github.com/gematik/zero-lab/go/brainpool/internal/bp256/fiat"
 	"math/bits"
+
+	"github.com/gematik/zero-lab/go/brainpool/internal/bp256/fiat"
 )
 
 // scalarLen is the byte length of a brainpoolP256r1 scalar.

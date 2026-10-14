@@ -34,7 +34,7 @@ import (
 func FuzzJSONWebKeyUnmarshal(f *testing.F) {
 	f.Add([]byte(`{"kty":"EC","crv":"BP-256","x":"AA","y":"AA"}`))
 	f.Add([]byte(`{}`))
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		var jwk JSONWebKey
 		_ = json.Unmarshal(data, &jwk)
 	})
@@ -48,7 +48,7 @@ func FuzzParseToken(f *testing.F) {
 	}
 	f.Add([]byte("a.b.c"))
 	f.Add([]byte(""))
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		_, _ = ParseToken(data, withECDSAPublicKey(&key.PublicKey))
 	})
 }

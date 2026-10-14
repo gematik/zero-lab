@@ -130,7 +130,7 @@ func (p *Point) bytes(out *[uncompressedLen]byte) []byte {
 	zinv := new(fiat.Element).Invert(&p.z)
 	x := new(fiat.Element).Mul(&p.x, zinv)
 	y := new(fiat.Element).Mul(&p.y, zinv)
-	buf := append(out[:0], uncompressedTag)
+	buf := append(out[:0], uncompressedTag) //nolint:gocritic // fills the caller-provided out array, as nistec does
 	buf = append(buf, x.Bytes()...)
 	buf = append(buf, y.Bytes()...)
 	return buf

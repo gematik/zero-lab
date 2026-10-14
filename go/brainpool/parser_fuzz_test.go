@@ -31,21 +31,21 @@ import "testing"
 func FuzzParseCertificate(f *testing.F) {
 	f.Add([]byte{})
 	f.Add([]byte{0x30, 0x00})
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		_, _ = ParseCertificate(data)
 	})
 }
 
 func FuzzParseECPrivateKey(f *testing.F) {
 	f.Add([]byte{0x30, 0x00})
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		_, _ = ParseECPrivateKey(data)
 	})
 }
 
 func FuzzParsePKCS8PrivateKey(f *testing.F) {
 	f.Add([]byte{0x30, 0x00})
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(_ *testing.T, data []byte) {
 		_, _ = ParsePKCS8PrivateKey(data)
 	})
 }

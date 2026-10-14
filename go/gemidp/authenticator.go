@@ -197,7 +197,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	}
 
 	var challengePayload = new(ChallengePayload)
-	err = json.Unmarshal(token.PayloadJson, challengePayload)
+	err = json.Unmarshal(token.PayloadJSON, challengePayload)
 	if err != nil {
 		return nil, fmt.Errorf("parsing challenge payload: %w", err)
 	}

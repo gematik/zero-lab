@@ -23,8 +23,9 @@ package bp256
 
 import (
 	"errors"
-	"github.com/gematik/zero-lab/go/brainpool/internal/bp256/fiat"
 	"math/big"
+
+	"github.com/gematik/zero-lab/go/brainpool/internal/bp256/fiat"
 )
 
 var (

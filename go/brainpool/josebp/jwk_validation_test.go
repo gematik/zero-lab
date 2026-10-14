@@ -43,8 +43,8 @@ func validP256r1Point(t *testing.T) (*big.Int, *big.Int) {
 
 func b64(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }
 
-func jwkJSON(crv, x, y, d string) []byte {
-	m := map[string]string{"kty": "EC", "crv": crv, "x": x, "y": y}
+func jwkJSON(x, y, d string) []byte {
+	m := map[string]string{"kty": "EC", "crv": "BP-256", "x": x, "y": y}
 	if d != "" {
 		m["d"] = d
 	}
@@ -54,7 +54,7 @@ func jwkJSON(crv, x, y, d string) []byte {
 
 func TestUnmarshalJWKAcceptsValidPoint(t *testing.T) {
 	x, y := validP256r1Point(t)
-	raw := jwkJSON("BP-256", b64(x.FillBytes(make([]byte, 32))), b64(y.FillBytes(make([]byte, 32))), "")
+	raw := jwkJSON(b64(x.FillBytes(make([]byte, 32))), b64(y.FillBytes(make([]byte, 32))), "")
 	var jwk JSONWebKey
 	if err := json.Unmarshal(raw, &jwk); err != nil {
 		t.Fatalf("valid JWK rejected: %v", err)
@@ -68,7 +68,7 @@ func TestUnmarshalJWKRejectsOffCurvePoint(t *testing.T) {
 	x, y := validP256r1Point(t)
 	// Corrupt y so the point is off-curve.
 	badY := new(big.Int).Add(y, big.NewInt(1))
-	raw := jwkJSON("BP-256",
+	raw := jwkJSON(
 		b64(x.FillBytes(make([]byte, 32))),
 		b64(badY.FillBytes(make([]byte, 32))), "")
 	var jwk JSONWebKey
@@ -82,7 +82,7 @@ func TestUnmarshalJWKRejectsCoordinateOutOfRange(t *testing.T) {
 	p := brainpool.P256r1().Params().P
 	// x + p is congruent but non-canonical / out of range.
 	bad := new(big.Int).Add(x, p)
-	raw := jwkJSON("BP-256",
+	raw := jwkJSON(
 		b64(bad.Bytes()), // oversized encoding (> 32 bytes)
 		b64(y.FillBytes(make([]byte, 32))), "")
 	var jwk JSONWebKey
@@ -101,7 +101,7 @@ func TestUnmarshalJWKRejectsBadPrivateScalar(t *testing.T) {
 	}
 	for name, d := range cases {
 		t.Run(name, func(t *testing.T) {
-			raw := jwkJSON("BP-256",
+			raw := jwkJSON(
 				b64(x.FillBytes(make([]byte, 32))),
 				b64(y.FillBytes(make([]byte, 32))),
 				b64(d.FillBytes(make([]byte, 32))))
@@ -118,7 +118,7 @@ func TestUnmarshalJWKRejectsMismatchedCurveForPrivateScalar(t *testing.T) {
 	// on-curve point with a valid d to confirm the happy path still works.
 	x, y := validP256r1Point(t)
 	d := big.NewInt(0x2a) // the scalar we used to derive the point; in [1,n)
-	raw := jwkJSON("BP-256",
+	raw := jwkJSON(
 		b64(x.FillBytes(make([]byte, 32))),
 		b64(y.FillBytes(make([]byte, 32))),
 		b64(d.FillBytes(make([]byte, 32))))

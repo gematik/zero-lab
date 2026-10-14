@@ -1,5 +1,21 @@
 # Release Notes
 
+# Release go/brainpool v1.2.0
+
+### breaking
+- `josebp.JWT.HeadersJson` and `PayloadJson` are renamed to `HeadersJSON` and `PayloadJSON`;
+  `josebp.JSONWebKey.Algortihm` is renamed to `Algorithm`. The JSON encoding of a JWK is unchanged.
+
+### fixed
+- `josebp.ParseToken` with `WithKey` no longer panics on a signature that is shorter than the
+  curve requires; a signature of the wrong length is an error.
+
+### changed
+- Tests use the standard library only; testify, and with it go.yaml.in/yaml/v3, is no longer a
+  dependency.
+- Clean under the workspace golangci-lint configuration; doc comments for the exported josebp API.
+- update golang.org/x/crypto to v0.58.0
+
 # Release go/pkcs12 v0.100.0
 
 ### features

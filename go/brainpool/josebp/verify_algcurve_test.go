@@ -22,9 +22,11 @@
 package josebp
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"testing"
 
 	"github.com/gematik/zero-lab/go/brainpool"
@@ -69,6 +71,21 @@ func TestVerifyAcceptsMatchingAlg(t *testing.T) {
 		tok := signedTokenWithAlg(t, alg, key)
 		if _, err := ParseToken(tok, withECDSAPublicKey(&key.PublicKey)); err != nil {
 			t.Fatalf("alg %s with P256r1 key rejected: %v", alg, err)
+		}
+	}
+}
+
+func TestVerifyRejectsSignatureOfWrongLength(t *testing.T) {
+	key, err := ecdsa.GenerateKey(brainpool.P256r1(), rand.Reader)
+	if err != nil {
+		t.Fatalf("keygen: %v", err)
+	}
+	tok := signedTokenWithAlg(t, AlgorithmNameBP256R1, key)
+	signingInput := tok[:bytes.LastIndexByte(tok, '.')+1]
+	for _, n := range []int{0, 1, 31, 63, 65} {
+		forged := base64.RawURLEncoding.AppendEncode(bytes.Clone(signingInput), make([]byte, n))
+		if _, err := ParseToken(forged, withECDSAPublicKey(&key.PublicKey)); err == nil {
+			t.Errorf("%d-byte signature accepted", n)
 		}
 	}
 }

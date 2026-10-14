@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 go build ./... && go vet ./... && go test ./...
 go test -tags openssl_cross ./...        # cross-checks against the openssl CLI (skips if absent)
 go test -run x -fuzz FuzzParseCertificate -fuzztime 30s
+cd .. && just golangci brainpool          # golangci-lint with the workspace configuration
 cd internal/bp256/fiat && go run generate.go -field p   # regenerate; needs the docker image from PROVENANCE.md
 ```
 
@@ -26,4 +27,4 @@ Brainpool curves (RFC 5639) for the gematik TI. `doc.go` has the constant-time p
 - A secret scalar on brainpoolP256r1 never goes through `elliptic.Curve` methods: signing, ECDH and public-key derivation route through `hasConstantTimeCore` → `internal/bp256`. Verification and parsing are public data and use the standard library.
 - Every key that arrives from outside (certificate, JWK, ECDH peer) passes `ValidatePublicKey` before any arithmetic.
 - Exported iff a consumer (gempki, gemidp, epa, kon, ti, or josebp) calls it. Breaking changes ship as a minor bump; consumers are in-repo and pin explicitly.
-- Tests: testify; the differential tests in `internal/bp256` use `brainpool.P256r1()` (big.Int) as the oracle; Wycheproof vectors live in `testdata/`.
+- Tests: the standard library `testing` package, no assertion libraries; the differential tests in `internal/bp256` use `brainpool.P256r1()` (big.Int) as the oracle; Wycheproof vectors live in `testdata/`.

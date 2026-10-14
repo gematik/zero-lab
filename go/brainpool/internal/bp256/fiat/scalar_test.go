@@ -22,7 +22,7 @@ func fe(t *testing.T, v *big.Int) *Scalar {
 
 func toBig(e *Scalar) *big.Int { return new(big.Int).SetBytes(e.Bytes()) }
 
-func samples(t *testing.T) []*big.Int {
+func samples() []*big.Int {
 	out := []*big.Int{big.NewInt(1), big.NewInt(2), new(big.Int).Sub(n, big.NewInt(1))}
 	seed, _ := new(big.Int).SetString(
 		"0FEDCBA9876543210123456789ABCDEF6F1E2D3C4B5A69788796A5B4C3D2E1F0", 16)
@@ -35,7 +35,7 @@ func samples(t *testing.T) []*big.Int {
 }
 
 func TestScalarArithmeticMatchesBigInt(t *testing.T) {
-	vs := samples(t)
+	vs := samples()
 	for _, a := range vs {
 		for _, b := range vs {
 			ea, eb := fe(t, a), fe(t, b)
@@ -53,7 +53,7 @@ func TestScalarArithmeticMatchesBigInt(t *testing.T) {
 }
 
 func TestScalarInvertMatchesBigInt(t *testing.T) {
-	for _, v := range samples(t) {
+	for _, v := range samples() {
 		got := toBig(new(Scalar).Invert(fe(t, v)))
 		want := new(big.Int).ModInverse(v, n)
 		if got.Cmp(want) != 0 {

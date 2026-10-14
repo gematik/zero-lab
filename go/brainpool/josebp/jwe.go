@@ -34,26 +34,32 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"slices"
 
 	"github.com/gematik/zero-lab/go/brainpool"
 )
 
+// JWEBuilder collects the protected header and plaintext of a compact JWE
+// produced by EncryptECDHES.
 type JWEBuilder struct {
 	headers   map[string]any
 	plaintext []byte
 }
 
+// NewJWEBuilder returns a builder with an empty header and no plaintext.
 func NewJWEBuilder() *JWEBuilder {
 	return &JWEBuilder{
 		headers: make(map[string]any),
 	}
 }
 
+// Header sets a protected header parameter; alg, enc and epk are set by EncryptECDHES.
 func (b *JWEBuilder) Header(key string, value any) *JWEBuilder {
 	b.headers[key] = value
 	return b
 }
 
+// Plaintext sets the content to encrypt.
 func (b *JWEBuilder) Plaintext(plaintext []byte) *JWEBuilder {
 	b.plaintext = plaintext
 	return b
@@ -247,9 +253,7 @@ func decryptAESGCMWithIVAndAAD(key, iv, tag, ciphertext, aad []byte) ([]byte, er
 		return nil, err
 	}
 
-	ciphertextWithTag := append(ciphertext, tag...)
-
-	plaintext, err := aesGCM.Open(nil, iv, ciphertextWithTag, aad)
+	plaintext, err := aesGCM.Open(nil, iv, slices.Concat(ciphertext, tag), aad)
 	if err != nil {
 		return nil, err
 	}

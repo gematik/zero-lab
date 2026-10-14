@@ -14,6 +14,7 @@ type Scalar struct {
 	x bp256nMontgomeryDomainFieldElement
 }
 
+// ScalarLen is the length of the big-endian encoding of a Scalar.
 const ScalarLen = 32
 
 type bp256nUntypedFieldElement = [4]uint64
@@ -65,7 +66,7 @@ func (e *Scalar) SetBytes(v []byte) (*Scalar, error) {
 	if len(v) != ScalarLen {
 		return nil, errors.New("invalid scalar Scalar encoding")
 	}
-	var minusOneEncoding = new(Scalar).Sub(
+	minusOneEncoding := new(Scalar).Sub(
 		new(Scalar), new(Scalar).One()).Bytes()
 	if ConstantTimeLessOrEq(v, minusOneEncoding) == 0 {
 		return nil, errors.New("invalid scalar Scalar encoding")

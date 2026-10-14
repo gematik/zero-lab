@@ -31,15 +31,19 @@ import (
 	"math/big"
 )
 
+// VerifierFunc checks the signature of a parsed token; ParseToken fails if any
+// of its verifiers returns an error.
 type VerifierFunc func(token *JWT) error
 
+// WithKey verifies the token's ECDSA signature with the public key of key. The
+// alg header must match the key's curve.
 func WithKey(key *JSONWebKey) VerifierFunc {
 	return func(token *JWT) error {
-		switch key.Key.(type) {
+		switch pub := key.Key.(type) {
 		case *ecdsa.PublicKey:
-			return withECDSAPublicKey(key.Key.(*ecdsa.PublicKey))(token)
+			return withECDSAPublicKey(pub)(token)
 		default:
-			return fmt.Errorf("unsupported key type")
+			return errors.New("unsupported key type")
 		}
 	}
 }
@@ -48,7 +52,7 @@ func withECDSAPublicKey(pubKey *ecdsa.PublicKey) VerifierFunc {
 	return func(token *JWT) error {
 		alg, ok := token.Headers["alg"].(string)
 		if !ok {
-			return fmt.Errorf("missing alg header")
+			return errors.New("missing alg header")
 		}
 		algBits, err := bitSizeForAlg(alg)
 		if err != nil {
@@ -64,6 +68,9 @@ func withECDSAPublicKey(pubKey *ecdsa.PublicKey) VerifierFunc {
 		// Decode the signature into r‖s.
 		curveBits := pubKey.Curve.Params().BitSize
 		keyBytes := curveBits / 8
+		if len(token.Signature) != 2*keyBytes {
+			return fmt.Errorf("signature is %d bytes, want %d for %s", len(token.Signature), 2*keyBytes, alg)
+		}
 
 		rBytes := token.Signature[:keyBytes]
 		sBytes := token.Signature[keyBytes:]
@@ -83,23 +90,25 @@ func withECDSAPublicKey(pubKey *ecdsa.PublicKey) VerifierFunc {
 		hash := hashFunc.Sum(nil)
 
 		if !ecdsa.Verify(pubKey, hash, r, s) {
-			return fmt.Errorf("signature verification failed")
+			return errors.New("signature verification failed")
 		}
 
 		return nil
 	}
 }
 
+// ParseToken decodes a compact JWS and runs every verifier on it; at least one
+// verifier is required, so an unverified token is never returned.
 func ParseToken(rawToken []byte, verifiers ...VerifierFunc) (*JWT, error) {
 	if len(rawToken) == 0 {
-		return nil, fmt.Errorf("empty token")
+		return nil, errors.New("empty token")
 	}
 	if len(verifiers) == 0 {
 		return nil, errors.New("at least one verifier must be specified")
 	}
 	parts := bytes.Split(rawToken, []byte{'.'})
 	if len(parts) != 3 {
-		return nil, fmt.Errorf("invalid token format")
+		return nil, errors.New("invalid token format")
 	}
 
 	token := &JWT{
@@ -108,19 +117,19 @@ func ParseToken(rawToken []byte, verifiers ...VerifierFunc) (*JWT, error) {
 
 	var err error
 
-	if token.HeadersJson, err = base64.RawURLEncoding.DecodeString(string(parts[0])); err != nil {
+	if token.HeadersJSON, err = base64.RawURLEncoding.DecodeString(string(parts[0])); err != nil {
 		return nil, fmt.Errorf("decoding headers: %w", err)
 	}
 
-	if err = json.Unmarshal(token.HeadersJson, &token.Headers); err != nil {
+	if err = json.Unmarshal(token.HeadersJSON, &token.Headers); err != nil {
 		return nil, fmt.Errorf("unmarshaling headers: %w", err)
 	}
 
-	if token.PayloadJson, err = base64.RawURLEncoding.DecodeString(string(parts[1])); err != nil {
+	if token.PayloadJSON, err = base64.RawURLEncoding.DecodeString(string(parts[1])); err != nil {
 		return nil, fmt.Errorf("decoding claims: %w", err)
 	}
 
-	if err = json.Unmarshal(token.PayloadJson, &token.Claims); err != nil {
+	if err = json.Unmarshal(token.PayloadJSON, &token.Claims); err != nil {
 		return nil, fmt.Errorf("unmarshaling claims: %w", err)
 	}
 
