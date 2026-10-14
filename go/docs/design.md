@@ -367,11 +367,9 @@ The policy is the root `CLAUDE.md`. In Go terms:
   tests yet; no start-up validation that rejects insecure production configuration
   (the in-memory store fallback is an example); no audit trail separate from the
   operational logs; no per-tenant data keys; no admission policy, chaos or DAST runs.
-- **Servers start with bare `http.ListenAndServe`** (`zero-pdp`, `zero-pep-proxy`,
-  `zero-bff`, `zero-bff-pdp`): no `ReadHeaderTimeout`, `ReadTimeout`, `WriteTimeout` or
-  `IdleTimeout`, so slow clients can hold connections open (slowloris), and no graceful
-  shutdown on SIGTERM. There are no liveness, readiness or metrics endpoints at all, and
-  so no admin listener either.
+- **Health and admin plane:** the servers have header and idle timeouts and shut down
+  gracefully on SIGTERM, but no liveness, readiness or metrics endpoints and so no admin
+  listener yet.
 - **Nonces are stored, not sealed:** `pdp` issues every nonce into `kv`
   (`nonce.NewKVService`), a store round trip per nonce. The alternative
   `HashicorpNonceService` seals nonces with a key generated in process memory, so a
