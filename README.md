@@ -9,7 +9,7 @@
 zero-lab holds libraries and commands for experimenting with Zero Trust building blocks in the German Telematikinfrastruktur (TI), in two workspaces:
 
 - [`go/`](./go): Go modules, each versioned by its own git tag `go/<module>/vX.Y.Z`, licensed under EUPL-1.2.
-- [`rust/`](./rust): Rust crates, each versioned by its own git tag `rust/<crate>/vX.Y.Z`, licensed under Apache-2.0 (see [rust/README.md](./rust/README.md)).
+- [`rust/`](./rust): Rust crates, each versioned by its own git tag `rust/<crate>/vX.Y.Z`, licensed under EUPL-1.2.
 
 | Workspace | Module | Purpose |
 |---|---|---|
@@ -76,8 +76,6 @@ EUROPEAN UNION PUBLIC LICENCE v. 1.2
 EUPL © the European Union 2007, 2016
 
 See the [LICENSE](./LICENSE) for the specific language governing permissions and limitations under the License
-
-The Rust crates under [`rust/`](./rust) are licensed under the Apache License, Version 2.0, see [rust/README.md](./rust/README.md#license).
 
 ## Additional Notes and Disclaimer from gematik GmbH
 

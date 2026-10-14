@@ -16,7 +16,7 @@ ordinal: 13000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-jwz, jwz-brainpool and ti-jwz are publish = false until the crate names are confirmed with the maintainers (ADR 0001; the licence is Apache-2.0, gematik GmbH, as for the workspace). The names are free on crates.io as of milestone 1.
+jwz, jwz-brainpool and ti-jwz are publish = false until the crate names are confirmed with the maintainers (ADR 0001; the licence is EUPL-1.2, gematik GmbH, as for the workspace). The names are free on crates.io as of milestone 1.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

@@ -4,7 +4,7 @@
 name = "jwz-fuzz"
 version = "0.0.0"
 edition = "2024"
-license = "Apache-2.0"
+license = "EUPL-1.2"
 publish = false
 
 [package.metadata]

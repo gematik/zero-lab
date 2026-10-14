@@ -3,7 +3,7 @@ class Ti < Formula
   desc "Command-line tool for the gematik Telematikinfrastruktur (TI)"
   homepage "https://github.com/gematik/zero-lab/tree/main/rust/ti-cli"
   version "@VERSION@"
-  license "Apache-2.0"
+  license "EUPL-1.2"
 
   # Released for Apple silicon Macs and x86_64 Linux only.
   on_macos do

@@ -64,8 +64,8 @@ zero-lab/
 
 Bindings: uniffi proc-macros → Swift XCFramework (satellite repo), uniffi Kotlin (JNA) +
 Java facade for JVM 17/21 (uniffi-bindgen-java needs Java 22+, 0.x — revisit at JVM 25);
-wasm-bindgen stays for the browser. Hosts do HTTP; engines are sans-I/O. Rust and bindings
-Apache-2.0, Go EUPL-1.2. GitHub Releases only.
+wasm-bindgen stays for the browser. Hosts do HTTP; engines are sans-I/O. Rust, bindings and Go
+EUPL-1.2. GitHub Releases only.
 
 ## 4. Sync workflow
 

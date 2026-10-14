@@ -23,11 +23,12 @@ just check    # what every PR must pass
 
 Copyright 2026 gematik GmbH
 
-Apache License, Version 2.0
+EUROPEAN UNION PUBLIC LICENCE v. 1.2
+
+EUPL © the European Union 2007, 2016
 
 See the [LICENSE](./LICENSE) for the specific language governing permissions and limitations
-under the License. Unlike the Go modules (EUPL-1.2), the Rust crates are licensed under
-Apache-2.0, like gematik's other library projects.
+under the License.
 
 The [Additional Notes and Disclaimer from gematik GmbH](../README.md#additional-notes-and-disclaimer-from-gematik-gmbh)
 in the root README apply here too.
