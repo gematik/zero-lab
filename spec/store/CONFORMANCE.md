@@ -86,7 +86,7 @@ committed; the check is repeated when a rule of sections E, F or G changes.
 
 ## Result code mapping
 
-| Code | `go/store` | `ti_base::store` | JVM |
+| Code | `go/store` | `ti_store::store` | JVM |
 |---|---|---|---|
 | all | TASK-103.6 | TASK-103.3 | TASK-111 |
 

@@ -44,7 +44,7 @@ for card in connector.cards().list(&[]).await? {
   This deviates from the Go client, which expands everywhere.
 - **Faults keep the gematik error trace**, read leniently: Konnektors differ in which
   trace fields they fill in.
-- **Caching:** the service directory can be loaded through a `ti_cache::Cache`
+- **Caching:** the service directory can be loaded through a `ti_store::Cache`
   (`Connector::connect_cached`). Card data, PIN state and signatures are never cached.
 
 ## Features

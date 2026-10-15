@@ -21,9 +21,9 @@
  * find details in the "Readme" file.
  */
 
-//! [`CachingLoader`]: [`ti_cache::Cache`] applied to a trust-material [`Loader`].
+//! [`CachingLoader`]: [`ti_store::Cache`] applied to a trust-material [`Loader`].
 
-use ti_cache::{
+use ti_store::{
     Cache, CacheEntry, CacheLookupError, CachePolicy, CacheStore, Conditional, OriginResponse,
 };
 

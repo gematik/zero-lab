@@ -162,7 +162,7 @@ The [server rules](../../docs/design/servers.md), in Go terms:
   redirects, timeouts, response size limits).
 - Caches use one shared pattern (keyed by input hash, configuration and trust-material
   version; bounded TTL; invalidated on trust-material reload; single-flight against
-  stampedes), the same rules as `ti-cache` on the Rust side.
+  stampedes), the same rules as `ti-store` on the Rust side.
 - Telemetry through one internal instrumentation interface with an OpenTelemetry or
   Prometheus exporter chosen in `cmd/`, and `slog` JSON to stdout; cloud services (KMS,
   attestation, managed databases) behind interfaces with an adapter per provider.

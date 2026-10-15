@@ -28,7 +28,7 @@ use core::fmt;
 use core::time::Duration;
 
 use sha2::{Digest, Sha256};
-use ti_cache::{Meta, Source};
+use ti_store::{Meta, Source};
 
 use crate::time::Timestamp;
 

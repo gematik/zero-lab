@@ -46,7 +46,7 @@
 //! [`Reloader`] verifies whatever the stack returns and swaps both artefacts together;
 //! request handlers read the result through [`TrustStoreHandle::snapshot`].
 //!
-//! The caching layer is [`ti_cache`], re-exported here: [`CachingLoader`] applies its
+//! The caching layer is [`ti_store`], re-exported here: [`CachingLoader`] applies its
 //! [`Cache`] to a [`Loader`], and other crates cache their own artefacts with the same
 //! [`CacheStore`] and [`CachePolicy`].
 //!
@@ -106,7 +106,7 @@ pub use reload::{
     ReloadStatus, Reloader, State, TrustStoreHandle,
 };
 pub use static_::{Bundle, StaticLoader};
-pub use ti_cache::{
+pub use ti_store::{
     Cache, CacheEntry, CacheError, CacheLookupError, CachePolicy, CacheStore, Cached, Conditional,
     MemoryCacheStore, Meta, Source,
 };

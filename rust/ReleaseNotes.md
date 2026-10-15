@@ -149,7 +149,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `Dotkon`: the `.kon` format of the Go and Kotlin clients, with `${NAME}` expanded
   only in credentials, only as plain names, and never from unset variables.
 - `ServiceDirectory`: `connector.sds` parsing, version choice per binding, endpoint
-  rewriting, and loading through a `ti_cache::Cache`.
+  rewriting, and loading through a `ti_store::Cache`.
 - `Connector` over a caller-supplied `Transport` with short and long `Timeouts`;
   one generic SOAP call for every generated operation; faults with the gematik error
   trace read leniently.
@@ -380,11 +380,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `Timestamp`, `Clock` and `SystemClock` come from `ti-types`, so every TI crate
   shares them; the paths `ti_pki::{Timestamp, Clock}` and `ti_pki::load::SystemClock`
   stay as re-exports.
-- The caching layer lives in `ti-cache`, so other crates cache their own artefacts
+- The caching layer lives in `ti-store`, so other crates cache their own artefacts
   (e.g. a Konnektor's service directory) with the same store and policy.
   `load::{CacheStore, CacheEntry, CacheError, CachePolicy, MemoryCacheStore, Meta,
   Source, Conditional}` are re-exports of it, joined by `Cache`, `Cached` and
-  `CacheLookupError`; `CachingLoader` is built on `ti_cache::Cache`, unchanged in
+  `CacheLookupError`; `CachingLoader` is built on `ti_store::Cache`, unchanged in
   behaviour.
 - reqwest transport errors carry their causes (refused, timed out, unknown issuer),
   not only reqwest's "error sending request".
@@ -425,7 +425,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   with PBES2 AES-256-CBC (PBKDF2-HMAC-SHA-256, 2048 iterations) and an HMAC-SHA-256 MAC,
   the OpenSSL 3 defaults; the caller supplies the randomness.
 
-### ti-cache
+### ti-store
 
 #### added
 - `Cache`: freshness, revalidation, offline and stale-on-error over any `CacheStore`,

@@ -3,7 +3,7 @@
 Language-neutral specification of the local store the command-line tools of the telematics
 infrastructure share: tokens, discovery documents, cached trust material and small state, kept per
 profile, readable and writable by every conformant implementation on the same files. It is the
-binding basis for the Rust store (`ti_base::store` and the `ti` backends), the Go store (`go/store`)
+binding basis for the Rust store (`ti_store::store` and the `ti` backends), the Go store (`go/store`)
 and a later JVM implementation (`zeta-cli`). An implementation built from this document alone and
 checked against the corpus of [CONFORMANCE.md](CONFORMANCE.md) is conformant.
 

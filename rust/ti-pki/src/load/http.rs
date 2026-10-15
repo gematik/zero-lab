@@ -31,7 +31,7 @@ use super::maybe_send::{MaybeSend, MaybeSync};
 use super::transport::{Transport, TransportError, TransportErrorKind};
 use crate::TrustConfig;
 use crate::time::Clock;
-use ti_cache::{Conditional, Source};
+use ti_store::{Conditional, Source};
 
 /// Loads the artefacts from the URLs in a [`TrustConfig`] through any [`Transport`],
 /// HTTP or not ([`FileTransport`](super::FileTransport) ignores the URL). No caching and

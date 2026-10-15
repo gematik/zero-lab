@@ -1,4 +1,4 @@
-# ti-cache
+# ti-store
 
 HTTP-style caching for gematik Telematikinfrastruktur (TI) clients: whatever a client
 downloads (roots.json, the TSL, a Konnektor's service directory) goes through one
@@ -14,7 +14,7 @@ store is trivial to back with memory, files, Redis or a browser API. The origin 
 closure per call, so one cache serves any kind of artefact.
 
 ```rust
-use ti_cache::{Cache, CacheEntry, CachePolicy, MemoryCacheStore, Meta, OriginResponse, Source};
+use ti_store::{Cache, CacheEntry, CachePolicy, MemoryCacheStore, Meta, OriginResponse, Source};
 use ti_types::{Clock, Timestamp};
 
 struct Now;
@@ -35,7 +35,7 @@ let sds = cache
     })
     .await?;
 assert_eq!(sds.meta.source, Source::Http);
-# Ok::<(), ti_cache::CacheLookupError<std::io::Error>>(())
+# Ok::<(), ti_store::CacheLookupError<std::io::Error>>(())
 # }).unwrap();
 ```
 

@@ -2064,15 +2064,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ti-cache"
-version = "0.1.0"
-dependencies = [
- "futures-lite",
- "thiserror",
- "ti-types",
-]
-
-[[package]]
 name = "ti-cli"
 version = "0.4.0"
 dependencies = [
@@ -2121,9 +2112,9 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
- "ti-cache",
  "ti-pkcs12",
  "ti-pki",
+ "ti-store",
  "ti-types",
  "ureq",
 ]
@@ -2211,7 +2202,7 @@ dependencies = [
  "sha1",
  "sha2",
  "thiserror",
- "ti-cache",
+ "ti-store",
  "ti-types",
  "ti-xmldsig",
  "tokio",
@@ -2228,6 +2219,15 @@ dependencies = [
  "serde",
  "sha2",
  "ti-pki",
+]
+
+[[package]]
+name = "ti-store"
+version = "0.1.0"
+dependencies = [
+ "futures-lite",
+ "thiserror",
+ "ti-types",
 ]
 
 [[package]]

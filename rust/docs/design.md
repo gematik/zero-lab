@@ -19,7 +19,7 @@ server, a browser, an air-gapped installation and, through bindings, in other ho
               │
  core       ti-pki (+ load)  ti-xmldsig  jwz (+ jwz-brainpool, ti-jwz)  ti-pkcs12
               │
- vocabulary ti-types (Env, Tier; no_std, no dependencies)   ti-cache (policy, store trait)
+ vocabulary ti-types (Env, Tier; no_std, no dependencies)   ti-store (policy, store trait)
 ```
 
 A crate depends only downwards. Adapters are Cargo features of the crate they serve,

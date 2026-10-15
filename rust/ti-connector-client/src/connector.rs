@@ -24,7 +24,7 @@
 //! [`Connector`]: a Konnektor as described by a `.kon` file and its service directory;
 //! the entry point to the service facades.
 
-use ti_cache::{Cache, CacheStore, Meta};
+use ti_store::{Cache, CacheStore, Meta};
 use ti_types::Clock;
 
 use crate::api::gematik::conn::connectorcontext20::Context;
