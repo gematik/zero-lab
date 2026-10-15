@@ -10,7 +10,7 @@ success or failure only, for decoders that report no reason.
 |---|---|---|---|
 | go/pkcs12 (pkcs12.Decode) | modern | full | 28 of 28 |
 | go/pkcs12 (legacy.Decode) | legacy | full | 56 of 56 |
-| rust/ti-pkcs12 | legacy | full | 55 of 56 |
+| rust/ti-pkcs12 | legacy | full | 56 of 56 |
 | OpenSSL 4.0.3 CLI | legacy | coarse | 54 of 56 |
 | pyca/cryptography 50.0.2 | legacy | coarse | 50 of 56 |
 | JDK 21.0.11 KeyStore PKCS12 | legacy | coarse | 39 of 56 |
@@ -111,7 +111,7 @@ success or failure only, for decoders that report no reason.
 | rc4 | der | ✅ |
 | mac-iterations-limit | der | ✅ |
 
-### rust/ti-pkcs12 (profile legacy, full comparison, 55 of 56)
+### rust/ti-pkcs12 (profile legacy, full comparison, 56 of 56)
 
 | Case | Encoding | Result |
 |---|---|---|
@@ -170,7 +170,7 @@ success or failure only, for decoders that report no reason.
 | unknown-mac-algorithm | der | ✅ |
 | pbmac1 | der | ✅ |
 | rc4 | der | ✅ |
-| mac-iterations-limit | der | ❌ timeout after 20s |
+| mac-iterations-limit | der | ✅ |
 
 ### OpenSSL 4.0.3 CLI (profile legacy, coarse comparison, 54 of 56)
 

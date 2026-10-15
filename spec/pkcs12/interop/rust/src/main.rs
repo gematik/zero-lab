@@ -66,6 +66,7 @@ fn decode(data: &[u8], password: &str) -> String {
                 Error::MacMismatch => "mac_mismatch",
                 Error::DecryptFailed => "decryption_failed",
                 Error::UnsupportedAlgorithm(_) => "unsupported_algorithm",
+                Error::LimitExceeded { .. } => "limit_exceeded",
                 _ => "error",
             };
             return failure(code, &e.to_string());

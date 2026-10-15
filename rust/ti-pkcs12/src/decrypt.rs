@@ -54,6 +54,17 @@ fn pbes2(
     let parsed = spki::AlgorithmIdentifierRef::from_der(&encoded)?;
     let scheme = pkcs5::EncryptionScheme::try_from(parsed)
         .map_err(|_| Error::UnsupportedAlgorithm(algorithm.oid))?;
+    let pkcs5::EncryptionScheme::Pbes2(params) = &scheme else {
+        return Err(Error::UnsupportedAlgorithm(algorithm.oid));
+    };
+    match &params.kdf {
+        pkcs5::pbes2::Kdf::Pbkdf2(pbkdf2) => {
+            crate::check_iterations("PBKDF2", pbkdf2.iteration_count)?;
+        }
+        // PBES2 means PBKDF2 here (P12-030): scrypt would let the file choose its
+        // memory cost, and no PKCS#12 producer writes it.
+        other => return Err(Error::UnsupportedAlgorithm(other.oid())),
+    }
     scheme
         .decrypt(password.as_bytes(), ciphertext)
         .map(Zeroizing::new)
@@ -140,6 +151,7 @@ mod legacy {
             .as_ref()
             .ok_or_else(|| Error::malformed("PBE parameters", "missing"))?;
         let params: PbeParams = reparse(parameters)?;
+        crate::check_iterations("PBE", params.iterations)?;
         let password = kdf::bmp_password(password);
         let derive = |purpose, len| {
             kdf::derive::<Sha1>(
@@ -179,5 +191,108 @@ mod legacy {
         plaintext
             .map(Zeroizing::new)
             .map_err(|_| Error::DecryptFailed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use der::Any;
+    use der::asn1::OctetString;
+    use pkcs5::pbes2::{self, Kdf, ScryptParams};
+
+    use super::*;
+    use crate::MAX_ITERATIONS;
+
+    fn pbes2_algorithm(params: &pbes2::Parameters) -> AlgorithmIdentifierOwned {
+        AlgorithmIdentifierOwned {
+            oid: oids::PBES2,
+            parameters: Some(Any::encode_from(params).unwrap()),
+        }
+    }
+
+    /// P12-036: a PBKDF2 count above the limit fails before any key is derived.
+    #[test]
+    fn p12_036_pbkdf2_iterations_above_the_limit_are_refused() {
+        // pkcs5 refuses such a count when constructing, but not when decoding: a crafted
+        // file gets it through, which is what this check is for.
+        let mut params =
+            pbes2::Parameters::generate_pbkdf2_sha256_aes256cbc(2048, &[7; 16], [0; 16]).unwrap();
+        let Kdf::Pbkdf2(pbkdf2) = &mut params.kdf else {
+            unreachable!()
+        };
+        pbkdf2.iteration_count = u32::MAX;
+        let err = decrypt(&pbes2_algorithm(&params), "pw", &[0; 16]).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                Error::LimitExceeded {
+                    what: "PBKDF2",
+                    iterations: u32::MAX
+                }
+            ),
+            "{err}"
+        );
+    }
+
+    /// P12-036: the limit itself is allowed, one more is not.
+    #[test]
+    fn p12_036_iterations_at_the_limit_pass_the_check() {
+        assert!(crate::check_iterations("PBKDF2", MAX_ITERATIONS).is_ok());
+        assert!(matches!(
+            crate::check_iterations("PBKDF2", MAX_ITERATIONS + 1),
+            Err(Error::LimitExceeded { .. })
+        ));
+    }
+
+    /// P12-030: PBES2 means PBKDF2; scrypt, whose memory cost the file would choose, is
+    /// unsupported.
+    #[test]
+    fn p12_030_scrypt_is_unsupported() {
+        let params = pbes2::Parameters {
+            kdf: Kdf::Scrypt(ScryptParams {
+                salt: (&[7; 16][..]).try_into().unwrap(),
+                cost_parameter: 1 << 30,
+                block_size: 8,
+                parallelization: 1,
+                key_length: None,
+            }),
+            encryption: pbes2::EncryptionScheme::Aes256Cbc { iv: [0; 16] },
+        };
+        let err = decrypt(&pbes2_algorithm(&params), "pw", &[0; 16]).unwrap_err();
+        assert!(
+            matches!(err, Error::UnsupportedAlgorithm(oid) if oid == pbes2::SCRYPT_OID),
+            "{err}"
+        );
+    }
+
+    #[cfg(feature = "legacy")]
+    fn pbe_algorithm(iterations: u32) -> AlgorithmIdentifierOwned {
+        let params = crate::asn1::PbeParams {
+            salt: OctetString::new(vec![7; 8]).unwrap(),
+            iterations,
+        };
+        AlgorithmIdentifierOwned {
+            oid: oids::PBE_SHA1_3DES,
+            parameters: Some(Any::encode_from(&params).unwrap()),
+        }
+    }
+
+    /// P12-036: the PKCS#12 KDF of the legacy PBEs is bounded like PBKDF2.
+    #[cfg(feature = "legacy")]
+    #[test]
+    fn p12_036_pbe_iterations_above_the_limit_are_refused() {
+        let err = decrypt(&pbe_algorithm(u32::MAX), "pw", &[0; 16]).unwrap_err();
+        assert!(
+            matches!(err, Error::LimitExceeded { what: "PBE", .. }),
+            "{err}"
+        );
+    }
+
+    /// P12-036: an explicit count of 0 is malformed, not silently 1.
+    #[cfg(feature = "legacy")]
+    #[test]
+    fn p12_036_zero_iterations_are_malformed() {
+        let err = decrypt(&pbe_algorithm(0), "pw", &[0; 16]).unwrap_err();
+        assert!(matches!(err, Error::Malformed { .. }), "{err}");
     }
 }
