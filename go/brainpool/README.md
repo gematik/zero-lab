@@ -146,7 +146,7 @@ OID = 1.3.36.3.3.2.8.1.1.7  (brainpoolP256r1)
 ### Test corpora
 - **Project Wycheproof** — <https://github.com/C2SP/wycheproof>. ECDSA
   brainpoolP256r1 edge-case vectors; see
-  [`internal/bp256/testdata/wycheproof/PROVENANCE.md`](internal/bp256/testdata/wycheproof/PROVENANCE.md).
+  [`testdata/wycheproof/PROVENANCE.md`](testdata/wycheproof/PROVENANCE.md).
 
 ### Standard library precedent
 - Go `crypto/internal/fips140/nistec` — the NIST-curve implementation whose
@@ -161,6 +161,50 @@ brainpool/                 Curves, certificate/key parsing, SignFunc, ECDH, Gene
   internal/bp256/          Constant-time brainpoolP256r1 core (Sign, ECDH, PublicKey)
     fiat/                  Generated arithmetic mod p and mod n (Fiat Cryptography)
   testdata/wycheproof/     Vendored Wycheproof vectors
+```
+
+`doc.go` has the constant-time posture table and a file index.
+
+- **Root:** `curves.go` (P256r1/P384r1/P512r1 as an isomorphism onto the twisted t1 curves
+  over the deprecated big.Int `crypto/elliptic` path; the `curves` table is the only place
+  a curve is identified by name or OID), `x509.go` (`ParseCertificate` swaps the SPKI
+  algorithm OID for an unassigned one of the same length so `crypto/x509` parses
+  everything and leaves the key nil, then decodes the Brainpool key and restores the
+  `Raw*` slices; `ValidatePublicKey`; `MarshalPKIXPublicKey`), `keys.go` (SEC1/PKCS#8
+  keys, public point recomputed from d), `sign.go` (`SignFunc`, `SignFuncPrivateKey`,
+  `ECDH`, `GenerateKey`: the only callers of `internal/bp256`).
+- **internal/bp256:** the constant-time brainpoolP256r1 core: `Sign` (RFC 6979, low-s),
+  `ECDH`, `PublicKey`, all on fixed-width bytes. `point.go` is RCB complete addition and
+  a Montgomery ladder; `scalar.go` and `ecdsa.go` the mod-n arithmetic; `fiat/` the
+  generated fields (`Element` mod p, `Scalar` mod n): four generated files, never
+  hand-edited, checksums in `fiat/PROVENANCE.md`.
+- **josebp:** JWS/JWE/JWK over these curves for the IDP-Dienst; its exported surface is
+  what `gemidp` calls, helpers are unexported.
+
+## Development
+
+The module is frozen: bugfix and security only; new brainpool work happens in Rust
+([Go profile](../docs/design.md)). The repository's rules apply
+([docs](../../docs/README.md)); in addition:
+
+- A secret scalar on brainpoolP256r1 never goes through `elliptic.Curve` methods:
+  signing, ECDH and public-key derivation route through `hasConstantTimeCore` to
+  `internal/bp256`. Verification and parsing are public data and use the standard
+  library.
+- Every key that arrives from outside (certificate, JWK, ECDH peer) passes
+  `ValidatePublicKey` before any arithmetic.
+- Exported only if a consumer calls it (in this repository: `gemidp`, and `josebp`
+  itself). Breaking changes ship as a minor bump; in-repo consumers pin explicitly.
+- Tests use the standard `testing` package; the differential tests in `internal/bp256`
+  use `brainpool.P256r1()` (big.Int) as the oracle; Wycheproof vectors live in
+  `testdata/`.
+
+```bash
+go build ./... && go vet ./... && go test ./...
+go test -tags openssl_cross ./...        # cross-checks against the openssl CLI (skips if absent)
+go test -run x -fuzz FuzzParseCertificate -fuzztime 30s
+cd .. && just golangci brainpool          # golangci-lint with the workspace configuration
+cd internal/bp256/fiat && go run generate.go -field p   # regenerate; needs the docker image from PROVENANCE.md
 ```
 
 ## License and provenance of generated code
