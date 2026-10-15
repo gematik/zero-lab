@@ -143,7 +143,7 @@ Rules marked *(legacy)* apply to the profile `legacy` only. A `modern` decoder M
 | `mac_mismatch` | wrong password or altered file | `ErrAuthentication` | `Error::MacMismatch` |
 | `decryption_failed` | ciphertext does not decrypt (wrong password without MAC, corrupt data) | `ErrDecryption` (with `ErrInvalidPadding`) | `Error::DecryptFailed` |
 | `unsupported_algorithm` | algorithm or mode outside this specification | `ErrUnsupportedAlgorithm` | `Error::UnsupportedAlgorithm` |
-| `limit_exceeded` | iteration count above P12-036 | `ErrLimitExceeded` | — (see Deviations) |
+| `limit_exceeded` | iteration count above P12-036 | `ErrLimitExceeded` | `Error::LimitExceeded` |
 
 A wrong password on a file without MAC yields `decryption_failed` in about 255 of 256 cases; in the
 others the padding happens to be valid and the plaintext fails to parse (`malformed`). Both are
@@ -186,7 +186,6 @@ decrypt(algorithm, ciphertext):
 
 | Implementation | Rule | Deviation |
 |---|---|---|
-| `rust/ti-pkcs12` 0.1.0 | P12-036 | No iteration limit: the case `mac-iterations-limit` runs into the harness timeout. |
 | `go/pkcs12` up to v0.99.3 | P12-030, P12-051, P12-052 | Wrote the digest OID as PBKDF2 PRF, did not encrypt certificates, had no iteration limit and fell back to SHA-1 for unknown PRFs. Fixed in v0.100.0; such files stay readable (P12-030). |
 
 Third-party libraries are measured, not judged, in [interop/matrix.md](interop/matrix.md).

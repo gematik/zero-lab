@@ -297,8 +297,6 @@ Gaps against that today:
 - Fuzzing covers jwz only; every other row of the fuzz table above is missing. Most
   urgent: ti-pki (TSL, OCSP, certificates), ti-xmldsig and ti-pkcs12, which read files
   and responses from outside before any signature is checked.
-- ti-pkcs12 accepts any KDF the file names and any iteration count; it needs PBKDF2
-  only and caps on iterations before decrypting.
 - Requirement naming is new: only jwz has a traceability table, and 57 of its 82
   references have no test named after them; the other crates' tests do not yet carry
   requirement IDs in their names.

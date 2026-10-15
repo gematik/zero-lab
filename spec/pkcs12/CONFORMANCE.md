@@ -145,7 +145,7 @@ As of the run recorded in `interop/matrix.md`:
 | Decoder | Cases | Difference |
 |---|---|---|
 | OpenSSL 4.0 CLI, pyca/cryptography 50, JDK 21 | `trailing-byte` | accept bytes after the PFX (P12-003) |
-| OpenSSL 4.0 CLI, pyca/cryptography 50, rust/ti-pkcs12 0.1 | `mac-iterations-limit` | no iteration limit, run into the timeout (P12-036) |
+| OpenSSL 4.0 CLI, pyca/cryptography 50 | `mac-iterations-limit` | no iteration limit, run into the timeout (P12-036) |
 | pyca/cryptography 50 | `friendly-names`, `vendor-*` | reports no friendly name for keys (API limitation) |
 | JDK 21 | `pbes2-aes192`, `pbes2-des-ede3`, `legacy-rc2-128-2des` | rejects AES-192 and DES-EDE3 in PBES2, RC2-128 and two-key Triple DES |
 | JDK 21 | `unicode-password` | rejects a password with a character outside the BMP |

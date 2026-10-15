@@ -45,6 +45,7 @@ pub(crate) fn verify(mac_data: &MacData, password: &[u8], content: &[u8]) -> Res
         oids::SHA512 => check::<Sha512>,
         _ => return Err(Error::UnsupportedAlgorithm(oid)),
     };
+    crate::check_iterations("MAC", mac_data.iterations)?;
     if check(
         password,
         mac_data.mac_salt.as_bytes(),
@@ -90,4 +91,41 @@ fn check<D: Digest + BlockSizeUser + Clone>(
     };
     mac.update(content);
     mac.verify_slice(expected).is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use der::asn1::OctetString;
+    use spki::AlgorithmIdentifierOwned;
+
+    use super::*;
+    use crate::asn1::DigestInfo;
+
+    /// P12-036: a crafted MAC count fails at once instead of costing billions of hashes
+    /// (the corpus case `mac-iterations-limit`).
+    #[test]
+    fn p12_036_mac_iterations_above_the_limit_are_refused() {
+        let mac_data = MacData {
+            mac: DigestInfo {
+                algorithm: AlgorithmIdentifierOwned {
+                    oid: oids::SHA256,
+                    parameters: None,
+                },
+                digest: OctetString::new(vec![0; 32]).unwrap(),
+            },
+            mac_salt: OctetString::new(vec![7; 8]).unwrap(),
+            iterations: 2_147_483_647,
+        };
+        let err = verify(&mac_data, b"\0t\0e\0s\0t\0\0", b"content").unwrap_err();
+        assert!(
+            matches!(
+                err,
+                Error::LimitExceeded {
+                    what: "MAC",
+                    iterations: 2_147_483_647
+                }
+            ),
+            "{err}"
+        );
+    }
 }

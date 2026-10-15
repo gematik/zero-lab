@@ -67,6 +67,11 @@ use crate::asn1::{CertBag, Content, ContentInfo, EncryptedPrivateKeyInfo, Pfx, S
 #[cfg(feature = "encode")]
 pub use crate::encode::{ITERATIONS, encode};
 
+/// The highest iteration count a MAC, PKCS#12 KDF or PBKDF2 may ask for (spec/pkcs12
+/// P12-036). Producers use 1 to 102,400; the limit bounds the CPU time a crafted file
+/// can cost, and is checked before anything is derived.
+pub const MAX_ITERATIONS: u32 = 10_000_000;
+
 /// The object identifiers of RFC 7292 and the algorithms PKCS#12 files use.
 pub mod oids {
     use der::asn1::ObjectIdentifier;
@@ -152,6 +157,14 @@ pub enum Error {
     /// An algorithm or mode this crate does not implement.
     #[error("unsupported algorithm or mode {0}")]
     UnsupportedAlgorithm(ObjectIdentifier),
+    /// An iteration count above [`MAX_ITERATIONS`].
+    #[error("{what} iteration count {iterations} above the limit of {MAX_ITERATIONS}")]
+    LimitExceeded {
+        /// Whose count: `MAC`, `PBE` or `PBKDF2`.
+        what: &'static str,
+        /// The count the file asked for.
+        iterations: u32,
+    },
 }
 
 impl Error {
@@ -160,6 +173,21 @@ impl Error {
             what,
             reason: reason.into(),
         }
+    }
+}
+
+/// Checks an iteration count from the file before anything is derived with it (P12-036).
+pub(crate) fn check_iterations(what: &'static str, iterations: u32) -> Result<(), Error> {
+    match iterations {
+        0 => Err(Error::malformed(
+            "iteration count",
+            format!("{what} iterations are 0"),
+        )),
+        n if n > MAX_ITERATIONS => Err(Error::LimitExceeded {
+            what,
+            iterations: n,
+        }),
+        _ => Ok(()),
     }
 }
 

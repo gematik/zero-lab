@@ -416,6 +416,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   feature the PKCS#12 PBEs with 3DES and RC2. Parity with `go/pkcs12` on its fixtures,
   without its OpenSSL conversion for BER files.
 - `Error::is_wrong_password`.
+- Iteration counts of the MAC, the PKCS#12 KDF and PBKDF2 must lie in 1 to
+  `MAX_ITERATIONS` (10,000,000; spec/pkcs12 P12-036): above it decoding fails with
+  `Error::LimitExceeded` before anything is derived, 0 is `Error::Malformed`. PBES2 accepts
+  PBKDF2 only (P12-030); scrypt is `Error::UnsupportedAlgorithm`.
 - `Pkcs12::encryption` names what each algorithm protects (`Encryption`, `Target`).
 - Feature `encode`: `encode` writes certificates and keys with their attributes as DER
   with PBES2 AES-256-CBC (PBKDF2-HMAC-SHA-256, 2048 iterations) and an HMAC-SHA-256 MAC,
