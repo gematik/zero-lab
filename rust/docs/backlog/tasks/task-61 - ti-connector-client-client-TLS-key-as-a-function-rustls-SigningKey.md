@@ -9,6 +9,7 @@ labels:
   - keys
 dependencies: []
 references:
+  - docs/design/keys.md
   - rust/docs/design.md
 priority: medium
 ordinal: 59000

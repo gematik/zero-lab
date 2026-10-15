@@ -10,6 +10,7 @@ labels:
   - design
 dependencies: []
 references:
+  - docs/interop.md
   - go/docs/design.md
 priority: medium
 ordinal: 63000
@@ -18,7 +19,7 @@ ordinal: 63000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-The ti serve protocol is open (CBOR, protobuf, PKCS#11 semantics; RPC performance section of go/docs/design.md), and there are no benchmarks or budgets for the native-or-RPC decision.
+The ti serve protocol is open (CBOR, protobuf, PKCS#11 semantics; RPC performance section of docs/interop.md), and there are no benchmarks or budgets for the native-or-RPC decision.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

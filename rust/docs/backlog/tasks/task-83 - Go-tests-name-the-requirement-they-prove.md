@@ -9,7 +9,7 @@ labels:
   - tests
 dependencies: []
 references:
-  - CLAUDE.md
+  - docs/design/testing.md
 priority: medium
 ordinal: 81000
 ---
@@ -17,7 +17,7 @@ ordinal: 81000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-15 of 75 Go test files cite any requirement and none follows the naming convention (CLAUDE.md, Tests name the requirement they prove).
+15 of 75 Go test files cite any requirement and none follows the naming convention (docs/design/testing.md, Tests name the requirement they prove).
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

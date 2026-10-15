@@ -10,6 +10,7 @@ labels:
 dependencies:
   - TASK-38
 references:
+  - docs/design/testing.md
   - go/docs/design.md
 priority: medium
 ordinal: 84000

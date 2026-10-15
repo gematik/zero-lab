@@ -10,7 +10,7 @@ labels:
 dependencies:
   - TASK-14
 references:
-  - CLAUDE.md
+  - docs/design/testing.md
 priority: medium
 ordinal: 48000
 ---
@@ -18,7 +18,7 @@ ordinal: 48000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-CLAUDE.md, Tests name the requirement they prove: tests carry the requirement ID in their name and code cites it. Only jwz has a traceability table today.
+docs/design/testing.md, Tests name the requirement they prove: tests carry the requirement ID in their name and code cites it. Only jwz has a traceability table today.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

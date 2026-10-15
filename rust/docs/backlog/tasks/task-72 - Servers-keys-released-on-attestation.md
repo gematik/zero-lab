@@ -10,6 +10,7 @@ labels:
   - keys
 dependencies: []
 references:
+  - docs/design/keys.md
   - go/docs/design.md
 priority: medium
 ordinal: 70000

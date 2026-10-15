@@ -9,6 +9,7 @@ labels:
   - fuzz
 dependencies: []
 references:
+  - docs/design/testing.md
   - go/docs/design.md
 priority: medium
 ordinal: 88000

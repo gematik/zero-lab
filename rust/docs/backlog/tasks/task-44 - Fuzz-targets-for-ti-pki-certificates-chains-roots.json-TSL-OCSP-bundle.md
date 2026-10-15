@@ -9,6 +9,7 @@ labels:
   - fuzz
 dependencies: []
 references:
+  - docs/design/testing.md
   - rust/docs/design.md
 priority: medium
 ordinal: 42000
@@ -17,7 +18,7 @@ ordinal: 42000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Design goal 9: every reader of attacker-chosen bytes has a fuzz target. ti-pki parses certificates, roots.json, the TSL (quick-xml) and OCSP responses from outside before any signature is checked, and the offline bundle. Layout as jwz/fuzz (Fuzzing section of rust/docs/design.md).
+Design goal 9: every reader of attacker-chosen bytes has a fuzz target. ti-pki parses certificates, roots.json, the TSL (quick-xml) and OCSP responses from outside before any signature is checked, and the offline bundle. Layout as jwz/fuzz (docs/design/testing.md, Fuzzing; layout in rust/docs/design.md, Fuzzing).
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

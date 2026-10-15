@@ -9,6 +9,7 @@ labels:
   - tests
 dependencies: []
 references:
+  - docs/design/testing.md
   - rust/jwz/docs/traceability.md
 priority: medium
 ordinal: 49000

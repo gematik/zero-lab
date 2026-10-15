@@ -9,6 +9,7 @@ labels:
   - release
 dependencies: []
 references:
+  - docs/design/testing.md
   - rust/docs/design.md
 priority: medium
 ordinal: 51000
@@ -17,7 +18,7 @@ ordinal: 51000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-cargo-mutants runs by hand (just mutants). A mutation score per crate before a release would make it a gate (Making the sources safe and secure).
+cargo-mutants runs by hand (just mutants). A mutation score per crate before a release would make it a gate (docs/design/testing.md, Verification and tooling).
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

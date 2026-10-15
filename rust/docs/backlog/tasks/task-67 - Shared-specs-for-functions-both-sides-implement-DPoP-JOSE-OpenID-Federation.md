@@ -9,6 +9,7 @@ labels:
   - spec
 dependencies: []
 references:
+  - docs/interop.md
   - go/docs/design.md
 priority: medium
 ordinal: 65000
@@ -17,7 +18,7 @@ ordinal: 65000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Where Go and Rust implement the same function, a spec in spec/<topic> is the reference (Go and Rust section); only tsl-xmldsig and pkcs12 exist.
+Where Go and Rust implement the same function, a spec in spec/<topic> is the reference (docs/interop.md); only tsl-xmldsig and pkcs12 exist.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

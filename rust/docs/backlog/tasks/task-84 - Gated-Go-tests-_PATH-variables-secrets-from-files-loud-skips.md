@@ -9,7 +9,7 @@ labels:
   - tests
 dependencies: []
 references:
-  - CLAUDE.md
+  - docs/design/testing.md
 priority: medium
 ordinal: 82000
 ---

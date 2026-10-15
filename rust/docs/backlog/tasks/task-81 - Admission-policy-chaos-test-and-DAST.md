@@ -10,6 +10,7 @@ labels:
   - tests
 dependencies: []
 references:
+  - docs/design/testing.md
   - go/docs/design.md
 priority: medium
 ordinal: 79000

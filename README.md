@@ -61,7 +61,7 @@ ti pki inspect card.pem
 ti pki verify smcb.p12
 ```
 
-For more examples or in-depth documentation, please refer to the READMEs of the individual modules, for example [`rust/ti-cli`](./rust/ti-cli/README.md), and to the development guides for [Go](./go/docs/development.md) and [Rust](./rust/docs/development.md).
+For more examples or in-depth documentation, please refer to the READMEs of the individual modules, for example [`rust/ti-cli`](./rust/ti-cli/README.md), and to the development guides for [Go](./go/docs/development.md) and [Rust](./rust/docs/development.md). The design rules, conventions and language profiles are in [docs](./docs/README.md).
 
 ## Contributing
 

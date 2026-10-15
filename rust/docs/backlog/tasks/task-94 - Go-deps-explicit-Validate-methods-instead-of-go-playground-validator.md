@@ -10,6 +10,7 @@ labels:
   - pdp
 dependencies: []
 references:
+  - docs/conventions/dependencies.md
   - go/docs/design.md
 priority: medium
 ordinal: 92000

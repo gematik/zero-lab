@@ -10,6 +10,7 @@ labels:
   - observability
 dependencies: []
 references:
+  - docs/design/servers.md
   - go/docs/design.md
 priority: medium
 ordinal: 74000

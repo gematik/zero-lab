@@ -12,6 +12,7 @@ labels:
   - fuzz
 dependencies: []
 references:
+  - docs/design/testing.md
   - rust/docs/design.md
 priority: medium
 ordinal: 46000

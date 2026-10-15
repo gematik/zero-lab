@@ -12,6 +12,7 @@ labels:
 dependencies:
   - TASK-7
 references:
+  - docs/design/servers.md
   - go/docs/design.md
 priority: medium
 ordinal: 67000
