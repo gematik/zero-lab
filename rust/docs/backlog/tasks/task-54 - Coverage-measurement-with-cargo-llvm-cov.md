@@ -8,6 +8,7 @@ labels:
   - tests
 dependencies: []
 references:
+  - docs/design/testing.md
   - rust/docs/design.md
 priority: medium
 ordinal: 52000

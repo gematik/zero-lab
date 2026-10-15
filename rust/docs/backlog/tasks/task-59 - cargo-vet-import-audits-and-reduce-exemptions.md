@@ -9,6 +9,7 @@ labels:
   - supply-chain
 dependencies: []
 references:
+  - docs/conventions/dependencies.md
   - rust/docs/design.md
 priority: medium
 ordinal: 57000

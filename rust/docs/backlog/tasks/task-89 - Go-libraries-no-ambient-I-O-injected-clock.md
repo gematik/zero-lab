@@ -8,6 +8,7 @@ labels:
   - go
 dependencies: []
 references:
+  - docs/architecture.md
   - go/docs/design.md
 priority: medium
 ordinal: 87000

@@ -10,6 +10,7 @@ labels:
   - rpc
 dependencies: []
 references:
+  - docs/interop.md
   - go/docs/design.md
 priority: medium
 ordinal: 64000

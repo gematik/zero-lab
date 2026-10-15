@@ -9,7 +9,7 @@ labels:
   - tests
 dependencies: []
 references:
-  - CLAUDE.md
+  - docs/design/testing.md
 priority: medium
 ordinal: 50000
 ---
@@ -17,7 +17,7 @@ ordinal: 50000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-ti-connector-client/tests/e2e.rs returns early when TI_TEST_KON_PATH is unset, so the tests show as passed. CLAUDE.md, Env-gated tests run before every release.
+ti-connector-client/tests/e2e.rs returns early when TI_TEST_KON_PATH is unset, so the tests show as passed. docs/design/testing.md, Env-gated tests run before every release.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

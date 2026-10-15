@@ -11,6 +11,7 @@ labels:
   - ti-connector-client
 dependencies: []
 references:
+  - docs/architecture.md
   - rust/docs/design.md
 priority: medium
 ordinal: 62000
@@ -19,7 +20,7 @@ ordinal: 62000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-ti-pki, ti-idpd and ti-connector-client each define their own Transport trait, so a host writes three adapters (Sans I/O and pluggable transports, Open).
+ti-pki, ti-idpd and ti-connector-client each define their own Transport trait, so a host writes three adapters (docs/architecture.md, Transport independence).
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

@@ -10,6 +10,7 @@ labels:
   - deps
 dependencies: []
 references:
+  - docs/conventions/dependencies.md
   - rust/docs/design.md
 priority: medium
 ordinal: 56000

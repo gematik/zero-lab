@@ -11,7 +11,7 @@ labels:
   - keys
 dependencies: []
 references:
-  - CLAUDE.md
+  - docs/design/keys.md
 priority: medium
 ordinal: 60000
 ---

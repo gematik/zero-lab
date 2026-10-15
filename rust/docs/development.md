@@ -261,12 +261,10 @@ differences to gematik's reference implementation are in
 
 ## Gated tests
 
-Tests that need a live system are gated and never run by `just check` or CI; a green CI
-says nothing about them. Before a crate is released, every suite listed for it below
-runs green against the real system, and the release PR records which suites ran,
-against what (environment, Konnektor, card) and on which commit. A suite that cannot run
-blocks the release or is waived in the release PR with the reason. The rules are in the
-root `CLAUDE.md`, "Env-gated tests run before every release".
+The suites that need a live system, which `just check` and CI never run. Before a crate
+is released, every suite listed for it runs green and the release PR records the runs
+(environment, Konnektor, card, commit); the rules are in
+[testing](../../docs/design/testing.md#env-gated-tests-run-before-every-release).
 
 | Suite | Run with | Needs | Proves | Required for |
 |---|---|---|---|---|
