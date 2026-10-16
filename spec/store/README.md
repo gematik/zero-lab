@@ -204,7 +204,7 @@ The schema is [schema.sql](schema.sql). `state.db` and `cache.db` share it.
 
 | Rule | Requirement |
 |---|---|
-| STORE-070 | A database has `PRAGMA application_id = 1515934548` (`0x5A4C5354`, "ZLST"); another application id is `malformed`. `PRAGMA user_version` is the database's format level, and the table `meta` holds it with its compatibility level (section K). |
+| STORE-070 | A database has `PRAGMA application_id = 1514951508` (`0x5A4C5354`, "ZLST"); another application id is `malformed`. `PRAGMA user_version` is the database's format level, and the table `meta` holds it with its compatibility level (section K). |
 | STORE-071 | A new database is created by running `schema.sql` as it stands: `auto_vacuum = INCREMENTAL`, then `journal_mode = WAL`, both outside a transaction and before anything else is written, then the tables and `user_version` in one transaction. A database whose `auto_vacuum` is not incremental or whose journal mode is not WAL is still readable; an implementation SHOULD repair it. |
 | STORE-072 | Every connection sets `foreign_keys = ON` and `busy_timeout` of at least 5000 ms. `state.db` uses `synchronous = FULL` and `secure_delete = ON`; `cache.db` MAY use `synchronous = NORMAL`. |
 | STORE-073 | A write transaction starts with `BEGIN IMMEDIATE`. A transaction that still finds the database locked after the busy timeout fails with `busy`. |

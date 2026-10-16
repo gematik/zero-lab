@@ -8,7 +8,7 @@ PRAGMA journal_mode = WAL;
 
 BEGIN IMMEDIATE;
 
-PRAGMA application_id = 1515934548;
+PRAGMA application_id = 1514951508;
 
 CREATE TABLE records (
   ns         TEXT    NOT NULL,

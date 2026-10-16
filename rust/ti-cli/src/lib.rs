@@ -41,6 +41,14 @@ mod net;
 mod output;
 mod paths;
 mod peer;
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "the profile and store commands use it, TASK-103.5"
+    )
+)]
+mod store;
 mod trust;
 
 use std::ffi::OsString;
