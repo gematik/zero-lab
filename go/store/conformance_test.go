@@ -22,66 +22,19 @@
 package store_test
 
 import (
-	"bytes"
-	"encoding/json"
-	"os"
-	"reflect"
 	"testing"
 
 	"github.com/gematik/zero-lab/go/store"
 	"github.com/gematik/zero-lab/go/store/filestore"
-	"github.com/gematik/zero-lab/go/store/internal/conformance"
+	"github.com/gematik/zero-lab/go/store/storetest"
 )
 
-type manifestCase struct {
-	ID     string          `json:"id"`
-	Kind   string          `json:"kind"`
-	Rules  []string        `json:"rules"`
-	Input  conformance.Obj `json:"input"`
-	Expect struct {
-		Code   string          `json:"code"`
-		Output conformance.Obj `json:"output"`
-	} `json:"expect"`
-}
-
-func corpus(t testing.TB) []manifestCase {
-	t.Helper()
-	raw, err := os.ReadFile("../../spec/store/testdata/manifest.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	d := json.NewDecoder(bytes.NewReader(raw))
-	d.UseNumber()
-	var m struct{ Cases []manifestCase }
-	if err := d.Decode(&m); err != nil {
-		t.Fatal(err)
-	}
-	if len(m.Cases) == 0 {
-		t.Fatal("empty corpus")
-	}
-	return m.Cases
-}
-
-// normalize gives a value the shape it has after a JSON round trip, so that outputs
-// compare with reflect.DeepEqual.
-func normalize(t *testing.T, v any) any {
-	t.Helper()
-	b, err := json.Marshal(v)
-	if err != nil {
-		t.Fatal(err)
-	}
-	d := json.NewDecoder(bytes.NewReader(b))
-	d.UseNumber()
-	var out any
-	if err := d.Decode(&out); err != nil {
-		t.Fatal(err)
-	}
-	return out
-}
+const manifest = "../../spec/store/testdata/manifest.json"
 
 // backends: the files backend for real, in a temporary directory; the memory backend for
-// the SQLite scenarios, whose semantics it shares (the SQLite backend is TASK-103.7).
-func backends(t *testing.T) conformance.Backends {
+// the SQLite scenarios, whose semantics it shares. The SQLite backend itself runs them in
+// go/sqlitestore.
+func backends(t *testing.T) storetest.Backends {
 	return func(name string) (store.Backend, func(), error) {
 		switch name {
 		case "files":
@@ -97,31 +50,10 @@ func backends(t *testing.T) conformance.Backends {
 	}
 }
 
-// TestSTORE_Corpus runs every case of spec/store as a subtest named after its most
-// specific rule and its id.
+// TestSTORE_Corpus runs every case of spec/store but the SQLite backend's capabilities,
+// which the memory backend does not have; go/sqlitestore checks those.
 func TestSTORE_Corpus(t *testing.T) {
-	for _, c := range corpus(t) {
-		t.Run(c.Rules[0]+"/"+c.ID, func(t *testing.T) {
-			if c.Kind == "capabilities" && c.Input["backend"] == "sqlite" {
-				t.Skip("SQLite backend not in this module yet (TASK-103.7); the memory backend stands in only for its scenarios")
-			}
-			code, out, err := conformance.Evaluate(c.Kind, c.Input, backends(t))
-			if err != nil {
-				t.Fatalf("broken case: %v", err)
-			}
-			if string(code) != c.Expect.Code {
-				t.Fatalf("code %s, want %s", code, c.Expect.Code)
-			}
-			if code != store.CodeOK {
-				return
-			}
-			want := c.Expect.Output
-			if want == nil {
-				want = conformance.Obj{}
-			}
-			if got, w := normalize(t, out), normalize(t, want); !reflect.DeepEqual(got, w) {
-				t.Errorf("output\n got  %v\n want %v", got, w)
-			}
-		})
-	}
+	storetest.RunCorpus(t, manifest, func(c storetest.Case) bool {
+		return c.Kind != "capabilities" || c.Input["backend"] != "sqlite"
+	}, backends(t))
 }

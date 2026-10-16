@@ -15,6 +15,7 @@ Go keeps servers and relying parties, their libraries and the ePA client
  servers    pdp/authzserver  pep/proxy  bff/gateway  epa/vau        (http.Handler)
               │
  libraries  oauth  oidf  dpop  nonce  gemidp  kv  store  brainpool  pkcs12  (no ambient I/O)
+ adapters   sqlitestore                                             (a driver of their own)
 ```
 
 - `main` and `cmd/` own the process: they read flags, environment and files, build the

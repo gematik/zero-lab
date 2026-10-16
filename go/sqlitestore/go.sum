@@ -1,0 +1,8 @@
+github.com/ncruces/go-sqlite3 v0.35.6 h1:0JGlMne89YzKNP2CJBuiH21EEzSQNuB7pfvCbKBn0Jg=
+github.com/ncruces/go-sqlite3 v0.35.6/go.mod h1:6MfWBOFbHJVSJxmTCIUKCJdLl4TKkgO895RHerlDVo8=
+github.com/ncruces/go-sqlite3-wasm/v6 v6.3.35304 h1:dBSZlcEFdtBMvNRg34y50mConBPO/petSddSwGQVlSI=
+github.com/ncruces/go-sqlite3-wasm/v6 v6.3.35304/go.mod h1:YvoJzbJpX6phd3BGdtiXu2NuD5RX6G8zsUdzt47GgOY=
+github.com/ncruces/julianday v1.0.0 h1:fH0OKwa7NWvniGQtxdJRxAgkBMolni2BjDHaWTxqt7M=
+github.com/ncruces/julianday v1.0.0/go.mod h1:Dusn2KvZrrovOMJuOt0TNXL6tB7U2E8kvza5fFc9G7g=
+golang.org/x/sys v0.48.0 h1:bbX/i/6MgT9BVLM9RT1thmxL04yeTAhbEz4SyadbXoo=
+golang.org/x/sys v0.48.0/go.mod h1:hNLxWAXmnKAxqDtdwIYC4bM9oQPEecfsnNMuSxOs3og=

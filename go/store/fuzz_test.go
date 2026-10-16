@@ -31,13 +31,14 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/store"
+	"github.com/gematik/zero-lab/go/store/storetest"
 )
 
 func writeFile(path string, b []byte) error { return os.WriteFile(path, b, 0o600) }
 
 // seeds adds the corpus outputs of a kind as fuzz seeds.
 func seeds(f *testing.F, kinds ...string) {
-	for _, c := range corpus(f) {
+	for _, c := range storetest.Load(f, manifest) {
 		for _, k := range kinds {
 			if c.Kind != k || c.Expect.Code != "ok" {
 				continue

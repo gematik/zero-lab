@@ -107,11 +107,13 @@ it; in Rust, `StoreError::code` does. The adapters:
 
 ```sh
 # in spec/store/tool
-go run . verify -- go run ../../../go/store/cmd/store-conformance
+(cd ../../../go/store && go build -o /tmp/store-conformance ./cmd/store-conformance)
+go run . verify -- /tmp/store-conformance
 (cd ../../../rust && cargo build -p ti-store --features test-util --example conformance)
 go run . verify -- ../../../rust/target/debug/examples/conformance
 ```
 
-The Go adapter answers every kind but the SQLite backend's scenarios and capabilities
-(TASK-103.7); the Rust adapter also leaves out the files backend, which belongs to `ti`
-(TASK-103.4).
+The Go adapter answers every kind but the SQLite backend's scenarios and capabilities;
+`go test ./...` in `go/sqlitestore` runs those from the manifest. The Rust adapter answers the kinds of ti-store; the SQLite and files backends
+are `ti`'s, and `cargo test -p ti-cli --lib store::` runs their `capabilities` and
+`scenario` cases from the manifest.

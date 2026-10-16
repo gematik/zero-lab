@@ -15,5 +15,6 @@ use (
 	./pep
 	./pkcs12
 	./store
+	./sqlitestore
 	./zaddy
 )

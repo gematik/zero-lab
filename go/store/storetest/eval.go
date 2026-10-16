@@ -19,9 +19,11 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-// Package conformance answers the cases of spec/store/testdata/manifest.json with package
-// store, for the corpus tests and the store-conformance adapter.
-package conformance
+// Package storetest runs the corpus of spec/store (testdata/manifest.json) against
+// package store and its backends: [Evaluate] answers one case, as the store-conformance
+// adapter does; [RunCorpus] runs the cases as subtests, for the tests of this module and
+// of backends in other modules.
+package storetest
 
 import (
 	"bytes"

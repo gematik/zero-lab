@@ -23,8 +23,8 @@
 // one request per line on standard input and answers one per line (spec/store
 // CONFORMANCE.md). Scenarios on the files backend run in a temporary directory each.
 //
-//	cd spec/store/tool
-//	go run . verify -- go run ../../../go/store/cmd/store-conformance
+//	go build -o /tmp/store-conformance ./cmd/store-conformance    # in go/store
+//	cd ../../spec/store/tool && go run . verify -- /tmp/store-conformance
 package main
 
 import (
@@ -36,7 +36,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/store"
 	"github.com/gematik/zero-lab/go/store/filestore"
-	"github.com/gematik/zero-lab/go/store/internal/conformance"
+	"github.com/gematik/zero-lab/go/store/storetest"
 )
 
 func backends(name string) (store.Backend, func(), error) {
@@ -61,9 +61,9 @@ func main() {
 	out := json.NewEncoder(os.Stdout)
 	for sc.Scan() {
 		var req struct {
-			ID    string          `json:"id"`
-			Kind  string          `json:"kind"`
-			Input conformance.Obj `json:"input"`
+			ID    string        `json:"id"`
+			Kind  string        `json:"kind"`
+			Input storetest.Obj `json:"input"`
 		}
 		d := json.NewDecoder(bytes.NewReader(sc.Bytes()))
 		d.UseNumber()
@@ -72,7 +72,7 @@ func main() {
 			os.Exit(1)
 		}
 		resp := map[string]any{"id": req.ID}
-		code, output, err := conformance.Evaluate(req.Kind, req.Input, backends)
+		code, output, err := storetest.Evaluate(req.Kind, req.Input, backends)
 		switch {
 		case err != nil:
 			fmt.Fprintf(os.Stderr, "%s: broken case: %v\n", req.ID, err)

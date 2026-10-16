@@ -9,6 +9,7 @@ same files. Standard library only.
 |---|---|
 | [`store`](.) | `Store`, `Backend`, `MemoryBackend`, `Keyring` with `KeyFileWrapper`, `Sealer`, `KeyWrapper`, records, names and tags, the namespace registry, profile resolution, format levels, the files backend's formats, result codes |
 | [`store/filestore`](filestore) | The files backend: one file per record below an `os.Root`; atomic take, no atomic batch, no index |
+| [`store/storetest`](storetest) | The spec/store corpus as subtests (`RunCorpus`) and as single answers (`Evaluate`), for this module, backends in other modules and the adapter |
 | [`store/cmd/store-conformance`](cmd/store-conformance) | The conformance adapter for `spec/store/tool` |
 
 Records of sealed namespaces are AES-256-GCM per record, bound to profile, namespace, name
@@ -22,5 +23,5 @@ go test ./...                                   # the spec/store corpus and the 
 go test -run '^$' -fuzz FuzzKeyringFile .       # fuzz targets: FuzzOpenRecord, FuzzKeyringFile, FuzzRecordFile, FuzzKEKFile
 ```
 
-The SQLite backend is a module of its own (TASK-103.7), so that this one stays free of
-dependencies.
+The SQLite backend is a module of its own, [go/sqlitestore](../sqlitestore), so that this
+one stays free of dependencies.
