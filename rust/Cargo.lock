@@ -2225,9 +2225,16 @@ dependencies = [
 name = "ti-store"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm",
  "futures-lite",
+ "getrandom 0.4.3",
+ "hkdf",
+ "hmac",
+ "serde_json",
+ "sha2",
  "thiserror",
  "ti-types",
+ "zeroize",
 ]
 
 [[package]]

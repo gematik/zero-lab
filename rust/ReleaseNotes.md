@@ -428,6 +428,12 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-store
 
 #### added
+- Renamed from ti-cache; the cache API is unchanged under `ti_store`.
+- Feature `store`: `ti_store::store`, the sealed store of spec/store: `Backend`,
+  `MemoryBackend`, `Store`, `Keyring` with `KeyFileWrapper`, `Sealer`, `KeyWrapper`,
+  `Random`, the namespace `registry`, `profile` resolution, format `levels`, the files
+  backend's formats (`files`), and `StoreError` with the spec's result codes. Passes the
+  spec/store corpus; fuzz targets for every parser.
 - `Cache`: freshness, revalidation, offline and stale-on-error over any `CacheStore`,
   keyed by string, with the origin passed per call (moved from ti-pki's
   `CachingLoader`). `CacheStore`, `CacheEntry`, `Meta`, `Source`, `CachePolicy`,

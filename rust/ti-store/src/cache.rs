@@ -27,7 +27,7 @@ use core::time::Duration;
 
 use ti_types::Clock;
 
-use crate::store::{CacheEntry, CacheError, CacheStore, Meta, Source};
+use crate::cache_store::{CacheEntry, CacheError, CacheStore, Meta, Source};
 
 /// How [`Cache`] uses its store.
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -45,6 +45,34 @@ they verify a download.
 Traits carry no `Send` bounds and the crate has no I/O, so it builds for
 `wasm32-unknown-unknown`.
 
+## The sealed store (feature `store`)
+
+`ti_store::store` implements [spec/store](../../spec/store/README.md), the store the TI
+command-line tools share per profile: tokens, discovery documents, cached trust material
+and small state, readable and writable by every conformant implementation on the same
+files.
+
+- `Backend` keeps records as bytes with a namespace, a hashed name, an expiry and
+  blind-index tags; `MemoryBackend` is the in-process one. The SQLite and files backends
+  do I/O and live in the tools.
+- `Keyring` holds a profile's data keys, unwrapped by a `KeyWrapper` (`KeyFileWrapper` for
+  the `key-file` wrapper), and is the `Sealer`: AES-256-GCM per record, bound to profile,
+  namespace, name and expiry.
+- `Store` combines both for the namespaces of `registry`; without a keyring, sealed
+  namespaces are refused and plain ones keep working.
+- `profile`, `levels` and `files` are the pure parts of profile resolution, format levels
+  and the files backend's formats.
+
+Time is a parameter, randomness a `Random`; nothing here reads a clock, the environment or
+a file. The corpus of spec/store runs as `cargo test -p ti-store --features test-util`, the
+conformance adapter as the example `conformance`, and the parsers have fuzz targets
+(`just fuzz-ti-store`).
+
+| Feature | Effect |
+| --- | --- |
+| `store` | The sealed store, with RustCrypto AES-GCM, HKDF, HMAC and SHA-256 |
+| `test-util` | `FixedRandom`, for reproducible records in tests and the conformance adapter |
+
 ## License
 
 Copyright 2026 gematik GmbH

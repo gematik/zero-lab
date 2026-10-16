@@ -24,7 +24,9 @@
 #![doc = include_str!("../README.md")]
 
 mod cache;
-mod store;
+mod cache_store;
+#[cfg(feature = "store")]
+pub mod store;
 
 pub use cache::{Cache, CacheLookupError, CachePolicy, Cached, Conditional, OriginResponse};
-pub use store::{CacheEntry, CacheError, CacheStore, MemoryCacheStore, Meta, Source};
+pub use cache_store::{CacheEntry, CacheError, CacheStore, MemoryCacheStore, Meta, Source};
