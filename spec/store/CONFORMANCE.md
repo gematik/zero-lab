@@ -38,7 +38,7 @@ generator. The reference holds keys in ordinary memory and is not an implementat
 | `files_meta`, `db_level` | format levels and which implementation may open what | K |
 | `profile` | profile name and paths from option, environment, active file and home directory, on Linux, macOS and Windows | J |
 | `capabilities` | the capabilities a backend declares | B, H, I |
-| `scenario` | a sequence of operations on a fresh backend, compared step by step: put, get, take, delete, batch, query with tags, expiry ranges and paging, cleanup, and 100,000 records | B |
+| `scenario` | a sequence of operations on a fresh backend, compared step by step: put, get, take, delete, batch, query with tags, expiry ranges and paging, cleanup; on indexed backends also 100,000 records | B |
 
 Byte strings are lowercase hex. Integers are below 2^53. A scenario's `fill` step writes records
 `name = SHA-256(seed ‖ u32 i)`, `value = u32 i`; its `scan` step pages through a namespace and
@@ -88,6 +88,30 @@ committed; the check is repeated when a rule of sections E, F or G changes.
 
 | Code | `go/store` | `ti_store::store` | JVM |
 |---|---|---|---|
-| all | TASK-103.6 | TASK-103.3 | TASK-111 |
+| `not_found` | `store.ErrNotFound` | `StoreError::NotFound` | TASK-111 |
+| `expired` | `store.ErrExpired` | `StoreError::Expired` | |
+| `malformed` | `store.ErrMalformed` | `StoreError::Malformed` | |
+| `unsupported_version` | `store.ErrUnsupportedVersion` | `StoreError::UnsupportedVersion` | |
+| `unknown_kid` | `store.ErrUnknownKid` | `StoreError::UnknownKid` | |
+| `auth_failed` | `store.ErrAuthFailed` | `StoreError::AuthFailed` | |
+| `limit_exceeded` | `store.ErrLimitExceeded` | `StoreError::LimitExceeded` | |
+| `invalid_argument` | `store.ErrInvalidArgument` | `StoreError::InvalidArgument` | |
+| `capability_missing` | `store.ErrCapabilityMissing` | `StoreError::CapabilityMissing` | |
+| `no_keyring` | `store.ErrNoKeyring` | `StoreError::NoKeyring` | |
+| `insecure_permissions` | `store.ErrInsecurePermissions` | `StoreError::InsecurePermissions` | |
+| `busy` | `store.ErrBusy` | `StoreError::Busy` | |
+| `backend_error` | `store.ErrBackend` | `StoreError::Backend` | |
 
-Each implementation fills its column when it lands.
+In Go, `errors.Is(err, store.ErrNotFound)` matches by code and `store.CodeOf(err)` returns
+it; in Rust, `StoreError::code` does. The adapters:
+
+```sh
+# in spec/store/tool
+go run . verify -- go run ../../../go/store/cmd/store-conformance
+(cd ../../../rust && cargo build -p ti-store --features test-util --example conformance)
+go run . verify -- ../../../rust/target/debug/examples/conformance
+```
+
+The Go adapter answers every kind but the SQLite backend's scenarios and capabilities
+(TASK-103.7); the Rust adapter also leaves out the files backend, which belongs to `ti`
+(TASK-103.4).

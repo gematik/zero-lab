@@ -93,7 +93,7 @@ protects the data keys inside the keyring. Time is a parameter: no operation rea
 | Rule | Requirement |
 |---|---|
 | STORE-001 | `lp(x)` is the length of `x` in bytes as a 32-bit unsigned big-endian integer, followed by `x`. `u8`, `u16`, `u64` are unsigned big-endian integers of 1, 2 and 8 bytes. |
-| STORE-002 | Times are whole seconds since 1970-01-01T00:00:00Z as `u64`. In `expires_at` and `not_after`, 0 means "does not expire". |
+| STORE-002 | Times are whole seconds since 1970-01-01T00:00:00Z as `u64`, at most 253402300799 (9999-12-31T23:59:59Z), so that every language's time type holds them. In `expires_at` and `not_after`, 0 means "does not expire". A parser rejects a larger time in a record, record file or keyring as `malformed`; a writer given one fails with `invalid_argument`. |
 | STORE-003 | A record is live at time `now` if its expiry is 0 or greater than `now`. A record whose expiry is less than or equal to `now` is expired. |
 | STORE-004 | Strings that the rules give a syntax (namespace, field, kid, profile name, wrapper id) are ASCII and compared byte for byte. |
 | STORE-005 | A parser MUST reject a value with bytes left over after the last field, a length field that runs past the end of the input, or a count above its limit, as `malformed`, and MUST NOT allocate beyond the input size because of a length field. |

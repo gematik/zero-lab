@@ -62,6 +62,8 @@ const (
 	maxTags      = 16
 	maxPayload   = 16 << 20
 	minSealed    = 1 + 1 + 1 + 8 + 12 + 16
+	// STORE-002: 9999-12-31T23:59:59Z
+	maxTime = 253402300799
 )
 
 var (
@@ -177,6 +179,9 @@ func seal(kValue, profileID, kid []byte, ns string, name []byte, notAfter uint64
 	if len(payload) > maxPayload {
 		return nil, codeLimitExceeded
 	}
+	if notAfter > maxTime {
+		return nil, codeInvalidArgument
+	}
 	head := cat([]byte{1, byte(len(kid))}, kid, u64(notAfter), nonce)
 	return gcm(kValue).Seal(head, nonce, payload, aad(profileID, kid, ns, name, notAfter)), nil
 }
@@ -207,6 +212,9 @@ func openSealed(keys map[string][]byte, profileID []byte, ns string, name []byte
 		return opened{}, codeMalformed
 	}
 	notAfter := binary.BigEndian.Uint64(rec[2+kl:])
+	if notAfter > maxTime {
+		return opened{}, codeMalformed
+	}
 	nonce := rec[2+kl+8 : 2+kl+8+12]
 	ct := rec[2+kl+8+12:]
 	if len(ct)-16 > maxPayload {
@@ -231,6 +239,9 @@ func plainRecord(notAfter uint64, payload []byte) ([]byte, error) {
 	if len(payload) > maxPayload {
 		return nil, codeLimitExceeded
 	}
+	if notAfter > maxTime {
+		return nil, codeInvalidArgument
+	}
 	return cat([]byte{0}, u64(notAfter), payload), nil
 }
 
@@ -246,6 +257,9 @@ func openPlain(now uint64, rec []byte) (opened, error) {
 		return opened{}, codeMalformed
 	}
 	notAfter := binary.BigEndian.Uint64(rec[1:])
+	if notAfter > maxTime {
+		return opened{}, codeMalformed
+	}
 	payload := rec[9:]
 	if len(payload) > maxPayload {
 		return opened{}, codeLimitExceeded
@@ -356,7 +370,7 @@ func parseKeyring(b []byte) (keyring, error) {
 		if r.err != nil {
 			return keyring{}, r.err
 		}
-		if !validKid(e.kid) || seen[string(e.kid)] || !wrapperSyntax.Match(e.wrapperID) {
+		if !validKid(e.kid) || seen[string(e.kid)] || !wrapperSyntax.Match(e.wrapperID) || e.created > maxTime {
 			return keyring{}, codeMalformed
 		}
 		seen[string(e.kid)] = true
@@ -435,6 +449,9 @@ func parseRecordFile(b []byte) (uint64, []fileTag, []byte, error) {
 	n := r.u8()
 	if r.err != nil {
 		return 0, nil, nil, r.err
+	}
+	if expiresAt > maxTime {
+		return 0, nil, nil, codeMalformed
 	}
 	if n > maxTags {
 		return 0, nil, nil, codeLimitExceeded

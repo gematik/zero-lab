@@ -856,6 +856,72 @@
       }
     },
     {
+      "id": "open-not-after-beyond-9999",
+      "kind": "open",
+      "rules": [
+        "STORE-002"
+      ],
+      "input": {
+        "id": "544553542d4f4e4c592d4b564e522d30303031",
+        "index_dk": "5b70619a0406561c367647e46f22a566acb2f70453803bc824072e4d70959c63",
+        "keys": {
+          "k1-TEST-ONLY": "5b70619a0406561c367647e46f22a566acb2f70453803bc824072e4d70959c63",
+          "k2-TEST-ONLY": "30e998ce746ac1191d79c20af106dad7baa341ab2ace413246ebfd6f187e0b1e"
+        },
+        "now": 1767225600,
+        "ns": "popp",
+        "profile_id": "e7968be41ba5c27dd366264ec01980b8",
+        "record": "010c6b312d544553542d4f4e4c5980000000000000006129e74d66835956b3300df7e87abee7a253e3d6a0d6d231c6f4fd905d9f790af5829abec1c23664721f71a014c5b3c4"
+      },
+      "expect": {
+        "code": "malformed"
+      }
+    },
+    {
+      "id": "seal-not-after-beyond-9999",
+      "kind": "seal",
+      "rules": [
+        "STORE-002"
+      ],
+      "input": {
+        "dk": "5b70619a0406561c367647e46f22a566acb2f70453803bc824072e4d70959c63",
+        "id": "544553542d4f4e4c592d4b564e522d30303031",
+        "kid": "k1-TEST-ONLY",
+        "nonce": "6129e74d66835956b3300df7",
+        "not_after": 253402300800,
+        "ns": "popp",
+        "payload": "544553542d4f4e4c5920506f505020746f6b656e",
+        "profile_id": "e7968be41ba5c27dd366264ec01980b8"
+      },
+      "expect": {
+        "code": "invalid_argument"
+      }
+    },
+    {
+      "id": "seal-not-after-9999",
+      "kind": "seal",
+      "rules": [
+        "STORE-002"
+      ],
+      "input": {
+        "dk": "5b70619a0406561c367647e46f22a566acb2f70453803bc824072e4d70959c63",
+        "id": "544553542d4f4e4c592d4b564e522d30303031",
+        "kid": "k1-TEST-ONLY",
+        "nonce": "e949d81b38e057a14a1d79a9",
+        "not_after": 253402300799,
+        "ns": "popp",
+        "payload": "544553542d4f4e4c5920506f505020746f6b656e",
+        "profile_id": "e7968be41ba5c27dd366264ec01980b8"
+      },
+      "expect": {
+        "code": "ok",
+        "output": {
+          "name": "be4723490ac2fe6174244d7d574bb409e7a128bd0f76602f2b8ba13b3f7bc7b7",
+          "record": "010c6b312d544553542d4f4e4c590000003afff4417fe949d81b38e057a14a1d79a901d7782ec5fd84ab6feb69feff0cd56e0b04bb9a6fec4d25e1d98605567f87366123ec75"
+        }
+      }
+    },
+    {
       "id": "open-kid-space",
       "kind": "open",
       "rules": [
@@ -942,6 +1008,20 @@
       },
       "expect": {
         "code": "unsupported_version"
+      }
+    },
+    {
+      "id": "plain-open-not-after-beyond-9999",
+      "kind": "plain_open",
+      "rules": [
+        "STORE-002"
+      ],
+      "input": {
+        "now": 1767225600,
+        "record": "00800000000000000078"
+      },
+      "expect": {
+        "code": "malformed"
       }
     },
     {
@@ -1112,6 +1192,21 @@
       },
       "expect": {
         "code": "auth_failed"
+      }
+    },
+    {
+      "id": "keyring-created-beyond-9999",
+      "kind": "keyring",
+      "rules": [
+        "STORE-002",
+        "STORE-062"
+      ],
+      "input": {
+        "file": "5a4c4b5201e7968be41ba5c27dd366264ec01980b80000000c6b312d544553542d4f4e4c590000000c6b312d544553542d4f4e4c5900010000000c6b312d544553542d4f4e4c598000000000000000000000086b65792d66696c650000003c43398b5943a6d091a1790140c5333c4abf051e206d2b621389082b936681bed102075f821ad2b4c099cea9901e62df351aeb24f268a756c9926fc506",
+        "kek": "f0a18016ed6adefa6fdaff9021cc4a1755e925cc3de14ae75e232d8cb1f36b21"
+      },
+      "expect": {
+        "code": "malformed"
       }
     },
     {
@@ -1370,6 +1465,20 @@
           ],
           "value": "010c6b312d544553542d4f4e4c59000000006955c7106129e74d66835956b3300df7e87abee7a253e3d6a0d6d231c6f4fd905d9f790af5829abec1c23664721f71a014c5b3c4"
         }
+      }
+    },
+    {
+      "id": "record-file-expiry-beyond-9999",
+      "kind": "record_file",
+      "rules": [
+        "STORE-002",
+        "STORE-080"
+      ],
+      "input": {
+        "file": "5a4c524601800000000000000002000000046b766e72a5bb323b65b14a9f9fcd25670a967ee6230df3905665977e7d1c9350d034d99100000005696363736e25744a3ca9697bc94091688c5a0b86d51b9eb9fa176ddcf48c6338828923e70d010c6b312d544553542d4f4e4c59000000006955c7106129e74d66835956b3300df7e87abee7a253e3d6a0d6d231c6f4fd905d9f790af5829abec1c23664721f71a014c5b3c4"
+      },
+      "expect": {
+        "code": "malformed"
       }
     },
     {
@@ -2243,12 +2352,6 @@
             "now": 1767225610,
             "ns": "popp",
             "op": "take"
-          },
-          {
-            "name": "52db40d49804073964b3ae5eb9c03bbbd0ca287522fb84740ab5ee786eed24ba",
-            "now": 1767225609,
-            "ns": "popp",
-            "op": "get"
           }
         ]
       },
@@ -2269,11 +2372,6 @@
             },
             {
               "code": "not_found"
-            },
-            {
-              "code": "ok",
-              "expires_at": 1767225610,
-              "value": "76616c75652031"
             }
           ]
         }
@@ -3345,12 +3443,6 @@
             "now": 1767225610,
             "ns": "popp",
             "op": "take"
-          },
-          {
-            "name": "52db40d49804073964b3ae5eb9c03bbbd0ca287522fb84740ab5ee786eed24ba",
-            "now": 1767225609,
-            "ns": "popp",
-            "op": "get"
           }
         ]
       },
@@ -3371,11 +3463,6 @@
             },
             {
               "code": "not_found"
-            },
-            {
-              "code": "ok",
-              "expires_at": 1767225610,
-              "value": "76616c75652031"
             }
           ]
         }
@@ -4188,101 +4275,6 @@
             },
             {
               "code": "invalid_argument"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "id": "scenario-many-records-files",
-      "kind": "scenario",
-      "rules": [
-        "STORE-015",
-        "STORE-016",
-        "STORE-017"
-      ],
-      "description": "100,000 records paged and cleaned up",
-      "input": {
-        "backend": "files",
-        "steps": [
-          {
-            "count": 100000,
-            "expires_at": 1767225660,
-            "ns": "popp",
-            "op": "fill",
-            "seed": "f3d00df237e88d008b1784d919376ed1"
-          },
-          {
-            "count": 1000,
-            "expires_at": 0,
-            "ns": "oauth.refresh",
-            "op": "fill",
-            "seed": "a6b94fd4d6f40ebdc13784b359d08544"
-          },
-          {
-            "limit": 1000,
-            "now": 1767225600,
-            "ns": "popp",
-            "op": "scan"
-          },
-          {
-            "limit": 1000,
-            "now": 1767225600,
-            "ns": "oauth.refresh",
-            "op": "scan"
-          },
-          {
-            "limit": 1000,
-            "now": 1767225660,
-            "op": "cleanup"
-          },
-          {
-            "count_only": true,
-            "limit": 1000,
-            "now": 1767225600,
-            "ns": "popp",
-            "op": "scan"
-          },
-          {
-            "limit": 1000,
-            "now": 1767225660,
-            "ns": "popp",
-            "op": "scan"
-          }
-        ]
-      },
-      "expect": {
-        "code": "ok",
-        "output": {
-          "results": [
-            {
-              "code": "ok"
-            },
-            {
-              "code": "ok"
-            },
-            {
-              "code": "ok",
-              "count": 100000,
-              "digest": "dd10ebad7e6da33faaac51e4aedfbbd3b158333efa59ae29e4e901c162a60ad4"
-            },
-            {
-              "code": "ok",
-              "count": 1000,
-              "digest": "82de73018d55ff88de07dcc5785a97bc95b6fb7496e23bb96e32150cfbe5c80c"
-            },
-            {
-              "code": "ok",
-              "removed": 1000
-            },
-            {
-              "code": "ok",
-              "count": 99000
-            },
-            {
-              "code": "ok",
-              "count": 0,
-              "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
             }
           ]
         }

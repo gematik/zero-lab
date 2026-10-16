@@ -10,7 +10,7 @@ specification. Why and when a specification is needed is in
 |---|---|---|
 | [tsl-xmldsig](tsl-xmldsig/README.md) | TSL signature verification and update | `rust/ti-xmldsig`, `rust/ti-pki` |
 | [pkcs12](pkcs12/README.md) | PKCS#12 decoding and encoding | `rust/ti-pkcs12`, `go/pkcs12` |
-| [store](store/README.md) | Shared sealed store of the command-line tools: records, keyring, SQLite and files layout, profiles, migrations | planned: `rust/ti-store`, `go/store`, JVM |
+| [store](store/README.md) | Shared sealed store of the command-line tools: records, keyring, SQLite and files layout, profiles, migrations | `rust/ti-store`, `go/store`; JVM planned |
 
 ## Writing a specification
 

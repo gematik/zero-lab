@@ -14,5 +14,6 @@ use (
 	./pdp
 	./pep
 	./pkcs12
+	./store
 	./zaddy
 )

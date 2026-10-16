@@ -171,6 +171,11 @@ func allCases() []tc {
 	add(tc{id: "open-truncated", kind: "open", rules: []string{"STORE-005", "STORE-054"}, input: with(openIn, "record", h(rec[:2+kl+8+12+15])), want: codeMalformed})
 	add(tc{id: "open-kid-len-0", kind: "open", rules: []string{"STORE-051"}, input: with(openIn, "record", h(append([]byte{1, 0}, rec[2:]...))), want: codeMalformed})
 	add(tc{id: "open-kid-len-65", kind: "open", rules: []string{"STORE-051"}, input: with(openIn, "record", h(append([]byte{1, 65}, bytes.Repeat([]byte{'k'}, 120)...))), want: codeMalformed})
+	beyond := bytes.Clone(rec)
+	binary.BigEndian.PutUint64(beyond[2+kl:], 1<<63)
+	add(tc{id: "open-not-after-beyond-9999", kind: "open", rules: []string{"STORE-002"}, input: with(openIn, "record", h(beyond)), want: codeMalformed})
+	add(tc{id: "seal-not-after-beyond-9999", kind: "seal", rules: []string{"STORE-002"}, input: with(sealIn, "not_after", uint64(maxTime)+1), want: codeInvalidArgument})
+	add(tc{id: "seal-not-after-9999", kind: "seal", rules: []string{"STORE-002"}, input: with(sealIn, "not_after", uint64(maxTime), "nonce", h(nonce(5))), want: codeOK})
 	spaced := bytes.Clone(rec)
 	spaced[3] = ' '
 	add(tc{id: "open-kid-space", kind: "open", rules: []string{"STORE-051"}, input: with(openIn, "record", h(spaced)), want: codeMalformed})
@@ -181,6 +186,7 @@ func allCases() []tc {
 	add(tc{id: "plain-open", kind: "plain_open", rules: []string{"STORE-057"}, input: obj{"now": t0, "record": h(prec)}, want: codeOK})
 	add(tc{id: "plain-open-expired", kind: "plain_open", rules: []string{"STORE-057"}, input: obj{"now": t0 + 86400, "record": h(prec)}, want: codeExpired})
 	add(tc{id: "plain-open-sealed", kind: "plain_open", rules: []string{"STORE-050"}, input: obj{"now": t0, "record": h(rec)}, want: codeUnsupportedVersion})
+	add(tc{id: "plain-open-not-after-beyond-9999", kind: "plain_open", rules: []string{"STORE-002"}, input: obj{"now": t0, "record": h(cat([]byte{0}, u64(1<<63), []byte("x")))}, want: codeMalformed})
 	add(tc{id: "plain-open-short", kind: "plain_open", rules: []string{"STORE-005"}, input: obj{"now": t0, "record": h(prec[:8])}, want: codeMalformed})
 
 	// G. Keyring
@@ -203,6 +209,9 @@ func allCases() []tc {
 		return buildKeyring(keyring{profileID: profileID, currentKid: []byte(current), indexKid: []byte(index), entries: entries})
 	}
 	e1 := keyringEntry{kid: []byte(kid1), created: t0, wrapperID: []byte("key-file"), wrapped: wrapKeyFile(kek, profileID, []byte(kid1), nonce(10), dk1)}
+	late := e1
+	late.created = 1 << 63
+	add(tc{id: "keyring-created-beyond-9999", kind: "keyring", rules: []string{"STORE-002", "STORE-062"}, input: with(krRead, "file", h(mk(kid1, kid1, late))), want: codeMalformed})
 	add(tc{id: "keyring-current-missing", kind: "keyring", rules: []string{"STORE-062"}, input: with(krRead, "file", h(mk(kid2, kid1, e1))), want: codeMalformed})
 	add(tc{id: "keyring-duplicate-kid", kind: "keyring", rules: []string{"STORE-062"}, input: with(krRead, "file", h(mk(kid1, kid1, e1, e1))), want: codeMalformed})
 	add(tc{id: "keyring-no-entries", kind: "keyring", rules: []string{"STORE-062"}, input: with(krRead, "file", h(mk(kid1, kid1))), want: codeMalformed})
@@ -233,6 +242,7 @@ func allCases() []tc {
 	add(tc{id: "record-file-write", kind: "record_file_write", rules: []string{"STORE-080"}, input: rfIn, want: codeOK})
 	rf := unhex(mustEval("record_file_write", rfIn)["file"])
 	add(tc{id: "record-file-read", kind: "record_file", rules: []string{"STORE-080"}, input: obj{"file": h(rf)}, want: codeOK})
+	add(tc{id: "record-file-expiry-beyond-9999", kind: "record_file", rules: []string{"STORE-002", "STORE-080"}, input: obj{"file": h(cat(rf[:5], u64(1<<63), rf[13:]))}, want: codeMalformed})
 	add(tc{id: "record-file-bad-magic", kind: "record_file", rules: []string{"STORE-080"}, input: obj{"file": h(append([]byte("ZLRX"), rf[4:]...))}, want: codeMalformed})
 	add(tc{id: "record-file-version-2", kind: "record_file", rules: []string{"STORE-080"}, input: obj{"file": h(cat(rf[:4], []byte{2}, rf[5:]))}, want: codeUnsupportedVersion})
 	add(tc{id: "record-file-17-tags", kind: "record_file", rules: []string{"STORE-033", "STORE-080"}, input: obj{"file": h(cat(rf[:13], []byte{17}, rf[14:]))}, want: codeLimitExceeded})
@@ -289,6 +299,9 @@ func allCases() []tc {
 		}
 		add(tc{id: "capabilities-" + b, kind: "capabilities", rules: rules, input: obj{"backend": b}, want: codeOK})
 		for _, s := range scenarios() {
+			if s.indexedOnly && !backendCapabilities[b].Indexed {
+				continue
+			}
 			add(tc{id: "scenario-" + s.id + "-" + b, kind: "scenario", rules: s.rules, description: s.description,
 				input: obj{"backend": b, "steps": s.steps}, want: codeOK})
 		}
@@ -300,6 +313,9 @@ type scenario struct {
 	id, description string
 	rules           []string
 	steps           []any
+	// indexedOnly marks scenarios too large for a backend without indexed queries, whose
+	// every query reads every record (STORE-083, STORE-084).
+	indexedOnly bool
 }
 
 func put(ns string, i int, expiresAt uint64, tags ...obj) obj {
@@ -329,8 +345,9 @@ func scenarios() []scenario {
 			put(ns, 1, t0+10),
 			obj{"op": "get", "ns": ns, "name": scenarioName(1), "now": t0 + 9},
 			obj{"op": "get", "ns": ns, "name": scenarioName(1), "now": t0 + 10},
+			// what is left of an expired record afterwards is open: STORE-017 lets any
+			// backend remove it, and STORE-082 has the files backend do so on take
 			obj{"op": "take", "ns": ns, "name": scenarioName(1), "now": t0 + 10},
-			obj{"op": "get", "ns": ns, "name": scenarioName(1), "now": t0 + 9},
 		}},
 		{id: "take-single-use", rules: []string{"STORE-012"}, steps: []any{
 			put(ns, 1, t0+3600),
@@ -388,7 +405,7 @@ func scenarios() []scenario {
 			obj{"op": "get", "ns": ns, "name": scenarioName(3), "now": t0 + 25},
 			obj{"op": "cleanup", "now": t0, "limit": 0},
 		}},
-		{id: "many-records", rules: []string{"STORE-015", "STORE-016", "STORE-017"}, description: "100,000 records paged and cleaned up", steps: []any{
+		{id: "many-records", indexedOnly: true, rules: []string{"STORE-015", "STORE-016", "STORE-017"}, description: "100,000 records paged and cleaned up", steps: []any{
 			obj{"op": "fill", "ns": ns, "count": 100000, "seed": h(testBytes("fill", 16)), "expires_at": t0 + 60},
 			obj{"op": "fill", "ns": "oauth.refresh", "count": 1000, "seed": h(testBytes("fill other", 16)), "expires_at": 0},
 			obj{"op": "scan", "ns": ns, "limit": 1000, "now": t0},
