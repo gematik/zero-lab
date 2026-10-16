@@ -4,7 +4,7 @@ title: 'Store: shared sealed persistence for the Go and Rust CLIs'
 status: In Progress
 assignee: []
 created_date: '2026-10-15 17:44'
-updated_date: '2026-10-15 18:57'
+updated_date: '2026-10-16 06:53'
 labels:
   - go
   - ti-cli
@@ -30,9 +30,9 @@ The CLIs (Rust ti, Go zero-epa) need many small, short-lived records shared betw
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 spec/store with corpus and generator exists, both languages pass it
-- [ ] #2 ti and zero-epa share one profile's store: a record written by one is read by the other
-- [ ] #3 sealed namespaces refuse to write without a keyring; nothing secret reaches disk unsealed
-- [ ] #4 profiles switch with --profile / TI_PROFILE / active file; deleting a profile makes its data unreadable
+- [ ] #2 sealed namespaces refuse to write without a keyring; nothing secret reaches disk unsealed
+- [ ] #3 profiles switch with --profile / TI_PROFILE / active file; deleting a profile makes its data unreadable
+- [ ] #4 Go and Rust share one profile's store: a record written by one is read by the other (interop matrix, TASK-103.8)
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -45,4 +45,6 @@ Full plan: /Users/serg/.claude/plans/persistence-layer-for-go-typed-scott.md is 
 
 <!-- SECTION:NOTES:BEGIN -->
 Packaging changed (2026-10-15): ti-types stays as documented; ti-cache is renamed to ti-store, which also receives the store module (TASK-103.2, 103.3). Where the plan above says ti-base, read ti-store.
+
+zero-epa's profiles and commands are TASK-115, parked: the maintainer leaves zero-epa alone for now; the cross-language criterion is proven through the interop matrix instead.
 <!-- SECTION:NOTES:END -->

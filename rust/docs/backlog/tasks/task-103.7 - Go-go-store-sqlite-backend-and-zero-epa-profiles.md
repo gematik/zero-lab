@@ -1,10 +1,10 @@
 ---
 id: TASK-103.7
-title: 'Go: go/store/sqlite backend and zero-epa profiles'
-status: In Progress
+title: 'Go: go/sqlitestore backend'
+status: Done
 assignee: []
 created_date: '2026-10-15 17:45'
-updated_date: '2026-10-16 05:37'
+updated_date: '2026-10-16 06:53'
 labels:
   - go
   - epa
@@ -26,8 +26,6 @@ SQLite backend as its own module so go/store stays dependency-free; driver ncruc
 <!-- AC:BEGIN -->
 - [x] #1 driver approved with transitive cost recorded
 - [x] #2 passes the operation scenarios
-- [ ] #3 zero-epa --profile opens the profile's store
-- [ ] #4 zero-epa implements the same section L commands with the same names and doctor JSON as ti
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -40,4 +38,12 @@ Driver specifics: it creates -shm with the default mode, unlike SQLite's own VFS
 go.mod has no requirement on go/store yet: an unpublished version breaks even workspace builds. After pushing feat/store: go get github.com/gematik/zero-lab/go/store@<pseudo-version> in go/sqlitestore, then just tidy for go.sum (just sync only repins existing requirements).
 Load check, same as TASK-103.4, Go 1.27 (wasm2go SQLite 3.53.4), no race detector: write 5.8 s; page through all 1.1 s; one tag value 2 ms; expiry range 33 ms; cleanup 4.7 s; under -race about 20x slower, so it skips with -short and race runs cover the concurrency tests.
 Remaining: AC 3 and 4 (zero-epa --profile and the section L commands), after ti's in TASK-103.5 so that both follow one design.
+
+AC 3 and 4 (zero-epa) moved to TASK-115, parked: the maintainer leaves zero-epa alone for now.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+go/sqlitestore, the SQLite backend of spec/store on ncruces/go-sqlite3 without cgo, as a top-level module; it passes the SQLite scenarios with 100,000 records and the level, mode and concurrency tests. The corpus evaluator is the exported go/store/storetest. zero-epa's profiles and commands are TASK-115 (parked). Open: go.mod requires go/store once feat/store is pushed.
+<!-- SECTION:FINAL_SUMMARY:END -->
