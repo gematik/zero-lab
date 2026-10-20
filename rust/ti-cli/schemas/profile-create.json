@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "profile create",
+  "description": "The new profile's keyring, key file and databases (spec/store STORE-121).",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "profile": {
+      "type": "string"
+    },
+    "key_file": {
+      "type": "string",
+      "description": "The key file the keyring's data keys are wrapped with."
+    },
+    "key_file_created": {
+      "type": "boolean",
+      "description": "Whether this run made the key file."
+    },
+    "keyring": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string",
+      "description": "state.db, or the state's files tree with TI_STORE_BACKEND=files."
+    },
+    "cache": {
+      "type": "string",
+      "description": "cache.db, or the cache's files tree with TI_STORE_BACKEND=files."
+    },
+    "kek_path_to_set": {
+      "type": ["string", "null"],
+      "description": "With --kek-file elsewhere than the default: the TI_STORE_KEK_PATH later runs need."
+    }
+  },
+  "required": [
+    "schema",
+    "profile",
+    "key_file",
+    "key_file_created",
+    "keyring",
+    "state",
+    "cache",
+    "kek_path_to_set"
+  ],
+  "additionalProperties": false
+}

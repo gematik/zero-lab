@@ -118,6 +118,18 @@ pub enum CliError {
     /// No cache directory can be derived from the environment.
     #[error("cannot determine the cache directory: {0}")]
     CacheDir(&'static str),
+    /// A profile's store failed with a result code of spec/store (STORE-129).
+    #[error("{}", store_message(.profile, *.file, .path, .error))]
+    Store {
+        /// The profile.
+        profile: String,
+        /// Which of its files.
+        file: StoreFile,
+        /// The file's path, if there is one.
+        path: String,
+        /// The result code and what it is about.
+        error: ti_store::store::StoreError,
+    },
     /// No usable `.kon` file, or one the transport cannot use.
     #[error("{0}")]
     ConnectorConfig(String),
@@ -185,6 +197,7 @@ impl CliError {
             CliError::ServerUnreachable(_) => "server_unreachable",
             CliError::UnknownSchema(_) => "unknown_schema",
             CliError::CacheDir(_) => "cache_dir_unknown",
+            CliError::Store { error, .. } => store_kind(error.code()),
             CliError::ConnectorConfig(_)
             | CliError::Connector(ti_connector_client::Error::Config(_)) => "connector_config",
             CliError::Connector(ti_connector_client::Error::Transport(_)) => {
@@ -243,6 +256,7 @@ impl CliError {
             ),
             CliError::UnknownSchema(_) => Some("the schema command without COMMAND lists them all"),
             CliError::CacheDir(_) => Some("set --cache-dir or TI_CACHE_DIR"),
+            CliError::Store { file, error, .. } => store_hint(*file, error.code()),
             CliError::ConnectorConfig(_)
             | CliError::Connector(ti_connector_client::Error::Config(_)) => Some(
                 "`connector configs` lists the configurations; select one with -c NAME or `connector use NAME`",
@@ -342,6 +356,10 @@ impl CliError {
             | CliError::Idpd(_)
             | CliError::Directory(_) => Exit::Remote,
             CliError::Output(_) => Exit::Output,
+            CliError::Store { error, .. } => match error.code() {
+                "busy" | "backend_error" => Exit::Output,
+                _ => Exit::Usage,
+            },
         }
     }
 
@@ -355,4 +373,106 @@ impl From<serde_json::Error> for CliError {
     fn from(error: serde_json::Error) -> Self {
         CliError::Output(error.into())
     }
+}
+
+/// Which of a profile's files a store failure concerns, for its message and hint.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StoreFile {
+    /// Resolving the profile: its name, directories, backend.
+    Profile,
+    /// The key file of the `key-file` wrapper.
+    KeyFile,
+    /// `keyring.bin`.
+    Keyring,
+    /// `state.db` or the state tree.
+    StateDb,
+    /// `cache.db` or the cache tree.
+    CacheDb,
+    /// One record.
+    Record,
+}
+
+impl StoreFile {
+    fn label(self) -> &'static str {
+        match self {
+            StoreFile::Profile => "",
+            StoreFile::KeyFile => "key file ",
+            StoreFile::Keyring => "keyring ",
+            StoreFile::StateDb => "state ",
+            StoreFile::CacheDb => "cache ",
+            StoreFile::Record => "record ",
+        }
+    }
+}
+
+/// STORE-129: the profile, the file and the result code; never a payload.
+fn store_message(
+    profile: &str,
+    file: StoreFile,
+    path: &str,
+    error: &ti_store::store::StoreError,
+) -> String {
+    let what = format!("{}{path}", file.label());
+    let what = what.trim_end();
+    let code = error.code();
+    match (file, code) {
+        (StoreFile::KeyFile, "not_found") => format!("profile {profile}: {what} not found"),
+        (StoreFile::Profile, _) if what.is_empty() => format!("{code}: {error}"),
+        _ if what.is_empty() => format!("profile {profile}: {code}: {error}"),
+        _ => format!("profile {profile}: {what}: {code}: {error}"),
+    }
+}
+
+fn store_kind(code: &str) -> &'static str {
+    match code {
+        "not_found" => "store_not_found",
+        "expired" => "store_expired",
+        "malformed" => "store_malformed",
+        "unsupported_version" => "store_unsupported_version",
+        "unknown_kid" => "store_unknown_kid",
+        "auth_failed" => "store_auth_failed",
+        "limit_exceeded" => "store_limit_exceeded",
+        "invalid_argument" => "store_invalid_argument",
+        "capability_missing" => "store_capability_missing",
+        "no_keyring" => "store_no_keyring",
+        "insecure_permissions" => "store_insecure_permissions",
+        "busy" => "store_busy",
+        _ => "store_backend_error",
+    }
+}
+
+/// The hint table of spec/store section L.
+fn store_hint(file: StoreFile, code: &str) -> Option<&'static str> {
+    Some(match (file, code) {
+        (_, "no_keyring") => "the profile has no keyring: run `ti profile create`",
+        (StoreFile::KeyFile, "not_found") => {
+            "set TI_STORE_KEK_PATH to the profile's key file; without it, `ti profile delete NAME` and log in again"
+        }
+        (StoreFile::KeyFile, "malformed") => {
+            "the key file is not a store key: check TI_STORE_KEK_PATH, or run `ti profile rewrap` from a working key file"
+        }
+        (_, "insecure_permissions") => "run `chmod 600` on the key file",
+        (StoreFile::Keyring, "auth_failed") => {
+            "the key file does not belong to this profile's keyring: check TI_STORE_KEK_PATH; without the right key file, `ti profile delete NAME` and log in again"
+        }
+        (_, "auth_failed") => {
+            "the record was altered or copied: run `ti store doctor --deep`, then `ti store rm`"
+        }
+        (_, "unsupported_version") => {
+            "written by a newer tool: update ti, or use the newest tool installed"
+        }
+        (_, "busy") => {
+            "another tool holds the database: wait for it, or find it with `ti store doctor`"
+        }
+        (_, "capability_missing") => {
+            "the namespace needs the SQLite backend: unset TI_STORE_BACKEND"
+        }
+        (StoreFile::StateDb | StoreFile::Keyring, "malformed") => {
+            "run `ti store doctor`; `ti profile delete NAME` starts over and loses the sealed records"
+        }
+        (StoreFile::Profile, "invalid_argument") => {
+            "profile names are lowercase letters, digits and hyphens; TI_STATE_DIR and TI_CACHE_DIR are absolute; TI_STORE_BACKEND is sqlite or files"
+        }
+        _ => return None,
+    })
 }

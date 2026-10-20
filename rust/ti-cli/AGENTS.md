@@ -42,18 +42,28 @@ never on `message`.
   detect it with `auto` (their default); `pki roots list` and `pki tsl show` cannot, so
   `auto` from `TI_ENV` means `prod` there and `--env auto` is an error (exit 2,
   `environment_invalid`).
-- `TI_CACHE_DIR` sets the cache directory.
+- Profiles: `--profile NAME`, else `TI_PROFILE`, else the one `{bin} profile use` chose,
+  else `default`. A profile is shared with the other TI tools (zero-epa, zeta-cli): its
+  cache (`cache.db`), its state (`state.db`) and its keyring. `TI_CACHE_DIR` and
+  `TI_STATE_DIR` move the bases of the profiles' caches and states, `TI_STORE_KEK_PATH`
+  names the key file; with all three a test or HITL session gets a separate store.
 - The HTTP options and variables follow curl: `-x`/`HTTPS_PROXY`/`HTTP_PROXY`/
   `ALL_PROXY`, `--noproxy`/`NO_PROXY`, `--cacert`/`CURL_CA_BUNDLE`/`SSL_CERT_FILE`,
   `--capath`/`SSL_CERT_DIR`, `--connect-timeout`, `-m`, `--retry`, `-A`.
 - `-k` skips TLS checks for downloads only. Do not use it unless asked to.
-- Downloads are cached in `~/.cache/telematik/ti` (`%LOCALAPPDATA%\telematik\ti` on
-  Windows). `--offline` makes no request and works from the cache.
+- Downloads are cached in the profile's `cache.db`
+  (`~/.cache/telematik/profiles/NAME/cache.db`). `--offline` makes no request and works
+  from the cache.
 - OCSP responses (`good`, `revoked`) are cached there too, for one hour and never past
   the response's `nextUpdate`, so the next run within the hour asks no responder. What
   is read back is verified again (signature, responder, certificate); `unknown`
   answers and errors are not cached. Every command that checks OCSP uses it.
-- `{bin} cache clear` empties the cache.
+- `{bin} cache clear` empties the profile's cache.
+- What must stay secret or must not be lost (TSL state, comfort IDs, later tokens) is
+  sealed in the profile's `state.db` and needs a keyring: `{bin} profile create` makes it
+  once, with a key file at `~/.config/telematik/profiles/NAME/store.kek`. Without one,
+  `ti` keeps none of it and says so (`store_no_keyring`). Losing the key file loses
+  only the sealed records. Store errors have kinds `store_<code>` with a hint.
 
 ## Names
 
@@ -61,8 +71,8 @@ Certificate types are the gemSpec_PKI Tab_PKI_405 names (`C.HCI.AUT`, `C.FD.TLS-
 `C.NK.VPN`), in `certificate_type` and every `…_types` list. Profiles are named after
 their type without `C.` (`hci-aut`, `fd-tls-s`, `tsl-sig`) or after their technical
 role plus usage (`idpd-sig`, `epa-vau-aut`, `zeta-guard-aut`). Type and profile
-arguments ignore case, treat `.` and `-` alike and accept a leading `C.`: `--profile
-C.HCI.AUT` is `hci-aut`. Cards keep their own names where a card is meant (`EGK`,
+arguments ignore case, treat `.` and `-` alike and accept a leading `C.`:
+`--validation-profile C.HCI.AUT` is `hci-aut`. Cards keep their own names where a card is meant (`EGK`,
 `HBA`, `SMC-B`, `C.AUT` in `connector`); eGK certificates are `C.CH.*`, HBA `C.HP.*`,
 SM-B (SMC-B, HSM-B) `C.HCI.*`.
 
@@ -365,8 +375,8 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 - Comfort signature: `comfort activate` asks for PIN.QES once and stores a new random
   user ID for that HBA; `sign` then uses it and needs no PIN until the session's count
   or time runs out. The ID lets anyone with the same context sign without a PIN: it is
-  kept owner-only in the state directory (`~/.local/state/telematik/ti/comfort/`),
-  masked in `-vv`, and removed by `comfort deactivate`. `--comfort-user-id` or
+  sealed in the profile's state, so `comfort activate` needs a keyring
+  (`{bin} profile create`); it is masked in `-vv`, and removed by `comfort deactivate`. `--comfort-user-id` or
   `TI_COMFORT_USER_ID` supplies one instead.
 
 ## Subsystem probe: are the TI services reachable

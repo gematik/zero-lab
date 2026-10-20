@@ -305,6 +305,10 @@ impl Fake {
             .env("XDG_CONFIG_HOME", self.dir.join("config"))
             .env("TI_CACHE_DIR", self.dir.join("cache"))
             .env("XDG_STATE_HOME", self.dir.join("state"))
+            .env_remove("TI_PROFILE")
+            .env_remove("TI_STATE_DIR")
+            .env_remove("TI_STORE_KEK_PATH")
+            .env_remove("TI_STORE_BACKEND")
             .env_remove("TI_COMFORT_USER_ID")
             .env("KON_TEST_PASSWORD", "p")
             .output()
@@ -531,7 +535,7 @@ fn the_selection_and_the_cache_are_used() {
         !stderr.contains("GET http"),
         "no second directory request: {stderr}"
     );
-    assert!(fake.dir.join("cache/ti-connector/v1/sds").is_dir());
+    assert!(fake.dir.join("cache/profiles/default/cache.db").is_file());
 }
 
 #[test]
@@ -602,20 +606,51 @@ fn documents_are_signed_verified_encrypted_and_decrypted() {
     }
 }
 
-#[test]
-fn comfort_signature_keeps_a_random_user_id_per_card() {
-    let fake = Fake::start("comfort");
-    let stored = fake
-        .dir
-        .join("state/telematik/ti/comfort/praxis/80276001011699910103");
+/// Whether `text` holds anything shaped like a UUID: 8-4-4-4-12 hex digits.
+fn contains_uuid(text: &str) -> bool {
+    let b = text.as_bytes();
+    b.windows(36).any(|w| {
+        w.iter().enumerate().all(|(i, c)| match i {
+            8 | 13 | 18 | 23 => *c == b'-',
+            _ => c.is_ascii_hexdigit(),
+        })
+    })
+}
 
+/// The comfort ID of a card before the store, where earlier versions kept it.
+fn legacy_comfort_file(fake: &Fake) -> PathBuf {
+    fake.dir
+        .join("state/telematik/ti/comfort/praxis/80276001011699910103")
+}
+
+#[test]
+fn comfort_signature_needs_a_keyring_and_keeps_the_user_id_sealed() {
+    let fake = Fake::start("comfort");
+
+    // STORE-023: without a keyring the ID would have nowhere to go, so the card is not
+    // asked at all
+    let out = fake.ti(&[
+        "connector",
+        "-c",
+        "praxis",
+        "comfort",
+        "activate",
+        "card-hba",
+    ]);
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("no_keyring"), "{stderr}");
+    assert!(stderr.contains("ti profile create"), "{stderr}");
+
+    assert_eq!(fake.ti(&["profile", "create"]).status.code(), Some(0));
     let (report, _) = fake.json("connector comfort", &["comfort", "activate", "card-hba"]);
     assert_eq!(report["user_id_stored"], true);
     assert_eq!(report["session"]["signatures_left"], 249);
-    let user = std::fs::read_to_string(&stored).unwrap();
+    assert!(!legacy_comfort_file(&fake).exists());
     assert!(
-        ti_connector_client::ComfortUserId::parse(&user).is_some(),
-        "a UUID: {user}"
+        fake.dir
+            .join("state/telematik/profiles/default/state.db")
+            .is_file()
     );
 
     let (signed, _) = {
@@ -638,11 +673,8 @@ fn comfort_signature_keeps_a_random_user_id_per_card() {
         "card-hba",
     ]);
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        !stderr.contains(user.trim()),
-        "-vv masks the user ID: {stderr}"
-    );
     assert!(stderr.contains("UserId>***<"), "{stderr}");
+    assert!(!contains_uuid(&stderr), "-vv masks every user ID: {stderr}");
 
     let (report, _) = fake.json("connector comfort", &["comfort", "deactivate", "card-hba"]);
     assert_eq!(
@@ -652,7 +684,41 @@ fn comfort_signature_keeps_a_random_user_id_per_card() {
         ),
         (true, Some(false))
     );
-    assert!(!stored.exists());
+    let (signed, _) = {
+        let text = fake.dir.join("b.txt");
+        std::fs::write(&text, "x").unwrap();
+        fake.json(
+            "connector sign",
+            &["sign", path_str(&text), "--card", "card-hba"],
+        )
+    };
+    assert_eq!(signed["comfort"], false, "the ID is gone");
+}
+
+#[test]
+fn comfort_ids_of_earlier_versions_move_into_the_store() {
+    let fake = Fake::start("comfort-legacy");
+    let legacy = legacy_comfort_file(&fake);
+    std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+    std::fs::write(&legacy, "0b9d1d7c-6b1b-4c52-9d0a-0e2b8f3f6a11\n").unwrap();
+    let sign = |name: &str| {
+        let text = fake.dir.join(name);
+        std::fs::write(&text, "x").unwrap();
+        fake.json(
+            "connector sign",
+            &["sign", path_str(&text), "--card", "card-hba"],
+        )
+        .0
+    };
+
+    // without a keyring the file is read, never written or removed
+    assert_eq!(sign("a.txt")["comfort"], true);
+    assert!(legacy.exists());
+
+    assert_eq!(fake.ti(&["profile", "create"]).status.code(), Some(0));
+    assert_eq!(sign("b.txt")["comfort"], true);
+    assert!(!legacy.exists(), "moved into the sealed store");
+    assert_eq!(sign("c.txt")["comfort"], true, "and read from there");
 }
 
 #[test]

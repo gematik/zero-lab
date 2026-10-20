@@ -32,6 +32,10 @@ fn ti(args: &[&str]) -> Output {
         .args(args)
         .env_remove("TI_FORMAT")
         .env_remove("TI_ENV")
+        .env("TI_PROFILE", "default")
+        .env_remove("TI_STATE_DIR")
+        .env_remove("TI_STORE_KEK_PATH")
+        .env_remove("TI_STORE_BACKEND")
         // Nothing cached: --offline runs see the embedded roots only, whatever an
         // earlier run on this machine downloaded.
         .env(
@@ -57,6 +61,10 @@ fn ti_with_stdin(args: &[&str], stdin: &[u8]) -> Output {
             "XDG_STATE_HOME",
             std::env::temp_dir().join("ti-tests-state"),
         )
+        .env("TI_PROFILE", "default")
+        .env_remove("TI_STATE_DIR")
+        .env_remove("TI_STORE_KEK_PATH")
+        .env_remove("TI_STORE_BACKEND")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -496,7 +504,7 @@ fn verify_under_a_foreign_profile_misses_its_role() {
     let (code, json) = verify_json(&[
         "--issuer",
         &ca,
-        "--profile",
+        "--validation-profile",
         "idpd-sig",
         "--at",
         "2026-06-01T00:00:00Z",
@@ -529,7 +537,14 @@ fn verify_usage_errors() {
     let bad_time = ti(&["pki", "verify", "--offline", &ee, "--at", "yesterday"]);
     assert_eq!(bad_time.status.code(), Some(2));
     assert!(stderr(&bad_time).contains("RFC 3339"));
-    let bad_profile = ti(&["pki", "verify", "--offline", &ee, "--profile", "nope"]);
+    let bad_profile = ti(&[
+        "pki",
+        "verify",
+        "--offline",
+        &ee,
+        "--validation-profile",
+        "nope",
+    ]);
     assert_eq!(bad_profile.status.code(), Some(2));
     let pu = ti(&["pki", "verify", "--offline", &ee, "--env", "pu"]);
     assert_eq!(pu.status.code(), Some(1), "pu is an alias of prod");
@@ -608,7 +623,11 @@ fn probe_takes_the_environment_as_argument_or_option() {
         command
             .args(["--format", "json", "probe"])
             .args(args)
-            .env_remove("TI_ENV");
+            .env_remove("TI_ENV")
+            .env("TI_PROFILE", "default")
+            .env_remove("TI_STATE_DIR")
+            .env_remove("TI_STORE_KEK_PATH")
+            .env_remove("TI_STORE_BACKEND");
         if let Some(value) = ti_env {
             command.env("TI_ENV", value);
         }

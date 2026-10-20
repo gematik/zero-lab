@@ -36,6 +36,7 @@ mod idpd;
 mod inspect;
 mod pkcs12;
 mod probe;
+mod profile;
 mod profiles;
 mod roots;
 mod schema;
@@ -48,18 +49,27 @@ use ti_pki::{Certificate, Env, Timestamp};
 
 use crate::cli::{
     CacheCommand, Cli, Command, DirectoryCommand, Environment, GlobalArgs, IdentityCommand,
-    IdpdCommand, Pkcs12Command, PkiCommand, ProbeEnv, ProfilesCommand, RootsCommand, TslCommand,
+    IdpdCommand, Pkcs12Command, PkiCommand, ProbeEnv, ProfileCommand, ProfilesCommand,
+    RootsCommand, TslCommand,
 };
 use crate::error::{CliError, Exit};
 use crate::output::document::{TreeRow, date, when};
 use crate::output::{Line, Output, Tone};
-use crate::paths;
 use crate::trust::TrustInfo;
 
 /// Runs the parsed command line.
 pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
-    match paths::cache_dir(cli.global.cache_dir.as_deref()) {
-        Ok(dir) => out.verbose(1, format_args!("cache {}", dir.display())),
+    match crate::store::profile::Selected::resolve(&cli.global) {
+        Ok(s) => out.verbose(
+            1,
+            format_args!(
+                "profile {} (from {}): cache {}, state {}",
+                s.profile.name,
+                s.profile.from.as_str(),
+                s.cache_path(),
+                s.state_path()
+            ),
+        ),
         Err(error) => out.verbose(1, error),
     }
     out.verbose(1, &cli.global.net);
@@ -112,6 +122,9 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
             probe::run(env, def, &cli.global, out)
         }
         Command::Cache(CacheCommand::Clear) => cache::clear(&cli.global, out),
+        Command::Profile(ProfileCommand::Create { name, kek_file }) => {
+            profile::create(&cli.global, name.as_deref(), kek_file.as_deref(), out)
+        }
         Command::Schema { command } => schema::run(command, out),
         Command::Agent => agent::run(),
         Command::Version => version::run(out),

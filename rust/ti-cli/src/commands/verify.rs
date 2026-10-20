@@ -193,7 +193,7 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
 
     let mut warnings = Vec::new();
     let (mut validator, profile) = validator(
-        &args.profile,
+        &args.validation_profile,
         &config,
         material.store,
         &certs[0],
@@ -376,7 +376,7 @@ fn validator(
                 code: code.into(),
                 subject: ee.subject_cn().to_owned(),
                 message: format!(
-                    "{}; checked the chain only, pass --profile",
+                    "{}; checked the chain only, pass --validation-profile",
                     selection.detail
                 ),
             });
@@ -396,7 +396,7 @@ fn validator(
     }
     // The value parser admits only auto, none and the profile names.
     let Some(p) = profile::lookup(selector) else {
-        unreachable!("clap restricts --profile to known names");
+        unreachable!("clap restricts --validation-profile to known names");
     };
     let forced = |detail: String| ProfileInfo {
         name: Some(p.name),

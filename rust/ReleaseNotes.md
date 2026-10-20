@@ -7,6 +7,25 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ## Unreleased
 
+### ti-cli
+
+#### added
+- Store profiles shared with the other TI tools (spec/store): `--profile`, `TI_PROFILE`,
+  `TI_STATE_DIR`, `TI_STORE_KEK_PATH`, `TI_STORE_BACKEND`. `ti profile create` makes a
+  profile's keyring and key file. Store failures have the error kinds `store_<code>`
+  with a hint.
+
+#### changed
+- The download cache is the profile's `cache.db`; `TI_CACHE_DIR` and `--cache-dir` name
+  the base of the profiles' caches. The old cache folder is no longer used. `cache clear`
+  reports `profile`, `path` and `removed_records`.
+- The TSL state and comfort signature IDs are sealed in the profile's `state.db` and are
+  kept only once the profile has a keyring; files of earlier versions are read until
+  then and moved into the store afterwards. `connector comfort activate` needs a
+  keyring.
+- `pki verify --profile` is `--validation-profile`; `--profile` selects the store
+  profile in every command.
+
 ### ti-idpd
 
 #### changed

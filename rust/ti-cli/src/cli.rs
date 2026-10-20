@@ -44,7 +44,13 @@ Environment:
   TI_FORMAT       default for --format (auto, text, markdown, json)
   TI_ENV          default for --env (auto, prod, ref, test, dev); commands that cannot
                   detect (roots list, tsl show) read auto as prod, probe as unset
+  TI_PROFILE      default for --profile
   TI_CACHE_DIR    default for --cache-dir
+  TI_STATE_DIR    base of the profiles' state [default: ~/.local/state/telematik]
+  TI_STORE_KEK_PATH
+                  the profile's key file [default: <config>/telematik/profiles/NAME/store.kek]
+  TI_STORE_BACKEND
+                  sqlite (default) or files
   TI_CONNECTOR_CONFIG, TI_CONNECTOR_TIMEOUT, TI_CARD_TIMEOUT
                   defaults for connector -c, --connector-timeout, --card-timeout
   NO_COLOR        disables colors; CLICOLOR_FORCE=1 forces them
@@ -57,7 +63,7 @@ Examples:
   {bin} --format json pki inspect card.pem | jq .certificates[0].certificate_type
   {bin} pki profiles describe hci-aut
   {bin} pki verify card.pem --issuer ca.pem
-  {bin} pki verify card.pem --env ref --profile none --at 2026-06-01T00:00:00Z
+  {bin} pki verify card.pem --env ref --validation-profile none --at 2026-06-01T00:00:00Z
   {bin} pki verify card.pem --ocsp-responder http://ocsp-relay:8080/ --ocsp-max-age 5m
   {bin} pki roots list --env ref
   {bin} pki tsl show --rejected
@@ -114,7 +120,12 @@ pub struct GlobalArgs {
     /// Diagnostics on stderr (-v, -vv)
     #[arg(short, long, action = ArgAction::Count, global = true)]
     pub verbose: u8,
-    /// Cache directory [default: ~/.cache/telematik/ti, %LOCALAPPDATA%\telematik\ti on Windows]
+    /// The store profile (default: TI_PROFILE, then the one `profile use` chose, then
+    /// "default")
+    #[arg(long, value_name = "NAME", global = true)]
+    pub profile: Option<String>,
+    /// Base of the profiles' caches, shared with the other TI tools [default:
+    /// ~/.cache/telematik, %LOCALAPPDATA%\telematik on Windows]
     #[arg(long, value_name = "DIR", env = "TI_CACHE_DIR", global = true)]
     pub cache_dir: Option<PathBuf>,
     /// The command's `--env` came from `TI_ENV`, not from the command line: a default,
@@ -186,6 +197,9 @@ pub enum Command {
         #[arg(long, value_enum, value_name = "ENV", env = "TI_ENV")]
         env: Option<Environment>,
     },
+    /// Store profiles: the keyring, state and cache the TI tools share
+    #[command(subcommand)]
+    Profile(ProfileCommand),
     /// The download cache
     #[command(subcommand)]
     Cache(CacheCommand),
@@ -210,9 +224,23 @@ pub enum Command {
 /// `ti cache …`.
 #[derive(Debug, Subcommand)]
 pub enum CacheCommand {
-    /// Delete the downloaded trust material and cached OCSP responses; the next run
-    /// fetches them again
+    /// Delete the downloaded trust material, OCSP responses and Konnektor service
+    /// directories from the profile's cache; the next run fetches them again
     Clear,
+}
+
+/// `ti profile …` (spec/store section L).
+#[derive(Debug, Subcommand)]
+pub enum ProfileCommand {
+    /// Create a profile's keyring and, unless it exists, its key file; then tokens, TSL
+    /// state and comfort IDs can be kept
+    Create {
+        /// The profile [default: the profile in effect]
+        name: Option<String>,
+        /// Use this existing key file; set TI_STORE_KEK_PATH to it for later runs
+        #[arg(long, value_name = "PATH")]
+        kek_file: Option<PathBuf>,
+    },
 }
 
 /// `ti pki …`.
@@ -467,8 +495,8 @@ pub struct VerifyArgs {
     #[arg(long, value_name = "FILE")]
     pub intermediates: Vec<PathBuf>,
     /// Validation profile: auto picks it from the certificate, none checks the chain only
-    #[arg(long, default_value = "auto", value_parser = profile_selectors())]
-    pub profile: String,
+    #[arg(long, value_name = "PROFILE", default_value = "auto", value_parser = profile_selectors())]
+    pub validation_profile: String,
     /// No network: cached trust material, else the embedded roots; revocation is not
     /// checked
     #[arg(long)]
@@ -833,7 +861,7 @@ fn env_name(value: &str) -> Result<ti_pki::Env, String> {
         .map_err(|_| format!("{value:?} is not prod, ref, test or dev (or pu, ru, tu)"))
 }
 
-/// `--profile`: auto, none or a profile, spelled as [`ti_pki::cert_type::fold_name`]
+/// `--validation-profile`: auto, none or a profile, spelled as [`ti_pki::cert_type::fold_name`]
 /// allows (`hci-aut`, `C.HCI.AUT`); the canonical name comes out. The listed values keep
 /// help and completions.
 fn profile_selectors() -> ProfileSelector {

@@ -25,7 +25,9 @@
 //! (`TI_STORE_BACKEND=files`, STORE-131). The store itself, its keyring and its rules
 //! are ti-store's; what does I/O is this tool's.
 
+mod cache;
 mod files;
+pub mod profile;
 mod sqlite;
 #[cfg(test)]
 mod tests;
@@ -37,7 +39,20 @@ use ti_store::store::{
 };
 use ti_types::Timestamp;
 
+pub use cache::StoreCache;
 pub use files::FilesBackend;
+pub use profile::now;
+
+/// The cache of the profile in effect.
+///
+/// # Errors
+///
+/// A profile that does not resolve, or a cache that cannot be created.
+pub fn open_cache(global: &crate::cli::GlobalArgs) -> Result<StoreCache, crate::error::CliError> {
+    profile::Selected::resolve(global)?
+        .open_cache()
+        .map(StoreCache)
+}
 pub use sqlite::{Db, SqliteBackend};
 
 /// Which backend keeps a profile's records (STORE-131).
