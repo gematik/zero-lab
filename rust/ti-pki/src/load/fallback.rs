@@ -26,7 +26,7 @@
 use super::artifact::Artifact;
 use super::loader::{Fetched, LoadError, Loader};
 use super::maybe_send::{MaybeSend, MaybeSync};
-use ti_cache::Conditional;
+use ti_store::Conditional;
 
 /// Tries `primary`; when it fails, loads from `backup` and records the primary's error
 /// in [`Loaded::stale`](super::Loaded::stale).

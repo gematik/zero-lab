@@ -261,6 +261,14 @@ criteria = "safe-to-deploy"
 version = "0.14.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.fallible-iterator]]
+version = "0.3.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.fallible-streaming-iterator]]
+version = "0.1.9"
+criteria = "safe-to-deploy"
+
 [[exemptions.fastrand]]
 version = "2.5.0"
 criteria = "safe-to-run"
@@ -465,6 +473,10 @@ version = "0.2.16"
 criteria = "safe-to-deploy"
 notes = "wasm-bindgen-test turns on num-traits' libm feature; compiled only for jwz's browser tests (just jwz-browser)"
 
+[[exemptions.libsqlite3-sys]]
+version = "0.38.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.litemap]]
 version = "0.8.3"
 criteria = "safe-to-deploy"
@@ -539,7 +551,7 @@ version = "0.2.17"
 criteria = "safe-to-deploy"
 
 [[exemptions.pkcs1]]
-version = "0.8.0-rc.4"
+version = "0.8.0-rc.5"
 criteria = "safe-to-deploy"
 
 [[exemptions.pkcs5]]
@@ -548,6 +560,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.pkcs8]]
 version = "0.11.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.pkg-config]]
+version = "0.3.34"
 criteria = "safe-to-deploy"
 
 [[exemptions.polyval]]
@@ -627,11 +643,15 @@ version = "0.21.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.rsa]]
-version = "0.10.0-rc.18"
+version = "0.10.0-rc.19"
+criteria = "safe-to-deploy"
+
+[[exemptions.rusqlite]]
+version = "0.40.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.rustls]]
-version = "0.23.45"
+version = "0.23.46"
 criteria = "safe-to-deploy"
 
 [[exemptions.rustls-native-certs]]
@@ -739,7 +759,7 @@ version = "0.6.5"
 criteria = "safe-to-deploy"
 
 [[exemptions.spki]]
-version = "0.8.0"
+version = "0.8.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.stable_deref_trait]]
@@ -862,6 +882,10 @@ criteria = "safe-to-deploy"
 version = "1.27.0"
 criteria = "safe-to-deploy"
 notes = "jwz's hax annotations, a cfg(hax) dependency: compiled only when hax extracts jwz for proof"
+
+[[exemptions.vcpkg]]
+version = "0.2.15"
+criteria = "safe-to-deploy"
 
 [[exemptions.walkdir]]
 version = "2.5.0"

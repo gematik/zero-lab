@@ -631,6 +631,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "fallible-iterator"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
+
+[[package]]
+name = "fallible-streaming-iterator"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1217,6 +1229,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
+name = "libsqlite3-sys"
+version = "0.38.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1d20bef17f513b9b3004532233187769cd072d790971f4e4da0e346eb6401e8"
+dependencies = [
+ "cc",
+ "pkg-config",
+ "vcpkg",
+]
+
+[[package]]
 name = "litemap"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1383,9 +1406,9 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pkcs1"
-version = "0.8.0-rc.4"
+version = "0.8.0-rc.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "986d2e952779af96ea048f160fd9194e1751b4faea78bcf3ceb456efe008088e"
+checksum = "f485dbafe293ea6ccaa7d82bc591651a796eb8a9aec3df040b057b706073dbc3"
 dependencies = [
  "der",
  "spki",
@@ -1418,6 +1441,12 @@ dependencies = [
  "der",
  "spki",
 ]
+
+[[package]]
+name = "pkg-config"
+version = "0.3.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 
 [[package]]
 name = "polyval"
@@ -1634,9 +1663,9 @@ dependencies = [
 
 [[package]]
 name = "rsa"
-version = "0.10.0-rc.18"
+version = "0.10.0-rc.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30b2aa4ba0d89f73d1e332df05be0eeab8840351c36ca5654341dfdb57bb3caf"
+checksum = "33405e321e16ef941ca66e254f6904c3aafd3c7ff001fb88bf11c73eb75c2b85"
 dependencies = [
  "const-oid",
  "crypto-bigint",
@@ -1649,6 +1678,19 @@ dependencies = [
  "signature",
  "spki",
  "zeroize",
+]
+
+[[package]]
+name = "rusqlite"
+version = "0.40.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23f2a97da3e3873c73cb2a2e71b35c40ff95e0b1eefa8d72d8499a6928c3b5b3"
+dependencies = [
+ "bitflags 2.13.2",
+ "fallible-iterator",
+ "fallible-streaming-iterator",
+ "libsqlite3-sys",
+ "smallvec",
 ]
 
 [[package]]
@@ -1975,9 +2017,9 @@ dependencies = [
 
 [[package]]
 name = "spki"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d9efca8738c78ee9484207732f728b1ef517bbb1833d6fc0879ca898a522f6f"
+checksum = "7ef958a98b9d5da290cfc78946e9f3e61e1e62a18db0d92cac0b83cc161491a9"
 dependencies = [
  "base64ct",
  "der",
@@ -2064,15 +2106,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ti-cache"
-version = "0.1.0"
-dependencies = [
- "futures-lite",
- "thiserror",
- "ti-types",
-]
-
-[[package]]
 name = "ti-cli"
 version = "0.4.0"
 dependencies = [
@@ -2082,11 +2115,13 @@ dependencies = [
  "clap",
  "clap_complete",
  "der",
+ "futures-lite",
  "jiff",
  "jwz",
  "jwz-brainpool",
  "pem-rfc7468",
  "pkcs8",
+ "rusqlite",
  "rustls",
  "sec1",
  "serde",
@@ -2100,6 +2135,8 @@ dependencies = [
  "ti-pkcs12",
  "ti-pki",
  "ti-report",
+ "ti-store",
+ "ti-types",
  "ureq",
  "x509-cert",
  "zeroize",
@@ -2121,9 +2158,9 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
- "ti-cache",
  "ti-pkcs12",
  "ti-pki",
+ "ti-store",
  "ti-types",
  "ureq",
 ]
@@ -2211,7 +2248,7 @@ dependencies = [
  "sha1",
  "sha2",
  "thiserror",
- "ti-cache",
+ "ti-store",
  "ti-types",
  "ti-xmldsig",
  "tokio",
@@ -2228,6 +2265,22 @@ dependencies = [
  "serde",
  "sha2",
  "ti-pki",
+]
+
+[[package]]
+name = "ti-store"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "futures-lite",
+ "getrandom 0.4.3",
+ "hkdf",
+ "hmac",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "ti-types",
+ "zeroize",
 ]
 
 [[package]]
@@ -2494,6 +2547,12 @@ dependencies = [
  "js-sys",
  "wasm-bindgen",
 ]
+
+[[package]]
+name = "vcpkg"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "walkdir"

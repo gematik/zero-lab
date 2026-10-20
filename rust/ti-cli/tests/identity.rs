@@ -77,6 +77,10 @@ fn command(args: &[&str]) -> Command {
         .args(args)
         .env_remove("TI_FORMAT")
         .env_remove("TI_ENV")
+        .env("TI_PROFILE", "default")
+        .env_remove("TI_STATE_DIR")
+        .env_remove("TI_STORE_KEK_PATH")
+        .env_remove("TI_STORE_BACKEND")
         .env_remove("TI_P12_PASSWORD_PATH")
         .env(
             "TI_CACHE_DIR",

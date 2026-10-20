@@ -48,11 +48,20 @@ anstream.workspace = true
 anstyle.workspace = true
 jiff.workspace = true
 pem-rfc7468 = { workspace = true, features = ["alloc"] }
+# The sealed store of spec/store; its files and SQLite backends are this tool's.
+ti-store = { workspace = true, features = ["store"] }
+ti-types.workspace = true
+rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
 x509-cert.workspace = true
+
+[dev-dependencies]
+# spec/store's conformance evaluator, shared with ti-store's tests.
+ti-store = { workspace = true, features = ["test-util"] }
+futures-lite.workspace = true
 
 [lints]
 workspace = true

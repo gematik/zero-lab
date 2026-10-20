@@ -14,7 +14,8 @@ Go keeps servers and relying parties, their libraries and the ePA client
               │  flags, env, files, secrets (*_PATH), logger, servers, signals
  servers    pdp/authzserver  pep/proxy  bff/gateway  epa/vau        (http.Handler)
               │
- libraries  oauth  oidf  dpop  nonce  gemidp  kv  brainpool  pkcs12  (no ambient I/O)
+ libraries  oauth  oidf  dpop  nonce  gemidp  kv  store  brainpool  pkcs12  (no ambient I/O)
+ adapters   sqlitestore                                             (a driver of their own)
 ```
 
 - `main` and `cmd/` own the process: they read flags, environment and files, build the
@@ -162,7 +163,7 @@ The [server rules](../../docs/design/servers.md), in Go terms:
   redirects, timeouts, response size limits).
 - Caches use one shared pattern (keyed by input hash, configuration and trust-material
   version; bounded TTL; invalidated on trust-material reload; single-flight against
-  stampedes), the same rules as `ti-cache` on the Rust side.
+  stampedes), the same rules as `ti-store` on the Rust side.
 - Telemetry through one internal instrumentation interface with an OpenTelemetry or
   Prometheus exporter chosen in `cmd/`, and `slog` JSON to stdout; cloud services (KMS,
   attestation, managed databases) behind interfaces with an adapter per provider.

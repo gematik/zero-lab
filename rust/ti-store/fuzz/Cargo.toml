@@ -1,0 +1,48 @@
+# cargo-fuzz targets for ti-store's parsers (nightly; `just fuzz-ti-store`). Outside the
+# workspace so that libfuzzer never enters the workspace's lock file and checks.
+[package]
+name = "ti-store-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "EUPL-1.2"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+futures-lite = "2"
+ti-store = { path = "..", features = ["store"] }
+ti-types = { path = "../../ti-types" }
+zeroize = "1"
+
+[[bin]]
+name = "record"
+path = "fuzz_targets/record.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "keyring"
+path = "fuzz_targets/keyring.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "record_file"
+path = "fuzz_targets/record_file.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kek_file"
+path = "fuzz_targets/kek_file.rs"
+test = false
+doc = false
+bench = false

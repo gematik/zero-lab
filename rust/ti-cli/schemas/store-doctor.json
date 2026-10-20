@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "store doctor",
+  "description": "Checks of the profile in effect, each ok, warn or fail (STORE-123); exit 1 if one fails.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "profile": {
+      "type": "string"
+    },
+    "from": {
+      "enum": [
+        "flag",
+        "env",
+        "active",
+        "default"
+      ]
+    },
+    "backend": {
+      "enum": [
+        "sqlite",
+        "files"
+      ]
+    },
+    "key_file": {
+      "type": "string"
+    },
+    "keyring": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string"
+    },
+    "cache": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "warn",
+        "fail"
+      ],
+      "description": "The worst status of the checks."
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "check": {
+            "enum": [
+              "profile",
+              "key_file",
+              "keyring",
+              "key_age",
+              "state_level",
+              "state_integrity",
+              "cache_level",
+              "cache_integrity",
+              "records",
+              "records_open"
+            ]
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "warn",
+              "fail"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "check",
+          "status",
+          "detail"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "namespaces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "namespace": {
+            "type": "string"
+          },
+          "database": {
+            "enum": [
+              "state",
+              "cache"
+            ]
+          },
+          "records": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "expired": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "namespace",
+          "database",
+          "records",
+          "expired"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "profile",
+    "from",
+    "backend",
+    "key_file",
+    "keyring",
+    "state",
+    "cache",
+    "status",
+    "checks",
+    "namespaces"
+  ],
+  "additionalProperties": false
+}

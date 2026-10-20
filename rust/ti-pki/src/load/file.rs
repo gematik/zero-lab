@@ -40,7 +40,7 @@ use std::path::PathBuf;
 
 use super::artifact::{Artifact, ArtifactRequest, ArtifactResponse, ResponseMeta, content_etag};
 use super::transport::{PostRequest, Transport, TransportError, TransportErrorKind};
-use ti_cache::Source;
+use ti_store::Source;
 
 /// Reads each artefact from a configured path. The entity tag is the SHA-256 of the
 /// contents, so rewriting a file with identical bytes answers "not modified".

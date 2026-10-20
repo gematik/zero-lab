@@ -20,7 +20,7 @@ ureq = ["dep:ureq", "dep:rustls", "dep:rustls-pki-types", "dep:rustls-platform-v
 
 [dependencies]
 ti-types.workspace = true
-ti-cache.workspace = true
+ti-store.workspace = true
 ti-pki.workspace = true
 serde = { workspace = true, features = ["std"] }
 serde_json.workspace = true

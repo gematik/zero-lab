@@ -29,7 +29,6 @@
 //! only on a terminal; never a prompt; exit codes as listed in `ti --help`.
 
 mod block;
-mod cache;
 mod cli;
 mod commands;
 mod connector;
@@ -41,6 +40,10 @@ mod net;
 mod output;
 mod paths;
 mod peer;
+// Public for the spec/store interoperability driver (examples/store-interop.rs) only;
+// not an API of this crate.
+#[doc(hidden)]
+pub mod store;
 mod trust;
 
 use std::ffi::OsString;

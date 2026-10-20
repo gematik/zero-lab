@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "profile use",
+  "description": "The profile written to the active file (STORE-091).",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "profile": {
+      "type": "string"
+    },
+    "active_file": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "profile",
+    "active_file"
+  ],
+  "additionalProperties": false
+}

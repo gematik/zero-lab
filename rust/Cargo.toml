@@ -1,5 +1,5 @@
 [workspace]
-members = ["ti-types", "ti-cache", "ti-xmldsig", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-report", "ti-cli", "ti-wasm", "jwz", "jwz-brainpool", "ti-jwz", "ti-idpd", "ti-directory"]
+members = ["ti-types", "ti-store", "ti-xmldsig", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-report", "ti-cli", "ti-wasm", "jwz", "jwz-brainpool", "ti-jwz", "ti-idpd", "ti-directory"]
 # cargo-fuzz targets need nightly and a dependency tree of their own.
 exclude = ["jwz/fuzz"]
 resolver = "3"
@@ -18,7 +18,7 @@ publish = false
 [workspace.dependencies]
 # In-repo crates: path for local development, version for registry resolution.
 ti-types = { version = "0.1", path = "ti-types" }
-ti-cache = { version = "0.1", path = "ti-cache" }
+ti-store = { version = "0.1", path = "ti-store" }
 ti-xmldsig = { version = "0.1", path = "ti-xmldsig" }
 # Without its default algorithm features: parsing certificates needs none.
 ti-pki = { version = "0.1", path = "ti-pki", default-features = false }
@@ -70,7 +70,7 @@ p384 = { version = "0.14.0", default-features = false, features = ["ecdsa"] }
 bp256 = { version = "0.14.0", default-features = false, features = ["arithmetic", "ecdsa", "sha256"] }
 bp384 = { version = "0.14.0", default-features = false, features = ["arithmetic", "ecdsa", "sha384"] }
 # Release candidate: the only rsa line on the current RustCrypto stack (docs/development.md).
-rsa = { version = "=0.10.0-rc.18", default-features = false, features = ["encoding", "sha2"] }
+rsa = { version = "=0.10.0-rc.19", default-features = false, features = ["encoding", "sha2"] }
 digest = "0.11"
 # Adapters behind ti-pki features; the caller's own reqwest dependency brings TLS.
 reqwest = { version = "0.13.5", default-features = false }
@@ -85,6 +85,10 @@ rustls = { version = "0.23.46", default-features = false, features = ["std", "tl
 # The operating system's trust store for a Konnektor without a `.kon` trust store; the
 # version ureq's `platform-verifier` feature brings.
 rustls-platform-verifier = "0.7.1"
+# The SQLite backend of ti's sealed store (spec/store section H), in ti-cli only, never in
+# a core. `bundled` compiles one SQLite for every platform. Without `cache`, whose
+# hashlink brings foldhash (Zlib, not in deny.toml). Approved 2026-10-16 (TASK-103.4).
+rusqlite = { version = "0.40.2", default-features = false, features = ["bundled"] }
 
 serde_json = "1.0.151"
 # Strict XML tree for canonicalization in ti-xmldsig: keeps source positions, so the

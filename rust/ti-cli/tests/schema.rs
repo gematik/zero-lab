@@ -47,8 +47,13 @@ fn ti(cache: &Path, args: &[&str]) -> Output {
         .args(args)
         .env_remove("TI_FORMAT")
         .env_remove("TI_ENV")
+        .env("TI_PROFILE", "default")
+        .env_remove("TI_STATE_DIR")
+        .env_remove("TI_STORE_KEK_PATH")
+        .env_remove("TI_STORE_BACKEND")
         .env("TI_CACHE_DIR", cache)
         .env("XDG_STATE_HOME", cache.join("state"))
+        .env("XDG_CONFIG_HOME", cache.join("config"))
         .output()
         .unwrap()
 }
@@ -56,6 +61,61 @@ fn ti(cache: &Path, args: &[&str]) -> Output {
 /// A cache directory holding the production roots.json and TSL fixtures as if just
 /// downloaded, in the layout of `ti-cli/src/cache.rs` and ti-pki's cache keys.
 struct SeededCache(PathBuf);
+
+/// The cache payload of ti's store adapter: `u8 1 ‖ u32 length ‖ metadata JSON ‖ body`.
+fn cache_payload(fetched_at: u64, body: &[u8]) -> Vec<u8> {
+    let meta = serde_json::json!({
+        "etag": "\"fixture\"", "last_modified": null,
+        "fetched_at": fetched_at, "max_age_secs": null,
+    })
+    .to_string();
+    let mut out = vec![1];
+    out.extend_from_slice(&u32::try_from(meta.len()).unwrap().to_be_bytes());
+    out.extend_from_slice(meta.as_bytes());
+    out.extend_from_slice(body);
+    out
+}
+
+/// Writes plain records into the default profile's `cache.db` below `dir`, created
+/// from spec/store's schema, as another tool sharing the profile would.
+fn seed_cache_db(dir: &Path, records: &[(&str, String, Vec<u8>)]) {
+    use ti_store::store::{Namespace, plain_name, plain_record};
+    let db = dir.join("profiles/default/cache.db");
+    std::fs::create_dir_all(db.parent().unwrap()).unwrap();
+    let conn = rusqlite::Connection::open(&db).unwrap();
+    let has_schema: i64 = conn
+        .query_row("SELECT count(*) FROM sqlite_schema", [], |r| r.get(0))
+        .unwrap();
+    if has_schema == 0 {
+        conn.execute_batch(include_str!("../../../spec/store/schema.sql"))
+            .unwrap();
+    }
+    let expires = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        + 86_400;
+    for (ns, id, payload) in records {
+        let name = plain_name(&Namespace::new(ns).unwrap(), id.as_bytes()).unwrap();
+        let value = plain_record(Some(ti_types::Timestamp(expires)), payload).unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO records (ns, name, value, expires_at) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![ns, &name.0[..], value, i64::try_from(expires).unwrap()],
+        )
+        .unwrap();
+    }
+}
+
+/// The id of a download in the cache: the first 8 bytes of SHA-256 of its URL, as ti-pki
+/// keys it.
+fn url_id(url: &str) -> String {
+    Sha256::digest(url.as_bytes())[..8]
+        .iter()
+        .fold(String::new(), |mut id, b| {
+            write!(id, "{b:02x}").unwrap();
+            id
+        })
+}
 
 impl SeededCache {
     fn new(name: &str) -> Self {
@@ -65,32 +125,28 @@ impl SeededCache {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        for (kind, url, body) in [
+        let records: Vec<_> = [
             (
-                "roots",
+                "pki.roots",
                 ROOTS_URL,
                 manifest("../ti-pki/src/roots-prod.json"),
             ),
             (
-                "tsl",
+                "pki.tsl",
                 TSL_URL,
                 manifest("../ti-pki/tests/fixtures/tsl/ECC-RSA_TSL.xml"),
             ),
-        ] {
-            let digest = Sha256::digest(url.as_bytes());
-            let id = digest[..8].iter().fold(String::new(), |mut id, b| {
-                write!(id, "{b:02x}").unwrap();
-                id
-            });
-            let base = dir.join("ti-pki/v1").join(kind).join(id);
-            std::fs::create_dir_all(base.parent().unwrap()).unwrap();
-            std::fs::copy(body, base.with_extension("body")).unwrap();
-            let meta = serde_json::json!({
-                "etag": "\"fixture\"", "last_modified": null,
-                "fetched_at": now, "max_age_secs": null,
-            });
-            std::fs::write(base.with_extension("json"), meta.to_string()).unwrap();
-        }
+        ]
+        .into_iter()
+        .map(|(ns, url, body)| {
+            (
+                ns,
+                url_id(url),
+                cache_payload(now, &std::fs::read(body).unwrap()),
+            )
+        })
+        .collect();
+        seed_cache_db(&dir, &records);
         SeededCache(dir)
     }
 }
@@ -619,22 +675,249 @@ fn pkcs12_commands_match_their_schemas() {
 }
 
 #[test]
-fn cache_clear_removes_only_the_downloads() {
+fn cache_clear_removes_only_the_profiles_cache() {
     let cache = SeededCache::new("clear");
     std::fs::write(cache.0.join("keep.txt"), "not ours").unwrap();
-    let sds = cache.0.join("ti-connector/v1/sds");
-    std::fs::create_dir_all(&sds).unwrap();
-    std::fs::write(sds.join("0123456789abcdef.body"), "<sds/>").unwrap();
+    seed_cache_db(
+        &cache.0,
+        &[(
+            "connector.sds",
+            "0123456789abcdef".into(),
+            cache_payload(1, b"<sds/>"),
+        )],
+    );
     let out = ti(&cache.0, &["--format", "json", "cache", "clear"]);
     let report: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(report["removed_files"], 5);
-    assert!(!cache.0.join("ti-pki").exists());
-    assert!(!cache.0.join("ti-connector").exists());
+    assert_eq!(report["removed_records"], 3);
+    assert_eq!(report["profile"], "default");
     assert!(cache.0.join("keep.txt").exists(), "other files stay");
 
     let again = ti(&cache.0, &["--format", "json", "cache", "clear"]);
     let again: Value = serde_json::from_slice(&again.stdout).unwrap();
-    assert_eq!(again["removed_files"], 0);
+    assert_eq!(again["removed_records"], 0);
+}
+
+/// STORE-095, STORE-121: `profile create` makes the key file and the keyring once.
+#[test]
+fn profile_create_makes_the_key_file_and_keyring_once() {
+    let cache = SeededCache::new("profile-create");
+    let out = json_of(&cache.0, "profile create", &["profile", "create"]);
+    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["profile"], "default");
+    assert_eq!(report["key_file_created"], true);
+    assert!(report["kek_path_to_set"].is_null());
+    let key_file = PathBuf::from(report["key_file"].as_str().unwrap());
+    assert_eq!(
+        key_file,
+        cache.0.join("config/telematik/profiles/default/store.kek")
+    );
+    let keyring = PathBuf::from(report["keyring"].as_str().unwrap());
+    assert_eq!(
+        keyring,
+        cache.0.join("state/telematik/profiles/default/keyring.bin")
+    );
+    assert_eq!(
+        std::fs::read(&key_file).unwrap().len(),
+        45,
+        "44 base64 and a line feed"
+    );
+    assert_eq!(&std::fs::read(&keyring).unwrap()[..4], b"ZLKR");
+    #[cfg(unix)]
+    for file in [&key_file, &keyring] {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode = std::fs::metadata(file).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "{}", file.display());
+    }
+
+    let again = ti(&cache.0, &["profile", "create"]);
+    assert_eq!(again.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&again.stderr);
+    assert!(stderr.contains("already has a keyring"), "{stderr}");
+
+    // another profile with an existing key file, recorded nowhere
+    let out = json_of(
+        &cache.0,
+        "profile create",
+        &[
+            "profile",
+            "create",
+            "work",
+            "--kek-file",
+            key_file.to_str().unwrap(),
+        ],
+    );
+    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["profile"], "work");
+    assert_eq!(report["key_file_created"], false);
+    assert_eq!(report["kek_path_to_set"], key_file.to_str().unwrap());
+
+    let bad = ti(&cache.0, &["profile", "create", "Not_A_Name"]);
+    assert_eq!(bad.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&bad.stderr).contains("invalid_argument"));
+}
+
+/// The environment of a test run of the store commands below `c`, without the harness's
+/// TI_PROFILE so that the active file counts.
+fn store_env<'a>(cmd: &'a mut Command, c: &Path) -> &'a mut Command {
+    cmd.env_remove("TI_FORMAT")
+        .env_remove("TI_PROFILE")
+        .env_remove("TI_STATE_DIR")
+        .env_remove("TI_STORE_KEK_PATH")
+        .env_remove("TI_STORE_BACKEND")
+        .env_remove("TI_STORE_TRACE")
+        .env("TI_CACHE_DIR", c)
+        .env("XDG_STATE_HOME", c.join("state"))
+        .env("XDG_CONFIG_HOME", c.join("config"))
+}
+
+/// STORE-122, STORE-091, STORE-096: list, use, show and delete, as the other tools see
+/// them.
+#[test]
+fn profile_commands_list_use_show_and_delete() {
+    let cache = SeededCache::new("profiles");
+    let c = &cache.0;
+    let run = |args: &[&str]| {
+        store_env(&mut Command::new(env!("CARGO_BIN_EXE_ti")), c)
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let json = |name: &str, args: &[&str]| -> Value {
+        let mut all = vec!["--format", "json"];
+        all.extend_from_slice(args);
+        let out = run(&all);
+        assert_conforms(name, &out.stdout);
+        serde_json::from_slice(&out.stdout).unwrap()
+    };
+    json("profile create", &["profile", "create"]);
+    json("profile create", &["profile", "create", "work"]);
+    let used = json("profile use", &["profile", "use", "work"]);
+    assert_eq!(used["profile"], "work");
+
+    let shown = json("profile show", &["profile", "show"]);
+    assert_eq!(
+        (shown["profile"].as_str(), shown["from"].as_str()),
+        (Some("work"), Some("active"))
+    );
+    assert_eq!(shown["keyring_found"], true);
+
+    let listed = json("profile list", &["profile", "list"]);
+    assert_eq!(listed["current"], "work");
+    let names: Vec<(&str, bool)> = listed["profiles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| (p["name"].as_str().unwrap(), p["active"].as_bool().unwrap()))
+        .collect();
+    assert_eq!(names, [("default", false), ("work", true)]);
+    assert_eq!(listed["profiles"][1]["state_level"], 1);
+
+    let refused = run(&["profile", "delete", "work"]);
+    assert_eq!(refused.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("--yes"));
+    assert!(c.join("state/telematik/profiles/work/keyring.bin").exists());
+
+    let deleted = json("profile delete", &["profile", "delete", "work", "--yes"]);
+    let removed: Vec<&str> = deleted["removed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p.as_str().unwrap())
+        .collect();
+    assert!(
+        removed[0].ends_with("keyring.bin"),
+        "keyring first: {removed:?}"
+    );
+    assert!(!c.join("state/telematik/profiles/work").exists());
+    assert!(!c.join("profiles/work").exists());
+    assert!(!c.join("config/telematik/profiles/work/store.kek").exists());
+    assert!(
+        !c.join("config/telematik/profiles/active").exists(),
+        "it named work"
+    );
+    let shown = json("profile show", &["profile", "show"]);
+    assert_eq!(
+        (shown["profile"].as_str(), shown["from"].as_str()),
+        (Some("default"), Some("default"))
+    );
+}
+
+/// STORE-123: doctor reports without creating anything, and fails on a key file others
+/// can read or one that is gone while the keyring needs it; STORE-130: the trace names
+/// operations, never records.
+#[test]
+fn store_doctor_checks_and_traces() {
+    let cache = SeededCache::new("doctor");
+    let c = &cache.0;
+    let doctor = |trace: bool| {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_ti"));
+        store_env(&mut cmd, c).args(["store", "doctor", "--json"]);
+        if trace {
+            cmd.env("TI_STORE_TRACE", "1");
+        }
+        cmd.output().unwrap()
+    };
+    let read = |out: &Output| -> (Option<i32>, Value) {
+        assert_conforms("store doctor", &out.stdout);
+        (
+            out.status.code(),
+            serde_json::from_slice(&out.stdout).unwrap(),
+        )
+    };
+    let check = |report: &Value, name: &str| -> String {
+        report["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["check"] == name)
+            .map_or("absent".into(), |c| {
+                c["status"].as_str().unwrap().to_owned()
+            })
+    };
+
+    let (code, report) = read(&doctor(false));
+    assert_eq!(code, Some(0));
+    assert_eq!(report["status"], "warn", "no keyring yet");
+    assert_eq!(check(&report, "keyring"), "warn");
+    assert!(
+        !c.join("state/telematik/profiles/default/state.db").exists(),
+        "nothing created"
+    );
+    let pki_tsl = report["namespaces"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["namespace"] == "pki.tsl")
+        .unwrap()
+        .clone();
+    assert_eq!(
+        (pki_tsl["records"].as_u64(), pki_tsl["expired"].as_u64()),
+        (Some(1), Some(0))
+    );
+
+    let created = store_env(&mut Command::new(env!("CARGO_BIN_EXE_ti")), c)
+        .args(["profile", "create"])
+        .output()
+        .unwrap();
+    assert_eq!(created.status.code(), Some(0));
+    let traced = doctor(true);
+    let (code, report) = read(&traced);
+    assert_eq!((code, report["status"].as_str()), (Some(0), Some("ok")));
+    let stderr = String::from_utf8_lossy(&traced.stderr);
+    assert!(stderr.contains(" query pki.tsl "), "{stderr}");
+
+    let key_file = c.join("config/telematik/profiles/default/store.kek");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&key_file, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let (code, report) = read(&doctor(false));
+        assert_eq!((code, check(&report, "key_file")), (Some(1), "fail".into()));
+        std::fs::set_permissions(&key_file, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    std::fs::remove_file(&key_file).unwrap();
+    let (code, report) = read(&doctor(false));
+    assert_eq!((code, check(&report, "key_file")), (Some(1), "fail".into()));
 }
 
 /// The codes a verify report may carry are exactly ti-pki's.
@@ -777,7 +1060,7 @@ fn schemas_are_published_by_name() {
     let all = ti(&dir, &["schema"]);
     let all: Value = serde_json::from_slice(&all.stdout).unwrap();
     let commands = all["commands"].as_object().unwrap();
-    assert_eq!(commands.len(), 42);
+    assert_eq!(commands.len(), 56);
     assert_eq!(commands["pki verify"], schema("pki verify"));
 
     let one = ti(&dir, &["schema", "pki", "tsl", "show"]);
@@ -814,8 +1097,13 @@ fn roots_and_tsl_need_a_concrete_environment() {
         .args(["--at", "2026-10-01T00:00:00Z"])
         .env_remove("TI_FORMAT")
         .env("TI_ENV", "auto")
+        .env("TI_PROFILE", "default")
+        .env_remove("TI_STATE_DIR")
+        .env_remove("TI_STORE_KEK_PATH")
+        .env_remove("TI_STORE_BACKEND")
         .env("TI_CACHE_DIR", &cache.0)
         .env("XDG_STATE_HOME", cache.0.join("state"))
+        .env("XDG_CONFIG_HOME", cache.0.join("config"))
         .output()
         .unwrap();
     assert_eq!(from_variable.status.code(), Some(0));

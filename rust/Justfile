@@ -356,7 +356,8 @@ test:
 # the browser
 wasm32:
     cargo check -p ti-types --target wasm32-unknown-unknown --features std
-    cargo check -p ti-cache --target wasm32-unknown-unknown
+    cargo check -p ti-store --target wasm32-unknown-unknown
+    cargo check -p ti-store --target wasm32-unknown-unknown --features store
     cargo check -p ti-xmldsig --target wasm32-unknown-unknown
     cargo check -p ti-connector-client --target wasm32-unknown-unknown
     cargo check -p ti-pki --target wasm32-unknown-unknown --features load,reqwest
@@ -473,6 +474,20 @@ fuzz-jwz seconds="30":
     set -euo pipefail
     cd jwz/fuzz
     for target in jws_compact jws_json jwe_compact jwe_json jwk claims; do
+        mkdir -p "corpus/$target"
+        cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
+            -max_total_time={{seconds}} -max_len=65536 -print_final_stats=1 2>&1 \
+            | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
+        [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
+    done
+
+# Fuzz every ti-store parser for `seconds` each (design time; nightly and cargo-fuzz).
+# Corpora start from ti-store/fuzz/seeds and grow in ti-store/fuzz/corpus (not committed).
+fuzz-ti-store seconds="30":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd ti-store/fuzz
+    for target in record keyring record_file kek_file; do
         mkdir -p "corpus/$target"
         cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
             -max_total_time={{seconds}} -max_len=65536 -print_final_stats=1 2>&1 \

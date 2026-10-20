@@ -39,7 +39,6 @@ use crate::block::block_on;
 use crate::cli::{ConnectorArgs, GlobalArgs};
 use crate::error::CliError;
 use crate::output::{Output, diagnostic};
-use crate::paths;
 
 /// A Konnektor ready for calls.
 pub struct Session {
@@ -49,6 +48,8 @@ pub struct Session {
     pub dotkon: Dotkon,
     /// The configuration's name, e.g. `default`.
     pub name: String,
+    /// The store profile in effect, which keeps comfort IDs.
+    pub selected: crate::store::profile::Selected,
 }
 
 /// `$XDG_CONFIG_HOME/telematik/connectors`, or `~/.config/…` on every platform, as the
@@ -187,8 +188,7 @@ pub fn open(args: &ConnectorArgs, global: &GlobalArgs, out: &Output) -> Result<S
     let connector = if args.no_cache {
         block_on(Connector::connect(&dotkon, transport, timeouts)).map_err(CliError::Connector)?
     } else {
-        let store =
-            crate::cache::FileCacheStore::new(paths::cache_dir(global.cache_dir.as_deref())?);
+        let store = crate::store::open_cache(global)?;
         let cache = Cache::new(store, SystemClock, CachePolicy::default());
         let (connector, meta) = block_on(Connector::connect_cached(
             &dotkon, transport, timeouts, &cache,
@@ -201,6 +201,7 @@ pub fn open(args: &ConnectorArgs, global: &GlobalArgs, out: &Output) -> Result<S
         connector,
         dotkon,
         name,
+        selected: crate::store::profile::Selected::resolve(global)?,
     })
 }
 

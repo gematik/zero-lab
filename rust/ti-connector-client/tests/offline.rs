@@ -30,12 +30,12 @@ use std::cell::Cell;
 use std::time::Duration;
 
 use futures_lite::future::block_on;
-use ti_cache::{Cache, CachePolicy, MemoryCacheStore, Source};
 use ti_connector_client::types::CardType;
 use ti_connector_client::{
     Connector, DiscoveryError, Dotkon, Error, Method, Response, ServiceDirectory, Timeouts,
     TransportError,
 };
+use ti_store::{Cache, CachePolicy, MemoryCacheStore, Source};
 use ti_types::{Clock, Timestamp};
 
 use support::{Scripted, ok};

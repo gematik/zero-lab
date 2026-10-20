@@ -1,0 +1,72 @@
+---
+id: TASK-103.5
+title: 'ti-cli: profiles and migration to the store'
+status: Done
+assignee: []
+created_date: '2026-10-15 17:45'
+updated_date: '2026-10-20 11:46'
+labels:
+  - ti-cli
+dependencies:
+  - TASK-103.4
+parent_task_id: TASK-103
+priority: medium
+ordinal: 106000
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+--profile, TI_PROFILE, active file; ti profile list|use|create|delete|show; FileCacheStore replaced by a CacheStore adapter over cache.db; TSL rollback state and comfort store moved into state.db (comfort sealed); old state imported once.
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [x] #1 profiles resolve as STORE-7xx
+- [x] #2 ti cache clear empties the profile's cache.db
+- [x] #3 TslStateFile and ComfortStore removed; their data migrated
+- [x] #4 ti implements spec/store section L: profile create/list/use/delete/rotate/rewrap, store doctor (--deep, --json), ls/show --reveal/rm/purge, cleanup, migrate --dry-run, TI_STORE_TRACE, TI_STORE_BACKEND, hints in error messages
+<!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Three stages, each ending with a HITL run the maintainer proves:
+1. Profile resolution (--profile, TI_PROFILE, active file) and STORE-092/093 paths; FileCacheStore replaced by a CacheStore adapter over cache.db (versioned payload: metadata plus body); ti cache clear empties the profile's cache.db; TslStateFile and ComfortStore into sealed state.db namespaces, old files imported once a keyring exists (until then untouched, with a warning and the profile create hint); the old cache folder is ignored. TI_CACHE_DIR/--cache-dir take the spec's meaning (shared base).
+2. profile create/list/use/delete/show, store doctor (--json), TI_STORE_TRACE, hints in error messages.
+3. store ls/show --reveal/rm/purge/cleanup/migrate --dry-run, profile rotate/rewrap, doctor --deep.
+Decisions (maintainer, 2026-10-20): the store's --profile is global as STORE-091 says; pki verify's validation profile becomes --validation-profile, no alias (ti's flags are not released as stable). AC 5's "used for a login" is proven with pki verify / tsl show and a comfort ID, since tokens are persisted only from TASK-105.
+<!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Stage 1 implemented (2026-10-20), just check green, awaiting the maintainer's HITL:
+- profile resolution and paths from ti_store::store::profile (ti-cli/src/store/profile.rs: Selected), --profile global, --cache-dir/TI_CACHE_DIR as the shared base; pki verify --validation-profile.
+- cache: StoreCache (ti-cli/src/store/cache.rs) maps ti-pki and ti-connector keys onto pki.tsl, pki.roots, pki.ocsp, connector.sds; payload u8 1, u32 len, metadata JSON, body; records expire with the namespace's max_ttl. A cache that does not open (malformed, unsupported_version) is moved to cache.db.broken-<time> (STORE-128). FileCacheStore removed.
+- cache clear empties the cache namespaces (query + delete) and reports removed_records.
+- TSL state and comfort IDs in sealed tsl.state and comfort; without a keyring legacy files are read only and a warning names profile create; with one they are imported and removed. comfort activate refuses without a keyring before the card is asked. A state.db or keyring that does not open is an error naming file and code.
+- profile create (moved into stage 1: nothing else can make a keyring): key file 0600 unless it exists or --kek-file, keyring.bin 0600, state.db and cache.db; refuses a second time.
+- CliError::Store with kinds store_<code> and the section L hints.
+- Tests: the fixture TSL's NextUpdate has passed, so TSL state is tested at unit level (trust.rs tests with store::profile::tests::TestProfile); integration tests seed cache.db with rusqlite and spec/store's schema, and every harness sets TI_PROFILE=default and removes the store variables.
+
+Stage 1 HITL confirmed by the maintainer (2026-10-20) in a throwaway store: no-keyring warning, profile create, TSL state kept and read back sealed, cache clear, invalid profile name, files backend. Not yet proven: comfort activate/sign against a real Konnektor (none at hand); to repeat in a later HITL.
+
+Stage 2 implemented (2026-10-20): profile list/use/delete --yes/show, store doctor [--json] (checks profile, key_file, keyring, key_age, state/cache level and integrity, records and expired per namespace; exit 1 on fail; creates nothing), TI_STORE_TRACE=1 via store::Traced around the backend (doctor's reads too). delete needs --yes since ti never prompts; it removes the keyring first and syncs its directory, then the profile's state and cache folders, the default key file (never one named by TI_STORE_KEK_PATH) and the active file if it names the profile. JSON schemas profile-list/use/delete/show and store-doctor; zero-epa follows them later (TASK-115).
+
+Stage 2 HITL confirmed by the maintainer (2026-10-20). Found on the way: a TI_STORE_KEK_PATH left exported from an earlier session silently decides where profile create writes the key file; HITL setups unset TI_STORE_KEK_PATH, TI_PROFILE, TI_STORE_BACKEND and TI_STORE_TRACE first.
+
+Decision (maintainer, 2026-10-20): rekey dropped from spec/store. Names and tags are HMACs of ids and tag values that never reach disk, so a new index kid cannot be applied; all keys of a kid come from one dk, so an index-only leak is not a realistic case, and after a leak a new profile is the remedy (STORE-132). STORE-043 fixes the index kid for a profile's life; STORE-044 lets rotate drop kids no live record uses, read from the sealed header without opening; STORE-127 without rekey.
+
+Stage 3 implemented (2026-10-20), just check green, awaiting HITL: profile rotate (drops kids no live record uses, read via ti_store::store::record_header, new parser with corpus test and the record fuzz target extended, 6.2M runs clean), profile rewrap --kek-file, store ls/show --reveal/rm/purge --yes/cleanup/migrate --dry-run, doctor --deep (records_open by result code), daily cleanup on open (STORE-125: meta last_cleanup or <root>/last_cleanup mtime, limit 1000). Integration tests use the fake Konnektor's comfort ID as the sealed record; profile and store dispatch moved to their modules for clippy's length limit.
+
+Stage 3 HITL confirmed by the maintainer (2026-10-20): ls, two rotations with pruning, doctor --deep, rewrap and the old key file failing, purge, cleanup, migrate --dry-run. Open: AC 5's comfort flow against a real Konnektor.
+
+Wrap-up (2026-10-20): AC 5 moved to TASK-119; only the comfort flow against a real Konnektor was not proven by hand (stages 1-3 were).
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ti uses the shared store per profile (spec/store): --profile, TI_PROFILE and the active file; cache.db for downloads; TSL state and comfort IDs sealed in state.db once the profile has a keyring (files of earlier versions imported). Commands: profile create/list/use/delete/show/rotate/rewrap, store doctor [--json] [--deep], ls, show [--reveal], rm, purge, cleanup, migrate [--dry-run]; TI_STORE_TRACE, TI_STORE_BACKEND, store_<code> error kinds with the spec's hints; daily cleanup. rekey dropped from the spec (decision with the maintainer). pki verify's validation profile is --validation-profile. Three stages, each proven by the maintainer's HITL; the real-Konnektor comfort run is TASK-119.
+<!-- SECTION:FINAL_SUMMARY:END -->

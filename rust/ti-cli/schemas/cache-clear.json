@@ -1,30 +1,31 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "cache clear",
-  "description": "What was deleted.",
+  "description": "What was removed from the profile's cache.",
   "type": "object",
   "properties": {
     "schema": {
       "const": 1,
       "description": "The JSON contract version; fields are only added within it."
     },
+    "profile": {
+      "type": "string",
+      "description": "The profile whose cache was cleared."
+    },
     "path": {
-      "type": "string"
+      "type": "string",
+      "description": "cache.db, or the cache's files tree with TI_STORE_BACKEND=files."
     },
-    "removed_files": {
-      "type": "integer",
-      "minimum": 0
-    },
-    "removed_bytes": {
+    "removed_records": {
       "type": "integer",
       "minimum": 0
     }
   },
   "required": [
     "schema",
+    "profile",
     "path",
-    "removed_files",
-    "removed_bytes"
+    "removed_records"
   ],
   "additionalProperties": false
 }

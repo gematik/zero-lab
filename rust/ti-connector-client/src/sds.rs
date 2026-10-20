@@ -26,7 +26,7 @@
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use ti_cache::{Cache, CacheEntry, CacheStore, Meta, OriginResponse, Source};
+use ti_store::{Cache, CacheEntry, CacheStore, Meta, OriginResponse, Source};
 use ti_types::Clock;
 
 use crate::error::{DiscoveryError, Error};

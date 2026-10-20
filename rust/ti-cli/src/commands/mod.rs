@@ -36,9 +36,11 @@ mod idpd;
 mod inspect;
 mod pkcs12;
 mod probe;
+mod profile;
 mod profiles;
 mod roots;
 mod schema;
+mod store;
 mod tsl;
 mod verify;
 mod verify_signature;
@@ -53,13 +55,21 @@ use crate::cli::{
 use crate::error::{CliError, Exit};
 use crate::output::document::{TreeRow, date, when};
 use crate::output::{Line, Output, Tone};
-use crate::paths;
 use crate::trust::TrustInfo;
 
 /// Runs the parsed command line.
 pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
-    match paths::cache_dir(cli.global.cache_dir.as_deref()) {
-        Ok(dir) => out.verbose(1, format_args!("cache {}", dir.display())),
+    match crate::store::profile::Selected::resolve(&cli.global) {
+        Ok(s) => out.verbose(
+            1,
+            format_args!(
+                "profile {} (from {}): cache {}, state {}",
+                s.profile.name,
+                s.profile.from.as_str(),
+                s.cache_path(),
+                s.state_path()
+            ),
+        ),
         Err(error) => out.verbose(1, error),
     }
     out.verbose(1, &cli.global.net);
@@ -112,6 +122,8 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
             probe::run(env, def, &cli.global, out)
         }
         Command::Cache(CacheCommand::Clear) => cache::clear(&cli.global, out),
+        Command::Profile(command) => profile::run(command, &cli.global, out),
+        Command::Store(command) => store::run(command, &cli.global, out),
         Command::Schema { command } => schema::run(command, out),
         Command::Agent => agent::run(),
         Command::Version => version::run(out),

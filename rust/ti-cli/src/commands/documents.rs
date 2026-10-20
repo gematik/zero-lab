@@ -31,15 +31,20 @@ use ti_connector_client::types::{Card, CardType, CertRef, Crypt, VerificationRes
 use ti_connector_client::{ComfortUserId, Error, SignatureFormat, ToSign};
 
 use super::connector::{CardInfo, call, card_call, card_label, emit, find};
+use crate::block::block_on;
 use crate::cli::{
     ConnectorArgs, ConnectorComfort, CryptArg, DecryptArgs, EncryptArgs, ExportArgs, FormatArg,
     SignArgs,
 };
 use crate::connector::Session;
-use crate::error::{CliError, Exit};
+use crate::error::{CliError, Exit, StoreFile};
 use crate::input;
 use crate::output::{Line, Output, Tone, Waiting, pem, warning};
 use crate::paths;
+use crate::store::now;
+use crate::store::profile::{ProfileStore, Selected};
+use ti_store::store::StoreError;
+use ti_store::store::registry::COMFORT;
 
 /// The media type of a file by its extension; a PDF to sign with PAdES is PDF/A.
 fn mime_type(path: &Path, pdfa: bool) -> &'static str {
@@ -95,16 +100,27 @@ fn random(bytes: &mut [u8]) {
 
 // ---- comfort signature sessions ---------------------------------------------------
 
-/// The user IDs of comfort signature sessions, until the secure store: one owner-only
-/// file per connector configuration and HBA, in the state directory. An ID lets anyone
-/// with the same call context sign without a PIN while its session lasts.
-struct ComfortStore {
-    dir: PathBuf,
+/// The user IDs of comfort signature sessions, sealed in the profile's state under the
+/// connector configuration and the card's ICCSN. An ID lets anyone with the same call
+/// context sign without a PIN while its session lasts, so it is kept only with a keyring.
+/// Files of earlier versions are read while the profile has none, and moved into the
+/// store once it has one.
+struct ComfortStore<'a> {
+    selected: &'a Selected,
+    store: Option<ProfileStore>,
+    config: String,
+    legacy: Option<PathBuf>,
 }
 
-impl ComfortStore {
-    fn open(session: &Session) -> Result<Self, CliError> {
-        let name: String = session
+impl<'a> ComfortStore<'a> {
+    fn open(session: &'a Session) -> Result<Self, CliError> {
+        let selected = &session.selected;
+        let store = if selected.has_keyring() {
+            Some(selected.open_state()?)
+        } else {
+            None
+        };
+        let dir_name: String = session
             .name
             .chars()
             .map(|c| {
@@ -116,44 +132,120 @@ impl ComfortStore {
             })
             .collect();
         Ok(ComfortStore {
-            dir: paths::state_dir()?.join("comfort").join(name),
+            selected,
+            store,
+            config: session.name.clone(),
+            legacy: paths::legacy_state_dir()
+                .ok()
+                .map(|dir| dir.join("comfort").join(dir_name)),
         })
     }
 
     /// Keyed by ICCSN: a card handle changes when the card is inserted again.
-    fn path(&self, card: &Card) -> PathBuf {
-        self.dir
-            .join(card.iccsn.as_deref().unwrap_or(&card.card_handle))
+    fn card_id(card: &Card) -> &str {
+        card.iccsn.as_deref().unwrap_or(&card.card_handle)
     }
 
-    fn load(&self, card: &Card) -> Option<ComfortUserId> {
-        let text = std::fs::read_to_string(self.path(card)).ok()?;
-        ComfortUserId::parse(text.trim())
+    fn id(&self, card: &Card) -> String {
+        format!("{}/{}", self.config, Self::card_id(card))
     }
 
-    fn save(&self, card: &Card, user: &ComfortUserId) -> Result<PathBuf, CliError> {
-        std::fs::create_dir_all(&self.dir)?;
-        let path = self.path(card);
-        super::write_file(&path, user.as_str().as_bytes(), true, true)?;
-        Ok(path)
+    fn legacy_path(&self, card: &Card) -> Option<PathBuf> {
+        self.legacy
+            .as_ref()
+            .map(|dir| dir.join(Self::card_id(card)))
     }
 
-    fn remove(&self, card: &Card) -> bool {
-        std::fs::remove_file(self.path(card)).is_ok()
+    fn fail(&self, error: StoreError) -> CliError {
+        CliError::Store {
+            profile: self.selected.profile.name.clone(),
+            file: StoreFile::Record,
+            path: "comfort".into(),
+            error,
+        }
+    }
+
+    /// Activating needs a place to keep the new ID: checked before the card is asked.
+    fn require_keyring(&self) -> Result<(), CliError> {
+        match self.store {
+            Some(_) => Ok(()),
+            None => Err(self.fail(StoreError::NoKeyring)),
+        }
+    }
+
+    fn load(&self, card: &Card) -> Result<Option<ComfortUserId>, CliError> {
+        let legacy = || {
+            let path = self.legacy_path(card)?;
+            let text = std::fs::read_to_string(path).ok()?;
+            ComfortUserId::parse(text.trim())
+        };
+        let Some(store) = &self.store else {
+            return Ok(legacy());
+        };
+        match block_on(store.get(&COMFORT, self.id(card).as_bytes(), now())) {
+            Ok(stored) => Ok(std::str::from_utf8(&stored.payload)
+                .ok()
+                .and_then(ComfortUserId::parse)),
+            Err(StoreError::NotFound) => match legacy() {
+                Some(user) => {
+                    self.save(card, &user)?;
+                    Ok(Some(user))
+                }
+                None => Ok(None),
+            },
+            Err(error) => Err(self.fail(error)),
+        }
+    }
+
+    fn save(&self, card: &Card, user: &ComfortUserId) -> Result<(), CliError> {
+        let Some(store) = &self.store else {
+            return Err(self.fail(StoreError::NoKeyring));
+        };
+        block_on(store.put(
+            &COMFORT,
+            self.id(card).as_bytes(),
+            user.as_str().as_bytes(),
+            &[("konnektor", self.config.as_bytes())],
+            None,
+            now(),
+        ))
+        .map_err(|error| self.fail(error))?;
+        if let Some(path) = self.legacy_path(card) {
+            let _ = std::fs::remove_file(path);
+        }
+        Ok(())
+    }
+
+    /// Whether an ID was stored.
+    fn remove(&self, card: &Card) -> Result<bool, CliError> {
+        let legacy = self
+            .legacy_path(card)
+            .is_some_and(|path| std::fs::remove_file(path).is_ok());
+        let Some(store) = &self.store else {
+            return Ok(legacy);
+        };
+        let id = self.id(card);
+        let stored = match block_on(store.get(&COMFORT, id.as_bytes(), now())) {
+            Ok(_) => true,
+            Err(StoreError::NotFound) => false,
+            Err(error) => return Err(self.fail(error)),
+        };
+        block_on(store.delete(&COMFORT, id.as_bytes())).map_err(|error| self.fail(error))?;
+        Ok(stored || legacy)
     }
 }
 
 /// The comfort session's user ID for `card`: `--comfort-user-id`, else the stored one.
 fn comfort_user(
     args: &ConnectorArgs,
-    store: &ComfortStore,
+    store: &ComfortStore<'_>,
     card: &Card,
 ) -> Result<Option<ComfortUserId>, CliError> {
     match args.comfort_user_id.as_deref() {
         Some(text) => ComfortUserId::parse(text)
             .map(Some)
             .ok_or_else(|| CliError::ConnectorConfig("--comfort-user-id is not a UUID".into())),
-        None => Ok(store.load(card)),
+        None => store.load(card),
     }
 }
 
@@ -573,6 +665,7 @@ pub fn comfort(
     };
     match command {
         ConnectorComfort::Activate { .. } => {
+            store.require_keyring()?;
             // A new random user ID for each activation (A_21528), unique among the
             // Konnektor's last 1,000 operations (A_20074).
             let user = ComfortUserId::generate(|b| random(b));
@@ -598,7 +691,7 @@ pub fn comfort(
         }
         ConnectorComfort::Deactivate { .. } => {
             card_call(&card, signatures.deactivate_comfort(&[&card.card_handle]))?;
-            report.user_id_stored = !store.remove(&card);
+            report.user_id_stored = !store.remove(&card)?;
         }
     }
     emit(out, Exit::Ok, &report, |doc| {

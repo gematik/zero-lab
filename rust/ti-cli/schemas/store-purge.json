@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "store purge",
+  "description": "Every record of the namespace, live or expired (STORE-124).",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "profile": {
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "removed": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "required": [
+    "schema",
+    "profile",
+    "namespace",
+    "removed"
+  ],
+  "additionalProperties": false
+}

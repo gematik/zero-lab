@@ -25,7 +25,7 @@
 
 use super::artifact::{Artifact, TrustMaterial};
 use super::transport::TransportError;
-use ti_cache::{CacheError, Conditional, Meta};
+use ti_store::{CacheError, Conditional, Meta};
 
 /// A loaded body.
 #[derive(Clone, Debug)]

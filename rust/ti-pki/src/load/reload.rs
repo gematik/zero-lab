@@ -40,7 +40,7 @@ use crate::revocation::{RevocationChecker, RevocationStatus, Unchecked};
 use crate::time::{Clock, Timestamp};
 use crate::tsl_signature::{Sequence, TslError, TslState};
 use crate::{Certificate, Error, Tier, TrustConfig, TrustStore};
-use ti_cache::Source;
+use ti_store::Source;
 
 /// The longest a production deployment may keep using trust material it could not
 /// refresh. Past it, the TSL may list CAs that have since been withdrawn.

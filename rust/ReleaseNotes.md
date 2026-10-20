@@ -7,6 +7,30 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ## Unreleased
 
+### ti-cli
+
+#### added
+- Store profiles shared with the other TI tools (spec/store): `--profile`, `TI_PROFILE`,
+  `TI_STATE_DIR`, `TI_STORE_KEK_PATH`, `TI_STORE_BACKEND`. `ti profile create` makes a
+  profile's keyring and key file; `profile list`, `show`, `use` and `delete --yes`
+  manage profiles; `profile rotate` and `profile rewrap --kek-file` manage its keys.
+  `ti store doctor [--json] [--deep]` checks a profile without changing it; `store ls`,
+  `show [--reveal]`, `rm`, `purge --yes`, `cleanup` and `migrate [--dry-run]` inspect and
+  maintain its records. Expired records are removed once a day on their own.
+  `TI_STORE_TRACE=1` traces store operations. Store failures have the error kinds
+  `store_<code>` with a hint.
+
+#### changed
+- The download cache is the profile's `cache.db`; `TI_CACHE_DIR` and `--cache-dir` name
+  the base of the profiles' caches. The old cache folder is no longer used. `cache clear`
+  reports `profile`, `path` and `removed_records`.
+- The TSL state and comfort signature IDs are sealed in the profile's `state.db` and are
+  kept only once the profile has a keyring; files of earlier versions are read until
+  then and moved into the store afterwards. `connector comfort activate` needs a
+  keyring.
+- `pki verify --profile` is `--validation-profile`; `--profile` selects the store
+  profile in every command.
+
 ### ti-idpd
 
 #### changed
@@ -149,7 +173,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `Dotkon`: the `.kon` format of the Go and Kotlin clients, with `${NAME}` expanded
   only in credentials, only as plain names, and never from unset variables.
 - `ServiceDirectory`: `connector.sds` parsing, version choice per binding, endpoint
-  rewriting, and loading through a `ti_cache::Cache`.
+  rewriting, and loading through a `ti_store::Cache`.
 - `Connector` over a caller-supplied `Transport` with short and long `Timeouts`;
   one generic SOAP call for every generated operation; faults with the gematik error
   trace read leniently.
@@ -380,11 +404,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `Timestamp`, `Clock` and `SystemClock` come from `ti-types`, so every TI crate
   shares them; the paths `ti_pki::{Timestamp, Clock}` and `ti_pki::load::SystemClock`
   stay as re-exports.
-- The caching layer lives in `ti-cache`, so other crates cache their own artefacts
+- The caching layer lives in `ti-store`, so other crates cache their own artefacts
   (e.g. a Konnektor's service directory) with the same store and policy.
   `load::{CacheStore, CacheEntry, CacheError, CachePolicy, MemoryCacheStore, Meta,
   Source, Conditional}` are re-exports of it, joined by `Cache`, `Cached` and
-  `CacheLookupError`; `CachingLoader` is built on `ti_cache::Cache`, unchanged in
+  `CacheLookupError`; `CachingLoader` is built on `ti_store::Cache`, unchanged in
   behaviour.
 - reqwest transport errors carry their causes (refused, timed out, unknown issuer),
   not only reqwest's "error sending request".
@@ -425,9 +449,15 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   with PBES2 AES-256-CBC (PBKDF2-HMAC-SHA-256, 2048 iterations) and an HMAC-SHA-256 MAC,
   the OpenSSL 3 defaults; the caller supplies the randomness.
 
-### ti-cache
+### ti-store
 
 #### added
+- Renamed from ti-cache; the cache API is unchanged under `ti_store`.
+- Feature `store`: `ti_store::store`, the sealed store of spec/store: `Backend`,
+  `MemoryBackend`, `Store`, `Keyring` with `KeyFileWrapper`, `Sealer`, `KeyWrapper`,
+  `Random`, the namespace `registry`, `profile` resolution, format `levels`, the files
+  backend's formats (`files`), and `StoreError` with the spec's result codes. Passes the
+  spec/store corpus; fuzz targets for every parser.
 - `Cache`: freshness, revalidation, offline and stale-on-error over any `CacheStore`,
   keyed by string, with the origin passed per call (moved from ti-pki's
   `CachingLoader`). `CacheStore`, `CacheEntry`, `Meta`, `Source`, `CachePolicy`,
