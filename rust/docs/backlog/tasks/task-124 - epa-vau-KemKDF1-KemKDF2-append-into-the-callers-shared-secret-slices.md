@@ -1,9 +1,10 @@
 ---
 id: TASK-124
 title: 'epa/vau: KemKDF1/KemKDF2 append into the caller''s shared-secret slices'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-20 18:26'
+updated_date: '2026-10-20 18:29'
 labels:
   - go
   - epa
@@ -21,6 +22,12 @@ go/epa/vau/key_exchange.go builds the HKDF input with ss := append(ss_e_ecdh, ss
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 KemKDF1 and KemKDF2 never write into their arguments; a test with slices of spare capacity proves it
-- [ ] #2 the concatenated secret is cleared after HKDF
+- [x] #1 KemKDF1 and KemKDF2 never write into their arguments; a test with slices of spare capacity proves it
+- [x] #2 the concatenated secret is cleared after HKDF
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+KemKDF1 and KemKDF2 build the HKDF input with slices.Concat (kdfInput), a new buffer of exact length, and clear it after the derivation. TestKemKDF_DoesNotWriteIntoArguments passes secrets with spare capacity behind a sentinel, checks the outputs against HKDF over the concatenation and that no argument array changed; it fails on the old code.
+<!-- SECTION:FINAL_SUMMARY:END -->

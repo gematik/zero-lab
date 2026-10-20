@@ -23,6 +23,8 @@ package bff
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -48,6 +50,14 @@ func NewSessionManager(store kv.Store, ttl time.Duration) SessionManager {
 		ttl = defaultBffSessionTTL
 	}
 	return &kvSessionManager{store: store, ttl: ttl}
+}
+
+// logRef names a session ID or state in logs without revealing it: the session ID is the
+// cookie's value and the state guards the login, so logs carry only the first 8 bytes of
+// their SHA-256, enough to correlate entries (servers rule 5).
+func logRef(secret string) string {
+	sum := sha256.Sum256([]byte(secret))
+	return hex.EncodeToString(sum[:8])
 }
 
 func bffSessionKey(id string) string  { return "bff:session:" + id }
@@ -79,7 +89,7 @@ func (m *kvSessionManager) CreateSession(state, codeVerifier, codeChallengeMetho
 	if err := m.save(session); err != nil {
 		return nil, err
 	}
-	slog.Info("session created", "id", session.ID, "state", session.State)
+	slog.Info("session created", "session", logRef(session.ID), "state", logRef(session.State))
 	return session, nil
 }
 
@@ -87,7 +97,7 @@ func (m *kvSessionManager) UpdateSession(session *Session) error {
 	if err := m.save(session); err != nil {
 		return err
 	}
-	slog.Info("session updated", "id", session.ID, "state", session.State)
+	slog.Info("session updated", "session", logRef(session.ID), "state", logRef(session.State))
 	return nil
 }
 
@@ -97,7 +107,7 @@ func (m *kvSessionManager) GetSessionByID(id string) (*Session, error) {
 		return nil, err
 	}
 	if !found {
-		return nil, fmt.Errorf("session with id '%s' not found", id)
+		return nil, fmt.Errorf("session %s not found", logRef(id))
 	}
 	var s Session
 	if err := json.Unmarshal(data, &s); err != nil {
@@ -112,7 +122,7 @@ func (m *kvSessionManager) GetSessionByState(state string) (*Session, error) {
 		return nil, err
 	}
 	if !found {
-		return nil, fmt.Errorf("session with state '%s' not found", state)
+		return nil, fmt.Errorf("session for state %s not found", logRef(state))
 	}
 	var id string
 	if err := json.Unmarshal(idData, &id); err != nil {
@@ -131,6 +141,6 @@ func (m *kvSessionManager) DeleteSessionByID(id string) error {
 	if session.State != "" {
 		_ = m.store.Delete(ctx, bffStateKey(session.State))
 	}
-	slog.Info("session deleted", "id", session.ID, "state", session.State)
+	slog.Info("session deleted", "session", logRef(session.ID), "state", logRef(session.State))
 	return nil
 }

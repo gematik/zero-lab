@@ -23,7 +23,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 
@@ -45,7 +44,7 @@ func createPdp() (*pdp.PDP, error) {
 		os.Exit(1)
 	}
 
-	slog.Debug("Loaded config file", "config_file", configFile, "config", fmt.Sprintf("%+v", config))
+	slog.Debug("Loaded config file", "config_file", configFile)
 
 	config.AuthzServerConfig.Store = openStore()
 

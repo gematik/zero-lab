@@ -271,6 +271,17 @@ func sortProviders(providers []Provider) {
 	})
 }
 
+// withoutQuery keeps an authorization URL loggable: its query carries state, nonce and the
+// PKCE challenge or a request_uri, which stay out of logs (servers rule 5).
+func withoutQuery(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	u.RawQuery, u.Fragment = "", ""
+	return u.String()
+}
+
 // handleSignIn renders the provider chooser.
 func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {
 	rd := sanitizeReturnTo(r.URL.Query().Get("rd"))
@@ -317,7 +328,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	}
 	setCookie(w, s.cookie, sess.token)
 
-	slog.Info("login start", "session", sess.ID, "idp_iss", idpIss, "mode", start.Mode, "auth_url", start.AuthURL)
+	slog.Info("login start", "session", sess.ID, "idp_iss", idpIss, "mode", start.Mode, "auth_endpoint", withoutQuery(start.AuthURL))
 
 	var name string
 	if start.Provider != nil {

@@ -236,14 +236,12 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 		return oauthErr(http.StatusBadRequest, "invalid_request", binderr.Error())
 	}
 
-	slog.Info("Token request", "code", code, "redirect_uri", redirectUri, "client_id", client.ClientID)
+	slog.Info("Token request", "redirect_uri", redirectUri, "client_id", client.ClientID)
 
 	session, err := s.sessionStore.GetAuthzServerSessionByCode(code)
 	if err != nil {
 		return oauthErr(http.StatusBadRequest, "invalid_request", fmt.Errorf("unable to get session: %w", err).Error())
 	}
-
-	slog.Info("Token request: session", "session", fmt.Sprintf("%+v", session))
 
 	if session.ClientID != client.ClientID {
 		return oauthErr(http.StatusBadRequest, "invalid_request", "client_id mismatch")
@@ -285,7 +283,7 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to save session: %v", err))
 	}
 
-	slog.Info("Token request: tokens issued", "response", fmt.Sprintf("%+v", response))
+	slog.Info("Token request: tokens issued", "client_id", client.ClientID, "session", session.ID)
 
 	return writeJSON(w, http.StatusOK, response)
 }
