@@ -155,7 +155,7 @@ func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request
 		RedirectURI: opRedirectURI,
 	}
 
-	slog.Info("OP session", "op_session", fmt.Sprintf("%+v", opSession))
+	slog.Info("OP session", "op_session", opSession.ID, "issuer", opSession.Issuer)
 
 	authUrl, err := opClient.AuthenticationURL(
 		opSession.State,

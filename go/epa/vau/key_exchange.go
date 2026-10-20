@@ -38,6 +38,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 
 	"github.com/cloudflare/circl/kem/kyber/kyber768"
 	"github.com/fxamacker/cbor/v2"
@@ -306,8 +307,16 @@ func PostMessage[M any](httpClient *http.Client, url string, requestMessage any)
 	return requestMessageCbor, resp, responseCbor, responseMessage, nil
 }
 
+// kdfInput joins the shared secrets into a new buffer. append on the first secret would
+// write the others into the caller's array whenever it has spare capacity, and the result
+// would alias it.
+func kdfInput(secrets ...[]byte) []byte {
+	return slices.Concat(secrets...)
+}
+
 func KemKDF1(ss_e_ecdh, ss_e_kyber768 []byte) (k1_c2s []byte, k1_s2c []byte, err error) {
-	ss := append(ss_e_ecdh, ss_e_kyber768...)
+	ss := kdfInput(ss_e_ecdh, ss_e_kyber768)
+	defer clear(ss)
 
 	derived, err := hkdf.Key(sha256.New, ss, nil, "", 2*32)
 	if err != nil {
@@ -318,7 +327,8 @@ func KemKDF1(ss_e_ecdh, ss_e_kyber768 []byte) (k1_c2s []byte, k1_s2c []byte, err
 }
 
 func KemKDF2(ecdhSS1, kemSS1, ecdhSS2, kemSS2 []byte) (k2_c2s_key_confirmation, k2_c2s_app_data, k2_s2c_key_confirmation, k2_s2c_app_data, key_id []byte, err error) {
-	ss := append(append(ecdhSS1, kemSS1...), append(ecdhSS2, kemSS2...)...)
+	ss := kdfInput(ecdhSS1, kemSS1, ecdhSS2, kemSS2)
+	defer clear(ss)
 	derived, err := hkdf.Key(sha256.New, ss, nil, "", 5*32)
 	if err != nil {
 		return nil, nil, nil, nil, nil, fmt.Errorf("deriving K2 with HKDF: %w", err)
