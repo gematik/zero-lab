@@ -1,6 +1,10 @@
 # Load ./.env (gitignored) so env-guarded tests pick up local config (e.g. GEMIDP_*).
 set dotenv-load := true
 
+# Every recipe builds, vets and tests as the images do (go/docs/design.md): a module or
+# dependency that needs cgo fails `just check` here instead of in the Docker build.
+export CGO_ENABLED := "0"
+
 DOCKER_USER := "spilikin"
 
 # Pinned Go code-analysis tools (run via `go run`; not added to any go.mod)

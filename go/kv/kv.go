@@ -27,8 +27,8 @@
 // secondary-index keys (a record under "<ns>:<id>" plus "<ns>:<field>:<v>" keys holding the id).
 //
 // This package has no external dependencies: it ships the interface and the in-memory backend
-// (NewMemory — the default for tests and dev). The Postgres backend lives in the sibling kvpg module so
-// that importing kv never pulls in a database driver; only code that wires Postgres imports kvpg.
+// (NewMemory — the default for tests and dev). The Postgres backend is the package kv/postgres in this
+// module: kv's go.mod requires pgx, but a binary links the driver only if it imports kv/postgres.
 // Consumers accept the kv.Store interface (the duck type), not a concrete backend.
 //
 // Atomicity: Take (get+delete) and SetMany (multi-key write) are atomic, which the security-critical
