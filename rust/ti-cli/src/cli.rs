@@ -593,7 +593,9 @@ pub struct VerifyArgs {
     pub fqdn: Option<String>,
     /// Validate as a client without brainpool would: against the roots and TSL CAs whose
     /// own key is not brainpool (trust material is still verified with brainpool), and
-    /// with no brainpool signature in the chain
+    /// with no brainpool signature in the chain. The chain must still reach a root whose
+    /// key is not brainpool; curl and Java also take a TSL CA of `tsl bundle --nist-only`
+    /// as an anchor
     #[arg(long)]
     pub nist_only: bool,
     /// Send the chain's OCSP requests to this responder instead of each certificate's
