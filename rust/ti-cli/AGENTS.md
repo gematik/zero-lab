@@ -172,7 +172,9 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   - `trust.nist_only: true` with `--nist-only` (`pki verify`, `pki roots list`): the
     trust material, verified with brainpool, narrowed to the roots and TSL CAs whose
     own key is not brainpool, and the chain validated without brainpool. A brainpool
-    chain is then not valid.
+    chain is then not valid. The chain must still reach a non-brainpool root: a chain
+    under a NIST CA whose root is brainpool (e.g. GEM.RCA8) is invalid here although
+    curl and Java, taking the CA from `tsl bundle --nist-only` as an anchor, accept it.
 - The TSL is verified whenever trust material is loaded; a list that fails is not used.
   `trust.tsl` names the list, its signer and the TSL signer CA; `trust.tsl_warnings`
   holds `no_ocsp_check` when the signer's OCSP status was not queried (offline, `--at`).

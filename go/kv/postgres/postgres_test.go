@@ -23,6 +23,7 @@ package postgres_test
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"sync"
@@ -32,6 +33,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/kv/postgres"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 // testStore opens the Postgres store from TEST_DATABASE_URL (skipping when unset) and namespaces all
@@ -121,5 +123,46 @@ func TestPostgres_Expiry(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 	if _, found, _ := s.Get(ctx, p+"tmp"); found {
 		t.Fatal("expected gone after expiry")
+	}
+}
+
+// created_at and expires_at come from now() of the same statement, so with the database clock
+// their difference is the TTL exactly; a client-side expiry would add latency and clock skew.
+func TestPostgres_ExpiryFromDatabaseClock(t *testing.T) {
+	ctx := context.Background()
+	s, p := testStore(t)
+	ttl := 90 * time.Second
+	if err := s.Set(ctx, p+"ttl", []byte(`1`), ttl); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetMany(ctx, kv.Entry{Key: p + "many", Value: []byte(`1`), TTL: ttl}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Set(ctx, p+"forever", []byte(`1`), 0); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := sql.Open("pgx", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, key := range []string{p + "ttl", p + "many"} {
+		var micros int64
+		if err := db.QueryRowContext(ctx,
+			`SELECT (EXTRACT(EPOCH FROM expires_at - created_at) * 1000000)::bigint FROM kv WHERE key=$1`,
+			key).Scan(&micros); err != nil {
+			t.Fatalf("%s: %v", key, err)
+		}
+		if got := time.Duration(micros) * time.Microsecond; got != ttl {
+			t.Fatalf("%s: expires_at - created_at = %v, want %v", key, got, ttl)
+		}
+	}
+	var expires sql.NullTime
+	if err := db.QueryRowContext(ctx, `SELECT expires_at FROM kv WHERE key=$1`, p+"forever").Scan(&expires); err != nil {
+		t.Fatal(err)
+	}
+	if expires.Valid {
+		t.Fatalf("no TTL: expires_at = %v, want NULL", expires.Time)
 	}
 }

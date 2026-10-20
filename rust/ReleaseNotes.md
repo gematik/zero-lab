@@ -30,6 +30,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   keyring.
 - `pki verify --profile` is `--validation-profile`; `--profile` selects the store
   profile in every command.
+- `pki verify --nist-only` says in its help that the chain must reach a root whose key is
+  not brainpool, unlike curl and Java, which take a TSL CA of `tsl bundle --nist-only`
+  as an anchor.
 
 ### ti-idpd
 

@@ -59,12 +59,13 @@ certificates and Konnektor server certificates must be P-256, P-384 or RSA.
 ## Tests against a real Konnektor
 
 ```sh
-TI_TEST_KON_PATH=praxis.kon cargo test -p ti-connector-client --features ureq --test e2e -- --nocapture
+TI_TEST_KON_PATH=praxis.kon just konnektor-e2e
+TI_TEST_KON_PATH=praxis.kon just konnektor-e2e-interactive
 ```
 
-reads the service directory, the cards, their certificates and PIN states, certificate
-expiry and the Konnektor's check of each C.AUT. With `TI_TEST_KON_INTERACTIVE=1` it
-also verifies the PIN of an SMC-B (or else an HBA), entered at the card terminal,
+The first reads the service directory, the cards, their certificates and PIN states,
+certificate expiry and the Konnektor's check of each C.AUT. The second (from `rust/`, run
+by a person at the card terminal) verifies the PIN of an SMC-B (or else an HBA), entered at the card terminal,
 checks an ExternalAuthenticate signature against the card's C.AUT, and with an SMC-B
 signs and verifies CAdES and, given an unsigned PDF/A in `TI_TEST_PDFA_PATH`, PAdES
 (Konnektors validate PDF/A conformance; the eHEX Konnektor answered 4111 for an already

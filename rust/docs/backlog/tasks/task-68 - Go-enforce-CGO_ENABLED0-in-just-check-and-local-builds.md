@@ -1,9 +1,10 @@
 ---
 id: TASK-68
 title: 'Go: enforce CGO_ENABLED=0 in just check and local builds'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-14 20:43'
+updated_date: '2026-10-20 16:51'
 labels:
   - go
   - tooling
@@ -23,5 +24,11 @@ Every Dockerfile sets CGO_ENABLED=0, but just check and local builds do not enfo
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 just check fails when a module needs cgo; local build recipes set CGO_ENABLED=0
+- [x] #1 just check fails when a module needs cgo; local build recipes set CGO_ENABLED=0
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+go/justfile exports CGO_ENABLED=0 for every recipe (build, lint, modernize, tests), so a module or dependency that needs cgo fails just check rather than the Docker build.
+<!-- SECTION:FINAL_SUMMARY:END -->

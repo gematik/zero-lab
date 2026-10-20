@@ -1,10 +1,10 @@
 ---
 id: TASK-26
 title: 'ti serve: long-lived mode (stdio/UDS) replacing per-call spawns'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-10 15:04'
-updated_date: '2026-10-20 14:07'
+updated_date: '2026-10-20 18:15'
 labels:
   - ti-cli
   - integration
@@ -32,3 +32,9 @@ Runner-up to the per-call subprocess integration of doc-1 section 2. One ti proc
 <!-- SECTION:NOTES:BEGIN -->
 Superseded by TASK-120 (2026-10-20): instead of one universal ti serve, per-group helpers with hand-picked functionality (ti-pki-helper, ti-idpd-helper first), over JSON lines, with a stdlib-only Go client go/tirpc. The TASK-116 spike measured the served variant at 1.3 ms per certificate check.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Not implemented: superseded by TASK-120, per-group helpers (ti-pki-helper, ti-idpd-helper) over JSON lines with the stdlib-only Go client go/tirpc instead of one universal ti serve. The criteria stay unticked; TASK-120 and its subtasks carry them.
+<!-- SECTION:FINAL_SUMMARY:END -->
