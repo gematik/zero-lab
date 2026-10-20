@@ -4,7 +4,7 @@ title: 'ti-cli: profiles and migration to the store'
 status: In Progress
 assignee: []
 created_date: '2026-10-15 17:45'
-updated_date: '2026-10-20 08:51'
+updated_date: '2026-10-20 09:38'
 labels:
   - ti-cli
 dependencies:
@@ -22,10 +22,10 @@ ordinal: 106000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 profiles resolve as STORE-7xx
-- [ ] #2 ti cache clear empties the profile's cache.db
-- [ ] #3 TslStateFile and ComfortStore removed; their data migrated
-- [ ] #4 ti implements spec/store section L: profile create/list/use/delete/rotate/rekey/rewrap, store doctor (--deep, --json), ls/show --reveal/rm/purge, cleanup, migrate --dry-run, TI_STORE_TRACE, TI_STORE_BACKEND, hints in error messages
+- [x] #1 profiles resolve as STORE-7xx
+- [x] #2 ti cache clear empties the profile's cache.db
+- [x] #3 TslStateFile and ComfortStore removed; their data migrated
+- [x] #4 ti implements spec/store section L: profile create/list/use/delete/rotate/rewrap, store doctor (--deep, --json), ls/show --reveal/rm/purge, cleanup, migrate --dry-run, TI_STORE_TRACE, TI_STORE_BACKEND, hints in error messages
 - [ ] #5 HITL: a throwaway profile under TI_STATE_DIR/TI_CACHE_DIR/TI_STORE_KEK_PATH is created, used for a login, checked with store doctor and deleted, proven by the user
 <!-- AC:END -->
 
@@ -35,7 +35,7 @@ ordinal: 106000
 Three stages, each ending with a HITL run the maintainer proves:
 1. Profile resolution (--profile, TI_PROFILE, active file) and STORE-092/093 paths; FileCacheStore replaced by a CacheStore adapter over cache.db (versioned payload: metadata plus body); ti cache clear empties the profile's cache.db; TslStateFile and ComfortStore into sealed state.db namespaces, old files imported once a keyring exists (until then untouched, with a warning and the profile create hint); the old cache folder is ignored. TI_CACHE_DIR/--cache-dir take the spec's meaning (shared base).
 2. profile create/list/use/delete/show, store doctor (--json), TI_STORE_TRACE, hints in error messages.
-3. store ls/show --reveal/rm/purge/cleanup/migrate --dry-run, profile rotate/rekey/rewrap, doctor --deep.
+3. store ls/show --reveal/rm/purge/cleanup/migrate --dry-run, profile rotate/rewrap, doctor --deep.
 Decisions (maintainer, 2026-10-20): the store's --profile is global as STORE-091 says; pki verify's validation profile becomes --validation-profile, no alias (ti's flags are not released as stable). AC 5's "used for a login" is proven with pki verify / tsl show and a comfort ID, since tokens are persisted only from TASK-105.
 <!-- SECTION:PLAN:END -->
 
@@ -56,4 +56,10 @@ Stage 1 HITL confirmed by the maintainer (2026-10-20) in a throwaway store: no-k
 Stage 2 implemented (2026-10-20): profile list/use/delete --yes/show, store doctor [--json] (checks profile, key_file, keyring, key_age, state/cache level and integrity, records and expired per namespace; exit 1 on fail; creates nothing), TI_STORE_TRACE=1 via store::Traced around the backend (doctor's reads too). delete needs --yes since ti never prompts; it removes the keyring first and syncs its directory, then the profile's state and cache folders, the default key file (never one named by TI_STORE_KEK_PATH) and the active file if it names the profile. JSON schemas profile-list/use/delete/show and store-doctor; zero-epa follows them later (TASK-115).
 
 Stage 2 HITL confirmed by the maintainer (2026-10-20). Found on the way: a TI_STORE_KEK_PATH left exported from an earlier session silently decides where profile create writes the key file; HITL setups unset TI_STORE_KEK_PATH, TI_PROFILE, TI_STORE_BACKEND and TI_STORE_TRACE first.
+
+Decision (maintainer, 2026-10-20): rekey dropped from spec/store. Names and tags are HMACs of ids and tag values that never reach disk, so a new index kid cannot be applied; all keys of a kid come from one dk, so an index-only leak is not a realistic case, and after a leak a new profile is the remedy (STORE-132). STORE-043 fixes the index kid for a profile's life; STORE-044 lets rotate drop kids no live record uses, read from the sealed header without opening; STORE-127 without rekey.
+
+Stage 3 implemented (2026-10-20), just check green, awaiting HITL: profile rotate (drops kids no live record uses, read via ti_store::store::record_header, new parser with corpus test and the record fuzz target extended, 6.2M runs clean), profile rewrap --kek-file, store ls/show --reveal/rm/purge --yes/cleanup/migrate --dry-run, doctor --deep (records_open by result code), daily cleanup on open (STORE-125: meta last_cleanup or <root>/last_cleanup mtime, limit 1000). Integration tests use the fake Konnektor's comfort ID as the sealed record; profile and store dispatch moved to their modules for clippy's length limit.
+
+Stage 3 HITL confirmed by the maintainer (2026-10-20): ls, two rotations with pruning, doctor --deep, rewrap and the old key file failing, purge, cleanup, migrate --dry-run. Open: AC 5's comfort flow against a real Konnektor.
 <!-- SECTION:NOTES:END -->

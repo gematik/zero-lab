@@ -117,7 +117,51 @@ pub struct Inspection {
     pub integrity: Option<String>,
 }
 
+/// How often a tool cleans up on its own, and how much at a time (STORE-125).
+const DAILY: u64 = 86_400;
+const DAILY_LIMIT: usize = 1000;
+
 impl AnyBackend {
+    /// Gives freed space back to the file system; nothing for a files tree.
+    ///
+    /// # Errors
+    ///
+    /// The database's errors.
+    pub fn vacuum(&self) -> Result<(), StoreError> {
+        match self {
+            AnyBackend::Sqlite(b) => b.vacuum(),
+            AnyBackend::Files(_) => Ok(()),
+        }
+    }
+
+    /// Records that cleanup ran at `at`.
+    ///
+    /// # Errors
+    ///
+    /// The backend's errors.
+    pub fn set_last_cleanup(&self, at: Timestamp) -> Result<(), StoreError> {
+        match self {
+            AnyBackend::Sqlite(b) => b.set_last_cleanup(at),
+            AnyBackend::Files(b) => b.set_last_cleanup(at),
+        }
+    }
+
+    /// STORE-125: removes up to 1000 expired records if the last such run is a day old
+    /// or more, and records the time. Housekeeping: a failure only means it runs next
+    /// time.
+    pub fn daily_cleanup(&self, now: Timestamp) {
+        let last = match self {
+            AnyBackend::Sqlite(b) => b.last_cleanup().ok().flatten(),
+            AnyBackend::Files(b) => b.last_cleanup(),
+        };
+        if last.is_some_and(|t| now.0.saturating_sub(t.0) < DAILY) {
+            return;
+        }
+        if crate::block::block_on(self.cleanup(now, DAILY_LIMIT)).is_ok() {
+            let _ = self.set_last_cleanup(now);
+        }
+    }
+
     /// Levels and integrity (STORE-123).
     ///
     /// # Errors

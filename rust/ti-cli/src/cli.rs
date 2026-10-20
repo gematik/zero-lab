@@ -201,7 +201,7 @@ pub enum Command {
     /// Store profiles: the keyring, state and cache the TI tools share
     #[command(subcommand)]
     Profile(ProfileCommand),
-    /// The profile's store: check it
+    /// The profile's store: check, list and maintain its records
     #[command(subcommand)]
     Store(StoreCommand),
     /// The download cache
@@ -262,6 +262,14 @@ pub enum ProfileCommand {
     },
     /// The profile in effect, where its name came from, and its paths
     Show,
+    /// A new current key for sealing; keys no live record uses are dropped
+    Rotate,
+    /// Wrap the profile's keys with another key file; the records stay as they are
+    Rewrap {
+        /// The new key file (44 characters of base64, mode 0600)
+        #[arg(long, value_name = "PATH")]
+        kek_file: PathBuf,
+    },
 }
 
 /// `ti store …` (spec/store section L).
@@ -273,6 +281,48 @@ pub enum StoreCommand {
         /// JSON, as --format json
         #[arg(long)]
         json: bool,
+        /// Also open every sealed record and count those that do not open
+        #[arg(long)]
+        deep: bool,
+    },
+    /// The records: namespace, name prefix, expiry, size, kid and field names; never ids
+    /// or contents
+    Ls {
+        /// Only this namespace
+        namespace: Option<String>,
+    },
+    /// One record's metadata; its content only with --reveal
+    Show {
+        /// The namespace
+        namespace: String,
+        /// The record's id
+        id: String,
+        /// Print the content too (tokens are secrets)
+        #[arg(long)]
+        reveal: bool,
+    },
+    /// Remove one record
+    Rm {
+        /// The namespace
+        namespace: String,
+        /// The record's id
+        id: String,
+    },
+    /// Remove every record of a namespace
+    Purge {
+        /// The namespace
+        namespace: String,
+        /// Required
+        #[arg(long)]
+        yes: bool,
+    },
+    /// Remove expired records and give the space back
+    Cleanup,
+    /// Bring both databases to this tool's format level
+    Migrate {
+        /// Report what would be done
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 

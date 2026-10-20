@@ -65,9 +65,15 @@ never on `message`.
   `ti` keeps none of it and says so (`store_no_keyring`). Losing the key file loses
   only the sealed records. Store errors have kinds `store_<code>` with a hint.
 - `{bin} profile list|show|use NAME|delete NAME --yes` manage profiles; `use` writes the
-  active file every TI tool reads. `{bin} store doctor [--json]` checks the profile's key
-  file, keyring, databases and records without changing them: each check `ok`, `warn` or
-  `fail`, exit 1 if one fails. `TI_STORE_TRACE=1` writes one line per store operation to
+  active file every TI tool reads. `{bin} profile rotate` starts a new sealing key and
+  drops keys no live record uses; `{bin} profile rewrap --kek-file PATH` wraps the keys
+  with another key file (then set `TI_STORE_KEK_PATH`). `{bin} store doctor [--json]
+  [--deep]` checks the profile's key file, keyring, databases and records without
+  changing them: each check `ok`, `warn` or `fail`, exit 1 if one fails; `--deep` opens
+  every sealed record. `{bin} store ls [NS]` lists records (never ids or contents),
+  `store show NS ID [--reveal]` one record, `store rm NS ID` and `store purge NS --yes`
+  remove them, `store cleanup` removes expired ones (also done once a day on its own),
+  `store migrate [--dry-run]` reports format levels. `TI_STORE_TRACE=1` writes one line per store operation to
   stderr (operation, namespace, the first 8 bytes of the name, code, duration), never a
   payload.
 

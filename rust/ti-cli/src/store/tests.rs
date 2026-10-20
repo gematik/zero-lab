@@ -585,3 +585,29 @@ fn store_016_sqlite_load_100k_records_within_budget() {
     let total: Duration = timings.iter().map(|(_, t)| *t).sum();
     assert!(total < budget, "{total:?} over the budget of {budget:?}");
 }
+
+/// STORE-125: opening for writing cleans up on its own at most once a day, at most 1000
+/// records, on both backends.
+#[test]
+fn store_125_daily_cleanup_runs_once_a_day() {
+    for (kind, path) in [(Kind::Sqlite, "state.db"), (Kind::Files, "state")] {
+        let dir = TempDir::new("daily");
+        let b = AnyBackend::open(kind, &dir.0.join(path), Db::State).expect("open");
+        let expired = |i| {
+            block_on(b.put(&ns("popp"), &name(i), record(b"v", Some(100)))).expect("put");
+        };
+        let live = |i| block_on(b.get(&ns("popp"), &name(i), Timestamp(50))).is_ok();
+        for i in 0..1001 {
+            expired(i);
+        }
+        b.daily_cleanup(Timestamp(200));
+        let left = (0..1001).filter(|&i| live(i)).count();
+        assert_eq!(left, 1, "{kind:?}: at most 1000 at a time");
+
+        expired(5000);
+        b.daily_cleanup(Timestamp(200 + 3600));
+        assert!(live(5000), "{kind:?}: not again within a day");
+        b.daily_cleanup(Timestamp(200 + 86_400));
+        assert!(!live(5000), "{kind:?}: again a day later");
+    }
+}

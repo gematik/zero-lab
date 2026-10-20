@@ -60,7 +60,8 @@
               "state_integrity",
               "cache_level",
               "cache_integrity",
-              "records"
+              "records",
+              "records_open"
             ]
           },
           "status": {

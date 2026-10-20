@@ -50,6 +50,11 @@ impl<B> Traced<B> {
         }
     }
 
+    /// The backend underneath, for what is not a store operation.
+    pub fn get_ref(&self) -> &B {
+        &self.inner
+    }
+
     fn line<T>(
         &self,
         op: &str,

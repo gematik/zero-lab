@@ -32,7 +32,7 @@ use ti_store::store::{KeyFileWrapper, Keyring, OsRandom, Random as _, StoreError
 use zeroize::Zeroizing;
 
 use crate::block::block_on;
-use crate::cli::GlobalArgs;
+use crate::cli::{GlobalArgs, ProfileCommand};
 use crate::error::{CliError, Exit, StoreFile};
 use crate::output::{Document, Line, Output, SCHEMA, Tone};
 use crate::store::now;
@@ -537,4 +537,179 @@ pub fn show(global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     }
     out.render(&doc)?;
     Ok(Exit::Ok)
+}
+
+#[derive(Serialize)]
+struct RotateReport {
+    schema: u32,
+    profile: String,
+    /// The new current kid.
+    current_kid: String,
+    /// Kids no live record used any more, removed from the keyring.
+    removed_kids: Vec<String>,
+    /// Kids in the keyring now.
+    kids: usize,
+}
+
+/// `ti profile rotate` (STORE-043, STORE-044, STORE-127): a new current kid, and the
+/// kids no live record uses dropped; the index kid stays.
+pub fn rotate(global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
+    use std::collections::BTreeSet;
+    use ti_store::store::registry::{self, Database, Kind};
+    use ti_store::store::{Backend as _, Namespace, Query, record_header};
+
+    let selected = Selected::resolve(global)?;
+    let profile = &selected.profile;
+    let keyring_fail = |e: StoreError| selected.fail(StoreFile::Keyring, &profile.keyring, e);
+    let bytes = match std::fs::read(&profile.keyring) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(keyring_fail(StoreError::NoKeyring));
+        }
+        Err(e) => return Err(keyring_fail(io(Path::new(&profile.keyring), &e))),
+    };
+    let file = ti_store::store::KeyringFile::parse(&bytes).map_err(keyring_fail)?;
+    let wrapper = selected.wrapper()?;
+    let mut keyring = block_on(Keyring::open(&file, &wrapper, OsRandom)).map_err(keyring_fail)?;
+    let mut next = block_on(keyring.rotate(&file, &wrapper, now())).map_err(keyring_fail)?;
+
+    // the kids live sealed records name, read from their headers without a key
+    let mut used = BTreeSet::new();
+    if Path::new(selected.state_path()).exists() {
+        let store = selected.open_state_unsealed()?;
+        let state_fail =
+            |e: StoreError| selected.fail(StoreFile::StateDb, selected.state_path(), e);
+        for spec in registry::ALL
+            .iter()
+            .filter(|ns| ns.kind == Kind::Sealed && ns.database == Database::State)
+        {
+            let ns = Namespace::new(spec.name).map_err(state_fail)?;
+            let mut cursor = None;
+            loop {
+                let page = block_on(store.backend().query(&Query {
+                    ns: ns.clone(),
+                    filters: Vec::new(),
+                    from: None,
+                    to: None,
+                    limit: 1000,
+                    cursor,
+                    now: now(),
+                }))
+                .map_err(state_fail)?;
+                for (_, record) in &page.records {
+                    if let Ok(Some(kid)) = record_header(&record.value).map(|h| h.kid) {
+                        used.insert(kid);
+                    }
+                }
+                match page.cursor {
+                    Some(c) => cursor = Some(c),
+                    None => break,
+                }
+            }
+        }
+    }
+    let mut removed_kids = Vec::new();
+    let (current, index) = (next.current_kid.clone(), next.index_kid.clone());
+    next.entries.retain(|e| {
+        let keep = e.kid == current || e.kid == index || used.contains(&e.kid);
+        if !keep {
+            removed_kids.push(e.kid.to_string());
+        }
+        keep
+    });
+    write_private(Path::new(&profile.keyring), &next.encode()).map_err(keyring_fail)?;
+    let report = RotateReport {
+        schema: SCHEMA,
+        profile: profile.name.clone(),
+        current_kid: current.to_string(),
+        removed_kids,
+        kids: next.entries.len(),
+    };
+    if out.is_json() {
+        out.json(&report)?;
+        return Ok(Exit::Ok);
+    }
+    let mut doc = Document::default();
+    doc.section(format!("Profile {} rotated", report.profile));
+    doc.field("current kid", Line::code(&report.current_kid));
+    doc.field("keys", Line::text(report.kids.to_string()));
+    if !report.removed_kids.is_empty() {
+        doc.field("removed", Line::text(report.removed_kids.join(", ")));
+    }
+    out.render(&doc)?;
+    Ok(Exit::Ok)
+}
+
+#[derive(Serialize)]
+struct RewrapReport {
+    schema: u32,
+    profile: String,
+    /// The key file the keyring is wrapped with now.
+    key_file: String,
+    kids: usize,
+    /// `TI_STORE_KEK_PATH` to set, when the key file is not where the tools look.
+    kek_path_to_set: Option<String>,
+}
+
+/// `ti profile rewrap --kek-file PATH` (STORE-127): every data key unwrapped with the
+/// current key file and wrapped with the new one; the keyring is written once and the
+/// records are not touched. The old key file no longer opens the keyring afterwards.
+pub fn rewrap(global: &GlobalArgs, kek_file: &Path, out: &Output) -> Result<Exit, CliError> {
+    let selected = Selected::resolve(global)?;
+    let profile = &selected.profile;
+    let keyring = selected.keyring()?.ok_or_else(|| {
+        selected.fail(StoreFile::Keyring, &profile.keyring, StoreError::NoKeyring)
+    })?;
+    let new_kek = read_kek(kek_file)
+        .map_err(|e| selected.fail(StoreFile::KeyFile, &kek_file.display().to_string(), e))?;
+    let file = block_on(keyring.rewrap(&KeyFileWrapper::new(new_kek, OsRandom)))
+        .map_err(|e| selected.fail(StoreFile::Keyring, &profile.keyring, e))?;
+    write_private(Path::new(&profile.keyring), &file.encode())
+        .map_err(|e| selected.fail(StoreFile::Keyring, &profile.keyring, e))?;
+    let report = RewrapReport {
+        schema: SCHEMA,
+        profile: profile.name.clone(),
+        key_file: kek_file.display().to_string(),
+        kids: file.entries.len(),
+        kek_path_to_set: (kek_file != Path::new(&profile.kek_file))
+            .then(|| kek_file.display().to_string()),
+    };
+    if out.is_json() {
+        out.json(&report)?;
+        return Ok(Exit::Ok);
+    }
+    let mut doc = Document::default();
+    doc.section(format!("Profile {} rewrapped", report.profile));
+    doc.field("key file", Line::code(&report.key_file));
+    doc.field("keys", Line::text(report.kids.to_string()));
+    match &report.kek_path_to_set {
+        Some(path) => doc.field(
+            "next",
+            Line::status(
+                Tone::Warn,
+                format!(
+                    "set TI_STORE_KEK_PATH={path}, or move it to {}; the old key file no longer opens this keyring",
+                    profile.kek_file
+                ),
+            ),
+        ),
+        None => doc.field("note", Line::dim("the old key file no longer opens this keyring")),
+    };
+    out.render(&doc)?;
+    Ok(Exit::Ok)
+}
+
+/// `ti profile …`.
+pub fn run(command: &ProfileCommand, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
+    match command {
+        ProfileCommand::Create { name, kek_file } => {
+            create(global, name.as_deref(), kek_file.as_deref(), out)
+        }
+        ProfileCommand::List => list(global, out),
+        ProfileCommand::Use { name } => use_profile(global, name, out),
+        ProfileCommand::Delete { name, yes } => delete(global, name, *yes, out),
+        ProfileCommand::Show => show(global, out),
+        ProfileCommand::Rotate => rotate(global, out),
+        ProfileCommand::Rewrap { kek_file } => rewrap(global, kek_file, out),
+    }
 }

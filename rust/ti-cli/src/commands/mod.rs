@@ -50,8 +50,7 @@ use ti_pki::{Certificate, Env, Timestamp};
 
 use crate::cli::{
     CacheCommand, Cli, Command, DirectoryCommand, Environment, GlobalArgs, IdentityCommand,
-    IdpdCommand, Pkcs12Command, PkiCommand, ProbeEnv, ProfileCommand, ProfilesCommand,
-    RootsCommand, StoreCommand, TslCommand,
+    IdpdCommand, Pkcs12Command, PkiCommand, ProbeEnv, ProfilesCommand, RootsCommand, TslCommand,
 };
 use crate::error::{CliError, Exit};
 use crate::output::document::{TreeRow, date, when};
@@ -123,18 +122,8 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
             probe::run(env, def, &cli.global, out)
         }
         Command::Cache(CacheCommand::Clear) => cache::clear(&cli.global, out),
-        Command::Profile(ProfileCommand::Create { name, kek_file }) => {
-            profile::create(&cli.global, name.as_deref(), kek_file.as_deref(), out)
-        }
-        Command::Profile(ProfileCommand::List) => profile::list(&cli.global, out),
-        Command::Profile(ProfileCommand::Use { name }) => {
-            profile::use_profile(&cli.global, name, out)
-        }
-        Command::Profile(ProfileCommand::Delete { name, yes }) => {
-            profile::delete(&cli.global, name, *yes, out)
-        }
-        Command::Profile(ProfileCommand::Show) => profile::show(&cli.global, out),
-        Command::Store(StoreCommand::Doctor { json }) => store::doctor(&cli.global, *json, out),
+        Command::Profile(command) => profile::run(command, &cli.global, out),
+        Command::Store(command) => store::run(command, &cli.global, out),
         Command::Schema { command } => schema::run(command, out),
         Command::Agent => agent::run(),
         Command::Version => version::run(out),

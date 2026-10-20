@@ -51,6 +51,7 @@ ti profile create                   # keyring and key file: TSL state and comfor
 ti --profile work pki verify card.pem   # another profile's cache and state
 ti profile list                     # profiles, the active one, their keyrings and sizes
 ti store doctor                     # key file, keyring, databases, records: ok, warn or fail
+ti store ls                         # records: namespace, name prefix, expiry, size, kid
 ti cache clear
 ti schema pki verify                # JSON Schema of a command's output
 ti agent                            # usage guide for scripts and agents
@@ -265,8 +266,12 @@ zero-epa and later zeta-cli read and write the same files. The profile in effect
 the three together give a separate store for a test or a HITL session.
 `TI_STORE_BACKEND=files` keeps one file per record instead of SQLite, for inspecting
 them; `TI_STORE_TRACE=1` writes one line per store operation to stderr. `ti profile list`,
-`show`, `use` and `delete --yes` manage the profiles; `ti store doctor` checks the one in
-effect without changing it.
+`show`, `use` and `delete --yes` manage the profiles; `ti store doctor [--deep]` checks
+the one in effect without changing it. `ti profile rotate` starts a new sealing key once
+a year (doctor warns after that), `ti profile rewrap --kek-file PATH` moves the keyring to
+another key file. `ti store ls`, `show [--reveal]`, `rm`, `purge --yes`, `cleanup` and
+`migrate [--dry-run]` inspect and maintain the records; expired ones are also removed once
+a day on their own.
 
 The cache holds downloaded trust material, OCSP responses and Konnektor service
 directories with their HTTP validators. An entry is used without asking for an hour,

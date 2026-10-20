@@ -126,6 +126,40 @@ fn store_055_sealed_records_open_or_fail_with_the_specified_code() {
     check(&["open"], None);
 }
 
+/// STORE-044, STORE-124: a sealed record's header names its kid, expiry and payload size
+/// without a key; a plain record's has no kid.
+#[test]
+fn store_044_record_headers_name_kid_and_size_without_a_key() {
+    use ti_store::store::{Kid, record_header};
+    let m = manifest();
+    let mut sealed = 0;
+    for c in m["cases"].as_array().expect("cases") {
+        let (kind, input, expect) = (&c["kind"], &c["input"], &c["expect"]);
+        if expect["code"] != "ok" || !(kind == "seal" || kind == "plain") {
+            continue;
+        }
+        let record =
+            eval::unhex(expect["output"]["record"].as_str().expect("record")).expect("hex");
+        let payload = eval::unhex(input["payload"].as_str().expect("payload")).expect("hex");
+        let header = record_header(&record).expect("header");
+        assert_eq!(header.payload_len, payload.len(), "{}", c["id"]);
+        assert_eq!(
+            header.not_after.map_or(0, |t| t.0),
+            input["not_after"].as_u64().unwrap_or(0),
+            "{}",
+            c["id"]
+        );
+        if kind == "seal" {
+            sealed += 1;
+            let want_kid = Kid::new(input["kid"].as_str().expect("kid")).expect("kid");
+            assert_eq!(header.kid, Some(want_kid), "{}", c["id"]);
+        } else {
+            assert_eq!(header.kid, None, "{}", c["id"]);
+        }
+    }
+    assert!(sealed > 0, "no sealed records in the corpus");
+}
+
 /// STORE-057; also STORE-050.
 #[test]
 fn store_057_plain_records_match_the_corpus() {

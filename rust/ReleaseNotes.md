@@ -13,7 +13,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - Store profiles shared with the other TI tools (spec/store): `--profile`, `TI_PROFILE`,
   `TI_STATE_DIR`, `TI_STORE_KEK_PATH`, `TI_STORE_BACKEND`. `ti profile create` makes a
   profile's keyring and key file; `profile list`, `show`, `use` and `delete --yes`
-  manage profiles. `ti store doctor [--json]` checks a profile without changing it.
+  manage profiles; `profile rotate` and `profile rewrap --kek-file` manage its keys.
+  `ti store doctor [--json] [--deep]` checks a profile without changing it; `store ls`,
+  `show [--reveal]`, `rm`, `purge --yes`, `cleanup` and `migrate [--dry-run]` inspect and
+  maintain its records. Expired records are removed once a day on their own.
   `TI_STORE_TRACE=1` traces store operations. Store failures have the error kinds
   `store_<code>` with a hint.
 

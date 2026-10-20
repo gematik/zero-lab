@@ -178,6 +178,8 @@ impl Selected {
             }
             Err(error) => return Err(self.fail(StoreFile::CacheDb, &path, error)),
         };
+        backend.daily_cleanup(now());
+
         Store::new(
             Traced::from_env(backend),
             None,
@@ -194,11 +196,29 @@ impl Selected {
     ///
     /// A state, keyring or key file that does not open.
     pub fn open_state(&self) -> Result<ProfileStore, CliError> {
-        let keyring = self.keyring()?;
+        self.open_state_with(self.keyring()?)
+    }
+
+    /// The profile's state without its keyring, for what reads records' headers only:
+    /// sealed namespaces are refused, the key file and keyring are not needed.
+    ///
+    /// # Errors
+    ///
+    /// A state that does not open.
+    pub fn open_state_unsealed(&self) -> Result<ProfileStore, CliError> {
+        self.open_state_with(None)
+    }
+
+    fn open_state_with(
+        &self,
+        keyring: Option<Keyring<OsRandom>>,
+    ) -> Result<ProfileStore, CliError> {
         let path = self.state_path();
         create_parent(Path::new(path)).map_err(|e| self.fail(StoreFile::StateDb, path, e))?;
         let backend = AnyBackend::open(self.kind, Path::new(path), Db::State)
             .map_err(|e| self.fail(StoreFile::StateDb, path, e))?;
+        backend.daily_cleanup(now());
+
         Store::new(
             Traced::from_env(backend),
             keyring,
@@ -231,7 +251,7 @@ impl Selected {
 
     /// The keyring, unwrapped with the key file of STORE-094; none if the profile has
     /// none.
-    fn keyring(&self) -> Result<Option<Keyring<OsRandom>>, CliError> {
+    pub fn keyring(&self) -> Result<Option<Keyring<OsRandom>>, CliError> {
         let path = &self.profile.keyring;
         let bytes = match std::fs::read(path) {
             Ok(b) => b,

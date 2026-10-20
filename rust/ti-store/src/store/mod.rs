@@ -63,8 +63,8 @@ pub use names::{Field, Kid, Name, Namespace, Tag, plain_name, plain_tag};
 pub use random::FixedRandom;
 pub use random::{OsRandom, Random};
 pub use record::{
-    DataKey, DerivedKeys, MAX_TIME, Opened, derive, open_plain, open_sealed, plain_record,
-    seal_record,
+    DataKey, DerivedKeys, MAX_TIME, Opened, RecordHeader, derive, open_plain, open_sealed,
+    plain_record, record_header, seal_record,
 };
 pub use sealer::Sealer;
 pub use store::{Store, Stored};

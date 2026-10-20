@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "store ls",
+  "description": "Records of the profile, never ids, tag values or payloads (STORE-124).",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "profile": {
+      "type": "string"
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "namespace": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "description": "The first 8 bytes of the record's name in hex."
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "payload_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "kid": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absent for a plain record."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "namespace",
+          "name",
+          "expires_at",
+          "payload_bytes",
+          "kid",
+          "fields"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "profile",
+    "records"
+  ],
+  "additionalProperties": false
+}

@@ -26,7 +26,7 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use ti_store::store::{DataKey, Kid, Namespace, derive, open_plain, open_sealed};
+use ti_store::store::{DataKey, Kid, Namespace, derive, open_plain, open_sealed, record_header};
 use ti_types::Timestamp;
 
 fuzz_target!(|input: (&[u8], u64)| {
@@ -38,5 +38,13 @@ fuzz_target!(|input: (&[u8], u64)| {
     let opened = open_sealed(|k| (k == &kid).then(|| keys.value_key()), &[1; 16], &ns, &name, Timestamp(now), record);
     // Opening needs a tag made with the key; random bytes never carry one.
     assert!(opened.is_err());
-    let _ = open_plain(Timestamp(now), record);
+    // The header agrees with what opening a plain record finds; a sealed one's header is
+    // only read, never trusted.
+    let header = record_header(record);
+    if let Ok(plain) = open_plain(Timestamp(now), record) {
+        let header = header.expect("a plain record that opens has a header");
+        assert_eq!(header.kid, None);
+        assert_eq!(header.not_after, plain.not_after);
+        assert_eq!(header.payload_len, plain.payload.len());
+    }
 });

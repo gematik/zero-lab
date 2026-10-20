@@ -97,6 +97,34 @@ impl FilesBackend {
         })
     }
 
+    /// When cleanup last ran on its own: the modification time of `<root>/last_cleanup`
+    /// (STORE-125).
+    pub fn last_cleanup(&self) -> Option<Timestamp> {
+        let modified = fs::symlink_metadata(self.root.join("last_cleanup"))
+            .and_then(|m| m.modified())
+            .ok()?;
+        modified
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|d| Timestamp(d.as_secs()))
+    }
+
+    /// Records when cleanup ran (STORE-125).
+    ///
+    /// # Errors
+    ///
+    /// `backend_error` for I/O.
+    pub fn set_last_cleanup(&self, at: Timestamp) -> Result<(), StoreError> {
+        let path = self.root.join("last_cleanup");
+        let mut options = OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let f = options.open(&path).map_err(|e| io("write", &path, &e))?;
+        f.set_modified(std::time::UNIX_EPOCH + Duration::from_secs(at.0))
+            .map_err(|e| io("write", &path, &e))
+    }
+
     /// The directory and file name of a record. With `create`, missing directories are
     /// made; without, a missing one means there is no record.
     fn locate(

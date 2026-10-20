@@ -207,6 +207,54 @@ impl SqliteBackend {
     }
 }
 
+impl SqliteBackend {
+    /// `PRAGMA incremental_vacuum`: gives the pages cleanup freed back to the file system
+    /// (STORE-125).
+    ///
+    /// # Errors
+    ///
+    /// The database's errors.
+    pub fn vacuum(&self) -> Result<(), StoreError> {
+        self.conn()?
+            .execute_batch("PRAGMA incremental_vacuum")
+            .map_err(|e| sql(&e))
+    }
+
+    /// When cleanup last ran on its own, from `meta` (STORE-125).
+    ///
+    /// # Errors
+    ///
+    /// The database's errors.
+    pub fn last_cleanup(&self) -> Result<Option<Timestamp>, StoreError> {
+        let v: Option<i64> = self
+            .conn()?
+            .query_row(
+                "SELECT value FROM meta WHERE key = 'last_cleanup'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| sql(&e))?;
+        Ok(v.and_then(|v| u64::try_from(v).ok()).map(Timestamp))
+    }
+
+    /// Records when cleanup ran (STORE-125).
+    ///
+    /// # Errors
+    ///
+    /// The database's errors.
+    pub fn set_last_cleanup(&self, at: Timestamp) -> Result<(), StoreError> {
+        self.conn()?
+            .execute(
+                "INSERT INTO meta (key, value) VALUES ('last_cleanup', ?1) \
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                [stamp(at)],
+            )
+            .map(drop)
+            .map_err(|e| sql(&e))
+    }
+}
+
 impl Backend for SqliteBackend {
     fn capabilities(&self) -> Capabilities {
         // STORE-078

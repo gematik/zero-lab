@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "store show",
+  "description": "One record; its payload only with --reveal (STORE-124).",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "profile": {
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "expires_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "payload_bytes": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "kid": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "fields": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "payload": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Only with --reveal."
+    },
+    "payload_encoding": {
+      "enum": [
+        "utf-8",
+        "base64",
+        null
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "profile",
+    "namespace",
+    "name",
+    "expires_at",
+    "payload_bytes",
+    "kid",
+    "fields",
+    "payload",
+    "payload_encoding"
+  ],
+  "additionalProperties": false
+}

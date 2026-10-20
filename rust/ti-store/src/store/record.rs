@@ -285,6 +285,62 @@ pub fn open_sealed<'k>(
     })
 }
 
+/// What a record's header says without opening it: the kid of a sealed record, the
+/// expiry and the payload's size (STORE-044, STORE-124). None of it is authenticated
+/// until the record is opened.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecordHeader {
+    /// The kid of a sealed record; none for a plain one.
+    pub kid: Option<Kid>,
+    /// The expiry; none for a record that does not expire.
+    pub not_after: Option<Timestamp>,
+    /// The size of the payload.
+    pub payload_len: usize,
+}
+
+/// STORE-050, STORE-051, STORE-057: reads a record's header with the checks opening it
+/// would make before any key is needed.
+///
+/// # Errors
+///
+/// `malformed`, `unsupported_version` or `limit_exceeded`.
+pub fn record_header(record: &[u8]) -> Result<RecordHeader, StoreError> {
+    let mut r = Reader::new(record, "record");
+    let version = r.u8()?;
+    let kid = match version {
+        0 => None,
+        1 => {
+            let kid_len = usize::from(r.u8()?);
+            if !(1..=64).contains(&kid_len) {
+                return Err(r.malformed());
+            }
+            Some(Kid::from_bytes(r.take(kid_len)?).ok_or(StoreError::Malformed("record"))?)
+        }
+        _ => return Err(StoreError::UnsupportedVersion("record")),
+    };
+    let na = r.u64()?;
+    if na > MAX_TIME {
+        return Err(StoreError::Malformed("record"));
+    }
+    let payload_len = if kid.is_some() {
+        let _: [u8; NONCE_LEN] = r.array()?;
+        r.rest()
+            .len()
+            .checked_sub(TAG_LEN)
+            .ok_or(StoreError::Malformed("record"))?
+    } else {
+        r.rest().len()
+    };
+    if payload_len > MAX_PAYLOAD {
+        return Err(StoreError::LimitExceeded("payload"));
+    }
+    Ok(RecordHeader {
+        kid,
+        not_after: (na != 0).then_some(Timestamp(na)),
+        payload_len,
+    })
+}
+
 /// Section F: a plain record.
 ///
 /// # Errors

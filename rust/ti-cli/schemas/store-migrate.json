@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "store migrate",
+  "description": "Each database's format level against this tool's (STORE-126).",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "profile": {
+      "type": "string"
+    },
+    "dry_run": {
+      "type": "boolean"
+    },
+    "max_level": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "databases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "enum": [
+              "state",
+              "cache"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "level": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "min_compatible": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "outcome": {
+            "enum": [
+              "up to date",
+              "newer than this tool, and compatible",
+              "would migrate",
+              "migrated"
+            ]
+          }
+        },
+        "required": [
+          "database",
+          "path",
+          "level",
+          "min_compatible",
+          "steps",
+          "outcome"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "profile",
+    "dry_run",
+    "max_level",
+    "databases"
+  ],
+  "additionalProperties": false
+}
