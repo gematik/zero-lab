@@ -4,7 +4,7 @@ title: 'ti-idpd-helper: idpd/1 (authenticate)'
 status: To Do
 assignee: []
 created_date: '2026-10-20 14:07'
-updated_date: '2026-10-20 14:07'
+updated_date: '2026-10-20 19:57'
 labels:
   - rust
   - idpd
@@ -12,7 +12,7 @@ dependencies:
   - TASK-120.3
   - TASK-120.4
 parent_task_id: TASK-120
-priority: high
+priority: low
 ordinal: 130000
 ---
 

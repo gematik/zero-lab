@@ -4,13 +4,13 @@ title: 'ti-rpc and ti-host: shared Rust for ti and the helpers'
 status: To Do
 assignee: []
 created_date: '2026-10-20 14:07'
-updated_date: '2026-10-20 14:07'
+updated_date: '2026-10-20 19:57'
 labels:
   - rust
 dependencies:
   - TASK-120.2
 parent_task_id: TASK-120
-priority: high
+priority: low
 ordinal: 128000
 ---
 

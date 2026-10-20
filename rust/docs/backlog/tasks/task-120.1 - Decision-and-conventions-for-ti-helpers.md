@@ -4,12 +4,13 @@ title: Decision and conventions for ti helpers
 status: To Do
 assignee: []
 created_date: '2026-10-20 14:07'
+updated_date: '2026-10-20 19:57'
 labels:
   - docs
   - interop
 dependencies: []
 parent_task_id: TASK-120
-priority: high
+priority: low
 ordinal: 126000
 ---
 
