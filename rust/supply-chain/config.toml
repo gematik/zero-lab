@@ -551,7 +551,7 @@ version = "0.2.17"
 criteria = "safe-to-deploy"
 
 [[exemptions.pkcs1]]
-version = "0.8.0-rc.4"
+version = "0.8.0-rc.5"
 criteria = "safe-to-deploy"
 
 [[exemptions.pkcs5]]
@@ -643,7 +643,7 @@ version = "0.21.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.rsa]]
-version = "0.10.0-rc.18"
+version = "0.10.0-rc.19"
 criteria = "safe-to-deploy"
 
 [[exemptions.rusqlite]]
@@ -651,7 +651,7 @@ version = "0.40.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.rustls]]
-version = "0.23.45"
+version = "0.23.46"
 criteria = "safe-to-deploy"
 
 [[exemptions.rustls-native-certs]]
@@ -759,7 +759,7 @@ version = "0.6.5"
 criteria = "safe-to-deploy"
 
 [[exemptions.spki]]
-version = "0.8.0"
+version = "0.8.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.stable_deref_trait]]
