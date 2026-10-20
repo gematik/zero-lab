@@ -27,9 +27,9 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+	"uuid"
 
 	"github.com/gematik/zero-lab/go/kv"
-	"github.com/segmentio/ksuid"
 )
 
 const defaultBffSessionTTL = time.Hour
@@ -70,7 +70,7 @@ func (m *kvSessionManager) save(session *Session) error {
 
 func (m *kvSessionManager) CreateSession(state, codeVerifier, codeChallengeMethod string) (*Session, error) {
 	session := &Session{
-		ID:                  ksuid.New().String(),
+		ID:                  uuid.NewV4().String(),
 		State:               state,
 		CreatedAt:           time.Now(),
 		CodeVerifier:        codeVerifier,

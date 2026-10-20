@@ -30,8 +30,7 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
-
-	"github.com/google/uuid"
+	"uuid"
 )
 
 type EntitlementRequestType struct {
@@ -134,7 +133,7 @@ func (s *Session) SetEntitlementPoPP(insurantId string, poppToken string) (time.
 	}
 	req.Header.Set("x-insurantid", insurantId)
 	req.Header.Set("x-useragent", UserAgent)
-	req.Header.Set("x-request-id", uuid.New().String())
+	req.Header.Set("x-request-id", uuid.NewV4().String())
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
 

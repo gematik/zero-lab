@@ -28,9 +28,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/gematik/zero-lab/go/oauth/oidc"
-	"github.com/segmentio/ksuid"
 	"golang.org/x/oauth2"
 )
 
@@ -53,7 +53,7 @@ func redirectWithError(w http.ResponseWriter, r *http.Request, redirectUri strin
 // policy. The scope-allowlist check is left to the caller (it redirects at /authorize, returns JSON at /par).
 func (s *Server) bindAuthzRequest(r *http.Request) (*AuthzServerSession, *Product, *Error) {
 	session := &AuthzServerSession{
-		ID:        ksuid.New().String(),
+		ID:        uuid.NewV4().String(),
 		CreatedAt: time.Now(),
 	}
 	var responseType string
@@ -147,10 +147,10 @@ func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request
 	}
 
 	opSession := &oidc.AuthnClientSession{
-		ID:          ksuid.New().String(),
+		ID:          uuid.NewV4().String(),
 		Issuer:      session.IDPIss,
-		State:       ksuid.New().String(),
-		Nonce:       ksuid.New().String(),
+		State:       uuid.NewV4().String(),
+		Nonce:       uuid.NewV4().String(),
 		Verifier:    oauth2.GenerateVerifier(),
 		RedirectURI: opRedirectURI,
 	}

@@ -11,7 +11,7 @@ COPY rust/ ./
 RUN cargo build --release --locked -p ti-cli --target ${TI_TARGET} \
 	&& cp target/${TI_TARGET}/release/ti /ti
 
-FROM golang:1.26 AS build
+FROM golang:1.27 AS build
 ARG VERSION=dev
 WORKDIR /src
 COPY go/ ./

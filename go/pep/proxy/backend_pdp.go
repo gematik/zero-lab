@@ -34,12 +34,12 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
-	"github.com/segmentio/ksuid"
 	"golang.org/x/oauth2"
 )
 
@@ -145,7 +145,7 @@ func (b *pdpBackend) clientAssertion(ctx context.Context, sess *Session) (string
 	tok.Set(jwt.IssuerKey, b.cfg.ClientID)
 	tok.Set(jwt.SubjectKey, b.cfg.ClientID)
 	tok.Set(jwt.AudienceKey, b.meta.Issuer)
-	tok.Set(jwt.JwtIDKey, ksuid.New().String())
+	tok.Set(jwt.JwtIDKey, uuid.NewV4().String())
 	tok.Set(jwt.IssuedAtKey, now.Unix())
 	tok.Set(jwt.ExpirationKey, now.Add(time.Minute).Unix())
 	tok.Set("cnf", map[string]string{"jkt": jkt})
@@ -252,8 +252,8 @@ func (b *pdpBackend) StartLogin(ctx context.Context, sess *Session, idpIss, scop
 		return LoginStart{}, err
 	}
 	sess.DPoPKeyJWK = jwkJSON
-	sess.State = ksuid.New().String()
-	sess.Nonce = ksuid.New().String()
+	sess.State = uuid.NewV4().String()
+	sess.Nonce = uuid.NewV4().String()
 	sess.CodeVerifier = oauth2.GenerateVerifier()
 	sess.CodeChallengeMethod = "S256"
 	if scope == "" {

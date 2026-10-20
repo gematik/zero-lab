@@ -34,12 +34,12 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/lestrrat-go/jwx/v3/jwt"
-	"github.com/segmentio/ksuid"
 )
 
 const (
@@ -122,7 +122,7 @@ func (b *Builder) Build() (*DPoP, error) {
 	}
 	// set defaults if possible and necessary
 	if b.dpop.Id == "" {
-		b.dpop.Id = ksuid.New().String()
+		b.dpop.Id = uuid.NewV4().String()
 	}
 	if b.dpop.IssuedAt.IsZero() {
 		b.dpop.IssuedAt = time.Now()

@@ -30,6 +30,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/gematik/zero-lab/go/pep"
@@ -37,7 +38,6 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/lestrrat-go/jwx/v3/jwt"
-	"github.com/segmentio/ksuid"
 )
 
 func TestEnforcersJSON(t *testing.T) {
@@ -371,7 +371,7 @@ func createRequestWithAccessTokenAndDPoP(t *testing.T, url string, keyBytes []by
 	}
 
 	proof, err := dpop.NewBuilder().
-		Id(ksuid.New().String()).
+		Id(uuid.NewV4().String()).
 		HttpMethod(http.MethodGet).
 		HttpURI(url).
 		AccessTokenHashFrom(accessToken).

@@ -24,18 +24,16 @@ package epa
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hkdf"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 	"time"
-
-	"golang.org/x/crypto/hkdf"
 
 	"golang.org/x/text/encoding/charmap"
 )
@@ -99,14 +97,11 @@ func CalculateHCV(coverageBegin, streetAddress string) ([]byte, error) {
 }
 
 func deriveAES128Key(hmacKey []byte) ([]byte, error) {
-	hkdf := hkdf.New(sha256.New, hmacKey, nil, []byte("VSDM+ Version 2 AES/GCM"))
-	derived := make([]byte, 16)
-	_, err := io.ReadFull(hkdf, derived)
+	derived, err := hkdf.Key(sha256.New, hmacKey, nil, "VSDM+ Version 2 AES/GCM", 16)
 	if err != nil {
-		return nil, fmt.Errorf("reading from HKDF: %w", err)
+		return nil, fmt.Errorf("deriving the AES key with HKDF: %w", err)
 	}
-
-	return derived[:16], nil
+	return derived, nil
 }
 
 func CalculatePNv2(hmacKeyHex string, hmacKeyKid string, provideHcv ProvideHCVFunc) (ProvidePNFunc, error) {

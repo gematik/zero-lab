@@ -25,16 +25,16 @@ import (
 	"net/http"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/segmentio/ksuid"
 )
 
 func TestSigning(t *testing.T) {
 	privateKey, _ := dpop.NewPrivateKey()
 
 	token := dpop.DPoP{
-		Id:         ksuid.New().String(),
+		Id:         uuid.NewV4().String(),
 		HttpMethod: "GET",
 		HttpURI:    "https://example.com/resource/1",
 		IssuedAt:   time.Now(),
@@ -140,7 +140,7 @@ func TestParseRequest(t *testing.T) {
 		privateKey, _ := dpop.NewPrivateKey()
 
 		builder := dpop.NewBuilder().
-			Id(ksuid.New().String()).
+			Id(uuid.NewV4().String()).
 			HttpMethod(test.dpopTemplate.HttpMethod).
 			HttpURI(test.dpopTemplate.HttpURI)
 

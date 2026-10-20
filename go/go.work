@@ -1,4 +1,4 @@
-go 1.26.4
+go 1.27.0
 
 use (
 	./bff
@@ -14,7 +14,7 @@ use (
 	./pdp
 	./pep
 	./pkcs12
-	./store
 	./sqlitestore
+	./store
 	./zaddy
 )

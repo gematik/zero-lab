@@ -21,11 +21,11 @@
 
 package authzserver
 
-import "github.com/segmentio/ksuid"
+import "uuid"
 
 // Non-production code for the OAuth2 server
 func (s *Server) NonProdStartSession(session *AuthzServerSession) error {
-	session.ID = ksuid.New().String()
+	session.ID = uuid.NewV4().String()
 	return s.sessionStore.SaveAutzhServerSession(session)
 }
 
