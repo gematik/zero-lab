@@ -39,6 +39,16 @@ use ti_idpd::authenticator::Identity;
 use ti_idpd::challenge::CodeRedirect;
 use ti_idpd::trust::Unverified;
 
+/// The flow awaits only the signer, which answers at once here: one poll completes it.
+fn ready<F: std::future::Future>(future: F) -> F::Output {
+    let mut future = std::pin::pin!(future);
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    match future.as_mut().poll(&mut context) {
+        std::task::Poll::Ready(output) => output,
+        std::task::Poll::Pending => panic!("a synchronous signer never leaves the flow pending"),
+    }
+}
+
 const DIRECTORY: &str = "https://directory.test";
 const IDP: &str = "https://idp.test";
 const AUTH_URL: &str = "https://idp.test/auth?response_type=code&client_id=opaque&scope=fhir-vzd+openid&redirect_uri=https%3A%2F%2Fdirectory.test%2Fsignin-gematik-idp-dienst&state=s1&code_challenge=c&code_challenge_method=S256";
@@ -331,13 +341,13 @@ fn login_stops_at_the_directorys_redirect_when_it_is_not_the_idps() {
         ),
         seen: RefCell::new(Vec::new()),
     };
-    let error = owner::login(
+    let error = ready(owner::login(
         &transport,
         &directory(),
         &identity,
         1_760_000_000,
         &Unverified,
-    )
+    ))
     .unwrap_err();
     assert!(
         matches!(
@@ -357,13 +367,13 @@ fn login_stops_at_the_directorys_redirect_when_it_is_not_the_idps() {
         first: response(401, &[], r#"{"message":"nope"}"#),
         seen: RefCell::new(Vec::new()),
     };
-    let error = owner::login(
+    let error = ready(owner::login(
         &transport,
         &directory(),
         &identity,
         1_760_000_000,
         &Unverified,
-    )
+    ))
     .unwrap_err();
     assert!(matches!(error, Error::Directory(_)), "{error}");
 }

@@ -31,7 +31,7 @@ use jwz::jwe::{self, EncryptionKey};
 use jwz::jwk::Jwk;
 use jwz::jws::{self, Jws};
 use jwz::jwt::{Claims, FixedClock};
-use jwz::keys::Signer;
+use jwz::keys::AsyncSigner;
 use serde_json::{Value, json};
 
 use crate::discovery::{self, Metadata};
@@ -118,15 +118,17 @@ fn refusal(response: &Response) -> Option<IdpError> {
 /// (`alg` the signer's, `BP256R1` for today's cards; `typ JWT`, `cty NJWT`, `x5c` the
 /// AUT certificate `certificate_der`), wrapped as `{"njwt": …}` in a JWE for
 /// `puk_idp_enc` (`ECDH-ES`, `A256GCM`, `cty NJWT`, `exp` of the challenge), posted
-/// as `signed_challenge` to the authorization endpoint.
+/// as `signed_challenge` to the authorization endpoint. `signer` may answer
+/// asynchronously, as a card does through the Konnektor; every `Signer` is an
+/// `AsyncSigner`.
 ///
 /// # Errors
 ///
 /// [`Error::SignerAlgorithm`] if the signer's algorithm is not one the IDP accepts
 /// (`BP256R1`); [`Error::Jose`] for a signing or encryption failure.
-pub fn respond(
+pub async fn respond(
     challenge: &Challenge,
-    signer: &dyn Signer,
+    signer: &dyn AsyncSigner,
     certificate_der: &[u8],
     puk_idp_enc: &Jwk,
     metadata: &Metadata,
@@ -142,7 +144,8 @@ pub fn respond(
         .typ("JWT")
         .cty("NJWT")
         .x5c(&[certificate_der]);
-    let nested_jws = jws::sign(nested.to_string().as_bytes(), params, signer)
+    let nested_jws = jws::sign_async(nested.to_string().as_bytes(), params, signer)
+        .await
         .map_err(Error::jose("signed challenge"))?;
     let plaintext = json!({ "njwt": nested_jws }).to_string();
     let registry = ti_jwz::registry();

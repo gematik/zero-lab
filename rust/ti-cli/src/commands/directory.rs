@@ -36,6 +36,7 @@ use ti_pki::Timestamp;
 
 use super::idp_trust::{CertificateInfo, IdpTrust, certificate_infos};
 use super::idpd::certificate_lines;
+use crate::block::block_on;
 use crate::cli::{
     DirectoryClientArgs, DirectoryLoginCommand, DirectoryOwnerArgs, DirectoryTargetArgs, GlobalArgs,
 };
@@ -240,7 +241,7 @@ fn login_owner(
         ),
     );
     let trust = IdpTrust::new(args.idp_unverified, args.target.env, global, out);
-    let done = owner::login(
+    let done = block_on(owner::login(
         &transport,
         &directory,
         &authenticator::Identity {
@@ -249,7 +250,7 @@ fn login_owner(
         },
         SystemClock.now(),
         &trust,
-    )
+    ))
     .map_err(|error| directory_error(error, Some(&trust)))?;
     let mut report = report(&directory, Endpoint::Owner, "card", done.token);
     report.directory.authorization_url = Some(done.authorization_url);

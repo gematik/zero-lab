@@ -35,8 +35,6 @@ ti-directory.workspace = true
 pkcs8.workspace = true
 sec1.workspace = true
 der.workspace = true
-# The Konnektor signer implements RustCrypto's signature traits, as jwz's keys do.
-signature.workspace = true
 zeroize.workspace = true
 # rustls without a built-in provider (ring is passed in), the OS trust store via the
 # platform verifier, and SOCKS for -x socks5://.

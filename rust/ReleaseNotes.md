@@ -9,6 +9,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-cli
 
+#### security
+- rustls-webpki 0.103.16 and webpki-root-certs 1.0.10: certificate paths through the
+  distrusted emSign intermediates and the emSign ECC Root CA - G3 are no longer accepted
+  for Konnektor and download TLS (RUSTSEC-2026-0382, RUSTSEC-2026-0383).
+
 #### added
 - Store profiles shared with the other TI tools (spec/store): `--profile`, `TI_PROFILE`,
   `TI_STATE_DIR`, `TI_STORE_KEK_PATH`, `TI_STORE_BACKEND`. `ti profile create` makes a
@@ -66,8 +71,16 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `Discovery::warnings` is gone, `Discovery::signer_chain_der` is new.
 - `PuK_IDP_SIG` must carry `x5c` with a certificate for the JWK's key
   (`discovery::key_certificates`).
+- The card signs asynchronously: `authenticator::Identity::signer` is a
+  `jwz::keys::AsyncSigner`, so a card at the Konnektor signs without blocking;
+  `authenticator::authenticate` and `challenge::respond` are `async`. Every `Signer` is
+  an `AsyncSigner`, and with one the future is ready at its first poll (TASK-60).
 
 ### ti-directory
+
+#### changed
+- `owner::login` is `async`: it awaits the IDP-Dienst flow's asynchronous signer
+  (ti-idpd, TASK-60).
 
 #### added
 - New crate: the gematik FHIR-Directory's Auth-Service (gemSpec_VZD_FHIR_Directory
