@@ -40,7 +40,10 @@ mod net;
 mod output;
 mod paths;
 mod peer;
-mod store;
+// Public for the spec/store interoperability driver (examples/store-interop.rs) only;
+// not an API of this crate.
+#[doc(hidden)]
+pub mod store;
 mod trust;
 
 use std::ffi::OsString;

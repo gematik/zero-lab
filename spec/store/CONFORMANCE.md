@@ -12,7 +12,7 @@ migrations/        one file per level after the first (none yet)
 testdata/
   manifest.json    every case: kind, rules covered, input, expected code and output
 tool/              storeconformance: generates the manifest, verifies adapters (Go, stdlib only)
-interop/           one adapter per implementation, and matrix.md of the last run (TASK-103.8)
+interop/           run.sh, the cross-language matrix on one profile's files, and matrix.md of the last run
 ```
 
 ## Corpus
@@ -117,3 +117,22 @@ The Go adapter answers every kind but the SQLite backend's scenarios and capabil
 `go test ./...` in `go/sqlitestore` runs those from the manifest. The Rust adapter answers the kinds of ti-store; the SQLite and files backends
 are `ti`'s, and `cargo test -p ti-cli --lib store::` runs their `capabilities` and
 `scenario` cases from the manifest.
+
+## Interoperability matrix
+
+The corpus proves each implementation alone; `interop/run.sh` proves them together on one
+profile's files, for the SQLite and the files backend. Two drivers take the same
+arguments (`put`, `get`, `take`, `query` on a profile chosen by the `TI_*` variables):
+`go/sqlitestore/cmd/store-interop` and `rust/ti-cli/examples/store-interop.rs`, which uses
+`ti`'s own backends. `ti profile create` makes the keyring both use.
+
+- Round trips both ways: sealed records with tags (get, query by one and by two tags),
+  a sealed record without expiry, a plain record in the cache, and a take by the other
+  language after which the writer finds nothing.
+- Take race (STORE-012): rounds of one record taken by processes of both languages,
+  released together; every round has exactly one winner with the right payload, and the
+  others get `not_found`.
+
+```sh
+spec/store/interop/run.sh            # ROUNDS=20 TAKERS=8; writes interop/matrix.md, exit 1 on a failed cell
+```

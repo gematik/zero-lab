@@ -20,6 +20,9 @@ b, err := sqlitestore.Open(ctx, statePath, sqlitestore.State)
   five seconds is `busy`.
 - The database, its WAL and its shared-memory file are created with mode 0600.
 
+`cmd/store-interop` drives a profile's store for spec/store's interoperability matrix
+(`spec/store/interop/run.sh`), against `ti`'s driver of the same arguments.
+
 ```sh
 go test ./...          # spec/store's SQLite scenarios, levels, modes, concurrent take, 100,000 records
 go test -short ./...   # without the load check
