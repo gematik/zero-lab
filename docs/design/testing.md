@@ -76,14 +76,15 @@ deleted, never faked away, and never skipped silently.
 
 The language's memory-safety guarantees are the starting point; the tools go after the
 rest: logic errors, panics on hostile input, timing, resource exhaustion and the supply
-chain. Each runs in `just check` (every change), `just audit` (before a tag) or at design
+chain. Each runs in `just check` (every change), `just check-full` (`check` plus the
+slow matrix, before a release), `just audit` (before a tag) or at design
 time with a stamped result that `just check` holds to. Never weaken a lint, a check or a
 proof to get a change through; a stale stamp is rerun, not edited.
 
 | Category | What it shows | When |
 |---|---|---|
 | unsafe-code ban, strict lints, documented API | no memory-unsafe code of our own, lint-clean, every public item documented | check |
-| build matrix and layer checks | every feature or tag combination builds; cores stay I/O-free; no TEST-ONLY bytes in production builds | check |
+| build matrix and layer checks | every feature or tag combination builds; cores stay I/O-free; no TEST-ONLY bytes in production builds | check; every combination before a release |
 | bounded model checking | no panics, overflows or out-of-bounds, and stated properties | design time, stamped |
 | functional proof against the spec | correctness of cryptographic constructions we implement | design time, stamped |
 | fuzzing | no panic, hang or broken invariant on any input | release, design time |

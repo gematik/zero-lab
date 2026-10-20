@@ -16,7 +16,8 @@ recipes, tagging, and how to consume a crate from another project.
 ```console
 cd rust
 just tools    # once: install the pinned cargo tools
-just check    # what every PR must pass
+just check        # what every PR must pass
+just check-full   # before a release: check plus every feature combination
 ```
 
 ## License

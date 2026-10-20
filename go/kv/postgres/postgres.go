@@ -111,19 +111,22 @@ type execer interface {
 }
 
 func upsert(ctx context.Context, e execer, ent kv.Entry) error {
-	var expiresAt any
+	// The expiry comes from the database clock, the one every read compares against, so
+	// skew between the replicas and the database cannot stretch or cut short a TTL.
+	var ttlMicros any
 	if ent.TTL > 0 {
-		expiresAt = time.Now().Add(ent.TTL)
+		ttlMicros = ent.TTL.Microseconds()
 	}
 	var metadata any
 	if len(ent.Metadata) > 0 {
 		metadata = string(ent.Metadata)
 	}
 	_, err := e.ExecContext(ctx,
-		`INSERT INTO kv(key, value, metadata, expires_at) VALUES($1, $2, $3::jsonb, $4)
+		`INSERT INTO kv(key, value, metadata, expires_at) VALUES($1, $2, $3::jsonb,
+		     now() + $4::bigint * interval '1 microsecond')
 		   ON CONFLICT(key) DO UPDATE SET value=excluded.value, metadata=excluded.metadata,
 		     created_at=now(), expires_at=excluded.expires_at`,
-		ent.Key, ent.Value, metadata, expiresAt)
+		ent.Key, ent.Value, metadata, ttlMicros)
 	if err != nil {
 		return fmt.Errorf("kv/postgres: set %q: %w", ent.Key, err)
 	}

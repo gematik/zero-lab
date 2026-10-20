@@ -112,7 +112,7 @@ the interop adapter in `spec/<topic>/interop/rust` prints the code.
 | Category | Rust tool | When | Today |
 |---|---|---|---|
 | unsafe-code ban, lints, documented API | `unsafe_code = "forbid"` (ti-wasm glue excepted, `just wasm-unsafe-free`); clippy `pedantic`, rustdoc, `missing_docs` | check | all crates |
-| build matrix and layer checks | `just features`, `just wasm32`, `just core-deps`, `just nonprod-absent` | check | all crates |
+| build matrix and layer checks | `just wasm32`, `just core-deps`, `just nonprod-absent`; `just features` | check; `just features` before a release (`check-full`) | all crates |
 | bounded model checking | Kani | design time, stamped | ti-xmldsig C14N, jwz (base64url, compact, ECDH) |
 | functional proof | hax → F* | design time, stamped | jwz Concat KDF (SP 800-56A §5.8.1) |
 | fuzzing | cargo-fuzz (below) | release, design time | jwz parsers |
