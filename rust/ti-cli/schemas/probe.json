@@ -40,13 +40,50 @@
       ],
       "additionalProperties": false
     },
+    "access_paths": {
+      "type": "array",
+      "description": "Per access path with endpoints, whether any of them answered.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "access": {
+            "enum": [
+              "ti-vpn",
+              "internet"
+            ]
+          },
+          "available": {
+            "type": "boolean",
+            "description": "False when every endpoint of the path failed: the path is down (for ti-vpn, no TI VPN), not the services."
+          },
+          "probes": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "access",
+          "available",
+          "probes"
+        ],
+        "additionalProperties": false
+      }
+    },
     "probes": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Lowercase kebab-case: <service>-<n> for numbered instances (epa-1), the service for a singleton (catalog), idpd-ti / idpd-internet for the IDP."
+          },
+          "access": {
+            "enum": [
+              "ti-vpn",
+              "internet"
+            ],
+            "description": "How the endpoint is reached: ti-vpn only through a Konnektor's or TI-Gateway's VPN, internet directly. The catalog's instances are internet."
           },
           "kind": {
             "enum": [
@@ -96,6 +133,7 @@
         },
         "required": [
           "name",
+          "access",
           "kind",
           "url",
           "host",
@@ -114,6 +152,7 @@
     "environment",
     "duration_ms",
     "counts",
+    "access_paths",
     "probes"
   ],
   "additionalProperties": false

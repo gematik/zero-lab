@@ -1,10 +1,10 @@
 ---
 id: TASK-43
 title: 'ti probe: group endpoints by access path (TI-VPN / Internet)'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-13 18:10'
-updated_date: '2026-10-15 12:16'
+updated_date: '2026-10-20 19:15'
 labels:
   - ti-cli
 dependencies: []
@@ -36,10 +36,24 @@ Endpoint names follow one convention, lowercase kebab-case:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 each endpoint carries its access path (ti-vpn / internet); catalog-discovered endpoints are internet
-- [ ] #2 text output shows a TI-VPN and an Internet group, each with its own rows; live redraw still works
-- [ ] #3 JSON report and ti-cli/schemas/probe.json carry the access path per endpoint
-- [ ] #4 tests in ti-cli/tests/probe.rs and the unit tests cover the grouping
-- [ ] #5 endpoint names follow the convention: <service>-<n> for numbered instances (epa-1, epa-2), lowercase singletons (catalog, fhir-directory), idpd-ti / idpd-internet for the IDP
-- [ ] #6 when the TI VPN is not available, the whole TI-VPN block is grayed out in the text output, and the JSON report says the block is unavailable
+- [x] #1 each endpoint carries its access path (ti-vpn / internet); catalog-discovered endpoints are internet
+- [x] #2 text output shows a TI-VPN and an Internet group, each with its own rows; live redraw still works
+- [x] #3 JSON report and ti-cli/schemas/probe.json carry the access path per endpoint
+- [x] #4 tests in ti-cli/tests/probe.rs and the unit tests cover the grouping
+- [x] #5 endpoint names follow the convention: <service>-<n> for numbered instances (epa-1, epa-2), lowercase singletons (catalog, fhir-directory), idpd-ti / idpd-internet for the IDP
+- [x] #6 when the TI VPN is not available, the whole TI-VPN block is grayed out in the text output, and the JSON report says the block is unavailable
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+HITL open (2026-10-20): the gated test hitl_the_ti_vpn_block_answers_exactly_with_the_vpn passed with the VPN off (ref); the run with the TI VPN up is the maintainer's, then Done.
+
+HITL passed (maintainer, 2026-10-20): the gated test with the TI VPN on and off, and the grouped text output by eye.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+endpoints.json carries access (ti-vpn / internet) per endpoint, required in TI_PROBE_ENDPOINTS_PATH files; catalog instances are internet. Names: idpd-ti, erx, epa-1, epa-2 (ti-vpn); idpd-internet (new, the URLs ti-idpd uses), fhir-directory, popp, catalog (internet). Unlike the description, the FHIR-Directory is internet: its owner-authenticate answered from the internet without a VPN (probe ref, 2026-10-20). Text: a block per path; a path whose endpoints all failed says "not reachable: no TI VPN?" once and is gray, and the summary adds "· TI-VPN not reachable"; live redraw unchanged, piped text printed grouped at the end. JSON: probes[].access, access_paths[] {access, available, probes}. Tests: probes_protocols_catalog_instances_and_timeouts, a_missing_ti_vpn_grays_out_its_block, endpoint_names_follow_the_convention.
+<!-- SECTION:FINAL_SUMMARY:END -->

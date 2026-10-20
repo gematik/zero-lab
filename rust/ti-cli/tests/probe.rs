@@ -104,11 +104,11 @@ fn probes_protocols_catalog_instances_and_timeouts() {
         &endpoints,
         format!(
             r#"{{"dev": [
-                {{"name": "IDP", "kind": "oidc", "url": "{base}"}},
-                {{"name": "eRX", "kind": "erp", "url": "{base}"}},
-                {{"name": "Stall", "kind": "http", "url": "{base}/stall"}},
-                {{"name": "PoPP", "kind": "zeta", "url": "{base}"}},
-                {{"name": "Catalog", "kind": "catalog", "url": "{base}/catalog.json"}}
+                {{"name": "idpd-ti", "access": "ti-vpn", "kind": "oidc", "url": "{base}"}},
+                {{"name": "erx", "access": "ti-vpn", "kind": "erp", "url": "{base}"}},
+                {{"name": "stall", "access": "internet", "kind": "http", "url": "{base}/stall"}},
+                {{"name": "popp", "access": "internet", "kind": "zeta", "url": "{base}"}},
+                {{"name": "catalog", "access": "internet", "kind": "catalog", "url": "{base}/catalog.json"}}
             ]}}"#
         ),
     )
@@ -143,20 +143,32 @@ fn probes_protocols_catalog_instances_and_timeouts() {
             .unwrap_or_else(|| panic!("{name} in {report}"))
             .clone()
     };
-    assert_eq!(probe("IDP")["detail"], "oidc discovery");
-    assert_eq!(probe("eRX")["detail"], "erp VAU certificate");
-    assert_eq!(probe("PoPP")["detail"], "zeta resource metadata");
+    assert_eq!(probe("idpd-ti")["detail"], "oidc discovery");
+    assert_eq!(probe("erx")["detail"], "erp VAU certificate");
+    assert_eq!(probe("popp")["detail"], "zeta resource metadata");
     assert_eq!(
         (
-            probe("Stall")["status"].as_str(),
-            probe("Stall")["detail"].as_str()
+            probe("stall")["status"].as_str(),
+            probe("stall")["detail"].as_str()
         ),
         (Some("fail"), Some("timeout"))
     );
     let vsdm = probe("vsdm-9");
     assert_eq!(
-        (vsdm["source"].as_str(), vsdm["status"].as_str()),
-        (Some("catalog"), Some("ok"))
+        (
+            vsdm["source"].as_str(),
+            vsdm["status"].as_str(),
+            vsdm["access"].as_str()
+        ),
+        (Some("catalog"), Some("ok"), Some("internet"))
+    );
+    assert_eq!(probe("erx")["access"], "ti-vpn");
+    assert_eq!(
+        report["access_paths"],
+        serde_json::json!([
+            {"access": "ti-vpn", "available": true, "probes": 2},
+            {"access": "internet", "available": true, "probes": 4},
+        ])
     );
     assert_eq!(
         report["probes"].as_array().unwrap().len(),
@@ -167,4 +179,124 @@ fn probes_protocols_catalog_instances_and_timeouts() {
         report["counts"],
         serde_json::json!({"ok": 5, "warn": 0, "fail": 1})
     );
+}
+
+/// Without the TI VPN none of its endpoints answers: the block says so once and is gray
+/// in the text, and the JSON marks the path unavailable; the internet block is unaffected.
+#[test]
+fn a_missing_ti_vpn_grays_out_its_block() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+    let server_base = base.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let base = server_base.clone();
+            std::thread::spawn(move || serve(stream, &base));
+        }
+    });
+    // A port nothing listens on: refused at once, as a VPN-only host without the VPN.
+    let closed = {
+        let probe = TcpListener::bind("127.0.0.1:0").unwrap();
+        format!("http://127.0.0.1:{}", probe.local_addr().unwrap().port())
+    };
+    let dir = std::env::temp_dir().join(format!("ti-probe-vpn-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let endpoints = dir.join("endpoints.json");
+    std::fs::write(
+        &endpoints,
+        format!(
+            r#"{{"dev": [
+                {{"name": "idpd-ti", "access": "ti-vpn", "kind": "oidc", "url": "{closed}"}},
+                {{"name": "erx", "access": "ti-vpn", "kind": "erp", "url": "{closed}"}},
+                {{"name": "popp", "access": "internet", "kind": "zeta", "url": "{base}"}}
+            ]}}"#
+        ),
+    )
+    .unwrap();
+    let run = |format: &str| {
+        Command::new(env!("CARGO_BIN_EXE_ti"))
+            .args(["--format", format, "probe", "dev"])
+            .env("TI_PROBE_ENDPOINTS_PATH", &endpoints)
+            .env("NO_COLOR", "1")
+            .env_remove("HTTPS_PROXY")
+            .env_remove("https_proxy")
+            .env_remove("ALL_PROXY")
+            .env_remove("all_proxy")
+            .output()
+            .unwrap()
+    };
+    let json = run("json");
+    let text = String::from_utf8(run("text").stdout).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_conforms("probe", &json.stdout);
+    let report: Value = serde_json::from_slice(&json.stdout).unwrap();
+    assert_eq!(
+        report["access_paths"],
+        serde_json::json!([
+            {"access": "ti-vpn", "available": false, "probes": 2},
+            {"access": "internet", "available": true, "probes": 1},
+        ])
+    );
+    assert!(
+        text.contains("\nTI-VPN · not reachable: no TI VPN?\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("\n  erx "),
+        "rows indented under their path: {text}"
+    );
+    assert!(text.contains("\nInternet\n"), "{text}");
+    let vpn = text.find("TI-VPN").unwrap();
+    let internet = text.find("\nInternet\n").unwrap();
+    assert!(vpn < internet, "TI-VPN first: {text}");
+    assert!(text[vpn..internet].contains("erx"), "{text}");
+    assert!(text[internet..].contains("popp"), "{text}");
+    assert!(
+        text.contains("· TI-VPN not reachable"),
+        "the summary says it: {text}"
+    );
+}
+
+/// HITL: the built-in endpoints of a real environment, run once with the TI VPN of a
+/// Konnektor or TI-Gateway up and once without. The TI-VPN block answers exactly when
+/// the VPN is up; the internet block answers either way.
+#[test]
+#[ignore = "HITL, needs TI_TEST_PROBE_ENV and TI_TEST_PROBE_VPN=on|off"]
+fn hitl_the_ti_vpn_block_answers_exactly_with_the_vpn() {
+    let env =
+        std::env::var("TI_TEST_PROBE_ENV").expect("TI_TEST_PROBE_ENV: prod, ref, test or dev");
+    let vpn = match std::env::var("TI_TEST_PROBE_VPN").as_deref() {
+        Ok("on") => true,
+        Ok("off") => false,
+        other => panic!("TI_TEST_PROBE_VPN: on or off, not {other:?}"),
+    };
+    let out = Command::new(env!("CARGO_BIN_EXE_ti"))
+        .args(["--format", "json", "probe", &env])
+        .env_remove("TI_PROBE_ENDPOINTS_PATH")
+        .output()
+        .unwrap();
+    assert_conforms("probe", &out.stdout);
+    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+    eprintln!(
+        "{}",
+        serde_json::to_string_pretty(&report["access_paths"]).unwrap()
+    );
+    let available = |access: &str| {
+        report["access_paths"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["access"] == access)
+            .unwrap_or_else(|| panic!("{access} in {report}"))["available"]
+            .as_bool()
+            .unwrap()
+    };
+    assert_eq!(
+        available("ti-vpn"),
+        vpn,
+        "TI VPN {}: {report}",
+        if vpn { "on" } else { "off" }
+    );
+    assert!(available("internet"), "{report}");
 }

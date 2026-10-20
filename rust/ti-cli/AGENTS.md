@@ -185,6 +185,10 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   `issued_before_ca_revocation`, a later one fails with `ca_revoked_in_tsl`. `tsl show`
   reports the time as `revoked_since`; `tsl bundle` leaves revoked CAs out, because
   curl and Java cannot apply the date rule.
+- `pki verify --at T`: OCSP answers for the time of the query and its status is judged
+  at T (gemSpec_PKI TUC_PKI_006 8a/8b). A certificate revoked after T is valid with the
+  warning `revoked_after_reference_time`; `chain[].revocation` keeps `status: revoked`
+  and the `revoked_at` time, `at` is T.
 - `tsl verify` checks a TSL file: signature, signer under the embedded TSL signer CA,
   `NextUpdate` (`--grace`), the signer's OCSP status (not with `--offline` or `--at`),
   and with `--previous` the sequence. `result` is `valid` or `invalid`; an invalid one
@@ -341,7 +345,7 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 {bin} --format json connector get certificates CARD     # ECC and RSA, with PEM
 {bin} --format json connector get status                # VPN and operating errors
 {bin} --format json connector get expiration [CARD]
-{bin} --format json connector describe card CARD
+{bin} --format json connector describe card CARD          # with each PIN's status
 {bin} --format json connector describe certificate CARD C.AUT   # as pki inspect
 {bin} --format json connector verify certificate CARD C.AUT     # or --file; exit 0/1
 {bin} --format json connector verify pin CARD [PIN]             # exit 0/1
@@ -367,6 +371,10 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 - PIN is `PIN.CH`, `PIN.QES` or `PIN.SMC`; needed only for an HBA, which has two. PIN
   commands wait for the user at the card terminal: never run them unasked. A
   `REJECTED` result costs a try; `left_tries` says how many remain.
+- `describe card` reads each user PIN's status without asking for it: `pins[].status`
+  is the Konnektor's `VERIFIED` (no entry needed), `VERIFIABLE` (entry needed),
+  `TRANSPORT_PIN` or `EMPTY_PIN` (set a PIN first), `BLOCKED` (unblock with the PUK) or
+  `DISABLED`, with `left_tries`; a failed query leaves `status` null and sets `error`.
 - SMC-KT, KVK and eGK are restricted on the Konnektor's SOAP API: calls about them fail
   with error kind `card_restricted`.
 - Error kinds: `connector_config` (exit 2), `connector_unreachable`,
@@ -413,6 +421,14 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   without a token redirects to the IDP-Dienst; not followed), `catalog`
   (the TI platform's service-discovery `catalog.json`), `http` (any answer).
 - The catalog's `service_instances` are probed too (`source: "catalog"`).
+- Each probe has an `access` path: `ti-vpn` (only through a Konnektor's or TI-Gateway's
+  VPN: `idpd-ti`, `erx`, `epa-1`, `epa-2`) or `internet` (`idpd-internet`,
+  `fhir-directory`, `popp`, `catalog` and the catalog's instances). The text shows a
+  block per path. `access_paths[].available` is false when every endpoint of a path
+  failed; for `ti-vpn` that means no TI VPN, and the text says so once and grays the
+  block. Names are lowercase kebab-case, `<service>-<n>` for numbered instances.
+- `TI_PROBE_ENDPOINTS_PATH` replaces the built-in list: a JSON object per environment
+  of `{"name", "access", "kind", "url"}`.
 - `status`: `ok` the expected answer, `warn` an answer but not the expected one, `fail`
   no answer; `detail` is `{kind} …` when ok (`oidc discovery`, `catalog, 6 instances`,
   `http 403`), otherwise the cause (`HTTP 404`, `issuer … differs`, `DNS lookup failed`,

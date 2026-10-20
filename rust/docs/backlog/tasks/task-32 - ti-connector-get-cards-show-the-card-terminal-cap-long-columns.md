@@ -1,9 +1,10 @@
 ---
 id: TASK-32
 title: 'ti connector get cards: show the card terminal, cap long columns'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-11 11:31'
+updated_date: '2026-10-20 19:15'
 labels:
   - ti-cli
   - connector
@@ -20,6 +21,20 @@ The JSON report of get cards already carries terminal (CtId) and slot, but the t
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 get cards and describe card show the terminal (CtId and slot) per card in text and Markdown
-- [ ] #2 UUID-shaped or otherwise long values in the table are shortened to a fixed width with an ellipsis; JSON keeps the full values
+- [x] #1 get cards and describe card show the terminal (CtId and slot) per card in text and Markdown
+- [x] #2 UUID-shaped or otherwise long values in the table are shortened to a fixed width with an ellipsis; JSON keeps the full values
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+HITL open: get cards against a real Konnektor (maintainer).
+
+HITL passed (maintainer, 2026-10-20): get cards and get certificates against a real Konnektor; get certificates names a shared subject and Telematik-ID once above the table.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+get cards and get certificates have a TERMINAL column (CtId · slot N). Handles and terminal IDs longer than 20 characters are shortened to start…end in the tables of get cards, get certificates, get identities and get expiration; -v and JSON keep them whole. Tests: card_table_shows_the_terminal_and_shortens_long_handles (fake Konnektor with a UUID-shaped handle), long_identifiers_are_shortened_unless_full.
+<!-- SECTION:FINAL_SUMMARY:END -->

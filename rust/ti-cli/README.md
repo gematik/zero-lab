@@ -139,7 +139,9 @@ validates it: RFC 5280 path, gemSpec_Krypt key, the requirements of the profile
 (`--validation-profile auto|none|<name>`), and OCSP for the end entity and every CA below the root.
 The environment comes from `--env` (`TI_ENV`) or, with `auto`, from the certificates:
 production only on evidence from the production roots, otherwise ref. `--at` validates
-at another time (OCSP still answers for now).
+at another time. OCSP still answers for now, and its status is judged at that time
+(gemSpec_PKI TUC_PKI_006): a certificate revoked since is valid then, with the warning
+`revoked_after_reference_time`.
 
 roots.json and the TSL are downloaded from the environment's URLs and verified by
 `ti-pki` against the embedded anchor; a CA from the TSL counts only if a verified root

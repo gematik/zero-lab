@@ -159,7 +159,7 @@ names the trigger for removing it.
 | ti releases carry unsigned `SHA256SUMS` | signing was deferred; the checksums catch broken downloads and Homebrew pins them in the formula, but a replaced release could replace them too | a release key exists: sign `SHA256SUMS` in `just release` and verify it in `publish-brew` |
 | RUSTSEC-2023-0071 ignored (`deny.toml`, `.cargo/audit.toml`) | the Marvin attack targets RSA private-key operations; `ti-pki` only verifies, on public data | a patched `rsa` is released |
 | The TSL signer CA does not change at run time: `spec/tsl-xmldsig` part E (TSLSIG-061 – 068: an anchor announced in the TSL becoming active at its `StatusStartingTime`, and the fallback through roots.json) is not implemented. `TrustConfig::tsl_signer_anchors` is a list; a `TSLServiceCertChange` the TSL announces is reported as the warning `tsl_anchor_announced` (logged by the tokio driver, shown by ti), and a release adds the CA to `anchors::TSL_SIGNER_CAS_*` | gematik changes the TSL signer CA rarely (GEM.TSL-CA3 runs until 2028-05-25) and announces it weeks ahead; adding it to the list in a release is simple and auditable, while part E needs persisted announcements re-verified on load, a roots.json path with its own profile, age and OCSP checks, and signed test TSLs | an installation must follow an anchor change without a release |
-| The TSL's per-CA metadata is unused: allowed certificate types (SE_1061) | the TSL is verified (`spec/tsl-xmldsig`), but a CA from it is kept only if a root from the A_28419 walk signed it, and nothing else in it decides trust. A certificate's type is checked by its own policies; a CA's standing by OCSP at its root; for OCSP responders see the next row | the TSL becomes a trust source (e.g. for its per-CA type lists) |
+| The TSL admits no CA on its own; of its per-CA metadata only the certificate types and the revocation time decide | the TSL is verified (`spec/tsl-xmldsig`), but a CA from it is kept only if a root from the A_28419 walk signed it. From a CA's entry, ti-pki uses the certificate types it may issue (TUC_PKI_007: `cert_type_ca_not_authorized`, `cert_type_unchecked` when the entry lists none) and a revocation with its `StatusStartingTime` (Tab_PKI_271: `ca_revoked_in_tsl`, `issued_before_ca_revocation`); provider names and the other metadata decide nothing. A CA's standing is otherwise checked by OCSP at its root; for OCSP responders see the next row | the TSL becomes a trust source of its own, admitting CAs no walked root signed |
 | OCSP responders beyond RFC 6960 must be certified by a CA of the issuing CA's TSP that a root signed, not only listed in the TSL: id-kp-OCSPSigning, valid now, signature verified under that TSL CA. Listed by the verified TSL under that TSP they are authorized (`tsl_listed`); not listed, they are accepted with an `ocsp_responder_not_rfc6960` warning | the TSL ties a responder to CAs only by the TSP it is listed under (its supply point and extension are placeholders), and TI TSPs sign for their CAs with delegates of other CAs (ehca: a GEM.KOMP-CA51 delegate answers for GEM.SMCB-CA51 and GEM.SMCB-CA9). Requiring the certification by a CA of the same TSP keeps a listed responder from answering for another TSP's CAs. The D-Trust responders under GEM.OCSP-CA1/3 stay rejected (their CA is not in the TSL) | gematik aligns responder issuance with RFC 6960 (then the fallback without listing goes) |
 | OCSP CertIDs use SHA-1 (`sha1` crate) | TI responders reject SHA-256 CertIDs as malformed (RFC 5019 profile). SHA-1 only names the certificate there; integrity rests on the response signature and the SHA-256 certHash | TI responders accept SHA-256 CertIDs |
 | `ureq`'s `unversioned` transport API in `ti_connector_client::ureq`, `ureq` pinned `~3.4` | `TlsConfig` takes no certificate verifier, and a Konnektor needs Go's: `.kon` pins accepted by equality, CA chains checked for `expectedHost`, which is also the SNI. A 60-line connector in ureq's chain does the TLS with our rustls config | ureq accepts a custom verifier or rustls config, or the adapter moves to a crate of its own before ti-connector-client 1.0 |
@@ -197,7 +197,8 @@ the received bytes anyway, and the dozen structures are smaller than the glue be
 two `der` versions. A response is accepted only with a matching CertID, an authorized
 responder, a certHash over the certificate and within the TUC_PKI_006 window (37.5 s);
 `revocation::apply_revocation` holds `gempki`'s table of what each outcome means under
-HardFail and SoftFail. The test PKI script produces fixed-time responses (good, revoked,
+HardFail and SoftFail, with a revocation judged at the reference time (TUC_PKI_006 8a
+and 8b). The test PKI script produces fixed-time responses (good, revoked,
 unknown and the failure cases) signed by OpenSSL, and `tests/fixtures` holds two live
 answers of the reference root responder. The `ocsp` example checks every link of a
 chain live, the end entity at its CA and each CA at its root.
@@ -238,11 +239,11 @@ Each table's columns are a decision, not a dump of the JSON:
 | `pki inspect --short` | SUBJECT (common name) | NOT AFTER (date), TELEMATIK-ID (only when a certificate has one; CAs never do) | everything else: JSON is the full report |
 | `pki roots bundle`, `pki tsl bundle` (with `-o`) | CERTIFICATE | NOT AFTER, ALIAS (`--p12`) | SHA-256, PEM |
 | `connector configs` | `*` for the selected one, NAME (the `-c` value) | URL, CONTEXT | path |
-| `connector get cards` | HANDLE (what every card command takes) | TYPE, ICCSN, HOLDER | terminal, slot, versions, insert time |
-| `connector get certificates` | REF | KEY, SUBJECT, TELEMATIK-ID, VALIDITY, ALGORITHM | profession, dates, PEM |
+| `connector get cards` | HANDLE (what every card command takes, as is the ICCSN; shortened when longer than 20 characters, whole with `-v`) | TYPE, ICCSN, TERMINAL (CtId and slot), HOLDER | versions, insert time |
+| `connector get certificates` | REF | KEY, VALIDITY, ALGORITHM; SUBJECT and TELEMATIK-ID only where the certificates differ, otherwise once above the table | profession, dates, PEM |
 | `connector get services` | SERVICE | VERSION, used mark, ENDPOINT | product |
-| `connector get identities` | TELEMATIK-ID | TYPE, HOLDER, ICCSN, HANDLE | |
-| `connector get expiration` | VALID UNTIL | SUBJECT, ICCSN, SERIAL, HANDLE | terminal |
+| `connector get identities` | TELEMATIK-ID | TYPE, HOLDER, ICCSN, HANDLE (shortened as in `get cards`) | |
+| `connector get expiration` | VALID UNTIL | SUBJECT, ICCSN, SERIAL, HANDLE (shortened as in `get cards`) | terminal |
 | `connector get status`, errors | CONDITION | SEVERITY, TYPE, SINCE | inactive states |
 | `probe` | SERVICE, status mark | HOST, TIME, DETAIL (`{kind} …` on success, the cause otherwise) | kind, URL, source, HTTP status |
 
@@ -272,6 +273,7 @@ is released, every suite listed for it runs green and the release PR records the
 | `ti-pki` real world (`tests/real_world.rs`, `#[ignore]`) | `just real-world` | network, `curl` | roots.json and TSL of every environment through `HttpLoader` and `Reloader`, a reference SMC-B end to end with OCSP, a production SubCA at its root responder | `ti-pki`, `ti-cli` |
 | `ti-pki` OpenSSL parity (`tests/openssl_cross.rs`) | `just test` | `openssl` with brainpool curves | the same verdict as `openssl verify` / `openssl ocsp` on the same bytes | `ti-pki` |
 | Konnektor end to end (`ti-connector-client/tests/e2e.rs`) | `just konnektor-e2e`, `just konnektor-e2e-interactive` (PIN entry, HITL) | `TI_TEST_KON_PATH` (a `.kon`), optional `TI_TEST_PDFA_PATH` (interactive), `TI_TEST_KON_RECORD_DIR` (records the run for `tests/recorded.rs`) | the facades against a real Konnektor and card | `ti-connector-client`, `ti-cli` |
+| `probe` through the TI VPN (`ti-cli/tests/probe.rs`, `#[ignore]`, HITL) | `TI_TEST_PROBE_ENV=ref TI_TEST_PROBE_VPN=on cargo test -p ti-cli --test probe -- --ignored --exact hitl_the_ti_vpn_block_answers_exactly_with_the_vpn --nocapture`, then with `TI_TEST_PROBE_VPN=off` | a Konnektor or TI-Gateway with its TI VPN; network | the TI-VPN block of `probe` answers exactly when the VPN is up, the internet block either way | `ti-cli` |
 | jwz in the browser | `just jwz-browser` (design time, stamped) | Chrome for Testing, `wasm-bindgen-test-runner` | jwz and jwz-brainpool in `wasm32` in a real browser | `jwz`, `jwz-brainpool` (the stamp is checked by `just check`) |
 
 ## WebAssembly (ti-wasm)

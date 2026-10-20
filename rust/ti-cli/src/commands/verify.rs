@@ -49,6 +49,13 @@ use crate::output::document::{TreeRow, when};
 use crate::output::{Document, Line, Output, SCHEMA, Tone, pem};
 use crate::trust::{Session, TrustInfo};
 
+/// Whether `at` is now or `--at`: OCSP still answers for the time of the query.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Reference {
+    Now,
+    Given,
+}
+
 /// The JSON document.
 #[derive(Serialize)]
 struct Report {
@@ -59,6 +66,8 @@ struct Report {
     at: String,
     #[serde(skip)]
     at_ts: Timestamp,
+    #[serde(skip)]
+    reference: Reference,
     certificate_type: Option<String>,
     profile: ProfileInfo,
     trust: TrustInfo,
@@ -157,6 +166,7 @@ struct Run {
     env: Env,
     detection: Option<Detection>,
     at: Timestamp,
+    at_given: bool,
     profile: ProfileInfo,
     trust: TrustInfo,
     revocation: RevocationMode,
@@ -235,6 +245,7 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
         env,
         detection,
         at,
+        at_given: args.at.is_some(),
         profile,
         trust: material.info,
         revocation: validator.revocation,
@@ -473,6 +484,11 @@ fn report(
         },
         at: run.at.to_string(),
         at_ts: run.at,
+        reference: if run.at_given {
+            Reference::Given
+        } else {
+            Reference::Now
+        },
         certificate_type: detect_certificate_type(ee).map(|t| t.to_string()),
         profile: run.profile,
         trust: run.trust,
@@ -699,6 +715,14 @@ fn revocation_line(report: &Report) -> Line {
         Line::status(Tone::Bad, "failed").and_dim(" (no OCSP answer, see findings)")
     } else if answers.is_empty() {
         Line::status(Tone::Warn, "not checked").and_dim(" (no chain to check)")
+    } else if has(RevocationStatus::Revoked)
+        && !report
+            .errors
+            .iter()
+            .any(|e| e.code == ErrorCode::Revoked.as_str())
+    {
+        Line::status(Tone::Warn, "revoked after the reference time")
+            .and_dim(" (valid then, TUC_PKI_006 8a)")
     } else if has(RevocationStatus::Revoked) {
         Line::status(Tone::Bad, "revoked")
     } else if has(RevocationStatus::Unknown) {
@@ -720,6 +744,12 @@ fn revocation_line(report: &Report) -> Line {
                 if n == 1 { "" } else { "s" }
             ))
         }
+    };
+    // A responder answers for the time it is asked; the status is judged at --at.
+    let line = if report.reference == Reference::Given {
+        line.and_dim(" · OCSP answered now, judged at --at")
+    } else {
+        line
     };
     if report.revocation_mode == mode_name(RevocationMode::SoftFail) {
         line.and_dim(" · soft-fail: a missing answer does not invalidate")

@@ -281,7 +281,8 @@ impl Validator {
         check_key(&chain[0], now, &mut result);
         self.check_tsl_type(&chain, &mut result);
         self.check_ca_revoked_in_tsl(&chain, &mut result);
-        self.check_revocation(&chain, checker, &mut result).await;
+        self.check_revocation(&chain, now, checker, &mut result)
+            .await;
         if result.valid
             && !self.required_role_oids.is_empty()
             && let Err(mut error) = checks::role_oid(&self.required_role_oids)(&chain[0])
@@ -314,6 +315,7 @@ impl Validator {
     async fn check_revocation(
         &self,
         chain: &[Certificate],
+        now: Timestamp,
         checker: &impl RevocationChecker,
         result: &mut ValidationResult,
     ) {
@@ -334,7 +336,7 @@ impl Validator {
                 }
                 result.cert_results[i].revocation = Some(revocation.clone());
             }
-            match apply_revocation(self.revocation, cert.subject_cn(), &outcome) {
+            match apply_revocation(self.revocation, cert.subject_cn(), &outcome, now) {
                 Some(RevocationFinding::Error(e)) => result.add_error(e),
                 Some(RevocationFinding::Warning(w)) => result.warnings.push(w),
                 None => {}
@@ -605,6 +607,53 @@ mod tests {
             let in_accord = run(None);
             assert!(in_accord.valid, "{:?}", in_accord.errors);
             assert!(!in_accord.has_warning(ErrorCode::IssuedBeforeCaRevocation));
+        }
+
+        /// Answers every query with "revoked at" its time.
+        struct RevokedAt(Timestamp);
+
+        impl RevocationChecker for RevokedAt {
+            async fn check(
+                &self,
+                _: &Certificate,
+                _: &Certificate,
+                _: &TrustStore,
+            ) -> Result<RevocationResult, ValidationError> {
+                Ok(RevocationResult {
+                    status: crate::revocation::RevocationStatus::Revoked,
+                    revoked_at: Some(self.0),
+                    reason: "keyCompromise".into(),
+                    ..RevocationResult::unknown(self.0, "")
+                })
+            }
+        }
+
+        /// TUC_PKI_006 8a and 8b through the validator: a chain validated for a time
+        /// before the end entity's revocation is valid with a warning, one at or after it
+        /// is revoked.
+        #[test]
+        fn tuc_pki_006_revocation_is_judged_at_the_reference_time() {
+            let pki = TestPki::new();
+            let chain = [pki.ee_arzt.clone(), pki.sub_ca_hba.clone()];
+            let v = Validator {
+                skip_sub_ca_revocation: true,
+                ..validator(&pki, RevocationMode::HardFail)
+            };
+            let at = TestPki::NOW;
+            let check =
+                |revoked: Timestamp| block_on(v.validate(&chain, at, &RevokedAt(revoked))).unwrap();
+
+            let later = check(Timestamp(at.0 + 1));
+            assert!(later.valid, "{:?}", later.errors);
+            assert!(later.has_warning(ErrorCode::RevokedAfterReferenceTime));
+
+            for revoked in [at, Timestamp(at.0 - 1)] {
+                assert_eq!(
+                    codes(&check(revoked)),
+                    [(ErrorCode::Revoked, "Dr. Arzt TEST-ONLY")],
+                    "revoked at {revoked}"
+                );
+            }
         }
 
         #[test]

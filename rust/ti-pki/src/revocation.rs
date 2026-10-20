@@ -27,10 +27,17 @@
 //! ```text
 //! outcome                          HardFail  SoftFail
 //! Good                             —         —
-//! Revoked                          error     error
+//! Revoked at or before `at`        error     error
+//! Revoked after `at`               warning   warning
 //! Unknown / responder unavailable  error     warning
 //! responder untrusted / invalid    error     error
 //! ```
+//!
+//! `at` is the reference time the chain is validated for. A responder answers for
+//! the time it is asked, so a certificate revoked after `at` was valid at `at`
+//! (gemSpec_PKI TUC_PKI_006 variants 8a and 8b); a revocation without a
+//! `revocationTime` counts as revoked at any time. For the current time the
+//! second row cannot occur.
 //!
 //! The last row is deliberate: a response that failed authorization or
 //! signature verification is evidence of something wrong, not of a flaky
@@ -229,13 +236,15 @@ pub enum RevocationFinding {
     Warning(ValidationWarning),
 }
 
-/// Maps one checker outcome for the certificate with common name `subject` onto the
-/// result vocabulary, following the table in the [module docs](self). The single
-/// place the mode is interpreted; `None` means nothing to report.
+/// Maps one checker outcome for the certificate with common name `subject`, validated
+/// for the reference time `at`, onto the result vocabulary, following the table in the
+/// [module docs](self). The single place the mode is interpreted; `None` means nothing
+/// to report.
 pub fn apply_revocation(
     mode: RevocationMode,
     subject: &str,
     outcome: &Result<RevocationResult, ValidationError>,
+    at: Timestamp,
 ) -> Option<RevocationFinding> {
     let soft = match mode {
         RevocationMode::Disabled => return None,
@@ -261,6 +270,19 @@ pub fn apply_revocation(
         }
         Ok(result) => match result.status {
             RevocationStatus::Good => None,
+            RevocationStatus::Revoked if result.revoked_at.is_some_and(|t| t > at) => {
+                Some(RevocationFinding::Warning(
+                    ValidationWarning::new(
+                        ErrorCode::RevokedAfterReferenceTime,
+                        format!(
+                            "certificate revoked at {}, after the reference time {at}: valid then ({})",
+                            result.revoked_at.map_or_else(String::new, |t| t.to_string()),
+                            result.reason
+                        ),
+                    )
+                    .with_subject(subject),
+                ))
+            }
             RevocationStatus::Revoked => Some(RevocationFinding::Error(
                 ValidationError::new(
                     ErrorCode::Revoked,
@@ -304,6 +326,9 @@ mod tests {
             ..RevocationResult::unknown(Timestamp(0), "")
         }
     }
+
+    /// After the revocation time of [`result`].
+    const LATER: Timestamp = Timestamp(1_800_000_000);
 
     fn describe(finding: Option<RevocationFinding>) -> String {
         match finding {
@@ -354,14 +379,24 @@ mod tests {
             ),
         ] {
             assert_eq!(
-                describe(apply_revocation(RevocationMode::HardFail, "ee", &outcome)),
+                describe(apply_revocation(
+                    RevocationMode::HardFail,
+                    "ee",
+                    &outcome,
+                    LATER
+                )),
                 hard
             );
             assert_eq!(
-                describe(apply_revocation(RevocationMode::SoftFail, "ee", &outcome)),
+                describe(apply_revocation(
+                    RevocationMode::SoftFail,
+                    "ee",
+                    &outcome,
+                    LATER
+                )),
                 soft
             );
-            assert!(apply_revocation(RevocationMode::Disabled, "ee", &outcome).is_none());
+            assert!(apply_revocation(RevocationMode::Disabled, "ee", &outcome, LATER).is_none());
         }
     }
 
@@ -369,10 +404,51 @@ mod tests {
     fn a_subject_already_set_is_kept() {
         let error = ValidationError::new(ErrorCode::OcspUnavailable, "down").with_subject("ca");
         let Some(RevocationFinding::Error(error)) =
-            apply_revocation(RevocationMode::HardFail, "ee", &Err(error))
+            apply_revocation(RevocationMode::HardFail, "ee", &Err(error), LATER)
         else {
             panic!("expected an error")
         };
         assert_eq!(error.subject, "ca");
+    }
+
+    /// TUC_PKI_006 8a: revoked after the reference time is valid for it, in every mode
+    /// that checks, with a warning naming both times.
+    #[test]
+    fn tuc_pki_006_8a_revoked_after_the_reference_time_is_valid_then() {
+        let revoked = Ok(result(RevocationStatus::Revoked));
+        let before = Timestamp(1_764_547_199);
+        for mode in [RevocationMode::HardFail, RevocationMode::SoftFail] {
+            assert_eq!(
+                describe(apply_revocation(mode, "ee", &revoked, before)),
+                "warning ti-pki[revoked_after_reference_time] warning: certificate revoked at \
+                 2025-12-01T00:00:00Z, after the reference time 2025-11-30T23:59:59Z: valid then \
+                 (keyCompromise): \"ee\""
+            );
+        }
+    }
+
+    /// TUC_PKI_006 8b: revoked at or before the reference time is revoked; so is a
+    /// revocation without a time, which gives nothing to compare.
+    #[test]
+    fn tuc_pki_006_8b_revoked_at_or_before_the_reference_time_is_revoked() {
+        let at_revocation = Timestamp(1_764_547_200);
+        let revoked = Ok(result(RevocationStatus::Revoked));
+        let Some(RevocationFinding::Error(e)) =
+            apply_revocation(RevocationMode::SoftFail, "ee", &revoked, at_revocation)
+        else {
+            panic!("revoked at the reference time must be an error")
+        };
+        assert_eq!(e.code, ErrorCode::Revoked);
+
+        let untimed = Ok(RevocationResult {
+            revoked_at: None,
+            ..result(RevocationStatus::Revoked)
+        });
+        let Some(RevocationFinding::Error(e)) =
+            apply_revocation(RevocationMode::SoftFail, "ee", &untimed, Timestamp(0))
+        else {
+            panic!("a revocation without a time must be an error")
+        };
+        assert_eq!(e.code, ErrorCode::Revoked);
     }
 }

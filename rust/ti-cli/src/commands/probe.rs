@@ -28,6 +28,10 @@
 //!
 //! Like the Go `ti probe`, TLS is not verified: the question is reachability, and many
 //! TI services present certificates of TI-internal CAs.
+//!
+//! The endpoints are grouped by how they are reached: through the TI VPN of a Konnektor
+//! or TI-Gateway, or from the internet. Without the VPN none of the first answers, and
+//! the probe says so once for the block.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -80,8 +84,39 @@ const MAX_BODY: u64 = 1024 * 1024;
 #[derive(Clone, Debug, Deserialize)]
 struct Endpoint {
     name: String,
+    access: Access,
     kind: Kind,
     url: String,
+}
+
+/// How an endpoint is reached; part of the endpoint data, never inferred from its name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum Access {
+    /// Only through a Konnektor's or TI-Gateway's VPN.
+    TiVpn,
+    /// Directly.
+    Internet,
+}
+
+impl Access {
+    /// The order the groups are shown in.
+    const ALL: [Access; 2] = [Access::TiVpn, Access::Internet];
+
+    fn label(self) -> &'static str {
+        match self {
+            Access::TiVpn => "TI-VPN",
+            Access::Internet => "Internet",
+        }
+    }
+
+    /// Said once for the block when none of its endpoints answered.
+    fn unreachable(self) -> &'static str {
+        match self {
+            Access::TiVpn => "not reachable: no TI VPN?",
+            Access::Internet => "not reachable: no internet?",
+        }
+    }
 }
 
 /// How an endpoint is checked.
@@ -140,7 +175,18 @@ struct Report {
     environment: &'static str,
     duration_ms: u64,
     counts: Counts,
+    /// Per access path, whether any of its endpoints answered.
+    access_paths: Vec<AccessPath>,
     probes: Vec<ProbeInfo>,
+}
+
+#[derive(Serialize)]
+struct AccessPath {
+    access: Access,
+    /// False when every endpoint reached this way failed: the path itself is down (for
+    /// `ti-vpn`, no TI VPN), not the services.
+    available: bool,
+    probes: usize,
 }
 
 #[derive(Serialize)]
@@ -153,6 +199,7 @@ struct Counts {
 #[derive(Serialize)]
 struct ProbeInfo {
     name: String,
+    access: Access,
     kind: Kind,
     url: String,
     host: String,
@@ -207,11 +254,6 @@ pub fn run(env: Env, def: bool, global: &GlobalArgs, out: &Output) -> Result<Exi
             }
             let row: &mut Row = &mut rows[index];
             row.outcome = Some(outcome);
-            if text && !live_view {
-                // Not a terminal: each line once it is final.
-                let widths = widths(&rows);
-                print_line(&line(&rows[index], &widths, 0));
-            }
         }
         tick += 1;
         if live_view {
@@ -228,23 +270,56 @@ pub fn run(env: Env, def: bool, global: &GlobalArgs, out: &Output) -> Result<Exi
     if text {
         if live_view {
             live.finish(&lines(&rows, tick));
+        } else {
+            // Not a terminal: the groups once every probe is final.
+            for line in lines(&rows, tick) {
+                print_line(&line);
+            }
         }
-        print_line(&summary(&report.counts, elapsed));
+        print_line("");
+        print_line(&summary(&report, elapsed));
         return Ok(exit);
     }
     emit(out, exit, &report, |doc| {
-        let rows = report.probes.iter().map(|p| {
-            vec![
-                Line::strong(&p.name),
-                mark(p.status),
-                Line::code(&p.host),
-                Line::dim(format!("{} ms", p.duration_ms)),
-                Line::text(&p.detail),
-            ]
-        });
-        doc.table(&["SERVICE", "", "HOST", "TIME", "DETAIL"], rows.collect());
-        doc.paragraph(Line::dim(summary_plain(&report.counts, elapsed)));
+        for path in &report.access_paths {
+            doc.section(path.access.label());
+            if !path.available {
+                doc.paragraph(Line::dim(path.access.unreachable()));
+            }
+            let rows = report
+                .probes
+                .iter()
+                .filter(|p| p.access == path.access)
+                .map(|p| {
+                    vec![
+                        Line::strong(&p.name),
+                        mark(p.status),
+                        Line::code(&p.host),
+                        Line::dim(format!("{} ms", p.duration_ms)),
+                        Line::text(&p.detail),
+                    ]
+                });
+            doc.table(&["SERVICE", "", "HOST", "TIME", "DETAIL"], rows.collect());
+        }
+        doc.paragraph(Line::dim(summary_plain(&report, elapsed)));
     })
+}
+
+/// Whether any endpoint reached by `access` answered: `None` while one is still
+/// pending, or when there is none.
+fn available(rows: &[Row], access: Access) -> Option<bool> {
+    let group: Vec<&Row> = rows
+        .iter()
+        .filter(|r| r.endpoint.access == access)
+        .collect();
+    if group.is_empty() {
+        return None;
+    }
+    let mut outcomes = group.iter().map(|r| r.outcome.as_ref());
+    if outcomes.clone().any(|o| o.is_none()) {
+        return None;
+    }
+    Some(outcomes.any(|o| o.is_some_and(|o| o.status != Status::Fail)))
 }
 
 /// The endpoints of `env`, from `TI_PROBE_ENDPOINTS_PATH` or the embedded list.
@@ -442,11 +517,7 @@ fn directory(status: u16, location: &[u8]) -> (Status, String, Vec<Endpoint>) {
     let location = String::from_utf8_lossy(location);
     let authorization = location.starts_with("https://") && location.contains("client_id=");
     match status {
-        300..=399 if authorization => (
-            Status::Ok,
-            format!("owner-authenticate → {}", host(&location)),
-            Vec::new(),
-        ),
+        300..=399 if authorization => (Status::Ok, "directory owner auth".into(), Vec::new()),
         300..=399 => (
             Status::Warn,
             format!("HTTP {status}, no IDP authorization URL"),
@@ -500,6 +571,8 @@ fn catalog(env: Env, body: &[u8]) -> (Status, String, Vec<Endpoint>) {
         .into_iter()
         .map(|(id, instance)| Endpoint {
             name: id,
+            // The catalog is the internet platform's; its instances are reached the same way.
+            access: Access::Internet,
             // PoPP and VSDM are ZETA-protected; the rest is checked for any answer.
             kind: match instance.kind.as_str() {
                 "popp" | "vsdm" | "dipag" => Kind::Zeta,
@@ -582,11 +655,19 @@ fn widths(rows: &[Row]) -> (usize, usize) {
 
 const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-/// One row as a styled terminal line: `SERVICE  ✓  HOST  DETAIL  TIME`.
-fn line(row: &Row, (name_width, host_width): &(usize, usize), tick: usize) -> String {
+/// One row as a styled terminal line: `SERVICE  ✓  HOST  DETAIL  TIME`; all of it gray
+/// in a block whose access path is down.
+fn line(row: &Row, (name_width, host_width): &(usize, usize), tick: usize, gray: bool) -> String {
     let (strong, dim) = (style::EMPHASIS, style::DIM);
     let name = |tone: anstyle::Style| format!("{tone}{:name_width$}{tone:#}", row.endpoint.name);
     let host = format!("{:host_width$}", host(&row.endpoint.url));
+    if gray && let Some(o) = &row.outcome {
+        let ms = o.duration.as_millis();
+        return format!(
+            "{dim}{:name_width$}  ✗  {host}  {ms:>4} ms  {}{dim:#}",
+            row.endpoint.name, o.detail
+        );
+    }
     match &row.outcome {
         None => {
             let frame = SPINNER[tick % SPINNER.len()];
@@ -609,17 +690,50 @@ fn line(row: &Row, (name_width, host_width): &(usize, usize), tick: usize) -> St
     }
 }
 
+/// Rows sit this far in under their access path's heading.
+const INDENT: &str = "  ";
+
+/// The table: the column headings, then a block per access path, its heading flush left
+/// and its rows indented below; a block whose path is down says so on its heading, and
+/// its rows are gray.
 fn lines(rows: &[Row], tick: usize) -> Vec<String> {
     let widths = widths(rows);
     let label = style::LABEL;
     let mut lines = vec![format!(
-        "{label}{:w0$}     {:w1$}     TIME  DETAIL{label:#}",
+        "{INDENT}{label}{:w0$}     {:w1$}     TIME  DETAIL{label:#}",
         "SERVICE",
         "HOST",
         w0 = widths.0,
         w1 = widths.1
     )];
-    lines.extend(rows.iter().map(|r| line(r, &widths, tick)));
+    for access in Access::ALL {
+        let group: Vec<&Row> = rows
+            .iter()
+            .filter(|r| r.endpoint.access == access)
+            .collect();
+        if group.is_empty() {
+            continue;
+        }
+        let down = available(rows, access) == Some(false);
+        lines.push(String::new());
+        // The heading stays prominent either way; a path that is down says so after it.
+        let strong = style::EMPHASIS;
+        lines.push(if down {
+            let warn = style::WARN;
+            format!(
+                "{strong}{}{strong:#} {warn}· {}{warn:#}",
+                access.label(),
+                access.unreachable()
+            )
+        } else {
+            format!("{strong}{}{strong:#}", access.label())
+        });
+        lines.extend(
+            group
+                .iter()
+                .map(|r| format!("{INDENT}{}", line(r, &widths, tick, down))),
+        );
+    }
     lines
 }
 
@@ -630,6 +744,7 @@ fn report(env: Env, rows: &[Row], elapsed: Duration) -> Report {
             let o = r.outcome.as_ref()?;
             Some(ProbeInfo {
                 name: r.endpoint.name.clone(),
+                access: r.endpoint.access,
                 kind: r.endpoint.kind,
                 url: r.endpoint.url.clone(),
                 host: host(&r.endpoint.url),
@@ -642,6 +757,16 @@ fn report(env: Env, rows: &[Row], elapsed: Duration) -> Report {
         })
         .collect();
     let count = |s: Status| probes.iter().filter(|p| p.status == s).count();
+    let access_paths = Access::ALL
+        .into_iter()
+        .filter_map(|access| {
+            Some(AccessPath {
+                access,
+                available: available(rows, access)?,
+                probes: probes.iter().filter(|p| p.access == access).count(),
+            })
+        })
+        .collect();
     Report {
         environment: env.as_str(),
         duration_ms: u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX),
@@ -650,21 +775,35 @@ fn report(env: Env, rows: &[Row], elapsed: Duration) -> Report {
             warn: count(Status::Warn),
             fail: count(Status::Fail),
         },
+        access_paths,
         probes,
     }
 }
 
-fn summary_plain(counts: &Counts, elapsed: Duration) -> String {
+/// ` · TI-VPN not reachable` for each access path that is down.
+fn paths_down(report: &Report) -> String {
+    use std::fmt::Write as _;
+    let mut down = String::new();
+    for path in report.access_paths.iter().filter(|p| !p.available) {
+        let _ = write!(down, " · {} not reachable", path.access.label());
+    }
+    down
+}
+
+fn summary_plain(report: &Report, elapsed: Duration) -> String {
+    let counts = &report.counts;
     format!(
-        "{} ok · {} warn · {} failed · {:.1} s",
+        "{} ok · {} warn · {} failed{} · {:.1} s",
         counts.ok,
         counts.warn,
         counts.fail,
+        paths_down(report),
         elapsed.as_secs_f64()
     )
 }
 
-fn summary(counts: &Counts, elapsed: Duration) -> String {
+fn summary(report: &Report, elapsed: Duration) -> String {
+    let counts = &report.counts;
     let (good, warn, bad, dim) = (style::GOOD, style::WARN, style::BAD, style::DIM);
     let failed = if counts.fail > 0 {
         format!("{bad}{} failed{bad:#}", counts.fail)
@@ -677,8 +816,9 @@ fn summary(counts: &Counts, elapsed: Duration) -> String {
         "0 warn".to_owned()
     };
     format!(
-        "{good}{} ok{good:#} · {warned} · {failed} {dim}· {:.1} s{dim:#}",
+        "{good}{} ok{good:#} · {warned} · {failed}{} {dim}· {:.1} s{dim:#}",
         counts.ok,
+        paths_down(report),
         elapsed.as_secs_f64()
     )
 }
@@ -697,6 +837,31 @@ mod tests {
                 list.iter().all(|e| e.url.starts_with("https://")),
                 "{env:?}"
             );
+        }
+    }
+
+    /// Lowercase kebab-case names, `<service>-<n>` for numbered instances, the IDP named
+    /// after the network it serves; and each IDP in its own block.
+    #[test]
+    fn endpoint_names_follow_the_convention() {
+        let all: HashMap<String, Vec<Endpoint>> = serde_json::from_str(ENDPOINTS).unwrap();
+        let kebab = |name: &str| {
+            !name.is_empty()
+                && name.split('-').all(|part| {
+                    !part.is_empty()
+                        && part
+                            .bytes()
+                            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+                })
+        };
+        for (env, list) in &all {
+            for e in list {
+                assert!(kebab(&e.name), "{env}: {}", e.name);
+            }
+            let access = |name: &str| list.iter().find(|e| e.name == name).map(|e| e.access);
+            assert_eq!(access("idpd-ti"), Some(Access::TiVpn), "{env}");
+            assert_eq!(access("idpd-internet"), Some(Access::Internet), "{env}");
+            assert_eq!(access("catalog"), Some(Access::Internet), "{env}");
         }
     }
 
@@ -784,7 +949,7 @@ mod tests {
         let idp = b"https://idp-ref.app.ti-dienste.de/auth?response_type=code&client_id=GEMx";
         let (status, detail, _) = judge(Kind::Directory, Env::Ref, "x", 302, idp);
         assert_eq!(status, Status::Ok);
-        assert_eq!(detail, "owner-authenticate → idp-ref.app.ti-dienste.de");
+        assert_eq!(detail, "directory owner auth");
         let (status, detail, _) = judge(Kind::Directory, Env::Ref, "x", 302, b"/login");
         assert_eq!(
             (status, detail.as_str()),
