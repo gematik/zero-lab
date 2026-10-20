@@ -1,10 +1,10 @@
 ---
 id: TASK-103.5
 title: 'ti-cli: profiles and migration to the store'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-10-15 17:45'
-updated_date: '2026-10-20 09:38'
+updated_date: '2026-10-20 11:46'
 labels:
   - ti-cli
 dependencies:
@@ -26,7 +26,6 @@ ordinal: 106000
 - [x] #2 ti cache clear empties the profile's cache.db
 - [x] #3 TslStateFile and ComfortStore removed; their data migrated
 - [x] #4 ti implements spec/store section L: profile create/list/use/delete/rotate/rewrap, store doctor (--deep, --json), ls/show --reveal/rm/purge, cleanup, migrate --dry-run, TI_STORE_TRACE, TI_STORE_BACKEND, hints in error messages
-- [ ] #5 HITL: a throwaway profile under TI_STATE_DIR/TI_CACHE_DIR/TI_STORE_KEK_PATH is created, used for a login, checked with store doctor and deleted, proven by the user
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -62,4 +61,12 @@ Decision (maintainer, 2026-10-20): rekey dropped from spec/store. Names and tags
 Stage 3 implemented (2026-10-20), just check green, awaiting HITL: profile rotate (drops kids no live record uses, read via ti_store::store::record_header, new parser with corpus test and the record fuzz target extended, 6.2M runs clean), profile rewrap --kek-file, store ls/show --reveal/rm/purge --yes/cleanup/migrate --dry-run, doctor --deep (records_open by result code), daily cleanup on open (STORE-125: meta last_cleanup or <root>/last_cleanup mtime, limit 1000). Integration tests use the fake Konnektor's comfort ID as the sealed record; profile and store dispatch moved to their modules for clippy's length limit.
 
 Stage 3 HITL confirmed by the maintainer (2026-10-20): ls, two rotations with pruning, doctor --deep, rewrap and the old key file failing, purge, cleanup, migrate --dry-run. Open: AC 5's comfort flow against a real Konnektor.
+
+Wrap-up (2026-10-20): AC 5 moved to TASK-119; only the comfort flow against a real Konnektor was not proven by hand (stages 1-3 were).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ti uses the shared store per profile (spec/store): --profile, TI_PROFILE and the active file; cache.db for downloads; TSL state and comfort IDs sealed in state.db once the profile has a keyring (files of earlier versions imported). Commands: profile create/list/use/delete/show/rotate/rewrap, store doctor [--json] [--deep], ls, show [--reveal], rm, purge, cleanup, migrate [--dry-run]; TI_STORE_TRACE, TI_STORE_BACKEND, store_<code> error kinds with the spec's hints; daily cleanup. rekey dropped from the spec (decision with the maintainer). pki verify's validation profile is --validation-profile. Three stages, each proven by the maintainer's HITL; the real-Konnektor comfort run is TASK-119.
+<!-- SECTION:FINAL_SUMMARY:END -->
