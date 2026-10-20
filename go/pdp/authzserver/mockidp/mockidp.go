@@ -40,12 +40,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"uuid"
 
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
-	"github.com/segmentio/ksuid"
 	"golang.org/x/oauth2"
 )
 
@@ -125,7 +125,7 @@ func newSigningKey() (jwk.Key, error) {
 	if err != nil {
 		return nil, err
 	}
-	_ = key.Set(jwk.KeyIDKey, ksuid.New().String())
+	_ = key.Set(jwk.KeyIDKey, uuid.NewV4().String())
 	_ = key.Set(jwk.AlgorithmKey, jwa.ES256())
 	return key, nil
 }
@@ -202,7 +202,7 @@ func (p *provider) handleAuthSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing redirect_uri", http.StatusBadRequest)
 		return
 	}
-	code := ksuid.New().String()
+	code := uuid.NewV4().String()
 	p.mu.Lock()
 	p.codes[code] = pendingAuth{
 		clientID:      r.FormValue("client_id"),

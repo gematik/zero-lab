@@ -1,11 +1,8 @@
 module github.com/gematik/zero-lab/go/dpop
 
-go 1.26.4
+go 1.27.0
 
-require (
-	github.com/lestrrat-go/jwx/v3 v3.3.0
-	github.com/segmentio/ksuid v1.0.4
-)
+require github.com/lestrrat-go/jwx/v3 v3.3.0
 
 require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect

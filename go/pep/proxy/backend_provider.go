@@ -27,11 +27,11 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
-	"github.com/segmentio/ksuid"
 	"golang.org/x/oauth2"
 )
 
@@ -138,8 +138,8 @@ func (b *providerBackend) StartLogin(ctx context.Context, sess *Session, idpIss,
 		return LoginStart{}, err
 	}
 	sess.IDPIss = c.Issuer()
-	sess.State = ksuid.New().String()
-	sess.Nonce = ksuid.New().String()
+	sess.State = uuid.NewV4().String()
+	sess.Nonce = uuid.NewV4().String()
 	sess.CodeVerifier = oauth2.GenerateVerifier()
 	sess.CodeChallengeMethod = "S256"
 

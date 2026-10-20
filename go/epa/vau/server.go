@@ -33,9 +33,9 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
+	"uuid"
 
 	"github.com/fxamacker/cbor/v2"
-	"github.com/segmentio/ksuid"
 )
 
 type ChannelState struct {
@@ -172,7 +172,7 @@ func (s *Server) HandleMessage1(w http.ResponseWriter, r *http.Request) {
 		AEAD_ct:     encryptedSignedPublicKeys,
 	}
 
-	vauCid := "/" + ksuid.New().String()
+	vauCid := "/" + uuid.NewV4().String()
 
 	w.Header().Set("Content-Type", "application/cbor")
 	w.Header().Set("VAU-CID", vauCid)

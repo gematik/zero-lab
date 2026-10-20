@@ -35,10 +35,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"uuid"
 
 	"github.com/gematik/zero-lab/go/epa/ti"
 	"github.com/gematik/zero-lab/go/epa/vau"
-	"github.com/google/uuid"
 )
 
 type ProvidersError struct {
@@ -402,7 +402,7 @@ func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNum
 
 	if r2.Header.Get("x-request-id") == "" {
 		// set request id to uuid4
-		r2.Header.Set("x-request-id", uuid.New().String())
+		r2.Header.Set("x-request-id", uuid.NewV4().String())
 	}
 
 	slog.Info("Forwarding request to VAU", "method", r2.Method, "path", r2.URL.String(), "headers", r2.Header, "session_url", session.BaseURL)
@@ -706,6 +706,6 @@ func copyAndPrepareHeaders(src, dst http.Header) {
 
 	if dst.Get("x-request-id") == "" {
 		// set request id to uuid4
-		dst.Set("x-request-id", uuid.New().String())
+		dst.Set("x-request-id", uuid.NewV4().String())
 	}
 }

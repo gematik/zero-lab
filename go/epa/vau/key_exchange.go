@@ -27,6 +27,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/elliptic"
+	"crypto/hkdf"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -40,7 +41,6 @@ import (
 
 	"github.com/cloudflare/circl/kem/kyber/kyber768"
 	"github.com/fxamacker/cbor/v2"
-	"golang.org/x/crypto/hkdf"
 )
 
 type KeyPairs struct {
@@ -309,11 +309,9 @@ func PostMessage[M any](httpClient *http.Client, url string, requestMessage any)
 func KemKDF1(ss_e_ecdh, ss_e_kyber768 []byte) (k1_c2s []byte, k1_s2c []byte, err error) {
 	ss := append(ss_e_ecdh, ss_e_kyber768...)
 
-	hkdf := hkdf.New(sha256.New, ss, nil, []byte(""))
-	derived := make([]byte, 2*32)
-	_, err = io.ReadFull(hkdf, derived)
+	derived, err := hkdf.Key(sha256.New, ss, nil, "", 2*32)
 	if err != nil {
-		return nil, nil, fmt.Errorf("reading from HKDF: %w", err)
+		return nil, nil, fmt.Errorf("deriving K1 with HKDF: %w", err)
 	}
 
 	return derived[:32], derived[32:], nil
@@ -321,12 +319,9 @@ func KemKDF1(ss_e_ecdh, ss_e_kyber768 []byte) (k1_c2s []byte, k1_s2c []byte, err
 
 func KemKDF2(ecdhSS1, kemSS1, ecdhSS2, kemSS2 []byte) (k2_c2s_key_confirmation, k2_c2s_app_data, k2_s2c_key_confirmation, k2_s2c_app_data, key_id []byte, err error) {
 	ss := append(append(ecdhSS1, kemSS1...), append(ecdhSS2, kemSS2...)...)
-	hkdf := hkdf.New(sha256.New, ss, nil, []byte(""))
-	// read 5x32 bytes from hkdf
-	derived := make([]byte, 5*32)
-	_, err = io.ReadFull(hkdf, derived)
+	derived, err := hkdf.Key(sha256.New, ss, nil, "", 5*32)
 	if err != nil {
-		return nil, nil, nil, nil, nil, fmt.Errorf("reading from HKDF: %w", err)
+		return nil, nil, nil, nil, nil, fmt.Errorf("deriving K2 with HKDF: %w", err)
 	}
 	return derived[:32], derived[32:64], derived[64:96], derived[96:128], derived[128:], nil
 }

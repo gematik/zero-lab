@@ -1,6 +1,6 @@
 module github.com/gematik/zero-lab/go/pep
 
-go 1.26.4
+go 1.27.0
 
 require (
 	github.com/gematik/zero-lab/go/dpop v0.1.2-0.20260908072016-2ca75aa218e2
@@ -10,7 +10,6 @@ require (
 	github.com/gematik/zero-lab/go/oidf v0.50.2-0.20260908072016-2ca75aa218e2
 	github.com/joho/godotenv v1.5.1
 	github.com/lestrrat-go/jwx/v3 v3.3.0
-	github.com/segmentio/ksuid v1.0.4
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	golang.org/x/oauth2 v0.37.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -37,6 +36,7 @@ require (
 	github.com/lestrrat-go/httprc/v3 v3.0.6 // indirect
 	github.com/lestrrat-go/option/v2 v2.0.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
+	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/valyala/fastjson v1.6.10 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect

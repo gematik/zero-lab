@@ -1,4 +1,4 @@
-FROM golang:1.26 AS build
+FROM golang:1.27 AS build
 ARG VERSION=dev
 # GO_TAGS is empty for production. Set GO_TAGS=mockidp to bake in the co-hosted non-prod mock OpenID Provider
 # (the e2e harness does this); production images leave it empty so the mock is not compiled at all.

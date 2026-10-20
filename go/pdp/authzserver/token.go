@@ -29,11 +29,11 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwt"
-	"github.com/segmentio/ksuid"
 )
 
 const (
@@ -187,7 +187,7 @@ func (s *Server) tokenEndpointClientCredentials(w http.ResponseWriter, r *http.R
 	}
 
 	session := &AuthzServerSession{
-		ID:             ksuid.New().String(),
+		ID:             uuid.NewV4().String(),
 		CreatedAt:      time.Now(),
 		ClientID:       client.ClientID,
 		Scopes:         strings.Split(scope, " "),
