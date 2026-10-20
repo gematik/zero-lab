@@ -135,6 +135,9 @@ pub enum ErrorCode {
     /// Warning only: the TSL lists the issuing CA as revoked, but the end entity was
     /// issued before its `StatusStartingTime`, so it is treated as usual (Tab_PKI_271).
     IssuedBeforeCaRevocation,
+    /// Warning only: OCSP reports the certificate revoked, but its `revocationTime` lies
+    /// after the reference time, so it was valid then (TUC_PKI_006 variant 8a).
+    RevokedAfterReferenceTime,
 }
 
 impl ErrorCode {
@@ -163,6 +166,7 @@ impl ErrorCode {
         ErrorCode::CertTypeUnchecked,
         ErrorCode::CaRevokedInTsl,
         ErrorCode::IssuedBeforeCaRevocation,
+        ErrorCode::RevokedAfterReferenceTime,
     ];
 
     /// The stable string form, as used in logs and by the Go implementation.
@@ -191,6 +195,7 @@ impl ErrorCode {
             ErrorCode::CertTypeUnchecked => "cert_type_unchecked",
             ErrorCode::CaRevokedInTsl => "ca_revoked_in_tsl",
             ErrorCode::IssuedBeforeCaRevocation => "issued_before_ca_revocation",
+            ErrorCode::RevokedAfterReferenceTime => "revoked_after_reference_time",
         }
     }
 }
@@ -331,8 +336,9 @@ mod tests {
             ErrorCode::CertTypeUnchecked => 20,
             ErrorCode::CaRevokedInTsl => 21,
             ErrorCode::IssuedBeforeCaRevocation => 22,
+            ErrorCode::RevokedAfterReferenceTime => 23,
         };
-        assert_eq!(ErrorCode::ALL.len(), 23);
+        assert_eq!(ErrorCode::ALL.len(), 24);
         for (i, code) in ErrorCode::ALL.iter().enumerate() {
             assert_eq!(place(*code), i, "{code}");
         }

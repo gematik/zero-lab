@@ -10,11 +10,27 @@
     },
     "card": {
       "$ref": "#/$defs/card"
+    },
+    "telematik_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The Telematik-ID in the card's ECC C.AUT, for an HBA or SMC-B; null for other cards or when C.AUT cannot be read."
+    },
+    "pins": {
+      "type": "array",
+      "description": "The card type's user PINs (PIN.SMC for an SMC-B, PIN.CH and PIN.QES for an HBA, none for an SMC-KT): whether one must be entered before signing.",
+      "items": {
+        "$ref": "#/$defs/pin"
+      }
     }
   },
   "required": [
     "schema",
-    "card"
+    "card",
+    "telematik_id",
+    "pins"
   ],
   "additionalProperties": false,
   "$defs": {
@@ -88,6 +104,55 @@
         "certificate_expiration",
         "cos_version",
         "object_system_version"
+      ],
+      "additionalProperties": false
+    },
+    "pin": {
+      "type": "object",
+      "properties": {
+        "pin": {
+          "enum": [
+            "PIN.SMC",
+            "PIN.CH",
+            "PIN.QES"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "VERIFIED",
+            "VERIFIABLE",
+            "TRANSPORT_PIN",
+            "EMPTY_PIN",
+            "BLOCKED",
+            "DISABLED",
+            null
+          ],
+          "description": "The Konnektor's PinStatus (CardService GetPinStatus); null when the query failed or the Konnektor named none."
+        },
+        "left_tries": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Tries left before the PIN is blocked, if the Konnektor says."
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Why the status could not be read."
+        }
+      },
+      "required": [
+        "pin",
+        "status",
+        "left_tries",
+        "error"
       ],
       "additionalProperties": false
     }

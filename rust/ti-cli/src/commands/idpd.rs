@@ -31,6 +31,7 @@ use ti_idpd::authenticator;
 use ti_idpd::{Idp, Warning};
 
 use super::idp_trust::{CertificateInfo, IdpTrust, certificate_infos};
+use crate::block::block_on;
 use crate::cli::{GlobalArgs, IdpdAuthenticateArgs};
 use crate::error::{CliError, Exit};
 use crate::http;
@@ -98,7 +99,7 @@ pub fn authenticate(
     let transport = http::Logged::new(&global.net, out)?;
     out.verbose(1, format_args!("IDP-Dienst {}", idp.base_url()));
     let trust = IdpTrust::new(args.idp_unverified, args.env, global, out);
-    let done = authenticator::authenticate(
+    let done = block_on(authenticator::authenticate(
         &transport,
         &idp,
         &authenticator::Identity {
@@ -108,7 +109,7 @@ pub fn authenticate(
         &args.auth_url,
         SystemClock.now(),
         &trust,
-    )
+    ))
     .map_err(|error| trust.take_error().unwrap_or(CliError::Idpd(error)))?;
     let claim = |name: &str| {
         done.challenge_claims

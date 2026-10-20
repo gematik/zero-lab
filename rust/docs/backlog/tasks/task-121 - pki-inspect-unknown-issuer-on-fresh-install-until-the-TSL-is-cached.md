@@ -1,9 +1,10 @@
 ---
 id: TASK-121
 title: 'pki inspect: unknown issuer on fresh install until the TSL is cached'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-14 07:25'
+updated_date: '2026-10-20 18:53'
 labels:
   - ti-cli
   - bug
@@ -27,7 +28,13 @@ The result is misleading: the CA is trusted, the trust material is just not load
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 on a fresh install (empty cache), inspect of a ref certificate issued by a TSL CA does not claim the issuer is untrusted
-- [ ] #2 when the TSL is not available (offline / airgap without cache), the tree says the TSL is not loaded and points to the command that fetches it
-- [ ] #3 a test with an empty cache covers the inspect trust tree
+- [x] #1 on a fresh install (empty cache), inspect of a ref certificate issued by a TSL CA does not claim the issuer is untrusted
+- [x] #2 when the TSL is not available (offline / airgap without cache), the tree says the TSL is not loaded and points to the command that fetches it
+- [x] #3 a test with an empty cache covers the inspect trust tree
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+pki inspect stays offline. Without a cached TSL, a missing issuer in the trust tree reads "TSL not loaded, its CAs unknown; ti pki tsl show --env ENV" instead of "issuer not among the trusted CAs"; with a TSL loaded the old message stays. Test inspect_without_a_cached_tsl_says_the_tsl_is_not_loaded (fresh cache). Checked by hand: after tsl show --env ref, inspect shows the chain up to GEM.RCA5 TEST-ONLY.
+<!-- SECTION:FINAL_SUMMARY:END -->

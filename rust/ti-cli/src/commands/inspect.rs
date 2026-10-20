@@ -28,7 +28,7 @@ use std::path::Path;
 use serde::Serialize;
 use ti_pki::key::{KeyStatus, classify_key};
 use ti_pki::load::SystemClock;
-use ti_pki::{Clock, Timestamp};
+use ti_pki::{Clock, Env, Timestamp};
 use x509_cert::der::oid::ObjectIdentifier;
 
 use crate::cli::{Environment, GlobalArgs};
@@ -241,22 +241,24 @@ pub fn show(
 /// For each of `certs`, the path to a trusted root as the trust material suggests it:
 /// built from the cache or the embedded roots (never the network), the other
 /// certificates of the file and the TSL's CAs, by name and key identifier only. Nothing
-/// is validated; `pki verify` does that.
+/// is validated; `pki verify` does that. Without a cached TSL its CAs are unknown, so
+/// an issuer that is missing then is reported as not loaded, not as untrusted.
 fn trees(
     certs: &[ti_pki::Certificate],
     global: &GlobalArgs,
     out: &Output,
     now: Timestamp,
 ) -> Vec<Vec<TreeRow>> {
-    let store = (|| {
-        let (env, _) = super::verify::environment(Environment::Auto, certs, now).ok()?;
+    let env = super::verify::environment(Environment::Auto, certs, now)
+        .ok()
+        .map(|(env, _)| env);
+    let material = env.and_then(|env| {
         let session = Session::new(global, true, out).ok()?;
         let config = ti_pki::TrustConfig::preset(env);
-        session
-            .load(&config, env.tier(), None)
-            .ok()
-            .map(|m| m.store)
-    })();
+        session.load(&config, env.tier(), None).ok()
+    });
+    let tsl_loaded = material.as_ref().is_some_and(|m| m.info.tsl.is_some());
+    let store = material.map(|m| m.store);
     certs
         .iter()
         .map(|cert| {
@@ -274,15 +276,32 @@ fn trees(
                 Some(Err(e)) => (e.partial, false),
                 None => (vec![cert.clone()], false),
             };
-            super::chain_tree(
+            let mut rows = super::chain_tree(
                 &chain,
                 complete,
                 now,
                 |_| Line::default(),
                 |_| Line::default(),
-            )
+            );
+            if !complete
+                && !tsl_loaded
+                && let Some(missing) = rows.last_mut()
+            {
+                missing.detail = tsl_not_loaded(env);
+            }
+            rows
         })
         .collect()
+}
+
+/// The missing issuer's note when no TSL is cached: its CAs may well be trusted, and the
+/// command that loads them.
+fn tsl_not_loaded(env: Option<Env>) -> Line {
+    let fetch = match env {
+        Some(env) => format!("ti pki tsl show --env {}", env.as_str()),
+        None => "ti pki tsl show --env ENV".to_owned(),
+    };
+    Line::status(Tone::Warn, "TSL not loaded, its CAs unknown; ").and_code(fetch)
 }
 
 /// The key of `cert` in words, e.g. `ECDSA brainpoolP256r1`.

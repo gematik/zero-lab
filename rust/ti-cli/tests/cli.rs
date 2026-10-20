@@ -188,6 +188,37 @@ fn timestamps_in_the_system_zone() {
     assert!(text.contains("2023-11-10 00:00 CET"), "{text}");
 }
 
+/// On a fresh install no TSL is cached, so the issuing CA of a TSL-listed certificate is
+/// unknown to `inspect`, which never downloads; it must not call that CA untrusted, and
+/// it names the command that loads the TSL.
+#[test]
+fn inspect_without_a_cached_tsl_says_the_tsl_is_not_loaded() {
+    let dir = std::env::temp_dir().join(format!("ti-tests-inspect-fresh-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let out = Command::new(env!("CARGO_BIN_EXE_ti"))
+        .args(["--format", "text", "pki", "inspect"])
+        .arg(fixture("smcb-ee-test-only.pem"))
+        .env_remove("TI_ENV")
+        .env("TI_PROFILE", "default")
+        .env_remove("TI_STATE_DIR")
+        .env_remove("TI_STORE_KEK_PATH")
+        .env_remove("TI_STORE_BACKEND")
+        .env("TI_CACHE_DIR", dir.join("cache"))
+        .env("XDG_STATE_HOME", dir.join("state"))
+        .env("NO_COLOR", "1")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(text.contains("? GEM.SMCB-CA51 TEST-ONLY"), "{text}");
+    assert!(
+        text.contains("TSL not loaded, its CAs unknown; ti pki tsl show --env ref"),
+        "{text}"
+    );
+    assert!(!text.contains("not among the trusted CAs"), "{text}");
+}
+
 #[test]
 fn inspect_prints_plain_text_when_piped() {
     let out = ti(&["pki", "inspect", &fixture("admission-1.pem")]);

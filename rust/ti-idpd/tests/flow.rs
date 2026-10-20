@@ -42,6 +42,16 @@ use ti_idpd::trust::{CertificateTrust, Checked, IdpCertificate, Unverified};
 use ti_idpd::{Error, Idp, Warning, challenge, discovery};
 use ti_pki::Certificate;
 
+/// The flow awaits only the signer, which answers at once here: one poll completes it.
+fn ready<F: std::future::Future>(future: F) -> F::Output {
+    let mut future = std::pin::pin!(future);
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    match future.as_mut().poll(&mut context) {
+        std::task::Poll::Ready(output) => output,
+        std::task::Poll::Pending => panic!("a synchronous signer never leaves the flow pending"),
+    }
+}
+
 const NOW: u64 = 1_760_000_000;
 const AUTH_URL: &str = "https://idp.test/sign_response?client_id=gematikTestPs&response_type=code&redirect_uri=https%3A%2F%2Frp.test%2Fcb&state=s1&nonce=n1&scope=openid+e-rezept&code_challenge=abc&code_challenge_method=S256";
 
@@ -285,6 +295,67 @@ impl Transport for FakeIdp {
     }
 }
 
+/// A card's key behind the Konnektor: it answers asynchronously, here after being polled
+/// once without an answer, as a SOAP call would leave the flow waiting.
+struct AwaitedKey(SoftwareKey<Backend>);
+
+impl jwz::keys::JwsKey for AwaitedKey {
+    fn algorithm(&self) -> jwz::jwa::SignatureAlgorithm {
+        self.0.algorithm()
+    }
+}
+
+impl jwz::keys::AsyncSigner for AwaitedKey {
+    fn sign_async<'a>(
+        &'a self,
+        msg: &'a [u8],
+    ) -> jwz::crypto::asynchronous::BoxFuture<'a, Result<jwz::keys::Signature, jwz::Error>> {
+        let mut waited = false;
+        Box::pin(std::future::poll_fn(move |_| {
+            if waited {
+                std::task::Poll::Ready(self.0.try_sign(msg))
+            } else {
+                waited = true;
+                std::task::Poll::Pending
+            }
+        }))
+    }
+}
+
+/// Polls `future` until it is ready; the signers here need no wake-up to make progress.
+fn spin<F: std::future::Future>(future: F) -> F::Output {
+    let mut future = std::pin::pin!(future);
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    loop {
+        if let std::task::Poll::Ready(output) = future.as_mut().poll(&mut context) {
+            return output;
+        }
+    }
+}
+
+/// The flow takes an asynchronous signer, as a card at the Konnektor is, and waits for it.
+#[test]
+fn an_asynchronous_signer_answers_the_challenge() {
+    let idp = FakeIdp::new(Behaviour::default());
+    let (key, cert) = card();
+    let key = AwaitedKey(key);
+    let identity = Identity {
+        signer: &key,
+        certificate_der: &cert,
+    };
+    let done = spin(authenticator::authenticate(
+        &idp,
+        &Idp::new("https://idp.test/"),
+        &identity,
+        AUTH_URL,
+        NOW,
+        &Unverified,
+    ))
+    .unwrap();
+    assert_eq!(done.redirect.code, "CODE.jwe.value");
+    assert_eq!(idp.posted.borrow().len(), 1);
+}
+
 #[test]
 fn the_flow_yields_the_code_and_posts_a_well_formed_signed_challenge() {
     let idp = FakeIdp::new(Behaviour::default());
@@ -293,14 +364,14 @@ fn the_flow_yields_the_code_and_posts_a_well_formed_signed_challenge() {
         signer: &key,
         certificate_der: &cert,
     };
-    let done = authenticator::authenticate(
+    let done = ready(authenticator::authenticate(
         &idp,
         &Idp::new("https://idp.test/"),
         &identity,
         AUTH_URL,
         NOW,
         &Unverified,
-    )
+    ))
     .unwrap();
     assert_eq!(done.redirect.code, "CODE.jwe.value");
     assert_eq!(done.redirect.state.as_deref(), Some("s1"));
@@ -369,7 +440,14 @@ fn the_signed_challenge_nests_the_challenge_under_the_card_certificate() {
     )
     .unwrap()
     .metadata;
-    let error = challenge::respond(&challenge, &es256, &cert, &idp.idp_enc, &metadata).unwrap_err();
+    let error = ready(challenge::respond(
+        &challenge,
+        &es256,
+        &cert,
+        &idp.idp_enc,
+        &metadata,
+    ))
+    .unwrap_err();
     assert!(
         matches!(
             error,
@@ -390,14 +468,14 @@ fn the_idps_refusals_are_reported_with_their_gematik_fields() {
         certificate_der: &cert,
     };
     let idp = FakeIdp::new(Behaviour::RefuseChallengeInRedirect);
-    let error = authenticator::authenticate(
+    let error = ready(authenticator::authenticate(
         &idp,
         &Idp::new("https://idp.test"),
         &identity,
         AUTH_URL,
         NOW,
         &Unverified,
-    )
+    ))
     .unwrap_err();
     let Error::Idp(refusal) = error else {
         panic!("{error}");
@@ -416,14 +494,14 @@ fn the_idps_refusals_are_reported_with_their_gematik_fields() {
     );
 
     let idp = FakeIdp::new(Behaviour::RefuseChallengeWithBody);
-    let error = authenticator::authenticate(
+    let error = ready(authenticator::authenticate(
         &idp,
         &Idp::new("https://idp.test"),
         &identity,
         AUTH_URL,
         NOW,
         &Unverified,
-    )
+    ))
     .unwrap_err();
     let Error::Idp(refusal) = error else {
         panic!("{error}");
@@ -444,14 +522,14 @@ fn a_challenge_that_does_not_verify_or_has_expired_is_refused() {
         (Behaviour::ChallengeExpired, "challenge validity"),
     ] {
         let idp = FakeIdp::new(behaviour);
-        let error = authenticator::authenticate(
+        let error = ready(authenticator::authenticate(
             &idp,
             &Idp::new("https://idp.test"),
             &identity,
             AUTH_URL,
             NOW,
             &Unverified,
-        )
+        ))
         .unwrap_err();
         assert!(
             matches!(error, Error::Jose { what: w, .. } if w == what),
@@ -507,14 +585,14 @@ fn both_idp_certificates_go_to_the_trust_check_and_verified_ones_leave_no_warnin
         answer: Ok(Checked::Verified),
         seen: RefCell::new(Vec::new()),
     };
-    let done = authenticator::authenticate(
+    let done = ready(authenticator::authenticate(
         &idp,
         &Idp::new("https://idp.test"),
         &identity,
         AUTH_URL,
         NOW,
         &trust,
-    )
+    ))
     .unwrap();
     assert!(done.warnings.is_empty());
     let seen = trust.seen.borrow();
@@ -544,14 +622,14 @@ fn a_refused_idp_certificate_stops_the_flow_before_the_card_signs() {
         answer: Err("revoked".into()),
         seen: RefCell::new(Vec::new()),
     };
-    let error = authenticator::authenticate(
+    let error = ready(authenticator::authenticate(
         &idp,
         &Idp::new("https://idp.test"),
         &identity,
         AUTH_URL,
         NOW,
         &trust,
-    )
+    ))
     .unwrap_err();
     assert!(
         matches!(&error, Error::Untrusted { which: IdpCertificate::DiscoverySigner, detail } if detail == "revoked"),
@@ -576,14 +654,14 @@ fn puk_idp_sig_must_come_with_its_own_certificate() {
         (Behaviour::IdpSigX5cOfOtherKey, "another key"),
     ] {
         let idp = FakeIdp::new(behaviour);
-        let error = authenticator::authenticate(
+        let error = ready(authenticator::authenticate(
             &idp,
             &Idp::new("https://idp.test"),
             &identity,
             AUTH_URL,
             NOW,
             &Unverified,
-        )
+        ))
         .unwrap_err();
         assert!(
             matches!(&error, Error::Malformed { what: "PuK_IDP_SIG", detail: d } if d.contains(detail)),

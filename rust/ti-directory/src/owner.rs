@@ -101,7 +101,7 @@ pub fn token(response: &Response) -> Result<AccessToken, Error> {
 /// # Errors
 ///
 /// The first failing step's [`Error`].
-pub fn login<T: Transport>(
+pub async fn login<T: Transport>(
     transport: &T,
     directory: &Directory,
     identity: &Identity<'_>,
@@ -122,7 +122,8 @@ pub fn login<T: Transport>(
         &authorization_url,
         now,
         trust,
-    )?;
+    )
+    .await?;
     let request = sign_in(directory, &authenticated.redirect)?;
     let token = token(&send("signin-gematik-idp-dienst", &request)?)?;
     Ok(Login {

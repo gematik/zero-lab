@@ -9,6 +9,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-cli
 
+#### security
+- rustls-webpki 0.103.16 and webpki-root-certs 1.0.10: certificate paths through the
+  distrusted emSign intermediates and the emSign ECC Root CA - G3 are no longer accepted
+  for Konnektor and download TLS (RUSTSEC-2026-0382, RUSTSEC-2026-0383).
+
 #### added
 - Store profiles shared with the other TI tools (spec/store): `--profile`, `TI_PROFILE`,
   `TI_STATE_DIR`, `TI_STORE_KEK_PATH`, `TI_STORE_BACKEND`. `ti profile create` makes a
@@ -33,6 +38,28 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `pki verify --nist-only` says in its help that the chain must reach a root whose key is
   not brainpool, unlike curl and Java, which take a TSL CA of `tsl bundle --nist-only`
   as an anchor.
+- `pki inspect` without a cached TSL no longer calls a TSL-listed issuer untrusted: the
+  trust tree says the TSL is not loaded and names `ti pki tsl show --env ENV`, which
+  loads it. `inspect` still never downloads.
+- `probe` groups the endpoints by access path, TI-VPN and Internet, and says once when
+  none of the TI-VPN block answers (`access_paths[].available` in JSON) instead of a row
+  of failures; each probe carries `access`. Endpoint names are lowercase kebab-case
+  (`idpd-ti`, `fhir-directory`, `erx`, `epa-1`, `popp`, `catalog`), and the internet IDP
+  is probed as `idpd-internet`. `TI_PROBE_ENDPOINTS_PATH` files need `access`.
+- `connector get cards` and `get certificates` show each card's terminal (CtId and slot);
+  handles and terminal IDs longer than 20 characters are shortened in the tables of
+  `get cards`, `get certificates`, `get identities` and `get expiration`
+  (`0a1b2c3d…7e8f9a0b`), whole with `-v` and in JSON.
+- `connector get certificates` names the subject and Telematik-ID once above the table
+  when every certificate of the card carries the same, instead of in every row.
+- `connector describe card` shows the Telematik-ID of an HBA or SMC-B (from its C.AUT;
+  `telematik_id` in JSON), the insert time in local time and the certificates' expiry
+  as `valid until` with the date alone. It shows whether each user PIN is verified, needs entry (with
+  the tries left), is still a transport PIN or is blocked (CardService GetPinStatus);
+  the JSON has `pins`.
+- `pki verify --at` judges the OCSP status at that time: a certificate revoked since is
+  valid then, with the warning `revoked_after_reference_time`; the revocation line says
+  that OCSP answered now and was judged at `--at`.
 
 ### ti-idpd
 
@@ -44,8 +71,16 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `Discovery::warnings` is gone, `Discovery::signer_chain_der` is new.
 - `PuK_IDP_SIG` must carry `x5c` with a certificate for the JWK's key
   (`discovery::key_certificates`).
+- The card signs asynchronously: `authenticator::Identity::signer` is a
+  `jwz::keys::AsyncSigner`, so a card at the Konnektor signs without blocking;
+  `authenticator::authenticate` and `challenge::respond` are `async`. Every `Signer` is
+  an `AsyncSigner`, and with one the future is ready at its first poll (TASK-60).
 
 ### ti-directory
+
+#### changed
+- `owner::login` is `async`: it awaits the IDP-Dienst flow's asynchronous signer
+  (ti-idpd, TASK-60).
 
 #### added
 - New crate: the gematik FHIR-Directory's Auth-Service (gemSpec_VZD_FHIR_Directory
@@ -211,6 +246,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pki
 
 #### added
+- A certificate OCSP reports revoked after the reference time is valid for that time,
+  with the warning `revoked_after_reference_time`; at or before it, and without a
+  `revocationTime`, it stays `revoked` (gemSpec_PKI TUC_PKI_006 variants 8a and 8b;
+  TASK-1). The response's freshness is still judged against the clock of the query.
 - A CA the TSL lists as revoked (`SERVICE_STATUS_REVOKED`) with a `StatusStartingTime`
   is no longer dropped: end entities it issued before that time validate, with the
   warning `issued_before_ca_revocation`; later ones fail with `ca_revoked_in_tsl`
@@ -387,6 +426,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `oid_policy_gem_tsl_signer`) and profile `tsl-sig`.
 
 #### changed
+- `revocation::apply_revocation` takes the reference time the chain is validated for.
 - `Bundle` is JSON (format version 2) instead of CBOR, with the bodies in base64 and
   the anchor hash in hex; minicbor is no longer a dependency. Version-1 bundles are
   rejected: export them again.

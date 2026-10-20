@@ -80,6 +80,9 @@ fn fault(code: u32, text: &str) -> String {
     ))
 }
 
+/// UUID-shaped, as many Konnektors hand out: the card tables shorten it.
+const KT_HANDLE: &str = "card-kt-0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b";
+
 /// The fake's cards; GetCards filters by the card type in the request, if any.
 fn cards(body: &str) -> String {
     [
@@ -105,7 +108,7 @@ fn cards(body: &str) -> String {
         ),
         (
             "SMC-KT",
-            card("card-kt", "SMC-KT", "80276001011699910104", 3, "Terminal"),
+            card(KT_HANDLE, "SMC-KT", "80276001011699910104", 3, "Terminal"),
         ),
     ]
     .into_iter()
@@ -181,6 +184,19 @@ fn answer(path: &str, action: &str, body: &str) -> (u16, String) {
              <ErrorType>Security</ErrorType><ErrorText>Zertifikat widerrufen</ErrorText></Trace></Error>\
              </VerificationStatus><RoleList><Role>1.2.276.0.76.4.30</Role></RoleList></C:VerifyCertificateResponse>"
         ),
+        // SMC-B verified; HBA: PIN.CH needs entry, PIN.QES is blocked.
+        "GetPinStatus" => {
+            let (status, tries) = if body.contains("card-smcb") {
+                ("VERIFIED", "")
+            } else if body.contains("PIN.QES") {
+                ("BLOCKED", "<LeftTries>0</LeftTries>")
+            } else {
+                ("VERIFIABLE", "<LeftTries>3</LeftTries>")
+            };
+            format!(
+                "<C:GetPinStatusResponse xmlns:C=\"c\">{OK}<PinStatus>{status}</PinStatus>{tries}</C:GetPinStatusResponse>"
+            )
+        }
         "VerifyPin" => format!(
             "<C:VerifyPinResponse xmlns:C=\"c\">{OK}<PinResult>REJECTED</PinResult><LeftTries>2</LeftTries></C:VerifyPinResponse>"
         ),
@@ -482,7 +498,7 @@ fn restricted_cards_and_usage_errors_say_what_to_do() {
         "praxis",
         "get",
         "certificates",
-        "card-kt",
+        KT_HANDLE,
     ]);
     let error: Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(
@@ -532,6 +548,126 @@ fn restricted_cards_and_usage_errors_say_what_to_do() {
         (error["error"]["kind"].as_str(), out.status.code()),
         (Some("connector_config"), Some(2))
     );
+}
+
+/// The card table names each card's terminal and slot, and shortens UUID-shaped values
+/// so it fits a terminal; `-v` and JSON keep them whole.
+#[test]
+fn card_table_shows_the_terminal_and_shortens_long_handles() {
+    let fake = Fake::start("card-table");
+    let table = |verbose: bool| {
+        let mut args = vec![
+            "--format",
+            "text",
+            "connector",
+            "-c",
+            "praxis",
+            "get",
+            "cards",
+        ];
+        if verbose {
+            args.insert(0, "-v");
+        }
+        let out = fake.ti(&args);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8(out.stdout).unwrap()
+    };
+    let text = table(false);
+    assert!(text.contains("TERMINAL"), "{text}");
+    assert!(text.contains("CT1 · slot 1"), "{text}");
+    assert!(text.contains("card-kt-…0e1f2a3b"), "{text}");
+    assert!(!text.contains(KT_HANDLE), "{text}");
+    assert!(table(true).contains(KT_HANDLE));
+
+    let (cards, _) = fake.json("connector get cards", &["get", "cards"]);
+    let handles: Vec<&str> = cards["cards"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["handle"].as_str().unwrap())
+        .collect();
+    assert!(handles.contains(&KT_HANDLE), "{handles:?}");
+}
+
+/// `describe card` says per user PIN whether it must be entered before signing: verified,
+/// entry needed with the tries left, or blocked; an SMC-KT has none.
+#[test]
+fn describe_card_shows_each_pin_status() {
+    let fake = Fake::start("pin-status");
+    let (smcb, _) = fake.json(
+        "connector describe card",
+        &["describe", "card", "card-smcb"],
+    );
+    assert_eq!(
+        smcb["pins"],
+        serde_json::json!([{"pin": "PIN.SMC", "status": "VERIFIED", "left_tries": null, "error": null}])
+    );
+    let (hba, _) = fake.json("connector describe card", &["describe", "card", "card-hba"]);
+    assert_eq!(
+        hba["pins"],
+        serde_json::json!([
+            {"pin": "PIN.CH", "status": "VERIFIABLE", "left_tries": 3, "error": null},
+            {"pin": "PIN.QES", "status": "BLOCKED", "left_tries": 0, "error": null},
+        ])
+    );
+    let (kt, _) = fake.json("connector describe card", &["describe", "card", KT_HANDLE]);
+    assert_eq!(kt["pins"], serde_json::json!([]));
+    assert!(kt["telematik_id"].is_null(), "an SMC-KT has none");
+    assert!(
+        smcb["telematik_id"]
+            .as_str()
+            .is_some_and(|id| !id.is_empty()),
+        "from the C.AUT: {smcb}"
+    );
+
+    let out = fake.ti(&[
+        "--format",
+        "text",
+        "connector",
+        "-c",
+        "praxis",
+        "describe",
+        "card",
+        "card-hba",
+    ]);
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(text.contains("PIN entry needed · 3 tries left"), "{text}");
+    assert!(text.contains("blocked: unblock with the PUK"), "{text}");
+    assert!(text.contains("Telematik-ID"), "{text}");
+    assert!(text.contains("CT1 · slot 2"), "{text}");
+}
+
+/// A card's certificates share holder and Telematik-ID: the table says them once above
+/// itself instead of in every row.
+#[test]
+fn certificates_of_one_holder_name_it_once() {
+    let fake = Fake::start("certs-shared");
+    let out = fake.ti(&[
+        "--format",
+        "text",
+        "connector",
+        "-c",
+        "praxis",
+        "get",
+        "certificates",
+        "card-smcb",
+    ]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(text.contains("Telematik-ID"), "{text}");
+    assert!(!text.contains("TELEMATIK-ID"), "no column: {text}");
+    assert!(!text.contains("SUBJECT"), "no column: {text}");
+    assert!(text.contains("REF"), "{text}");
 }
 
 #[test]

@@ -134,8 +134,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Err(error) => println!("check failed  {error}"),
         }
-        let verdict = match apply_revocation(RevocationMode::HardFail, cert.subject_cn(), &outcome)
-        {
+        let verdict = match apply_revocation(
+            RevocationMode::HardFail,
+            cert.subject_cn(),
+            &outcome,
+            SystemClock.now(),
+        ) {
             None => "accepted".to_owned(),
             Some(RevocationFinding::Error(e)) => format!("REJECTED ({})", e.code),
             Some(RevocationFinding::Warning(w)) => format!("accepted with warning ({})", w.code),

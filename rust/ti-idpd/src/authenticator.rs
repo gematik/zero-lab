@@ -23,7 +23,7 @@
 
 //! The whole flow over a [`Transport`]: discovery, keys, challenge, answer, code.
 
-use jwz::keys::Signer;
+use jwz::keys::AsyncSigner;
 
 use crate::challenge::{self, CodeRedirect};
 use crate::discovery::{self, Discovery};
@@ -34,8 +34,10 @@ use crate::{Idp, Warning};
 
 /// The card identity that answers challenges: its signer and its AUT certificate.
 pub struct Identity<'a> {
-    /// Signs the nested JWT; its algorithm must be `BP256R1` for the IDP-Dienst.
-    pub signer: &'a dyn Signer,
+    /// Signs the nested JWT; its algorithm must be `BP256R1` for the IDP-Dienst. A card
+    /// signs through the Konnektor asynchronously; a software key is a `Signer`, and every
+    /// `Signer` is an `AsyncSigner`.
+    pub signer: &'a dyn AsyncSigner,
     /// The AUT certificate, DER, for the `x5c` header.
     pub certificate_der: &'a [u8],
 }
@@ -74,7 +76,10 @@ pub struct CheckedCertificate {
 ///
 /// The first failing step's [`Error`]; [`Error::Untrusted`] when `trust` refuses a
 /// certificate.
-pub fn authenticate<T: Transport>(
+///
+/// Only the signature is awaited; the transport answers synchronously, so a caller
+/// with a synchronous signer can run the future with any executor, or poll it once.
+pub async fn authenticate<T: Transport>(
     transport: &T,
     idp: &Idp,
     identity: &Identity<'_>,
@@ -133,7 +138,8 @@ pub fn authenticate<T: Transport>(
         identity.certificate_der,
         &puk_idp_enc,
         metadata,
-    )?;
+    )
+    .await?;
     let redirect = challenge::code(&send("signed challenge", answer)?)?;
     let warnings = if certificates.iter().any(|c| c.checked == Checked::Unchecked) {
         vec![Warning::IdpCertificatesUnverified]

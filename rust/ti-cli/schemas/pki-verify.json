@@ -446,7 +446,8 @@
             "cert_type_ca_not_authorized",
             "cert_type_unchecked",
             "ca_revoked_in_tsl",
-            "issued_before_ca_revocation"
+            "issued_before_ca_revocation",
+            "revoked_after_reference_time"
           ]
         },
         "subject": {

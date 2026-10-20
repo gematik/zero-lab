@@ -27,7 +27,9 @@
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use ti_connector_client::types::{Card, CardType, CertRef, Crypt, PinResult, VerificationResult};
+use ti_connector_client::types::{
+    Card, CardType, CertRef, Crypt, PinResult, PinState, VerificationResult,
+};
 use ti_connector_client::{BINDINGS, Credentials, Error, PinType, Product};
 use ti_pki::load::SystemClock;
 use ti_pki::{Certificate, Clock, Timestamp};
@@ -41,7 +43,7 @@ use crate::cli::{
 use crate::connector::{self, Session};
 use crate::error::{CliError, Exit};
 use crate::input;
-use crate::output::document::date;
+use crate::output::document::{date, when};
 use crate::output::{Document, Line, Output, SCHEMA, Tone, Waiting, pem};
 
 /// Runs `ti connector …`.
@@ -512,17 +514,34 @@ impl From<&Card> for CardInfo {
     }
 }
 
-/// The table of `cards`.
-fn card_table(doc: &mut Document, cards: &[&CardInfo]) {
+/// Identifiers longer than this are shortened in tables; JSON and `-v` keep them whole.
+const CELL_WIDTH: usize = 20;
+
+/// `0a1b2c3d…7e8f9a0b` for a value longer than [`CELL_WIDTH`] unless `full`: UUID-shaped
+/// handles and terminal IDs would widen the table past a terminal, and their start and
+/// end still tell the rows apart.
+fn shorten(value: &str, full: bool) -> String {
+    let n = value.chars().count();
+    if full || n <= CELL_WIDTH {
+        return value.to_owned();
+    }
+    let head: String = value.chars().take(8).collect();
+    let tail: String = value.chars().skip(n - 8).collect();
+    format!("{head}…{tail}")
+}
+
+/// The table of `cards`; `full` keeps long identifiers whole.
+fn card_table(doc: &mut Document, cards: &[&CardInfo], full: bool) {
     let rows = cards.iter().map(|c| {
         vec![
-            Line::code(&c.handle),
+            Line::code(shorten(&c.handle, full)),
             Line::strong(c.card_type),
             cell(c.iccsn.as_deref()),
+            Line::text(shorten(&c.terminal, full)).and_dim(format!(" · slot {}", c.slot)),
             cell(c.holder.as_deref()),
         ]
     });
-    let headings = ["HANDLE", "TYPE", "ICCSN", "HOLDER"];
+    let headings = ["HANDLE", "TYPE", "ICCSN", "TERMINAL", "HOLDER"];
     doc.table(&headings, rows.collect());
 }
 
@@ -537,7 +556,11 @@ fn cards(session: &Session, out: &Output) -> Result<Exit, CliError> {
         cards: cards.iter().map(CardInfo::from).collect(),
     };
     emit(out, Exit::Ok, &report, |doc| {
-        card_table(doc, &report.cards.iter().collect::<Vec<_>>());
+        card_table(
+            doc,
+            &report.cards.iter().collect::<Vec<_>>(),
+            out.verbosity() > 0,
+        );
         if report.cards.is_empty() {
             doc.paragraph(Line::dim("no card in the card terminals"));
         }
@@ -600,30 +623,44 @@ fn certificates(session: &Session, card: &str, out: &Output) -> Result<Exit, Cli
     };
     emit(out, Exit::Ok, &report, |doc| {
         doc.section("Card");
-        card_table(doc, &[&report.card]);
-        let rows = report.certificates.iter().map(|c| {
-            let until = super::validity_cell(c.not_after_at, c.validity);
-            vec![
-                Line::strong(c.cert_ref),
-                Line::text(c.crypt),
-                Line::text(&c.subject),
-                Line::code(c.telematik_id.as_deref().unwrap_or("-")),
-                until,
-                Line::dim(&c.key),
-            ]
-        });
+        card_table(doc, &[&report.card], out.verbosity() > 0);
+        // A card's certificates usually name one holder: said once above the table, a
+        // column only where they differ.
+        let certs = &report.certificates;
+        let shared = |value: fn(&CertificateInfo) -> Option<&str>| {
+            let first = value(certs.first()?);
+            certs.iter().all(|c| value(c) == first).then_some(first)
+        };
+        let subject = shared(|c| Some(c.subject.as_str()));
+        let telematik_id = shared(|c| c.telematik_id.as_deref());
         doc.section("Certificates");
-        doc.table(
-            &[
-                "REF",
-                "KEY",
-                "SUBJECT",
-                "TELEMATIK-ID",
-                "VALIDITY",
-                "ALGORITHM",
-            ],
-            rows.collect(),
-        );
+        if let Some(Some(subject)) = subject {
+            doc.field("subject", subject);
+        }
+        if let Some(Some(id)) = telematik_id {
+            doc.field("Telematik-ID", Line::code(id));
+        }
+        let mut headings = vec!["REF", "KEY"];
+        if subject.is_none() {
+            headings.push("SUBJECT");
+        }
+        if telematik_id.is_none() {
+            headings.push("TELEMATIK-ID");
+        }
+        headings.extend(["VALIDITY", "ALGORITHM"]);
+        let rows = certs.iter().map(|c| {
+            let mut row = vec![Line::strong(c.cert_ref), Line::text(c.crypt)];
+            if subject.is_none() {
+                row.push(Line::text(&c.subject));
+            }
+            if telematik_id.is_none() {
+                row.push(Line::code(c.telematik_id.as_deref().unwrap_or("-")));
+            }
+            row.push(super::validity_cell(c.not_after_at, c.validity));
+            row.push(Line::dim(&c.key));
+            row
+        });
+        doc.table(&headings, rows.collect());
         for c in &report.certificates {
             doc.pem(&c.pem);
         }
@@ -730,6 +767,20 @@ struct IdentityInfo {
     handle: String,
 }
 
+/// The Telematik-ID in `card`'s ECC C.AUT; `None` for a card without one or whose C.AUT
+/// cannot be read, which is still shown, without an ID.
+fn telematik_id(session: &Session, card: &Card) -> Option<String> {
+    block_on(
+        session
+            .connector
+            .certificates()
+            .read(&card.card_handle, Crypt::Ecc, &[CertRef::CAut]),
+    )
+    .ok()?
+    .iter()
+    .find_map(|c| c.telematik_id().map(str::to_owned))
+}
+
 fn identities(session: &Session, out: &Output) -> Result<Exit, CliError> {
     let cards = call(
         session
@@ -737,18 +788,10 @@ fn identities(session: &Session, out: &Output) -> Result<Exit, CliError> {
             .cards()
             .list(&[CardType::Hba, CardType::SmcB]),
     )?;
-    let certificates = session.connector.certificates();
     let identities = cards
         .iter()
         .map(|card| IdentityInfo {
-            // A card whose C.AUT cannot be read is still listed, without an ID.
-            telematik_id: block_on(certificates.read(
-                &card.card_handle,
-                Crypt::Ecc,
-                &[CertRef::CAut],
-            ))
-            .ok()
-            .and_then(|c| c.iter().find_map(|c| c.telematik_id().map(str::to_owned))),
+            telematik_id: telematik_id(session, card),
             card_type: card.card_type.as_str(),
             holder: card.card_holder_name.clone(),
             iccsn: card.iccsn.clone(),
@@ -763,7 +806,7 @@ fn identities(session: &Session, out: &Output) -> Result<Exit, CliError> {
                 Line::strong(i.card_type),
                 cell(i.holder.as_deref()),
                 cell(i.iccsn.as_deref()),
-                Line::code(&i.handle),
+                Line::code(shorten(&i.handle, out.verbosity() > 0)),
             ]
         });
         doc.table(
@@ -823,7 +866,7 @@ fn expiration(
                 Line::text(&e.subject),
                 Line::code(&e.iccsn),
                 Line::text(&e.serial),
-                Line::code(&e.handle),
+                Line::code(shorten(&e.handle, out.verbosity() > 0)),
             ]
         });
         doc.table(
@@ -838,11 +881,98 @@ fn expiration(
 #[derive(Serialize)]
 struct CardReport {
     card: CardInfo,
+    /// From the card's C.AUT, for an HBA or SMC-B.
+    telematik_id: Option<String>,
+    /// The card type's user PINs: whether one must be entered before signing.
+    pins: Vec<PinInfo>,
+}
+
+#[derive(Serialize)]
+struct PinInfo {
+    /// `PIN.SMC`, `PIN.CH` or `PIN.QES`.
+    pin: &'static str,
+    /// The Konnektor's `PinStatus`: `VERIFIED`, `VERIFIABLE`, `TRANSPORT_PIN`,
+    /// `EMPTY_PIN`, `BLOCKED` or `DISABLED`; null when the query failed.
+    status: Option<&'static str>,
+    left_tries: Option<i64>,
+    /// Why the status could not be read.
+    error: Option<String>,
+}
+
+/// The status of each of `card`'s user PINs. A failed query is reported per PIN, so the
+/// rest of the description still shows.
+fn pin_infos(session: &Session, card: &Card) -> Vec<PinInfo> {
+    PinType::for_card(card.card_type)
+        .iter()
+        .map(
+            |pin| match call(session.connector.pins().status(&card.card_handle, *pin)) {
+                Ok(s) => PinInfo {
+                    pin: pin.as_str(),
+                    status: s.pin_status.map(PinState::as_str),
+                    left_tries: s.left_tries,
+                    error: None,
+                },
+                Err(e) => PinInfo {
+                    pin: pin.as_str(),
+                    status: None,
+                    left_tries: None,
+                    error: Some(e.to_string()),
+                },
+            },
+        )
+        .collect()
+}
+
+/// `verified`, or `PIN entry needed · 3 tries left` and the like, by what it means for
+/// the next signature.
+fn pin_line(p: &PinInfo) -> Line {
+    let tries = |line: Line| match p.left_tries {
+        Some(n) => line.and_dim(format!(
+            " · {n} {} left",
+            if n == 1 { "try" } else { "tries" }
+        )),
+        None => line,
+    };
+    match (p.status, &p.error) {
+        (_, Some(error)) => Line::status(Tone::Warn, "unknown").and_dim(format!(" ({error})")),
+        (Some("VERIFIED"), _) => Line::status(Tone::Good, "verified"),
+        (Some("VERIFIABLE"), _) => tries(Line::status(Tone::Warn, "PIN entry needed")),
+        (Some("TRANSPORT_PIN"), _) => {
+            tries(Line::status(Tone::Warn, "transport PIN: set a PIN first"))
+        }
+        (Some("EMPTY_PIN"), _) => Line::status(Tone::Warn, "no PIN set: set one first"),
+        (Some("BLOCKED"), _) => Line::status(Tone::Bad, "blocked: unblock with the PUK"),
+        (Some("DISABLED"), _) => Line::dim("disabled"),
+        _ => Line::dim("no status"),
+    }
+}
+
+/// An `xsd:dateTime` of the Konnektor in local time, as every time `ti` shows; as sent
+/// if it does not parse.
+fn local_time(value: &str) -> String {
+    value
+        .parse::<jiff::Timestamp>()
+        .ok()
+        .and_then(|t| u64::try_from(t.as_second()).ok())
+        .map_or_else(|| value.to_owned(), |secs| when(Timestamp(secs)))
+}
+
+/// An `xsd:date` without its zone, e.g. `2029-10-08Z` as `2029-10-08`: a day is what an
+/// expiry date says.
+fn xsd_date(value: &str) -> &str {
+    match value.get(..10) {
+        Some(day) if day.as_bytes().get(4) == Some(&b'-') => day,
+        _ => value,
+    }
 }
 
 fn describe_card(session: &Session, card: &str, out: &Output) -> Result<Exit, CliError> {
+    let found = find(session, card)?;
+    let holder = matches!(found.card_type, CardType::Hba | CardType::SmcB);
     let report = CardReport {
-        card: CardInfo::from(&find(session, card)?),
+        card: CardInfo::from(&found),
+        telematik_id: holder.then(|| telematik_id(session, &found)).flatten(),
+        pins: pin_infos(session, &found),
     };
     emit(out, Exit::Ok, &report, |doc| {
         let c = &report.card;
@@ -852,19 +982,28 @@ fn describe_card(session: &Session, card: &str, out: &Output) -> Result<Exit, Cl
         if let Some(holder) = &c.holder {
             doc.field("holder", holder.as_str());
         }
+        if let Some(id) = &report.telematik_id {
+            doc.field("Telematik-ID", Line::code(id));
+        }
         if let Some(kvnr) = &c.kvnr {
             doc.field("KVNR", Line::code(kvnr));
         }
-        doc.field("terminal", format!("{} slot {}", c.terminal, c.slot));
-        doc.field("inserted", c.inserted.as_str());
+        doc.field(
+            "terminal",
+            Line::text(&c.terminal).and_dim(format!(" · slot {}", c.slot)),
+        );
+        doc.field("inserted", local_time(&c.inserted));
         if let Some(expiry) = &c.certificate_expiration {
-            doc.field("certificates until", expiry.as_str());
+            doc.field("valid until", xsd_date(expiry));
         }
         if let (Some(cos), Some(os)) = (&c.cos_version, &c.object_system_version) {
             let os = format!(" · object system {os}");
             doc.field("versions", Line::text(format!("COS {cos}")).and_dim(os));
         }
         doc.field("handle", Line::code(&c.handle));
+        for p in &report.pins {
+            doc.field(p.pin, pin_line(p));
+        }
     })
 }
 
@@ -1005,4 +1144,21 @@ fn verify_certificate(
             report.errors.iter().map(|e| Line::status(Tone::Bad, e)),
         );
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shorten;
+
+    #[test]
+    fn long_identifiers_are_shortened_unless_full() {
+        let handle = "0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d";
+        assert_eq!(shorten(handle, false), "0a1b2c3d…2a3b4c5d");
+        assert_eq!(shorten(handle, true), handle);
+        assert_eq!(shorten("CT1", false), "CT1");
+        assert_eq!(
+            shorten("80276001011699910102", false),
+            "80276001011699910102"
+        );
+    }
 }

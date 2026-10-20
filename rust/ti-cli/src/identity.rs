@@ -34,11 +34,13 @@ use std::sync::Arc;
 
 use der::Decode as _;
 use der::asn1::ObjectIdentifier;
+use jwz::crypto::CryptoError;
+use jwz::crypto::asynchronous::BoxFuture;
 use jwz::crypto::rustcrypto::RustCrypto;
 use jwz::header::HeaderParams;
 use jwz::jwa::SignatureAlgorithm;
 use jwz::jwk::{EcKey, Jwk, KeyMaterial, Secret};
-use jwz::keys::{JwsKey, Signature, Signer, SoftwareKey};
+use jwz::keys::{AsyncSigner, JwsKey, Signature, Signer, SoftwareKey};
 use jwz_brainpool::BrainpoolEs256Key;
 use sha2::{Digest, Sha256};
 use ti_connector_client::SignatureType;
@@ -201,7 +203,7 @@ impl Identity {
     ///
     /// [`CliError::KeyUnsupported`] when the key's curve does not sign `alg` (`BP256R1`
     /// needs brainpoolP256r1).
-    pub fn signer(&self, alg: SignatureAlgorithm) -> Result<Box<dyn Signer>, CliError> {
+    pub fn signer(&self, alg: SignatureAlgorithm) -> Result<Box<dyn AsyncSigner>, CliError> {
         if !self.curve.signs(alg) {
             return Err(CliError::KeyUnsupported(format!(
                 "{}: a key on {} does not sign {}",
@@ -211,7 +213,9 @@ impl Identity {
             )));
         }
         match &self.key {
-            Key::Soft(key) => key.signer_for(&self.certificate, alg),
+            Key::Soft(key) => Ok(Box::new(SoftSigner(
+                key.signer_for(&self.certificate, alg)?,
+            ))),
             Key::Connector(key) => Ok(Box::new(ConnectorSigner {
                 key: Rc::clone(key),
                 alg,
@@ -234,7 +238,8 @@ impl Identity {
     ) -> Result<String, CliError> {
         let signer = self.signer(alg)?;
         let params = params.x5c(&[self.certificate.der()]);
-        jwz::jws::sign(payload, params, &*signer).map_err(|error| self.signing_error(error))
+        block_on(jwz::jws::sign_async(payload, params, &*signer))
+            .map_err(|error| self.signing_error(error))
     }
 
     /// A Konnektor's refusal as such, anything else as a signing failure.
@@ -467,19 +472,20 @@ impl ConnectorKey {
 
     /// ExternalAuthenticate over the SHA-256 of `msg`: the Konnektor signs the hash as
     /// given, raw r‖s comes back.
-    fn sign(&self, msg: &[u8]) -> Result<Signature, signature::Error> {
+    async fn sign(&self, msg: &[u8]) -> Result<Signature, jwz::Error> {
         let hash = Sha256::digest(msg);
         let auth = self.session.connector.auth();
-        match block_on(auth.external_authenticate(&self.handle, &hash, SignatureType::Ecdsa)) {
+        match auth
+            .external_authenticate(&self.handle, &hash, SignatureType::Ecdsa)
+            .await
+        {
             Ok(raw) if raw.len() == 64 => Ok(Signature::from(raw)),
-            Ok(raw) => Err(signature::Error::from_source(format!(
-                "Konnektor returned a {}-byte signature, expected 64",
-                raw.len()
-            ))),
+            // Not an r‖s pair on a 256-bit curve.
+            Ok(_) => Err(CryptoError::Backend.into()),
+            // The Konnektor's error is kept for the command; jwz carries only a code.
             Err(error) => {
-                let message = error.to_string();
                 *self.error.borrow_mut() = Some(error);
-                Err(signature::Error::from_source(message))
+                Err(CryptoError::Backend.into())
             }
         }
     }
@@ -501,9 +507,31 @@ impl JwsKey for ConnectorSigner {
     }
 }
 
-impl signature::Signer<Signature> for ConnectorSigner {
-    fn try_sign(&self, msg: &[u8]) -> Result<Signature, signature::Error> {
-        self.key.sign(msg)
+/// The card signs through the Konnektor's AuthSignatureService, a SOAP call the flow
+/// awaits (private keys as functions, hardware-bound).
+impl AsyncSigner for ConnectorSigner {
+    fn sign_async<'a>(&'a self, msg: &'a [u8]) -> BoxFuture<'a, Result<Signature, jwz::Error>> {
+        Box::pin(self.key.sign(msg))
+    }
+}
+
+/// A software key as the [`AsyncSigner`] every [`Signer`] is, behind one box type with
+/// the card's signer.
+struct SoftSigner(Box<dyn Signer>);
+
+impl JwsKey for SoftSigner {
+    fn algorithm(&self) -> SignatureAlgorithm {
+        self.0.algorithm()
+    }
+
+    fn key_id(&self) -> Option<&str> {
+        self.0.key_id()
+    }
+}
+
+impl AsyncSigner for SoftSigner {
+    fn sign_async<'a>(&'a self, msg: &'a [u8]) -> BoxFuture<'a, Result<Signature, jwz::Error>> {
+        self.0.sign_async(msg)
     }
 }
 
