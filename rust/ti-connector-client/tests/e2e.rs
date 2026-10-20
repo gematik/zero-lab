@@ -21,8 +21,9 @@
  * find details in the "Readme" file.
  */
 
-//! Against a real Konnektor, gated by environment variables; without them every test
-//! passes without doing anything.
+//! Against a real Konnektor. The tests are ignored and run through their just recipes
+//! (`just konnektor-e2e`, `just konnektor-e2e-interactive`); run without their variables
+//! they fail, so a skipped run never looks like a passed one.
 //!
 //! - `TI_TEST_KON_PATH`: a `.kon` file. Read-only operations: service directory, cards,
 //!   certificates, PIN status, certificate expiry, the Konnektor's certificate check.
@@ -36,8 +37,7 @@
 //! - `TI_TEST_KON_RECORD_DIR`: every exchange is written there, one directory per test,
 //!   as material for offline fixtures (bodies only, never credentials).
 //!
-//! `TI_TEST_KON_PATH=praxis.kon TI_TEST_KON_INTERACTIVE=1 cargo test -p ti-connector-client
-//! --features ureq --test e2e -- --nocapture --test-threads 1`
+//! `TI_TEST_KON_PATH=praxis.kon just konnektor-e2e-interactive`
 
 mod support;
 
@@ -57,8 +57,8 @@ use support::Recorder;
 type Konnektor = Connector<Recorder<UreqTransport>>;
 
 /// The Konnektor of `TI_TEST_KON_PATH`, recording into `TI_TEST_KON_RECORD_DIR/<test>`.
-fn connect(test: &str) -> Option<Konnektor> {
-    let path = std::env::var_os("TI_TEST_KON_PATH")?;
+fn connect(test: &str) -> Konnektor {
+    let path = std::env::var_os("TI_TEST_KON_PATH").expect("TI_TEST_KON_PATH: a .kon file");
     let dotkon = Dotkon::parse(&std::fs::read(&path).expect("TI_TEST_KON_PATH readable"))
         .expect("a valid .kon file");
     let config = ureq::Agent::config_builder().timeout_connect(Some(Duration::from_secs(10)));
@@ -77,15 +77,13 @@ fn connect(test: &str) -> Option<Konnektor> {
         "{} {} {} (FW {}) at {}",
         p.vendor_id, p.product_type, p.product_type_version, p.fw_version, dotkon.url
     );
-    Some(connector)
+    connector
 }
 
 #[test]
+#[ignore = "needs TI_TEST_KON_PATH: just konnektor-e2e"]
 fn read_only_operations() {
-    let Some(connector) = connect("read-only") else {
-        eprintln!("TI_TEST_KON_PATH not set: skipped");
-        return;
-    };
+    let connector = connect("read-only");
     for (service, versions) in ti_connector_client::BINDINGS {
         for version in *versions {
             match connector.directory().resolve(service, &[version]) {
@@ -169,12 +167,15 @@ async fn card_checks(connector: &Konnektor, card: &Card) -> Result<(), Error> {
 }
 
 #[test]
+#[ignore = "needs TI_TEST_KON_PATH and TI_TEST_KON_INTERACTIVE=1: just konnektor-e2e-interactive"]
 fn pin_and_external_authenticate() {
-    if std::env::var("TI_TEST_KON_INTERACTIVE").as_deref() != Ok("1") {
-        eprintln!("TI_TEST_KON_INTERACTIVE not set: skipped");
-        return;
-    }
-    let connector = connect("interactive").expect("TI_TEST_KON_PATH");
+    // PIN entry waits at the card terminal, so a plain `--ignored` run must not start it.
+    assert_eq!(
+        std::env::var("TI_TEST_KON_INTERACTIVE").as_deref(),
+        Ok("1"),
+        "TI_TEST_KON_INTERACTIVE=1: PIN entry at the card terminal"
+    );
+    let connector = connect("interactive");
     let cards =
         block_on(connector.cards().list(&[CardType::SmcB, CardType::Hba])).expect("GetCards");
     let card = cards.first().expect("an SMC-B or HBA in the Konnektor");

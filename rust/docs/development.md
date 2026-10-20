@@ -61,8 +61,9 @@ cargo metadata --format-version 1 | jq -r '.packages[] | select(.name == "ti-pki
 Checks come in two tiers:
 
 ```console
-just check    # tier 1: fmt, clippy, doc, test, features, wasm32, core-deps, nonprod-absent, machete, deny
-just audit    # tier 2, before tagging: advisories, vet, msrv, semver
+just check        # tier 1, every change: fmt, clippy, doc, test, wasm32, core-deps, nonprod-absent, machete, deny
+just check-full   # tier 1, before a release: check, the tests with default features, every feature combination
+just audit        # tier 2, before tagging: advisories, vet, msrv, semver
 ```
 
 Shared metadata (edition, rust-version, license, repository, authors, publish) lives in
@@ -270,7 +271,7 @@ is released, every suite listed for it runs green and the release PR records the
 |---|---|---|---|---|
 | `ti-pki` real world (`tests/real_world.rs`, `#[ignore]`) | `just real-world` | network, `curl` | roots.json and TSL of every environment through `HttpLoader` and `Reloader`, a reference SMC-B end to end with OCSP, a production SubCA at its root responder | `ti-pki`, `ti-cli` |
 | `ti-pki` OpenSSL parity (`tests/openssl_cross.rs`) | `just test` | `openssl` with brainpool curves | the same verdict as `openssl verify` / `openssl ocsp` on the same bytes | `ti-pki` |
-| Konnektor end to end (`ti-connector-client/tests/e2e.rs`) | `TI_TEST_KON_PATH=… cargo test -p ti-connector-client --test e2e` | `TI_TEST_KON_PATH` (a `.kon`), optional `TI_TEST_KON_INTERACTIVE=1` (PIN entry, HITL), `TI_TEST_PDFA_PATH`, `TI_TEST_KON_RECORD_DIR` (records the run for `tests/recorded.rs`) | the facades against a real Konnektor and card | `ti-connector-client`, `ti-cli` |
+| Konnektor end to end (`ti-connector-client/tests/e2e.rs`) | `just konnektor-e2e`, `just konnektor-e2e-interactive` (PIN entry, HITL) | `TI_TEST_KON_PATH` (a `.kon`), optional `TI_TEST_PDFA_PATH` (interactive), `TI_TEST_KON_RECORD_DIR` (records the run for `tests/recorded.rs`) | the facades against a real Konnektor and card | `ti-connector-client`, `ti-cli` |
 | jwz in the browser | `just jwz-browser` (design time, stamped) | Chrome for Testing, `wasm-bindgen-test-runner` | jwz and jwz-brainpool in `wasm32` in a real browser | `jwz`, `jwz-brainpool` (the stamp is checked by `just check`) |
 
 ## WebAssembly (ti-wasm)
@@ -423,7 +424,7 @@ one crate with binaries. A release takes two commands from `main`:
    `just release ti-cli=0.4.0 ti-idpd=0.2.0 ti-directory=0.1.0`. It stops unless `main`
    is clean and equal to `origin/main`, each tag is new and above the crate's last
    `rust/<crate>/v*`, and `ReleaseNotes.md` has exactly one `### <crate>` block under
-   `## Unreleased` for each. Then `just check` and `just advisories vet msrv`; per crate the version in
+   `## Unreleased` for each. Then `just check-full` and `just advisories vet msrv`; per crate the version in
    its `Cargo.toml`, the workspace requirement on it in `Cargo.toml` (`"0.2"` for 0.x,
    the major from 1.0) and its block becoming `## Release <crate> X.Y.Z, YYYY-MM-DD`;
    `Cargo.lock`; `just semver` for the released crates at their new versions;
@@ -463,7 +464,8 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `tools` | Install the pinned cargo tools (via cargo-binstall when available) |
 | `install` | Install `ti` into `~/.cargo/bin`, built like a release |
 | `install-fast` | Install `ti` from the `local` profile (thin LTO, incremental): a change in ti-cli rebuilds in about 20 s instead of about 45 s |
-| `check` | Tier 1: `fmt`, `clippy`, `doc`, `test`, `features`, `wasm32`, `wasm-unsafe-free`, `core-deps`, `nonprod-absent`, `jwz-backends`, `jwz-rsa-guard`, `machete`, `deny`, `brainpool-absent` for jwz and ti-jwz |
+| `check-full` | Tier 1 before a release (`just release` runs it): `check`, `test-defaults`, `features` |
+| `check` | Tier 1: `fmt`, `clippy`, `doc`, `test`, `wasm32`, `wasm-unsafe-free`, `core-deps`, `nonprod-absent`, `jwz-backends`, `jwz-rsa-guard`, `machete`, `deny`, `brainpool-absent` for jwz and ti-jwz |
 | `wasm32` | `cargo check` for wasm32 of ti-types with `std`, ti-pki's loading layer and reqwest transport, ti-report, ti-wasm and the jwz crates |
 | `wasm-unsafe-free` | No `unsafe` in ti-wasm's own sources |
 | `check-jwz` | The jwz crates only (fmt, clippy, doc, test, feature matrix, wasm32, guards): the loop while working on jwz |

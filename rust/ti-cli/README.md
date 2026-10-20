@@ -164,6 +164,12 @@ the result is narrowed to the roots and TSL CAs whose own key is not brainpool
 that subset with no brainpool signature allowed in the chain; brainpool chains come out
 invalid. The report carries `"nist_only": true`.
 
+One difference from curl and Java remains: `pki verify --nist-only` needs a path up to a
+root whose own key is not brainpool, while curl and Java accept any certificate of a
+bundle as an anchor, including a TSL CA of `tsl bundle --nist-only`. A chain under a
+NIST CA whose root is brainpool (under GEM.RCA8, for example) is therefore invalid in
+`ti` but validates in curl or Java with that bundle.
+
 `ti pki verify-signature` checks a single ECDSA-SHA256 signature (DER, or r‖s) against
 a certificate's key with ti-pki's verifiers, and nothing about the certificate: an ePA
 client checks the VAU's `signed_pub_keys` this way and the certificate with `pki verify`.

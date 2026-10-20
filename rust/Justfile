@@ -141,7 +141,7 @@ release +releases:
         crates+=("$crate"); versions+=("$v")
     done
 
-    echo "==> just check"; just check
+    echo "==> just check-full"; just check-full
     # The semver step waits for the bumps: it judges the released crates' new versions.
     echo "==> just advisories vet msrv"; just advisories vet msrv
 
@@ -320,12 +320,17 @@ wasm-vendor dest="../../gemiverse": wasm-smoke wasm-size
     rsync -a --delete {{WASM_PKG}}/ "{{dest}}/vendor/ti-wasm/"
     cat "{{dest}}/vendor/ti-wasm/VERSION.json"
 
-# ---- Tier 1: every PR --------------------------------------------------------------
+# ---- Tier 1: every change, and before a release ------------------------------------
 
 # Everything a PR must pass, in the order that fails fastest
-check: fmt clippy doc test features wasm32 wasm-unsafe-free core-deps nonprod-absent jwz-backends jwz-rsa-guard machete deny
+check: fmt clippy doc test wasm32 wasm-unsafe-free core-deps nonprod-absent jwz-backends jwz-rsa-guard machete deny
     just brainpool-absent jwz
     just brainpool-absent ti-jwz
+
+# The feature matrix and the default-feature tests take most of the time and break only
+# when features or their gating change; `just release` runs them.
+# `check` plus every feature combination and the tests with default features
+check-full: check test-defaults features
 
 # Formatting (rustfmt.toml is the source of truth)
 fmt:
@@ -343,14 +348,17 @@ doc:
     RUSTDOCFLAGS="-D warnings" cargo doc --workspace --exclude jwz --no-deps --all-features
     RUSTDOCFLAGS="-D warnings" cargo doc -p jwz --no-deps --features {{JWZ_FEATURES}}
 
-# Tests via nextest (parallel, per-test timeouts, better failure output) with all
-# features and with the defaults, then doctests
+# nextest for parallel runs, per-test timeouts and better failure output.
+# Tests with all features, then doctests
 test:
     cargo nextest run --workspace --exclude jwz --all-features
     cargo nextest run -p jwz --features {{JWZ_FEATURES}}
-    cargo nextest run --workspace
     cargo test --workspace --exclude jwz --all-features --doc
     cargo test -p jwz --features {{JWZ_FEATURES}} --doc
+
+# The tests with default features, where code only a feature makes used fails
+test-defaults:
+    cargo nextest run --workspace
 
 # The cache, XML signature checking, the loading layer, the reqwest transport and PKCS#12 decoding build for
 # the browser
@@ -567,6 +575,16 @@ brainpool-absent crate:
 real-world:
     cargo test -p ti-pki --features load,os,dangerous-nonprod --test real_world -- --ignored --nocapture --test-threads 1
 
+# TI_TEST_KON_RECORD_DIR, if set, records the exchanges. Not part of `check`.
+# Read-only tests against the Konnektor of TI_TEST_KON_PATH (a .kon file)
+konnektor-e2e:
+    cargo test -p ti-connector-client --features ureq --test e2e -- --ignored --exact read_only_operations --nocapture --test-threads 1
+
+# Optional TI_TEST_PDFA_PATH adds PAdES. A person enters the PIN; not part of `check`.
+# PIN entry, ExternalAuthenticate, sign and encrypt at the Konnektor of TI_TEST_KON_PATH
+konnektor-e2e-interactive:
+    TI_TEST_KON_INTERACTIVE=1 cargo test -p ti-connector-client --features ureq --test e2e -- --ignored --exact pin_and_external_authenticate --nocapture --test-threads 1
+
 # Regenerate the Konnektor bindings in ti-connector-client/src/api from the
 # wsdl2openapi checkout next to this repository (or WSDL2OPENAPI_DIR)
 generate-connector:
@@ -745,6 +763,49 @@ mutants crate:
 # What takes the space in the CLI's release binary, per crate (top N)
 bloat n="25":
     CARGO_PROFILE_RELEASE_STRIP=none CARGO_TARGET_DIR=target/bloat cargo bloat --release -p ti-cli --crates -n {{n}}
+
+# Every change to a workspace crate leaves its old test binaries behind in
+# target/debug/deps and grows the incremental caches of every profile and
+# target, so target/ only grows. This drops the workspace crates' artefacts,
+# every incremental cache (also of the fuzz workspaces) and keeps the
+# third-party builds and target/dist; the next build recompiles only the
+# workspace.
+#
+# Free disk space, keeping the third-party builds.
+free:
+    #!/usr/bin/env bash
+    set -eu -o pipefail
+    before=$(df -k . | awk 'NR==2 {print $4}')
+    packages=$(cargo metadata --no-deps --format-version 1 \
+        | python3 -I -c 'import json, sys; print(" ".join("-p " + p["name"] for p in json.load(sys.stdin)["packages"]))')
+    cargo clean --quiet $packages
+    cargo clean --quiet --release $packages
+    for dir in target */fuzz/target; do
+        if [ -d "$dir" ]; then
+            find "$dir" -maxdepth 4 -type d -name incremental -prune -exec rm -rf {} +
+        fi
+    done
+    after=$(df -k . | awk 'NR==2 {print $4}')
+    echo "freed $(( (after - before) / 1024 / 1024 )) GiB, $(df -h . | awk 'NR==2 {print $4}') available"
+
+# The whole target folder with target/dist, the fuzz workspaces' target
+# folders and the Python interop venv. Fuzz corpora stay. The next build starts
+# from scratch.
+#
+# Remove everything a build made.
+clean:
+    #!/usr/bin/env bash
+    set -eu -o pipefail
+    before=$(df -k . | awk 'NR==2 {print $4}')
+    cargo clean
+    for dir in */fuzz/target jwz-brainpool/interop/python/.venv; do
+        if [ -d "$dir" ]; then
+            echo "removing $dir"
+            rm -rf "$dir"
+        fi
+    done
+    after=$(df -k . | awk 'NR==2 {print $4}')
+    echo "freed $(( (after - before) / 1024 / 1024 )) GiB, $(df -h . | awk 'NR==2 {print $4}') available"
 
 # Show the latest release tag for every crate
 versions:

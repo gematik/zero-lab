@@ -1,9 +1,10 @@
 ---
 id: TASK-108
 title: 'kv: doc comment names a nonexistent kvpg module'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-15 17:45'
+updated_date: '2026-10-20 16:51'
 labels:
   - go
   - docs
@@ -21,5 +22,11 @@ go/kv/kv.go package doc says the Postgres backend lives in a sibling kvpg module
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 comment and module layout agree
+- [x] #1 comment and module layout agree
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Comment fixed: the Postgres backend is the package kv/postgres in the kv module; go.mod requires pgx, but only binaries importing kv/postgres link it. The module stays as it is.
+<!-- SECTION:FINAL_SUMMARY:END -->
