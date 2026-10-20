@@ -51,6 +51,7 @@ Environment:
                   the profile's key file [default: <config>/telematik/profiles/NAME/store.kek]
   TI_STORE_BACKEND
                   sqlite (default) or files
+  TI_STORE_TRACE  1 writes one line per store operation to stderr
   TI_CONNECTOR_CONFIG, TI_CONNECTOR_TIMEOUT, TI_CARD_TIMEOUT
                   defaults for connector -c, --connector-timeout, --card-timeout
   NO_COLOR        disables colors; CLICOLOR_FORCE=1 forces them
@@ -200,6 +201,9 @@ pub enum Command {
     /// Store profiles: the keyring, state and cache the TI tools share
     #[command(subcommand)]
     Profile(ProfileCommand),
+    /// The profile's store: check it
+    #[command(subcommand)]
+    Store(StoreCommand),
     /// The download cache
     #[command(subcommand)]
     Cache(CacheCommand),
@@ -240,6 +244,35 @@ pub enum ProfileCommand {
         /// Use this existing key file; set TI_STORE_KEK_PATH to it for later runs
         #[arg(long, value_name = "PATH")]
         kek_file: Option<PathBuf>,
+    },
+    /// The profiles, which one is active, and what each holds
+    List,
+    /// Make a profile the active one, for every TI tool without --profile or TI_PROFILE
+    Use {
+        /// The profile
+        name: String,
+    },
+    /// Delete a profile: its keyring first, then its state, cache and default key file
+    Delete {
+        /// The profile
+        name: String,
+        /// Required: the profile's sealed records are lost for good
+        #[arg(long)]
+        yes: bool,
+    },
+    /// The profile in effect, where its name came from, and its paths
+    Show,
+}
+
+/// `ti store …` (spec/store section L).
+#[derive(Debug, Subcommand)]
+pub enum StoreCommand {
+    /// Check the profile's key file, keyring and databases without changing them (exit 1
+    /// if a check fails)
+    Doctor {
+        /// JSON, as --format json
+        #[arg(long)]
+        json: bool,
     },
 }
 

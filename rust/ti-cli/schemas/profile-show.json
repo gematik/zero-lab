@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "profile show",
+  "description": "The profile in effect and its paths.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "profile": {
+      "type": "string"
+    },
+    "from": {
+      "enum": [
+        "flag",
+        "env",
+        "active",
+        "default"
+      ]
+    },
+    "backend": {
+      "enum": [
+        "sqlite",
+        "files"
+      ]
+    },
+    "active_file": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Where profile use writes; absent without a configuration directory."
+    },
+    "key_file": {
+      "type": "string"
+    },
+    "key_file_found": {
+      "type": "boolean"
+    },
+    "keyring": {
+      "type": "string"
+    },
+    "keyring_found": {
+      "type": "boolean"
+    },
+    "state": {
+      "type": "string"
+    },
+    "cache": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "profile",
+    "from",
+    "backend",
+    "active_file",
+    "key_file",
+    "key_file_found",
+    "keyring",
+    "keyring_found",
+    "state",
+    "cache"
+  ],
+  "additionalProperties": false
+}

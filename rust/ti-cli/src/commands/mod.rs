@@ -40,6 +40,7 @@ mod profile;
 mod profiles;
 mod roots;
 mod schema;
+mod store;
 mod tsl;
 mod verify;
 mod verify_signature;
@@ -50,7 +51,7 @@ use ti_pki::{Certificate, Env, Timestamp};
 use crate::cli::{
     CacheCommand, Cli, Command, DirectoryCommand, Environment, GlobalArgs, IdentityCommand,
     IdpdCommand, Pkcs12Command, PkiCommand, ProbeEnv, ProfileCommand, ProfilesCommand,
-    RootsCommand, TslCommand,
+    RootsCommand, StoreCommand, TslCommand,
 };
 use crate::error::{CliError, Exit};
 use crate::output::document::{TreeRow, date, when};
@@ -125,6 +126,15 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
         Command::Profile(ProfileCommand::Create { name, kek_file }) => {
             profile::create(&cli.global, name.as_deref(), kek_file.as_deref(), out)
         }
+        Command::Profile(ProfileCommand::List) => profile::list(&cli.global, out),
+        Command::Profile(ProfileCommand::Use { name }) => {
+            profile::use_profile(&cli.global, name, out)
+        }
+        Command::Profile(ProfileCommand::Delete { name, yes }) => {
+            profile::delete(&cli.global, name, *yes, out)
+        }
+        Command::Profile(ProfileCommand::Show) => profile::show(&cli.global, out),
+        Command::Store(StoreCommand::Doctor { json }) => store::doctor(&cli.global, *json, out),
         Command::Schema { command } => schema::run(command, out),
         Command::Agent => agent::run(),
         Command::Version => version::run(out),

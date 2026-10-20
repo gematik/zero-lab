@@ -12,8 +12,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 #### added
 - Store profiles shared with the other TI tools (spec/store): `--profile`, `TI_PROFILE`,
   `TI_STATE_DIR`, `TI_STORE_KEK_PATH`, `TI_STORE_BACKEND`. `ti profile create` makes a
-  profile's keyring and key file. Store failures have the error kinds `store_<code>`
-  with a hint.
+  profile's keyring and key file; `profile list`, `show`, `use` and `delete --yes`
+  manage profiles. `ti store doctor [--json]` checks a profile without changing it.
+  `TI_STORE_TRACE=1` traces store operations. Store failures have the error kinds
+  `store_<code>` with a hint.
 
 #### changed
 - The download cache is the profile's `cache.db`; `TI_CACHE_DIR` and `--cache-dir` name

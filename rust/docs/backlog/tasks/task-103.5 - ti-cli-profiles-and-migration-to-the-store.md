@@ -4,7 +4,7 @@ title: 'ti-cli: profiles and migration to the store'
 status: In Progress
 assignee: []
 created_date: '2026-10-15 17:45'
-updated_date: '2026-10-20 08:27'
+updated_date: '2026-10-20 08:51'
 labels:
   - ti-cli
 dependencies:
@@ -52,4 +52,8 @@ Stage 1 implemented (2026-10-20), just check green, awaiting the maintainer's HI
 - Tests: the fixture TSL's NextUpdate has passed, so TSL state is tested at unit level (trust.rs tests with store::profile::tests::TestProfile); integration tests seed cache.db with rusqlite and spec/store's schema, and every harness sets TI_PROFILE=default and removes the store variables.
 
 Stage 1 HITL confirmed by the maintainer (2026-10-20) in a throwaway store: no-keyring warning, profile create, TSL state kept and read back sealed, cache clear, invalid profile name, files backend. Not yet proven: comfort activate/sign against a real Konnektor (none at hand); to repeat in a later HITL.
+
+Stage 2 implemented (2026-10-20): profile list/use/delete --yes/show, store doctor [--json] (checks profile, key_file, keyring, key_age, state/cache level and integrity, records and expired per namespace; exit 1 on fail; creates nothing), TI_STORE_TRACE=1 via store::Traced around the backend (doctor's reads too). delete needs --yes since ti never prompts; it removes the keyring first and syncs its directory, then the profile's state and cache folders, the default key file (never one named by TI_STORE_KEK_PATH) and the active file if it names the profile. JSON schemas profile-list/use/delete/show and store-doctor; zero-epa follows them later (TASK-115).
+
+Stage 2 HITL confirmed by the maintainer (2026-10-20). Found on the way: a TI_STORE_KEK_PATH left exported from an earlier session silently decides where profile create writes the key file; HITL setups unset TI_STORE_KEK_PATH, TI_PROFILE, TI_STORE_BACKEND and TI_STORE_TRACE first.
 <!-- SECTION:NOTES:END -->

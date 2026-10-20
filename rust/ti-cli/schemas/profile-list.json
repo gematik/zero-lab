@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "profile list",
+  "description": "The profiles below the state directory (spec/store STORE-122).",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "current": {
+      "type": "string",
+      "description": "The profile in effect."
+    },
+    "profiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Named by the active file."
+          },
+          "keyring": {
+            "type": "boolean"
+          },
+          "key_file": {
+            "type": "boolean",
+            "description": "The profile's key file exists (TI_STORE_KEK_PATH or its default)."
+          },
+          "state_level": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "The state's format level, if it exists and opens."
+          },
+          "state_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "state.db with its WAL, or the state tree."
+          },
+          "cache_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "cache.db with its WAL, or the cache tree."
+          }
+        },
+        "required": [
+          "name",
+          "active",
+          "keyring",
+          "key_file",
+          "state_level",
+          "state_bytes",
+          "cache_bytes"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "current",
+    "profiles"
+  ],
+  "additionalProperties": false
+}

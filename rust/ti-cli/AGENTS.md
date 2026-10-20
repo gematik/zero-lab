@@ -64,6 +64,12 @@ never on `message`.
   once, with a key file at `~/.config/telematik/profiles/NAME/store.kek`. Without one,
   `ti` keeps none of it and says so (`store_no_keyring`). Losing the key file loses
   only the sealed records. Store errors have kinds `store_<code>` with a hint.
+- `{bin} profile list|show|use NAME|delete NAME --yes` manage profiles; `use` writes the
+  active file every TI tool reads. `{bin} store doctor [--json]` checks the profile's key
+  file, keyring, databases and records without changing them: each check `ok`, `warn` or
+  `fail`, exit 1 if one fails. `TI_STORE_TRACE=1` writes one line per store operation to
+  stderr (operation, namespace, the first 8 bytes of the name, code, duration), never a
+  payload.
 
 ## Names
 

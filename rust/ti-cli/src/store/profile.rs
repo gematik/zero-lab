@@ -36,14 +36,14 @@ use ti_store::store::{
 use ti_types::Timestamp;
 use zeroize::Zeroizing;
 
-use super::{AnyBackend, Db, Kind};
+use super::{AnyBackend, Db, Kind, Traced};
 use crate::block::block_on;
 use crate::cli::GlobalArgs;
 use crate::error::{CliError, StoreFile};
 
 /// A profile's store: its backend and, once the profile has a keyring, the keys that
 /// seal its sealed namespaces.
-pub type ProfileStore = Store<AnyBackend, Keyring<OsRandom>>;
+pub type ProfileStore = Store<Traced<AnyBackend>, Keyring<OsRandom>>;
 
 /// The profile in effect and the backend selected for it.
 #[derive(Clone, Debug)]
@@ -178,8 +178,12 @@ impl Selected {
             }
             Err(error) => return Err(self.fail(StoreFile::CacheDb, &path, error)),
         };
-        Store::new(backend, None, &namespaces(Database::Cache))
-            .map_err(|e| self.fail(StoreFile::CacheDb, &path, e))
+        Store::new(
+            Traced::from_env(backend),
+            None,
+            &namespaces(Database::Cache),
+        )
+        .map_err(|e| self.fail(StoreFile::CacheDb, &path, e))
     }
 
     /// The profile's state, with its keyring if it has one; without, its plain
@@ -195,8 +199,12 @@ impl Selected {
         create_parent(Path::new(path)).map_err(|e| self.fail(StoreFile::StateDb, path, e))?;
         let backend = AnyBackend::open(self.kind, Path::new(path), Db::State)
             .map_err(|e| self.fail(StoreFile::StateDb, path, e))?;
-        Store::new(backend, keyring, &namespaces(Database::State))
-            .map_err(|e| self.fail(StoreFile::StateDb, path, e))
+        Store::new(
+            Traced::from_env(backend),
+            keyring,
+            &namespaces(Database::State),
+        )
+        .map_err(|e| self.fail(StoreFile::StateDb, path, e))
     }
 
     /// Creates `state.db` and `cache.db` (or their trees) if they do not exist.

@@ -49,6 +49,8 @@ ti connector comfort activate 80276883110000163974   # PIN.QES once, then signat
 ti probe ref                        # which TI services of ref answer, live (or --env ref)
 ti profile create                   # keyring and key file: TSL state and comfort IDs are kept
 ti --profile work pki verify card.pem   # another profile's cache and state
+ti profile list                     # profiles, the active one, their keyrings and sizes
+ti store doctor                     # key file, keyring, databases, records: ok, warn or fail
 ti cache clear
 ti schema pki verify                # JSON Schema of a command's output
 ti agent                            # usage guide for scripts and agents
@@ -262,7 +264,9 @@ zero-epa and later zeta-cli read and write the same files. The profile in effect
 `TI_STATE_DIR`, `TI_CACHE_DIR` (or `--cache-dir`) and `TI_STORE_KEK_PATH` override them;
 the three together give a separate store for a test or a HITL session.
 `TI_STORE_BACKEND=files` keeps one file per record instead of SQLite, for inspecting
-them.
+them; `TI_STORE_TRACE=1` writes one line per store operation to stderr. `ti profile list`,
+`show`, `use` and `delete --yes` manage the profiles; `ti store doctor` checks the one in
+effect without changing it.
 
 The cache holds downloaded trust material, OCSP responses and Konnektor service
 directories with their HTTP validators. An entry is used without asking for an hour,

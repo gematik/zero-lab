@@ -31,6 +31,7 @@ pub mod profile;
 mod sqlite;
 #[cfg(test)]
 mod tests;
+mod trace;
 
 use std::path::Path;
 
@@ -42,6 +43,7 @@ use ti_types::Timestamp;
 pub use cache::StoreCache;
 pub use files::FilesBackend;
 pub use profile::now;
+pub use trace::Traced;
 
 /// The cache of the profile in effect.
 ///
@@ -101,6 +103,31 @@ impl AnyBackend {
             Kind::Sqlite => AnyBackend::Sqlite(SqliteBackend::open(path, db)?),
             Kind::Files => AnyBackend::Files(FilesBackend::open(path)?),
         })
+    }
+}
+
+/// What `store doctor` reads of a database or files tree.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Inspection {
+    /// The format level of its contents.
+    pub level: u16,
+    /// The lowest level a reader must support.
+    pub min_compatible: u16,
+    /// `PRAGMA quick_check`'s answer; none for a files tree.
+    pub integrity: Option<String>,
+}
+
+impl AnyBackend {
+    /// Levels and integrity (STORE-123).
+    ///
+    /// # Errors
+    ///
+    /// The backend's errors.
+    pub fn inspect(&self) -> Result<Inspection, StoreError> {
+        match self {
+            AnyBackend::Sqlite(b) => b.inspect(),
+            AnyBackend::Files(b) => b.inspect(),
+        }
     }
 }
 

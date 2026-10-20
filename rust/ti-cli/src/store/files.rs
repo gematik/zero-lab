@@ -83,6 +83,20 @@ impl FilesBackend {
         Ok(backend)
     }
 
+    /// The tree's levels (STORE-086, STORE-123); a files tree has no integrity check.
+    ///
+    /// # Errors
+    ///
+    /// `malformed` for its `meta`, `backend_error` for I/O.
+    pub fn inspect(&self) -> Result<super::Inspection, StoreError> {
+        let meta = FilesMeta::parse(&read_file(&self.root.join("meta"))?)?;
+        Ok(super::Inspection {
+            level: meta.level,
+            min_compatible: meta.min_compatible,
+            integrity: None,
+        })
+    }
+
     /// The directory and file name of a record. With `create`, missing directories are
     /// made; without, a missing one means there is no record.
     fn locate(

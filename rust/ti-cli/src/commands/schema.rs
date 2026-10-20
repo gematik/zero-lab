@@ -31,7 +31,7 @@ use crate::error::{CliError, Exit};
 use crate::output::{Output, SCHEMA};
 
 /// Every command with JSON output, and the error document.
-pub const SCHEMAS: [(&str, &str); 43] = [
+pub const SCHEMAS: [(&str, &str); 48] = [
     (
         "directory login",
         include_str!("../../schemas/directory-login.json"),
@@ -96,6 +96,26 @@ pub const SCHEMAS: [(&str, &str); 43] = [
     (
         "profile create",
         include_str!("../../schemas/profile-create.json"),
+    ),
+    (
+        "profile list",
+        include_str!("../../schemas/profile-list.json"),
+    ),
+    (
+        "profile use",
+        include_str!("../../schemas/profile-use.json"),
+    ),
+    (
+        "profile delete",
+        include_str!("../../schemas/profile-delete.json"),
+    ),
+    (
+        "profile show",
+        include_str!("../../schemas/profile-show.json"),
+    ),
+    (
+        "store doctor",
+        include_str!("../../schemas/store-doctor.json"),
     ),
     (
         "pki pkcs12 convert",

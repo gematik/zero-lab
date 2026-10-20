@@ -183,6 +183,30 @@ impl SqliteBackend {
     }
 }
 
+impl SqliteBackend {
+    /// The database's levels and the result of `PRAGMA quick_check` (STORE-123).
+    ///
+    /// # Errors
+    ///
+    /// The database's errors.
+    pub fn inspect(&self) -> Result<super::Inspection, StoreError> {
+        let conn = self.conn()?;
+        let (_, level, min_compatible) = read_levels(&conn)?;
+        let rows: Vec<String> = conn
+            .prepare("PRAGMA quick_check")
+            .and_then(|mut s| {
+                s.query_map([], |r| r.get::<_, String>(0))?
+                    .collect::<Result<_, _>>()
+            })
+            .map_err(|e| sql(&e))?;
+        Ok(super::Inspection {
+            level,
+            min_compatible,
+            integrity: Some(rows.join("; ")),
+        })
+    }
+}
+
 impl Backend for SqliteBackend {
     fn capabilities(&self) -> Capabilities {
         // STORE-078
@@ -439,6 +463,12 @@ fn has_tables(conn: &Connection) -> Result<bool, StoreError> {
 
 /// STORE-070, STORE-101, STORE-100.
 fn check_level(conn: &Connection) -> Result<(), StoreError> {
+    let (user_version, level, min_compatible) = read_levels(conn)?;
+    check_database(MAX_LEVEL, user_version, level, min_compatible)
+}
+
+/// `user_version` and the levels in `meta` of a database with the store's application id.
+fn read_levels(conn: &Connection) -> Result<(u16, u16, u16), StoreError> {
     let id: i32 = conn
         .pragma_query_value(None, "application_id", |r| r.get(0))
         .map_err(|e| sql(&e))?;
@@ -455,12 +485,11 @@ fn check_level(conn: &Connection) -> Result<(), StoreError> {
             .ok_or(StoreError::Malformed("database meta"))
     };
     let level16 = |v: i64| u16::try_from(v).map_err(|_| StoreError::Malformed("format level"));
-    check_database(
-        MAX_LEVEL,
+    Ok((
         level16(user_version)?,
         level16(meta("level")?)?,
         level16(meta("min_compatible")?)?,
-    )
+    ))
 }
 
 /// STORE-072.
