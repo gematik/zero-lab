@@ -6,15 +6,15 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-10-20 14:05'
+updated_date: '2026-10-20 19:55'
 labels:
   - rust
   - go
   - interop
 dependencies: []
-priority: high
+priority: low
 ordinal: 123000
 ---
-
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->

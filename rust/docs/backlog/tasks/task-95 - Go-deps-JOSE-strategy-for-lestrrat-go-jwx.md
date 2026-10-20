@@ -4,6 +4,7 @@ title: 'Go deps: JOSE strategy for lestrrat-go/jwx'
 status: To Do
 assignee: []
 created_date: '2026-10-14 20:44'
+updated_date: '2026-10-20 19:38'
 labels:
   - go
   - deps
@@ -12,10 +13,9 @@ dependencies: []
 references:
   - docs/conventions/dependencies.md
   - go/docs/design.md
-priority: medium
+priority: high
 ordinal: 93000
 ---
-
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
