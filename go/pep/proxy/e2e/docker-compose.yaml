@@ -9,7 +9,7 @@
 name: pep-e2e-forward-auth # its own project, apart from docker-compose.pdp.yaml
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_DB: zero
       POSTGRES_USER: zero

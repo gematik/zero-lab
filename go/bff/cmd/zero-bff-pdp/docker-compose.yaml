@@ -8,13 +8,15 @@
 # to run the classic single-service demo with the login UI served at /.
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_DB: zero
       POSTGRES_USER: zero
       POSTGRES_PASSWORD: zero
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      # Postgres 18 keeps its data in /var/lib/postgresql/18/docker and refuses a volume at the old
+      # .../data path; a new volume name keeps Postgres 16 data out of it.
+      - postgres18-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U zero -d zero"]
       interval: 5s
@@ -58,4 +60,4 @@ services:
       - ./config:/config:ro
 
 volumes:
-  postgres-data:
+  postgres18-data:
