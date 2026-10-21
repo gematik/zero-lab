@@ -233,6 +233,9 @@ sync REF=`git rev-parse --abbrev-ref HEAD`:
             echo "v0.0.0-$ts-$short"
         elif [ "$(git rev-list -n1 "$best")" = "$commit" ]; then
             echo "${best##*/}"
+        elif [[ "${best##*/v}" == *-* ]]; then
+            # Above a pre-release vX.Y.Z-pre the pseudo-version is vX.Y.Z-pre.0.<time>-<hash>.
+            echo "${best##*/}.0.$ts-$short"
         else
             IFS=. read -r ma mi pa <<<"${best##*/v}"
             echo "v$ma.$mi.$((pa+1))-0.$ts-$short"
@@ -246,7 +249,10 @@ sync REF=`git rev-parse --abbrev-ref HEAD`:
               ver=$(modver "${dep##*/}")
               echo "==> $self: get $dep@$ver"
               go get "$dep@$ver"
-          done )
+          done
+          # go get leaves go.sum without the entries a build outside the workspace needs
+          # (`go install …@tag`, the Docker images); tidy them as those builds see the module.
+          GOWORK=off go mod tidy )
     done
     go work sync
 
