@@ -120,7 +120,10 @@ and the release PR records the runs; the rules are in
 
 `go install <cmd>@<tag>` and tag-pinned Docker builds run **outside** `go.work`, so a
 command resolves its libraries from its `go.mod`. To make a tagged build pick up a library
-change, repin with `just sync` before tagging.
+change, repin with `just sync` before tagging. It requires each in-repo module at its tag when
+the tag is at the ref, otherwise at a pseudo-version above its latest tag (also above a
+pre-release such as `v1.0.0-beta.1`), then runs `go mod tidy` outside the workspace so every
+`go.sum` holds what those builds need.
 
 ```console
 # 1. Land the library change (must be fetchable from the remote)
@@ -128,7 +131,7 @@ git add -A && git commit -m "brainpool: <change>"
 git push origin <branch>
 
 # 2. Repin in-repo requires to the branch tip so out-of-workspace builds pick it up
-just sync                         # default REF = current branch; or: just sync REF=<ref>
+just sync                         # default: the current branch; or: just sync <ref>
 git add -A && git commit -m "sync: pin in-repo deps to branch tip"
 git push
 

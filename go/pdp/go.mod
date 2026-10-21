@@ -3,13 +3,13 @@ module github.com/gematik/zero-lab/go/pdp
 go 1.27.0
 
 require (
-	github.com/gematik/zero-lab/go/dpop v0.1.2-0.20260908072016-2ca75aa218e2
-	github.com/gematik/zero-lab/go/gemidp v0.50.2-0.20260908072016-2ca75aa218e2
-	github.com/gematik/zero-lab/go/kv v0.0.2-0.20260908072016-2ca75aa218e2
-	github.com/gematik/zero-lab/go/nonce v0.2.3-0.20260908072016-2ca75aa218e2
-	github.com/gematik/zero-lab/go/oauth v0.50.2-0.20260908072016-2ca75aa218e2
-	github.com/gematik/zero-lab/go/oidf v0.50.2-0.20260908072016-2ca75aa218e2
-	github.com/gematik/zero-lab/go/pep v0.25.7-0.20260908072016-2ca75aa218e2
+	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.1
+	github.com/gematik/zero-lab/go/gemidp v0.50.5-0.20261021083859-f5934a4ca8a1
+	github.com/gematik/zero-lab/go/kv v0.0.3-0.20261021083859-f5934a4ca8a1
+	github.com/gematik/zero-lab/go/nonce v0.21.1-0.20261021083859-f5934a4ca8a1
+	github.com/gematik/zero-lab/go/oauth v0.51.1-0.20261021083859-f5934a4ca8a1
+	github.com/gematik/zero-lab/go/oidf v0.50.3-0.20261021083859-f5934a4ca8a1
+	github.com/gematik/zero-lab/go/pep v0.25.8-0.20261021083859-f5934a4ca8a1
 	github.com/go-playground/validator/v10 v10.30.4
 	github.com/joho/godotenv v1.5.1
 	github.com/lestrrat-go/jwx/v3 v3.3.0
@@ -25,7 +25,8 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
-	github.com/gematik/zero-lab/go/brainpool v1.0.2-0.20260908072016-2ca75aa218e2 // indirect
+	github.com/gematik/zero-lab/go/brainpool v1.2.1-0.20261021083859-f5934a4ca8a1 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.6 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
@@ -47,15 +48,14 @@ require (
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
-	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/valyala/fastjson v1.6.10 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/crypto v0.57.0 // indirect
-	golang.org/x/sync v0.23.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
-	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
+	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 )
