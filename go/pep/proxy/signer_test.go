@@ -45,15 +45,31 @@ func TestBffSignerProof(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dpopProof: %v", err)
 	}
-	parsed, err := dpop.Parse(proof)
+	key, err := dpopKey(priv)
 	if err != nil {
-		t.Fatalf("parse proof: %v", err)
+		t.Fatal(err)
 	}
-	if parsed.HttpMethod != "GET" || parsed.HttpURI != "https://api.example/protected" {
-		t.Errorf("htm/htu = %s %s", parsed.HttpMethod, parsed.HttpURI)
+	// The resource server's checks of RFC 9449 Section 4.3 and 7.1: htm, htu, ath and the key binding.
+	verifyDPoP(t, proof, dpop.Request{
+		Method:      http.MethodGet,
+		URI:         "https://api.example/protected",
+		AccessToken: "the-access-token",
+		Thumbprint:  key.Thumbprint(),
+	})
+}
+
+// verifyDPoP checks proof as a server would and fails the test on a refusal.
+func verifyDPoP(t *testing.T, proof string, req dpop.Request) *dpop.Proof {
+	t.Helper()
+	v, err := dpop.NewVerifier(dpop.Config{})
+	if err != nil {
+		t.Fatal(err)
 	}
-	ath, _ := dpop.CalculateAccessTokenHash("the-access-token")
-	if parsed.AccessTokenHash != ath {
-		t.Errorf("ath = %q, want %q", parsed.AccessTokenHash, ath)
+	h := http.Header{}
+	h.Set(dpop.HeaderName, proof)
+	got, err := v.Verify(h, req)
+	if err != nil {
+		t.Fatalf("DPoP proof refused: %v", err)
 	}
+	return got
 }

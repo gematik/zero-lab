@@ -4,6 +4,25 @@ A local stack for running the pep oauth2-proxy end to end: OIDC / OIDF / gemidp 
 the snapshot fast path, and revocation. Caddy and the upstream run in compose; the proxy runs on the host so
 it can read local secrets and you can iterate with `go run`.
 
+## Setups
+
+Three setups. Run every command from this directory (`cd go/pep/proxy/e2e` from the repository root):
+the compose files, `pdp-config/`, `zaddy-config/` and the `go run` paths are relative to it. **Run one setup
+at a time**: each serves the browser on port 8080.
+
+| Setup | Compose | Port 8080 | Login |
+|---|---|---|---|
+| [Forward auth](#run-simplest--in-memory-one-oidc-provider-no-database) | `docker-compose.yaml` | Caddy in compose, pep on :4180 | a real OIDC / OIDF / gemidp provider |
+| [PDP backend, DPoP](#pdp-backend-s4--airgapped-dpop-end-to-end) | `docker-compose.pdp.yaml` | pep on the host | mock OpenID Provider in the PDP, no network |
+| [Standalone gateway](#standalone-gateway-s5--pep-gates--reverse-proxies-no-caddy) | `docker-compose.pdp.yaml` | pep on the host | as above |
+
+Switching setups, stop the other one first, or pep fails with `bind: address already in use`:
+
+```sh
+docker compose -f docker-compose.yaml down        # forward auth (Caddy holds :8080)
+docker compose -f docker-compose.pdp.yaml down    # PDP + zaddy
+```
+
 ## Ports
 
 One front port — point your browser or rathole tunnel at it; the rest is internal or for the host proxy.
@@ -18,12 +37,12 @@ One front port — point your browser or rathole tunnel at it; the rest is inter
 ## Run (simplest — in-memory, one OIDC provider, no database)
 
 ```sh
-docker compose -f pep/proxy/e2e/docker-compose.yaml up --build
+docker compose -f docker-compose.yaml up --build -d
 
 PEP_PUBLIC_URL=http://localhost:8080 PEP_INSECURE_COOKIE=true \
 PEP_OIDC_ISSUER=https://accounts.google.com \
 PEP_OIDC_CLIENT_ID=... PEP_OIDC_CLIENT_SECRET=... \
-  go run ./pep/cmd/zero-pep-proxy
+  go run ../../cmd/zero-pep-proxy
 ```
 
 Open http://localhost:8080/ and log in; register `http://localhost:8080/oauth2/callback` at the provider.
@@ -74,7 +93,13 @@ login path (a login page → `/op-callback` → code exchange → id_token valid
 run in compose; pep runs on the host so the PDP issuer URL (`http://localhost:8011`) is the same for the
 browser redirect and pep's backend calls.
 
+zaddy checks each DPoP proof's `htu` against `public_origin http://localhost:8010` in
+`zaddy-config/Caddyfile`, the address pep reaches it at (`PEP_API_UPSTREAM`).
+
 ```sh
+# 0) port 8080 must be free: the forward-auth setup's Caddy holds it
+docker compose -f docker-compose.yaml down
+
 # 1) PDP (image built with -tags mockidp → co-hosted mock OP) + zaddy (enforce_policy authorization_dpop)
 docker compose -f docker-compose.pdp.yaml up --build -d
 
@@ -91,7 +116,8 @@ page**; click **Sign in** to complete login (the mock runs the real op-callback 
 
 - `GET http://localhost:8080/oauth2/userinfo` → the identity from the signed id_token
 - `GET http://localhost:8080/api/protected-dpop` → `200`, zaddy-verified DPoP-bound token
-- `GET http://localhost:8010/protected-dpop` (no token) → `401`
+- `GET http://localhost:8010/protected-dpop` (no token) → `401` with `WWW-Authenticate: DPoP algs="ES256"` and
+  no body (RFC 9449 Figure 15)
 
 The `/api` call shows the whole chain: pep exchanges the code at `/token` with `private_key_jwt` + a DPoP
 proof (so the AS issues a `cnf.jkt`-bound token), then injects `Authorization: DPoP <token>` + a fresh proof
@@ -105,7 +131,8 @@ Gateway mode (`PEP_ROUTES_PATH`, or the `PEP_WEBAPP_UPSTREAM` / `PEP_API_UPSTREA
 and reverse-proxy upstreams itself — the `zero-bff-pdp` replacement shape. Reusing the PDP backend services:
 
 ```sh
-# 1) PDP (mockidp) + zaddy, as above
+# 1) PDP (mockidp) + zaddy, as above (already running if you come from the PDP backend setup; stop that
+#    setup's pep first, it holds :8080)
 docker compose -f docker-compose.pdp.yaml up --build -d
 
 # 2) a webapp upstream on the host (any app; metsubushi here)

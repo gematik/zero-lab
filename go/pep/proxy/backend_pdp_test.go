@@ -102,7 +102,7 @@ func TestPDPStartLoginPreparesSession(t *testing.T) {
 func TestPDPTokenRequestSendsDPoP(t *testing.T) {
 	var gotDPoP string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotDPoP = r.Header.Get(dpop.DPoPHeaderName)
+		gotDPoP = r.Header.Get(dpop.HeaderName)
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"access_token":"at","refresh_token":"rt","expires_in":300,"token_type":"DPoP"}`))
 	}))
@@ -123,13 +123,7 @@ func TestPDPTokenRequestSendsDPoP(t *testing.T) {
 	if gotDPoP == "" {
 		t.Fatal("no DPoP header sent to /token — binding requires it")
 	}
-	proof, err := dpop.Parse(gotDPoP)
-	if err != nil {
-		t.Fatalf("parse /token DPoP: %v", err)
-	}
-	if proof.HttpMethod != "POST" || proof.HttpURI != ts.URL {
-		t.Errorf("proof htm/htu = %s %s, want POST %s", proof.HttpMethod, proof.HttpURI, ts.URL)
-	}
+	proof := verifyDPoP(t, gotDPoP, dpop.Request{Method: http.MethodPost, URI: ts.URL})
 	if proof.AccessTokenHash != "" {
 		t.Errorf("token-request proof must carry no ath, got %q", proof.AccessTokenHash)
 	}

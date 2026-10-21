@@ -86,7 +86,7 @@ func (g *Gateway) newProxy(rt *Route) *httputil.ReverseProxy {
 				if proof, err := g.mintDPoP(pr.Out, inj.token); err != nil {
 					slog.Error("mint DPoP proof", "error", err)
 				} else {
-					pr.Out.Header.Set(dpop.DPoPHeaderName, proof)
+					pr.Out.Header.Set(dpop.HeaderName, proof)
 				}
 			}
 		},
@@ -103,11 +103,7 @@ func (g *Gateway) newProxy(rt *Route) *httputil.ReverseProxy {
 // mintDPoP signs a resource-server DPoP proof for the outbound request: htm/htu = the upstream method+URL,
 // ath = the access-token hash. Signed with the BFF's DPoP key (the token's cnf.jkt).
 func (g *Gateway) mintDPoP(out *http.Request, accessToken string) (string, error) {
-	proof, err := dpop.NewBuilder().HttpRequest(out).AccessTokenHashFrom(accessToken).Build()
-	if err != nil {
-		return "", err
-	}
-	return proof.Sign(g.dpopPK)
+	return g.dpopKey.Proof(out.Method, out.URL.String(), dpop.ProofOptions{AccessToken: accessToken})
 }
 
 // encodeIdentity renders the session's identity claims as base64url(JSON) for the identity header. Returns

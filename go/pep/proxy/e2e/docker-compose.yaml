@@ -6,6 +6,7 @@
 #                                    ├─reverse_proxy──> host pep :4180   (/oauth2/*, OIDF entity statement)
 #                                    └─reverse_proxy──> metsubushi       (protected upstream)
 #   host pep :4180 ──DATABASE_URL──> postgres :5432
+name: pep-e2e-forward-auth # its own project, apart from docker-compose.pdp.yaml
 services:
   postgres:
     image: postgres:16-alpine

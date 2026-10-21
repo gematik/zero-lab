@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -47,7 +48,10 @@ type PEP struct {
 	decryptAccessTokenFunc    func(string) (string, error)
 	accessTokenAcceptableSkew time.Duration
 	resource                  string // URI of the resource being protected
-
+	// publicOrigin is the scheme, host and port clients reach the protected resource at; the
+	// DPoP proof's htu is checked against it plus the request path (RFC 9449 Section 4.3).
+	publicOrigin string
+	dpopVerifier *dpop.Verifier
 }
 
 type builder struct {
@@ -75,7 +79,35 @@ func (b *builder) Build() (*PEP, error) {
 	if b.p.accessTokenAcceptableSkew == 0 {
 		b.p.accessTokenAcceptableSkew = 1 * time.Minute
 	}
+	if b.p.publicOrigin == "" && b.p.resource != "" {
+		b.p.publicOrigin = b.p.resource
+	}
+	if b.p.publicOrigin != "" {
+		origin, err := originOf(b.p.publicOrigin)
+		if err != nil {
+			return nil, fmt.Errorf("public origin %q: %w", b.p.publicOrigin, err)
+		}
+		b.p.publicOrigin = origin
+	}
+	// Replay detection covers this process only (RFC 9449 Section 11.1).
+	verifier, err := dpop.NewVerifier(dpop.Config{Replay: dpop.NewMemoryReplayCache(100_000, nil)})
+	if err != nil {
+		return nil, fmt.Errorf("dpop verifier: %w", err)
+	}
+	b.p.dpopVerifier = verifier
 	return b.p, nil
+}
+
+// originOf is the scheme://host[:port] of an absolute http(s) URL.
+func originOf(raw string) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", errors.New("not an absolute http or https URL")
+	}
+	return u.Scheme + "://" + u.Host, nil
 }
 
 func (b *builder) WithJWKSetFunc(f func() (jwk.Set, error)) *builder {
@@ -128,6 +160,13 @@ func (b *builder) Resource(resource string) *builder {
 	return b
 }
 
+// PublicOrigin sets the scheme, host and port clients reach the protected resource at, for the
+// DPoP htu check. Without it, the resource's origin is used.
+func (b *builder) PublicOrigin(origin string) *builder {
+	b.p.publicOrigin = origin
+	return b
+}
+
 // close the PEP and release any resources
 func (p *PEP) Close() error {
 	// TODO: reserved for future use
@@ -138,6 +177,15 @@ func (p *PEP) deny(ctx Context, err Error) {
 	w := ctx.Writer()
 	r := ctx.Request()
 	slog.Debug("Request denied", "method", r.Method, "url", r.URL)
+	if err.WWWAuthenticate != "" {
+		w.Header().Set("WWW-Authenticate", err.WWWAuthenticate)
+	}
+	// A request without credentials gets the challenge alone: no error code, so no error body
+	// (RFC 6750 Section 3.1, RFC 9449 Figure 15).
+	if err.Code == "" {
+		w.WriteHeader(err.HttpStatus)
+		return
+	}
 	w.Header().Add("Content-Type", "application/json")
 	w.WriteHeader(err.HttpStatus)
 	json.NewEncoder(w).Encode(err)
@@ -165,7 +213,7 @@ type pepContext struct {
 	deny           func(Context, Error)
 	accessTokenRaw string
 	accessToken    jwt.Token
-	dpop           *dpop.DPoP
+	dpop           *dpop.Proof
 	claimsRaw      []byte
 }
 
@@ -218,29 +266,53 @@ func (c *pepContext) verifyAuthorizationBearer() error {
 	return c.verifyAccessToken(bearerToken)
 }
 
-func (c *pepContext) verifyAuthorizationDPoP(options dpop.ParseOptions) error {
-	proof, dpopErr := dpop.ParseRequest(c.request, options)
-	if dpopErr != nil {
-		return dpopErr
+// verifyAuthorizationDPoP checks a DPoP-bound access token and its proof (RFC 9449 Section 7.1):
+// the DPoP-scheme credentials, the access token, and the proof for this request's method and URI,
+// with ath and the key binding to the token's cnf.jkt. The URI is the configured public origin
+// plus the request path, never one built from the client's Host or X-Forwarded-* headers.
+func (c *pepContext) verifyAuthorizationDPoP() error {
+	if c.pep.publicOrigin == "" {
+		return errors.New("DPoP needs the resource's public origin: set PublicOrigin or Resource")
 	}
-
-	if err := c.verifyAccessToken(proof.AccessTokenRaw); err != nil {
+	accessToken, err := dpop.AccessToken(c.request.Header)
+	if err != nil {
 		return err
 	}
-
-	// verify access token binding
-	cnf := new(map[string]any)
-
-	c.accessToken.Get("cnf", cnf)
-	if (*cnf)["jkt"] == "" {
-		return ErrMissingAccessTokenDPoPBinding
+	if err := c.verifyAccessToken(accessToken); err != nil {
+		return err
 	}
-	if proof.DPoP.KeyThumbprint != (*cnf)["jkt"] {
-		return ErrInvalidAccessTokenDPoPBinding
+	// An unbound token has no cnf.jkt; the verifier refuses it as invalid_token.
+	var jkt string
+	var cnf map[string]any
+	if c.accessToken.Get("cnf", &cnf) == nil {
+		jkt, _ = cnf["jkt"].(string)
 	}
-	c.dpop = proof.DPoP
-
+	proof, err := c.pep.dpopVerifier.Verify(c.request.Header, dpop.Request{
+		Method:      c.request.Method,
+		URI:         c.pep.publicOrigin + c.request.URL.EscapedPath(),
+		AccessToken: accessToken,
+		Thumbprint:  jkt,
+	})
+	if err != nil {
+		return err
+	}
+	c.dpop = proof
 	return nil
+}
+
+// dpopDenial is the pep Error for a DPoP refusal: the status RFC 6750 Section 3.1 gives the
+// code, and the challenge of RFC 9449 Section 7.1.
+func (p *PEP) dpopDenial(e *dpop.Error) Error {
+	status := http.StatusUnauthorized
+	if e.Code == dpop.CodeInvalidRequest {
+		status = http.StatusBadRequest
+	}
+	return Error{
+		HttpStatus:      status,
+		Code:            e.Code,
+		Description:     e.Description,
+		WWWAuthenticate: p.dpopVerifier.Challenge(e),
+	}
 }
 
 func (c *pepContext) parseAuthorizationScheme(scheme string) (string, error) {

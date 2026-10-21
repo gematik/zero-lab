@@ -32,6 +32,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/nonce"
@@ -62,7 +63,7 @@ type Server struct {
 	jwks             jwk.Set
 	tokenVerifier    *pep.PEP
 	nonceService     nonce.Service
-	dpopMaxAge       time.Duration
+	dpopVerifier     *dpop.Verifier
 }
 
 func NewFromConfigFile(filename string) (*Server, error) {
@@ -144,8 +145,15 @@ func New(cfg Config) (*Server, error) {
 		s.nonceService = nonce.NewKVService(store, defaultNonceTTL)
 	}
 
-	// TODO: configure DPoP validity period
-	s.dpopMaxAge = 5 * time.Minute
+	// Replay detection covers this replica only; replicas behind one endpoint share no
+	// state yet (RFC 9449 Section 11.1).
+	s.dpopVerifier, err = dpop.NewVerifier(dpop.Config{
+		MaxAge: 5 * time.Minute,
+		Replay: dpop.NewMemoryReplayCache(100_000, nil),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("dpop verifier: %w", err)
+	}
 
 	return s, nil
 }

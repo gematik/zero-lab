@@ -2,6 +2,7 @@
 # issuer URL http://localhost:8011 is consistent for both the browser redirect and pep's backend calls). No
 # external network: the PDP image is built with -tags mockidp, baking in a co-hosted mock OpenID Provider
 # that runs the real op-callback login path. See README.md (§ PDP backend).
+name: pep-e2e-pdp # its own project, apart from docker-compose.yaml
 services:
   zero-pdp:
     build:

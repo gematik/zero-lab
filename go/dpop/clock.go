@@ -21,26 +21,25 @@
 
 package dpop
 
-import (
-	"fmt"
-	"net/http"
-)
+import "time"
 
-func SignRequest(request *http.Request, privateKey *PrivateKey) error {
+// Clock is the source of the current time. The package never reads the system clock itself:
+// proofs are dated and checked against the clock it is given, so tests and audits can
+// reproduce every decision.
+type Clock interface {
+	Now() time.Time
+}
 
-	token, err := NewBuilder().
-		HttpRequest(request).
-		Build()
-	if err != nil {
-		return fmt.Errorf("build DPoP token: %w", err)
+// SystemClock is the real time, the clock of production servers and clients.
+type SystemClock struct{}
+
+// Now returns the current time.
+func (SystemClock) Now() time.Time { return time.Now() }
+
+// clockOrSystem is c, or the system clock when none was configured.
+func clockOrSystem(c Clock) Clock {
+	if c == nil {
+		return SystemClock{}
 	}
-
-	signed, err := token.Sign(privateKey)
-	if err != nil {
-		return err
-	}
-
-	request.Header.Add(DPoPHeaderName, string(signed))
-
-	return nil
+	return c
 }

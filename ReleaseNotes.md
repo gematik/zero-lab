@@ -1,5 +1,42 @@
 # Release Notes
 
+# Release go/dpop v1.0.0-beta.1
+
+A rewrite against [RFC 9449](https://www.rfc-editor.org/rfc/rfc9449) on go-jose v4; the first
+release with a stable API in view. `TRACEABILITY.md` maps every normative statement the module
+implements to the tests that prove it.
+
+### breaking
+- New API. Client: `Key` (`NewKey`, `NewKeyFromSigner` over a `crypto.Signer`), `Key.Proof`,
+  `Key.Sign`, `Key.Thumbprint`, `AccessTokenHash`. Server: `Verifier` (`NewVerifier`, `Config`),
+  `Verifier.Verify(header, Request)`, `AccessToken`, `Error` with `WriteTokenError`,
+  `Verifier.WriteChallenge`, `Verifier.Challenge`, `SetNonce`. `PrivateKey`, `FromJWK`,
+  `NewBuilder`, `DPoP`, `Parse`, `ParseRequest`, `ParseOptions`, `SignRequest`, `DPoPError`,
+  `CalculateAccessTokenHash` and `DPoPHeaderName` are gone.
+- The expected URI is the server's own (`Request.URI`); `Host` and `X-Forwarded-Proto` are no
+  longer used to rebuild it.
+
+### features
+- Every check of Section 4.3: one DPoP header, a single token68 JWT, required claims read by
+  exact name and type, `typ` `dpop+jwt`, an allowlist of asymmetric algorithms (`none` and MAC
+  cannot be configured), signature by the embedded `jwk`, no private key in it, `htm`, `htu`
+  after RFC 3986 normalization without query and fragment, the server nonce, the `iat` window
+  in both directions, `ath` and the key binding of the access token.
+- Grant binding by thumbprint (`dpop_jkt`, Section 10); replay detection through a
+  `ReplayCache` keyed by a SHA-256 of key, `htu` and `jti` (Section 11.1), with a bounded
+  `MemoryReplayCache` that fails closed; server nonces through a `NonceSource` (Sections 8, 9).
+- Responses as the RFC prescribes: 400 with an RFC 6749 error body and `DPoP-Nonce` for
+  authorization servers, 401 with a `WWW-Authenticate: DPoP` challenge carrying `algs` for
+  resource servers, uncacheable when a nonce is sent.
+- Proofs signed through `crypto.Signer` with ECDSA P-256/384/521 and Ed25519 keys; `jti` from
+  130 random bits.
+- Time from a `Clock`; the module never reads the system clock itself.
+- Known-answer tests from the RFC's own examples (Figures 2, 7, 13, 14; the `jkt` of Section
+  6.1), one test per check, fuzz targets for the verifier, URI normalization and credentials.
+
+### changed
+- Dependencies: go-jose v4 only; lestrrat-go/jwx and its modules are gone.
+
 # Release go/brainpool v1.2.0
 
 ### breaking

@@ -1,10 +1,10 @@
 ---
 id: TASK-95
 title: 'Go deps: JOSE strategy for lestrrat-go/jwx'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-10-14 20:44'
-updated_date: '2026-10-21 07:15'
+updated_date: '2026-10-21 08:35'
 labels:
   - go
   - deps
@@ -39,4 +39,10 @@ josebp: stays for brainpool in gemidp. On go-jose only signing and verifying wou
 bff: not migrated, deleted in favour of pep (TASK-127).
 JWKS: not part of go-jose; a JWKS provider on cached HTTP content shared with Rust (TASK-125, TASK-126).
 Plan, one PR per step: dpop; oauth (after TASK-126); bff skipped (TASK-127); oidf; pep (session cookies and snapshots: dir+A256GCM, consider crypto/cipher directly, TASK-71); pdp; gemidp drops jwx (josebp only). Done when no go.mod requires jwx.
+
+Step 1 (dpop) in progress on feat/dpop-rfc9449: rewrite of go/dpop on go-jose per RFC 9449, every check of section 4.3 with provenance tests; each package declares its own Clock (maintainer, option b).
+
+Step 1 (dpop) implemented on feat/dpop-rfc9449: go/dpop rewritten on go-jose per RFC 9449 (all checks of Section 4.3, Sections 5-11 as far as they are the library's), tests with provenance (RFC examples of Figures 2, 7, 13 as known answers, one test per check, TRACEABILITY.md generated and checked, fuzzing), consumers migrated (pdp, pep, pep/proxy, bff, zaddy with public_origin). Follow-ups: TASK-129 (pdp client_credentials without proof), TASK-130 (shared replay cache), TASK-131 (pep nonces).
+
+Step 1 HITL passed (maintainer, 2026-10-21): pep/proxy/e2e PDP backend setup, login through the mock IdP, GET /api/protected-dpop 200 (pdp verified the token request proof against cnf.jkt, zaddy verified token, proof, ath and key binding against public_origin); without a token zaddy answers 401 with a bare DPoP challenge.
 <!-- SECTION:NOTES:END -->

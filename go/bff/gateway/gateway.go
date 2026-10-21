@@ -27,6 +27,7 @@
 package gateway
 
 import (
+	"crypto"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -38,6 +39,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/bff"
 	"github.com/gematik/zero-lab/go/dpop"
+	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
 // InjectMode selects what a protected route forwards upstream to identify/authorize the user.
@@ -79,10 +81,10 @@ type Config struct {
 
 // Gateway is an http.Handler that gates and reverse-proxies the configured upstreams.
 type Gateway struct {
-	bff    *bff.BackendForFrontend
-	cfg    Config
-	routes []*Route
-	dpopPK *dpop.PrivateKey
+	bff     *bff.BackendForFrontend
+	cfg     Config
+	routes  []*Route
+	dpopKey *dpop.Key
 }
 
 // New builds the gateway: it parses each upstream, builds a reverse proxy per route, and — when any route
@@ -107,16 +109,24 @@ func New(b *bff.BackendForFrontend, cfg Config) (*Gateway, error) {
 			return nil, fmt.Errorf("route %q: invalid upstream %q", rt.PathPrefix, rt.UpstreamURL)
 		}
 		rt.upstream = u
-		if rt.Protected && rt.Inject == InjectDPoP && g.dpopPK == nil {
+		if rt.Protected && rt.Inject == InjectDPoP && g.dpopKey == nil {
 			key := b.DPoPKey()
 			if key == nil {
 				return nil, fmt.Errorf("route %q wants DPoP injection but the BFF has no DPoP key", rt.PathPrefix)
 			}
-			pk, err := dpop.FromJWK(key)
+			var raw any
+			if err := jwk.Export(key, &raw); err != nil {
+				return nil, fmt.Errorf("export DPoP key: %w", err)
+			}
+			signer, ok := raw.(crypto.Signer)
+			if !ok {
+				return nil, fmt.Errorf("DPoP key %T is not a private key", raw)
+			}
+			k, err := dpop.NewKeyFromSigner(signer)
 			if err != nil {
 				return nil, fmt.Errorf("wrap DPoP key: %w", err)
 			}
-			g.dpopPK = pk
+			g.dpopKey = k
 		}
 		rt.proxy = g.newProxy(rt)
 		g.routes = append(g.routes, rt)

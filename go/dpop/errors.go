@@ -22,72 +22,127 @@
 package dpop
 
 import (
-	"fmt"
+	"encoding/json"
 	"net/http"
+	"strings"
 )
 
-type DPoPError struct {
-	HttpStatus  int    `json:"-"`
-	Code        string `json:"error"`
-	Description string `json:"error_description"`
-}
-
-func (e DPoPError) Error() string {
-	return fmt.Sprintf("%s: %s", e.Code, e.Description)
-}
-
-func (e DPoPError) WriteResponse(writer http.ResponseWriter) {
-	writer.Header().Set("Content-Type", "application/json")
-	writer.WriteHeader(e.HttpStatus)
-	writer.Write([]byte(fmt.Sprintf(`{"error": "%s", "error_description": "%s"}`, e.Code, e.Description)))
-}
-
-var (
-	ErrMissingHeader = DPoPError{
-		HttpStatus:  http.StatusBadRequest,
-		Code:        "invalid_dpop_proof",
-		Description: "Missing DPoP header",
-	}
-
-	ErrUseDPoPNonce = DPoPError{
-		HttpStatus:  http.StatusBadRequest,
-		Code:        "invalid_dpop_proof",
-		Description: "DPoP nonce is required",
-	}
-
-	ErrInvalidDPoPKeyBinding = DPoPError{
-		HttpStatus:  http.StatusBadRequest,
-		Code:        "invalid_dpop_proof",
-		Description: "Invalid DPoP key binding",
-	}
-
-	ErrMultipleAuthorizationMethods = DPoPError{
-		HttpStatus:  http.StatusBadRequest,
-		Code:        "invalid_request",
-		Description: "Multiple methods used to include access token",
-	}
-
-	ErrMissingAuthorizationHeader = DPoPError{
-		HttpStatus:  http.StatusUnauthorized,
-		Code:        "authorization_required",
-		Description: "Missing authorization header",
-	}
-
-	ErrInvalidAuthorizationHeader = DPoPError{
-		HttpStatus:  http.StatusBadRequest,
-		Code:        "invalid_request",
-		Description: "Invalid authorization header",
-	}
-
-	ErrMissingAccessTokenHash = DPoPError{
-		HttpStatus:  http.StatusBadRequest,
-		Code:        "invalid_dpop_proof",
-		Description: "Missing access token hash",
-	}
-
-	ErrInvalidAccessTokenHash = DPoPError{
-		HttpStatus:  http.StatusBadRequest,
-		Code:        "invalid_dpop_proof",
-		Description: "Invalid access token hash",
-	}
+// Error codes of RFC 9449 and of the RFCs it builds on.
+const (
+	// CodeInvalidProof: the DPoP proof failed a check of Section 4.3 (Sections 5, 7.1).
+	CodeInvalidProof = "invalid_dpop_proof"
+	// CodeUseNonce: the proof lacks the server's current nonce (Sections 8, 9).
+	CodeUseNonce = "use_dpop_nonce"
+	// CodeInvalidToken: the access token is not bound to the proof's key (Section 7.1,
+	// Figure 16; RFC 6750 Section 3.1).
+	CodeInvalidToken = "invalid_token"
+	// CodeInvalidRequest: the Authorization header is malformed (RFC 6750 Section 3.1).
+	CodeInvalidRequest = "invalid_request"
 )
+
+// Error is why a request was refused, in the vocabulary the RFC's responses use.
+type Error struct {
+	// Code is one of the Code constants; empty when the request carried no credentials at
+	// all, which a resource server answers with a challenge but no error (Figure 15).
+	Code string
+	// Description is a short, fixed explanation for developers (RFC 6749 Section 5.2). It
+	// never echoes request content.
+	Description string
+	// Nonce is a fresh nonce to send in the DPoP-Nonce header, when the server uses nonces
+	// (Sections 8, 9).
+	Nonce string
+}
+
+func (e *Error) Error() string {
+	if e.Code == "" {
+		return "dpop: " + e.Description
+	}
+	return "dpop: " + e.Code + ": " + e.Description
+}
+
+func proofError(description string) *Error {
+	return &Error{Code: CodeInvalidProof, Description: description}
+}
+
+// WriteTokenError answers a token request the authorization server refuses because of its
+// DPoP proof: 400 with an RFC 6749 Section 5.2 error body (Section 5), and the server's
+// nonce in DPoP-Nonce, uncacheable (Sections 8, 8.2).
+func WriteTokenError(w http.ResponseWriter, e *Error) {
+	if e.Nonce != "" {
+		SetNonce(w, e.Nonce)
+	}
+	body, err := json.Marshal(struct {
+		Error       string `json:"error"`
+		Description string `json:"error_description,omitempty"`
+	}{e.Code, e.Description})
+	if err != nil {
+		// Two strings cannot fail to marshal.
+		panic(err)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusBadRequest)
+	_, _ = w.Write(body)
+}
+
+// WriteChallenge answers a resource request refused because of its DPoP proof or access
+// token: a WWW-Authenticate challenge of the DPoP scheme with the error, its description and
+// the accepted algorithms (Section 7.1), and the server's nonce in DPoP-Nonce (Section 9).
+// The status is 400 for a malformed request and 401 otherwise (RFC 6750 Section 3.1).
+func (v *Verifier) WriteChallenge(w http.ResponseWriter, e *Error) {
+	if e.Nonce != "" {
+		SetNonce(w, e.Nonce)
+	}
+	w.Header().Set("WWW-Authenticate", v.Challenge(e))
+	status := http.StatusUnauthorized
+	if e.Code == CodeInvalidRequest {
+		status = http.StatusBadRequest
+	}
+	w.WriteHeader(status)
+}
+
+// Challenge is the WWW-Authenticate value for e: the DPoP scheme with error and
+// error_description when there is an error, and always algs (Section 7.1, Figures 15 and 16).
+// For servers that write their own error responses; [Verifier.WriteChallenge] uses it.
+func (v *Verifier) Challenge(e *Error) string {
+	var params []string
+	if e.Code != "" {
+		params = append(params, `error=`+quote(e.Code))
+		if e.Description != "" {
+			params = append(params, `error_description=`+quote(e.Description))
+		}
+	}
+	algs := make([]string, len(v.algorithms))
+	for i, alg := range v.algorithms {
+		algs[i] = string(alg)
+	}
+	params = append(params, `algs=`+quote(strings.Join(algs, " ")))
+	return "DPoP " + strings.Join(params, ", ")
+}
+
+// SetNonce sends nonce in the DPoP-Nonce header and makes the response uncacheable, so no
+// cache hands a stale nonce to the next request (Section 8.2).
+func SetNonce(w http.ResponseWriter, nonce string) {
+	w.Header().Set("DPoP-Nonce", nonce)
+	w.Header().Set("Cache-Control", "no-store")
+}
+
+// quote is s as an RFC 9110 Section 5.6.4 quoted-string. The descriptions are the package's
+// own constants, so the escaping is a guard, not a filter of client input.
+func quote(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range s {
+		switch {
+		case r == '"' || r == '\\':
+			b.WriteByte('\\')
+			b.WriteRune(r)
+		case r < 0x20 || r == 0x7f || r > 0x7e:
+			// Not allowed in a quoted-string as this package writes it: dropped.
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
+}

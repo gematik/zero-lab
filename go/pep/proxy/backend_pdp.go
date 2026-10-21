@@ -59,7 +59,7 @@ func (b *pdpBackend) injectDPoP(out *http.Request, sess *Session, token string) 
 		return err
 	}
 	out.Header.Set("Authorization", "DPoP "+token)
-	out.Header.Set(dpop.DPoPHeaderName, proof)
+	out.Header.Set(dpop.HeaderName, proof)
 	return nil
 }
 
@@ -447,7 +447,7 @@ func (b *pdpBackend) tokenRequest(ctx context.Context, sess *Session, form url.V
 			return nil, err
 		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		req.Header.Set(dpop.DPoPHeaderName, proof)
+		req.Header.Set(dpop.HeaderName, proof)
 		return b.http.Do(req)
 	}
 
@@ -482,19 +482,11 @@ func (b *pdpBackend) tokenDPoPProof(sess *Session, nonce string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	pk, err := dpop.FromJWK(key)
+	k, err := dpopKey(key)
 	if err != nil {
 		return "", err
 	}
-	bld := dpop.NewBuilder().HttpMethod(http.MethodPost).HttpURI(b.meta.TokenEndpoint)
-	if nonce != "" {
-		bld = bld.Nonce(nonce)
-	}
-	tok, err := bld.Build()
-	if err != nil {
-		return "", err
-	}
-	return tok.Sign(pk)
+	return k.Proof(http.MethodPost, b.meta.TokenEndpoint, dpop.ProofOptions{Nonce: nonce})
 }
 
 // introspectIdentity introspects the access token at the AS (RFC 7662) for the upstream identity, surfacing

@@ -38,6 +38,11 @@ const privateJWKUnknown = `{"crv":"P-256","d":"fOupVBhZroApqIqiO78XbGNT0IrIHQFvn
 const publicJWSKSet = `{"keys":[{"crv":"P-256","kid":"NFXYr6yPkItn_euY_fvaiKetekY0fFcZIupXwGaesjo","kty":"EC","x":"CSe6WWOsFaUSjp437htjVBkDdF5LRj_ZvBfxQ4BecH4","y":"rhz8yAOajNwAH3DTujwepcsUQI-cBeSMGyCuByhbh-4"},{"crv":"P-256","kid":"QcNB-yJBGj1M0dzrWuT_Vi3_yWMWBXkznqSSY5KPcB8","kty":"EC","x":"tFrHA6uGuTvbX52h7uakJcGymGZiU5VA0gBhPEL4QoI","y":"gyo2PzEeyVTP7DdpQW3CT5T2ANLlt18tcH0H9TnfIt8"}]}`
 
 func createPEP(t *testing.T) *pep.PEP {
+	return createPEPAt(t, "https://example.com")
+}
+
+// createPEPAt guards a resource reached at publicOrigin, the origin DPoP proofs' htu name.
+func createPEPAt(t *testing.T, publicOrigin string) *pep.PEP {
 	jwkSet, err := jwk.Parse([]byte(publicJWSKSet))
 	if err != nil {
 		t.Fatal(err)
@@ -45,6 +50,7 @@ func createPEP(t *testing.T) *pep.PEP {
 
 	p, err := pep.NewBuilder().
 		Resource("https://example.com").
+		PublicOrigin(publicOrigin).
 		WithJWKSet(jwkSet).
 		Build()
 	if err != nil {

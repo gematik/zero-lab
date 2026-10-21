@@ -24,6 +24,7 @@ package authzserver
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -130,25 +131,29 @@ func (s *Server) verifyClient(r *http.Request) (*Client, *ClientAssertionClaims,
 }
 
 // verifyDPoPBinding enforces DPoP proof-of-possession on the token request when the client asserts a
-// DPoP-bound token (cnf.jkt present): the request must carry a DPoP proof (RFC 9449) whose key thumbprint
-// equals the asserted cnf.jkt — proving the caller HOLDS the key, not merely names it. ParseRequest verifies
-// the proof signature and that htm/htu match this token endpoint. Without a cnf.jkt the request is bearer and
-// no proof is required.
+// DPoP-bound token (cnf.jkt present): the request must carry a DPoP proof (RFC 9449 Section 4.3) for this
+// token endpoint, signed by the key cnf.jkt names, so the caller holds the key and does not merely name it.
+// The expected URI is the token endpoint from the metadata, never one rebuilt from request headers. Without
+// a cnf.jkt the request is bearer and no proof is required.
 func (s *Server) verifyDPoPBinding(r *http.Request, claims *ClientAssertionClaims) *Error {
 	if claims.Cnf.Jkt == "" {
 		return nil
 	}
-	binding, dpopErr := dpop.ParseRequest(r, dpop.ParseOptions{
-		RequestURL: s.Metadata.TokenEndpoint,
-		MaxAge:     s.dpopMaxAge,
+	_, err := s.dpopVerifier.Verify(r.Header, dpop.Request{
+		Method:     r.Method,
+		URI:        s.Metadata.TokenEndpoint,
+		Thumbprint: claims.Cnf.Jkt,
 	})
-	if dpopErr != nil {
-		return oauthErr(dpopErr.HttpStatus, dpopErr.Code, dpopErr.Description)
+	var refused *dpop.Error
+	switch {
+	case err == nil:
+		return nil
+	case errors.As(err, &refused):
+		return oauthErr(http.StatusBadRequest, refused.Code, refused.Description)
+	default:
+		slog.Error("DPoP proof could not be checked", "error", err)
+		return oauthErr(http.StatusInternalServerError, "server_error", "DPoP proof could not be checked")
 	}
-	if binding.DPoP.KeyThumbprint != claims.Cnf.Jkt {
-		return oauthErr(http.StatusBadRequest, "invalid_dpop_proof", "DPoP proof key does not match cnf.jkt")
-	}
-	return nil
 }
 
 // clientProduct resolves the product a client belongs to (its redirect-URI and scope policy).
