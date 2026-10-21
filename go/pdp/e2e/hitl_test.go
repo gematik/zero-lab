@@ -96,6 +96,7 @@ func TestHITL_AuthorizationCode(t *testing.T) {
 	addClientAuth(form, clientAssertion(t, md, clientID, key))
 	req, _ := http.NewRequest(http.MethodPost, md.TokenEndpoint, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	signDPoP(t, req, key)
 	resp, err := httpClient().Do(req)
 	if err != nil {
 		t.Fatalf("token: %v", err)

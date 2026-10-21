@@ -36,6 +36,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -97,6 +98,27 @@ func clientAssertion(t *testing.T, md authzserver.ExtendedMetadata, clientID str
 		t.Fatalf("sign assertion: %v", err)
 	}
 	return string(signed)
+}
+
+// signDPoP adds a DPoP proof for req signed by key, the key clientAssertion names as cnf.jkt: RFC 9449
+// Section 5 requires a proof on every token request whose tokens are DPoP-bound.
+func signDPoP(t *testing.T, req *http.Request, key jwk.Key) {
+	t.Helper()
+	var raw any
+	if err := jwk.Export(key, &raw); err != nil {
+		t.Fatalf("export key: %v", err)
+	}
+	signer, ok := raw.(crypto.Signer)
+	if !ok {
+		t.Fatalf("key %T is not a private key", raw)
+	}
+	dpopKey, err := dpop.NewKeyFromSigner(signer)
+	if err != nil {
+		t.Fatalf("dpop key: %v", err)
+	}
+	if err := dpopKey.Sign(req, dpop.ProofOptions{}); err != nil {
+		t.Fatalf("sign DPoP proof: %v", err)
+	}
 }
 
 // addClientAuth adds the private_key_jwt parameters to a token/introspection form.

@@ -130,16 +130,20 @@ func (s *Server) verifyClient(r *http.Request) (*Client, *ClientAssertionClaims,
 	return client, claims, nil
 }
 
-// verifyDPoPBinding enforces DPoP proof-of-possession on the token request when the client asserts a
-// DPoP-bound token (cnf.jkt present): the request must carry a DPoP proof (RFC 9449 Section 4.3) for this
-// token endpoint, signed by the key cnf.jkt names, so the caller holds the key and does not merely name it.
-// The expected URI is the token endpoint from the metadata, never one rebuilt from request headers. Without
-// a cnf.jkt the request is bearer and no proof is required.
-func (s *Server) verifyDPoPBinding(r *http.Request, claims *ClientAssertionClaims) *Error {
-	if claims.Cnf.Jkt == "" {
-		return nil
+// dpopBinding returns the JWK thumbprint the tokens of this request are bound to, or "" for Bearer
+// tokens, for every grant alike (RFC 9449 Section 5: "applicable for all access token requests regardless
+// of grant type").
+//
+// A proof is checked (Section 4.3) when the request carries one, since "the DPoP HTTP header field MUST
+// contain a valid DPoP proof JWT", and when the client assertion names a key (cnf.jkt): a key the client
+// only names is not one it holds, so the proof must be signed by exactly that key. The tokens are bound to
+// the proof's key (Sections 5, 6). The expected URI is the token endpoint from the metadata, never one
+// rebuilt from request headers.
+func (s *Server) dpopBinding(r *http.Request, claims *ClientAssertionClaims) (string, *Error) {
+	if claims.Cnf.Jkt == "" && len(r.Header.Values(dpop.HeaderName)) == 0 {
+		return "", nil
 	}
-	_, err := s.dpopVerifier.Verify(r.Header, dpop.Request{
+	proof, err := s.dpopVerifier.Verify(r.Header, dpop.Request{
 		Method:     r.Method,
 		URI:        s.Metadata.TokenEndpoint,
 		Thumbprint: claims.Cnf.Jkt,
@@ -147,12 +151,12 @@ func (s *Server) verifyDPoPBinding(r *http.Request, claims *ClientAssertionClaim
 	var refused *dpop.Error
 	switch {
 	case err == nil:
-		return nil
+		return proof.Thumbprint, nil
 	case errors.As(err, &refused):
-		return oauthErr(http.StatusBadRequest, refused.Code, refused.Description)
+		return "", oauthErr(http.StatusBadRequest, refused.Code, refused.Description)
 	default:
 		slog.Error("DPoP proof could not be checked", "error", err)
-		return oauthErr(http.StatusInternalServerError, "server_error", "DPoP proof could not be checked")
+		return "", oauthErr(http.StatusInternalServerError, "server_error", "DPoP proof could not be checked")
 	}
 }
 
@@ -191,12 +195,17 @@ func (s *Server) tokenEndpointClientCredentials(w http.ResponseWriter, r *http.R
 		return oauthErr(http.StatusForbidden, "invalid_scope", fmt.Sprintf("scope not allowed: %s", scope))
 	}
 
+	jkt, dpopErr := s.dpopBinding(r, claims)
+	if dpopErr != nil {
+		return dpopErr
+	}
+
 	session := &AuthzServerSession{
 		ID:             uuid.NewV4().String(),
 		CreatedAt:      time.Now(),
 		ClientID:       client.ClientID,
 		Scopes:         strings.Split(scope, " "),
-		DPoPThumbprint: claims.Cnf.Jkt,
+		DPoPThumbprint: jkt,
 		RefreshCount:   -1,
 	}
 
@@ -266,12 +275,11 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 		return oauthErr(http.StatusBadRequest, "invalid_grant", "PKCE verification failed")
 	}
 
-	session.DPoPThumbprint = claims.Cnf.Jkt
-
-	// Proof-of-possession: a DPoP-bound code exchange must carry a valid DPoP proof for the cnf key.
-	if dpopErr := s.verifyDPoPBinding(r, claims); dpopErr != nil {
+	jkt, dpopErr := s.dpopBinding(r, claims)
+	if dpopErr != nil {
 		return dpopErr
 	}
+	session.DPoPThumbprint = jkt
 
 	if err := s.applyPolicyNewSession(product, session); err != nil {
 		return err
@@ -319,13 +327,17 @@ func (s *Server) tokenEndpointRefreshToken(w http.ResponseWriter, r *http.Reques
 	if session.RefreshToken != refreshHash {
 		return oauthErr(http.StatusBadRequest, "invalid_grant", "refresh_token superseded")
 	}
-	// Sender-constrained (RFC 9449): the refresher must hold the same DPoP key the tokens are bound to —
-	// proven by the DPoP proof (verifyDPoPBinding below), and the asserted cnf must match the session.
+	// Sender-constrained (RFC 9449 Section 5): the refresher must prove it holds the key the session's
+	// tokens are bound to, with a proof by that key; the asserted cnf.jkt must name the same key.
 	if session.DPoPThumbprint != "" && claims.Cnf.Jkt != session.DPoPThumbprint {
 		return oauthErr(http.StatusBadRequest, "invalid_grant", "DPoP key mismatch")
 	}
-	if dpopErr := s.verifyDPoPBinding(r, claims); dpopErr != nil {
+	jkt, dpopErr := s.dpopBinding(r, claims)
+	if dpopErr != nil {
 		return dpopErr
+	}
+	if jkt != session.DPoPThumbprint {
+		return oauthErr(http.StatusBadRequest, "invalid_grant", "DPoP key mismatch")
 	}
 	// Absolute lifetime: refresh never extends a session past its cap.
 	if !session.ExpiresAt.IsZero() && time.Now().After(session.ExpiresAt) {

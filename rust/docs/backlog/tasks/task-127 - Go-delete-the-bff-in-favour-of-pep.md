@@ -4,6 +4,7 @@ title: 'Go: delete the bff in favour of pep'
 status: To Do
 assignee: []
 created_date: '2026-10-21 07:14'
+updated_date: '2026-10-21 08:52'
 labels:
   - go
   - pep
@@ -24,3 +25,9 @@ pep is the bff generalized and meant to replace it (pep/proxy package doc; pep/p
 - [ ] #1 gateway parity confirmed against pep/proxy/docs/BACKLOG.md item 1, gaps closed or filed
 - [ ] #2 go/bff and zero-bff-pdp gone: go.work, justfile, compose, docs; the pdp e2e runs with zero-pdp and zero-pep-proxy
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+bff exchanges codes and refreshes through golang.org/x/oauth2 without a DPoP proof while asserting cnf.jkt; pdp has refused that on authorization_code and refresh_token since before TASK-129, so the bff login against pdp is already broken (2026-10-21). One more reason to delete rather than repair it.
+<!-- SECTION:NOTES:END -->

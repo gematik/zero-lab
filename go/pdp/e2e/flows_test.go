@@ -134,9 +134,11 @@ func TestFlow_ClientCredentials(t *testing.T) {
 	md := getMetadata(t, base)
 
 	form := url.Values{"grant_type": {"client_credentials"}, "scope": {scope}}
-	addClientAuth(form, clientAssertion(t, md, clientID, clientKey(t)))
+	key := clientKey(t)
+	addClientAuth(form, clientAssertion(t, md, clientID, key))
 	req, _ := http.NewRequest(http.MethodPost, md.TokenEndpoint, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	signDPoP(t, req, key)
 	resp, err := httpClient().Do(req)
 	if err != nil {
 		t.Fatalf("token: %v", err)
