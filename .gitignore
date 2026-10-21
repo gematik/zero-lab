@@ -8,3 +8,6 @@ secrets
 /tmp
 .claude
 /go/ti/ti
+
+# Cargo build output of every Rust workspace: rust/, its fuzz crates, spikes
+target/
