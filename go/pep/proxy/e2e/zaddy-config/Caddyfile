@@ -2,6 +2,8 @@
 	auto_https off
 	pep {
 		jwks_path /etc/caddy/pdp-jwks.json
+		# Where pep-proxy reaches this server (PEP_API_UPSTREAM): the origin DPoP proofs name in htu.
+		public_origin http://localhost:8010
 	}
 }
 :8010 {

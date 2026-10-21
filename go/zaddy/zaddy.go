@@ -44,6 +44,9 @@ type App struct {
 	Resource            string `json:"resource"`
 	AuthorizationServer string `json:"authorization_server"`
 	JWKSPath            string `json:"jwks_path"` // if set, it will be used otherwise the JWKS from authorization_server will be used
+	// PublicOrigin is the scheme, host and port clients reach this server at; DPoP proofs' htu are checked
+	// against it plus the request path (RFC 9449 Section 4.3). Defaults to the origin of Resource.
+	PublicOrigin string `json:"public_origin"`
 
 	logger *slog.Logger
 	pep    *pep.PEP
@@ -61,6 +64,7 @@ func (a *App) Start() error {
 	var err error
 	a.pep, err = pep.NewBuilder().
 		Resource(a.Resource).
+		PublicOrigin(a.PublicOrigin).
 		WithJWKSetPath(a.JWKSPath).
 		WithSlogger(a.logger).
 		Build()
@@ -118,6 +122,11 @@ func parseCaddyfilePEP(d *caddyfile.Dispenser, existingVal any) (any, error) {
 				return nil, d.ArgErr()
 			}
 			a.Resource = d.Val()
+		case "public_origin":
+			if !d.NextArg() {
+				return nil, d.ArgErr()
+			}
+			a.PublicOrigin = d.Val()
 		default:
 			return nil, d.Errf("unrecognized subdirective: %s", d.Val())
 		}

@@ -22,6 +22,10 @@
 package proxy
 
 import (
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -39,29 +43,43 @@ type sessionSigner interface {
 type bffSigner struct{}
 
 func (bffSigner) dpopProof(req *http.Request, accessToken string, key jwk.Key) (string, error) {
-	pk, err := dpop.FromJWK(key)
+	k, err := dpopKey(key)
 	if err != nil {
-		return "", fmt.Errorf("wrap dpop key: %w", err)
+		return "", err
 	}
-	tok, err := dpop.NewBuilder().HttpRequest(req).AccessTokenHashFrom(accessToken).Build()
-	if err != nil {
-		return "", fmt.Errorf("build dpop proof: %w", err)
-	}
-	return tok.Sign(pk)
+	return k.Proof(req.Method, req.URL.String(), dpop.ProofOptions{AccessToken: accessToken})
 }
 
-// newSessionDPoPKey generates a per-session DPoP keypair and returns the private key plus its JSON-marshaled
-// JWK for storage on the session.
+// dpopKey makes the session's stored DPoP key a signing key for proofs: the private key leaves the JWK only
+// as a crypto.Signer.
+func dpopKey(key jwk.Key) (*dpop.Key, error) {
+	var raw any
+	if err := jwk.Export(key, &raw); err != nil {
+		return nil, fmt.Errorf("session dpop key: %w", err)
+	}
+	signer, ok := raw.(crypto.Signer)
+	if !ok {
+		return nil, fmt.Errorf("session dpop key: %T is not a private key", raw)
+	}
+	return dpop.NewKeyFromSigner(signer)
+}
+
+// newSessionDPoPKey generates a per-session P-256 DPoP keypair and returns the private key plus its
+// JSON-marshaled JWK for storage on the session.
 func newSessionDPoPKey() (jwk.Key, []byte, error) {
-	pk, err := dpop.NewPrivateKey()
+	private, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, nil, err
 	}
-	js, err := json.Marshal(pk.JwkPrivate)
+	key, err := jwk.Import(private)
 	if err != nil {
 		return nil, nil, err
 	}
-	return pk.JwkPrivate, js, nil
+	js, err := json.Marshal(key)
+	if err != nil {
+		return nil, nil, err
+	}
+	return key, js, nil
 }
 
 func parseSessionDPoPKey(jwkJSON []byte) (jwk.Key, error) {

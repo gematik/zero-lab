@@ -30,7 +30,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"uuid"
 
 	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/gematik/zero-lab/go/pep"
@@ -358,43 +357,21 @@ func createRequestWithAccessToken(t *testing.T, url string, keyBytes []byte, sco
 }
 
 func createRequestWithAccessTokenAndDPoP(t *testing.T, url string, keyBytes []byte, scopes []string, exp time.Time) *http.Request {
-	proofKey, err := dpop.NewPrivateKey()
+	proofKey, err := dpop.NewKey()
 	if err != nil {
 		t.Fatal(err)
-		return nil
 	}
-
-	accessToken, err := createTestAccessToken(keyBytes, scopes, exp, proofKey.Thumbprint)
+	accessToken, err := createTestAccessToken(keyBytes, scopes, exp, proofKey.Thumbprint())
 	if err != nil {
 		t.Fatal(err)
-		return nil
-	}
-
-	proof, err := dpop.NewBuilder().
-		Id(uuid.NewV4().String()).
-		HttpMethod(http.MethodGet).
-		HttpURI(url).
-		AccessTokenHashFrom(accessToken).
-		Build()
-	if err != nil {
-		t.Fatal(err)
-		return nil
-	}
-
-	signedProof, err := proof.Sign(proofKey)
-	if err != nil {
-		t.Fatal(err)
-		return nil
 	}
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		t.Fatal(err)
-		return nil
 	}
-
-	req.Header.Set("Authorization", "DPoP "+accessToken)
-	req.Header.Set("DPoP", signedProof)
-
+	if err := proofKey.Sign(req, dpop.ProofOptions{AccessToken: accessToken}); err != nil {
+		t.Fatal(err)
+	}
 	return req
 }
 
@@ -407,10 +384,12 @@ func requestWithDPoPAuthMissingProof(t *testing.T, url string, keyBytes []byte, 
 }
 
 func TestDPoPEnforcer(t *testing.T) {
-	p := createPEP(t)
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	p := createPEPAt(t, server.URL)
 
 	dpopEnforcer := &pep.EnforcerAuthorizationDPoP{}
-	mux := http.NewServeMux()
 	mux.HandleFunc("/public", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("public"))
@@ -423,9 +402,6 @@ func TestDPoPEnforcer(t *testing.T) {
 		}),
 	)
 
-	server := httptest.NewServer(mux)
-	defer server.Close()
-
 	client := server.Client()
 
 	tests := []struct {
@@ -433,21 +409,27 @@ func TestDPoPEnforcer(t *testing.T) {
 		url            string
 		expectedStatus int
 		expectedBody   string
+		challenge      string
+		noBody         bool
 		request        *http.Request
 	}{
 		{scenario: "public access is always possible", url: "/public", expectedStatus: http.StatusOK, expectedBody: "public"},
-		// RFC 9449 §7.1: a protected-resource request without credentials is answered with 401.
-		{scenario: "fail without dpop+authorization", url: "/dpop", expectedStatus: http.StatusUnauthorized},
+		// RFC 9449 §7.1, Figure 15: without credentials, 401 with a challenge without error code and no error
+		// body (RFC 6750 §3.1).
+		{scenario: "fail without dpop+authorization", url: "/dpop", expectedStatus: http.StatusUnauthorized, challenge: `DPoP algs="ES256"`, noBody: true},
 		{
 			scenario:       "fail withoit dpop, but with bearer authorization",
 			url:            "/dpop",
 			expectedStatus: http.StatusBadRequest,
 			request:        createRequestWithAccessToken(t, server.URL+"/dpop", []byte(privateJWK1), []string{"read"}, time.Now().Add(time.Hour)),
 		},
+		// RFC 9449 §7.1: a missing proof is invalid_dpop_proof in a 401 challenge; 400 is for malformed
+		// credentials only (RFC 6750 §3.1).
 		{
 			scenario:       "fail with dpop authorization but missing dpop proof",
 			url:            "/dpop",
-			expectedStatus: http.StatusBadRequest,
+			expectedStatus: http.StatusUnauthorized,
+			challenge:      `DPoP error="invalid_dpop_proof", error_description="no DPoP proof", algs="ES256"`,
 			request:        requestWithDPoPAuthMissingProof(t, server.URL+"/dpop", []byte(privateJWK1), []string{"read"}, time.Now().Add(time.Hour)),
 		},
 		{
@@ -478,7 +460,16 @@ func TestDPoPEnforcer(t *testing.T) {
 			if resp.StatusCode != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, resp.StatusCode)
 			}
+			if tt.challenge != "" && resp.Header.Get("WWW-Authenticate") != tt.challenge {
+				t.Errorf("WWW-Authenticate = %q, want %q", resp.Header.Get("WWW-Authenticate"), tt.challenge)
+			}
 
+			if tt.noBody {
+				if body, _ := io.ReadAll(resp.Body); len(body) != 0 {
+					t.Errorf("expected no body, got %q", body)
+				}
+				return
+			}
 			if tt.expectedBody == "" {
 				return
 			}

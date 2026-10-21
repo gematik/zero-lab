@@ -65,6 +65,28 @@ func thumbprint(t *testing.T, k jwk.Key) string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
+// verifyUpstreamDPoP checks the proof the upstream received as a resource server would (RFC 9449
+// Sections 4.3, 7.1): for the URI it was reached at, bound to accessToken and the key with thumbprint.
+func verifyUpstreamDPoP(t *testing.T, received *http.Request, accessToken, thumbprint string) {
+	t.Helper()
+	v, err := dpop.NewVerifier(dpop.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := dpop.AccessToken(received.Header)
+	if err != nil || token != accessToken {
+		t.Fatalf("Authorization: %q, %v", token, err)
+	}
+	if _, err := v.Verify(received.Header, dpop.Request{
+		Method:      received.Method,
+		URI:         "http://" + received.Host + received.URL.EscapedPath(),
+		AccessToken: token,
+		Thumbprint:  thumbprint,
+	}); err != nil {
+		t.Fatalf("DPoP proof refused: %v", err)
+	}
+}
+
 // mockAS serves just enough for bff.New to discover the AS and for a refresh to succeed.
 func mockAS(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -211,13 +233,7 @@ func TestDPoPInjection(t *testing.T) {
 		t.Fatalf("Authorization = %q, want %q", got, "DPoP access-token")
 	}
 	// The proof must validate as a resource-server DPoP proof bound to the forwarded token.
-	binding, derr := dpop.ParseRequest(up.last, dpop.ParseOptions{AuthorizationRequired: true})
-	if derr != nil {
-		t.Fatalf("DPoP proof invalid: %v", derr)
-	}
-	if binding.DPoP.KeyThumbprint != thumbprint(t, dpopKey) {
-		t.Errorf("proof signed with wrong key: thumbprint %q != %q", binding.DPoP.KeyThumbprint, thumbprint(t, dpopKey))
-	}
+	verifyUpstreamDPoP(t, up.last, "access-token", thumbprint(t, dpopKey))
 }
 
 func TestSpoofingHygiene(t *testing.T) {
@@ -367,9 +383,7 @@ func TestStripPrefix(t *testing.T) {
 		t.Fatalf("upstream path = %q, want /resource (prefix stripped)", up.last.URL.Path)
 	}
 	// The DPoP proof's htu must match the stripped URL the resource server actually sees.
-	if _, derr := dpop.ParseRequest(up.last, dpop.ParseOptions{AuthorizationRequired: true}); derr != nil {
-		t.Fatalf("DPoP proof invalid after strip: %v", derr)
-	}
+	verifyUpstreamDPoP(t, up.last, "access-token", thumbprint(t, dpopKey))
 }
 
 func TestRefreshRotationRepersists(t *testing.T) {

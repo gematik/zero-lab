@@ -28,6 +28,8 @@ type Error struct {
 	Code        string `json:"error"`
 	Description string `json:"error_description,omitempty"`
 	URI         string `json:"error_uri,omitempty"`
+	// WWWAuthenticate is the challenge to send with the denial, if any (RFC 9449 Section 7.1).
+	WWWAuthenticate string `json:"-"`
 }
 
 func (e Error) Error() string {
@@ -64,16 +66,4 @@ var ErrSessionRequired = Error{
 	HttpStatus:  401,
 	Code:        "session_required",
 	Description: "no valid session cookie",
-}
-
-var ErrMissingAccessTokenDPoPBinding = Error{
-	HttpStatus:  400,
-	Code:        "missing_access_token_dpop_binding",
-	Description: "Access token is missing DPoP binding (cnf.jkt)",
-}
-
-var ErrInvalidAccessTokenDPoPBinding = Error{
-	HttpStatus:  400,
-	Code:        "invalid_access_token_dpop_binding",
-	Description: "Key thumbprint in DPoP proof does not match access token",
 }

@@ -23,8 +23,10 @@ package pep
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"slices"
 	"strings"
 
@@ -304,34 +306,33 @@ func (e *EnforcerAuthorizationDPoP) Apply(ctx Context, next HandlerFunc) {
 		return
 	}
 
-	options := dpop.ParseOptions{
-		NonceRequired:         e.NonceRequired,
-		AuthorizationRequired: true,
-	}
-
-	if err := internalCtx.verifyAuthorizationDPoP(options); err != nil {
-		ctx.Slogger().Warn("Failed to verify authorization dpop", "error", err)
-		if pepErr, ok := err.(Error); ok {
-			ctx.Deny(pepErr)
-		} else if dpopErr, ok := err.(*dpop.DPoPError); ok {
-			ctx.Deny(Error{
-				HttpStatus:  dpopErr.HttpStatus,
-				Code:        dpopErr.Code,
-				Description: dpopErr.Description,
-			})
-
-		} else {
-			ctx.Deny(ErrorAccessDeinied("Failed to verify authorization dpop: " + err.Error()))
-		}
-		return
-	}
-
+	// Resource server nonces (RFC 9449 Section 9) need a NonceSource shared by the replicas,
+	// which pep does not have yet: refusing beats checking proofs without the nonce.
 	if e.NonceRequired {
 		ctx.Deny(Error{
 			HttpStatus:  500,
 			Code:        "internal_error",
 			Description: "Nonce required but not implemented",
 		})
+		return
+	}
+
+	if err := internalCtx.verifyAuthorizationDPoP(); err != nil {
+		ctx.Slogger().Warn("Failed to verify authorization dpop", "error", err)
+		var pepErr Error
+		var dpopErr *dpop.Error
+		switch {
+		case errors.As(err, &pepErr):
+			ctx.Deny(pepErr)
+		case errors.As(err, &dpopErr):
+			ctx.Deny(internalCtx.pep.dpopDenial(dpopErr))
+		default:
+			ctx.Deny(Error{
+				HttpStatus:  http.StatusInternalServerError,
+				Code:        "internal_error",
+				Description: "DPoP could not be checked",
+			})
+		}
 		return
 	}
 
