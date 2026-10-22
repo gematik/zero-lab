@@ -7,60 +7,6 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ## Unreleased
 
-### ti-cli
-
-#### security
-- rustls-webpki 0.103.16 and webpki-root-certs 1.0.10: certificate paths through the
-  distrusted emSign intermediates and the emSign ECC Root CA - G3 are no longer accepted
-  for Konnektor and download TLS (RUSTSEC-2026-0382, RUSTSEC-2026-0383).
-
-#### added
-- Store profiles shared with the other TI tools (spec/store): `--profile`, `TI_PROFILE`,
-  `TI_STATE_DIR`, `TI_STORE_KEK_PATH`, `TI_STORE_BACKEND`. `ti profile create` makes a
-  profile's keyring and key file; `profile list`, `show`, `use` and `delete --yes`
-  manage profiles; `profile rotate` and `profile rewrap --kek-file` manage its keys.
-  `ti store doctor [--json] [--deep]` checks a profile without changing it; `store ls`,
-  `show [--reveal]`, `rm`, `purge --yes`, `cleanup` and `migrate [--dry-run]` inspect and
-  maintain its records. Expired records are removed once a day on their own.
-  `TI_STORE_TRACE=1` traces store operations. Store failures have the error kinds
-  `store_<code>` with a hint.
-
-#### changed
-- The download cache is the profile's `cache.db`; `TI_CACHE_DIR` and `--cache-dir` name
-  the base of the profiles' caches. The old cache folder is no longer used. `cache clear`
-  reports `profile`, `path` and `removed_records`.
-- The TSL state and comfort signature IDs are sealed in the profile's `state.db` and are
-  kept only once the profile has a keyring; files of earlier versions are read until
-  then and moved into the store afterwards. `connector comfort activate` needs a
-  keyring.
-- `pki verify --profile` is `--validation-profile`; `--profile` selects the store
-  profile in every command.
-- `pki verify --nist-only` says in its help that the chain must reach a root whose key is
-  not brainpool, unlike curl and Java, which take a TSL CA of `tsl bundle --nist-only`
-  as an anchor.
-- `pki inspect` without a cached TSL no longer calls a TSL-listed issuer untrusted: the
-  trust tree says the TSL is not loaded and names `ti pki tsl show --env ENV`, which
-  loads it. `inspect` still never downloads.
-- `probe` groups the endpoints by access path, TI-VPN and Internet, and says once when
-  none of the TI-VPN block answers (`access_paths[].available` in JSON) instead of a row
-  of failures; each probe carries `access`. Endpoint names are lowercase kebab-case
-  (`idpd-ti`, `fhir-directory`, `erx`, `epa-1`, `popp`, `catalog`), and the internet IDP
-  is probed as `idpd-internet`. `TI_PROBE_ENDPOINTS_PATH` files need `access`.
-- `connector get cards` and `get certificates` show each card's terminal (CtId and slot);
-  handles and terminal IDs longer than 20 characters are shortened in the tables of
-  `get cards`, `get certificates`, `get identities` and `get expiration`
-  (`0a1b2c3d…7e8f9a0b`), whole with `-v` and in JSON.
-- `connector get certificates` names the subject and Telematik-ID once above the table
-  when every certificate of the card carries the same, instead of in every row.
-- `connector describe card` shows the Telematik-ID of an HBA or SMC-B (from its C.AUT;
-  `telematik_id` in JSON), the insert time in local time and the certificates' expiry
-  as `valid until` with the date alone. It shows whether each user PIN is verified, needs entry (with
-  the tries left), is still a transport PIN or is blocked (CardService GetPinStatus);
-  the JSON has `pins`.
-- `pki verify --at` judges the OCSP status at that time: a certificate revoked since is
-  valid then, with the warning `revoked_after_reference_time`; the revocation line says
-  that OCSP answered now and was judged at `--at`.
-
 ### ti-idpd
 
 #### changed
@@ -513,6 +459,60 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `Env`, `Tier`, `EnvParseError`; `serde` and `clap` features.
 - `Timestamp` and `Clock` (moved from ti-pki), `SystemClock` behind `std` (not on
   wasm32-unknown-unknown, where std has no clock and every call would panic).
+
+## Release ti-cli 0.5.0, 2026-10-22
+
+### security
+- rustls-webpki 0.103.16 and webpki-root-certs 1.0.10: certificate paths through the
+  distrusted emSign intermediates and the emSign ECC Root CA - G3 are no longer accepted
+  for Konnektor and download TLS (RUSTSEC-2026-0382, RUSTSEC-2026-0383).
+
+### added
+- Store profiles shared with the other TI tools (spec/store): `--profile`, `TI_PROFILE`,
+  `TI_STATE_DIR`, `TI_STORE_KEK_PATH`, `TI_STORE_BACKEND`. `ti profile create` makes a
+  profile's keyring and key file; `profile list`, `show`, `use` and `delete --yes`
+  manage profiles; `profile rotate` and `profile rewrap --kek-file` manage its keys.
+  `ti store doctor [--json] [--deep]` checks a profile without changing it; `store ls`,
+  `show [--reveal]`, `rm`, `purge --yes`, `cleanup` and `migrate [--dry-run]` inspect and
+  maintain its records. Expired records are removed once a day on their own.
+  `TI_STORE_TRACE=1` traces store operations. Store failures have the error kinds
+  `store_<code>` with a hint.
+
+### changed
+- The download cache is the profile's `cache.db`; `TI_CACHE_DIR` and `--cache-dir` name
+  the base of the profiles' caches. The old cache folder is no longer used. `cache clear`
+  reports `profile`, `path` and `removed_records`.
+- The TSL state and comfort signature IDs are sealed in the profile's `state.db` and are
+  kept only once the profile has a keyring; files of earlier versions are read until
+  then and moved into the store afterwards. `connector comfort activate` needs a
+  keyring.
+- `pki verify --profile` is `--validation-profile`; `--profile` selects the store
+  profile in every command.
+- `pki verify --nist-only` says in its help that the chain must reach a root whose key is
+  not brainpool, unlike curl and Java, which take a TSL CA of `tsl bundle --nist-only`
+  as an anchor.
+- `pki inspect` without a cached TSL no longer calls a TSL-listed issuer untrusted: the
+  trust tree says the TSL is not loaded and names `ti pki tsl show --env ENV`, which
+  loads it. `inspect` still never downloads.
+- `probe` groups the endpoints by access path, TI-VPN and Internet, and says once when
+  none of the TI-VPN block answers (`access_paths[].available` in JSON) instead of a row
+  of failures; each probe carries `access`. Endpoint names are lowercase kebab-case
+  (`idpd-ti`, `fhir-directory`, `erx`, `epa-1`, `popp`, `catalog`), and the internet IDP
+  is probed as `idpd-internet`. `TI_PROBE_ENDPOINTS_PATH` files need `access`.
+- `connector get cards` and `get certificates` show each card's terminal (CtId and slot);
+  handles and terminal IDs longer than 20 characters are shortened in the tables of
+  `get cards`, `get certificates`, `get identities` and `get expiration`
+  (`0a1b2c3d…7e8f9a0b`), whole with `-v` and in JSON.
+- `connector get certificates` names the subject and Telematik-ID once above the table
+  when every certificate of the card carries the same, instead of in every row.
+- `connector describe card` shows the Telematik-ID of an HBA or SMC-B (from its C.AUT;
+  `telematik_id` in JSON), the insert time in local time and the certificates' expiry
+  as `valid until` with the date alone. It shows whether each user PIN is verified, needs entry (with
+  the tries left), is still a transport PIN or is blocked (CardService GetPinStatus);
+  the JSON has `pins`.
+- `pki verify --at` judges the OCSP status at that time: a certificate revoked since is
+  valid then, with the warning `revoked_after_reference_time`; the revocation line says
+  that OCSP answered now and was judged at `--at`.
 
 ## Release ti-cli 0.4.0, 2026-10-11
 
