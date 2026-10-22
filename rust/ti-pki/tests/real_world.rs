@@ -45,8 +45,8 @@ use ti_pki::load::{
     Reloader, ResponseMeta, Source, SystemClock, Transport, TransportError, TransportErrorKind,
 };
 use ti_pki::ocsp::OcspChecker;
-use ti_pki::revocation::{RevocationChecker, RevocationStatus};
-use ti_pki::{Clock, Env, ErrorCode, TrustConfig, TrustStore, profile, roots};
+use ti_pki::revocation::{ResponderAuthorization, RevocationChecker, RevocationStatus};
+use ti_pki::{Clock, Env, TrustConfig, TrustStore, profile, roots};
 
 /// A transport over the `curl` CLI, for these tests only.
 struct Curl;
@@ -165,9 +165,10 @@ fn live_trust_material_of_every_environment() {
 
 /// A real SMC-B of the reference environment: chain from the live TSL, profile picked
 /// automatically, OCSP for the CA at the root responder and for the end entity at its
-/// TSP. The TSP answers with a delegate of another of its CAs (ehca, GEM.KOMP-CA51),
-/// which RFC 6960 does not authorize and the same-TSP rule does, with a warning. The
-/// test pins exactly that, so it notices when gematik changes either side.
+/// TSP. The TSP answers with a responder certified by another of its CAs, which the
+/// TSL lists as an OCSP service of that TSP (since October 2026; before, it was an
+/// unlisted delegate accepted by the same-TSP rule with a warning). The test pins exactly
+/// that, so it notices when gematik changes either side.
 #[test]
 #[ignore = "network: gematik download endpoints and OCSP responders"]
 fn live_smcb_end_to_end() {
@@ -210,17 +211,15 @@ fn live_smcb_end_to_end() {
         "TUC_PKI_006 at the root responder"
     );
     assert!(result.valid, "{:?}", result.errors);
-    let not_rfc6960: Vec<_> = result
-        .warnings
-        .iter()
-        .filter(|w| w.code == ErrorCode::OcspResponderNotRfc6960)
-        .collect();
-    assert_eq!(not_rfc6960.len(), 1, "{:?}", result.warnings);
-    assert!(
-        not_rfc6960[0].message.contains("GEM.KOMP-CA51"),
-        "{}",
-        not_rfc6960[0]
-    );
+    let ee = result.cert_results[0]
+        .revocation
+        .as_ref()
+        .expect("the end entity was checked");
+    let Some(ResponderAuthorization::TslListed { ca, .. }) = &ee.authorization else {
+        panic!("{:?}", ee.authorization)
+    };
+    assert_eq!(ca, "GEM.KOMP-CA51 TEST-ONLY");
+    assert!(result.warnings.is_empty(), "{:?}", result.warnings);
 }
 
 /// A production SubCA from the live TSL, checked at the production root responder.
