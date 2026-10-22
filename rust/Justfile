@@ -68,6 +68,9 @@ cli-targets:
     if [[ "$(uname -m)" != x86_64 ]]; then
         export CROSS_CONTAINER_OPTS="${CROSS_CONTAINER_OPTS:-} --platform linux/amd64"
     fi
+    # cross mounts only the workspace, at /project; ti-cli includes the store schema from
+    # ../spec, which /project/../spec resolves to.
+    export CROSS_CONTAINER_OPTS="${CROSS_CONTAINER_OPTS:-} -v $(cd ../spec && pwd):/spec:ro"
     # A release uploads everything here, so nothing from an earlier build may remain.
     rm -rf target/dist && mkdir -p target/dist
     for t in "${targets[@]}" "${native[@]}"; do
