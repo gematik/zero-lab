@@ -300,3 +300,88 @@ fn hitl_the_ti_vpn_block_answers_exactly_with_the_vpn() {
     );
     assert!(available("internet"), "{report}");
 }
+
+/// Bestandsnetze are booked per practice: one that does not answer is a warning, never a
+/// failure, and those not routed share one line; one that answers has its row.
+#[test]
+fn unreachable_bestandsnetze_are_warnings_on_one_line() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let base = format!("http://127.0.0.1:{port}");
+    let server_base = base.clone();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            let base = server_base.clone();
+            std::thread::spawn(move || serve(stream, &base));
+        }
+    });
+    let closed = TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let dir = std::env::temp_dir().join(format!("ti-probe-bnz-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let endpoints = dir.join("endpoints.json");
+    std::fs::write(
+        &endpoints,
+        format!(
+            r#"{{"dev": [
+                {{"name": "popp", "access": "internet", "kind": "zeta", "url": "{base}"}},
+                {{"name": "snk", "access": "bestandsnetz", "kind": "http", "url": "{base}/portal"}},
+                {{"name": "kzvwl", "access": "bestandsnetz", "kind": "dns", "url": "dns://127.0.0.1:{port}"}},
+                {{"name": "demis", "access": "bestandsnetz", "kind": "http", "url": "http://127.0.0.1:{closed}"}},
+                {{"name": "mdk", "access": "bestandsnetz", "kind": "dns", "url": "dns://127.0.0.1:{closed}"}}
+            ]}}"#
+        ),
+    )
+    .unwrap();
+    let run = |format: &str| {
+        Command::new(env!("CARGO_BIN_EXE_ti"))
+            .args(["--format", format, "probe", "dev"])
+            .env("TI_PROBE_ENDPOINTS_PATH", &endpoints)
+            .env("NO_COLOR", "1")
+            .env_remove("HTTPS_PROXY")
+            .env_remove("https_proxy")
+            .env_remove("ALL_PROXY")
+            .env_remove("all_proxy")
+            .output()
+            .unwrap()
+    };
+    let json = run("json");
+    let text = String::from_utf8(run("text").stdout).unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_conforms("probe", &json.stdout);
+    assert_eq!(json.status.code(), Some(0), "warnings only");
+    let report: Value = serde_json::from_slice(&json.stdout).unwrap();
+    assert_eq!(
+        report["counts"],
+        serde_json::json!({"ok": 3, "warn": 2, "fail": 0})
+    );
+    assert_eq!(
+        report["access_paths"][1],
+        serde_json::json!({"access": "bestandsnetz", "available": true, "probes": 4})
+    );
+    let probe = |name: &str| {
+        report["probes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|p| p["name"] == name)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(probe("kzvwl")["detail"], format!("dns, port {port} open"));
+    assert_eq!(
+        (
+            probe("mdk")["status"].as_str(),
+            probe("mdk")["answered"].as_bool()
+        ),
+        (Some("warn"), Some(false))
+    );
+    let block = &text[text.find("\nBestandsnetze\n").expect(&text)..];
+    assert!(block.contains("\n  snk "), "{text}");
+    assert!(block.contains("\n  kzvwl "), "{text}");
+    assert!(block.contains("\n  ! not routed: demis, mdk\n"), "{text}");
+    assert!(!block.contains("\n  demis "), "{text}");
+}

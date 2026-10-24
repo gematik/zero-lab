@@ -49,12 +49,13 @@
           "access": {
             "enum": [
               "ti-vpn",
-              "internet"
+              "internet",
+              "bestandsnetz"
             ]
           },
           "available": {
             "type": "boolean",
-            "description": "False when every endpoint of the path failed: the path is down (for ti-vpn, no TI VPN), not the services."
+            "description": "False when no endpoint of the path answered: the path is down (for ti-vpn, no TI VPN; for bestandsnetz, none routed), not the services."
           },
           "probes": {
             "type": "integer",
@@ -76,14 +77,15 @@
         "properties": {
           "name": {
             "type": "string",
-            "description": "Lowercase kebab-case: <service>-<n> for numbered instances (epa-1), the service for a singleton (catalog), idpd-ti / idpd-internet for the IDP."
+            "description": "Lowercase kebab-case: <service>-<n> for numbered instances (epa-1), the service for a singleton (catalog), idpd-ti / idpd-internet for the IDP, the lowercase ID of Bestandsnetze.xml for a Bestandsnetz (snk)."
           },
           "access": {
             "enum": [
               "ti-vpn",
-              "internet"
+              "internet",
+              "bestandsnetz"
             ],
-            "description": "How the endpoint is reached: ti-vpn only through a Konnektor's or TI-Gateway's VPN, internet directly. The catalog's instances are internet."
+            "description": "How the endpoint is reached: ti-vpn only through a Konnektor's or TI-Gateway's VPN, internet directly, bestandsnetz through the TI VPN into a Bestandsnetz the Konnektor routes when the practice booked it (gematik's Bestandsnetze.xml; not answering is a warning). The catalog's instances are internet."
           },
           "kind": {
             "enum": [
@@ -93,7 +95,8 @@
               "erp",
               "epa",
               "directory",
-              "http"
+              "http",
+              "dns"
             ]
           },
           "url": {
@@ -115,7 +118,11 @@
               "warn",
               "fail"
             ],
-            "description": "ok: the expected answer; warn: an answer, not the expected one; fail: no answer."
+            "description": "ok: the expected answer; warn: an answer, not the expected one, or no answer from a Bestandsnetz; fail: no answer."
+          },
+          "answered": {
+            "type": "boolean",
+            "description": "The endpoint answered; false for a transport failure (timeout, refused, DNS, TLS), whatever the status."
           },
           "detail": {
             "type": "string"
@@ -139,6 +146,7 @@
           "host",
           "source",
           "status",
+          "answered",
           "detail",
           "http_status",
           "duration_ms"
