@@ -7,6 +7,21 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ## Unreleased
 
+### ti-cli
+
+#### security
+- crypto-bigint 0.7.6, ctutils 0.4.5 and tokio 1.54.1 (RUSTSEC-2026-0387,
+  RUSTSEC-2026-0385, RUSTSEC-2026-0386).
+
+#### changed
+- Konnektor faults about the information model carry a hint naming the cause, the
+  `.kon` fields concerned and where to fix it (gemSpec_Kon): 4092 (no Remote-PIN-KT
+  for the workplace), 4053, 4004 to 4007 (unknown Mandant, client system, workplace,
+  card terminal), 4010 to 4012 (not assigned to the Mandant), 4021 (call context
+  incomplete), 4204 (client system not authenticated), 4093 and 4060 (card or terminal
+  busy). The fault's code and text are unchanged; the hint is in the text and in the
+  JSON error's `hint`.
+
 ### ti-idpd
 
 #### changed
