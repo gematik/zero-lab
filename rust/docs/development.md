@@ -245,7 +245,7 @@ Each table's columns are a decision, not a dump of the JSON:
 | `connector get identities` | TELEMATIK-ID | TYPE, HOLDER, ICCSN, HANDLE (shortened as in `get cards`) | |
 | `connector get expiration` | VALID UNTIL | SUBJECT, ICCSN, SERIAL, HANDLE (shortened as in `get cards`) | terminal |
 | `connector get status`, errors | CONDITION | SEVERITY, TYPE, SINCE | inactive states |
-| `probe` | SERVICE, status mark | HOST, TIME, DETAIL (`{kind} …` on success, the cause otherwise) | kind, URL, source, HTTP status |
+| `probe` | SERVICE, status mark | HOST, TIME, DETAIL (`{kind} …` on success, the cause otherwise); Bestandsnetze not routed on one line | kind, URL, source, HTTP status, answered |
 
 A new list command adds its row here with its choice.
 

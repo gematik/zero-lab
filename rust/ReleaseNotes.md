@@ -13,6 +13,14 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - crypto-bigint 0.7.6, ctutils 0.4.5 and tokio 1.54.1 (RUSTSEC-2026-0387,
   RUSTSEC-2026-0385, RUSTSEC-2026-0386).
 
+#### added
+- `probe prod` checks the Bestandsnetze of gematik's Bestandsnetze.xml (2.1.36) in a
+  block of their own (`access: "bestandsnetz"`): the SNK (KV-SafeNet) at
+  `portal.kv-safenet.de`, the others at a known HTTPS host or with a TCP connection to
+  their first DNS server (kind `dns`). A practice books only some of them, so one that
+  does not answer is a warning, never a failure, and the exit code stays 0; the text
+  lists those not routed on one line. Each probe in the JSON carries `answered`.
+
 #### changed
 - Konnektor faults about the information model carry a hint naming the cause, the
   `.kon` fields concerned and where to fix it (gemSpec_Kon): 4092 (no Remote-PIN-KT

@@ -419,7 +419,8 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   ePA Information Service's record status for an insurant ID of nobody, `X000000000`:
   `noHealthRecord`), `directory` (the FHIR-Directory's `/owner-authenticate`, which
   without a token redirects to the IDP-Dienst; not followed), `catalog`
-  (the TI platform's service-discovery `catalog.json`), `http` (any answer).
+  (the TI platform's service-discovery `catalog.json`), `http` (any answer), `dns` (a
+  TCP connection to a DNS server, `dns://IP`, port 53).
 - The catalog's `service_instances` are probed too (`source: "catalog"`).
 - Each probe has an `access` path: `ti-vpn` (only through a Konnektor's or TI-Gateway's
   VPN: `idpd-ti`, `erx`, `epa-1`, `epa-2`) or `internet` (`idpd-internet`,
@@ -427,10 +428,18 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   block per path. `access_paths[].available` is false when every endpoint of a path
   failed; for `ti-vpn` that means no TI VPN, and the text says so once and grays the
   block. Names are lowercase kebab-case, `<service>-<n>` for numbered instances.
+- `prod` also probes the Bestandsnetze of gematik's `Bestandsnetze.xml` (2.1.36) on the
+  path `bestandsnetz`: networks the Konnektor routes into through the TI VPN when the
+  practice booked them. Each is named by its lowercase ID (`snk` for KV-SafeNet) and
+  checked through a known HTTPS host (`snk`: `portal.kv-safenet.de`, `orgti`), else
+  with `dns` at its first DNS server. A Bestandsnetz that does not answer is `warn`,
+  never `fail`, so it leaves the exit code at 0; the text lists those not routed on one
+  line (`! not routed: kzvwl, demis, …`), with a row for each that answered.
 - `TI_PROBE_ENDPOINTS_PATH` replaces the built-in list: a JSON object per environment
   of `{"name", "access", "kind", "url"}`.
-- `status`: `ok` the expected answer, `warn` an answer but not the expected one, `fail`
-  no answer; `detail` is `{kind} …` when ok (`oidc discovery`, `catalog, 6 instances`,
+- `status`: `ok` the expected answer, `warn` an answer but not the expected one (or no
+  answer from a Bestandsnetz), `fail` no answer; `answered` is false for every transport
+  failure; `detail` is `{kind} …` when ok (`oidc discovery`, `catalog, 6 instances`,
   `http 403`), otherwise the cause (`HTTP 404`, `issuer … differs`, `DNS lookup failed`,
   `timeout`, `connection refused`, `TLS error`). Hosts
   under `splitdns.ti-dienste.de` resolve only inside the TI.

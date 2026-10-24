@@ -97,17 +97,27 @@ enum Access {
     TiVpn,
     /// Directly.
     Internet,
+    /// Through the TI VPN into a Bestandsnetz (gematik's Bestandsnetze.xml), which the
+    /// Konnektor routes only when the practice has booked it.
+    Bestandsnetz,
 }
 
 impl Access {
     /// The order the groups are shown in.
-    const ALL: [Access; 2] = [Access::TiVpn, Access::Internet];
+    const ALL: [Access; 3] = [Access::TiVpn, Access::Internet, Access::Bestandsnetz];
 
     fn label(self) -> &'static str {
         match self {
             Access::TiVpn => "TI-VPN",
             Access::Internet => "Internet",
+            Access::Bestandsnetz => "Bestandsnetze",
         }
+    }
+
+    /// Whether the services of this path are expected to answer. A practice need not
+    /// book a Bestandsnetz, so not reaching one is a warning, not a failure.
+    fn required(self) -> bool {
+        self != Access::Bestandsnetz
     }
 
     /// Said once for the block when none of its endpoints answered.
@@ -115,6 +125,7 @@ impl Access {
         match self {
             Access::TiVpn => "not reachable: no TI VPN?",
             Access::Internet => "not reachable: no internet?",
+            Access::Bestandsnetz => "not reachable: not routed by the Konnektor, or no TI VPN?",
         }
     }
 }
@@ -140,6 +151,9 @@ enum Kind {
     Directory,
     /// Any HTTP answer.
     Http,
+    /// A TCP connection to a DNS server (`dns://ADDRESS`, port 53 unless `ADDRESS:PORT`):
+    /// proves the route into a Bestandsnetz without a host to ask.
+    Dns,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -156,6 +170,8 @@ enum Status {
 /// The outcome of one probe.
 struct Outcome {
     status: Status,
+    /// The endpoint answered; false for a transport failure, whatever the status.
+    answered: bool,
     detail: String,
     http_status: Option<u16>,
     duration: Duration,
@@ -206,6 +222,8 @@ struct ProbeInfo {
     /// `builtin`, or `catalog` for an instance the catalog lists.
     source: &'static str,
     status: Status,
+    /// The endpoint answered; false for a transport failure.
+    answered: bool,
     detail: String,
     http_status: Option<u16>,
     duration_ms: u64,
@@ -286,10 +304,9 @@ pub fn run(env: Env, def: bool, global: &GlobalArgs, out: &Output) -> Result<Exi
             if !path.available {
                 doc.paragraph(Line::dim(path.access.unreachable()));
             }
-            let rows = report
-                .probes
-                .iter()
-                .filter(|p| p.access == path.access)
+            let group = || report.probes.iter().filter(|p| p.access == path.access);
+            let rows = group()
+                .filter(|p| p.access.required() || p.answered)
                 .map(|p| {
                     vec![
                         Line::strong(&p.name),
@@ -300,13 +317,18 @@ pub fn run(env: Env, def: bool, global: &GlobalArgs, out: &Output) -> Result<Exi
                     ]
                 });
             doc.table(&["SERVICE", "", "HOST", "TIME", "DETAIL"], rows.collect());
+            if !path.access.required() && group().any(|p| !p.answered) {
+                let silent = group().filter(|p| !p.answered).map(|p| p.name.as_str());
+                doc.paragraph(Line::text(not_routed(silent)));
+            }
         }
         doc.paragraph(Line::dim(summary_plain(&report, elapsed)));
     })
 }
 
 /// Whether any endpoint reached by `access` answered: `None` while one is still
-/// pending, or when there is none.
+/// pending, or when there is none. The answer, not the status, counts: an unreachable
+/// Bestandsnetz is a warning, yet the path is down.
 fn available(rows: &[Row], access: Access) -> Option<bool> {
     let group: Vec<&Row> = rows
         .iter()
@@ -319,7 +341,7 @@ fn available(rows: &[Row], access: Access) -> Option<bool> {
     if outcomes.clone().any(|o| o.is_none()) {
         return None;
     }
-    Some(outcomes.any(|o| o.is_some_and(|o| o.status != Status::Fail)))
+    Some(outcomes.any(|o| o.is_some_and(|o| o.answered)))
 }
 
 /// The endpoints of `env`, from `TI_PROBE_ENDPOINTS_PATH` or the embedded list.
@@ -393,6 +415,9 @@ fn same_url(a: &str, b: &str) -> bool {
 
 /// Probes `endpoint` the way its kind asks for.
 fn probe(agent: &Agent, env: Env, endpoint: &Endpoint) -> Outcome {
+    if endpoint.kind == Kind::Dns {
+        return dns(endpoint);
+    }
     let base = endpoint.url.trim_end_matches('/');
     let url = match endpoint.kind {
         Kind::Oidc => format!("{base}/.well-known/openid-configuration"),
@@ -400,7 +425,7 @@ fn probe(agent: &Agent, env: Env, endpoint: &Endpoint) -> Outcome {
         Kind::Erp => format!("{base}/VAUCertificate"),
         Kind::Epa => format!("{base}/information/api/v1/ehr"),
         Kind::Directory => format!("{base}/owner-authenticate"),
-        Kind::Catalog | Kind::Http => endpoint.url.clone(),
+        Kind::Catalog | Kind::Http | Kind::Dns => endpoint.url.clone(),
     };
     let start = Instant::now();
     let mut request = agent.get(&url);
@@ -435,7 +460,8 @@ fn probe(agent: &Agent, env: Env, endpoint: &Endpoint) -> Outcome {
         Ok(answer) => answer,
         Err(error) => {
             return Outcome {
-                status: Status::Fail,
+                status: unanswered(endpoint.access),
+                answered: false,
                 detail: failure(&error),
                 http_status: None,
                 duration,
@@ -446,11 +472,63 @@ fn probe(agent: &Agent, env: Env, endpoint: &Endpoint) -> Outcome {
     let (verdict, detail, discovered) = judge(endpoint.kind, env, base, status, &body);
     Outcome {
         status: verdict,
+        answered: true,
         detail,
         http_status: Some(status),
         duration,
         discovered,
     }
+}
+
+/// The status of an endpoint that did not answer: a failure, except on a path whose
+/// services need not be reachable.
+fn unanswered(access: Access) -> Status {
+    if access.required() {
+        Status::Fail
+    } else {
+        Status::Warn
+    }
+}
+
+/// Connects to the DNS server in `endpoint`'s `dns://ADDRESS`. Direct, not through the
+/// HTTP proxy: the route itself is what is probed.
+fn dns(endpoint: &Endpoint) -> Outcome {
+    let start = Instant::now();
+    let connected = dns_server(&host(&endpoint.url)).and_then(|server| {
+        std::net::TcpStream::connect_timeout(&server, TIMEOUT)
+            .map(|_| server.port())
+            .map_err(|e| match e.kind() {
+                std::io::ErrorKind::TimedOut => "timeout".to_owned(),
+                std::io::ErrorKind::ConnectionRefused => "connection refused".to_owned(),
+                _ => e.to_string(),
+            })
+    });
+    let duration = start.elapsed();
+    let (status, answered, detail) = match connected {
+        Ok(port) => (Status::Ok, true, format!("dns, port {port} open")),
+        Err(detail) => (unanswered(endpoint.access), false, detail),
+    };
+    Outcome {
+        status,
+        answered,
+        detail,
+        http_status: None,
+        duration,
+        discovered: Vec::new(),
+    }
+}
+
+/// `IP` (port 53) or `IP:PORT`; names are refused, since resolving one would ask the
+/// DNS the probe is meant to check the route to.
+fn dns_server(address: &str) -> Result<std::net::SocketAddr, String> {
+    address
+        .parse::<std::net::SocketAddr>()
+        .or_else(|_| {
+            address
+                .parse::<std::net::IpAddr>()
+                .map(|ip| (ip, 53).into())
+        })
+        .map_err(|_| format!("{address} is not an IP address"))
 }
 
 /// What an answer means for an endpoint of `kind`.
@@ -507,7 +585,7 @@ fn judge(
             Ok(_) => (Status::Ok, "erp VAU certificate".into(), Vec::new()),
             Err(_) => warn("no VAU certificate".into()),
         },
-        Kind::Epa | Kind::Directory | Kind::Http => unreachable!("answered above"),
+        Kind::Epa | Kind::Directory | Kind::Http | Kind::Dns => unreachable!("answered above"),
     }
 }
 
@@ -728,13 +806,37 @@ fn lines(rows: &[Row], tick: usize) -> Vec<String> {
         } else {
             format!("{strong}{}{strong:#}", access.label())
         });
+        if access.required() {
+            lines.extend(
+                group
+                    .iter()
+                    .map(|r| format!("{INDENT}{}", line(r, &widths, tick, down))),
+            );
+            continue;
+        }
+        // Most practices book few Bestandsnetze: the ones not routed share one line.
+        let (silent, shown): (Vec<&Row>, Vec<&Row>) = group
+            .iter()
+            .partition(|r| r.outcome.as_ref().is_some_and(|o| !o.answered));
         lines.extend(
-            group
+            shown
                 .iter()
-                .map(|r| format!("{INDENT}{}", line(r, &widths, tick, down))),
+                .map(|r| format!("{INDENT}{}", line(r, &widths, tick, false))),
         );
+        if !silent.is_empty() {
+            let warn = style::WARN;
+            lines.push(format!(
+                "{INDENT}{warn}! {}{warn:#}",
+                not_routed(silent.iter().map(|r| r.endpoint.name.as_str()))
+            ));
+        }
     }
     lines
+}
+
+/// The one line for the Bestandsnetze that did not answer.
+fn not_routed<'a>(names: impl Iterator<Item = &'a str>) -> String {
+    format!("not routed: {}", names.collect::<Vec<_>>().join(", "))
 }
 
 fn report(env: Env, rows: &[Row], elapsed: Duration) -> Report {
@@ -750,6 +852,7 @@ fn report(env: Env, rows: &[Row], elapsed: Duration) -> Report {
                 host: host(&r.endpoint.url),
                 source: r.source,
                 status: o.status,
+                answered: o.answered,
                 detail: o.detail.clone(),
                 http_status: o.http_status,
                 duration_ms: u64::try_from(o.duration.as_millis()).unwrap_or(u64::MAX),
@@ -833,10 +936,13 @@ mod tests {
         for env in [Env::Prod, Env::Ref, Env::Test, Env::Dev] {
             let list = &all[env.as_str()];
             assert!(list.iter().any(|e| e.kind == Kind::Catalog), "{env:?}");
-            assert!(
-                list.iter().all(|e| e.url.starts_with("https://")),
-                "{env:?}"
-            );
+            for e in list {
+                let valid = match e.kind {
+                    Kind::Dns => dns_server(&host(&e.url)).is_ok(),
+                    _ => e.url.starts_with("https://"),
+                };
+                assert!(valid, "{env:?}: {}", e.url);
+            }
         }
     }
 
@@ -863,6 +969,48 @@ mod tests {
             assert_eq!(access("idpd-internet"), Some(Access::Internet), "{env}");
             assert_eq!(access("catalog"), Some(Access::Internet), "{env}");
         }
+    }
+
+    /// gematik's Bestandsnetze.xml lists 17 networks; each is probed in prod, on its own
+    /// path, through a known HTTPS host or its first DNS server.
+    #[test]
+    fn prod_probes_every_bestandsnetz() {
+        let all: HashMap<String, Vec<Endpoint>> = serde_json::from_str(ENDPOINTS).unwrap();
+        let networks: Vec<&Endpoint> = all["prod"]
+            .iter()
+            .filter(|e| e.access == Access::Bestandsnetz)
+            .collect();
+        assert_eq!(networks.len(), 17);
+        let snk = networks.iter().find(|e| e.name == "snk").unwrap();
+        assert_eq!(
+            (snk.kind, snk.url.as_str()),
+            (Kind::Http, "https://portal.kv-safenet.de")
+        );
+        assert!(
+            networks
+                .iter()
+                .all(|e| matches!(e.kind, Kind::Http | Kind::Dns))
+        );
+    }
+
+    #[test]
+    fn an_unreachable_bestandsnetz_is_a_warning_elsewhere_a_failure() {
+        assert_eq!(unanswered(Access::Bestandsnetz), Status::Warn);
+        assert_eq!(unanswered(Access::TiVpn), Status::Fail);
+        assert_eq!(unanswered(Access::Internet), Status::Fail);
+    }
+
+    #[test]
+    fn dns_servers_are_addresses_with_port_53_by_default() {
+        assert_eq!(
+            dns_server("188.144.7.140"),
+            Ok("188.144.7.140:53".parse().unwrap())
+        );
+        assert_eq!(
+            dns_server("127.0.0.1:5353"),
+            Ok("127.0.0.1:5353".parse().unwrap())
+        );
+        assert!(dns_server("dns.kv-safenet.de").is_err());
     }
 
     #[test]
