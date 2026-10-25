@@ -89,6 +89,14 @@ and Windows x86_64.
 - **From source:** `cargo install --locked --git https://github.com/gematik/zero-lab --tag
   rust/ti-cli/vX.Y.Z ti-cli`, or `just install` in a checkout.
 
+## Agent skill
+
+[`skills/ti-cli`](skills/ti-cli/SKILL.md) is a Claude Code skill for using `ti` from agents:
+the rules of [AGENTS.md](AGENTS.md) (JSON output, exit codes, never run PIN commands
+unasked) with task-oriented snippets per subsystem. Install it by copying the folder to
+`~/.claude/skills/ti-cli` (or a project's `.claude/skills`). `ti agent` stays the
+authoritative guide for the installed version.
+
 ## Trust material
 
 `pki roots list` and `pki tsl show` show what `verify` works with, for one environment
