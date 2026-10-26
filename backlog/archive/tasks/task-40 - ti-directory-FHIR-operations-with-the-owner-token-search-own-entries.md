@@ -3,7 +3,8 @@ id: TASK-40
 title: 'ti directory: FHIR operations with the owner token (search, own entries)'
 status: To Do
 assignee: []
-created_date: '2026-10-11 11:48'
+created_date: 2026-10-11 11:48
+updated_date: '2026-10-26T12:05:00Z'
 labels:
   - ti-directory
   - ti-cli
@@ -23,3 +24,9 @@ TASK-33 yields tokens for every path; using them is left to curl. Add ti directo
 <!-- AC:BEGIN -->
 - [ ] #1 ti directory search returns entries for a name or Telematik-ID with any token that carries search:read
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Aborted by the maintainer (2026-10-26): not planned; tokens from ti directory login stay for use with curl.
+<!-- SECTION:NOTES:END -->
