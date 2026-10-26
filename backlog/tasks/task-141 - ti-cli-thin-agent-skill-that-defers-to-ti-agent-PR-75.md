@@ -4,7 +4,7 @@ title: 'ti-cli: thin agent skill that defers to ti agent (PR #75)'
 status: To Do
 assignee: []
 created_date: 2026-10-26 10:26
-updated_date: '2026-10-26T15:44:00Z'
+updated_date: '2026-10-26T19:36:00Z'
 labels:
   - ti-cli
   - docs
@@ -32,4 +32,6 @@ PR #75 (external) adds rust/ti-cli/skills/ti-cli with SKILL.md and four referenc
 
 <!-- SECTION:NOTES:BEGIN -->
 Criterion 1 (AGENTS.md gets the PR's missing material) moved to TASK-148, which ships in ti-cli 0.6.0; the skill itself waits for skills/ (TASK-144).
+
+2026-10-26: review on PR #75 (changes requested) asks for the rework under decision-9 and docs/conventions/agents.md: remove rust/ti-cli/skills, a thin skills/ti/SKILL.md without references/ until TASK-144, revert the README section incl. npx skills; TASK-144 offered to the contributor.
 <!-- SECTION:NOTES:END -->
