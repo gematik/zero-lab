@@ -1096,7 +1096,11 @@ mod tests {
             assert_eq!(verified.tsl.sequence_number, sequence);
             assert_eq!(verified.anchor.subject_cn(), "GEM.TSL-CA3");
             assert_eq!(verified.signer.subject_cn(), "TSL Signing Unit 6");
-            assert!(!verified.tsl.intermediate_cas().is_empty());
+            assert!(
+                !verified.tsl.intermediate_cas().is_empty(),
+                "{:?}",
+                verified.tsl.intermediate_cas()
+            );
         }
     }
 
@@ -1221,7 +1225,11 @@ mod tests {
     #[test]
     fn tslsig_052_the_published_lists_skip_nothing() {
         let verified = pu_10334("2026-10-03T00:00:00Z", 0).unwrap();
-        assert!(verified.tsl.skipped.is_empty());
+        assert!(
+            verified.tsl.skipped.is_empty(),
+            "{:?}",
+            verified.tsl.skipped
+        );
         assert_eq!(verified.tsl.id, "ID31033420260927230007Z");
     }
 
@@ -1292,7 +1300,7 @@ mod tests {
     #[test]
     fn tslsig_040_043_a_good_status_lifts_the_warning() {
         let verified = status(Ok(result(RevocationStatus::Good, ""))).unwrap();
-        assert!(verified.warnings.is_empty());
+        assert!(verified.warnings.is_empty(), "{:?}", verified.warnings);
         assert_eq!(
             verified.signer_status.map(|r| r.status),
             Some(RevocationStatus::Good)
@@ -1406,7 +1414,8 @@ mod tests {
         let mut tsl = Tsl::parse_verified_prod(&real("pu-10334.xml"), at("2026-10-03T00:00:00Z"))
             .unwrap()
             .tsl;
-        assert!(announced_anchors(&tsl, std::slice::from_ref(&ca3)).is_empty());
+        let announced = announced_anchors(&tsl, std::slice::from_ref(&ca3));
+        assert!(announced.is_empty(), "{announced:?}");
 
         tsl.services.push(announcement(Some(new_ca.clone())));
         let warnings = announced_anchors(&tsl, std::slice::from_ref(&ca3));
@@ -1420,7 +1429,8 @@ mod tests {
         assert!(TslCode::TslAnchorAnnounced.is_warning());
 
         // Configured: nothing to report.
-        assert!(announced_anchors(&tsl, &[ca3.clone(), new_ca]).is_empty());
+        let announced = announced_anchors(&tsl, &[ca3.clone(), new_ca]);
+        assert!(announced.is_empty(), "{announced:?}");
 
         tsl.services.push(announcement(None));
         assert_eq!(announced_anchors(&tsl, &[ca3]).len(), 2);
@@ -1473,7 +1483,7 @@ mod tests {
                 vec![Ok(PU.to_vec())],
             );
             let verified = result.unwrap();
-            assert!(verified.warnings.is_empty());
+            assert!(verified.warnings.is_empty(), "{:?}", verified.warnings);
             let status = verified.signer_status.unwrap();
             assert_eq!(status.status, RevocationStatus::Good);
             assert_eq!(status.responder_name, "TSL-CA3 OCSP-Signer2");
@@ -1647,7 +1657,7 @@ mod tests {
         #[test]
         fn tslsig_040_good_from_a_delegate_or_the_ca_itself() {
             let delegate = status_of(answer!("good")).unwrap();
-            assert!(delegate.warnings.is_empty());
+            assert!(delegate.warnings.is_empty(), "{:?}", delegate.warnings);
             let status = delegate.signer_status.unwrap();
             assert_eq!(status.status, RevocationStatus::Good);
             assert_eq!(status.authorization, Some(ResponderAuthorization::Delegate));

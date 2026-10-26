@@ -561,7 +561,11 @@ pub(crate) mod tests {
     fn subject_alt_names_in_openssl_notation() {
         let pki = crate::testing::TestPki::new();
         assert_eq!(pki.ee_zeta.subject_alt_names(), ["DNS:zeta.ti-dienste.de"]);
-        assert!(pki.ee_arzt.subject_alt_names().is_empty());
+        assert!(
+            pki.ee_arzt.subject_alt_names().is_empty(),
+            "{:?}",
+            pki.ee_arzt.subject_alt_names()
+        );
         assert_eq!(ip_text(&[10, 0, 0, 1]), "10.0.0.1");
         let mut v6 = [0u8; 16];
         v6[15] = 1;
@@ -580,7 +584,7 @@ pub(crate) mod tests {
         assert!(ee.not_before() < ee.not_after());
         assert!(ee.is_valid_at(ee.not_before()) && ee.is_valid_at(ee.not_after()));
         assert!(!ee.is_valid_at(Timestamp(ee.not_after().0 + 1)));
-        assert!(!ee.ocsp_urls().is_empty());
+        assert!(!ee.ocsp_urls().is_empty(), "{:?}", ee.ocsp_urls());
         assert_eq!(ee.issuer_der(), fixture(SMCB_CA51).subject_der());
 
         let ca = fixture(SMCB_CA51);
@@ -677,7 +681,9 @@ pub(crate) mod tests {
         let mixed = format!("preamble\n{key_block}{RCA5}\ntrailer");
         assert_eq!(parse_pem_certificates(mixed.as_bytes()).unwrap().len(), 1);
 
-        assert!(parse_pem_certificates(b"").unwrap().is_empty());
-        assert!(parse_pem_certificates(b"no pem here").unwrap().is_empty());
+        for input in [&b""[..], b"no pem here"] {
+            let certs = parse_pem_certificates(input).unwrap();
+            assert!(certs.is_empty(), "{certs:?}");
+        }
     }
 }

@@ -791,7 +791,7 @@ mod tests {
         let tsl_ca = of_type(SERVICE_TYPE_CA_PKC)
             .find(|s| s.name.starts_with("CN=GEM.TSL-CA3,"))
             .unwrap();
-        assert!(tsl_ca.type_oids.is_empty());
+        assert!(tsl_ca.type_oids.is_empty(), "{:?}", tsl_ca.type_oids);
         assert!(of_type(SERVICE_TYPE_OCSP).all(|s| s.type_oids.is_empty()));
         assert!(
             of_type(SERVICE_TYPE_CA_PKC)

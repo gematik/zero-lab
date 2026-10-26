@@ -127,6 +127,6 @@ mod tests {
         let many: TokenClaims = serde_json::from_str(r#"{"aud":["a","b"]}"#).unwrap();
         assert_eq!(many.aud, ["a", "b"]);
         let none: TokenClaims = serde_json::from_str("{}").unwrap();
-        assert!(none.aud.is_empty());
+        assert!(none.aud.is_empty(), "{:?}", none.aud);
     }
 }

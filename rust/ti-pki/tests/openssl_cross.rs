@@ -270,7 +270,11 @@ fn tsl_matching_agrees() {
     let roots = roots::load(&config, list.issued_at).unwrap().trusted;
     let store = TrustStore::new(roots.iter().cloned());
     let matched = tsl::match_to_roots(list.intermediate_cas(), &store, &config.algorithms);
-    assert!(!matched.intermediates.is_empty());
+    assert!(
+        !matched.intermediates.is_empty(),
+        "{:?}",
+        matched.intermediates
+    );
     for ca in matched.intermediates.iter().map(|i| &i.certificate) {
         let (ok, out) = openssl_verify(ca, &[], &roots, None);
         assert!(ok, "kept {:?}, openssl: {out}", ca.subject_cn());

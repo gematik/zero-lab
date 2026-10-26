@@ -45,9 +45,10 @@ install-fast:
     install -m 755 target/local/ti "${CARGO_HOME:-$HOME/.cargo}/bin/ti"
 
 # Linux (static musl) and Windows are built through cross in Docker, macOS natively on
-# a Mac; needs `just tools` and a running Docker daemon.
+# a Mac; needs `just tools` and a running Docker daemon. mode=check runs clippy on the
+# cross targets instead, so a change that breaks them fails before a release does.
 # Release binaries of the CLI for every distributed platform into target/dist
-cli-targets:
+cli-targets mode="build":
     #!/usr/bin/env bash
     set -euo pipefail
     command -v cross >/dev/null || { echo "cross is missing: just tools" >&2; exit 1; }
@@ -71,6 +72,15 @@ cli-targets:
     # cross mounts only the workspace, at /project; ti-cli includes the store schema from
     # ../spec, which /project/../spec resolves to.
     export CROSS_CONTAINER_OPTS="${CROSS_CONTAINER_OPTS:-} -v $(cd ../spec && pwd):/spec:ro"
+    if [[ "{{mode}}" == check ]]; then
+        for t in "${targets[@]}"; do
+            echo "==> clippy $t"
+            CARGO_TARGET_DIR="target/cross/$t" \
+                cross clippy --locked -p ti-cli --all-targets --target "$t" -- -D warnings
+        done
+        exit 0
+    fi
+    [[ "{{mode}}" == build ]] || { echo "mode is build or check, not {{mode}}" >&2; exit 2; }
     # A release uploads everything here, so nothing from an earlier build may remain.
     rm -rf target/dist && mkdir -p target/dist
     for t in "${targets[@]}" "${native[@]}"; do
@@ -326,14 +336,17 @@ wasm-vendor dest="../../gemiverse": wasm-smoke wasm-size
 # ---- Tier 1: every change, and before a release ------------------------------------
 
 # Everything a PR must pass, in the order that fails fastest
-check: fmt clippy doc test wasm32 wasm-unsafe-free core-deps nonprod-absent jwz-backends jwz-rsa-guard machete deny
+check: fmt clippy doc test wasm32 wasm-unsafe-free core-deps nonprod-absent jwz-backends jwz-rsa-guard machete deny vet
     just brainpool-absent jwz
     just brainpool-absent ti-jwz
 
 # The feature matrix and the default-feature tests take most of the time and break only
 # when features or their gating change; `just release` runs them.
-# `check` plus every feature combination and the tests with default features
-check-full: check test-defaults features
+# `check` plus every feature combination, the tests with default features and the CLI's cross targets
+check-full: check test-defaults features cli-check
+
+# The Linux and Windows builds of the CLI, linted in their cross containers
+cli-check: (cli-targets "check")
 
 # Formatting (rustfmt.toml is the source of truth)
 fmt:

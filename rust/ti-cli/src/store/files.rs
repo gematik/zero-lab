@@ -30,7 +30,7 @@
 //! created exclusively, which fails on an existing link; and a renamed or claimed file is
 //! checked before it is read. Renames and removals act on links, never through them.
 
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Write as _};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -359,17 +359,15 @@ fn write_atomic(dir: &Path, name: &str, data: &[u8]) -> Result<(), StoreError> {
     sync_dir(dir)
 }
 
-#[cfg(unix)]
 fn sync_dir(dir: &Path) -> Result<(), StoreError> {
-    File::open(dir)
-        .and_then(|d| d.sync_all())
-        .map_err(|e| io("sync", dir, &e))
-}
-
-/// Windows cannot open a directory as a file; the rename is as durable as it allows.
-#[cfg(not(unix))]
-fn sync_dir(_dir: &Path) -> Result<(), StoreError> {
-    Ok(())
+    if cfg!(unix) {
+        fs::File::open(dir)
+            .and_then(|d| d.sync_all())
+            .map_err(|e| io("sync", dir, &e))
+    } else {
+        // Windows cannot open a directory as a file; the rename is as durable as it allows.
+        Ok(())
+    }
 }
 
 /// Reads a regular file, never through a link; a missing file is `not_found`.
@@ -388,6 +386,8 @@ fn read_file(path: &Path) -> Result<Vec<u8>, StoreError> {
 
 /// STORE-085: directories with mode 0700.
 fn make_dir(dir: &Path) -> Result<(), StoreError> {
+    // only Unix sets a mode on the builder
+    #[cfg_attr(not(unix), allow(unused_mut))]
     let mut builder = fs::DirBuilder::new();
     #[cfg(unix)]
     std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);

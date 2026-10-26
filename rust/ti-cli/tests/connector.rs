@@ -197,6 +197,16 @@ fn answer(path: &str, action: &str, body: &str) -> (u16, String) {
                 "<C:GetPinStatusResponse xmlns:C=\"c\">{OK}<PinStatus>{status}</PinStatus>{tries}</C:GetPinStatusResponse>"
             )
         }
+        // A workplace whose card terminals are all remote, without a Remote-PIN-KT.
+        "VerifyPin" if body.contains("W-REMOTE") => {
+            return (
+                500,
+                fault(
+                    4092,
+                    "Remote-PIN-KT benötigt aber für diesen Arbeitsplatz nicht definiert",
+                ),
+            );
+        }
         "VerifyPin" => format!(
             "<C:VerifyPinResponse xmlns:C=\"c\">{OK}<PinResult>REJECTED</PinResult><LeftTries>2</LeftTries></C:VerifyPinResponse>"
         ),
@@ -547,6 +557,44 @@ fn restricted_cards_and_usage_errors_say_what_to_do() {
     assert_eq!(
         (error["error"]["kind"].as_str(), out.status.code()),
         (Some("connector_config"), Some(2))
+    );
+}
+
+/// gemSpec_Kon TUC_KON_012 error 4092 keeps its code and text, and gains a hint at the
+/// .kon workplace and the Konnektor's information model, in JSON and in the text.
+#[test]
+fn kon_4092_verify_pin_without_remote_pin_kt_hints_the_workplace() {
+    let fake = Fake::start("remote-pin");
+    let praxis = std::fs::read_to_string(&fake.kon).unwrap();
+    std::fs::write(
+        fake.kon.with_file_name("remote.kon"),
+        praxis.replace(r#""W1""#, r#""W-REMOTE""#),
+    )
+    .unwrap();
+    let args = ["connector", "-c", "remote", "verify", "pin", "card-smcb"];
+    let out = fake.ti(&[&["--format", "json"][..], &args].concat());
+    // The PIN prompt comes first on stderr, the error document last.
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    let error: Value = serde_json::from_str(stderr.lines().last().unwrap()).unwrap();
+    assert_eq!(
+        (error["error"]["kind"].as_str(), out.status.code()),
+        (Some("connector_fault"), Some(3))
+    );
+    let message = error["error"]["message"].as_str().unwrap();
+    assert!(
+        message
+            .contains("(4092 Remote-PIN-KT benötigt aber für diesen Arbeitsplatz nicht definiert)"),
+        "{message}"
+    );
+    let hint = error["error"]["hint"].as_str().unwrap();
+    assert!(
+        hint.contains("Remote-PIN-KT") && hint.contains("workplaceId"),
+        "{hint}"
+    );
+    let text = String::from_utf8(fake.ti(&args).stderr).unwrap();
+    assert!(
+        text.contains("4092") && text.contains("Remote-PIN-KT for it"),
+        "{text}"
     );
 }
 

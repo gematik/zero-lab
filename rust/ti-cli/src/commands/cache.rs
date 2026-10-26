@@ -63,14 +63,14 @@ pub fn clear(global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
         .iter()
         .filter(|ns| ns.database == Database::Cache)
     {
-        let ns = Namespace::new(spec.name).map_err(&fail)?;
+        let ns = Namespace::new(spec.name).map_err(fail)?;
         let mut cursor = None;
         loop {
             // every record of the cache expires, so all are live at time 0
             let (page, next) =
-                block_on(store.query(spec, &[], 1000, cursor, Timestamp(0))).map_err(&fail)?;
+                block_on(store.query(spec, &[], 1000, cursor, Timestamp(0))).map_err(fail)?;
             for record in &page {
-                block_on(store.backend().delete(&ns, &record.name)).map_err(&fail)?;
+                block_on(store.backend().delete(&ns, &record.name)).map_err(fail)?;
                 removed += 1;
             }
             match next {

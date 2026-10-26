@@ -176,7 +176,11 @@ mod tests {
                 Some(registration_number)
             );
             assert_eq!(statement.profession_oids, [oid]);
-            assert!(!statement.profession_items.is_empty());
+            assert!(
+                !statement.profession_items.is_empty(),
+                "{:?}",
+                statement.profession_items
+            );
         }
     }
 

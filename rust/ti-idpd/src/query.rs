@@ -78,7 +78,8 @@ mod tests {
                 ("error".to_owned(), "invalid_request".to_owned()),
             ]
         );
-        assert!(pairs("https://rp.example/cb").is_empty());
+        let none = pairs("https://rp.example/cb");
+        assert!(none.is_empty(), "{none:?}");
         assert_eq!(decode("100%"), "100%");
         assert_eq!(decode("%zz"), "%zz");
     }

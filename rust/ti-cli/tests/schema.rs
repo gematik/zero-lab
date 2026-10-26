@@ -428,7 +428,7 @@ fn tsl_bundle_and_export_write_what_they_report() {
         .iter()
         .map(|c| c["common_name"].as_str().unwrap())
         .collect();
-    assert!(!names.is_empty());
+    assert!(!names.is_empty(), "{names:?}");
     assert!(
         names.iter().all(|n| n.starts_with("ATOS.SMCB-CA")),
         "{names:?}"
@@ -1159,7 +1159,8 @@ fn the_checker_catches_departures() {
         "additionalProperties": false,
     });
     let check = |value: Value| violations(&value, &schema, &schema, "$");
-    assert!(check(serde_json::json!({"a": 1, "b": "x"})).is_empty());
+    let errors = check(serde_json::json!({"a": 1, "b": "x"}));
+    assert!(errors.is_empty(), "{errors:?}");
     assert_eq!(
         check(serde_json::json!({"a": "1", "b": "x"})).len(),
         1,

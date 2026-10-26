@@ -88,7 +88,7 @@ fn every_stamp_is_fresh_and_passed() {
         .filter(|p| p.extension().is_some_and(|e| e == "toml"))
         .collect();
     stamps.sort();
-    assert!(!stamps.is_empty());
+    assert!(!stamps.is_empty(), "{stamps:?}");
     for path in stamps {
         let name = path.file_stem().unwrap().to_string_lossy().to_string();
         let stamp = parse(&std::fs::read_to_string(&path).unwrap());

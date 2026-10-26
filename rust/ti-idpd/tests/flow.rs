@@ -594,7 +594,7 @@ fn both_idp_certificates_go_to_the_trust_check_and_verified_ones_leave_no_warnin
         &trust,
     ))
     .unwrap();
-    assert!(done.warnings.is_empty());
+    assert!(done.warnings.is_empty(), "{:?}", done.warnings);
     let seen = trust.seen.borrow();
     assert_eq!(
         seen.iter().map(|(w, _)| *w).collect::<Vec<_>>(),

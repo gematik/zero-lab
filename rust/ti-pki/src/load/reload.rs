@@ -1145,7 +1145,11 @@ mod tests {
             block_on(good.tick()),
             ReloadOutcome::Swapped { .. }
         ));
-        assert!(good.handle().status().tsl_warnings.is_empty());
+        assert!(
+            good.handle().status().tsl_warnings.is_empty(),
+            "{:?}",
+            good.handle().status().tsl_warnings
+        );
 
         let revoked = production(&clock, [Ok(published("pu-10334.xml", OCT_3))])
             .with_signer_status(SignerStatus(RevocationStatus::Revoked));
