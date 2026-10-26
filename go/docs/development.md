@@ -59,8 +59,8 @@ Confirm the workspace is wiring local source:
 
 ## Module status
 
-Rust is the maintained core of zero-lab (`../rust`; `docs/backlog/docs/doc-1` there has
-the architecture). Go keeps the servers and relying parties, and the ePA client.
+Rust is the maintained core of zero-lab (`../rust`; `backlog/docs/doc-1` at the repository root
+has the architecture). Go keeps the servers and relying parties, and the ePA client.
 
 | Status | Modules | Notes |
 | --- | --- | --- |

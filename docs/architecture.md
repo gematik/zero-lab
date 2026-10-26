@@ -20,7 +20,7 @@ described in [interop](interop.md); no language grows a second implementation of
 without a shared specification.
 
 The decision record behind this split, with the integration options weighed, is
-[doc-1](../rust/docs/backlog/docs/doc-1%20-%20Rust-as-the-core-architecture-Go-review-integration-means-workflow.md).
+[doc-1](../backlog/docs/doc-1%20-%20Rust-as-the-core-architecture-Go-review-integration-means-workflow.md).
 
 ## Layers
 

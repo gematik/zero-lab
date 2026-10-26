@@ -33,8 +33,8 @@ a profile that says how its code meets them.
 |---|---|
 | Shared specifications (rules, result codes, corpora) | [`spec/`](../spec/README.md) |
 | Development and release guides per workspace | [`rust/docs/development.md`](../rust/docs/development.md), [`go/docs/development.md`](../go/docs/development.md) |
-| Decisions and the architecture decision record | [`rust/docs/backlog/decisions/`](../rust/docs/backlog/decisions/), [doc-1](../rust/docs/backlog/docs/doc-1%20-%20Rust-as-the-core-architecture-Go-review-integration-means-workflow.md) |
-| Open work, including every gap against these rules | the backlog in [`rust/docs/backlog/`](../rust/docs/backlog/); [how it is used](conventions/backlog.md) |
+| Decisions and the architecture decision record | [`backlog/decisions/`](../backlog/decisions/), [doc-1](../backlog/docs/doc-1%20-%20Rust-as-the-core-architecture-Go-review-integration-means-workflow.md) |
+| Open work, including every gap against these rules | the backlog in [`backlog/`](../backlog/); [how it is used](conventions/backlog.md) |
 | Contributing | [`CONTRIBUTING.md`](../CONTRIBUTING.md) |
 
 ## Owning a rule

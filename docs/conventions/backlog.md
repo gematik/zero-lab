@@ -1,9 +1,18 @@
 # Backlog
 
 Open work for the whole repository, Rust, Go and cross-language alike, lives in one
-backlog: `rust/docs/backlog`, managed with the [Backlog.md](https://github.com/MrLesk/Backlog.md)
-CLI. Run `backlog` from `rust/` (where `backlog.config.yml` is). Tasks are Markdown files
-in git and change through pull requests like any other file.
+backlog: [`backlog/`](../../backlog/) at the repository root, managed with the
+[Backlog.md](https://github.com/MrLesk/Backlog.md) CLI. Run `backlog` from the repository
+root; its configuration is `backlog/config.yml`. Tasks are Markdown files in git.
+
+## Where task changes land
+
+- Task files change on `main`, or on a branch that merges soon, such as the branch whose
+  pull request completes the task. Creating, planning and reprioritising tasks goes to
+  `main` directly; it is the one change that does not need a pull request.
+- A long-lived branch carries no task changes. The CLI reads only the current branch
+  (`check_active_branches: false`), so a task changed elsewhere is invisible until it
+  merges.
 
 ## What goes into the backlog
 

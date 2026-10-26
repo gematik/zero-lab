@@ -17,7 +17,7 @@ ordinal: 24000
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-go/epa loses its dependencies on gemidp, brainpool/josebp, gempki (and with them pkcs12 and the openssl subprocess) and gets that functionality from the Rust ti as a subprocess behind Go interfaces (Identity, Authenticator, CertVerifier). Stages: (1) ti identity inspect|sign with P12/PEM/Konnektor identities, --p12-password-path, ti pki verify-signature, RU CertData autodetection fixture in ti-pki; (2) crate ti-idpd (IDP-Dienst Authenticator-Modul as sans-I/O engine + ureq adapter) and ti idpd authenticate; (3) go/epa/ti runner, SecurityFunctions -> Identity.SignJWT, raw-DER vau.CertData with real VAU chain + host-key verification (warn|enforce), authn_connector config, go.mod drops the four modules, Dockerfile gets a Rust stage for ti; (4) docs and release notes. Design and rationale: docs/backlog/docs/doc-1.
+go/epa loses its dependencies on gemidp, brainpool/josebp, gempki (and with them pkcs12 and the openssl subprocess) and gets that functionality from the Rust ti as a subprocess behind Go interfaces (Identity, Authenticator, CertVerifier). Stages: (1) ti identity inspect|sign with P12/PEM/Konnektor identities, --p12-password-path, ti pki verify-signature, RU CertData autodetection fixture in ti-pki; (2) crate ti-idpd (IDP-Dienst Authenticator-Modul as sans-I/O engine + ureq adapter) and ti idpd authenticate; (3) go/epa/ti runner, SecurityFunctions -> Identity.SignJWT, raw-DER vau.CertData with real VAU chain + host-key verification (warn|enforce), authn_connector config, go.mod drops the four modules, Dockerfile gets a Rust stage for ti; (4) docs and release notes. Design and rationale: backlog/docs/doc-1.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

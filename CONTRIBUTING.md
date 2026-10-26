@@ -40,7 +40,7 @@ doesn't exist, you can open a new issue.
 #### Solve an issue
 
 Work in this repository starts from a task in the [backlog](./docs/conventions/backlog.md).
-Scan the open tasks in [`rust/docs/backlog/tasks`](./rust/docs/backlog/tasks) and the
+Scan the open tasks in [`backlog/tasks`](./backlog/tasks) and the
 issues for one that interests you. If your change has no task yet, open an issue first
 and describe what you want to change and why; the maintainer creates the task, and your
 pull request names it.

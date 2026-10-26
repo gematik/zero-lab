@@ -66,7 +66,7 @@ Out of scope:
 | SQLite | File format (https://sqlite.org/fileformat2.html), version 3.35.0 or later for `RETURNING` |
 | XDG | XDG Base Directory Specification 0.8 |
 | keys | [docs/design/keys.md](../../docs/design/keys.md) |
-| decision-7 | Tokens persisted only as sealed records under a profile keyring (`rust/docs/backlog/decisions`) |
+| decision-7 | Tokens persisted only as sealed records under a profile keyring (`backlog/decisions`) |
 
 ## Model
 

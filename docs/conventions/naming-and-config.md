@@ -7,7 +7,7 @@
   `Url`); the profiles add what their linters enforce.
 - Names follow the specification they implement: gematik names (profiles, certificate
   types, OIDs) as the gemSpec writes them, one naming rule per layer
-  ([decision-5](../../rust/docs/backlog/decisions/decision-5%20-%20PKI-naming-follows-gemSpec-one-rule-per-layer.md)).
+  ([decision-5](../../backlog/decisions/decision-5%20-%20PKI-naming-follows-gemSpec-one-rule-per-layer.md)).
 - Tests are named after the requirement they prove
   ([testing](../design/testing.md#tests-name-the-requirement-they-prove)).
 

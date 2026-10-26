@@ -48,7 +48,7 @@ Conventions: [naming and configuration](docs/conventions/naming-and-config.md),
   writing or changing one, run `just api-lint` in `go/`, never reconstruct rules from
   memory, and never copy the internal ruleset into this repository.
 - **Backlog** ([rules](docs/conventions/backlog.md)): work starts from a task. Before
-  starting, find it (`backlog task list --plain`, `backlog search …`, from `rust/`) or
+  starting, find it (`backlog task list --plain`, `backlog search …`, from the repository root) or
   create it; set it `In Progress`, keep the plan and notes in it while working, tick each
   acceptance criterion when met, and set it `Done` with a final summary in the pull
   request that completes it. A gap against the rules or a finding outside the current

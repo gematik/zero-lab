@@ -5,7 +5,8 @@
 - One branch per piece of work, which starts from a [backlog task](backlog.md), named
   with its kind: `feat/…`, `bugfix/…`, `chore/…`, `refactor/…` (`feat/ocsp-cache`,
   `bugfix/pkcs12-kdf-limits`).
-- Changes reach `main` only through a pull request. The maintainer reviews and merges;
+- Changes reach `main` only through a pull request, except the maintainer's task changes
+  ([backlog](backlog.md#where-task-changes-land)). The maintainer reviews and merges;
   nobody merges their own pull request.
 - A pull request says what changed, why, and how it was verified (the checks that ran and
   their result); a change that falls short of a [principle](../principles.md) says so.
