@@ -3,11 +3,13 @@ id: TASK-119
 title: 'ti: HITL of the sealed comfort ID with a real Konnektor'
 status: To Do
 assignee: []
-created_date: '2026-10-20 11:46'
+created_date: 2026-10-20 11:46
+updated_date: '2026-10-26T14:54:00Z'
 labels:
   - ti-cli
   - store
   - hitl
+milestone: m-0
 dependencies: []
 priority: medium
 ordinal: 122000

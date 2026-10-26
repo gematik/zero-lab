@@ -5,12 +5,13 @@ title: >-
   interactively
 status: To Do
 assignee: []
-created_date: '2026-10-24 06:43'
-updated_date: '2026-10-26 10:26'
+created_date: 2026-10-24 06:43
+updated_date: '2026-10-26T14:54:00Z'
 labels:
   - ti-cli
   - connector
   - security
+milestone: m-0
 dependencies: []
 priority: medium
 ordinal: 147000
