@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-10-24 06:43'
+updated_date: '2026-10-26 10:26'
 labels:
   - ti-cli
   - connector
@@ -93,3 +94,9 @@ Existing files keep working, and `test` warns about them; `config migrate` moves
 - [ ] #8 Tests named after the requirements (gemSpec_Kon IDs where they apply), a fuzz target for the new .kon fields, and a HITL run of new and test against a real Konnektor
 - [ ] #9 ti-cli README, AGENTS.md and the Unreleased notes describe the commands
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Maintainer, 2026-10-26: in the current setup a .kon file is itself a secret (it carries credentials or key material) and is handled as one. Later: distinguish PU from non-PU configurations and make the source of the secrets in a .kon flexible, including the OS keychain.
+<!-- SECTION:NOTES:END -->
