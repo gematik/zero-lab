@@ -25,7 +25,8 @@ Each rule lives in exactly one document, and others link to it
 agents and scripts: how `ti` is used is described once, in
 [`rust/ti-cli/AGENTS.md`](./rust/ti-cli/AGENTS.md), which every installed `ti` prints
 with `ti agent`. Point agents there, or improve that file, rather than adding a second
-copy of it.
+copy of it. Skills and the rules agents follow with the tools are in
+[text for agents](./docs/conventions/agents.md).
 
 ## Getting started
 

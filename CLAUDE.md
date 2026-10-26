@@ -30,8 +30,9 @@ why, or does not land.
 Conventions: [naming and configuration](docs/conventions/naming-and-config.md),
 [code and comments](docs/conventions/code-and-comments.md),
 [git and releases](docs/conventions/git-and-releases.md),
-[backlog](docs/conventions/backlog.md). Language profiles:
-[Rust](rust/docs/design.md), [Go](go/docs/design.md); development guides next to them.
+[backlog](docs/conventions/backlog.md), [text for agents](docs/conventions/agents.md).
+Language profiles: [Rust](rust/docs/design.md), [Go](go/docs/design.md); development
+guides next to them.
 
 ## For agents
 

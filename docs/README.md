@@ -24,6 +24,7 @@ a profile that says how its code meets them.
    - [Code and comments](conventions/code-and-comments.md)
    - [Git and releases](conventions/git-and-releases.md)
    - [Backlog](conventions/backlog.md)
+   - [Text for agents](conventions/agents.md)
 6. [Languages](languages.md): the profile every language follows, and the profiles:
    [Rust](../rust/docs/design.md), [Go](../go/docs/design.md).
 
