@@ -89,6 +89,30 @@ and Windows x86_64.
 - **From source:** `cargo install --locked --git https://github.com/gematik/zero-lab --tag
   rust/ti-cli/vX.Y.Z ti-cli`, or `just install` in a checkout.
 
+## Agent skill
+
+[`skills/ti-cli`](skills/ti-cli/SKILL.md) is an agent skill for using `ti`: the rules of
+[AGENTS.md](AGENTS.md) (JSON output, exit codes, never run PIN commands unasked) with
+task-oriented snippets per subsystem. `ti agent` stays the authoritative guide for the
+installed version.
+
+Install it with [skills](https://github.com/vercel-labs/skills) (Node.js 22.20 or later),
+which supports Claude Code, Codex, OpenCode and others:
+
+```sh
+# from a checkout of this repository
+npx skills add ./rust/ti-cli/skills/ti-cli -a claude-code        # into the current project
+npx skills add ./rust/ti-cli/skills/ti-cli -a claude-code -g     # for every project (~/.claude/skills)
+npx skills add ./rust/ti-cli --list                              # what a folder offers, installs nothing
+
+# straight from GitHub, no checkout
+npx skills add https://github.com/gematik/zero-lab/tree/main/rust/ti-cli/skills/ti-cli -a claude-code -g
+```
+
+The tool symlinks one canonical copy into each agent's skills folder; add `--copy` for
+independent copies, `-y` to skip the prompts. Without the tool, copy the folder to
+`~/.claude/skills/ti-cli` (or a project's `.claude/skills/ti-cli`).
+
 ## Trust material
 
 `pki roots list` and `pki tsl show` show what `verify` works with, for one environment
