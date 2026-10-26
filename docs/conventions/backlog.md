@@ -13,6 +13,9 @@ root; its configuration is `backlog/config.yml`. Tasks are Markdown files in git
 - A long-lived branch carries no task changes. The CLI reads only the current branch
   (`check_active_branches: false`), so a task changed elsewhere is invisible until it
   merges.
+- New tasks are created on `main` only, never on a branch. The CLI numbers a task after
+  the highest ID it sees, so a task created on a branch and one created on `main` get the
+  same ID.
 
 ## What goes into the backlog
 
