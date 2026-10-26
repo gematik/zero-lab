@@ -4,6 +4,7 @@ title: 'ti-cli: thin agent skill that defers to ti agent (PR #75)'
 status: To Do
 assignee: []
 created_date: '2026-10-26 10:26'
+updated_date: '2026-10-26 10:49'
 labels:
   - ti-cli
   - docs
@@ -22,6 +23,6 @@ PR #75 (external) adds rust/ti-cli/skills/ti-cli with SKILL.md and four referenc
 <!-- AC:BEGIN -->
 - [ ] #1 SKILL.md holds a trigger limited to using ti and the instruction to run ti agent first, then --help and ti schema; no references/, command catalogue, exit-code table or error kinds
 - [ ] #2 Safety rules and recipes AGENTS.md lacked are added to AGENTS.md, not to the skill
-- [ ] #3 No secret is passed as a value (env var or command-line password); no .kon samples (TASK-136)
-- [ ] #4 README wording is vendor-neutral; ti-cli Unreleased notes have an entry; just check is green
+- [ ] #3 README wording is vendor-neutral; ti-cli Unreleased notes have an entry; just check is green
+- [ ] #4 Samples for creating or editing a .kon are allowed; the skill never has an agent print a real .kon (it is a secret, TASK-136)
 <!-- AC:END -->
