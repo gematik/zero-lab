@@ -253,7 +253,7 @@ fn connect(host: &str, port: u16, net: &NetArgs) -> Result<TcpStream, String> {
     }
     // Nothing of the server's may have been read past the proxy's headers yet: the
     // client speaks first in TLS.
-    debug_assert!(reader.buffer().is_empty());
+    debug_assert!(reader.buffer().is_empty(), "{:?}", reader.buffer());
     let _ = reader.read(&mut []);
     Ok(socket)
 }

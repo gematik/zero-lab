@@ -193,11 +193,8 @@ fn the_recorded_ehex_session_replays() {
     .unwrap();
     assert_eq!(decrypted, message);
 
-    assert!(
-        block_on(connector.cards().list(&[CardType::Hba]))
-            .unwrap()
-            .is_empty()
-    );
+    let hbas = block_on(connector.cards().list(&[CardType::Hba])).unwrap();
+    assert!(hbas.is_empty(), "{hbas:?}");
     assert!(
         replay.0.borrow().is_empty(),
         "every recorded exchange was used"

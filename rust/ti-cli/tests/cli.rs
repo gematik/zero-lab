@@ -309,7 +309,7 @@ fn stdin_pem_and_der() {
 fn unreadable_input_is_exit_4_with_a_hint() {
     let out = ti(&["pki", "inspect", "/nonexistent/card.pem"]);
     assert_eq!(out.status.code(), Some(4));
-    assert!(stdout(&out).is_empty());
+    assert_eq!(stdout(&out), "");
     let err = stderr(&out);
     assert!(err.contains("cannot read /nonexistent/card.pem"), "{err}");
     assert!(err.contains("hint:"), "{err}");
@@ -605,7 +605,7 @@ fn verify_asks_for_the_environment_when_nothing_tells() {
         root.to_str().unwrap(),
     ]);
     assert_eq!(out.status.code(), Some(2));
-    assert!(out.stdout.is_empty());
+    assert!(out.stdout.is_empty(), "{:?}", out.stdout);
     let error: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
     assert_eq!(error["error"]["kind"], "environment_undetected");
     assert_eq!(error["error"]["hint"], "pass --env prod, ref, test or dev");

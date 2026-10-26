@@ -255,7 +255,11 @@ mod tests {
             block_on(loader.load(Artifact::Roots)).unwrap().body,
             b"roots"
         );
-        assert!(transport.requests().is_empty());
+        assert!(
+            transport.requests().is_empty(),
+            "{:?}",
+            transport.requests()
+        );
     }
 
     #[test]

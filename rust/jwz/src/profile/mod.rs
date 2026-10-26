@@ -720,7 +720,7 @@ mod tests {
         assert_eq!(union.leeway, 60);
         assert!(!union.require_exp);
         assert_eq!(union.max_age, None);
-        assert!(union.required.is_empty());
+        assert!(union.required.is_empty(), "{:?}", union.required);
         assert_eq!(b.clone().with(&b), b);
     }
 

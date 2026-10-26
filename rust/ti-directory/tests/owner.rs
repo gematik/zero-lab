@@ -105,7 +105,7 @@ fn the_start_is_a_get_of_owner_authenticate_and_its_redirect_is_the_authorizatio
     let request = owner::start(&directory());
     assert_eq!(request.method, Method::Get);
     assert_eq!(request.url, "https://directory.test/owner-authenticate");
-    assert!(request.body.is_empty());
+    assert!(request.body.is_empty(), "{:?}", request.body);
 
     let url = owner::authorization_url(&directory(), &response(302, &[("Location", AUTH_URL)], ""))
         .unwrap();
@@ -205,7 +205,7 @@ fn the_directorys_refusals_carry_its_message_and_attributes() {
         panic!("{error}")
     };
     assert_eq!(refusal.http_status, 403);
-    assert!(refusal.errors.is_empty());
+    assert!(refusal.errors.is_empty(), "{:?}", refusal.errors);
     assert!(
         error.to_string().starts_with(
             "FHIR-Directory refused: HTTP 403 Validation Failure: Unknown Telematik ID"

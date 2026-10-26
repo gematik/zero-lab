@@ -133,7 +133,7 @@ fn every_kept_ca_and_ocsp_responder_chains_to_a_root() {
         .iter()
         .filter(|s| s["kind"] == "ocsp" && s["chain"]["trusted"] == true)
         .collect();
-    assert!(!ocsp.is_empty());
+    assert!(!ocsp.is_empty(), "{ocsp:?}");
     for service in services.iter().filter(|s| s["chain"]["trusted"] == true) {
         let path = service["chain"]["path"].as_array().unwrap();
         assert!(roots.contains(&path.last().unwrap().as_str().unwrap()));
@@ -162,7 +162,7 @@ fn lists_of_the_other_tier_are_invalid() {
             v["error"]["code"], "certificate_not_valid_math",
             "{tsl} {env}"
         );
-        assert!(v["providers"].as_array().unwrap().is_empty());
+        assert_eq!(v["providers"], serde_json::json!([]));
         assert!(v["certificates"].as_object().unwrap().is_empty());
     }
 }

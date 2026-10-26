@@ -338,12 +338,8 @@ fn store_075_tags_go_with_their_record() {
     block_on(b.put(&ns("popp"), &name(1), r.clone())).expect("put");
     r.tags = vec![tag(2)];
     block_on(b.put(&ns("popp"), &name(1), r)).expect("replace");
-    assert!(
-        block_on(b.query(&query(tag(1))))
-            .expect("q")
-            .records
-            .is_empty()
-    );
+    let old = block_on(b.query(&query(tag(1)))).expect("q").records;
+    assert!(old.is_empty(), "{old:?}");
     assert_eq!(
         block_on(b.query(&query(tag(2)))).expect("q").records.len(),
         1
