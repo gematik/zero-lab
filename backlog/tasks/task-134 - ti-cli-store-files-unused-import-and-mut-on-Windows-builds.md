@@ -4,10 +4,11 @@ title: 'ti-cli store/files: unused import and mut on Windows builds'
 status: Done
 assignee: []
 created_date: 2026-10-22 19:24
-updated_date: '2026-10-26T12:49:00Z'
+updated_date: '2026-10-26T14:54:00Z'
 labels:
   - ti-cli
   - windows
+milestone: m-0
 dependencies: []
 priority: low
 ordinal: 145000

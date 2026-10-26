@@ -6,11 +6,12 @@ title: >-
 status: Done
 assignee: []
 created_date: 2026-10-22 19:52
-updated_date: '2026-10-26T12:49:00Z'
+updated_date: '2026-10-26T14:54:00Z'
 labels:
   - rust
   - release
   - ci
+milestone: m-0
 dependencies: []
 priority: high
 ordinal: 146000

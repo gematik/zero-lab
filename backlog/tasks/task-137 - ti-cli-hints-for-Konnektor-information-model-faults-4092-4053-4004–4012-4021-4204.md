@@ -5,12 +5,13 @@ title: >-
   4021, 4204)
 status: Done
 assignee: []
-created_date: '2026-10-24 08:06'
-updated_date: '2026-10-24 08:57'
+created_date: 2026-10-24 08:06
+updated_date: '2026-10-26T14:54:00Z'
 labels:
   - ti-cli
   - connector
   - ux
+milestone: m-0
 dependencies: []
 priority: medium
 ordinal: 148000

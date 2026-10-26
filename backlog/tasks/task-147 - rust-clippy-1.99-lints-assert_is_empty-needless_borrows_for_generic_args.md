@@ -4,10 +4,11 @@ title: 'rust: clippy 1.99 lints (assert_is_empty, needless_borrows_for_generic_a
 status: Done
 assignee: []
 created_date: '2026-10-26T12:21:00Z'
-updated_date: '2026-10-26T12:49:00Z'
+updated_date: '2026-10-26T14:54:00Z'
 labels:
   - rust
   - chore
+milestone: m-0
 dependencies: []
 priority: high
 ordinal: 156000

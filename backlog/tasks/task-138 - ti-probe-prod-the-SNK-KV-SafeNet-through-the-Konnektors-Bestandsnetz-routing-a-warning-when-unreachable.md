@@ -5,11 +5,12 @@ title: >-
   routing, a warning when unreachable
 status: Done
 assignee: []
-created_date: '2026-10-24 08:23'
-updated_date: '2026-10-24 09:34'
+created_date: 2026-10-24 08:23
+updated_date: '2026-10-26T14:54:00Z'
 labels:
   - ti-cli
   - probe
+milestone: m-0
 dependencies: []
 priority: medium
 ordinal: 149000

@@ -5,12 +5,13 @@ title: >-
   RUSTSEC-2026-0385/0386/0387
 status: Done
 assignee: []
-created_date: '2026-10-24 08:41'
-updated_date: '2026-10-24 08:50'
+created_date: 2026-10-24 08:41
+updated_date: '2026-10-26T14:54:00Z'
 labels:
   - rust
   - security
   - dependencies
+milestone: m-0
 dependencies: []
 priority: high
 ordinal: 149000
