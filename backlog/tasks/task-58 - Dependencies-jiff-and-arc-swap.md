@@ -3,11 +3,13 @@ id: TASK-58
 title: 'Dependencies: jiff and arc-swap'
 status: To Do
 assignee: []
-created_date: '2026-10-14 20:43'
+created_date: 2026-10-14 20:43
+updated_date: '2026-10-26T15:44:00Z'
 labels:
   - ti-cli
   - ti-pki
   - deps
+milestone: m-0
 dependencies: []
 references:
   - docs/conventions/dependencies.md

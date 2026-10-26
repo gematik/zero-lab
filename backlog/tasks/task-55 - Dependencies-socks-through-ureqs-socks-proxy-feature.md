@@ -3,10 +3,12 @@ id: TASK-55
 title: 'Dependencies: socks through ureq''s socks-proxy feature'
 status: To Do
 assignee: []
-created_date: '2026-10-14 20:43'
+created_date: 2026-10-14 20:43
+updated_date: '2026-10-26T15:44:00Z'
 labels:
   - ti-cli
   - deps
+milestone: m-0
 dependencies: []
 references:
   - docs/conventions/dependencies.md

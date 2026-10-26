@@ -3,11 +3,12 @@ id: TASK-39
 title: 'pki verify --nist-only: TSL CAs as trust anchors'
 status: To Do
 assignee: []
-created_date: '2026-10-11 11:48'
-updated_date: '2026-10-20 18:15'
+created_date: 2026-10-11 11:48
+updated_date: '2026-10-26T15:44:00Z'
 labels:
   - ti-pki
   - nist
+milestone: m-0
 dependencies: []
 priority: low
 ordinal: 22000

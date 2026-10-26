@@ -3,11 +3,12 @@ id: TASK-142
 title: 'Repository: docs/conventions/agents.md owns the rules for agent-facing text'
 status: To Do
 assignee: []
-created_date: '2026-10-26 11:07'
-updated_date: '2026-10-26 11:07'
+created_date: 2026-10-26 11:07
+updated_date: '2026-10-26T15:44:00Z'
 labels:
   - docs
   - chore
+milestone: m-0
 dependencies: []
 priority: medium
 ordinal: 151000

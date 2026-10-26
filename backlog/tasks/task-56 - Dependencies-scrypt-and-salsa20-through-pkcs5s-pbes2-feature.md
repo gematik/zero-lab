@@ -3,10 +3,12 @@ id: TASK-56
 title: 'Dependencies: scrypt and salsa20 through pkcs5''s pbes2 feature'
 status: To Do
 assignee: []
-created_date: '2026-10-14 20:43'
+created_date: 2026-10-14 20:43
+updated_date: '2026-10-26T15:44:00Z'
 labels:
   - ti-pkcs12
   - deps
+milestone: m-0
 dependencies: []
 references:
   - docs/conventions/dependencies.md

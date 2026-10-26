@@ -5,10 +5,12 @@ title: >-
   service directory
 status: To Do
 assignee: []
-created_date: '2026-10-14 20:42'
+created_date: 2026-10-14 20:42
+updated_date: '2026-10-26T15:44:00Z'
 labels:
   - ti-connector-client
   - fuzz
+milestone: m-0
 dependencies: []
 references:
   - docs/design/testing.md

@@ -3,12 +3,14 @@ id: TASK-57
 title: 'Dependencies: two XML parsers (quick-xml and roxmltree) on hostile input'
 status: To Do
 assignee: []
-created_date: '2026-10-14 20:43'
+created_date: 2026-10-14 20:43
+updated_date: '2026-10-26T15:44:00Z'
 labels:
   - ti-pki
   - ti-xmldsig
   - ti-connector-client
   - deps
+milestone: m-0
 dependencies: []
 references:
   - docs/conventions/dependencies.md

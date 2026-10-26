@@ -3,13 +3,14 @@ id: TASK-141
 title: 'ti-cli: thin agent skill that defers to ti agent (PR #75)'
 status: To Do
 assignee: []
-created_date: '2026-10-26 10:26'
-updated_date: '2026-10-26 11:07'
+created_date: 2026-10-26 10:26
+updated_date: '2026-10-26T15:44:00Z'
 labels:
   - ti-cli
   - docs
 dependencies:
   - TASK-144
+  - TASK-148
 priority: low
 ordinal: 150000
 ---
@@ -22,8 +23,13 @@ PR #75 (external) adds rust/ti-cli/skills/ti-cli with SKILL.md and four referenc
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Safety rules and recipes AGENTS.md lacked are added to AGENTS.md, not to the skill
-- [ ] #2 README wording is vendor-neutral; ti-cli Unreleased notes have an entry; just check is green
-- [ ] #3 Samples for creating or editing a .kon are allowed; the skill never has an agent print a real .kon (it is a secret, TASK-136)
-- [ ] #4 The skill lives in skills/ti (decision-9) as an entry point: with ti installed it runs ti agent, then --help and ti schema; without ti it reads the generated references/AGENTS.md and runs nothing; no hand-written command catalogue, exit-code table or error kinds
+- [ ] #1 README wording is vendor-neutral; ti-cli Unreleased notes have an entry; just check is green
+- [ ] #2 Samples for creating or editing a .kon are allowed; the skill never has an agent print a real .kon (it is a secret, TASK-136)
+- [ ] #3 The skill lives in skills/ti (decision-9) as an entry point: with ti installed it runs ti agent, then --help and ti schema; without ti it reads the generated references/AGENTS.md and runs nothing; no hand-written command catalogue, exit-code table or error kinds
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Criterion 1 (AGENTS.md gets the PR's missing material) moved to TASK-148, which ships in ti-cli 0.6.0; the skill itself waits for skills/ (TASK-144).
+<!-- SECTION:NOTES:END -->
