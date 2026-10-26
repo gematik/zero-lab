@@ -255,8 +255,8 @@ The tool is meant for people and for agents alike:
 - Colors and JSON highlighting only on a terminal; `--color`, `NO_COLOR` and
   `CLICOLOR_FORCE` override. Long lines are never cut; the terminal wraps them.
 - Never interactive. Every input is a flag, an environment variable, a file or stdin.
-- Exit codes: `0` success (or: the certificate is valid), `1` not valid, `2` usage,
-  `3` trust material unavailable, `4` input unreadable, `5` output failed.
+- Exit codes: `0` success (or: the certificate is valid), `1` not valid, `2` to `5`
+  failures; every error kind with its exit code is in [AGENTS.md](AGENTS.md) (`ti agent`).
 
 ## Files
 

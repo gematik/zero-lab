@@ -619,4 +619,203 @@ mod tests {
             "the Konnektor refused the call; its code and text say why"
         );
     }
+
+    /// One error of every kind, in the order of [`CliError`]'s variants.
+    fn every_kind() -> Vec<CliError> {
+        let mut errors = local_kinds();
+        errors.extend(store_kinds());
+        errors.extend(remote_kinds());
+        errors
+    }
+
+    fn local_kinds() -> Vec<CliError> {
+        let pki = || ti_pki::Error::Malformed {
+            what: "certificate",
+            reason: "test".into(),
+        };
+        vec![
+            CliError::Read {
+                source_name: "a".into(),
+                source: io::Error::other("test"),
+            },
+            CliError::NoCertificate {
+                source_name: "a".into(),
+            },
+            CliError::Certificate {
+                source_name: "a".into(),
+                source: pki(),
+            },
+            CliError::Pkcs12 {
+                source_name: "a".into(),
+                source: ti_pkcs12::Error::MacMismatch,
+            },
+            CliError::Pkcs12 {
+                source_name: "a".into(),
+                source: ti_pkcs12::Error::Malformed {
+                    what: "PFX",
+                    reason: "test".into(),
+                },
+            },
+            CliError::OutputExists("a".into()),
+            CliError::EnvironmentUndetected("a".into()),
+            CliError::Environment("a".into()),
+            CliError::Arguments("a".into()),
+            CliError::Trust(pki()),
+            CliError::TrustLoad("a".into()),
+            CliError::UnknownSchema("a".into()),
+            CliError::ServerUnreachable("a".into()),
+            CliError::HttpSetup("a".into()),
+            CliError::CacheDir("a"),
+        ]
+    }
+
+    fn store_kinds() -> impl Iterator<Item = CliError> {
+        use ti_store::store::StoreError;
+        [
+            StoreError::NotFound,
+            StoreError::Expired,
+            StoreError::Malformed("a"),
+            StoreError::UnsupportedVersion("a"),
+            StoreError::UnknownKid,
+            StoreError::AuthFailed("a"),
+            StoreError::LimitExceeded("a"),
+            StoreError::InvalidArgument("a"),
+            StoreError::CapabilityMissing("a"),
+            StoreError::NoKeyring,
+            StoreError::InsecurePermissions,
+            StoreError::Busy,
+            StoreError::Backend("a".into()),
+        ]
+        .into_iter()
+        .map(|error| CliError::Store {
+            profile: "default".into(),
+            file: StoreFile::StateDb,
+            path: String::new(),
+            error,
+        })
+    }
+
+    fn remote_kinds() -> Vec<CliError> {
+        vec![
+            CliError::ConnectorConfig("a".into()),
+            CliError::Connector(Error::Transport(ti_connector_client::TransportError {
+                message: "a".into(),
+                timed_out: false,
+            })),
+            CliError::Connector(Error::Fault(Fault {
+                code: "soap:Server".into(),
+                message: "a".into(),
+                trace: Vec::new(),
+            })),
+            CliError::Connector(Error::Discovery(
+                ti_connector_client::DiscoveryError::NotAdvertised {
+                    service: "a".into(),
+                },
+            )),
+            CliError::Connector(Error::Decode("a".into())),
+            CliError::CardRestricted {
+                card_type: "EGK".into(),
+                source: Error::Decode("a".into()),
+            },
+            CliError::PinType("a".into()),
+            CliError::IdentityNotFound("a".into()),
+            CliError::KeyUnsupported("a".into()),
+            CliError::Claims("a".into()),
+            CliError::Header("a".into()),
+            CliError::Signing("a".into()),
+            CliError::SignatureMalformed("a".into()),
+            CliError::Idpd(ti_idpd::Error::Idp(ti_idpd::IdpError::default())),
+            CliError::Idpd(ti_idpd::Error::Transport {
+                what: "a",
+                source: ti_idpd::http::TransportError("a".into()),
+            }),
+            CliError::Idpd(ti_idpd::Error::Untrusted {
+                which: ti_idpd::trust::IdpCertificate::TokenSigner,
+                detail: "a".into(),
+            }),
+            CliError::Idpd(ti_idpd::Error::Malformed {
+                what: "a",
+                detail: "a".into(),
+            }),
+            CliError::Directory(Box::new(ti_directory::Error::Directory(
+                ti_directory::DirectoryError::default(),
+            ))),
+            CliError::Directory(Box::new(ti_directory::Error::AuthServer(
+                ti_directory::OAuthError::default(),
+            ))),
+            CliError::Directory(Box::new(ti_directory::Error::Transport {
+                what: "a",
+                source: ti_idpd::http::TransportError("a".into()),
+            })),
+            CliError::Directory(Box::new(ti_directory::Error::Malformed {
+                what: "a",
+                detail: "a".into(),
+            })),
+            CliError::Output(io::Error::other("a")),
+        ]
+    }
+
+    /// Fails to compile when a variant is added, so that [`every_kind`] gets it too.
+    fn has_a_sample(error: &CliError) {
+        match error {
+            CliError::Read { .. }
+            | CliError::NoCertificate { .. }
+            | CliError::Certificate { .. }
+            | CliError::Pkcs12 { .. }
+            | CliError::OutputExists(_)
+            | CliError::EnvironmentUndetected(_)
+            | CliError::Environment(_)
+            | CliError::Arguments(_)
+            | CliError::Trust(_)
+            | CliError::TrustLoad(_)
+            | CliError::UnknownSchema(_)
+            | CliError::ServerUnreachable(_)
+            | CliError::HttpSetup(_)
+            | CliError::CacheDir(_)
+            | CliError::Store { .. }
+            | CliError::ConnectorConfig(_)
+            | CliError::Connector(_)
+            | CliError::CardRestricted { .. }
+            | CliError::PinType(_)
+            | CliError::IdentityNotFound(_)
+            | CliError::KeyUnsupported(_)
+            | CliError::Claims(_)
+            | CliError::Header(_)
+            | CliError::Signing(_)
+            | CliError::SignatureMalformed(_)
+            | CliError::Idpd(_)
+            | CliError::Directory(_)
+            | CliError::Output(_) => {}
+        }
+    }
+
+    /// AGENTS.md, which `ti agent` prints, names every error kind with its exit code,
+    /// and only those (docs/conventions/agents.md: the guide matches the binary).
+    #[test]
+    fn the_guide_lists_every_error_kind_with_its_exit_code() {
+        let mut kinds: Vec<(String, u8)> = every_kind()
+            .iter()
+            .inspect(|e| has_a_sample(e))
+            .map(|e| (e.kind().to_owned(), e.exit() as u8))
+            .collect();
+        kinds.sort();
+        kinds.dedup();
+        let guide = include_str!("../AGENTS.md");
+        let section = guide
+            .split("\n## Error kinds\n")
+            .nth(1)
+            .expect("AGENTS.md has an Error kinds section");
+        let section = section.split("\n## ").next().unwrap_or(section);
+        let mut listed: Vec<(String, u8)> = section
+            .lines()
+            .filter_map(|line| {
+                let mut cells = line.split('|').map(str::trim).skip(1);
+                let kind = cells.next()?.strip_prefix('`')?.strip_suffix('`')?;
+                let exit = cells.next()?.parse().ok()?;
+                Some((kind.to_owned(), exit))
+            })
+            .collect();
+        listed.sort();
+        assert_eq!(listed, kinds);
+    }
 }

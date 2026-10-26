@@ -35,6 +35,12 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   incomplete), 4204 (client system not authenticated), 4093 and 4060 (card or terminal
   busy). The fault's code and text are unchanged; the hint is in the text and in the
   JSON error's `hint`.
+- `ti agent` states the rules agents follow with the tool (never ask for or print a real
+  `.kon` file, PKCS#12 file, PIN or token; PIN and destructive commands only on
+  request), lists every error kind with its exit code, describes the `.kon` format with
+  a sample of placeholders, and names the Konnektor fault hints. A test keeps the list
+  of error kinds equal to the binary's: `output_exists` is exit 2, `key_unsupported` 4,
+  the `store_*` kinds 2, except `store_busy` and `store_backend_error`, which are 5.
 
 ### ti-idpd
 
