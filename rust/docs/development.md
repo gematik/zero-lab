@@ -61,10 +61,16 @@ cargo metadata --format-version 1 | jq -r '.packages[] | select(.name == "ti-pki
 Checks come in two tiers:
 
 ```console
-just check        # tier 1, every change: fmt, clippy, doc, test, wasm32, core-deps, nonprod-absent, machete, deny
-just check-full   # tier 1, before a release: check, the tests with default features, every feature combination
+just check        # tier 1, every change: fmt, clippy, doc, test, wasm32, core-deps, nonprod-absent, machete, deny, vet
+just check-full   # tier 1, before a release: check, the tests with default features, every feature combination, clippy on the CLI's cross targets (Docker)
 just audit        # tier 2, before tagging: advisories, vet, msrv, semver
 ```
+
+Each gate `just release` runs also runs earlier, so a release does not fail first on it:
+`vet` in `check`, the Linux and Windows builds of `ti` as `cli-check` in `check-full`
+(linted in the same cross containers `cli-targets` builds in), and the advisory database
+through `deny` in `check` (`advisories`, cargo audit, in `audit`). `msrv` and `semver` run
+in `audit` only.
 
 Shared metadata (edition, rust-version, license, repository, authors, publish) lives in
 `[workspace.package]` and lints in `[workspace.lints]`; a crate's `Cargo.toml` only states
@@ -466,8 +472,9 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `tools` | Install the pinned cargo tools (via cargo-binstall when available) |
 | `install` | Install `ti` into `~/.cargo/bin`, built like a release |
 | `install-fast` | Install `ti` from the `local` profile (thin LTO, incremental): a change in ti-cli rebuilds in about 20 s instead of about 45 s |
-| `check-full` | Tier 1 before a release (`just release` runs it): `check`, `test-defaults`, `features` |
-| `check` | Tier 1: `fmt`, `clippy`, `doc`, `test`, `wasm32`, `wasm-unsafe-free`, `core-deps`, `nonprod-absent`, `jwz-backends`, `jwz-rsa-guard`, `machete`, `deny`, `brainpool-absent` for jwz and ti-jwz |
+| `check-full` | Tier 1 before a release (`just release` runs it): `check`, `test-defaults`, `features`, `cli-check` |
+| `cli-check` | `cli-targets check`: clippy with `-D warnings` for the Linux (musl) and Windows targets of `ti` in their cross containers; needs Docker |
+| `check` | Tier 1: `fmt`, `clippy`, `doc`, `test`, `wasm32`, `wasm-unsafe-free`, `core-deps`, `nonprod-absent`, `jwz-backends`, `jwz-rsa-guard`, `machete`, `deny`, `vet`, `brainpool-absent` for jwz and ti-jwz |
 | `wasm32` | `cargo check` for wasm32 of ti-types with `std`, ti-pki's loading layer and reqwest transport, ti-report, ti-wasm and the jwz crates |
 | `wasm-unsafe-free` | No `unsafe` in ti-wasm's own sources |
 | `check-jwz` | The jwz crates only (fmt, clippy, doc, test, feature matrix, wasm32, guards): the loop while working on jwz |
