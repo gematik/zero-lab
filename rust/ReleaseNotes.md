@@ -16,8 +16,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   it was rejected as `expired`. Components and the eGK keep the shell model.
 
 #### security
-- crypto-bigint 0.7.6, ctutils 0.4.5 and tokio 1.54.1 (RUSTSEC-2026-0387,
-  RUSTSEC-2026-0385, RUSTSEC-2026-0386).
+- crypto-bigint 0.7.10, ctutils 0.4.6 and tokio 1.54.1 (RUSTSEC-2026-0387,
+  RUSTSEC-2026-0385, RUSTSEC-2026-0386); crypto-bigint 0.7.6, which fixed the first,
+  was yanked since.
 
 #### added
 - `pki tsl verify --signature FILE.sig [--signer-status FILE.ocsp]`: the list verified by
