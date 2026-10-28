@@ -113,21 +113,27 @@ pub struct Cli {
 #[derive(Debug, Args)]
 pub struct GlobalArgs {
     /// Output format: auto is text on a terminal and Markdown when piped
-    #[arg(long, value_enum, default_value_t = Format::Auto, env = "TI_FORMAT", global = true)]
+    #[arg(long, value_enum, default_value_t = Format::Auto, env = "TI_FORMAT", global = true, hide_short_help = true)]
     pub format: Format,
     /// When to use colors; auto uses them on a terminal only
-    #[arg(long, value_enum, default_value_t = ColorWhen::Auto, value_name = "WHEN", global = true)]
+    #[arg(long, value_enum, default_value_t = ColorWhen::Auto, value_name = "WHEN", global = true, hide_short_help = true)]
     pub color: ColorWhen,
     /// Diagnostics on stderr (-v, -vv)
-    #[arg(short, long, action = ArgAction::Count, global = true)]
+    #[arg(short, long, action = ArgAction::Count, global = true, hide_short_help = true)]
     pub verbose: u8,
     /// The store profile (default: TI_PROFILE, then the one `profile use` chose, then
     /// "default")
-    #[arg(long, value_name = "NAME", global = true)]
+    #[arg(long, value_name = "NAME", global = true, hide_short_help = true)]
     pub profile: Option<String>,
     /// Base of the profiles' caches, shared with the other TI tools [default:
     /// ~/.cache/telematik, %LOCALAPPDATA%\telematik on Windows]
-    #[arg(long, value_name = "DIR", env = "TI_CACHE_DIR", global = true)]
+    #[arg(
+        long,
+        value_name = "DIR",
+        env = "TI_CACHE_DIR",
+        global = true,
+        hide_short_help = true
+    )]
     pub cache_dir: Option<PathBuf>,
     /// The command's `--env` came from `TI_ENV`, not from the command line: a default,
     /// which commands that cannot detect the environment read `auto` of as their own.
@@ -1081,14 +1087,14 @@ pub struct ConnectorArgs {
     )]
     pub connector_config: Option<String>,
     /// Seconds a Konnektor call may take
-    #[arg(long, value_name = "SECS", default_value = "10", value_parser = seconds, env = "TI_CONNECTOR_TIMEOUT", global = true)]
+    #[arg(long, value_name = "SECS", default_value = "10", value_parser = seconds, env = "TI_CONNECTOR_TIMEOUT", global = true, hide_short_help = true)]
     pub connector_timeout: Duration,
     /// Seconds a call may take that waits for the card terminal (PIN entry, card
     /// cryptography)
-    #[arg(long, value_name = "SECS", default_value = "300", value_parser = seconds, env = "TI_CARD_TIMEOUT", global = true)]
+    #[arg(long, value_name = "SECS", default_value = "300", value_parser = seconds, env = "TI_CARD_TIMEOUT", global = true, hide_short_help = true)]
     pub card_timeout: Duration,
     /// Load the service directory from the Konnektor instead of the cache
-    #[arg(long, global = true)]
+    #[arg(long, global = true, hide_short_help = true)]
     pub no_cache: bool,
     /// The comfort signature session's user ID, instead of the one `comfort activate`
     /// stored; lets anyone with the same context sign without a PIN, keep it secret
@@ -1097,7 +1103,8 @@ pub struct ConnectorArgs {
         value_name = "UUID",
         env = "TI_COMFORT_USER_ID",
         hide_env_values = true,
-        global = true
+        global = true,
+        hide_short_help = true
     )]
     pub comfort_user_id: Option<String>,
 }

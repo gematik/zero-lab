@@ -414,6 +414,53 @@ fn help_documents_exit_codes() {
     assert!(text.contains("HTTP options"), "{text}");
 }
 
+/// Options every command shares, as the help lists them.
+const SHARED_OPTIONS: [&str; 5] = [
+    "--format <FORMAT>",
+    "--profile <NAME>",
+    "--proxy <URL>",
+    "--cacert <FILE>",
+    "--connector-timeout <SECS>",
+];
+
+/// Without arguments and with `-h`, a command shows what it does and its own options;
+/// the options every command shares are behind `--help`.
+#[test]
+fn short_help_leaves_the_shared_options_to_long_help() {
+    let bare = ti(&[]);
+    assert_eq!(bare.status.code(), Some(2));
+    let short_help = [
+        stderr(&bare),
+        stdout(&ti(&["-h"])),
+        stdout(&ti(&["directory", "login", "-h"])),
+        stdout(&ti(&["connector", "get", "cards", "-h"])),
+    ];
+    for text in &short_help {
+        assert!(
+            text.contains("The options every command shares: --help"),
+            "{text}"
+        );
+        for shared in SHARED_OPTIONS {
+            assert!(!text.contains(shared), "{shared} in {text}");
+        }
+    }
+    assert!(short_help[0].contains("Commands:"), "{}", short_help[0]);
+    assert!(
+        short_help[3].contains("--connector-config"),
+        "{}",
+        short_help[3]
+    );
+}
+
+#[test]
+fn long_help_lists_the_shared_options() {
+    let text = stdout(&ti(&["connector", "get", "cards", "--help"]));
+    for shared in SHARED_OPTIONS {
+        assert!(text.contains(shared), "{shared} in {text}");
+    }
+    assert!(!text.contains("The options every command shares"), "{text}");
+}
+
 /// `ti … | head` must end quietly: a closed stdout is not an error.
 #[test]
 fn a_closed_pipe_is_not_an_error() {
