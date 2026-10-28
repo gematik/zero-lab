@@ -138,6 +138,10 @@ pub enum ErrorCode {
     /// Warning only: OCSP reports the certificate revoked, but its `revocationTime` lies
     /// after the reference time, so it was valid then (TUC_PKI_006 variant 8a).
     RevokedAfterReferenceTime,
+    /// Warning only: a CA of the chain has expired, but was valid when it issued the
+    /// certificate below it, which the Kompromissmodell for nonQES certificates of HBA
+    /// and SMC-B accepts (gemKPT_PKI_TIP 2.4.2, gemSpec_PKI Tab_PKI_271).
+    IssuedBeforeCaExpiry,
 }
 
 impl ErrorCode {
@@ -167,6 +171,7 @@ impl ErrorCode {
         ErrorCode::CaRevokedInTsl,
         ErrorCode::IssuedBeforeCaRevocation,
         ErrorCode::RevokedAfterReferenceTime,
+        ErrorCode::IssuedBeforeCaExpiry,
     ];
 
     /// The stable string form, as used in logs and by the Go implementation.
@@ -196,6 +201,7 @@ impl ErrorCode {
             ErrorCode::CaRevokedInTsl => "ca_revoked_in_tsl",
             ErrorCode::IssuedBeforeCaRevocation => "issued_before_ca_revocation",
             ErrorCode::RevokedAfterReferenceTime => "revoked_after_reference_time",
+            ErrorCode::IssuedBeforeCaExpiry => "issued_before_ca_expiry",
         }
     }
 }
@@ -337,8 +343,9 @@ mod tests {
             ErrorCode::CaRevokedInTsl => 21,
             ErrorCode::IssuedBeforeCaRevocation => 22,
             ErrorCode::RevokedAfterReferenceTime => 23,
+            ErrorCode::IssuedBeforeCaExpiry => 24,
         };
-        assert_eq!(ErrorCode::ALL.len(), 24);
+        assert_eq!(ErrorCode::ALL.len(), 25);
         for (i, code) in ErrorCode::ALL.iter().enumerate() {
             assert_eq!(place(*code), i, "{code}");
         }

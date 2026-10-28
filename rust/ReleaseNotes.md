@@ -9,6 +9,12 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-cli
 
+#### fixed
+- `pki verify` applies the Kompromissmodell to the nonQES certificates of SMC-B and HBA
+  (gemKPT_PKI_TIP 2.4.2, gemSpec_PKI Tab_PKI_271): an SMC-B or HBA certificate whose CA
+  has expired since it was issued is valid with the warning `issued_before_ca_expiry`;
+  it was rejected as `expired`. Components and the eGK keep the shell model.
+
 #### security
 - crypto-bigint 0.7.6, ctutils 0.4.5 and tokio 1.54.1 (RUSTSEC-2026-0387,
   RUSTSEC-2026-0385, RUSTSEC-2026-0386).
@@ -270,6 +276,12 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   came with the list; `ReloadStatus::tsl_signature` names the kind.
 - `ti-pki/fuzz`: `just fuzz-ti-pki` runs the `detached_signature`, `tsl_xml` and
   `ocsp_response` targets, seeded from the published sets.
+- The validity model follows the end entity's type (gemKPT_PKI_TIP 2.4): the
+  Kompromissmodell for C.HCI.AUT/ENC/OSIG and C.HP.AUT/ENC, under which each CA must have
+  been valid when it issued the certificate below and one expired since gives the
+  warning `issued_before_ca_expiry` (`ErrorCode::IssuedBeforeCaExpiry`); the shell model
+  for every other type. `ValidityModel` and `PathOptions::model` are new (breaking for
+  callers that build `PathOptions`).
 - A certificate OCSP reports revoked after the reference time is valid for that time,
   with the warning `revoked_after_reference_time`; at or before it, and without a
   `revocationTime`, it stays `revoked` (gemSpec_PKI TUC_PKI_006 variants 8a and 8b;

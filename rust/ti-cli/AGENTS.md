@@ -264,6 +264,13 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   `issued_before_ca_revocation`, a later one fails with `ca_revoked_in_tsl`. `tsl show`
   reports the time as `revoked_since`; `tsl bundle` leaves revoked CAs out, because
   curl and Java cannot apply the date rule.
+- The validity model follows the certificate type (gemKPT_PKI_TIP 2.4). For the nonQES
+  certificates of an SMC-B or HBA (C.HCI.AUT, .ENC, .OSIG, C.HP.AUT, .ENC) each CA
+  counts as it was when it issued the certificate below (Kompromissmodell): a CA that
+  has expired since gives the warning `issued_before_ca_expiry`, one that had expired
+  before is `expired`. Every other type, components and the eGK, needs every
+  certificate of the chain valid at the reference time (shell model). The end entity
+  itself is always checked at the reference time.
 - `pki verify --at T`: OCSP answers for the time of the query and its status is judged
   at T (gemSpec_PKI TUC_PKI_006 8a/8b). A certificate revoked after T is valid with the
   warning `revoked_after_reference_time`; `chain[].revocation` keeps `status: revoked`
