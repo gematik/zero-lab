@@ -28,7 +28,13 @@ use std::path::PathBuf;
 use std::process::{Command, Output, Stdio};
 
 fn ti(args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_ti"))
+    command(args).output().unwrap()
+}
+
+/// `ti` with `args` in the tests' environment: no user profile, cache or state.
+fn command(args: &[&str]) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_ti"));
+    command
         .args(args)
         .env_remove("TI_FORMAT")
         .env_remove("TI_ENV")
@@ -49,9 +55,8 @@ fn ti(args: &[&str]) -> Output {
             std::env::temp_dir().join("ti-tests-state"),
         )
         .env_remove("NO_COLOR")
-        .env_remove("CLICOLOR_FORCE")
-        .output()
-        .unwrap()
+        .env_remove("CLICOLOR_FORCE");
+    command
 }
 
 fn ti_with_stdin(args: &[&str], stdin: &[u8]) -> Output {
@@ -475,9 +480,8 @@ fn a_closed_pipe_is_not_an_error() {
     let file = dir.join("many.pem");
     std::fs::write(&file, &many).unwrap();
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_ti"))
-        .args(["pki", "inspect"])
-        .arg(&file)
+    let file = file.to_str().unwrap();
+    let mut child = command(&["pki", "inspect", file])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
