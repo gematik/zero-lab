@@ -284,7 +284,7 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   `--p12-password-path` (or `TI_P12_PASSWORD_PATH`) names, else `00`. Prefer the file
   from scripts: it keeps the password out of the command line and the process list.
 
-## Subsystem identity: the SMC-B identity
+## Subsystem identity: the SMC-B or HBA identity
 
 ```sh
 {bin} --format json identity inspect --p12 smcb.p12 --p12-password-path pw.txt
@@ -296,15 +296,16 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 ```
 
 - An identity is the AUT certificate (digitalSignature set, contentCommitment not set)
-  together with its key, from one of `--p12 FILE` (several certificates and keys are
+  together with its key: an SMC-B's C.HCI.AUT or an HBA's C.HP.AUT, never the HBA's
+  C.HP.QES. It comes from one of `--p12 FILE` (several certificates and keys are
   fine: the AUT pair is selected; a card vendor's export), `--cert FILE --key FILE`
   (PEM; the key as PKCS#8 `PRIVATE KEY` or `EC PRIVATE KEY`; further certificates in
   the file are its chain) or `--card CARD` (ICCSN, Telematik-ID or handle at the
   Konnektor the `connector` commands use: `--connector NAME|PATH` or
   `TI_CONNECTOR_CONFIG`, else the selection of `connector use`, else `default`; the
   card's C.AUT ECC certificate; signing goes through the Konnektor's
-  ExternalAuthenticate, so the card's PIN.SMC must be verified before, `connector
-  verify pin`). Keys are ECDSA on
+  ExternalAuthenticate, so the card's PIN must be verified before with `connector
+  verify pin`: PIN.SMC for an SMC-B, PIN.CH for an HBA). Keys are ECDSA on
   brainpoolP256r1 or P-256; nothing else signs (error kind `key_unsupported`).
 - `inspect` reports `telematik_id` (the admission statement's registration number),
   `signing` (`alg` ES256, `curve`), the `certificate` as `pki inspect` describes it and
@@ -337,8 +338,8 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   challenge, signs the nested JWT with the identity's key (`BP256R1`, `x5c`), encrypts
   the answer to `PuK_IDP_ENC` and posts it, and returns `code` (and `state`) from the
   IDP's redirect, with `idp`, `identity` and the challenge's `client_id`, `scope`,
-  `redirect_uri`. The identity is given as for `identity`; a card's PIN.SMC must be
-  verified before.
+  `redirect_uri`. The identity is given as for `identity`; a card's PIN (PIN.SMC,
+  PIN.CH for an HBA) must be verified before.
 - The IDP is `--env` (`TI_ENV`; `prod`, `ref`, `test`, `dev` as ref; `auto` is exit 2)
   or `--idp-url BASE`. `--auth-url` must be https (http only on 127.0.0.1, for tests).
   Redirects are not followed: a 302 is the answer.

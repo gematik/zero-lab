@@ -178,12 +178,12 @@ client checks the VAU's `signed_pub_keys` this way and the certificate with `pki
 
 ## Identity
 
-`ti identity` is the SMC-B as a client uses it: the AUT certificate (digitalSignature,
-no contentCommitment) with its key, from a PKCS#12 file (`--p12`, the AUT pair selected
+`ti identity` is the SMC-B or HBA as a client uses it: the AUT certificate
+(digitalSignature, no contentCommitment: C.HCI.AUT or C.HP.AUT) with its key, from a PKCS#12 file (`--p12`, the AUT pair selected
 among a card export's certificates), a PEM certificate and key (`--cert --key`), or a
 card at the Konnektor (`--card`, the Konnektor resolved as the `connector` commands do,
 `--connector` naming another; signing through ExternalAuthenticate with the PIN verified
-before). `inspect` shows what was selected, the Telematik-ID and the
+before, PIN.SMC of an SMC-B or PIN.CH of an HBA). `inspect` shows what was selected, the Telematik-ID and the
 curve; `sign` turns a JSON object of claims into a compact ES256 JWS with `x5c`, the
 form ePA's `clientAttest` and entitlement JWTs and the IDP-Dienst's nested challenge
 take. The key lives only in the `ti` process for the duration of the call; callers

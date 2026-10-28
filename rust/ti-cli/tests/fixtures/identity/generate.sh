@@ -5,6 +5,9 @@
 # as PEM and as a single-pair PKCS#12 (password 00, like gematik's test cards). The
 # tests merge the PKCS#12 files into one when they need several pairs in a file.
 #
+# And a TEST-ONLY HBA-like identity under a CA of its own: C.HP.AUT (digitalSignature)
+# and C.HP.QES (contentCommitment), with a practitioner's admission.
+#
 # Also data.bin and its ECDSA-SHA256 signature by the AUT key, DER-encoded, for
 # `ti pki verify-signature`.
 #
@@ -42,6 +45,36 @@ keyUsage = critical, keyEncipherment, keyAgreement
 subjectKeyIdentifier = hash
 authorityKeyIdentifier = keyid:always
 1.3.36.8.3.3 = ASN1:SEQUENCE:admission_syntax
+
+[hp_aut]
+keyUsage = critical, digitalSignature
+extendedKeyUsage = clientAuth
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+1.3.36.8.3.3 = ASN1:SEQUENCE:hp_admission_syntax
+
+[hp_qes]
+keyUsage = critical, nonRepudiation
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+1.3.36.8.3.3 = ASN1:SEQUENCE:hp_admission_syntax
+
+[hp_admission_syntax]
+contents = SEQUENCE:hp_contents_of_admissions
+[hp_contents_of_admissions]
+admissions = SEQUENCE:hp_admissions
+[hp_admissions]
+profession_infos = SEQUENCE:hp_profession_infos
+[hp_profession_infos]
+info = SEQUENCE:hp_profession_info
+[hp_profession_info]
+items = SEQUENCE:hp_profession_items
+oids = SEQUENCE:hp_profession_oids
+registration_number = PRINTABLESTRING:1-HBA-TESTONLY01
+[hp_profession_items]
+item = UTF8String:Arzt
+[hp_profession_oids]
+oid = OID:1.2.276.0.76.4.30
 
 [admission_syntax]
 contents = SEQUENCE:contents_of_admissions
@@ -84,8 +117,8 @@ cert() { # name cn issuer(name|self) section
     rm "$name.csr"
 }
 
-p12() { # name
-    openssl pkcs12 -export -inkey "$1.key" -in "$1.pem" -certfile ca.pem \
+p12() { # name [ca]
+    openssl pkcs12 -export -inkey "$1.key" -in "$1.pem" -certfile "${2:-ca}.pem" \
         -name "$1" -passout pass:00 -out "$1.p12"
 }
 
@@ -94,7 +127,12 @@ key aut;  cert aut "Arztpraxis TEST-ONLY" ca aut
 key osig; cert osig "Arztpraxis TEST-ONLY" ca osig
 key enc;  cert enc "Arztpraxis TEST-ONLY" ca enc
 p12 aut; p12 osig; p12 enc
-rm ca.key ext.cnf
+
+key hba-ca;  cert hba-ca "GEM.HBA-CA TEST-ONLY" self ca
+key hba-aut; cert hba-aut "Dr. Test-Only" hba-ca hp_aut
+key hba-qes; cert hba-qes "Dr. Test-Only" hba-ca hp_qes
+p12 hba-aut hba-ca; p12 hba-qes hba-ca
+rm ca.key hba-ca.key ext.cnf
 
 # The AUT certificate and the CA in one PEM, as `--cert` takes a chain.
 cat aut.pem ca.pem > aut-chain.pem
@@ -113,7 +151,8 @@ rm aut-pub.pem
     echo
     echo "| File | SHA-256 |"
     echo "|---|---|"
-    for f in ca.pem aut.pem aut.key aut-chain.pem aut.p12 osig.pem osig.key osig.p12 enc.pem enc.key enc.p12 data.bin sig.der; do
+    for f in ca.pem aut.pem aut.key aut-chain.pem aut.p12 osig.pem osig.key osig.p12 enc.pem enc.key enc.p12 \
+        hba-ca.pem hba-aut.pem hba-aut.key hba-aut.p12 hba-qes.pem hba-qes.key hba-qes.p12 data.bin sig.der; do
         printf '| `%s` | `%s` |\n' "$f" "$(openssl dgst -sha256 -r "$f" | cut -d' ' -f1)"
     done
 } > PROVENANCE.md

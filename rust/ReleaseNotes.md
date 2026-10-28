@@ -20,6 +20,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   the environment's automated download point. The reports name the signature kind
   (`signature`: `enveloped` or `detached`) and know the code `detached_signature_error`
   (`spec/tsl-detached`, TASK-166).
+- The help and the guide say that `identity`, `idpd authenticate` and `directory login`
+  take an HBA as well as an SMC-B (they always did): its C.HP.AUT is selected like the
+  SMC-B's C.HCI.AUT, never its C.HP.QES; they name the PIN a card needs (PIN.SMC, PIN.CH
+  for an HBA).
 - `directory login search --p12|--cert --key|--card`: the token an SMC-B or HBA searches
   the FHIR-Directory with. gemSpec_VZD_FHIR_Directory gives a card identity only the
   owner token for `/search`, so this is the owner flow through the IDP-Dienst; the report

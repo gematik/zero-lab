@@ -185,7 +185,7 @@ pub enum Command {
     /// Certificates and PKI trust
     #[command(subcommand)]
     Pki(PkiCommand),
-    /// An SMC-B identity: its AUT certificate, and signing with its key
+    /// An SMC-B or HBA identity: its AUT certificate, and signing with its key
     #[command(subcommand)]
     Identity(IdentityCommand),
     /// The gematik IDP-Dienst: authenticate with an identity
@@ -677,7 +677,7 @@ pub enum IdentityCommand {
 
 /// Where the identity comes from: a PKCS#12 file, a PEM certificate and key, or a card
 /// at the Konnektor. The AUT certificate is the one with digitalSignature and without
-/// contentCommitment whose key is present.
+/// contentCommitment whose key is present: an SMC-B's C.HCI.AUT or an HBA's C.HP.AUT.
 #[derive(Debug, Args)]
 #[group(id = "identity_source", required = true, multiple = true)]
 pub struct IdentityArgs {
@@ -693,7 +693,8 @@ pub struct IdentityArgs {
     #[arg(long, value_name = "FILE", requires = "cert")]
     pub key: Option<PathBuf>,
     /// A card at the Konnektor: ICCSN, Telematik-ID or card handle; its C.AUT key signs
-    /// through the Konnektor (PIN verified before)
+    /// through the Konnektor once the card's PIN is verified (PIN.SMC of an SMC-B,
+    /// PIN.CH of an HBA)
     #[arg(long, value_name = "CARD", group = "identity_source")]
     pub card: Option<String>,
     /// The Konnektor of --card: NAME(.kon) here or in ~/.config/telematik/connectors, or a
