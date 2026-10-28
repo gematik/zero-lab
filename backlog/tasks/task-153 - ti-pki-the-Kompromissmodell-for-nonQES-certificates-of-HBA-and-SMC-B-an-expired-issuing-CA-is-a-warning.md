@@ -3,10 +3,10 @@ id: TASK-153
 title: >-
   ti-pki: the Kompromissmodell for nonQES certificates of HBA and SMC-B (an
   expired issuing CA is a warning)
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-10-28T18:44:00Z'
-updated_date: '2026-10-28T19:31:00Z'
+updated_date: '2026-10-28T19:34:00Z'
 labels:
   - ti-pki
   - pki
@@ -39,3 +39,9 @@ ti-pki: ValidityModel {Shell, Compromise} in path.rs, PathOptions::model; the Va
 
 2026-10-28, maintainer: pki inspect still showed the expired CA as a red error. The trust tree (chain_tree, used by pki inspect and pki verify) now applies the model of the first certificate's type: under the Kompromissmodell a CA expired after it issued shows in yellow as 'expired …, valid when it issued'. Test: the_trust_tree_shows_the_validity_model_of_the_certificate_type.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ti-pki applies the validity model of gemKPT_PKI_TIP 2.4 by the end entity's type: the Kompromissmodell for C.HCI.AUT/ENC/OSIG and C.HP.AUT/ENC (each CA valid when it issued the certificate below; expired since is the warning issued_before_ca_expiry, gemSpec_PKI Tab_PKI_271), the shell model otherwise. The trust tree of pki inspect and pki verify shows such a CA in yellow ('expired …, valid when it issued'). Tests in ti-pki (path and validator) and ti-cli (trust tree) on a regenerated test PKI; schema, AGENTS.md, Unreleased notes. HITL 2026-10-28 (maintainer): an SMC-B certificate under GEM.SMCB-CA9 TEST-ONLY (expired 2025-08-28) is valid with the warning and shown as such in pki inspect and pki verify.
+<!-- SECTION:FINAL_SUMMARY:END -->
