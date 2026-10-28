@@ -81,6 +81,7 @@ Examples:
   {bin} identity sign --card 80276883110000163974 --claims c.json   # the selected Konnektor
   {bin} idpd authenticate --env ref --p12 smcb.p12 --auth-url \"$AUTHZ_URI\"   # → code
   {bin} directory login owner --env ref --p12 smcb.p12   # FHIR-Directory owner token
+  {bin} directory login search --env ref --p12 smcb.p12  # its token for the Search API
   {bin} pki verify-signature --cert vau.pem --data keys.cbor --signature sig.bin
   {bin} connector configs                       # the .kon files, shared with the Go ti
   {bin} connector -c praxis get cards
@@ -784,12 +785,15 @@ pub enum DirectoryCommand {
 }
 
 /// `ti directory login …`: one subcommand per Auth-Service endpoint, named as the
-/// token's `iss` names it.
+/// token's `iss` names it, and `search`, the owner token named for what it opens.
 #[derive(Debug, Subcommand)]
 pub enum DirectoryLoginCommand {
     /// /owner-authenticate: a card through the IDP-Dienst, or a TI-Messenger
     /// RegService-OpenID-Token
     Owner(DirectoryOwnerArgs),
+    /// The token for the Search API (/search) of a card identity (SMC-B or HBA): the
+    /// owner token of /owner-authenticate, through the IDP-Dienst
+    Search(DirectorySearchArgs),
     /// /holder-authenticate: client credentials of a registration service (Keycloak
     /// realm RSDirectoryAdministration)
     Holder(DirectoryClientArgs),
@@ -843,6 +847,21 @@ pub struct DirectoryOwnerArgs {
     /// of a card
     #[arg(long, value_name = "FILE", conflicts_with = "identity_source")]
     pub regservice_token_path: Option<PathBuf>,
+    /// Use the IDP's certificates without checking them against the TSL (an IDP outside
+    /// the TI PKI, e.g. a reference implementation); the report warns
+    #[arg(long)]
+    pub idp_unverified: bool,
+}
+
+/// `ti directory login search`. A card identity reaches the Search API only with the
+/// owner token (gemSpec_VZD_FHIR_Directory: its `aud` lists `/search`); the
+/// search-access_token of `/service-authenticate` is for Fachdienste.
+#[derive(Debug, Args)]
+pub struct DirectorySearchArgs {
+    #[command(flatten)]
+    pub identity: IdentityArgs,
+    #[command(flatten)]
+    pub target: DirectoryTargetArgs,
     /// Use the IDP's certificates without checking them against the TSL (an IDP outside
     /// the TI PKI, e.g. a reference implementation); the report warns
     #[arg(long)]

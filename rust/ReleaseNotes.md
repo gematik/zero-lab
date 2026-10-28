@@ -20,6 +20,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   the environment's automated download point. The reports name the signature kind
   (`signature`: `enveloped` or `detached`) and know the code `detached_signature_error`
   (`spec/tsl-detached`, TASK-166).
+- `directory login search --p12|--cert --key|--card`: the token an SMC-B or HBA searches
+  the FHIR-Directory with. gemSpec_VZD_FHIR_Directory gives a card identity only the
+  owner token for `/search`, so this is the owner flow through the IDP-Dienst; the report
+  names the Search API in `directory.search_url` and warns with `search_not_in_audience`
+  when the token does not list it.
 - `probe prod` checks the Bestandsnetze of gematik's Bestandsnetze.xml (2.1.36) in a
   block of their own (`access: "bestandsnetz"`): the SNK (KV-SafeNet) at
   `portal.kv-safenet.de`, the others at a known HTTPS host or with a TCP connection to

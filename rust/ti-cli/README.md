@@ -208,7 +208,9 @@ TSL with the idpd-sig profile and OCSP, as gemSpec_IDP_Dienst requires;
 `ti directory login` obtains an access token of the FHIR-Directory (VZD), built on
 [`ti-directory`](../ti-directory), with one subcommand per Auth-Service endpoint:
 `owner` by card through the IDP-Dienst, `owner` with a TI-Messenger
-RegService-OpenID-Token, and `holder`, `service` and `ti-provider` with
+RegService-OpenID-Token, `search` for the Search API of an SMC-B or HBA (the owner
+token, the only one the directory issues a card identity), and `holder`, `service` and
+`ti-provider` with
 client credentials at the directory's Keycloak (the secret only from a file). Every
 path reports the same document; `--token` prints only the bearer for `curl`. The
 directory, its IDP and its Keycloak are the environment's (`--env`) or given by

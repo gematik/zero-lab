@@ -365,6 +365,7 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 {bin} --format json directory login owner --env ref --p12 smcb.p12        # card via the IDP-Dienst
 {bin} --format json directory login owner --env ref --card SMC-B-7
 {bin} --format json directory login owner --env ref --regservice-token-path reg.jwt
+{bin} --format json directory login search --env ref --p12 smcb.p12       # for the Search API
 {bin} --format json directory login service --env ref --client-id ID --client-secret-path secret.txt
 {bin} directory login holder --env ref --client-id ID --client-secret-path secret.txt --token
 ```
@@ -387,6 +388,12 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   redirects must stay between the directory and its IDP, or the flow stops before
   anything is signed (`directory_protocol`). The IDP's certificates are checked as for
   `idpd authenticate` (`--idp-unverified`, `idpd_untrusted`, `idp.certificates`).
+- `search` (`--p12`, `--cert --key`, `--card`): the token for the Search API (`/search`)
+  of an SMC-B or HBA. The directory issues a card identity no other: it is the owner
+  token of the card flow above (`endpoint` is `owner`, `method` `card`), which also
+  carries `owner:write`. `directory.search_url` is the Search API's URL; the warning
+  `search_not_in_audience` says the token's `aud` does not name it. A RegService token
+  or client credentials are not taken here; Fachdienste search with `service`.
 - `owner --regservice-token-path FILE`: exchanges a TI-Messenger RegService-OpenID-Token
   (BP256R1, C.FD.SIG with role `oid_tim`) at `/owner-authenticate` as a bearer.
 - `holder`, `service`, `ti-provider`: client credentials at the directory's Keycloak
