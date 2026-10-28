@@ -13,7 +13,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `pki verify` applies the Kompromissmodell to the nonQES certificates of SMC-B and HBA
   (gemKPT_PKI_TIP 2.4.2, gemSpec_PKI Tab_PKI_271): an SMC-B or HBA certificate whose CA
   has expired since it was issued is valid with the warning `issued_before_ca_expiry`;
-  it was rejected as `expired`. Components and the eGK keep the shell model.
+  it was rejected as `expired`. Components and the eGK keep the shell model. The trust
+  tree of `pki inspect` and `pki verify` shows such a CA in yellow as "expired …, valid
+  when it issued", no longer as a red error.
 
 #### security
 - crypto-bigint 0.7.10, ctutils 0.4.6 and tokio 1.54.1 (RUSTSEC-2026-0387,

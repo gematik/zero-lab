@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-10-28T18:44:00Z'
-updated_date: '2026-10-28T19:01:00Z'
+updated_date: '2026-10-28T19:31:00Z'
 labels:
   - ti-pki
   - pki
@@ -36,4 +36,6 @@ ti-pki validates every chain by the PKIX shell model: each certificate valid at 
 
 <!-- SECTION:NOTES:BEGIN -->
 ti-pki: ValidityModel {Shell, Compromise} in path.rs, PathOptions::model; the Validator takes it from the end entity's type (given or detected): Compromise for C.HCI.AUT/ENC/OSIG and C.HP.AUT/ENC, Shell otherwise. Under Compromise each CA is checked at the notBefore of the certificate it issued; expired at the reference time but valid then is the warning issued_before_ca_expiry (ErrorCode 24). Test PKI (just test-pki, regenerated): sub-ca-short (2026 only) with ee-short-hci-aut, -hp-aut, -fd-tls-s and ee-after-short, validated at 2028-01-01. Tests: kompromissmodell_accepts_a_ca_that_expired_after_issuing, kompromissmodell_rejects_a_certificate_issued_after_the_ca_expired, shell_model_rejects_a_chain_whose_ca_has_expired, the_certificate_type_picks_the_validity_model, the_validity_model_follows_the_certificate_type. pki-verify schema, AGENTS.md, ti-pki and ti-cli Unreleased notes. just check green. Waiting for the maintainer's run with the GEM.SMCB-CA9 TEST-ONLY certificate.
+
+2026-10-28, maintainer: pki inspect still showed the expired CA as a red error. The trust tree (chain_tree, used by pki inspect and pki verify) now applies the model of the first certificate's type: under the Kompromissmodell a CA expired after it issued shows in yellow as 'expired …, valid when it issued'. Test: the_trust_tree_shows_the_validity_model_of_the_certificate_type.
 <!-- SECTION:NOTES:END -->
