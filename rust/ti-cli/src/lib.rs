@@ -69,12 +69,23 @@ fn command() -> clap::Command {
         .after_long_help(cli::AFTER_HELP.replace("{bin}", BIN))
 }
 
-/// The short help (no arguments, `-h`) leaves out the options every command shares, so
-/// that a command's own ones stand out; each says where the others are.
+/// The short help, shown when a command group is called without its subcommand, leaves
+/// out the options every command shares, so that the commands stand out, and says
+/// where the others are; `-h` and `--help` both show everything.
 fn with_more_options_hint(command: clap::Command) -> clap::Command {
     command
         .after_help("The options every command shares: --help")
         .after_long_help("")
+        .disable_help_flag(true)
+        // The derived arguments leave the heading at "HTTP options".
+        .next_help_heading(None::<&str>)
+        .arg(
+            clap::Arg::new("help")
+                .short('h')
+                .long("help")
+                .action(clap::ArgAction::HelpLong)
+                .help("Print help"),
+        )
         .mut_subcommands(with_more_options_hint)
 }
 

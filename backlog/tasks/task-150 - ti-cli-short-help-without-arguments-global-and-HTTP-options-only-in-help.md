@@ -4,7 +4,7 @@ title: 'ti-cli: short help without arguments, global and HTTP options only in --
 status: Done
 assignee: []
 created_date: '2026-10-28T17:16:00Z'
-updated_date: '2026-10-28T17:27:00Z'
+updated_date: '2026-10-28T19:28:00Z'
 labels:
   - ti-cli
   - cli
@@ -27,6 +27,12 @@ ti without arguments, ti SUBCOMMAND and -h print the global and HTTP options und
 - [x] #2 The short help ends with one line naming --help for the global and HTTP options
 - [x] #3 Tests pin the short and the long help; README and AGENTS.md need no change or are updated
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-10-28, maintainer: -h showed the short help, not --help. Now -h and --help both show the long help (clap's help flag replaced by one with ArgAction::HelpLong); the short help is for a command group without its subcommand only. Tests: short_help_leaves_the_shared_options_to_long_help, h_is_the_long_help.
+<!-- SECTION:NOTES:END -->
 
 ## Final Summary
 

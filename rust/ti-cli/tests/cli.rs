@@ -428,19 +428,15 @@ const SHARED_OPTIONS: [&str; 5] = [
     "--connector-timeout <SECS>",
 ];
 
-/// Without arguments and with `-h`, a command shows what it does and its own options;
-/// the options every command shares are behind `--help`.
+/// Without its subcommand, a command group shows its commands and leaves the options
+/// every command shares to `--help`.
 #[test]
 fn short_help_leaves_the_shared_options_to_long_help() {
-    let bare = ti(&[]);
-    assert_eq!(bare.status.code(), Some(2));
-    let short_help = [
-        stderr(&bare),
-        stdout(&ti(&["-h"])),
-        stdout(&ti(&["directory", "login", "-h"])),
-        stdout(&ti(&["connector", "get", "cards", "-h"])),
-    ];
-    for text in &short_help {
+    let bare = [ti(&[]), ti(&["directory", "login"])];
+    for out in &bare {
+        assert_eq!(out.status.code(), Some(2));
+        let text = stderr(out);
+        assert!(text.contains("Commands:"), "{text}");
         assert!(
             text.contains("The options every command shares: --help"),
             "{text}"
@@ -449,12 +445,22 @@ fn short_help_leaves_the_shared_options_to_long_help() {
             assert!(!text.contains(shared), "{shared} in {text}");
         }
     }
-    assert!(short_help[0].contains("Commands:"), "{}", short_help[0]);
-    assert!(
-        short_help[3].contains("--connector-config"),
-        "{}",
-        short_help[3]
-    );
+}
+
+/// `-h` is `--help`: the whole help, as with most tools.
+#[test]
+fn h_is_the_long_help() {
+    for command in [
+        &[][..],
+        &["directory", "login"],
+        &["connector", "get", "cards"],
+    ] {
+        let with = |flag: &str| {
+            let args: Vec<&str> = command.iter().copied().chain([flag]).collect();
+            stdout(&ti(&args))
+        };
+        assert_eq!(with("-h"), with("--help"), "{command:?}");
+    }
 }
 
 #[test]

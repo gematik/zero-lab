@@ -57,9 +57,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   a sample of placeholders, and names the Konnektor fault hints. A test keeps the list
   of error kinds equal to the binary's: `output_exists` is exit 2, `key_unsupported` 4,
   the `store_*` kinds 2, except `store_busy` and `store_backend_error`, which are 5.
-- `ti` without arguments, a command group without its subcommand and `-h` show the
-  commands and the command's own options; the output, profile, HTTP and Konnektor options
-  every command shares are listed by `--help`. A set `TI_FORMAT` or `TI_CACHE_DIR` no
+- `ti` without arguments and a command group without its subcommand show the commands
+  without the output, profile, HTTP and Konnektor options every command shares; `-h` and
+  `--help` both show everything. A set `TI_FORMAT` or `TI_CACHE_DIR` no
   longer turns the help of `ti` without arguments into an error.
 
 ### ti-idpd
