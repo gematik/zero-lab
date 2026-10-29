@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: 2026-10-24 06:43
-updated_date: '2026-10-26T14:54:00Z'
+updated_date: '2026-10-29T06:35:00Z'
 labels:
   - ti-cli
   - connector
@@ -100,4 +100,13 @@ Existing files keep working, and `test` warns about them; `config migrate` moves
 
 <!-- SECTION:NOTES:BEGIN -->
 Maintainer, 2026-10-26: in the current setup a .kon file is itself a secret (it carries credentials or key material) and is handled as one. Later: distinguish PU from non-PU configurations and make the source of the secrets in a .kon flexible, including the OS keychain.
+
+Decisions (maintainer, 2026-10-29):
+- TLS trust: always a pin of the Konnektor's server certificate; no TSL check of ID.AK.AUT (the TI-Gateway uses its own PKI anyway). new shows the certificate and pins it after confirmation; test fails on a changed certificate with that hint; no fallback to insecureSkipVerify. The existing mechanism fits: a leaf (non-CA) certificate in trustStore is already a pin by equality in ti-connector-client (KonnektorVerifier), in the format Go's tools read too. TASK-13 is no longer a dependency.
+- connector.sds only over HTTPS, never HTTP. Order in new: URL, pin, credentials, SDS, call context.
+- A ti GUI is planned: model, validation, redaction and the test steps with a JSON report live in a core, not in ti-cli; the CLI and the GUI are front ends over it.
+- Interactive subcommands not meant for agents are allowed. Every interactive command is also fully usable through flags; it asks only when stdin is a terminal and fails with exit 2 instead of waiting otherwise. The "never a prompt" sentence in lib.rs and AGENTS.md is narrowed accordingly.
+- Editing: flags and config set NAME KEY=VALUE (base, agents), a line wizard over the same steps, $EDITOR with validation before replacing for edit. No TUI (new dependency tree, a third front end next to the GUI).
+- Hidden password input through rpassword 7.5.4 (+ rtoolbox 0.0.6, pinned exactly; libc, windows-sys, windows-link already in the tree), approved for ti-cli only, never a core (TASK-156: no unsafe in the cores' dependencies).
+- Split: (1) core model with show and test, read-only; (2) new with pin, edit and set; (3) migrate (move inline secrets out, replace insecureSkipVerify by a pin). Secret storage stays open: better secret management is planned (TASK-104, decision-7); until then the .kon itself is a secret (0600, never printed).
 <!-- SECTION:NOTES:END -->
