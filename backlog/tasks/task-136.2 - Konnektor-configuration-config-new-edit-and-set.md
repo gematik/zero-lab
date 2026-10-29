@@ -25,7 +25,7 @@ Second part of TASK-136, on the core of the first. Decisions in TASK-136's notes
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 config new asks only when stdin is a terminal and is fully usable through flags; without a terminal and with missing flags it fails with exit 2 instead of waiting; lib.rs and AGENTS.md narrow the "never a prompt" rule accordingly
-- [ ] #2 The address accepts an https URL, FQDN, FQDN:PORT, IP, IP:PORT, [IPv6] and [IPv6]:PORT, optionally with a path, normalises to https://HOST[:PORT] and shows it; http:// is an error with exit 2
+- [ ] #2 The address accepts an https or http URL, FQDN, FQDN:PORT, IP, IP:PORT, [IPv6] and [IPv6]:PORT, optionally with a path, normalises to https://HOST[:PORT] (http://HOST[:PORT] when http was given) and shows it; http is refused for env pu, with a warning elsewhere
 - [ ] #3 The server certificate is shown (subject, issuer, validity, SHA-256) and stored as a pin in trustStore after confirmation; without confirmation or --pin-file nothing is trusted; insecureSkipVerify only as an explicit choice after the certificate was shown, never as a fallback
 - [ ] #4 Credentials basic, pkcs12 or none; passwords hidden through rpassword in the wizard, from files only through flags; a .p12 is decoded locally and its contents shown, with warnings for expiry, legacy encryption, unsuitable key type and a file readable by others; with several pairs the user chooses
 - [ ] #5 connector.sds is read over HTTPS only, after pin and credentials; the call context is tested before saving

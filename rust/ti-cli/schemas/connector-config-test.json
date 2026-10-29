@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "connector config test",
-  "description": "A .kon configuration tested step by step: file, tcp, tls, auth, sds, context, cards. A failed step skips the rest; exit 1 if one fails. In the production environment (env pu), insecureSkipVerify and credentials of type none fail.",
+  "description": "A .kon configuration tested step by step: file, tcp, tls, auth, sds, context, cards. A failed step skips the rest; exit 1 if one fails. In the production environment (env pu), an http url, insecureSkipVerify and credentials of type none fail; elsewhere they warn.",
   "type": "object",
   "properties": {
     "schema": {

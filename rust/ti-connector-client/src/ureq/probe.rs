@@ -91,13 +91,17 @@ pub async fn check_config<T: Transport>(
         if !report.push(check::tcp(&tcp)) {
             return report.finish();
         }
-        let Some(observed) = observed else {
-            return report.finish();
-        };
-        if !report.push(check::tls(&dotkon, &observed, options.now)) {
-            return report.finish();
+        match observed {
+            Some(observed) => {
+                if !report.push(check::tls(&dotkon, &observed, options.now)) {
+                    return report.finish();
+                }
+                tls = Some(observed);
+            }
+            None => {
+                report.push(Step::skipped(StepId::Tls, "url is http: no TLS"));
+            }
         }
-        tls = Some(observed);
     }
     let transport = match transport(&dotkon) {
         Ok(transport) => transport,
@@ -141,7 +145,7 @@ pub async fn check_config<T: Transport>(
 }
 
 /// Connects to the Konnektor of `dotkon` and shakes hands with its trust: the TCP
-/// observation, and the TLS observation if TCP connected. The handshake offers the
+/// observation, and the TLS observation if TCP connected and the url is https. The handshake offers the
 /// client certificate when the credentials can be read, and records the server's
 /// certificates also when the handshake fails.
 pub fn probe(dotkon: &Dotkon, timeout: Duration) -> (TcpObservation, Option<TlsObservation>) {
@@ -162,7 +166,7 @@ pub fn probe(dotkon: &Dotkon, timeout: Duration) -> (TcpObservation, Option<TlsO
         target,
         result: tcp,
     };
-    let Some(stream) = stream else {
+    let Some(stream) = stream.filter(|_| check::is_https(dotkon)) else {
         return (observation, None);
     };
     (observation, Some(handshake(dotkon, host, stream, timeout)))
@@ -242,7 +246,8 @@ fn handshake(
     }
 }
 
-/// `(host, port)` of an https URL, the host without IPv6 brackets; port 443 if none.
+/// `(host, port)` of an http(s) URL, the host without IPv6 brackets; port 443 or 80 if
+/// none.
 fn host_port(url: &str) -> Option<(&str, u16)> {
     let (origin, _) = crate::sds::split_origin(url)?;
     let authority = origin.split_once("://")?.1;
@@ -343,6 +348,7 @@ mod tests {
         assert_eq!(host_port("https://10.0.0.1:4433"), Some(("10.0.0.1", 4433)));
         assert_eq!(host_port("https://[fe80::1]:8443"), Some(("fe80::1", 8443)));
         assert_eq!(host_port("https://[fe80::1]/"), Some(("fe80::1", 443)));
+        assert_eq!(host_port("http://kon.example"), Some(("kon.example", 80)));
         assert_eq!(host_port("https://kon.example:x"), None);
         assert_eq!(host_port("ftp://kon.example"), None);
     }

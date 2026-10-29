@@ -490,13 +490,14 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   `rewriteServiceEndpoints: true` sends every service to the host of `url` (a Konnektor
   behind NAT or a port forward), `insecureSkipVerify: true` skips the server check (test
   Konnektors only). The message of `connector_config` lists every problem at once.
-- `config test` runs the steps `file` (valid, mode 0600, secrets in plain text, an
-  `https` url), `tcp`, `tls` (the server certificate against the pin or a CA of
-  `trustStore`), `auth` (the client certificate before it is offered, and whether the
+- `config test` runs the steps `file` (valid, mode 0600, secrets in plain text, the
+  url's scheme), `tcp`, `tls` (the server certificate against the pin or a CA of
+  `trustStore`; skipped for an `http` url), `auth` (the client certificate before it is offered, and whether the
   Konnektor accepts the client), `sds` (product and service versions), `context`
   (GetCards with the call context) and `cards`; each finding is `ok`, `warn`, `fail` or
-  `skip` with a `hint`, and a failed step skips the rest. With `env: pu`,
-  `insecureSkipVerify` and credentials `none` fail; elsewhere they warn. It uses no PIN
+  `skip` with a `hint`, and a failed step skips the rest. With `env: pu`, an
+  `http` url, `insecureSkipVerify` and credentials `none` fail; elsewhere they warn
+  (`pkcs12` credentials need `https` everywhere). It uses no PIN
   and no cache, so run it first when a connector command fails with `connector_config`
   or a transport error. With `-x`, `tcp` and `tls` are skipped.
 - `${NAME}` is expanded only in `credentials.username`, `.password` and `.data`, from

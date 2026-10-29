@@ -1172,26 +1172,35 @@ fn config_show_carries_no_secret() {
     }
 }
 
-/// The service directory is read over https only: the plain-http fake fails the file
-/// step, and every step after it is skipped.
+/// Outside the production environment the plain-http fake passes every step with
+/// warnings (no TLS); in it, http fails the file step and every step after it is skipped.
 #[test]
-fn config_test_fails_an_http_url_and_skips_the_rest() {
+fn config_test_takes_http_outside_production_only() {
     let fake = Fake::start("config-test");
     let (report, code) = fake.json("connector config test", &["config", "test"]);
-    assert_eq!((report["status"].as_str(), code), (Some("fail"), Some(1)));
-    let steps = report["steps"].as_array().unwrap();
-    assert_eq!(steps[0]["id"], "file");
-    assert_eq!(steps[0]["status"], "fail");
-    assert!(
-        steps[0].to_string().contains("is not https"),
-        "{}",
-        steps[0]
+    assert_eq!(
+        (report["status"].as_str(), code),
+        (Some("warn"), Some(0)),
+        "{report}"
     );
-    assert!(steps[1..].iter().all(|s| s["status"] == "skip"), "{report}");
-    let text = String::from_utf8(
-        fake.ti(&["connector", "-c", "praxis", "config", "test"])
-            .stdout,
+    let steps = report["steps"].as_array().unwrap();
+    let status = |id: &str| steps.iter().find(|s| s["id"] == id).unwrap()["status"].clone();
+    assert_eq!(status("tls"), "skip");
+    assert_eq!(status("cards"), "ok", "{report}");
+    let kon = std::fs::read_to_string(&fake.kon).unwrap();
+    std::fs::write(
+        fake.kon.with_file_name("prod.kon"),
+        kon.replace(r#""env": "ru""#, r#""env": "pu""#),
     )
     .unwrap();
+    let (report, code) = fake.json("connector config test", &["config", "test", "prod"]);
+    assert_eq!((report["status"].as_str(), code), (Some("fail"), Some(1)));
+    let steps = report["steps"].as_array().unwrap();
+    assert_eq!(
+        (steps[0]["id"].as_str(), steps[0]["status"].as_str()),
+        (Some("file"), Some("fail"))
+    );
+    assert!(steps[1..].iter().all(|s| s["status"] == "skip"), "{report}");
+    let text = String::from_utf8(fake.ti(&["connector", "config", "test", "prod"]).stdout).unwrap();
     assert!(text.contains("change url to https://"), "{text}");
 }

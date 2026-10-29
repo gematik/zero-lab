@@ -107,8 +107,26 @@ fn konnektor(client_ca: bool, cards: Cards) -> u16 {
 
 fn answer(config: Arc<ServerConfig>, socket: TcpStream, cards: Cards) -> Option<()> {
     socket.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
-    let tls = StreamOwned::new(ServerConnection::new(config).ok()?, socket);
-    let mut reader = BufReader::new(tls);
+    serve(
+        StreamOwned::new(ServerConnection::new(config).ok()?, socket),
+        cards,
+    )
+}
+
+/// The same Konnektor over plain http.
+fn konnektor_http(cards: Cards) -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    thread::spawn(move || {
+        for socket in listener.incoming().flatten() {
+            thread::spawn(move || serve(socket, cards));
+        }
+    });
+    port
+}
+
+fn serve(stream: impl Read + Write, cards: Cards) -> Option<()> {
+    let mut reader = BufReader::new(stream);
     loop {
         let mut line = String::new();
         reader.read_line(&mut line).ok()?;
@@ -134,15 +152,15 @@ fn answer(config: Arc<ServerConfig>, socket: TcpStream, cards: Cards) -> Option<
                 Cards::Fault(code) => (500, fault(code).into_bytes()),
             }
         };
-        let tls = reader.get_mut();
+        let stream = reader.get_mut();
         write!(
-            tls,
+            stream,
             "HTTP/1.1 {status} X\r\nContent-Type: text/xml\r\nContent-Length: {}\r\n\r\n",
             response.len()
         )
         .ok()?;
-        tls.write_all(&response).ok()?;
-        tls.flush().ok()?;
+        stream.write_all(&response).ok()?;
+        stream.flush().ok()?;
     }
 }
 
@@ -292,4 +310,29 @@ fn a_closed_port_fails_the_tcp_step() {
         dump(&report)
     );
     assert!(dump(&report).contains("connection refused"));
+}
+
+/// Outside the production environment a Konnektor may be reached over http: the steps
+/// run without TLS, with warnings.
+#[test]
+fn an_http_konnektor_passes_with_warnings_outside_production() {
+    let port = konnektor_http(Cards::Recorded);
+    let json = kon(port, BASIC, "").replace("https://", "http://");
+    let report = run(&json);
+    assert_eq!(report.status, Status::Warn, "{}", dump(&report));
+    assert_eq!(status(&report, StepId::Tls), Status::Skip);
+    assert_eq!(
+        status(&report, StepId::Cards),
+        Status::Ok,
+        "{}",
+        dump(&report)
+    );
+    let pu = kon(port, BASIC, r#", "env": "pu""#).replace("https://", "http://");
+    let report = run(&pu);
+    assert_eq!(
+        status(&report, StepId::File),
+        Status::Fail,
+        "{}",
+        dump(&report)
+    );
 }

@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: 2026-10-24 06:43
-updated_date: '2026-10-29T06:48:00Z'
+updated_date: '2026-10-29T07:53:00Z'
 labels:
   - ti-cli
   - connector
@@ -122,4 +122,6 @@ Decisions (maintainer, 2026-10-29, cont.):
 - Credentials type none is refused for env pu too, like insecureSkipVerify: new, set and edit refuse it; test reports an existing one as fail. Not refused when a .kon is loaded (maintainer, 2026-10-29): the parser accepts both for pu; only the config commands refuse them and test reports them.
 
 - insecureSkipVerify is not migrated (maintainer, 2026-10-29). Instead a re-pin command (config pin NAME, TASK-136.2) renews the pin of a changed server certificate after showing old and new.
+
+- Changed (maintainer, 2026-10-29): http is supported outside the production environment. An http url warns (no TLS, credentials unencrypted) and fails for env pu, like insecureSkipVerify and none; pkcs12 credentials need https; the tls step is skipped for http. This replaces "connector.sds only over HTTPS" and "an http:// input is an error" above. Done in TASK-136.1's code; TASK-136.2's address criterion follows.
 <!-- SECTION:NOTES:END -->

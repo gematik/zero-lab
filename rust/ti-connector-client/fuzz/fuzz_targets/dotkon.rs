@@ -22,7 +22,8 @@
  */
 
 //! Any bytes as a `.kon` file: the parser, the file check and the redacted view never
-//! panic; the file check fails exactly when the file does not parse or is not https; and
+//! panic; the file check fails exactly when the file does not parse or is http in
+//! production; and
 //! the view never shows the password.
 #![no_main]
 
@@ -39,7 +40,8 @@ fuzz_target!(|input: (&[u8], u32)| {
         assert_eq!(step.status, Status::Fail);
         return;
     };
-    assert_eq!(step.status == Status::Fail, !dotkon.url.starts_with("https://"));
+    let production = dotkon.env.is_some_and(|env| env.is_prod());
+    assert_eq!(step.status == Status::Fail, !check::is_https(dotkon) && production);
     let shown = serde_json::to_string(&ConfigView::new(dotkon, json)).expect("serializes");
     if let Credentials::Basic { password, .. } | Credentials::Pkcs12 { password, .. } = &dotkon.credentials
         && password == "fuzz-password-0815"

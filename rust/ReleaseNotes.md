@@ -33,12 +33,13 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   password, the PKCS#12 bytes and the user ID only where they are kept, with the client
   certificate and the pins and CAs of `trustStore`.
 - `connector config test [NAME]`: the configuration step by step, `file` (valid, mode
-  0600, secrets in plain text, `https`), `tcp`, `tls` (the server certificate against the
+  0600, secrets in plain text, the url's scheme), `tcp`, `tls` (the server certificate against the
   pin or CA, its SHA-256), `auth` (the client certificate before it is offered, and
   whether the Konnektor accepts the client), `sds` (product and service versions),
   `context` (GetCards with the call context, with the fault hints) and `cards`; each
-  finding ok, warn, fail or skip with a hint, exit 1 if one fails. With `env: pu`,
-  `insecureSkipVerify` and credentials `none` fail.
+  finding ok, warn, fail or skip with a hint, exit 1 if one fails. With `env: pu`, an
+  `http` url, `insecureSkipVerify` and credentials `none` fail; elsewhere they warn, and
+  `tls` is skipped for `http`.
 - `.kon` credentials of type `none`, for Konnektors that do not authenticate client
   systems; `connector get info` reports them as `none`.
 - The help and the guide say that `identity`, `idpd authenticate` and `directory login`
@@ -272,7 +273,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `check`: the test of a `.kon` configuration as pure functions of what the host
   observed, steps `file`, `tcp`, `tls`, `auth`, `sds`, `context`, `cards`, each finding
   `ok`, `skip`, `warn` or `fail` with a hint; a failed step skips the rest. With
-  `env: pu`, `insecureSkipVerify` and credentials `none` fail. `ureq::check_config` runs the
+  `env: pu`, an `http` url, `insecureSkipVerify` and credentials `none` fail; elsewhere
+  they warn. `ureq::check_config` runs the
   steps against a Konnektor (`ureq::probe` connects and records the server certificate
   also when the handshake fails), the service directory and GetCards through the
   caller's transport.
