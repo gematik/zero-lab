@@ -10,6 +10,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-cli
 
 #### fixed
+- `--card` (identity, directory login) chooses its Konnektor with `-c`/`--connector-config`
+  like the `connector` commands; `--connector` stays as an alias.
 - `pki verify` applies the Kompromissmodell to the nonQES certificates of SMC-B and HBA
   (gemKPT_PKI_TIP 2.4.2, gemSpec_PKI Tab_PKI_271): an SMC-B or HBA certificate whose CA
   has expired since it was issued is valid with the warning `issued_before_ca_expiry`;

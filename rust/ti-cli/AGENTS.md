@@ -298,7 +298,7 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 {bin} --format json identity inspect --p12 smcb.p12 --p12-password-path pw.txt
 {bin} --format json identity inspect --cert smcb-aut.pem --key smcb-aut.key
 {bin} --format json identity inspect --card 80276883110000163974            # the selected Konnektor
-{bin} --format json identity inspect --card SMC-B-7 --connector praxis      # another one
+{bin} --format json identity inspect --card SMC-B-7 -c praxis               # another one
 {bin} --format json identity sign --p12 smcb.p12 --claims - < claims.json     # ES256 JWS, x5c
 {bin} --format json identity sign --p12 smcb.p12 --claims claims.json --typ JWT --header kid=aut
 ```
@@ -309,7 +309,7 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   fine: the AUT pair is selected; a card vendor's export), `--cert FILE --key FILE`
   (PEM; the key as PKCS#8 `PRIVATE KEY` or `EC PRIVATE KEY`; further certificates in
   the file are its chain) or `--card CARD` (ICCSN, Telematik-ID or handle at the
-  Konnektor the `connector` commands use: `--connector NAME|PATH` or
+  Konnektor the `connector` commands use: `-c`/`--connector-config NAME|PATH` or
   `TI_CONNECTOR_CONFIG`, else the selection of `connector use`, else `default`; the
   card's C.AUT ECC certificate; signing goes through the Konnektor's
   ExternalAuthenticate, so the card's PIN must be verified before with `connector

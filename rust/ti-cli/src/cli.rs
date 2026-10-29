@@ -700,7 +700,9 @@ pub struct IdentityArgs {
     /// The Konnektor of --card: NAME(.kon) here or in ~/.config/telematik/connectors, or a
     /// path [default: the one `connector use` selected, else "default"]
     #[arg(
-        long,
+        short = 'c',
+        long = "connector-config",
+        visible_alias = "connector",
         value_name = "NAME|PATH",
         env = "TI_CONNECTOR_CONFIG",
         requires = "card"
