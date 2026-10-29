@@ -171,20 +171,10 @@ pub fn open(args: &ConnectorArgs, global: &GlobalArgs, out: &Output) -> Result<S
             timeouts.long.as_secs()
         ),
     );
-    let mut config = ureq::Agent::config_builder()
-        .timeout_connect(Some(global.net.connect_timeout))
-        .user_agent(global.net.user_agent());
-    // Only an explicit -x: a Konnektor is in the local network, and a proxy from the
-    // environment would route its traffic (and credentials) elsewhere.
-    if let Some(proxy) = global.net.proxy.as_deref().filter(|p| !p.is_empty()) {
-        let proxy =
-            ureq::Proxy::new(proxy).map_err(|e| CliError::HttpSetup(format!("proxy: {e}")))?;
-        config = config.proxy(Some(proxy));
-    }
-    let transport = Logged {
-        inner: UreqTransport::new(&dotkon, config).map_err(CliError::Connector)?,
-        verbosity: out.verbosity(),
-    };
+    let transport = Logged::new(
+        UreqTransport::new(&dotkon, agent_config(global)?).map_err(CliError::Connector)?,
+        out,
+    );
     let connector = if args.no_cache {
         block_on(Connector::connect(&dotkon, transport, timeouts)).map_err(CliError::Connector)?
     } else {
@@ -205,12 +195,49 @@ pub fn open(args: &ConnectorArgs, global: &GlobalArgs, out: &Output) -> Result<S
     })
 }
 
+/// The HTTP settings of a Konnektor transport: connect timeout, user agent, and only an
+/// explicit proxy.
+///
+/// # Errors
+///
+/// [`CliError::HttpSetup`] for an unusable proxy.
+pub fn agent_config(
+    global: &GlobalArgs,
+) -> Result<ureq::config::ConfigBuilder<ureq::typestate::AgentScope>, CliError> {
+    let mut config = ureq::Agent::config_builder()
+        .timeout_connect(Some(global.net.connect_timeout))
+        .user_agent(global.net.user_agent());
+    // Only an explicit -x: a Konnektor is in the local network, and a proxy from the
+    // environment would route its traffic (and credentials) elsewhere.
+    if let Some(proxy) = explicit_proxy(global) {
+        let proxy =
+            ureq::Proxy::new(proxy).map_err(|e| CliError::HttpSetup(format!("proxy: {e}")))?;
+        config = config.proxy(Some(proxy));
+    }
+    Ok(config)
+}
+
+/// The proxy given with `-x`, if any.
+pub fn explicit_proxy(global: &GlobalArgs) -> Option<&str> {
+    global.net.proxy.as_deref().filter(|p| !p.is_empty())
+}
+
 /// The transport with a diagnostic per call: `-v` a line, `-vv` also the bodies, with
 /// long base64 runs (documents, certificates) shortened. Never the `Authorization`
 /// header, which only the inner transport sees.
 pub struct Logged<T> {
     inner: T,
     verbosity: u8,
+}
+
+impl<T> Logged<T> {
+    /// `inner` with the diagnostics `out`'s verbosity asks for.
+    pub fn new(inner: T, out: &Output) -> Self {
+        Logged {
+            inner,
+            verbosity: out.verbosity(),
+        }
+    }
 }
 
 impl<T: Transport> Transport for Logged<T> {

@@ -30,15 +30,15 @@ use serde::Serialize;
 use ti_connector_client::types::{
     Card, CardType, CertRef, Crypt, PinResult, PinState, VerificationResult,
 };
-use ti_connector_client::{BINDINGS, Credentials, Error, PinType, Product};
+use ti_connector_client::{BINDINGS, Error, PinType, Product};
 use ti_pki::load::SystemClock;
 use ti_pki::{Certificate, Clock, Timestamp};
 
 use super::inspect;
 use crate::block::block_on;
 use crate::cli::{
-    ConnectorArgs, ConnectorChange, ConnectorCli, ConnectorCommand, ConnectorDescribe,
-    ConnectorGet, ConnectorVerify, CryptArg, GlobalArgs, PinArgs,
+    ConnectorArgs, ConnectorChange, ConnectorCli, ConnectorCommand, ConnectorConfig,
+    ConnectorDescribe, ConnectorGet, ConnectorVerify, CryptArg, GlobalArgs, PinArgs,
 };
 use crate::connector::{self, Session};
 use crate::error::{CliError, Exit};
@@ -52,6 +52,12 @@ pub fn run(cli: &ConnectorCli, global: &GlobalArgs, out: &Output) -> Result<Exit
     match &cli.command {
         ConnectorCommand::Configs => configs(&cli.args, out),
         ConnectorCommand::Use { name } => use_config(name, out),
+        ConnectorCommand::Config(ConnectorConfig::Show { name }) => {
+            super::connector_config::show(name.as_deref(), &cli.args, out)
+        }
+        ConnectorCommand::Config(ConnectorConfig::Test { name }) => {
+            super::connector_config::test(name.as_deref(), &cli.args, global, out)
+        }
         ConnectorCommand::Get(ConnectorGet::Info) => info(&open()?, out),
         ConnectorCommand::Get(ConnectorGet::Services) => services(&open()?, out),
         ConnectorCommand::Get(ConnectorGet::Cards) => cards(&open()?, out),
@@ -347,7 +353,7 @@ struct InfoReport<'a> {
     workplace_id: &'a str,
     client_system_id: &'a str,
     user_id: Option<&'a str>,
-    /// `basic` or `pkcs12`.
+    /// `basic`, `pkcs12` or `none`.
     credentials: &'static str,
     /// The TI environment the `.kon` file states.
     environment: Option<String>,
@@ -363,10 +369,7 @@ fn info(session: &Session, out: &Output) -> Result<Exit, CliError> {
         workplace_id: &k.workplace_id,
         client_system_id: &k.client_system_id,
         user_id: k.user_id.as_deref(),
-        credentials: match k.credentials {
-            Credentials::Basic { .. } => "basic",
-            Credentials::Pkcs12 { .. } => "pkcs12",
-        },
+        credentials: k.credentials.kind(),
         environment: k.env.map(|e| e.to_string()),
         product: &session.connector.directory().product,
     };

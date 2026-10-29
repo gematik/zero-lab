@@ -266,9 +266,7 @@ impl CliError {
             ),
             CliError::Connector(ti_connector_client::Error::Fault(fault)) => Some(
                 fault
-                    .trace
-                    .iter()
-                    .find_map(|t| t.code.and_then(fault_hint))
+                    .hint()
                     .unwrap_or("the Konnektor refused the call; its code and text say why"),
             ),
             CliError::CardRestricted { .. } => Some(
@@ -370,55 +368,6 @@ impl From<serde_json::Error> for CliError {
     fn from(error: serde_json::Error) -> Self {
         CliError::Output(error.into())
     }
-}
-
-/// What to do about a Konnektor fault, by its gematik error code. Most are about the
-/// information model of gemSpec_Kon (Mandant, client system, workplace, card terminal),
-/// which the Konnektor's administrator maintains and the `.kon` call context names.
-fn fault_hint(code: i64) -> Option<&'static str> {
-    Some(match code {
-        4004 => {
-            "the Konnektor does not know the .kon mandantId; compare it with the Mandanten in the Konnektor's information model"
-        }
-        4005 => {
-            "the Konnektor does not know the .kon clientSystemId; compare it with the client systems in the Konnektor's information model"
-        }
-        4006 => {
-            "the Konnektor does not know the .kon workplaceId; compare it with the workplaces in the Konnektor's information model"
-        }
-        4007 => {
-            "the Konnektor does not know the card terminal (CtId); `connector get cards` lists the cards with their terminals"
-        }
-        4010 => {
-            "the .kon clientSystemId is not assigned to its mandantId in the Konnektor's information model"
-        }
-        4011 => {
-            "the .kon workplaceId is not assigned to its mandantId in the Konnektor's information model"
-        }
-        4012 => {
-            "the card's terminal is not assigned to the .kon mandantId in the Konnektor's information model; `connector get cards` shows the terminal"
-        }
-        4021 => {
-            "the call context is incomplete: the .kon needs mandantId, clientSystemId and workplaceId; some Konnektors answer 4021 for an ID they do not know as well, so compare all three with the Konnektor's information model"
-        }
-        4053 => {
-            "PIN entry for an eGK needs a card terminal assigned locally to the .kon workplaceId; assign the eGK's terminal to that workplace in the Konnektor's information model (`connector get cards` shows the terminal)"
-        }
-        4060 => "the card terminal (PIN pad, display) is busy with another operation; retry",
-        4092 => {
-            "the card is in a terminal that is not local to the .kon workplaceId, and the workplace has no Remote-PIN-KT; in the Konnektor's information model assign that terminal locally to the workplace or name a Remote-PIN-KT for it, or use a workplaceId the terminal is local to (`connector get cards` shows the card's terminal)"
-        }
-        4093 => {
-            "another client system holds the card in an exclusive session; retry once it is released"
-        }
-        4204 => {
-            "the Konnektor could not authenticate the client system: check the .kon credentials (basic user and password, or the PKCS#12) against the client authentication configured in the Konnektor (ANCL_CAUT_MODE)"
-        }
-        4263 => {
-            "comfort signature is switched off in the Konnektor; an administrator enables it in its management interface"
-        }
-        _ => return None,
-    })
 }
 
 /// Which of a profile's files a store failure concerns, for its message and hint.
@@ -561,7 +510,7 @@ mod tests {
     fn kon_4092_without_remote_pin_kt_hints_the_workplace() {
         names(
             hint(&[4092]),
-            &["Remote-PIN-KT", "workplaceId", "connector get cards"],
+            &["Remote-PIN-KT", "workplaceId", "card list"],
         );
     }
 
@@ -575,7 +524,7 @@ mod tests {
         names(hint(&[4004]), &["mandantId"]);
         names(hint(&[4005]), &["clientSystemId"]);
         names(hint(&[4006]), &["workplaceId"]);
-        names(hint(&[4007]), &["CtId", "connector get cards"]);
+        names(hint(&[4007]), &["CtId", "card list"]);
     }
 
     #[test]

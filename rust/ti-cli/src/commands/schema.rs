@@ -31,7 +31,7 @@ use crate::error::{CliError, Exit};
 use crate::output::{Output, SCHEMA};
 
 /// Every command with JSON output, and the error document.
-pub const SCHEMAS: [(&str, &str); 56] = [
+pub const SCHEMAS: [(&str, &str); 58] = [
     (
         "directory login",
         include_str!("../../schemas/directory-login.json"),
@@ -151,6 +151,14 @@ pub const SCHEMAS: [(&str, &str); 56] = [
     (
         "connector use",
         include_str!("../../schemas/connector-use.json"),
+    ),
+    (
+        "connector config show",
+        include_str!("../../schemas/connector-config-show.json"),
+    ),
+    (
+        "connector config test",
+        include_str!("../../schemas/connector-config-test.json"),
     ),
     (
         "connector get info",

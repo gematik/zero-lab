@@ -94,6 +94,20 @@ pub enum Credentials {
         /// Its password.
         password: String,
     },
+    /// No client authentication: neither a client certificate nor an `Authorization`
+    /// header. For Konnektors that do not authenticate client systems.
+    None,
+}
+
+impl Credentials {
+    /// The `credentials.type` of the `.kon` file: `basic`, `pkcs12` or `none`.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Credentials::Basic { .. } => "basic",
+            Credentials::Pkcs12 { .. } => "pkcs12",
+            Credentials::None => "none",
+        }
+    }
 }
 
 impl fmt::Debug for Credentials {
@@ -107,6 +121,7 @@ impl fmt::Debug for Credentials {
                 .debug_struct("Pkcs12")
                 .field("bytes", &data.len())
                 .finish_non_exhaustive(),
+            Credentials::None => f.write_str("None"),
         }
     }
 }
@@ -211,7 +226,7 @@ impl Dotkon {
                 "Basic {}",
                 base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}"))
             )),
-            Credentials::Pkcs12 { .. } => None,
+            Credentials::Pkcs12 { .. } | Credentials::None => None,
         }
     }
 }
@@ -367,13 +382,14 @@ fn credentials(raw: RawCredentials, problems: &mut Vec<String>) -> Option<Creden
                 password: raw.password.unwrap_or_default(),
             })
         }
+        Some("none") => Some(Credentials::None),
         None | Some("") => {
             problems.push("\"credentials.type\" is required".into());
             None
         }
         Some(other) => {
             problems.push(format!(
-                "unsupported \"credentials.type\": {other:?} (must be basic or pkcs12)"
+                "unsupported \"credentials.type\": {other:?} (must be basic, pkcs12 or none)"
             ));
             None
         }
@@ -518,6 +534,22 @@ mod tests {
             }
         );
         assert_eq!(kon.authorization(), None);
+    }
+
+    #[test]
+    fn credentials_type_none_authenticates_neither_by_header_nor_by_certificate() {
+        let json = BASIC.replace(
+            r#"{"type": "basic", "username": "${KON_USER}", "password": "${KON_PASSWORD}"}"#,
+            r#"{"type": "none"}"#,
+        );
+        let kon = parse(&json).unwrap();
+        assert_eq!(kon.credentials, Credentials::None);
+        assert_eq!(kon.authorization(), None);
+        let err = parse(&json.replace("\"none\"", "\"anonymous\"")).unwrap_err();
+        assert!(
+            err.problems[0].contains("must be basic, pkcs12 or none"),
+            "{err}"
+        );
     }
 
     #[test]

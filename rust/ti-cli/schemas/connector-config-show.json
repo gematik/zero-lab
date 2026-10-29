@@ -1,0 +1,284 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "connector config show",
+  "description": "A .kon configuration without its secrets: for the password, the PKCS#12 bytes and the user ID only where they are kept.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "name": {
+      "type": "string",
+      "description": "The name or path as given, or the selected configuration"
+    },
+    "path": {
+      "type": "string"
+    },
+    "mode": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The file's permission bits as octal, e.g. 0600; null where the platform has none"
+    },
+    "url": {
+      "type": "string"
+    },
+    "env": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "enum": [
+            "prod",
+            "ref",
+            "test",
+            "dev"
+          ]
+        }
+      ],
+      "description": "The environment the file states (pu is prod, ru ref, tu test)"
+    },
+    "mandant_id": {
+      "type": "string"
+    },
+    "workplace_id": {
+      "type": "string"
+    },
+    "client_system_id": {
+      "type": "string"
+    },
+    "user_id_set": {
+      "type": "boolean",
+      "description": "Whether a user ID is set; never its value"
+    },
+    "rewrite_service_endpoints": {
+      "type": "boolean"
+    },
+    "expected_host": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "insecure_skip_verify": {
+      "type": "boolean"
+    },
+    "credentials": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "basic",
+            "pkcs12",
+            "none"
+          ]
+        },
+        "username": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The basic user name"
+        },
+        "password": {
+          "$ref": "#/$defs/secret"
+        },
+        "data": {
+          "$ref": "#/$defs/secret"
+        },
+        "client_certificate": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "description": "The client certificate of pkcs12 credentials",
+              "properties": {
+                "certificate": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/$defs/certificate"
+                    }
+                  ],
+                  "description": "The first certificate with its key, which the transport uses"
+                },
+                "key": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "ECDSA P-256, RSA 2048, …"
+                },
+                "key_usable": {
+                  "type": "boolean",
+                  "description": "Whether the TLS stack can sign with the key (RSA, P-256, P-384)"
+                },
+                "pairs": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Certificates with their key in the file"
+                },
+                "encryption": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "PBES2 AES-256-CBC, PKCS#12 3DES, …"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Why the file cannot be used (wrong password, no pair, …)"
+                }
+              },
+              "required": [
+                "certificate",
+                "key",
+                "key_usable",
+                "pairs",
+                "encryption",
+                "error"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "username",
+        "password",
+        "data",
+        "client_certificate"
+      ],
+      "additionalProperties": false
+    },
+    "trust_store": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "enum": [
+              "pin",
+              "ca"
+            ],
+            "description": "pin: accepted by equality; ca: an anchor"
+          },
+          "certificate": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/certificate"
+              }
+            ],
+            "description": "null if it does not parse"
+          }
+        },
+        "required": [
+          "role",
+          "certificate"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "variables": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The environment variables the file takes values from"
+    }
+  },
+  "required": [
+    "schema",
+    "name",
+    "path",
+    "mode",
+    "url",
+    "env",
+    "mandant_id",
+    "workplace_id",
+    "client_system_id",
+    "user_id_set",
+    "rewrite_service_endpoints",
+    "expected_host",
+    "insecure_skip_verify",
+    "credentials",
+    "trust_store",
+    "variables"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "certificate": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "not_before": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        },
+        "not_after": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC 3339, UTC"
+        },
+        "sha256": {
+          "type": "string",
+          "description": "SHA-256 of the DER certificate, AB:CD:… upper-case"
+        }
+      },
+      "required": [
+        "subject",
+        "issuer",
+        "not_before",
+        "not_after",
+        "sha256"
+      ],
+      "additionalProperties": false
+    },
+    "secret": {
+      "type": "object",
+      "description": "Where a secret is kept, never its value",
+      "properties": {
+        "stored": {
+          "enum": [
+            "plain",
+            "environment",
+            "absent"
+          ],
+          "description": "plain: written in the file; environment: ${NAME}; absent: not set"
+        },
+        "variables": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The variables of environment"
+        }
+      },
+      "required": [
+        "stored",
+        "variables"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

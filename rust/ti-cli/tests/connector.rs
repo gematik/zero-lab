@@ -1138,3 +1138,60 @@ fn certificates_are_exported_without_json() {
     );
     assert_eq!(encrypted["recipients"][0], "Dr. Arzt TEST-ONLY");
 }
+
+/// `config show` names where each secret is kept, never its value, and leaves out the
+/// user ID, which in a comfort signature session lets anyone sign without a PIN.
+#[test]
+fn config_show_carries_no_secret() {
+    let fake = Fake::start("config-show");
+    let kon = std::fs::read_to_string(&fake.kon).unwrap().replace(
+        r#""clientSystemId": "C1","#,
+        r#""clientSystemId": "C1", "userId": "comfort-user-id","#,
+    );
+    std::fs::write(
+        fake.kon.with_file_name("plain.kon"),
+        kon.replace("${KON_TEST_PASSWORD}", "s3cret-pw"),
+    )
+    .unwrap();
+    let (show, code) = fake.json("connector config show", &["config", "show", "plain"]);
+    assert_eq!(code, Some(0));
+    assert_eq!(show["credentials"]["password"]["stored"], "plain");
+    assert_eq!(show["user_id_set"], true);
+    let (show, _) = fake.json("connector config show", &["config", "show"]);
+    assert_eq!(show["name"], "praxis", "-c is the default");
+    assert_eq!(
+        show["credentials"]["password"]["variables"][0],
+        "KON_TEST_PASSWORD"
+    );
+    for format in ["json", "text", "markdown"] {
+        let out = fake.ti(&["--format", format, "connector", "config", "show", "plain"]);
+        let shown = String::from_utf8(out.stdout).unwrap();
+        for secret in ["s3cret", "comfort-user-id"] {
+            assert!(!shown.contains(secret), "{format}: {secret} in {shown}");
+        }
+    }
+}
+
+/// The service directory is read over https only: the plain-http fake fails the file
+/// step, and every step after it is skipped.
+#[test]
+fn config_test_fails_an_http_url_and_skips_the_rest() {
+    let fake = Fake::start("config-test");
+    let (report, code) = fake.json("connector config test", &["config", "test"]);
+    assert_eq!((report["status"].as_str(), code), (Some("fail"), Some(1)));
+    let steps = report["steps"].as_array().unwrap();
+    assert_eq!(steps[0]["id"], "file");
+    assert_eq!(steps[0]["status"], "fail");
+    assert!(
+        steps[0].to_string().contains("is not https"),
+        "{}",
+        steps[0]
+    );
+    assert!(steps[1..].iter().all(|s| s["status"] == "skip"), "{report}");
+    let text = String::from_utf8(
+        fake.ti(&["connector", "-c", "praxis", "config", "test"])
+            .stdout,
+    )
+    .unwrap();
+    assert!(text.contains("change url to https://"), "{text}");
+}

@@ -1162,6 +1162,9 @@ pub enum ConnectorCommand {
         #[arg(value_name = "NAME|PATH")]
         name: String,
     },
+    /// Show or test a .kon configuration
+    #[command(subcommand)]
+    Config(ConnectorConfig),
     /// Read from the Konnektor
     #[command(subcommand)]
     Get(ConnectorGet),
@@ -1187,6 +1190,25 @@ pub enum ConnectorCommand {
     /// Save certificates of a card (PEM to stdout, or a file)
     #[command(subcommand)]
     Export(ConnectorExport),
+}
+
+/// `ti connector config …`.
+#[derive(Debug, Subcommand)]
+pub enum ConnectorConfig {
+    /// The configuration without its secrets: passwords, PKCS#12 bytes and the user ID
+    /// only say where they are kept
+    Show {
+        /// NAME or path; default: -c, else the selected configuration
+        #[arg(value_name = "NAME|PATH")]
+        name: Option<String>,
+    },
+    /// Test a configuration step by step, from the file to the cards: file, tcp, tls,
+    /// auth, sds, context, cards, each ok, warn, fail or skip (exit 1 if one fails)
+    Test {
+        /// NAME or path; default: -c, else the selected configuration
+        #[arg(value_name = "NAME|PATH")]
+        name: Option<String>,
+    },
 }
 
 /// `ti connector export …`.

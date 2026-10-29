@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "connector config test",
+  "description": "A .kon configuration tested step by step: file, tcp, tls, auth, sds, context, cards. A failed step skips the rest; exit 1 if one fails. In the production environment (env pu), insecureSkipVerify and credentials of type none fail.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "name": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "ok",
+        "warn",
+        "fail"
+      ],
+      "description": "fail if a step failed, else warn if one warned, else ok"
+    },
+    "steps": {
+      "type": "array",
+      "description": "Every step, in order",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "enum": [
+              "file",
+              "tcp",
+              "tls",
+              "auth",
+              "sds",
+              "context",
+              "cards"
+            ]
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "skip",
+              "warn",
+              "fail"
+            ]
+          },
+          "findings": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "enum": [
+                    "ok",
+                    "skip",
+                    "warn",
+                    "fail"
+                  ]
+                },
+                "message": {
+                  "type": "string"
+                },
+                "hint": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "What to do about it"
+                }
+              },
+              "required": [
+                "status",
+                "message",
+                "hint"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "findings"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "name",
+    "path",
+    "status",
+    "steps"
+  ],
+  "additionalProperties": false
+}

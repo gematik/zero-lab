@@ -64,6 +64,10 @@ use crate::dotkon::{Credentials, Dotkon};
 use crate::error::Error;
 use crate::soap::{Method, Request, Response, Transport, TransportError};
 
+mod probe;
+
+pub use probe::{TestOptions, check_config, probe};
+
 /// Largest response body read; signed and encrypted documents can be large.
 const MAX_BODY: u64 = 64 * 1024 * 1024;
 
@@ -185,6 +189,16 @@ fn max_age(cache_control: &str) -> Option<Duration> {
 }
 
 fn client_config(dotkon: &Dotkon) -> Result<ClientConfig, Error> {
+    client_config_with(dotkon, |verifier| verifier, true)
+}
+
+/// The TLS client config of `dotkon`, its server verifier passed through `wrap`, with
+/// the client certificate of `pkcs12` credentials only if `client_auth`.
+fn client_config_with(
+    dotkon: &Dotkon,
+    wrap: impl FnOnce(Arc<dyn ServerCertVerifier>) -> Arc<dyn ServerCertVerifier>,
+    client_auth: bool,
+) -> Result<ClientConfig, Error> {
     let provider = Arc::new(rustls::crypto::ring::default_provider());
     let verifier: Arc<dyn ServerCertVerifier> = if dotkon.insecure_skip_verify {
         Arc::new(KonnektorVerifier {
@@ -203,9 +217,10 @@ fn client_config(dotkon: &Dotkon) -> Result<ClientConfig, Error> {
         .with_safe_default_protocol_versions()
         .map_err(|e| Error::Config(format!("TLS: {e}")))?
         .dangerous()
-        .with_custom_certificate_verifier(verifier);
+        .with_custom_certificate_verifier(wrap(verifier));
     match &dotkon.credentials {
-        Credentials::Basic { .. } => Ok(builder.with_no_client_auth()),
+        _ if !client_auth => Ok(builder.with_no_client_auth()),
+        Credentials::Basic { .. } | Credentials::None => Ok(builder.with_no_client_auth()),
         Credentials::Pkcs12 { data, password } => {
             let p12 = ti_pkcs12::decode(data, password)
                 .map_err(|e| Error::Config(format!("credentials: {e}")))?;

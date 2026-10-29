@@ -29,6 +29,18 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   the environment's automated download point. The reports name the signature kind
   (`signature`: `enveloped` or `detached`) and know the code `detached_signature_error`
   (`spec/tsl-detached`, TASK-166).
+- `connector config show [NAME]`: a `.kon` configuration without its secrets; for the
+  password, the PKCS#12 bytes and the user ID only where they are kept, with the client
+  certificate and the pins and CAs of `trustStore`.
+- `connector config test [NAME]`: the configuration step by step, `file` (valid, mode
+  0600, secrets in plain text, `https`), `tcp`, `tls` (the server certificate against the
+  pin or CA, its SHA-256), `auth` (the client certificate before it is offered, and
+  whether the Konnektor accepts the client), `sds` (product and service versions),
+  `context` (GetCards with the call context, with the fault hints) and `cards`; each
+  finding ok, warn, fail or skip with a hint, exit 1 if one fails. With `env: pu`,
+  `insecureSkipVerify` and credentials `none` fail.
+- `.kon` credentials of type `none`, for Konnektors that do not authenticate client
+  systems; `connector get info` reports them as `none`.
 - The help and the guide say that `identity`, `idpd authenticate` and `directory login`
   take an HBA as well as an SMC-B (they always did): its C.HP.AUT is selected like the
   SMC-B's C.HCI.AUT, never its C.HP.QES; they name the PIN a card needs (PIN.SMC, PIN.CH
@@ -250,6 +262,25 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - A session recorded with an eHEX Konnektor replayed offline (`tests/recorded.rs`):
   every request byte for byte as the Konnektor accepted it. The e2e tests record new
   sessions with `TI_TEST_KON_RECORD_DIR`.
+- `Credentials::None` (`"credentials": {"type": "none"}`): no client certificate and no
+  `Authorization` header; `Credentials::kind`.
+- `config::ConfigView`: a `.kon` file without its secrets, for front ends: where the
+  password and the PKCS#12 bytes are kept (plain, `${NAME}`, absent), whether a user ID
+  is set, the PKCS#12 client certificate (`config::client_certificate`: subject,
+  validity, key, whether ring can sign with it, encryption) and the trust store as pins
+  and CAs with their SHA-256. ti-pkcs12 is now a regular dependency.
+- `check`: the test of a `.kon` configuration as pure functions of what the host
+  observed, steps `file`, `tcp`, `tls`, `auth`, `sds`, `context`, `cards`, each finding
+  `ok`, `skip`, `warn` or `fail` with a hint; a failed step skips the rest. With
+  `env: pu`, `insecureSkipVerify` and credentials `none` fail. `ureq::check_config` runs the
+  steps against a Konnektor (`ureq::probe` connects and records the server certificate
+  also when the handshake fails), the service directory and GetCards through the
+  caller's transport.
+- `Fault::hint` and `fault_hint`: what to do about faults on the information model
+  (4004 to 4007, 4010 to 4012, 4021, 4053, 4060, 4092, 4093, 4204, 4263), formerly in
+  ti-cli.
+- Fuzz target `dotkon` (`just fuzz-ti-connector-client`): the parser, the file check and
+  the redacted view.
 
 ### ti-pki
 

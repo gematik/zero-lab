@@ -534,6 +534,21 @@ fuzz-ti-pki seconds="30":
         [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
     done
 
+# Fuzz every ti-connector-client parser for `seconds` each (design time; nightly and
+# cargo-fuzz). Corpora start from ti-connector-client/fuzz/seeds and grow in
+# ti-connector-client/fuzz/corpus (not committed).
+fuzz-ti-connector-client seconds="30":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd ti-connector-client/fuzz
+    for target in dotkon; do
+        mkdir -p "corpus/$target"
+        cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
+            -max_total_time={{seconds}} -max_len=65536 -print_final_stats=1 2>&1 \
+            | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
+        [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
+    done
+
 # Chrome for Testing (headless shell and its chromedriver) for `jwz-browser`; override
 # the location with JWZ_CHROME_DIR=<dir>
 JWZ_CHROME_DIR := env_var_or_default("JWZ_CHROME_DIR", env_var("HOME") / "Development/tools/chrome")

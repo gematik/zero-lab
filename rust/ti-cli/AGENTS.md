@@ -10,7 +10,8 @@ or stdin.
 - Never ask for a real `.kon` file, PKCS#12 file, PIN, password, client secret or token,
   and never print one: refer to it by its path. A `.kon` file is a secret as a whole; it
   holds the Konnektor's credentials. Samples with placeholders, to create or edit one,
-  are fine (see the connector subsystem).
+  are fine (see the connector subsystem). To look at one, run `connector config show`,
+  which says where each secret is kept but never shows it; never read the file itself.
 - When a user pastes one, say it should not have been shared and should be replaced
   where that is possible. Do not repeat it, quote it, or carry it into commands or
   files.
@@ -432,6 +433,8 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 ```sh
 {bin} --format json connector configs                   # the .kon files; "selected" is the default
 {bin} connector use praxis                              # select one for later commands
+{bin} --format json connector config show [NAME]        # the .kon without its secrets
+{bin} --format json connector config test [NAME]        # step by step to the cards; exit 1 if one fails
 {bin} --format json connector -c praxis get info        # configuration and product
 {bin} --format json connector get services              # "used": the versions this tool calls
 {bin} --format json connector get cards
@@ -478,14 +481,24 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 
   `url`, `mandantId`, `clientSystemId`, `workplaceId` and `credentials` are required;
   `userId` is needed by some calls (with an HBA), `env` is `ru`, `tu` or `pu`.
-  Credentials are `basic` (`username`, `password`) or `pkcs12` (`data` the base64
-  PKCS#12, `password`) for mutual TLS; a brainpool client key cannot be used.
+  Credentials are `basic` (`username`, `password`), `pkcs12` (`data` the base64
+  PKCS#12, `password`) for mutual TLS, or `none` for a Konnektor that does not
+  authenticate client systems; a brainpool client key cannot be used.
   `trustStore` is a list of base64 DER certificates for the Konnektor's TLS (a CA is an
   anchor, an end-entity certificate a pin; empty: the system's roots), `expectedHost`
   the name its certificate must carry when it differs from the host in `url`,
   `rewriteServiceEndpoints: true` sends every service to the host of `url` (a Konnektor
   behind NAT or a port forward), `insecureSkipVerify: true` skips the server check (test
   Konnektors only). The message of `connector_config` lists every problem at once.
+- `config test` runs the steps `file` (valid, mode 0600, secrets in plain text, an
+  `https` url), `tcp`, `tls` (the server certificate against the pin or a CA of
+  `trustStore`), `auth` (the client certificate before it is offered, and whether the
+  Konnektor accepts the client), `sds` (product and service versions), `context`
+  (GetCards with the call context) and `cards`; each finding is `ok`, `warn`, `fail` or
+  `skip` with a `hint`, and a failed step skips the rest. With `env: pu`,
+  `insecureSkipVerify` and credentials `none` fail; elsewhere they warn. It uses no PIN
+  and no cache, so run it first when a connector command fails with `connector_config`
+  or a transport error. With `-x`, `tcp` and `tls` are skipped.
 - `${NAME}` is expanded only in `credentials.username`, `.password` and `.data`, from
   the environment; anywhere else it is an error, and so is an unset variable, so a
   `.kon` file from someone else cannot send environment variables to its host. `-v`

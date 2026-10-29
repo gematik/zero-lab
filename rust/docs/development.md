@@ -500,6 +500,7 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `jwz-interop` | Design time (Go, Python 3): brainpool interop fixtures against Go josebp and Python jwcrypto, both directions, and their coverage table (`jwz-brainpool/interop`) |
 | `fuzz-jwz [seconds]` | Design time (nightly, cargo-fuzz): every jwz parser, `seconds` each (default 30), from the committed seeds |
 | `fuzz-ti-pki [seconds]` | Design time (nightly, cargo-fuzz): ti-pki's parsers of network bytes (the detached TSL signature, the TSL list, OCSP responses), `seconds` each, from the committed seeds |
+| `fuzz-ti-connector-client [seconds]` | Design time (nightly, cargo-fuzz): the `.kon` parser, its file check and redacted view, `seconds` each (default 30) |
 | `wasm-build` | Build the ti-wasm package into `target/ti-wasm/pkg` |
 | `wasm-size` | Module size raw, gzip, brotli; fails over 2.0 MB raw or 700 KB gzip |
 | `wasm-smoke` | The package in Node on the real TSLs, cross-checked with `ti pki tsl verify` |

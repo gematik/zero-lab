@@ -1,0 +1,1 @@
+{"url": "https://konnektor.example:443", "mandantId": "M1", "workplaceId": "W1", "clientSystemId": "C1", "credentials": {"type": "basic", "username": "u", "password": "${KON_PASSWORD}"}, "env": "ru", "trustStore": ["MAA="]}
