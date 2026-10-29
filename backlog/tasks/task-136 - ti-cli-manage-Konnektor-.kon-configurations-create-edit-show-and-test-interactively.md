@@ -119,5 +119,5 @@ Decisions (maintainer, 2026-10-29, cont.):
 - insecureSkipVerify is refused for env pu (new, set, edit; test reports an existing one as fail).
 - Credentials type none: the Go and Kotlin clients are extended later by the maintainer; not a blocker here.
 
-- Credentials type none is refused for env pu too, like insecureSkipVerify: new, set and edit refuse it; test reports an existing one as fail. Open for the parser: reject both for pu already when a .kon is loaded, so no command can use such a file in PU.
+- Credentials type none is refused for env pu too, like insecureSkipVerify: new, set and edit refuse it; test reports an existing one as fail. Not refused when a .kon is loaded (maintainer, 2026-10-29): the parser accepts both for pu; only the config commands refuse them and test reports them.
 <!-- SECTION:NOTES:END -->
