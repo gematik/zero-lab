@@ -1,10 +1,9 @@
 ---
-id: TASK-136.3
-title: 'Konnektor configuration: config migrate'
+id: TASK-157
+title: 'ti-cli: connector config migrate (.kon to the new rules)'
 status: To Do
 assignee: []
-created_date: '2026-10-29T06:44:00Z'
-updated_date: '2026-10-29T11:06:00Z'
+created_date: '2026-10-29T11:06:00Z'
 labels:
   - ti-cli
   - connector
@@ -16,15 +15,14 @@ references:
   - >-
     backlog/decisions/decision-7 -
     Tokens-persisted-only-as-sealed-records-under-a-profile-keyring.md
-parent_task_id: TASK-136
 priority: medium
-ordinal: 167000
+ordinal: 168000
 ---
 
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Third part of TASK-136: bring existing .kon files to the new rules. Where secrets go depends on the planned secret management (TASK-104, decision-7); until then the .kon itself is the secret.
+Bring existing .kon files to the rules of TASK-136 (formerly TASK-136.3). Where secrets go depends on the planned secret management (TASK-104, decision-7); until then the .kon itself is the secret.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
@@ -38,5 +36,5 @@ Third part of TASK-136: bring existing .kon files to the new rules. Where secret
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-2026-10-29 zurückgestellt (Maintainer): wartet auf das Secret-Management (TASK-104 Plattform-Keyring, decision-7). Erst danach steht fest, wohin migrate die Geheimnisse einer .kon verschiebt.
+2026-10-29 zurückgestellt (Maintainer): wartet auf das Secret-Management (TASK-104 Plattform-Keyring, decision-7). Erst danach steht fest, wohin migrate die Geheimnisse einer .kon verschiebt. Aus TASK-136.3 herausgelöst, damit TASK-136 geschlossen werden kann.
 <!-- SECTION:NOTES:END -->

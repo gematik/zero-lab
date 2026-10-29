@@ -34,6 +34,12 @@ ti idpd authenticate --env ref --p12 smcb.p12 --auth-url "$AUTHZ_URI"   # IDP-Di
 ti directory login owner --env ref --p12 smcb.p12   # FHIR-Directory → owner access token
 ti connector configs                # the .kon files (~/.config/telematik/connectors)
 ti connector use praxis             # the configuration later commands use
+ti connector config new praxis      # step by step on a terminal: address, pin, credentials, context
+ti connector config test praxis     # tcp, tls, auth, sds, context, cards; exit 1 on a failure
+ti connector config show praxis     # the file without its secrets
+ti connector config pin praxis      # pin the Konnektor's new server certificate
+ti connector config edit praxis     # in $EDITOR; only a valid copy replaces the file
+ti connector config set praxis workplaceId=W2   # one field without a secret
 ti connector get cards
 ti connector get certificates 80276883110000163974   # ICCSN, Telematik-ID or handle
 ti connector describe certificate 1-SMC-B-Testkarte-883110000129072 C.AUT
