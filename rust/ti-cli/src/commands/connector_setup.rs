@@ -85,26 +85,24 @@ fn new_with(
         return Err(CliError::OutputExists(path.display().to_string()));
     }
     let mut warnings = Vec::new();
-    let config = new_config(args, global, ask, &mut warnings)?;
-    let json = config.to_json();
-    refuse(None, &validate(&json)?)?;
-    let report = if args.no_test {
-        None
-    } else {
+    let mut config = new_config(args, global, ask, &mut warnings)?;
+    let (json, report, save) = loop {
+        let json = config.to_json();
+        refuse(None, &validate(&json)?)?;
+        if args.no_test {
+            break (json, None, true);
+        }
         ask.say("Testing the configuration …");
         let agent = connector::agent_config(global)?;
-        Some(configs::run_checks(
-            &json,
-            Some(0o600),
-            connector_args,
-            global,
-            agent,
-            out,
-        ))
-    };
-    let save = match &report {
-        Some(report) if report.status == Status::Fail => save_anyway(report, ask)?,
-        _ => true,
+        let report = configs::run_checks(&json, Some(0o600), connector_args, global, agent, out);
+        if report.status != Status::Fail {
+            break (json, Some(report), true);
+        }
+        match after_failure(&report, ask)? {
+            Failed::Again => call_context(&mut config, ask)?,
+            Failed::Save => break (json, Some(report), true),
+            Failed::Discard => break (json, Some(report), false),
+        }
     };
     if save {
         write_kon(&path, &json, &mut warnings)?;
@@ -226,11 +224,17 @@ fn new_config(
     })
 }
 
-/// After a failed test: on a terminal the failures, and whether to save anyway;
-/// without one, no.
-fn save_anyway(report: &Report, ask: &mut dyn Ask) -> Result<bool, CliError> {
+enum Failed {
+    Again,
+    Save,
+    Discard,
+}
+
+/// After a failed test: on a terminal the failures, then the choice to enter the call
+/// context again and test once more, to save anyway, or to discard; without one, discard.
+fn after_failure(report: &Report, ask: &mut dyn Ask) -> Result<Failed, CliError> {
     if !ask.interactive() {
-        return Ok(false);
+        return Ok(Failed::Discard);
     }
     for step in &report.steps {
         for finding in step.findings.iter().filter(|f| f.status == Status::Fail) {
@@ -240,7 +244,31 @@ fn save_anyway(report: &Report, ask: &mut dyn Ask) -> Result<bool, CliError> {
             }
         }
     }
-    ask.confirm("The test failed. Save anyway?", "--no-test", false)
+    let options = [
+        "enter Mandant, client system and workplace again",
+        "save anyway",
+        "discard",
+    ]
+    .map(str::to_owned);
+    Ok(
+        match ask.choose("The test failed. What now?", "--no-test", &options)? {
+            0 => Failed::Again,
+            1 => Failed::Save,
+            _ => Failed::Discard,
+        },
+    )
+}
+
+/// The call context asked again, the values entered before as defaults.
+fn call_context(config: &mut NewConfig, ask: &mut dyn Ask) -> Result<(), CliError> {
+    config.mandant_id = ask.line("Mandant ID", "--mandant", Some(&config.mandant_id))?;
+    config.client_system_id = ask.line(
+        "Client system ID",
+        "--client-system",
+        Some(&config.client_system_id),
+    )?;
+    config.workplace_id = ask.line("Workplace ID", "--workplace", Some(&config.workplace_id))?;
+    Ok(())
 }
 
 fn warn(ask: &mut dyn Ask, warnings: &mut Vec<String>, warning: &str) {
@@ -1028,6 +1056,47 @@ mod tests {
         );
         assert!(kon.get("userId").is_none());
         assert!(!said(&script, "s3cret"), "the password is never said");
+        assert!(script.answers.is_empty());
+    }
+
+    /// A failed test offers the call context again, the earlier answers as defaults, and
+    /// tests once more; saving anyway is a choice, not the default.
+    #[test]
+    fn a_failed_test_asks_for_the_call_context_again() {
+        let file = dir("wizard-retry").join("w.kon");
+        let mut script = Script::new(&[
+            "127.0.0.1:9",
+            "1",
+            "3",
+            "M1",
+            "C1",
+            "W1",
+            "",
+            "1",
+            "M2",
+            "",
+            "W2",
+            "2",
+        ]);
+        let args = [file.to_str().unwrap(), "--pin-cert", PIN];
+        assert_eq!(wizard(&args, &mut script).unwrap(), Exit::Ok);
+        assert_eq!(
+            script
+                .said
+                .iter()
+                .filter(|l| l.as_str() == "Testing the configuration …")
+                .count(),
+            2
+        );
+        let kon = kon(&file);
+        assert_eq!(
+            (
+                &kon["mandantId"],
+                &kon["clientSystemId"],
+                &kon["workplaceId"]
+            ),
+            (&"M2".into(), &"C1".into(), &"W2".into())
+        );
         assert!(script.answers.is_empty());
     }
 

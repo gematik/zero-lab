@@ -46,7 +46,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `--client-system`, `--workplace`, `--basic`/`--password-path`, `--p12`/
   `--p12-password-path`/`--p12-pair`, `--no-auth`, `--pin-sha256`, `--pin-cert`,
   `--insecure-skip-verify`, `--expected-host`, `--rewrite-endpoints`). Tested before it
-  is saved; written atomically with mode 0600 (directory 0700). A PKCS#12 file is shown
+  is saved; on a terminal a failed test offers the call context again and tests once
+  more, or saving anyway; written atomically with mode 0600 (directory 0700). A PKCS#12 file is shown
   before use (expiry, key type, legacy encryption, file mode); of several pairs only the
   chosen one is kept.
 - `connector config set NAME KEY=VALUE`, `connector config edit NAME` ($EDITOR, replaced

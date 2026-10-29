@@ -4,7 +4,7 @@ title: 'Konnektor configuration: config new, edit and set'
 status: In Progress
 assignee: []
 created_date: '2026-10-29T06:44:00Z'
-updated_date: '2026-10-29T08:19:00Z'
+updated_date: '2026-10-29T10:21:00Z'
 labels:
   - ti-cli
   - connector
@@ -46,4 +46,6 @@ Implemented (2026-10-29):
 - http (a498d2f) undone at the maintainer's request: https only again.
 - Tests: tests/edit.rs (8), probe server_certificate, 5 unit tests of the interactive paths (wizard, options, PKCS#12 pair choice and wrong password, editor valid and invalid), 9 ti-cli integration tests (options path, missing option, http and pu refusals, failed test saves nothing, pin by SHA-256, set, edit, pin and renew_pin). just check passes; fuzz dotkon 459k runs without a finding.
 - Open: HITL on a real terminal and Konnektor (wizard, config pin, config edit in $EDITOR).
+
+Nach fehlgeschlagenem Test im Assistenten: Auswahl Aufrufkontext neu eingeben (Mandant, Clientsystem, Arbeitsplatz; bisherige Werte als Vorgabe) und erneut testen, trotzdem speichern oder verwerfen. Ohne Terminal unverändert: nichts gespeichert.
 <!-- SECTION:NOTES:END -->
