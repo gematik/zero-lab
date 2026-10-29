@@ -115,7 +115,7 @@ Requirements (maintainer, 2026-10-29):
 - No authentication as an option: proposal "credentials": {"type": "none"}, explicit rather than an omitted credentials object, so a forgotten block stays an error. ti-connector-client's dotkon parser gets Credentials::None (today: basic or pkcs12, credentials required). Go and Kotlin clients read the same format; whether they accept type none is to be checked, and a .kon with none may be unreadable for them.
 
 Decisions (maintainer, 2026-10-29, cont.):
-- The first step of new is tolerant: a full URL, an FQDN or an IP address, with or without port or path. ti normalises to https://HOST[:PORT] (IPv6 in brackets, port 443 by default, a trailing /connector.sds or other path dropped) and shows the result before connecting. An http:// input is taken as https, never fetched over HTTP.
+- The first step of new is tolerant: a full URL, an FQDN or an IP address, with or without port or path. ti normalises to https://HOST[:PORT] (IPv6 in brackets, port 443 by default, a trailing /connector.sds or other path dropped) and shows the result before connecting. An http:// input is an error (usage, exit 2) naming https as the only scheme; nothing is fetched over HTTP.
 - insecureSkipVerify is refused for env pu (new, set, edit; test reports an existing one as fail).
 - Credentials type none: the Go and Kotlin clients are extended later by the maintainer; not a blocker here.
 
