@@ -39,7 +39,7 @@ use rustls_pki_types::pem::PemObject;
 use rustls_pki_types::{CertificateDer, PrivateKeyDer};
 use ti_connector_client::Timeouts;
 use ti_connector_client::check::{Report, Status, StepId};
-use ti_connector_client::ureq::{TestOptions, UreqTransport, check_config};
+use ti_connector_client::ureq::{TestOptions, UreqTransport, check_config, server_certificate};
 use ti_types::Timestamp;
 
 const CA: &[u8] = include_bytes!("tls/ca.pem");
@@ -312,27 +312,36 @@ fn a_closed_port_fails_the_tcp_step() {
     assert!(dump(&report).contains("connection refused"));
 }
 
-/// Outside the production environment a Konnektor may be reached over http: the steps
-/// run without TLS, with warnings.
+/// The pin a user confirms is what the server presents, fetched without trusting it,
+/// also from a Konnektor that requires a client certificate.
 #[test]
-fn an_http_konnektor_passes_with_warnings_outside_production() {
+fn the_server_certificate_is_fetched_without_trusting_it() {
+    let port = konnektor(true, Cards::Recorded);
+    let chain = server_certificate(
+        &format!("https://127.0.0.1:{port}"),
+        None,
+        Duration::from_secs(2),
+    )
+    .unwrap();
+    assert_eq!(chain[0], der(SERVER));
+    let closed = TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let error = server_certificate(
+        &format!("https://127.0.0.1:{closed}"),
+        None,
+        Duration::from_secs(2),
+    )
+    .unwrap_err();
+    assert!(error.contains("connection refused"), "{error}");
     let port = konnektor_http(Cards::Recorded);
-    let json = kon(port, BASIC, "").replace("https://", "http://");
-    let report = run(&json);
-    assert_eq!(report.status, Status::Warn, "{}", dump(&report));
-    assert_eq!(status(&report, StepId::Tls), Status::Skip);
-    assert_eq!(
-        status(&report, StepId::Cards),
-        Status::Ok,
-        "{}",
-        dump(&report)
-    );
-    let pu = kon(port, BASIC, r#", "env": "pu""#).replace("https://", "http://");
-    let report = run(&pu);
-    assert_eq!(
-        status(&report, StepId::File),
-        Status::Fail,
-        "{}",
-        dump(&report)
-    );
+    let error = server_certificate(
+        &format!("http://127.0.0.1:{port}"),
+        None,
+        Duration::from_secs(2),
+    )
+    .unwrap_err();
+    assert!(error.contains("http"), "{error}");
 }

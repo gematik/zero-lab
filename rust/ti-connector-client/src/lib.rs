@@ -38,6 +38,7 @@ pub mod check;
 pub mod config;
 mod connector;
 mod dotkon;
+pub mod edit;
 mod encryption;
 mod error;
 mod pins;

@@ -29,9 +29,9 @@
 //! [`StepId::Auth`], [`StepId::Sds`], [`StepId::Context`], [`StepId::Cards`]. A step
 //! that fails ends the run; the steps after it are skipped.
 //!
-//! In the production environment (`env: pu`), an `http` url, `insecureSkipVerify` and
-//! credentials of type `none` fail; elsewhere they are warnings. The parser accepts them
-//! everywhere.
+//! The service directory is read over https only: an `http` url fails. In the
+//! production environment (`env: pu`), `insecureSkipVerify` and credentials of type
+//! `none` fail; elsewhere they are warnings. The parser accepts them everywhere.
 
 use serde::Serialize;
 use ti_pki::Certificate;
@@ -62,8 +62,7 @@ pub enum Status {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum StepId {
-    /// The `.kon` file: readable, valid, its mode and secrets, `https` (or `http`
-    /// outside production).
+    /// The `.kon` file: readable, valid, its mode and secrets, `https`.
     File,
     /// Name resolution and the TCP connection.
     Tcp,
@@ -114,6 +113,9 @@ pub struct Finding {
     pub message: String,
     /// What to do about it.
     pub hint: Option<String>,
+    /// What a front end can offer to do about it: `renew_pin` (fetch the server
+    /// certificate, show it next to the pinned one, replace the pin once confirmed).
+    pub action: Option<&'static str>,
 }
 
 impl Finding {
@@ -123,7 +125,15 @@ impl Finding {
             status,
             message: message.into(),
             hint: hint.map(str::to_owned),
+            action: None,
         }
+    }
+
+    /// The finding with `action` for a front end to offer.
+    #[must_use]
+    pub fn with_action(mut self, action: &'static str) -> Self {
+        self.action = Some(action);
+        self
     }
 
     /// An `ok` finding.
@@ -273,25 +283,11 @@ pub fn file(parsed: &Result<Dotkon, DotkonError>, json: &[u8], mode: Option<u32>
         )));
     }
     if !is_https(dotkon) {
-        findings.push(if production(dotkon) {
-            Finding::new(
-                Status::Fail,
-                format!(
-                    "url {} is http, which is not allowed in the production environment (env pu)",
-                    dotkon.url
-                ),
-                Some("change url to https://"),
-            )
-        } else {
-            Finding::new(
-                Status::Warn,
-                format!(
-                    "url {} is http: no TLS, credentials and documents travel unencrypted",
-                    dotkon.url
-                ),
-                Some("use https:// wherever the Konnektor offers it"),
-            )
-        });
+        findings.push(Finding::new(
+            Status::Fail,
+            format!("url {} is not https", dotkon.url),
+            Some("the service directory is read over https only; change url to https://"),
+        ));
     }
     Step::new(StepId::File, findings)
 }
@@ -437,8 +433,8 @@ pub fn tls(dotkon: &Dotkon, observation: &TlsObservation, now: Timestamp) -> Ste
                 "the server certificate is not the pinned one (pinned SHA-256 {})",
                 pinned.join(", ")
             ),
-            Some("the Konnektor presents another certificate; compare its SHA-256 with the one the Konnektor's management shows, and if it was renewed on purpose, replace the pin in trustStore"),
-        ));
+            Some("the Konnektor presents another certificate; compare its SHA-256 with the one the Konnektor's management shows, and if it was renewed on purpose, renew the pin"),
+        ).with_action("renew_pin"));
     } else {
         match &observation.verified {
             Some(Ok(())) if cas > 0 => {
@@ -490,24 +486,10 @@ pub fn auth(
     match &dotkon.credentials {
         Credentials::Basic { username, .. } => {
             findings.push(Finding::ok(format!("basic authentication as {username}")));
-            if !is_https(dotkon) {
-                findings.push(Finding::new(
-                    Status::Warn,
-                    "over http the password travels unencrypted",
-                    Some("use https:// wherever the Konnektor offers it"),
-                ));
-            }
         }
         Credentials::Pkcs12 { .. } => {
             if let Some(client) = client {
                 client_certificate(client, now, &mut findings);
-            }
-            if !is_https(dotkon) {
-                findings.push(Finding::new(
-                    Status::Fail,
-                    "pkcs12 credentials authenticate in the TLS handshake, which http has not",
-                    Some("change url to https://, or use basic or none credentials"),
-                ));
             }
         }
         Credentials::None => findings.push(if production(dotkon) {

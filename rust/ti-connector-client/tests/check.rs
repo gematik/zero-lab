@@ -212,30 +212,13 @@ fn plain_secrets_in_the_file_are_a_warning() {
     );
 }
 
-/// http is allowed outside the production environment, with a warning.
+/// The service directory is read over https only.
 #[test]
-fn an_http_url_warns_and_fails_in_production() {
+fn an_http_url_fails() {
     let json = json(r#"{"type": "none"}"#, "").replace("https://", "http://");
     let step = file_step(&json, Some(0o600));
-    assert_eq!(step.status, Status::Warn, "{}", messages(&step));
-    assert!(has(&step, Status::Warn, "unencrypted"));
-    let pu = self::json(r#"{"type": "none"}"#, r#", "env": "pu""#).replace("https://", "http://");
-    let step = file_step(&pu, Some(0o600));
-    assert!(has(&step, Status::Fail, "env pu"), "{}", messages(&step));
-}
-
-#[test]
-fn over_http_basic_warns_and_pkcs12_fails() {
-    let http = r#", "url": "http://konnektor.test""#;
-    let step = auth_step(BASIC, http, &directory(), NOW);
     assert!(
-        has(&step, Status::Warn, "unencrypted"),
-        "{}",
-        messages(&step)
-    );
-    let step = auth_step(&pkcs12(CLIENT_P12, "00"), http, &directory(), NOW);
-    assert!(
-        has(&step, Status::Fail, "TLS handshake"),
+        has(&step, Status::Fail, "is not https"),
         "{}",
         messages(&step)
     );
@@ -302,7 +285,8 @@ fn another_certificate_than_the_pinned_one_fails() {
     assert_eq!(step.status, Status::Fail, "{}", messages(&step));
     assert!(has(&step, Status::Fail, &config::sha256(&der(OTHER))));
     assert!(has(&step, Status::Ok, &config::sha256(&der(SERVER))));
-    assert!(has(&step, Status::Fail, "replace the pin"));
+    assert!(has(&step, Status::Fail, "renew the pin"));
+    assert!(step.findings.iter().any(|f| f.action == Some("renew_pin")));
 }
 
 #[test]

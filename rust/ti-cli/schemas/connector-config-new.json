@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "connector config new",
+  "description": "A new .kon configuration: on a terminal asked for step by step, else from the options (a missing one is exit 2). It is tested before it is saved with mode 0600; a failed test saves nothing (exit 1) unless --no-test. An http address is refused; insecureSkipVerify and credentials of type none are refused for pu.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "name": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    },
+    "saved": {
+      "type": "boolean"
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What the user should know: insecureSkipVerify, the client certificate, a directory others may list"
+    },
+    "test": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "description": "The test before saving, as connector config test reports it",
+          "properties": {
+            "status": {
+              "enum": [
+                "ok",
+                "warn",
+                "fail"
+              ],
+              "description": "fail if a step failed, else warn if one warned, else ok"
+            },
+            "steps": {
+              "type": "array",
+              "description": "Every step, in order",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "enum": [
+                      "file",
+                      "tcp",
+                      "tls",
+                      "auth",
+                      "sds",
+                      "context",
+                      "cards"
+                    ]
+                  },
+                  "status": {
+                    "enum": [
+                      "ok",
+                      "skip",
+                      "warn",
+                      "fail"
+                    ]
+                  },
+                  "findings": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "enum": [
+                            "ok",
+                            "skip",
+                            "warn",
+                            "fail"
+                          ]
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "hint": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "What to do about it"
+                        },
+                        "action": {
+                          "oneOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "enum": [
+                                "renew_pin"
+                              ]
+                            }
+                          ],
+                          "description": "What a front end can offer to do: renew_pin is `connector config pin NAME`"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "message",
+                        "hint",
+                        "action"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "status",
+                  "findings"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "status",
+            "steps"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema",
+    "name",
+    "path",
+    "url",
+    "saved",
+    "warnings",
+    "test"
+  ],
+  "additionalProperties": false
+}

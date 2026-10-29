@@ -66,7 +66,7 @@ use crate::soap::{Method, Request, Response, Transport, TransportError};
 
 mod probe;
 
-pub use probe::{TestOptions, check_config, probe};
+pub use probe::{TestOptions, check_config, probe, server_certificate};
 
 /// Largest response body read; signed and encrypted documents can be large.
 const MAX_BODY: u64 = 64 * 1024 * 1024;

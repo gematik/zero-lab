@@ -50,6 +50,7 @@ pem-rfc7468 = { workspace = true, features = ["alloc"] }
 ti-store = { workspace = true, features = ["store"] }
 ti-types.workspace = true
 rusqlite.workspace = true
+rpassword.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

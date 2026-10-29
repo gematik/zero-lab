@@ -91,17 +91,13 @@ pub async fn check_config<T: Transport>(
         if !report.push(check::tcp(&tcp)) {
             return report.finish();
         }
-        match observed {
-            Some(observed) => {
-                if !report.push(check::tls(&dotkon, &observed, options.now)) {
-                    return report.finish();
-                }
-                tls = Some(observed);
-            }
-            None => {
-                report.push(Step::skipped(StepId::Tls, "url is http: no TLS"));
-            }
+        let Some(observed) = observed else {
+            return report.finish();
+        };
+        if !report.push(check::tls(&dotkon, &observed, options.now)) {
+            return report.finish();
         }
+        tls = Some(observed);
     }
     let transport = match transport(&dotkon) {
         Ok(transport) => transport,
@@ -142,6 +138,47 @@ pub async fn check_config<T: Transport>(
         report.push(check::cards(cards.as_deref().unwrap_or_default()));
     }
     report.finish()
+}
+
+/// The certificates the Konnektor at `url` presents, its own first, trusting none of
+/// them: what a user confirms as the pin. `expected_host` is the name sent as SNI.
+///
+/// # Errors
+///
+/// Why no certificate came: no connection, an http url, a failed handshake.
+pub fn server_certificate(
+    url: &str,
+    expected_host: Option<&str>,
+    timeout: Duration,
+) -> Result<Vec<Vec<u8>>, String> {
+    let dotkon = Dotkon {
+        version: None,
+        url: url.to_owned(),
+        rewrite_service_endpoints: false,
+        mandant_id: String::new(),
+        workplace_id: String::new(),
+        client_system_id: String::new(),
+        user_id: None,
+        credentials: Credentials::None,
+        env: None,
+        insecure_skip_verify: true,
+        expected_host: expected_host.map(str::to_owned),
+        trust_store: Vec::new(),
+        variables: Vec::new(),
+    };
+    let (tcp, tls) = probe(&dotkon, timeout);
+    if tcp.result.is_err() {
+        let step = check::tcp(&tcp);
+        return Err(step.findings[0].message.clone());
+    }
+    let tls = tls.ok_or_else(|| format!("{url} is http: it has no certificate"))?;
+    if tls.chain.is_empty() {
+        return Err(format!(
+            "no server certificate: {}",
+            tls.handshake.err().unwrap_or_default()
+        ));
+    }
+    Ok(tls.chain)
 }
 
 /// Connects to the Konnektor of `dotkon` and shakes hands with its trust: the TCP

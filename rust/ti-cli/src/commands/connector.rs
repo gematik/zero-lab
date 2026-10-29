@@ -58,6 +58,18 @@ pub fn run(cli: &ConnectorCli, global: &GlobalArgs, out: &Output) -> Result<Exit
         ConnectorCommand::Config(ConnectorConfig::Test { name }) => {
             super::connector_config::test(name.as_deref(), &cli.args, global, out)
         }
+        ConnectorCommand::Config(ConnectorConfig::New(args)) => {
+            super::connector_setup::new(args, &cli.args, global, out)
+        }
+        ConnectorCommand::Config(ConnectorConfig::Edit(args)) => {
+            super::connector_setup::edit(args, &cli.args, out)
+        }
+        ConnectorCommand::Config(ConnectorConfig::Set { name, assignments }) => {
+            super::connector_setup::set(name, assignments, out)
+        }
+        ConnectorCommand::Config(ConnectorConfig::Pin(args)) => {
+            super::connector_setup::pin(args, &cli.args, global, out)
+        }
         ConnectorCommand::Get(ConnectorGet::Info) => info(&open()?, out),
         ConnectorCommand::Get(ConnectorGet::Services) => services(&open()?, out),
         ConnectorCommand::Get(ConnectorGet::Cards) => cards(&open()?, out),

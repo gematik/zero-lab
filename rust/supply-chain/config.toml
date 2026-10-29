@@ -642,8 +642,16 @@ criteria = "safe-to-deploy"
 version = "0.21.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.rpassword]]
+version = "7.5.4"
+criteria = "safe-to-deploy"
+
 [[exemptions.rsa]]
 version = "0.10.0-rc.19"
+criteria = "safe-to-deploy"
+
+[[exemptions.rtoolbox]]
+version = "0.0.6"
 criteria = "safe-to-deploy"
 
 [[exemptions.rusqlite]]

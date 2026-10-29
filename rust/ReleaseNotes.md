@@ -33,13 +33,31 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   password, the PKCS#12 bytes and the user ID only where they are kept, with the client
   certificate and the pins and CAs of `trustStore`.
 - `connector config test [NAME]`: the configuration step by step, `file` (valid, mode
-  0600, secrets in plain text, the url's scheme), `tcp`, `tls` (the server certificate against the
+  0600, secrets in plain text, `https`), `tcp`, `tls` (the server certificate against the
   pin or CA, its SHA-256), `auth` (the client certificate before it is offered, and
   whether the Konnektor accepts the client), `sds` (product and service versions),
   `context` (GetCards with the call context, with the fault hints) and `cards`; each
-  finding ok, warn, fail or skip with a hint, exit 1 if one fails. With `env: pu`, an
-  `http` url, `insecureSkipVerify` and credentials `none` fail; elsewhere they warn, and
-  `tls` is skipped for `http`.
+  finding ok, warn, fail or skip with a hint, exit 1 if one fails. With `env: pu`,
+  `insecureSkipVerify` and credentials `none` fail; elsewhere they warn.
+- `connector config new NAME`: a configuration step by step on a terminal (address in
+  any form, environment, the server certificate shown and pinned once confirmed or
+  insecureSkipVerify, basic, pkcs12 or none credentials with the password hidden, the
+  call context), or entirely from options without one (`--url`, `--env`, `--mandant`,
+  `--client-system`, `--workplace`, `--basic`/`--password-path`, `--p12`/
+  `--p12-password-path`/`--p12-pair`, `--no-auth`, `--pin-sha256`, `--pin-cert`,
+  `--insecure-skip-verify`, `--expected-host`, `--rewrite-endpoints`). Tested before it
+  is saved; written atomically with mode 0600 (directory 0700). A PKCS#12 file is shown
+  before use (expiry, key type, legacy encryption, file mode); of several pairs only the
+  chosen one is kept.
+- `connector config set NAME KEY=VALUE`, `connector config edit NAME` ($EDITOR, replaced
+  only by a valid copy; or `--basic`/`--p12`/`--no-auth` for new credentials) and
+  `connector config pin NAME` (the server's certificate next to the pinned one, replaced
+  once confirmed or by `--pin-sha256`/`--pin-cert`). An `http` address is refused;
+  with `env: pu`, `new`, `set` and `edit` refuse `insecureSkipVerify` and credentials
+  `none`.
+- Interactive commands: `ti` asks only when stdin and stderr are terminals; without
+  them a missing option is an error (exit 2), never a wait. Hidden password entry with
+  rpassword 7.5.4 (ti-cli only).
 - `.kon` credentials of type `none`, for Konnektors that do not authenticate client
   systems; `connector get info` reports them as `none`.
 - The help and the guide say that `identity`, `idpd authenticate` and `directory login`
@@ -272,15 +290,23 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   and CAs with their SHA-256. ti-pkcs12 is now a regular dependency.
 - `check`: the test of a `.kon` configuration as pure functions of what the host
   observed, steps `file`, `tcp`, `tls`, `auth`, `sds`, `context`, `cards`, each finding
-  `ok`, `skip`, `warn` or `fail` with a hint; a failed step skips the rest. With
-  `env: pu`, an `http` url, `insecureSkipVerify` and credentials `none` fail; elsewhere
-  they warn. `ureq::check_config` runs the
+  `ok`, `skip`, `warn` or `fail` with a hint; a failed step skips the rest. An `http`
+  url fails (the service directory is read over https only); with `env: pu`,
+  `insecureSkipVerify` and credentials `none` fail, elsewhere they warn. `ureq::check_config` runs the
   steps against a Konnektor (`ureq::probe` connects and records the server certificate
   also when the handshake fails), the service directory and GetCards through the
   caller's transport.
 - `Fault::hint` and `fault_hint`: what to do about faults on the information model
   (4004 to 4007, 4010 to 4012, 4021, 4053, 4060, 4092, 4093, 4204, 4263), formerly in
   ti-cli.
+- `edit`: `.kon` files written by front ends: `normalize_address` (URL, host,
+  host:port, IP, [IPv6]:port; always https, http refused), `NewConfig::to_json`, `set`
+  for the members without secrets, `with_credentials`, `with_pin` (CAs stay),
+  `refusals` (what a change brings that is not allowed: an http url anywhere,
+  insecureSkipVerify and none in a pu file).
+  `ureq::server_certificate` fetches the certificate to pin without trusting it.
+  `check::Finding::action`: `renew_pin` for a server certificate that is not the pinned
+  one.
 - Fuzz target `dotkon` (`just fuzz-ti-connector-client`): the parser, the file check and
   the redacted view.
 

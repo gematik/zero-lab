@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "connector config set",
+  "description": "Members without secrets set in a .kon file; credentials never come from the command line. A change that brings an http url, or insecureSkipVerify or credentials none into a pu file, is refused (exit 2) and nothing is written.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "name": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "changed": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "url",
+          "env",
+          "mandantId",
+          "clientSystemId",
+          "workplaceId",
+          "userId",
+          "expectedHost",
+          "rewriteServiceEndpoints",
+          "insecureSkipVerify"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "name",
+    "path",
+    "changed"
+  ],
+  "additionalProperties": false
+}

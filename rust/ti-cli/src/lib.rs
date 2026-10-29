@@ -26,7 +26,10 @@
 //!
 //! Conventions every command follows: results on stdout, diagnostics and errors on
 //! stderr; `--format json` gives one JSON document with a `"schema"` version; colors
-//! only on a terminal; never a prompt; exit codes as listed in `ti --help`.
+//! only on a terminal; exit codes as listed in `ti --help`. A prompt only on a terminal
+//! (stdin and stderr), in commands meant for people (`connector config new`, `edit`,
+//! `pin`), each of them fully usable through its options; without a terminal a missing
+//! option is an error, never a wait.
 
 mod block;
 mod cli;
@@ -40,6 +43,7 @@ mod net;
 mod output;
 mod paths;
 mod peer;
+mod prompt;
 // Public for the spec/store interoperability driver (examples/store-interop.rs) only;
 // not an API of this crate.
 #[doc(hidden)]

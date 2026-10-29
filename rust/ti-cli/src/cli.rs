@@ -1209,6 +1209,136 @@ pub enum ConnectorConfig {
         #[arg(value_name = "NAME|PATH")]
         name: Option<String>,
     },
+    /// Create a configuration: on a terminal step by step, else from the options; tested
+    /// before it is saved (mode 0600)
+    New(Box<ConfigNewArgs>),
+    /// Change a configuration in $EDITOR, or only its credentials with their options
+    Edit(Box<ConfigEditArgs>),
+    /// Change members without secrets: url, env, mandantId, clientSystemId, workplaceId,
+    /// userId, expectedHost, rewriteServiceEndpoints, insecureSkipVerify
+    Set {
+        /// NAME or path
+        #[arg(value_name = "NAME|PATH")]
+        name: String,
+        /// KEY=VALUE; an empty VALUE removes the member
+        #[arg(value_name = "KEY=VALUE", required = true)]
+        assignments: Vec<String>,
+    },
+    /// Pin the Konnektor's current server certificate, shown next to the pinned one
+    Pin(ConfigPinArgs),
+}
+
+/// `ti connector config new`.
+#[derive(Debug, Args)]
+pub struct ConfigNewArgs {
+    /// The name (saved in ~/.config/telematik/connectors/NAME.kon) or a path
+    #[arg(value_name = "NAME|PATH")]
+    pub name: String,
+    /// The Konnektor: URL, host, host:port, IP, [IPv6]:port; https unless http:// is given
+    #[arg(long, value_name = "ADDRESS")]
+    pub url: Option<String>,
+    /// The environment the Konnektor is connected to
+    #[arg(long, value_name = "ENV", value_parser = ["ru", "tu", "pu"])]
+    pub env: Option<String>,
+    /// Call context: the Mandant
+    #[arg(long, value_name = "ID")]
+    pub mandant: Option<String>,
+    /// Call context: the client system
+    #[arg(long, value_name = "ID")]
+    pub client_system: Option<String>,
+    /// Call context: the workplace
+    #[arg(long, value_name = "ID")]
+    pub workplace: Option<String>,
+    /// Call context: the user, for calls that need one (with an HBA)
+    #[arg(long, value_name = "ID")]
+    pub user_id: Option<String>,
+    #[command(flatten)]
+    pub credentials: ConfigCredentialArgs,
+    #[command(flatten)]
+    pub trust: ConfigTrustArgs,
+    /// The name the server certificate carries, if not the host of the url
+    #[arg(long, value_name = "HOST")]
+    pub expected_host: Option<String>,
+    /// Send every service to the host of the url (NAT, port forward)
+    #[arg(long)]
+    pub rewrite_endpoints: bool,
+    /// Save without testing (the Konnektor is not reachable from here)
+    #[arg(long)]
+    pub no_test: bool,
+    /// Replace an existing file
+    #[arg(long)]
+    pub force: bool,
+}
+
+/// The credentials of `config new` and `config edit`; secrets only from files.
+#[derive(Debug, Args)]
+pub struct ConfigCredentialArgs {
+    /// Basic authentication as USER (password from --password-path)
+    #[arg(long, value_name = "USER", conflicts_with_all = ["p12", "no_auth"], requires = "password_path")]
+    pub basic: Option<String>,
+    /// File whose first line is the basic password
+    #[arg(long, value_name = "FILE")]
+    pub password_path: Option<PathBuf>,
+    /// Mutual TLS with this PKCS#12 file (its password from --p12-password-path)
+    #[arg(long, value_name = "FILE", conflicts_with = "no_auth")]
+    pub p12: Option<PathBuf>,
+    /// File whose first line is the PKCS#12 password
+    #[arg(long, value_name = "FILE")]
+    pub p12_password_path: Option<PathBuf>,
+    /// Which certificate with its key, when the PKCS#12 file holds several (1, 2, …)
+    #[arg(long, value_name = "N")]
+    pub p12_pair: Option<usize>,
+    /// No client authentication (refused for pu)
+    #[arg(long)]
+    pub no_auth: bool,
+}
+
+impl ConfigCredentialArgs {
+    /// Whether any credential option is given.
+    pub fn given(&self) -> bool {
+        self.basic.is_some() || self.p12.is_some() || self.no_auth
+    }
+}
+
+/// How `config new` trusts the Konnektor's TLS certificate.
+#[derive(Debug, Args)]
+pub struct ConfigTrustArgs {
+    #[command(flatten)]
+    pub pin: ConfigPinChoice,
+    /// Accept any server certificate (test Konnektors; refused for pu)
+    #[arg(long, conflicts_with_all = ["pin_cert", "pin_sha256"])]
+    pub insecure_skip_verify: bool,
+}
+
+/// How a pin is confirmed without a terminal.
+#[derive(Debug, Args)]
+pub struct ConfigPinChoice {
+    /// Pin this certificate (PEM or DER) instead of asking
+    #[arg(long, value_name = "FILE", conflicts_with = "pin_sha256")]
+    pub pin_cert: Option<PathBuf>,
+    /// Pin the server's certificate if its SHA-256 is this (hex, colons allowed)
+    #[arg(long, value_name = "HEX")]
+    pub pin_sha256: Option<String>,
+}
+
+/// `ti connector config edit`.
+#[derive(Debug, Args)]
+pub struct ConfigEditArgs {
+    /// NAME or path; default: -c, else the selected configuration
+    #[arg(value_name = "NAME|PATH")]
+    pub name: Option<String>,
+    #[command(flatten)]
+    pub credentials: ConfigCredentialArgs,
+}
+
+/// `ti connector config pin`.
+#[derive(Debug, Args)]
+pub struct ConfigPinArgs {
+    /// NAME or path; default: -c, else the selected configuration
+    #[arg(value_name = "NAME|PATH")]
+    pub name: Option<String>,
+    #[command(flatten)]
+    pub pin: ConfigPinChoice,
 }
 
 /// `ti connector export …`.

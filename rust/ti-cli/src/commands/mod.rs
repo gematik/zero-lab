@@ -29,6 +29,7 @@ mod bundle;
 mod cache;
 mod connector;
 mod connector_config;
+mod connector_setup;
 mod directory;
 mod documents;
 mod identity;

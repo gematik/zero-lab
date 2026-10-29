@@ -42,15 +42,15 @@ use crate::error::{CliError, Exit};
 use crate::output::{Document, Line, Output, Tone};
 
 /// A `.kon` file as read from disk.
-struct KonFile {
-    name: String,
-    path: PathBuf,
-    json: Vec<u8>,
-    mode: Option<u32>,
+pub(super) struct KonFile {
+    pub name: String,
+    pub path: PathBuf,
+    pub json: Vec<u8>,
+    pub mode: Option<u32>,
 }
 
 /// The file of `name`, else of `-c`, else of the selected configuration.
-fn read(name: Option<&str>, args: &ConnectorArgs) -> Result<KonFile, CliError> {
+pub(super) fn read(name: Option<&str>, args: &ConnectorArgs) -> Result<KonFile, CliError> {
     let (name, _) = connector::selected(name.or(args.connector_config.as_deref()));
     let path = connector::resolve(&name)?;
     let json = std::fs::read(&path)
@@ -64,13 +64,13 @@ fn read(name: Option<&str>, args: &ConnectorArgs) -> Result<KonFile, CliError> {
 }
 
 #[cfg(unix)]
-fn mode(path: &Path) -> Option<u32> {
+pub(super) fn mode(path: &Path) -> Option<u32> {
     use std::os::unix::fs::PermissionsExt as _;
     std::fs::metadata(path).ok().map(|m| m.permissions().mode())
 }
 
 #[cfg(not(unix))]
-fn mode(_: &Path) -> Option<u32> {
+pub(super) fn mode(_: &Path) -> Option<u32> {
     None
 }
 
@@ -245,22 +245,7 @@ pub fn test(
 ) -> Result<Exit, CliError> {
     let file = read(name, args)?;
     let agent = connector::agent_config(global)?;
-    let options = TestOptions {
-        connect_timeout: global.net.connect_timeout,
-        timeouts: Timeouts {
-            short: args.connector_timeout,
-            long: args.card_timeout,
-        },
-        now: crate::store::profile::now(),
-        through_proxy: connector::explicit_proxy(global).is_some(),
-    };
-    let report = block_on(ti_connector_client::ureq::check_config(
-        &file.json,
-        file.mode,
-        |name| std::env::var(name).ok(),
-        |dotkon| UreqTransport::new(dotkon, agent).map(|t| Logged::new(t, out)),
-        options,
-    ));
+    let report = run_checks(&file.json, file.mode, args, global, agent, out);
     let exit = if report.status == Status::Fail {
         Exit::Invalid
     } else {
@@ -274,29 +259,68 @@ pub fn test(
     emit(out, exit, &shown, |doc| {
         doc.section(format!("Test of {}", shown.name));
         doc.field("path", Line::code(&shown.path));
-        doc.section("Steps");
-        for step in &report.steps {
-            let mut lines = Vec::new();
-            for finding in &step.findings {
-                lines.push(finding_line(finding));
-                if let Some(hint) = &finding.hint
-                    && finding.status >= Status::Warn
-                {
-                    lines.push(Line::dim(format!("      {hint}")));
-                }
-            }
-            doc.items(step.id.as_str(), lines);
-        }
-        doc.section("Result");
-        doc.paragraph(match report.status {
-            Status::Fail => Line::status(Tone::Bad, "fail"),
-            Status::Warn => Line::status(Tone::Warn, "works, with warnings"),
-            Status::Ok | Status::Skip => Line::status(Tone::Good, "ok"),
-        });
+        render_report(doc, &report, shown.name);
     })
 }
 
-fn finding_line(finding: &Finding) -> Line {
+/// The steps of `report` and its result; an action names the command that does it for
+/// the configuration `name`.
+pub(super) fn render_report(doc: &mut Document, report: &Report, name: &str) {
+    doc.section("Steps");
+    for step in &report.steps {
+        let mut lines = Vec::new();
+        for finding in &step.findings {
+            lines.push(finding_line(finding));
+            if let Some(hint) = &finding.hint
+                && finding.status >= Status::Warn
+            {
+                lines.push(Line::dim(format!("      {hint}")));
+            }
+            if finding.action == Some("renew_pin") {
+                lines.push(
+                    Line::dim("      ")
+                        .and_code(format!("{} connector config pin {name}", crate::BIN)),
+                );
+            }
+        }
+        doc.items(step.id.as_str(), lines);
+    }
+    doc.section("Result");
+    doc.paragraph(match report.status {
+        Status::Fail => Line::status(Tone::Bad, "fail"),
+        Status::Warn => Line::status(Tone::Warn, "works, with warnings"),
+        Status::Ok | Status::Skip => Line::status(Tone::Good, "ok"),
+    });
+}
+
+/// Runs the checks of `json` against the Konnektor it names.
+pub(super) fn run_checks(
+    json: &[u8],
+    mode: Option<u32>,
+    args: &ConnectorArgs,
+    global: &GlobalArgs,
+    agent: ureq::config::ConfigBuilder<ureq::typestate::AgentScope>,
+    out: &Output,
+) -> Report {
+    let options = TestOptions {
+        connect_timeout: global.net.connect_timeout,
+        timeouts: Timeouts {
+            short: args.connector_timeout,
+            long: args.card_timeout,
+        },
+        now: crate::store::profile::now(),
+        through_proxy: connector::explicit_proxy(global).is_some(),
+    };
+    block_on(ti_connector_client::ureq::check_config(
+        json,
+        mode,
+        |name| std::env::var(name).ok(),
+        |dotkon| UreqTransport::new(dotkon, agent).map(|t| Logged::new(t, out)),
+        options,
+    ))
+}
+
+pub(super) fn finding_line(finding: &Finding) -> Line {
     let word = match finding.status {
         Status::Ok => Line::status(Tone::Good, "ok  "),
         Status::Warn => Line::status(Tone::Warn, "warn"),

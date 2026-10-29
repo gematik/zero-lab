@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "connector config pin",
+  "description": "The Konnektor's current server certificate pinned in trustStore after confirmation, --pin-sha256 or --pin-cert; CA certificates of trustStore and insecureSkipVerify stay.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "name": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "changed": {
+      "type": "boolean",
+      "description": "false if the certificate was pinned already"
+    },
+    "sha256": {
+      "type": "string",
+      "description": "SHA-256 of the pinned certificate"
+    },
+    "insecure_skip_verify": {
+      "type": "boolean",
+      "description": "Still set: any certificate is accepted despite the pin"
+    }
+  },
+  "required": [
+    "schema",
+    "name",
+    "path",
+    "changed",
+    "sha256",
+    "insecure_skip_verify"
+  ],
+  "additionalProperties": false
+}

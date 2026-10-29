@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: 2026-10-24 06:43
-updated_date: '2026-10-29T07:53:00Z'
+updated_date: '2026-10-29T08:15:00Z'
 labels:
   - ti-cli
   - connector
@@ -124,4 +124,6 @@ Decisions (maintainer, 2026-10-29, cont.):
 - insecureSkipVerify is not migrated (maintainer, 2026-10-29). Instead a re-pin command (config pin NAME, TASK-136.2) renews the pin of a changed server certificate after showing old and new.
 
 - Changed (maintainer, 2026-10-29): http is supported outside the production environment. An http url warns (no TLS, credentials unencrypted) and fails for env pu, like insecureSkipVerify and none; pkcs12 credentials need https; the tls step is skipped for http. This replaces "connector.sds only over HTTPS" and "an http:// input is an error" above. Done in TASK-136.1's code; TASK-136.2's address criterion follows.
+
+- Reverted (maintainer, 2026-10-29): https only after all. An http url fails config test's file step everywhere; new refuses an http address (exit 2); set and edit refuse a change that brings an http url. The http support of commit a498d2f is undone in TASK-136.2's work; the decisions "connector.sds only over HTTPS" and "an http:// input is an error" above apply again.
 <!-- SECTION:NOTES:END -->

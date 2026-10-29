@@ -435,6 +435,11 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 {bin} connector use praxis                              # select one for later commands
 {bin} --format json connector config show [NAME]        # the .kon without its secrets
 {bin} --format json connector config test [NAME]        # step by step to the cards; exit 1 if one fails
+{bin} --format json connector config new NAME --url ADDRESS --env ru --mandant M --client-system C \
+    --workplace W --basic USER --password-path FILE --pin-sha256 HEX   # tested, then saved 0600
+{bin} --format json connector config set NAME workplaceId=W2     # members without secrets
+{bin} --format json connector config edit NAME --p12 FILE --p12-password-path FILE   # new credentials
+{bin} --format json connector config pin NAME --pin-sha256 HEX   # renew the pin
 {bin} --format json connector -c praxis get info        # configuration and product
 {bin} --format json connector get services              # "used": the versions this tool calls
 {bin} --format json connector get cards
@@ -490,16 +495,27 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   `rewriteServiceEndpoints: true` sends every service to the host of `url` (a Konnektor
   behind NAT or a port forward), `insecureSkipVerify: true` skips the server check (test
   Konnektors only). The message of `connector_config` lists every problem at once.
-- `config test` runs the steps `file` (valid, mode 0600, secrets in plain text, the
-  url's scheme), `tcp`, `tls` (the server certificate against the pin or a CA of
-  `trustStore`; skipped for an `http` url), `auth` (the client certificate before it is offered, and whether the
-  Konnektor accepts the client), `sds` (product and service versions), `context`
+- `config test` runs the steps `file` (valid, mode 0600, secrets in plain text, an
+  `https` url: the service directory is read over https only), `tcp`, `tls` (the
+  server certificate against the pin or a CA of `trustStore`), `auth` (the client
+  certificate before it is offered, and whether the Konnektor accepts the client), `sds` (product and service versions), `context`
   (GetCards with the call context) and `cards`; each finding is `ok`, `warn`, `fail` or
-  `skip` with a `hint`, and a failed step skips the rest. With `env: pu`, an
-  `http` url, `insecureSkipVerify` and credentials `none` fail; elsewhere they warn
-  (`pkcs12` credentials need `https` everywhere). It uses no PIN
+  `skip` with a `hint`, and a failed step skips the rest. With `env: pu`,
+  `insecureSkipVerify` and credentials `none` fail; elsewhere they warn. It uses no PIN
   and no cache, so run it first when a connector command fails with `connector_config`
   or a transport error. With `-x`, `tcp` and `tls` are skipped.
+- `config new`, `edit` and `pin` ask on a terminal; without one (as for an agent)
+  every answer comes from an option, and a missing one is exit 2 naming it, never a
+  wait. Run them with options only, and only when the user asks for a configuration.
+  Secrets come from files (`--password-path`, `--p12-password-path`), never as values;
+  `config set` takes no credentials. The server certificate is trusted only through
+  `--pin-sha256` (the user read the hash from the Konnektor's management; never take it
+  from the server you are pinning), `--pin-cert FILE` or `--insecure-skip-verify` (test
+  Konnektors). `new` tests the file before saving it with mode 0600; a failed test saves
+  nothing (exit 1) unless `--no-test`. `--rewrite-endpoints` for a Konnektor behind NAT.
+  An `http` address is refused everywhere; with `env pu`, `new`, `set` and `edit` refuse
+  `insecureSkipVerify` and credentials `none` (exit 2). A changed server certificate makes `config test` fail
+  with `action: "renew_pin"`; `config pin NAME` renews it.
 - `${NAME}` is expanded only in `credentials.username`, `.password` and `.data`, from
   the environment; anywhere else it is an error, and so is an unset variable, so a
   `.kon` file from someone else cannot send environment variables to its host. `-v`
