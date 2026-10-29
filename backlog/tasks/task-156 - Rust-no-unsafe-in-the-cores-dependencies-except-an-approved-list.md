@@ -4,6 +4,7 @@ title: 'Rust: no unsafe in the cores'' dependencies except an approved list'
 status: To Do
 assignee: []
 created_date: '2026-10-29T06:33:00Z'
+updated_date: '2026-10-29T07:48:00Z'
 labels:
   - rust
   - security
@@ -32,3 +33,9 @@ Which crates are cores and which are hosts is decided in the task (ti-cli, ti-wa
 - [ ] #5 A just check recipe fails when a core's tree gains a crate with `unsafe` that is not on the list, also for a new version of a listed crate that is checked again; it is part of just check
 - [ ] #6 The dependency proposal template for agents says whether a crate contains `unsafe` and in which crate it would land
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Input from TASK-136.1 (2026-10-29): ti-pkcs12 is a regular dependency of ti-connector-client since then (for the redacted view and the client-certificate check), bringing pkcs5, cbc, des, rc2, hmac, sha1 into its core tree; part of the inventory.
+<!-- SECTION:NOTES:END -->

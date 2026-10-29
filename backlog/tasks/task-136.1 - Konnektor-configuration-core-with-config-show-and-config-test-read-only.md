@@ -1,10 +1,10 @@
 ---
 id: TASK-136.1
 title: Konnektor configuration core with config show and config test (read-only)
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-10-29T06:44:00Z'
-updated_date: '2026-10-29T07:29:00Z'
+updated_date: '2026-10-29T07:48:00Z'
 labels:
   - ti-cli
   - connector
@@ -59,4 +59,12 @@ Implemented (2026-10-29):
 - just check passes.
 - AC1 open: the code is in the core under the workspace lints, but ti-pkcs12 (RustCrypto ciphers) is now a regular dependency of ti-connector-client; whether its tree is within the unsafe list is decided by TASK-156, which has no list yet.
 - Open: HITL against a real Konnektor (ti connector config test NAME, ti connector config show NAME).
+
+HITL (maintainer, 2026-10-29): config show and config test work against a real Konnektor. AC1's dependency part goes to TASK-156 (ti-pkcs12 and its RustCrypto ciphers now in ti-connector-client's core tree).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ti connector config show|test on shared core pieces in ti-connector-client (config view, check steps, TLS probe, fault hints), credentials type none, two JSON schemas, the dotkon fuzz target. Tests: 23 rule tests, 7 driver tests against a loopback TLS Konnektor, 2 ti-cli tests; HITL against a real Konnektor passed. Whether ti-pkcs12's tree may stay in the core is decided by TASK-156.
+<!-- SECTION:FINAL_SUMMARY:END -->
