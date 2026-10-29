@@ -4,13 +4,18 @@ title: 'Konnektor configuration: config migrate'
 status: To Do
 assignee: []
 created_date: '2026-10-29T06:44:00Z'
-updated_date: '2026-10-29T06:48:00Z'
+updated_date: '2026-10-29T11:06:00Z'
 labels:
   - ti-cli
   - connector
   - security
-milestone: m-0
-dependencies: []
+  - parked
+dependencies:
+  - TASK-104
+references:
+  - >-
+    backlog/decisions/decision-7 -
+    Tokens-persisted-only-as-sealed-records-under-a-profile-keyring.md
 parent_task_id: TASK-136
 priority: medium
 ordinal: 167000
@@ -29,3 +34,9 @@ Third part of TASK-136: bring existing .kon files to the new rules. Where secret
 - [ ] #3 A backup of the original is kept with mode 0600 until the migrated file passed config test
 - [ ] #4 Tests named after the requirement each proves
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-10-29 zurückgestellt (Maintainer): wartet auf das Secret-Management (TASK-104 Plattform-Keyring, decision-7). Erst danach steht fest, wohin migrate die Geheimnisse einer .kon verschiebt.
+<!-- SECTION:NOTES:END -->
