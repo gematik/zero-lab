@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: 2026-10-24 06:43
-updated_date: '2026-10-29T06:35:00Z'
+updated_date: '2026-10-29T06:39:00Z'
 labels:
   - ti-cli
   - connector
@@ -109,4 +109,8 @@ Decisions (maintainer, 2026-10-29):
 - Editing: flags and config set NAME KEY=VALUE (base, agents), a line wizard over the same steps, $EDITOR with validation before replacing for edit. No TUI (new dependency tree, a third front end next to the GUI).
 - Hidden password input through rpassword 7.5.4 (+ rtoolbox 0.0.6, pinned exactly; libc, windows-sys, windows-link already in the tree), approved for ti-cli only, never a core (TASK-156: no unsafe in the cores' dependencies).
 - Split: (1) core model with show and test, read-only; (2) new with pin, edit and set; (3) migrate (move inline secrets out, replace insecureSkipVerify by a pin). Secret storage stays open: better secret management is planned (TASK-104, decision-7); until then the .kon itself is a secret (0600, never printed).
+
+Requirements (maintainer, 2026-10-29):
+- insecureSkipVerify stays an option: new offers it as an explicit choice (flag --insecure-skip-verify, in the wizard only after the certificate was shown and with a warning), never as a fallback; test and show report it as warn. Open: refuse it for env pu?
+- No authentication as an option: proposal "credentials": {"type": "none"}, explicit rather than an omitted credentials object, so a forgotten block stays an error. ti-connector-client's dotkon parser gets Credentials::None (today: basic or pkcs12, credentials required). Go and Kotlin clients read the same format; whether they accept type none is to be checked, and a .kon with none may be unreadable for them.
 <!-- SECTION:NOTES:END -->
