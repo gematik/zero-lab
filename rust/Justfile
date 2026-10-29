@@ -549,6 +549,35 @@ fuzz-ti-connector-client seconds="30":
         [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
     done
 
+# Fuzz ti-pkcs12's decoder for `seconds` (design time; nightly, cargo-fuzz and Go). The
+# seeds are a fresh spec/pkcs12 conformance corpus and its vendor files, each as a
+# length byte, the password and the file; corpora grow in ti-pkcs12/fuzz/corpus (not
+# committed).
+fuzz-ti-pkcs12 seconds="30":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    spec="$PWD/../spec/pkcs12"
+    cd ti-pkcs12/fuzz
+    work=$(mktemp -d)
+    trap 'rm -rf "$work"' EXIT
+    (cd "$spec/tool" && go build -o "$work/p12conformance" .)
+    "$work/p12conformance" generate -manifest "$spec/testdata/manifest.json" -out "$work/corpus" >/dev/null
+    cp "$spec"/testdata/vendor/*.p12 "$spec"/testdata/vendor/*-password.txt "$work/corpus/"
+    rm -rf seeds/decode && mkdir -p seeds/decode corpus/decode
+    for file in "$work"/corpus/*.p12; do
+        name=$(basename "$file" .p12)
+        password_file="$work/corpus/${name%.*}.password"
+        [ -f "$password_file" ] || password_file="$work/corpus/$name-password.txt"
+        password=$(tr -d '\n' < "$password_file")
+        length=$(printf %s "$password" | wc -c | tr -d ' ')
+        { printf "\\$(printf %03o "$length")"; printf %s "$password"; cat "$file"; } > "seeds/decode/$name"
+    done
+    cargo +{{JWZ_NIGHTLY}} fuzz run -O decode corpus/decode seeds/decode -- \
+        -max_total_time={{seconds}} -max_len=65536 -timeout=30 -malloc_limit_mb=256 \
+        -print_final_stats=1 2>&1 \
+        | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
+    [ -z "$(ls -A artifacts/decode 2>/dev/null)" ] || { echo "decode: crash in artifacts/decode" >&2; exit 1; }
+
 # Chrome for Testing (headless shell and its chromedriver) for `jwz-browser`; override
 # the location with JWZ_CHROME_DIR=<dir>
 JWZ_CHROME_DIR := env_var_or_default("JWZ_CHROME_DIR", env_var("HOME") / "Development/tools/chrome")
