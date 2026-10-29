@@ -4,6 +4,7 @@ title: 'Konnektor configuration: config new, edit and set'
 status: To Do
 assignee: []
 created_date: '2026-10-29T06:44:00Z'
+updated_date: '2026-10-29T06:48:00Z'
 labels:
   - ti-cli
   - connector
@@ -32,4 +33,5 @@ Second part of TASK-136, on the core of the first. Decisions in TASK-136's notes
 - [ ] #7 The file is written atomically with mode 0600 in a directory with mode 0700; secrets are never printed
 - [ ] #8 config edit NAME opens a copy in $EDITOR and replaces the file only after validation; config edit NAME --p12 FILE replaces the client certificate and keeps pin and context; config set NAME KEY=VALUE changes one field
 - [ ] #9 Tests named after the requirement each proves, including the non-interactive paths and the PU refusals
+- [ ] #10 config pin NAME renews the pin: it shows the server's current certificate next to the pinned one (subject, issuer, validity, SHA-256), replaces the pin only after confirmation (or with --pin-file) and leaves insecureSkipVerify untouched; config test's hint on a changed certificate names this command
 <!-- AC:END -->

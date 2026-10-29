@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: 2026-10-24 06:43
-updated_date: '2026-10-29T06:40:00Z'
+updated_date: '2026-10-29T06:48:00Z'
 labels:
   - ti-cli
   - connector
@@ -108,7 +108,7 @@ Decisions (maintainer, 2026-10-29):
 - Interactive subcommands not meant for agents are allowed. Every interactive command is also fully usable through flags; it asks only when stdin is a terminal and fails with exit 2 instead of waiting otherwise. The "never a prompt" sentence in lib.rs and AGENTS.md is narrowed accordingly.
 - Editing: flags and config set NAME KEY=VALUE (base, agents), a line wizard over the same steps, $EDITOR with validation before replacing for edit. No TUI (new dependency tree, a third front end next to the GUI).
 - Hidden password input through rpassword 7.5.4 (+ rtoolbox 0.0.6, pinned exactly; libc, windows-sys, windows-link already in the tree), approved for ti-cli only, never a core (TASK-156: no unsafe in the cores' dependencies).
-- Split: (1) core model with show and test, read-only; (2) new with pin, edit and set; (3) migrate (move inline secrets out, replace insecureSkipVerify by a pin). Secret storage stays open: better secret management is planned (TASK-104, decision-7); until then the .kon itself is a secret (0600, never printed).
+- Split: (1) core model with show and test, read-only; (2) new with pin, edit and set; (3) migrate (file modes, move inline secrets out; insecureSkipVerify stays, see re-pin below). Secret storage stays open: better secret management is planned (TASK-104, decision-7); until then the .kon itself is a secret (0600, never printed).
 
 Requirements (maintainer, 2026-10-29):
 - insecureSkipVerify stays an option: new offers it as an explicit choice (flag --insecure-skip-verify, in the wizard only after the certificate was shown and with a warning), never as a fallback; test and show report it as warn. Open: refuse it for env pu?
@@ -120,4 +120,6 @@ Decisions (maintainer, 2026-10-29, cont.):
 - Credentials type none: the Go and Kotlin clients are extended later by the maintainer; not a blocker here.
 
 - Credentials type none is refused for env pu too, like insecureSkipVerify: new, set and edit refuse it; test reports an existing one as fail. Not refused when a .kon is loaded (maintainer, 2026-10-29): the parser accepts both for pu; only the config commands refuse them and test reports them.
+
+- insecureSkipVerify is not migrated (maintainer, 2026-10-29). Instead a re-pin command (config pin NAME, TASK-136.2) renews the pin of a changed server certificate after showing old and new.
 <!-- SECTION:NOTES:END -->
