@@ -3,10 +3,12 @@ id: TASK-46
 title: 'Fuzz targets for ti-pkcs12: decode with MAC, KDF and PBE parameters'
 status: To Do
 assignee: []
-created_date: '2026-10-14 20:42'
+created_date: 2026-10-14 20:42
+updated_date: '2026-10-29T11:50:00Z'
 labels:
   - ti-pkcs12
   - fuzz
+milestone: m-0
 dependencies: []
 references:
   - docs/design/testing.md

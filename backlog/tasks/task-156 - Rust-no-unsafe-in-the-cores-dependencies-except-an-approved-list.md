@@ -4,11 +4,12 @@ title: 'Rust: no unsafe in the cores'' dependencies except an approved list'
 status: To Do
 assignee: []
 created_date: '2026-10-29T06:33:00Z'
-updated_date: '2026-10-29T07:48:00Z'
+updated_date: '2026-10-29T11:50:00Z'
 labels:
   - rust
   - security
   - dependencies
+milestone: m-0
 dependencies: []
 priority: medium
 ordinal: 164000

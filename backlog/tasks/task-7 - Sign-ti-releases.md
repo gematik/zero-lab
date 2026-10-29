@@ -4,10 +4,9 @@ title: Sign ti releases
 status: To Do
 assignee: []
 created_date: 2026-10-09 13:55
-updated_date: '2026-10-26T15:44:00Z'
+updated_date: '2026-10-29T11:50:00Z'
 labels:
   - release
-milestone: m-0
 dependencies: []
 references:
   - Justfile

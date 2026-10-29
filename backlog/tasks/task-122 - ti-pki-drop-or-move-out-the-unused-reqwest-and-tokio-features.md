@@ -3,10 +3,12 @@ id: TASK-122
 title: 'ti-pki: drop or move out the unused reqwest and tokio features'
 status: To Do
 assignee: []
-created_date: '2026-10-20 17:46'
+created_date: 2026-10-20 17:46
+updated_date: '2026-10-29T11:50:00Z'
 labels:
   - ti-pki
   - dependencies
+milestone: m-0
 dependencies: []
 priority: low
 ordinal: 133000
