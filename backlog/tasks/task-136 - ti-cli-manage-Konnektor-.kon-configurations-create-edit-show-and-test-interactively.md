@@ -118,4 +118,6 @@ Decisions (maintainer, 2026-10-29, cont.):
 - The first step of new is tolerant: a full URL, an FQDN or an IP address, with or without port or path. ti normalises to https://HOST[:PORT] (IPv6 in brackets, port 443 by default, a trailing /connector.sds or other path dropped) and shows the result before connecting. An http:// input is taken as https, never fetched over HTTP.
 - insecureSkipVerify is refused for env pu (new, set, edit; test reports an existing one as fail).
 - Credentials type none: the Go and Kotlin clients are extended later by the maintainer; not a blocker here.
+
+- Credentials type none is refused for env pu too, like insecureSkipVerify: new, set and edit refuse it; test reports an existing one as fail. Open for the parser: reject both for pu already when a .kon is loaded, so no command can use such a file in PU.
 <!-- SECTION:NOTES:END -->
