@@ -1,10 +1,10 @@
 ---
 id: TASK-136.2
 title: 'Konnektor configuration: config new, edit and set'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-10-29T06:44:00Z'
-updated_date: '2026-10-29T10:21:00Z'
+updated_date: '2026-10-29T11:04:00Z'
 labels:
   - ti-cli
   - connector
@@ -49,3 +49,9 @@ Implemented (2026-10-29):
 
 Nach fehlgeschlagenem Test im Assistenten: Auswahl Aufrufkontext neu eingeben (Mandant, Clientsystem, Arbeitsplatz; bisherige Werte als Vorgabe) und erneut testen, trotzdem speichern oder verwerfen. Ohne Terminal unverändert: nichts gespeichert.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ti connector config new (Assistent am Terminal oder vollständig über Optionen; Pin nach Bestätigung, --pin-sha256/--pin-cert; Test vor dem Speichern, nach Fehlschlag Aufrufkontext neu eingeben, trotzdem speichern oder verwerfen; atomar 0600), config set (Felder ohne Geheimnis), config edit ($EDITOR, nur gültige Kopie; Zugangsdaten tauschen), config pin (Re-Pin, von config test als Aktion renew_pin genannt). https-only; insecureSkipVerify und none in pu abgelehnt. rpassword nur in ti-cli. HITL gegen echten Konnektor bestanden.
+<!-- SECTION:FINAL_SUMMARY:END -->
