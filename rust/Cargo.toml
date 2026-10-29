@@ -1,5 +1,5 @@
 [workspace]
-members = ["ti-types", "ti-store", "ti-xmldsig", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-report", "ti-cli", "ti-wasm", "jwz", "jwz-brainpool", "ti-jwz", "ti-idpd", "ti-directory"]
+members = ["ti-types", "ti-store", "ti-xmldsig", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-report", "ti-cli", "ti-wasm", "jwz", "jwz-brainpool", "ti-jwz", "ti-idpd", "ti-directory", "unsafe-audit"]
 # cargo-fuzz targets need nightly and a dependency tree of their own.
 exclude = ["jwz/fuzz"]
 resolver = "3"
@@ -116,6 +116,13 @@ aes-kw = { version = "0.3.1", default-features = false }
 hkdf = { version = "0.13.0", default-features = false }
 rand_core = { version = "0.10.1", default-features = false }
 getrandom = { version = "0.4.3", default-features = false }
+
+# unsafe-audit (`just unsafe-free`) parses the dependencies' sources; a development tool,
+# never a dependency of a core or the CLI. Versions and features already in the lock file
+# through proc macros. Approved 2026-10-29 (TASK-156).
+syn = { version = "3.0.6", default-features = false, features = ["full", "visit", "parsing", "printing"] }
+proc-macro2 = { version = "1.0.107", default-features = false }
+quote = { version = "1.0.47", default-features = false }
 
 # Test-only.
 futures-lite = "2.6.1"

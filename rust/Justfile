@@ -336,7 +336,7 @@ wasm-vendor dest="../../gemiverse": wasm-smoke wasm-size
 # ---- Tier 1: every change, and before a release ------------------------------------
 
 # Everything a PR must pass, in the order that fails fastest
-check: fmt clippy doc test wasm32 wasm-unsafe-free core-deps nonprod-absent jwz-backends jwz-rsa-guard machete deny vet
+check: fmt clippy doc test wasm32 wasm-unsafe-free unsafe-free core-deps nonprod-absent jwz-backends jwz-rsa-guard machete deny vet
     just brainpool-absent jwz
     just brainpool-absent ti-jwz
 
@@ -400,6 +400,11 @@ wasm32:
 # No `unsafe` in ti-wasm's own sources
 wasm-unsafe-free:
     ! grep -rnw unsafe ti-wasm/src
+
+# The cores' dependency trees hold no unsafe beyond the approved exceptions
+# (docs/unsafe-exceptions.md); `cargo run -p unsafe-audit -- inventory` lists the sites
+unsafe-free:
+    cargo run -q --locked -p unsafe-audit -- check
 
 # ti-pki's and ti-connector-client's cores (everything but the optional adapter and
 # algorithm features) pull in no HTTP client, TLS, executor, file watcher or brainpool
