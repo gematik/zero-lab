@@ -41,7 +41,6 @@ documentation and regenerates them bit for bit.
     "code": null,
     "rule": null,
     "warnings": [],
-    "signature": "detached",
     "signer_serial": "06",
     "sequence_number": 10717
   }
@@ -60,7 +59,6 @@ documentation and regenerates them bit for bit.
 | `expect.result` | `valid` or `invalid` |
 | `expect.code`, `expect.rule` | the single result code and the rule of an invalid fixture |
 | `expect.warnings` | the warnings that must be present, and no others |
-| `expect.signature` | `detached` |
 | `expect.signer_serial`, `expect.sequence_number` | values the implementation must report for a valid list |
 
 A conformance test fails when a manifest entry names a rule that README.md does not
@@ -80,7 +78,7 @@ run):
 ```json
 { "result": "invalid", "code": "detached_signature_error", "rule": "TSLDET-005",
   "detail": "the signature value does not verify", "warnings": [],
-  "signature": "detached", "signer_serial": null, "sequence_number": null }
+  "signer_serial": null, "sequence_number": null }
 ```
 
 ## Conformance

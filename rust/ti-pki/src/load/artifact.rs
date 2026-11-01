@@ -132,7 +132,7 @@ pub enum ArtifactResponse {
 }
 
 /// The detached files loaded with a list (`spec/tsl-detached`): the signature, and the
-/// signer's status when the source published one.
+/// signer's status when one could be loaded.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Detached {
     /// The `.sig` bytes.
@@ -156,8 +156,8 @@ pub struct TrustMaterial {
     pub fetched_at: Timestamp,
     /// Metadata of roots.json and the TSL, in that order.
     pub meta: [Meta; 2],
-    /// The list's detached signature and signer status, when the source has them.
-    /// Without them the list is verified by its enveloped signature.
+    /// The list's detached signature and signer status. Without the signature the list
+    /// does not verify (TSLDET-013).
     pub detached: Option<Detached>,
 }
 
@@ -174,8 +174,8 @@ impl TrustMaterial {
     }
 
     /// The same material with `detached` as its detached files. They do not change
-    /// `fetched_at`: they are optional, and their age is bound by their own rules
-    /// (TSLDET-013, 021), so a CRL host that is down costs no trust.
+    /// `fetched_at`: a signature is good for its list at any age and a status has its own
+    /// limit (TSLDET-015, 021), so a CRL host that is down does not age what HTTPS confirms.
     #[must_use]
     pub fn with_detached(mut self, detached: Option<Detached>) -> Self {
         self.detached = detached;

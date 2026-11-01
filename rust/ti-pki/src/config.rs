@@ -108,12 +108,10 @@ pub struct TrustConfig {
     pub tsl_url: Cow<'static, str>,
     /// The list at the automated download point of gemSpec_TSL A_21182, next to which
     /// its detached signature (`.sig`) and its signer's OCSP response (`.ocsp`) are
-    /// published; the two derive from this URL by their suffix. With it the loaders
-    /// fetch the three files as one set and the list is verified by the detached
-    /// signature (`spec/tsl-detached`); `None` leaves the enveloped signature. Plain
-    /// `http://` is what A_21175 mandates there: the list is taken from here only under
-    /// the hash published at `tsl_url`, and from `tsl_url` otherwise.
-    pub tsl_detached_url: Option<Cow<'static, str>>,
+    /// published; the two derive from this URL by their suffix. The loaders fetch the three
+    /// files as one set (`spec/tsl-detached`). Plain `http://` is what A_21175 mandates
+    /// there: the list is taken from here only under the hash published at `tsl_url`.
+    pub tsl_detached_url: Cow<'static, str>,
     /// The `GEM.TSL-CA<n>` TSL signer CAs, as DER, one of which must have issued a TSL's
     /// signer (GS-A_4640, `spec/tsl-xmldsig` TSLSIG-030). Separate from `anchor`:
     /// gemSpec_PKI installs the TSL signer CA itself as the TSL's trust anchor, without a
@@ -145,7 +143,7 @@ impl TrustConfig {
             roots: Cow::Borrowed(&[]),
             roots_url: Cow::Borrowed(roots::URL_PROD),
             tsl_url: Cow::Borrowed(tsl::URL_PROD),
-            tsl_detached_url: Some(Cow::Borrowed(tsl::URL_DETACHED_PROD)),
+            tsl_detached_url: Cow::Borrowed(tsl::URL_DETACHED_PROD),
             tsl_signer_anchors: borrowed(anchors::TSL_SIGNER_CAS_PROD),
             tsl_grace_period: Duration::ZERO,
             revocation: RevocationMode::HardFail,
@@ -177,7 +175,7 @@ impl TrustConfig {
             roots: Cow::Borrowed(roots::ROOTS_NONPROD),
             roots_url: Cow::Borrowed(roots_url),
             tsl_url: Cow::Borrowed(tsl_url),
-            tsl_detached_url: Some(Cow::Borrowed(detached_url)),
+            tsl_detached_url: Cow::Borrowed(detached_url),
             tsl_signer_anchors: borrowed(anchors::TSL_SIGNER_CAS_NONPROD),
             ..Self::for_anchor(anchor)
         };
@@ -235,15 +233,14 @@ impl TrustConfig {
         if !self.tsl_url.starts_with("https://") {
             return Err(inconsistent("tsl_url must be an https URL"));
         }
-        if let Some(url) = &self.tsl_detached_url {
-            if !(url.starts_with("http://") || url.starts_with("https://")) {
-                return Err(inconsistent(
-                    "tsl_detached_url must be an http or https URL",
-                ));
-            }
-            if !url.ends_with(".xml") {
-                return Err(inconsistent("tsl_detached_url must name the list (.xml)"));
-            }
+        let url = &self.tsl_detached_url;
+        if !(url.starts_with("http://") || url.starts_with("https://")) {
+            return Err(inconsistent(
+                "tsl_detached_url must be an http or https URL",
+            ));
+        }
+        if !url.ends_with(".xml") {
+            return Err(inconsistent("tsl_detached_url must name the list (.xml)"));
         }
         if self.tsl_grace_period > MAX_TSL_GRACE_PERIOD {
             return Err(inconsistent(
@@ -519,36 +516,30 @@ pub(crate) mod tests {
     #[test]
     fn presets_carry_the_detached_download_points() {
         assert_eq!(
-            TrustConfig::preset(Env::Prod).tsl_detached_url.as_deref(),
-            Some(tsl::URL_DETACHED_PROD)
+            TrustConfig::preset(Env::Prod).tsl_detached_url,
+            tsl::URL_DETACHED_PROD,
         );
         assert_eq!(
-            TrustConfig::preset(Env::Test).tsl_detached_url.as_deref(),
-            Some(tsl::URL_DETACHED_TEST)
+            TrustConfig::preset(Env::Test).tsl_detached_url,
+            tsl::URL_DETACHED_TEST,
         );
         for env in [Env::Ref, Env::Dev] {
             assert_eq!(
-                TrustConfig::preset(env).tsl_detached_url.as_deref(),
-                Some(tsl::URL_DETACHED_REF),
+                TrustConfig::preset(env).tsl_detached_url,
+                tsl::URL_DETACHED_REF,
                 "{env}"
             );
         }
     }
 
-    /// TSLDET-011: the automated download point speaks plain HTTP (A_21175).
+    /// The automated download point speaks plain HTTP (A_21175).
     #[test]
-    fn validate_accepts_http_for_the_detached_download_point() {
+    fn tsldet_011_validate_accepts_http_for_the_detached_download_point() {
         let config = TrustConfig::preset_prod();
-        assert!(
-            config
-                .tsl_detached_url
-                .as_deref()
-                .unwrap()
-                .starts_with("http://")
-        );
+        assert!(config.tsl_detached_url.starts_with("http://"));
         config.validate(Tier::Prod).unwrap();
         let odd = TrustConfig {
-            tsl_detached_url: Some(Cow::Borrowed("http://example.invalid/TSL.sig")),
+            tsl_detached_url: Cow::Borrowed("http://example.invalid/TSL.sig"),
             ..TrustConfig::preset_prod()
         };
         assert_eq!(

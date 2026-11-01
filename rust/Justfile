@@ -318,7 +318,7 @@ wasm-size:
 # Run the built package in Node on the real TSLs, cross-checked with `ti pki tsl verify`
 wasm-smoke: wasm-build
     cargo build --locked -q -p ti-cli
-    node ti-wasm/js/smoke.mjs {{WASM_PKG}} ../spec/tsl-xmldsig/testdata/tsl/real target/debug/ti
+    node ti-wasm/js/smoke.mjs {{WASM_PKG}} ../spec/tsl-detached/testdata target/debug/ti
 
 # Refuses an unoptimized or dirty build.
 # Copy the package into a consumer as vendor/ti-wasm, after smoke and size pass
@@ -382,7 +382,6 @@ wasm32:
     cargo check -p ti-types --target wasm32-unknown-unknown --features std
     cargo check -p ti-store --target wasm32-unknown-unknown
     cargo check -p ti-store --target wasm32-unknown-unknown --features store
-    cargo check -p ti-xmldsig --target wasm32-unknown-unknown
     cargo check -p ti-connector-client --target wasm32-unknown-unknown
     cargo check -p ti-pki --target wasm32-unknown-unknown --features load
     cargo check -p ti-pkcs12 --target wasm32-unknown-unknown
@@ -754,15 +753,6 @@ semver *crates:
     done
 
 # ---- Optional, on demand -----------------------------------------------------------
-
-# Kani proofs of ti-xmldsig (escaping, namespace rendering, depth scan); slow, not part
-# of `check`. Needs `cargo install --locked kani-verifier && cargo kani setup`.
-verify-formal:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd ti-xmldsig
-    # A long proof run must not be cut short by the Mac going to sleep.
-    if command -v caffeinate >/dev/null; then caffeinate -i cargo kani; else cargo kani; fi
 
 # Kani proofs of jwz (src/proofs.rs; design time, stamped as verification/stamps/kani.toml)
 verify-formal-jwz:

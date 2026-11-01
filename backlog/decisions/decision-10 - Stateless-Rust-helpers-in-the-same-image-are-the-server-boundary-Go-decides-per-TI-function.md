@@ -49,10 +49,11 @@ is doc-2.
    reviewable); a universal `ti serve` with state on disk; a Java client of the helpers
    for servers (JVM is a client stack).
 6. **A `ti` process per call stays** for rare operations, the CLI and, for now, epa.
-7. **The TSL's detached signature replaces XMLDSig on the trust path** (TASK-166), which
-   shrinks the core every stack embeds; the deviation from TUC_PKI_012 for internet
-   consumers is recorded and, if the pre-release TI 2.0 requirements exclude it, taken
-   to gematik's PKI team (TASK-167).
+7. **The TSL's detached signature replaces XMLDSig** (TASK-166; removal decided by the
+   maintainer 2026-11-01, ahead of the requirements check), which shrinks the core every
+   stack embeds. The deviation from TUC_PKI_012 for internet consumers is recorded, and the
+   request for change goes to gematik's PKI team (TASK-167). A network that blocks the
+   plain-HTTP CRL host can no longer take new lists until `.sig` is published on HTTPS.
 
 ## Consequences
 

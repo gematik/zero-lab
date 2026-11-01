@@ -139,7 +139,7 @@ arithmetic. The anchor of every environment is GEM.RCA7 (P-256), but most roots 
 and both TSL signer CAs are brainpool keys, so the feature is on by default. Without
 brainpool (the feature off, or `NIST` configured) the roots walk ends at the first
 brainpool root, GEM.RCA8 forwards and GEM.RCA5 backwards, leaving GEM.RCA7 and GEM.RCA6,
-and no TSL verifies (TSLSIG-012), which fails a load of roots and TSL together;
+and no TSL verifies (TSLDET-004), which fails a load of roots and TSL together;
 `validate` still refuses a brainpool anchor instead of failing later. Other
 implementations — webpki's FIPS-validated aws-lc-rs set, ML-DSA once post-quantum
 certificates appear — plug into the same set without touching the core.
@@ -183,14 +183,14 @@ certificates in `ti-pki/tests/fixtures/` and the Wycheproof vectors complement t
 
 ## The TSL
 
-The list is authenticated before it is read: by the detached signature file (`.sig`) and
+The list is authenticated before it is read, by the detached signature file (`.sig`) and
 the signer's status file (`.ocsp`) that the TSL service publishes next to it at the
-automated download points of gemSpec_TSL A_21182 (`spec/tsl-detached`; the loaders fetch
-the list from there only under the `.sha2` of the HTTPS point and from HTTPS otherwise,
-and a `.ocsp` older than two hours leaves the status to a network query), or by its
-enveloped XMLDSig signature (`spec/tsl-xmldsig`) where no `.sig` fits. `--at` never uses
-the published status. `ti pki tsl verify
---signature --signer-status` runs the detached check on files.
+automated download points of gemSpec_TSL A_21182 (`spec/tsl-detached`). The loaders take
+the list from there only under the `.sha2` of the HTTPS point, and from HTTPS otherwise; a
+list without a fitting `.sig` is not used, and a set that does not fit is fetched once
+more. A `.ocsp` older than two hours leaves the status to a network query, and `--at` never
+uses it. `.sig` exists only on the plain-HTTP host, so a network that blocks it cannot take
+new lists; the list in hand stays usable while HTTPS confirms it. `ti pki tsl verify TSL SIG --signer-status FILE` runs the check on files.
 
 `ti_pki::tsl` reads gematik's ETSI TS 119 612 list with quick-xml and serde, matching
 element names without their namespace prefix. It is used as a directory of candidate
@@ -354,7 +354,8 @@ and `Reloader::new` enforce it.
 - `subPath` mounts never receive updates; mount the whole volume.
 - Updates arrive after the kubelet sync period plus its cache TTL (about a minute by
   default), then on the next reload tick — or trigger one.
-- Put roots.json and the TSL in one ConfigMap so they change together. The producer
+- Put roots.json, the TSL and its `.sig` and `.ocsp` in one ConfigMap so they change
+  together; a list under the signature of another state does not verify. The producer
   that writes it (a CronJob from the product image exporting `.xml`, `.sig`, `.ocsp`
   and roots.json with a manifest) is TASK-173; consumers keep nothing on disk.
 - Poll, don't watch: inotify is unreliable on these mounts because the files themselves

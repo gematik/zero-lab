@@ -37,59 +37,14 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   was yanked since.
 
 #### added
-- `pki tsl verify --signature FILE.sig [--signer-status FILE.ocsp]`: the list verified by
-  gematik's detached signature file, the signer's status from the published response
-  instead of a network query; `tsl show`, `bundle` and `export` load the two files from
-  the environment's automated download point. The reports name the signature kind
-  (`signature`: `enveloped` or `detached`) and know the code `detached_signature_error`
-  (`spec/tsl-detached`, TASK-166).
-- `connector config show [NAME]`: a `.kon` configuration without its secrets; for the
-  password, the PKCS#12 bytes and the user ID only where they are kept, with the client
-  certificate and the pins and CAs of `trustStore`.
-- `connector config test [NAME]`: the configuration step by step, `file` (valid, mode
-  0600, secrets in plain text, `https`), `tcp`, `tls` (the server certificate against the
-  pin or CA, its SHA-256), `auth` (the client certificate before it is offered, and
-  whether the Konnektor accepts the client), `sds` (product and service versions),
-  `context` (GetCards with the call context, with the fault hints) and `cards`; each
-  finding ok, warn, fail or skip with a hint, exit 1 if one fails. With `env: pu`,
-  `insecureSkipVerify` and credentials `none` fail; elsewhere they warn.
-- `connector config new NAME`: a configuration step by step on a terminal (address in
-  any form, environment, the server certificate shown and pinned once confirmed or
-  insecureSkipVerify, basic, pkcs12 or none credentials with the password hidden, the
-  call context), or entirely from options without one (`--url`, `--env`, `--mandant`,
-  `--client-system`, `--workplace`, `--basic`/`--password-path`, `--p12`/
-  `--p12-password-path`/`--p12-pair`, `--no-auth`, `--pin-sha256`, `--pin-cert`,
-  `--insecure-skip-verify`, `--expected-host`, `--rewrite-endpoints`). Tested before it
-  is saved; on a terminal a failed test offers the call context again and tests once
-  more, or saving anyway; written atomically with mode 0600 (directory 0700). A PKCS#12 file is shown
-  before use (expiry, key type, legacy encryption, file mode); of several pairs only the
-  chosen one is kept.
-- `connector config set NAME KEY=VALUE`, `connector config edit NAME` ($EDITOR, replaced
-  only by a valid copy; or `--basic`/`--p12`/`--no-auth` for new credentials) and
-  `connector config pin NAME` (the server's certificate next to the pinned one, replaced
-  once confirmed or by `--pin-sha256`/`--pin-cert`). An `http` address is refused;
-  with `env: pu`, `new`, `set` and `edit` refuse `insecureSkipVerify` and credentials
-  `none`.
-- Interactive commands: `ti` asks only when stdin and stderr are terminals; without
-  them a missing option is an error (exit 2), never a wait. Hidden password entry with
-  rpassword 7.5.4 (ti-cli only).
-- `.kon` credentials of type `none`, for Konnektors that do not authenticate client
-  systems; `connector get info` reports them as `none`.
-- The help and the guide say that `identity`, `idpd authenticate` and `directory login`
-  take an HBA as well as an SMC-B (they always did): its C.HP.AUT is selected like the
-  SMC-B's C.HCI.AUT, never its C.HP.QES; they name the PIN a card needs (PIN.SMC, PIN.CH
-  for an HBA).
-- `directory login search --p12|--cert --key|--card`: the token an SMC-B or HBA searches
-  the FHIR-Directory with. gemSpec_VZD_FHIR_Directory gives a card identity only the
-  owner token for `/search`, so this is the owner flow through the IDP-Dienst; the report
-  names the Search API in `directory.search_url` and warns with `search_not_in_audience`
-  when the token does not list it.
-- `probe prod` checks the Bestandsnetze of gematik's Bestandsnetze.xml (2.1.36) in a
-  block of their own (`access: "bestandsnetz"`): the SNK (KV-SafeNet) at
-  `portal.kv-safenet.de`, the others at a known HTTPS host or with a TCP connection to
-  their first DNS server (kind `dns`). A practice books only some of them, so one that
-  does not answer is a warning, never a failure, and the exit code stays 0; the text
-  lists those not routed on one line. Each probe in the JSON carries `answered`.
+- `pki tsl verify TSL SIG [--signer-status FILE.ocsp]`: the signature file is a required
+  argument, because the list is verified by gematik's detached signature file, and the
+  signer's status can come from the published response instead of a network query. `tsl
+  show`, `bundle` and `export` load the two files from the environment's automated download
+  point. Reports lose `signing_time`, and `xml_signature_error` became
+  `detached_signature_error` (`spec/tsl-detached`, TASK-166). `tsl export -o` writes the
+  `.sig` and `.ocsp` next to the list. **Lists need their `.sig`: scripts calling `pki tsl
+  verify FILE` must pass it as the second argument.**
 
 #### changed
 - Konnektor faults about the information model carry a hint naming the cause, the
@@ -226,8 +181,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-report
 
 #### added
-- `tsl_view` takes the list's detached files (`DetachedTsl`) and verifies by them;
-  `SignatureView::kind` names the signature, `signing_time` is optional (TASK-166).
+- `tsl_view` and `CheckContext::new` take the list's detached files; `SignatureView` loses
+  `signing_time` (TASK-166).
 - `check::CheckContext`: an environment's TSL and roots verified once, then any number of
   certificates checked against them offline as `ti pki verify --profile auto` does
   (`CheckReport`: verdict, profile, type, errors, warnings and the trust tree, end entity
@@ -246,9 +201,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-wasm
 
 #### added
-- `verify_tsl_detached(xml, sig, ocsp?, env, now, roots_json?, grace_seconds)`: the TSL
-  view with the list verified by its detached `.sig` and the status from `.ocsp`; the
-  view's `signature.kind` tells `detached` from `enveloped` (TASK-166).
+- **Breaking for consumers:** `verify_tsl(xml, sig, ocsp?, env, now, roots_json?, grace_seconds)`
+  and `new TrustContext(xml, sig, env, now, roots_json?, grace)` take the list's detached
+  `.sig`; the view loses `signature.signing_time` (TASK-166).
 - `TrustContext`: `new TrustContext(xml, env, now, roots_json?, grace)` verifies once,
   `check(der_or_pem, now)` returns `schemas/check.json`; for certificate checks in the
   browser. The smoke test cross-checks it with `ti pki verify --offline`.
@@ -343,30 +298,35 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   process. Found by the new `ocsp_response` fuzz target (TASK-166).
 
 #### removed
+- **The XMLDSig path and `ti-xmldsig` are gone, with `roxmltree` and `proptest`.** A list
+  without a fitting `.sig` no longer verifies, in every environment, and `.sig` exists only
+  on the plain-HTTP CRL host of A_21182: a network that blocks it cannot take new lists,
+  and for up to an hour after each publication (A_21178) the new list waits for its `.sig`.
+  This is a recorded deviation from TUC_PKI_012 (`spec/tsl-detached`, doc-3). Gone from the
+  API: `SignedTsl::signing_time`, `VerifiedTsl::signing_time`, the code
+  `xml_signature_error`. `FileTransport::new` takes the signature file,
+  `TrustStore::from_material` the detached files, and `TrustConfig::tsl_detached_url` is
+  required. A bundle without the signature is refused on import: export it again.
 - The features `reqwest` and `tokio` with `ti_pki::reqwest` and `ti_pki::tokio`, and the
   examples `ocsp` and `validate`, which needed them; `ti pki verify` does what they did.
   Nothing used them: a host implements `load::Transport` and calls `Reloader::tick` on
   its own runtime.
 
 #### added
-- The TSL verified by gematik's detached signature file (`spec/tsl-detached`,
-  gemSpec_TSL A_21175 ff.; TASK-166): `tsl_signature::verify_detached`,
-  `parse_detached_signature`, `Tsl::parse_verified_detached`,
-  `embedded_config_for_detached`, `SignatureKind` on `VerifiedTsl::signature`, and
-  `VerifiedTsl::check_signer_status_supplied` for the `.ocsp` published next to the list
-  (at most `MAX_SUPPLIED_SIGNER_STATUS_AGE` old, else the status stays unqueried). The
-  loaders fetch `.xml`, `.sig` and `.ocsp` as one set from
-  `TrustConfig::tsl_detached_url` (the A_21182 download points in the presets, plain
-  HTTP as A_21175 mandates, the list checked against the `.sha2` of the HTTPS point):
-  `Artifact::TslSignature` and `TslSignerStatus`, `load::Detached` on
-  `TrustMaterial::detached`, `FileTransport::with_detached`, the two files as optional
-  fields of a `Bundle`. `Tsl::parse_verified_loaded` verifies material by the detached
-  signature; one that does not fit is discarded with the warning
-  `detached_signature_not_used` and the list verified by its enveloped signature, which
-  stays until the gate of TASK-166 lets it go. The list comes from the plain-HTTP origin
-  only under the hash from HTTPS, and from HTTPS otherwise. A signed `revoked` stops the
-  list at any age. The reloader asks the network for the signer's status only when none
-  came with the list; `ReloadStatus::tsl_signature` names the kind.
+- The TSL is verified by gematik's detached signature file (`spec/tsl-detached`,
+  gemSpec_TSL A_21175 ff.; TASK-166): `tsl_signature::verify`,
+  `parse_detached_signature`, `Tsl::parse_verified(xml, sig, …)`,
+  `Tsl::parse_verified_with_status`, `embedded_config_for(sig)`, and
+  `VerifiedTsl::check_signer_status_supplied` for the `.ocsp` published next to the list.
+  The loaders fetch `.xml`, `.sig` and `.ocsp` as one set from
+  `TrustConfig::tsl_detached_url`: `Artifact::TslSignature` and `TslSignerStatus`,
+  `load::Detached` on `TrustMaterial::detached`, the two files as optional fields of a
+  `Bundle`. The list comes from the plain-HTTP origin only under the hash from HTTPS, and
+  from HTTPS itself when no hash can be read. A signed `revoked` stops the list at any age.
+  A set that fails is fetched once more, keeping the set in hand (`Loader::revalidate`,
+  `Cache::expire`, `Cache::stored`), and a cached `.sig` stays usable at any age while
+  HTTPS confirms its list. The reloader asks the network for the signer's status only when
+  none came with the list.
 - `ti-pki/fuzz`: `just fuzz-ti-pki` runs the `detached_signature`, `tsl_xml` and
   `ocsp_response` targets, seeded from the published sets.
 - The validity model follows the end entity's type (gemKPT_PKI_TIP 2.4): the
@@ -557,8 +517,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 #### changed
 - `TrustStoreHandle` keeps the current material under a `std::sync::RwLock`, not `arc-swap`,
   which is no longer a dependency.
-- `SignedTsl::signing_time` and `VerifiedTsl::signing_time` are `Option<String>`: a
-  detached signature carries none. `TrustMaterial::body` and `meta` answer `Option`,
+- `TrustMaterial::body` and `meta` answer `Option`,
   since the two detached artefacts may be absent; `TrustMaterial::etags` lists all four.
 - `revocation::apply_revocation` takes the reference time the chain is validated for.
 - `Bundle` is JSON (format version 2) instead of CBOR, with the bodies in base64 and

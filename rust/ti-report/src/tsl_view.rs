@@ -71,17 +71,13 @@ pub struct TslView {
     pub certificates: BTreeMap<String, CertificateInfo>,
 }
 
-/// The signature over the list (`spec/tsl-xmldsig` parts A and B).
+/// The signature over the list (`spec/tsl-detached`, `spec/tsl-xmldsig` part B).
 #[derive(Clone, Debug, Serialize)]
 pub struct SignatureView {
     /// The C.TSL.SIG certificate, by fingerprint.
     pub signer: String,
     /// The TSL signer CA that issued it, by fingerprint.
     pub tsl_signer_ca: String,
-    /// Which signature authenticated the list: `enveloped` or `detached` (TSLDET-031).
-    pub kind: &'static str,
-    /// The XAdES `SigningTime`, as signed; absent for a detached signature.
-    pub signing_time: Option<String>,
     /// Findings that leave the list usable, e.g. `no_ocsp_check`.
     pub warnings: Vec<Finding>,
 }
@@ -260,7 +256,7 @@ pub struct SkippedView {
 /// passed [`TrustConfig::validate`] for the tier of `env`.
 pub fn tsl_view(
     xml: &[u8],
-    detached: Option<DetachedTsl<'_>>,
+    files: DetachedTsl<'_>,
     env: Env,
     config: &TrustConfig,
     supplied_roots: Option<&[u8]>,
@@ -281,18 +277,7 @@ pub fn tsl_view(
         skipped: Vec::new(),
         certificates: BTreeMap::new(),
     };
-    // With the detached files the list is verified by them (`spec/tsl-detached`) and a
-    // supplied status is adopted before anything else is read.
-    let verified = match detached {
-        Some(detached) => Tsl::parse_verified_detached(xml, detached.signature, config, now)
-            .and_then(|mut verified| {
-                if let Some(status) = detached.signer_status {
-                    verified.check_signer_status_supplied(status, now, &config.algorithms)?;
-                }
-                Ok(verified)
-            }),
-        None => Tsl::parse_verified(xml, config, now),
-    };
+    let verified = Tsl::parse_verified_with_status(xml, files, config, now);
     let verified = match verified {
         Ok(verified) => verified,
         Err(e) => {
@@ -398,8 +383,6 @@ impl Builder<'_> {
         self.view.signature = Some(SignatureView {
             signer: self.file(&verified.signer),
             tsl_signer_ca: self.file(&verified.anchor),
-            kind: verified.signature.as_str(),
-            signing_time: verified.signing_time.clone(),
             warnings: verified.warnings.iter().map(Finding::from).collect(),
         });
         self.view.list = Some(ListView {

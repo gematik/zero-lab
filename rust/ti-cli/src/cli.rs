@@ -510,7 +510,7 @@ pub struct TslBundleArgs {
 pub struct TslExportArgs {
     #[command(flatten)]
     pub trust: TrustArgs,
-    /// Write to OUT instead of stdout
+    /// Write to OUT instead of stdout, with its .sig and .ocsp next to it
     #[arg(short, long, value_name = "OUT")]
     pub output: Option<PathBuf>,
     /// Replace OUT if it exists
@@ -535,8 +535,11 @@ pub struct TslShowArgs {
 #[derive(Debug, Args)]
 pub struct TslVerifyArgs {
     /// The TSL (XML); "-" reads stdin
-    #[arg(value_name = "FILE")]
+    #[arg(value_name = "TSL")]
     pub file: PathBuf,
+    /// The detached signature file (.sig) published next to the list; "-" reads stdin
+    #[arg(value_name = "SIG")]
+    pub signature: PathBuf,
     /// TI environment; auto takes the one whose TSL signer CA issued the signer
     #[arg(long, value_enum, default_value_t = Environment::Auto, env = "TI_ENV")]
     pub env: Environment,
@@ -547,13 +550,9 @@ pub struct TslVerifyArgs {
     /// No network: the signer's OCSP status is not queried (warning no_ocsp_check)
     #[arg(long)]
     pub offline: bool,
-    /// The detached signature file (.sig) published next to the list: the list is then
-    /// verified by it, not by the signature inside the XML
+    /// The signer's OCSP response file (.ocsp) published next to the list; the status is
+    /// then not queried over the network
     #[arg(long, value_name = "FILE")]
-    pub signature: Option<PathBuf>,
-    /// The signer's OCSP response file (.ocsp) published next to the list; needs
-    /// --signature, and the status is then not queried over the network
-    #[arg(long, value_name = "FILE", requires = "signature")]
     pub signer_status: Option<PathBuf>,
     /// The list used before: this one must have another Id and a greater sequence
     /// number, or be the same list

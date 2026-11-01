@@ -47,14 +47,15 @@ let started = performance.now();
 wasm.initSync({ module: readFileSync(join(pkg, 'ti_wasm_bg.wasm')) });
 console.log(`init ${(performance.now() - started).toFixed(0)} ms  ${wasm.version()}`);
 
-// Within the validity of pu-10333, pu-10334 and tu-10713; tu-10687 is long past.
-const NOW = '2026-10-02T00:00:00Z';
+// The capture time of the published sets.
+const NOW = '2026-11-01T16:47:42Z';
+const FILES = { prod: 'prod/ECC-RSA_TSL', ref: 'ref/ECC-RSA_TSL-ref', test: 'test/ECC-RSA_TSL-test' };
+const set = (name, suffix) => join(real, `${FILES[name]}.${suffix}`);
 const cases = [
-  { file: 'pu-10334.xml', env: 'prod', result: 'valid' },
-  { file: 'pu-10333.xml', env: 'prod', result: 'valid' },
-  { file: 'tu-10713.xml', env: 'test', result: 'valid' },
-  { file: 'tu-10687.xml', env: 'test', result: 'invalid', code: 'validity_warning_2' },
-  { file: 'tu-10713.xml', env: 'prod', result: 'invalid', code: 'certificate_not_valid_math' },
+  { set: 'prod', env: 'prod', result: 'valid' },
+  { set: 'ref', env: 'ref', result: 'valid' },
+  { set: 'test', env: 'test', result: 'valid' },
+  { set: 'test', env: 'prod', result: 'invalid', code: 'certificate_not_valid_math' },
 ];
 
 const state = mkdtempSync(join(tmpdir(), 'ti-wasm-smoke-'));
@@ -68,15 +69,16 @@ const expect = (what, actual, expected) => {
 };
 
 for (const c of cases) {
-  const xml = readFileSync(join(real, c.file));
+  const xml = readFileSync(set(c.set, 'xml'));
+  const sig = readFileSync(set(c.set, 'sig'));
   started = performance.now();
-  const view = JSON.parse(wasm.verify_tsl(xml, c.env, NOW, undefined, 0));
+  const view = JSON.parse(wasm.verify_tsl(xml, sig, undefined, c.env, NOW, undefined, 0));
   const ms = (performance.now() - started).toFixed(0);
 
   let cli;
   try {
     cli = JSON.parse(
-      execFileSync(ti, ['pki', 'tsl', 'verify', join(real, c.file), '--env', c.env, '--at', NOW, '--format', 'json'], {
+      execFileSync(ti, ['pki', 'tsl', 'verify', set(c.set, 'xml'), set(c.set, 'sig'), '--env', c.env, '--at', NOW, '--format', 'json'], {
         env: { ...process.env, XDG_STATE_HOME: state, TI_CACHE_DIR: state },
       }),
     );
@@ -88,7 +90,7 @@ for (const c of cases) {
   const counts = view.counts ? `${view.counts.cas_kept}/${view.counts.cas_listed} CAs, ${view.counts.ocsp} OCSP` : '-';
   const warnings = view.signature?.warnings.map((w) => w.code) ?? [];
   console.log(
-    `${c.file} ${c.env.padEnd(4)} ${view.result.padEnd(7)} ${(view.error?.code ?? warnings.join(',')).padEnd(28)} ${counts.padEnd(24)} ${ms} ms`,
+    `${c.set} ${c.env.padEnd(4)} ${view.result.padEnd(7)} ${(view.error?.code ?? warnings.join(',')).padEnd(28)} ${counts.padEnd(24)} ${ms} ms`,
   );
 
   expect('result', view.result, c.result);
@@ -137,7 +139,7 @@ function seededCache(env, tslFile) {
   const roots = join(rust, 'ti-pki/src', env === 'prod' ? 'roots-prod.json' : 'roots-nonprod.json');
   for (const [kind, url, body] of [
     ['roots', urls.roots_url, roots],
-    ['tsl', urls.tsl_url, join(real, tslFile)],
+    ['tsl', urls.tsl_url, set(tslFile, 'xml')],
   ]) {
     const id = createHash('sha256').update(url).digest().subarray(0, 8).toString('hex');
     const base = join(dir, 'ti-pki/v1', kind);
@@ -151,16 +153,16 @@ function seededCache(env, tslFile) {
 
 /** A certificate of the production TSL view, as PEM, by its common name. */
 function listedPem(cn) {
-  const view = JSON.parse(wasm.verify_tsl(readFileSync(join(real, 'pu-10334.xml')), 'prod', NOW, undefined, 0));
+  const view = JSON.parse(wasm.verify_tsl(readFileSync(set('prod', 'xml')), readFileSync(set('prod', 'sig')), undefined, 'prod', NOW, undefined, 0));
   return Object.values(view.certificates).find((c) => c.subject.startsWith(`CN=${cn},`)).pem;
 }
 
 const checks = [
-  { env: 'ref', tsl: 'tu-10713.xml', file: fixture('smcb-ee-test-only.pem'), result: 'valid' },
-  { env: 'ref', tsl: 'tu-10713.xml', file: fixture('admission-2.pem'), result: 'valid' },
-  { env: 'prod', tsl: 'pu-10334.xml', file: fixture('tsl-signing-unit-6.pem'), result: 'valid' },
-  { env: 'prod', tsl: 'pu-10334.xml', file: fixture('smcb-ee-test-only.pem'), result: 'invalid' },
-  { env: 'prod', tsl: 'pu-10334.xml', pem: 'MESIG.SMCB-OCSP2', result: 'invalid' },
+  { env: 'ref', tsl: 'test', file: fixture('smcb-ee-test-only.pem'), result: 'valid' },
+  { env: 'ref', tsl: 'test', file: fixture('admission-2.pem'), result: 'valid' },
+  { env: 'prod', tsl: 'prod', file: fixture('tsl-signing-unit-6.pem'), result: 'valid' },
+  { env: 'prod', tsl: 'prod', file: fixture('smcb-ee-test-only.pem'), result: 'invalid' },
+  { env: 'prod', tsl: 'prod', pem: 'MESIG.SMCB-OCSP2', result: 'invalid' },
 ];
 
 const contexts = new Map();
@@ -169,7 +171,7 @@ for (const c of checks) {
   let ctx = contexts.get(c.env);
   if (!ctx) {
     started = performance.now();
-    ctx = new wasm.TrustContext(readFileSync(join(real, c.tsl)), c.env, NOW, undefined, 0);
+    ctx = new wasm.TrustContext(readFileSync(set(c.tsl, 'xml')), readFileSync(set(c.tsl, 'sig')), c.env, NOW, undefined, 0);
     console.log(`TrustContext ${c.env} ${(performance.now() - started).toFixed(0)} ms ${ctx.tsl()}`);
     contexts.set(c.env, ctx);
   }

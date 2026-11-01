@@ -95,39 +95,41 @@ pub trait Loader {
         }
     }
 
-    /// Loads an artefact that may be missing: `None` if the source does not have it or
-    /// cannot reach it, or has only a stale copy that may belong to another list
-    /// (TSLDET-010). A fault of the cache is an error, not a missing file.
-    async fn load_optional(&self, artifact: Artifact) -> Result<Option<Loaded>, LoadError> {
-        match self.load(artifact).await {
-            Ok(loaded) => Ok(loaded.stale.is_none().then_some(loaded)),
+    /// The list's detached files. The signature is required: without it no list verifies
+    /// (TSLDET-013). The status is optional, and a copy that is only a stale fallback is
+    /// not used; its absence leaves the status unqueried (TSLDET-022).
+    ///
+    /// # Errors
+    ///
+    /// Why the signature could not be loaded, or a fault of the cache store.
+    async fn load_detached(&self) -> Result<Detached, LoadError> {
+        let signature = self.load(Artifact::TslSignature).await?;
+        let status = match self.load(Artifact::TslSignerStatus).await {
+            Ok(status) => status.stale.is_none().then_some(status),
             Err(
                 LoadError::Transport(_)
                 | LoadError::Unavailable(_)
                 | LoadError::Offline(_)
                 | LoadError::UnexpectedNotModified(_),
-            ) => Ok(None),
-            Err(error) => Err(error),
-        }
+            ) => None,
+            Err(error) => return Err(error),
+        };
+        Ok(Detached {
+            signature: signature.body,
+            signature_meta: signature.meta,
+            signer_status: status.map(|status| (status.body, status.meta)),
+        })
     }
 
-    /// The list's detached signature and signer status, where the source has them. A
-    /// signature that cannot be loaded leaves the list to its enveloped signature
-    /// (TSLDET-013); a status that cannot be loaded leaves it unqueried (TSLDET-022).
+    /// Makes the next load ask the origin for the list and its detached files again:
+    /// after a signature that does not fit, a cached set must not go on failing until it
+    /// ages out (TSLDET-013). Sources without a cache have nothing to do.
     ///
     /// # Errors
     ///
     /// A fault of the cache store.
-    async fn load_detached(&self) -> Result<Option<Detached>, LoadError> {
-        let Some(signature) = self.load_optional(Artifact::TslSignature).await? else {
-            return Ok(None);
-        };
-        let status = self.load_optional(Artifact::TslSignerStatus).await?;
-        Ok(Some(Detached {
-            signature: signature.body,
-            signature_meta: signature.meta,
-            signer_status: status.map(|status| (status.body, status.meta)),
-        }))
+    async fn revalidate(&self) -> Result<(), LoadError> {
+        Ok(())
     }
 
     /// Loads every artefact: roots.json, the TSL and its [detached files](Self::load_detached).
@@ -135,7 +137,10 @@ pub trait Loader {
         let roots = self.load(Artifact::Roots).await?;
         let tsl = self.load(Artifact::Tsl).await?;
         let detached = self.load_detached().await?;
-        Ok(TrustMaterial::new(roots.body, roots.meta, tsl.body, tsl.meta).with_detached(detached))
+        Ok(
+            TrustMaterial::new(roots.body, roots.meta, tsl.body, tsl.meta)
+                .with_detached(Some(detached)),
+        )
     }
 }
 
@@ -181,11 +186,10 @@ mod tests {
         }
     }
 
-    /// A broken cache is a fault, not "no signature published": swallowing it hid that
-    /// the CLI never reached the detached path.
+    /// A broken cache is a fault, and without a signature there is no material.
     #[test]
-    fn tsldet_013_a_cache_fault_is_not_taken_for_a_missing_signature() {
-        let stub = Stub {
+    fn tsldet_013_a_missing_signature_fails_the_load() {
+        let cache_fault = Stub {
             detached: || {
                 Err(LoadError::Cache(CacheError {
                     message: "no namespace".into(),
@@ -193,25 +197,34 @@ mod tests {
             },
         };
         assert!(matches!(
-            block_on(stub.load_all()),
+            block_on(cache_fault.load_all()),
             Err(LoadError::Cache(_))
+        ));
+        let unavailable = Stub {
+            detached: || Err(LoadError::Unavailable(Artifact::TslSignature)),
+        };
+        assert!(matches!(
+            block_on(unavailable.load_all()),
+            Err(LoadError::Unavailable(Artifact::TslSignature))
         ));
     }
 
+    /// A stale status may be about another moment; it is not part of this set.
     #[test]
-    fn tsldet_013_an_unavailable_signature_leaves_the_enveloped_path() {
-        let stub = Stub {
-            detached: || Err(LoadError::Unavailable(Artifact::TslSignature)),
-        };
-        assert!(block_on(stub.load_all()).unwrap().detached.is_none());
-    }
-
-    /// A fallback or stale copy may belong to another list: not part of this set.
-    #[test]
-    fn tsldet_010_stale_detached_files_are_absent() {
-        let stub = Stub {
-            detached: || Ok(loaded(Some(LoadError::Offline(Artifact::TslSignature)))),
-        };
-        assert!(block_on(stub.load_all()).unwrap().detached.is_none());
+    fn tsldet_022_a_stale_status_is_absent() {
+        struct StaleStatus;
+        impl Loader for StaleStatus {
+            async fn fetch(
+                &self,
+                artifact: Artifact,
+                _: Conditional<'_>,
+            ) -> Result<Fetched, LoadError> {
+                Ok(Fetched::Body(loaded(
+                    (artifact == Artifact::TslSignerStatus).then_some(LoadError::Offline(artifact)),
+                )))
+            }
+        }
+        let material = block_on(StaleStatus.load_all()).unwrap();
+        assert!(material.detached.unwrap().signer_status.is_none());
     }
 }

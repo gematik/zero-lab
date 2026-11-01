@@ -25,7 +25,7 @@ ti pki roots list --env ref         # the roots reached from the anchor
 ti pki tsl show                     # the TSL's CAs under the roots that signed them
 ti pki tsl show --rejected          # the CAs no verified root signed, and why
 ti pki tsl show --ca SMCB-CA51      # one CA; Markdown adds its PEM
-ti pki tsl verify ECC-RSA_TSL.xml   # signature, signer, signer OCSP; exit 0 valid
+ti pki tsl verify ECC-RSA_TSL.xml ECC-RSA_TSL.sig   # signature, signer, signer OCSP; exit 0 valid
 ti pki verify-signature --cert vau.pem --data keys.cbor --signature sig.bin   # one ECDSA signature
 ti identity inspect --p12 smcb.p12 --p12-password-path pw.txt   # the AUT certificate and key
 ti identity sign --p12 smcb.p12 --claims - < claims.json         # ES256 JWS, x5c the certificate
@@ -118,7 +118,7 @@ chain to. `pki tsl export`
 writes the TSL as published, after it verified. All three go to stdout, or to `-o FILE`
 (`--force` replaces it), and report as JSON with `--format json`.
 
-The TSL is verified wherever it is loaded (`spec/tsl-xmldsig`): signature, signer under
+The TSL is verified wherever it is loaded (`spec/tsl-detached`): the detached signature, signer under
 the embedded TSL signer CA, `NextUpdate`, the list seen before (sealed in the profile's
 state once it has a keyring, so an older list stays rejected), and online the signer's OCSP status;
 offline or with `--at` the trust line says the status was not checked. A list that
@@ -128,14 +128,14 @@ metadata (provider names, certificate types per CA) is never shown as fact. The 
 name is in the JSON, for filtering. `--offline` works from the cache; `--at` shows the
 material as of another time.
 
-`pki tsl verify FILE` checks a TSL file: its XMLDSig/XAdES signature, a C.TSL.SIG
+`pki tsl verify TSL SIG` checks a TSL file: its detached signature, a C.TSL.SIG
 signer issued by the embedded TSL signer CA (GEM.TSL-CA3 in production, GEM.TSL-CA28
 TEST-ONLY elsewhere), `NextUpdate` with `--grace DAYS` (default 0), and the signer's OCSP
-status unless `--offline` or `--at`. `--previous OLD.xml` requires another `Id` and a
+status unless `--offline` or `--at`, or from `--signer-status FILE.ocsp`. `--previous OLD.xml` requires another `Id` and a
 greater sequence number, or the same list. `--env auto`, the default, takes the
 environment whose TSL signer CA issued the signer; `--env prod` accepts a production TSL
-only. An invalid list is exit 1 with the gemSpec_PKI result code and the rule of
-`spec/tsl-xmldsig` that failed; entries that cannot be processed are skipped and
+only. An invalid list is exit 1 with the result code and the rule of `spec/tsl-detached`
+or `spec/tsl-xmldsig` that failed; entries that cannot be processed are skipped and
 listed.
 
 ## Verify

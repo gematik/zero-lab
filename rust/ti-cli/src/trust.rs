@@ -299,8 +299,6 @@ pub struct TslTrust {
     pub signer: CertRef,
     /// `good` when the signer's OCSP status was queried or supplied, else absent.
     pub signer_ocsp: Option<&'static str>,
-    /// Which signature verified the list, `enveloped` or `detached`.
-    pub signature: &'static str,
     /// The configured TSL signer CA that issued the signer.
     pub tsl_signer_ca: CertRef,
 }
@@ -472,9 +470,8 @@ impl Session {
     }
 
     /// The list's detached files, as loaded from the environment's automated download
-    /// point (`spec/tsl-detached`); none when the configuration has no such point or
-    /// they could not be loaded, which leaves the list to its enveloped signature.
-    pub fn tsl_detached(&self, config: &TrustConfig) -> Result<Option<Detached>, CliError> {
+    /// point (`spec/tsl-detached`). Call after [`load`](Self::load).
+    pub fn tsl_detached(&self, config: &TrustConfig) -> Result<Detached, CliError> {
         block_on(async {
             match &self.transport {
                 Some(transport) => self.loader(config, transport).load_detached().await,
@@ -541,6 +538,10 @@ impl<L: Loader + Send + Sync> Loader for AtTime<L> {
 
     fn cache_key(&self, artifact: Artifact) -> String {
         self.inner.cache_key(artifact)
+    }
+
+    async fn revalidate(&self) -> Result<(), LoadError> {
+        self.inner.revalidate().await
     }
 }
 
@@ -621,9 +622,6 @@ where
                     signer_ocsp: status
                         .tsl_signer_status
                         .map(ti_pki::RevocationStatus::as_str),
-                    signature: status
-                        .tsl_signature
-                        .map_or("enveloped", ti_pki::tsl_signature::SignatureKind::as_str),
                     tsl_signer_ca: CertRef::new(ca),
                 }),
                 _ => None,

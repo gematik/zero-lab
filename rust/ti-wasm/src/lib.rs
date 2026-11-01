@@ -64,31 +64,6 @@ pub fn trust_urls(env: &str) -> Result<String, JsError> {
 )]
 pub fn verify_tsl(
     xml: &[u8],
-    env: &str,
-    now: &str,
-    roots_json: Option<Vec<u8>>,
-    grace_seconds: u32,
-) -> Result<String, JsError> {
-    api::verify_tsl(xml, env, now, roots_json.as_deref(), grace_seconds)
-        .map_err(|e| JsError::new(&e))
-}
-
-/// [`verify_tsl`] with the list's detached signature file (`.sig`) and, if the page has
-/// it, the signer's OCSP response file (`.ocsp`) published next to it
-/// (`spec/tsl-detached`): the list is verified by that signature, and the status is
-/// taken from the response instead of being reported as not queried.
-///
-/// # Errors
-///
-/// As [`verify_tsl`].
-#[wasm_bindgen]
-#[allow(
-    clippy::needless_pass_by_value,
-    clippy::too_many_arguments,
-    reason = "wasm-bindgen takes an optional byte array only as an owned Vec; the arguments are verify_tsl's plus the two files"
-)]
-pub fn verify_tsl_detached(
-    xml: &[u8],
     signature: &[u8],
     signer_status: Option<Vec<u8>>,
     env: &str,
@@ -96,7 +71,7 @@ pub fn verify_tsl_detached(
     roots_json: Option<Vec<u8>>,
     grace_seconds: u32,
 ) -> Result<String, JsError> {
-    api::verify_tsl_detached(
+    api::verify_tsl(
         xml,
         signature,
         signer_status.as_deref(),
@@ -140,14 +115,22 @@ impl TrustContext {
     )]
     pub fn new(
         xml: &[u8],
+        signature: &[u8],
         env: &str,
         now: &str,
         roots_json: Option<Vec<u8>>,
         grace_seconds: u32,
     ) -> Result<TrustContext, JsError> {
-        api::Context::new(xml, env, now, roots_json.as_deref(), grace_seconds)
-            .map(TrustContext)
-            .map_err(|e| JsError::new(&e))
+        api::Context::new(
+            xml,
+            signature,
+            env,
+            now,
+            roots_json.as_deref(),
+            grace_seconds,
+        )
+        .map(TrustContext)
+        .map_err(|e| JsError::new(&e))
     }
 
     /// The state of the trust material: `{"result","error","sequence_number",…}`.

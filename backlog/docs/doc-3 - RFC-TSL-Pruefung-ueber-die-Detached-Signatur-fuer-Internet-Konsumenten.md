@@ -16,8 +16,10 @@ consumers verify the TSL through `.sig` and `.ocsp` instead, and to publish both
 the HTTPS download points as well. The check is cryptographically the same (same signer,
 same anchor, same OCSP, the exact bytes that are hashed and compared), and it removes XML
 canonicalization and XML signature processing from the trust path of every TI 2.0 client,
-including browsers and mobile apps. Written by zero-lab (TASK-167) on 2026-11-01; the
-analysis behind it is doc-2, section 6.
+including browsers and mobile apps, which is the reason gematik gives for the file in its
+own design note, agreed with the BSI. zero-lab has already removed XMLDSig and verifies
+this way (TASK-166), as a recorded deviation. Written by zero-lab (TASK-167) on 2026-11-01;
+the analysis behind it is doc-2, section 6.
 
 ## 1. Ausgangslage
 
@@ -48,9 +50,18 @@ CRL (A_21176), nur per HTTP (A_21175):
 (A_21177). Die URIs sind in A_21182 für PU, RU und TU festgelegt. Der Zweck ist dort
 ausschließlich ein Fallback für Konnektoren bei Nichterreichbarkeit der TI (A_21175).
 
+Die Begründung steht in gematiks Designnotiz
+([examples-TelematikInterfaces, tslService/detachedSignature](https://github.com/gematik/examples-TelematikInterfaces/tree/master/tslService/detachedSignature)):
+Die Detached-Signatur wurde nach Gesprächen mit dem BSI eingeführt, weil sie „einfacher
+prüfbar“ ist, „i. S. v. sicherer prüfbar“: Die TSL muss nicht als XML dekodiert und die
+relativ komplexe XMLDSig-Signatur, die potentiell von einem Angreifer modifiziert ist,
+nicht ausgewertet werden. Das Format ist bewusst das von X.509-Zertifikaten und
+OCSP-Antworten, ohne optionale Felder. Diese Begründung gilt für jeden Internet-Konsumenten,
+nicht nur für den Konnektor.
+
 Stand 2026-11-01 sind alle neun Dateien erreichbar (HTTP 200); die `.sig` der PU ist
-712 Byte groß, Signaturverfahren ecdsa-with-SHA256, Signer-Zertifikat brainpoolP256r1,
-ausgestellt von GEM.TSL-CA3.
+712 Byte groß, Signaturverfahren ecdsa-with-SHA256, Signaturwert im X9.62-Format nach
+TR-03111 5.2.2, Signer-Zertifikat brainpoolP256r1, ausgestellt von GEM.TSL-CA3.
 
 ## 2. Problem
 
@@ -78,8 +89,11 @@ die Signatur der TSL über die Detached-Signatur-Datei gemäß gemSpec_TSL A_211
 Dabei MUSS das System
 
 1. die TSL-Datei und die zugehörige Detached-Signatur-Datei vom selben Downloadpunkt
-   beziehen und bei fehlgeschlagener Prüfung beide erneut laden (Konsistenz nach
-   A_21177);
+   beziehen und bei fehlgeschlagener Prüfung beide einmal erneut ohne Validatoren laden
+   (Konsistenz nach A_21177). Ist der Downloadpunkt nicht per HTTPS erreichbar, darf die
+   TSL-Datei von dort nur übernommen werden, wenn sie zum per HTTPS bezogenen Hashwert
+   passt; ein unauthentisches „not modified“ dieses Downloadpunkts darf das Alter des
+   Vertrauensraums nicht erneuern;
 2. das in der Signatur-Datei enthaltene TSL-Signer-Zertifikat gemäß TUC_PKI_011 gegen die
    TSL-Signer-CA des TI-Vertrauensankers prüfen;
 3. die Signatur über die vollständigen Bytes der TSL-Datei mit dem öffentlichen
@@ -87,8 +101,11 @@ Dabei MUSS das System
    Signatur-Datei genannten und dem Schlüsseltyp des Signers entsprechen;
 4. den Sperrstatus des TSL-Signer-Zertifikats über die OCSP-Antwort-Datei gemäß
    A_21181 oder über eine OCSP-Abfrage an die AIA-Adresse (wie in A_30044) prüfen; die
-   OCSP-Antwort MUSS nach TUC_PKI_006 geprüft werden und DARF NICHT älter als die dort
-   zulässige Frist sein;
+   OCSP-Antwort MUSS nach TUC_PKI_006 geprüft werden. Weil A_21181 sie nur stündlich
+   erneuert, gilt für die Datei eine eigene Höchstfrist; zero-lab verwendet 2 Stunden. Eine
+   ältere Antwort DARF NICHT als `good` gewertet werden, eine signierte Antwort `revoked`
+   MUSS die TSL in jedem Alter sperren. Bei einer Prüfung zu einem anderen als dem
+   aktuellen Zeitpunkt DARF die Datei nicht verwendet werden;
 5. alle übrigen Schritte von TUC_PKI_001 unverändert umsetzen (ID und
    TSLSequenceNumber, NextUpdate und Zeitparameter nach Kapitel 8.2.4, Übernahme des
    Vertrauensraums), wobei die TSL-Datei dafür nur gelesen, nicht kanonisiert wird.
@@ -109,10 +126,10 @@ Download.
 ## 4. Prüfablauf eines Internet-Konsumenten
 
 ```text
-.sha2 vergleichen ─► unverändert: nichts tun
-        │ neu
+.sha2 per HTTPS vergleichen ─► unverändert: nichts tun
+        │ neu (oder nicht lesbar: .xml nur per HTTPS)
         ▼
-.xml + .sig (+ .ocsp) laden
+.xml + .sig (+ .ocsp) laden; .xml muss zum Hashwert passen, sonst .xml per HTTPS
         ▼
 .sig parsen: AlgorithmIdentifier, Signatur, Signer-Zertifikat  (A_21179; Längen begrenzt)
         ▼
@@ -120,7 +137,7 @@ TUC_PKI_011: Signer-Zertifikat gegen die TSL-Signer-CA des Ankers
         ▼
 Signatur über die vollständigen .xml-Bytes prüfen
         ▼
-TUC_PKI_006 für den Signer: .ocsp (A_21181) oder OCSP an die AIA-Adresse (A_30044)
+TUC_PKI_006 für den Signer: .ocsp, höchstens 2 h alt (A_21181), oder OCSP an die AIA-Adresse
         ▼
 TUC_PKI_001 Schritte 5 ff.: ID, TSLSequenceNumber, NextUpdate, Zeitparameter
         ▼
@@ -152,21 +169,26 @@ Vertrauensanker, den Signer, die Sequenz und die Zeit betreffen, bleiben.
   abgewiesen.
 - **Signer-Sperrung.** Die `.ocsp`-Datei wird stündlich erneuert (A_21181); ein
   Konsument, der eine engere Aktualität braucht, fragt die AIA-Adresse direkt ab, wie es
-  A_30044 bereits vorsieht.
+  A_30044 bereits vorsieht. Eine veraltete Antwort `good` ist kein Beleg, eine signierte
+  Antwort `revoked` bleibt in jedem Alter gültig.
 - **Parser-Angriffsfläche.** Die `.sig` ist eine ASN.1-Struktur aus drei Feldern mit
   einem X.509-Zertifikat; ihr Parser ist klein, längenbegrenzt und fuzzbar. Der
   XML-Parser liest die TSL danach nur noch als Datenquelle und steht nicht mehr auf dem
   Vertrauenspfad.
 - **Was nicht geschützt wird.** Verfügbarkeit: ein Angreifer kann wie bisher den
   Download verhindern; das fängt die Aktualitätsregel (NextUpdate, Kapitel 8.2.4) auf.
+  Heute kommt hinzu, dass `.sig` nur per HTTP auf dem CRL-Host liegt: Ein Netz, das diesen
+  Host sperrt, kann keine neue TSL übernehmen, obwohl sie per HTTPS erreichbar ist. Darum
+  ist die Bereitstellung an den HTTPS-Downloadpunkten (Abschnitt 3) mehr als eine
+  Bequemlichkeit.
 
 ## 6. Übergang
 
 Ein Konsument, der die Detached-Signatur prüft, ist mit heutigen TSL-Dateien sofort
-lauffähig, da die Dateien in allen drei Umgebungen bereitstehen. Bis zur Änderung der
-Spezifikation dokumentiert zero-lab die Abweichung von TUC_PKI_012 in seiner
-Spezifikation (`spec/tsl-detached`, TASK-166) und hält Testvektoren aus PU, RU und TU
-mit Aufnahmezeitpunkt vor, die dem PKI-Team zur Verfügung stehen.
+lauffähig, da die Dateien in allen drei Umgebungen bereitstehen. zero-lab prüft bereits so
+und hat die XMLDSig-Prüfung entfernt (TASK-166); die Abweichung von TUC_PKI_012 ist in
+`spec/tsl-detached` dokumentiert. Testvektoren aus PU, RU und TU mit Aufnahmezeitpunkt und
+abgeleitete Negativfälle stehen dem PKI-Team zur Verfügung.
 
 ## 7. Fragen an das PKI-Team
 
@@ -176,8 +198,8 @@ mit Aufnahmezeitpunkt vor, die dem PKI-Team zur Verfügung stehen.
    werden, damit Konsumenten nicht den CRL-Host nach A_21182 ansprechen müssen?
 3. Darf ein Produkt, das die Detached-Signatur prüft, Konformität zu TUC_PKI_001
    beanspruchen, oder braucht es eine eigene Anforderung (etwa A_30044-xx)?
-4. Ist die ASN.1-Struktur nach A_21179 stabil und versioniert, oder sind Änderungen
-   (weitere Felder, andere Verfahren) geplant?
+4. Ist die ASN.1-Struktur nach A_21179 stabil, oder sind Änderungen (weitere Felder,
+   andere Verfahren) geplant?
 5. Welche Aktualität der `.ocsp`-Datei kann ein Konsument zusichern lassen, und soll die
    AIA-Abfrage nach A_30044 die Datei ergänzen oder ersetzen?
 6. Enthalten die in Vorbereitung befindlichen Anforderungen für Internet- und
@@ -190,5 +212,6 @@ mit Aufnahmezeitpunkt vor, die dem PKI-Team zur Verfügung stehen.
   TUC_PKI_011, TUC_PKI_012, TUC_PKI_020, Kapitel 8.2.4.
 - gemSpec_TSL V1.25.0: Kapitel 6.3.1 (A_17680-02, A_17681, A_17682), Kapitel 6.3.1.3
   (A_21175 bis A_21182).
-- BSI TR-03111, Kapitel 5.2.2 (ECDSA-Signaturformat).
-- zero-lab: doc-2 Abschnitt 6, TASK-166, TASK-167, `spec/tsl-xmldsig`.
+- BSI TR-03111 V2.10, Kapitel 5.2.2 (X9.62-Format, `ECDSA-Sig-Value`).
+- gematik, examples-TelematikInterfaces, `tslService/detachedSignature` (Designnotiz).
+- zero-lab: doc-2 Abschnitt 6, TASK-166, TASK-167, `spec/tsl-detached`.

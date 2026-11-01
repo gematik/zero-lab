@@ -34,7 +34,7 @@ quick-xml (TSL, SOAP) and roxmltree (C14N) both parse hostile XML (design goal 8
 
 <!-- SECTION:NOTES:BEGIN -->
 Evaluated with hostile input, measured: no consolidation. roxmltree cannot serve SOAP or the service directory: read-only, no serde, and 17,000 lines of generated types use serde both ways. quick-xml cannot serve C14N: no tree with namespace scopes, no refusal of a DTD. Only the TSL could move to roxmltree, which takes quick-xml out of ti-pki but not out of the tree. A verified TSL is parsed from the signed canonical bytes, so no parser differential on what was signed. Results at up to 7 MB (deep nesting, unclosed tags, siblings, billion laughs, external entity): both refuse or finish under 100 ms, no entity expanded. Exception: roxmltree's attributes are quadratic, TASK-161. quick-xml accepts and skips a DTD; roxmltree refuses it. Both are 0.x, maintained; roxmltree 0.21.2 is out, not taken here.
-2026-11-01: this evaluation holds for today's tree. TASK-166 verifies the TSL by its detached signature, and removing the XMLDSig path behind its gate takes roxmltree and the C14N code out, leaving quick-xml; the decision to remove is TASK-166's.
+2026-11-01: superseded by the removal of XMLDSig (TASK-166): roxmltree and the C14N code are gone, and quick-xml is the one XML parser, reading the TSL only from bytes its detached signature covers.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

@@ -17,7 +17,7 @@ server, a browser, an air-gapped installation and, through bindings, in other ho
               │
  engines    ti-idpd  ti-directory  ti-connector-client  ti-report       (sans I/O)
               │
- core       ti-pki (+ load)  ti-xmldsig  jwz (+ jwz-brainpool, ti-jwz)  ti-pkcs12
+ core       ti-pki (+ load)  jwz (+ jwz-brainpool, ti-jwz)  ti-pkcs12
               │
  vocabulary ti-types (Env, Tier; no_std, no dependencies)   ti-store (policy, store trait)
 ```
@@ -113,19 +113,18 @@ the interop adapter in `spec/<topic>/interop/rust` prints the code.
 |---|---|---|---|
 | unsafe-code ban, lints, documented API | `unsafe_code = "forbid"` (ti-wasm glue excepted, `just wasm-unsafe-free`); the cores' dependencies only with an approved exception (`just unsafe-free`, [section 8](#8-dependencies)); clippy `pedantic`, rustdoc, `missing_docs` | check | all crates |
 | build matrix and layer checks | `just wasm32`, `just core-deps`, `just nonprod-absent`; `just features` | check; `just features` before a release (`check-full`) | all crates |
-| bounded model checking | Kani | design time, stamped | ti-xmldsig C14N, jwz (base64url, compact, ECDH) |
+| bounded model checking | Kani | design time, stamped | jwz (base64url, compact, ECDH) |
 | functional proof | hax → F* | design time, stamped | jwz Concat KDF (SP 800-56A §5.8.1) |
 | fuzzing | cargo-fuzz (below) | release, design time | jwz, ti-store and ti-pki parsers |
-| property tests | proptest | check | ti-xmldsig |
-| known-answer, corpora, interop | Wycheproof, spec corpora, interop runs | check | jwz, jwz-brainpool, ti-pki, ti-xmldsig, ti-pkcs12 |
+| known-answer, corpora, interop | Wycheproof, spec corpora, interop runs | check | jwz, jwz-brainpool, ti-pki, ti-pkcs12 |
 | undefined behaviour | Miri | only if `unsafe` ever enters | n/a |
 | mutation testing | cargo-mutants (`just mutants`) | before a release | per crate, by hand |
 | supply chain | cargo-deny, cargo-audit, cargo-vet | check / audit | workspace |
 | compatibility | cargo-semver-checks, MSRV, cargo-machete | audit / check | workspace |
 
-Hostile input is parsed strictly: DER through `der`, XML through `roxmltree` without
-DTDs where a signature depends on it and through `quick-xml` into typed structures
-elsewhere, without entity expansion in either, JSON through serde with unknown fields rejected where the format is ours; secrets
+Hostile input is parsed strictly: DER through `der`, XML through `quick-xml` into typed
+structures without entity expansion, read for the TSL only from bytes its detached
+signature covers, JSON through serde with unknown fields rejected where the format is ours; secrets
 in `Zeroizing`, digests and MACs compared with `subtle`.
 
 Design-time results are stamped in `jwz/verification/stamps/*.toml`; `just jwz-recheck`
@@ -142,8 +141,7 @@ with `cargo fuzz tmin`; structure-aware targets with `arbitrary`.
 | Crate | Entry points |
 |---|---|
 | jwz | JWS and JWE compact and JSON, JWK and JWK Set, JWT claims (exist) |
-| ti-pki | certificate and chain parsing, roots.json, TSL (`quick-xml`), OCSP responses, `TrustStore` validation of a parsed chain, offline bundle |
-| ti-xmldsig | XML parsing, C14N, signature verification of a TSL-shaped document |
+| ti-pki | certificate and chain parsing, roots.json, the detached TSL signature, TSL (`quick-xml`), OCSP responses, `TrustStore` validation of a parsed chain, offline bundle |
 | ti-pkcs12 | `decode` with password, MAC and KDF parameters, legacy PBEs |
 | ti-connector-client | `.kon` files, SOAP responses and faults, service directory |
 | ti-idpd, ti-directory | discovery document, IDP keys and challenge, redirects, token responses |
@@ -160,7 +158,7 @@ and semver in `just audit` before tagging. Known compromises, each with its exit
 are in [development.md](./development.md#known-compromises).
 
 **No `unsafe` in a core, also not through its dependencies.** The cores are ti-types,
-ti-store, ti-xmldsig, ti-pki, ti-pkcs12, ti-connector-client, ti-report, jwz,
+ti-store, ti-pki, ti-pkcs12, ti-connector-client, ti-report, jwz,
 jwz-brainpool, ti-jwz, ti-idpd and ti-directory, with every feature but their adapters
 (the `ureq` transports, ti-types' `clap`) and `test-util`.
 The hosts are ti-cli and ti-wasm: a crate that reaches the terminal, the operating system
@@ -205,7 +203,7 @@ are in its "Gated tests" table.
 
 ## 12. Status
 
-Gaps against the rules are backlog tasks: the crate labels (`ti-pki`, `ti-xmldsig`,
+Gaps against the rules are backlog tasks: the crate labels (`ti-pki`,
 `ti-pkcs12`, `jwz`, …) together with `fuzz`, `tests`, `deps`, `keys`. Most relevant now:
 fuzz targets beyond jwz (TASK-44 to TASK-49), requirement-named tests outside jwz
 (TASK-50, TASK-51), the silently passing Konnektor end-to-end tests (TASK-52), keys as

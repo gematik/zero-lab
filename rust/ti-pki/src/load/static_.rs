@@ -24,7 +24,8 @@
 //! [`StaticLoader`] and [`Bundle`]: trust material fixed at construction, for offline
 //! and air-gapped deployments or as the last fallback.
 //!
-//! A bundle is a JSON file holding both artefacts with their metadata. It is not signed
+//! A bundle is a JSON file holding roots.json, the TSL and its detached files with their
+//! metadata. It is not signed
 //! and needs no signature: its contents are verified on import like any other load, and
 //! the bundle only contributes `fetched_at` to the freshness policy. It records the
 //! SHA-256 of the anchor it was exported for, so a bundle for another environment is
@@ -91,7 +92,7 @@ impl Loader for StaticLoader {
     }
 }
 
-/// Offline trust material: both artefacts, their metadata, and the anchor they belong to.
+/// Offline trust material: the artefacts, their metadata, and the anchor they belong to.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Bundle {
     /// Free-form description, e.g. the environment and export date. Not interpreted.
@@ -185,8 +186,8 @@ struct Wire {
     tsl: String,
     roots_meta: WireMeta,
     tsl_meta: WireMeta,
-    // The detached files, absent in bundles written before them (format version 2 is
-    // kept: a reader without these fields would have to reject nothing).
+    // Optional in the format so that a bundle from before them gets a clear refusal on
+    // import rather than a parse error.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     tsl_sig: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -251,7 +252,11 @@ impl TryFrom<Wire> for Bundle {
                     _ => return Err("tsl_ocsp and tsl_ocsp_meta come together".to_owned()),
                 },
             }),
-            (None, None) => None,
+            (None, None) => {
+                return Err(
+                    "no detached signature: this bundle cannot verify, export it again".to_owned(),
+                );
+            }
             _ => return Err("tsl_sig and tsl_sig_meta come together".to_owned()),
         };
         Ok(Bundle {
@@ -348,7 +353,12 @@ mod tests {
             max_age: Some(Duration::from_secs(3600)),
             source: Source::Http,
         };
-        let material = TrustMaterial::new(b"roots".to_vec(), meta("r"), b"tsl".to_vec(), meta("t"));
+        let material = TrustMaterial::new(b"roots".to_vec(), meta("r"), b"tsl".to_vec(), meta("t"))
+            .with_detached(Some(Detached {
+                signature: b"sig".to_vec(),
+                signature_meta: meta("s"),
+                signer_status: None,
+            }));
         Bundle::new(&TrustConfig::preset_prod(), "prod 2026-09-22", material)
     }
 
@@ -375,17 +385,15 @@ mod tests {
         assert_eq!(Bundle::from_slice(&original.to_vec()).unwrap(), original);
     }
 
-    /// A bundle written before the detached fields existed still reads.
+    /// TSLDET-013: a bundle from before the detached files cannot verify; it says so on
+    /// import, not later as a load failure.
     #[test]
-    fn bundle_without_detached_fields_reads() {
-        let json = serde_json::to_string(&Wire::from(&bundle())).unwrap();
-        assert!(
-            !json.contains("tsl_sig"),
-            "absent fields are not written: {json}"
-        );
-        let read = Bundle::from_slice(json.as_bytes()).unwrap();
-        assert!(read.material.detached.is_none());
-        assert_eq!(read, bundle());
+    fn tsldet_013_a_bundle_without_the_signature_is_refused() {
+        let mut unsigned = bundle();
+        unsigned.material.detached = None;
+        let json = serde_json::to_string(&Wire::from(&unsigned)).unwrap();
+        let error = Bundle::from_slice(json.as_bytes()).unwrap_err();
+        assert!(error.to_string().contains("detached signature"), "{error}");
     }
 
     #[test]

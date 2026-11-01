@@ -23,7 +23,7 @@
 
 //! [`FallbackLoader`]: a primary source with a backup.
 
-use super::artifact::Artifact;
+use super::artifact::{Artifact, TrustMaterial};
 use super::loader::{Fetched, LoadError, Loader};
 use super::maybe_send::{MaybeSend, MaybeSync};
 use ti_store::Conditional;
@@ -68,6 +68,19 @@ where
     fn cache_key(&self, artifact: Artifact) -> String {
         self.primary.cache_key(artifact)
     }
+
+    async fn revalidate(&self) -> Result<(), LoadError> {
+        self.primary.revalidate().await
+    }
+
+    /// One source for the whole set: a list of the primary with a signature of the backup
+    /// would not verify, while the backup's own set does.
+    async fn load_all(&self) -> Result<TrustMaterial, LoadError> {
+        match self.primary.load_all().await {
+            Ok(material) => Ok(material),
+            Err(_) => self.backup.load_all().await,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -87,6 +100,48 @@ mod tests {
         ) -> Result<Fetched, LoadError> {
             Err(LoadError::Offline(artifact))
         }
+    }
+
+    /// TSLDET-013: a primary with a list but no signature hands over the whole set.
+    #[test]
+    fn tsldet_013_the_backup_supplies_the_whole_set() {
+        struct ListWithoutSignature;
+        impl Loader for ListWithoutSignature {
+            async fn fetch(
+                &self,
+                artifact: Artifact,
+                _: Conditional<'_>,
+            ) -> Result<Fetched, LoadError> {
+                match artifact {
+                    Artifact::TslSignature => Err(LoadError::Offline(artifact)),
+                    _ => Ok(Fetched::Body(crate::load::Loaded {
+                        body: b"primary".to_vec(),
+                        meta: meta(),
+                        stale: None,
+                    })),
+                }
+            }
+        }
+        fn meta() -> Meta {
+            Meta {
+                etag: None,
+                last_modified: None,
+                fetched_at: Timestamp(1),
+                max_age: None,
+                source: Source::Bundle,
+            }
+        }
+        let backup = StaticLoader::new(
+            TrustMaterial::new(b"roots".to_vec(), meta(), b"backup".to_vec(), meta())
+                .with_detached(Some(crate::load::Detached {
+                    signature: b"sig".to_vec(),
+                    signature_meta: meta(),
+                    signer_status: None,
+                })),
+        );
+        let material =
+            block_on(FallbackLoader::new(ListWithoutSignature, backup).load_all()).unwrap();
+        assert_eq!(material.tsl, b"backup");
     }
 
     #[test]

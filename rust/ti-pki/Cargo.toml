@@ -35,7 +35,6 @@ os = ["load", "ti-types/std"]
 
 [dependencies]
 ti-types.workspace = true
-ti-xmldsig.workspace = true
 ti-store = { workspace = true, optional = true }
 der.workspace = true
 x509-cert.workspace = true

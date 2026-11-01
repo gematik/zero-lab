@@ -22,14 +22,15 @@
  */
 
 //! The bridge from loaded bytes to verified trust material: the A_28419 roots walk from
-//! the configured anchor, then the TSL verified against the configured TSL signer CA
-//! (`spec/tsl-xmldsig` parts A, B and D, [`crate::tsl_signature`]) and compared with the
+//! the configured anchor, then the TSL verified by its detached signature against the
+//! configured TSL signer CA (`spec/tsl-detached`, `spec/tsl-xmldsig` parts B and D,
+//! [`crate::tsl_signature`]) and compared with the
 //! stored list, and its CAs matched to the roots the walk yielded. The signer's OCSP
 //! status (part C) needs a network and is the [`Reloader`](super::Reloader)'s step.
 
-use super::artifact::{Detached, TrustMaterial};
+use super::artifact::TrustMaterial;
 use crate::time::Timestamp;
-use crate::tsl_signature::{Sequence, TslError, TslState, VerifiedTsl};
+use crate::tsl_signature::{DetachedTsl, Sequence, TslError, TslState, VerifiedTsl};
 use crate::{Certificate, TrustConfig};
 
 /// Loaded material that passed verification.
@@ -88,27 +89,24 @@ pub(crate) fn verify_material(
     now: Timestamp,
     stored: Option<&TslState>,
 ) -> Result<Verified, VerifyError> {
-    verify_bytes(
-        config,
-        &material.roots,
-        &material.tsl,
-        material.detached.as_ref(),
-        now,
-        stored,
-    )
+    let files = material.detached.as_ref().map(|d| DetachedTsl {
+        signature: &d.signature,
+        signer_status: d.signer_status.as_ref().map(|(body, _)| body.as_slice()),
+    });
+    verify_bytes(config, &material.roots, &material.tsl, files, now, stored)
 }
 
 pub(crate) fn verify_bytes(
     config: &TrustConfig,
     roots_json: &[u8],
     tsl_xml: &[u8],
-    detached: Option<&Detached>,
+    files: Option<DetachedTsl<'_>>,
     now: Timestamp,
     stored: Option<&TslState>,
 ) -> Result<Verified, VerifyError> {
     let roots =
         crate::roots::verify_roots_json(&config.anchor, roots_json, now, &config.algorithms)?;
-    let tsl = verify_tsl(config, tsl_xml, detached, now)?;
+    let tsl = verify_tsl(config, tsl_xml, files, now)?;
     let sequence = tsl.check_sequence(stored)?;
     let store = crate::TrustStore::new(roots.iter().cloned());
     let matched =
@@ -138,28 +136,28 @@ pub(crate) fn verify_bytes(
     })
 }
 
+/// A list without its signature file is not material (TSLDET-013).
 #[cfg(feature = "brainpool")]
 fn verify_tsl(
     config: &TrustConfig,
     xml: &[u8],
-    detached: Option<&Detached>,
+    files: Option<DetachedTsl<'_>>,
     now: Timestamp,
 ) -> Result<VerifiedTsl, VerifyError> {
-    let detached = detached.map(|d| crate::tsl_signature::DetachedTsl {
-        signature: &d.signature,
-        signer_status: d.signer_status.as_ref().map(|(body, _)| body.as_slice()),
-    });
-    Ok(crate::tsl::Tsl::parse_verified_loaded(
-        xml, detached, config, now,
+    let files = files.ok_or_else(|| {
+        VerifyError::new("the TSL came without its detached signature (TSLDET-013)")
+    })?;
+    Ok(crate::tsl::Tsl::parse_verified_with_status(
+        xml, files, config, now,
     )?)
 }
 
-/// Every TSL is signed on brainpoolP256r1 (TSLSIG-012): without the curve none verifies.
+/// Every TSL is signed on brainpoolP256r1 (TSLDET-004): without the curve none verifies.
 #[cfg(not(feature = "brainpool"))]
 fn verify_tsl(
     _: &TrustConfig,
     _: &[u8],
-    _: Option<&Detached>,
+    _: Option<DetachedTsl<'_>>,
     _: Timestamp,
 ) -> Result<VerifiedTsl, VerifyError> {
     Err(VerifyError::new(
@@ -170,43 +168,77 @@ fn verify_tsl(
 #[cfg(all(test, feature = "brainpool"))]
 mod tests {
     use super::*;
+    use crate::load::Detached;
 
-    #[test]
-    fn embedded_prod_material_verifies() {
-        let config = TrustConfig::preset_prod();
-        let meta = super::super::Meta {
+    fn meta() -> super::super::Meta {
+        super::super::Meta {
             etag: None,
             last_modified: None,
             fetched_at: Timestamp(0),
             max_age: None,
             source: super::super::Source::Embedded,
+        }
+    }
+
+    /// The published PU set and the time it was captured at.
+    fn prod_material(config: &TrustConfig) -> (TrustMaterial, Timestamp) {
+        let read = |suffix: &str| {
+            std::fs::read(format!(
+                "{}/../../spec/tsl-detached/testdata/prod/ECC-RSA_TSL.{suffix}",
+                env!("CARGO_MANIFEST_DIR")
+            ))
+            .unwrap()
         };
-        let tsl = include_bytes!("../../tests/fixtures/tsl/ECC-RSA_TSL.xml");
-        let material = TrustMaterial::new(config.roots.to_vec(), meta.clone(), tsl.to_vec(), meta);
-        // The fixture TSL's ListIssueDateTime, 2026-09-13T23:00:08Z.
-        let verified = verify_material(&config, &material, Timestamp(1_789_340_408), None).unwrap();
+        let material = TrustMaterial::new(config.roots.to_vec(), meta(), read("xml"), meta())
+            .with_detached(Some(Detached {
+                signature: read("sig"),
+                signature_meta: meta(),
+                signer_status: None,
+            }));
+        (
+            material,
+            Timestamp::parse_rfc3339("2026-11-01T16:47:42Z").unwrap(),
+        )
+    }
+
+    #[test]
+    fn embedded_prod_material_verifies() {
+        let config = TrustConfig::preset_prod();
+        let (material, now) = prod_material(&config);
+        let verified = verify_material(&config, &material, now, None).unwrap();
         assert_eq!(verified.roots.len(), 10);
-        assert_eq!(verified.intermediates.len(), 84);
-        assert_eq!(verified.ocsp_responders.len(), 115);
+        assert_eq!(verified.intermediates.len(), 71);
+        assert_eq!(verified.ocsp_responders.len(), 95);
         assert_eq!(
             verified.tsl_next_update.map(|t| t.to_string()).as_deref(),
-            Some("2026-10-13T23:00:08Z")
+            Some("2026-11-27T00:00:07Z")
         );
 
-        let broken = TrustMaterial::new(
-            config.roots.to_vec(),
-            material.meta(super::super::Artifact::Tsl).unwrap().clone(),
-            b"<html/>".to_vec(),
-            material.meta(super::super::Artifact::Tsl).unwrap().clone(),
-        );
-        let error = verify_material(&config, &broken, Timestamp(1_789_340_408), None).unwrap_err();
+        let broken = TrustMaterial {
+            tsl: b"<html/>".to_vec(),
+            ..material
+        };
+        let error = verify_material(&config, &broken, now, None).unwrap_err();
         assert!(error.reason.contains("TSL"), "{error}");
     }
 
-    /// TSLDET-031: material with the detached files verifies through them, status included.
+    /// TSLDET-013: a list without its signature file is not material.
+    #[test]
+    fn tsldet_013_a_list_without_its_signature_does_not_verify() {
+        let config = TrustConfig::preset_prod();
+        let (material, now) = prod_material(&config);
+        let unsigned = TrustMaterial {
+            detached: None,
+            ..material
+        };
+        let error = verify_material(&config, &unsigned, now, None).unwrap_err();
+        assert!(error.reason.contains("TSLDET-013"), "{error}");
+    }
+
+    /// Material with its detached files verifies through them, status included.
     #[cfg(feature = "dangerous-nonprod")]
     #[test]
-    fn tsldet_031_verify_material_prefers_detached() {
+    fn tsldet_020_verify_material_adopts_the_supplied_status() {
         let base = concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../spec/tsl-detached/testdata/ref/ECC-RSA_TSL-ref."
@@ -226,7 +258,7 @@ mod tests {
             read("xml"),
             meta.clone(),
         )
-        .with_detached(Some(super::super::Detached {
+        .with_detached(Some(Detached {
             signature: read("sig"),
             signature_meta: meta.clone(),
             signer_status: Some((read("ocsp"), meta)),
@@ -234,7 +266,6 @@ mod tests {
         let captured_at = Timestamp::parse_rfc3339("2026-11-01T16:47:42Z").unwrap();
         let verified = verify_material(&config, &material, captured_at, None).unwrap();
         let tsl = verified.tsl.unwrap();
-        assert_eq!(tsl.signature, crate::tsl_signature::SignatureKind::Detached);
         assert!(
             tsl.signer_status.is_some(),
             "the supplied status was adopted"
@@ -246,28 +277,19 @@ mod tests {
         );
     }
 
-    /// Without brainpool no TSL verifies (TSLSIG-012), and a TSL that does not verify
-    /// fails the load: a caller that wants roots without the TSL loads them alone.
+    /// Without brainpool no TSL verifies, and a TSL that does not verify fails the load: a
+    /// caller that wants roots without the TSL loads them alone.
     #[test]
     fn without_brainpool_the_material_does_not_load() {
         let config = TrustConfig {
             algorithms: std::borrow::Cow::Borrowed(crate::algorithms::NIST),
             ..TrustConfig::preset_prod()
         };
-        let meta = super::super::Meta {
-            etag: None,
-            last_modified: None,
-            fetched_at: Timestamp(0),
-            max_age: None,
-            source: super::super::Source::Embedded,
-        };
-        let tsl = include_bytes!("../../tests/fixtures/tsl/ECC-RSA_TSL.xml");
-        let material = TrustMaterial::new(config.roots.to_vec(), meta.clone(), tsl.to_vec(), meta);
-        let error =
-            verify_material(&config, &material, Timestamp(1_789_340_408), None).unwrap_err();
+        let (material, now) = prod_material(&config);
+        let error = verify_material(&config, &material, now, None).unwrap_err();
         assert_eq!(
             error.tsl.map(|e| e.rule),
-            Some("TSLSIG-012"),
+            Some("TSLDET-002"),
             "{}",
             error.reason
         );

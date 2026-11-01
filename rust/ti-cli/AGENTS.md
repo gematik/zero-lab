@@ -182,8 +182,8 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 {bin} --format json pki tsl show --env ref        # CAs under the roots that signed them
 {bin} --format json pki tsl show --rejected       # CAs no verified root signed
 {bin} --format json pki tsl show --ca SMCB-CA51   # filter by name, also --provider, --root
-{bin} --format json pki tsl verify tsl.xml --previous old.xml   # exit 0 valid, 1 not
-{bin} --format json pki tsl verify tsl.xml --signature tsl.sig --signer-status tsl.ocsp   # the published detached signature and status, no network
+{bin} --format json pki tsl verify tsl.xml tsl.sig --previous old.xml   # exit 0 valid, 1 not
+{bin} --format json pki tsl verify tsl.xml tsl.sig --signer-status tsl.ocsp   # the published signature and status, no network
 {bin} pki roots bundle --env ref > roots.pem      # CA bundle (PEM) for curl, openssl, Go
 {bin} pki tsl bundle --env ref --ca SMCB -o smcb.pem   # the TSL's CAs, tsl show's filters
 {bin} pki tsl bundle --env ref --ca KOMP-CA54 --ca KOMP-CA55 -o komp.pem   # repeated: any of
@@ -192,7 +192,7 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 {bin} pki tsl bundle --env prod --issues TLS-S --with-roots -o tls.pem   # every TLS server CA
 {bin} pki tsl bundle --env prod --issues TLS-S --with-roots --nist-only -o tls-nist.pem
 {bin} pki roots bundle --p12 --p12-password changeit -o roots.p12   # Java truststore
-{bin} pki tsl export --env ref -o tsl.xml         # the TSL as published, once it verified
+{bin} pki tsl export --env ref -o tsl.xml         # the TSL as published, once it verified, with tsl.sig and tsl.ocsp
 ```
 
 - `roots bundle`, `tsl bundle` and `tsl export` write the bundle or the TSL to stdout,
@@ -276,11 +276,11 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   at T (gemSpec_PKI TUC_PKI_006 8a/8b). A certificate revoked after T is valid with the
   warning `revoked_after_reference_time`; `chain[].revocation` keeps `status: revoked`
   and the `revoked_at` time, `at` is T.
-- `tsl verify` checks a TSL file: signature, signer under the embedded TSL signer CA,
+- `tsl verify TSL SIG` checks a TSL file and the `.sig` published next to it: signature, signer under the embedded TSL signer CA,
   `NextUpdate` (`--grace`), the signer's OCSP status (not with `--offline` or `--at`),
   and with `--previous` the sequence. `result` is `valid` or `invalid`; an invalid one
-  has `code` (gemSpec_PKI Tab_PKI_274, e.g. `xml_signature_error`), `rule`
-  (`TSLSIG-nnn`) and `detail`, and the list fields are null. A valid one may carry
+  has `code` (gemSpec_PKI Tab_PKI_274, e.g. `detached_signature_error`), `rule`
+  (`TSLDET-nnn` or `TSLSIG-nnn`) and `detail`, and the list fields are null. A valid one may carry
   `warnings` and `skipped` entries. `tier` is `prod` or `nonprod`: ref, test and dev
   share one TSL signer CA.
 - `{bin} pki verify-signature --cert CERT --data FILE --signature FILE` checks one
