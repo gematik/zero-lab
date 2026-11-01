@@ -38,5 +38,5 @@ Done on feat/ti-cli-help-and-search: wording SMC-B or HBA in help, AGENTS.md, RE
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-ti identity, idpd authenticate and directory login owner take an HBA's C.HP.AUT as well as an SMC-B's C.HCI.AUT; help and docs say SMC-B or HBA and name PIN.SMC or PIN.CH; a QES certificate is excluded. HITL by the maintainer with a real HBA at the Konnektor: ok.
+ti identity, idpd authenticate and directory login owner take an HBA's C.HP.AUT as well as an SMC-B's C.HCI.AUT; help and docs say SMC-B or HBA and name PIN.SMC or PIN.CH; a QES certificate is excluded. HITL by the maintainer with a real HBA at the Konnektor: identity inspect and directory login owner --env ref --card ok. idpd authenticate itself was not run, no authorization URL at hand; directory login owner goes through the same sign-in at the IDP-Dienst.
 <!-- SECTION:FINAL_SUMMARY:END -->
