@@ -57,7 +57,10 @@ fn main() -> ExitCode {
             println!("valid at {now} ({:?})", verified.tier);
             println!("anchor        {}", verified.anchor.subject_cn());
             println!("signer        {}", verified.signer.subject_cn());
-            println!("signing time  {}", verified.signing_time);
+            println!("signature     {}", verified.signature);
+            if let Some(signing_time) = &verified.signing_time {
+                println!("signing time  {signing_time}");
+            }
             println!("sequence      {}", verified.tsl.sequence_number);
             println!("CAs           {}", verified.tsl.intermediate_cas().len());
             ExitCode::SUCCESS

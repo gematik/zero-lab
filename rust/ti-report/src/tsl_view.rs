@@ -78,8 +78,10 @@ pub struct SignatureView {
     pub signer: String,
     /// The TSL signer CA that issued it, by fingerprint.
     pub tsl_signer_ca: String,
-    /// The XAdES `SigningTime`, as signed.
-    pub signing_time: String,
+    /// Which signature authenticated the list: `enveloped` or `detached` (TSLDET-031).
+    pub kind: &'static str,
+    /// The XAdES `SigningTime`, as signed; absent for a detached signature.
+    pub signing_time: Option<String>,
     /// Findings that leave the list usable, e.g. `no_ocsp_check`.
     pub warnings: Vec<Finding>,
 }
@@ -383,6 +385,7 @@ impl Builder<'_> {
         self.view.signature = Some(SignatureView {
             signer: self.file(&verified.signer),
             tsl_signer_ca: self.file(&verified.anchor),
+            kind: verified.signature.as_str(),
             signing_time: verified.signing_time.clone(),
             warnings: verified.warnings.iter().map(Finding::from).collect(),
         });

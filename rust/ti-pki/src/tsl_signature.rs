@@ -293,8 +293,44 @@ pub struct SignedTsl {
     /// The canonical bytes of the signed content (TSLSIG-023): what to parse the TSL
     /// from, never the received bytes.
     pub content: Vec<u8>,
-    /// `SigningTime` as written; informational (TSLSIG-021).
-    pub signing_time: String,
+    /// `SigningTime` as written; informational (TSLSIG-021). `None` for a detached
+    /// signature, which carries no signing time.
+    pub signing_time: Option<String>,
+}
+
+/// Which signature authenticated a list (TSLDET-031).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SignatureKind {
+    /// The XMLDSig/XAdES signature inside the list (`spec/tsl-xmldsig` part A).
+    Enveloped,
+    /// The detached signature file published next to it (`spec/tsl-detached`).
+    Detached,
+}
+
+impl SignatureKind {
+    /// The kind's name, `enveloped` or `detached`.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            SignatureKind::Enveloped => "enveloped",
+            SignatureKind::Detached => "detached",
+        }
+    }
+}
+
+impl fmt::Display for SignatureKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// The detached files of a list, as the loaders hand them on and ti-report takes them:
+/// the signature file and, when published with it, the signer's OCSP response.
+#[derive(Clone, Copy, Debug)]
+pub struct DetachedTsl<'a> {
+    /// The `.sig` file.
+    pub signature: &'a [u8],
+    /// The `.ocsp` file, if supplied.
+    pub signer_status: Option<&'a [u8]>,
 }
 
 #[cfg(feature = "brainpool")]
@@ -354,7 +390,7 @@ pub fn verify(xml: &[u8], algorithms: &AlgorithmSet) -> Result<SignedTsl, TslErr
     Ok(SignedTsl {
         signer,
         content: xml_checked.content,
-        signing_time: xml_checked.signing_time,
+        signing_time: Some(xml_checked.signing_time),
     })
 }
 
@@ -495,7 +531,7 @@ pub fn verify_detached(
     Ok(SignedTsl {
         signer: parsed.signer,
         content: xml.to_vec(),
-        signing_time: String::new(),
+        signing_time: None,
     })
 }
 
@@ -512,8 +548,11 @@ pub struct VerifiedTsl {
     pub anchor: Certificate,
     /// The C.TSL.SIG certificate the list is signed with.
     pub signer: Certificate,
-    /// `SigningTime` as written; informational (TSLSIG-021).
-    pub signing_time: String,
+    /// Which signature authenticated the list (TSLDET-031).
+    pub signature: SignatureKind,
+    /// `SigningTime` as written; informational (TSLSIG-021). `None` for a detached
+    /// signature.
+    pub signing_time: Option<String>,
     /// What leaves the list usable but deserves attention: [`TslCode::NoOcspCheck`] until
     /// [`check_signer_status`](Self::check_signer_status) succeeded,
     /// [`TslCode::ValidityWarning1`] within the grace period.
@@ -686,6 +725,47 @@ impl Tsl {
         config: &TrustConfig,
         now: Timestamp,
     ) -> Result<VerifiedTsl, TslError> {
+        verify_signed(
+            verify(xml, &config.algorithms)?,
+            SignatureKind::Enveloped,
+            config,
+            now,
+        )
+    }
+
+    /// [`Tsl::parse_verified`] with the detached signature file `sig` in place of the
+    /// enveloped signature (`spec/tsl-detached` part A, TSLDET-030): the signer from the
+    /// file, the list from the bytes the signature covers.
+    ///
+    /// # Errors
+    ///
+    /// [`TslError`] with the code and the rule of the first check that failed.
+    pub fn parse_verified_detached(
+        xml: &[u8],
+        sig: &[u8],
+        config: &TrustConfig,
+        now: Timestamp,
+    ) -> Result<VerifiedTsl, TslError> {
+        verify_signed(
+            verify_detached(xml, sig, &config.algorithms)?,
+            SignatureKind::Detached,
+            config,
+            now,
+        )
+    }
+}
+
+#[cfg(feature = "brainpool")]
+/// Parts B – G for a list whose signature verified: the signer under one of
+/// [`TrustConfig::tsl_signer_anchors`] (TSLSIG-030 – 035), the list from the signed
+/// content, `NextUpdate` and the grace period, the anchor announcements.
+fn verify_signed(
+    signed: SignedTsl,
+    kind: SignatureKind,
+    config: &TrustConfig,
+    now: Timestamp,
+) -> Result<VerifiedTsl, TslError> {
+    {
         let anchors = config
             .tsl_signer_anchors
             .iter()
@@ -698,7 +778,6 @@ impl Tsl {
                     format!("TSL signer anchor: {e}"),
                 )
             })?;
-        let signed = verify(xml, &config.algorithms)?;
         let anchor = issuing_anchor(&anchors, &signed.signer)?.clone();
         check_signer(&signed.signer, &anchor, &config.algorithms, now)?;
         let tsl = Tsl::parse_with(&signed.content, true).map_err(|e| {
@@ -741,12 +820,16 @@ impl Tsl {
             tier,
             anchor,
             signer: signed.signer,
+            signature: kind,
             signing_time: signed.signing_time,
             warnings,
             signer_status: None,
         })
     }
+}
 
+#[cfg(feature = "brainpool")]
+impl Tsl {
     /// [`Tsl::parse_verified`] for production: GEM.TSL-CA3 and the production
     /// configuration's algorithms. A TSL of another environment fails.
     ///
@@ -782,14 +865,30 @@ impl Tsl {
 /// As [`verify`], and [`TslCode::CertificateNotValidMath`] if no embedded TSL signer CA
 /// fits.
 pub fn embedded_config_for(xml: &[u8]) -> Result<TrustConfig, TslError> {
-    let signed = verify(xml, crate::algorithms::DEFAULT)?;
+    config_for_signer(&verify(xml, crate::algorithms::DEFAULT)?.signer)
+}
+
+#[cfg(feature = "brainpool")]
+/// [`embedded_config_for`] from the signer certificate inside the detached signature
+/// file `sig`; only the file is parsed here, nothing is verified yet.
+///
+/// # Errors
+///
+/// As [`parse_detached_signature`], and [`TslCode::CertificateNotValidMath`] if no
+/// embedded TSL signer CA fits.
+pub fn embedded_config_for_detached(sig: &[u8]) -> Result<TrustConfig, TslError> {
+    config_for_signer(&parse_detached_signature(sig)?.signer)
+}
+
+#[cfg(feature = "brainpool")]
+fn config_for_signer(signer: &Certificate) -> Result<TrustConfig, TslError> {
     embedded_configs()
         .into_iter()
         .find(|config| {
             config.tsl_signer_anchors.iter().any(|der| {
                 Certificate::from_der(der).is_ok_and(|anchor| {
-                    anchor.subject_der() == signed.signer.issuer_der()
-                        && anchor.subject_key_id() == signed.signer.authority_key_id()
+                    anchor.subject_der() == signer.issuer_der()
+                        && anchor.subject_key_id() == signer.authority_key_id()
                 })
             })
         })
@@ -799,7 +898,7 @@ pub fn embedded_config_for(xml: &[u8]) -> Result<TrustConfig, TslError> {
                 "TSLSIG-031",
                 format!(
                     "the signer's issuer {} is no embedded TSL signer CA",
-                    signed.signer.issuer()
+                    signer.issuer()
                 ),
             )
         })
@@ -1059,6 +1158,82 @@ mod tests {
             Ok(v) => panic!("expected {code} ({rule}), got Ok({v:?})"),
             Err(e) => assert_eq!((e.code, e.rule), (code, rule), "{e}"),
         }
+    }
+
+    /// The capture time of the published sets (spec/tsl-detached/testdata/README.md).
+    fn captured_at() -> Timestamp {
+        Timestamp::parse_rfc3339("2026-11-01T16:47:42Z").unwrap()
+    }
+
+    #[test]
+    fn tsldet_030_detached_list_passes_parts_b_to_g() {
+        for (env, preset) in [
+            ("prod", crate::Env::Prod),
+            ("ref", crate::Env::Ref),
+            ("test", crate::Env::Test),
+        ] {
+            let (xml, sig, _) = detached(env);
+            let config = TrustConfig::preset(preset);
+            let detached_list = Tsl::parse_verified_detached(&xml, &sig, &config, captured_at())
+                .unwrap_or_else(|e| panic!("{env}: {e}"));
+            let enveloped = Tsl::parse_verified(&xml, &config, captured_at()).unwrap();
+            assert_eq!(detached_list.tsl.id, enveloped.tsl.id, "{env}");
+            assert_eq!(
+                detached_list.tsl.sequence_number,
+                enveloped.tsl.sequence_number
+            );
+            assert_eq!(
+                detached_list.tsl.services.len(),
+                enveloped.tsl.services.len()
+            );
+            assert_eq!(detached_list.signer.serial(), enveloped.signer.serial());
+            assert_eq!(detached_list.anchor.der(), enveloped.anchor.der());
+            assert_eq!(detached_list.signature, SignatureKind::Detached);
+            assert_eq!(enveloped.signature, SignatureKind::Enveloped);
+            assert_eq!(detached_list.signing_time, None);
+            assert!(enveloped.signing_time.is_some());
+            let codes = |v: &VerifiedTsl| v.warnings.iter().map(|w| w.code).collect::<Vec<_>>();
+            assert_eq!(codes(&detached_list), codes(&enveloped), "{env}");
+        }
+    }
+
+    #[test]
+    fn tsldet_030_signer_of_another_environment_rejected() {
+        let (xml, sig, _) = detached("prod");
+        assert_code(
+            Tsl::parse_verified_detached(
+                &xml,
+                &sig,
+                &TrustConfig::preset(crate::Env::Ref),
+                captured_at(),
+            ),
+            TslCode::CertificateNotValidMath,
+            "TSLSIG-031",
+        );
+    }
+
+    #[test]
+    fn tsldet_031_embedded_config_follows_the_detached_signer() {
+        let (_, prod_sig, _) = detached("prod");
+        let (_, ref_sig, _) = detached("ref");
+        assert_eq!(
+            embedded_config_for_detached(&prod_sig).unwrap().tsl_url,
+            crate::tsl::URL_PROD
+        );
+        // The non-production environments share one TSL signer CA: the lookup tells the
+        // tier, and the test preset stands for it, as for the enveloped signature.
+        let nonprod = embedded_config_for_detached(&ref_sig).unwrap();
+        assert_eq!(
+            nonprod.tsl_url,
+            TrustConfig::preset(crate::Env::Test).tsl_url
+        );
+        assert_ne!(nonprod.tsl_url, crate::tsl::URL_PROD);
+    }
+
+    #[test]
+    fn tsldet_031_signature_kind_names() {
+        assert_eq!(SignatureKind::Detached.as_str(), "detached");
+        assert_eq!(SignatureKind::Enveloped.as_str(), "enveloped");
     }
 
     #[test]

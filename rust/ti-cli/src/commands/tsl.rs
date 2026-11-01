@@ -400,7 +400,7 @@ fn verify_report(
             report.sequence_number = Some(verified.tsl.sequence_number);
             report.issued_at = Some(verified.tsl.issued_at.to_string());
             report.next_update = verified.tsl.next_update.map(|t| t.to_string());
-            report.signing_time = Some(verified.signing_time.clone());
+            report.signing_time.clone_from(&verified.signing_time);
             report.anchor = Some(CertSummary::new(&verified.anchor));
             report.signer = Some(CertSummary::new(&verified.signer));
             report.cas = Some(verified.tsl.intermediate_cas().len());
