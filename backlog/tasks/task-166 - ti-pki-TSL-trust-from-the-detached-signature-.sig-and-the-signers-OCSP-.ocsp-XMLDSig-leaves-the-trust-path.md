@@ -3,9 +3,10 @@ id: TASK-166
 title: >-
   ti-pki: TSL trust from the detached signature (.sig) and the signer's OCSP
   (.ocsp); XMLDSig leaves the trust path
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-01T16:10:00Z'
+updated_date: '2026-11-01T16:47:00Z'
 labels:
   - ti-pki
   - rust
