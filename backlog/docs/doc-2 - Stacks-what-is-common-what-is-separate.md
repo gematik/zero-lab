@@ -92,7 +92,7 @@ against the reference TSL without I/O (`spikes/go-rust-bridge/README.md` and
 |---|---|---|---|---|---|
 | long-lived Rust process, stdio or Unix socket | 1.3 ms | none | no | process | **the server boundary** (stateless helpers, section 9) |
 | `ti` per call | 35 ms | none | no | process | rare operations, the CLI, epa today |
-| wasm2go (Rust to Wasm to generated Go) | 5 ms | none; 9.8 MB generated, no `unsafe` | no | bounds-checked slices | only for a host that must be one `go install` binary and needs a core function |
+| wasm2go (Rust to Wasm to generated Go) | 5 ms | none; 9.8 MB generated, no `unsafe` | no | bounds-checked slices | rejected: about 300,000 generated lines, and Go must be human-reviewable (maintainer, 2026-11-01) |
 | purego (native library) | 2.3 ms | 2,100 lines, 80 `unsafe` | native Rust | none | rejected |
 | wazero interpreter / JIT | 431 ms / 34 ms | 65,700 lines, 441 `unsafe` | no / JIT | sandbox | rejected |
 | cgo | sub-microsecond | C toolchain in every build | native | none | rejected ([interop](../../docs/interop.md)) |
@@ -105,7 +105,7 @@ Per host class:
 | browser | wasm-bindgen (`ti-wasm`); pure exports, the page does downloads and clock |
 | iOS, macOS, Android, JVM, .NET apps and middleware | uniffi bindings (Swift, Kotlin, Java facade); `uniffi-bindgen-cs` for C#, maturity to be evaluated before the profile (TASK-172) |
 | Go servers (PDP, PEP, BFF) | stateless Rust helper in the same image, over stdio or a Unix socket (decision-10) |
-| Go single-binary host (the Caddy plugin) | none needed today: it validates the PDP's tokens natively; if it ever needs a core function, wasm2go under the conditions of decision-10 |
+| Go single-binary host (the Caddy plugin) | none: it validates the PDP's tokens natively and carries no TI core function; needing more is a design decision with its own task (Go is human-reviewable, so wasm2go is out) |
 | epa (a client deployed like a server) | `ti` per call today; the helper in supplied mode is decided with the ePA local setup (TASK-120.7) |
 
 ## 5. The zero-trust PDP and the helper
@@ -134,7 +134,8 @@ no secrets across it, fail closed. The zero-trust objection is answered by measu
 helper with the PDP, not by trusting it separately. A is rejected because it is a second
 implementation of the most trust-critical rules of the repository, in the language whose
 profile forbids exactly that, and it would still need the spec and corpus before it could
-be trusted. C is kept for a host that must be one binary; the PDP is not one.
+be trusted. C was kept at first for a host that must be one binary; the maintainer's
+rule of 2026-11-01 that Go is human-reviewable rules it out too (section 4).
 
 What Go keeps natively in the token exchange: parsing the grant, checking the assertion's
 signature against the verified certificate's key through `go/brainpool`, DPoP binding,

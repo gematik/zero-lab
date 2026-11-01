@@ -44,21 +44,20 @@ not fit. Go decides per TI function, in this order (decision-10):
 
 1. The server's own protocol (the authorization server's endpoints, DPoP, OpenID
    Federation as a relying party) is native Go.
-2. A host that must be one self-contained `go install` binary (the Caddy plugin) and
-   needs a core function uses the core compiled to WebAssembly and translated to Go
-   (wasm2go), never a second implementation: the module imports nothing, one C ABI crate
-   with every `unsafe` block in one file under Miri, guest memory read through
-   bounds-checked slices, one instance per concurrent caller, bounded inputs, the
-   generated file reproduced by a recipe and checked in CI, the generator pinned. No
-   host needs it today.
-3. Every other TI function goes through the helper.
-4. A native implementation under a shared specification only where a measured
+2. Every other TI function goes through the helper.
+3. A native implementation under a shared specification only where a measured
    per-request path needs it, and then with the specification, its corpus, a
    traceability table and an interop run against Rust in `just check`.
 
-A TI certificate rule (path validation, TSL, OCSP, profiles, admission) is never
-implemented in Go under 4 without that measurement; the SMC-B check of token exchange
-goes through the helper.
+A host that must be one self-contained `go install` binary (the Caddy plugin) gets no TI
+core function: Go is human-reviewable
+([code and comments](conventions/code-and-comments.md#style)), so the core translated to
+Go (wasm2go, hundreds of thousands of generated lines) is out, as are wazero, purego and
+cgo. Such a host validates what a PDP issued, natively under 1, and nothing else; if it
+ever needs more, that is a design decision with its own task, not a default. A TI
+certificate rule (path validation, TSL, OCSP, profiles, admission) is never implemented
+in Go under 3 without that measurement; the SMC-B check of token exchange goes through
+the helper.
 
 ## Rules for every process boundary
 

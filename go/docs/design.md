@@ -133,9 +133,11 @@ cross-compiled, without a C toolchain). Go uses the Rust core across a process b
 (`ti` subprocesses today; the stateless helpers through `go/tirpc`, as a child over stdio
 or a sidecar over a Unix socket, TASK-120) and decides per TI function in the order
 [interop](../../docs/interop.md#three-ways-to-use-the-core) gives: the server's own
-protocol native, a single-binary host through wasm2go, everything else through the
-helper, a native implementation under a shared specification only where a measured
-per-request path needs it. The Go client of a process boundary is standard library only,
+protocol native, everything else through the helper, a native implementation under a
+shared specification only where a measured per-request path needs it. Go is
+human-reviewable ([code and comments](../../docs/conventions/code-and-comments.md#style)):
+no translated or embedded executable code, so a single-binary host carries no TI core
+function. The Go client of a process boundary is standard library only,
 pools connections and buffers (`sync.Pool`), sits behind a consumer interface, checks the
 peer's version at start-up, and sends no secret across the socket.
 

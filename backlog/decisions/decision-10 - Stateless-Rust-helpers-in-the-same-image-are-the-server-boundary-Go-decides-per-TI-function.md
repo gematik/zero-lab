@@ -33,22 +33,21 @@ is doc-2.
    across the socket, bounded frames, versioned handshake, fail closed. Platform identity,
    mesh and attestation are consumed through their standard interfaces, never provided.
 3. **Go decides per TI function, in this order:** (a) the server's own protocol (OAuth,
-   DPoP, OIDC, OpenID Federation as a relying party) is native Go; (b) a host that must be
-   one `go install` binary and needs a core function uses the core compiled to WebAssembly
-   and translated to Go (wasm2go) under the conditions below, never a second
-   implementation; (c) every other TI function goes through the helper; (d) a native
-   implementation under a shared specification only where a measured per-request path
-   needs it, and then with the spec, its corpus, a traceability table and an interop run
-   in `just check`. The SMC-B check of token exchange is (c).
-4. **wasm2go conditions:** the module imports nothing (no I/O, clock or randomness); one
-   C ABI crate with every `unsafe` block in one file under Miri; guest memory read only
-   through bounds-checked slices; one instance per concurrent caller; bounded inputs,
-   since a running call cannot be cancelled; the generated file reproduced by a recipe
-   and checked in CI; the generator pinned, and vendored if its single maintainer stops.
-   No host needs it today: the Caddy plugin validates the PDP's tokens natively.
+   DPoP, OIDC, OpenID Federation as a relying party) is native Go; (b) every other TI
+   function goes through the helper; (c) a native implementation under a shared
+   specification only where a measured per-request path needs it, and then with the
+   spec, its corpus, a traceability table and an interop run in `just check`. The SMC-B
+   check of token exchange is (b).
+4. **Go is human-reviewable** (maintainer, 2026-11-01, amending the first version of
+   this decision): no translated or embedded executable code ships in Go. That rules out
+   wasm2go, which the spike had kept for a host that must be one `go install` binary
+   (the generated file has about 300,000 lines). Such a host, the Caddy plugin today,
+   validates the PDP's tokens natively and carries no TI core function; needing more
+   would be a design decision with its own task.
 5. **Rejected:** cgo, purego and every native load; wazero (third-party code and `unsafe`
-   in every program, too slow as an interpreter, a JIT otherwise); a universal `ti serve`
-   with state on disk; a Java client of the helpers for servers (JVM is a client stack).
+   in every program, too slow as an interpreter, a JIT otherwise); wasm2go (not
+   reviewable); a universal `ti serve` with state on disk; a Java client of the helpers
+   for servers (JVM is a client stack).
 6. **A `ti` process per call stays** for rare operations, the CLI and, for now, epa.
 7. **The TSL's detached signature replaces XMLDSig on the trust path** (TASK-166), which
    shrinks the core every stack embeds; the deviation from TUC_PKI_012 for internet
