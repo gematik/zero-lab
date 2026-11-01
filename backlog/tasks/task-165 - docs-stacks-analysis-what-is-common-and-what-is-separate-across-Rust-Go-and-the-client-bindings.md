@@ -3,10 +3,10 @@ id: TASK-165
 title: >-
   docs: stacks analysis, what is common and what is separate across Rust, Go and
   the client bindings
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-01T16:10:00Z'
-updated_date: '2026-11-01T16:17:00Z'
+updated_date: '2026-11-01T16:42:00Z'
 labels:
   - docs
   - interop
@@ -29,7 +29,7 @@ The Go PDP is to gain token exchange with an SMC-B client proof, which needs the
 - [x] #2 decision-10 recorded; draft decision-8 of the spike branch absorbed
 - [x] #3 rules updated in their owning documents (architecture, languages, interop, servers, conventions) and mapped in both profiles; no rule in two documents
 - [x] #4 follow-up tasks created and existing tasks updated with the 2026-11-01 decisions
-- [ ] #5 maintainer reviewed doc-2 and decision-10 (HITL of this task)
+- [x] #5 maintainer reviewed doc-2 and decision-10 (HITL of this task)
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -43,3 +43,9 @@ The Go PDP is to gain token exchange with an SMC-B client proof, which needs the
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-01: doc-2 written (12 sections: inventory, isolation rule, bridges with the TASK-116 numbers, the zero-trust PDP and the helper with A/B/C weighed, the detached TSL signature with the TUC_PKI_012 deviation, OPA, HSM, helper shape, trust-material producer and consumers, risk reduction, consequences). decision-10 accepted, absorbing the spike's decision-8. Rules changed in docs/architecture.md (isolated TI functions, .NET, clients-only bindings), docs/languages.md, docs/interop.md (helpers, the Go decision procedure, tsl-detached candidate), docs/design/servers.md (one image several deployments, sidecar rules, HSM binding, producer of trust material), docs/conventions/naming-and-config.md (helpers), docs/conventions/git-and-releases.md (helpers in images), docs/README.md, CLAUDE.md, go/docs/design.md, rust/docs/design.md, rust/docs/development.md. Tasks: TASK-166 to TASK-173 created; TASK-88 (high, random-key finding), TASK-97, TASK-120, 120.1, 120.4, 120.6, 120.7, TASK-26, TASK-57, TASK-65, TASK-66 updated; doc-1 pointer. Facts checked live: the nine .xml/.sig/.ocsp URLs answered 200, the .sig structure decoded with openssl asn1parse, the TSL signer anchors confirmed in anchors.rs. Links in the changed documents resolve. Awaiting the maintainer's review (criterion 5).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+doc-2 (the stacks analysis), decision-10 and the rule changes in docs/, both profiles and CLAUDE.md landed on main on 2026-11-01 (commits 27414f4 and 1e3104d, merged without a pull request by the maintainer). Verified: every relative link in the changed documents resolves, no ti serve mention remains, the nine .xml/.sig/.ocsp download points answered 200 and the .sig structure decoded as described, the TSL signer anchors confirmed in anchors.rs. Follow-up work is TASK-166 to TASK-173; the maintainer reviewed doc-2 and accepted it. Left out: doc-3 (the request for change) is a conditional placeholder until the pre-release TI 2.0 requirements are checked in TASK-166.
+<!-- SECTION:FINAL_SUMMARY:END -->
