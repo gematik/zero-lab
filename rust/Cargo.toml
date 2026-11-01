@@ -39,7 +39,9 @@ const-oid = "0.10"
 pem-rfc7468 = "1"
 # PKCS#12: PBES2 (PBKDF2 + AES-CBC) and the key/MAC primitives; the legacy PKCS#12 PBEs
 # (3DES, RC2) that gematik's test cards still use sit behind ti-pkcs12's `legacy` feature.
-pkcs5 = { version = "0.8.1", default-features = false, features = ["alloc", "pbes2"] }
+# No pkcs5: its `pbes2` feature brings scrypt, which PKCS#12 never uses (TASK-56).
+aes = { version = "0.9.3", default-features = false }
+pbkdf2 = { version = "0.13.0", default-features = false, features = ["hmac"] }
 pkcs8 = { version = "0.11.0", default-features = false, features = ["alloc"] }
 # The `ECPrivateKey` inside a PKCS#8 EC key (ti-cli's identity loader); already in the
 # tree through elliptic-curve.

@@ -600,6 +600,14 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-pkcs12
 
+#### changed
+- PBES2 is read and written by the crate itself over `pbkdf2`, `aes` and `cbc`; `pkcs5`,
+  `scrypt` and `salsa20` are gone from the tree. Files written are byte for byte the same.
+  What a file can do differently: a `keyLength` other than the cipher's key size is now
+  `Error::Malformed` (P12-032) instead of a failed decryption, parameters that do not
+  decode are `Error::Malformed` instead of `Error::UnsupportedAlgorithm`, and salts longer
+  than 32 bytes are read.
+
 #### added
 - `CertificateBag::trusted_key_usage` and `oids::TRUSTED_KEY_USAGE`: Oracle's trusted key
   usage attribute, read and written, which makes a certificate bag a trusted certificate

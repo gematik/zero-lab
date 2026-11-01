@@ -66,7 +66,6 @@ task.
 | pem-rfc7468 | 1.0.0 | unchecked UTF-8 of the PEM it wrote | 2026-10-29 |
 | polyval | 0.7.3 | carry-less multiplication intrinsics (CLMUL, PMULL) for GHASH in AES-GCM | 2026-10-29 |
 | rustls-pki-types | 1.15.1 | transmute of an IPv6 address from `[u16; 8]` to `[u8; 16]` | 2026-10-29 |
-| scrypt | 0.12.0 | SSE2 intrinsics; pulled in by pkcs5's `pbes2` though PKCS#12 never uses scrypt; *replace*: TASK-56 | 2026-10-29 |
 | serde | 1.0.229 | unchecked UTF-8 of formatted numbers | 2026-10-29 |
 | serde_core | 1.0.229 | unchecked UTF-8 of formatted numbers | 2026-10-29 |
 | serde_json | 1.0.151 | unchecked UTF-8 and unreachable hints in the serializer | 2026-10-29 |

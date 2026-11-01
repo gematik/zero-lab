@@ -478,10 +478,6 @@ criteria = "safe-to-deploy"
 version = "0.8.0-rc.5"
 criteria = "safe-to-deploy"
 
-[[exemptions.pkcs5]]
-version = "0.8.1"
-criteria = "safe-to-deploy"
-
 [[exemptions.pkcs8]]
 version = "0.11.0"
 criteria = "safe-to-deploy"
@@ -602,20 +598,12 @@ criteria = "safe-to-deploy"
 version = "1.0.23"
 criteria = "safe-to-deploy"
 
-[[exemptions.salsa20]]
-version = "0.11.0"
-criteria = "safe-to-deploy"
-
 [[exemptions.same-file]]
 version = "1.0.6"
 criteria = "safe-to-deploy"
 
 [[exemptions.schannel]]
 version = "0.1.29"
-criteria = "safe-to-deploy"
-
-[[exemptions.scrypt]]
-version = "0.12.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.sec1]]
@@ -798,20 +786,8 @@ notes = "jwz's browser tests (just jwz-browser)"
 version = "1.0.10"
 criteria = "safe-to-deploy"
 
-[[exemptions.winapi]]
-version = "0.3.9"
-criteria = "safe-to-deploy"
-
-[[exemptions.winapi-i686-pc-windows-gnu]]
-version = "0.4.0"
-criteria = "safe-to-deploy"
-
 [[exemptions.winapi-util]]
 version = "0.1.11"
-criteria = "safe-to-deploy"
-
-[[exemptions.winapi-x86_64-pc-windows-gnu]]
-version = "0.4.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.windows-sys]]
