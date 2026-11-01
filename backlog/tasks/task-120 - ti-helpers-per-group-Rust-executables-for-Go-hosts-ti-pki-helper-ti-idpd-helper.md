@@ -5,8 +5,8 @@ title: >-
   ti-idpd-helper)
 status: To Do
 assignee: []
-created_date: '2026-10-20 14:05'
-updated_date: '2026-10-20 19:55'
+created_date: 2026-10-20 14:05
+updated_date: '2026-11-01T16:11:00Z'
 labels:
   - rust
   - go
@@ -15,6 +15,7 @@ dependencies: []
 priority: low
 ordinal: 123000
 ---
+
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
@@ -33,3 +34,9 @@ Stages, each closed by the maintainer's HITL: 1) conventions, spec/ti-rpc, ti-rp
 - [ ] #2 go/epa uses the helpers instead of ti for idpd authenticate, pki verify and pki verify-signature
 - [ ] #3 each stage proven by the maintainer's HITL
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Maintainer decision 2026-11-01 (TASK-165, decision-10), reversing the state model of 2026-10-20: helpers are stateless server binaries. No profile, no config directory, no store, no cache.db, no KEK file, no TI_STATE_DIR or TI_CACHE_DIR; configuration by flags and environment only; trust material supplied by the host from a mounted directory (the producer of TASK-173), verified by the helper and kept in memory; the helper owns the renewal policy and tells the host when to re-fetch. Helpers ship in the same image as the Go binary (libexec/telematik) and run as a child over stdio or as a sidecar container from the same image over a Unix socket. The ti CLI keeps profiles and caches for humans. go/epa keeps ti for now (TASK-120.7 open).
+<!-- SECTION:NOTES:END -->

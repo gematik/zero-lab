@@ -3,8 +3,8 @@ id: TASK-120.1
 title: Decision and conventions for ti helpers
 status: To Do
 assignee: []
-created_date: '2026-10-20 14:07'
-updated_date: '2026-10-20 19:57'
+created_date: 2026-10-20 14:07
+updated_date: '2026-11-01T16:11:00Z'
 labels:
   - docs
   - interop
@@ -22,7 +22,13 @@ Carry decision-8 over from branch spike/go-rust-bridge, rewritten for helpers: p
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 decision-8 on main, rewritten for helpers
-- [ ] #2 rules in docs/interop.md, naming-and-config.md and git-and-releases.md
+- [ ] #1 decision-10 on main absorbs decision-8 (done by TASK-165)
+- [ ] #2 rules in docs/interop.md, docs/design/servers.md, naming-and-config.md and git-and-releases.md match the helpers as built
 - [ ] #3 TASK-26 and TASK-65 updated
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-01: decision-10 absorbs draft decision-8 of branch spike/go-rust-bridge (wasm2go only for a host that must be one binary and needs a core function; purego and wazero rejected); the docs changes of this task land with TASK-165 (interop.md, servers.md, naming-and-config.md, git-and-releases.md). What remains here is checking those documents against the helper implementation when it lands.
+<!-- SECTION:NOTES:END -->

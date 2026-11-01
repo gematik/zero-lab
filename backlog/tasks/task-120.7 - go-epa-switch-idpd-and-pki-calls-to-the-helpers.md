@@ -3,8 +3,8 @@ id: TASK-120.7
 title: 'go/epa: switch idpd and pki calls to the helpers'
 status: To Do
 assignee: []
-created_date: '2026-10-20 14:07'
-updated_date: '2026-10-20 14:07'
+created_date: 2026-10-20 14:07
+updated_date: '2026-11-01T16:11:00Z'
 labels:
   - go
   - epa
@@ -29,3 +29,9 @@ Waits for the maintainer's design of the ePA local setup (local test environment
 - [ ] #2 epa uses the helpers for idpd and pki
 - [ ] #3 HITL of the ePA flow proven by the maintainer
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-01: the maintainer keeps the per-call ti for epa for now; whether epa in Docker moves to the stateless helpers in supplied mode (trust material from the mounted directory of TASK-173) is decided with the ePA local setup design. epa is a hybrid, a client deployed like a server; what stateless means for it is in doc-2.
+<!-- SECTION:NOTES:END -->

@@ -3,8 +3,8 @@ id: TASK-120.4
 title: 'ti-pki-helper: pki/1 (load, verify, verify-signature)'
 status: To Do
 assignee: []
-created_date: '2026-10-20 14:07'
-updated_date: '2026-10-20 19:57'
+created_date: 2026-10-20 14:07
+updated_date: '2026-11-01T16:11:00Z'
 labels:
   - rust
   - pki
@@ -24,7 +24,13 @@ rust/helpers/pki, crate and binary ti-pki-helper. Methods load, verify and verif
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 answers equal ti pki verify and verify-signature for the same input
-- [ ] #2 both trust modes tested
-- [ ] #3 container layout documented and tested with separate state, cache and key-file mounts
-- [ ] #4 dependency check in just check
+- [ ] #2 trust material supplied from a mounted directory only; nothing written to disk; renewal policy owned by the helper, re-fetch signalled to the host
+- [ ] #3 Unix-socket listener with peer checks (SO_PEERCRED, pidfd executable on Linux) and the stdio child mode both tested
+- [ ] #4 dependency check in just check: no Konnektor client, no store, no profile, no HTTP client
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-01 (decision-10): no owned trust mode for servers and no state on disk. The helper verifies trust material the host supplies from a mounted directory (.xml, .sig, .ocsp, roots.json per TASK-166 and TASK-173) and keeps it in memory; it builds OCSP requests and verifies responses the host fetched through its transport (ocsp::request, verify_response). --listen unix:PATH with peer checks is the default for servers, stdio for a child. The dependency check must also prove the helper has no store, no profile and no HTTP client.
+<!-- SECTION:NOTES:END -->
