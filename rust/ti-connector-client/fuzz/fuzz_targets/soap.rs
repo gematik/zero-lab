@@ -38,7 +38,8 @@ use ti_connector_client::{
 };
 
 static KON: LazyLock<Dotkon> = LazyLock::new(|| {
-    let kon = br#"{"url": "https://konnektor.test", "mandantId": "M", "workplaceId": "W",
+    let kon = br#"{"url": "https://konnektor.test", "rewriteServiceEndpoints": true,
+        "mandantId": "M", "workplaceId": "W",
         "clientSystemId": "C", "credentials": {"type": "basic", "username": "u", "password": "p"}}"#;
     Dotkon::parse_with(kon, |_| None).expect("the .kon file parses")
 });

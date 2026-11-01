@@ -493,7 +493,9 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   anchor, an end-entity certificate a pin; empty: the system's roots), `expectedHost`
   the name its certificate must carry when it differs from the host in `url`,
   `rewriteServiceEndpoints: true` sends every service to the host of `url` (a Konnektor
-  behind NAT or a port forward), `insecureSkipVerify: true` skips the server check (test
+  behind NAT or a port forward; without it, a service endpoint outside the origin of `url`
+  or `expectedHost` is refused, error kind `connector_unsupported`, before anything is
+  sent), `insecureSkipVerify: true` skips the server check (test
   Konnektors only). The message of `connector_config` lists every problem at once.
 - `config test` runs the steps `file` (valid, mode 0600, secrets in plain text, an
   `https` url: the service directory is read over https only), `tcp`, `tls` (the

@@ -423,9 +423,37 @@ fn the_client_certificate_is_checked_before_it_is_offered() {
 
 #[test]
 fn the_service_directory_names_the_product_and_the_services() {
-    let step = check::sds(&directory());
+    let kon =
+        parse(&json(BASIC, "").replace("https://konnektor.test:8443", "https://10.29.128.70"));
+    let step = check::sds(&kon, &directory());
     assert!(has(&step, Status::Ok, "Konnektor"), "{}", messages(&step));
     assert!(has(&step, Status::Ok, "CardService"), "{}", messages(&step));
+    assert_eq!(step.status, Status::Ok, "{}", messages(&step));
+}
+
+/// The test fails where the calls would be refused, and says how a Konnektor behind NAT
+/// gets through.
+#[test]
+fn a_service_directory_naming_another_origin_fails_with_the_way_out() {
+    let step = check::sds(&parse(&json(BASIC, "")), &directory());
+    assert_eq!(step.status, Status::Fail, "{}", messages(&step));
+    let finding = step
+        .findings
+        .iter()
+        .find(|f| f.status == Status::Fail)
+        .unwrap();
+    assert!(
+        finding.message.contains("10.29.128.70"),
+        "{}",
+        finding.message
+    );
+    assert!(
+        finding
+            .hint
+            .as_deref()
+            .is_some_and(|h| h.contains("rewriteServiceEndpoints")),
+        "{finding:?}"
+    );
 }
 
 fn fault(code: i64) -> Error {

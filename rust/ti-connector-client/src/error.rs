@@ -103,6 +103,19 @@ pub enum DiscoveryError {
         /// The `major.minor` versions this client has bindings for.
         supported: Vec<String>,
     },
+    /// The chosen endpoint is not at the origin of the `.kon` URL. Credentials and
+    /// documents go to the endpoint, so the directory does not get to choose another.
+    #[error(
+        "{service}: the service directory names {endpoint}, which is not the origin of the .kon url {url}"
+    )]
+    ForeignEndpoint {
+        /// The service name.
+        service: String,
+        /// The endpoint the directory names.
+        endpoint: String,
+        /// The `.kon` URL.
+        url: String,
+    },
     /// The chosen version lists no endpoint.
     #[error("{service} {version} has no endpoint")]
     NoEndpoint {

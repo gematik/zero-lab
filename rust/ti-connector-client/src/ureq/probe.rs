@@ -127,7 +127,7 @@ pub async fn check_config<T: Transport>(
         Some(&directory),
         options.now,
     );
-    if !report.push(auth) || !report.push(check::sds(&directory)) {
+    if !report.push(auth) || !report.push(check::sds(&dotkon, &directory)) {
         return report.finish();
     }
     let Ok(connector) = connected else {

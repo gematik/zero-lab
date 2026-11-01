@@ -17,6 +17,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 #### fixed
 - Proxy variables no longer reach the Konnektor, as `AGENTS.md` always said: only `-x`
   sets a proxy for it.
+- A Konnektor whose service directory names another origin than the `.kon` url is refused
+  before anything is sent, and `connector config test` fails at `sds`, with the hint to
+  `rewriteServiceEndpoints`. Before, credentials and documents went wherever the directory
+  said, plain http included. **A Konnektor behind NAT that worked without the rewrite now
+  needs it.**
 - `--card` (identity, directory login) chooses its Konnektor with `-c`/`--connector-config`
   like the `connector` commands; `--connector` stays as an alias.
 - `pki verify` applies the Kompromissmodell to the nonQES certificates of SMC-B and HBA
@@ -323,6 +328,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   Konnektor call on any answer), seeded from the recorded runs.
 
 #### fixed
+- A call goes only to an endpoint at the origin of the `.kon` url or its `expectedHost`:
+  same scheme, host and port; otherwise `DiscoveryError::ForeignEndpoint`, a new variant,
+  and nothing is sent. `check::sds` takes the `Dotkon` as well (breaking).
 - `ServiceDirectory::rewrite_endpoints` keeps no endpoint outside the `.kon` origin: it
   also rewrites `HTTPS://…`, and removes what is no http(s) URL with a host. Found by the
   target `sds`.

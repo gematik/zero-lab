@@ -264,6 +264,9 @@ impl CliError {
             CliError::Connector(ti_connector_client::Error::Transport(_)) => Some(
                 "check the .kon url, the network and the Konnektor's TLS certificate (-v shows each call)",
             ),
+            CliError::Connector(ti_connector_client::Error::Discovery(
+                ti_connector_client::DiscoveryError::ForeignEndpoint { .. },
+            )) => Some(ti_connector_client::check::FOREIGN_ENDPOINT),
             CliError::Connector(ti_connector_client::Error::Fault(fault)) => Some(
                 fault
                     .hint()

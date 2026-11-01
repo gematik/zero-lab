@@ -24,13 +24,63 @@
 //! Any bytes as `connector.sds`: the parser never panics, what parses serializes, a
 //! binding is the newest supported version the directory offers and names one of its
 //! endpoints, a refusal is the true one, and after a rewrite no endpoint leaves the
-//! `.kon` URL's origin, which is what `rewriteServiceEndpoints` promises.
+//! `.kon` URL's origin, which is what `rewriteServiceEndpoints` promises. Without a
+//! rewrite, a call sends nothing outside that origin, whatever the directory names.
 #![no_main]
 
+use std::cell::RefCell;
+use std::sync::LazyLock;
+
+use futures_lite::future::block_on;
 use libfuzzer_sys::fuzz_target;
-use ti_connector_client::{BINDINGS, DiscoveryError, ServiceDirectory, ServiceVersion};
+use ti_connector_client::{
+    BINDINGS, Connector, DiscoveryError, Dotkon, Request, Response, ServiceDirectory,
+    ServiceVersion, Timeouts, Transport, TransportError,
+};
 
 const ORIGIN: &str = "https://konnektor.test:8443";
+
+static KON: LazyLock<Dotkon> = LazyLock::new(|| {
+    let kon = format!(
+        r#"{{"url": "{ORIGIN}", "mandantId": "M", "workplaceId": "W", "clientSystemId": "C",
+            "credentials": {{"type": "basic", "username": "u", "password": "p"}}}}"#
+    );
+    Dotkon::parse_with(kon.as_bytes(), |_| None).expect("the .kon file parses")
+});
+
+#[derive(Default)]
+struct Sent(RefCell<Vec<String>>);
+
+impl Transport for Sent {
+    async fn send(&self, request: &Request<'_>) -> Result<Response, TransportError> {
+        self.0.borrow_mut().push(request.url.to_owned());
+        Err(TransportError {
+            message: "no network".to_owned(),
+            timed_out: false,
+        })
+    }
+}
+
+fn at_origin(url: &str) -> bool {
+    url.to_ascii_lowercase()
+        .strip_prefix(ORIGIN)
+        .is_some_and(|p| p.is_empty() || p.starts_with(['/', '?', '#']))
+}
+
+fn check_nothing_leaves_the_origin(directory: &ServiceDirectory) {
+    let sent = Sent::default();
+    let connector = Connector::new(&KON, &sent, directory.clone(), Timeouts::RECOMMENDED);
+    let _ = block_on(connector.cards().list(&[]));
+    let _ = block_on(
+        connector
+            .pins()
+            .status("card", ti_connector_client::PinType::Smc),
+    );
+    let _ = block_on(connector.signatures().job_number());
+    for url in sent.0.borrow().iter() {
+        assert!(at_origin(url), "{url} left the origin");
+    }
+}
 
 fn supports(supported: &[&str], version: &str) -> bool {
     supported.iter().any(|s| {
@@ -89,17 +139,14 @@ fuzz_target!(|xml: &[u8]| {
     for (service, supported) in BINDINGS {
         check_binding(&directory, service, supported);
     }
+    check_nothing_leaves_the_origin(&directory);
     directory.rewrite_endpoints(ORIGIN);
     for version in directory.services.iter().flat_map(|s| &s.versions) {
         for endpoint in [&version.endpoint_tls, &version.endpoint]
             .into_iter()
             .flatten()
         {
-            let path = endpoint.strip_prefix(ORIGIN);
-            assert!(
-                path.is_some_and(|p| p.is_empty() || p.starts_with(['/', '?', '#'])),
-                "{endpoint} left the origin"
-            );
+            assert!(at_origin(endpoint), "{endpoint} left the origin");
         }
     }
 });

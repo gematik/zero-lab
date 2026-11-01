@@ -40,7 +40,7 @@ use ti_types::{Env, Timestamp};
 use crate::config::{CertificateView, ClientCertificate, ConfigView};
 use crate::dotkon::{Credentials, Dotkon, DotkonError};
 use crate::error::Error;
-use crate::sds::ServiceDirectory;
+use crate::sds::{ServiceDirectory, same_origin};
 use crate::types::Card;
 
 /// How a step or a finding came out; ordered from best to worst.
@@ -592,8 +592,12 @@ fn client_certificate(client: &ClientCertificate, now: Timestamp, findings: &mut
 
 // ---- sds ----------------------------------------------------------------------------
 
-/// The service directory: the product, and each service this client speaks.
-pub fn sds(result: &Result<ServiceDirectory, Error>) -> Step {
+/// What to do about an endpoint outside the `.kon` URL's origin.
+pub const FOREIGN_ENDPOINT: &str = "if it is the Konnektor's own address, behind NAT or a port forward, set rewriteServiceEndpoints to true; otherwise do not use this Konnektor until the directory is explained";
+
+/// The service directory, with endpoints as [`Connector`](crate::Connector) will use them:
+/// the product, and each service this client speaks.
+pub fn sds(dotkon: &Dotkon, result: &Result<ServiceDirectory, Error>) -> Step {
     let directory = match result {
         Ok(directory) => directory,
         Err(e) => {
@@ -617,6 +621,22 @@ pub fn sds(result: &Result<ServiceDirectory, Error>) -> Step {
     let mut offered = Vec::new();
     for (service, versions) in crate::BINDINGS {
         match directory.resolve(service, versions) {
+            Ok(binding)
+                if !same_origin(
+                    &dotkon.url,
+                    dotkon.expected_host.as_deref(),
+                    &binding.endpoint,
+                ) =>
+            {
+                findings.push(Finding::new(
+                    Status::Fail,
+                    format!(
+                        "{service}: the directory names {}, which is not the origin of url",
+                        binding.endpoint
+                    ),
+                    Some(FOREIGN_ENDPOINT),
+                ));
+            }
             Ok(binding) => offered.push(format!("{service} {}", binding.version)),
             Err(e) => findings.push(Finding::new(
                 Status::Warn,
