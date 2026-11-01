@@ -141,7 +141,8 @@ impl ServiceDirectory {
         })
     }
 
-    /// Replaces scheme and host of every endpoint with those of `base`, keeping paths.
+    /// Replaces scheme and host of every endpoint with those of `base`, keeping paths, and
+    /// removes an endpoint that is no http(s) URL with a host.
     pub fn rewrite_endpoints(&mut self, base: &str) {
         let Some((origin, _)) = split_origin(base) else {
             return;
@@ -150,11 +151,12 @@ impl ServiceDirectory {
             .services
             .iter_mut()
             .flat_map(|s| &mut s.versions)
-            .flat_map(|v| [&mut v.endpoint_tls, &mut v.endpoint].into_iter().flatten());
+            .flat_map(|v| [&mut v.endpoint_tls, &mut v.endpoint]);
         for endpoint in endpoints {
-            if let Some((_, path)) = split_origin(endpoint) {
-                *endpoint = format!("{origin}{path}");
-            }
+            *endpoint = endpoint
+                .as_deref()
+                .and_then(split_origin)
+                .map(|(_, path)| format!("{origin}{path}"));
         }
     }
 
@@ -305,9 +307,13 @@ pub fn sds_url(base: &str) -> String {
 
 /// `("https://host:port", "/path?query")` of an http(s) URL with a host.
 pub(crate) fn split_origin(url: &str) -> Option<(&str, &str)> {
-    let rest = url
-        .strip_prefix("https://")
-        .or_else(|| url.strip_prefix("http://"))?;
+    // URL schemes are case-insensitive, and an HTTP client takes `HTTPS://` as well.
+    let rest = ["https://", "http://"].iter().find_map(|scheme| {
+        let start = url.get(..scheme.len())?;
+        start
+            .eq_ignore_ascii_case(scheme)
+            .then(|| &url[scheme.len()..])
+    })?;
     let authority_len = rest.find(['/', '?', '#']).unwrap_or(rest.len());
     if authority_len == 0 {
         return None;
@@ -519,6 +525,21 @@ mod tests {
         sds.rewrite_endpoints("https://localhost:8443/base/");
         let event = sds.resolve("EventService", &["7.2"]).unwrap();
         assert_eq!(event.endpoint, "https://localhost:8443/ws/EventService");
+    }
+
+    /// `rewriteServiceEndpoints` sends every service to the `.kon` host: an endpoint it
+    /// cannot rewrite must not stay, or the directory would still choose where the
+    /// credentials go. Found by the fuzz target `sds`.
+    #[test]
+    fn no_endpoint_leaves_the_kon_origin_after_a_rewrite() {
+        let mut sds = ServiceDirectory::parse(EHEX).unwrap();
+        let version = &mut sds.services[0].versions[0];
+        version.endpoint_tls = Some("HTTPS://elsewhere.example/ws".into());
+        version.endpoint = Some("%%ENDPOINT%%/ws".into());
+        sds.rewrite_endpoints("https://k:8443");
+        let version = &sds.services[0].versions[0];
+        assert_eq!(version.endpoint_tls.as_deref(), Some("https://k:8443/ws"));
+        assert_eq!(version.endpoint, None);
     }
 
     #[test]

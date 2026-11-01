@@ -546,10 +546,13 @@ fuzz-ti-connector-client seconds="30":
     #!/usr/bin/env bash
     set -euo pipefail
     cd ti-connector-client/fuzz
-    for target in dotkon; do
+    for target in dotkon sds soap; do
+        # The service directories and recorded answers of the tests seed sds and soap.
+        seeds=../tests/fixtures
+        [ "$target" != dotkon ] || seeds=seeds/dotkon
         mkdir -p "corpus/$target"
-        cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
-            -max_total_time={{seconds}} -max_len=65536 -print_final_stats=1 2>&1 \
+        cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "$seeds" -- \
+            -max_total_time={{seconds}} -max_len=65536 -timeout=30 -print_final_stats=1 2>&1 \
             | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
         [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
     done

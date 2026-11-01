@@ -312,6 +312,13 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   one.
 - Fuzz target `dotkon` (`just fuzz-ti-connector-client`): the parser, the file check and
   the redacted view.
+- Fuzz targets `sds` (the service directory, its bindings and rewrite) and `soap` (every
+  Konnektor call on any answer), seeded from the recorded runs.
+
+#### fixed
+- `ServiceDirectory::rewrite_endpoints` keeps no endpoint outside the `.kon` origin: it
+  also rewrites `HTTPS://…`, and removes what is no http(s) URL with a host. Found by the
+  target `sds`.
 
 ### ti-pki
 

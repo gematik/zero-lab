@@ -498,6 +498,7 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `fuzz-jwz [seconds]` | Design time (nightly, cargo-fuzz): every jwz parser, `seconds` each (default 30), from the committed seeds |
 | `fuzz-ti-pki [seconds]` | Design time (nightly, cargo-fuzz): ti-pki's parsers of network bytes (the detached TSL signature, the TSL list, OCSP responses), `seconds` each, from the committed seeds |
 | `fuzz-ti-connector-client [seconds]` | Design time (nightly, cargo-fuzz): the `.kon` parser, its file check and redacted view, `seconds` each (default 30) |
+| `fuzz-ti-connector-client [seconds]` | Design time (nightly, cargo-fuzz): the `.kon` parser with its file check and redacted view, the service directory with its bindings and rewrite, and every Konnektor call on any answer, seeded from the recorded runs, `seconds` each (default 30) |
 | `fuzz-ti-pkcs12 [seconds]` | Design time (nightly, cargo-fuzz, Go): the PKCS#12 decoder with its password, seeded from a fresh spec/pkcs12 conformance corpus, `seconds` (default 30) |
 | `wasm-build` | Build the ti-wasm package into `target/ti-wasm/pkg` |
 | `wasm-size` | Module size raw, gzip, brotli; fails over 2.0 MB raw or 700 KB gzip |
