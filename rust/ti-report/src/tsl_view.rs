@@ -34,7 +34,7 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 use ti_pki::tsl::{self, Intermediate, Rejection, Service, Tsl};
-use ti_pki::tsl_signature::{TslCode, VerifiedTsl};
+use ti_pki::tsl_signature::{DetachedTsl, TslCode, VerifiedTsl};
 use ti_pki::{Certificate, Env, Tier, Timestamp, TrustConfig, TrustStore, roots};
 
 use crate::oid::TypeOid;
@@ -260,6 +260,7 @@ pub struct SkippedView {
 /// passed [`TrustConfig::validate`] for the tier of `env`.
 pub fn tsl_view(
     xml: &[u8],
+    detached: Option<DetachedTsl<'_>>,
     env: Env,
     config: &TrustConfig,
     supplied_roots: Option<&[u8]>,
@@ -280,7 +281,19 @@ pub fn tsl_view(
         skipped: Vec::new(),
         certificates: BTreeMap::new(),
     };
-    let verified = match Tsl::parse_verified(xml, config, now) {
+    // With the detached files the list is verified by them (`spec/tsl-detached`) and a
+    // supplied status is adopted before anything else is read.
+    let verified = match detached {
+        Some(detached) => Tsl::parse_verified_detached(xml, detached.signature, config, now)
+            .and_then(|mut verified| {
+                if let Some(status) = detached.signer_status {
+                    verified.check_signer_status_supplied(status, now, &config.algorithms)?;
+                }
+                Ok(verified)
+            }),
+        None => Tsl::parse_verified(xml, config, now),
+    };
+    let verified = match verified {
         Ok(verified) => verified,
         Err(e) => {
             view.error = Some(Finding::from(&e));

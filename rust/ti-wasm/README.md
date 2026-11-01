@@ -11,6 +11,7 @@ headers, the OCSP responders speak plain HTTP).
 | `version()` | `{ti_wasm, schema}` |
 | `trust_urls(env)` | `{environment, tsl_url, roots_url}` |
 | `verify_tsl(xml, env, now, roots_json?, grace_seconds)` | the TSL view, [`schemas/tsl-view.json`](schemas/tsl-view.json) |
+| `verify_tsl_detached(xml, sig, ocsp?, env, now, roots_json?, grace_seconds)` | the same view, the list verified by its detached `.sig` with the status from `.ocsp` (`spec/tsl-detached`) |
 | `describe_certificate(der_or_pem, now)` | [`schemas/certificates.json`](schemas/certificates.json), as `ti pki inspect` |
 | `new TrustContext(xml, env, now, roots_json?, grace_seconds)` | verifies the TSL and roots once; `.tsl()` their state |
 | `TrustContext.check(der_or_pem, now)` | [`schemas/check.json`](schemas/check.json): a certificate as `ti pki verify --profile auto --offline` judges it, with its trust tree |

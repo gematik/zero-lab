@@ -29,6 +29,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 use ti_pki::config::MAX_TSL_GRACE_PERIOD;
+use ti_pki::tsl_signature::DetachedTsl;
 use ti_pki::{Certificate, Env, Timestamp, TrustConfig, parse_pem_certificates};
 use ti_report::{CertificateInfo, CheckContext, SCHEMA, describe, tsl_view};
 
@@ -89,7 +90,38 @@ pub fn verify_tsl(
     let env = parse_env(env)?;
     let now = parse_now(now)?;
     let config = config_for(env, grace_seconds)?;
-    Ok(to_json(&tsl_view(xml, env, &config, roots_json, now)))
+    Ok(to_json(&tsl_view(xml, None, env, &config, roots_json, now)))
+}
+
+/// See [`crate::verify_tsl_detached`].
+///
+/// # Errors
+///
+/// As [`verify_tsl`].
+pub fn verify_tsl_detached(
+    xml: &[u8],
+    signature: &[u8],
+    signer_status: Option<&[u8]>,
+    env: &str,
+    now: &str,
+    roots_json: Option<&[u8]>,
+    grace_seconds: u32,
+) -> Result<String, String> {
+    let env = parse_env(env)?;
+    let now = parse_now(now)?;
+    let config = config_for(env, grace_seconds)?;
+    let detached = DetachedTsl {
+        signature,
+        signer_status,
+    };
+    Ok(to_json(&tsl_view(
+        xml,
+        Some(detached),
+        env,
+        &config,
+        roots_json,
+        now,
+    )))
 }
 
 /// See [`crate::describe_certificate`].

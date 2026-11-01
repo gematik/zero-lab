@@ -400,6 +400,13 @@
     "signature": {
       "type": "object",
       "properties": {
+        "kind": {
+          "enum": [
+            "enveloped",
+            "detached"
+          ],
+          "description": "Which signature verified the list: the XMLDSig inside it, or the detached .sig file published next to it (spec/tsl-detached)"
+        },
         "signer": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$",
@@ -411,8 +418,11 @@
           "description": "The TSL signer CA that issued it"
         },
         "signing_time": {
-          "type": "string",
-          "description": "XAdES SigningTime as signed"
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "XAdES SigningTime as signed; null for a detached signature"
         },
         "warnings": {
           "type": "array",
@@ -422,6 +432,7 @@
         }
       },
       "required": [
+        "kind",
         "signer",
         "tsl_signer_ca",
         "signing_time",

@@ -68,6 +68,38 @@ fn root_names(view: &Value) -> Vec<&str> {
         .collect()
 }
 
+fn detached(suffix: &str) -> Vec<u8> {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../spec/tsl-detached/testdata/ref")
+        .join(format!("ECC-RSA_TSL-ref.{suffix}"));
+    std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+}
+
+/// TSLDET-031, 020: the view from the detached files names the kind, carries no
+/// signing time and, with the status supplied, no `no_ocsp_check` warning.
+#[test]
+fn verify_tsl_detached_returns_the_view() {
+    let json = api::verify_tsl_detached(
+        &detached("xml"),
+        &detached("sig"),
+        Some(&detached("ocsp")),
+        "ref",
+        "2026-11-01T16:47:42Z",
+        None,
+        0,
+    )
+    .unwrap();
+    assert_conforms("tsl-view", json.as_bytes());
+    let detached_view: Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(detached_view["result"], "valid", "{json}");
+    assert_eq!(detached_view["signature"]["kind"], "detached");
+    assert!(detached_view["signature"]["signing_time"].is_null());
+    assert_eq!(warnings(&detached_view), Vec::<&str>::new());
+    let enveloped = view("tu-10713.xml", "ref", NOW, None, 0);
+    assert_eq!(enveloped["signature"]["kind"], "enveloped");
+    assert!(enveloped["signature"]["signing_time"].is_string());
+}
+
 #[test]
 fn production_list_for_production() {
     let v = view("pu-10334.xml", "prod", NOW, None, 0);
