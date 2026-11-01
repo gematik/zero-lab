@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-01T16:10:00Z'
-updated_date: '2026-11-01T17:38:00Z'
+updated_date: '2026-11-01T18:01:00Z'
 labels:
   - ti-pki
   - rust
@@ -347,4 +347,6 @@ The removal of XMLDSig (criterion 4) waits for the gate (criterion 1): a second 
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-01, branch feat/tsl-detached (9 commits after the plan): spec/tsl-detached with the captured sets of PU, RU, TU and derived negatives; verify_detached, parse_verified_detached, check_signer_status_supplied, the loaders (tsl_detached_url, Artifact::TslSignature/TslSignerStatus, bundle fields, file transport), ti pki tsl verify --signature/--signer-status, ti-report and ti-wasm (verify_tsl_detached), the ti-pki fuzz crate (just fuzz-ti-pki). Measured: tsldet_030 shows identical id, sequence, services, signer, anchor and warnings for the detached and the enveloped path on all three sets. Finding on the way: the ocsp_response fuzz target found a panic in parse_generalized_time (multibyte character across byte 14) within seconds, fixed with a regression test and recorded under ti-pki security. just check: 637/638 (a_closed_pipe_is_not_an_error, TASK-154, fails on main too); just deny fails on main too (TASK-155). Open here: criterion 1 (the gate: the maintainer's check of the pre-release TI 2.0 requirements) and 4 (the XMLDSig removal, a second pull request behind the gate). HITL to run: ti pki tsl show --env ref against the live download points; ti pki tsl verify with the captured set and --signature/--signer-status.
+
+2026-11-01: whole-branch review, one fix pass (commit 43db32a): CLI namespaces, hash gate fails closed over plain HTTP, HTTPS fallback, --at without the published status, optional files do not age the list, stale revoked stops the list, signature kind on ReloadStatus and reports. Live: ti pki tsl show reports detached for PU, RU, TU. The XMLDSig removal must replace the TSLDET-013 fallback with a refetch of the set. Deferred minors: two stdin inputs (--signature - -) give a misleading error; confirm keeps old warnings and status until the next list; a bundle silently drops tsl_ocsp without tsl_sig; the Artifact docs still say two artefacts.
 <!-- SECTION:NOTES:END -->
