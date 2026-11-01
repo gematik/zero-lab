@@ -326,6 +326,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - The OCSP response parser no longer panics on a GeneralizedTime with a multibyte
   character across its 14th byte, which a hostile responder could use to end the
   process. Found by the new `ocsp_response` fuzz target (TASK-166).
+
 #### removed
 - The features `reqwest` and `tokio` with `ti_pki::reqwest` and `ti_pki::tokio`, and the
   examples `ocsp` and `validate`, which needed them; `ti pki verify` does what they did.
@@ -539,6 +540,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `oid_policy_gem_tsl_signer`) and profile `tsl-sig`.
 
 #### changed
+- `TrustStoreHandle` keeps the current material under a `std::sync::RwLock`, not `arc-swap`,
+  which is no longer a dependency.
 - `SignedTsl::signing_time` and `VerifiedTsl::signing_time` are `Option<String>`: a
   detached signature carries none. `TrustMaterial::body` and `meta` answer `Option`,
   since the two detached artefacts may be absent; `TrustMaterial::etags` lists all four.

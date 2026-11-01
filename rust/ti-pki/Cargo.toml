@@ -29,7 +29,7 @@ dangerous-nonprod = []
 # Never a default feature.
 test-util = []
 # Loading layer: traits, loaders, cache and reloader. Runtime-agnostic, builds for wasm32.
-load = ["dep:arc-swap", "dep:ti-store"]
+load = ["dep:ti-store"]
 # Operating-system facilities: file transport, system clock, bundle files.
 os = ["load", "ti-types/std"]
 
@@ -54,7 +54,6 @@ bp256 = { workspace = true, optional = true }
 bp384 = { workspace = true, optional = true }
 rsa = { workspace = true, optional = true }
 digest = { workspace = true, optional = true }
-arc-swap = { workspace = true, optional = true }
 sha2.workspace = true
 sha1.workspace = true
 

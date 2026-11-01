@@ -55,10 +55,6 @@ criteria = "safe-to-deploy"
 version = "3.0.11"
 criteria = "safe-to-deploy"
 
-[[exemptions.arc-swap]]
-version = "1.9.2"
-criteria = "safe-to-deploy"
-
 [[exemptions.async-trait]]
 version = "0.1.92"
 criteria = "safe-to-run"

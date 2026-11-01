@@ -341,7 +341,7 @@ brings its adapters in its own crate.
 - **Lazy on use** — rejected: reloading from `snapshot()` would put network I/O,
   verification latency and their failures into the request path, need an executor
   there, and stampede the origin when many requests notice staleness at once.
-  `snapshot()` stays a lock-free read and only refuses expired material.
+  `snapshot()` stays a short read that only refuses expired material.
 
 Production caps `hard_expiry` at `MAX_PROD_HARD_EXPIRY` (24 h); `ReloadPolicy::validate`
 and `Reloader::new` enforce it.

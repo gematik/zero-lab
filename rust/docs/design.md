@@ -124,7 +124,8 @@ the interop adapter in `spec/<topic>/interop/rust` prints the code.
 | compatibility | cargo-semver-checks, MSRV, cargo-machete | audit / check | workspace |
 
 Hostile input is parsed strictly: DER through `der`, XML through `roxmltree` without
-DTDs, JSON through serde with unknown fields rejected where the format is ours; secrets
+DTDs where a signature depends on it and through `quick-xml` into typed structures
+elsewhere, without entity expansion in either, JSON through serde with unknown fields rejected where the format is ours; secrets
 in `Zeroizing`, digests and MACs compared with `subtle`.
 
 Design-time results are stamped in `jwz/verification/stamps/*.toml`; `just jwz-recheck`
