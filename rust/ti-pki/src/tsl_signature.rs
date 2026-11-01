@@ -1233,11 +1233,13 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "dangerous-nonprod")]
     /// The capture time of the published sets (spec/tsl-detached/testdata/README.md).
     fn captured_at() -> Timestamp {
         Timestamp::parse_rfc3339("2026-11-01T16:47:42Z").unwrap()
     }
 
+    #[cfg(feature = "dangerous-nonprod")]
     #[test]
     fn tsldet_030_detached_list_passes_parts_b_to_g() {
         for (env, preset) in [
@@ -1270,6 +1272,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "dangerous-nonprod")]
     #[test]
     fn tsldet_030_signer_of_another_environment_rejected() {
         let (xml, sig, _) = detached("prod");
@@ -1285,6 +1288,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "dangerous-nonprod")]
     #[test]
     fn tsldet_031_embedded_config_follows_the_detached_signer() {
         let (_, prod_sig, _) = detached("prod");
@@ -1309,6 +1313,7 @@ mod tests {
         assert_eq!(SignatureKind::Enveloped.as_str(), "enveloped");
     }
 
+    #[cfg(feature = "dangerous-nonprod")]
     fn parse_detached(env: &str) -> VerifiedTsl {
         let (xml, sig, _) = detached(env);
         let preset = match env {
@@ -1320,6 +1325,7 @@ mod tests {
             .unwrap()
     }
 
+    #[cfg(feature = "dangerous-nonprod")]
     #[test]
     fn tsldet_020_supplied_status_good_at_capture_time() {
         for env in ["prod", "ref", "test"] {
@@ -1340,6 +1346,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "dangerous-nonprod")]
     #[test]
     fn tsldet_021_supplied_status_older_than_the_maximum_is_not_used() {
         let mut verified = parse_detached("ref");
@@ -1357,6 +1364,7 @@ mod tests {
         assert!(warning.detail.contains("older than"), "{warning}");
     }
 
+    #[cfg(feature = "dangerous-nonprod")]
     #[test]
     fn tsldet_020_status_for_another_certificate_is_an_error() {
         let (_, _, prod_ocsp) = detached("prod");
@@ -1376,6 +1384,7 @@ mod tests {
         assert!(verified.signer_status.is_none());
     }
 
+    #[cfg(feature = "dangerous-nonprod")]
     #[test]
     fn tsldet_020_empty_status_is_an_error() {
         let mut verified = parse_detached("ref");
@@ -1385,6 +1394,7 @@ mod tests {
         assert_eq!(e.rule, "TSLSIG-042", "{e}");
     }
 
+    #[cfg(feature = "dangerous-nonprod")]
     #[test]
     fn tsldet_020_status_from_the_future_is_an_error() {
         let (_, _, ocsp) = detached("ref");
