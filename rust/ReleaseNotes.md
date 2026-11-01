@@ -9,7 +9,14 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-cli
 
+#### removed
+- SOCKS proxies: `-x socks5://` and a `socks5://` in the proxy variables are refused with
+  `http_setup` (exit 2), and `ureq`'s `socks-proxy` feature, `socks` and `byteorder` are
+  gone.
+
 #### fixed
+- Proxy variables no longer reach the Konnektor, as `AGENTS.md` always said: only `-x`
+  sets a proxy for it.
 - `--card` (identity, directory login) chooses its Konnektor with `-c`/`--connector-config`
   like the `connector` commands; `--connector` stays as an alias.
 - `pki verify` applies the Kompromissmodell to the nonQES certificates of SMC-B and HBA

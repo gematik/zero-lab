@@ -45,7 +45,7 @@ pub struct NetArgs {
     /// Directory of PEM CA certificates trusted instead of the OS store [env: SSL_CERT_DIR]
     #[arg(long, value_name = "DIR", global = true, hide_short_help = true)]
     pub capath: Option<PathBuf>,
-    /// Proxy URL (http://, https://, socks5://); "" disables proxies
+    /// Proxy URL (http://, https://); "" disables proxies
     /// [env: HTTPS_PROXY, HTTP_PROXY, ALL_PROXY]
     #[arg(short = 'x', long, value_name = "URL", value_parser = proxy_url, global = true, hide_short_help = true)]
     pub proxy: Option<String>,
@@ -90,7 +90,7 @@ fn seconds(value: &str) -> Result<Duration, String> {
 }
 
 fn proxy_url(value: &str) -> Result<String, String> {
-    const SCHEMES: [&str; 4] = ["http://", "https://", "socks5://", "socks5h://"];
+    const SCHEMES: [&str; 2] = ["http://", "https://"];
     if value.is_empty() || SCHEMES.iter().any(|s| value.starts_with(s)) {
         Ok(value.to_owned())
     } else {

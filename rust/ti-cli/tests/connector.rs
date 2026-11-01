@@ -1167,6 +1167,23 @@ fn certificates_are_exported_without_json() {
     assert_eq!(encrypted["recipients"][0], "Dr. Arzt TEST-ONLY");
 }
 
+/// A proxy from the environment would route the Konnektor's traffic and credentials
+/// elsewhere: only `-x` sets one.
+#[test]
+fn proxy_variables_do_not_apply_to_the_konnektor() {
+    let fake = Fake::start("proxy-variables");
+    let closed = Path::new("http://127.0.0.1:1");
+    let out = fake.ti_with(
+        &["connector", "-c", "praxis", "get", "cards"],
+        &[
+            ("ALL_PROXY", closed),
+            ("HTTP_PROXY", closed),
+            ("HTTPS_PROXY", closed),
+        ],
+    );
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+}
+
 /// `config show` names where each secret is kept, never its value, and leaves out the
 /// user ID, which in a comfort signature session lets anyone sign without a PIN.
 #[test]

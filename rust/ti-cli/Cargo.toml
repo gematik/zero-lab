@@ -37,8 +37,8 @@ sec1.workspace = true
 der.workspace = true
 zeroize.workspace = true
 # rustls without a built-in provider (ring is passed in), the OS trust store via the
-# platform verifier, and SOCKS for -x socks5://.
-ureq = { workspace = true, features = ["rustls-no-provider", "platform-verifier", "socks-proxy"] }
+# platform verifier.
+ureq = { workspace = true, features = ["rustls-no-provider", "platform-verifier"] }
 rustls.workspace = true
 clap = { workspace = true, features = ["std", "help", "usage", "error-context", "suggestions", "color", "env"] }
 clap_complete.workspace = true

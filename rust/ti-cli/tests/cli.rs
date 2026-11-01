@@ -398,6 +398,7 @@ fn http_options_are_validated_and_shown_with_verbose() {
 
     for bad in [
         &["-x", "proxy:3128"][..],
+        &["-x", "socks5://proxy:1080"],
         &["--max-time", "0"],
         &["--connect-timeout", "x"],
     ] {
@@ -407,6 +408,29 @@ fn http_options_are_validated_and_shown_with_verbose() {
             .chain(["pki", "profiles", "list"])
             .collect();
         assert_eq!(ti(&args).status.code(), Some(2), "{bad:?}");
+    }
+}
+
+/// A proxy ureq has no connector for would be skipped with a log line and the request sent
+/// directly, past the proxy the user asked for.
+#[test]
+fn a_socks_proxy_from_the_environment_is_refused() {
+    for variable in ["ALL_PROXY", "HTTPS_PROXY"] {
+        let out = Command::new(env!("CARGO_BIN_EXE_ti"))
+            .args(["pki", "roots", "list"])
+            .env(
+                "TI_CACHE_DIR",
+                std::env::temp_dir().join(format!("ti-cli-socks-{}", std::process::id())),
+            )
+            .env_remove("ALL_PROXY")
+            .env_remove("all_proxy")
+            .env_remove("HTTPS_PROXY")
+            .env_remove("https_proxy")
+            .env(variable, "socks5://127.0.0.1:1")
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(2), "{variable}: {out:?}");
+        assert!(stderr(&out).contains("SOCKS"), "{variable}: {out:?}");
     }
 }
 

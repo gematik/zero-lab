@@ -202,6 +202,16 @@ pub(crate) fn proxy(net: &NetArgs, scheme: &str) -> Result<Option<ureq::Proxy>, 
     }
     let invalid = |_| CliError::HttpSetup(format!("proxy {:?} is not a valid URL", redact(&url)));
     let parsed = ureq::Proxy::new(&url).map_err(invalid)?;
+    // Without its SOCKS feature, ureq logs such a proxy and connects directly.
+    if !matches!(
+        parsed.protocol(),
+        ureq::ProxyProtocol::Http | ureq::ProxyProtocol::Https
+    ) {
+        return Err(CliError::HttpSetup(format!(
+            "proxy {:?}: SOCKS is not supported, use an http:// or https:// proxy",
+            redact(&url)
+        )));
+    }
     let mut builder = ureq::Proxy::builder(parsed.protocol())
         .host(parsed.host())
         .port(parsed.port());

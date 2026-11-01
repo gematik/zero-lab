@@ -204,11 +204,13 @@ pub fn open(args: &ConnectorArgs, global: &GlobalArgs, out: &Output) -> Result<S
 pub fn agent_config(
     global: &GlobalArgs,
 ) -> Result<ureq::config::ConfigBuilder<ureq::typestate::AgentScope>, CliError> {
+    // Only an explicit -x: a Konnektor is in the local network, and a proxy from the
+    // environment, which ureq reads by default, would route its traffic (and credentials)
+    // elsewhere.
     let mut config = ureq::Agent::config_builder()
         .timeout_connect(Some(global.net.connect_timeout))
-        .user_agent(global.net.user_agent());
-    // Only an explicit -x: a Konnektor is in the local network, and a proxy from the
-    // environment would route its traffic (and credentials) elsewhere.
+        .user_agent(global.net.user_agent())
+        .proxy(None);
     if let Some(proxy) = explicit_proxy(global) {
         let proxy =
             ureq::Proxy::new(proxy).map_err(|e| CliError::HttpSetup(format!("proxy: {e}")))?;
