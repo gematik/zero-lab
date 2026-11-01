@@ -7,6 +7,12 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ## Unreleased
 
+### added
+- New crate: certificate verification for a server workload as a process beside it, protocol
+  `pki/1` of `spec/ti-rpc`, over stdio or a Unix socket. Trust material comes from a mounted
+  directory and nothing is written to disk; OCSP goes only to the responders of a chain that
+  has verified. The production build holds no TEST-ONLY anchors.
+
 ### ti-cli
 
 #### added
@@ -317,6 +323,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 #### added
 - `oid::all()`: every identifier the module declares, for the corpus another implementation is held to.
+
+#### fixed
+- `TrustStoreHandle::snapshot` refuses a list past its `NextUpdate` and the grace period. A
+  reload that only confirmed unchanged material did not verify it again, so a source supplying
+  the same list kept it in use (TSLSIG-054).
 
 #### security
 - The OCSP response parser no longer panics on a GeneralizedTime with a multibyte

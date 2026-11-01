@@ -263,18 +263,30 @@ pub struct TrustStoreHandle<C> {
     clock: C,
     stale_if_error: Duration,
     hard_expiry: Duration,
+    tsl_grace_period: Duration,
 }
 
 impl<C: Clock> TrustStoreHandle<C> {
+    /// Whether the list in use is past its `NextUpdate` and the grace period. A reload
+    /// confirming unchanged material does not verify it again, so a directory rewritten with
+    /// the same list would otherwise keep it in use (TSLSIG-054).
+    fn overdue(&self, current: &Current) -> bool {
+        current
+            .tsl_next_update
+            .is_some_and(|next_update| self.clock.now() >= next_update + self.tsl_grace_period)
+    }
+
     /// The current trust store; cheap, call it per request.
     ///
     /// # Errors
     ///
-    /// [`Expired`] before the first successful load and once the material is older
-    /// than `hard_expiry`, even if no reload has run since.
+    /// [`Expired`] before the first successful load, once the material is older than
+    /// `hard_expiry`, and once the list is past its `NextUpdate` and the grace period, even
+    /// if no reload has run since.
     pub fn snapshot(&self) -> Result<Arc<TrustStore>, Expired> {
         let current = self.current().ok_or(Expired { fetched_at: None })?;
-        if self.clock.now().since(current.fetched_at) >= self.hard_expiry {
+        if self.clock.now().since(current.fetched_at) >= self.hard_expiry || self.overdue(&current)
+        {
             return Err(Expired {
                 fetched_at: Some(current.fetched_at),
             });
@@ -293,6 +305,7 @@ impl<C: Clock> TrustStoreHandle<C> {
         let state = match &current {
             None => State::Uninitialised,
             Some(_) if staleness >= self.hard_expiry => State::Expired,
+            Some(c) if self.overdue(c) => State::Expired,
             Some(_) if staleness >= self.stale_if_error => State::Degraded,
             Some(_) if attempts.succeeded => State::Fresh,
             Some(_) => State::Stale,
@@ -397,6 +410,7 @@ where
     ) -> Result<Self, Error> {
         config.validate(tier)?;
         policy.validate(tier)?;
+        let tsl_grace_period = config.tsl_grace_period;
         Ok(Reloader {
             config,
             loader,
@@ -407,6 +421,7 @@ where
                 clock,
                 stale_if_error: policy.stale_if_error,
                 hard_expiry: policy.hard_expiry,
+                tsl_grace_period,
             },
             policy,
             jitter_seed: RandomState::new(),
@@ -1326,6 +1341,22 @@ mod tests {
             Some(crate::tsl_signature::TslCode::ValidityWarning2)
         );
         assert!(r.handle().snapshot().is_err());
+    }
+
+    /// TSLSIG-054: a reload that only confirms unchanged material verifies nothing, so the
+    /// same list, supplied again past its NextUpdate, must not stay in use.
+    #[cfg(feature = "brainpool")]
+    #[test]
+    fn an_unchanged_tsl_stops_being_used_at_its_next_update() {
+        let clock = FixedClock::new(OCT_3);
+        let after = Timestamp::parse_rfc3339("2026-12-01T00:00:00Z").unwrap();
+        let r = production(&clock, [Ok(published(OCT_3)), Ok(published(after))]);
+        assert!(matches!(block_on(r.tick()), ReloadOutcome::Swapped { .. }));
+        assert!(r.handle().snapshot().is_ok());
+        clock.set(after);
+        assert!(matches!(block_on(r.tick()), ReloadOutcome::Unchanged));
+        assert!(r.handle().snapshot().is_err());
+        assert_eq!(r.handle().status().state, State::Expired);
     }
 
     /// Answers every signer status check with one scripted status.
