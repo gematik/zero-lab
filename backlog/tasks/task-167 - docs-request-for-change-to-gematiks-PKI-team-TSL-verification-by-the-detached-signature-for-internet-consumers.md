@@ -3,9 +3,10 @@ id: TASK-167
 title: >-
   docs: request for change to gematik's PKI team, TSL verification by the
   detached signature for internet consumers
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-01T16:11:00Z'
+updated_date: '2026-11-01T16:44:00Z'
 labels:
   - docs
   - pki
@@ -25,3 +26,9 @@ Conditional on TASK-166's gate: new requirements for internet and TI 2.0 consume
 <!-- AC:BEGIN -->
 - [ ] #1 doc-3 written and handed to the PKI team, or the task closed with the citation that makes it unnecessary
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-01: doc-3 written on the maintainer's request ahead of the gate of TASK-166 (German, English summary on top): facts with requirement IDs, the proposal for gemSpec_PKI 8.2.6/A_30044 and gemSpec_TSL 6.3.1, the consumer's check sequence, the security argument, the transition, six questions for the PKI team. Handing it to the PKI team is the maintainer's step; if the pre-release requirements already allow the detached signature, the document becomes a note to the team instead of a request.
+<!-- SECTION:NOTES:END -->
