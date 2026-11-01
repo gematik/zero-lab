@@ -12,9 +12,11 @@ Implemented: roots.json verified from the embedded anchor (the A_28419 cross-cer
 walk), the TSL's CAs kept only when a verified root signed them, chain building, path
 validation, the gemSpec_Krypt key check, certificate types and profiles, OCSP for the end
 entity and every CA below the root, and loading with cache, bundle and reload. The TSL
-is verified as `spec/tsl-xmldsig` requires (signature, signer under the TSL signer CA,
-signer OCSP, `NextUpdate`, sequence) but stays a source of candidate intermediates, not
-of trust.
+is verified by the detached signature gematik publishes next to it, with the signer's
+status from the published OCSP response (`spec/tsl-detached`), or by its enveloped
+XMLDSig signature (`spec/tsl-xmldsig`) until that path is removed; either way the signer
+is checked under the TSL signer CA, then `NextUpdate` and the sequence. The TSL stays a
+source of candidate intermediates, not of trust.
 
 The gematik specifications it implements, in the versions it follows:
 [gemSpec_PKI V2.28.0](https://gemspec.gematik.de/downloads/gemSpec/gemSpec_PKI/gemSpec_PKI_V2.28.0.html),

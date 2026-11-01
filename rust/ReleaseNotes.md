@@ -14,6 +14,12 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   RUSTSEC-2026-0385, RUSTSEC-2026-0386).
 
 #### added
+- `pki tsl verify --signature FILE.sig [--signer-status FILE.ocsp]`: the list verified by
+  gematik's detached signature file, the signer's status from the published response
+  instead of a network query; `tsl show`, `bundle` and `export` load the two files from
+  the environment's automated download point. The reports name the signature kind
+  (`signature`: `enveloped` or `detached`) and know the code `detached_signature_error`
+  (`spec/tsl-detached`, TASK-166).
 - `probe prod` checks the Bestandsnetze of gematik's Bestandsnetze.xml (2.1.36) in a
   block of their own (`access: "bestandsnetz"`): the SNK (KV-SafeNet) at
   `portal.kv-safenet.de`, the others at a known HTTPS host or with a TCP connection to
@@ -146,6 +152,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-report
 
 #### added
+- `tsl_view` takes the list's detached files (`DetachedTsl`) and verifies by them;
+  `SignatureView::kind` names the signature, `signing_time` is optional (TASK-166).
 - `check::CheckContext`: an environment's TSL and roots verified once, then any number of
   certificates checked against them offline as `ti pki verify --profile auto` does
   (`CheckReport`: verdict, profile, type, errors, warnings and the trust tree, end entity
@@ -164,6 +172,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-wasm
 
 #### added
+- `verify_tsl_detached(xml, sig, ocsp?, env, now, roots_json?, grace_seconds)`: the TSL
+  view with the list verified by its detached `.sig` and the status from `.ocsp`; the
+  view's `signature.kind` tells `detached` from `enveloped` (TASK-166).
 - `TrustContext`: `new TrustContext(xml, env, now, roots_json?, grace)` verifies once,
   `check(der_or_pem, now)` returns `schemas/check.json`; for certificate checks in the
   browser. The smoke test cross-checks it with `ti pki verify --offline`.
@@ -214,7 +225,28 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-pki
 
+#### security
+- The OCSP response parser no longer panics on a GeneralizedTime with a multibyte
+  character across its 14th byte, which a hostile responder could use to end the
+  process. Found by the new `ocsp_response` fuzz target (TASK-166).
+
 #### added
+- The TSL verified by gematik's detached signature file (`spec/tsl-detached`,
+  gemSpec_TSL A_21175 ff.; TASK-166): `tsl_signature::verify_detached`,
+  `parse_detached_signature`, `Tsl::parse_verified_detached`,
+  `embedded_config_for_detached`, `SignatureKind` on `VerifiedTsl::signature`, and
+  `VerifiedTsl::check_signer_status_supplied` for the `.ocsp` published next to the list
+  (at most `MAX_SUPPLIED_SIGNER_STATUS_AGE` old, else the status stays unqueried). The
+  loaders fetch `.xml`, `.sig` and `.ocsp` as one set from
+  `TrustConfig::tsl_detached_url` (the A_21182 download points in the presets, plain
+  HTTP as A_21175 mandates, the list checked against the `.sha2` of the HTTPS point):
+  `Artifact::TslSignature` and `TslSignerStatus`, `load::Detached` on
+  `TrustMaterial::detached`, `FileTransport::with_detached`, the two files as optional
+  fields of a `Bundle`. Material with them is verified by the detached signature, and
+  the reloader asks the network for the signer's status only when none came with the
+  list. The enveloped XMLDSig path stays until the gate of TASK-166 lets it go.
+- `ti-pki/fuzz`: `just fuzz-ti-pki` runs the `detached_signature`, `tsl_xml` and
+  `ocsp_response` targets, seeded from the published sets.
 - A certificate OCSP reports revoked after the reference time is valid for that time,
   with the warning `revoked_after_reference_time`; at or before it, and without a
   `revocationTime`, it stays `revoked` (gemSpec_PKI TUC_PKI_006 variants 8a and 8b;
@@ -395,6 +427,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `oid_policy_gem_tsl_signer`) and profile `tsl-sig`.
 
 #### changed
+- `SignedTsl::signing_time` and `VerifiedTsl::signing_time` are `Option<String>`: a
+  detached signature carries none. `TrustMaterial::body` and `meta` answer `Option`,
+  since the two detached artefacts may be absent; `TrustMaterial::etags` lists all four.
 - `revocation::apply_revocation` takes the reference time the chain is validated for.
 - `Bundle` is JSON (format version 2) instead of CBOR, with the bodies in base64 and
   the anchor hash in hex; minicbor is no longer a dependency. Version-1 bundles are

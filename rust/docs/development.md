@@ -183,6 +183,14 @@ certificates in `ti-pki/tests/fixtures/` and the Wycheproof vectors complement t
 
 ## The TSL
 
+The list is authenticated before it is read: by the detached signature file (`.sig`) and
+the signer's status file (`.ocsp`) that the TSL service publishes next to it at the
+automated download points of gemSpec_TSL A_21182 (`spec/tsl-detached`; the loaders fetch
+the three files as one set after comparing the `.sha2` of the HTTPS point, and a `.ocsp`
+older than two hours leaves the status to a network query), or by its enveloped XMLDSig
+signature (`spec/tsl-xmldsig`) where no `.sig` is available. `ti pki tsl verify
+--signature --signer-status` runs the detached check on files.
+
 `ti_pki::tsl` reads gematik's ETSI TS 119 612 list with quick-xml and serde, matching
 element names without their namespace prefix. It is used as a directory of candidate
 intermediates, not as a trust source: `match_to_roots` keeps a CA only if a root of the
