@@ -196,6 +196,5 @@ its "Gated tests" table.
 ## 12. Status
 
 Gaps against the rules are backlog tasks with the label `go` (TASK-65 to TASK-96).
-Most relevant now: the dependency removals (TASK-91 to TASK-96), sealed nonces (TASK-85), the signing key
-as a `crypto.Signer` (TASK-88), TLS inside the workload and kv encryption (TASK-70,
+Most relevant now: the dependency removals (TASK-91 to TASK-96), sealed nonces (TASK-85), TLS inside the workload and kv encryption (TASK-70,
 TASK-71), and the RPC protocol decision (TASK-65).

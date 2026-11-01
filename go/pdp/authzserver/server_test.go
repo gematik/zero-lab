@@ -79,7 +79,8 @@ func newTestServer(t *testing.T) (*Server, jwk.Key) {
 	}
 
 	cfg := Config{
-		Issuer: testIssuer,
+		Issuer:     testIssuer,
+		SigningKey: &SigningKey{Signer: newP256(t), KeyID: "test-server-key"},
 		Products: []Product{{
 			ProductID:    testProductID,
 			RedirectURIs: []string{"https://rp.example.com/callback"},

@@ -25,6 +25,7 @@
 package authzserver
 
 import (
+	"crypto"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
@@ -64,7 +65,8 @@ type Server struct {
 	oidfRelyingParty *oidf.RelyingParty
 	defaultIDPIss    string
 	sessionStore     SessionStore
-	sigPrK           jwk.Key
+	signer           crypto.Signer
+	signerKeyID      string
 	jwks             jwk.Set
 	tokenVerifier    *pep.PEP
 	nonceService     nonce.Service
@@ -86,8 +88,8 @@ func NewFromConfigFile(filename string) (*Server, error) {
 	return New(*cfg)
 }
 
-// New builds a server from cfg. Without Config.Store, sessions and nonces live in process memory. A signing
-// key that cannot be loaded is replaced by a random one with a warning, so its tokens do not survive a restart.
+// New builds a server from cfg. Without Config.Store, sessions and nonces live in process memory. It refuses
+// to start without Config.SigningKey: a replica with a key of its own signs tokens nobody else can verify.
 func New(cfg Config) (*Server, error) {
 	s := &Server{
 		Metadata:        cfg.MetadataTemplate,
@@ -206,36 +208,6 @@ func (s *Server) initMetadata(issuerURL *url.URL, cfg Config) {
 	s.Metadata.TokenEndpointAuthMethodsSupported = []string{"private_key_jwt"}
 	s.Metadata.TokenEndpointAuthSigningAlgValuesSupported = []string{"ES256"}
 	s.Metadata.CodeChallengeMethodsSupported = []string{"S256"}
-}
-
-// initSigningKey loads the signing JWK (or generates a random one) and builds the JWK set.
-func (s *Server) initSigningKey(cfg Config) error {
-	sigPrK, err := loadJwkFromFile(absPath(cfg.BaseDir, cfg.SignJwkPath))
-	if err != nil {
-		slog.Warn("failed to load signing key, will create random", "path", cfg.SignJwkPath, "error", err)
-		if sigPrK, err = GenerateRandomJwk(); err != nil {
-			return fmt.Errorf("generate signing key: %w", err)
-		}
-	}
-	s.sigPrK = sigPrK
-
-	sigPuK, err := sigPrK.PublicKey()
-	if err != nil {
-		return fmt.Errorf("get public key: %w", err)
-	}
-	s.jwks = jwk.NewSet()
-	if err := s.jwks.AddKey(sigPuK); err != nil {
-		return fmt.Errorf("add public key to jwks: %w", err)
-	}
-	return nil
-}
-
-func loadJwkFromFile(filename string) (jwk.Key, error) {
-	bytes, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, fmt.Errorf("read signing key file '%s': %w", filename, err)
-	}
-	return jwk.ParseKey(bytes)
 }
 
 // initProducts builds the products registry from inline config (products:) and/or the gematik

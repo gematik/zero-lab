@@ -396,7 +396,7 @@ func (s *Server) issueOrRefreshTokens(session *Session) (*TokenResponse, error) 
 		}
 	}
 
-	accessTokenBytes, err := jwt.Sign(accessJwt, jwt.WithKey(jwa.ES256(), s.sigPrK))
+	accessTokenBytes, err := s.signAccessToken(accessJwt)
 	if err != nil {
 		return nil, fmt.Errorf("unable to sign access token: %w", err)
 	}

@@ -18,7 +18,7 @@ docker run -p 8011:8011 \
 ```
 
 - Mount your config dir at **`/etc/pdp`** (the WORKDIR): `pdp.yaml` (domain config), `openid-providers.yaml`
-  (the IdPs — shared flat format with pep), and the signing key (`sign.jwk`, referenced by `sign_jwk_path`).
+  (the IdPs — shared flat format with pep), and the signing key (`sign.jwk`, referenced by `sign_jwk_path`; required).
 - **Airgapped / test:** set `-e PDP_NON_PROD=true` and a `mock_idp` block in `pdp.yaml` — the PDP then issues a
   canned identity with no external OpenID Provider.
 - Secrets are mounted files referenced by `*_PATH`, never baked in.
