@@ -1,10 +1,10 @@
 ---
 id: TASK-119
 title: 'ti: HITL of the sealed comfort ID with a real Konnektor'
-status: To Do
+status: Done
 assignee: []
 created_date: 2026-10-20 11:46
-updated_date: '2026-10-26T14:54:00Z'
+updated_date: '2026-11-01T12:56:00Z'
 labels:
   - ti-cli
   - store
@@ -23,5 +23,11 @@ Split from TASK-103.5 (AC 5) when the store iteration was wrapped up: the comfor
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 comfort activate, a PIN-less sign and deactivate work against a real Konnektor with the ID sealed in state.db, proven by the maintainer
+- [x] #1 comfort activate, a PIN-less sign and deactivate work against a real Konnektor with the ID sealed in state.db, proven by the maintainer
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+HITL by the maintainer against a real Konnektor and HBA in a throwaway profile: comfort activate, a sign without PIN, the comfort record sealed in store ls, store doctor --deep, comfort deactivate, profile delete: all ok.
+<!-- SECTION:FINAL_SUMMARY:END -->
