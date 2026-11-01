@@ -90,6 +90,9 @@ pub enum TslCode {
     TslNotWellformed,
     /// The signature does not match the profile or does not verify (1013).
     XmlSignatureError,
+    /// The detached signature file does not match the profile or does not verify
+    /// (`spec/tsl-detached` part A; `ti-pki`'s own code, Tab_PKI_274 has none for it).
+    DetachedSignatureError,
     /// `KeyInfo` does not hold exactly one parsable certificate (1002).
     TslCertExtractionError,
     /// The signer is not issued by the TSL signer anchor, or its signature does not
@@ -144,6 +147,7 @@ impl TslCode {
     pub const ALL: &[TslCode] = &[
         TslCode::TslNotWellformed,
         TslCode::XmlSignatureError,
+        TslCode::DetachedSignatureError,
         TslCode::TslCertExtractionError,
         TslCode::CertificateNotValidMath,
         TslCode::AuthoritykeyidDifferent,
@@ -170,6 +174,7 @@ impl TslCode {
         match self {
             TslCode::TslNotWellformed => "tsl_not_wellformed",
             TslCode::XmlSignatureError => "xml_signature_error",
+            TslCode::DetachedSignatureError => "detached_signature_error",
             TslCode::TslCertExtractionError => "tsl_cert_extraction_error",
             TslCode::CertificateNotValidMath => "certificate_not_valid_math",
             TslCode::AuthoritykeyidDifferent => "authoritykeyid_different",
@@ -222,7 +227,9 @@ impl TslCode {
             TslCode::TslIdIncorrect => Some(1007),
             TslCode::ValidityWarning1 => Some(1008),
             TslCode::ValidityWarning2 => Some(1009),
-            TslCode::TslSignerProfileViolation | TslCode::TslAnchorAnnounced => None,
+            TslCode::TslSignerProfileViolation
+            | TslCode::TslAnchorAnnounced
+            | TslCode::DetachedSignatureError => None,
         }
     }
 }
@@ -348,6 +355,147 @@ pub fn verify(xml: &[u8], algorithms: &AlgorithmSet) -> Result<SignedTsl, TslErr
         signer,
         content: xml_checked.content,
         signing_time: xml_checked.signing_time,
+    })
+}
+
+/// The most a detached signature file may have (TSLDET-001): the published files are
+/// under 800 bytes, the certificate inside them is the bulk.
+pub const MAX_DETACHED_SIGNATURE_LEN: usize = 8192;
+
+/// The content of a detached signature file (`spec/tsl-detached` part A), parsed but
+/// not yet verified against a list.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct DetachedSignature {
+    /// The signer certificate the file carries; not yet authenticated.
+    pub signer: Certificate,
+    /// The DER `ECDSA-Sig-Value`, re-encoded from the file's BIT STRING.
+    pub signature: Vec<u8>,
+}
+
+/// Parses a detached signature file: `SEQUENCE { AlgorithmIdentifier, BIT STRING,
+/// Certificate }` (TSLDET-001 – 004). Pure parsing, no key material involved: the fuzz
+/// target.
+///
+/// # Errors
+///
+/// [`TslError`] with the code and the rule of the first check that failed.
+pub fn parse_detached_signature(sig: &[u8]) -> Result<DetachedSignature, TslError> {
+    use der::{Decode, Reader};
+
+    let malformed =
+        |detail: String| TslError::new(TslCode::DetachedSignatureError, "TSLDET-001", detail);
+    if sig.len() > MAX_DETACHED_SIGNATURE_LEN {
+        return Err(malformed(format!(
+            "{} bytes, more than the {MAX_DETACHED_SIGNATURE_LEN} a signature file may have",
+            sig.len()
+        )));
+    }
+    let mut reader = der::SliceReader::new(sig).map_err(|e| malformed(e.to_string()))?;
+    let (algorithm, bits, cert_der) = reader
+        .sequence(|r| -> der::Result<_> {
+            let algorithm = x509_cert::spki::AlgorithmIdentifierOwned::decode(r)?;
+            let bits = der::asn1::BitStringRef::decode(r)?;
+            let cert_der = r.tlv_bytes()?;
+            Ok((algorithm, bits, cert_der))
+        })
+        .map_err(|e| {
+            malformed(format!(
+                "not a SEQUENCE of AlgorithmIdentifier, BIT STRING and Certificate: {e}"
+            ))
+        })?;
+    reader
+        .finish()
+        .map_err(|_| malformed("bytes after the signature structure".to_owned()))?;
+
+    if algorithm.oid != const_oid::db::rfc5912::ECDSA_WITH_SHA_256 || algorithm.parameters.is_some()
+    {
+        return Err(TslError::new(
+            TslCode::DetachedSignatureError,
+            "TSLDET-002",
+            format!(
+                "the algorithm is {}, not ecdsa-with-SHA256 without parameters",
+                algorithm.oid
+            ),
+        ));
+    }
+    let value = bits.as_bytes().ok_or_else(|| {
+        TslError::new(
+            TslCode::DetachedSignatureError,
+            "TSLDET-003",
+            "the signature BIT STRING has unused bits",
+        )
+    })?;
+    // `from_der` takes only a minimal DER ECDSA-Sig-Value with r and s in range; the
+    // 64-byte plain form of TR-03111 5.2.2 fails here, as the specification wants.
+    let signature = ecdsa::Signature::<BrainpoolP256r1>::from_der(value)
+        .map_err(|_| {
+            TslError::new(
+                TslCode::DetachedSignatureError,
+                "TSLDET-003",
+                "the signature value is not a DER ECDSA-Sig-Value with r and s in range",
+            )
+        })?
+        .to_der();
+    let signer = Certificate::from_der(cert_der).map_err(|e| {
+        TslError::new(
+            TslCode::TslCertExtractionError,
+            "TSLDET-004",
+            format!("signer certificate: {e}"),
+        )
+    })?;
+    if signer.public_key_alg_id() != BRAINPOOL_P256R1.as_ref() {
+        return Err(TslError::new(
+            TslCode::TslCertExtractionError,
+            "TSLDET-004",
+            "the signer key is not on brainpoolP256r1",
+        ));
+    }
+    Ok(DetachedSignature {
+        signer,
+        signature: signature.as_bytes().to_vec(),
+    })
+}
+
+#[cfg(feature = "brainpool")]
+/// Verifies the detached signature `sig` over the list `xml` with the algorithms of
+/// `algorithms` (`spec/tsl-detached` TSLDET-001 – 005): the signature covers the bytes
+/// of the list as received, nothing is canonicalized.
+///
+/// # Errors
+///
+/// [`TslError`] with the code and the rule of the first check that failed.
+pub fn verify_detached(
+    xml: &[u8],
+    sig: &[u8],
+    algorithms: &AlgorithmSet,
+) -> Result<SignedTsl, TslError> {
+    let parsed = parse_detached_signature(sig)?;
+    let algorithm = find(
+        algorithms,
+        BRAINPOOL_P256R1.as_ref(),
+        alg_id::ECDSA_SHA256.as_ref(),
+    )
+    .ok_or_else(|| {
+        TslError::new(
+            TslCode::DetachedSignatureError,
+            "TSLDET-002",
+            "the algorithm set has no ECDSA brainpoolP256r1 SHA-256",
+        )
+    })?;
+    algorithm
+        .verify_signature(parsed.signer.public_key(), xml, &parsed.signature)
+        .map_err(|_| {
+            TslError::new(
+                TslCode::DetachedSignatureError,
+                "TSLDET-005",
+                "the signature value does not verify over the list",
+            )
+        })?;
+    Ok(SignedTsl {
+        signer: parsed.signer,
+        content: xml.to_vec(),
+        signing_time: String::new(),
     })
 }
 
@@ -882,6 +1030,160 @@ mod tests {
             "/../../spec/tsl-xmldsig/testdata/tsl/real/"
         );
         std::fs::read(format!("{path}{name}")).unwrap()
+    }
+
+    const DETACHED: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../spec/tsl-detached/testdata/"
+    );
+
+    /// The published set of `env` (`prod`, `ref`, `test`): the list, its `.sig` and its
+    /// `.ocsp`, captured together (spec/tsl-detached/testdata/README.md).
+    fn detached(env: &str) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+        let stem = match env {
+            "prod" => "prod/ECC-RSA_TSL",
+            "ref" => "ref/ECC-RSA_TSL-ref",
+            "test" => "test/ECC-RSA_TSL-test",
+            _ => panic!("no such set: {env}"),
+        };
+        let read = |suffix: &str| std::fs::read(format!("{DETACHED}{stem}.{suffix}")).unwrap();
+        (read("xml"), read("sig"), read("ocsp"))
+    }
+
+    fn derived(name: &str) -> Vec<u8> {
+        std::fs::read(format!("{DETACHED}derived/{name}")).unwrap()
+    }
+
+    fn assert_code<T: core::fmt::Debug>(result: Result<T, TslError>, code: TslCode, rule: &str) {
+        match result {
+            Ok(v) => panic!("expected {code} ({rule}), got Ok({v:?})"),
+            Err(e) => assert_eq!((e.code, e.rule), (code, rule), "{e}"),
+        }
+    }
+
+    #[test]
+    fn tsldet_005_published_sets_verify() {
+        for env in ["prod", "ref", "test"] {
+            let (xml, sig, _) = detached(env);
+            let signed =
+                verify_detached(&xml, &sig, DEFAULT).unwrap_or_else(|e| panic!("{env}: {e}"));
+            assert_eq!(signed.content, xml, "{env}");
+            assert_eq!(signed.signer.serial(), &[6], "{env}");
+            assert!(signed.signer.subject_cn().starts_with("TSL Signing Unit"));
+        }
+    }
+
+    #[test]
+    fn tsldet_001_truncated_rejected() {
+        let (xml, _, _) = detached("ref");
+        assert_code(
+            verify_detached(&xml, &derived("ref-truncated.sig"), DEFAULT),
+            TslCode::DetachedSignatureError,
+            "TSLDET-001",
+        );
+    }
+
+    #[test]
+    fn tsldet_001_trailing_bytes_rejected() {
+        let (xml, _, _) = detached("ref");
+        assert_code(
+            verify_detached(&xml, &derived("ref-trailing-byte.sig"), DEFAULT),
+            TslCode::DetachedSignatureError,
+            "TSLDET-001",
+        );
+    }
+
+    #[test]
+    fn tsldet_001_oversized_rejected() {
+        let (xml, mut sig, _) = detached("ref");
+        sig.resize(MAX_DETACHED_SIGNATURE_LEN + 1, 0);
+        assert_code(
+            verify_detached(&xml, &sig, DEFAULT),
+            TslCode::DetachedSignatureError,
+            "TSLDET-001",
+        );
+    }
+
+    #[test]
+    fn tsldet_002_wrong_algorithm_rejected() {
+        let (xml, _, _) = detached("ref");
+        assert_code(
+            verify_detached(&xml, &derived("ref-wrong-algorithm.sig"), DEFAULT),
+            TslCode::DetachedSignatureError,
+            "TSLDET-002",
+        );
+    }
+
+    #[test]
+    fn tsldet_003_plain_signature_rejected() {
+        let (xml, _, _) = detached("ref");
+        assert_code(
+            verify_detached(&xml, &derived("ref-plain-signature.sig"), DEFAULT),
+            TslCode::DetachedSignatureError,
+            "TSLDET-003",
+        );
+    }
+
+    #[test]
+    fn tsldet_003_unused_bits_rejected() {
+        let (xml, _, _) = detached("ref");
+        assert_code(
+            verify_detached(&xml, &derived("ref-unused-bits.sig"), DEFAULT),
+            TslCode::DetachedSignatureError,
+            "TSLDET-003",
+        );
+    }
+
+    /// The certificate's outer tag changed from SEQUENCE to SET: the file is still one
+    /// SEQUENCE of three elements, but element 3 is no certificate.
+    #[test]
+    fn tsldet_004_unparsable_signer_is_cert_extraction_error() {
+        let (xml, sig, _) = detached("ref");
+        let mut broken = sig.clone();
+        // The certificate starts right after the BIT STRING; find its SEQUENCE header.
+        let bits_end = {
+            let alg_len = usize::from(sig[5]) + 2; // short-form AlgorithmIdentifier
+            let bits_at = 4 + alg_len;
+            bits_at + 2 + usize::from(sig[bits_at + 1])
+        };
+        assert_eq!(sig[bits_end], 0x30);
+        broken[bits_end] = 0x31;
+        assert_code(
+            verify_detached(&xml, &broken, DEFAULT),
+            TslCode::TslCertExtractionError,
+            "TSLDET-004",
+        );
+    }
+
+    #[test]
+    fn tsldet_005_tampered_list_rejected() {
+        let (_, sig, _) = detached("ref");
+        assert_code(
+            verify_detached(&derived("ref-tampered.xml"), &sig, DEFAULT),
+            TslCode::DetachedSignatureError,
+            "TSLDET-005",
+        );
+    }
+
+    #[test]
+    fn tsldet_005_signature_of_another_list_rejected() {
+        let (xml, _, _) = detached("ref");
+        let (_, prod_sig, _) = detached("prod");
+        assert_code(
+            verify_detached(&xml, &prod_sig, DEFAULT),
+            TslCode::DetachedSignatureError,
+            "TSLDET-005",
+        );
+    }
+
+    #[test]
+    fn tsldet_005_flipped_signature_byte_rejected() {
+        let (xml, _, _) = detached("ref");
+        assert_code(
+            verify_detached(&xml, &derived("ref-flipped-signature-byte.sig"), DEFAULT),
+            TslCode::DetachedSignatureError,
+            "TSLDET-005",
+        );
     }
 
     #[test]
