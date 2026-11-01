@@ -49,6 +49,7 @@
 //! to the configured anchors, and a signer under a CA that is not configured fails.
 
 use core::fmt;
+use core::time::Duration;
 
 #[cfg(feature = "brainpool")]
 use bp256::BrainpoolP256r1;
@@ -394,6 +395,10 @@ pub fn verify(xml: &[u8], algorithms: &AlgorithmSet) -> Result<SignedTsl, TslErr
     })
 }
 
+/// How old the `.ocsp` published next to a list may be (TSLDET-021): the TSL service
+/// renews it hourly (A_21181), so two hours cover a missed renewal.
+pub const MAX_SUPPLIED_SIGNER_STATUS_AGE: Duration = Duration::from_hours(2);
+
 /// The most a detached signature file may have (TSLDET-001): the published files are
 /// under 800 bytes, the certificate inside them is the bulk.
 pub const MAX_DETACHED_SIGNATURE_LEN: usize = 8192;
@@ -611,7 +616,74 @@ impl VerifiedTsl {
             .check(&self.signer, &self.anchor, &TrustStore::new([]))
             .await
             .map_err(|e| status_error(&e))?;
-        let detail = |what: &str| format!("{what} ({})", result.responder_url);
+        let source = result.responder_url.clone();
+        self.adopt_signer_status(result, &source)
+    }
+
+    /// The signer's status from a supplied OCSP response, the `.ocsp` file published
+    /// next to the list (`spec/tsl-detached` TSLDET-020, 021), checked at `now` with the
+    /// `algorithms`: `Ok(true)` once it is adopted; `Ok(false)` if its `producedAt` is
+    /// older than [`MAX_SUPPLIED_SIGNER_STATUS_AGE`], which leaves the status unqueried
+    /// (the [`TslCode::NoOcspCheck`] warning then names the age) for a network query to
+    /// replace.
+    ///
+    /// # Errors
+    ///
+    /// [`TslError`] with the code of TSLSIG-040 – 042 for a response that is fresh but
+    /// says revoked or unknown, is for another certificate, is signed by an unauthorized
+    /// responder, lies in the future or cannot be parsed; the list must not be used.
+    pub fn check_signer_status_supplied(
+        &mut self,
+        response: &[u8],
+        now: Timestamp,
+        algorithms: &AlgorithmSet,
+    ) -> Result<bool, TslError> {
+        let check = crate::ocsp::ResponseCheck {
+            max_response_age: MAX_SUPPLIED_SIGNER_STATUS_AGE,
+            ..crate::ocsp::ResponseCheck::new(now, algorithms)
+        };
+        let result = crate::ocsp::verify_response(response, &self.signer, &self.anchor, &check)
+            .map_err(|e| status_error(&e))?;
+        // A response that failed the window check comes back as Unknown with the reason;
+        // its own producedAt tells "too old" from everything else.
+        if result.status == RevocationStatus::Unknown
+            && let Some(produced_at) = result.produced_at
+            && now.since(produced_at) > MAX_SUPPLIED_SIGNER_STATUS_AGE
+        {
+            let detail = format!(
+                "the supplied status was produced at {produced_at}, {} s before {now}, older \
+                 than the {} s a published response may be",
+                now.since(produced_at).as_secs(),
+                MAX_SUPPLIED_SIGNER_STATUS_AGE.as_secs()
+            );
+            match self
+                .warnings
+                .iter_mut()
+                .find(|w| w.code == TslCode::NoOcspCheck)
+            {
+                Some(warning) => {
+                    warning.rule = "TSLDET-021";
+                    warning.detail = detail;
+                }
+                None => {
+                    self.warnings
+                        .push(TslError::new(TslCode::NoOcspCheck, "TSLDET-021", detail))
+                }
+            }
+            return Ok(false);
+        }
+        self.adopt_signer_status(result, "supplied")?;
+        Ok(true)
+    }
+
+    /// TSLSIG-041 and 042 for a verified response: `good` is adopted, anything else
+    /// stops the use of the list. `source` names where the response came from.
+    fn adopt_signer_status(
+        &mut self,
+        result: RevocationResult,
+        source: &str,
+    ) -> Result<(), TslError> {
+        let detail = |what: &str| format!("{what} ({source})");
         match result.status {
             RevocationStatus::Good => {}
             RevocationStatus::Revoked => {
@@ -1234,6 +1306,93 @@ mod tests {
     fn tsldet_031_signature_kind_names() {
         assert_eq!(SignatureKind::Detached.as_str(), "detached");
         assert_eq!(SignatureKind::Enveloped.as_str(), "enveloped");
+    }
+
+    fn parse_detached(env: &str) -> VerifiedTsl {
+        let (xml, sig, _) = detached(env);
+        let preset = match env {
+            "prod" => crate::Env::Prod,
+            "ref" => crate::Env::Ref,
+            _ => crate::Env::Test,
+        };
+        Tsl::parse_verified_detached(&xml, &sig, &TrustConfig::preset(preset), captured_at())
+            .unwrap()
+    }
+
+    #[test]
+    fn tsldet_020_supplied_status_good_at_capture_time() {
+        for env in ["prod", "ref", "test"] {
+            let (_, _, ocsp) = detached(env);
+            let mut verified = parse_detached(env);
+            let used = verified
+                .check_signer_status_supplied(&ocsp, captured_at(), DEFAULT)
+                .unwrap_or_else(|e| panic!("{env}: {e}"));
+            assert!(used, "{env}");
+            let status = verified.signer_status.as_ref().unwrap();
+            assert_eq!(status.status, RevocationStatus::Good, "{env}");
+            assert!(
+                !verified
+                    .warnings
+                    .iter()
+                    .any(|w| w.code == TslCode::NoOcspCheck)
+            );
+        }
+    }
+
+    #[test]
+    fn tsldet_021_supplied_status_older_than_the_maximum_is_not_used() {
+        let mut verified = parse_detached("ref");
+        let used = verified
+            .check_signer_status_supplied(&derived("stale.ocsp"), captured_at(), DEFAULT)
+            .unwrap();
+        assert!(!used);
+        assert!(verified.signer_status.is_none());
+        let warning = verified
+            .warnings
+            .iter()
+            .find(|w| w.code == TslCode::NoOcspCheck)
+            .unwrap();
+        assert_eq!(warning.rule, "TSLDET-021");
+        assert!(warning.detail.contains("older than"), "{warning}");
+    }
+
+    #[test]
+    fn tsldet_020_status_for_another_certificate_is_an_error() {
+        let (_, _, prod_ocsp) = detached("prod");
+        let mut verified = parse_detached("ref");
+        let e = verified
+            .check_signer_status_supplied(&prod_ocsp, captured_at(), DEFAULT)
+            .unwrap_err();
+        assert!(
+            matches!(
+                e.code,
+                TslCode::CerthashMismatch
+                    | TslCode::OcspCheckRevocationError
+                    | TslCode::OcspSignatureError
+            ),
+            "{e}"
+        );
+        assert!(verified.signer_status.is_none());
+    }
+
+    #[test]
+    fn tsldet_020_empty_status_is_an_error() {
+        let mut verified = parse_detached("ref");
+        let e = verified
+            .check_signer_status_supplied(&[], captured_at(), DEFAULT)
+            .unwrap_err();
+        assert_eq!(e.rule, "TSLSIG-042", "{e}");
+    }
+
+    #[test]
+    fn tsldet_020_status_from_the_future_is_an_error() {
+        let (_, _, ocsp) = detached("ref");
+        let mut verified = parse_detached("ref");
+        let three_hours_earlier = captured_at() - core::time::Duration::from_hours(3);
+        let e = verified
+            .check_signer_status_supplied(&ocsp, three_hours_earlier, DEFAULT)
+            .unwrap_err();
+        assert_eq!(e.rule, "TSLSIG-042", "{e}");
     }
 
     #[test]
