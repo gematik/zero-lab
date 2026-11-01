@@ -91,8 +91,13 @@ impl<'a> Document<'a> {
             .map_err(|e| Error::not_well_formed(format!("not UTF-8: {e}")))?;
         check_declaration(text.strip_prefix('\u{feff}').unwrap_or(text))?;
         // The parser recurses once per nesting level, so the depth must be bounded
-        // before it runs.
+        // before it runs. It also compares each element's attributes pairwise: 200,000 of
+        // them take half a minute, so they are bounded before it runs as well.
         check_depth(xml, limits.max_depth)?;
+        check_tags(
+            xml,
+            limits.max_attributes.saturating_add(limits.max_namespaces),
+        )?;
         let options = ParsingOptions {
             allow_dtd: false,
             nodes_limit: limits.max_nodes,
@@ -210,6 +215,23 @@ fn check_depth(xml: &[u8], max_depth: usize) -> Result<(), Error> {
 /// Whether elements in `xml` nest deeper than `max_depth`, by the lexical scan of
 /// [`check_depth`].
 pub(crate) fn nests_deeper(xml: &[u8], max_depth: usize) -> bool {
+    scan_tags(xml, |depth, _| depth >= max_depth)
+}
+
+/// No start tag has more than `max` attributes and namespace declarations together, by
+/// the lexical scan of [`check_depth`]; the exact limits of each follow on the tree.
+fn check_tags(xml: &[u8], max: usize) -> Result<(), Error> {
+    if scan_tags(xml, |_, assignments| assignments > max) {
+        Err(Error::not_well_formed(format!(
+            "a start tag has more than {max} attributes and namespace declarations"
+        )))
+    } else {
+        Ok(())
+    }
+}
+
+/// Whether `excess` holds for a start tag, given its depth and its `=` outside quotes.
+fn scan_tags(xml: &[u8], excess: impl Fn(usize, usize) -> bool) -> bool {
     let mut depth = 0usize;
     let mut rest = xml;
     while let Some(lt) = memchr_lt(rest) {
@@ -226,9 +248,9 @@ pub(crate) fn nests_deeper(xml: &[u8], max_depth: usize) -> bool {
         } else if let Some(after) = rest.strip_prefix(b"<!") {
             rest = after;
         } else {
-            let (after, empty) = skip_tag(rest.get(1..).unwrap_or_default());
+            let (after, empty, assignments) = skip_tag(rest.get(1..).unwrap_or_default());
             rest = after;
-            if depth >= max_depth {
+            if excess(depth, assignments) {
                 return true;
             }
             if !empty {
@@ -252,10 +274,11 @@ fn skip_past<'b>(bytes: &'b [u8], end: &[u8]) -> &'b [u8] {
         .unwrap_or_default()
 }
 
-/// The input after a start tag's `>`, honouring quoted attribute values, and whether the
-/// tag was empty (`/>`).
-fn skip_tag(bytes: &[u8]) -> (&[u8], bool) {
+/// The input after a start tag's `>`, honouring quoted attribute values, whether the tag
+/// was empty (`/>`), and the number of `=` outside its quotes.
+fn skip_tag(bytes: &[u8]) -> (&[u8], bool, usize) {
     let mut quote = None;
+    let mut assignments = 0usize;
     let mut previous = 0u8;
     for (i, &b) in bytes.iter().enumerate() {
         match quote {
@@ -269,13 +292,15 @@ fn skip_tag(bytes: &[u8]) -> (&[u8], bool) {
                 return (
                     bytes.get(i.saturating_add(1)..).unwrap_or_default(),
                     previous == b'/',
+                    assignments,
                 );
             }
+            None if b == b'=' => assignments = assignments.saturating_add(1),
             None => {}
         }
         previous = b;
     }
-    (&[], false)
+    (&[], false, assignments)
 }
 
 /// The XML declaration, if present, names version 1.0 and no encoding but UTF-8. The
@@ -419,6 +444,27 @@ mod tests {
         let depth = 100_000;
         let xml = "<a>".repeat(depth) + &"</a>".repeat(depth);
         assert!(rejected(&xml).contains("deeper"));
+    }
+
+    /// TSLSIG-001: the parser's time grows with the square of an element's attributes, so
+    /// the limit holds before it runs. Only the scan's message names the start tag.
+    #[test]
+    fn attributes_are_bounded_before_the_parser_runs() {
+        let limits = Limits {
+            max_attributes: 2,
+            max_namespaces: 1,
+            ..Limits::TSL
+        };
+        let refused =
+            Document::parse(b"<a w=\"1\" x=\"2\" y=\"3\" z=\"4\"/>", &limits).unwrap_err();
+        assert!(refused.detail().contains("a start tag"), "{refused}");
+        // Neither quoted values nor text count, and an unterminated tag is the parser's.
+        assert!(Document::parse(b"<a x=\"====\" y=\'====\'>=====</a>", &limits).is_ok());
+        let unterminated = Document::parse(b"<a x=\"1\"", &limits).unwrap_err();
+        assert!(
+            !unterminated.detail().contains("a start tag"),
+            "{unterminated}"
+        );
     }
 
     #[test]
