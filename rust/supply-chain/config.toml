@@ -121,10 +121,6 @@ criteria = "safe-to-deploy"
 version = "1.0.5"
 criteria = "safe-to-deploy"
 
-[[exemptions.chacha20]]
-version = "0.10.2"
-criteria = "safe-to-run"
-
 [[exemptions.cipher]]
 version = "0.5.2"
 criteria = "safe-to-deploy"
@@ -168,10 +164,6 @@ criteria = "safe-to-deploy"
 [[exemptions.core-foundation]]
 version = "0.10.1"
 criteria = "safe-to-deploy"
-
-[[exemptions.core_detect]]
-version = "1.0.0"
-criteria = "safe-to-run"
 
 [[exemptions.cpubits]]
 version = "0.1.1"
@@ -510,10 +502,6 @@ criteria = "safe-to-deploy"
 version = "1.0.107"
 criteria = "safe-to-deploy"
 
-[[exemptions.proptest]]
-version = "1.12.0"
-criteria = "safe-to-run"
-
 [[exemptions.quick-xml]]
 version = "0.42.0"
 criteria = "safe-to-deploy"
@@ -522,25 +510,13 @@ criteria = "safe-to-deploy"
 version = "6.0.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.rand]]
-version = "0.10.3"
-criteria = "safe-to-run"
-
 [[exemptions.rand_core]]
 version = "0.10.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.rand_xorshift]]
-version = "0.5.0"
-criteria = "safe-to-run"
-
 [[exemptions.rc2]]
 version = "0.9.0"
 criteria = "safe-to-deploy"
-
-[[exemptions.regex-syntax]]
-version = "0.8.11"
-criteria = "safe-to-run"
 
 [[exemptions.rfc6979]]
 version = "0.6.0"
@@ -548,10 +524,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.ring]]
 version = "0.17.14"
-criteria = "safe-to-deploy"
-
-[[exemptions.roxmltree]]
-version = "0.21.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.rpassword]]
@@ -697,10 +669,6 @@ criteria = "safe-to-deploy"
 [[exemptions.typenum]]
 version = "1.20.1"
 criteria = "safe-to-deploy"
-
-[[exemptions.unarray]]
-version = "0.1.4"
-criteria = "safe-to-run"
 
 [[exemptions.unicode-ident]]
 version = "1.0.26"

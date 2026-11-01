@@ -2,9 +2,10 @@
 
 Language-neutral specification for authenticating the gematik Trust-service Status List
 (TSL) through the detached signature file the TSL service publishes next to it, and for
-taking the TSL signer's status from the OCSP response file published with it. It replaces
-part A (XML and signature) of [`spec/tsl-xmldsig`](../tsl-xmldsig/README.md); parts B to
-G of that document (signer, signer status, update, trust anchor, CA status, general)
+taking the TSL signer's status from the OCSP response file published with it. It is the
+only way a list is authenticated; it replaced part A (XML and signature) of
+[`spec/tsl-xmldsig`](../tsl-xmldsig/README.md), which is withdrawn. Parts B to G of that
+document (signer, signer status, update, trust anchor, CA status, general)
 apply unchanged to the signer and the list this document delivers. An implementation
 built from both documents alone, checked against the corpus of
 [CONFORMANCE.md](CONFORMANCE.md), is conformant.
@@ -45,9 +46,8 @@ In scope:
 Out of scope, because `spec/tsl-xmldsig` owns them: the signer certificate's profile and
 anchor (part B), the status query over the network (part C), the update rules (part D),
 the anchor change (part E), the CA status (part F) and the general rule (part G). Out of
-scope entirely: the enveloped XML signature of the list (part A of `spec/tsl-xmldsig`,
-which this document replaces when the detached signature is used), the TSL(RSA) and its
-RSASSA-PSS signature, the BNetzA-VL.
+scope entirely: the enveloped XML signature inside the list, which stays there as
+content and is not evaluated; the TSL(RSA) and its RSASSA-PSS signature; the BNetzA-VL.
 
 ## References
 
@@ -55,8 +55,8 @@ RSASSA-PSS signature, the BNetzA-VL.
 |---|---|
 | gemSpec_TSL | [gemSpec_TSL V1.25.0](https://gemspec.gematik.de/downloads/gemSpec/gemSpec_TSL/gemSpec_TSL_V1.25.0.html), 6.3.1.3 "Automatisierbarer TSL-Download aus dem Internet", A_21175 to A_21182 |
 | gemSpec_PKI | [gemSpec_PKI V2.28.0](https://gemspec.gematik.de/downloads/gemSpec/gemSpec_PKI/gemSpec_PKI_V2.28.0.html), 8.2.6 (A_30044), TUC_PKI_001, TUC_PKI_006, TUC_PKI_011, TUC_PKI_012 |
-| TR-03111 | BSI TR-03111 Elliptic Curve Cryptography, 5.2 (signature formats) |
-| X9.62 / RFC 5480 | ANSI X9.62 and RFC 5480 §2 (`ECDSA-Sig-Value`, the DER signature value) |
+| TR-03111 | BSI TR-03111 V2.10 Elliptic Curve Cryptography, 5.2.1 (plain format), 5.2.2 (X9.62 format: `ECDSA-Sig-Value`) |
+| Design note | [gematik examples-TelematikInterfaces, tslService/detachedSignature](https://github.com/gematik/examples-TelematikInterfaces/tree/master/tslService/detachedSignature): why the file exists, agreed with the BSI: a consumer need not decode the XML or evaluate the complex XMLDSig, which an attacker may have modified |
 | RFC 5280, RFC 6960 | X.509, OCSP |
 | spec/tsl-xmldsig | the rules this document relies on, `TSLSIG-nnn` |
 
@@ -69,7 +69,7 @@ hashes are in [`testdata/README.md`](testdata/README.md)):
 .sig  ::= SEQUENCE {
             SEQUENCE { OBJECT IDENTIFIER ecdsa-with-SHA256 (1.2.840.10045.4.3.2) },
             BIT STRING (0 unused bits) {
-              SEQUENCE { INTEGER r, INTEGER s }        -- DER ECDSA-Sig-Value, X9.62
+              SEQUENCE { INTEGER r, INTEGER s }        -- ECDSA-Sig-Value, TR-03111 5.2.2
             },
             Certificate                                -- the TSL signer, C.TSL.SIG
           }
@@ -80,8 +80,8 @@ The `.sig` of PU is 712 bytes, those of RU and TU 763 and 762; the signer is "TS
 Unit 6" under GEM.TSL-CA3 (PU) and "TSL Signing Unit 12 TEST-ONLY" under GEM.TSL-CA28
 TEST-ONLY (RU, TU), with brainpoolP256r1 keys. The `.ocsp` files are responses of the TSL
 signer CA's delegated responder with the responder certificate included, produced within
-the hour (A_21181). A_21179 describes the signature value as the BSI TR-03111 5.2.2
-format; the published files carry the X9.62 DER form (see [Deviations](#deviations)).
+the hour (A_21181). A_21179 names the signature value as the format of BSI TR-03111
+5.2.2, the DER `ECDSA-Sig-Value`, which is what the published files carry.
 
 The files are published on the CRL host of the environment over plain HTTP (A_21175,
 A_21176); the URIs are in A_21182 and repeated in [B. Download](#b-download). The HTTPS
@@ -98,20 +98,21 @@ Result codes are named in [Result codes](#result-codes). Every failed check of p
 |---|---|---|
 | TSLDET-001 | The `.sig` file MUST be at most 8192 bytes and strict DER: exactly one SEQUENCE of three elements, no bytes after it. Lengths MUST be checked before an element is decoded. | `detached_signature_error` |
 | TSLDET-002 | Element 1 MUST be the AlgorithmIdentifier `ecdsa-with-SHA256` (1.2.840.10045.4.3.2) with absent parameters. `rsaPSS` (the TSL(RSA)) and every other algorithm MUST be rejected. | `detached_signature_error` |
-| TSLDET-003 | Element 2 MUST be a BIT STRING with zero unused bits whose content is a DER `ECDSA-Sig-Value` (SEQUENCE of two INTEGERs) with `0 < r < n` and `0 < s < n` for the brainpoolP256r1 order `n`, in minimal DER encoding. The 64-byte plain form `r ‖ s` MUST be rejected. | `detached_signature_error` |
+| TSLDET-003 | Element 2 MUST be a BIT STRING with zero unused bits whose content is a DER `ECDSA-Sig-Value` (SEQUENCE of two INTEGERs) with `0 < r < n` and `0 < s < n` for the brainpoolP256r1 order `n`, in minimal DER encoding (TR-03111 5.2.2). The 64-byte plain form `r ‖ s` of 5.2.1 MUST be rejected. | `detached_signature_error` |
 | TSLDET-004 | Element 3 MUST be a parsable DER X.509 certificate: the signer, not yet authenticated. Its public key MUST be on brainpoolP256r1 (as TSLSIG-012). | `tsl_cert_extraction_error` |
 | TSLDET-005 | The signature MUST verify with the signer's public key, ECDSA with SHA-256, over the complete bytes of the `.xml` file as received, after transport decoding (content coding removed) and before any parsing. No canonicalization and no transformation of any kind is applied. | `detached_signature_error` |
-| TSLDET-006 | After successful verification the list MUST be read from exactly the verified bytes (as TSLSIG-023). An enveloped `ds:Signature` element inside them is content and MUST be ignored, never verified or required. The limits of TSLSIG-001 apply to that parse. | `tsl_not_wellformed` |
+| TSLDET-006 | A list MUST be at most 16 MiB, checked before it is hashed. After successful verification it MUST be read from exactly the verified bytes. The enveloped `ds:Signature` element inside them is content and MUST be ignored, never verified or required. | `tsl_not_wellformed` |
 
 ### B. Download
 
 | ID | Rule | Code |
 |---|---|---|
-| TSLDET-010 | `.xml`, `.sig` and `.ocsp` MUST be fetched from the configured automated download point of the environment (A_21182), the same origin, as one set, never from addresses inside a TSL. Before the set is fetched, the `.sha2` of the configured HTTPS download point MUST be compared with the hash of the current list (A_30044 (2), TSLSIG-050); the fetched `.xml` MUST match the published hash. Without a readable hash the list MUST NOT be taken from a plain-HTTP origin, only from the HTTPS download point. A plain-HTTP origin gets no validators for the list, and its "not modified" MUST NOT be believed: it would renew the list's age without authentication. A stale or fallback copy of a detached file MUST NOT be combined with a list. | `tsl_download_error` |
+| TSLDET-010 | `.xml`, `.sig` and `.ocsp` MUST be fetched from the configured automated download point of the environment (A_21182), the same origin, as one set, never from addresses inside a TSL. Before the set is fetched, the `.sha2` of the configured HTTPS download point MUST be compared with the hash of the current list (A_30044 (2), TSLSIG-050); the fetched `.xml` MUST match the published hash. Without a readable hash the list MUST NOT be taken from a plain-HTTP origin, only from the HTTPS download point. A plain-HTTP origin gets no validators for the list, and its "not modified" MUST NOT be believed: it would renew the list's age without authentication. A load failure is retried and reported by the loader; it has no result code. |
 | TSLDET-011 | Plain `http://` is acceptable for the automated download point, which A_21175 mandates: trust comes from the signature and the hash, never from the transport. A gzip content coding is removed before verification. | |
 | TSLDET-012 | The automated download points of A_21182: PU `http://download.crl.ti-dienste.de/TSL-ECC/ECC-RSA_TSL.{xml,sig,ocsp}`; RU `http://download-testref.crl.ti-dienste.de/TSL-ECC-ref/ECC-RSA_TSL-ref.{xml,sig,ocsp}`; TU `http://download-testref.crl.ti-dienste.de/TSL-ECC-test/ECC-RSA_TSL-test.{xml,sig,ocsp}`. The `.sig` and `.ocsp` URIs are the `.xml` URI with its suffix replaced. | |
-| TSLDET-013 | While the enveloped path exists, a loader MAY deliver a list without detached files (not published, not reachable), and a signature file that fails part A on a loaded list MUST be discarded with its status, the list then verified by `spec/tsl-xmldsig`, with a warning. An attacker on the path can force this, but not more: the enveloped signature, signer and anchor still decide, and the bytes are bound by the HTTPS hash. A caller that names the signature file explicitly gets the error instead. A fault of the implementation's own cache MUST NOT be taken for a missing file. | `detached_signature_not_used` (warning) |
-| TSLDET-014 | When the plain-HTTP origin is unreachable, or serves bytes that do not match the published hash (it may lag by up to an hour, A_21178), the list MUST be fetched from the HTTPS download point and checked against the same hash. | `tsl_download_error` if that fails too |
+| TSLDET-013 | A list without a signature file that verifies MUST NOT be used; there is no other way to authenticate it. Because the files travel over plain HTTP and may be cached before they are verified, a set that fails verification MUST be fetched once more without validators before the failure stands (A_21177). That MUST NOT discard the set in hand: it stays available for an origin that fails, at its real age. A fault of the implementation's own cache is reported as such, not as a missing file. | `detached_signature_error` |
+| TSLDET-014 | When the plain-HTTP origin is unreachable, or serves bytes that do not match the published hash (it may lag by up to an hour, A_21178), the load fails and is retried, and the list in hand MUST stay in use within its limits. The list MUST NOT be taken from the HTTPS point in that case: its signature is not available, and it would replace a set that verifies with one that does not. | |
+| TSLDET-015 | A cached `.sig` MAY be used at any age when its origin cannot be reached: it verifies over the list or it does not. A list the HTTPS hash keeps confirming therefore stays usable while the plain-HTTP host is down. A stale `.ocsp` MUST NOT be used. | |
 
 ### C. Signer status from the published response
 
@@ -127,25 +128,21 @@ Result codes are named in [Result codes](#result-codes). Every failed check of p
 | ID | Rule |
 |---|---|
 | TSLDET-030 | Parts B to G of `spec/tsl-xmldsig` apply unchanged: the signer of TSLDET-004 is checked by TSLSIG-030 to 035 against the anchor resolved by part E, the list of TSLDET-006 by parts D and F, and everything fails closed with one result code (TSLSIG-080). |
-| TSLDET-031 | The result MUST name the signature kind, `detached` or `enveloped`, so a consumer and a log can tell which path verified the list. |
 
 ## Result codes
 
 | Code | No. | Kind | Rules |
 |---|---|---|---|
-| `detached_signature_error` | – | error | 001, 002, 003, 005 |
-| `detached_signature_not_used` | – | warning | 013 |
+| `detached_signature_error` | – | error | 001, 002, 003, 005, 013 |
 | `tsl_cert_extraction_error` | 1002 | error | 004 |
 | `tsl_not_wellformed` | 1011 | error | 006 |
-| `tsl_download_error` | 1006 | error | 010, 014 |
 | `no_ocsp_check` | 1039 | warning | 021, 022, 023 |
 | the codes of TSLSIG-040 to 042 | | error | 020 |
 | the codes of parts B to G of `spec/tsl-xmldsig` | | | 030 |
 
 `detached_signature_error` is this specification's own code: Tab_PKI_274 has
 `SE_1013_XML_SIGNATURE_ERROR` for the enveloped signature and nothing for a detached one.
-Everything else uses the codes of `spec/tsl-xmldsig`, so the two paths differ only in the
-code of part A.
+Everything else uses the codes of `spec/tsl-xmldsig`.
 
 ## Algorithm
 
@@ -157,11 +154,12 @@ update(state, transport, t):
   if hash unreadable: xml ← transport.get(url_xml of the HTTPS point)  # TSLDET-010
   else:
     xml ← transport.get(url_xml of the automated download point)       # TSLDET-010, 012
-    if unreachable or sha256(xml) ≠ hash:
-      xml ← transport.get(url_xml of the HTTPS point)                  # TSLDET-014
-      if sha256(xml) ≠ hash: fail tsl_download_error, retryable        # TSLDET-010
-  sig ← transport.get(url_sig);  ocsp ← transport.get(url_ocsp)       # TSLDET-010, 012
+    if unreachable or sha256(xml) ≠ hash: load failure, retry;
+      keep the list in hand                                            # TSLDET-014
+  sig ← transport.get(url_sig), a cached one if unreachable           # TSLDET-012, 015
+  ocsp ← transport.get(url_ocsp)                                       # TSLDET-012
   signer ← verify_detached(xml, sig)                                  # A
+  on any failure: expire the set, fetch it once more, verify again     # TSLDET-013
   anchor, way ← resolve_anchor(signer, …)                             # TSLSIG part E
   check signer under anchor, validity, KU, EKU, profile               # TSLSIG-031..035
   status ← supplied_status(signer, anchor, ocsp, t)                   # C
@@ -207,30 +205,21 @@ The signature of part A is checked before the signer's certificate (parts B and 
 | | GS-A_4651 TUC_PKI_012 (XML signature) | replaced by 001 to 006, see [Deviations](#deviations) |
 | | GS-A_4642 TUC_PKI_001 steps 3 and 5 to 7 | 030 |
 | | GS-A_4657 TUC_PKI_006 (OCSP response check) | 020 |
-| TR-03111 | 5.2.1 (X9.62 DER signature), 5.2.2 (plain signature) | 003 |
-| RFC 5480 | §2 `ECDSA-Sig-Value` | 003 |
+| TR-03111 | 5.2.2 (X9.62 format, `ECDSA-Sig-Value`) | 003 |
 
 ## Deviations
 
-From gemSpec_PKI:
+From gemSpec_PKI: **TUC_PKI_012 is replaced.** gemSpec_PKI 8.2.6 / A_30044 tells internet
+consumers to run TUC_PKI_001, whose step 4 is the XML signature check, and gemSpec_TSL
+6.3.1.3 names the three files a fallback for Konnektors. Verifying by `.sig` and `.ocsp`
+is the same check cryptographically (same signer, same anchor, same OCSP, the exact bytes
+that are hashed and compared) but not the method the requirement names. The maintainer
+decided to take it (2026-11-01, TASK-166) ahead of a change to the specifications; the
+request for change is backlog doc-3 (TASK-167). gematik's design note gives the reason the
+file exists, agreed with the BSI: it is safer to verify than the XMLDSig.
 
-- **TUC_PKI_012 is replaced.** gemSpec_PKI 8.2.6 / A_30044 tells internet consumers to
-  run TUC_PKI_001, whose step 4 is the XML signature check, and gemSpec_TSL 6.3.1.3 calls
-  the three files a fallback for Konnektors. Verifying by `.sig` and `.ocsp` is the same
-  check cryptographically (same signer, same anchor, same OCSP, the exact bytes that are
-  hashed and compared) but not the method the requirement names. Recorded here as a
-  deviation; a request for change to gematik's PKI team is backlog doc-3 (TASK-167), to be
-  sent if the requirements in preparation for internet and TI 2.0 consumers do not allow
-  the detached signature.
-
-From gemSpec_TSL:
-
-- **A_21179 cites the TR-03111 5.2.2 plain format, the files carry X9.62 DER.** The
-  published `.sig` files of PU, RU and TU hold a DER `ECDSA-Sig-Value` (71 to 72 bytes),
-  not the 64-byte `r ‖ s`. This specification accepts what is published and rejects the
-  plain form (TSLDET-003), fail closed; accepting both would let a verifier be steered
-  between encodings. Question 4 of doc-3 asks gematik to align the requirement with the
-  files.
+From gemSpec_PKI 8.2.6: the list and the signature come from the CRL host of A_21182 rather
+than only the HTTPS points it names, because `.sig` and `.ocsp` are published nowhere else.
 
 ## Security considerations
 
@@ -246,11 +235,14 @@ From gemSpec_TSL:
   signature and the hash from HTTPS; the plain origin is asked for the list only under
   that hash and cannot confirm a list with "not modified" (TSLDET-010), so it can withhold
   or delay, never inject, and cannot renew the age of material.
-- **Consistency.** `.xml` and `.sig` of different states fail part A; the signature is
-  then discarded (TSLDET-013). A verifier never accepts a list under another's signature.
-- **Forced fallback.** While the enveloped path exists an attacker on the path can force
-  it (TSLDET-013). That costs the simplification, not trust, and it is visible: the
-  result names the kind (TSLDET-031) and a discarded signature raises a warning.
+- **Consistency.** `.xml` and `.sig` of different states fail part A and the set is
+  fetched again (TSLDET-013). A verifier never accepts a list under another's signature.
+- **Availability.** `.sig` is published only over plain HTTP on the CRL host (A_21175). A
+  network that blocks it cannot authenticate a new list, even though HTTPS serves it: the
+  list in hand stays in use while the HTTPS hash confirms it (TSLDET-015), and ages out by
+  its hard expiry once a new one is published. Each publication also opens a window of up
+  to an hour (A_21178) in which the new list cannot be taken yet (TSLDET-014). Publishing
+  `.sig` and `.ocsp` on the HTTPS points, as doc-3 asks, removes both.
 - **Replay and downgrade.** Unchanged: the sequence number and `NextUpdate` rules of part
   D reject an older signed list, and the algorithm is a single fixed combination
   (TSLDET-002, 003).
@@ -259,8 +251,8 @@ From gemSpec_TSL:
   `revoked` stops the list at any age, since a consumer may not have seen it while it was
   fresh (TSLDET-021). A fresh response that is wrong fails closed (TSLDET-020).
 - **Parser surface.** The `.sig` parser reads a bounded DER structure of three fields; it
-  and the OCSP parser are fuzzed. On the detached path the XML parser reads only signed
-  bytes. It leaves the trust path entirely once the enveloped path is removed.
+  and the OCSP parser are fuzzed. The XML parser reads only signed bytes and is off the
+  trust path.
 
 ## Licence
 

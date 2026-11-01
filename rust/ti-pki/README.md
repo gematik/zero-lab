@@ -13,9 +13,8 @@ walk), the TSL's CAs kept only when a verified root signed them, chain building,
 validation, the gemSpec_Krypt key check, certificate types and profiles, OCSP for the end
 entity and every CA below the root, and loading with cache, bundle and reload. The TSL
 is verified by the detached signature gematik publishes next to it, with the signer's
-status from the published OCSP response (`spec/tsl-detached`), or by its enveloped
-XMLDSig signature (`spec/tsl-xmldsig`) until that path is removed; either way the signer
-is checked under the TSL signer CA, then `NextUpdate` and the sequence. The TSL stays a
+status from the published OCSP response (`spec/tsl-detached`), then the signer under the
+TSL signer CA, `NextUpdate` and the sequence (`spec/tsl-xmldsig` parts B to G). It stays a
 source of candidate intermediates, not of trust.
 
 The gematik specifications it implements, in the versions it follows:
@@ -23,7 +22,8 @@ The gematik specifications it implements, in the versions it follows:
 [gemSpec_TSL V1.25.0](https://gemspec.gematik.de/downloads/gemSpec/gemSpec_TSL/gemSpec_TSL_V1.25.0.html),
 [gemSpec_Krypt V2.50.0](https://gemspec.gematik.de/downloads/gemSpec/gemSpec_Krypt/gemSpec_Krypt_V2.50.0.html),
 [gemKPT_PKI_TIP V2.14.0](https://gemspec.gematik.de/downloads/gemKPT/gemKPT_PKI_TIP/gemKPT_PKI_TIP_V2.14.0.html).
-The TSL signature rules derived from them are in
+The TSL rules derived from them are in
+[`spec/tsl-detached`](../../spec/tsl-detached/README.md) and
 [`spec/tsl-xmldsig`](../../spec/tsl-xmldsig/README.md).
 
 The reference implementation is the Go package

@@ -18,7 +18,6 @@ task.
 |---|---|
 | ti-types | std, serde |
 | ti-store | store |
-| ti-xmldsig | – |
 | ti-pki | brainpool, rsa, load, os, dangerous-nonprod |
 | ti-pkcs12 | legacy, encode |
 | ti-connector-client | – |

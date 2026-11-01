@@ -31,7 +31,8 @@
 //! - `subPath` mounts never receive updates; mount the whole volume.
 //! - An update reaches the pod after up to the kubelet sync period plus its cache TTL
 //!   (about a minute by default), then after the next reload tick.
-//! - Put roots.json and the TSL in one ConfigMap so they update together.
+//! - Put roots.json, the TSL and its `.sig` and `.ocsp` in one ConfigMap so they update
+//!   together; a list under the signature of another state does not verify.
 //! - inotify is unreliable on these mounts (the files themselves never change, the
 //!   symlink does); poll through the reloader instead of watching.
 
@@ -50,25 +51,26 @@ pub struct FileTransport {
 }
 
 impl FileTransport {
-    /// A transport reading roots.json and the TSL from these paths.
-    pub fn new(roots: impl Into<PathBuf>, tsl: impl Into<PathBuf>) -> Self {
+    /// A transport reading roots.json, the TSL and its detached signature from these
+    /// paths.
+    pub fn new(
+        roots: impl Into<PathBuf>,
+        tsl: impl Into<PathBuf>,
+        signature: impl Into<PathBuf>,
+    ) -> Self {
         FileTransport {
-            paths: HashMap::from([(Artifact::Roots, roots.into()), (Artifact::Tsl, tsl.into())]),
+            paths: HashMap::from([
+                (Artifact::Roots, roots.into()),
+                (Artifact::Tsl, tsl.into()),
+                (Artifact::TslSignature, signature.into()),
+            ]),
         }
     }
 
-    /// The same transport reading the list's detached signature from `signature` and,
-    /// if given, the signer's status from `signer_status` (`spec/tsl-detached`).
+    /// The same transport reading the signer's status from `path` (`spec/tsl-detached`).
     #[must_use]
-    pub fn with_detached(
-        mut self,
-        signature: impl Into<PathBuf>,
-        signer_status: Option<PathBuf>,
-    ) -> Self {
-        self.paths.insert(Artifact::TslSignature, signature.into());
-        if let Some(path) = signer_status {
-            self.paths.insert(Artifact::TslSignerStatus, path);
-        }
+    pub fn with_signer_status(mut self, path: impl Into<PathBuf>) -> Self {
+        self.paths.insert(Artifact::TslSignerStatus, path.into());
         self
     }
 }
@@ -158,7 +160,7 @@ mod tests {
         let dir = TempDir::new("file-change");
         let tsl = dir.0.join("tsl.xml");
         std::fs::write(&tsl, b"v1").unwrap();
-        let t = FileTransport::new(dir.0.join("roots.json"), &tsl);
+        let t = FileTransport::new(dir.0.join("roots.json"), &tsl, dir.0.join("tsl.sig"));
 
         let (body, etag) = body_and_etag(get(&t, None).unwrap());
         assert_eq!(body, b"v1");
@@ -187,8 +189,12 @@ mod tests {
         ] {
             std::fs::write(dir.0.join(name), body).unwrap();
         }
-        let transport = FileTransport::new(dir.0.join("roots.json"), dir.0.join("tsl.xml"))
-            .with_detached(dir.0.join("tsl.sig"), Some(dir.0.join("tsl.ocsp")));
+        let transport = FileTransport::new(
+            dir.0.join("roots.json"),
+            dir.0.join("tsl.xml"),
+            dir.0.join("tsl.sig"),
+        )
+        .with_signer_status(dir.0.join("tsl.ocsp"));
         let clock = crate::time::FixedClock::new(crate::time::Timestamp(1_767_225_600));
         let loader =
             crate::load::HttpLoader::new(&crate::TrustConfig::preset_prod(), transport, &clock);
@@ -201,7 +207,11 @@ mod tests {
 
     #[test]
     fn missing_file_is_retryable_io() {
-        let t = FileTransport::new("/nonexistent/roots.json", "/nonexistent/tsl.xml");
+        let t = FileTransport::new(
+            "/nonexistent/roots.json",
+            "/nonexistent/tsl.xml",
+            "/nonexistent/tsl.sig",
+        );
         let error = get(&t, None).unwrap_err();
         assert_eq!(error.kind, TransportErrorKind::Io);
         assert!(error.retryable);
@@ -229,7 +239,11 @@ mod tests {
         point_data_at("..2026_09_22_1");
         symlink(Path::new("..data").join("tsl.xml"), dir.0.join("tsl.xml")).unwrap();
 
-        let t = FileTransport::new(dir.0.join("roots.json"), dir.0.join("tsl.xml"));
+        let t = FileTransport::new(
+            dir.0.join("roots.json"),
+            dir.0.join("tsl.xml"),
+            dir.0.join("tsl.sig"),
+        );
         assert_eq!(body_and_etag(get(&t, None).unwrap()).0, b"first");
 
         write_version("..2026_09_22_2", b"second");

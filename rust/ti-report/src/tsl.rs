@@ -34,7 +34,7 @@ use crate::{hex, sha256};
 /// A result code with its Tab_PKI_274 number, the rule and what happened.
 #[derive(Clone, Debug, Serialize)]
 pub struct Finding {
-    /// The code, e.g. `xml_signature_error`.
+    /// The code, e.g. `detached_signature_error`.
     pub code: &'static str,
     /// Its Tab_PKI_274 number, if it has one.
     pub code_number: Option<u16>,

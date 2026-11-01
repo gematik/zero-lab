@@ -14,7 +14,7 @@ zero-lab holds libraries and commands for experimenting with Zero Trust building
 | Workspace | Module | Purpose |
 |---|---|---|
 | Rust | [`ti-cli`](./rust/ti-cli) | `ti`, the command-line tool for the TI: PKI, identities, Konnektor, IDP-Dienst, FHIR-Directory |
-| Rust | [`ti-pki`](./rust/ti-pki), [`ti-xmldsig`](./rust/ti-xmldsig), [`ti-report`](./rust/ti-report), [`ti-wasm`](./rust/ti-wasm) | Certificate and TSL validation against the TI PKI, also in the browser |
+| Rust | [`ti-pki`](./rust/ti-pki), [`ti-report`](./rust/ti-report), [`ti-wasm`](./rust/ti-wasm) | Certificate and TSL validation against the TI PKI, also in the browser |
 | Rust | [`ti-connector-client`](./rust/ti-connector-client), [`ti-idpd`](./rust/ti-idpd), [`ti-directory`](./rust/ti-directory) | Konnektor, IDP-Dienst and FHIR-Directory clients |
 | Rust | [`jwz`](./rust/jwz), [`jwz-brainpool`](./rust/jwz-brainpool), [`ti-jwz`](./rust/ti-jwz), [`ti-pkcs12`](./rust/ti-pkcs12), [`ti-store`](./rust/ti-store), [`ti-types`](./rust/ti-types) | JOSE, brainpool, PKCS#12, caching and shared types |
 | Go | [`epa`](./go/epa) | ePA client and the `zero-epa` command |

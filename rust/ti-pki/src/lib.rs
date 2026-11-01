@@ -82,8 +82,8 @@
 //! Trust starts at one root certificate per environment, compiled into the
 //! crate ([`anchors`]). Every other root in a [`TrustStore`] earns its place by
 //! chaining back to the anchor through the A_28419 cross-certificate protocol
-//! ([`roots`]). The TSL is verified by its detached signature file, or its enveloped
-//! one, against the TSL signer CA of the environment ([`tsl_signature`]) but is not a
+//! ([`roots`]). The TSL is verified by its detached signature file against the TSL signer
+//! CA of the environment ([`tsl_signature`]) but is not a
 //! trust source: it supplies candidate
 //! intermediates, of which only those a root signed are kept ([`tsl`]); trust still
 //! flows from the anchor.

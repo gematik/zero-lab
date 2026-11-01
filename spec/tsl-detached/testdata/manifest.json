@@ -4,133 +4,272 @@
     "signature": "prod/ECC-RSA_TSL.sig",
     "signer_status": "prod/ECC-RSA_TSL.ocsp",
     "producer": "gematik-pu",
-    "rules": ["TSLDET-001", "TSLDET-002", "TSLDET-003", "TSLDET-004", "TSLDET-005", "TSLDET-006", "TSLDET-020", "TSLDET-030", "TSLDET-031"],
+    "rules": [
+      "TSLDET-001",
+      "TSLDET-002",
+      "TSLDET-003",
+      "TSLDET-004",
+      "TSLDET-005",
+      "TSLDET-006",
+      "TSLDET-020",
+      "TSLDET-030"
+    ],
     "time": "2026-11-01T16:47:42Z",
     "env": "prod",
-    "expect": { "result": "valid", "code": null, "rule": null, "warnings": [], "signature": "detached", "signer_serial": "06", "sequence_number": 10337 }
+    "expect": {
+      "result": "valid",
+      "code": null,
+      "rule": null,
+      "warnings": [],
+      "signer_serial": "06",
+      "sequence_number": 10337
+    }
   },
   {
     "path": "ref/ECC-RSA_TSL-ref.xml",
     "signature": "ref/ECC-RSA_TSL-ref.sig",
     "signer_status": "ref/ECC-RSA_TSL-ref.ocsp",
     "producer": "gematik-ru",
-    "rules": ["TSLDET-001", "TSLDET-002", "TSLDET-003", "TSLDET-004", "TSLDET-005", "TSLDET-006", "TSLDET-020", "TSLDET-030", "TSLDET-031"],
+    "rules": [
+      "TSLDET-001",
+      "TSLDET-002",
+      "TSLDET-003",
+      "TSLDET-004",
+      "TSLDET-005",
+      "TSLDET-006",
+      "TSLDET-020",
+      "TSLDET-030"
+    ],
     "time": "2026-11-01T16:47:42Z",
     "env": "nonprod",
-    "expect": { "result": "valid", "code": null, "rule": null, "warnings": [], "signature": "detached", "signer_serial": "06", "sequence_number": 10717 }
+    "expect": {
+      "result": "valid",
+      "code": null,
+      "rule": null,
+      "warnings": [],
+      "signer_serial": "06",
+      "sequence_number": 10717
+    }
   },
   {
     "path": "test/ECC-RSA_TSL-test.xml",
     "signature": "test/ECC-RSA_TSL-test.sig",
     "signer_status": "test/ECC-RSA_TSL-test.ocsp",
     "producer": "gematik-tu",
-    "rules": ["TSLDET-001", "TSLDET-002", "TSLDET-003", "TSLDET-004", "TSLDET-005", "TSLDET-006", "TSLDET-020", "TSLDET-030", "TSLDET-031"],
+    "rules": [
+      "TSLDET-001",
+      "TSLDET-002",
+      "TSLDET-003",
+      "TSLDET-004",
+      "TSLDET-005",
+      "TSLDET-006",
+      "TSLDET-020",
+      "TSLDET-030"
+    ],
     "time": "2026-11-01T16:47:42Z",
     "env": "nonprod",
-    "expect": { "result": "valid", "code": null, "rule": null, "warnings": [], "signature": "detached", "signer_serial": "06", "sequence_number": 10716 }
+    "expect": {
+      "result": "valid",
+      "code": null,
+      "rule": null,
+      "warnings": [],
+      "signer_serial": "06",
+      "sequence_number": 10716
+    }
   },
   {
     "path": "ref/ECC-RSA_TSL-ref.xml",
     "signature": "ref/ECC-RSA_TSL-ref.sig",
     "producer": "gematik-ru",
-    "rules": ["TSLDET-022"],
+    "rules": [
+      "TSLDET-022"
+    ],
     "time": "2026-11-01T16:47:42Z",
     "env": "nonprod",
-    "expect": { "result": "valid", "code": null, "rule": null, "warnings": ["no_ocsp_check"], "signature": "detached", "signer_serial": "06", "sequence_number": 10717 }
+    "expect": {
+      "result": "valid",
+      "code": null,
+      "rule": null,
+      "warnings": [
+        "no_ocsp_check"
+      ],
+      "signer_serial": "06",
+      "sequence_number": 10717
+    }
   },
   {
     "path": "ref/ECC-RSA_TSL-ref.xml",
     "signature": "ref/ECC-RSA_TSL-ref.sig",
     "signer_status": "derived/stale.ocsp",
     "producer": "derive.py",
-    "rules": ["TSLDET-021"],
+    "rules": [
+      "TSLDET-021"
+    ],
     "time": "2026-11-01T16:47:42Z",
     "env": "nonprod",
-    "expect": { "result": "valid", "code": null, "rule": null, "warnings": ["no_ocsp_check"], "signature": "detached", "signer_serial": "06", "sequence_number": 10717 }
+    "expect": {
+      "result": "valid",
+      "code": null,
+      "rule": null,
+      "warnings": [
+        "no_ocsp_check"
+      ],
+      "signer_serial": "06",
+      "sequence_number": 10717
+    }
   },
   {
     "path": "ref/ECC-RSA_TSL-ref.xml",
     "signature": "ref/ECC-RSA_TSL-ref.sig",
     "signer_status": "prod/ECC-RSA_TSL.ocsp",
     "producer": "derive.py",
-    "rules": ["TSLDET-020"],
+    "rules": [
+      "TSLDET-020"
+    ],
     "time": "2026-11-01T16:47:42Z",
     "env": "nonprod",
-    "expect": { "result": "invalid", "code": null, "rule": "TSLDET-020", "warnings": [], "signature": "detached" },
-    "note": "a fresh response for another certificate; the code is one of TSLSIG-041/042 (certhash_mismatch, ocsp_check_revocation_error, ocsp_signature_error)"
+    "expect": {
+      "result": "invalid",
+      "code": "ocsp_check_revocation_error",
+      "rule": "TSLSIG-042",
+      "warnings": []
+    },
+    "note": "a fresh response for another certificate"
   },
   {
     "path": "ref/ECC-RSA_TSL-ref.xml",
     "signature": "derived/ref-truncated.sig",
     "producer": "derive.py",
-    "rules": ["TSLDET-001"],
+    "rules": [
+      "TSLDET-001"
+    ],
     "env": "nonprod",
-    "expect": { "result": "invalid", "code": "detached_signature_error", "rule": "TSLDET-001" }
+    "expect": {
+      "result": "invalid",
+      "code": "detached_signature_error",
+      "rule": "TSLDET-001"
+    },
+    "time": "2026-11-01T16:47:42Z"
   },
   {
     "path": "ref/ECC-RSA_TSL-ref.xml",
     "signature": "derived/ref-trailing-byte.sig",
     "producer": "derive.py",
-    "rules": ["TSLDET-001"],
+    "rules": [
+      "TSLDET-001"
+    ],
     "env": "nonprod",
-    "expect": { "result": "invalid", "code": "detached_signature_error", "rule": "TSLDET-001" }
+    "expect": {
+      "result": "invalid",
+      "code": "detached_signature_error",
+      "rule": "TSLDET-001"
+    },
+    "time": "2026-11-01T16:47:42Z"
   },
   {
     "path": "ref/ECC-RSA_TSL-ref.xml",
     "signature": "derived/ref-wrong-algorithm.sig",
     "producer": "derive.py",
-    "rules": ["TSLDET-002"],
+    "rules": [
+      "TSLDET-002"
+    ],
     "env": "nonprod",
-    "expect": { "result": "invalid", "code": "detached_signature_error", "rule": "TSLDET-002" }
+    "expect": {
+      "result": "invalid",
+      "code": "detached_signature_error",
+      "rule": "TSLDET-002"
+    },
+    "time": "2026-11-01T16:47:42Z"
   },
   {
     "path": "ref/ECC-RSA_TSL-ref.xml",
     "signature": "derived/ref-plain-signature.sig",
     "producer": "derive.py",
-    "rules": ["TSLDET-003"],
+    "rules": [
+      "TSLDET-003"
+    ],
     "env": "nonprod",
-    "expect": { "result": "invalid", "code": "detached_signature_error", "rule": "TSLDET-003" }
+    "expect": {
+      "result": "invalid",
+      "code": "detached_signature_error",
+      "rule": "TSLDET-003"
+    },
+    "time": "2026-11-01T16:47:42Z"
   },
   {
     "path": "ref/ECC-RSA_TSL-ref.xml",
     "signature": "derived/ref-unused-bits.sig",
     "producer": "derive.py",
-    "rules": ["TSLDET-003"],
+    "rules": [
+      "TSLDET-003"
+    ],
     "env": "nonprod",
-    "expect": { "result": "invalid", "code": "detached_signature_error", "rule": "TSLDET-003" }
+    "expect": {
+      "result": "invalid",
+      "code": "detached_signature_error",
+      "rule": "TSLDET-003"
+    },
+    "time": "2026-11-01T16:47:42Z"
   },
   {
     "path": "ref/ECC-RSA_TSL-ref.xml",
     "signature": "derived/ref-flipped-signature-byte.sig",
     "producer": "derive.py",
-    "rules": ["TSLDET-005"],
+    "rules": [
+      "TSLDET-005"
+    ],
     "env": "nonprod",
-    "expect": { "result": "invalid", "code": "detached_signature_error", "rule": "TSLDET-005" }
+    "expect": {
+      "result": "invalid",
+      "code": "detached_signature_error",
+      "rule": "TSLDET-005"
+    },
+    "time": "2026-11-01T16:47:42Z"
   },
   {
     "path": "ref/ECC-RSA_TSL-ref.xml",
     "signature": "derived/prod-sig-on-ref-xml.sig",
     "producer": "derive.py",
-    "rules": ["TSLDET-005"],
+    "rules": [
+      "TSLDET-005"
+    ],
     "env": "nonprod",
-    "expect": { "result": "invalid", "code": "detached_signature_error", "rule": "TSLDET-005" }
+    "expect": {
+      "result": "invalid",
+      "code": "detached_signature_error",
+      "rule": "TSLDET-005"
+    },
+    "time": "2026-11-01T16:47:42Z"
   },
   {
     "path": "derived/ref-tampered.xml",
     "signature": "ref/ECC-RSA_TSL-ref.sig",
     "producer": "derive.py",
-    "rules": ["TSLDET-005"],
+    "rules": [
+      "TSLDET-005"
+    ],
     "env": "nonprod",
-    "expect": { "result": "invalid", "code": "detached_signature_error", "rule": "TSLDET-005" }
+    "expect": {
+      "result": "invalid",
+      "code": "detached_signature_error",
+      "rule": "TSLDET-005"
+    },
+    "time": "2026-11-01T16:47:42Z"
   },
   {
     "path": "prod/ECC-RSA_TSL.xml",
     "signature": "prod/ECC-RSA_TSL.sig",
     "producer": "gematik-pu",
-    "rules": ["TSLDET-030"],
+    "rules": [
+      "TSLDET-030"
+    ],
     "time": "2026-11-01T16:47:42Z",
     "env": "nonprod",
-    "expect": { "result": "invalid", "code": "certificate_not_valid_math", "rule": "TSLSIG-031" },
+    "expect": {
+      "result": "invalid",
+      "code": "certificate_not_valid_math",
+      "rule": "TSLSIG-031"
+    },
     "note": "the PU signer under the non-production anchors: part B rejects it"
   }
 ]

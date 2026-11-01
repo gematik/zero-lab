@@ -67,6 +67,20 @@
         "null"
       ],
       "description": "The file written (-o); null when the TSL went to stdout"
+    },
+    "signature_file": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The .sig written next to the list; null when the TSL went to stdout."
+    },
+    "signer_status_file": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The .ocsp written next to the list, if one could be loaded."
     }
   },
   "required": [
@@ -81,7 +95,9 @@
     "url",
     "source",
     "fetched_at",
-    "output"
+    "output",
+    "signature_file",
+    "signer_status_file"
   ],
   "additionalProperties": false
 }

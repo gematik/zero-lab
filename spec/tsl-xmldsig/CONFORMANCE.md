@@ -1,7 +1,11 @@
 # TSL signature verification: conformance
 
-How an implementation of [README.md](README.md) proves conformance: the test corpus, its
-manifest, the command-line contract every implementation provides, and the
+**Withdrawn with part A of [README.md](README.md)** (TASK-166); kept as the record of how
+the XMLDSig path was held to the profile. Conformance is now that of
+[`spec/tsl-detached`](../tsl-detached/CONFORMANCE.md).
+
+How an implementation of [README.md](README.md) proved conformance: the test corpus, its
+manifest, the command-line contract every implementation provided, and the
 interoperability matrix.
 
 ## Corpus

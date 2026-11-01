@@ -82,24 +82,6 @@ pub fn trust_urls(env: &str) -> Result<String, String> {
 /// An unknown environment, a bad time or a grace period over 30 days.
 pub fn verify_tsl(
     xml: &[u8],
-    env: &str,
-    now: &str,
-    roots_json: Option<&[u8]>,
-    grace_seconds: u32,
-) -> Result<String, String> {
-    let env = parse_env(env)?;
-    let now = parse_now(now)?;
-    let config = config_for(env, grace_seconds)?;
-    Ok(to_json(&tsl_view(xml, None, env, &config, roots_json, now)))
-}
-
-/// See [`crate::verify_tsl_detached`].
-///
-/// # Errors
-///
-/// As [`verify_tsl`].
-pub fn verify_tsl_detached(
-    xml: &[u8],
     signature: &[u8],
     signer_status: Option<&[u8]>,
     env: &str,
@@ -110,17 +92,12 @@ pub fn verify_tsl_detached(
     let env = parse_env(env)?;
     let now = parse_now(now)?;
     let config = config_for(env, grace_seconds)?;
-    let detached = DetachedTsl {
+    let files = DetachedTsl {
         signature,
         signer_status,
     };
     Ok(to_json(&tsl_view(
-        xml,
-        Some(detached),
-        env,
-        &config,
-        roots_json,
-        now,
+        xml, files, env, &config, roots_json, now,
     )))
 }
 
@@ -149,6 +126,7 @@ impl Context {
     /// An unknown environment, a bad time or a grace period over 30 days.
     pub fn new(
         xml: &[u8],
+        signature: &[u8],
         env: &str,
         now: &str,
         roots_json: Option<&[u8]>,
@@ -158,7 +136,7 @@ impl Context {
         let now = parse_now(now)?;
         let config = config_for(env, grace_seconds)?;
         Ok(Context(CheckContext::new(
-            env, config, roots_json, xml, now,
+            env, config, roots_json, xml, signature, now,
         )))
     }
 

@@ -39,6 +39,7 @@ use core::task::{Context, Poll, Waker};
 use serde::Serialize;
 use ti_pki::profile::select_for_cert;
 use ti_pki::revocation::{RevocationMode, Unchecked};
+use ti_pki::tsl_signature::DetachedTsl;
 use ti_pki::{
     Certificate, ChainPosition, Env, Timestamp, TrustConfig, TrustStore, ValidationResult,
     Validator,
@@ -140,7 +141,7 @@ pub struct TrustNode {
 }
 
 impl CheckContext {
-    /// Verifies the TSL `tsl_xml` for `env` under `config` at `now`, with the roots of
+    /// Verifies the TSL `tsl_xml` by its detached signature `tsl_signature` for `env` under `config` at `now`, with the roots of
     /// `supplied_roots` if that roots.json walks from the anchor, else `config.roots`.
     /// An invalid list is not an error: every check against it then reports it.
     pub fn new(
@@ -148,10 +149,15 @@ impl CheckContext {
         config: TrustConfig,
         supplied_roots: Option<&[u8]>,
         tsl_xml: &[u8],
+        tsl_signature: &[u8],
         now: Timestamp,
     ) -> Self {
         let mut roots_warning = None;
-        let attempt = |roots: &[u8]| TrustStore::from_material(&config, roots, tsl_xml, now);
+        let files = DetachedTsl {
+            signature: tsl_signature,
+            signer_status: None,
+        };
+        let attempt = |roots: &[u8]| TrustStore::from_material(&config, roots, tsl_xml, files, now);
         let outcome = match supplied_roots {
             Some(json) => match attempt(json) {
                 // A TSL that fails fails with any roots; only a roots failure falls back.

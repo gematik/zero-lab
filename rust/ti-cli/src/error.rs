@@ -247,9 +247,11 @@ impl CliError {
             CliError::EnvironmentUndetected(_) | CliError::Environment(_) => {
                 Some("pass --env prod, ref, test or dev")
             }
-            CliError::TrustLoad(_) => {
-                Some("check the network and the HTTP options (-v shows them), or pass --offline")
-            }
+            CliError::TrustLoad(_) => Some(
+                "check the network and the HTTP options (-v shows them), or pass --offline; \
+                     the TSL's signature is published only over plain HTTP, so port 80 to its \
+                     download point must be open",
+            ),
             CliError::HttpSetup(_) => Some("check --cacert, --capath and --proxy"),
             CliError::ServerUnreachable(_) => Some(
                 "check the host and port, the network and --proxy; or save the chain and pass it as FILE",

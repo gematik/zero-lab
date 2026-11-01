@@ -35,7 +35,7 @@ Trust-critical means a defect accepts a forged certificate, a wrong key or a wro
 | Function | Who needs it | Rust | Go today | Spec | Trust-critical |
 |---|---|---|---|---|---|
 | X.509 path validation with the TI profiles, key rules, admission extension | every host that checks a TI certificate: CLI, epa, PDP (token exchange), relying parties (IDP certificate), bindings | `ti-pki` (`validate`, `profile`, `admission`) | none (gempki archived); `go/epa/ti` runs `ti pki verify` | `spec/pki-validation` planned (TASK-97) | yes |
-| TSL verification and update | the same | `ti-pki` (`tsl`, `tsl_signature`, loaders); XMLDSig in `ti-xmldsig` | none | `spec/tsl-xmldsig`; `spec/tsl-detached` to come (TASK-166) | yes |
+| TSL verification and update | the same | `ti-pki` (`tsl`, `tsl_signature`, loaders) | none | `spec/tsl-detached`; `spec/tsl-xmldsig` parts B to G | yes |
 | roots.json cross-certificate walk, compiled anchors | the same | `ti-pki` (`roots`, `anchors`) | none | part of the above | yes |
 | OCSP request, response verification, responder authorization | the same | `ti-pki` (`ocsp`, `revocation`) | none | part of pki-validation | yes |
 | TLS peer verification of TI endpoints | every host that talks to a TI endpoint | planned: rustls verifier (TASK-97) | planned: `VerifyConnection` through the shared rules (TASK-98) | pki-validation | yes |
@@ -170,10 +170,12 @@ hosts and to run TUC_PKI_001, whose step 4 is TUC_PKI_012 "XML-Signatur-Prüfung
 the signer's OCSP address taken from its AIA and a hash compare before every download.
 Verifying by `.sig` and `.ocsp` is cryptographically the same check (same signer, same
 anchor, same OCSP, the same TSL bytes) but not the method the requirement names. The
-maintainer decided (2026-11-01) to take the simplification: XMLDSig leaves the trust path
-(TASK-166, high), the deviation is recorded in the spec, and if the pre-release TI 2.0
-internet requirements exclude the detached signature, a request for change goes to
-gematik's PKI team (TASK-167, doc-3).
+maintainer decided (2026-11-01) to take the simplification: XMLDSig is removed (TASK-166,
+high), the deviation is recorded in the spec, and a request for change goes to gematik's
+PKI team (TASK-167, doc-3). gematik's own design note gives the reason the file exists,
+agreed with the BSI: it is safer to verify than XMLDSig. The cost is availability: `.sig`
+is published only over plain HTTP, so a network that blocks the CRL host can no longer
+take new lists until it is also published on HTTPS.
 
 **Consequence for every stack.** The core every binding and helper embeds loses
 `ti-xmldsig`, the canonicalization code and the second XML parser (TASK-57); what remains

@@ -248,10 +248,11 @@ impl TrustStore {
         config: &crate::TrustConfig,
         roots_json: &[u8],
         tsl_xml: &[u8],
+        files: crate::tsl_signature::DetachedTsl<'_>,
         now: crate::Timestamp,
     ) -> Result<(Self, crate::tsl_signature::VerifiedTsl), crate::load::VerifyError> {
         let mut verified =
-            crate::load::verify::verify_bytes(config, roots_json, tsl_xml, None, now, None)?;
+            crate::load::verify::verify_bytes(config, roots_json, tsl_xml, Some(files), now, None)?;
         let tsl = verified
             .tsl
             .take()

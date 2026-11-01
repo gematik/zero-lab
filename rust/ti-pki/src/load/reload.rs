@@ -156,8 +156,6 @@ pub struct ReloadStatus {
     pub tsl_signer: Option<(Certificate, Certificate)>,
     /// The signer's OCSP status, when it was queried or supplied.
     pub tsl_signer_status: Option<RevocationStatus>,
-    /// Which signature verified the current TSL (TSLDET-031).
-    pub tsl_signature: Option<crate::tsl_signature::SignatureKind>,
 }
 
 /// What a [`Reloader::tick`] did.
@@ -226,7 +224,6 @@ struct Current {
     tsl_warnings: Vec<TslError>,
     tsl_signer: Option<(Certificate, Certificate)>,
     tsl_signer_status: Option<RevocationStatus>,
-    tsl_signature: Option<crate::tsl_signature::SignatureKind>,
     source: Source,
     generation: u64,
 }
@@ -243,7 +240,6 @@ impl Current {
             tsl_warnings: self.tsl_warnings.clone(),
             tsl_signer: self.tsl_signer.clone(),
             tsl_signer_status: self.tsl_signer_status,
-            tsl_signature: self.tsl_signature,
             source: self.source,
             generation: self.generation,
         }
@@ -320,7 +316,6 @@ impl<C: Clock> TrustStoreHandle<C> {
                 .unwrap_or_default(),
             tsl_signer: current.as_ref().and_then(|c| c.tsl_signer.clone()),
             tsl_signer_status: current.as_ref().and_then(|c| c.tsl_signer_status),
-            tsl_signature: current.as_ref().and_then(|c| c.tsl_signature),
         }
     }
 
@@ -517,7 +512,22 @@ where
             .as_ref()
             .and_then(|c| c.tsl_state.clone())
             .or_else(|| self.handle.stored_tsl.clone());
-        let mut verified = match (self.verify)(&self.config, &material, now, stored.as_ref()) {
+        let mut outcome = (self.verify)(&self.config, &material, now, stored.as_ref());
+        let mut material = material;
+        // The set travels over plain HTTP and is cached before it is verified: a list and a
+        // signature of different states, or one garbage answer, must not go on failing
+        // until the entry ages out. So a set that fails is fetched once more (TSLDET-013).
+        if matches!(&outcome, Err(error) if error.tsl.is_some()) {
+            if let Err(error) = self.loader.revalidate().await {
+                return self.fail(now, error.into());
+            }
+            material = match self.loader.load_all().await {
+                Ok(material) => material,
+                Err(error) => return self.fail(now, error.into()),
+            };
+            outcome = (self.verify)(&self.config, &material, now, stored.as_ref());
+        }
+        let mut verified = match outcome {
             Ok(verified) => verified,
             Err(error) => return self.fail(now, error.into()),
         };
@@ -562,14 +572,12 @@ where
             .tsl
             .as_ref()
             .and_then(|tsl| tsl.signer_status.as_ref().map(|r| r.status));
-        let tsl_signature = verified.tsl.as_ref().map(|tsl| tsl.signature);
         self.handle.set_current(Current {
             tsl_next_update: verified.tsl_next_update,
             tsl_state,
             tsl_warnings,
             tsl_signer,
             tsl_signer_status,
-            tsl_signature,
             store: Arc::new(TrustStore::from_verified(verified)),
             etags: material.etags(),
             fetched_at: material.fetched_at,
@@ -768,6 +776,144 @@ mod tests {
         LoadError::Offline(Artifact::Tsl)
     }
 
+    /// TSLDET-013: a list under the signature of another state is not the end: the set
+    /// is fetched once more, and only a second failure fails the tick.
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_013_a_signature_that_does_not_fit_refetches_the_set_once() {
+        let base = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../spec/tsl-detached/testdata/"
+        );
+        let read = |name: &str| std::fs::read(format!("{base}{name}")).unwrap();
+        let captured_at = Timestamp::parse_rfc3339("2026-11-01T16:47:42Z").unwrap();
+        let config = TrustConfig::preset(crate::Env::Ref);
+        let meta = |etag: &str| Meta {
+            etag: Some(etag.into()),
+            last_modified: None,
+            fetched_at: captured_at,
+            max_age: None,
+            source: Source::Http,
+        };
+        let set = |tag: &str, signature: Vec<u8>| {
+            TrustMaterial::new(
+                config.roots.to_vec(),
+                meta(tag),
+                read("ref/ECC-RSA_TSL-ref.xml"),
+                meta(tag),
+            )
+            .with_detached(Some(Detached {
+                signature,
+                signature_meta: meta(tag),
+                signer_status: None,
+            }))
+        };
+        let other = read("prod/ECC-RSA_TSL.sig");
+        let good = read("ref/ECC-RSA_TSL-ref.sig");
+        let clock = FixedClock::new(captured_at);
+        let refetched = Reloader::new(
+            config.clone(),
+            Tier::NonProd,
+            VecLoader::new([Ok(set("a", other.clone())), Ok(set("b", good))]),
+            &clock,
+            policy(),
+        )
+        .unwrap();
+        assert!(matches!(
+            block_on(refetched.tick()),
+            ReloadOutcome::Swapped { .. }
+        ));
+
+        let still_wrong = Reloader::new(
+            config.clone(),
+            Tier::NonProd,
+            VecLoader::new([Ok(set("a", other.clone())), Ok(set("b", other))]),
+            &clock,
+            policy(),
+        )
+        .unwrap();
+        assert!(!matches!(
+            block_on(still_wrong.tick()),
+            ReloadOutcome::Swapped { .. }
+        ));
+
+        // One unauthenticated garbage answer in the cache heals the same way (TSLDET-013).
+        let healed = Reloader::new(
+            config.clone(),
+            Tier::NonProd,
+            VecLoader::new([
+                Ok(set("a", b"<html>captive portal</html>".to_vec())),
+                Ok(set("b", read("ref/ECC-RSA_TSL-ref.sig"))),
+            ]),
+            &clock,
+            policy(),
+        )
+        .unwrap();
+        assert!(matches!(
+            block_on(healed.tick()),
+            ReloadOutcome::Swapped { .. }
+        ));
+    }
+
+    /// TSLDET-013 through the real stack: one garbage answer on plain HTTP lands in the
+    /// cache before it is verified, and the same tick replaces it once the origin is healthy.
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_013_a_garbage_signature_does_not_poison_the_cache() {
+        use crate::load::{
+            ArtifactResponse, CachePolicy, CachingLoader, HttpLoader, MemoryCacheStore,
+            MockTransport, ResponseMeta, content_etag,
+        };
+        let base = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../spec/tsl-detached/testdata/"
+        );
+        let read = |name: &str| std::fs::read(format!("{base}{name}")).unwrap();
+        let fresh = |body: Vec<u8>| {
+            Ok(ArtifactResponse::Fresh {
+                body,
+                meta: ResponseMeta {
+                    etag: None,
+                    last_modified: None,
+                    max_age: None,
+                    source: Source::Http,
+                },
+            })
+        };
+        let xml = read("ref/ECC-RSA_TSL-ref.xml");
+        let hash = content_etag(&xml).trim_start_matches("sha256:").to_owned();
+        let config = TrustConfig::preset(crate::Env::Ref);
+        let transport = MockTransport::new([
+            fresh(config.roots.to_vec()),
+            fresh(hash.clone().into_bytes()),
+            fresh(xml.clone()),
+            fresh(b"<html>captive portal</html>".to_vec()),
+            fresh(read("ref/ECC-RSA_TSL-ref.ocsp")),
+            fresh(hash.into_bytes()),
+            fresh(xml),
+            fresh(read("ref/ECC-RSA_TSL-ref.sig")),
+            fresh(read("ref/ECC-RSA_TSL-ref.ocsp")),
+        ]);
+        let clock = FixedClock::new(Timestamp::parse_rfc3339("2026-11-01T16:47:42Z").unwrap());
+        let store = MemoryCacheStore::default();
+        let loader = CachingLoader::new(
+            HttpLoader::new(&config, &transport, &clock),
+            &store,
+            &clock,
+            CachePolicy::default(),
+        );
+        let r = Reloader::new(config.clone(), Tier::NonProd, loader, &clock, policy()).unwrap();
+        let outcome = block_on(r.tick());
+        assert!(
+            matches!(outcome, ReloadOutcome::Swapped { .. }),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            r.handle().status().tsl_signer_status,
+            Some(RevocationStatus::Good)
+        );
+    }
+
     /// TSLDET-021: a status supplied with the list makes the network query unnecessary.
     #[cfg(feature = "dangerous-nonprod")]
     #[test]
@@ -814,11 +960,6 @@ mod tests {
         .unwrap()
         .with_signer_status(NeverAsked);
         assert!(matches!(block_on(r.tick()), ReloadOutcome::Swapped { .. }));
-        assert_eq!(
-            r.handle().status().tsl_signature,
-            Some(crate::tsl_signature::SignatureKind::Detached),
-            "TSLDET-031"
-        );
         assert_eq!(
             r.handle().status().tsl_signer_status,
             Some(RevocationStatus::Good)
@@ -1040,11 +1181,14 @@ mod tests {
 
     /// The production roots.json with a published TSL, as loaded at `fetched_at`.
     #[cfg(feature = "brainpool")]
-    fn published(tsl: &str, fetched_at: Timestamp) -> TrustMaterial {
-        let path = format!(
-            "{}/../../spec/tsl-xmldsig/testdata/tsl/real/{tsl}",
-            env!("CARGO_MANIFEST_DIR")
-        );
+    fn published(fetched_at: Timestamp) -> TrustMaterial {
+        let read = |suffix: &str| {
+            std::fs::read(format!(
+                "{}/../../spec/tsl-detached/testdata/prod/ECC-RSA_TSL.{suffix}",
+                env!("CARGO_MANIFEST_DIR")
+            ))
+            .unwrap()
+        };
         let meta = |etag: &str| Meta {
             etag: Some(etag.to_owned()),
             last_modified: None,
@@ -1055,9 +1199,14 @@ mod tests {
         TrustMaterial::new(
             crate::roots::ROOTS_PROD.to_vec(),
             meta("roots"),
-            std::fs::read(path).unwrap(),
-            meta(tsl),
+            read("xml"),
+            meta("tsl"),
         )
+        .with_detached(Some(Detached {
+            signature: read("sig"),
+            signature_meta: meta("sig"),
+            signer_status: None,
+        }))
     }
 
     #[cfg(feature = "brainpool")]
@@ -1098,8 +1247,8 @@ mod tests {
     #[cfg(feature = "brainpool")]
     const OCT_3: Timestamp = Timestamp(1_790_985_600);
 
-    /// TSLSIG-051, 053, 043: a verified list replaces the CAs, an older one never does,
-    /// the same one under new validators changes nothing.
+    /// TSLSIG-051, 053, 043: a verified list replaces the CAs, the same one under new
+    /// validators changes nothing. An older one is rejected by the next test.
     #[cfg(feature = "brainpool")]
     #[test]
     fn the_tsl_is_verified_and_follows_its_sequence() {
@@ -1108,21 +1257,23 @@ mod tests {
         let r = production(
             &clock,
             [
-                Ok(published("pu-10333.xml", OCT_3)),
-                Ok(published("pu-10334.xml", OCT_3)),
-                Ok(published("pu-10333.xml", OCT_3)),
+                Ok(published(OCT_3)),
                 Ok(TrustMaterial {
                     meta: [
-                        published("pu-10334.xml", OCT_3).meta[0].clone(),
+                        published(OCT_3).meta[0].clone(),
                         Meta {
                             etag: Some("revalidated".into()),
-                            ..published("pu-10334.xml", OCT_3).meta[1].clone()
+                            ..published(OCT_3).meta[1].clone()
                         },
                     ],
-                    ..published("pu-10334.xml", OCT_3)
+                    ..published(OCT_3)
                 }),
             ],
-        );
+        )
+        .with_stored_tsl(TslState {
+            id: "ID31033420260927230007Z".into(),
+            sequence_number: 10334,
+        });
         assert!(matches!(
             block_on(r.tick()),
             ReloadOutcome::Swapped { generation: 1 }
@@ -1130,25 +1281,13 @@ mod tests {
         let status = r.handle().status();
         assert_eq!(
             status.tsl_state.as_ref().map(|s| s.sequence_number),
-            Some(10333)
+            Some(10337)
         );
         assert_eq!(codes(&status), [TslCode::NoOcspCheck]);
-        assert_eq!(r.handle().snapshot().unwrap().intermediates().len(), 84);
-
-        assert!(matches!(
-            block_on(r.tick()),
-            ReloadOutcome::Swapped { generation: 2 }
-        ));
-        let outcome = block_on(r.tick());
-        assert_eq!(
-            verify_code(&outcome),
-            Some(TslCode::TslIdIncorrect),
-            "{outcome:?}"
-        );
-        assert_eq!(r.handle().status().generation, 2);
+        assert_eq!(r.handle().snapshot().unwrap().intermediates().len(), 71);
 
         assert!(matches!(block_on(r.tick()), ReloadOutcome::Unchanged));
-        assert_eq!(r.handle().status().generation, 2);
+        assert_eq!(r.handle().status().generation, 1);
     }
 
     /// TSLSIG-053 across a restart: the persisted state rejects an older list at once.
@@ -1157,10 +1296,10 @@ mod tests {
     fn a_stored_state_survives_a_restart() {
         let clock = FixedClock::new(OCT_3);
         let stored = TslState {
-            id: "ID31033420260927230007Z".into(),
-            sequence_number: 10334,
+            id: "ID31033820261127000007Z".into(),
+            sequence_number: 10338,
         };
-        let r = production(&clock, [Ok(published("pu-10333.xml", OCT_3))])
+        let r = production(&clock, [Ok(published(OCT_3)), Ok(published(OCT_3))])
             .with_stored_tsl(stored.clone());
         assert_eq!(r.handle().status().tsl_state, Some(stored));
         let outcome = block_on(r.tick());
@@ -1178,9 +1317,9 @@ mod tests {
     #[cfg(feature = "brainpool")]
     #[test]
     fn an_overdue_tsl_is_not_used() {
-        let after = Timestamp::parse_rfc3339("2026-10-14T00:00:00Z").unwrap();
+        let after = Timestamp::parse_rfc3339("2026-12-01T00:00:00Z").unwrap();
         let clock = FixedClock::new(after);
-        let r = production(&clock, [Ok(published("pu-10333.xml", after))]);
+        let r = production(&clock, [Ok(published(after)), Ok(published(after))]);
         let outcome = block_on(r.tick());
         assert_eq!(
             verify_code(&outcome),
@@ -1213,7 +1352,7 @@ mod tests {
     fn the_signer_status_decides() {
         use crate::revocation::RevocationStatus;
         let clock = FixedClock::new(OCT_3);
-        let good = production(&clock, [Ok(published("pu-10334.xml", OCT_3))])
+        let good = production(&clock, [Ok(published(OCT_3))])
             .with_signer_status(SignerStatus(RevocationStatus::Good));
         assert!(matches!(
             block_on(good.tick()),
@@ -1225,7 +1364,7 @@ mod tests {
             good.handle().status().tsl_warnings
         );
 
-        let revoked = production(&clock, [Ok(published("pu-10334.xml", OCT_3))])
+        let revoked = production(&clock, [Ok(published(OCT_3))])
             .with_signer_status(SignerStatus(RevocationStatus::Revoked));
         let outcome = block_on(revoked.tick());
         assert_eq!(

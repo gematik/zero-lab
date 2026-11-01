@@ -41,11 +41,11 @@ export interface TrustUrls {
 export type Environment = 'prod' | 'ref' | 'test' | 'dev';
 
 export interface Finding {
-  /** e.g. `xml_signature_error`, `validity_warning_1`, `no_ocsp_check` */
+  /** e.g. `detached_signature_error`, `validity_warning_1`, `no_ocsp_check` */
   code: string;
   /** Tab_PKI_274 number */
   code_number: number | null;
-  /** Rule of spec/tsl-xmldsig, e.g. `TSLSIG-018` */
+  /** Rule of spec/tsl-xmldsig, e.g. `TSLDET-005` */
   rule: string;
   /** For humans; not stable */
   detail: string;
@@ -69,7 +69,6 @@ export interface TslView {
 export interface SignatureView {
   signer: Fingerprint;
   tsl_signer_ca: Fingerprint;
-  signing_time: string;
   warnings: Finding[];
 }
 

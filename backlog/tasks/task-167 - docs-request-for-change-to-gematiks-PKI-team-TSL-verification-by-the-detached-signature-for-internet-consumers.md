@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-01T16:11:00Z'
-updated_date: '2026-11-01T16:44:00Z'
+updated_date: '2026-11-01T19:13:00Z'
 labels:
   - docs
   - pki
@@ -31,4 +31,6 @@ Conditional on TASK-166's gate: new requirements for internet and TI 2.0 consume
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-01: doc-3 written on the maintainer's request ahead of the gate of TASK-166 (German, English summary on top): facts with requirement IDs, the proposal for gemSpec_PKI 8.2.6/A_30044 and gemSpec_TSL 6.3.1, the consumer's check sequence, the security argument, the transition, six questions for the PKI team. Handing it to the PKI team is the maintainer's step; if the pre-release requirements already allow the detached signature, the document becomes a note to the team instead of a request.
+
+2026-11-01: doc-3 updated after the review and the removal: gematik's design note and the BSI background added, hash gate, stale revoked, --at and the HTTPS availability argument added; the false point about the signature format removed. XMLDSig is now removed (TASK-166), so the deviation is live; handing doc-3 to the PKI team is the maintainer's step.
 <!-- SECTION:NOTES:END -->
