@@ -348,7 +348,9 @@ and `Reloader::new` enforce it.
 - `subPath` mounts never receive updates; mount the whole volume.
 - Updates arrive after the kubelet sync period plus its cache TTL (about a minute by
   default), then on the next reload tick — or trigger one.
-- Put roots.json and the TSL in one ConfigMap so they change together.
+- Put roots.json and the TSL in one ConfigMap so they change together. The producer
+  that writes it (a CronJob from the product image exporting `.xml`, `.sig`, `.ocsp`
+  and roots.json with a manifest) is TASK-173; consumers keep nothing on disk.
 - Poll, don't watch: inotify is unreliable on these mounts because the files themselves
   never change, only the symlink.
 

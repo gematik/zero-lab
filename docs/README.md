@@ -9,7 +9,8 @@ a profile that says how its code meets them.
 1. [Principles](principles.md): why this is security-critical and the criteria every change
    is held against.
 2. [Architecture](architecture.md): which language does what, the layers, sans I/O,
-   transport independence, trust from verification, offline operation, portability.
+   isolated TI functions, transport independence, trust from verification, offline
+   operation, portability.
 3. The design rules, one topic each:
    - [Keys and cryptography](design/keys.md): pluggable crypto, private keys as functions,
      hardware-bound keys.

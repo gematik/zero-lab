@@ -130,10 +130,14 @@ routes and policy files (`pep`).
 
 Go never links Rust: no cgo, every binary builds with `CGO_ENABLED=0` (static,
 cross-compiled, without a C toolchain). Go uses the Rust core across a process boundary
-(`ti` subprocesses today, a typed client for `ti serve` later) or implements a function
-natively under a shared specification, as [interop](../../docs/interop.md) describes.
-The Go client of a process boundary pools connections and buffers (`sync.Pool`), sits
-behind a consumer interface, and checks the peer's version at start-up.
+(`ti` subprocesses today; the stateless helpers through `go/tirpc`, as a child over stdio
+or a sidecar over a Unix socket, TASK-120) and decides per TI function in the order
+[interop](../../docs/interop.md#three-ways-to-use-the-core) gives: the server's own
+protocol native, a single-binary host through wasm2go, everything else through the
+helper, a native implementation under a shared specification only where a measured
+per-request path needs it. The Go client of a process boundary is standard library only,
+pools connections and buffers (`sync.Pool`), sits behind a consumer interface, checks the
+peer's version at start-up, and sends no secret across the socket.
 
 ## 10. Servers
 
@@ -167,6 +171,14 @@ The [server rules](../../docs/design/servers.md), in Go terms:
 - Telemetry through one internal instrumentation interface with an OpenTelemetry or
   Prometheus exporter chosen in `cmd/`, and `slog` JSON to stdout; cloud services (KMS,
   attestation, managed databases) behind interfaces with an adapter per provider.
+- A helper ships in the same image under `libexec/telematik` and runs as a child over
+  stdio or as a sidecar container from the same image over a Unix socket; OPA and a key
+  provider are sidecars over Unix sockets too. The pod spec and the compose file carry
+  them pinned by digest, and none of them listens on the network
+  ([servers](../../docs/design/servers.md), rule 8).
+- Trust material comes from a mounted directory written by the producer job, and the
+  server keeps none of it on disk; the signing key is a `crypto.Signer` backed by a KMS
+  API or the key provider sidecar, and a missing key fails start-up (rules 6 and 17).
 - Images are `scratch` with a static `CGO_ENABLED=0 -trimpath` binary, `USER 65532`,
   base images pinned by digest, signed with provenance and an SBOM. Test-only code sits
   behind build tags and is not in production builds.

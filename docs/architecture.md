@@ -11,9 +11,10 @@ an air-gapped installation and, through bindings, in other hosts.
 `bff`), their libraries (`oauth`, `oidf`, `dpop`, `nonce`, `kv`, `gemidp`), and the ePA
 client (`epa`).
 
-**Other languages arrive as bindings** to the Rust core for client platforms: Swift
-(iOS, macOS), Kotlin and Java (Android, JVM), JavaScript and TypeScript through
-WebAssembly. Each gets a profile ([languages](languages.md)) before its first code lands.
+**Other languages arrive as bindings** to the Rust core, and only on client platforms:
+Swift (iOS, macOS), Kotlin and Java (Android, JVM), C# (.NET), JavaScript and TypeScript
+through WebAssembly. No server is written in them. Each gets a profile
+([languages](languages.md)) before its first code lands.
 
 New cryptography or TI protocol cores are written in Rust and reach other languages as
 described in [interop](interop.md); no language grows a second implementation of a core
@@ -53,6 +54,24 @@ performs them. A core does no network, file or clock access of its own:
   log.
 - Configuration is data the host hands in; a core reads no environment variable, flag or
   file it was not handed.
+
+## Isolated TI functions
+
+Every TI function that decides trust (certificate and TSL validation, OCSP, the IDP and
+federation checks, DPoP, the VAU handshake) is a unit of its own in every stack:
+
+- bytes and time in, a verdict with its reasons out; no I/O, no policy, no framework
+  types inside the unit;
+- the same report schema in every implementation, so a unit can be swapped between a
+  native implementation and the Rust core, run against the shared corpus
+  ([interop](interop.md#a-concise-shared-specification)) and audited on its own;
+- the unit owns the renewal policy of its anchors (freshness, hard expiry, when a re-fetch
+  is due, the fallback order); loader adapters and the host's transport perform the I/O
+  that policy asks for;
+- the host supplies the transport (below) and never decides trust (below).
+
+A function that lives inside a handler, a client or a framework type is not isolated;
+that is a gap and becomes a task.
 
 ## Transport independence
 
@@ -134,6 +153,6 @@ headers and OCSP responders speak plain HTTP. Builds favour verification speed o
 ## Bindings
 
 Hosts do HTTP, engines stay sans I/O. Client platforms get generated bindings (uniffi for
-Swift and Kotlin/Java, wasm-bindgen for JavaScript); servers in other languages reach the
-core across a process boundary. How, and when a function is implemented natively instead,
-is in [interop](interop.md).
+Swift, Kotlin/Java and C#, wasm-bindgen for JavaScript); Go servers reach the core through
+stateless helpers shipped in their own image. How, and when a function is implemented
+natively instead, is in [interop](interop.md).

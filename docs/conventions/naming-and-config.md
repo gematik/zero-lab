@@ -21,6 +21,18 @@
   command reads the secret from it. Secrets are not bootstrapped into or stored in the kv
   store either.
 
+## Helpers
+
+- A helper is named after the `ti` command group it serves: `ti <group>` becomes
+  `ti-<group>-helper`, crate and binary of the same name under `rust/helpers/<group>`;
+  its protocol is `<group>/<n>` in `spec/ti-rpc`; its Go client is `go/tirpc/<group>`.
+- Methods carry the names of the group's subcommands and the `--format json` schemas of
+  `ti`, so a subprocess and a helper return the same shapes.
+- `TI_<GROUP>_HELPER_PATH` overrides where a product finds the helper;
+  `TI_<GROUP>_HELPER_SOCKET_PATH` names the Unix socket of a sidecar. A helper reads no
+  other configuration than its flags and these variables: no profile, configuration
+  directory, store, cache file or key file.
+
 ## Configuration
 
 - Configuration is read at the edge: the command (or CLI) reads flags, environment and

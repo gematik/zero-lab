@@ -25,7 +25,8 @@ why, or does not land.
    ([dependencies](docs/conventions/dependencies.md)).
 9. Fuzzed ([testing](docs/design/testing.md#fuzzing)).
 10. Servers are confidential workloads, 26 rules ([servers](docs/design/servers.md)).
-11. Languages meet through processes or shared specifications ([interop](docs/interop.md)).
+11. Languages meet through processes (stateless helpers in the same image) or shared
+    specifications ([interop](docs/interop.md)).
 
 Conventions: [naming and configuration](docs/conventions/naming-and-config.md),
 [code and comments](docs/conventions/code-and-comments.md),

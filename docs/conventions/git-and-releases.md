@@ -33,6 +33,18 @@
 - `just versions`, `just changed` and `just tag <unit> <version>` work the same way in
   every workspace.
 
+## Helpers in images and installations
+
+- A product's image carries its helpers under `libexec/telematik/` next to the binary.
+  A program looks for a helper in this order: `TI_<GROUP>_HELPER_PATH`, then
+  `<program dir>/../libexec/telematik`, then the program's own directory; never `PATH`.
+- A product release pins each helper's SHA-256 in an embedded manifest, and the program
+  checks it before starting the helper as a child; a standalone installation carries a
+  detached ed25519 signature instead. A sidecar container is covered by the image digest
+  the deployment pins.
+- A helper is versioned and tagged like any unit (`rust/ti-<group>-helper/vX.Y.Z`); the
+  product's release notes name the helper versions its image contains.
+
 ## Release notes
 
 - Each workspace has one release-notes file: `ReleaseNotes.md` at the root for Go,

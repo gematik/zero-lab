@@ -161,20 +161,25 @@ are in [development.md](./development.md#known-compromises).
 ## 9. Crossing languages
 
 The core offers itself to other languages as [interop](../../docs/interop.md) describes:
-`ti` subprocesses and `ti serve` (protocol open, TASK-65), next to a client or as a
-sidecar, for Go and Java, wasm-bindgen for the browser (`ti-wasm`), uniffi for Swift and
-Kotlin/Java (planned). On a process boundary the Rust side decodes requests from
-borrowed slices into reused buffers. `ti-wasm` exports are pure; `#[wasm_bindgen]` glue
+`ti` subprocesses and stateless helpers (`ti-<group>-helper`, JSON lines over stdio or a
+Unix socket, TASK-120) for Go servers, wasm-bindgen for the browser (`ti-wasm`), uniffi
+for Swift, Kotlin/Java and C# (clients only, planned). On a process boundary the Rust
+side decodes requests from borrowed slices into reused buffers. `ti-wasm` exports are pure; `#[wasm_bindgen]` glue
 is the only `unsafe` in the workspace, kept out of ti-wasm's own sources, and all logic
 stays in crates under `unsafe_code = "forbid"`. Builds favour verification speed over
 module size (`opt-level 3`, `wasm-opt -O3`). The decision record is backlog doc-1.
 
 ## 10. Servers
 
-No standalone Rust workload yet. `ti serve` runs next to a client or as a sidecar inside a
-server workload; as a sidecar it follows the [server rules](../../docs/design/servers.md)
-(non-root, read-only root filesystem, Unix socket with file permissions, probes,
-graceful shutdown, telemetry without leaking, inside the workload's enclave).
+No standalone Rust workload yet. A helper runs inside a server workload, as a child
+process or as a sidecar container from the same image, and follows the
+[server rules](../../docs/design/servers.md) there: stateless (no profile, store, cache or
+key file; trust material supplied from a mounted directory and kept in memory), non-root,
+read-only root filesystem, a Unix socket with file permissions and peer checks, no
+network listener, probes after the handshake, graceful shutdown, telemetry without
+leaking, inside the workload's enclave. The helpers (TASK-120) and the producer of trust
+material for containers (TASK-173) are built on the loaders in
+[development.md](./development.md#trust-material-loading).
 
 ## 11. Build and release
 
