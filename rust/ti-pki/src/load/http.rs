@@ -193,8 +193,14 @@ impl<T: Transport + MaybeSend + MaybeSync, C: Clock + MaybeSend + MaybeSync> Loa
         })
     }
 
+    /// The list is keyed by its HTTPS download point whatever origin its bytes came
+    /// from: the automated download point serves the same list (checked against the
+    /// hash published there), and a cache seeded by either stays valid.
     fn cache_key(&self, artifact: Artifact) -> String {
-        artifact.cache_key(self.url(artifact).as_deref().unwrap_or(""))
+        match artifact {
+            Artifact::Tsl => artifact.cache_key(&self.tsl_url),
+            _ => artifact.cache_key(self.url(artifact).as_deref().unwrap_or("")),
+        }
     }
 }
 

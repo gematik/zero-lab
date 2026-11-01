@@ -469,6 +469,25 @@ impl Session {
         }
     }
 
+    /// The list's detached signature and, if published, its signer's status, as loaded
+    /// from the environment's automated download point (`spec/tsl-detached`); none when
+    /// the configuration has no such point or the files could not be loaded, which
+    /// leaves the list to its enveloped signature.
+    pub fn tsl_detached(&self, config: &TrustConfig) -> Option<(Vec<u8>, Option<Vec<u8>>)> {
+        let load = |artifact: Artifact| {
+            block_on(async {
+                match &self.transport {
+                    Some(transport) => self.loader(config, transport).load(artifact).await,
+                    None => self.loader(config, NoNetwork).load(artifact).await,
+                }
+            })
+            .ok()
+            .map(|loaded| loaded.body)
+        };
+        let signature = load(Artifact::TslSignature)?;
+        Some((signature, load(Artifact::TslSignerStatus)))
+    }
+
     /// The cache on disk, or this session's memory when there is no cache directory:
     /// trust material and OCSP responses.
     pub fn store(&self) -> Store {

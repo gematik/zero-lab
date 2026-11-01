@@ -965,6 +965,76 @@ fn tsl_verify_matches_its_schema() {
     assert!(expired["signer"].is_null());
 }
 
+/// TSLDET-031, 020: the detached signature verifies the list and the supplied status
+/// replaces the network query; the report names both.
+#[test]
+fn tsl_verify_detached_reports_the_kind_and_the_supplied_status() {
+    let dir = std::env::temp_dir().join(format!("ti-tsl-detached-{}", std::process::id()));
+    let set = |suffix: &str| {
+        manifest(&format!(
+            "../../spec/tsl-detached/testdata/ref/ECC-RSA_TSL-ref.{suffix}"
+        ))
+    };
+    let (xml, sig, ocsp) = (set("xml"), set("sig"), set("ocsp"));
+    let out = json_of(
+        &dir,
+        "pki tsl verify",
+        &[
+            "pki",
+            "tsl",
+            "verify",
+            xml.to_str().unwrap(),
+            "--signature",
+            sig.to_str().unwrap(),
+            "--signer-status",
+            ocsp.to_str().unwrap(),
+            "--at",
+            "2026-11-01T16:47:42Z",
+        ],
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["result"], "valid");
+    assert_eq!(report["signature"], "detached");
+    assert_eq!(report["tier"], "nonprod");
+    assert!(report["signing_time"].is_null());
+    assert_eq!(report["signer_status"]["status"], "good");
+    assert_eq!(report["signer_status"]["responder_url"], "supplied");
+    assert_eq!(report["warnings"], serde_json::json!([]));
+}
+
+/// TSLDET-005 through the CLI: a changed list fails on the detached signature.
+#[test]
+fn tsl_verify_detached_rejects_a_tampered_list() {
+    let dir = std::env::temp_dir().join(format!("ti-tsl-tampered-{}", std::process::id()));
+    let xml = manifest("../../spec/tsl-detached/testdata/derived/ref-tampered.xml");
+    let sig = manifest("../../spec/tsl-detached/testdata/ref/ECC-RSA_TSL-ref.sig");
+    let out = json_of(
+        &dir,
+        "pki tsl verify",
+        &[
+            "pki",
+            "tsl",
+            "verify",
+            xml.to_str().unwrap(),
+            "--signature",
+            sig.to_str().unwrap(),
+            "--at",
+            "2026-11-01T16:47:42Z",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(1));
+    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["code"], "detached_signature_error");
+    assert_eq!(report["rule"], "TSLDET-005");
+    assert!(report["signature"].is_null(), "no kind for an invalid list");
+}
+
 /// Offline: the warning instead of the signer's status; --previous decides the sequence.
 #[test]
 fn tsl_verify_offline_with_a_previous_list() {

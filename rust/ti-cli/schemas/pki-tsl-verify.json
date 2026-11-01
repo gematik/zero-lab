@@ -33,6 +33,14 @@
         "invalid"
       ]
     },
+    "signature": {
+      "enum": [
+        "enveloped",
+        "detached",
+        null
+      ],
+      "description": "Which signature verified the list; null for an invalid list."
+    },
     "tier": {
       "enum": [
         "prod",
@@ -45,6 +53,7 @@
       "enum": [
         "tsl_not_wellformed",
         "xml_signature_error",
+        "detached_signature_error",
         "tsl_cert_extraction_error",
         "certificate_not_valid_math",
         "authoritykeyid_different",
@@ -80,7 +89,7 @@
         "string",
         "null"
       ],
-      "description": "The rule of spec/tsl-xmldsig that failed, e.g. TSLSIG-018."
+      "description": "The rule of spec/tsl-xmldsig or spec/tsl-detached that failed, e.g. TSLSIG-018 or TSLDET-005."
     },
     "detail": {
       "type": [
@@ -116,7 +125,7 @@
         "string",
         "null"
       ],
-      "description": "XAdES SigningTime as written."
+      "description": "XAdES SigningTime as written; null for a detached signature."
     },
     "anchor": {
       "oneOf": [
@@ -187,7 +196,8 @@
               "const": "good"
             },
             "responder_url": {
-              "type": "string"
+              "type": "string",
+              "description": "The responder asked, or `supplied` for a response given with the list."
             },
             "produced_at": {
               "type": [
@@ -208,7 +218,7 @@
           "type": "null"
         }
       ],
-      "description": "The signer's OCSP status, when it was queried."
+      "description": "The signer's OCSP status, when it was queried or supplied with --signer-status."
     },
     "sequence": {
       "enum": [
@@ -225,6 +235,7 @@
     "environment",
     "at",
     "result",
+    "signature",
     "tier",
     "code",
     "code_number",

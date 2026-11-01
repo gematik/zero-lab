@@ -104,6 +104,7 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 {bin} --format json pki tsl show --rejected       # CAs no verified root signed
 {bin} --format json pki tsl show --ca SMCB-CA51   # filter by name, also --provider, --root
 {bin} --format json pki tsl verify tsl.xml --previous old.xml   # exit 0 valid, 1 not
+{bin} --format json pki tsl verify tsl.xml --signature tsl.sig --signer-status tsl.ocsp   # the published detached signature and status, no network
 {bin} pki roots bundle --env ref > roots.pem      # CA bundle (PEM) for curl, openssl, Go
 {bin} pki tsl bundle --env ref --ca SMCB -o smcb.pem   # the TSL's CAs, tsl show's filters
 {bin} pki tsl bundle --env ref --ca KOMP-CA54 --ca KOMP-CA55 -o komp.pem   # repeated: any of

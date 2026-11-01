@@ -40,6 +40,13 @@
     "insecure_transport": {
       "type": "boolean"
     },
+    "signature": {
+      "enum": [
+        "enveloped",
+        "detached"
+      ],
+      "description": "Which signature verified the list."
+    },
     "signer": {
       "type": "string",
       "description": "Common name of the C.TSL.SIG certificate the list is signed with"
@@ -155,6 +162,7 @@
     "environment",
     "source",
     "insecure_transport",
+    "signature",
     "signer",
     "tsl_signer_ca",
     "warnings",

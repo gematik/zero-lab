@@ -38,7 +38,9 @@ use sha2::{Digest, Sha256};
 use ti_pki::load::{Meta, Source, SystemClock};
 use ti_pki::ocsp::OcspChecker;
 use ti_pki::tsl::{self, Intermediate, Tsl};
-use ti_pki::tsl_signature::{Sequence, TslError, TslState, VerifiedTsl, embedded_config_for};
+use ti_pki::tsl_signature::{
+    Sequence, TslError, TslState, VerifiedTsl, embedded_config_for, embedded_config_for_detached,
+};
 use ti_pki::{Certificate, Clock, Tier, Timestamp, TrustConfig, TrustStore};
 use ti_report::tsl::{CertSummary, Finding, rejection_code};
 
@@ -59,6 +61,8 @@ struct Report {
     environment: &'static str,
     source: SourceInfo,
     insecure_transport: bool,
+    /// Which signature verified the list, `enveloped` or `detached`.
+    signature: &'static str,
     /// The C.TSL.SIG certificate the list is signed with.
     signer: String,
     /// The TSL signer CA that issued it.
@@ -197,6 +201,7 @@ pub fn show(args: &TslShowArgs, global: &GlobalArgs, out: &Output) -> Result<Exi
             fetched_at_ts: meta.fetched_at,
         },
         insecure_transport: session.insecure,
+        signature: verified.signature.as_str(),
         signer: verified.signer.subject_cn().to_owned(),
         tsl_signer_ca: verified.anchor.subject_cn().to_owned(),
         warnings: material.info.tsl_warnings.clone(),
@@ -235,6 +240,8 @@ struct VerifyReport {
     at: String,
     /// `valid` or `invalid`.
     result: &'static str,
+    /// Which signature verified the list, `enveloped` or `detached`; valid lists only.
+    signature: Option<&'static str>,
     /// `prod` or `nonprod`, from the TSL signer CA; valid lists only.
     tier: Option<&'static str>,
     /// The result code of an invalid list, e.g. `xml_signature_error`.
@@ -257,7 +264,7 @@ struct VerifyReport {
     warnings: Vec<Finding>,
     /// Services of a valid list that could not be processed and were left out.
     skipped: Vec<SkippedInfo>,
-    /// The signer's OCSP status, when it was queried.
+    /// The signer's OCSP status, when it was queried or supplied.
     signer_status: Option<SignerStatus>,
     /// `newer` or `same` against `--previous`; null without it or for an invalid list.
     sequence: Option<&'static str>,
@@ -274,6 +281,7 @@ struct SkippedInfo {
 struct SignerStatus {
     /// `good`; anything else makes the list invalid.
     status: &'static str,
+    /// The responder asked, or `supplied` for a response given with the list.
     responder_url: String,
     produced_at: Option<String>,
 }
@@ -281,6 +289,16 @@ struct SignerStatus {
 /// Runs `ti pki tsl verify`.
 pub fn verify(args: &TslVerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     let source = crate::input::read(&args.file)?;
+    let signature = args
+        .signature
+        .as_deref()
+        .map(crate::input::read)
+        .transpose()?;
+    let supplied_status = args
+        .signer_status
+        .as_deref()
+        .map(crate::input::read)
+        .transpose()?;
     let previous = args
         .previous
         .as_deref()
@@ -293,27 +311,37 @@ pub fn verify(args: &TslVerifyArgs, global: &GlobalArgs, out: &Output) -> Result
         .transpose()?;
     let now = args.at.unwrap_or_else(|| SystemClock.now());
     let grace = Duration::from_hours(24 * u64::from(args.grace));
-    let config = match args.env.concrete() {
-        Some(env) => Ok(TrustConfig {
+    let config = match (args.env.concrete(), &signature) {
+        (Some(env), _) => Ok(TrustConfig {
             tsl_grace_period: grace,
             ..TrustConfig::preset(env)
         }),
-        None => embedded_config_for(&source.bytes).map(|config| TrustConfig {
-            tsl_grace_period: grace,
-            ..config
-        }),
-    };
+        (None, Some(signature)) => embedded_config_for_detached(&signature.bytes),
+        (None, None) => embedded_config_for(&source.bytes),
+    }
+    .map(|config| TrustConfig {
+        tsl_grace_period: grace,
+        ..config
+    });
     if let (Ok(config), Some(env)) = (&config, args.env.concrete()) {
         config.validate(env.tier()).map_err(CliError::Trust)?;
     }
     let mut sequence = None;
     let result = config.map_err(VerifyFailure::from).and_then(|config| {
-        let mut verified = Tsl::parse_verified(&source.bytes, &config, now)?;
+        let mut verified = match &signature {
+            Some(signature) => {
+                Tsl::parse_verified_detached(&source.bytes, &signature.bytes, &config, now)?
+            }
+            None => Tsl::parse_verified(&source.bytes, &config, now)?,
+        };
         if previous.is_some() {
             sequence = Some(verified.check_sequence(previous.as_ref())?);
         }
+        if let Some(status) = &supplied_status {
+            verified.check_signer_status_supplied(&status.bytes, now, &config.algorithms)?;
+        }
         // The status now says nothing about another time.
-        if !args.offline && args.at.is_none() {
+        if supplied_status.is_none() && !args.offline && args.at.is_none() {
             let transport = crate::http::transport(&global.net, out.verbosity())?;
             let store = crate::store::open_cache(global)?;
             let checker = OcspChecker::new(&config, &transport, SystemClock).with_store(store);
@@ -373,6 +401,7 @@ fn verify_report(
         environment: env.concrete().map_or("auto", |e| e.as_str()),
         at: now.to_string(),
         result: "invalid",
+        signature: None,
         tier: None,
         code: None,
         code_number: None,
@@ -393,6 +422,7 @@ fn verify_report(
     match result {
         Ok(verified) => {
             report.result = "valid";
+            report.signature = Some(verified.signature.as_str());
             report.tier = Some(match verified.tier {
                 Tier::Prod => "prod",
                 Tier::NonProd => "nonprod",
@@ -417,7 +447,11 @@ fn verify_report(
                 .collect();
             report.signer_status = verified.signer_status.as_ref().map(|r| SignerStatus {
                 status: r.status.as_str(),
-                responder_url: r.responder_url.clone(),
+                responder_url: if r.responder_url.is_empty() {
+                    "supplied".to_owned()
+                } else {
+                    r.responder_url.clone()
+                },
                 produced_at: r.produced_at.map(|t| t.to_string()),
             });
         }
@@ -470,6 +504,9 @@ fn verify_document(report: &VerifyReport) -> Document {
             "signer",
             Line::text(&signer.common_name).and_dim(format!(" · serial {}", signer.serial)),
         );
+    }
+    if let Some(signature) = report.signature {
+        doc.field("signature", Line::text(signature));
     }
     if let Some(signing_time) = &report.signing_time {
         doc.field("signed", Line::text(signing_time));
@@ -726,8 +763,19 @@ fn load(trust: &TrustArgs, global: &GlobalArgs, out: &Output) -> Result<Loaded, 
     let material = session.load(&config, env.tier(), trust.at)?;
     let now = trust.at.unwrap_or_else(|| SystemClock.now());
     let (bytes, meta) = session.tsl(&config)?;
-    let verified = Tsl::parse_verified(&bytes, &config, now)
-        .map_err(|e| CliError::TrustLoad(format!("TSL: {e}")))?;
+    let verified = match session.tsl_detached(&config) {
+        Some((signature, status)) => {
+            let mut verified = Tsl::parse_verified_detached(&bytes, &signature, &config, now);
+            if let (Ok(verified), Some(status)) = (&mut verified, status) {
+                verified
+                    .check_signer_status_supplied(&status, now, &config.algorithms)
+                    .map_err(|e| CliError::TrustLoad(format!("TSL signer status: {e}")))?;
+            }
+            verified
+        }
+        None => Tsl::parse_verified(&bytes, &config, now),
+    }
+    .map_err(|e| CliError::TrustLoad(format!("TSL: {e}")))?;
     let matched = tsl::match_to_roots(
         verified.tsl.intermediate_cas(),
         &TrustStore::new(material.store.roots().iter().cloned()),

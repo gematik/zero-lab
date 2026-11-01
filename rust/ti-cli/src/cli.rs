@@ -540,6 +540,14 @@ pub struct TslVerifyArgs {
     /// No network: the signer's OCSP status is not queried (warning no_ocsp_check)
     #[arg(long)]
     pub offline: bool,
+    /// The detached signature file (.sig) published next to the list: the list is then
+    /// verified by it, not by the signature inside the XML
+    #[arg(long, value_name = "FILE")]
+    pub signature: Option<PathBuf>,
+    /// The signer's OCSP response file (.ocsp) published next to the list; needs
+    /// --signature, and the status is then not queried over the network
+    #[arg(long, value_name = "FILE", requires = "signature")]
+    pub signer_status: Option<PathBuf>,
     /// The list used before: this one must have another Id and a greater sequence
     /// number, or be the same list
     #[arg(long, value_name = "FILE")]
