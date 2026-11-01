@@ -111,8 +111,8 @@ pub struct TrustConfig {
     /// published; the two derive from this URL by their suffix. With it the loaders
     /// fetch the three files as one set and the list is verified by the detached
     /// signature (`spec/tsl-detached`); `None` leaves the enveloped signature. Plain
-    /// `http://` is what A_21175 mandates there: trust comes from the signature and the
-    /// hash published at `tsl_url`, never from the transport.
+    /// `http://` is what A_21175 mandates there: the list is taken from here only under
+    /// the hash published at `tsl_url`, and from `tsl_url` otherwise.
     pub tsl_detached_url: Option<Cow<'static, str>>,
     /// The `GEM.TSL-CA<n>` TSL signer CAs, as DER, one of which must have issued a TSL's
     /// signer (GS-A_4640, `spec/tsl-xmldsig` TSLSIG-030). Separate from `anchor`:

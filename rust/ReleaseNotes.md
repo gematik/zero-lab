@@ -242,9 +242,13 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   HTTP as A_21175 mandates, the list checked against the `.sha2` of the HTTPS point):
   `Artifact::TslSignature` and `TslSignerStatus`, `load::Detached` on
   `TrustMaterial::detached`, `FileTransport::with_detached`, the two files as optional
-  fields of a `Bundle`. Material with them is verified by the detached signature, and
-  the reloader asks the network for the signer's status only when none came with the
-  list. The enveloped XMLDSig path stays until the gate of TASK-166 lets it go.
+  fields of a `Bundle`. `Tsl::parse_verified_loaded` verifies material by the detached
+  signature; one that does not fit is discarded with the warning
+  `detached_signature_not_used` and the list verified by its enveloped signature, which
+  stays until the gate of TASK-166 lets it go. The list comes from the plain-HTTP origin
+  only under the hash from HTTPS, and from HTTPS otherwise. A signed `revoked` stops the
+  list at any age. The reloader asks the network for the signer's status only when none
+  came with the list; `ReloadStatus::tsl_signature` names the kind.
 - `ti-pki/fuzz`: `just fuzz-ti-pki` runs the `detached_signature`, `tsl_xml` and
   `ocsp_response` targets, seeded from the published sets.
 - A certificate OCSP reports revoked after the reference time is valid for that time,

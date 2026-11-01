@@ -39,7 +39,8 @@ use ti_pki::load::{Meta, Source, SystemClock};
 use ti_pki::ocsp::OcspChecker;
 use ti_pki::tsl::{self, Intermediate, Tsl};
 use ti_pki::tsl_signature::{
-    Sequence, TslError, TslState, VerifiedTsl, embedded_config_for, embedded_config_for_detached,
+    DetachedTsl, Sequence, TslError, TslState, VerifiedTsl, embedded_config_for,
+    embedded_config_for_detached,
 };
 use ti_pki::{Certificate, Clock, Tier, Timestamp, TrustConfig, TrustStore};
 use ti_report::tsl::{CertSummary, Finding, rejection_code};
@@ -763,19 +764,18 @@ fn load(trust: &TrustArgs, global: &GlobalArgs, out: &Output) -> Result<Loaded, 
     let material = session.load(&config, env.tier(), trust.at)?;
     let now = trust.at.unwrap_or_else(|| SystemClock.now());
     let (bytes, meta) = session.tsl(&config)?;
-    let verified = match session.tsl_detached(&config) {
-        Some((signature, status)) => {
-            let mut verified = Tsl::parse_verified_detached(&bytes, &signature, &config, now);
-            if let (Ok(verified), Some(status)) = (&mut verified, status) {
-                verified
-                    .check_signer_status_supplied(&status, now, &config.algorithms)
-                    .map_err(|e| CliError::TrustLoad(format!("TSL signer status: {e}")))?;
-            }
-            verified
-        }
-        None => Tsl::parse_verified(&bytes, &config, now),
-    }
-    .map_err(|e| CliError::TrustLoad(format!("TSL: {e}")))?;
+    let detached = session.tsl_detached(&config)?;
+    let detached = detached.as_ref().map(|d| DetachedTsl {
+        signature: &d.signature,
+        // The published status says nothing about another time (TSLDET-023).
+        signer_status: d
+            .signer_status
+            .as_ref()
+            .filter(|_| trust.at.is_none())
+            .map(|(body, _)| body.as_slice()),
+    });
+    let verified = Tsl::parse_verified_loaded(&bytes, detached, &config, now)
+        .map_err(|e| CliError::TrustLoad(format!("TSL: {e}")))?;
     let matched = tsl::match_to_roots(
         verified.tsl.intermediate_cas(),
         &TrustStore::new(material.store.roots().iter().cloned()),

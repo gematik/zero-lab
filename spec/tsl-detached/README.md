@@ -107,17 +107,20 @@ Result codes are named in [Result codes](#result-codes). Every failed check of p
 
 | ID | Rule | Code |
 |---|---|---|
-| TSLDET-010 | `.xml`, `.sig` and `.ocsp` MUST be fetched from the configured automated download point of the environment (A_21182), the same origin, as one set, never from addresses inside a TSL. Before the set is fetched, the `.sha2` of the configured HTTPS download point MUST be compared with the hash of the current list (A_30044 (2), TSLSIG-050); the fetched `.xml` MUST match the published hash, or the set is discarded as a retryable download error. A set whose signature does not verify is discarded whole, and the next attempt fetches all three files again (A_21177). | `tsl_download_error`, `detached_signature_error` |
+| TSLDET-010 | `.xml`, `.sig` and `.ocsp` MUST be fetched from the configured automated download point of the environment (A_21182), the same origin, as one set, never from addresses inside a TSL. Before the set is fetched, the `.sha2` of the configured HTTPS download point MUST be compared with the hash of the current list (A_30044 (2), TSLSIG-050); the fetched `.xml` MUST match the published hash. Without a readable hash the list MUST NOT be taken from a plain-HTTP origin, only from the HTTPS download point. A plain-HTTP origin gets no validators for the list, and its "not modified" MUST NOT be believed: it would renew the list's age without authentication. A stale or fallback copy of a detached file MUST NOT be combined with a list. | `tsl_download_error` |
 | TSLDET-011 | Plain `http://` is acceptable for the automated download point, which A_21175 mandates: trust comes from the signature and the hash, never from the transport. A gzip content coding is removed before verification. | |
 | TSLDET-012 | The automated download points of A_21182: PU `http://download.crl.ti-dienste.de/TSL-ECC/ECC-RSA_TSL.{xml,sig,ocsp}`; RU `http://download-testref.crl.ti-dienste.de/TSL-ECC-ref/ECC-RSA_TSL-ref.{xml,sig,ocsp}`; TU `http://download-testref.crl.ti-dienste.de/TSL-ECC-test/ECC-RSA_TSL-test.{xml,sig,ocsp}`. The `.sig` and `.ocsp` URIs are the `.xml` URI with its suffix replaced. | |
+| TSLDET-013 | While the enveloped path exists, a loader MAY deliver a list without detached files (not published, not reachable), and a signature file that fails part A on a loaded list MUST be discarded with its status, the list then verified by `spec/tsl-xmldsig`, with a warning. An attacker on the path can force this, but not more: the enveloped signature, signer and anchor still decide, and the bytes are bound by the HTTPS hash. A caller that names the signature file explicitly gets the error instead. A fault of the implementation's own cache MUST NOT be taken for a missing file. | `detached_signature_not_used` (warning) |
+| TSLDET-014 | When the plain-HTTP origin is unreachable, or serves bytes that do not match the published hash (it may lag by up to an hour, A_21178), the list MUST be fetched from the HTTPS download point and checked against the same hash. | `tsl_download_error` if that fails too |
 
 ### C. Signer status from the published response
 
 | ID | Rule | Code |
 |---|---|---|
 | TSLDET-020 | A supplied `.ocsp` MUST be verified like a queried response: signed by the signer's CA or by a responder that CA certified for OCSP signing (TSLSIG-040), with a certHash matching the signer, answering for the signer's serial under its CA (TSLSIG-041). Its `producedAt` MUST NOT be later than the validation time plus the clock tolerance, and `thisUpdate ≤ t`. Status `revoked` or `unknown`, a missing or mismatching certHash, an unauthorized responder, a response for another certificate, or an unparsable response MUST prevent the use of the list. | codes of TSLSIG-040 to 042 |
-| TSLDET-021 | A supplied `.ocsp` whose `producedAt` is more than 2 hours before the validation time (A_21181 renews it hourly) MUST NOT be used: the status is then "not queried" (TSLSIG-043), the warning's detail names the age and the maximum, and a network query (TSLSIG-040) MAY replace it. A stale response is not evidence of anything. | `no_ocsp_check` (warning) |
+| TSLDET-021 | A supplied `.ocsp` whose `producedAt` is more than 2 hours before the validation time (A_21181 renews it hourly) MUST NOT be taken as `good`: the status is then "not queried" (TSLSIG-043), the warning's detail names the age and the maximum, and a network query (TSLSIG-040) MAY replace it. A verified `revoked` stops the use of the list at any age. | `no_ocsp_check` (warning), `cert_revoked` |
 | TSLDET-022 | Without a `.ocsp` and without a network transport the status is not queried (TSLSIG-043). | `no_ocsp_check` (warning) |
+| TSLDET-023 | A consumer validating at a time other than the current one MUST NOT use a published `.ocsp`: it says nothing about that time. The status is then not queried. | `no_ocsp_check` (warning) |
 
 ### D. The rest of the verification
 
@@ -130,11 +133,12 @@ Result codes are named in [Result codes](#result-codes). Every failed check of p
 
 | Code | No. | Kind | Rules |
 |---|---|---|---|
-| `detached_signature_error` | – | error | 001, 002, 003, 005, 010 |
+| `detached_signature_error` | – | error | 001, 002, 003, 005 |
+| `detached_signature_not_used` | – | warning | 013 |
 | `tsl_cert_extraction_error` | 1002 | error | 004 |
 | `tsl_not_wellformed` | 1011 | error | 006 |
-| `tsl_download_error` | 1006 | error | 010 |
-| `no_ocsp_check` | 1039 | warning | 021, 022 |
+| `tsl_download_error` | 1006 | error | 010, 014 |
+| `no_ocsp_check` | 1039 | warning | 021, 022, 023 |
 | the codes of TSLSIG-040 to 042 | | error | 020 |
 | the codes of parts B to G of `spec/tsl-xmldsig` | | | 030 |
 
@@ -150,8 +154,12 @@ update(state, transport, t):
   hash ← transport.get(url_sha2 of the HTTPS download point)        # TSLDET-010
   if state.tsl ≠ ∅ and hash = state.hash:
       return check_grace(state.tsl, t)                               # TSLSIG-054
-  xml ← transport.get(url_xml of the automated download point)       # TSLDET-010, 012
-  if sha256(xml) ≠ hash: fail tsl_download_error, retryable           # TSLDET-010
+  if hash unreadable: xml ← transport.get(url_xml of the HTTPS point)  # TSLDET-010
+  else:
+    xml ← transport.get(url_xml of the automated download point)       # TSLDET-010, 012
+    if unreachable or sha256(xml) ≠ hash:
+      xml ← transport.get(url_xml of the HTTPS point)                  # TSLDET-014
+      if sha256(xml) ≠ hash: fail tsl_download_error, retryable        # TSLDET-010
   sig ← transport.get(url_sig);  ocsp ← transport.get(url_ocsp)       # TSLDET-010, 012
   signer ← verify_detached(xml, sig)                                  # A
   anchor, way ← resolve_anchor(signer, …)                             # TSLSIG part E
@@ -173,7 +181,9 @@ verify_detached(xml, sig):
 supplied_status(signer, anchor, ocsp, t):
   if ocsp = ∅: warn no_ocsp_check; return none                                   # TSLDET-022
   result ← verify_ocsp(ocsp, signer, anchor, t, max_age = 2 h)                 # TSLDET-020
-  if result = too old: warn no_ocsp_check with the age; return stale           # TSLDET-021
+  if result = too old:
+    if its status as of its own producedAt is revoked: fail cert_revoked       # TSLDET-021
+    warn no_ocsp_check with the age; return stale                              # TSLDET-021
   if result ∉ {good}: fail with the code of TSLSIG-041/042                     # TSLDET-020
   return result
 ```
@@ -233,20 +243,24 @@ From gemSpec_TSL:
 - **Same trust.** The signer is authenticated exactly as for the enveloped signature
   (parts B and E of `spec/tsl-xmldsig`); no new anchor, key or responder enters.
 - **Transport.** The files travel over plain HTTP. Integrity and origin follow from the
-  signature and the hash compare; the transport can withhold or delay, never inject.
-- **Consistency.** `.xml` and `.sig` of different states fail verification and are
-  re-fetched together (TSLDET-010); a verifier never combines a list with the signature
-  of another.
+  signature and the hash from HTTPS; the plain origin is asked for the list only under
+  that hash and cannot confirm a list with "not modified" (TSLDET-010), so it can withhold
+  or delay, never inject, and cannot renew the age of material.
+- **Consistency.** `.xml` and `.sig` of different states fail part A; the signature is
+  then discarded (TSLDET-013). A verifier never accepts a list under another's signature.
+- **Forced fallback.** While the enveloped path exists an attacker on the path can force
+  it (TSLDET-013). That costs the simplification, not trust, and it is visible: the
+  result names the kind (TSLDET-031) and a discarded signature raises a warning.
 - **Replay and downgrade.** Unchanged: the sequence number and `NextUpdate` rules of part
   D reject an older signed list, and the algorithm is a single fixed combination
   (TSLDET-002, 003).
-- **Stale status.** A response older than its maximum is ignored, not trusted and not
-  treated as a failure, because a stale `good` is no evidence and a stale `revoked` would
-  already have failed when it was fresh; the network query of part C may replace it
-  (TSLDET-021). A fresh response that is wrong fails closed (TSLDET-020).
+- **Stale status.** A response older than its maximum is not taken as `good`, because a
+  stale `good` is no evidence; the network query of part C may replace it. A signed
+  `revoked` stops the list at any age, since a consumer may not have seen it while it was
+  fresh (TSLDET-021). A fresh response that is wrong fails closed (TSLDET-020).
 - **Parser surface.** The `.sig` parser reads a bounded DER structure of three fields; it
-  and the OCSP parser are fuzzed. The XML parser of the list no longer stands on the
-  trust path.
+  and the OCSP parser are fuzzed. On the detached path the XML parser reads only signed
+  bytes. It leaves the trust path entirely once the enveloped path is removed.
 
 ## Licence
 

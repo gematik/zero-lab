@@ -361,6 +361,7 @@ fn tsl_warning_text(code: &str) -> &str {
         "no_ocsp_check" => "signer status not checked",
         "validity_warning_1" => "past NextUpdate, in the grace period",
         "tsl_anchor_announced" => "announces a new TSL signer CA",
+        "detached_signature_not_used" => "detached signature does not fit, enveloped one used",
         other => other,
     }
 }

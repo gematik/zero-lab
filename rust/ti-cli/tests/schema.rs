@@ -1008,6 +1008,74 @@ fn tsl_verify_detached_reports_the_kind_and_the_supplied_status() {
     assert_eq!(report["warnings"], serde_json::json!([]));
 }
 
+/// The loaders' detached files through the real profile store, offline, at and before
+/// the capture time: the list verifies by its `.sig`, and a past `--at` does not use the
+/// `.ocsp`, whose answer says nothing about that time. A mock store could not see this.
+#[test]
+fn tsl_show_uses_the_detached_files_from_the_profile_store() {
+    let dir = std::env::temp_dir().join(format!("ti-tsl-show-det-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let set = |suffix: &str| {
+        std::fs::read(manifest(&format!(
+            "../../spec/tsl-detached/testdata/prod/ECC-RSA_TSL.{suffix}"
+        )))
+        .unwrap()
+    };
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let origin = "http://download.crl.ti-dienste.de/TSL-ECC/ECC-RSA_TSL";
+    let roots = std::fs::read(manifest("../ti-pki/src/roots-prod.json")).unwrap();
+    seed_cache_db(
+        &dir,
+        &[
+            ("pki.roots", url_id(ROOTS_URL), cache_payload(now, &roots)),
+            ("pki.tsl", url_id(TSL_URL), cache_payload(now, &set("xml"))),
+            (
+                "pki.tsl",
+                url_id(&format!("{origin}.sig")),
+                cache_payload(now, &set("sig")),
+            ),
+            (
+                "pki.tsl",
+                url_id(&format!("{origin}.ocsp")),
+                cache_payload(now, &set("ocsp")),
+            ),
+        ],
+    );
+    for at in ["2026-11-01T16:47:42Z", "2026-11-01T10:00:00Z"] {
+        let out = json_of(
+            &dir,
+            "pki tsl show",
+            &[
+                "pki",
+                "tsl",
+                "show",
+                "--env",
+                "prod",
+                "--offline",
+                "--at",
+                at,
+            ],
+        );
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{at}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!(report["signature"], "detached", "{at}");
+        assert_eq!(
+            report["warnings"],
+            serde_json::json!(["no_ocsp_check"]),
+            "{at}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// TSLDET-005 through the CLI: a changed list fails on the detached signature.
 #[test]
 fn tsl_verify_detached_rejects_a_tampered_list() {

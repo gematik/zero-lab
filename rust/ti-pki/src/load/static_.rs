@@ -369,8 +369,8 @@ mod tests {
         }));
         assert_eq!(
             original.material.fetched_at,
-            Timestamp(900),
-            "the oldest fetch counts"
+            Timestamp(1_000),
+            "optional files do not age the list; their own rules bound them"
         );
         assert_eq!(Bundle::from_slice(&original.to_vec()).unwrap(), original);
     }

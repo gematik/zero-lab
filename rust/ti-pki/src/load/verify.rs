@@ -138,8 +138,6 @@ pub(crate) fn verify_bytes(
     })
 }
 
-/// The list by its detached signature when the material carries one, with the supplied
-/// status adopted (`spec/tsl-detached`); by its enveloped signature otherwise.
 #[cfg(feature = "brainpool")]
 fn verify_tsl(
     config: &TrustConfig,
@@ -147,14 +145,13 @@ fn verify_tsl(
     detached: Option<&Detached>,
     now: Timestamp,
 ) -> Result<VerifiedTsl, VerifyError> {
-    let Some(detached) = detached else {
-        return Ok(crate::tsl::Tsl::parse_verified(xml, config, now)?);
-    };
-    let mut tsl = crate::tsl::Tsl::parse_verified_detached(xml, &detached.signature, config, now)?;
-    if let Some((response, _)) = &detached.signer_status {
-        tsl.check_signer_status_supplied(response, now, &config.algorithms)?;
-    }
-    Ok(tsl)
+    let detached = detached.map(|d| crate::tsl_signature::DetachedTsl {
+        signature: &d.signature,
+        signer_status: d.signer_status.as_ref().map(|(body, _)| body.as_slice()),
+    });
+    Ok(crate::tsl::Tsl::parse_verified_loaded(
+        xml, detached, config, now,
+    )?)
 }
 
 /// Every TSL is signed on brainpoolP256r1 (TSLSIG-012): without the curve none verifies.

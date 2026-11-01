@@ -320,7 +320,7 @@ A new level is added here with its migration and the levels it stays compatible 
 | `comfort` | sealed | state | 0 | `konnektor` | comfort-signature user IDs |
 | `tsl.state` | sealed | state | 0 | none | TSL rollback state (sequence numbers); sealed for integrity |
 | `well-known` | plain | cache | 7 days | `issuer` | discovery documents and entity statements |
-| `pki.tsl` | plain | cache | 30 days | none | TSL bytes as downloaded |
+| `pki.tsl` | plain | cache | 30 days | none | TSL bytes and its detached `.sig` and `.ocsp` as downloaded, each under its own URL |
 | `pki.roots` | plain | cache | 30 days | none | root certificate bundles as downloaded |
 | `pki.ocsp` | plain | cache | 7 days | `issuer` | OCSP responses |
 | `connector.sds` | plain | cache | 1 day | none | Konnektor service directories |

@@ -140,6 +140,9 @@ pub enum TslCode {
     /// The list is past its `NextUpdate` and the grace period; nothing from it may be
     /// used (1009, a warning in Tab_PKI_274 that stops the use of the list).
     ValidityWarning2,
+    /// Warning: a detached signature came with the list but does not fit it, so the
+    /// list was verified by its enveloped signature (TSLDET-013; `ti-pki`'s own code).
+    DetachedSignatureNotUsed,
 }
 
 impl TslCode {
@@ -168,6 +171,7 @@ impl TslCode {
         TslCode::ValidityWarning1,
         TslCode::ValidityWarning2,
         TslCode::TslAnchorAnnounced,
+        TslCode::DetachedSignatureNotUsed,
     ];
 
     /// The code's name, e.g. `xml_signature_error`.
@@ -195,6 +199,7 @@ impl TslCode {
             TslCode::ValidityWarning1 => "validity_warning_1",
             TslCode::ValidityWarning2 => "validity_warning_2",
             TslCode::TslAnchorAnnounced => "tsl_anchor_announced",
+            TslCode::DetachedSignatureNotUsed => "detached_signature_not_used",
         }
     }
 
@@ -202,7 +207,10 @@ impl TslCode {
     pub const fn is_warning(self) -> bool {
         matches!(
             self,
-            TslCode::NoOcspCheck | TslCode::ValidityWarning1 | TslCode::TslAnchorAnnounced
+            TslCode::NoOcspCheck
+                | TslCode::ValidityWarning1
+                | TslCode::TslAnchorAnnounced
+                | TslCode::DetachedSignatureNotUsed
         )
     }
 
@@ -230,7 +238,8 @@ impl TslCode {
             TslCode::ValidityWarning2 => Some(1009),
             TslCode::TslSignerProfileViolation
             | TslCode::TslAnchorAnnounced
-            | TslCode::DetachedSignatureError => None,
+            | TslCode::DetachedSignatureError
+            | TslCode::DetachedSignatureNotUsed => None,
         }
     }
 }
@@ -651,6 +660,16 @@ impl VerifiedTsl {
             && let Some(produced_at) = result.produced_at
             && now.since(produced_at) > MAX_SUPPLIED_SIGNER_STATUS_AGE
         {
+            // Old says nothing about good, but a signed `revoked` stays true whatever its
+            // age, and this consumer may not have seen it when it was fresh. As of its
+            // own time the window passes and the response tells its status.
+            let as_produced = crate::ocsp::ResponseCheck::new(produced_at, algorithms);
+            let then =
+                crate::ocsp::verify_response(response, &self.signer, &self.anchor, &as_produced)
+                    .map_err(|e| status_error(&e))?;
+            if then.status == RevocationStatus::Revoked {
+                self.adopt_signer_status(then, "supplied")?;
+            }
             let detail = format!(
                 "the supplied status was produced at {produced_at}, {} s before {now}, older \
                  than the {} s a published response may be",
@@ -825,6 +844,48 @@ impl Tsl {
             config,
             now,
         )
+    }
+}
+
+#[cfg(feature = "brainpool")]
+impl Tsl {
+    /// A list as the loaders deliver it (`spec/tsl-detached`): by its detached signature
+    /// with the supplied status adopted, when those files came with it. A signature file
+    /// that does not fit the list (part A) is discarded with its status and the list
+    /// verified by its enveloped signature, with the warning
+    /// [`TslCode::DetachedSignatureNotUsed`] (TSLDET-013): the files travel over plain
+    /// HTTP and may lag behind. Everything after part A fails as it is.
+    ///
+    /// # Errors
+    ///
+    /// [`TslError`] with the code and the rule of the first check that failed.
+    pub fn parse_verified_loaded(
+        xml: &[u8],
+        detached: Option<DetachedTsl<'_>>,
+        config: &TrustConfig,
+        now: Timestamp,
+    ) -> Result<VerifiedTsl, TslError> {
+        let Some(detached) = detached else {
+            return Tsl::parse_verified(xml, config, now);
+        };
+        match Tsl::parse_verified_detached(xml, detached.signature, config, now) {
+            Ok(mut verified) => {
+                if let Some(status) = detached.signer_status {
+                    verified.check_signer_status_supplied(status, now, &config.algorithms)?;
+                }
+                Ok(verified)
+            }
+            Err(error) if error.rule.starts_with("TSLDET") => {
+                let mut verified = Tsl::parse_verified(xml, config, now)?;
+                verified.warnings.push(TslError::new(
+                    TslCode::DetachedSignatureNotUsed,
+                    "TSLDET-013",
+                    error.to_string(),
+                ));
+                Ok(verified)
+            }
+            Err(error) => Err(error),
+        }
     }
 }
 
@@ -1323,6 +1384,90 @@ mod tests {
         };
         Tsl::parse_verified_detached(&xml, &sig, &TrustConfig::preset(preset), captured_at())
             .unwrap()
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    fn loaded(
+        xml: &[u8],
+        signature: &[u8],
+        status: Option<&[u8]>,
+    ) -> Result<VerifiedTsl, TslError> {
+        Tsl::parse_verified_loaded(
+            xml,
+            Some(DetachedTsl {
+                signature,
+                signer_status: status,
+            }),
+            &TrustConfig::preset(crate::Env::Ref),
+            captured_at(),
+        )
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_013_a_signature_of_another_list_leaves_the_enveloped_path_with_a_warning() {
+        let (xml, _, ocsp) = detached("ref");
+        let (_, prod_sig, _) = detached("prod");
+        let verified = loaded(&xml, &prod_sig, Some(&ocsp)).unwrap();
+        assert_eq!(verified.signature, SignatureKind::Enveloped);
+        assert!(
+            verified.signer_status.is_none(),
+            "the set is discarded whole"
+        );
+        let warning = verified
+            .warnings
+            .iter()
+            .find(|w| w.code == TslCode::DetachedSignatureNotUsed)
+            .expect("the discarded signature is reported");
+        assert_eq!(warning.rule, "TSLDET-013");
+        assert!(TslCode::DetachedSignatureNotUsed.is_warning());
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_013_a_tampered_list_fails_on_both_paths() {
+        let (_, sig, _) = detached("ref");
+        let e = loaded(&derived("ref-tampered.xml"), &sig, None).unwrap_err();
+        assert!(!e.code.is_warning(), "{e}");
+    }
+
+    /// Only a signature that does not fit falls back; a good signature by the wrong
+    /// signer is an answer, not a reason to try another path.
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_013_a_wrong_signer_does_not_fall_back() {
+        let (xml, sig, _) = detached("prod");
+        assert_code(
+            loaded(&xml, &sig, None),
+            TslCode::CertificateNotValidMath,
+            "TSLSIG-031",
+        );
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_031_loaded_material_prefers_the_detached_signature() {
+        let (xml, sig, ocsp) = detached("ref");
+        let verified = loaded(&xml, &sig, Some(&ocsp)).unwrap();
+        assert_eq!(verified.signature, SignatureKind::Detached);
+        assert!(verified.signer_status.is_some());
+    }
+
+    /// TSLDET-021: signed evidence of revocation stops the list at any age; a consumer
+    /// need not have seen the response while it was fresh.
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_021_a_stale_revoked_status_stops_the_list() {
+        let pki = crate::testing::TestPki::new();
+        let response = include_bytes!("../tests/pki/ocsp/revoked.der");
+        let mut verified = parse_detached("ref");
+        verified.signer = pki.ee_revoked.clone();
+        verified.anchor = pki.sub_ca_hba.clone();
+        let much_later = crate::testing::TestPki::NOW + Duration::from_hours(3);
+        let e = verified
+            .check_signer_status_supplied(response, much_later, DEFAULT)
+            .unwrap_err();
+        assert_eq!(e.code, TslCode::CertRevoked, "{e}");
     }
 
     #[cfg(feature = "dangerous-nonprod")]

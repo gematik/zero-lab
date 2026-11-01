@@ -140,7 +140,8 @@
             "enum": [
               "no_ocsp_check",
               "validity_warning_1",
-              "tsl_anchor_announced"
+              "tsl_anchor_announced",
+              "detached_signature_not_used"
             ]
           },
           "description": "Warnings about the TSL: no_ocsp_check when its signer's OCSP status was not queried (offline, --at), validity_warning_1 past NextUpdate within the grace period, tsl_anchor_announced when it announces a TSL signer CA this tool does not know yet."
@@ -193,13 +194,21 @@
                     "not_after"
                   ],
                   "additionalProperties": false
+                },
+                "signature": {
+                  "enum": [
+                    "enveloped",
+                    "detached"
+                  ],
+                  "description": "Which signature verified the list."
                 }
               },
               "required": [
                 "sequence_number",
                 "signer",
                 "signer_ocsp",
-                "tsl_signer_ca"
+                "tsl_signer_ca",
+                "signature"
               ],
               "additionalProperties": false
             },

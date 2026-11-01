@@ -156,8 +156,10 @@ pub struct ReloadStatus {
     pub tsl_warnings: Vec<TslError>,
     /// The current TSL's signer and the TSL signer CA that issued it.
     pub tsl_signer: Option<(Certificate, Certificate)>,
-    /// The signer's OCSP status, when it was queried.
+    /// The signer's OCSP status, when it was queried or supplied.
     pub tsl_signer_status: Option<RevocationStatus>,
+    /// Which signature verified the current TSL (TSLDET-031).
+    pub tsl_signature: Option<crate::tsl_signature::SignatureKind>,
 }
 
 /// What a [`Reloader::tick`] did.
@@ -226,6 +228,7 @@ struct Current {
     tsl_warnings: Vec<TslError>,
     tsl_signer: Option<(Certificate, Certificate)>,
     tsl_signer_status: Option<RevocationStatus>,
+    tsl_signature: Option<crate::tsl_signature::SignatureKind>,
     source: Source,
     generation: u64,
 }
@@ -242,6 +245,7 @@ impl Current {
             tsl_warnings: self.tsl_warnings.clone(),
             tsl_signer: self.tsl_signer.clone(),
             tsl_signer_status: self.tsl_signer_status,
+            tsl_signature: self.tsl_signature,
             source: self.source,
             generation: self.generation,
         }
@@ -321,6 +325,7 @@ impl<C: Clock> TrustStoreHandle<C> {
                 .unwrap_or_default(),
             tsl_signer: current.as_ref().and_then(|c| c.tsl_signer.clone()),
             tsl_signer_status: current.as_ref().and_then(|c| c.tsl_signer_status),
+            tsl_signature: current.as_ref().and_then(|c| c.tsl_signature),
         }
     }
 
@@ -554,12 +559,14 @@ where
             .tsl
             .as_ref()
             .and_then(|tsl| tsl.signer_status.as_ref().map(|r| r.status));
+        let tsl_signature = verified.tsl.as_ref().map(|tsl| tsl.signature);
         self.handle.current.store(Some(Arc::new(Current {
             tsl_next_update: verified.tsl_next_update,
             tsl_state,
             tsl_warnings,
             tsl_signer,
             tsl_signer_status,
+            tsl_signature,
             store: Arc::new(TrustStore::from_verified(verified)),
             etags: material.etags(),
             fetched_at: material.fetched_at,
@@ -804,6 +811,11 @@ mod tests {
         .unwrap()
         .with_signer_status(NeverAsked);
         assert!(matches!(block_on(r.tick()), ReloadOutcome::Swapped { .. }));
+        assert_eq!(
+            r.handle().status().tsl_signature,
+            Some(crate::tsl_signature::SignatureKind::Detached),
+            "TSLDET-031"
+        );
         assert_eq!(
             r.handle().status().tsl_signer_status,
             Some(RevocationStatus::Good)

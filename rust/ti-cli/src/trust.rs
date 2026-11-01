@@ -36,9 +36,9 @@ use std::time::Duration;
 use serde::Serialize;
 use ti_pki::load::{
     Artifact, ArtifactRequest, ArtifactResponse, CacheEntry, CacheError, CachePolicy, CacheStore,
-    CachingLoader, HttpLoader, LoadError, Loader, MemoryCacheStore, Meta, PostRequest, ReloadError,
-    ReloadOutcome, ReloadPolicy, Reloader, Source, SystemClock, Transport, TransportError,
-    TransportErrorKind,
+    CachingLoader, Detached, HttpLoader, LoadError, Loader, MemoryCacheStore, Meta, PostRequest,
+    ReloadError, ReloadOutcome, ReloadPolicy, Reloader, Source, SystemClock, Transport,
+    TransportError, TransportErrorKind,
 };
 use ti_pki::ocsp::OcspChecker;
 use ti_pki::revocation::RevocationChecker;
@@ -297,8 +297,10 @@ pub struct TslTrust {
     pub sequence_number: u64,
     /// The C.TSL.SIG certificate the list is signed with.
     pub signer: CertRef,
-    /// `good` when the signer's OCSP status was queried, else absent.
+    /// `good` when the signer's OCSP status was queried or supplied, else absent.
     pub signer_ocsp: Option<&'static str>,
+    /// Which signature verified the list, `enveloped` or `detached`.
+    pub signature: &'static str,
     /// The configured TSL signer CA that issued the signer.
     pub tsl_signer_ca: CertRef,
 }
@@ -407,7 +409,7 @@ impl Session {
                 let reloader = reloader(
                     config,
                     tier,
-                    self.loader(config, transport),
+                    AtTime::new(self.loader(config, transport), at),
                     clock,
                     stored.clone(),
                 )?;
@@ -423,7 +425,7 @@ impl Session {
                 let reloader = reloader(
                     config,
                     tier,
-                    self.loader(config, NoNetwork),
+                    AtTime::new(self.loader(config, NoNetwork), at),
                     clock,
                     stored.clone(),
                 )?;
@@ -469,23 +471,17 @@ impl Session {
         }
     }
 
-    /// The list's detached signature and, if published, its signer's status, as loaded
-    /// from the environment's automated download point (`spec/tsl-detached`); none when
-    /// the configuration has no such point or the files could not be loaded, which
-    /// leaves the list to its enveloped signature.
-    pub fn tsl_detached(&self, config: &TrustConfig) -> Option<(Vec<u8>, Option<Vec<u8>>)> {
-        let load = |artifact: Artifact| {
-            block_on(async {
-                match &self.transport {
-                    Some(transport) => self.loader(config, transport).load(artifact).await,
-                    None => self.loader(config, NoNetwork).load(artifact).await,
-                }
-            })
-            .ok()
-            .map(|loaded| loaded.body)
-        };
-        let signature = load(Artifact::TslSignature)?;
-        Some((signature, load(Artifact::TslSignerStatus)))
+    /// The list's detached files, as loaded from the environment's automated download
+    /// point (`spec/tsl-detached`); none when the configuration has no such point or
+    /// they could not be loaded, which leaves the list to its enveloped signature.
+    pub fn tsl_detached(&self, config: &TrustConfig) -> Result<Option<Detached>, CliError> {
+        block_on(async {
+            match &self.transport {
+                Some(transport) => self.loader(config, transport).load_detached().await,
+                None => self.loader(config, NoNetwork).load_detached().await,
+            }
+        })
+        .map_err(|error| CliError::TrustLoad(error.to_string()))
     }
 
     /// The cache on disk, or this session's memory when there is no cache directory:
@@ -512,6 +508,39 @@ impl Session {
                 ..CachePolicy::default()
             },
         )
+    }
+}
+
+/// A loader for a validation at `--at`: the published signer status is left out, since
+/// it says nothing about another time (`spec/tsl-detached` TSLDET-023).
+struct AtTime<L> {
+    inner: L,
+    past: bool,
+}
+
+impl<L> AtTime<L> {
+    fn new(inner: L, at: Option<Timestamp>) -> Self {
+        AtTime {
+            inner,
+            past: at.is_some(),
+        }
+    }
+}
+
+impl<L: Loader + Send + Sync> Loader for AtTime<L> {
+    async fn fetch(
+        &self,
+        artifact: Artifact,
+        cond: ti_pki::load::Conditional<'_>,
+    ) -> Result<ti_pki::load::Fetched, LoadError> {
+        if self.past && artifact == Artifact::TslSignerStatus {
+            return Err(LoadError::Unavailable(artifact));
+        }
+        self.inner.fetch(artifact, cond).await
+    }
+
+    fn cache_key(&self, artifact: Artifact) -> String {
+        self.inner.cache_key(artifact)
     }
 }
 
@@ -592,6 +621,9 @@ where
                     signer_ocsp: status
                         .tsl_signer_status
                         .map(ti_pki::RevocationStatus::as_str),
+                    signature: status
+                        .tsl_signature
+                        .map_or("enveloped", ti_pki::tsl_signature::SignatureKind::as_str),
                     tsl_signer_ca: CertRef::new(ca),
                 }),
                 _ => None,

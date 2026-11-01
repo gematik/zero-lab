@@ -152,7 +152,7 @@ pub struct TrustMaterial {
     pub roots: Vec<u8>,
     /// TSL bytes.
     pub tsl: Vec<u8>,
-    /// The oldest `fetched_at` of the artefacts; what freshness is measured from.
+    /// The older `fetched_at` of roots.json and the TSL; what freshness is measured from.
     pub fetched_at: Timestamp,
     /// Metadata of roots.json and the TSL, in that order.
     pub meta: [Meta; 2],
@@ -173,24 +173,13 @@ impl TrustMaterial {
         }
     }
 
-    /// The same material with `detached` as its detached files; `fetched_at` becomes
-    /// the oldest fetch of everything present.
+    /// The same material with `detached` as its detached files. They do not change
+    /// `fetched_at`: they are optional, and their age is bound by their own rules
+    /// (TSLDET-013, 021), so a CRL host that is down costs no trust.
     #[must_use]
     pub fn with_detached(mut self, detached: Option<Detached>) -> Self {
         self.detached = detached;
-        self.fetched_at = self.fetched_at();
         self
-    }
-
-    fn fetched_at(&self) -> Timestamp {
-        let mut oldest = self.meta[0].fetched_at.min(self.meta[1].fetched_at);
-        if let Some(detached) = &self.detached {
-            oldest = oldest.min(detached.signature_meta.fetched_at);
-            if let Some((_, meta)) = &detached.signer_status {
-                oldest = oldest.min(meta.fetched_at);
-            }
-        }
-        oldest
     }
 
     /// The body of `artifact`, if the material has it.
