@@ -340,7 +340,7 @@ impl<C: Clock> TrustStoreHandle<C> {
 
 /// Loads, verifies and swaps trust material. It has no timer of its own: call
 /// [`tick`](Self::tick) when [`due`](Self::due), from whatever runtime the application
-/// uses (see the `tokio` feature for a ready-made driver).
+/// uses.
 ///
 /// The TSL is verified as `spec/tsl-xmldsig` requires before its CAs are used: signature
 /// and signer under [`TrustConfig::tsl_signer_anchors`], `NextUpdate` and

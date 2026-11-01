@@ -319,6 +319,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - The OCSP response parser no longer panics on a GeneralizedTime with a multibyte
   character across its 14th byte, which a hostile responder could use to end the
   process. Found by the new `ocsp_response` fuzz target (TASK-166).
+#### removed
+- The features `reqwest` and `tokio` with `ti_pki::reqwest` and `ti_pki::tokio`, and the
+  examples `ocsp` and `validate`, which needed them; `ti pki verify` does what they did.
+  Nothing used them: a host implements `load::Transport` and calls `Reloader::tick` on
+  its own runtime.
 
 #### added
 - The TSL verified by gematik's detached signature file (`spec/tsl-detached`,

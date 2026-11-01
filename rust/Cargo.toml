@@ -72,10 +72,6 @@ bp384 = { version = "0.14.0", default-features = false, features = ["arithmetic"
 # Release candidate: the only rsa line on the current RustCrypto stack (docs/development.md).
 rsa = { version = "=0.10.0-rc.19", default-features = false, features = ["encoding", "sha2"] }
 digest = "0.11"
-# Adapters behind ti-pki features; the caller's own reqwest dependency brings TLS.
-reqwest = { version = "0.13.5", default-features = false }
-tokio = { version = "1.53.1", default-features = false }
-tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 # ti-cli's HTTP: blocking ureq on rustls with ring passed explicitly, as in kartos; no
 # async runtime, no aws-lc build.
 # `~`: ti-connector-client's TLS connector uses ureq's semver-exempt `unversioned`
