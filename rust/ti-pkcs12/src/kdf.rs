@@ -22,7 +22,7 @@
  */
 
 //! The PKCS#12 key derivation (RFC 7292 Appendix B.2): the MAC key of every file and
-//! the keys and IVs of the legacy PBEs. PBES2 uses PBKDF2 instead, through `pkcs5`.
+//! the keys and IVs of the legacy PBEs. PBES2 uses PBKDF2 instead.
 
 use sha2::Digest;
 use sha2::digest::block_api::BlockSizeUser;

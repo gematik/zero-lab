@@ -28,7 +28,13 @@ use std::path::PathBuf;
 use std::process::{Command, Output, Stdio};
 
 fn ti(args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_ti"))
+    command(args).output().unwrap()
+}
+
+/// `ti` with `args` in the tests' environment: no user profile, cache or state.
+fn command(args: &[&str]) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_ti"));
+    command
         .args(args)
         .env_remove("TI_FORMAT")
         .env_remove("TI_ENV")
@@ -49,9 +55,8 @@ fn ti(args: &[&str]) -> Output {
             std::env::temp_dir().join("ti-tests-state"),
         )
         .env_remove("NO_COLOR")
-        .env_remove("CLICOLOR_FORCE")
-        .output()
-        .unwrap()
+        .env_remove("CLICOLOR_FORCE");
+    command
 }
 
 fn ti_with_stdin(args: &[&str], stdin: &[u8]) -> Output {
@@ -393,6 +398,7 @@ fn http_options_are_validated_and_shown_with_verbose() {
 
     for bad in [
         &["-x", "proxy:3128"][..],
+        &["-x", "socks5://proxy:1080"],
         &["--max-time", "0"],
         &["--connect-timeout", "x"],
     ] {
@@ -405,6 +411,29 @@ fn http_options_are_validated_and_shown_with_verbose() {
     }
 }
 
+/// A proxy ureq has no connector for would be skipped with a log line and the request sent
+/// directly, past the proxy the user asked for.
+#[test]
+fn a_socks_proxy_from_the_environment_is_refused() {
+    for variable in ["ALL_PROXY", "HTTPS_PROXY"] {
+        let out = Command::new(env!("CARGO_BIN_EXE_ti"))
+            .args(["pki", "roots", "list"])
+            .env(
+                "TI_CACHE_DIR",
+                std::env::temp_dir().join(format!("ti-cli-socks-{}", std::process::id())),
+            )
+            .env_remove("ALL_PROXY")
+            .env_remove("all_proxy")
+            .env_remove("HTTPS_PROXY")
+            .env_remove("https_proxy")
+            .env(variable, "socks5://127.0.0.1:1")
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(2), "{variable}: {out:?}");
+        assert!(stderr(&out).contains("SOCKS"), "{variable}: {out:?}");
+    }
+}
+
 #[test]
 fn help_documents_exit_codes() {
     let help = ti(&["--help"]);
@@ -412,6 +441,59 @@ fn help_documents_exit_codes() {
     let text = stdout(&help);
     assert!(text.contains("Exit codes:"), "{text}");
     assert!(text.contains("HTTP options"), "{text}");
+}
+
+/// Options every command shares, as the help lists them.
+const SHARED_OPTIONS: [&str; 5] = [
+    "--format <FORMAT>",
+    "--profile <NAME>",
+    "--proxy <URL>",
+    "--cacert <FILE>",
+    "--connector-timeout <SECS>",
+];
+
+/// Without its subcommand, a command group shows its commands and leaves the options
+/// every command shares to `--help`.
+#[test]
+fn short_help_leaves_the_shared_options_to_long_help() {
+    let bare = [ti(&[]), ti(&["directory", "login"])];
+    for out in &bare {
+        assert_eq!(out.status.code(), Some(2));
+        let text = stderr(out);
+        assert!(text.contains("Commands:"), "{text}");
+        assert!(
+            text.contains("The options every command shares: --help"),
+            "{text}"
+        );
+        for shared in SHARED_OPTIONS {
+            assert!(!text.contains(shared), "{shared} in {text}");
+        }
+    }
+}
+
+/// `-h` is `--help`: the whole help, as with most tools.
+#[test]
+fn h_is_the_long_help() {
+    for command in [
+        &[][..],
+        &["directory", "login"],
+        &["connector", "get", "cards"],
+    ] {
+        let with = |flag: &str| {
+            let args: Vec<&str> = command.iter().copied().chain([flag]).collect();
+            stdout(&ti(&args))
+        };
+        assert_eq!(with("-h"), with("--help"), "{command:?}");
+    }
+}
+
+#[test]
+fn long_help_lists_the_shared_options() {
+    let text = stdout(&ti(&["connector", "get", "cards", "--help"]));
+    for shared in SHARED_OPTIONS {
+        assert!(text.contains(shared), "{shared} in {text}");
+    }
+    assert!(!text.contains("The options every command shares"), "{text}");
 }
 
 /// `ti … | head` must end quietly: a closed stdout is not an error.
@@ -428,9 +510,8 @@ fn a_closed_pipe_is_not_an_error() {
     let file = dir.join("many.pem");
     std::fs::write(&file, &many).unwrap();
 
-    let mut child = Command::new(env!("CARGO_BIN_EXE_ti"))
-        .args(["pki", "inspect"])
-        .arg(&file)
+    let file = file.to_str().unwrap();
+    let mut child = command(&["pki", "inspect", file])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()

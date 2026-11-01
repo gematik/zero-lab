@@ -34,8 +34,8 @@ use ti_connector_client::types::{
     CardType, CertRef, Crypt, PinResult, PinState, StatusResult, VerificationResult,
 };
 use ti_connector_client::{
-    ComfortUserId, Connector, Dotkon, Error, PinType, ServiceDirectory, SignatureFormat,
-    SignatureType, Timeouts, ToSign,
+    ComfortUserId, Connector, DiscoveryError, Dotkon, Error, PinType, ServiceDirectory,
+    SignatureFormat, SignatureType, Timeouts, ToSign,
 };
 
 use support::{Scripted, ok};
@@ -95,6 +95,73 @@ fn fault(code: u32, text: &str) -> String {
     envelope(&format!(
         r#"<soap:Fault><faultcode>soap:Server</faultcode><faultstring>{text}</faultstring><detail><GERROR:Error xmlns:GERROR="http://ws.gematik.de/tel/error/v2.0"><GERROR:MessageID>m</GERROR:MessageID><GERROR:Timestamp>2026-09-27T12:00:00Z</GERROR:Timestamp><GERROR:Trace><GERROR:Code>{code}</GERROR:Code><GERROR:ErrorText>{text}</GERROR:ErrorText></GERROR:Trace></GERROR:Error></detail></soap:Fault>"#
     ))
+}
+
+/// Credentials and documents go to the endpoint, so a directory that names another host
+/// or plain http gets neither: nothing is sent.
+#[test]
+fn a_directory_naming_another_origin_receives_nothing() {
+    let sds = String::from_utf8(EHEX_SDS.to_vec()).unwrap();
+    for other in [
+        "https://elsewhere.example:443",
+        "http://10.29.128.70:443",
+        "https://10.29.128.70:8443",
+        "https://10.29.128.70:443@elsewhere.example",
+    ] {
+        let directory = sds.replace("https://10.29.128.70:443", other);
+        let directory = ServiceDirectory::parse(directory.as_bytes()).unwrap();
+        let transport = Scripted::new([]);
+        let kon = br#"{"url": "https://10.29.128.70", "mandantId": "M", "workplaceId": "W",
+            "clientSystemId": "C", "credentials": {"type": "basic", "username": "u", "password": "p"}}"#;
+        let dotkon = Dotkon::parse_with(kon, |_| None).unwrap();
+        let connector = Connector::new(&dotkon, &transport, directory, TIMEOUTS);
+        let error = block_on(connector.cards().list(&[])).unwrap_err();
+        assert!(
+            matches!(
+                error,
+                Error::Discovery(DiscoveryError::ForeignEndpoint { .. })
+            ),
+            "{other}: {error}"
+        );
+        assert!(transport.seen.borrow().is_empty(), "{other}");
+    }
+}
+
+/// The working path for a Konnektor behind NAT: its directory names its own address, and
+/// the `.kon` file says to use the URL's.
+#[test]
+fn rewriting_endpoints_reaches_a_konnektor_behind_nat() {
+    let transport = Scripted::new([ok(500, "")]);
+    let kon = br#"{"url": "https://konnektor.example:8443", "rewriteServiceEndpoints": true,
+        "mandantId": "M", "workplaceId": "W", "clientSystemId": "C",
+        "credentials": {"type": "basic", "username": "u", "password": "p"}}"#;
+    let dotkon = Dotkon::parse_with(kon, |_| None).unwrap();
+    let directory = ServiceDirectory::parse(EHEX_SDS).unwrap();
+    let connector = Connector::new(&dotkon, &transport, directory, TIMEOUTS);
+    let _ = block_on(connector.cards().list(&[]));
+    assert!(
+        transport.seen.borrow()[0]
+            .url
+            .starts_with("https://konnektor.example:8443/"),
+        "{:?}",
+        transport.seen.borrow()[0].url
+    );
+}
+
+/// The endpoint may carry `expectedHost`: the name the Konnektor's certificate has.
+#[test]
+fn an_endpoint_under_the_expected_host_is_used() {
+    let sds = String::from_utf8(EHEX_SDS.to_vec()).unwrap();
+    let directory = sds.replace("https://10.29.128.70:443", "https://konnektor.example");
+    let directory = ServiceDirectory::parse(directory.as_bytes()).unwrap();
+    let transport = Scripted::new([ok(500, "")]);
+    let kon = br#"{"url": "https://10.29.128.70", "expectedHost": "konnektor.example",
+        "mandantId": "M", "workplaceId": "W", "clientSystemId": "C",
+        "credentials": {"type": "basic", "username": "u", "password": "p"}}"#;
+    let dotkon = Dotkon::parse_with(kon, |_| None).unwrap();
+    let connector = Connector::new(&dotkon, &transport, directory, TIMEOUTS);
+    let _ = block_on(connector.cards().list(&[]));
+    assert_eq!(transport.seen.borrow().len(), 1);
 }
 
 #[test]

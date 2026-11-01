@@ -36,33 +36,45 @@ use clap::Args;
 pub struct NetArgs {
     /// Skip TLS certificate checks for downloads (like curl -k); validation results are
     /// unaffected, as trust material is verified cryptographically
-    #[arg(short = 'k', long, global = true)]
+    #[arg(short = 'k', long, global = true, hide_short_help = true)]
     pub insecure: bool,
     /// PEM file of CA certificates trusted instead of the OS store (like curl --cacert);
     /// repeatable [env: CURL_CA_BUNDLE, SSL_CERT_FILE]
-    #[arg(long, value_name = "FILE", global = true)]
+    #[arg(long, value_name = "FILE", global = true, hide_short_help = true)]
     pub cacert: Vec<PathBuf>,
     /// Directory of PEM CA certificates trusted instead of the OS store [env: SSL_CERT_DIR]
-    #[arg(long, value_name = "DIR", global = true)]
+    #[arg(long, value_name = "DIR", global = true, hide_short_help = true)]
     pub capath: Option<PathBuf>,
-    /// Proxy URL (http://, https://, socks5://); "" disables proxies
+    /// Proxy URL (http://, https://); "" disables proxies
     /// [env: HTTPS_PROXY, HTTP_PROXY, ALL_PROXY]
-    #[arg(short = 'x', long, value_name = "URL", value_parser = proxy_url, global = true)]
+    #[arg(short = 'x', long, value_name = "URL", value_parser = proxy_url, global = true, hide_short_help = true)]
     pub proxy: Option<String>,
     /// Comma-separated hosts reached without proxy; "*" for all [env: NO_PROXY]
-    #[arg(long, value_name = "LIST", global = true)]
+    #[arg(long, value_name = "LIST", global = true, hide_short_help = true)]
     pub noproxy: Option<String>,
     /// Seconds to wait for a connection
-    #[arg(long, value_name = "SECS", default_value = "10", value_parser = seconds, global = true)]
+    #[arg(long, value_name = "SECS", default_value = "10", value_parser = seconds, global = true, hide_short_help = true)]
     pub connect_timeout: Duration,
     /// Maximum seconds per request
-    #[arg(short = 'm', long, value_name = "SECS", default_value = "60", value_parser = seconds, global = true)]
+    #[arg(short = 'm', long, value_name = "SECS", default_value = "60", value_parser = seconds, global = true, hide_short_help = true)]
     pub max_time: Duration,
     /// Retries on transient failures (connection errors, HTTP 5xx and 429)
-    #[arg(long, value_name = "N", default_value_t = 0, global = true)]
+    #[arg(
+        long,
+        value_name = "N",
+        default_value_t = 0,
+        global = true,
+        hide_short_help = true
+    )]
     pub retry: u32,
     /// User-Agent header [default: NAME/VERSION]
-    #[arg(short = 'A', long, value_name = "STRING", global = true)]
+    #[arg(
+        short = 'A',
+        long,
+        value_name = "STRING",
+        global = true,
+        hide_short_help = true
+    )]
     pub user_agent: Option<String>,
 }
 
@@ -78,7 +90,7 @@ fn seconds(value: &str) -> Result<Duration, String> {
 }
 
 fn proxy_url(value: &str) -> Result<String, String> {
-    const SCHEMES: [&str; 4] = ["http://", "https://", "socks5://", "socks5h://"];
+    const SCHEMES: [&str; 2] = ["http://", "https://"];
     if value.is_empty() || SCHEMES.iter().any(|s| value.starts_with(s)) {
         Ok(value.to_owned())
     } else {

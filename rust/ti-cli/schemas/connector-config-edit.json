@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "connector config edit",
+  "description": "A .kon file changed in $EDITOR (a terminal only; the file is replaced only by a valid copy) or its credentials replaced from the options.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "name": {
+      "type": "string"
+    },
+    "path": {
+      "type": "string"
+    },
+    "changed": {
+      "type": "boolean"
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "What the user should know: the client certificate, a directory others may list"
+    }
+  },
+  "required": [
+    "schema",
+    "name",
+    "path",
+    "changed",
+    "warnings"
+  ],
+  "additionalProperties": false
+}

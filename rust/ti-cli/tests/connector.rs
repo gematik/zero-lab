@@ -28,7 +28,7 @@
 mod support;
 
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -259,8 +259,8 @@ fn document_answer(operation: &str, body: &str) -> Option<(u16, String)> {
     })
 }
 
-fn handle(stream: TcpStream) -> Option<()> {
-    let mut reader = BufReader::new(stream.try_clone().ok()?);
+fn handle(stream: impl Read + Write) -> Option<()> {
+    let mut reader = BufReader::new(stream);
     let mut request_line = String::new();
     reader.read_line(&mut request_line).ok()?;
     let path = request_line.split_whitespace().nth(1)?.to_owned();
@@ -282,13 +282,14 @@ fn handle(stream: TcpStream) -> Option<()> {
     let mut body = vec![0; length];
     reader.read_exact(&mut body).ok()?;
     let (status, response) = answer(&path, &action, &String::from_utf8_lossy(&body));
-    let mut stream = stream;
+    let stream = reader.get_mut();
     write!(
         stream,
         "HTTP/1.1 {status} X\r\nContent-Type: text/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}",
         response.len()
     )
-    .ok()
+    .ok()?;
+    stream.flush().ok()
 }
 
 /// A fake Konnektor serving until the test process ends, and a `.kon` file for it.
@@ -298,6 +299,7 @@ struct Fake {
 }
 
 impl Fake {
+    /// Over plain http, which `config test` refuses.
     fn start(name: &str) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -306,6 +308,32 @@ impl Fake {
                 std::thread::spawn(move || handle(stream));
             }
         });
+        Fake::with_kon(name, &format!("http://127.0.0.1:{port}"), "")
+    }
+
+    /// Over TLS with ti-connector-client's test server certificate, pinned in the
+    /// `.kon` file.
+    fn start_tls(name: &str) -> Self {
+        let config = tls_server_config();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            for socket in listener.incoming().flatten() {
+                let config = config.clone();
+                std::thread::spawn(move || {
+                    let conn = rustls::ServerConnection::new(config).ok()?;
+                    handle(rustls::StreamOwned::new(conn, socket))
+                });
+            }
+        });
+        let pin = format!(
+            r#""trustStore": ["{}"], "#,
+            base64ct_encode(&tls_der(TLS_SERVER))
+        );
+        Fake::with_kon(name, &format!("https://127.0.0.1:{port}"), &pin)
+    }
+
+    fn with_kon(name: &str, url: &str, extra: &str) -> Self {
         let dir = std::env::temp_dir().join(format!("ti-connector-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("config/telematik/connectors")).unwrap();
@@ -313,7 +341,7 @@ impl Fake {
         std::fs::write(
             &kon,
             format!(
-                r#"{{"url": "http://127.0.0.1:{port}", "rewriteServiceEndpoints": true,
+                r#"{{"url": "{url}", {extra}"rewriteServiceEndpoints": true,
                     "mandantId": "M1", "workplaceId": "W1", "clientSystemId": "C1", "env": "ru",
                     "credentials": {{"type": "basic", "username": "u", "password": "${{KON_TEST_PASSWORD}}"}}}}"#
             ),
@@ -1137,4 +1165,518 @@ fn certificates_are_exported_without_json() {
         &["encrypt", path_str(&text), "--to-card", "card-smcb"],
     );
     assert_eq!(encrypted["recipients"][0], "Dr. Arzt TEST-ONLY");
+}
+
+/// A proxy from the environment would route the Konnektor's traffic and credentials
+/// elsewhere: only `-x` sets one.
+#[test]
+fn proxy_variables_do_not_apply_to_the_konnektor() {
+    let fake = Fake::start("proxy-variables");
+    let closed = Path::new("http://127.0.0.1:1");
+    let out = fake.ti_with(
+        &["connector", "-c", "praxis", "get", "cards"],
+        &[
+            ("ALL_PROXY", closed),
+            ("HTTP_PROXY", closed),
+            ("HTTPS_PROXY", closed),
+        ],
+    );
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+}
+
+/// `config show` names where each secret is kept, never its value, and leaves out the
+/// user ID, which in a comfort signature session lets anyone sign without a PIN.
+#[test]
+fn config_show_carries_no_secret() {
+    let fake = Fake::start("config-show");
+    let kon = std::fs::read_to_string(&fake.kon).unwrap().replace(
+        r#""clientSystemId": "C1","#,
+        r#""clientSystemId": "C1", "userId": "comfort-user-id","#,
+    );
+    std::fs::write(
+        fake.kon.with_file_name("plain.kon"),
+        kon.replace("${KON_TEST_PASSWORD}", "s3cret-pw"),
+    )
+    .unwrap();
+    let (show, code) = fake.json("connector config show", &["config", "show", "plain"]);
+    assert_eq!(code, Some(0));
+    assert_eq!(show["credentials"]["password"]["stored"], "plain");
+    assert_eq!(show["user_id_set"], true);
+    let (show, _) = fake.json("connector config show", &["config", "show"]);
+    assert_eq!(show["name"], "praxis", "-c is the default");
+    assert_eq!(
+        show["credentials"]["password"]["variables"][0],
+        "KON_TEST_PASSWORD"
+    );
+    for format in ["json", "text", "markdown"] {
+        let out = fake.ti(&["--format", format, "connector", "config", "show", "plain"]);
+        let shown = String::from_utf8(out.stdout).unwrap();
+        for secret in ["s3cret", "comfort-user-id"] {
+            assert!(!shown.contains(secret), "{format}: {secret} in {shown}");
+        }
+    }
+}
+
+/// The service directory is read over https only: the plain-http fake fails the file
+/// step, and every step after it is skipped.
+#[test]
+fn config_test_fails_an_http_url_and_skips_the_rest() {
+    let fake = Fake::start("config-test");
+    let (report, code) = fake.json("connector config test", &["config", "test"]);
+    assert_eq!((report["status"].as_str(), code), (Some("fail"), Some(1)));
+    let steps = report["steps"].as_array().unwrap();
+    assert_eq!(
+        (steps[0]["id"].as_str(), steps[0]["status"].as_str()),
+        (Some("file"), Some("fail"))
+    );
+    assert!(
+        steps[0].to_string().contains("is not https"),
+        "{}",
+        steps[0]
+    );
+    assert!(steps[1..].iter().all(|s| s["status"] == "skip"), "{report}");
+    let text = String::from_utf8(
+        fake.ti(&["connector", "-c", "praxis", "config", "test"])
+            .stdout,
+    )
+    .unwrap();
+    assert!(text.contains("change url to https://"), "{text}");
+}
+
+/// Over TLS with the pinned certificate, every step runs to the cards.
+#[test]
+fn config_test_runs_every_step_against_a_pinned_konnektor() {
+    let fake = Fake::start_tls("config-test-tls");
+    let (report, code) = fake.json("connector config test", &["config", "test"]);
+    assert_eq!(code, Some(0), "{report}");
+    let steps = report["steps"].as_array().unwrap();
+    let status = |id: &str| steps.iter().find(|s| s["id"] == id).unwrap()["status"].clone();
+    assert_eq!(status("tls"), "ok", "{report}");
+    assert_eq!(status("cards"), "ok", "{report}");
+    assert!(
+        report
+            .to_string()
+            .contains("matches the pinned certificate")
+    );
+}
+
+// ---- config new, set, edit, pin ------------------------------------------------------
+
+const TLS_SERVER: &[u8] = include_bytes!("../../ti-connector-client/tests/tls/server.pem");
+const TLS_SERVER_KEY: &[u8] = include_bytes!("../../ti-connector-client/tests/tls/server-key.pem");
+const TLS_OTHER: &[u8] = include_bytes!("../../ti-connector-client/tests/tls/other.pem");
+
+fn tls_der(pem: &[u8]) -> Vec<u8> {
+    use rustls::pki_types::pem::PemObject as _;
+    rustls::pki_types::CertificateDer::from_pem_slice(pem)
+        .unwrap()
+        .to_vec()
+}
+
+fn sha256_hex(der: &[u8]) -> String {
+    use sha2::Digest as _;
+    sha2::Sha256::digest(der)
+        .iter()
+        .map(|b| format!("{b:02X}"))
+        .collect::<Vec<_>>()
+        .join(":")
+}
+
+/// A TLS endpoint with the test server certificate that completes handshakes and
+/// nothing else: what `config pin` and `config new` fetch the certificate from.
+fn tls_server_config() -> std::sync::Arc<rustls::ServerConfig> {
+    use rustls::pki_types::pem::PemObject as _;
+    let provider = std::sync::Arc::new(rustls::crypto::ring::default_provider());
+    std::sync::Arc::new(
+        rustls::ServerConfig::builder_with_provider(provider)
+            .with_safe_default_protocol_versions()
+            .unwrap()
+            .with_no_client_auth()
+            .with_single_cert(
+                vec![rustls::pki_types::CertificateDer::from(tls_der(TLS_SERVER))],
+                rustls::pki_types::PrivateKeyDer::from_pem_slice(TLS_SERVER_KEY).unwrap(),
+            )
+            .unwrap(),
+    )
+}
+
+fn tls_konnektor() -> u16 {
+    let config = tls_server_config();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        for mut socket in listener.incoming().flatten() {
+            let config = config.clone();
+            std::thread::spawn(move || {
+                let mut conn = rustls::ServerConnection::new(config).ok()?;
+                socket
+                    .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                    .ok()?;
+                conn.complete_io(&mut socket).ok()?;
+                Some(())
+            });
+        }
+    });
+    port
+}
+
+impl Fake {
+    fn url(&self) -> String {
+        let kon: Value = serde_json::from_slice(&std::fs::read(&self.kon).unwrap()).unwrap();
+        kon["url"].as_str().unwrap().to_owned()
+    }
+
+    fn secret_file(&self, name: &str, value: &str) -> PathBuf {
+        let path = self.dir.join(name);
+        std::fs::write(&path, format!("{value}\n")).unwrap();
+        path
+    }
+
+    fn connectors(&self) -> PathBuf {
+        self.dir.join("config/telematik/connectors")
+    }
+}
+
+/// `config new praxis2` from options, its pin from `pin` (`--pin-cert FILE` or
+/// `--pin-sha256 HEX`).
+fn new_args<'a>(url: &'a str, password: &'a Path, pin: [&'a str; 2]) -> Vec<&'a str> {
+    let mut args = vec![
+        "--format",
+        "json",
+        "connector",
+        "config",
+        "new",
+        "praxis2",
+        "--url",
+        url,
+        "--env",
+        "ru",
+        "--mandant",
+        "M1",
+        "--client-system",
+        "C1",
+        "--workplace",
+        "W1",
+        "--basic",
+        "u",
+        "--password-path",
+        path_str(password),
+        // The fake's service directory names the recorded Konnektor's endpoints.
+        "--rewrite-endpoints",
+    ];
+    args.extend(pin);
+    args
+}
+
+#[cfg(unix)]
+fn file_mode(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+}
+
+impl Fake {
+    /// The test server certificate as a file, for --pin-cert.
+    fn pin_cert(&self) -> PathBuf {
+        let path = self.dir.join("server.pem");
+        std::fs::write(&path, TLS_SERVER).unwrap();
+        path
+    }
+}
+
+/// Without a terminal, `config new` takes everything from its options, tests the file
+/// before it saves it with mode 0600, and never prints the password.
+#[test]
+fn config_new_from_options_saves_a_tested_file_only_its_owner_reads() {
+    let fake = Fake::start_tls("config-new");
+    let password = fake.secret_file("pw", "s3cret-pw");
+    let (url, pin) = (fake.url(), fake.pin_cert());
+    let args = new_args(&url, &password, ["--pin-cert", path_str(&pin)]);
+    let out = fake.ti(&args);
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert_eq!(out.status.code(), Some(0), "{stdout}{stderr}");
+    assert_conforms("connector config new", stdout.as_bytes());
+    let report: Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(report["saved"], true);
+    assert_eq!(report["test"]["steps"][6]["status"], "ok", "{report}");
+    assert!(!stdout.contains("s3cret") && !stderr.contains("s3cret"));
+    let file = fake.connectors().join("praxis2.kon");
+    let kon: Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    assert_eq!(kon["credentials"]["password"], "s3cret-pw");
+    assert_eq!(kon["workplaceId"], "W1");
+    #[cfg(unix)]
+    assert_eq!(file_mode(&file), 0o600);
+    let again = fake.ti(&args);
+    assert_eq!(
+        again.status.code(),
+        Some(2),
+        "an existing file needs --force"
+    );
+}
+
+#[test]
+fn config_new_without_a_terminal_names_the_missing_option() {
+    let fake = Fake::start_tls("config-new-missing");
+    let password = fake.secret_file("pw", "p");
+    let (url, pin) = (fake.url(), fake.pin_cert());
+    let args: Vec<&str> = new_args(&url, &password, ["--pin-cert", path_str(&pin)])
+        .into_iter()
+        .filter(|a| !["--mandant", "M1"].contains(a))
+        .collect();
+    let out = fake.ti(&args);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--mandant is required"));
+    assert!(!fake.connectors().join("praxis2.kon").exists());
+}
+
+/// An http address is refused everywhere; insecureSkipVerify and credentials of type
+/// none for pu.
+#[test]
+fn config_new_refuses_http_and_what_production_does_not_allow() {
+    let fake = Fake::start("config-new-pu");
+    let password = fake.secret_file("pw", "p");
+    let pin = fake.pin_cert();
+    let out = fake.ti(&new_args(
+        &fake.url(),
+        &password,
+        ["--pin-cert", path_str(&pin)],
+    ));
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("must be https"));
+    let pu = |args: Vec<&str>| -> Vec<String> {
+        args.into_iter()
+            .map(|a| {
+                if a == "ru" {
+                    "pu".to_owned()
+                } else {
+                    a.to_owned()
+                }
+            })
+            .collect()
+    };
+    let url = "https://127.0.0.1:1";
+    let insecure = pu(new_args(
+        url,
+        &password,
+        ["--insecure-skip-verify", "--no-test"],
+    ));
+    let credentials = ["--basic", "u", "--password-path", path_str(&password)];
+    let mut none: Vec<String> = pu(new_args(url, &password, ["--pin-cert", path_str(&pin)]))
+        .into_iter()
+        .filter(|a| !credentials.contains(&a.as_str()))
+        .collect();
+    none.push("--no-auth".into());
+    for (args, what) in [(insecure, "insecureSkipVerify"), (none, "type none")] {
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        let out = fake.ti(&args);
+        assert_eq!(out.status.code(), Some(2), "{what}");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains(what) && stderr.contains("env pu"),
+            "{what}: {stderr}"
+        );
+    }
+    assert!(!fake.connectors().join("praxis2.kon").exists());
+}
+
+/// A configuration that fails its test is not saved, unless --no-test.
+#[test]
+fn config_new_saves_nothing_that_fails_its_test() {
+    let fake = Fake::start("config-new-fail");
+    let password = fake.secret_file("pw", "p");
+    let pin = fake.pin_cert();
+    let closed = TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let url = format!("https://127.0.0.1:{closed}");
+    let out = fake.ti(&new_args(&url, &password, ["--pin-cert", path_str(&pin)]));
+    assert_eq!(out.status.code(), Some(1));
+    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["saved"], false);
+    assert!(!fake.connectors().join("praxis2.kon").exists());
+    let mut args = new_args(&url, &password, ["--pin-cert", path_str(&pin)]);
+    args.push("--no-test");
+    let out = fake.ti(&args);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(
+        serde_json::from_slice::<Value>(&out.stdout).unwrap()["test"],
+        Value::Null
+    );
+    assert!(fake.connectors().join("praxis2.kon").exists());
+}
+
+/// --pin-sha256 pins the server's certificate only if it is the one named; without a
+/// terminal and without a pin option nothing is trusted.
+#[test]
+fn config_new_pins_the_server_certificate_by_its_sha256() {
+    let fake = Fake::start("config-new-pin");
+    let password = fake.secret_file("pw", "p");
+    let url = format!("https://127.0.0.1:{}", tls_konnektor());
+    let wrong = sha256_hex(&tls_der(TLS_OTHER));
+    let mut args = new_args(&url, &password, ["--pin-sha256", &wrong]);
+    args.push("--no-test");
+    let out = fake.ti(&args);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("nothing pinned"));
+    let right = sha256_hex(&tls_der(TLS_SERVER))
+        .replace(':', "")
+        .to_lowercase();
+    let mut args = new_args(&url, &password, ["--pin-sha256", &right]);
+    args.push("--no-test");
+    let out = fake.ti(&args);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let kon: Value =
+        serde_json::from_slice(&std::fs::read(fake.connectors().join("praxis2.kon")).unwrap())
+            .unwrap();
+    assert_eq!(kon["trustStore"][0], base64ct_encode(&tls_der(TLS_SERVER)));
+    let args = new_args(&url, &password, ["--no-test", "--force"]);
+    let out = fake.ti(&args);
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "without a terminal nothing is trusted unasked"
+    );
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--pin-cert or --pin-sha256"));
+}
+
+fn base64ct_encode(bytes: &[u8]) -> String {
+    use base64ct::Encoding as _;
+    base64ct::Base64::encode_string(bytes)
+}
+
+#[test]
+fn config_set_changes_members_but_never_secrets() {
+    let fake = Fake::start("config-set");
+    let (report, code) = fake.json(
+        "connector config set",
+        &[
+            "config",
+            "set",
+            "praxis",
+            "workplaceId=W2",
+            "url=127.0.0.1:9",
+            "userId=",
+        ],
+    );
+    assert_eq!(code, Some(0));
+    assert_eq!(
+        report["changed"],
+        serde_json::json!(["workplaceId", "url", "userId"])
+    );
+    let kon: Value = serde_json::from_slice(&std::fs::read(&fake.kon).unwrap()).unwrap();
+    assert_eq!(
+        (kon["workplaceId"].as_str(), kon["url"].as_str()),
+        (Some("W2"), Some("https://127.0.0.1:9"))
+    );
+    let before = std::fs::read(&fake.kon).unwrap();
+    for args in [
+        &[
+            "connector",
+            "config",
+            "set",
+            "praxis",
+            "credentials.password=x",
+        ][..],
+        &[
+            "connector",
+            "config",
+            "set",
+            "praxis",
+            "env=pu",
+            "insecureSkipVerify=true",
+        ][..],
+    ] {
+        let out = fake.ti(args);
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        assert_eq!(
+            std::fs::read(&fake.kon).unwrap(),
+            before,
+            "{args:?} left the file as it was"
+        );
+    }
+}
+
+#[test]
+fn config_edit_without_a_terminal_changes_only_credentials() {
+    let fake = Fake::start("config-edit");
+    let out = fake.ti(&["connector", "config", "edit", "praxis"]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("an editor needs a terminal"));
+    let password = fake.secret_file("pw2", "n3w-pw");
+    let (report, code) = fake.json(
+        "connector config edit",
+        &[
+            "config",
+            "edit",
+            "--basic",
+            "u2",
+            "--password-path",
+            path_str(&password),
+        ],
+    );
+    assert_eq!((code, report["changed"].as_bool()), (Some(0), Some(true)));
+    let kon: Value = serde_json::from_slice(&std::fs::read(&fake.kon).unwrap()).unwrap();
+    assert_eq!(kon["credentials"]["username"], "u2");
+    assert_eq!(kon["mandantId"], "M1", "the rest stays");
+}
+
+/// `config pin` replaces the pin by the server's certificate once its SHA-256 matches,
+/// and `config test` names the command when the pin no longer matches.
+#[test]
+fn config_pin_renews_the_pin_that_config_test_reports() {
+    let fake = Fake::start("config-pin");
+    let port = tls_konnektor();
+    let kon = std::fs::read_to_string(&fake.kon)
+        .unwrap()
+        .replace(&fake.url(), &format!("https://127.0.0.1:{port}"))
+        .replace(
+            r#""env": "ru","#,
+            &format!(
+                r#""env": "ru", "trustStore": ["{}"],"#,
+                base64ct_encode(&tls_der(TLS_OTHER))
+            ),
+        );
+    std::fs::write(&fake.kon, kon).unwrap();
+    let (report, code) = fake.json("connector config test", &["config", "test"]);
+    assert_eq!(code, Some(1));
+    assert!(
+        report.to_string().contains("\"action\":\"renew_pin\""),
+        "{report}"
+    );
+    let text = String::from_utf8(
+        fake.ti(&["connector", "-c", "praxis", "config", "test"])
+            .stdout,
+    )
+    .unwrap();
+    assert!(text.contains("connector config pin praxis"), "{text}");
+    let out = fake.ti(&["connector", "config", "pin", "praxis"]);
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "without a terminal it asks for --pin-sha256"
+    );
+    let sha = sha256_hex(&tls_der(TLS_SERVER));
+    let (report, code) = fake.json(
+        "connector config pin",
+        &["config", "pin", "--pin-sha256", &sha],
+    );
+    assert_eq!((code, report["changed"].as_bool()), (Some(0), Some(true)));
+    assert_eq!(report["sha256"], sha);
+    let kon: Value = serde_json::from_slice(&std::fs::read(&fake.kon).unwrap()).unwrap();
+    assert_eq!(
+        kon["trustStore"],
+        serde_json::json!([base64ct_encode(&tls_der(TLS_SERVER))])
+    );
+    let (report, _) = fake.json(
+        "connector config pin",
+        &["config", "pin", "--pin-sha256", &sha],
+    );
+    assert_eq!(report["changed"], false);
 }

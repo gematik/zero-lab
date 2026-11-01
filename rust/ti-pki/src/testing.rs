@@ -54,6 +54,11 @@ pub(crate) struct TestPki {
     pub(crate) ee_mixed: Certificate,
     pub(crate) sub_ca_expired: Certificate,
     pub(crate) ee_under_expired: Certificate,
+    pub(crate) sub_ca_short: Certificate,
+    pub(crate) ee_short_hci_aut: Certificate,
+    pub(crate) ee_short_hp_aut: Certificate,
+    pub(crate) ee_short_fd_tls_s: Certificate,
+    pub(crate) ee_after_short: Certificate,
     pub(crate) rca7: Certificate,
     pub(crate) sub_ca_komp: Certificate,
     pub(crate) ee_zeta: Certificate,
@@ -80,6 +85,9 @@ pub(crate) struct TestPki {
 impl TestPki {
     /// The instant the fixtures are built around: 2026-01-01T00:00:00Z.
     pub(crate) const NOW: Timestamp = Timestamp(1_767_225_600);
+    /// 2028-01-01T00:00:00Z: `sub_ca_short` has expired, the end entities it issued in
+    /// 2026 have not.
+    pub(crate) const AFTER_SHORT: Timestamp = Timestamp(1_830_297_600);
 
     pub(crate) fn new() -> Self {
         TestPki {
@@ -93,6 +101,11 @@ impl TestPki {
             ee_mixed: fixture!("ee-mixed"),
             sub_ca_expired: fixture!("sub-ca-expired"),
             ee_under_expired: fixture!("ee-under-expired"),
+            sub_ca_short: fixture!("sub-ca-short"),
+            ee_short_hci_aut: fixture!("ee-short-hci-aut"),
+            ee_short_hp_aut: fixture!("ee-short-hp-aut"),
+            ee_short_fd_tls_s: fixture!("ee-short-fd-tls-s"),
+            ee_after_short: fixture!("ee-after-short"),
             rca7: fixture!("rca7"),
             sub_ca_komp: fixture!("sub-ca-komp"),
             ee_zeta: fixture!("ee-zeta"),
@@ -212,6 +225,11 @@ fn fixtures_are_consistent() {
         (&pki.sub_ca_hba, &pki.ee_revoked),
         (&pki.rca1, &pki.sub_ca_expired),
         (&pki.sub_ca_expired, &pki.ee_under_expired),
+        (&pki.rca1, &pki.sub_ca_short),
+        (&pki.sub_ca_short, &pki.ee_short_hci_aut),
+        (&pki.sub_ca_short, &pki.ee_short_hp_aut),
+        (&pki.sub_ca_short, &pki.ee_short_fd_tls_s),
+        (&pki.sub_ca_short, &pki.ee_after_short),
         (&pki.rca7, &pki.cross_rca7_for_rca1),
         (&pki.rca1, &pki.cross_rca1_not_rca),
         (&pki.rca1, &pki.sub_ca_pathlen0),

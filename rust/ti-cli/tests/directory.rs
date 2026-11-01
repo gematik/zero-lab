@@ -45,6 +45,8 @@ enum Behaviour {
     ForeignIdp,
     /// Refuses the sign-in.
     Refuse,
+    /// Issues the owner token without `/search` in its `aud`.
+    NoSearchAudience,
 }
 
 const STATE: &str = "8gdEEbyU2MY";
@@ -53,11 +55,21 @@ const KEYCLOAK_TOKEN: &str = "KEYCLOAK.TOKEN";
 
 /// A directory token as the directory issues it, `iss` its endpoint.
 fn directory_token(own: &str, endpoint: &str, sub: &str) -> Vec<u8> {
+    directory_token_for(
+        own,
+        endpoint,
+        sub,
+        &[format!("{own}/owner"), format!("{own}/search")],
+    )
+}
+
+/// A directory token for the endpoints `aud` names.
+fn directory_token_for(own: &str, endpoint: &str, sub: &str, aud: &[String]) -> Vec<u8> {
     let part = |v: &[u8]| Base64UrlUnpadded::encode_string(v);
     let payload = json!({
         "iss": format!("{own}/{endpoint}-authenticate"),
         "sub": sub,
-        "aud": [format!("{own}/owner"), format!("{own}/search")],
+        "aud": aud,
         "iat": now(), "exp": now() + 86_400,
         "scope": "owner:read owner:write search:read",
     });
@@ -157,7 +169,12 @@ fn card(own: &str, idp: &str, behaviour: Behaviour, request: &Seen) -> Option<Ve
                 && request.query("code").as_deref() == Some("CODE.from.idp")
                 && request.query("state").as_deref() == Some(STATE) =>
         {
-            let token = directory_token(own, "owner", "1-2-ARZTPRAXIS-TESTONLY01");
+            let sub = "1-2-ARZTPRAXIS-TESTONLY01";
+            let token = if behaviour == Behaviour::NoSearchAudience {
+                directory_token_for(own, "owner", sub, &[format!("{own}/owner")])
+            } else {
+                directory_token(own, "owner", sub)
+            };
             http(200, "application/json", &token, None)
         }
         ("GET", "/signin-gematik-idp-dienst") => json_response(
@@ -256,10 +273,14 @@ fn error_kind(out: &Output) -> String {
 }
 
 fn owner(directory: &Server, idp: &FakeIdp, extra: &[&str]) -> Output {
+    login("owner", directory, idp, extra)
+}
+
+fn login(endpoint: &str, directory: &Server, idp: &FakeIdp, extra: &[&str]) -> Output {
     let mut args = vec![
         "directory",
         "login",
-        "owner",
+        endpoint,
         "--url",
         &directory.base_url,
         "--idp-url",
@@ -312,6 +333,77 @@ fn owner_by_card_yields_the_owner_token() {
         seen.iter().map(Seen::path).collect::<Vec<_>>(),
         ["/owner-authenticate", "/signin-gematik-idp-dienst"]
     );
+}
+
+/// gemSpec_VZD_FHIR_Directory: a card identity reaches /search with the owner token.
+#[test]
+fn search_by_p12_yields_the_owner_token_for_the_search_api() {
+    let idp = FakeIdp::start(Answer::Code);
+    let dir = directory(&idp.base_url, Behaviour::Normal);
+    let report = ok(&login(
+        "search",
+        &dir,
+        &idp,
+        &["--p12", &identity_fixture("aut.p12")],
+    ));
+    assert_eq!(
+        (report["endpoint"].as_str(), report["method"].as_str()),
+        (Some("owner"), Some("card"))
+    );
+    assert_eq!(
+        report["directory"]["search_url"],
+        format!("{}/search", dir.base_url)
+    );
+    assert_eq!(report["warnings"], json!(["idp_certificates_unverified"]));
+    assert_eq!(idp.stop().len(), 1);
+    assert_eq!(
+        dir.stop().iter().map(Seen::path).collect::<Vec<_>>(),
+        ["/owner-authenticate", "/signin-gematik-idp-dienst"]
+    );
+}
+
+#[test]
+fn search_warns_when_the_token_does_not_name_the_search_api() {
+    let idp = FakeIdp::start(Answer::Code);
+    let dir = directory(&idp.base_url, Behaviour::NoSearchAudience);
+    let report = ok(&login(
+        "search",
+        &dir,
+        &idp,
+        &["--p12", &identity_fixture("aut.p12")],
+    ));
+    assert_eq!(
+        report["warnings"],
+        json!(["idp_certificates_unverified", "search_not_in_audience"])
+    );
+}
+
+/// search takes a card identity only: no RegService token, no client credentials.
+#[test]
+fn search_needs_a_card_identity() {
+    let token = file("search-reg.jwt", REGSERVICE_TOKEN);
+    for args in [
+        vec!["directory", "login", "search", "--env", "ref"],
+        vec![
+            "directory",
+            "login",
+            "search",
+            "--env",
+            "ref",
+            "--regservice-token-path",
+            &token,
+        ],
+    ] {
+        assert_eq!(ti(&args).status.code(), Some(2), "{args:?}");
+    }
+}
+
+#[test]
+fn owner_reports_no_search_url() {
+    let idp = FakeIdp::start(Answer::Code);
+    let dir = directory(&idp.base_url, Behaviour::Normal);
+    let report = ok(&owner(&dir, &idp, &["--p12", &identity_fixture("aut.p12")]));
+    assert_eq!(report["directory"]["search_url"], Value::Null);
 }
 
 #[test]

@@ -9,9 +9,32 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-cli
 
+#### removed
+- SOCKS proxies: `-x socks5://` and a `socks5://` in the proxy variables are refused with
+  `http_setup` (exit 2), and `ureq`'s `socks-proxy` feature, `socks` and `byteorder` are
+  gone.
+
+#### fixed
+- Proxy variables no longer reach the Konnektor, as `AGENTS.md` always said: only `-x`
+  sets a proxy for it.
+- A Konnektor whose service directory names another origin than the `.kon` url is refused
+  before anything is sent, and `connector config test` fails at `sds`, with the hint to
+  `rewriteServiceEndpoints`. Before, credentials and documents went wherever the directory
+  said, plain http included. **A Konnektor behind NAT that worked without the rewrite now
+  needs it.**
+- `--card` (identity, directory login) chooses its Konnektor with `-c`/`--connector-config`
+  like the `connector` commands; `--connector` stays as an alias.
+- `pki verify` applies the Kompromissmodell to the nonQES certificates of SMC-B and HBA
+  (gemKPT_PKI_TIP 2.4.2, gemSpec_PKI Tab_PKI_271): an SMC-B or HBA certificate whose CA
+  has expired since it was issued is valid with the warning `issued_before_ca_expiry`;
+  it was rejected as `expired`. Components and the eGK keep the shell model. The trust
+  tree of `pki inspect` and `pki verify` shows such a CA in yellow as "expired …, valid
+  when it issued", no longer as a red error.
+
 #### security
-- crypto-bigint 0.7.6, ctutils 0.4.5 and tokio 1.54.1 (RUSTSEC-2026-0387,
-  RUSTSEC-2026-0385, RUSTSEC-2026-0386).
+- crypto-bigint 0.7.10, ctutils 0.4.6 and tokio 1.54.1 (RUSTSEC-2026-0387,
+  RUSTSEC-2026-0385, RUSTSEC-2026-0386); crypto-bigint 0.7.6, which fixed the first,
+  was yanked since.
 
 #### added
 - `pki tsl verify --signature FILE.sig [--signer-status FILE.ocsp]`: the list verified by
@@ -20,6 +43,47 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   the environment's automated download point. The reports name the signature kind
   (`signature`: `enveloped` or `detached`) and know the code `detached_signature_error`
   (`spec/tsl-detached`, TASK-166).
+- `connector config show [NAME]`: a `.kon` configuration without its secrets; for the
+  password, the PKCS#12 bytes and the user ID only where they are kept, with the client
+  certificate and the pins and CAs of `trustStore`.
+- `connector config test [NAME]`: the configuration step by step, `file` (valid, mode
+  0600, secrets in plain text, `https`), `tcp`, `tls` (the server certificate against the
+  pin or CA, its SHA-256), `auth` (the client certificate before it is offered, and
+  whether the Konnektor accepts the client), `sds` (product and service versions),
+  `context` (GetCards with the call context, with the fault hints) and `cards`; each
+  finding ok, warn, fail or skip with a hint, exit 1 if one fails. With `env: pu`,
+  `insecureSkipVerify` and credentials `none` fail; elsewhere they warn.
+- `connector config new NAME`: a configuration step by step on a terminal (address in
+  any form, environment, the server certificate shown and pinned once confirmed or
+  insecureSkipVerify, basic, pkcs12 or none credentials with the password hidden, the
+  call context), or entirely from options without one (`--url`, `--env`, `--mandant`,
+  `--client-system`, `--workplace`, `--basic`/`--password-path`, `--p12`/
+  `--p12-password-path`/`--p12-pair`, `--no-auth`, `--pin-sha256`, `--pin-cert`,
+  `--insecure-skip-verify`, `--expected-host`, `--rewrite-endpoints`). Tested before it
+  is saved; on a terminal a failed test offers the call context again and tests once
+  more, or saving anyway; written atomically with mode 0600 (directory 0700). A PKCS#12 file is shown
+  before use (expiry, key type, legacy encryption, file mode); of several pairs only the
+  chosen one is kept.
+- `connector config set NAME KEY=VALUE`, `connector config edit NAME` ($EDITOR, replaced
+  only by a valid copy; or `--basic`/`--p12`/`--no-auth` for new credentials) and
+  `connector config pin NAME` (the server's certificate next to the pinned one, replaced
+  once confirmed or by `--pin-sha256`/`--pin-cert`). An `http` address is refused;
+  with `env: pu`, `new`, `set` and `edit` refuse `insecureSkipVerify` and credentials
+  `none`.
+- Interactive commands: `ti` asks only when stdin and stderr are terminals; without
+  them a missing option is an error (exit 2), never a wait. Hidden password entry with
+  rpassword 7.5.4 (ti-cli only).
+- `.kon` credentials of type `none`, for Konnektors that do not authenticate client
+  systems; `connector get info` reports them as `none`.
+- The help and the guide say that `identity`, `idpd authenticate` and `directory login`
+  take an HBA as well as an SMC-B (they always did): its C.HP.AUT is selected like the
+  SMC-B's C.HCI.AUT, never its C.HP.QES; they name the PIN a card needs (PIN.SMC, PIN.CH
+  for an HBA).
+- `directory login search --p12|--cert --key|--card`: the token an SMC-B or HBA searches
+  the FHIR-Directory with. gemSpec_VZD_FHIR_Directory gives a card identity only the
+  owner token for `/search`, so this is the owner flow through the IDP-Dienst; the report
+  names the Search API in `directory.search_url` and warns with `search_not_in_audience`
+  when the token does not list it.
 - `probe prod` checks the Bestandsnetze of gematik's Bestandsnetze.xml (2.1.36) in a
   block of their own (`access: "bestandsnetz"`): the SNK (KV-SafeNet) at
   `portal.kv-safenet.de`, the others at a known HTTPS host or with a TCP connection to
@@ -35,6 +99,16 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   incomplete), 4204 (client system not authenticated), 4093 and 4060 (card or terminal
   busy). The fault's code and text are unchanged; the hint is in the text and in the
   JSON error's `hint`.
+- `ti agent` states the rules agents follow with the tool (never ask for or print a real
+  `.kon` file, PKCS#12 file, PIN or token; PIN and destructive commands only on
+  request), lists every error kind with its exit code, describes the `.kon` format with
+  a sample of placeholders, and names the Konnektor fault hints. A test keeps the list
+  of error kinds equal to the binary's: `output_exists` is exit 2, `key_unsupported` 4,
+  the `store_*` kinds 2, except `store_busy` and `store_backend_error`, which are 5.
+- `ti` without arguments and a command group without its subcommand show the commands
+  without the output, profile, HTTP and Konnektor options every command shares; `-h` and
+  `--help` both show everything. A set `TI_FORMAT` or `TI_CACHE_DIR` no
+  longer turns the help of `ti` without arguments into an error.
 
 ### ti-idpd
 
@@ -135,7 +209,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 #### added
 - `Document::parse`: strict XML 1.0 in UTF-8 without DTDs, bounded by `Limits` (size,
-  depth checked before parsing, attributes, namespaces, nodes); errors name the rule of
+  depth and attributes checked before parsing, namespaces, nodes); errors name the rule of
   `spec/tsl-xmldsig` they enforce.
 - Exclusive XML Canonicalization 1.0 without comments: `Document::exc_c14n`,
   `exc_c14n_by_id`, `exc_c14n_by_name`; checked against the C14N and Exc-C14N
@@ -222,6 +296,44 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - A session recorded with an eHEX Konnektor replayed offline (`tests/recorded.rs`):
   every request byte for byte as the Konnektor accepted it. The e2e tests record new
   sessions with `TI_TEST_KON_RECORD_DIR`.
+- `Credentials::None` (`"credentials": {"type": "none"}`): no client certificate and no
+  `Authorization` header; `Credentials::kind`.
+- `config::ConfigView`: a `.kon` file without its secrets, for front ends: where the
+  password and the PKCS#12 bytes are kept (plain, `${NAME}`, absent), whether a user ID
+  is set, the PKCS#12 client certificate (`config::client_certificate`: subject,
+  validity, key, whether ring can sign with it, encryption) and the trust store as pins
+  and CAs with their SHA-256. ti-pkcs12 is now a regular dependency.
+- `check`: the test of a `.kon` configuration as pure functions of what the host
+  observed, steps `file`, `tcp`, `tls`, `auth`, `sds`, `context`, `cards`, each finding
+  `ok`, `skip`, `warn` or `fail` with a hint; a failed step skips the rest. An `http`
+  url fails (the service directory is read over https only); with `env: pu`,
+  `insecureSkipVerify` and credentials `none` fail, elsewhere they warn. `ureq::check_config` runs the
+  steps against a Konnektor (`ureq::probe` connects and records the server certificate
+  also when the handshake fails), the service directory and GetCards through the
+  caller's transport.
+- `Fault::hint` and `fault_hint`: what to do about faults on the information model
+  (4004 to 4007, 4010 to 4012, 4021, 4053, 4060, 4092, 4093, 4204, 4263), formerly in
+  ti-cli.
+- `edit`: `.kon` files written by front ends: `normalize_address` (URL, host,
+  host:port, IP, [IPv6]:port; always https, http refused), `NewConfig::to_json`, `set`
+  for the members without secrets, `with_credentials`, `with_pin` (CAs stay),
+  `refusals` (what a change brings that is not allowed: an http url anywhere,
+  insecureSkipVerify and none in a pu file).
+  `ureq::server_certificate` fetches the certificate to pin without trusting it.
+  `check::Finding::action`: `renew_pin` for a server certificate that is not the pinned
+  one.
+- Fuzz target `dotkon` (`just fuzz-ti-connector-client`): the parser, the file check and
+  the redacted view.
+- Fuzz targets `sds` (the service directory, its bindings and rewrite) and `soap` (every
+  Konnektor call on any answer), seeded from the recorded runs.
+
+#### fixed
+- A call goes only to an endpoint at the origin of the `.kon` url or its `expectedHost`:
+  same scheme, host and port; otherwise `DiscoveryError::ForeignEndpoint`, a new variant,
+  and nothing is sent. `check::sds` takes the `Dotkon` as well (breaking).
+- `ServiceDirectory::rewrite_endpoints` keeps no endpoint outside the `.kon` origin: it
+  also rewrites `HTTPS://…`, and removes what is no http(s) URL with a host. Found by the
+  target `sds`.
 
 ### ti-pki
 
@@ -229,6 +341,12 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - The OCSP response parser no longer panics on a GeneralizedTime with a multibyte
   character across its 14th byte, which a hostile responder could use to end the
   process. Found by the new `ocsp_response` fuzz target (TASK-166).
+
+#### removed
+- The features `reqwest` and `tokio` with `ti_pki::reqwest` and `ti_pki::tokio`, and the
+  examples `ocsp` and `validate`, which needed them; `ti pki verify` does what they did.
+  Nothing used them: a host implements `load::Transport` and calls `Reloader::tick` on
+  its own runtime.
 
 #### added
 - The TSL verified by gematik's detached signature file (`spec/tsl-detached`,
@@ -251,6 +369,12 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   came with the list; `ReloadStatus::tsl_signature` names the kind.
 - `ti-pki/fuzz`: `just fuzz-ti-pki` runs the `detached_signature`, `tsl_xml` and
   `ocsp_response` targets, seeded from the published sets.
+- The validity model follows the end entity's type (gemKPT_PKI_TIP 2.4): the
+  Kompromissmodell for C.HCI.AUT/ENC/OSIG and C.HP.AUT/ENC, under which each CA must have
+  been valid when it issued the certificate below and one expired since gives the
+  warning `issued_before_ca_expiry` (`ErrorCode::IssuedBeforeCaExpiry`); the shell model
+  for every other type. `ValidityModel` and `PathOptions::model` are new (breaking for
+  callers that build `PathOptions`).
 - A certificate OCSP reports revoked after the reference time is valid for that time,
   with the warning `revoked_after_reference_time`; at or before it, and without a
   `revocationTime`, it stays `revoked` (gemSpec_PKI TUC_PKI_006 variants 8a and 8b;
@@ -431,6 +555,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `oid_policy_gem_tsl_signer`) and profile `tsl-sig`.
 
 #### changed
+- `TrustStoreHandle` keeps the current material under a `std::sync::RwLock`, not `arc-swap`,
+  which is no longer a dependency.
 - `SignedTsl::signing_time` and `VerifiedTsl::signing_time` are `Option<String>`: a
   detached signature carries none. `TrustMaterial::body` and `meta` answer `Option`,
   since the two detached artefacts may be absent; `TrustMaterial::etags` lists all four.
@@ -481,6 +607,14 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   production policy OIDs, so there was nothing for it to relax.
 
 ### ti-pkcs12
+
+#### changed
+- PBES2 is read and written by the crate itself over `pbkdf2`, `aes` and `cbc`; `pkcs5`,
+  `scrypt` and `salsa20` are gone from the tree. Files written are byte for byte the same.
+  What a file can do differently: a `keyLength` other than the cipher's key size is now
+  `Error::Malformed` (P12-032) instead of a failed decryption, parameters that do not
+  decode are `Error::Malformed` instead of `Error::UnsupportedAlgorithm`, and salts longer
+  than 32 bytes are read.
 
 #### added
 - `CertificateBag::trusted_key_usage` and `oids::TRUSTED_KEY_USAGE`: Oracle's trusted key

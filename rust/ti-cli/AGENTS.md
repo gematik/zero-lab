@@ -5,6 +5,30 @@ are grouped by subsystem (`{bin} pki …`), and the conventions below hold for e
 of them. It never prompts. Every input is an argument, an environment variable, a file
 or stdin.
 
+## Rules for agents
+
+- Never ask for a real `.kon` file, PKCS#12 file, PIN, password, client secret or token,
+  and never print one: refer to it by its path. A `.kon` file is a secret as a whole; it
+  holds the Konnektor's credentials. Samples with placeholders, to create or edit one,
+  are fine (see the connector subsystem). To look at one, run `connector config show`,
+  which says where each secret is kept but never shows it; never read the file itself.
+- When a user pastes one, say it should not have been shared and should be replaced
+  where that is possible. Do not repeat it, quote it, or carry it into commands or
+  files.
+- Secrets in output stay out of the conversation and logs: `access_token` and the
+  output of `--token`, comfort user IDs, `store show --reveal`. Summarise instead.
+- Commands that use a card's PIN or wait for the user at the card terminal
+  (`connector verify pin`, `change pin`, `comfort activate`, `sign` and `decrypt`) run
+  only when the user asks for that step; say before what the user will be asked for.
+  `connector describe card` reads the PINs' status without asking for one: use it first.
+- Commands that delete or re-key what cannot be fetched again (`profile delete`,
+  `profile rotate`, `profile rewrap`, `store rm`, `store purge`) and `--force` run only
+  when the user asks for them.
+- `-k` only when the user asks for it.
+- Report a verification with its verdict and `errors`, the `warnings` that matter, and
+  whether revocation was checked (`revocation_checked`); a `trust.note` means the trust
+  material was incomplete.
+
 ## Calling it
 
 - Ask for JSON: `--format json` (or `TI_FORMAT=json`). Each command writes one JSON
@@ -25,14 +49,68 @@ or stdin.
 | --- | --- |
 | 0 | success; for a verification: valid, or the PIN was accepted |
 | 1 | a verification ran and the result is not valid, or the PIN was not accepted (the report is still on stdout) |
-| 2 | wrong arguments, the environment cannot be told, or no usable connector configuration |
-| 3 | trust material unavailable or failed verification, or the Konnektor did not answer or refused the call |
-| 4 | input unreadable or without the expected content |
-| 5 | output could not be written |
+| 2 | wrong arguments, the environment cannot be told, no usable connector configuration, an output file that exists, or a store problem the user can fix |
+| 3 | trust material unavailable or failed verification, or a remote party (server, Konnektor, IDP-Dienst, FHIR-Directory) did not answer or refused the call |
+| 4 | input unreadable or without the expected content, or a key that cannot sign |
+| 5 | output could not be written, or the store was busy or failed |
 
 On failure with `--format json`, stderr carries
 `{"schema":1,"error":{"kind","message","hint"}}`. Branch on `kind` and the exit code,
-never on `message`.
+never on `message`. `hint` says what to do, when there is something.
+
+## Error kinds
+
+| Kind | Exit | When |
+| --- | --- | --- |
+| `arguments_invalid` | 2 | a combination of arguments the command cannot use |
+| `environment_invalid` | 2 | an environment that does not fit the command |
+| `environment_undetected` | 2 | `--env auto` found no evidence in the certificates |
+| `output_exists` | 2 | the output file exists; `--force` replaces it |
+| `http_setup` | 2 | `--cacert`, `--capath` or the proxy cannot be used |
+| `unknown_schema` | 2 | `schema` for a command that has none |
+| `cache_dir_unknown` | 2 | no cache directory can be derived |
+| `connector_config` | 2 | no usable `.kon` file; the message lists every problem |
+| `pin_type` | 2 | a PIN type that does not fit the card |
+| `header_invalid` | 2 | a JWS header the tool sets itself |
+| `store_not_found` | 2 | no such record, or the profile's key file is missing |
+| `store_expired` | 2 | the record has expired |
+| `store_malformed` | 2 | a record, keyring, key file or database does not parse |
+| `store_unsupported_version` | 2 | a format this version does not know |
+| `store_unknown_kid` | 2 | a record sealed under a key the keyring lacks |
+| `store_auth_failed` | 2 | a record or key does not authenticate: wrong key file, or altered |
+| `store_limit_exceeded` | 2 | a size or count above its limit |
+| `store_invalid_argument` | 2 | a namespace, name or lifetime outside its rule |
+| `store_capability_missing` | 2 | the backend lacks what a namespace needs |
+| `store_no_keyring` | 2 | the profile has no keyring: `{bin} profile create` |
+| `store_insecure_permissions` | 2 | the key file is readable by others |
+| `trust_material_unavailable` | 3 | roots.json or the TSL could not be had or failed verification |
+| `server_unreachable` | 3 | `--connect` reached no server or no handshake |
+| `connector_unreachable` | 3 | the Konnektor did not answer |
+| `connector_fault` | 3 | the Konnektor refused: its code and text in the message |
+| `connector_unsupported` | 3 | it offers no version of a service this tool speaks |
+| `connector_failed` | 3 | another Konnektor failure |
+| `card_restricted` | 3 | a card type the Konnektor restricts (SMC-KT, KVK, eGK) |
+| `signing_failed` | 3 | signing failed for another reason than a refusal |
+| `idpd_error` | 3 | the IDP-Dienst refused |
+| `idpd_unreachable` | 3 | the IDP-Dienst did not answer |
+| `idpd_untrusted` | 3 | an IDP certificate the TSL does not vouch for |
+| `idpd_protocol` | 3 | an IDP answer outside the specification |
+| `directory_error` | 3 | the FHIR-Directory refused |
+| `directory_auth_server_error` | 3 | its Keycloak refused the client credentials |
+| `directory_unreachable` | 3 | the FHIR-Directory did not answer |
+| `directory_protocol` | 3 | a directory answer outside the specification |
+| `input_unreadable` | 4 | a file or stdin cannot be read |
+| `no_certificate` | 4 | the input holds no certificate |
+| `certificate_malformed` | 4 | the input is not a readable certificate |
+| `p12_password` | 4 | the PKCS#12 password is wrong |
+| `p12_unreadable` | 4 | not a readable PKCS#12 file |
+| `identity_not_found` | 4 | no AUT certificate with its key in the source |
+| `key_unsupported` | 4 | a key that is not ECDSA on brainpoolP256r1 or P-256 |
+| `claims_invalid` | 4 | the claims are not a JSON object |
+| `signature_malformed` | 4 | a signature neither DER nor r‖s |
+| `output_failed` | 5 | stdout or a file could not be written |
+| `store_busy` | 5 | the database stayed locked |
+| `store_backend_error` | 5 | an I/O or database error of the store |
 
 ## Common options and environment
 
@@ -50,7 +128,8 @@ never on `message`.
 - The HTTP options and variables follow curl: `-x`/`HTTPS_PROXY`/`HTTP_PROXY`/
   `ALL_PROXY`, `--noproxy`/`NO_PROXY`, `--cacert`/`CURL_CA_BUNDLE`/`SSL_CERT_FILE`,
   `--capath`/`SSL_CERT_DIR`, `--connect-timeout`, `-m`, `--retry`, `-A`.
-- `-k` skips TLS checks for downloads only. Do not use it unless asked to.
+- `-k` skips TLS checks for downloads only and sets `insecure_transport` in the report;
+  the trust material is still verified. Do not use it unless asked to.
 - Downloads are cached in the profile's `cache.db`
   (`~/.cache/telematik/profiles/NAME/cache.db`). `--offline` makes no request and works
   from the cache.
@@ -186,6 +265,13 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   `issued_before_ca_revocation`, a later one fails with `ca_revoked_in_tsl`. `tsl show`
   reports the time as `revoked_since`; `tsl bundle` leaves revoked CAs out, because
   curl and Java cannot apply the date rule.
+- The validity model follows the certificate type (gemKPT_PKI_TIP 2.4). For the nonQES
+  certificates of an SMC-B or HBA (C.HCI.AUT, .ENC, .OSIG, C.HP.AUT, .ENC) each CA
+  counts as it was when it issued the certificate below (Kompromissmodell): a CA that
+  has expired since gives the warning `issued_before_ca_expiry`, one that had expired
+  before is `expired`. Every other type, components and the eGK, needs every
+  certificate of the chain valid at the reference time (shell model). The end entity
+  itself is always checked at the reference time.
 - `pki verify --at T`: OCSP answers for the time of the query and its status is judged
   at T (gemSpec_PKI TUC_PKI_006 8a/8b). A certificate revoked after T is valid with the
   warning `revoked_after_reference_time`; `chain[].revocation` keeps `status: revoked`
@@ -206,27 +292,28 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   `--p12-password-path` (or `TI_P12_PASSWORD_PATH`) names, else `00`. Prefer the file
   from scripts: it keeps the password out of the command line and the process list.
 
-## Subsystem identity: the SMC-B identity
+## Subsystem identity: the SMC-B or HBA identity
 
 ```sh
 {bin} --format json identity inspect --p12 smcb.p12 --p12-password-path pw.txt
 {bin} --format json identity inspect --cert smcb-aut.pem --key smcb-aut.key
 {bin} --format json identity inspect --card 80276883110000163974            # the selected Konnektor
-{bin} --format json identity inspect --card SMC-B-7 --connector praxis      # another one
+{bin} --format json identity inspect --card SMC-B-7 -c praxis               # another one
 {bin} --format json identity sign --p12 smcb.p12 --claims - < claims.json     # ES256 JWS, x5c
 {bin} --format json identity sign --p12 smcb.p12 --claims claims.json --typ JWT --header kid=aut
 ```
 
 - An identity is the AUT certificate (digitalSignature set, contentCommitment not set)
-  together with its key, from one of `--p12 FILE` (several certificates and keys are
+  together with its key: an SMC-B's C.HCI.AUT or an HBA's C.HP.AUT, never the HBA's
+  C.HP.QES. It comes from one of `--p12 FILE` (several certificates and keys are
   fine: the AUT pair is selected; a card vendor's export), `--cert FILE --key FILE`
   (PEM; the key as PKCS#8 `PRIVATE KEY` or `EC PRIVATE KEY`; further certificates in
   the file are its chain) or `--card CARD` (ICCSN, Telematik-ID or handle at the
-  Konnektor the `connector` commands use: `--connector NAME|PATH` or
+  Konnektor the `connector` commands use: `-c`/`--connector-config NAME|PATH` or
   `TI_CONNECTOR_CONFIG`, else the selection of `connector use`, else `default`; the
   card's C.AUT ECC certificate; signing goes through the Konnektor's
-  ExternalAuthenticate, so the card's PIN.SMC must be verified before, `connector
-  verify pin`). Keys are ECDSA on
+  ExternalAuthenticate, so the card's PIN must be verified before with `connector
+  verify pin`: PIN.SMC for an SMC-B, PIN.CH for an HBA). Keys are ECDSA on
   brainpoolP256r1 or P-256; nothing else signs (error kind `key_unsupported`).
 - `inspect` reports `telematik_id` (the admission statement's registration number),
   `signing` (`alg` ES256, `curve`), the `certificate` as `pki inspect` describes it and
@@ -259,8 +346,8 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   challenge, signs the nested JWT with the identity's key (`BP256R1`, `x5c`), encrypts
   the answer to `PuK_IDP_ENC` and posts it, and returns `code` (and `state`) from the
   IDP's redirect, with `idp`, `identity` and the challenge's `client_id`, `scope`,
-  `redirect_uri`. The identity is given as for `identity`; a card's PIN.SMC must be
-  verified before.
+  `redirect_uri`. The identity is given as for `identity`; a card's PIN (PIN.SMC,
+  PIN.CH for an HBA) must be verified before.
 - The IDP is `--env` (`TI_ENV`; `prod`, `ref`, `test`, `dev` as ref; `auto` is exit 2)
   or `--idp-url BASE`. `--auth-url` must be https (http only on 127.0.0.1, for tests).
   Redirects are not followed: a 302 is the answer.
@@ -287,6 +374,7 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 {bin} --format json directory login owner --env ref --p12 smcb.p12        # card via the IDP-Dienst
 {bin} --format json directory login owner --env ref --card SMC-B-7
 {bin} --format json directory login owner --env ref --regservice-token-path reg.jwt
+{bin} --format json directory login search --env ref --p12 smcb.p12       # for the Search API
 {bin} --format json directory login service --env ref --client-id ID --client-secret-path secret.txt
 {bin} directory login holder --env ref --client-id ID --client-secret-path secret.txt --token
 ```
@@ -309,6 +397,12 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   redirects must stay between the directory and its IDP, or the flow stops before
   anything is signed (`directory_protocol`). The IDP's certificates are checked as for
   `idpd authenticate` (`--idp-unverified`, `idpd_untrusted`, `idp.certificates`).
+- `search` (`--p12`, `--cert --key`, `--card`): the token for the Search API (`/search`)
+  of an SMC-B or HBA. The directory issues a card identity no other: it is the owner
+  token of the card flow above (`endpoint` is `owner`, `method` `card`), which also
+  carries `owner:write`. `directory.search_url` is the Search API's URL; the warning
+  `search_not_in_audience` says the token's `aud` does not name it. A RegService token
+  or client credentials are not taken here; Fachdienste search with `service`.
 - `owner --regservice-token-path FILE`: exchanges a TI-Messenger RegService-OpenID-Token
   (BP256R1, C.FD.SIG with role `oid_tim`) at `/owner-authenticate` as a bearer.
 - `holder`, `service`, `ti-provider`: client credentials at the directory's Keycloak
@@ -339,6 +433,13 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 ```sh
 {bin} --format json connector configs                   # the .kon files; "selected" is the default
 {bin} connector use praxis                              # select one for later commands
+{bin} --format json connector config show [NAME]        # the .kon without its secrets
+{bin} --format json connector config test [NAME]        # step by step to the cards; exit 1 if one fails
+{bin} --format json connector config new NAME --url ADDRESS --env ru --mandant M --client-system C \
+    --workplace W --basic USER --password-path FILE --pin-sha256 HEX   # tested, then saved 0600
+{bin} --format json connector config set NAME workplaceId=W2     # members without secrets
+{bin} --format json connector config edit NAME --p12 FILE --p12-password-path FILE   # new credentials
+{bin} --format json connector config pin NAME --pin-sha256 HEX   # renew the pin
 {bin} --format json connector -c praxis get info        # configuration and product
 {bin} --format json connector get services              # "used": the versions this tool calls
 {bin} --format json connector get cards
@@ -351,7 +452,7 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 {bin} --format json connector verify certificate CARD C.AUT     # or --file; exit 0/1
 {bin} --format json connector verify pin CARD [PIN]             # exit 0/1
 {bin} --format json connector change pin CARD [PIN]
-{bin} --format json connector sign FILE --card CARD            # CAdES → FILE.p7s; .pdf (PDF/A) → PAdES
+{bin} --format json connector sign FILE --card CARD            # CAdES → FILE.p7s; a PDF/A → NAME.signed.pdf (PAdES)
 {bin} --format json connector verify signature FILE --signature FILE.p7s   # PAdES: the PDF alone; exit 0/1
 {bin} --format json connector encrypt FILE --to CERT [--to-card CARD …]  # CMS → FILE.p7m
 {bin} connector export certificate CARD C.ENC > enc.pem         # PEM on stdout; -o FILE, --der
@@ -365,8 +466,63 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   `NAME.kon` in the current directory, then in `~/.config/telematik/connectors/`
   (`$XDG_CONFIG_HOME` if set). The format is the one the former Go `ti` used, so its files
   keep working.
-- In a `.kon` file, `${NAME}` is expanded only in `credentials.username`, `.password`
-  and `.data`, from the environment; `-v` names the variables, never their values.
+- A `.kon` file is JSON. With placeholders, as an agent may write one:
+
+  ```json
+  {
+    "url": "https://konnektor.example:443",
+    "mandantId": "MANDANT",
+    "clientSystemId": "CLIENT-SYSTEM",
+    "workplaceId": "WORKPLACE",
+    "userId": "USER",
+    "env": "ru",
+    "credentials": {
+      "type": "basic",
+      "username": "${KON_USER}",
+      "password": "${KON_PASSWORD}"
+    }
+  }
+  ```
+
+  `url`, `mandantId`, `clientSystemId`, `workplaceId` and `credentials` are required;
+  `userId` is needed by some calls (with an HBA), `env` is `ru`, `tu` or `pu`.
+  Credentials are `basic` (`username`, `password`), `pkcs12` (`data` the base64
+  PKCS#12, `password`) for mutual TLS, or `none` for a Konnektor that does not
+  authenticate client systems; a brainpool client key cannot be used.
+  `trustStore` is a list of base64 DER certificates for the Konnektor's TLS (a CA is an
+  anchor, an end-entity certificate a pin; empty: the system's roots), `expectedHost`
+  the name its certificate must carry when it differs from the host in `url`,
+  `rewriteServiceEndpoints: true` sends every service to the host of `url` (a Konnektor
+  behind NAT or a port forward; without it, a service endpoint outside the origin of `url`
+  or `expectedHost` is refused, error kind `connector_unsupported`, before anything is
+  sent), `insecureSkipVerify: true` skips the server check (test
+  Konnektors only). The message of `connector_config` lists every problem at once.
+- `config test` runs the steps `file` (valid, mode 0600, secrets in plain text, an
+  `https` url: the service directory is read over https only), `tcp`, `tls` (the
+  server certificate against the pin or a CA of `trustStore`), `auth` (the client
+  certificate before it is offered, and whether the Konnektor accepts the client), `sds` (product and service versions), `context`
+  (GetCards with the call context) and `cards`; each finding is `ok`, `warn`, `fail` or
+  `skip` with a `hint`, and a failed step skips the rest. With `env: pu`,
+  `insecureSkipVerify` and credentials `none` fail; elsewhere they warn. It uses no PIN
+  and no cache, so run it first when a connector command fails with `connector_config`
+  or a transport error. With `-x`, `tcp` and `tls` are skipped.
+- `config new`, `edit` and `pin` ask on a terminal; without one (as for an agent)
+  every answer comes from an option, and a missing one is exit 2 naming it, never a
+  wait. Run them with options only, and only when the user asks for a configuration.
+  Secrets come from files (`--password-path`, `--p12-password-path`), never as values;
+  `config set` takes no credentials. The server certificate is trusted only through
+  `--pin-sha256` (the user read the hash from the Konnektor's management; never take it
+  from the server you are pinning), `--pin-cert FILE` or `--insecure-skip-verify` (test
+  Konnektors). `new` tests the file before saving it with mode 0600; a failed test saves
+  nothing (exit 1) unless `--no-test`. `--rewrite-endpoints` for a Konnektor behind NAT.
+  An `http` address is refused everywhere; with `env pu`, `new`, `set` and `edit` refuse
+  `insecureSkipVerify` and credentials `none` (exit 2). A changed server certificate makes `config test` fail
+  with `action: "renew_pin"`; `config pin NAME` renews it.
+- `${NAME}` is expanded only in `credentials.username`, `.password` and `.data`, from
+  the environment; anywhere else it is an error, and so is an unset variable, so a
+  `.kon` file from someone else cannot send environment variables to its host. `-v`
+  names the variables, never their values. Write credentials as `${…}` and tell the
+  user which variables to set; never write real ones into a file.
 - CARD is an ICCSN, a Telematik-ID (as in the card's C.AUT) or a card handle. Handles
   change when a card is re-inserted; prefer the ICCSN or the Telematik-ID.
 - PIN is `PIN.CH`, `PIN.QES` or `PIN.SMC`; needed only for an HBA, which has two. PIN
@@ -378,10 +534,14 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   `DISABLED`, with `left_tries`; a failed query leaves `status` null and sets `error`.
 - SMC-KT, KVK and eGK are restricted on the Konnektor's SOAP API: calls about them fail
   with error kind `card_restricted`.
-- Error kinds: `connector_config` (exit 2), `connector_unreachable`,
-  `connector_fault` (the Konnektor's code and text are in the message),
-  `connector_unsupported` (it offers no version of a service this tool speaks),
-  `connector_failed`, `card_restricted` (exit 3), `pin_type` (exit 2).
+- A `connector_fault` keeps the Konnektor's code and text in its message. For faults
+  about the information model of gemSpec_Kon the error's `hint` names the cause, the
+  `.kon` fields concerned and where to fix it: 4004 to 4007 (unknown Mandant, client
+  system, workplace, card terminal), 4010 to 4012 (not assigned to the Mandant), 4021
+  (call context incomplete), 4053 and 4092 (no terminal local to the workplace, no
+  Remote-PIN-KT), 4204 (client system not authenticated), 4060 and 4093 (terminal or
+  card busy), 4263 (comfort signature switched off). The Konnektor's administrator
+  fixes the information model; the user fixes the `.kon` file.
 - `--connector-timeout SECS` (default 10) bounds each call, `--card-timeout SECS`
   (default 300) calls that wait for the card terminal. `-v` prints one line per call,
   `-vv` the SOAP bodies; the `Authorization` header never appears.
@@ -399,8 +559,8 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   user ID for that HBA; `sign` then uses it and needs no PIN until the session's count
   or time runs out. The ID lets anyone with the same context sign without a PIN: it is
   sealed in the profile's state, so `comfort activate` needs a keyring
-  (`{bin} profile create`); it is masked in `-vv`, and removed by `comfort deactivate`. `--comfort-user-id` or
-  `TI_COMFORT_USER_ID` supplies one instead.
+  (`{bin} profile create`); it is masked in `-vv`, and removed by `comfort deactivate`; deactivate it when the
+  work is done. `--comfort-user-id` or `TI_COMFORT_USER_ID` supplies one instead.
 
 ## Subsystem probe: are the TI services reachable
 

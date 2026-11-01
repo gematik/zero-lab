@@ -3,10 +3,10 @@ id: TASK-136
 title: >-
   ti-cli: manage Konnektor .kon configurations: create, edit, show and test
   interactively
-status: To Do
+status: Done
 assignee: []
 created_date: 2026-10-24 06:43
-updated_date: '2026-10-29T06:48:00Z'
+updated_date: '2026-10-29T11:07:00Z'
 labels:
   - ti-cli
   - connector
@@ -85,15 +85,15 @@ Existing files keep working, and `test` warns about them; `config migrate` moves
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Research recorded in the plan: the decisions on secret storage, TLS trust (TSL-verified ID.AK.AUT, a pin, insecure) and command names, approved by the maintainer before implementation
-- [ ] #2 ti connector config new creates a working .kon interactively and from flags, written atomically with mode 0600 in a 0700 directory, with no secret values in the file
-- [ ] #3 ti connector config edit opens a temporary copy in $EDITOR and never replaces the file with one that fails validation
-- [ ] #4 ti connector config show redacts every secret
-- [ ] #5 ti connector config test reports each check (parse and permissions, network, TLS verdict, client authentication, service directory, call context, cards) as ok, warn or fail with a hint, in text and JSON, with documented exit codes
-- [ ] #6 The Konnektor's TLS certificate is verified against the TSL when it is ID.AK.AUT; otherwise it is pinned by fingerprint after confirmation; insecureSkipVerify is never proposed
+- [x] #1 Research recorded in the plan: the decisions on secret storage, TLS trust (TSL-verified ID.AK.AUT, a pin, insecure) and command names, approved by the maintainer before implementation
+- [x] #2 ti connector config new creates a working .kon interactively and from flags, written atomically with mode 0600 in a 0700 directory, with no secret values in the file
+- [x] #3 ti connector config edit opens a temporary copy in $EDITOR and never replaces the file with one that fails validation
+- [x] #4 ti connector config show redacts every secret
+- [x] #5 ti connector config test reports each check (parse and permissions, network, TLS verdict, client authentication, service directory, call context, cards) as ok, warn or fail with a hint, in text and JSON, with documented exit codes
+- [x] #6 The Konnektor's TLS certificate is verified against the TSL when it is ID.AK.AUT; otherwise it is pinned by fingerprint after confirmation; insecureSkipVerify is never proposed
 - [ ] #7 Existing .kon files with inline secrets keep working, test warns about them, and a migration moves the secrets out
-- [ ] #8 Tests named after the requirements (gemSpec_Kon IDs where they apply), a fuzz target for the new .kon fields, and a HITL run of new and test against a real Konnektor
-- [ ] #9 ti-cli README, AGENTS.md and the Unreleased notes describe the commands
+- [x] #8 Tests named after the requirements (gemSpec_Kon IDs where they apply), a fuzz target for the new .kon fields, and a HITL run of new and test against a real Konnektor
+- [x] #9 ti-cli README, AGENTS.md and the Unreleased notes describe the commands
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -122,4 +122,16 @@ Decisions (maintainer, 2026-10-29, cont.):
 - Credentials type none is refused for env pu too, like insecureSkipVerify: new, set and edit refuse it; test reports an existing one as fail. Not refused when a .kon is loaded (maintainer, 2026-10-29): the parser accepts both for pu; only the config commands refuse them and test reports them.
 
 - insecureSkipVerify is not migrated (maintainer, 2026-10-29). Instead a re-pin command (config pin NAME, TASK-136.2) renews the pin of a changed server certificate after showing old and new.
+
+- Changed (maintainer, 2026-10-29): http is supported outside the production environment. An http url warns (no TLS, credentials unencrypted) and fails for env pu, like insecureSkipVerify and none; pkcs12 credentials need https; the tls step is skipped for http. This replaces "connector.sds only over HTTPS" and "an http:// input is an error" above. Done in TASK-136.1's code; TASK-136.2's address criterion follows.
+
+- Reverted (maintainer, 2026-10-29): https only after all. An http url fails config test's file step everywhere; new refuses an http address (exit 2); set and edit refuse a change that brings an http url. The http support of commit a498d2f is undone in TASK-136.2's work; the decisions "connector.sds only over HTTPS" and "an http:// input is an error" above apply again.
+
+Abschluss 2026-10-29. Kriterien offen angepasst durch Entscheidungen des Maintainers: #2 – keine Geheimnisse in der Datei erst mit dem geplanten Secret-Management (TASK-104, decision-7); bis dahin ist die .kon selbst das Geheimnis (0600/0700, show/test nennen inline-Geheimnisse). #6 – immer Pin statt TSL-Prüfung (TI-Gateway nutzt eigene PKI); insecureSkipVerify ist ausdrücklich gewünschte Option (nie in pu, mit Warnung). #7 – bestehende .kon laufen weiter, test warnt; die Migration ist als TASK-157 herausgelöst (vormals 136.3, geparkt bis zum Secret-Management).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Konnektor-.kon-Verwaltung in ti-cli und ti-connector-client: config show (ohne Geheimnisse), test (file, tcp, tls, auth, sds, context, cards; renew_pin als Aktion), new (Assistent oder Optionen, Pin nach Bestätigung, Test vor dem Speichern, Kontext nach Fehlschlag neu eingeben), set, edit ($EDITOR), pin. Sans-IO-Kern (config, check, edit) für spätere GUI; https-only; insecureSkipVerify und none in pu abgelehnt; rpassword nur in ti-cli; Fuzz-Ziel dotkon. HITL von 136.1 und 136.2 gegen echten Konnektor bestanden. Migration bestehender Dateien: TASK-157 (geparkt bis TASK-104).
+<!-- SECTION:FINAL_SUMMARY:END -->

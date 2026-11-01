@@ -1,0 +1,19 @@
+[package]
+name = "unsafe-audit"
+version = "0.0.0"
+description = "Checks that the cores' dependency trees hold no unsafe code beyond the approved exceptions"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+syn.workspace = true
+proc-macro2.workspace = true
+quote.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

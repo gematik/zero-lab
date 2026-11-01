@@ -40,7 +40,7 @@ use crate::cert_type::CertificateType;
 use crate::checks::{self, CertificateCheck};
 use crate::error::{ErrorCode, ValidationError, ValidationWarning};
 use crate::key::{KeyStatus, classify_key};
-use crate::path::{PathOptions, validate_path};
+use crate::path::{PathOptions, ValidityModel, validate_path};
 use crate::revocation::{
     ResponderAuthorization, RevocationChecker, RevocationFinding, RevocationMode, RevocationResult,
     apply_revocation,
@@ -266,6 +266,10 @@ impl Validator {
             Err(e) => return Ok(incomplete(e.partial, e.error)),
         };
         let ee_checks = self.ee_checks();
+        let model = self
+            .cert_type
+            .or_else(|| crate::cert_type::detect_certificate_type(leaf))
+            .map_or(ValidityModel::Shell, ValidityModel::for_type);
         let mut result = validate_path(
             &chain,
             &PathOptions {
@@ -273,6 +277,7 @@ impl Validator {
                 algorithms: &self.algorithms,
                 max_clock_skew: self.max_clock_skew,
                 ee_checks: &ee_checks,
+                model,
             },
         )?;
         if self.allow_expired {
@@ -654,6 +659,45 @@ mod tests {
                     "revoked at {revoked}"
                 );
             }
+        }
+
+        /// gemKPT_PKI_TIP 2.4: the end entity's type picks the validity model. Under a
+        /// CA that has expired since it issued them, an SMC-B's and an HBA's certificate
+        /// are valid with a warning (Kompromissmodell), a component's is not (shell
+        /// model).
+        #[test]
+        fn the_validity_model_follows_the_certificate_type() {
+            let pki = TestPki::new();
+            let v = Validator {
+                store: Arc::new(TrustStore::new([pki.rca1.clone()]).with_intermediates(vec![
+                    crate::tsl::Intermediate {
+                        certificate: pki.sub_ca_short.clone(),
+                        provider: "Test TSP".into(),
+                        revoked_since: None,
+                    },
+                ])),
+                ..validator(&pki, RevocationMode::Disabled)
+            };
+            let at = |ee: &Certificate| {
+                block_on(v.validate(std::slice::from_ref(ee), TestPki::AFTER_SHORT, &Unchecked))
+                    .unwrap()
+            };
+            for ee in [&pki.ee_short_hci_aut, &pki.ee_short_hp_aut] {
+                let result = at(ee);
+                assert!(!result.has_error(ErrorCode::Expired), "{:?}", result.errors);
+                assert!(
+                    result.has_warning(ErrorCode::IssuedBeforeCaExpiry),
+                    "{:?}",
+                    result.warnings
+                );
+            }
+            let component = at(&pki.ee_short_fd_tls_s);
+            assert!(
+                component.has_error(ErrorCode::Expired),
+                "{:?}",
+                component.errors
+            );
+            assert!(!component.has_warning(ErrorCode::IssuedBeforeCaExpiry));
         }
 
         #[test]

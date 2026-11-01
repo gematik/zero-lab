@@ -26,7 +26,10 @@
 //!
 //! Conventions every command follows: results on stdout, diagnostics and errors on
 //! stderr; `--format json` gives one JSON document with a `"schema"` version; colors
-//! only on a terminal; never a prompt; exit codes as listed in `ti --help`.
+//! only on a terminal; exit codes as listed in `ti --help`. A prompt only on a terminal
+//! (stdin and stderr), in commands meant for people (`connector config new`, `edit`,
+//! `pin`), each of them fully usable through its options; without a terminal a missing
+//! option is an error, never a wait.
 
 mod block;
 mod cli;
@@ -40,6 +43,7 @@ mod net;
 mod output;
 mod paths;
 mod peer;
+mod prompt;
 // Public for the spec/store interoperability driver (examples/store-interop.rs) only;
 // not an API of this crate.
 #[doc(hidden)]
@@ -47,6 +51,7 @@ pub mod store;
 mod trust;
 
 use std::ffi::OsString;
+use std::io::Write as _;
 use std::process::ExitCode;
 
 use clap::{CommandFactory, FromArgMatches};
@@ -62,10 +67,47 @@ use output::Output;
 
 /// The command line as clap sees it, named [`BIN`].
 fn command() -> clap::Command {
-    Cli::command()
+    with_more_options_hint(Cli::command())
         .name(BIN)
         .bin_name(BIN)
         .after_long_help(cli::AFTER_HELP.replace("{bin}", BIN))
+}
+
+/// The short help, shown when a command group is called without its subcommand, leaves
+/// out the options every command shares, so that the commands stand out, and says
+/// where the others are; `-h` and `--help` both show everything.
+fn with_more_options_hint(command: clap::Command) -> clap::Command {
+    command
+        .after_help("The options every command shares: --help")
+        .after_long_help("")
+        .disable_help_flag(true)
+        // The derived arguments leave the heading at "HTTP options".
+        .next_help_heading(None::<&str>)
+        .arg(
+            clap::Arg::new("help")
+                .short('h')
+                .long("help")
+                .action(clap::ArgAction::HelpLong)
+                .help("Print help"),
+        )
+        .mut_subcommands(with_more_options_hint)
+}
+
+/// The short help of the deepest command `args` name.
+fn short_help(args: &[OsString]) -> clap::builder::StyledStr {
+    let mut command = command();
+    command.build();
+    let mut command = &mut command;
+    for arg in args.iter().skip(1) {
+        let Some(name) = arg.to_str() else { continue };
+        if command.find_subcommand(name).is_none() {
+            continue;
+        }
+        command = command
+            .find_subcommand_mut(name)
+            .expect("found just before");
+    }
+    command.render_help()
 }
 
 /// Whether the command's `--env` took its value from `TI_ENV`.
@@ -85,13 +127,20 @@ where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
 {
-    let parsed = command().try_get_matches_from(args).and_then(|matches| {
+    let args: Vec<OsString> = args.into_iter().map(Into::into).collect();
+    let parsed = command().try_get_matches_from(&args).and_then(|matches| {
         let mut cli = Cli::from_arg_matches(&matches)?;
         cli.global.env_from_variable = env_from_variable(&matches);
         Ok(cli)
     });
     let cli = match parsed {
         Ok(cli) => cli,
+        Err(error) if error.kind() == clap::error::ErrorKind::MissingSubcommand => {
+            // clap shows the help only when no argument at all is present, and a set
+            // TI_FORMAT or TI_CACHE_DIR counts as one; show it in that case too.
+            let _ = writeln!(std::io::stderr(), "{}", short_help(&args));
+            return Exit::Usage.into();
+        }
         Err(error) => {
             // clap prints help to stdout (exit 0) and errors to stderr (exit 2).
             let _ = error.print();

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "identity inspect",
-  "description": "The SMC-B authentication identity (AUT) selected from a PKCS#12 file, a PEM certificate and key, or a Konnektor card: the certificate with digitalSignature and without contentCommitment whose key is present.",
+  "description": "The SMC-B or HBA authentication identity (AUT: C.HCI.AUT or C.HP.AUT) selected from a PKCS#12 file, a PEM certificate and key, or a Konnektor card: the certificate with digitalSignature and without contentCommitment whose key is present.",
   "type": "object",
   "properties": {
     "schema": {

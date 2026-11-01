@@ -39,7 +39,7 @@
 //! ```text
 //! Reloader ── tick() ──► FallbackLoader
 //!                         ├─ primary: CachingLoader ── CacheStore (memory, Redis, …)
-//!                         │            └─ HttpLoader ── Transport (reqwest, files, …)
+//!                         │            └─ HttpLoader ── Transport (the host's, files, …)
 //!                         └─ backup:  StaticLoader ◄── Bundle (offline JSON file)
 //! ```
 //!
@@ -68,7 +68,7 @@
 //! The crate itself does not log. [`ReloadOutcome`] tells the caller what happened; a
 //! verification failure ([`ReloadError::Verify`]) means possible tampering and deserves
 //! an error-level log at once, a load failure a warning while `Stale` and an error from
-//! `Degraded` on. The `tokio` feature's driver logs exactly that.
+//! `Degraded` on.
 
 mod artifact;
 mod caching;

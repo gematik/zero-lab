@@ -10,6 +10,9 @@
 #     │                                  ├─ ee-expired, ee-not-yet-valid, ee-revoked
 #     ├─ sub-ca-mixed ── ee-mixed (P-256)
 #     ├─ sub-ca-expired ── ee-under-expired
+#     ├─ sub-ca-short (valid 2026 only) ── ee-short-hci-aut, ee-short-hp-aut,
+#     │    ee-short-fd-tls-s (issued 2026, valid to 2031), ee-after-short (issued after
+#     │    the CA expired): the validity models of gemKPT_PKI_TIP 2.4, checked in 2028
 #     └─ cross-rca1-for-rca7 (RCA7's name and key, signed by RCA1)
 #   rca7 (P-256) ── sub-ca-komp ── ee-zeta (serverAuth, DNS zeta.ti-dienste.de)
 #     ├─ ee-p521 (a P-521 key, never admissible in the TI)
@@ -58,6 +61,8 @@ PAST_FROM=20240101000000Z
 PAST_TO=20251231000000Z
 FUTURE_FROM=20260102000000Z
 FUTURE_TO=20270101000000Z
+ONE_YEAR=20270101000000Z
+AFTER_ONE_YEAR=20270601000000Z
 
 cat > "$work/ext.cnf" <<'CNF'
 [ca]
@@ -69,6 +74,27 @@ authorityKeyIdentifier = keyid:always
 [ee]
 keyUsage = critical, digitalSignature
 extendedKeyUsage = clientAuth
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+
+[ee_hci_aut]
+keyUsage = critical, digitalSignature
+extendedKeyUsage = clientAuth
+certificatePolicies = 1.2.276.0.76.4.163, 1.2.276.0.76.4.77
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+
+[ee_hp_aut]
+keyUsage = critical, digitalSignature, keyAgreement
+extendedKeyUsage = clientAuth, emailProtection
+certificatePolicies = 1.2.276.0.76.4.145, 1.2.276.0.76.4.75
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+
+[ee_fd_tls_s]
+keyUsage = critical, digitalSignature
+extendedKeyUsage = serverAuth
+certificatePolicies = 1.2.276.0.76.4.163, 1.2.276.0.76.4.169
 subjectKeyIdentifier = hash
 authorityKeyIdentifier = keyid:always
 
@@ -183,6 +209,16 @@ key sub-ca-expired bp256
 cert sub-ca-expired sub-ca-expired "GEM.SubCA-Expired TEST-ONLY" rca1 "$PAST_FROM" "$PAST_TO" ca
 key ee-under-expired bp256
 cert ee-under-expired ee-under-expired "EE-UnderExpired TEST-ONLY" sub-ca-expired "$NOW" "$FIVE_YEARS" ee
+key sub-ca-short bp256
+cert sub-ca-short sub-ca-short "GEM.SubCA-Short TEST-ONLY" rca1 "$NOW" "$ONE_YEAR" ca
+key ee-short-hci-aut bp256
+cert ee-short-hci-aut ee-short-hci-aut "SMC-B-Short TEST-ONLY" sub-ca-short "$NOW" "$FIVE_YEARS" ee_hci_aut
+key ee-short-hp-aut bp256
+cert ee-short-hp-aut ee-short-hp-aut "HBA-Short TEST-ONLY" sub-ca-short "$NOW" "$FIVE_YEARS" ee_hp_aut
+key ee-short-fd-tls-s bp256
+cert ee-short-fd-tls-s ee-short-fd-tls-s "FD-Short TEST-ONLY" sub-ca-short "$NOW" "$FIVE_YEARS" ee_fd_tls_s
+key ee-after-short bp256
+cert ee-after-short ee-after-short "SMC-B-After-Short TEST-ONLY" sub-ca-short "$AFTER_ONE_YEAR" "$FIVE_YEARS" ee_hci_aut
 
 key rca7 p256;           cert rca7 rca7 "GEM.RCA7 TEST-ONLY" self "$NOW" "$TEN_YEARS" ca
 key sub-ca-komp p256;    cert sub-ca-komp sub-ca-komp "GEM.SubCA-Komp TEST-ONLY" rca7 "$NOW" "$FIVE_YEARS" ca

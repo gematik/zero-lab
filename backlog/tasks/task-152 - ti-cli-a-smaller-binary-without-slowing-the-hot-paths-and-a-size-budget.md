@@ -4,11 +4,11 @@ title: 'ti-cli: a smaller binary without slowing the hot paths, and a size budge
 status: To Do
 assignee: []
 created_date: '2026-10-28T18:29:00Z'
+updated_date: '2026-10-28T19:03:00Z'
 labels:
   - ti-cli
   - release
   - deps
-milestone: m-0
 dependencies: []
 priority: medium
 type: enhancement
@@ -28,3 +28,9 @@ ti is 12.4 MB on linux-musl, 11.8 MB on Windows, 9.4 MB on macOS (0.5.0). cargo 
 - [ ] #3 A size budget for the release binaries fails the release (and a just recipe the maintainer can run) when exceeded
 - [ ] #4 No measurable slowdown of pki verify, tsl verify and the store (timings before and after recorded)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-10-28: implemented and measured (about −19 %, same speed), then reverted at the maintainer's request: too little gain for the change. The measurements above stand for a later attempt.
+<!-- SECTION:NOTES:END -->

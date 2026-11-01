@@ -1,5 +1,5 @@
 [workspace]
-members = ["ti-types", "ti-store", "ti-xmldsig", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-report", "ti-cli", "ti-wasm", "jwz", "jwz-brainpool", "ti-jwz", "ti-idpd", "ti-directory"]
+members = ["ti-types", "ti-store", "ti-xmldsig", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-report", "ti-cli", "ti-wasm", "jwz", "jwz-brainpool", "ti-jwz", "ti-idpd", "ti-directory", "unsafe-audit"]
 # cargo-fuzz targets need nightly and a dependency tree of their own.
 exclude = ["jwz/fuzz"]
 resolver = "3"
@@ -39,7 +39,9 @@ const-oid = "0.10"
 pem-rfc7468 = "1"
 # PKCS#12: PBES2 (PBKDF2 + AES-CBC) and the key/MAC primitives; the legacy PKCS#12 PBEs
 # (3DES, RC2) that gematik's test cards still use sit behind ti-pkcs12's `legacy` feature.
-pkcs5 = { version = "0.8.1", default-features = false, features = ["alloc", "pbes2"] }
+# No pkcs5: its `pbes2` feature brings scrypt, which PKCS#12 never uses (TASK-56).
+aes = { version = "0.9.3", default-features = false }
+pbkdf2 = { version = "0.13.0", default-features = false, features = ["hmac"] }
 pkcs8 = { version = "0.11.0", default-features = false, features = ["alloc"] }
 # The `ECPrivateKey` inside a PKCS#8 EC key (ti-cli's identity loader); already in the
 # tree through elliptic-curve.
@@ -57,8 +59,9 @@ clap_complete = { version = "4.6.11", default-features = false }
 anstream = "1.0.0"
 anstyle = "1.0.14"
 # Local time zone for timestamps in text output (system zone, DST-correct, Windows too).
+# ti-cli only; std has no time zones, and UTC is not what a user compares a card's or a
+# certificate's time with (TASK-58).
 jiff = "0.2.37"
-arc-swap = "1.9.2"
 sha2 = "0.11"
 # OCSP CertIDs only: TI responders expect SHA-1 there (RFC 5019); never for integrity.
 sha1 = { version = "0.11", default-features = false }
@@ -72,10 +75,6 @@ bp384 = { version = "0.14.0", default-features = false, features = ["arithmetic"
 # Release candidate: the only rsa line on the current RustCrypto stack (docs/development.md).
 rsa = { version = "=0.10.0-rc.19", default-features = false, features = ["encoding", "sha2"] }
 digest = "0.11"
-# Adapters behind ti-pki features; the caller's own reqwest dependency brings TLS.
-reqwest = { version = "0.13.5", default-features = false }
-tokio = { version = "1.53.1", default-features = false }
-tracing = { version = "0.1.44", default-features = false, features = ["std"] }
 # ti-cli's HTTP: blocking ureq on rustls with ring passed explicitly, as in kartos; no
 # async runtime, no aws-lc build.
 # `~`: ti-connector-client's TLS connector uses ureq's semver-exempt `unversioned`
@@ -89,12 +88,25 @@ rustls-platform-verifier = "0.7.1"
 # a core. `bundled` compiles one SQLite for every platform. Without `cache`, whose
 # hashlink brings foldhash (Zlib, not in deny.toml). Approved 2026-10-16 (TASK-103.4).
 rusqlite = { version = "0.40.2", default-features = false, features = ["bundled"] }
+# Hidden password entry in ti-cli's interactive commands (connector config); host only,
+# never a core: it reaches the terminal through `unsafe` (termios, the Windows console).
+# Exact, with rtoolbox 0.0.6 in the lock file, which promises no compatibility.
+# Approved 2026-10-29 (TASK-136).
+rpassword = "=7.5.4"
 
 serde_json = "1.0.151"
+# Two XML parsers on purpose (TASK-57). Neither can do the other's job: quick-xml has no
+# tree with namespace scopes for C14N, and roxmltree has no serde and cannot write the
+# SOAP requests. A verified TSL is read by quick-xml from the canonical bytes that
+# roxmltree's tree produced and the signature covers, so the two cannot disagree on what
+# was signed.
+#
 # Strict XML tree for canonicalization in ti-xmldsig: keeps source positions, so the
-# prefixes C14N must render can be read back; rejects DTDs.
+# prefixes C14N must render can be read back; rejects DTDs. Its time grows with the square
+# of an element's attributes: ti-xmldsig bounds them before it runs.
 roxmltree = { version = "0.21.1", default-features = false, features = ["positions"] }
-# XML through serde, matching local names (as in the zero-lab generator projects).
+# XML through serde, matching local names (as in the zero-lab generator projects). It
+# skips a DTD without reading it and refuses any entity it does not know.
 quick-xml = { version = "0.42.0", default-features = false, features = ["serialize", "overlapped-lists"] }
 base64ct = { version = "1.8.3", features = ["alloc"] }
 # Constant-time comparison of the digests of ti-xmldsig (TSLSIG-017).
@@ -111,6 +123,13 @@ aes-kw = { version = "0.3.1", default-features = false }
 hkdf = { version = "0.13.0", default-features = false }
 rand_core = { version = "0.10.1", default-features = false }
 getrandom = { version = "0.4.3", default-features = false }
+
+# unsafe-audit (`just unsafe-free`) parses the dependencies' sources; a development tool,
+# never a dependency of a core or the CLI. Versions and features already in the lock file
+# through proc macros. Approved 2026-10-29 (TASK-156).
+syn = { version = "3.0.6", default-features = false, features = ["full", "visit", "parsing", "printing"] }
+proc-macro2 = { version = "1.0.107", default-features = false }
+quote = { version = "1.0.47", default-features = false }
 
 # Test-only.
 futures-lite = "2.6.1"

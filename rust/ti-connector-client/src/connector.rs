@@ -29,8 +29,8 @@ use ti_types::Clock;
 
 use crate::api::gematik::conn::connectorcontext20::Context;
 use crate::dotkon::Dotkon;
-use crate::error::Error;
-use crate::sds::{ServiceDirectory, Target};
+use crate::error::{DiscoveryError, Error};
+use crate::sds::{Binding, ServiceDirectory, Target, same_origin};
 use crate::soap::{Timeouts, Transport};
 
 /// A Konnektor, ready for calls.
@@ -38,6 +38,8 @@ use crate::soap::{Timeouts, Transport};
 pub struct Connector<T> {
     transport: T,
     directory: ServiceDirectory,
+    url: String,
+    expected_host: Option<String>,
     context: Context,
     authorization: Option<String>,
     timeouts: Timeouts,
@@ -87,6 +89,8 @@ impl<T: Transport> Connector<T> {
         Connector {
             transport,
             directory,
+            url: dotkon.url.clone(),
+            expected_host: dotkon.expected_host.clone(),
             context: Context {
                 mandant_id: dotkon.mandant_id.clone(),
                 client_system_id: dotkon.client_system_id.clone(),
@@ -101,6 +105,19 @@ impl<T: Transport> Connector<T> {
     /// The service directory, endpoints rewritten if the `.kon` file asks for it.
     pub fn directory(&self) -> &ServiceDirectory {
         &self.directory
+    }
+
+    /// The endpoint of `binding`, unless it leaves the `.kon` URL's origin.
+    pub(crate) fn endpoint<'a>(&self, binding: &'a Binding) -> Result<&'a str, DiscoveryError> {
+        if same_origin(&self.url, self.expected_host.as_deref(), &binding.endpoint) {
+            Ok(&binding.endpoint)
+        } else {
+            Err(DiscoveryError::ForeignEndpoint {
+                service: binding.service.clone(),
+                endpoint: binding.endpoint.clone(),
+                url: self.url.clone(),
+            })
+        }
     }
 
     pub(crate) fn transport(&self) -> &T {

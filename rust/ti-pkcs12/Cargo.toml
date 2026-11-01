@@ -17,7 +17,7 @@ exclude = ["tests/"]
 # The PKCS#12 PBEs of RFC 7292 Appendix C (3DES, RC2) and DES-EDE3 in PBES2: what
 # OpenSSL's `-legacy`, Java keystores and gematik's card vendors still produce.
 default = ["legacy"]
-legacy = ["dep:cbc", "dep:des", "dep:rc2", "pkcs5/3des", "pkcs5/sha1-insecure"]
+legacy = ["dep:des", "dep:rc2"]
 # Writing PKCS#12 (PBES2/AES-256, SHA-256 MAC); the caller supplies the randomness.
 encode = []
 
@@ -25,14 +25,15 @@ encode = []
 # BER: Java keystores and card vendors write indefinite lengths and constructed strings.
 der = { workspace = true, features = ["ber"] }
 spki.workspace = true
-pkcs5.workspace = true
 pkcs8.workspace = true
+aes.workspace = true
+cbc.workspace = true
 hmac.workspace = true
+pbkdf2.workspace = true
 sha1.workspace = true
 sha2.workspace = true
 zeroize.workspace = true
 thiserror.workspace = true
-cbc = { workspace = true, optional = true }
 des = { workspace = true, optional = true }
 rc2 = { workspace = true, optional = true }
 

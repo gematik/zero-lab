@@ -24,7 +24,7 @@ ti-connector-client = { workspace = true, features = ["ureq"] }
 base64ct.workspace = true
 ti-pki = { workspace = true, features = ["brainpool", "rsa", "os", "dangerous-nonprod"] }
 ti-report.workspace = true
-# `identity sign`: JWS with the SMC-B key, ES256 on brainpoolP256r1 (jwz-brainpool) or
+# `identity sign`: JWS with the SMC-B or HBA key, ES256 on brainpoolP256r1 (jwz-brainpool) or
 # P-256 (jwz's own backend); the keys come from PKCS#8 (`pkcs8`, `sec1`), not from JWKs.
 jwz = { workspace = true, features = ["std", "jws", "jwt", "crypto-rustcrypto"] }
 jwz-brainpool.workspace = true
@@ -37,8 +37,8 @@ sec1.workspace = true
 der.workspace = true
 zeroize.workspace = true
 # rustls without a built-in provider (ring is passed in), the OS trust store via the
-# platform verifier, and SOCKS for -x socks5://.
-ureq = { workspace = true, features = ["rustls-no-provider", "platform-verifier", "socks-proxy"] }
+# platform verifier.
+ureq = { workspace = true, features = ["rustls-no-provider", "platform-verifier"] }
 rustls.workspace = true
 clap = { workspace = true, features = ["std", "help", "usage", "error-context", "suggestions", "color", "env"] }
 clap_complete.workspace = true
@@ -50,6 +50,7 @@ pem-rfc7468 = { workspace = true, features = ["alloc"] }
 ti-store = { workspace = true, features = ["store"] }
 ti-types.workspace = true
 rusqlite.workspace = true
+rpassword.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

@@ -28,9 +28,7 @@ use core::time::Duration;
 use std::collections::hash_map::RandomState;
 use std::hash::BuildHasher;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
-
-use arc_swap::ArcSwapOption;
+use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 
 use super::artifact::{Artifact, TrustMaterial};
 use super::loader::{LoadError, Loader};
@@ -262,7 +260,7 @@ struct Attempts {
 /// Shared read access to the current trust store.
 #[derive(Debug)]
 pub struct TrustStoreHandle<C> {
-    current: ArcSwapOption<Current>,
+    current: RwLock<Option<Arc<Current>>>,
     /// The TSL state given at construction, until the first swap replaces it.
     stored_tsl: Option<TslState>,
     attempts: Mutex<Attempts>,
@@ -279,10 +277,7 @@ impl<C: Clock> TrustStoreHandle<C> {
     /// [`Expired`] before the first successful load and once the material is older
     /// than `hard_expiry`, even if no reload has run since.
     pub fn snapshot(&self) -> Result<Arc<TrustStore>, Expired> {
-        let current = self
-            .current
-            .load_full()
-            .ok_or(Expired { fetched_at: None })?;
+        let current = self.current().ok_or(Expired { fetched_at: None })?;
         if self.clock.now().since(current.fetched_at) >= self.hard_expiry {
             return Err(Expired {
                 fetched_at: Some(current.fetched_at),
@@ -294,7 +289,7 @@ impl<C: Clock> TrustStoreHandle<C> {
     /// The current [`ReloadStatus`].
     pub fn status(&self) -> ReloadStatus {
         let now = self.clock.now();
-        let current = self.current.load_full();
+        let current = self.current();
         let attempts = self.attempts();
         let staleness = current
             .as_ref()
@@ -329,6 +324,24 @@ impl<C: Clock> TrustStoreHandle<C> {
         }
     }
 
+    /// The current material. A reader only clones the `Arc` under the lock, so a reload
+    /// never waits for a validation, nor a validation for a reload.
+    fn current(&self) -> Option<Arc<Current>> {
+        // A holder replaces or clones one `Option`: it cannot leave it half-written, so a
+        // poisoned lock is safe to reuse.
+        self.current
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    fn set_current(&self, current: Current) {
+        *self
+            .current
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::new(current));
+    }
+
     fn attempts(&self) -> MutexGuard<'_, Attempts> {
         // The guarded data is plain bookkeeping that stays consistent even if a holder
         // panicked, so a poisoned lock is safe to reuse.
@@ -340,7 +353,7 @@ impl<C: Clock> TrustStoreHandle<C> {
 
 /// Loads, verifies and swaps trust material. It has no timer of its own: call
 /// [`tick`](Self::tick) when [`due`](Self::due), from whatever runtime the application
-/// uses (see the `tokio` feature for a ready-made driver).
+/// uses.
 ///
 /// The TSL is verified as `spec/tsl-xmldsig` requires before its CAs are used: signature
 /// and signer under [`TrustConfig::tsl_signer_anchors`], `NextUpdate` and
@@ -393,7 +406,7 @@ where
             config,
             loader,
             handle: TrustStoreHandle {
-                current: ArcSwapOption::empty(),
+                current: RwLock::new(None),
                 stored_tsl: None,
                 attempts: Mutex::default(),
                 clock,
@@ -456,9 +469,7 @@ where
         let periodic = last + self.policy.interval + self.jitter(last);
         let deadline = self
             .handle
-            .current
-            .load()
-            .as_ref()
+            .current()
             .and_then(|c| c.tsl_next_update)
             .filter(|_| self.policy.honor_tsl_next_update)
             .map(|next_update| next_update - self.policy.next_update_lead);
@@ -496,7 +507,7 @@ where
         if age >= self.policy.hard_expiry {
             return self.fail(now, ReloadError::TooOld { age });
         }
-        let current = self.handle.current.load_full();
+        let current = self.handle.current();
         if let Some(current) = &current
             && same_etags(&current.etags, &material)
         {
@@ -529,21 +540,13 @@ where
 
     /// Keeps the current store, confirmed by `material`.
     fn confirm(&self, current: &Current, material: &TrustMaterial) -> ReloadOutcome {
-        self.handle
-            .current
-            .store(Some(Arc::new(current.confirmed(material))));
+        self.handle.set_current(current.confirmed(material));
         self.handle.attempts().succeeded = true;
         ReloadOutcome::Unchanged
     }
 
     fn swap(&self, material: &TrustMaterial, verified: super::Verified) -> ReloadOutcome {
-        let generation = self
-            .handle
-            .current
-            .load()
-            .as_ref()
-            .map_or(0, |c| c.generation)
-            + 1;
+        let generation = self.handle.current().map_or(0, |c| c.generation) + 1;
         let tsl_meta = material
             .meta(Artifact::Tsl)
             .expect("the list is always present");
@@ -560,7 +563,7 @@ where
             .as_ref()
             .and_then(|tsl| tsl.signer_status.as_ref().map(|r| r.status));
         let tsl_signature = verified.tsl.as_ref().map(|tsl| tsl.signature);
-        self.handle.current.store(Some(Arc::new(Current {
+        self.handle.set_current(Current {
             tsl_next_update: verified.tsl_next_update,
             tsl_state,
             tsl_warnings,
@@ -572,7 +575,7 @@ where
             fetched_at: material.fetched_at,
             source: tsl_meta.source,
             generation,
-        })));
+        });
         self.handle.attempts().succeeded = true;
         ReloadOutcome::Swapped { generation }
     }
@@ -583,7 +586,7 @@ where
             attempts.succeeded = false;
             attempts.error = Some((now, error.to_string()));
         }
-        let Some(current) = self.handle.current.load_full() else {
+        let Some(current) = self.handle.current() else {
             return ReloadOutcome::Expired { error };
         };
         let stale_for = now.since(current.fetched_at);

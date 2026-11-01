@@ -16,7 +16,7 @@ exclude = ["tests/"]
 [features]
 # The transport over blocking ureq with rustls and ring: mutual TLS from PKCS#12
 # credentials, the `.kon` trust store, basic auth. Not for wasm32.
-ureq = ["dep:ureq", "dep:rustls", "dep:rustls-pki-types", "dep:rustls-platform-verifier", "dep:ti-pkcs12", "dep:p256", "dep:p384"]
+ureq = ["dep:ureq", "dep:rustls", "dep:rustls-pki-types", "dep:rustls-platform-verifier", "dep:p256", "dep:p384"]
 
 [dependencies]
 ti-types.workspace = true
@@ -28,12 +28,13 @@ quick-xml.workspace = true
 # The generated code's xs:base64Binary; the same version ureq already brings.
 base64.workspace = true
 sha2.workspace = true
+# The client certificate of `pkcs12` credentials, for the redacted view and the checks.
+ti-pkcs12.workspace = true
 thiserror.workspace = true
 ureq = { workspace = true, optional = true, features = ["rustls-no-provider"] }
 rustls = { workspace = true, optional = true }
 rustls-pki-types = { workspace = true, optional = true, features = ["std"] }
 rustls-platform-verifier = { workspace = true, optional = true }
-ti-pkcs12 = { workspace = true, optional = true }
 # Completes EC client keys that lack their public key, which ring requires.
 p256 = { workspace = true, optional = true, features = ["pkcs8", "alloc"] }
 p384 = { workspace = true, optional = true, features = ["pkcs8", "alloc"] }
@@ -56,3 +57,7 @@ required-features = ["ureq"]
 
 [lints]
 workspace = true
+
+[[test]]
+name = "probe"
+required-features = ["ureq"]

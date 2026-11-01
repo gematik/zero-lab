@@ -1,9 +1,10 @@
 ---
 id: TASK-154
 title: ti-cli test a_closed_pipe_is_not_an_error depends on the user's profile
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-28T18:44:00Z'
+updated_date: '2026-10-28T18:44:00Z'
 labels:
   - ti-cli
   - test
@@ -22,5 +23,11 @@ The test runs ti pki inspect without the tests' environment, so it reads the use
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The test runs ti in the tests' environment and passes whatever the user's profile holds
+- [x] #1 The test runs ti in the tests' environment and passes whatever the user's profile holds
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+tests/cli.rs: a command() helper builds ti in the tests' environment (no user profile, cache or state); ti() and a_closed_pipe_is_not_an_error use it. The test failed on a machine whose default profile held a stale TSL: inspect warned on stderr. cli tests green.
+<!-- SECTION:FINAL_SUMMARY:END -->

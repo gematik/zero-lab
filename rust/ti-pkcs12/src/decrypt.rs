@@ -21,10 +21,9 @@
  * find details in the "Readme" file.
  */
 
-//! Decryption of shrouded key bags and encrypted safes: PBES2 through `pkcs5`, and with
-//! the `legacy` feature the PKCS#12 PBEs of RFC 7292 Appendix C.
+//! Decryption of shrouded key bags and encrypted safes: PBES2, and with the `legacy`
+//! feature the PKCS#12 PBEs of RFC 7292 Appendix C.
 
-use der::{Decode, Encode};
 use spki::AlgorithmIdentifierOwned;
 use zeroize::Zeroizing;
 
@@ -38,72 +37,25 @@ pub(crate) fn decrypt(
     ciphertext: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, Error> {
     match algorithm.oid {
-        oids::PBES2 => pbes2(algorithm, password, ciphertext),
+        oids::PBES2 => crate::pbes2::decrypt(algorithm, password, ciphertext),
         #[cfg(feature = "legacy")]
         oid if legacy::is_pkcs12_pbe(oid) => legacy::decrypt(algorithm, password, ciphertext),
         oid => Err(Error::UnsupportedAlgorithm(oid)),
     }
 }
 
-fn pbes2(
-    algorithm: &AlgorithmIdentifierOwned,
-    password: &str,
-    ciphertext: &[u8],
-) -> Result<Zeroizing<Vec<u8>>, Error> {
-    let encoded = algorithm.to_der()?;
-    let parsed = spki::AlgorithmIdentifierRef::from_der(&encoded)?;
-    let scheme = pkcs5::EncryptionScheme::try_from(parsed)
-        .map_err(|_| Error::UnsupportedAlgorithm(algorithm.oid))?;
-    let pkcs5::EncryptionScheme::Pbes2(params) = &scheme else {
-        return Err(Error::UnsupportedAlgorithm(algorithm.oid));
-    };
-    match &params.kdf {
-        pkcs5::pbes2::Kdf::Pbkdf2(pbkdf2) => {
-            crate::check_iterations("PBKDF2", pbkdf2.iteration_count)?;
-        }
-        // PBES2 means PBKDF2 here (P12-030): scrypt would let the file choose its
-        // memory cost, and no PKCS#12 producer writes it.
-        other => return Err(Error::UnsupportedAlgorithm(other.oid())),
-    }
-    scheme
-        .decrypt(password.as_bytes(), ciphertext)
-        .map(Zeroizing::new)
-        .map_err(|_| Error::DecryptFailed)
-}
-
 /// The display name of an encryption algorithm, e.g. `PBES2 AES-256-CBC` or
 /// `PKCS#12 3DES`.
 pub(crate) fn name(algorithm: &AlgorithmIdentifierOwned) -> String {
     match algorithm.oid {
-        oids::PBES2 => {
-            let cipher = algorithm
-                .to_der()
-                .ok()
-                .and_then(|der| {
-                    let parsed = spki::AlgorithmIdentifierRef::from_der(&der).ok()?;
-                    let pkcs5::EncryptionScheme::Pbes2(params) =
-                        pkcs5::EncryptionScheme::try_from(parsed).ok()?
-                    else {
-                        return None;
-                    };
-                    Some(params.encryption.oid().to_string())
-                })
-                .map(|oid| cipher_name(&oid).unwrap_or(&oid).to_owned())
-                .unwrap_or_default();
-            format!("PBES2 {cipher}").trim_end().to_owned()
-        }
+        oids::PBES2 => format!(
+            "PBES2 {}",
+            crate::pbes2::cipher_name(algorithm).unwrap_or_default()
+        )
+        .trim_end()
+        .to_owned(),
         oid => pkcs12_pbe_name(oid).map_or_else(|| oid.to_string(), str::to_owned),
     }
-}
-
-fn cipher_name(oid: &str) -> Option<&'static str> {
-    Some(match oid {
-        "2.16.840.1.101.3.4.1.2" => "AES-128-CBC",
-        "2.16.840.1.101.3.4.1.22" => "AES-192-CBC",
-        "2.16.840.1.101.3.4.1.42" => "AES-256-CBC",
-        "1.2.840.113549.3.7" => "DES-EDE3-CBC",
-        _ => return None,
-    })
 }
 
 fn pkcs12_pbe_name(oid: der::asn1::ObjectIdentifier) -> Option<&'static str> {
@@ -198,72 +150,8 @@ mod legacy {
 mod tests {
     use der::Any;
     use der::asn1::OctetString;
-    use pkcs5::pbes2::{self, Kdf, ScryptParams};
 
     use super::*;
-    use crate::MAX_ITERATIONS;
-
-    fn pbes2_algorithm(params: &pbes2::Parameters) -> AlgorithmIdentifierOwned {
-        AlgorithmIdentifierOwned {
-            oid: oids::PBES2,
-            parameters: Some(Any::encode_from(params).unwrap()),
-        }
-    }
-
-    /// P12-036: a PBKDF2 count above the limit fails before any key is derived.
-    #[test]
-    fn p12_036_pbkdf2_iterations_above_the_limit_are_refused() {
-        // pkcs5 refuses such a count when constructing, but not when decoding: a crafted
-        // file gets it through, which is what this check is for.
-        let mut params =
-            pbes2::Parameters::generate_pbkdf2_sha256_aes256cbc(2048, &[7; 16], [0; 16]).unwrap();
-        let Kdf::Pbkdf2(pbkdf2) = &mut params.kdf else {
-            unreachable!()
-        };
-        pbkdf2.iteration_count = u32::MAX;
-        let err = decrypt(&pbes2_algorithm(&params), "pw", &[0; 16]).unwrap_err();
-        assert!(
-            matches!(
-                err,
-                Error::LimitExceeded {
-                    what: "PBKDF2",
-                    iterations: u32::MAX
-                }
-            ),
-            "{err}"
-        );
-    }
-
-    /// P12-036: the limit itself is allowed, one more is not.
-    #[test]
-    fn p12_036_iterations_at_the_limit_pass_the_check() {
-        assert!(crate::check_iterations("PBKDF2", MAX_ITERATIONS).is_ok());
-        assert!(matches!(
-            crate::check_iterations("PBKDF2", MAX_ITERATIONS + 1),
-            Err(Error::LimitExceeded { .. })
-        ));
-    }
-
-    /// P12-030: PBES2 means PBKDF2; scrypt, whose memory cost the file would choose, is
-    /// unsupported.
-    #[test]
-    fn p12_030_scrypt_is_unsupported() {
-        let params = pbes2::Parameters {
-            kdf: Kdf::Scrypt(ScryptParams {
-                salt: (&[7; 16][..]).try_into().unwrap(),
-                cost_parameter: 1 << 30,
-                block_size: 8,
-                parallelization: 1,
-                key_length: None,
-            }),
-            encryption: pbes2::EncryptionScheme::Aes256Cbc { iv: [0; 16] },
-        };
-        let err = decrypt(&pbes2_algorithm(&params), "pw", &[0; 16]).unwrap_err();
-        assert!(
-            matches!(err, Error::UnsupportedAlgorithm(oid) if oid == pbes2::SCRYPT_OID),
-            "{err}"
-        );
-    }
 
     #[cfg(feature = "legacy")]
     fn pbe_algorithm(iterations: u32) -> AlgorithmIdentifierOwned {

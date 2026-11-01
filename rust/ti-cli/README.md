@@ -34,6 +34,12 @@ ti idpd authenticate --env ref --p12 smcb.p12 --auth-url "$AUTHZ_URI"   # IDP-Di
 ti directory login owner --env ref --p12 smcb.p12   # FHIR-Directory → owner access token
 ti connector configs                # the .kon files (~/.config/telematik/connectors)
 ti connector use praxis             # the configuration later commands use
+ti connector config new praxis      # step by step on a terminal: address, pin, credentials, context
+ti connector config test praxis     # tcp, tls, auth, sds, context, cards; exit 1 on a failure
+ti connector config show praxis     # the file without its secrets
+ti connector config pin praxis      # pin the Konnektor's new server certificate
+ti connector config edit praxis     # in $EDITOR; only a valid copy replaces the file
+ti connector config set praxis workplaceId=W2   # one field without a secret
 ti connector get cards
 ti connector get certificates 80276883110000163974   # ICCSN, Telematik-ID or handle
 ti connector describe certificate 1-SMC-B-Testkarte-883110000129072 C.AUT
@@ -178,12 +184,12 @@ client checks the VAU's `signed_pub_keys` this way and the certificate with `pki
 
 ## Identity
 
-`ti identity` is the SMC-B as a client uses it: the AUT certificate (digitalSignature,
-no contentCommitment) with its key, from a PKCS#12 file (`--p12`, the AUT pair selected
+`ti identity` is the SMC-B or HBA as a client uses it: the AUT certificate
+(digitalSignature, no contentCommitment: C.HCI.AUT or C.HP.AUT) with its key, from a PKCS#12 file (`--p12`, the AUT pair selected
 among a card export's certificates), a PEM certificate and key (`--cert --key`), or a
 card at the Konnektor (`--card`, the Konnektor resolved as the `connector` commands do,
 `--connector` naming another; signing through ExternalAuthenticate with the PIN verified
-before). `inspect` shows what was selected, the Telematik-ID and the
+before, PIN.SMC of an SMC-B or PIN.CH of an HBA). `inspect` shows what was selected, the Telematik-ID and the
 curve; `sign` turns a JSON object of claims into a compact ES256 JWS with `x5c`, the
 form ePA's `clientAttest` and entitlement JWTs and the IDP-Dienst's nested challenge
 take. The key lives only in the `ti` process for the duration of the call; callers
@@ -208,7 +214,9 @@ TSL with the idpd-sig profile and OCSP, as gemSpec_IDP_Dienst requires;
 `ti directory login` obtains an access token of the FHIR-Directory (VZD), built on
 [`ti-directory`](../ti-directory), with one subcommand per Auth-Service endpoint:
 `owner` by card through the IDP-Dienst, `owner` with a TI-Messenger
-RegService-OpenID-Token, and `holder`, `service` and `ti-provider` with
+RegService-OpenID-Token, `search` for the Search API of an SMC-B or HBA (the owner
+token, the only one the directory issues a card identity), and `holder`, `service` and
+`ti-provider` with
 client credentials at the directory's Keycloak (the secret only from a file). Every
 path reports the same document; `--token` prints only the bearer for `curl`. The
 directory, its IDP and its Keycloak are the environment's (`--env`) or given by
@@ -255,8 +263,8 @@ The tool is meant for people and for agents alike:
 - Colors and JSON highlighting only on a terminal; `--color`, `NO_COLOR` and
   `CLICOLOR_FORCE` override. Long lines are never cut; the terminal wraps them.
 - Never interactive. Every input is a flag, an environment variable, a file or stdin.
-- Exit codes: `0` success (or: the certificate is valid), `1` not valid, `2` usage,
-  `3` trust material unavailable, `4` input unreadable, `5` output failed.
+- Exit codes: `0` success (or: the certificate is valid), `1` not valid, `2` to `5`
+  failures; every error kind with its exit code is in [AGENTS.md](AGENTS.md) (`ti agent`).
 
 ## Files
 

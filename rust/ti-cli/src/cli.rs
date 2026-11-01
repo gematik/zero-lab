@@ -81,6 +81,7 @@ Examples:
   {bin} identity sign --card 80276883110000163974 --claims c.json   # the selected Konnektor
   {bin} idpd authenticate --env ref --p12 smcb.p12 --auth-url \"$AUTHZ_URI\"   # → code
   {bin} directory login owner --env ref --p12 smcb.p12   # FHIR-Directory owner token
+  {bin} directory login search --env ref --p12 smcb.p12  # its token for the Search API
   {bin} pki verify-signature --cert vau.pem --data keys.cbor --signature sig.bin
   {bin} connector configs                       # the .kon files, shared with the Go ti
   {bin} connector -c praxis get cards
@@ -113,21 +114,27 @@ pub struct Cli {
 #[derive(Debug, Args)]
 pub struct GlobalArgs {
     /// Output format: auto is text on a terminal and Markdown when piped
-    #[arg(long, value_enum, default_value_t = Format::Auto, env = "TI_FORMAT", global = true)]
+    #[arg(long, value_enum, default_value_t = Format::Auto, env = "TI_FORMAT", global = true, hide_short_help = true)]
     pub format: Format,
     /// When to use colors; auto uses them on a terminal only
-    #[arg(long, value_enum, default_value_t = ColorWhen::Auto, value_name = "WHEN", global = true)]
+    #[arg(long, value_enum, default_value_t = ColorWhen::Auto, value_name = "WHEN", global = true, hide_short_help = true)]
     pub color: ColorWhen,
     /// Diagnostics on stderr (-v, -vv)
-    #[arg(short, long, action = ArgAction::Count, global = true)]
+    #[arg(short, long, action = ArgAction::Count, global = true, hide_short_help = true)]
     pub verbose: u8,
     /// The store profile (default: TI_PROFILE, then the one `profile use` chose, then
     /// "default")
-    #[arg(long, value_name = "NAME", global = true)]
+    #[arg(long, value_name = "NAME", global = true, hide_short_help = true)]
     pub profile: Option<String>,
     /// Base of the profiles' caches, shared with the other TI tools [default:
     /// ~/.cache/telematik, %LOCALAPPDATA%\telematik on Windows]
-    #[arg(long, value_name = "DIR", env = "TI_CACHE_DIR", global = true)]
+    #[arg(
+        long,
+        value_name = "DIR",
+        env = "TI_CACHE_DIR",
+        global = true,
+        hide_short_help = true
+    )]
     pub cache_dir: Option<PathBuf>,
     /// The command's `--env` came from `TI_ENV`, not from the command line: a default,
     /// which commands that cannot detect the environment read `auto` of as their own.
@@ -178,7 +185,7 @@ pub enum Command {
     /// Certificates and PKI trust
     #[command(subcommand)]
     Pki(PkiCommand),
-    /// An SMC-B identity: its AUT certificate, and signing with its key
+    /// An SMC-B or HBA identity: its AUT certificate, and signing with its key
     #[command(subcommand)]
     Identity(IdentityCommand),
     /// The gematik IDP-Dienst: authenticate with an identity
@@ -670,7 +677,7 @@ pub enum IdentityCommand {
 
 /// Where the identity comes from: a PKCS#12 file, a PEM certificate and key, or a card
 /// at the Konnektor. The AUT certificate is the one with digitalSignature and without
-/// contentCommitment whose key is present.
+/// contentCommitment whose key is present: an SMC-B's C.HCI.AUT or an HBA's C.HP.AUT.
 #[derive(Debug, Args)]
 #[group(id = "identity_source", required = true, multiple = true)]
 pub struct IdentityArgs {
@@ -686,13 +693,16 @@ pub struct IdentityArgs {
     #[arg(long, value_name = "FILE", requires = "cert")]
     pub key: Option<PathBuf>,
     /// A card at the Konnektor: ICCSN, Telematik-ID or card handle; its C.AUT key signs
-    /// through the Konnektor (PIN verified before)
+    /// through the Konnektor once the card's PIN is verified (PIN.SMC of an SMC-B,
+    /// PIN.CH of an HBA)
     #[arg(long, value_name = "CARD", group = "identity_source")]
     pub card: Option<String>,
     /// The Konnektor of --card: NAME(.kon) here or in ~/.config/telematik/connectors, or a
     /// path [default: the one `connector use` selected, else "default"]
     #[arg(
-        long,
+        short = 'c',
+        long = "connector-config",
+        visible_alias = "connector",
         value_name = "NAME|PATH",
         env = "TI_CONNECTOR_CONFIG",
         requires = "card"
@@ -778,12 +788,15 @@ pub enum DirectoryCommand {
 }
 
 /// `ti directory login …`: one subcommand per Auth-Service endpoint, named as the
-/// token's `iss` names it.
+/// token's `iss` names it, and `search`, the owner token named for what it opens.
 #[derive(Debug, Subcommand)]
 pub enum DirectoryLoginCommand {
     /// /owner-authenticate: a card through the IDP-Dienst, or a TI-Messenger
     /// RegService-OpenID-Token
     Owner(DirectoryOwnerArgs),
+    /// The token for the Search API (/search) of a card identity (SMC-B or HBA): the
+    /// owner token of /owner-authenticate, through the IDP-Dienst
+    Search(DirectorySearchArgs),
     /// /holder-authenticate: client credentials of a registration service (Keycloak
     /// realm RSDirectoryAdministration)
     Holder(DirectoryClientArgs),
@@ -837,6 +850,21 @@ pub struct DirectoryOwnerArgs {
     /// of a card
     #[arg(long, value_name = "FILE", conflicts_with = "identity_source")]
     pub regservice_token_path: Option<PathBuf>,
+    /// Use the IDP's certificates without checking them against the TSL (an IDP outside
+    /// the TI PKI, e.g. a reference implementation); the report warns
+    #[arg(long)]
+    pub idp_unverified: bool,
+}
+
+/// `ti directory login search`. A card identity reaches the Search API only with the
+/// owner token (gemSpec_VZD_FHIR_Directory: its `aud` lists `/search`); the
+/// search-access_token of `/service-authenticate` is for Fachdienste.
+#[derive(Debug, Args)]
+pub struct DirectorySearchArgs {
+    #[command(flatten)]
+    pub identity: IdentityArgs,
+    #[command(flatten)]
+    pub target: DirectoryTargetArgs,
     /// Use the IDP's certificates without checking them against the TSL (an IDP outside
     /// the TI PKI, e.g. a reference implementation); the report warns
     #[arg(long)]
@@ -1081,14 +1109,14 @@ pub struct ConnectorArgs {
     )]
     pub connector_config: Option<String>,
     /// Seconds a Konnektor call may take
-    #[arg(long, value_name = "SECS", default_value = "10", value_parser = seconds, env = "TI_CONNECTOR_TIMEOUT", global = true)]
+    #[arg(long, value_name = "SECS", default_value = "10", value_parser = seconds, env = "TI_CONNECTOR_TIMEOUT", global = true, hide_short_help = true)]
     pub connector_timeout: Duration,
     /// Seconds a call may take that waits for the card terminal (PIN entry, card
     /// cryptography)
-    #[arg(long, value_name = "SECS", default_value = "300", value_parser = seconds, env = "TI_CARD_TIMEOUT", global = true)]
+    #[arg(long, value_name = "SECS", default_value = "300", value_parser = seconds, env = "TI_CARD_TIMEOUT", global = true, hide_short_help = true)]
     pub card_timeout: Duration,
     /// Load the service directory from the Konnektor instead of the cache
-    #[arg(long, global = true)]
+    #[arg(long, global = true, hide_short_help = true)]
     pub no_cache: bool,
     /// The comfort signature session's user ID, instead of the one `comfort activate`
     /// stored; lets anyone with the same context sign without a PIN, keep it secret
@@ -1097,7 +1125,8 @@ pub struct ConnectorArgs {
         value_name = "UUID",
         env = "TI_COMFORT_USER_ID",
         hide_env_values = true,
-        global = true
+        global = true,
+        hide_short_help = true
     )]
     pub comfort_user_id: Option<String>,
 }
@@ -1135,6 +1164,9 @@ pub enum ConnectorCommand {
         #[arg(value_name = "NAME|PATH")]
         name: String,
     },
+    /// Show or test a .kon configuration
+    #[command(subcommand)]
+    Config(ConnectorConfig),
     /// Read from the Konnektor
     #[command(subcommand)]
     Get(ConnectorGet),
@@ -1160,6 +1192,155 @@ pub enum ConnectorCommand {
     /// Save certificates of a card (PEM to stdout, or a file)
     #[command(subcommand)]
     Export(ConnectorExport),
+}
+
+/// `ti connector config …`.
+#[derive(Debug, Subcommand)]
+pub enum ConnectorConfig {
+    /// The configuration without its secrets: passwords, PKCS#12 bytes and the user ID
+    /// only say where they are kept
+    Show {
+        /// NAME or path; default: -c, else the selected configuration
+        #[arg(value_name = "NAME|PATH")]
+        name: Option<String>,
+    },
+    /// Test a configuration step by step, from the file to the cards: file, tcp, tls,
+    /// auth, sds, context, cards, each ok, warn, fail or skip (exit 1 if one fails)
+    Test {
+        /// NAME or path; default: -c, else the selected configuration
+        #[arg(value_name = "NAME|PATH")]
+        name: Option<String>,
+    },
+    /// Create a configuration: on a terminal step by step, else from the options; tested
+    /// before it is saved (mode 0600)
+    New(Box<ConfigNewArgs>),
+    /// Change a configuration in $EDITOR, or only its credentials with their options
+    Edit(Box<ConfigEditArgs>),
+    /// Change members without secrets: url, env, mandantId, clientSystemId, workplaceId,
+    /// userId, expectedHost, rewriteServiceEndpoints, insecureSkipVerify
+    Set {
+        /// NAME or path
+        #[arg(value_name = "NAME|PATH")]
+        name: String,
+        /// KEY=VALUE; an empty VALUE removes the member
+        #[arg(value_name = "KEY=VALUE", required = true)]
+        assignments: Vec<String>,
+    },
+    /// Pin the Konnektor's current server certificate, shown next to the pinned one
+    Pin(ConfigPinArgs),
+}
+
+/// `ti connector config new`.
+#[derive(Debug, Args)]
+pub struct ConfigNewArgs {
+    /// The name (saved in ~/.config/telematik/connectors/NAME.kon) or a path
+    #[arg(value_name = "NAME|PATH")]
+    pub name: String,
+    /// The Konnektor: URL, host, host:port, IP, [IPv6]:port; https unless http:// is given
+    #[arg(long, value_name = "ADDRESS")]
+    pub url: Option<String>,
+    /// The environment the Konnektor is connected to
+    #[arg(long, value_name = "ENV", value_parser = ["ru", "tu", "pu"])]
+    pub env: Option<String>,
+    /// Call context: the Mandant
+    #[arg(long, value_name = "ID")]
+    pub mandant: Option<String>,
+    /// Call context: the client system
+    #[arg(long, value_name = "ID")]
+    pub client_system: Option<String>,
+    /// Call context: the workplace
+    #[arg(long, value_name = "ID")]
+    pub workplace: Option<String>,
+    /// Call context: the user, for calls that need one (with an HBA)
+    #[arg(long, value_name = "ID")]
+    pub user_id: Option<String>,
+    #[command(flatten)]
+    pub credentials: ConfigCredentialArgs,
+    #[command(flatten)]
+    pub trust: ConfigTrustArgs,
+    /// The name the server certificate carries, if not the host of the url
+    #[arg(long, value_name = "HOST")]
+    pub expected_host: Option<String>,
+    /// Send every service to the host of the url (NAT, port forward)
+    #[arg(long)]
+    pub rewrite_endpoints: bool,
+    /// Save without testing (the Konnektor is not reachable from here)
+    #[arg(long)]
+    pub no_test: bool,
+    /// Replace an existing file
+    #[arg(long)]
+    pub force: bool,
+}
+
+/// The credentials of `config new` and `config edit`; secrets only from files.
+#[derive(Debug, Args)]
+pub struct ConfigCredentialArgs {
+    /// Basic authentication as USER (password from --password-path)
+    #[arg(long, value_name = "USER", conflicts_with_all = ["p12", "no_auth"], requires = "password_path")]
+    pub basic: Option<String>,
+    /// File whose first line is the basic password
+    #[arg(long, value_name = "FILE")]
+    pub password_path: Option<PathBuf>,
+    /// Mutual TLS with this PKCS#12 file (its password from --p12-password-path)
+    #[arg(long, value_name = "FILE", conflicts_with = "no_auth")]
+    pub p12: Option<PathBuf>,
+    /// File whose first line is the PKCS#12 password
+    #[arg(long, value_name = "FILE")]
+    pub p12_password_path: Option<PathBuf>,
+    /// Which certificate with its key, when the PKCS#12 file holds several (1, 2, …)
+    #[arg(long, value_name = "N")]
+    pub p12_pair: Option<usize>,
+    /// No client authentication (refused for pu)
+    #[arg(long)]
+    pub no_auth: bool,
+}
+
+impl ConfigCredentialArgs {
+    /// Whether any credential option is given.
+    pub fn given(&self) -> bool {
+        self.basic.is_some() || self.p12.is_some() || self.no_auth
+    }
+}
+
+/// How `config new` trusts the Konnektor's TLS certificate.
+#[derive(Debug, Args)]
+pub struct ConfigTrustArgs {
+    #[command(flatten)]
+    pub pin: ConfigPinChoice,
+    /// Accept any server certificate (test Konnektors; refused for pu)
+    #[arg(long, conflicts_with_all = ["pin_cert", "pin_sha256"])]
+    pub insecure_skip_verify: bool,
+}
+
+/// How a pin is confirmed without a terminal.
+#[derive(Debug, Args)]
+pub struct ConfigPinChoice {
+    /// Pin this certificate (PEM or DER) instead of asking
+    #[arg(long, value_name = "FILE", conflicts_with = "pin_sha256")]
+    pub pin_cert: Option<PathBuf>,
+    /// Pin the server's certificate if its SHA-256 is this (hex, colons allowed)
+    #[arg(long, value_name = "HEX")]
+    pub pin_sha256: Option<String>,
+}
+
+/// `ti connector config edit`.
+#[derive(Debug, Args)]
+pub struct ConfigEditArgs {
+    /// NAME or path; default: -c, else the selected configuration
+    #[arg(value_name = "NAME|PATH")]
+    pub name: Option<String>,
+    #[command(flatten)]
+    pub credentials: ConfigCredentialArgs,
+}
+
+/// `ti connector config pin`.
+#[derive(Debug, Args)]
+pub struct ConfigPinArgs {
+    /// NAME or path; default: -c, else the selected configuration
+    #[arg(value_name = "NAME|PATH")]
+    pub name: Option<String>,
+    #[command(flatten)]
+    pub pin: ConfigPinChoice,
 }
 
 /// `ti connector export …`.
