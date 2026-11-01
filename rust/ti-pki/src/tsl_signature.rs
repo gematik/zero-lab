@@ -61,10 +61,11 @@ use ti_xmldsig::{Document, Limits};
 #[cfg(feature = "brainpool")]
 use x509_cert::ext::pkix::KeyUsages;
 
+use crate::algorithms::AlgorithmSet;
 #[cfg(feature = "brainpool")]
 use crate::algorithms::brainpool::BRAINPOOL_P256R1;
 #[cfg(feature = "brainpool")]
-use crate::algorithms::{AlgorithmSet, find};
+use crate::algorithms::find;
 #[cfg(feature = "brainpool")]
 use crate::cert_type::TSL_SIGNING;
 #[cfg(feature = "brainpool")]
@@ -72,7 +73,6 @@ use crate::config::TEST_ONLY_MARKER;
 use crate::error::{ErrorCode, ValidationError};
 use crate::ocsp::{ResponseDefect, UNKNOWN_STATUS};
 use crate::revocation::{RevocationChecker, RevocationResult, RevocationStatus};
-#[cfg(feature = "brainpool")]
 use crate::time::Timestamp;
 use crate::tsl::Tsl;
 use crate::{Certificate, Tier, TrustStore};
@@ -421,6 +421,7 @@ pub struct DetachedSignature {
 /// # Errors
 ///
 /// [`TslError`] with the code and the rule of the first check that failed.
+#[cfg(feature = "brainpool")]
 pub fn parse_detached_signature(sig: &[u8]) -> Result<DetachedSignature, TslError> {
     use der::{Decode, Reader};
 
@@ -667,7 +668,7 @@ impl VerifiedTsl {
                 }
                 None => {
                     self.warnings
-                        .push(TslError::new(TslCode::NoOcspCheck, "TSLDET-021", detail))
+                        .push(TslError::new(TslCode::NoOcspCheck, "TSLDET-021", detail));
                 }
             }
             return Ok(false);

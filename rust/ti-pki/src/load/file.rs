@@ -56,6 +56,21 @@ impl FileTransport {
             paths: HashMap::from([(Artifact::Roots, roots.into()), (Artifact::Tsl, tsl.into())]),
         }
     }
+
+    /// The same transport reading the list's detached signature from `signature` and,
+    /// if given, the signer's status from `signer_status` (`spec/tsl-detached`).
+    #[must_use]
+    pub fn with_detached(
+        mut self,
+        signature: impl Into<PathBuf>,
+        signer_status: Option<PathBuf>,
+    ) -> Self {
+        self.paths.insert(Artifact::TslSignature, signature.into());
+        if let Some(path) = signer_status {
+            self.paths.insert(Artifact::TslSignerStatus, path);
+        }
+        self
+    }
 }
 
 impl Transport for FileTransport {
@@ -157,6 +172,31 @@ mod tests {
 
         std::fs::write(&tsl, b"v2").unwrap();
         assert_eq!(body_and_etag(get(&t, Some(&etag)).unwrap()).0, b"v2");
+    }
+
+    #[test]
+    fn file_transport_reads_detached_files() {
+        use crate::load::Loader as _;
+
+        let dir = TempDir::new("file-detached");
+        for (name, body) in [
+            ("roots.json", "{}"),
+            ("tsl.xml", "<x/>"),
+            ("tsl.sig", "sig"),
+            ("tsl.ocsp", "ocsp"),
+        ] {
+            std::fs::write(dir.0.join(name), body).unwrap();
+        }
+        let transport = FileTransport::new(dir.0.join("roots.json"), dir.0.join("tsl.xml"))
+            .with_detached(dir.0.join("tsl.sig"), Some(dir.0.join("tsl.ocsp")));
+        let clock = crate::time::FixedClock::new(crate::time::Timestamp(1_767_225_600));
+        let loader =
+            crate::load::HttpLoader::new(&crate::TrustConfig::preset_prod(), transport, &clock);
+        let material = block_on(loader.load_all()).unwrap();
+        let detached = material.detached.unwrap();
+        assert_eq!(detached.signature, b"sig");
+        assert_eq!(detached.signer_status.unwrap().0, b"ocsp");
+        assert_eq!(detached.signature_meta.source, Source::File);
     }
 
     #[test]

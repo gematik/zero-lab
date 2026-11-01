@@ -92,7 +92,8 @@ pub use crate::time::FixedClock;
 pub use crate::time::SystemClock;
 pub use crate::time::{Clock, Timestamp};
 pub use artifact::{
-    Artifact, ArtifactRequest, ArtifactResponse, ResponseMeta, TrustMaterial, content_etag,
+    Artifact, ArtifactRequest, ArtifactResponse, Detached, ResponseMeta, TrustMaterial,
+    content_etag,
 };
 pub use caching::CachingLoader;
 pub use fallback::FallbackLoader;

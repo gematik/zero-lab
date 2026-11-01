@@ -53,6 +53,19 @@ pub const URL_REF: &str = "https://download-ref.tsl.ti-dienste.de/ECC/ECC-RSA_TS
 /// Download point of the test TSL.
 pub const URL_TEST: &str = "https://download-test.tsl.ti-dienste.de/ECC/ECC-RSA_TSL-test.xml";
 
+/// The production list at the automated download point of gemSpec_TSL A_21182, where
+/// its detached signature (`.sig`) and its signer's status (`.ocsp`) are published next
+/// to it; plain HTTP by requirement (A_21175).
+pub const URL_DETACHED_PROD: &str = "http://download.crl.ti-dienste.de/TSL-ECC/ECC-RSA_TSL.xml";
+
+/// The reference list at its automated download point.
+pub const URL_DETACHED_REF: &str =
+    "http://download-testref.crl.ti-dienste.de/TSL-ECC-ref/ECC-RSA_TSL-ref.xml";
+
+/// The test list at its automated download point.
+pub const URL_DETACHED_TEST: &str =
+    "http://download-testref.crl.ti-dienste.de/TSL-ECC-test/ECC-RSA_TSL-test.xml";
+
 /// `ServiceTypeIdentifier` of a certificate authority.
 pub const SERVICE_TYPE_CA_PKC: &str = "http://uri.etsi.org/TrstSvc/Svctype/CA/PKC";
 

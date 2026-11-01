@@ -27,7 +27,7 @@
 //! stored list, and its CAs matched to the roots the walk yielded. The signer's OCSP
 //! status (part C) needs a network and is the [`Reloader`](super::Reloader)'s step.
 
-use super::artifact::TrustMaterial;
+use super::artifact::{Detached, TrustMaterial};
 use crate::time::Timestamp;
 use crate::tsl_signature::{Sequence, TslError, TslState, VerifiedTsl};
 use crate::{Certificate, TrustConfig};
@@ -88,19 +88,27 @@ pub(crate) fn verify_material(
     now: Timestamp,
     stored: Option<&TslState>,
 ) -> Result<Verified, VerifyError> {
-    verify_bytes(config, &material.roots, &material.tsl, now, stored)
+    verify_bytes(
+        config,
+        &material.roots,
+        &material.tsl,
+        material.detached.as_ref(),
+        now,
+        stored,
+    )
 }
 
 pub(crate) fn verify_bytes(
     config: &TrustConfig,
     roots_json: &[u8],
     tsl_xml: &[u8],
+    detached: Option<&Detached>,
     now: Timestamp,
     stored: Option<&TslState>,
 ) -> Result<Verified, VerifyError> {
     let roots =
         crate::roots::verify_roots_json(&config.anchor, roots_json, now, &config.algorithms)?;
-    let tsl = verify_tsl(config, tsl_xml, now)?;
+    let tsl = verify_tsl(config, tsl_xml, detached, now)?;
     let sequence = tsl.check_sequence(stored)?;
     let store = crate::TrustStore::new(roots.iter().cloned());
     let matched =
@@ -130,18 +138,33 @@ pub(crate) fn verify_bytes(
     })
 }
 
+/// The list by its detached signature when the material carries one, with the supplied
+/// status adopted (`spec/tsl-detached`); by its enveloped signature otherwise.
 #[cfg(feature = "brainpool")]
 fn verify_tsl(
     config: &TrustConfig,
     xml: &[u8],
+    detached: Option<&Detached>,
     now: Timestamp,
 ) -> Result<VerifiedTsl, VerifyError> {
-    Ok(crate::tsl::Tsl::parse_verified(xml, config, now)?)
+    let Some(detached) = detached else {
+        return Ok(crate::tsl::Tsl::parse_verified(xml, config, now)?);
+    };
+    let mut tsl = crate::tsl::Tsl::parse_verified_detached(xml, &detached.signature, config, now)?;
+    if let Some((response, _)) = &detached.signer_status {
+        tsl.check_signer_status_supplied(response, now, &config.algorithms)?;
+    }
+    Ok(tsl)
 }
 
 /// Every TSL is signed on brainpoolP256r1 (TSLSIG-012): without the curve none verifies.
 #[cfg(not(feature = "brainpool"))]
-fn verify_tsl(_: &TrustConfig, _: &[u8], _: Timestamp) -> Result<VerifiedTsl, VerifyError> {
+fn verify_tsl(
+    _: &TrustConfig,
+    _: &[u8],
+    _: Option<&Detached>,
+    _: Timestamp,
+) -> Result<VerifiedTsl, VerifyError> {
     Err(VerifyError::new(
         "the TSL is signed on brainpoolP256r1, which needs the brainpool feature",
     ))
@@ -175,12 +198,55 @@ mod tests {
 
         let broken = TrustMaterial::new(
             config.roots.to_vec(),
-            material.meta(super::super::Artifact::Tsl).clone(),
+            material.meta(super::super::Artifact::Tsl).unwrap().clone(),
             b"<html/>".to_vec(),
-            material.meta(super::super::Artifact::Tsl).clone(),
+            material.meta(super::super::Artifact::Tsl).unwrap().clone(),
         );
         let error = verify_material(&config, &broken, Timestamp(1_789_340_408), None).unwrap_err();
         assert!(error.reason.contains("TSL"), "{error}");
+    }
+
+    /// TSLDET-031: material with the detached files verifies through them, status included.
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_031_verify_material_prefers_detached() {
+        let base = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../spec/tsl-detached/testdata/ref/ECC-RSA_TSL-ref."
+        );
+        let read = |suffix: &str| std::fs::read(format!("{base}{suffix}")).unwrap();
+        let config = TrustConfig::preset(crate::Env::Ref);
+        let meta = super::super::Meta {
+            etag: None,
+            last_modified: None,
+            fetched_at: Timestamp(0),
+            max_age: None,
+            source: super::super::Source::Embedded,
+        };
+        let material = TrustMaterial::new(
+            config.roots.to_vec(),
+            meta.clone(),
+            read("xml"),
+            meta.clone(),
+        )
+        .with_detached(Some(super::super::Detached {
+            signature: read("sig"),
+            signature_meta: meta.clone(),
+            signer_status: Some((read("ocsp"), meta)),
+        }));
+        let captured_at = Timestamp::parse_rfc3339("2026-11-01T16:47:42Z").unwrap();
+        let verified = verify_material(&config, &material, captured_at, None).unwrap();
+        let tsl = verified.tsl.unwrap();
+        assert_eq!(tsl.signature, crate::tsl_signature::SignatureKind::Detached);
+        assert!(
+            tsl.signer_status.is_some(),
+            "the supplied status was adopted"
+        );
+        assert!(
+            !tsl.warnings
+                .iter()
+                .any(|w| w.code == crate::tsl_signature::TslCode::NoOcspCheck)
+        );
     }
 
     /// Without brainpool no TSL verifies (TSLSIG-012), and a TSL that does not verify

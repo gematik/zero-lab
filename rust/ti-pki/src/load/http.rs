@@ -41,10 +41,16 @@ use ti_store::{Conditional, Source};
 /// `.xml`) before it is downloaded: a caller holding the list with that hash
 /// (`sha256:<hex>` as its entity tag) gets "not modified", and a download must match the
 /// hash (A_30044 (2) of C_12791). Without a readable hash the TSL is fetched as before.
+///
+/// With [`TrustConfig::tsl_detached_url`] set, the list, its `.sig` and its `.ocsp` come
+/// from that automated download point as one set (`spec/tsl-detached` TSLDET-010), the
+/// hash still from the HTTPS point; without it the two detached artefacts are
+/// [`LoadError::Unavailable`].
 #[derive(Debug)]
 pub struct HttpLoader<T, C> {
     roots_url: Cow<'static, str>,
     tsl_url: Cow<'static, str>,
+    tsl_detached_url: Option<Cow<'static, str>>,
     transport: T,
     clock: C,
 }
@@ -55,15 +61,26 @@ impl<T: Transport + MaybeSend + MaybeSync, C: Clock + MaybeSend + MaybeSync> Htt
         HttpLoader {
             roots_url: config.roots_url.clone(),
             tsl_url: config.tsl_url.clone(),
+            tsl_detached_url: config.tsl_detached_url.clone(),
             transport,
             clock,
         }
     }
 
-    fn url(&self, artifact: Artifact) -> &str {
+    /// Where `artifact` is fetched from: the list from the automated download point
+    /// when one is configured, so that it is the list the `.sig` was made for.
+    fn url(&self, artifact: Artifact) -> Option<Cow<'_, str>> {
+        let detached = |suffix: &str| {
+            self.tsl_detached_url
+                .as_deref()
+                .and_then(|url| url.strip_suffix(".xml"))
+                .map(|stem| Cow::Owned(format!("{stem}{suffix}")))
+        };
         match artifact {
-            Artifact::Roots => &self.roots_url,
-            Artifact::Tsl => &self.tsl_url,
+            Artifact::Roots => Some(Cow::Borrowed(self.roots_url.as_ref())),
+            Artifact::Tsl => detached(".xml").or(Some(Cow::Borrowed(self.tsl_url.as_ref()))),
+            Artifact::TslSignature => detached(".sig"),
+            Artifact::TslSignerStatus => detached(".ocsp"),
         }
     }
 
@@ -113,11 +130,12 @@ impl<T: Transport + MaybeSend + MaybeSync, C: Clock + MaybeSend + MaybeSync> Htt
                 .at(now),
             ));
         }
+        let url = self.url(Artifact::Tsl).expect("the list always has a URL");
         let response = self
             .transport
             .get(&ArtifactRequest {
                 artifact: Artifact::Tsl,
-                url: &self.tsl_url,
+                url: &url,
                 etag: None,
                 last_modified: None,
             })
@@ -156,9 +174,10 @@ impl<T: Transport + MaybeSend + MaybeSync, C: Clock + MaybeSend + MaybeSync> Loa
         {
             return self.fetch_tsl_by_hash(&hash, cond).await;
         }
+        let url = self.url(artifact).ok_or(LoadError::Unavailable(artifact))?;
         let request = ArtifactRequest {
             artifact,
-            url: self.url(artifact),
+            url: &url,
             etag: cond.etag,
             last_modified: cond.last_modified,
         };
@@ -175,7 +194,7 @@ impl<T: Transport + MaybeSend + MaybeSync, C: Clock + MaybeSend + MaybeSync> Loa
     }
 
     fn cache_key(&self, artifact: Artifact) -> String {
-        artifact.cache_key(self.url(artifact))
+        artifact.cache_key(self.url(artifact).as_deref().unwrap_or(""))
     }
 }
 
@@ -184,7 +203,7 @@ mod tests {
     use futures_lite::future::block_on;
 
     use super::*;
-    use crate::load::{MockTransport, content_etag};
+    use crate::load::{MockTransport, TrustMaterial, content_etag};
     use crate::time::{FixedClock, Timestamp};
 
     const TSL: &[u8] = b"<TrustServiceStatusList/>";
@@ -215,6 +234,123 @@ mod tests {
                 last_modified: None,
             },
         ))
+    }
+
+    const DETACHED: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../spec/tsl-detached/testdata/ref/ECC-RSA_TSL-ref."
+    );
+
+    fn ref_set() -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+        let read = |suffix: &str| std::fs::read(format!("{DETACHED}{suffix}")).unwrap();
+        (read("xml"), read("sig"), read("ocsp"))
+    }
+
+    fn load_all_ref(
+        config: &TrustConfig,
+        transport: &MockTransport,
+    ) -> Result<TrustMaterial, LoadError> {
+        let clock = FixedClock::new(Timestamp(1_767_225_600));
+        let loader = HttpLoader::new(config, transport, &clock);
+        block_on(loader.load_all())
+    }
+
+    /// TSLDET-010, 012: the hash from the HTTPS point, the set from the automated one.
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_010_http_loader_fetches_the_set_from_the_detached_origin() {
+        let (xml, sig, ocsp) = ref_set();
+        let config = TrustConfig::preset(crate::Env::Ref);
+        let transport = MockTransport::new([
+            Ok(fresh(b"{}", None, Source::Http)),
+            Ok(fresh(hash_of(&xml).as_bytes(), None, Source::Http)),
+            Ok(fresh(&xml, None, Source::Http)),
+            Ok(fresh(&sig, None, Source::Http)),
+            Ok(fresh(&ocsp, None, Source::Http)),
+        ]);
+        let material = load_all_ref(&config, &transport).unwrap();
+        let detached = material
+            .detached
+            .as_ref()
+            .expect("the signature was loaded");
+        assert_eq!(detached.signature, sig);
+        assert_eq!(
+            detached.signer_status.as_ref().map(|(b, _)| b.as_slice()),
+            Some(ocsp.as_slice())
+        );
+        assert_eq!(material.tsl, xml);
+        let urls: Vec<String> = transport.requests().into_iter().map(|r| r.url).collect();
+        assert_eq!(
+            urls,
+            [
+                crate::roots::URL_REF.to_owned(),
+                "https://download-ref.tsl.ti-dienste.de/ECC/ECC-RSA_TSL-ref.sha2".to_owned(),
+                crate::tsl::URL_DETACHED_REF.to_owned(),
+                "http://download-testref.crl.ti-dienste.de/TSL-ECC-ref/ECC-RSA_TSL-ref.sig"
+                    .to_owned(),
+                "http://download-testref.crl.ti-dienste.de/TSL-ECC-ref/ECC-RSA_TSL-ref.ocsp"
+                    .to_owned(),
+            ]
+        );
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_010_list_not_matching_published_hash_is_retryable() {
+        let (xml, _, _) = ref_set();
+        let config = TrustConfig::preset(crate::Env::Ref);
+        let transport = MockTransport::new([
+            Ok(fresh(b"{}", None, Source::Http)),
+            Ok(fresh(
+                hash_of(b"another list").as_bytes(),
+                None,
+                Source::Http,
+            )),
+            Ok(fresh(&xml, None, Source::Http)),
+        ]);
+        let LoadError::Transport(error) = load_all_ref(&config, &transport).unwrap_err() else {
+            panic!("a hash mismatch is a transport error");
+        };
+        assert!(error.retryable);
+    }
+
+    #[test]
+    fn load_all_without_detached_url_has_no_detached_material() {
+        let config = TrustConfig {
+            tsl_detached_url: None,
+            ..TrustConfig::preset_prod()
+        };
+        let transport = MockTransport::new([
+            Ok(fresh(b"{}", None, Source::Http)),
+            Ok(fresh(hash_of(TSL).as_bytes(), None, Source::Http)),
+            Ok(fresh(TSL, None, Source::Http)),
+        ]);
+        let material = load_all_ref(&config, &transport).unwrap();
+        assert!(material.detached.is_none());
+        assert_eq!(
+            transport.requests().len(),
+            3,
+            "no .sig request without a detached URL"
+        );
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn a_failing_sig_download_leaves_the_enveloped_path() {
+        let (xml, _, _) = ref_set();
+        let config = TrustConfig::preset(crate::Env::Ref);
+        let transport = MockTransport::new([
+            Ok(fresh(b"{}", None, Source::Http)),
+            Ok(fresh(hash_of(&xml).as_bytes(), None, Source::Http)),
+            Ok(fresh(&xml, None, Source::Http)),
+            Err(TransportError {
+                kind: TransportErrorKind::Other,
+                message: "500".into(),
+                retryable: true,
+            }),
+        ]);
+        let material = load_all_ref(&config, &transport).unwrap();
+        assert!(material.detached.is_none());
     }
 
     /// A_30044 (2): the published hash decides whether the TSL is downloaded.

@@ -219,7 +219,7 @@ pub struct Expired {
 #[derive(Debug)]
 struct Current {
     store: Arc<TrustStore>,
-    etags: [Option<String>; 2],
+    etags: Vec<Option<String>>,
     fetched_at: Timestamp,
     tsl_next_update: Option<Timestamp>,
     tsl_state: Option<TslState>,
@@ -235,7 +235,7 @@ impl Current {
     fn confirmed(&self, material: &TrustMaterial) -> Self {
         Current {
             store: Arc::clone(&self.store),
-            etags: [material.meta[0].etag.clone(), material.meta[1].etag.clone()],
+            etags: material.etags(),
             fetched_at: self.fetched_at.max(material.fetched_at),
             tsl_next_update: self.tsl_next_update,
             tsl_state: self.tsl_state.clone(),
@@ -511,7 +511,10 @@ where
         {
             return self.confirm(current, &material);
         }
+        // A status supplied with the list (TSLDET-020) needs no network query; a stale
+        // one left `signer_status` empty for the checker to fill (TSLDET-021).
         if let (Some(checker), Some(tsl)) = (&self.signer_status, verified.tsl.as_mut())
+            && tsl.signer_status.is_none()
             && let Err(error) = tsl.check_signer_status(checker).await
         {
             return self.fail(self.handle.clock.now(), VerifyError::from(error).into());
@@ -536,7 +539,9 @@ where
             .as_ref()
             .map_or(0, |c| c.generation)
             + 1;
-        let tsl_meta = material.meta(Artifact::Tsl);
+        let tsl_meta = material
+            .meta(Artifact::Tsl)
+            .expect("the list is always present");
         let (tsl_state, tsl_warnings) = verified.tsl.as_ref().map_or_else(
             || (None, Vec::new()),
             |tsl| (Some(TslState::of(&tsl.tsl)), tsl.warnings.clone()),
@@ -556,7 +561,7 @@ where
             tsl_signer,
             tsl_signer_status,
             store: Arc::new(TrustStore::from_verified(verified)),
-            etags: [material.meta[0].etag.clone(), material.meta[1].etag.clone()],
+            etags: material.etags(),
             fetched_at: material.fetched_at,
             source: tsl_meta.source,
             generation,
@@ -606,11 +611,13 @@ where
     }
 }
 
-fn same_etags(current: &[Option<String>; 2], material: &TrustMaterial) -> bool {
-    current
-        .iter()
-        .zip(&material.meta)
-        .all(|(old, new)| old.is_some() && *old == new.etag)
+/// Whether `material` is what `current` was built from: roots.json and the list carry
+/// the same validators, and the detached files are the same, present or absent alike.
+fn same_etags(current: &[Option<String>], material: &TrustMaterial) -> bool {
+    let new = material.etags();
+    current.len() == new.len()
+        && current[..2].iter().all(Option::is_some)
+        && current.iter().zip(&new).all(|(old, new)| old == new)
 }
 
 struct InFlight<'a>(&'a AtomicBool);
@@ -629,7 +636,7 @@ mod tests {
     use futures_lite::future::{block_on, yield_now, zip};
 
     use super::*;
-    use crate::load::{Conditional, Fetched, FixedClock, Meta, Verified};
+    use crate::load::{Conditional, Detached, Fetched, FixedClock, Meta, Verified};
 
     const HOUR: Duration = Duration::from_hours(1);
     const T0: Timestamp = Timestamp(1_000_000);
@@ -749,6 +756,58 @@ mod tests {
 
     fn offline() -> LoadError {
         LoadError::Offline(Artifact::Tsl)
+    }
+
+    /// TSLDET-021: a status supplied with the list makes the network query unnecessary.
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_021_reloader_skips_the_network_checker_when_the_status_was_supplied() {
+        struct NeverAsked;
+        impl RevocationChecker for NeverAsked {
+            async fn check(
+                &self,
+                _: &Certificate,
+                _: &Certificate,
+                _: &TrustStore,
+            ) -> Result<crate::RevocationResult, crate::ValidationError> {
+                panic!("the network checker must not be asked when the status was supplied");
+            }
+        }
+        let base = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../spec/tsl-detached/testdata/ref/ECC-RSA_TSL-ref."
+        );
+        let read = |suffix: &str| std::fs::read(format!("{base}{suffix}")).unwrap();
+        let captured_at = Timestamp::parse_rfc3339("2026-11-01T16:47:42Z").unwrap();
+        let config = TrustConfig::preset(crate::Env::Ref);
+        let meta = |etag: &str| Meta {
+            etag: Some(etag.into()),
+            last_modified: None,
+            fetched_at: captured_at,
+            max_age: None,
+            source: Source::Http,
+        };
+        let material = TrustMaterial::new(config.roots.to_vec(), meta("r"), read("xml"), meta("t"))
+            .with_detached(Some(Detached {
+                signature: read("sig"),
+                signature_meta: meta("s"),
+                signer_status: Some((read("ocsp"), meta("o"))),
+            }));
+        let clock = FixedClock::new(captured_at);
+        let r = Reloader::new(
+            config,
+            Tier::NonProd,
+            VecLoader::new([Ok(material)]),
+            &clock,
+            policy(),
+        )
+        .unwrap()
+        .with_signer_status(NeverAsked);
+        assert!(matches!(block_on(r.tick()), ReloadOutcome::Swapped { .. }));
+        assert_eq!(
+            r.handle().status().tsl_signer_status,
+            Some(RevocationStatus::Good)
+        );
     }
 
     #[test]

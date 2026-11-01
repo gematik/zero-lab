@@ -23,7 +23,7 @@
 
 //! The [`Loader`] trait every source and wrapper implements.
 
-use super::artifact::{Artifact, TrustMaterial};
+use super::artifact::{Artifact, Detached, TrustMaterial};
 use super::transport::TransportError;
 use ti_store::{CacheError, Conditional, Meta};
 
@@ -95,12 +95,25 @@ pub trait Loader {
         }
     }
 
-    /// Loads both artefacts.
+    /// Loads every artefact: roots.json and the TSL, and the list's detached signature
+    /// and signer status where the source has them. A signature that cannot be loaded
+    /// leaves the list to its enveloped signature; a status that cannot be loaded leaves
+    /// the status unqueried (`spec/tsl-detached` TSLDET-022).
     async fn load_all(&self) -> Result<TrustMaterial, LoadError> {
         let roots = self.load(Artifact::Roots).await?;
         let tsl = self.load(Artifact::Tsl).await?;
-        Ok(TrustMaterial::new(
-            roots.body, roots.meta, tsl.body, tsl.meta,
-        ))
+        let detached = match self.load(Artifact::TslSignature).await {
+            Ok(signature) => Some(Detached {
+                signature: signature.body,
+                signature_meta: signature.meta,
+                signer_status: self
+                    .load(Artifact::TslSignerStatus)
+                    .await
+                    .ok()
+                    .map(|status| (status.body, status.meta)),
+            }),
+            Err(_) => None,
+        };
+        Ok(TrustMaterial::new(roots.body, roots.meta, tsl.body, tsl.meta).with_detached(detached))
     }
 }
