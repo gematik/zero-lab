@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-01T16:10:00Z'
-updated_date: '2026-11-01T17:00:00Z'
+updated_date: '2026-11-01T17:38:00Z'
 labels:
   - ti-pki
   - rust
@@ -27,8 +27,8 @@ gemSpec_TSL V1.25.0 6.3.1.3 (A_21175 to A_21182): the TSL service publishes, per
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 the gate of step 1 is settled and recorded (requirements cited, or deviation recorded and the request for change written)
-- [ ] #2 the TSL verifies from .sig and .ocsp in PU, RU and TU with the spec/tsl-detached corpus; the same CA list and verdicts as the XMLDSig path on the same TSL, measured before the removal
-- [ ] #3 fuzz targets for the .sig parser and the XML reader in place and run by just fuzz
+- [x] #2 the TSL verifies from .sig and .ocsp in PU, RU and TU with the spec/tsl-detached corpus; the same CA list and verdicts as the XMLDSig path on the same TSL, measured before the removal
+- [x] #3 fuzz targets for the .sig parser and the XML reader in place and run by just fuzz
 - [ ] #4 ti-xmldsig, the C14N code and the second XML parser removed from the workspace; ti-wasm and the verification stamps regenerated; release notes written
 - [ ] #5 just check and just jwz-recheck green; maintainer HITL
 <!-- AC:END -->
@@ -342,3 +342,9 @@ gemSpec_TSL V1.25.0 6.3.1.3 (A_21175 to A_21182): the TSL service publishes, per
 
 The removal of XMLDSig (criterion 4) waits for the gate (criterion 1): a second pull request removes `ti-xmldsig`, the enveloped path, the second XML parser and the `.sig`-missing fallback of Task 5, turns `spec/tsl-xmldsig` part A into history, and regenerates `ti-wasm` and the stamps.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-01, branch feat/tsl-detached (9 commits after the plan): spec/tsl-detached with the captured sets of PU, RU, TU and derived negatives; verify_detached, parse_verified_detached, check_signer_status_supplied, the loaders (tsl_detached_url, Artifact::TslSignature/TslSignerStatus, bundle fields, file transport), ti pki tsl verify --signature/--signer-status, ti-report and ti-wasm (verify_tsl_detached), the ti-pki fuzz crate (just fuzz-ti-pki). Measured: tsldet_030 shows identical id, sequence, services, signer, anchor and warnings for the detached and the enveloped path on all three sets. Finding on the way: the ocsp_response fuzz target found a panic in parse_generalized_time (multibyte character across byte 14) within seconds, fixed with a regression test and recorded under ti-pki security. just check: 637/638 (a_closed_pipe_is_not_an_error, TASK-154, fails on main too); just deny fails on main too (TASK-155). Open here: criterion 1 (the gate: the maintainer's check of the pre-release TI 2.0 requirements) and 4 (the XMLDSig removal, a second pull request behind the gate). HITL to run: ti pki tsl show --env ref against the live download points; ti pki tsl verify with the captured set and --signature/--signer-status.
+<!-- SECTION:NOTES:END -->
