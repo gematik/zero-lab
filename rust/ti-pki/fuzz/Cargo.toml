@@ -1,0 +1,39 @@
+# cargo-fuzz targets for ti-pki's parsers of bytes from the network (nightly;
+# `just fuzz-ti-pki`). Outside the workspace so that libfuzzer never enters the
+# workspace's lock file and checks.
+[package]
+name = "ti-pki-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "EUPL-1.2"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+ti-pki = { path = "..", features = ["dangerous-nonprod"] }
+
+[[bin]]
+name = "detached_signature"
+path = "fuzz_targets/detached_signature.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "tsl_xml"
+path = "fuzz_targets/tsl_xml.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ocsp_response"
+path = "fuzz_targets/ocsp_response.rs"
+test = false
+doc = false
+bench = false

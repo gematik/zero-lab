@@ -115,7 +115,7 @@ the interop adapter in `spec/<topic>/interop/rust` prints the code.
 | build matrix and layer checks | `just wasm32`, `just core-deps`, `just nonprod-absent`; `just features` | check; `just features` before a release (`check-full`) | all crates |
 | bounded model checking | Kani | design time, stamped | ti-xmldsig C14N, jwz (base64url, compact, ECDH) |
 | functional proof | hax → F* | design time, stamped | jwz Concat KDF (SP 800-56A §5.8.1) |
-| fuzzing | cargo-fuzz (below) | release, design time | jwz parsers |
+| fuzzing | cargo-fuzz (below) | release, design time | jwz, ti-store and ti-pki parsers |
 | property tests | proptest | check | ti-xmldsig |
 | known-answer, corpora, interop | Wycheproof, spec corpora, interop runs | check | jwz, jwz-brainpool, ti-pki, ti-xmldsig, ti-pkcs12 |
 | undefined behaviour | Miri | only if `unsafe` ever enters | n/a |
