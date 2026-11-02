@@ -1,10 +1,10 @@
 ---
 id: TASK-190
 title: 'gemidp: download trust material itself, for a standalone image'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-02T18:17:00Z'
-updated_date: '2026-11-02T18:35:00Z'
+updated_date: '2026-11-02T19:06:00Z'
 labels:
   - go
   - gemidp
@@ -35,3 +35,9 @@ Built: FetchingTrust, IDPV-007 and 008, decision-12. Live with nothing mounted v
 
 2026-11-02: HITL with the image passed, confirmed by the maintainer.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+FetchingTrust downloads and verifies the trust material for a standalone image, under the hash the HTTPS host names; the mounted bundle stays. HITL passed with the image.
+<!-- SECTION:FINAL_SUMMARY:END -->
