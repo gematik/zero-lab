@@ -34,17 +34,17 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/oauth2"
-
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/idpd"
+	"github.com/gematik/zero-lab/go/oauth"
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/pkcs12"
 )
 
 // TestIDPD_SMCB authenticates against the gematik IDP-Dienst (reference env) using a real
 // SMC-B identity loaded from a PKCS#12 file. It is env-guarded and skips unless an SMC-B P12 and
 // the IDP client config are provided. This exercises the full Brainpool path end to end,
-// including the jwx-free JOSE in brainpool/josebp (sign/verify/JWE/JWK).
+// including the JOSE in brainpool/josebp (sign/verify/JWE/JWK).
 //
 // Required env:
 //
@@ -91,8 +91,8 @@ func TestIDPD_SMCB(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	verifier := oauth2.GenerateVerifier()
-	authURL, err := client.AuthenticationURL("state", "nonce", verifier)
+	verifier := oauth.GenerateVerifier()
+	authURL, err := client.AuthenticationURL(t.Context(), oidc.Login{State: "state", Nonce: "nonce", Verifier: verifier})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestIDPD_SMCB(t *testing.T) {
 		t.Fatalf("authenticate with SMC-B: %v", err)
 	}
 
-	tokenResponse, err := client.ExchangeForIdentity(codeRedirectURL.Code, verifier)
+	tokenResponse, err := client.Exchange(t.Context(), oidc.Login{Verifier: verifier}, codeRedirectURL.Code)
 	if err != nil {
 		t.Fatalf("exchange code for identity: %v", err)
 	}

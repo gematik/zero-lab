@@ -155,9 +155,14 @@ func TestFlow_ClientCredentials(t *testing.T) {
 	if tr.AccessToken == "" {
 		t.Fatal("token: empty access_token")
 	}
-	tok := verifyAccessToken(t, tr.AccessToken, getJWKS(t, md))
-	if sub, _ := tok.Subject(); sub != clientID {
-		t.Errorf("access token sub = %q, want %q", sub, clientID)
+	var claims struct {
+		Sub string `json:"sub"`
+	}
+	if err := json.Unmarshal(verifyAccessToken(t, tr.AccessToken, getJWKS(t, md)), &claims); err != nil {
+		t.Fatalf("access token claims: %v", err)
+	}
+	if claims.Sub != clientID {
+		t.Errorf("access token sub = %q, want %q", claims.Sub, clientID)
 	}
 	t.Logf("OK: client_credentials issued a verifiable %s token (expires_in=%d)", tr.TokenType, tr.ExpiresIn)
 }

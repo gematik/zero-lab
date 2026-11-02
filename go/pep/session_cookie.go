@@ -30,8 +30,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwe"
+	"github.com/go-jose/go-jose/v4"
 )
 
 // sessionCookieClaims is the encrypted snapshot payload. Its format (JWE dir+A256GCM, these json tags) is the
@@ -48,8 +47,12 @@ type sessionCookieClaims struct {
 // This is the validation half of pep/proxy's stateless snapshot, kept in pep so the verifier — and zaddy in
 // forward_auth — can gate on the session cookie without the kv.
 func OpenSessionCookie(token string, keys [][]byte) (identity map[string]any, sid string, ok bool) {
+	sealed, err := jose.ParseEncryptedCompact(token, []jose.KeyAlgorithm{jose.DIRECT}, []jose.ContentEncryption{jose.A256GCM})
+	if err != nil {
+		return nil, "", false
+	}
 	for _, k := range keys {
-		payload, err := jwe.Decrypt([]byte(token), jwe.WithKey(jwa.DIRECT(), k))
+		payload, err := sealed.Decrypt(k)
 		if err != nil {
 			continue
 		}

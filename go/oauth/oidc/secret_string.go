@@ -59,15 +59,9 @@ func (s *SecretString) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// UnmarshalYAML reads the secret from a YAML string.
-func (s *SecretString) UnmarshalYAML(unmarshal func(any) error) error {
-	if err := unmarshal(&s.value); err != nil {
-		return fmt.Errorf("unable to unmashal secret: %w", err)
-	}
+// UnmarshalText reads the secret from a configuration file's string. There is no way back to text: a config
+// written out again shows no secret.
+func (s *SecretString) UnmarshalText(text []byte) error {
+	s.value = string(text)
 	return nil
-}
-
-// MarshalYAML writes the secret in clear; only String masks it.
-func (s SecretString) MarshalYAML() (any, error) {
-	return s.value, nil
 }

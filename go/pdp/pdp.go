@@ -26,9 +26,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
-
-	"gopkg.in/yaml.v3"
 
 	"github.com/gematik/zero-lab/go/idpd"
 	"github.com/gematik/zero-lab/go/oauth/providers"
@@ -52,18 +49,10 @@ const defaultOpenidProvidersFile = "openid-providers.yaml"
 // an error, so an outdated file stops the start. Providers come from PDP_OPENID_PROVIDERS_PATH, which must then
 // exist, else from openid-providers.yaml next to path if present; [New] loads them.
 func LoadConfigFile(path string) (*Config, error) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read file: %w", err)
-	}
-
 	cfg := new(Config)
 	cfg.BaseDir = filepath.Dir(path)
-
-	decoder := yaml.NewDecoder(strings.NewReader(os.ExpandEnv(string(content))))
-	decoder.KnownFields(true)
-	if err := decoder.Decode(cfg); err != nil {
-		return nil, fmt.Errorf("decode config file: %w", err)
+	if err := loadYAML(path, cfg); err != nil {
+		return nil, err
 	}
 
 	cfg.AuthzServerConfig.BaseDir = cfg.BaseDir
@@ -89,13 +78,17 @@ func loadProviders(config *Config) error {
 	if config.ProvidersPath == "" {
 		return nil
 	}
-	set, err := providers.Load(config.ProvidersPath, providers.Env{}, providers.Kinds{
+	entries, err := providerEntries(config.ProvidersPath)
+	if err != nil {
+		return err
+	}
+	set, err := providers.Build(entries, providers.Env{BaseDir: filepath.Dir(config.ProvidersPath)}, providers.Kinds{
 		"oidc": providers.OIDC,
 		"idpd": idpd.Kind(nil),
 		"oidf": oidf.Kind(func(rp *oidf.RelyingParty) { server.RelyingParty = rp }),
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("providers %q: %w", config.ProvidersPath, err)
 	}
 	server.Providers = set
 	return nil

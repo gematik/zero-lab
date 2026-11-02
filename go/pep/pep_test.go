@@ -24,8 +24,6 @@ package pep_test
 import (
 	"testing"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
-
 	"github.com/gematik/zero-lab/go/pep"
 )
 
@@ -44,7 +42,7 @@ func createPEP(t *testing.T) *pep.PEP {
 
 // createPEPAt guards a resource reached at publicOrigin, the origin DPoP proofs' htu name.
 func createPEPAt(t *testing.T, publicOrigin string) *pep.PEP {
-	jwkSet, err := jwk.Parse([]byte(publicJWSKSet))
+	jwkSet, err := pep.ParseJWKSet([]byte(publicJWSKSet))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +60,7 @@ func createPEPAt(t *testing.T, publicOrigin string) *pep.PEP {
 }
 
 func TestPEPBuilder(t *testing.T) {
-	jwkSet, err := jwk.Parse([]byte(publicJWSKSet))
+	jwkSet, err := pep.ParseJWKSet([]byte(publicJWSKSet))
 	if err != nil {
 		t.Fatal(err)
 	}

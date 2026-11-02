@@ -26,6 +26,9 @@ answer to a new dependency is no.
    transitive tree, not only the direct dependency. Runtime glue (HTTP clients,
    executors, platform APIs) stays behind opt-in features or in adapter units, never in
    a core.
+   A dependency for a file format, a command line or a framework belongs in a host (a
+   command or server), never in a base library: libraries take typed configuration, and
+   hosts read files ([decision-13](../../backlog/decisions/)).
 6. **Latest versions.** Keep the latest toolchain and the latest release of every
    dependency; never downgrade for compatibility. A fixed advisory is a release blocker.
 7. **Ask first.** Adding a dependency, enabling a feature that pulls new crates or

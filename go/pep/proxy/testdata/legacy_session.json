@@ -1,0 +1,73 @@
+{
+ "client_assertion": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImxlZ2FjeS1jbGllbnQta2V5IiwidHlwIjoiSldUIn0.eyJhdWQiOlsiaHR0cHM6Ly9hcy5leGFtcGxlIl0sImNuZiI6eyJqa3QiOiItSkthX2lKVHpnazBpeDBPNjFVUFgtWWR2YnZZSUZvRkQtUWlWdjRDdzVVIn0sImV4cCI6MTc5MzY1NDQ4NiwiaWF0IjoxNzkzNjU0NDI2LCJpc3MiOiJwZXAtY2xpZW50IiwianRpIjoiODExYjM3MTUtZDhjMS00OWU2LTgwNzUtNGJkZDNhMDlmYWQ1Iiwic3ViIjoicGVwLWNsaWVudCJ9.P_UmDQ8amGVzcznL_2XgORk6YOXzVy8j4j8blw43SpJI6EdDOOMV0LYzv0EE1zwNnMgafeJojjB9KXaajt5zHA",
+ "client_signing_jwk": {
+  "crv": "P-256",
+  "d": "h4R-8ygPnazEBD6TiTytfZiDM3onCH_Q8XfDBJz6OlE",
+  "kid": "legacy-client-key",
+  "kty": "EC",
+  "x": "IltlSjiEnGsrnGKwvWrdB8MRGeTEj8iarWZTRNMjGCY",
+  "y": "tduVOqpqe5omrwPnKNTHdxdC1bEgq14JSjG-6i0Czu0"
+ },
+ "dpop_keys": [
+  {
+   "note": "newSessionDPoPKey",
+   "jwk": {
+    "crv": "P-256",
+    "d": "LOL7jqicTGWKVXSZmuqb-QK5cRj_3JKKnuAwTvUGczs",
+    "kty": "EC",
+    "x": "KheHrTHrSAKc9du6a6yGfjmCN85gA9SCuw6FWDXh8x4",
+    "y": "3DFxLOy0FUGpQXaan_HsPYn-3EYM9593JK7X9YzVJlg"
+   },
+   "jkt": "-JKa_iJTzgk0ix0O61UPX-YdvbvYIFoFD-QiVv4Cw5U"
+  },
+  {
+   "note": "x leading zero",
+   "jwk": {
+    "crv": "P-256",
+    "d": "7InJbHvOa15lWKcDKrPZ9DhLalaiKXbFAYdxh6-fxyc",
+    "kty": "EC",
+    "x": "ANfXUJlC1G8SB_FWKCuJIepPcDZCNpRLk1Kpqc1_Md4",
+    "y": "Mz_KkltmqGv-zwKGGxDN7XE4HmJuVdsDa7mlgvKJF_4"
+   },
+   "jkt": "EPwKa60COE-IvMn4dp4dd-czipZIo3f6LyuPlExfbDE"
+  },
+  {
+   "note": "y leading zero",
+   "jwk": {
+    "crv": "P-256",
+    "d": "xdWOWnRTfSYo6CNNpHAKINqs3p8QSU9La9GLjm1e_10",
+    "kty": "EC",
+    "x": "1M0P0HxVKjZkjIishI5daZMlco7703Mxtu3hLwzZ8Rw",
+    "y": "AE6DOqWzW2yuEUKYSnylUuZTGFdA4gWT4VMBsyr_8Os"
+   },
+   "jkt": "d-_SdeqrTfIwELBzjJOlZW2Dm6hAWwFSTB4sZp60j9U"
+  },
+  {
+   "note": "d leading zero",
+   "jwk": {
+    "crv": "P-256",
+    "d": "APw39KE57wZ-czsciT4e8SIsP5uWAUQyAX6beS6IYeM",
+    "kty": "EC",
+    "x": "V8YBVX-QUyLCPIgN-1sBiOPKnjcG7ICJSCdfPI70UEk",
+    "y": "yTX8OHhyra9QC_cxFz41H3CcEjn-bA-wi-gpIoY4z6k"
+   },
+   "jkt": "wY1nl-TjEgfZ94YbYiqFoiyfTa5gE4SVKDRaC3bdmNY"
+  }
+ ],
+ "identity": {
+  "email": "\u00e4@example.com",
+  "name": "Test <User>",
+  "nested": {
+   "l": [
+    "a",
+    true
+   ],
+   "n": 1.5
+  },
+  "scope": "read write",
+  "sub": "X110000001"
+ },
+ "sid": "sid-legacy",
+ "snapshot": "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..73evkgiQe_h8yoWY.GXjfGJ6pS0P3xH9U-1_uXMKGSCTko2n7qvyVfgAUWSRHGClXiATny3oawVCRXhhIfe66k-aQLry1UKHgpp_nC8G6mSigozwJKiRvPPd0-IgLkHfU1G4T8AI67WhUJKv4ITXlbVNvB3JyGoHXpUqxNhYoc3NGYiH31OqTdliBfp6Kg311uT-owJ-4gFR8_LBxJZXEkkik9UPVzUp67M_BkvkgsPdPVOHTmV7fSC5al7Sz2W76fWqPiK_CPFifcDg.MAx8NuKo0hI_Hz-2A2O1JQ",
+ "snapshot_key_b64": "JCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQ="
+}

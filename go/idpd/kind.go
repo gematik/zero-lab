@@ -25,24 +25,21 @@ import (
 	"fmt"
 	"log/slog"
 
-	"gopkg.in/yaml.v3"
-
-	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oauth/providers"
 )
 
-// ProviderType implements [providers.Typed].
-func (c *Client) ProviderType() string { return "idpd" }
+// TypeIDPD is the provider type of the IDP-Dienst.
+const TypeIDPD = "idpd"
 
 // Kind is the kind of IDP-Dienst providers, a list of [ClientConfig]. adjust, if not nil, sets what the program
 // decides for every entry.
 func Kind(adjust func(*ClientConfig)) providers.Kind {
-	return func(node *yaml.Node, env providers.Env) (providers.Built, error) {
+	return func(decode providers.Decode, env providers.Env) (providers.Built, error) {
 		var configs []ClientConfig
-		if err := providers.Decode(node, &configs); err != nil {
+		if err := decode(&configs); err != nil {
 			return providers.Built{}, err
 		}
-		var clients []oidc.Client
+		var built providers.Built
 		for i := range configs {
 			config := configs[i]
 			if config.RedirectURI == "" {
@@ -55,9 +52,20 @@ func Kind(adjust func(*ClientConfig)) providers.Kind {
 			if err != nil {
 				return providers.Built{}, fmt.Errorf("[%d] (%s): %w", i, config.ClientID, err)
 			}
-			clients = append(clients, client)
-			slog.Info("configured openid provider", "type", "idpd", "name", client.Name(), "issuer", client.Issuer())
+			built.Providers = append(built.Providers, client.Provider())
+			slog.Info("configured openid provider", "type", TypeIDPD, "name", config.Name, "issuer", client.Issuer())
 		}
-		return providers.Built{Clients: clients}, nil
+		return built, nil
+	}
+}
+
+// Provider is the client with what a chooser shows of it.
+func (c *Client) Provider() providers.Provider {
+	return providers.Provider{
+		Issuer:  c.Issuer(),
+		Name:    c.config.Name,
+		LogoURI: c.config.LogoURI,
+		Type:    TypeIDPD,
+		Client:  c,
 	}
 }

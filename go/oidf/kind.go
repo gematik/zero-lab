@@ -22,7 +22,7 @@
 package oidf
 
 import (
-	"gopkg.in/yaml.v3"
+	"context"
 
 	"github.com/gematik/zero-lab/go/oauth/providers"
 )
@@ -30,11 +30,25 @@ import (
 // TypeOIDF is the provider type of a federation's members.
 const TypeOIDF = "oidf"
 
-// ProviderType implements [providers.Typed].
-func (c *RelyingPartyClient) ProviderType() string { return TypeOIDF }
+// Provider implements [providers.Federation]: it resolves issuer in the federation.
+func (rp *RelyingParty) Provider(_ context.Context, issuer string) (providers.Provider, error) {
+	client, err := rp.newClient(issuer)
+	if err != nil {
+		return providers.Provider{}, err
+	}
+	return providers.Provider{
+		Info: providers.Info{
+			Issuer:  client.Issuer(),
+			Name:    client.metadata.OrganizationName,
+			LogoURI: client.metadata.LogoURI,
+			Type:    TypeOIDF,
+		},
+		Client: client,
+	}, nil
+}
 
 // Providers implements [providers.Federation].
-func (rp *RelyingParty) Providers() ([]providers.Info, error) {
+func (rp *RelyingParty) Providers(_ context.Context) ([]providers.Info, error) {
 	idps, err := rp.Federation().FetchIdpList()
 	if err != nil {
 		return nil, err
@@ -49,13 +63,12 @@ func (rp *RelyingParty) Providers() ([]providers.Info, error) {
 // Kind is the kind of a federation's relying party, one [RelyingPartyConfig]. built, if not nil, gets the relying
 // party, for a program that serves its entity statement too.
 func Kind(built func(*RelyingParty)) providers.Kind {
-	return func(node *yaml.Node, env providers.Env) (providers.Built, error) {
+	return func(decode providers.Decode, env providers.Env) (providers.Built, error) {
 		config := new(RelyingPartyConfig)
-		if err := providers.Decode(node, config); err != nil {
+		if err := decode(config); err != nil {
 			return providers.Built{}, err
 		}
-		config.BaseDir = env.BaseDir
-		rp, err := NewRelyingPartyFromConfig(config)
+		rp, err := NewRelyingParty(config, env.BaseDir)
 		if err != nil {
 			return providers.Built{}, err
 		}

@@ -53,7 +53,7 @@ lint: (_each "go vet ./... && go run " + STATICCHECK + " ./...")
 golangci: (_each "go run " + GOLANGCI + " run ./... && go run " + GOLANGCI + " fmt --diff ./...")
 
 # Report outdated idioms; the generated fiat code keeps its generator's output
-modernize: (_each "! go run " + MODERNIZE + " ./... 2>&1 | grep -vE '/bp256/fiat/|^exit status'")
+modernize: (_each "found=$(go run " + MODERNIZE + " ./... 2>&1 | grep -vE '/bp256/fiat/|^exit status'); echo \"$found\"; [ -z \"$found\" ]")
 
 # Apply modernize's fixes, tests included
 modernize-fix: (_each "go run " + MODERNIZE + " -fix -test ./...; gofmt -w .")
@@ -63,7 +63,8 @@ modernize-fix: (_each "go run " + MODERNIZE + " -fix -test ./...; gofmt -w .")
 vuln: (_each "go run " + GOVULNCHECK + " ./...")
 
 # go.mod and go.sum as `go mod tidy` leaves them, with sums matching what was downloaded;
-# a consumer of oauth or oidf carries no TI trust path, not even in its module graph
+# oauth and oidf carry no TI trust path in their module graph, and base libraries compile no
+# format dependency (decision-13)
 mod-check: (_each "go mod tidy -diff && go mod verify")
     #!/usr/bin/env bash
     set -uo pipefail
@@ -71,6 +72,13 @@ mod-check: (_each "go mod tidy -diff && go mod verify")
     for dir in oauth oidf; do
         found=$(cd "$dir" && GOWORK=off go list -m all | grep -E 'zero-lab/go/(brainpool|tipki|pkcs12|idpd)( |$)')
         if [ -n "$found" ]; then echo "$dir carries: $found"; fail=1; fi
+    done
+    found=$(cd pep && GOWORK=off go list -m all | grep 'zero-lab/go/' | grep -vE 'zero-lab/go/(pep|dpop)( |$)')
+    if [ -n "$found" ]; then echo "pep, which zaddy takes in, carries: $found"; fail=1; fi
+    for dir in brainpool dpop idpd kv nonce oauth oidf pep pkcs12 tipki; do
+        found=$(cd "$dir" && GOWORK=off go list -deps ./... | grep -E 'yaml')
+        if [ -n "$found" ]; then echo "$dir compiles: $found"; fail=1; fi
+        if grep -qE 'yaml' "$dir/go.mod"; then echo "$dir/go.mod names yaml"; fail=1; fi
     done
     exit $fail
 

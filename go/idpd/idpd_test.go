@@ -29,9 +29,9 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/oauth2"
-
 	"github.com/gematik/zero-lab/go/idpd"
+	"github.com/gematik/zero-lab/go/oauth"
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
 // sample keys and certificates from https://github.com/gematik/erp-e2e-testsuite
@@ -84,9 +84,9 @@ func TestIDPD(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	verifier := oauth2.GenerateVerifier()
+	verifier := oauth.GenerateVerifier()
 
-	authURL, err := client.AuthenticationURL("state", "nonce", verifier)
+	authURL, err := client.AuthenticationURL(t.Context(), oidc.Login{State: "state", Nonce: "nonce", Verifier: verifier})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestIDPD(t *testing.T) {
 
 	t.Log("CodeRedirectURL", codeRedirectURL)
 
-	tokenResponse, err := client.ExchangeForIdentity(codeRedirectURL.Code, verifier)
+	tokenResponse, err := client.Exchange(t.Context(), oidc.Login{Verifier: verifier}, codeRedirectURL.Code)
 	if err != nil {
 		t.Fatal(err)
 	}

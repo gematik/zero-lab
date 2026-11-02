@@ -24,6 +24,7 @@
 package oidf
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,12 +34,37 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jws"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/go-jose/go-jose/v4"
+
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
-const defaultHTTPTimeout = 30 * time.Second
+const (
+	defaultHTTPTimeout = 30 * time.Second
+	// statementClockTolerance is added to the clock a signed federation document is judged at. Having nbf and iat
+	// in the future by that much is tolerated, and exp is met that much earlier.
+	statementClockTolerance = 90 * time.Second
+)
+
+// federationKeys refuses a key that does not state its alg: the algorithm of a federation document is fixed by the key
+// that vouches for it, not left to what the key's type allows.
+var federationKeys = oidc.VerifyOptions{RequireKeyAlgorithm: true}
+
+// verifyStatement verifies a signed federation document against keys and checks its lifetime, returning its claims.
+func verifyStatement(r io.Reader, keys *jose.JSONWebKeySet) ([]byte, error) {
+	signed, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := oidc.VerifyJWS(signed, keys, federationKeys)
+	if err != nil {
+		return nil, err
+	}
+	if err := oidc.ValidateLifetime(payload, time.Now().Add(statementClockTolerance), 0); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
 
 // transportOrDefault returns http.DefaultTransport when rt is nil, so a decorated client always
 // has a concrete base transport to wrap.
@@ -53,7 +79,7 @@ func transportOrDefault(rt http.RoundTripper) http.RoundTripper {
 // the master is verified against.
 type OpenidFederation struct {
 	fedMasterURL string
-	jwks         jwk.Set
+	jwks         *jose.JSONWebKeySet
 	entity       *FederationEntityMetadata
 	httpClient   *http.Client
 }
@@ -61,12 +87,6 @@ type OpenidFederation struct {
 // OpenidProvider names an OpenID provider by its issuer.
 type OpenidProvider struct {
 	Issuer string
-}
-
-func clockWithTolerance(tolerance time.Duration) jwt.ClockFunc {
-	return func() time.Time {
-		return time.Now().Add(tolerance)
-	}
 }
 
 // IdentityProviderInfo is one entry of the federation master's IdP list.
@@ -96,7 +116,7 @@ func WithHTTPClient(httpClient *http.Client) Option {
 // NewOpenidFederation fetches the master's entity statement from fedMasterURL, verifies it against the trust
 // anchor jwks and returns a client of that master. It fails if the statement does not verify or names no
 // federation_entity metadata.
-func NewOpenidFederation(fedMasterURL string, jwks jwk.Set, opts ...Option) (*OpenidFederation, error) {
+func NewOpenidFederation(fedMasterURL string, jwks *jose.JSONWebKeySet, opts ...Option) (*OpenidFederation, error) {
 	o := &federationOptions{}
 	for _, opt := range opts {
 		opt(o)
@@ -137,20 +157,25 @@ func (f *OpenidFederation) FetchIdpList() ([]IdentityProviderInfo, error) {
 	}
 	defer r.Body.Close()
 
-	token, err := jwt.ParseReader(r.Body, jwt.WithKeySet(f.jwks), jwt.WithClock(clockWithTolerance(90*time.Second)))
+	payload, err := verifyStatement(r.Body, f.jwks)
 	if err != nil {
 		return nil, err
 	}
 
-	var idpEntity any
-	if err := token.Get("idp_entity", &idpEntity); err != nil {
-		return nil, fmt.Errorf("unable to get idp_entity from token: %w", err)
+	var claims struct {
+		IdpEntity *[]IdentityProviderInfo `json:"idp_entity"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return nil, fmt.Errorf("unable to read idp_entity from token: %w", err)
+	}
+	if claims.IdpEntity == nil {
+		return nil, errors.New("unable to get idp_entity from token: no such claim")
 	}
 
-	return idpEntityToIdpInfo(idpEntity)
+	return *claims.IdpEntity, nil
 }
 
-func fetchMasterEntityStatement(fedMasterURL string, jwks jwk.Set, httpClient *http.Client) (*EntityStatement, error) {
+func fetchMasterEntityStatement(fedMasterURL string, jwks *jose.JSONWebKeySet, httpClient *http.Client) (*EntityStatement, error) {
 	resp, err := httpClient.Get(fedMasterURL + "/.well-known/openid-federation") //nolint:gosec // fedMasterURL is the operator's fed_master_url, not request input
 	if err != nil {
 		return nil, err
@@ -168,15 +193,15 @@ func fetchMasterEntityStatement(fedMasterURL string, jwks jwk.Set, httpClient *h
 		return nil, fmt.Errorf("unable to fetch entity statement from '%s': %s", fedMasterURL, resp.Status)
 	}
 
-	token, err := jwt.ParseReader(resp.Body, jwt.WithKeySet(jwks), jwt.WithClock(clockWithTolerance(90*time.Second)))
+	payload, err := verifyStatement(resp.Body, jwks)
 	if err != nil {
 		return nil, err
 	}
 
-	return tokenToEntityStatement(token)
+	return parseEntityStatement(payload)
 }
 
-func (f *OpenidFederation) fetchAndVerify(url string, jwks jwk.Set) (*EntityStatement, error) {
+func (f *OpenidFederation) fetchAndVerify(url string, jwks *jose.JSONWebKeySet) (*EntityStatement, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil) //nolint:gosec // TASK-182: iss and signed_jwks_uri are not constrained
 	if err != nil {
 		return nil, err
@@ -198,12 +223,12 @@ func (f *OpenidFederation) fetchAndVerify(url string, jwks jwk.Set) (*EntityStat
 		return nil, &oidcErr
 	}
 
-	verified, err := jwt.ParseReader(resp.Body, jwt.WithKeySet(jwks), jwt.WithClock(clockWithTolerance(90*time.Second)))
+	payload, err := verifyStatement(resp.Body, jwks)
 	if err != nil {
 		return nil, err
 	}
 
-	return tokenToEntityStatement(verified)
+	return parseEntityStatement(payload)
 }
 
 // FetchEntityStatement returns the self-signed entity statement of the issuer iss, verified with the keys that
@@ -221,30 +246,16 @@ func (f *OpenidFederation) FetchEntityStatement(iss string) (*EntityStatement, e
 		return nil, fmt.Errorf("unable to fetch entity statement from '%s': %w", url, err)
 	}
 
+	if fromMaster.Jwks == nil {
+		return nil, fmt.Errorf("the master's statement about '%s' vouches for no keys", iss)
+	}
+
 	selfSigned, err := f.fetchAndVerify(iss+"/.well-known/openid-federation", fromMaster.Jwks.Keys)
 	if err != nil {
 		return nil, fmt.Errorf("unable to fetch entity statement from '%s': %w", iss, err)
 	}
 
 	return selfSigned, nil
-}
-
-// converts idp_entity claim to array of IdentityProviderInfo
-func idpEntityToIdpInfo(idpEntity any) ([]IdentityProviderInfo, error) {
-	// serialize the obj to json
-	jsonData, err := json.Marshal(idpEntity)
-	if err != nil {
-		return nil, err
-	}
-
-	// deserialize the json to an oidf.Metadata object
-	var idpInfo []IdentityProviderInfo
-	err = json.Unmarshal(jsonData, &idpInfo)
-	if err != nil {
-		return nil, err
-	}
-
-	return idpInfo, nil
 }
 
 // FederationMasterURL returns the URL given to NewOpenidFederation.
@@ -254,9 +265,12 @@ func (f *OpenidFederation) FederationMasterURL() string {
 
 // FetchSignedJwks returns the key set published at op's signed_jwks_uri, verified against the keys of op's
 // entity statement, so op has to be a statement FetchEntityStatement verified.
-func (f *OpenidFederation) FetchSignedJwks(op *EntityStatement) (jwk.Set, error) {
+func (f *OpenidFederation) FetchSignedJwks(op *EntityStatement) (*jose.JSONWebKeySet, error) {
 	if op.Metadata == nil || op.Metadata.OpenidProvider == nil {
 		return nil, errors.New("no openid provider found in entity statement")
+	}
+	if op.Jwks == nil {
+		return nil, errors.New("no keys found in entity statement")
 	}
 
 	jwksURL := op.Metadata.OpenidProvider.SignedJwksURI
@@ -266,26 +280,26 @@ func (f *OpenidFederation) FetchSignedJwks(op *EntityStatement) (jwk.Set, error)
 		return nil, fmt.Errorf("unable to fetch jwks from '%s': %w", jwksURL, err)
 	}
 
+	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unable to fetch jwks from '%s': %s", jwksURL, resp.Status)
 	}
-
-	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("unable to read jwks response body: %w", err)
 	}
 
-	jwksBytes, err := jws.Verify(body, jws.WithKeySet(op.Jwks.Keys))
+	jwksBytes, err := oidc.VerifyJWS(bytes.TrimSpace(body), op.Jwks.Keys, federationKeys)
 	if err != nil {
 		return nil, fmt.Errorf("unable to verify jwks: %w", err)
 	}
 
-	jwks, err := jwk.Parse(jwksBytes)
+	jwks, err := oidc.ParseKeySet(jwksBytes)
 	if err != nil {
 		return nil, fmt.Errorf("parsing jwks failed: %w", err)
 	}
 
-	return jwks, err
+	return jwks, nil
 }

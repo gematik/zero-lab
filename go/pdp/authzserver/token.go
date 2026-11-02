@@ -32,9 +32,6 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwt"
-
 	"github.com/gematik/zero-lab/go/dpop"
 )
 
@@ -108,12 +105,7 @@ func (s *Server) verifyClient(r *http.Request) (*Client, *ClientAssertionClaims,
 		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", err.Error())
 	}
 
-	if _, err := jwt.Parse([]byte(assertion),
-		jwt.WithKey(jwa.ES256(), client.Key()),
-		jwt.WithAudience(s.Metadata.Issuer),
-		jwt.WithAcceptableSkew(time.Minute),
-		jwt.WithValidate(true),
-	); err != nil {
+	if err := verifyClientAssertion(assertion, client.Key(), s.Metadata.Issuer, time.Now()); err != nil {
 		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", fmt.Sprintf("invalid client_assertion: %v", err))
 	}
 
@@ -389,14 +381,7 @@ func (s *Server) issueOrRefreshTokens(session *Session) (*TokenResponse, error) 
 		}
 	}
 
-	accessJwt := jwt.New()
-	for name, value := range claims {
-		if err := accessJwt.Set(name, value); err != nil {
-			return nil, fmt.Errorf("unable to set access token claim %q: %w", name, err)
-		}
-	}
-
-	accessTokenBytes, err := s.signAccessToken(accessJwt)
+	accessTokenBytes, err := s.signAccessToken(claims)
 	if err != nil {
 		return nil, fmt.Errorf("unable to sign access token: %w", err)
 	}

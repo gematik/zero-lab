@@ -100,14 +100,9 @@ func GetIDPByEnvironment(env Environment) IDP {
 	}
 }
 
-// UnmarshalYAML reads an Environment by its name, as NewEnvironment does, so an unknown name is not an error.
-func (e *Environment) UnmarshalYAML(unmarshal func(any) error) error {
-	var s string
-	if err := unmarshal(&s); err != nil {
-		return err
-	}
-
-	*e = NewEnvironment(s)
+// UnmarshalText reads an Environment by its name, as NewEnvironment does.
+func (e *Environment) UnmarshalText(text []byte) error {
+	*e = NewEnvironment(string(text))
 	return nil
 }
 

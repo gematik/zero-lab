@@ -26,27 +26,25 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/dpop"
 )
 
-func testSigningKey(t *testing.T) jwk.Key {
+func testSigningKey(t *testing.T) *jose.JSONWebKey {
 	t.Helper()
-	prk, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	k, _ := jwk.Import(prk)
-	if err := k.Set(jwk.KeyIDKey, "test-pep-client"); err != nil {
+	prk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
 		t.Fatal(err)
 	}
-	return k
+	return &jose.JSONWebKey{Key: prk, KeyID: "test-pep-client"}
 }
 
 func TestPDPClientAssertionClaims(t *testing.T) {
@@ -64,23 +62,32 @@ func TestPDPClientAssertionClaims(t *testing.T) {
 	if err != nil {
 		t.Fatalf("clientAssertion: %v", err)
 	}
-	pub, _ := b.cfg.SigningKey.PublicKey()
-	tok, err := jwt.Parse([]byte(assertion), jwt.WithKey(jwa.ES256(), pub))
+	parsed, err := jose.ParseSignedCompact(assertion, []jose.SignatureAlgorithm{jose.ES256})
+	if err != nil {
+		t.Fatalf("parse assertion: %v", err)
+	}
+	payload, err := parsed.Verify(b.cfg.SigningKey.Public().Key)
 	if err != nil {
 		t.Fatalf("verify assertion: %v", err)
 	}
-	if iss, _ := tok.Issuer(); iss != "pep-client" {
-		t.Errorf("iss = %q", iss)
+	var claims struct {
+		Iss string   `json:"iss"`
+		Aud []string `json:"aud"`
+		Cnf struct {
+			Jkt string `json:"jkt"`
+		} `json:"cnf"`
 	}
-	if aud, _ := tok.Audience(); len(aud) != 1 || aud[0] != "https://as.example" {
-		t.Errorf("aud = %v", aud)
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		t.Fatalf("decode assertion: %v", err)
 	}
-	var cnf map[string]any
-	if err := tok.Get("cnf", &cnf); err != nil {
-		t.Fatalf("no cnf: %v", err)
+	if claims.Iss != "pep-client" {
+		t.Errorf("iss = %q", claims.Iss)
 	}
-	if s, _ := cnf["jkt"].(string); s == "" {
-		t.Errorf("cnf.jkt missing: %v", cnf)
+	if len(claims.Aud) != 1 || claims.Aud[0] != "https://as.example" {
+		t.Errorf("aud = %v", claims.Aud)
+	}
+	if claims.Cnf.Jkt == "" {
+		t.Error("cnf.jkt missing")
 	}
 }
 

@@ -30,8 +30,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jws"
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
 // oauthError decodes an OAuth JSON error body and returns its "error" code, also asserting the
@@ -217,11 +216,11 @@ func TestRegression_OIDFEntityStatement(t *testing.T) {
 	}
 
 	// The statement is self-signed: verify against the JWKS it carries.
-	keys, err := jwk.Parse(es.Jwks)
+	keys, err := oidc.ParseKeySet(es.Jwks)
 	if err != nil {
 		t.Fatalf("parse embedded jwks: %v", err)
 	}
-	if _, err := jws.Verify(raw, jws.WithKeySet(keys, jws.WithInferAlgorithmFromKey(true))); err != nil {
+	if _, err := oidc.VerifyJWS([]byte(strings.TrimSpace(string(raw))), keys, oidc.VerifyOptions{}); err != nil {
 		t.Fatalf("entity statement signature did not verify against its own jwks: %v", err)
 	}
 	t.Logf("OK: entity statement self-verifies — iss=%s alg=%s authority_hints=%v", es.Iss, hdr.Alg, es.AuthorityHints)

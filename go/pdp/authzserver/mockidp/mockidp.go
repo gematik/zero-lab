@@ -43,11 +43,9 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
-	"golang.org/x/oauth2"
+	"github.com/go-jose/go-jose/v4"
 
+	"github.com/gematik/zero-lab/go/oauth"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
@@ -77,10 +75,10 @@ type pendingAuth struct {
 }
 
 type provider struct {
-	issuer  string
-	id      Identity
-	signKey jwk.Key
-	jwks    jwk.Set
+	issuer string
+	id     Identity
+	signer jose.Signer
+	jwks   *jose.JSONWebKeySet
 
 	mu    sync.Mutex
 	codes map[string]pendingAuth // single-use OP authorization codes (in-memory; dev/non-prod only)
@@ -89,24 +87,16 @@ type provider struct {
 // Register builds the mock OP, mounts its routes on mux, and registers it as a normal oidc provider so the
 // generic startOpenidProviderLogin / OPCallbackEndpoint / OpenidProviders paths handle it unchanged.
 func Register(h Host, mux *http.ServeMux, id Identity) error {
-	key, err := newSigningKey()
+	signer, jwks, err := newSigningKey()
 	if err != nil {
 		return fmt.Errorf("mockidp signing key: %w", err)
 	}
-	pub, err := key.PublicKey()
-	if err != nil {
-		return fmt.Errorf("mockidp public key: %w", err)
-	}
-	set := jwk.NewSet()
-	if err := set.AddKey(pub); err != nil {
-		return err
-	}
 	p := &provider{
-		issuer:  strings.TrimRight(h.IssuerBaseURL(), "/") + pathPrefix,
-		id:      id,
-		signKey: key,
-		jwks:    set,
-		codes:   map[string]pendingAuth{},
+		issuer: strings.TrimRight(h.IssuerBaseURL(), "/") + pathPrefix,
+		id:     id,
+		signer: signer,
+		jwks:   jwks,
+		codes:  map[string]pendingAuth{},
 	}
 	mux.HandleFunc("GET "+pathPrefix+"/.well-known/openid-configuration", p.handleDiscovery)
 	mux.HandleFunc("GET "+pathPrefix+"/auth", p.handleAuthPage)
@@ -114,22 +104,21 @@ func Register(h Host, mux *http.ServeMux, id Identity) error {
 	mux.HandleFunc("POST "+pathPrefix+"/token", p.handleToken)
 	mux.HandleFunc("GET "+pathPrefix+"/jwks", p.handleJWKS)
 
-	h.AddProvider(&mockClient{issuer: p.issuer, clientID: mockClientID, redirectURI: h.OPCallbackURL(), pub: pub})
+	h.AddProvider(&mockClient{issuer: p.issuer, clientID: mockClientID, redirectURI: h.OPCallbackURL(), keys: jwks})
 	return nil
 }
 
-func newSigningKey() (jwk.Key, error) {
+func newSigningKey() (jose.Signer, *jose.JSONWebKeySet, error) {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	key, err := jwk.Import(priv)
+	key := jose.JSONWebKey{Key: priv, KeyID: uuid.NewV4().String(), Algorithm: string(jose.ES256)}
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.ES256, Key: key}, (&jose.SignerOptions{}).WithType("JWT"))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	_ = key.Set(jwk.KeyIDKey, uuid.NewV4().String())
-	_ = key.Set(jwk.AlgorithmKey, jwa.ES256())
-	return key, nil
+	return signer, &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{key.Public()}}, nil
 }
 
 func (p *provider) handleDiscovery(w http.ResponseWriter, _ *http.Request) {
@@ -234,7 +223,7 @@ func (p *provider) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if pend.codeChallenge != "" {
-		if oauth2.S256ChallengeFromVerifier(r.FormValue("code_verifier")) != pend.codeChallenge {
+		if oauth.S256Challenge(r.FormValue("code_verifier")) != pend.codeChallenge {
 			oauthError(w, "invalid_grant", "PKCE verification failed")
 			return
 		}
@@ -244,20 +233,23 @@ func (p *provider) handleToken(w http.ResponseWriter, r *http.Request) {
 	claims := map[string]any{
 		"iss":   p.issuer,
 		"sub":   p.id.Subject,
-		"aud":   pend.clientID,
+		"aud":   []string{pend.clientID},
 		"nonce": pend.nonce,
 		"iat":   now.Unix(),
 		"exp":   now.Add(5 * time.Minute).Unix(),
 	}
 	maps.Copy(claims, p.id.Claims)
-	tok := jwt.New()
-	for k, v := range claims {
-		if err := tok.Set(k, v); err != nil {
-			oauthError(w, "server_error", "set id_token claim "+k+": "+err.Error())
-			return
-		}
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		oauthError(w, "server_error", "encode id_token claims: "+err.Error())
+		return
 	}
-	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.ES256(), p.signKey))
+	object, err := p.signer.Sign(payload)
+	if err != nil {
+		oauthError(w, "server_error", "sign id_token: "+err.Error())
+		return
+	}
+	signed, err := object.CompactSerialize()
 	if err != nil {
 		oauthError(w, "server_error", "sign id_token: "+err.Error())
 		return
@@ -266,7 +258,7 @@ func (p *provider) handleToken(w http.ResponseWriter, r *http.Request) {
 		"access_token": "mock-" + code,
 		"token_type":   "Bearer",
 		"expires_in":   300,
-		"id_token":     string(signed),
+		"id_token":     signed,
 	})
 }
 

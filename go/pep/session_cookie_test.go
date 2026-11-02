@@ -30,8 +30,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwe"
+	"github.com/go-jose/go-jose/v4"
 )
 
 func mintTestCookie(t *testing.T, key []byte, identity map[string]any, exp int64) string {
@@ -40,11 +39,19 @@ func mintTestCookie(t *testing.T, key []byte, identity map[string]any, exp int64
 	if err != nil {
 		t.Fatal(err)
 	}
-	enc, err := jwe.Encrypt(payload, jwe.WithKey(jwa.DIRECT(), key), jwe.WithContentEncryption(jwa.A256GCM()))
+	encrypter, err := jose.NewEncrypter(jose.A256GCM, jose.Recipient{Algorithm: jose.DIRECT, Key: key}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return string(enc)
+	sealed, err := encrypter.Encrypt(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enc, err := sealed.CompactSerialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return enc
 }
 
 func TestOpenSessionCookie(t *testing.T) {

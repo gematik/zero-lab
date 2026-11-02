@@ -22,9 +22,11 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -38,17 +40,26 @@ import (
 // <public>/oauth2/callback unless it sets its own redirect_uri; the idpd client is always the gematik
 // Authenticator deep-link flow.
 func loadProviders(path, publicURL string) (*providers.Set, error) {
-	return providers.Load(path, providers.Env{RedirectURI: publicURL + "/oauth2/callback"}, providers.Kinds{
+	entries, err := providerEntries(path)
+	if err != nil {
+		return nil, err
+	}
+	env := providers.Env{BaseDir: filepath.Dir(path), RedirectURI: publicURL + "/oauth2/callback"}
+	set, err := providers.Build(entries, env, providers.Kinds{
 		"oidc": providers.OIDC,
 		"idpd": idpd.Kind(func(c *idpd.ClientConfig) { c.AuthenticatorMode = true }),
 		"oidf": oidf.Kind(nil),
 	})
+	if err != nil {
+		return nil, fmt.Errorf("providers %q: %w", path, err)
+	}
+	return set, nil
 }
 
 // providersFromEnv builds a single provider of each type from the PEP_* env vars — the simple path used
 // when no openid-providers.yaml is present.
 func providersFromEnv(publicURL string) *providers.Set {
-	var clients []oidc.Client
+	var configured []providers.Provider
 	var federation providers.Federation
 	callback := publicURL + "/oauth2/callback"
 
@@ -74,12 +85,22 @@ func providersFromEnv(publicURL string) *providers.Set {
 		if err != nil {
 			log.Fatalf("create oidc client: %v", err)
 		}
-		clients = append(clients, client)
+		configured = append(configured, providers.Provider{
+			Issuer:  client.Issuer(),
+			Name:    orDefault(os.Getenv("PEP_OIDC_NAME"), "OpenID Connect"),
+			LogoURI: os.Getenv("PEP_OIDC_LOGO_URI"),
+			Type:    providers.TypeOIDC,
+			Client:  client,
+		})
 		slog.Info("configured openid provider", "type", "oidc", "name", orDefault(os.Getenv("PEP_OIDC_NAME"), "OpenID Connect"), "issuer", issuer, "client_id", os.Getenv("PEP_OIDC_CLIENT_ID"))
 	}
 
 	if rpPath := os.Getenv("PEP_OIDF_RP_CONFIG_PATH"); rpPath != "" {
-		rp, err := oidf.NewRelyingPartyFromConfigFile(rpPath)
+		config := new(oidf.RelyingPartyConfig)
+		if err := loadYAML(rpPath, config); err != nil {
+			log.Fatalf("load oidf relying party: %v", err)
+		}
+		rp, err := oidf.NewRelyingParty(config, filepath.Dir(rpPath))
 		if err != nil {
 			log.Fatalf("load oidf relying party: %v", err)
 		}
@@ -108,11 +129,11 @@ func providersFromEnv(publicURL string) *providers.Set {
 		if err != nil {
 			log.Fatalf("create idpd client: %v", err)
 		}
-		clients = append(clients, client)
+		configured = append(configured, client.Provider())
 		slog.Info("configured openid provider", "type", "idpd", "name", orDefault(os.Getenv("PEP_IDPD_NAME"), "gematik IDP-Dienst"), "issuer", client.Issuer(), "client_id", clientID)
 	}
 
-	return providers.New(federation, clients...)
+	return providers.New(federation, configured...)
 }
 
 func fieldsOr(s, def string) []string {

@@ -22,6 +22,7 @@
 package authzserver
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -30,8 +31,7 @@ import (
 	"time"
 	"uuid"
 
-	"golang.org/x/oauth2"
-
+	"github.com/gematik/zero-lab/go/oauth"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
@@ -131,7 +131,7 @@ func (s *Server) AuthorizationEndpoint(w http.ResponseWriter, r *http.Request) e
 // redirects the user-agent to the provider. On error it redirects back to the client with an
 // OAuth error.
 func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request, session *Session, product *Product) error {
-	opClient, err := s.GetOpenidClient(session.IDPIss)
+	opClient, err := s.GetOpenidClient(r.Context(), session.IDPIss)
 	if err != nil {
 		return redirectWithError(w, r, session.RedirectURI, session.State, Error{
 			Code:        "invalid_request",
@@ -142,7 +142,7 @@ func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request
 	// A product may register its own redirect_uri at the upstream IdP (oidc_redirect_uri): the IdP then
 	// redirects straight back to the AS at that URL instead of the default /op-callback, so no app-side
 	// intermediary popup is needed. When unset, fall back to the AS's own op-callback.
-	opRedirectURI := opClient.RedirectURI()
+	var opRedirectURI string
 	if len(product.OIDCRedirectURIs) > 0 {
 		opRedirectURI = product.OIDCRedirectURIs[0]
 	}
@@ -152,18 +152,18 @@ func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request
 		Issuer:      session.IDPIss,
 		State:       uuid.NewV4().String(),
 		Nonce:       uuid.NewV4().String(),
-		Verifier:    oauth2.GenerateVerifier(),
+		Verifier:    oauth.GenerateVerifier(),
 		RedirectURI: opRedirectURI,
 	}
 
 	slog.Info("OP session", "op_session", opSession.ID, "issuer", opSession.Issuer)
 
-	authURL, err := opClient.AuthenticationURL(
-		opSession.State,
-		opSession.Nonce,
-		opSession.Verifier,
-		oidc.WithAlternateRedirectURI(opSession.RedirectURI),
-	)
+	authURL, err := opClient.AuthenticationURL(r.Context(), oidc.Login{
+		State:       opSession.State,
+		Nonce:       opSession.Nonce,
+		Verifier:    opSession.Verifier,
+		RedirectURI: opSession.RedirectURI,
+	})
 	if err != nil {
 		return redirectWithError(w, r, session.RedirectURI, session.State, Error{
 			Code:        "server_error",
@@ -223,8 +223,12 @@ func (s *Server) PAREndpoint(w http.ResponseWriter, r *http.Request) error {
 }
 
 // GetOpenidClient returns an OpenID Connect client for the given issuer
-func (s *Server) GetOpenidClient(issuer string) (oidc.Client, error) {
-	return s.providers.Client(issuer)
+func (s *Server) GetOpenidClient(ctx context.Context, issuer string) (oidc.Client, error) {
+	provider, err := s.providers.Provider(ctx, issuer)
+	if err != nil {
+		return nil, err
+	}
+	return provider.Client, nil
 }
 
 // OPCallbackEndpoint handles the callback from the OpenID Provider
@@ -264,17 +268,16 @@ func (s *Server) OPCallbackEndpoint(w http.ResponseWriter, r *http.Request) erro
 
 	slog.Info("OP callback", "s", s, "authnSessiom", authnSession, "authzSession", authzSession)
 
-	identityIssuer, err := s.GetOpenidClient(authnSession.Issuer)
+	identityIssuer, err := s.GetOpenidClient(r.Context(), authnSession.Issuer)
 	if err != nil {
 		return oauthErr(http.StatusBadRequest, "invalid_request", err.Error())
 	}
 
 	// exchange code for tokens with the OP
-	tokenResponse, err := identityIssuer.ExchangeForIdentity(
-		code,
-		authnSession.Verifier,
-		oidc.WithAlternateRedirectURI(authnSession.RedirectURI),
-	)
+	tokenResponse, err := identityIssuer.Exchange(r.Context(), oidc.Login{
+		Verifier:    authnSession.Verifier,
+		RedirectURI: authnSession.RedirectURI,
+	}, code)
 	if err != nil {
 		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Errorf("unable to exchange code: %w", err).Error())
 	}

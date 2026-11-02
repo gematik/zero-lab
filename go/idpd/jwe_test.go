@@ -22,64 +22,45 @@
 package idpd_test
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"testing"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwe"
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/brainpool/josebp"
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
+// TestJWECross proves that what josebp encrypts on a NIST curve, which it does beside Brainpool, is a JWE another
+// implementation decrypts.
 func TestJWECross(t *testing.T) {
 	jwkPrivateString := `{"crv":"P-256","d":"Pn9q2dmPV8y9VnWFycf7fQDrR-h5Uh-a8VWjamfZn58","kty":"EC","x":"YDnAaDYvsBz6QKYOj0CUYSeydmD1QHL5pUl-aMu6cA0","y":"ovzYSeBnMCmZYWZZtKcGaABqaPs_ecWDXJ8H5bqHOVA"}`
-	jwkPublicString := `{"crv":"P-256","kty":"EC","x":"YDnAaDYvsBz6QKYOj0CUYSeydmD1QHL5pUl-aMu6cA0","y":"ovzYSeBnMCmZYWZZtKcGaABqaPs_ecWDXJ8H5bqHOVA"}`
 
-	prk, _ := jwk.ParseKey([]byte(jwkPrivateString))
-	puk, _ := jwk.ParseKey([]byte(jwkPublicString))
-
-	t.Logf("Private Key: %v", prk.KeyType())
-	t.Logf("Public Key: %v", puk.KeyType())
+	prk, err := oidc.ParseKey([]byte(jwkPrivateString))
+	if err != nil {
+		t.Fatal(err)
+	}
+	private := prk.Key.(*ecdsa.PrivateKey)
 
 	plaintext := []byte("Hello, World!")
 
-	// josebp is Brainpool-only; get the NIST P-256 public key via jwx (not josebp.JSONWebKey).
-	var pukEC ecdsa.PublicKey
-	if err := jwk.Export(puk, &pukEC); err != nil {
-		t.Fatalf("export public key: %v", err)
-	}
 	cipher, err := josebp.NewJWEBuilder().
 		Plaintext(plaintext).
-		EncryptECDHES(&pukEC)
+		EncryptECDHES(&private.PublicKey)
 	if err != nil {
 		t.Fatalf("Encrypt returned an error: %v", err)
 	}
 
-	t.Logf("(2) Encrypted: %v", string(cipher))
-	/*
-		challengeResponseEncrypter, err := gjwe.NewEncrypter(pukBP.Key.(*ecdsa.PublicKey))
-		if err != nil {
-			t.Fatalf("creating challenge response encrypter: %v", err)
-		}
-		challengeResponseJwe, err := challengeResponseEncrypter.Encrypt(plaintext)
-		if err != nil {
-			t.Fatalf("encrypting challenge response: %v", err)
-		}
-
-		cipherStr, err := challengeResponseJwe.CompactSerialize()
-		if err != nil {
-			t.Fatalf("serializing challenge response: %v", err)
-		}
-
-		cipher = []byte(cipherStr)
-
-		t.Logf("(1) Encrypted: %v", string(cipher))
-	*/
-	decrypted, err := jwe.Decrypt(cipher, jwe.WithKey(jwa.ECDH_ES(), prk))
+	encrypted, err := jose.ParseEncryptedCompact(string(cipher), []jose.KeyAlgorithm{jose.ECDH_ES}, []jose.ContentEncryption{jose.A256GCM})
+	if err != nil {
+		t.Fatalf("Parse returned an error: %v", err)
+	}
+	decrypted, err := encrypted.Decrypt(private)
 	if err != nil {
 		t.Fatalf("Decrypt returned an error: %v", err)
 	}
-
-	t.Logf("Decrypted: %v", string(decrypted))
+	if !bytes.Equal(decrypted, plaintext) {
+		t.Errorf("decrypted %q", decrypted)
+	}
 }

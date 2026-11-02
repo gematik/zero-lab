@@ -24,13 +24,18 @@
 package mockidp
 
 import (
+	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
+	"time"
 
-	"golang.org/x/oauth2"
+	"github.com/go-jose/go-jose/v4"
 
+	"github.com/gematik/zero-lab/go/oauth"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
@@ -60,8 +65,8 @@ func TestMockOPRunsAuthCodeFlow(t *testing.T) {
 		t.Fatalf("issuer = %q", captured.Issuer())
 	}
 
-	verifier := oauth2.GenerateVerifier()
-	authURL, err := captured.AuthenticationURL("st-1", "nonce-1", verifier)
+	verifier := oauth.GenerateVerifier()
+	authURL, err := captured.AuthenticationURL(t.Context(), oidc.Login{State: "st-1", Nonce: "nonce-1", Verifier: verifier})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,9 +95,9 @@ func TestMockOPRunsAuthCodeFlow(t *testing.T) {
 	}
 
 	// This is exactly what OPCallbackEndpoint does: real /token round-trip + id_token validation.
-	tr, err := captured.ExchangeForIdentity(code, verifier)
+	tr, err := captured.Exchange(t.Context(), oidc.Login{Verifier: verifier}, code)
 	if err != nil {
-		t.Fatalf("ExchangeForIdentity: %v", err)
+		t.Fatalf("Exchange: %v", err)
 	}
 	claims := map[string]any{}
 	if err := tr.Claims(&claims); err != nil {
@@ -106,5 +111,94 @@ func TestMockOPRunsAuthCodeFlow(t *testing.T) {
 	}
 	if claims["nonce"] != "nonce-1" {
 		t.Errorf("nonce = %v, want nonce-1", claims["nonce"])
+	}
+}
+
+// mockClient has to refuse an id_token its provider did not sign or that does not name it, nonce and expiry included:
+// the point of the mock is that login runs the same checks as with a real provider.
+func TestMockClientRefusesAnIDTokenThatDoesNotHold(t *testing.T) {
+	const issuer, clientID = "https://mock.example", "pdp-mock-client"
+	exp := time.Now().Add(time.Minute).Unix()
+	good := map[string]any{"iss": issuer, "aud": []string{clientID}, "nonce": "n", "exp": exp}
+	signer, keys, err := newSigningKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, _, err := newSigningKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	with := func(name string, value any) map[string]any {
+		claims := maps.Clone(good)
+		if value == nil {
+			delete(claims, name)
+		} else {
+			claims[name] = value
+		}
+		return claims
+	}
+	sign := func(s jose.Signer, claims map[string]any) string {
+		t.Helper()
+		payload, err := json.Marshal(claims)
+		if err != nil {
+			t.Fatal(err)
+		}
+		object, err := s.Sign(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		signed, err := object.CompactSerialize()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return signed
+	}
+	for name, c := range map[string]struct {
+		token string
+		ok    bool
+	}{
+		"as issued":        {sign(signer, good), true},
+		"another key":      {sign(other, good), false},
+		"another issuer":   {sign(signer, with("iss", "https://evil.example")), false},
+		"another audience": {sign(signer, with("aud", []string{"someone"})), false},
+		"no nonce":         {sign(signer, with("nonce", nil)), false},
+		"no exp":           {sign(signer, with("exp", nil)), false},
+		"expired":          {sign(signer, with("exp", time.Now().Add(-time.Second).Unix())), false},
+		"alg none":         {"eyJhbGciOiJub25lIn0." + strings.Split(sign(signer, good), ".")[1] + ".", false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				writeJSON(w, map[string]any{"access_token": "a", "token_type": "Bearer", "id_token": c.token})
+			}))
+			defer srv.Close()
+			client := &mockClient{issuer: issuer, clientID: clientID, keys: keys, http: rewriteTo(srv)}
+			if _, err := client.Exchange(t.Context(), oidc.Login{Verifier: "verifier"}, "code"); (err == nil) != c.ok {
+				t.Fatalf("err = %v, want accepted %v", err, c.ok)
+			}
+		})
+	}
+}
+
+// rewriteTo sends every request to srv, whatever issuer the client was given.
+func rewriteTo(srv *httptest.Server) *http.Client {
+	target, _ := url.Parse(srv.URL)
+	return &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		r.URL.Scheme, r.URL.Host = target.Scheme, target.Host
+		return http.DefaultTransport.RoundTrip(r)
+	})}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// The mock's JWKS and id_tokens read as a provider's: kid and alg published, and the token names the key.
+func TestMockOPPublishesItsKeyWithKidAndAlg(t *testing.T) {
+	_, keys, err := newSigningKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(keys.Keys) != 1 || keys.Keys[0].KeyID == "" || keys.Keys[0].Algorithm != "ES256" || !keys.Keys[0].IsPublic() {
+		t.Fatalf("keys = %+v", keys.Keys)
 	}
 }

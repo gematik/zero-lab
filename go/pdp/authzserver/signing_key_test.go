@@ -35,9 +35,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jws"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/go-jose/go-jose/v4"
+
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
 // countingSigner stands for a key the process cannot read, as an HSM holds one: the server has
@@ -65,16 +65,7 @@ func newP256(t *testing.T) *ecdsa.PrivateKey {
 
 func writeJWK(t *testing.T, key any, kid string) (dir, name string) {
 	t.Helper()
-	imported, err := jwk.Import(key)
-	if err != nil {
-		t.Fatalf("import: %v", err)
-	}
-	if kid != "" {
-		if err := imported.Set(jwk.KeyIDKey, kid); err != nil {
-			t.Fatal(err)
-		}
-	}
-	raw, err := json.Marshal(imported)
+	raw, err := json.Marshal(jose.JSONWebKey{Key: key, KeyID: kid})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
@@ -159,26 +150,21 @@ func TestSigningKey_tokens_are_signed_through_the_signer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	token := jwt.New()
-	if err := token.Set(jwt.SubjectKey, "sub"); err != nil {
-		t.Fatal(err)
-	}
-	raw, err := server.signAccessToken(token)
+	raw, err := server.signAccessToken(map[string]any{"sub": "sub"})
 	if err != nil {
 		t.Fatalf("sign: %v", err)
 	}
 	if signer.calls.Load() != 1 {
 		t.Fatalf("signer called %d times", signer.calls.Load())
 	}
-	if _, err := jwt.Parse(raw, jwt.WithKeySet(server.jwks), jwt.WithValidate(false)); err != nil {
+	if _, err := oidc.VerifyJWS(raw, server.jwks, oidc.VerifyOptions{RequireKeyAlgorithm: true}); err != nil {
 		t.Fatalf("the token does not verify under the published keys: %v", err)
 	}
-	message, err := jws.Parse(raw)
+	message, err := jose.ParseSignedCompact(string(raw), []jose.SignatureAlgorithm{jose.ES256})
 	if err != nil {
 		t.Fatal(err)
 	}
-	kid, _ := message.Signatures()[0].ProtectedHeaders().KeyID()
-	if kid != "hsm-1" {
+	if kid := message.Signatures[0].Protected.KeyID; kid != "hsm-1" {
 		t.Fatalf("kid = %q", kid)
 	}
 }

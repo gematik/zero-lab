@@ -22,6 +22,7 @@
 package authzserver
 
 import (
+	"context"
 	"net/http"
 )
 
@@ -34,8 +35,8 @@ type OpenidProviderInfo struct {
 }
 
 // OpenidProvidersEndpoint serves the list of OpenID Providers supported by the server
-func (s *Server) OpenidProvidersEndpoint(w http.ResponseWriter, _ *http.Request) error {
-	providers, err := s.OpenidProviders()
+func (s *Server) OpenidProvidersEndpoint(w http.ResponseWriter, r *http.Request) error {
+	providers, err := s.OpenidProviders(r.Context())
 	if err != nil {
 		return oauthErr(http.StatusInternalServerError, "server_error", err.Error())
 	}
@@ -43,8 +44,8 @@ func (s *Server) OpenidProvidersEndpoint(w http.ResponseWriter, _ *http.Request)
 }
 
 // OpenidProviders returns the list of OpenID Providers supported by the server
-func (s *Server) OpenidProviders() ([]OpenidProviderInfo, error) {
-	infos, err := s.providers.Providers()
+func (s *Server) OpenidProviders(ctx context.Context) ([]OpenidProviderInfo, error) {
+	infos, err := s.providers.Providers(ctx)
 	if err != nil {
 		return nil, err
 	}

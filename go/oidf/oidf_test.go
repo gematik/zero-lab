@@ -25,7 +25,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
 const fedMasterJwksRef = `{
@@ -53,7 +53,7 @@ func TestFederation(t *testing.T) {
 		t.Skip("OIDF_FEDMASTER_URL not set — skipping live OpenID Federation test")
 	}
 
-	jwks, err := jwk.ParseString(fedMasterJwksRef)
+	jwks, err := oidc.ParseKeySet([]byte(fedMasterJwksRef))
 	if err != nil {
 		t.Fatal(err)
 	}

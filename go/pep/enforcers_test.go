@@ -31,10 +31,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jws"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/gematik/zero-lab/go/pep"
@@ -306,27 +303,31 @@ func TestEnforcerScope(t *testing.T) {
 
 func createTestAccessToken(keyBytes []byte, scopes []string, exp time.Time, jkt string) (string, error) {
 	scope := strings.Join(scopes, " ")
-	prk, err := jwk.ParseKey(keyBytes)
-	if err != nil {
+	prk := jose.JSONWebKey{}
+	if err := json.Unmarshal(keyBytes, &prk); err != nil {
 		return "", err
 	}
-
-	token, err := jwt.NewBuilder().
-		Claim("scope", scope).
-		Audience([]string{"https://example.com"}).
-		Expiration(exp).
-		Build()
-	if err != nil {
-		return "", err
+	claims := map[string]any{
+		"scope": scope,
+		"aud":   []string{"https://example.com"},
+		"exp":   exp.Unix(),
 	}
-
 	if jkt != "" {
-		if err := token.Set("cnf", map[string]string{"jkt": jkt}); err != nil {
-			return "", err
-		}
+		claims["cnf"] = map[string]string{"jkt": jkt}
 	}
-
-	signed, err := jwt.Sign(token, jwt.WithKey(jwa.ES256(), prk))
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		return "", err
+	}
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.ES256, Key: prk}, (&jose.SignerOptions{}).WithType("JWT"))
+	if err != nil {
+		return "", err
+	}
+	object, err := signer.Sign(payload)
+	if err != nil {
+		return "", err
+	}
+	signed, err := object.CompactSerialize()
 	if err != nil {
 		return "", err
 	}
@@ -491,22 +492,12 @@ func TestAccessToken(t *testing.T) {
 
 	t.Logf("Access token: %s", accessToken)
 
-	jwks, err := jwk.Parse([]byte(publicJWSKSet))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	parsedToken, err := jwt.Parse([]byte(accessToken), jwt.WithKeySet(jwks, jws.WithInferAlgorithmFromKey(true)))
+	parsedToken, err := createPEP(t).VerifyAccessToken(accessToken)
 	if err != nil {
 		t.Fatalf("Failed to parse access token: %s", err)
 	}
 
-	cnf := new(map[string]any)
-	if err := parsedToken.Get("cnf", cnf); err != nil {
-		t.Fatalf("Failed to get cnf: %s", err)
-	}
-
-	if (*cnf)["jkt"] != "test" {
-		t.Fatalf("Expected thumbprint %s, got %s", "test", (*cnf)["jkt"])
+	if got := parsedToken.Thumbprint(); got != "test" {
+		t.Fatalf("Expected thumbprint %s, got %s", "test", got)
 	}
 }

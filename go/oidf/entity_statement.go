@@ -24,8 +24,6 @@ package oidf
 import (
 	"encoding/json"
 	"fmt"
-
-	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
 // UserType is a value of gematik's user_type_supported claim: the kind of user a provider authenticates.
@@ -117,14 +115,9 @@ type FederationEntityMetadata struct {
 	IdpListEndpoint         string   `json:"idp_list_endpoint,omitempty"`
 }
 
-func tokenToEntityStatement(token jwt.Token) (*EntityStatement, error) {
-	tokenJSON, err := json.Marshal(token)
-	if err != nil {
-		return nil, fmt.Errorf("unable to marshal token: %w", err)
-	}
+func parseEntityStatement(payload []byte) (*EntityStatement, error) {
 	var es EntityStatement
-	err = json.Unmarshal(tokenJSON, &es)
-	if err != nil {
+	if err := json.Unmarshal(payload, &es); err != nil {
 		return nil, fmt.Errorf("unable to unmarshal entity statement: %w", err)
 	}
 	return &es, nil

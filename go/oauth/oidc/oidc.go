@@ -24,13 +24,12 @@
 package oidc
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
 // Error is an OAuth 2.0 error response (RFC 6749 §5.2).
@@ -44,35 +43,43 @@ func (e Error) Error() string {
 	return fmt.Sprintf("%s: %s", e.Code, e.Description)
 }
 
-// Client is the relying party's side of a login at one OpenID provider.
-type Client interface {
-	Issuer() string
-	ClientID() string
-	Name() string
-	LogoURI() string
-	RedirectURI() string
-	AuthenticationURL(state, nonce, verifier string, options ...Option) (string, error)
-	ExchangeForIdentity(code, verifier string, options ...Option) (*TokenResponse, error)
+// Login is what one login at a provider keeps from the authorization request to the token request. RFC 6749
+// section 4.1.3 requires the token request to repeat the redirect_uri of the authorization request, so both get
+// the same Login.
+type Login struct {
+	State    string
+	Nonce    string
+	Verifier string
+	// RedirectURI overrides the client's configured one, for this login.
+	RedirectURI string
 }
 
-// Option changes one AuthenticationURL or ExchangeForIdentity call; see WithAlternateRedirectURI. Types a client
-// does not know are ignored.
-type Option any
+// RedirectFor is the login's redirect URI, or the client's configured one if it has none.
+func (l Login) RedirectFor(configured string) string {
+	if l.RedirectURI != "" {
+		return l.RedirectURI
+	}
+	return configured
+}
 
-// WithAlternateRedirectURI sets an alternate redirect_uri for one call. RFC 6749 §4.1.3 requires the token request
-// to repeat the value of the authorization request, so both calls of a login need it.
-type WithAlternateRedirectURI string
+// Client is the relying party's side of a login at one OpenID provider. What a chooser shows of it is in
+// providers.Info.
+type Client interface {
+	Issuer() string
+	// AuthenticationURL gives the URL that starts a login; a provider using PAR is called on the way.
+	AuthenticationURL(ctx context.Context, login Login) (string, error)
+	// Exchange redeems the code and verifies the ID token. A provider's refusal is returned as an error.
+	Exchange(ctx context.Context, login Login, code string) (*TokenResponse, error)
+}
 
-// TokenResponse is a token endpoint response. IDToken holds the token verified from IDTokenRaw once
-// ExchangeForIdentity returned it.
+// TokenResponse is a token endpoint response. IDTokenRaw has been verified once ExchangeForIdentity returned it.
 type TokenResponse struct {
-	AccessToken  string    `json:"access_token"`
-	TokenType    string    `json:"token_type"`
-	ExpiresIn    int       `json:"expires_in"`
-	Scope        string    `json:"scope"`
-	RefreshToken string    `json:"refresh_token"`
-	IDTokenRaw   string    `json:"id_token"`
-	IDToken      jwt.Token `json:"-"`
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int    `json:"expires_in"`
+	Scope        string `json:"scope"`
+	RefreshToken string `json:"refresh_token"`
+	IDTokenRaw   string `json:"id_token"`
 }
 
 // Claims decodes the payload of IDTokenRaw into claims. It verifies nothing itself, so it is only meaningful on a

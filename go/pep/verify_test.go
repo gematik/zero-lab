@@ -25,8 +25,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
-
 	"github.com/gematik/zero-lab/go/pep"
 )
 
@@ -34,7 +32,7 @@ import (
 // resource server (audience enforced when Resource is set) and inside an authorization server
 // (audience unrestricted when no Resource is configured).
 func TestVerifyAccessToken_AudienceOptional(t *testing.T) {
-	jwks, err := jwk.Parse([]byte(publicJWSKSet))
+	jwks, err := pep.ParseJWKSet([]byte(publicJWSKSet))
 	if err != nil {
 		t.Fatal(err)
 	}

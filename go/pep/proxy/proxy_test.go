@@ -27,8 +27,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
-
 	"github.com/gematik/zero-lab/go/kv"
 )
 
@@ -53,7 +51,6 @@ func (f *fakeBackend) Complete(_ context.Context, sess *Session, _ string) error
 func (f *fakeBackend) FreshAccessToken(_ context.Context, _ *Session) (string, error) {
 	return "", nil
 }
-func (f *fakeBackend) DPoPKey() jwk.Key { return nil }
 
 func newTestServer(t *testing.T) *Server {
 	t.Helper()

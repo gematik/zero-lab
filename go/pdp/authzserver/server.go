@@ -25,7 +25,6 @@
 package authzserver
 
 import (
-	"crypto"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
@@ -36,15 +35,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"gopkg.in/yaml.v3"
+	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/nonce"
 	"github.com/gematik/zero-lab/go/oauth/providers"
 	"github.com/gematik/zero-lab/go/oidf"
-	"github.com/gematik/zero-lab/go/pep"
 )
 
 const (
@@ -64,10 +61,9 @@ type Server struct {
 	oidfRelyingParty *oidf.RelyingParty
 	defaultIDPIss    string
 	sessionStore     SessionStore
-	signer           crypto.Signer
+	signer           jose.Signer
 	signerKeyID      string
-	jwks             jwk.Set
-	tokenVerifier    *pep.PEP
+	jwks             *jose.JSONWebKeySet
 	nonceService     nonce.Service
 	dpopVerifier     *dpop.Verifier
 }
@@ -80,7 +76,7 @@ func NewFromConfigFile(filename string) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read config file '%s': %w", filename, err)
 	}
-	if err := yaml.Unmarshal(yamlFile, cfg); err != nil {
+	if err := decodeYAML(yamlFile, cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config file '%s': %w", filename, err)
 	}
 
@@ -119,12 +115,6 @@ func New(cfg Config) (*Server, error) {
 
 	if err := s.initSigningKey(cfg); err != nil {
 		return nil, err
-	}
-
-	// Reuse the PEP as a token verifier for the server's own tokens (e.g. introspection). No
-	// resource is configured, so the audience is not restricted to a single resource server.
-	if s.tokenVerifier, err = pep.NewBuilder().WithJWKSet(s.jwks).Build(); err != nil {
-		return nil, fmt.Errorf("create token verifier: %w", err)
 	}
 
 	if err := s.initProducts(cfg); err != nil {

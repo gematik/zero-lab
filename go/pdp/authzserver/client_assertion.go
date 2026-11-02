@@ -22,14 +22,23 @@
 package authzserver
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
+
+	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/oauth"
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
+
+// clientAssertionSkew is the clock skew tolerated on an assertion's time claims.
+const clientAssertionSkew = time.Minute
 
 // ClientAssertionTypeJWTBearer is the client_assertion_type of RFC 7523.
 const ClientAssertionTypeJWTBearer = oauth.ClientAssertionTypeJWTBearer
@@ -86,4 +95,26 @@ func parseClientAssertionClaims(assertion string) (*ClientAssertionClaims, error
 		return nil, fmt.Errorf("unmarshal client_assertion claims: %w", err)
 	}
 	return claims, nil
+}
+
+// verifyClientAssertion checks an assertion's signature against the client's one registered key and its lifetime and
+// audience at now. The metadata advertises ES256 alone. The key is the client's by registration, so the assertion
+// does not need to name it: a kid in the header is not consulted, nor is one required.
+func verifyClientAssertion(assertion string, key *jose.JSONWebKey, issuer string, now time.Time) error {
+	parsed, err := jose.ParseSignedCompact(assertion, []jose.SignatureAlgorithm{jose.ES256})
+	if err != nil {
+		return err
+	}
+	public, ok := key.Public().Key.(*ecdsa.PublicKey)
+	if !ok || public.Curve != elliptic.P256() {
+		return errors.New("the client's key cannot verify ES256")
+	}
+	payload, err := parsed.Verify(public)
+	if err != nil {
+		return err
+	}
+	if err := oidc.ValidateLifetime(payload, now, clientAssertionSkew); err != nil {
+		return err
+	}
+	return oidc.ValidateAudience(payload, issuer)
 }

@@ -29,8 +29,7 @@ import (
 	"time"
 	"uuid"
 
-	"golang.org/x/oauth2"
-
+	"github.com/gematik/zero-lab/go/oauth"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oauth/providers"
 )
@@ -51,11 +50,11 @@ func NewProviderBackend(set *providers.Set) Backend {
 	return &providerBackend{set: set}
 }
 
-func (b *providerBackend) get(issuer string) (oidc.Client, error) {
+func (b *providerBackend) get(ctx context.Context, issuer string) (providers.Provider, error) {
 	if issuer == "" {
 		return b.set.Default()
 	}
-	return b.set.Client(issuer)
+	return b.set.Provider(ctx, issuer)
 }
 
 func providerOf(info providers.Info) Provider {
@@ -64,14 +63,14 @@ func providerOf(info providers.Info) Provider {
 
 func (b *providerBackend) DefaultIssuer() string {
 	// Only auto-start when there is exactly one static provider and no federation to choose from.
-	if clients := b.set.Clients(); b.set.Federation() == nil && len(clients) == 1 {
-		return clients[0].Issuer()
+	if configured := b.set.Configured(); b.set.Federation() == nil && len(configured) == 1 {
+		return configured[0].Issuer
 	}
 	return ""
 }
 
-func (b *providerBackend) Providers(_ context.Context) ([]Provider, error) {
-	infos, err := b.set.Providers()
+func (b *providerBackend) Providers(ctx context.Context) ([]Provider, error) {
+	infos, err := b.set.Providers(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -82,18 +81,18 @@ func (b *providerBackend) Providers(_ context.Context) ([]Provider, error) {
 	return out, nil
 }
 
-func (b *providerBackend) StartLogin(_ context.Context, sess *Session, idpIss, _ string) (LoginStart, error) {
-	c, err := b.get(idpIss)
+func (b *providerBackend) StartLogin(ctx context.Context, sess *Session, idpIss, _ string) (LoginStart, error) {
+	provider, err := b.get(ctx, idpIss)
 	if err != nil {
 		return LoginStart{}, err
 	}
-	sess.IDPIss = c.Issuer()
+	sess.IDPIss = provider.Issuer
 	sess.State = uuid.NewV4().String()
 	sess.Nonce = uuid.NewV4().String()
-	sess.CodeVerifier = oauth2.GenerateVerifier()
-	sess.CodeChallengeMethod = "S256"
+	sess.CodeVerifier = oauth.GenerateVerifier()
+	sess.CodeChallengeMethod = oauth.CodeChallengeMethodS256
 
-	authURL, err := c.AuthenticationURL(sess.State, sess.Nonce, sess.CodeVerifier)
+	authURL, err := provider.Client.AuthenticationURL(ctx, oidc.Login{State: sess.State, Nonce: sess.Nonce, Verifier: sess.CodeVerifier})
 	if err != nil {
 		return LoginStart{}, err
 	}
@@ -103,19 +102,19 @@ func (b *providerBackend) StartLogin(_ context.Context, sess *Session, idpIss, _
 	switch {
 	case strings.HasPrefix(authURL, "authenticator://"):
 		mode = "authenticator"
-	case providers.TypeOf(c) == "oidf":
+	case provider.Type == "oidf":
 		mode = "decoupled"
 	}
-	p := providerOf(providers.InfoOf(c))
+	p := providerOf(provider.Info)
 	return LoginStart{AuthURL: authURL, Mode: mode, Provider: &p}, nil
 }
 
-func (b *providerBackend) Complete(_ context.Context, sess *Session, code string) error {
-	c, err := b.get(sess.IDPIss)
+func (b *providerBackend) Complete(ctx context.Context, sess *Session, code string) error {
+	provider, err := b.get(ctx, sess.IDPIss)
 	if err != nil {
 		return err
 	}
-	tr, err := c.ExchangeForIdentity(code, sess.CodeVerifier)
+	tr, err := provider.Client.Exchange(ctx, oidc.Login{Verifier: sess.CodeVerifier}, code)
 	if err != nil {
 		return err
 	}

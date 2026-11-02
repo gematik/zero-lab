@@ -30,8 +30,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/go-jose/go-jose/v4"
 
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
 )
 
@@ -61,7 +62,7 @@ func introspect(t *testing.T, md authzserver.ExtendedMetadata, assertion, token 
 
 // mintClientCredentialsToken obtains an access token via the client_credentials grant, authenticating
 // clientID with key.
-func mintClientCredentialsToken(t *testing.T, md authzserver.ExtendedMetadata, clientID, scope string, key jwk.Key) string {
+func mintClientCredentialsToken(t *testing.T, md authzserver.ExtendedMetadata, clientID, scope string, key *jose.JSONWebKey) string {
 	t.Helper()
 	form := url.Values{"grant_type": {"client_credentials"}, "scope": {scope}}
 	addClientAuth(form, clientAssertion(t, md, clientID, key))
@@ -157,7 +158,7 @@ func TestFlow_Introspection_CrossClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read client2 key: %v", err)
 	}
-	key2, err := jwk.ParseKey(key2b)
+	key2, err := oidc.ParseKey(key2b)
 	if err != nil {
 		t.Fatalf("parse client2 key: %v", err)
 	}

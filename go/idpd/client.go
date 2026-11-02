@@ -24,6 +24,8 @@
 package idpd
 
 import (
+	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -33,17 +35,16 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwe"
-	"github.com/lestrrat-go/jwx/v3/jwt"
-	"golang.org/x/oauth2"
+	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/brainpool/josebp"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
+
+// idTokenSkew is the clock skew tolerated on the iat, nbf and exp of an ID token.
+const idTokenSkew = 5 * time.Minute
 
 // Metadata is the OpenID Connect discovery document of the gematik IDP-Dienst.
 type Metadata struct {
@@ -175,49 +176,18 @@ func NewClientFromConfig(config ClientConfig) (*Client, error) {
 	}, nil
 }
 
-// AuthenticationURL returns the URL that starts a login; verifier is the PKCE code verifier. In
-// authenticator mode it is an authenticator:// link for the gematik Authenticator app.
-// oidc.WithAlternateRedirectURI replaces the configured redirect URI.
-func (c *Client) AuthenticationURL(state, nonce, verifier string, options ...oidc.Option) (string, error) {
-	redirectURI := c.config.RedirectURI
-	for _, opt := range options {
-		if o, ok := opt.(oidc.WithAlternateRedirectURI); ok {
-			redirectURI = string(o)
-		}
-	}
+// AuthenticationURL gives the URL that starts a login. In authenticator mode it is an authenticator:// link for
+// the gematik Authenticator app.
+func (c *Client) AuthenticationURL(_ context.Context, login oidc.Login) (string, error) {
+	query := oidc.AuthorizationQuery(c.config.ClientID, c.config.RedirectURI, c.config.Scopes, login)
+	authURL := c.Metadata.AuthorizationEndpoint + "?" + query.Encode()
 	if c.config.AuthenticatorMode {
-		return c.authenticationURLAuthenticator(state, nonce, verifier, redirectURI)
+		return authenticatorURL(authURL)
 	}
-
-	return c.authenticationURLDirect(state, nonce, verifier, redirectURI)
+	return authURL, nil
 }
 
-func (c *Client) authenticationURLDirect(state, nonce, verifier, redirectURI string) (string, error) {
-	if redirectURI == "" {
-		redirectURI = c.config.RedirectURI
-	}
-	codeChallenge := oauth2.S256ChallengeFromVerifier(verifier)
-	query := url.Values{}
-	query.Add("client_id", c.config.ClientID)
-	query.Add("redirect_uri", redirectURI)
-	query.Add("response_type", "code")
-	query.Add("scope", strings.Join(c.config.Scopes, " "))
-	query.Add("state", state)
-	query.Add("nonce", nonce)
-	query.Add("code_challenge", codeChallenge)
-	query.Add("code_challenge_method", "S256")
-
-	slog.Info("Using OP AuthorizationEndpoint", "url", c.Metadata.AuthorizationEndpoint)
-
-	return fmt.Sprintf("%s?%s", c.Metadata.AuthorizationEndpoint, query.Encode()), nil
-}
-
-func (c *Client) authenticationURLAuthenticator(state, nonce, verifier, redirectURI string) (string, error) {
-	authURL, err := c.authenticationURLDirect(state, nonce, verifier, redirectURI)
-	if err != nil {
-		return "", err
-	}
-
+func authenticatorURL(authURL string) (string, error) {
 	challengePath, err := url.Parse(authURL)
 	if err != nil {
 		return "", fmt.Errorf("parsing challenge path: %w", err)
@@ -233,15 +203,9 @@ func (c *Client) authenticationURLAuthenticator(state, nonce, verifier, redirect
 	return "authenticator://?" + query.Encode(), nil
 }
 
-// ExchangeForIdentity exchanges an authorization code and its PKCE verifier for the tokens and parses the
+// Exchange exchanges an authorization code and its PKCE verifier for the tokens and parses the
 // ID token. oidc.WithAlternateRedirectURI has to name the redirect URI the login used, if it replaced one.
-func (c *Client) ExchangeForIdentity(code, verifier string, options ...oidc.Option) (*oidc.TokenResponse, error) {
-	redirectURI := c.config.RedirectURI
-	for _, opt := range options {
-		if o, ok := opt.(oidc.WithAlternateRedirectURI); ok {
-			redirectURI = string(o)
-		}
-	}
+func (c *Client) Exchange(ctx context.Context, login oidc.Login, code string) (*oidc.TokenResponse, error) {
 	// 32 bytes random key to encrypt the token
 	tokenKeyBytes := make([]byte, 32)
 	_, err := io.ReadFull(rand.Reader, tokenKeyBytes)
@@ -256,7 +220,7 @@ func (c *Client) ExchangeForIdentity(code, verifier string, options ...oidc.Opti
 
 	tokenKeyPayload := TokenKeyPayload{
 		TokenKey:     base64.RawURLEncoding.EncodeToString(tokenKeyBytes),
-		CodeVerifier: verifier,
+		CodeVerifier: login.Verifier,
 	}
 
 	tokenKeyPayloadBytes, err := json.Marshal(tokenKeyPayload)
@@ -276,23 +240,21 @@ func (c *Client) ExchangeForIdentity(code, verifier string, options ...oidc.Opti
 	params := url.Values{}
 	params.Set("grant_type", "authorization_code")
 	params.Set("client_id", c.config.ClientID)
-	params.Set("redirect_uri", redirectURI)
+	params.Set("redirect_uri", login.RedirectFor(c.config.RedirectURI))
 	params.Set("code", code)
 	params.Set("key_verifier", string(encryptedTokenKeySerialized))
 
 	slog.Info("Exchanging code for token", "url", c.Metadata.TokenEndpoint, "params", params)
 
-	resp, err := c.httpClient.PostForm(c.Metadata.TokenEndpoint, params)
+	response, err := oidc.PostForm(ctx, c.httpClient, c.Metadata.TokenEndpoint, params)
 	if err != nil {
 		return nil, fmt.Errorf("unable to exchange code for token: %w", err)
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, parseErrorResponse(resp.StatusCode, resp.Body)
+	if response.Status != http.StatusOK {
+		return nil, parseErrorResponse(response.Status, bytes.NewReader(response.Body))
 	}
 
-	tokenResponse, err := unmarshalTokenResponse(resp.Body)
+	tokenResponse, err := unmarshalTokenResponse(bytes.NewReader(response.Body))
 	if err != nil {
 		return nil, fmt.Errorf("parsing token response: %w", err)
 	}
@@ -303,7 +265,7 @@ func (c *Client) ExchangeForIdentity(code, verifier string, options ...oidc.Opti
 		if tokenResponse.IDTokenRaw, err = decryptToken(tokenResponse.IDTokenRaw, tokenKeyBytes); err != nil {
 			return nil, fmt.Errorf("decrypting ID token: %w", err)
 		}
-		if tokenResponse.IDToken, err = c.parseIDToken(tokenResponse); err != nil {
+		if err = c.verifyIDToken(tokenResponse.IDTokenRaw); err != nil {
 			return nil, fmt.Errorf("parsing ID token: %w", err)
 		}
 	}
@@ -317,8 +279,14 @@ func (c *Client) ExchangeForIdentity(code, verifier string, options ...oidc.Opti
 	return tokenResponse, nil
 }
 
+// decryptToken takes the one form the IDP-Dienst encrypts a token in under the 256-bit key this client sent it: dir
+// with A256GCM.
 func decryptToken(token string, key []byte) (string, error) {
-	plaintext, err := jwe.Decrypt([]byte(token), jwe.WithKey(jwa.DIRECT(), key))
+	encrypted, err := jose.ParseEncryptedCompact(token, []jose.KeyAlgorithm{jose.DIRECT}, []jose.ContentEncryption{jose.A256GCM})
+	if err != nil {
+		return "", fmt.Errorf("decrypting token: %w", err)
+	}
+	plaintext, err := encrypted.Decrypt(key)
 	if err != nil {
 		return "", fmt.Errorf("decrypting token: %w", err)
 	}
@@ -332,59 +300,38 @@ func decryptToken(token string, key []byte) (string, error) {
 	return njwt.Njwt, nil
 }
 
-func (c *Client) parseIDToken(response *oidc.TokenResponse) (jwt.Token, error) {
+func (c *Client) verifyIDToken(raw string) error {
 	key, err := fetchSigningKey(c.Metadata.SigningKeyURI, c.httpClient, c.trust)
 	if err != nil {
-		return nil, fmt.Errorf("fetching signing key: %w", err)
+		return fmt.Errorf("fetching signing key: %w", err)
 	}
+	return checkIDToken(raw, key, oidc.IDTokenChecks{
+		Issuer:   c.Metadata.Issuer,
+		ClientID: c.config.ClientID,
+		Now:      time.Now(),
+		Skew:     idTokenSkew,
+	})
+}
 
-	// verify the Brainpool signature with josebp (stdlib ecdsa; no jwx)
-	_, err = josebp.ParseToken([]byte(response.IDTokenRaw), josebp.WithKey(key))
+// checkIDToken verifies the ID token with josebp, as go-jose cannot do Brainpool, and then the claims it signed. The
+// IDP-Dienst signs BP256R1 only, while josebp would take any algorithm of the key's size.
+func checkIDToken(raw string, key *josebp.JSONWebKey, checks oidc.IDTokenChecks) error {
+	token, err := josebp.ParseToken([]byte(raw), josebp.WithKey(key))
 	if err != nil {
-		return nil, fmt.Errorf("parsing ID token: %w", err)
+		return fmt.Errorf("parsing ID token: %w", err)
 	}
-
-	// parse the token with jwx for claim validation; signature already verified above,
-	// so verification is disabled (jwx never sees the Brainpool key/curve)
-	token, err := jwt.ParseString(
-		response.IDTokenRaw,
-		jwt.WithAcceptableSkew(time.Duration(5*time.Minute)), // allow 5 minutes skew
-		jwt.WithVerify(false), // skip verification since we already verified the token before
-		jwt.WithIssuer(c.Metadata.Issuer),
-		jwt.WithAudience(c.config.ClientID),
-		jwt.WithRequiredClaim("nonce"),
-		jwt.WithRequiredClaim("exp"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse ID token: %w", err)
+	if alg := token.Headers["alg"]; alg != josebp.AlgorithmNameBP256R1 {
+		return fmt.Errorf("ID token signed with alg %v, expected %s", alg, josebp.AlgorithmNameBP256R1)
 	}
-
-	return token, nil
+	if err := checks.Validate(token.PayloadJSON); err != nil {
+		return fmt.Errorf("unable to parse ID token: %w", err)
+	}
+	return nil
 }
 
 // Issuer returns the issuer from the IDP-Dienst's discovery document.
 func (c *Client) Issuer() string {
 	return c.Metadata.Issuer
-}
-
-// ClientID returns the configured client ID.
-func (c *Client) ClientID() string {
-	return c.config.ClientID
-}
-
-// Name returns the configured display name of this provider.
-func (c *Client) Name() string {
-	return c.config.Name
-}
-
-// LogoURI returns the configured logo of this provider.
-func (c *Client) LogoURI() string {
-	return c.config.LogoURI
-}
-
-// RedirectURI returns the configured redirect URI.
-func (c *Client) RedirectURI() string {
-	return c.config.RedirectURI
 }
 
 type transportAddUserAgent struct {

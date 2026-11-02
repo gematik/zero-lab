@@ -24,7 +24,9 @@ package oidf
 import (
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
@@ -38,12 +40,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/cert"
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jws"
-	"github.com/lestrrat-go/jwx/v3/jwt"
-	"gopkg.in/yaml.v3"
+	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
@@ -56,8 +53,6 @@ var defaultOPScopes = []string{"openid", "urn:telematik:display_name", "urn:tele
 // are required; the invariant gematik OIDF metadata (response_types, grant_types, client_registration_types,
 // token_endpoint_auth_method, id_token algorithms, PAR) is filled in by buildMetadata.
 type RelyingPartyConfig struct {
-	BaseDir string `yaml:"-"`
-
 	// Subject is this relying party's entity identifier — its own public URL — and also the entity
 	// statement's iss/sub and the OIDF client_id.
 	Subject string `yaml:"sub"`
@@ -136,40 +131,16 @@ var knownFedMasters = map[string]string{
 // clients for the federated OpenID providers.
 type RelyingParty struct {
 	cfg              *RelyingPartyConfig
-	trustAnchor      jwk.Set
-	sigPrivateKey    jwk.Key
+	trustAnchor      *jose.JSONWebKeySet
+	sigPrivateKey    any
 	signKid          string
-	encPrivateKey    jwk.Key
-	clientPrivateKey jwk.Key
+	encPrivateKey    any
+	clientPrivateKey any
 	entityStatement  *EntityStatement
 	federation       *OpenidFederation
 	httpClient       *http.Client
 	hooks            []func(*EntityStatement)
-}
-
-// LoadRelyingPartyConfig reads a RelyingPartyConfig from the YAML file at path; relative key paths resolve against
-// the file's directory. NewRelyingPartyFromConfig validates the result.
-func LoadRelyingPartyConfig(path string) (*RelyingPartyConfig, error) {
-	yamlData, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config file '%s': %w", path, err)
-	}
-	cfg := new(RelyingPartyConfig)
-	err = yaml.Unmarshal(yamlData, cfg)
-	cfg.BaseDir = filepath.Dir(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal config file '%s': %w", path, err)
-	}
-	return cfg, nil
-}
-
-// NewRelyingPartyFromConfigFile builds a relying party from the YAML configuration file at path.
-func NewRelyingPartyFromConfigFile(path string) (*RelyingParty, error) {
-	cfg, err := LoadRelyingPartyConfig(path)
-	if err != nil {
-		return nil, err
-	}
-	return NewRelyingPartyFromConfig(cfg)
+	baseDir          string
 }
 
 // Validate reports a missing required field. What needs I/O is checked when the keys are loaded.
@@ -193,15 +164,15 @@ func (cfg *RelyingPartyConfig) Validate() error {
 	return nil
 }
 
-// NewRelyingPartyFromConfig validates cfg, loads its keys and fetches the federation master's entity statement,
+// NewRelyingParty validates cfg, resolves its relative key paths against baseDir, loads its keys and fetches the federation master's entity statement,
 // so the master has to be reachable and its statement has to verify for this to succeed.
-func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
+func NewRelyingParty(cfg *RelyingPartyConfig, baseDir string) (*RelyingParty, error) {
 	err := cfg.Validate()
 	if err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 
-	rp := RelyingParty{cfg: cfg}
+	rp := RelyingParty{cfg: cfg, baseDir: baseDir}
 
 	rp.trustAnchor, err = cfg.resolveTrustAnchor()
 	if err != nil {
@@ -212,14 +183,14 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 		return nil, errors.New("client_key.cert_pem_path is required (mTLS)")
 	}
 
-	var sigPublicKey, encPublicKey, clientPublicKey jwk.Key
-	if rp.sigPrivateKey, sigPublicKey, rp.signKid, err = loadKeyConfig(cfg.SignKey, cfg.BaseDir, jwk.ForSignature); err != nil {
+	var sigPublicKey, encPublicKey, clientPublicKey jose.JSONWebKey
+	if rp.sigPrivateKey, sigPublicKey, rp.signKid, err = loadKeyConfig(cfg.SignKey, baseDir, keyUseSign); err != nil {
 		return nil, fmt.Errorf("sign_key: %w", err)
 	}
-	if rp.encPrivateKey, encPublicKey, _, err = loadKeyConfig(cfg.EncKey, cfg.BaseDir, jwk.ForEncryption); err != nil {
+	if rp.encPrivateKey, encPublicKey, _, err = loadKeyConfig(cfg.EncKey, baseDir, keyUseEncrypt); err != nil {
 		return nil, fmt.Errorf("enc_key: %w", err)
 	}
-	if rp.clientPrivateKey, clientPublicKey, _, err = loadKeyConfig(cfg.ClientKey, cfg.BaseDir, jwk.ForSignature); err != nil {
+	if rp.clientPrivateKey, clientPublicKey, _, err = loadKeyConfig(cfg.ClientKey, baseDir, keyUseClientAuth); err != nil {
 		return nil, fmt.Errorf("client_key: %w", err)
 	}
 
@@ -253,20 +224,8 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 		Metadata: cfg.buildMetadata(),
 	}
 
-	rp.entityStatement.Jwks = &Jwks{Keys: jwk.NewSet()}
-	if err := rp.entityStatement.Jwks.Keys.AddKey(sigPublicKey); err != nil {
-		return nil, fmt.Errorf("sign_key: %w", err)
-	}
-
-	entityJwks := jwk.NewSet()
-	if err := entityJwks.AddKey(encPublicKey); err != nil {
-		return nil, fmt.Errorf("enc_key: %w", err)
-	}
-	if err := entityJwks.AddKey(clientPublicKey); err != nil {
-		return nil, fmt.Errorf("client_key: %w", err)
-	}
-
-	rp.entityStatement.Metadata.OpenidRelyingParty.Jwks = &Jwks{Keys: entityJwks}
+	rp.entityStatement.Jwks = &Jwks{Keys: &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{sigPublicKey}}}
+	rp.entityStatement.Metadata.OpenidRelyingParty.Jwks = &Jwks{Keys: &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{encPublicKey, clientPublicKey}}}
 
 	rp.federation, err = NewOpenidFederation(cfg.FedMasterURL, rp.trustAnchor, WithHTTPClient(baseClient))
 	if err != nil {
@@ -280,7 +239,7 @@ func (rp *RelyingParty) absPath(path string) string {
 	if filepath.IsAbs(path) {
 		return path
 	}
-	return filepath.Join(rp.cfg.BaseDir, path)
+	return filepath.Join(rp.baseDir, path)
 }
 
 // AddEntityStatementHook registers a function applied to a copy of the entity statement on every
@@ -316,40 +275,59 @@ func (rp *RelyingParty) entityStatementForRequest() *EntityStatement {
 // key. It is backdated one hour and valid for 23 hours from now.
 func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {
 	es := rp.entityStatementForRequest()
+	now := time.Now()
+	return rp.signClaims("entity-statement+jwt", entityStatementClaims{
+		Issuer:         es.Issuer,
+		Subject:        es.Subject,
+		IssuedAt:       now.Add(-1 * time.Hour).Unix(), // backdate token to avoid clock skew
+		ExpiresAt:      now.Add(time.Hour * 23).Unix(),
+		Jwks:           es.Jwks.Keys,
+		AuthorityHints: []string{rp.cfg.FedMasterURL},
+		Metadata:       es.Metadata,
+	})
+}
 
-	token, err := jwt.NewBuilder().
-		Issuer(es.Issuer).
-		Subject(es.Subject).
-		IssuedAt(time.Now().Add(-1*time.Hour)). // backdate token to avoid clock skew
-		Expiration(time.Now().Add(time.Hour*23)).
-		Claim("jwks", es.Jwks.Keys).
-		Claim("authority_hints", []string{rp.cfg.FedMasterURL}).
-		Claim("metadata", es.Metadata).
-		Build()
+type entityStatementClaims struct {
+	Issuer         string              `json:"iss"`
+	Subject        string              `json:"sub"`
+	IssuedAt       int64               `json:"iat"`
+	ExpiresAt      int64               `json:"exp"`
+	Jwks           *jose.JSONWebKeySet `json:"jwks"`
+	AuthorityHints []string            `json:"authority_hints"`
+	Metadata       *Metadata           `json:"metadata"`
+}
+
+// signedJwksClaims keep the shape registered parties get today: a whole JWK Set under "keys", so the array sits at
+// keys.keys rather than at the top level of the payload.
+type signedJwksClaims struct {
+	Issuer    string              `json:"iss"`
+	IssuedAt  int64               `json:"iat"`
+	ExpiresAt int64               `json:"exp"`
+	Keys      *jose.JSONWebKeySet `json:"keys"`
+}
+
+// signClaims signs claims as a compact JWT with the signing key, under its kid and the given typ.
+func (rp *RelyingParty) signClaims(typ string, claims any) ([]byte, error) {
+	payload, err := json.Marshal(claims)
 	if err != nil {
 		return nil, err
 	}
-
-	headers := jws.NewHeaders()
-	if err := headers.Set(jws.KeyIDKey, rp.signKid); err != nil {
-		return nil, err
-	}
-	if err := headers.Set(jws.TypeKey, "entity-statement+jwt"); err != nil {
-		return nil, err
-	}
-
-	signed, err := jwt.Sign(token,
-		jwt.WithKey(
-			jwa.ES256(),
-			rp.sigPrivateKey,
-			jws.WithProtectedHeaders(headers),
-		),
+	signer, err := jose.NewSigner(
+		jose.SigningKey{Algorithm: jose.ES256, Key: jose.JSONWebKey{Key: rp.sigPrivateKey, KeyID: rp.signKid}},
+		(&jose.SignerOptions{}).WithType(jose.ContentType(typ)),
 	)
 	if err != nil {
 		return nil, err
 	}
-
-	return signed, nil
+	signed, err := signer.Sign(payload)
+	if err != nil {
+		return nil, err
+	}
+	compact, err := signed.CompactSerialize()
+	if err != nil {
+		return nil, err
+	}
+	return []byte(compact), nil
 }
 
 // Serve is the HTTP handler of the entity statement endpoint.
@@ -369,39 +347,17 @@ func (rp *RelyingParty) Serve(w http.ResponseWriter, _ *http.Request) {
 // ServeSignedJwks is the HTTP handler of signed_jwks_uri: the encryption and client keys of the relying party as
 // a signed JWT, backdated one hour and valid for 23 hours from now.
 func (rp *RelyingParty) ServeSignedJwks(w http.ResponseWriter, r *http.Request) {
-	token, err := jwt.NewBuilder().
-		Issuer(rp.entityStatement.Subject).
-		IssuedAt(time.Now().Add(-1*time.Hour)). // backdate token to avoid clock skew
-		Expiration(time.Now().Add(time.Hour*23)).
-		Claim("keys", rp.entityStatement.Metadata.OpenidRelyingParty.Jwks.Keys).
-		Build()
-	if err != nil {
-		slog.Error("unable to build token", "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-	}
-
-	headers := jws.NewHeaders()
-	if err := headers.Set(jws.KeyIDKey, rp.signKid); err != nil {
-		slog.Error("unable to set token header", "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	if err := headers.Set(jws.TypeKey, "jwk-set+json"); err != nil {
-		slog.Error("unable to set token header", "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	signed, err := jwt.Sign(token,
-		jwt.WithKey(
-			jwa.ES256(),
-			rp.sigPrivateKey,
-			jws.WithProtectedHeaders(headers),
-		),
-	)
+	now := time.Now()
+	signed, err := rp.signClaims("jwk-set+json", signedJwksClaims{
+		Issuer:    rp.entityStatement.Subject,
+		IssuedAt:  now.Add(-1 * time.Hour).Unix(), // backdate token to avoid clock skew
+		ExpiresAt: now.Add(time.Hour * 23).Unix(),
+		Keys:      rp.entityStatement.Metadata.OpenidRelyingParty.Jwks.Keys,
+	})
 	if err != nil {
 		slog.Error("unable to sign token", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
 	}
 	w.Header().Set("Content-Type", "application/jwk-set+jwt")
 	if _, err := w.Write(signed); err != nil {
@@ -417,9 +373,9 @@ type pushedAuthorizationResponse struct {
 	ExpiresIn  int    `json:"expires_in"`
 }
 
-// NewClient resolves issuer through the federation master and returns a client for that OpenID provider. Each
+// newClient resolves issuer through the federation master and returns a client for that OpenID provider. Each
 // call fetches the provider's entity statement and signed JWKS anew.
-func (rp *RelyingParty) NewClient(issuer string) (oidc.Client, error) {
+func (rp *RelyingParty) newClient(issuer string) (*RelyingPartyClient, error) {
 	op, err := rp.federation.FetchEntityStatement(issuer)
 	if err != nil {
 		return nil, err
@@ -466,90 +422,146 @@ func loadCertBytesFromPem(certPath string) ([]byte, error) {
 	return certDataDer.Bytes, nil
 }
 
-// Loads the private key from the given path
-// and adds the certificate chain if certPath is not empty.
-// loadKeyConfig loads one key (PEM file, JWK file, or inline JWK) for the given usage, returning the private
-// key, the matching public key, and the key id. The kid is KeyConfig.Kid when set, otherwise the RFC 7638
-// SHA-256 thumbprint. When KeyConfig.CertPEMPath is set the public key carries the X.509 cert chain.
-func loadKeyConfig(kc KeyConfig, baseDir string, keyUsage jwk.KeyUsageType) (jwk.Key, jwk.Key, string, error) {
+// keyUse is what the relying party uses a key for, which fixes what it publishes about the key.
+type keyUse int
+
+const (
+	keyUseSign keyUse = iota
+	keyUseEncrypt
+	keyUseClientAuth
+)
+
+// published returns the use and alg members of the key's JWK, and refuses a key that cannot do the job, which
+// would otherwise only show at the first signature, login or TLS handshake.
+func (u keyUse) published(public crypto.PublicKey) (use, alg string, err error) {
+	ecKey, ok := public.(*ecdsa.PublicKey)
+	if !ok {
+		return "", "", fmt.Errorf("a %T cannot be used here, an EC key is required", public)
+	}
+	switch u {
+	case keyUseEncrypt:
+		return "enc", string(jose.ECDH_ES), nil
+	case keyUseClientAuth:
+		alg, err := ecdsaAlgorithm(ecKey)
+		return "sig", alg, err
+	default:
+		// The relying party signs ES256 only, as id_token_signed_response_alg and the statement's own header say.
+		if ecKey.Curve != elliptic.P256() {
+			return "", "", fmt.Errorf("signing needs a P-256 key, not %s", ecKey.Curve.Params().Name)
+		}
+		return "sig", string(jose.ES256), nil
+	}
+}
+
+func ecdsaAlgorithm(key *ecdsa.PublicKey) (string, error) {
+	switch key.Curve {
+	case elliptic.P256():
+		return string(jose.ES256), nil
+	case elliptic.P384():
+		return string(jose.ES384), nil
+	case elliptic.P521():
+		return string(jose.ES512), nil
+	}
+	return "", fmt.Errorf("unsupported curve %s", key.Curve.Params().Name)
+}
+
+// loadKeyConfig loads one key (PEM file, JWK file, or inline JWK) for the given use, returning the private key, the
+// matching public JWK, and the key id. The kid is KeyConfig.Kid when set, otherwise the RFC 7638 SHA-256 thumbprint.
+// When KeyConfig.CertPEMPath is set the public JWK carries the X.509 cert chain.
+func loadKeyConfig(kc KeyConfig, baseDir string, use keyUse) (any, jose.JSONWebKey, string, error) {
 	privateKey, err := parseKeySource(kc, baseDir)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, jose.JSONWebKey{}, "", err
 	}
 
 	kid := kc.Kid
 	if kid == "" {
 		tp, err := privateKey.Thumbprint(crypto.SHA256)
 		if err != nil {
-			return nil, nil, "", fmt.Errorf("compute key thumbprint: %w", err)
+			return nil, jose.JSONWebKey{}, "", fmt.Errorf("compute key thumbprint: %w", err)
 		}
 		kid = base64.RawURLEncoding.EncodeToString(tp)
 	}
 
-	if err := privateKey.Set(jwk.KeyIDKey, kid); err != nil {
-		return nil, nil, "", fmt.Errorf("set key id: %w", err)
-	}
-	if err := privateKey.Set(jwk.KeyUsageKey, keyUsage); err != nil {
-		return nil, nil, "", fmt.Errorf("set key usage: %w", err)
-	}
-
-	publicKey, err := privateKey.PublicKey()
+	publicKey := privateKey.Public()
+	publicKey.KeyID = kid
+	publicKey.Use, publicKey.Algorithm, err = use.published(publicKey.Key)
 	if err != nil {
-		return nil, nil, "", fmt.Errorf("derive public key: %w", err)
-	}
-	if err := publicKey.Set(jwk.KeyIDKey, kid); err != nil {
-		return nil, nil, "", fmt.Errorf("set key id: %w", err)
-	}
-	if err := publicKey.Set(jwk.KeyUsageKey, keyUsage); err != nil {
-		return nil, nil, "", fmt.Errorf("set key usage: %w", err)
-	}
-	if keyUsage == jwk.ForEncryption {
-		publicKey.Set(jwk.AlgorithmKey, jwa.ECDH_ES) //nolint:errcheck,gosec // TASK-183: always fails: passes the function, not its value, so no alg is published
-	} else {
-		publicKey.Set(jwk.AlgorithmKey, jwa.ES256) //nolint:errcheck,gosec // TASK-183: always fails: passes the function, not its value, so no alg is published
+		return nil, jose.JSONWebKey{}, "", err
 	}
 
 	if kc.CertPEMPath != "" {
 		certDataDer, err := loadCertBytesFromPem(joinBase(baseDir, kc.CertPEMPath))
 		if err != nil {
-			return nil, nil, "", err
+			return nil, jose.JSONWebKey{}, "", err
 		}
-		var certChain cert.Chain
-		if err := certChain.AddString(base64.StdEncoding.EncodeToString(certDataDer)); err != nil {
-			return nil, nil, "", fmt.Errorf("add cert to chain: %w", err)
+		certificate, err := x509.ParseCertificate(certDataDer)
+		if err != nil {
+			return nil, jose.JSONWebKey{}, "", fmt.Errorf("parse cert: %w", err)
 		}
-		if err := publicKey.Set(jwk.X509CertChainKey, &certChain); err != nil {
-			return nil, nil, "", fmt.Errorf("set cert chain: %w", err)
-		}
+		publicKey.Certificates = []*x509.Certificate{certificate}
 	}
 
-	return privateKey, publicKey, kid, nil
+	return privateKey.Key, publicKey, kid, nil
 }
 
 // parseKeySource parses a private key from exactly one of pem_path, jwk_path, or an inline jwk.
-func parseKeySource(kc KeyConfig, baseDir string) (jwk.Key, error) {
+func parseKeySource(kc KeyConfig, baseDir string) (*jose.JSONWebKey, error) {
+	var key *jose.JSONWebKey
+	var err error
 	switch {
 	case kc.KeyPEMPath != "":
 		data, err := os.ReadFile(joinBase(baseDir, kc.KeyPEMPath))
 		if err != nil {
 			return nil, fmt.Errorf("read key_pem_path %q: %w", kc.KeyPEMPath, err)
 		}
-		return jwk.ParseKey(data, jwk.WithPEM(true))
+		return parsePrivateKeyPEM(data)
 	case kc.JWKPath != "":
-		data, err := os.ReadFile(joinBase(baseDir, kc.JWKPath))
-		if err != nil {
-			return nil, fmt.Errorf("read jwk_path %q: %w", kc.JWKPath, err)
+		data, readErr := os.ReadFile(joinBase(baseDir, kc.JWKPath))
+		if readErr != nil {
+			return nil, fmt.Errorf("read jwk_path %q: %w", kc.JWKPath, readErr)
 		}
-		return jwk.ParseKey(data)
+		key, err = oidc.ParseKey(data)
 	case len(kc.JWK) > 0:
-		data, err := json.Marshal(kc.JWK)
-		if err != nil {
-			return nil, fmt.Errorf("marshal inline jwk: %w", err)
+		data, marshalErr := json.Marshal(kc.JWK)
+		if marshalErr != nil {
+			return nil, fmt.Errorf("marshal inline jwk: %w", marshalErr)
 		}
-		return jwk.ParseKey(data)
+		key, err = oidc.ParseKey(data)
 	default:
 		return nil, errors.New("provide one of key_pem_path, jwk_path, or jwk")
 	}
+	if err != nil {
+		return nil, err
+	}
+	if key.IsPublic() {
+		return nil, errors.New("a public key was given where a private key is required")
+	}
+	return key, nil
+}
+
+// parsePrivateKeyPEM reads the first PEM block, which has to be a private key.
+func parsePrivateKeyPEM(data []byte) (*jose.JSONWebKey, error) {
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return nil, errors.New("no PEM data found")
+	}
+	var key any
+	var err error
+	switch block.Type {
+	case "EC PRIVATE KEY":
+		key, err = x509.ParseECPrivateKey(block.Bytes)
+	case "PRIVATE KEY":
+		key, err = x509.ParsePKCS8PrivateKey(block.Bytes)
+	case "RSA PRIVATE KEY":
+		key, err = x509.ParsePKCS1PrivateKey(block.Bytes)
+	default:
+		return nil, fmt.Errorf("PEM block %q is not a private key", block.Type)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("parse PEM block %q: %w", block.Type, err)
+	}
+	return &jose.JSONWebKey{Key: key}, nil
 }
 
 func joinBase(baseDir, p string) string {
@@ -561,21 +573,21 @@ func joinBase(baseDir, p string) string {
 
 // tlsCertFromKey builds the mTLS client certificate from the parsed client private key + the PEM cert, so
 // the client key may come from any source (PEM, JWK, inline) rather than only a PEM file pair.
-func tlsCertFromKey(clientPrivateKey jwk.Key, certPEMPath string) (tls.Certificate, error) {
+func tlsCertFromKey(clientPrivateKey any, certPEMPath string) (tls.Certificate, error) {
 	certDER, err := loadCertBytesFromPem(certPEMPath)
 	if err != nil {
 		return tls.Certificate{}, err
 	}
-	var ecKey ecdsa.PrivateKey
-	if err := jwk.Export(clientPrivateKey, &ecKey); err != nil {
-		return tls.Certificate{}, fmt.Errorf("export client private key: %w", err)
+	ecKey, ok := clientPrivateKey.(*ecdsa.PrivateKey)
+	if !ok {
+		return tls.Certificate{}, fmt.Errorf("client private key is a %T, not an EC key", clientPrivateKey)
 	}
-	return tls.Certificate{Certificate: [][]byte{certDER}, PrivateKey: &ecKey}, nil
+	return tls.Certificate{Certificate: [][]byte{certDER}, PrivateKey: ecKey}, nil
 }
 
 // resolveTrustAnchor returns the federation master's signing key set: the explicit FedMasterJWK, else the
 // built-in JWK for a known FedMasterURL.
-func (cfg *RelyingPartyConfig) resolveTrustAnchor() (jwk.Set, error) {
+func (cfg *RelyingPartyConfig) resolveTrustAnchor() (*jose.JSONWebKeySet, error) {
 	if cfg.FedMasterJWK != nil && cfg.FedMasterJWK.Key != nil {
 		set, err := cfg.FedMasterJWK.AsSet()
 		if err != nil {
@@ -587,15 +599,11 @@ func (cfg *RelyingPartyConfig) resolveTrustAnchor() (jwk.Set, error) {
 	if !ok {
 		return nil, fmt.Errorf("no built-in trust anchor for fed_master_url %q; set fed_master_jwk", cfg.FedMasterURL)
 	}
-	key, err := jwk.ParseKey([]byte(known))
+	key, err := oidc.ParseKey([]byte(known))
 	if err != nil {
 		return nil, fmt.Errorf("parse built-in fed master jwk: %w", err)
 	}
-	set := jwk.NewSet()
-	if err := set.AddKey(key); err != nil {
-		return nil, fmt.Errorf("add built-in fed master jwk: %w", err)
-	}
-	return set, nil
+	return &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{*key}}, nil
 }
 
 // buildMetadata assembles the entity-statement metadata from the deployment-specific config plus the

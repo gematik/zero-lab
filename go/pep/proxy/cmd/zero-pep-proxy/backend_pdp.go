@@ -27,8 +27,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/go-jose/go-jose/v4"
 
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/pep/proxy"
 )
 
@@ -65,7 +66,7 @@ func pdpBackendFromEnv(publicURL string) proxy.Backend {
 }
 
 // loadJWKFile reads a single JWK (the client signing key) from a file.
-func loadJWKFile(path string) (jwk.Key, error) {
+func loadJWKFile(path string) (*jose.JSONWebKey, error) {
 	if path == "" {
 		return nil, errors.New("path is required")
 	}
@@ -73,5 +74,5 @@ func loadJWKFile(path string) (jwk.Key, error) {
 	if err != nil {
 		return nil, err
 	}
-	return jwk.ParseKey(data)
+	return oidc.ParseKey(data)
 }

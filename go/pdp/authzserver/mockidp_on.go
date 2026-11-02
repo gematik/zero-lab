@@ -29,6 +29,7 @@ import (
 	"strings"
 
 	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/oauth/providers"
 	"github.com/gematik/zero-lab/go/pdp/authzserver/mockidp"
 )
 
@@ -40,7 +41,12 @@ func (h mockHost) OPCallbackURL() string {
 	return strings.TrimRight(h.s.Metadata.Issuer, "/") + h.s.endpointPaths.OPCallback
 }
 
-func (h mockHost) AddProvider(c oidc.Client) { h.s.providers.Add(c) }
+func (h mockHost) AddProvider(c oidc.Client) {
+	h.s.providers.Add(providers.Provider{
+		Info:   providers.Info{Issuer: c.Issuer(), Name: "Mock IdP (non-prod)", Type: providers.TypeOIDC},
+		Client: c,
+	})
+}
 
 // registerMockProviders mounts the co-hosted mock OP and registers it as a normal provider. Compiled only
 // with `-tags mockidp`; the !mockidp build is a no-op and never imports the mockidp package.

@@ -22,66 +22,53 @@
 package providers
 
 import (
-	"os"
-	"path/filepath"
+	"errors"
 	"strings"
 	"testing"
-
-	"gopkg.in/yaml.v3"
 
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
 type fakeClient struct {
 	oidc.Client
-	issuer, kind string
+	issuer string
 }
 
-func (f fakeClient) Issuer() string  { return f.issuer }
-func (f fakeClient) Name() string    { return f.issuer }
-func (f fakeClient) LogoURI() string { return "" }
+func (f fakeClient) Issuer() string { return f.issuer }
 
-func (f fakeClient) ProviderType() string { return f.kind }
-
-func write(t *testing.T, content string) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "providers.yaml")
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	return path
+func fake(issuer, kind string) Provider {
+	return Provider{Info: Info{Issuer: issuer, Name: issuer, Type: kind}, Client: fakeClient{issuer: issuer}}
 }
 
 func fakeKind(issuer string) Kind {
-	return func(node *yaml.Node, _ Env) (Built, error) {
-		var entries []struct {
-			ClientID string `yaml:"client_id"`
-		}
-		if err := Decode(node, &entries); err != nil {
+	return func(decode Decode, _ Env) (Built, error) {
+		if err := decode(new(any)); err != nil {
 			return Built{}, err
 		}
-		return Built{Clients: []oidc.Client{fakeClient{issuer: issuer, kind: issuer}}}, nil
+		return Built{Providers: []Provider{fake(issuer, issuer)}}, nil
 	}
 }
 
+func entry(key string) Entry {
+	return Entry{Key: key, Decode: func(any) error { return nil }}
+}
+
 func TestAnOutdatedKeyStopsTheStart(t *testing.T) {
-	path := write(t, "gemidp:\n  - client_id: x\n")
-	_, err := Load(path, Env{}, Kinds{"idpd": fakeKind("a")})
+	_, err := Build([]Entry{entry("gemidp")}, Env{}, Kinds{"idpd": fakeKind("a")})
 	if err == nil || !strings.Contains(err.Error(), `unknown key "gemidp"`) || !strings.Contains(err.Error(), "idpd") {
 		t.Errorf("err = %v", err)
 	}
 }
 
-func TestAnUnknownFieldInAnEntryStopsTheStart(t *testing.T) {
-	path := write(t, "idpd:\n  - client_id: x\n    trust_bundle: y\n")
-	if _, err := Load(path, Env{}, Kinds{"idpd": fakeKind("a")}); err == nil {
-		t.Error("an unknown field")
+func TestADecodeFailureStopsTheStart(t *testing.T) {
+	failing := Entry{Key: "idpd", Decode: func(any) error { return errors.New("unknown field") }}
+	if _, err := Build([]Entry{failing}, Env{}, Kinds{"idpd": fakeKind("a")}); err == nil {
+		t.Error("a decode failure")
 	}
 }
 
 func TestTheFilesOrderDecidesTheDefault(t *testing.T) {
-	path := write(t, "b: []\na: []\n")
-	set, err := Load(path, Env{}, Kinds{"a": fakeKind("a"), "b": fakeKind("b")})
+	set, err := Build([]Entry{entry("b"), entry("a")}, Env{}, Kinds{"a": fakeKind("a"), "b": fakeKind("b")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,40 +76,20 @@ func TestTheFilesOrderDecidesTheDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Issuer() != "b" {
-		t.Errorf("default %s", first.Issuer())
-	}
-}
-
-func TestAPlaceholderExpandsFromTheEnvironment(t *testing.T) {
-	t.Setenv("PROVIDERS_TEST_VALUE", "client")
-	path := write(t, "a:\n  - client_id: ${PROVIDERS_TEST_VALUE}\n")
-	var seen string
-	kind := func(node *yaml.Node, _ Env) (Built, error) {
-		var entries []struct {
-			ClientID string `yaml:"client_id"`
-		}
-		err := Decode(node, &entries)
-		seen = entries[0].ClientID
-		return Built{}, err
-	}
-	if _, err := Load(path, Env{}, Kinds{"a": kind}); err != nil {
-		t.Fatal(err)
-	}
-	if seen != "client" {
-		t.Errorf("client_id %q", seen)
+	if first.Issuer != "b" {
+		t.Errorf("default %s", first.Issuer)
 	}
 }
 
 func TestListingAndLookup(t *testing.T) {
-	set := New(nil, fakeClient{issuer: "https://a", kind: "idpd"})
-	if _, err := set.Client("https://a"); err != nil {
+	set := New(nil, fake("https://a", "idpd"))
+	if _, err := set.Provider(t.Context(), "https://a"); err != nil {
 		t.Error(err)
 	}
-	if _, err := set.Client("https://b"); err == nil {
+	if _, err := set.Provider(t.Context(), "https://b"); err == nil {
 		t.Error("an unknown issuer without a federation")
 	}
-	infos, err := set.Providers()
+	infos, err := set.Providers(t.Context())
 	if err != nil || len(infos) != 1 || infos[0].Type != "idpd" {
 		t.Errorf("%+v, %v", infos, err)
 	}

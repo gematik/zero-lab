@@ -19,19 +19,32 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-package idpd
+package oauth
 
 import (
-	"github.com/lestrrat-go/jwx/v3/jwa"
-
-	"github.com/gematik/zero-lab/go/brainpool/josebp"
+	"encoding/base64"
+	"testing"
 )
 
-// The gematik IDP signs its id_token with alg "BP256R1" (Brainpool). jwx must know this algorithm
-// name to parse the token's JOSE header in parseIDToken — even though the signature is verified by
-// josebp (stdlib ecdsa) and jwx only validates claims with jwt.WithVerify(false), so jwx never
-// touches the Brainpool key or curve. Registering the name only (no signer/verifier) keeps jwx out
-// of the Brainpool crypto.
-func init() {
-	jwa.RegisterSignatureAlgorithm(jwa.NewSignatureAlgorithm(josebp.AlgorithmNameBP256R1))
+// RFC 7636 Appendix B.
+func TestS256ChallengeMatchesRFC7636AppendixB(t *testing.T) {
+	const verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+	const challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+	if got := S256Challenge(verifier); got != challenge {
+		t.Errorf("S256Challenge = %q, want %q", got, challenge)
+	}
+}
+
+func TestGenerateVerifierIsFreshAndCarries32Octets(t *testing.T) {
+	first, second := GenerateVerifier(), GenerateVerifier()
+	if first == second {
+		t.Error("two verifiers are equal")
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded) != 32 {
+		t.Errorf("verifier carries %d octets, want 32", len(decoded))
+	}
 }

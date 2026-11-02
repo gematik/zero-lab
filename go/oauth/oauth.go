@@ -22,5 +22,29 @@
 // Package oauth is the vocabulary OAuth code shares: what the standards name, with nothing that does I/O.
 package oauth
 
+import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+)
+
 // ClientAssertionTypeJWTBearer is the client_assertion_type of RFC 7523 section 2.2, a public name.
 const ClientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" //nolint:gosec // an RFC URN, not a credential
+
+// CodeChallengeMethodS256 is the PKCE code_challenge_method of RFC 7636 section 4.3.
+const CodeChallengeMethodS256 = "S256"
+
+// S256Challenge is the code_challenge of verifier under the S256 method (RFC 7636 section 4.2).
+func S256Challenge(verifier string) string {
+	sum := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+// GenerateVerifier returns a new PKCE code verifier: 32 random octets, base64url-encoded, as RFC 7636
+// section 4.1 recommends.
+func GenerateVerifier() string {
+	octets := make([]byte, 32)
+	// crypto/rand.Read never returns an error: it crashes the program rather than hand out predictable bytes.
+	_, _ = rand.Read(octets)
+	return base64.RawURLEncoding.EncodeToString(octets)
+}

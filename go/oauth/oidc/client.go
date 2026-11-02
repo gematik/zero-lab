@@ -26,18 +26,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
-	"github.com/lestrrat-go/httprc/v3"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jws"
-	"github.com/lestrrat-go/jwx/v3/jwt"
-	"golang.org/x/oauth2"
+	"github.com/go-jose/go-jose/v4"
 )
 
 const (
@@ -70,7 +64,7 @@ type client struct {
 	cfg               Config
 	httpClient        *http.Client
 	discoveryDocument *DiscoveryDocument
-	keyCache          *jwk.Cache
+	keyCache          *keySetCache
 }
 
 // NewClient fetches the provider's discovery document and signing keys and returns a client for it, so the
@@ -92,168 +86,82 @@ func NewClient(cfg Config) (Client, error) {
 		return nil, fmt.Errorf("failed to fetch discovery document from %s: %w", discoveryDocumentURL, err)
 	}
 
-	// prepare the auto-refreshing signing key cache
-	context := context.Background()
-	c.keyCache, err = jwk.NewCache(context, httprc.NewClient(httprc.WithHTTPClient(httpClient)))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create key cache: %w", err)
-	}
-
-	if err := c.keyCache.Register(context, c.discoveryDocument.JwksURI); err != nil {
-		return nil, fmt.Errorf("failed to register signing keys: %w", err)
-	}
-	_, err = c.keyCache.Refresh(context, c.discoveryDocument.JwksURI)
-	if err != nil {
+	c.keyCache = newKeySetCache(c.discoveryDocument.JwksURI, httpClient)
+	if _, err := c.keyCache.keySet(context.Background(), ""); err != nil {
 		return nil, fmt.Errorf("failed to fetch signing keys: %w", err)
 	}
 
 	return c, nil
 }
 
-func (c *client) ClientID() string {
-	return c.cfg.ClientID
-}
-
-func (c *client) RedirectURI() string {
-	return c.cfg.RedirectURI
-}
-
 func (c *client) DiscoveryDocument() *DiscoveryDocument {
 	return c.discoveryDocument
 }
 
-func (c *client) AuthenticationURL(state, nonce, verifier string, options ...Option) (string, error) {
-	codeChallenge := oauth2.S256ChallengeFromVerifier(verifier)
-	query := url.Values{}
-	query.Add("client_id", c.cfg.ClientID)
-	query.Add("redirect_uri", c.cfg.RedirectURI)
-	query.Add("response_type", "code")
-	query.Add("scope", strings.Join(c.cfg.Scopes, " "))
-	query.Add("state", state)
-	query.Add("nonce", nonce)
-	query.Add("code_challenge", codeChallenge)
-	query.Add("code_challenge_method", "S256")
-
-	slog.Info("Using OP AuthorizationEndpoint", "url", c.discoveryDocument.AuthorizationEndpoint)
-
-	for _, option := range options {
-		if opt, ok := option.(WithAlternateRedirectURI); ok {
-			query.Set("redirect_uri", string(opt))
-		}
-	}
-
-	return fmt.Sprintf("%s?%s", c.discoveryDocument.AuthorizationEndpoint, query.Encode()), nil
+func (c *client) AuthenticationURL(_ context.Context, login Login) (string, error) {
+	query := AuthorizationQuery(c.cfg.ClientID, c.cfg.RedirectURI, c.cfg.Scopes, login)
+	return c.discoveryDocument.AuthorizationEndpoint + "?" + query.Encode(), nil
 }
 
-func (c *client) ExchangeForIdentity(code, verifier string, options ...Option) (*TokenResponse, error) {
-	params := url.Values{}
-	params.Set("client_id", c.cfg.ClientID)
-	params.Set("client_secret", c.cfg.ClientSecret.Value())
-	params.Set("code", code)
-	params.Set("redirect_uri", c.cfg.RedirectURI)
-	params.Set("grant_type", "authorization_code")
-	params.Set("code_verifier", verifier)
+func (c *client) Exchange(ctx context.Context, login Login, code string) (*TokenResponse, error) {
+	form := url.Values{}
+	form.Set("client_id", c.cfg.ClientID)
+	form.Set("client_secret", c.cfg.ClientSecret.Value())
+	form.Set("code", code)
+	form.Set("redirect_uri", login.RedirectFor(c.cfg.RedirectURI))
+	form.Set("grant_type", "authorization_code")
+	form.Set("code_verifier", login.Verifier)
 
-	for _, option := range options {
-		if opt, ok := option.(WithAlternateRedirectURI); ok {
-			params.Set("redirect_uri", string(opt))
-		}
-	}
-
-	slog.Debug("Exchanging code for token", "url", c.discoveryDocument.TokenEndpoint, "params", params)
-
-	resp, err := c.httpClient.PostForm(c.discoveryDocument.TokenEndpoint, params)
+	response, err := PostForm(ctx, c.httpClient, c.discoveryDocument.TokenEndpoint, form)
 	if err != nil {
 		return nil, fmt.Errorf("unable to exchange code for token: %w", err)
 	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("unable to read response body: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
+	if response.Status != http.StatusOK {
 		oidcErr := new(Error)
-		err = json.Unmarshal(body, &oidcErr)
-		if err != nil {
+		if err := json.Unmarshal(response.Body, oidcErr); err != nil {
 			return nil, fmt.Errorf("unable to decode error: %w", err)
 		}
 		slog.Error("unable to exchange code for token", "error", oidcErr)
 		return nil, oidcErr
 	}
-
-	tokenResponse := new(TokenResponse)
-
-	err = json.Unmarshal(body, tokenResponse)
+	tokenResponse, err := ParseTokenResponse(response.Body)
 	if err != nil {
-		// ugly fallback to workaround EntraID inconstency with expires_in
-		fallbackTokenResponse := struct {
-			AccessToken  string `json:"access_token"`
-			TokenType    string `json:"token_type"`
-			ExpiresIn    int    `json:"expires_in,string"`
-			Scope        string `json:"scope"`
-			RefreshToken string `json:"refresh_token"`
-			IDTokenRaw   string `json:"id_token"`
-		}{}
-		err = json.Unmarshal(body, &fallbackTokenResponse)
-		if err != nil {
-			slog.Error("unable to decode token response", "error", err, "body", string(body))
-			return nil, fmt.Errorf("unable to decode token response: %w", err)
-		}
-		tokenResponse.AccessToken = fallbackTokenResponse.AccessToken
-		tokenResponse.TokenType = fallbackTokenResponse.TokenType
-		tokenResponse.ExpiresIn = fallbackTokenResponse.ExpiresIn
-		tokenResponse.Scope = fallbackTokenResponse.Scope
-		tokenResponse.RefreshToken = fallbackTokenResponse.RefreshToken
-		tokenResponse.IDTokenRaw = fallbackTokenResponse.IDTokenRaw
-	}
-
-	// Parse the ID token (parseIDToken already wraps the error with context).
-	if tokenResponse.IDToken, err = c.parseIDToken(tokenResponse); err != nil {
 		return nil, err
 	}
-
+	if err := c.verifyIDToken(ctx, tokenResponse); err != nil {
+		return nil, err
+	}
 	return tokenResponse, nil
 }
 
-// Parses and verifies an ID token against the keys from the discovery document.
-func (c *client) parseIDToken(response *TokenResponse) (jwt.Token, error) {
-	keySet, err := c.keyCache.Lookup(context.Background(), c.discoveryDocument.JwksURI)
-	if err != nil {
-		return nil, fmt.Errorf("unable to get key set: %w", err)
-	}
-
+// verifyIDToken verifies the ID token against the keys of the discovery document. The keys need not state an alg,
+// as Entra ID's do not; the token has to, and the key has to fit it.
+func (c *client) verifyIDToken(ctx context.Context, response *TokenResponse) error {
 	skew := c.cfg.AcceptableSkew
 	if skew <= 0 {
 		skew = defaultAcceptableSkew
 	}
-	token, err := jwt.ParseString(
-		response.IDTokenRaw,
-		jwt.WithKeySet(keySet, jws.WithInferAlgorithmFromKey(true)), // Azure AD does not include alg in ID token header
-		jwt.WithIssuer(c.discoveryDocument.Issuer),
-		jwt.WithAudience(c.cfg.ClientID),
-		jwt.WithRequiredClaim("nonce"),
-		jwt.WithRequiredClaim("exp"),
-		jwt.WithAcceptableSkew(skew), // tolerate RP/IdP clock skew on iat/exp/nbf
-	)
+	keysFor := func(kid string) (*jose.JSONWebKeySet, error) {
+		return c.keyCache.keySet(ctx, kid)
+	}
+	payload, err := verifyJWS(response.IDTokenRaw, keysFor, VerifyOptions{})
+	if err == nil {
+		err = IDTokenChecks{
+			Issuer:   c.discoveryDocument.Issuer,
+			ClientID: c.cfg.ClientID,
+			Now:      time.Now(),
+			Skew:     skew,
+		}.Validate(payload)
+	}
 	if err != nil {
 		slog.Error("verify id_token", "error", err, "jwks_uri", c.discoveryDocument.JwksURI)
-		return nil, fmt.Errorf("verify id_token: %w", err)
+		return fmt.Errorf("verify id_token: %w", err)
 	}
-
-	return token, nil
+	return nil
 }
 
 func (c *client) Issuer() string {
 	return c.discoveryDocument.Issuer
-}
-
-func (c *client) Name() string {
-	return c.cfg.Name
-}
-
-func (c *client) LogoURI() string {
-	return c.cfg.LogoURI
 }
 
 // Validate reports a missing required field.

@@ -31,8 +31,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/go-jose/go-jose/v4"
 
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
 )
 
@@ -73,11 +74,11 @@ func runJose(opts *options, args []string) error {
 		if err != nil {
 			return err
 		}
-		key, err := jwk.ParseKey(data)
+		key, err := oidc.ParseKey(data)
 		if err != nil {
 			return err
 		}
-		public, err := key.PublicKey()
+		public, err := authzserver.PublicKey(key)
 		if err != nil {
 			return err
 		}
@@ -87,7 +88,7 @@ func runJose(opts *options, args []string) error {
 		if err != nil {
 			return err
 		}
-		set, err := jwk.Parse(data)
+		set, err := oidc.ParseKeySet(data)
 		if err != nil {
 			return err
 		}
@@ -103,7 +104,7 @@ func runJose(opts *options, args []string) error {
 
 type issueResponse struct {
 	TokenResponse *authzserver.TokenResponse `json:"token_response"`
-	DpopKey       jwk.Key                    `json:"dpop_key"`
+	DpopKey       *jose.JSONWebKey           `json:"dpop_key"`
 }
 
 func runNonProd(opts *options, args []string) error {

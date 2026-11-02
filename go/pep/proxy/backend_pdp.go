@@ -23,8 +23,6 @@ package proxy
 
 import (
 	"context"
-	"crypto"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,14 +35,10 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/gematik/zero-lab/go/oauth"
-
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
-	"golang.org/x/oauth2"
+	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/dpop"
+	"github.com/gematik/zero-lab/go/oauth"
 )
 
 var (
@@ -71,10 +65,10 @@ func (b *pdpBackend) injectDPoP(out *http.Request, sess *Session, token string) 
 
 // PDPConfig configures the pdpBackend: pep as a confidential OAuth client of the PDP (the gematik AS).
 type PDPConfig struct {
-	ASIssuer    string  // the PDP authorization server (login + identity)
-	ClientID    string  // pep's registered client_id
-	SigningKey  jwk.Key // private_key_jwt signing key (loaded from a *_PATH file)
-	RedirectURI string  // default <public>/oauth2/callback
+	ASIssuer    string           // the PDP authorization server (login + identity)
+	ClientID    string           // pep's registered client_id
+	SigningKey  *jose.JSONWebKey // private_key_jwt signing key (loaded from a *_PATH file); its kid names it in the assertion header
+	RedirectURI string           // default <public>/oauth2/callback
 	Scopes      []string
 	HTTPClient  *http.Client
 }
@@ -135,44 +129,47 @@ func (b *pdpBackend) clientAssertion(ctx context.Context, sess *Session) (string
 	}
 	dkey, err := parseSessionDPoPKey(sess.DPoPKeyJWK)
 	if err != nil {
-		return "", fmt.Errorf("session dpop key: %w", err)
+		return "", err
 	}
-	thumb, err := dkey.Thumbprint(crypto.SHA256)
-	if err != nil {
-		return "", fmt.Errorf("dpop thumbprint: %w", err)
-	}
-	jkt := base64.RawURLEncoding.EncodeToString(thumb)
 
 	now := time.Now()
-	tok := jwt.New()
 	claims := map[string]any{
-		jwt.IssuerKey:     b.cfg.ClientID,
-		jwt.SubjectKey:    b.cfg.ClientID,
-		jwt.AudienceKey:   b.meta.Issuer,
-		jwt.JwtIDKey:      uuid.NewV4().String(),
-		jwt.IssuedAtKey:   now.Unix(),
-		jwt.ExpirationKey: now.Add(time.Minute).Unix(),
-		"cnf":             map[string]string{"jkt": jkt},
-	}
-	for name, value := range claims {
-		if err := tok.Set(name, value); err != nil {
-			return "", fmt.Errorf("set client_assertion claim %s: %w", name, err)
-		}
+		"iss": b.cfg.ClientID,
+		"sub": b.cfg.ClientID,
+		// An array, not a string: the PDP's client_assertion decoder takes aud as a list.
+		"aud": []string{b.meta.Issuer},
+		"jti": uuid.NewV4().String(),
+		"iat": now.Unix(),
+		"exp": now.Add(time.Minute).Unix(),
+		"cnf": map[string]string{"jkt": dkey.Thumbprint()},
 	}
 	if b.meta.NonceEndpoint != "" {
 		nonce, err := b.fetchNonce(ctx)
 		if err != nil {
 			return "", fmt.Errorf("fetch nonce: %w", err)
 		}
-		if err := tok.Set("nonce", nonce); err != nil {
-			return "", fmt.Errorf("set client_assertion claim nonce: %w", err)
-		}
+		claims["nonce"] = nonce
 	}
-	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.ES256(), b.cfg.SigningKey))
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		return "", fmt.Errorf("encode client_assertion claims: %w", err)
+	}
+	signer, err := jose.NewSigner(
+		jose.SigningKey{Algorithm: jose.ES256, Key: b.cfg.SigningKey},
+		(&jose.SignerOptions{}).WithType("JWT"),
+	)
+	if err != nil {
+		return "", fmt.Errorf("client_assertion signer: %w", err)
+	}
+	signed, err := signer.Sign(payload)
 	if err != nil {
 		return "", fmt.Errorf("sign client_assertion: %w", err)
 	}
-	return string(signed), nil
+	compact, err := signed.CompactSerialize()
+	if err != nil {
+		return "", fmt.Errorf("sign client_assertion: %w", err)
+	}
+	return compact, nil
 }
 
 // fetchNonce gets a one-time nonce from the AS nonce endpoint (plain-text body). Port of bff fetchNonce.
@@ -266,8 +263,8 @@ func (b *pdpBackend) StartLogin(ctx context.Context, sess *Session, idpIss, scop
 	sess.DPoPKeyJWK = jwkJSON
 	sess.State = uuid.NewV4().String()
 	sess.Nonce = uuid.NewV4().String()
-	sess.CodeVerifier = oauth2.GenerateVerifier()
-	sess.CodeChallengeMethod = "S256"
+	sess.CodeVerifier = oauth.GenerateVerifier()
+	sess.CodeChallengeMethod = oauth.CodeChallengeMethodS256
 	if scope == "" {
 		scope = strings.Join(b.cfg.Scopes, " ")
 	}
@@ -280,8 +277,8 @@ func (b *pdpBackend) StartLogin(ctx context.Context, sess *Session, idpIss, scop
 		"state":                 {sess.State},
 		"nonce":                 {sess.Nonce},
 		"scope":                 {scope},
-		"code_challenge":        {oauth2.S256ChallengeFromVerifier(sess.CodeVerifier)},
-		"code_challenge_method": {"S256"},
+		"code_challenge":        {oauth.S256Challenge(sess.CodeVerifier)},
+		"code_challenge_method": {oauth.CodeChallengeMethodS256},
 	}
 	if idpIss != "" {
 		params.Set("idp_iss", idpIss)
@@ -494,11 +491,7 @@ func (b *pdpBackend) tokenDPoPProof(sess *Session, nonce string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	k, err := dpopKey(key)
-	if err != nil {
-		return "", err
-	}
-	return k.Proof(http.MethodPost, b.meta.TokenEndpoint, dpop.ProofOptions{Nonce: nonce})
+	return key.Proof(http.MethodPost, b.meta.TokenEndpoint, dpop.ProofOptions{Nonce: nonce})
 }
 
 // introspectIdentity introspects the access token at the AS (RFC 7662) for the upstream identity, surfacing
