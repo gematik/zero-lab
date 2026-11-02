@@ -136,11 +136,11 @@ func TestGemIDP_SMCB(t *testing.T) {
 		reportPath = filepath.Join("test-reports", fmt.Sprintf("smcb-%s.md", time.Now().UTC().Format("20060102-150405")))
 	}
 	if dir := filepath.Dir(reportPath); dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o750); err != nil { //nolint:gosec // the gated test's operator names this path in GEMIDP_SMCB_REPORT
 			t.Logf("warning: failed to create report dir %s: %v", dir, err)
 		}
 	}
-	if err := os.WriteFile(reportPath, []byte(report), 0o644); err != nil {
+	if err := os.WriteFile(reportPath, []byte(report), 0o600); err != nil { //nolint:gosec // the gated test's operator names this path in GEMIDP_SMCB_REPORT
 		t.Logf("warning: failed to write report to %s: %v", reportPath, err)
 	} else {
 		t.Logf("test report written to %s", reportPath)
@@ -251,7 +251,7 @@ func formatClaimValue(key string, v any) string {
 // plus its matching Brainpool private key. The repo's brainpool parsers are used because stdlib
 // crypto/x509 does not know the Brainpool curves.
 func loadSMCBAuthIdentity(path, password string) (*ecdsa.PrivateKey, *x509.Certificate, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // the gated test's operator names this file in GEMIDP_SMCB_P12
 	if err != nil {
 		return nil, nil, err
 	}

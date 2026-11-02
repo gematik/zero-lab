@@ -38,6 +38,8 @@ import (
 	"github.com/gematik/zero-lab/go/brainpool/josebp"
 )
 
+// ChallengeSignerFunc signs an IDP-Dienst challenge and returns the compact JWS that nests it. Being a
+// function, it lets the key stay in hardware.
 type ChallengeSignerFunc func(challenge Challenge) (string, error)
 
 // Challenge sent from the gematik IDP-Dienst to the authenticator
@@ -46,18 +48,19 @@ type Challenge struct {
 	UserConsent UserConsent `json:"user_consent"`
 }
 
-// User consent of the challenge sent from the gematik IDP-Dienst to the authenticator
+// UserConsent is the consent part of the challenge sent from the gematik IDP-Dienst to the authenticator.
 type UserConsent struct {
 	RequestedScopes map[string]string `json:"requested_scopes"`
 	RequestedClaims map[string]string `json:"requested_claims"`
 }
 
-// Nested JWT claims used during the challenge response flow
+// Njwt holds the nested JWT claim of the challenge response.
 type Njwt struct {
 	Njwt string `json:"njwt"`
 }
 
-// Payload of the signed challenge token sent from the gematik IDP-Dienst to the authenticator
+// ChallengePayload is the payload of the signed challenge token sent from the gematik IDP-Dienst to the
+// authenticator.
 type ChallengePayload struct {
 	Iss                 string `json:"iss"`
 	Iat                 int64  `json:"iat"`
@@ -75,6 +78,8 @@ type ChallengePayload struct {
 	Nonce               string `json:"nonce"`
 }
 
+// Authenticator answers the IDP-Dienst's challenge on behalf of a user, as the gematik Authenticator app
+// does, signing with the configured ChallengeSignerFunc.
 type Authenticator struct {
 	Environment Environment
 	Metadata    Metadata
@@ -83,6 +88,7 @@ type Authenticator struct {
 	httpClient  *http.Client
 }
 
+// AuthenticatorConfig selects the IDP-Dienst instance and the signer of an Authenticator.
 type AuthenticatorConfig struct {
 	Idp        Idp
 	SignerFunc ChallengeSignerFunc
@@ -141,7 +147,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	// derive a redirect-suppressing client from the injected one (the challenge flow inspects the
 	// 302 Location itself), without mutating the caller's client
 	noFollow := *a.httpClient
-	noFollow.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+	noFollow.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
 		return http.ErrUseLastResponse
 	}
 	httpClient := &noFollow
@@ -154,7 +160,8 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 
 	slog.Debug("IDP responded", "status", resp.StatusCode, "headers", resp.Header)
 
-	if resp.StatusCode == http.StatusFound {
+	switch {
+	case resp.StatusCode == http.StatusFound:
 		codeRedirectURL, err := resp.Location()
 		if err != nil {
 			return nil, fmt.Errorf("IDP responded with unexpected redirect: %w", err)
@@ -175,10 +182,10 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 			GematikCode: codeRedirectURL.Query().Get("gematik_code"),
 			GematikUUID: codeRedirectURL.Query().Get("gematik_uuid"),
 		}
-	} else if resp.StatusCode == http.StatusUnauthorized {
+	case resp.StatusCode == http.StatusUnauthorized:
 		slog.Error("Unexpected status code", "status", resp.StatusCode, "auth_url", authURL, "headers", resp.Header)
 		return nil, parseErrorResponse(resp.StatusCode, resp.Body)
-	} else if resp.StatusCode != http.StatusOK {
+	case resp.StatusCode != http.StatusOK:
 		slog.Error("Unexpected status code", "status", resp.StatusCode, "auth_url", authURL, "headers", resp.Header)
 		return nil, parseErrorResponse(resp.StatusCode, resp.Body)
 	}
@@ -211,17 +218,17 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 		Njwt: signedChallenge,
 	}
 
-	challengeResponseClaimsJson, err := json.Marshal(challengeResponseClaims)
+	challengeResponseClaimsJSON, err := json.Marshal(challengeResponseClaims)
 	if err != nil {
 		return nil, fmt.Errorf("marshalling challenge response claims: %w", err)
 	}
 
-	slog.Debug("Challenge response claims", "claims", string(challengeResponseClaimsJson))
+	slog.Debug("Challenge response claims", "claims", string(challengeResponseClaimsJSON))
 
 	challengeResponseEncrypted, err := josebp.NewJWEBuilder().
 		Header("cty", "NJWT").
 		Header("exp", challengePayload.Exp).
-		Plaintext([]byte(challengeResponseClaimsJson)).
+		Plaintext([]byte(challengeResponseClaimsJSON)).
 		EncryptECDHES(idpEncKey.Key.(*ecdsa.PublicKey))
 	if err != nil {
 		return nil, fmt.Errorf("encrypting challenge response: %w", err)
@@ -257,6 +264,8 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	}, nil
 }
 
+// SignWith returns a signer that signs the challenge as a BP256R1 JWS with signFunc and carries the
+// certificate from certFunc in x5c. certFunc runs on every signature.
 func SignWith(signFunc brainpool.SignFunc, certFunc func() (*x509.Certificate, error)) ChallengeSignerFunc {
 	return func(challenge Challenge) (string, error) {
 		cert, err := certFunc()
@@ -278,6 +287,8 @@ func SignWith(signFunc brainpool.SignFunc, certFunc func() (*x509.Certificate, e
 	}
 }
 
+// SignWithSoftkeyPEM is SignWithSoftkey for a PEM-encoded Brainpool key and certificate. A parsing error
+// is logged here and returned by the signer on use.
 func SignWithSoftkeyPEM(prkPEM []byte, certPEM []byte) ChallengeSignerFunc {
 	var parsingErr error
 	var err error
@@ -302,6 +313,7 @@ func SignWithSoftkeyPEM(prkPEM []byte, certPEM []byte) ChallengeSignerFunc {
 	}
 }
 
+// SignWithSoftkey returns a signer for a Brainpool key held in memory.
 func SignWithSoftkey(prk *ecdsa.PrivateKey, cert *x509.Certificate) ChallengeSignerFunc {
 	return SignWith(
 		brainpool.SignFuncPrivateKey(prk),

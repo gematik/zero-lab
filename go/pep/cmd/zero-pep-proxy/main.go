@@ -166,14 +166,14 @@ func main() {
 		// Providers run in parallel. When the providers file exists it is the source; otherwise a single
 		// provider of each type comes from the PEP_OIDC_* / PEP_OIDF_RP_CONFIG_PATH / PEP_GEMIDP_* env vars.
 		var opts []proxy.ProviderOption
-		if _, statErr := os.Stat(providersPath); statErr == nil {
+		if _, statErr := os.Stat(providersPath); statErr == nil { //nolint:gosec // the path comes from PEP_OPENID_PROVIDERS_PATH or the fixed default in the working directory, not a request
 			var err error
 			if opts, err = loadProviders(providersPath, publicURL); err != nil {
-				log.Fatalf("load providers from %s: %v", providersPath, err)
+				log.Fatalf("load providers from %s: %v", providersPath, err) //nolint:gosec // start-up log of a path from the operator's environment, no request data
 			}
 			slog.Info("providers loaded", "path", providersPath)
 		} else if providersExplicit {
-			log.Fatalf("PEP_OPENID_PROVIDERS_PATH %q does not exist: %v", providersPath, statErr)
+			log.Fatalf("PEP_OPENID_PROVIDERS_PATH %q does not exist: %v", providersPath, statErr) //nolint:gosec // %q escapes a value from the operator's environment; start-up log, no request data
 		} else {
 			opts = providersFromEnv(publicURL)
 		}
@@ -187,7 +187,7 @@ func main() {
 	if v := os.Getenv("PEP_SESSION_TTL"); v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil {
-			log.Fatalf("invalid PEP_SESSION_TTL %q: %v", v, err)
+			log.Fatalf("invalid PEP_SESSION_TTL %q: %v", v, err) //nolint:gosec // %q escapes a value from the operator's environment; start-up log, no request data
 		}
 		snapshotTTL = d
 	}

@@ -66,12 +66,12 @@ func TestEnforcersJSON(t *testing.T) {
 
 	t.Logf("EnforcerAllOf: %v", ao)
 
-	next := func(ctx pep.Context) {
+	next := func(_ pep.Context) {
 		t.Fatal("next handler should not be called")
 	}
 
 	denyCalled := false
-	deny := func(ctx pep.Context, err pep.Error) {
+	deny := func(_ pep.Context, err pep.Error) {
 		t.Logf("Denying request: %v", err)
 		denyCalled = true
 	}
@@ -91,11 +91,11 @@ func TestEnforcersJSON(t *testing.T) {
 		t.Fatal("Deny function should have been called")
 	}
 
-	asJson, err := json.Marshal(eh)
+	asJSON, err := json.Marshal(eh)
 	if err != nil {
 		t.Fatalf("Failed to marshal JSON: %s", err)
 	}
-	t.Logf("Marshalled JSON: %s", asJson)
+	t.Logf("Marshalled JSON: %s", asJSON)
 }
 
 func TestEnforcersLogic(t *testing.T) {
@@ -108,15 +108,15 @@ func TestEnforcersLogic(t *testing.T) {
 		},
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /public", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /public", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("public"))
+		_, _ = w.Write([]byte("public"))
 	})
 
 	mux.HandleFunc("GET /private",
-		p.GuardedHandlerFunc(denyAllEnforcer, func(w http.ResponseWriter, r *http.Request) {
+		p.GuardedHandlerFunc(denyAllEnforcer, func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("private"))
+			_, _ = w.Write([]byte("private"))
 		}),
 	)
 
@@ -129,9 +129,9 @@ func TestEnforcersLogic(t *testing.T) {
 		next(ctx)
 	})
 
-	mux.HandleFunc("GET /api-key", p.GuardedHandlerFunc(customEnforcer, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api-key", p.GuardedHandlerFunc(customEnforcer, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("protected-by-api-key"))
+		_, _ = w.Write([]byte("protected-by-api-key"))
 	}))
 
 	anyOfEnforcer := pep.EnforcerAnyOf{
@@ -142,9 +142,9 @@ func TestEnforcersLogic(t *testing.T) {
 		},
 	}
 
-	mux.HandleFunc("GET /any-of", p.GuardedHandlerFunc(anyOfEnforcer, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /any-of", p.GuardedHandlerFunc(anyOfEnforcer, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("any-of"))
+		_, _ = w.Write([]byte("any-of"))
 	}))
 
 	server := httptest.NewServer(mux)
@@ -224,15 +224,15 @@ func TestEnforcerScope(t *testing.T) {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/public", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/public", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("public"))
+		_, _ = w.Write([]byte("public"))
 	})
 
 	mux.HandleFunc("/read",
-		p.GuardedHandlerFunc(enforcerRead, func(w http.ResponseWriter, r *http.Request) {
+		p.GuardedHandlerFunc(enforcerRead, func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("read"))
+			_, _ = w.Write([]byte("read"))
 		}),
 	)
 
@@ -242,9 +242,9 @@ func TestEnforcerScope(t *testing.T) {
 	}
 
 	mux.HandleFunc("/write",
-		p.GuardedHandlerFunc(enforcerWrite, func(w http.ResponseWriter, r *http.Request) {
+		p.GuardedHandlerFunc(enforcerWrite, func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("write"))
+			_, _ = w.Write([]byte("write"))
 		}),
 	)
 
@@ -387,15 +387,15 @@ func TestDPoPEnforcer(t *testing.T) {
 	p := createPEPAt(t, server.URL)
 
 	dpopEnforcer := &pep.EnforcerAuthorizationDPoP{}
-	mux.HandleFunc("/public", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/public", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("public"))
+		_, _ = w.Write([]byte("public"))
 	})
 
 	mux.HandleFunc("/dpop",
-		p.GuardedHandlerFunc(dpopEnforcer, func(w http.ResponseWriter, r *http.Request) {
+		p.GuardedHandlerFunc(dpopEnforcer, func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("dpop"))
+			_, _ = w.Write([]byte("dpop"))
 		}),
 	)
 

@@ -19,6 +19,8 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Package gemidp is a client of the gematik IDP-Dienst: Client is the relying party of its authorization
+// code flow, Authenticator answers its challenge with a signature from a smart card or a software key.
 package gemidp
 
 import (
@@ -43,7 +45,7 @@ import (
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
-// OpenID Connect metadata of the gematik IDP-Dienst
+// Metadata is the OpenID Connect discovery document of the gematik IDP-Dienst.
 type Metadata struct {
 	Issuer                            string   `json:"issuer"`
 	AuthorizationEndpoint             string   `json:"authorization_endpoint"`
@@ -53,7 +55,7 @@ type Metadata struct {
 	ResponseModesSupported            []string `json:"response_modes_supported"`
 	CodeChallengeMethodsSupported     []string `json:"code_challenge_methods_supported"`
 	GrantTypesSupported               []string `json:"grant_types_supported"`
-	IdTokenSigningAlgValuesSupported  []string `json:"id_token_signing_alg_values_supported"`
+	IDTokenSigningAlgValuesSupported  []string `json:"id_token_signing_alg_values_supported"`
 	ScopesSupported                   []string `json:"scopes_supported"`
 	SubjectTypesSupported             []string `json:"subject_types_supported"`
 	TokenEndpointAuthMethodsSupported []string `json:"token_endpoint_auth_methods_supported"`
@@ -61,8 +63,8 @@ type Metadata struct {
 	EncryptionKeyURI                  string   `json:"uri_puk_idp_enc"`
 }
 
-// Payload of the token key sent from the client to the gematik IDP-Dienst
-// to encrypt the token(s) when exchanging the authorization code
+// TokenKeyPayload is sent from the client to the gematik IDP-Dienst when exchanging the authorization code:
+// TokenKey is the key the IDP-Dienst encrypts the tokens with.
 type TokenKeyPayload struct {
 	TokenKey     string `json:"token_key"`
 	CodeVerifier string `json:"code_verifier"`
@@ -86,6 +88,7 @@ type ClientConfig struct {
 	HTTPClient *http.Client `yaml:"-"`
 }
 
+// Client is a relying party of the gematik IDP-Dienst.
 type Client struct {
 	config      ClientConfig
 	Environment Environment
@@ -95,6 +98,9 @@ type Client struct {
 	httpClient  *http.Client
 }
 
+// NewClientFromConfig creates a Client and fetches the discovery document, so the IDP-Dienst has to be
+// reachable. ClientID, RedirectURI and at least one scope are required; BaseURL overrides the base URL of
+// the Environment.
 func NewClientFromConfig(config ClientConfig) (*Client, error) {
 	if config.ClientID == "" {
 		return nil, errors.New("client ID is required")
@@ -145,11 +151,13 @@ func NewClientFromConfig(config ClientConfig) (*Client, error) {
 	}, nil
 }
 
+// AuthenticationURL returns the URL that starts a login; verifier is the PKCE code verifier. In
+// authenticator mode it is an authenticator:// link for the gematik Authenticator app.
+// oidc.WithAlternateRedirectURI replaces the configured redirect URI.
 func (c *Client) AuthenticationURL(state, nonce, verifier string, options ...oidc.Option) (string, error) {
 	redirectURI := c.config.RedirectURI
 	for _, opt := range options {
-		switch o := opt.(type) {
-		case oidc.WithAlternateRedirectURI:
+		if o, ok := opt.(oidc.WithAlternateRedirectURI); ok {
 			redirectURI = string(o)
 		}
 	}
@@ -192,7 +200,7 @@ func (c *Client) authenticationURLAuthenticator(state, nonce, verifier, redirect
 	}
 
 	// TODO: make selection of SMC-B / HBA configurable
-	challengePath.RawQuery = challengePath.RawQuery + "&cardType=SMC-B&callback=DIRECT"
+	challengePath.RawQuery += "&cardType=SMC-B&callback=DIRECT"
 
 	query := url.Values{
 		"challenge_path": {challengePath.String()},
@@ -201,11 +209,12 @@ func (c *Client) authenticationURLAuthenticator(state, nonce, verifier, redirect
 	return "authenticator://?" + query.Encode(), nil
 }
 
+// ExchangeForIdentity exchanges an authorization code and its PKCE verifier for the tokens and parses the
+// ID token. oidc.WithAlternateRedirectURI has to name the redirect URI the login used, if it replaced one.
 func (c *Client) ExchangeForIdentity(code, verifier string, options ...oidc.Option) (*oidc.TokenResponse, error) {
 	redirectURI := c.config.RedirectURI
 	for _, opt := range options {
-		switch o := opt.(type) {
-		case oidc.WithAlternateRedirectURI:
+		if o, ok := opt.(oidc.WithAlternateRedirectURI); ok {
 			redirectURI = string(o)
 		}
 	}
@@ -329,22 +338,27 @@ func (c *Client) parseIDToken(response *oidc.TokenResponse) (jwt.Token, error) {
 	return token, nil
 }
 
+// Issuer returns the issuer from the IDP-Dienst's discovery document.
 func (c *Client) Issuer() string {
 	return c.Metadata.Issuer
 }
 
+// ClientID returns the configured client ID.
 func (c *Client) ClientID() string {
 	return c.config.ClientID
 }
 
+// Name returns the configured display name of this provider.
 func (c *Client) Name() string {
 	return c.config.Name
 }
 
+// LogoURI returns the configured logo of this provider.
 func (c *Client) LogoURI() string {
 	return c.config.LogoURI
 }
 
+// RedirectURI returns the configured redirect URI.
 func (c *Client) RedirectURI() string {
 	return c.config.RedirectURI
 }

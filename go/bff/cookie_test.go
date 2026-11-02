@@ -55,7 +55,7 @@ func TestGuardSessionCookie(t *testing.T) {
 	do := func(cookieValue string) int {
 		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
 		if cookieValue != "" {
-			req.AddCookie(&http.Cookie{Name: "test-cookie", Value: cookieValue})
+			req.AddCookie(&http.Cookie{Name: "test-cookie", Value: cookieValue}) //nolint:gosec // a request cookie, sent as name=value only; Secure, HttpOnly and SameSite exist on responses
 		}
 		rec := httptest.NewRecorder()
 		protected.ServeHTTP(rec, req)

@@ -21,9 +21,10 @@
 
 package pep
 
-const ProtectedResourceMetadataUriPath = "/.well-known/oauth-protected-resource"
+// ProtectedResourceMetadataURIPath is the well-known path a resource serves ProtectedResourceMetadata at.
+const ProtectedResourceMetadataURIPath = "/.well-known/oauth-protected-resource"
 
-// Implementation of protected resource metadata
+// ProtectedResourceMetadata is the metadata document of a protected resource,
 // according to https://www.ietf.org/archive/id/draft-ietf-oauth-resource-metadata-01.html
 type ProtectedResourceMetadata struct {
 	Resource                             string   `json:"resource"`                                           // REQUIRED

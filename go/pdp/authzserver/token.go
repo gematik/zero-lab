@@ -38,12 +38,14 @@ import (
 	"github.com/gematik/zero-lab/go/dpop"
 )
 
+// Grant types the token endpoint accepts (RFC 6749 §1.3).
 const (
 	GrantTypeAuthorizationCode = "authorization_code"
 	GrantTypeClientCredentials = "client_credentials"
 	GrantTypeRefreshToken      = "refresh_token"
 )
 
+// TokenResponse is a successful token response (RFC 6749 §5.1). ExpiresIn and RefreshExpiresIn are in seconds.
 type TokenResponse struct {
 	AccessToken      string `json:"access_token"`
 	TokenType        string `json:"token_type"`
@@ -199,7 +201,7 @@ func (s *Server) tokenEndpointClientCredentials(w http.ResponseWriter, r *http.R
 		return dpopErr
 	}
 
-	session := &AuthzServerSession{
+	session := &Session{
 		ID:             uuid.NewV4().String(),
 		CreatedAt:      time.Now(),
 		ClientID:       client.ClientID,
@@ -238,18 +240,18 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 
 	var code string
 	var codeVerifier string
-	var redirectUri string
+	var redirectURI string
 	binderr := newFormBinder(r).
 		MustString("code", &code).
 		MustString("code_verifier", &codeVerifier).
-		MustString("redirect_uri", &redirectUri).
+		MustString("redirect_uri", &redirectURI).
 		BindError()
 
 	if binderr != nil {
 		return oauthErr(http.StatusBadRequest, "invalid_request", binderr.Error())
 	}
 
-	slog.Info("Token request", "redirect_uri", redirectUri, "client_id", client.ClientID)
+	slog.Info("Token request", "redirect_uri", redirectURI, "client_id", client.ClientID)
 
 	session, err := s.sessionStore.GetAuthzServerSessionByCode(code)
 	if err != nil {
@@ -260,7 +262,7 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 		return oauthErr(http.StatusBadRequest, "invalid_request", "client_id mismatch")
 	}
 
-	if session.RedirectURI != redirectUri {
+	if session.RedirectURI != redirectURI {
 		return oauthErr(http.StatusBadRequest, "invalid_request", "redirect_uri mismatch")
 	}
 
@@ -355,7 +357,7 @@ func (s *Server) tokenEndpointRefreshToken(w http.ResponseWriter, r *http.Reques
 	return writeJSON(w, http.StatusOK, response)
 }
 
-func (s *Server) issueOrRefreshTokens(session *AuthzServerSession) (*TokenResponse, error) {
+func (s *Server) issueOrRefreshTokens(session *Session) (*TokenResponse, error) {
 	var tokenType string
 	if session.DPoPThumbprint != "" {
 		tokenType = "DPoP"
@@ -363,29 +365,35 @@ func (s *Server) issueOrRefreshTokens(session *AuthzServerSession) (*TokenRespon
 		tokenType = "Bearer"
 	}
 
-	accessJwt := jwt.New()
-	accessJwt.Set("jti", session.ID)
-	if session.Audience != nil {
-		accessJwt.Set("aud", session.Audience)
-	}
-	accessJwt.Set("iat", time.Now().Unix())
 	exp := time.Now().Add(session.AccessTokenDuration)
 	if session.ExpiresAt.Before(exp) {
 		exp = session.ExpiresAt
 	}
-	accessJwt.Set("client_id", session.ClientID)
-	// TODO: set proper subject
-	accessJwt.Set("sub", session.ClientID)
-
-	accessJwt.Set("exp", exp.Unix())
+	claims := map[string]any{
+		"jti":       session.ID,
+		"iat":       time.Now().Unix(),
+		"client_id": session.ClientID,
+		// TODO: set proper subject
+		"sub": session.ClientID,
+		"exp": exp.Unix(),
+	}
+	if session.Audience != nil {
+		claims["aud"] = session.Audience
+	}
 	if len(session.Scopes) > 0 {
-		accessJwt.Set("scope", strings.Join(session.Scopes, " "))
+		claims["scope"] = strings.Join(session.Scopes, " ")
+	}
+	if session.DPoPThumbprint != "" {
+		claims["cnf"] = map[string]any{
+			"jkt": session.DPoPThumbprint,
+		}
 	}
 
-	if session.DPoPThumbprint != "" {
-		accessJwt.Set("cnf", map[string]any{
-			"jkt": session.DPoPThumbprint,
-		})
+	accessJwt := jwt.New()
+	for name, value := range claims {
+		if err := accessJwt.Set(name, value); err != nil {
+			return nil, fmt.Errorf("unable to set access token claim %q: %w", name, err)
+		}
 	}
 
 	accessTokenBytes, err := jwt.Sign(accessJwt, jwt.WithKey(jwa.ES256(), s.sigPrK))
@@ -409,7 +417,7 @@ func (s *Server) issueOrRefreshTokens(session *AuthzServerSession) (*TokenRespon
 	}, nil
 }
 
-func (s *Server) applyPolicyNewSession(product *Product, session *AuthzServerSession) *Error {
+func (s *Server) applyPolicyNewSession(product *Product, session *Session) *Error {
 	if !product.IsAllowedScopes(session.Scopes) {
 		return oauthErr(http.StatusForbidden, "invalid_scope", "scope not allowed: "+strings.Join(session.Scopes, " "))
 	}

@@ -19,6 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Package cmd implements the zero-pdp command line.
 package cmd
 
 import (
@@ -36,7 +37,7 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "zero-pdp",
 	Short: "Zero Trust Policy Decision Point",
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+	PersistentPreRun: func(_ *cobra.Command, _ []string) {
 		workdir := viper.GetString("workdir")
 		if workdir != "" {
 			err := os.Chdir(workdir)
@@ -45,7 +46,8 @@ var rootCmd = &cobra.Command{
 				os.Exit(1)
 			}
 		}
-		godotenv.Load()
+		// .env is optional: a deployment sets its variables directly.
+		_ = godotenv.Load()
 
 		logLevel := slog.LevelInfo
 		if viper.GetBool("verbose") {
@@ -60,11 +62,12 @@ var rootCmd = &cobra.Command{
 			slog.SetLogLoggerLevel(logLevel)
 		}
 	},
-	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Help()
+	Run: func(cmd *cobra.Command, _ []string) {
+		cobra.CheckErr(cmd.Help())
 	},
 }
 
+// Execute runs the zero-pdp command line and exits the process with status 1 on an error.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -79,9 +82,9 @@ func init() {
 	persistendFlags.StringP("workdir", "w", "", "working directory")
 	persistendFlags.BoolP("verbose", "v", false, "verbose output")
 	persistendFlags.StringP("config-file", "f", "pdp.yaml", "config file (default is pdp.yaml)")
-	viper.BindPFlag("workdir", persistendFlags.Lookup("workdir"))
-	viper.BindPFlag("verbose", persistendFlags.Lookup("verbose"))
-	viper.BindPFlag("config_file", persistendFlags.Lookup("config-file"))
+	cobra.CheckErr(viper.BindPFlag("workdir", persistendFlags.Lookup("workdir")))
+	cobra.CheckErr(viper.BindPFlag("verbose", persistendFlags.Lookup("verbose")))
+	cobra.CheckErr(viper.BindPFlag("config_file", persistendFlags.Lookup("config-file")))
 }
 
 // Expand ~ to $HOME

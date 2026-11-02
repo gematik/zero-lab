@@ -23,8 +23,10 @@ package pep
 
 import "fmt"
 
+// Error is a denial handed to Context.Deny: the HTTP status and challenge, and an OAuth 2.0 error response
+// body (RFC 6749 Section 5.2). An empty Code sends the status and challenge without a body.
 type Error struct {
-	HttpStatus  int    `json:"-"`
+	HTTPStatus  int    `json:"-"`
 	Code        string `json:"error"`
 	Description string `json:"error_description,omitempty"`
 	URI         string `json:"error_uri,omitempty"`
@@ -36,34 +38,41 @@ func (e Error) Error() string {
 	return fmt.Sprintf("%s (code=%s)", e.Description, e.Code)
 }
 
+// ErrForbiddenHeadersInRequest denies a request carrying headers the resource does not accept (status 400).
 var ErrForbiddenHeadersInRequest = Error{
-	HttpStatus:  400,
+	HTTPStatus:  400,
 	Code:        "forbidden_headers_in_request",
 	Description: "Request contains forbidden headers",
 }
 
+// ErrNoAuthorizationHeader denies a request without an Authorization header (status 401).
 var ErrNoAuthorizationHeader = Error{
-	HttpStatus:  401,
+	HTTPStatus:  401,
 	Code:        "no_authorization_header",
 	Description: "No Authorization header in request",
 }
 
+// ErrInvalidAuthorizationHeader denies a request whose Authorization headers hold no credentials of the
+// expected scheme (status 400).
 var ErrInvalidAuthorizationHeader = Error{
-	HttpStatus:  400,
+	HTTPStatus:  400,
 	Code:        "invalid_authorization_header",
 	Description: "Invalid Authorization header in request",
 }
 
+// ErrorAccessDeinied is a 403 access_denied denial; the description reaches the client as error_description,
+// so it must not carry internals.
 func ErrorAccessDeinied(description string) Error {
 	return Error{
-		HttpStatus:  403,
+		HTTPStatus:  403,
 		Code:        "access_denied",
 		Description: description,
 	}
 }
 
+// ErrSessionRequired denies a request without a valid session cookie (status 401).
 var ErrSessionRequired = Error{
-	HttpStatus:  401,
+	HTTPStatus:  401,
 	Code:        "session_required",
 	Description: "no valid session cookie",
 }

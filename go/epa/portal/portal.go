@@ -19,6 +19,8 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Package portal serves the developer portal of the zero-epa proxy: pages rendered on the
+// server from embedded templates, and the static assets.
 package portal
 
 import (
@@ -56,6 +58,8 @@ var pages = []Page{
 	{Slug: "documents", Path: "/documents", Title: "Dokumente", Group: "ePA-Dienste"},
 }
 
+// PageData is the data each page's template renders; AuthHeader, when set, goes into the
+// curl examples.
 type PageData struct {
 	BaseURL    string
 	AuthHeader string
@@ -113,6 +117,7 @@ type Portal struct {
 	templates  map[string]*template.Template
 }
 
+// New parses the embedded templates of every page; proxyInfos are the proxies its pages list.
 func New(proxyInfos []*epa.ProxyInfo) (*Portal, error) {
 	p := &Portal{
 		proxyInfos: proxyInfos,

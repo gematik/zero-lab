@@ -33,6 +33,7 @@ import (
 	"strings"
 	"time"
 
+	// Registers the "pgx" driver with database/sql.
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/gematik/zero-lab/go/kv"

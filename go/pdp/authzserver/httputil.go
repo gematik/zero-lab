@@ -47,11 +47,11 @@ func (s *Server) handle(h handlerFunc) http.HandlerFunc {
 		slog.Error("request error", "error", err, "path", r.URL.Path, "remote_addr", realIP(r))
 		authzErr := &Error{}
 		if errors.As(err, &authzErr) {
-			_ = writeJSON(w, authzErr.HttpStatus, authzErr)
+			_ = writeJSON(w, authzErr.HTTPStatus, authzErr)
 			return
 		}
 		_ = writeJSON(w, http.StatusInternalServerError, &Error{
-			HttpStatus:  http.StatusInternalServerError,
+			HTTPStatus:  http.StatusInternalServerError,
 			Code:        "server_error",
 			Description: err.Error(),
 		})
@@ -131,7 +131,7 @@ func Recover(next http.Handler) http.Handler {
 			if rec := recover(); rec != nil {
 				slog.Error("panic recovered", "recover", rec, "path", r.URL.Path)
 				_ = writeJSON(w, http.StatusInternalServerError, &Error{
-					HttpStatus:  http.StatusInternalServerError,
+					HTTPStatus:  http.StatusInternalServerError,
 					Code:        "server_error",
 					Description: "internal server error",
 				})
@@ -211,7 +211,7 @@ func (w *errorNormalizingWriter) Write(b []byte) (int, error) {
 }
 
 func oauthErrorForStatus(code int) *Error {
-	e := &Error{HttpStatus: code, Description: http.StatusText(code)}
+	e := &Error{HTTPStatus: code, Description: http.StatusText(code)}
 	switch code {
 	case http.StatusNotFound:
 		e.Code = "not_found"

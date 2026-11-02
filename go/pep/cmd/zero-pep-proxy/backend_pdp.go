@@ -69,7 +69,7 @@ func loadJWKFile(path string) (jwk.Key, error) {
 	if path == "" {
 		return nil, errors.New("path is required")
 	}
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // the path comes from PEP_CLIENT_SIGNING_KEY_PATH in the operator's environment, not a request
 	if err != nil {
 		return nil, err
 	}

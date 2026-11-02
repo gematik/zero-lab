@@ -43,7 +43,9 @@ func testSigningKey(t *testing.T) jwk.Key {
 	t.Helper()
 	prk, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	k, _ := jwk.Import(prk)
-	k.Set(jwk.KeyIDKey, "test-pep-client")
+	if err := k.Set(jwk.KeyIDKey, "test-pep-client"); err != nil {
+		t.Fatal(err)
+	}
 	return k
 }
 
@@ -105,7 +107,7 @@ func TestPDPTokenRequestSendsDPoP(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotDPoP = r.Header.Get(dpop.HeaderName)
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"access_token":"at","refresh_token":"rt","expires_in":300,"token_type":"DPoP"}`))
+		_, _ = w.Write([]byte(`{"access_token":"at","refresh_token":"rt","expires_in":300,"token_type":"DPoP"}`))
 	}))
 	defer ts.Close()
 	b := &pdpBackend{

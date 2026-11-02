@@ -67,7 +67,7 @@ func (b *pdpBackend) injectDPoP(out *http.Request, sess *Session, token string) 
 	return nil
 }
 
-const clientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+const clientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" //nolint:gosec // an OAuth client assertion type URN (RFC 7523), not a credential
 
 // PDPConfig configures the pdpBackend: pep as a confidential OAuth client of the PDP (the gematik AS).
 type PDPConfig struct {
@@ -146,19 +146,28 @@ func (b *pdpBackend) clientAssertion(ctx context.Context, sess *Session) (string
 
 	now := time.Now()
 	tok := jwt.New()
-	tok.Set(jwt.IssuerKey, b.cfg.ClientID)
-	tok.Set(jwt.SubjectKey, b.cfg.ClientID)
-	tok.Set(jwt.AudienceKey, b.meta.Issuer)
-	tok.Set(jwt.JwtIDKey, uuid.NewV4().String())
-	tok.Set(jwt.IssuedAtKey, now.Unix())
-	tok.Set(jwt.ExpirationKey, now.Add(time.Minute).Unix())
-	tok.Set("cnf", map[string]string{"jkt": jkt})
+	claims := map[string]any{
+		jwt.IssuerKey:     b.cfg.ClientID,
+		jwt.SubjectKey:    b.cfg.ClientID,
+		jwt.AudienceKey:   b.meta.Issuer,
+		jwt.JwtIDKey:      uuid.NewV4().String(),
+		jwt.IssuedAtKey:   now.Unix(),
+		jwt.ExpirationKey: now.Add(time.Minute).Unix(),
+		"cnf":             map[string]string{"jkt": jkt},
+	}
+	for name, value := range claims {
+		if err := tok.Set(name, value); err != nil {
+			return "", fmt.Errorf("set client_assertion claim %s: %w", name, err)
+		}
+	}
 	if b.meta.NonceEndpoint != "" {
 		nonce, err := b.fetchNonce(ctx)
 		if err != nil {
 			return "", fmt.Errorf("fetch nonce: %w", err)
 		}
-		tok.Set("nonce", nonce)
+		if err := tok.Set("nonce", nonce); err != nil {
+			return "", fmt.Errorf("set client_assertion claim nonce: %w", err)
+		}
 	}
 	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.ES256(), b.cfg.SigningKey))
 	if err != nil {
@@ -172,11 +181,11 @@ func (b *pdpBackend) fetchNonce(ctx context.Context) (string, error) {
 	if b.meta.NonceEndpoint == "" {
 		return "", errors.New("no nonce_endpoint in metadata")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.meta.NonceEndpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.meta.NonceEndpoint, nil) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host
 	if err != nil {
 		return "", err
 	}
-	resp, err := b.http.Do(req)
+	resp, err := b.http.Do(req) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host
 	if err != nil {
 		return "", err
 	}
@@ -227,7 +236,7 @@ type providerInfo struct {
 	Type    string `json:"type"`
 }
 
-func (b *pdpBackend) Providers(ctx context.Context) ([]Provider, error) {
+func (b *pdpBackend) Providers(_ context.Context) ([]Provider, error) {
 	return b.providers, nil
 }
 
@@ -325,12 +334,12 @@ func (b *pdpBackend) pushAuthorizationRequest(ctx context.Context, sess *Session
 	form.Set("client_assertion_type", clientAssertionTypeJWTBearer)
 	form.Set("client_assertion", assertion)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.meta.PushedAuthorizationRequestEndpoint, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.meta.PushedAuthorizationRequestEndpoint, strings.NewReader(form.Encode())) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := b.http.Do(req)
+	resp, err := b.http.Do(req) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host
 	if err != nil {
 		return "", err
 	}
@@ -356,7 +365,7 @@ func (b *pdpBackend) pushAuthorizationRequest(ctx context.Context, sess *Session
 func (b *pdpBackend) resolveDecoupledAuthURL(authURL string) (string, error) {
 	noRedirect := *b.http
 	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	resp, err := noRedirect.Get(authURL)
+	resp, err := noRedirect.Get(authURL) //nolint:gosec // authURL is the AS's authorization endpoint from its metadata; the request only contributes url-encoded query values
 	if err != nil {
 		return "", fmt.Errorf("fetch authorization url: %w", err)
 	}
@@ -446,13 +455,13 @@ func (b *pdpBackend) tokenRequest(ctx context.Context, sess *Session, form url.V
 		if err != nil {
 			return nil, err
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.meta.TokenEndpoint, strings.NewReader(form.Encode()))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.meta.TokenEndpoint, strings.NewReader(form.Encode())) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host
 		if err != nil {
 			return nil, err
 		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set(dpop.HeaderName, proof)
-		return b.http.Do(req)
+		return b.http.Do(req) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host
 	}
 
 	resp, err := do("")
@@ -461,7 +470,7 @@ func (b *pdpBackend) tokenRequest(ctx context.Context, sess *Session, form url.V
 	}
 	if resp.StatusCode == http.StatusBadRequest {
 		if n := resp.Header.Get("DPoP-Nonce"); n != "" {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp, err = do(n); err != nil {
 				return nil, err
 			}
@@ -508,12 +517,12 @@ func (b *pdpBackend) introspectIdentity(ctx context.Context, sess *Session, acce
 		"client_assertion_type": {clientAssertionTypeJWTBearer},
 		"client_assertion":      {assertion},
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.meta.IntrospectionEndpoint, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.meta.IntrospectionEndpoint, strings.NewReader(form.Encode())) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := b.http.Do(req)
+	resp, err := b.http.Do(req) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host
 	if err != nil {
 		return nil, err
 	}

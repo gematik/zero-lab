@@ -33,7 +33,7 @@ import (
 	"github.com/gematik/zero-lab/go/kv"
 )
 
-// kvSessionStore implements AuthzServerSessionStore over a kv.Store. The session record lives under
+// kvSessionStore implements SessionStore over a kv.Store. The session record lives under
 // "as:session:<id>"; secondary lookups (code, authn-state, request_uri, refresh) are index keys holding
 // the id. Save writes the record + all populated index keys atomically (SetMany), so a lookup never
 // resolves a half-written session. GetByCode consumes the code index (Take) so an authorization code is
@@ -65,7 +65,7 @@ func hashRefreshToken(raw string) string {
 
 // ttl bounds how long a session (and its index keys) live: until ExpiresAt when set, otherwise the
 // default (the pending window between /auth and /token, before a policy sets ExpiresAt).
-func (s *kvSessionStore) ttl(sess *AuthzServerSession) time.Duration {
+func (s *kvSessionStore) ttl(sess *Session) time.Duration {
 	if !sess.ExpiresAt.IsZero() {
 		if d := time.Until(sess.ExpiresAt); d > 0 {
 			return d
@@ -75,9 +75,9 @@ func (s *kvSessionStore) ttl(sess *AuthzServerSession) time.Duration {
 	return s.defaultTTL
 }
 
-func (s *kvSessionStore) SaveAutzhServerSession(session *AuthzServerSession) error {
+func (s *kvSessionStore) SaveAutzhServerSession(session *Session) error {
 	ctx := context.Background()
-	record, err := json.Marshal(session)
+	record, err := json.Marshal(session) //nolint:gosec // TASK-178: the record holds tokens and verifiers unencrypted
 	if err != nil {
 		return fmt.Errorf("marshal session: %w", err)
 	}
@@ -97,8 +97,8 @@ func (s *kvSessionStore) SaveAutzhServerSession(session *AuthzServerSession) err
 	if session.AuthnClientSession != nil && session.AuthnClientSession.State != "" {
 		addIndex(asAuthnKey(session.AuthnClientSession.State))
 	}
-	if session.RequestUri != "" {
-		addIndex(asRequriKey(session.RequestUri))
+	if session.RequestURI != "" {
+		addIndex(asRequriKey(session.RequestURI))
 	}
 	if session.RefreshToken != "" {
 		addIndex(asRefreshKey(session.RefreshToken))
@@ -106,7 +106,7 @@ func (s *kvSessionStore) SaveAutzhServerSession(session *AuthzServerSession) err
 	return s.store.SetMany(ctx, entries...)
 }
 
-func (s *kvSessionStore) GetAuthzServerSessionByID(id string) (*AuthzServerSession, error) {
+func (s *kvSessionStore) GetAuthzServerSessionByID(id string) (*Session, error) {
 	data, found, err := s.store.Get(context.Background(), asSessionKey(id))
 	if err != nil {
 		return nil, err
@@ -114,7 +114,7 @@ func (s *kvSessionStore) GetAuthzServerSessionByID(id string) (*AuthzServerSessi
 	if !found {
 		return nil, errSessionNotFound
 	}
-	var sess AuthzServerSession
+	var sess Session
 	if err := json.Unmarshal(data, &sess); err != nil {
 		return nil, fmt.Errorf("unmarshal session: %w", err)
 	}
@@ -122,7 +122,7 @@ func (s *kvSessionStore) GetAuthzServerSessionByID(id string) (*AuthzServerSessi
 }
 
 // resolveIndex reads an index key (holding a session id) and returns the referenced session.
-func (s *kvSessionStore) resolveIndex(idData []byte, found bool, err error) (*AuthzServerSession, error) {
+func (s *kvSessionStore) resolveIndex(idData []byte, found bool, err error) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -136,26 +136,26 @@ func (s *kvSessionStore) resolveIndex(idData []byte, found bool, err error) (*Au
 	return s.GetAuthzServerSessionByID(id)
 }
 
-func (s *kvSessionStore) GetAuthzServerSessionByAuthnState(authnState string) (*AuthzServerSession, error) {
+func (s *kvSessionStore) GetAuthzServerSessionByAuthnState(authnState string) (*Session, error) {
 	v, found, err := s.store.Get(context.Background(), asAuthnKey(authnState))
 	return s.resolveIndex(v, found, err)
 }
 
 // GetAutzhServerSessionByRequestURI consumes the request_uri index (Take) so a PAR request_uri is
 // single-use (RFC 9126 §4): a replayed /authorize with the same request_uri resolves to not-found.
-func (s *kvSessionStore) GetAutzhServerSessionByRequestURI(requestURI string) (*AuthzServerSession, error) {
+func (s *kvSessionStore) GetAutzhServerSessionByRequestURI(requestURI string) (*Session, error) {
 	v, found, err := s.store.Take(context.Background(), asRequriKey(requestURI))
 	return s.resolveIndex(v, found, err)
 }
 
-func (s *kvSessionStore) GetAuthzServerSessionByRefreshToken(token string) (*AuthzServerSession, error) {
+func (s *kvSessionStore) GetAuthzServerSessionByRefreshToken(token string) (*Session, error) {
 	v, found, err := s.store.Get(context.Background(), asRefreshKey(token))
 	return s.resolveIndex(v, found, err)
 }
 
 // GetAuthzServerSessionByCode consumes the code index (Take) so an authorization code is single-use
 // (RFC 6749 §4.1.2): a concurrent or replayed exchange of the same code resolves to not-found.
-func (s *kvSessionStore) GetAuthzServerSessionByCode(code string) (*AuthzServerSession, error) {
+func (s *kvSessionStore) GetAuthzServerSessionByCode(code string) (*Session, error) {
 	v, found, err := s.store.Take(context.Background(), asCodeKey(code))
 	return s.resolveIndex(v, found, err)
 }
@@ -175,8 +175,8 @@ func (s *kvSessionStore) DeleteAuthzServerSessionByID(id string) error {
 	if sess.AuthnClientSession != nil && sess.AuthnClientSession.State != "" {
 		_ = s.store.Delete(ctx, asAuthnKey(sess.AuthnClientSession.State))
 	}
-	if sess.RequestUri != "" {
-		_ = s.store.Delete(ctx, asRequriKey(sess.RequestUri))
+	if sess.RequestURI != "" {
+		_ = s.store.Delete(ctx, asRequriKey(sess.RequestURI))
 	}
 	if sess.RefreshToken != "" {
 		_ = s.store.Delete(ctx, asRefreshKey(sess.RefreshToken))

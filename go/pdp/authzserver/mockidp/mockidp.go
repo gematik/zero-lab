@@ -35,6 +35,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -131,7 +132,7 @@ func newSigningKey() (jwk.Key, error) {
 	return key, nil
 }
 
-func (p *provider) handleDiscovery(w http.ResponseWriter, r *http.Request) {
+func (p *provider) handleDiscovery(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, map[string]any{
 		"issuer":                                p.issuer,
 		"authorization_endpoint":                p.issuer + "/auth",
@@ -143,7 +144,7 @@ func (p *provider) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (p *provider) handleJWKS(w http.ResponseWriter, r *http.Request) {
+func (p *provider) handleJWKS(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, p.jwks)
 }
 
@@ -215,7 +216,7 @@ func (p *provider) handleAuthSubmit(w http.ResponseWriter, r *http.Request) {
 	q := url.Values{}
 	q.Set("code", code)
 	q.Set("state", r.FormValue("state"))
-	http.Redirect(w, r, redirectURI+"?"+q.Encode(), http.StatusFound)
+	http.Redirect(w, r, redirectURI+"?"+q.Encode(), http.StatusFound) //nolint:gosec // TASK-184: non-production mock behind the mockidp tag, redirect_uri unchecked
 }
 
 func (p *provider) handleToken(w http.ResponseWriter, r *http.Request) {
@@ -240,15 +241,21 @@ func (p *provider) handleToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := time.Now()
+	claims := map[string]any{
+		"iss":   p.issuer,
+		"sub":   p.id.Subject,
+		"aud":   pend.clientID,
+		"nonce": pend.nonce,
+		"iat":   now.Unix(),
+		"exp":   now.Add(5 * time.Minute).Unix(),
+	}
+	maps.Copy(claims, p.id.Claims)
 	tok := jwt.New()
-	tok.Set("iss", p.issuer)
-	tok.Set("sub", p.id.Subject)
-	tok.Set("aud", pend.clientID)
-	tok.Set("nonce", pend.nonce)
-	tok.Set("iat", now.Unix())
-	tok.Set("exp", now.Add(5*time.Minute).Unix())
-	for k, v := range p.id.Claims {
-		tok.Set(k, v)
+	for k, v := range claims {
+		if err := tok.Set(k, v); err != nil {
+			oauthError(w, "server_error", "set id_token claim "+k+": "+err.Error())
+			return
+		}
 	}
 	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.ES256(), p.signKey))
 	if err != nil {

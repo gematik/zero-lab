@@ -19,6 +19,8 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Package pep is a policy enforcement point for HTTP resources: Enforcers decide on each request from its
+// access token, DPoP proof or session cookie, and a denial becomes an OAuth 2.0 error response.
 package pep
 
 import (
@@ -42,6 +44,8 @@ import (
 
 const defaultHTTPTimeout = 30 * time.Second
 
+// PEP holds what the enforcers verify requests against: the JWK set, the protected resource and its public
+// origin. It is made by a Builder.
 type PEP struct {
 	slogger                   *slog.Logger
 	httpClient                *http.Client
@@ -55,16 +59,21 @@ type PEP struct {
 	dpopVerifier *dpop.Verifier
 }
 
-type builder struct {
+// Builder configures a PEP. An option that fails records its error for Build to return.
+type Builder struct {
 	p   *PEP
 	err error
 }
 
-func NewBuilder() *builder {
-	return &builder{p: &PEP{}}
+// NewBuilder starts a Builder with no JWK set source, which Build requires.
+func NewBuilder() *Builder {
+	return &Builder{p: &PEP{}}
 }
 
-func (b *builder) Build() (*PEP, error) {
+// Build returns the PEP or the recorded error. It fails without a JWK set source or with a public origin
+// that is not an absolute http or https URL. Defaults: a 30 s HTTP client, the default slog logger, one
+// minute of skew, and the resource's origin as public origin.
+func (b *Builder) Build() (*PEP, error) {
 	if b.err != nil {
 		return nil, b.err
 	}
@@ -111,19 +120,23 @@ func originOf(raw string) (string, error) {
 	return u.Scheme + "://" + u.Host, nil
 }
 
-func (b *builder) WithJWKSetFunc(f func() (jwk.Set, error)) *builder {
+// WithJWKSetFunc sets the source of the verification keys; f is called for every token, so it can follow
+// key rotation and should cache.
+func (b *Builder) WithJWKSetFunc(f func() (jwk.Set, error)) *Builder {
 	b.p.provideJwkSetFunc = f
 	return b
 }
 
-func (b *builder) WithJWKSet(jwkSet jwk.Set) *builder {
+// WithJWKSet sets a fixed set of verification keys.
+func (b *Builder) WithJWKSet(jwkSet jwk.Set) *Builder {
 	b.p.provideJwkSetFunc = func() (jwk.Set, error) {
 		return jwkSet, nil
 	}
 	return b
 }
 
-func (b *builder) WithJWKSetPath(path string) *builder {
+// WithJWKSetPath reads a fixed set of verification keys from a file, once and at this call.
+func (b *Builder) WithJWKSetPath(path string) *Builder {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		b.err = fmt.Errorf("could not read JWKSet from %s: %w", path, err)
@@ -136,39 +149,46 @@ func (b *builder) WithJWKSetPath(path string) *builder {
 	return b.WithJWKSet(jwks)
 }
 
-func (b *builder) WithAccessTokenAcceptableSkew(d time.Duration) *builder {
+// WithAccessTokenAcceptableSkew sets the clock skew tolerated on a token's time claims; zero means one minute.
+func (b *Builder) WithAccessTokenAcceptableSkew(d time.Duration) *Builder {
 	b.p.accessTokenAcceptableSkew = d
 	return b
 }
 
-func (b *builder) WithDecryptAccessTokenFunc(f func(string) (string, error)) *builder {
+// WithDecryptAccessTokenFunc stores a decrypter for encrypted access tokens. Verification does not call it
+// yet, so an encrypted token is still refused.
+func (b *Builder) WithDecryptAccessTokenFunc(f func(string) (string, error)) *Builder {
 	b.p.decryptAccessTokenFunc = f
 	return b
 }
 
-func (b *builder) WithHttpClient(client *http.Client) *builder {
+// WithHTTPClient sets the client for outbound requests. Verification makes none yet.
+func (b *Builder) WithHTTPClient(client *http.Client) *Builder {
 	b.p.httpClient = client
 	return b
 }
 
-func (b *builder) WithSlogger(slogger *slog.Logger) *builder {
+// WithSlogger sets the logger of the PEP and of the contexts it creates.
+func (b *Builder) WithSlogger(slogger *slog.Logger) *Builder {
 	b.p.slogger = slogger
 	return b
 }
 
-func (b *builder) Resource(resource string) *builder {
+// Resource sets the URI of the protected resource: a token's audience must match it, and it is the default
+// public origin. Without it the audience is not restricted.
+func (b *Builder) Resource(resource string) *Builder {
 	b.p.resource = resource
 	return b
 }
 
 // PublicOrigin sets the scheme, host and port clients reach the protected resource at, for the
 // DPoP htu check. Without it, the resource's origin is used.
-func (b *builder) PublicOrigin(origin string) *builder {
+func (b *Builder) PublicOrigin(origin string) *Builder {
 	b.p.publicOrigin = origin
 	return b
 }
 
-// close the PEP and release any resources
+// Close releases the resources of the PEP. It holds none yet, so it always returns nil.
 func (p *PEP) Close() error {
 	// TODO: reserved for future use
 	return nil
@@ -184,16 +204,20 @@ func (p *PEP) deny(ctx Context, err Error) {
 	// A request without credentials gets the challenge alone: no error code, so no error body
 	// (RFC 6750 Section 3.1, RFC 9449 Figure 15).
 	if err.Code == "" {
-		w.WriteHeader(err.HttpStatus)
+		w.WriteHeader(err.HTTPStatus)
 		return
 	}
 	w.Header().Add("Content-Type", "application/json")
-	w.WriteHeader(err.HttpStatus)
-	json.NewEncoder(w).Encode(err)
+	w.WriteHeader(err.HTTPStatus)
+	if encErr := json.NewEncoder(w).Encode(err); encErr != nil {
+		slog.Warn("Could not write denial", "error", encErr)
+	}
 }
 
+// HandlerFunc continues a request an Enforcer let through.
 type HandlerFunc func(ctx Context)
 
+// Context is one request as an Enforcer sees it.
 type Context interface {
 	Writer() http.ResponseWriter
 	Request() *http.Request
@@ -309,7 +333,7 @@ func (p *PEP) dpopDenial(e *dpop.Error) Error {
 		status = http.StatusBadRequest
 	}
 	return Error{
-		HttpStatus:      status,
+		HTTPStatus:      status,
 		Code:            e.Code,
 		Description:     e.Description,
 		WWWAuthenticate: p.dpopVerifier.Challenge(e),
@@ -340,7 +364,7 @@ func (c *pepContext) verifyAccessToken(accessToken string) error {
 	jwtToken, err := c.pep.VerifyAccessToken(accessToken)
 	if err != nil {
 		return &Error{
-			HttpStatus:  http.StatusUnauthorized,
+			HTTPStatus:  http.StatusUnauthorized,
 			Code:        "invalid_token",
 			Description: fmt.Sprintf("invalid access token: %s", err),
 		}
@@ -364,6 +388,7 @@ func (c *pepContext) verifyAccessToken(accessToken string) error {
 	return nil
 }
 
+// NewContext returns the Context of one request; its Deny writes the error response to w.
 func (p *PEP) NewContext(w http.ResponseWriter, r *http.Request) Context {
 	return &pepContext{
 		pep:     p,
@@ -374,6 +399,8 @@ func (p *PEP) NewContext(w http.ResponseWriter, r *http.Request) Context {
 	}
 }
 
+// GuardedHandlerFunc wraps next so that it only runs when enforcer lets the request through; a denial writes
+// the error response instead.
 func (p *PEP) GuardedHandlerFunc(enforcer Enforcer, next func(w http.ResponseWriter, r *http.Request)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := p.NewContext(w, r)

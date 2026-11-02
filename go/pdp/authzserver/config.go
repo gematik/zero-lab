@@ -33,6 +33,7 @@ import (
 	"github.com/gematik/zero-lab/go/oidf"
 )
 
+// Config is the authorization_server section of pdp.yaml. Relative paths resolve against BaseDir.
 type Config struct {
 	BaseDir                    string                   `yaml:"-"`
 	Issuer                     string                   `yaml:"issuer" validate:"required"`
@@ -56,6 +57,7 @@ type Config struct {
 	Store kv.Store
 }
 
+// EndpointsConfig holds the paths the server mounts its endpoints at. An empty field takes its default.
 type EndpointsConfig struct {
 	AuthorizationServerMetadata string `yaml:"authorization_server_metadata"`
 	Jwks                        string `yaml:"jwks"`

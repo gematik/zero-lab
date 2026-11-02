@@ -55,7 +55,7 @@ func introspect(t *testing.T, md authzserver.ExtendedMetadata, assertion, token 
 			t.Fatalf("introspect decode: %v", err)
 		}
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	return resp, ir
 }
 
@@ -153,7 +153,7 @@ func TestFlow_Introspection_CrossClient(t *testing.T) {
 
 	token := mintClientCredentialsToken(t, md, clientID, scope, clientKey(t))
 
-	key2b, err := os.ReadFile(key2Path)
+	key2b, err := os.ReadFile(key2Path) //nolint:gosec // the path comes from the test's own ZERO_PDP_E2E_CLIENT2_KEY_PATH variable
 	if err != nil {
 		t.Fatalf("read client2 key: %v", err)
 	}

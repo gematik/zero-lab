@@ -27,7 +27,9 @@ import (
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
-type AuthzServerSession struct {
+// Session is the state of one authorization, from the pushed request to the last token refresh.
+// RefreshToken holds the hash of the current refresh token, not the token.
+type Session struct {
 	ID                  string                   `json:"id"`
 	CreatedAt           time.Time                `json:"created_at"`
 	ExpiresAt           time.Time                `json:"expires_at"`
@@ -40,7 +42,7 @@ type AuthzServerSession struct {
 	State               string                   `json:"state"`
 	Scopes              []string                 `json:"scopes"`
 	IDPIss              string                   `json:"idp_iss"`
-	RequestUri          string                   `json:"request_uri"`
+	RequestURI          string                   `json:"request_uri"`
 	AuthnClientSession  *oidc.AuthnClientSession `json:"authn_client_session"`
 	Code                string                   `json:"code"`
 	RefreshToken        string                   `json:"refresh_token"`
@@ -49,13 +51,15 @@ type AuthzServerSession struct {
 	DPoPThumbprint      string                   `json:"dpop_thumbprint"`
 }
 
-type AuthzServerSessionStore interface {
-	GetAuthzServerSessionByID(id string) (*AuthzServerSession, error)
-	GetAuthzServerSessionByAuthnState(authnState string) (*AuthzServerSession, error)
-	GetAutzhServerSessionByRequestURI(requestURI string) (*AuthzServerSession, error)
-	GetAuthzServerSessionByCode(code string) (*AuthzServerSession, error)
-	GetAuthzServerSessionByRefreshToken(token string) (*AuthzServerSession, error)
+// SessionStore persists sessions and finds them by their lookup values. The lookup by request_uri
+// consumes it, so a pushed request starts one login at most.
+type SessionStore interface {
+	GetAuthzServerSessionByID(id string) (*Session, error)
+	GetAuthzServerSessionByAuthnState(authnState string) (*Session, error)
+	GetAutzhServerSessionByRequestURI(requestURI string) (*Session, error)
+	GetAuthzServerSessionByCode(code string) (*Session, error)
+	GetAuthzServerSessionByRefreshToken(token string) (*Session, error)
 	DeleteRefreshIndex(refreshTokenHash string) error
-	SaveAutzhServerSession(session *AuthzServerSession) error
+	SaveAutzhServerSession(session *Session) error
 	DeleteAuthzServerSessionByID(id string) error
 }

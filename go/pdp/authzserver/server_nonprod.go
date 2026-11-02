@@ -23,14 +23,17 @@ package authzserver
 
 import "uuid"
 
-// Non-production code for the OAuth2 server
-func (s *Server) NonProdStartSession(session *AuthzServerSession) error {
+// NonProdStartSession stores session under a fresh ID, with no client authentication or policy check. Only the
+// non-prod command calls it; no endpoint reaches it.
+func (s *Server) NonProdStartSession(session *Session) error {
 	session.ID = uuid.NewV4().String()
 	return s.sessionStore.SaveAutzhServerSession(session)
 }
 
-func (s *Server) NonProdIssueTokens(sessionId string) (*TokenResponse, error) {
-	session, err := s.sessionStore.GetAuthzServerSessionByID(sessionId)
+// NonProdIssueTokens issues tokens for a stored session, with no client authentication or policy check. Only the
+// non-prod command calls it; no endpoint reaches it.
+func (s *Server) NonProdIssueTokens(sessionID string) (*TokenResponse, error) {
+	session, err := s.sessionStore.GetAuthzServerSessionByID(sessionID)
 	if err != nil {
 		return nil, err
 	}

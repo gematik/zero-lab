@@ -34,23 +34,23 @@ import (
 
 type fakeBackend struct{ identity map[string]any }
 
-func (f *fakeBackend) Providers(ctx context.Context) ([]Provider, error) {
+func (f *fakeBackend) Providers(_ context.Context) ([]Provider, error) {
 	return []Provider{{Issuer: "https://idp.example", Name: "Test IdP", Type: "oidc"}}, nil
 }
 func (f *fakeBackend) DefaultIssuer() string { return "https://idp.example" }
-func (f *fakeBackend) StartLogin(ctx context.Context, sess *Session, idpIss, scope string) (LoginStart, error) {
+func (f *fakeBackend) StartLogin(_ context.Context, sess *Session, _, _ string) (LoginStart, error) {
 	sess.IDPIss = "https://idp.example"
 	sess.State = "test-state"
 	sess.CodeVerifier = "verifier"
 	return LoginStart{AuthURL: "https://idp.example/authorize?state=test-state", Mode: "redirect"}, nil
 }
 
-func (f *fakeBackend) Complete(ctx context.Context, sess *Session, code string) error {
+func (f *fakeBackend) Complete(_ context.Context, sess *Session, _ string) error {
 	sess.Identity = f.identity
 	return nil
 }
 
-func (f *fakeBackend) FreshAccessToken(ctx context.Context, sess *Session) (string, error) {
+func (f *fakeBackend) FreshAccessToken(_ context.Context, _ *Session) (string, error) {
 	return "", nil
 }
 func (f *fakeBackend) DPoPKey() jwk.Key { return nil }
@@ -87,7 +87,7 @@ func TestForwardAuth_Authenticated(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest(http.MethodGet, "/oauth2/auth", nil)
-	req.AddCookie(&http.Cookie{Name: s.cookie.Name, Value: sess.token})
+	req.AddCookie(&http.Cookie{Name: s.cookie.Name, Value: sess.token}) //nolint:gosec // request cookie in a test: only name and value go on the wire
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 
@@ -146,7 +146,7 @@ func TestSignOut_ClearsSession(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/oauth2/sign_out", nil)
 	req.Header.Set("X-Requested-With", "fetch")
-	req.AddCookie(&http.Cookie{Name: s.cookie.Name, Value: sess.token})
+	req.AddCookie(&http.Cookie{Name: s.cookie.Name, Value: sess.token}) //nolint:gosec // request cookie in a test: only name and value go on the wire
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
 
@@ -155,8 +155,6 @@ func TestSignOut_ClearsSession(t *testing.T) {
 	}
 	if _, err := s.sessions.byID(sess.ID); err == nil {
 		t.Error("session not deleted on sign_out")
-	}
-	if rec.Header().Get("X-Requested-With") == "" { // sanity that header path was taken
 	}
 }
 

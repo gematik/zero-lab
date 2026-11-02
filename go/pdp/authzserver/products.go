@@ -48,14 +48,18 @@ type Product struct {
 	PushGateway      any      `yaml:"push_gateway" json:"push_gateway"`
 }
 
+// IsAllowedRedirectURI reports whether redirectURI is registered for the product. The comparison is exact
+// string matching (RFC 9700 §2.1).
 func (p *Product) IsAllowedRedirectURI(redirectURI string) bool {
 	return slices.Contains(p.RedirectURIs, redirectURI)
 }
 
+// IsAllowedScope reports whether scope is registered for the product.
 func (p *Product) IsAllowedScope(scope string) bool {
 	return slices.Contains(p.Scopes, scope)
 }
 
+// IsAllowedScopes reports whether every one of scopes is registered for the product. An empty list passes.
 func (p *Product) IsAllowedScopes(scopes []string) bool {
 	for _, scope := range scopes {
 		if !p.IsAllowedScope(scope) {
@@ -65,10 +69,12 @@ func (p *Product) IsAllowedScopes(scopes []string) bool {
 	return true
 }
 
+// ProductsRegistry finds the products registered with the server by their product_id.
 type ProductsRegistry struct {
 	products map[string]*Product
 }
 
+// NewProductsRegistry indexes products by ProductID. Of two products with one ID, the later one wins.
 func NewProductsRegistry(products []*Product) *ProductsRegistry {
 	indexed := make(map[string]*Product, len(products))
 	for _, p := range products {
@@ -77,6 +83,7 @@ func NewProductsRegistry(products []*Product) *ProductsRegistry {
 	return &ProductsRegistry{products: indexed}
 }
 
+// GetProduct returns the product registered under productID, or an error if there is none.
 func (r *ProductsRegistry) GetProduct(productID string) (*Product, error) {
 	if p, ok := r.products[productID]; ok {
 		return p, nil

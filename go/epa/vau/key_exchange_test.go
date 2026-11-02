@@ -24,7 +24,6 @@ package vau_test
 import (
 	"crypto/tls"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -53,7 +52,7 @@ func TestOpenChannel(t *testing.T) {
 		Transport: &customTransport{
 			t: &http.Transport{
 				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true, // Disable certificate verification
+					InsecureSkipVerify: true, //nolint:gosec // gated live test of the VAU handshake above TLS; it only runs against the server a developer names in EPA_VAU_BASE_URL
 				},
 			},
 		},
@@ -72,7 +71,7 @@ func TestOpenChannel(t *testing.T) {
 
 	resp, err := channel.Do(req)
 	if err != nil {
-		log.Fatalf("sending request to EPA: %v", err)
+		t.Fatalf("sending request to EPA: %v", err)
 	}
 
 	defer resp.Body.Close()
@@ -109,7 +108,7 @@ func TestMockOpenChannel(t *testing.T) {
 
 	resp, err := channel.Do(req)
 	if err != nil {
-		log.Fatalf("sending request: %v", err)
+		t.Fatalf("sending request: %v", err)
 	}
 
 	defer resp.Body.Close()

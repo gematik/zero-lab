@@ -55,30 +55,35 @@ func transportOrDefault(rt http.RoundTripper) http.RoundTripper {
 // Environment of the gematik IDP-Dienst
 type Environment int
 
+// The instances of the IDP-Dienst: test (TU), reference (RU) and production (PU).
 const (
 	EnvironmentTest Environment = iota
 	EnvironmentReference
 	EnvironmentProduction
 )
 
+// Idp names an instance of the IDP-Dienst: its environment and base URL.
 type Idp struct {
 	environment Environment
 	baseURL     string
 }
 
-func NewIdp(env Environment, baseUrl string) Idp {
+// NewIdp names the instance of the IDP-Dienst at baseURL.
+func NewIdp(env Environment, baseURL string) Idp {
 	return Idp{
 		environment: env,
-		baseURL:     baseUrl,
+		baseURL:     baseURL,
 	}
 }
 
+// The well-known instances of the IDP-Dienst.
 var (
 	IdpProduction = NewIdp(EnvironmentProduction, "https://idp.app.ti-dienste.de")
 	IdpReference  = NewIdp(EnvironmentReference, "https://idp-ref.app.ti-dienste.de")
 	IdpTest       = NewIdp(EnvironmentTest, "https://idp-test.app.ti-dienste.de")
 )
 
+// GetIdpByEnvironment returns the well-known instance of env.
 func GetIdpByEnvironment(env Environment) Idp {
 	switch env {
 	case EnvironmentProduction:
@@ -90,6 +95,7 @@ func GetIdpByEnvironment(env Environment) Idp {
 	}
 }
 
+// UnmarshalYAML reads an Environment by its name, as NewEnvironment does, so an unknown name is not an error.
 func (e *Environment) UnmarshalYAML(unmarshal func(any) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {
@@ -100,6 +106,8 @@ func (e *Environment) UnmarshalYAML(unmarshal func(any) error) error {
 	return nil
 }
 
+// NewEnvironment maps a name to its Environment: "tu" or "test", "ru" or "ref", "prod". An empty name means
+// production; any other name means reference.
 func NewEnvironment(s string) Environment {
 	switch s {
 	case "tu", "test":

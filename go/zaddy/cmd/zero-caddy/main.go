@@ -19,6 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Command zero-caddy is a Caddy build with the standard modules and the zaddy modules plugged in.
 package main
 
 import (

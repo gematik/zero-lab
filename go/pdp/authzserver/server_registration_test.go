@@ -43,8 +43,8 @@ func TestRegistrationEndpointClosed(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *Error, got %T: %v", err, err)
 	}
-	if authzErr.HttpStatus != http.StatusForbidden {
-		t.Errorf("status = %d, want 403", authzErr.HttpStatus)
+	if authzErr.HTTPStatus != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", authzErr.HTTPStatus)
 	}
 	if authzErr.Code != "access_denied" {
 		t.Errorf("error code = %q, want access_denied (%s)", authzErr.Code, authzErr.Description)

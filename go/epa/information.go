@@ -28,15 +28,17 @@ import (
 	"net/http"
 )
 
-func (c *Client) GetRecordStatus(insurantId string) (bool, error) {
+// GetRecordStatus reports whether this Aktensystem holds the insurant's record. It needs
+// no VAU channel.
+func (c *Client) GetRecordStatus(insurantID string) (bool, error) {
 	req, err := http.NewRequest(http.MethodGet, c.BaseURL+"/information/api/v1/ehr", nil)
 	if err != nil {
 		return false, err
 	}
 	req.Header.Set("x-useragent", UserAgent)
-	req.Header.Set("x-insurantid", insurantId)
+	req.Header.Set("x-insurantid", insurantID)
 
-	resp, err := c.HttpClient.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return false, err
 	}
@@ -47,27 +49,29 @@ func (c *Client) GetRecordStatus(insurantId string) (bool, error) {
 	case http.StatusNotFound:
 		return false, nil
 	default:
-		return false, parseHttpError(resp)
+		return false, parseHTTPError(resp)
 	}
 }
 
-func (c *Client) GetConsentDecisionInformation(insurantId string) (*GetConsentDecisionInformationType, error) {
+// GetConsentDecisionInformation returns the insurant's consent decisions at this
+// Aktensystem. It needs no VAU channel.
+func (c *Client) GetConsentDecisionInformation(insurantID string) (*GetConsentDecisionInformationType, error) {
 	req, err := http.NewRequest(http.MethodGet, c.BaseURL+"/information/api/v1/ehr/consentdecisions", nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("x-useragent", UserAgent)
-	req.Header.Set("x-insurantid", insurantId)
+	req.Header.Set("x-insurantid", insurantID)
 
 	slog.Info("Requesting consent decision information", "method", req.Method, "url", req.URL, "headers", req.Header)
 
-	resp, err := c.HttpClient.Do(req)
+	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, parseHttpError(resp)
+		return nil, parseHTTPError(resp)
 	}
 
 	body := new(GetConsentDecisionInformationType)
@@ -78,18 +82,22 @@ func (c *Client) GetConsentDecisionInformation(insurantId string) (*GetConsentDe
 	return body, nil
 }
 
+// ConsentDecisionType is the insurant's decision on a function of the record.
 type ConsentDecisionType string
 
+// Decisions an Aktensystem reports.
 const (
 	ConsentDecisionPermit ConsentDecisionType = "permit"
 	ConsentDecisionDeny   ConsentDecisionType = "deny"
 )
 
+// ConsentDecisionsResponseType is the decision on one function of the record.
 type ConsentDecisionsResponseType struct {
-	FunctionId string `json:"functionId"`
+	FunctionID string `json:"functionId"`
 	Decision   string `json:"decision"`
 }
 
+// GetConsentDecisionInformationType is the answer of the consentdecisions endpoint.
 type GetConsentDecisionInformationType struct {
 	Data []ConsentDecisionsResponseType `json:"data"`
 }

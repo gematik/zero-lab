@@ -19,6 +19,9 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Package bff is an OAuth/OIDC Backend-For-Frontend per draft-ietf-oauth-browser-based-apps: a confidential
+// client of the authorization server that keeps the tokens on the server and gives the browser only an
+// opaque session cookie. It is an API only; package webui is a UI for it.
 package bff
 
 import (
@@ -45,8 +48,9 @@ import (
 )
 
 // clientAssertionTypeJWTBearer is the client_assertion_type for private_key_jwt (RFC 7523 §2.2).
-const clientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+const clientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" //nolint:gosec // an RFC 7523 URN naming an assertion type, not a credential
 
+// Error is an OAuth2 error response (RFC 6749 §5.2) as the BFF renders it to the browser.
 type Error struct {
 	// HTTPStatusCode is used as the HTTP status code when the error is rendered as a response.
 	HTTPStatusCode int `json:"-"`
@@ -72,6 +76,8 @@ var errTemplateInternalError = Error{
 	Description:    "Internal error",
 }
 
+// Config configures a BackendForFrontend. ProductionGradeCookie has to be set when serving over HTTPS:
+// without it the session cookie has neither the Secure attribute nor the __Host- prefix.
 type Config struct {
 	AuthorizationServer   AuthorizationServerConfig `json:"authorization_server" validate:"required"`
 	CookieName            string                    `json:"cookie_name" validate:"required"`
@@ -121,6 +127,7 @@ type providerInfo struct {
 	Type    string `json:"type"`
 }
 
+// BackendForFrontend serves the /bff/auth/* API and holds the sessions behind its cookies.
 type BackendForFrontend struct {
 	cfg                 Config
 	httpClient          *http.Client
@@ -131,6 +138,9 @@ type BackendForFrontend struct {
 	frontendRedirectURL *url.URL
 }
 
+// New creates a BackendForFrontend. It discovers the authorization server's metadata from
+// cfg.AuthorizationServer.Issuer, so the server has to be reachable; without cfg.SessionManager sessions
+// live in memory and are lost on restart.
 func New(cfg Config) (*BackendForFrontend, error) {
 	b := &BackendForFrontend{cfg: cfg}
 
@@ -148,7 +158,7 @@ func New(cfg Config) (*BackendForFrontend, error) {
 			SameSite: http.SameSiteStrictMode,
 		}
 	} else {
-		b.cookieTemplate = &http.Cookie{
+		b.cookieTemplate = &http.Cookie{ //nolint:gosec // TASK-179: the cookie has no Secure unless ProductionGradeCookie is set, which no binary does
 			Name:     cfg.CookieName,
 			Path:     "/",
 			Secure:   false,
@@ -206,13 +216,22 @@ func (b *BackendForFrontend) clientAssertion(ctx context.Context) (string, error
 	now := time.Now()
 	// aud must be the AS's real issuer (which it validates against), not the local discovery URL.
 	tok := jwt.New()
-	tok.Set(jwt.IssuerKey, as.ClientID)
-	tok.Set(jwt.SubjectKey, as.ClientID)
-	tok.Set(jwt.AudienceKey, b.metadata.Issuer)
-	tok.Set(jwt.IssuedAtKey, now.Unix())
-	tok.Set(jwt.ExpirationKey, now.Add(time.Minute).Unix())
-	tok.Set("nonce", nonce)
-	tok.Set("cnf", map[string]string{"jkt": jkt})
+	for _, claim := range []struct {
+		name  string
+		value any
+	}{
+		{jwt.IssuerKey, as.ClientID},
+		{jwt.SubjectKey, as.ClientID},
+		{jwt.AudienceKey, b.metadata.Issuer},
+		{jwt.IssuedAtKey, now.Unix()},
+		{jwt.ExpirationKey, now.Add(time.Minute).Unix()},
+		{"nonce", nonce},
+		{"cnf", map[string]string{"jkt": jkt}},
+	} {
+		if err := tok.Set(claim.name, claim.value); err != nil {
+			return "", fmt.Errorf("set claim %s: %w", claim.name, err)
+		}
+	}
 
 	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.ES256(), as.SigningKey))
 	if err != nil {
@@ -377,7 +396,7 @@ func (b *BackendForFrontend) resolveDecoupledAuthURL(authURL string) (string, er
 	noRedirect := *b.httpClient
 	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
-	resp, err := noRedirect.Get(authURL)
+	resp, err := noRedirect.Get(authURL) //nolint:gosec // scheme and host come from the AS metadata discovered from the configured issuer; a request only adds escaped query parameters
 	if err != nil {
 		return "", fmt.Errorf("fetch authorization url: %w", err)
 	}
@@ -530,7 +549,9 @@ func (b *BackendForFrontend) SessionEndpoint(w http.ResponseWriter, r *http.Requ
 
 	if _, err := b.FreshAccessToken(r.Context(), session); err != nil {
 		slog.Warn("session token refresh failed", "error", err)
-		b.sessionManager.DeleteSessionByID(session.ID)
+		if err := b.sessionManager.DeleteSessionByID(session.ID); err != nil {
+			slog.Warn("delete session after failed token refresh", "error", err)
+		}
 		b.expireCookie(w)
 		respondJSON(w, http.StatusUnauthorized, sessionResponse{Authenticated: false})
 		return
@@ -602,7 +623,7 @@ func (b *BackendForFrontend) LogoutEndpoint(w http.ResponseWriter, r *http.Reque
 }
 
 // ProvidersEndpoint returns the AS openid-providers list for the SPA's provider chooser.
-func (b *BackendForFrontend) ProvidersEndpoint(w http.ResponseWriter, r *http.Request) {
+func (b *BackendForFrontend) ProvidersEndpoint(w http.ResponseWriter, _ *http.Request) {
 	providers, err := b.fetchProviders()
 	if err != nil {
 		respondWithError(w, elaborateError(errTemplateInternalError, "fetch providers: %v", err))
@@ -730,13 +751,13 @@ func (b *BackendForFrontend) retrieveSession(r *http.Request) (*Session, *Error)
 }
 
 func (b *BackendForFrontend) setCookie(w http.ResponseWriter, sessionID string) {
-	cookie := *b.cookieTemplate
+	cookie := *b.cookieTemplate //nolint:gosec // TASK-179: the cookie has no Secure unless ProductionGradeCookie is set, which no binary does
 	cookie.Value = sessionID
 	http.SetCookie(w, &cookie)
 }
 
 func (b *BackendForFrontend) expireCookie(w http.ResponseWriter) {
-	cookie := *b.cookieTemplate
+	cookie := *b.cookieTemplate //nolint:gosec // TASK-179: the cookie has no Secure unless ProductionGradeCookie is set, which no binary does
 	cookie.Value = ""
 	cookie.MaxAge = -1
 	http.SetCookie(w, &cookie)

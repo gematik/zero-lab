@@ -113,7 +113,7 @@ func NewBinary() (*Binary, error) {
 	if err != nil {
 		return nil, fmt.Errorf("EPA_TI_BIN %q: %w", path, err)
 	}
-	if _, err := os.Stat(abs); err != nil {
+	if _, err := os.Stat(abs); err != nil { //nolint:gosec // EPA_TI_BIN and the PATH are the operator's environment, not request input
 		return nil, fmt.Errorf("EPA_TI_BIN %q: %w", path, err)
 	}
 	return &Binary{Path: abs, Timeout: DefaultTimeout}, nil
@@ -134,7 +134,7 @@ func (b *Binary) Run(ctx context.Context, stdin []byte, args ...string) ([]byte,
 		full = append(full, "-v")
 	}
 	full = append(full, args...)
-	cmd := exec.CommandContext(ctx, b.Path, full...)
+	cmd := exec.CommandContext(ctx, b.Path, full...) //nolint:gosec // Path is the operator's tool (EPA_TI_BIN or the PATH); the arguments go argv-wise, without a shell
 	cmd.Env = childEnv()
 	cmd.Stdin = bytes.NewReader(stdin)
 	var stdout, stderr bytes.Buffer

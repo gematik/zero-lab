@@ -50,7 +50,7 @@ type memBus struct {
 // NewMemBus returns an in-process Bus.
 func NewMemBus() Bus { return &memBus{subs: make(map[string][]chan string)} }
 
-func (b *memBus) Publish(ctx context.Context, channel, payload string) error {
+func (b *memBus) Publish(_ context.Context, channel, payload string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.closed {

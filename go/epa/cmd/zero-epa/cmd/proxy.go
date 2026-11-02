@@ -38,7 +38,7 @@ import (
 
 func init() {
 	routerCmd.Flags().StringP("addr", "a", ":8082", "Address to listen on")
-	viper.BindPFlag("addr", routerCmd.Flags().Lookup("addr"))
+	cobra.CheckErr(viper.BindPFlag("addr", routerCmd.Flags().Lookup("addr")))
 
 	rootCmd.AddCommand(routerCmd)
 }
@@ -46,7 +46,7 @@ func init() {
 var routerCmd = &cobra.Command{
 	Use:   "proxy",
 	Short: "Run ePA Client as Proxy",
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(_ *cobra.Command, _ []string) {
 		proxies := make([]*epa.Proxy, len(config.ProxyConfigs))
 		proxyInfos := make([]*epa.ProxyInfo, 0, len(config.ProxyConfigs))
 		for num, proxyConfig := range config.ProxyConfigs {
@@ -85,11 +85,11 @@ func buildRouter(proxies []*epa.Proxy, proxyInfos []*epa.ProxyInfo) (*echo.Echo,
 			api.Any("/*", echo.WrapHandler(http.StripPrefix("/api", proxy)))
 		}
 
-		proxyRouteName := "/api/proxies/" + proxyInfos[num].Name
+		proxyRouteName := "/api/proxies/" + proxyInfos[num].Name //nolint:gosec // buildRouter returned above unless both slices have the same length, and num ranges over proxies
 		proxyRoute := e.Group(proxyRouteName)
 		proxyRoute.Any("/*", echo.WrapHandler(http.StripPrefix(proxyRouteName, proxy)))
 
-		slog.Info("Registered proxy", "name", proxyInfos[num].Name, "route", proxyRouteName)
+		slog.Info("Registered proxy", "name", proxyInfos[num].Name, "route", proxyRouteName) //nolint:gosec // buildRouter returned above unless both slices have the same length, and num ranges over proxies
 	}
 
 	e.GET("/api/proxies", func(c echo.Context) error {

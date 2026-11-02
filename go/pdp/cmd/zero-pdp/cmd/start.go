@@ -43,7 +43,7 @@ func init() {
 var startCmd = &cobra.Command{
 	Use:   "start",
 	Short: "Start the Zero Trust PDP",
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(_ *cobra.Command, _ []string) {
 		pdp, err := createPdp()
 		if err != nil {
 			slog.Error("Failed to create PDP", "error", err)

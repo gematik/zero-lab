@@ -144,11 +144,11 @@ func (g *Gateway) injectAndProxy(rt *Route, gctx *gatewayContext) {
 }
 
 func (g *Gateway) handleDenied(w http.ResponseWriter, r *http.Request, err pep.Error) {
-	if err.HttpStatus == http.StatusUnauthorized {
+	if err.HTTPStatus == http.StatusUnauthorized {
 		g.handleUnauthenticated(w, r)
 		return
 	}
-	respondGatewayJSON(w, err.HttpStatus, err.Code, err.Description)
+	respondGatewayJSON(w, err.HTTPStatus, err.Code, err.Description)
 }
 
 func (g *Gateway) newProxy(rt *Route) *httputil.ReverseProxy {
@@ -185,7 +185,7 @@ func (g *Gateway) newProxy(rt *Route) *httputil.ReverseProxy {
 				}
 			}
 		},
-		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
 			slog.Error("gateway upstream unreachable", "upstream", rt.upstream.String(), "error", err)
 			respondGatewayJSON(w, http.StatusBadGateway, "bad_gateway", "upstream unavailable")
 		},

@@ -35,7 +35,7 @@ import (
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
-func redirectWithError(w http.ResponseWriter, r *http.Request, redirectUri string, state string, err Error) error {
+func redirectWithError(w http.ResponseWriter, r *http.Request, redirectURI string, state string, err Error) error {
 	params := url.Values{}
 	if state != "" {
 		params.Add("state", state)
@@ -43,17 +43,15 @@ func redirectWithError(w http.ResponseWriter, r *http.Request, redirectUri strin
 	params.Add("error", err.Code)
 	params.Add("error_description", err.Description)
 
-	http.Redirect(w, r, redirectUri+"?"+params.Encode(), http.StatusFound)
+	http.Redirect(w, r, redirectURI+"?"+params.Encode(), http.StatusFound) //nolint:gosec // redirectURI was matched exactly against the product's registered URIs at PAR, or is a configured OP callback
 	return nil
 }
 
-// AuthorizationEndpoint validates an OAuth2 authorization-code request and starts the
-// upstream OpenID Provider login.
 // bindAuthzRequest parses + validates an authorization request — from the /authorize query OR a /par body —
 // into a pending session and resolves its product. Shared so direct authorization and PAR enforce identical
 // policy. The scope-allowlist check is left to the caller (it redirects at /authorize, returns JSON at /par).
-func (s *Server) bindAuthzRequest(r *http.Request) (*AuthzServerSession, *Product, *Error) {
-	session := &AuthzServerSession{
+func (s *Server) bindAuthzRequest(r *http.Request) (*Session, *Product, *Error) {
+	session := &Session{
 		ID:        uuid.NewV4().String(),
 		CreatedAt: time.Now(),
 	}
@@ -103,6 +101,8 @@ func (s *Server) bindAuthzRequest(r *http.Request) (*AuthzServerSession, *Produc
 	return session, product, nil
 }
 
+// AuthorizationEndpoint looks up a pushed authorization request by its single-use request_uri and starts the
+// upstream OpenID Provider login.
 func (s *Server) AuthorizationEndpoint(w http.ResponseWriter, r *http.Request) error {
 	// FAPI 2.0: authorization requests MUST be pushed (RFC 9126). The browser arrives here carrying only the
 	// single-use request_uri minted at /par — where the request was validated and client-authenticated.
@@ -130,7 +130,7 @@ func (s *Server) AuthorizationEndpoint(w http.ResponseWriter, r *http.Request) e
 // startOpenidProviderLogin resolves the upstream OP, creates the authentication session and
 // redirects the user-agent to the provider. On error it redirects back to the client with an
 // OAuth error.
-func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request, session *AuthzServerSession, product *Product) error {
+func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request, session *Session, product *Product) error {
 	opClient, err := s.GetOpenidClient(session.IDPIss)
 	if err != nil {
 		return redirectWithError(w, r, session.RedirectURI, session.State, Error{
@@ -158,7 +158,7 @@ func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request
 
 	slog.Info("OP session", "op_session", opSession.ID, "issuer", opSession.Issuer)
 
-	authUrl, err := opClient.AuthenticationURL(
+	authURL, err := opClient.AuthenticationURL(
 		opSession.State,
 		opSession.Nonce,
 		opSession.Verifier,
@@ -170,7 +170,7 @@ func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request
 			Description: fmt.Errorf("unable to generate auth url: %w", err).Error(),
 		})
 	}
-	opSession.AuthURL = authUrl
+	opSession.AuthURL = authURL
 
 	session.AuthnClientSession = opSession
 	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {
@@ -180,9 +180,9 @@ func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request
 		})
 	}
 
-	slog.Info("Redirecting to OpenID Provider", "auth_url", authUrl)
+	slog.Info("Redirecting to OpenID Provider", "auth_url", authURL)
 
-	http.Redirect(w, r, authUrl, http.StatusFound)
+	http.Redirect(w, r, authURL, http.StatusFound) //nolint:gosec // the target is the authorization endpoint of a configured provider or of a federation-verified entity statement
 	return nil
 }
 
@@ -212,12 +212,12 @@ func (s *Server) PAREndpoint(w http.ResponseWriter, r *http.Request) error {
 	if !product.IsAllowedScopes(session.Scopes) {
 		return oauthErr(http.StatusBadRequest, "invalid_scope", "scope not allowed: "+strings.Join(session.Scopes, " "))
 	}
-	session.RequestUri = "urn:ietf:params:oauth:request_uri:" + generateNonce(64)
+	session.RequestURI = "urn:ietf:params:oauth:request_uri:" + generateNonce(64)
 	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {
 		return oauthErr(http.StatusInternalServerError, "server_error", "unable to store pushed request")
 	}
 	return writeJSON(w, http.StatusCreated, map[string]any{
-		"request_uri": session.RequestUri,
+		"request_uri": session.RequestURI,
 		"expires_in":  int(defaultSessionTTL.Seconds()),
 	})
 }
@@ -310,7 +310,7 @@ func (s *Server) OPCallbackEndpoint(w http.ResponseWriter, r *http.Request) erro
 		params.Set("code", authzSession.Code)
 		params.Set("state", authzSession.State)
 
-		http.Redirect(w, r, authzSession.RedirectURI+"?"+params.Encode(), http.StatusFound)
+		http.Redirect(w, r, authzSession.RedirectURI+"?"+params.Encode(), http.StatusFound) //nolint:gosec // the session's RedirectURI was matched exactly against the product's registered URIs at PAR
 		return nil
 	}
 

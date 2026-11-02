@@ -67,15 +67,15 @@ func newMockAS(t *testing.T) *httptest.Server {
 			"nonce_endpoint":            base + "/nonce",
 		})
 	})
-	mux.HandleFunc("GET /nonce", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /nonce", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("test-nonce"))
 	})
 	// The decoupled (OIDF) login resolves the authorization request server-side: the AS does the PAR and
 	// 302-redirects to the provider. The stub echoes the query so the resolved link keeps idp_iss.
 	mux.HandleFunc("GET /auth", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "https://provider.example/authorize?"+r.URL.RawQuery, http.StatusFound)
+		http.Redirect(w, r, "https://provider.example/authorize?"+r.URL.RawQuery, http.StatusFound) //nolint:gosec // test stub: the host is fixed, only the query is echoed
 	})
-	mux.HandleFunc("POST /token", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /token", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{
 			"access_token":  "mock-access-token",
 			"token_type":    "Bearer",
@@ -94,7 +94,7 @@ func newMockAS(t *testing.T) *httptest.Server {
 			"identity": map[string]any{"sub": "user-123", "name": "Test User"},
 		})
 	})
-	mux.HandleFunc("GET /openid-providers", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /openid-providers", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, []map[string]string{
 			{"iss": "https://oidf.example", "name": "OIDF IdP", "type": "oidf"},
 			{"iss": "https://std.example", "name": "Standard IdP", "type": "oidc"},
@@ -269,7 +269,7 @@ func TestLogout_CSRFAndClear(t *testing.T) {
 	session, _ := sm.CreateSession("s", "v", "S256")
 	session.AccessToken = "tok"
 	_ = sm.UpdateSession(session)
-	cookie := &http.Cookie{Name: "test-cookie", Value: session.ID}
+	cookie := &http.Cookie{Name: "test-cookie", Value: session.ID} //nolint:gosec // a request cookie, sent as name=value only; Secure, HttpOnly and SameSite exist on responses
 
 	// Missing the custom header → rejected (CSRF defense).
 	noCSRF := httptest.NewRequest(http.MethodPost, "/bff/auth/logout", nil)
@@ -311,7 +311,7 @@ func TestProviders(t *testing.T) {
 }
 
 func TestPanicRecovery(t *testing.T) {
-	h := bff.RecoverMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := bff.RecoverMiddleware(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		panic("boom")
 	}))
 	rec := httptest.NewRecorder()

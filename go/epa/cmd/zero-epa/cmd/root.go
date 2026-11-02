@@ -22,7 +22,9 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 
@@ -35,15 +37,15 @@ import (
 )
 
 var (
-	verbose             = false
-	workdir             = ""
-	config  *epa.Config = nil
+	verbose = false
+	workdir = ""
+	config  *epa.Config
 )
 
 var rootCmd = &cobra.Command{
 	Use:   "zero-epa",
 	Short: "Zero Trust ePA Client",
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+	PersistentPreRun: func(_ *cobra.Command, _ []string) {
 		logLevel := slog.LevelInfo
 		if verbose {
 			logLevel = slog.LevelDebug
@@ -64,7 +66,9 @@ var rootCmd = &cobra.Command{
 				os.Exit(1)
 			}
 		}
-		godotenv.Load()
+		if err := godotenv.Load(); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			slog.Warn("load .env", "error", err)
+		}
 
 		var err error
 		config, err = epa.LoadConfigFile(viper.GetString("config_file"))
@@ -74,11 +78,12 @@ var rootCmd = &cobra.Command{
 		}
 		slog.Debug("Loaded configuration", "file", viper.GetString("config_file"), "baseDir", config.BaseDir)
 	},
-	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Help()
+	Run: func(cmd *cobra.Command, _ []string) {
+		cobra.CheckErr(cmd.Help())
 	},
 }
 
+// Execute runs the command line and exits with status 1 on an error.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -93,5 +98,5 @@ func init() {
 	persistendFlags.StringVarP(&workdir, "workdir", "w", "", "working directory")
 	persistendFlags.BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 	persistendFlags.StringP("config-file", "f", "zero-epa.yaml", "config file, relative to working directory")
-	viper.BindPFlag("config_file", persistendFlags.Lookup("config-file"))
+	cobra.CheckErr(viper.BindPFlag("config_file", persistendFlags.Lookup("config-file")))
 }

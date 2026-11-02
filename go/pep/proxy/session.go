@@ -161,7 +161,7 @@ func randomToken() string {
 }
 
 func (m *sessionStore) save(s *Session) error {
-	record, err := json.Marshal(s)
+	record, err := json.Marshal(s) //nolint:gosec // TASK-178: sealed only when PEP_SESSION_STORE_KEY_PATH is set
 	if err != nil {
 		return fmt.Errorf("marshal session: %w", err)
 	}

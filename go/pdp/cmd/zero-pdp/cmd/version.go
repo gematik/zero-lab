@@ -38,7 +38,7 @@ func init() {
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version number",
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(_ *cobra.Command, _ []string) {
 		fmt.Printf("Zero Policy Decision Point v%s\n", pdp.ResolveVersion())
 		configfile := viper.GetString("config_file")
 		expanded, err := filepath.Abs(configfile)

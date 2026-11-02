@@ -27,6 +27,7 @@ import (
 	"net/http"
 )
 
+// DiscoveryDocument is the part of the provider metadata (OpenID Connect Discovery 1.0 §3) this package reads.
 type DiscoveryDocument struct {
 	Issuer                           string   `json:"issuer"`
 	AuthorizationEndpoint            string   `json:"authorization_endpoint"`
@@ -35,9 +36,11 @@ type DiscoveryDocument struct {
 	UserinfoEndpoint                 string   `json:"userinfo_endpoint"`
 	RevocationEndpoint               string   `json:"revocation_endpoint"`
 	ResponseTypesSupported           []string `json:"response_types_supported"`
-	IdTokenSigningAlgValuesSupported []string `json:"id_token_signing_alg_values_supported"`
+	IDTokenSigningAlgValuesSupported []string `json:"id_token_signing_alg_values_supported"`
 }
 
+// FetchDiscoveryDocument fetches and decodes the document at url. It checks neither the HTTP status nor that
+// the document's issuer matches url.
 func FetchDiscoveryDocument(url string, httpClient *http.Client) (*DiscoveryDocument, error) {
 	resp, err := httpClient.Get(url)
 	if err != nil {

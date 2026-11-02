@@ -42,6 +42,7 @@ import (
 	"github.com/gematik/zero-lab/go/epa/vau"
 )
 
+// ProvidersError is one provider's failure, as the proxy answers it in JSON.
 type ProvidersError struct {
 	Code           string         `json:"error"`
 	Description    string         `json:"error_description"`
@@ -52,6 +53,7 @@ func (e *ProvidersError) Error() string {
 	return fmt.Sprintf("provider %d: %s: %s", e.ProviderNumber, e.Code, e.Description)
 }
 
+// MultiProviderError collects why no provider could serve a record.
 type MultiProviderError struct {
 	Errors []ProvidersError `json:"errors"`
 }
@@ -64,6 +66,7 @@ func (e *MultiProviderError) Error() string {
 	return "multiple provider errors: " + strings.Join(errStrings, "; ")
 }
 
+// Proxy serves an HTTP API over one VAU session per provider, opened on demand.
 type Proxy struct {
 	Env            Env
 	config         *ProxyConfig
@@ -74,6 +77,8 @@ type Proxy struct {
 	recordsLock    sync.RWMutex
 }
 
+// ProxyConfig configures a Proxy. It comes from the configuration file, and [ProxyConfig.Init]
+// or [NewProxyWithSecurityFunctions] fills in the identity.
 type ProxyConfig struct {
 	BaseDir string        `yaml:"-"`
 	Name    string        `yaml:"name" validate:"required"`
@@ -100,7 +105,7 @@ type ProxyConfig struct {
 	VAUCertVerify string `yaml:"vau_cert_verify" validate:"omitempty,oneof=off warn enforce"`
 
 	VsdmHmacKeyHex string `yaml:"vsdm_hmac_key_hex" validate:"required"`
-	VsdmHmacKeyId  string `yaml:"vsdm_hmac_key_id" validate:"required"`
+	VsdmHmacKeyID  string `yaml:"vsdm_hmac_key_id" validate:"required"`
 
 	SecurityFunctions *SecurityFunctions `yaml:"-"`
 	// Authenticator answers the IDP-Dienst's challenges; Init sets it up over the
@@ -158,13 +163,15 @@ func (pc *ProxyConfig) vauVerifyMode() vau.VerifyMode {
 	}
 }
 
+// Init loads the SMC-B identity through the ti tool and sets SecurityFunctions, Authenticator
+// and the VAU verifier from it.
 func (pc *ProxyConfig) Init() error {
-	provideHCV := func(insurantId string) ([]byte, error) {
+	provideHCV := func(_ string) ([]byte, error) {
 		return CalculateHCV("19981123", "Berliner Straße")
 	}
 
 	vsdmHMACKey := pc.VsdmHmacKeyHex
-	vsdmHMACKeyID := pc.VsdmHmacKeyId
+	vsdmHMACKeyID := pc.VsdmHmacKeyID
 	slog.Debug("Using VSDM HMAC Key", "key", "***", "kid", vsdmHMACKeyID)
 	proofOfAuditEvidenceFunc, err := CalculatePNv2(
 		vsdmHMACKey,
@@ -208,6 +215,9 @@ func (pc *ProxyConfig) Init() error {
 	return nil
 }
 
+// PatientRecordMetadata is the proxy's cached knowledge of a record: its provider and, once
+// entitled, when and until when; EntitledAt stays zero when entitling failed, and ValidTo
+// on the VSDM path, whose answer has no body.
 type PatientRecordMetadata struct {
 	InsurantID string
 	Provider   ProviderNumber
@@ -264,6 +274,8 @@ func NewProxyWithSecurityFunctions(env Env, sf *SecurityFunctions, authenticator
 	})
 }
 
+// NewProxy builds a Proxy and its routes from a configuration whose identity is loaded. It
+// starts a goroutine per provider that watches the session health.
 func NewProxy(config *ProxyConfig) (*Proxy, error) {
 	if config.SecurityFunctions == nil || config.Authenticator == nil {
 		return nil, fmt.Errorf("proxy %q: identity not loaded (ProxyConfig.Init)", config.Name)
@@ -313,6 +325,7 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 	return p, nil
 }
 
+// HandleForwardToProvider forwards a request outside the VAU to the provider in the path.
 func (p *Proxy) HandleForwardToProvider(w http.ResponseWriter, r *http.Request) {
 	num, err := strconv.Atoi(r.PathValue("providerNumber"))
 	if err != nil {
@@ -326,7 +339,7 @@ func (p *Proxy) HandleForwardToProvider(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	r2, err := http.NewRequest(r.Method, session.BaseURL+"/"+r.PathValue("path"), r.Body)
+	r2, err := http.NewRequest(r.Method, session.BaseURL+"/"+r.PathValue("path"), r.Body) //nolint:gosec // TASK-181: the request picks the provider number, unchecked, and so the host under epa4all.de
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create request: %v", err), http.StatusInternalServerError)
 		return
@@ -337,7 +350,7 @@ func (p *Proxy) HandleForwardToProvider(w http.ResponseWriter, r *http.Request) 
 
 	slog.Info("Forwarding request to provider", "method", r2.Method, "url", r2.URL.String(), "headers", r2.Header)
 
-	resp, err := session.HttpClient.Do(r2)
+	resp, err := session.HTTPClient.Do(r2) //nolint:gosec // TASK-181: the request picks the provider number, unchecked, and so the host under epa4all.de
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to forward request: %v", err), http.StatusInternalServerError)
 		return
@@ -351,7 +364,10 @@ func (p *Proxy) HandleForwardToProvider(w http.ResponseWriter, r *http.Request) 
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
-			w.Write(buf[:n])
+			if _, err := w.Write(buf[:n]); err != nil {
+				slog.Error("Failed to write forwarded response", "error", err)
+				return
+			}
 		}
 		if err != nil {
 			break
@@ -359,6 +375,7 @@ func (p *Proxy) HandleForwardToProvider(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+// HandleForwardToVAUProvider forwards a request into the VAU of the provider in the path.
 func (p *Proxy) HandleForwardToVAUProvider(w http.ResponseWriter, r *http.Request) {
 	num, err := strconv.Atoi(r.PathValue("providerNumber"))
 	if err != nil {
@@ -385,7 +402,7 @@ func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNum
 		return
 	}
 
-	r2, err := http.NewRequest(r.Method, path, r.Body)
+	r2, err := http.NewRequest(r.Method, path, r.Body) //nolint:gosec // the path only travels inside the VAU channel, which posts to its own ChannelURL and nowhere else
 	if err != nil {
 		slog.Error("Failed to create request", "error", err)
 		http.Error(w, "failed to create request", http.StatusInternalServerError)
@@ -426,7 +443,10 @@ func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNum
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
-			w.Write(buf[:n])
+			if _, err := w.Write(buf[:n]); err != nil {
+				slog.Error("Failed to write forwarded response", "error", err)
+				return
+			}
 		}
 		if err != nil {
 			break
@@ -438,6 +458,7 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.mux.ServeHTTP(w, r)
 }
 
+// Close closes the proxy's sessions.
 func (p *Proxy) Close() {
 	p.sessionManager.Close()
 }
@@ -575,6 +596,8 @@ func (p *Proxy) findAndCacheRecord(insurantID string) (*PatientRecordMetadata, e
 	return &rm, nil
 }
 
+// HandleForwardToVAUInsurant forwards a request into the VAU of the provider that holds the
+// record of the insurant in the path, entitling on the first request.
 func (p *Proxy) HandleForwardToVAUInsurant(w http.ResponseWriter, r *http.Request) {
 	insurantID := r.PathValue("insurantID")
 	rm, err := p.findAndCacheRecord(insurantID)
@@ -589,17 +612,19 @@ func (p *Proxy) HandleForwardToVAUInsurant(w http.ResponseWriter, r *http.Reques
 				http.Error(w, fmt.Sprintf("failed to marshal error: %v", err), http.StatusInternalServerError)
 				return
 			}
-			w.Write(errBytes)
-			return
-		} else {
-			http.Error(w, fmt.Sprintf("failed to find record: %v", err), http.StatusBadGateway)
+			if _, err := w.Write(errBytes); err != nil {
+				slog.Error("Failed to write provider errors", "error", err)
+			}
 			return
 		}
+		http.Error(w, fmt.Sprintf("failed to find record: %v", err), http.StatusBadGateway)
+		return
 	}
 
 	p.forwardToVAU(w, r, rm.Provider, rm.InsurantID)
 }
 
+// ProxyInfo is what GET /info tells about a proxy and its SMC-B.
 type ProxyInfo struct {
 	Name               string     `json:"name"`
 	Env                Env        `json:"env"`
@@ -607,6 +632,8 @@ type ProxyInfo struct {
 	AdmissionStatement *Admission `json:"admission_statement"`
 }
 
+// GetProxyInfo describes the proxy from its identity; an identity without admission
+// statement is an error.
 func (p *Proxy) GetProxyInfo() (*ProxyInfo, error) {
 	identity := p.config.SecurityFunctions.Identity
 	if identity == nil {
@@ -624,7 +651,8 @@ func (p *Proxy) GetProxyInfo() (*ProxyInfo, error) {
 	}, nil
 }
 
-func (p *Proxy) HandleProxyInfo(w http.ResponseWriter, r *http.Request) {
+// HandleProxyInfo serves [Proxy.GetProxyInfo] as JSON.
+func (p *Proxy) HandleProxyInfo(w http.ResponseWriter, _ *http.Request) {
 	info, err := p.GetProxyInfo()
 	if err != nil {
 		slog.Error("Failed to get proxy info", "error", err)
@@ -639,7 +667,8 @@ func (p *Proxy) HandleProxyInfo(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (p *Proxy) GetProviders(w http.ResponseWriter, r *http.Request) {
+// GetProviders answers with the providers whose session can be opened.
+func (p *Proxy) GetProviders(w http.ResponseWriter, _ *http.Request) {
 	type Provider struct {
 		Number          ProviderNumber `json:"number"`
 		BaseURL         string         `json:"baseURL"`
@@ -665,7 +694,8 @@ func (p *Proxy) GetProviders(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (p *Proxy) GetInsurants(w http.ResponseWriter, r *http.Request) {
+// GetInsurants answers with the insurants the proxy has cached.
+func (p *Proxy) GetInsurants(w http.ResponseWriter, _ *http.Request) {
 	p.recordsLock.RLock()
 	defer p.recordsLock.RUnlock()
 	type InsurantModel struct {

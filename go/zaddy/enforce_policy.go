@@ -38,12 +38,15 @@ func init() {
 	httpcaddyfile.RegisterHandlerDirective("enforce_policy", parseCaddyfileEnforcePolicy)
 }
 
+// EnforcePolicyMiddleware is the Caddy HTTP handler enforce_policy: a request reaches the next handler
+// only if Enforcer lets it through, and is denied otherwise.
 type EnforcePolicyMiddleware struct {
 	Enforcer *pep.EnforcerHolder `json:"enforcer"`
 	logger   *slog.Logger
 	app      *App
 }
 
+// CaddyModule registers the handler under the module ID "http.handlers.enforce_policy".
 func (EnforcePolicyMiddleware) CaddyModule() caddy.ModuleInfo {
 	return caddy.ModuleInfo{
 		ID:  "http.handlers.enforce_policy",
@@ -51,6 +54,8 @@ func (EnforcePolicyMiddleware) CaddyModule() caddy.ModuleInfo {
 	}
 }
 
+// Provision resolves the logger and the app "zero" whose PEP the handler uses; it fails if that app is
+// not configured.
 func (m *EnforcePolicyMiddleware) Provision(ctx caddy.Context) error {
 	m.logger = ctx.Slogger()
 
@@ -71,10 +76,11 @@ func (m *EnforcePolicyMiddleware) Validate() error {
 func (m EnforcePolicyMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	pepCtx := m.app.pep.NewContext(w, r)
 	m.logger.Info("EnforcePolicyMiddleware", "enforcer", m.Enforcer)
-	m.Enforcer.Apply(pepCtx, func(ctx pep.Context) {
-		next.ServeHTTP(w, r)
+	var nextErr error
+	m.Enforcer.Apply(pepCtx, func(_ pep.Context) {
+		nextErr = next.ServeHTTP(w, r)
 	})
-	return nil
+	return nextErr
 }
 
 // Caddyfile parsing

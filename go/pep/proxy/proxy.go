@@ -90,6 +90,7 @@ type Server struct {
 	gateway    *Gateway // nil in forward_auth-only mode (no Routes)
 }
 
+// New returns a Server for cfg. It fails without a Backend or Store and on a key file that cannot be loaded.
 func New(cfg Config) (*Server, error) {
 	if cfg.Backend == nil {
 		return nil, errors.New("proxy: backend is required")

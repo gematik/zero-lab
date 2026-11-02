@@ -37,7 +37,7 @@ type OpenidProviderInfo struct {
 }
 
 // OpenidProvidersEndpoint serves the list of OpenID Providers supported by the server
-func (s *Server) OpenidProvidersEndpoint(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) OpenidProvidersEndpoint(w http.ResponseWriter, _ *http.Request) error {
 	providers, err := s.OpenidProviders()
 	if err != nil {
 		return oauthErr(http.StatusInternalServerError, "server_error", err.Error())

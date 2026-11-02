@@ -29,45 +29,57 @@ import (
 	"github.com/fxamacker/cbor/v2"
 )
 
+// Message1 opens the handshake with the client's ephemeral public keys.
 type Message1 struct {
 	MessageType string
-	ECDH_PK     ECDHData
-	Kyber768_PK KEMData
+	ECDHPK      ECDHData `cbor:"ECDH_PK"`
+	Kyber768PK  KEMData  `cbor:"Kyber768_PK"`
 }
 
+// Message2 answers Message1: the ciphertexts to the client's ephemeral keys, and in AEADCt
+// the SignedPublicVAUKeys sealed under K1_s2c.
 type Message2 struct {
 	MessageType string
-	ECDH_ct     ECDHData
-	Kyber768_ct []byte
-	AEAD_ct     []byte
+	ECDHCt      ECDHData `cbor:"ECDH_ct"`
+	Kyber768Ct  []byte   `cbor:"Kyber768_ct"`
+	AEADCt      []byte   `cbor:"AEAD_ct"`
 }
 
+// Message3 carries the Message3Inner sealed under K1_c2s, and the transcript hash sealed
+// under the K2 client-to-server key-confirmation key.
 type Message3 struct {
-	MessageType              string
-	AEAD_ct                  []byte
-	AEAD_ct_key_confirmation []byte
+	MessageType           string
+	AEADCt                []byte `cbor:"AEAD_ct"`
+	AEADCtKeyConfirmation []byte `cbor:"AEAD_ct_key_confirmation"`
 }
 
+// Message3Inner holds the client's ciphertexts to the VAU's keys and the ERP and ESO flags
+// of the specification, which this client sends as false.
 type Message3Inner struct {
-	ECDH_ct     ECDHData
-	Kyber768_ct []byte
-	ERP         bool
-	ESO         bool
+	ECDHCt     ECDHData `cbor:"ECDH_ct"`
+	Kyber768Ct []byte   `cbor:"Kyber768_ct"`
+	ERP        bool
+	ESO        bool
 }
 
+// Message4 ends the handshake: the transcript hash sealed under the K2 server-to-client
+// key-confirmation key.
 type Message4 struct {
-	MessageType              string
-	AEAD_ct_key_confirmation []byte
+	MessageType           string
+	AEADCtKeyConfirmation []byte `cbor:"AEAD_ct_key_confirmation"`
 }
 
+// PublicVAUKeys are the VAU's public keys for the handshake and their validity.
 type PublicVAUKeys struct {
-	ECDH_PK     ECDHData
-	Kyber768_PK KEMData
-	IssuedAt    int64  `cbor:"iat"`
-	ExpiresAt   int64  `cbor:"exp"`
-	Commment    string `cbor:"comment"`
+	ECDHPK     ECDHData `cbor:"ECDH_PK"`
+	Kyber768PK KEMData  `cbor:"Kyber768_PK"`
+	IssuedAt   int64    `cbor:"iat"`
+	ExpiresAt  int64    `cbor:"exp"`
+	Commment   string   `cbor:"comment"`
 }
 
+// SignedPublicVAUKeys is PublicVAUKeys as the VAU signs them: SignedPubKeysRaw holds the
+// signed CBOR, Signature its ES256 signature, CertHash and Cdv name the [CertData] of the signer.
 type SignedPublicVAUKeys struct {
 	SignedPubKeys    *PublicVAUKeys `cbor:"-"`
 	SignedPubKeysRaw []byte         `cbor:"signed_pub_keys"`
@@ -87,6 +99,8 @@ type CertData struct {
 	RCAChain [][]byte `cbor:"rca_chain"`
 }
 
+// UnmarshalCBOR decodes a CertData and rejects one without certificate or CA; a missing RCA
+// chain is only logged.
 func (c *CertData) UnmarshalCBOR(data []byte) error {
 	type raw CertData
 	var decoded raw

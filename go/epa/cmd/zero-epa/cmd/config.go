@@ -19,6 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Package cmd holds the commands of zero-epa.
 package cmd
 
 import (
@@ -39,7 +40,7 @@ func init() {
 var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Print the loaded configuration",
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(cmd *cobra.Command, _ []string) {
 		fmt.Printf("Config file: %s\n", viper.GetString("config_file"))
 		config, err := epa.LoadConfigFile(viper.GetString("config_file"))
 		if err != nil {
@@ -47,6 +48,8 @@ var configCmd = &cobra.Command{
 			return
 		}
 		fmt.Printf("Base dir: %s\n", config.BaseDir)
-		yaml.NewEncoder(cmd.OutOrStdout()).Encode(config)
+		if err := yaml.NewEncoder(cmd.OutOrStdout()).Encode(config); err != nil {
+			slog.Error("encode config", "error", err)
+		}
 	},
 }

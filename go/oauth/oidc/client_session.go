@@ -21,6 +21,8 @@
 
 package oidc
 
+// AuthnClientSession is the state of one login at an OpenID provider, kept from the authorization request to
+// the callback. It holds the PKCE verifier and, after the exchange, the tokens, so a store has to keep it secret.
 type AuthnClientSession struct {
 	ID            string         `json:"id"`
 	Issuer        string         `json:"issuer"`
@@ -32,6 +34,7 @@ type AuthnClientSession struct {
 	TokenResponse *TokenResponse `json:"token_response"`
 }
 
+// AuthnClientSessionStore persists sessions; the callback finds its session by the state parameter.
 type AuthnClientSessionStore interface {
 	GetAuthnClientSessionByID(id string) (*AuthnClientSession, error)
 	GetAuthnClientSessionByState(state string) (*AuthnClientSession, error)

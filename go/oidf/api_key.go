@@ -28,15 +28,18 @@ import (
 	"strings"
 )
 
-type addApiKeyTransport struct {
+type addAPIKeyTransport struct {
 	t http.RoundTripper
 }
 
-func AddApiKeyTransport(t http.RoundTripper) http.RoundTripper {
-	return &addApiKeyTransport{t}
+// AddAPIKeyTransport wraps t so that requests to hosts ending in dev.gematik.solutions carry the
+// API_KEY environment variable as x-authorization, which those gematik environments gate on. Without
+// API_KEY the request goes out unchanged and an error is logged. A nil t means http.DefaultTransport.
+func AddAPIKeyTransport(t http.RoundTripper) http.RoundTripper {
+	return &addAPIKeyTransport{t}
 }
 
-func (adt *addApiKeyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (adt *addAPIKeyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// see if domain ends with .dev.gematik.solutions
 	// if so, add the api key
 	if strings.HasSuffix(req.URL.Host, "dev.gematik.solutions") {

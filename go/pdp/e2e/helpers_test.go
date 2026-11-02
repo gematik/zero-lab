@@ -78,7 +78,7 @@ func clientAssertion(t *testing.T, md authzserver.ExtendedMetadata, clientID str
 	t.Helper()
 	resp := mustGet(t, httpClient(), md.NonceEndpoint)
 	nonceBytes, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	nonce := strings.TrimSpace(string(nonceBytes))
 
 	thumb, err := key.Thumbprint(crypto.SHA256)
@@ -87,13 +87,19 @@ func clientAssertion(t *testing.T, md authzserver.ExtendedMetadata, clientID str
 	}
 	now := time.Now()
 	tok := jwt.New()
-	tok.Set(jwt.IssuerKey, clientID)
-	tok.Set(jwt.SubjectKey, clientID)
-	tok.Set(jwt.AudienceKey, md.Issuer)
-	tok.Set(jwt.IssuedAtKey, now.Unix())
-	tok.Set(jwt.ExpirationKey, now.Add(time.Minute).Unix())
-	tok.Set("nonce", nonce)
-	tok.Set("cnf", map[string]string{"jkt": base64.RawURLEncoding.EncodeToString(thumb)})
+	for name, value := range map[string]any{
+		jwt.IssuerKey:     clientID,
+		jwt.SubjectKey:    clientID,
+		jwt.AudienceKey:   md.Issuer,
+		jwt.IssuedAtKey:   now.Unix(),
+		jwt.ExpirationKey: now.Add(time.Minute).Unix(),
+		"nonce":           nonce,
+		"cnf":             map[string]string{"jkt": base64.RawURLEncoding.EncodeToString(thumb)},
+	} {
+		if err := tok.Set(name, value); err != nil {
+			t.Fatalf("set claim %s: %v", name, err)
+		}
+	}
 	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.ES256(), key))
 	if err != nil {
 		t.Fatalf("sign assertion: %v", err)
@@ -271,7 +277,7 @@ func startCallbackServer(t *testing.T, addr string) *callbackServer {
 	if err != nil {
 		t.Fatalf("callback server listen on %s: %v", addr, err)
 	}
-	cb.srv = &http.Server{Handler: mux}
+	cb.srv = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = cb.srv.Serve(ln) }()
 	cb.redirectURI = "http://" + addr + "/as-callback"
 	t.Cleanup(func() { _ = cb.srv.Close() })

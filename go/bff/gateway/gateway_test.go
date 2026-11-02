@@ -103,7 +103,7 @@ func mockAS(t *testing.T) *httptest.Server {
 			"nonce_endpoint":            base + "/nonce",
 		})
 	})
-	mux.HandleFunc("POST /token", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /token", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"access_token": "refreshed-token", "token_type": "Bearer", "expires_in": 3600,
@@ -168,7 +168,7 @@ func seedSession(t *testing.T, sm bff.SessionManager, accessToken string, expiry
 	if err := sm.UpdateSession(s); err != nil {
 		t.Fatal(err)
 	}
-	return &http.Cookie{Name: "test-cookie", Value: s.ID}
+	return &http.Cookie{Name: "test-cookie", Value: s.ID} //nolint:gosec // a request cookie, sent as name=value only; Secure, HttpOnly and SameSite exist on responses
 }
 
 func TestIdentityInjection(t *testing.T) {

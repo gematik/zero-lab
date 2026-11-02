@@ -25,6 +25,8 @@ import (
 	"time"
 )
 
+// Session is a browser's server-side state, from the pending login (State, CodeVerifier) to the
+// authenticated session (tokens, Identity). The browser holds ID, in its cookie, and never sees the raw tokens.
 type Session struct {
 	ID                   string         `json:"id"`
 	State                string         `json:"state"`
@@ -37,6 +39,8 @@ type Session struct {
 	Identity             map[string]any `json:"identity,omitempty"`
 }
 
+// SessionManager stores sessions, addressable by ID and by the login's state. Lookups of an unknown ID or
+// state return an error.
 type SessionManager interface {
 	CreateSession(state string, codeVerifier string, codeChallengeMethod string) (*Session, error)
 	UpdateSession(session *Session) error

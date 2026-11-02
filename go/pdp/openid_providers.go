@@ -46,12 +46,12 @@ type openidProviders struct {
 // Relative paths inside the OIDF config resolve against the file's directory (set by the caller via
 // OidfRelyingPartyConfig.BaseDir).
 func LoadOpenidProviders(path string) ([]oidc.Config, []gemidp.ClientConfig, *oidf.RelyingPartyConfig, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // the path comes from the operator's environment or configuration file, not a request
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("read providers %q: %w", path, err)
 	}
 	var op openidProviders
-	if err := yaml.Unmarshal([]byte(os.ExpandEnv(string(data))), &op); err != nil {
+	if err := yaml.Unmarshal([]byte(os.ExpandEnv(string(data))), &op); err != nil { //nolint:gosec // the document is the operator's configuration file and decodes into fixed config structs
 		return nil, nil, nil, fmt.Errorf("parse providers %q: %w", path, err)
 	}
 	return op.OIDC, op.Gemidp, op.OIDF, nil

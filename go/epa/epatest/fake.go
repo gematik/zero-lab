@@ -58,9 +58,16 @@ func (f *Identity) SignJWT(_ context.Context, header map[string]any, claims map[
 	return enc(h) + "." + enc(c) + ".fake", nil
 }
 
-func (f *Identity) CertificateDER() []byte   { return f.CertDER }
-func (f *Identity) Subject() string          { return f.SubjectDN }
-func (f *Identity) TelematikID() string      { return f.Telematik }
+// CertificateDER returns CertDER.
+func (f *Identity) CertificateDER() []byte { return f.CertDER }
+
+// Subject returns SubjectDN.
+func (f *Identity) Subject() string { return f.SubjectDN }
+
+// TelematikID returns Telematik.
+func (f *Identity) TelematikID() string { return f.Telematik }
+
+// Admission returns Admitted.
 func (f *Identity) Admission() *ti.Admission { return f.Admitted }
 
 // Authenticator answers every authorization URL with Code.

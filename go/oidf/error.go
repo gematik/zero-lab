@@ -28,6 +28,7 @@ import (
 	"log/slog"
 )
 
+// Error is an OAuth 2.0 error response (RFC 6749 §5.2) with the members gematik's IDPs add to it.
 type Error struct {
 	Operation        string `json:"operation"`
 	ErrorCode        string `json:"error"`

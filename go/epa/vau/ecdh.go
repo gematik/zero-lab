@@ -30,12 +30,15 @@ import (
 	"fmt"
 )
 
+// ECDHData is an EC public key as VAU messages carry it: curve name and coordinates.
 type ECDHData struct {
 	Crv string `cbor:"crv"`
 	X   []byte `cbor:"x"`
 	Y   []byte `cbor:"y"`
 }
 
+// PublicKey parses the coordinates as a P-256 point, whatever Crv says, and rejects points
+// not on the curve.
 func (ed *ECDHData) PublicKey() (*ecdh.PublicKey, error) {
 	if len(ed.X) > 32 || len(ed.Y) > 32 {
 		return nil, errors.New("parsing ECDH public key: coordinates longer than 32 bytes")
@@ -53,6 +56,8 @@ func (ed *ECDHData) PublicKey() (*ecdh.PublicKey, error) {
 	return ecdhPublicKey, nil
 }
 
+// Encapsulate generates an ephemeral P-256 key and returns the shared secret with this key
+// and the ephemeral public key, which the holder of the private key decapsulates.
 func (ed *ECDHData) Encapsulate() (ss []byte, ct *ECDHData, err error) {
 	puk, err := ed.PublicKey()
 	if err != nil {
@@ -81,6 +86,7 @@ func (ed *ECDHData) Encapsulate() (ss []byte, ct *ECDHData, err error) {
 	}, nil
 }
 
+// ECKeyPair is an ECDH key pair and its public key in message form.
 type ECKeyPair struct {
 	privateKey *ecdh.PrivateKey
 	PublicKey  *ecdh.PublicKey
@@ -112,11 +118,11 @@ func GenerateRandomECKeyPair(curve elliptic.Curve) (*ECKeyPair, error) {
 
 // Decapsulate computes the shared secret between the private key and the public key of the sender
 func (kp *ECKeyPair) Decapsulate(ecdhData *ECDHData) (ss []byte, err error) {
-	ecc_public_key_sender, err := ecdhData.PublicKey()
+	eccPublicKeySender, err := ecdhData.PublicKey()
 	if err != nil {
 		return nil, fmt.Errorf("decoding ECDH public key: %w", err)
 	}
-	return kp.privateKey.ECDH(ecc_public_key_sender)
+	return kp.privateKey.ECDH(eccPublicKeySender)
 }
 
 func ensurePadding(curve elliptic.Curve, axis []byte) []byte {
