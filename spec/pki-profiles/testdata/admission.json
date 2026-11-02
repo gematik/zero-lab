@@ -1,0 +1,286 @@
+[
+ {
+  "name": "minimal",
+  "der": "3026302430223020301e300c0c0a41727a74707261786973300906072a8214004c04321303312d32",
+  "accept": true,
+  "items": [
+   "Arztpraxis"
+  ],
+  "oids": [
+   "1.2.276.0.76.4.50"
+  ],
+  "registration_number": "1-2"
+ },
+ {
+  "name": "admission authority",
+  "der": "302aa4023000302430223020301e300c0c0a41727a74707261786973300906072a8214004c04321303312d32",
+  "accept": true,
+  "items": [
+   "Arztpraxis"
+  ],
+  "oids": [
+   "1.2.276.0.76.4.50"
+  ],
+  "registration_number": "1-2"
+ },
+ {
+  "name": "inner authority and naming authority",
+  "der": "3030302e302ca004a4023000a10230003020301e300c0c0a41727a74707261786973300906072a8214004c04321303312d32",
+  "accept": true,
+  "items": [
+   "Arztpraxis"
+  ],
+  "oids": [
+   "1.2.276.0.76.4.50"
+  ],
+  "registration_number": "1-2"
+ },
+ {
+  "name": "naming authority in the info",
+  "der": "302a3028302630243022a0023000300c0c0a41727a74707261786973300906072a8214004c04321303312d32",
+  "accept": true,
+  "items": [
+   "Arztpraxis"
+  ],
+  "oids": [
+   "1.2.276.0.76.4.50"
+  ],
+  "registration_number": "1-2"
+ },
+ {
+  "name": "additional info",
+  "der": "30293027302530233021300c0c0a41727a74707261786973300906072a8214004c04321303312d32040178",
+  "accept": true,
+  "items": [
+   "Arztpraxis"
+  ],
+  "oids": [
+   "1.2.276.0.76.4.50"
+  ],
+  "registration_number": "1-2"
+ },
+ {
+  "name": "printable item",
+  "der": "30223020301e301c301a30081306507261786973300906072a8214004c04321303312d32",
+  "accept": true,
+  "items": [
+   "Praxis"
+  ],
+  "oids": [
+   "1.2.276.0.76.4.50"
+  ],
+  "registration_number": "1-2"
+ },
+ {
+  "name": "umlaut item",
+  "der": "3027302530233021301f300d0c0b5a61686ec3a4727a74696e300906072a8214004c04321303312d32",
+  "accept": true,
+  "items": [
+   "Zahnärztin"
+  ],
+  "oids": [
+   "1.2.276.0.76.4.50"
+  ],
+  "registration_number": "1-2"
+ },
+ {
+  "name": "no OIDs",
+  "der": "301b3019301730153013300c0c0a41727a747072617869731303312d32",
+  "accept": true,
+  "items": [
+   "Arztpraxis"
+  ],
+  "oids": [],
+  "registration_number": "1-2"
+ },
+ {
+  "name": "no registration number",
+  "der": "3021301f301d301b3019300c0c0a41727a74707261786973300906072a8214004c0432",
+  "accept": true,
+  "items": [
+   "Arztpraxis"
+  ],
+  "oids": [
+   "1.2.276.0.76.4.50"
+  ],
+  "registration_number": null
+ },
+ {
+  "name": "no items in the sequence",
+  "der": "301530133011300f300d3000300906072a8214004c0432",
+  "accept": true,
+  "items": [],
+  "oids": [
+   "1.2.276.0.76.4.50"
+  ],
+  "registration_number": null
+ },
+ {
+  "name": "the first of two infos",
+  "der": "3036303430323030301e300c0c0a41727a74707261786973300906072a8214004c04321303312d32300e30030c0142300406022a03130132",
+  "accept": true,
+  "items": [
+   "Arztpraxis"
+  ],
+  "oids": [
+   "1.2.276.0.76.4.50"
+  ],
+  "registration_number": "1-2"
+ },
+ {
+  "name": "the first of two admissions",
+  "der": "303a303830223020301e300c0c0a41727a74707261786973300906072a8214004c04321303312d3230123010300e30030c0142300406022a03130132",
+  "accept": true,
+  "items": [
+   "Arztpraxis"
+  ],
+  "oids": [
+   "1.2.276.0.76.4.50"
+  ],
+  "registration_number": "1-2"
+ },
+ {
+  "name": "empty",
+  "der": "",
+  "accept": false
+ },
+ {
+  "name": "trailing byte",
+  "der": "3026302430223020301e300c0c0a41727a74707261786973300906072a8214004c04321303312d3200",
+  "accept": false
+ },
+ {
+  "name": "not a sequence",
+  "der": "040178",
+  "accept": false
+ },
+ {
+  "name": "no admissions",
+  "der": "30023000",
+  "accept": false
+ },
+ {
+  "name": "no infos",
+  "der": "3006300430023000",
+  "accept": false
+ },
+ {
+  "name": "no contents",
+  "der": "3000",
+  "accept": false
+ },
+ {
+  "name": "authority only",
+  "der": "3004a4023000",
+  "accept": false
+ },
+ {
+  "name": "no items",
+  "der": "30183016301430123010300906072a8214004c04321303312d32",
+  "accept": false
+ },
+ {
+  "name": "registration number not printable",
+  "der": "302530233021301f301d300c0c0a41727a74707261786973300906072a8214004c04321302612a",
+  "accept": false
+ },
+ {
+  "name": "registration number as UTF8",
+  "der": "3026302430223020301e300c0c0a41727a74707261786973300906072a8214004c04320c03312d32",
+  "accept": false
+ },
+ {
+  "name": "an element after the last",
+  "der": "302c302a302830263024300c0c0a41727a74707261786973300906072a8214004c04321303312d32040178040179",
+  "accept": false
+ },
+ {
+  "name": "a second admission malformed",
+  "der": "3029302730223020301e300c0c0a41727a74707261786973300906072a8214004c04321303312d32040178",
+  "accept": false
+ },
+ {
+  "name": "a second info malformed",
+  "der": "3029302730253023301e300c0c0a41727a74707261786973300906072a8214004c04321303312d32040178",
+  "accept": false
+ },
+ {
+  "name": "a malformed OID",
+  "der": "3020301e301c301a3018300c0c0a41727a7470726178697330030601801303312d32",
+  "accept": false
+ },
+ {
+  "name": "non-minimal length",
+  "der": "308103000000",
+  "accept": false
+ },
+ {
+  "name": "indefinite length",
+  "der": "30800000",
+  "accept": false
+ },
+ {
+  "name": "truncated",
+  "der": "3026302430223020301e300c0c0a41727a74707261786973300906072a8214004c04321303312d",
+  "accept": false
+ },
+ {
+  "name": "BMP item",
+  "der": "3020301e301c301a301830061e04005a00e4300906072a8214004c04321303312d32",
+  "accept": true,
+  "items": [
+   "Zä"
+  ],
+  "oids": [
+   "1.2.276.0.76.4.50"
+  ],
+  "registration_number": "1-2"
+ },
+ {
+  "name": "teletex item",
+  "der": "30223020301e301c301a30081406507261786973300906072a8214004c04321303312d32",
+  "accept": true,
+  "items": [
+   "Praxis"
+  ],
+  "oids": [
+   "1.2.276.0.76.4.50"
+  ],
+  "registration_number": "1-2"
+ },
+ {
+  "name": "universal string item",
+  "der": "3020301e301c301a301830061c0400000041300906072a8214004c04321303312d32",
+  "accept": false
+ },
+ {
+  "name": "IA5 item",
+  "der": "301d301b3019301730153003160141300906072a8214004c04321303312d32",
+  "accept": false
+ },
+ {
+  "name": "BMP item of odd length",
+  "der": "301f301d301b3019301730051e03004100300906072a8214004c04321303312d32",
+  "accept": false
+ },
+ {
+  "name": "BMP item with a lone surrogate",
+  "der": "301e301c301a3018301630041e02d800300906072a8214004c04321303312d32",
+  "accept": false
+ },
+ {
+  "name": "invalid UTF-8 item",
+  "der": "301d301b30193017301530030c01c3300906072a8214004c04321303312d32",
+  "accept": false
+ },
+ {
+  "name": "printable item with a star",
+  "der": "301e301c301a3018301630041302612a300906072a8214004c04321303312d32",
+  "accept": false
+ },
+ {
+  "name": "teletex item not ASCII",
+  "der": "301d301b30193017301530031401e4300906072a8214004c04321303312d32",
+  "accept": false
+ }
+]

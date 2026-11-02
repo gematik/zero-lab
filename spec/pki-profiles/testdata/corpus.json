@@ -1,0 +1,2025 @@
+{
+  "certificates": [
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.49"
+        ],
+        "registration_number": null
+      },
+      "file": "fallback-ch-aut-undecidable.pem",
+      "findings": null,
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": null
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.49"
+        ],
+        "registration_number": null
+      },
+      "file": "fallback-ch-enc-undecidable.pem",
+      "findings": null,
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": null
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.49"
+        ],
+        "registration_number": null
+      },
+      "file": "fallback-ch-qes.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [
+          "policy_mismatch"
+        ],
+        "hci-aut": [
+          "policy_mismatch"
+        ],
+        "idpd-sig": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
+        "tsl-sig": [
+          "policy_mismatch"
+        ],
+        "zeta-guard-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.CH.QES"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.53"
+        ],
+        "registration_number": null
+      },
+      "file": "fallback-hci-aut-krankenhaus.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [
+          "policy_mismatch",
+          "key_usage_mismatch"
+        ],
+        "hci-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch"
+        ],
+        "idpd-sig": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "tsl-sig": [
+          "policy_mismatch",
+          "key_usage_mismatch"
+        ],
+        "zeta-guard-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": "hci-aut",
+        "reason": "default"
+      },
+      "type": "C.HCI.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.54"
+        ],
+        "registration_number": null
+      },
+      "file": "fallback-hci-enc-apotheke.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [
+          "policy_mismatch",
+          "key_usage_mismatch"
+        ],
+        "hci-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch"
+        ],
+        "idpd-sig": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "tsl-sig": [
+          "policy_mismatch",
+          "key_usage_mismatch"
+        ],
+        "zeta-guard-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HCI.ENC"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.50"
+        ],
+        "registration_number": null
+      },
+      "file": "fallback-hci-osig-praxis.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [
+          "policy_mismatch"
+        ],
+        "hci-aut": [
+          "policy_mismatch"
+        ],
+        "idpd-sig": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
+        "tsl-sig": [
+          "policy_mismatch"
+        ],
+        "zeta-guard-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HCI.OSIG"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.32"
+        ],
+        "registration_number": null
+      },
+      "file": "fallback-hp-aut-apotheker.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "key_usage_mismatch"
+        ],
+        "hci-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "key_usage_mismatch"
+        ],
+        "idpd-sig": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "tsl-sig": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "key_usage_mismatch"
+        ],
+        "zeta-guard-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HP.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.31"
+        ],
+        "registration_number": null
+      },
+      "file": "fallback-hp-enc-zahnarzt.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [
+          "policy_mismatch",
+          "key_usage_mismatch"
+        ],
+        "hci-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch"
+        ],
+        "idpd-sig": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "tsl-sig": [
+          "policy_mismatch",
+          "key_usage_mismatch"
+        ],
+        "zeta-guard-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HP.ENC"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.30"
+        ],
+        "registration_number": null
+      },
+      "file": "fallback-hp-qes-arzt.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [
+          "policy_mismatch"
+        ],
+        "hci-aut": [
+          "policy_mismatch"
+        ],
+        "idpd-sig": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
+        "tsl-sig": [
+          "policy_mismatch"
+        ],
+        "zeta-guard-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HP.QES"
+    },
+    {
+      "admission": null,
+      "file": "none-umbrella-only.pem",
+      "findings": null,
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": null
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.3.4.5"
+        ],
+        "registration_number": null
+      },
+      "file": "none-unrelated-admission.pem",
+      "findings": null,
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": null
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.209"
+        ],
+        "registration_number": null
+      },
+      "file": "role-fd-aut-epa-vau.pem",
+      "findings": {
+        "epa-vau-aut": [],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": "epa-vau-aut",
+        "reason": "cert"
+      },
+      "type": "C.FD.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.328"
+        ],
+        "registration_number": null
+      },
+      "file": "role-fd-aut-zeta-guard.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": []
+      },
+      "selection": {
+        "candidates": [],
+        "profile": "zeta-guard-aut",
+        "reason": "cert"
+      },
+      "type": "C.FD.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.260"
+        ],
+        "registration_number": null
+      },
+      "file": "role-fd-sig-idpd.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": "idpd-sig",
+        "reason": "cert"
+      },
+      "type": "C.FD.SIG"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.286"
+        ],
+        "registration_number": null
+      },
+      "file": "role-hci-aut-kim-anbieter.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": "hci-aut",
+        "reason": "default"
+      },
+      "type": "C.HCI.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.59"
+        ],
+        "registration_number": null
+      },
+      "file": "role-hci-aut-kostentraeger.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": "hci-aut",
+        "reason": "default"
+      },
+      "type": "C.HCI.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.235"
+        ],
+        "registration_number": null
+      },
+      "file": "role-hp-qes-hebamme.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HP.QES"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.178"
+        ],
+        "registration_number": null
+      },
+      "file": "role-hp-qes-notfallsanitaeter.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HP.QES"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.49"
+        ],
+        "registration_number": null
+      },
+      "file": "type-ch-aut.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.CH.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.49"
+        ],
+        "registration_number": null
+      },
+      "file": "type-ch-autn.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.CH.AUTN"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.49"
+        ],
+        "registration_number": null
+      },
+      "file": "type-ch-enc.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.CH.ENC"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.49"
+        ],
+        "registration_number": null
+      },
+      "file": "type-ch-encv.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.CH.ENCV"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.49"
+        ],
+        "registration_number": null
+      },
+      "file": "type-ch-qes.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.CH.QES"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.49"
+        ],
+        "registration_number": null
+      },
+      "file": "type-ch-sig.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.CH.SIG"
+    },
+    {
+      "admission": null,
+      "file": "type-fd-aut.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [
+          "epa-vau-aut",
+          "zeta-guard-aut"
+        ],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.FD.AUT"
+    },
+    {
+      "admission": null,
+      "file": "type-fd-enc.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.FD.ENC"
+    },
+    {
+      "admission": null,
+      "file": "type-fd-osig.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.FD.OSIG"
+    },
+    {
+      "admission": null,
+      "file": "type-fd-sig.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [
+          "idpd-sig"
+        ],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.FD.SIG"
+    },
+    {
+      "admission": null,
+      "file": "type-fd-tls-c.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.FD.TLS-C"
+    },
+    {
+      "admission": null,
+      "file": "type-fd-tls-s.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": "fd-tls-s",
+        "reason": "default"
+      },
+      "type": "C.FD.TLS-S"
+    },
+    {
+      "admission": null,
+      "file": "type-gem-ver.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.GEM.VER"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.50"
+        ],
+        "registration_number": null
+      },
+      "file": "type-hci-aut.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": "hci-aut",
+        "reason": "default"
+      },
+      "type": "C.HCI.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.50"
+        ],
+        "registration_number": null
+      },
+      "file": "type-hci-enc.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HCI.ENC"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.50"
+        ],
+        "registration_number": null
+      },
+      "file": "type-hci-osig.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HCI.OSIG"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.30"
+        ],
+        "registration_number": null
+      },
+      "file": "type-hp-aut.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HP.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.30"
+        ],
+        "registration_number": null
+      },
+      "file": "type-hp-enc.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HP.ENC"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.30"
+        ],
+        "registration_number": null
+      },
+      "file": "type-hp-qes.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HP.QES"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.302"
+        ],
+        "registration_number": null
+      },
+      "file": "type-hsk-enc.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HSK.ENC"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.302"
+        ],
+        "registration_number": null
+      },
+      "file": "type-hsk-sig.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HSK.SIG"
+    },
+    {
+      "admission": null,
+      "file": "type-zd-sig.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.ZD.SIG"
+    },
+    {
+      "admission": null,
+      "file": "type-zd-tls-s.pem",
+      "findings": {
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.ZD.TLS-S"
+    }
+  ],
+  "tables": {
+    "profiles": [
+      {
+        "accepts_types": [
+          "C.FD.AUT"
+        ],
+        "default_for": [],
+        "description": "ePA Aktensystem VAU backend authenticity",
+        "name": "epa-vau-aut",
+        "required_role_oids": [
+          "1.2.276.0.76.4.209"
+        ],
+        "revocation": "hard-fail"
+      },
+      {
+        "accepts_types": [
+          "C.FD.TLS-S"
+        ],
+        "default_for": [
+          "C.FD.TLS-S"
+        ],
+        "description": "Fachdienst TLS server",
+        "name": "fd-tls-s",
+        "required_role_oids": [],
+        "revocation": "hard-fail"
+      },
+      {
+        "accepts_types": [
+          "C.HCI.AUT"
+        ],
+        "default_for": [
+          "C.HCI.AUT"
+        ],
+        "description": "Institution authentication, SM-B (SMC-B, HSM-B)",
+        "name": "hci-aut",
+        "required_role_oids": [],
+        "revocation": "soft-fail"
+      },
+      {
+        "accepts_types": [
+          "C.FD.SIG"
+        ],
+        "default_for": [],
+        "description": "IDP discovery document and token signing",
+        "name": "idpd-sig",
+        "required_role_oids": [
+          "1.2.276.0.76.4.260"
+        ],
+        "revocation": "hard-fail"
+      },
+      {
+        "accepts_types": [
+          "C.TSL.SIG"
+        ],
+        "default_for": [
+          "C.TSL.SIG"
+        ],
+        "description": "TSL signer",
+        "name": "tsl-sig",
+        "required_role_oids": [],
+        "revocation": "hard-fail"
+      },
+      {
+        "accepts_types": [
+          "C.FD.AUT"
+        ],
+        "default_for": [],
+        "description": "ZETA Guard access service layer authenticity",
+        "name": "zeta-guard-aut",
+        "required_role_oids": [
+          "1.2.276.0.76.4.328"
+        ],
+        "revocation": "hard-fail"
+      }
+    ],
+    "types": [
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "contentCommitment"
+        ],
+        "name": "C.CH.QES",
+        "oid": "1.2.276.0.76.4.66",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.66"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.49"
+        ]
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "contentCommitment"
+        ],
+        "name": "C.CH.SIG",
+        "oid": "1.2.276.0.76.4.67",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.67"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.49"
+        ]
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "keyAgreement"
+        ],
+        "name": "C.CH.ENC",
+        "oid": "1.2.276.0.76.4.68",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.68"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.49"
+        ]
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "keyAgreement"
+        ],
+        "name": "C.CH.ENCV",
+        "oid": "1.2.276.0.76.4.69",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.69"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.49"
+        ]
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "digitalSignature"
+        ],
+        "name": "C.CH.AUT",
+        "oid": "1.2.276.0.76.4.70",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.70"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.49"
+        ]
+      },
+      {
+        "ext_key_usage": [
+          "1.3.6.1.5.5.7.3.2"
+        ],
+        "key_usage": [
+          "digitalSignature"
+        ],
+        "name": "C.CH.AUTN",
+        "oid": "1.2.276.0.76.4.71",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.71"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.49"
+        ]
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "contentCommitment"
+        ],
+        "name": "C.HP.QES",
+        "oid": "1.2.276.0.76.4.72",
+        "policies": [
+          "1.2.276.0.76.4.145",
+          "1.2.276.0.76.4.72"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.30",
+          "1.2.276.0.76.4.31",
+          "1.2.276.0.76.4.32",
+          "1.2.276.0.76.4.33",
+          "1.2.276.0.76.4.34",
+          "1.2.276.0.76.4.35",
+          "1.2.276.0.76.4.36",
+          "1.2.276.0.76.4.37",
+          "1.2.276.0.76.4.38",
+          "1.2.276.0.76.4.39",
+          "1.2.276.0.76.4.40",
+          "1.2.276.0.76.4.41",
+          "1.2.276.0.76.4.42",
+          "1.2.276.0.76.4.43",
+          "1.2.276.0.76.4.44",
+          "1.2.276.0.76.4.45",
+          "1.2.276.0.76.4.46",
+          "1.2.276.0.76.4.47",
+          "1.2.276.0.76.4.48",
+          "1.2.276.0.76.4.178",
+          "1.2.276.0.76.4.232",
+          "1.2.276.0.76.4.233",
+          "1.2.276.0.76.4.234",
+          "1.2.276.0.76.4.235",
+          "1.2.276.0.76.4.236",
+          "1.2.276.0.76.4.237",
+          "1.2.276.0.76.4.238",
+          "1.2.276.0.76.4.239",
+          "1.2.276.0.76.4.240",
+          "1.2.276.0.76.4.241",
+          "1.2.276.0.76.4.274",
+          "1.2.276.0.76.4.275",
+          "1.2.276.0.76.4.276",
+          "1.2.276.0.76.4.277",
+          "1.2.276.0.76.4.308",
+          "1.2.276.0.76.4.305",
+          "1.2.276.0.76.4.312",
+          "1.2.276.0.76.4.313",
+          "1.2.276.0.76.4.316",
+          "1.2.276.0.76.4.318",
+          "1.2.276.0.76.4.315",
+          "1.2.276.0.76.4.319"
+        ]
+      },
+      {
+        "ext_key_usage": [
+          "1.3.6.1.5.5.7.3.2",
+          "1.3.6.1.5.5.7.3.4"
+        ],
+        "key_usage": [
+          "digitalSignature",
+          "keyAgreement"
+        ],
+        "name": "C.HP.AUT",
+        "oid": "1.2.276.0.76.4.75",
+        "policies": [
+          "1.2.276.0.76.4.145",
+          "1.2.276.0.76.4.75"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.30",
+          "1.2.276.0.76.4.31",
+          "1.2.276.0.76.4.32",
+          "1.2.276.0.76.4.33",
+          "1.2.276.0.76.4.34",
+          "1.2.276.0.76.4.35",
+          "1.2.276.0.76.4.36",
+          "1.2.276.0.76.4.37",
+          "1.2.276.0.76.4.38",
+          "1.2.276.0.76.4.39",
+          "1.2.276.0.76.4.40",
+          "1.2.276.0.76.4.41",
+          "1.2.276.0.76.4.42",
+          "1.2.276.0.76.4.43",
+          "1.2.276.0.76.4.44",
+          "1.2.276.0.76.4.45",
+          "1.2.276.0.76.4.46",
+          "1.2.276.0.76.4.47",
+          "1.2.276.0.76.4.48",
+          "1.2.276.0.76.4.178",
+          "1.2.276.0.76.4.232",
+          "1.2.276.0.76.4.233",
+          "1.2.276.0.76.4.234",
+          "1.2.276.0.76.4.235",
+          "1.2.276.0.76.4.236",
+          "1.2.276.0.76.4.237",
+          "1.2.276.0.76.4.238",
+          "1.2.276.0.76.4.239",
+          "1.2.276.0.76.4.240",
+          "1.2.276.0.76.4.241",
+          "1.2.276.0.76.4.274",
+          "1.2.276.0.76.4.275",
+          "1.2.276.0.76.4.276",
+          "1.2.276.0.76.4.277",
+          "1.2.276.0.76.4.308",
+          "1.2.276.0.76.4.305",
+          "1.2.276.0.76.4.312",
+          "1.2.276.0.76.4.313",
+          "1.2.276.0.76.4.316",
+          "1.2.276.0.76.4.318",
+          "1.2.276.0.76.4.315",
+          "1.2.276.0.76.4.319"
+        ]
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "keyAgreement"
+        ],
+        "name": "C.HP.ENC",
+        "oid": "1.2.276.0.76.4.74",
+        "policies": [
+          "1.2.276.0.76.4.145",
+          "1.2.276.0.76.4.74"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.30",
+          "1.2.276.0.76.4.31",
+          "1.2.276.0.76.4.32",
+          "1.2.276.0.76.4.33",
+          "1.2.276.0.76.4.34",
+          "1.2.276.0.76.4.35",
+          "1.2.276.0.76.4.36",
+          "1.2.276.0.76.4.37",
+          "1.2.276.0.76.4.38",
+          "1.2.276.0.76.4.39",
+          "1.2.276.0.76.4.40",
+          "1.2.276.0.76.4.41",
+          "1.2.276.0.76.4.42",
+          "1.2.276.0.76.4.43",
+          "1.2.276.0.76.4.44",
+          "1.2.276.0.76.4.45",
+          "1.2.276.0.76.4.46",
+          "1.2.276.0.76.4.47",
+          "1.2.276.0.76.4.48",
+          "1.2.276.0.76.4.178",
+          "1.2.276.0.76.4.232",
+          "1.2.276.0.76.4.233",
+          "1.2.276.0.76.4.234",
+          "1.2.276.0.76.4.235",
+          "1.2.276.0.76.4.236",
+          "1.2.276.0.76.4.237",
+          "1.2.276.0.76.4.238",
+          "1.2.276.0.76.4.239",
+          "1.2.276.0.76.4.240",
+          "1.2.276.0.76.4.241",
+          "1.2.276.0.76.4.274",
+          "1.2.276.0.76.4.275",
+          "1.2.276.0.76.4.276",
+          "1.2.276.0.76.4.277",
+          "1.2.276.0.76.4.308",
+          "1.2.276.0.76.4.305",
+          "1.2.276.0.76.4.312",
+          "1.2.276.0.76.4.313",
+          "1.2.276.0.76.4.316",
+          "1.2.276.0.76.4.318",
+          "1.2.276.0.76.4.315",
+          "1.2.276.0.76.4.319"
+        ]
+      },
+      {
+        "ext_key_usage": [
+          "1.3.6.1.5.5.7.3.2"
+        ],
+        "key_usage": [
+          "digitalSignature"
+        ],
+        "name": "C.HCI.AUT",
+        "oid": "1.2.276.0.76.4.77",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.77"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.50",
+          "1.2.276.0.76.4.51",
+          "1.2.276.0.76.4.52",
+          "1.2.276.0.76.4.53",
+          "1.2.276.0.76.4.54",
+          "1.2.276.0.76.4.55",
+          "1.2.276.0.76.4.56",
+          "1.2.276.0.76.4.57",
+          "1.2.276.0.76.4.58",
+          "1.2.276.0.76.4.59",
+          "1.2.276.0.76.4.187",
+          "1.2.276.0.76.4.190",
+          "1.2.276.0.76.4.210",
+          "1.2.276.0.76.4.223",
+          "1.2.276.0.76.4.226",
+          "1.2.276.0.76.4.227",
+          "1.2.276.0.76.4.228",
+          "1.2.276.0.76.4.224",
+          "1.2.276.0.76.4.225",
+          "1.2.276.0.76.4.229",
+          "1.2.276.0.76.4.230",
+          "1.2.276.0.76.4.231",
+          "1.2.276.0.76.4.242",
+          "1.2.276.0.76.4.243",
+          "1.2.276.0.76.4.244",
+          "1.2.276.0.76.4.245",
+          "1.2.276.0.76.4.246",
+          "1.2.276.0.76.4.247",
+          "1.2.276.0.76.4.248",
+          "1.2.276.0.76.4.249",
+          "1.2.276.0.76.4.250",
+          "1.2.276.0.76.4.251",
+          "1.2.276.0.76.4.252",
+          "1.2.276.0.76.4.253",
+          "1.2.276.0.76.4.254",
+          "1.2.276.0.76.4.255",
+          "1.2.276.0.76.4.256",
+          "1.2.276.0.76.4.257",
+          "1.2.276.0.76.4.262",
+          "1.2.276.0.76.4.263",
+          "1.2.276.0.76.4.264",
+          "1.2.276.0.76.4.265",
+          "1.2.276.0.76.4.266",
+          "1.2.276.0.76.4.267",
+          "1.2.276.0.76.4.268",
+          "1.2.276.0.76.4.269",
+          "1.2.276.0.76.4.270",
+          "1.2.276.0.76.4.271",
+          "1.2.276.0.76.4.278",
+          "1.2.276.0.76.4.279",
+          "1.2.276.0.76.4.280",
+          "1.2.276.0.76.4.281",
+          "1.2.276.0.76.4.284",
+          "1.2.276.0.76.4.285",
+          "1.2.276.0.76.4.286",
+          "1.2.276.0.76.4.282",
+          "1.2.276.0.76.4.295",
+          "1.2.276.0.76.4.292",
+          "1.2.276.0.76.4.303",
+          "1.2.276.0.76.4.304",
+          "1.2.276.0.76.4.306",
+          "1.2.276.0.76.4.311",
+          "1.2.276.0.76.4.314",
+          "1.2.276.0.76.4.317"
+        ]
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "keyAgreement"
+        ],
+        "name": "C.HCI.ENC",
+        "oid": "1.2.276.0.76.4.76",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.76"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.50",
+          "1.2.276.0.76.4.51",
+          "1.2.276.0.76.4.52",
+          "1.2.276.0.76.4.53",
+          "1.2.276.0.76.4.54",
+          "1.2.276.0.76.4.55",
+          "1.2.276.0.76.4.56",
+          "1.2.276.0.76.4.57",
+          "1.2.276.0.76.4.58",
+          "1.2.276.0.76.4.59",
+          "1.2.276.0.76.4.187",
+          "1.2.276.0.76.4.190",
+          "1.2.276.0.76.4.210",
+          "1.2.276.0.76.4.223",
+          "1.2.276.0.76.4.226",
+          "1.2.276.0.76.4.227",
+          "1.2.276.0.76.4.228",
+          "1.2.276.0.76.4.224",
+          "1.2.276.0.76.4.225",
+          "1.2.276.0.76.4.229",
+          "1.2.276.0.76.4.230",
+          "1.2.276.0.76.4.231",
+          "1.2.276.0.76.4.242",
+          "1.2.276.0.76.4.243",
+          "1.2.276.0.76.4.244",
+          "1.2.276.0.76.4.245",
+          "1.2.276.0.76.4.246",
+          "1.2.276.0.76.4.247",
+          "1.2.276.0.76.4.248",
+          "1.2.276.0.76.4.249",
+          "1.2.276.0.76.4.250",
+          "1.2.276.0.76.4.251",
+          "1.2.276.0.76.4.252",
+          "1.2.276.0.76.4.253",
+          "1.2.276.0.76.4.254",
+          "1.2.276.0.76.4.255",
+          "1.2.276.0.76.4.256",
+          "1.2.276.0.76.4.257",
+          "1.2.276.0.76.4.262",
+          "1.2.276.0.76.4.263",
+          "1.2.276.0.76.4.264",
+          "1.2.276.0.76.4.265",
+          "1.2.276.0.76.4.266",
+          "1.2.276.0.76.4.267",
+          "1.2.276.0.76.4.268",
+          "1.2.276.0.76.4.269",
+          "1.2.276.0.76.4.270",
+          "1.2.276.0.76.4.271",
+          "1.2.276.0.76.4.278",
+          "1.2.276.0.76.4.279",
+          "1.2.276.0.76.4.280",
+          "1.2.276.0.76.4.281",
+          "1.2.276.0.76.4.284",
+          "1.2.276.0.76.4.285",
+          "1.2.276.0.76.4.286",
+          "1.2.276.0.76.4.282",
+          "1.2.276.0.76.4.295",
+          "1.2.276.0.76.4.292",
+          "1.2.276.0.76.4.303",
+          "1.2.276.0.76.4.304",
+          "1.2.276.0.76.4.306",
+          "1.2.276.0.76.4.311",
+          "1.2.276.0.76.4.314",
+          "1.2.276.0.76.4.317"
+        ]
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "contentCommitment"
+        ],
+        "name": "C.HCI.OSIG",
+        "oid": "1.2.276.0.76.4.78",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.78"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.50",
+          "1.2.276.0.76.4.51",
+          "1.2.276.0.76.4.52",
+          "1.2.276.0.76.4.53",
+          "1.2.276.0.76.4.54",
+          "1.2.276.0.76.4.55",
+          "1.2.276.0.76.4.56",
+          "1.2.276.0.76.4.57",
+          "1.2.276.0.76.4.58",
+          "1.2.276.0.76.4.59",
+          "1.2.276.0.76.4.187",
+          "1.2.276.0.76.4.190",
+          "1.2.276.0.76.4.210",
+          "1.2.276.0.76.4.223",
+          "1.2.276.0.76.4.226",
+          "1.2.276.0.76.4.227",
+          "1.2.276.0.76.4.228",
+          "1.2.276.0.76.4.224",
+          "1.2.276.0.76.4.225",
+          "1.2.276.0.76.4.229",
+          "1.2.276.0.76.4.230",
+          "1.2.276.0.76.4.231",
+          "1.2.276.0.76.4.242",
+          "1.2.276.0.76.4.243",
+          "1.2.276.0.76.4.244",
+          "1.2.276.0.76.4.245",
+          "1.2.276.0.76.4.246",
+          "1.2.276.0.76.4.247",
+          "1.2.276.0.76.4.248",
+          "1.2.276.0.76.4.249",
+          "1.2.276.0.76.4.250",
+          "1.2.276.0.76.4.251",
+          "1.2.276.0.76.4.252",
+          "1.2.276.0.76.4.253",
+          "1.2.276.0.76.4.254",
+          "1.2.276.0.76.4.255",
+          "1.2.276.0.76.4.256",
+          "1.2.276.0.76.4.257",
+          "1.2.276.0.76.4.262",
+          "1.2.276.0.76.4.263",
+          "1.2.276.0.76.4.264",
+          "1.2.276.0.76.4.265",
+          "1.2.276.0.76.4.266",
+          "1.2.276.0.76.4.267",
+          "1.2.276.0.76.4.268",
+          "1.2.276.0.76.4.269",
+          "1.2.276.0.76.4.270",
+          "1.2.276.0.76.4.271",
+          "1.2.276.0.76.4.278",
+          "1.2.276.0.76.4.279",
+          "1.2.276.0.76.4.280",
+          "1.2.276.0.76.4.281",
+          "1.2.276.0.76.4.284",
+          "1.2.276.0.76.4.285",
+          "1.2.276.0.76.4.286",
+          "1.2.276.0.76.4.282",
+          "1.2.276.0.76.4.295",
+          "1.2.276.0.76.4.292",
+          "1.2.276.0.76.4.303",
+          "1.2.276.0.76.4.304",
+          "1.2.276.0.76.4.306",
+          "1.2.276.0.76.4.311",
+          "1.2.276.0.76.4.314",
+          "1.2.276.0.76.4.317"
+        ]
+      },
+      {
+        "ext_key_usage": [
+          "1.3.6.1.5.5.7.3.1"
+        ],
+        "key_usage": [
+          "digitalSignature"
+        ],
+        "name": "C.FD.TLS-S",
+        "oid": "1.2.276.0.76.4.169",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.169"
+        ],
+        "role_oids": []
+      },
+      {
+        "ext_key_usage": [
+          "1.3.6.1.5.5.7.3.2"
+        ],
+        "key_usage": [
+          "digitalSignature"
+        ],
+        "name": "C.FD.TLS-C",
+        "oid": "1.2.276.0.76.4.168",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.168"
+        ],
+        "role_oids": []
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "digitalSignature"
+        ],
+        "name": "C.FD.SIG",
+        "oid": "1.2.276.0.76.4.203",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.203"
+        ],
+        "role_oids": []
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "keyAgreement"
+        ],
+        "name": "C.FD.ENC",
+        "oid": "1.2.276.0.76.4.202",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.202"
+        ],
+        "role_oids": []
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "digitalSignature"
+        ],
+        "name": "C.FD.AUT",
+        "oid": "1.2.276.0.76.4.155",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.155"
+        ],
+        "role_oids": []
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "contentCommitment"
+        ],
+        "name": "C.FD.OSIG",
+        "oid": "1.2.276.0.76.4.283",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.283"
+        ],
+        "role_oids": []
+      },
+      {
+        "ext_key_usage": [
+          "1.3.6.1.5.5.7.3.1"
+        ],
+        "key_usage": [
+          "digitalSignature"
+        ],
+        "name": "C.ZD.TLS-S",
+        "oid": "1.2.276.0.76.4.157",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.157"
+        ],
+        "role_oids": []
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "contentCommitment"
+        ],
+        "name": "C.ZD.SIG",
+        "oid": "1.2.276.0.76.4.287",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.287"
+        ],
+        "role_oids": []
+      },
+      {
+        "ext_key_usage": [
+          "1.3.6.1.5.5.7.3.2",
+          "1.3.6.1.5.5.7.3.1"
+        ],
+        "key_usage": [
+          "contentCommitment"
+        ],
+        "name": "C.HSK.SIG",
+        "oid": "1.2.276.0.76.4.300",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.300"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.302"
+        ]
+      },
+      {
+        "ext_key_usage": [
+          "1.3.6.1.5.5.7.3.2",
+          "1.3.6.1.5.5.7.3.1"
+        ],
+        "key_usage": [
+          "keyAgreement"
+        ],
+        "name": "C.HSK.ENC",
+        "oid": "1.2.276.0.76.4.301",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.301"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.302"
+        ]
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [],
+        "name": "C.GEM.VER",
+        "oid": "1.2.276.0.76.4.321",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.321"
+        ],
+        "role_oids": []
+      },
+      {
+        "ext_key_usage": [
+          "0.4.0.2231.3.0"
+        ],
+        "key_usage": [
+          "contentCommitment"
+        ],
+        "name": "C.TSL.SIG",
+        "oid": "1.2.276.0.76.4.176",
+        "policies": [
+          "1.2.276.0.76.4.176"
+        ],
+        "role_oids": []
+      }
+    ]
+  }
+}
