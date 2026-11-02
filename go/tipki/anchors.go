@@ -33,3 +33,15 @@ var AnchorProd []byte
 //
 //go:embed anchors/GEM.TSL-CA3.der
 var TSLSignerAnchorProd []byte
+
+// AnchorNonProd is GEM.RCA7 TEST-ONLY, the anchor of the non-production environments, in DER. Both sets are
+// compiled in, so one image serves every environment; what a host trusts follows from the environment it
+// names, and a host of production picks only the production anchors (decision-11).
+//
+//go:embed anchors/GEM.RCA7-TEST-ONLY.der
+var AnchorNonProd []byte
+
+// TSLSignerAnchorNonProd is GEM.TSL-CA28 TEST-ONLY, the TSL signer CA of the non-production environments.
+//
+//go:embed anchors/GEM.TSL-CA28-TEST-ONLY.der
+var TSLSignerAnchorNonProd []byte

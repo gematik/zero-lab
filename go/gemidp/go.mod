@@ -1,11 +1,12 @@
 module github.com/gematik/zero-lab/go/gemidp
 
-go 1.26.4
+go 1.27.0
 
 require (
 	github.com/gematik/zero-lab/go/brainpool v1.2.1-0.20261021083859-f5934a4ca8a1
 	github.com/gematik/zero-lab/go/oauth v0.51.1-0.20261021083859-f5934a4ca8a1
 	github.com/gematik/zero-lab/go/pkcs12 v0.100.1-0.20261021083859-f5934a4ca8a1
+	github.com/gematik/zero-lab/go/tipki v0.0.0-00010101000000-000000000000
 	github.com/lestrrat-go/jwx/v3 v3.3.0
 	golang.org/x/oauth2 v0.37.0
 )
@@ -24,3 +25,6 @@ require (
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 )
+
+// go/tipki has no tag yet; `just sync` pins it after the first push, and this goes.
+replace github.com/gematik/zero-lab/go/tipki => ../tipki

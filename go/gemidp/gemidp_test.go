@@ -24,6 +24,7 @@ package gemidp_test
 import (
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -69,12 +70,13 @@ func TestGemIDP(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	t.Log("TestGemIDP")
 	cfg := gemidp.ClientConfig{
-		UserAgent:   "zero-lab-testcase",
-		Environment: gemidp.EnvironmentReference,
-		BaseURL:     os.Getenv("GEMIDP_BASE_URL"),
-		ClientID:    os.Getenv("GEMIDP_CLIENT_ID"),
-		RedirectURI: os.Getenv("GEMIDP_REDIRECT_URI"),
-		Scopes:      strings.Split(os.Getenv("GEMIDP_SCOPE"), " "),
+		UserAgent:       "zero-lab-testcase",
+		Environment:     gemidp.EnvironmentReference,
+		TrustBundlePath: os.Getenv("GEMIDP_TRUST_BUNDLE_PATH"),
+		BaseURL:         os.Getenv("GEMIDP_BASE_URL"),
+		ClientID:        os.Getenv("GEMIDP_CLIENT_ID"),
+		RedirectURI:     os.Getenv("GEMIDP_REDIRECT_URI"),
+		Scopes:          strings.Split(os.Getenv("GEMIDP_SCOPE"), " "),
 	}
 
 	client, err := gemidp.NewClientFromConfig(cfg)
@@ -93,6 +95,7 @@ func TestGemIDP(t *testing.T) {
 
 	authenticator, err := gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
 		Idp:        client.Idp,
+		Trust:      mustBundleTrust(t),
 		SignerFunc: gemidp.SignWithSoftkeyPEM(testKeyBytes, testCertBytes),
 	})
 	if err != nil {
@@ -120,4 +123,13 @@ func TestGemIDP(t *testing.T) {
 	}
 
 	t.Log(claims)
+}
+
+func mustBundleTrust(t *testing.T) *gemidp.BundleTrust {
+	t.Helper()
+	trust, err := gemidp.NewBundleTrust(gemidp.EnvironmentReference, os.Getenv("GEMIDP_TRUST_BUNDLE_PATH"), http.DefaultClient)
+	if err != nil {
+		t.Fatalf("GEMIDP_TRUST_BUNDLE_PATH: %v", err)
+	}
+	return trust
 }

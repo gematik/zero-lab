@@ -78,12 +78,13 @@ func TestGemIDP_SMCB(t *testing.T) {
 	t.Logf("SMC-B AUT identity: subject=%q curve=%s", cert.Subject.String(), prk.Curve.Params().Name)
 
 	cfg := gemidp.ClientConfig{
-		UserAgent:   "zero-lab-testcase",
-		Environment: gemidp.EnvironmentReference,
-		BaseURL:     os.Getenv("GEMIDP_BASE_URL"),
-		ClientID:    os.Getenv("GEMIDP_CLIENT_ID"),
-		RedirectURI: os.Getenv("GEMIDP_REDIRECT_URI"),
-		Scopes:      strings.Split(os.Getenv("GEMIDP_SCOPE"), " "),
+		UserAgent:       "zero-lab-testcase",
+		Environment:     gemidp.EnvironmentReference,
+		TrustBundlePath: os.Getenv("GEMIDP_TRUST_BUNDLE_PATH"),
+		BaseURL:         os.Getenv("GEMIDP_BASE_URL"),
+		ClientID:        os.Getenv("GEMIDP_CLIENT_ID"),
+		RedirectURI:     os.Getenv("GEMIDP_REDIRECT_URI"),
+		Scopes:          strings.Split(os.Getenv("GEMIDP_SCOPE"), " "),
 	}
 	client, err := gemidp.NewClientFromConfig(cfg)
 	if err != nil {
@@ -98,6 +99,7 @@ func TestGemIDP_SMCB(t *testing.T) {
 
 	authenticator, err := gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
 		Idp:        client.Idp,
+		Trust:      mustBundleTrust(t),
 		SignerFunc: gemidp.SignWithSoftkey(prk, cert),
 	})
 	if err != nil {

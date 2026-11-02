@@ -82,6 +82,12 @@ type ClientConfig struct {
 	AuthenticatorMode bool        `yaml:"authenticator_mode"`
 	UserAgent         string      `yaml:"user_agent"`
 
+	// TrustBundlePath is the file `ti pki trust export` writes.
+	TrustBundlePath string `yaml:"trust_bundle_path"`
+
+	// Trust replaces the bundle. Not serialized; supplied programmatically.
+	Trust CertificateTrust `yaml:"-"`
+
 	// HTTPClient is used for metadata, key, and token requests. Not serialized; supplied
 	// programmatically. When nil, a client with a default timeout is created. The configured
 	// User-Agent is layered onto the client's transport either way.
@@ -96,12 +102,18 @@ type Client struct {
 	Metadata    Metadata
 	baseURL     string
 	httpClient  *http.Client
+	trust       CertificateTrust
 }
 
 // NewClientFromConfig creates a Client and fetches the discovery document, so the IDP-Dienst has to be
-// reachable. ClientID, RedirectURI and at least one scope are required; BaseURL overrides the base URL of
+// reachable and its certificate valid (IDPV-001). There is no client without trust material (IDPV-003).
+// ClientID, RedirectURI and at least one scope are required; BaseURL overrides the base URL of
 // the Environment.
 func NewClientFromConfig(config ClientConfig) (*Client, error) {
+	if config.Environment == EnvironmentUnset {
+		return nil, errors.New("environment is required: test, ref or prod")
+	}
+
 	if config.ClientID == "" {
 		return nil, errors.New("client ID is required")
 	}
@@ -136,7 +148,16 @@ func NewClientFromConfig(config ClientConfig) (*Client, error) {
 	decorated.Transport = &transportAddUserAgent{transportOrDefault(httpClient.Transport), config.UserAgent}
 	httpClient = &decorated
 
-	metadata, err := fetchMetadata(baseURL, httpClient)
+	trust := config.Trust
+	if trust == nil {
+		bundleTrust, err := NewBundleTrust(config.Environment, config.TrustBundlePath, httpClient)
+		if err != nil {
+			return nil, fmt.Errorf("IDP-Dienst trust: %w", err)
+		}
+		trust = bundleTrust
+	}
+
+	metadata, err := fetchMetadata(baseURL, httpClient, trust)
 	if err != nil {
 		return nil, fmt.Errorf("fetching metadata: %w", err)
 	}
@@ -148,6 +169,7 @@ func NewClientFromConfig(config ClientConfig) (*Client, error) {
 		Metadata:    *metadata,
 		baseURL:     baseURL,
 		httpClient:  httpClient,
+		trust:       trust,
 	}, nil
 }
 
@@ -225,7 +247,7 @@ func (c *Client) ExchangeForIdentity(code, verifier string, options ...oidc.Opti
 		return nil, fmt.Errorf("generating token key: %w", err)
 	}
 
-	idpEncKey, err := fetchKey(c.Metadata.EncryptionKeyURI, c.httpClient)
+	idpEncKey, err := fetchEncryptionKey(c.Metadata.EncryptionKeyURI, c.httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("fetching challenge encryption key: %w", err)
 	}
@@ -309,7 +331,7 @@ func decryptToken(token string, key []byte) (string, error) {
 }
 
 func (c *Client) parseIDToken(response *oidc.TokenResponse) (jwt.Token, error) {
-	key, err := fetchKey(c.Metadata.SigningKeyURI, c.httpClient)
+	key, err := fetchSigningKey(c.Metadata.SigningKeyURI, c.httpClient, c.trust)
 	if err != nil {
 		return nil, fmt.Errorf("fetching signing key: %w", err)
 	}

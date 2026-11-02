@@ -22,6 +22,8 @@
 package gemidp
 
 import (
+	"context"
+	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -57,7 +59,10 @@ type Environment int
 
 // The instances of the IDP-Dienst: test (TU), reference (RU) and production (PU).
 const (
-	EnvironmentTest Environment = iota
+	// EnvironmentUnset is what a missing or unknown name yields, and no client starts with it: the
+	// environment decides which anchors are trusted (IDPV-006).
+	EnvironmentUnset Environment = iota
+	EnvironmentTest
 	EnvironmentReference
 	EnvironmentProduction
 )
@@ -106,8 +111,8 @@ func (e *Environment) UnmarshalYAML(unmarshal func(any) error) error {
 	return nil
 }
 
-// NewEnvironment maps a name to its Environment: "tu" or "test", "ru" or "ref", "prod". An empty name means
-// production; any other name means reference.
+// NewEnvironment maps a name to its Environment: "tu" or "test", "ru" or "ref", "prod" or nothing. Any other
+// name is EnvironmentUnset, which refuses to start rather than guess.
 func NewEnvironment(s string) Environment {
 	switch s {
 	case "tu", "test":
@@ -117,11 +122,11 @@ func NewEnvironment(s string) Environment {
 	case "prod", "":
 		return EnvironmentProduction
 	default:
-		return EnvironmentReference
+		return EnvironmentUnset
 	}
 }
 
-func fetchMetadata(baseURL string, httpClient *http.Client) (*Metadata, error) {
+func fetchMetadata(baseURL string, httpClient *http.Client, trust CertificateTrust) (*Metadata, error) {
 	slog.Debug("Fetching OP metadata", "url", baseURL+"/.well-known/openid-configuration")
 	resp, err := httpClient.Get(baseURL + "/.well-known/openid-configuration")
 	if err != nil {
@@ -143,14 +148,14 @@ func fetchMetadata(baseURL string, httpClient *http.Client) (*Metadata, error) {
 		return nil, fmt.Errorf("extracting signing key: %w", err)
 	}
 
-	slog.Debug("Extracted signing key", "key", sigJWK)
+	if err := trust.Check(context.Background(), DiscoverySigner, sigJWK.Certificates); err != nil {
+		return nil, fmt.Errorf("discovery document: %w", err)
+	}
 
 	token, err := josebp.ParseToken(data, josebp.WithKey(sigJWK))
 	if err != nil {
 		return nil, fmt.Errorf("parsing discovery document: %w", err)
 	}
-
-	slog.Warn("Certificate of discovery document not verified. Don't trust it in production.", "url", resp.Request.URL.String())
 
 	metadata := new(Metadata)
 	err = json.Unmarshal(token.PayloadJSON, metadata)
@@ -192,17 +197,68 @@ func extractKeyFromX5CHeader(data []byte) (*josebp.JSONWebKey, error) {
 		return nil, errors.New("no kid found in header")
 	}
 
-	cert, err := brainpool.ParseCertificate(headerStruct.X5c[0])
-	if err != nil {
-		return nil, fmt.Errorf("parsing certificate: %w", err)
+	certs := make([]*x509.Certificate, 0, len(headerStruct.X5c))
+	for _, der := range headerStruct.X5c {
+		cert, err := brainpool.ParseCertificate(der)
+		if err != nil {
+			return nil, fmt.Errorf("parsing certificate: %w", err)
+		}
+		certs = append(certs, cert)
 	}
 
 	return &josebp.JSONWebKey{
-		Key:          cert.PublicKey,
+		Key:          certs[0].PublicKey,
 		KeyID:        headerStruct.Kid,
 		Use:          "sig",
-		Certificates: []*x509.Certificate{cert},
+		Certificates: certs,
 	}, nil
+}
+
+// fetchSigningKey returns the key that signs challenges and tokens, once its certificate is trusted. The
+// JWK must carry that certificate and the same key, or the check would say nothing about the key (IDPV-002).
+func fetchSigningKey(uri string, httpClient *http.Client, trust CertificateTrust) (*josebp.JSONWebKey, error) {
+	key, err := fetchKey(uri, httpClient)
+	if err != nil {
+		return nil, err
+	}
+	if len(key.CertificatesRaw) == 0 {
+		return nil, fmt.Errorf("%s: no x5c: the key's certificate is unknown", TokenSigner)
+	}
+	certs := make([]*x509.Certificate, 0, len(key.CertificatesRaw))
+	for _, der := range key.CertificatesRaw {
+		cert, err := brainpool.ParseCertificate(der)
+		if err != nil {
+			return nil, fmt.Errorf("%s: x5c: %w", TokenSigner, err)
+		}
+		certs = append(certs, cert)
+	}
+	public, ok := key.Key.(*ecdsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("%s: not an EC key", TokenSigner)
+	}
+	certified, ok := certs[0].PublicKey.(*ecdsa.PublicKey)
+	if !ok || !public.Equal(certified) {
+		return nil, fmt.Errorf("%s: the x5c certificate carries another key than the JWK", TokenSigner)
+	}
+	if err := trust.Check(context.Background(), TokenSigner, certs); err != nil {
+		return nil, err
+	}
+	return key, nil
+}
+
+// fetchEncryptionKey returns the key the signed challenge is encrypted to. The IDP-Dienst publishes it
+// without a certificate, so there is nothing to verify: its address comes from the verified discovery
+// document and TLS carries it, as in ti-idpd (IDPV-004). What it can be is checked.
+func fetchEncryptionKey(uri string, httpClient *http.Client) (*ecdsa.PublicKey, error) {
+	key, err := fetchKey(uri, httpClient)
+	if err != nil {
+		return nil, err
+	}
+	public, ok := key.Key.(*ecdsa.PublicKey)
+	if !ok || key.Use != "enc" || public.Curve != brainpool.P256r1() {
+		return nil, errors.New("puk_idp_enc: not a brainpoolP256r1 key for encryption")
+	}
+	return public, nil
 }
 
 // fetch and parse JWK from the given URI

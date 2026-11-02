@@ -4,7 +4,7 @@ title: 'go/tipki: native trust path for the IDP certificates (chain, TSL, OCSP)'
 status: In Progress
 assignee: []
 created_date: '2026-11-02T06:16:00Z'
-updated_date: '2026-11-02T15:01:00Z'
+updated_date: '2026-11-02T17:54:00Z'
 labels:
   - go
   - pki
@@ -26,7 +26,7 @@ Maintainer, 2026-11-02, option A for TASK-171: the smallest native trust path, n
 - [x] #2 stage 2: roots.json walk
 - [x] #3 stage 3: detached TSL
 - [x] #4 stage 4: OCSP
-- [ ] #5 stage 5: gemidp verifies both IDP certificates, TASK-171
+- [x] #5 stage 5: gemidp verifies both IDP certificates, TASK-171
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -55,4 +55,6 @@ Maintainer, 2026-11-02, option A for TASK-171: the smallest native trust path, n
 Validator (stage 4), both languages: profile enforces its accepted types (VALID-005, profile_type_mismatch is now an error, also in ti pki verify); with a verified TSL every CA of a chain must be one it names (VALID-006, ca_not_in_tsl); no responder is asked unless everything else passed (VALID-004). The captured prod, ref and test lists all name their TSL signer CA, so no exception for a TSL signer. Interpretation of 'CA metadata from TSL' to confirm with the maintainer: listing, types and revocation time; OCSP supply points in the TSL are not used, AIA is.
 
 CA metadata settled by the maintainer: it means for which kinds of certificate a CA is allowed (components, SMC-B, eGK, HBA), i.e. the types the TSL states per CA (VALID-007). A CA with no types stated may now issue none (cert_type_ca_not_authorized, TUC_PKI_007 step 9a); cert_type_unchecked is gone. The real reference list's types per CA are in the shared corpus; a real SMC-B's CA may issue exactly C.HCI.AUT, .ENC and .OSIG.
+
+2026-11-02: stage 5 HITL passed, confirmed by the maintainer.
 <!-- SECTION:NOTES:END -->
