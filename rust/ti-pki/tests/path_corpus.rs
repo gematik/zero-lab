@@ -43,17 +43,14 @@ fn testdata() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec/pki-path/testdata")
 }
 
-/// Every fixture but those on RSA, which `go/tipki` refuses by design (PATH-006).
+/// Every fixture but the OCSP responders', which no chain here reaches.
 fn fixtures() -> Vec<(String, Certificate)> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/pki");
     let mut names: Vec<String> = std::fs::read_dir(&dir)
         .unwrap()
         .map(|entry| entry.unwrap().file_name().into_string().unwrap())
         .filter(|name| {
-            Path::new(name).extension().is_some_and(|e| e == "pem")
-                && !name.starts_with("ocsp-")
-                && name != "rca-rsa.pem"
-                && name != "ee-rsa-pss.pem"
+            Path::new(name).extension().is_some_and(|e| e == "pem") && !name.starts_with("ocsp-")
         })
         .collect();
     names.sort();
@@ -127,7 +124,7 @@ fn case(
 
 fn matrix() -> Value {
     let all = fixtures();
-    let is_root = |name: &str| matches!(name, "rca1.pem" | "rca7.pem");
+    let is_root = |name: &str| matches!(name, "rca1.pem" | "rca7.pem" | "rca-rsa.pem");
     let store = TrustStore::new(
         all.iter()
             .filter(|(n, _)| is_root(n))

@@ -2,7 +2,7 @@
 
 Language-neutral rules for building and checking a chain without a network, from the bundle file
 `ti` writes. `rust/ti-pki` and `go/tipki` implement them, and [`testdata`](testdata) holds the two
-together. It covers the path and the roots: the TSL and OCSP are later stages (TASK-176). A path that passes
+together. It covers the path, the roots and the list: OCSP is a later stage (TASK-176). A path that passes
 is not yet a certificate to trust.
 
 Each rule has one identifier, and tests cite them. MUST and MUST NOT are used as in RFC 2119.
@@ -24,9 +24,9 @@ Each rule has one identifier, and tests cite them. MUST and MUST NOT are used as
   (`chain_incomplete`), and allow certificate signing if it restricts key usage (`key_usage_mismatch`). A
   chain has at least an end entity and a root.
 - **PATH-006** Every link's signature MUST verify under the next certificate's key, or it is
-  `signature_invalid`. `go/tipki` admits ECDSA with SHA-256 or SHA-384 on P-256, P-384, brainpoolP256r1 and
-  brainpoolP384r1. `rust/ti-pki` also admits RSA, for roots of the TI's past. This difference is
-  deliberate and fails closed, so the corpus leaves RSA fixtures out.
+  `signature_invalid`. The admitted algorithms are ECDSA on P-256 and brainpoolP256r1 with SHA-256, ECDSA on P-384
+  and brainpoolP384r1 with SHA-384, and RSA PKCS#1 v1.5 and RSA-PSS with SHA-256, SHA-384 or SHA-512. No other
+  pair of key and hash verifies.
 
 ## Roots
 
@@ -36,8 +36,8 @@ Each rule has one identifier, and tests cite them. MUST and MUST NOT are used as
   and an empty string is no link.
 - **ROOTS-002** The walk starts at the anchor, which MUST be in the file. It follows `next`, then `prev`, and
   imports each root whose link passes ROOTS-003. A link that fails ends that direction without failing the
-  load, so a download can only add roots that chain to the anchor. RSA with SHA-256 is admitted here alone,
-  because the TI's roots alternate between ECC and RSA and the walk must pass through GEM.RCA6 and GEM.RCA9.
+  load, so a download can only add roots that chain to the anchor. The algorithms are those of PATH-006: the
+  TI's roots alternate between ECC and RSA, so the walk must pass through GEM.RCA6 and GEM.RCA9.
 - **ROOTS-003** Importing a root on a cross certificate takes the seven checks of A_28419, stopping at the first
   that fails: signed by the trusted root, valid now, named `GEM.RCA<n>`, and with the subordinate's subject
   key identifier, common name and public key, and the subordinate's self-signature verifying under it.
@@ -52,14 +52,22 @@ Each rule has one identifier, and tests cite them. MUST and MUST NOT are used as
   older `fetched_at` of roots and TSL, which a copy does not reset.
 - **BUNDLE-002** A bundle is for one anchor, and one for another is refused. It is not signed: every part is
   verified on use, and what it states only says what to verify.
+- **BUNDLE-003** A bundle whose age has reached 24 h is refused. Otherwise its roots come from the walk, and its
+  CAs from a list verified as in [`spec/tsl-detached`](../tsl-detached/README.md), each kept only if a root
+  signed it directly. The list is a directory and adds no trust. A list older than the one in use is refused
+  (TSLSIG-053), so the caller keeps the state of the list across restarts.
 
 ## Corpus
 
-[`testdata/path.json`](testdata/path.json) is every certificate of `rust/ti-pki/tests/pki` but those on RSA,
-walked against all the others and the roots `rca1` and `rca7`, at three times under both models, and once
+[`testdata/path.json`](testdata/path.json) is every certificate of `rust/ti-pki/tests/pki`, walked against all the
+others and the roots `rca1`, `rca7` and `rca-rsa`, at three times under both models, and once
 with its signature tampered. ti-pki writes it (`TI_PKI_BLESS=1`) and checks it, and `go/tipki` must judge the
 same. [`testdata/bundle.json`](testdata/bundle.json) holds values, most of them malformed, on which both must
 agree.
+
+[`testdata/tsl.json`](testdata/tsl.json) holds what ti-pki reads from the three published lists at their capture
+time, as hashes of its services and CAs, and which CAs it keeps, and `go/tipki` must keep the same.
+[`spec/tsl-detached`](../tsl-detached/CONFORMANCE.md) has its own corpus.
 
 [`testdata/roots.json`](testdata/roots.json) holds crafted documents, gematik's real roots.json files from their
 anchors, and every cross certificate against every root by the step that fails.
@@ -74,4 +82,7 @@ anchors, and every cross certificate against every root by the step that fails.
 | ROOTS-003 | `roots_001_the_corpus_is_what_ti_pki_says` | `TestROOTS003TheStepThatFailsIsThatOfTiPki` |
 | ROOTS-004 | | `TestROOTS004ABundleForAnotherAnchorIsRefused` |
 | BUNDLE-001 | `bundle_001_values_are_read_or_refused_as_stated` | `TestBUNDLE001ValuesAreReadOrRefusedAsStated`, `FuzzParseBundle` |
+| TSLSIG-053 | `tsl_001_the_corpus_is_what_ti_pki_says` | `TestTSLThePublishedListsReadAsInTiPki`, `TestTSLSIG053ANumberBelowTheMinimumIsRefused` |
+| TSLSIG-060 | unit tests in `tsl_signature.rs` | `TestTSLSIG060AnAnnouncedAnchorIsWarnedOf` |
+| BUNDLE-003 | `tsl_001_the_corpus_is_what_ti_pki_says` | `TestBUNDLE003ABundleTooOldIsRefused`, `TestTSLThePublishedListsReadAsInTiPki` |
 | BUNDLE-002 | `Bundle::check_anchor` tests in `load/static_.rs` | `TestBUNDLE002AnotherEnvironmentsBundleIsRefused` |

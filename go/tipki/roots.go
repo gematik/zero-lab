@@ -23,9 +23,6 @@ package tipki
 
 import (
 	"bytes"
-	"crypto"
-	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -211,7 +208,7 @@ func VerifyCrossSigned(anchor, cross, subordinate *x509.Certificate, now time.Ti
 		return &CrossCertError{Step: step, Reason: fmt.Sprintf(format, args...)}
 	}
 	name := cross.Subject.CommonName
-	if err := verifyRootSignature(cross, anchor); err != nil {
+	if err := verifySignedBy(cross, anchor); err != nil {
 		return fail(1, "cross %q is not signed by anchor %q: %v", name, anchor.Subject.CommonName, err)
 	}
 	if now.Unix() < cross.NotBefore.Unix() {
@@ -232,7 +229,7 @@ func VerifyCrossSigned(anchor, cross, subordinate *x509.Certificate, now time.Ti
 	if !bytes.Equal(cross.RawSubjectPublicKeyInfo, subordinate.RawSubjectPublicKeyInfo) {
 		return fail(6, "public key differs from the subordinate's")
 	}
-	if err := verifyRootSignature(subordinate, cross); err != nil {
+	if err := verifySignedBy(subordinate, cross); err != nil {
 		return fail(7, "subordinate %q does not verify under the cross certificate: %v", subordinate.Subject.CommonName, err)
 	}
 	return nil
@@ -241,24 +238,6 @@ func VerifyCrossSigned(anchor, cross, subordinate *x509.Certificate, now time.Ti
 func isRCAName(name string) bool {
 	rest, ok := strings.CutPrefix(name, "GEM.RCA")
 	return ok && rest != "" && rest[0] >= '0' && rest[0] <= '9'
-}
-
-// verifyRootSignature adds RSA to what a chain admits, for the walk alone. The TI's roots alternate
-// between ECC and RSA, so the walk from the anchor cannot reach the ECC roots without passing RSA
-// ones (GEM.RCA6, GEM.RCA9). Certificate chains stay ECDSA only (PATH-006).
-func verifyRootSignature(cert, issuer *x509.Certificate) error {
-	key, ok := issuer.PublicKey.(*rsa.PublicKey)
-	if !ok {
-		return verifySignedBy(cert, issuer)
-	}
-	if cert.SignatureAlgorithm != x509.SHA256WithRSA {
-		return fmt.Errorf("signature algorithm %s is not admitted", cert.SignatureAlgorithm)
-	}
-	digest := sha256.Sum256(cert.RawTBSCertificate)
-	if err := rsa.VerifyPKCS1v15(key, crypto.SHA256, digest[:], cert.Signature); err != nil {
-		return errors.New("the signature does not verify")
-	}
-	return nil
 }
 
 // TrustedRoots gives the roots a bundle yields for anchorDER at now: the anchor and every root of its

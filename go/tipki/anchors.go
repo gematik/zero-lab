@@ -28,3 +28,8 @@ import _ "embed"
 //
 //go:embed anchors/GEM.RCA7.der
 var AnchorProd []byte
+
+// TSLSignerAnchorProd is GEM.TSL-CA3, the TSL signer CA of production, in DER.
+//
+//go:embed anchors/GEM.TSL-CA3.der
+var TSLSignerAnchorProd []byte

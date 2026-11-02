@@ -30,3 +30,8 @@ import _ "embed"
 //
 //go:embed anchors/GEM.RCA7-TEST-ONLY.der
 var AnchorNonProd []byte
+
+// TSLSignerAnchorNonProd is GEM.TSL-CA28 TEST-ONLY, the TSL signer CA of the non-production environments.
+//
+//go:embed anchors/GEM.TSL-CA28-TEST-ONLY.der
+var TSLSignerAnchorNonProd []byte

@@ -4,7 +4,7 @@ title: 'go/tipki: native trust path for the IDP certificates (chain, TSL, OCSP)'
 status: In Progress
 assignee: []
 created_date: '2026-11-02T06:16:00Z'
-updated_date: '2026-11-02T13:02:00Z'
+updated_date: '2026-11-02T13:39:00Z'
 labels:
   - go
   - pki
@@ -39,4 +39,12 @@ Maintainer, 2026-11-02, option A for TASK-171: the smallest native trust path, n
 2026-11-02, maintainer: option 1 of the whole spectrum. Go reads and checks every type, role and profile; the trust path stays ECDSA only, so RSA is refused.
 
 2026-11-02: stage 2. ParseRoots and WalkRoots port the A_28419 walk, TrustedRoots takes a bundle. Maintainer: RSA admitted in the walk alone, since the TI's roots alternate between ECC and RSA; chains stay ECDSA only. The real prod and nonprod files reach the same 10 roots as ti-pki; without RSA they stop at 2.
+
+2026-11-02: stage 3. ParseDetachedSignature, VerifyTSL and the signer checks, parseTSL with encoding/xml, MatchToRoots, LoadTrustStore. Not ported, as not needed for a chain: the sequence-number and update rules (TSLSIG-053), the anchor announcement warning (TSLSIG-060), scheme information. The signer's status needs OCSP and comes with stage 4, whose manifest entries are skipped until then, so AC 3 stays open.
+
+2026-11-02, maintainer: RSA in Go, same as Rust, which replaces the ECDSA-only rule of option 1. Go's verification now has ti-pki's algorithm set: RSA PKCS#1 v1.5 and PSS with SHA-256, SHA-384 and SHA-512, and ECDSA with the fixed pairs of curve and hash.
+
+2026-11-02, maintainer: go/brainpool unfrozen, as tipki's trust path uses it; it now also decodes compressed points, so a compressed signer key is refused at TSLSIG-035 as in ti-pki. Added TSLSIG-053 (CheckSequence, LoadTrustStore takes the stored state), TSLSIG-060 (the announcement warning), the production marking and scheme information. Left: a compressed P-256 key still fails in crypto/x509 at parsing.
+
+2026-11-02, maintainer: compressed points removed from go/brainpool again, which accepts uncompressed points only. A compressed signer key is refused at parsing there, and at TSLSIG-035 in ti-pki.
 <!-- SECTION:NOTES:END -->

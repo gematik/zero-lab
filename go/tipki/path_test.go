@@ -62,7 +62,7 @@ func pathFixtures(t *testing.T) map[string]*x509.Certificate {
 	certs := make(map[string]*x509.Certificate)
 	for _, file := range files {
 		name := filepath.Base(file)
-		if strings.HasPrefix(name, "ocsp-") || name == "rca-rsa.pem" || name == "ee-rsa-pss.pem" {
+		if strings.HasPrefix(name, "ocsp-") {
 			continue
 		}
 		body, err := os.ReadFile(file)
@@ -119,7 +119,13 @@ func TestPATH001EveryPathIsJudgedAsInTiPki(t *testing.T) {
 		names = append(names, name)
 	}
 	slices.Sort(names)
-	roots := []*x509.Certificate{certs["rca1.pem"], certs["rca7.pem"]}
+	isRoot := func(name string) bool { return name == "rca-rsa.pem" || name == "rca1.pem" || name == "rca7.pem" }
+	var roots []*x509.Certificate
+	for _, name := range names {
+		if isRoot(name) {
+			roots = append(roots, certs[name])
+		}
+	}
 	nameOf := func(cert *x509.Certificate) string {
 		for name, candidate := range certs {
 			if candidate.Equal(cert) {
@@ -134,7 +140,7 @@ func TestPATH001EveryPathIsJudgedAsInTiPki(t *testing.T) {
 			fixture := strings.TrimPrefix(want.Name, "tampered:")
 			var intermediates []*x509.Certificate
 			for _, name := range names {
-				if name != fixture && name != "rca1.pem" && name != "rca7.pem" {
+				if name != fixture && !isRoot(name) {
 					intermediates = append(intermediates, certs[name])
 				}
 			}
@@ -220,6 +226,43 @@ func TestPATH005ACAMustAllowCertificateSigning(t *testing.T) {
 			}
 			if got := codes(result.Errors); !slices.Equal(got, test.want) {
 				t.Errorf("%v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+// No fixture pairs a curve with the other hash, so these are made here. ti-pki's algorithm set has one
+// hash per curve, and its own test of this is in algorithms/mod.rs.
+func TestPATH006ACurveTakesOneHash(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		curve     elliptic.Curve
+		algorithm x509.SignatureAlgorithm
+		admitted  bool
+	}{
+		{"P-256 with SHA-256", elliptic.P256(), x509.ECDSAWithSHA256, true},
+		{"P-256 with SHA-384", elliptic.P256(), x509.ECDSAWithSHA384, false},
+		{"P-384 with SHA-384", elliptic.P384(), x509.ECDSAWithSHA384, true},
+		{"P-384 with SHA-256", elliptic.P384(), x509.ECDSAWithSHA256, false},
+		{"P-521 with SHA-512", elliptic.P521(), x509.ECDSAWithSHA512, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			key, err := ecdsa.GenerateKey(test.curve, rand.Reader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			template := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "x"}, SignatureAlgorithm: test.algorithm,
+				NotBefore: time.Now(), NotAfter: time.Now().Add(time.Hour)}
+			der, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cert, err := x509.ParseCertificate(der)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := verifySignedBy(cert, cert); (err == nil) != test.admitted {
+				t.Errorf("%v, admitted %v", err, test.admitted)
 			}
 		})
 	}

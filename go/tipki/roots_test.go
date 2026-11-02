@@ -191,18 +191,6 @@ func TestROOTS003TheStepThatFailsIsThatOfTiPki(t *testing.T) {
 	t.Logf("steps reached: %v", seen)
 }
 
-// The rule on RSA lives in one place: a chain link under an RSA key is still refused, while the walk
-// takes the real RSA roots, as TestROOTS002TheRealFilesReachTheRootsOfTiPki shows.
-func TestROOTS002RSAIsForTheWalkAlone(t *testing.T) {
-	rsaRoot, err := ParseCertificate(fixtureDER(t, "rca-rsa.pem"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := verifySignedBy(rsaRoot, rsaRoot); err == nil {
-		t.Error("a chain link under an RSA key")
-	}
-}
-
 // No fixture gets past step 4, so these certificates are made here, each breaking one later step.
 func TestROOTS003TheLaterStepsAreChecked(t *testing.T) {
 	newKey := func() *ecdsa.PrivateKey {

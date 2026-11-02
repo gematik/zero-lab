@@ -2076,6 +2076,133 @@
   },
   {
     "chain": [
+      "ee-rsa-pss.pem",
+      "rca-rsa.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-rsa-pss.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-rsa-pss.pem",
+      "rca-rsa.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-rsa-pss.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-rsa-pss.pem",
+      "rca-rsa.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-RSA-PSS TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA-RSA TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-rsa-pss.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-rsa-pss.pem",
+      "rca-rsa.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-RSA-PSS TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-rsa-pss.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA-RSA TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "ee-rsa-pss.pem",
+      "rca-rsa.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "EE-RSA-PSS TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA-RSA TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-rsa-pss.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-rsa-pss.pem",
+      "rca-rsa.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "EE-RSA-PSS TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-rsa-pss.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA-RSA TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "rca-rsa.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "EE-RSA-PSS TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:ee-rsa-pss.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
       "ee-short-fd-tls-s.pem",
       "sub-ca-short.pem",
       "rca1.pem"

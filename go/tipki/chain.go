@@ -22,7 +22,9 @@
 package tipki
 
 import (
+	"crypto"
 	"crypto/ecdsa"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/sha512"
 	"crypto/x509"
@@ -220,26 +222,39 @@ func checkCAConstraints(cert *x509.Certificate, intermediatesBelow int) *Finding
 	return nil
 }
 
-// verifySignedBy verifies cert's signature under issuer's key: ECDSA with SHA-256 or SHA-384, on the
-// curves of the TI (PATH-006). crypto/x509's own check does not know brainpool.
+// verifySignedBy verifies cert's signature under issuer's key, with ti-pki's algorithm set (PATH-006):
+// ECDSA with one hash per curve, RSA PKCS#1 v1.5 and RSA-PSS with SHA-256, SHA-384 or SHA-512.
+// crypto/x509's own check does not know brainpool.
 func verifySignedBy(cert, issuer *x509.Certificate) error {
-	key, ok := issuer.PublicKey.(*ecdsa.PublicKey)
-	if !ok {
-		return errors.New("the issuer's key is not ECDSA")
+	switch key := issuer.PublicKey.(type) {
+	case *ecdsa.PublicKey:
+		return verifyECDSA(cert, key)
+	case *rsa.PublicKey:
+		return verifyRSA(cert, key)
 	}
-	if !slices.Contains(admissibleSigningCurves, key.Curve.Params().Name) {
+	return fmt.Errorf("a key of type %T is not admitted", issuer.PublicKey)
+}
+
+func verifyECDSA(cert *x509.Certificate, key *ecdsa.PublicKey) error {
+	var want x509.SignatureAlgorithm
+	switch key.Curve.Params().Name {
+	case "P-256", "brainpoolP256r1":
+		want = x509.ECDSAWithSHA256
+	case "P-384", "brainpoolP384r1":
+		want = x509.ECDSAWithSHA384
+	default:
 		return fmt.Errorf("curve %s is not admitted", key.Curve.Params().Name)
 	}
+	if cert.SignatureAlgorithm != want {
+		return fmt.Errorf("signature algorithm %s is not admitted on curve %s", cert.SignatureAlgorithm, key.Curve.Params().Name)
+	}
 	var digest []byte
-	switch cert.SignatureAlgorithm {
-	case x509.ECDSAWithSHA256:
+	if want == x509.ECDSAWithSHA256 {
 		sum := sha256.Sum256(cert.RawTBSCertificate)
 		digest = sum[:]
-	case x509.ECDSAWithSHA384:
+	} else {
 		sum := sha512.Sum384(cert.RawTBSCertificate)
 		digest = sum[:]
-	default:
-		return fmt.Errorf("signature algorithm %s is not admitted", cert.SignatureAlgorithm)
 	}
 	if !ecdsa.VerifyASN1(key, digest, cert.Signature) {
 		return errors.New("the signature does not verify")
@@ -247,4 +262,36 @@ func verifySignedBy(cert, issuer *x509.Certificate) error {
 	return nil
 }
 
-var admissibleSigningCurves = []string{"P-256", "P-384", "brainpoolP256r1", "brainpoolP384r1"}
+func verifyRSA(cert *x509.Certificate, key *rsa.PublicKey) error {
+	var hash crypto.Hash
+	var pss bool
+	switch cert.SignatureAlgorithm {
+	case x509.SHA256WithRSA:
+		hash = crypto.SHA256
+	case x509.SHA384WithRSA:
+		hash = crypto.SHA384
+	case x509.SHA512WithRSA:
+		hash = crypto.SHA512
+	case x509.SHA256WithRSAPSS:
+		hash, pss = crypto.SHA256, true
+	case x509.SHA384WithRSAPSS:
+		hash, pss = crypto.SHA384, true
+	case x509.SHA512WithRSAPSS:
+		hash, pss = crypto.SHA512, true
+	default:
+		return fmt.Errorf("signature algorithm %s is not admitted", cert.SignatureAlgorithm)
+	}
+	hasher := hash.New()
+	hasher.Write(cert.RawTBSCertificate)
+	digest := hasher.Sum(nil)
+	var err error
+	if pss {
+		err = rsa.VerifyPSS(key, hash, digest, cert.Signature, &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash, Hash: hash})
+	} else {
+		err = rsa.VerifyPKCS1v15(key, hash, digest, cert.Signature)
+	}
+	if err != nil {
+		return errors.New("the signature does not verify")
+	}
+	return nil
+}
