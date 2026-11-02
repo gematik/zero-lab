@@ -27,8 +27,7 @@
 // [ParseCertificate] takes the brainpool keys crypto/x509 refuses, through go/brainpool. Package oid
 // holds the identifiers of gemSpec_OID.
 //
-// None of this yet decides that a certificate can be trusted. The roots walk, the TSL and OCSP are
-// still to come (TASK-176), and a caller believes a certificate only once they are established. The
-// reading covers every type and profile of the TI; signatures are verified for ECDSA alone, so
-// a chain with an RSA signature fails closed.
+// None of this yet decides that a certificate can be trusted. The TSL and OCSP are still to come (TASK-176), and a caller believes a certificate only once they are established. The
+// reading covers every type and profile of the TI; a chain's signatures are verified for ECDSA alone, so
+// one with an RSA signature fails closed; the roots walk alone also admits RSA with SHA-256.
 package tipki

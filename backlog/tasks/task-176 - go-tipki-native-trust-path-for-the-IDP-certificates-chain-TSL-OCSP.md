@@ -4,7 +4,7 @@ title: 'go/tipki: native trust path for the IDP certificates (chain, TSL, OCSP)'
 status: In Progress
 assignee: []
 created_date: '2026-11-02T06:16:00Z'
-updated_date: '2026-11-02T06:37:00Z'
+updated_date: '2026-11-02T13:02:00Z'
 labels:
   - go
   - pki
@@ -23,7 +23,7 @@ Maintainer, 2026-11-02, option A for TASK-171: the smallest native trust path, n
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 stage 1: chain and path validation match ti-pki over the corpus
-- [ ] #2 stage 2: roots.json walk
+- [x] #2 stage 2: roots.json walk
 - [ ] #3 stage 3: detached TSL
 - [ ] #4 stage 4: OCSP
 - [ ] #5 stage 5: gemidp verifies both IDP certificates, TASK-171
@@ -37,4 +37,6 @@ Maintainer, 2026-11-02, option A for TASK-171: the smallest native trust path, n
 2026-11-02, maintainer: OCSP is not air-gapped. The bundle makes chain building independent of the network; revocation is asked online. A signer status in a bundle counts for 2 h (TSLDET-021), after that the signer's responder is asked, and no route to a responder means no verification.
 
 2026-11-02, maintainer: option 1 of the whole spectrum. Go reads and checks every type, role and profile; the trust path stays ECDSA only, so RSA is refused.
+
+2026-11-02: stage 2. ParseRoots and WalkRoots port the A_28419 walk, TrustedRoots takes a bundle. Maintainer: RSA admitted in the walk alone, since the TI's roots alternate between ECC and RSA; chains stay ECDSA only. The real prod and nonprod files reach the same 10 roots as ti-pki; without RSA they stop at 2.
 <!-- SECTION:NOTES:END -->
