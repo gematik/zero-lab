@@ -19,13 +19,16 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-// Package tipki reads what the Telematikinfrastruktur states in a certificate: its type, its
-// admission extension and what a validation profile requires of it. It follows Rust's ti-pki
-// rule for rule (spec/pki-profiles), and a shared corpus holds the two together.
+// Package tipki is the native Go side of the TI's PKI, as small as its flows allow. It follows Rust's
+// ti-pki rule for rule, and shared corpora hold the two together (spec/pki-profiles, spec/pki-path).
 //
-// It decides nothing about whether a certificate can be trusted. It does not build chains, read
-// the TSL or ask OCSP responders, and every answer comes from the certificate's own, so far
-// unauthenticated, content. A caller believes a certificate only after that has been established
-// elsewhere. It takes a parsed certificate: use go/brainpool's parser for brainpool keys, which
-// crypto/x509 refuses.
+// It reads what a certificate states: its type, its admission extension and what a validation profile
+// requires of it. It builds and checks a chain, without a network, from the bundle ti writes.
+// [ParseCertificate] takes the brainpool keys crypto/x509 refuses, through go/brainpool. Package oid
+// holds the identifiers of gemSpec_OID.
+//
+// None of this yet decides that a certificate can be trusted. The roots walk, the TSL and OCSP are
+// still to come (TASK-176), and a caller believes a certificate only once they are established. The
+// reading covers every type and profile of the TI; signatures are verified for ECDSA alone, so
+// a chain with an RSA signature fails closed.
 package tipki

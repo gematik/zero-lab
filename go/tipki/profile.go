@@ -27,6 +27,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/gematik/zero-lab/go/tipki/oid"
 )
 
 // RevocationMode is how strict a use case wants the revocation check to be, named as in ti-pki. This
@@ -60,7 +62,7 @@ var (
 		Name:             "epa-vau-aut",
 		Description:      "ePA Aktensystem VAU backend authenticity",
 		Revocation:       RevocationHardFail,
-		RequiredRoleOIDs: []string{oidTechRoleEpaVau},
+		RequiredRoleOIDs: []string{oid.TechRoleEpaVAU},
 		AcceptsTypes:     []CertificateType{CertFdAut},
 	}
 	ProfileFdTlsS = &Profile{
@@ -81,7 +83,7 @@ var (
 		Name:             "idpd-sig",
 		Description:      "IDP discovery document and token signing",
 		Revocation:       RevocationHardFail,
-		RequiredRoleOIDs: []string{oidTechRoleIdpd},
+		RequiredRoleOIDs: []string{oid.TechRoleIDPD},
 		AcceptsTypes:     []CertificateType{CertFdSig},
 	}
 	ProfileTslSig = &Profile{
@@ -95,7 +97,7 @@ var (
 		Name:             "zeta-guard-aut",
 		Description:      "ZETA Guard access service layer authenticity",
 		Revocation:       RevocationHardFail,
-		RequiredRoleOIDs: []string{oidTechRoleZetaGuard},
+		RequiredRoleOIDs: []string{oid.TechRoleZETAGuard},
 		AcceptsTypes:     []CertificateType{CertFdAut},
 	}
 )
@@ -164,7 +166,7 @@ func (p *Profile) Check(cert *x509.Certificate, t CertificateType) []Finding {
 		}
 	}
 	if len(missing) > 0 {
-		findings = append(findings, Finding{"policy_mismatch", cert.Subject.CommonName, "required CertificatePolicy missing: " + strings.Join(missing, ", ")})
+		findings = append(findings, Finding{"policy_mismatch", cert.Subject.CommonName, "required CertificatePolicy missing: " + formatOIDs(missing)})
 	}
 	if cert.KeyUsage&spec.KeyUsage != spec.KeyUsage {
 		findings = append(findings, Finding{"key_usage_mismatch", cert.Subject.CommonName, fmt.Sprintf("required KeyUsage bits %b, have %b", spec.KeyUsage, cert.KeyUsage)})
@@ -194,7 +196,15 @@ func missingRole(cert *x509.Certificate, roles []string) string {
 	if slices.ContainsFunc(admission.ProfessionOIDs, func(role string) bool { return slices.Contains(roles, role) }) {
 		return ""
 	}
-	return "required role OID missing: have " + strings.Join(admission.ProfessionOIDs, ", ")
+	return "required role OID missing: have " + formatOIDs(admission.ProfessionOIDs)
+}
+
+func formatOIDs(ids []string) string {
+	formatted := make([]string, len(ids))
+	for i, id := range ids {
+		formatted[i] = oid.Format(id)
+	}
+	return strings.Join(formatted, ", ")
 }
 
 // SelectReason is how a selection reached its answer.
@@ -262,7 +272,7 @@ func selectFrom(registry []*Profile, cert *x509.Certificate) ProfileSelection {
 	case 1:
 		selection.Profile = withRole[0]
 		selection.Reason = SelectByCert
-		selection.Detail = "asserts role " + withRole[0].RequiredRoleOIDs[0]
+		selection.Detail = "asserts role " + oid.Format(withRole[0].RequiredRoleOIDs[0])
 		return selection
 	default:
 		selection.Reason = SelectAmbiguous

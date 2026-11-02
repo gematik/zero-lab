@@ -39,8 +39,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/gematik/zero-lab/go/brainpool"
 )
 
 const pathCorpusDir = "../../spec/pki-path/testdata/"
@@ -72,7 +70,7 @@ func pathFixtures(t *testing.T) map[string]*x509.Certificate {
 			t.Fatal(err)
 		}
 		block, _ := pem.Decode(body)
-		cert, err := brainpool.ParseCertificate(block.Bytes)
+		cert, err := ParseCertificate(block.Bytes)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -85,7 +83,7 @@ func tamperedCopy(t *testing.T, cert *x509.Certificate) *x509.Certificate {
 	t.Helper()
 	der := bytes.Clone(cert.Raw)
 	der[len(der)-1] ^= 1
-	parsed, err := brainpool.ParseCertificate(der)
+	parsed, err := ParseCertificate(der)
 	if err != nil {
 		t.Fatal(err)
 	}

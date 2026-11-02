@@ -4,7 +4,7 @@ title: 'go/tipki: native trust path for the IDP certificates (chain, TSL, OCSP)'
 status: In Progress
 assignee: []
 created_date: '2026-11-02T06:16:00Z'
-updated_date: '2026-11-02T06:30:00Z'
+updated_date: '2026-11-02T06:37:00Z'
 labels:
   - go
   - pki
@@ -35,4 +35,6 @@ Maintainer, 2026-11-02, option A for TASK-171: the smallest native trust path, n
 2026-11-02: stage 1 on feat/go-tipki. Maintainer: chain building without a network, from the same format ti produces. So go/tipki reads ti-pki's Bundle (ParseBundle); ti pki trust export is on the parked branch feat/ti-trust-export and has to return for a bundle to exist. Corpus: every non-RSA fixture at three times, under both models and tampered, and bundle values, all matching ti-pki. A real SMC-B chain to GEM.RCA5 TEST-ONLY checks out.
 
 2026-11-02, maintainer: OCSP is not air-gapped. The bundle makes chain building independent of the network; revocation is asked online. A signer status in a bundle counts for 2 h (TSLDET-021), after that the signer's responder is asked, and no route to a responder means no verification.
+
+2026-11-02, maintainer: option 1 of the whole spectrum. Go reads and checks every type, role and profile; the trust path stays ECDSA only, so RSA is refused.
 <!-- SECTION:NOTES:END -->

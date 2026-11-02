@@ -31,6 +31,8 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+
+	"github.com/gematik/zero-lab/go/tipki/oid"
 )
 
 const (
@@ -67,6 +69,15 @@ type corpusFile struct {
 			AcceptsTypes     []string `json:"accepts_types"`
 			DefaultFor       []string `json:"default_for"`
 		} `json:"profiles"`
+		OIDs []struct {
+			OID              string   `json:"oid"`
+			Reference        string   `json:"reference"`
+			Description      string   `json:"description"`
+			Document         string   `json:"document"`
+			CertificateTypes []string `json:"certificate_types"`
+		} `json:"oids"`
+		Professions  []string `json:"professions"`
+		Institutions []string `json:"institutions"`
 	} `json:"tables"`
 	Certificates []struct {
 		File      string `json:"file"`
@@ -145,11 +156,37 @@ func certificateFile(t *testing.T, name string) *x509.Certificate {
 		t.Fatal(err)
 	}
 	block, _ := pem.Decode(body)
-	cert, err := x509.ParseCertificate(block.Bytes)
+	cert, err := ParseCertificate(block.Bytes)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return cert
+}
+
+// PROF-031: package oid is ti-pki's table, entry for entry and in its order.
+func TestPROF031TheIdentifiersAreThoseOfTiPki(t *testing.T) {
+	var corpus corpusFile
+	readJSON(t, corpusDir+"corpus.json", &corpus)
+	all := oid.All()
+	if len(all) != len(corpus.Tables.OIDs) {
+		t.Fatalf("%d identifiers, ti-pki has %d", len(all), len(corpus.Tables.OIDs))
+	}
+	for i, want := range corpus.Tables.OIDs {
+		got := all[i]
+		if got.OID != want.OID || got.Reference != want.Reference || got.Description != want.Description ||
+			got.Document != want.Document || !equalStrings(got.CertificateTypes, want.CertificateTypes) {
+			t.Errorf("%+v, ti-pki has %+v", got, want)
+		}
+	}
+	if !equalStrings(oid.Professions, corpus.Tables.Professions) || !equalStrings(oid.Institutions, corpus.Tables.Institutions) {
+		t.Error("the tables of professions and institutions differ")
+	}
+	if got := oid.Format(oid.TechRoleZETAGuard); got != "1.2.276.0.76.4.328 (ZETA Guard)" {
+		t.Errorf("%q", got)
+	}
+	if got := oid.Format("1.2.3"); got != "1.2.3" {
+		t.Errorf("%q", got)
+	}
 }
 
 // PROF-001, 002, 003, 010, 020: every fixture reads as it does in ti-pki.

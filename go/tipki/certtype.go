@@ -27,6 +27,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/gematik/zero-lab/go/tipki/oid"
 )
 
 // CertificateType is a gemSpec_PKI Tab_PKI_405 type under its specification name, plus C.TSL.SIG,
@@ -72,7 +74,7 @@ type TypeSpec struct {
 }
 
 type typeEntry struct {
-	oid  string
+	id   string
 	spec TypeSpec
 }
 
@@ -85,225 +87,225 @@ func AllCertificateTypes() []CertificateType {
 // left out, as in ti-pki. Fachdienst types carry no baseline role: a profile discriminates on it.
 var typeTable = map[CertificateType]typeEntry{
 	CertChQes: {
-		oid: oidCertTypeEgkQes,
+		id: oid.CertTypeEgkQES,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageContentCommitment,
 			ExtKeyUsage: nil,
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeEgkQes},
-			RoleOIDs:    []string{oidProfVersicherter},
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeEgkQES},
+			RoleOIDs:    []string{oid.ProfVersicherter},
 		},
 	},
 	CertChSig: {
-		oid: oidCertTypeEgkSig,
+		id: oid.CertTypeEgkSIG,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageContentCommitment,
 			ExtKeyUsage: nil,
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeEgkSig},
-			RoleOIDs:    []string{oidProfVersicherter},
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeEgkSIG},
+			RoleOIDs:    []string{oid.ProfVersicherter},
 		},
 	},
 	CertChEnc: {
-		oid: oidCertTypeEgkEnc,
+		id: oid.CertTypeEgkENC,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageKeyAgreement,
 			ExtKeyUsage: nil,
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeEgkEnc},
-			RoleOIDs:    []string{oidProfVersicherter},
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeEgkENC},
+			RoleOIDs:    []string{oid.ProfVersicherter},
 		},
 	},
 	CertChEncv: {
-		oid: oidCertTypeEgkEncv,
+		id: oid.CertTypeEgkENCV,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageKeyAgreement,
 			ExtKeyUsage: nil,
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeEgkEncv},
-			RoleOIDs:    []string{oidProfVersicherter},
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeEgkENCV},
+			RoleOIDs:    []string{oid.ProfVersicherter},
 		},
 	},
 	CertChAut: {
-		oid: oidCertTypeEgkAut,
+		id: oid.CertTypeEgkAUT,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature,
 			ExtKeyUsage: nil,
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeEgkAut},
-			RoleOIDs:    []string{oidProfVersicherter},
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeEgkAUT},
+			RoleOIDs:    []string{oid.ProfVersicherter},
 		},
 	},
 	CertChAutn: {
-		oid: oidCertTypeEgkAutn,
+		id: oid.CertTypeEgkAUTN,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature,
 			ExtKeyUsage: []string{clientAuth},
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeEgkAutn},
-			RoleOIDs:    []string{oidProfVersicherter},
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeEgkAUTN},
+			RoleOIDs:    []string{oid.ProfVersicherter},
 		},
 	},
 	CertHpQes: {
-		oid: oidCertTypeHbaQes,
+		id: oid.CertTypeHbaQES,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageContentCommitment,
 			ExtKeyUsage: nil,
-			Policies:    []string{oidPolicyHbaCp, oidCertTypeHbaQes},
-			RoleOIDs:    professions,
+			Policies:    []string{oid.PolicyHbaCP, oid.CertTypeHbaQES},
+			RoleOIDs:    oid.Professions,
 		},
 	},
 	CertHpAut: {
-		oid: oidCertTypeHbaAut,
+		id: oid.CertTypeHbaAUT,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageKeyAgreement,
 			ExtKeyUsage: []string{clientAuth, emailProtection},
-			Policies:    []string{oidPolicyHbaCp, oidCertTypeHbaAut},
-			RoleOIDs:    professions,
+			Policies:    []string{oid.PolicyHbaCP, oid.CertTypeHbaAUT},
+			RoleOIDs:    oid.Professions,
 		},
 	},
 	CertHpEnc: {
-		oid: oidCertTypeHbaEnc,
+		id: oid.CertTypeHbaENC,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageKeyAgreement,
 			ExtKeyUsage: nil,
-			Policies:    []string{oidPolicyHbaCp, oidCertTypeHbaEnc},
-			RoleOIDs:    professions,
+			Policies:    []string{oid.PolicyHbaCP, oid.CertTypeHbaENC},
+			RoleOIDs:    oid.Professions,
 		},
 	},
 	CertHciAut: {
-		oid: oidCertTypeSmcBAut,
+		id: oid.CertTypeSmcBAUT,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature,
 			ExtKeyUsage: []string{clientAuth},
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeSmcBAut},
-			RoleOIDs:    institutions,
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeSmcBAUT},
+			RoleOIDs:    oid.Institutions,
 		},
 	},
 	CertHciEnc: {
-		oid: oidCertTypeSmcBEnc,
+		id: oid.CertTypeSmcBENC,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageKeyAgreement,
 			ExtKeyUsage: nil,
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeSmcBEnc},
-			RoleOIDs:    institutions,
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeSmcBENC},
+			RoleOIDs:    oid.Institutions,
 		},
 	},
 	CertHciOsig: {
-		oid: oidCertTypeSmcBOsig,
+		id: oid.CertTypeSmcBOSIG,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageContentCommitment,
 			ExtKeyUsage: nil,
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeSmcBOsig},
-			RoleOIDs:    institutions,
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeSmcBOSIG},
+			RoleOIDs:    oid.Institutions,
 		},
 	},
 	CertFdTlsS: {
-		oid: oidCertTypeFdTlsS,
+		id: oid.CertTypeFdTLSS,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature,
 			ExtKeyUsage: []string{serverAuth},
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeFdTlsS},
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeFdTLSS},
 			RoleOIDs:    nil,
 		},
 	},
 	CertFdTlsC: {
-		oid: oidCertTypeFdTlsC,
+		id: oid.CertTypeFdTLSC,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature,
 			ExtKeyUsage: []string{clientAuth},
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeFdTlsC},
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeFdTLSC},
 			RoleOIDs:    nil,
 		},
 	},
 	CertFdSig: {
-		oid: oidCertTypeFdSig,
+		id: oid.CertTypeFdSIG,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature,
 			ExtKeyUsage: nil,
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeFdSig},
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeFdSIG},
 			RoleOIDs:    nil,
 		},
 	},
 	CertFdEnc: {
-		oid: oidCertTypeFdEnc,
+		id: oid.CertTypeFdENC,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageKeyAgreement,
 			ExtKeyUsage: nil,
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeFdEnc},
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeFdENC},
 			RoleOIDs:    nil,
 		},
 	},
 	CertFdAut: {
-		oid: oidCertTypeFdAut,
+		id: oid.CertTypeFdAUT,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature,
 			ExtKeyUsage: nil,
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeFdAut},
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeFdAUT},
 			RoleOIDs:    nil,
 		},
 	},
 	CertFdOsig: {
-		oid: oidCertTypeFdOsig,
+		id: oid.CertTypeFdOSIG,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageContentCommitment,
 			ExtKeyUsage: nil,
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeFdOsig},
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeFdOSIG},
 			RoleOIDs:    nil,
 		},
 	},
 	CertZdTlsS: {
-		oid: oidCertTypeZdTlsS,
+		id: oid.CertTypeZdTLSS,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature,
 			ExtKeyUsage: []string{serverAuth},
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeZdTlsS},
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeZdTLSS},
 			RoleOIDs:    nil,
 		},
 	},
 	CertZdSig: {
-		oid: oidCertTypeZdSig,
+		id: oid.CertTypeZdSIG,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageContentCommitment,
 			ExtKeyUsage: nil,
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeZdSig},
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeZdSIG},
 			RoleOIDs:    nil,
 		},
 	},
 	CertHskSig: {
-		oid: oidCertTypeHskSig,
+		id: oid.CertTypeHskSIG,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageContentCommitment,
 			ExtKeyUsage: []string{clientAuth, serverAuth},
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeHskSig},
-			RoleOIDs:    []string{oidTechRoleHsk},
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeHskSIG},
+			RoleOIDs:    []string{oid.TechRoleHSK},
 		},
 	},
 	CertHskEnc: {
-		oid: oidCertTypeHskEnc,
+		id: oid.CertTypeHskENC,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageKeyAgreement,
 			ExtKeyUsage: []string{clientAuth, serverAuth},
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeHskEnc},
-			RoleOIDs:    []string{oidTechRoleHsk},
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeHskENC},
+			RoleOIDs:    []string{oid.TechRoleHSK},
 		},
 	},
 	CertGemVer: {
-		oid: oidCertTypeGemVer,
+		id: oid.CertTypeGemVER,
 		spec: TypeSpec{
 			KeyUsage:    0,
 			ExtKeyUsage: nil,
-			Policies:    []string{oidPolicyGemOrCp, oidCertTypeGemVer},
+			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeGemVER},
 			RoleOIDs:    nil,
 		},
 	},
 	CertTslSig: {
-		oid: oidPolicyGemTslSigner,
+		id: oid.PolicyGemTSLSigner,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageContentCommitment,
 			ExtKeyUsage: []string{tslSigning},
-			Policies:    []string{oidPolicyGemTslSigner},
+			Policies:    []string{oid.PolicyGemTSLSigner},
 			RoleOIDs:    nil,
 		},
 	},
 }
 
 // OID is the type's Tab_PKI_405 identifier; for C.TSL.SIG, which has none, the policy identifying it.
-func (t CertificateType) OID() string { return typeTable[t].oid }
+func (t CertificateType) OID() string { return typeTable[t].id }
 
 // Spec is the baseline of the type.
 func (t CertificateType) Spec() TypeSpec { return typeTable[t].spec }
@@ -328,9 +330,9 @@ func ParseCertificateType(name string) (CertificateType, error) {
 	return "", fmt.Errorf("tipki: unknown certificate type %q", name)
 }
 
-func typeByOID(oid string) (CertificateType, bool) {
+func typeByOID(id string) (CertificateType, bool) {
 	for _, t := range AllCertificateTypes() {
-		if t.OID() == oid {
+		if t.OID() == id {
 			return t, true
 		}
 	}
@@ -366,11 +368,11 @@ func typeFromAdmission(cert *x509.Certificate) (CertificateType, bool) {
 	family := 0
 	for _, role := range admission.ProfessionOIDs {
 		switch {
-		case role == oidProfVersicherter:
+		case role == oid.ProfVersicherter:
 			family = egk
-		case slices.Contains(institutions, role):
+		case slices.Contains(oid.Institutions, role):
 			family = smcb
-		case slices.Contains(professions, role):
+		case slices.Contains(oid.Professions, role):
 			family = hba
 		}
 		if family != 0 {
@@ -422,8 +424,8 @@ func extKeyUsages(cert *x509.Certificate) []string {
 			return nil
 		}
 		usages := make([]string, len(oids))
-		for i, oid := range oids {
-			usages[i] = oid.String()
+		for i, id := range oids {
+			usages[i] = id.String()
 		}
 		return usages
 	}

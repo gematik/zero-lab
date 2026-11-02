@@ -28,6 +28,8 @@ import (
 	"fmt"
 	"slices"
 	"unicode/utf8"
+
+	"github.com/gematik/zero-lab/go/tipki/oid"
 )
 
 // ErrNoAdmissionStatement says a certificate has no admission extension, as opposed to one that
@@ -47,7 +49,7 @@ type AdmissionStatement struct {
 // Admission decodes cert's admission extension (1.3.36.8.3.3).
 func Admission(cert *x509.Certificate) (*AdmissionStatement, error) {
 	for _, ext := range cert.Extensions {
-		if ext.Id.String() == admissionExtension {
+		if ext.Id.String() == oid.AdmissionExtension {
 			return ParseAdmission(ext.Value)
 		}
 	}
@@ -175,11 +177,11 @@ func parseProfessionInfo(info asn1.RawValue) (*AdmissionStatement, error) {
 			return nil, err
 		}
 		for _, raw := range oids {
-			var oid asn1.ObjectIdentifier
-			if _, err := asn1.Unmarshal(raw.FullBytes, &oid); err != nil {
+			var id asn1.ObjectIdentifier
+			if _, err := asn1.Unmarshal(raw.FullBytes, &id); err != nil {
 				return nil, fmt.Errorf("profession OID: %w", err)
 			}
-			statement.ProfessionOIDs = append(statement.ProfessionOIDs, oid.String())
+			statement.ProfessionOIDs = append(statement.ProfessionOIDs, id.String())
 		}
 		fields = fields[1:]
 	}

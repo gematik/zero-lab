@@ -46,6 +46,9 @@ Each rule has one identifier `PROF-nnn`, and tests cite them. MUST and MUST NOT 
   hand-built values, most of them malformed, on which both must agree. Where the two differ, the rule is
   settled here first.
 
+- **PROF-031** The same corpus holds the table of gemSpec_OID identifiers with their reference names and
+  descriptions, and the lists of professions and institutions, which both implementations MUST declare alike.
+
 ## Traceability
 
 | Rule | Rust | Go |
@@ -53,3 +56,4 @@ Each rule has one identifier `PROF-nnn`, and tests cite them. MUST and MUST NOT 
 | PROF-001, 002, 003, 020 | `prof_030_the_corpus_is_what_ti_pki_says` | `TestPROF030EveryCertificateReadsAsInTiPki` |
 | PROF-010, 011 | `prof_010_admission_values_are_read_or_refused_as_stated` | `TestPROF010AdmissionValuesAreReadOrRefusedAsStated`, `FuzzParseAdmission` |
 | PROF-030 | `prof_030_the_corpus_is_what_ti_pki_says` | `TestPROF030TheTablesAreThoseOfTiPki` |
+| PROF-031 | `prof_030_the_corpus_is_what_ti_pki_says` | `TestPROF031TheIdentifiersAreThoseOfTiPki` |

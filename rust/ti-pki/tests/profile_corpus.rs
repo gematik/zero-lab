@@ -81,7 +81,25 @@ fn tables() -> Value {
             })
         })
         .collect();
-    json!({ "types": types, "profiles": profiles })
+    let oids: Vec<Value> = ti_pki::oid::all()
+        .iter()
+        .map(|info| {
+            json!({
+                "oid": info.oid.to_string(),
+                "reference": info.reference,
+                "description": info.description,
+                "document": info.document,
+                "certificate_types": info.certificate_types,
+            })
+        })
+        .collect();
+    json!({
+        "types": types,
+        "profiles": profiles,
+        "oids": oids,
+        "professions": strings(ti_pki::oid::PROFESSIONS),
+        "institutions": strings(ti_pki::oid::INSTITUTIONS),
+    })
 }
 
 fn findings(cert: &Certificate, t: CertificateType) -> BTreeMap<&'static str, Vec<String>> {

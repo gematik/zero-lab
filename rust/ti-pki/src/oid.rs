@@ -70,6 +70,11 @@ pub fn lookup(oid: &ObjectIdentifier) -> Option<&'static Info> {
     TABLE.iter().find(|info| info.oid == *oid)
 }
 
+/// Every identifier this module declares.
+pub fn all() -> &'static [Info] {
+    TABLE
+}
+
 /// `oid` for display: `1.2.276.0.76.4.328 (ZETA Guard)` when the name is known, the
 /// bare dotted form otherwise.
 pub fn format(oid: &ObjectIdentifier) -> String {

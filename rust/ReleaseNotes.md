@@ -292,6 +292,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-pki
 
+#### added
+- `oid::all()`: every identifier the module declares, for the corpus another implementation is held to.
+
 #### security
 - The OCSP response parser no longer panics on a GeneralizedTime with a multibyte
   character across its 14th byte, which a hostile responder could use to end the

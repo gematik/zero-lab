@@ -31,6 +31,8 @@ import (
 	"fmt"
 	"slices"
 	"time"
+
+	"github.com/gematik/zero-lab/go/tipki/oid"
 )
 
 // MaxChainLen is the most certificates a built chain may hold, which bounds what an adversarial
@@ -143,7 +145,7 @@ func (r PathResult) Valid() bool { return len(r.Errors) == 0 }
 // rather than half-checked.
 var processedExtensions = []string{
 	"2.5.29.19", "2.5.29.15", extKeyUsageExtension, "2.5.29.32", "2.5.29.17", "2.5.29.35", "2.5.29.14",
-	"1.3.6.1.5.5.7.1.1", admissionExtension,
+	"1.3.6.1.5.5.7.1.1", oid.AdmissionExtension,
 }
 
 // ValidatePath checks a chain from [BuildChain] against RFC 5280 §6 (PATH-002 to PATH-006) and collects
@@ -164,7 +166,7 @@ func ValidatePath(chain []*x509.Certificate, options PathOptions) (PathResult, e
 			for _, ext := range cert.Extensions {
 				if ext.Critical && !slices.Contains(processedExtensions, ext.Id.String()) {
 					result.Errors = append(result.Errors, Finding{"unrecognized_critical_extension", cert.Subject.CommonName,
-						"critical extension " + ext.Id.String() + " is not processed (RFC 5280 §4.2)"})
+						"critical extension " + oid.Format(ext.Id.String()) + " is not processed (RFC 5280 §4.2)"})
 				}
 			}
 		}
