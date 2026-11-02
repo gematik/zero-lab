@@ -61,7 +61,7 @@ func TestIDTokenChecks(t *testing.T) {
 		{"iat past the skew is refused", `{` + valid + fmt.Sprintf(`,"iat":%d}`, at(skew+time.Second)), ErrTokenIssuedInFuture},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := IDTokenChecks{Issuer: issuer, ClientID: clientID, Now: now, Skew: skew}.Validate([]byte(tc.payload))
+			err := IDTokenChecks{Nonce: "n", Issuer: issuer, ClientID: clientID, Now: now, Skew: skew}.Validate([]byte(tc.payload))
 			if !errors.Is(err, tc.want) {
 				t.Errorf("err = %v, want %v", err, tc.want)
 			}
@@ -72,10 +72,10 @@ func TestIDTokenChecks(t *testing.T) {
 func TestIDTokenChecksWithAnEmptyExpectationRefuseEverything(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	payload := fmt.Sprintf(`{"iss":"","aud":"","nonce":"n","exp":%d}`, now.Add(time.Hour).Unix())
-	if err := (IDTokenChecks{ClientID: "c", Now: now}).Validate([]byte(payload)); !errors.Is(err, ErrIssuerMismatch) {
+	if err := (IDTokenChecks{Nonce: "n", ClientID: "c", Now: now}).Validate([]byte(payload)); !errors.Is(err, ErrIssuerMismatch) {
 		t.Errorf("empty issuer: %v", err)
 	}
-	if err := (IDTokenChecks{Issuer: "i", Now: now}).Validate([]byte(fmt.Sprintf(`{"iss":"i","aud":"","nonce":"n","exp":%d}`, now.Add(time.Hour).Unix()))); !errors.Is(err, ErrAudienceMismatch) {
+	if err := (IDTokenChecks{Nonce: "n", Issuer: "i", Now: now}).Validate([]byte(fmt.Sprintf(`{"iss":"i","aud":"","nonce":"n","exp":%d}`, now.Add(time.Hour).Unix()))); !errors.Is(err, ErrAudienceMismatch) {
 		t.Errorf("empty client: %v", err)
 	}
 }
@@ -83,7 +83,7 @@ func TestIDTokenChecksWithAnEmptyExpectationRefuseEverything(t *testing.T) {
 func TestClaimNamesAreCaseSensitive(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	payload := fmt.Sprintf(`{"ISS":"i","AUD":"c","NONCE":"n","EXP":%d}`, now.Add(time.Hour).Unix())
-	if err := (IDTokenChecks{Issuer: "i", ClientID: "c", Now: now}).Validate([]byte(payload)); err == nil {
+	if err := (IDTokenChecks{Nonce: "n", Issuer: "i", ClientID: "c", Now: now}).Validate([]byte(payload)); err == nil {
 		t.Error("took upper-case members for the registered claims")
 	}
 }
@@ -137,5 +137,16 @@ func TestValidateAudience(t *testing.T) {
 	}
 	if err := ValidateAudience([]byte(`{}`), "c"); !errors.Is(err, ErrMissingClaim) {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestIDTokenChecksBindTheTokenToTheLogin(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	payload := fmt.Appendf(nil, `{"iss":"i","aud":"c","nonce":"n","exp":%d}`, now.Add(time.Hour).Unix())
+	for name, expected := range map[string]string{"another login": "other", "no nonce expected": ""} {
+		checks := IDTokenChecks{Issuer: "i", ClientID: "c", Nonce: expected, Now: now}
+		if err := checks.Validate(payload); !errors.Is(err, ErrNonceMismatch) {
+			t.Errorf("%s: err = %v", name, err)
+		}
 	}
 }

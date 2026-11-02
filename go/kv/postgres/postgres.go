@@ -91,10 +91,13 @@ func (s *store) Get(ctx context.Context, key string) ([]byte, bool, error) {
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, fmt.Errorf("kv/postgres: get %q: %w", key, err)
+		return nil, false, fmt.Errorf("kv/postgres: get: %w", err)
 	}
 	return v, true, nil
 }
+
+// The errors of this store name the operation and never the key: a key names what it holds, as:code:<the code> or
+// pep:state:<the state>, and errors reach logs.
 
 type execer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
@@ -116,7 +119,7 @@ func upsert(ctx context.Context, e execer, ent kv.Entry) error {
 		   ON CONFLICT(key) DO UPDATE SET value=excluded.value, created_at=now(), expires_at=excluded.expires_at`,
 		ent.Key, ent.Value, ttlMicroseconds(ent.TTL))
 	if err != nil {
-		return fmt.Errorf("kv/postgres: set %q: %w", ent.Key, err)
+		return fmt.Errorf("kv/postgres: set: %w", err)
 	}
 	return nil
 }
@@ -134,11 +137,11 @@ func (s *store) SetIfAbsent(ctx context.Context, key string, value []byte, ttl t
 		   WHERE kv.expires_at IS NOT NULL AND kv.expires_at <= now()`,
 		key, value, ttlMicroseconds(ttl))
 	if err != nil {
-		return false, fmt.Errorf("kv/postgres: set if absent %q: %w", key, err)
+		return false, fmt.Errorf("kv/postgres: set if absent: %w", err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return false, fmt.Errorf("kv/postgres: set if absent %q: %w", key, err)
+		return false, fmt.Errorf("kv/postgres: set if absent: %w", err)
 	}
 	return n == 1, nil
 }
@@ -167,14 +170,14 @@ func (s *store) Take(ctx context.Context, key string) ([]byte, bool, error) {
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, fmt.Errorf("kv/postgres: take %q: %w", key, err)
+		return nil, false, fmt.Errorf("kv/postgres: take: %w", err)
 	}
 	return v, true, nil
 }
 
 func (s *store) Delete(ctx context.Context, key string) error {
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM kv WHERE key=$1`, key); err != nil {
-		return fmt.Errorf("kv/postgres: delete %q: %w", key, err)
+		return fmt.Errorf("kv/postgres: delete: %w", err)
 	}
 	return nil
 }

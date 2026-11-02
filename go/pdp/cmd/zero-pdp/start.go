@@ -81,7 +81,6 @@ func runStart(opts *options, args []string) error {
 		IdleTimeout:       120 * time.Second,
 	}
 
-	slog.Debug("Zero Trust PDP configured", "pdp", server)
 	slog.Info("starting Zero Trust PDP at " + server.BindAddress)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

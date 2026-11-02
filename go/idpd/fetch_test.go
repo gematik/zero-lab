@@ -329,7 +329,7 @@ func TestIDPV007TheLiveReferenceEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fetchSigningKey(client.Metadata.SigningKeyURI, client.httpClient, recorded); err != nil {
+	if _, err := fetchSigningKey(t.Context(), client.Metadata.SigningKeyURI, client.httpClient, recorded); err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("TSL sequence %d", trust.store.TSL.TSL.SequenceNumber)

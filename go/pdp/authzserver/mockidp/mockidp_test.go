@@ -95,7 +95,7 @@ func TestMockOPRunsAuthCodeFlow(t *testing.T) {
 	}
 
 	// This is exactly what OPCallbackEndpoint does: real /token round-trip + id_token validation.
-	tr, err := captured.Exchange(t.Context(), oidc.Login{Verifier: verifier}, code)
+	tr, err := captured.Exchange(t.Context(), oidc.Login{Nonce: "nonce-1", Verifier: verifier}, code)
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestMockClientRefusesAnIDTokenThatDoesNotHold(t *testing.T) {
 			}))
 			defer srv.Close()
 			client := &mockClient{issuer: issuer, clientID: clientID, keys: keys, http: rewriteTo(srv)}
-			if _, err := client.Exchange(t.Context(), oidc.Login{Verifier: "verifier"}, "code"); (err == nil) != c.ok {
+			if _, err := client.Exchange(t.Context(), oidc.Login{Nonce: "n", Verifier: "verifier"}, "code"); (err == nil) != c.ok {
 				t.Fatalf("err = %v, want accepted %v", err, c.ok)
 			}
 		})
@@ -200,5 +200,41 @@ func TestMockOPPublishesItsKeyWithKidAndAlg(t *testing.T) {
 	}
 	if len(keys.Keys) != 1 || keys.Keys[0].KeyID == "" || keys.Keys[0].Algorithm != "ES256" || !keys.Keys[0].IsPublic() {
 		t.Fatalf("keys = %+v", keys.Keys)
+	}
+}
+
+func TestMockOPRefusesARedirectURIOrClientItDidNotRegister(t *testing.T) {
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	host := hostFunc{issuer: srv.URL, opCallback: srv.URL + "/op-callback", add: func(oidc.Client) {}}
+	if err := Register(host, mux, Identity{Subject: "X110000001"}); err != nil {
+		t.Fatal(err)
+	}
+	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	for name, form := range map[string]url.Values{
+		"another host":         {"client_id": {mockClientID}, "redirect_uri": {"https://evil.example/cb"}, "state": {"s"}},
+		"below the registered": {"client_id": {mockClientID}, "redirect_uri": {srv.URL + "/op-callback/more"}, "state": {"s"}},
+		"none":                 {"client_id": {mockClientID}, "state": {"s"}},
+		"another client":       {"client_id": {"someone"}, "redirect_uri": {srv.URL + "/op-callback"}, "state": {"s"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			page, err := noRedirect.Get(srv.URL + "/mock-idp/auth?" + form.Encode())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer page.Body.Close()
+			if page.StatusCode != http.StatusBadRequest {
+				t.Errorf("page = %d", page.StatusCode)
+			}
+			submit, err := noRedirect.PostForm(srv.URL+"/mock-idp/auth", form)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer submit.Body.Close()
+			if submit.StatusCode != http.StatusBadRequest || submit.Header.Get("Location") != "" {
+				t.Errorf("submit = %d to %q", submit.StatusCode, submit.Header.Get("Location"))
+			}
+		})
 	}
 }

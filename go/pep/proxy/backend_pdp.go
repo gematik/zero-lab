@@ -63,6 +63,9 @@ func (b *pdpBackend) injectDPoP(out *http.Request, sess *Session, token string) 
 	return nil
 }
 
+// maxASResponseBytes bounds what the authorization server can make the proxy read.
+const maxASResponseBytes = 1 << 20
+
 // PDPConfig configures the pdpBackend: pep as a confidential OAuth client of the PDP (the gematik AS).
 type PDPConfig struct {
 	ASIssuer    string           // the PDP authorization server (login + identity)
@@ -103,7 +106,12 @@ func NewPDPBackend(cfg PDPConfig) (Backend, error) {
 	if hc == nil {
 		hc = &http.Client{Timeout: 30 * time.Second}
 	}
-	b := &pdpBackend{cfg: cfg, http: hc, signer: sessionKeySigner{}}
+	// A redirect would lead past the checks on the endpoints, with the client's assertion in the form.
+	noRedirects := *hc
+	noRedirects.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return errors.New("redirect refused")
+	}
+	b := &pdpBackend{cfg: cfg, http: &noRedirects, signer: sessionKeySigner{}}
 	meta, err := b.discoverMetadata(cfg.ASIssuer)
 	if err != nil {
 		return nil, fmt.Errorf("pdp discovery: %w", err)
@@ -121,7 +129,7 @@ func NewPDPBackend(cfg PDPConfig) (Backend, error) {
 	return b, nil
 }
 
-// clientAssertion mints a private_key_jwt (RFC 7523 §2.2): iss=sub=client_id, aud=the AS's real issuer, a
+// clientAssertion mints a private_key_jwt (RFC 7523 §2.2): iss=sub=client_id, aud=the configured issuer, a
 // fresh AS nonce, and cnf.jkt = the SESSION DPoP-key thumbprint, binding the token to the per-session key.
 func (b *pdpBackend) clientAssertion(ctx context.Context, sess *Session) (string, error) {
 	if b.cfg.SigningKey == nil {
@@ -137,7 +145,7 @@ func (b *pdpBackend) clientAssertion(ctx context.Context, sess *Session) (string
 		"iss": b.cfg.ClientID,
 		"sub": b.cfg.ClientID,
 		// An array, not a string: the PDP's client_assertion decoder takes aud as a list.
-		"aud": []string{b.meta.Issuer},
+		"aud": []string{b.cfg.ASIssuer},
 		"jti": uuid.NewV4().String(),
 		"iat": now.Unix(),
 		"exp": now.Add(time.Minute).Unix(),
@@ -196,9 +204,69 @@ func (b *pdpBackend) fetchNonce(ctx context.Context) (string, error) {
 	return strings.TrimSpace(string(body)), nil
 }
 
+// decodeBounded decodes a JSON response of the authorization server within maxASResponseBytes: a longer one is cut off,
+// which the decoder takes for what it is.
+func decodeBounded(body io.Reader, into any) error {
+	return json.NewDecoder(io.LimitReader(body, maxASResponseBytes)).Decode(into)
+}
+
+// IsLocalHTTP reports whether rawURL is plain http on this machine by name or loopback address, the one place where
+// requiring TLS would only stop development. It takes no other form of those names.
+func IsLocalHTTP(rawURL string) bool {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Scheme != "http" || parsed.User != nil {
+		return false
+	}
+	host := parsed.Hostname()
+	return host == "localhost" || host == "127.0.0.1"
+}
+
+// checkEndpoint takes an https URL with a host, and plain http only when the issuer itself runs on this machine.
+func checkEndpoint(location string, plainAllowed bool) error {
+	parsed, err := url.Parse(location)
+	if err != nil || parsed.Host == "" || parsed.User != nil {
+		return fmt.Errorf("%q is no endpoint URL", location)
+	}
+	if parsed.Scheme != "https" && (parsed.Scheme != "http" || !plainAllowed) {
+		return fmt.Errorf("%q is not https", location)
+	}
+	return nil
+}
+
+// checkMetadata holds a metadata document to its issuer (RFC 8414 section 3.3): every later request goes to the
+// endpoints it names, and the issuer it names is the audience of the client's assertions.
+func checkMetadata(md asMetadata, issuer string) error {
+	if md.Issuer != issuer {
+		return fmt.Errorf("metadata names the issuer %q, configured is %q", md.Issuer, issuer)
+	}
+	if md.AuthorizationEndpoint == "" || md.TokenEndpoint == "" {
+		return errors.New("metadata missing authorization/token endpoint")
+	}
+	plainAllowed := IsLocalHTTP(issuer)
+	for _, endpoint := range []struct{ name, location string }{
+		{"authorization_endpoint", md.AuthorizationEndpoint},
+		{"token_endpoint", md.TokenEndpoint},
+		{"introspection_endpoint", md.IntrospectionEndpoint},
+		{"openid_providers_endpoint", md.OpenidProvidersEndpoint},
+		{"nonce_endpoint", md.NonceEndpoint},
+		{"pushed_authorization_request_endpoint", md.PushedAuthorizationRequestEndpoint},
+	} {
+		if endpoint.location == "" {
+			continue
+		}
+		if err := checkEndpoint(endpoint.location, plainAllowed); err != nil {
+			return fmt.Errorf("%s: %w", endpoint.name, err)
+		}
+	}
+	return nil
+}
+
 // discoverMetadata fetches the RFC 8414 authorization-server metadata document. Port of bff discoverMetadata.
 func (b *pdpBackend) discoverMetadata(issuer string) (asMetadata, error) {
 	var md asMetadata
+	if err := checkEndpoint(issuer, IsLocalHTTP(issuer)); err != nil {
+		return md, fmt.Errorf("issuer: %w", err)
+	}
 	u := strings.TrimRight(issuer, "/") + "/.well-known/oauth-authorization-server"
 	resp, err := b.http.Get(u)
 	if err != nil {
@@ -208,11 +276,11 @@ func (b *pdpBackend) discoverMetadata(issuer string) (asMetadata, error) {
 	if resp.StatusCode != http.StatusOK {
 		return md, fmt.Errorf("metadata endpoint %s returned %d", u, resp.StatusCode)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&md); err != nil {
+	if err := decodeBounded(resp.Body, &md); err != nil {
 		return md, fmt.Errorf("decode metadata: %w", err)
 	}
-	if md.AuthorizationEndpoint == "" || md.TokenEndpoint == "" {
-		return md, errors.New("metadata missing authorization/token endpoint")
+	if err := checkMetadata(md, issuer); err != nil {
+		return md, err
 	}
 	return md, nil
 }
@@ -249,7 +317,7 @@ func (b *pdpBackend) fetchProviders() ([]providerInfo, error) {
 		return nil, fmt.Errorf("openid providers endpoint returned %d", resp.StatusCode)
 	}
 	var ps []providerInfo
-	if err := json.NewDecoder(resp.Body).Decode(&ps); err != nil {
+	if err := decodeBounded(resp.Body, &ps); err != nil {
 		return nil, err
 	}
 	return ps, nil
@@ -340,7 +408,7 @@ func (b *pdpBackend) pushAuthorizationRequest(ctx context.Context, sess *Session
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxASResponseBytes))
 	if resp.StatusCode != http.StatusCreated {
 		return "", fmt.Errorf("PAR endpoint returned %d: %s", resp.StatusCode, string(body))
 	}
@@ -478,7 +546,7 @@ func (b *pdpBackend) tokenRequest(ctx context.Context, sess *Session, form url.V
 		return nil, fmt.Errorf("token endpoint %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var tr tokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
+	if err := decodeBounded(resp.Body, &tr); err != nil {
 		return nil, err
 	}
 	return &tr, nil
@@ -523,7 +591,7 @@ func (b *pdpBackend) introspectIdentity(ctx context.Context, sess *Session, acce
 		return nil, fmt.Errorf("introspection returned %d", resp.StatusCode)
 	}
 	var ir map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&ir); err != nil {
+	if err := decodeBounded(resp.Body, &ir); err != nil {
 		return nil, err
 	}
 	if active, _ := ir["active"].(bool); !active {

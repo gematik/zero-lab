@@ -81,7 +81,7 @@ func FuzzValidateClaims(f *testing.F) {
 	f.Fuzz(func(t *testing.T, payload []byte) {
 		_ = ValidateLifetime(payload, now, time.Minute)
 		_ = ValidateAudience(payload, "c")
-		if err := (IDTokenChecks{Issuer: "i", ClientID: "c", Now: now, Skew: time.Minute}).Validate(payload); err != nil {
+		if err := (IDTokenChecks{Nonce: "n", Issuer: "i", ClientID: "c", Now: now, Skew: time.Minute}).Validate(payload); err != nil {
 			return
 		}
 		claims, err := parseClaims(payload)
@@ -91,5 +91,16 @@ func FuzzValidateClaims(f *testing.F) {
 		if claims.issuer == nil || *claims.issuer != "i" || claims.expiry == nil || claims.nonce == "" {
 			t.Fatalf("passed without its required claims: %s", payload)
 		}
+	})
+}
+
+// A token from a provider reaches Claims after verification only by the callers' discipline, so it must not panic.
+func FuzzTokenResponseClaims(f *testing.F) {
+	for _, seed := range []string{"", "nodots", "one.dot", "a.b.c", "a.e30.c", "a.b.c.d"} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(_ *testing.T, token string) {
+		var claims map[string]any
+		_ = (&TokenResponse{IDTokenRaw: token}).Claims(&claims)
 	})
 }

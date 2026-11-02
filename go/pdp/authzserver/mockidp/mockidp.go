@@ -76,9 +76,11 @@ type pendingAuth struct {
 
 type provider struct {
 	issuer string
-	id     Identity
-	signer jose.Signer
-	jwks   *jose.JSONWebKeySet
+	// redirectURI is the one the mock client registered, the PDP's op-callback.
+	redirectURI string
+	id          Identity
+	signer      jose.Signer
+	jwks        *jose.JSONWebKeySet
 
 	mu    sync.Mutex
 	codes map[string]pendingAuth // single-use OP authorization codes (in-memory; dev/non-prod only)
@@ -92,11 +94,12 @@ func Register(h Host, mux *http.ServeMux, id Identity) error {
 		return fmt.Errorf("mockidp signing key: %w", err)
 	}
 	p := &provider{
-		issuer: strings.TrimRight(h.IssuerBaseURL(), "/") + pathPrefix,
-		id:     id,
-		signer: signer,
-		jwks:   jwks,
-		codes:  map[string]pendingAuth{},
+		issuer:      strings.TrimRight(h.IssuerBaseURL(), "/") + pathPrefix,
+		redirectURI: h.OPCallbackURL(),
+		id:          id,
+		signer:      signer,
+		jwks:        jwks,
+		codes:       map[string]pendingAuth{},
 	}
 	mux.HandleFunc("GET "+pathPrefix+"/.well-known/openid-configuration", p.handleDiscovery)
 	mux.HandleFunc("GET "+pathPrefix+"/auth", p.handleAuthPage)
@@ -104,7 +107,7 @@ func Register(h Host, mux *http.ServeMux, id Identity) error {
 	mux.HandleFunc("POST "+pathPrefix+"/token", p.handleToken)
 	mux.HandleFunc("GET "+pathPrefix+"/jwks", p.handleJWKS)
 
-	h.AddProvider(&mockClient{issuer: p.issuer, clientID: mockClientID, redirectURI: h.OPCallbackURL(), keys: jwks})
+	h.AddProvider(&mockClient{issuer: p.issuer, clientID: mockClientID, redirectURI: p.redirectURI, keys: jwks})
 	return nil
 }
 
@@ -169,8 +172,21 @@ button:hover{background:var(--magenta);border-color:var(--magenta)}
 <button type="submit">Sign in</button>
 </form></main></body></html>`))
 
+// checkClient holds a request to what the mock client registered (RFC 6749 section 3.1.2.3: exact match), so that even
+// a non-production build sends no code to a URI from a form.
+func (p *provider) checkClient(w http.ResponseWriter, clientID, redirectURI string) bool {
+	if clientID != mockClientID || redirectURI != p.redirectURI {
+		http.Error(w, "unknown client or redirect_uri", http.StatusBadRequest)
+		return false
+	}
+	return true
+}
+
 func (p *provider) handleAuthPage(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	if !p.checkClient(w, q.Get("client_id"), q.Get("redirect_uri")) {
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = loginPage.Execute(w, map[string]string{
 		"Subject":       p.id.Subject,
@@ -188,9 +204,7 @@ func (p *provider) handleAuthSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
 	}
-	redirectURI := r.FormValue("redirect_uri")
-	if redirectURI == "" {
-		http.Error(w, "missing redirect_uri", http.StatusBadRequest)
+	if !p.checkClient(w, r.FormValue("client_id"), r.FormValue("redirect_uri")) {
 		return
 	}
 	code := uuid.NewV4().String()
@@ -205,7 +219,7 @@ func (p *provider) handleAuthSubmit(w http.ResponseWriter, r *http.Request) {
 	q := url.Values{}
 	q.Set("code", code)
 	q.Set("state", r.FormValue("state"))
-	http.Redirect(w, r, redirectURI+"?"+q.Encode(), http.StatusFound) //nolint:gosec // TASK-184: non-production mock behind the mockidp tag, redirect_uri unchecked
+	http.Redirect(w, r, p.redirectURI+"?"+q.Encode(), http.StatusFound)
 }
 
 func (p *provider) handleToken(w http.ResponseWriter, r *http.Request) {

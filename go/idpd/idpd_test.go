@@ -109,7 +109,7 @@ func TestIDPD(t *testing.T) {
 
 	t.Log("CodeRedirectURL", codeRedirectURL)
 
-	tokenResponse, err := client.Exchange(t.Context(), oidc.Login{Verifier: verifier}, codeRedirectURL.Code)
+	tokenResponse, err := client.Exchange(t.Context(), oidc.Login{Nonce: "nonce", Verifier: verifier}, codeRedirectURL.Code)
 	if err != nil {
 		t.Fatal(err)
 	}

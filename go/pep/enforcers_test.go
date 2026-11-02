@@ -22,6 +22,7 @@
 package pep_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -261,8 +262,8 @@ func TestEnforcerScope(t *testing.T) {
 		{url: "/write", expectedStatus: http.StatusUnauthorized},
 		{url: "/write", expectedStatus: http.StatusOK, expectedBody: "write", request: createRequestWithAccessToken(t, server.URL+"/write", []byte(privateJWK1), []string{"write"}, time.Now().Add(time.Hour))},
 		{url: "/read", expectedStatus: http.StatusOK, expectedBody: "read", request: createRequestWithAccessToken(t, server.URL+"/read", []byte(privateJWK1), []string{"read"}, time.Now().Add(time.Hour))},
-		{url: "/read", expectedStatus: http.StatusForbidden, request: createRequestWithAccessToken(t, server.URL+"/read", []byte(privateJWKUnknown), []string{"read"}, time.Now().Add(time.Hour))},
-		{url: "/read", expectedStatus: http.StatusForbidden, request: createRequestWithAccessToken(t, server.URL+"/read", []byte(privateJWK1), []string{"read"}, time.Now().Add(-2*time.Hour))},
+		{url: "/read", expectedStatus: http.StatusUnauthorized, request: createRequestWithAccessToken(t, server.URL+"/read", []byte(privateJWKUnknown), []string{"read"}, time.Now().Add(time.Hour))},
+		{url: "/read", expectedStatus: http.StatusUnauthorized, request: createRequestWithAccessToken(t, server.URL+"/read", []byte(privateJWK1), []string{"read"}, time.Now().Add(-2*time.Hour))},
 	}
 
 	for _, tt := range tests {
@@ -499,5 +500,64 @@ func TestAccessToken(t *testing.T) {
 
 	if got := parsedToken.Thumbprint(); got != "test" {
 		t.Fatalf("Expected thumbprint %s, got %s", "test", got)
+	}
+}
+
+// RFC 6750 section 3.1: an access token that is expired or otherwise invalid is 401 invalid_token, under a challenge of
+// the scheme the client used, and the reason stays with the server (server rule 2).
+func TestRFC6750_3_1_AnInvalidBearerTokenIsRefusedWith401InvalidToken(t *testing.T) {
+	assertInvalidToken(t, &pep.EnforcerAuthorizationBearer{}, createRequestWithAccessToken, `Bearer error="invalid_token", error_description="invalid access token"`)
+}
+
+// RFC 9449 section 7.1 applies RFC 6750 section 3.1 to the DPoP scheme.
+func TestRFC9449_7_1_AnInvalidDPoPTokenIsRefusedWith401InvalidToken(t *testing.T) {
+	assertInvalidToken(t, &pep.EnforcerAuthorizationDPoP{}, createRequestWithAccessTokenAndDPoP, `DPoP error="invalid_token", error_description="invalid access token", algs="ES256"`)
+}
+
+func assertInvalidToken(t *testing.T, enforcer pep.Enforcer, request func(*testing.T, string, []byte, []string, time.Time) *http.Request, challenge string) {
+	t.Helper()
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	p := createPEPAt(t, server.URL)
+	mux.HandleFunc("/guarded", p.GuardedHandlerFunc(enforcer, func(http.ResponseWriter, *http.Request) {
+		t.Error("the handler ran")
+	}))
+
+	resp, err := server.Client().Do(request(t, server.URL+"/guarded", []byte(privateJWK1), []string{"read"}, time.Now().Add(-time.Hour)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Errorf("status = %d", resp.StatusCode)
+	}
+	if got := resp.Header.Get("WWW-Authenticate"); got != challenge {
+		t.Errorf("WWW-Authenticate = %s", got)
+	}
+	var denial struct {
+		Code        string `json:"error"`
+		Description string `json:"error_description"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&denial); err != nil {
+		t.Fatal(err)
+	}
+	if denial.Code != "invalid_token" || denial.Description != "invalid access token" {
+		t.Errorf("denial = %+v", denial)
+	}
+}
+
+// A query can carry what the log must not hold, as a forwarded callback's code does.
+func TestADeniedRequestIsLoggedWithoutItsQuery(t *testing.T) {
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	p := createPEP(t)
+	guarded := p.GuardedHandlerFunc(&pep.EnforcerDeny{}, func(http.ResponseWriter, *http.Request) {})
+	guarded(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "https://example.com/cb?code=code-value", nil))
+	if strings.Contains(logs.String(), "code-value") {
+		t.Errorf("the log holds the query: %s", logs.String())
 	}
 }

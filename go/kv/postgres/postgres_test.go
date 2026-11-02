@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -353,5 +354,36 @@ func TestPostgres_SealedStoreHoldsCiphertextAndDetectsAMovedRecord(t *testing.T)
 	}
 	if _, _, err := sealed.Get(ctx, p+"moved"); !errors.Is(err, kv.ErrIntegrity) {
 		t.Fatalf("got %v, want ErrIntegrity", err)
+	}
+}
+
+// A key names what it holds, as:code:<the code> or pep:state:<the state>, and the store's errors reach logs.
+func TestPostgres_ErrorsDoNotNameTheKey(t *testing.T) {
+	store, prefix := testStore(t)
+	ctx := context.Background()
+	key := prefix + "as:code:code-value"
+	closer, ok := store.(interface{ Close() error })
+	if !ok {
+		t.Fatal("the store cannot be closed")
+	}
+	if err := closer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, _, getErr := store.Get(ctx, key)
+	_, _, takeErr := store.Take(ctx, key)
+	_, ifAbsentErr := store.SetIfAbsent(ctx, key, []byte("v"), time.Minute)
+	for name, err := range map[string]error{
+		"get":           getErr,
+		"take":          takeErr,
+		"set":           store.Set(ctx, key, []byte("v"), time.Minute),
+		"set if absent": ifAbsentErr,
+		"set many":      store.SetMany(ctx, kv.Entry{Key: key, Value: []byte("v"), TTL: time.Minute}),
+		"delete":        store.Delete(ctx, key),
+	} {
+		if err == nil {
+			t.Errorf("%s: no error from a closed store", name)
+		} else if strings.Contains(err.Error(), "code-value") {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }

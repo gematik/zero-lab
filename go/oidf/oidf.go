@@ -29,9 +29,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -44,19 +44,69 @@ const (
 	// statementClockTolerance is added to the clock a signed federation document is judged at. Having nbf and iat
 	// in the future by that much is tolerated, and exp is met that much earlier.
 	statementClockTolerance = 90 * time.Second
+	// maxFederationResponseBytes bounds what a federation member can make a relying party read.
+	maxFederationResponseBytes = 1 << 20
 )
 
 // federationKeys refuses a key that does not state its alg: the algorithm of a federation document is fixed by the key
 // that vouches for it, not left to what the key's type allows.
 var federationKeys = oidc.VerifyOptions{RequireKeyAlgorithm: true}
 
-// verifyStatement verifies a signed federation document against keys and checks its lifetime, returning its claims.
-func verifyStatement(r io.Reader, keys *jose.JSONWebKeySet) ([]byte, error) {
-	signed, err := io.ReadAll(r)
+// errRedirectRefused is what a federation fetch that is redirected ends in. A URL is checked before a fetch, so a
+// redirect would lead past the check, and with the relying party's client it would present the mTLS key elsewhere.
+var errRedirectRefused = errors.New("redirect refused")
+
+func refuseRedirect(*http.Request, []*http.Request) error {
+	return errRedirectRefused
+}
+
+// checkFederationURL lets through what a federation document may send a fetch to: an https URL, with a host and no
+// credentials. It holds tests too, whose stubs serve TLS, so that no plain path exists to be left open.
+func checkFederationURL(location string) error {
+	parsed, err := url.Parse(location)
+	if err != nil {
+		return fmt.Errorf("%q is no URL", location)
+	}
+	if parsed.Scheme != "https" || parsed.Host == "" || parsed.Hostname() == "" {
+		return fmt.Errorf("%q is not an https URL", location)
+	}
+	if parsed.User != nil || parsed.Fragment != "" {
+		return fmt.Errorf("%q has credentials or a fragment", location)
+	}
+	return nil
+}
+
+// checkEntityIdentifier is checkFederationURL for an entity identifier, which comes without a query since a path is
+// appended to it. The issuer asked for comes from the request's idp_iss.
+func checkEntityIdentifier(iss string) error {
+	if err := checkFederationURL(iss); err != nil {
+		return err
+	}
+	if strings.Contains(iss, "?") {
+		return fmt.Errorf("%q has a query", iss)
+	}
+	return nil
+}
+
+// readBounded reads a federation response, and fails rather than cut it off at the limit.
+func readBounded(r io.Reader) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r, maxFederationResponseBytes+1))
 	if err != nil {
 		return nil, err
 	}
-	payload, err := oidc.VerifyJWS(signed, keys, federationKeys)
+	if len(body) > maxFederationResponseBytes {
+		return nil, fmt.Errorf("response larger than %d bytes", maxFederationResponseBytes)
+	}
+	return body, nil
+}
+
+// verifyStatement verifies a signed federation document against keys and checks its lifetime, returning its claims.
+func verifyStatement(r io.Reader, keys *jose.JSONWebKeySet) ([]byte, error) {
+	signed, err := readBounded(r)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := oidc.VerifyJWS(bytes.TrimSpace(signed), keys, federationKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -105,8 +155,8 @@ type federationOptions struct {
 	httpClient *http.Client
 }
 
-// WithHTTPClient supplies the base HTTP client; the federation API key is layered onto a copy of it.
-// When unset, a client with a default timeout is created.
+// WithHTTPClient supplies the base HTTP client; the federation API key and the refusal of redirects are layered onto a
+// copy of it. When unset, a client with a default timeout is created.
 func WithHTTPClient(httpClient *http.Client) Option {
 	return func(o *federationOptions) {
 		o.httpClient = httpClient
@@ -129,29 +179,44 @@ func NewOpenidFederation(fedMasterURL string, jwks *jose.JSONWebKeySet, opts ...
 	// layer the federation API key onto the chosen client without mutating the caller's
 	decorated := *httpClient
 	decorated.Transport = AddAPIKeyTransport(transportOrDefault(httpClient.Transport))
-	httpClient = &decorated
+	decorated.CheckRedirect = refuseRedirect
 
-	es, err := fetchMasterEntityStatement(fedMasterURL, jwks, httpClient)
+	federation := &OpenidFederation{
+		fedMasterURL: fedMasterURL,
+		jwks:         jwks,
+		httpClient:   &decorated,
+	}
+	es, err := federation.fetchMasterEntityStatement()
 	if err != nil {
 		return nil, err
 	}
 
-	if es.Metadata.FederationEntity == nil {
+	if es.Issuer != fedMasterURL || es.Subject != fedMasterURL {
+		return nil, fmt.Errorf("the master's statement names iss %q and sub %q, not %q", es.Issuer, es.Subject, fedMasterURL)
+	}
+	if es.Metadata == nil || es.Metadata.FederationEntity == nil {
 		return nil, errors.New("no federation entity found in master entity statement")
 	}
+	federation.entity = es.Metadata.FederationEntity
+	return federation, nil
+}
 
-	return &OpenidFederation{
-		fedMasterURL: fedMasterURL,
-		jwks:         jwks,
-		entity:       es.Metadata.FederationEntity,
-		httpClient:   httpClient,
-	}, nil
+// get is the one way a fetch leaves this package: location is checked, whoever chose it.
+func (f *OpenidFederation) get(location string) (*http.Response, error) {
+	if err := checkFederationURL(location); err != nil {
+		return nil, err
+	}
+	request, err := http.NewRequest(http.MethodGet, location, nil) //nolint:gosec // checkFederationURL let location through: https, from the operator's fed_master_url or a statement that verified along the chain from the trust anchor
+	if err != nil {
+		return nil, err
+	}
+	return f.httpClient.Do(request) //nolint:gosec // checkFederationURL let the URL through, and the client refuses redirects
 }
 
 // FetchIdpList fetches the master's IdP list and verifies it against the trust anchor. Each call goes to the
 // network.
 func (f *OpenidFederation) FetchIdpList() ([]IdentityProviderInfo, error) {
-	r, err := f.httpClient.Get(f.entity.IdpListEndpoint) //nolint:gosec // the endpoint comes from the master entity statement, verified against the operator-configured trust anchor
+	r, err := f.get(f.entity.IdpListEndpoint)
 	if err != nil {
 		return nil, fmt.Errorf("unable to fetch idp list from '%s': %w", f.entity.IdpListEndpoint, err)
 	}
@@ -175,8 +240,8 @@ func (f *OpenidFederation) FetchIdpList() ([]IdentityProviderInfo, error) {
 	return *claims.IdpEntity, nil
 }
 
-func fetchMasterEntityStatement(fedMasterURL string, jwks *jose.JSONWebKeySet, httpClient *http.Client) (*EntityStatement, error) {
-	resp, err := httpClient.Get(fedMasterURL + "/.well-known/openid-federation") //nolint:gosec // fedMasterURL is the operator's fed_master_url, not request input
+func (f *OpenidFederation) fetchMasterEntityStatement() (*EntityStatement, error) {
+	resp, err := f.get(f.fedMasterURL + "/.well-known/openid-federation")
 	if err != nil {
 		return nil, err
 	}
@@ -184,16 +249,10 @@ func fetchMasterEntityStatement(fedMasterURL string, jwks *jose.JSONWebKeySet, h
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			slog.Error("unable to read response body", "error", err)
-		} else {
-			slog.Error("unable to fetch entity statement", "status", resp.Status, "body", string(body))
-		}
-		return nil, fmt.Errorf("unable to fetch entity statement from '%s': %s", fedMasterURL, resp.Status)
+		return nil, fmt.Errorf("unable to fetch entity statement from '%s': %s", f.fedMasterURL, resp.Status)
 	}
 
-	payload, err := verifyStatement(resp.Body, jwks)
+	payload, err := verifyStatement(resp.Body, f.jwks)
 	if err != nil {
 		return nil, err
 	}
@@ -202,12 +261,7 @@ func fetchMasterEntityStatement(fedMasterURL string, jwks *jose.JSONWebKeySet, h
 }
 
 func (f *OpenidFederation) fetchAndVerify(url string, jwks *jose.JSONWebKeySet) (*EntityStatement, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil) //nolint:gosec // TASK-182: iss and signed_jwks_uri are not constrained
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := f.httpClient.Do(req) //nolint:gosec // TASK-182: iss and signed_jwks_uri are not constrained
+	resp, err := f.get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -215,9 +269,12 @@ func (f *OpenidFederation) fetchAndVerify(url string, jwks *jose.JSONWebKeySet) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		var oidcErr Error
-		err = json.NewDecoder(resp.Body).Decode(&oidcErr)
+		body, err := readBounded(resp.Body)
 		if err != nil {
+			return nil, fmt.Errorf("http error %d", resp.StatusCode)
+		}
+		var oidcErr Error
+		if err := json.Unmarshal(body, &oidcErr); err != nil {
 			return nil, fmt.Errorf("http error %d", resp.StatusCode)
 		}
 		return nil, &oidcErr
@@ -234,6 +291,10 @@ func (f *OpenidFederation) fetchAndVerify(url string, jwks *jose.JSONWebKeySet) 
 // FetchEntityStatement returns the self-signed entity statement of the issuer iss, verified with the keys that
 // the master's statement about iss vouches for.
 func (f *OpenidFederation) FetchEntityStatement(iss string) (*EntityStatement, error) {
+	if err := checkEntityIdentifier(iss); err != nil {
+		return nil, fmt.Errorf("issuer: %w", err)
+	}
+
 	query := url.Values{}
 	query.Add("iss", f.fedMasterURL)
 	query.Add("sub", iss)
@@ -249,10 +310,16 @@ func (f *OpenidFederation) FetchEntityStatement(iss string) (*EntityStatement, e
 	if fromMaster.Jwks == nil {
 		return nil, fmt.Errorf("the master's statement about '%s' vouches for no keys", iss)
 	}
+	if fromMaster.Issuer != f.fedMasterURL || fromMaster.Subject != iss {
+		return nil, fmt.Errorf("asked the master about '%s', its statement names iss %q and sub %q", iss, fromMaster.Issuer, fromMaster.Subject)
+	}
 
 	selfSigned, err := f.fetchAndVerify(iss+"/.well-known/openid-federation", fromMaster.Jwks.Keys)
 	if err != nil {
 		return nil, fmt.Errorf("unable to fetch entity statement from '%s': %w", iss, err)
+	}
+	if selfSigned.Issuer != iss || selfSigned.Subject != iss {
+		return nil, fmt.Errorf("the statement of '%s' names iss %q and sub %q", iss, selfSigned.Issuer, selfSigned.Subject)
 	}
 
 	return selfSigned, nil
@@ -275,7 +342,7 @@ func (f *OpenidFederation) FetchSignedJwks(op *EntityStatement) (*jose.JSONWebKe
 
 	jwksURL := op.Metadata.OpenidProvider.SignedJwksURI
 
-	resp, err := f.httpClient.Get(jwksURL) //nolint:gosec // TASK-182: iss and signed_jwks_uri are not constrained
+	resp, err := f.get(jwksURL)
 	if err != nil {
 		return nil, fmt.Errorf("unable to fetch jwks from '%s': %w", jwksURL, err)
 	}
@@ -286,13 +353,11 @@ func (f *OpenidFederation) FetchSignedJwks(op *EntityStatement) (*jose.JSONWebKe
 		return nil, fmt.Errorf("unable to fetch jwks from '%s': %s", jwksURL, resp.Status)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	jwksBytes, err := verifyStatement(resp.Body, op.Jwks.Keys)
 	if err != nil {
-		return nil, fmt.Errorf("unable to read jwks response body: %w", err)
+		return nil, fmt.Errorf("unable to verify jwks: %w", err)
 	}
-
-	jwksBytes, err := oidc.VerifyJWS(bytes.TrimSpace(body), op.Jwks.Keys, federationKeys)
-	if err != nil {
+	if err := requireExpiry(jwksBytes); err != nil {
 		return nil, fmt.Errorf("unable to verify jwks: %w", err)
 	}
 
@@ -302,4 +367,17 @@ func (f *OpenidFederation) FetchSignedJwks(op *EntityStatement) (*jose.JSONWebKe
 	}
 
 	return jwks, nil
+}
+
+// requireExpiry refuses a signed key set without exp. The federation specification leaves exp optional, while server
+// rule 15 makes it mandatory here: without one, a key set an OP has since replaced could be replayed for ever.
+func requireExpiry(payload []byte) error {
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &members); err != nil {
+		return err
+	}
+	if _, ok := members["exp"]; !ok {
+		return errors.New("a signed key set has to state its exp")
+	}
+	return nil
 }

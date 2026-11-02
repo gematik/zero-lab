@@ -24,20 +24,33 @@ package oidc
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 )
+
+const secretMask = "*****"
 
 // NewSecretString wraps value in a SecretString.
 func NewSecretString(value string) SecretString {
 	return SecretString{value}
 }
 
-// SecretString is a type that can be used to store secrets in a way that they are not printed in logs or marshaled to JSON.
+// SecretString holds a secret so that it is neither printed nor logged nor marshaled to JSON; only Value gives it out.
 type SecretString struct {
 	value string
 }
 
 func (s SecretString) String() string {
-	return "*****"
+	return secretMask
+}
+
+// GoString masks the secret for the %#v verb, which does not use String.
+func (s SecretString) GoString() string {
+	return secretMask
+}
+
+// LogValue masks the secret for a slog handler, whichever way it would render a value.
+func (s SecretString) LogValue() slog.Value {
+	return slog.StringValue(secretMask)
 }
 
 // Value returns the secret in clear.
@@ -45,9 +58,9 @@ func (s SecretString) Value() string {
 	return s.value
 }
 
-// MarshalJSON writes the secret in clear; only String masks it.
+// MarshalJSON masks the secret: a value written out and read in again has lost it.
 func (s SecretString) MarshalJSON() ([]byte, error) {
-	return json.Marshal(s.value)
+	return json.Marshal(secretMask)
 }
 
 // UnmarshalJSON reads the secret from a JSON string.

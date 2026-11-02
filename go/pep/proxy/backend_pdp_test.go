@@ -22,15 +22,18 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/go-jose/go-jose/v4"
@@ -136,5 +139,194 @@ func TestPDPTokenRequestSendsDPoP(t *testing.T) {
 	proof := verifyDPoP(t, gotDPoP, dpop.Request{Method: http.MethodPost, URI: ts.URL})
 	if proof.AccessTokenHash != "" {
 		t.Errorf("token-request proof must carry no ath, got %q", proof.AccessTokenHash)
+	}
+}
+
+// asStub serves authorization server metadata; doc gets the server's URL.
+func asStub(t *testing.T, tls bool, doc func(base string) asMetadata) *httptest.Server {
+	t.Helper()
+	var server *httptest.Server
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/oauth-authorization-server":
+			_ = json.NewEncoder(w).Encode(doc(server.URL))
+		case "/elsewhere":
+			_ = json.NewEncoder(w).Encode(doc(server.URL))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	if tls {
+		server = httptest.NewTLSServer(handler)
+	} else {
+		server = httptest.NewServer(handler)
+	}
+	t.Cleanup(server.Close)
+	return server
+}
+
+func fullMetadata(base string) asMetadata {
+	return asMetadata{
+		Issuer:                             base,
+		AuthorizationEndpoint:              base + "/auth",
+		TokenEndpoint:                      base + "/token",
+		IntrospectionEndpoint:              base + "/introspect",
+		OpenidProvidersEndpoint:            base + "/providers",
+		NonceEndpoint:                      base + "/nonce",
+		PushedAuthorizationRequestEndpoint: base + "/par",
+	}
+}
+
+func discover(t *testing.T, server *httptest.Server, issuer string) (Backend, error) {
+	t.Helper()
+	return NewPDPBackend(PDPConfig{ASIssuer: issuer, ClientID: "pep-client", SigningKey: testSigningKey(t), HTTPClient: server.Client()})
+}
+
+// RFC 8414 section 3.3: the issuer in the document must be identical to the one configured.
+func TestRFC8414_3_3_MetadataNamingAnotherIssuerIsRefused(t *testing.T) {
+	for name, named := range map[string]func(base string) string{
+		"another issuer":     func(string) string { return "https://evil.example" },
+		"no issuer":          func(string) string { return "" },
+		"a trailing slash":   func(base string) string { return base + "/" },
+		"another path below": func(base string) string { return base + "/tenant" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			server := asStub(t, true, func(base string) asMetadata {
+				md := fullMetadata(base)
+				md.Issuer = named(base)
+				return md
+			})
+			if _, err := discover(t, server, server.URL); err == nil || !strings.Contains(err.Error(), "issuer") {
+				t.Errorf("err = %v", err)
+			}
+		})
+	}
+}
+
+func TestRFC8414_MetadataOfAnHTTPSIssuerNeedsHTTPSEndpoints(t *testing.T) {
+	endpoints := map[string]func(*asMetadata, string){
+		"authorization_endpoint": func(md *asMetadata, plain string) { md.AuthorizationEndpoint = plain },
+		"token_endpoint":         func(md *asMetadata, plain string) { md.TokenEndpoint = plain },
+		"introspection_endpoint": func(md *asMetadata, plain string) { md.IntrospectionEndpoint = plain },
+		"openid_providers":       func(md *asMetadata, plain string) { md.OpenidProvidersEndpoint = plain },
+		"nonce_endpoint":         func(md *asMetadata, plain string) { md.NonceEndpoint = plain },
+		"pushed_authorization":   func(md *asMetadata, plain string) { md.PushedAuthorizationRequestEndpoint = plain },
+	}
+	for name, set := range endpoints {
+		t.Run(name, func(t *testing.T) {
+			server := asStub(t, true, func(base string) asMetadata {
+				md := fullMetadata(base)
+				set(&md, "http://as.example/plain")
+				return md
+			})
+			if _, err := discover(t, server, server.URL); err == nil || !strings.Contains(err.Error(), "https") {
+				t.Errorf("err = %v", err)
+			}
+		})
+	}
+}
+
+func TestRFC8414_MetadataOfAnHTTPSIssuerWithHTTPSEndpointsIsTaken(t *testing.T) {
+	server := asStub(t, true, fullMetadata)
+	if _, err := discover(t, server, server.URL); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRFC8414_AnIssuerOverPlainHTTPElsewhereThanThisMachineIsRefusedBeforeAnyFetch(t *testing.T) {
+	var fetches atomic.Int64
+	client := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		fetches.Add(1)
+		return nil, http.ErrHandlerTimeout
+	})}
+	_, err := NewPDPBackend(PDPConfig{ASIssuer: "http://as.example", ClientID: "pep-client", SigningKey: testSigningKey(t), HTTPClient: client})
+	if err == nil || !strings.Contains(err.Error(), "https") {
+		t.Errorf("err = %v", err)
+	}
+	if n := fetches.Load(); n != 0 {
+		t.Errorf("%d fetches", n)
+	}
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestRFC8414_AnIssuerOverPlainHTTPOnThisMachineMayHavePlainEndpoints(t *testing.T) {
+	server := asStub(t, false, fullMetadata)
+	if _, err := discover(t, server, server.URL); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDiscoverMetadataDoesNotFollowARedirect(t *testing.T) {
+	mux := http.NewServeMux()
+	server := httptest.NewTLSServer(mux)
+	defer server.Close()
+	var followed atomic.Int64
+	mux.HandleFunc("/.well-known/oauth-authorization-server", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/elsewhere", http.StatusFound)
+	})
+	mux.HandleFunc("/elsewhere", func(w http.ResponseWriter, _ *http.Request) {
+		followed.Add(1)
+		_ = json.NewEncoder(w).Encode(fullMetadata(server.URL))
+	})
+	if _, err := discover(t, server, server.URL); err == nil {
+		t.Error("accepted")
+	}
+	if n := followed.Load(); n != 0 {
+		t.Errorf("%d requests followed the redirect", n)
+	}
+}
+
+func TestDiscoverMetadataReadsNoMoreThanItsBound(t *testing.T) {
+	var server *httptest.Server
+	server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprintf(w, `{"issuer":%q,"authorization_endpoint":%q,"token_endpoint":%q,"padding":"`, server.URL, server.URL+"/auth", server.URL+"/token")
+		for range maxASResponseBytes / 1024 {
+			_, _ = w.Write(bytes.Repeat([]byte{'x'}, 1024))
+		}
+		fmt.Fprint(w, `"}`)
+	}))
+	defer server.Close()
+	if _, err := discover(t, server, server.URL); err == nil {
+		t.Error("read past the bound")
+	}
+}
+
+// Every other endpoint answers within the same bound, or a member of the configuration could exhaust the proxy.
+func TestPDPResponsesAreReadWithinTheirBound(t *testing.T) {
+	huge := strings.Repeat(" ", maxASResponseBytes) + `{"request_uri":"urn:x","access_token":"at","active":true}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/par" {
+			w.WriteHeader(http.StatusCreated)
+		}
+		fmt.Fprint(w, huge)
+	}))
+	defer server.Close()
+	_, jwkJSON, err := newSessionDPoPKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess := &Session{ID: "s1", DPoPKeyJWK: jwkJSON}
+	b := &pdpBackend{
+		cfg: PDPConfig{ASIssuer: "https://as.example", ClientID: "c", SigningKey: testSigningKey(t)},
+		meta: asMetadata{
+			Issuer: "https://as.example", TokenEndpoint: server.URL + "/token", IntrospectionEndpoint: server.URL + "/introspect",
+			OpenidProvidersEndpoint: server.URL + "/providers", PushedAuthorizationRequestEndpoint: server.URL + "/par",
+		},
+		http: server.Client(), signer: sessionKeySigner{},
+	}
+	if _, err := b.pushAuthorizationRequest(t.Context(), sess, url.Values{}); err == nil {
+		t.Error("PAR read past the bound")
+	}
+	if _, err := b.tokenRequest(t.Context(), sess, url.Values{}); err == nil {
+		t.Error("token read past the bound")
+	}
+	if _, err := b.introspectIdentity(t.Context(), sess, "at"); err == nil {
+		t.Error("introspection read past the bound")
+	}
+	if _, err := b.fetchProviders(); err == nil {
+		t.Error("providers read past the bound")
 	}
 }

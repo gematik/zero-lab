@@ -208,7 +208,7 @@ func (p *PEP) Close() error {
 func (p *PEP) deny(ctx Context, err Error) {
 	w := ctx.Writer()
 	r := ctx.Request()
-	slog.Debug("Request denied", "method", r.Method, "url", r.URL)
+	slog.Debug("Request denied", "method", r.Method, "path", r.URL.Path)
 	if err.WWWAuthenticate != "" {
 		w.Header().Set("WWW-Authenticate", err.WWWAuthenticate)
 	}
@@ -294,12 +294,26 @@ func (c *pepContext) UnmarshalClaims(claims any) error {
 	return nil
 }
 
+// RFC 6750 section 3.1. The description is fixed: why a token was refused is for the server's log (server rule 2).
+const (
+	codeInvalidToken        = "invalid_token"
+	descriptionInvalidToken = "invalid access token"
+)
+
 func (c *pepContext) verifyAuthorizationBearer() error {
 	bearerToken, err := c.parseAuthorizationScheme("bearer")
 	if err != nil {
 		return err
 	}
-	return c.verifyAccessToken(bearerToken)
+	if err := c.verifyAccessToken(bearerToken); err != nil {
+		return Error{
+			HTTPStatus:      http.StatusUnauthorized,
+			Code:            codeInvalidToken,
+			Description:     descriptionInvalidToken,
+			WWWAuthenticate: fmt.Sprintf(`Bearer error=%q, error_description=%q`, codeInvalidToken, descriptionInvalidToken),
+		}
+	}
+	return nil
 }
 
 // verifyAuthorizationDPoP checks a DPoP-bound access token and its proof (RFC 9449 Section 7.1):
@@ -315,7 +329,7 @@ func (c *pepContext) verifyAuthorizationDPoP() error {
 		return err
 	}
 	if err := c.verifyAccessToken(accessToken); err != nil {
-		return err
+		return &dpop.Error{Code: dpop.CodeInvalidToken, Description: descriptionInvalidToken}
 	}
 	// An unbound token has no cnf.jkt; the verifier refuses it as invalid_token.
 	jkt := c.accessToken.Thumbprint()
@@ -367,14 +381,11 @@ func (c *pepContext) parseAuthorizationScheme(scheme string) (string, error) {
 	return "", ErrInvalidAuthorizationHeader
 }
 
+// verifyAccessToken leaves the denial to the scheme's caller. VerifyAccessToken has logged why the token was refused.
 func (c *pepContext) verifyAccessToken(accessToken string) error {
 	jwtToken, err := c.pep.VerifyAccessToken(accessToken)
 	if err != nil {
-		return &Error{
-			HTTPStatus:  http.StatusUnauthorized,
-			Code:        "invalid_token",
-			Description: fmt.Sprintf("invalid access token: %s", err),
-		}
+		return err
 	}
 	c.accessTokenRaw = accessToken
 	c.accessToken = jwtToken

@@ -40,7 +40,8 @@
 //	PEP_IDPD_REDIRECT_URI  redirect_uri the idpd client sends (default <public>/oauth2/callback)
 //	PEP_IDPD_REDIRECT_SCOPES / _NAME / _LOGO_URI / _USER_AGENT  idpd options (always Authenticator flow)
 //	PEP_COOKIE_NAME          session cookie name (default ZERO-PEP-SID)
-//	PEP_INSECURE_COOKIE      "true" → drop __Host-/Secure for http://localhost dev; default is secure
+//	PEP_INSECURE_COOKIE      "true" → drop __Host-/Secure for dev; refused unless PEP_PUBLIC_URL is http on localhost
+//	                         or 127.0.0.1; default is secure
 //	PEP_TEMPLATE_DIR         replace the embedded UI templates from this directory
 //	PEP_SESSION_KEY_PATH     file with a base64 256-bit key → enables local /oauth2/auth validation (decrypt
 //	                         an encrypted session token, no kv per request). PEP_SESSION_PREVIOUS_KEY_PATH rotates it.
@@ -96,6 +97,15 @@ const sessionStorePurpose = "pep/session"
 
 // reapEvery is how often expired rows leave the store.
 const reapEvery = 10 * time.Minute
+
+// checkInsecureCookie refuses PEP_INSECURE_COOKIE outside local development (server rule 17): a cookie without Secure
+// and __Host- goes out over plain http, and any host of the domain can set it.
+func checkInsecureCookie(publicURL string) error {
+	if proxy.IsLocalHTTP(publicURL) {
+		return nil
+	}
+	return fmt.Errorf("PEP_INSECURE_COOKIE=true is for http on localhost or 127.0.0.1, and PEP_PUBLIC_URL is %q: unset PEP_INSECURE_COOKIE", publicURL)
+}
 
 // storeKeys loads the session store's key file. A persistent store without one refuses to start (server rules
 // 5, 17), before any connection, so an unreachable database cannot hide it. Nil means no key and no need for one.
@@ -180,6 +190,12 @@ func main() {
 	}
 	addr := env("PEP_ADDR", ":4180")
 	publicURL := strings.TrimRight(env("PEP_PUBLIC_URL", "http://127.0.0.1:4180"), "/")
+	insecureCookie := os.Getenv("PEP_INSECURE_COOKIE") == "true"
+	if insecureCookie {
+		if err := checkInsecureCookie(publicURL); err != nil {
+			log.Fatal(err)
+		}
+	}
 
 	// Default providers file: openid-providers.yaml in the workdir, absolute (its directory anchors the OIDF
 	// config's relative key paths).
@@ -234,7 +250,7 @@ func main() {
 		Backend:                 backend,
 		Store:                   store,
 		CookieName:              env("PEP_COOKIE_NAME", "ZERO-PEP-SID"),
-		InsecureCookie:          os.Getenv("PEP_INSECURE_COOKIE") == "true",
+		InsecureCookie:          insecureCookie,
 		TemplateDir:             os.Getenv("PEP_TEMPLATE_DIR"),
 		SnapshotKeyPath:         os.Getenv("PEP_SESSION_KEY_PATH"),
 		SnapshotPreviousKeyPath: os.Getenv("PEP_SESSION_PREVIOUS_KEY_PATH"),

@@ -73,3 +73,33 @@ func TestStoreKeys_InMemoryNeedsNoKeyFile(t *testing.T) {
 		t.Fatalf("ring %v err %v", ring, err)
 	}
 }
+
+// Rule 17: the session cookie goes without Secure only where there is no TLS to require, on this machine.
+func TestInsecureCookie_IsTakenForPlainHTTPOnThisMachineOnly(t *testing.T) {
+	for _, publicURL := range []string{"http://localhost", "http://localhost:8080", "http://127.0.0.1", "http://127.0.0.1:4180"} {
+		if err := checkInsecureCookie(publicURL); err != nil {
+			t.Errorf("%s: %v", publicURL, err)
+		}
+	}
+	for _, publicURL := range []string{
+		"",
+		"localhost:8080",
+		"https://localhost",
+		"https://127.0.0.1:8443",
+		"https://pep.example",
+		"http://pep.example",
+		"http://localhost.evil.example",
+		"http://127.0.0.1.evil.example",
+		"http://localhost@evil.example",
+		"http://10.0.0.1",
+	} {
+		err := checkInsecureCookie(publicURL)
+		if err == nil {
+			t.Errorf("%q accepted", publicURL)
+			continue
+		}
+		if !strings.Contains(err.Error(), "PEP_INSECURE_COOKIE") || !strings.Contains(err.Error(), "PEP_PUBLIC_URL") {
+			t.Errorf("%q: the variables are not named: %v", publicURL, err)
+		}
+	}
+}

@@ -111,7 +111,7 @@ func TestIDPD_SMCB(t *testing.T) {
 		t.Fatalf("authenticate with SMC-B: %v", err)
 	}
 
-	tokenResponse, err := client.Exchange(t.Context(), oidc.Login{Verifier: verifier}, codeRedirectURL.Code)
+	tokenResponse, err := client.Exchange(t.Context(), oidc.Login{Nonce: "nonce", Verifier: verifier}, codeRedirectURL.Code)
 	if err != nil {
 		t.Fatalf("exchange code for identity: %v", err)
 	}

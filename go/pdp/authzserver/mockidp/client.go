@@ -82,7 +82,7 @@ func (c *mockClient) Exchange(ctx context.Context, login oidc.Login, code string
 	if err != nil {
 		return nil, fmt.Errorf("verify mock id_token: %w", err)
 	}
-	checks := oidc.IDTokenChecks{Issuer: c.issuer, ClientID: c.clientID, Now: time.Now()}
+	checks := oidc.IDTokenChecks{Issuer: c.issuer, ClientID: c.clientID, Nonce: login.Nonce, Now: time.Now()}
 	if err := checks.Validate(payload); err != nil {
 		return nil, fmt.Errorf("verify mock id_token: %w", err)
 	}

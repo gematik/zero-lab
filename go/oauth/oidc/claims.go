@@ -22,6 +22,7 @@
 package oidc
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,8 +40,10 @@ var (
 	ErrTokenNotYetValid    = errors.New("token is not yet valid")
 	ErrTokenIssuedInFuture = errors.New("token is issued in the future")
 	ErrIssuerMismatch      = errors.New("token issuer does not match")
-	ErrAudienceMismatch    = errors.New("token audience does not match")
-	ErrMissingClaim        = errors.New("token lacks a required claim")
+	// ErrNonceMismatch is an ID token that does not belong to this login.
+	ErrNonceMismatch    = errors.New("id_token nonce does not match the login")
+	ErrAudienceMismatch = errors.New("token audience does not match")
+	ErrMissingClaim     = errors.New("token lacks a required claim")
 )
 
 // IDTokenChecks are what an ID token has to satisfy once its signature verified (OpenID Connect Core 1.0 section
@@ -48,8 +51,11 @@ var (
 type IDTokenChecks struct {
 	Issuer   string
 	ClientID string
-	Now      time.Time
-	Skew     time.Duration
+	// Nonce is what the login sent, which binds the token to it (OIDC Core 3.1.3.7, step 11): without this, a
+	// token obtained elsewhere could be injected into this login.
+	Nonce string
+	Now   time.Time
+	Skew  time.Duration
 }
 
 // Validate checks the payload of a verified ID token. An empty expected Issuer or ClientID matches nothing, so a
@@ -67,6 +73,9 @@ func (c IDTokenChecks) Validate(payload []byte) error {
 	}
 	if claims.nonce == "" {
 		return fmt.Errorf("%w: nonce", ErrMissingClaim)
+	}
+	if c.Nonce == "" || subtle.ConstantTimeCompare([]byte(claims.nonce), []byte(c.Nonce)) != 1 {
+		return ErrNonceMismatch
 	}
 	if claims.expiry == nil {
 		return fmt.Errorf("%w: exp", ErrMissingClaim)

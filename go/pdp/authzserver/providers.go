@@ -38,7 +38,7 @@ type OpenidProviderInfo struct {
 func (s *Server) OpenidProvidersEndpoint(w http.ResponseWriter, r *http.Request) error {
 	providers, err := s.OpenidProviders(r.Context())
 	if err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", err.Error())
+		return serverError("unable to list the identity providers", err)
 	}
 	return writeJSON(w, http.StatusOK, providers)
 }

@@ -114,7 +114,7 @@ func (b *providerBackend) Complete(ctx context.Context, sess *Session, code stri
 	if err != nil {
 		return err
 	}
-	tr, err := provider.Client.Exchange(ctx, oidc.Login{Verifier: sess.CodeVerifier}, code)
+	tr, err := provider.Client.Exchange(ctx, oidc.Login{Nonce: sess.Nonce, Verifier: sess.CodeVerifier}, code)
 	if err != nil {
 		return err
 	}

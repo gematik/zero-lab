@@ -207,6 +207,7 @@ func NewRelyingParty(cfg *RelyingPartyConfig, baseDir string) (*RelyingParty, er
 	// on the federation API key — so layer both onto a copy of the base transport (same x-authorization
 	// injection as the federation client), without mutating the caller's.
 	mtlsClient := *baseClient
+	mtlsClient.CheckRedirect = refuseRedirect
 	mtlsClient.Transport = AddAPIKeyTransport(transportWithTLS(baseClient.Transport, &tls.Config{
 		// GetClientCertificate (not Certificates) so our self-signed client cert is presented
 		// unconditionally: self_signed_tls_client_auth means the IDP's CertificateRequest advertises a
@@ -388,6 +389,16 @@ func (rp *RelyingParty) newClient(issuer string) (*RelyingPartyClient, error) {
 
 	metadata := op.Metadata.OpenidProvider
 
+	for _, endpoint := range []struct{ name, location string }{
+		{"authorization_endpoint", metadata.AuthorizationEndpoint},
+		{"pushed_authorization_request_endpoint", metadata.PushedAuthorizationRequestEndpoint},
+		{"token_endpoint", metadata.TokenEndpoint},
+	} {
+		if err := checkFederationURL(endpoint.location); err != nil {
+			return nil, fmt.Errorf("%s of '%s': %w", endpoint.name, issuer, err)
+		}
+	}
+
 	jwks, err := rp.federation.FetchSignedJwks(op)
 	if err != nil {
 		return nil, err
@@ -417,7 +428,7 @@ func loadCertBytesFromPem(certPath string) ([]byte, error) {
 	}
 	certDataDer, _ := pem.Decode(certDataPem)
 	if certDataDer == nil {
-		return nil, fmt.Errorf("failed to decode cert file %s: %w", certPath, err)
+		return nil, fmt.Errorf("failed to decode cert file %s: no PEM data", certPath)
 	}
 	return certDataDer.Bytes, nil
 }

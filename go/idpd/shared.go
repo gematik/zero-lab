@@ -41,6 +41,9 @@ import (
 
 const defaultHTTPTimeout = 30 * time.Second
 
+// maxIDPResponseBytes bounds what the IDP-Dienst can make a client read.
+const maxIDPResponseBytes = 1 << 20
+
 // defaultUserAgent is sent when ClientConfig.UserAgent is empty: the gematik IDP-Dienst rejects requests
 // without a User-Agent ("User Agent fehlt").
 const defaultUserAgent = "zero-lab"
@@ -133,9 +136,12 @@ func fetchMetadata(baseURL string, httpClient *http.Client, trust CertificateTru
 		return nil, parseErrorResponse(resp.StatusCode, resp.Body)
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxIDPResponseBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("reading discovery document: %w", err)
+	}
+	if len(data) > maxIDPResponseBytes {
+		return nil, fmt.Errorf("discovery document larger than %d bytes", maxIDPResponseBytes)
 	}
 
 	sigJWK, err := extractKeyFromX5CHeader(data)
@@ -211,8 +217,8 @@ func extractKeyFromX5CHeader(data []byte) (*josebp.JSONWebKey, error) {
 
 // fetchSigningKey returns the key that signs challenges and tokens, once its certificate is trusted. The
 // JWK must carry that certificate and the same key, or the check would say nothing about the key (IDPV-002).
-func fetchSigningKey(uri string, httpClient *http.Client, trust CertificateTrust) (*josebp.JSONWebKey, error) {
-	key, err := fetchKey(uri, httpClient)
+func fetchSigningKey(ctx context.Context, uri string, httpClient *http.Client, trust CertificateTrust) (*josebp.JSONWebKey, error) {
+	key, err := fetchKey(ctx, uri, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +241,7 @@ func fetchSigningKey(uri string, httpClient *http.Client, trust CertificateTrust
 	if !ok || !public.Equal(certified) {
 		return nil, fmt.Errorf("%s: the x5c certificate carries another key than the JWK", TokenSigner)
 	}
-	if err := trust.Check(context.Background(), TokenSigner, certs); err != nil {
+	if err := trust.Check(ctx, TokenSigner, certs); err != nil {
 		return nil, err
 	}
 	return key, nil
@@ -244,8 +250,8 @@ func fetchSigningKey(uri string, httpClient *http.Client, trust CertificateTrust
 // fetchEncryptionKey returns the key the signed challenge is encrypted to. The IDP-Dienst publishes it
 // without a certificate, so there is nothing to verify: its address comes from the verified discovery
 // document and TLS carries it, as in ti-idpd (IDPV-004). What it can be is checked.
-func fetchEncryptionKey(uri string, httpClient *http.Client) (*ecdsa.PublicKey, error) {
-	key, err := fetchKey(uri, httpClient)
+func fetchEncryptionKey(ctx context.Context, uri string, httpClient *http.Client) (*ecdsa.PublicKey, error) {
+	key, err := fetchKey(ctx, uri, httpClient)
 	if err != nil {
 		return nil, err
 	}
@@ -257,15 +263,23 @@ func fetchEncryptionKey(uri string, httpClient *http.Client) (*ecdsa.PublicKey, 
 }
 
 // fetch and parse JWK from the given URI
-func fetchKey(uri string, httpClient *http.Client) (*josebp.JSONWebKey, error) {
-	resp, err := httpClient.Get(uri)
+func fetchKey(ctx context.Context, uri string, httpClient *http.Client) (*josebp.JSONWebKey, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, uri, nil)
+	if err != nil {
+		return nil, fmt.Errorf("fetching JWK: %w", err)
+	}
+	resp, err := httpClient.Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("fetching JWK: %w", err)
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetching JWK: status %d", resp.StatusCode)
+	}
+
 	key := new(josebp.JSONWebKey)
-	err = json.NewDecoder(resp.Body).Decode(key)
+	err = json.NewDecoder(io.LimitReader(resp.Body, maxIDPResponseBytes)).Decode(key)
 	if err != nil {
 		return nil, fmt.Errorf("parsing JWK: %w", err)
 	}

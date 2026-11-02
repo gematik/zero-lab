@@ -22,10 +22,15 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/gematik/zero-lab/go/kv"
 )
@@ -176,5 +181,129 @@ func TestSanitizeReturnTo(t *testing.T) {
 		if got := sanitizeReturnTo(in); got != want {
 			t.Errorf("sanitizeReturnTo(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func captureDebugLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return &logs
+}
+
+// Server rules 5 and 14. A session's ID is the hash of its cookie, and it names the session's record, the revocation
+// entry and the snapshot's sid, so it stays out of the log as well as the cookie does.
+func TestALoginLogsNoSessionIDNorCookieNorStateAtDebug(t *testing.T) {
+	logs := captureDebugLogs(t)
+	s := newTestServer(t)
+
+	start := httptest.NewRecorder()
+	s.Handler().ServeHTTP(start, httptest.NewRequest(http.MethodGet, "/oauth2/start?idp_iss=https://idp.example", nil))
+	var started *http.Cookie
+	for _, c := range start.Result().Cookies() {
+		if strings.Contains(c.Name, "TEST-SID") {
+			started = c
+		}
+	}
+	if started == nil {
+		t.Fatalf("no session cookie: %d", start.Code)
+	}
+
+	callback := httptest.NewRequest(http.MethodGet, "/oauth2/callback?state=test-state&code=code-value", nil)
+	callback.AddCookie(&http.Cookie{Name: started.Name, Value: started.Value}) //nolint:gosec // request cookie in a test: only name and value go on the wire
+	done := httptest.NewRecorder()
+	s.Handler().ServeHTTP(done, callback)
+	if done.Code != http.StatusFound {
+		t.Fatalf("callback = %d: %s", done.Code, done.Body)
+	}
+	secrets := []string{started.Value, hashToken(started.Value), "test-state", "code-value", "verifier"}
+	for _, c := range done.Result().Cookies() {
+		if strings.Contains(c.Name, "TEST-SID") {
+			secrets = append(secrets, c.Value, hashToken(c.Value))
+		}
+	}
+	for _, value := range secrets {
+		if strings.Contains(logs.String(), value) {
+			t.Errorf("the log holds %q:\n%s", value, logs)
+		}
+	}
+	if !strings.Contains(logs.String(), "login complete") {
+		t.Errorf("the login went unlogged:\n%s", logs)
+	}
+}
+
+// failingBus and failingStore make the revoker log why a revocation did not get out.
+type failingBus struct{ kv.Bus }
+
+func (failingBus) Subscribe(context.Context, string) (<-chan string, error) {
+	return nil, errors.New("no bus")
+}
+func (failingBus) Publish(context.Context, string, string) error { return errors.New("no bus") }
+
+type failingStore struct{ kv.Store }
+
+func (failingStore) Set(context.Context, string, []byte, time.Duration) error {
+	return errors.New("no store")
+}
+
+func TestARevocationThatFailsLogsNoSid(t *testing.T) {
+	logs := captureDebugLogs(t)
+	r := &busRevoker{local: newMemRevoker(time.Hour), bus: failingBus{}, store: failingStore{kv.NewMemory()}, ttl: time.Hour}
+	const sid = "sid-token-hash-value"
+	r.Revoke(sid)
+	if !strings.Contains(logs.String(), "revocation") {
+		t.Fatalf("the failure went unlogged: %s", logs)
+	}
+	if strings.Contains(logs.String(), sid) {
+		t.Errorf("the log holds the sid: %s", logs)
+	}
+}
+
+func TestLogRefCorrelatesAndRevealsNoPartOfTheID(t *testing.T) {
+	id := hashToken("cookie-token")
+	ref := logRef(id)
+	if again := logRef(id); again != ref {
+		t.Errorf("not stable: %q, %q", ref, again)
+	}
+	if ref == logRef(hashToken("another-token")) {
+		t.Error("the same for two sessions")
+	}
+	if len(ref) > 16 || strings.Contains(id, ref) {
+		t.Errorf("ref %q of %q", ref, id)
+	}
+	if logRef("") != "" {
+		t.Errorf("a ref of nothing: %q", logRef(""))
+	}
+}
+
+// A forwarded URI's query can carry a code, or anything else of the application behind the gate.
+func TestAForwardAuthDenialLogsNoQuery(t *testing.T) {
+	logs := captureDebugLogs(t)
+	s := newTestServer(t)
+	request := httptest.NewRequest(http.MethodGet, "/oauth2/auth", nil)
+	request.Header.Set("X-Forwarded-Uri", "/app/callback?code=code-value")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, request)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if strings.Contains(logs.String(), "code-value") {
+		t.Errorf("the log holds the query: %s", logs)
+	}
+	if !strings.Contains(logs.String(), "/app/callback") {
+		t.Errorf("the path is gone too: %s", logs)
+	}
+}
+
+// A store's error text reaches pages and logs, so a session's own lookup errors name neither the ID nor the state.
+func TestSessionLookupErrorsNameNeitherIDNorState(t *testing.T) {
+	store := newSessionStore(kv.NewMemory(), time.Hour)
+	if _, err := store.byID("session-id-value"); err == nil || strings.Contains(err.Error(), "session-id-value") {
+		t.Errorf("err = %v", err)
+	}
+	if _, err := store.byState("state-value"); err == nil || strings.Contains(err.Error(), "state-value") {
+		t.Errorf("err = %v", err)
 	}
 }

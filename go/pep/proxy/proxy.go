@@ -217,7 +217,7 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	sess, ok := s.currentSession(r)
 	if !ok || !sess.Authenticated() {
 		_, cookieErr := r.Cookie(s.cookie.Name)
-		slog.Debug("forward_auth deny", "uri", r.Header.Get("X-Forwarded-Uri"),
+		slog.Debug("forward_auth deny", "uri", withoutQuery(r.Header.Get("X-Forwarded-Uri")),
 			"cookie_present", cookieErr == nil, "session_found", ok)
 		w.WriteHeader(http.StatusUnauthorized)
 		return
@@ -234,7 +234,7 @@ func (s *Server) setSnapshot(w http.ResponseWriter, sess *Session) {
 	}
 	tok, err := s.snap.mint(sess.ID, sess.Identity)
 	if err != nil {
-		slog.Warn("mint snapshot failed", "session", sess.ID, "error", err)
+		slog.Warn("mint snapshot failed", "session_ref", logRef(sess.ID), "error", err)
 		return
 	}
 	setCookie(w, s.snapCookie, tok)
@@ -313,7 +313,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	}
 	setCookie(w, s.cookie, sess.token)
 
-	slog.Info("login start", "session", sess.ID, "idp_iss", idpIss, "mode", start.Mode, "auth_endpoint", withoutQuery(start.AuthURL))
+	slog.Info("login start", "session_ref", logRef(sess.ID), "idp_iss", idpIss, "mode", start.Mode, "auth_endpoint", withoutQuery(start.AuthURL))
 
 	var name string
 	if start.Provider != nil {
@@ -359,7 +359,7 @@ func (s *Server) handlePoll(w http.ResponseWriter, r *http.Request) {
 		// snapshot before handing back control.
 		oldID := sess.ID
 		if err := s.sessions.rotate(sess); err != nil {
-			slog.Warn("session rotation failed", "session", sess.ID, "error", err)
+			slog.Warn("session rotation failed", "session_ref", logRef(sess.ID), "error", err)
 		} else {
 			s.revoker.Revoke(oldID)
 			setCookie(w, s.cookie, sess.token)
@@ -427,7 +427,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// the cookie. Show a success page; the originating device (polling /oauth2/poll) proceeds to rd and rotates
 	// the id there.
 	if !s.requestOwnsSession(r, sess) {
-		slog.Info("login complete", "session", sess.ID, "idp_iss", sess.IDPIss, "decoupled", true)
+		slog.Info("login complete", "session_ref", logRef(sess.ID), "idp_iss", sess.IDPIss, "decoupled", true)
 		s.render.render(w, http.StatusOK, "complete.html", nil)
 		return
 	}
@@ -441,7 +441,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	s.revoker.Revoke(oldID)
 	setCookie(w, s.cookie, sess.token)
 	s.setSnapshot(w, sess)
-	slog.Info("login complete", "session", sess.ID, "idp_iss", sess.IDPIss, "return_to", dest)
+	slog.Info("login complete", "session_ref", logRef(sess.ID), "idp_iss", sess.IDPIss, "return_to", dest)
 	http.Redirect(w, r, dest, http.StatusFound)
 }
 

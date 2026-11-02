@@ -217,11 +217,11 @@ func (s *Server) tokenEndpointClientCredentials(w http.ResponseWriter, r *http.R
 
 	response, err := s.issueOrRefreshTokens(session)
 	if err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to issue access token: %v", err))
+		return serverError("unable to issue the tokens", err)
 	}
 
 	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to save session: %v", err))
+		return serverError("unable to issue the tokens", err)
 	}
 
 	return writeJSON(w, http.StatusOK, response)
@@ -255,8 +255,11 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 	slog.Info("Token request", "redirect_uri", redirectURI, "client_id", client.ClientID)
 
 	session, err := s.sessionStore.GetAuthzServerSessionByCode(code)
+	if errors.Is(err, errSessionNotFound) {
+		return oauthErr(http.StatusBadRequest, "invalid_grant", "invalid or expired code")
+	}
 	if err != nil {
-		return oauthErr(http.StatusBadRequest, "invalid_request", fmt.Errorf("unable to get session: %w", err).Error())
+		return serverError("unable to redeem the code", err, code)
 	}
 
 	if session.ClientID != client.ClientID {
@@ -289,15 +292,15 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 
 	response, err := s.issueOrRefreshTokens(session)
 	if err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to issue access token: %v", err))
+		return serverError("unable to issue the tokens", err, code)
 	}
 
 	// Persist the rotated refresh token (and its index) so the session is refreshable.
 	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to save session: %v", err))
+		return serverError("unable to issue the tokens", err, code)
 	}
 
-	slog.Info("Token request: tokens issued", "client_id", client.ClientID, "session", session.ID)
+	slog.Info("Token request: tokens issued", "client_id", client.ClientID, "session_ref", sessionRef(session.ID))
 
 	return writeJSON(w, http.StatusOK, response)
 }
@@ -347,14 +350,14 @@ func (s *Server) tokenEndpointRefreshToken(w http.ResponseWriter, r *http.Reques
 
 	response, err := s.issueOrRefreshTokens(session) // rotates RefreshToken, re-binds via DPoPThumbprint
 	if err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to refresh tokens: %v", err))
+		return serverError("unable to refresh the tokens", err)
 	}
 	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to save session: %v", err))
+		return serverError("unable to refresh the tokens", err)
 	}
 	// The session now indexes the NEW refresh hash; drop the rotated-out one so it stops resolving.
 	_ = s.sessionStore.DeleteRefreshIndex(refreshHash)
-	slog.Info("Token refreshed", "client", client.ClientID, "session", session.ID, "refresh_count", session.RefreshCount)
+	slog.Info("Token refreshed", "client", client.ClientID, "session_ref", sessionRef(session.ID), "refresh_count", session.RefreshCount)
 	return writeJSON(w, http.StatusOK, response)
 }
 

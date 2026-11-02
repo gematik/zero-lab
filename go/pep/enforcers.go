@@ -247,11 +247,7 @@ func (e *EnforcerScope) Apply(ctx Context, next HandlerFunc) {
 	}{}
 	if err := ctx.UnmarshalClaims(&scopeStruct); err != nil {
 		ctx.Slogger().Error("Failed to get claims", "error", err)
-		ctx.Deny(Error{
-			HTTPStatus:  403,
-			Code:        "access_denied",
-			Description: err.Error(),
-		})
+		ctx.Deny(ErrorAccessDeinied("Claims not available"))
 		return
 	}
 
@@ -312,7 +308,7 @@ func (e *EnforcerAuthorizationBearer) Apply(ctx Context, next HandlerFunc) {
 		if pepErr, ok := errors.AsType[Error](err); ok {
 			ctx.Deny(pepErr)
 		} else {
-			ctx.Deny(ErrorAccessDeinied("Failed to verify authorization bearer: " + err.Error()))
+			ctx.Deny(ErrorAccessDeinied("Failed to verify authorization bearer"))
 		}
 		return
 	}

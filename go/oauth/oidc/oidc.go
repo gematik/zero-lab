@@ -88,9 +88,12 @@ func (t *TokenResponse) Claims(claims any) error {
 	if t.IDTokenRaw == "" {
 		return errors.New("ID token is empty")
 	}
-	claimsRaw := strings.Split(t.IDTokenRaw, ".")[1]
+	segments := strings.Split(t.IDTokenRaw, ".")
+	if len(segments) != 3 {
+		return errors.New("ID token is no compact JWS")
+	}
 
-	claimsBytes, err := base64.RawURLEncoding.DecodeString(claimsRaw)
+	claimsBytes, err := base64.RawURLEncoding.DecodeString(segments[1])
 	if err != nil {
 		return fmt.Errorf("decoding ID claims: %w", err)
 	}

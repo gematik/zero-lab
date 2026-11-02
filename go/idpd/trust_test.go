@@ -100,6 +100,9 @@ type fakeIDP struct {
 	discovery func(base string) []byte
 	sigJWK    func() map[string]any
 	encJWK    func() map[string]any
+	// token and authorization answer at the token and authorization endpoints the discovery document names.
+	token         http.HandlerFunc
+	authorization http.HandlerFunc
 }
 
 func jwkOf(t *testing.T, key *ecdsa.PublicKey, use string) map[string]any {
@@ -143,6 +146,8 @@ func newFakeIDP(t *testing.T) *fakeIDP {
 	mux.HandleFunc("/certs/puk_idp_enc", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(idp.encJWK())
 	})
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) { idp.token(w, r) })
+	mux.HandleFunc("/auth", func(w http.ResponseWriter, r *http.Request) { idp.authorization(w, r) })
 	idp.Server = httptest.NewServer(mux)
 	t.Cleanup(idp.Close)
 	return idp
@@ -155,6 +160,8 @@ func (idp *fakeIDP) signDiscovery(t *testing.T, base string, signer *ecdsa.Priva
 		Header("kid", string(DiscoverySigner)).
 		Header("x5c", []string{base64.StdEncoding.EncodeToString(idp.cert.Raw)}).
 		Claim("issuer", base).
+		Claim("authorization_endpoint", base+"/auth").
+		Claim("token_endpoint", base+"/token").
 		Claim("uri_puk_idp_sig", base+"/certs/puk_idp_sig").
 		Claim("uri_puk_idp_enc", base+"/certs/puk_idp_enc").
 		Sign(sha256.New(), brainpool.SignFuncPrivateKey(signer))
@@ -215,7 +222,7 @@ func TestIDPV002TheTokenSignerIsCheckedOnEveryFetch(t *testing.T) {
 	trust := &recording{}
 	uri := idp.URL + "/certs/puk_idp_sig"
 	for range 2 {
-		if _, err := fetchSigningKey(uri, idp.Client(), trust); err != nil {
+		if _, err := fetchSigningKey(t.Context(), uri, idp.Client(), trust); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -223,7 +230,7 @@ func TestIDPV002TheTokenSignerIsCheckedOnEveryFetch(t *testing.T) {
 		t.Errorf("asked %v", trust.asked)
 	}
 	trust.refuse = map[IDPCertificate]bool{TokenSigner: true}
-	if _, err := fetchSigningKey(uri, idp.Client(), trust); err == nil {
+	if _, err := fetchSigningKey(t.Context(), uri, idp.Client(), trust); err == nil {
 		t.Error("a refused signer's key was returned")
 	}
 }
@@ -233,7 +240,7 @@ func TestIDPV002AKeyWithoutItsCertificateIsRefused(t *testing.T) {
 	trust := &recording{}
 	uri := idp.URL + "/certs/puk_idp_sig"
 	idp.sigJWK = func() map[string]any { return jwkOf(t, &idp.key.PublicKey, "sig") }
-	if _, err := fetchSigningKey(uri, idp.Client(), trust); err == nil || !strings.Contains(err.Error(), "no x5c") {
+	if _, err := fetchSigningKey(t.Context(), uri, idp.Client(), trust); err == nil || !strings.Contains(err.Error(), "no x5c") {
 		t.Errorf("no x5c: %v", err)
 	}
 	other, err := brainpool.GenerateKey(brainpool.P256r1(), rand.Reader)
@@ -245,7 +252,7 @@ func TestIDPV002AKeyWithoutItsCertificateIsRefused(t *testing.T) {
 		jwk["x5c"] = []string{base64.StdEncoding.EncodeToString(idp.cert.Raw)}
 		return jwk
 	}
-	if _, err := fetchSigningKey(uri, idp.Client(), trust); err == nil || !strings.Contains(err.Error(), "another key") {
+	if _, err := fetchSigningKey(t.Context(), uri, idp.Client(), trust); err == nil || !strings.Contains(err.Error(), "another key") {
 		t.Errorf("another key: %v", err)
 	}
 	if len(trust.asked) != 0 {
@@ -266,11 +273,11 @@ func TestIDPV003ThereIsNoClientWithoutTrust(t *testing.T) {
 func TestIDPV004TheEncryptionKeyMustBeWhatItCanBe(t *testing.T) {
 	idp := newFakeIDP(t)
 	uri := idp.URL + "/certs/puk_idp_enc"
-	if _, err := fetchEncryptionKey(uri, idp.Client()); err != nil {
+	if _, err := fetchEncryptionKey(t.Context(), uri, idp.Client()); err != nil {
 		t.Fatal(err)
 	}
 	idp.encJWK = func() map[string]any { return jwkOf(t, &idp.key.PublicKey, "sig") }
-	if _, err := fetchEncryptionKey(uri, idp.Client()); err == nil {
+	if _, err := fetchEncryptionKey(t.Context(), uri, idp.Client()); err == nil {
 		t.Error("a key for signing")
 	}
 }
@@ -474,10 +481,10 @@ func TestIDPV005TheLiveReferenceIDP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fetchSigningKey(client.Metadata.SigningKeyURI, client.httpClient, recorded); err != nil {
+	if _, err := fetchSigningKey(t.Context(), client.Metadata.SigningKeyURI, client.httpClient, recorded); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := fetchEncryptionKey(client.Metadata.EncryptionKeyURI, client.httpClient); err != nil {
+	if _, err := fetchEncryptionKey(t.Context(), client.Metadata.EncryptionKeyURI, client.httpClient); err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Equal(recorded.passed, []IDPCertificate{DiscoverySigner, TokenSigner}) {

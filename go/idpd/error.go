@@ -56,9 +56,9 @@ func (e *Error) Error() string {
 // tries to parse the oath2 error from the reader, taken from the HTTP response body
 func parseErrorResponse(httpCode int, body io.Reader) error {
 	var oidcErr Error
-	err := json.NewDecoder(body).Decode(&oidcErr)
+	err := json.NewDecoder(io.LimitReader(body, maxIDPResponseBytes)).Decode(&oidcErr)
 	if err != nil {
-		return fmt.Errorf("unable to decode error: %w", err)
+		return fmt.Errorf("status %d: unable to decode error: %w", httpCode, err)
 	}
 	oidcErr.HTTPCode = httpCode
 	return &oidcErr

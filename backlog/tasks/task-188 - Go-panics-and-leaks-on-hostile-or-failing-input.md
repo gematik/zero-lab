@@ -4,6 +4,7 @@ title: 'Go: panics and leaks on hostile or failing input'
 status: To Do
 assignee: []
 created_date: '2026-11-02T15:42:00Z'
+updated_date: '2026-11-02T22:59:00Z'
 labels:
   - go
   - security
@@ -22,3 +23,9 @@ epa vau channel.go Decrypt and server.go DecryptNestedRequestData slice cipherte
 <!-- AC:BEGIN -->
 - [ ] #1 Each returns an error with a test or fuzz target, and none exits or panics
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Fixed outside epa. Open for go/epa.
+<!-- SECTION:NOTES:END -->

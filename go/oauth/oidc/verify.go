@@ -50,7 +50,8 @@ var verificationAlgorithms = []jose.SignatureAlgorithm{
 	jose.EdDSA,
 }
 
-// ParseKey parses one JWK (RFC 7517). A key that is not on its curve or an RSA key below 2048 bits is refused.
+// ParseKey parses one JWK (RFC 7517). A key that is not on its curve, an EC private key whose d is not the private half
+// of its x and y, or an RSA key below 2048 bits is refused.
 func ParseKey(data []byte) (*jose.JSONWebKey, error) {
 	key := new(jose.JSONWebKey)
 	if err := json.Unmarshal(data, key); err != nil {
@@ -62,6 +63,11 @@ func ParseKey(data []byte) (*jose.JSONWebKey, error) {
 		modulusBits = k.N.BitLen()
 	case *rsa.PrivateKey:
 		modulusBits = k.N.BitLen()
+	case *ecdsa.PrivateKey:
+		if err := checkECKeyPair(k); err != nil {
+			return nil, err
+		}
+		return key, nil
 	default:
 		return key, nil
 	}
@@ -69,6 +75,22 @@ func ParseKey(data []byte) (*jose.JSONWebKey, error) {
 		return nil, fmt.Errorf("RSA key of %d bits, at least %d are required", modulusBits, minRSAModulusBits)
 	}
 	return key, nil
+}
+
+// checkECKeyPair derives the public point from d, which go-jose does not: it reads d and the point independently.
+func checkECKeyPair(key *ecdsa.PrivateKey) error {
+	private, err := key.ECDH()
+	if err != nil {
+		return errors.New("EC private key: not usable on its curve")
+	}
+	public, err := key.PublicKey.ECDH()
+	if err != nil {
+		return errors.New("EC private key: the public point is not usable on its curve")
+	}
+	if !private.PublicKey().Equal(public) {
+		return errors.New("EC private key: d does not match x and y")
+	}
+	return nil
 }
 
 // ParseKeySet parses a JWK Set (RFC 7517 section 5), or a single JWK as a set of one. Members other than keys are

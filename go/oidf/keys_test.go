@@ -142,7 +142,7 @@ func TestLoadKeyConfigTakesTheConfiguredKid(t *testing.T) {
 	}
 }
 
-// TASK-183: a published key states the algorithm it is for.
+// A published key states the algorithm it is for.
 func TestPublishedKeysStateTheirAlgAndUse(t *testing.T) {
 	path, _ := writeTestKeyPEM(t, elliptic.P256())
 	for _, tc := range []struct {

@@ -22,6 +22,7 @@
 package idpd
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/sha256"
 	"crypto/x509"
@@ -34,10 +35,15 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/brainpool/josebp"
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
+
+// challengeSkew is the clock skew tolerated on a challenge's time claims, as in ti-idpd's profile.
+const challengeSkew = time.Minute
 
 // ChallengeSignerFunc signs an IDP-Dienst challenge and returns the compact JWS that nests it. Being a
 // function, it lets the key stay in hardware.
@@ -142,11 +148,11 @@ type CodeRedirectURL struct {
 func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	// fetch fresh keys
 	// encrypt the signed challenge response for the idp
-	idpEncKey, err := fetchEncryptionKey(a.Metadata.EncryptionKeyURI, a.httpClient)
+	idpEncKey, err := fetchEncryptionKey(context.Background(), a.Metadata.EncryptionKeyURI, a.httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("fetching challenge encryption key: %w", err)
 	}
-	idpSigKey, err := fetchSigningKey(a.Metadata.SigningKeyURI, a.httpClient, a.trust)
+	idpSigKey, err := fetchSigningKey(context.Background(), a.Metadata.SigningKeyURI, a.httpClient, a.trust)
 	if err != nil {
 		return nil, fmt.Errorf("fetching challenge signing key: %w", err)
 	}
@@ -165,55 +171,47 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	}
 	defer resp.Body.Close()
 
-	slog.Debug("IDP responded", "status", resp.StatusCode, "headers", resp.Header)
-
-	switch {
-	case resp.StatusCode == http.StatusFound:
-		codeRedirectURL, err := resp.Location()
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusFound:
+		location, err := resp.Location()
 		if err != nil {
 			return nil, fmt.Errorf("IDP responded with unexpected redirect: %w", err)
 		}
-		slog.Debug("IDP responded with redirect", "url", codeRedirectURL.String())
-		return nil, &Error{
-			ErrorCode:        codeRedirectURL.Query().Get("error"),
-			GematikErrorText: codeRedirectURL.Query().Get("gematik_error_text"),
-			GematikTimestamp: func() int64 {
-				timestampStr := codeRedirectURL.Query().Get("gematik_timestamp")
-				timestamp, err := strconv.ParseInt(timestampStr, 10, 64)
-				if err != nil {
-					slog.Error("Parsing timestamp", "error", err, "timestamp", timestampStr)
-					return 0
-				}
-				return timestamp
-			}(),
-			GematikCode: codeRedirectURL.Query().Get("gematik_code"),
-			GematikUUID: codeRedirectURL.Query().Get("gematik_uuid"),
+		if refusal := refusalOf(location); refusal != nil {
+			return nil, refusal
 		}
-	case resp.StatusCode == http.StatusUnauthorized:
-		slog.Error("Unexpected status code", "status", resp.StatusCode, "auth_url", authURL, "headers", resp.Header)
-		return nil, parseErrorResponse(resp.StatusCode, resp.Body)
-	case resp.StatusCode != http.StatusOK:
-		slog.Error("Unexpected status code", "status", resp.StatusCode, "auth_url", authURL, "headers", resp.Header)
+		return nil, errors.New("IDP responded with a redirect instead of a challenge")
+	default:
 		return nil, parseErrorResponse(resp.StatusCode, resp.Body)
 	}
 
 	challenge := new(Challenge)
-	err = json.NewDecoder(resp.Body).Decode(challenge)
+	err = json.NewDecoder(io.LimitReader(resp.Body, maxIDPResponseBytes)).Decode(challenge)
 	if err != nil {
 		return nil, fmt.Errorf("decoding challenge: %w", err)
 	}
-
-	slog.Debug("Challenge", "challenge", challenge)
 
 	token, err := josebp.ParseToken([]byte(challenge.Challenge), josebp.WithKey(idpSigKey))
 	if err != nil {
 		return nil, fmt.Errorf("parsing challenge NJWT: %w", err)
 	}
 
+	// What gets the card holder's signature is judged first, as ti-idpd does: BP256R1 alone, while josebp would take any
+	// algorithm of the key's size, and within its lifetime. An exp is required, and the response's JWE repeats it.
+	if alg := token.Headers["alg"]; alg != josebp.AlgorithmNameBP256R1 {
+		return nil, fmt.Errorf("challenge signed with alg %v, expected %s", alg, josebp.AlgorithmNameBP256R1)
+	}
 	challengePayload := new(ChallengePayload)
 	err = json.Unmarshal(token.PayloadJSON, challengePayload)
 	if err != nil {
 		return nil, fmt.Errorf("parsing challenge payload: %w", err)
+	}
+	if challengePayload.Exp == 0 {
+		return nil, errors.New("challenge without exp")
+	}
+	if err := oidc.ValidateLifetime(token.PayloadJSON, time.Now(), challengeSkew); err != nil {
+		return nil, fmt.Errorf("challenge: %w", err)
 	}
 
 	signedChallenge, err := a.signerFunc(*challenge)
@@ -230,8 +228,6 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 		return nil, fmt.Errorf("marshalling challenge response claims: %w", err)
 	}
 
-	slog.Debug("Challenge response claims", "claims", string(challengeResponseClaimsJSON))
-
 	challengeResponseEncrypted, err := josebp.NewJWEBuilder().
 		Header("cty", "NJWT").
 		Header("exp", challengePayload.Exp).
@@ -240,8 +236,6 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	if err != nil {
 		return nil, fmt.Errorf("encrypting challenge response: %w", err)
 	}
-
-	slog.Debug("Encrypted challenge response", "encrypted", string(challengeResponseEncrypted))
 
 	// post the encrypted challenge response to the idp
 	form := url.Values{
@@ -255,20 +249,44 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusFound {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+		return nil, parseErrorResponse(resp.StatusCode, resp.Body)
 	}
 
 	codeRedirectURL, err := resp.Location()
 	if err != nil {
 		return nil, fmt.Errorf("getting code redirect URL: %w", err)
 	}
+	if refusal := refusalOf(codeRedirectURL); refusal != nil {
+		return nil, refusal
+	}
+	code := codeRedirectURL.Query().Get("code")
+	if code == "" {
+		return nil, errors.New("code redirect without a code")
+	}
 
 	return &CodeRedirectURL{
 		URL:   codeRedirectURL,
-		Code:  codeRedirectURL.Query().Get("code"),
+		Code:  code,
 		State: codeRedirectURL.Query().Get("state"),
 	}, nil
+}
+
+// refusalOf is the IDP's error in a redirect's query, nil if there is none. An error goes before a code that came with
+// it, as in ti-idpd.
+func refusalOf(location *url.URL) *Error {
+	query := location.Query()
+	if query.Get("error") == "" {
+		return nil
+	}
+	// The timestamp is informational, and a refusal stays one without it.
+	timestamp, _ := strconv.ParseInt(query.Get("gematik_timestamp"), 10, 64)
+	return &Error{
+		ErrorCode:        query.Get("error"),
+		GematikErrorText: query.Get("gematik_error_text"),
+		GematikTimestamp: timestamp,
+		GematikCode:      query.Get("gematik_code"),
+		GematikUUID:      query.Get("gematik_uuid"),
+	}
 }
 
 // SignWith returns a signer that signs the challenge as a BP256R1 JWS with signFunc and carries the

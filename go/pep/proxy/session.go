@@ -26,6 +26,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -157,6 +158,16 @@ func (m *sessionStore) byToken(token string) (*Session, error) {
 	return m.byID(hashToken(token))
 }
 
+// logRef is what a log says for a session: enough to correlate its lines, and nothing of its ID, which names the
+// session's record and revocation entry (server rule 5). An empty ID has no reference.
+func logRef(id string) string {
+	if id == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(id))
+	return hex.EncodeToString(sum[:6])
+}
+
 // hashToken maps a cookie secret to its kv slot id (SHA-256, base64url).
 func hashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
@@ -192,7 +203,7 @@ func (m *sessionStore) byID(id string) (*Session, error) {
 		return nil, reportIntegrity("session", err)
 	}
 	if !found {
-		return nil, fmt.Errorf("session %q not found", id)
+		return nil, errors.New("session not found")
 	}
 	var s Session
 	if err := json.Unmarshal(data, &s); err != nil {
@@ -211,7 +222,7 @@ func (m *sessionStore) byID(id string) (*Session, error) {
 		if s.State != "" {
 			_ = m.store.Delete(ctx, stateKey(s.State))
 		}
-		return nil, fmt.Errorf("session %q expired (max lifetime)", id)
+		return nil, errors.New("session expired (max lifetime)")
 	}
 	return &s, nil
 }
@@ -230,7 +241,7 @@ func (m *sessionStore) byState(state string) (*Session, error) {
 		return nil, reportIntegrity("login state", err)
 	}
 	if !found {
-		return nil, fmt.Errorf("session for state %q not found", state)
+		return nil, errors.New("no session for this state")
 	}
 	var id string
 	if err := json.Unmarshal(idData, &id); err != nil {

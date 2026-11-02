@@ -4,6 +4,7 @@ title: 'Go: secrets and session data in logs'
 status: To Do
 assignee: []
 created_date: '2026-11-02T15:42:00Z'
+updated_date: '2026-11-02T22:59:00Z'
 labels:
   - go
   - security
@@ -22,3 +23,9 @@ pdp authorize.go logs authnSession and authzSession at Info including the PKCE v
 <!-- AC:BEGIN -->
 - [ ] #1 No secret, token, verifier or key reaches a log or stdout in these paths, and SecretString does what its comment says
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Fixed outside epa, with capture tests. Open for go/epa, which stays as it is for now.
+<!-- SECTION:NOTES:END -->

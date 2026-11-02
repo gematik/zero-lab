@@ -203,8 +203,8 @@ func authenticatorURL(authURL string) (string, error) {
 	return "authenticator://?" + query.Encode(), nil
 }
 
-// Exchange exchanges an authorization code and its PKCE verifier for the tokens and parses the
-// ID token. oidc.WithAlternateRedirectURI has to name the redirect URI the login used, if it replaced one.
+// Exchange exchanges an authorization code and its PKCE verifier for the tokens and verifies the
+// ID token, which the response has to have. oidc.WithAlternateRedirectURI has to name the redirect URI the login used, if it replaced one.
 func (c *Client) Exchange(ctx context.Context, login oidc.Login, code string) (*oidc.TokenResponse, error) {
 	// 32 bytes random key to encrypt the token
 	tokenKeyBytes := make([]byte, 32)
@@ -213,7 +213,7 @@ func (c *Client) Exchange(ctx context.Context, login oidc.Login, code string) (*
 		return nil, fmt.Errorf("generating token key: %w", err)
 	}
 
-	idpEncKey, err := fetchEncryptionKey(c.Metadata.EncryptionKeyURI, c.httpClient)
+	idpEncKey, err := fetchEncryptionKey(ctx, c.Metadata.EncryptionKeyURI, c.httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("fetching challenge encryption key: %w", err)
 	}
@@ -227,8 +227,6 @@ func (c *Client) Exchange(ctx context.Context, login oidc.Login, code string) (*
 	if err != nil {
 		return nil, fmt.Errorf("marshalling token key payload: %w", err)
 	}
-
-	slog.Info("Token key payload", "payload", tokenKeyPayload)
 
 	encryptedTokenKeySerialized, err := josebp.NewJWEBuilder().
 		Plaintext(tokenKeyPayloadBytes).
@@ -244,7 +242,7 @@ func (c *Client) Exchange(ctx context.Context, login oidc.Login, code string) (*
 	params.Set("code", code)
 	params.Set("key_verifier", string(encryptedTokenKeySerialized))
 
-	slog.Info("Exchanging code for token", "url", c.Metadata.TokenEndpoint, "params", params)
+	slog.Debug("Exchanging code for token", "url", c.Metadata.TokenEndpoint)
 
 	response, err := oidc.PostForm(ctx, c.httpClient, c.Metadata.TokenEndpoint, params)
 	if err != nil {
@@ -259,15 +257,15 @@ func (c *Client) Exchange(ctx context.Context, login oidc.Login, code string) (*
 		return nil, fmt.Errorf("parsing token response: %w", err)
 	}
 
-	slog.Debug("Token response", "response", tokenResponse)
-
-	if tokenResponse.IDTokenRaw != "" {
-		if tokenResponse.IDTokenRaw, err = decryptToken(tokenResponse.IDTokenRaw, tokenKeyBytes); err != nil {
-			return nil, fmt.Errorf("decrypting ID token: %w", err)
-		}
-		if err = c.verifyIDToken(tokenResponse.IDTokenRaw); err != nil {
-			return nil, fmt.Errorf("parsing ID token: %w", err)
-		}
+	// Without an ID token nothing about this login has been verified.
+	if tokenResponse.IDTokenRaw == "" {
+		return nil, errors.New("the token response has no ID token")
+	}
+	if tokenResponse.IDTokenRaw, err = decryptToken(tokenResponse.IDTokenRaw, tokenKeyBytes); err != nil {
+		return nil, fmt.Errorf("decrypting ID token: %w", err)
+	}
+	if err = c.verifyIDToken(ctx, login, tokenResponse.IDTokenRaw); err != nil {
+		return nil, fmt.Errorf("parsing ID token: %w", err)
 	}
 
 	if tokenResponse.AccessToken != "" {
@@ -300,14 +298,15 @@ func decryptToken(token string, key []byte) (string, error) {
 	return njwt.Njwt, nil
 }
 
-func (c *Client) verifyIDToken(raw string) error {
-	key, err := fetchSigningKey(c.Metadata.SigningKeyURI, c.httpClient, c.trust)
+func (c *Client) verifyIDToken(ctx context.Context, login oidc.Login, raw string) error {
+	key, err := fetchSigningKey(ctx, c.Metadata.SigningKeyURI, c.httpClient, c.trust)
 	if err != nil {
 		return fmt.Errorf("fetching signing key: %w", err)
 	}
 	return checkIDToken(raw, key, oidc.IDTokenChecks{
 		Issuer:   c.Metadata.Issuer,
 		ClientID: c.config.ClientID,
+		Nonce:    login.Nonce,
 		Now:      time.Now(),
 		Skew:     idTokenSkew,
 	})

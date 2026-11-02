@@ -47,7 +47,7 @@ func (adt *addAPIKeyTransport) RoundTrip(req *http.Request) (*http.Response, err
 		if apiKey != "" {
 			req.Header.Add("x-authorization", apiKey)
 		} else {
-			slog.Error("no API_KEY set", "url", req.URL)
+			slog.Error("no API_KEY set", "host", req.URL.Host)
 		}
 	}
 	if adt.t == nil {

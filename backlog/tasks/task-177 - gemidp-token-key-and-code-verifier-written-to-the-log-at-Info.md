@@ -1,9 +1,10 @@
 ---
 id: TASK-177
 title: 'gemidp: token key and code verifier written to the log at Info'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-02T06:16:00Z'
+updated_date: '2026-11-02T23:09:00Z'
 labels:
   - go
   - gemidp
@@ -22,5 +23,11 @@ go/gemidp/client.go logs tokenKeyPayload with slog.Info: the token key that decr
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 neither value reaches a log at any level; a test proves it
+- [x] #1 neither value reaches a log at any level; a test proves it
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed with requirement-named tests in the consolidation.
+<!-- SECTION:FINAL_SUMMARY:END -->

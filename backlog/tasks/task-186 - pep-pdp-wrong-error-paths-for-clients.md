@@ -1,9 +1,10 @@
 ---
 id: TASK-186
 title: 'pep, pdp: wrong error paths for clients'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-02T15:42:00Z'
+updated_date: '2026-11-02T23:09:00Z'
 labels:
   - go
   - security
@@ -20,5 +21,11 @@ pep: verifyAccessToken returns *Error while enforcers use errors.As with a value
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A test per path proves the client gets the specified error
+- [x] #1 A test per path proves the client gets the specified error
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed with requirement-named tests in the consolidation.
+<!-- SECTION:FINAL_SUMMARY:END -->

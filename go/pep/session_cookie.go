@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -77,7 +78,8 @@ type EnforcerSessionCookie struct {
 	KeyPath     string       `json:"key_path,omitempty"`
 	PrevKeyPath string       `json:"previous_key_path,omitempty"`
 
-	keys [][]byte
+	keysMu sync.Mutex
+	keys   [][]byte
 }
 
 // NewEnforcerSessionCookie builds the enforcer with keys supplied directly — the gateway passes the keys its
@@ -92,7 +94,8 @@ func (e *EnforcerSessionCookie) Type() EnforcerType { return EnforcerTypeSession
 // Apply denies with ErrSessionRequired whatever goes wrong, including unavailable keys, so a client learns
 // nothing about the cause. Keys configured by path are read on the first request, not at start-up.
 func (e *EnforcerSessionCookie) Apply(ctx Context, next HandlerFunc) {
-	if err := e.ensureKeys(); err != nil {
+	keys, err := e.ensureKeys()
+	if err != nil {
 		ctx.Slogger().Error("session cookie keys unavailable", "error", err)
 		ctx.Deny(ErrSessionRequired)
 		return
@@ -102,7 +105,7 @@ func (e *EnforcerSessionCookie) Apply(ctx Context, next HandlerFunc) {
 		ctx.Deny(ErrSessionRequired)
 		return
 	}
-	identity, _, ok := OpenSessionCookie(c.Value, e.keys)
+	identity, _, ok := OpenSessionCookie(c.Value, keys)
 	if !ok {
 		ctx.Deny(ErrSessionRequired)
 		return
@@ -116,28 +119,32 @@ func (e *EnforcerSessionCookie) Apply(ctx Context, next HandlerFunc) {
 	next(ctx)
 }
 
-// ensureKeys lazily loads keys from the configured paths when none were injected (the JSON/Caddyfile path).
-func (e *EnforcerSessionCookie) ensureKeys() error {
+// ensureKeys loads the keys from the configured paths on the first request, when none were injected (the JSON and
+// Caddyfile path). It is no sync.Once, which would keep a failed read for good: a key file mounted after the start is
+// picked up by the next request.
+func (e *EnforcerSessionCookie) ensureKeys() ([][]byte, error) {
+	e.keysMu.Lock()
+	defer e.keysMu.Unlock()
 	if len(e.keys) > 0 {
-		return nil
+		return e.keys, nil
 	}
 	if e.KeyPath == "" {
-		return errors.New("no session cookie key configured")
+		return nil, errors.New("no session cookie key configured")
 	}
 	k, err := loadSessionCookieKey(e.KeyPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	keys := [][]byte{k}
 	if e.PrevKeyPath != "" {
 		p, err := loadSessionCookieKey(e.PrevKeyPath)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		keys = append(keys, p)
 	}
 	e.keys = keys
-	return nil
+	return keys, nil
 }
 
 func loadSessionCookieKey(path string) ([]byte, error) {

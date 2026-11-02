@@ -1,9 +1,10 @@
 ---
 id: TASK-182
 title: 'oidf: fetches driven by federation members and idp_iss are unchecked'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-02T15:42:00Z'
+updated_date: '2026-11-02T23:09:00Z'
 labels:
   - go
   - security
@@ -20,5 +21,11 @@ fetchAndVerify takes iss from idp_iss in a request and never compares fromMaster
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 iss is compared with the statements, fetched URLs are https with no redirect to elsewhere, tests prove both, and the nolint lines naming this task are gone
+- [x] #1 iss is compared with the statements, fetched URLs are https with no redirect to elsewhere, tests prove both, and the nolint lines naming this task are gone
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed with requirement-named tests in the consolidation.
+<!-- SECTION:FINAL_SUMMARY:END -->

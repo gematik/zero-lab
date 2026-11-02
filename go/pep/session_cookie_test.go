@@ -23,10 +23,14 @@ package pep
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -118,5 +122,59 @@ func TestEnforcerSessionCookie(t *testing.T) {
 	enf.Apply(ctx2, func(Context) { t.Error("next ran without a cookie") })
 	if !ctx2.denied || ctx2.denyErr.HTTPStatus != 401 {
 		t.Errorf("missing cookie: denied=%v status=%d", ctx2.denied, ctx2.denyErr.HTTPStatus)
+	}
+}
+
+func writeSessionKey(t *testing.T, path string, key []byte) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(base64.StdEncoding.EncodeToString(key)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// An enforcer decoded from JSON or a Caddyfile serves concurrent requests while it reads its keys on the first of them;
+// the race detector is what fails here.
+func TestEnforcerSessionCookie_ConcurrentFirstRequestsShareTheLoadedKeys(t *testing.T) {
+	key := bytes.Repeat([]byte{7}, 32)
+	path := filepath.Join(t.TempDir(), "session.key")
+	writeSessionKey(t, path, key)
+	enforcer := &EnforcerSessionCookie{TypeVal: EnforcerTypeSessionCookie, CookieName: "SID", KeyPath: path}
+	token := mintTestCookie(t, key, map[string]any{"sub": "u1"}, time.Now().Add(time.Hour).Unix())
+
+	var waiting sync.WaitGroup
+	for range 32 {
+		waiting.Go(func() {
+			request := httptest.NewRequest(http.MethodGet, "/", nil)
+			request.AddCookie(&http.Cookie{Name: "SID", Value: token}) //nolint:gosec // request cookie in a test: only name and value go on the wire
+			ctx := &testContext{r: request}
+			enforcer.Apply(ctx, func(Context) {})
+			if ctx.denied {
+				t.Errorf("denied: %v", ctx.denyErr)
+			}
+		})
+	}
+	waiting.Wait()
+}
+
+// A key file mounted after the start is picked up, so a failed read must not stay the answer for good.
+func TestEnforcerSessionCookie_AFailedKeyReadDeniesAndIsRetried(t *testing.T) {
+	key := bytes.Repeat([]byte{7}, 32)
+	path := filepath.Join(t.TempDir(), "session.key")
+	enforcer := &EnforcerSessionCookie{TypeVal: EnforcerTypeSessionCookie, CookieName: "SID", KeyPath: path}
+	token := mintTestCookie(t, key, map[string]any{"sub": "u1"}, time.Now().Add(time.Hour).Unix())
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.AddCookie(&http.Cookie{Name: "SID", Value: token}) //nolint:gosec // request cookie in a test: only name and value go on the wire
+
+	first := &testContext{r: request}
+	enforcer.Apply(first, func(Context) { t.Error("next ran without keys") })
+	if !first.denied || first.denyErr.HTTPStatus != http.StatusUnauthorized {
+		t.Errorf("without keys: denied=%v status=%d", first.denied, first.denyErr.HTTPStatus)
+	}
+
+	writeSessionKey(t, path, key)
+	second := &testContext{r: request}
+	enforcer.Apply(second, func(Context) {})
+	if second.denied {
+		t.Errorf("with keys: %v", second.denyErr)
 	}
 }

@@ -130,7 +130,7 @@ func TestCheckIDToken(t *testing.T) {
 	key := newBrainpoolKey(t)
 	public := &josebp.JSONWebKey{Key: &key.PublicKey}
 	now := time.Unix(1_700_000_000, 0)
-	checks := oidc.IDTokenChecks{Issuer: issuer, ClientID: clientID, Now: now, Skew: idTokenSkew}
+	checks := oidc.IDTokenChecks{Nonce: "n", Issuer: issuer, ClientID: clientID, Now: now, Skew: idTokenSkew}
 	claims := func(overrides map[string]any) map[string]any {
 		all := map[string]any{"iss": issuer, "aud": clientID, "nonce": "n", "exp": now.Add(time.Hour).Unix(), "iat": now.Unix()}
 		for name, value := range overrides {
@@ -171,7 +171,7 @@ func TestCheckIDTokenRefusesASignatureThatDoesNotVerify(t *testing.T) {
 	key := newBrainpoolKey(t)
 	now := time.Unix(1_700_000_000, 0)
 	token := signIDToken(t, newBrainpoolKey(t), josebp.AlgorithmNameBP256R1, map[string]any{"iss": "i", "aud": "c", "nonce": "n", "exp": now.Add(time.Hour).Unix()})
-	checks := oidc.IDTokenChecks{Issuer: "i", ClientID: "c", Now: now}
+	checks := oidc.IDTokenChecks{Nonce: "n", Issuer: "i", ClientID: "c", Now: now}
 	if err := checkIDToken(token, &josebp.JSONWebKey{Key: &key.PublicKey}, checks); err == nil {
 		t.Error("accepted a signature by another key")
 	}
@@ -182,7 +182,7 @@ func TestCheckIDTokenRefusesAnyAlgorithmButBP256R1(t *testing.T) {
 	key := newBrainpoolKey(t)
 	now := time.Unix(1_700_000_000, 0)
 	claims := map[string]any{"iss": "i", "aud": "c", "nonce": "n", "exp": now.Add(time.Hour).Unix()}
-	checks := oidc.IDTokenChecks{Issuer: "i", ClientID: "c", Now: now}
+	checks := oidc.IDTokenChecks{Nonce: "n", Issuer: "i", ClientID: "c", Now: now}
 	for _, alg := range []string{"ES256", "none", "HS256", ""} {
 		token := signIDToken(t, key, alg, claims)
 		if err := checkIDToken(token, &josebp.JSONWebKey{Key: &key.PublicKey}, checks); err == nil {
@@ -198,7 +198,7 @@ func TestCheckIDTokenRefusesATokenWithoutAlg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checks := oidc.IDTokenChecks{Issuer: "i", ClientID: "c", Now: time.Now()}
+	checks := oidc.IDTokenChecks{Nonce: "n", Issuer: "i", ClientID: "c", Now: time.Now()}
 	err = checkIDToken(string(signed), &josebp.JSONWebKey{Key: &key.PublicKey}, checks)
 	if err == nil || !strings.Contains(err.Error(), "alg") {
 		t.Errorf("err = %v", err)

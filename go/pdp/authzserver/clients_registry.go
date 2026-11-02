@@ -93,5 +93,9 @@ func parsePublicJWK(raw map[string]any) (*jose.JSONWebKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse public_jwk: %w", err)
 	}
+	// A private or symmetric key would work through its public half, and sit in a file nobody treats as a secret.
+	if !key.IsPublic() {
+		return nil, errors.New("public_jwk holds a private or symmetric key")
+	}
 	return key, nil
 }

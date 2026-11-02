@@ -26,7 +26,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -81,7 +80,7 @@ func (c *RelyingPartyClient) AuthenticationURL(ctx context.Context, login oidc.L
 
 // Exchange redeems the authorization code over mutual TLS, decrypts the JWE id_token with the
 // relying party's encryption key and verifies its signature against the provider's signed JWKS, its expiry
-// and its audience against the client_id. Issuer and nonce are not checked here. A provider's rejection is
+// and its audience against the client_id. A provider's rejection is
 // returned as *Error.
 func (c *RelyingPartyClient) Exchange(ctx context.Context, login oidc.Login, code string) (*oidc.TokenResponse, error) {
 	form := url.Values{}
@@ -114,7 +113,7 @@ func (c *RelyingPartyClient) Exchange(ctx context.Context, login oidc.Login, cod
 
 	tokenResponse.IDTokenRaw = string(decryptedIDToken)
 
-	if err := c.verifyIDToken(tokenResponse); err != nil {
+	if err := c.verifyIDToken(login, tokenResponse); err != nil {
 		return nil, fmt.Errorf("unable to parse id_token: %w", err)
 	}
 
@@ -131,17 +130,14 @@ func (c *RelyingPartyClient) decryptIDToken(raw string) ([]byte, error) {
 	return encrypted.Decrypt(c.rp.encPrivateKey)
 }
 
-func (c *RelyingPartyClient) verifyIDToken(response *oidc.TokenResponse) error {
+func (c *RelyingPartyClient) verifyIDToken(login oidc.Login, response *oidc.TokenResponse) error {
 	payload, err := oidc.VerifyJWS([]byte(response.IDTokenRaw), c.jwks, federationKeys)
 	if err != nil {
 		return fmt.Errorf("unable to parse token: %w", err)
 	}
-	if err := oidc.ValidateLifetime(payload, time.Now(), 0); err != nil {
+	checks := oidc.IDTokenChecks{Issuer: c.op.Issuer, ClientID: c.rp.ClientID(), Nonce: login.Nonce, Now: time.Now()}
+	if err := checks.Validate(payload); err != nil {
 		return fmt.Errorf("unable to parse token: %w", err)
-	}
-	if err := oidc.ValidateAudience(payload, c.rp.ClientID()); err != nil {
-		slog.Error("token audience does not match client_id", "error", err, "client_id", c.rp.ClientID())
-		return err
 	}
 	return nil
 }

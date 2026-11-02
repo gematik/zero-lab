@@ -80,10 +80,9 @@ func NewClient(cfg Config) (Client, error) {
 	}
 
 	var err error
-	discoveryDocumentURL := cfg.Issuer + "/.well-known/openid-configuration"
-	c.discoveryDocument, err = FetchDiscoveryDocument(discoveryDocumentURL, httpClient)
+	c.discoveryDocument, err = FetchDiscoveryDocument(cfg.Issuer, httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch discovery document from %s: %w", discoveryDocumentURL, err)
+		return nil, fmt.Errorf("failed to fetch discovery document: %w", err)
 	}
 
 	c.keyCache = newKeySetCache(c.discoveryDocument.JwksURI, httpClient)
@@ -121,14 +120,13 @@ func (c *client) Exchange(ctx context.Context, login Login, code string) (*Token
 		if err := json.Unmarshal(response.Body, oidcErr); err != nil {
 			return nil, fmt.Errorf("unable to decode error: %w", err)
 		}
-		slog.Error("unable to exchange code for token", "error", oidcErr)
 		return nil, oidcErr
 	}
 	tokenResponse, err := ParseTokenResponse(response.Body)
 	if err != nil {
 		return nil, err
 	}
-	if err := c.verifyIDToken(ctx, tokenResponse); err != nil {
+	if err := c.verifyIDToken(ctx, login, tokenResponse); err != nil {
 		return nil, err
 	}
 	return tokenResponse, nil
@@ -136,7 +134,7 @@ func (c *client) Exchange(ctx context.Context, login Login, code string) (*Token
 
 // verifyIDToken verifies the ID token against the keys of the discovery document. The keys need not state an alg,
 // as Entra ID's do not; the token has to, and the key has to fit it.
-func (c *client) verifyIDToken(ctx context.Context, response *TokenResponse) error {
+func (c *client) verifyIDToken(ctx context.Context, login Login, response *TokenResponse) error {
 	skew := c.cfg.AcceptableSkew
 	if skew <= 0 {
 		skew = defaultAcceptableSkew
@@ -149,6 +147,7 @@ func (c *client) verifyIDToken(ctx context.Context, response *TokenResponse) err
 		err = IDTokenChecks{
 			Issuer:   c.discoveryDocument.Issuer,
 			ClientID: c.cfg.ClientID,
+			Nonce:    login.Nonce,
 			Now:      time.Now(),
 			Skew:     skew,
 		}.Validate(payload)

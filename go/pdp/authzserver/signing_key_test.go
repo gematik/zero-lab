@@ -201,3 +201,41 @@ func TestSigningKey_from_a_file(t *testing.T) {
 		})
 	}
 }
+
+// keys.md: a file whose d is not the private half of its x and y signs tokens its published key does not verify, which
+// only the resource servers would notice, one token at a time.
+func TestSigningKey_whose_d_does_not_match_its_point_fails_startup(t *testing.T) {
+	members := func(key *ecdsa.PrivateKey) map[string]any {
+		raw, err := json.Marshal(jose.JSONWebKey{Key: key})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var jwk map[string]any
+		if err := json.Unmarshal(raw, &jwk); err != nil {
+			t.Fatal(err)
+		}
+		return jwk
+	}
+	jwk := members(newP256(t))
+	foreign, ok := members(newP256(t))["d"].(string)
+	if !ok {
+		t.Fatal("no d")
+	}
+	jwk["d"] = foreign
+	raw, err := json.Marshal(jwk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "sign.jwk"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{BaseDir: dir, SignJwkPath: "sign.jwk"}
+	_, err = cfg.LoadSigningKey()
+	if err == nil {
+		t.Fatal("a key whose halves do not belong together was loaded")
+	}
+	if strings.Contains(err.Error(), foreign) {
+		t.Errorf("the error holds d: %v", err)
+	}
+}
