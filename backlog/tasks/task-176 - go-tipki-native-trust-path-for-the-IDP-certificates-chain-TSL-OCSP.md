@@ -1,10 +1,10 @@
 ---
 id: TASK-176
 title: 'go/tipki: native trust path for the IDP certificates (chain, TSL, OCSP)'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-02T06:16:00Z'
-updated_date: '2026-11-02T17:54:00Z'
+updated_date: '2026-11-02T19:06:00Z'
 labels:
   - go
   - pki
@@ -58,3 +58,9 @@ CA metadata settled by the maintainer: it means for which kinds of certificate a
 
 2026-11-02: stage 5 HITL passed, confirmed by the maintainer.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+go/tipki is the native trust path, held to ti-pki by shared corpora: chain, roots walk, detached TSL, OCSP and the validator. go/gemidp uses it for both IDP certificates. The maintainer closed each stage by HITL.
+<!-- SECTION:FINAL_SUMMARY:END -->

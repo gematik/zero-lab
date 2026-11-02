@@ -319,14 +319,13 @@ func bundleTrust(t *testing.T) (*BundleTrust, string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "bundle.json")
 	writeBundle(t, path, captured)
-	anchor, signers, err := anchorsFor(EnvironmentReference)
+	base, err := newVerifier(EnvironmentReference, http.DefaultClient)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &BundleTrust{
-		bundlePath: path, anchor: anchor, signerAnchors: signers,
-		checker: answering(tipki.RevocationGood), now: func() time.Time { return captured },
-	}, path
+	base.checker = answering(tipki.RevocationGood)
+	base.now = func() time.Time { return captured }
+	return &BundleTrust{verifier: base, bundlePath: path}, path
 }
 
 func idpCertificate(t *testing.T, name string) []*x509.Certificate {

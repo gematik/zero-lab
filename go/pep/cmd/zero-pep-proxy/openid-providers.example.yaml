@@ -23,7 +23,8 @@ oidc:
 gemidp:
   - client_id: "<gemidp-client-id>"
     environment: ref # test|ref|prod, required: it decides which anchors are trusted
-    trust_bundle_path: /etc/telematik/ti-trust-bundle.json # from `ti pki trust export`, required
+    trust_fetch: true # download the trust material from gematik's hosts, or for an air-gapped site:
+    # trust_bundle_path: /etc/telematik/ti-trust-bundle.json # from `ti pki trust export`
     redirect_uri: https://<host>/gemidp-callback
     scopes: [openid, gmtik-zerotrust-poc]
     name: gematik IDP-Dienst

@@ -82,10 +82,12 @@ type ClientConfig struct {
 	AuthenticatorMode bool        `yaml:"authenticator_mode"`
 	UserAgent         string      `yaml:"user_agent"`
 
-	// TrustBundlePath is the file `ti pki trust export` writes.
-	TrustBundlePath string `yaml:"trust_bundle_path"`
+	// TrustBundlePath is the file `ti pki trust export` writes, for a site that cannot fetch for itself.
+	TrustBundlePath string `yaml:"trust_bundle_path,omitempty"`
+	// TrustFetch downloads the trust material from gematik's hosts instead; see [FetchingTrust].
+	TrustFetch bool `yaml:"trust_fetch,omitempty"`
 
-	// Trust replaces the bundle. Not serialized; supplied programmatically.
+	// Trust replaces both. Not serialized; supplied programmatically.
 	Trust CertificateTrust `yaml:"-"`
 
 	// HTTPClient is used for metadata, key, and token requests. Not serialized; supplied
@@ -150,11 +152,11 @@ func NewClientFromConfig(config ClientConfig) (*Client, error) {
 
 	trust := config.Trust
 	if trust == nil {
-		bundleTrust, err := NewBundleTrust(config.Environment, config.TrustBundlePath, httpClient)
+		configured, err := trustFromConfig(config, httpClient)
 		if err != nil {
 			return nil, fmt.Errorf("IDP-Dienst trust: %w", err)
 		}
-		trust = bundleTrust
+		trust = configured
 	}
 
 	metadata, err := fetchMetadata(baseURL, httpClient, trust)
@@ -407,4 +409,15 @@ func unmarshalTokenResponse(r io.Reader) (*oidc.TokenResponse, error) {
 	}
 
 	return tokenResponse, nil
+}
+
+// trustFromConfig takes exactly one source, so nobody believes one is in force while the other is.
+func trustFromConfig(config ClientConfig, httpClient *http.Client) (CertificateTrust, error) {
+	if config.TrustFetch && config.TrustBundlePath != "" {
+		return nil, errors.New("trust_fetch and trust_bundle_path exclude each other")
+	}
+	if config.TrustFetch {
+		return NewFetchingTrust(config.Environment, httpClient)
+	}
+	return NewBundleTrust(config.Environment, config.TrustBundlePath, httpClient)
 }

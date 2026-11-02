@@ -1,10 +1,10 @@
 ---
 id: TASK-189
 title: 'josebp: JWK coordinates lose leading zero bytes'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-02T18:08:00Z'
-updated_date: '2026-11-02T18:09:00Z'
+updated_date: '2026-11-02T19:06:00Z'
 labels:
   - go
   - security
@@ -23,3 +23,9 @@ JSONWebKey.MarshalJSON writes x, y and d with big.Int.Bytes(), which drops leadi
 <!-- AC:BEGIN -->
 - [x] #1 Coordinates are the curve's full length, proven with a key whose coordinate starts with a zero byte
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+JWK coordinates are written at the curve's full length (RFC 7518).
+<!-- SECTION:FINAL_SUMMARY:END -->

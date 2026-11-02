@@ -165,6 +165,7 @@ func providersFromEnv(publicURL string) []proxy.ProviderOption {
 			AuthenticatorMode: true, // gemidp is always the gematik Authenticator deep-link flow
 			UserAgent:         os.Getenv("PEP_GEMIDP_USER_AGENT"),
 			TrustBundlePath:   os.Getenv("PEP_GEMIDP_TRUST_BUNDLE_PATH"),
+			TrustFetch:        os.Getenv("PEP_GEMIDP_TRUST_FETCH") == "true",
 		})
 		if err != nil {
 			log.Fatalf("create gemidp client: %v", err)

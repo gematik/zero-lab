@@ -3,7 +3,7 @@ module github.com/gematik/zero-lab/go/oidf
 go 1.26.4
 
 require (
-	github.com/gematik/zero-lab/go/oauth v0.51.1-0.20261021083859-f5934a4ca8a1
+	github.com/gematik/zero-lab/go/oauth v0.51.1-0.20261102185424-5ad95b53e1b3
 	github.com/go-playground/validator/v10 v10.30.4
 	github.com/lestrrat-go/jwx/v3 v3.3.0
 	golang.org/x/oauth2 v0.37.0
@@ -24,7 +24,7 @@ require (
 	github.com/lestrrat-go/httpcc v1.0.1 // indirect
 	github.com/lestrrat-go/httprc/v3 v3.0.6 // indirect
 	github.com/lestrrat-go/option/v2 v2.0.0 // indirect
-	github.com/rogpeppe/go-internal v1.14.1 // indirect
+	github.com/rogpeppe/go-internal v1.16.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/valyala/fastjson v1.6.10 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
