@@ -25,6 +25,3 @@ require (
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 )
-
-// go/tipki has no tag yet; `just sync` pins it after the first push, and this goes.
-replace github.com/gematik/zero-lab/go/tipki => ../tipki
