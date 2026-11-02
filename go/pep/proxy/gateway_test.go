@@ -313,7 +313,7 @@ func TestGatewayDPoPInjection(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	backend := &dpopTestBackend{pdp: &pdpBackend{signer: bffSigner{}}}
+	backend := &dpopTestBackend{pdp: &pdpBackend{signer: sessionKeySigner{}}}
 	gw, err := newGateway([]Route{
 		{PathPrefix: "/api", Upstream: upstream.URL, Inject: InjectDPoP, Gate: GateSession, StripPrefix: true},
 	}, gatewayDeps{currentSession: staticSession(sess), backend: backend})

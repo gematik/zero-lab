@@ -28,7 +28,7 @@ import (
 	"github.com/gematik/zero-lab/go/dpop"
 )
 
-func TestBffSignerProof(t *testing.T) {
+func TestSessionKeySignerProof(t *testing.T) {
 	priv, jwkJSON, err := newSessionDPoPKey()
 	if err != nil {
 		t.Fatal(err)
@@ -41,7 +41,7 @@ func TestBffSignerProof(t *testing.T) {
 	}
 
 	req, _ := http.NewRequest(http.MethodGet, "https://api.example/protected", nil)
-	proof, err := (bffSigner{}).dpopProof(req, "the-access-token", priv)
+	proof, err := (sessionKeySigner{}).dpopProof(req, "the-access-token", priv)
 	if err != nil {
 		t.Fatalf("dpopProof: %v", err)
 	}

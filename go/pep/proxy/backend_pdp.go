@@ -90,7 +90,7 @@ type asMetadata struct {
 	PushedAuthorizationRequestEndpoint string `json:"pushed_authorization_request_endpoint"`
 }
 
-// pdpBackend is a confidential BFF client of the PDP: it drives the auth-code flow, holds DPoP-bound tokens
+// pdpBackend is a confidential client of the PDP: it drives the auth-code flow, holds DPoP-bound tokens
 // server-side (keyed by AS issuer on the session), and injects them into the gated /api reverse-proxy.
 type pdpBackend struct {
 	cfg       PDPConfig
@@ -109,7 +109,7 @@ func NewPDPBackend(cfg PDPConfig) (Backend, error) {
 	if hc == nil {
 		hc = &http.Client{Timeout: 30 * time.Second}
 	}
-	b := &pdpBackend{cfg: cfg, http: hc, signer: bffSigner{}}
+	b := &pdpBackend{cfg: cfg, http: hc, signer: sessionKeySigner{}}
 	meta, err := b.discoverMetadata(cfg.ASIssuer)
 	if err != nil {
 		return nil, fmt.Errorf("pdp discovery: %w", err)
@@ -128,8 +128,7 @@ func NewPDPBackend(cfg PDPConfig) (Backend, error) {
 }
 
 // clientAssertion mints a private_key_jwt (RFC 7523 §2.2): iss=sub=client_id, aud=the AS's real issuer, a
-// fresh AS nonce, and cnf.jkt = the SESSION DPoP-key thumbprint. Port of bff clientAssertion, adapted to
-// bind the token to the per-session key.
+// fresh AS nonce, and cnf.jkt = the SESSION DPoP-key thumbprint, binding the token to the per-session key.
 func (b *pdpBackend) clientAssertion(ctx context.Context, sess *Session) (string, error) {
 	if b.cfg.SigningKey == nil {
 		return "", errors.New("client signing key not configured")
@@ -503,7 +502,7 @@ func (b *pdpBackend) tokenDPoPProof(sess *Session, nonce string) (string, error)
 }
 
 // introspectIdentity introspects the access token at the AS (RFC 7662) for the upstream identity, surfacing
-// the nested identity claims. Port of bff introspectIdentity, adapted to take the session for the assertion.
+// the nested identity claims.
 func (b *pdpBackend) introspectIdentity(ctx context.Context, sess *Session, accessToken string) (map[string]any, error) {
 	if b.meta.IntrospectionEndpoint == "" {
 		return nil, errors.New("no introspection_endpoint in metadata")

@@ -105,7 +105,7 @@ with the new `pep.EnforcerSessionCookie`) or `gate: session` (stateful kv, requi
 **Files:** `pep/cmd/zero-pep-proxy/main.go`, `CONFIG.md`, `pep/proxy/e2e/README.md`.
 
 - `RoutesFromConfig()` (PEP_ROUTES_PATH YAML | env shortcuts) → `cfg.Routes`. Document `gate`/`scope`/`inject`
-  + a `routes.yaml` example + the standalone shape replacing `zero-bff-pdp`.
+  + a `routes.yaml` example+ the standalone shape.
 - [ ] Build + vet. Commit: `feat(pep): wire gateway routes; document gate/scope`.
 
 ### Task R8: HITL (the bff-pdp replacement shape)

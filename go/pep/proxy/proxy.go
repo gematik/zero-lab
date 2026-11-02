@@ -22,8 +22,8 @@
 // Package proxy is an oauth2-proxy-style authentication gateway: it runs the login (against direct OIDC/
 // OIDF/gemidp providers or — later — a PDP), keeps the tokens server-side, and exposes the oauth2-proxy
 // endpoint contract (/oauth2/{auth,start,sign_in,callback,sign_out,…}) so it works behind Caddy in
-// forward_auth mode and as a standalone gateway. It is the token-mediating BFF, generalized, and will
-// replace the bff over time.
+// forward_auth mode and as a standalone gateway. It is a token-mediating backend for frontend
+// (draft-ietf-oauth-browser-based-apps); backlog doc-4 holds the history.
 package proxy
 
 import (

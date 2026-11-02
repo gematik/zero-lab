@@ -1,7 +1,7 @@
 # Servers
 
 The same rules bind server software in every language: everything deployed as a Docker
-(OCI) workload, today `zero-pdp`, `zero-pep-proxy`, `zero-caddy`, `zero-bff-pdp`,
+(OCI) workload, today `zero-pdp`, `zero-pep-proxy`, `zero-caddy`,
 `zero-epa` and `metsubushi`, and any to come, together with everything that runs inside
 such a workload. A helper (`ti-pki-helper`, `ti-idpd-helper`) is not a workload of its
 own, but it runs inside one, as a child process or as a sidecar container; there it is

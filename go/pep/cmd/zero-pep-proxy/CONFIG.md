@@ -85,8 +85,7 @@ providers, use openid-providers.yaml.
 By default pep runs in forward_auth mode (behind Caddy). Configure routes to make pep **gate and
 reverse-proxy** upstreams itself — an oauth2-proxy-style gateway, no Caddy needed. Gating runs as a
 `pep.Enforcer` chain (`session_cookie` + optional `scope`); each route injects the user identity or a
-DPoP-bound access token. This replaces the `zero-bff-pdp` all-in-one: run `zero-pdp` + `zero-pep-proxy`
-(gateway mode) as two services.
+DPoP-bound access token. With a PDP, run `zero-pdp` + `zero-pep-proxy` (gateway mode) as two services.
 
 | Var | Purpose |
 | --- | --- |

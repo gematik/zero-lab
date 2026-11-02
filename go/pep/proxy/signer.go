@@ -35,15 +35,15 @@ import (
 	"github.com/gematik/zero-lab/go/dpop"
 )
 
-// sessionSigner mints the DPoP proof for an outbound API request. S4's implementation (bffSigner) signs with
-// the session's BFF-held key; the T3 stage (docs/pdp-backend.md §10) swaps in a browser-relaying signer.
+// sessionSigner mints the DPoP proof for an outbound API request. S4's implementation (sessionKeySigner) signs with
+// the session's server-held key; the T3 stage (docs/pdp-backend.md §10) swaps in a browser-relaying signer.
 type sessionSigner interface {
 	dpopProof(req *http.Request, accessToken string, key jwk.Key) (string, error)
 }
 
-type bffSigner struct{}
+type sessionKeySigner struct{}
 
-func (bffSigner) dpopProof(req *http.Request, accessToken string, key jwk.Key) (string, error) {
+func (sessionKeySigner) dpopProof(req *http.Request, accessToken string, key jwk.Key) (string, error) {
 	k, err := dpopKey(key)
 	if err != nil {
 		return "", err

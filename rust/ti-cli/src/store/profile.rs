@@ -83,15 +83,6 @@ impl Selected {
         Self::resolve_with(name, cache_dir.as_deref())
     }
 
-    /// The profile from the environment alone, as another program than `ti` resolves it.
-    ///
-    /// # Errors
-    ///
-    /// As [`resolve`](Self::resolve).
-    pub fn from_env() -> Result<Self, CliError> {
-        Self::resolve_with(None, std::env::var("TI_CACHE_DIR").ok().as_deref())
-    }
-
     fn resolve_with(name: Option<&str>, cache_dir: Option<&str>) -> Result<Self, CliError> {
         let env = |key: &str| -> Option<String> {
             if key == "TI_CACHE_DIR" {

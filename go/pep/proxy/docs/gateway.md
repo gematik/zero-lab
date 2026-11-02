@@ -3,8 +3,7 @@
 **Goal.** Give `pep/proxy` a flexible, multi-route reverse-proxy gateway that gates **and** proxies a set of
 upstreams standalone (no Caddy in front), injecting either the user identity or a DPoP-bound access token per
 route. Gating reuses the **`pep.Enforcer`** policy model (the same one zaddy drives via `enforce_policy`), and
-this stage implements the long-stubbed **`pep.EnforcerSessionCookie`**. Closing this gap makes `bff` redundant
-([`BACKLOG.md`](BACKLOG.md)) and replaces the `zero-bff-pdp` all-in-one with `zero-pdp` + `zero-pep-proxy`.
+this stage implements the long-stubbed **`pep.EnforcerSessionCookie`**. This closed the gap that let the bff be removed; backlog doc-4 holds what it was.
 
 **Non-goals.** Cross-AS token acquisition (backlog); replicating the bff's JSON SPA (pep is server-rendered, no
 consumers); the full S6 zaddy in-process handler (this only *unblocks* it by making `EnforcerSessionCookie`

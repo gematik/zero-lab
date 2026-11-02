@@ -128,7 +128,7 @@ bound to the upstream request; zaddy verifies token + proof + scope. No external
 ## Standalone gateway (S5) — pep gates + reverse-proxies, no Caddy
 
 Gateway mode (`PEP_ROUTES_PATH`, or the `PEP_WEBAPP_UPSTREAM` / `PEP_API_UPSTREAM` shortcuts) makes pep gate
-and reverse-proxy upstreams itself — the `zero-bff-pdp` replacement shape. Reusing the PDP backend services:
+and reverse-proxy upstreams itself. Reusing the PDP backend services:
 
 ```sh
 # 1) PDP (mockidp) + zaddy, as above (already running if you come from the PDP backend setup; stop that

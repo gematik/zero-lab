@@ -1,7 +1,6 @@
 go 1.27.0
 
 use (
-	./bff
 	./brainpool
 	./dpop
 	./epa
@@ -14,8 +13,6 @@ use (
 	./pdp
 	./pep
 	./pkcs12
-	./sqlitestore
-	./store
 	./tipki
 	./zaddy
 )

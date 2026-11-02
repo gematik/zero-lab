@@ -33,11 +33,3 @@ type AuthnClientSession struct {
 	AuthURL       string         `json:"auth_url"`
 	TokenResponse *TokenResponse `json:"token_response"`
 }
-
-// AuthnClientSessionStore persists sessions; the callback finds its session by the state parameter.
-type AuthnClientSessionStore interface {
-	GetAuthnClientSessionByID(id string) (*AuthnClientSession, error)
-	GetAuthnClientSessionByState(state string) (*AuthnClientSession, error)
-	SaveAuthnClientSession(session *AuthnClientSession) error
-	DeleteAuthnClientSessionByState(state string) error
-}

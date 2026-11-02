@@ -23,7 +23,7 @@
 // records, encrypted snapshots, or at-rest ciphertext); each entry may carry an opaque metadata descriptor
 // so reads can dispatch parsing/decryption per value. Callers handle their own (de)serialization. The store
 // is the single persistence primitive for
-// the authorization server, the bff, and the nonce service — multi-index lookups are modelled with
+// the authorization server, the pep and the nonce service — multi-index lookups are modelled with
 // secondary-index keys (a record under "<ns>:<id>" plus "<ns>:<field>:<v>" keys holding the id).
 //
 // This package has no external dependencies: it ships the interface and the in-memory backend

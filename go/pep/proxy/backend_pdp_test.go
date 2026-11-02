@@ -87,7 +87,7 @@ func TestPDPClientAssertionClaims(t *testing.T) {
 func TestPDPStartLoginPreparesSession(t *testing.T) {
 	b := &pdpBackend{
 		cfg:  PDPConfig{ASIssuer: "https://as.example", ClientID: "pep-client", SigningKey: testSigningKey(t), RedirectURI: "https://pep/oauth2/callback"},
-		meta: asMetadata{Issuer: "https://as.example", AuthorizationEndpoint: "https://as.example/auth"}, http: http.DefaultClient, signer: bffSigner{},
+		meta: asMetadata{Issuer: "https://as.example", AuthorizationEndpoint: "https://as.example/auth"}, http: http.DefaultClient, signer: sessionKeySigner{},
 	}
 	sess := &Session{ID: "s1"}
 	ls, err := b.StartLogin(context.Background(), sess, "", "test-scope")
@@ -112,7 +112,7 @@ func TestPDPTokenRequestSendsDPoP(t *testing.T) {
 	defer ts.Close()
 	b := &pdpBackend{
 		cfg:  PDPConfig{ASIssuer: "https://as.example", ClientID: "c", SigningKey: testSigningKey(t)},
-		meta: asMetadata{Issuer: "https://as.example", TokenEndpoint: ts.URL}, http: ts.Client(), signer: bffSigner{},
+		meta: asMetadata{Issuer: "https://as.example", TokenEndpoint: ts.URL}, http: ts.Client(), signer: sessionKeySigner{},
 	}
 	_, jwkJSON, _ := newSessionDPoPKey()
 	sess := &Session{ID: "s1", DPoPKeyJWK: jwkJSON}
