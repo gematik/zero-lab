@@ -4,10 +4,11 @@ title: 'ti-pki-helper: pki/1 (load, verify, verify-signature)'
 status: To Do
 assignee: []
 created_date: 2026-10-20 14:07
-updated_date: '2026-11-01T16:11:00Z'
+updated_date: '2026-11-02T06:16:00Z'
 labels:
   - rust
   - pki
+  - parked
 dependencies:
   - TASK-120.3
 parent_task_id: TASK-120
@@ -33,4 +34,6 @@ rust/helpers/pki, crate and binary ti-pki-helper. Methods load, verify and verif
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-01 (decision-10): no owned trust mode for servers and no state on disk. The helper verifies trust material the host supplies from a mounted directory (.xml, .sig, .ocsp, roots.json per TASK-166 and TASK-173) and keeps it in memory; it builds OCSP requests and verifies responses the host fetched through its transport (ocsp::request, verify_response). --listen unix:PATH with peer checks is the default for servers, stdio for a child. The dependency check must also prove the helper has no store, no profile and no HTTP client.
+
+2026-11-02, maintainer: parked. Critical flows go native (decision-10, amendment of 2026-11-02), so the helper does not continue for now. The work stays on the unmerged branches feat/ti-pki-helper and feat/ti-trust-export; spec/ti-rpc, ti-pki-helper, go/tirpc and ti pki trust export live there.
 <!-- SECTION:NOTES:END -->

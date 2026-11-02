@@ -6,11 +6,12 @@ title: >-
 status: To Do
 assignee: []
 created_date: 2026-10-20 14:05
-updated_date: '2026-11-01T16:11:00Z'
+updated_date: '2026-11-02T06:16:00Z'
 labels:
   - rust
   - go
   - interop
+  - parked
 dependencies: []
 priority: low
 ordinal: 123000
@@ -39,4 +40,6 @@ Stages, each closed by the maintainer's HITL: 1) conventions, spec/ti-rpc, ti-rp
 
 <!-- SECTION:NOTES:BEGIN -->
 Maintainer decision 2026-11-01 (TASK-165, decision-10), reversing the state model of 2026-10-20: helpers are stateless server binaries. No profile, no config directory, no store, no cache.db, no KEK file, no TI_STATE_DIR or TI_CACHE_DIR; configuration by flags and environment only; trust material supplied by the host from a mounted directory (the producer of TASK-173), verified by the helper and kept in memory; the helper owns the renewal policy and tells the host when to re-fetch. Helpers ship in the same image as the Go binary (libexec/telematik) and run as a child over stdio or as a sidecar container from the same image over a Unix socket. The ti CLI keeps profiles and caches for humans. go/epa keeps ti for now (TASK-120.7 open).
+
+2026-11-02, maintainer: parked. Critical flows go native (decision-10, amendment of 2026-11-02), so the helper does not continue for now. The work stays on the unmerged branches feat/ti-pki-helper and feat/ti-trust-export; spec/ti-rpc, ti-pki-helper, go/tirpc and ti pki trust export live there.
 <!-- SECTION:NOTES:END -->

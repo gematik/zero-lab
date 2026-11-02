@@ -4,10 +4,11 @@ title: Decision and conventions for ti helpers
 status: To Do
 assignee: []
 created_date: 2026-10-20 14:07
-updated_date: '2026-11-01T16:11:00Z'
+updated_date: '2026-11-02T06:16:00Z'
 labels:
   - docs
   - interop
+  - parked
 dependencies: []
 parent_task_id: TASK-120
 priority: low
@@ -31,4 +32,6 @@ Carry decision-8 over from branch spike/go-rust-bridge, rewritten for helpers: p
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-01: decision-10 absorbs draft decision-8 of branch spike/go-rust-bridge (wasm2go only for a host that must be one binary and needs a core function; purego and wazero rejected); the docs changes of this task land with TASK-165 (interop.md, servers.md, naming-and-config.md, git-and-releases.md). What remains here is checking those documents against the helper implementation when it lands.
+
+2026-11-02, maintainer: parked. Critical flows go native (decision-10, amendment of 2026-11-02), so the helper does not continue for now. The work stays on the unmerged branches feat/ti-pki-helper and feat/ti-trust-export; spec/ti-rpc, ti-pki-helper, go/tirpc and ti pki trust export live there.
 <!-- SECTION:NOTES:END -->
