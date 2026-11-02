@@ -44,20 +44,19 @@ not fit. Go decides per TI function, in this order (decision-10):
 
 1. The server's own protocol (the authorization server's endpoints, DPoP, OpenID
    Federation as a relying party) is native Go.
-2. Every other TI function goes through the helper.
-3. A native implementation under a shared specification only where a measured
-   per-request path needs it, and then with the specification, its corpus, a
-   traceability table and an interop run against Rust in `just check`.
+2. A critical flow uses the smallest possible native library (decision-10, amendment of
+   2026-11-02), aligned to `ti-pki`, with a shared specification, a corpus Rust writes and
+   both run, and a traceability table. `go/tipki` is the first: certificate types, admission
+   and profiles under [`spec/pki-profiles`](../spec/pki-profiles/README.md).
+3. Every other TI function goes through a `ti` process or a helper.
 
 A host that must be one self-contained `go install` binary (the Caddy plugin) gets no TI
 core function: Go is human-reviewable
 ([code and comments](conventions/code-and-comments.md#style)), so the core translated to
 Go (wasm2go, hundreds of thousands of generated lines) is out, as are wazero, purego and
 cgo. Such a host validates what a PDP issued, natively under 1, and nothing else; if it
-ever needs more, that is a design decision with its own task, not a default. A TI
-certificate rule (path validation, TSL, OCSP, profiles, admission) is never implemented
-in Go under 3 without that measurement; the SMC-B check of token exchange goes through
-the helper.
+ever needs more, that is a design decision with its own task, not a default. Path validation,
+the TSL and OCSP are decided per flow under 2 and are not native yet.
 
 ## Rules for every process boundary
 
