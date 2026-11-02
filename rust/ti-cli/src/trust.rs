@@ -469,6 +469,20 @@ impl Session {
         }
     }
 
+    /// The whole set as loaded, for a bundle. Call after [`load`](Self::load).
+    pub fn trust_material(
+        &self,
+        config: &TrustConfig,
+    ) -> Result<ti_pki::load::TrustMaterial, CliError> {
+        block_on(async {
+            match &self.transport {
+                Some(transport) => self.loader(config, transport).load_all().await,
+                None => self.loader(config, NoNetwork).load_all().await,
+            }
+        })
+        .map_err(|error| CliError::TrustLoad(error.to_string()))
+    }
+
     /// The list's detached files, as loaded from the environment's automated download
     /// point (`spec/tsl-detached`). Call after [`load`](Self::load).
     pub fn tsl_detached(&self, config: &TrustConfig) -> Result<Detached, CliError> {

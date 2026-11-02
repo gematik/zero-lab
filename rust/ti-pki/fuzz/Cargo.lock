@@ -679,6 +679,7 @@ dependencies = [
  "sha1",
  "sha2",
  "thiserror",
+ "ti-store",
  "ti-types",
  "x509-cert",
 ]
@@ -689,6 +690,14 @@ version = "0.0.0"
 dependencies = [
  "libfuzzer-sys",
  "ti-pki",
+]
+
+[[package]]
+name = "ti-store"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "ti-types",
 ]
 
 [[package]]

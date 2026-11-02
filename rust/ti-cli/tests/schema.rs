@@ -413,6 +413,35 @@ fn roots_bundle_writes_what_it_reports() {
     );
 }
 
+/// The trust bundle: what it reports, and that it refuses to overwrite without being told.
+#[test]
+fn trust_export_writes_a_bundle_a_consumer_loads() {
+    let cache = SeededCache::new("trust-export");
+    let c = &cache.0;
+    let run = offline;
+    let out = c.join("trust-bundle.json").display().to_string();
+    let args = ["pki", "trust", "export", "-o", &out];
+    let exported = json_of(c, "pki trust export", &run(&args));
+    let exported: Value = serde_json::from_slice(&exported.stdout).unwrap();
+    assert_eq!(exported["environment"], "prod");
+    assert_eq!(exported["output"], out.as_str());
+    let written = std::fs::read(&out).unwrap();
+    assert_eq!(exported["bytes"], written.len());
+    assert_eq!(exported["fits_config_map"], true);
+    let bundle = ti_pki::load::Bundle::from_slice(&written).unwrap();
+    bundle
+        .check_anchor(&ti_pki::TrustConfig::preset_prod())
+        .unwrap();
+    let published = std::fs::read(manifest(&format!("{PROD_SET}.xml"))).unwrap();
+    assert_eq!(bundle.material.tsl, published);
+    assert!(bundle.material.detached.is_some());
+
+    let again = ti(c, &run(&args));
+    assert!(!again.status.success());
+    let with_force = [&args[..], &["--force"]].concat();
+    json_of(c, "pki trust export", &run(&with_force));
+}
+
 /// The TSL's CA bundle and the TSL export: what they write, and their reports.
 #[test]
 fn tsl_bundle_and_export_write_what_they_report() {
@@ -1206,7 +1235,7 @@ fn schemas_are_published_by_name() {
     let all = ti(&dir, &["schema"]);
     let all: Value = serde_json::from_slice(&all.stdout).unwrap();
     let commands = all["commands"].as_object().unwrap();
-    assert_eq!(commands.len(), 62);
+    assert_eq!(commands.len(), 63);
     assert_eq!(commands["pki verify"], schema("pki verify"));
 
     let one = ti(&dir, &["schema", "pki", "tsl", "show"]);

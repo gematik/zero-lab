@@ -9,6 +9,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-cli
 
+#### added
+- `ti pki trust export -o FILE`: roots.json, the TSL, its signature and its signer's status as
+  one bundle file for a server or an air-gapped site, written whole and only once a consumer's
+  load of it verified.
+
 #### removed
 - SOCKS proxies: `-x socks5://` and a `socks5://` in the proxy variables are refused with
   `http_setup` (exit 2), and `ureq`'s `socks-proxy` feature, `socks` and `byteorder` are

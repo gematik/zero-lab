@@ -43,6 +43,7 @@ mod profiles;
 mod roots;
 mod schema;
 mod store;
+mod trust_export;
 mod tsl;
 mod verify;
 mod verify_signature;
@@ -52,7 +53,8 @@ use ti_pki::{Certificate, Env, Timestamp};
 
 use crate::cli::{
     CacheCommand, Cli, Command, DirectoryCommand, Environment, GlobalArgs, IdentityCommand,
-    IdpdCommand, Pkcs12Command, PkiCommand, ProbeEnv, ProfilesCommand, RootsCommand, TslCommand,
+    IdpdCommand, Pkcs12Command, PkiCommand, ProbeEnv, ProfilesCommand, RootsCommand, TrustCommand,
+    TslCommand,
 };
 use crate::error::{CliError, Exit};
 use crate::output::document::{TreeRow, date, when};
@@ -108,6 +110,9 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
         }
         Command::Pki(PkiCommand::Tsl(TslCommand::Export(args))) => {
             tsl::export(args, &cli.global, out)
+        }
+        Command::Pki(PkiCommand::Trust(TrustCommand::Export(args))) => {
+            trust_export::export(args, &cli.global, out)
         }
         Command::Pki(PkiCommand::Tsl(TslCommand::Verify(args))) => {
             tsl::verify(args, &cli.global, out)

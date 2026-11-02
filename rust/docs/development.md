@@ -355,17 +355,16 @@ and `Reloader::new` enforce it.
 - Updates arrive after the kubelet sync period plus its cache TTL (about a minute by
   default), then on the next reload tick — or trigger one.
 - Put roots.json, the TSL and its `.sig` and `.ocsp` in one ConfigMap so they change
-  together; a list under the signature of another state does not verify. The producer
-  that writes it (a CronJob from the product image exporting `.xml`, `.sig`, `.ocsp`
-  and roots.json with a manifest) is TASK-173; consumers keep nothing on disk.
+  together; a list under the signature of another state does not verify. The producer,
+  `ti pki trust export`, writes them as one bundle file; consumers keep nothing on disk.
 - Poll, don't watch: inotify is unreliable on these mounts because the files themselves
   never change, only the symlink.
 
 ### Offline bundle
 
 For air-gapped deployments, export both artefacts with their metadata on a connected
-machine (`Bundle::new(&config, label, material).write(path)`, from material any loader
-produced), transfer the JSON file, and serve it with
+machine (`ti pki trust export`, or `Bundle::new(&config, label, material).write(path)` from
+material any loader produced), transfer the JSON file, and serve it with
 `StaticLoader::from_bundle(Bundle::read(path)?, &config)?`, alone or as the backup of a
 `FallbackLoader`. The bundle is not signed and needs no signature: it is verified on
 import like any other source, and its anchor hash rejects a bundle meant for another
