@@ -259,6 +259,11 @@ sync REF=`git rev-parse --abbrev-ref HEAD`:
           GOWORK=off go mod tidy )
     done
     go work sync
+    # go work sync raises versions to what the workspace selects, so tidy again or go.sum
+    # lacks their entries for a build outside the workspace.
+    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
+        ( cd "$dir" && GOWORK=off go mod tidy )
+    done
 
 # Tidy all go modules: sync go.mod/go.sum to imports. Does NOT upgrade versions.
 tidy:

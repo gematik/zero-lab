@@ -1,5 +1,5 @@
-github.com/gematik/zero-lab/go/store v0.0.0-20261021083859-f5934a4ca8a1 h1:NlNyqO8BqOmwA0jnbgZaR04AG9KQvVOohcGuRFCVX7k=
-github.com/gematik/zero-lab/go/store v0.0.0-20261021083859-f5934a4ca8a1/go.mod h1:8UNLKWupfTejIEPfpBsCsLOfPtP+EJ5q4OsY49W8IC4=
+github.com/gematik/zero-lab/go/store v0.0.0-20261102185424-5ad95b53e1b3 h1:j0ZPE/DgZibJaYMbMlGT7MUfbu2ItQwJcxOFktcxI7Y=
+github.com/gematik/zero-lab/go/store v0.0.0-20261102185424-5ad95b53e1b3/go.mod h1:8UNLKWupfTejIEPfpBsCsLOfPtP+EJ5q4OsY49W8IC4=
 github.com/ncruces/go-sqlite3 v0.35.6 h1:0JGlMne89YzKNP2CJBuiH21EEzSQNuB7pfvCbKBn0Jg=
 github.com/ncruces/go-sqlite3 v0.35.6/go.mod h1:6MfWBOFbHJVSJxmTCIUKCJdLl4TKkgO895RHerlDVo8=
 github.com/ncruces/go-sqlite3-wasm/v6 v6.3.35304 h1:dBSZlcEFdtBMvNRg34y50mConBPO/petSddSwGQVlSI=

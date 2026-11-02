@@ -3,7 +3,7 @@ module github.com/gematik/zero-lab/go/nonce
 go 1.26.4
 
 require (
-	github.com/gematik/zero-lab/go/kv v0.0.3-0.20261021083859-f5934a4ca8a1
+	github.com/gematik/zero-lab/go/kv v0.0.3-0.20261102185424-5ad95b53e1b3
 	github.com/hashicorp/go-secure-stdlib/nonceutil v0.1.0
 )
 

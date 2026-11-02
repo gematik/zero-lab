@@ -6,7 +6,7 @@ go 1.26.4
 // approved driver of spec/store's SQLite backend (TASK-103.7, 2026-10-16).
 require github.com/ncruces/go-sqlite3 v0.35.6
 
-require github.com/gematik/zero-lab/go/store v0.0.0-20261021083859-f5934a4ca8a1
+require github.com/gematik/zero-lab/go/store v0.0.0-20261102185424-5ad95b53e1b3
 
 require (
 	github.com/ncruces/go-sqlite3-wasm/v6 v6.3.35304 // indirect
