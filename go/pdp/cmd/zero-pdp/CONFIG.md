@@ -19,7 +19,8 @@ Three sources, the same split pep uses:
 | `PDP_NON_PROD` | `true` → NonProdMode (enables the mock IdP) | `false` |
 | `DATABASE_URL` | Postgres kv store; unset → in-memory | in-memory |
 
-Secrets (`sign_jwk_path`, `clients_policy_path`, …) are files referenced by path — never env values, never in
+`sign_jwk_path` is required: without a readable EC P-256 private key the server does not start
+(`zero-pdp jose generate-jwk` makes one). Secrets (`sign_jwk_path`, `clients_policy_path`, …) are files referenced by path — never env values, never in
 the kv store.
 
 ## Mock IdP (NonProdMode only)

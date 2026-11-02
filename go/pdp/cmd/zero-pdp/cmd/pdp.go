@@ -48,6 +48,10 @@ func createPdp() (*pdp.PDP, error) {
 	slog.Debug("Loaded config file", "config_file", configFile)
 
 	config.AuthzServerConfig.Store = openStore()
+	if config.AuthzServerConfig.SigningKey, err = config.AuthzServerConfig.LoadSigningKey(); err != nil {
+		slog.Error("Failed to load the signing key", "error", err)
+		os.Exit(1)
+	}
 
 	slog.Info("Creating Zero Trust PDP", "version", pdp.Version, "config_file", configFile, "workdir", viper.GetString("workdir"))
 	return pdp.New(*config)

@@ -93,6 +93,9 @@ func main() {
 	// only see the kv.Store interface.
 	store := openStore()
 	pdpCfg.AuthzServerConfig.Store = store
+	if pdpCfg.AuthzServerConfig.SigningKey, err = pdpCfg.AuthzServerConfig.LoadSigningKey(); err != nil {
+		log.Fatalf("load the signing key: %v", err)
+	}
 
 	// One origin: the issuer, the public URL and the bff's redirect base are the same public tunnel URL. The
 	// AS itself is discovered locally (it's in this process); the metadata it returns carries the public,

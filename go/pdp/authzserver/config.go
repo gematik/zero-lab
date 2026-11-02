@@ -38,6 +38,7 @@ type Config struct {
 	BaseDir                    string                   `yaml:"-"`
 	Issuer                     string                   `yaml:"issuer" validate:"required"`
 	SignJwkPath                string                   `yaml:"sign_jwk_path"`
+	SigningKey                 *SigningKey              `yaml:"-" validate:"-"`
 	ScopesSupported            []string                 `yaml:"scopes_supported"`
 	MetadataTemplate           ExtendedMetadata         `yaml:"metadata_template"`
 	DefaultIDPIss              string                   `yaml:"default_idp_iss"`
