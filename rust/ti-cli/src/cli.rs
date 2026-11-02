@@ -74,6 +74,7 @@ Examples:
   {bin} pki roots bundle --p12 --p12-password changeit -o roots.p12   # Java truststore
   {bin} pki tsl bundle --ca SMCB -o smcb.pem    # the TSL's CAs, as tsl show filters them
   {bin} pki tsl export -o ECC-RSA_TSL.xml       # the TSL as published, once it verified
+  {bin} pki trust export -o trust-bundle.json   # the set a server's helper reads
   {bin} pki inspect identity.p12                # password 00 unless --p12-password
   {bin} pki pkcs12 convert legacy.p12 modern.p12
   {bin} identity inspect --p12 smcb.p12 --p12-password-path pw.txt   # the AUT identity
@@ -352,9 +353,33 @@ pub enum PkiCommand {
     /// The TSL of an environment and the CAs taken from it
     #[command(subcommand)]
     Tsl(TslCommand),
+    /// Trust material for servers: the set a consumer loads from a mounted directory
+    #[command(subcommand)]
+    Trust(TrustCommand),
     /// PKCS#12 files: re-encode with modern encryption
     #[command(subcommand)]
     Pkcs12(Pkcs12Command),
+}
+
+/// `ti pki trust …`.
+#[derive(Debug, Subcommand)]
+pub enum TrustCommand {
+    /// Write roots.json, the TSL, its signature and its signer's status as one bundle file,
+    /// once a consumer's load of that file has verified it
+    Export(TrustExportArgs),
+}
+
+/// `ti pki trust export`.
+#[derive(Debug, Args)]
+pub struct TrustExportArgs {
+    #[command(flatten)]
+    pub trust: TrustArgs,
+    /// The bundle file; written whole or not at all, so a consumer never reads half of it
+    #[arg(short, long, value_name = "OUT")]
+    pub output: PathBuf,
+    /// Replace OUT if it exists
+    #[arg(long)]
+    pub force: bool,
 }
 
 /// `ti pki pkcs12 …`. `pki inspect` shows what a PKCS#12 file holds.

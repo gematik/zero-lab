@@ -15,7 +15,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4.13"
-ti-pki = { path = "..", features = ["dangerous-nonprod"] }
+ti-pki = { path = "..", features = ["dangerous-nonprod", "load"] }
 
 [[bin]]
 name = "detached_signature"
@@ -34,6 +34,13 @@ bench = false
 [[bin]]
 name = "ocsp_response"
 path = "fuzz_targets/ocsp_response.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "bundle"
+path = "fuzz_targets/bundle.rs"
 test = false
 doc = false
 bench = false
