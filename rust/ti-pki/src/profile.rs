@@ -200,6 +200,7 @@ impl Profile {
             .required_policies
             .extend_from_slice(self.extra_policies);
         validator.required_role_oids = self.effective_role_oids(t).to_vec();
+        validator.accepted_types = self.accepts_types.to_vec();
         validator.revocation = self.revocation_mode(config);
         validator
     }

@@ -16,5 +16,6 @@ use (
 	./pkcs12
 	./sqlitestore
 	./store
+	./tipki
 	./zaddy
 )

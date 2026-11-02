@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-01T16:11:00Z'
+updated_date: '2026-11-02T06:16:00Z'
 labels:
   - go
   - gemidp
@@ -26,3 +27,9 @@ go/gemidp takes the IDP-Dienst's signing key from the x5c of the discovery docum
 - [ ] #1 the discovery document's certificate is verified against the TSL with the IDP-Dienst profile and OCSP before its key is used; a failed verdict is a hard error, never a warning
 - [ ] #2 requirement-named tests with the spec corpus and a fake helper; the warning log line is gone
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-02, maintainer: option A, native. Depends on TASK-176. Check both certificates ti-idpd checks: the discovery signer and the token signer in the x5c of the puk_idp_sig JWK, which verifies challenges and id_tokens.
+<!-- SECTION:NOTES:END -->

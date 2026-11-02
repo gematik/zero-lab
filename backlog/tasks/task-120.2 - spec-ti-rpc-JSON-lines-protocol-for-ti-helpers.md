@@ -3,11 +3,12 @@ id: TASK-120.2
 title: 'spec/ti-rpc: JSON-lines protocol for ti helpers'
 status: To Do
 assignee: []
-created_date: '2026-10-20 14:07'
-updated_date: '2026-10-20 19:57'
+created_date: 2026-10-20 14:07
+updated_date: '2026-11-02T06:16:00Z'
 labels:
   - spec
   - interop
+  - parked
 dependencies: []
 parent_task_id: TASK-120
 priority: low
@@ -26,3 +27,9 @@ spec/ti-rpc/README.md: framing (one JSON object per line, UTF-8, a maximum line 
 - [ ] #2 pki.md and idpd.md with methods and schemas
 - [ ] #3 corpus run by the Rust server and the Go client
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-02, maintainer: parked. Critical flows go native (decision-10, amendment of 2026-11-02), so the helper does not continue for now. The work stays on the unmerged branches feat/ti-pki-helper and feat/ti-trust-export; spec/ti-rpc, ti-pki-helper, go/tirpc and ti pki trust export live there.
+<!-- SECTION:NOTES:END -->

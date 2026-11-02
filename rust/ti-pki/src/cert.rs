@@ -81,6 +81,7 @@ impl Certificate {
     /// policies, authority information access) is malformed or repeated.
     pub fn from_der(der: &[u8]) -> Result<Self, Error> {
         let inner = x509_cert::Certificate::from_der(der)?;
+        check_ec_point(&inner)?;
         let tbs = tbs_range(der)?;
         let tbs_cert = inner.tbs_certificate();
 
@@ -382,6 +383,11 @@ impl Certificate {
         issuer: &Certificate,
         algorithms: &AlgorithmSet,
     ) -> Result<(), SignatureError> {
+        // Outside what the signature covers, and no signature has unused bits: taking the bytes
+        // regardless would let a copy with this byte changed pass as the same certificate.
+        if self.0.inner.signature().as_bytes().is_none() {
+            return Err(SignatureError::Invalid);
+        }
         let alg = algorithms::find(
             algorithms,
             &issuer.public_key_alg_id(),
@@ -405,6 +411,23 @@ impl Certificate {
     pub fn has_policies_extension(&self) -> bool {
         self.has_extension(&ID_CE_CERTIFICATE_POLICIES)
     }
+}
+
+/// The TI issues uncompressed points only (gemSpec_Krypt), and the crates would decode any other form
+/// without a word: a key must have one encoding, or one key has several certificates.
+fn check_ec_point(certificate: &x509_cert::Certificate) -> Result<(), Error> {
+    const EC_PUBLIC_KEY: const_oid::ObjectIdentifier =
+        const_oid::ObjectIdentifier::new_unwrap("1.2.840.10045.2.1");
+    let key = certificate.tbs_certificate().subject_public_key_info();
+    if key.algorithm.oid == EC_PUBLIC_KEY
+        && key.subject_public_key.raw_bytes().first() != Some(&0x04)
+    {
+        return Err(Error::Malformed {
+            what: "certificate",
+            reason: "an EC public key that is not an uncompressed point".to_owned(),
+        });
+    }
+    Ok(())
 }
 
 /// Why [`Certificate::verify_signed_by`] failed.

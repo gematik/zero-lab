@@ -3,11 +3,12 @@ id: TASK-120.5
 title: 'ti-idpd-helper: idpd/1 (authenticate)'
 status: To Do
 assignee: []
-created_date: '2026-10-20 14:07'
-updated_date: '2026-10-20 19:57'
+created_date: 2026-10-20 14:07
+updated_date: '2026-11-02T06:16:00Z'
 labels:
   - rust
   - idpd
+  - parked
 dependencies:
   - TASK-120.3
   - TASK-120.4
@@ -28,3 +29,9 @@ rust/helpers/idpd, crate and binary ti-idpd-helper. Method authenticate with the
 - [ ] #2 secrets only as file paths
 - [ ] #3 IDP certificates checked against the TSL in both trust modes
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-02, maintainer: parked. Critical flows go native (decision-10, amendment of 2026-11-02), so the helper does not continue for now. The work stays on the unmerged branches feat/ti-pki-helper and feat/ti-trust-export; spec/ti-rpc, ti-pki-helper, go/tirpc and ti pki trust export live there.
+<!-- SECTION:NOTES:END -->

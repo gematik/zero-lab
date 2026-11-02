@@ -262,6 +262,13 @@ fn verify(
         ));
     }
     let basic = BasicOcspResponse::from_der(bytes.response.as_bytes()).map_err(undecodable)?;
+    // No signature covers these two, so nothing else would notice them changed.
+    if basic.signature_algorithm.tag() != Tag::Sequence || basic.signature.as_bytes().is_none() {
+        return Err(ValidationError::new(
+            ErrorCode::OcspUnavailable,
+            "OCSP response could not be decoded: its signature is not as DER has it",
+        ));
+    }
     let tbs_der = basic.tbs_response_data.to_der().map_err(undecodable)?;
     let data = ResponseData::from_der(&tbs_der).map_err(undecodable)?;
 

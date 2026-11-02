@@ -7,11 +7,13 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-01T16:11:00Z'
+updated_date: '2026-11-02T06:16:00Z'
 labels:
   - rust
   - ti-pki
   - ti-cli
   - interop
+  - parked
 dependencies:
   - TASK-166
 priority: medium
@@ -30,3 +32,9 @@ In Docker and Kubernetes, fetching and renewing trust material is separate from 
 - [ ] #2 a CronJob manifest and a compose example from the product image, documented in the deployment guide; the ConfigMap size limit stated with the volume fallback
 - [ ] #3 an import older than the hard expiry is refused; tested with the reloader
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-02, maintainer: parked. Critical flows go native (decision-10, amendment of 2026-11-02), so the helper does not continue for now. The work stays on the unmerged branches feat/ti-pki-helper and feat/ti-trust-export; spec/ti-rpc, ti-pki-helper, go/tirpc and ti pki trust export live there.
+<!-- SECTION:NOTES:END -->

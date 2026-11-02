@@ -1,0 +1,4515 @@
+[
+  {
+    "chain": [
+      "cross-rca1-for-rca7.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "cross-rca1-for-rca7.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "cross-rca1-for-rca7.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "cross-rca1-for-rca7.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "cross-rca1-for-rca7.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.RCA7 TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "cross-rca1-for-rca7.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "cross-rca1-for-rca7.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.RCA7 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "cross-rca1-for-rca7.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "cross-rca1-for-rca7.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "GEM.RCA7 TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "cross-rca1-for-rca7.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "cross-rca1-for-rca7.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "GEM.RCA7 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "cross-rca1-for-rca7.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "GEM.RCA7 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:cross-rca1-for-rca7.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "cross-rca1-not-rca.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "cross-rca1-not-rca.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "cross-rca1-not-rca.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "cross-rca1-not-rca.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "cross-rca1-not-rca.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "Not A Root"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "cross-rca1-not-rca.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "cross-rca1-not-rca.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "Not A Root"
+      ]
+    ],
+    "incomplete": false,
+    "name": "cross-rca1-not-rca.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "cross-rca1-not-rca.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "Not A Root"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "cross-rca1-not-rca.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "cross-rca1-not-rca.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "Not A Root"
+      ]
+    ],
+    "incomplete": false,
+    "name": "cross-rca1-not-rca.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "Not A Root"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:cross-rca1-not-rca.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "cross-rca7-for-rca1.pem",
+      "rca7.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "cross-rca7-for-rca1.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "cross-rca7-for-rca1.pem",
+      "rca7.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "cross-rca7-for-rca1.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "cross-rca7-for-rca1.pem",
+      "rca7.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA7 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "cross-rca7-for-rca1.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "cross-rca7-for-rca1.pem",
+      "rca7.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "cross-rca7-for-rca1.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA7 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "cross-rca7-for-rca1.pem",
+      "rca7.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA7 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "cross-rca7-for-rca1.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "cross-rca7-for-rca1.pem",
+      "rca7.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "cross-rca7-for-rca1.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA7 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "rca7.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:cross-rca7-for-rca1.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-after-short.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "SMC-B-After-Short TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-after-short.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-after-short.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "SMC-B-After-Short TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-Short TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-after-short.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-after-short.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "SMC-B-After-Short TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-Short TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-after-short.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-after-short.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "SMC-B-After-Short TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-Short TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-after-short.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "ee-after-short.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "SMC-B-After-Short TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-Short TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-after-short.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-after-short.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "SMC-B-After-Short TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-Short TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-after-short.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "SMC-B-After-Short TEST-ONLY"
+      ],
+      [
+        "signature_invalid",
+        "SMC-B-After-Short TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:ee-after-short.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-arzt.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-arzt.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-arzt.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-arzt.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-arzt.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "Dr. Arzt TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-arzt.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-arzt.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "Dr. Arzt TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-arzt.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "ee-arzt.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "Dr. Arzt TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-arzt.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-arzt.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "Dr. Arzt TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-arzt.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "Dr. Arzt TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:ee-arzt.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-critical-eku.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-critical-eku.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-critical-eku.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-critical-eku.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-critical-eku.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-Critical-EKU TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-critical-eku.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-critical-eku.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-Critical-EKU TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-critical-eku.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "ee-critical-eku.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "EE-Critical-EKU TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-critical-eku.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-critical-eku.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "EE-Critical-EKU TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-critical-eku.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "EE-Critical-EKU TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:ee-critical-eku.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-critical-unknown.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "unrecognized_critical_extension",
+        "EE-Critical-Unknown TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-critical-unknown.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-critical-unknown.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "unrecognized_critical_extension",
+        "EE-Critical-Unknown TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-critical-unknown.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-critical-unknown.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-Critical-Unknown TEST-ONLY"
+      ],
+      [
+        "unrecognized_critical_extension",
+        "EE-Critical-Unknown TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-critical-unknown.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-critical-unknown.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-Critical-Unknown TEST-ONLY"
+      ],
+      [
+        "unrecognized_critical_extension",
+        "EE-Critical-Unknown TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-critical-unknown.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "ee-critical-unknown.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "EE-Critical-Unknown TEST-ONLY"
+      ],
+      [
+        "unrecognized_critical_extension",
+        "EE-Critical-Unknown TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-critical-unknown.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-critical-unknown.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "EE-Critical-Unknown TEST-ONLY"
+      ],
+      [
+        "unrecognized_critical_extension",
+        "EE-Critical-Unknown TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-critical-unknown.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "unrecognized_critical_extension",
+        "EE-Critical-Unknown TEST-ONLY"
+      ],
+      [
+        "signature_invalid",
+        "EE-Critical-Unknown TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:ee-critical-unknown.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-deep.pem",
+      "sub-sub-ca.pem",
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "chain_incomplete",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-deep.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-deep.pem",
+      "sub-sub-ca.pem",
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "chain_incomplete",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-deep.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-deep.pem",
+      "sub-sub-ca.pem",
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-Deep TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubSubCA TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ],
+      [
+        "chain_incomplete",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-deep.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-deep.pem",
+      "sub-sub-ca.pem",
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-Deep TEST-ONLY"
+      ],
+      [
+        "chain_incomplete",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-deep.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubSubCA TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "ee-deep.pem",
+      "sub-sub-ca.pem",
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "EE-Deep TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubSubCA TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ],
+      [
+        "chain_incomplete",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-deep.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-deep.pem",
+      "sub-sub-ca.pem",
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "EE-Deep TEST-ONLY"
+      ],
+      [
+        "chain_incomplete",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-deep.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubSubCA TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "sub-sub-ca.pem",
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "EE-Deep TEST-ONLY"
+      ],
+      [
+        "chain_incomplete",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:ee-deep.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-expired.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "EE-Expired TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-expired.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-expired.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "EE-Expired TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-expired.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-expired.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-Expired TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-expired.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-expired.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-Expired TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-expired.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "ee-expired.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "EE-Expired TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-expired.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-expired.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "EE-Expired TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-expired.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "EE-Expired TEST-ONLY"
+      ],
+      [
+        "signature_invalid",
+        "EE-Expired TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:ee-expired.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-mixed.pem",
+      "sub-ca-mixed.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-mixed.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-mixed.pem",
+      "sub-ca-mixed.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-mixed.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-mixed.pem",
+      "sub-ca-mixed.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "mixed-curve-ee TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-Mixed TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-mixed.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-mixed.pem",
+      "sub-ca-mixed.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "mixed-curve-ee TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-mixed.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-Mixed TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "ee-mixed.pem",
+      "sub-ca-mixed.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "mixed-curve-ee TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-Mixed TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-mixed.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-mixed.pem",
+      "sub-ca-mixed.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "mixed-curve-ee TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-mixed.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-Mixed TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "sub-ca-mixed.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "mixed-curve-ee TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:ee-mixed.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-not-yet-valid.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-NotYetValid TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-not-yet-valid.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-not-yet-valid.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-NotYetValid TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-not-yet-valid.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-not-yet-valid.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-NotYetValid TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-not-yet-valid.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-not-yet-valid.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-NotYetValid TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-not-yet-valid.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "ee-not-yet-valid.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "EE-NotYetValid TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-not-yet-valid.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-not-yet-valid.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "EE-NotYetValid TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-not-yet-valid.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-NotYetValid TEST-ONLY"
+      ],
+      [
+        "signature_invalid",
+        "EE-NotYetValid TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:ee-not-yet-valid.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-p521.pem",
+      "rca7.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-p521.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-p521.pem",
+      "rca7.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-p521.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-p521.pem",
+      "rca7.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "P-521 TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA7 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-p521.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-p521.pem",
+      "rca7.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "P-521 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-p521.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA7 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "ee-p521.pem",
+      "rca7.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "P-521 TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA7 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-p521.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-p521.pem",
+      "rca7.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "P-521 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-p521.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA7 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "rca7.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "P-521 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:ee-p521.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-revoked.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-revoked.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-revoked.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-revoked.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-revoked.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-Revoked TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-revoked.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-revoked.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-Revoked TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-revoked.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "ee-revoked.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "EE-Revoked TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-revoked.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-revoked.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "EE-Revoked TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-revoked.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "EE-Revoked TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:ee-revoked.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-rogue.pem",
+      "rogue-root.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": true,
+    "name": "ee-rogue.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-rogue.pem",
+      "rogue-root.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": true,
+    "name": "ee-rogue.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-rogue.pem",
+      "rogue-root.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": true,
+    "name": "ee-rogue.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-rogue.pem",
+      "rogue-root.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": true,
+    "name": "ee-rogue.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-rogue.pem",
+      "rogue-root.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": true,
+    "name": "ee-rogue.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-rogue.pem",
+      "rogue-root.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": true,
+    "name": "ee-rogue.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "tampered",
+      "rogue-root.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": true,
+    "name": "tampered:ee-rogue.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-rsa-pss.pem",
+      "rca-rsa.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-rsa-pss.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-rsa-pss.pem",
+      "rca-rsa.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-rsa-pss.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-rsa-pss.pem",
+      "rca-rsa.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-RSA-PSS TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA-RSA TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-rsa-pss.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-rsa-pss.pem",
+      "rca-rsa.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-RSA-PSS TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-rsa-pss.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA-RSA TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "ee-rsa-pss.pem",
+      "rca-rsa.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "EE-RSA-PSS TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA-RSA TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-rsa-pss.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-rsa-pss.pem",
+      "rca-rsa.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "EE-RSA-PSS TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-rsa-pss.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA-RSA TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "rca-rsa.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "EE-RSA-PSS TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:ee-rsa-pss.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-short-fd-tls-s.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-short-fd-tls-s.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-short-fd-tls-s.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-short-fd-tls-s.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-short-fd-tls-s.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "FD-Short TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-Short TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-short-fd-tls-s.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-short-fd-tls-s.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "FD-Short TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-short-fd-tls-s.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-Short TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "ee-short-fd-tls-s.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "FD-Short TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-Short TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-short-fd-tls-s.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-short-fd-tls-s.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "FD-Short TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-short-fd-tls-s.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-Short TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "FD-Short TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:ee-short-fd-tls-s.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-short-hci-aut.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-short-hci-aut.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-short-hci-aut.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-short-hci-aut.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-short-hci-aut.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "SMC-B-Short TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-Short TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-short-hci-aut.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-short-hci-aut.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "SMC-B-Short TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-short-hci-aut.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-Short TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "ee-short-hci-aut.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "SMC-B-Short TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-Short TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-short-hci-aut.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-short-hci-aut.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "SMC-B-Short TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-short-hci-aut.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-Short TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "SMC-B-Short TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:ee-short-hci-aut.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-short-hp-aut.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-short-hp-aut.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-short-hp-aut.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-short-hp-aut.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-short-hp-aut.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "HBA-Short TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-Short TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-short-hp-aut.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-short-hp-aut.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "HBA-Short TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-short-hp-aut.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-Short TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "ee-short-hp-aut.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "HBA-Short TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-Short TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-short-hp-aut.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-short-hp-aut.pem",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "HBA-Short TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-short-hp-aut.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-Short TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "HBA-Short TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:ee-short-hp-aut.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-under-ee.pem",
+      "ee-arzt.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "chain_incomplete",
+        "Dr. Arzt TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-under-ee.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-under-ee.pem",
+      "ee-arzt.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "chain_incomplete",
+        "Dr. Arzt TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-under-ee.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-under-ee.pem",
+      "ee-arzt.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-Under-EE TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "Dr. Arzt TEST-ONLY"
+      ],
+      [
+        "chain_incomplete",
+        "Dr. Arzt TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-under-ee.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-under-ee.pem",
+      "ee-arzt.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-Under-EE TEST-ONLY"
+      ],
+      [
+        "chain_incomplete",
+        "Dr. Arzt TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-under-ee.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "Dr. Arzt TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "ee-under-ee.pem",
+      "ee-arzt.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "EE-Under-EE TEST-ONLY"
+      ],
+      [
+        "expired",
+        "Dr. Arzt TEST-ONLY"
+      ],
+      [
+        "chain_incomplete",
+        "Dr. Arzt TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-under-ee.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-under-ee.pem",
+      "ee-arzt.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "EE-Under-EE TEST-ONLY"
+      ],
+      [
+        "chain_incomplete",
+        "Dr. Arzt TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-under-ee.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "Dr. Arzt TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "ee-arzt.pem",
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "EE-Under-EE TEST-ONLY"
+      ],
+      [
+        "chain_incomplete",
+        "Dr. Arzt TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:ee-under-ee.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-under-expired.pem",
+      "sub-ca-expired.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubCA-Expired TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-under-expired.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-under-expired.pem",
+      "sub-ca-expired.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubCA-Expired TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-under-expired.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-under-expired.pem",
+      "sub-ca-expired.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-UnderExpired TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-Expired TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-under-expired.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-under-expired.pem",
+      "sub-ca-expired.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-UnderExpired TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-Expired TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-under-expired.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-under-expired.pem",
+      "sub-ca-expired.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "EE-UnderExpired TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-Expired TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-under-expired.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-under-expired.pem",
+      "sub-ca-expired.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "EE-UnderExpired TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-Expired TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-under-expired.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "tampered",
+      "sub-ca-expired.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "EE-UnderExpired TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-Expired TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:ee-under-expired.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-under-name-constraints.pem",
+      "sub-ca-name-constraints.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "unrecognized_critical_extension",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-under-name-constraints.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-under-name-constraints.pem",
+      "sub-ca-name-constraints.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "unrecognized_critical_extension",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-under-name-constraints.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-under-name-constraints.pem",
+      "sub-ca-name-constraints.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-Under-NameConstraints TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ],
+      [
+        "unrecognized_critical_extension",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-under-name-constraints.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-under-name-constraints.pem",
+      "sub-ca-name-constraints.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "EE-Under-NameConstraints TEST-ONLY"
+      ],
+      [
+        "unrecognized_critical_extension",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-under-name-constraints.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "ee-under-name-constraints.pem",
+      "sub-ca-name-constraints.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "EE-Under-NameConstraints TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ],
+      [
+        "unrecognized_critical_extension",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-under-name-constraints.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-under-name-constraints.pem",
+      "sub-ca-name-constraints.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "EE-Under-NameConstraints TEST-ONLY"
+      ],
+      [
+        "unrecognized_critical_extension",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-under-name-constraints.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "sub-ca-name-constraints.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "EE-Under-NameConstraints TEST-ONLY"
+      ],
+      [
+        "unrecognized_critical_extension",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:ee-under-name-constraints.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-zeta.pem",
+      "sub-ca-komp.pem",
+      "rca7.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-zeta.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-zeta.pem",
+      "sub-ca-komp.pem",
+      "rca7.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "ee-zeta.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-zeta.pem",
+      "sub-ca-komp.pem",
+      "rca7.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "zeta.ti-dienste.de TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-Komp TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA7 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-zeta.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-zeta.pem",
+      "sub-ca-komp.pem",
+      "rca7.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "zeta.ti-dienste.de TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-zeta.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-Komp TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA7 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "ee-zeta.pem",
+      "sub-ca-komp.pem",
+      "rca7.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "zeta.ti-dienste.de TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-Komp TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA7 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-zeta.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "ee-zeta.pem",
+      "sub-ca-komp.pem",
+      "rca7.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "zeta.ti-dienste.de TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "ee-zeta.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-Komp TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA7 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "sub-ca-komp.pem",
+      "rca7.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "zeta.ti-dienste.de TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:ee-zeta.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "rogue-root.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": true,
+    "name": "rogue-root.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "rogue-root.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": true,
+    "name": "rogue-root.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "rogue-root.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": true,
+    "name": "rogue-root.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "rogue-root.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": true,
+    "name": "rogue-root.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "rogue-root.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": true,
+    "name": "rogue-root.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "rogue-root.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": true,
+    "name": "rogue-root.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "tampered"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": true,
+    "name": "tampered:rogue-root.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-expired.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubCA-Expired TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-expired.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-expired.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubCA-Expired TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-expired.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-expired.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.SubCA-Expired TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-expired.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-expired.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.SubCA-Expired TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-expired.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-expired.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubCA-Expired TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-expired.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-expired.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubCA-Expired TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-expired.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "tampered",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubCA-Expired TEST-ONLY"
+      ],
+      [
+        "signature_invalid",
+        "GEM.SubCA-Expired TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:sub-ca-expired.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "sub-ca-hba.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "sub-ca-hba.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-hba.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-hba.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-hba.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-hba.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-hba.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "GEM.SubCA-HBA TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:sub-ca-hba.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-komp.pem",
+      "rca7.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "sub-ca-komp.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-komp.pem",
+      "rca7.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "sub-ca-komp.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-komp.pem",
+      "rca7.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.SubCA-Komp TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA7 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-komp.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-komp.pem",
+      "rca7.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.SubCA-Komp TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-komp.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA7 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "sub-ca-komp.pem",
+      "rca7.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubCA-Komp TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA7 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-komp.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-komp.pem",
+      "rca7.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubCA-Komp TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-komp.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA7 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "rca7.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "GEM.SubCA-Komp TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:sub-ca-komp.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-mixed.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "sub-ca-mixed.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-mixed.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "sub-ca-mixed.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-mixed.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.SubCA-Mixed TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-mixed.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-mixed.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.SubCA-Mixed TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-mixed.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "sub-ca-mixed.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubCA-Mixed TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-mixed.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-mixed.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubCA-Mixed TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-mixed.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "GEM.SubCA-Mixed TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:sub-ca-mixed.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-name-constraints.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "unrecognized_critical_extension",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-name-constraints.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-name-constraints.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "unrecognized_critical_extension",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-name-constraints.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-name-constraints.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ],
+      [
+        "unrecognized_critical_extension",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-name-constraints.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-name-constraints.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ],
+      [
+        "unrecognized_critical_extension",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-name-constraints.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "sub-ca-name-constraints.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ],
+      [
+        "unrecognized_critical_extension",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-name-constraints.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-name-constraints.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ],
+      [
+        "unrecognized_critical_extension",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-name-constraints.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "unrecognized_critical_extension",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ],
+      [
+        "signature_invalid",
+        "GEM.SubCA-NameConstraints TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:sub-ca-name-constraints.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "sub-ca-pathlen0.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "sub-ca-pathlen0.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-pathlen0.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-pathlen0.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-pathlen0.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-pathlen0.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:sub-ca-pathlen0.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "sub-ca-short.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "sub-ca-short.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.SubCA-Short TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-short.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.SubCA-Short TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-short.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubCA-Short TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-short.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-ca-short.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubCA-Short TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-ca-short.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "GEM.SubCA-Short TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:sub-ca-short.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-sub-ca.pem",
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [],
+    "incomplete": false,
+    "name": "sub-sub-ca.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-sub-ca.pem",
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [],
+    "incomplete": false,
+    "name": "sub-sub-ca.pem",
+    "now": 1767225600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-sub-ca.pem",
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.SubSubCA TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ],
+      [
+        "not_yet_valid",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-sub-ca.pem",
+    "now": 1451001600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-sub-ca.pem",
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "not_yet_valid",
+        "GEM.SubSubCA TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-sub-ca.pem",
+    "now": 1451001600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "sub-sub-ca.pem",
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubSubCA TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ],
+      [
+        "expired",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-sub-ca.pem",
+    "now": 2083449600,
+    "warnings": []
+  },
+  {
+    "chain": [
+      "sub-sub-ca.pem",
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": true,
+    "errors": [
+      [
+        "expired",
+        "GEM.SubSubCA TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "sub-sub-ca.pem",
+    "now": 2083449600,
+    "warnings": [
+      [
+        "issued_before_ca_expiry",
+        "GEM.SubCA-PathLen0 TEST-ONLY"
+      ],
+      [
+        "issued_before_ca_expiry",
+        "GEM.RCA1 TEST-ONLY"
+      ]
+    ]
+  },
+  {
+    "chain": [
+      "tampered",
+      "sub-ca-pathlen0.pem",
+      "rca1.pem"
+    ],
+    "compromise": false,
+    "errors": [
+      [
+        "signature_invalid",
+        "GEM.SubSubCA TEST-ONLY"
+      ]
+    ],
+    "incomplete": false,
+    "name": "tampered:sub-sub-ca.pem",
+    "now": 1767225600,
+    "warnings": []
+  }
+]

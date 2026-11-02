@@ -10,6 +10,8 @@ specification. Why and when a specification is needed is in
 |---|---|---|
 | [tsl-detached](tsl-detached/README.md) | TSL verification by the detached signature and the published signer status | `rust/ti-pki` |
 | [tsl-xmldsig](tsl-xmldsig/README.md) | TSL signer, update, anchor change and CA status (parts B to G); part A is withdrawn | `rust/ti-pki` |
+| [pki-path](pki-path/README.md) | Certificate chains from a trust bundle, without a network | `rust/ti-pki`, `go/tipki` |
+| [pki-profiles](pki-profiles/README.md) | Certificate types, admission and validation profiles | `rust/ti-pki`, `go/tipki` |
 | [pkcs12](pkcs12/README.md) | PKCS#12 decoding and encoding | `rust/ti-pkcs12`, `go/pkcs12` |
 | [store](store/README.md) | Shared sealed store of the command-line tools: records, keyring, SQLite and files layout, profiles, migrations | `rust/ti-store`, `go/store`; JVM planned |
 

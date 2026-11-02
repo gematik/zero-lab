@@ -259,7 +259,11 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   `trust.tsl` names the list, its signer and the TSL signer CA; `trust.tsl_warnings`
   holds `no_ocsp_check` when the signer's OCSP status was not queried (offline, `--at`).
   `revocation.authorization` is `tsl_listed` for a responder the TSL lists for the
-  issuing CA's TSP. A CA counts only if a verified root signed it. A CA the TSL lists
+  issuing CA's TSP. A CA counts only if a verified root signed it and, with a verified
+  TSL, the TSL names it (`ca_not_in_tsl`). A responder is asked only about a certificate
+  that has passed everything else, so a failed one shows no revocation results.
+  `--validation-profile` refuses a type the profile does not accept
+  (`profile_type_mismatch`, an error, no longer a warning). A CA the TSL lists
   as revoked still vouches for what it issued before its `StatusStartingTime`
   (gemSpec_PKI Tab_PKI_271, TUC_PKI_002): such an end entity is valid with the warning
   `issued_before_ca_revocation`, a later one fails with `ca_revoked_in_tsl`. `tsl show`

@@ -183,9 +183,8 @@ brainpool/                 Curves, certificate/key parsing, SignFunc, ECDH, Gene
 
 ## Development
 
-The module is frozen: bugfix and security only; new brainpool work happens in Rust
-([Go profile](../docs/design.md)). The repository's rules apply
-([docs](../../docs/README.md)); in addition:
+The module is active: `go/tipki`'s trust path parses and verifies through it (decision-10, amendment
+of 2026-11-02). The repository's rules apply ([docs](../../docs/README.md)); in addition:
 
 - A secret scalar on brainpoolP256r1 never goes through `elliptic.Curve` methods:
   signing, ECDH and public-key derivation route through `hasConstantTimeCore` to

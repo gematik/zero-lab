@@ -66,3 +66,15 @@ is doc-2.
   relying parties' certificate verification (TASK-171) build on the helper.
 - A Go implementation of a TI certificate rule is not proposed again unless (d) applies
   and is measured.
+
+## Amendment, 2026-11-02
+
+Maintainer: critical flows use the smallest possible Go-native libraries. This replaces 3 (b) and (c)
+and the last consequence above, for what is built natively: such a library needs no measured
+per-request path. It keeps their safeguards: a shared specification, a corpus Rust writes and both
+run, and tests named after the rules. It stays as small as the flow allows, and aligns to `ti-pki`
+rather than to the old `gempki`.
+
+First: `go/tipki`, certificate types, admission and profiles (`spec/pki-profiles`). It reads a
+certificate and decides nothing about trust. Chain, TSL and OCSP are decided per flow, and with
+them what remains of the helper.
