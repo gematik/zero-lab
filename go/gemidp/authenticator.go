@@ -27,6 +27,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -86,12 +87,15 @@ type Authenticator struct {
 	baseURL     string
 	signerFunc  ChallengeSignerFunc
 	httpClient  *http.Client
+	trust       CertificateTrust
 }
 
 // AuthenticatorConfig selects the IDP-Dienst instance and the signer of an Authenticator.
 type AuthenticatorConfig struct {
 	Idp        Idp
 	SignerFunc ChallengeSignerFunc
+	// Trust decides about the IDP-Dienst's certificates; required (IDPV-003).
+	Trust CertificateTrust
 
 	// HTTPClient is used for metadata and key fetches; a redirect-suppressing copy of it drives the
 	// challenge flow. When nil, a client with a default timeout is created.
@@ -100,13 +104,16 @@ type AuthenticatorConfig struct {
 
 // NewAuthenticator creates a new Authenticator
 func NewAuthenticator(config AuthenticatorConfig) (*Authenticator, error) {
+	if config.Trust == nil {
+		return nil, errors.New("no trust for the IDP-Dienst's certificates")
+	}
 	httpClient := config.HTTPClient
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
 	}
 
 	baseURL := config.Idp.baseURL
-	metadata, err := fetchMetadata(baseURL, httpClient)
+	metadata, err := fetchMetadata(baseURL, httpClient, config.Trust)
 	if err != nil {
 		return nil, err
 	}
@@ -117,6 +124,7 @@ func NewAuthenticator(config AuthenticatorConfig) (*Authenticator, error) {
 		baseURL:     baseURL,
 		signerFunc:  config.SignerFunc,
 		httpClient:  httpClient,
+		trust:       config.Trust,
 	}, nil
 }
 
@@ -134,15 +142,14 @@ type CodeRedirectURL struct {
 func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	// fetch fresh keys
 	// encrypt the signed challenge response for the idp
-	idpEncKey, err := fetchKey(a.Metadata.EncryptionKeyURI, a.httpClient)
+	idpEncKey, err := fetchEncryptionKey(a.Metadata.EncryptionKeyURI, a.httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("fetching challenge encryption key: %w", err)
 	}
-	idpSigKey, err := fetchKey(a.Metadata.SigningKeyURI, a.httpClient)
+	idpSigKey, err := fetchSigningKey(a.Metadata.SigningKeyURI, a.httpClient, a.trust)
 	if err != nil {
 		return nil, fmt.Errorf("fetching challenge signing key: %w", err)
 	}
-	slog.Warn("IDP Authenticator is using signing and encryption keys with unverified certificates")
 
 	// derive a redirect-suppressing client from the injected one (the challenge flow inspects the
 	// 302 Location itself), without mutating the caller's client
@@ -229,7 +236,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 		Header("cty", "NJWT").
 		Header("exp", challengePayload.Exp).
 		Plaintext([]byte(challengeResponseClaimsJSON)).
-		EncryptECDHES(idpEncKey.Key.(*ecdsa.PublicKey))
+		EncryptECDHES(idpEncKey)
 	if err != nil {
 		return nil, fmt.Errorf("encrypting challenge response: %w", err)
 	}

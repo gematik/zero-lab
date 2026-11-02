@@ -3,10 +3,10 @@ id: TASK-171
 title: >-
   gemidp: verify the IDP-Dienst certificate against the TSL (Go relying-party
   side)
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-01T16:11:00Z'
-updated_date: '2026-11-02T06:16:00Z'
+updated_date: '2026-11-02T16:07:00Z'
 labels:
   - go
   - gemidp
@@ -24,12 +24,14 @@ go/gemidp takes the IDP-Dienst's signing key from the x5c of the discovery docum
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 the discovery document's certificate is verified against the TSL with the IDP-Dienst profile and OCSP before its key is used; a failed verdict is a hard error, never a warning
-- [ ] #2 requirement-named tests with the spec corpus and a fake helper; the warning log line is gone
+- [x] #1 the discovery document's certificate is verified against the TSL with the IDP-Dienst profile and OCSP before its key is used; a failed verdict is a hard error, never a warning
+- [x] #2 requirement-named tests with the spec corpus and a fake helper; the warning log line is gone
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-02, maintainer: option A, native. Depends on TASK-176. Check both certificates ti-idpd checks: the discovery signer and the token signer in the x5c of the puk_idp_sig JWK, which verifies challenges and id_tokens.
+
+Maintainer, 2026-11-02: both anchor sets compiled in, the environment picks (decision-11). Also: an unnamed or unknown environment refuses to start; puk_idp_enc has no certificate, accepted and recorded as IDPV-004, same as ti-idpd. Live run: both reference IDP certificates pass idpd-sig with OCSP via just gemidp-trust-test. The bundle comes from ti pki trust export, which is on feat/ti-pki-trust-export and not on this branch. go/gemidp replaces go/tipki with ../tipki until the first push and just sync. AC 2 says fake helper from the helper plan; the native path uses a fake trust and a fake IDP instead.
 <!-- SECTION:NOTES:END -->

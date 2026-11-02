@@ -184,7 +184,8 @@ The [server rules](../../docs/design/servers.md), in Go terms:
   API or the key provider sidecar, and a missing key fails start-up (rules 6 and 17).
 - Images are `scratch` with a static `CGO_ENABLED=0 -trimpath` binary, `USER 65532`,
   base images pinned by digest, signed with provenance and an SBOM. Test-only code sits
-  behind build tags and is not in production builds.
+  behind build tags and is not in production builds, apart from the TEST-ONLY trust
+  anchors, which the environment selects (decision-11).
 
 ## 11. Build and release
 

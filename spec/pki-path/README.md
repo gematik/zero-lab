@@ -86,6 +86,23 @@ the caller's transport. Without a route to the responder there is no verificatio
   a certificate of a type its CA is not for fails, whatever its policies claim. A CA with no types stated may issue none.
   A TSL signer is judged by TUC_PKI_011 instead, since the list states no signer type for its CA.
 
+## IDP-Dienst
+
+`go/gemidp` puts its keys to use as `ti-idpd` does.
+
+- **IDPV-001** The discovery signer in the document's `x5c` passes before its key verifies anything. A refused
+  certificate stops the client; a trusted one does not excuse a bad signature.
+- **IDPV-002** `puk_idp_sig` carries its certificate in `x5c`, with the same key as the JWK, and that certificate passes
+  on every fetch, before the key verifies a challenge or a token.
+- **IDPV-003** There is no client or authenticator without trust material. Nothing downgrades a failure to a warning.
+- **IDPV-004** `puk_idp_enc` is published without a certificate, so nothing about its standing can be verified; this is a
+  known gap, the same in `ti-idpd`. Its address comes from the verified discovery document, TLS carries it, and it must
+  be a brainpoolP256r1 key with `use` `enc`.
+- **IDPV-005** The check is the `idpd-sig` profile with hard-fail OCSP, against the bundle `ti pki trust export` writes.
+  A bundle missing, invalid or too old (BUNDLE-003) refuses every certificate, and the last good one takes no part.
+- **IDPV-006** The environment decides the anchors, and both sets are compiled in (decision-11): production trusts only
+  GEM.RCA7 and GEM.TSL-CA3, test and reference only the TEST-ONLY pair. A missing or unknown environment does not start.
+
 ## Bundle
 
 - **BUNDLE-001** A bundle is one JSON file: `format_version` 2, `label`, `anchor_sha256` as 64 hex digits, and
@@ -135,6 +152,7 @@ anchors, and every cross certificate against every root by the step that fails.
 | OCSP-005 | unit tests in `ocsp.rs` | `TestOCSPStatusErrorsAreRepeatedThenTheResponderRests`, `TestOCSPResultsAreCachedWithinTheirBounds` |
 | VALID-001 to 003 | `valid_001_the_corpus_is_what_ti_pki_says` | `TestVALID001EveryVerdictIsThatOfTiPki` |
 | VALID-007 | `tsl_states_the_types_a_ca_may_issue`, `valid_001_the_corpus_is_what_ti_pki_says` | `TestVALID007TheTypesTheListStates`, `TestVALID007TheRealListDecidesWhatACAMayIssue` |
+| IDPV-001 to 006 | | `go/gemidp/trust_test.go`, `TestIDPV<n>…` |
 | VALID-004 | `no_responder_is_asked_for_a_certificate_that_failed` | `TestVALID004NoResponderIsAskedForACertificateThatFailed` |
 | VALID-005 | `a_profile_refuses_a_type_it_does_not_accept` | `TestVALID005AProfileRefusesATypeItDoesNotAccept` |
 | VALID-006 | `a_ca_the_verified_tsl_does_not_name_gives_no_standing` | `TestVALID006ACATheVerifiedListDoesNotNameGivesNoStanding`, `TestVALID006ACAUnderTheRealList` |

@@ -134,14 +134,14 @@ func (jwk *JSONWebKey) MarshalJSON() ([]byte, error) {
 	jwkAlias := Alias(*jwk)
 
 	if key, ok := jwk.Key.(*ecdsa.PrivateKey); ok {
-		jwkAlias.D = base64.RawURLEncoding.EncodeToString(key.D.Bytes())
-		jwkAlias.X = base64.RawURLEncoding.EncodeToString(key.X.Bytes())
-		jwkAlias.Y = base64.RawURLEncoding.EncodeToString(key.Y.Bytes())
+		jwkAlias.D = encodeCoordinate(key.D, key.Curve)
+		jwkAlias.X = encodeCoordinate(key.X, key.Curve)
+		jwkAlias.Y = encodeCoordinate(key.Y, key.Curve)
 	} else if key, ok := jwk.Key.(*ecdsa.PublicKey); ok {
 		jwkAlias.KeyType = "EC"
 		jwkAlias.CurveName = jwaForCurve(key.Curve)
-		jwkAlias.X = base64.RawURLEncoding.EncodeToString(key.X.Bytes())
-		jwkAlias.Y = base64.RawURLEncoding.EncodeToString(key.Y.Bytes())
+		jwkAlias.X = encodeCoordinate(key.X, key.Curve)
+		jwkAlias.Y = encodeCoordinate(key.Y, key.Curve)
 	}
 
 	if len(jwk.Certificates) > 0 {
@@ -152,6 +152,12 @@ func (jwk *JSONWebKey) MarshalJSON() ([]byte, error) {
 	}
 
 	return json.Marshal(jwkAlias)
+}
+
+// encodeCoordinate writes value at the curve's full length, as RFC 7518 6.2.1.2 and 6.2.2.1 require: big.Int
+// alone drops leading zeros, and a strict peer refuses the short form.
+func encodeCoordinate(value *big.Int, curve elliptic.Curve) string {
+	return base64.RawURLEncoding.EncodeToString(value.FillBytes(make([]byte, (curve.Params().BitSize+7)/8)))
 }
 
 // validateECPrivateScalar checks d ∈ [1, n-1].

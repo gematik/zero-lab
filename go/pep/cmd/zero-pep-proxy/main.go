@@ -35,6 +35,7 @@
 //	PEP_OIDF_RP_CONFIG_PATH  gematik OIDF relying-party config (YAML); enables federation login
 //	PEP_GEMIDP_CLIENT_ID     gematik IDP-Dienst client_id (enables gemidp login)
 //	PEP_GEMIDP_ENV           test|ref|prod (default prod); or PEP_GEMIDP_BASE_URL to override
+//	PEP_GEMIDP_TRUST_BUNDLE_PATH  the file `ti pki trust export` writes; required with gemidp
 //	PEP_GEMIDP_REDIRECT_URI  redirect_uri the gemidp client sends (default <public>/oauth2/callback)
 //	PEP_GEMIDP_REDIRECT_SCOPES / _NAME / _LOGO_URI / _USER_AGENT  gemidp options (always Authenticator flow)
 //	PEP_COOKIE_NAME          session cookie name (default ZERO-PEP-SID)
