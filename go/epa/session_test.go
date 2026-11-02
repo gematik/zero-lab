@@ -24,6 +24,7 @@ package epa_test
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -154,7 +155,7 @@ func providePNFromShellEnv(provideHCV epa.ProvideHCVFunc) epa.ProvidePNFunc {
 		hmacKey := os.Getenv("VSDM_HMAC_KEY")
 		hmacKid := os.Getenv("VSDM_HMAC_KID")
 		if hmacKey == "" || hmacKid == "" {
-			return "", fmt.Errorf("VSDM_HMAC_KEY/VSDM_HMAC_KID not set in environment")
+			return "", errors.New("VSDM_HMAC_KEY/VSDM_HMAC_KID not set in environment")
 		}
 		pn, err := epa.CalculatePNv2(hmacKey, hmacKid, provideHCV)
 		if err != nil {

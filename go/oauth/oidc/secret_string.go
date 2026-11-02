@@ -48,7 +48,6 @@ func (s SecretString) MarshalJSON() ([]byte, error) {
 }
 
 func (s *SecretString) UnmarshalJSON(data []byte) error {
-
 	if err := json.Unmarshal(data, &s.value); err != nil {
 		return fmt.Errorf("unable to unmarshal secret: %w", err)
 	}

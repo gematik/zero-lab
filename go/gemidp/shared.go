@@ -25,6 +25,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -72,9 +73,11 @@ func NewIdp(env Environment, baseUrl string) Idp {
 	}
 }
 
-var IdpProduction = NewIdp(EnvironmentProduction, "https://idp.app.ti-dienste.de")
-var IdpReference = NewIdp(EnvironmentReference, "https://idp-ref.app.ti-dienste.de")
-var IdpTest = NewIdp(EnvironmentTest, "https://idp-test.app.ti-dienste.de")
+var (
+	IdpProduction = NewIdp(EnvironmentProduction, "https://idp.app.ti-dienste.de")
+	IdpReference  = NewIdp(EnvironmentReference, "https://idp-ref.app.ti-dienste.de")
+	IdpTest       = NewIdp(EnvironmentTest, "https://idp-test.app.ti-dienste.de")
+)
 
 func GetIdpByEnvironment(env Environment) Idp {
 	switch env {
@@ -155,7 +158,7 @@ func fetchMetadata(baseURL string, httpClient *http.Client) (*Metadata, error) {
 func extractKeyFromX5CHeader(data []byte) (*josebp.JSONWebKey, error) {
 	parts := strings.Split(string(data), ".")
 	if len(parts) != 3 {
-		return nil, fmt.Errorf("invalid JWT format")
+		return nil, errors.New("invalid JWT format")
 	}
 
 	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
@@ -174,11 +177,11 @@ func extractKeyFromX5CHeader(data []byte) (*josebp.JSONWebKey, error) {
 	}
 
 	if len(headerStruct.X5c) == 0 {
-		return nil, fmt.Errorf("no certificate found in header")
+		return nil, errors.New("no certificate found in header")
 	}
 
 	if headerStruct.Kid == "" {
-		return nil, fmt.Errorf("no kid found in header")
+		return nil, errors.New("no kid found in header")
 	}
 
 	cert, err := brainpool.ParseCertificate(headerStruct.X5c[0])

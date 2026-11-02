@@ -22,6 +22,7 @@
 package authzserver
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -37,7 +38,8 @@ func TestRegistrationEndpointClosed(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 
 	err := server.RegistrationEndpoint(rec, req)
-	authzErr, ok := err.(*Error)
+	authzErr := &Error{}
+	ok := errors.As(err, &authzErr)
 	if !ok {
 		t.Fatalf("expected *Error, got %T: %v", err, err)
 	}

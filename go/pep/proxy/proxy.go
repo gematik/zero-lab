@@ -28,6 +28,7 @@ package proxy
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -91,10 +92,10 @@ type Server struct {
 
 func New(cfg Config) (*Server, error) {
 	if cfg.Backend == nil {
-		return nil, fmt.Errorf("proxy: backend is required")
+		return nil, errors.New("proxy: backend is required")
 	}
 	if cfg.Store == nil {
-		return nil, fmt.Errorf("proxy: store is required")
+		return nil, errors.New("proxy: store is required")
 	}
 	if cfg.CookieName == "" {
 		cfg.CookieName = "ZERO-PEP-SID"

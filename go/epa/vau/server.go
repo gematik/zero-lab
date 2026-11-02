@@ -297,7 +297,6 @@ func (s *Server) HandleMessage3(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/cbor")
 	w.Write(m4cbor)
-
 }
 
 func (s *Server) Decapsulate(ecdh_ss1, kem_ss1 []byte, ecdh_ct *ECDHData, kem_ct []byte) (k2_c2s_key_confirmation, k2_c2s_app_data, k2_s2c_key_confirmation, k2_s2c_app_data, key_id []byte, err error) {

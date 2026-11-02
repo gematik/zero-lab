@@ -24,6 +24,7 @@ package authzserver
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -65,7 +66,7 @@ func (c *ClientAssertionClaims) Validate() error {
 func parseClientAssertionClaims(assertion string) (*ClientAssertionClaims, error) {
 	parts := strings.Split(assertion, ".")
 	if len(parts) < 2 {
-		return nil, fmt.Errorf("malformed client_assertion")
+		return nil, errors.New("malformed client_assertion")
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {

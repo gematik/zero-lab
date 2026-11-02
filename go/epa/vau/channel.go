@@ -28,6 +28,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -41,8 +42,10 @@ import (
 
 type Env byte
 
-const EnvNonPU Env = 0
-const EnvPU Env = 1
+const (
+	EnvNonPU Env = 0
+	EnvPU    Env = 1
+)
 
 const (
 	Version        = byte(0x02)
@@ -135,14 +138,14 @@ func (c *Channel) Snapshot() ChannelSnapshot {
 // counters in the state.
 func RestoreChannel(state ChannelSnapshot, httpClient *http.Client) (*Channel, error) {
 	if httpClient == nil {
-		return nil, fmt.Errorf("RestoreChannel: httpClient is required")
+		return nil, errors.New("RestoreChannel: httpClient is required")
 	}
 	u, err := url.Parse(state.ChannelURL)
 	if err != nil {
 		return nil, fmt.Errorf("RestoreChannel: parsing channel URL: %w", err)
 	}
 	if len(state.KeyID) == 0 || len(state.K2C2SAppData) == 0 || len(state.K2S2CAppData) == 0 {
-		return nil, fmt.Errorf("RestoreChannel: state is missing required key material")
+		return nil, errors.New("RestoreChannel: state is missing required key material")
 	}
 	return &Channel{
 		httpClient:              httpClient,

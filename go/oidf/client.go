@@ -23,6 +23,7 @@ package oidf
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -30,12 +31,13 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwe"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"golang.org/x/oauth2"
+
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
 type CodeChallengeMethod string
@@ -183,7 +185,7 @@ func (c *RelyingPartyClient) parseIDToken(response *oidc.TokenResponse) (jwt.Tok
 	aud, ok := tokenJwt.Audience()
 	if !ok {
 		slog.Error("token audience not found", "aud", aud)
-		return nil, fmt.Errorf("token audience not found")
+		return nil, errors.New("token audience not found")
 	}
 	var matchedAud string
 	for _, a := range aud {
@@ -194,7 +196,7 @@ func (c *RelyingPartyClient) parseIDToken(response *oidc.TokenResponse) (jwt.Tok
 	}
 	if matchedAud == "" {
 		slog.Error("token audience does not match client_id", "aud", aud, "client_id", c.rp.ClientID())
-		return nil, fmt.Errorf("token audience does not match client_id")
+		return nil, errors.New("token audience does not match client_id")
 	}
 
 	return tokenJwt, nil

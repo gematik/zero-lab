@@ -64,7 +64,7 @@ func TestOpenChannel(t *testing.T) {
 	}
 	t.Logf("Channel: %v", channel)
 
-	req, err := http.NewRequest("GET", "/epa/authz/v1/getNonce", nil)
+	req, err := http.NewRequest(http.MethodGet, "/epa/authz/v1/getNonce", nil)
 	if err != nil {
 		t.Fatalf("creating request: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestMockOpenChannel(t *testing.T) {
 	}
 	t.Logf("Channel: %v", channel)
 
-	req, err := http.NewRequest("GET", "/epa/authz/v1/getNonce", nil)
+	req, err := http.NewRequest(http.MethodGet, "/epa/authz/v1/getNonce", nil)
 	if err != nil {
 		t.Fatalf("creating request: %v", err)
 	}

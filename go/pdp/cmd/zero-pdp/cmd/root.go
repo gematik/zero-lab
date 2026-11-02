@@ -33,40 +33,37 @@ import (
 	"github.com/spf13/viper"
 )
 
-var (
-	rootCmd = &cobra.Command{
-		Use:   "zero-pdp",
-		Short: "Zero Trust Policy Decision Point",
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			workdir := viper.GetString("workdir")
-			if workdir != "" {
-				err := os.Chdir(workdir)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Failed to change working directory: %v\n", err)
-					os.Exit(1)
-				}
+var rootCmd = &cobra.Command{
+	Use:   "zero-pdp",
+	Short: "Zero Trust Policy Decision Point",
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		workdir := viper.GetString("workdir")
+		if workdir != "" {
+			err := os.Chdir(workdir)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to change working directory: %v\n", err)
+				os.Exit(1)
 			}
-			godotenv.Load()
+		}
+		godotenv.Load()
 
-			logLevel := slog.LevelInfo
-			if viper.GetBool("verbose") {
-				logLevel = slog.LevelDebug
-			}
-			if os.Getenv("PRETTY_LOGS") != "false" {
-				logger := slog.New(
-					console.NewHandler(os.Stderr, &console.HandlerOptions{Level: logLevel}),
-				)
-				slog.SetDefault(logger)
-			} else {
-				slog.SetLogLoggerLevel(logLevel)
-			}
-
-		},
-		Run: func(cmd *cobra.Command, args []string) {
-			cmd.Help()
-		},
-	}
-)
+		logLevel := slog.LevelInfo
+		if viper.GetBool("verbose") {
+			logLevel = slog.LevelDebug
+		}
+		if os.Getenv("PRETTY_LOGS") != "false" {
+			logger := slog.New(
+				console.NewHandler(os.Stderr, &console.HandlerOptions{Level: logLevel}),
+			)
+			slog.SetDefault(logger)
+		} else {
+			slog.SetLogLoggerLevel(logLevel)
+		}
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		cmd.Help()
+	},
+}
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {

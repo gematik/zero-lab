@@ -24,6 +24,7 @@ package proxy
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -239,7 +240,7 @@ func injectionFrom(ctx context.Context) *injection {
 func (g *Gateway) injectDPoP(out *http.Request, sess *Session, token string) error {
 	fwd, ok := g.deps.backend.(dpopForwarder)
 	if !ok {
-		return fmt.Errorf("backend does not support DPoP injection")
+		return errors.New("backend does not support DPoP injection")
 	}
 	return fwd.injectDPoP(out, sess, token)
 }

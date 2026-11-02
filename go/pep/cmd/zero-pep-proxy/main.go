@@ -71,11 +71,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv"
+
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/kv/postgres"
 	"github.com/gematik/zero-lab/go/pep"
 	"github.com/gematik/zero-lab/go/pep/proxy"
-	"github.com/joho/godotenv"
 )
 
 func env(key, def string) string {

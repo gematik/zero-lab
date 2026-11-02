@@ -23,6 +23,7 @@ package authzserver
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -44,7 +45,8 @@ func (s *Server) handle(h handlerFunc) http.HandlerFunc {
 			return
 		}
 		slog.Error("request error", "error", err, "path", r.URL.Path, "remote_addr", realIP(r))
-		if authzErr, ok := err.(*Error); ok {
+		authzErr := &Error{}
+		if errors.As(err, &authzErr) {
 			_ = writeJSON(w, authzErr.HttpStatus, authzErr)
 			return
 		}

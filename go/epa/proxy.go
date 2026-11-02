@@ -25,6 +25,7 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -60,7 +61,7 @@ func (e *MultiProviderError) Error() string {
 	for _, err := range e.Errors {
 		errStrings = append(errStrings, err.Error())
 	}
-	return fmt.Sprintf("multiple provider errors: %s", strings.Join(errStrings, "; "))
+	return "multiple provider errors: " + strings.Join(errStrings, "; ")
 }
 
 type Proxy struct {
@@ -247,10 +248,10 @@ func IDPEnvironment(env Env) string {
 // not verified on this path.
 func NewProxyWithSecurityFunctions(env Env, sf *SecurityFunctions, authenticator Authenticator, name string, timeout time.Duration, certPool *x509.CertPool) (*Proxy, error) {
 	if sf == nil {
-		return nil, fmt.Errorf("SecurityFunctions is required")
+		return nil, errors.New("SecurityFunctions is required")
 	}
 	if authenticator == nil {
-		return nil, fmt.Errorf("Authenticator is required")
+		return nil, errors.New("Authenticator is required")
 	}
 	return NewProxy(&ProxyConfig{
 		Env:               env,
@@ -431,7 +432,6 @@ func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNum
 			break
 		}
 	}
-
 }
 
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -449,7 +449,7 @@ func (p *Proxy) Close() {
 func (p *Proxy) entitle(session *Session, insurantID string) (time.Time, error) {
 	sf := p.config.SecurityFunctions
 	if sf == nil {
-		return time.Time{}, fmt.Errorf("no security functions configured")
+		return time.Time{}, errors.New("no security functions configured")
 	}
 
 	if sf.ProvidePoPP != nil {
@@ -461,7 +461,7 @@ func (p *Proxy) entitle(session *Session, insurantID string) (time.Time, error) 
 	}
 
 	if sf.ProvidePN == nil || sf.ProvideHCV == nil {
-		return time.Time{}, fmt.Errorf("no entitlement proof configured: set ProvidePoPP or ProvidePN+ProvideHCV")
+		return time.Time{}, errors.New("no entitlement proof configured: set ProvidePoPP or ProvidePN+ProvideHCV")
 	}
 
 	auditEvidence, err := sf.ProvidePN(insurantID)
@@ -580,7 +580,8 @@ func (p *Proxy) HandleForwardToVAUInsurant(w http.ResponseWriter, r *http.Reques
 	rm, err := p.findAndCacheRecord(insurantID)
 	if err != nil {
 		slog.Error("Failed to find record", "insurantID", insurantID, "error", err)
-		if mperr, ok := err.(*MultiProviderError); ok {
+		mperr := &MultiProviderError{}
+		if errors.As(err, &mperr) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadGateway)
 			errBytes, err := json.Marshal(mperr)
@@ -597,7 +598,6 @@ func (p *Proxy) HandleForwardToVAUInsurant(w http.ResponseWriter, r *http.Reques
 	}
 
 	p.forwardToVAU(w, r, rm.Provider, rm.InsurantID)
-
 }
 
 type ProxyInfo struct {
@@ -610,11 +610,11 @@ type ProxyInfo struct {
 func (p *Proxy) GetProxyInfo() (*ProxyInfo, error) {
 	identity := p.config.SecurityFunctions.Identity
 	if identity == nil {
-		return nil, fmt.Errorf("no SMC-B authn identity configured")
+		return nil, errors.New("no SMC-B authn identity configured")
 	}
 	admission := identity.Admission()
 	if admission == nil {
-		return nil, fmt.Errorf("the SMC-B certificate has no admission statement")
+		return nil, errors.New("the SMC-B certificate has no admission statement")
 	}
 	return &ProxyInfo{
 		Name:               p.config.Name,

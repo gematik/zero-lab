@@ -28,8 +28,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gematik/zero-lab/go/gemidp"
 	"golang.org/x/oauth2"
+
+	"github.com/gematik/zero-lab/go/gemidp"
 )
 
 // sample keys and certificates from https://github.com/gematik/erp-e2e-testsuite
@@ -119,5 +120,4 @@ func TestGemIDP(t *testing.T) {
 	}
 
 	t.Log(claims)
-
 }

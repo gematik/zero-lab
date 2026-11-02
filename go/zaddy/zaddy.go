@@ -32,6 +32,7 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+
 	"github.com/gematik/zero-lab/go/pep"
 )
 
@@ -136,7 +137,6 @@ func parseCaddyfilePEP(d *caddyfile.Dispenser, existingVal any) (any, error) {
 		Name:  "zero",
 		Value: caddyconfig.JSON(a, nil),
 	}, nil
-
 }
 
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {

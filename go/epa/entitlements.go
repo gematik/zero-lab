@@ -26,9 +26,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 	"uuid"
 )
@@ -59,7 +61,7 @@ func (s *Session) SetEntitlementPN(insurantId string, auditEvidence string, hcv 
 		return err
 	}
 	if s.VAUChannel == nil {
-		return fmt.Errorf("no open VAU channel")
+		return errors.New("no open VAU channel")
 	}
 
 	iat := time.Now().Add(-60 * time.Second)
@@ -84,14 +86,14 @@ func (s *Session) SetEntitlementPN(insurantId string, auditEvidence string, hcv 
 		return fmt.Errorf("marshaling body: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", "/epa/basic/api/v1/ps/entitlements", bytes.NewBuffer(body))
+	req, err := http.NewRequest(http.MethodPost, "/epa/basic/api/v1/ps/entitlements", bytes.NewBuffer(body))
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}
 	req.Header.Set("x-insurantid", insurantId)
 	req.Header.Set("x-useragent", UserAgent)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
+	req.Header.Set("Content-Length", strconv.Itoa(len(body)))
 
 	slog.Debug("Sending entitlement request", "body", string(body))
 
@@ -115,7 +117,7 @@ func (s *Session) SetEntitlementPN(insurantId string, auditEvidence string, hcv 
 // with the same token, and the token is never logged.
 func (s *Session) SetEntitlementPoPP(insurantId string, poppToken string) (time.Time, error) {
 	if s.VAUChannel == nil {
-		return time.Time{}, fmt.Errorf("no open VAU channel")
+		return time.Time{}, errors.New("no open VAU channel")
 	}
 
 	entitlement := EntitlementRequestTypeV2{
@@ -127,7 +129,7 @@ func (s *Session) SetEntitlementPoPP(insurantId string, poppToken string) (time.
 		return time.Time{}, fmt.Errorf("marshaling body: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", "/epa/basic/api/v2/ps/entitlements", bytes.NewBuffer(body))
+	req, err := http.NewRequest(http.MethodPost, "/epa/basic/api/v2/ps/entitlements", bytes.NewBuffer(body))
 	if err != nil {
 		return time.Time{}, fmt.Errorf("creating request: %w", err)
 	}
@@ -135,7 +137,7 @@ func (s *Session) SetEntitlementPoPP(insurantId string, poppToken string) (time.
 	req.Header.Set("x-useragent", UserAgent)
 	req.Header.Set("x-request-id", uuid.NewV4().String())
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
+	req.Header.Set("Content-Length", strconv.Itoa(len(body)))
 
 	slog.Debug("Sending PoPP entitlement request", "insurantId", insurantId)
 

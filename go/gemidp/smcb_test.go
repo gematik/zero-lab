@@ -29,14 +29,16 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"golang.org/x/oauth2"
+
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/pkcs12"
-	"golang.org/x/oauth2"
 )
 
 // TestGemIDP_SMCB authenticates against the gematik IDP-Dienst (reference env) using a real
@@ -230,7 +232,7 @@ func formatClaimValue(key string, v any) string {
 		return "—"
 	case float64:
 		if val == float64(int64(val)) {
-			return fmt.Sprintf("%d", int64(val))
+			return strconv.FormatInt(int64(val), 10)
 		}
 		return fmt.Sprintf("%v", val)
 	case []any:

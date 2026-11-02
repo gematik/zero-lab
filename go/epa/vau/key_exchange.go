@@ -31,6 +31,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -135,12 +136,12 @@ func OpenChannelVerified(baseURLString string, env Env, httpClient *http.Client,
 	}
 
 	// wouldn't it be better to have everything in the Message2?
-	var channelID = firstHttpResponse.Header.Get("VAU-CID")
+	channelID := firstHttpResponse.Header.Get("VAU-CID")
 	matched, err := regexp.MatchString("^/[A-Za-z0-9-/]{1,200}$", channelID)
 	if err != nil {
 		return nil, fmt.Errorf("matching VAU-CID: %w", err)
 	} else if !matched {
-		return nil, fmt.Errorf("VAU-CID does not match regex")
+		return nil, errors.New("VAU-CID does not match regex")
 	}
 	// build the channel specific URL
 	channelURL := baseURL.ResolveReference(&url.URL{Path: channelID})
@@ -167,12 +168,12 @@ func OpenChannelVerified(baseURLString string, env Env, httpClient *http.Client,
 		log.Fatalf("decrypting: %v", err)
 	}
 
-	var signedPubKeys = new(SignedPublicVAUKeys)
+	signedPubKeys := new(SignedPublicVAUKeys)
 	if err = cbor.Unmarshal(plaintext, signedPubKeys); err != nil {
 		log.Fatalf("decoding VAU keys: %v", err)
 	}
 
-	var pubKeys = new(PublicVAUKeys)
+	pubKeys := new(PublicVAUKeys)
 	if err = cbor.Unmarshal(signedPubKeys.SignedPubKeysRaw, pubKeys); err != nil {
 		log.Fatalf("decoding public keys: %v", err)
 	}
@@ -251,7 +252,7 @@ func OpenChannelVerified(baseURLString string, env Env, httpClient *http.Client,
 	}
 
 	if !bytes.Equal(transcript_hash[:], m4_key_confirmation) {
-		return nil, fmt.Errorf("Message4 key confirmation does not match")
+		return nil, errors.New("Message4 key confirmation does not match")
 	}
 
 	channel := &Channel{
@@ -276,7 +277,7 @@ func PostMessage[M any](httpClient *http.Client, url string, requestMessage any)
 	}
 
 	// create request to VAU
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(requestMessageCbor))
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(requestMessageCbor))
 	if err != nil {
 		log.Fatalf("creating request to VAU: %v", err)
 	}
@@ -365,7 +366,7 @@ func AEADDecrypt(key []byte, ciphertext []byte) ([]byte, error) {
 	}
 
 	if len(ciphertext) < aesGCM.NonceSize() {
-		return nil, fmt.Errorf("ciphertext too short")
+		return nil, errors.New("ciphertext too short")
 	}
 
 	nonce := ciphertext[:aesGCM.NonceSize()]

@@ -30,8 +30,9 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"golang.org/x/oauth2"
+
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
 func redirectWithError(w http.ResponseWriter, r *http.Request, redirectUri string, state string, err Error) error {
@@ -73,13 +74,13 @@ func (s *Server) bindAuthzRequest(r *http.Request) (*AuthzServerSession, *Produc
 		return nil, nil, oauthErr(http.StatusBadRequest, "invalid_request", binderr.Error())
 	}
 	if responseType != "code" {
-		return nil, nil, oauthErr(http.StatusBadRequest, "unsupported_response_type", fmt.Sprintf("unsupported response_type: %s", responseType))
+		return nil, nil, oauthErr(http.StatusBadRequest, "unsupported_response_type", "unsupported response_type: "+responseType)
 	}
 	if session.IDPIss == "" {
 		session.IDPIss = s.defaultIDPIss
 	}
 	if session.CodeChallengeMethod != "S256" {
-		return nil, nil, oauthErr(http.StatusBadRequest, "invalid_request", fmt.Sprintf("unsupported code_challenge_method: %s", session.CodeChallengeMethod))
+		return nil, nil, oauthErr(http.StatusBadRequest, "invalid_request", "unsupported code_challenge_method: "+session.CodeChallengeMethod)
 	}
 	if cerr := validateCodeChallenge(session.CodeChallenge); cerr != nil {
 		return nil, nil, cerr
@@ -209,7 +210,7 @@ func (s *Server) PAREndpoint(w http.ResponseWriter, r *http.Request) error {
 		return oauthErr(http.StatusBadRequest, "invalid_request", "client_id does not match the authenticated client")
 	}
 	if !product.IsAllowedScopes(session.Scopes) {
-		return oauthErr(http.StatusBadRequest, "invalid_scope", fmt.Sprintf("scope not allowed: %s", strings.Join(session.Scopes, " ")))
+		return oauthErr(http.StatusBadRequest, "invalid_scope", "scope not allowed: "+strings.Join(session.Scopes, " "))
 	}
 	session.RequestUri = "urn:ietf:params:oauth:request_uri:" + generateNonce(64)
 	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {

@@ -30,6 +30,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -38,8 +39,10 @@ import (
 	"golang.org/x/text/encoding/charmap"
 )
 
-type ProvidePNFunc func(insurantId string) (string, error)
-type ProvideHCVFunc func(insurantId string) ([]byte, error)
+type (
+	ProvidePNFunc  func(insurantId string) (string, error)
+	ProvideHCVFunc func(insurantId string) ([]byte, error)
+)
 
 func ProvidePNByHMAC(hmacKeyHex string, hmacKeyKid string) (ProvidePNFunc, error) {
 	hmacKey, err := hex.DecodeString(hmacKeyHex)
@@ -48,12 +51,12 @@ func ProvidePNByHMAC(hmacKeyHex string, hmacKeyKid string) (ProvidePNFunc, error
 	}
 
 	if len(hmacKeyKid) != 2 {
-		return nil, fmt.Errorf("hmacKeyKid: must be 2 characters long")
+		return nil, errors.New("hmacKeyKid: must be 2 characters long")
 	}
 
 	return func(insurantId string) (string, error) {
 		if len(insurantId) != 10 {
-			return "", fmt.Errorf("insurantId must be 10 characters long")
+			return "", errors.New("insurantId must be 10 characters long")
 		}
 
 		iat := strconv.FormatInt(time.Now().Unix(), 10)
@@ -63,7 +66,7 @@ func ProvidePNByHMAC(hmacKeyHex string, hmacKeyKid string) (ProvidePNFunc, error
 		proofData = append(proofData, []byte(iat)...)
 		proofData = append(proofData, 'U')
 		proofData = append(proofData, []byte(hmacKeyKid)...)
-		//str := fmt.Sprintf("%s%sU%s", insurantId, iat, hmacKeyKid)
+		// str := fmt.Sprintf("%s%sU%s", insurantId, iat, hmacKeyKid)
 		mac := hmac.New(sha256.New, hmacKey)
 		mac.Write(proofData)
 		hmacResult := mac.Sum(nil)[:24] // Truncate to 24 bytes
@@ -111,7 +114,7 @@ func CalculatePNv2(hmacKeyHex string, hmacKeyKid string, provideHcv ProvideHCVFu
 	}
 
 	if len(hmacKeyKid) != 2 {
-		return nil, fmt.Errorf("hmacKeyKid: must be 2 characters long")
+		return nil, errors.New("hmacKeyKid: must be 2 characters long")
 	}
 
 	aesKey, err := deriveAES128Key(hmacKey)
@@ -121,7 +124,7 @@ func CalculatePNv2(hmacKeyHex string, hmacKeyKid string, provideHcv ProvideHCVFu
 
 	return func(insurantId string) (string, error) {
 		if len(insurantId) != 10 {
-			return "", fmt.Errorf("insurantId must be 10 characters long")
+			return "", errors.New("insurantId must be 10 characters long")
 		}
 
 		hcv, err := provideHcv(insurantId)
@@ -138,7 +141,7 @@ func CalculatePNv2(hmacKeyHex string, hmacKeyKid string, provideHcv ProvideHCVFu
 		r_iat_bytes[1] = byte((r_iat_8 >> 8) & 0xFF)
 		r_iat_bytes[2] = byte(r_iat_8 & 0xFF)
 
-		//A_27278 - VSDM-FD: Struktur einer Prüfziffer der Version 2
+		// A_27278 - VSDM-FD: Struktur einer Prüfziffer der Version 2
 		proofData := make([]byte, 0, 5+3+10)
 		proofData = append(proofData, hcv...)
 		proofData = append(proofData, r_iat_bytes...)
@@ -168,18 +171,18 @@ func CalculatePNv2(hmacKeyHex string, hmacKeyKid string, provideHcv ProvideHCVFu
 		// Calculate Field_1
 		const V = 128
 		if len(hmacKeyKid) != 2 {
-			return "", fmt.Errorf("hmacKeyKid must be 2 characters long")
+			return "", errors.New("hmacKeyKid must be 2 characters long")
 		}
 		BK := hmacKeyKid[0]
 		if BK < 'A' || BK > 'Z' {
-			return "", fmt.Errorf("invalid operator identifier (must be 'A' to 'Z')")
+			return "", errors.New("invalid operator identifier (must be 'A' to 'Z')")
 		}
 		BK_D := BK - 'A'
 		BK_D_4 := BK_D << 2
 
 		SV := hmacKeyKid[1] - '0'
 		if SV >= 4 {
-			return "", fmt.Errorf("invalid secret/key version (must be 0 to 3)")
+			return "", errors.New("invalid secret/key version (must be 0 to 3)")
 		}
 
 		field1 := V + BK_D_4 + SV

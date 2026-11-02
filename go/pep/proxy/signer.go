@@ -30,8 +30,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/lestrrat-go/jwx/v3/jwk"
+
+	"github.com/gematik/zero-lab/go/dpop"
 )
 
 // sessionSigner mints the DPoP proof for an outbound API request. S4's implementation (bffSigner) signs with

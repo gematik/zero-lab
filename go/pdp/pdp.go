@@ -27,9 +27,10 @@ import (
 	"path/filepath"
 	"reflect"
 
-	"github.com/gematik/zero-lab/go/pdp/authzserver"
 	"github.com/go-playground/validator/v10"
 	"gopkg.in/yaml.v2"
+
+	"github.com/gematik/zero-lab/go/pdp/authzserver"
 )
 
 type Config struct {
@@ -39,7 +40,6 @@ type Config struct {
 }
 
 func LoadConfigFile(path string) (*Config, error) {
-
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read file: %w", err)

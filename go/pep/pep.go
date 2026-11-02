@@ -33,10 +33,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/lestrrat-go/jwx/v3/jwt"
+
+	"github.com/gematik/zero-lab/go/dpop"
 )
 
 const defaultHTTPTimeout = 30 * time.Second
@@ -349,7 +350,7 @@ func (c *pepContext) verifyAccessToken(accessToken string) error {
 
 	parts := strings.Split(accessToken, ".")
 	if len(parts) != 3 {
-		return fmt.Errorf("invalid JWT format")
+		return errors.New("invalid JWT format")
 	}
 
 	claimsSegment := parts[1]

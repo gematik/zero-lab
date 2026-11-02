@@ -274,7 +274,8 @@ func (e *EnforcerAuthorizationBearer) Apply(ctx Context, next HandlerFunc) {
 
 	if err := internalCtx.verifyAuthorizationBearer(); err != nil {
 		ctx.Slogger().Warn("Failed to verify authorization bearer", "error", err)
-		if pepErr, ok := err.(Error); ok {
+		var pepErr Error
+		if errors.As(err, &pepErr) {
 			ctx.Deny(pepErr)
 		} else {
 			ctx.Deny(ErrorAccessDeinied("Failed to verify authorization bearer: " + err.Error()))

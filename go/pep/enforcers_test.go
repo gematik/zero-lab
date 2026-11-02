@@ -31,12 +31,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/gematik/zero-lab/go/pep"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/lestrrat-go/jwx/v3/jwt"
+
+	"github.com/gematik/zero-lab/go/dpop"
+	"github.com/gematik/zero-lab/go/pep"
 )
 
 func TestEnforcersJSON(t *testing.T) {
@@ -98,7 +99,6 @@ func TestEnforcersJSON(t *testing.T) {
 }
 
 func TestEnforcersLogic(t *testing.T) {
-
 	p := createPEP(t)
 
 	denyAllEnforcer := pep.EnforcerAllOf{
@@ -127,7 +127,6 @@ func TestEnforcersLogic(t *testing.T) {
 		}
 		ctx.Slogger().Info("API key matched")
 		next(ctx)
-
 	})
 
 	mux.HandleFunc("GET /api-key", p.GuardedHandlerFunc(customEnforcer, func(w http.ResponseWriter, r *http.Request) {
@@ -215,7 +214,6 @@ func TestEnforcersLogic(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestEnforcerScope(t *testing.T) {
@@ -304,7 +302,6 @@ func TestEnforcerScope(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func createTestAccessToken(keyBytes []byte, scopes []string, exp time.Time, jkt string) (string, error) {
@@ -512,5 +509,4 @@ func TestAccessToken(t *testing.T) {
 	if (*cnf)["jkt"] != "test" {
 		t.Fatalf("Expected thumbprint %s, got %s", "test", (*cnf)["jkt"])
 	}
-
 }

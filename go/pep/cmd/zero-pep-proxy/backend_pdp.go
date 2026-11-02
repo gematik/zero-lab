@@ -22,13 +22,14 @@
 package main
 
 import (
-	"fmt"
+	"errors"
 	"log"
 	"os"
 	"strings"
 
-	"github.com/gematik/zero-lab/go/pep/proxy"
 	"github.com/lestrrat-go/jwx/v3/jwk"
+
+	"github.com/gematik/zero-lab/go/pep/proxy"
 )
 
 // pdpBackendFromEnv builds the PDP backend (PEP_BACKEND=pdp): pep as a confidential client of the PDP. The
@@ -66,7 +67,7 @@ func pdpBackendFromEnv(publicURL string) proxy.Backend {
 // loadJWKFile reads a single JWK (the client signing key) from a file.
 func loadJWKFile(path string) (jwk.Key, error) {
 	if path == "" {
-		return nil, fmt.Errorf("path is required")
+		return nil, errors.New("path is required")
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {

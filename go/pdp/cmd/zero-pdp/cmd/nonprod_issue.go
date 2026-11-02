@@ -26,9 +26,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/gematik/zero-lab/go/pdp/authzserver"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/spf13/cobra"
+
+	"github.com/gematik/zero-lab/go/pdp/authzserver"
 )
 
 type issueCmdResponse struct {
@@ -40,7 +41,6 @@ var issueCmd = &cobra.Command{
 	Use:   "issue",
 	Short: "Issue an access token",
 	Run: func(cmd *cobra.Command, args []string) {
-
 		scopes, err := cmd.Flags().GetStringArray("scope")
 		cobra.CheckErr(err)
 
@@ -72,10 +72,12 @@ var issueCmd = &cobra.Command{
 	},
 }
 
-var aud []string
-var scope []string
-var clientId string
-var sub string
+var (
+	aud      []string
+	scope    []string
+	clientId string
+	sub      string
+)
 
 func init() {
 	issueCmd.Flags().StringArrayVarP(&aud, "aud", "a", []string{}, "Specify audience(s) for the access token")

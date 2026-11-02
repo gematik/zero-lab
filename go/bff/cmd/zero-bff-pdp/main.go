@@ -50,6 +50,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv"
+	"github.com/lestrrat-go/jwx/v3/jwk"
+
 	"github.com/gematik/zero-lab/go/bff"
 	"github.com/gematik/zero-lab/go/bff/gateway"
 	"github.com/gematik/zero-lab/go/bff/webui"
@@ -57,8 +60,6 @@ import (
 	"github.com/gematik/zero-lab/go/kv/postgres"
 	"github.com/gematik/zero-lab/go/pdp"
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
-	"github.com/joho/godotenv"
-	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
 const demoProductID = "bff-demo"

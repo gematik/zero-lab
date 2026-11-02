@@ -26,6 +26,7 @@ import (
 	"crypto"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -35,11 +36,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gematik/zero-lab/go/kv"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"golang.org/x/oauth2"
+
+	"github.com/gematik/zero-lab/go/kv"
 )
 
 // clientAssertionTypeJWTBearer is the client_assertion_type for private_key_jwt (RFC 7523 §2.2).
@@ -139,7 +141,7 @@ func New(cfg Config) (*BackendForFrontend, error) {
 
 	if cfg.ProductionGradeCookie {
 		b.cookieTemplate = &http.Cookie{
-			Name:     fmt.Sprintf("__Host-%s", cfg.CookieName),
+			Name:     "__Host-" + cfg.CookieName,
 			Path:     "/",
 			Secure:   true,
 			HttpOnly: true,
@@ -189,7 +191,7 @@ func New(cfg Config) (*BackendForFrontend, error) {
 func (b *BackendForFrontend) clientAssertion(ctx context.Context) (string, error) {
 	as := b.cfg.AuthorizationServer
 	if as.SigningKey == nil || as.DPoPKey == nil {
-		return "", fmt.Errorf("client signing/DPoP key not configured")
+		return "", errors.New("client signing/DPoP key not configured")
 	}
 	nonce, err := b.fetchNonce(ctx)
 	if err != nil {
@@ -222,7 +224,7 @@ func (b *BackendForFrontend) clientAssertion(ctx context.Context) (string, error
 // fetchNonce gets a one-time nonce from the AS nonce endpoint (plain-text body).
 func (b *BackendForFrontend) fetchNonce(ctx context.Context) (string, error) {
 	if b.metadata.NonceEndpoint == "" {
-		return "", fmt.Errorf("no nonce_endpoint in metadata")
+		return "", errors.New("no nonce_endpoint in metadata")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.metadata.NonceEndpoint, nil)
 	if err != nil {
@@ -259,7 +261,7 @@ func (b *BackendForFrontend) discoverMetadata(issuer string) (asMetadata, error)
 		return md, fmt.Errorf("decode metadata: %w", err)
 	}
 	if md.AuthorizationEndpoint == "" || md.TokenEndpoint == "" {
-		return md, fmt.Errorf("metadata missing authorization/token endpoint")
+		return md, errors.New("metadata missing authorization/token endpoint")
 	}
 	return md, nil
 }
@@ -635,7 +637,7 @@ func (b *BackendForFrontend) Protect(next http.Handler) http.Handler {
 // the BFF's confidential client (only the client a token was issued to may introspect it).
 func (b *BackendForFrontend) introspectIdentity(ctx context.Context, accessToken string) (map[string]any, error) {
 	if b.metadata.IntrospectionEndpoint == "" {
-		return nil, fmt.Errorf("no introspection_endpoint in metadata")
+		return nil, errors.New("no introspection_endpoint in metadata")
 	}
 	assertion, err := b.clientAssertion(ctx)
 	if err != nil {
@@ -667,14 +669,14 @@ func (b *BackendForFrontend) introspectIdentity(ctx context.Context, accessToken
 		return nil, err
 	}
 	if active, _ := ir["active"].(bool); !active {
-		return nil, fmt.Errorf("token is not active")
+		return nil, errors.New("token is not active")
 	}
 	return ir, nil
 }
 
 func (b *BackendForFrontend) fetchProviders() ([]providerInfo, error) {
 	if b.metadata.OpenidProvidersEndpoint == "" {
-		return nil, fmt.Errorf("no openid_providers_endpoint in metadata")
+		return nil, errors.New("no openid_providers_endpoint in metadata")
 	}
 	resp, err := b.httpClient.Get(b.metadata.OpenidProvidersEndpoint)
 	if err != nil {

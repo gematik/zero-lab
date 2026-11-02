@@ -53,7 +53,7 @@ func TestGuardSessionCookie(t *testing.T) {
 	}))
 
 	do := func(cookieValue string) int {
-		req := httptest.NewRequest("GET", "/protected", nil)
+		req := httptest.NewRequest(http.MethodGet, "/protected", nil)
 		if cookieValue != "" {
 			req.AddCookie(&http.Cookie{Name: "test-cookie", Value: cookieValue})
 		}

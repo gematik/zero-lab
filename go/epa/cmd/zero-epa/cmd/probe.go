@@ -24,9 +24,10 @@ package cmd
 import (
 	"log/slog"
 
-	"github.com/gematik/zero-lab/go/epa"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/gematik/zero-lab/go/epa"
 )
 
 func init() {

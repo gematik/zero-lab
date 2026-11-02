@@ -183,7 +183,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 		return nil, parseErrorResponse(resp.StatusCode, resp.Body)
 	}
 
-	var challenge = new(Challenge)
+	challenge := new(Challenge)
 	err = json.NewDecoder(resp.Body).Decode(challenge)
 	if err != nil {
 		return nil, fmt.Errorf("decoding challenge: %w", err)
@@ -196,7 +196,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 		return nil, fmt.Errorf("parsing challenge NJWT: %w", err)
 	}
 
-	var challengePayload = new(ChallengePayload)
+	challengePayload := new(ChallengePayload)
 	err = json.Unmarshal(token.PayloadJSON, challengePayload)
 	if err != nil {
 		return nil, fmt.Errorf("parsing challenge payload: %w", err)
@@ -223,7 +223,6 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 		Header("exp", challengePayload.Exp).
 		Plaintext([]byte(challengeResponseClaimsJson)).
 		EncryptECDHES(idpEncKey.Key.(*ecdsa.PublicKey))
-
 	if err != nil {
 		return nil, fmt.Errorf("encrypting challenge response: %w", err)
 	}
@@ -271,7 +270,6 @@ func SignWith(signFunc brainpool.SignFunc, certFunc func() (*x509.Certificate, e
 			Header("x5c", []string{base64.StdEncoding.EncodeToString(cert.Raw)}).
 			Claim("njwt", challenge.Challenge).
 			Sign(sha256.New(), signFunc)
-
 		if err != nil {
 			return "", fmt.Errorf("signing challenge: %w", err)
 		}

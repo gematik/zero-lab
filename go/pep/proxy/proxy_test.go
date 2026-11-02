@@ -27,8 +27,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gematik/zero-lab/go/kv"
 	"github.com/lestrrat-go/jwx/v3/jwk"
+
+	"github.com/gematik/zero-lab/go/kv"
 )
 
 type fakeBackend struct{ identity map[string]any }
@@ -43,10 +44,12 @@ func (f *fakeBackend) StartLogin(ctx context.Context, sess *Session, idpIss, sco
 	sess.CodeVerifier = "verifier"
 	return LoginStart{AuthURL: "https://idp.example/authorize?state=test-state", Mode: "redirect"}, nil
 }
+
 func (f *fakeBackend) Complete(ctx context.Context, sess *Session, code string) error {
 	sess.Identity = f.identity
 	return nil
 }
+
 func (f *fakeBackend) FreshAccessToken(ctx context.Context, sess *Session) (string, error) {
 	return "", nil
 }
@@ -70,7 +73,7 @@ func newTestServer(t *testing.T) *Server {
 func TestForwardAuth_Unauthenticated(t *testing.T) {
 	s := newTestServer(t)
 	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/oauth2/auth", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/oauth2/auth", nil))
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("/oauth2/auth no cookie = %d, want 401", rec.Code)
 	}
@@ -83,7 +86,7 @@ func TestForwardAuth_Authenticated(t *testing.T) {
 	if err := s.sessions.save(sess); err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest("GET", "/oauth2/auth", nil)
+	req := httptest.NewRequest(http.MethodGet, "/oauth2/auth", nil)
 	req.AddCookie(&http.Cookie{Name: s.cookie.Name, Value: sess.token})
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)
@@ -108,7 +111,7 @@ func TestForwardAuth_Authenticated(t *testing.T) {
 func TestStart_RedirectsAndBindsCookie(t *testing.T) {
 	s := newTestServer(t)
 	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/oauth2/start?rd=%2Fdashboard", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/oauth2/start?rd=%2Fdashboard", nil))
 
 	if rec.Code != http.StatusFound {
 		t.Fatalf("/oauth2/start = %d, want 302", rec.Code)
@@ -141,7 +144,7 @@ func TestSignOut_ClearsSession(t *testing.T) {
 	sess.Identity = map[string]any{"sub": "x"}
 	_ = s.sessions.save(sess)
 
-	req := httptest.NewRequest("POST", "/oauth2/sign_out", nil)
+	req := httptest.NewRequest(http.MethodPost, "/oauth2/sign_out", nil)
 	req.Header.Set("X-Requested-With", "fetch")
 	req.AddCookie(&http.Cookie{Name: s.cookie.Name, Value: sess.token})
 	rec := httptest.NewRecorder()
@@ -160,7 +163,7 @@ func TestSignOut_ClearsSession(t *testing.T) {
 func TestSignOut_POSTRequiresCSRF(t *testing.T) {
 	s := newTestServer(t)
 	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest("POST", "/oauth2/sign_out", nil))
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/oauth2/sign_out", nil))
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("sign_out POST without X-Requested-With = %d, want 403", rec.Code)
 	}

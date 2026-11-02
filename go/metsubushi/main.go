@@ -107,9 +107,9 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 
 func handleInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"app":            "metsubushi",
-		"status":         "healthy",
-		"hostname":       hostname(),
+		"app":      "metsubushi",
+		"status":   "healthy",
+		"hostname": hostname(),
 		// Prefer the downward-API env vars; fall back to the pod's own context so the page is populated even
 		// when the deployment doesn't inject them. (NODE_NAME has no in-pod source — it needs the env var.)
 		"podName":        envOr("POD_NAME", hostname()),

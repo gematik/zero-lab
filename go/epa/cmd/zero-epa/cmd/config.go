@@ -25,10 +25,11 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/gematik/zero-lab/go/epa"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v2"
+
+	"github.com/gematik/zero-lab/go/epa"
 )
 
 func init() {

@@ -24,8 +24,9 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/gematik/zero-lab/go/epa"
 	"github.com/spf13/cobra"
+
+	"github.com/gematik/zero-lab/go/epa"
 )
 
 func init() {

@@ -26,6 +26,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"errors"
 	"fmt"
 )
 
@@ -37,7 +38,7 @@ type ECDHData struct {
 
 func (ed *ECDHData) PublicKey() (*ecdh.PublicKey, error) {
 	if len(ed.X) > 32 || len(ed.Y) > 32 {
-		return nil, fmt.Errorf("parsing ECDH public key: coordinates longer than 32 bytes")
+		return nil, errors.New("parsing ECDH public key: coordinates longer than 32 bytes")
 	}
 	// The uncompressed SEC 1 point, coordinates left-padded to the field size.
 	point := make([]byte, 65)

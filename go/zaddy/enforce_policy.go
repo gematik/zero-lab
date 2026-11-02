@@ -29,6 +29,7 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+
 	"github.com/gematik/zero-lab/go/pep"
 )
 
@@ -149,7 +150,6 @@ func (m EnforcePolicyMiddleware) unmarshalMultipleEnforcer(d *caddyfile.Dispense
 		return d.Errf("unexpected block")
 	}
 	return nil
-
 }
 
 func parseCaddyfileEnforcePolicy(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
@@ -159,8 +159,8 @@ func parseCaddyfileEnforcePolicy(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHa
 		EnforcerHolders: make([]pep.EnforcerHolder, 0),
 	}
 	// consume the option name
-	if !h.Dispenser.Next() {
-		return nil, h.Dispenser.ArgErr()
+	if !h.Next() {
+		return nil, h.ArgErr()
 	}
 	err := m.unmarshalMultipleEnforcer(h.Dispenser, me, 0)
 	if err != nil {

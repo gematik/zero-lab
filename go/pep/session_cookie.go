@@ -24,6 +24,7 @@ package pep
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -115,7 +116,7 @@ func (e *EnforcerSessionCookie) ensureKeys() error {
 		return nil
 	}
 	if e.KeyPath == "" {
-		return fmt.Errorf("no session cookie key configured")
+		return errors.New("no session cookie key configured")
 	}
 	k, err := loadSessionCookieKey(e.KeyPath)
 	if err != nil {

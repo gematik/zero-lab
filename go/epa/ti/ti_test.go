@@ -174,14 +174,16 @@ func TestAuthenticatorArgsAndRefusal(t *testing.T) {
 }
 
 func TestVerifierReadsBothVerdicts(t *testing.T) {
-	runner := &fakeRunner{t: t,
+	runner := &fakeRunner{
+		t: t,
 		answers: map[string]string{
 			"pki verify-signature": `{"schema":1,"valid":true,"hash":"SHA-256","signature_format":"der","data_bytes":3,"certificate":{}}`,
 		},
 		errors: map[string]*Error{
 			// Not valid is exit 1 with a report.
 			"pki verify": {Kind: "", ExitCode: 1, Stdout: []byte(`{"schema":1,"valid":false,"environment":{"name":"ref"},"profile":{"name":"epa-vau-aut"},"errors":[{"code":"cert_revoked","message":"revoked"}],"warnings":[]}`)},
-		}}
+		},
+	}
 	v := &Verifier{Runner: runner, Offline: true}
 	verdict, err := v.VerifyVAU(context.Background(), &vau.CertData{Cert: []byte{1}, CA: []byte{2}, RCAChain: [][]byte{{3}}}, []byte("keys"), []byte("sig"))
 	if err != nil {

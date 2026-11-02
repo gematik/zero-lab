@@ -36,11 +36,12 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/lestrrat-go/jwx/v3/jwk"
+
 	"github.com/gematik/zero-lab/go/bff"
 	"github.com/gematik/zero-lab/go/bff/gateway"
 	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/gematik/zero-lab/go/kv"
-	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
 func testKey(t *testing.T) jwk.Key {
@@ -181,7 +182,7 @@ func TestIdentityInjection(t *testing.T) {
 	}
 	cookie := seedSession(t, sm, "access-token", time.Now().Add(time.Hour))
 
-	req := httptest.NewRequest("GET", "/app/home", nil)
+	req := httptest.NewRequest(http.MethodGet, "/app/home", nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
@@ -221,7 +222,7 @@ func TestDPoPInjection(t *testing.T) {
 	}
 	cookie := seedSession(t, sm, "access-token", time.Now().Add(time.Hour))
 
-	req := httptest.NewRequest("GET", "/api/resource", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/resource", nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
@@ -247,7 +248,7 @@ func TestSpoofingHygiene(t *testing.T) {
 	}
 	cookie := seedSession(t, sm, "access-token", time.Now().Add(time.Hour))
 
-	req := httptest.NewRequest("GET", "/app", nil)
+	req := httptest.NewRequest(http.MethodGet, "/app", nil)
 	req.AddCookie(cookie)
 	req.Header.Set("X-Auth-Request-Identity", "spoofed")
 	req.Header.Set("Authorization", "Bearer evil")
@@ -276,7 +277,7 @@ func TestUnauthenticatedHTMLRedirects(t *testing.T) {
 		{PathPrefix: "/", UpstreamURL: up.URL, Protected: true, Inject: gateway.InjectIdentity},
 	}})
 
-	req := httptest.NewRequest("GET", "/dashboard?tab=1", nil)
+	req := httptest.NewRequest(http.MethodGet, "/dashboard?tab=1", nil)
 	req.Header.Set("Accept", "text/html")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
@@ -297,7 +298,7 @@ func TestUnauthenticatedXHRGets401(t *testing.T) {
 		{PathPrefix: "/api/", UpstreamURL: up.URL, Protected: true, Inject: gateway.InjectDPoP},
 	}})
 
-	req := httptest.NewRequest("GET", "/api/data", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/data", nil)
 	req.Header.Set("Accept", "application/json")
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
@@ -314,7 +315,7 @@ func TestUnprotectedPassthrough(t *testing.T) {
 		{PathPrefix: "/public/", UpstreamURL: up.URL, Protected: false},
 	}})
 
-	req := httptest.NewRequest("GET", "/public/asset.js", nil) // no cookie
+	req := httptest.NewRequest(http.MethodGet, "/public/asset.js", nil) // no cookie
 	rec := httptest.NewRecorder()
 	gw.ServeHTTP(rec, req)
 
@@ -340,7 +341,7 @@ func TestHandlerGatewayRouting(t *testing.T) {
 		t.Fatal(err)
 	}
 	get := func(path string, html bool) *httptest.ResponseRecorder {
-		req := httptest.NewRequest("GET", path, nil)
+		req := httptest.NewRequest(http.MethodGet, path, nil)
 		if html {
 			req.Header.Set("Accept", "text/html")
 		}
@@ -375,7 +376,7 @@ func TestStripPrefix(t *testing.T) {
 	}
 	cookie := seedSession(t, sm, "access-token", time.Now().Add(time.Hour))
 
-	req := httptest.NewRequest("GET", "/api/resource", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/resource", nil)
 	req.AddCookie(cookie)
 	gw.ServeHTTP(httptest.NewRecorder(), req)
 
@@ -396,7 +397,7 @@ func TestRefreshRotationRepersists(t *testing.T) {
 	// Expired access token → the gateway refreshes via the mock AS (which returns "refreshed-token").
 	cookie := seedSession(t, sm, "stale-token", time.Now().Add(-time.Hour))
 
-	req := httptest.NewRequest("GET", "/api/resource", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/resource", nil)
 	req.AddCookie(cookie)
 	gw.ServeHTTP(httptest.NewRecorder(), req)
 

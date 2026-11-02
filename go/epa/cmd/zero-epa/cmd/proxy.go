@@ -27,12 +27,13 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/gematik/zero-lab/go/epa"
-	"github.com/gematik/zero-lab/go/epa/portal"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/gematik/zero-lab/go/epa"
+	"github.com/gematik/zero-lab/go/epa/portal"
 )
 
 func init() {
@@ -61,10 +62,9 @@ var routerCmd = &cobra.Command{
 		cobra.CheckErr(err)
 
 		addr := viper.GetString("addr")
-		slog.Info(fmt.Sprintf("starting Proxy at %s", addr))
+		slog.Info("starting Proxy at " + addr)
 
 		log.Fatal(e.Start(addr))
-
 	},
 }
 

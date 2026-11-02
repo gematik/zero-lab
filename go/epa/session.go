@@ -35,7 +35,7 @@ import (
 	"github.com/gematik/zero-lab/go/epa/vau"
 )
 
-var UserAgent = fmt.Sprintf("zero-epa-client/%s", Version)
+var UserAgent = "zero-epa-client/" + Version
 
 type ClientOption func(*Client)
 
@@ -306,7 +306,7 @@ func (s *Session) HealthCheck() error {
 }
 
 func (s *Session) GetStatus() (*vau.Status, error) {
-	req, err := http.NewRequest("GET", "/VAU-Status", nil)
+	req, err := http.NewRequest(http.MethodGet, "/VAU-Status", nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}

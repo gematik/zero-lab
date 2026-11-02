@@ -42,11 +42,12 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"golang.org/x/oauth2"
+
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
 const (

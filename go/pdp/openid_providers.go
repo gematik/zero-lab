@@ -25,10 +25,11 @@ import (
 	"fmt"
 	"os"
 
+	"gopkg.in/yaml.v2"
+
 	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
-	"gopkg.in/yaml.v2"
 )
 
 const defaultOpenidProvidersFile = "openid-providers.yaml"

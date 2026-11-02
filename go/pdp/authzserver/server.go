@@ -32,6 +32,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"gopkg.in/yaml.v3"
+
 	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/kv"
@@ -39,8 +42,6 @@ import (
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
 	"github.com/gematik/zero-lab/go/pep"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"gopkg.in/yaml.v3"
 )
 
 const (

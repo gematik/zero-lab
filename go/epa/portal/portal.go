@@ -34,10 +34,8 @@ import (
 	"github.com/gematik/zero-lab/go/epa"
 )
 
-var (
-	//go:embed templates
-	templatesFS embed.FS
-)
+//go:embed templates
+var templatesFS embed.FS
 
 // Page describes one navigable page of the developer portal.
 type Page struct {

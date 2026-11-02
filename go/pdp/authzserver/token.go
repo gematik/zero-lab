@@ -32,9 +32,10 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwt"
+
+	"github.com/gematik/zero-lab/go/dpop"
 )
 
 const (
@@ -74,9 +75,8 @@ func (s *Server) TokenEndpoint(w http.ResponseWriter, r *http.Request) error {
 		return s.tokenEndpointRefreshToken(w, r)
 	default:
 		slog.Error("Unsupported grant type", "grant_type", grantType)
-		return oauthErr(http.StatusBadRequest, "unsupported_grant_type", fmt.Sprintf("unsupported grant type: %s", grantType))
+		return oauthErr(http.StatusBadRequest, "unsupported_grant_type", "unsupported grant type: "+grantType)
 	}
-
 }
 
 // verifyClient authenticates the caller via private_key_jwt (RFC 7523 §2.2): the request carries a
@@ -173,7 +173,6 @@ func (s *Server) clientProduct(client *Client) (*Product, *Error) {
 }
 
 func (s *Server) tokenEndpointClientCredentials(w http.ResponseWriter, r *http.Request) error {
-
 	client, claims, clientError := s.verifyClient(r)
 	if clientError != nil {
 		return clientError
@@ -192,7 +191,7 @@ func (s *Server) tokenEndpointClientCredentials(w http.ResponseWriter, r *http.R
 	}
 
 	if !product.IsAllowedScope(scope) {
-		return oauthErr(http.StatusForbidden, "invalid_scope", fmt.Sprintf("scope not allowed: %s", scope))
+		return oauthErr(http.StatusForbidden, "invalid_scope", "scope not allowed: "+scope)
 	}
 
 	jkt, dpopErr := s.dpopBinding(r, claims)
@@ -286,7 +285,6 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 	}
 
 	response, err := s.issueOrRefreshTokens(session)
-
 	if err != nil {
 		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to issue access token: %v", err))
 	}
@@ -413,7 +411,7 @@ func (s *Server) issueOrRefreshTokens(session *AuthzServerSession) (*TokenRespon
 
 func (s *Server) applyPolicyNewSession(product *Product, session *AuthzServerSession) *Error {
 	if !product.IsAllowedScopes(session.Scopes) {
-		return oauthErr(http.StatusForbidden, "invalid_scope", fmt.Sprintf("scope not allowed: %s", strings.Join(session.Scopes, " ")))
+		return oauthErr(http.StatusForbidden, "invalid_scope", "scope not allowed: "+strings.Join(session.Scopes, " "))
 	}
 	session.AccessTokenDuration = 60 * time.Second
 	session.ExpiresAt = session.CreatedAt.Add(10 * time.Minute)

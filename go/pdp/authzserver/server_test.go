@@ -34,10 +34,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
+
+	"github.com/gematik/zero-lab/go/dpop"
 )
 
 const (
@@ -310,7 +311,8 @@ func assertInvalidClient(t *testing.T, err error) {
 	if err == nil {
 		t.Fatal("expected client authentication to fail, got nil")
 	}
-	authzErr, ok := err.(*Error)
+	authzErr := &Error{}
+	ok := errors.As(err, &authzErr)
 	if !ok {
 		t.Fatalf("expected *Error, got %T: %v", err, err)
 	}

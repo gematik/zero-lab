@@ -25,9 +25,10 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/gematik/zero-lab/go/pdp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/gematik/zero-lab/go/pdp"
 )
 
 func init() {
@@ -48,6 +49,5 @@ var versionCmd = &cobra.Command{
 		}
 
 		fmt.Println("Working directory:", viper.GetString("workdir"))
-
 	},
 }

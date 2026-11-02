@@ -37,9 +37,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/lestrrat-go/jwx/v3/jwk"
+
 	"github.com/gematik/zero-lab/go/bff"
 	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
 // InjectMode selects what a protected route forwards upstream to identify/authorize the user.

@@ -25,9 +25,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -36,7 +38,7 @@ type Nonce struct {
 }
 
 func (c *Session) GetNonce() (string, error) {
-	req, err := http.NewRequest("GET", "/epa/authz/v1/getNonce", nil)
+	req, err := http.NewRequest(http.MethodGet, "/epa/authz/v1/getNonce", nil)
 	if err != nil {
 		return "", fmt.Errorf("creating request: %w", err)
 	}
@@ -60,7 +62,7 @@ func (c *Session) GetNonce() (string, error) {
 }
 
 func (s *Session) SendAuthorizationRequestSC() (string, error) {
-	req, err := http.NewRequest("GET", "/epa/authz/v1/send_authorization_request_sc", nil)
+	req, err := http.NewRequest(http.MethodGet, "/epa/authz/v1/send_authorization_request_sc", nil)
 	if err != nil {
 		return "", fmt.Errorf("creating request: %w", err)
 	}
@@ -84,12 +86,12 @@ func (s *Session) SendAuthCodeSC(authCode SendAuthCodeSCtype) error {
 		return fmt.Errorf("marshaling body: %w", err)
 	}
 	slog.Debug("SendAuthCodeSC", "host_url", s.BaseURL)
-	req, err := http.NewRequest("POST", "/epa/authz/v1/send_authcode_sc", bytes.NewBuffer(body))
+	req, err := http.NewRequest(http.MethodPost, "/epa/authz/v1/send_authcode_sc", bytes.NewBuffer(body))
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
+	req.Header.Set("Content-Length", strconv.Itoa(len(body)))
 	req.Header.Set("x-useragent", UserAgent)
 
 	resp, err := s.VAUChannel.Do(req)
@@ -112,7 +114,7 @@ type SendAuthCodeSCtype struct {
 // identity is the session's signing identity, or an error naming what is missing.
 func (s *Session) identity() (Identity, error) {
 	if s.securityFunctions == nil || s.securityFunctions.Identity == nil {
-		return nil, fmt.Errorf("no SMC-B authn identity configured")
+		return nil, errors.New("no SMC-B authn identity configured")
 	}
 	return s.securityFunctions.Identity, nil
 }
@@ -168,7 +170,6 @@ func (s *Session) Authorize(authenticator Authenticator) error {
 		AuthorizationCode: codeRedirectURL.Code,
 		ClientAttest:      clientAttest,
 	})
-
 	if err != nil {
 		return fmt.Errorf("sending auth code: %w", err)
 	}

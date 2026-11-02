@@ -36,12 +36,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/gematik/zero-lab/go/pdp/authzserver"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/lestrrat-go/jwx/v3/jwt"
+
+	"github.com/gematik/zero-lab/go/dpop"
+	"github.com/gematik/zero-lab/go/pdp/authzserver"
 )
 
 // Defaults for the e2e knobs; overridable via the matching ZERO_PDP_E2E_* env vars.

@@ -29,7 +29,7 @@ import (
 )
 
 func (c *Client) GetRecordStatus(insurantId string) (bool, error) {
-	req, err := http.NewRequest("GET", c.BaseURL+"/information/api/v1/ehr", nil)
+	req, err := http.NewRequest(http.MethodGet, c.BaseURL+"/information/api/v1/ehr", nil)
 	if err != nil {
 		return false, err
 	}
@@ -41,17 +41,18 @@ func (c *Client) GetRecordStatus(insurantId string) (bool, error) {
 		return false, err
 	}
 
-	if resp.StatusCode == http.StatusNoContent {
+	switch resp.StatusCode {
+	case http.StatusNoContent:
 		return true, nil
-	} else if resp.StatusCode == http.StatusNotFound {
+	case http.StatusNotFound:
 		return false, nil
-	} else {
+	default:
 		return false, parseHttpError(resp)
 	}
 }
 
 func (c *Client) GetConsentDecisionInformation(insurantId string) (*GetConsentDecisionInformationType, error) {
-	req, err := http.NewRequest("GET", c.BaseURL+"/information/api/v1/ehr/consentdecisions", nil)
+	req, err := http.NewRequest(http.MethodGet, c.BaseURL+"/information/api/v1/ehr/consentdecisions", nil)
 	if err != nil {
 		return nil, err
 	}

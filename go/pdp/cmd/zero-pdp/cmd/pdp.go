@@ -26,11 +26,12 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/kv/postgres"
 	"github.com/gematik/zero-lab/go/pdp"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func createPdp() (*pdp.PDP, error) {

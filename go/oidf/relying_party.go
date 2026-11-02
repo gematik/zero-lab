@@ -28,6 +28,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -37,7 +38,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/go-playground/validator/v10"
 	"github.com/lestrrat-go/jwx/v3/cert"
 	"github.com/lestrrat-go/jwx/v3/jwa"
@@ -45,6 +45,8 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"gopkg.in/yaml.v3"
+
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
 // defaultOPScopes are requested from an OpenID provider when RelyingPartyConfig.Scopes is unset — the
@@ -190,7 +192,7 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 	}
 
 	if cfg.ClientKey.CertPEMPath == "" {
-		return nil, fmt.Errorf("client_key.cert_pem_path is required (mTLS)")
+		return nil, errors.New("client_key.cert_pem_path is required (mTLS)")
 	}
 
 	var sigPublicKey, encPublicKey, clientPublicKey jwk.Key
@@ -299,7 +301,6 @@ func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {
 		Claim("authority_hints", []string{rp.cfg.FedMasterURL}).
 		Claim("metadata", es.Metadata).
 		Build()
-
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +316,6 @@ func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {
 			jws.WithProtectedHeaders(headers),
 		),
 	)
-
 	if err != nil {
 		return nil, err
 	}
@@ -335,14 +335,12 @@ func (rp *RelyingParty) Serve(w http.ResponseWriter, r *http.Request) {
 }
 
 func (rp *RelyingParty) ServeSignedJwks(w http.ResponseWriter, r *http.Request) {
-
 	token, err := jwt.NewBuilder().
 		Issuer(rp.entityStatement.Subject).
 		IssuedAt(time.Now().Add(-1*time.Hour)). // backdate token to avoid clock skew
 		Expiration(time.Now().Add(time.Hour*23)).
 		Claim("keys", rp.entityStatement.Metadata.OpenidRelyingParty.Jwks.Keys).
 		Build()
-
 	if err != nil {
 		slog.Error("unable to build token", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -359,7 +357,6 @@ func (rp *RelyingParty) ServeSignedJwks(w http.ResponseWriter, r *http.Request) 
 			jws.WithProtectedHeaders(headers),
 		),
 	)
-
 	if err != nil {
 		slog.Error("unable to sign token", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -383,7 +380,7 @@ func (rp *RelyingParty) NewClient(issuer string) (oidc.Client, error) {
 
 	// TODO: check if entity is openid provider
 	if op.Metadata == nil || op.Metadata.OpenidProvider == nil {
-		return nil, fmt.Errorf("no openid provider metadata found")
+		return nil, errors.New("no openid provider metadata found")
 	}
 
 	metadata := op.Metadata.OpenidProvider
@@ -494,7 +491,7 @@ func parseKeySource(kc KeyConfig, baseDir string) (jwk.Key, error) {
 		}
 		return jwk.ParseKey(data)
 	default:
-		return nil, fmt.Errorf("provide one of key_pem_path, jwk_path, or jwk")
+		return nil, errors.New("provide one of key_pem_path, jwk_path, or jwk")
 	}
 }
 

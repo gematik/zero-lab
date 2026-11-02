@@ -30,8 +30,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gematik/zero-lab/go/pdp/authzserver"
 	"github.com/lestrrat-go/jwx/v3/jwk"
+
+	"github.com/gematik/zero-lab/go/pdp/authzserver"
 )
 
 // introspect posts a token to the introspection endpoint, authenticating with the given client

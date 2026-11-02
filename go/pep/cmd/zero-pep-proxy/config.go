@@ -30,11 +30,12 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
 	"github.com/gematik/zero-lab/go/pep/proxy"
-	"gopkg.in/yaml.v3"
 )
 
 // openidProviders is the openid-providers.yaml schema (flat) — several providers of each kind, each reusing

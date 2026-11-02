@@ -28,9 +28,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gematik/zero-lab/go/pdp/authzserver"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/spf13/cobra"
+
+	"github.com/gematik/zero-lab/go/pdp/authzserver"
 )
 
 func init() {

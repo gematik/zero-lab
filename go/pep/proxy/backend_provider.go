@@ -23,16 +23,18 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 	"uuid"
 
+	"golang.org/x/oauth2"
+
 	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
-	"golang.org/x/oauth2"
 )
 
 // providerBackend drives oidc.Client providers (standard OIDC; OIDF and gemidp also implement oidc.Client)
@@ -80,7 +82,7 @@ func (b *providerBackend) get(issuer string) (oidc.Client, error) {
 		if len(b.order) > 0 {
 			return b.order[0], nil
 		}
-		return nil, fmt.Errorf("no default provider configured; choose one")
+		return nil, errors.New("no default provider configured; choose one")
 	}
 	if c, ok := b.byIssuer[issuer]; ok {
 		return c, nil

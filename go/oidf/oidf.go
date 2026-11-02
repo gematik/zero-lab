@@ -23,6 +23,7 @@ package oidf
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -107,7 +108,7 @@ func NewOpenidFederation(fedMasterURL string, jwks jwk.Set, opts ...Option) (*Op
 	}
 
 	if es.Metadata.FederationEntity == nil {
-		return nil, fmt.Errorf("no federation entity found in master entity statement")
+		return nil, errors.New("no federation entity found in master entity statement")
 	}
 
 	return &OpenidFederation{
@@ -136,7 +137,6 @@ func (f *OpenidFederation) FetchIdpList() ([]IdentityProviderInfo, error) {
 	}
 
 	return idpEntityToIdpInfo(idpEntity)
-
 }
 
 func fetchMasterEntityStatement(fedMasterURL string, jwks jwk.Set, httpClient *http.Client) (*EntityStatement, error) {
@@ -241,7 +241,7 @@ func (f *OpenidFederation) FederationMasterURL() string {
 
 func (f *OpenidFederation) FetchSignedJwks(op *EntityStatement) (jwk.Set, error) {
 	if op.Metadata == nil || op.Metadata.OpenidProvider == nil {
-		return nil, fmt.Errorf("no openid provider found in entity statement")
+		return nil, errors.New("no openid provider found in entity statement")
 	}
 
 	jwksUrl := op.Metadata.OpenidProvider.SignedJwksUri

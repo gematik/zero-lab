@@ -25,6 +25,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -33,12 +34,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gematik/zero-lab/go/brainpool/josebp"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwe"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"golang.org/x/oauth2"
+
+	"github.com/gematik/zero-lab/go/brainpool/josebp"
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
 // OpenID Connect metadata of the gematik IDP-Dienst
@@ -95,15 +97,15 @@ type Client struct {
 
 func NewClientFromConfig(config ClientConfig) (*Client, error) {
 	if config.ClientID == "" {
-		return nil, fmt.Errorf("client ID is required")
+		return nil, errors.New("client ID is required")
 	}
 
 	if config.RedirectURI == "" {
-		return nil, fmt.Errorf("redirect URI is required")
+		return nil, errors.New("redirect URI is required")
 	}
 
 	if len(config.Scopes) == 0 {
-		return nil, fmt.Errorf("at least one scope is required")
+		return nil, errors.New("at least one scope is required")
 	}
 
 	if config.UserAgent == "" {
@@ -283,7 +285,6 @@ func (c *Client) ExchangeForIdentity(code, verifier string, options ...oidc.Opti
 }
 
 func decryptToken(token string, key []byte) (string, error) {
-
 	plaintext, err := jwe.Decrypt([]byte(token), jwe.WithKey(jwa.DIRECT(), key))
 	if err != nil {
 		return "", fmt.Errorf("decrypting token: %w", err)
@@ -321,7 +322,6 @@ func (c *Client) parseIDToken(response *oidc.TokenResponse) (jwt.Token, error) {
 		jwt.WithRequiredClaim("nonce"),
 		jwt.WithRequiredClaim("exp"),
 	)
-
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse ID token: %w", err)
 	}

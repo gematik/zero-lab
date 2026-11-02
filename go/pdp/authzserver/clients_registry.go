@@ -23,6 +23,7 @@ package authzserver
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -76,7 +77,7 @@ func (r *StaticClientsRegistry) GetClient(clientID string) (*Client, error) {
 
 func parsePublicJWK(raw map[string]any) (jwk.Key, error) {
 	if len(raw) == 0 {
-		return nil, fmt.Errorf("missing public_jwk")
+		return nil, errors.New("missing public_jwk")
 	}
 	b, err := json.Marshal(raw)
 	if err != nil {
