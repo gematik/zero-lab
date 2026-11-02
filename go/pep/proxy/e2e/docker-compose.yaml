@@ -6,6 +6,9 @@
 #                                    ├─reverse_proxy──> host pep :4180   (/oauth2/*, OIDF entity statement)
 #                                    └─reverse_proxy──> metsubushi       (protected upstream)
 #   host pep :4180 ──DATABASE_URL──> postgres :5432
+#
+# The host pep with DATABASE_URL needs a key file in PEP_SESSION_STORE_KEY_PATH, or it refuses to start. Make it once:
+#   printf 'k1 %s\n' "$(openssl rand -base64 32)" > /tmp/pep-store.key
 name: pep-e2e-forward-auth # its own project, apart from docker-compose.pdp.yaml
 services:
   postgres:

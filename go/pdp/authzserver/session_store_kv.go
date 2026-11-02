@@ -28,6 +28,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/gematik/zero-lab/go/kv"
@@ -48,6 +49,17 @@ func newKVSessionStore(store kv.Store, defaultTTL time.Duration) *kvSessionStore
 }
 
 var errSessionNotFound = errors.New("session not found")
+
+// asInvalidSession makes a record that does not open a session that does not exist, for the client: the client
+// can do nothing about it but start again, and retrying must not end in a server error. It logs at error level,
+// since it can mean tampering with the store (server rule 14).
+func asInvalidSession(err error) error {
+	if errors.Is(err, kv.ErrIntegrity) {
+		slog.Error("authorization session record failed its integrity check, treating it as absent", "error", err)
+		return errSessionNotFound
+	}
+	return err
+}
 
 func asSessionKey(id string) string    { return "as:session:" + id }
 func asCodeKey(code string) string     { return "as:code:" + code }
@@ -77,7 +89,7 @@ func (s *kvSessionStore) ttl(sess *Session) time.Duration {
 
 func (s *kvSessionStore) SaveAutzhServerSession(session *Session) error {
 	ctx := context.Background()
-	record, err := json.Marshal(session) //nolint:gosec // TASK-178: the record holds tokens and verifiers unencrypted
+	record, err := json.Marshal(session) //nolint:gosec // the command seals a persistent store: zero-pdp refuses to start without the key
 	if err != nil {
 		return fmt.Errorf("marshal session: %w", err)
 	}
@@ -109,7 +121,7 @@ func (s *kvSessionStore) SaveAutzhServerSession(session *Session) error {
 func (s *kvSessionStore) GetAuthzServerSessionByID(id string) (*Session, error) {
 	data, found, err := s.store.Get(context.Background(), asSessionKey(id))
 	if err != nil {
-		return nil, err
+		return nil, asInvalidSession(err)
 	}
 	if !found {
 		return nil, errSessionNotFound
@@ -124,7 +136,7 @@ func (s *kvSessionStore) GetAuthzServerSessionByID(id string) (*Session, error) 
 // resolveIndex reads an index key (holding a session id) and returns the referenced session.
 func (s *kvSessionStore) resolveIndex(idData []byte, found bool, err error) (*Session, error) {
 	if err != nil {
-		return nil, err
+		return nil, asInvalidSession(err)
 	}
 	if !found {
 		return nil, errSessionNotFound

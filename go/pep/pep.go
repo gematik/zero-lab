@@ -58,8 +58,9 @@ type PEP struct {
 
 // Builder configures a PEP. An option that fails records its error for Build to return.
 type Builder struct {
-	p   *PEP
-	err error
+	p          *PEP
+	err        error
+	dpopReplay dpop.ReplayCache
 }
 
 // NewBuilder starts a Builder with no JWK set source, which Build requires.
@@ -96,8 +97,11 @@ func (b *Builder) Build() (*PEP, error) {
 		}
 		b.p.publicOrigin = origin
 	}
-	// Replay detection covers this process only (RFC 9449 Section 11.1).
-	verifier, err := dpop.NewVerifier(dpop.Config{Replay: dpop.NewMemoryReplayCache(100_000, nil)})
+	// Without a cache from the host, replay detection covers this process only (RFC 9449 Section 11.1).
+	if b.dpopReplay == nil {
+		b.dpopReplay = dpop.NewMemoryReplayCache(100_000, nil)
+	}
+	verifier, err := dpop.NewVerifier(dpop.Config{Replay: b.dpopReplay})
 	if err != nil {
 		return nil, fmt.Errorf("dpop verifier: %w", err)
 	}
@@ -146,6 +150,14 @@ func (b *Builder) WithJWKSetPath(path string) *Builder {
 	}
 
 	return b.WithJWKSet(jwks)
+}
+
+// WithDPoPReplayCache sets where accepted DPoP proofs are remembered. A host running several replicas supplies
+// one they share, so a proof replayed at another replica is refused (RFC 9449 Section 11.1); this package stays
+// free of any store. An error from the cache refuses the proof. Without it, proofs are remembered per process.
+func (b *Builder) WithDPoPReplayCache(cache dpop.ReplayCache) *Builder {
+	b.dpopReplay = cache
+	return b
 }
 
 // WithAccessTokenAcceptableSkew sets the clock skew tolerated on a token's time claims; zero means one minute.

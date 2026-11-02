@@ -121,7 +121,7 @@ and the release PR records the runs; the rules are in
 | ePA connect | `just epa-connect-test` | `EPA_*`, the Rust `ti` (`EPA_TI_BIN`), an SMC-B identity | VAU, authorization, record status and consent at both providers | `epa` |
 | ePA entitlement | `just epa-entitle-test` | as ePA connect, plus `VSDM_HMAC_KEY` / `VSDM_HMAC_KID` | entitlement with a VSDM proof | `epa` |
 | OpenID Federation | `just oidf-test` | `OIDF_FEDMASTER_URL` | entity statements and trust chains against a live federation master | `oidf`, `pep` |
-| kv on Postgres | `TEST_DATABASE_URL=… go test ./kv/postgres` | a Postgres database | the Postgres store: round trip, expiry, `Take` single-use under concurrency | `kv`, `pdp`, `pep`, `bff` |
+| kv on Postgres | `TEST_DATABASE_URL=… go test ./kv/postgres` | a Postgres database | the Postgres store: round trip, expiry, `Take` and `SetIfAbsent` single-use under concurrency, a sealed store over it | `kv`, `pdp`, `pep`, `bff` |
 
 ## Part B — Tag & reproducible builds
 

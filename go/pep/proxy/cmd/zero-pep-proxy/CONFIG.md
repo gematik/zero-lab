@@ -53,13 +53,25 @@ needs no file). The file and the shortcuts are mutually exclusive (the file wins
 
 | Var | Purpose | Default |
 | --- | --- | --- |
-| `DATABASE_URL` | Postgres DSN for the session store (durable + shared across replicas). Unset → in-memory (dev; lost on restart, not shared) | in-memory |
+| `DATABASE_URL` | Postgres DSN for the session store (durable + shared across replicas). Requires `PEP_SESSION_STORE_KEY_PATH`. Unset → in-memory, for a single replica (dev; lost on restart, not shared) | in-memory |
+| `PEP_SESSION_STORE_KEY_PATH` | key file sealing everything in the kv store, the same on all replicas. **Required with `DATABASE_URL`**: pep refuses to start without it, and nothing makes a key at start | — |
 | `PEP_SESSION_KEY_PATH` | file with a base64 256-bit key → enables the `/oauth2/auth` snapshot fast path (local decrypt, no DB per request). Unset → per-request DB validation | off |
 | `PEP_SESSION_PREVIOUS_KEY_PATH` | optional second key file for rotation overlap | — |
 | `PEP_SESSION_TTL` | session lifetime when the fast path is on (Go duration) | `8h` |
 
 Keys are read from **files** (`*_PATH`), never from env values and never stored in the DB. See
-[`../../docs/stateless-session-validation.md`](../../docs/stateless-session-validation.md).
+[`../../docs/stateless-session-validation.md`](../../docs/stateless-session-validation.md) and
+[`../../docs/at-rest-encryption.md`](../../docs/at-rest-encryption.md), which has the rotation order and what to do on
+the upgrade to sealed records: sessions end once, and an operator should clear the old rows of the `kv` table.
+
+Make the store's key file with:
+
+```sh
+printf 'k1 %s\n' "$(openssl rand -base64 32)" > store.key
+```
+
+Expired rows leave the table every 10 minutes. A DPoP proof replay is judged by the verifier in the process that checks
+the proof; zero-pep-proxy checks none, it only signs them.
 
 ### Single-provider shortcuts (the alternative to the providers file)
 
@@ -128,4 +140,4 @@ just docker-push pep     # build + push both tags
 
 `scratch` image, runs as non-root (uid 65532). The version is stamped
 into the binary (`pep.Version`) and logged at startup. Mount secrets (session key, OIDF keys) as files and
-pass `DATABASE_URL`; see [`e2e/README.md`](../../e2e/README.md) for a runnable stack.
+pass `DATABASE_URL` with `PEP_SESSION_STORE_KEY_PATH`; see [`e2e/README.md`](../../e2e/README.md) for a runnable stack.

@@ -36,8 +36,18 @@ import (
 
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/kv/postgres"
+	"github.com/gematik/zero-lab/go/nonce"
 	"github.com/gematik/zero-lab/go/pdp"
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
+)
+
+const (
+	// storeKeyPathEnv names the key file of the persistent store and of the nonces. All replicas share it.
+	storeKeyPathEnv = "PDP_STORE_KEY_PATH"
+	// storePurpose names the records of the authorization server in the key derivation.
+	storePurpose = "pdp/authzserver"
+	// reapEvery is how often expired rows leave the store.
+	reapEvery = 10 * time.Minute
 )
 
 func runStart(opts *options, args []string) error {
@@ -48,7 +58,7 @@ func runStart(opts *options, args []string) error {
 	if err := opts.prepare(); err != nil {
 		return err
 	}
-	server, err := createPdp(opts)
+	server, store, err := createPdp(opts)
 	if err != nil {
 		return fmt.Errorf("create PDP: %w", err)
 	}
@@ -73,18 +83,18 @@ func runStart(opts *options, args []string) error {
 
 	slog.Debug("Zero Trust PDP configured", "pdp", server)
 	slog.Info("starting Zero Trust PDP at " + server.BindAddress)
-	if err := serve(srv); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	go kv.Reap(ctx, store, reapEvery)
+	if err := serve(ctx, srv); err != nil {
 		return fmt.Errorf("server stopped: %w", err)
 	}
 	return nil
 }
 
-// serve runs srv until SIGINT or SIGTERM, then drains in-flight requests within the
-// Kubernetes termination grace period (30 s by default).
-func serve(srv *http.Server) error {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
+// serve runs srv until ctx ends, then drains in-flight requests within the Kubernetes
+// termination grace period (30 s by default).
+func serve(ctx context.Context, srv *http.Server) error {
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
 
@@ -104,39 +114,64 @@ func serve(srv *http.Server) error {
 	return nil
 }
 
-func createPdp(opts *options) (*pdp.PDP, error) {
+func createPdp(opts *options) (*pdp.PDP, kv.Store, error) {
 	configFile := expandHome(opts.configFile)
 	config, err := pdp.LoadConfigFile(configFile)
 	if err != nil {
-		return nil, fmt.Errorf("load config file: %w", err)
+		return nil, nil, fmt.Errorf("load config file: %w", err)
 	}
 	slog.Debug("Loaded config file", "config_file", configFile)
 
-	if config.AuthzServerConfig.Store, err = openStore(); err != nil {
-		return nil, err
+	store, nonceKeys, err := openStore(os.Getenv("DATABASE_URL"), os.Getenv(storeKeyPathEnv))
+	if err != nil {
+		return nil, nil, err
 	}
+	config.AuthzServerConfig.Store, config.AuthzServerConfig.NonceKeys = store, nonceKeys
 	if config.AuthzServerConfig.SigningKey, err = config.AuthzServerConfig.LoadSigningKey(); err != nil {
-		return nil, fmt.Errorf("load the signing key: %w", err)
+		return nil, nil, fmt.Errorf("load the signing key: %w", err)
 	}
 
 	slog.Info("Creating Zero Trust PDP", "version", pdp.Version, "config_file", configFile, "workdir", opts.workdir)
-	return pdp.New(*config)
+	server, err := pdp.New(*config)
+	if err != nil {
+		return nil, nil, err
+	}
+	return server, store, nil
 }
 
-// openStore returns the kv backend: Postgres when DATABASE_URL is set, otherwise an in-memory store
-// (sessions + nonces are not durable across restarts).
-func openStore() (kv.Store, error) {
-	dsn := os.Getenv("DATABASE_URL")
+// openStore returns the kv backend and the keys of the replay nonces. With a DSN it is Postgres, sealed under
+// the ring in the key file, which it refuses to go without (server rules 5, 17). Without one it is an in-memory
+// store, unsealed, for one replica: sessions and nonces are not durable across restarts and not shared.
+func openStore(dsn, keyPath string) (kv.Store, nonce.Keys, error) {
 	if dsn == "" {
-		slog.Warn("DATABASE_URL not set — using in-memory kv store (sessions + nonces are not durable)")
-		return kv.NewMemory(), nil
+		slog.Warn("DATABASE_URL not set: using an in-memory kv store, for a single replica only (sessions and nonces are not durable and not shared)")
+		if keyPath != "" {
+			ring, err := kv.LoadKeyring(keyPath)
+			if err != nil {
+				return nil, nil, fmt.Errorf("%s: %w", storeKeyPathEnv, err)
+			}
+			return kv.NewMemory(), ring, nil
+		}
+		slog.Warn(storeKeyPathEnv + " not set: nonces are sealed under a key of this process alone, which no other replica can open and a restart forgets")
+		keys, err := nonce.NewEphemeralKeys()
+		if err != nil {
+			return nil, nil, fmt.Errorf("nonce keys: %w", err)
+		}
+		return kv.NewMemory(), keys, nil
+	}
+	if keyPath == "" {
+		return nil, nil, fmt.Errorf("DATABASE_URL is set but %s is not: a persistent store must hold ciphertext only; make a key file with: printf 'k1 %%s\\n' \"$(openssl rand -base64 32)\"", storeKeyPathEnv)
+	}
+	ring, err := kv.LoadKeyring(keyPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("%s: %w", storeKeyPathEnv, err)
 	}
 	store, err := postgres.Open(context.Background(), dsn)
 	if err != nil {
-		return nil, fmt.Errorf("open postgres kv store: %w", err)
+		return nil, nil, fmt.Errorf("open postgres kv store: %w", err)
 	}
-	slog.Info("Using postgres kv store")
-	return store, nil
+	slog.Info("Using postgres kv store, sealed", "keys", ring.String())
+	return kv.NewSealed(store, ring, storePurpose), ring, nil
 }
 
 // expandHome expands a leading ~ to $HOME.

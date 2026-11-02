@@ -27,6 +27,7 @@ package authzserver
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log"
 	"log/slog"
@@ -64,7 +65,7 @@ type Server struct {
 	signer           jose.Signer
 	signerKeyID      string
 	jwks             *jose.JSONWebKeySet
-	nonceService     nonce.Service
+	nonceService     *nonce.Service
 	dpopVerifier     *dpop.Verifier
 }
 
@@ -83,8 +84,9 @@ func NewFromConfigFile(filename string) (*Server, error) {
 	return New(*cfg)
 }
 
-// New builds a server from cfg. Without Config.Store, sessions and nonces live in process memory. It refuses
-// to start without Config.SigningKey: a replica with a key of its own signs tokens nobody else can verify.
+// New builds a server from cfg. Without Config.Store, sessions and nonces live in process memory, for one
+// replica only. It refuses to start without Config.SigningKey: a replica with a key of its own signs tokens
+// nobody else can verify. For the same reason it refuses a Store without Config.NonceKeys.
 func New(cfg Config) (*Server, error) {
 	if cfg.Providers == nil {
 		cfg.Providers = providers.New(nil)
@@ -124,25 +126,30 @@ func New(cfg Config) (*Server, error) {
 	// One kv.Store backs the session store and the nonce service. The caller injects a Postgres-backed
 	// store via Config.Store (built in the command, which owns the driver dependency); without it we use
 	// an in-memory store (tests and dev).
-	store := cfg.Store
+	store, nonceKeys := cfg.Store, cfg.NonceKeys
 	if store == nil {
 		store = kv.NewMemory()
+		if nonceKeys == nil {
+			if nonceKeys, err = nonce.NewEphemeralKeys(); err != nil {
+				return nil, fmt.Errorf("nonce keys: %w", err)
+			}
+		}
+	}
+	if nonceKeys == nil {
+		return nil, errors.New("a store shared by replicas needs NonceKeys: nonces under a per-process key fail at every other replica")
 	}
 	s.sessionStore = newKVSessionStore(store, defaultSessionTTL)
 
 	s.initRelyingParty(cfg)
 
-	if cfg.NonceService != nil {
-		s.nonceService = cfg.NonceService
-	} else {
-		s.nonceService = nonce.NewKVService(store, defaultNonceTTL)
+	s.nonceService, err = nonce.New(nonceKeys, nonceServicePurpose, defaultNonceTTL, recordNonce(store))
+	if err != nil {
+		return nil, fmt.Errorf("nonce service: %w", err)
 	}
 
-	// Replay detection covers this replica only; replicas behind one endpoint share no
-	// state yet (RFC 9449 Section 11.1).
 	s.dpopVerifier, err = dpop.NewVerifier(dpop.Config{
 		MaxAge: 5 * time.Minute,
-		Replay: dpop.NewMemoryReplayCache(100_000, nil),
+		Replay: kv.NewReplayCache(store),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("dpop verifier: %w", err)

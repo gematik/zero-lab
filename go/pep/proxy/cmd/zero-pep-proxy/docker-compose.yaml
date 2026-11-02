@@ -1,5 +1,6 @@
 # Fully-containerized OIDC demo (no host go-run, no Postgres/snapshot). For the OIDF / multi-replica / snapshot
-# HITL use ../../e2e/ instead (host pep + Postgres). Both front on Caddy :8080.
+# HITL use ../../e2e/ instead (host pep + Postgres). Both front on Caddy :8080. Sessions stay in memory here; adding
+# DATABASE_URL also takes a key file in PEP_SESSION_STORE_KEY_PATH (.env.example).
 #
 #   browser → caddy(:8080) ──forward_auth──> zero-pep-proxy /oauth2/auth   (gate)
 #                          └─reverse_proxy──> upstream (metsubushi: header-reflecting page + /api/headers)

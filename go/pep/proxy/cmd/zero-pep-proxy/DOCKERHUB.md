@@ -39,7 +39,8 @@ Full reference: [CONFIG.md](https://github.com/gematik/zero-lab/blob/main/go/pep
 | PEP_OIDF_RP_CONFIG_PATH | a gematik OIDF relying party | — |
 | PEP_IDPD_CLIENT_ID | a gematik IDP-Dienst client | — |
 | PEP_OPENID_PROVIDERS_PATH | several providers (a YAML file) | ./openid-providers.yaml |
-| DATABASE_URL | durable, shared sessions (Postgres) | in-memory |
+| DATABASE_URL | durable, shared sessions (Postgres); needs PEP_SESSION_STORE_KEY_PATH | in-memory |
+| PEP_SESSION_STORE_KEY_PATH | key file sealing the kv store: `printf 'k1 %s\n' "$(openssl rand -base64 32)"` | required with DATABASE_URL |
 | PEP_SESSION_KEY_PATH | session-snapshot fast path (no DB per request) | off |
 | PEP_SESSION_TTL | session lifetime with the fast path | 8h |
 

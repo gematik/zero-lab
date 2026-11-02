@@ -45,7 +45,7 @@ import (
 // Config configures the proxy server.
 type Config struct {
 	Backend        Backend       // the auth backend (providerBackend today; pdpBackend later)
-	Store          kv.Store      // session store
+	Store          kv.Store      // session store; a persistent one comes sealed from the host (kv.NewSealed)
 	SessionTTL     time.Duration // sliding session TTL (0 = 1h); ignored when the snapshot fast path is on
 	CookieName     string        // session cookie name (default ZERO-PEP-SID)
 	InsecureCookie bool          // drop the __Host- prefix + Secure for http dev; default is secure
@@ -56,12 +56,6 @@ type Config struct {
 	SnapshotKeyPath         string        // base64 256-bit key file; "" disables the fast path
 	SnapshotPreviousKeyPath string        // optional previous key file (rotation overlap)
 	SnapshotTTL             time.Duration // = session absolute lifetime (0 = 8h)
-
-	// SessionStoreKeyPath enables at-rest encryption of kv session records (AES-256-GCM, the id as AAD) with a
-	// SEPARATE base64 256-bit key file, independent of the snapshot key. "" leaves records as plaintext JSON.
-	// Defends a rogue storage admin against disclosure, forgery, and record substitution. See
-	// docs/at-rest-encryption.md.
-	SessionStoreKeyPath string
 
 	// Bus carries session revocations to all replicas so logout/lockout is fleet-wide instant. nil = a
 	// single-instance in-memory revoker.
@@ -121,17 +115,6 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	sessions := newSessionStore(cfg.Store, cfg.SessionTTL)
-	if cfg.SessionStoreKeyPath != "" {
-		key, err := loadBase64Key(cfg.SessionStoreKeyPath)
-		if err != nil {
-			return nil, fmt.Errorf("session store key: %w", err)
-		}
-		crypter, err := newAESRecordCrypter(key)
-		if err != nil {
-			return nil, fmt.Errorf("session store cipher: %w", err)
-		}
-		sessions.crypter = crypter
-	}
 	s := &Server{
 		sessions: sessions,
 		cookie:   newCookieTemplate(cfg.CookieName, cfg.InsecureCookie),

@@ -33,6 +33,7 @@ import (
 	"uuid"
 
 	"github.com/gematik/zero-lab/go/dpop"
+	"github.com/gematik/zero-lab/go/nonce"
 )
 
 // Grant types the token endpoint accepts (RFC 6749 §1.3).
@@ -117,8 +118,16 @@ func (s *Server) verifyClient(r *http.Request) (*Client, *ClientAssertionClaims,
 	}
 
 	// Redeem the one-time nonce (freshness / anti-replay).
-	if err := s.nonceService.Redeem(claims.Nonce); err != nil {
+	switch err := s.nonceService.Redeem(r.Context(), claims.Nonce); {
+	case err == nil:
+	case errors.Is(err, nonce.ErrReplayed):
+		slog.Warn("client assertion with a nonce that was used before", "client_id", client.ClientID)
 		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", fmt.Sprintf("invalid nonce: %v", err))
+	case errors.Is(err, nonce.ErrInvalid):
+		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", fmt.Sprintf("invalid nonce: %v", err))
+	default:
+		slog.Error("nonce could not be recorded", "error", err)
+		return nil, nil, oauthErr(http.StatusInternalServerError, "server_error", "nonce could not be checked")
 	}
 
 	return client, claims, nil

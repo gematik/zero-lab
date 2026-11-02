@@ -27,7 +27,9 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/gematik/zero-lab/go/kv"
@@ -103,10 +105,9 @@ func (s *Session) Authenticated() bool { return len(s.Identity) > 0 }
 // written in one atomic SetMany so a state lookup never resolves a half-written record.
 type sessionStore struct {
 	store       kv.Store
-	ttl         time.Duration  // idle timeout (sliding)
-	maxLifetime time.Duration  // absolute timeout from CreatedAt
-	stateTTL    time.Duration  // login-window TTL for the state index
-	crypter     *recordCrypter // when set, records are encrypted+authenticated at rest (AAD = the id)
+	ttl         time.Duration // idle timeout (sliding)
+	maxLifetime time.Duration // absolute timeout from CreatedAt
+	stateTTL    time.Duration // login-window TTL for the state index
 }
 
 func newSessionStore(store kv.Store, ttl time.Duration) *sessionStore {
@@ -118,6 +119,15 @@ func newSessionStore(store kv.Store, ttl time.Duration) *sessionStore {
 
 func sessionKey(id string) string  { return "pep:session:" + id }
 func stateKey(state string) string { return "pep:state:" + state }
+
+// reportIntegrity logs a record that does not open at error level, since it can mean tampering with the store
+// (server rule 14). The caller gets the error and treats the session as absent, so the user just logs in again.
+func reportIntegrity(record string, err error) error {
+	if errors.Is(err, kv.ErrIntegrity) {
+		slog.Error("kv record failed its integrity check, treating it as absent", "record", record, "error", err)
+	}
+	return err
+}
 
 func (m *sessionStore) create() *Session {
 	token := randomToken()
@@ -161,16 +171,9 @@ func randomToken() string {
 }
 
 func (m *sessionStore) save(s *Session) error {
-	record, err := json.Marshal(s) //nolint:gosec // TASK-178: sealed only when PEP_SESSION_STORE_KEY_PATH is set
+	record, err := json.Marshal(s) //nolint:gosec // the command seals a persistent store: zero-pep-proxy refuses to start without the key
 	if err != nil {
 		return fmt.Errorf("marshal session: %w", err)
-	}
-	if m.crypter != nil {
-		// AAD = the id binds the ciphertext to its kv slot: a record copied onto another key won't open. The
-		// kv value column is bytea, so the raw ciphertext (nonce‖ct‖tag) is stored as-is — no base64/JSON.
-		if record, err = m.crypter.seal(record, []byte(s.ID)); err != nil {
-			return fmt.Errorf("encrypt session: %w", err)
-		}
 	}
 	idValue, err := json.Marshal(s.ID)
 	if err != nil {
@@ -186,24 +189,19 @@ func (m *sessionStore) save(s *Session) error {
 func (m *sessionStore) byID(id string) (*Session, error) {
 	data, found, err := m.store.Get(context.Background(), sessionKey(id))
 	if err != nil {
-		return nil, err
+		return nil, reportIntegrity("session", err)
 	}
 	if !found {
 		return nil, fmt.Errorf("session %q not found", id)
-	}
-	if m.crypter != nil {
-		if data, err = m.crypter.open(data, []byte(id)); err != nil {
-			return nil, err // errRecordIntegrity — tampered, substituted, or wrong key
-		}
 	}
 	var s Session
 	if err := json.Unmarshal(data, &s); err != nil {
 		return nil, fmt.Errorf("unmarshal session: %w", err)
 	}
 	if s.ID != id {
-		// Defense in depth (the AAD already binds id↔ciphertext): never serve a record whose own id differs
-		// from the slot it was read from.
-		return nil, errRecordIntegrity
+		// Defense in depth (the sealed store already binds record and kv key): never serve a record whose own
+		// id differs from the slot it was read from.
+		return nil, reportIntegrity("session", kv.ErrIntegrity)
 	}
 	// Absolute timeout: a session past its max lifetime is treated as absent and garbage-collected on access,
 	// regardless of how recently the sliding idle TTL was refreshed.
@@ -229,7 +227,7 @@ func (m *sessionStore) deleteState(state string) {
 func (m *sessionStore) byState(state string) (*Session, error) {
 	idData, found, err := m.store.Get(context.Background(), stateKey(state))
 	if err != nil {
-		return nil, err
+		return nil, reportIntegrity("login state", err)
 	}
 	if !found {
 		return nil, fmt.Errorf("session for state %q not found", state)

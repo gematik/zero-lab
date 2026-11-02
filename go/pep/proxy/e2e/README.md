@@ -62,7 +62,8 @@ All via environment; full reference in [`../cmd/zero-pep-proxy/CONFIG.md`](../cm
 | PEP_OIDF_RP_CONFIG_PATH   | a gematik OIDF relying party                 | —                      |
 | PEP_IDPD_CLIENT_ID      | a gematik IDP-Dienst client                  | —                      |
 | PEP_OPENID_PROVIDERS_PATH | several providers (openid-providers.yaml)    | ./openid-providers.yaml|
-| DATABASE_URL              | durable + shared sessions (Postgres)         | in-memory              |
+| DATABASE_URL              | durable + shared sessions (Postgres); needs PEP_SESSION_STORE_KEY_PATH | in-memory |
+| PEP_SESSION_STORE_KEY_PATH | key file sealing the kv store               | required with DATABASE_URL |
 | PEP_SESSION_KEY_PATH      | snapshot fast path (no DB read per request)  | off                    |
 | PEP_INSECURE_COOKIE       | drop `__Host-`/Secure for `http://localhost` (secure by default) | secure      |
 
@@ -70,15 +71,17 @@ All via environment; full reference in [`../cmd/zero-pep-proxy/CONFIG.md`](../cm
 
 - OIDF (needs a public host): point rathole at :8080 and add `PEP_PUBLIC_URL=https://<rathole-host>`,
   `PEP_OIDF_RP_CONFIG_PATH=...` (drop `PEP_INSECURE_COOKIE` — the default secure cookie is what you want over HTTPS).
-- Durable sessions + snapshot fast path: add `DATABASE_URL=postgres://zero:zero@127.0.0.1:5432/zero?sslmode=disable`,
-  generate a key (`openssl rand -base64 32 > /tmp/pep-session.key`), and set `PEP_SESSION_KEY_PATH=/tmp/pep-session.key`.
+- Durable sessions + snapshot fast path: add `DATABASE_URL=postgres://zero:zero@127.0.0.1:5432/zero?sslmode=disable`
+  with a store key (`printf 'k1 %s\n' "$(openssl rand -base64 32)" > /tmp/pep-store.key`,
+  `PEP_SESSION_STORE_KEY_PATH=/tmp/pep-store.key`), generate a snapshot key
+  (`openssl rand -base64 32 > /tmp/pep-session.key`), and set `PEP_SESSION_KEY_PATH=/tmp/pep-session.key`.
 - Several providers: set `PEP_OPENID_PROVIDERS_PATH` (see `../cmd/zero-pep-proxy/openid-providers.example.yaml`).
 - Containerized OIDC demo (pep in a container, no host go-run): `../cmd/zero-pep-proxy/docker-compose.yaml`.
 
 ## Two-replica revocation check
 
-With `DATABASE_URL` and `PEP_SESSION_KEY_PATH` set, run a second proxy on `PEP_ADDR=:4181` against the same DB
-and key. A logout on one replica is honored on the other instantly (Postgres LISTEN/NOTIFY), and a freshly
+With `DATABASE_URL`, `PEP_SESSION_STORE_KEY_PATH` and `PEP_SESSION_KEY_PATH` set, run a second proxy on
+`PEP_ADDR=:4181` against the same DB and keys. A logout on one replica is honored on the other instantly (Postgres LISTEN/NOTIFY), and a freshly
 started replica loads revocations from the durable `pep:revoked` set. See
 [`../docs/stateless-session-validation.md`](../docs/stateless-session-validation.md).
 

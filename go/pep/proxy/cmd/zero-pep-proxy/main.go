@@ -45,8 +45,8 @@
 //	PEP_SESSION_KEY_PATH     file with a base64 256-bit key → enables local /oauth2/auth validation (decrypt
 //	                         an encrypted session token, no kv per request). PEP_SESSION_PREVIOUS_KEY_PATH rotates it.
 //	PEP_SESSION_TTL          session lifetime when local validation is on (Go duration, default 8h)
-//	PEP_SESSION_STORE_KEY_PATH  file with a SEPARATE base64 256-bit key → encrypts kv session records at rest
-//	                         (AES-256-GCM, id-bound). Defends a rogue storage admin. See docs/at-rest-encryption.md.
+//	PEP_SESSION_STORE_KEY_PATH  key file (`<id> <base64 of 32 bytes>` per line) → seals everything in the kv store,
+//	                         reloaded on change. Required with DATABASE_URL. See docs/at-rest-encryption.md.
 //	DATABASE_URL             Postgres DSN for the session store; durable + shared across replicas. When unset,
 //	                         an in-memory store is used (dev only — sessions are lost on restart, not shared).
 //
@@ -63,6 +63,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
@@ -87,21 +88,55 @@ func env(key, def string) string {
 	return def
 }
 
+// sessionStoreKeyPathEnv names the key file of the session store. All replicas share it.
+const sessionStoreKeyPathEnv = "PEP_SESSION_STORE_KEY_PATH"
+
+// sessionStorePurpose names the proxy's records in the key derivation.
+const sessionStorePurpose = "pep/session"
+
+// reapEvery is how often expired rows leave the store.
+const reapEvery = 10 * time.Minute
+
+// storeKeys loads the session store's key file. A persistent store without one refuses to start (server rules
+// 5, 17), before any connection, so an unreachable database cannot hide it. Nil means no key and no need for one.
+func storeKeys(dsn, keyPath string) (*kv.Keyring, error) {
+	if keyPath == "" {
+		if dsn != "" {
+			return nil, fmt.Errorf("DATABASE_URL is set but %s is not: a persistent store must hold ciphertext only; make a key file with: printf 'k1 %%s\\n' \"$(openssl rand -base64 32)\"", sessionStoreKeyPathEnv)
+		}
+		return nil, nil
+	}
+	ring, err := kv.LoadKeyring(keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", sessionStoreKeyPathEnv, err)
+	}
+	return ring, nil
+}
+
 // openStore returns the session store. Postgres when DATABASE_URL is set — durable across restarts and shared
 // across replicas (required for production / horizontal scale). Otherwise an in-memory store for dev/tests,
-// where sessions are lost on restart and not shared.
+// where sessions are lost on restart and not shared. Sealed whenever a key file is given.
 func openStore() kv.Store {
 	dsn := os.Getenv("DATABASE_URL")
-	if dsn == "" {
-		slog.Warn("DATABASE_URL not set — using in-memory kv store (sessions are lost on restart and not shared across replicas)")
-		return kv.NewMemory()
-	}
-	store, err := postgres.Open(context.Background(), dsn)
+	ring, err := storeKeys(dsn, os.Getenv(sessionStoreKeyPathEnv))
 	if err != nil {
-		log.Fatalf("open postgres kv store: %v", err)
+		log.Fatal(err)
 	}
-	slog.Info("using postgres kv store for sessions")
-	return store
+	var store kv.Store
+	if dsn == "" {
+		slog.Warn("DATABASE_URL not set — using in-memory kv store, for a single replica only (sessions are lost on restart and not shared across replicas)")
+		store = kv.NewMemory()
+	} else {
+		if store, err = postgres.Open(context.Background(), dsn); err != nil {
+			log.Fatalf("open postgres kv store: %v", err)
+		}
+		slog.Info("using postgres kv store for sessions")
+	}
+	if ring == nil {
+		return store
+	}
+	slog.Info("kv store sealed", "keys", ring.String())
+	return kv.NewSealed(store, ring, sessionStorePurpose)
 }
 
 // openBus returns the revocation bus: Postgres LISTEN/NOTIFY when DATABASE_URL is set (so logout/lockout is
@@ -194,16 +229,16 @@ func main() {
 		log.Fatalf("gateway routes: %v", err)
 	}
 
+	store := openStore()
 	server, err := proxy.New(proxy.Config{
 		Backend:                 backend,
-		Store:                   openStore(),
+		Store:                   store,
 		CookieName:              env("PEP_COOKIE_NAME", "ZERO-PEP-SID"),
 		InsecureCookie:          os.Getenv("PEP_INSECURE_COOKIE") == "true",
 		TemplateDir:             os.Getenv("PEP_TEMPLATE_DIR"),
 		SnapshotKeyPath:         os.Getenv("PEP_SESSION_KEY_PATH"),
 		SnapshotPreviousKeyPath: os.Getenv("PEP_SESSION_PREVIOUS_KEY_PATH"),
 		SnapshotTTL:             snapshotTTL,
-		SessionStoreKeyPath:     os.Getenv("PEP_SESSION_STORE_KEY_PATH"),
 		Bus:                     openBus(),
 		Routes:                  routes,
 	})
@@ -222,17 +257,18 @@ func main() {
 	}
 
 	slog.Info("zero-pep-proxy listening", "version", pep.Version, "addr", addr, "public_url", publicURL)
-	if err := serve(srv); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	go kv.Reap(ctx, store, reapEvery)
+	err = serve(ctx, srv)
+	stop()
+	if err != nil {
 		log.Fatal(err)
 	}
 }
 
-// serve runs srv until SIGINT or SIGTERM, then drains in-flight requests within the
-// Kubernetes termination grace period (30 s by default).
-func serve(srv *http.Server) error {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
+// serve runs srv until ctx ends, then drains in-flight requests within the Kubernetes
+// termination grace period (30 s by default).
+func serve(ctx context.Context, srv *http.Server) error {
 	errc := make(chan error, 1)
 	go func() { errc <- srv.ListenAndServe() }()
 

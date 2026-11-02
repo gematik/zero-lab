@@ -1,7 +1,10 @@
 # Airgapped zero-pdp: the PDP runs in NonProdMode with a baked-in mock IdP (PDP_NON_PROD=true), so it
 # authenticates users with a canned identity — no external OpenID Provider, zero network egress. Mount your
 # config dir (pdp.yaml with mock_idp + a test client/product, openid-providers.yaml, sign.jwk) at /etc/pdp.
-# Postgres backs the kv store; drop DATABASE_URL for an in-memory store.
+# Postgres backs the kv store, sealed under the key file in PDP_STORE_KEY_PATH; zero-pdp refuses to start without it,
+# and nothing makes it for you. Make it once, in the mounted config dir:
+#   printf 'k1 %s\n' "$(openssl rand -base64 32)" > config/store.key
+# Drop DATABASE_URL and PDP_STORE_KEY_PATH for an in-memory store, for one replica.
 services:
   postgres:
     image: postgres:18-alpine
@@ -33,8 +36,9 @@ services:
     environment:
       PDP_NON_PROD: "true"
       DATABASE_URL: "postgres://zero:zero@postgres:5432/zero?sslmode=disable"
+      PDP_STORE_KEY_PATH: "/etc/pdp/store.key"
     volumes:
-      - ./config:/etc/pdp:ro # pdp.yaml (mock_idp + non_prod) + openid-providers.yaml + sign.jwk
+      - ./config:/etc/pdp:ro # pdp.yaml (mock_idp + non_prod) + openid-providers.yaml + sign.jwk + store.key
     ports:
       - "${PDP_HOST_PORT:-8011}:8011"
     command: ["start"]

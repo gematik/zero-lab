@@ -37,7 +37,6 @@ type memoryStore struct {
 
 type memEntry struct {
 	value     []byte
-	metadata  []byte
 	expiresAt time.Time // zero = no expiry
 }
 
@@ -45,8 +44,9 @@ func (e memEntry) expired(now time.Time) bool {
 	return !e.expiresAt.IsZero() && !e.expiresAt.After(now)
 }
 
-// NewMemory returns an in-memory Store — the default backend for tests and development. Data is lost
-// on process exit; for durability use the Postgres backend (kvpg).
+// NewMemory returns an in-memory Store — the default backend for tests and development. It is single-replica
+// only: nothing in it reaches another process, so nonce, replay and session state in it holds for this
+// process alone, and it is lost on exit. Several replicas need the Postgres backend (kv/postgres).
 func NewMemory() Store {
 	return &memoryStore{items: make(map[string]memEntry)}
 }
@@ -85,6 +85,19 @@ func (s *memoryStore) Set(_ context.Context, key string, value []byte, ttl time.
 	return nil
 }
 
+func (s *memoryStore) SetIfAbsent(_ context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return false, ErrClosed
+	}
+	if e, ok := s.items[key]; ok && !e.expired(time.Now()) {
+		return false, nil
+	}
+	s.items[key] = memEntry{value: clone(value), expiresAt: ttlExpiry(ttl)}
+	return true, nil
+}
+
 func (s *memoryStore) SetMany(_ context.Context, entries ...Entry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -92,26 +105,9 @@ func (s *memoryStore) SetMany(_ context.Context, entries ...Entry) error {
 		return ErrClosed
 	}
 	for _, e := range entries {
-		s.items[e.Key] = memEntry{value: clone(e.Value), metadata: clone(e.Metadata), expiresAt: ttlExpiry(e.TTL)}
+		s.items[e.Key] = memEntry{value: clone(e.Value), expiresAt: ttlExpiry(e.TTL)}
 	}
 	return nil
-}
-
-func (s *memoryStore) GetItem(_ context.Context, key string) (Item, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
-		return Item{}, false, ErrClosed
-	}
-	e, ok := s.items[key]
-	if !ok {
-		return Item{}, false, nil
-	}
-	if e.expired(time.Now()) {
-		delete(s.items, key)
-		return Item{}, false, nil
-	}
-	return Item{Value: clone(e.value), Metadata: clone(e.metadata)}, true, nil
 }
 
 func (s *memoryStore) Take(_ context.Context, key string) ([]byte, bool, error) {

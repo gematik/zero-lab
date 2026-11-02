@@ -129,7 +129,7 @@ func runNonProd(opts *options, args []string) error {
 	if err := opts.prepare(); err != nil {
 		return err
 	}
-	server, err := createPdp(opts)
+	server, _, err := createPdp(opts)
 	if err != nil {
 		return err
 	}

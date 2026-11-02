@@ -50,12 +50,13 @@ type Config struct {
 	// Providers and RelyingParty are built by the caller from the providers file; nil means none.
 	Providers    *providers.Set     `yaml:"-"`
 	RelyingParty *oidf.RelyingParty `yaml:"-"`
-	// some values may be set programmatically
-	NonceService nonce.Service
-	// Store is the kv backend for sessions + nonces. The command opens the Postgres store from
-	// DATABASE_URL (it owns the driver dependency) and injects it here; nil ⇒ an in-memory store
-	// (tests and dev).
-	Store kv.Store
+	// Store is the kv backend for sessions, nonce records and DPoP proofs. The command opens the Postgres
+	// store from DATABASE_URL, sealed (it owns the driver dependency), and injects it here; nil ⇒ an in-memory
+	// store, for one replica only (tests and dev).
+	Store kv.Store `yaml:"-"`
+	// NonceKeys seal the replay nonces; all replicas share them. Required with a Store; without one, nonces
+	// are sealed under a key of this process alone, as the in-memory store is its alone.
+	NonceKeys nonce.Keys `yaml:"-"`
 }
 
 // EndpointsConfig holds the paths the server mounts its endpoints at. An empty field takes its default.

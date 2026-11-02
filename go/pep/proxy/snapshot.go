@@ -72,8 +72,7 @@ func newSnapshotter(keyPath, prevKeyPath string, ttl time.Duration) (*snapshotte
 	return s, nil
 }
 
-// loadBase64Key reads a base64-encoded 256-bit key from a file (the snapshot key and the session-store
-// at-rest key share this format).
+// loadBase64Key reads a base64-encoded 256-bit key from a file.
 func loadBase64Key(path string) ([]byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
