@@ -19,6 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Command zero-epa runs the ePA client as a proxy or as a one-shot probe.
 package main
 
 import (

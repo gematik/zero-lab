@@ -40,7 +40,7 @@ func TestBffSignerProof(t *testing.T) {
 		t.Fatalf("parseSessionDPoPKey: %v", err)
 	}
 
-	req, _ := http.NewRequest("GET", "https://api.example/protected", nil)
+	req, _ := http.NewRequest(http.MethodGet, "https://api.example/protected", nil)
 	proof, err := (bffSigner{}).dpopProof(req, "the-access-token", priv)
 	if err != nil {
 		t.Fatalf("dpopProof: %v", err)

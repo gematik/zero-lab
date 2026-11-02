@@ -90,7 +90,7 @@ func (g *Gateway) newProxy(rt *Route) *httputil.ReverseProxy {
 				}
 			}
 		},
-		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
 			slog.Error("gateway upstream unreachable", "upstream", rt.upstream.String(), "error", err)
 			respondJSON(w, http.StatusBadGateway, map[string]string{
 				"error":             "bad_gateway",

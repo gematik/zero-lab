@@ -24,6 +24,7 @@ package authzserver
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -32,7 +33,7 @@ import (
 )
 
 // ClientAssertionTypeJWTBearer is the client_assertion_type for private_key_jwt (RFC 7523 §2.2).
-const ClientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+const ClientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" //nolint:gosec // a public URN from the RFC, not a credential
 
 // ClientAssertionClaims are the claims of a private_key_jwt client assertion. Beyond the standard
 // RFC 7523 claims it keeps the gematik extensions: a nonce (redeemed against the AS nonce service)
@@ -49,6 +50,8 @@ type ClientAssertionClaims struct {
 	} `json:"cnf" validate:"required"`
 }
 
+// Validate reports a missing required claim. It checks presence only: the signature, audience, lifetime and
+// nonce are verified by verifyClient.
 func (c *ClientAssertionClaims) Validate() error {
 	validate := validator.New()
 	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
@@ -65,7 +68,7 @@ func (c *ClientAssertionClaims) Validate() error {
 func parseClientAssertionClaims(assertion string) (*ClientAssertionClaims, error) {
 	parts := strings.Split(assertion, ".")
 	if len(parts) < 2 {
-		return nil, fmt.Errorf("malformed client_assertion")
+		return nil, errors.New("malformed client_assertion")
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {

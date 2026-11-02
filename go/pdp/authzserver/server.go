@@ -19,6 +19,9 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Package authzserver implements the PDP's OAuth 2.0 authorization server: pushed authorization requests
+// (RFC 9126) with login at an upstream OpenID Provider, private_key_jwt client authentication (RFC 7523),
+// DPoP-bound tokens (RFC 9449) and token introspection (RFC 7662).
 package authzserver
 
 import (
@@ -32,6 +35,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/lestrrat-go/jwx/v3/jwk"
+	"gopkg.in/yaml.v3"
+
 	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/kv"
@@ -39,8 +45,6 @@ import (
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
 	"github.com/gematik/zero-lab/go/pep"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -50,6 +54,7 @@ const (
 	defaultNonceTTL = 5 * time.Minute
 )
 
+// Server is the authorization server. Build it with New.
 type Server struct {
 	Metadata         ExtendedMetadata
 	endpointPaths    *EndpointsConfig
@@ -58,7 +63,7 @@ type Server struct {
 	openidProviders  []oidc.Client
 	oidfRelyingParty *oidf.RelyingParty
 	defaultIDPIss    string
-	sessionStore     AuthzServerSessionStore
+	sessionStore     SessionStore
 	sigPrK           jwk.Key
 	jwks             jwk.Set
 	tokenVerifier    *pep.PEP
@@ -66,6 +71,8 @@ type Server struct {
 	dpopVerifier     *dpop.Verifier
 }
 
+// NewFromConfigFile builds a server from a YAML file holding a Config. Unlike pdp.LoadConfigFile it expands
+// no environment variables, and relative paths resolve against the working directory.
 func NewFromConfigFile(filename string) (*Server, error) {
 	cfg := new(Config)
 	yamlFile, err := os.ReadFile(filename)
@@ -79,24 +86,26 @@ func NewFromConfigFile(filename string) (*Server, error) {
 	return New(*cfg)
 }
 
+// New builds a server from cfg. Without Config.Store, sessions and nonces live in process memory. A signing
+// key that cannot be loaded is replaced by a random one with a warning, so its tokens do not survive a restart.
 func New(cfg Config) (*Server, error) {
 	s := &Server{
 		Metadata:        cfg.MetadataTemplate,
 		openidProviders: make([]oidc.Client, 0),
 	}
 
-	issuerUrl, err := url.Parse(cfg.Issuer)
+	issuerURL, err := url.Parse(cfg.Issuer)
 	if err != nil {
 		return nil, fmt.Errorf("invalid issuer URI: %w", err)
 	}
 	s.endpointPaths = &cfg.Endpoints
-	s.endpointPaths.applyDefaults(issuerUrl)
+	s.endpointPaths.applyDefaults(issuerURL)
 
 	if err := s.initOpenidProviders(cfg); err != nil {
 		return nil, err
 	}
 
-	s.initMetadata(issuerUrl, cfg)
+	s.initMetadata(issuerURL, cfg)
 	s.defaultIDPIss = cfg.DefaultIDPIss
 
 	// load clients registry
@@ -172,20 +181,20 @@ func (s *Server) initOpenidProviders(cfg Config) error {
 }
 
 // initMetadata fills the authorization-server metadata document (RFC 8414).
-func (s *Server) initMetadata(issuerUrl *url.URL, cfg Config) {
+func (s *Server) initMetadata(issuerURL *url.URL, cfg Config) {
 	s.Metadata.Issuer = cfg.Issuer
 	s.Metadata.ScopesSupported = cfg.ScopesSupported
 
-	s.Metadata.AuthorizationEndpoint = buildURI(issuerUrl, s.endpointPaths.Authorization)
-	s.Metadata.TokenEndpoint = buildURI(issuerUrl, s.endpointPaths.Token)
-	s.Metadata.IntrospectionEndpoint = buildURI(issuerUrl, s.endpointPaths.Introspection)
+	s.Metadata.AuthorizationEndpoint = buildURI(issuerURL, s.endpointPaths.Authorization)
+	s.Metadata.TokenEndpoint = buildURI(issuerURL, s.endpointPaths.Token)
+	s.Metadata.IntrospectionEndpoint = buildURI(issuerURL, s.endpointPaths.Introspection)
 	s.Metadata.IntrospectionEndpointAuthMethodsSupported = []string{"private_key_jwt"}
-	s.Metadata.JwksURI = buildURI(issuerUrl, s.endpointPaths.Jwks)
-	s.Metadata.OpenidProvidersEndpoint = buildURI(issuerUrl, s.endpointPaths.OpenIDProviders)
-	s.Metadata.NonceEndpoint = buildURI(issuerUrl, s.endpointPaths.Nonce)
-	s.Metadata.PushedAuthorizationRequestEndpoint = buildURI(issuerUrl, s.endpointPaths.PushedAuthorizationRequest)
+	s.Metadata.JwksURI = buildURI(issuerURL, s.endpointPaths.Jwks)
+	s.Metadata.OpenidProvidersEndpoint = buildURI(issuerURL, s.endpointPaths.OpenIDProviders)
+	s.Metadata.NonceEndpoint = buildURI(issuerURL, s.endpointPaths.Nonce)
+	s.Metadata.PushedAuthorizationRequestEndpoint = buildURI(issuerURL, s.endpointPaths.PushedAuthorizationRequest)
 	s.Metadata.RequirePushedAuthorizationRequests = true
-	s.Metadata.RegistrationEndpoint = buildURI(issuerUrl, s.endpointPaths.Registration)
+	s.Metadata.RegistrationEndpoint = buildURI(issuerURL, s.endpointPaths.Registration)
 
 	s.Metadata.ResponseTypesSupported = []string{"code"}
 	s.Metadata.ResponseModesSupported = []string{"query"}
@@ -215,7 +224,9 @@ func (s *Server) initSigningKey(cfg Config) error {
 		return fmt.Errorf("get public key: %w", err)
 	}
 	s.jwks = jwk.NewSet()
-	s.jwks.AddKey(sigPuK)
+	if err := s.jwks.AddKey(sigPuK); err != nil {
+		return fmt.Errorf("add public key to jwks: %w", err)
+	}
 	return nil
 }
 
@@ -303,12 +314,12 @@ func (s *Server) initGematikIdp(cfg Config) error {
 }
 
 // MetadataEndpoint serves the authorization server metadata document (RFC 8414).
-func (s *Server) MetadataEndpoint(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) MetadataEndpoint(w http.ResponseWriter, _ *http.Request) error {
 	return writeJSON(w, http.StatusOK, s.Metadata)
 }
 
 // JWKS serves the JSON Web Key Set for the server.
-func (s *Server) JWKS(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) JWKS(w http.ResponseWriter, _ *http.Request) error {
 	return writeJSON(w, http.StatusOK, s.jwks)
 }
 

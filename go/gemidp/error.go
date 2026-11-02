@@ -27,7 +27,7 @@ import (
 	"io"
 )
 
-// gematik IDP-Dienst returns an error in the following format:
+// Error is an error response of the gematik IDP-Dienst, which has the following format:
 //
 //	{
 //		 "error":"invalid_request",
@@ -38,7 +38,7 @@ import (
 //		 "gematik_code":"2012"
 //	}
 type Error struct {
-	HttpCode         int    `json:"-"`
+	HTTPCode         int    `json:"-"`
 	ErrorCode        string `json:"error"`
 	GematikErrorText string `json:"gematik_error_text"`
 	GematikTimestamp int64  `json:"gematik_timestamp"`
@@ -47,11 +47,10 @@ type Error struct {
 }
 
 func (e *Error) Error() string {
-	if e.HttpCode != 0 {
-		return fmt.Sprintf("%d %s: %s (%s)", e.HttpCode, e.ErrorCode, e.GematikErrorText, e.GematikCode)
-	} else {
-		return fmt.Sprintf("%s: %s (%s)", e.ErrorCode, e.GematikErrorText, e.GematikCode)
+	if e.HTTPCode != 0 {
+		return fmt.Sprintf("%d %s: %s (%s)", e.HTTPCode, e.ErrorCode, e.GematikErrorText, e.GematikCode)
 	}
+	return fmt.Sprintf("%s: %s (%s)", e.ErrorCode, e.GematikErrorText, e.GematikCode)
 }
 
 // tries to parse the oath2 error from the reader, taken from the HTTP response body
@@ -61,6 +60,6 @@ func parseErrorResponse(httpCode int, body io.Reader) error {
 	if err != nil {
 		return fmt.Errorf("unable to decode error: %w", err)
 	}
-	oidcErr.HttpCode = httpCode
+	oidcErr.HTTPCode = httpCode
 	return &oidcErr
 }

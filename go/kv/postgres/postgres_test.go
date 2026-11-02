@@ -31,9 +31,10 @@ import (
 	"testing"
 	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
+
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/kv/postgres"
-	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 // testStore opens the Postgres store from TEST_DATABASE_URL (skipping when unset) and namespaces all

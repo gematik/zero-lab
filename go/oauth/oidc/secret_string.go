@@ -26,6 +26,7 @@ import (
 	"fmt"
 )
 
+// NewSecretString wraps value in a SecretString.
 func NewSecretString(value string) SecretString {
 	return SecretString{value}
 }
@@ -39,16 +40,18 @@ func (s SecretString) String() string {
 	return "*****"
 }
 
+// Value returns the secret in clear.
 func (s SecretString) Value() string {
 	return s.value
 }
 
+// MarshalJSON writes the secret in clear; only String masks it.
 func (s SecretString) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.value)
 }
 
+// UnmarshalJSON reads the secret from a JSON string.
 func (s *SecretString) UnmarshalJSON(data []byte) error {
-
 	if err := json.Unmarshal(data, &s.value); err != nil {
 		return fmt.Errorf("unable to unmarshal secret: %w", err)
 	}
@@ -56,6 +59,7 @@ func (s *SecretString) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// UnmarshalYAML reads the secret from a YAML string.
 func (s *SecretString) UnmarshalYAML(unmarshal func(any) error) error {
 	if err := unmarshal(&s.value); err != nil {
 		return fmt.Errorf("unable to unmashal secret: %w", err)
@@ -63,6 +67,7 @@ func (s *SecretString) UnmarshalYAML(unmarshal func(any) error) error {
 	return nil
 }
 
+// MarshalYAML writes the secret in clear; only String masks it.
 func (s SecretString) MarshalYAML() (any, error) {
 	return s.value, nil
 }

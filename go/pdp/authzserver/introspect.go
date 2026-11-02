@@ -50,6 +50,8 @@ type IntrospectionResponse struct {
 	Session  *IntrospectedSession `json:"session,omitempty"`
 }
 
+// IntrospectedSession is the session member of an IntrospectionResponse: the authorization session behind
+// the token, shown only to the client the token was issued to.
 type IntrospectedSession struct {
 	CreatedAt      time.Time `json:"created_at"`
 	ExpiresAt      time.Time `json:"expires_at"`

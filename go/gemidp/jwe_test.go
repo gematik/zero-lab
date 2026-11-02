@@ -25,10 +25,11 @@ import (
 	"crypto/ecdsa"
 	"testing"
 
-	"github.com/gematik/zero-lab/go/brainpool/josebp"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwe"
 	"github.com/lestrrat-go/jwx/v3/jwk"
+
+	"github.com/gematik/zero-lab/go/brainpool/josebp"
 )
 
 func TestJWECross(t *testing.T) {
@@ -81,5 +82,4 @@ func TestJWECross(t *testing.T) {
 	}
 
 	t.Logf("Decrypted: %v", string(decrypted))
-
 }

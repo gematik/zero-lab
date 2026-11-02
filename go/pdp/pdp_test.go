@@ -29,10 +29,14 @@ import (
 
 func TestLoadConfigFileMergesProviders(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "openid-providers.yaml"), []byte(
-		"oidc:\n  - issuer: https://op.example.com\n    client_id: cid\n"), 0o600)
+	if err := os.WriteFile(filepath.Join(dir, "openid-providers.yaml"), []byte(
+		"oidc:\n  - issuer: https://op.example.com\n    client_id: cid\n"), 0o600); err != nil {
+		t.Fatalf("write providers file: %v", err)
+	}
 	cfgPath := filepath.Join(dir, "pdp.yaml")
-	os.WriteFile(cfgPath, []byte("authorization_server:\n  issuer: https://as.example.com\n"), 0o600)
+	if err := os.WriteFile(cfgPath, []byte("authorization_server:\n  issuer: https://as.example.com\n"), 0o600); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
 
 	cfg, err := LoadConfigFile(cfgPath)
 	if err != nil {

@@ -23,6 +23,7 @@ package authzserver
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -44,10 +45,13 @@ type Client struct {
 // Key returns the parsed public JWK used to verify the client's assertions.
 func (c *Client) Key() jwk.Key { return c.key }
 
+// ClientsRegistry resolves a client_id to its registered Client. GetClient returns an error for an unknown
+// client.
 type ClientsRegistry interface {
 	GetClient(clientID string) (*Client, error)
 }
 
+// StaticClientsRegistry is a ClientsRegistry over a fixed list of clients from the configuration.
 type StaticClientsRegistry struct {
 	clients map[string]*Client
 }
@@ -67,6 +71,7 @@ func NewStaticClientsRegistry(clients []Client) (*StaticClientsRegistry, error) 
 	return &StaticClientsRegistry{clients: indexed}, nil
 }
 
+// GetClient returns the client registered under clientID, or an error if there is none.
 func (r *StaticClientsRegistry) GetClient(clientID string) (*Client, error) {
 	if c, ok := r.clients[clientID]; ok {
 		return c, nil
@@ -76,7 +81,7 @@ func (r *StaticClientsRegistry) GetClient(clientID string) (*Client, error) {
 
 func parsePublicJWK(raw map[string]any) (jwk.Key, error) {
 	if len(raw) == 0 {
-		return nil, fmt.Errorf("missing public_jwk")
+		return nil, errors.New("missing public_jwk")
 	}
 	b, err := json.Marshal(raw)
 	if err != nil {

@@ -122,5 +122,4 @@ func (sm *sessionManager) Close() {
 		session.Close()
 	}
 	clear(sm.sessions)
-
 }

@@ -28,14 +28,19 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
+// UserType is a value of gematik's user_type_supported claim: the kind of user a provider authenticates.
 type UserType string
 
+// The user types an OpenID provider can declare.
 const (
 	UserTypeIP  UserType = "IP"  // Insured Person
 	UserTypeHP  UserType = "HP"  // Health Professional
 	UserTypeHCI UserType = "HCI" // Health Care Institution
 )
 
+// EntityStatement holds the claims of an OpenID Federation entity statement, the signed JWT in which an
+// entity, or the federation master about an entity, publishes keys and metadata. A value says nothing about
+// its signature; only statements returned by OpenidFederation have been verified.
 type EntityStatement struct {
 	ExpiresAt      int64     `json:"exp"`
 	IssuedAt       int64     `json:"iat"`
@@ -46,12 +51,14 @@ type EntityStatement struct {
 	Metadata       *Metadata `json:"metadata"`
 }
 
+// Metadata is the metadata claim of an entity statement, one member per entity type.
 type Metadata struct {
 	OpenidRelyingParty *OpenIDRelyingPartyMetadata `json:"openid_relying_party,omitempty"`
 	OpenidProvider     *OpenIDProviderMetadata     `json:"openid_provider,omitempty"`
 	FederationEntity   *FederationEntityMetadata   `json:"federation_entity"`
 }
 
+// OpenIDProviderMetadata is the openid_provider metadata of an identity provider.
 type OpenIDProviderMetadata struct {
 	AuthorizationEndpoint                 string   `json:"authorization_endpoint"`
 	ClientRegistrationTypesSupported      []string `json:"client_registration_types_supported"`
@@ -71,7 +78,7 @@ type OpenIDProviderMetadata struct {
 	ResponseModesSupported                     []string   `json:"response_modes_supported"`
 	ResponseTypesSupported                     []string   `json:"response_types_supported"`
 	ScopesSupported                            []string   `json:"scopes_supported"`
-	SignedJwksUri                              string     `json:"signed_jwks_uri"`
+	SignedJwksURI                              string     `json:"signed_jwks_uri"`
 	SubjectTypesSupported                      []string   `json:"subject_types_supported"`
 	TokenEndpoint                              string     `json:"token_endpoint"`
 	TokenEndpointAuthMethodsSupported          []string   `json:"token_endpoint_auth_methods_supported"`
@@ -79,8 +86,9 @@ type OpenIDProviderMetadata struct {
 	UserTypeSupported                          []UserType `json:"user_type_supported"`
 }
 
+// OpenIDRelyingPartyMetadata is the openid_relying_party metadata this relying party publishes.
 type OpenIDRelyingPartyMetadata struct {
-	SignedJwksUri                      string   `json:"signed_jwks_uri,omitempty"`
+	SignedJwksURI                      string   `json:"signed_jwks_uri,omitempty"`
 	Jwks                               *Jwks    `json:"jwks"`
 	OrganizationName                   string   `json:"organization_name"`
 	ClientName                         string   `json:"client_name"`
@@ -98,6 +106,8 @@ type OpenIDRelyingPartyMetadata struct {
 	Scope                              string   `json:"scope"`
 }
 
+// FederationEntityMetadata is the federation_entity metadata; the federation master's names its fetch and
+// IdP list endpoints.
 type FederationEntityMetadata struct {
 	Name                    string   `json:"name,omitempty"`
 	Contacts                []string `json:"contacts,omitempty"`
@@ -108,12 +118,12 @@ type FederationEntityMetadata struct {
 }
 
 func tokenToEntityStatement(token jwt.Token) (*EntityStatement, error) {
-	tokenJson, err := json.Marshal(token)
+	tokenJSON, err := json.Marshal(token)
 	if err != nil {
 		return nil, fmt.Errorf("unable to marshal token: %w", err)
 	}
 	var es EntityStatement
-	err = json.Unmarshal(tokenJson, &es)
+	err = json.Unmarshal(tokenJSON, &es)
 	if err != nil {
 		return nil, fmt.Errorf("unable to unmarshal entity statement: %w", err)
 	}

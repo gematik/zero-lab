@@ -31,9 +31,10 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/lestrrat-go/jwx/v3/jwk"
+
 	"github.com/gematik/zero-lab/go/bff"
 	"github.com/gematik/zero-lab/go/kv"
-	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
 func testKey(t *testing.T) jwk.Key {
@@ -66,15 +67,15 @@ func newMockAS(t *testing.T) *httptest.Server {
 			"nonce_endpoint":            base + "/nonce",
 		})
 	})
-	mux.HandleFunc("GET /nonce", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /nonce", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("test-nonce"))
 	})
 	// The decoupled (OIDF) login resolves the authorization request server-side: the AS does the PAR and
 	// 302-redirects to the provider. The stub echoes the query so the resolved link keeps idp_iss.
 	mux.HandleFunc("GET /auth", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "https://provider.example/authorize?"+r.URL.RawQuery, http.StatusFound)
+		http.Redirect(w, r, "https://provider.example/authorize?"+r.URL.RawQuery, http.StatusFound) //nolint:gosec // test stub: the host is fixed, only the query is echoed
 	})
-	mux.HandleFunc("POST /token", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /token", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, map[string]any{
 			"access_token":  "mock-access-token",
 			"token_type":    "Bearer",
@@ -93,7 +94,7 @@ func newMockAS(t *testing.T) *httptest.Server {
 			"identity": map[string]any{"sub": "user-123", "name": "Test User"},
 		})
 	})
-	mux.HandleFunc("GET /openid-providers", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /openid-providers", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, []map[string]string{
 			{"iss": "https://oidf.example", "name": "OIDF IdP", "type": "oidf"},
 			{"iss": "https://std.example", "name": "Standard IdP", "type": "oidc"},
@@ -162,7 +163,7 @@ func TestLogin_ModeByProviderType(t *testing.T) {
 		{"https://oidf.example", "decoupled"},
 	} {
 		rec := httptest.NewRecorder()
-		b.LoginEndpoint(rec, httptest.NewRequest("GET", "/bff/auth/login?idp_iss="+url.QueryEscape(tc.idpIss), nil))
+		b.LoginEndpoint(rec, httptest.NewRequest(http.MethodGet, "/bff/auth/login?idp_iss="+url.QueryEscape(tc.idpIss), nil))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("%s: login status %d", tc.idpIss, rec.Code)
 		}
@@ -192,7 +193,7 @@ func TestCallbackThenSession(t *testing.T) {
 
 	// Start login → pending session + cookie + auth_url carrying the state.
 	loginRec := httptest.NewRecorder()
-	b.LoginEndpoint(loginRec, httptest.NewRequest("GET", "/bff/auth/login?idp_iss=https://std.example", nil))
+	b.LoginEndpoint(loginRec, httptest.NewRequest(http.MethodGet, "/bff/auth/login?idp_iss=https://std.example", nil))
 	cookie := sessionCookie(t, loginRec)
 	var lr struct {
 		AuthURL string `json:"auth_url"`
@@ -202,13 +203,13 @@ func TestCallbackThenSession(t *testing.T) {
 
 	// Callback exchanges the code, introspects, caches the identity.
 	cbRec := httptest.NewRecorder()
-	b.CallbackEndpoint(cbRec, httptest.NewRequest("GET", "/bff/auth/callback?state="+state+"&code=abc", nil))
+	b.CallbackEndpoint(cbRec, httptest.NewRequest(http.MethodGet, "/bff/auth/callback?state="+state+"&code=abc", nil))
 	if cbRec.Code != http.StatusFound {
 		t.Fatalf("callback status %d, want 302; body=%s", cbRec.Code, cbRec.Body)
 	}
 
 	// Session returns the upstream identity from introspection.
-	sessReq := httptest.NewRequest("GET", "/bff/auth/session", nil)
+	sessReq := httptest.NewRequest(http.MethodGet, "/bff/auth/session", nil)
 	sessReq.AddCookie(cookie)
 	sessRec := httptest.NewRecorder()
 	b.SessionEndpoint(sessRec, sessReq)
@@ -235,11 +236,11 @@ func TestPoll_PendingThenDone(t *testing.T) {
 	b := newTestBFF(t, sm)
 
 	loginRec := httptest.NewRecorder()
-	b.LoginEndpoint(loginRec, httptest.NewRequest("GET", "/bff/auth/login", nil))
+	b.LoginEndpoint(loginRec, httptest.NewRequest(http.MethodGet, "/bff/auth/login", nil))
 	cookie := sessionCookie(t, loginRec)
 
 	poll := func() int {
-		req := httptest.NewRequest("GET", "/bff/auth/poll", nil)
+		req := httptest.NewRequest(http.MethodGet, "/bff/auth/poll", nil)
 		req.AddCookie(cookie)
 		rec := httptest.NewRecorder()
 		b.PollEndpoint(rec, req)
@@ -268,10 +269,10 @@ func TestLogout_CSRFAndClear(t *testing.T) {
 	session, _ := sm.CreateSession("s", "v", "S256")
 	session.AccessToken = "tok"
 	_ = sm.UpdateSession(session)
-	cookie := &http.Cookie{Name: "test-cookie", Value: session.ID}
+	cookie := &http.Cookie{Name: "test-cookie", Value: session.ID} //nolint:gosec // a request cookie, sent as name=value only; Secure, HttpOnly and SameSite exist on responses
 
 	// Missing the custom header → rejected (CSRF defense).
-	noCSRF := httptest.NewRequest("POST", "/bff/auth/logout", nil)
+	noCSRF := httptest.NewRequest(http.MethodPost, "/bff/auth/logout", nil)
 	noCSRF.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	b.LogoutEndpoint(rec, noCSRF)
@@ -280,7 +281,7 @@ func TestLogout_CSRFAndClear(t *testing.T) {
 	}
 
 	// With the header → session cleared.
-	ok := httptest.NewRequest("POST", "/bff/auth/logout", nil)
+	ok := httptest.NewRequest(http.MethodPost, "/bff/auth/logout", nil)
 	ok.AddCookie(cookie)
 	ok.Header.Set("X-Requested-With", "fetch")
 	rec = httptest.NewRecorder()
@@ -296,7 +297,7 @@ func TestLogout_CSRFAndClear(t *testing.T) {
 func TestProviders(t *testing.T) {
 	b := newTestBFF(t, nil)
 	rec := httptest.NewRecorder()
-	b.ProvidersEndpoint(rec, httptest.NewRequest("GET", "/bff/auth/providers", nil))
+	b.ProvidersEndpoint(rec, httptest.NewRequest(http.MethodGet, "/bff/auth/providers", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("providers status %d", rec.Code)
 	}
@@ -310,11 +311,11 @@ func TestProviders(t *testing.T) {
 }
 
 func TestPanicRecovery(t *testing.T) {
-	h := bff.RecoverMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := bff.RecoverMiddleware(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		panic("boom")
 	}))
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("GET", "/x", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("panicking handler → %d, want 500", rec.Code)
 	}

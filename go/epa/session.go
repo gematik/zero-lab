@@ -35,22 +35,27 @@ import (
 	"github.com/gematik/zero-lab/go/epa/vau"
 )
 
-var UserAgent = fmt.Sprintf("zero-epa-client/%s", Version)
+// UserAgent is what the client sends as User-Agent and x-useragent.
+var UserAgent = "zero-epa-client/" + Version
 
+// ClientOption configures a Client in [NewClient].
 type ClientOption func(*Client)
 
+// WithInsecureSkipVerify turns off the check of the aggregators' TLS certificates.
 func WithInsecureSkipVerify() ClientOption {
 	return func(c *Client) {
 		c.insecureSkipVerify = true
 	}
 }
 
+// WithCertPool sets the TLS roots for the aggregators.
 func WithCertPool(certPool *x509.CertPool) ClientOption {
 	return func(c *Client) {
 		c.certPool = certPool
 	}
 }
 
+// WithTimeout sets the timeout of the HTTP client, overriding that of [WithHTTPClient].
 func WithTimeout(timeout time.Duration) ClientOption {
 	return func(c *Client) {
 		c.Timeout = timeout
@@ -61,7 +66,7 @@ func WithTimeout(timeout time.Duration) ClientOption {
 // User-Agent onto a copy of it; when unset, a client with a default timeout is created.
 func WithHTTPClient(client *http.Client) ClientOption {
 	return func(c *Client) {
-		c.HttpClient = client
+		c.HTTPClient = client
 	}
 }
 
@@ -97,7 +102,7 @@ type SecurityFunctions struct {
 	// can only reach the /information endpoints.
 	Identity    Identity
 	ProvidePN   ProvidePNFunc
-	ProvideHCV  func(insurantId string) ([]byte, error)
+	ProvideHCV  func(insurantID string) ([]byte, error)
 	ProvidePoPP ProvidePoPPFunc
 }
 
@@ -112,7 +117,7 @@ type Client struct {
 	Env                Env
 	ProviderNumber     ProviderNumber
 	BaseURL            string
-	HttpClient         *http.Client
+	HTTPClient         *http.Client
 	securityFunctions  *SecurityFunctions
 	insecureSkipVerify bool
 	certPool           *x509.CertPool
@@ -139,9 +144,10 @@ type Session struct {
 	OpenedAt   time.Time
 }
 
-// enumeration for environment
+// Env is an ePA environment.
 type Env string
 
+// The ePA environments.
 const (
 	EnvDev  Env = "dev"
 	EnvTest Env = "test"
@@ -153,6 +159,7 @@ func (e Env) String() string {
 	return string(e)
 }
 
+// EnvFromString parses an environment name; any other name is an error.
 func EnvFromString(s string) (Env, error) {
 	switch s {
 	case "dev":
@@ -168,8 +175,10 @@ func EnvFromString(s string) (Env, error) {
 	}
 }
 
+// ProviderNumber identifies an Aktensystem provider; its number is part of the host name.
 type ProviderNumber int
 
+// The providers of ePA für alle.
 const (
 	ProviderNumber1 ProviderNumber = 1
 	ProviderNumber2 ProviderNumber = 2
@@ -177,8 +186,10 @@ const (
 	ProviderNumber4 ProviderNumber = 4
 )
 
+// AllProviders lists the providers a Proxy talks to.
 var AllProviders = []ProviderNumber{ProviderNumber1, ProviderNumber2, ProviderNumber3, ProviderNumber4}
 
+// ResolveBaseURL is the base URL of a provider in env. It panics on an unknown environment.
 func ResolveBaseURL(env Env, provider ProviderNumber) string {
 	switch env {
 	case EnvDev:
@@ -209,7 +220,7 @@ func NewClient(env Env, provider ProviderNumber, sf *SecurityFunctions, options 
 		option(client)
 	}
 
-	base := client.HttpClient
+	base := client.HTTPClient
 	if base == nil {
 		base = &http.Client{Timeout: defaultHTTPTimeout}
 	}
@@ -217,7 +228,7 @@ func NewClient(env Env, provider ProviderNumber, sf *SecurityFunctions, options 
 	decorated := *base
 	decorated.Transport = &customTransport{
 		t: transportWithTLS(base.Transport, &tls.Config{
-			InsecureSkipVerify: client.insecureSkipVerify,
+			InsecureSkipVerify: client.insecureSkipVerify, //nolint:gosec // TASK-180: verification is off for any proxy without a cert pool
 			RootCAs:            client.certPool,
 		}),
 	}
@@ -226,7 +237,7 @@ func NewClient(env Env, provider ProviderNumber, sf *SecurityFunctions, options 
 	} else if decorated.Timeout == 0 {
 		decorated.Timeout = defaultHTTPTimeout
 	}
-	client.HttpClient = &decorated
+	client.HTTPClient = &decorated
 
 	client.BaseURL = ResolveBaseURL(env, provider)
 
@@ -237,7 +248,7 @@ func NewClient(env Env, provider ProviderNumber, sf *SecurityFunctions, options 
 // Authorized for VAU-bound calls. The underlying Client (HTTP transport,
 // identity) is shared with the returned Session via embedding.
 func (c *Client) OpenSession() (*Session, error) {
-	vauChannel, err := vau.OpenChannelVerified(c.BaseURL, vau.EnvNonPU, c.HttpClient, c.vauVerifier, c.vauVerify)
+	vauChannel, err := vau.OpenChannelVerified(c.BaseURL, vau.EnvNonPU, c.HTTPClient, c.vauVerifier, c.vauVerify)
 	if err != nil {
 		return nil, err
 	}
@@ -261,20 +272,21 @@ func (c *customTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 
 // Close releases idle HTTP connections held by the Client.
 func (c *Client) Close() {
-	c.HttpClient.CloseIdleConnections()
+	c.HTTPClient.CloseIdleConnections()
 }
 
+// ErrorType is the error body of an Aktensystem; HTTPStatusCode comes from the response.
 type ErrorType struct {
-	HttpStatusCode int    `json:"-"`
+	HTTPStatusCode int    `json:"-"`
 	ErrorCode      string `json:"errorCode"`
 	ErrorDetail    string `json:"errorDetail,omitempty"`
 }
 
 func (e *ErrorType) Error() string {
-	return fmt.Sprintf("http error: %d, error code: %s, error detail: %s", e.HttpStatusCode, e.ErrorCode, e.ErrorDetail)
+	return fmt.Sprintf("http error: %d, error code: %s, error detail: %s", e.HTTPStatusCode, e.ErrorCode, e.ErrorDetail)
 }
 
-func parseHttpError(resp *http.Response) error {
+func parseHTTPError(resp *http.Response) error {
 	defer resp.Body.Close()
 	bodyData := new(bytes.Buffer)
 	if _, err := bodyData.ReadFrom(resp.Body); err != nil {
@@ -291,22 +303,23 @@ func parseHttpError(resp *http.Response) error {
 	if err := json.NewDecoder(bodyData).Decode(typedError); err != nil {
 		return fmt.Errorf("http status %d: %s", resp.StatusCode, bodyStr)
 	}
-	typedError.HttpStatusCode = resp.StatusCode
+	typedError.HTTPStatusCode = resp.StatusCode
 	return typedError
 }
 
+// HealthCheck reports whether the VAU channel still answers GET /VAU-Status.
 func (s *Session) HealthCheck() error {
 	_, err := s.GetStatus()
 	if err == nil {
 		return nil
-	} else {
-		slog.Error("Health check failed", "error", err, "opened_at", s.OpenedAt, "base_url", s.BaseURL)
-		return err
 	}
+	slog.Error("Health check failed", "error", err, "opened_at", s.OpenedAt, "base_url", s.BaseURL)
+	return err
 }
 
+// GetStatus fetches /VAU-Status through the VAU channel.
 func (s *Session) GetStatus() (*vau.Status, error) {
-	req, err := http.NewRequest("GET", "/VAU-Status", nil)
+	req, err := http.NewRequest(http.MethodGet, "/VAU-Status", nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}

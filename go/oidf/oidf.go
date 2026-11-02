@@ -19,10 +19,13 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Package oidf implements the relying party of the gematik OpenID Federation: its signed entity statement,
+// the verified fetches from the federation master, and logins at the federated OpenID providers.
 package oidf
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -46,6 +49,8 @@ func transportOrDefault(rt http.RoundTripper) http.RoundTripper {
 	return rt
 }
 
+// OpenidFederation is a client of one federation master, holding the trust anchor that everything fetched from
+// the master is verified against.
 type OpenidFederation struct {
 	fedMasterURL string
 	jwks         jwk.Set
@@ -53,6 +58,7 @@ type OpenidFederation struct {
 	httpClient   *http.Client
 }
 
+// OpenidProvider names an OpenID provider by its issuer.
 type OpenidProvider struct {
 	Issuer string
 }
@@ -63,6 +69,7 @@ func clockWithTolerance(tolerance time.Duration) jwt.ClockFunc {
 	}
 }
 
+// IdentityProviderInfo is one entry of the federation master's IdP list.
 type IdentityProviderInfo struct {
 	Issuer           string   `json:"iss"`
 	LogoURI          string   `json:"logo_uri"`
@@ -86,6 +93,9 @@ func WithHTTPClient(httpClient *http.Client) Option {
 	}
 }
 
+// NewOpenidFederation fetches the master's entity statement from fedMasterURL, verifies it against the trust
+// anchor jwks and returns a client of that master. It fails if the statement does not verify or names no
+// federation_entity metadata.
 func NewOpenidFederation(fedMasterURL string, jwks jwk.Set, opts ...Option) (*OpenidFederation, error) {
 	o := &federationOptions{}
 	for _, opt := range opts {
@@ -98,7 +108,7 @@ func NewOpenidFederation(fedMasterURL string, jwks jwk.Set, opts ...Option) (*Op
 	}
 	// layer the federation API key onto the chosen client without mutating the caller's
 	decorated := *httpClient
-	decorated.Transport = AddApiKeyTransport(transportOrDefault(httpClient.Transport))
+	decorated.Transport = AddAPIKeyTransport(transportOrDefault(httpClient.Transport))
 	httpClient = &decorated
 
 	es, err := fetchMasterEntityStatement(fedMasterURL, jwks, httpClient)
@@ -107,7 +117,7 @@ func NewOpenidFederation(fedMasterURL string, jwks jwk.Set, opts ...Option) (*Op
 	}
 
 	if es.Metadata.FederationEntity == nil {
-		return nil, fmt.Errorf("no federation entity found in master entity statement")
+		return nil, errors.New("no federation entity found in master entity statement")
 	}
 
 	return &OpenidFederation{
@@ -118,8 +128,10 @@ func NewOpenidFederation(fedMasterURL string, jwks jwk.Set, opts ...Option) (*Op
 	}, nil
 }
 
+// FetchIdpList fetches the master's IdP list and verifies it against the trust anchor. Each call goes to the
+// network.
 func (f *OpenidFederation) FetchIdpList() ([]IdentityProviderInfo, error) {
-	r, err := f.httpClient.Get(f.entity.IdpListEndpoint)
+	r, err := f.httpClient.Get(f.entity.IdpListEndpoint) //nolint:gosec // the endpoint comes from the master entity statement, verified against the operator-configured trust anchor
 	if err != nil {
 		return nil, fmt.Errorf("unable to fetch idp list from '%s': %w", f.entity.IdpListEndpoint, err)
 	}
@@ -136,11 +148,10 @@ func (f *OpenidFederation) FetchIdpList() ([]IdentityProviderInfo, error) {
 	}
 
 	return idpEntityToIdpInfo(idpEntity)
-
 }
 
 func fetchMasterEntityStatement(fedMasterURL string, jwks jwk.Set, httpClient *http.Client) (*EntityStatement, error) {
-	resp, err := httpClient.Get(fedMasterURL + "/.well-known/openid-federation")
+	resp, err := httpClient.Get(fedMasterURL + "/.well-known/openid-federation") //nolint:gosec // fedMasterURL is the operator's fed_master_url, not request input
 	if err != nil {
 		return nil, err
 	}
@@ -166,12 +177,12 @@ func fetchMasterEntityStatement(fedMasterURL string, jwks jwk.Set, httpClient *h
 }
 
 func (f *OpenidFederation) fetchAndVerify(url string, jwks jwk.Set) (*EntityStatement, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequest(http.MethodGet, url, nil) //nolint:gosec // TASK-182: iss and signed_jwks_uri are not constrained
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := f.httpClient.Do(req)
+	resp, err := f.httpClient.Do(req) //nolint:gosec // TASK-182: iss and signed_jwks_uri are not constrained
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +206,8 @@ func (f *OpenidFederation) fetchAndVerify(url string, jwks jwk.Set) (*EntityStat
 	return tokenToEntityStatement(verified)
 }
 
-// fetches and verifies the entity statement for the given issuer
+// FetchEntityStatement returns the self-signed entity statement of the issuer iss, verified with the keys that
+// the master's statement about iss vouches for.
 func (f *OpenidFederation) FetchEntityStatement(iss string) (*EntityStatement, error) {
 	query := url.Values{}
 	query.Add("iss", f.fedMasterURL)
@@ -235,24 +247,27 @@ func idpEntityToIdpInfo(idpEntity any) ([]IdentityProviderInfo, error) {
 	return idpInfo, nil
 }
 
+// FederationMasterURL returns the URL given to NewOpenidFederation.
 func (f *OpenidFederation) FederationMasterURL() string {
 	return f.fedMasterURL
 }
 
+// FetchSignedJwks returns the key set published at op's signed_jwks_uri, verified against the keys of op's
+// entity statement, so op has to be a statement FetchEntityStatement verified.
 func (f *OpenidFederation) FetchSignedJwks(op *EntityStatement) (jwk.Set, error) {
 	if op.Metadata == nil || op.Metadata.OpenidProvider == nil {
-		return nil, fmt.Errorf("no openid provider found in entity statement")
+		return nil, errors.New("no openid provider found in entity statement")
 	}
 
-	jwksUrl := op.Metadata.OpenidProvider.SignedJwksUri
+	jwksURL := op.Metadata.OpenidProvider.SignedJwksURI
 
-	resp, err := f.httpClient.Get(jwksUrl)
+	resp, err := f.httpClient.Get(jwksURL) //nolint:gosec // TASK-182: iss and signed_jwks_uri are not constrained
 	if err != nil {
-		return nil, fmt.Errorf("unable to fetch jwks from '%s': %w", jwksUrl, err)
+		return nil, fmt.Errorf("unable to fetch jwks from '%s': %w", jwksURL, err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unable to fetch jwks from '%s': %s", jwksUrl, resp.Status)
+		return nil, fmt.Errorf("unable to fetch jwks from '%s': %s", jwksURL, resp.Status)
 	}
 
 	defer resp.Body.Close()

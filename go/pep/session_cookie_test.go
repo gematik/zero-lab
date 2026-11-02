@@ -85,8 +85,8 @@ func TestEnforcerSessionCookie(t *testing.T) {
 	tok := mintTestCookie(t, key, map[string]any{"sub": "u1", "scope": "read"}, time.Now().Add(time.Hour).Unix())
 	enf := NewEnforcerSessionCookie("SID", [][]byte{key})
 
-	req := httptest.NewRequest("GET", "/", nil)
-	req.AddCookie(&http.Cookie{Name: "SID", Value: tok})
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(&http.Cookie{Name: "SID", Value: tok}) //nolint:gosec // request cookie in a test: only name and value go on the wire
 	ctx := &testContext{r: req}
 	called := false
 	enf.Apply(ctx, func(c Context) {
@@ -107,9 +107,9 @@ func TestEnforcerSessionCookie(t *testing.T) {
 		(&EnforcerScope{Scope: "read"}).Apply(c, func(Context) {})
 	})
 
-	ctx2 := &testContext{r: httptest.NewRequest("GET", "/", nil)}
+	ctx2 := &testContext{r: httptest.NewRequest(http.MethodGet, "/", nil)}
 	enf.Apply(ctx2, func(Context) { t.Error("next ran without a cookie") })
-	if !ctx2.denied || ctx2.denyErr.HttpStatus != 401 {
-		t.Errorf("missing cookie: denied=%v status=%d", ctx2.denied, ctx2.denyErr.HttpStatus)
+	if !ctx2.denied || ctx2.denyErr.HTTPStatus != 401 {
+		t.Errorf("missing cookie: denied=%v status=%d", ctx2.denied, ctx2.denyErr.HTTPStatus)
 	}
 }

@@ -30,11 +30,12 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"golang.org/x/oauth2"
+
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
 // mockClient is the AS-side oidc.Client for the co-hosted mock OP. The PDP holds it in its provider registry

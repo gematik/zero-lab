@@ -52,7 +52,7 @@ func TestNewRelyingParty(t *testing.T) {
 	clientCertPath, _ := generateCert(clientKeyPath)
 	defer os.Remove(clientCertPath)
 
-	jwk, err := NewJwkFromJson(`{
+	jwk, err := NewJwkFromJSON(`{
 		"kty": "EC",
 		"crv": "P-256",
 		"x":   "cdIR8dLbqaGrzfgyu365KM5s00zjFq8DFaUFqBvrWLs",
@@ -180,10 +180,12 @@ func generateCert(keyfile string) (string, error) {
 		return "", err
 	}
 
-	pem.Encode(tmpfile, &pem.Block{
+	if err := pem.Encode(tmpfile, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: derBytes,
-	})
+	}); err != nil {
+		return "", err
+	}
 
 	return tmpfile.Name(), nil
 }

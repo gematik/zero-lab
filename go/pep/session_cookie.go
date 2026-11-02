@@ -24,6 +24,7 @@ package pep
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -82,8 +83,11 @@ func NewEnforcerSessionCookie(cookieName string, keys [][]byte) *EnforcerSession
 	return &EnforcerSessionCookie{TypeVal: EnforcerTypeSessionCookie, CookieName: cookieName, keys: keys}
 }
 
+// Type returns EnforcerTypeSessionCookie.
 func (e *EnforcerSessionCookie) Type() EnforcerType { return EnforcerTypeSessionCookie }
 
+// Apply denies with ErrSessionRequired whatever goes wrong, including unavailable keys, so a client learns
+// nothing about the cause. Keys configured by path are read on the first request, not at start-up.
 func (e *EnforcerSessionCookie) Apply(ctx Context, next HandlerFunc) {
 	if err := e.ensureKeys(); err != nil {
 		ctx.Slogger().Error("session cookie keys unavailable", "error", err)
@@ -115,7 +119,7 @@ func (e *EnforcerSessionCookie) ensureKeys() error {
 		return nil
 	}
 	if e.KeyPath == "" {
-		return fmt.Errorf("no session cookie key configured")
+		return errors.New("no session cookie key configured")
 	}
 	k, err := loadSessionCookieKey(e.KeyPath)
 	if err != nil {

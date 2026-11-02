@@ -27,10 +27,14 @@ import (
 	"github.com/hashicorp/go-secure-stdlib/nonceutil"
 )
 
+// HashicorpNonceService is a Service on HashiCorp's nonceutil. Its nonces are not guaranteed to outlive the
+// process or to be valid at another replica.
 type HashicorpNonceService struct {
 	nonceService nonceutil.NonceService
 }
 
+// NewHashicorpNonceService returns an initialized HashicorpNonceService, with nonceutil's default nonce
+// lifetime.
 func NewHashicorpNonceService() (*HashicorpNonceService, error) {
 	nonceService := nonceutil.NewNonceService()
 	err := nonceService.Initialize()
@@ -40,6 +44,7 @@ func NewHashicorpNonceService() (*HashicorpNonceService, error) {
 	return &HashicorpNonceService{nonceService}, nil
 }
 
+// Get returns a fresh nonce.
 func (s *HashicorpNonceService) Get() (string, error) {
 	nonceStr, _, err := s.nonceService.Get()
 	if err != nil {
@@ -48,6 +53,7 @@ func (s *HashicorpNonceService) Get() (string, error) {
 	return nonceStr, nil
 }
 
+// Redeem accepts nonceStr once. It returns an error if the nonce is unknown, expired or already redeemed.
 func (s *HashicorpNonceService) Redeem(nonceStr string) error {
 	ok := s.nonceService.Redeem(nonceStr)
 	if !ok {

@@ -21,7 +21,7 @@ no version variables: an unchanged module keeps its tag, and nothing is "ahead o
   exactly on a tag → `0.20.2`; a few commits past it → `0.20.2-3-gdeadbeef`; never tagged
   → `dev`.
 - **`zero-caddy`** combines its version with the upstream Caddy version as SemVer build
-  metadata, e.g. `zero-caddy 0.20.2+caddy2.11.4`.
+  metadata, e.g. `zero-caddy 0.20.2+caddy2.11.7`.
 
 Inspect and manage versions:
 
@@ -182,7 +182,7 @@ via `--build-arg VERSION`:
 ```console
 just docker-build-epa      # spilikin/zero-epa:<git-describe>            (+ :latest)
 just docker-build-pdp
-just docker-build-caddy    # spilikin/zero-caddy:<ver>-caddy2.11.4
+just docker-build-caddy    # spilikin/zero-caddy:<ver>-caddy2.11.7
 just docker-push-epa       # build + push
 ```
 

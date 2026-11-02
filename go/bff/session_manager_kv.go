@@ -64,7 +64,7 @@ func bffSessionKey(id string) string  { return "bff:session:" + id }
 func bffStateKey(state string) string { return "bff:state:" + state }
 
 func (m *kvSessionManager) save(session *Session) error {
-	record, err := json.Marshal(session)
+	record, err := json.Marshal(session) //nolint:gosec // TASK-178: tokens reach the store unencrypted
 	if err != nil {
 		return fmt.Errorf("marshal session: %w", err)
 	}

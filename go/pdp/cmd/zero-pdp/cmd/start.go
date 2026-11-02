@@ -24,7 +24,6 @@ package cmd
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -32,8 +31,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gematik/zero-lab/go/pdp/authzserver"
 	"github.com/spf13/cobra"
+
+	"github.com/gematik/zero-lab/go/pdp/authzserver"
 )
 
 func init() {
@@ -43,7 +43,7 @@ func init() {
 var startCmd = &cobra.Command{
 	Use:   "start",
 	Short: "Start the Zero Trust PDP",
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(_ *cobra.Command, _ []string) {
 		pdp, err := createPdp()
 		if err != nil {
 			slog.Error("Failed to create PDP", "error", err)
@@ -69,7 +69,7 @@ var startCmd = &cobra.Command{
 		}
 
 		slog.Debug("Zero Trust PDP configured", "pdp", pdp)
-		slog.Info(fmt.Sprintf("starting Zero Trust PDP at %s", pdp.BindAddress))
+		slog.Info("starting Zero Trust PDP at " + pdp.BindAddress)
 		if err := serve(srv); err != nil {
 			slog.Error("server stopped", "error", err)
 			os.Exit(1)

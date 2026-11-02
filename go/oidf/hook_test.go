@@ -49,7 +49,9 @@ func TestEntityStatementHook(t *testing.T) {
 		t.Fatal(err)
 	}
 	jwks := &Jwks{Keys: jwk.NewSet()}
-	jwks.Keys.AddKey(pub)
+	if err := jwks.Keys.AddKey(pub); err != nil {
+		t.Fatal(err)
+	}
 
 	rp := &RelyingParty{
 		cfg:           &RelyingPartyConfig{FedMasterURL: "https://fedmaster.example"},

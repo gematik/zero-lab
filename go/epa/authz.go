@@ -19,36 +19,44 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Package epa is a client of the ePA für alle Aktensysteme: the /information endpoints, the
+// VAU session with its authorization and entitlement, and a Proxy that serves them over HTTP.
+// Identity and IDP-Dienst sit behind Identity and Authenticator, which
+// package ti implements with the `ti` tool.
 package epa
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 )
 
+// Nonce is the answer of the Aktensystem's getNonce.
 type Nonce struct {
 	Nonce string `json:"nonce"`
 }
 
-func (c *Session) GetNonce() (string, error) {
-	req, err := http.NewRequest("GET", "/epa/authz/v1/getNonce", nil)
+// GetNonce fetches the nonce the client attest has to sign.
+func (s *Session) GetNonce() (string, error) {
+	req, err := http.NewRequest(http.MethodGet, "/epa/authz/v1/getNonce", nil)
 	if err != nil {
 		return "", fmt.Errorf("creating request: %w", err)
 	}
 	req.Header.Set("x-useragent", UserAgent)
 
-	resp, err := c.VAUChannel.Do(req)
+	resp, err := s.VAUChannel.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("sending request: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", parseHttpError(resp)
+		return "", parseHTTPError(resp)
 	}
 
 	nonce := new(Nonce)
@@ -59,8 +67,10 @@ func (c *Session) GetNonce() (string, error) {
 	return nonce.Nonce, nil
 }
 
+// SendAuthorizationRequestSC starts the authorization at the Aktensystem and returns the
+// URL of the IDP-Dienst it redirects to.
 func (s *Session) SendAuthorizationRequestSC() (string, error) {
-	req, err := http.NewRequest("GET", "/epa/authz/v1/send_authorization_request_sc", nil)
+	req, err := http.NewRequest(http.MethodGet, "/epa/authz/v1/send_authorization_request_sc", nil)
 	if err != nil {
 		return "", fmt.Errorf("creating request: %w", err)
 	}
@@ -72,24 +82,26 @@ func (s *Session) SendAuthorizationRequestSC() (string, error) {
 	}
 
 	if resp.StatusCode != http.StatusFound {
-		return "", parseHttpError(resp)
+		return "", parseHTTPError(resp)
 	}
 
 	return resp.Header.Get("Location"), nil
 }
 
+// SendAuthCodeSC hands the IDP-Dienst's code and the client attest to the Aktensystem,
+// which completes the authorization of the VAU session.
 func (s *Session) SendAuthCodeSC(authCode SendAuthCodeSCtype) error {
 	body, err := json.Marshal(authCode)
 	if err != nil {
 		return fmt.Errorf("marshaling body: %w", err)
 	}
 	slog.Debug("SendAuthCodeSC", "host_url", s.BaseURL)
-	req, err := http.NewRequest("POST", "/epa/authz/v1/send_authcode_sc", bytes.NewBuffer(body))
+	req, err := http.NewRequest(http.MethodPost, "/epa/authz/v1/send_authcode_sc", bytes.NewBuffer(body))
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
+	req.Header.Set("Content-Length", strconv.Itoa(len(body)))
 	req.Header.Set("x-useragent", UserAgent)
 
 	resp, err := s.VAUChannel.Do(req)
@@ -98,12 +110,13 @@ func (s *Session) SendAuthCodeSC(authCode SendAuthCodeSCtype) error {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return parseHttpError(resp)
+		return parseHTTPError(resp)
 	}
 
 	return nil
 }
 
+// SendAuthCodeSCtype is the body of [Session.SendAuthCodeSC].
 type SendAuthCodeSCtype struct {
 	AuthorizationCode string `json:"authorizationCode"`
 	ClientAttest      string `json:"clientAttest"`
@@ -112,7 +125,7 @@ type SendAuthCodeSCtype struct {
 // identity is the session's signing identity, or an error naming what is missing.
 func (s *Session) identity() (Identity, error) {
 	if s.securityFunctions == nil || s.securityFunctions.Identity == nil {
-		return nil, fmt.Errorf("no SMC-B authn identity configured")
+		return nil, errors.New("no SMC-B authn identity configured")
 	}
 	return s.securityFunctions.Identity, nil
 }
@@ -150,14 +163,14 @@ func (s *Session) Authorize(authenticator Authenticator) error {
 		return fmt.Errorf("creating client attest: %w", err)
 	}
 
-	authz_uri, err := s.SendAuthorizationRequestSC()
+	authzURI, err := s.SendAuthorizationRequestSC()
 	if err != nil {
 		return fmt.Errorf("sending authorization request: %w", err)
 	}
 
-	slog.Debug("Authorize", "authz_uri", authz_uri)
+	slog.Debug("Authorize", "authz_uri", authzURI)
 
-	codeRedirectURL, err := authenticator.Authenticate(context.Background(), authz_uri)
+	codeRedirectURL, err := authenticator.Authenticate(context.Background(), authzURI)
 	if err != nil {
 		return fmt.Errorf("authenticate: %w", err)
 	}
@@ -168,7 +181,6 @@ func (s *Session) Authorize(authenticator Authenticator) error {
 		AuthorizationCode: codeRedirectURL.Code,
 		ClientAttest:      clientAttest,
 	})
-
 	if err != nil {
 		return fmt.Errorf("sending auth code: %w", err)
 	}

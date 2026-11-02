@@ -25,8 +25,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gematik/zero-lab/go/pep"
 	"github.com/lestrrat-go/jwx/v3/jwk"
+
+	"github.com/gematik/zero-lab/go/pep"
 )
 
 // TestVerifyAccessToken_AudienceOptional proves the PEP can be reused both as a guard before a

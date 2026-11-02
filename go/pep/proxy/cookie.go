@@ -45,13 +45,13 @@ func newCookieTemplate(name string, insecure bool) *http.Cookie {
 }
 
 func setCookie(w http.ResponseWriter, tmpl *http.Cookie, value string) {
-	c := *tmpl
+	c := *tmpl //nolint:gosec // copy of newCookieTemplate's cookie: HttpOnly, SameSite=Lax, and Secure unless the operator sets the insecure flag
 	c.Value = value
 	http.SetCookie(w, &c)
 }
 
 func expireCookie(w http.ResponseWriter, tmpl *http.Cookie) {
-	c := *tmpl
+	c := *tmpl //nolint:gosec // copy of newCookieTemplate's cookie: HttpOnly, SameSite=Lax, and Secure unless the operator sets the insecure flag
 	c.Value = ""
 	c.MaxAge = -1
 	http.SetCookie(w, &c)

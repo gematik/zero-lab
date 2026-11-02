@@ -30,11 +30,12 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
 	"github.com/gematik/zero-lab/go/pep/proxy"
-	"gopkg.in/yaml.v3"
 )
 
 // openidProviders is the openid-providers.yaml schema (flat) — several providers of each kind, each reusing
@@ -50,7 +51,7 @@ type openidProviders struct {
 // <public>/oauth2/callback unless it sets its own redirect_uri; the OIDF config's relative key paths resolve
 // against the providers file's directory.
 func loadProviders(path, publicURL string) ([]proxy.ProviderOption, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // the path comes from PEP_OPENID_PROVIDERS_PATH or the fixed default in the working directory, not a request
 	if err != nil {
 		return nil, fmt.Errorf("read providers %q: %w", path, err)
 	}
@@ -118,7 +119,7 @@ func providersFromEnv(publicURL string) []proxy.ProviderOption {
 		if v := os.Getenv("PEP_OIDC_ACCEPTABLE_SKEW"); v != "" {
 			d, err := time.ParseDuration(v)
 			if err != nil {
-				log.Fatalf("invalid PEP_OIDC_ACCEPTABLE_SKEW %q: %v", v, err)
+				log.Fatalf("invalid PEP_OIDC_ACCEPTABLE_SKEW %q: %v", v, err) //nolint:gosec // %q escapes a value from the operator's environment; start-up log, no request data
 			}
 			skew = d
 		}

@@ -12,9 +12,13 @@ MODERNIZE := "golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize
 # Development build: no release reads go1.27 export data yet (2026.2.1 stops at
 # version 4); move to the first release that does.
 STATICCHECK := "honnef.co/go/tools/cmd/staticcheck@v0.7.0-0.dev.0.20261009230814-452d5bb86b45"
-GOVULNCHECK := "golang.org/x/vuln/cmd/govulncheck@v1.4.0"
+GOVULNCHECK := "golang.org/x/vuln/cmd/govulncheck@v1.9.0"
 # golangci-lint v2.14 is the first release that reads Go 1.27 export data.
 GOLANGCI := "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0"
+
+# Every variable a gated test reads: `just test` must not reach a live system because a
+# shell or ./.env happens to set one.
+_UNGATE := "unset EPA_KVNRS_FILE EPA_POPP_TOKEN EPA_REPORT EPA_SMCB_CERT EPA_SMCB_KEY EPA_SMCB_P12 EPA_SMCB_P12_PASSWORD EPA_SMCB_P12_PASSWORD_PATH EPA_TI_BIN EPA_VAU_BASE_URL EPA_VAU_CERT_VERIFY GEMIDP_BASE_URL GEMIDP_CLIENT_ID GEMIDP_REDIRECT_URI GEMIDP_SCOPE GEMIDP_SMCB_P12 GEMIDP_SMCB_P12_PASSWORD GEMIDP_SMCB_REPORT OIDF_FEDMASTER_URL PEP_PG_DSN TEST_DATABASE_URL VSDM_HMAC_KEY VSDM_HMAC_KID ZERO_PDP_E2E_CLIENT2_ID ZERO_PDP_E2E_CLIENT2_KEY_PATH ZERO_PDP_E2E_HITL ZERO_PDP_E2E_URL"
 
 # The gematik OpenAPI ruleset lives in the internal GitLab project dev-portal/api-tools and
 # has no licence, so it is never copied here: `api-lint` runs it from a local clone at
@@ -32,7 +36,7 @@ SPECTRAL := "@stoplight/spectral-cli@6.11.1"
 # "malformedRequest: x-useragent header invalid in inner request".
 
 # Upstream Caddy version, derived from zaddy/go.mod (single source of truth). Used as
-# SemVer build metadata for the zero-caddy image tag, e.g. zero-caddy:0.20.2-caddy2.11.4.
+# SemVer build metadata for the zero-caddy image tag, e.g. zero-caddy:0.20.2-caddy2.11.7.
 CADDY_VERSION := `grep -E 'caddyserver/caddy/v2 v[0-9]' zaddy/go.mod | head -1 | awk '{print $2}' | sed 's/^v//'`
 
 # Display available commands
@@ -414,5 +418,43 @@ api-lint:
     # Warnings are conventions to follow too, so they fail the lint as errors do.
     npx -y {{SPECTRAL}} lint --fail-severity=warn --ruleset "$dir/openapi/spectral/ruleset.yml" "${specs[@]}"
 
-# One-shot static checks: go vet + staticcheck + modernize report + gematik API lint
-check: lint modernize api-lint
+# go.mod and go.sum as `go mod tidy` leaves them, with sums that match what was downloaded
+mod-check:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    fail=0
+    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
+        echo "==> mod-check $dir"
+        ( cd "$dir" && go mod tidy -diff && go mod verify ) || fail=1
+    done
+    exit $fail
+
+# Tests of every module, built as the images are. Gated suites need their own recipe and
+# never run here (docs/design/testing.md), so what dotenv-load brought in is taken out.
+test:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    {{_UNGATE}}
+    fail=0
+    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
+        echo "==> test $dir"
+        ( cd "$dir" && go test -count=1 ./... ) || fail=1
+    done
+    exit $fail
+
+# Tests under the race detector, which needs cgo on Linux.
+test-race:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    {{_UNGATE}}
+    export CGO_ENABLED=1
+    fail=0
+    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
+        echo "==> test -race $dir"
+        ( cd "$dir" && go test -race -count=1 ./... ) || fail=1
+    done
+    exit $fail
+
+# Every check of a change: lints, idioms, known vulnerabilities, module files, tests with
+# and without the race detector, and the gematik API lint
+check: lint golangci modernize vuln mod-check test test-race api-lint

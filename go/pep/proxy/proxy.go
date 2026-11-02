@@ -28,6 +28,7 @@ package proxy
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -89,12 +90,13 @@ type Server struct {
 	gateway    *Gateway // nil in forward_auth-only mode (no Routes)
 }
 
+// New returns a Server for cfg. It fails without a Backend or Store and on a key file that cannot be loaded.
 func New(cfg Config) (*Server, error) {
 	if cfg.Backend == nil {
-		return nil, fmt.Errorf("proxy: backend is required")
+		return nil, errors.New("proxy: backend is required")
 	}
 	if cfg.Store == nil {
-		return nil, fmt.Errorf("proxy: store is required")
+		return nil, errors.New("proxy: store is required")
 	}
 	if cfg.CookieName == "" {
 		cfg.CookieName = "ZERO-PEP-SID"

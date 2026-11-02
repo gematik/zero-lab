@@ -26,8 +26,9 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/gematik/zero-lab/go/epa"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/gematik/zero-lab/go/epa"
 )
 
 func TestCalculateHCV(t *testing.T) {

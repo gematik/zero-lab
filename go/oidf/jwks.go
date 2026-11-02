@@ -27,7 +27,8 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
-func NewJwkFromJson(data string) (*Jwk, error) {
+// NewJwkFromJSON parses a single JWK from its JSON form.
+func NewJwkFromJSON(data string) (*Jwk, error) {
 	key, err := jwk.ParseKey([]byte(data))
 	if err != nil {
 		return nil, err
@@ -35,15 +36,18 @@ func NewJwkFromJson(data string) (*Jwk, error) {
 	return &Jwk{Key: key}, nil
 }
 
-// small trick to make jwk.Key JSON-serializable
+// Jwk wraps a jwk.Key, an interface the encoding packages cannot decode into, so that configuration can hold
+// a plain JWK.
 type Jwk struct {
 	Key jwk.Key
 }
 
+// MarshalJSON writes the key as a JWK (RFC 7517).
 func (j *Jwk) MarshalJSON() ([]byte, error) {
 	return json.Marshal(j.Key)
 }
 
+// UnmarshalJSON parses a JWK and replaces the wrapped key.
 func (j *Jwk) UnmarshalJSON(data []byte) error {
 	key, err := jwk.ParseKey(data)
 	if err != nil {
@@ -53,6 +57,7 @@ func (j *Jwk) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// UnmarshalYAML parses a JWK written as a YAML mapping and replaces the wrapped key.
 func (j *Jwk) UnmarshalYAML(unmarshal func(any) error) error {
 	var m map[string]any
 	if err := unmarshal(&m); err != nil {
@@ -72,21 +77,27 @@ func (j *Jwk) UnmarshalYAML(unmarshal func(any) error) error {
 	return nil
 }
 
-func (j *Jwk) AsSet() *Jwks {
+// AsSet returns a key set holding only this key. It fails if no key is set.
+func (j *Jwk) AsSet() (*Jwks, error) {
 	keys := jwk.NewSet()
-	keys.AddKey(j.Key)
-	return &Jwks{Keys: keys}
+	if err := keys.AddKey(j.Key); err != nil {
+		return nil, err
+	}
+	return &Jwks{Keys: keys}, nil
 }
 
-// small trick to make jwk.Set JSON-serializable
+// Jwks wraps a jwk.Set, an interface the encoding packages cannot decode into, so that it marshals to and from
+// a JWK Set in JSON.
 type Jwks struct {
 	Keys jwk.Set
 }
 
+// MarshalJSON writes the keys as a JWK Set (RFC 7517 §5).
 func (j *Jwks) MarshalJSON() ([]byte, error) {
 	return json.Marshal(j.Keys)
 }
 
+// UnmarshalJSON parses a JWK Set and replaces the wrapped set.
 func (j *Jwks) UnmarshalJSON(data []byte) error {
 	keys, err := jwk.Parse(data)
 	if err != nil {

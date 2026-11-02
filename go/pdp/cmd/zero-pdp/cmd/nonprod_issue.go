@@ -26,9 +26,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/gematik/zero-lab/go/pdp/authzserver"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/spf13/cobra"
+
+	"github.com/gematik/zero-lab/go/pdp/authzserver"
 )
 
 type issueCmdResponse struct {
@@ -39,8 +40,7 @@ type issueCmdResponse struct {
 var issueCmd = &cobra.Command{
 	Use:   "issue",
 	Short: "Issue an access token",
-	Run: func(cmd *cobra.Command, args []string) {
-
+	Run: func(cmd *cobra.Command, _ []string) {
 		scopes, err := cmd.Flags().GetStringArray("scope")
 		cobra.CheckErr(err)
 
@@ -53,7 +53,7 @@ var issueCmd = &cobra.Command{
 		dpopThumbprit, err := authzserver.ThumbprintS256(dpopPrK)
 		cobra.CheckErr(err)
 
-		session := &authzserver.AuthzServerSession{
+		session := &authzserver.Session{
 			AccessTokenDuration: 5 * time.Minute,
 			ExpiresAt:           time.Now().Add(4 * time.Hour),
 			ClientID:            "client_id",
@@ -72,18 +72,20 @@ var issueCmd = &cobra.Command{
 	},
 }
 
-var aud []string
-var scope []string
-var clientId string
-var sub string
+var (
+	aud      []string
+	scope    []string
+	clientID string
+	sub      string
+)
 
 func init() {
 	issueCmd.Flags().StringArrayVarP(&aud, "aud", "a", []string{}, "Specify audience(s) for the access token")
 	issueCmd.Flags().StringArrayVarP(&scope, "scope", "s", []string{}, "Specify scope(s) for the access token")
-	issueCmd.Flags().StringVarP(&clientId, "client_id", "c", "", "Specify client ID for the access token")
+	issueCmd.Flags().StringVarP(&clientID, "client_id", "c", "", "Specify client ID for the access token")
 	issueCmd.Flags().StringVarP(&sub, "sub", "u", "", "Specify subject for the access token")
-	cobra.MarkFlagRequired(issueCmd.Flags(), "aud")
-	cobra.MarkFlagRequired(issueCmd.Flags(), "scope")
-	cobra.MarkFlagRequired(issueCmd.Flags(), "client_id")
-	cobra.MarkFlagRequired(issueCmd.Flags(), "sub")
+	cobra.CheckErr(cobra.MarkFlagRequired(issueCmd.Flags(), "aud"))
+	cobra.CheckErr(cobra.MarkFlagRequired(issueCmd.Flags(), "scope"))
+	cobra.CheckErr(cobra.MarkFlagRequired(issueCmd.Flags(), "client_id"))
+	cobra.CheckErr(cobra.MarkFlagRequired(issueCmd.Flags(), "sub"))
 }

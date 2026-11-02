@@ -28,6 +28,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -37,7 +38,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/go-playground/validator/v10"
 	"github.com/lestrrat-go/jwx/v3/cert"
 	"github.com/lestrrat-go/jwx/v3/jwa"
@@ -45,6 +45,8 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jws"
 	"github.com/lestrrat-go/jwx/v3/jwt"
 	"gopkg.in/yaml.v3"
+
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
 // defaultOPScopes are requested from an OpenID provider when RelyingPartyConfig.Scopes is unset — the
@@ -131,6 +133,8 @@ var knownFedMasters = map[string]string{
 	"https://app.federationmaster.de":      `{"kty":"EC","crv":"P-256","x":"aaxgIv7_eqkDjlwkmduxUthg0eF6aK549sIvzM2nb5I","y":"hg5uKlgltaMBpL57Huhf8Sl4xYf1P5gRfXL-zd_Vbp0","kid":"puk_fedmaster_sig","use":"sig","alg":"ES256"}`,
 }
 
+// RelyingParty is this service's entity in the federation: it signs and serves its entity statement and creates
+// clients for the federated OpenID providers.
 type RelyingParty struct {
 	cfg              *RelyingPartyConfig
 	trustAnchor      jwk.Set
@@ -144,6 +148,8 @@ type RelyingParty struct {
 	hooks            []func(*EntityStatement)
 }
 
+// LoadRelyingPartyConfig reads a RelyingPartyConfig from the YAML file at path; relative key paths resolve against
+// the file's directory. NewRelyingPartyFromConfig validates the result.
 func LoadRelyingPartyConfig(path string) (*RelyingPartyConfig, error) {
 	yamlData, err := os.ReadFile(path)
 	if err != nil {
@@ -158,6 +164,7 @@ func LoadRelyingPartyConfig(path string) (*RelyingPartyConfig, error) {
 	return cfg, nil
 }
 
+// NewRelyingPartyFromConfigFile builds a relying party from the YAML configuration file at path.
 func NewRelyingPartyFromConfigFile(path string) (*RelyingParty, error) {
 	cfg, err := LoadRelyingPartyConfig(path)
 	if err != nil {
@@ -166,6 +173,8 @@ func NewRelyingPartyFromConfigFile(path string) (*RelyingParty, error) {
 	return NewRelyingPartyFromConfig(cfg)
 }
 
+// NewRelyingPartyFromConfig validates cfg, loads its keys and fetches the federation master's entity statement,
+// so the master has to be reachable and its statement has to verify for this to succeed.
 func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 	validate := validator.New(validator.WithRequiredStructEnabled())
 
@@ -190,7 +199,7 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 	}
 
 	if cfg.ClientKey.CertPEMPath == "" {
-		return nil, fmt.Errorf("client_key.cert_pem_path is required (mTLS)")
+		return nil, errors.New("client_key.cert_pem_path is required (mTLS)")
 	}
 
 	var sigPublicKey, encPublicKey, clientPublicKey jwk.Key
@@ -217,7 +226,7 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 	// on the federation API key — so layer both onto a copy of the base transport (same x-authorization
 	// injection as the federation client), without mutating the caller's.
 	mtlsClient := *baseClient
-	mtlsClient.Transport = AddApiKeyTransport(transportWithTLS(baseClient.Transport, &tls.Config{
+	mtlsClient.Transport = AddAPIKeyTransport(transportWithTLS(baseClient.Transport, &tls.Config{
 		// GetClientCertificate (not Certificates) so our self-signed client cert is presented
 		// unconditionally: self_signed_tls_client_auth means the IDP's CertificateRequest advertises a
 		// list of acceptable CA names that does not include our self-signed issuer, and Go would otherwise
@@ -235,11 +244,17 @@ func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
 	}
 
 	rp.entityStatement.Jwks = &Jwks{Keys: jwk.NewSet()}
-	rp.entityStatement.Jwks.Keys.AddKey(sigPublicKey)
+	if err := rp.entityStatement.Jwks.Keys.AddKey(sigPublicKey); err != nil {
+		return nil, fmt.Errorf("sign_key: %w", err)
+	}
 
 	entityJwks := jwk.NewSet()
-	entityJwks.AddKey(encPublicKey)
-	entityJwks.AddKey(clientPublicKey)
+	if err := entityJwks.AddKey(encPublicKey); err != nil {
+		return nil, fmt.Errorf("enc_key: %w", err)
+	}
+	if err := entityJwks.AddKey(clientPublicKey); err != nil {
+		return nil, fmt.Errorf("client_key: %w", err)
+	}
 
 	rp.entityStatement.Metadata.OpenidRelyingParty.Jwks = &Jwks{Keys: entityJwks}
 
@@ -287,6 +302,8 @@ func (rp *RelyingParty) entityStatementForRequest() *EntityStatement {
 	return &es
 }
 
+// SignEntityStatement returns the entity statement, with the hooks applied, as a JWT signed with the signing
+// key. It is backdated one hour and valid for 23 hours from now.
 func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {
 	es := rp.entityStatementForRequest()
 
@@ -299,14 +316,17 @@ func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {
 		Claim("authority_hints", []string{rp.cfg.FedMasterURL}).
 		Claim("metadata", es.Metadata).
 		Build()
-
 	if err != nil {
 		return nil, err
 	}
 
 	headers := jws.NewHeaders()
-	headers.Set(jws.KeyIDKey, rp.signKid)
-	headers.Set(jws.TypeKey, "entity-statement+jwt")
+	if err := headers.Set(jws.KeyIDKey, rp.signKid); err != nil {
+		return nil, err
+	}
+	if err := headers.Set(jws.TypeKey, "entity-statement+jwt"); err != nil {
+		return nil, err
+	}
 
 	signed, err := jwt.Sign(token,
 		jwt.WithKey(
@@ -315,7 +335,6 @@ func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {
 			jws.WithProtectedHeaders(headers),
 		),
 	)
-
 	if err != nil {
 		return nil, err
 	}
@@ -323,7 +342,8 @@ func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {
 	return signed, nil
 }
 
-func (rp *RelyingParty) Serve(w http.ResponseWriter, r *http.Request) {
+// Serve is the HTTP handler of the entity statement endpoint.
+func (rp *RelyingParty) Serve(w http.ResponseWriter, _ *http.Request) {
 	signed, err := rp.SignEntityStatement()
 	if err != nil {
 		slog.Error("unable to sign entity statement", "error", err)
@@ -331,26 +351,36 @@ func (rp *RelyingParty) Serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/entity-statement+jwt")
-	w.Write(signed)
+	if _, err := w.Write(signed); err != nil {
+		slog.Warn("unable to write entity statement", "error", err)
+	}
 }
 
+// ServeSignedJwks is the HTTP handler of signed_jwks_uri: the encryption and client keys of the relying party as
+// a signed JWT, backdated one hour and valid for 23 hours from now.
 func (rp *RelyingParty) ServeSignedJwks(w http.ResponseWriter, r *http.Request) {
-
 	token, err := jwt.NewBuilder().
 		Issuer(rp.entityStatement.Subject).
 		IssuedAt(time.Now().Add(-1*time.Hour)). // backdate token to avoid clock skew
 		Expiration(time.Now().Add(time.Hour*23)).
 		Claim("keys", rp.entityStatement.Metadata.OpenidRelyingParty.Jwks.Keys).
 		Build()
-
 	if err != nil {
 		slog.Error("unable to build token", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
 
 	headers := jws.NewHeaders()
-	headers.Set(jws.KeyIDKey, rp.signKid)
-	headers.Set(jws.TypeKey, "jwk-set+json")
+	if err := headers.Set(jws.KeyIDKey, rp.signKid); err != nil {
+		slog.Error("unable to set token header", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if err := headers.Set(jws.TypeKey, "jwk-set+json"); err != nil {
+		slog.Error("unable to set token header", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 
 	signed, err := jwt.Sign(token,
 		jwt.WithKey(
@@ -359,13 +389,15 @@ func (rp *RelyingParty) ServeSignedJwks(w http.ResponseWriter, r *http.Request) 
 			jws.WithProtectedHeaders(headers),
 		),
 	)
-
 	if err != nil {
 		slog.Error("unable to sign token", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
 	w.Header().Set("Content-Type", "application/jwk-set+jwt")
-	w.Write(signed)
+	if _, err := w.Write(signed); err != nil {
+		slog.Warn("unable to write signed jwks", "error", err)
+		return
+	}
 
 	slog.Info("served signed jwks", "remote_addr", r.RemoteAddr)
 }
@@ -375,6 +407,8 @@ type pushedAuthorizationResponse struct {
 	ExpiresIn  int    `json:"expires_in"`
 }
 
+// NewClient resolves issuer through the federation master and returns a client for that OpenID provider. Each
+// call fetches the provider's entity statement and signed JWKS anew.
 func (rp *RelyingParty) NewClient(issuer string) (oidc.Client, error) {
 	op, err := rp.federation.FetchEntityStatement(issuer)
 	if err != nil {
@@ -383,7 +417,7 @@ func (rp *RelyingParty) NewClient(issuer string) (oidc.Client, error) {
 
 	// TODO: check if entity is openid provider
 	if op.Metadata == nil || op.Metadata.OpenidProvider == nil {
-		return nil, fmt.Errorf("no openid provider metadata found")
+		return nil, errors.New("no openid provider metadata found")
 	}
 
 	metadata := op.Metadata.OpenidProvider
@@ -402,7 +436,7 @@ func (rp *RelyingParty) NewClient(issuer string) (oidc.Client, error) {
 		rp:          rp,
 		op:          op,
 		scopes:      scopes,
-		redirectUri: rp.entityStatement.Metadata.OpenidRelyingParty.RedirectURIs[0],
+		redirectURI: rp.entityStatement.Metadata.OpenidRelyingParty.RedirectURIs[0],
 		metadata:    metadata,
 		jwks:        jwks,
 	}, nil
@@ -442,19 +476,27 @@ func loadKeyConfig(kc KeyConfig, baseDir string, keyUsage jwk.KeyUsageType) (jwk
 		kid = base64.RawURLEncoding.EncodeToString(tp)
 	}
 
-	privateKey.Set(jwk.KeyIDKey, kid)
-	privateKey.Set(jwk.KeyUsageKey, keyUsage)
+	if err := privateKey.Set(jwk.KeyIDKey, kid); err != nil {
+		return nil, nil, "", fmt.Errorf("set key id: %w", err)
+	}
+	if err := privateKey.Set(jwk.KeyUsageKey, keyUsage); err != nil {
+		return nil, nil, "", fmt.Errorf("set key usage: %w", err)
+	}
 
 	publicKey, err := privateKey.PublicKey()
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("derive public key: %w", err)
 	}
-	publicKey.Set(jwk.KeyIDKey, kid)
-	publicKey.Set(jwk.KeyUsageKey, keyUsage)
+	if err := publicKey.Set(jwk.KeyIDKey, kid); err != nil {
+		return nil, nil, "", fmt.Errorf("set key id: %w", err)
+	}
+	if err := publicKey.Set(jwk.KeyUsageKey, keyUsage); err != nil {
+		return nil, nil, "", fmt.Errorf("set key usage: %w", err)
+	}
 	if keyUsage == jwk.ForEncryption {
-		publicKey.Set(jwk.AlgorithmKey, jwa.ECDH_ES)
+		publicKey.Set(jwk.AlgorithmKey, jwa.ECDH_ES) //nolint:errcheck,gosec // TASK-183: always fails: passes the function, not its value, so no alg is published
 	} else {
-		publicKey.Set(jwk.AlgorithmKey, jwa.ES256)
+		publicKey.Set(jwk.AlgorithmKey, jwa.ES256) //nolint:errcheck,gosec // TASK-183: always fails: passes the function, not its value, so no alg is published
 	}
 
 	if kc.CertPEMPath != "" {
@@ -463,7 +505,9 @@ func loadKeyConfig(kc KeyConfig, baseDir string, keyUsage jwk.KeyUsageType) (jwk
 			return nil, nil, "", err
 		}
 		var certChain cert.Chain
-		certChain.AddString(base64.StdEncoding.EncodeToString(certDataDer))
+		if err := certChain.AddString(base64.StdEncoding.EncodeToString(certDataDer)); err != nil {
+			return nil, nil, "", fmt.Errorf("add cert to chain: %w", err)
+		}
 		if err := publicKey.Set(jwk.X509CertChainKey, &certChain); err != nil {
 			return nil, nil, "", fmt.Errorf("set cert chain: %w", err)
 		}
@@ -494,7 +538,7 @@ func parseKeySource(kc KeyConfig, baseDir string) (jwk.Key, error) {
 		}
 		return jwk.ParseKey(data)
 	default:
-		return nil, fmt.Errorf("provide one of key_pem_path, jwk_path, or jwk")
+		return nil, errors.New("provide one of key_pem_path, jwk_path, or jwk")
 	}
 }
 
@@ -523,7 +567,11 @@ func tlsCertFromKey(clientPrivateKey jwk.Key, certPEMPath string) (tls.Certifica
 // built-in JWK for a known FedMasterURL.
 func (cfg *RelyingPartyConfig) resolveTrustAnchor() (jwk.Set, error) {
 	if cfg.FedMasterJWK != nil && cfg.FedMasterJWK.Key != nil {
-		return cfg.FedMasterJWK.AsSet().Keys, nil
+		set, err := cfg.FedMasterJWK.AsSet()
+		if err != nil {
+			return nil, fmt.Errorf("fed_master_jwk: %w", err)
+		}
+		return set.Keys, nil
 	}
 	known, ok := knownFedMasters[cfg.FedMasterURL]
 	if !ok {
@@ -534,7 +582,9 @@ func (cfg *RelyingPartyConfig) resolveTrustAnchor() (jwk.Set, error) {
 		return nil, fmt.Errorf("parse built-in fed master jwk: %w", err)
 	}
 	set := jwk.NewSet()
-	set.AddKey(key)
+	if err := set.AddKey(key); err != nil {
+		return nil, fmt.Errorf("add built-in fed master jwk: %w", err)
+	}
 	return set, nil
 }
 
@@ -551,14 +601,14 @@ func (cfg *RelyingPartyConfig) buildMetadata() *Metadata {
 		acr = []string{defaultACRValue}
 	}
 	return &Metadata{
-		OpenidRelyingParty: &OpenIDRelyingPartyMetadata{
+		OpenidRelyingParty: &OpenIDRelyingPartyMetadata{ //nolint:gosec // TokenEndpointAuthMethod holds the public name of an authentication method, not a credential
 			ClientName:                         rp.ClientName,
 			RedirectURIs:                       rp.RedirectURIs,
 			OrganizationName:                   rp.OrganizationName,
 			LogoURI:                            rp.LogoURI,
 			Scope:                              scope,
 			DefaultACRValues:                   acr,
-			SignedJwksUri:                      rp.SignedJwksURI,
+			SignedJwksURI:                      rp.SignedJwksURI,
 			ResponseTypes:                      []string{"code"},
 			ClientRegistrationTypes:            []string{"automatic"},
 			GrantTypes:                         []string{"authorization_code"},
@@ -589,10 +639,12 @@ func transportWithTLS(rt http.RoundTripper, tlsConfig *tls.Config) http.RoundTri
 	return t
 }
 
+// Federation returns the client of this relying party's federation master.
 func (rp *RelyingParty) Federation() *OpenidFederation {
 	return rp.federation
 }
 
+// ClientID returns the entity identifier, which is the OIDF client_id.
 func (rp *RelyingParty) ClientID() string {
 	return rp.entityStatement.Subject
 }

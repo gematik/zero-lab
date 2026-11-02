@@ -19,12 +19,17 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Package nonce issues single-use replay nonces.
 package nonce
 
+// Options holds a nonce lifetime, ExpirySeconds, in seconds. The services in this package do not read it:
+// NewKVService takes its lifetime as an argument.
 type Options struct {
 	ExpirySeconds int64
 }
 
+// Service issues replay nonces and redeems them. Redeem fails for a nonce that is unknown, expired or
+// already redeemed, so each nonce is accepted at most once.
 type Service interface {
 	Get() (string, error)
 	Redeem(nonceStr string) error

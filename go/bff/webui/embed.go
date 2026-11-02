@@ -26,5 +26,7 @@ package webui
 
 import "embed"
 
+// FS holds the SPA's assets: index.html, app.js and style.css.
+//
 //go:embed index.html app.js style.css
 var FS embed.FS

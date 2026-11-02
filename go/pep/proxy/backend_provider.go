@@ -23,16 +23,18 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 	"uuid"
 
+	"golang.org/x/oauth2"
+
 	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
-	"golang.org/x/oauth2"
 )
 
 // providerBackend drives oidc.Client providers (standard OIDC; OIDF and gemidp also implement oidc.Client)
@@ -67,6 +69,8 @@ func WithRelyingParty(rp *oidf.RelyingParty) ProviderOption {
 	return func(b *providerBackend) { b.rp = rp }
 }
 
+// NewProviderBackend returns the Backend that drives the providers of opts directly and keeps their tokens
+// in the local session.
 func NewProviderBackend(opts ...ProviderOption) Backend {
 	b := &providerBackend{byIssuer: make(map[string]oidc.Client)}
 	for _, o := range opts {
@@ -80,7 +84,7 @@ func (b *providerBackend) get(issuer string) (oidc.Client, error) {
 		if len(b.order) > 0 {
 			return b.order[0], nil
 		}
-		return nil, fmt.Errorf("no default provider configured; choose one")
+		return nil, errors.New("no default provider configured; choose one")
 	}
 	if c, ok := b.byIssuer[issuer]; ok {
 		return c, nil
@@ -115,7 +119,7 @@ func (b *providerBackend) DefaultIssuer() string {
 	return ""
 }
 
-func (b *providerBackend) Providers(ctx context.Context) ([]Provider, error) {
+func (b *providerBackend) Providers(_ context.Context) ([]Provider, error) {
 	out := make([]Provider, 0, len(b.order))
 	for _, c := range b.order {
 		out = append(out, providerOf(c))
@@ -132,7 +136,7 @@ func (b *providerBackend) Providers(ctx context.Context) ([]Provider, error) {
 	return out, nil
 }
 
-func (b *providerBackend) StartLogin(ctx context.Context, sess *Session, idpIss, scope string) (LoginStart, error) {
+func (b *providerBackend) StartLogin(_ context.Context, sess *Session, idpIss, _ string) (LoginStart, error) {
 	c, err := b.get(idpIss)
 	if err != nil {
 		return LoginStart{}, err
@@ -160,7 +164,7 @@ func (b *providerBackend) StartLogin(ctx context.Context, sess *Session, idpIss,
 	return LoginStart{AuthURL: authURL, Mode: mode, Provider: &p}, nil
 }
 
-func (b *providerBackend) Complete(ctx context.Context, sess *Session, code string) error {
+func (b *providerBackend) Complete(_ context.Context, sess *Session, code string) error {
 	c, err := b.get(sess.IDPIss)
 	if err != nil {
 		return err
@@ -183,7 +187,7 @@ func (b *providerBackend) Complete(ctx context.Context, sess *Session, code stri
 }
 
 // FreshAccessToken returns the stored token; direct providers are not refreshed in S1/S2.
-func (b *providerBackend) FreshAccessToken(ctx context.Context, sess *Session) (string, error) {
+func (b *providerBackend) FreshAccessToken(_ context.Context, sess *Session) (string, error) {
 	return sess.AccessToken, nil
 }
 

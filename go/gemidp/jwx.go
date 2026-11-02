@@ -22,8 +22,9 @@
 package gemidp
 
 import (
-	"github.com/gematik/zero-lab/go/brainpool/josebp"
 	"github.com/lestrrat-go/jwx/v3/jwa"
+
+	"github.com/gematik/zero-lab/go/brainpool/josebp"
 )
 
 // The gematik IDP signs its id_token with alg "BP256R1" (Brainpool). jwx must know this algorithm

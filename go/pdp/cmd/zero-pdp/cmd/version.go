@@ -25,9 +25,10 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/gematik/zero-lab/go/pdp"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/gematik/zero-lab/go/pdp"
 )
 
 func init() {
@@ -37,7 +38,7 @@ func init() {
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version number",
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(_ *cobra.Command, _ []string) {
 		fmt.Printf("Zero Policy Decision Point v%s\n", pdp.ResolveVersion())
 		configfile := viper.GetString("config_file")
 		expanded, err := filepath.Abs(configfile)
@@ -48,6 +49,5 @@ var versionCmd = &cobra.Command{
 		}
 
 		fmt.Println("Working directory:", viper.GetString("workdir"))
-
 	},
 }

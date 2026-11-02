@@ -23,6 +23,7 @@ package kv_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -123,7 +124,7 @@ func TestMemory_TakeIsSingleUse(t *testing.T) {
 func TestMemory_Closed(t *testing.T) {
 	s := kv.NewMemory()
 	_ = s.Close()
-	if _, _, err := s.Get(context.Background(), "x"); err != kv.ErrClosed {
+	if _, _, err := s.Get(context.Background(), "x"); !errors.Is(err, kv.ErrClosed) {
 		t.Fatalf("want ErrClosed, got %v", err)
 	}
 }

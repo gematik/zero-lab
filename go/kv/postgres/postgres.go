@@ -33,8 +33,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gematik/zero-lab/go/kv"
+	// Registers the "pgx" driver with database/sql.
 	_ "github.com/jackc/pgx/v5/stdlib"
+
+	"github.com/gematik/zero-lab/go/kv"
 )
 
 // schemaSQL is applied idempotently on Open (no migration tool). value is bytea — an opaque binary store

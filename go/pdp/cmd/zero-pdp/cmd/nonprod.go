@@ -30,10 +30,11 @@ func init() {
 	NonprodCmd.AddCommand(issueCmd)
 }
 
+// NonprodCmd groups the commands that bypass client authentication and policy, for development and tests.
 var NonprodCmd = &cobra.Command{
 	Use:   "non-prod",
 	Short: "Non-production commands",
-	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Help()
+	Run: func(cmd *cobra.Command, _ []string) {
+		cobra.CheckErr(cmd.Help())
 	},
 }

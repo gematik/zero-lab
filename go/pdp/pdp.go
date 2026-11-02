@@ -19,6 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Package pdp assembles the zero-pdp Policy Decision Point from its configuration file.
 package pdp
 
 import (
@@ -27,19 +28,24 @@ import (
 	"path/filepath"
 	"reflect"
 
-	"github.com/gematik/zero-lab/go/pdp/authzserver"
 	"github.com/go-playground/validator/v10"
 	"gopkg.in/yaml.v2"
+
+	"github.com/gematik/zero-lab/go/pdp/authzserver"
 )
 
+// Config is the content of pdp.yaml. BaseDir is not part of the file: it is the file's directory, against
+// which relative paths in the configuration resolve.
 type Config struct {
 	BindAddress       string             `yaml:"bind_address"`
 	BaseDir           string             `yaml:"-"`
 	AuthzServerConfig authzserver.Config `yaml:"authorization_server" validate:"required"`
 }
 
+// LoadConfigFile reads pdp.yaml from path, expanding ${VAR} placeholders from the environment. Providers
+// come from PDP_OPENID_PROVIDERS_PATH, which must then exist, else from openid-providers.yaml next to path
+// if present; that file replaces any providers set inline.
 func LoadConfigFile(path string) (*Config, error) {
-
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read file: %w", err)
@@ -64,7 +70,7 @@ func LoadConfigFile(path string) (*Config, error) {
 	if providersPath == "" {
 		providersPath = filepath.Join(cfg.BaseDir, defaultOpenidProvidersFile)
 	}
-	if _, statErr := os.Stat(providersPath); statErr == nil {
+	if _, statErr := os.Stat(providersPath); statErr == nil { //nolint:gosec // the path comes from the operator's environment or configuration file, not a request
 		oidcs, gemidps, rp, err := LoadOpenidProviders(providersPath)
 		if err != nil {
 			return nil, err
@@ -82,11 +88,13 @@ func LoadConfigFile(path string) (*Config, error) {
 	return cfg, nil
 }
 
+// PDP is a configured Policy Decision Point: its authorization server and the address to serve it on.
 type PDP struct {
 	BindAddress string
 	AuthzServer *authzserver.Server
 }
 
+// New validates config and builds the authorization server. BindAddress defaults to ":8011".
 func New(config Config) (*PDP, error) {
 	validate := validator.New()
 	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {

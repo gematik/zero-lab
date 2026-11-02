@@ -19,6 +19,8 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Package zaddy plugs the policy enforcement point of package pep into Caddy: the app "zero", configured
+// by the global option pep, and the HTTP handler enforce_policy.
 package zaddy
 
 import (
@@ -32,6 +34,7 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+
 	"github.com/gematik/zero-lab/go/pep"
 )
 
@@ -40,6 +43,7 @@ func init() {
 	httpcaddyfile.RegisterGlobalOption("pep", parseCaddyfilePEP)
 }
 
+// App is the Caddy app "zero". It owns the PEP that every enforce_policy handler evaluates requests with.
 type App struct {
 	Resource            string `json:"resource"`
 	AuthorizationServer string `json:"authorization_server"`
@@ -52,6 +56,7 @@ type App struct {
 	pep    *pep.PEP
 }
 
+// CaddyModule registers App under the module ID "zero".
 func (App) CaddyModule() caddy.ModuleInfo {
 	return caddy.ModuleInfo{
 		ID:  "zero",
@@ -59,6 +64,7 @@ func (App) CaddyModule() caddy.ModuleInfo {
 	}
 }
 
+// Start builds the PEP from the app's configuration; Caddy does not start if that fails.
 func (a *App) Start() error {
 	a.logger.Info("Starting Zero app")
 	var err error
@@ -77,17 +83,19 @@ func (a *App) Start() error {
 	return nil
 }
 
+// Stop closes the PEP.
 func (a *App) Stop() error {
 	a.logger.Info("Stopping Zero app")
-	a.pep.Close()
-	return nil
+	return a.pep.Close()
 }
 
+// Provision takes the app's logger from ctx.
 func (a *App) Provision(ctx caddy.Context) error {
 	a.logger = ctx.Slogger()
 	return nil
 }
 
+// Validate rejects a configuration without jwks_path.
 func (a *App) Validate() error {
 	if a.JWKSPath == "" {
 		return errors.New("jwks_path must be set")
@@ -136,7 +144,6 @@ func parseCaddyfilePEP(d *caddyfile.Dispenser, existingVal any) (any, error) {
 		Name:  "zero",
 		Value: caddyconfig.JSON(a, nil),
 	}, nil
-
 }
 
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {

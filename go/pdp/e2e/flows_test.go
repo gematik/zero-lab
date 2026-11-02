@@ -89,14 +89,14 @@ func TestFlow_FederationPAR(t *testing.T) {
 	}
 	if parResp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(parResp.Body)
-		parResp.Body.Close()
+		_ = parResp.Body.Close()
 		t.Fatalf("PAR: status %d, want 201: %s", parResp.StatusCode, body)
 	}
 	var par struct {
 		RequestURI string `json:"request_uri"`
 	}
 	err = json.NewDecoder(parResp.Body).Decode(&par)
-	parResp.Body.Close()
+	_ = parResp.Body.Close()
 	if err != nil {
 		t.Fatalf("PAR decode: %v", err)
 	}

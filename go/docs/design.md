@@ -92,13 +92,14 @@ result codes of a shared specification, as the spec's table lists (`spec/pkcs12`
 | Category | Go tool | When | Today |
 |---|---|---|---|
 | lints, API misuse | `go vet`, staticcheck | check | `just lint` |
-| security smells, error handling | golangci-lint (gosec, errorlint, gocritic, revive, …) | check | `just golangci`, not in `just check` |
-| race detection | `go test -race ./...` | check | not in `just check` |
+| security smells, error handling | golangci-lint (gosec, errorlint, gocritic, revive, …) | check | `just check` |
+| tests, shared corpora | `go test ./...`, as the images build | check | `just check` |
+| race detection | `go test -race ./...` | check | `just check` |
 | fuzzing | `go test -fuzz` (below) | release, design time | `brainpool`, `pkcs12` |
-| supply chain | govulncheck; `go mod tidy`, `go mod verify` | check | `just vuln`, `just tidy` |
+| supply chain | govulncheck; `go mod tidy`, `go mod verify` | check | `just check` (`vuln`, `mod-check`) |
 | business API contracts | gematik OpenAPI ruleset with Spectral | check | `just api-lint` (skips without the internal ruleset) |
 | current idioms | modernize | check | `just check` |
-| corpora, interop | spec corpora, interop runs with Rust | check | partial |
+| corpora, interop | spec corpora, interop runs with Rust | check | `just check` runs the corpora Rust writes; no interop run yet |
 
 Formal verification in the Rust sense (Kani, hax) has no maintained Go equivalent; Go
 keeps security-critical algorithms out of hand-written code instead (standard library,
@@ -194,7 +195,6 @@ its "Gated tests" table.
 ## 12. Status
 
 Gaps against the rules are backlog tasks with the label `go` (TASK-65 to TASK-96).
-Most relevant now: `just check` without tests, race detector and govulncheck (TASK-86),
-the dependency removals (TASK-91 to TASK-96), sealed nonces (TASK-85), the signing key
+Most relevant now: the dependency removals (TASK-91 to TASK-96), sealed nonces (TASK-85), the signing key
 as a `crypto.Signer` (TASK-88), TLS inside the workload and kv encryption (TASK-70,
 TASK-71), and the RPC protocol decision (TASK-65).

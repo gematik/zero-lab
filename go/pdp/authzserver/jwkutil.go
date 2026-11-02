@@ -32,6 +32,7 @@ import (
 	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
+// GenerateRandomJwk returns a new P-256 private key as a JWK whose kid is its ThumbprintS256.
 func GenerateRandomJwk() (jwk.Key, error) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -47,11 +48,14 @@ func GenerateRandomJwk() (jwk.Key, error) {
 		return nil, fmt.Errorf("could not create thumbprint: %w", err)
 	}
 
-	jwkKey.Set(jwk.KeyIDKey, t)
+	if err := jwkKey.Set(jwk.KeyIDKey, t); err != nil {
+		return nil, fmt.Errorf("could not set key id: %w", err)
+	}
 
 	return jwkKey, nil
 }
 
+// ThumbprintS256 returns the base64url-encoded SHA-256 JWK thumbprint of a key (RFC 7638).
 func ThumbprintS256(jwk jwk.Key) (string, error) {
 	thumbprint, err := jwk.Thumbprint(crypto.SHA256)
 	if err != nil {
@@ -60,6 +64,7 @@ func ThumbprintS256(jwk jwk.Key) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(thumbprint), nil
 }
 
+// GenerateJwkSet returns a set of num keys from GenerateRandomJwk. The set holds the private keys.
 func GenerateJwkSet(num int) (jwk.Set, error) {
 	set := jwk.NewSet()
 	for range num {
@@ -67,12 +72,15 @@ func GenerateJwkSet(num int) (jwk.Set, error) {
 		if err != nil {
 			return nil, fmt.Errorf("could not generate key: %w", err)
 		}
-		set.AddKey(key)
+		if err := set.AddKey(key); err != nil {
+			return nil, fmt.Errorf("could not add key: %w", err)
+		}
 	}
 
 	return set, nil
 }
 
+// PublicJwkSet returns a set with the public part of every key in set.
 func PublicJwkSet(set jwk.Set) (jwk.Set, error) {
 	publicSet := jwk.NewSet()
 	for i := 0; i < set.Len(); i++ {
@@ -84,7 +92,9 @@ func PublicJwkSet(set jwk.Set) (jwk.Set, error) {
 		if err != nil {
 			return nil, fmt.Errorf("could not get public key: %w", err)
 		}
-		publicSet.AddKey(publicKey)
+		if err := publicSet.AddKey(publicKey); err != nil {
+			return nil, fmt.Errorf("could not add public key: %w", err)
+		}
 	}
 	return publicSet, nil
 }

@@ -47,6 +47,7 @@ const (
 	defaultAcceptableSkew = time.Minute
 )
 
+// Config configures a client for the OpenID provider that publishes its discovery document under Issuer.
 type Config struct {
 	Issuer       string       `yaml:"issuer" validate:"required"`
 	ClientID     string       `yaml:"client_id" validate:"required"`
@@ -71,6 +72,8 @@ type client struct {
 	keyCache          *jwk.Cache
 }
 
+// NewClient fetches the provider's discovery document and signing keys and returns a client for it, so the
+// provider has to be reachable.
 func NewClient(cfg Config) (Client, error) {
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
@@ -82,10 +85,10 @@ func NewClient(cfg Config) (Client, error) {
 	}
 
 	var err error
-	discoveryDocumentUrl := cfg.Issuer + "/.well-known/openid-configuration"
-	c.discoveryDocument, err = FetchDiscoveryDocument(discoveryDocumentUrl, httpClient)
+	discoveryDocumentURL := cfg.Issuer + "/.well-known/openid-configuration"
+	c.discoveryDocument, err = FetchDiscoveryDocument(discoveryDocumentURL, httpClient)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch discovery document from %s: %w", discoveryDocumentUrl, err)
+		return nil, fmt.Errorf("failed to fetch discovery document from %s: %w", discoveryDocumentURL, err)
 	}
 
 	// prepare the auto-refreshing signing key cache
@@ -95,7 +98,9 @@ func NewClient(cfg Config) (Client, error) {
 		return nil, fmt.Errorf("failed to create key cache: %w", err)
 	}
 
-	c.keyCache.Register(context, c.discoveryDocument.JwksURI)
+	if err := c.keyCache.Register(context, c.discoveryDocument.JwksURI); err != nil {
+		return nil, fmt.Errorf("failed to register signing keys: %w", err)
+	}
 	_, err = c.keyCache.Refresh(context, c.discoveryDocument.JwksURI)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch signing keys: %w", err)
@@ -131,8 +136,7 @@ func (c *client) AuthenticationURL(state, nonce, verifier string, options ...Opt
 	slog.Info("Using OP AuthorizationEndpoint", "url", c.discoveryDocument.AuthorizationEndpoint)
 
 	for _, option := range options {
-		switch opt := option.(type) {
-		case WithAlternateRedirectURI:
+		if opt, ok := option.(WithAlternateRedirectURI); ok {
 			query.Set("redirect_uri", string(opt))
 		}
 	}
@@ -150,8 +154,7 @@ func (c *client) ExchangeForIdentity(code, verifier string, options ...Option) (
 	params.Set("code_verifier", verifier)
 
 	for _, option := range options {
-		switch opt := option.(type) {
-		case WithAlternateRedirectURI:
+		if opt, ok := option.(WithAlternateRedirectURI); ok {
 			params.Set("redirect_uri", string(opt))
 		}
 	}
@@ -195,14 +198,13 @@ func (c *client) ExchangeForIdentity(code, verifier string, options ...Option) (
 		if err != nil {
 			slog.Error("unable to decode token response", "error", err, "body", string(body))
 			return nil, fmt.Errorf("unable to decode token response: %w", err)
-		} else {
-			tokenResponse.AccessToken = fallbackTokenResponse.AccessToken
-			tokenResponse.TokenType = fallbackTokenResponse.TokenType
-			tokenResponse.ExpiresIn = fallbackTokenResponse.ExpiresIn
-			tokenResponse.Scope = fallbackTokenResponse.Scope
-			tokenResponse.RefreshToken = fallbackTokenResponse.RefreshToken
-			tokenResponse.IDTokenRaw = fallbackTokenResponse.IDTokenRaw
 		}
+		tokenResponse.AccessToken = fallbackTokenResponse.AccessToken
+		tokenResponse.TokenType = fallbackTokenResponse.TokenType
+		tokenResponse.ExpiresIn = fallbackTokenResponse.ExpiresIn
+		tokenResponse.Scope = fallbackTokenResponse.Scope
+		tokenResponse.RefreshToken = fallbackTokenResponse.RefreshToken
+		tokenResponse.IDTokenRaw = fallbackTokenResponse.IDTokenRaw
 	}
 
 	// Parse the ID token (parseIDToken already wraps the error with context).

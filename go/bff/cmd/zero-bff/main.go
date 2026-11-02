@@ -19,6 +19,8 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Command zero-bff hosts the BFF API and its embedded SPA. With WEBAPP_UPSTREAM or API_UPSTREAM set it also
+// runs as an auth gateway in front of those upstreams.
 package main
 
 import (

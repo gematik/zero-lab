@@ -34,10 +34,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
+
+	"github.com/gematik/zero-lab/go/dpop"
 )
 
 const (
@@ -69,7 +70,9 @@ func newTestServer(t *testing.T) (*Server, jwk.Key) {
 	if err != nil {
 		t.Fatalf("import key: %v", err)
 	}
-	signKey.Set(jwk.KeyIDKey, "test-client-key")
+	if err := signKey.Set(jwk.KeyIDKey, "test-client-key"); err != nil {
+		t.Fatalf("set key id: %v", err)
+	}
 	pubKey, err := signKey.PublicKey()
 	if err != nil {
 		t.Fatalf("public key: %v", err)
@@ -110,22 +113,30 @@ func jwkToMap(t *testing.T, key jwk.Key) map[string]any {
 
 // signClientAssertion mints a private_key_jwt assertion with a fresh nonce, applying mutate (if any)
 // before signing so tests can tamper with individual claims.
-func signClientAssertion(t *testing.T, server *Server, signKey jwk.Key, mutate func(jwt.Token)) string {
+func signClientAssertion(t *testing.T, server *Server, signKey jwk.Key, mutate func(jwt.Token) error) string {
 	t.Helper()
 	nonce, err := server.nonceService.Get()
 	if err != nil {
 		t.Fatalf("get nonce: %v", err)
 	}
 	tok := jwt.New()
-	tok.Set(jwt.IssuerKey, testClientID)
-	tok.Set(jwt.SubjectKey, testClientID)
-	tok.Set(jwt.AudienceKey, testIssuer)
-	tok.Set(jwt.IssuedAtKey, time.Now().Unix())
-	tok.Set(jwt.ExpirationKey, time.Now().Add(time.Minute).Unix())
-	tok.Set("nonce", nonce)
-	tok.Set("cnf", map[string]string{"jkt": testDPoPKey.Thumbprint()})
+	for name, value := range map[string]any{
+		jwt.IssuerKey:     testClientID,
+		jwt.SubjectKey:    testClientID,
+		jwt.AudienceKey:   testIssuer,
+		jwt.IssuedAtKey:   time.Now().Unix(),
+		jwt.ExpirationKey: time.Now().Add(time.Minute).Unix(),
+		"nonce":           nonce,
+		"cnf":             map[string]string{"jkt": testDPoPKey.Thumbprint()},
+	} {
+		if err := tok.Set(name, value); err != nil {
+			t.Fatalf("set claim %s: %v", name, err)
+		}
+	}
 	if mutate != nil {
-		mutate(tok)
+		if err := mutate(tok); err != nil {
+			t.Fatalf("mutate claims: %v", err)
+		}
 	}
 	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.ES256(), signKey))
 	if err != nil {
@@ -236,7 +247,7 @@ func TestRFC9449_5_ClientCredentialsProofForAnotherEndpointIsRefused(t *testing.
 func assertTokenError(t *testing.T, err error, code, description string) {
 	t.Helper()
 	var authzErr *Error
-	if !errors.As(err, &authzErr) || authzErr.HttpStatus != http.StatusBadRequest ||
+	if !errors.As(err, &authzErr) || authzErr.HTTPStatus != http.StatusBadRequest ||
 		authzErr.Code != code || authzErr.Description != description {
 		t.Fatalf("got %v, want 400 %s: %s", err, code, description)
 	}
@@ -266,20 +277,20 @@ func TestPrivateKeyJWTRejections(t *testing.T) {
 
 	cases := []struct {
 		name   string
-		mutate func(jwt.Token)
+		mutate func(jwt.Token) error
 		// when set, the assertion is signed with this key instead of the registered one
 		signWith jwk.Key
 		// when set, replace the client_assertion_type with this value
 		assertionType string
 	}{
 		{name: "wrong signing key", signWith: wrongKey},
-		{name: "unknown client", mutate: func(tok jwt.Token) { tok.Set(jwt.SubjectKey, "nobody") }},
-		{name: "iss != sub", mutate: func(tok jwt.Token) { tok.Set(jwt.IssuerKey, "someone-else") }},
-		{name: "wrong audience", mutate: func(tok jwt.Token) { tok.Set(jwt.AudienceKey, "https://evil.example.com") }},
-		{name: "expired", mutate: func(tok jwt.Token) { tok.Set(jwt.ExpirationKey, time.Now().Add(-time.Hour).Unix()) }},
-		{name: "missing nonce", mutate: func(tok jwt.Token) { tok.Remove("nonce") }},
-		{name: "missing cnf", mutate: func(tok jwt.Token) { tok.Remove("cnf") }},
-		{name: "unknown nonce", mutate: func(tok jwt.Token) { tok.Set("nonce", "never-issued") }},
+		{name: "unknown client", mutate: func(tok jwt.Token) error { return tok.Set(jwt.SubjectKey, "nobody") }},
+		{name: "iss != sub", mutate: func(tok jwt.Token) error { return tok.Set(jwt.IssuerKey, "someone-else") }},
+		{name: "wrong audience", mutate: func(tok jwt.Token) error { return tok.Set(jwt.AudienceKey, "https://evil.example.com") }},
+		{name: "expired", mutate: func(tok jwt.Token) error { return tok.Set(jwt.ExpirationKey, time.Now().Add(-time.Hour).Unix()) }},
+		{name: "missing nonce", mutate: func(tok jwt.Token) error { return tok.Remove("nonce") }},
+		{name: "missing cnf", mutate: func(tok jwt.Token) error { return tok.Remove("cnf") }},
+		{name: "unknown nonce", mutate: func(tok jwt.Token) error { return tok.Set("nonce", "never-issued") }},
 		{name: "wrong assertion type", assertionType: "urn:bogus"},
 	}
 
@@ -310,7 +321,8 @@ func assertInvalidClient(t *testing.T, err error) {
 	if err == nil {
 		t.Fatal("expected client authentication to fail, got nil")
 	}
-	authzErr, ok := err.(*Error)
+	authzErr := &Error{}
+	ok := errors.As(err, &authzErr)
 	if !ok {
 		t.Fatalf("expected *Error, got %T: %v", err, err)
 	}

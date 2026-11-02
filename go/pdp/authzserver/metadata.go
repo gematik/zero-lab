@@ -21,7 +21,7 @@
 
 package authzserver
 
-// OAuth2 Authorization Server Metadata
+// Metadata is the OAuth 2.0 Authorization Server Metadata document.
 // See https://datatracker.ietf.org/doc/html/rfc8414
 type Metadata struct {
 	Issuer                                             string   `json:"issuer" yaml:"issuer"`
@@ -50,7 +50,7 @@ type Metadata struct {
 	RequirePushedAuthorizationRequests                 bool     `json:"require_pushed_authorization_requests,omitempty" yaml:"require_pushed_authorization_requests"`
 }
 
-// Extend the standard OAuth2 server metadata from RFC8414
+// ExtendedMetadata is the RFC 8414 metadata plus the endpoints this server adds to it.
 type ExtendedMetadata struct {
 	Metadata
 	NonceEndpoint           string `json:"nonce_endpoint"`

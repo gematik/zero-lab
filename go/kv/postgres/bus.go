@@ -28,8 +28,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/gematik/zero-lab/go/kv"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/gematik/zero-lab/go/kv"
 )
 
 const busReconnectDelay = 2 * time.Second

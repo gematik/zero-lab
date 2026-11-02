@@ -29,6 +29,7 @@ import (
 	"github.com/gematik/zero-lab/go/epa/vau"
 )
 
+// ProviderVAUStatus is one provider's session and VAU state; a provider that failed fills Error.
 type ProviderVAUStatus struct {
 	Number          ProviderNumber `json:"number"`
 	BaseURL         string         `json:"baseURL,omitempty"`
@@ -39,6 +40,7 @@ type ProviderVAUStatus struct {
 	Error string      `json:"error,omitempty"`
 }
 
+// ProxyStatus is the answer of GET /status.
 type ProxyStatus struct {
 	Name            string              `json:"name"`
 	Env             Env                 `json:"env"`
@@ -52,7 +54,7 @@ type ProxyStatus struct {
 // HandleProxyStatus aggregates GET /VAU-Status of all providers with the
 // local session state. Provider failures are reported as data, not as an
 // HTTP error — a status endpoint must answer even when providers are down.
-func (p *Proxy) HandleProxyStatus(w http.ResponseWriter, r *http.Request) {
+func (p *Proxy) HandleProxyStatus(w http.ResponseWriter, _ *http.Request) {
 	results := make(chan ProviderVAUStatus, len(AllProviders))
 
 	for _, provider := range AllProviders {

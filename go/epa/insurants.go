@@ -35,6 +35,8 @@ import (
 
 var kvnrRegexp = regexp.MustCompile(`^[A-Z]\d{9}$`)
 
+// InsurantProviderStatus is what one provider knows about an insurant; a provider that
+// could not be asked fills only Error.
 type InsurantProviderStatus struct {
 	Number           ProviderNumber                 `json:"number"`
 	RecordFound      bool                           `json:"recordFound"`
@@ -42,11 +44,13 @@ type InsurantProviderStatus struct {
 	Error            string                         `json:"error,omitempty"`
 }
 
+// InsurantRecordInfo says which provider, if any, holds the insurant's record.
 type InsurantRecordInfo struct {
 	Found    bool           `json:"found"`
 	Provider ProviderNumber `json:"provider,omitempty"`
 }
 
+// InsurantEntitlementInfo is the proxy's cached entitlement for an insurant; the times are RFC 3339.
 type InsurantEntitlementInfo struct {
 	Entitled   bool           `json:"entitled"`
 	Provider   ProviderNumber `json:"provider,omitempty"`
@@ -54,6 +58,7 @@ type InsurantEntitlementInfo struct {
 	ValidTo    string         `json:"validTo,omitempty"`
 }
 
+// InsurantInfo is the answer of GET /insurants/{insurantID}.
 type InsurantInfo struct {
 	InsurantID  string                   `json:"insurantId"`
 	Record      InsurantRecordInfo       `json:"record"`

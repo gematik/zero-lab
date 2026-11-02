@@ -29,8 +29,9 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"golang.org/x/oauth2"
+
+	"github.com/gematik/zero-lab/go/oauth/oidc"
 )
 
 type hostFunc struct {

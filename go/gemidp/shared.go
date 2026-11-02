@@ -25,6 +25,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -54,28 +55,35 @@ func transportOrDefault(rt http.RoundTripper) http.RoundTripper {
 // Environment of the gematik IDP-Dienst
 type Environment int
 
+// The instances of the IDP-Dienst: test (TU), reference (RU) and production (PU).
 const (
 	EnvironmentTest Environment = iota
 	EnvironmentReference
 	EnvironmentProduction
 )
 
+// Idp names an instance of the IDP-Dienst: its environment and base URL.
 type Idp struct {
 	environment Environment
 	baseURL     string
 }
 
-func NewIdp(env Environment, baseUrl string) Idp {
+// NewIdp names the instance of the IDP-Dienst at baseURL.
+func NewIdp(env Environment, baseURL string) Idp {
 	return Idp{
 		environment: env,
-		baseURL:     baseUrl,
+		baseURL:     baseURL,
 	}
 }
 
-var IdpProduction = NewIdp(EnvironmentProduction, "https://idp.app.ti-dienste.de")
-var IdpReference = NewIdp(EnvironmentReference, "https://idp-ref.app.ti-dienste.de")
-var IdpTest = NewIdp(EnvironmentTest, "https://idp-test.app.ti-dienste.de")
+// The well-known instances of the IDP-Dienst.
+var (
+	IdpProduction = NewIdp(EnvironmentProduction, "https://idp.app.ti-dienste.de")
+	IdpReference  = NewIdp(EnvironmentReference, "https://idp-ref.app.ti-dienste.de")
+	IdpTest       = NewIdp(EnvironmentTest, "https://idp-test.app.ti-dienste.de")
+)
 
+// GetIdpByEnvironment returns the well-known instance of env.
 func GetIdpByEnvironment(env Environment) Idp {
 	switch env {
 	case EnvironmentProduction:
@@ -87,6 +95,7 @@ func GetIdpByEnvironment(env Environment) Idp {
 	}
 }
 
+// UnmarshalYAML reads an Environment by its name, as NewEnvironment does, so an unknown name is not an error.
 func (e *Environment) UnmarshalYAML(unmarshal func(any) error) error {
 	var s string
 	if err := unmarshal(&s); err != nil {
@@ -97,6 +106,8 @@ func (e *Environment) UnmarshalYAML(unmarshal func(any) error) error {
 	return nil
 }
 
+// NewEnvironment maps a name to its Environment: "tu" or "test", "ru" or "ref", "prod". An empty name means
+// production; any other name means reference.
 func NewEnvironment(s string) Environment {
 	switch s {
 	case "tu", "test":
@@ -155,7 +166,7 @@ func fetchMetadata(baseURL string, httpClient *http.Client) (*Metadata, error) {
 func extractKeyFromX5CHeader(data []byte) (*josebp.JSONWebKey, error) {
 	parts := strings.Split(string(data), ".")
 	if len(parts) != 3 {
-		return nil, fmt.Errorf("invalid JWT format")
+		return nil, errors.New("invalid JWT format")
 	}
 
 	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
@@ -174,11 +185,11 @@ func extractKeyFromX5CHeader(data []byte) (*josebp.JSONWebKey, error) {
 	}
 
 	if len(headerStruct.X5c) == 0 {
-		return nil, fmt.Errorf("no certificate found in header")
+		return nil, errors.New("no certificate found in header")
 	}
 
 	if headerStruct.Kid == "" {
-		return nil, fmt.Errorf("no kid found in header")
+		return nil, errors.New("no kid found in header")
 	}
 
 	cert, err := brainpool.ParseCertificate(headerStruct.X5c[0])

@@ -25,6 +25,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -52,7 +53,7 @@ func (s IdentitySource) Args() ([]string, error) {
 	switch {
 	case s.P12Path != "":
 		if s.CertPath != "" || s.KeyPath != "" || s.Card != "" {
-			return nil, fmt.Errorf("identity: one source only (P12Path given)")
+			return nil, errors.New("identity: one source only (P12Path given)")
 		}
 		args := []string{"--p12", s.P12Path}
 		if s.P12PasswordPath != "" {
@@ -63,10 +64,10 @@ func (s IdentitySource) Args() ([]string, error) {
 		return args, nil
 	case s.CertPath != "" || s.KeyPath != "":
 		if s.CertPath == "" || s.KeyPath == "" {
-			return nil, fmt.Errorf("identity: CertPath and KeyPath go together")
+			return nil, errors.New("identity: CertPath and KeyPath go together")
 		}
 		if s.Card != "" {
-			return nil, fmt.Errorf("identity: one source only (CertPath given)")
+			return nil, errors.New("identity: one source only (CertPath given)")
 		}
 		return []string{"--cert", s.CertPath, "--key", s.KeyPath}, nil
 	case s.Card != "":
@@ -76,7 +77,7 @@ func (s IdentitySource) Args() ([]string, error) {
 		}
 		return args, nil
 	default:
-		return nil, fmt.Errorf("identity: no source (P12Path, CertPath+KeyPath or Card)")
+		return nil, errors.New("identity: no source (P12Path, CertPath+KeyPath or Card)")
 	}
 }
 
@@ -150,7 +151,7 @@ func NewIdentity(ctx context.Context, runner Runner, source IdentitySource) (*Id
 	}
 	block, _ := pem.Decode([]byte(report.Certificate.PEM))
 	if block == nil || block.Type != "CERTIFICATE" {
-		return nil, fmt.Errorf("identity inspect: no certificate PEM in the report")
+		return nil, errors.New("identity inspect: no certificate PEM in the report")
 	}
 	id := &Identity{
 		runner:  runner,

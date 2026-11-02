@@ -31,6 +31,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -44,11 +45,13 @@ import (
 	"github.com/fxamacker/cbor/v2"
 )
 
+// KeyPairs are the two key pairs one side of the handshake holds: ECDH and Kyber768.
 type KeyPairs struct {
 	ECKeyPair  *ECKeyPair
 	KEMKeyPair *KEMKeyPair
 }
 
+// GenerateKeyPairs generates a P-256 and a Kyber768 key pair.
 func GenerateKeyPairs() (*KeyPairs, error) {
 	ecKeyPair, err := GenerateRandomECKeyPair(elliptic.P256())
 	if err != nil {
@@ -108,7 +111,7 @@ func OpenChannel(baseURLString string, env Env, httpClient *http.Client) (*Chann
 
 // OpenChannelVerified opens a VAU channel and, when verifier is given and mode is not
 // off, checks the VAU's CertData and host keys with it.
-func OpenChannelVerified(baseURLString string, env Env, httpClient *http.Client, verifier CertVerifier, mode VerifyMode) (*Channel, error) {
+func OpenChannelVerified(baseURLString string, _ Env, httpClient *http.Client, verifier CertVerifier, mode VerifyMode) (*Channel, error) {
 	// validate base URL
 	baseURL, err := url.Parse(baseURLString)
 	if err != nil {
@@ -123,56 +126,56 @@ func OpenChannelVerified(baseURLString string, env Env, httpClient *http.Client,
 	// create Message1
 	m1 := Message1{}
 	m1.MessageType = "M1"
-	m1.ECDH_PK = keys.ECKeyPair.PublicData
-	m1.Kyber768_PK = keys.KEMKeyPair.PublicData
+	m1.ECDHPK = keys.ECKeyPair.PublicData
+	m1.Kyber768PK = keys.KEMKeyPair.PublicData
 
 	// construct URL for starting the channel
 	startChannelURL := baseURL.ResolveReference(&url.URL{Path: "VAU"})
 	slog.Debug("Sending Message1", "startChannelURL", startChannelURL.String())
-	m1_cbor, firstHttpResponse, m2_cbor, m2, err := PostMessage[Message2](httpClient, startChannelURL.String(), m1)
+	m1CBOR, firstHTTPResponse, m2CBOR, m2, err := PostMessage[Message2](httpClient, startChannelURL.String(), m1)
 	if err != nil {
 		return nil, fmt.Errorf("sending Message1: %w", err)
 	}
 
 	// wouldn't it be better to have everything in the Message2?
-	var channelID = firstHttpResponse.Header.Get("VAU-CID")
+	channelID := firstHTTPResponse.Header.Get("VAU-CID")
 	matched, err := regexp.MatchString("^/[A-Za-z0-9-/]{1,200}$", channelID)
 	if err != nil {
 		return nil, fmt.Errorf("matching VAU-CID: %w", err)
 	} else if !matched {
-		return nil, fmt.Errorf("VAU-CID does not match regex")
+		return nil, errors.New("VAU-CID does not match regex")
 	}
 	// build the channel specific URL
 	channelURL := baseURL.ResolveReference(&url.URL{Path: channelID})
 
 	slog.Debug("Received Message2", "channelID", channelID, "channelURL", channelURL.String())
 
-	ss_e_ecdh, err := keys.ECKeyPair.Decapsulate(&m2.ECDH_ct)
+	ssEECDH, err := keys.ECKeyPair.Decapsulate(&m2.ECDHCt)
 	if err != nil {
 		return nil, fmt.Errorf("decapsulating ECDH: %w", err)
 	}
 
-	ss_e_kem, err := keys.KEMKeyPair.Decapsulate(m2.Kyber768_ct)
+	ssEKEM, err := keys.KEMKeyPair.Decapsulate(m2.Kyber768Ct)
 	if err != nil {
 		return nil, fmt.Errorf("decapsulating Kyber768: %w", err)
 	}
 
-	c_k1_c2s, c_k1_s2c, err := KemKDF1(ss_e_ecdh, ss_e_kem)
+	cK1C2S, cK1S2C, err := KemKDF1(ssEECDH, ssEKEM)
 	if err != nil {
 		log.Fatalf("computing KDF: %v", err)
 	}
 
-	plaintext, err := AEADDecrypt(c_k1_s2c, m2.AEAD_ct)
+	plaintext, err := AEADDecrypt(cK1S2C, m2.AEADCt)
 	if err != nil {
 		log.Fatalf("decrypting: %v", err)
 	}
 
-	var signedPubKeys = new(SignedPublicVAUKeys)
+	signedPubKeys := new(SignedPublicVAUKeys)
 	if err = cbor.Unmarshal(plaintext, signedPubKeys); err != nil {
 		log.Fatalf("decoding VAU keys: %v", err)
 	}
 
-	var pubKeys = new(PublicVAUKeys)
+	pubKeys := new(PublicVAUKeys)
 	if err = cbor.Unmarshal(signedPubKeys.SignedPubKeysRaw, pubKeys); err != nil {
 		log.Fatalf("decoding public keys: %v", err)
 	}
@@ -184,74 +187,74 @@ func OpenChannelVerified(baseURLString string, env Env, httpClient *http.Client,
 	}
 
 	// prepare Message3
-	ecdh_ss, ecdh_ct, err := pubKeys.ECDH_PK.Encapsulate()
+	ecdhSS, ecdhCt, err := pubKeys.ECDHPK.Encapsulate()
 	if err != nil {
 		log.Fatalf("encapsulating ECDH: %v", err)
 	}
 
-	kem_ss, kem_ct, err := pubKeys.Kyber768_PK.Encapsulate()
+	kemSS, kemCt, err := pubKeys.Kyber768PK.Encapsulate()
 	if err != nil {
 		return nil, fmt.Errorf("encapsulating Kyber768: %w", err)
 	}
 
-	k2_c2s_key_confirmation, k2_c2s_app_data, k2_s2c_key_confirmation, k2_s2c_app_data, key_id, err := KemKDF2(ss_e_ecdh, ss_e_kem, ecdh_ss, kem_ss)
+	k2C2SKeyConfirmation, k2C2SAppData, k2S2CKeyConfirmation, k2S2CAppData, keyID, err := KemKDF2(ssEECDH, ssEKEM, ecdhSS, kemSS)
 	if err != nil {
 		return nil, fmt.Errorf("computing KDF2: %w", err)
 	}
 
-	m3_inner := Message3Inner{
-		ECDH_ct:     *ecdh_ct,
-		Kyber768_ct: kem_ct,
-		ERP:         false,
-		ESO:         false,
+	m3Inner := Message3Inner{
+		ECDHCt:     *ecdhCt,
+		Kyber768Ct: kemCt,
+		ERP:        false,
+		ESO:        false,
 	}
 
-	m3_inner_cbor, err := cbor.Marshal(m3_inner)
+	m3InnerCBOR, err := cbor.Marshal(m3Inner)
 	if err != nil {
 		log.Fatalf("marshaling M3Inner: %v", err)
 	}
 
-	m3_inner_cbor_encrypted, err := AEADEncrypt(c_k1_c2s, m3_inner_cbor)
+	m3InnerCBOREncrypted, err := AEADEncrypt(cK1C2S, m3InnerCBOR)
 	if err != nil {
 		log.Fatalf("encrypting M3Inner: %v", err)
 	}
 
-	transcript := m1_cbor
-	transcript = append(transcript, m2_cbor...)
-	transcript = append(transcript, m3_inner_cbor_encrypted...)
+	transcript := m1CBOR
+	transcript = append(transcript, m2CBOR...)
+	transcript = append(transcript, m3InnerCBOREncrypted...)
 
-	transcript_hash := sha256.Sum256(transcript)
-	m3_aead_ct_key_confirmation, err := AEADEncrypt(k2_c2s_key_confirmation, transcript_hash[:])
+	transcriptHash := sha256.Sum256(transcript)
+	m3AEADCtKeyConfirmation, err := AEADEncrypt(k2C2SKeyConfirmation, transcriptHash[:])
 	if err != nil {
 		log.Fatalf("encrypting M3 key confirmation: %v", err)
 	}
 
 	m3 := Message3{
-		MessageType:              "M3",
-		AEAD_ct:                  m3_inner_cbor_encrypted,
-		AEAD_ct_key_confirmation: m3_aead_ct_key_confirmation,
+		MessageType:           "M3",
+		AEADCt:                m3InnerCBOREncrypted,
+		AEADCtKeyConfirmation: m3AEADCtKeyConfirmation,
 	}
 
 	slog.Debug("Sending Message3", "channelURL", channelURL.String())
 
-	m3_cbor, _, _, m4, err := PostMessage[Message4](httpClient, channelURL.String(), m3)
+	m3CBOR, _, _, m4, err := PostMessage[Message4](httpClient, channelURL.String(), m3)
 	if err != nil {
 		return nil, fmt.Errorf("sending Message3: %w", err)
 	}
 	slog.Debug("Received Message4", "channelURL", channelURL.String())
 
-	transcript = m1_cbor
-	transcript = append(transcript, m2_cbor...)
-	transcript = append(transcript, m3_cbor...)
-	transcript_hash = sha256.Sum256(transcript)
+	transcript = m1CBOR
+	transcript = append(transcript, m2CBOR...)
+	transcript = append(transcript, m3CBOR...)
+	transcriptHash = sha256.Sum256(transcript)
 
-	m4_key_confirmation, err := AEADDecrypt(k2_s2c_key_confirmation, m4.AEAD_ct_key_confirmation)
+	m4KeyConfirmation, err := AEADDecrypt(k2S2CKeyConfirmation, m4.AEADCtKeyConfirmation)
 	if err != nil {
 		return nil, fmt.Errorf("decrypting Message4 key confirmation: %w", err)
 	}
 
-	if !bytes.Equal(transcript_hash[:], m4_key_confirmation) {
-		return nil, fmt.Errorf("Message4 key confirmation does not match")
+	if !bytes.Equal(transcriptHash[:], m4KeyConfirmation) {
+		return nil, errors.New("Message4 key confirmation does not match")
 	}
 
 	channel := &Channel{
@@ -260,14 +263,16 @@ func OpenChannelVerified(baseURLString string, env Env, httpClient *http.Client,
 		ID:                  channelID,
 		ChannelURL:          channelURL,
 		SignedPublicVAUKeys: signedPubKeys,
-		keyID:               key_id,
-		k2_c2s_app_data:     k2_c2s_app_data,
-		k2_s2c_app_data:     k2_s2c_app_data,
+		keyID:               keyID,
+		k2C2SAppData:        k2C2SAppData,
+		k2S2CAppData:        k2S2CAppData,
 	}
 
 	return channel, nil
 }
 
+// PostMessage posts requestMessage as CBOR and decodes the answer as M. It returns the
+// request bytes, the response and the response bytes, which the transcript hash takes as sent.
 func PostMessage[M any](httpClient *http.Client, url string, requestMessage any) ([]byte, *http.Response, []byte, *M, error) {
 	// marshal Message1 to CBOR
 	requestMessageCbor, err := cbor.Marshal(requestMessage)
@@ -276,7 +281,7 @@ func PostMessage[M any](httpClient *http.Client, url string, requestMessage any)
 	}
 
 	// create request to VAU
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(requestMessageCbor))
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(requestMessageCbor))
 	if err != nil {
 		log.Fatalf("creating request to VAU: %v", err)
 	}
@@ -314,8 +319,9 @@ func kdfInput(secrets ...[]byte) []byte {
 	return slices.Concat(secrets...)
 }
 
-func KemKDF1(ss_e_ecdh, ss_e_kyber768 []byte) (k1_c2s []byte, k1_s2c []byte, err error) {
-	ss := kdfInput(ss_e_ecdh, ss_e_kyber768)
+// KemKDF1 derives the K1 keys from the shared secrets of Message2. It only reads its arguments.
+func KemKDF1(ssEECDH, ssEKyber768 []byte) (k1C2S []byte, k1S2C []byte, err error) {
+	ss := kdfInput(ssEECDH, ssEKyber768)
 	defer clear(ss)
 
 	derived, err := hkdf.Key(sha256.New, ss, nil, "", 2*32)
@@ -326,7 +332,9 @@ func KemKDF1(ss_e_ecdh, ss_e_kyber768 []byte) (k1_c2s []byte, k1_s2c []byte, err
 	return derived[:32], derived[32:], nil
 }
 
-func KemKDF2(ecdhSS1, kemSS1, ecdhSS2, kemSS2 []byte) (k2_c2s_key_confirmation, k2_c2s_app_data, k2_s2c_key_confirmation, k2_s2c_app_data, key_id []byte, err error) {
+// KemKDF2 derives the K2 keys and the key ID from the shared secrets of Message2 and
+// Message3, in that order. It only reads its arguments.
+func KemKDF2(ecdhSS1, kemSS1, ecdhSS2, kemSS2 []byte) (k2C2SKeyConfirmation, k2C2SAppData, k2S2CKeyConfirmation, k2S2CAppData, keyID []byte, err error) {
 	ss := kdfInput(ecdhSS1, kemSS1, ecdhSS2, kemSS2)
 	defer clear(ss)
 	derived, err := hkdf.Key(sha256.New, ss, nil, "", 5*32)
@@ -336,6 +344,7 @@ func KemKDF2(ecdhSS1, kemSS1, ecdhSS2, kemSS2 []byte) (k2_c2s_key_confirmation, 
 	return derived[:32], derived[32:64], derived[64:96], derived[96:128], derived[128:], nil
 }
 
+// AEADEncrypt seals plaintext with AES-GCM under key, the random nonce in front.
 func AEADEncrypt(key, plaintext []byte) ([]byte, error) {
 	aes, err := aes.NewCipher(key)
 	if err != nil {
@@ -354,6 +363,7 @@ func AEADEncrypt(key, plaintext []byte) ([]byte, error) {
 	return aesGCM.Seal(nonce, nonce, plaintext, nil), nil
 }
 
+// AEADDecrypt opens the output of [AEADEncrypt].
 func AEADDecrypt(key []byte, ciphertext []byte) ([]byte, error) {
 	aes, err := aes.NewCipher(key)
 	if err != nil {
@@ -365,7 +375,7 @@ func AEADDecrypt(key []byte, ciphertext []byte) ([]byte, error) {
 	}
 
 	if len(ciphertext) < aesGCM.NonceSize() {
-		return nil, fmt.Errorf("ciphertext too short")
+		return nil, errors.New("ciphertext too short")
 	}
 
 	nonce := ciphertext[:aesGCM.NonceSize()]
