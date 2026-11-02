@@ -6,7 +6,7 @@ require (
 	github.com/gematik/zero-lab/go/brainpool v1.2.1-0.20261021083859-f5934a4ca8a1
 	github.com/gematik/zero-lab/go/oauth v0.51.1-0.20261021083859-f5934a4ca8a1
 	github.com/gematik/zero-lab/go/pkcs12 v0.100.1-0.20261021083859-f5934a4ca8a1
-	github.com/gematik/zero-lab/go/tipki v0.0.0-00010101000000-000000000000
+	github.com/gematik/zero-lab/go/tipki v0.0.0-20261102184318-73219e9b941f
 	github.com/lestrrat-go/jwx/v3 v3.3.0
 	golang.org/x/oauth2 v0.37.0
 )
