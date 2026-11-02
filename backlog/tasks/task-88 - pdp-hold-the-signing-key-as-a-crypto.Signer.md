@@ -1,10 +1,10 @@
 ---
 id: TASK-88
 title: 'pdp: hold the signing key as a crypto.Signer'
-status: In Progress
+status: Done
 assignee: []
 created_date: 2026-10-14 20:44
-updated_date: '2026-11-01T19:49:00Z'
+updated_date: '2026-11-02T19:23:00Z'
 labels:
   - go
   - pdp
@@ -36,3 +36,9 @@ Finding (2026-11-01, stacks analysis TASK-165): go/pdp/authzserver/server.go:203
 
 2026-11-01: authzserver.Config.SigningKey holds a crypto.Signer and a kid; the commands zero-pdp and zero-bff-pdp build it with Config.LoadSigningKey at the edge, and New fails without one. The random fallback is gone; the file's bytes are cleared after parsing. The key is checked to be on P-256 for ES256. Other config files are still read inside authzserver.New; that is outside this task. Verified: unit tests with a counting signer, just check, and the real zero-pdp without a key (exit 1, names the reason) and with one against the Smoke, Regression and Flow e2e suites. TASK-170 can hand in an HSM-backed signer through the same field.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The authorization server signs through a crypto.Signer built at the edge, holds no private JWK, and refuses to start without a key; no random fallback.
+<!-- SECTION:FINAL_SUMMARY:END -->
