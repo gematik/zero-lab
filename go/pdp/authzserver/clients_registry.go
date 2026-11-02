@@ -33,11 +33,11 @@ import (
 // authenticates with private_key_jwt (RFC 7523), proving itself with a client_assertion verified
 // against PublicJWK. Redirect-URI and scope policy live on the Product the client belongs to.
 type Client struct {
-	ClientID  string `yaml:"client_id" json:"client_id" validate:"required"`
-	ProductID string `yaml:"product_id" json:"product_id" validate:"required"`
+	ClientID  string `yaml:"client_id" json:"client_id"`
+	ProductID string `yaml:"product_id" json:"product_id"`
 	// PublicJWK is the client's assertion-verification key as a nested JWK object. It is parsed into
 	// a jwk.Key once at registry-build time (see Key).
-	PublicJWK map[string]any `yaml:"public_jwk" json:"public_jwk" validate:"required"`
+	PublicJWK map[string]any `yaml:"public_jwk" json:"public_jwk"`
 
 	key jwk.Key
 }

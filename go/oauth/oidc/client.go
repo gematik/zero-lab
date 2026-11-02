@@ -24,6 +24,7 @@ package oidc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -49,10 +50,10 @@ const (
 
 // Config configures a client for the OpenID provider that publishes its discovery document under Issuer.
 type Config struct {
-	Issuer       string       `yaml:"issuer" validate:"required"`
-	ClientID     string       `yaml:"client_id" validate:"required"`
-	ClientSecret SecretString `yaml:"client_secret" validate:"required"`
-	RedirectURI  string       `yaml:"redirect_uri" validate:"required"`
+	Issuer       string       `yaml:"issuer"`
+	ClientID     string       `yaml:"client_id"`
+	ClientSecret SecretString `yaml:"client_secret"`
+	RedirectURI  string       `yaml:"redirect_uri"`
 	Scopes       []string     `yaml:"scopes"`
 	LogoURI      string       `yaml:"logo_uri"`
 	Name         string       `yaml:"name"`
@@ -253,4 +254,19 @@ func (c *client) Name() string {
 
 func (c *client) LogoURI() string {
 	return c.cfg.LogoURI
+}
+
+// Validate reports a missing required field.
+func (c Config) Validate() error {
+	switch {
+	case c.Issuer == "":
+		return errors.New("issuer is required")
+	case c.ClientID == "":
+		return errors.New("client_id is required")
+	case c.ClientSecret.Value() == "":
+		return errors.New("client_secret is required")
+	case c.RedirectURI == "":
+		return errors.New("redirect_uri is required")
+	}
+	return nil
 }

@@ -28,7 +28,7 @@ cd go
 just pdp-e2e-serve            # issuer http://localhost:8011, client e2e-client / e2e-client
 
 # terminal 2 — run the suites
-just pdp-e2e-smoke            # smoke only
+just pdp-e2e URL Smoke        # smoke only
 just pdp-e2e                  # smoke + regression + flows
 ```
 
@@ -69,4 +69,4 @@ redirect URI for the client and at the OP.
 | `ZERO_PDP_E2E_CALLBACK_ADDR` | HITL capture listen address | `localhost:8765` |
 
 Secrets are never committed: `sign.jwk` is generated and gitignored; the client secret is
-hashed at serve time; OP credentials come from your environment / `.env` (loaded by the server).
+hashed at serve time; OP credentials come from your environment / `.env` (loaded by `just`).

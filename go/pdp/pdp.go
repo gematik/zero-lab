@@ -26,10 +26,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 
-	"github.com/go-playground/validator/v10"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
 )
@@ -39,7 +37,7 @@ import (
 type Config struct {
 	BindAddress       string             `yaml:"bind_address"`
 	BaseDir           string             `yaml:"-"`
-	AuthzServerConfig authzserver.Config `yaml:"authorization_server" validate:"required"`
+	AuthzServerConfig authzserver.Config `yaml:"authorization_server"`
 }
 
 // LoadConfigFile reads pdp.yaml from path, expanding ${VAR} placeholders from the environment. Providers
@@ -96,13 +94,7 @@ type PDP struct {
 
 // New validates config and builds the authorization server. BindAddress defaults to ":8011".
 func New(config Config) (*PDP, error) {
-	validate := validator.New()
-	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
-		return fld.Tag.Get("yaml")
-	})
-
-	err := validate.Struct(config)
-	if err != nil {
+	if err := config.AuthzServerConfig.Validate(); err != nil {
 		return nil, fmt.Errorf("validate config: %w", err)
 	}
 

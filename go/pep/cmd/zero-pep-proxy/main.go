@@ -52,7 +52,7 @@
 //
 // Usage: zero-pep-proxy [-w workdir]
 //
-//	-w chdir's to workdir and loads a .env from it. openid-providers.yaml is found there (or set
+//	-w chdir's to workdir. openid-providers.yaml is found there (or set
 //	PEP_OPENID_PROVIDERS_PATH); the OIDF config's own relative key paths always resolve against the providers
 //	file's directory, not -w. ${VAR} placeholders in the providers file expand from the environment.
 //
@@ -72,8 +72,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-
-	"github.com/joho/godotenv"
 
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/kv/postgres"
@@ -121,7 +119,7 @@ func openBus() kv.Bus {
 }
 
 func main() {
-	workdir := flag.String("w", "", "working directory: chdir here and load .env from it")
+	workdir := flag.String("w", "", "working directory: chdir here")
 	flag.Parse()
 
 	// Resolve an explicitly-set PEP_OPENID_PROVIDERS_PATH against the invocation directory now, before -w
@@ -141,10 +139,6 @@ func main() {
 			log.Fatalf("chdir %q: %v", *workdir, err)
 		}
 	}
-	// Load .env from the (work)dir so PEP_* and the config's ${VAR} placeholders come from one place;
-	// existing environment variables take precedence.
-	_ = godotenv.Load()
-
 	if os.Getenv("DEBUG") != "" {
 		slog.SetLogLoggerLevel(slog.LevelDebug)
 	}

@@ -26,10 +26,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
-
-	"github.com/go-playground/validator/v10"
 )
 
 // ClientAssertionTypeJWTBearer is the client_assertion_type for private_key_jwt (RFC 7523 §2.2).
@@ -39,29 +36,37 @@ const ClientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-typ
 // RFC 7523 claims it keeps the gematik extensions: a nonce (redeemed against the AS nonce service)
 // and cnf.jkt (the client's DPoP key, to which the issued access token is sender-constrained).
 type ClientAssertionClaims struct {
-	Nonce string   `json:"nonce" validate:"required"`
-	Iss   string   `json:"iss" validate:"required"`
-	Sub   string   `json:"sub" validate:"required"`
-	Aud   []string `json:"aud" validate:"required"`
-	Iat   int      `json:"iat" validate:"required"`
-	Exp   int      `json:"exp" validate:"required"`
+	Nonce string   `json:"nonce"`
+	Iss   string   `json:"iss"`
+	Sub   string   `json:"sub"`
+	Aud   []string `json:"aud"`
+	Iat   int      `json:"iat"`
+	Exp   int      `json:"exp"`
 	Cnf   struct {
-		Jkt string `json:"jkt" validate:"required"`
-	} `json:"cnf" validate:"required"`
+		Jkt string `json:"jkt"`
+	} `json:"cnf"`
 }
 
 // Validate reports a missing required claim. It checks presence only: the signature, audience, lifetime and
 // nonce are verified by verifyClient.
 func (c *ClientAssertionClaims) Validate() error {
-	validate := validator.New()
-	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
-		name, _, _ := strings.Cut(fld.Tag.Get("json"), ",")
-		if name == "-" {
-			return ""
+	for _, claim := range []struct {
+		name    string
+		present bool
+	}{
+		{"nonce", c.Nonce != ""},
+		{"iss", c.Iss != ""},
+		{"sub", c.Sub != ""},
+		{"aud", len(c.Aud) > 0},
+		{"iat", c.Iat != 0},
+		{"exp", c.Exp != 0},
+		{"cnf.jkt", c.Cnf.Jkt != ""},
+	} {
+		if !claim.present {
+			return fmt.Errorf("claim %s is required", claim.name)
 		}
-		return name
-	})
-	return validate.Struct(c)
+	}
+	return nil
 }
 
 // parseClientAssertionClaims decodes the claims of a compact JWT without verifying its signature.

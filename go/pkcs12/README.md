@@ -68,5 +68,5 @@ RFC 6070/7914 test vectors and two vendor files.
 
 ```bash
 go test -race ./...
-just golangci pkcs12   # from go/: golangci-lint with the workspace configuration
+just golangci          # from go/: golangci-lint with the workspace configuration
 ```

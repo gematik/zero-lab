@@ -69,8 +69,8 @@ func OpenSessionCookie(token string, keys [][]byte) (identity map[string]any, si
 // the context's claims with the identity, so downstream policies (EnforcerScope) work. It is the BFF/gateway
 // and forward_auth counterpart to the token-verifying enforcers.
 type EnforcerSessionCookie struct {
-	TypeVal     EnforcerType `json:"type" validate:"required"`
-	CookieName  string       `json:"cookie_name" validate:"required"`
+	TypeVal     EnforcerType `json:"type"`
+	CookieName  string       `json:"cookie_name"`
 	KeyPath     string       `json:"key_path,omitempty"`
 	PrevKeyPath string       `json:"previous_key_path,omitempty"`
 

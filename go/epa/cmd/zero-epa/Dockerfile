@@ -1,4 +1,4 @@
-# Build context: the repository root (`just docker-build-epa`), since the image carries
+# Build context: the repository root (`just docker-build epa`), since the image carries
 # both the Go client and the Rust `ti` it drives.
 
 # The ti tool, static for the scratch image: the SMC-B identity, the IDP-Dienst flow and

@@ -31,7 +31,6 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      PRETTY_LOGS: "false"
       PDP_NON_PROD: "true"
       DATABASE_URL: "postgres://zero:zero@postgres:5432/zero?sslmode=disable"
     volumes:

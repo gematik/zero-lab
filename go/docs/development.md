@@ -46,8 +46,7 @@ go build ./...
 go run ./epa/cmd/zero-epa version
 
 # Build a stamped binary locally (version from the module's git tag)
-just build-epa       # ./dist/zero-epa
-just build           # all three commands into ./dist/
+go build -o dist/ ./epa/cmd/zero-epa ./pdp/cmd/zero-pdp   # commands into ./dist/
 ```
 
 Confirm the workspace is wiring local source:
@@ -87,7 +86,7 @@ enters the Go process.
   warn|enforce|off` (default `warn`) says what a bad verdict on the VAU's certificates
   does.
 - The Docker image builds `ti` in a Rust stage; its build context is the repository root
-  (`just docker-build-epa`).
+  (`just docker-build epa`).
 - Tests: `go test ./epa/...` needs no `ti` (the unit tests use fakes); the env-guarded
   `just epa-connect-test` and `just epa-entitle-test` need it and skip when it is
   missing.
@@ -182,10 +181,10 @@ The build context includes `go.work`; the version is derived from `git describe`
 via `--build-arg VERSION`:
 
 ```console
-just docker-build-epa      # spilikin/zero-epa:<git-describe>            (+ :latest)
-just docker-build-pdp
-just docker-build-caddy    # spilikin/zero-caddy:<ver>-caddy2.11.7
-just docker-push-epa       # build + push
+just docker-build epa      # spilikin/zero-epa:<git-describe>            (+ :latest)
+just docker-build pdp
+just docker-build caddy    # spilikin/zero-caddy:<ver>-caddy2.11.7
+just docker-push epa       # build + push
 ```
 
 For a clean image tag (`0.20.3` instead of `0.20.3-2-g…`), build from a checkout of the tag:

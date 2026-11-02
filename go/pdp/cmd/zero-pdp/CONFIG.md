@@ -45,5 +45,5 @@ real OpenID Provider — `browser → PDP → (mock) → code → token`, no ext
 
 `scratch` image; the binary is at `/app/zero-pdp`; mount your config dir (`pdp.yaml` +
 `openid-providers.yaml` + `sign.jwk`) at the WORKDIR **`/etc/pdp`** — it does not shadow the binary. Build /
-push with `just docker-build-pdp` / `just docker-push-pdp`. See [`../../docker-compose.yaml`](../../docker-compose.yaml)
+push with `just docker-build pdp` / `just docker-push pdp`. See [`../../docker-compose.yaml`](../../docker-compose.yaml)
 for the airgapped NonProd stack.

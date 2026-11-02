@@ -25,7 +25,7 @@ import (
 	"fmt"
 	"os"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
@@ -51,7 +51,7 @@ func LoadOpenidProviders(path string) ([]oidc.Config, []gemidp.ClientConfig, *oi
 		return nil, nil, nil, fmt.Errorf("read providers %q: %w", path, err)
 	}
 	var op openidProviders
-	if err := yaml.Unmarshal([]byte(os.ExpandEnv(string(data))), &op); err != nil { //nolint:gosec // the document is the operator's configuration file and decodes into fixed config structs
+	if err := yaml.Unmarshal([]byte(os.ExpandEnv(string(data))), &op); err != nil {
 		return nil, nil, nil, fmt.Errorf("parse providers %q: %w", path, err)
 	}
 	return op.OIDC, op.Gemidp, op.OIDF, nil

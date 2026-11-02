@@ -33,7 +33,7 @@ import (
 // scope policy that all of its client instances share. Products are loaded inline from the config
 // (products:) and/or from a gematik clients-policy file (clients_policy_path).
 type Product struct {
-	ProductID         string   `yaml:"product_id" json:"product_id" validate:"required"`
+	ProductID         string   `yaml:"product_id" json:"product_id"`
 	ProductName       string   `yaml:"product_name" json:"product_name"`
 	ManufacturerID    string   `yaml:"manufacturer_id" json:"manufacturer_id"`
 	ManufacturerName  string   `yaml:"manufacturer_name" json:"manufacturer_name"`

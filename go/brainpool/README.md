@@ -202,7 +202,7 @@ of 2026-11-02). The repository's rules apply ([docs](../../docs/README.md)); in 
 go build ./... && go vet ./... && go test ./...
 go test -tags openssl_cross ./...        # cross-checks against the openssl CLI (skips if absent)
 go test -run x -fuzz FuzzParseCertificate -fuzztime 30s
-cd .. && just golangci brainpool          # golangci-lint with the workspace configuration
+cd .. && just golangci                    # golangci-lint with the workspace configuration
 cd internal/bp256/fiat && go run generate.go -field p   # regenerate; needs the docker image from PROVENANCE.md
 ```
 

@@ -23,5 +23,4 @@ COPY --from=build /out/zero-pep-proxy /app/zero-pep-proxy
 USER 65532:65532
 # Config + secrets dir (mount here). Separate from /app so it doesn't shadow the binary.
 WORKDIR /etc/pep
-ENV PRETTY_LOGS=false
 ENTRYPOINT ["/app/zero-pep-proxy"]

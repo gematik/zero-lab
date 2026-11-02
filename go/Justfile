@@ -26,181 +26,87 @@ _UNGATE := "unset EPA_KVNRS_FILE EPA_POPP_TOKEN EPA_REPORT EPA_SMCB_CERT EPA_SMC
 API_RULESET_REV := "d698980"
 SPECTRAL := "@stoplight/spectral-cli@6.11.1"
 
-# Every module — library AND command — is versioned solely by its own git tag
-# (go/<module>/vX.Y.Z), bumped only when that module changes. The local/Docker build stamp
-# is the plain semantic version of the latest tag (see `_modver`); `go install` reads the
-# version from the module build info. Bump by tagging: `just tag <module> <version>`
-# (see `versions`/`changed`). The stamp must stay strictly SemVer: zero-epa sends it in
-# the x-useragent header, which the ePA aggregators validate (version part max 15 chars
-# of [a-zA-Z0-9.-]) — a raw `git describe` like 0.21.0-1-g978d044 is rejected with
-# "malformedRequest: x-useragent header invalid in inner request".
+# List the recipes
+default:
+    @just --list
 
-# Upstream Caddy version, derived from zaddy/go.mod (single source of truth). Used as
-# SemVer build metadata for the zero-caddy image tag, e.g. zero-caddy:0.20.2-caddy2.11.7.
-CADDY_VERSION := `grep -E 'caddyserver/caddy/v2 v[0-9]' zaddy/go.mod | head -1 | awk '{print $2}' | sed 's/^v//'`
-
-# Display available commands
-info:
-    just --list
-
-# (internal) A module's semantic version from its latest go/<mod>/v* tag, else "dev".
-# Strips the `git describe` commit suffix (-<n>-g<sha>) so builds past the tag still
-# stamp a plain X.Y.Z.
-_modver mod:
+# (internal) Run a command in every module; every failure counts, and all modules run.
+_each cmd:
     #!/usr/bin/env bash
-    v=$(git describe --tags --match "go/{{mod}}/v*" 2>/dev/null | sed 's|.*/v||; s/-[0-9]\{1,\}-g[0-9a-f]\{1,\}$//')
-    echo "${v:-dev}"
-
-# Build all command binaries locally into ./dist (version from git tag via ldflags)
-build: build-epa build-pdp build-caddy
-
-# Build the zero-epa binary locally
-build-epa:
-    go build -ldflags "-X github.com/gematik/zero-lab/go/epa.Version=$(just _modver epa)" -o dist/zero-epa ./epa/cmd/zero-epa
-
-# Build the zero-pdp binary locally
-build-pdp:
-    go build -ldflags "-X github.com/gematik/zero-lab/go/pdp.Version=$(just _modver pdp)" -o dist/zero-pdp ./pdp/cmd/zero-pdp
-
-# Build the zero-caddy binary locally
-build-caddy:
-    go build -ldflags "-X main.Version=$(just _modver zaddy)" -o dist/zero-caddy ./zaddy/cmd/zero-caddy
-
-
-# Build the zero-epa docker image
-docker-build-epa:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    v=$(just _modver epa)
-    # Context is the repository root: the image builds the Rust ti the client drives.
-    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/zero-epa:$v" -f ./epa/cmd/zero-epa/Dockerfile ..
-    docker tag "{{DOCKER_USER}}/zero-epa:$v" "{{DOCKER_USER}}/zero-epa:latest"
-
-# Push the zero-epa docker image to the docker hub
-docker-push-epa: docker-build-epa
-    #!/usr/bin/env bash
-    set -euo pipefail
-    v=$(just _modver epa)
-    docker push "{{DOCKER_USER}}/zero-epa:$v"
-    docker push "{{DOCKER_USER}}/zero-epa:latest"
-
-# Build the zero-caddy docker image (tag combines our version + Caddy version)
-docker-build-caddy:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    v=$(just _modver zaddy)
-    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/zero-caddy:$v-caddy{{CADDY_VERSION}}" -f ./zaddy/cmd/zero-caddy/Dockerfile .
-    docker tag "{{DOCKER_USER}}/zero-caddy:$v-caddy{{CADDY_VERSION}}" "{{DOCKER_USER}}/zero-caddy:latest"
-
-# Push the zero-caddy docker image to the docker hub
-docker-push-caddy: docker-build-caddy
-    #!/usr/bin/env bash
-    set -euo pipefail
-    v=$(just _modver zaddy)
-    docker push "{{DOCKER_USER}}/zero-caddy:$v-caddy{{CADDY_VERSION}}"
-    docker push "{{DOCKER_USER}}/zero-caddy:latest"
-
-# Build the zero-pdp docker image
-docker-build-pdp:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    v=$(just _modver pdp)
-    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/zero-pdp:$v" -f ./pdp/cmd/zero-pdp/Dockerfile .
-    docker tag "{{DOCKER_USER}}/zero-pdp:$v" "{{DOCKER_USER}}/zero-pdp:latest"
-
-# Push the zero-pdp docker image to the docker hub
-docker-push-pdp: docker-build-pdp
-    #!/usr/bin/env bash
-    set -euo pipefail
-    v=$(just _modver pdp)
-    docker push "{{DOCKER_USER}}/zero-pdp:$v"
-    docker push "{{DOCKER_USER}}/zero-pdp:latest"
-
-# Build the zero-pep-proxy docker image (oauth2-proxy-style auth gateway, scratch, non-root)
-docker-build-pep:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    v=$(just _modver pep)
-    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/zero-pep-proxy:$v" -f ./pep/cmd/zero-pep-proxy/Dockerfile .
-    docker tag "{{DOCKER_USER}}/zero-pep-proxy:$v" "{{DOCKER_USER}}/zero-pep-proxy:latest"
-
-# Push the zero-pep-proxy docker image to the docker hub
-docker-push-pep: docker-build-pep
-    #!/usr/bin/env bash
-    set -euo pipefail
-    v=$(just _modver pep)
-    docker push "{{DOCKER_USER}}/zero-pep-proxy:$v"
-    docker push "{{DOCKER_USER}}/zero-pep-proxy:latest"
-
-# Start the local Postgres for zero-pdp (the kv JSON store). Then point the server at it with
-#   export DATABASE_URL=postgres://zero:zero@localhost:5432/zero?sslmode=disable
-# (unset DATABASE_URL falls back to an in-memory store). Run the kv Postgres tests with
-#   TEST_DATABASE_URL=$DATABASE_URL go test ./kv/postgres
-pdp-db-up:
-    docker compose -f pdp/docker-compose.yaml up -d
-
-# Stop the local Postgres (append `-- -v` to also drop the data volume).
-pdp-db-down *ARGS:
-    docker compose -f pdp/docker-compose.yaml down {{ARGS}}
-
-# Build the metsubushi docker image (pod smoke-test app, scratch, non-root)
-docker-build-metsubushi:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    v=$(just _modver metsubushi)
-    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/metsubushi:$v" -f ./metsubushi/Dockerfile .
-    docker tag "{{DOCKER_USER}}/metsubushi:$v" "{{DOCKER_USER}}/metsubushi:latest"
-
-# Push the metsubushi docker image to the docker hub
-docker-push-metsubushi: docker-build-metsubushi
-    #!/usr/bin/env bash
-    set -euo pipefail
-    v=$(just _modver metsubushi)
-    docker push "{{DOCKER_USER}}/metsubushi:$v"
-    docker push "{{DOCKER_USER}}/metsubushi:latest"
-
-# Tag a module at a version, e.g. `just tag ti 0.20.2` or `just tag brainpool 0.3.1`
-# -> go/<module>/vX.Y.Z. Tag only the modules that changed (see `changed`).
-tag name version:
-    git tag -a "go/{{name}}/v{{version}}" -m "{{name}} v{{version}}"
-
-# Show the latest release tag for every module.
-versions:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    for dir in $(find . -name go.mod -exec dirname {} \; | sed 's|^\./||' | sort); do
-        latest=$(git tag -l "go/$dir/v*" | sort -V | tail -1)
-        printf '%-12s %s\n' "$dir" "${latest:-<untagged>}"
+    set -uo pipefail
+    fail=0
+    for dir in $(find . -name go.mod -exec dirname {} \; | sort); do
+        echo "==> $dir"
+        ( cd "$dir" && {{cmd}} ) || fail=1
     done
+    exit $fail
 
-# List modules with commits since their latest tag (candidates for a version bump).
-changed:
+# --- Checks ---
+
+# Every check of a change
+check: lint golangci modernize vuln mod-check test test-race api-lint
+
+# go vet and staticcheck
+lint: (_each "go vet ./... && go run " + STATICCHECK + " ./...")
+
+# golangci-lint with .golangci.yml, linters and formatters
+golangci: (_each "go run " + GOLANGCI + " run ./... && go run " + GOLANGCI + " fmt --diff ./...")
+
+# Report outdated idioms; the generated fiat code keeps its generator's output
+modernize: (_each "! go run " + MODERNIZE + " ./... 2>&1 | grep -vE '/bp256/fiat/|^exit status'")
+
+# Apply modernize's fixes, tests included
+modernize-fix: (_each "go run " + MODERNIZE + " -fix -test ./...; gofmt -w .")
+    git checkout -- brainpool/internal/bp256/fiat
+
+# Known vulnerabilities
+vuln: (_each "go run " + GOVULNCHECK + " ./...")
+
+# go.mod and go.sum as `go mod tidy` leaves them, with sums matching what was downloaded
+mod-check: (_each "go mod tidy -diff && go mod verify")
+
+# Tests, built as the images are. Gated suites have their own recipes and never run here.
+test: (_each _UNGATE + "; go test -count=1 ./...")
+
+# Tests under the race detector, which needs cgo on Linux
+test-race: (_each _UNGATE + "; CGO_ENABLED=1 go test -race -count=1 ./...")
+
+# Lint every OpenAPI contract with the gematik ruleset; skipped without GEMATIK_API_TOOLS_DIR
+# unless REQUIRE_API_LINT=1 (internal CI)
+api-lint:
     #!/usr/bin/env bash
     set -euo pipefail
-    for dir in $(find . -name go.mod -exec dirname {} \; | sed 's|^\./||' | sort); do
-        latest=$(git tag -l "go/$dir/v*" | sort -V | tail -1)
-        if [ -z "$latest" ]; then
-            echo "$dir: never tagged"
-        elif [ -n "$(git log --oneline "$latest"..HEAD -- "$dir")" ]; then
-            echo "$dir: changed since $latest"
-        fi
-    done
+    dir="${GEMATIK_API_TOOLS_DIR:-}"
+    if [[ -z "$dir" || ! -f "$dir/openapi/spectral/ruleset.yml" ]]; then
+        msg="api-lint: no gematik ruleset; set GEMATIK_API_TOOLS_DIR to a clone of dev-portal/api-tools"
+        if [[ "${REQUIRE_API_LINT:-}" == 1 ]]; then echo "$msg" >&2; exit 1; fi
+        echo "$msg (skipped)"; exit 0
+    fi
+    head=$(git -C "$dir" rev-parse HEAD)
+    if [[ "$head" != {{API_RULESET_REV}}* ]]; then
+        echo "api-lint: $dir is at ${head:0:7}, pinned {{API_RULESET_REV}}: git -C \"$dir\" checkout {{API_RULESET_REV}}" >&2
+        exit 1
+    fi
+    root=$(git rev-parse --show-toplevel)
+    specs=()
+    while IFS= read -r f; do
+        grep -qE '^openapi:|"openapi"[[:space:]]*:' "$root/$f" && specs+=("$root/$f")
+    done < <(git -C "$root" ls-files '*.yaml' '*.yml' '*.json')
+    if (( ${#specs[@]} == 0 )); then echo "api-lint: no OpenAPI contracts"; exit 0; fi
+    # Warnings are conventions to follow too, so they fail the lint as errors do.
+    npx -y {{SPECTRAL}} lint --fail-severity=warn --ruleset "$dir/openapi/spectral/ruleset.yml" "${specs[@]}"
 
-# Push all local tags to origin
-push-tags:
-    git push origin --tags
+# --- Modules ---
 
-# Repin every in-repo (zero-lab/go) require to a git ref (default: current branch)
-# so that tagged command builds — `go install ...@<tag>`, which ignore go.work —
-# pick up the latest library code. PUSH library changes first.
-#
-# We construct each module's pseudo-version explicitly instead of letting
-# `go get <dep>@<branch>` derive it. In this multi-module repo the automatic
-# derivation mis-bases the pseudo-version on the highest repo-wide tag (e.g.
-# go/ti/v0.20.3) rather than the dep's own go/<dep>/v* tag, so the fetch then
-# fails with "module github.com/gematik/zero-lab@<ref> found, but does not
-# contain package .../go/<dep>". Deriving it ourselves from each module's own
-# latest tag sidesteps that.
+# Sync go.mod and go.sum with imports, upgrading nothing
+tidy: (_each "go mod tidy")
+
+# Upgrade all dependencies; re-run `just sync` before a release
+upgrade: (_each "go get -u ./... && go mod tidy")
+
+# Repin every in-repo require to a git ref (default: this branch), for builds outside the
+# workspace. Push first: pins resolve from the remote. Each version is derived from the
+# module's own go/<mod>/v* tag, since go get bases pseudo-versions on the highest repo-wide tag.
 sync REF=`git rev-parse --abbrev-ref HEAD`:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -249,30 +155,71 @@ sync REF=`git rev-parse --abbrev-ref HEAD`:
         ( cd "$dir" && GOWORK=off go mod tidy )
     done
 
-# Tidy all go modules: sync go.mod/go.sum to imports. Does NOT upgrade versions.
-tidy:
+# Tag a module: `just tag brainpool 0.3.1`. Modules are versioned solely by their own tags.
+tag name version:
+    git tag -a "go/{{name}}/v{{version}}" -m "{{name}} v{{version}}"
+
+# Push all local tags
+push-tags:
+    git push origin --tags
+
+# Show every module's latest tag
+versions:
     #!/usr/bin/env bash
-    set -euo pipefail
-    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
-        echo "==> Tidying $dir"
-        (cd "$dir" && go mod tidy)
+    for dir in $(find . -name go.mod -exec dirname {} \; | sed 's|^\./||' | sort); do
+        printf '%-12s %s\n' "$dir" "$(git tag -l "go/$dir/v*" | sort -V | tail -1)"
     done
 
-# Upgrade all external dependencies to their latest versions, then tidy. Deliberate
-# action — re-floats deps, so re-run `just sync` before tagging a release.
-upgrade:
+# List modules with commits since their latest tag
+changed:
     #!/usr/bin/env bash
-    set -euo pipefail
-    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
-        echo "==> Upgrading $dir"
-        (cd "$dir" && go get -u ./... && go mod tidy)
+    for dir in $(find . -name go.mod -exec dirname {} \; | sed 's|^\./||' | sort); do
+        latest=$(git tag -l "go/$dir/v*" | sort -V | tail -1)
+        if [ -z "$latest" ]; then echo "$dir: never tagged"
+        elif [ -n "$(git log --oneline "$latest"..HEAD -- "$dir")" ]; then echo "$dir: changed since $latest"; fi
     done
 
-# --- zero-pdp e2e (see docs/e2e.md) ---
+# --- Images: epa, pdp, pep, caddy, metsubushi ---
 
-# Start zero-pdp for e2e against URL (the issuer). Generates sign.jwk, then serves the e2e testdata
-# config. The e2e client authenticates with private_key_jwt: its public JWK is committed in the config
-# and the tests sign assertions with testdata/e2e-client.prk.jwk.
+# (internal) A module's plain version from its latest tag, else "dev". zero-epa sends it in the
+# x-useragent header, which the ePA aggregators validate, so it must stay strictly SemVer.
+_modver mod:
+    #!/usr/bin/env bash
+    v=$(git describe --tags --match "go/{{mod}}/v*" 2>/dev/null | sed 's|.*/v||; s/-[0-9]\{1,\}-g[0-9a-f]\{1,\}$//')
+    echo "${v:-dev}"
+
+# Build an image, tagged with its version and latest
+docker-build name:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    context=.
+    case "{{name}}" in
+        # The epa image builds the Rust ti, so its context is the repository root.
+        epa) mod=epa image=zero-epa file=epa/cmd/zero-epa/Dockerfile context=.. ;;
+        pdp) mod=pdp image=zero-pdp file=pdp/cmd/zero-pdp/Dockerfile ;;
+        pep) mod=pep image=zero-pep-proxy file=pep/cmd/zero-pep-proxy/Dockerfile ;;
+        caddy) mod=zaddy image=zero-caddy file=zaddy/cmd/zero-caddy/Dockerfile ;;
+        metsubushi) mod=metsubushi image=metsubushi file=metsubushi/Dockerfile ;;
+        *) echo "unknown image {{name}}" >&2; exit 1 ;;
+    esac
+    v=$(just _modver "$mod")
+    tag=$v
+    # The caddy tag carries the upstream version from zaddy/go.mod as well.
+    if [ "{{name}}" = caddy ]; then tag=$v-caddy$(awk '/caddyserver\/caddy\/v2 v[0-9]/{sub(/^v/,"",$2); print $2; exit}' zaddy/go.mod); fi
+    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/$image:$tag" -f "$file" "$context"
+    docker tag "{{DOCKER_USER}}/$image:$tag" "{{DOCKER_USER}}/$image:latest"
+    echo "{{DOCKER_USER}}/$image:$tag"
+
+# Build and push an image
+docker-push name: (docker-build name)
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just docker-build {{name}} | tail -1 | xargs docker push
+    docker push "{{DOCKER_USER}}/$(case {{name}} in pep) echo zero-pep-proxy;; caddy) echo zero-caddy;; metsubushi) echo metsubushi;; *) echo zero-{{name}};; esac):latest"
+
+# --- Gated suites: docs/development.md, "Gated tests" ---
+
+# Start zero-pdp for e2e against URL, serving the e2e testdata
 pdp-e2e-serve URL='http://localhost:8011':
     #!/usr/bin/env bash
     set -euo pipefail
@@ -281,182 +228,36 @@ pdp-e2e-serve URL='http://localhost:8011':
     export ZERO_PDP_E2E_URL='{{URL}}'
     export ZERO_PDP_E2E_CLIENT_ID="${ZERO_PDP_E2E_CLIENT_ID:-e2e-client}"
     export ZERO_PDP_E2E_REDIRECT_URI="${ZERO_PDP_E2E_REDIRECT_URI:-http://localhost:8765/as-callback}"
-    echo "serving zero-pdp: issuer={{URL}} client=$ZERO_PDP_E2E_CLIENT_ID"
     go run ./pdp/cmd/zero-pdp start -f pdp.e2e.yaml -w "$td"
 
-# Run smoke+regression+flow e2e suites against a running server at URL.
-pdp-e2e URL='http://localhost:8011':
-    ZERO_PDP_E2E_URL='{{URL}}' go test ./pdp/e2e -run 'Smoke|Regression|Flow' -count=1 -v
+# Run the e2e suites against a running server; TESTS narrows them, e.g. Smoke
+pdp-e2e URL='http://localhost:8011' TESTS='Smoke|Regression|Flow':
+    ZERO_PDP_E2E_URL='{{URL}}' go test ./pdp/e2e -run '{{TESTS}}' -count=1 -v
 
-# Run only the smoke suite.
-pdp-e2e-smoke URL='http://localhost:8011':
-    ZERO_PDP_E2E_URL='{{URL}}' go test ./pdp/e2e -run Smoke -count=1 -v
-
-# Run the human-in-the-loop authorization-code flow (opens a browser; needs an OP configured).
-# Provide the public URL explicitly, e.g. `just pdp-e2e-hitl https://<rathole-host>`.
+# Run the authorization-code flow in a browser, against the public URL
 pdp-e2e-hitl URL:
     ZERO_PDP_E2E_URL='{{URL}}' ZERO_PDP_E2E_HITL=1 go test ./pdp/e2e -run HITL -count=1 -v -timeout 5m
 
-# Run the env-guarded gemidp SMC-B integration test against the gematik IDP (uses ./.env).
+# A full SMC-B login at the gematik IDP
 gemidp-smcb-test:
     go test ./gemidp -run TestGemIDP_SMCB -count=1 -v -timeout 2m
 
-# Verify the reference IDP's certificates live, with OCSP. Needs a bundle from
-# `ti pki trust export --env ref` in GEMIDP_TRUST_BUNDLE_PATH and a route to the IDP.
+# The reference IDP's certificates, live, against GEMIDP_TRUST_BUNDLE_PATH
 gemidp-trust-test:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [[ -z "${GEMIDP_TRUST_BUNDLE_PATH:-}" ]]; then echo "set GEMIDP_TRUST_BUNDLE_PATH" >&2; exit 1; fi
     go test ./gemidp -run TestIDPV005TheLiveReferenceIDP -count=1 -v -timeout 2m
 
-# Download the reference environment's trust material and verify its IDP's certificates live,
-# with nothing mounted. Needs a route to gematik's hosts.
+# The reference IDP's certificates, live, with the trust material downloaded
 gemidp-trust-fetch-test:
     GEMIDP_TRUST_FETCH=1 go test ./gemidp -run TestIDPV007TheLiveReferenceEnvironment -count=1 -v -timeout 3m
 
-# Run the env-guarded epa connect test for both providers (VAU + authorize + record status + consent;
-# no VSDM). Uses ./.env (EPA_SMCB_P12, EPA_ENV, EPA_P1_INSURANT_ID, EPA_P2_INSURANT_ID, ...).
+# ePA connect at both providers (VAU, authorize, record status, consent)
 epa-connect-test:
     go test ./epa -run TestEPA_Connect -count=1 -v -timeout 5m
 
-# Run the env-guarded epa entitlement test. Requires VSDM_HMAC_KEY/VSDM_HMAC_KID exported in the SHELL
-# (never store them in ./.env). Writes a report to epa/test-reports/.
+# ePA entitlement. VSDM_HMAC_KEY and VSDM_HMAC_KID come from the shell, never from ./.env
 epa-entitle-test:
     go test ./epa -run TestEPA_Entitle -count=1 -v -timeout 5m
 
-# Run the env-guarded OpenID Federation test against a live federation master (uses ./.env).
-# Set OIDF_FEDMASTER_URL, e.g. https://app-ref.federationmaster.de.
+# OpenID Federation against the master in OIDF_FEDMASTER_URL
 oidf-test:
     go test ./oidf -run TestFederation -count=1 -v -timeout 2m
-
-# --- Go code analysis (all modules) ---
-
-# Report Go modernization suggestions (modern idioms: any, min/max, slices/maps, range-int, ...)
-modernize:
-    #!/usr/bin/env bash
-    set -uo pipefail
-    fail=0
-    # Findings in generated files (Code generated ... DO NOT EDIT) are not ours to fix.
-    generated() { [ -f "$1" ] && head -5 "$1" | grep -q '^// Code generated .* DO NOT EDIT\.$'; }
-    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
-        echo "==> modernize $dir"
-        found=$( (cd "$dir" && go run {{MODERNIZE}} ./... 2>&1) | grep -v '^exit status' | while IFS= read -r line; do
-            generated "${line%%:*}" || printf '%s\n' "$line"
-        done )
-        if [ -n "$found" ]; then echo "$found"; fail=1; fi
-    done
-    exit $fail
-
-# Apply Go modernization fixes (including tests), then gofmt
-modernize-fix:
-    #!/usr/bin/env bash
-    set -uo pipefail
-    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
-        echo "==> modernize -fix $dir"
-        ( cd "$dir" && go run {{MODERNIZE}} -fix -test ./... || true; gofmt -w . )
-    done
-    # Generated files keep their generator's output.
-    git diff --name-only --relative -- . | while IFS= read -r f; do
-        if head -5 "$f" | grep -q '^// Code generated .* DO NOT EDIT\.$'; then git checkout -- "$f"; fi
-    done
-
-# Static analysis: go vet + staticcheck
-lint:
-    #!/usr/bin/env bash
-    set -uo pipefail
-    fail=0
-    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
-        echo "==> lint $dir"
-        ( cd "$dir" && go vet ./... && go run {{STATICCHECK}} ./... ) || fail=1
-    done
-    exit $fail
-
-# Scan for known vulnerabilities (govulncheck)
-vuln:
-    #!/usr/bin/env bash
-    set -uo pipefail
-    fail=0
-    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
-        echo "==> govulncheck $dir"
-        ( cd "$dir" && go run {{GOVULNCHECK}} ./... ) || fail=1
-    done
-    exit $fail
-
-# golangci-lint with .golangci.yml (linters and formatters) in every module, or in MODULES
-golangci *MODULES:
-    #!/usr/bin/env bash
-    set -uo pipefail
-    fail=0
-    dirs="{{MODULES}}"
-    [ -n "$dirs" ] || dirs=$(find . -name 'go.mod' -exec dirname {} \; | sed 's|^\./||' | sort)
-    for dir in $dirs; do
-        echo "==> golangci-lint $dir"
-        ( cd "$dir" && go run {{GOLANGCI}} run ./... && go run {{GOLANGCI}} fmt --diff ./... ) || fail=1
-    done
-    exit $fail
-
-# Lint every OpenAPI contract in the repository with the gematik ruleset; skipped without
-# GEMATIK_API_TOOLS_DIR unless REQUIRE_API_LINT=1 (internal CI)
-api-lint:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    dir="${GEMATIK_API_TOOLS_DIR:-}"
-    if [[ -z "$dir" || ! -f "$dir/openapi/spectral/ruleset.yml" ]]; then
-        msg="api-lint: no gematik ruleset; set GEMATIK_API_TOOLS_DIR to a clone of dev-portal/api-tools"
-        if [[ "${REQUIRE_API_LINT:-}" == 1 ]]; then echo "$msg" >&2; exit 1; fi
-        echo "$msg (skipped)"; exit 0
-    fi
-    head=$(git -C "$dir" rev-parse HEAD)
-    if [[ "$head" != {{API_RULESET_REV}}* ]]; then
-        echo "api-lint: $dir is at ${head:0:7}, pinned {{API_RULESET_REV}}: git -C \"$dir\" checkout {{API_RULESET_REV}}" >&2
-        exit 1
-    fi
-    root=$(git rev-parse --show-toplevel)
-    specs=()
-    while IFS= read -r f; do
-        grep -qE '^openapi:|"openapi"[[:space:]]*:' "$root/$f" && specs+=("$root/$f")
-    done < <(git -C "$root" ls-files '*.yaml' '*.yml' '*.json')
-    if (( ${#specs[@]} == 0 )); then echo "api-lint: no OpenAPI contracts"; exit 0; fi
-    # Warnings are conventions to follow too, so they fail the lint as errors do.
-    npx -y {{SPECTRAL}} lint --fail-severity=warn --ruleset "$dir/openapi/spectral/ruleset.yml" "${specs[@]}"
-
-# go.mod and go.sum as `go mod tidy` leaves them, with sums that match what was downloaded
-mod-check:
-    #!/usr/bin/env bash
-    set -uo pipefail
-    fail=0
-    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
-        echo "==> mod-check $dir"
-        ( cd "$dir" && go mod tidy -diff && go mod verify ) || fail=1
-    done
-    exit $fail
-
-# Tests of every module, built as the images are. Gated suites need their own recipe and
-# never run here (docs/design/testing.md), so what dotenv-load brought in is taken out.
-test:
-    #!/usr/bin/env bash
-    set -uo pipefail
-    {{_UNGATE}}
-    fail=0
-    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
-        echo "==> test $dir"
-        ( cd "$dir" && go test -count=1 ./... ) || fail=1
-    done
-    exit $fail
-
-# Tests under the race detector, which needs cgo on Linux.
-test-race:
-    #!/usr/bin/env bash
-    set -uo pipefail
-    {{_UNGATE}}
-    export CGO_ENABLED=1
-    fail=0
-    for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do
-        echo "==> test -race $dir"
-        ( cd "$dir" && go test -race -count=1 ./... ) || fail=1
-    done
-    exit $fail
-
-# Every check of a change: lints, idioms, known vulnerabilities, module files, tests with
-# and without the race detector, and the gematik API lint
-check: lint golangci modernize vuln mod-check test test-race api-lint

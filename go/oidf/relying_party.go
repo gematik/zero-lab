@@ -38,7 +38,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/lestrrat-go/jwx/v3/cert"
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
@@ -61,22 +60,22 @@ type RelyingPartyConfig struct {
 
 	// Subject is this relying party's entity identifier — its own public URL — and also the entity
 	// statement's iss/sub and the OIDF client_id.
-	Subject string `yaml:"sub" validate:"required"`
+	Subject string `yaml:"sub"`
 
 	// FedMasterURL is the federation master. Its trust-anchor signing key is resolved from a built-in table
 	// of known gematik masters (see knownFedMasters); set FedMasterJWK to override or for an unlisted master.
-	FedMasterURL string `yaml:"fed_master_url" validate:"required"`
+	FedMasterURL string `yaml:"fed_master_url"`
 	FedMasterJWK *Jwk   `yaml:"fed_master_jwk,omitempty"`
 
 	// SignKey signs the entity statement; EncKey decrypts the JWE id_token; ClientKey authenticates the
 	// self_signed_tls_client_auth mTLS calls (its cert_pem_path is required). Each is a KeyConfig.
-	SignKey   KeyConfig `yaml:"sign_key" validate:"required"`
-	EncKey    KeyConfig `yaml:"enc_key" validate:"required"`
-	ClientKey KeyConfig `yaml:"client_key" validate:"required"`
+	SignKey   KeyConfig `yaml:"sign_key"`
+	EncKey    KeyConfig `yaml:"enc_key"`
+	ClientKey KeyConfig `yaml:"client_key"`
 
 	// RelyingParty + FederationEntity are the deployment-specific entity-statement metadata; the rest is
 	// defaulted.
-	RelyingParty     RelyingPartyMetadata `yaml:"relying_party" validate:"required"`
+	RelyingParty     RelyingPartyMetadata `yaml:"relying_party"`
 	FederationEntity FederationEntity     `yaml:"federation_entity"`
 
 	// Scopes requested from the OpenID provider's authorization endpoint (which identity claims it returns).
@@ -104,8 +103,8 @@ type KeyConfig struct {
 
 // RelyingPartyMetadata holds the variable openid_relying_party fields; the OIDF boilerplate is defaulted.
 type RelyingPartyMetadata struct {
-	ClientName       string   `yaml:"client_name" validate:"required"`
-	RedirectURIs     []string `yaml:"redirect_uris" validate:"required,min=1"`
+	ClientName       string   `yaml:"client_name"`
+	RedirectURIs     []string `yaml:"redirect_uris"`
 	OrganizationName string   `yaml:"organization_name,omitempty"`
 	LogoURI          string   `yaml:"logo_uri,omitempty"`
 	Scope            string   `yaml:"scope,omitempty"`              // default defaultMetadataScope
@@ -173,21 +172,32 @@ func NewRelyingPartyFromConfigFile(path string) (*RelyingParty, error) {
 	return NewRelyingPartyFromConfig(cfg)
 }
 
+// Validate reports a missing required field. What needs I/O is checked when the keys are loaded.
+func (cfg *RelyingPartyConfig) Validate() error {
+	for _, field := range []struct {
+		name    string
+		present bool
+	}{
+		{"sub", cfg.Subject != ""},
+		{"fed_master_url", cfg.FedMasterURL != ""},
+		{"sign_key", !reflect.ValueOf(cfg.SignKey).IsZero()},
+		{"enc_key", !reflect.ValueOf(cfg.EncKey).IsZero()},
+		{"client_key", !reflect.ValueOf(cfg.ClientKey).IsZero()},
+		{"relying_party.client_name", cfg.RelyingParty.ClientName != ""},
+		{"relying_party.redirect_uris", len(cfg.RelyingParty.RedirectURIs) > 0},
+	} {
+		if !field.present {
+			return fmt.Errorf("%s is required", field.name)
+		}
+	}
+	return nil
+}
+
 // NewRelyingPartyFromConfig validates cfg, loads its keys and fetches the federation master's entity statement,
 // so the master has to be reachable and its statement has to verify for this to succeed.
 func NewRelyingPartyFromConfig(cfg *RelyingPartyConfig) (*RelyingParty, error) {
-	validate := validator.New(validator.WithRequiredStructEnabled())
-
-	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
-		name := fld.Tag.Get("yaml")
-		if name == "" {
-			name = fld.Name
-		}
-		return name
-	})
-	err := validate.Struct(cfg)
+	err := cfg.Validate()
 	if err != nil {
-		slog.Error("config validation failed", "error", err, "config", fmt.Sprintf("%+v", cfg))
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 

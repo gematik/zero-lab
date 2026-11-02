@@ -22,6 +22,8 @@
 package authzserver
 
 import (
+	"errors"
+	"fmt"
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -36,20 +38,20 @@ import (
 // Config is the authorization_server section of pdp.yaml. Relative paths resolve against BaseDir.
 type Config struct {
 	BaseDir                    string                   `yaml:"-"`
-	Issuer                     string                   `yaml:"issuer" validate:"required"`
+	Issuer                     string                   `yaml:"issuer"`
 	SignJwkPath                string                   `yaml:"sign_jwk_path"`
-	SigningKey                 *SigningKey              `yaml:"-" validate:"-"`
+	SigningKey                 *SigningKey              `yaml:"-"`
 	ScopesSupported            []string                 `yaml:"scopes_supported"`
 	MetadataTemplate           ExtendedMetadata         `yaml:"metadata_template"`
 	DefaultIDPIss              string                   `yaml:"default_idp_iss"`
-	OidcProviders              []oidc.Config            `yaml:"oidc_providers" validate:"dive"`
-	GematikIdp                 []gemidp.ClientConfig    `yaml:"gematik_idp" validate:"dive"`
+	OidcProviders              []oidc.Config            `yaml:"oidc_providers"`
+	GematikIdp                 []gemidp.ClientConfig    `yaml:"gematik_idp"`
 	ClientsPolicyPath          string                   `yaml:"clients_policy_path"`
-	Products                   []Product                `yaml:"products" validate:"omitempty,dive"`
-	Clients                    []Client                 `yaml:"clients" validate:"omitempty,dive"`
+	Products                   []Product                `yaml:"products"`
+	Clients                    []Client                 `yaml:"clients"`
 	OidfRelyingPartyConfigPath string                   `yaml:"oidf_relying_party_path"`
-	OidfRelyingPartyConfig     *oidf.RelyingPartyConfig `yaml:"oidf_relying_party" validate:"omitempty"`
-	Endpoints                  EndpointsConfig          `yaml:"endpoints" validate:"omitempty"`
+	OidfRelyingPartyConfig     *oidf.RelyingPartyConfig `yaml:"oidf_relying_party"`
+	Endpoints                  EndpointsConfig          `yaml:"endpoints"`
 	// some values may be set programmatically
 	NonceService nonce.Service
 	// Store is the kv backend for sessions + nonces. The command opens the Postgres store from
@@ -123,4 +125,32 @@ func absPath(baseDir, path string) string {
 		return path
 	}
 	return filepath.Join(baseDir, path)
+}
+
+// Validate reports what a configuration cannot do without. What needs I/O is checked when it is loaded.
+func (c *Config) Validate() error {
+	if c.Issuer == "" {
+		return errors.New("issuer is required")
+	}
+	for i, provider := range c.OidcProviders {
+		if err := provider.Validate(); err != nil {
+			return fmt.Errorf("oidc_providers[%d]: %w", i, err)
+		}
+	}
+	for i, product := range c.Products {
+		if product.ProductID == "" {
+			return fmt.Errorf("products[%d]: product_id is required", i)
+		}
+	}
+	for i, client := range c.Clients {
+		switch {
+		case client.ClientID == "":
+			return fmt.Errorf("clients[%d]: client_id is required", i)
+		case client.ProductID == "":
+			return fmt.Errorf("clients[%d]: product_id is required", i)
+		case len(client.PublicJWK) == 0:
+			return fmt.Errorf("clients[%d]: public_jwk is required", i)
+		}
+	}
+	return nil
 }

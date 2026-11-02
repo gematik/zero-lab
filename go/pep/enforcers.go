@@ -104,8 +104,8 @@ func (h EnforcerHolder) MarshalJSON() ([]byte, error) {
 
 // EnforcerAllOf lets a request through when every enforcer allows it; an empty list denies.
 type EnforcerAllOf struct {
-	TypeVal         EnforcerType     `json:"type" validate:"required"`
-	EnforcerHolders []EnforcerHolder `json:"enforcers" validate:"required,dive"`
+	TypeVal         EnforcerType     `json:"type"`
+	EnforcerHolders []EnforcerHolder `json:"enforcers"`
 }
 
 // Type returns EnforcerTypeAllOf.
@@ -159,8 +159,8 @@ func (e *EnforcerAllOf) Append(enforcer Enforcer) {
 
 // EnforcerAnyOf lets a request through when at least one enforcer allows it; an empty list denies.
 type EnforcerAnyOf struct {
-	TypeVal         EnforcerType     `json:"type" validate:"required"`
-	EnforcerHolders []EnforcerHolder `json:"enforcers" validate:"required,dive"`
+	TypeVal         EnforcerType     `json:"type"`
+	EnforcerHolders []EnforcerHolder `json:"enforcers"`
 }
 
 // Type returns EnforcerTypeAnyOf.
@@ -215,7 +215,7 @@ func (e *EnforcerAnyOf) Append(enforcer Enforcer) {
 
 // EnforcerDeny refuses every request, for routes a policy closes by configuration.
 type EnforcerDeny struct {
-	TypeVal EnforcerType `json:"type" validate:"required"`
+	TypeVal EnforcerType `json:"type"`
 }
 
 // Type returns EnforcerTypeDeny.
@@ -231,8 +231,8 @@ func (e *EnforcerDeny) Apply(ctx Context, _ HandlerFunc) {
 // EnforcerScope requires one scope in the "scope" claim, a space-separated list. It reads the claims a
 // previous enforcer set, so it follows a token or session enforcer in an EnforcerAllOf.
 type EnforcerScope struct {
-	TypeVal EnforcerType `json:"type" validate:"required"`
-	Scope   string       `json:"scope" validate:"required"`
+	TypeVal EnforcerType `json:"type"`
+	Scope   string       `json:"scope"`
 }
 
 // Type returns EnforcerTypeScope.
@@ -289,7 +289,7 @@ func EnforcerFromFunc(apply func(Context, HandlerFunc)) Enforcer {
 // EnforcerAuthorizationBearer requires a valid JWT access token in a Bearer Authorization header
 // (RFC 6750) and makes its claims available on the context.
 type EnforcerAuthorizationBearer struct {
-	TypeVal EnforcerType `json:"type" validate:"required"`
+	TypeVal EnforcerType `json:"type"`
 }
 
 // Type returns EnforcerTypeAuthorizationBearer.
@@ -324,8 +324,8 @@ func (e *EnforcerAuthorizationBearer) Apply(ctx Context, next HandlerFunc) {
 // and makes the token's claims available on the context. NonceRequired is not implemented: when set,
 // every request is denied with internal_error.
 type EnforcerAuthorizationDPoP struct {
-	TypeVal       EnforcerType `json:"type" validate:"required"`
-	NonceRequired bool         `json:"nonce_required" validate:"required"`
+	TypeVal       EnforcerType `json:"type"`
+	NonceRequired bool         `json:"nonce_required"`
 }
 
 // Type returns EnforcerTypeAuthorizationDPoP.

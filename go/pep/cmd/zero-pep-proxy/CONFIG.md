@@ -33,7 +33,7 @@ oidf:   <oidf.RelyingPartyConfig>       # one OIDF relying party (brings its fed
 | Var / Flag | Purpose | Default |
 | --- | --- | --- |
 | `PEP_OPENID_PROVIDERS_PATH` | the providers file. When set it must exist; the default is optional | `./openid-providers.yaml` |
-| `-w <dir>` | working dir: `chdir` + load a `.env` from it (does **not** move the providers file's base path) | — |
+| `-w <dir>` | working dir: `chdir` (does **not** move the providers file's base path) | — |
 
 Provider source: the providers file when it exists, else the **single-provider env shortcuts** below (so dev
 needs no file). The file and the shortcuts are mutually exclusive (the file wins).
@@ -122,10 +122,10 @@ routes:
 Built + published via the justfile (Docker Hub, version from the `go/pep/v*` tag):
 
 ```sh
-just docker-build-pep    # spilikin/zero-pep-proxy:<modver> + :latest
-just docker-push-pep     # build + push both tags
+just docker-build pep    # spilikin/zero-pep-proxy:<modver> + :latest
+just docker-push pep     # build + push both tags
 ```
 
-`scratch` image, runs as non-root (uid 65532), `PRETTY_LOGS=false` (structured logs). The version is stamped
+`scratch` image, runs as non-root (uid 65532). The version is stamped
 into the binary (`pep.Version`) and logged at startup. Mount secrets (session key, OIDF keys) as files and
 pass `DATABASE_URL`; see [`e2e/README.md`](../../proxy/e2e/README.md) for a runnable stack.
