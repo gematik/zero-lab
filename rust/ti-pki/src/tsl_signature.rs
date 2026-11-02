@@ -1533,7 +1533,6 @@ mod tests {
             signer_fixture!("signer-no-policy"),
             signer_fixture!("signer-ca"),
             signer_fixture!("signer-no-aia"),
-            signer_fixture!("signer-compressed-key"),
             signer_fixture!("signer-p256"),
             signer_fixture!("signer-sha384"),
         ] {

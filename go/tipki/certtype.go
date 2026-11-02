@@ -49,13 +49,13 @@ const (
 	CertHciAut  CertificateType = "C.HCI.AUT"
 	CertHciEnc  CertificateType = "C.HCI.ENC"
 	CertHciOsig CertificateType = "C.HCI.OSIG"
-	CertFdTlsS  CertificateType = "C.FD.TLS-S"
-	CertFdTlsC  CertificateType = "C.FD.TLS-C"
+	CertFdTLSS  CertificateType = "C.FD.TLS-S"
+	CertFdTLSC  CertificateType = "C.FD.TLS-C"
 	CertFdSig   CertificateType = "C.FD.SIG"
 	CertFdEnc   CertificateType = "C.FD.ENC"
 	CertFdAut   CertificateType = "C.FD.AUT"
 	CertFdOsig  CertificateType = "C.FD.OSIG"
-	CertZdTlsS  CertificateType = "C.ZD.TLS-S"
+	CertZdTLSS  CertificateType = "C.ZD.TLS-S"
 	CertZdSig   CertificateType = "C.ZD.SIG"
 	CertHskSig  CertificateType = "C.HSK.SIG"
 	CertHskEnc  CertificateType = "C.HSK.ENC"
@@ -80,7 +80,7 @@ type typeEntry struct {
 
 // AllCertificateTypes returns every type, in the order of the specification.
 func AllCertificateTypes() []CertificateType {
-	return []CertificateType{CertChQes, CertChSig, CertChEnc, CertChEncv, CertChAut, CertChAutn, CertHpQes, CertHpAut, CertHpEnc, CertHciAut, CertHciEnc, CertHciOsig, CertFdTlsS, CertFdTlsC, CertFdSig, CertFdEnc, CertFdAut, CertFdOsig, CertZdTlsS, CertZdSig, CertHskSig, CertHskEnc, CertGemVer, CertTslSig}
+	return []CertificateType{CertChQes, CertChSig, CertChEnc, CertChEncv, CertChAut, CertChAutn, CertHpQes, CertHpAut, CertHpEnc, CertHciAut, CertHciEnc, CertHciOsig, CertFdTLSS, CertFdTLSC, CertFdSig, CertFdEnc, CertFdAut, CertFdOsig, CertZdTLSS, CertZdSig, CertHskSig, CertHskEnc, CertGemVer, CertTslSig}
 }
 
 // The X.509 profile tables of gemSpec_PKI (Tab_PKI_232 to 300), ECDSA branch. Optional entries are
@@ -194,7 +194,7 @@ var typeTable = map[CertificateType]typeEntry{
 			RoleOIDs:    oid.Institutions,
 		},
 	},
-	CertFdTlsS: {
+	CertFdTLSS: {
 		id: oid.CertTypeFdTLSS,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature,
@@ -203,7 +203,7 @@ var typeTable = map[CertificateType]typeEntry{
 			RoleOIDs:    nil,
 		},
 	},
-	CertFdTlsC: {
+	CertFdTLSC: {
 		id: oid.CertTypeFdTLSC,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature,
@@ -248,7 +248,7 @@ var typeTable = map[CertificateType]typeEntry{
 			RoleOIDs:    nil,
 		},
 	},
-	CertZdTlsS: {
+	CertZdTLSS: {
 		id: oid.CertTypeZdTLSS,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature,

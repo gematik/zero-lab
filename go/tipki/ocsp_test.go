@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -95,7 +96,7 @@ func describeInt(value *int64) string {
 	if value == nil {
 		return "-"
 	}
-	return fmt.Sprint(*value)
+	return strconv.FormatInt(*value, 10)
 }
 
 func describeWanted(want ocspOutcome) string {
@@ -178,14 +179,9 @@ func TestOCSP001EveryResponseIsJudgedAsInTiPki(t *testing.T) {
 	}
 }
 
-// OCSP-002: a good response with any one byte flipped. No flip may be accepted here that ti-pki refuses, and
-// a verdict must be the same. Two differences stand, stated rather than hidden:
-//
-// ti-pki accepts three flips outside what a signature covers, and Go refuses them: the tag of the signature's
-// AlgorithmIdentifier, and the unused-bits byte of the response's and of the embedded certificate's signature.
-//
-// Within the embedded responder certificate both refuse, by different codes, because the parsers differ on
-// malformed DER: crypto/x509 gives ocsp_unavailable where x509-cert parses on to ocsp_responder_untrusted.
+// OCSP-002: a good response with any one byte flipped: the same verdict, or a refusal on both sides. Within the
+// embedded responder certificate the code of a refusal may differ, because the DER parsers differ on malformed
+// input: crypto/x509 gives ocsp_unavailable where x509-cert parses on to ocsp_responder_untrusted.
 func TestOCSP002AFlippedByteIsJudgedAsInTiPki(t *testing.T) {
 	var corpus ocspCorpus
 	readJSON(t, pathCorpusDir+"ocsp.json", &corpus)
@@ -206,7 +202,6 @@ func TestOCSP002AFlippedByteIsJudgedAsInTiPki(t *testing.T) {
 	}
 	certStart := bytes.Index(der, basic.certs[0].Raw)
 	certEnd := certStart + len(basic.certs[0].Raw)
-	goStricter := map[int]bool{311: true, 325: true, 782: true}
 	leaf, issuer := pkiCert(t, "ee-arzt.pem"), pkiCert(t, "sub-ca-hba.pem")
 	codesDiffer := 0
 	for _, want := range corpus.Mutated {
@@ -216,13 +211,6 @@ func TestOCSP002AFlippedByteIsJudgedAsInTiPki(t *testing.T) {
 		got, expected := describeGot(result, err), describeWanted(want.Outcome)
 		switch {
 		case got == expected:
-			if goStricter[want.Byte] {
-				t.Errorf("byte %d is listed as a difference and is none: %s", want.Byte, got)
-			}
-		case goStricter[want.Byte]:
-			if err == nil {
-				t.Errorf("byte %d: accepted: %s", want.Byte, got)
-			}
 		case want.Outcome.Error == "":
 			t.Errorf("byte %d: a verdict differs:\n got  %s\n want %s", want.Byte, got, expected)
 		case err == nil:
@@ -310,7 +298,7 @@ type fakeTransport struct {
 	posts   []string
 }
 
-func (f *fakeTransport) Post(_ context.Context, url, contentType, accept string, body []byte) ([]byte, error) {
+func (f *fakeTransport) Post(_ context.Context, url, contentType, accept string, _ []byte) ([]byte, error) {
 	f.posts = append(f.posts, url+" "+contentType+" "+accept)
 	if f.err != nil {
 		return nil, f.err

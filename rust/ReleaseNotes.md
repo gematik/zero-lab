@@ -47,6 +47,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   verify FILE` must pass it as the second argument.**
 
 #### changed
+- `ti pki verify --validation-profile` fails a certificate whose type the profile does not accept: `profile_type_mismatch`
+  is an error, it was a warning. New error `ca_not_in_tsl`. The warning `cert_type_unchecked` is gone: a CA the TSL
+  states no types for fails with `cert_type_ca_not_authorized`. A report on a certificate that already failed shows no
+  revocation results, because no responder is asked about it.
 - Konnektor faults about the information model carry a hint naming the cause, the
   `.kon` fields concerned and where to fix it (gemSpec_Kon): 4092 (no Remote-PIN-KT
   for the workplace), 4053, 4004 to 4007 (unknown Mandant, client system, workplace,
@@ -291,6 +295,20 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   target `sds`.
 
 ### ti-pki
+
+#### changed
+- `Validator` asks no OCSP responder about a certificate that has already failed: the address is in the certificate, and
+  a forged one could otherwise send a request anywhere. A report on such a certificate shows no revocation results.
+- A CA the verified TSL states no certificate types for may issue none: `cert_type_ca_not_authorized`, where
+  `cert_type_unchecked` warned and let it pass. That code is gone (TUC_PKI_007 step 9a).
+- A profile's validator refuses a certificate whose type the profile does not accept, `profile_type_mismatch`.
+- With a verified TSL, every CA of a chain must be one it names in use, or the certificate is `ca_not_in_tsl`. A CA
+  supplied with the certificate gets no standing from a root's signature alone.
+- A certificate with a compressed EC public key no longer parses, whatever it is for; before, only a TSL signer was
+  refused, at TSLSIG-035. The TI issues uncompressed points.
+- A signature with unused bits no longer verifies, on a certificate or an OCSP response, and neither does a response
+  whose signature algorithm is not a SEQUENCE. Those bytes are outside what a signature covers, so a copy with
+  them changed passed as the same response.
 
 #### added
 - `oid::all()`: every identifier the module declares, for the corpus another implementation is held to.

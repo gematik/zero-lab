@@ -631,8 +631,7 @@ fn verify_under_a_foreign_profile_misses_its_role() {
             .map(|f| f["code"].as_str().unwrap().to_owned())
             .collect()
     };
-    assert!(codes("errors").contains(&"role_oid_missing".to_owned()));
-    assert_eq!(codes("warnings"), ["profile_type_mismatch"]);
+    assert!(codes("errors").contains(&"profile_type_mismatch".to_owned()));
 }
 
 #[test]

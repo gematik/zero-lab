@@ -134,6 +134,8 @@ type PathOptions struct {
 	// MaxClockSkew is how far Now may lie outside a validity window before it counts.
 	MaxClockSkew time.Duration
 	Model        ValidityModel
+	// EndEntityChecks runs on the end entity after the RFC 5280 checks, if set.
+	EndEntityChecks func(*x509.Certificate) []Finding
 }
 
 // PathResult holds what [ValidatePath] found; a path is valid only without errors.
@@ -170,8 +172,10 @@ func ValidatePath(chain []*x509.Certificate, options PathOptions) (PathResult, e
 		if i+1 < len(chain) {
 			for _, ext := range cert.Extensions {
 				if ext.Critical && !slices.Contains(processedExtensions, ext.Id.String()) {
-					result.Errors = append(result.Errors, Finding{"unrecognized_critical_extension", cert.Subject.CommonName,
-						"critical extension " + oid.Format(ext.Id.String()) + " is not processed (RFC 5280 §4.2)"})
+					result.Errors = append(result.Errors, Finding{
+						"unrecognized_critical_extension", cert.Subject.CommonName,
+						"critical extension " + oid.Format(ext.Id.String()) + " is not processed (RFC 5280 §4.2)",
+					})
 				}
 			}
 		}
@@ -182,9 +186,14 @@ func ValidatePath(chain []*x509.Certificate, options PathOptions) (PathResult, e
 		}
 		if i+1 < len(chain) {
 			if err := verifySignedBy(cert, chain[i+1]); err != nil {
-				result.Errors = append(result.Errors, Finding{"signature_invalid", cert.Subject.CommonName,
-					"chain signature verification failed: " + err.Error()})
+				result.Errors = append(result.Errors, Finding{
+					"signature_invalid", cert.Subject.CommonName,
+					"chain signature verification failed: " + err.Error(),
+				})
 			}
+		}
+		if i == 0 && options.EndEntityChecks != nil {
+			result.Errors = append(result.Errors, options.EndEntityChecks(cert)...)
 		}
 	}
 	return result, nil
@@ -195,16 +204,20 @@ func checkIssuerValidity(cert, below *x509.Certificate, options PathOptions, res
 		finding.Message += fmt.Sprintf(" when it issued %q (Kompromissmodell)", below.Subject.CommonName)
 		result.Errors = append(result.Errors, *finding)
 	} else if checkValidity(cert, options.Now, options.MaxClockSkew) != nil {
-		result.Warnings = append(result.Warnings, Finding{"issued_before_ca_expiry", cert.Subject.CommonName,
-			fmt.Sprintf("expired, but valid when it issued %q", below.Subject.CommonName)})
+		result.Warnings = append(result.Warnings, Finding{
+			"issued_before_ca_expiry", cert.Subject.CommonName,
+			fmt.Sprintf("expired, but valid when it issued %q", below.Subject.CommonName),
+		})
 	}
 }
 
+// checkValidity counts in whole seconds, the skew too, as ti-pki's timestamps do.
 func checkValidity(cert *x509.Certificate, now time.Time, skew time.Duration) *Finding {
-	if now.Add(skew).Unix() < cert.NotBefore.Unix() {
+	seconds := int64(skew / time.Second)
+	if now.Unix()+seconds < cert.NotBefore.Unix() {
 		return &Finding{"not_yet_valid", cert.Subject.CommonName, fmt.Sprintf("notBefore=%s, now=%s", cert.NotBefore, now)}
 	}
-	if now.Add(-skew).Unix() > cert.NotAfter.Unix() {
+	if now.Unix()-seconds > cert.NotAfter.Unix() {
 		return &Finding{"expired", cert.Subject.CommonName, fmt.Sprintf("notAfter=%s, now=%s", cert.NotAfter, now)}
 	}
 	return nil

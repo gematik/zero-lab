@@ -232,6 +232,32 @@ fn real() -> Vec<Value> {
     cases
 }
 
+/// OCSP-002: bytes no signature covers are still read strictly: the tag of the signature's
+/// AlgorithmIdentifier, and the unused bits of the response's and the embedded certificate's signature.
+#[test]
+fn ocsp_002_what_no_signature_covers_is_read_strictly() {
+    let der = std::fs::read(pki().join("ocsp/good.der")).unwrap();
+    let (leaf, issuer) = (cert("ee-arzt.pem"), cert("sub-ca-hba.pem"));
+    let check = check_at(NOW, false, None);
+    for (byte, code) in [
+        (311, "ocsp_unavailable"),
+        (325, "ocsp_unavailable"),
+        (782, "ocsp_responder_untrusted"),
+    ] {
+        let mut copy = der.clone();
+        copy[byte] ^= 0x01;
+        let outcome = outcome(&copy, &leaf, &issuer, &check);
+        assert_eq!(outcome["error"], code, "byte {byte}: {outcome}");
+    }
+}
+
+/// PATH-007: a compressed point is refused when the certificate is read, whatever it is for.
+#[test]
+fn path_007_a_compressed_key_does_not_parse() {
+    let pem = std::fs::read(pki().join("tsl-signer/signer-compressed-key.pem")).unwrap();
+    assert!(ti_pki::parse_pem_certificates(&pem).is_err());
+}
+
 #[test]
 fn ocsp_001_the_corpus_is_what_ti_pki_says() {
     let corpus =

@@ -190,9 +190,8 @@ func TestTSLSIGTheSignerIsCheckedAsInTiPki(t *testing.T) {
 	}
 }
 
-// ti-pki finds a compressed key at TSLSIG-035; go/brainpool takes uncompressed points only, so it never
-// gets that far. Both refuse.
-func TestTSLSIG035ACompressedKeyIsRefusedAtParsing(t *testing.T) {
+// PATH-007: in both, a compressed key is refused when the certificate is read.
+func TestPATH007ACompressedKeyDoesNotParse(t *testing.T) {
 	body, err := os.ReadFile("../../rust/ti-pki/tests/pki/tsl-signer/signer-compressed-key.pem")
 	if err != nil {
 		t.Fatal(err)

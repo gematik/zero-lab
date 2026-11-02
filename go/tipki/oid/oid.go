@@ -460,12 +460,12 @@ var table = []Info{
 	{OID: TechRoleZertSMB, Reference: "oid_zert_smb", Description: "Technische Zertifikatsausgabestelle eines Anbieters SMC-B", CertificateTypes: []string{"C.FD.TLS-C"}},
 	{OID: TechRolePoPP, Reference: "oid_popp", Description: "Proof of Patient Presence (PoPP) Dienst", CertificateTypes: []string{"C.ZD.SIG"}},
 	{OID: TechRolePoPPToken, Reference: "oid_popp-token", Description: "Token-Signatur-Identität für Proof of Patient Presence", CertificateTypes: []string{"C.ZD.SIG"}},
-	{OID: TechRolePKIVer, Reference: "oid_pki-ver", Description: "PKI Change Verifikation", CertificateTypes: []string{"C.GEM.VER"}},
+	{OID: TechRolePKIVer, Reference: "oid_pki-ver", Description: "PKI Change Verifikation", CertificateTypes: []string{"C.GEM.VER"}}, //nolint:misspell // German, as gemSpec_OID writes it
 	{OID: TechRoleDipagVAU, Reference: "oid_dipag-vau", Description: "Digitale Patientenrechnung vertrauenswürdige Ausführungsumgebung", CertificateTypes: []string{"C.FD.AUT"}},
 	{OID: TechRoleZETAGuard, Reference: "oid_zeta-guard", Description: "ZETA Guard", CertificateTypes: []string{"C.FD.AUT", "C.FD.TLS-C"}},
 	{OID: TechRoleZETAPolicies, Reference: "oid_zeta-policies", Description: "ZETA PIP/PAP Policies", CertificateTypes: []string{"C.FD.SIG"}},
 	{OID: TechRoleZETAOCI, Reference: "oid_zeta-oci", Description: "OCI container image für ZETA", CertificateTypes: []string{"C.FD.SIG"}},
-	{OID: TechRoleZETAPolAuthor, Reference: "oid_zeta-pol-author", Description: "ZETA Policy Autor", CertificateTypes: []string{"C.FD.SIG"}},
+	{OID: TechRoleZETAPolAuthor, Reference: "oid_zeta-pol-author", Description: "ZETA Policy Autor", CertificateTypes: []string{"C.FD.SIG"}}, //nolint:misspell // German, as gemSpec_OID writes it
 	{OID: TechRoleZETAPolApprov, Reference: "oid_zeta-pol-approv", Description: "ZETA Policy Freigeber", CertificateTypes: []string{"C.FD.SIG"}},
 	{OID: TechRoleZETAPolOper, Reference: "oid_zeta-pol-oper", Description: "ZETA Policy Leitstand", CertificateTypes: []string{"C.FD.SIG"}},
 	{OID: TechRoleTSPEgk, Reference: "oid_tsp-egk", Description: "Technische Zertifikatsausgabestelle eines Anbieters EGK", CertificateTypes: []string{"C.FD.OSIG", "C.FD.TLS-C"}},
@@ -494,7 +494,7 @@ func Format(oid string) string {
 	return oid
 }
 
-// Tab_PKI_402 without Versicherter: what makes a certificate an HBA.
+// Professions is Tab_PKI_402 without Versicherter: what makes a certificate an HBA.
 var Professions = []string{
 	ProfArzt,
 	ProfZahnarzt,
@@ -540,7 +540,7 @@ var Professions = []string{
 	ProfDiaetassistent,
 }
 
-// Tab_PKI_403: what makes a certificate an SMC-B.
+// Institutions is Tab_PKI_403: what makes a certificate an SMC-B.
 var Institutions = []string{
 	InstArztpraxis,
 	InstZahnarztpraxis,

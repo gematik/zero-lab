@@ -28,7 +28,7 @@
 // [ParseCertificate] takes the brainpool keys crypto/x509 refuses, through go/brainpool. Package oid
 // holds the identifiers of gemSpec_OID.
 //
-// OCSP goes through the caller's transport: chain building needs no network, revocation does. The
-// pieces are not yet put together into one verdict (TASK-176), so a caller does that itself. Signatures are verified with ti-pki's
-// algorithm set, ECDSA and RSA.
+// OCSP goes through the caller's transport: chain building needs no network, revocation does. A
+// [Validator] puts it all together into one verdict. Signatures are verified with ti-pki's algorithm
+// set, ECDSA and RSA.
 package tipki

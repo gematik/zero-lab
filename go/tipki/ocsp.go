@@ -538,8 +538,10 @@ func verifyResponse(der []byte, cert, issuer *x509.Certificate, check ResponseCh
 		if len(basic.responses) > 0 {
 			reason = certIDMatches(&basic.responses[0], cert, issuer)
 		}
-		return nil, &OCSPError{Code: "ocsp_response_invalid", defect: defectWrongCertificate,
-			Message: "OCSP response does not answer for this certificate: " + reason}
+		return nil, &OCSPError{
+			Code: "ocsp_response_invalid", defect: defectWrongCertificate,
+			Message: "OCSP response does not answer for this certificate: " + reason,
+		}
 	}
 	single := &basic.responses[index]
 
@@ -554,12 +556,16 @@ func verifyResponse(der []byte, cert, issuer *x509.Certificate, check ResponseCh
 	}
 	algorithm, ok := signatureAlgorithmFromID(basic.sigAlgorithm)
 	if !ok {
-		return nil, &OCSPError{Code: "ocsp_response_invalid", defect: defectSignature,
-			Message: fmt.Sprintf("OCSP response signature does not verify under %q: no admitted algorithm", signer.Subject.CommonName)}
+		return nil, &OCSPError{
+			Code: "ocsp_response_invalid", defect: defectSignature,
+			Message: fmt.Sprintf("OCSP response signature does not verify under %q: no admitted algorithm", signer.Subject.CommonName),
+		}
 	}
 	if err := verifySignature(signer.PublicKey, algorithm, basic.tbs, basic.signature); err != nil {
-		return nil, &OCSPError{Code: "ocsp_response_invalid", defect: defectSignature,
-			Message: fmt.Sprintf("OCSP response signature does not verify under %q: %v", signer.Subject.CommonName, err)}
+		return nil, &OCSPError{
+			Code: "ocsp_response_invalid", defect: defectSignature,
+			Message: fmt.Sprintf("OCSP response signature does not verify under %q: %v", signer.Subject.CommonName, err),
+		}
 	}
 	// An unknown answer has no certificate to vouch for, so it carries no certHash (A_30046 (2)).
 	if single.statusTag != 2 {
@@ -844,8 +850,10 @@ func (c *OCSPChecker) Check(ctx context.Context, cert, issuer *x509.Certificate,
 		return cached, nil
 	}
 	if until, ok := c.restingUntil(url, now); ok {
-		return nil, &OCSPError{Code: "ocsp_unavailable", Subject: cert.Subject.CommonName,
-			Message: fmt.Sprintf("OCSP responder %s rests until %s after repeated failures", url, until.UTC().Format(time.RFC3339))}
+		return nil, &OCSPError{
+			Code: "ocsp_unavailable", Subject: cert.Subject.CommonName,
+			Message: fmt.Sprintf("OCSP responder %s rests until %s after repeated failures", url, until.UTC().Format(time.RFC3339)),
+		}
 	}
 	response, failure := c.query(ctx, url, body, cert)
 	if failure != nil {
@@ -988,8 +996,10 @@ func ApplyRevocation(mode RevocationMode, subject string, result *RevocationResu
 		if !result.RevokedAt.IsZero() {
 			when = result.RevokedAt.UTC().Format(time.RFC3339)
 			if result.RevokedAt.Unix() > at.Unix() {
-				return &RevocationFinding{Finding{"revoked_after_reference_time", subject,
-					fmt.Sprintf("certificate revoked at %s, after the reference time: %s", when, result.Reason)}, true}
+				return &RevocationFinding{Finding{
+					"revoked_after_reference_time", subject,
+					fmt.Sprintf("certificate revoked at %s, after the reference time: %s", when, result.Reason),
+				}, true}
 			}
 		}
 		return &RevocationFinding{Finding{"revoked", subject, fmt.Sprintf("certificate revoked at %s: %s", when, result.Reason)}, false}

@@ -267,8 +267,10 @@ func announcedAnchors(tsl *TSL, anchors []*x509.Certificate) []*TSLError {
 		if !service.StatusStartingTime.IsZero() {
 			from = service.StatusStartingTime.String()
 		}
-		warnings = append(warnings, &TSLError{"tsl_anchor_announced", "TSLSIG-060",
-			fmt.Sprintf("the TSL announces the TSL signer CA %s from %s; add it to the configured TSL signer anchors", what, from)})
+		warnings = append(warnings, &TSLError{
+			"tsl_anchor_announced", "TSLSIG-060",
+			fmt.Sprintf("the TSL announces the TSL signer CA %s from %s; add it to the configured TSL signer anchors", what, from),
+		})
 	}
 	return warnings
 }
@@ -554,7 +556,8 @@ func convertService(provider, name string, serviceType, status, start *string, i
 	IDs []struct {
 		Certificate *string `xml:"X509Certificate"`
 	} `xml:"DigitalId"`
-}, points []string, oids []*string) (Service, error) {
+}, points []string, oids []*string,
+) (Service, error) {
 	service := Service{Provider: provider, Name: name}
 	if serviceType == nil || status == nil || identity == nil {
 		return service, fmt.Errorf("service %q lacks a required element", name)
@@ -710,6 +713,9 @@ type TrustStore struct {
 	Intermediates []Intermediate
 	// ListedResponders are what authorizes a responder of a provider beyond RFC 6960.
 	ListedResponders []ListedResponder
+	// CATypes are the certificate types the verified list states for its CAs, by the CA's DER. Nil
+	// without a verified list.
+	CATypes map[string][]string
 	// TSL is the verified list they come from, with its warnings.
 	TSL *VerifiedTSL
 	// Walk says where the roots walk stopped, if it did.
@@ -750,7 +756,34 @@ func LoadTrustStore(bundle *Bundle, anchorDER []byte, signerAnchors [][]byte, no
 			listed = append(listed, ListedResponder{service.Certificate, service.Provider})
 		}
 	}
-	return &TrustStore{Roots: walk.Trusted, Intermediates: kept, ListedResponders: listed, TSL: verified, Walk: walk}, nil
+	types := make(map[string][]string)
+	for _, service := range verified.TSL.Services {
+		if service.ServiceType == serviceTypeCAPKC && service.Certificate != nil {
+			if _, seen := types[string(service.Certificate.Raw)]; !seen {
+				types[string(service.Certificate.Raw)] = service.TypeOIDs
+			}
+		}
+	}
+	return &TrustStore{Roots: walk.Trusted, Intermediates: kept, ListedResponders: listed, CATypes: types, TSL: verified, Walk: walk}, nil
+}
+
+// tslTypesOf gives the types the list lets ca issue: nil if it does not list ca or states none for it.
+func (s *TrustStore) tslTypesOf(ca *x509.Certificate) []string {
+	types := s.CATypes[string(ca.Raw)]
+	if len(types) == 0 {
+		return nil
+	}
+	return types
+}
+
+// revokedSince says when the list revoked ca; zero if it did not.
+func (s *TrustStore) revokedSince(ca *x509.Certificate) time.Time {
+	for _, intermediate := range s.Intermediates {
+		if intermediate.Certificate.Equal(ca) {
+			return intermediate.RevokedSince
+		}
+	}
+	return time.Time{}
 }
 
 func (s *TrustStore) providerOf(cert *x509.Certificate) (string, bool) {

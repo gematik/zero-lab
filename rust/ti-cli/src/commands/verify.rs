@@ -417,6 +417,7 @@ fn validator(
     let Some(t) = cert_type else {
         let validator = Validator {
             required_role_oids: p.required_role_oids.to_vec(),
+            accepted_types: p.accepts_types.to_vec(),
             revocation: p.revocation_mode(config),
             ..Validator::new(config, store)
         };
@@ -425,13 +426,6 @@ fn validator(
             forced("type not detected; checked the profile's roles only".into()),
         );
     };
-    if !p.accepts(t) {
-        warnings.push(Finding {
-            code: "profile_type_mismatch".into(),
-            subject: ee.subject_cn().to_owned(),
-            message: format!("profile {p} does not accept type {t}"),
-        });
-    }
     (p.validator(config, store, t), forced(String::new()))
 }
 

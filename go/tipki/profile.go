@@ -67,12 +67,12 @@ var (
 		RequiredRoleOIDs: []string{oid.TechRoleEpaVAU},
 		AcceptsTypes:     []CertificateType{CertFdAut},
 	}
-	ProfileFdTlsS = &Profile{
+	ProfileFdTLSS = &Profile{
 		Name:         "fd-tls-s",
 		Description:  "Fachdienst TLS server",
 		Revocation:   RevocationHardFail,
-		AcceptsTypes: []CertificateType{CertFdTlsS},
-		DefaultFor:   []CertificateType{CertFdTlsS},
+		AcceptsTypes: []CertificateType{CertFdTLSS},
+		DefaultFor:   []CertificateType{CertFdTLSS},
 	}
 	ProfileHciAut = &Profile{
 		Name:         "hci-aut",
@@ -107,7 +107,7 @@ var (
 // Profiles returns every profile, sorted by name.
 func Profiles() []*Profile {
 	return []*Profile{
-		ProfileEpaVauAut, ProfileFdTlsS, ProfileHciAut, ProfileIdpdSig, ProfileTslSig, ProfileZetaGuardAut,
+		ProfileEpaVauAut, ProfileFdTLSS, ProfileHciAut, ProfileIdpdSig, ProfileTslSig, ProfileZetaGuardAut,
 	}
 }
 
@@ -161,30 +161,51 @@ type Finding struct {
 func (p *Profile) Check(cert *x509.Certificate, t CertificateType) []Finding {
 	spec := t.Spec()
 	var findings []Finding
-	var missing []string
-	for _, policy := range spec.Policies {
-		if !slices.ContainsFunc(cert.Policies, func(have x509.OID) bool { return have.String() == policy }) {
-			missing = append(missing, policy)
+	add := func(finding *Finding) {
+		if finding != nil {
+			findings = append(findings, *finding)
 		}
 	}
-	if len(missing) > 0 {
-		findings = append(findings, Finding{"policy_mismatch", cert.Subject.CommonName, "required CertificatePolicy missing: " + formatOIDs(missing)})
-	}
-	if cert.KeyUsage&spec.KeyUsage != spec.KeyUsage {
-		findings = append(findings, Finding{"key_usage_mismatch", cert.Subject.CommonName, fmt.Sprintf("required KeyUsage bits %b, have %b", spec.KeyUsage, cert.KeyUsage)})
-	}
-	if len(spec.ExtKeyUsage) > 0 {
-		have := extKeyUsages(cert)
-		if !slices.Contains(have, anyExtendedKeyUsage) && !slices.ContainsFunc(spec.ExtKeyUsage, func(want string) bool { return slices.Contains(have, want) }) {
-			findings = append(findings, Finding{"key_usage_mismatch", cert.Subject.CommonName, "certificate ExtKeyUsage matches none of: " + strings.Join(spec.ExtKeyUsage, ", ")})
-		}
-	}
+	add(checkPolicies(cert, spec.Policies))
+	add(checkKeyUsage(cert, spec.KeyUsage))
+	add(checkExtKeyUsage(cert, spec.ExtKeyUsage))
 	if roles := p.EffectiveRoleOIDs(t); len(roles) > 0 {
 		if message := missingRole(cert, roles); message != "" {
 			findings = append(findings, Finding{"role_oid_missing", cert.Subject.CommonName, message})
 		}
 	}
 	return findings
+}
+
+func checkPolicies(cert *x509.Certificate, required []string) *Finding {
+	var missing []string
+	for _, policy := range required {
+		if !slices.ContainsFunc(cert.Policies, func(have x509.OID) bool { return have.String() == policy }) {
+			missing = append(missing, policy)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return &Finding{"policy_mismatch", cert.Subject.CommonName, "required CertificatePolicy missing: " + formatOIDs(missing)}
+}
+
+func checkKeyUsage(cert *x509.Certificate, required x509.KeyUsage) *Finding {
+	if cert.KeyUsage&required == required {
+		return nil
+	}
+	return &Finding{"key_usage_mismatch", cert.Subject.CommonName, fmt.Sprintf("required KeyUsage bits %b, have %b", required, cert.KeyUsage)}
+}
+
+func checkExtKeyUsage(cert *x509.Certificate, allowed []string) *Finding {
+	if len(allowed) == 0 {
+		return nil
+	}
+	have := extKeyUsages(cert)
+	if slices.Contains(have, anyExtendedKeyUsage) || slices.ContainsFunc(allowed, func(want string) bool { return slices.Contains(have, want) }) {
+		return nil
+	}
+	return &Finding{"key_usage_mismatch", cert.Subject.CommonName, "certificate ExtKeyUsage matches none of: " + strings.Join(allowed, ", ")}
 }
 
 func missingRole(cert *x509.Certificate, roles []string) string {

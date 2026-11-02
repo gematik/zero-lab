@@ -4,7 +4,7 @@ title: 'go/tipki: native trust path for the IDP certificates (chain, TSL, OCSP)'
 status: In Progress
 assignee: []
 created_date: '2026-11-02T06:16:00Z'
-updated_date: '2026-11-02T13:52:00Z'
+updated_date: '2026-11-02T15:01:00Z'
 labels:
   - go
   - pki
@@ -49,4 +49,10 @@ Maintainer, 2026-11-02, option A for TASK-171: the smallest native trust path, n
 2026-11-02, maintainer: compressed points removed from go/brainpool again, which accepts uncompressed points only. A compressed signer key is refused at parsing there, and at TSLSIG-035 in ti-pki.
 
 2026-11-02: stage 4. OCSPRequest, VerifyResponse with responder authorization and certHash, OCSPChecker with retries, rest and an in-memory cache, ApplyRevocation, the signer's status. All manifest entries of spec/tsl-detached now run. Not ported: the persistent CacheStore. Standing differences, pinned in TestOCSP002: Rust accepts three flips outside what a signature covers, which Go refuses; 99 flips inside the embedded certificate are refused by another code. A real SMC-B chain got good OCSP from the real responders. The pieces are not yet one verdict: Rust's Validator (check_key, check_tsl_type, CAs revoked in the TSL, role order) is still to be ported.
+
+2026-11-02: the Validator, whole TUC_PKI_018 in ti-pki's order; 5,796 verdicts match. Maintainer: Rust refuses too what Go refused alone: a compressed EC key at parsing, a signature with unused bits, a response whose signature algorithm is no SEQUENCE. Open finding: as in ti-pki, Validate asks the responders of a chain that failed, so a forged certificate names the address; the stage 5 wiring or both sides must guard it.
+
+Validator (stage 4), both languages: profile enforces its accepted types (VALID-005, profile_type_mismatch is now an error, also in ti pki verify); with a verified TSL every CA of a chain must be one it names (VALID-006, ca_not_in_tsl); no responder is asked unless everything else passed (VALID-004). The captured prod, ref and test lists all name their TSL signer CA, so no exception for a TSL signer. Interpretation of 'CA metadata from TSL' to confirm with the maintainer: listing, types and revocation time; OCSP supply points in the TSL are not used, AIA is.
+
+CA metadata settled by the maintainer: it means for which kinds of certificate a CA is allowed (components, SMC-B, eGK, HBA), i.e. the types the TSL states per CA (VALID-007). A CA with no types stated may now issue none (cert_type_ca_not_authorized, TUC_PKI_007 step 9a); cert_type_unchecked is gone. The real reference list's types per CA are in the shared corpus; a real SMC-B's CA may issue exactly C.HCI.AUT, .ENC and .OSIG.
 <!-- SECTION:NOTES:END -->

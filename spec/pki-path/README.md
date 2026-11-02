@@ -2,8 +2,7 @@
 
 Language-neutral rules for building and checking a chain without a network, from the bundle file
 `ti` writes. `rust/ti-pki` and `go/tipki` implement them, and [`testdata`](testdata) holds the two
-together. It covers the path, the roots, the list and OCSP; putting them together into one verdict is the next stage
-(TASK-176). A path that passes
+together. It covers the path, the roots, the list, OCSP and the verdict they make together. A path that passes
 is not yet a certificate to trust.
 
 Each rule has one identifier, and tests cite them. MUST and MUST NOT are used as in RFC 2119.
@@ -28,6 +27,8 @@ Each rule has one identifier, and tests cite them. MUST and MUST NOT are used as
   `signature_invalid`. The admitted algorithms are ECDSA on P-256 and brainpoolP256r1 with SHA-256, ECDSA on P-384
   and brainpoolP384r1 with SHA-384, and RSA PKCS#1 v1.5 and RSA-PSS with SHA-256, SHA-384 or SHA-512. No other
   pair of key and hash verifies.
+- **PATH-007** A certificate with an EC public key that is not an uncompressed point does not parse. A signature
+  with unused bits does not verify. A key and a signature have one encoding.
 
 ## Roots
 
@@ -51,14 +52,39 @@ Each rule has one identifier, and tests cite them. MUST and MUST NOT are used as
   same provider, by a store), its certHash hashes this very certificate, and it lies within the TUC_PKI_006 window;
   outside that the status is `unknown`. The errors are `ocsp_unavailable`, `ocsp_response_invalid` and
   `ocsp_responder_untrusted`.
-- **OCSP-002** Bytes outside what a signature covers are read as strictly by `go/tipki` as its DER parser reads them,
-  which is stricter in places than `rust/ti-pki`. No response MAY be accepted by `go/tipki` that `rust/ti-pki` refuses.
+- **OCSP-002** Bytes outside what a signature covers are read strictly: a response's signature algorithm is a SEQUENCE
+  and its signature has no unused bits, or it could not be decoded (`ocsp_unavailable`). Implementations MUST accept and
+  refuse the same responses. Where their DER parsers differ on a malformed embedded certificate, the code of the refusal
+  may differ.
 - **OCSP-003** A request is one SHA-1 CertID, unsigned and without a nonce, the same bytes in both.
 - **OCSP-005** A status error is repeated three times, then the responder rests for five minutes. Good and revoked
   results are reused for an hour at most, and to nextUpdate at most; unknown and errors never are.
 
 OCSP is not air-gapped: the bundle makes the chain independent of the network, and revocation is asked online through
 the caller's transport. Without a route to the responder there is no verification.
+
+## Verdict
+
+- **VALID-001** A certificate is judged in one order: chain, path and the end entity's requirements, the type its
+  profile accepts, key admissibility, the CAs the list names, the types it lets a CA issue, a CA it revoked, revocation,
+  and last the admission roles, only for a certificate valid otherwise (A_30046 (4)). Valid means no error, and a warning
+  never decides.
+- **VALID-002** Only the end entity's key is held to gemSpec_Krypt: P-256 and brainpoolP256r1 are admissible, RSA from
+  3000 bits, RSA from 2048 bits a warning after 2025, and others are not.
+- **VALID-003** A CA the list revoked still vouches for what it issued before the revocation, with a warning, and not
+  for later certificates (Tab_PKI_271).
+
+- **VALID-004** A responder is asked only about a certificate that has passed everything else. Its address is in the
+  certificate, and a forged one must not be able to send a request anywhere.
+- **VALID-005** A profile refuses a certificate whose detected type it does not accept, and one with no detectable type
+  (`profile_type_mismatch`). What the caller names does not change what the certificate shows.
+- **VALID-006** With a verified list, every CA of a chain must be one it names in accord, or revoked with a time, under a
+  root, or it is `ca_not_in_tsl`. A CA supplied with a certificate gets no standing from a root's signature alone. The
+  list names its own signer's CA as well, so a TSL signer is no exception.
+- **VALID-007** With a verified list, a certificate's type must be among those the list states for its issuing CA, or it
+  is `cert_type_ca_not_authorized` (TUC_PKI_007 step 9a). That is what makes a CA one for components, SMC-B, eGK or HBA:
+  a certificate of a type its CA is not for fails, whatever its policies claim. A CA with no types stated may issue none.
+  A TSL signer is judged by TUC_PKI_011 instead, since the list states no signer type for its CA.
 
 ## Bundle
 
@@ -86,6 +112,9 @@ agree.
 time, as hashes of its services and CAs, and which CAs it keeps, and `go/tipki` must keep the same.
 [`spec/tsl-detached`](../tsl-detached/CONFORMANCE.md) has its own corpus.
 
+[`testdata/validate.json`](testdata/validate.json) holds the verdicts of every fixture under every profile at three times,
+under scripted revocation outcomes in both modes, with CAs revoked in the list, and a real SMC-B under the real list.
+
 [`testdata/ocsp.json`](testdata/ocsp.json) holds every response fixture against four certificates, at eight times, online
 and stapled, with three stores; a good response with each byte flipped; requests; and two real responses.
 
@@ -97,12 +126,18 @@ anchors, and every cross certificate against every root by the step that fails.
 | Rule | Rust | Go |
 |---|---|---|
 | PATH-001 to 006 | `path_001_the_corpus_is_what_ti_pki_says` | `TestPATH001EveryPathIsJudgedAsInTiPki` |
+| PATH-007 | `path_007_a_compressed_key_does_not_parse` | `TestPATH007ACompressedKeyDoesNotParse` |
 | ROOTS-001 | `roots_001_the_corpus_is_what_ti_pki_says` | `TestROOTS001CraftedDocumentsAreWalkedAsInTiPki`, `FuzzParseRoots` |
 | ROOTS-002 | `roots_001_the_corpus_is_what_ti_pki_says` | `TestROOTS002TheRealFilesReachTheRootsOfTiPki`, `TestROOTS002RSAIsForTheWalkAlone` |
 | ROOTS-003 | `roots_001_the_corpus_is_what_ti_pki_says` | `TestROOTS003TheStepThatFailsIsThatOfTiPki` |
 | ROOTS-004 | | `TestROOTS004ABundleForAnotherAnchorIsRefused` |
-| OCSP-001 to 003 | `ocsp_001_the_corpus_is_what_ti_pki_says` | `TestOCSP001EveryResponseIsJudgedAsInTiPki`, `TestOCSP002AFlippedByteIsJudgedAsInTiPki`, `TestOCSP003ARequestIsThatOfTiPki`, `TestOCSP004RealResponsesAreJudgedAsInTiPki`, `FuzzVerifyResponse` |
+| OCSP-001 to 003 | `ocsp_001_the_corpus_is_what_ti_pki_says`, `ocsp_002_what_no_signature_covers_is_read_strictly` | `TestOCSP001EveryResponseIsJudgedAsInTiPki`, `TestOCSP002AFlippedByteIsJudgedAsInTiPki`, `TestOCSP003ARequestIsThatOfTiPki`, `TestOCSP004RealResponsesAreJudgedAsInTiPki`, `FuzzVerifyResponse` |
 | OCSP-005 | unit tests in `ocsp.rs` | `TestOCSPStatusErrorsAreRepeatedThenTheResponderRests`, `TestOCSPResultsAreCachedWithinTheirBounds` |
+| VALID-001 to 003 | `valid_001_the_corpus_is_what_ti_pki_says` | `TestVALID001EveryVerdictIsThatOfTiPki` |
+| VALID-007 | `tsl_states_the_types_a_ca_may_issue`, `valid_001_the_corpus_is_what_ti_pki_says` | `TestVALID007TheTypesTheListStates`, `TestVALID007TheRealListDecidesWhatACAMayIssue` |
+| VALID-004 | `no_responder_is_asked_for_a_certificate_that_failed` | `TestVALID004NoResponderIsAskedForACertificateThatFailed` |
+| VALID-005 | `a_profile_refuses_a_type_it_does_not_accept` | `TestVALID005AProfileRefusesATypeItDoesNotAccept` |
+| VALID-006 | `a_ca_the_verified_tsl_does_not_name_gives_no_standing` | `TestVALID006ACATheVerifiedListDoesNotNameGivesNoStanding`, `TestVALID006ACAUnderTheRealList` |
 | BUNDLE-001 | `bundle_001_values_are_read_or_refused_as_stated` | `TestBUNDLE001ValuesAreReadOrRefusedAsStated`, `FuzzParseBundle` |
 | TSLSIG-053 | `tsl_001_the_corpus_is_what_ti_pki_says` | `TestTSLThePublishedListsReadAsInTiPki`, `TestTSLSIG053ANumberBelowTheMinimumIsRefused` |
 | TSLSIG-060 | unit tests in `tsl_signature.rs` | `TestTSLSIG060AnAnnouncedAnchorIsWarnedOf` |

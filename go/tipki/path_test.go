@@ -251,8 +251,10 @@ func TestPATH006ACurveTakesOneHash(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			template := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "x"}, SignatureAlgorithm: test.algorithm,
-				NotBefore: time.Now(), NotAfter: time.Now().Add(time.Hour)}
+			template := &x509.Certificate{
+				SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "x"}, SignatureAlgorithm: test.algorithm,
+				NotBefore: time.Now(), NotAfter: time.Now().Add(time.Hour),
+			}
 			der, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
 			if err != nil {
 				t.Fatal(err)
