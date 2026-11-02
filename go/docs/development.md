@@ -64,8 +64,8 @@ has the architecture). Go keeps the servers and relying parties, and the ePA cli
 
 | Status | Modules | Notes |
 | --- | --- | --- |
-| Active | `pdp`, `pep`, `bff`, `zaddy`, `kv`, `nonce`, `dpop`, `oauth`, `oidf`, `gemidp`, `epa`, `metsubushi`, `tipki` | `gemidp` serves the servers' relying-party role only; `epa` gets its SMC-B identity, the IDP-Dienst flow and the VAU certificate checks from the Rust `ti` (below) |
-| Frozen | `brainpool`, `pkcs12` | bugfix and security only; `pkcs12` stays for `gemidp`'s tests and external consumers (ehca-go); the Rust successor of `pkcs12` is `ti-pkcs12` |
+| Active | `pdp`, `pep`, `bff`, `zaddy`, `kv`, `nonce`, `dpop`, `oauth`, `oidf`, `gemidp`, `epa`, `metsubushi`, `tipki`, `brainpool` | `gemidp` serves the servers' relying-party role only; `epa` gets its SMC-B identity, the IDP-Dienst flow and the VAU certificate checks from the Rust `ti` (below) |
+| Frozen | `pkcs12` | bugfix and security only; `pkcs12` stays for `gemidp`'s tests and external consumers (ehca-go); the Rust successor of `pkcs12` is `ti-pkcs12` |
 | Archived | `gempki` (`go/gempki/v0.23.1`), `ti` (`go/ti/v0.23.4`), `kon` (`go/kon/v0.21.4`), `asl` (`go/asl/v0.0.2`), `libzero` (`go/libzero/v0.1.0`) | removed from the workspace; the tag keeps each `go get`-able; `ti-pki`, the Rust `ti` and `ti-connector-client` replace the first three |
 
 Archiving a module: tag its last version, remove it from `go.work` and this Justfile,
