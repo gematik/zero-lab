@@ -4,7 +4,7 @@ title: 'go/tipki: native trust path for the IDP certificates (chain, TSL, OCSP)'
 status: In Progress
 assignee: []
 created_date: '2026-11-02T06:16:00Z'
-updated_date: '2026-11-02T13:39:00Z'
+updated_date: '2026-11-02T13:52:00Z'
 labels:
   - go
   - pki
@@ -24,8 +24,8 @@ Maintainer, 2026-11-02, option A for TASK-171: the smallest native trust path, n
 <!-- AC:BEGIN -->
 - [x] #1 stage 1: chain and path validation match ti-pki over the corpus
 - [x] #2 stage 2: roots.json walk
-- [ ] #3 stage 3: detached TSL
-- [ ] #4 stage 4: OCSP
+- [x] #3 stage 3: detached TSL
+- [x] #4 stage 4: OCSP
 - [ ] #5 stage 5: gemidp verifies both IDP certificates, TASK-171
 <!-- AC:END -->
 
@@ -47,4 +47,6 @@ Maintainer, 2026-11-02, option A for TASK-171: the smallest native trust path, n
 2026-11-02, maintainer: go/brainpool unfrozen, as tipki's trust path uses it; it now also decodes compressed points, so a compressed signer key is refused at TSLSIG-035 as in ti-pki. Added TSLSIG-053 (CheckSequence, LoadTrustStore takes the stored state), TSLSIG-060 (the announcement warning), the production marking and scheme information. Left: a compressed P-256 key still fails in crypto/x509 at parsing.
 
 2026-11-02, maintainer: compressed points removed from go/brainpool again, which accepts uncompressed points only. A compressed signer key is refused at parsing there, and at TSLSIG-035 in ti-pki.
+
+2026-11-02: stage 4. OCSPRequest, VerifyResponse with responder authorization and certHash, OCSPChecker with retries, rest and an in-memory cache, ApplyRevocation, the signer's status. All manifest entries of spec/tsl-detached now run. Not ported: the persistent CacheStore. Standing differences, pinned in TestOCSP002: Rust accepts three flips outside what a signature covers, which Go refuses; 99 flips inside the embedded certificate are refused by another code. A real SMC-B chain got good OCSP from the real responders. The pieces are not yet one verdict: Rust's Validator (check_key, check_tsl_type, CAs revoked in the TSL, role order) is still to be ported.
 <!-- SECTION:NOTES:END -->

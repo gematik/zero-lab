@@ -64,8 +64,7 @@ func signerAnchorsFor(t *testing.T, env string) [][]byte {
 	return [][]byte{anchorFile(t, "GEM.TSL-CA28-TEST-ONLY.der")}
 }
 
-// TSLDET-001 to 006, TSLSIG-031: the corpus of spec/tsl-detached, as its CONFORMANCE.md asks. The entries
-// whose result rests on the signer's status wait for stage 4 of TASK-176, and show as skipped.
+// TSLDET-001 to 006, 020, 021, TSLSIG-031, 042: the corpus of spec/tsl-detached, as its CONFORMANCE.md asks.
 func TestTSLDETTheManifestIsMet(t *testing.T) {
 	var manifest []struct {
 		Path         string  `json:"path"`
@@ -91,14 +90,14 @@ func TestTSLDETTheManifestIsMet(t *testing.T) {
 			name += " " + *entry.SignerStatus
 		}
 		t.Run(name, func(t *testing.T) {
-			if entry.SignerStatus != nil {
-				t.Skip("SKIPPED, NOT VERIFIED: the signer's status comes with stage 4 of TASK-176")
-			}
 			now, err := time.Parse(time.RFC3339, entry.Time)
 			if err != nil {
 				t.Fatal(err)
 			}
 			verified, err := VerifyTSL(readDetached(t, entry.Path), readDetached(t, entry.Signature), signerAnchorsFor(t, entry.Env), now, 0)
+			if err == nil && entry.SignerStatus != nil {
+				_, err = verified.CheckSignerStatusSupplied(readDetached(t, *entry.SignerStatus), now)
+			}
 			if entry.Expect.Result == "valid" {
 				if err != nil {
 					t.Fatal(err)

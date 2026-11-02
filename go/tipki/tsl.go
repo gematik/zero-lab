@@ -146,15 +146,17 @@ func validSignatureValue(value []byte) bool {
 }
 
 // VerifiedTSL is a list whose signature verifies and whose signer a TSL signer anchor issued, read from
-// exactly the verified bytes. The signer's status is not part of it yet (TASK-176, stage 4), so
-// Warnings holds no_ocsp_check.
+// exactly the verified bytes. Warnings holds no_ocsp_check until [VerifiedTSL.CheckSignerStatus] or
+// [VerifiedTSL.CheckSignerStatusSupplied] has adopted the signer's status.
 type VerifiedTSL struct {
 	TSL    *TSL
 	Anchor *x509.Certificate
 	Signer *x509.Certificate
 	// Production says the anchor is no TEST-ONLY CA.
 	Production bool
-	Warnings   []*TSLError
+	// SignerStatus is the signer's OCSP result, once adopted.
+	SignerStatus *RevocationResult
+	Warnings     []*TSLError
 }
 
 // TSLState is what is kept of a list to judge the next one (TSLSIG-053). It must survive restarts.
@@ -696,10 +698,18 @@ func checkCandidate(candidate *x509.Certificate, roots []*x509.Certificate) stri
 // MaxBundleAge is how old a bundle may be (BUNDLE-003), the production maximum of ti-pki's reloader.
 const MaxBundleAge = 24 * time.Hour
 
+// ListedResponder is an OCSP service a verified list names in accord, with its provider.
+type ListedResponder struct {
+	Certificate *x509.Certificate
+	TSP         string
+}
+
 // TrustStore is what a bundle yields: the roots and the CAs a root signed, from a verified list.
 type TrustStore struct {
 	Roots         []*x509.Certificate
 	Intermediates []Intermediate
+	// ListedResponders are what authorizes a responder of a provider beyond RFC 6960.
+	ListedResponders []ListedResponder
 	// TSL is the verified list they come from, with its warnings.
 	TSL *VerifiedTSL
 	// Walk says where the roots walk stopped, if it did.
@@ -708,7 +718,9 @@ type TrustStore struct {
 
 // LoadTrustStore builds the store a bundle yields at now, without a network (BUNDLE-003): a bundle too
 // old is refused, the roots come from the walk from anchorDER, and the CAs from a list verified under
-// signerAnchors. A server has a grace of zero. stored is the state of the list in use, nil if there is
+// signerAnchors, with the signer's status from the bundle if it holds a current one. Otherwise no_ocsp_check
+// stays among the warnings, and the caller asks with [VerifiedTSL.CheckSignerStatus]: OCSP is not air-gapped,
+// only the chain is. A server has a grace of zero. stored is the state of the list in use, nil if there is
 // none, and an older list is refused against it (TSLSIG-053); the caller keeps [VerifiedTSL.State].
 func LoadTrustStore(bundle *Bundle, anchorDER []byte, signerAnchors [][]byte, now time.Time, grace time.Duration, stored *TSLState) (*TrustStore, error) {
 	if age := now.Sub(bundle.FetchedAt); age >= MaxBundleAge {
@@ -726,7 +738,28 @@ func LoadTrustStore(bundle *Bundle, anchorDER []byte, signerAnchors [][]byte, no
 		return nil, err
 	}
 	kept, _ := MatchToRoots(verified.TSL.IntermediateCAs(), walk.Trusted)
-	return &TrustStore{Roots: walk.Trusted, Intermediates: kept, TSL: verified, Walk: walk}, nil
+	if bundle.TSLSignerStatus != nil {
+		if _, err := verified.CheckSignerStatusSupplied(bundle.TSLSignerStatus, now); err != nil {
+			return nil, err
+		}
+	}
+	var listed []ListedResponder
+	for _, service := range verified.TSL.Services {
+		if service.ServiceType == serviceTypeOCSP && service.Certificate != nil &&
+			(service.Status == serviceStatusInAccord || service.Status == serviceStatusGranted) {
+			listed = append(listed, ListedResponder{service.Certificate, service.Provider})
+		}
+	}
+	return &TrustStore{Roots: walk.Trusted, Intermediates: kept, ListedResponders: listed, TSL: verified, Walk: walk}, nil
+}
+
+func (s *TrustStore) providerOf(cert *x509.Certificate) (string, bool) {
+	for _, intermediate := range s.Intermediates {
+		if intermediate.Certificate.Equal(cert) {
+			return intermediate.Provider, true
+		}
+	}
+	return "", false
 }
 
 // Certificates gives the store's CAs as [BuildChain] takes them.

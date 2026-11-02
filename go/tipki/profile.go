@@ -39,6 +39,8 @@ type RevocationMode string
 const (
 	RevocationHardFail RevocationMode = "hard-fail"
 	RevocationSoftFail RevocationMode = "soft-fail"
+	// RevocationDisabled skips revocation checking. No profile asks for it.
+	RevocationDisabled RevocationMode = "disabled"
 )
 
 // Profile is a named overlay on a certificate type for one use case.

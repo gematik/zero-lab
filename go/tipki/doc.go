@@ -28,7 +28,7 @@
 // [ParseCertificate] takes the brainpool keys crypto/x509 refuses, through go/brainpool. Package oid
 // holds the identifiers of gemSpec_OID.
 //
-// None of this yet decides that a certificate can be trusted. OCSP is still to come (TASK-176), and a
-// caller believes a certificate only once it is established. Signatures are verified with ti-pki's
+// OCSP goes through the caller's transport: chain building needs no network, revocation does. The
+// pieces are not yet put together into one verdict (TASK-176), so a caller does that itself. Signatures are verified with ti-pki's
 // algorithm set, ECDSA and RSA.
 package tipki

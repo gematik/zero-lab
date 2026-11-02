@@ -2,7 +2,8 @@
 
 Language-neutral rules for building and checking a chain without a network, from the bundle file
 `ti` writes. `rust/ti-pki` and `go/tipki` implement them, and [`testdata`](testdata) holds the two
-together. It covers the path, the roots and the list: OCSP is a later stage (TASK-176). A path that passes
+together. It covers the path, the roots, the list and OCSP; putting them together into one verdict is the next stage
+(TASK-176). A path that passes
 is not yet a certificate to trust.
 
 Each rule has one identifier, and tests cite them. MUST and MUST NOT are used as in RFC 2119.
@@ -43,6 +44,22 @@ Each rule has one identifier, and tests cite them. MUST and MUST NOT are used as
   key identifier, common name and public key, and the subordinate's self-signature verifying under it.
 - **ROOTS-004** The roots of a bundle are those of its `roots`, walked from the anchor it was exported for.
 
+## OCSP
+
+- **OCSP-001** A response counts only if a single response carries the certificate's CertID, an authorized
+  responder signed it (the issuing CA, a delegate it certified with id-kp-OCSPSigning, or a delegate of a CA of the
+  same provider, by a store), its certHash hashes this very certificate, and it lies within the TUC_PKI_006 window;
+  outside that the status is `unknown`. The errors are `ocsp_unavailable`, `ocsp_response_invalid` and
+  `ocsp_responder_untrusted`.
+- **OCSP-002** Bytes outside what a signature covers are read as strictly by `go/tipki` as its DER parser reads them,
+  which is stricter in places than `rust/ti-pki`. No response MAY be accepted by `go/tipki` that `rust/ti-pki` refuses.
+- **OCSP-003** A request is one SHA-1 CertID, unsigned and without a nonce, the same bytes in both.
+- **OCSP-005** A status error is repeated three times, then the responder rests for five minutes. Good and revoked
+  results are reused for an hour at most, and to nextUpdate at most; unknown and errors never are.
+
+OCSP is not air-gapped: the bundle makes the chain independent of the network, and revocation is asked online through
+the caller's transport. Without a route to the responder there is no verification.
+
 ## Bundle
 
 - **BUNDLE-001** A bundle is one JSON file: `format_version` 2, `label`, `anchor_sha256` as 64 hex digits, and
@@ -69,6 +86,9 @@ agree.
 time, as hashes of its services and CAs, and which CAs it keeps, and `go/tipki` must keep the same.
 [`spec/tsl-detached`](../tsl-detached/CONFORMANCE.md) has its own corpus.
 
+[`testdata/ocsp.json`](testdata/ocsp.json) holds every response fixture against four certificates, at eight times, online
+and stapled, with three stores; a good response with each byte flipped; requests; and two real responses.
+
 [`testdata/roots.json`](testdata/roots.json) holds crafted documents, gematik's real roots.json files from their
 anchors, and every cross certificate against every root by the step that fails.
 
@@ -81,6 +101,8 @@ anchors, and every cross certificate against every root by the step that fails.
 | ROOTS-002 | `roots_001_the_corpus_is_what_ti_pki_says` | `TestROOTS002TheRealFilesReachTheRootsOfTiPki`, `TestROOTS002RSAIsForTheWalkAlone` |
 | ROOTS-003 | `roots_001_the_corpus_is_what_ti_pki_says` | `TestROOTS003TheStepThatFailsIsThatOfTiPki` |
 | ROOTS-004 | | `TestROOTS004ABundleForAnotherAnchorIsRefused` |
+| OCSP-001 to 003 | `ocsp_001_the_corpus_is_what_ti_pki_says` | `TestOCSP001EveryResponseIsJudgedAsInTiPki`, `TestOCSP002AFlippedByteIsJudgedAsInTiPki`, `TestOCSP003ARequestIsThatOfTiPki`, `TestOCSP004RealResponsesAreJudgedAsInTiPki`, `FuzzVerifyResponse` |
+| OCSP-005 | unit tests in `ocsp.rs` | `TestOCSPStatusErrorsAreRepeatedThenTheResponderRests`, `TestOCSPResultsAreCachedWithinTheirBounds` |
 | BUNDLE-001 | `bundle_001_values_are_read_or_refused_as_stated` | `TestBUNDLE001ValuesAreReadOrRefusedAsStated`, `FuzzParseBundle` |
 | TSLSIG-053 | `tsl_001_the_corpus_is_what_ti_pki_says` | `TestTSLThePublishedListsReadAsInTiPki`, `TestTSLSIG053ANumberBelowTheMinimumIsRefused` |
 | TSLSIG-060 | unit tests in `tsl_signature.rs` | `TestTSLSIG060AnAnnouncedAnchorIsWarnedOf` |

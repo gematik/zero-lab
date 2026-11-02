@@ -22,6 +22,7 @@
 package tipki
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/rsa"
@@ -29,9 +30,11 @@ import (
 	"crypto/sha512"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/gematik/zero-lab/go/tipki/oid"
@@ -222,20 +225,25 @@ func checkCAConstraints(cert *x509.Certificate, intermediatesBelow int) *Finding
 	return nil
 }
 
-// verifySignedBy verifies cert's signature under issuer's key, with ti-pki's algorithm set (PATH-006):
-// ECDSA with one hash per curve, RSA PKCS#1 v1.5 and RSA-PSS with SHA-256, SHA-384 or SHA-512.
+// verifySignedBy verifies cert's signature under issuer's key, with ti-pki's algorithm set (PATH-006).
 // crypto/x509's own check does not know brainpool.
 func verifySignedBy(cert, issuer *x509.Certificate) error {
-	switch key := issuer.PublicKey.(type) {
-	case *ecdsa.PublicKey:
-		return verifyECDSA(cert, key)
-	case *rsa.PublicKey:
-		return verifyRSA(cert, key)
-	}
-	return fmt.Errorf("a key of type %T is not admitted", issuer.PublicKey)
+	return verifySignature(issuer.PublicKey, cert.SignatureAlgorithm, cert.RawTBSCertificate, cert.Signature)
 }
 
-func verifyECDSA(cert *x509.Certificate, key *ecdsa.PublicKey) error {
+// verifySignature is PATH-006 for any signed bytes: ECDSA with one hash per curve, RSA PKCS#1 v1.5 and
+// RSA-PSS with SHA-256, SHA-384 or SHA-512.
+func verifySignature(public any, algorithm x509.SignatureAlgorithm, message, signature []byte) error {
+	switch key := public.(type) {
+	case *ecdsa.PublicKey:
+		return verifyECDSA(key, algorithm, message, signature)
+	case *rsa.PublicKey:
+		return verifyRSA(key, algorithm, message, signature)
+	}
+	return fmt.Errorf("a key of type %T is not admitted", public)
+}
+
+func verifyECDSA(key *ecdsa.PublicKey, algorithm x509.SignatureAlgorithm, message, signature []byte) error {
 	var want x509.SignatureAlgorithm
 	switch key.Curve.Params().Name {
 	case "P-256", "brainpoolP256r1":
@@ -245,27 +253,27 @@ func verifyECDSA(cert *x509.Certificate, key *ecdsa.PublicKey) error {
 	default:
 		return fmt.Errorf("curve %s is not admitted", key.Curve.Params().Name)
 	}
-	if cert.SignatureAlgorithm != want {
-		return fmt.Errorf("signature algorithm %s is not admitted on curve %s", cert.SignatureAlgorithm, key.Curve.Params().Name)
+	if algorithm != want {
+		return fmt.Errorf("signature algorithm %s is not admitted on curve %s", algorithm, key.Curve.Params().Name)
 	}
 	var digest []byte
 	if want == x509.ECDSAWithSHA256 {
-		sum := sha256.Sum256(cert.RawTBSCertificate)
+		sum := sha256.Sum256(message)
 		digest = sum[:]
 	} else {
-		sum := sha512.Sum384(cert.RawTBSCertificate)
+		sum := sha512.Sum384(message)
 		digest = sum[:]
 	}
-	if !ecdsa.VerifyASN1(key, digest, cert.Signature) {
+	if !ecdsa.VerifyASN1(key, digest, signature) {
 		return errors.New("the signature does not verify")
 	}
 	return nil
 }
 
-func verifyRSA(cert *x509.Certificate, key *rsa.PublicKey) error {
+func verifyRSA(key *rsa.PublicKey, algorithm x509.SignatureAlgorithm, message, signature []byte) error {
 	var hash crypto.Hash
 	var pss bool
-	switch cert.SignatureAlgorithm {
+	switch algorithm {
 	case x509.SHA256WithRSA:
 		hash = crypto.SHA256
 	case x509.SHA384WithRSA:
@@ -279,19 +287,56 @@ func verifyRSA(cert *x509.Certificate, key *rsa.PublicKey) error {
 	case x509.SHA512WithRSAPSS:
 		hash, pss = crypto.SHA512, true
 	default:
-		return fmt.Errorf("signature algorithm %s is not admitted", cert.SignatureAlgorithm)
+		return fmt.Errorf("signature algorithm %s is not admitted", algorithm)
 	}
 	hasher := hash.New()
-	hasher.Write(cert.RawTBSCertificate)
+	hasher.Write(message)
 	digest := hasher.Sum(nil)
 	var err error
 	if pss {
-		err = rsa.VerifyPSS(key, hash, digest, cert.Signature, &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash, Hash: hash})
+		err = rsa.VerifyPSS(key, hash, digest, signature, &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash, Hash: hash})
 	} else {
-		err = rsa.VerifyPKCS1v15(key, hash, digest, cert.Signature)
+		err = rsa.VerifyPKCS1v15(key, hash, digest, signature)
 	}
 	if err != nil {
 		return errors.New("the signature does not verify")
 	}
 	return nil
+}
+
+// signatureAlgorithmFromID maps the DER contents of an AlgorithmIdentifier to the algorithm it names, byte
+// for byte, as ti-pki's set compares them: an encoding of the parameters it does not know names nothing.
+func signatureAlgorithmFromID(contents []byte) (x509.SignatureAlgorithm, bool) {
+	for algorithm, known := range signatureAlgorithmIDs {
+		if bytes.Equal(known, contents) {
+			return algorithm, true
+		}
+	}
+	return x509.UnknownSignatureAlgorithm, false
+}
+
+var signatureAlgorithmIDs = map[x509.SignatureAlgorithm][]byte{
+	x509.ECDSAWithSHA256:  mustHex("06082a8648ce3d040302"),
+	x509.ECDSAWithSHA384:  mustHex("06082a8648ce3d040303"),
+	x509.SHA256WithRSA:    mustHex("06092a864886f70d01010b0500"),
+	x509.SHA384WithRSA:    mustHex("06092a864886f70d01010c0500"),
+	x509.SHA512WithRSA:    mustHex("06092a864886f70d01010d0500"),
+	x509.SHA256WithRSAPSS: pssID("01", "20"),
+	x509.SHA384WithRSAPSS: pssID("02", "30"),
+	x509.SHA512WithRSAPSS: pssID("03", "40"),
+}
+
+func mustHex(text string) []byte {
+	decoded, err := hex.DecodeString(text)
+	if err != nil {
+		panic(err)
+	}
+	return decoded
+}
+
+// pssID is RSASSA-PSS with one hash for the signature and MGF1, and a salt of the hash's length.
+func pssID(hashArc, salt string) []byte {
+	hashID := "300d0609608648016503040 2" + hashArc + "0500"
+	hashID = strings.ReplaceAll(hashID, " ", "")
+	return mustHex("06092a864886f70d01010a" + "3034" + "a00f" + hashID + "a11c" + "301a" + "06092a864886f70d010108" + hashID + "a203" + "0201" + salt)
 }
