@@ -1,0 +1,253 @@
+[
+ {
+  "name": "minimal",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": true,
+  "roots": "cg==",
+  "tsl": "dA==",
+  "signature": "cw==",
+  "status": null,
+  "fetched_at": 900,
+  "anchor": "abababababababababababababababababababababababababababababababab"
+ },
+ {
+  "name": "with a status",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_ocsp\": \"bw==\", \"tsl_ocsp_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": true,
+  "roots": "cg==",
+  "tsl": "dA==",
+  "signature": "cw==",
+  "status": "bw==",
+  "fetched_at": 900,
+  "anchor": "abababababababababababababababababababababababababababababababab"
+ },
+ {
+  "name": "a null status",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_ocsp\": null, \"tsl_ocsp_meta\": null}",
+  "accept": true,
+  "roots": "cg==",
+  "tsl": "dA==",
+  "signature": "cw==",
+  "status": null,
+  "fetched_at": 900,
+  "anchor": "abababababababababababababababababababababababababababababababab"
+ },
+ {
+  "name": "uppercase anchor",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": true,
+  "roots": "cg==",
+  "tsl": "dA==",
+  "signature": "cw==",
+  "status": null,
+  "fetched_at": 900,
+  "anchor": "abababababababababababababababababababababababababababababababab"
+ },
+ {
+  "name": "optional meta fields absent",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"fetched_at\": 1, \"source\": \"cache\"}}",
+  "accept": true,
+  "roots": "cg==",
+  "tsl": "dA==",
+  "signature": "cw==",
+  "status": null,
+  "fetched_at": 900,
+  "anchor": "abababababababababababababababababababababababababababababababab"
+ },
+ {
+  "name": "every source",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"bundle\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"embedded\"}}",
+  "accept": true,
+  "roots": "cg==",
+  "tsl": "dA==",
+  "signature": "cw==",
+  "status": null,
+  "fetched_at": 900,
+  "anchor": "abababababababababababababababababababababababababababababababab"
+ },
+ {
+  "name": "not json",
+  "json": "nope",
+  "accept": false
+ },
+ {
+  "name": "an array",
+  "json": "[]",
+  "accept": false
+ },
+ {
+  "name": "trailing data",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}} {}",
+  "accept": false
+ },
+ {
+  "name": "another version",
+  "json": "{\"format_version\": 1, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "version as a string",
+  "json": "{\"format_version\": \"2\", \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "negative version",
+  "json": "{\"format_version\": -2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "unknown field",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"extra\": 1}",
+  "accept": false
+ },
+ {
+  "name": "unknown meta field",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\", \"extra\": 1}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "missing format_version",
+  "json": "{\"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "missing label",
+  "json": "{\"format_version\": 2, \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "missing anchor_sha256",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "missing roots",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "missing tsl",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "missing roots_meta",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "missing tsl_meta",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "no signature",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}}",
+  "accept": false
+ },
+ {
+  "name": "a signature without its metadata",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\"}",
+  "accept": false
+ },
+ {
+  "name": "metadata without its signature",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "a status without its metadata",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_ocsp\": \"bw==\"}",
+  "accept": false
+ },
+ {
+  "name": "metadata without its status",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_ocsp_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "short anchor",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"ab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "anchor not hex",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "roots not base64",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"***\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "base64 without padding",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "base64 with stray bits",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dB==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "base64 with a newline",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\\n\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "null roots",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": null, \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "null label",
+  "json": "{\"format_version\": 2, \"label\": null, \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "unknown source",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"ftp\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "fetched_at missing",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": null, \"source\": \"file\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "fetched_at negative",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": -1, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "fetched_at a string",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": \"1\", \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "fetched_at null",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": null, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "etag a number",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": 1, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "a repeated field",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"label\": \"y\"}",
+  "accept": false
+ },
+ {
+  "name": "another spelling of a field",
+  "json": "{\"format_version\": 2, \"Label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ },
+ {
+  "name": "a repeated meta field",
+  "json": "{\"format_version\": 2, \"label\": \"x\", \"anchor_sha256\": \"abababababababababababababababababababababababababababababababab\", \"roots\": \"cg==\", \"tsl\": \"dA==\", \"roots_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}, \"tsl_meta\": {\"etag\": \"e\", \"last_modified\": null, \"fetched_at\": 900, \"max_age_secs\": 60, \"source\": \"http\", \"source\": \"file\"}, \"tsl_sig\": \"cw==\", \"tsl_sig_meta\": {\"etag\": null, \"last_modified\": null, \"fetched_at\": 1000, \"max_age_secs\": null, \"source\": \"file\"}}",
+  "accept": false
+ }
+]

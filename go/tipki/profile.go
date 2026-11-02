@@ -145,8 +145,10 @@ func (p *Profile) matches(cert *x509.Certificate) bool {
 
 // Finding is one requirement a certificate does not meet.
 type Finding struct {
-	// Code is ti-pki's error code: policy_mismatch, key_usage_mismatch or role_oid_missing.
-	Code    string
+	// Code is ti-pki's error code, e.g. policy_mismatch or signature_invalid.
+	Code string
+	// Subject is the common name of the certificate concerned.
+	Subject string
 	Message string
 }
 
@@ -162,20 +164,20 @@ func (p *Profile) Check(cert *x509.Certificate, t CertificateType) []Finding {
 		}
 	}
 	if len(missing) > 0 {
-		findings = append(findings, Finding{"policy_mismatch", "required CertificatePolicy missing: " + strings.Join(missing, ", ")})
+		findings = append(findings, Finding{"policy_mismatch", cert.Subject.CommonName, "required CertificatePolicy missing: " + strings.Join(missing, ", ")})
 	}
 	if cert.KeyUsage&spec.KeyUsage != spec.KeyUsage {
-		findings = append(findings, Finding{"key_usage_mismatch", fmt.Sprintf("required KeyUsage bits %b, have %b", spec.KeyUsage, cert.KeyUsage)})
+		findings = append(findings, Finding{"key_usage_mismatch", cert.Subject.CommonName, fmt.Sprintf("required KeyUsage bits %b, have %b", spec.KeyUsage, cert.KeyUsage)})
 	}
 	if len(spec.ExtKeyUsage) > 0 {
 		have := extKeyUsages(cert)
 		if !slices.Contains(have, anyExtendedKeyUsage) && !slices.ContainsFunc(spec.ExtKeyUsage, func(want string) bool { return slices.Contains(have, want) }) {
-			findings = append(findings, Finding{"key_usage_mismatch", "certificate ExtKeyUsage matches none of: " + strings.Join(spec.ExtKeyUsage, ", ")})
+			findings = append(findings, Finding{"key_usage_mismatch", cert.Subject.CommonName, "certificate ExtKeyUsage matches none of: " + strings.Join(spec.ExtKeyUsage, ", ")})
 		}
 	}
 	if roles := p.EffectiveRoleOIDs(t); len(roles) > 0 {
 		if message := missingRole(cert, roles); message != "" {
-			findings = append(findings, Finding{"role_oid_missing", message})
+			findings = append(findings, Finding{"role_oid_missing", cert.Subject.CommonName, message})
 		}
 	}
 	return findings
