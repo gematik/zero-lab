@@ -64,15 +64,64 @@ const (
 	maxOCSPBytes = 1 << 20
 )
 
-// BundleTrust checks a certificate against the bundle with the idpd-sig profile, and its revocation online
-// (IDPV-005). It fails closed: a bundle that is missing, invalid or too old refuses every certificate, and
-// the last good one is not used in its place.
-type BundleTrust struct {
-	bundlePath    string
+// verifier is what both sources of trust material share: the anchors the environment picked, and the checks.
+type verifier struct {
 	anchor        []byte
 	signerAnchors [][]byte
 	checker       tipki.RevocationChecker
 	now           func() time.Time
+}
+
+func newVerifier(env Environment, httpClient *http.Client) (verifier, error) {
+	anchor, signerAnchors, err := anchorsFor(env)
+	if err != nil {
+		return verifier{}, err
+	}
+	return verifier{
+		anchor:        anchor,
+		signerAnchors: signerAnchors,
+		checker:       tipki.NewOCSPChecker(ocspTransport{httpClient}),
+		now:           time.Now,
+	}, nil
+}
+
+// load verifies a bundle and settles the signer's status, online if the bundle's does not answer it.
+func (v *verifier) load(ctx context.Context, bundle *tipki.Bundle, now time.Time, state *tipki.TSLState) (*tipki.TrustStore, error) {
+	store, err := tipki.LoadTrustStore(bundle, v.anchor, v.signerAnchors, now, 0, state)
+	if err != nil {
+		return nil, err
+	}
+	unqueried := slices.ContainsFunc(store.TSL.Warnings, func(warning *tipki.TSLError) bool { return warning.Code == "no_ocsp_check" })
+	if unqueried {
+		if err := store.TSL.CheckSignerStatus(ctx, v.checker); err != nil {
+			return nil, err
+		}
+	}
+	return store, nil
+}
+
+func (v *verifier) check(ctx context.Context, store *tipki.TrustStore, which IDPCertificate, certs []*x509.Certificate) error {
+	validator := tipki.ProfileIdpdSig.Validator(store, tipki.CertFdSig, tipki.RevocationHardFail)
+	result, err := validator.Validate(ctx, certs, v.now(), v.checker)
+	if err != nil {
+		return fmt.Errorf("%s: %w", which, err)
+	}
+	if result.Valid {
+		return nil
+	}
+	reasons := make([]string, 0, len(result.Errors))
+	for _, finding := range result.Errors {
+		reasons = append(reasons, finding.Code+": "+finding.Message)
+	}
+	return fmt.Errorf("%s: %q is not valid for an IDP-Dienst: %s", which, certs[0].Subject.CommonName, strings.Join(reasons, "; "))
+}
+
+// BundleTrust checks a certificate against a mounted bundle with the idpd-sig profile, and its revocation
+// online (IDPV-005). It fails closed: a bundle that is missing, invalid or too old refuses every certificate,
+// and the last good one is not used in its place.
+type BundleTrust struct {
+	verifier
+	bundlePath string
 
 	mu        sync.Mutex
 	store     *tipki.TrustStore
@@ -87,20 +136,14 @@ type BundleTrust struct {
 // bundlePath is the mounted file `ti pki trust export` writes, read again when it changes. httpClient carries
 // the OCSP requests.
 func NewBundleTrust(env Environment, bundlePath string, httpClient *http.Client) (*BundleTrust, error) {
-	anchor, signerAnchors, err := anchorsFor(env)
+	base, err := newVerifier(env, httpClient)
 	if err != nil {
 		return nil, err
 	}
 	if bundlePath == "" {
-		return nil, errors.New("no trust bundle: the IDP-Dienst's certificates cannot be verified without one")
+		return nil, errors.New("no trust material: the IDP-Dienst's certificates cannot be verified without trust_fetch or trust_bundle_path")
 	}
-	trust := &BundleTrust{
-		bundlePath:    bundlePath,
-		anchor:        anchor,
-		signerAnchors: signerAnchors,
-		checker:       tipki.NewOCSPChecker(ocspTransport{httpClient}),
-		now:           time.Now,
-	}
+	trust := &BundleTrust{verifier: base, bundlePath: bundlePath}
 	if _, err := trust.current(context.Background()); err != nil {
 		return nil, err
 	}
@@ -129,19 +172,7 @@ func (t *BundleTrust) Check(ctx context.Context, which IDPCertificate, certs []*
 	if err != nil {
 		return fmt.Errorf("%s: %w", which, err)
 	}
-	validator := tipki.ProfileIdpdSig.Validator(store, tipki.CertFdSig, tipki.RevocationHardFail)
-	result, err := validator.Validate(ctx, certs, t.now(), t.checker)
-	if err != nil {
-		return fmt.Errorf("%s: %w", which, err)
-	}
-	if result.Valid {
-		return nil
-	}
-	reasons := make([]string, 0, len(result.Errors))
-	for _, finding := range result.Errors {
-		reasons = append(reasons, finding.Code+": "+finding.Message)
-	}
-	return fmt.Errorf("%s: %q is not valid for an IDP-Dienst: %s", which, certs[0].Subject.CommonName, strings.Join(reasons, "; "))
+	return t.check(ctx, store, which, certs)
 }
 
 func (t *BundleTrust) current(ctx context.Context) (*tipki.TrustStore, error) {
@@ -158,7 +189,7 @@ func (t *BundleTrust) current(ctx context.Context) (*tipki.TrustStore, error) {
 		return t.store, nil
 	}
 	t.store = nil
-	store, fetchedAt, err := t.load(ctx, now)
+	store, fetchedAt, err := t.read(ctx, now)
 	if err != nil {
 		return nil, fmt.Errorf("trust bundle: %w", err)
 	}
@@ -167,7 +198,7 @@ func (t *BundleTrust) current(ctx context.Context) (*tipki.TrustStore, error) {
 	return store, nil
 }
 
-func (t *BundleTrust) load(ctx context.Context, now time.Time) (*tipki.TrustStore, time.Time, error) {
+func (t *BundleTrust) read(ctx context.Context, now time.Time) (*tipki.TrustStore, time.Time, error) {
 	file, err := os.Open(t.bundlePath)
 	if err != nil {
 		return nil, time.Time{}, err
@@ -184,15 +215,9 @@ func (t *BundleTrust) load(ctx context.Context, now time.Time) (*tipki.TrustStor
 	if err != nil {
 		return nil, time.Time{}, err
 	}
-	store, err := tipki.LoadTrustStore(bundle, t.anchor, t.signerAnchors, now, 0, t.state)
+	store, err := t.load(ctx, bundle, now, t.state)
 	if err != nil {
 		return nil, time.Time{}, err
-	}
-	unqueried := slices.ContainsFunc(store.TSL.Warnings, func(warning *tipki.TSLError) bool { return warning.Code == "no_ocsp_check" })
-	if unqueried {
-		if err := store.TSL.CheckSignerStatus(ctx, t.checker); err != nil {
-			return nil, time.Time{}, err
-		}
 	}
 	return store, bundle.FetchedAt, nil
 }

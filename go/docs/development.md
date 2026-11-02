@@ -111,6 +111,7 @@ and the release PR records the runs; the rules are in
 | PDP end to end | `just pdp-e2e-serve` then `just pdp-e2e` | `ZERO_PDP_E2E_URL` (and the client variables in `docs/e2e.md`) | the authorization server over HTTP: metadata, JWKS, nonce, entity statement, OAuth error shapes, `client_credentials`, and the flows up to the IdP's pushed authorization request (`docs/e2e.md`) | `pdp`, `bff` |
 | PDP HITL | `just pdp-e2e-hitl URL` | `ZERO_PDP_E2E_URL`, `ZERO_PDP_E2E_HITL=1`, a person | a full login with a real OpenID provider | `pdp` |
 | gemidp IDP certificates (HITL) | `just gemidp-trust-test` | `GEMIDP_TRUST_BUNDLE_PATH`, a route to the reference IDP and its OCSP responder | both real IDP certificates pass `idpd-sig` with live OCSP (IDPV-005) | gemidp |
+| gemidp trust download (HITL) | `just gemidp-trust-fetch-test` | a route to gematik's TSL and CRL hosts, the reference IDP and its OCSP responder | the material downloads and verifies, and both real IDP certificates pass with live OCSP (IDPV-007) | gemidp |
 | gemidp SMC-B | `just gemidp-smcb-test` | `GEMIDP_*`, an SMC-B identity (`GEMIDP_SMCB_P12`), a bundle from `ti pki trust export` (`GEMIDP_TRUST_BUNDLE_PATH`) | authentication at the gematik IDP-Dienst with an SMC-B | `gemidp` |
 | ePA connect | `just epa-connect-test` | `EPA_*`, the Rust `ti` (`EPA_TI_BIN`), an SMC-B identity | VAU, authorization, record status and consent at both providers | `epa` |
 | ePA entitlement | `just epa-entitle-test` | as ePA connect, plus `VSDM_HMAC_KEY` / `VSDM_HMAC_KID` | entitlement with a VSDM proof | `epa` |

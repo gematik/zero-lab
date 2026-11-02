@@ -102,6 +102,13 @@ the caller's transport. Without a route to the responder there is no verificatio
   A bundle missing, invalid or too old (BUNDLE-003) refuses every certificate, and the last good one takes no part.
 - **IDPV-006** The environment decides the anchors, and both sets are compiled in (decision-11): production trusts only
   GEM.RCA7 and GEM.TSL-CA3, test and reference only the TEST-ONLY pair. A missing or unknown environment does not start.
+- **IDPV-007** The material may be downloaded instead of mounted, never both. Hosts are fixed per environment and
+  redirects are refused. A list is taken only under the SHA-256 the HTTPS host publishes, since a signature over plain
+  HTTP cannot say a list is the newest; it is not downloaded again while that hash stands (A_30044). Without a current
+  `.ocsp` the signer's responder is asked. A client whose first download fails does not start.
+- **IDPV-008** The download repeats in the background and a login only reads the copy in memory. A failed refresh keeps
+  the copy until it is 24 h past its last good refresh or the list's `NextUpdate` has passed, then certificates are
+  refused. An older list than the one in use is refused (TSLSIG-053).
 
 ## Bundle
 
@@ -152,7 +159,7 @@ anchors, and every cross certificate against every root by the step that fails.
 | OCSP-005 | unit tests in `ocsp.rs` | `TestOCSPStatusErrorsAreRepeatedThenTheResponderRests`, `TestOCSPResultsAreCachedWithinTheirBounds` |
 | VALID-001 to 003 | `valid_001_the_corpus_is_what_ti_pki_says` | `TestVALID001EveryVerdictIsThatOfTiPki` |
 | VALID-007 | `tsl_states_the_types_a_ca_may_issue`, `valid_001_the_corpus_is_what_ti_pki_says` | `TestVALID007TheTypesTheListStates`, `TestVALID007TheRealListDecidesWhatACAMayIssue` |
-| IDPV-001 to 006 | | `go/gemidp/trust_test.go`, `TestIDPV<n>…` |
+| IDPV-001 to 008 | | `go/gemidp/trust_test.go`, `go/gemidp/fetch_test.go`, `TestIDPV<n>…` |
 | VALID-004 | `no_responder_is_asked_for_a_certificate_that_failed` | `TestVALID004NoResponderIsAskedForACertificateThatFailed` |
 | VALID-005 | `a_profile_refuses_a_type_it_does_not_accept` | `TestVALID005AProfileRefusesATypeItDoesNotAccept` |
 | VALID-006 | `a_ca_the_verified_tsl_does_not_name_gives_no_standing` | `TestVALID006ACATheVerifiedListDoesNotNameGivesNoStanding`, `TestVALID006ACAUnderTheRealList` |

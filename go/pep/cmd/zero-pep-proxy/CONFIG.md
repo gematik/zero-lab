@@ -73,7 +73,8 @@ providers, use openid-providers.yaml.
 | `PEP_OIDF_RP_CONFIG_PATH` | OIDF | path to the relying-party config (YAML) → enables federation login |
 | `PEP_GEMIDP_CLIENT_ID` | gemidp | enables the gematik IDP-Dienst (always Authenticator deep-link flow) |
 | `PEP_GEMIDP_ENV` | gemidp | `test` \| `ref` \| `prod` (or `PEP_GEMIDP_BASE_URL` to override) |
-| `PEP_GEMIDP_TRUST_BUNDLE_PATH` | gemidp | **required**: the file `ti pki trust export` writes, refreshed at least daily; the IDP-Dienst's certificates are verified against it and OCSP, and a client without it does not start |
+| `PEP_GEMIDP_TRUST_FETCH` | gemidp | `"true"` downloads the trust material from gematik's hosts at start and hourly, for a standalone image: needs outbound access to the environment's `download*.tsl.ti-dienste.de` and `download*.crl.ti-dienste.de`. Exactly one of this and the next is **required**; a client without either does not start |
+| `PEP_GEMIDP_TRUST_BUNDLE_PATH` | gemidp | the file `ti pki trust export` writes, refreshed at least daily, for a site that cannot fetch for itself |
 | `PEP_GEMIDP_REDIRECT_URI` | gemidp | redirect the client sends (default `<public>/oauth2/callback`) |
 | `PEP_GEMIDP_REDIRECT_SCOPES` / `_NAME` / `_LOGO_URI` / `_USER_AGENT` | gemidp | scopes + chooser/UA options |
 

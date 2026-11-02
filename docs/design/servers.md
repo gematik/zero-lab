@@ -66,10 +66,13 @@ everything outside the workload untrusted.
 8. **Kubernetes, Docker and sidecars as untrusted neighbours.** Run as non-root with a
    read-only root filesystem, no capabilities, seccomp `RuntimeDefault`, resource limits;
    liveness and readiness reflect real state (trust material loaded, storage reachable);
-   SIGTERM drains and shuts down gracefully; configuration and trust material reload from
-   mounted files, written by a producer outside the request path (a CronJob from the same
-   image that fetches, verifies and exports the set; an operator's import on an air-gapped
-   site), and consumers keep nothing of it on disk.
+   SIGTERM drains and shuts down gracefully; configuration reloads from mounted files. Trust
+   material comes one of two ways, outside the request path, and consumers keep nothing of it
+   on disk: from mounted files written by a producer (a CronJob from the same image that
+   fetches, verifies and exports the set; an operator's import on an air-gapped site), or, for
+   a standalone image, from the workload's own background download from the fixed hosts of
+   the specification, under a hash that TLS vouches for
+   ([decision-12](../../backlog/decisions/)).
    - **One image, several deployments.** A helper ships in the product's image
      (`libexec/telematik`, [git and releases](../conventions/git-and-releases.md)) and
      runs either as a child process over stdio inside the container or as a sidecar

@@ -18,7 +18,7 @@ GOLANGCI := "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0"
 
 # Every variable a gated test reads: `just test` must not reach a live system because a
 # shell or ./.env happens to set one.
-_UNGATE := "unset EPA_KVNRS_FILE EPA_POPP_TOKEN EPA_REPORT EPA_SMCB_CERT EPA_SMCB_KEY EPA_SMCB_P12 EPA_SMCB_P12_PASSWORD EPA_SMCB_P12_PASSWORD_PATH EPA_TI_BIN EPA_VAU_BASE_URL EPA_VAU_CERT_VERIFY GEMIDP_BASE_URL GEMIDP_CLIENT_ID GEMIDP_REDIRECT_URI GEMIDP_SCOPE GEMIDP_SMCB_P12 GEMIDP_SMCB_P12_PASSWORD GEMIDP_SMCB_REPORT GEMIDP_TRUST_BUNDLE_PATH OIDF_FEDMASTER_URL PEP_PG_DSN TEST_DATABASE_URL VSDM_HMAC_KEY VSDM_HMAC_KID ZERO_PDP_E2E_CLIENT2_ID ZERO_PDP_E2E_CLIENT2_KEY_PATH ZERO_PDP_E2E_HITL ZERO_PDP_E2E_URL"
+_UNGATE := "unset EPA_KVNRS_FILE EPA_POPP_TOKEN EPA_REPORT EPA_SMCB_CERT EPA_SMCB_KEY EPA_SMCB_P12 EPA_SMCB_P12_PASSWORD EPA_SMCB_P12_PASSWORD_PATH EPA_TI_BIN EPA_VAU_BASE_URL EPA_VAU_CERT_VERIFY GEMIDP_BASE_URL GEMIDP_CLIENT_ID GEMIDP_REDIRECT_URI GEMIDP_SCOPE GEMIDP_SMCB_P12 GEMIDP_SMCB_P12_PASSWORD GEMIDP_SMCB_REPORT GEMIDP_TRUST_BUNDLE_PATH GEMIDP_TRUST_FETCH OIDF_FEDMASTER_URL PEP_PG_DSN TEST_DATABASE_URL VSDM_HMAC_KEY VSDM_HMAC_KID ZERO_PDP_E2E_CLIENT2_ID ZERO_PDP_E2E_CLIENT2_KEY_PATH ZERO_PDP_E2E_HITL ZERO_PDP_E2E_URL"
 
 # The gematik OpenAPI ruleset lives in the internal GitLab project dev-portal/api-tools and
 # has no licence, so it is never copied here: `api-lint` runs it from a local clone at
@@ -319,6 +319,11 @@ gemidp-trust-test:
     set -euo pipefail
     if [[ -z "${GEMIDP_TRUST_BUNDLE_PATH:-}" ]]; then echo "set GEMIDP_TRUST_BUNDLE_PATH" >&2; exit 1; fi
     go test ./gemidp -run TestIDPV005TheLiveReferenceIDP -count=1 -v -timeout 2m
+
+# Download the reference environment's trust material and verify its IDP's certificates live,
+# with nothing mounted. Needs a route to gematik's hosts.
+gemidp-trust-fetch-test:
+    GEMIDP_TRUST_FETCH=1 go test ./gemidp -run TestIDPV007TheLiveReferenceEnvironment -count=1 -v -timeout 3m
 
 # Run the env-guarded epa connect test for both providers (VAU + authorize + record status + consent;
 # no VSDM). Uses ./.env (EPA_SMCB_P12, EPA_ENV, EPA_P1_INSURANT_ID, EPA_P2_INSURANT_ID, ...).
