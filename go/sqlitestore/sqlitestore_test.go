@@ -327,6 +327,9 @@ func TestSTORE_016_Load100kRecordsWithinBudget(t *testing.T) {
 	if testing.Short() {
 		t.Skip("load check: run without -short")
 	}
+	if raceEnabled {
+		t.Skip("the budget is for the build that ships: `just test` runs it without -race")
+	}
 	const n = 100_000
 	ctx := t.Context()
 	b := open(t, filepath.Join(t.TempDir(), "state.db"), sqlitestore.State)

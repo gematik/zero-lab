@@ -6,6 +6,11 @@ run:
   # Paths in rules below are relative to this file.
   relative-path-mode: cfg
 
+# Every finding counts, so none may hide behind the default caps.
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
 linters:
   default: standard
   enable:
