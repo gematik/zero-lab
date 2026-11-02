@@ -28,30 +28,28 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/nonce"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/oauth/providers"
 	"github.com/gematik/zero-lab/go/oidf"
 )
 
 // Config is the authorization_server section of pdp.yaml. Relative paths resolve against BaseDir.
 type Config struct {
-	BaseDir                    string                   `yaml:"-"`
-	Issuer                     string                   `yaml:"issuer"`
-	SignJwkPath                string                   `yaml:"sign_jwk_path"`
-	SigningKey                 *SigningKey              `yaml:"-"`
-	ScopesSupported            []string                 `yaml:"scopes_supported"`
-	MetadataTemplate           ExtendedMetadata         `yaml:"metadata_template"`
-	DefaultIDPIss              string                   `yaml:"default_idp_iss"`
-	OidcProviders              []oidc.Config            `yaml:"oidc_providers"`
-	GematikIdp                 []gemidp.ClientConfig    `yaml:"gematik_idp"`
-	ClientsPolicyPath          string                   `yaml:"clients_policy_path"`
-	Products                   []Product                `yaml:"products"`
-	Clients                    []Client                 `yaml:"clients"`
-	OidfRelyingPartyConfigPath string                   `yaml:"oidf_relying_party_path"`
-	OidfRelyingPartyConfig     *oidf.RelyingPartyConfig `yaml:"oidf_relying_party"`
-	Endpoints                  EndpointsConfig          `yaml:"endpoints"`
+	BaseDir           string           `yaml:"-"`
+	Issuer            string           `yaml:"issuer"`
+	SignJwkPath       string           `yaml:"sign_jwk_path"`
+	SigningKey        *SigningKey      `yaml:"-"`
+	ScopesSupported   []string         `yaml:"scopes_supported"`
+	MetadataTemplate  ExtendedMetadata `yaml:"metadata_template"`
+	DefaultIDPIss     string           `yaml:"default_idp_iss"`
+	ClientsPolicyPath string           `yaml:"clients_policy_path"`
+	Products          []Product        `yaml:"products"`
+	Clients           []Client         `yaml:"clients"`
+	Endpoints         EndpointsConfig  `yaml:"endpoints"`
+	// Providers and RelyingParty are built by the caller from the providers file; nil means none.
+	Providers    *providers.Set     `yaml:"-"`
+	RelyingParty *oidf.RelyingParty `yaml:"-"`
 	// some values may be set programmatically
 	NonceService nonce.Service
 	// Store is the kv backend for sessions + nonces. The command opens the Postgres store from
@@ -69,7 +67,7 @@ type EndpointsConfig struct {
 	Authorization               string `yaml:"authorization"`
 	PushedAuthorizationRequest  string `yaml:"pushed_authorization_request"`
 	OPCallback                  string `yaml:"op_callback"`
-	GemIDPCallback              string `yaml:"gemidp_callback"`
+	IDPDCallback                string `yaml:"idpd_callback"`
 	Token                       string `yaml:"token"`
 	Introspection               string `yaml:"introspection"`
 	EntityStatement             string `yaml:"entity_statement"`
@@ -103,8 +101,8 @@ func (s *EndpointsConfig) applyDefaults(baseURI *url.URL) {
 	if s.OPCallback == "" {
 		s.OPCallback = basePath + "/op-callback"
 	}
-	if s.GemIDPCallback == "" {
-		s.GemIDPCallback = basePath + "/gemidp-callback"
+	if s.IDPDCallback == "" {
+		s.IDPDCallback = basePath + "/idpd-callback"
 	}
 	if s.Token == "" {
 		s.Token = basePath + "/token"
@@ -131,11 +129,6 @@ func absPath(baseDir, path string) string {
 func (c *Config) Validate() error {
 	if c.Issuer == "" {
 		return errors.New("issuer is required")
-	}
-	for i, provider := range c.OidcProviders {
-		if err := provider.Validate(); err != nil {
-			return fmt.Errorf("oidc_providers[%d]: %w", i, err)
-		}
 	}
 	for i, product := range c.Products {
 		if product.ProductID == "" {

@@ -12,12 +12,12 @@ The providers file holds only providers; it does not contain `PEP_PUBLIC_URL`, c
 ## 1. `openid-providers.yaml` — the providers
 
 Loaded from `PEP_OPENID_PROVIDERS_PATH` (default `./openid-providers.yaml`). It is flat — the three provider
-kinds at the top level, each reusing that provider's own package config type. The same format is what pdp
+kinds at the top level, each reusing that provider's own package config type. An unknown key stops the start. The same format is what pdp
 references by path, so the two stay in sync:
 
 ```yaml
 oidc:   [ <oauth/oidc.Config>, … ]      # several direct OIDC providers
-gemidp: [ <gemidp.ClientConfig>, … ]    # several gematik IDP-Dienst clients
+idpd:   [ <idpd.ClientConfig>, … ]      # several gematik IDP-Dienst clients
 oidf:   <oidf.RelyingPartyConfig>       # one OIDF relying party (brings its federation IdPs)
 ```
 
@@ -59,7 +59,7 @@ needs no file). The file and the shortcuts are mutually exclusive (the file wins
 | `PEP_SESSION_TTL` | session lifetime when the fast path is on (Go duration) | `8h` |
 
 Keys are read from **files** (`*_PATH`), never from env values and never stored in the DB. See
-[`../../proxy/docs/stateless-session-validation.md`](../../proxy/docs/stateless-session-validation.md).
+[`../../docs/stateless-session-validation.md`](../../docs/stateless-session-validation.md).
 
 ### Single-provider shortcuts (the alternative to the providers file)
 
@@ -71,12 +71,12 @@ providers, use openid-providers.yaml.
 | `PEP_OIDC_ISSUER` | OIDC | enables a direct OIDC provider |
 | `PEP_OIDC_CLIENT_ID` / `_CLIENT_SECRET` / `_SCOPES` / `_NAME` / `_LOGO_URI` / `_ACCEPTABLE_SKEW` | OIDC | client + chooser options; scopes space-separated; skew a Go duration (default 1m) |
 | `PEP_OIDF_RP_CONFIG_PATH` | OIDF | path to the relying-party config (YAML) → enables federation login |
-| `PEP_GEMIDP_CLIENT_ID` | gemidp | enables the gematik IDP-Dienst (always Authenticator deep-link flow) |
-| `PEP_GEMIDP_ENV` | gemidp | `test` \| `ref` \| `prod` (or `PEP_GEMIDP_BASE_URL` to override) |
-| `PEP_GEMIDP_TRUST_FETCH` | gemidp | `"true"` downloads the trust material from gematik's hosts at start and hourly, for a standalone image: needs outbound access to the environment's `download*.tsl.ti-dienste.de` and `download*.crl.ti-dienste.de`. Exactly one of this and the next is **required**; a client without either does not start |
-| `PEP_GEMIDP_TRUST_BUNDLE_PATH` | gemidp | the file `ti pki trust export` writes, refreshed at least daily, for a site that cannot fetch for itself |
-| `PEP_GEMIDP_REDIRECT_URI` | gemidp | redirect the client sends (default `<public>/oauth2/callback`) |
-| `PEP_GEMIDP_REDIRECT_SCOPES` / `_NAME` / `_LOGO_URI` / `_USER_AGENT` | gemidp | scopes + chooser/UA options |
+| `PEP_IDPD_CLIENT_ID` | idpd | enables the gematik IDP-Dienst (always Authenticator deep-link flow) |
+| `PEP_IDPD_ENV` | idpd | `test` \| `ref` \| `prod` (or `PEP_IDPD_BASE_URL` to override) |
+| `PEP_IDPD_TRUST_FETCH` | idpd | `"true"` downloads the trust material from gematik's hosts at start and hourly, for a standalone image: needs outbound access to the environment's `download*.tsl.ti-dienste.de` and `download*.crl.ti-dienste.de`. Exactly one of this and the next is **required**; a client without either does not start |
+| `PEP_IDPD_TRUST_BUNDLE_PATH` | idpd | the file `ti pki trust export` writes, refreshed at least daily, for a site that cannot fetch for itself |
+| `PEP_IDPD_REDIRECT_URI` | idpd | redirect the client sends (default `<public>/oauth2/callback`) |
+| `PEP_IDPD_REDIRECT_SCOPES` / `_NAME` / `_LOGO_URI` / `_USER_AGENT` | idpd | scopes + chooser/UA options |
 
 ---
 
@@ -128,4 +128,4 @@ just docker-push pep     # build + push both tags
 
 `scratch` image, runs as non-root (uid 65532). The version is stamped
 into the binary (`pep.Version`) and logged at startup. Mount secrets (session key, OIDF keys) as files and
-pass `DATABASE_URL`; see [`e2e/README.md`](../../proxy/e2e/README.md) for a runnable stack.
+pass `DATABASE_URL`; see [`e2e/README.md`](../../e2e/README.md) for a runnable stack.

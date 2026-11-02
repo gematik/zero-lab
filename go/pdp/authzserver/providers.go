@@ -22,10 +22,7 @@
 package authzserver
 
 import (
-	"fmt"
 	"net/http"
-
-	"github.com/gematik/zero-lab/go/gemidp"
 )
 
 // OpenidProviderInfo represents the information about an OpenID Provider
@@ -47,35 +44,13 @@ func (s *Server) OpenidProvidersEndpoint(w http.ResponseWriter, _ *http.Request)
 
 // OpenidProviders returns the list of OpenID Providers supported by the server
 func (s *Server) OpenidProviders() ([]OpenidProviderInfo, error) {
-	providers := make([]OpenidProviderInfo, 0, len(s.openidProviders))
-	for _, op := range s.openidProviders {
-		info := OpenidProviderInfo{
-			Issuer:  op.Issuer(),
-			LogoURI: op.LogoURI(),
-			Name:    op.Name(),
-		}
-		switch op.(type) {
-		case *gemidp.Client:
-			info.Type = "gemidp"
-		default:
-			info.Type = "oidc"
-		}
-		providers = append(providers, info)
+	infos, err := s.providers.Providers()
+	if err != nil {
+		return nil, err
 	}
-	if s.oidfRelyingParty != nil {
-		idps, err := s.oidfRelyingParty.Federation().FetchIdpList()
-		if err != nil {
-			return nil, fmt.Errorf("fetching idp list from federation: %w", err)
-		}
-		for _, op := range idps {
-			providers = append(providers, OpenidProviderInfo{
-				Issuer:  op.Issuer,
-				LogoURI: op.LogoURI,
-				Name:    op.OrganizationName,
-				Type:    "oidf",
-			})
-		}
+	list := make([]OpenidProviderInfo, 0, len(infos))
+	for _, info := range infos {
+		list = append(list, OpenidProviderInfo{Issuer: info.Issuer, LogoURI: info.LogoURI, Name: info.Name, Type: info.Type})
 	}
-
-	return providers, nil
+	return list, nil
 }

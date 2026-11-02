@@ -40,7 +40,7 @@ just pdp-e2e                  # smoke + regression + flows
 OIDC/OIDF flows need the server reachable at a stable public issuer and an OP to drive.
 
 1. Configure an OP in `go/pdp/e2e/testdata/pdp.e2e.yaml` (uncomment the `gematik_idp` /
-   `oidc_providers` / `oidf_relying_party` block; values come from env via `os.ExpandEnv`).
+   `openid-providers.yaml` with an `oidc` / `oidf` block next to it; values come from env via `os.ExpandEnv`).
 2. Start a rathole tunnel exposing local `:8011` at `https://<public-host>`.
 3. Serve with the public issuer and run against it:
 

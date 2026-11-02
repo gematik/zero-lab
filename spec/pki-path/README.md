@@ -88,7 +88,7 @@ the caller's transport. Without a route to the responder there is no verificatio
 
 ## IDP-Dienst
 
-`go/gemidp` puts its keys to use as `ti-idpd` does.
+`go/idpd` puts its keys to use as `ti-idpd` does.
 
 - **IDPV-001** The discovery signer in the document's `x5c` passes before its key verifies anything. A refused
   certificate stops the client; a trusted one does not excuse a bad signature.
@@ -159,7 +159,7 @@ anchors, and every cross certificate against every root by the step that fails.
 | OCSP-005 | unit tests in `ocsp.rs` | `TestOCSPStatusErrorsAreRepeatedThenTheResponderRests`, `TestOCSPResultsAreCachedWithinTheirBounds` |
 | VALID-001 to 003 | `valid_001_the_corpus_is_what_ti_pki_says` | `TestVALID001EveryVerdictIsThatOfTiPki` |
 | VALID-007 | `tsl_states_the_types_a_ca_may_issue`, `valid_001_the_corpus_is_what_ti_pki_says` | `TestVALID007TheTypesTheListStates`, `TestVALID007TheRealListDecidesWhatACAMayIssue` |
-| IDPV-001 to 008 | | `go/gemidp/trust_test.go`, `go/gemidp/fetch_test.go`, `TestIDPV<n>…` |
+| IDPV-001 to 008 | | `go/idpd/trust_test.go`, `go/idpd/fetch_test.go`, `TestIDPV<n>…` |
 | VALID-004 | `no_responder_is_asked_for_a_certificate_that_failed` | `TestVALID004NoResponderIsAskedForACertificateThatFailed` |
 | VALID-005 | `a_profile_refuses_a_type_it_does_not_accept` | `TestVALID005AProfileRefusesATypeItDoesNotAccept` |
 | VALID-006 | `a_ca_the_verified_tsl_does_not_name_gives_no_standing` | `TestVALID006ACATheVerifiedListDoesNotNameGivesNoStanding`, `TestVALID006ACAUnderTheRealList` |

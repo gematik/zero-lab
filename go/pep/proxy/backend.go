@@ -31,14 +31,14 @@ type Provider struct {
 	Issuer  string `json:"iss"`
 	Name    string `json:"name"`
 	LogoURI string `json:"logo_uri,omitempty"`
-	Type    string `json:"type"` // "oidc" | "oidf" | "gemidp"
+	Type    string `json:"type"` // "oidc" | "oidf" | "idpd"
 }
 
 // LoginStart is the result of beginning a login. Mode "redirect" means the browser navigates to AuthURL;
 // "decoupled" means AuthURL is rendered as a QR for a second device (with an on-device redirect offered too).
 type LoginStart struct {
 	AuthURL  string
-	Mode     string // "redirect" | "decoupled" (OIDF QR) | "authenticator" (gemidp deep link)
+	Mode     string // "redirect" | "decoupled" (OIDF QR) | "authenticator" (idpd deep link)
 	Provider *Provider
 }
 

@@ -1,6 +1,6 @@
 # pep proxy — HITL / e2e harness
 
-A local stack for running the pep oauth2-proxy end to end: OIDC / OIDF / gemidp login, forward_auth gating,
+A local stack for running the pep oauth2-proxy end to end: OIDC / OIDF / idpd login, forward_auth gating,
 the snapshot fast path, and revocation. Caddy and the upstream run in compose; the proxy runs on the host so
 it can read local secrets and you can iterate with `go run`.
 
@@ -12,7 +12,7 @@ at a time**: each serves the browser on port 8080.
 
 | Setup | Compose | Port 8080 | Login |
 |---|---|---|---|
-| [Forward auth](#run-simplest--in-memory-one-oidc-provider-no-database) | `docker-compose.yaml` | Caddy in compose, pep on :4180 | a real OIDC / OIDF / gemidp provider |
+| [Forward auth](#run-simplest--in-memory-one-oidc-provider-no-database) | `docker-compose.yaml` | Caddy in compose, pep on :4180 | a real OIDC / OIDF / idpd provider |
 | [PDP backend, DPoP](#pdp-backend-s4--airgapped-dpop-end-to-end) | `docker-compose.pdp.yaml` | pep on the host | mock OpenID Provider in the PDP, no network |
 | [Standalone gateway](#standalone-gateway-s5--pep-gates--reverse-proxies-no-caddy) | `docker-compose.pdp.yaml` | pep on the host | as above |
 
@@ -42,7 +42,7 @@ docker compose -f docker-compose.yaml up --build -d
 PEP_PUBLIC_URL=http://localhost:8080 PEP_INSECURE_COOKIE=true \
 PEP_OIDC_ISSUER=https://accounts.google.com \
 PEP_OIDC_CLIENT_ID=... PEP_OIDC_CLIENT_SECRET=... \
-  go run ../../cmd/zero-pep-proxy
+  go run ../cmd/zero-pep-proxy
 ```
 
 Open http://localhost:8080/ and log in; register `http://localhost:8080/oauth2/callback` at the provider.
@@ -53,14 +53,14 @@ vars below.
 
 ## Config
 
-All via environment; full reference in [`../../cmd/zero-pep-proxy/CONFIG.md`](../../cmd/zero-pep-proxy/CONFIG.md).
+All via environment; full reference in [`../cmd/zero-pep-proxy/CONFIG.md`](../cmd/zero-pep-proxy/CONFIG.md).
 
 | Var                       | For                                          | Default                |
 | ------------------------- | -------------------------------------------- | ---------------------- |
 | PEP_PUBLIC_URL            | origin the browser uses (front / tunnel host)| http://127.0.0.1:4180  |
 | PEP_OIDC_ISSUER (+ _CLIENT_ID/_CLIENT_SECRET) | one OIDC provider           | —                      |
 | PEP_OIDF_RP_CONFIG_PATH   | a gematik OIDF relying party                 | —                      |
-| PEP_GEMIDP_CLIENT_ID      | a gematik IDP-Dienst client                  | —                      |
+| PEP_IDPD_CLIENT_ID      | a gematik IDP-Dienst client                  | —                      |
 | PEP_OPENID_PROVIDERS_PATH | several providers (openid-providers.yaml)    | ./openid-providers.yaml|
 | DATABASE_URL              | durable + shared sessions (Postgres)         | in-memory              |
 | PEP_SESSION_KEY_PATH      | snapshot fast path (no DB read per request)  | off                    |
@@ -72,8 +72,8 @@ All via environment; full reference in [`../../cmd/zero-pep-proxy/CONFIG.md`](..
   `PEP_OIDF_RP_CONFIG_PATH=...` (drop `PEP_INSECURE_COOKIE` — the default secure cookie is what you want over HTTPS).
 - Durable sessions + snapshot fast path: add `DATABASE_URL=postgres://zero:zero@127.0.0.1:5432/zero?sslmode=disable`,
   generate a key (`openssl rand -base64 32 > /tmp/pep-session.key`), and set `PEP_SESSION_KEY_PATH=/tmp/pep-session.key`.
-- Several providers: set `PEP_OPENID_PROVIDERS_PATH` (see `../../cmd/zero-pep-proxy/openid-providers.example.yaml`).
-- Containerized OIDC demo (pep in a container, no host go-run): `../../cmd/zero-pep-proxy/docker-compose.yaml`.
+- Several providers: set `PEP_OPENID_PROVIDERS_PATH` (see `../cmd/zero-pep-proxy/openid-providers.example.yaml`).
+- Containerized OIDC demo (pep in a container, no host go-run): `../cmd/zero-pep-proxy/docker-compose.yaml`.
 
 ## Two-replica revocation check
 
@@ -108,7 +108,7 @@ PEP_BACKEND=pdp PEP_AS_ISSUER=http://localhost:8011 PEP_CLIENT_ID=pep-client \
 PEP_CLIENT_SIGNING_KEY_PATH=pdp-config/pep-client.jwk \
 PEP_PUBLIC_URL=http://localhost:8080 PEP_ADDR=:8080 PEP_INSECURE_COOKIE=true \
 PEP_SCOPES=protected PEP_API_UPSTREAM=http://localhost:8010 \
-  go run ../../cmd/zero-pep-proxy
+  go run ../cmd/zero-pep-proxy
 ```
 
 Drive it in a **browser** at `http://localhost:8080/oauth2/start`: you're redirected to the **Mock IdP login
@@ -144,7 +144,7 @@ PEP_CLIENT_SIGNING_KEY_PATH=pdp-config/pep-client.jwk \
 PEP_PUBLIC_URL=http://localhost:8080 PEP_ADDR=:8080 PEP_INSECURE_COOKIE=true PEP_SCOPES=protected \
 PEP_SESSION_KEY_PATH=/tmp/pep-snap.key \
 PEP_WEBAPP_UPSTREAM=http://localhost:8082 PEP_API_UPSTREAM=http://localhost:8010 \
-  go run ../../cmd/zero-pep-proxy
+  go run ../cmd/zero-pep-proxy
 ```
 
 `PEP_WEBAPP_UPSTREAM` mounts `/` (identity, snapshot gate — hence `PEP_SESSION_KEY_PATH`); `PEP_API_UPSTREAM`

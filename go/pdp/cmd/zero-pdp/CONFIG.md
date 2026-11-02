@@ -3,9 +3,8 @@
 Three sources, the same split pep uses:
 
 - **`openid-providers.yaml`** — the IdPs the PDP authenticates users against (shared flat format with pep:
-  `oidc` / `gemidp` / `oidf`). Loaded from `PDP_OPENID_PROVIDERS_PATH` (default `openid-providers.yaml`, next
-  to the config file). Present → it is the source of providers; absent → any inline providers in `pdp.yaml`
-  are kept (back-compat).
+  `oidc` / `idpd` / `oidf`). Loaded from `PDP_OPENID_PROVIDERS_PATH` (default `openid-providers.yaml`, next
+  to the config file). An unknown key stops the start, in this file and in `pdp.yaml`.
 - **`pdp.yaml`** — the PDP domain config (issuer, scopes, clients, products, policies, endpoints,
   `non_prod_mode`, `mock_idp`). Selected with `-f` / `PDP_CONFIG_FILE` (default `pdp.yaml`), resolved against
   the workdir.

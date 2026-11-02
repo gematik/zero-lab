@@ -1,4 +1,4 @@
-module github.com/gematik/zero-lab/go/gemidp
+module github.com/gematik/zero-lab/go/idpd
 
 go 1.27.0
 
@@ -9,6 +9,7 @@ require (
 	github.com/gematik/zero-lab/go/tipki v0.0.0-20261102185424-5ad95b53e1b3
 	github.com/lestrrat-go/jwx/v3 v3.3.0
 	golang.org/x/oauth2 v0.37.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -24,4 +25,20 @@ require (
 	github.com/valyala/fastjson v1.6.10 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
+)
+
+// In-repo modules resolve locally until this branch is pushed and `just sync` pins them.
+replace (
+	github.com/gematik/zero-lab/go/brainpool => ../brainpool
+	github.com/gematik/zero-lab/go/dpop => ../dpop
+	github.com/gematik/zero-lab/go/kv => ../kv
+	github.com/gematik/zero-lab/go/nonce => ../nonce
+	github.com/gematik/zero-lab/go/oauth => ../oauth
+	github.com/gematik/zero-lab/go/oidf => ../oidf
+	github.com/gematik/zero-lab/go/pdp => ../pdp
+	github.com/gematik/zero-lab/go/pep => ../pep
+	github.com/gematik/zero-lab/go/pep/proxy => ../pep/proxy
+	github.com/gematik/zero-lab/go/pkcs12 => ../pkcs12
+	github.com/gematik/zero-lab/go/tipki => ../tipki
+	github.com/gematik/zero-lab/go/zaddy => ../zaddy
 )

@@ -31,7 +31,7 @@ User        Primärsystem (SMC-B)            Launchpad (web app)              ID
  │                  │  POST /backchannel/login/init│                               │                │
  │                  │─────────────────────────────►│ gen state,nonce,verifier      │                │
  │                  │                              │ store login:<id> (TTL 5m)     │                │
- │                  │  {login_session, auth_url}   │ auth_url via gemidp.Client    │                │
+ │                  │  {login_session, auth_url}   │ auth_url via idpd.Client    │                │
  │                  │◄─────────────────────────────│   .AuthenticationURL()        │                │
  │                  │  GET auth_url (no-follow) ───────────────────────────────────►│ challenge NJWT │
  │                  │  sign challenge w/ SMC-B (SignWithSoftkey), POST signed ──────►│                │
@@ -125,17 +125,17 @@ no identity by itself.
 
 ## Reused components (verified — file:line)
 
-- `gemidp.NewClientFromConfig(ClientConfig{Environment, ClientID, RedirectURI, Scopes, UserAgent})`
-  — `gemidp/client.go:75`. Requires ClientID, RedirectURI, ≥1 Scope.
-- `(*gemidp.Client).AuthenticationURL(state, nonce, verifier, …)` direct S256 PKCE — `gemidp/client.go:125,140`.
-- `(*gemidp.Client).ExchangeForIdentity(code, verifier, …) (*oidc.TokenResponse, error)` — `gemidp/client.go:181`.
-- `gemidp.NewAuthenticator` + `(*Authenticator).Authenticate(authURL) (*CodeRedirectURL{URL,Code,State}, error)`
-  — `gemidp/authenticator.go:107`. **Confirmed**: derives a redirect-suppressing client and reads
+- `idpd.NewClientFromConfig(ClientConfig{Environment, ClientID, RedirectURI, Scopes, UserAgent})`
+  — `idpd/client.go:75`. Requires ClientID, RedirectURI, ≥1 Scope.
+- `(*idpd.Client).AuthenticationURL(state, nonce, verifier, …)` direct S256 PKCE — `idpd/client.go:125,140`.
+- `(*idpd.Client).ExchangeForIdentity(code, verifier, …) (*oidc.TokenResponse, error)` — `idpd/client.go:181`.
+- `idpd.NewAuthenticator` + `(*Authenticator).Authenticate(authURL) (*CodeRedirectURL{URL,Code,State}, error)`
+  — `idpd/authenticator.go:107`. **Confirmed**: derives a redirect-suppressing client and reads
   `resp.Location()` from the 302 (`authenticator.go:122-126,228-237`) — the `redirect_uri` is never
   served, so Launchpad needs no OAuth callback route (only registration of the `client_id`/`redirect_uri`
   pair at the IDP).
-- `gemidp.SignWithSoftkey(prk, cert)` — `gemidp/authenticator.go:286`. Soft-cert signer.
-- `gemidp.GetIdpByEnvironment`, `Environment`, `NewEnvironment` — `gemidp/shared.go`.
+- `idpd.SignWithSoftkey(prk, cert)` — `idpd/authenticator.go:286`. Soft-cert signer.
+- `idpd.GetIdpByEnvironment`, `Environment`, `NewEnvironment` — `idpd/shared.go`.
 - `oidc.TokenResponse.Claims(&x)` — `oauth/oidc/oidc.go:47` (used the same way in `pep/proxy/backend_provider.go:151`).
 - `kv.Store` with **atomic `Take` (get+delete)** and atomic `SetMany` — `kv/kv.go:56-60` (documented for
   single-use redeem). `kv.NewMemory()` for single-instance dev.
@@ -153,8 +153,8 @@ no identity by itself.
 launchpad/
   go.mod  go.sum  version.go          # module + ResolveVersion (copy epa/version.go)
   config.go                           # IDP env/client_id/redirect_uri/scopes/user_agent; addr; cookie flags; TTLs; backchannel shared secret
-  server.go                           # Server{ *gemidp.Client, kv.Store, MagicStore, sessions }, Echo router
-  idp.go                              # buildIDPClient(cfg) via gemidp.NewClientFromConfig
+  server.go                           # Server{ *idpd.Client, kv.Store, MagicStore, sessions }, Echo router
+  idp.go                              # buildIDPClient(cfg) via idpd.NewClientFromConfig
   loginsession.go                     # LoginSession{ID,State,Nonce,Verifier,Env,CreatedAt}, kv "login:" (TTL ~5m), Take on complete
   magic.go                            # MagicStore over kv "magic:" — Create/Redeem, sha256 hash, Take, TTL 90s
   browsersession.go                   # BrowserSession{ID,Identity}, kv "sess:" (TTL ~8h); cookie set/read/clear
@@ -193,10 +193,10 @@ Errors as `{"error","error_description"}` (reuse `oidc.Error` shape, `oauth/oidc
 ## PS demo client — `zero-launchpad client login`
 
 Self-contained subcommand (`cmd/zero-launchpad/cmd/client.go`), no `ti` dependency:
-1. Load SMC-B p12 → `gemidp.SignWithSoftkey(prk, cert)`.
+1. Load SMC-B p12 → `idpd.SignWithSoftkey(prk, cert)`.
 2. `POST /backchannel/login/init` → `authorization_url`.
 3. **Validate the returned `authorization_url` before signing anything** (see below) — abort on any mismatch.
-4. `gemidp.NewAuthenticator(...)` + `Authenticate(authorization_url)` → `{Code, State}`.
+4. `idpd.NewAuthenticator(...)` + `Authenticate(authorization_url)` → `{Code, State}`.
 5. `POST /backchannel/login/complete` → `magic_url`.
 6. Open it via `github.com/pkg/browser` / `open` / `xdg-open`.
 
@@ -215,7 +215,7 @@ cryptographically authorize it — a classic confused-deputy escalation.
 
 - `url.Parse` succeeds and `scheme == https`.
 - The **host is the genuine IDP-Dienst** for the selected `--env`
-  (`gemidp.GetIdpByEnvironment(env)` authorization endpoint host) — not an attacker-controlled host.
+  (`idpd.GetIdpByEnvironment(env)` authorization endpoint host) — not an attacker-controlled host.
 - `response_type == code` and `code_challenge_method == S256` (no downgrade).
 - **`scope ⊆ --allowed-scope`**: split the URL's `scope` on spaces; every requested scope must be in
   the PS-side allowlist. Any extra/foreign scope ⇒ reject. (Empty allowlist ⇒ reject, fail-closed.)
@@ -228,7 +228,7 @@ side and makes the Launchpad unable to widen what the card attests to.
 
 - **Git**: start on a fresh branch off `main` (e.g. `feat/launchpad`) before any changes — do not commit to `main`.
 - `go.work`: add `./launchpad` to `use (...)`.
-- `launchpad/go.mod`: `go 1.26.x`; require sibling `gemidp`, `oauth`, `kv` + `echo/v4`, `cobra`, `viper`,
+- `launchpad/go.mod`: `go 1.26.x`; require sibling `idpd`, `oauth`, `kv` + `echo/v4`, `cobra`, `viper`,
   `ksuid`, `golang.org/x/oauth2`, `github.com/pkg/browser` (versions matching `pdp/go.mod`). Run `go mod tidy` in the module.
 - **`Dockerfile`** (`launchpad/cmd/zero-launchpad/Dockerfile`): copy `epa/cmd/zero-epa/Dockerfile` verbatim,
   swap `epa`→`launchpad` paths and the `-X …/launchpad.Version` ldflag; `CMD ["/app/zero-launchpad","serve"]`.
@@ -242,14 +242,14 @@ side and makes the Launchpad unable to widen what the card attests to.
 ## Correctness & security (must-hold)
 
 - **Verifier reuse**: the *same* verifier string flows into `AuthenticationURL` and `ExchangeForIdentity`; store with the login session, never regenerate.
-- **State**: const-time compare stored vs returned `state` before exchange (`crypto/subtle`). **Nonce**: persist it; the id_token carries `nonce` (`gemidp/client.go`), keep it for verification.
+- **State**: const-time compare stored vs returned `state` before exchange (`crypto/subtle`). **Nonce**: persist it; the id_token carries `nonce` (`idpd/client.go`), keep it for verification.
 - **Single-use via `Take`** (never Get-then-Delete) for both `login:<id>` and `magic:<hash>` — atomicity guaranteed by `kv`.
 - **Magic token**: ≥32 bytes CSPRNG → base64url; store **only** `sha256(token)`; TTL 60–120s; keep it in the **path** not query; `Referrer-Policy: no-referrer`; never `slog` the raw `/l/...` URL.
 - **Cookie**: `HttpOnly` + `Secure` + `SameSite=Lax` (Lax lets the top-level magic-link navigation carry the just-set cookie); relax `Secure` only behind explicit `--insecure-cookies`/localhost dev flag.
 - **redirect_uri** is registered at the IDP but never served — no callback route, and document this so it isn't mistaken for a bug.
 - **Client-side scope confinement**: the PS must not sign whatever `authorization_url` Launchpad returns. Before invoking the Authenticator, verify `scope ⊆ allowlist`, `client_id == expected`, `response_type=code`, `code_challenge_method=S256`, and that the authz-endpoint host is the genuine IDP-Dienst for the env — otherwise a rogue Launchpad broadens/forges the authorization the SMC-B attests to (confused deputy). See *Client-side scope confinement* above.
 - **Backchannel exposure**: it mints sessions from an IDP `code` — require a shared secret and/or loopback bind.
-- **Never panic** (bounds/nil in handlers & renderers); loader "unverified cert" warnings from `gemidp` are dev-acceptable, not production.
+- **Never panic** (bounds/nil in handlers & renderers); loader "unverified cert" warnings from `idpd` are dev-acceptable, not production.
 
 ## Verification
 

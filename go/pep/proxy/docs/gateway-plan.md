@@ -17,7 +17,7 @@ with the new `pep.EnforcerSessionCookie`) or `gate: session` (stateful kv, requi
 - `/oauth2/*` mounted first; gateway active only when routes configured (else forward_auth-only, unchanged).
 - `inject: dpop` ⇒ `gate: session` ⇒ PDP backend; all checked at load.
 - DPoP key is per-session and **never** enters the cookie — `dpop` requires the stateful gate.
-- Module guard: `go list -deps ./zaddy/cmd/zero-caddy | grep -c '…/\(oidf\|gemidp\|pep/proxy\)'` → 0. zaddy may
+- Module guard: `go list -deps ./zaddy/cmd/zero-caddy | grep -c '…/\(oidf\|idpd\|pep/proxy\)'` → 0. zaddy may
   pull `pep` (for `EnforcerSessionCookie`), never `pep/proxy`.
 - Go-idiomatic initialisms; no narration comments.
 
@@ -102,7 +102,7 @@ with the new `pep.EnforcerSessionCookie`) or `gate: session` (stateful kv, requi
 
 ### Task R7: cmd + docs
 
-**Files:** `pep/cmd/zero-pep-proxy/main.go`, `CONFIG.md`, `pep/proxy/e2e/README.md`.
+**Files:** `pep/proxy/cmd/zero-pep-proxy/main.go`, `CONFIG.md`, `pep/proxy/e2e/README.md`.
 
 - `RoutesFromConfig()` (PEP_ROUTES_PATH YAML | env shortcuts) → `cfg.Routes`. Document `gate`/`scope`/`inject`
   + a `routes.yaml` example+ the standalone shape.

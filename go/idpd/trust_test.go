@@ -19,7 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-package gemidp
+package idpd
 
 import (
 	"context"
@@ -48,7 +48,7 @@ import (
 // A brainpool certificate and its key, which the fake IDP signs with: no CA here vouches for it, which is
 // the fake trust's business. The real chain is tested on BundleTrust.
 const (
-	//nolint:gosec // the test identity gemidp_test.go carries too; a TEST-ONLY key of a certificate no one trusts
+	//nolint:gosec // the test identity idpd_test.go carries too; a TEST-ONLY key of a certificate no one trusts
 	idpKeyPEM = `-----BEGIN EC PRIVATE KEY-----
 MHgCAQEEID0gGM/y+gETNO9kFWY6vELk9rjq2H/tuZogskG/rpB8oAsGCSskAwMC
 CAEBB6FEA0IABGc0iasne1f/tcuTSw4CiRfxZ3LvLsQDuMmbqTO5CuOsXND+n8fV
@@ -192,7 +192,7 @@ func TestIDPV001ARefusedSignerIsAHardError(t *testing.T) {
 	if _, err := NewClientFromConfig(idp.config(trust)); err == nil || !strings.Contains(err.Error(), "refused") {
 		t.Errorf("err = %v", err)
 	}
-	if _, err := NewAuthenticator(AuthenticatorConfig{Idp: NewIdp(EnvironmentReference, idp.URL), Trust: trust, HTTPClient: idp.Client()}); err == nil {
+	if _, err := NewAuthenticator(AuthenticatorConfig{IDP: NewIDP(EnvironmentReference, idp.URL), Trust: trust, HTTPClient: idp.Client()}); err == nil {
 		t.Error("an authenticator went on")
 	}
 }
@@ -258,7 +258,7 @@ func TestIDPV003ThereIsNoClientWithoutTrust(t *testing.T) {
 	if _, err := NewClientFromConfig(idp.config(nil)); err == nil {
 		t.Error("a client without trust")
 	}
-	if _, err := NewAuthenticator(AuthenticatorConfig{Idp: NewIdp(EnvironmentReference, idp.URL), HTTPClient: idp.Client()}); err == nil {
+	if _, err := NewAuthenticator(AuthenticatorConfig{IDP: NewIDP(EnvironmentReference, idp.URL), HTTPClient: idp.Client()}); err == nil {
 		t.Error("an authenticator without trust")
 	}
 }
@@ -456,11 +456,11 @@ func TestIDPV003NoBundleNoClient(t *testing.T) {
 	}
 }
 
-// The live reference IDP against a bundle `ti pki trust export` wrote, with live OCSP. Gated: `just gemidp-trust-test`.
+// The live reference IDP against a bundle `ti pki trust export` wrote, with live OCSP. Gated: `just idpd-trust-test`.
 func TestIDPV005TheLiveReferenceIDP(t *testing.T) {
-	bundle := os.Getenv("GEMIDP_TRUST_BUNDLE_PATH")
+	bundle := os.Getenv("IDPD_TRUST_BUNDLE_PATH")
 	if bundle == "" {
-		t.Skip("GEMIDP_TRUST_BUNDLE_PATH not set: needs `ti pki trust export --env ref` and a route to the IDP; proves both IDP certificates live")
+		t.Skip("IDPD_TRUST_BUNDLE_PATH not set: needs `ti pki trust export --env ref` and a route to the IDP; proves both IDP certificates live")
 	}
 	trust, err := NewBundleTrust(EnvironmentReference, bundle, http.DefaultClient)
 	if err != nil {

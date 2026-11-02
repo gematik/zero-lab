@@ -224,16 +224,7 @@ func (s *Server) PAREndpoint(w http.ResponseWriter, r *http.Request) error {
 
 // GetOpenidClient returns an OpenID Connect client for the given issuer
 func (s *Server) GetOpenidClient(issuer string) (oidc.Client, error) {
-	for _, op := range s.openidProviders {
-		if op.Issuer() == issuer {
-			return op, nil
-		}
-	}
-
-	if s.oidfRelyingParty != nil {
-		return s.oidfRelyingParty.NewClient(issuer)
-	}
-	return nil, fmt.Errorf("unknown issuer: %s", issuer)
+	return s.providers.Client(issuer)
 }
 
 // OPCallbackEndpoint handles the callback from the OpenID Provider

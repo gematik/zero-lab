@@ -2,7 +2,7 @@
 
 The authorization server (Policy Decision Point) of the [gematik Zero Trust Lab](https://github.com/gematik/zero-lab).
 It runs the OAuth 2.0 authorization-code flow against the configured IdPs (direct OIDC, gematik
-OpenID Federation / OIDF, or the gematik IDP-Dienst / gemidp), authenticates as a confidential client, and
+OpenID Federation / OIDF, or the gematik IDP-Dienst / idpd), authenticates as a confidential client, and
 issues **DPoP-bound** access tokens (RFC 9449) plus refresh + introspection (RFC 7662) for protected
 resources. It is what the pep gateway acts as a client of.
 

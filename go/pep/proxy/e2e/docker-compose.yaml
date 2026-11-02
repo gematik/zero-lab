@@ -37,4 +37,4 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway" # Linux: map host.docker.internal to the host
     volumes:
-      - ../../cmd/zero-pep-proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../cmd/zero-pep-proxy/Caddyfile:/etc/caddy/Caddyfile:ro

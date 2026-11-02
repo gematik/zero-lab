@@ -1,7 +1,7 @@
 # zero-pep-proxy
 
 An oauth2-proxy-style authentication gateway for the [gematik Zero Trust Lab](https://github.com/gematik/zero-lab).
-It runs the login (direct OIDC, gematik OpenID Federation / OIDF, or the gematik IDP-Dienst / gemidp), keeps
+It runs the login (direct OIDC, gematik OpenID Federation / OIDF, or the gematik IDP-Dienst / idpd), keeps
 tokens server-side (token-mediating BFF — tokens never reach the browser), and gates upstream traffic via the
 standard `/oauth2/*` + `/oauth2/auth` forward_auth contract — behind Caddy, ingress-nginx (`auth-url`), or
 Traefik ForwardAuth.
@@ -23,12 +23,12 @@ docker run -p 4180:4180 \
 ```
 
 For several providers, mount your config dir at `/etc/pep` — `openid-providers.yaml` (with `oidc:` /
-`gemidp:` / `oidf:`) and any secrets live there.
+`idpd:` / `oidf:`) and any secrets live there.
 
 ## Configuration
 
 All via environment; secrets are mounted files referenced by a `*_PATH`, never baked in or passed as values.
-Full reference: [CONFIG.md](https://github.com/gematik/zero-lab/blob/main/go/pep/cmd/zero-pep-proxy/CONFIG.md).
+Full reference: [CONFIG.md](https://github.com/gematik/zero-lab/blob/main/go/pep/proxy/cmd/zero-pep-proxy/CONFIG.md).
 
 | Var | For | Default |
 | --- | --- | --- |
@@ -37,7 +37,7 @@ Full reference: [CONFIG.md](https://github.com/gematik/zero-lab/blob/main/go/pep
 | PEP_INSECURE_COOKIE | `"true"` drops `__Host-`/Secure for `http://localhost` dev; secure by default | false |
 | PEP_OIDC_ISSUER (+ _CLIENT_ID/_CLIENT_SECRET) | one OIDC provider | — |
 | PEP_OIDF_RP_CONFIG_PATH | a gematik OIDF relying party | — |
-| PEP_GEMIDP_CLIENT_ID | a gematik IDP-Dienst client | — |
+| PEP_IDPD_CLIENT_ID | a gematik IDP-Dienst client | — |
 | PEP_OPENID_PROVIDERS_PATH | several providers (a YAML file) | ./openid-providers.yaml |
 | DATABASE_URL | durable, shared sessions (Postgres) | in-memory |
 | PEP_SESSION_KEY_PATH | session-snapshot fast path (no DB per request) | off |

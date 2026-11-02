@@ -19,7 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-package gemidp
+package idpd
 
 import (
 	"crypto/ecdsa"
@@ -92,7 +92,7 @@ type Authenticator struct {
 
 // AuthenticatorConfig selects the IDP-Dienst instance and the signer of an Authenticator.
 type AuthenticatorConfig struct {
-	Idp        Idp
+	IDP        IDP
 	SignerFunc ChallengeSignerFunc
 	// Trust decides about the IDP-Dienst's certificates; required (IDPV-003).
 	Trust CertificateTrust
@@ -112,14 +112,14 @@ func NewAuthenticator(config AuthenticatorConfig) (*Authenticator, error) {
 		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
 	}
 
-	baseURL := config.Idp.baseURL
+	baseURL := config.IDP.baseURL
 	metadata, err := fetchMetadata(baseURL, httpClient, config.Trust)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Authenticator{
-		Environment: config.Idp.environment,
+		Environment: config.IDP.environment,
 		Metadata:    *metadata,
 		baseURL:     baseURL,
 		signerFunc:  config.SignerFunc,

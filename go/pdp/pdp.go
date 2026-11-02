@@ -26,9 +26,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/gematik/zero-lab/go/idpd"
+	"github.com/gematik/zero-lab/go/oauth/providers"
+	"github.com/gematik/zero-lab/go/oidf"
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
 )
 
@@ -38,52 +42,63 @@ type Config struct {
 	BindAddress       string             `yaml:"bind_address"`
 	BaseDir           string             `yaml:"-"`
 	AuthzServerConfig authzserver.Config `yaml:"authorization_server"`
+	// ProvidersPath is the providers file, empty if there is none.
+	ProvidersPath string `yaml:"-"`
 }
 
-// LoadConfigFile reads pdp.yaml from path, expanding ${VAR} placeholders from the environment. Providers
-// come from PDP_OPENID_PROVIDERS_PATH, which must then exist, else from openid-providers.yaml next to path
-// if present; that file replaces any providers set inline.
+const defaultOpenidProvidersFile = "openid-providers.yaml"
+
+// LoadConfigFile reads pdp.yaml from path, expanding ${VAR} placeholders from the environment. An unknown key is
+// an error, so an outdated file stops the start. Providers come from PDP_OPENID_PROVIDERS_PATH, which must then
+// exist, else from openid-providers.yaml next to path if present; [New] loads them.
 func LoadConfigFile(path string) (*Config, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read file: %w", err)
 	}
 
-	expanded := os.ExpandEnv(string(content))
-
 	cfg := new(Config)
 	cfg.BaseDir = filepath.Dir(path)
 
-	err = yaml.Unmarshal([]byte(expanded), cfg)
-	if err != nil {
+	decoder := yaml.NewDecoder(strings.NewReader(os.ExpandEnv(string(content))))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(cfg); err != nil {
 		return nil, fmt.Errorf("decode config file: %w", err)
 	}
 
 	cfg.AuthzServerConfig.BaseDir = cfg.BaseDir
 
-	// Providers come from a shared openid-providers.yaml (same format pep uses). Path from
-	// PDP_OPENID_PROVIDERS_PATH, else openid-providers.yaml next to the config file. When present it is the
-	// source of OIDC/gemidp/OIDF providers; absent, any inline providers in pdp.yaml are kept (back-compat).
-	providersPath := os.Getenv("PDP_OPENID_PROVIDERS_PATH")
-	if providersPath == "" {
-		providersPath = filepath.Join(cfg.BaseDir, defaultOpenidProvidersFile)
+	cfg.ProvidersPath = os.Getenv("PDP_OPENID_PROVIDERS_PATH")
+	explicit := cfg.ProvidersPath != ""
+	if !explicit {
+		cfg.ProvidersPath = filepath.Join(cfg.BaseDir, defaultOpenidProvidersFile)
 	}
-	if _, statErr := os.Stat(providersPath); statErr == nil { //nolint:gosec // the path comes from the operator's environment or configuration file, not a request
-		oidcs, gemidps, rp, err := LoadOpenidProviders(providersPath)
-		if err != nil {
-			return nil, err
+	if _, statErr := os.Stat(cfg.ProvidersPath); statErr != nil { //nolint:gosec // the path comes from the operator's environment or configuration file, not a request
+		if explicit {
+			return nil, fmt.Errorf("PDP_OPENID_PROVIDERS_PATH %q: %w", cfg.ProvidersPath, statErr)
 		}
-		cfg.AuthzServerConfig.OidcProviders = oidcs
-		cfg.AuthzServerConfig.GematikIdp = gemidps
-		if rp != nil {
-			rp.BaseDir = filepath.Dir(providersPath)
-			cfg.AuthzServerConfig.OidfRelyingPartyConfig = rp
-		}
-	} else if os.Getenv("PDP_OPENID_PROVIDERS_PATH") != "" {
-		return nil, fmt.Errorf("PDP_OPENID_PROVIDERS_PATH %q: %w", providersPath, statErr)
+		cfg.ProvidersPath = ""
 	}
-
 	return cfg, nil
+}
+
+// loadProviders builds the providers of config's file, and hands the relying party to the server, which also
+// serves its entity statement.
+func loadProviders(config *Config) error {
+	server := &config.AuthzServerConfig
+	if config.ProvidersPath == "" {
+		return nil
+	}
+	set, err := providers.Load(config.ProvidersPath, providers.Env{}, providers.Kinds{
+		"oidc": providers.OIDC,
+		"idpd": idpd.Kind(nil),
+		"oidf": oidf.Kind(func(rp *oidf.RelyingParty) { server.RelyingParty = rp }),
+	})
+	if err != nil {
+		return err
+	}
+	server.Providers = set
+	return nil
 }
 
 // PDP is a configured Policy Decision Point: its authorization server and the address to serve it on.
@@ -96,6 +111,10 @@ type PDP struct {
 func New(config Config) (*PDP, error) {
 	if err := config.AuthzServerConfig.Validate(); err != nil {
 		return nil, fmt.Errorf("validate config: %w", err)
+	}
+
+	if err := loadProviders(&config); err != nil {
+		return nil, err
 	}
 
 	authzServer, err := authzserver.New(config.AuthzServerConfig)

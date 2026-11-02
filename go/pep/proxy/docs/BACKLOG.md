@@ -8,4 +8,4 @@ DPoP-bound tokens for several resource servers.
 
 ## 2. Login / chooser UX  ·  ongoing
 Error/retry pages, chooser refinements, `userinfo`/session views, accessibility (focus / reduced-motion), and
-the close-tab / desktop-redirect edge cases on the decoupled + gemidp pages.
+the close-tab / desktop-redirect edge cases on the decoupled + idpd pages.

@@ -27,10 +27,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/gematik/zero-lab/go/oauth"
 )
 
-// ClientAssertionTypeJWTBearer is the client_assertion_type for private_key_jwt (RFC 7523 §2.2).
-const ClientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" //nolint:gosec // a public URN from the RFC, not a credential
+// ClientAssertionTypeJWTBearer is the client_assertion_type of RFC 7523.
+const ClientAssertionTypeJWTBearer = oauth.ClientAssertionTypeJWTBearer
 
 // ClientAssertionClaims are the claims of a private_key_jwt client assertion. Beyond the standard
 // RFC 7523 claims it keeps the gematik extensions: a nonce (redeemed against the AS nonce service)

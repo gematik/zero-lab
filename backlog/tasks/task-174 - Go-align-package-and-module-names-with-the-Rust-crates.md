@@ -1,9 +1,10 @@
 ---
 id: TASK-174
 title: 'Go: align package and module names with the Rust crates'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-01T16:47:00Z'
+updated_date: '2026-11-02T20:36:00Z'
 labels:
   - go
   - chore
@@ -21,6 +22,12 @@ The maintainer asked (2026-11-01, while starting TASK-166) to consider renaming 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 the correspondence table Go module to Rust crate recorded with the recommendation per module (rename, keep, archive)
-- [ ] #2 a naming rule proposed or the reason against one recorded
+- [x] #1 the correspondence table Go module to Rust crate recorded with the recommendation per module (rename, keep, archive)
+- [x] #2 a naming rule proposed or the reason against one recorded
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+go/gemidp is go/idpd, in code and everything operators see. The naming rule and correspondence are in docs/conventions/naming-and-config.md.
+<!-- SECTION:FINAL_SUMMARY:END -->

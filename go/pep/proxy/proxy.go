@@ -20,7 +20,7 @@
 // find details in the "Readme" file.
 
 // Package proxy is an oauth2-proxy-style authentication gateway: it runs the login (against direct OIDC/
-// OIDF/gemidp providers or — later — a PDP), keeps the tokens server-side, and exposes the oauth2-proxy
+// OIDF/idpd providers or — later — a PDP), keeps the tokens server-side, and exposes the oauth2-proxy
 // endpoint contract (/oauth2/{auth,start,sign_in,callback,sign_out,…}) so it works behind Caddy in
 // forward_auth mode and as a standalone gateway. It is a token-mediating backend for frontend
 // (draft-ietf-oauth-browser-based-apps); backlog doc-4 holds the history.
@@ -257,7 +257,7 @@ func (s *Server) setSnapshot(w http.ResponseWriter, sess *Session) {
 	setCookie(w, s.snapCookie, tok)
 }
 
-// sortProviders orders the chooser list: oidc + gemidp keep their configured order at the top, and the OIDF
+// sortProviders orders the chooser list: oidc + idpd keep their configured order at the top, and the OIDF
 // federation IdPs (typically many) are sorted by label. The browser then pins the last-used provider above
 // all (localStorage) and fuzzy-filters.
 func sortProviders(providers []Provider) {
@@ -347,7 +347,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 			ProviderName: name, AuthURL: start.AuthURL, QRImage: img,
 			PollURL: "/oauth2/poll", ReturnTo: sess.ReturnTo,
 		})
-	case "authenticator": // gemidp — open the authenticator:// app on this device + poll
+	case "authenticator": // idpd — open the authenticator:// app on this device + poll
 		s.render.render(w, http.StatusOK, "authenticator.html", qrData{
 			ProviderName: name, AuthURL: start.AuthURL,
 			PollURL: "/oauth2/poll", ReturnTo: sess.ReturnTo,

@@ -40,10 +40,9 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/nonce"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/oauth/providers"
 	"github.com/gematik/zero-lab/go/oidf"
 	"github.com/gematik/zero-lab/go/pep"
 )
@@ -61,7 +60,7 @@ type Server struct {
 	endpointPaths    *EndpointsConfig
 	clientsRegistry  ClientsRegistry
 	productsRegistry *ProductsRegistry
-	openidProviders  []oidc.Client
+	providers        *providers.Set
 	oidfRelyingParty *oidf.RelyingParty
 	defaultIDPIss    string
 	sessionStore     SessionStore
@@ -91,9 +90,12 @@ func NewFromConfigFile(filename string) (*Server, error) {
 // New builds a server from cfg. Without Config.Store, sessions and nonces live in process memory. It refuses
 // to start without Config.SigningKey: a replica with a key of its own signs tokens nobody else can verify.
 func New(cfg Config) (*Server, error) {
+	if cfg.Providers == nil {
+		cfg.Providers = providers.New(nil)
+	}
 	s := &Server{
-		Metadata:        cfg.MetadataTemplate,
-		openidProviders: make([]oidc.Client, 0),
+		Metadata:  cfg.MetadataTemplate,
+		providers: cfg.Providers,
 	}
 
 	issuerURL, err := url.Parse(cfg.Issuer)
@@ -102,10 +104,6 @@ func New(cfg Config) (*Server, error) {
 	}
 	s.endpointPaths = &cfg.Endpoints
 	s.endpointPaths.applyDefaults(issuerURL)
-
-	if err := s.initOpenidProviders(cfg); err != nil {
-		return nil, err
-	}
 
 	s.initMetadata(issuerURL, cfg)
 	s.defaultIDPIss = cfg.DefaultIDPIss
@@ -142,13 +140,7 @@ func New(cfg Config) (*Server, error) {
 	}
 	s.sessionStore = newKVSessionStore(store, defaultSessionTTL)
 
-	if err := s.initRelyingParty(cfg); err != nil {
-		return nil, err
-	}
-
-	if err := s.initGematikIdp(cfg); err != nil {
-		return nil, err
-	}
+	s.initRelyingParty(cfg)
 
 	if cfg.NonceService != nil {
 		s.nonceService = cfg.NonceService
@@ -167,19 +159,6 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	return s, nil
-}
-
-// initOpenidProviders configures the statically-listed OIDC providers.
-func (s *Server) initOpenidProviders(cfg Config) error {
-	for _, c := range cfg.OidcProviders {
-		client, err := oidc.NewClient(c)
-		if err != nil {
-			return fmt.Errorf("create oidc client: %w", err)
-		}
-		slog.Info("created oidc client", "issuer", client.Issuer())
-		s.openidProviders = append(s.openidProviders, client)
-	}
-	return nil
 }
 
 // initMetadata fills the authorization-server metadata document (RFC 8414).
@@ -231,21 +210,8 @@ func (s *Server) initProducts(cfg Config) error {
 }
 
 // initRelyingParty configures the optional OpenID Federation relying party.
-func (s *Server) initRelyingParty(cfg Config) error {
-	var err error
-	switch {
-	case cfg.OidfRelyingPartyConfigPath != "":
-		filename := absPath(cfg.BaseDir, cfg.OidfRelyingPartyConfigPath)
-		if s.oidfRelyingParty, err = oidf.NewRelyingPartyFromConfigFile(filename); err != nil {
-			return fmt.Errorf("load relying party config: %w", err)
-		}
-		slog.Info("loaded relying party config", "path", filename)
-	case cfg.OidfRelyingPartyConfig != nil:
-		cfg.OidfRelyingPartyConfig.BaseDir = cfg.BaseDir
-		if s.oidfRelyingParty, err = oidf.NewRelyingPartyFromConfig(cfg.OidfRelyingPartyConfig); err != nil {
-			return fmt.Errorf("create relying party: %w", err)
-		}
-	}
+func (s *Server) initRelyingParty(cfg Config) {
+	s.oidfRelyingParty = cfg.RelyingParty
 
 	// Inject the products' oidc_redirect_uri into the served entity statement so the federation accepts the
 	// AS callback URLs the products register. oidf stays registry-agnostic — it just runs this func hook.
@@ -269,20 +235,6 @@ func (s *Server) initRelyingParty(cfg Config) error {
 			}
 		})
 	}
-	return nil
-}
-
-// initGematikIdp configures the optional gematik IDP-Dienst clients.
-func (s *Server) initGematikIdp(cfg Config) error {
-	for _, c := range cfg.GematikIdp {
-		client, err := gemidp.NewClientFromConfig(c)
-		if err != nil {
-			return fmt.Errorf("create gematik IDP-Dienst client: %w", err)
-		}
-		slog.Info("created gematik IDP-Dienst client", "issuer", client.Issuer())
-		s.openidProviders = append(s.openidProviders, client)
-	}
-	return nil
 }
 
 // MetadataEndpoint serves the authorization server metadata document (RFC 8414).

@@ -4,7 +4,7 @@ use (
 	./brainpool
 	./dpop
 	./epa
-	./gemidp
+	./idpd
 	./kv
 	./metsubushi
 	./nonce
@@ -12,6 +12,7 @@ use (
 	./oidf
 	./pdp
 	./pep
+	./pep/proxy
 	./pkcs12
 	./tipki
 	./zaddy

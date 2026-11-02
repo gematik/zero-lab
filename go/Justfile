@@ -1,4 +1,4 @@
-# Load ./.env (gitignored) so env-guarded tests pick up local config (e.g. GEMIDP_*).
+# Load ./.env (gitignored) so env-guarded tests pick up local config (e.g. IDPD_*).
 set dotenv-load := true
 
 # Every recipe builds, vets and tests as the images do (go/docs/design.md): a module or
@@ -18,7 +18,7 @@ GOLANGCI := "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0"
 
 # Every variable a gated test reads: `just test` must not reach a live system because a
 # shell or ./.env happens to set one.
-_UNGATE := "unset EPA_KVNRS_FILE EPA_POPP_TOKEN EPA_REPORT EPA_SMCB_CERT EPA_SMCB_KEY EPA_SMCB_P12 EPA_SMCB_P12_PASSWORD EPA_SMCB_P12_PASSWORD_PATH EPA_TI_BIN EPA_VAU_BASE_URL EPA_VAU_CERT_VERIFY GEMIDP_BASE_URL GEMIDP_CLIENT_ID GEMIDP_REDIRECT_URI GEMIDP_SCOPE GEMIDP_SMCB_P12 GEMIDP_SMCB_P12_PASSWORD GEMIDP_SMCB_REPORT GEMIDP_TRUST_BUNDLE_PATH GEMIDP_TRUST_FETCH OIDF_FEDMASTER_URL PEP_PG_DSN TEST_DATABASE_URL VSDM_HMAC_KEY VSDM_HMAC_KID ZERO_PDP_E2E_CLIENT2_ID ZERO_PDP_E2E_CLIENT2_KEY_PATH ZERO_PDP_E2E_HITL ZERO_PDP_E2E_URL"
+_UNGATE := "unset EPA_KVNRS_FILE EPA_POPP_TOKEN EPA_REPORT EPA_SMCB_CERT EPA_SMCB_KEY EPA_SMCB_P12 EPA_SMCB_P12_PASSWORD EPA_SMCB_P12_PASSWORD_PATH EPA_TI_BIN EPA_VAU_BASE_URL EPA_VAU_CERT_VERIFY IDPD_BASE_URL IDPD_CLIENT_ID IDPD_REDIRECT_URI IDPD_SCOPE IDPD_SMCB_P12 IDPD_SMCB_P12_PASSWORD IDPD_SMCB_REPORT IDPD_TRUST_BUNDLE_PATH IDPD_TRUST_FETCH OIDF_FEDMASTER_URL PEP_PG_DSN TEST_DATABASE_URL VSDM_HMAC_KEY VSDM_HMAC_KID ZERO_PDP_E2E_CLIENT2_ID ZERO_PDP_E2E_CLIENT2_KEY_PATH ZERO_PDP_E2E_HITL ZERO_PDP_E2E_URL"
 
 # The gematik OpenAPI ruleset lives in the internal GitLab project dev-portal/api-tools and
 # has no licence, so it is never copied here: `api-lint` runs it from a local clone at
@@ -62,8 +62,17 @@ modernize-fix: (_each "go run " + MODERNIZE + " -fix -test ./...; gofmt -w .")
 # Known vulnerabilities
 vuln: (_each "go run " + GOVULNCHECK + " ./...")
 
-# go.mod and go.sum as `go mod tidy` leaves them, with sums matching what was downloaded
+# go.mod and go.sum as `go mod tidy` leaves them, with sums matching what was downloaded;
+# a consumer of oauth or oidf carries no TI trust path, not even in its module graph
 mod-check: (_each "go mod tidy -diff && go mod verify")
+    #!/usr/bin/env bash
+    set -uo pipefail
+    fail=0
+    for dir in oauth oidf; do
+        found=$(cd "$dir" && GOWORK=off go list -m all | grep -E 'zero-lab/go/(brainpool|tipki|pkcs12|idpd)( |$)')
+        if [ -n "$found" ]; then echo "$dir carries: $found"; fail=1; fi
+    done
+    exit $fail
 
 # Tests, built as the images are. Gated suites have their own recipes and never run here.
 test: (_each _UNGATE + "; go test -count=1 ./...")
@@ -105,7 +114,7 @@ tidy: (_each "go mod tidy")
 upgrade: (_each "go get -u ./... && go mod tidy")
 
 # Repin every in-repo require to a git ref (default: this branch), for builds outside the
-# workspace. Push first: pins resolve from the remote. Each version is derived from the
+# workspace, and drop the local replaces. Push first: pins resolve from the remote. Each version is derived from the
 # module's own go/<mod>/v* tag, since go get bases pseudo-versions on the highest repo-wide tag.
 sync REF=`git rev-parse --abbrev-ref HEAD`:
     #!/usr/bin/env bash
@@ -141,11 +150,11 @@ sync REF=`git rev-parse --abbrev-ref HEAD`:
           for dep in $(grep -oE 'github\.com/gematik/zero-lab/go/[a-zA-Z0-9]+' go.mod | sort -u); do
               [ "$dep" = "$self" ] && continue
               ver=$(modver "${dep##*/}")
-              echo "==> $self: get $dep@$ver"
-              go get "$dep@$ver"
+              echo "==> $self: $dep@$ver"
+              # Not go get, which cannot move past the placeholder of a module not yet on the remote.
+              go mod edit -dropreplace="$dep" -require="$dep@$ver"
           done
-          # go get leaves go.sum without the entries a build outside the workspace needs
-          # (`go install …@tag`, the Docker images); tidy them as those builds see the module.
+          # Tidy as a build outside the workspace sees the module (`go install …@tag`).
           GOWORK=off go mod tidy )
     done
     go work sync
@@ -197,7 +206,7 @@ docker-build name:
         # The epa image builds the Rust ti, so its context is the repository root.
         epa) mod=epa image=zero-epa file=epa/cmd/zero-epa/Dockerfile context=.. ;;
         pdp) mod=pdp image=zero-pdp file=pdp/cmd/zero-pdp/Dockerfile ;;
-        pep) mod=pep image=zero-pep-proxy file=pep/cmd/zero-pep-proxy/Dockerfile ;;
+        pep) mod=pep/proxy image=zero-pep-proxy file=pep/proxy/cmd/zero-pep-proxy/Dockerfile ;;
         caddy) mod=zaddy image=zero-caddy file=zaddy/cmd/zero-caddy/Dockerfile ;;
         metsubushi) mod=metsubushi image=metsubushi file=metsubushi/Dockerfile ;;
         *) echo "unknown image {{name}}" >&2; exit 1 ;;
@@ -239,16 +248,16 @@ pdp-e2e-hitl URL:
     ZERO_PDP_E2E_URL='{{URL}}' ZERO_PDP_E2E_HITL=1 go test ./pdp/e2e -run HITL -count=1 -v -timeout 5m
 
 # A full SMC-B login at the gematik IDP
-gemidp-smcb-test:
-    go test ./gemidp -run TestGemIDP_SMCB -count=1 -v -timeout 2m
+idpd-smcb-test:
+    go test ./idpd -run TestIDPD_SMCB -count=1 -v -timeout 2m
 
-# The reference IDP's certificates, live, against GEMIDP_TRUST_BUNDLE_PATH
-gemidp-trust-test:
-    go test ./gemidp -run TestIDPV005TheLiveReferenceIDP -count=1 -v -timeout 2m
+# The reference IDP's certificates, live, against IDPD_TRUST_BUNDLE_PATH
+idpd-trust-test:
+    go test ./idpd -run TestIDPV005TheLiveReferenceIDP -count=1 -v -timeout 2m
 
 # The reference IDP's certificates, live, with the trust material downloaded
-gemidp-trust-fetch-test:
-    GEMIDP_TRUST_FETCH=1 go test ./gemidp -run TestIDPV007TheLiveReferenceEnvironment -count=1 -v -timeout 3m
+idpd-trust-fetch-test:
+    IDPD_TRUST_FETCH=1 go test ./idpd -run TestIDPV007TheLiveReferenceEnvironment -count=1 -v -timeout 3m
 
 # ePA connect at both providers (VAU, authorize, record status, consent)
 epa-connect-test:

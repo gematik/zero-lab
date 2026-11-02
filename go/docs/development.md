@@ -63,8 +63,8 @@ has the architecture). Go keeps the servers and relying parties, and the ePA cli
 
 | Status | Modules | Notes |
 | --- | --- | --- |
-| Active | `pdp`, `pep`, `zaddy`, `kv`, `nonce`, `dpop`, `oauth`, `oidf`, `gemidp`, `epa`, `metsubushi`, `tipki`, `brainpool` | `gemidp` serves the servers' relying-party role only; `epa` gets its SMC-B identity, the IDP-Dienst flow and the VAU certificate checks from the Rust `ti` (below) |
-| Frozen | `pkcs12` | bugfix and security only; `pkcs12` stays for `gemidp`'s tests and external consumers (ehca-go); the Rust successor of `pkcs12` is `ti-pkcs12` |
+| Active | `pdp`, `pep`, `pep/proxy`, `zaddy`, `kv`, `nonce`, `dpop`, `oauth`, `oidf`, `idpd`, `epa`, `metsubushi`, `tipki`, `brainpool` | `idpd` serves the servers' relying-party role only; `epa` gets its SMC-B identity, the IDP-Dienst flow and the VAU certificate checks from the Rust `ti` (below) |
+| Frozen | `pkcs12` | bugfix and security only; `pkcs12` stays for `idpd`'s tests and external consumers (ehca-go); the Rust successor of `pkcs12` is `ti-pkcs12` |
 | Archived | `gempki` (`go/gempki/v0.23.1`), `ti` (`go/ti/v0.23.4`), `kon` (`go/kon/v0.21.4`), `asl` (`go/asl/v0.0.2`), `libzero` (`go/libzero/v0.1.0`) | removed from the workspace; the tag keeps each `go get`-able; `ti-pki`, the Rust `ti` and `ti-connector-client` replace the first three |
 
 Archiving a module: tag its last version, remove it from `go.work` and this Justfile,
@@ -109,9 +109,9 @@ and the release PR records the runs; the rules are in
 |---|---|---|---|---|
 | PDP end to end | `just pdp-e2e-serve` then `just pdp-e2e` | `ZERO_PDP_E2E_URL` (and the client variables in `docs/e2e.md`) | the authorization server over HTTP: metadata, JWKS, nonce, entity statement, OAuth error shapes, `client_credentials`, and the flows up to the IdP's pushed authorization request (`docs/e2e.md`) | `pdp`, `bff` |
 | PDP HITL | `just pdp-e2e-hitl URL` | `ZERO_PDP_E2E_URL`, `ZERO_PDP_E2E_HITL=1`, a person | a full login with a real OpenID provider | `pdp` |
-| gemidp IDP certificates (HITL) | `just gemidp-trust-test` | `GEMIDP_TRUST_BUNDLE_PATH`, a route to the reference IDP and its OCSP responder | both real IDP certificates pass `idpd-sig` with live OCSP (IDPV-005) | gemidp |
-| gemidp trust download (HITL) | `just gemidp-trust-fetch-test` | a route to gematik's TSL and CRL hosts, the reference IDP and its OCSP responder | the material downloads and verifies, and both real IDP certificates pass with live OCSP (IDPV-007) | gemidp |
-| gemidp SMC-B | `just gemidp-smcb-test` | `GEMIDP_*`, an SMC-B identity (`GEMIDP_SMCB_P12`), a bundle from `ti pki trust export` (`GEMIDP_TRUST_BUNDLE_PATH`) | authentication at the gematik IDP-Dienst with an SMC-B | `gemidp` |
+| idpd IDP certificates (HITL) | `just idpd-trust-test` | `IDPD_TRUST_BUNDLE_PATH`, a route to the reference IDP and its OCSP responder | both real IDP certificates pass `idpd-sig` with live OCSP (IDPV-005) | idpd |
+| idpd trust download (HITL) | `just idpd-trust-fetch-test` | a route to gematik's TSL and CRL hosts, the reference IDP and its OCSP responder | the material downloads and verifies, and both real IDP certificates pass with live OCSP (IDPV-007) | idpd |
+| idpd SMC-B | `just idpd-smcb-test` | `IDPD_*`, an SMC-B identity (`IDPD_SMCB_P12`), a bundle from `ti pki trust export` (`IDPD_TRUST_BUNDLE_PATH`) | authentication at the gematik IDP-Dienst with an SMC-B | `idpd` |
 | ePA connect | `just epa-connect-test` | `EPA_*`, the Rust `ti` (`EPA_TI_BIN`), an SMC-B identity | VAU, authorization, record status and consent at both providers | `epa` |
 | ePA entitlement | `just epa-entitle-test` | as ePA connect, plus `VSDM_HMAC_KEY` / `VSDM_HMAC_KID` | entitlement with a VSDM proof | `epa` |
 | OpenID Federation | `just oidf-test` | `OIDF_FEDMASTER_URL` | entity statements and trust chains against a live federation master | `oidf`, `pep` |

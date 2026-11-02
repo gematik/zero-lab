@@ -1,5 +1,5 @@
 # Fully-containerized OIDC demo (no host go-run, no Postgres/snapshot). For the OIDF / multi-replica / snapshot
-# HITL use ../../proxy/e2e/ instead (host pep + Postgres). Both front on Caddy :8080.
+# HITL use ../../e2e/ instead (host pep + Postgres). Both front on Caddy :8080.
 #
 #   browser → caddy(:8080) ──forward_auth──> zero-pep-proxy /oauth2/auth   (gate)
 #                          └─reverse_proxy──> upstream (metsubushi: header-reflecting page + /api/headers)
@@ -14,15 +14,15 @@ services:
   # proxy's sign-out (relative, so it works on whatever origin Caddy fronts).
   upstream:
     build:
-      context: ../../.. # the go/ workspace root (for go.work)
+      context: ../../../.. # the go/ workspace root (for go.work)
       dockerfile: metsubushi/Dockerfile
     environment:
       LOGOUT_URL: "/oauth2/sign_out"
 
   zero-pep-proxy:
     build:
-      context: ../../.. # the go/ workspace root (for go.work)
-      dockerfile: pep/cmd/zero-pep-proxy/Dockerfile
+      context: ../../../.. # the go/ workspace root (for go.work)
+      dockerfile: pep/proxy/cmd/zero-pep-proxy/Dockerfile
     environment:
       DEBUG: "${DEBUG:-1}"
       PEP_ADDR: ":4180"

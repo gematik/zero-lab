@@ -23,7 +23,7 @@
 // serves the /oauth2/* endpoints on :4180 and is meant to sit behind Caddy in forward_auth mode (see the
 // Caddyfile alongside this file) or to be reverse-proxied directly.
 //
-// Providers run in parallel. They come from an openid-providers.yaml file (oidc[]/gemidp[]/oidf — see
+// Providers run in parallel. They come from an openid-providers.yaml file (oidc[]/idpd[]/oidf — see
 // openid-providers.example.yaml); when that file is absent, the single-provider PEP_* env vars below are used
 // instead. Everything else (server, session, secrets) is env-only — see CONFIG.md.
 //
@@ -33,12 +33,12 @@
 //	PEP_OIDC_ISSUER          direct OIDC provider issuer (enables single-OIDC login)
 //	PEP_OIDC_CLIENT_ID / _CLIENT_SECRET / _SCOPES / _NAME / _LOGO_URI / _ACCEPTABLE_SKEW  OIDC options
 //	PEP_OIDF_RP_CONFIG_PATH  gematik OIDF relying-party config (YAML); enables federation login
-//	PEP_GEMIDP_CLIENT_ID     gematik IDP-Dienst client_id (enables gemidp login)
-//	PEP_GEMIDP_ENV           test|ref|prod (default prod); or PEP_GEMIDP_BASE_URL to override
-//	PEP_GEMIDP_TRUST_FETCH   "true" → download the trust material from gematik's hosts; or
-//	PEP_GEMIDP_TRUST_BUNDLE_PATH  the file `ti pki trust export` writes; gemidp requires one of the two
-//	PEP_GEMIDP_REDIRECT_URI  redirect_uri the gemidp client sends (default <public>/oauth2/callback)
-//	PEP_GEMIDP_REDIRECT_SCOPES / _NAME / _LOGO_URI / _USER_AGENT  gemidp options (always Authenticator flow)
+//	PEP_IDPD_CLIENT_ID     gematik IDP-Dienst client_id (enables idpd login)
+//	PEP_IDPD_ENV           test|ref|prod (default prod); or PEP_IDPD_BASE_URL to override
+//	PEP_IDPD_TRUST_FETCH   "true" → download the trust material from gematik's hosts; or
+//	PEP_IDPD_TRUST_BUNDLE_PATH  the file `ti pki trust export` writes; idpd requires one of the two
+//	PEP_IDPD_REDIRECT_URI  redirect_uri the idpd client sends (default <public>/oauth2/callback)
+//	PEP_IDPD_REDIRECT_SCOPES / _NAME / _LOGO_URI / _USER_AGENT  idpd options (always Authenticator flow)
 //	PEP_COOKIE_NAME          session cookie name (default ZERO-PEP-SID)
 //	PEP_INSECURE_COOKIE      "true" → drop __Host-/Secure for http://localhost dev; default is secure
 //	PEP_TEMPLATE_DIR         replace the embedded UI templates from this directory
@@ -56,7 +56,7 @@
 //	PEP_OPENID_PROVIDERS_PATH); the OIDF config's own relative key paths always resolve against the providers
 //	file's directory, not -w. ${VAR} placeholders in the providers file expand from the environment.
 //
-// Configure providers via openid-providers.yaml, or PEP_OIDC_ISSUER / PEP_OIDF_RP_CONFIG_PATH / PEP_GEMIDP_CLIENT_ID.
+// Configure providers via openid-providers.yaml, or PEP_OIDC_ISSUER / PEP_OIDF_RP_CONFIG_PATH / PEP_IDPD_CLIENT_ID.
 package main
 
 import (
@@ -75,6 +75,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/kv/postgres"
+	"github.com/gematik/zero-lab/go/oauth/providers"
 	"github.com/gematik/zero-lab/go/pep"
 	"github.com/gematik/zero-lab/go/pep/proxy"
 )
@@ -154,29 +155,29 @@ func main() {
 	}
 
 	// Backend selection: PEP_BACKEND=pdp makes pep a confidential client of the PDP (DPoP-bound tokens + the
-	// gated /api proxy); otherwise pep drives the configured OIDC/OIDF/gemidp providers directly.
+	// gated /api proxy); otherwise pep drives the configured OIDC/OIDF/idpd providers directly.
 	var backend proxy.Backend
 	if os.Getenv("PEP_BACKEND") == "pdp" {
 		backend = pdpBackendFromEnv(publicURL)
 	} else {
 		// Providers run in parallel. When the providers file exists it is the source; otherwise a single
-		// provider of each type comes from the PEP_OIDC_* / PEP_OIDF_RP_CONFIG_PATH / PEP_GEMIDP_* env vars.
-		var opts []proxy.ProviderOption
+		// provider of each type comes from the PEP_OIDC_* / PEP_OIDF_RP_CONFIG_PATH / PEP_IDPD_* env vars.
+		var set *providers.Set
 		if _, statErr := os.Stat(providersPath); statErr == nil { //nolint:gosec // the path comes from PEP_OPENID_PROVIDERS_PATH or the fixed default in the working directory, not a request
 			var err error
-			if opts, err = loadProviders(providersPath, publicURL); err != nil {
+			if set, err = loadProviders(providersPath, publicURL); err != nil {
 				log.Fatalf("load providers from %s: %v", providersPath, err) //nolint:gosec // start-up log of a path from the operator's environment, no request data
 			}
 			slog.Info("providers loaded", "path", providersPath)
 		} else if providersExplicit {
 			log.Fatalf("PEP_OPENID_PROVIDERS_PATH %q does not exist: %v", providersPath, statErr) //nolint:gosec // %q escapes a value from the operator's environment; start-up log, no request data
 		} else {
-			opts = providersFromEnv(publicURL)
+			set = providersFromEnv(publicURL)
 		}
-		if len(opts) == 0 {
-			log.Fatal("configure providers via openid-providers.yaml (PEP_OPENID_PROVIDERS_PATH), or PEP_OIDC_ISSUER / PEP_OIDF_RP_CONFIG_PATH / PEP_GEMIDP_CLIENT_ID")
+		if set.Empty() {
+			log.Fatal("configure providers via openid-providers.yaml (PEP_OPENID_PROVIDERS_PATH), or PEP_OIDC_ISSUER / PEP_OIDF_RP_CONFIG_PATH / PEP_IDPD_CLIENT_ID")
 		}
-		backend = proxy.NewProviderBackend(opts...)
+		backend = proxy.NewProviderBackend(set)
 	}
 
 	var snapshotTTL time.Duration

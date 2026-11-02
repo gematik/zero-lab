@@ -44,7 +44,7 @@ const fedMasterJwksRef = `{
 `
 
 // TestFederation fetches the IdP list, an entity statement, and its signed JWKS from a live OpenID
-// Federation master. It is env-guarded (like gemidp/smcb_test.go): set OIDF_FEDMASTER_URL — e.g. the
+// Federation master. It is env-guarded (like idpd/smcb_test.go): set OIDF_FEDMASTER_URL — e.g. the
 // gematik reference federation master, https://app-ref.federationmaster.de — to run it; without it
 // the test skips. The embedded fedMasterJwksRef is the reference master's public signing key.
 func TestFederation(t *testing.T) {

@@ -19,7 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-package gemidp_test
+package idpd_test
 
 import (
 	"crypto/ecdsa"
@@ -37,35 +37,35 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/gematik/zero-lab/go/brainpool"
-	"github.com/gematik/zero-lab/go/gemidp"
+	"github.com/gematik/zero-lab/go/idpd"
 	"github.com/gematik/zero-lab/go/pkcs12"
 )
 
-// TestGemIDP_SMCB authenticates against the gematik IDP-Dienst (reference env) using a real
+// TestIDPD_SMCB authenticates against the gematik IDP-Dienst (reference env) using a real
 // SMC-B identity loaded from a PKCS#12 file. It is env-guarded and skips unless an SMC-B P12 and
 // the IDP client config are provided. This exercises the full Brainpool path end to end,
 // including the jwx-free JOSE in brainpool/josebp (sign/verify/JWE/JWK).
 //
 // Required env:
 //
-//	GEMIDP_SMCB_P12           path to the SMC-B .p12/.pfx file
-//	GEMIDP_CLIENT_ID          registered client id at the IDP
-//	GEMIDP_BASE_URL           IDP base URL (reference)
-//	GEMIDP_REDIRECT_URI       client redirect URI
-//	GEMIDP_SCOPE              space-separated scopes
+//	IDPD_SMCB_P12           path to the SMC-B .p12/.pfx file
+//	IDPD_CLIENT_ID          registered client id at the IDP
+//	IDPD_BASE_URL           IDP base URL (reference)
+//	IDPD_REDIRECT_URI       client redirect URI
+//	IDPD_SCOPE              space-separated scopes
 //
 // Optional:
 //
-//	GEMIDP_SMCB_P12_PASSWORD  P12 password (default "00")
-func TestGemIDP_SMCB(t *testing.T) {
-	p12Path := os.Getenv("GEMIDP_SMCB_P12")
+//	IDPD_SMCB_P12_PASSWORD  P12 password (default "00")
+func TestIDPD_SMCB(t *testing.T) {
+	p12Path := os.Getenv("IDPD_SMCB_P12")
 	if p12Path == "" {
-		t.Skip("GEMIDP_SMCB_P12 not set — skipping SMC-B gematik IDP test")
+		t.Skip("IDPD_SMCB_P12 not set — skipping SMC-B gematik IDP test")
 	}
-	if os.Getenv("GEMIDP_CLIENT_ID") == "" {
-		t.Skip("GEMIDP_CLIENT_ID not set — skipping (IDP client config required)")
+	if os.Getenv("IDPD_CLIENT_ID") == "" {
+		t.Skip("IDPD_CLIENT_ID not set — skipping (IDP client config required)")
 	}
-	password := os.Getenv("GEMIDP_SMCB_P12_PASSWORD")
+	password := os.Getenv("IDPD_SMCB_P12_PASSWORD")
 	if password == "" {
 		password = "00"
 	}
@@ -77,16 +77,16 @@ func TestGemIDP_SMCB(t *testing.T) {
 	}
 	t.Logf("SMC-B AUT identity: subject=%q curve=%s", cert.Subject.String(), prk.Curve.Params().Name)
 
-	cfg := gemidp.ClientConfig{
+	cfg := idpd.ClientConfig{
 		UserAgent:       "zero-lab-testcase",
-		Environment:     gemidp.EnvironmentReference,
-		TrustBundlePath: os.Getenv("GEMIDP_TRUST_BUNDLE_PATH"),
-		BaseURL:         os.Getenv("GEMIDP_BASE_URL"),
-		ClientID:        os.Getenv("GEMIDP_CLIENT_ID"),
-		RedirectURI:     os.Getenv("GEMIDP_REDIRECT_URI"),
-		Scopes:          strings.Split(os.Getenv("GEMIDP_SCOPE"), " "),
+		Environment:     idpd.EnvironmentReference,
+		TrustBundlePath: os.Getenv("IDPD_TRUST_BUNDLE_PATH"),
+		BaseURL:         os.Getenv("IDPD_BASE_URL"),
+		ClientID:        os.Getenv("IDPD_CLIENT_ID"),
+		RedirectURI:     os.Getenv("IDPD_REDIRECT_URI"),
+		Scopes:          strings.Split(os.Getenv("IDPD_SCOPE"), " "),
 	}
-	client, err := gemidp.NewClientFromConfig(cfg)
+	client, err := idpd.NewClientFromConfig(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,10 +97,10 @@ func TestGemIDP_SMCB(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	authenticator, err := gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
-		Idp:        client.Idp,
+	authenticator, err := idpd.NewAuthenticator(idpd.AuthenticatorConfig{
+		IDP:        client.IDP,
 		Trust:      mustBundleTrust(t),
-		SignerFunc: gemidp.SignWithSoftkey(prk, cert),
+		SignerFunc: idpd.SignWithSoftkey(prk, cert),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -133,16 +133,16 @@ func TestGemIDP_SMCB(t *testing.T) {
 	})
 	t.Logf("\n%s", report)
 
-	reportPath := os.Getenv("GEMIDP_SMCB_REPORT")
+	reportPath := os.Getenv("IDPD_SMCB_REPORT")
 	if reportPath == "" {
 		reportPath = filepath.Join("test-reports", fmt.Sprintf("smcb-%s.md", time.Now().UTC().Format("20060102-150405")))
 	}
 	if dir := filepath.Dir(reportPath); dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0o750); err != nil { //nolint:gosec // the gated test's operator names this path in GEMIDP_SMCB_REPORT
+		if err := os.MkdirAll(dir, 0o750); err != nil { //nolint:gosec // the gated test's operator names this path in IDPD_SMCB_REPORT
 			t.Logf("warning: failed to create report dir %s: %v", dir, err)
 		}
 	}
-	if err := os.WriteFile(reportPath, []byte(report), 0o600); err != nil { //nolint:gosec // the gated test's operator names this path in GEMIDP_SMCB_REPORT
+	if err := os.WriteFile(reportPath, []byte(report), 0o600); err != nil { //nolint:gosec // the gated test's operator names this path in IDPD_SMCB_REPORT
 		t.Logf("warning: failed to write report to %s: %v", reportPath, err)
 	} else {
 		t.Logf("test report written to %s", reportPath)
@@ -163,7 +163,7 @@ type smcbReportData struct {
 // buildSMCBReport renders a human-reviewable Markdown report of the SMC-B authentication run.
 func buildSMCBReport(d smcbReportData) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# gemidp SMC-B authentication — test report\n\n")
+	fmt.Fprintf(&b, "# idpd SMC-B authentication — test report\n\n")
 	fmt.Fprintf(&b, "_Generated %s_\n\n", time.Now().UTC().Format(time.RFC3339))
 
 	fmt.Fprintf(&b, "## SMC-B identity (PKCS#12)\n\n")
@@ -253,7 +253,7 @@ func formatClaimValue(key string, v any) string {
 // plus its matching Brainpool private key. The repo's brainpool parsers are used because stdlib
 // crypto/x509 does not know the Brainpool curves.
 func loadSMCBAuthIdentity(path, password string) (*ecdsa.PrivateKey, *x509.Certificate, error) {
-	data, err := os.ReadFile(path) //nolint:gosec // the gated test's operator names this file in GEMIDP_SMCB_P12
+	data, err := os.ReadFile(path) //nolint:gosec // the gated test's operator names this file in IDPD_SMCB_P12
 	if err != nil {
 		return nil, nil, err
 	}

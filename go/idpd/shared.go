@@ -19,7 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-package gemidp
+package idpd
 
 import (
 	"context"
@@ -67,15 +67,15 @@ const (
 	EnvironmentProduction
 )
 
-// Idp names an instance of the IDP-Dienst: its environment and base URL.
-type Idp struct {
+// IDP names an instance of the IDP-Dienst: its environment and base URL.
+type IDP struct {
 	environment Environment
 	baseURL     string
 }
 
-// NewIdp names the instance of the IDP-Dienst at baseURL.
-func NewIdp(env Environment, baseURL string) Idp {
-	return Idp{
+// NewIDP names the instance of the IDP-Dienst at baseURL.
+func NewIDP(env Environment, baseURL string) IDP {
+	return IDP{
 		environment: env,
 		baseURL:     baseURL,
 	}
@@ -83,20 +83,20 @@ func NewIdp(env Environment, baseURL string) Idp {
 
 // The well-known instances of the IDP-Dienst.
 var (
-	IdpProduction = NewIdp(EnvironmentProduction, "https://idp.app.ti-dienste.de")
-	IdpReference  = NewIdp(EnvironmentReference, "https://idp-ref.app.ti-dienste.de")
-	IdpTest       = NewIdp(EnvironmentTest, "https://idp-test.app.ti-dienste.de")
+	IDPProduction = NewIDP(EnvironmentProduction, "https://idp.app.ti-dienste.de")
+	IDPReference  = NewIDP(EnvironmentReference, "https://idp-ref.app.ti-dienste.de")
+	IDPTest       = NewIDP(EnvironmentTest, "https://idp-test.app.ti-dienste.de")
 )
 
-// GetIdpByEnvironment returns the well-known instance of env.
-func GetIdpByEnvironment(env Environment) Idp {
+// GetIDPByEnvironment returns the well-known instance of env.
+func GetIDPByEnvironment(env Environment) IDP {
 	switch env {
 	case EnvironmentProduction:
-		return IdpProduction
+		return IDPProduction
 	case EnvironmentReference:
-		return IdpReference
+		return IDPReference
 	default:
-		return IdpTest
+		return IDPTest
 	}
 }
 

@@ -20,7 +20,7 @@ zero-lab holds libraries and commands for experimenting with Zero Trust building
 | Go | [`epa`](./go/epa) | ePA client and the `zero-epa` command |
 | Go | [`pdp`](./go/pdp), [`pep`](./go/pep), [`zaddy`](./go/zaddy) | Policy decision point (`zero-pdp`) and policy enforcement, including a Caddy-based PEP (`zero-caddy`) |
 | Go | [`brainpool`](./go/brainpool), [`pkcs12`](./go/pkcs12) | Brainpool elliptic curves (RFC 5639) with X.509 and JOSE, PKCS#12 (RFC 7292) |
-| Go | [`gemidp`](./go/gemidp), [`oauth`](./go/oauth), [`oidf`](./go/oidf), [`dpop`](./go/dpop), [`nonce`](./go/nonce), [`kv`](./go/kv) | IDP, OAuth, OpenID Federation, DPoP and supporting libraries |
+| Go | [`idpd`](./go/idpd), [`oauth`](./go/oauth), [`oidf`](./go/oidf), [`dpop`](./go/dpop), [`nonce`](./go/nonce), [`kv`](./go/kv) | IDP, OAuth, OpenID Federation, DPoP and supporting libraries |
 | Go | [`metsubushi`](./go/metsubushi) | Pod smoke-test endpoint |
 
 ### Release Notes

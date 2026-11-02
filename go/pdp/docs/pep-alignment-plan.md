@@ -10,13 +10,13 @@
 
 ## Global Constraints
 
-- Module path: `github.com/gematik/zero-lab/go`. Provider leaf types reused verbatim: `oauth/oidc.Config`, `gemidp.ClientConfig`, `oidf.RelyingPartyConfig`.
+- Module path: `github.com/gematik/zero-lab/go`. Provider leaf types reused verbatim: `oauth/oidc.Config`, `idpd.ClientConfig`, `oidf.RelyingPartyConfig`.
 - Secrets come from **`*_PATH` files only** — never env values, never stored in `kv`.
-- `openid-providers.yaml` schema is **flat**: top-level `oidc:` / `gemidp:` / `oidf:` (identical to pep's `openidProviders` struct).
+- `openid-providers.yaml` schema is **flat**: top-level `oidc:` / `idpd:` / `oidf:` (identical to pep's `openidProviders` struct).
 - PDP config file: `pdp.yaml` via `--config-file`/`-f` / `PDP_CONFIG_FILE` (default `pdp.yaml`); workdir via `--workdir`/`-w` / `PDP_WORKDIR`. The PDP uses `gopkg.in/yaml.v2` (not v3).
 - Tests: table-driven, `httptest`, in-memory store via `kv.NewMemory()`; call handler methods directly.
 - The mock IdP is **only** reachable when `NonProdMode` is true; it must be impossible to enable under a prod config.
-- Module graph unchanged: `go list -deps ./zaddy/cmd/zero-caddy | grep -c 'gematik/zero-lab/go/\(oidf\|gemidp\|kv\|oauth\|pep/proxy\)'` stays `0`.
+- Module graph unchanged: `go list -deps ./zaddy/cmd/zero-caddy | grep -c 'gematik/zero-lab/go/\(oidf\|idpd\|kv\|oauth\|pep/proxy\)'` stays `0`.
 - Commits: conventional style, no AI attribution. Branch: `feat/pdp-pep-alignment`.
 
 ## File Structure
@@ -44,7 +44,7 @@
 - Modify: `pdp/pdp.go` (`LoadConfigFile`)
 
 **Interfaces:**
-- Produces: `func LoadOpenidProviders(path string) (oidcs []oidc.Config, gemidps []gemidp.ClientConfig, rp *oidf.RelyingPartyConfig, err error)` and the package-level default `const defaultOpenidProvidersFile = "openid-providers.yaml"`.
+- Produces: `func LoadOpenidProviders(path string) (oidcs []oidc.Config, idpds []idpd.ClientConfig, rp *oidf.RelyingPartyConfig, err error)` and the package-level default `const defaultOpenidProvidersFile = "openid-providers.yaml"`.
 - Consumes (in `pdp.go`): assigns into `cfg.AuthzServerConfig.OidcProviders`, `.GematikIdp`, `.OidfRelyingPartyConfig`.
 
 - [ ] **Step 1: Write the failing test**
@@ -68,7 +68,7 @@ oidc:
   - issuer: https://op.example.com
     client_id: cid
     name: Example
-gemidp:
+idpd:
   - client_id: gid
     environment: ref
 oidf:
@@ -78,15 +78,15 @@ oidf:
 	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	oidcs, gemidps, rp, err := LoadOpenidProviders(path)
+	oidcs, idpds, rp, err := LoadOpenidProviders(path)
 	if err != nil {
 		t.Fatalf("LoadOpenidProviders: %v", err)
 	}
 	if len(oidcs) != 1 || oidcs[0].Issuer != "https://op.example.com" {
 		t.Errorf("oidc = %+v", oidcs)
 	}
-	if len(gemidps) != 1 || gemidps[0].ClientID != "gid" {
-		t.Errorf("gemidp = %+v", gemidps)
+	if len(idpds) != 1 || idpds[0].ClientID != "gid" {
+		t.Errorf("idpd = %+v", idpds)
 	}
 	if rp == nil || rp.Subject != "https://rp.example.com" {
 		t.Errorf("oidf = %+v", rp)
@@ -118,7 +118,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/gematik/zero-lab/go/gemidp"
+	"github.com/gematik/zero-lab/go/idpd"
 	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
 	"gopkg.in/yaml.v2"
@@ -130,14 +130,14 @@ const defaultOpenidProvidersFile = "openid-providers.yaml"
 // provider's package config type. The PDP and pep share the file format without a shared package.
 type openidProviders struct {
 	OIDC   []oidc.Config            `yaml:"oidc"`
-	Gemidp []gemidp.ClientConfig    `yaml:"gemidp"`
+	IDPD []idpd.ClientConfig    `yaml:"idpd"`
 	OIDF   *oidf.RelyingPartyConfig `yaml:"oidf"`
 }
 
 // LoadOpenidProviders reads the flat openid-providers.yaml. ${VAR} placeholders expand from the
 // environment. Relative paths inside the OIDF config resolve against the file's directory (set by the caller
 // via OidfRelyingPartyConfig.BaseDir).
-func LoadOpenidProviders(path string) ([]oidc.Config, []gemidp.ClientConfig, *oidf.RelyingPartyConfig, error) {
+func LoadOpenidProviders(path string) ([]oidc.Config, []idpd.ClientConfig, *oidf.RelyingPartyConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("read providers %q: %w", path, err)
@@ -146,7 +146,7 @@ func LoadOpenidProviders(path string) ([]oidc.Config, []gemidp.ClientConfig, *oi
 	if err := yaml.Unmarshal([]byte(os.ExpandEnv(string(data))), &op); err != nil {
 		return nil, nil, nil, fmt.Errorf("parse providers %q: %w", path, err)
 	}
-	return op.OIDC, op.Gemidp, op.OIDF, nil
+	return op.OIDC, op.IDPD, op.OIDF, nil
 }
 ```
 
@@ -162,18 +162,18 @@ In `pdp/pdp.go`, after `cfg.AuthzServerConfig.BaseDir = cfg.BaseDir` (currently 
 ```go
 	// Providers come from a shared openid-providers.yaml (same format pep uses). Path from
 	// PDP_OPENID_PROVIDERS_PATH, else openid-providers.yaml next to the config file. When present it is the
-	// source of OIDC/gemidp/OIDF providers; absent, any inline providers in pdp.yaml are kept (back-compat).
+	// source of OIDC/idpd/OIDF providers; absent, any inline providers in pdp.yaml are kept (back-compat).
 	providersPath := os.Getenv("PDP_OPENID_PROVIDERS_PATH")
 	if providersPath == "" {
 		providersPath = filepath.Join(cfg.BaseDir, defaultOpenidProvidersFile)
 	}
 	if _, statErr := os.Stat(providersPath); statErr == nil {
-		oidcs, gemidps, rp, err := LoadOpenidProviders(providersPath)
+		oidcs, idpds, rp, err := LoadOpenidProviders(providersPath)
 		if err != nil {
 			return nil, err
 		}
 		cfg.AuthzServerConfig.OidcProviders = oidcs
-		cfg.AuthzServerConfig.GematikIdp = gemidps
+		cfg.AuthzServerConfig.GematikIdp = idpds
 		if rp != nil {
 			rp.BaseDir = filepath.Dir(providersPath)
 			cfg.AuthzServerConfig.OidfRelyingPartyConfig = rp
@@ -455,7 +455,7 @@ Append a `zero-pdp` service to `pdp/docker-compose.yaml` (keep the existing `pos
 Create `pdp/cmd/zero-pdp/openid-providers.example.yaml`:
 
 ```yaml
-# Providers the PDP authenticates users against. Shared flat format with pep (oidc / gemidp / oidf).
+# Providers the PDP authenticates users against. Shared flat format with pep (oidc / idpd / oidf).
 # In NonProdMode with mock_idp set (see pdp.yaml), the PDP skips these and auto-issues a canned identity.
 oidc:
   - issuer: https://op.example.com
@@ -492,7 +492,7 @@ Create `pdp/cmd/zero-pdp/CONFIG.md` mirroring pep's split (providers file vs dom
 
 Three sources:
 - `openid-providers.yaml` — the IdPs the PDP authenticates against (shared flat format with pep:
-  `oidc` / `gemidp` / `oidf`). Loaded from `PDP_OPENID_PROVIDERS_PATH` (default `openid-providers.yaml`).
+  `oidc` / `idpd` / `oidf`). Loaded from `PDP_OPENID_PROVIDERS_PATH` (default `openid-providers.yaml`).
 - `pdp.yaml` — the PDP domain config (issuer, scopes, clients, products, policies, endpoints, `non_prod_mode`,
   `mock_idp`). Selected with `-f` / `PDP_CONFIG_FILE` (default `pdp.yaml`).
 - Environment — runtime + secrets via `*_PATH` files.
@@ -531,7 +531,7 @@ Expected: builds clean; `ok` for `./pdp/` and `./pdp/authzserver/`.
 
 - [ ] **Step 2: Module-graph guard**
 
-Run: `go list -deps ./zaddy/cmd/zero-caddy | grep -c 'gematik/zero-lab/go/\(oidf\|gemidp\|kv\|oauth\|pep/proxy\)'`
+Run: `go list -deps ./zaddy/cmd/zero-caddy | grep -c 'gematik/zero-lab/go/\(oidf\|idpd\|kv\|oauth\|pep/proxy\)'`
 Expected: `0`.
 
 - [ ] **Step 3: HITL (human) — airgapped token via the mock IdP**

@@ -14,7 +14,7 @@ Go keeps servers and relying parties, their libraries and the ePA client
               │  flags, env, files, secrets (*_PATH), logger, servers, signals
  servers    pdp/authzserver  pep/proxy  epa/vau                     (http.Handler)
               │
- libraries  oauth  oidf  dpop  nonce  gemidp  kv  tipki  brainpool  pkcs12  (no ambient I/O)
+ libraries  oauth  oidf  idpd  dpop  nonce  kv  tipki  brainpool  pkcs12  (no ambient I/O)
 ```
 
 - `main` and `cmd/` own the process: they read flags, environment and files, build the

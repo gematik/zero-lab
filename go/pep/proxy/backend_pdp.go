@@ -37,6 +37,8 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/gematik/zero-lab/go/oauth"
+
 	"github.com/lestrrat-go/jwx/v3/jwa"
 	"github.com/lestrrat-go/jwx/v3/jwk"
 	"github.com/lestrrat-go/jwx/v3/jwt"
@@ -66,8 +68,6 @@ func (b *pdpBackend) injectDPoP(out *http.Request, sess *Session, token string) 
 	out.Header.Set(dpop.HeaderName, proof)
 	return nil
 }
-
-const clientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" //nolint:gosec // an OAuth client assertion type URN (RFC 7523), not a credential
 
 // PDPConfig configures the pdpBackend: pep as a confidential OAuth client of the PDP (the gematik AS).
 type PDPConfig struct {
@@ -330,7 +330,7 @@ func (b *pdpBackend) pushAuthorizationRequest(ctx context.Context, sess *Session
 	}
 	form := url.Values{}
 	maps.Copy(form, params)
-	form.Set("client_assertion_type", clientAssertionTypeJWTBearer)
+	form.Set("client_assertion_type", oauth.ClientAssertionTypeJWTBearer)
 	form.Set("client_assertion", assertion)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.meta.PushedAuthorizationRequestEndpoint, strings.NewReader(form.Encode())) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host
@@ -446,7 +446,7 @@ func (b *pdpBackend) tokenRequest(ctx context.Context, sess *Session, form url.V
 		return nil, err
 	}
 	form.Set("client_id", b.cfg.ClientID)
-	form.Set("client_assertion_type", clientAssertionTypeJWTBearer)
+	form.Set("client_assertion_type", oauth.ClientAssertionTypeJWTBearer)
 	form.Set("client_assertion", assertion)
 
 	do := func(nonce string) (*http.Response, error) {
@@ -513,7 +513,7 @@ func (b *pdpBackend) introspectIdentity(ctx context.Context, sess *Session, acce
 	}
 	form := url.Values{
 		"token":                 {accessToken},
-		"client_assertion_type": {clientAssertionTypeJWTBearer},
+		"client_assertion_type": {oauth.ClientAssertionTypeJWTBearer},
 		"client_assertion":      {assertion},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.meta.IntrospectionEndpoint, strings.NewReader(form.Encode())) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host

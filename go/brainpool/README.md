@@ -179,7 +179,7 @@ brainpool/                 Curves, certificate/key parsing, SignFunc, ECDH, Gene
   generated fields (`Element` mod p, `Scalar` mod n): four generated files, never
   hand-edited, checksums in `fiat/PROVENANCE.md`.
 - **josebp:** JWS/JWE/JWK over these curves for the IDP-Dienst; its exported surface is
-  what `gemidp` calls, helpers are unexported.
+  what `idpd` calls, helpers are unexported.
 
 ## Development
 
@@ -192,7 +192,7 @@ of 2026-11-02). The repository's rules apply ([docs](../../docs/README.md)); in 
   library.
 - Every key that arrives from outside (certificate, JWK, ECDH peer) passes
   `ValidatePublicKey` before any arithmetic.
-- Exported only if a consumer calls it (in this repository: `gemidp`, and `josebp`
+- Exported only if a consumer calls it (in this repository: `idpd`, and `josebp`
   itself). Breaking changes ship as a minor bump; in-repo consumers pin explicitly.
 - Tests use the standard `testing` package; the differential tests in `internal/bp256`
   use `brainpool.P256r1()` (big.Int) as the oracle; Wycheproof vectors live in

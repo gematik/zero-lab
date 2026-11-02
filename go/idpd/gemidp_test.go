@@ -19,7 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-package gemidp_test
+package idpd_test
 
 import (
 	"fmt"
@@ -31,7 +31,7 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"github.com/gematik/zero-lab/go/gemidp"
+	"github.com/gematik/zero-lab/go/idpd"
 )
 
 // sample keys and certificates from https://github.com/gematik/erp-e2e-testsuite
@@ -63,23 +63,23 @@ AwIDSAAwRQIgWlSdCIw6Z6alM+dGnA4vfkxDoViIqJMw/PH4U0VUmNsCIQCcX9UW
 JnSDBKGp4nZTcuozRPsJK47cBkil0x6Zrkoxkg==
 -----END CERTIFICATE-----`)
 
-func TestGemIDP(t *testing.T) {
-	if os.Getenv("GEMIDP_CLIENT_ID") == "" {
-		t.Skip("GEMIDP_CLIENT_ID not set — skipping gematik IDP test")
+func TestIDPD(t *testing.T) {
+	if os.Getenv("IDPD_CLIENT_ID") == "" {
+		t.Skip("IDPD_CLIENT_ID not set — skipping gematik IDP test")
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})))
-	t.Log("TestGemIDP")
-	cfg := gemidp.ClientConfig{
+	t.Log("TestIDPD")
+	cfg := idpd.ClientConfig{
 		UserAgent:       "zero-lab-testcase",
-		Environment:     gemidp.EnvironmentReference,
-		TrustBundlePath: os.Getenv("GEMIDP_TRUST_BUNDLE_PATH"),
-		BaseURL:         os.Getenv("GEMIDP_BASE_URL"),
-		ClientID:        os.Getenv("GEMIDP_CLIENT_ID"),
-		RedirectURI:     os.Getenv("GEMIDP_REDIRECT_URI"),
-		Scopes:          strings.Split(os.Getenv("GEMIDP_SCOPE"), " "),
+		Environment:     idpd.EnvironmentReference,
+		TrustBundlePath: os.Getenv("IDPD_TRUST_BUNDLE_PATH"),
+		BaseURL:         os.Getenv("IDPD_BASE_URL"),
+		ClientID:        os.Getenv("IDPD_CLIENT_ID"),
+		RedirectURI:     os.Getenv("IDPD_REDIRECT_URI"),
+		Scopes:          strings.Split(os.Getenv("IDPD_SCOPE"), " "),
 	}
 
-	client, err := gemidp.NewClientFromConfig(cfg)
+	client, err := idpd.NewClientFromConfig(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,10 +93,10 @@ func TestGemIDP(t *testing.T) {
 
 	slog.Info("Auth URL", "url", authURL)
 
-	authenticator, err := gemidp.NewAuthenticator(gemidp.AuthenticatorConfig{
-		Idp:        client.Idp,
+	authenticator, err := idpd.NewAuthenticator(idpd.AuthenticatorConfig{
+		IDP:        client.IDP,
 		Trust:      mustBundleTrust(t),
-		SignerFunc: gemidp.SignWithSoftkeyPEM(testKeyBytes, testCertBytes),
+		SignerFunc: idpd.SignWithSoftkeyPEM(testKeyBytes, testCertBytes),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -125,11 +125,11 @@ func TestGemIDP(t *testing.T) {
 	t.Log(claims)
 }
 
-func mustBundleTrust(t *testing.T) *gemidp.BundleTrust {
+func mustBundleTrust(t *testing.T) *idpd.BundleTrust {
 	t.Helper()
-	trust, err := gemidp.NewBundleTrust(gemidp.EnvironmentReference, os.Getenv("GEMIDP_TRUST_BUNDLE_PATH"), http.DefaultClient)
+	trust, err := idpd.NewBundleTrust(idpd.EnvironmentReference, os.Getenv("IDPD_TRUST_BUNDLE_PATH"), http.DefaultClient)
 	if err != nil {
-		t.Fatalf("GEMIDP_TRUST_BUNDLE_PATH: %v", err)
+		t.Fatalf("IDPD_TRUST_BUNDLE_PATH: %v", err)
 	}
 	return trust
 }

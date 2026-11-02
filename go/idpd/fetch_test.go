@@ -19,7 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-package gemidp
+package idpd
 
 import (
 	"context"
@@ -311,10 +311,10 @@ func TestIDPV007ExactlyOneSourceIsConfigured(t *testing.T) {
 	}
 }
 
-// The live reference environment, with nothing mounted. Gated: `just gemidp-trust-fetch-test`.
+// The live reference environment, with nothing mounted. Gated: `just idpd-trust-fetch-test`.
 func TestIDPV007TheLiveReferenceEnvironment(t *testing.T) {
-	if os.Getenv("GEMIDP_TRUST_FETCH") == "" {
-		t.Skip("GEMIDP_TRUST_FETCH not set: needs a route to gematik's hosts; proves the download and both IDP certificates live")
+	if os.Getenv("IDPD_TRUST_FETCH") == "" {
+		t.Skip("IDPD_TRUST_FETCH not set: needs a route to gematik's hosts; proves the download and both IDP certificates live")
 	}
 	trust, err := NewFetchingTrust(EnvironmentReference, http.DefaultClient)
 	if err != nil {

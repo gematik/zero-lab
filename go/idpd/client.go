@@ -19,9 +19,9 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-// Package gemidp is a client of the gematik IDP-Dienst: Client is the relying party of its authorization
+// Package idpd is a client of the gematik IDP-Dienst: Client is the relying party of its authorization
 // code flow, Authenticator answers its challenge with a signature from a smart card or a software key.
-package gemidp
+package idpd
 
 import (
 	"crypto/rand"
@@ -100,7 +100,7 @@ type ClientConfig struct {
 type Client struct {
 	config      ClientConfig
 	Environment Environment
-	Idp         Idp
+	IDP         IDP
 	Metadata    Metadata
 	baseURL     string
 	httpClient  *http.Client
@@ -132,11 +132,11 @@ func NewClientFromConfig(config ClientConfig) (*Client, error) {
 		config.UserAgent = defaultUserAgent
 	}
 
-	var idp Idp
+	var idp IDP
 	if config.BaseURL != "" {
-		idp = NewIdp(config.Environment, config.BaseURL)
+		idp = NewIDP(config.Environment, config.BaseURL)
 	} else {
-		idp = GetIdpByEnvironment(config.Environment)
+		idp = GetIDPByEnvironment(config.Environment)
 	}
 
 	baseURL := idp.baseURL
@@ -167,7 +167,7 @@ func NewClientFromConfig(config ClientConfig) (*Client, error) {
 	return &Client{
 		config:      config,
 		Environment: config.Environment,
-		Idp:         idp,
+		IDP:         idp,
 		Metadata:    *metadata,
 		baseURL:     baseURL,
 		httpClient:  httpClient,
