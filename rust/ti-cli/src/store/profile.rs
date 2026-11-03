@@ -26,7 +26,6 @@
 //! sees any of it.
 
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use ti_store::store::profile::{self, Inputs, Platform, Profile};
 use ti_store::store::registry::{self, Database, NamespaceSpec};
@@ -359,11 +358,7 @@ fn move_aside(path: &Path) -> Result<PathBuf, String> {
 
 /// The current time in whole seconds.
 pub fn now() -> Timestamp {
-    Timestamp(
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_or(0, |d| d.as_secs()),
-    )
+    crate::now()
 }
 
 fn io(e: &std::io::Error) -> StoreError {

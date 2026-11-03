@@ -36,6 +36,9 @@ mod cli;
 mod commands;
 mod connector;
 mod error;
+// Public for the fuzz targets only; not an API of this crate.
+#[doc(hidden)]
+pub mod files;
 mod http;
 mod identity;
 mod input;
@@ -43,6 +46,9 @@ mod net;
 mod output;
 mod paths;
 mod peer;
+// Public for the fuzz targets only; not an API of this crate.
+#[doc(hidden)]
+pub mod profile;
 mod prompt;
 // Public for the spec/store interoperability driver (examples/store-interop.rs) only;
 // not an API of this crate.
@@ -57,6 +63,15 @@ use std::process::ExitCode;
 use clap::{CommandFactory, FromArgMatches};
 
 pub use error::Exit;
+
+/// The current time in whole seconds.
+pub(crate) fn now() -> ti_types::Timestamp {
+    ti_types::Timestamp(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs()),
+    )
+}
 
 /// The executable's name: everything the user sees (help, user agent, diagnostics, the
 /// agent guide) takes it from here; it must match the `[[bin]]` name in Cargo.toml.

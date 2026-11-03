@@ -21,8 +21,8 @@
  * find details in the "Readme" file.
  */
 
-//! Where versions of ti before the shared store kept their state. The store's own paths
-//! are spec/store's (STORE-092), resolved in [`crate::store::profile`].
+//! The platform's per-user state and cache homes, and where versions of ti before the
+//! shared store kept their state.
 
 use std::path::PathBuf;
 
@@ -35,7 +35,17 @@ const TOOL: &str = "ti";
 /// Where versions before the store kept TSL state and comfort IDs: read once, to move
 /// them into the profile's state.
 pub fn legacy_state_dir() -> Result<PathBuf, CliError> {
-    default_state_base().map(|base| base.join(GROUP).join(TOOL))
+    state_home().map(|base| base.join(GROUP).join(TOOL))
+}
+
+/// The per-user home for state files; the tool's own folder is `telematik/ti` below it.
+pub fn state_home() -> Result<PathBuf, CliError> {
+    default_state_base()
+}
+
+/// The per-user home for cache files; the tool's own folder is `telematik/ti` below it.
+pub fn cache_home() -> Result<PathBuf, CliError> {
+    default_cache_base()
 }
 
 #[cfg(windows)]
@@ -62,6 +72,19 @@ fn default_cache_base() -> Result<PathBuf, CliError> {
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
         .ok_or(CliError::CacheDir("LOCALAPPDATA is not set"))
+}
+
+#[cfg(not(windows))]
+fn default_cache_base() -> Result<PathBuf, CliError> {
+    if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from)
+        && xdg.is_absolute()
+    {
+        return Ok(xdg);
+    }
+    std::env::home_dir()
+        .filter(|home| home.is_absolute())
+        .map(|home| home.join(".cache"))
+        .ok_or(CliError::CacheDir("no home directory"))
 }
 
 #[cfg(test)]
