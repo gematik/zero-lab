@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Module path: `github.com/gematik/zero-lab/go`. Provider leaf types reused verbatim: `oauth/oidc.Config`, `idpd.ClientConfig`, `oidf.RelyingPartyConfig`.
+- Module path: `github.com/gematik/zero-lab/go`. Provider leaf types reused verbatim: `openid.Config`, `idpd.ClientConfig`, `oidf.RelyingPartyConfig`.
 - Secrets come from **`*_PATH` files only** — never env values, never stored in `kv`.
 - `openid-providers.yaml` schema is **flat**: top-level `oidc:` / `idpd:` / `oidf:` (identical to pep's `openidProviders` struct).
 - PDP config file: `pdp.yaml` via `--config-file`/`-f` / `PDP_CONFIG_FILE` (default `pdp.yaml`); workdir via `--workdir`/`-w` / `PDP_WORKDIR`. The PDP uses `gopkg.in/yaml.v2` (not v3).
@@ -119,7 +119,7 @@ import (
 	"os"
 
 	"github.com/gematik/zero-lab/go/idpd"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 	"github.com/gematik/zero-lab/go/oidf"
 	"gopkg.in/yaml.v2"
 )

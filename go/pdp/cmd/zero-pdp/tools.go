@@ -33,7 +33,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
 )
 
@@ -74,7 +74,7 @@ func runJose(opts *options, args []string) error {
 		if err != nil {
 			return err
 		}
-		key, err := oidc.ParseKey(data)
+		key, err := openid.ParseKey(data)
 		if err != nil {
 			return err
 		}
@@ -88,7 +88,7 @@ func runJose(opts *options, args []string) error {
 		if err != nil {
 			return err
 		}
-		set, err := oidc.ParseKeySet(data)
+		set, err := openid.ParseKeySet(data)
 		if err != nil {
 			return err
 		}

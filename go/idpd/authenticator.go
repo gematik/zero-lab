@@ -39,7 +39,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/brainpool/josebp"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // challengeSkew is the clock skew tolerated on a challenge's time claims, as in ti-idpd's profile.
@@ -210,7 +210,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	if challengePayload.Exp == 0 {
 		return nil, errors.New("challenge without exp")
 	}
-	if err := oidc.ValidateLifetime(token.PayloadJSON, time.Now(), challengeSkew); err != nil {
+	if err := openid.ValidateLifetime(token.PayloadJSON, time.Now(), challengeSkew); err != nil {
 		return nil, fmt.Errorf("challenge: %w", err)
 	}
 

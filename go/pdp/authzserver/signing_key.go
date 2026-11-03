@@ -36,7 +36,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // es256SignatureOctets is the size of R and of S in a JWS ES256 signature (RFC 7518 Section 3.4).
@@ -63,7 +63,7 @@ func (c *Config) LoadSigningKey() (*SigningKey, error) {
 		return nil, fmt.Errorf("read signing key: %w", err)
 	}
 	defer clear(raw)
-	key, err := oidc.ParseKey(raw)
+	key, err := openid.ParseKey(raw)
 	if err != nil {
 		return nil, fmt.Errorf("parse signing key %s: %w", filename, err)
 	}

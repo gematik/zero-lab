@@ -19,7 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-package oidc
+package openid
 
 import (
 	"context"
@@ -29,8 +29,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-
-	"github.com/gematik/zero-lab/go/oauth"
 )
 
 // maxResponseBytes bounds what a provider can make a relying party read.
@@ -45,8 +43,8 @@ func AuthorizationQuery(clientID, redirectURI string, scopes []string, login Log
 	query.Set("scope", strings.Join(scopes, " "))
 	query.Set("state", login.State)
 	query.Set("nonce", login.Nonce)
-	query.Set("code_challenge", oauth.S256Challenge(login.Verifier))
-	query.Set("code_challenge_method", oauth.CodeChallengeMethodS256)
+	query.Set("code_challenge", S256Challenge(login.Verifier))
+	query.Set("code_challenge_method", CodeChallengeMethodS256)
 	return query
 }
 

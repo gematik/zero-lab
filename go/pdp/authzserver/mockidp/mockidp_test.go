@@ -35,26 +35,25 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
-	"github.com/gematik/zero-lab/go/oauth"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 type hostFunc struct {
 	issuer, opCallback string
-	add                func(oidc.Client)
+	add                func(openid.Client)
 }
 
-func (h hostFunc) IssuerBaseURL() string     { return h.issuer }
-func (h hostFunc) OPCallbackURL() string     { return h.opCallback }
-func (h hostFunc) AddProvider(c oidc.Client) { h.add(c) }
+func (h hostFunc) IssuerBaseURL() string       { return h.issuer }
+func (h hostFunc) OPCallbackURL() string       { return h.opCallback }
+func (h hostFunc) AddProvider(c openid.Client) { h.add(c) }
 
 func TestMockOPRunsAuthCodeFlow(t *testing.T) {
 	mux := http.NewServeMux()
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	var captured oidc.Client
-	host := hostFunc{issuer: srv.URL, opCallback: srv.URL + "/op-callback", add: func(c oidc.Client) { captured = c }}
+	var captured openid.Client
+	host := hostFunc{issuer: srv.URL, opCallback: srv.URL + "/op-callback", add: func(c openid.Client) { captured = c }}
 	if err := Register(host, mux, Identity{Subject: "X110000001", Claims: map[string]any{"name": "Test User"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -65,8 +64,8 @@ func TestMockOPRunsAuthCodeFlow(t *testing.T) {
 		t.Fatalf("issuer = %q", captured.Issuer())
 	}
 
-	verifier := oauth.GenerateVerifier()
-	authURL, err := captured.AuthenticationURL(t.Context(), oidc.Login{State: "st-1", Nonce: "nonce-1", Verifier: verifier})
+	verifier := openid.GenerateVerifier()
+	authURL, err := captured.AuthenticationURL(t.Context(), openid.Login{State: "st-1", Nonce: "nonce-1", Verifier: verifier})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +94,7 @@ func TestMockOPRunsAuthCodeFlow(t *testing.T) {
 	}
 
 	// This is exactly what OPCallbackEndpoint does: real /token round-trip + id_token validation.
-	tr, err := captured.Exchange(t.Context(), oidc.Login{Nonce: "nonce-1", Verifier: verifier}, code)
+	tr, err := captured.Exchange(t.Context(), openid.Login{Nonce: "nonce-1", Verifier: verifier}, code)
 	if err != nil {
 		t.Fatalf("Exchange: %v", err)
 	}
@@ -172,7 +171,7 @@ func TestMockClientRefusesAnIDTokenThatDoesNotHold(t *testing.T) {
 			}))
 			defer srv.Close()
 			client := &mockClient{issuer: issuer, clientID: clientID, keys: keys, http: rewriteTo(srv)}
-			if _, err := client.Exchange(t.Context(), oidc.Login{Nonce: "n", Verifier: "verifier"}, "code"); (err == nil) != c.ok {
+			if _, err := client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: "verifier"}, "code"); (err == nil) != c.ok {
 				t.Fatalf("err = %v, want accepted %v", err, c.ok)
 			}
 		})
@@ -207,7 +206,7 @@ func TestMockOPRefusesARedirectURIOrClientItDidNotRegister(t *testing.T) {
 	mux := http.NewServeMux()
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
-	host := hostFunc{issuer: srv.URL, opCallback: srv.URL + "/op-callback", add: func(oidc.Client) {}}
+	host := hostFunc{issuer: srv.URL, opCallback: srv.URL + "/op-callback", add: func(openid.Client) {}}
 	if err := Register(host, mux, Identity{Subject: "X110000001"}); err != nil {
 		t.Fatal(err)
 	}

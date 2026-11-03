@@ -16,7 +16,7 @@ kinds at the top level, each reusing that provider's own package config type. An
 references by path, so the two stay in sync:
 
 ```yaml
-oidc:   [ <oauth/oidc.Config>, … ]      # several direct OIDC providers
+oidc:   [ <openid.Config>, … ]      # several direct OIDC providers
 idpd:   [ <idpd.ClientConfig>, … ]      # several gematik IDP-Dienst clients
 oidf:   <oidf.RelyingPartyConfig>       # one OIDF relying party (brings its federation IdPs)
 ```

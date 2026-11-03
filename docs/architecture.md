@@ -8,7 +8,7 @@ zero-lab's TI building blocks: one core that runs unchanged in a CLI, a server, 
 an air-gapped installation and, through bindings, in other hosts.
 
 **Go keeps what Go is best at:** servers and relying parties (`pdp`, `pep`, `zaddy`),
-their libraries (`oauth`, `oidf`, `dpop`, `nonce`, `kv`, `idpd`), and the ePA
+their libraries (`openid`, `oidf`, `dpop`, `nonce`, `kv`, `idpd`), and the ePA
 client (`epa`).
 
 **Other languages arrive as bindings** to the Rust core, and only on client platforms:

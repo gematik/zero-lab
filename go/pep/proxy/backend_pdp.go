@@ -38,7 +38,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/gematik/zero-lab/go/oauth"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 var (
@@ -331,8 +331,8 @@ func (b *pdpBackend) StartLogin(ctx context.Context, sess *Session, idpIss, scop
 	sess.DPoPKeyJWK = jwkJSON
 	sess.State = uuid.NewV4().String()
 	sess.Nonce = uuid.NewV4().String()
-	sess.CodeVerifier = oauth.GenerateVerifier()
-	sess.CodeChallengeMethod = oauth.CodeChallengeMethodS256
+	sess.CodeVerifier = openid.GenerateVerifier()
+	sess.CodeChallengeMethod = openid.CodeChallengeMethodS256
 	if scope == "" {
 		scope = strings.Join(b.cfg.Scopes, " ")
 	}
@@ -345,8 +345,8 @@ func (b *pdpBackend) StartLogin(ctx context.Context, sess *Session, idpIss, scop
 		"state":                 {sess.State},
 		"nonce":                 {sess.Nonce},
 		"scope":                 {scope},
-		"code_challenge":        {oauth.S256Challenge(sess.CodeVerifier)},
-		"code_challenge_method": {oauth.CodeChallengeMethodS256},
+		"code_challenge":        {openid.S256Challenge(sess.CodeVerifier)},
+		"code_challenge_method": {openid.CodeChallengeMethodS256},
 	}
 	if idpIss != "" {
 		params.Set("idp_iss", idpIss)
@@ -395,7 +395,7 @@ func (b *pdpBackend) pushAuthorizationRequest(ctx context.Context, sess *Session
 	}
 	form := url.Values{}
 	maps.Copy(form, params)
-	form.Set("client_assertion_type", oauth.ClientAssertionTypeJWTBearer)
+	form.Set("client_assertion_type", openid.ClientAssertionTypeJWTBearer)
 	form.Set("client_assertion", assertion)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.meta.PushedAuthorizationRequestEndpoint, strings.NewReader(form.Encode())) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host
@@ -511,7 +511,7 @@ func (b *pdpBackend) tokenRequest(ctx context.Context, sess *Session, form url.V
 		return nil, err
 	}
 	form.Set("client_id", b.cfg.ClientID)
-	form.Set("client_assertion_type", oauth.ClientAssertionTypeJWTBearer)
+	form.Set("client_assertion_type", openid.ClientAssertionTypeJWTBearer)
 	form.Set("client_assertion", assertion)
 
 	do := func(nonce string) (*http.Response, error) {
@@ -574,7 +574,7 @@ func (b *pdpBackend) introspectIdentity(ctx context.Context, sess *Session, acce
 	}
 	form := url.Values{
 		"token":                 {accessToken},
-		"client_assertion_type": {oauth.ClientAssertionTypeJWTBearer},
+		"client_assertion_type": {openid.ClientAssertionTypeJWTBearer},
 		"client_assertion":      {assertion},
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.meta.IntrospectionEndpoint, strings.NewReader(form.Encode())) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host

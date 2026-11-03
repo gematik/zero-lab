@@ -32,7 +32,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
 )
 
@@ -158,7 +158,7 @@ func TestFlow_Introspection_CrossClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read client2 key: %v", err)
 	}
-	key2, err := oidc.ParseKey(key2b)
+	key2, err := openid.ParseKey(key2b)
 	if err != nil {
 		t.Fatalf("parse client2 key: %v", err)
 	}

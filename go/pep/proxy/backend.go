@@ -43,7 +43,7 @@ type LoginStart struct {
 }
 
 // Backend is the auth backend the /oauth2/* handlers drive. Two implementations: providerBackend (drives
-// oidc.Client providers directly and issues a local session) and pdpBackend (an OAuth client of the PDP,
+// openid.Client providers directly and issues a local session) and pdpBackend (an OAuth client of the PDP,
 // added later). Keeping the handlers behind this interface keeps them backend-agnostic.
 type Backend interface {
 	// Providers lists the IdPs for the chooser.

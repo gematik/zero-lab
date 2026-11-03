@@ -28,7 +28,7 @@ import (
 
 	yaml "go.yaml.in/yaml/v4"
 
-	"github.com/gematik/zero-lab/go/oauth/providers"
+	"github.com/gematik/zero-lab/go/openid/providers"
 )
 
 // loadYAML reads a configuration file, expanding ${VAR} placeholders from the environment. An unknown key is an

@@ -19,7 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-package oidc
+package openid
 
 // AuthnClientSession is the state of one login at an OpenID provider, kept from the authorization request to
 // the callback. It holds the PKCE verifier and, after the exchange, the tokens, so a store has to keep it secret.

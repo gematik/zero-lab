@@ -113,7 +113,7 @@ Native fuzz tests, `func FuzzXxx(f *testing.F)`, next to the code they cover, se
 A `just fuzz` recipe that runs every target for a short time and fails on a crash comes
 with the first server-side targets (TASK-90). Targets needed:
 DPoP proofs, client assertions, PAR and token requests, entity statements and trust
-chains (`oidf`), ID tokens and JWKS (`oauth`), nonces, VAU messages and CBOR (`epa`),
+chains (`oidf`), ID tokens and JWKS (`openid`), nonces, VAU messages and CBOR (`epa`),
 routes and policy files (`pep`).
 
 ## 8. Dependencies

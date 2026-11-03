@@ -24,7 +24,7 @@ package oidf
 import (
 	"context"
 
-	"github.com/gematik/zero-lab/go/oauth/providers"
+	"github.com/gematik/zero-lab/go/openid/providers"
 )
 
 // TypeOIDF is the provider type of a federation's members.

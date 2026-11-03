@@ -1,4 +1,4 @@
-module github.com/gematik/zero-lab/go/oauth
+module github.com/gematik/zero-lab/go/openid
 
 go 1.26.4
 

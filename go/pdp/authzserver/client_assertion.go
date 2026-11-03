@@ -33,15 +33,14 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
-	"github.com/gematik/zero-lab/go/oauth"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // clientAssertionSkew is the clock skew tolerated on an assertion's time claims.
 const clientAssertionSkew = time.Minute
 
 // ClientAssertionTypeJWTBearer is the client_assertion_type of RFC 7523.
-const ClientAssertionTypeJWTBearer = oauth.ClientAssertionTypeJWTBearer
+const ClientAssertionTypeJWTBearer = openid.ClientAssertionTypeJWTBearer
 
 // ClientAssertionClaims are the claims of a private_key_jwt client assertion. Beyond the standard
 // RFC 7523 claims it keeps the gematik extensions: a nonce (redeemed against the AS nonce service)
@@ -113,8 +112,8 @@ func verifyClientAssertion(assertion string, key *jose.JSONWebKey, issuer string
 	if err != nil {
 		return err
 	}
-	if err := oidc.ValidateLifetime(payload, now, clientAssertionSkew); err != nil {
+	if err := openid.ValidateLifetime(payload, now, clientAssertionSkew); err != nil {
 		return err
 	}
-	return oidc.ValidateAudience(payload, issuer)
+	return openid.ValidateAudience(payload, issuer)
 }

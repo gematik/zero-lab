@@ -36,8 +36,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/idpd"
-	"github.com/gematik/zero-lab/go/oauth"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 	"github.com/gematik/zero-lab/go/pkcs12"
 )
 
@@ -93,8 +92,8 @@ func TestIDPD_SMCB(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	verifier := oauth.GenerateVerifier()
-	authURL, err := client.AuthenticationURL(t.Context(), oidc.Login{State: "state", Nonce: "nonce", Verifier: verifier})
+	verifier := openid.GenerateVerifier()
+	authURL, err := client.AuthenticationURL(t.Context(), openid.Login{State: "state", Nonce: "nonce", Verifier: verifier})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +112,7 @@ func TestIDPD_SMCB(t *testing.T) {
 		t.Fatalf("authenticate with SMC-B: %v", err)
 	}
 
-	tokenResponse, err := client.Exchange(t.Context(), oidc.Login{Nonce: "nonce", Verifier: verifier}, codeRedirectURL.Code)
+	tokenResponse, err := client.Exchange(t.Context(), openid.Login{Nonce: "nonce", Verifier: verifier}, codeRedirectURL.Code)
 	if err != nil {
 		t.Fatalf("exchange code for identity: %v", err)
 	}

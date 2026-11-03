@@ -36,7 +36,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 const (
@@ -51,10 +51,10 @@ const (
 var (
 	// trustAnchorKeys refuses an anchor that does not state its alg: it is the operator's configuration, and nothing
 	// vouches for it.
-	trustAnchorKeys = oidc.VerifyOptions{RequireKeyAlgorithm: true}
+	trustAnchorKeys = openid.VerifyOptions{RequireKeyAlgorithm: true}
 	// memberKeys accepts keys without alg, as RFC 7517 section 4.4 does and members of the reference federation publish
 	// them. A chain from the anchor vouches for them, and their type and curve still fix the algorithm.
-	memberKeys = oidc.VerifyOptions{}
+	memberKeys = openid.VerifyOptions{}
 )
 
 // errRedirectRefused is what a federation fetch that is redirected ends in. A URL is checked before a fetch, so a
@@ -106,16 +106,16 @@ func readBounded(r io.Reader) ([]byte, error) {
 }
 
 // verifyStatement verifies a signed federation document against keys and checks its lifetime, returning its claims.
-func verifyStatement(r io.Reader, keys *jose.JSONWebKeySet, options oidc.VerifyOptions) ([]byte, error) {
+func verifyStatement(r io.Reader, keys *jose.JSONWebKeySet, options openid.VerifyOptions) ([]byte, error) {
 	signed, err := readBounded(r)
 	if err != nil {
 		return nil, err
 	}
-	payload, err := oidc.VerifyJWS(bytes.TrimSpace(signed), keys, options)
+	payload, err := openid.VerifyJWS(bytes.TrimSpace(signed), keys, options)
 	if err != nil {
 		return nil, err
 	}
-	if err := oidc.ValidateLifetime(payload, time.Now().Add(statementClockTolerance), 0); err != nil {
+	if err := openid.ValidateLifetime(payload, time.Now().Add(statementClockTolerance), 0); err != nil {
 		return nil, err
 	}
 	return payload, nil
@@ -265,7 +265,7 @@ func (f *OpenidFederation) fetchMasterEntityStatement() (*EntityStatement, error
 	return parseEntityStatement(payload)
 }
 
-func (f *OpenidFederation) fetchAndVerify(url string, jwks *jose.JSONWebKeySet, options oidc.VerifyOptions) (*EntityStatement, error) {
+func (f *OpenidFederation) fetchAndVerify(url string, jwks *jose.JSONWebKeySet, options openid.VerifyOptions) (*EntityStatement, error) {
 	resp, err := f.get(url)
 	if err != nil {
 		return nil, err
@@ -366,7 +366,7 @@ func (f *OpenidFederation) FetchSignedJwks(op *EntityStatement) (*jose.JSONWebKe
 		return nil, fmt.Errorf("unable to verify jwks: %w", err)
 	}
 
-	jwks, err := oidc.ParseKeySet(jwksBytes)
+	jwks, err := openid.ParseKeySet(jwksBytes)
 	if err != nil {
 		return nil, fmt.Errorf("parsing jwks failed: %w", err)
 	}

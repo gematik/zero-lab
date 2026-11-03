@@ -47,7 +47,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // testdata/legacy_issued.json was made by the code of commit a11372a, the last one built on the previous JOSE
@@ -81,7 +81,7 @@ func readLegacyIssued(t *testing.T) legacyIssued {
 
 func legacySigner(t *testing.T, fixture legacyIssued) crypto.Signer {
 	t.Helper()
-	key, err := oidc.ParseKey(fixture.SigningJWK)
+	key, err := openid.ParseKey(fixture.SigningJWK)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestLegacyWire_IssuedTokensKeepTheirShape(t *testing.T) {
 
 func TestLegacyWire_GeneratedKeysKeepTheirFormAndThumbprints(t *testing.T) {
 	fixture := readLegacyIssued(t)
-	key, err := oidc.ParseKey(fixture.GeneratedJWK)
+	key, err := openid.ParseKey(fixture.GeneratedJWK)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestLegacyWire_GeneratedKeysKeepTheirFormAndThumbprints(t *testing.T) {
 	}
 	assertSameJSON(t, got, fixture.GeneratedPublic)
 
-	set, err := oidc.ParseKeySet(fixture.GeneratedSet)
+	set, err := openid.ParseKeySet(fixture.GeneratedSet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestLegacyWire_GeneratedKeysKeepTheirFormAndThumbprints(t *testing.T) {
 
 // RFC 7638 Section 3.1 gives this key and its SHA-256 thumbprint.
 func TestRFC7638_ThumbprintMatchesTheTestVector(t *testing.T) {
-	key, err := oidc.ParseKey([]byte(`{"kty":"RSA","n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw","e":"AQAB","alg":"RS256","kid":"2011-04-29"}`))
+	key, err := openid.ParseKey([]byte(`{"kty":"RSA","n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw","e":"AQAB","alg":"RS256","kid":"2011-04-29"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ func TestSigningKey_tokens_can_be_signed_concurrently(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			if _, err := oidc.VerifyJWS(raw, server.jwks, oidc.VerifyOptions{RequireKeyAlgorithm: true}); err != nil {
+			if _, err := openid.VerifyJWS(raw, server.jwks, openid.VerifyOptions{RequireKeyAlgorithm: true}); err != nil {
 				t.Error(err)
 			}
 		})
@@ -538,7 +538,7 @@ func TestClientAssertion_ForeignKeyTypeIsRefused(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			err := verifyClientAssertion(assertion, key, testIssuer, time.Now())
-			if err == nil || errors.Is(err, oidc.ErrAudienceMismatch) {
+			if err == nil || errors.Is(err, openid.ErrAudienceMismatch) {
 				t.Fatalf("err = %v", err)
 			}
 		})
@@ -547,7 +547,7 @@ func TestClientAssertion_ForeignKeyTypeIsRefused(t *testing.T) {
 
 func mustRSAPublic(t *testing.T) *rsa.PublicKey {
 	t.Helper()
-	key, err := oidc.ParseKey([]byte(`{"kty":"RSA","n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw","e":"AQAB"}`))
+	key, err := openid.ParseKey([]byte(`{"kty":"RSA","n":"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtVT86zwu1RK7aPFFxuhDR1L6tSoc_BJECPebWKRXjBZCiFV4n3oknjhMstn64tZ_2W-5JsGY4Hc5n9yBXArwl93lqt7_RN5w6Cf0h4QyQ5v-65YGjQR0_FDW2QvzqY368QQMicAtaSqzs8KJZgnYb9c7d0zgdAZHzu6qMQvRL5hajrn1n91CbOpbISD08qNLyrdkt-bFTWhAI4vMQFh6WeZu0fM4lFd2NcRwr3XPksINHaQ-G_xBniIqbw0Ls1jF44-csFCur-kEgU8awapJzKnqDKgw","e":"AQAB"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -567,7 +567,7 @@ func FuzzVerifyClientAssertion(f *testing.F) {
 }
 
 var ecdsaTestKey = func() *ecdsa.PrivateKey {
-	key, err := oidc.ParseKey([]byte(`{"crv":"P-256","d":"wCAQdVx6LR3BRFACmporyQ2tMGu755WNJsfhu5sx3Qk","kty":"EC","x":"CSe6WWOsFaUSjp437htjVBkDdF5LRj_ZvBfxQ4BecH4","y":"rhz8yAOajNwAH3DTujwepcsUQI-cBeSMGyCuByhbh-4"}`))
+	key, err := openid.ParseKey([]byte(`{"crv":"P-256","d":"wCAQdVx6LR3BRFACmporyQ2tMGu755WNJsfhu5sx3Qk","kty":"EC","x":"CSe6WWOsFaUSjp437htjVBkDdF5LRj_ZvBfxQ4BecH4","y":"rhz8yAOajNwAH3DTujwepcsUQI-cBeSMGyCuByhbh-4"}`))
 	if err != nil {
 		panic(err)
 	}

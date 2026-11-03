@@ -2,7 +2,7 @@
 # PEP_OPENID_PROVIDERS_PATH (default ./openid-providers.yaml). The same flat format is what pdp references by
 # path, so copy this to openid-providers.yaml and fill it in.
 #
-# Each entry is the provider's own package config type: oauth/oidc.Config, idpd.ClientConfig,
+# Each entry is the provider's own package config type: openid.Config, idpd.ClientConfig,
 # oidf.RelyingPartyConfig. ${VAR} placeholders expand from the environment / a .env in the workdir.
 # Each oidc/idpd uses <PEP_PUBLIC_URL>/oauth2/callback unless it sets its own redirect_uri. logo_uri is the
 # chooser icon (OIDF brings its federation IdPs' logos built in).

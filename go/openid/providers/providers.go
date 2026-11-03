@@ -32,7 +32,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // Info describes a provider for a chooser.
@@ -49,7 +49,7 @@ const TypeOIDC = "oidc"
 // Provider is a client and what a chooser shows of it.
 type Provider struct {
 	Info
-	Client oidc.Client
+	Client openid.Client
 }
 
 // Federation is a source of providers that resolves an issuer on demand.
@@ -128,9 +128,9 @@ func Build(entries []Entry, env Env, kinds Kinds) (*Set, error) {
 	return set, nil
 }
 
-// OIDC is the kind of plain OpenID Connect providers, a list of [oidc.Config].
+// OIDC is the kind of plain OpenID Connect providers, a list of [openid.Config].
 func OIDC(decode Decode, env Env) (Built, error) {
-	var configs []oidc.Config
+	var configs []openid.Config
 	if err := decode(&configs); err != nil {
 		return Built{}, err
 	}
@@ -142,7 +142,7 @@ func OIDC(decode Decode, env Env) (Built, error) {
 		if err := config.Validate(); err != nil {
 			return Built{}, fmt.Errorf("[%d]: %w", i, err)
 		}
-		client, err := oidc.NewClient(config)
+		client, err := openid.NewClient(config)
 		if err != nil {
 			return Built{}, fmt.Errorf("[%d] (%s): %w", i, config.Issuer, err)
 		}

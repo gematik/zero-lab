@@ -39,7 +39,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
 )
 
@@ -63,7 +63,7 @@ func clientKey(t *testing.T) *jose.JSONWebKey {
 	if err != nil {
 		t.Fatalf("read client key %s: %v", path, err)
 	}
-	k, err := oidc.ParseKey(b)
+	k, err := openid.ParseKey(b)
 	if err != nil {
 		t.Fatalf("parse client key: %v", err)
 	}
@@ -201,7 +201,7 @@ func getJWKS(t *testing.T, md authzserver.ExtendedMetadata) *jose.JSONWebKeySet 
 	if err != nil {
 		t.Fatalf("jwks: read: %v", err)
 	}
-	set, err := oidc.ParseKeySet(body)
+	set, err := openid.ParseKeySet(body)
 	if err != nil {
 		t.Fatalf("jwks: parse: %v", err)
 	}
@@ -211,11 +211,11 @@ func getJWKS(t *testing.T, md authzserver.ExtendedMetadata) *jose.JSONWebKeySet 
 // verifyAccessToken parses and signature-verifies an access token against the server JWKS.
 func verifyAccessToken(t *testing.T, raw string, keys *jose.JSONWebKeySet) []byte {
 	t.Helper()
-	payload, err := oidc.VerifyJWS([]byte(raw), keys, oidc.VerifyOptions{})
+	payload, err := openid.VerifyJWS([]byte(raw), keys, openid.VerifyOptions{})
 	if err != nil {
 		t.Fatalf("access token did not verify against JWKS: %v", err)
 	}
-	if err := oidc.ValidateLifetime(payload, time.Now(), 0); err != nil {
+	if err := openid.ValidateLifetime(payload, time.Now(), 0); err != nil {
 		t.Fatalf("access token is not valid now: %v", err)
 	}
 	return payload

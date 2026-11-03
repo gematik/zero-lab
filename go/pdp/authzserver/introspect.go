@@ -28,7 +28,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // ownTokenSkew is the clock skew tolerated on the time claims of a token presented for introspection.
@@ -151,11 +151,11 @@ type ownTokenClaims struct {
 // verifyOwnToken verifies raw as a token this server issued, with the keys it publishes. It has no audience to
 // insist on, since tokens name the resource servers they are for, not this server.
 func (s *Server) verifyOwnToken(raw string, now time.Time) (*ownTokenClaims, error) {
-	payload, err := oidc.VerifyJWS([]byte(raw), s.jwks, oidc.VerifyOptions{RequireKeyAlgorithm: true})
+	payload, err := openid.VerifyJWS([]byte(raw), s.jwks, openid.VerifyOptions{RequireKeyAlgorithm: true})
 	if err != nil {
 		return nil, err
 	}
-	if err := oidc.ValidateLifetime(payload, now, ownTokenSkew); err != nil {
+	if err := openid.ValidateLifetime(payload, now, ownTokenSkew); err != nil {
 		return nil, err
 	}
 	claims := new(ownTokenClaims)

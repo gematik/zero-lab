@@ -19,8 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-// Package oauth is the vocabulary OAuth code shares: what the standards name, with nothing that does I/O.
-package oauth
+package openid
 
 import (
 	"crypto/rand"

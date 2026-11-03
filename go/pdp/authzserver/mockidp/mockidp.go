@@ -24,7 +24,7 @@
 // Package mockidp is a co-hosted, non-production OpenID Provider for the PDP. It lets login run the REAL
 // op-callback path — browser → mock /auth login page → PDP /op-callback?code → code exchange → signed
 // id_token validation — with no external IdP and no special-casing in the authorization-server flow: the
-// mock registers as an ordinary oidc.Client provider. It is compiled ONLY with `-tags mockidp`; production
+// mock registers as an ordinary openid.Client provider. It is compiled ONLY with `-tags mockidp`; production
 // builds exclude it (and its routes) entirely.
 package mockidp
 
@@ -45,8 +45,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
-	"github.com/gematik/zero-lab/go/oauth"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 const (
@@ -57,9 +56,9 @@ const (
 // Host is what the mock OP needs from the PDP authorization server, expressed as an interface so this package
 // never imports authzserver (which would be an import cycle, since the build-tagged seam there imports this).
 type Host interface {
-	IssuerBaseURL() string   // the PDP's public base URL (its issuer)
-	OPCallbackURL() string   // the PDP's op-callback URL (where the OP redirects back with the code)
-	AddProvider(oidc.Client) // register the mock as a normal upstream provider in the AS registry
+	IssuerBaseURL() string     // the PDP's public base URL (its issuer)
+	OPCallbackURL() string     // the PDP's op-callback URL (where the OP redirects back with the code)
+	AddProvider(openid.Client) // register the mock as a normal upstream provider in the AS registry
 }
 
 // Identity is the canned login the mock returns in its id_token.
@@ -237,7 +236,7 @@ func (p *provider) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if pend.codeChallenge != "" {
-		if oauth.S256Challenge(r.FormValue("code_verifier")) != pend.codeChallenge {
+		if openid.S256Challenge(r.FormValue("code_verifier")) != pend.codeChallenge {
 			oauthError(w, "invalid_grant", "PKCE verification failed")
 			return
 		}

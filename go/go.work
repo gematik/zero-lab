@@ -8,8 +8,8 @@ use (
 	./kv
 	./metsubushi
 	./nonce
-	./oauth
 	./oidf
+	./openid
 	./pdp
 	./pep
 	./pep/proxy

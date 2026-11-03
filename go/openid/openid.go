@@ -19,9 +19,10 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-// Package oidc is the client side of an OpenID Connect login by authorization code with PKCE, behind the Client
-// interface that a federated provider's client implements as well.
-package oidc
+// Package openid is what OpenID login and wallet code shares: the client side of an OpenID Connect login by
+// authorization code with PKCE, behind the Client
+// interface that a federated provider's client implements as well, and the OAuth names the standards fix.
+package openid
 
 import (
 	"context"

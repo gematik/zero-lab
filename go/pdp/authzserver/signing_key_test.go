@@ -37,7 +37,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // countingSigner stands for a key the process cannot read, as an HSM holds one: the server has
@@ -157,7 +157,7 @@ func TestSigningKey_tokens_are_signed_through_the_signer(t *testing.T) {
 	if signer.calls.Load() != 1 {
 		t.Fatalf("signer called %d times", signer.calls.Load())
 	}
-	if _, err := oidc.VerifyJWS(raw, server.jwks, oidc.VerifyOptions{RequireKeyAlgorithm: true}); err != nil {
+	if _, err := openid.VerifyJWS(raw, server.jwks, openid.VerifyOptions{RequireKeyAlgorithm: true}); err != nil {
 		t.Fatalf("the token does not verify under the published keys: %v", err)
 	}
 	message, err := jose.ParseSignedCompact(string(raw), []jose.SignatureAlgorithm{jose.ES256})

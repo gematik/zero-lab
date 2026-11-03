@@ -40,8 +40,8 @@ import (
 
 	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/gematik/zero-lab/go/kv"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
-	"github.com/gematik/zero-lab/go/oauth/providers"
+	"github.com/gematik/zero-lab/go/openid"
+	"github.com/gematik/zero-lab/go/openid/providers"
 )
 
 const (
@@ -56,12 +56,12 @@ const (
 type fakeOP struct {
 	authErr     error
 	exchangeErr error
-	login       oidc.Login
+	login       openid.Login
 }
 
 func (f *fakeOP) Issuer() string { return testOPIssuer }
 
-func (f *fakeOP) AuthenticationURL(_ context.Context, login oidc.Login) (string, error) {
+func (f *fakeOP) AuthenticationURL(_ context.Context, login openid.Login) (string, error) {
 	if f.authErr != nil {
 		return "", f.authErr
 	}
@@ -69,12 +69,12 @@ func (f *fakeOP) AuthenticationURL(_ context.Context, login oidc.Login) (string,
 	return testOPIssuer + "/auth?" + url.Values{"state": {login.State}, "nonce": {login.Nonce}}.Encode(), nil
 }
 
-func (f *fakeOP) Exchange(_ context.Context, _ oidc.Login, _ string) (*oidc.TokenResponse, error) {
+func (f *fakeOP) Exchange(_ context.Context, _ openid.Login, _ string) (*openid.TokenResponse, error) {
 	if f.exchangeErr != nil {
 		return nil, f.exchangeErr
 	}
 	payload := base64.RawURLEncoding.EncodeToString(fmt.Appendf(nil, `{"nonce":%q}`, f.login.Nonce))
-	return &oidc.TokenResponse{AccessToken: "op-access-token-value", RefreshToken: "op-refresh-token-value", IDTokenRaw: "e30." + payload + ".sig"}, nil
+	return &openid.TokenResponse{AccessToken: "op-access-token-value", RefreshToken: "op-refresh-token-value", IDTokenRaw: "e30." + payload + ".sig"}, nil
 }
 
 func captureDebugLogs(t *testing.T) *bytes.Buffer {

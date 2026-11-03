@@ -9,8 +9,8 @@ replace (
 	github.com/gematik/zero-lab/go/idpd => ../idpd
 	github.com/gematik/zero-lab/go/kv => ../kv
 	github.com/gematik/zero-lab/go/nonce => ../nonce
-	github.com/gematik/zero-lab/go/oauth => ../oauth
 	github.com/gematik/zero-lab/go/oidf => ../oidf
+	github.com/gematik/zero-lab/go/openid => ../openid
 	github.com/gematik/zero-lab/go/pdp => ../pdp
 	github.com/gematik/zero-lab/go/pep => ../pep
 	github.com/gematik/zero-lab/go/pep/proxy => ../pep/proxy

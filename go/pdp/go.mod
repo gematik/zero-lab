@@ -7,8 +7,8 @@ require (
 	github.com/gematik/zero-lab/go/idpd v0.0.0-00010101000000-000000000000
 	github.com/gematik/zero-lab/go/kv v0.0.3-0.20261102185424-5ad95b53e1b3
 	github.com/gematik/zero-lab/go/nonce v0.21.1-0.20261102185424-5ad95b53e1b3
-	github.com/gematik/zero-lab/go/oauth v0.51.1-0.20261102185424-5ad95b53e1b3
 	github.com/gematik/zero-lab/go/oidf v0.50.3-0.20261102185424-5ad95b53e1b3
+	github.com/gematik/zero-lab/go/openid v0.0.0-00010101000000-000000000000
 	github.com/go-jose/go-jose/v4 v4.1.6
 	go.yaml.in/yaml/v4 v4.0.0-rc.9
 )
@@ -33,8 +33,8 @@ replace (
 	github.com/gematik/zero-lab/go/idpd => ../idpd
 	github.com/gematik/zero-lab/go/kv => ../kv
 	github.com/gematik/zero-lab/go/nonce => ../nonce
-	github.com/gematik/zero-lab/go/oauth => ../oauth
 	github.com/gematik/zero-lab/go/oidf => ../oidf
+	github.com/gematik/zero-lab/go/openid => ../openid
 	github.com/gematik/zero-lab/go/pep => ../pep
 	github.com/gematik/zero-lab/go/pep/proxy => ../pep/proxy
 	github.com/gematik/zero-lab/go/pkcs12 => ../pkcs12

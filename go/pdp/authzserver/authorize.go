@@ -33,8 +33,7 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/gematik/zero-lab/go/oauth"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // sessionRef is what a log says for a session: enough to correlate its lines, and nothing of its ID, which is the jti of
@@ -175,16 +174,16 @@ func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request
 		opRedirectURI = product.OIDCRedirectURIs[0]
 	}
 
-	opSession := &oidc.AuthnClientSession{
+	opSession := &openid.AuthnClientSession{
 		ID:          uuid.NewV4().String(),
 		Issuer:      session.IDPIss,
 		State:       uuid.NewV4().String(),
 		Nonce:       uuid.NewV4().String(),
-		Verifier:    oauth.GenerateVerifier(),
+		Verifier:    openid.GenerateVerifier(),
 		RedirectURI: opRedirectURI,
 	}
 
-	authURL, err := opClient.AuthenticationURL(r.Context(), oidc.Login{
+	authURL, err := opClient.AuthenticationURL(r.Context(), openid.Login{
 		State:       opSession.State,
 		Nonce:       opSession.Nonce,
 		Verifier:    opSession.Verifier,
@@ -245,7 +244,7 @@ func (s *Server) PAREndpoint(w http.ResponseWriter, r *http.Request) error {
 }
 
 // GetOpenidClient returns an OpenID Connect client for the given issuer
-func (s *Server) GetOpenidClient(ctx context.Context, issuer string) (oidc.Client, error) {
+func (s *Server) GetOpenidClient(ctx context.Context, issuer string) (openid.Client, error) {
 	provider, err := s.providers.Provider(ctx, issuer)
 	if err != nil {
 		return nil, err
@@ -300,7 +299,7 @@ func (s *Server) OPCallbackEndpoint(w http.ResponseWriter, r *http.Request) erro
 	}
 
 	// exchange code for tokens with the OP
-	tokenResponse, err := identityIssuer.Exchange(r.Context(), oidc.Login{
+	tokenResponse, err := identityIssuer.Exchange(r.Context(), openid.Login{
 		Nonce:       authnSession.Nonce,
 		Verifier:    authnSession.Verifier,
 		RedirectURI: authnSession.RedirectURI,

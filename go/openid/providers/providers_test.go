@@ -26,11 +26,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 type fakeClient struct {
-	oidc.Client
+	openid.Client
 	issuer string
 }
 

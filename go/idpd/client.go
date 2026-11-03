@@ -40,7 +40,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/brainpool/josebp"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // idTokenSkew is the clock skew tolerated on the iat, nbf and exp of an ID token.
@@ -178,8 +178,8 @@ func NewClientFromConfig(config ClientConfig) (*Client, error) {
 
 // AuthenticationURL gives the URL that starts a login. In authenticator mode it is an authenticator:// link for
 // the gematik Authenticator app.
-func (c *Client) AuthenticationURL(_ context.Context, login oidc.Login) (string, error) {
-	query := oidc.AuthorizationQuery(c.config.ClientID, c.config.RedirectURI, c.config.Scopes, login)
+func (c *Client) AuthenticationURL(_ context.Context, login openid.Login) (string, error) {
+	query := openid.AuthorizationQuery(c.config.ClientID, c.config.RedirectURI, c.config.Scopes, login)
 	authURL := c.Metadata.AuthorizationEndpoint + "?" + query.Encode()
 	if c.config.AuthenticatorMode {
 		return authenticatorURL(authURL)
@@ -204,8 +204,8 @@ func authenticatorURL(authURL string) (string, error) {
 }
 
 // Exchange exchanges an authorization code and its PKCE verifier for the tokens and verifies the
-// ID token, which the response has to have. oidc.WithAlternateRedirectURI has to name the redirect URI the login used, if it replaced one.
-func (c *Client) Exchange(ctx context.Context, login oidc.Login, code string) (*oidc.TokenResponse, error) {
+// ID token, which the response has to have. openid.WithAlternateRedirectURI has to name the redirect URI the login used, if it replaced one.
+func (c *Client) Exchange(ctx context.Context, login openid.Login, code string) (*openid.TokenResponse, error) {
 	// 32 bytes random key to encrypt the token
 	tokenKeyBytes := make([]byte, 32)
 	_, err := io.ReadFull(rand.Reader, tokenKeyBytes)
@@ -244,7 +244,7 @@ func (c *Client) Exchange(ctx context.Context, login oidc.Login, code string) (*
 
 	slog.Debug("Exchanging code for token", "url", c.Metadata.TokenEndpoint)
 
-	response, err := oidc.PostForm(ctx, c.httpClient, c.Metadata.TokenEndpoint, params)
+	response, err := openid.PostForm(ctx, c.httpClient, c.Metadata.TokenEndpoint, params)
 	if err != nil {
 		return nil, fmt.Errorf("unable to exchange code for token: %w", err)
 	}
@@ -298,12 +298,12 @@ func decryptToken(token string, key []byte) (string, error) {
 	return njwt.Njwt, nil
 }
 
-func (c *Client) verifyIDToken(ctx context.Context, login oidc.Login, raw string) error {
+func (c *Client) verifyIDToken(ctx context.Context, login openid.Login, raw string) error {
 	key, err := fetchSigningKey(ctx, c.Metadata.SigningKeyURI, c.httpClient, c.trust)
 	if err != nil {
 		return fmt.Errorf("fetching signing key: %w", err)
 	}
-	return checkIDToken(raw, key, oidc.IDTokenChecks{
+	return checkIDToken(raw, key, openid.IDTokenChecks{
 		Issuer:   c.Metadata.Issuer,
 		ClientID: c.config.ClientID,
 		Nonce:    login.Nonce,
@@ -314,7 +314,7 @@ func (c *Client) verifyIDToken(ctx context.Context, login oidc.Login, raw string
 
 // checkIDToken verifies the ID token with josebp, as go-jose cannot do Brainpool, and then the claims it signed. The
 // IDP-Dienst signs BP256R1 only, while josebp would take any algorithm of the key's size.
-func checkIDToken(raw string, key *josebp.JSONWebKey, checks oidc.IDTokenChecks) error {
+func checkIDToken(raw string, key *josebp.JSONWebKey, checks openid.IDTokenChecks) error {
 	token, err := josebp.ParseToken([]byte(raw), josebp.WithKey(key))
 	if err != nil {
 		return fmt.Errorf("parsing ID token: %w", err)
@@ -343,13 +343,13 @@ func (t *transportAddUserAgent) RoundTrip(req *http.Request) (*http.Response, er
 	return t.Transport.RoundTrip(req)
 }
 
-func unmarshalTokenResponse(r io.Reader) (*oidc.TokenResponse, error) {
+func unmarshalTokenResponse(r io.Reader) (*openid.TokenResponse, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, fmt.Errorf("reading token response: %w", err)
 	}
 
-	tokenResponse := new(oidc.TokenResponse)
+	tokenResponse := new(openid.TokenResponse)
 	if err = json.Unmarshal(data, tokenResponse); err != nil {
 		return nil, fmt.Errorf("unmarshalling token response: %w", err)
 	}

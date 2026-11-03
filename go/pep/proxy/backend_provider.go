@@ -29,12 +29,11 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/gematik/zero-lab/go/oauth"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
-	"github.com/gematik/zero-lab/go/oauth/providers"
+	"github.com/gematik/zero-lab/go/openid"
+	"github.com/gematik/zero-lab/go/openid/providers"
 )
 
-// providerBackend drives oidc.Client providers (standard OIDC; OIDF and idpd also implement oidc.Client)
+// providerBackend drives openid.Client providers (standard OIDC; OIDF and idpd also implement openid.Client)
 // directly and issues a local session — pep acts as the authorization server itself, no upstream PDP.
 //
 // Static providers (plain OIDC, idpd) are pre-constructed in byIssuer/order. An optional OIDF relying
@@ -89,10 +88,10 @@ func (b *providerBackend) StartLogin(ctx context.Context, sess *Session, idpIss,
 	sess.IDPIss = provider.Issuer
 	sess.State = uuid.NewV4().String()
 	sess.Nonce = uuid.NewV4().String()
-	sess.CodeVerifier = oauth.GenerateVerifier()
-	sess.CodeChallengeMethod = oauth.CodeChallengeMethodS256
+	sess.CodeVerifier = openid.GenerateVerifier()
+	sess.CodeChallengeMethod = openid.CodeChallengeMethodS256
 
-	authURL, err := provider.Client.AuthenticationURL(ctx, oidc.Login{State: sess.State, Nonce: sess.Nonce, Verifier: sess.CodeVerifier})
+	authURL, err := provider.Client.AuthenticationURL(ctx, openid.Login{State: sess.State, Nonce: sess.Nonce, Verifier: sess.CodeVerifier})
 	if err != nil {
 		return LoginStart{}, err
 	}
@@ -114,7 +113,7 @@ func (b *providerBackend) Complete(ctx context.Context, sess *Session, code stri
 	if err != nil {
 		return err
 	}
-	tr, err := provider.Client.Exchange(ctx, oidc.Login{Nonce: sess.Nonce, Verifier: sess.CodeVerifier}, code)
+	tr, err := provider.Client.Exchange(ctx, openid.Login{Nonce: sess.Nonce, Verifier: sess.CodeVerifier}, code)
 	if err != nil {
 		return err
 	}

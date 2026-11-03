@@ -32,7 +32,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // CodeChallengeMethod is a PKCE code_challenge_method (RFC 7636 §4.3).
@@ -43,7 +43,7 @@ const (
 	CodeChallengeMethodS256 CodeChallengeMethod = "S256"
 )
 
-// RelyingPartyClient is an oidc.Client for one OpenID provider of the federation; RelyingParty.NewClient
+// RelyingPartyClient is an openid.Client for one OpenID provider of the federation; RelyingParty.NewClient
 // creates it.
 type RelyingPartyClient struct {
 	rp          *RelyingParty
@@ -55,12 +55,12 @@ type RelyingPartyClient struct {
 }
 
 // AuthenticationURL pushes the authorization request (PAR) and gives the URL that carries its request_uri.
-func (c *RelyingPartyClient) AuthenticationURL(ctx context.Context, login oidc.Login) (string, error) {
-	form := oidc.AuthorizationQuery(c.rp.ClientID(), c.redirectURI, c.scopes, login)
+func (c *RelyingPartyClient) AuthenticationURL(ctx context.Context, login openid.Login) (string, error) {
+	form := openid.AuthorizationQuery(c.rp.ClientID(), c.redirectURI, c.scopes, login)
 	form.Set("acr_values", "gematik-ehealth-loa-high")
 
 	endpoint := c.op.Metadata.OpenidProvider.PushedAuthorizationRequestEndpoint
-	response, err := oidc.PostForm(ctx, c.rp.httpClient, endpoint, form)
+	response, err := openid.PostForm(ctx, c.rp.httpClient, endpoint, form)
 	if err != nil {
 		return "", fmt.Errorf("unable to do PAR request: %w", err)
 	}
@@ -82,7 +82,7 @@ func (c *RelyingPartyClient) AuthenticationURL(ctx context.Context, login oidc.L
 // relying party's encryption key and verifies its signature against the provider's signed JWKS, its expiry
 // and its audience against the client_id. A provider's rejection is
 // returned as *Error.
-func (c *RelyingPartyClient) Exchange(ctx context.Context, login oidc.Login, code string) (*oidc.TokenResponse, error) {
+func (c *RelyingPartyClient) Exchange(ctx context.Context, login openid.Login, code string) (*openid.TokenResponse, error) {
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", code)
@@ -90,7 +90,7 @@ func (c *RelyingPartyClient) Exchange(ctx context.Context, login oidc.Login, cod
 	form.Set("client_id", c.rp.ClientID())
 	form.Set("code_verifier", login.Verifier)
 
-	response, err := oidc.PostForm(ctx, c.rp.httpClient, c.op.Metadata.OpenidProvider.TokenEndpoint, form)
+	response, err := openid.PostForm(ctx, c.rp.httpClient, c.op.Metadata.OpenidProvider.TokenEndpoint, form)
 	if err != nil {
 		return nil, fmt.Errorf("unable to do token request: %w", err)
 	}
@@ -101,7 +101,7 @@ func (c *RelyingPartyClient) Exchange(ctx context.Context, login oidc.Login, cod
 		}
 		return nil, &oidcErr
 	}
-	tokenResponse, err := oidc.ParseTokenResponse(response.Body)
+	tokenResponse, err := openid.ParseTokenResponse(response.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -130,12 +130,12 @@ func (c *RelyingPartyClient) decryptIDToken(raw string) ([]byte, error) {
 	return encrypted.Decrypt(c.rp.encPrivateKey)
 }
 
-func (c *RelyingPartyClient) verifyIDToken(login oidc.Login, response *oidc.TokenResponse) error {
-	payload, err := oidc.VerifyJWS([]byte(response.IDTokenRaw), c.jwks, memberKeys)
+func (c *RelyingPartyClient) verifyIDToken(login openid.Login, response *openid.TokenResponse) error {
+	payload, err := openid.VerifyJWS([]byte(response.IDTokenRaw), c.jwks, memberKeys)
 	if err != nil {
 		return fmt.Errorf("unable to parse token: %w", err)
 	}
-	checks := oidc.IDTokenChecks{Issuer: c.op.Issuer, ClientID: c.rp.ClientID(), Nonce: login.Nonce, Now: time.Now()}
+	checks := openid.IDTokenChecks{Issuer: c.op.Issuer, ClientID: c.rp.ClientID(), Nonce: login.Nonce, Now: time.Now()}
 	if err := checks.Validate(payload); err != nil {
 		return fmt.Errorf("unable to parse token: %w", err)
 	}

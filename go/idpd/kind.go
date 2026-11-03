@@ -25,7 +25,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/gematik/zero-lab/go/oauth/providers"
+	"github.com/gematik/zero-lab/go/openid/providers"
 )
 
 // TypeIDPD is the provider type of the IDP-Dienst.

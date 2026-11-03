@@ -30,8 +30,8 @@ import (
 
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/nonce"
-	"github.com/gematik/zero-lab/go/oauth/providers"
 	"github.com/gematik/zero-lab/go/oidf"
+	"github.com/gematik/zero-lab/go/openid/providers"
 )
 
 // Config is the authorization_server section of pdp.yaml. Relative paths resolve against BaseDir.

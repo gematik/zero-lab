@@ -136,7 +136,7 @@ no identity by itself.
   pair at the IDP).
 - `idpd.SignWithSoftkey(prk, cert)` — `idpd/authenticator.go:286`. Soft-cert signer.
 - `idpd.GetIdpByEnvironment`, `Environment`, `NewEnvironment` — `idpd/shared.go`.
-- `oidc.TokenResponse.Claims(&x)` — `oauth/oidc/oidc.go:47` (used the same way in `pep/proxy/backend_provider.go:151`).
+- `openid.TokenResponse.Claims(&x)` — `openid/openid.go` (used the same way in `pep/proxy/backend_provider.go:151`).
 - `kv.Store` with **atomic `Take` (get+delete)** and atomic `SetMany` — `kv/kv.go:56-60` (documented for
   single-use redeem). `kv.NewMemory()` for single-instance dev.
 - SMC-B p12 load: `pkcs12.Decode` + `brainpool.ParsePKCS8PrivateKey`/`ParseCertificate` (pattern in
@@ -179,7 +179,7 @@ launchpad/
 | `POST /backchannel/login/init` | `{}` (opt `{"environment":"ref"}`) | `{"login_session","authorization_url"}` | `oauth2.GenerateVerifier()`, `ksuid.New()`, `AuthenticationURL(state,nonce,verifier)`, `SetMany(login:<id>)` |
 | `POST /backchannel/login/complete` | `{"login_session","code","state"}` | `{"magic_url"}` | `Take(login:<id>)`, const-time state compare, `ExchangeForIdentity(code,verifier)`, `Claims`, create `sess:<id>`, `MagicStore.Create` |
 
-Errors as `{"error","error_description"}` (reuse `oidc.Error` shape, `oauth/oidc/oidc.go:12`).
+Errors as `{"error","error_description"}` (reuse `openid.Error` shape, `openid/openid.go`).
 
 **Browser-facing**
 

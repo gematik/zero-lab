@@ -43,7 +43,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 func newTestKey(t *testing.T) *ecdsa.PrivateKey {
@@ -343,7 +343,7 @@ func validIDTokenClaims() map[string]any {
 func TestExchangeDecryptsAndVerifiesTheNestedIDToken(t *testing.T) {
 	stub := newLoginStub(t)
 	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
-	response, err := stub.client.Exchange(t.Context(), oidc.Login{Nonce: "n", Verifier: "verifier"}, "code")
+	response, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: "verifier"}, "code")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +372,7 @@ func TestExchangeRefusesEncryptionOtherThanRegistered(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			stub.idToken = token
-			if _, err := stub.client.Exchange(t.Context(), oidc.Login{Nonce: "n", Verifier: "verifier"}, "code"); err == nil {
+			if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: "verifier"}, "code"); err == nil {
 				t.Error("accepted")
 			}
 		})
@@ -382,7 +382,7 @@ func TestExchangeRefusesEncryptionOtherThanRegistered(t *testing.T) {
 func TestExchangeRefusesTokenForAnotherRecipient(t *testing.T) {
 	stub := newLoginStub(t)
 	stub.idToken = encryptForTest(t, newTestKey(t).Public(), jose.ECDH_ES, jose.A256GCM, signJWS(t, stub.sigKey, "k", validIDTokenClaims()))
-	if _, err := stub.client.Exchange(t.Context(), oidc.Login{Nonce: "n", Verifier: "verifier"}, "code"); err == nil {
+	if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: "verifier"}, "code"); err == nil {
 		t.Error("accepted")
 	}
 }
@@ -403,7 +403,7 @@ func TestExchangeRefusesIDToken(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			stub.idToken = token
-			if _, err := stub.client.Exchange(t.Context(), oidc.Login{Nonce: "n", Verifier: "verifier"}, "code"); err == nil {
+			if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: "verifier"}, "code"); err == nil {
 				t.Error("accepted")
 			}
 		})
@@ -427,7 +427,7 @@ func TestSignEntityStatementVerifiesAgainstItsPublishedKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload, err := oidc.VerifyJWS(signed, rp.entityStatement.Jwks.Keys, trustAnchorKeys)
+	payload, err := openid.VerifyJWS(signed, rp.entityStatement.Jwks.Keys, trustAnchorKeys)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -779,7 +779,7 @@ func TestAFederatedLoginLogsNoSecretAtDebug(t *testing.T) {
 	claims["nonce"] = nonce
 	stub.idToken = stub.nestedToken(t, claims)
 
-	login := oidc.Login{State: state, Nonce: nonce, Verifier: verifier}
+	login := openid.Login{State: state, Nonce: nonce, Verifier: verifier}
 	if _, err := stub.client.AuthenticationURL(t.Context(), login); err != nil {
 		t.Fatal(err)
 	}
@@ -848,7 +848,7 @@ func testRelyingPartyConfig(t *testing.T, stub *federationStub) *RelyingPartyCon
 func TestExchangeRefusesAnIDTokenOfAnotherLogin(t *testing.T) {
 	stub := newLoginStub(t)
 	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
-	if _, err := stub.client.Exchange(t.Context(), oidc.Login{Nonce: "another", Verifier: "verifier"}, "code"); !errors.Is(err, oidc.ErrNonceMismatch) {
+	if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "another", Verifier: "verifier"}, "code"); !errors.Is(err, openid.ErrNonceMismatch) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -913,7 +913,7 @@ func TestExchangeVerifiesAnIDTokenWithAKeyWithoutAlg(t *testing.T) {
 	stub := newLoginStub(t)
 	withoutAlg(stub.client.jwks)
 	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
-	if _, err := stub.client.Exchange(t.Context(), oidc.Login{Nonce: "n", Verifier: "verifier"}, "code"); err != nil {
+	if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: "verifier"}, "code"); err != nil {
 		t.Fatal(err)
 	}
 }

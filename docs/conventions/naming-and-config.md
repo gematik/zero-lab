@@ -14,7 +14,7 @@
 - A Go module and its Rust crate share a name, without the `ti-` prefix: `go/idpd` and
   `ti-idpd`, `go/tipki` and `ti-pki`, `go/pkcs12` and `ti-pkcs12`. So do what an operator sees
   of it: `idpd:` in YAML, `PEP_IDPD_*`, `/idpd-callback`. `go/brainpool` keeps its name, being
-  wider than `jwz-brainpool`; `go/dpop`, `go/oauth`, `go/oidf` have no crate yet.
+  wider than `jwz-brainpool`; `go/dpop`, `go/openid`, `go/oidf` have no crate yet.
 
 ## Environment variables
 

@@ -45,7 +45,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/brainpool/josebp"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // readTokenKey decrypts a key_verifier as the IDP-Dienst does, ECDH-ES and A256GCM to puk_idp_enc, which josebp only does
@@ -151,7 +151,7 @@ func TestExchangeVerifiesTheIDTokenOfTheResponse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err := client.Exchange(t.Context(), oidc.Login{Nonce: "nonce-value", Verifier: "verifier-value"}, "code-value")
+	response, err := client.Exchange(t.Context(), openid.Login{Nonce: "nonce-value", Verifier: "verifier-value"}, "code-value")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestExchangeRefusesAResponseWithoutAnIDToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.Exchange(t.Context(), oidc.Login{Nonce: "nonce-value", Verifier: "verifier-value"}, "code-value"); err == nil {
+	if _, err := client.Exchange(t.Context(), openid.Login{Nonce: "nonce-value", Verifier: "verifier-value"}, "code-value"); err == nil {
 		t.Error("accepted")
 	}
 }
@@ -188,7 +188,7 @@ func TestExchangeFetchesTheKeysUnderTheCallersContext(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := client.Exchange(ctx, oidc.Login{Nonce: "nonce-value", Verifier: "verifier-value"}, "code-value"); !errors.Is(err, context.Canceled) {
+	if _, err := client.Exchange(ctx, openid.Login{Nonce: "nonce-value", Verifier: "verifier-value"}, "code-value"); !errors.Is(err, context.Canceled) {
 		t.Errorf("err = %v", err)
 	}
 	if n := fetched.Load(); n != 0 {
@@ -384,7 +384,7 @@ func TestALoginLogsNoSecretAtDebug(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	login := oidc.Login{State: state, Nonce: nonce, Verifier: verifier}
+	login := openid.Login{State: state, Nonce: nonce, Verifier: verifier}
 	authURL, err := client.AuthenticationURL(t.Context(), login)
 	if err != nil {
 		t.Fatal(err)
@@ -432,8 +432,8 @@ func TestExchangeRefusesAnIDTokenOfAnotherLogin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = client.Exchange(t.Context(), oidc.Login{Nonce: "another", Verifier: "verifier-value"}, "code-value")
-	if !errors.Is(err, oidc.ErrNonceMismatch) {
+	_, err = client.Exchange(t.Context(), openid.Login{Nonce: "another", Verifier: "verifier-value"}, "code-value")
+	if !errors.Is(err, openid.ErrNonceMismatch) {
 		t.Fatalf("err = %v", err)
 	}
 }

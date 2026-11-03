@@ -28,7 +28,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // Client is a registered instance of a Product. A product may have many client instances; each
@@ -89,7 +89,7 @@ func parsePublicJWK(raw map[string]any) (*jose.JSONWebKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshal public_jwk: %w", err)
 	}
-	key, err := oidc.ParseKey(b)
+	key, err := openid.ParseKey(b)
 	if err != nil {
 		return nil, fmt.Errorf("parse public_jwk: %w", err)
 	}

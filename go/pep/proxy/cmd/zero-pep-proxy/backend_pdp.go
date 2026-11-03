@@ -29,7 +29,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 	"github.com/gematik/zero-lab/go/pep/proxy"
 )
 
@@ -74,5 +74,5 @@ func loadJWKFile(path string) (*jose.JSONWebKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	return oidc.ParseKey(data)
+	return openid.ParseKey(data)
 }

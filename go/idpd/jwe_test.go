@@ -29,7 +29,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/brainpool/josebp"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // TestJWECross proves that what josebp encrypts on a NIST curve, which it does beside Brainpool, is a JWE another
@@ -37,7 +37,7 @@ import (
 func TestJWECross(t *testing.T) {
 	jwkPrivateString := `{"crv":"P-256","d":"Pn9q2dmPV8y9VnWFycf7fQDrR-h5Uh-a8VWjamfZn58","kty":"EC","x":"YDnAaDYvsBz6QKYOj0CUYSeydmD1QHL5pUl-aMu6cA0","y":"ovzYSeBnMCmZYWZZtKcGaABqaPs_ecWDXJ8H5bqHOVA"}`
 
-	prk, err := oidc.ParseKey([]byte(jwkPrivateString))
+	prk, err := openid.ParseKey([]byte(jwkPrivateString))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -27,12 +27,12 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // NewJwkFromJSON parses a single JWK from its JSON form.
 func NewJwkFromJSON(data string) (*Jwk, error) {
-	key, err := oidc.ParseKey([]byte(data))
+	key, err := openid.ParseKey([]byte(data))
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +51,7 @@ func (j *Jwk) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON parses a JWK and replaces the wrapped key.
 func (j *Jwk) UnmarshalJSON(data []byte) error {
-	key, err := oidc.ParseKey(data)
+	key, err := openid.ParseKey(data)
 	if err != nil {
 		return err
 	}
@@ -71,7 +71,7 @@ func (j *Jwk) UnmarshalYAML(unmarshal func(any) error) error {
 		return err
 	}
 
-	key, err := oidc.ParseKey(json)
+	key, err := openid.ParseKey(json)
 	if err != nil {
 		return err
 	}
@@ -97,10 +97,10 @@ func (j *Jwks) MarshalJSON() ([]byte, error) {
 	return json.Marshal(j.Keys)
 }
 
-// UnmarshalJSON parses a JWK Set and replaces the wrapped set. As [oidc.ParseKeySet] leaves out entries it cannot
+// UnmarshalJSON parses a JWK Set and replaces the wrapped set. As [openid.ParseKeySet] leaves out entries it cannot
 // use, marshalling a set read from elsewhere does not reproduce those.
 func (j *Jwks) UnmarshalJSON(data []byte) error {
-	keys, err := oidc.ParseKeySet(data)
+	keys, err := openid.ParseKeySet(data)
 	if err != nil {
 		return err
 	}

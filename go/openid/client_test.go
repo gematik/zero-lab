@@ -19,7 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-package oidc
+package openid
 
 import (
 	"bytes"
@@ -35,8 +35,6 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
-
-	"github.com/gematik/zero-lab/go/oauth"
 )
 
 // opStub is an OpenID provider with one signing key, whose token endpoint answers with idToken.
@@ -161,7 +159,7 @@ func TestAuthenticationURLCarriesTheS256Challenge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(authURL, "code_challenge="+oauth.S256Challenge("verifier")) || !strings.Contains(authURL, "code_challenge_method=S256") {
+	if !strings.Contains(authURL, "code_challenge="+S256Challenge("verifier")) || !strings.Contains(authURL, "code_challenge_method=S256") {
 		t.Errorf("url = %s", authURL)
 	}
 }

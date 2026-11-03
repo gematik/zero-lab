@@ -28,8 +28,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
-	"github.com/gematik/zero-lab/go/oauth/providers"
+	"github.com/gematik/zero-lab/go/openid"
+	"github.com/gematik/zero-lab/go/openid/providers"
 	"github.com/gematik/zero-lab/go/pdp/authzserver/mockidp"
 )
 
@@ -41,7 +41,7 @@ func (h mockHost) OPCallbackURL() string {
 	return strings.TrimRight(h.s.Metadata.Issuer, "/") + h.s.endpointPaths.OPCallback
 }
 
-func (h mockHost) AddProvider(c oidc.Client) {
+func (h mockHost) AddProvider(c openid.Client) {
 	h.s.providers.Add(providers.Provider{
 		Info:   providers.Info{Issuer: c.Issuer(), Name: "Mock IdP (non-prod)", Type: providers.TypeOIDC},
 		Client: c,

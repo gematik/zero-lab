@@ -42,7 +42,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // defaultOPScopes are requested from an OpenID provider when RelyingPartyConfig.Scopes is unset — the
@@ -532,13 +532,13 @@ func parseKeySource(kc KeyConfig, baseDir string) (*jose.JSONWebKey, error) {
 		if readErr != nil {
 			return nil, fmt.Errorf("read jwk_path %q: %w", kc.JWKPath, readErr)
 		}
-		key, err = oidc.ParseKey(data)
+		key, err = openid.ParseKey(data)
 	case len(kc.JWK) > 0:
 		data, marshalErr := json.Marshal(kc.JWK)
 		if marshalErr != nil {
 			return nil, fmt.Errorf("marshal inline jwk: %w", marshalErr)
 		}
-		key, err = oidc.ParseKey(data)
+		key, err = openid.ParseKey(data)
 	default:
 		return nil, errors.New("provide one of key_pem_path, jwk_path, or jwk")
 	}
@@ -610,7 +610,7 @@ func (cfg *RelyingPartyConfig) resolveTrustAnchor() (*jose.JSONWebKeySet, error)
 	if !ok {
 		return nil, fmt.Errorf("no built-in trust anchor for fed_master_url %q; set fed_master_jwk", cfg.FedMasterURL)
 	}
-	key, err := oidc.ParseKey([]byte(known))
+	key, err := openid.ParseKey([]byte(known))
 	if err != nil {
 		return nil, fmt.Errorf("parse built-in fed master jwk: %w", err)
 	}

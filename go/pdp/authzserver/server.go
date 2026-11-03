@@ -41,8 +41,8 @@ import (
 	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/nonce"
-	"github.com/gematik/zero-lab/go/oauth/providers"
 	"github.com/gematik/zero-lab/go/oidf"
+	"github.com/gematik/zero-lab/go/openid/providers"
 )
 
 const (

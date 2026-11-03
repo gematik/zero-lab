@@ -22,7 +22,7 @@ Today `pdp/authzserver/config.Config` is one big YAML. Realign along pep's lines
 
 - **Providers → shared `openid-providers.yaml`** (`PDP_OPENID_PROVIDERS_PATH`, default
   `openid-providers.yaml`). The `oidc_providers` / `gematik_idp` / `oidf_relying_party` fields move out of the
-  PDP YAML into the flat file, **reusing the same leaf types** pep uses (`oauth/oidc.Config`,
+  PDP YAML into the flat file, **reusing the same leaf types** pep uses (`openid.Config`,
   `idpd.ClientConfig`, `oidf.RelyingPartyConfig`). A PDP-specific top-level struct binds them — no shared
   wrapper package, same as pep.
 - **PDP-domain config stays YAML** (`pdp.yaml`): `issuer`, `scopes_supported`, `metadata_template`,

@@ -33,10 +33,10 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
-// mockClient is the AS-side oidc.Client for the co-hosted mock OP. The PDP holds it in its provider registry
+// mockClient is the AS-side openid.Client for the co-hosted mock OP. The PDP holds it in its provider registry
 // like any upstream OP; ExchangeForIdentity does a real HTTP round-trip to the mock /token (co-hosted on the
 // same server, reachable at runtime) and validates the returned id_token — exercising the genuine path.
 type mockClient struct {
@@ -47,15 +47,15 @@ type mockClient struct {
 	http        *http.Client
 }
 
-var _ oidc.Client = (*mockClient)(nil)
+var _ openid.Client = (*mockClient)(nil)
 
 func (c *mockClient) Issuer() string { return c.issuer }
 
-func (c *mockClient) AuthenticationURL(_ context.Context, login oidc.Login) (string, error) {
-	return c.issuer + "/auth?" + oidc.AuthorizationQuery(c.clientID, c.redirectURI, []string{"openid"}, login).Encode(), nil
+func (c *mockClient) AuthenticationURL(_ context.Context, login openid.Login) (string, error) {
+	return c.issuer + "/auth?" + openid.AuthorizationQuery(c.clientID, c.redirectURI, []string{"openid"}, login).Encode(), nil
 }
 
-func (c *mockClient) Exchange(ctx context.Context, login oidc.Login, code string) (*oidc.TokenResponse, error) {
+func (c *mockClient) Exchange(ctx context.Context, login openid.Login, code string) (*openid.TokenResponse, error) {
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", code)
@@ -67,22 +67,22 @@ func (c *mockClient) Exchange(ctx context.Context, login oidc.Login, code string
 	if hc == nil {
 		hc = http.DefaultClient
 	}
-	response, err := oidc.PostForm(ctx, hc, c.issuer+"/token", form)
+	response, err := openid.PostForm(ctx, hc, c.issuer+"/token", form)
 	if err != nil {
 		return nil, fmt.Errorf("mock token exchange: %w", err)
 	}
 	if response.Status != http.StatusOK {
 		return nil, fmt.Errorf("mock token endpoint returned %d: %s", response.Status, response.Body)
 	}
-	tr := new(oidc.TokenResponse)
+	tr := new(openid.TokenResponse)
 	if err := json.Unmarshal(response.Body, tr); err != nil {
 		return nil, fmt.Errorf("decode mock token response: %w", err)
 	}
-	payload, err := oidc.VerifyJWS([]byte(tr.IDTokenRaw), c.keys, oidc.VerifyOptions{RequireKeyAlgorithm: true})
+	payload, err := openid.VerifyJWS([]byte(tr.IDTokenRaw), c.keys, openid.VerifyOptions{RequireKeyAlgorithm: true})
 	if err != nil {
 		return nil, fmt.Errorf("verify mock id_token: %w", err)
 	}
-	checks := oidc.IDTokenChecks{Issuer: c.issuer, ClientID: c.clientID, Nonce: login.Nonce, Now: time.Now()}
+	checks := openid.IDTokenChecks{Issuer: c.issuer, ClientID: c.clientID, Nonce: login.Nonce, Now: time.Now()}
 	if err := checks.Validate(payload); err != nil {
 		return nil, fmt.Errorf("verify mock id_token: %w", err)
 	}

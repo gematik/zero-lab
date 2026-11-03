@@ -31,9 +31,9 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/idpd"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
-	"github.com/gematik/zero-lab/go/oauth/providers"
 	"github.com/gematik/zero-lab/go/oidf"
+	"github.com/gematik/zero-lab/go/openid"
+	"github.com/gematik/zero-lab/go/openid/providers"
 )
 
 // loadProviders builds the providers from openid-providers.yaml. An oidc or idpd entry uses
@@ -72,10 +72,10 @@ func providersFromEnv(publicURL string) *providers.Set {
 			}
 			skew = d
 		}
-		client, err := oidc.NewClient(oidc.Config{
+		client, err := openid.NewClient(openid.Config{
 			Issuer:         issuer,
 			ClientID:       os.Getenv("PEP_OIDC_CLIENT_ID"),
-			ClientSecret:   oidc.NewSecretString(os.Getenv("PEP_OIDC_CLIENT_SECRET")),
+			ClientSecret:   openid.NewSecretString(os.Getenv("PEP_OIDC_CLIENT_SECRET")),
 			RedirectURI:    callback,
 			Scopes:         fieldsOr(os.Getenv("PEP_OIDC_SCOPES"), "openid email profile"),
 			Name:           orDefault(os.Getenv("PEP_OIDC_NAME"), "OpenID Connect"),

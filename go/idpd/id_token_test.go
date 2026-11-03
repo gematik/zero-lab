@@ -35,7 +35,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/brainpool/josebp"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 func encryptDir(t *testing.T, key []byte, alg jose.KeyAlgorithm, enc jose.ContentEncryption, plaintext string) string {
@@ -130,7 +130,7 @@ func TestCheckIDToken(t *testing.T) {
 	key := newBrainpoolKey(t)
 	public := &josebp.JSONWebKey{Key: &key.PublicKey}
 	now := time.Unix(1_700_000_000, 0)
-	checks := oidc.IDTokenChecks{Nonce: "n", Issuer: issuer, ClientID: clientID, Now: now, Skew: idTokenSkew}
+	checks := openid.IDTokenChecks{Nonce: "n", Issuer: issuer, ClientID: clientID, Now: now, Skew: idTokenSkew}
 	claims := func(overrides map[string]any) map[string]any {
 		all := map[string]any{"iss": issuer, "aud": clientID, "nonce": "n", "exp": now.Add(time.Hour).Unix(), "iat": now.Unix()}
 		for name, value := range overrides {
@@ -150,14 +150,14 @@ func TestCheckIDToken(t *testing.T) {
 		want  error
 	}{
 		{"a valid token passes", signIDToken(t, key, josebp.AlgorithmNameBP256R1, claims(nil)), nil},
-		{"another issuer is refused", signIDToken(t, key, josebp.AlgorithmNameBP256R1, claims(map[string]any{"iss": "https://evil.example"})), oidc.ErrIssuerMismatch},
-		{"another audience is refused", signIDToken(t, key, josebp.AlgorithmNameBP256R1, claims(map[string]any{"aud": "other"})), oidc.ErrAudienceMismatch},
-		{"a missing nonce is refused", signIDToken(t, key, josebp.AlgorithmNameBP256R1, claims(map[string]any{"nonce": nil})), oidc.ErrMissingClaim},
-		{"a missing exp is refused", signIDToken(t, key, josebp.AlgorithmNameBP256R1, claims(map[string]any{"exp": nil})), oidc.ErrMissingClaim},
+		{"another issuer is refused", signIDToken(t, key, josebp.AlgorithmNameBP256R1, claims(map[string]any{"iss": "https://evil.example"})), openid.ErrIssuerMismatch},
+		{"another audience is refused", signIDToken(t, key, josebp.AlgorithmNameBP256R1, claims(map[string]any{"aud": "other"})), openid.ErrAudienceMismatch},
+		{"a missing nonce is refused", signIDToken(t, key, josebp.AlgorithmNameBP256R1, claims(map[string]any{"nonce": nil})), openid.ErrMissingClaim},
+		{"a missing exp is refused", signIDToken(t, key, josebp.AlgorithmNameBP256R1, claims(map[string]any{"exp": nil})), openid.ErrMissingClaim},
 		{"exp within five minutes passes", signIDToken(t, key, josebp.AlgorithmNameBP256R1, claims(map[string]any{"exp": at(-idTokenSkew + time.Second)})), nil},
-		{"exp five minutes ago is refused", signIDToken(t, key, josebp.AlgorithmNameBP256R1, claims(map[string]any{"exp": at(-idTokenSkew)})), oidc.ErrTokenExpired},
-		{"iat past the skew is refused", signIDToken(t, key, josebp.AlgorithmNameBP256R1, claims(map[string]any{"iat": at(idTokenSkew + time.Second)})), oidc.ErrTokenIssuedInFuture},
-		{"nbf past the skew is refused", signIDToken(t, key, josebp.AlgorithmNameBP256R1, claims(map[string]any{"nbf": at(idTokenSkew + time.Second)})), oidc.ErrTokenNotYetValid},
+		{"exp five minutes ago is refused", signIDToken(t, key, josebp.AlgorithmNameBP256R1, claims(map[string]any{"exp": at(-idTokenSkew)})), openid.ErrTokenExpired},
+		{"iat past the skew is refused", signIDToken(t, key, josebp.AlgorithmNameBP256R1, claims(map[string]any{"iat": at(idTokenSkew + time.Second)})), openid.ErrTokenIssuedInFuture},
+		{"nbf past the skew is refused", signIDToken(t, key, josebp.AlgorithmNameBP256R1, claims(map[string]any{"nbf": at(idTokenSkew + time.Second)})), openid.ErrTokenNotYetValid},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := checkIDToken(tc.token, public, checks); !errors.Is(err, tc.want) {
@@ -171,7 +171,7 @@ func TestCheckIDTokenRefusesASignatureThatDoesNotVerify(t *testing.T) {
 	key := newBrainpoolKey(t)
 	now := time.Unix(1_700_000_000, 0)
 	token := signIDToken(t, newBrainpoolKey(t), josebp.AlgorithmNameBP256R1, map[string]any{"iss": "i", "aud": "c", "nonce": "n", "exp": now.Add(time.Hour).Unix()})
-	checks := oidc.IDTokenChecks{Nonce: "n", Issuer: "i", ClientID: "c", Now: now}
+	checks := openid.IDTokenChecks{Nonce: "n", Issuer: "i", ClientID: "c", Now: now}
 	if err := checkIDToken(token, &josebp.JSONWebKey{Key: &key.PublicKey}, checks); err == nil {
 		t.Error("accepted a signature by another key")
 	}
@@ -182,7 +182,7 @@ func TestCheckIDTokenRefusesAnyAlgorithmButBP256R1(t *testing.T) {
 	key := newBrainpoolKey(t)
 	now := time.Unix(1_700_000_000, 0)
 	claims := map[string]any{"iss": "i", "aud": "c", "nonce": "n", "exp": now.Add(time.Hour).Unix()}
-	checks := oidc.IDTokenChecks{Nonce: "n", Issuer: "i", ClientID: "c", Now: now}
+	checks := openid.IDTokenChecks{Nonce: "n", Issuer: "i", ClientID: "c", Now: now}
 	for _, alg := range []string{"ES256", "none", "HS256", ""} {
 		token := signIDToken(t, key, alg, claims)
 		if err := checkIDToken(token, &josebp.JSONWebKey{Key: &key.PublicKey}, checks); err == nil {
@@ -198,7 +198,7 @@ func TestCheckIDTokenRefusesATokenWithoutAlg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checks := oidc.IDTokenChecks{Nonce: "n", Issuer: "i", ClientID: "c", Now: time.Now()}
+	checks := openid.IDTokenChecks{Nonce: "n", Issuer: "i", ClientID: "c", Now: time.Now()}
 	err = checkIDToken(string(signed), &josebp.JSONWebKey{Key: &key.PublicKey}, checks)
 	if err == nil || !strings.Contains(err.Error(), "alg") {
 		t.Errorf("err = %v", err)

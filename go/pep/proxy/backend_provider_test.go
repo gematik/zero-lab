@@ -25,18 +25,18 @@ import (
 	"context"
 	"testing"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
-	"github.com/gematik/zero-lab/go/oauth/providers"
+	"github.com/gematik/zero-lab/go/openid"
+	"github.com/gematik/zero-lab/go/openid/providers"
 )
 
 type recordingClient struct {
-	oidc.Client
-	login oidc.Login
+	openid.Client
+	login openid.Login
 }
 
-func (c *recordingClient) Exchange(_ context.Context, login oidc.Login, _ string) (*oidc.TokenResponse, error) {
+func (c *recordingClient) Exchange(_ context.Context, login openid.Login, _ string) (*openid.TokenResponse, error) {
 	c.login = login
-	return &oidc.TokenResponse{IDTokenRaw: "e30.e30.e30"}, nil //nolint:gosec // empty JSON parts, not a credential
+	return &openid.TokenResponse{IDTokenRaw: "e30.e30.e30"}, nil //nolint:gosec // empty JSON parts, not a credential
 }
 
 // The clients bind the ID token to the login by its nonce, so the session's nonce has to reach them.
