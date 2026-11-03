@@ -36,7 +36,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use serde_json::Value;
 
-use support::assert_conforms;
+use support::{assert_conforms, assert_old_store_untouched, seed_old_store};
 
 const SDS: &str = include_str!("../../ti-connector-client/tests/fixtures/ehex-connector.sds");
 /// Answers recorded from an eHEX Konnektor (ti-connector-client's replayed session).
@@ -423,6 +423,7 @@ impl Fake {
             .env_remove("TI_CONNECTOR_CONFIG")
             .env("XDG_CONFIG_HOME", self.dir.join("config"))
             .env("TI_CACHE_DIR", self.dir.join("cache"))
+            .env("XDG_CACHE_HOME", self.dir.join("xdg-cache"))
             .env("XDG_STATE_HOME", self.dir.join("state"))
             .env_remove("TI_PROFILE")
             .env_remove("TI_STATE_DIR")
@@ -1232,6 +1233,24 @@ fn a_comfort_id_file_from_an_earlier_version_is_used() {
     let (report, _) = fake.json("connector comfort", &["comfort", "deactivate", "card-hba"]);
     assert_eq!(report["user_id_stored"], false);
     assert!(!file.exists());
+}
+
+/// The comfort commands read nothing of the sealed store: content no reader could parse
+/// sits at each of its paths, so a reader on any of them fails the command. The trust
+/// commands are `tests/schema.rs`'s.
+#[test]
+fn the_old_store_files_are_not_read_by_the_comfort_commands() {
+    let fake = Fake::start("comfort-old-store");
+    let old = seed_old_store(
+        &fake.dir.join("state"),
+        &[&fake.dir.join("cache"), &fake.dir.join("xdg-cache")],
+        &fake.dir.join("config"),
+    );
+    assert_eq!(activate(&fake).status.code(), Some(0));
+    assert_eq!(sign_text(&fake, "a.txt")["comfort"], true);
+    let (report, code) = fake.json("connector comfort", &["comfort", "status", "card-hba"]);
+    assert_eq!(code, Some(0), "{report}");
+    assert_old_store_untouched(&old);
 }
 
 #[test]

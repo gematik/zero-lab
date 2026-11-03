@@ -33,7 +33,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use support::{assert_conforms, schema, violations};
+use support::{assert_conforms, assert_old_store_untouched, schema, seed_old_store, violations};
 
 const ROOTS_URL: &str = "https://download.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json";
 const TSL_URL: &str = "https://download.tsl.ti-dienste.de/ECC/ECC-RSA_TSL.xml";
@@ -57,6 +57,7 @@ fn ti(cache: &Path, args: &[&str]) -> Output {
         .env("TI_PROFILE", "default")
         .env_remove("TI_STATE_DIR")
         .env("TI_CACHE_DIR", cache)
+        .env("XDG_CACHE_HOME", cache.join("xdg-cache"))
         .env("XDG_STATE_HOME", cache.join("state"))
         .env("XDG_CONFIG_HOME", cache.join("config"))
         .output()
@@ -907,43 +908,47 @@ fn profile_delete_does_not_follow_a_symlink() {
     assert!(state_base(c).join("outside/precious").exists());
 }
 
+/// The trust commands read neither the state nor the cache of the sealed store. Seeded with
+/// content no reader could parse, so a reader on any of the paths fails the command; the
+/// comfort commands are `tests/connector.rs`'s.
 #[test]
 fn the_old_store_files_are_not_read() {
     let cache = SeededCache::new("old-store");
     let c = &cache.0;
-    let old = [
-        c.join("state/telematik/profiles/default/state.db"),
-        c.join("state/telematik/profiles/default/keyring.bin"),
-        c.join("profiles/default/state.db"),
-        c.join("config/telematik/profiles/default/store.kek"),
-    ];
-    for file in &old {
-        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
-        std::fs::write(file, b"not a database, a keyring or a key").unwrap();
-    }
-    let out = ti(
+    let empty = c.join("nothing-cached");
+    let old = seed_old_store(&c.join("state"), &[c, &empty], &c.join("config"));
+
+    // The list comes from the cache alone, so this fails if the cache is read elsewhere.
+    let cached = ti(c, &offline(&["pki", "tsl", "show"]));
+    // Without --at the TSL state is read and, with nothing cached, nothing depends on the
+    // date the test runs at.
+    let state = ti(
         c,
-        &["--format", "json", "pki", "roots", "list", "--offline"],
+        &[
+            "--cache-dir",
+            empty.to_str().unwrap(),
+            "--format",
+            "json",
+            "pki",
+            "roots",
+            "list",
+            "--offline",
+        ],
     );
-    assert_eq!(
-        out.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    assert!(
-        out.stderr.is_empty(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    for file in &old {
+    for out in [cached, state] {
         assert_eq!(
-            std::fs::read(file).unwrap(),
-            b"not a database, a keyring or a key",
+            out.status.code(),
+            Some(0),
             "{}",
-            file.display()
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(
+            out.stderr.is_empty(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
         );
     }
+    assert_old_store_untouched(&old);
 }
 
 #[test]
