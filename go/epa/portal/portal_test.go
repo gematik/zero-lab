@@ -39,6 +39,21 @@ func newTestPortal(t *testing.T, proxyInfos []*epa.ProxyInfo) *Portal {
 	return portal
 }
 
+func TestFirstPageHasThePlaceForTheTIServices(t *testing.T) {
+	portal := newTestPortal(t, nil)
+	rec := httptest.NewRecorder()
+	portal.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if !strings.Contains(rec.Body.String(), "data-ti-probe") {
+		t.Error("first page has no element for the probe results")
+	}
+
+	rec = httptest.NewRecorder()
+	portal.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/static/portal.js", nil))
+	if !strings.Contains(rec.Body.String(), "/api/probe") {
+		t.Error("portal.js does not load the probe results")
+	}
+}
+
 func TestPortalPages(t *testing.T) {
 	proxyInfos := []*epa.ProxyInfo{
 		{

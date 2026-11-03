@@ -29,7 +29,8 @@
   function esc(value) {
     const div = document.createElement('div');
     div.textContent = String(value);
-    return div.innerHTML;
+    // innerHTML leaves quotes alone, and callers also put the result into attributes.
+    return div.innerHTML.replaceAll('"', '&quot;').replaceAll("'", '&#39;');
   }
 
   /* ---- copy buttons ---- */
@@ -561,6 +562,52 @@
     }
   }
 
+  /* ---- homepage TI services: one block per environment the proxies use ---- */
+  const PROBE_ACCESS = { 'ti-vpn': 'TI-VPN', internet: 'Internet', bestandsnetz: 'Bestandsnetz' };
+  const PROBE_BADGE = { ok: 'text-bg-success', warn: 'text-bg-warning', fail: 'text-bg-danger' };
+  const PROBE_MARK = { ok: '✓', warn: '!', fail: '✗' };
+
+  function renderProbeEntry(entry) {
+    let html = '<div class="py-1"><span class="badge text-bg-info text-uppercase">'
+      + esc(entry.environment) + '</span>';
+    if (entry.error) {
+      return html + ' <span class="badge text-bg-danger" title="' + esc(entry.error)
+        + '">Prüfung fehlgeschlagen</span></div>';
+    }
+    for (const path of entry.access_paths || []) {
+      const label = PROBE_ACCESS[path.access] || path.access;
+      html += '<div class="d-flex align-items-center flex-wrap gap-2 mt-1">'
+        + '<span class="small text-body-secondary">' + esc(label) + '</span>';
+      if (!path.available) {
+        html += '<span class="badge text-bg-secondary">nicht erreichbar</span>';
+      } else {
+        for (const probe of entry.probes || []) {
+          if (probe.access !== path.access) continue;
+          html += '<span class="badge ' + (PROBE_BADGE[probe.status] || 'text-bg-secondary')
+            + '" title="' + esc(probe.detail || '') + '">' + esc(probe.name) + ' '
+            + (PROBE_MARK[probe.status] || '?') + '</span>';
+        }
+      }
+      html += '</div>';
+    }
+    return html + '</div>';
+  }
+
+  async function loadTiProbe() {
+    const el = document.querySelector('[data-ti-probe]');
+    if (!el) return;
+    try {
+      const res = await fetch('/api/probe');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const entries = (await res.json()) || [];
+      el.innerHTML = entries.length
+        ? entries.map(renderProbeEntry).join('')
+        : '<span class="text-body-secondary small">Keine Proxies konfiguriert</span>';
+    } catch (e) {
+      el.innerHTML = '<span class="text-body-secondary small">Prüfung nicht verfügbar</span>';
+    }
+  }
+
   /* ---- proxy selects ---- */
   async function loadProxies() {
     let proxies = [];
@@ -609,4 +656,5 @@
   if (window.hljs) hljs.highlightAll();
   loadProxies();
   loadStatusBrief();
+  loadTiProbe();
 })();

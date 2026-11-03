@@ -26,6 +26,8 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"slices"
+	"sync"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -34,6 +36,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/epa"
 	"github.com/gematik/zero-lab/go/epa/portal"
+	"github.com/gematik/zero-lab/go/epa/ti"
 )
 
 func init() {
@@ -58,7 +61,10 @@ var routerCmd = &cobra.Command{
 			proxies[num] = proxy
 		}
 
-		e, err := buildRouter(proxies, proxyInfos)
+		runner, err := ti.NewBinary()
+		cobra.CheckErr(err)
+
+		e, err := buildRouter(proxies, proxyInfos, ti.NewProber(runner))
 		cobra.CheckErr(err)
 
 		addr := viper.GetString("addr")
@@ -71,7 +77,7 @@ var routerCmd = &cobra.Command{
 // buildRouter mounts the proxies under /api and the developer portal as
 // catch-all. proxies and proxyInfos are parallel slices; the first proxy is
 // additionally reachable without the /api/proxies/{name} prefix.
-func buildRouter(proxies []*epa.Proxy, proxyInfos []*epa.ProxyInfo) (*echo.Echo, error) {
+func buildRouter(proxies []*epa.Proxy, proxyInfos []*epa.ProxyInfo, prober *ti.Prober) (*echo.Echo, error) {
 	if len(proxies) != len(proxyInfos) {
 		return nil, fmt.Errorf("got %d proxies but %d proxy infos", len(proxies), len(proxyInfos))
 	}
@@ -105,6 +111,8 @@ func buildRouter(proxies []*epa.Proxy, proxyInfos []*epa.ProxyInfo) (*echo.Echo,
 		return c.JSON(http.StatusOK, infos)
 	})
 
+	e.GET("/api/probe", probeHandler(prober, proxyInfos))
+
 	webPortal, err := portal.New(proxyInfos)
 	if err != nil {
 		return nil, err
@@ -112,6 +120,45 @@ func buildRouter(proxies []*epa.Proxy, proxyInfos []*epa.ProxyInfo) (*echo.Echo,
 	e.GET("/*", echo.WrapHandler(webPortal))
 
 	return e, nil
+}
+
+// probeEntry is one environment in the answer of GET /api/probe: its report, or why there
+// is none.
+type probeEntry struct {
+	*ti.ProbeReport
+	Environment string `json:"environment"`
+	Error       string `json:"error,omitempty"`
+}
+
+// probeHandler answers with the probe of each environment the proxies use, in their order.
+// Like the proxies' status, a failed run appears in its entry rather than as an HTTP error,
+// so that one environment's trouble leaves the others readable.
+func probeHandler(prober *ti.Prober, proxyInfos []*epa.ProxyInfo) echo.HandlerFunc {
+	var envs []string
+	for _, info := range proxyInfos {
+		if env := string(info.Env); !slices.Contains(envs, env) {
+			envs = append(envs, env)
+		}
+	}
+
+	return func(c echo.Context) error {
+		entries := make([]probeEntry, len(envs))
+		var wg sync.WaitGroup
+		for i, env := range envs {
+			wg.Go(func() {
+				entries[i].Environment = env
+				report, err := prober.Probe(c.Request().Context(), env)
+				if err != nil {
+					slog.Error("Failed to probe the TI services", "env", env, "error", err)
+					entries[i].Error = err.Error()
+					return
+				}
+				entries[i].ProbeReport = report
+			})
+		}
+		wg.Wait()
+		return c.JSON(http.StatusOK, entries)
+	}
 }
 
 func createProxy(proxyConfig *epa.ProxyConfig) (*epa.Proxy, error) {
