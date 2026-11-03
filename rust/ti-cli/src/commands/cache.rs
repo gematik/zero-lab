@@ -48,8 +48,9 @@ struct Report {
 pub fn clear(global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     let profile = Profile::resolve(global)?;
     let path = profile.cache_dir.display().to_string();
-    let removed = file_cache::clear(&profile.cache_dir).map_err(|e| {
-        CliError::Output(std::io::Error::new(e.kind(), format!("cache {path}: {e}")))
+    let removed = file_cache::clear(&profile.cache_dir).map_err(|e| CliError::Cache {
+        path: path.clone(),
+        reason: e.to_string(),
     })?;
     let report = Report {
         schema: SCHEMA,

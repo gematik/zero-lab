@@ -40,8 +40,6 @@ fn command(args: &[&str]) -> Command {
         .env_remove("TI_ENV")
         .env("TI_PROFILE", "default")
         .env_remove("TI_STATE_DIR")
-        .env_remove("TI_STORE_KEK_PATH")
-        .env_remove("TI_STORE_BACKEND")
         // Nothing cached: --offline runs see the embedded roots only, whatever an
         // earlier run on this machine downloaded.
         .env(
@@ -68,8 +66,6 @@ fn ti_with_stdin(args: &[&str], stdin: &[u8]) -> Output {
         )
         .env("TI_PROFILE", "default")
         .env_remove("TI_STATE_DIR")
-        .env_remove("TI_STORE_KEK_PATH")
-        .env_remove("TI_STORE_BACKEND")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -206,8 +202,6 @@ fn inspect_without_a_cached_tsl_says_the_tsl_is_not_loaded() {
         .env_remove("TI_ENV")
         .env("TI_PROFILE", "default")
         .env_remove("TI_STATE_DIR")
-        .env_remove("TI_STORE_KEK_PATH")
-        .env_remove("TI_STORE_BACKEND")
         .env("TI_CACHE_DIR", dir.join("cache"))
         .env("XDG_STATE_HOME", dir.join("state"))
         .env("NO_COLOR", "1")
@@ -736,9 +730,7 @@ fn probe_takes_the_environment_as_argument_or_option() {
             .args(args)
             .env_remove("TI_ENV")
             .env("TI_PROFILE", "default")
-            .env_remove("TI_STATE_DIR")
-            .env_remove("TI_STORE_KEK_PATH")
-            .env_remove("TI_STORE_BACKEND");
+            .env_remove("TI_STATE_DIR");
         if let Some(value) = ti_env {
             command.env("TI_ENV", value);
         }
@@ -962,7 +954,6 @@ fn cache_clear_keeps_the_tsl_state() {
     let cache = base.join("cache");
     let state_dir = state.join("profiles/default");
     std::fs::create_dir_all(&state_dir).unwrap();
-    std::fs::write(state_dir.join("state.db"), b"tsl state of an earlier run").unwrap();
     std::fs::write(state_dir.join("tsl-state.json"), b"{\"sequence\":7}").unwrap();
     let entries = cache.join("profiles/default/v1");
     std::fs::create_dir_all(&entries).unwrap();
@@ -980,9 +971,5 @@ fn cache_clear_keeps_the_tsl_state() {
 
     assert_eq!(snapshot(&state), before, "the state directory is untouched");
     assert!(!entries.exists(), "the cache is gone");
-    assert!(
-        !cache.join("profiles/default/cache.db").exists(),
-        "clearing never opens the sealed store"
-    );
     let _ = std::fs::remove_dir_all(&base);
 }

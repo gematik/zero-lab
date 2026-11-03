@@ -39,7 +39,9 @@ pub fn cache_home() -> Result<PathBuf, CliError> {
 
 #[cfg(windows)]
 fn default_state_base() -> Result<PathBuf, CliError> {
-    default_cache_base().map(|base| base.join("state"))
+    default_cache_base()
+        .map(|base| base.join("state"))
+        .map_err(|_| CliError::StateDir("LOCALAPPDATA is not set"))
 }
 
 #[cfg(not(windows))]
@@ -52,7 +54,7 @@ fn default_state_base() -> Result<PathBuf, CliError> {
     std::env::home_dir()
         .filter(|home| home.is_absolute())
         .map(|home| home.join(".local").join("state"))
-        .ok_or(CliError::CacheDir("no home directory"))
+        .ok_or(CliError::StateDir("no home directory"))
 }
 
 #[cfg(windows)]

@@ -69,20 +69,10 @@ never on `message`. `hint` says what to do, when there is something.
 | `http_setup` | 2 | `--cacert`, `--capath` or the proxy cannot be used |
 | `unknown_schema` | 2 | `schema` for a command that has none |
 | `cache_dir_unknown` | 2 | no cache directory can be derived |
+| `state_dir_unknown` | 2 | no state directory can be derived: set `TI_STATE_DIR` |
 | `connector_config` | 2 | no usable `.kon` file; the message lists every problem |
 | `pin_type` | 2 | a PIN type that does not fit the card |
 | `header_invalid` | 2 | a JWS header the tool sets itself |
-| `store_not_found` | 2 | no such record, or the profile's key file is missing |
-| `store_expired` | 2 | the record has expired |
-| `store_malformed` | 2 | a record, keyring, key file or database does not parse |
-| `store_unsupported_version` | 2 | a format this version does not know |
-| `store_unknown_kid` | 2 | a record sealed under a key the keyring lacks |
-| `store_auth_failed` | 2 | a record or key does not authenticate: wrong key file, or altered |
-| `store_limit_exceeded` | 2 | a size or count above its limit |
-| `store_invalid_argument` | 2 | a namespace, name or lifetime outside its rule |
-| `store_capability_missing` | 2 | the backend lacks what a namespace needs |
-| `store_no_keyring` | 2 | the profile has no keyring: `{bin} profile create` |
-| `store_insecure_permissions` | 2 | the key file is readable by others |
 | `trust_material_unavailable` | 3 | roots.json or the TSL could not be had or failed verification |
 | `server_unreachable` | 3 | `--connect` reached no server or no handshake |
 | `connector_unreachable` | 3 | the Konnektor did not answer |
@@ -109,9 +99,8 @@ never on `message`. `hint` says what to do, when there is something.
 | `claims_invalid` | 4 | the claims are not a JSON object |
 | `signature_malformed` | 4 | a signature neither DER nor r‖s |
 | `output_failed` | 5 | stdout or a file could not be written |
-| `state_file_failed` | 5 | the TSL state file could not be read, parsed or written; removing it restarts from the next verified TSL |
-| `store_busy` | 5 | the database stayed locked |
-| `store_backend_error` | 5 | an I/O or database error of the store |
+| `cache_failed` | 5 | the download cache could not be read, written or cleared |
+| `state_file_failed` | 5 | a state file (the TSL state, a comfort ID) or directory could not be read, parsed or written |
 
 ## Common options and environment
 

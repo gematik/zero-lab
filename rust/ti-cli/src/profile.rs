@@ -43,6 +43,14 @@ pub struct Profile {
     pub cache_dir: PathBuf,
 }
 
+/// The directories the profiles live below; a named profile's are `profiles/NAME` in
+/// each.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Bases {
+    pub state: PathBuf,
+    pub cache: PathBuf,
+}
+
 struct Inputs<'a> {
     profile: Option<&'a str>,
     state_dir: Option<PathBuf>,
@@ -55,10 +63,16 @@ impl Profile {
     ///
     /// # Errors
     ///
-    /// `arguments_invalid` for a name or a directory outside the rules, or when a base
-    /// has to be derived and the platform has no home for it.
+    /// `arguments_invalid` for a name or a directory outside the rules; `state_dir_unknown`
+    /// or `cache_dir_unknown` when a base has to be derived and the platform has no home
+    /// for it.
     pub fn resolve(global: &GlobalArgs) -> Result<Self, CliError> {
-        let env_profile = env_text("TI_PROFILE")?;
+        // Read only when the flag is absent, so a TI_PROFILE that is not UTF-8 does not
+        // fail a run that names its profile; an empty value counts as unset.
+        let env_profile = match global.profile {
+            Some(_) => None,
+            None => env_text("TI_PROFILE")?,
+        };
         // Not filtered like TI_PROFILE: an empty TI_STATE_DIR is refused, so a failed
         // `TI_STATE_DIR=$(mktemp -d)` cannot fall back to the real state directory.
         let env_state = std::env::var_os("TI_STATE_DIR").map(PathBuf::from);
@@ -72,6 +86,33 @@ impl Profile {
             paths::cache_home,
         )
     }
+
+    /// The bases alone, for the commands that look at every profile.
+    ///
+    /// # Errors
+    ///
+    /// As [`resolve`](Self::resolve) for the directories.
+    pub fn bases(global: &GlobalArgs) -> Result<Bases, CliError> {
+        let state_dir = std::env::var_os("TI_STATE_DIR").map(PathBuf::from);
+        bases_from(
+            state_dir,
+            global.cache_dir.clone(),
+            paths::state_home,
+            paths::cache_home,
+        )
+    }
+}
+
+fn bases_from(
+    state_dir: Option<PathBuf>,
+    cache_dir: Option<PathBuf>,
+    state_home: impl FnOnce() -> Result<PathBuf, CliError>,
+    cache_home: impl FnOnce() -> Result<PathBuf, CliError>,
+) -> Result<Bases, CliError> {
+    Ok(Bases {
+        state: base(state_dir, "TI_STATE_DIR", state_home)?,
+        cache: base(cache_dir, "--cache-dir", cache_home)?,
+    })
 }
 
 fn env_text(key: &str) -> Result<Option<String>, CliError> {
@@ -96,16 +137,15 @@ fn resolve_from(
     if let Some(name) = at.profile {
         validate_name(name)?;
     }
-    let state = base(at.state_dir, "TI_STATE_DIR", state_home)?;
-    let cache = base(at.cache_dir, "--cache-dir", cache_home)?;
+    let bases = bases_from(at.state_dir, at.cache_dir, state_home, cache_home)?;
     let below = |base: PathBuf| match at.profile {
         Some(name) => base.join("profiles").join(name),
         None => base,
     };
     Ok(Profile {
         name: at.profile.map(str::to_owned),
-        state_dir: below(state),
-        cache_dir: below(cache),
+        state_dir: below(bases.state),
+        cache_dir: below(bases.cache),
     })
 }
 

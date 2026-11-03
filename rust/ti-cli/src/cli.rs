@@ -47,11 +47,6 @@ Environment:
   TI_PROFILE      default for --profile
   TI_CACHE_DIR    default for --cache-dir
   TI_STATE_DIR    base of the profiles' state [default: ~/.local/state/telematik]
-  TI_STORE_KEK_PATH
-                  the profile's key file [default: <config>/telematik/profiles/NAME/store.kek]
-  TI_STORE_BACKEND
-                  sqlite (default) or files
-  TI_STORE_TRACE  1 writes one line per store operation to stderr
   TI_CONNECTOR_CONFIG, TI_CONNECTOR_TIMEOUT, TI_CARD_TIMEOUT
                   defaults for connector -c, --connector-timeout, --card-timeout
   NO_COLOR        disables colors; CLICOLOR_FORCE=1 forces them
@@ -123,8 +118,8 @@ pub struct GlobalArgs {
     /// Diagnostics on stderr (-v, -vv)
     #[arg(short, long, action = ArgAction::Count, global = true, hide_short_help = true)]
     pub verbose: u8,
-    /// The store profile (default: TI_PROFILE, then the one `profile use` chose, then
-    /// "default")
+    /// A directory below profiles/ for state and cache, created on first use (default:
+    /// TI_PROFILE, then none)
     #[arg(long, value_name = "NAME", global = true, hide_short_help = true)]
     pub profile: Option<String>,
     /// Base of the profiles' caches, shared with the other TI tools [default:
@@ -206,12 +201,9 @@ pub enum Command {
         #[arg(long, value_enum, value_name = "ENV", env = "TI_ENV")]
         env: Option<Environment>,
     },
-    /// Store profiles: the keyring, state and cache the TI tools share
+    /// The profiles in use: list them, or delete one with its state and cache
     #[command(subcommand)]
     Profile(ProfileCommand),
-    /// The profile's store: check, list and maintain its records
-    #[command(subcommand)]
-    Store(StoreCommand),
     /// The download cache
     #[command(subcommand)]
     Cache(CacheCommand),
@@ -241,96 +233,19 @@ pub enum CacheCommand {
     Clear,
 }
 
-/// `ti profile …` (spec/store section L).
+/// `ti profile …`.
 #[derive(Debug, Subcommand)]
 pub enum ProfileCommand {
-    /// Create a profile's keyring and, unless it exists, its key file; then tokens, TSL
-    /// state and comfort IDs can be kept
-    Create {
-        /// The profile [default: the profile in effect]
-        name: Option<String>,
-        /// Use this existing key file; set TI_STORE_KEK_PATH to it for later runs
-        #[arg(long, value_name = "PATH")]
-        kek_file: Option<PathBuf>,
-    },
-    /// The profiles, which one is active, and what each holds
+    /// The unnamed location and each profile below profiles/, with the size of their state
+    /// and cache
     List,
-    /// Make a profile the active one, for every TI tool without --profile or TI_PROFILE
-    Use {
-        /// The profile
-        name: String,
-    },
-    /// Delete a profile: its keyring first, then its state, cache and default key file
+    /// Delete a profile's state and cache directories
     Delete {
         /// The profile
         name: String,
-        /// Required: the profile's sealed records are lost for good
+        /// Required: what the profile keeps is lost for good
         #[arg(long)]
         yes: bool,
-    },
-    /// The profile in effect, where its name came from, and its paths
-    Show,
-    /// A new current key for sealing; keys no live record uses are dropped
-    Rotate,
-    /// Wrap the profile's keys with another key file; the records stay as they are
-    Rewrap {
-        /// The new key file (44 characters of base64, mode 0600)
-        #[arg(long, value_name = "PATH")]
-        kek_file: PathBuf,
-    },
-}
-
-/// `ti store …` (spec/store section L).
-#[derive(Debug, Subcommand)]
-pub enum StoreCommand {
-    /// Check the profile's key file, keyring and databases without changing them (exit 1
-    /// if a check fails)
-    Doctor {
-        /// JSON, as --format json
-        #[arg(long)]
-        json: bool,
-        /// Also open every sealed record and count those that do not open
-        #[arg(long)]
-        deep: bool,
-    },
-    /// The records: namespace, name prefix, expiry, size, kid and field names; never ids
-    /// or contents
-    Ls {
-        /// Only this namespace
-        namespace: Option<String>,
-    },
-    /// One record's metadata; its content only with --reveal
-    Show {
-        /// The namespace
-        namespace: String,
-        /// The record's id
-        id: String,
-        /// Print the content too (tokens are secrets)
-        #[arg(long)]
-        reveal: bool,
-    },
-    /// Remove one record
-    Rm {
-        /// The namespace
-        namespace: String,
-        /// The record's id
-        id: String,
-    },
-    /// Remove every record of a namespace
-    Purge {
-        /// The namespace
-        namespace: String,
-        /// Required
-        #[arg(long)]
-        yes: bool,
-    },
-    /// Remove expired records and give the space back
-    Cleanup,
-    /// Bring both databases to this tool's format level
-    Migrate {
-        /// Report what would be done
-        #[arg(long)]
-        dry_run: bool,
     },
 }
 

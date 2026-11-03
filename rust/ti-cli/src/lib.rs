@@ -57,10 +57,6 @@ mod peer;
 #[doc(hidden)]
 pub mod profile;
 mod prompt;
-// Public for the spec/store interoperability driver (examples/store-interop.rs) only;
-// not an API of this crate.
-#[doc(hidden)]
-pub mod store;
 mod trust;
 
 use std::ffi::OsString;

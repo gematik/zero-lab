@@ -269,8 +269,8 @@ impl CertRef {
 /// is. One per invocation, so every load shares the cache and the transport.
 pub struct Session {
     transport: Option<Http>,
-    /// The profile in effect; none when it cannot be resolved, and then nothing is kept.
-    profile: Option<Profile>,
+    /// The profile in effect, whose state directory keeps the TSL state.
+    profile: Profile,
     /// The profile's cache.
     cache: Option<Arc<FileCache>>,
     /// Stands in for the profile's cache when it cannot be opened.
@@ -307,7 +307,7 @@ impl Session {
         };
         Ok(Session {
             transport,
-            profile: Some(profile),
+            profile,
             cache,
             memory: Arc::default(),
             insecure,
@@ -394,10 +394,8 @@ impl Session {
     /// The list seen before guards against an older one, but only for the current time:
     /// a past instant may well need an older list.
     fn tsl_state(&self, config: &TrustConfig, at: Option<Timestamp>) -> Option<TslStateStore> {
-        match (&self.profile, at) {
-            (Some(profile), None) => Some(TslStateStore::for_config(profile, config, self.verbose)),
-            _ => None,
-        }
+        at.is_none()
+            .then(|| TslStateStore::for_config(&self.profile, config, self.verbose))
     }
 
     /// The TSL as loaded (unverified bytes; see [`ti_pki::tsl`]), with where it came
@@ -793,7 +791,7 @@ mod tests {
     fn fixture_session(p: &Profile) -> Session {
         let session = Session {
             transport: None,
-            profile: Some(p.clone()),
+            profile: p.clone(),
             cache: None,
             memory: Arc::default(),
             insecure: false,
