@@ -1,5 +1,52 @@
 # Release Notes
 
+# Release go/pkcs12 v1.0.0-rc.1
+
+The release candidate for a stable API. The exported names are pinned by a test, so adding one is a
+decision, and `pkcs12` is an active module again. Open before v1.0.0: see known limits.
+
+### breaking
+- Removed from `pkcs12`: `ParseAuthenticatedSafe`, `ParseSafeContents`, `ParseCertBag`,
+  `ParseEncryptedPrivateKeyInfo`, `ParseEncryptionAlgorithm`, `DecryptPBES2`, `DecryptLegacyPBE`,
+  `DecryptEncryptedData`, `DecryptShroudedKeyBag`, `GetFriendlyName`, `GetLocalKeyID`,
+  `ErrInvalidMAC`, the ASN.1 types behind them, and the OIDs `EncodeOptions` does not take.
+- Removed from `pkcs12/legacy`: `ConvertWithOpenSSL`, `IsBER` and its OIDs. The packages
+  `legacy/ber` and `legacy/rc2` are internal now.
+- `EncodeOptions.KeyEncryption`, `CertEncryption` and `MacAlgorithm`, and the OIDs that go with
+  them, are `crypto/x509.OID`. An empty `CertEncryption` writes plain certificates, as nil did.
+
+### features
+- `legacy.Parse` reads the outer structure of a file in DER or BER, so that a caller of `legacy` can
+  insist on a MAC too.
+
+### verified
+- `just check` across all modules passed on the tree of ba166e7; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`. The development guide lists no gated suite as required for `pkcs12`.
+- `spec/pkcs12/interop/run.sh` on 2026-11-03, OpenSSL 4.1.0: `legacy.Decode` and `ti-pkcs12` 56 of 56,
+  `pkcs12.Decode` 28 of 28, all compared in full. The committed `matrix.md` is of an earlier run.
+- A file written by `pkcs12.Encode` read in `ti-pkcs12` and `openssl pkcs12 -info`, and one written by
+  `ti_pkcs12::encode` read in `pkcs12.Decode`. These were one-off runs: the corpus covers decoders only.
+
+### known limits
+- `PFX`, `ContentInfo`, `MacData` and `DigestInfo` are aliases of an internal package, and their
+  identifiers stay `asn1.ObjectIdentifier`.
+- A crafted file can cost seconds per bag: the iteration limit is per count, not per file (TASK-158).
+- Keys and passwords are not wiped from memory, unlike `ti-pkcs12`.
+- The tag is on `chore/go-consolidation`, not yet on `main`.
+
+# Release go/brainpool v1.3.0
+
+### fixed
+- `josebp` writes a JWK's coordinates at the curve's full length, as RFC 7518 requires (TASK-189).
+
+### changes
+- The module is active again; `go/tipki`'s trust path parses and verifies through it.
+
+### verified
+- `just check` across all modules passed on the tree of ba166e7; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`. The development guide lists no gated suite as required for `brainpool`.
+- The tag is on `chore/go-consolidation`, not yet on `main`.
+
 # Release go/tipki v0.31.0
 
 ### breaking
