@@ -65,10 +65,10 @@ fn ti(cache: &Path, args: &[&str]) -> Output {
 }
 
 /// A cache directory holding the production roots.json and TSL fixtures as if just
-/// downloaded, in the layout of `ti-cli/src/cache.rs` and ti-pki's cache keys.
+/// downloaded, in the layout of `ti-cli/src/file_cache.rs` and ti-pki's cache keys.
 struct SeededCache(PathBuf);
 
-/// The cache payload of ti's store adapter: `u8 1 ‖ u32 length ‖ metadata JSON ‖ body`.
+/// The content of a cache file: `u8 1 ‖ u32 length ‖ metadata JSON ‖ body`.
 fn cache_payload(fetched_at: u64, body: &[u8]) -> Vec<u8> {
     let meta = serde_json::json!({
         "etag": "\"fixture\"", "last_modified": null,
@@ -82,9 +82,26 @@ fn cache_payload(fetched_at: u64, body: &[u8]) -> Vec<u8> {
     out
 }
 
+/// Writes cache files into the default profile's cache directory below `dir`, as another
+/// process sharing the profile would: `v1/<hex SHA-256 of the key>`, the key being
+/// `<prefix>/<id>`.
+fn seed_cache(dir: &Path, records: &[(&str, String, Vec<u8>)]) {
+    let entries = dir.join("profiles/default/v1");
+    std::fs::create_dir_all(&entries).unwrap();
+    for (prefix, id, payload) in records {
+        let hash = Sha256::digest(format!("{prefix}/{id}").as_bytes())
+            .iter()
+            .fold(String::new(), |mut hex, b| {
+                write!(hex, "{b:02x}").unwrap();
+                hex
+            });
+        std::fs::write(entries.join(hash), payload).unwrap();
+    }
+}
+
 /// Writes plain records into the default profile's `cache.db` below `dir`, created
-/// from spec/store's schema, as another tool sharing the profile would.
-fn seed_cache_db(dir: &Path, records: &[(&str, String, Vec<u8>)]) {
+/// from spec/store's schema: what `store doctor` inspects until the sealed store goes.
+fn seed_store_cache_db(dir: &Path, records: &[(&str, String, Vec<u8>)]) {
     use ti_store::store::{Namespace, plain_name, plain_record};
     let db = dir.join("profiles/default/cache.db");
     std::fs::create_dir_all(db.parent().unwrap()).unwrap();
@@ -133,12 +150,20 @@ impl SeededCache {
             .as_secs();
         let records: Vec<_> = [
             (
-                "pki.roots",
+                "ti-pki/v1/roots",
                 ROOTS_URL,
                 manifest("../ti-pki/src/roots-prod.json"),
             ),
-            ("pki.tsl", TSL_URL, manifest(&format!("{PROD_SET}.xml"))),
-            ("pki.tsl", TSL_SIG_URL, manifest(&format!("{PROD_SET}.sig"))),
+            (
+                "ti-pki/v1/tsl",
+                TSL_URL,
+                manifest(&format!("{PROD_SET}.xml")),
+            ),
+            (
+                "ti-pki/v1/tsl-sig",
+                TSL_SIG_URL,
+                manifest(&format!("{PROD_SET}.sig")),
+            ),
         ]
         .into_iter()
         .map(|(ns, url, body)| {
@@ -149,7 +174,7 @@ impl SeededCache {
             )
         })
         .collect();
-        seed_cache_db(&dir, &records);
+        seed_cache(&dir, &records);
         SeededCache(dir)
     }
 }
@@ -718,10 +743,10 @@ fn pkcs12_commands_match_their_schemas() {
 fn cache_clear_removes_only_the_profiles_cache() {
     let cache = SeededCache::new("clear");
     std::fs::write(cache.0.join("keep.txt"), "not ours").unwrap();
-    seed_cache_db(
+    seed_cache(
         &cache.0,
         &[(
-            "connector.sds",
+            "ti-connector/v1/sds",
             "0123456789abcdef".into(),
             cache_payload(1, b"<sds/>"),
         )],
@@ -889,6 +914,31 @@ fn profile_commands_list_use_show_and_delete() {
 fn store_doctor_checks_and_traces() {
     let cache = SeededCache::new("doctor");
     let c = &cache.0;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let read_fixture = |path: &str| std::fs::read(manifest(path)).unwrap();
+    seed_store_cache_db(
+        c,
+        &[
+            (
+                "pki.roots",
+                url_id(ROOTS_URL),
+                cache_payload(now, &read_fixture("../ti-pki/src/roots-prod.json")),
+            ),
+            (
+                "pki.tsl",
+                url_id(TSL_URL),
+                cache_payload(now, &read_fixture(&format!("{PROD_SET}.xml"))),
+            ),
+            (
+                "pki.tsl",
+                url_id(TSL_SIG_URL),
+                cache_payload(now, &read_fixture(&format!("{PROD_SET}.sig"))),
+            ),
+        ],
+    );
     let doctor = |trace: bool| {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_ti"));
         store_env(&mut cmd, c).args(["store", "doctor", "--json"]);
@@ -1058,18 +1108,26 @@ fn tsldet_023_a_past_time_does_not_use_the_published_status() {
         .as_secs();
     let origin = "http://download.crl.ti-dienste.de/TSL-ECC/ECC-RSA_TSL";
     let roots = std::fs::read(manifest("../ti-pki/src/roots-prod.json")).unwrap();
-    seed_cache_db(
+    seed_cache(
         &dir,
         &[
-            ("pki.roots", url_id(ROOTS_URL), cache_payload(now, &roots)),
-            ("pki.tsl", url_id(TSL_URL), cache_payload(now, &set("xml"))),
             (
-                "pki.tsl",
+                "ti-pki/v1/roots",
+                url_id(ROOTS_URL),
+                cache_payload(now, &roots),
+            ),
+            (
+                "ti-pki/v1/tsl",
+                url_id(TSL_URL),
+                cache_payload(now, &set("xml")),
+            ),
+            (
+                "ti-pki/v1/tsl-sig",
                 url_id(&format!("{origin}.sig")),
                 cache_payload(now, &set("sig")),
             ),
             (
-                "pki.tsl",
+                "ti-pki/v1/tsl-ocsp",
                 url_id(&format!("{origin}.ocsp")),
                 cache_payload(now, &set("ocsp")),
             ),

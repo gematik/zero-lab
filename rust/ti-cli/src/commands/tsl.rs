@@ -338,7 +338,7 @@ pub fn verify(args: &TslVerifyArgs, global: &GlobalArgs, out: &Output) -> Result
         // The status now says nothing about another time.
         if supplied_status.is_none() && !args.offline && args.at.is_none() {
             let transport = crate::http::transport(&global.net, out.verbosity())?;
-            let store = crate::store::open_cache(global)?;
+            let store = crate::file_cache::open_cache(global)?;
             let checker = OcspChecker::new(&config, &transport, SystemClock).with_store(store);
             block_on(verified.check_signer_status(&checker))?;
         }

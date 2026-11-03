@@ -36,9 +36,15 @@ mod cli;
 mod commands;
 mod connector;
 mod error;
+mod file_cache;
 // Public for the fuzz targets only; not an API of this crate.
 #[doc(hidden)]
 pub mod files;
+// Public for the fuzz targets only; not an API of this crate.
+#[doc(hidden)]
+pub mod fuzz {
+    pub use crate::file_cache::decode;
+}
 mod http;
 mod identity;
 mod input;

@@ -523,6 +523,20 @@ fuzz-ti-store seconds="30":
         [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
     done
 
+# Fuzz every ti-cli file parser for `seconds` each (design time; nightly and cargo-fuzz).
+# Corpora start from ti-cli/fuzz/seeds and grow in ti-cli/fuzz/corpus (not committed).
+fuzz-ti-cli seconds="30":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd ti-cli/fuzz
+    for target in cache_entry; do
+        mkdir -p "corpus/$target"
+        cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
+            -max_total_time={{seconds}} -max_len=65536 -print_final_stats=1 2>&1 \
+            | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
+        [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
+    done
+
 # Fuzz every ti-pki parser of network bytes for `seconds` each (design time; nightly and
 # cargo-fuzz). Corpora start from ti-pki/fuzz/seeds and grow in ti-pki/fuzz/corpus (not
 # committed).

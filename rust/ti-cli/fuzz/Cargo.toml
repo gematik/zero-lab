@@ -1,0 +1,24 @@
+# cargo-fuzz targets for ti-cli's file parsers (nightly; `just fuzz-ti-cli`). Outside the
+# workspace so that libfuzzer never enters the workspace's lock file and checks.
+[package]
+name = "ti-cli-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "EUPL-1.2"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+ti-cli = { path = ".." }
+
+[[bin]]
+name = "cache_entry"
+path = "fuzz_targets/cache_entry.rs"
+test = false
+doc = false
+bench = false

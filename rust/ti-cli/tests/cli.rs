@@ -930,3 +930,59 @@ fn convert_writes_a_modern_private_file_and_keeps_existing_ones() {
     assert_eq!(ti(&forced).status.code(), Some(0));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+fn snapshot(dir: &std::path::Path) -> std::collections::BTreeMap<std::path::PathBuf, Vec<u8>> {
+    fn walk(
+        dir: &std::path::Path,
+        root: &std::path::Path,
+        into: &mut std::collections::BTreeMap<std::path::PathBuf, Vec<u8>>,
+    ) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(&path, root, into);
+            } else {
+                into.insert(
+                    path.strip_prefix(root).unwrap().to_path_buf(),
+                    std::fs::read(&path).unwrap(),
+                );
+            }
+        }
+    }
+    let mut files = std::collections::BTreeMap::new();
+    walk(dir, dir, &mut files);
+    files
+}
+
+#[test]
+fn cache_clear_keeps_the_tsl_state() {
+    let base = std::env::temp_dir().join(format!("ti-cache-clear-state-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&base);
+    let state = base.join("state");
+    let cache = base.join("cache");
+    let state_dir = state.join("profiles/default");
+    std::fs::create_dir_all(&state_dir).unwrap();
+    std::fs::write(state_dir.join("state.db"), b"tsl state of an earlier run").unwrap();
+    std::fs::write(state_dir.join("tsl-state.json"), b"{\"sequence\":7}").unwrap();
+    let entries = cache.join("profiles/default/v1");
+    std::fs::create_dir_all(&entries).unwrap();
+    std::fs::write(entries.join("0123"), b"cached").unwrap();
+    let before = snapshot(&state);
+
+    let out = command(&["--format", "json", "cache", "clear"])
+        .env("TI_STATE_DIR", &state)
+        .env("TI_CACHE_DIR", &cache)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["removed_records"], 1);
+
+    assert_eq!(snapshot(&state), before, "the state directory is untouched");
+    assert!(!entries.exists(), "the cache is gone");
+    assert!(
+        !cache.join("profiles/default/cache.db").exists(),
+        "clearing never opens the sealed store"
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}

@@ -776,7 +776,8 @@ fn the_selection_and_the_cache_are_used() {
         !stderr.contains("GET http"),
         "no second directory request: {stderr}"
     );
-    assert!(fake.dir.join("cache/profiles/default/cache.db").is_file());
+    let entries = fake.dir.join("cache/v1");
+    assert_eq!(std::fs::read_dir(entries).unwrap().count(), 1);
 }
 
 #[test]
@@ -1075,7 +1076,10 @@ fn store_commands_rewrap_check_and_remove_sealed_records() {
         &["store", "purge", "connector.sds", "--yes"],
         none,
     );
-    assert_eq!(purged["removed"], 1, "the service directory");
+    assert_eq!(
+        purged["removed"], 0,
+        "the service directory is a cache file now, not a record"
+    );
     let unknown = fake.ti(&["store", "purge", "nope", "--yes"]);
     assert_eq!(unknown.status.code(), Some(2));
 

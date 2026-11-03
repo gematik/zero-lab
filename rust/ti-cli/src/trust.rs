@@ -48,10 +48,11 @@ use ti_pki::{Clock, Tier, Timestamp, TrustConfig, TrustStore, roots};
 use crate::block::block_on;
 use crate::cli::GlobalArgs;
 use crate::error::{CliError, StoreFile};
+use crate::file_cache::FileCache;
 use crate::http::{self, Http};
 use crate::output::{Output, warning};
 use crate::paths;
-use crate::store::StoreCache;
+use crate::profile::Profile;
 use crate::store::profile::{ProfileStore, Selected};
 use ti_store::store::StoreError;
 use ti_store::store::registry::TSL_STATE;
@@ -329,7 +330,7 @@ pub struct Session {
     /// The profile in effect; none when it cannot be resolved, and then nothing is kept.
     selected: Option<Selected>,
     /// The profile's cache.
-    cache: Option<Arc<StoreCache>>,
+    cache: Option<Arc<FileCache>>,
     /// Stands in for the profile's cache when it cannot be opened.
     memory: Arc<MemoryCacheStore>,
     /// `-k` is in effect for downloads.
@@ -343,10 +344,14 @@ impl Session {
     /// ever made. Warns on stderr when `-k` is in effect.
     pub fn new(global: &GlobalArgs, offline: bool, out: &Output) -> Result<Self, CliError> {
         let selected = Selected::resolve(global)?;
-        let cache = match selected.open_cache() {
-            Ok(store) => Some(Arc::new(StoreCache(store))),
+        let profile = Profile::resolve(global)?;
+        let cache = match FileCache::open(&profile) {
+            Ok(cache) => Some(Arc::new(cache)),
             Err(error) => {
-                warning(format_args!("{error}; caching in memory only"));
+                warning(format_args!(
+                    "cache {}: {error}; caching in memory only",
+                    profile.cache_dir.display()
+                ));
                 None
             }
         };
@@ -683,7 +688,7 @@ fn source_name(source: Option<Source>) -> &'static str {
 
 /// The profile's cache, or memory when it cannot be opened.
 pub enum Store {
-    Profile(Arc<StoreCache>),
+    Profile(Arc<FileCache>),
     Memory(Arc<MemoryCacheStore>),
 }
 
