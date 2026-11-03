@@ -22,7 +22,7 @@
  */
 
 //! Named validation profiles for the common TI use cases (hci-aut, idpd-sig,
-//! epa-vau-aut, zeta-guard-aut, tsl-sig) and their selection. A profile states the
+//! epa-vau-aut, dipag-vau-aut, zeta-guard-aut, tsl-sig) and their selection. A profile states the
 //! certificate types it accepts, its revocation strictness and optionally the
 //! admission role that identifies it. Automatic selection prefers a profile
 //! matched on its role over one that merely owns the type, and reports an
@@ -96,6 +96,20 @@ pub static EPA_VAU_AUT: Profile = Profile {
     default_for: &[],
 };
 
+/// The C.FD.AUT certificate the VAU of the Digitale Patientenrechnung Fachdienst
+/// authenticates itself to clients with (A_27411-01), identified by oid_dipag-vau. The
+/// requirement's earlier version named C.FD.ENC; gemSpec_OID allows the role on C.FD.AUT
+/// only.
+pub static DIPAG_VAU_AUT: Profile = Profile {
+    name: "dipag-vau-aut",
+    description: "Digitale Patientenrechnung VAU authenticity",
+    revocation: RevocationMode::HardFail,
+    extra_policies: &[],
+    required_role_oids: &[oid::TECH_ROLE_DIPAG_VAU],
+    accepts_types: &[CertificateType::FdAut],
+    default_for: &[],
+};
+
 /// The C.FD.TLS-S certificate a Fachdienst presents as a TLS server, e.g. an ePA
 /// Aktensystem: the type baseline (digitalSignature, serverAuth, its policies), no role.
 /// The default for the type. A caller that knows the server's name passes it as the
@@ -151,6 +165,7 @@ pub static TSL_SIG: Profile = Profile {
 
 /// Every profile, sorted by name.
 pub static PROFILES: &[&Profile] = &[
+    &DIPAG_VAU_AUT,
     &EPA_VAU_AUT,
     &FD_TLS_S,
     &HCI_AUT,
@@ -494,6 +509,7 @@ mod tests {
             [
                 "auto",
                 "none",
+                "dipag-vau-aut",
                 "epa-vau-aut",
                 "fd-tls-s",
                 "hci-aut",
@@ -576,15 +592,26 @@ mod tests {
             )
         );
         assert_eq!(select("role-fd-aut-epa-vau").0, Some("epa-vau-aut"));
+        assert_eq!(
+            select("role-fd-aut-dipag-vau"),
+            (
+                Some("dipag-vau-aut"),
+                SelectReason::ByCert,
+                vec![],
+                "asserts role 1.2.276.0.76.4.323 (Digitale Patientenrechnung vertrauenswürdige \
+                 Ausführungsumgebung)"
+                    .into()
+            )
+        );
         assert_eq!(select("role-fd-sig-idpd").0, Some("idpd-sig"));
         assert_eq!(
             select("type-fd-aut"),
             (
                 None,
                 SelectReason::Unclaimed,
-                vec!["epa-vau-aut", "zeta-guard-aut"],
-                "type C.FD.AUT is accepted by epa-vau-aut, zeta-guard-aut, but the certificate \
-                 asserts none of their roles"
+                vec!["dipag-vau-aut", "epa-vau-aut", "zeta-guard-aut"],
+                "type C.FD.AUT is accepted by dipag-vau-aut, epa-vau-aut, zeta-guard-aut, but \
+                 the certificate asserts none of their roles"
                     .into()
             )
         );

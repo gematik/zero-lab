@@ -215,6 +215,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pki
 
 #### added
+- Profile `dipag-vau-aut` (`profile::DIPAG_VAU_AUT`): the C.FD.AUT certificate of the
+  Digitale Patientenrechnung VAU, selected by its role `oid_dipag-vau` (gemSpec_DiPag_FD
+  A_27411-01; TASK-198). `ti pki verify` picks it automatically and accepts it as
+  `--validation-profile dipag-vau-aut`.
 - A certificate OCSP reports revoked after the reference time is valid for that time,
   with the warning `revoked_after_reference_time`; at or before it, and without a
   `revocationTime`, it stays `revoked` (gemSpec_PKI TUC_PKI_006 variants 8a and 8b;

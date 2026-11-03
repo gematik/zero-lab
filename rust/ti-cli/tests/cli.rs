@@ -336,6 +336,7 @@ fn unreadable_input_is_exit_4_with_a_hint() {
 fn profiles() {
     let list = stdout(&ti(&["pki", "profiles", "list"]));
     for name in [
+        "dipag-vau-aut",
         "epa-vau-aut",
         "fd-tls-s",
         "idpd-sig",

@@ -319,6 +319,7 @@ typed role-hp-qes-notfallsanitaeter $cc "" "$HBA_CP, $ARC.72" $ARC.178
 # Technical roles that select a profile among several accepting the same type.
 typed role-fd-aut-zeta-guard $ds "" "$GEM_OR_CP, $ARC.155" $ARC.328
 typed role-fd-aut-epa-vau    $ds "" "$GEM_OR_CP, $ARC.155" $ARC.209
+typed role-fd-aut-dipag-vau  $ds "" "$GEM_OR_CP, $ARC.155" $ARC.323
 typed role-fd-sig-idpd       $ds "" "$GEM_OR_CP, $ARC.203" $ARC.260
 
 # Admission fallback: no policies, the type follows from role family and key usage.
