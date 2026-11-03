@@ -29,12 +29,12 @@
 //!
 //! | Rule | Source |
 //! | --- | --- |
-//! | JWS `ES256` on P-256 | gemSpec_Krypt V2.50.0 Tab_KRYPT_002a (P-256 beside brainpoolP256r1) |
+//! | JWS `ES256` on P-256 | gemSpec_Krypt V2.51.0 Tab_KRYPT_002a (P-256 beside brainpoolP256r1) |
 //! | JWS `BP256R1` (legacy) | gemSpec_IDP_Dienst V2.2.0 A_20591-01, A_20695-01, A_20327-02 |
 //! | JWE `ECDH-ES` with `A256GCM` | gemSpec_IDP_Dienst V2.2.0 A_20699-03, A_20321-01 |
-//! | `epk` on P-256 | gemSpec_Krypt V2.50.0 Tab_KRYPT_002a |
+//! | `epk` on P-256 | gemSpec_Krypt V2.51.0 Tab_KRYPT_002a |
 //! | JWE `dir` with `A256GCM` | gemSpec_IDP_Dienst V2.2.0 A_21321 |
-//! | `x5c` allowed in headers | gemSpec_Krypt V2.50.0 A_24658-01, gemSpec_IDP_Dienst V2.2.0 §7.7 |
+//! | `x5c` allowed in headers | gemSpec_Krypt V2.51.0 A_24658-01, gemSpec_IDP_Dienst V2.2.0 §7.7 |
 //!
 //! ePA's AUT signatures use `ES256` with a brainpoolP256r1 key: that is a key choice, not
 //! a profile rule, made with `jwz_brainpool::BrainpoolEs256Key` (feature `legacy`).

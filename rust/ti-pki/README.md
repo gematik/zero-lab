@@ -19,7 +19,7 @@ of trust.
 The gematik specifications it implements, in the versions it follows:
 [gemSpec_PKI V2.28.0](https://gemspec.gematik.de/downloads/gemSpec/gemSpec_PKI/gemSpec_PKI_V2.28.0.html),
 [gemSpec_TSL V1.25.0](https://gemspec.gematik.de/downloads/gemSpec/gemSpec_TSL/gemSpec_TSL_V1.25.0.html),
-[gemSpec_Krypt V2.50.0](https://gemspec.gematik.de/downloads/gemSpec/gemSpec_Krypt/gemSpec_Krypt_V2.50.0.html),
+[gemSpec_Krypt V2.51.0](https://gemspec.gematik.de/downloads/gemSpec/gemSpec_Krypt/gemSpec_Krypt_V2.51.0.html),
 [gemKPT_PKI_TIP V2.14.0](https://gemspec.gematik.de/downloads/gemKPT/gemKPT_PKI_TIP/gemKPT_PKI_TIP_V2.14.0.html).
 The TSL signature rules derived from them are in
 [`spec/tsl-xmldsig`](../../spec/tsl-xmldsig/README.md).

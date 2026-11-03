@@ -35,7 +35,7 @@ Design: [`docs/adr/0001-jwz.md`](docs/adr/0001-jwz.md); dependencies:
 | --- | --- |
 | `jwz` | the library |
 | `jwz-brainpool` | legacy brainpoolP256r1 (`BP256R1`, `BP-256`) for existing TI interfaces |
-| `ti-jwz` | gematik TI profiles (gemSpec_Krypt V2.50.0) |
+| `ti-jwz` | gematik TI profiles (gemSpec_Krypt V2.51.0) |
 
 ## Features
 
