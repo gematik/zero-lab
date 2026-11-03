@@ -36,13 +36,14 @@ use std::time::Duration;
 use serde::Serialize;
 use ti_pki::load::{
     Artifact, ArtifactRequest, ArtifactResponse, CacheEntry, CacheError, CachePolicy, CacheStore,
-    CachingLoader, Detached, HttpLoader, LoadError, Loader, MemoryCacheStore, Meta, PostRequest,
-    ReloadError, ReloadOutcome, ReloadPolicy, Reloader, Source, SystemClock, Transport,
-    TransportError, TransportErrorKind,
+    CachingLoader, HttpLoader, LoadError, Loader, MemoryCacheStore, PostRequest, ReloadError,
+    ReloadOutcome, ReloadPolicy, Reloader, Source, SystemClock, Transport, TransportError,
+    TransportErrorKind, TrustMaterial,
 };
 use ti_pki::ocsp::OcspChecker;
 use ti_pki::revocation::RevocationChecker;
-use ti_pki::tsl_signature::TslState;
+use ti_pki::tsl::Tsl;
+use ti_pki::tsl_signature::{DetachedTsl, Sequence, TslState, VerifiedTsl};
 use ti_pki::{Clock, Tier, Timestamp, TrustConfig, TrustStore, roots};
 
 use crate::block::block_on;
@@ -238,6 +239,14 @@ impl Material {
     }
 }
 
+/// The bytes a load verified, with what the list says.
+pub struct VerifiedSet {
+    /// roots.json, the list and its detached files.
+    pub set: TrustMaterial,
+    /// The list, parsed from `set` and verified.
+    pub verified: VerifiedTsl,
+}
+
 /// The verified TSL as a trust chain of its own: the list, its signer, the TSL signer CA.
 #[derive(Serialize)]
 pub struct TslTrust {
@@ -272,8 +281,8 @@ impl CertRef {
 
 /// How a command reaches trust material: over the network or not, and where the cache
 /// is. One per invocation, so every load shares the cache and the transport.
-pub struct Session {
-    transport: Option<Http>,
+pub struct Session<T = Http> {
+    transport: Option<T>,
     /// The profile in effect, whose state directory keeps the TSL state.
     profile: Profile,
     /// The profile's cache.
@@ -319,9 +328,11 @@ impl Session {
             verbose: out.verbosity(),
         })
     }
+}
 
+impl<T: Transport + Send + Sync> Session<T> {
     /// The transport for OCSP; `None` offline.
-    pub fn transport(&self) -> Option<&Http> {
+    pub fn transport(&self) -> Option<&T> {
         self.transport.as_ref()
     }
 
@@ -403,48 +414,76 @@ impl Session {
             .then(|| TslStateStore::for_config(&self.profile, config, self.verbose))
     }
 
-    /// The TSL as loaded (unverified bytes; see [`ti_pki::tsl`]), with where it came
-    /// from. Call after [`load`](Self::load), which has refreshed the cache.
-    pub fn tsl(&self, config: &TrustConfig) -> Result<(Vec<u8>, Meta), CliError> {
-        let loaded = block_on(async {
-            match &self.transport {
-                Some(transport) => self.loader(config, transport).load(Artifact::Tsl).await,
-                None => self.loader(config, NoNetwork).load(Artifact::Tsl).await,
-            }
-        });
-        match loaded {
-            Ok(loaded) => Ok((loaded.body, loaded.meta)),
-            Err(LoadError::Offline(_)) => Err(CliError::TrustLoad(
-                "offline and no TSL cached; run once without --offline".into(),
-            )),
-            Err(error) => Err(CliError::TrustLoad(error.to_string())),
-        }
-    }
-
-    /// The whole set as loaded, for a bundle. Call after [`load`](Self::load).
-    pub fn trust_material(
+    /// The set [`load`](Self::load) verified, for a command that hands out its bytes.
+    ///
+    /// It is read back from the cache, and the rollback check only ever saw what `load`
+    /// loaded. So the read never reaches the origin, even when the entry is stale, and the
+    /// list it finds must be the one `material` says was verified: a list verified here
+    /// alone, with no check of its sequence, could be an older one. Another process
+    /// sharing the cache may have replaced the entry since, and that ends in an error.
+    ///
+    /// The published signer status is left out at `--at` (TSLDET-023).
+    pub fn verified_set(
         &self,
         config: &TrustConfig,
-    ) -> Result<ti_pki::load::TrustMaterial, CliError> {
-        block_on(async {
-            match &self.transport {
-                Some(transport) => self.loader(config, transport).load_all().await,
-                None => self.loader(config, NoNetwork).load_all().await,
+        material: &Material,
+        at: Option<Timestamp>,
+    ) -> Result<VerifiedSet, CliError> {
+        let reader = CachingLoader::new(
+            HttpLoader::new(config, NoNetwork, SystemClock),
+            self.store(),
+            SystemClock,
+            CachePolicy {
+                offline: true,
+                ..CachePolicy::default()
+            },
+        );
+        let mut set = block_on(reader.load_all()).map_err(|error| match error {
+            LoadError::Offline(_) => {
+                CliError::TrustLoad("offline and no TSL cached; run once without --offline".into())
             }
-        })
-        .map_err(|error| CliError::TrustLoad(error.to_string()))
-    }
-
-    /// The list's detached files, as loaded from the environment's automated download
-    /// point (`spec/tsl-detached`). Call after [`load`](Self::load).
-    pub fn tsl_detached(&self, config: &TrustConfig) -> Result<Detached, CliError> {
-        block_on(async {
-            match &self.transport {
-                Some(transport) => self.loader(config, transport).load_detached().await,
-                None => self.loader(config, NoNetwork).load_detached().await,
-            }
-        })
-        .map_err(|error| CliError::TrustLoad(error.to_string()))
+            error => CliError::TrustLoad(error.to_string()),
+        })?;
+        if at.is_some()
+            && let Some(detached) = &mut set.detached
+        {
+            detached.signer_status = None;
+        }
+        let Some(loaded) = &material.tsl_state else {
+            return Err(CliError::TrustLoad(
+                material
+                    .info
+                    .note
+                    .clone()
+                    .unwrap_or_else(|| "no verified TSL".into()),
+            ));
+        };
+        let detached = set
+            .detached
+            .as_ref()
+            .ok_or_else(|| CliError::TrustLoad("the TSL came without its signature".into()))?;
+        let files = DetachedTsl {
+            signature: &detached.signature,
+            signer_status: detached
+                .signer_status
+                .as_ref()
+                .map(|(body, _)| body.as_slice()),
+        };
+        let verified = Tsl::parse_verified_with_status(
+            &set.tsl,
+            files,
+            config,
+            at.unwrap_or_else(|| SystemClock.now()),
+        )
+        .map_err(|error| CliError::TrustLoad(format!("TSL: {error}")))?;
+        if !matches!(verified.check_sequence(Some(loaded)), Ok(Sequence::Same)) {
+            return Err(CliError::TrustLoad(format!(
+                "the cached TSL (#{} {}) is not the one this run verified (#{} {}): another \
+                 process replaced it; run again",
+                verified.tsl.sequence_number, verified.tsl.id, loaded.sequence_number, loaded.id
+            )));
+        }
+        Ok(VerifiedSet { set, verified })
     }
 
     /// The cache on disk, or this session's memory when there is no cache directory:
@@ -456,11 +495,11 @@ impl Session {
         }
     }
 
-    fn loader<T: Transport + Send + Sync>(
+    fn loader<N: Transport + Send + Sync>(
         &self,
         config: &TrustConfig,
-        transport: T,
-    ) -> CachingLoader<HttpLoader<T, SystemClock>, Store, SystemClock> {
+        transport: N,
+    ) -> CachingLoader<HttpLoader<N, SystemClock>, Store, SystemClock> {
         let store = self.store();
         CachingLoader::new(
             HttpLoader::new(config, transport, SystemClock),
@@ -679,6 +718,10 @@ fn refused(url: &str) -> TransportError {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+    use ti_pki::load::ResponseMeta;
+
     use super::*;
 
     fn state(id: u64) -> TslState {
@@ -843,6 +886,184 @@ mod tests {
         };
         assert!(error.to_string().contains("tsl_id_incorrect"), "{error}");
         assert_eq!(store.read().unwrap(), Some(newer));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// An origin that is down until told otherwise, then answers every request with
+    /// `offered`, as HTTPS under `-k` or an interception proxy could.
+    struct ScriptedOrigin {
+        down: AtomicBool,
+        requests: AtomicUsize,
+        offered: &'static [u8],
+    }
+
+    impl Transport for ScriptedOrigin {
+        async fn get(&self, _: &ArtifactRequest<'_>) -> Result<ArtifactResponse, TransportError> {
+            self.requests.fetch_add(1, Ordering::SeqCst);
+            if self.down.load(Ordering::SeqCst) {
+                return Err(TransportError {
+                    kind: TransportErrorKind::Network,
+                    message: "connection refused".into(),
+                    retryable: true,
+                });
+            }
+            Ok(ArtifactResponse::Fresh {
+                body: self.offered.to_vec(),
+                meta: ResponseMeta {
+                    etag: Some("\"offered\"".into()),
+                    last_modified: None,
+                    max_age: None,
+                    source: Source::Http,
+                },
+            })
+        }
+
+        async fn post(&self, req: &PostRequest<'_>) -> Result<Vec<u8>, TransportError> {
+            Err(refused(req.url))
+        }
+    }
+
+    /// A session whose cache holds the fixture set past `max_age`, within
+    /// `stale_if_error`, and whose origin is down: its load serves the entries stale, so
+    /// they are still stale when the command reads them.
+    fn session_over_a_stale_cache(p: &Profile, offered: &'static [u8]) -> Session<ScriptedOrigin> {
+        let session = Session {
+            transport: Some(ScriptedOrigin {
+                down: AtomicBool::new(true),
+                requests: AtomicUsize::new(0),
+                offered,
+            }),
+            profile: p.clone(),
+            cache: None,
+            memory: Arc::default(),
+            insecure: false,
+            verbose: 0,
+        };
+        let config = TrustConfig::preset_prod();
+        let filler = fixture_loader(&session.store(), &config);
+        block_on(filler.load_all()).unwrap();
+        for artifact in [Artifact::Roots, Artifact::Tsl, Artifact::TslSignature] {
+            let key = filler.cache_key(artifact);
+            let store = session.store();
+            let mut entry = block_on(store.get(&key)).unwrap().unwrap();
+            entry.meta.fetched_at = SystemClock.now() - Duration::from_hours(2);
+            block_on(store.put(&key, &entry)).unwrap();
+        }
+        session
+    }
+
+    fn fixture_loader(
+        store: &Store,
+        config: &TrustConfig,
+    ) -> CachingLoader<HttpLoader<ti_pki::load::FileTransport, SystemClock>, Store, SystemClock>
+    {
+        let set = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../spec/tsl-detached/testdata/prod/ECC-RSA_TSL");
+        let transport = ti_pki::load::FileTransport::new(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../ti-pki/src/roots-prod.json"),
+            set.with_extension("xml"),
+            set.with_extension("sig"),
+        );
+        let store = match store {
+            Store::Profile(cache) => Store::Profile(Arc::clone(cache)),
+            Store::Memory(memory) => Store::Memory(Arc::clone(memory)),
+        };
+        CachingLoader::new(
+            HttpLoader::new(config, transport, SystemClock),
+            store,
+            SystemClock,
+            CachePolicy::default(),
+        )
+    }
+
+    /// TSLSIG-053: what a command uses is read after the load, and a stale entry must not
+    /// send that read to the origin, whose answer the rollback check would never see.
+    #[test]
+    fn reading_after_load_does_not_reach_the_origin_when_the_entry_is_stale() {
+        let dir = scratch("read-back");
+        let p = profile(&dir, None);
+        let session = session_over_a_stale_cache(&p, b"<older/>");
+        let config = TrustConfig::preset_prod();
+        let at = Some(Timestamp::parse_rfc3339(CAPTURED_AT).unwrap());
+        let material = session
+            .load_with_state(&config, Tier::Prod, at, None)
+            .expect("the stale set serves the load");
+
+        let origin = session.transport().unwrap();
+        origin.down.store(false, Ordering::SeqCst);
+        origin.requests.store(0, Ordering::SeqCst);
+        let read = session.verified_set(&config, &material, at).unwrap();
+        assert_eq!(origin.requests.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            Some(TslState::of(&read.verified.tsl)),
+            material.tsl_state,
+            "the list the load verified"
+        );
+        assert_ne!(read.set.tsl, b"<older/>");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// TSLSIG-053: a list in the cache that is not the one the load verified, here one
+    /// older than it, never reaches a command, even though its signature is good.
+    #[test]
+    fn a_cached_list_other_than_the_verified_one_is_refused() {
+        let dir = scratch("other-list");
+        let p = profile(&dir, None);
+        let session = session_over_a_stale_cache(&p, b"<older/>");
+        let config = TrustConfig::preset_prod();
+        let at = Some(Timestamp::parse_rfc3339(CAPTURED_AT).unwrap());
+        let mut material = session
+            .load_with_state(&config, Tier::Prod, at, None)
+            .unwrap();
+        material.tsl_state = Some(state(20_000));
+        let Err(error) = session.verified_set(&config, &material, at) else {
+            panic!("the cached list is not the verified one");
+        };
+        assert!(error.to_string().contains("run again"), "{error}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// With the cached set past the hard expiry `load` falls back to the embedded roots
+    /// and verifies no list; the cached one must not be used then.
+    #[test]
+    fn no_list_is_read_after_a_load_that_verified_none() {
+        let dir = scratch("no-list");
+        let p = profile(&dir, None);
+        let session = session_over_a_stale_cache(&p, b"<older/>");
+        let config = TrustConfig::preset_prod();
+        let at = Some(Timestamp::parse_rfc3339(CAPTURED_AT).unwrap());
+        let material = embedded(&config, "cached material is 2 days old").unwrap();
+        let Err(error) = session.verified_set(&config, &material, at) else {
+            panic!("no list was verified");
+        };
+        assert!(error.to_string().contains("2 days old"), "{error}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// TSLDET-023: the published status says nothing about another time.
+    #[test]
+    fn tsldet_023_the_verified_set_at_another_time_has_no_signer_status() {
+        let dir = scratch("no-status");
+        let p = profile(&dir, None);
+        let session = session_over_a_stale_cache(&p, b"<older/>");
+        let config = TrustConfig::preset_prod();
+        let at = Some(Timestamp::parse_rfc3339(CAPTURED_AT).unwrap());
+        let filler = fixture_loader(&session.store(), &config);
+        let key = filler.cache_key(Artifact::TslSignerStatus);
+        let store = session.store();
+        let entry = CacheEntry {
+            body: b"a status".to_vec(),
+            meta: block_on(store.get(&filler.cache_key(Artifact::Tsl)))
+                .unwrap()
+                .unwrap()
+                .meta,
+        };
+        block_on(store.put(&key, &entry)).unwrap();
+        let material = session
+            .load_with_state(&config, Tier::Prod, at, None)
+            .unwrap();
+        let read = session.verified_set(&config, &material, at).unwrap();
+        assert!(read.set.detached.unwrap().signer_status.is_none());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

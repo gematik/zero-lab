@@ -39,6 +39,7 @@ const ROOTS_URL: &str = "https://download.tsl.ti-dienste.de/ECC/ROOT-CA/roots.js
 const TSL_URL: &str = "https://download.tsl.ti-dienste.de/ECC/ECC-RSA_TSL.xml";
 /// Where the list's detached signature is published (A_21182).
 const TSL_SIG_URL: &str = "http://download.crl.ti-dienste.de/TSL-ECC/ECC-RSA_TSL.sig";
+const TSL_OCSP_URL: &str = "http://download.crl.ti-dienste.de/TSL-ECC/ECC-RSA_TSL.ocsp";
 /// The published PU set.
 const PROD_SET: &str = "../../spec/tsl-detached/testdata/prod/ECC-RSA_TSL";
 /// The time it was captured at.
@@ -488,6 +489,38 @@ fn tsl_bundle_and_export_write_what_they_report() {
     json_of(c, "pki tsl export", &run(&["pki", "tsl", "export"]));
     let raw = ti(c, &run(&["pki", "tsl", "export"]));
     assert_eq!(raw.stdout, published);
+}
+
+/// TSLDET-023: an export for another time carries no signer status, whatever the cache
+/// holds: the files beside the list are the ones it was verified with.
+#[test]
+fn tsldet_023_a_tsl_export_at_another_time_writes_no_signer_status() {
+    let cache = SeededCache::new("tsl-export-at");
+    let c = &cache.0;
+    seed_cache(
+        c,
+        &[(
+            "ti-pki/v1/tsl-ocsp",
+            url_id(TSL_OCSP_URL),
+            cache_payload(
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+                &std::fs::read(manifest(&format!("{PROD_SET}.ocsp"))).unwrap(),
+            ),
+        )],
+    );
+    let tsl = c.join("tsl.xml").to_string_lossy().into_owned();
+    let exported = json_of(
+        c,
+        "pki tsl export",
+        &offline(&["pki", "tsl", "export", "-o", &tsl]),
+    );
+    let exported: Value = serde_json::from_slice(&exported.stdout).unwrap();
+    assert!(exported["signer_status_file"].is_null(), "{exported}");
+    assert!(!c.join("tsl.ocsp").exists());
+    assert!(c.join("tsl.sig").exists());
 }
 
 /// The subsets of `tsl bundle`: repeated filters, `--issues`, `--cert`, `--with-roots`.

@@ -35,12 +35,10 @@ use std::time::Duration;
 use der::asn1::ObjectIdentifier;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use ti_pki::load::{Meta, Source, SystemClock};
+use ti_pki::load::{Detached, Meta, Source, SystemClock};
 use ti_pki::ocsp::OcspChecker;
 use ti_pki::tsl::{self, Intermediate, Tsl};
-use ti_pki::tsl_signature::{
-    DetachedTsl, Sequence, TslError, TslState, VerifiedTsl, embedded_config_for,
-};
+use ti_pki::tsl_signature::{Sequence, TslError, TslState, VerifiedTsl, embedded_config_for};
 use ti_pki::{Certificate, Clock, Tier, Timestamp, TrustConfig, TrustStore};
 use ti_report::tsl::{CertSummary, Finding, rejection_code};
 
@@ -52,7 +50,7 @@ use crate::cli::{
 use crate::error::{CliError, Exit};
 use crate::output::document::{date, when};
 use crate::output::{Document, Line, OidInfo, Output, SCHEMA, Tone, hex, pem};
-use crate::trust::Session;
+use crate::trust::{Session, VerifiedSet};
 
 /// The JSON document.
 #[derive(Serialize)]
@@ -682,9 +680,9 @@ pub fn export(args: &TslExportArgs, global: &GlobalArgs, out: &Output) -> Result
     let Loaded {
         env,
         config,
-        session,
         bytes,
         meta,
+        detached,
         verified,
         ..
     } = load(&args.trust, global, out)?;
@@ -693,7 +691,9 @@ pub fn export(args: &TslExportArgs, global: &GlobalArgs, out: &Output) -> Result
     let mut signer_status_file = None;
     if let Some(path) = &args.output {
         super::write_file(path, &bytes, args.force, false)?;
-        let files = session.tsl_detached(&config)?;
+        let files = detached
+            .as_ref()
+            .ok_or_else(|| CliError::TrustLoad("the TSL came without its signature".into()))?;
         let sig = path.with_extension("sig");
         super::write_file(&sig, &files.signature, args.force, false)?;
         signature_file = Some(sig.display().to_string());
@@ -755,9 +755,11 @@ struct Loaded {
     config: TrustConfig,
     session: Session,
     material: crate::trust::Material,
-    /// The TSL as published.
+    /// The TSL as published, and verified.
     bytes: Vec<u8>,
     meta: Meta,
+    /// The files the list verified with.
+    detached: Option<Detached>,
     verified: VerifiedTsl,
     matched: tsl::Matched,
     now: Timestamp,
@@ -772,19 +774,7 @@ fn load(trust: &TrustArgs, global: &GlobalArgs, out: &Output) -> Result<Loaded, 
     let session = Session::new(global, trust.offline, out)?;
     let material = session.load(&config, env.tier(), trust.at)?;
     let now = trust.at.unwrap_or_else(|| SystemClock.now());
-    let (bytes, meta) = session.tsl(&config)?;
-    let detached = session.tsl_detached(&config)?;
-    let files = DetachedTsl {
-        signature: &detached.signature,
-        // The published status says nothing about another time (TSLDET-023).
-        signer_status: detached
-            .signer_status
-            .as_ref()
-            .filter(|_| trust.at.is_none())
-            .map(|(body, _)| body.as_slice()),
-    };
-    let verified = Tsl::parse_verified_with_status(&bytes, files, &config, now)
-        .map_err(|e| CliError::TrustLoad(format!("TSL: {e}")))?;
+    let VerifiedSet { set, verified } = session.verified_set(&config, &material, trust.at)?;
     let matched = tsl::match_to_roots(
         verified.tsl.intermediate_cas(),
         &TrustStore::new(material.store.roots().iter().cloned()),
@@ -795,8 +785,9 @@ fn load(trust: &TrustArgs, global: &GlobalArgs, out: &Output) -> Result<Loaded, 
         config,
         session,
         material,
-        bytes,
-        meta,
+        meta: set.meta[1].clone(),
+        detached: set.detached,
+        bytes: set.tsl,
         verified,
         matched,
         now,
