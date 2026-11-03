@@ -84,7 +84,7 @@ var (
 	ProfileHciAut = &Profile{
 		Name:         "hci-aut",
 		Description:  "Institution authentication, SM-B (SMC-B, HSM-B)",
-		Revocation:   RevocationSoftFail,
+		Revocation:   RevocationHardFail,
 		AcceptsTypes: []CertificateType{CertHciAut},
 		DefaultFor:   []CertificateType{CertHciAut},
 	}

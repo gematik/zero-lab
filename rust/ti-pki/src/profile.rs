@@ -70,12 +70,11 @@ pub struct Profile {
 }
 
 /// Institution authentication with an SM-B (gemSpec_PKI: SMC-B or HSM-B), the type
-/// C.HCI.AUT. SoftFail, so an OCSP outage does not reject an SMC-B login where the
-/// configuration allows it.
+/// C.HCI.AUT.
 pub static HCI_AUT: Profile = Profile {
     name: "hci-aut",
     description: "Institution authentication, SM-B (SMC-B, HSM-B)",
-    revocation: RevocationMode::SoftFail,
+    revocation: RevocationMode::HardFail,
     extra_policies: &[],
     required_role_oids: &[],
     accepts_types: &[CertificateType::HciAut],
@@ -686,7 +685,7 @@ mod tests {
         let hci = CertificateType::HciAut;
         let fd = CertificateType::FdAut;
         assert_eq!(mode(HardFail, &HCI_AUT, hci), HardFail);
-        assert_eq!(mode(SoftFail, &HCI_AUT, hci), SoftFail);
+        assert_eq!(mode(SoftFail, &HCI_AUT, hci), HardFail);
         assert_eq!(mode(SoftFail, &ZETA_GUARD_AUT, fd), HardFail);
         assert_eq!(mode(Disabled, &ZETA_GUARD_AUT, fd), Disabled);
     }
@@ -718,5 +717,17 @@ mod tests {
             HCI_AUT.effective_role_oids(CertificateType::HciAut),
             CertificateType::HciAut.spec().role_oids
         );
+    }
+
+    #[test]
+    fn every_profile_refuses_when_no_revocation_answer_can_be_had() {
+        for profile in PROFILES {
+            assert_eq!(
+                profile.revocation,
+                RevocationMode::HardFail,
+                "{}",
+                profile.name
+            );
+        }
     }
 }

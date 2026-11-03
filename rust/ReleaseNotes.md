@@ -308,6 +308,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pki
 
 #### changed
+- The `hci-aut` profile checks revocation hard-fail, like every other profile: an SMC-B whose OCSP
+  answer cannot be had is refused, also under a configured soft-fail.
 - The OID tables follow gemSpec_OID V3.26.0: `TECH_ROLE_ZETA_PRV_APPROV` (`oid_zeta-prv-approv`,
   1.2.276.0.76.4.332) is added and ZETA Guard is allowed on `C.FD.AUT` only. The draft change
   C_12646, which the tables had applied, withdrew the first and added `C.FD.TLS-C` to the second;

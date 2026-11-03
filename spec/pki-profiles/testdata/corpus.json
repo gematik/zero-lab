@@ -3196,7 +3196,7 @@
         "description": "Institution authentication, SM-B (SMC-B, HSM-B)",
         "name": "hci-aut",
         "required_role_oids": [],
-        "revocation": "soft-fail"
+        "revocation": "hard-fail"
       },
       {
         "accepts_types": [
