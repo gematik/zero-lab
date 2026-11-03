@@ -272,7 +272,7 @@ impl CliError {
             CliError::Cache { .. } => {
                 Some("the message names what failed; --cache-dir moves the cache")
             }
-            CliError::State { .. } => Some("the message names the file and what to do about it"),
+            CliError::State { .. } => Some("the message names the file"),
             CliError::ConnectorConfig(_)
             | CliError::Connector(ti_connector_client::Error::Config(_)) => Some(
                 "`connector configs` lists the configurations; select one with -c NAME or `connector use NAME`",

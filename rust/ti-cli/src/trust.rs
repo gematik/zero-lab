@@ -115,7 +115,12 @@ impl TslStateStore {
     /// The stored state; none before the first run.
     fn read(&self) -> Result<Option<TslState>, CliError> {
         let state = match std::fs::read(&self.path) {
-            Ok(bytes) => Some(parse_tsl_state(&bytes).map_err(|error| self.fail(error))?),
+            Ok(bytes) => Some(parse_tsl_state(&bytes).map_err(|error| {
+                self.fail(format_args!(
+                    "{error}; removing the file restarts the check from the next verified TSL, \
+                     so an older list is not rejected until then"
+                ))
+            })?),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(error) => return Err(self.fail(error)),
         };
@@ -857,7 +862,14 @@ mod tests {
             panic!("a corrupt state must not read as none");
         };
         assert_eq!(error.kind(), "state_file_failed");
-        assert!(error.to_string().contains(&file.display().to_string()));
+        let message = error.to_string();
+        assert!(message.contains(&file.display().to_string()));
+        assert!(
+            message.contains(
+                "removing the file restarts the check from the next verified TSL, so an older list is not rejected until then"
+            ),
+            "{message}"
+        );
         assert_eq!(std::fs::read(&file).unwrap(), b"{\"id\":", "left as it is");
         std::fs::remove_dir_all(&dir).unwrap();
     }
