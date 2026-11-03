@@ -29,6 +29,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -488,5 +489,13 @@ func writeEPAReport(t *testing.T, cfg epaTestConfig, name, report string) {
 		t.Logf("warning: failed to write report to %s: %v", path, err)
 	} else {
 		t.Logf("test report written to %s", path)
+	}
+}
+
+// Provider 4 does not work yet, and a Proxy keeps trying to open a session with every listed provider.
+func TestAllProvidersLeavesOutProvider4(t *testing.T) {
+	want := []epa.ProviderNumber{epa.ProviderNumber1, epa.ProviderNumber2, epa.ProviderNumber3}
+	if !slices.Equal(epa.AllProviders, want) {
+		t.Errorf("AllProviders = %v, want %v", epa.AllProviders, want)
 	}
 }

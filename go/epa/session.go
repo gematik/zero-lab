@@ -186,8 +186,8 @@ const (
 	ProviderNumber4 ProviderNumber = 4
 )
 
-// AllProviders lists the providers a Proxy talks to.
-var AllProviders = []ProviderNumber{ProviderNumber1, ProviderNumber2, ProviderNumber3, ProviderNumber4}
+// AllProviders lists the providers a Proxy talks to. ProviderNumber4 is left out until it works.
+var AllProviders = []ProviderNumber{ProviderNumber1, ProviderNumber2, ProviderNumber3}
 
 // ResolveBaseURL is the base URL of a provider in env. It panics on an unknown environment.
 func ResolveBaseURL(env Env, provider ProviderNumber) string {
