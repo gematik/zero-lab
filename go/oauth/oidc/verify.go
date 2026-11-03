@@ -141,8 +141,8 @@ func ParseKeySet(data []byte) (*jose.JSONWebKeySet, error) {
 
 // VerifyOptions is what a verifier asks of the keys it uses, beyond fitting the token's algorithm.
 type VerifyOptions struct {
-	// RequireKeyAlgorithm refuses keys that do not state their alg. Federation keys have to, while OpenID
-	// providers such as Entra ID publish keys without one.
+	// RequireKeyAlgorithm refuses keys that do not state their alg. A trust anchor and an authorization server's own
+	// keys have to, while OpenID providers such as Entra ID and T-Systems' federation members publish keys without one.
 	RequireKeyAlgorithm bool
 }
 

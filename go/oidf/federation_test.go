@@ -427,7 +427,7 @@ func TestSignEntityStatementVerifiesAgainstItsPublishedKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	payload, err := oidc.VerifyJWS(signed, rp.entityStatement.Jwks.Keys, federationKeys)
+	payload, err := oidc.VerifyJWS(signed, rp.entityStatement.Jwks.Keys, trustAnchorKeys)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -850,5 +850,70 @@ func TestExchangeRefusesAnIDTokenOfAnotherLogin(t *testing.T) {
 	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
 	if _, err := stub.client.Exchange(t.Context(), oidc.Login{Nonce: "another", Verifier: "verifier"}, "code"); !errors.Is(err, oidc.ErrNonceMismatch) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func withoutAlg(set *jose.JSONWebKeySet) *jose.JSONWebKeySet {
+	set.Keys[0].Algorithm = ""
+	return set
+}
+
+// T-Systems' IdPs in the reference federation publish every key without alg, which RFC 7517 section 4.4 leaves optional.
+func TestFederationAcceptsMemberKeysWithoutAlg(t *testing.T) {
+	stub := newFederationStub(t)
+	lifetime := func(claims map[string]any) map[string]any {
+		claims["iat"], claims["exp"] = time.Now().Unix(), time.Now().Add(time.Hour).Unix()
+		return claims
+	}
+	stub.fetchStatement = signJWS(t, stub.masterKey, "master", lifetime(map[string]any{
+		"iss": stub.URL, "sub": stub.URL + "/op", "jwks": withoutAlg(keySetOf(stub.opKey, "op")),
+	}))
+	stub.opStatement = signJWS(t, stub.opKey, "op", lifetime(map[string]any{
+		"iss": stub.URL + "/op", "sub": stub.URL + "/op", "jwks": withoutAlg(keySetOf(stub.opKey, "op")),
+		"metadata": map[string]any{"openid_provider": map[string]any{"signed_jwks_uri": stub.URL + "/op/jwks"}},
+	}))
+	federation := stub.federation(t)
+	op, err := federation.FetchEntityStatement(stub.URL + "/op")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := federation.FetchSignedJwks(op); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Without an alg on the key, its type and curve still leave the token one algorithm.
+func TestFederationRefusesMemberTokenWhoseAlgDoesNotFitTheKeyWithoutAlg(t *testing.T) {
+	stub := newFederationStub(t)
+	stub.fetchStatement = signJWS(t, stub.masterKey, "master", map[string]any{
+		"iss": stub.URL, "sub": stub.URL + "/op", "exp": time.Now().Add(time.Hour).Unix(),
+		"jwks": withoutAlg(keySetOf(stub.opKey, "op")),
+	})
+	other, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.ES384, Key: other}, (&jose.SignerOptions{}).WithHeader("kid", "op"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	object, err := signer.Sign([]byte(`{"iss":"x"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stub.opStatement, err = object.CompactSerialize(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stub.federation(t).FetchEntityStatement(stub.URL + "/op"); err == nil || !strings.Contains(err.Error(), "cannot verify ES384") {
+		t.Errorf("not refused for its algorithm: %v", err)
+	}
+}
+
+func TestExchangeVerifiesAnIDTokenWithAKeyWithoutAlg(t *testing.T) {
+	stub := newLoginStub(t)
+	withoutAlg(stub.client.jwks)
+	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
+	if _, err := stub.client.Exchange(t.Context(), oidc.Login{Nonce: "n", Verifier: "verifier"}, "code"); err != nil {
+		t.Fatal(err)
 	}
 }

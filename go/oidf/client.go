@@ -131,7 +131,7 @@ func (c *RelyingPartyClient) decryptIDToken(raw string) ([]byte, error) {
 }
 
 func (c *RelyingPartyClient) verifyIDToken(login oidc.Login, response *oidc.TokenResponse) error {
-	payload, err := oidc.VerifyJWS([]byte(response.IDTokenRaw), c.jwks, federationKeys)
+	payload, err := oidc.VerifyJWS([]byte(response.IDTokenRaw), c.jwks, memberKeys)
 	if err != nil {
 		return fmt.Errorf("unable to parse token: %w", err)
 	}
