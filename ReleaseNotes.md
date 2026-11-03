@@ -11,7 +11,7 @@
 ### changes
 - Provider 4 is left out of the providers a proxy talks to until it works.
 - The image downloads `ti` 0.5.0 from its GitHub release, pinned by SHA-256, instead of building
-  it, and is about a third of its former size.
+  it.
 - `github.com/google/uuid` and `github.com/segmentio/ksuid` are replaced by the standard library,
   `golang.org/x/crypto` is no longer a direct dependency.
 
