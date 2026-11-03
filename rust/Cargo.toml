@@ -83,10 +83,6 @@ rustls = { version = "0.23.46", default-features = false, features = ["std", "tl
 # The operating system's trust store for a Konnektor without a `.kon` trust store; the
 # version ureq's `platform-verifier` feature brings.
 rustls-platform-verifier = "0.7.1"
-# The SQLite backend of ti's sealed store (spec/store section H), in ti-cli only, never in
-# a core. `bundled` compiles one SQLite for every platform. Without `cache`, whose
-# hashlink brings foldhash (Zlib, not in deny.toml). Approved 2026-10-16 (TASK-103.4).
-rusqlite = { version = "0.40.2", default-features = false, features = ["bundled"] }
 # Hidden password entry in ti-cli's interactive commands (connector config); host only,
 # never a core: it reaches the terminal through `unsafe` (termios, the Windows console).
 # Exact, with rtoolbox 0.0.6 in the lock file, which promises no compatibility.
@@ -110,7 +106,6 @@ ed25519-dalek = { version = "3.0.0", default-features = false }
 signature = { version = "3.0.0", default-features = false }
 aes-gcm = { version = "0.11.1", default-features = false }
 aes-kw = { version = "0.3.1", default-features = false }
-hkdf = { version = "0.13.0", default-features = false }
 rand_core = { version = "0.10.1", default-features = false }
 getrandom = { version = "0.4.3", default-features = false }
 
