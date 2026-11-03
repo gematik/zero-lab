@@ -155,17 +155,24 @@ sync REF=`git rev-parse --abbrev-ref HEAD`:
     for dir in $(find . -name 'go.mod' -exec dirname {} \;); do
         ( cd "$dir"
           self=$(awk 'NR==1{print $2}' go.mod)
-          for dep in $(grep -oE 'github\.com/gematik/zero-lab/go/[a-zA-Z0-9]+' go.mod | sort -u); do
+          for dep in $(grep -oE 'github\.com/gematik/zero-lab/go/[a-zA-Z0-9/]+' go.mod | sort -u); do
               [ "$dep" = "$self" ] && continue
-              ver=$(modver "${dep##*/}")
+              go mod edit -dropreplace="$dep"
+              # Only what the module requires: a transient requirement would raise its go version for good.
+              grep -qE "^[[:space:]]*(require[[:space:]]+)?$dep v" go.mod || continue
+              ver=$(modver "${dep#github.com/gematik/zero-lab/go/}")
               echo "==> $self: $dep@$ver"
               # Not go get, which cannot move past the placeholder of a module not yet on the remote.
-              go mod edit -dropreplace="$dep" -require="$dep@$ver"
+              go mod edit -require="$dep@$ver"
           done
           # Tidy as a build outside the workspace sees the module (`go install …@tag`).
           GOWORK=off go mod tidy )
     done
     go work sync
+    # It also lifts a yaml module the tests of a dependency use; a base library names none (decision-13).
+    for dir in brainpool dpop idpd kv nonce oidf openid pep pkcs12 tipki; do
+        ( cd "$dir" && go mod edit -droprequire=go.yaml.in/yaml/v3 -droprequire=gopkg.in/yaml.v3 )
+    done
     # go work sync raises versions to what the workspace selects, so tidy again or go.sum
     # lacks their entries for a build outside the workspace.
     for dir in $(find . -name 'go.mod' -exec dirname {} \; | sort); do

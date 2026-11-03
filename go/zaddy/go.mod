@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/caddyserver/caddy/v2 v2.11.7
-	github.com/gematik/zero-lab/go/pep v0.25.8-0.20261102185424-5ad95b53e1b3
+	github.com/gematik/zero-lab/go/pep v0.25.8-0.20261103074134-a5b929b18be4
 )
 
 require (
@@ -48,7 +48,7 @@ require (
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.4 // indirect
-	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.1.0.20261102185424-5ad95b53e1b3 // indirect
+	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.1.0.20261103074134-a5b929b18be4 // indirect
 	github.com/go-chi/chi/v5 v5.3.2 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.6 // indirect
@@ -153,7 +153,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
 	go.uber.org/zap/exp v0.3.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	go.yaml.in/yaml/v3 v3.0.6 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/crypto/x509roots/fallback v0.0.0-20260929172509-b39ff6d641ec // indirect
 	golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba // indirect
@@ -172,20 +172,4 @@ require (
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	howett.net/plist v1.0.1 // indirect
-)
-
-// In-repo modules resolve locally until this branch is pushed and `just sync` pins them.
-replace (
-	github.com/gematik/zero-lab/go/brainpool => ../brainpool
-	github.com/gematik/zero-lab/go/dpop => ../dpop
-	github.com/gematik/zero-lab/go/idpd => ../idpd
-	github.com/gematik/zero-lab/go/kv => ../kv
-	github.com/gematik/zero-lab/go/nonce => ../nonce
-	github.com/gematik/zero-lab/go/oidf => ../oidf
-	github.com/gematik/zero-lab/go/openid => ../openid
-	github.com/gematik/zero-lab/go/pdp => ../pdp
-	github.com/gematik/zero-lab/go/pep => ../pep
-	github.com/gematik/zero-lab/go/pep/proxy => ../pep/proxy
-	github.com/gematik/zero-lab/go/pkcs12 => ../pkcs12
-	github.com/gematik/zero-lab/go/tipki => ../tipki
 )
