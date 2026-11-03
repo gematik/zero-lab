@@ -60,6 +60,13 @@ type Profile struct {
 
 // The profiles of ti-pki's profile module.
 var (
+	ProfileDipagVauAut = &Profile{
+		Name:             "dipag-vau-aut",
+		Description:      "Digitale Patientenrechnung VAU authenticity",
+		Revocation:       RevocationHardFail,
+		RequiredRoleOIDs: []string{oid.TechRoleDipagVAU},
+		AcceptsTypes:     []CertificateType{CertFdAut},
+	}
 	ProfileEpaVauAut = &Profile{
 		Name:             "epa-vau-aut",
 		Description:      "ePA Aktensystem VAU backend authenticity",
@@ -107,7 +114,8 @@ var (
 // Profiles returns every profile, sorted by name.
 func Profiles() []*Profile {
 	return []*Profile{
-		ProfileEpaVauAut, ProfileFdTLSS, ProfileHciAut, ProfileIdpdSig, ProfileTslSig, ProfileZetaGuardAut,
+		ProfileDipagVauAut, ProfileEpaVauAut, ProfileFdTLSS, ProfileHciAut, ProfileIdpdSig, ProfileTslSig,
+		ProfileZetaGuardAut,
 	}
 }
 
