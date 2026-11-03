@@ -510,87 +510,160 @@
     }
   }
 
-  /* ---- homepage status: one table per configured proxy/identity ---- */
-  async function loadStatusBrief() {
-    const el = document.querySelector('[data-status-brief]');
-    if (!el) return;
+  /* ---- homepage status: one row per configured proxy, refreshed while the tab is visible ---- */
+  const PROVIDER_NAMES = { 1: 'IBM', 2: 'RISE', 3: 'EY' };
+  const STATUS_REFRESH_MS = 5000;
+  // The server answers a provider's trouble as data, so this only ends a hung request: a round
+  // must finish for the next one to start.
+  const STATUS_REQUEST_TIMEOUT_MS = 60000;
+
+  function providerName(number) {
+    return PROVIDER_NAMES[number] || String(number);
+  }
+
+  function renderProxyProviders(result) {
+    if (result.error) {
+      return '<span class="status-fail" style="grid-column: 1 / -1" title="' + esc(result.error) + '">Status-Fehler</span>';
+    }
+    if (!result.data) {
+      return '<span class="status-muted" style="grid-column: 1 / -1">…</span>';
+    }
+    return (result.data.providers || []).map((provider) => {
+      const ok = !provider.error;
+      const detail = ok ? (provider.vau?.['VAU-Version'] || '') : provider.error;
+      return '<span class="' + (ok ? 'status-ok' : 'status-fail') + '" title="' + esc(detail) + '">'
+        + esc(providerName(provider.number)) + ' ' + (ok ? '✓' : '✗') + '</span>';
+    }).join('');
+  }
+
+  function renderProxyRow(proxy, result) {
+    const subject = result.data?.subject || proxy.subject || '';
+    return '<span>' + esc(proxy.name) + '</span>'
+      + '<span class="status-muted">' + esc(String(proxy.env || '').toUpperCase()) + '</span>'
+      + '<span class="status-row-subject" title="' + esc(subject) + '">' + esc(subject) + '</span>'
+      + '<span class="status-row-providers">' + renderProxyProviders(result) + '</span>';
+  }
+
+  // One line per distinct failure: several proxies usually report the same provider's trouble.
+  function renderProxyErrors(results) {
+    const lines = new Map();
+    for (const result of results) {
+      for (const provider of result.data?.providers || []) {
+        if (provider.error) {
+          lines.set(provider.number + provider.error, { number: provider.number, error: provider.error });
+        }
+      }
+    }
+    // The reason is at the end of a wrapped error; the whole of it stays in the tooltip.
+    return [...lines.values()].map((line) => '<div title="' + esc(line.error) + '"><span class="status-fail">'
+      + esc(providerName(line.number)) + ' ✗</span> ' + esc(line.error.split(': ').slice(-2).join(': ')) + '</div>').join('');
+  }
+
+  function proxyStatusLayout(proxies) {
+    let html = '';
+    proxies.forEach((proxy, i) => {
+      const group = i > 0 && proxies[i - 1].env !== proxy.env ? ' status-group' : '';
+      html += '<div class="status-row' + group + '" data-proxy-row="' + i + '">'
+        + renderProxyRow(proxy, {}) + '</div>';
+    });
+    return html + '<div class="status-errors status-muted" data-proxy-errors></div>';
+  }
+
+  async function fetchProxyStatus(proxy) {
     try {
-      const res = await fetch('/api/proxies');
+      const res = await fetch('/api/proxies/' + encodeURIComponent(proxy.name) + '/status',
+        { signal: AbortSignal.timeout(STATUS_REQUEST_TIMEOUT_MS) });
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      const proxies = (await res.json()) || [];
-      if (!proxies.length) {
-        el.innerHTML = '<span class="text-body-secondary small">Keine Proxies konfiguriert</span>';
-        return;
-      }
-
-      const results = await Promise.all(proxies.map(async (proxy) => {
-        try {
-          const r = await fetch('/api/proxies/' + encodeURIComponent(proxy.name) + '/status');
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          return { proxy, data: await r.json() };
-        } catch (e) {
-          return { proxy, error: String(e) };
-        }
-      }));
-
-      let html = '';
-      for (const result of results) {
-        const proxy = result.proxy;
-        html += '<div class="d-flex align-items-center flex-wrap gap-2 py-1">'
-          + '<code>/api/proxies/' + esc(proxy.name) + '</code>'
-          + '<span>' + esc(result.data?.subject || proxy.subject || '') + '</span>'
-          + '<span class="badge text-bg-info text-uppercase">' + esc(proxy.env || '') + '</span>';
-        if (result.error) {
-          html += '<span class="badge text-bg-danger ms-auto" title="' + esc(result.error) + '">Status-Fehler</span>';
-        } else {
-          html += '<div class="d-flex gap-2 ms-auto">';
-          for (const p of result.data.providers || []) {
-            const ok = !p.error;
-            html += '<span class="badge ' + (ok ? 'text-bg-success' : 'text-bg-danger')
-              + '" title="' + esc(ok ? (p.vau?.['VAU-Version'] || '') : p.error)
-              + '">' + esc(p.number) + ' ' + (ok ? '✓' : '✗') + '</span>';
-          }
-          html += '</div>';
-        }
-        html += '</div>';
-      }
-      html += '<a href="/status" class="small">Zur Status-Seite</a>';
-      el.innerHTML = html;
+      return { data: await res.json() };
     } catch (e) {
-      el.innerHTML = '<span class="text-body-secondary small">Status nicht verfügbar</span> '
-        + '<a href="/status" class="small">Zur Status-Seite</a>';
+      return { error: String(e) };
     }
   }
 
+  function watchProxyStatus() {
+    const el = document.querySelector('[data-status-brief]');
+    if (!el) return;
+    const clock = document.querySelector('[data-status-clock]');
+    let proxies = null;
+    let timer = null;
+    let running = false;
+
+    function showRound(ok) {
+      const dot = clock?.querySelector('.status-dot');
+      dot?.classList.toggle('status-live', ok);
+      dot?.classList.toggle('status-stale', !ok);
+      if (ok && clock) clock.querySelector('time').textContent = new Date().toLocaleTimeString('de-DE');
+    }
+
+    async function round() {
+      if (!proxies) {
+        const res = await fetch('/api/proxies');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        proxies = (await res.json()) || [];
+        el.innerHTML = proxies.length
+          ? proxyStatusLayout(proxies)
+          : '<span class="status-muted">Keine Proxies konfiguriert</span>';
+      }
+      // Each row is filled as its answer arrives, so one slow proxy holds up nothing but itself.
+      const results = await Promise.all(proxies.map(async (proxy, i) => {
+        const result = await fetchProxyStatus(proxy);
+        const row = el.querySelector('[data-proxy-row="' + i + '"]');
+        if (row) row.innerHTML = renderProxyRow(proxy, result);
+        return result;
+      }));
+      const errors = el.querySelector('[data-proxy-errors]');
+      if (errors) errors.innerHTML = renderProxyErrors(results);
+      return results.every((result) => !result.error);
+    }
+
+    // The next round waits for this one, and a hidden tab polls nothing.
+    async function tick() {
+      if (document.hidden || running) return;
+      running = true;
+      clearTimeout(timer);
+      let ok = false;
+      try {
+        ok = await round();
+      } catch (e) {
+        if (!proxies) el.innerHTML = '<span class="status-muted">Status nicht verfügbar</span>';
+      }
+      showRound(ok);
+      running = false;
+      if (!document.hidden) timer = setTimeout(tick, STATUS_REFRESH_MS);
+    }
+
+    document.addEventListener('visibilitychange', tick);
+    tick();
+  }
+
   /* ---- homepage TI services: one block per environment the proxies use ---- */
-  const PROBE_ACCESS = { 'ti-vpn': 'TI-VPN', internet: 'Internet', bestandsnetz: 'Bestandsnetz' };
-  const PROBE_BADGE = { ok: 'text-bg-success', warn: 'text-bg-warning', fail: 'text-bg-danger' };
+  const PROBE_CLASS = { ok: 'status-ok', warn: 'status-warn', fail: 'status-fail' };
   const PROBE_MARK = { ok: '✓', warn: '!', fail: '✗' };
 
   function renderProbeEntry(entry) {
-    let html = '<div class="py-1"><span class="badge text-bg-info text-uppercase">'
-      + esc(entry.environment) + '</span>';
+    const name = esc(String(entry.environment).toUpperCase());
     if (entry.error) {
-      return html + ' <span class="badge text-bg-danger" title="' + esc(entry.error)
-        + '">Prüfung fehlgeschlagen</span></div>';
+      return '<div class="status-env">' + name + ' <span class="status-fail" title="'
+        + esc(entry.error) + '">Prüfung fehlgeschlagen</span></div>';
     }
+    const counts = entry.counts || {};
+    let html = '<div class="status-env">' + name + ' <span class="status-muted fw-normal">'
+      + esc(counts.ok) + ' ok · ' + esc(counts.warn) + ' warn · ' + esc(counts.fail) + ' fail</span></div>';
     for (const path of entry.access_paths || []) {
-      const label = PROBE_ACCESS[path.access] || path.access;
-      html += '<div class="d-flex align-items-center flex-wrap gap-2 mt-1">'
-        + '<span class="small text-body-secondary">' + esc(label) + '</span>';
+      html += '<div class="status-path"><span class="status-muted">' + esc(path.access) + '</span>'
+        + '<span class="status-items">';
       if (!path.available) {
-        html += '<span class="badge text-bg-secondary">nicht erreichbar</span>';
+        html += '<span class="status-muted">nicht erreichbar</span>';
       } else {
         for (const probe of entry.probes || []) {
           if (probe.access !== path.access) continue;
-          html += '<span class="badge ' + (PROBE_BADGE[probe.status] || 'text-bg-secondary')
-            + '" title="' + esc(probe.detail || '') + '">' + esc(probe.name) + ' '
-            + (PROBE_MARK[probe.status] || '?') + '</span>';
+          html += '<span class="' + (PROBE_CLASS[probe.status] || 'status-muted') + '" title="'
+            + esc(probe.detail || '') + '">' + esc(probe.name) + ' ' + (PROBE_MARK[probe.status] || '?') + '</span>';
         }
       }
-      html += '</div>';
+      html += '</span></div>';
     }
-    return html + '</div>';
+    return html;
   }
 
   async function loadTiProbe() {
@@ -602,9 +675,9 @@
       const entries = (await res.json()) || [];
       el.innerHTML = entries.length
         ? entries.map(renderProbeEntry).join('')
-        : '<span class="text-body-secondary small">Keine Proxies konfiguriert</span>';
+        : '<span class="status-muted">Keine Proxies konfiguriert</span>';
     } catch (e) {
-      el.innerHTML = '<span class="text-body-secondary small">Prüfung nicht verfügbar</span>';
+      el.innerHTML = '<span class="status-muted">Prüfung nicht verfügbar</span>';
     }
   }
 
@@ -655,6 +728,6 @@
 
   if (window.hljs) hljs.highlightAll();
   loadProxies();
-  loadStatusBrief();
+  watchProxyStatus();
   loadTiProbe();
 })();

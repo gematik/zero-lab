@@ -130,3 +130,111 @@ main {
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
+
+.status-console {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--bs-border-color);
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius);
+  overflow: hidden;
+  font-family: var(--bs-font-monospace);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+.status-console section {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  background: var(--bs-tertiary-bg);
+}
+.status-console header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.25rem;
+}
+.status-console h2 {
+  margin: 0;
+  font: inherit;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.status-console footer {
+  margin-top: auto;
+  padding-top: 0.25rem;
+  color: var(--bs-secondary-color);
+}
+.status-muted {
+  color: var(--bs-secondary-color);
+}
+.status-dot {
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 50%;
+  vertical-align: 0.1em;
+  background: var(--bs-secondary-color);
+}
+.status-dot.status-live {
+  background: var(--bs-success);
+}
+.status-dot.status-stale {
+  background: var(--bs-danger);
+}
+.status-env {
+  margin-top: 0.25rem;
+  font-weight: 700;
+}
+.status-path {
+  display: grid;
+  grid-template-columns: 9ch minmax(0, 1fr);
+}
+.status-items {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 1.5ch;
+}
+.status-ok {
+  color: var(--bs-success);
+}
+.status-warn {
+  color: var(--bs-warning);
+}
+.status-fail {
+  color: var(--bs-danger);
+}
+.status-row {
+  display: grid;
+  grid-template-columns: 3ch 4ch minmax(0, 1fr) auto;
+  column-gap: 1ch;
+}
+.status-row-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status-row-providers {
+  display: grid;
+  grid-template-columns: 6ch 7ch 5ch;
+}
+.status-group {
+  margin-top: 0.25rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--bs-border-color);
+}
+.status-errors > div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.status-errors:not(:empty) {
+  margin-top: 0.5rem;
+}
+@media (max-width: 767.98px) {
+  .status-console {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

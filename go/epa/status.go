@@ -23,7 +23,6 @@ package epa
 
 import (
 	"net/http"
-	"slices"
 	"time"
 
 	"github.com/gematik/zero-lab/go/epa/vau"
@@ -51,45 +50,21 @@ type ProxyStatus struct {
 	Providers       []ProviderVAUStatus `json:"providers"`
 }
 
-// HandleProxyStatus aggregates GET /VAU-Status of all providers with the
-// local session state. Provider failures are reported as data, not as an
-// HTTP error — a status endpoint must answer even when providers are down.
-func (p *Proxy) HandleProxyStatus(w http.ResponseWriter, _ *http.Request) {
-	results := make(chan ProviderVAUStatus, len(AllProviders))
-
-	for _, provider := range AllProviders {
-		go func(provider ProviderNumber) {
-			status := ProviderVAUStatus{Number: provider}
-			defer func() { results <- status }()
-
-			session, err := p.sessionManager.GetSession(provider)
-			if err != nil {
-				status.Error = err.Error()
-				return
-			}
-			status.BaseURL = session.BaseURL
-			status.SessionOpenedAt = session.OpenedAt.Format(time.RFC3339)
-
-			vauStatus, err := session.GetStatus()
-			if err != nil {
-				status.Error = err.Error()
-				return
-			}
-			status.VAU = vauStatus
-		}(provider)
+// HandleProxyStatus aggregates GET /VAU-Status of all providers with the local session state,
+// through the guard, so that polling pages do not reach the providers at their own rate.
+// Provider failures are reported as data, not as an HTTP error: a status endpoint must answer
+// even when providers are down.
+func (p *Proxy) HandleProxyStatus(w http.ResponseWriter, r *http.Request) {
+	providers, err := p.statusGuard.Status(r.Context())
+	if err != nil {
+		return
 	}
 
 	proxyStatus := ProxyStatus{
 		Name:      p.config.Name,
 		Env:       p.Env,
-		Providers: make([]ProviderVAUStatus, 0, len(AllProviders)),
+		Providers: providers,
 	}
-	for range AllProviders {
-		proxyStatus.Providers = append(proxyStatus.Providers, <-results)
-	}
-	slices.SortFunc(proxyStatus.Providers, func(a, b ProviderVAUStatus) int {
-		return int(a.Number) - int(b.Number)
-	})
 
 	if info, err := p.GetProxyInfo(); err != nil {
 		proxyStatus.IdentityError = err.Error()
@@ -105,4 +80,25 @@ func (p *Proxy) HandleProxyStatus(w http.ResponseWriter, _ *http.Request) {
 	p.recordsLock.RUnlock()
 
 	writeJSON(w, http.StatusOK, &proxyStatus)
+}
+
+// checkProviderStatus asks one provider for its VAU status; without a session it opens one.
+func (p *Proxy) checkProviderStatus(provider ProviderNumber) ProviderVAUStatus {
+	status := ProviderVAUStatus{Number: provider}
+
+	session, err := p.sessionManager.GetSession(provider)
+	if err != nil {
+		status.Error = err.Error()
+		return status
+	}
+	status.BaseURL = session.BaseURL
+	status.SessionOpenedAt = session.OpenedAt.Format(time.RFC3339)
+
+	vauStatus, err := session.GetStatus()
+	if err != nil {
+		status.Error = err.Error()
+		return status
+	}
+	status.VAU = vauStatus
+	return status
 }

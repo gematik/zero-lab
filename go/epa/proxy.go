@@ -73,6 +73,7 @@ type Proxy struct {
 	Authenticator  Authenticator
 	mux            *http.ServeMux
 	sessionManager *sessionManager
+	statusGuard    *statusGuard
 	records        map[string]PatientRecordMetadata
 	recordsLock    sync.RWMutex
 }
@@ -299,6 +300,8 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 		vauVerify:         config.vauVerifyMode(),
 		sessions:          make(map[ProviderNumber]*Session),
 	}
+
+	p.statusGuard = newStatusGuard(AllProviders, p.checkProviderStatus)
 
 	for _, providerNumber := range AllProviders {
 		go p.sessionManager.WatchSession(providerNumber)
