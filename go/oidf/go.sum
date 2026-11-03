@@ -1,4 +1,4 @@
-github.com/gematik/zero-lab/go/openid v0.0.0-20261103185239-142cdf5db185 h1:o4g6eZB9MgfyWGbecf90WdbRhDyunme5ms4Dn3pTUPU=
-github.com/gematik/zero-lab/go/openid v0.0.0-20261103185239-142cdf5db185/go.mod h1:VhYdu5BWQM+Xg7Le3hlJBhksNmSHK/OljXneFtJley0=
+github.com/gematik/zero-lab/go/openid v0.52.0 h1:1dBi2XwPSAW8az6Aqu6lphk0xtGHza/39Zsl8YfBp/o=
+github.com/gematik/zero-lab/go/openid v0.52.0/go.mod h1:VhYdu5BWQM+Xg7Le3hlJBhksNmSHK/OljXneFtJley0=
 github.com/go-jose/go-jose/v4 v4.1.6 h1:sNRkftxFJxwsILiQukqp5z83QBSmntVwmgRY7AqBDO4=
 github.com/go-jose/go-jose/v4 v4.1.6/go.mod h1:x4oUasVrzR7071A4TnHLGSPpNOm2a21K9Kf04k1rs08=

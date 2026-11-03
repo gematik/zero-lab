@@ -3,6 +3,6 @@ module github.com/gematik/zero-lab/go/oidf
 go 1.26.4
 
 require (
-	github.com/gematik/zero-lab/go/openid v0.0.0-20261103185239-142cdf5db185
+	github.com/gematik/zero-lab/go/openid v0.52.0
 	github.com/go-jose/go-jose/v4 v4.1.6
 )
