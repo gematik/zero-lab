@@ -31,8 +31,8 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 
@@ -273,6 +273,8 @@ struct Behavior {
     hba_iccsn: Option<String>,
     activations: Arc<AtomicUsize>,
     deactivations: Arc<AtomicUsize>,
+    /// Every call, as its action and body.
+    calls: Arc<Mutex<Vec<(String, String)>>>,
 }
 
 impl Behavior {
@@ -281,6 +283,7 @@ impl Behavior {
             hba_iccsn: Some("80276001011699910103".into()),
             activations: Arc::default(),
             deactivations: Arc::default(),
+            calls: Arc::default(),
         }
     }
 }
@@ -313,7 +316,13 @@ fn handle(stream: impl Read + Write, behavior: &Behavior) -> Option<()> {
     if action.contains("DeactivateComfortSignature") {
         behavior.deactivations.fetch_add(1, Ordering::SeqCst);
     }
-    let (status, response) = answer(&path, &action, &String::from_utf8_lossy(&body), behavior);
+    let body = String::from_utf8_lossy(&body);
+    behavior
+        .calls
+        .lock()
+        .unwrap()
+        .push((action.clone(), body.clone().into_owned()));
+    let (status, response) = answer(&path, &action, &body, behavior);
     let stream = reader.get_mut();
     write!(
         stream,
@@ -331,6 +340,7 @@ struct Fake {
     activations: Arc<AtomicUsize>,
     #[cfg(unix)]
     deactivations: Arc<AtomicUsize>,
+    calls: Arc<Mutex<Vec<(String, String)>>>,
 }
 
 impl Fake {
@@ -408,11 +418,37 @@ impl Fake {
             activations: behavior.activations.clone(),
             #[cfg(unix)]
             deactivations: behavior.deactivations.clone(),
+            calls: behavior.calls.clone(),
         }
     }
 
     fn ti(&self, args: &[&str]) -> Output {
         self.ti_with(args, &[])
+    }
+
+    /// Forgets the calls so far.
+    fn forget_calls(&self) {
+        self.calls.lock().unwrap().clear();
+    }
+
+    /// Asserts that since [`forget_calls`](Self::forget_calls) the card was not asked: no
+    /// call of the signature service, and `id`, when given, in no call at all.
+    fn assert_card_not_asked(&self, id: Option<&str>) {
+        for (action, body) in self.calls.lock().unwrap().iter() {
+            assert!(
+                ![
+                    "SignDocument",
+                    "GetSignatureMode",
+                    "ActivateComfortSignature"
+                ]
+                .iter()
+                .any(|operation| action.contains(operation)),
+                "{action}"
+            );
+            if let Some(id) = id {
+                assert!(!body.contains(id), "the ID reached the Konnektor: {action}");
+            }
+        }
     }
 
     fn ti_with(&self, args: &[&str], env: &[(&str, &Path)]) -> Output {
@@ -1064,6 +1100,91 @@ fn a_symlinked_comfort_file_is_refused() {
     );
 }
 
+/// Sign and status over a comfort file that is refused: state_file_failed, exit 5, and the
+/// card not asked.
+fn assert_comfort_refused(fake: &Fake, id: Option<&str>) {
+    let text = fake.dir.join("refused.txt");
+    std::fs::write(&text, "x").unwrap();
+    let sign = [
+        "--format",
+        "json",
+        "connector",
+        "-c",
+        "praxis",
+        "sign",
+        path_str(&text),
+        "--card",
+        "card-hba",
+    ];
+    let status = [
+        "--format",
+        "json",
+        "connector",
+        "-c",
+        "praxis",
+        "comfort",
+        "status",
+        "card-hba",
+    ];
+    for args in [&sign[..], &status[..]] {
+        fake.forget_calls();
+        let out = fake.ti(args);
+        assert_eq!(out.status.code(), Some(5), "{args:?}: {}", stderr_of(&out));
+        assert!(
+            stderr_of(&out).contains("state_file_failed"),
+            "{args:?}: {}",
+            stderr_of(&out)
+        );
+        fake.assert_card_not_asked(id);
+    }
+}
+
+#[test]
+fn malformed_comfort_content_is_refused_before_the_card_is_asked() {
+    let fake = Fake::start("comfort-malformed");
+    assert_eq!(activate(&fake).status.code(), Some(0));
+    std::fs::write(comfort_file(&fake), "not a user id").unwrap();
+    assert_comfort_refused(&fake, None);
+    assert_eq!(
+        std::fs::read_to_string(comfort_file(&fake)).unwrap(),
+        "not a user id",
+        "left as it is"
+    );
+}
+
+/// Sign and status read the ID and send it, so a link planted at the comfort directory or
+/// the Konnektor's below it must not hand them an ID someone else chose or can read.
+#[cfg(unix)]
+#[test]
+fn an_id_behind_a_symlinked_comfort_directory_is_never_sent() {
+    let fake = Fake::start("comfort-linked");
+    assert_eq!(activate(&fake).status.code(), Some(0));
+    let file = comfort_file(&fake);
+    let id = std::fs::read_to_string(&file).unwrap();
+    let konnektor = file.parent().unwrap().to_owned();
+    let root = konnektor.parent().unwrap().to_owned();
+
+    fake.forget_calls();
+    assert_eq!(comfort_status(&fake).status.code(), Some(0));
+    assert!(
+        fake.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(_, body)| body.contains(&id)),
+        "the stored ID goes to the Konnektor when nothing is wrong"
+    );
+
+    for dir in [&konnektor, &root] {
+        let moved = fake.dir.join("moved");
+        std::fs::rename(dir, &moved).unwrap();
+        std::os::unix::fs::symlink(&moved, dir).unwrap();
+        assert_comfort_refused(&fake, Some(&id));
+        std::fs::remove_file(dir).unwrap();
+        std::fs::rename(&moved, dir).unwrap();
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn a_comfort_directory_open_to_others_is_refused() {
@@ -1092,6 +1213,7 @@ fn a_comfort_directory_open_to_others_is_refused() {
     assert_eq!(activate(&fake).status.code(), Some(0));
 }
 
+#[cfg(unix)]
 #[test]
 fn a_comfort_directory_that_is_a_symlink_is_refused() {
     let fake = Fake::start("comfort-dir-symlink");
@@ -1099,25 +1221,22 @@ fn a_comfort_directory_that_is_a_symlink_is_refused() {
     std::fs::create_dir_all(root.parent().unwrap()).unwrap();
     let elsewhere = fake.dir.join("elsewhere");
     std::fs::create_dir_all(&elsewhere).unwrap();
-    #[cfg(unix)]
-    {
-        std::os::unix::fs::symlink(&elsewhere, &root).unwrap();
-        let out = activate(&fake);
-        assert_eq!(out.status.code(), Some(5), "{}", stderr_of(&out));
-        assert_eq!(fake.activations.load(Ordering::SeqCst), 0);
-        assert_eq!(std::fs::read_dir(&elsewhere).unwrap().count(), 0);
+    std::os::unix::fs::symlink(&elsewhere, &root).unwrap();
+    let out = activate(&fake);
+    assert_eq!(out.status.code(), Some(5), "{}", stderr_of(&out));
+    assert_eq!(fake.activations.load(Ordering::SeqCst), 0);
+    assert_eq!(std::fs::read_dir(&elsewhere).unwrap().count(), 0);
 
-        let behind = elsewhere.join("praxis");
-        std::fs::create_dir(&behind).unwrap();
-        set_mode(&behind, 0o700);
-        let survivor = behind.join("80276001011699910103");
-        std::fs::write(&survivor, "0b9d1d7c-6b1b-4c52-9d0a-0e2b8f3f6a11").unwrap();
-        set_mode(&survivor, 0o600);
-        let out = deactivate(&fake);
-        assert_eq!(out.status.code(), Some(5), "{}", stderr_of(&out));
-        assert!(survivor.is_file(), "nothing is deleted through the link");
-        assert_eq!(fake.deactivations.load(Ordering::SeqCst), 0);
-    }
+    let behind = elsewhere.join("praxis");
+    std::fs::create_dir(&behind).unwrap();
+    set_mode(&behind, 0o700);
+    let survivor = behind.join("80276001011699910103");
+    std::fs::write(&survivor, "0b9d1d7c-6b1b-4c52-9d0a-0e2b8f3f6a11").unwrap();
+    set_mode(&survivor, 0o600);
+    let out = deactivate(&fake);
+    assert_eq!(out.status.code(), Some(5), "{}", stderr_of(&out));
+    assert!(survivor.is_file(), "nothing is deleted through the link");
+    assert_eq!(fake.deactivations.load(Ordering::SeqCst), 0);
 }
 
 fn files_below(dir: &Path, found: &mut Vec<PathBuf>) {

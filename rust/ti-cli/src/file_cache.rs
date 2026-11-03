@@ -397,17 +397,15 @@ mod tests {
         assert!(block_on(cache.get(KEY)).unwrap().is_some());
     }
 
+    #[cfg(unix)]
     #[test]
     fn an_entry_file_is_private_to_the_user() {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt as _;
-            let dir = Dir::new("mode");
-            let cache = dir.cache();
-            block_on(cache.put(KEY, &entry(b"a"))).unwrap();
-            let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
-            assert_eq!(mode(&entry_path(&cache.dir, KEY)), 0o600);
-            assert_eq!(mode(&cache.dir.join("v1")), 0o700);
-        }
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = Dir::new("mode");
+        let cache = dir.cache();
+        block_on(cache.put(KEY, &entry(b"a"))).unwrap();
+        let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&entry_path(&cache.dir, KEY)), 0o600);
+        assert_eq!(mode(&cache.dir.join("v1")), 0o700);
     }
 }
