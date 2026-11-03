@@ -69,14 +69,15 @@ func TestIDPD(t *testing.T) {
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	t.Log("TestIDPD")
+	trust := mustLiveTrust(t)
 	cfg := idpd.ClientConfig{
-		UserAgent:       "zero-lab-testcase",
-		Environment:     idpd.EnvironmentReference,
-		TrustBundlePath: os.Getenv("IDPD_TRUST_BUNDLE_PATH"),
-		BaseURL:         os.Getenv("IDPD_BASE_URL"),
-		ClientID:        os.Getenv("IDPD_CLIENT_ID"),
-		RedirectURI:     os.Getenv("IDPD_REDIRECT_URI"),
-		Scopes:          strings.Split(os.Getenv("IDPD_SCOPE"), " "),
+		UserAgent:   "zero-lab-testcase",
+		Environment: idpd.EnvironmentReference,
+		Trust:       trust,
+		BaseURL:     os.Getenv("IDPD_BASE_URL"),
+		ClientID:    os.Getenv("IDPD_CLIENT_ID"),
+		RedirectURI: os.Getenv("IDPD_REDIRECT_URI"),
+		Scopes:      strings.Split(os.Getenv("IDPD_SCOPE"), " "),
 	}
 
 	client, err := idpd.NewClientFromConfig(cfg)
@@ -95,7 +96,7 @@ func TestIDPD(t *testing.T) {
 
 	authenticator, err := idpd.NewAuthenticator(idpd.AuthenticatorConfig{
 		IDP:        client.IDP,
-		Trust:      mustBundleTrust(t),
+		Trust:      trust,
 		SignerFunc: idpd.SignWithSoftkeyPEM(testKeyBytes, testCertBytes),
 	})
 	if err != nil {
@@ -125,11 +126,21 @@ func TestIDPD(t *testing.T) {
 	t.Log(claims)
 }
 
-func mustBundleTrust(t *testing.T) *idpd.BundleTrust {
+// mustLiveTrust uses the mounted bundle when one is named and downloads the material otherwise,
+// so a login test needs nothing beyond the IDP client configuration.
+func mustLiveTrust(t *testing.T) idpd.CertificateTrust {
 	t.Helper()
-	trust, err := idpd.NewBundleTrust(idpd.EnvironmentReference, os.Getenv("IDPD_TRUST_BUNDLE_PATH"), http.DefaultClient)
-	if err != nil {
-		t.Fatalf("IDPD_TRUST_BUNDLE_PATH: %v", err)
+	if path := os.Getenv("IDPD_TRUST_BUNDLE_PATH"); path != "" {
+		trust, err := idpd.NewBundleTrust(idpd.EnvironmentReference, path, http.DefaultClient)
+		if err != nil {
+			t.Fatalf("IDPD_TRUST_BUNDLE_PATH: %v", err)
+		}
+		return trust
 	}
+	trust, err := idpd.NewFetchingTrust(idpd.EnvironmentReference, http.DefaultClient)
+	if err != nil {
+		t.Fatalf("download trust material: %v", err)
+	}
+	t.Cleanup(trust.Close)
 	return trust
 }

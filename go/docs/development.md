@@ -117,7 +117,7 @@ and the release PR records the runs; the rules are in
 | PDP HITL | `just pdp-e2e-hitl URL` | `ZERO_PDP_E2E_URL`, `ZERO_PDP_E2E_HITL=1`, a person | a full login with a real OpenID provider | `pdp` |
 | idpd IDP certificates (HITL) | `just idpd-trust-test` | `IDPD_TRUST_BUNDLE_PATH`, a route to the reference IDP and its OCSP responder | both real IDP certificates pass `idpd-sig` with live OCSP (IDPV-005) | idpd |
 | idpd trust download (HITL) | `just idpd-trust-fetch-test` | a route to gematik's TSL and CRL hosts, the reference IDP and its OCSP responder | the material downloads and verifies, and both real IDP certificates pass with live OCSP (IDPV-007) | idpd |
-| idpd SMC-B | `just idpd-smcb-test` | `IDPD_*`, an SMC-B identity (`IDPD_SMCB_P12`), a bundle from `ti pki trust export` (`IDPD_TRUST_BUNDLE_PATH`) | authentication at the gematik IDP-Dienst with an SMC-B | `idpd` |
+| idpd SMC-B | `just idpd-smcb-test` | `IDPD_*`, an SMC-B identity (`IDPD_SMCB_P12`), a route to gematik's hosts; `IDPD_TRUST_BUNDLE_PATH` replaces the download with a bundle from `ti pki trust export` | authentication at the gematik IDP-Dienst with an SMC-B | `idpd` |
 | ePA connect | `just epa-connect-test` | `EPA_*`, the Rust `ti` (`EPA_TI_BIN`), an SMC-B identity | VAU, authorization, record status and consent at both providers | `epa` |
 | ePA entitlement | `just epa-entitle-test` | as ePA connect, plus `VSDM_HMAC_KEY` / `VSDM_HMAC_KID` | entitlement with a VSDM proof | `epa` |
 | OpenID Federation | `just oidf-test` | `OIDF_FEDMASTER_URL` | entity statements and trust chains against a live federation master | `oidf`, `pep` |

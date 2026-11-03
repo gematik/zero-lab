@@ -57,6 +57,7 @@ import (
 // Optional:
 //
 //	IDPD_SMCB_P12_PASSWORD  P12 password (default "00")
+//	IDPD_TRUST_BUNDLE_PATH  bundle from `ti pki trust export`; without it the material is downloaded
 func TestIDPD_SMCB(t *testing.T) {
 	p12Path := os.Getenv("IDPD_SMCB_P12")
 	if p12Path == "" {
@@ -77,14 +78,15 @@ func TestIDPD_SMCB(t *testing.T) {
 	}
 	t.Logf("SMC-B AUT identity: subject=%q curve=%s", cert.Subject.String(), prk.Curve.Params().Name)
 
+	trust := mustLiveTrust(t)
 	cfg := idpd.ClientConfig{
-		UserAgent:       "zero-lab-testcase",
-		Environment:     idpd.EnvironmentReference,
-		TrustBundlePath: os.Getenv("IDPD_TRUST_BUNDLE_PATH"),
-		BaseURL:         os.Getenv("IDPD_BASE_URL"),
-		ClientID:        os.Getenv("IDPD_CLIENT_ID"),
-		RedirectURI:     os.Getenv("IDPD_REDIRECT_URI"),
-		Scopes:          strings.Split(os.Getenv("IDPD_SCOPE"), " "),
+		UserAgent:   "zero-lab-testcase",
+		Environment: idpd.EnvironmentReference,
+		Trust:       trust,
+		BaseURL:     os.Getenv("IDPD_BASE_URL"),
+		ClientID:    os.Getenv("IDPD_CLIENT_ID"),
+		RedirectURI: os.Getenv("IDPD_REDIRECT_URI"),
+		Scopes:      strings.Split(os.Getenv("IDPD_SCOPE"), " "),
 	}
 	client, err := idpd.NewClientFromConfig(cfg)
 	if err != nil {
@@ -99,7 +101,7 @@ func TestIDPD_SMCB(t *testing.T) {
 
 	authenticator, err := idpd.NewAuthenticator(idpd.AuthenticatorConfig{
 		IDP:        client.IDP,
-		Trust:      mustBundleTrust(t),
+		Trust:      trust,
 		SignerFunc: idpd.SignWithSoftkey(prk, cert),
 	})
 	if err != nil {
