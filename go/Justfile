@@ -216,10 +216,8 @@ _modver mod:
 docker-build name:
     #!/usr/bin/env bash
     set -euo pipefail
-    context=.
     case "{{name}}" in
-        # The epa image builds the Rust ti, so its context is the repository root.
-        epa) mod=epa image=zero-epa file=epa/cmd/zero-epa/Dockerfile context=.. ;;
+        epa) mod=epa image=zero-epa file=epa/cmd/zero-epa/Dockerfile ;;
         pdp) mod=pdp image=zero-pdp file=pdp/cmd/zero-pdp/Dockerfile ;;
         pep) mod=pep/proxy image=zero-pep-proxy file=pep/proxy/cmd/zero-pep-proxy/Dockerfile ;;
         caddy) mod=zaddy image=zero-caddy file=zaddy/cmd/zero-caddy/Dockerfile ;;
@@ -230,16 +228,20 @@ docker-build name:
     tag=$v
     # The caddy tag carries the upstream version from zaddy/go.mod as well.
     if [ "{{name}}" = caddy ]; then tag=$v-caddy$(awk '/caddyserver\/caddy\/v2 v[0-9]/{sub(/^v/,"",$2); print $2; exit}' zaddy/go.mod); fi
-    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/$image:$tag" -f "$file" "$context"
+    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/$image:$tag" -f "$file" .
     docker tag "{{DOCKER_USER}}/$image:$tag" "{{DOCKER_USER}}/$image:latest"
     echo "{{DOCKER_USER}}/$image:$tag"
 
-# Build and push an image
-docker-push name: (docker-build name)
+# Build and push an image. An untagged module is refused: it would publish :dev and move :latest.
+docker-push name:
     #!/usr/bin/env bash
     set -euo pipefail
-    just docker-build {{name}} | tail -1 | xargs docker push
-    docker push "{{DOCKER_USER}}/$(case {{name}} in pep) echo zero-pep-proxy;; caddy) echo zero-caddy;; metsubushi) echo metsubushi;; *) echo zero-{{name}};; esac):latest"
+    ref=$(just docker-build {{name}} | tail -1)
+    case "${ref##*:}" in
+        dev|dev-*) echo "$ref: the module has no tag yet; tag it first, or push this build under an explicit tag by hand" >&2; exit 1 ;;
+    esac
+    docker push "$ref"
+    docker push "${ref%:*}:latest"
 
 # --- Gated suites: docs/development.md, "Gated tests" ---
 

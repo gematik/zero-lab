@@ -1,0 +1,10 @@
+# The images build from this directory: keep local secrets and leftovers out of the build context.
+**/.env
+**/*.env
+**/secrets
+**/*.jwk
+**/test-reports
+**/.claude
+dist
+pdp/config
+metsubushi/metsubushi

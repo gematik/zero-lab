@@ -91,8 +91,9 @@ enters the Go process.
   `authn_card` (+ `authn_connector`) for an SMC-B at the Konnektor. `vau_cert_verify:
   warn|enforce|off` (default `warn`) says what a bad verdict on the VAU's certificates
   does.
-- The Docker image builds `ti` in a Rust stage; its build context is the repository root
-  (`just docker-build epa`).
+- The Docker image downloads a released, statically linked `ti` from GitHub, pinned by its
+  SHA-256 in the Dockerfile (`just docker-build epa`). Moving to a newer `ti` means changing
+  the URL and the hash there.
 - Tests: `go test ./epa/...` needs no `ti` (the unit tests use fakes); the env-guarded
   `just epa-connect-test` and `just epa-entitle-test` need it and skip when it is
   missing.
