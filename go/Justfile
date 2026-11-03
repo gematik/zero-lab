@@ -41,31 +41,57 @@ _each cmd:
     done
     exit $fail
 
+# (internal) Run a read-only check in every module, EACH_JOBS at a time, 1 for one after
+# another. Output is held back per module and printed in module order, so a log reads the
+# same at any setting. Every go command already uses all cores itself, so more jobs than
+# this default gain little and starve timing-sensitive tests.
+_each_check cmd:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    out=$(mktemp -d)
+    trap 'rm -rf "$out"' EXIT
+    dirs=() pids=()
+    for dir in $(find . -name go.mod -exec dirname {} \; | sort); do
+        # bash 3.2 on macOS has no wait -n
+        while [ "$(jobs -rp | wc -l)" -ge "${EACH_JOBS:-4}" ]; do sleep 0.1; done
+        ( cd "$dir" && {{cmd}} ) > "$out/${#dirs[@]}" 2>&1 &
+        pids+=($!)
+        dirs+=("$dir")
+    done
+    fail=0
+    for i in "${!dirs[@]}"; do
+        wait "${pids[$i]}" || fail=1
+        echo "==> ${dirs[$i]}"
+        cat "$out/$i"
+    done
+    exit $fail
+
 # --- Checks ---
 
 # Every check of a change
 check: lint golangci modernize vuln mod-check test test-race api-lint
 
 # go vet and staticcheck
-lint: (_each "go vet ./... && go run " + STATICCHECK + " ./...")
+lint: (_each_check "go vet ./... && go run " + STATICCHECK + " ./...")
 
-# golangci-lint with .golangci.yml, linters and formatters
+# golangci-lint with .golangci.yml, linters and formatters; one module at a time, because a
+# second instance exits with "parallel golangci-lint is running"
 golangci: (_each "go run " + GOLANGCI + " run ./... && go run " + GOLANGCI + " fmt --diff ./...")
 
 # Report outdated idioms; the generated fiat code keeps its generator's output
-modernize: (_each "found=$(go run " + MODERNIZE + " ./... 2>&1 | grep -vE '/bp256/fiat/|^exit status'); echo \"$found\"; [ -z \"$found\" ]")
+modernize: (_each_check "found=$(go run " + MODERNIZE + " ./... 2>&1 | grep -vE '/bp256/fiat/|^exit status'); echo \"$found\"; [ -z \"$found\" ]")
 
 # Apply modernize's fixes, tests included
 modernize-fix: (_each "go run " + MODERNIZE + " -fix -test ./...; gofmt -w .")
     git checkout -- brainpool/internal/bp256/fiat
 
 # Known vulnerabilities
-vuln: (_each "go run " + GOVULNCHECK + " ./...")
+vuln: (_each_check "go run " + GOVULNCHECK + " ./...")
 
 # go.mod and go.sum as `go mod tidy` leaves them, with sums matching what was downloaded;
 # openid and oidf carry no TI trust path in their module graph, and base libraries compile no
 # format dependency (decision-13)
-mod-check: (_each "go mod tidy -diff && go mod verify")
+mod-check: (_each_check "go mod tidy -diff && go mod verify")
     #!/usr/bin/env bash
     set -uo pipefail
     fail=0
@@ -83,10 +109,10 @@ mod-check: (_each "go mod tidy -diff && go mod verify")
     exit $fail
 
 # Tests, built as the images are. Gated suites have their own recipes and never run here.
-test: (_each _UNGATE + "; go test -count=1 ./...")
+test: (_each_check _UNGATE + "; go test -count=1 ./...")
 
 # Tests under the race detector, which needs cgo on Linux
-test-race: (_each _UNGATE + "; CGO_ENABLED=1 go test -race -count=1 ./...")
+test-race: (_each_check _UNGATE + "; CGO_ENABLED=1 go test -race -count=1 ./...")
 
 # Lint every OpenAPI contract with the gematik ruleset; skipped without GEMATIK_API_TOOLS_DIR
 # unless REQUIRE_API_LINT=1 (internal CI)
