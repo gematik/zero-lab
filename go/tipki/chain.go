@@ -150,9 +150,9 @@ func (r PathResult) Valid() bool { return len(r.Errors) == 0 }
 // The extensions processed here, the only ones a certificate may mark critical (RFC 5280 §4.2).
 // Name and policy constraints are not implemented, so a CA marking them critical is refused
 // rather than half-checked.
-var processedExtensions = []string{
-	"2.5.29.19", "2.5.29.15", extKeyUsageExtension, "2.5.29.32", "2.5.29.17", "2.5.29.35", "2.5.29.14",
-	"1.3.6.1.5.5.7.1.1", oid.AdmissionExtension,
+var processedExtensions = []x509.OID{
+	oid.MustParse("2.5.29.19"), keyUsageExtension, extKeyUsageExtension, oid.MustParse("2.5.29.32"), oid.MustParse("2.5.29.17"),
+	oid.MustParse("2.5.29.35"), oid.MustParse("2.5.29.14"), oid.MustParse("1.3.6.1.5.5.7.1.1"), oid.AdmissionExtension,
 }
 
 // ValidatePath checks a chain from [BuildChain] against RFC 5280 §6 (PATH-002 to PATH-006) and collects
@@ -171,10 +171,10 @@ func ValidatePath(chain []*x509.Certificate, options PathOptions) (PathResult, e
 		}
 		if i+1 < len(chain) {
 			for _, ext := range cert.Extensions {
-				if ext.Critical && !slices.Contains(processedExtensions, ext.Id.String()) {
+				if ext.Critical && !slices.ContainsFunc(processedExtensions, func(known x509.OID) bool { return known.EqualASN1OID(ext.Id) }) {
 					result.Errors = append(result.Errors, Finding{
 						"unrecognized_critical_extension", cert.Subject.CommonName,
-						"critical extension " + oid.Format(ext.Id.String()) + " is not processed (RFC 5280 §4.2)",
+						"critical extension " + formatASN1OID(ext.Id) + " is not processed (RFC 5280 §4.2)",
 					})
 				}
 			}
@@ -228,7 +228,7 @@ func checkCAConstraints(cert *x509.Certificate, intermediatesBelow int) *Finding
 	if !cert.BasicConstraintsValid || !cert.IsCA {
 		return &Finding{"chain_incomplete", subject, "non-root, non-EE certificate is not marked CA"}
 	}
-	hasKeyUsage := slices.ContainsFunc(cert.Extensions, func(ext pkix.Extension) bool { return ext.Id.String() == "2.5.29.15" })
+	hasKeyUsage := slices.ContainsFunc(cert.Extensions, func(ext pkix.Extension) bool { return keyUsageExtension.EqualASN1OID(ext.Id) })
 	if hasKeyUsage && cert.KeyUsage&x509.KeyUsageCertSign == 0 {
 		return &Finding{"key_usage_mismatch", subject, "CA certificate missing KeyUsageCertSign"}
 	}

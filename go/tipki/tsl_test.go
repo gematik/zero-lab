@@ -32,6 +32,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gematik/zero-lab/go/tipki/oid"
 )
 
 const detachedDir = "../../spec/tsl-detached/testdata/"
@@ -291,7 +293,7 @@ func TestTSLThePublishedListsReadAsInTiPki(t *testing.T) {
 					fingerprint = hexSum(s.Certificate.Raw)
 				}
 				lines = append(lines, fmt.Sprintf("%s|%s|%s|%s|%d|%s|%s|%s", s.Provider, s.Name, s.ServiceType, s.Status, start, fingerprint,
-					strings.Join(s.SupplyPoints, ","), strings.Join(s.TypeOIDs, ",")))
+					strings.Join(s.SupplyPoints, ","), strings.Join(oidTexts(s.TypeOIDs), ",")))
 			}
 			if len(lines) != want.Services || hexSum([]byte(strings.Join(lines, "\n"))) != want.ServicesSHA256 {
 				t.Errorf("%d services, ti-pki has %d, or they differ", len(lines), want.Services)
@@ -483,4 +485,25 @@ func FuzzParseTSL(f *testing.F) {
 			t.Errorf("%v %v", list, err)
 		}
 	})
+}
+
+// The list compares identifiers in binary, so a spelling that reads as another identifier's must not pass as it.
+func TestTSLRefusesANonCanonicalExtensionOID(t *testing.T) {
+	identity := &struct {
+		IDs []struct {
+			Certificate *string `xml:"X509Certificate"`
+		} `xml:"DigitalId"`
+	}{}
+	serviceType, status := "type", "status"
+	for _, text := range []string{"1.2.276.0.76.4.030", "1.2.276.0.76.4.", "1.2.276.0.76.4.x", "9.1"} {
+		id := text
+		if _, err := convertService("provider", "service", &serviceType, &status, nil, identity, nil, []*string{&id}); err == nil {
+			t.Errorf("%s accepted", text)
+		}
+	}
+	valid := "1.2.276.0.76.4.30"
+	service, err := convertService("provider", "service", &serviceType, &status, nil, identity, nil, []*string{&valid})
+	if err != nil || len(service.TypeOIDs) != 1 || !service.TypeOIDs[0].Equal(oid.ProfArzt) {
+		t.Errorf("valid identifier: %v, %v", service.TypeOIDs, err)
+	}
 }

@@ -1,16 +1,17 @@
 ---
 id: TASK-199
 title: 'ti-pki: OID tables against gemSpec_OID 3.26.0'
-status: To Do
+status: In Progress
 assignee: []
-created_date: '2026-10-28 08:25'
+created_date: 2026-10-28 08:25
+updated_date: '2026-11-03T17:23:00Z'
 labels:
   - ti-pki
   - spec
 dependencies: []
 references:
   - rust/ti-pki/src/oid.rs
-  - 'https://gemspec.gematik.de/docs/gemSpec/gemSpec_OID/latest/'
+  - https://gemspec.gematik.de/docs/gemSpec/gemSpec_OID/latest/
 priority: medium
 ordinal: 158000
 ---
@@ -23,6 +24,12 @@ rust/ti-pki/src/oid.rs states its tables are complete as of gemSpec_OID V3.25.0 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 every Tab_PKI_401-406 row of gemSpec_OID 3.26.0 matches oid.rs (OID, reference, description, certificate types)
-- [ ] #2 the module header names 3.26.0 and drops the pending-change note if 3.26.0 contains C_12646
+- [x] #1 every Tab_PKI_401-406 row of gemSpec_OID 3.26.0 matches oid.rs (OID, reference, description, certificate types)
+- [x] #2 the module header names 3.26.0 and drops the pending-change note if 3.26.0 contains C_12646
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+3.26.0 differs from the draft C_12646 the tables had applied: oid_zeta-prv-approv is present, ZETA Guard is C.FD.AUT only. Followed the released table and dropped the note. Spec spellings left as they are in ours: oid_mobile_einrichtung_rettungsdienst (spec has a stray space) and Komponentenzertifikate (spec: Komponenten-zertifikate).
+<!-- SECTION:NOTES:END -->

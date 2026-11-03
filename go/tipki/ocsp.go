@@ -56,11 +56,19 @@ const (
 
 	contentTypeOCSPRequest  = "application/ocsp-request"
 	contentTypeOCSPResponse = "application/ocsp-response"
-	oidCertHash             = "1.3.36.8.3.13"
-	oidOCSPBasic            = "1.3.6.1.5.5.7.48.1.1"
-	oidOCSPSigning          = "1.3.6.1.5.5.7.3.9"
 	serviceTypeOCSP         = "http://uri.etsi.org/TrstSvc/Svctype/Certstatus/OCSP"
 	unknownStatusReason     = "OCSP status: unknown"
+)
+
+var (
+	oidCertHash    = oid.MustParse("1.3.36.8.3.13")
+	oidOCSPBasic   = oid.MustParse("1.3.6.1.5.5.7.48.1.1")
+	oidOCSPSigning = oid.MustParse("1.3.6.1.5.5.7.3.9")
+
+	oidSHA1   = oid.MustParse("1.3.14.3.2.26")
+	oidSHA256 = oid.MustParse("2.16.840.1.101.3.4.2.1")
+	oidSHA384 = oid.MustParse("2.16.840.1.101.3.4.2.2")
+	oidSHA512 = oid.MustParse("2.16.840.1.101.3.4.2.3")
 )
 
 // RevocationStatus is what a source said about one certificate.
@@ -189,7 +197,7 @@ func OCSPRequest(cert, issuer *x509.Certificate) ([]byte, error) {
 }
 
 type singleResponse struct {
-	hashOID    string
+	hashOID    asn1.ObjectIdentifier
 	nameHash   []byte
 	keyHash    []byte
 	serial     *big.Int
@@ -216,42 +224,42 @@ func undecodable(detail string) *OCSPError {
 }
 
 // responseStatus reads the outer OCSPResponse: its status, and the BasicOCSPResponse bytes if any.
-func parseOuterResponse(der []byte) (status int, bytesType string, body []byte, err error) {
+func parseOuterResponse(der []byte) (status int, bytesType asn1.ObjectIdentifier, body []byte, err error) {
 	outer, err := element(der)
 	if err != nil || !isSequence(outer) {
-		return 0, "", nil, errors.New("not an OCSPResponse")
+		return 0, nil, nil, errors.New("not an OCSPResponse")
 	}
 	fields, err := elements(outer.Bytes)
 	if err != nil || len(fields) == 0 || len(fields) > 2 {
-		return 0, "", nil, errors.New("not an OCSPResponse")
+		return 0, nil, nil, errors.New("not an OCSPResponse")
 	}
 	var enumerated asn1.Enumerated
 	if _, err := asn1.Unmarshal(fields[0].FullBytes, &enumerated); err != nil {
-		return 0, "", nil, errors.New("no response status")
+		return 0, nil, nil, errors.New("no response status")
 	}
 	status = int(enumerated)
 	if status != 0 && status != 1 && status != 2 && status != 3 && status != 5 && status != 6 {
-		return 0, "", nil, errors.New("an unknown response status")
+		return 0, nil, nil, errors.New("an unknown response status")
 	}
 	if len(fields) == 1 {
-		return status, "", nil, nil
+		return status, nil, nil, nil
 	}
 	if fields[1].Class != asn1.ClassContextSpecific || fields[1].Tag != 0 || !fields[1].IsCompound {
-		return 0, "", nil, errors.New("not an OCSPResponse")
+		return 0, nil, nil, errors.New("not an OCSPResponse")
 	}
 	inner, err := element(fields[1].Bytes)
 	if err != nil || !isSequence(inner) {
-		return 0, "", nil, errors.New("no responseBytes")
+		return 0, nil, nil, errors.New("no responseBytes")
 	}
 	parts, err := elements(inner.Bytes)
 	if err != nil || len(parts) != 2 || !isUniversal(parts[1], asn1.TagOctetString) {
-		return 0, "", nil, errors.New("no responseBytes")
+		return 0, nil, nil, errors.New("no responseBytes")
 	}
 	var id asn1.ObjectIdentifier
 	if _, err := asn1.Unmarshal(parts[0].FullBytes, &id); err != nil {
-		return 0, "", nil, errors.New("no response type")
+		return 0, nil, nil, errors.New("no response type")
 	}
-	return status, id.String(), parts[1].Bytes, nil
+	return status, id, parts[1].Bytes, nil
 }
 
 func parseGeneralizedTime(value asn1.RawValue) (time.Time, error) {
@@ -367,7 +375,7 @@ func parseSingleResponse(raw asn1.RawValue) (singleResponse, error) {
 	if _, err := asn1.Unmarshal(algorithm[0].FullBytes, &hashOID); err != nil {
 		return single, errors.New("not a CertID")
 	}
-	single.hashOID, single.nameHash, single.keyHash = hashOID.String(), id[1].Bytes, id[2].Bytes
+	single.hashOID, single.nameHash, single.keyHash = hashOID, id[1].Bytes, id[2].Bytes
 	if _, err := asn1.Unmarshal(id[3].FullBytes, &single.serial); err != nil {
 		return single, errors.New("not a CertID")
 	}
@@ -460,18 +468,18 @@ func validExtension(extension asn1.RawValue) bool {
 	return len(parts) == 2 || isUniversal(parts[1], asn1.TagBoolean)
 }
 
-func digestFor(hashOID string, data []byte) []byte {
-	switch hashOID {
-	case "1.3.14.3.2.26":
+func digestFor(hashOID asn1.ObjectIdentifier, data []byte) []byte {
+	switch {
+	case oidSHA1.EqualASN1OID(hashOID):
 		sum := sha1.Sum(data) //nolint:gosec // See the import.
 		return sum[:]
-	case "2.16.840.1.101.3.4.2.1":
+	case oidSHA256.EqualASN1OID(hashOID):
 		sum := sha256.Sum256(data)
 		return sum[:]
-	case "2.16.840.1.101.3.4.2.2":
+	case oidSHA384.EqualASN1OID(hashOID):
 		sum := sha512.Sum384(data)
 		return sum[:]
-	case "2.16.840.1.101.3.4.2.3":
+	case oidSHA512.EqualASN1OID(hashOID):
 		sum := sha512.Sum512(data)
 		return sum[:]
 	}
@@ -484,7 +492,7 @@ func certIDMatches(single *singleResponse, cert, issuer *x509.Certificate) strin
 	}
 	name := digestFor(single.hashOID, issuer.RawSubject)
 	if name == nil {
-		return "unsupported CertID hash algorithm " + single.hashOID
+		return "unsupported CertID hash algorithm " + single.hashOID.String()
 	}
 	if !bytes.Equal(name, single.nameHash) {
 		return "issuerNameHash does not match the issuer"
@@ -520,8 +528,8 @@ func verifyResponse(der []byte, cert, issuer *x509.Certificate, check ResponseCh
 	if body == nil {
 		return nil, &OCSPError{Code: "ocsp_unavailable", Message: "OCSP response is successful but carries no response"}
 	}
-	if responseType != oidOCSPBasic {
-		return nil, &OCSPError{Code: "ocsp_unavailable", Message: "OCSP response type " + responseType + " is not id-pkix-ocsp-basic"}
+	if !oidOCSPBasic.EqualASN1OID(responseType) {
+		return nil, &OCSPError{Code: "ocsp_unavailable", Message: "OCSP response type " + responseType.String() + " is not id-pkix-ocsp-basic"}
 	}
 	basic, err := parseBasicResponse(body)
 	if err != nil {
@@ -655,7 +663,7 @@ func authorizeResponder(responder, issuer *x509.Certificate, check ResponseCheck
 }
 
 func delegateUnusable(responder *x509.Certificate, check ResponseCheck) string {
-	if !slices.Contains(extKeyUsages(responder), oidOCSPSigning) {
+	if !slices.ContainsFunc(extKeyUsages(responder), oidOCSPSigning.EqualASN1OID) {
 		return "lacks id-kp-OCSPSigning"
 	}
 	skew := int64(check.ClockTolerance / time.Second)
@@ -702,7 +710,7 @@ func verifyCertHash(extensions []asn1.RawValue, cert *x509.Certificate, allowMis
 			continue
 		}
 		var id asn1.ObjectIdentifier
-		if _, err := asn1.Unmarshal(parts[0].FullBytes, &id); err != nil || id.String() != oidCertHash {
+		if _, err := asn1.Unmarshal(parts[0].FullBytes, &id); err != nil || !oidCertHash.EqualASN1OID(id) {
 			continue
 		}
 		value := parts[len(parts)-1]
@@ -725,7 +733,7 @@ func verifyCertHash(extensions []asn1.RawValue, cert *x509.Certificate, allowMis
 		if _, err := asn1.Unmarshal(algorithm[0].FullBytes, &hashOID); err != nil {
 			return mismatch("OCSP certHash extension is malformed")
 		}
-		expected := digestFor(hashOID.String(), cert.Raw)
+		expected := digestFor(hashOID, cert.Raw)
 		if expected == nil {
 			return mismatch("OCSP certHash uses unsupported hash algorithm " + hashOID.String())
 		}
@@ -780,7 +788,7 @@ func isEGK(cert *x509.Certificate) bool {
 		}
 	}
 	admission, err := Admission(cert)
-	return err == nil && slices.Contains(admission.ProfessionOIDs, oid.ProfVersicherter)
+	return err == nil && containsOID(admission.ProfessionOIDs, oid.ProfVersicherter)
 }
 
 // RevocationChecker answers revocation questions. store is the trust store the chain was built against,

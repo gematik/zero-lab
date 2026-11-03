@@ -21,232 +21,238 @@
 
 // Package oid holds the object identifiers gemSpec_OID defines for the TI, each with the
 // specification's reference name and description. The tables are those of Rust's ti-pki, as of
-// gemSpec_OID V3.25.0 with the pending change C_12646 to Tab_PKI_406 applied, and
-// spec/pki-profiles holds the two to the same values. Identifiers are in dotted form.
+// gemSpec_OID V3.26.0, and spec/pki-profiles holds the two to the same values. Identifiers are
+// binary, as crypto/x509 reads them from a certificate; the dotted form is for reading.
 package oid
+
+import (
+	"crypto/x509"
+	"fmt"
+)
 
 // AdmissionExtension is the ISIS-MTT admission extension, carrying the profession information of
 // SMC-B and HBA cards.
-const AdmissionExtension = "1.3.36.8.3.3"
+var AdmissionExtension = MustParse("1.3.36.8.3.3")
 
 // The identifiers, by the name of the Go gempki, under Tab_PKI_401 to 406.
-const (
-	InstanceKBV                    = "1.2.276.0.76.3.1.1"     // oid_kbv
-	InstanceBAEK                   = "1.2.276.0.76.3.1.95"    // oid_baek
-	InstanceKZBV                   = "1.2.276.0.76.3.1.99"    // oid_kzbv
-	InstanceBZAEK                  = "1.2.276.0.76.3.1.96"    // oid_bzaek
-	InstanceDKG                    = "1.2.276.0.76.3.1.49"    // oid_dkg
-	InstanceBPtK                   = "1.2.276.0.76.3.1.90"    // oid_bptk
-	InstanceGematik                = "1.2.276.0.76.3.1.91"    // oid_gematik
-	ProfArzt                       = "1.2.276.0.76.4.30"      // oid_arzt
-	ProfZahnarzt                   = "1.2.276.0.76.4.31"      // oid_zahnarzt
-	ProfApotheker                  = "1.2.276.0.76.4.32"      // oid_apotheker
-	ProfApothekerassistent         = "1.2.276.0.76.4.33"      // oid_apothekerassistent
-	ProfPharmazieingenieur         = "1.2.276.0.76.4.34"      // oid_pharmazieingenieur
-	ProfPharmTechnAssistent        = "1.2.276.0.76.4.35"      // oid_pharm_techn_assistent
-	ProfPharmKaufmAngestellter     = "1.2.276.0.76.4.36"      // oid_pharm_kaufm_angestellter
-	ProfApothekenhelfer            = "1.2.276.0.76.4.37"      // oid_apothekenhelfer
-	ProfApothekenassistent         = "1.2.276.0.76.4.38"      // oid_apothekenassistent
-	ProfPharmAssistent             = "1.2.276.0.76.4.39"      // oid_pharm_assistent
-	ProfApothekenfacharbeiter      = "1.2.276.0.76.4.40"      // oid_apothekenfacharbeiter
-	ProfPharmaziepraktikant        = "1.2.276.0.76.4.41"      // oid_pharmaziepraktikant
-	ProfFamulant                   = "1.2.276.0.76.4.42"      // oid_famulant
-	ProfPTAPraktikant              = "1.2.276.0.76.4.43"      // oid_pta_praktikant
-	ProfPKAAuszubildender          = "1.2.276.0.76.4.44"      // oid_pka_auszubildender
-	ProfPsychotherapeut            = "1.2.276.0.76.4.45"      // oid_psychotherapeut
-	ProfPsPsychotherapeut          = "1.2.276.0.76.4.46"      // oid_ps_psychotherapeut
-	ProfKuJPsychotherapeut         = "1.2.276.0.76.4.47"      // oid_kuj_psychotherapeut
-	ProfRettungsassistent          = "1.2.276.0.76.4.48"      // oid_rettungsassistent
-	ProfVersicherter               = "1.2.276.0.76.4.49"      // oid_versicherter
-	ProfNotfallsanitaeter          = "1.2.276.0.76.4.178"     // oid_notfallsanitaeter
-	ProfPflegerHPC                 = "1.2.276.0.76.4.232"     // oid_pfleger-hpc
-	ProfAltenpflegerHPC            = "1.2.276.0.76.4.233"     // oid_altenpfleger-hpc
-	ProfPflegefachkraftHPC         = "1.2.276.0.76.4.234"     // oid_pflegefachkraft-hpc
-	ProfHebammeHPC                 = "1.2.276.0.76.4.235"     // oid_hebamme-hpc
-	ProfPhysiotherapeutHPC         = "1.2.276.0.76.4.236"     // oid_physiotherapeut-hpc
-	ProfAugenoptikerHPC            = "1.2.276.0.76.4.237"     // oid_augenoptiker-hpc
-	ProfHoerakustikerHPC           = "1.2.276.0.76.4.238"     // oid_hoerakustiker-hpc
-	ProfOrthopaedieschuhmacherHPC  = "1.2.276.0.76.4.239"     // oid_orthopaedieschuhmacher-hpc
-	ProfOrthopaedietechnikerHPC    = "1.2.276.0.76.4.240"     // oid_orthopaedietechniker-hpc
-	ProfZahntechnikerHPC           = "1.2.276.0.76.4.241"     // oid_zahntechniker-hpc
-	ProfErgotherapeutHPC           = "1.2.276.0.76.4.274"     // oid_ergotherapeut-hpc
-	ProfLogopaedeHPC               = "1.2.276.0.76.4.275"     // oid_logopaede-hpc
-	ProfPodologeHPC                = "1.2.276.0.76.4.276"     // oid_podologe-hpc
-	ProfErnaehrungstherapeutHPC    = "1.2.276.0.76.4.277"     // oid_ernaehrungstherapeut-hpc
-	ProfOptoAudioHPC               = "1.2.276.0.76.4.308"     // oid_opto-audio-hpc
-	ProfOrthopaedHPC               = "1.2.276.0.76.4.305"     // oid_orthopaed-hpc
-	ProfHimiHPC                    = "1.2.276.0.76.4.312"     // oid_himi-hpc
-	ProfFriseurHPC                 = "1.2.276.0.76.4.313"     // oid_friseur-hpc
-	ProfSoziotherapeut             = "1.2.276.0.76.4.316"     // oid_soziotherapeut
-	ProfSSSSTherapeut              = "1.2.276.0.76.4.318"     // oid_ssss-therapeut
-	ProfMasseurMBMHPC              = "1.2.276.0.76.4.315"     // oid_masseur-mbm-hpc
-	ProfDiaetassistent             = "1.2.276.0.76.4.319"     // oid_diaetassistent
-	InstArztpraxis                 = "1.2.276.0.76.4.50"      // oid_praxis_arzt
-	InstZahnarztpraxis             = "1.2.276.0.76.4.51"      // oid_zahnarztpraxis
-	InstPraxisPsychotherapeut      = "1.2.276.0.76.4.52"      // oid_praxis_psychotherapeut
-	InstKrankenhaus                = "1.2.276.0.76.4.53"      // oid_krankenhaus
-	InstOeffentlicheApo            = "1.2.276.0.76.4.54"      // oid_oeffentliche_apotheke
-	InstKrankenhausapotheke        = "1.2.276.0.76.4.55"      // oid_krankenhausapotheke
-	InstBundeswehrapotheke         = "1.2.276.0.76.4.56"      // oid_bundeswehrapotheke
-	InstMobileEinrichtungRettung   = "1.2.276.0.76.4.57"      // oid_mobile_einrichtung_rettungsdienst
-	InstGematik                    = "1.2.276.0.76.4.58"      // oid_bs_gematik
-	InstKostentraeger              = "1.2.276.0.76.4.59"      // oid_kostentraeger
-	InstLeoZahnaerzte              = "1.2.276.0.76.4.187"     // oid_leo_zahnaerzte
-	InstAdvKtr                     = "1.2.276.0.76.4.190"     // oid_adv_ktr
-	InstLeoKassenaerztlicheVerein  = "1.2.276.0.76.4.210"     // oid_leo_kassenaerztliche_vereinigung
-	InstGKVSpitzenverband          = "1.2.276.0.76.4.223"     // oid_bs_gkv_spitzenverband
-	InstLeoKrankenhausverband      = "1.2.276.0.76.4.226"     // oid_leo_krankenhausverband
-	InstLeoDKTIG                   = "1.2.276.0.76.4.227"     // oid_leo_dktig
-	InstLeoDKG                     = "1.2.276.0.76.4.228"     // oid_leo_dkg
-	InstLeoApothekerverband        = "1.2.276.0.76.4.224"     // oid_leo_apothekerverband
-	InstLeoDAV                     = "1.2.276.0.76.4.225"     // oid_leo_dav
-	InstLeoBAEK                    = "1.2.276.0.76.4.229"     // oid_leo_baek
-	InstLeoAerztekammer            = "1.2.276.0.76.4.230"     // oid_leo_aerztekammer
-	InstLeoZahnaerztekammer        = "1.2.276.0.76.4.231"     // oid_leo_zahnaerztekammer
-	InstLeoKBV                     = "1.2.276.0.76.4.242"     // oid_leo-kbv
-	InstLeoBZAEK                   = "1.2.276.0.76.4.243"     // oid_leo-bzaek
-	InstLeoKZBV                    = "1.2.276.0.76.4.244"     // oid_leo-kzbv
-	InstPflege                     = "1.2.276.0.76.4.245"     // oid_institution-pflege
-	InstGeburtshilfe               = "1.2.276.0.76.4.246"     // oid_institution-geburtshilfe
-	InstPraxisPhysiotherapeut      = "1.2.276.0.76.4.247"     // oid_praxis-physiotherapeut
-	InstAugenoptiker               = "1.2.276.0.76.4.248"     // oid_institution-augenoptiker
-	InstHoerakustiker              = "1.2.276.0.76.4.249"     // oid_institution-hoerakustiker
-	InstOrthopaedieschuhmacher     = "1.2.276.0.76.4.250"     // oid_institution-orthopaedieschuhmacher
-	InstOrthopaedietechniker       = "1.2.276.0.76.4.251"     // oid_institution-orthopaedietechniker
-	InstZahntechniker              = "1.2.276.0.76.4.252"     // oid_institution-zahntechniker
-	InstRettungsleitstelle         = "1.2.276.0.76.4.253"     // oid_institution-rettungsleitstellen
-	InstSanitaetsdienstBW          = "1.2.276.0.76.4.254"     // oid_sanitaetsdienst-bundeswehr
-	InstOEGD                       = "1.2.276.0.76.4.255"     // oid_institution-oegd
-	InstArbeitsmedizin             = "1.2.276.0.76.4.256"     // oid_institution-arbeitsmedizin
-	InstVorsorgeReha               = "1.2.276.0.76.4.257"     // oid_institution-vorsorge-reha
-	InstPflegeberatung             = "1.2.276.0.76.4.262"     // oid_pflegeberatung
-	InstLeoPsychotherapeuten       = "1.2.276.0.76.4.263"     // oid_leo_psychotherapeuten
-	InstLeoBPtK                    = "1.2.276.0.76.4.264"     // oid_leo_bptk
-	InstLeoLAK                     = "1.2.276.0.76.4.265"     // oid_leo_lak
-	InstLeoBAK                     = "1.2.276.0.76.4.266"     // oid_leo_bak
-	InstLeoEGBR                    = "1.2.276.0.76.4.267"     // oid_leo_egbr
-	InstLeoHandwerkskammer         = "1.2.276.0.76.4.268"     // oid_leo_handwerkskammer
-	InstGesundheitsdatenregister   = "1.2.276.0.76.4.269"     // oid_gesundheitsdatenregister
-	InstAbrechnungsdienstleister   = "1.2.276.0.76.4.270"     // oid_abrechnungsdienstleister
-	InstPKVVerband                 = "1.2.276.0.76.4.271"     // oid_pkv_verband
-	InstPraxisErgotherapeut        = "1.2.276.0.76.4.278"     // oid_praxis-ergotherapeut
-	InstPraxisLogopaede            = "1.2.276.0.76.4.279"     // oid_praxis-logopaede
-	InstPraxisPodologe             = "1.2.276.0.76.4.280"     // oid_praxis-podologe
-	InstPraxisErnaehrungstherapeut = "1.2.276.0.76.4.281"     // oid_praxis-ernaehrungstherapeut
-	InstWeitereKostentraeger       = "1.2.276.0.76.4.284"     // oid_bs-weitere-kostentraeger
-	InstOrgGesundheitsversorgung   = "1.2.276.0.76.4.285"     // oid_org-gesundheitsversorgung
-	InstKIMAnbieter                = "1.2.276.0.76.4.286"     // oid_kim-anbieter
-	InstDiGA                       = "1.2.276.0.76.4.282"     // oid_diga
-	InstTIMAnbieter                = "1.2.276.0.76.4.295"     // oid_tim-anbieter
-	InstNCPeH                      = "1.2.276.0.76.4.292"     // oid_ncpeh
-	InstOmbudsstelle               = "1.2.276.0.76.4.303"     // oid_ombudsstelle
-	InstOptoAudio                  = "1.2.276.0.76.4.304"     // oid_bs-opto-audio
-	InstOrthopaedHW                = "1.2.276.0.76.4.306"     // oid_bs-orthopaed-hw
-	InstHimi                       = "1.2.276.0.76.4.311"     // oid_bs-himi
-	InstFriseur                    = "1.2.276.0.76.4.314"     // oid_bs-friseur
-	InstSoziother                  = "1.2.276.0.76.4.317"     // oid_bs-soziother
-	PolicyHbaCP                    = "1.2.276.0.76.4.145"     // oid_policy_hba_cp
-	PolicyGemOrCP                  = "1.2.276.0.76.4.163"     // oid_policy_gem_or_cp
-	PolicyGemTSLSigner             = "1.2.276.0.76.4.176"     // oid_policy_gem_tsl_signer
-	CertTypeEgkQES                 = "1.2.276.0.76.4.66"      // oid_egk_qes
-	CertTypeEgkSIG                 = "1.2.276.0.76.4.67"      // oid_egk_sig
-	CertTypeEgkENC                 = "1.2.276.0.76.4.68"      // oid_egk_enc
-	CertTypeEgkENCV                = "1.2.276.0.76.4.69"      // oid_egk_encv
-	CertTypeEgkAUT                 = "1.2.276.0.76.4.70"      // oid_egk_aut
-	CertTypeEgkAUTN                = "1.2.276.0.76.4.71"      // oid_egk_autn
-	CertTypeEgkENCAlt              = "1.2.276.0.76.4.211"     // oid_egk_enc_alt
-	CertTypeEgkAUTAlt              = "1.2.276.0.76.4.212"     // oid_egk_aut_alt
-	CertTypeHbaQES                 = "1.2.276.0.76.4.72"      // oid_hba_qes
-	CertTypeHbaSIG                 = "1.2.276.0.76.4.73"      // oid_hba_sig
-	CertTypeHbaENC                 = "1.2.276.0.76.4.74"      // oid_hba_enc
-	CertTypeHbaAUT                 = "1.2.276.0.76.4.75"      // oid_hba_aut
-	CertTypeSmcBENC                = "1.2.276.0.76.4.76"      // oid_smc_b_enc
-	CertTypeSmcBAUT                = "1.2.276.0.76.4.77"      // oid_smc_b_aut
-	CertTypeSmcBOSIG               = "1.2.276.0.76.4.78"      // oid_smc_b_osig
-	CertTypeAkAUT                  = "1.2.276.0.76.4.79"      // oid_ak_aut
-	CertTypeNkVPN                  = "1.2.276.0.76.4.80"      // oid_nk_vpn
-	CertTypeVpnkVPN                = "1.2.276.0.76.4.81"      // oid_vpnk_vpn
-	CertTypeSmktAUT                = "1.2.276.0.76.4.82"      // oid_smkt_aut
-	CertTypeSakAUT                 = "1.2.276.0.76.4.113"     // oid_sak_aut
-	CertTypeCmTLSCS                = "1.2.276.0.76.4.175"     // oid_cm_tls_c
-	CertTypeFdTLSC                 = "1.2.276.0.76.4.168"     // oid_fd_tls_c
-	CertTypeFdTLSS                 = "1.2.276.0.76.4.169"     // oid_fd_tls_s
-	CertTypeFdAUT                  = "1.2.276.0.76.4.155"     // oid_fd_aut
-	CertTypeZdTLSC                 = "1.2.276.0.76.4.156"     // oid_zd_tls_c
-	CertTypeZdTLSS                 = "1.2.276.0.76.4.157"     // oid_zd_tls_s
-	CertTypeZdAUT                  = "1.2.276.0.76.4.158"     // oid_zd_aut
-	CertTypeVpnkVPNSIS             = "1.2.276.0.76.4.165"     // oid_vpnk_vpn_sis
-	CertTypeFdSIG                  = "1.2.276.0.76.4.203"     // oid_fd_sig
-	CertTypeFdENC                  = "1.2.276.0.76.4.202"     // oid_fd_enc
-	CertTypeWhkHsmAUT              = "1.2.276.0.76.4.213"     // oid_whk_hsm_aut
-	CertTypeVkPtENC                = "1.2.276.0.76.4.62"      // oid_vk_pt_enc
-	CertTypeVkEaaENC               = "1.3.6.1.4.1.24796.1.10" // oid_vk_eaa_enc
-	CertTypeFdOSIG                 = "1.2.276.0.76.4.283"     // oid_fd_osig
-	CertTypeZdSIG                  = "1.2.276.0.76.4.287"     // oid_zd_sig
-	CertTypeHskSIG                 = "1.2.276.0.76.4.300"     // oid_hsk_sig
-	CertTypeHskENC                 = "1.2.276.0.76.4.301"     // oid_hsk_enc
-	CertTypeGemVER                 = "1.2.276.0.76.4.321"     // oid_gem-ver
-	CVRootCert                     = "1.2.276.0.76.4.185"     // oid_cv_rootcert
-	CVCert                         = "1.2.276.0.76.4.186"     // oid_cv_cert
-	TechRoleVSDD                   = "1.2.276.0.76.4.97"      // oid_vsdd
-	TechRoleOCSP                   = "1.2.276.0.76.4.99"      // oid_ocsp
-	TechRoleCMS                    = "1.2.276.0.76.4.100"     // oid_cms
-	TechRoleUFS                    = "1.2.276.0.76.4.101"     // oid_ufs
-	TechRoleAK                     = "1.2.276.0.76.4.103"     // oid_ak
-	TechRoleNK                     = "1.2.276.0.76.4.104"     // oid_nk
-	TechRoleKT                     = "1.2.276.0.76.4.105"     // oid_kt
-	TechRoleSAK                    = "1.2.276.0.76.4.119"     // oid_sak
-	TechRoleIntVSDM                = "1.2.276.0.76.4.159"     // oid_int_vsdm
-	TechRoleKonfigdienst           = "1.2.276.0.76.4.160"     // oid_konfigdienst
-	TechRoleVPNZTI                 = "1.2.276.0.76.4.161"     // oid_vpnz_ti
-	TechRoleVPNZSIS                = "1.2.276.0.76.4.166"     // oid_vpnz_sis
-	TechRoleCMFD                   = "1.2.276.0.76.4.174"     // oid_cmfd
-	TechRoleVZDTI                  = "1.2.276.0.76.4.171"     // oid_vzd_ti
-	TechRoleKOMLE                  = "1.2.276.0.76.4.172"     // oid_komle
-	TechRoleKOMLERecipientEmails   = "1.2.276.0.76.4.173"     // oid_komle-recipient-emails
-	TechRoleStamp                  = "1.2.276.0.76.4.184"     // oid_stamp
-	TechRoleTSLTI                  = "1.2.276.0.76.4.189"     // oid_tsl_ti
-	TechRoleWADG                   = "1.2.276.0.76.4.198"     // oid_wadg
-	TechRoleEpaAuthn               = "1.2.276.0.76.4.204"     // oid_epa_authn
-	TechRoleEpaAuthz               = "1.2.276.0.76.4.205"     // oid_epa_authz
-	TechRoleEpaDvw                 = "1.2.276.0.76.4.206"     // oid_epa_dvw
-	TechRoleEpaMgmt                = "1.2.276.0.76.4.207"     // oid_epa_mgmt
-	TechRoleEpaRecovery            = "1.2.276.0.76.4.208"     // oid_epa_recovery
-	TechRoleEpaVAU                 = "1.2.276.0.76.4.209"     // oid_epa_vau
-	TechRoleVzTSP                  = "1.2.276.0.76.4.215"     // oid_vz_tsp
-	TechRoleWHK1HSM                = "1.2.276.0.76.4.216"     // oid_whk1_hsm
-	TechRoleWHK2HSM                = "1.2.276.0.76.4.217"     // oid_whk2_hsm
-	TechRoleWHK                    = "1.2.276.0.76.4.218"     // oid_whk
-	TechRoleSGD                    = "1.2.276.0.76.4.221"     // oid_sgd
-	TechRoleERPVAU                 = "1.2.276.0.76.4.258"     // oid_erp-vau
-	TechRoleERezept                = "1.2.276.0.76.4.259"     // oid_erezept
-	TechRoleIDPD                   = "1.2.276.0.76.4.260"     // oid_idpd
-	TechRoleEpaLogging             = "1.2.276.0.76.4.261"     // oid_epa_logging
-	TechRoleBestandsnetze          = "1.2.276.0.76.4.288"     // oid_bestandsnetze
-	TechRoleEpaVST                 = "1.2.276.0.76.4.289"     // oid_epa_vst
-	TechRoleEpaFDZ                 = "1.2.276.0.76.4.290"     // oid_epa_fdz
-	TechRoleTIM                    = "1.2.276.0.76.4.294"     // oid_tim
-	TechRoleHSK                    = "1.2.276.0.76.4.302"     // oid_hsk
-	TechRoleIDPDSek                = "1.2.276.0.76.4.307"     // oid_idpd_sek
-	TechRoleTIGWZugm               = "1.2.276.0.76.4.309"     // oid_tigw_zugm
-	TechRoleZertSMB                = "1.2.276.0.76.4.310"     // oid_zert_smb
-	TechRolePoPP                   = "1.2.276.0.76.4.293"     // oid_popp
-	TechRolePoPPToken              = "1.2.276.0.76.4.320"     // oid_popp-token
-	TechRolePKIVer                 = "1.2.276.0.76.4.322"     // oid_pki-ver
-	TechRoleDipagVAU               = "1.2.276.0.76.4.323"     // oid_dipag-vau
-	TechRoleZETAGuard              = "1.2.276.0.76.4.328"     // oid_zeta-guard
-	TechRoleZETAPolicies           = "1.2.276.0.76.4.324"     // oid_zeta-policies
-	TechRoleZETAOCI                = "1.2.276.0.76.4.326"     // oid_zeta-oci
-	TechRoleZETAPolAuthor          = "1.2.276.0.76.4.329"     // oid_zeta-pol-author
-	TechRoleZETAPolApprov          = "1.2.276.0.76.4.330"     // oid_zeta-pol-approv
-	TechRoleZETAPolOper            = "1.2.276.0.76.4.331"     // oid_zeta-pol-oper
-	TechRoleTSPEgk                 = "1.2.276.0.76.4.325"     // oid_tsp-egk
-	TechRoleCDCP15G                = "1.2.276.0.76.4.327"     // oid_cdc-p15g
+var (
+	InstanceKBV                    = MustParse("1.2.276.0.76.3.1.1")     // oid_kbv
+	InstanceBAEK                   = MustParse("1.2.276.0.76.3.1.95")    // oid_baek
+	InstanceKZBV                   = MustParse("1.2.276.0.76.3.1.99")    // oid_kzbv
+	InstanceBZAEK                  = MustParse("1.2.276.0.76.3.1.96")    // oid_bzaek
+	InstanceDKG                    = MustParse("1.2.276.0.76.3.1.49")    // oid_dkg
+	InstanceBPtK                   = MustParse("1.2.276.0.76.3.1.90")    // oid_bptk
+	InstanceGematik                = MustParse("1.2.276.0.76.3.1.91")    // oid_gematik
+	ProfArzt                       = MustParse("1.2.276.0.76.4.30")      // oid_arzt
+	ProfZahnarzt                   = MustParse("1.2.276.0.76.4.31")      // oid_zahnarzt
+	ProfApotheker                  = MustParse("1.2.276.0.76.4.32")      // oid_apotheker
+	ProfApothekerassistent         = MustParse("1.2.276.0.76.4.33")      // oid_apothekerassistent
+	ProfPharmazieingenieur         = MustParse("1.2.276.0.76.4.34")      // oid_pharmazieingenieur
+	ProfPharmTechnAssistent        = MustParse("1.2.276.0.76.4.35")      // oid_pharm_techn_assistent
+	ProfPharmKaufmAngestellter     = MustParse("1.2.276.0.76.4.36")      // oid_pharm_kaufm_angestellter
+	ProfApothekenhelfer            = MustParse("1.2.276.0.76.4.37")      // oid_apothekenhelfer
+	ProfApothekenassistent         = MustParse("1.2.276.0.76.4.38")      // oid_apothekenassistent
+	ProfPharmAssistent             = MustParse("1.2.276.0.76.4.39")      // oid_pharm_assistent
+	ProfApothekenfacharbeiter      = MustParse("1.2.276.0.76.4.40")      // oid_apothekenfacharbeiter
+	ProfPharmaziepraktikant        = MustParse("1.2.276.0.76.4.41")      // oid_pharmaziepraktikant
+	ProfFamulant                   = MustParse("1.2.276.0.76.4.42")      // oid_famulant
+	ProfPTAPraktikant              = MustParse("1.2.276.0.76.4.43")      // oid_pta_praktikant
+	ProfPKAAuszubildender          = MustParse("1.2.276.0.76.4.44")      // oid_pka_auszubildender
+	ProfPsychotherapeut            = MustParse("1.2.276.0.76.4.45")      // oid_psychotherapeut
+	ProfPsPsychotherapeut          = MustParse("1.2.276.0.76.4.46")      // oid_ps_psychotherapeut
+	ProfKuJPsychotherapeut         = MustParse("1.2.276.0.76.4.47")      // oid_kuj_psychotherapeut
+	ProfRettungsassistent          = MustParse("1.2.276.0.76.4.48")      // oid_rettungsassistent
+	ProfVersicherter               = MustParse("1.2.276.0.76.4.49")      // oid_versicherter
+	ProfNotfallsanitaeter          = MustParse("1.2.276.0.76.4.178")     // oid_notfallsanitaeter
+	ProfPflegerHPC                 = MustParse("1.2.276.0.76.4.232")     // oid_pfleger-hpc
+	ProfAltenpflegerHPC            = MustParse("1.2.276.0.76.4.233")     // oid_altenpfleger-hpc
+	ProfPflegefachkraftHPC         = MustParse("1.2.276.0.76.4.234")     // oid_pflegefachkraft-hpc
+	ProfHebammeHPC                 = MustParse("1.2.276.0.76.4.235")     // oid_hebamme-hpc
+	ProfPhysiotherapeutHPC         = MustParse("1.2.276.0.76.4.236")     // oid_physiotherapeut-hpc
+	ProfAugenoptikerHPC            = MustParse("1.2.276.0.76.4.237")     // oid_augenoptiker-hpc
+	ProfHoerakustikerHPC           = MustParse("1.2.276.0.76.4.238")     // oid_hoerakustiker-hpc
+	ProfOrthopaedieschuhmacherHPC  = MustParse("1.2.276.0.76.4.239")     // oid_orthopaedieschuhmacher-hpc
+	ProfOrthopaedietechnikerHPC    = MustParse("1.2.276.0.76.4.240")     // oid_orthopaedietechniker-hpc
+	ProfZahntechnikerHPC           = MustParse("1.2.276.0.76.4.241")     // oid_zahntechniker-hpc
+	ProfErgotherapeutHPC           = MustParse("1.2.276.0.76.4.274")     // oid_ergotherapeut-hpc
+	ProfLogopaedeHPC               = MustParse("1.2.276.0.76.4.275")     // oid_logopaede-hpc
+	ProfPodologeHPC                = MustParse("1.2.276.0.76.4.276")     // oid_podologe-hpc
+	ProfErnaehrungstherapeutHPC    = MustParse("1.2.276.0.76.4.277")     // oid_ernaehrungstherapeut-hpc
+	ProfOptoAudioHPC               = MustParse("1.2.276.0.76.4.308")     // oid_opto-audio-hpc
+	ProfOrthopaedHPC               = MustParse("1.2.276.0.76.4.305")     // oid_orthopaed-hpc
+	ProfHimiHPC                    = MustParse("1.2.276.0.76.4.312")     // oid_himi-hpc
+	ProfFriseurHPC                 = MustParse("1.2.276.0.76.4.313")     // oid_friseur-hpc
+	ProfSoziotherapeut             = MustParse("1.2.276.0.76.4.316")     // oid_soziotherapeut
+	ProfSSSSTherapeut              = MustParse("1.2.276.0.76.4.318")     // oid_ssss-therapeut
+	ProfMasseurMBMHPC              = MustParse("1.2.276.0.76.4.315")     // oid_masseur-mbm-hpc
+	ProfDiaetassistent             = MustParse("1.2.276.0.76.4.319")     // oid_diaetassistent
+	InstArztpraxis                 = MustParse("1.2.276.0.76.4.50")      // oid_praxis_arzt
+	InstZahnarztpraxis             = MustParse("1.2.276.0.76.4.51")      // oid_zahnarztpraxis
+	InstPraxisPsychotherapeut      = MustParse("1.2.276.0.76.4.52")      // oid_praxis_psychotherapeut
+	InstKrankenhaus                = MustParse("1.2.276.0.76.4.53")      // oid_krankenhaus
+	InstOeffentlicheApo            = MustParse("1.2.276.0.76.4.54")      // oid_oeffentliche_apotheke
+	InstKrankenhausapotheke        = MustParse("1.2.276.0.76.4.55")      // oid_krankenhausapotheke
+	InstBundeswehrapotheke         = MustParse("1.2.276.0.76.4.56")      // oid_bundeswehrapotheke
+	InstMobileEinrichtungRettung   = MustParse("1.2.276.0.76.4.57")      // oid_mobile_einrichtung_rettungsdienst
+	InstGematik                    = MustParse("1.2.276.0.76.4.58")      // oid_bs_gematik
+	InstKostentraeger              = MustParse("1.2.276.0.76.4.59")      // oid_kostentraeger
+	InstLeoZahnaerzte              = MustParse("1.2.276.0.76.4.187")     // oid_leo_zahnaerzte
+	InstAdvKtr                     = MustParse("1.2.276.0.76.4.190")     // oid_adv_ktr
+	InstLeoKassenaerztlicheVerein  = MustParse("1.2.276.0.76.4.210")     // oid_leo_kassenaerztliche_vereinigung
+	InstGKVSpitzenverband          = MustParse("1.2.276.0.76.4.223")     // oid_bs_gkv_spitzenverband
+	InstLeoKrankenhausverband      = MustParse("1.2.276.0.76.4.226")     // oid_leo_krankenhausverband
+	InstLeoDKTIG                   = MustParse("1.2.276.0.76.4.227")     // oid_leo_dktig
+	InstLeoDKG                     = MustParse("1.2.276.0.76.4.228")     // oid_leo_dkg
+	InstLeoApothekerverband        = MustParse("1.2.276.0.76.4.224")     // oid_leo_apothekerverband
+	InstLeoDAV                     = MustParse("1.2.276.0.76.4.225")     // oid_leo_dav
+	InstLeoBAEK                    = MustParse("1.2.276.0.76.4.229")     // oid_leo_baek
+	InstLeoAerztekammer            = MustParse("1.2.276.0.76.4.230")     // oid_leo_aerztekammer
+	InstLeoZahnaerztekammer        = MustParse("1.2.276.0.76.4.231")     // oid_leo_zahnaerztekammer
+	InstLeoKBV                     = MustParse("1.2.276.0.76.4.242")     // oid_leo-kbv
+	InstLeoBZAEK                   = MustParse("1.2.276.0.76.4.243")     // oid_leo-bzaek
+	InstLeoKZBV                    = MustParse("1.2.276.0.76.4.244")     // oid_leo-kzbv
+	InstPflege                     = MustParse("1.2.276.0.76.4.245")     // oid_institution-pflege
+	InstGeburtshilfe               = MustParse("1.2.276.0.76.4.246")     // oid_institution-geburtshilfe
+	InstPraxisPhysiotherapeut      = MustParse("1.2.276.0.76.4.247")     // oid_praxis-physiotherapeut
+	InstAugenoptiker               = MustParse("1.2.276.0.76.4.248")     // oid_institution-augenoptiker
+	InstHoerakustiker              = MustParse("1.2.276.0.76.4.249")     // oid_institution-hoerakustiker
+	InstOrthopaedieschuhmacher     = MustParse("1.2.276.0.76.4.250")     // oid_institution-orthopaedieschuhmacher
+	InstOrthopaedietechniker       = MustParse("1.2.276.0.76.4.251")     // oid_institution-orthopaedietechniker
+	InstZahntechniker              = MustParse("1.2.276.0.76.4.252")     // oid_institution-zahntechniker
+	InstRettungsleitstelle         = MustParse("1.2.276.0.76.4.253")     // oid_institution-rettungsleitstellen
+	InstSanitaetsdienstBW          = MustParse("1.2.276.0.76.4.254")     // oid_sanitaetsdienst-bundeswehr
+	InstOEGD                       = MustParse("1.2.276.0.76.4.255")     // oid_institution-oegd
+	InstArbeitsmedizin             = MustParse("1.2.276.0.76.4.256")     // oid_institution-arbeitsmedizin
+	InstVorsorgeReha               = MustParse("1.2.276.0.76.4.257")     // oid_institution-vorsorge-reha
+	InstPflegeberatung             = MustParse("1.2.276.0.76.4.262")     // oid_pflegeberatung
+	InstLeoPsychotherapeuten       = MustParse("1.2.276.0.76.4.263")     // oid_leo_psychotherapeuten
+	InstLeoBPtK                    = MustParse("1.2.276.0.76.4.264")     // oid_leo_bptk
+	InstLeoLAK                     = MustParse("1.2.276.0.76.4.265")     // oid_leo_lak
+	InstLeoBAK                     = MustParse("1.2.276.0.76.4.266")     // oid_leo_bak
+	InstLeoEGBR                    = MustParse("1.2.276.0.76.4.267")     // oid_leo_egbr
+	InstLeoHandwerkskammer         = MustParse("1.2.276.0.76.4.268")     // oid_leo_handwerkskammer
+	InstGesundheitsdatenregister   = MustParse("1.2.276.0.76.4.269")     // oid_gesundheitsdatenregister
+	InstAbrechnungsdienstleister   = MustParse("1.2.276.0.76.4.270")     // oid_abrechnungsdienstleister
+	InstPKVVerband                 = MustParse("1.2.276.0.76.4.271")     // oid_pkv_verband
+	InstPraxisErgotherapeut        = MustParse("1.2.276.0.76.4.278")     // oid_praxis-ergotherapeut
+	InstPraxisLogopaede            = MustParse("1.2.276.0.76.4.279")     // oid_praxis-logopaede
+	InstPraxisPodologe             = MustParse("1.2.276.0.76.4.280")     // oid_praxis-podologe
+	InstPraxisErnaehrungstherapeut = MustParse("1.2.276.0.76.4.281")     // oid_praxis-ernaehrungstherapeut
+	InstWeitereKostentraeger       = MustParse("1.2.276.0.76.4.284")     // oid_bs-weitere-kostentraeger
+	InstOrgGesundheitsversorgung   = MustParse("1.2.276.0.76.4.285")     // oid_org-gesundheitsversorgung
+	InstKIMAnbieter                = MustParse("1.2.276.0.76.4.286")     // oid_kim-anbieter
+	InstDiGA                       = MustParse("1.2.276.0.76.4.282")     // oid_diga
+	InstTIMAnbieter                = MustParse("1.2.276.0.76.4.295")     // oid_tim-anbieter
+	InstNCPeH                      = MustParse("1.2.276.0.76.4.292")     // oid_ncpeh
+	InstOmbudsstelle               = MustParse("1.2.276.0.76.4.303")     // oid_ombudsstelle
+	InstOptoAudio                  = MustParse("1.2.276.0.76.4.304")     // oid_bs-opto-audio
+	InstOrthopaedHW                = MustParse("1.2.276.0.76.4.306")     // oid_bs-orthopaed-hw
+	InstHimi                       = MustParse("1.2.276.0.76.4.311")     // oid_bs-himi
+	InstFriseur                    = MustParse("1.2.276.0.76.4.314")     // oid_bs-friseur
+	InstSoziother                  = MustParse("1.2.276.0.76.4.317")     // oid_bs-soziother
+	PolicyHbaCP                    = MustParse("1.2.276.0.76.4.145")     // oid_policy_hba_cp
+	PolicyGemOrCP                  = MustParse("1.2.276.0.76.4.163")     // oid_policy_gem_or_cp
+	PolicyGemTSLSigner             = MustParse("1.2.276.0.76.4.176")     // oid_policy_gem_tsl_signer
+	CertTypeEgkQES                 = MustParse("1.2.276.0.76.4.66")      // oid_egk_qes
+	CertTypeEgkSIG                 = MustParse("1.2.276.0.76.4.67")      // oid_egk_sig
+	CertTypeEgkENC                 = MustParse("1.2.276.0.76.4.68")      // oid_egk_enc
+	CertTypeEgkENCV                = MustParse("1.2.276.0.76.4.69")      // oid_egk_encv
+	CertTypeEgkAUT                 = MustParse("1.2.276.0.76.4.70")      // oid_egk_aut
+	CertTypeEgkAUTN                = MustParse("1.2.276.0.76.4.71")      // oid_egk_autn
+	CertTypeEgkENCAlt              = MustParse("1.2.276.0.76.4.211")     // oid_egk_enc_alt
+	CertTypeEgkAUTAlt              = MustParse("1.2.276.0.76.4.212")     // oid_egk_aut_alt
+	CertTypeHbaQES                 = MustParse("1.2.276.0.76.4.72")      // oid_hba_qes
+	CertTypeHbaSIG                 = MustParse("1.2.276.0.76.4.73")      // oid_hba_sig
+	CertTypeHbaENC                 = MustParse("1.2.276.0.76.4.74")      // oid_hba_enc
+	CertTypeHbaAUT                 = MustParse("1.2.276.0.76.4.75")      // oid_hba_aut
+	CertTypeSmcBENC                = MustParse("1.2.276.0.76.4.76")      // oid_smc_b_enc
+	CertTypeSmcBAUT                = MustParse("1.2.276.0.76.4.77")      // oid_smc_b_aut
+	CertTypeSmcBOSIG               = MustParse("1.2.276.0.76.4.78")      // oid_smc_b_osig
+	CertTypeAkAUT                  = MustParse("1.2.276.0.76.4.79")      // oid_ak_aut
+	CertTypeNkVPN                  = MustParse("1.2.276.0.76.4.80")      // oid_nk_vpn
+	CertTypeVpnkVPN                = MustParse("1.2.276.0.76.4.81")      // oid_vpnk_vpn
+	CertTypeSmktAUT                = MustParse("1.2.276.0.76.4.82")      // oid_smkt_aut
+	CertTypeSakAUT                 = MustParse("1.2.276.0.76.4.113")     // oid_sak_aut
+	CertTypeCmTLSCS                = MustParse("1.2.276.0.76.4.175")     // oid_cm_tls_c
+	CertTypeFdTLSC                 = MustParse("1.2.276.0.76.4.168")     // oid_fd_tls_c
+	CertTypeFdTLSS                 = MustParse("1.2.276.0.76.4.169")     // oid_fd_tls_s
+	CertTypeFdAUT                  = MustParse("1.2.276.0.76.4.155")     // oid_fd_aut
+	CertTypeZdTLSC                 = MustParse("1.2.276.0.76.4.156")     // oid_zd_tls_c
+	CertTypeZdTLSS                 = MustParse("1.2.276.0.76.4.157")     // oid_zd_tls_s
+	CertTypeZdAUT                  = MustParse("1.2.276.0.76.4.158")     // oid_zd_aut
+	CertTypeVpnkVPNSIS             = MustParse("1.2.276.0.76.4.165")     // oid_vpnk_vpn_sis
+	CertTypeFdSIG                  = MustParse("1.2.276.0.76.4.203")     // oid_fd_sig
+	CertTypeFdENC                  = MustParse("1.2.276.0.76.4.202")     // oid_fd_enc
+	CertTypeWhkHsmAUT              = MustParse("1.2.276.0.76.4.213")     // oid_whk_hsm_aut
+	CertTypeVkPtENC                = MustParse("1.2.276.0.76.4.62")      // oid_vk_pt_enc
+	CertTypeVkEaaENC               = MustParse("1.3.6.1.4.1.24796.1.10") // oid_vk_eaa_enc
+	CertTypeFdOSIG                 = MustParse("1.2.276.0.76.4.283")     // oid_fd_osig
+	CertTypeZdSIG                  = MustParse("1.2.276.0.76.4.287")     // oid_zd_sig
+	CertTypeHskSIG                 = MustParse("1.2.276.0.76.4.300")     // oid_hsk_sig
+	CertTypeHskENC                 = MustParse("1.2.276.0.76.4.301")     // oid_hsk_enc
+	CertTypeGemVER                 = MustParse("1.2.276.0.76.4.321")     // oid_gem-ver
+	CVRootCert                     = MustParse("1.2.276.0.76.4.185")     // oid_cv_rootcert
+	CVCert                         = MustParse("1.2.276.0.76.4.186")     // oid_cv_cert
+	TechRoleVSDD                   = MustParse("1.2.276.0.76.4.97")      // oid_vsdd
+	TechRoleOCSP                   = MustParse("1.2.276.0.76.4.99")      // oid_ocsp
+	TechRoleCMS                    = MustParse("1.2.276.0.76.4.100")     // oid_cms
+	TechRoleUFS                    = MustParse("1.2.276.0.76.4.101")     // oid_ufs
+	TechRoleAK                     = MustParse("1.2.276.0.76.4.103")     // oid_ak
+	TechRoleNK                     = MustParse("1.2.276.0.76.4.104")     // oid_nk
+	TechRoleKT                     = MustParse("1.2.276.0.76.4.105")     // oid_kt
+	TechRoleSAK                    = MustParse("1.2.276.0.76.4.119")     // oid_sak
+	TechRoleIntVSDM                = MustParse("1.2.276.0.76.4.159")     // oid_int_vsdm
+	TechRoleKonfigdienst           = MustParse("1.2.276.0.76.4.160")     // oid_konfigdienst
+	TechRoleVPNZTI                 = MustParse("1.2.276.0.76.4.161")     // oid_vpnz_ti
+	TechRoleVPNZSIS                = MustParse("1.2.276.0.76.4.166")     // oid_vpnz_sis
+	TechRoleCMFD                   = MustParse("1.2.276.0.76.4.174")     // oid_cmfd
+	TechRoleVZDTI                  = MustParse("1.2.276.0.76.4.171")     // oid_vzd_ti
+	TechRoleKOMLE                  = MustParse("1.2.276.0.76.4.172")     // oid_komle
+	TechRoleKOMLERecipientEmails   = MustParse("1.2.276.0.76.4.173")     // oid_komle-recipient-emails
+	TechRoleStamp                  = MustParse("1.2.276.0.76.4.184")     // oid_stamp
+	TechRoleTSLTI                  = MustParse("1.2.276.0.76.4.189")     // oid_tsl_ti
+	TechRoleWADG                   = MustParse("1.2.276.0.76.4.198")     // oid_wadg
+	TechRoleEpaAuthn               = MustParse("1.2.276.0.76.4.204")     // oid_epa_authn
+	TechRoleEpaAuthz               = MustParse("1.2.276.0.76.4.205")     // oid_epa_authz
+	TechRoleEpaDvw                 = MustParse("1.2.276.0.76.4.206")     // oid_epa_dvw
+	TechRoleEpaMgmt                = MustParse("1.2.276.0.76.4.207")     // oid_epa_mgmt
+	TechRoleEpaRecovery            = MustParse("1.2.276.0.76.4.208")     // oid_epa_recovery
+	TechRoleEpaVAU                 = MustParse("1.2.276.0.76.4.209")     // oid_epa_vau
+	TechRoleVzTSP                  = MustParse("1.2.276.0.76.4.215")     // oid_vz_tsp
+	TechRoleWHK1HSM                = MustParse("1.2.276.0.76.4.216")     // oid_whk1_hsm
+	TechRoleWHK2HSM                = MustParse("1.2.276.0.76.4.217")     // oid_whk2_hsm
+	TechRoleWHK                    = MustParse("1.2.276.0.76.4.218")     // oid_whk
+	TechRoleSGD                    = MustParse("1.2.276.0.76.4.221")     // oid_sgd
+	TechRoleERPVAU                 = MustParse("1.2.276.0.76.4.258")     // oid_erp-vau
+	TechRoleERezept                = MustParse("1.2.276.0.76.4.259")     // oid_erezept
+	TechRoleIDPD                   = MustParse("1.2.276.0.76.4.260")     // oid_idpd
+	TechRoleEpaLogging             = MustParse("1.2.276.0.76.4.261")     // oid_epa_logging
+	TechRoleBestandsnetze          = MustParse("1.2.276.0.76.4.288")     // oid_bestandsnetze
+	TechRoleEpaVST                 = MustParse("1.2.276.0.76.4.289")     // oid_epa_vst
+	TechRoleEpaFDZ                 = MustParse("1.2.276.0.76.4.290")     // oid_epa_fdz
+	TechRoleTIM                    = MustParse("1.2.276.0.76.4.294")     // oid_tim
+	TechRoleHSK                    = MustParse("1.2.276.0.76.4.302")     // oid_hsk
+	TechRoleIDPDSek                = MustParse("1.2.276.0.76.4.307")     // oid_idpd_sek
+	TechRoleTIGWZugm               = MustParse("1.2.276.0.76.4.309")     // oid_tigw_zugm
+	TechRoleZertSMB                = MustParse("1.2.276.0.76.4.310")     // oid_zert_smb
+	TechRolePoPP                   = MustParse("1.2.276.0.76.4.293")     // oid_popp
+	TechRolePoPPToken              = MustParse("1.2.276.0.76.4.320")     // oid_popp-token
+	TechRolePKIVer                 = MustParse("1.2.276.0.76.4.322")     // oid_pki-ver
+	TechRoleDipagVAU               = MustParse("1.2.276.0.76.4.323")     // oid_dipag-vau
+	TechRoleZETAGuard              = MustParse("1.2.276.0.76.4.328")     // oid_zeta-guard
+	TechRoleZETAPolicies           = MustParse("1.2.276.0.76.4.324")     // oid_zeta-policies
+	TechRoleZETAOCI                = MustParse("1.2.276.0.76.4.326")     // oid_zeta-oci
+	TechRoleZETAPolAuthor          = MustParse("1.2.276.0.76.4.329")     // oid_zeta-pol-author
+	TechRoleZETAPolApprov          = MustParse("1.2.276.0.76.4.330")     // oid_zeta-pol-approv
+	TechRoleZETAPolOper            = MustParse("1.2.276.0.76.4.331")     // oid_zeta-pol-oper
+	TechRoleZETAPrvApprov          = MustParse("1.2.276.0.76.4.332")     // oid_zeta-prv-approv
+	TechRoleTSPEgk                 = MustParse("1.2.276.0.76.4.325")     // oid_tsp-egk
+	TechRoleCDCP15G                = MustParse("1.2.276.0.76.4.327")     // oid_cdc-p15g
 )
 
 // Info is what gemSpec_OID records about an identifier.
 type Info struct {
-	OID string
+	OID x509.OID
 	// Reference is the gemSpec_OID reference name, e.g. oid_policy_gem_or_cp.
 	Reference string
 	// Description is the specification's wording, in German where its table reads so; for a
@@ -462,12 +468,13 @@ var table = []Info{
 	{OID: TechRolePoPPToken, Reference: "oid_popp-token", Description: "Token-Signatur-Identität für Proof of Patient Presence", CertificateTypes: []string{"C.ZD.SIG"}},
 	{OID: TechRolePKIVer, Reference: "oid_pki-ver", Description: "PKI Change Verifikation", CertificateTypes: []string{"C.GEM.VER"}}, //nolint:misspell // German, as gemSpec_OID writes it
 	{OID: TechRoleDipagVAU, Reference: "oid_dipag-vau", Description: "Digitale Patientenrechnung vertrauenswürdige Ausführungsumgebung", CertificateTypes: []string{"C.FD.AUT"}},
-	{OID: TechRoleZETAGuard, Reference: "oid_zeta-guard", Description: "ZETA Guard", CertificateTypes: []string{"C.FD.AUT", "C.FD.TLS-C"}},
+	{OID: TechRoleZETAGuard, Reference: "oid_zeta-guard", Description: "ZETA Guard", CertificateTypes: []string{"C.FD.AUT"}},
 	{OID: TechRoleZETAPolicies, Reference: "oid_zeta-policies", Description: "ZETA PIP/PAP Policies", CertificateTypes: []string{"C.FD.SIG"}},
 	{OID: TechRoleZETAOCI, Reference: "oid_zeta-oci", Description: "OCI container image für ZETA", CertificateTypes: []string{"C.FD.SIG"}},
 	{OID: TechRoleZETAPolAuthor, Reference: "oid_zeta-pol-author", Description: "ZETA Policy Autor", CertificateTypes: []string{"C.FD.SIG"}}, //nolint:misspell // German, as gemSpec_OID writes it
 	{OID: TechRoleZETAPolApprov, Reference: "oid_zeta-pol-approv", Description: "ZETA Policy Freigeber", CertificateTypes: []string{"C.FD.SIG"}},
 	{OID: TechRoleZETAPolOper, Reference: "oid_zeta-pol-oper", Description: "ZETA Policy Leitstand", CertificateTypes: []string{"C.FD.SIG"}},
+	{OID: TechRoleZETAPrvApprov, Reference: "oid_zeta-prv-approv", Description: "ZETA Provisioning Container Image Freigeber", CertificateTypes: []string{"C.FD.SIG"}},
 	{OID: TechRoleTSPEgk, Reference: "oid_tsp-egk", Description: "Technische Zertifikatsausgabestelle eines Anbieters EGK", CertificateTypes: []string{"C.FD.OSIG", "C.FD.TLS-C"}},
 	{OID: TechRoleCDCP15G, Reference: "oid_cdc-p15g", Description: "Cyber Defense Center Pseudonymisierung", CertificateTypes: []string{"C.FD.ENC"}},
 }
@@ -475,27 +482,50 @@ var table = []Info{
 // All returns every identifier the package declares.
 func All() []Info { return table }
 
-// Lookup says what gemSpec_OID records about oid.
-func Lookup(oid string) (Info, bool) {
+// Lookup says what gemSpec_OID records about id.
+func Lookup(id x509.OID) (Info, bool) {
 	for _, info := range table {
-		if info.OID == oid {
+		if info.OID.Equal(id) {
 			return info, true
 		}
 	}
 	return Info{}, false
 }
 
-// Format gives oid for display: 1.2.276.0.76.4.328 (ZETA Guard) if its name is known, the bare
-// dotted form otherwise.
-func Format(oid string) string {
-	if info, ok := Lookup(oid); ok && info.Description != "" {
-		return oid + " (" + info.Description + ")"
+// Format gives id for display: 1.2.276.0.76.4.328 (ZETA Guard) if its name is known, the dotted
+// form otherwise.
+func Format(id x509.OID) string {
+	if info, ok := Lookup(id); ok && info.Description != "" {
+		return id.String() + " (" + info.Description + ")"
 	}
-	return oid
+	return id.String()
+}
+
+// Parse reads an identifier in its canonical dotted form. It is stricter than [x509.ParseOID], which
+// reads 1.2.030 as 1.2.30: text that is not what the identifier prints as is refused, so one
+// identifier has one spelling.
+func Parse(text string) (x509.OID, error) {
+	id, err := x509.ParseOID(text)
+	if err != nil {
+		return x509.OID{}, fmt.Errorf("object identifier %q: %w", text, err)
+	}
+	if id.String() != text {
+		return x509.OID{}, fmt.Errorf("object identifier %q: not in canonical form", text)
+	}
+	return id, nil
+}
+
+// MustParse is [Parse] for the identifiers written in this module's source; it panics on an error.
+func MustParse(text string) x509.OID {
+	id, err := Parse(text)
+	if err != nil {
+		panic(err)
+	}
+	return id
 }
 
 // Professions is Tab_PKI_402 without Versicherter: what makes a certificate an HBA.
-var Professions = []string{
+var Professions = []x509.OID{
 	ProfArzt,
 	ProfZahnarzt,
 	ProfApotheker,
@@ -541,7 +571,7 @@ var Professions = []string{
 }
 
 // Institutions is Tab_PKI_403: what makes a certificate an SMC-B.
-var Institutions = []string{
+var Institutions = []x509.OID{
 	InstArztpraxis,
 	InstZahnarztpraxis,
 	InstPraxisPsychotherapeut,

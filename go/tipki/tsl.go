@@ -58,8 +58,11 @@ const (
 	serviceStatusInAccord = "http://uri.etsi.org/TrstSvc/Svcstatus/inaccord"
 	serviceStatusGranted  = "http://uri.etsi.org/TrstSvc/Svcstatus/granted"
 	serviceStatusRevoked  = "http://uri.etsi.org/TrstSvc/Svcstatus/revoked"
-	tslPlaceholder        = "1.2.276.0.76.4.124"
-	ecdsaWithSHA256       = "1.2.840.10045.4.3.2"
+)
+
+var (
+	tslPlaceholder  = oid.MustParse("1.2.276.0.76.4.124")
+	ecdsaWithSHA256 = oid.MustParse("1.2.840.10045.4.3.2")
 )
 
 // TSLError says why a list was refused, by the code and rule of spec/tsl-detached and spec/tsl-xmldsig.
@@ -110,7 +113,7 @@ func ParseDetachedSignature(sig []byte) (*DetachedSignature, error) {
 		return nil, malformed("TSLDET-001", "the AlgorithmIdentifier does not parse")
 	}
 	var id asn1.ObjectIdentifier
-	if _, err := asn1.Unmarshal(algorithm[0].FullBytes, &id); err != nil || len(algorithm) != 1 || id.String() != ecdsaWithSHA256 {
+	if _, err := asn1.Unmarshal(algorithm[0].FullBytes, &id); err != nil || len(algorithm) != 1 || !ecdsaWithSHA256.EqualASN1OID(id) {
 		return nil, malformed("TSLDET-002", "the algorithm is not ecdsa-with-SHA256 without parameters")
 	}
 	if len(fields[1].Bytes) == 0 {
@@ -324,10 +327,10 @@ func checkTSLSigner(signer, anchor *x509.Certificate, now time.Time) error {
 	if signer.KeyUsage != x509.KeyUsageContentCommitment {
 		return &TSLError{"wrong_keyusage", "TSLSIG-033", "KeyUsage is not exactly nonRepudiation"}
 	}
-	if !slices.Equal(extKeyUsages(signer), []string{tslSigning}) {
+	if usages := extKeyUsages(signer); len(usages) != 1 || !tslSigning.EqualASN1OID(usages[0]) {
 		return &TSLError{"wrong_extendedkeyusage", "TSLSIG-034", "ExtendedKeyUsage is not exactly id-tsl-kp-tslSigning"}
 	}
-	if !slices.ContainsFunc(signer.Policies, func(policy x509.OID) bool { return policy.String() == oid.PolicyGemTSLSigner }) {
+	if !containsOID(signer.Policies, oid.PolicyGemTSLSigner) {
 		return profile("no oid_policy_gem_tsl_signer")
 	}
 	if signer.BasicConstraintsValid && signer.IsCA {
@@ -420,7 +423,7 @@ type Service struct {
 	// SupplyPoints are, for a CA, the OCSP responders of its certificates.
 	SupplyPoints []string
 	// TypeOIDs are, for a CA, the certificate types it may issue, without the placeholder.
-	TypeOIDs []string
+	TypeOIDs []x509.OID
 }
 
 type xmlNames struct {
@@ -590,28 +593,15 @@ func convertService(provider, name string, serviceType, status, start *string, i
 		if raw == nil {
 			continue
 		}
-		id := strings.TrimSpace(*raw)
-		if !validOID(id) {
-			return service, fmt.Errorf("ExtensionOID %q of %q", id, name)
+		id, err := oid.Parse(strings.TrimSpace(*raw))
+		if err != nil {
+			return service, fmt.Errorf("ExtensionOID of %q: %w", name, err)
 		}
-		if id != tslPlaceholder {
+		if !id.Equal(tslPlaceholder) {
 			service.TypeOIDs = append(service.TypeOIDs, id)
 		}
 	}
 	return service, nil
-}
-
-func validOID(id string) bool {
-	arcs := strings.Split(id, ".")
-	if len(arcs) < 2 {
-		return false
-	}
-	for _, arc := range arcs {
-		if arc == "" || strings.Trim(arc, "0123456789") != "" {
-			return false
-		}
-	}
-	return true
 }
 
 // Intermediate is a CA the list names, with the provider it is listed under. It is a candidate until
@@ -715,7 +705,7 @@ type TrustStore struct {
 	ListedResponders []ListedResponder
 	// CATypes are the certificate types the verified list states for its CAs, by the CA's DER. Nil
 	// without a verified list.
-	CATypes map[string][]string
+	CATypes map[string][]x509.OID
 	// TSL is the verified list they come from, with its warnings.
 	TSL *VerifiedTSL
 	// Walk says where the roots walk stopped, if it did.
@@ -756,7 +746,7 @@ func LoadTrustStore(bundle *Bundle, anchorDER []byte, signerAnchors [][]byte, no
 			listed = append(listed, ListedResponder{service.Certificate, service.Provider})
 		}
 	}
-	types := make(map[string][]string)
+	types := make(map[string][]x509.OID)
 	for _, service := range verified.TSL.Services {
 		if service.ServiceType == serviceTypeCAPKC && service.Certificate != nil {
 			if _, seen := types[string(service.Certificate.Raw)]; !seen {
@@ -768,7 +758,7 @@ func LoadTrustStore(bundle *Bundle, anchorDER []byte, signerAnchors [][]byte, no
 }
 
 // tslTypesOf gives the types the list lets ca issue: nil if it does not list ca or states none for it.
-func (s *TrustStore) tslTypesOf(ca *x509.Certificate) []string {
+func (s *TrustStore) tslTypesOf(ca *x509.Certificate) []x509.OID {
 	types := s.CATypes[string(ca.Raw)]
 	if len(types) == 0 {
 		return nil

@@ -3024,8 +3024,7 @@
       },
       {
         "certificate_types": [
-          "C.FD.AUT",
-          "C.FD.TLS-C"
+          "C.FD.AUT"
         ],
         "description": "ZETA Guard",
         "document": "",
@@ -3076,6 +3075,15 @@
         "document": "",
         "oid": "1.2.276.0.76.4.331",
         "reference": "oid_zeta-pol-oper"
+      },
+      {
+        "certificate_types": [
+          "C.FD.SIG"
+        ],
+        "description": "ZETA Provisioning Container Image Freigeber",
+        "document": "",
+        "oid": "1.2.276.0.76.4.332",
+        "reference": "oid_zeta-prv-approv"
       },
       {
         "certificate_types": [

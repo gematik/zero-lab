@@ -51,7 +51,7 @@ type Profile struct {
 	// RequiredRoleOIDs, when not empty, replace the type's roles. Replacing rather than adding is
 	// deliberate: the check is any-of, so adding would widen what is accepted. They also decide
 	// selection: such a profile is only selected for a certificate asserting one of them.
-	RequiredRoleOIDs []string
+	RequiredRoleOIDs []x509.OID
 	// AcceptsTypes are the types the profile is meant for.
 	AcceptsTypes []CertificateType
 	// DefaultFor are the types the profile is the automatic choice for, at most one per type.
@@ -64,14 +64,14 @@ var (
 		Name:             "dipag-vau-aut",
 		Description:      "Digitale Patientenrechnung VAU authenticity",
 		Revocation:       RevocationHardFail,
-		RequiredRoleOIDs: []string{oid.TechRoleDipagVAU},
+		RequiredRoleOIDs: []x509.OID{oid.TechRoleDipagVAU},
 		AcceptsTypes:     []CertificateType{CertFdAut},
 	}
 	ProfileEpaVauAut = &Profile{
 		Name:             "epa-vau-aut",
 		Description:      "ePA Aktensystem VAU backend authenticity",
 		Revocation:       RevocationHardFail,
-		RequiredRoleOIDs: []string{oid.TechRoleEpaVAU},
+		RequiredRoleOIDs: []x509.OID{oid.TechRoleEpaVAU},
 		AcceptsTypes:     []CertificateType{CertFdAut},
 	}
 	ProfileFdTLSS = &Profile{
@@ -92,7 +92,7 @@ var (
 		Name:             "idpd-sig",
 		Description:      "IDP discovery document and token signing",
 		Revocation:       RevocationHardFail,
-		RequiredRoleOIDs: []string{oid.TechRoleIDPD},
+		RequiredRoleOIDs: []x509.OID{oid.TechRoleIDPD},
 		AcceptsTypes:     []CertificateType{CertFdSig},
 	}
 	ProfileTslSig = &Profile{
@@ -106,7 +106,7 @@ var (
 		Name:             "zeta-guard-aut",
 		Description:      "ZETA Guard access service layer authenticity",
 		Revocation:       RevocationHardFail,
-		RequiredRoleOIDs: []string{oid.TechRoleZETAGuard},
+		RequiredRoleOIDs: []x509.OID{oid.TechRoleZETAGuard},
 		AcceptsTypes:     []CertificateType{CertFdAut},
 	}
 )
@@ -135,7 +135,7 @@ func (p *Profile) Accepts(t CertificateType) bool { return slices.Contains(p.Acc
 
 // EffectiveRoleOIDs are the roles the profile enforces for t: its own if it has any, otherwise the
 // type's.
-func (p *Profile) EffectiveRoleOIDs(t CertificateType) []string {
+func (p *Profile) EffectiveRoleOIDs(t CertificateType) []x509.OID {
 	if len(p.RequiredRoleOIDs) > 0 {
 		return p.RequiredRoleOIDs
 	}
@@ -150,8 +150,8 @@ func (p *Profile) matches(cert *x509.Certificate) bool {
 	if err != nil {
 		return false
 	}
-	return slices.ContainsFunc(admission.ProfessionOIDs, func(role string) bool {
-		return slices.Contains(p.RequiredRoleOIDs, role)
+	return slices.ContainsFunc(admission.ProfessionOIDs, func(role x509.OID) bool {
+		return containsOID(p.RequiredRoleOIDs, role)
 	})
 }
 
@@ -185,10 +185,10 @@ func (p *Profile) Check(cert *x509.Certificate, t CertificateType) []Finding {
 	return findings
 }
 
-func checkPolicies(cert *x509.Certificate, required []string) *Finding {
-	var missing []string
+func checkPolicies(cert *x509.Certificate, required []x509.OID) *Finding {
+	var missing []x509.OID
 	for _, policy := range required {
-		if !slices.ContainsFunc(cert.Policies, func(have x509.OID) bool { return have.String() == policy }) {
+		if !containsOID(cert.Policies, policy) {
 			missing = append(missing, policy)
 		}
 	}
@@ -205,18 +205,18 @@ func checkKeyUsage(cert *x509.Certificate, required x509.KeyUsage) *Finding {
 	return &Finding{"key_usage_mismatch", cert.Subject.CommonName, fmt.Sprintf("required KeyUsage bits %b, have %b", required, cert.KeyUsage)}
 }
 
-func checkExtKeyUsage(cert *x509.Certificate, allowed []string) *Finding {
+func checkExtKeyUsage(cert *x509.Certificate, allowed []x509.OID) *Finding {
 	if len(allowed) == 0 {
 		return nil
 	}
 	have := extKeyUsages(cert)
-	if slices.Contains(have, anyExtendedKeyUsage) || slices.ContainsFunc(allowed, func(want string) bool { return slices.Contains(have, want) }) {
+	if slices.ContainsFunc(have, anyExtendedKeyUsage.EqualASN1OID) || slices.ContainsFunc(allowed, func(want x509.OID) bool { return slices.ContainsFunc(have, want.EqualASN1OID) }) {
 		return nil
 	}
-	return &Finding{"key_usage_mismatch", cert.Subject.CommonName, "certificate ExtKeyUsage matches none of: " + strings.Join(allowed, ", ")}
+	return &Finding{"key_usage_mismatch", cert.Subject.CommonName, "certificate ExtKeyUsage matches none of: " + dottedOIDs(allowed)}
 }
 
-func missingRole(cert *x509.Certificate, roles []string) string {
+func missingRole(cert *x509.Certificate, roles []x509.OID) string {
 	admission, err := Admission(cert)
 	switch {
 	case errors.Is(err, ErrNoAdmissionStatement):
@@ -224,13 +224,13 @@ func missingRole(cert *x509.Certificate, roles []string) string {
 	case err != nil:
 		return "role OID extraction failed: " + err.Error()
 	}
-	if slices.ContainsFunc(admission.ProfessionOIDs, func(role string) bool { return slices.Contains(roles, role) }) {
+	if slices.ContainsFunc(admission.ProfessionOIDs, func(role x509.OID) bool { return containsOID(roles, role) }) {
 		return ""
 	}
 	return "required role OID missing: have " + formatOIDs(admission.ProfessionOIDs)
 }
 
-func formatOIDs(ids []string) string {
+func formatOIDs(ids []x509.OID) string {
 	formatted := make([]string, len(ids))
 	for i, id := range ids {
 		formatted[i] = oid.Format(id)

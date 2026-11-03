@@ -41,7 +41,7 @@ type AdmissionStatement struct {
 	// ProfessionItems is the profession or institution in words, e.g. Arztpraxis.
 	ProfessionItems []string
 	// ProfessionOIDs are the profession or institution OIDs (Tab_PKI_402, 403, 406).
-	ProfessionOIDs []string
+	ProfessionOIDs []x509.OID
 	// RegistrationNumber is e.g. a Telematik-ID; empty if the extension has none.
 	RegistrationNumber string
 }
@@ -49,7 +49,7 @@ type AdmissionStatement struct {
 // Admission decodes cert's admission extension (1.3.36.8.3.3).
 func Admission(cert *x509.Certificate) (*AdmissionStatement, error) {
 	for _, ext := range cert.Extensions {
-		if ext.Id.String() == oid.AdmissionExtension {
+		if oid.AdmissionExtension.EqualASN1OID(ext.Id) {
 			return ParseAdmission(ext.Value)
 		}
 	}
@@ -181,7 +181,11 @@ func parseProfessionInfo(info asn1.RawValue) (*AdmissionStatement, error) {
 			if _, err := asn1.Unmarshal(raw.FullBytes, &id); err != nil {
 				return nil, fmt.Errorf("profession OID: %w", err)
 			}
-			statement.ProfessionOIDs = append(statement.ProfessionOIDs, id.String())
+			profession, err := x509.OIDFromASN1OID(id)
+			if err != nil {
+				return nil, fmt.Errorf("profession OID: %w", err)
+			}
+			statement.ProfessionOIDs = append(statement.ProfessionOIDs, profession)
 		}
 		fields = fields[1:]
 	}

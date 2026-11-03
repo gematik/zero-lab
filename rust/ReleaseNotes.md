@@ -308,6 +308,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pki
 
 #### changed
+- The OID tables follow gemSpec_OID V3.26.0: `TECH_ROLE_ZETA_PRV_APPROV` (`oid_zeta-prv-approv`,
+  1.2.276.0.76.4.332) is added and ZETA Guard is allowed on `C.FD.AUT` only. The draft change
+  C_12646, which the tables had applied, withdrew the first and added `C.FD.TLS-C` to the second;
+  the released table does neither.
 - `Validator` asks no OCSP responder about a certificate that has already failed: the address is in the certificate, and
   a forged one could otherwise send a request anywhere. A report on such a certificate shows no revocation results.
 - A CA the verified TSL states no certificate types for may issue none: `cert_type_ca_not_authorized`, where

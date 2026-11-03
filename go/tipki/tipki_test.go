@@ -109,6 +109,15 @@ func keyUsageBits(names []string) x509.KeyUsage {
 	return usage
 }
 
+// oidTexts gives ids in the dotted form the corpus states them in.
+func oidTexts(ids []x509.OID) []string {
+	texts := make([]string, len(ids))
+	for i, id := range ids {
+		texts[i] = id.String()
+	}
+	return texts
+}
+
 func equalStrings(a, b []string) bool { return slices.Equal(a, b) || (len(a) == 0 && len(b) == 0) }
 
 // PROF-030: the tables of certificate types and profiles are ti-pki's, entry for entry.
@@ -122,9 +131,9 @@ func TestPROF030TheTablesAreThoseOfTiPki(t *testing.T) {
 	for i, want := range corpus.Tables.Types {
 		got := types[i]
 		spec := got.Spec()
-		if string(got) != want.Name || got.OID() != want.OID || spec.KeyUsage != keyUsageBits(want.KeyUsage) ||
-			!equalStrings(spec.ExtKeyUsage, want.ExtKeyUsage) || !equalStrings(spec.Policies, want.Policies) ||
-			!equalStrings(spec.RoleOIDs, want.RoleOIDs) {
+		if string(got) != want.Name || got.OID().String() != want.OID || spec.KeyUsage != keyUsageBits(want.KeyUsage) ||
+			!equalStrings(oidTexts(spec.ExtKeyUsage), want.ExtKeyUsage) || !equalStrings(oidTexts(spec.Policies), want.Policies) ||
+			!equalStrings(oidTexts(spec.RoleOIDs), want.RoleOIDs) {
 			t.Errorf("%s: %+v, ti-pki has %+v", got, spec, want)
 		}
 	}
@@ -142,7 +151,7 @@ func TestPROF030TheTablesAreThoseOfTiPki(t *testing.T) {
 	for i, want := range corpus.Tables.Profiles {
 		got := profiles[i]
 		if got.Name != want.Name || got.Description != want.Description || string(got.Revocation) != want.Revocation ||
-			!equalStrings(got.RequiredRoleOIDs, want.RequiredRoleOIDs) ||
+			!equalStrings(oidTexts(got.RequiredRoleOIDs), want.RequiredRoleOIDs) ||
 			!equalStrings(names(got.AcceptsTypes), want.AcceptsTypes) || !equalStrings(names(got.DefaultFor), want.DefaultFor) {
 			t.Errorf("%s: %+v, ti-pki has %+v", got.Name, got, want)
 		}
@@ -173,18 +182,18 @@ func TestPROF031TheIdentifiersAreThoseOfTiPki(t *testing.T) {
 	}
 	for i, want := range corpus.Tables.OIDs {
 		got := all[i]
-		if got.OID != want.OID || got.Reference != want.Reference || got.Description != want.Description ||
+		if got.OID.String() != want.OID || got.Reference != want.Reference || got.Description != want.Description ||
 			got.Document != want.Document || !equalStrings(got.CertificateTypes, want.CertificateTypes) {
 			t.Errorf("%+v, ti-pki has %+v", got, want)
 		}
 	}
-	if !equalStrings(oid.Professions, corpus.Tables.Professions) || !equalStrings(oid.Institutions, corpus.Tables.Institutions) {
+	if !equalStrings(oidTexts(oid.Professions), corpus.Tables.Professions) || !equalStrings(oidTexts(oid.Institutions), corpus.Tables.Institutions) {
 		t.Error("the tables of professions and institutions differ")
 	}
 	if got := oid.Format(oid.TechRoleZETAGuard); got != "1.2.276.0.76.4.328 (ZETA Guard)" {
 		t.Errorf("%q", got)
 	}
-	if got := oid.Format("1.2.3"); got != "1.2.3" {
+	if got := oid.Format(oid.MustParse("1.2.3")); got != "1.2.3" {
 		t.Errorf("%q", got)
 	}
 }
@@ -213,7 +222,7 @@ func TestPROF030EveryCertificateReadsAsInTiPki(t *testing.T) {
 			case err != nil:
 				t.Errorf("admission: %v", err)
 			case !equalStrings(admission.ProfessionItems, want.Admission.Items) ||
-				!equalStrings(admission.ProfessionOIDs, want.Admission.OIDs) ||
+				!equalStrings(oidTexts(admission.ProfessionOIDs), want.Admission.OIDs) ||
 				admission.RegistrationNumber != want.Admission.RegistrationNumber:
 				t.Errorf("admission %+v, ti-pki has %+v", admission, want.Admission)
 			}
@@ -273,7 +282,7 @@ func TestPROF010AdmissionValuesAreReadOrRefusedAsStated(t *testing.T) {
 				t.Fatalf("%+v %v", got, err)
 			}
 			if err == nil && (!equalStrings(got.ProfessionItems, vector.Items) ||
-				!equalStrings(got.ProfessionOIDs, vector.OIDs) || got.RegistrationNumber != vector.RegistrationNumber) {
+				!equalStrings(oidTexts(got.ProfessionOIDs), vector.OIDs) || got.RegistrationNumber != vector.RegistrationNumber) {
 				t.Errorf("%+v", got)
 			}
 		})
@@ -312,4 +321,29 @@ func FuzzParseAdmission(f *testing.F) {
 			t.Errorf("%+v %v", statement, err)
 		}
 	})
+}
+
+// An unknown type's OID is empty, and x509.OID's Equal holds for two empty values: neither may count as a match.
+func TestAnEmptyOIDMatchesNothing(t *testing.T) {
+	var empty x509.OID
+	if _, ok := typeByOID(empty); ok {
+		t.Error("an empty OID has a certificate type")
+	}
+	if _, ok := oid.Lookup(empty); ok {
+		t.Error("an empty OID has a table entry")
+	}
+	if got := oid.Format(empty); got != "" {
+		t.Errorf("Format: %q", got)
+	}
+	if containsOID([]x509.OID{empty}, empty) {
+		t.Error("an empty OID is listed by a list holding one")
+	}
+
+	leaf, issuer := pkiCert(t, "types/type-hci-aut.pem"), pkiCert(t, "sub-ca-komp.pem")
+	validator := NewValidator(&TrustStore{CATypes: map[string][]x509.OID{string(issuer.Raw): {empty}}})
+	var result ValidationResult
+	validator.checkTSLType([]*x509.Certificate{leaf, issuer}, CertificateType("no such type"), &result)
+	if len(result.Errors) != 1 || result.Errors[0].Code != "cert_type_ca_not_authorized" {
+		t.Errorf("an unknown type passed on an empty entry: %+v", result.Errors)
+	}
 }

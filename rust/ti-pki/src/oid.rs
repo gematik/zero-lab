@@ -23,10 +23,8 @@
 
 //! The object identifiers gemSpec_OID defines for the TI, each declared together with
 //! the spec's reference name and description so the two can never drift; [`lookup`] and
-//! [`format()`] give them back. The tables are complete as of gemSpec_OID V3.25.0
-//! (<https://gemspec.gematik.de/docs/gemSpec/gemSpec_OID/latest/>) with the pending change
-//! C_12646 to Tab_PKI_406 applied
-//! (<https://gemspec.gematik.de/downloads/prereleases/Draft_CI_26_3/C_12646_Anlage_V1.0.0.html>).
+//! [`format()`] give them back. The tables are complete as of gemSpec_OID V3.26.0
+//! (<https://gemspec.gematik.de/docs/gemSpec/gemSpec_OID/latest/>).
 //! Constant names are the gemSpec_OID reference name without `oid_`, uppercased, `-` as
 //! `_` (decision-5), under a family prefix:
 //!
@@ -283,9 +281,7 @@ oids! {
     CV_CERT = "1.2.276.0.76.4.186", "oid_cv_cert", "Cross-CV-Zertifikat", "[gemSpec_TSL]", [];
 
     // Tab_PKI_406 — technical role OIDs (Fachdienste), with the certificate types allowed
-    // to carry them. Amended by change C_12646 (Draft_CI_26_3): ZETA Guard moves to
-    // C.FD.AUT / C.FD.TLS-C, the OCI image role is renamed, the provisioning-approver role
-    // is withdrawn.
+    // to carry them.
     TECH_ROLE_VSDD = "1.2.276.0.76.4.97", "oid_vsdd", "Versichertenstammdatendienst", "", ["C.FD.TLS-S"];
     TECH_ROLE_OCSP = "1.2.276.0.76.4.99", "oid_ocsp", "Online Certificate Status Protocol", "", [];
     TECH_ROLE_CMS = "1.2.276.0.76.4.100", "oid_cms", "Card Management System", "", ["C.FD.TLS-S"];
@@ -332,12 +328,13 @@ oids! {
     TECH_ROLE_POPP_TOKEN = "1.2.276.0.76.4.320", "oid_popp-token", "Token-Signatur-Identität für Proof of Patient Presence", "", ["C.ZD.SIG"];
     TECH_ROLE_PKI_VER = "1.2.276.0.76.4.322", "oid_pki-ver", "PKI Change Verifikation", "", ["C.GEM.VER"];
     TECH_ROLE_DIPAG_VAU = "1.2.276.0.76.4.323", "oid_dipag-vau", "Digitale Patientenrechnung vertrauenswürdige Ausführungsumgebung", "", ["C.FD.AUT"];
-    TECH_ROLE_ZETA_GUARD = "1.2.276.0.76.4.328", "oid_zeta-guard", "ZETA Guard", "", ["C.FD.AUT", "C.FD.TLS-C"];
+    TECH_ROLE_ZETA_GUARD = "1.2.276.0.76.4.328", "oid_zeta-guard", "ZETA Guard", "", ["C.FD.AUT"];
     TECH_ROLE_ZETA_POLICIES = "1.2.276.0.76.4.324", "oid_zeta-policies", "ZETA PIP/PAP Policies", "", ["C.FD.SIG"];
     TECH_ROLE_ZETA_OCI = "1.2.276.0.76.4.326", "oid_zeta-oci", "OCI container image für ZETA", "", ["C.FD.SIG"];
     TECH_ROLE_ZETA_POL_AUTHOR = "1.2.276.0.76.4.329", "oid_zeta-pol-author", "ZETA Policy Autor", "", ["C.FD.SIG"];
     TECH_ROLE_ZETA_POL_APPROV = "1.2.276.0.76.4.330", "oid_zeta-pol-approv", "ZETA Policy Freigeber", "", ["C.FD.SIG"];
     TECH_ROLE_ZETA_POL_OPER = "1.2.276.0.76.4.331", "oid_zeta-pol-oper", "ZETA Policy Leitstand", "", ["C.FD.SIG"];
+    TECH_ROLE_ZETA_PRV_APPROV = "1.2.276.0.76.4.332", "oid_zeta-prv-approv", "ZETA Provisioning Container Image Freigeber", "", ["C.FD.SIG"];
     TECH_ROLE_TSP_EGK = "1.2.276.0.76.4.325", "oid_tsp-egk", "Technische Zertifikatsausgabestelle eines Anbieters EGK", "", ["C.FD.OSIG", "C.FD.TLS-C"];
     TECH_ROLE_CDC_P15G = "1.2.276.0.76.4.327", "oid_cdc-p15g", "Cyber Defense Center Pseudonymisierung", "", ["C.FD.ENC"];
 }
@@ -535,7 +532,10 @@ mod tests {
         assert_eq!(info.document, "[gemSpec_TSL]");
         assert_eq!(
             lookup(&TECH_ROLE_ZETA_GUARD).unwrap().certificate_types,
-            ["C.FD.AUT", "C.FD.TLS-C"]
+            ["C.FD.AUT"]
         );
+        let approver = lookup(&TECH_ROLE_ZETA_PRV_APPROV).unwrap();
+        assert_eq!(approver.reference, "oid_zeta-prv-approv");
+        assert_eq!(approver.certificate_types, ["C.FD.SIG"]);
     }
 }

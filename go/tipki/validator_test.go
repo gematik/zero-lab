@@ -300,7 +300,7 @@ func TestVALID007TheRealListDecidesWhatACAMayIssue(t *testing.T) {
 	store := refBundle(t, tslCaptured)
 	got := make([]string, 0, len(store.Intermediates))
 	for _, intermediate := range store.Intermediates {
-		types := slices.Clone(store.tslTypesOf(intermediate.Certificate))
+		types := oidTexts(store.tslTypesOf(intermediate.Certificate))
 		slices.Sort(types)
 		got = append(got, fmt.Sprint(intermediate.Certificate.Subject.CommonName, types))
 	}
@@ -341,7 +341,7 @@ func TestVALID007TheRealListDecidesWhatACAMayIssue(t *testing.T) {
 // VALID-007: no fixture's CA states types in a list ti-pki's test can reach from outside, so these are stated here.
 func TestVALID007TheTypesTheListStates(t *testing.T) {
 	leaf, issuer := pkiCert(t, "types/type-hci-aut.pem"), pkiCert(t, "sub-ca-komp.pem")
-	base := func(types map[string][]string) *ValidationResult {
+	base := func(types map[string][]x509.OID) *ValidationResult {
 		store := &TrustStore{Roots: []*x509.Certificate{pkiCert(t, "rca7.pem")}, Intermediates: []Intermediate{{Certificate: issuer}}, CATypes: types}
 		validator := NewValidator(store)
 		result, err := validator.Validate(context.Background(), []*x509.Certificate{leaf}, time.Unix(validateNow, 0), scripted("good"))
@@ -353,13 +353,13 @@ func TestVALID007TheTypesTheListStates(t *testing.T) {
 	if result := base(nil); !result.Valid || len(result.Warnings) != 0 {
 		t.Errorf("no list: %s", describeResult(result))
 	}
-	if result := base(map[string][]string{string(issuer.Raw): {CertHciAut.OID()}}); !result.Valid || len(result.Warnings) != 0 {
+	if result := base(map[string][]x509.OID{string(issuer.Raw): {CertHciAut.OID()}}); !result.Valid || len(result.Warnings) != 0 {
 		t.Errorf("stated: %s", describeResult(result))
 	}
-	if result := base(map[string][]string{string(issuer.Raw): {CertFdSig.OID()}}); result.Valid || result.Errors[0].Code != "cert_type_ca_not_authorized" {
+	if result := base(map[string][]x509.OID{string(issuer.Raw): {CertFdSig.OID()}}); result.Valid || result.Errors[0].Code != "cert_type_ca_not_authorized" {
 		t.Errorf("another type: %s", describeResult(result))
 	}
-	if result := base(map[string][]string{}); result.Valid || result.Errors[0].Code != "cert_type_ca_not_authorized" {
+	if result := base(map[string][]x509.OID{}); result.Valid || result.Errors[0].Code != "cert_type_ca_not_authorized" {
 		t.Errorf("none stated: %s", describeResult(result))
 	}
 }
@@ -441,16 +441,16 @@ func TestVALID006ACATheVerifiedListDoesNotNameGivesNoStanding(t *testing.T) {
 		}
 		return result
 	}
-	result := validate(&TrustStore{Roots: roots, CATypes: map[string][]string{}})
+	result := validate(&TrustStore{Roots: roots, CATypes: map[string][]x509.OID{}})
 	if result.Valid || result.Errors[0].Code != "ca_not_in_tsl" || result.Errors[0].Subject != ca.Subject.CommonName {
 		t.Errorf("unlisted: %s", describeResult(result))
 	}
 	// A list that names the CA but does not keep it, as one withdrawn: the types alone are no standing.
-	result = validate(&TrustStore{Roots: roots, CATypes: map[string][]string{string(ca.Raw): {CertHciAut.OID()}}})
+	result = validate(&TrustStore{Roots: roots, CATypes: map[string][]x509.OID{string(ca.Raw): {CertHciAut.OID()}}})
 	if result.Valid || result.Errors[0].Code != "ca_not_in_tsl" {
 		t.Errorf("withdrawn: %s", describeResult(result))
 	}
-	listed := &TrustStore{Roots: roots, Intermediates: []Intermediate{{Certificate: ca}}, CATypes: map[string][]string{string(ca.Raw): {CertHciAut.OID()}}}
+	listed := &TrustStore{Roots: roots, Intermediates: []Intermediate{{Certificate: ca}}, CATypes: map[string][]x509.OID{string(ca.Raw): {CertHciAut.OID()}}}
 	if result := validate(listed); !result.Valid {
 		t.Errorf("listed: %s", describeResult(result))
 	}

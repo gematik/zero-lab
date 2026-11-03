@@ -118,11 +118,11 @@ type Validator struct {
 	// RequiredKeyUsage are bits that must all be set.
 	RequiredKeyUsage x509.KeyUsage
 	// AllowedExtKeyUsages are those of which one must be present.
-	AllowedExtKeyUsages []string
+	AllowedExtKeyUsages []x509.OID
 	// RequiredPolicies must all be asserted.
-	RequiredPolicies []string
+	RequiredPolicies []x509.OID
 	// RequiredRoleOIDs are those of which one must be in the admission extension.
-	RequiredRoleOIDs []string
+	RequiredRoleOIDs []x509.OID
 	// ExpectedFQDN is what a commonName naming a host must name.
 	ExpectedFQDN string
 	// CertType is the type validated for; empty means the one detected.
@@ -362,7 +362,7 @@ func (v *Validator) checkTSLType(chain []*x509.Certificate, certType Certificate
 	}
 	leaf, issuer := chain[0], chain[1]
 	types := v.Store.tslTypesOf(issuer)
-	if !slices.Contains(types, certType.OID()) {
+	if !containsOID(types, certType.OID()) {
 		result.Errors = append(result.Errors, Finding{
 			"cert_type_ca_not_authorized", leaf.Subject.CommonName,
 			fmt.Sprintf("the TSL does not list %s among the types %q may issue", certType, issuer.Subject.CommonName),
