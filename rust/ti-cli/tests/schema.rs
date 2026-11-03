@@ -905,6 +905,28 @@ fn profile_delete_removes_state_and_cache() {
     assert!(String::from_utf8_lossy(&unknown.stderr).contains("nobody"));
 }
 
+/// A directory of the cache base that cannot be removed is the cache's failure, not the
+/// state's: the two have their own kinds and hints.
+#[cfg(unix)]
+#[test]
+fn a_cache_directory_that_cannot_be_deleted_is_a_cache_failure() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let cache = SeededCache::new("profile-delete-cache-fails");
+    let c = &cache.0;
+    put(&c.join("profiles/stuck/file"), 1);
+    let parent = c.join("profiles/stuck");
+    std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let out = ti(
+        c,
+        &["profile", "delete", "stuck", "--yes", "--format", "json"],
+    );
+    std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(5), "{stderr}");
+    assert!(stderr.contains("cache_failed"), "{stderr}");
+}
+
 #[test]
 fn profile_delete_refuses_a_path() {
     let cache = SeededCache::new("profile-delete-path");

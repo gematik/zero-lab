@@ -292,6 +292,9 @@ ti --profile "$(uuidgen)" pki tsl show
 TI_STATE_DIR=$(mktemp -d) TI_CACHE_DIR=$(mktemp -d) ti pki tsl show
 ```
 
+A fresh profile or `TI_STATE_DIR` has no TSL state, so rollback protection restarts from
+the next verified TSL.
+
 The Konnektor configurations (`.kon` files, `~/.config/telematik/connectors`) are outside
 the profiles and shared by them. A comfort ID belongs to its profile.
 
@@ -307,6 +310,12 @@ every run without any setup, except with `--at`, which neither reads nor writes 
 (a past instant may need an older list), so an older list stays rejected; it is not secret. A
 corrupt TSL state file is an error that names the file (`state_file_failed`); removing it
 restarts from the next verified TSL.
+
+A list older than the kept one is rejected (`tsl_id_incorrect`, under
+`trust_material_unavailable`). It can be an attack or a mirror lagging behind, so find out
+why first: try another network, and check any proxy and `-k`. Only if the kept list is known
+to be wrong, remove `tsl/ID.json` in the state directory; the check then restarts from the
+next verified TSL.
 
 A comfort ID lies unencrypted in a file of mode 0600 in a directory of mode 0700 (POSIX).
 It lets anyone with the same call context sign without a PIN while the session lasts, so

@@ -106,6 +106,11 @@ pub enum CliError {
     /// roots.json or the TSL could not be loaded or failed verification.
     #[error("trust material unavailable: {0}")]
     TrustLoad(String),
+    /// A TSL verified but does not follow the one kept from an earlier run (TSLSIG-053).
+    /// Its own variant for its hint: the network is not what to look at. The kind stays
+    /// `trust_material_unavailable`, since the material cannot be used.
+    #[error("trust material unavailable: {0}")]
+    TslRollback(String),
     /// `ti schema` was asked for a command that has none.
     #[error("no JSON schema for {0:?}")]
     UnknownSchema(String),
@@ -200,7 +205,9 @@ impl CliError {
             CliError::EnvironmentUndetected(_) => "environment_undetected",
             CliError::Environment(_) => "environment_invalid",
             CliError::Arguments(_) => "arguments_invalid",
-            CliError::Trust(_) | CliError::TrustLoad(_) => "trust_material_unavailable",
+            CliError::Trust(_) | CliError::TrustLoad(_) | CliError::TslRollback(_) => {
+                "trust_material_unavailable"
+            }
             CliError::HttpSetup(_) => "http_setup",
             CliError::ServerUnreachable(_) => "server_unreachable",
             CliError::UnknownSchema(_) => "unknown_schema",
@@ -261,6 +268,13 @@ impl CliError {
                 "check the network and the HTTP options (-v shows them), or pass --offline; \
                      the TSL's signature is published only over plain HTTP, so port 80 to its \
                      download point must be open",
+            ),
+            CliError::TslRollback(_) => Some(
+                "an older list than the one kept from an earlier run was rejected; it can be an \
+                     attack or a mirror lagging behind, so find out why first (another network, \
+                     the proxy, -k). Only if the kept list is known to be wrong, remove \
+                     tsl/ID.json in the state directory; the check then restarts from the next \
+                     verified TSL",
             ),
             CliError::HttpSetup(_) => Some("check --cacert, --capath and --proxy"),
             CliError::ServerUnreachable(_) => Some(
@@ -364,6 +378,7 @@ impl CliError {
             | CliError::Connector(ti_connector_client::Error::Config(_)) => Exit::Usage,
             CliError::Trust(_)
             | CliError::TrustLoad(_)
+            | CliError::TslRollback(_)
             | CliError::ServerUnreachable(_)
             | CliError::Connector(_)
             | CliError::CardRestricted { .. }
@@ -524,6 +539,7 @@ mod tests {
             CliError::Arguments("a".into()),
             CliError::Trust(pki()),
             CliError::TrustLoad("a".into()),
+            CliError::TslRollback("a".into()),
             CliError::UnknownSchema("a".into()),
             CliError::ServerUnreachable("a".into()),
             CliError::HttpSetup("a".into()),
@@ -613,6 +629,7 @@ mod tests {
             | CliError::Arguments(_)
             | CliError::Trust(_)
             | CliError::TrustLoad(_)
+            | CliError::TslRollback(_)
             | CliError::UnknownSchema(_)
             | CliError::ServerUnreachable(_)
             | CliError::HttpSetup(_)

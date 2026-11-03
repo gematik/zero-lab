@@ -116,7 +116,8 @@ never on `message`. `hint` says what to do, when there is something.
   `TI_CACHE_DIR` (or `--cache-dir`), else `~/.cache/telematik/ti` (both below
   `%LOCALAPPDATA%` on Windows). An override must be an absolute path. For a throwaway
   run use `--profile "$(uuidgen)"`, or
-  `TI_STATE_DIR=$(mktemp -d) TI_CACHE_DIR=$(mktemp -d) {bin} ...`.
+  `TI_STATE_DIR=$(mktemp -d) TI_CACHE_DIR=$(mktemp -d) {bin} ...`; rollback protection
+  then restarts from the next verified TSL.
 - The HTTP options and variables follow curl: `-x`/`HTTPS_PROXY`/`HTTP_PROXY`/
   `ALL_PROXY`, `--noproxy`/`NO_PROXY`, `--cacert`/`CURL_CA_BUNDLE`/`SSL_CERT_FILE`,
   `--capath`/`SSL_CERT_DIR`, `--connect-timeout`, `-m`, `--retry`, `-A`.
@@ -135,6 +136,11 @@ never on `message`. `hint` says what to do, when there is something.
   (`comfort/KONNEKTOR/CARD`). A corrupt or unwritable state file is `state_file_failed`
   (exit 5) naming the file; removing a corrupt TSL state file restarts from the next
   verified TSL. No token and no other secret is written to disk.
+- A list older than the kept one is rejected: `trust_material_unavailable` (exit 3) with
+  `tsl_id_incorrect` in the message. It can be an attack or a mirror lagging behind: do
+  not retry or remove state as a first response, find out why (another network, the proxy,
+  `-k`). Only if the kept list is known to be wrong, remove `tsl/ID.json` in the state
+  directory; the check then restarts from the next verified TSL.
 - `{bin} profile list` shows the unnamed location and each profile with the size of its
   state and cache; `{bin} profile delete NAME --yes` removes a profile's directories.
   There is no command to create or select a profile and none to inspect state.

@@ -147,12 +147,14 @@ struct DeleteReport {
 }
 
 /// Removes `dir`, which a profile name put below `profiles/`. A symlink is removed
-/// itself, never its target. `false` when there was nothing of that name.
-fn remove_profile_dir(dir: &Path) -> Result<bool, CliError> {
-    let fail = |e: std::io::Error| CliError::State {
-        path: dir.display().to_string(),
-        reason: format!("cannot remove it: {e}"),
-    };
+/// itself, never its target. `false` when there was nothing of that name. `failed` makes
+/// the error of the base `dir` is in.
+fn remove_profile_dir(
+    dir: &Path,
+    failed: fn(String, String) -> CliError,
+) -> Result<bool, CliError> {
+    let fail =
+        |e: std::io::Error| failed(dir.display().to_string(), format!("cannot remove it: {e}"));
     let meta = match std::fs::symlink_metadata(dir) {
         Ok(meta) => meta,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
@@ -184,17 +186,22 @@ pub fn delete(global: &GlobalArgs, name: &str, yes: bool, out: &Output) -> Resul
     }
     let bases = Profile::bases(global)?;
     let mut removed = Vec::new();
-    for dir in [
-        below(&bases.state, Some(name)),
-        below(&bases.cache, Some(name)),
+    let state_failed: fn(String, String) -> CliError =
+        |path, reason| CliError::State { path, reason };
+    let cache_failed: fn(String, String) -> CliError =
+        |path, reason| CliError::Cache { path, reason };
+    for (dir, failed) in [
+        (below(&bases.state, Some(name)), state_failed),
+        (below(&bases.cache, Some(name)), cache_failed),
     ] {
-        if remove_profile_dir(&dir)? {
+        if remove_profile_dir(&dir, failed)? {
             removed.push(dir.display().to_string());
         }
     }
     if removed.is_empty() {
         return Err(CliError::Arguments(format!(
-            "no profile {name}: `ti profile list` shows the profiles"
+            "no profile {name}: `{} profile list` shows the profiles",
+            crate::BIN
         )));
     }
     let report = DeleteReport {

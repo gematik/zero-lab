@@ -47,6 +47,12 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   under a Konnektor name that is not a plain file name.
 
 #### fixed
+- `pki tsl show`, `pki tsl export` and `pki trust export` use the list their load verified
+  against the TSL state. They read it back from the cache without asking the origin again, a
+  stale entry could send that read there, and refuse any other list. `tsl export` writes the
+  signature and status the list verified with, and no status with `--at`. Past the age limit
+  they refuse with `--offline`, where they showed the cached list.
+- A rejected older TSL hints at what it means and how to recover, not at the network.
 - Proxy variables no longer reach the Konnektor, as `AGENTS.md` always said: only `-x`
   sets a proxy for it.
 - A Konnektor whose service directory names another origin than the `.kon` url is refused

@@ -43,7 +43,7 @@ use ti_pki::load::{
 use ti_pki::ocsp::OcspChecker;
 use ti_pki::revocation::RevocationChecker;
 use ti_pki::tsl::Tsl;
-use ti_pki::tsl_signature::{DetachedTsl, Sequence, TslState, VerifiedTsl};
+use ti_pki::tsl_signature::{DetachedTsl, Sequence, TslCode, TslState, VerifiedTsl};
 use ti_pki::{Clock, Tier, Timestamp, TrustConfig, TrustStore, roots};
 
 use crate::block::block_on;
@@ -558,7 +558,14 @@ impl From<Expired> for CliError {
     fn from(Expired(error): Expired) -> Self {
         match error {
             ReloadError::Verify(error) => {
-                CliError::TrustLoad(format!("downloaded material failed verification: {error}"))
+                let rollback =
+                    matches!(&error.tsl, Some(tsl) if tsl.code == TslCode::TslIdIncorrect);
+                let message = format!("downloaded material failed verification: {error}");
+                if rollback {
+                    CliError::TslRollback(message)
+                } else {
+                    CliError::TrustLoad(message)
+                }
             }
             error => CliError::TrustLoad(error.to_string()),
         }
@@ -906,6 +913,11 @@ mod tests {
             panic!("an older list must be rejected");
         };
         assert!(error.to_string().contains("tsl_id_incorrect"), "{error}");
+        assert_eq!(error.kind(), "trust_material_unavailable");
+        let hint = error.hint().unwrap();
+        assert!(hint.contains("older list"), "{hint}");
+        assert!(hint.contains("tsl/ID.json"), "{hint}");
+        assert!(!hint.contains("port 80"), "not a network problem: {hint}");
         assert_eq!(store.read().unwrap(), Some(newer));
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -1144,6 +1156,28 @@ mod tests {
         .unwrap();
         let Err(error) = TslStateStore::new(&p, "abc", 0).write(&state(1)) else {
             panic!("a failed write must not pass silently");
+        };
+        assert_eq!(error.kind(), "state_file_failed");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Only a missing file means no state: a read that fails otherwise must not switch the
+    /// rollback check off.
+    #[test]
+    fn a_tsl_state_that_cannot_be_read_is_an_error_not_no_state() {
+        let dir = scratch("unreadable");
+        let p = profile(&dir, None);
+        let file = p.state_dir.join("tsl").join("abc.json");
+        std::fs::create_dir_all(&file).unwrap();
+        let Err(error) = TslStateStore::new(&p, "abc", 0).read() else {
+            panic!("a directory at the path must not read as none");
+        };
+        assert_eq!(error.kind(), "state_file_failed");
+
+        std::fs::remove_dir_all(p.state_dir.join("tsl")).unwrap();
+        std::fs::write(p.state_dir.join("tsl"), b"in the way").unwrap();
+        let Err(error) = TslStateStore::new(&p, "abc", 0).read() else {
+            panic!("tsl being a file must not read as none");
         };
         assert_eq!(error.kind(), "state_file_failed");
         std::fs::remove_dir_all(&dir).unwrap();
