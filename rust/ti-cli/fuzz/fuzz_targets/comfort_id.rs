@@ -26,10 +26,16 @@
 use libfuzzer_sys::fuzz_target;
 use ti_connector_client::ComfortUserId;
 
-// A comfort file is whatever a crashed or hostile process left on disk: parsing it must
-// answer none, never panic.
+// A comfort file is whatever a crashed or hostile process left on disk: parsing answers
+// none, never a panic, and an ID it accepts is found again once saved, or a session would
+// be lost with its ID.
 fuzz_target!(|bytes: &[u8]| {
-    if let Ok(text) = std::str::from_utf8(bytes) {
-        let _ = ComfortUserId::parse(text.trim());
-    }
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return;
+    };
+    let Some(id) = ComfortUserId::parse(text.trim()) else {
+        return;
+    };
+    let again = ComfortUserId::parse(id.as_str()).expect("a parsed ID parses");
+    assert_eq!(again, id);
 });

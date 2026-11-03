@@ -136,7 +136,7 @@ impl TslStateStore {
         if let Some(dir) = self.path.parent() {
             create_private_dir(dir).map_err(|error| self.fail(error))?;
         }
-        let json = serde_json::to_vec(state).map_err(|error| self.fail(error))?;
+        let json = tsl_state_bytes(state).map_err(|error| self.fail(error))?;
         write_atomic(&self.path, &json).map_err(|error| self.fail(error))?;
         self.verbose(format_args!(
             "TSL state: kept #{} {} in {}",
@@ -161,6 +161,15 @@ impl TslStateStore {
 /// The bytes are not the JSON of a [`TslState`].
 pub fn parse_tsl_state(bytes: &[u8]) -> Result<TslState, serde_json::Error> {
     serde_json::from_slice(bytes)
+}
+
+/// The content of a TSL state file for `state`.
+///
+/// # Errors
+///
+/// `state` does not serialize.
+pub fn tsl_state_bytes(state: &TslState) -> Result<Vec<u8>, serde_json::Error> {
+    serde_json::to_vec(state)
 }
 
 /// Runs `verify` with the state an earlier run kept, so that an older list is rejected

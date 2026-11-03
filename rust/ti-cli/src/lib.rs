@@ -37,14 +37,12 @@ mod commands;
 mod connector;
 mod error;
 mod file_cache;
-// Public for the fuzz targets only; not an API of this crate.
-#[doc(hidden)]
-pub mod files;
+mod files;
 // Public for the fuzz targets only; not an API of this crate.
 #[doc(hidden)]
 pub mod fuzz {
-    pub use crate::file_cache::decode;
-    pub use crate::trust::parse_tsl_state;
+    pub use crate::file_cache::{decode, encode};
+    pub use crate::trust::{parse_tsl_state, tsl_state_bytes};
 }
 mod http;
 mod identity;
@@ -53,9 +51,7 @@ mod net;
 mod output;
 mod paths;
 mod peer;
-// Public for the fuzz targets only; not an API of this crate.
-#[doc(hidden)]
-pub mod profile;
+mod profile;
 mod prompt;
 mod trust;
 

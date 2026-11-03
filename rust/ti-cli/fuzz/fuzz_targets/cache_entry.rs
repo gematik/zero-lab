@@ -25,8 +25,15 @@
 
 use libfuzzer_sys::fuzz_target;
 
-// A cache file is whatever a crashed or hostile process left on disk: decoding must
-// answer a miss, never panic.
+// A cache file is whatever a crashed or hostile process left on disk: decoding answers a
+// miss, never a panic, and an entry it accepts survives being written back, or a cache hit
+// could change what the next run reads.
 fuzz_target!(|bytes: &[u8]| {
-    let _ = ti_cli::fuzz::decode(bytes);
+    let Some(entry) = ti_cli::fuzz::decode(bytes) else {
+        return;
+    };
+    let encoded = ti_cli::fuzz::encode(&entry).expect("a decoded entry encodes");
+    let again = ti_cli::fuzz::decode(&encoded).expect("an encoded entry decodes");
+    assert_eq!(again, entry);
+    assert_eq!(ti_cli::fuzz::encode(&again).unwrap(), encoded);
 });

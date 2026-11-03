@@ -25,8 +25,13 @@
 
 use libfuzzer_sys::fuzz_target;
 
-// The TSL state file is whatever a crashed or hostile process left on disk: parsing must
-// answer an error, never panic.
+// The TSL state file is whatever a crashed or hostile process left on disk: parsing answers
+// an error, never a panic, and a state it accepts survives being kept for the next run, or
+// the rollback check would compare against something else.
 fuzz_target!(|bytes: &[u8]| {
-    let _ = ti_cli::fuzz::parse_tsl_state(bytes);
+    let Ok(state) = ti_cli::fuzz::parse_tsl_state(bytes) else {
+        return;
+    };
+    let kept = ti_cli::fuzz::tsl_state_bytes(&state).expect("a parsed state serializes");
+    assert_eq!(ti_cli::fuzz::parse_tsl_state(&kept).unwrap(), state);
 });
