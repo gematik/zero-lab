@@ -492,6 +492,43 @@ fn tsl_bundle_and_export_write_what_they_report() {
     assert_eq!(raw.stdout, published);
 }
 
+/// A past instant may need an older list, so `--at` leaves the TSL state alone: a corrupt
+/// file does not stop it and is not rewritten. Without `--at` the same file is an error, which
+/// shows this is the file the check reads.
+#[test]
+fn at_another_time_a_corrupt_tsl_state_is_neither_read_nor_rewritten() {
+    let cache = SeededCache::new("at-corrupt-state");
+    let c = &cache.0;
+    let file = c
+        .join("state/telematik/ti/profiles/default/tsl")
+        .join(format!("{}.json", url_id(TSL_URL)));
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::write(&file, b"{\"id\":").unwrap();
+
+    let at = ti(c, &offline(&["pki", "roots", "list"]));
+    assert_eq!(
+        at.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&at.stderr)
+    );
+    assert_eq!(std::fs::read(&file).unwrap(), b"{\"id\":");
+
+    let now = ti(c, &["pki", "roots", "list", "--offline"]);
+    assert_eq!(
+        now.status.code(),
+        Some(5),
+        "{}",
+        String::from_utf8_lossy(&now.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&now.stderr).contains(&file.display().to_string()),
+        "{}",
+        String::from_utf8_lossy(&now.stderr)
+    );
+    assert_eq!(std::fs::read(&file).unwrap(), b"{\"id\":");
+}
+
 /// TSLDET-023: an export for another time carries no signer status, whatever the cache
 /// holds: the files beside the list are the ones it was verified with.
 #[test]

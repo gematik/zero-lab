@@ -372,33 +372,25 @@ impl<T: Transport + Send + Sync> Session<T> {
         at: Option<Timestamp>,
         state: Option<&TslStateStore>,
     ) -> Result<Material, CliError> {
-        let clock = At(at);
         block_on(with_kept_state(state, |stored| async move {
-            if let Some(transport) = &self.transport {
-                let reloader = reloader(
-                    config,
-                    tier,
-                    AtTime::new(self.loader(config, transport), at),
-                    clock,
-                    stored,
-                )?;
-                if at.is_none() {
+            let reach = Reach(self.transport.as_ref());
+            let reloader = reloader(
+                config,
+                tier,
+                AtTime::new(self.loader(config, reach), at),
+                At(at),
+                stored,
+            )?;
+            match &self.transport {
+                Some(transport) if at.is_none() => {
                     let checker =
                         OcspChecker::new(config, transport, SystemClock).with_store(self.store());
-                    first_tick(&reloader.with_signer_status(checker)).await
-                } else {
-                    first_tick(&reloader).await
+                    first_tick(&reloader.with_signer_status(checker))
+                        .await
+                        .map_err(CliError::from)
                 }
-                .map_err(CliError::from)
-            } else {
-                let reloader = reloader(
-                    config,
-                    tier,
-                    AtTime::new(self.loader(config, NoNetwork), at),
-                    clock,
-                    stored,
-                )?;
-                match first_tick(&reloader).await {
+                Some(_) => first_tick(&reloader).await.map_err(CliError::from),
+                None => match first_tick(&reloader).await {
                     Err(Expired(ReloadError::Load(LoadError::Offline(_)))) => embedded(
                         config,
                         "offline and nothing cached: embedded roots only, no TSL",
@@ -411,7 +403,7 @@ impl<T: Transport + Send + Sync> Session<T> {
                         ),
                     ),
                     other => other.map_err(CliError::from),
-                }
+                },
             }
         }))
     }
@@ -714,6 +706,26 @@ impl Transport for NoNetwork {
 
     async fn post(&self, req: &PostRequest<'_>) -> Result<Vec<u8>, TransportError> {
         Err(refused(req.url))
+    }
+}
+
+/// The session's transport, or [`NoNetwork`] without one: so that online and `--offline`
+/// runs verify through one and the same reloader, and only differ in what they fall back to.
+struct Reach<'a, T>(Option<&'a T>);
+
+impl<T: Transport + Sync> Transport for Reach<'_, T> {
+    async fn get(&self, req: &ArtifactRequest<'_>) -> Result<ArtifactResponse, TransportError> {
+        match self.0 {
+            Some(transport) => transport.get(req).await,
+            None => NoNetwork.get(req).await,
+        }
+    }
+
+    async fn post(&self, req: &PostRequest<'_>) -> Result<Vec<u8>, TransportError> {
+        match self.0 {
+            Some(transport) => transport.post(req).await,
+            None => NoNetwork.post(req).await,
+        }
     }
 }
 
@@ -1073,6 +1085,22 @@ mod tests {
             .unwrap();
         let read = session.verified_set(&config, &material, at).unwrap();
         assert!(read.set.detached.unwrap().signer_status.is_none());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A past instant may need an older list, so `--at` neither checks nor keeps the state;
+    /// the current time does both.
+    #[test]
+    fn session_load_selects_the_tsl_state_only_for_the_current_time() {
+        let dir = scratch("selection");
+        let p = profile(&dir, None);
+        let session = fixture_session(&p);
+        let config = TrustConfig::preset_prod();
+        assert_eq!(
+            session.tsl_state(&config, None).map(|store| store.path),
+            Some(TslStateStore::for_config(&p, &config, 0).path)
+        );
+        assert!(session.tsl_state(&config, Some(Timestamp(1))).is_none());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
