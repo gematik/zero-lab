@@ -78,7 +78,7 @@ func TestVendorFiles(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			data, password := vendorFile(t, tt.name)
-			if !IsBER(data) {
+			if len(data) < 2 || data[0] != 0x30 || data[1] != 0x80 {
 				t.Fatal("vendor file is expected to be BER")
 			}
 			if _, err := pkcs12.Decode(data, password); !errors.Is(err, pkcs12.ErrInvalidPFX) {
@@ -111,41 +111,17 @@ func TestVendorFiles(t *testing.T) {
 	}
 }
 
-func TestConvertWithOpenSSL(t *testing.T) {
-	data, password := vendorFile(t, "secunet")
-	modern, err := ConvertWithOpenSSL(data, string(password))
+func TestParseShowsWhetherABERFileHasAMAC(t *testing.T) {
+	data, _ := vendorFile(t, "secunet")
+	pfx, err := Parse(data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if IsBER(modern) {
-		t.Error("converted file is BER")
+	if pfx.MacData == nil {
+		t.Error("a vendor file with a MAC reads as having none")
 	}
-	want, err := Decode(data, password)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := pkcs12.Decode(modern, password)
-	if err != nil {
-		t.Fatalf("pkcs12.Decode of the converted file: %v", err)
-	}
-	if !bytes.Equal(got.Certificates[0].Raw, want.Certificates[0].Raw) || !bytes.Equal(got.PrivateKeys[0].Raw, want.PrivateKeys[0].Raw) {
-		t.Error("converted file holds other contents")
-	}
-}
-
-func TestIsBER(t *testing.T) {
-	for _, tt := range []struct {
-		data []byte
-		want bool
-	}{
-		{[]byte{0x30, 0x80, 0x01}, true},
-		{[]byte{0x30, 0x10, 0x01}, false},
-		{[]byte{0x30}, false},
-		{nil, false},
-	} {
-		if got := IsBER(tt.data); got != tt.want {
-			t.Errorf("IsBER(% x) = %v, want %v", tt.data, got, tt.want)
-		}
+	if _, err := Parse([]byte{0x30, 0x80, 0x01}); !errors.Is(err, pkcs12.ErrInvalidPFX) {
+		t.Errorf("garbage: %v, want ErrInvalidPFX", err)
 	}
 }
 

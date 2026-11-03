@@ -37,9 +37,7 @@
 //	}
 //
 // Parse and ExtractBags split this in two steps, e.g. to insist on a MAC
-// (pfx.MacData != nil) before decrypting. ParseAuthenticatedSafe,
-// ParseSafeContents, DecryptEncryptedData, DecryptShroudedKeyBag and
-// VerifyMAC give access to every layer.
+// (pfx.MacData != nil) before decrypting, and VerifyMAC checks the MAC alone.
 //
 // This package reads DER. Files in BER encoding, or encrypted with RC2,
 // two-key Triple DES or DES-EDE3 in PBES2, as Java keystores, Windows,

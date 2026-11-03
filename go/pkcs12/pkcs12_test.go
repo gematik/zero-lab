@@ -42,7 +42,8 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/pkcs12"
-	"github.com/gematik/zero-lab/go/pkcs12/legacy/ber"
+	"github.com/gematik/zero-lab/go/pkcs12/internal/ber"
+	"github.com/gematik/zero-lab/go/pkcs12/internal/syntax"
 )
 
 // newIdentity returns a fresh self-signed certificate and its PKCS#8 key; no
@@ -178,33 +179,33 @@ func TestEncodeSeparatePasswords(t *testing.T) {
 	if err := pkcs12.VerifyMAC(pfx, []byte("mac")); err != nil {
 		t.Fatal(err)
 	}
-	authSafe, err := pkcs12.ParseAuthenticatedSafe(pfx.RawAuthSafe)
+	authSafe, err := syntax.ParseAuthenticatedSafe(pfx.RawAuthSafe)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var sawKey, sawCert bool
 	for _, ci := range authSafe.ContentInfos {
 		switch {
-		case ci.ContentType.Equal(pkcs12.OIDData):
+		case ci.ContentType.Equal(syntax.OIDData):
 			// The key safe: Data with shrouded key bags.
 			var octets []byte
 			if _, err := asn1.Unmarshal(ci.Content, &octets); err != nil {
 				t.Fatal(err)
 			}
-			sc, err := pkcs12.ParseSafeContents(octets)
+			sc, err := syntax.ParseSafeContents(octets)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := pkcs12.DecryptShroudedKeyBag(sc.Bags[0].BagValue, []byte("cert")); err == nil {
+			if _, err := syntax.DecryptShroudedKeyBag(sc.Bags[0].BagValue, []byte("cert")); err == nil {
 				t.Error("key decrypts with the certificate password")
 			}
-			key, err := pkcs12.DecryptShroudedKeyBag(sc.Bags[0].BagValue, []byte("key"))
+			key, err := syntax.DecryptShroudedKeyBag(sc.Bags[0].BagValue, []byte("key"))
 			if err != nil || !bytes.Equal(key, bags.PrivateKeys[0].Raw) {
 				t.Errorf("key with KeyPassword: %v", err)
 			}
 			sawKey = true
-		case ci.ContentType.Equal(pkcs12.OIDEncryptedData):
-			if _, err := pkcs12.DecryptEncryptedData(ci, []byte("cert")); err != nil {
+		case ci.ContentType.Equal(syntax.OIDEncryptedData):
+			if _, err := syntax.DecryptEncryptedData(ci, []byte("cert")); err != nil {
 				t.Errorf("certificates with CertPassword: %v", err)
 			}
 			sawCert = true
@@ -232,8 +233,8 @@ func TestEncodeRejects(t *testing.T) {
 		bags   *pkcs12.Bags
 	}{
 		"zero iterations":     {modify: func(o *pkcs12.EncodeOptions) { o.Iterations = 0 }},
-		"SHA-1 MAC":           {modify: func(o *pkcs12.EncodeOptions) { o.MacAlgorithm = pkcs12.OIDSHA1 }},
-		"Triple DES keys":     {modify: func(o *pkcs12.EncodeOptions) { o.KeyEncryption = pkcs12.OIDPBEWithSHAAnd3KeyTripleDESCBC }},
+		"SHA-1 MAC":           {modify: func(o *pkcs12.EncodeOptions) { o.MacAlgorithm = syntax.OIDSHA1 }},
+		"Triple DES keys":     {modify: func(o *pkcs12.EncodeOptions) { o.KeyEncryption = syntax.OIDPBEWithSHAAnd3KeyTripleDESCBC }},
 		"unknown cipher":      {modify: func(o *pkcs12.EncodeOptions) { o.CertEncryption = asn1.ObjectIdentifier{1, 2, 3} }},
 		"non-BMP name":        {bags: &pkcs12.Bags{Certificates: []pkcs12.CertificateBag{{Raw: bags.Certificates[0].Raw, FriendlyName: "😀"}}}},
 		"nil bags":            {bags: nil},
@@ -376,47 +377,47 @@ func TestIterationLimits(t *testing.T) {
 		t.Errorf("MAC with 0 iterations: %v, want ErrParse", err)
 	}
 
-	alg := &pkcs12.EncryptionAlgorithm{
-		Algorithm: pkcs12.OIDPBES2,
-		KDF:       &pkcs12.PBKDF2Params{Salt: []byte("salt"), Iterations: 1 << 30, PRF: pkcs12.OIDHMACSHA256},
-		Cipher:    &pkcs12.CipherParams{Algorithm: pkcs12.OIDAes256CBC, IV: make([]byte, 16)},
+	alg := &syntax.EncryptionAlgorithm{
+		Algorithm: syntax.OIDPBES2,
+		KDF:       &syntax.PBKDF2Params{Salt: []byte("salt"), Iterations: 1 << 30, PRF: syntax.OIDHMACSHA256},
+		Cipher:    &syntax.CipherParams{Algorithm: pkcs12.OIDAes256CBC, IV: make([]byte, 16)},
 	}
-	if _, err := pkcs12.DecryptPBES2(alg, []byte("x"), make([]byte, 16)); !errors.Is(err, pkcs12.ErrLimitExceeded) {
+	if _, err := syntax.DecryptPBES2(alg, []byte("x"), make([]byte, 16)); !errors.Is(err, pkcs12.ErrLimitExceeded) {
 		t.Errorf("PBKDF2: %v, want ErrLimitExceeded", err)
 	}
-	pbe := &pkcs12.EncryptionAlgorithm{Algorithm: pkcs12.OIDPBEWithSHAAnd3KeyTripleDESCBC, Salt: []byte("salt"), Iterations: 1 << 30}
-	if _, err := pkcs12.DecryptLegacyPBE(pbe, []byte("x"), make([]byte, 8)); !errors.Is(err, pkcs12.ErrLimitExceeded) {
+	pbe := &syntax.EncryptionAlgorithm{Algorithm: syntax.OIDPBEWithSHAAnd3KeyTripleDESCBC, Salt: []byte("salt"), Iterations: 1 << 30}
+	if _, err := syntax.DecryptLegacyPBE(pbe, []byte("x"), make([]byte, 8)); !errors.Is(err, pkcs12.ErrLimitExceeded) {
 		t.Errorf("PKCS#12 PBE: %v, want ErrLimitExceeded", err)
 	}
 }
 
 func TestDecryptPBES2Algorithms(t *testing.T) {
-	alg := func(prf, cipher asn1.ObjectIdentifier) *pkcs12.EncryptionAlgorithm {
-		return &pkcs12.EncryptionAlgorithm{
-			Algorithm: pkcs12.OIDPBES2,
-			KDF:       &pkcs12.PBKDF2Params{Salt: []byte("salt"), Iterations: 1, PRF: prf},
-			Cipher:    &pkcs12.CipherParams{Algorithm: cipher, IV: make([]byte, 16)},
+	alg := func(prf, cipher asn1.ObjectIdentifier) *syntax.EncryptionAlgorithm {
+		return &syntax.EncryptionAlgorithm{
+			Algorithm: syntax.OIDPBES2,
+			KDF:       &syntax.PBKDF2Params{Salt: []byte("salt"), Iterations: 1, PRF: prf},
+			Cipher:    &syntax.CipherParams{Algorithm: cipher, IV: make([]byte, 16)},
 		}
 	}
 	unknown := asn1.ObjectIdentifier{1, 2, 840, 113549, 2, 127}
-	if _, err := pkcs12.DecryptPBES2(alg(unknown, pkcs12.OIDAes256CBC), nil, make([]byte, 16)); !errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
+	if _, err := syntax.DecryptPBES2(alg(unknown, pkcs12.OIDAes256CBC), nil, make([]byte, 16)); !errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
 		t.Errorf("unknown PRF: %v, want ErrUnsupportedAlgorithm", err)
 	}
-	if _, err := pkcs12.DecryptPBES2(alg(pkcs12.OIDHMACSHA256, unknown), nil, make([]byte, 16)); !errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
+	if _, err := syntax.DecryptPBES2(alg(syntax.OIDHMACSHA256, unknown), nil, make([]byte, 16)); !errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
 		t.Errorf("unknown cipher: %v, want ErrUnsupportedAlgorithm", err)
 	}
 	// Up to v0.99.3 this package wrote the digest OID as PRF; such files
 	// must stay readable.
-	if _, err := pkcs12.DecryptPBES2(alg(pkcs12.OIDSHA256, pkcs12.OIDAes256CBC), nil, make([]byte, 16)); errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
+	if _, err := syntax.DecryptPBES2(alg(pkcs12.OIDSHA256, pkcs12.OIDAes256CBC), nil, make([]byte, 16)); errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
 		t.Errorf("digest OID as PRF: %v", err)
 	}
-	keyLength := alg(pkcs12.OIDHMACSHA256, pkcs12.OIDAes256CBC)
+	keyLength := alg(syntax.OIDHMACSHA256, pkcs12.OIDAes256CBC)
 	keyLength.KDF.KeyLength = 16
-	if _, err := pkcs12.DecryptPBES2(keyLength, nil, make([]byte, 16)); !errors.Is(err, pkcs12.ErrParse) {
+	if _, err := syntax.DecryptPBES2(keyLength, nil, make([]byte, 16)); !errors.Is(err, pkcs12.ErrParse) {
 		t.Errorf("keyLength that does not fit: %v, want ErrParse", err)
 	}
-	rc2 := &pkcs12.EncryptionAlgorithm{Algorithm: pkcs12.OIDPBEWithSHAAnd128BitRC2CBC, Salt: []byte("s"), Iterations: 1}
-	if _, err := pkcs12.DecryptLegacyPBE(rc2, nil, make([]byte, 8)); !errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
+	rc2 := &syntax.EncryptionAlgorithm{Algorithm: syntax.OIDPBEWithSHAAnd128BitRC2CBC, Salt: []byte("s"), Iterations: 1}
+	if _, err := syntax.DecryptLegacyPBE(rc2, nil, make([]byte, 8)); !errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
 		t.Errorf("RC2 in package pkcs12: %v, want ErrUnsupportedAlgorithm", err)
 	}
 }
@@ -430,11 +431,11 @@ func TestExtractBagsRejectsPublicKeyModes(t *testing.T) {
 }
 
 func TestGetFriendlyName(t *testing.T) {
-	attr := func(value ...byte) []pkcs12.PKCS12Attribute {
-		return []pkcs12.PKCS12Attribute{{ID: pkcs12.OIDFriendlyName, Values: [][]byte{value}}}
+	attr := func(value ...byte) []syntax.PKCS12Attribute {
+		return []syntax.PKCS12Attribute{{ID: syntax.OIDFriendlyName, Values: [][]byte{value}}}
 	}
 	tests := []struct {
-		attrs []pkcs12.PKCS12Attribute
+		attrs []syntax.PKCS12Attribute
 		want  string
 		ok    bool
 	}{
@@ -445,7 +446,7 @@ func TestGetFriendlyName(t *testing.T) {
 		{nil, "", false},
 	}
 	for _, tt := range tests {
-		got, ok := pkcs12.GetFriendlyName(tt.attrs)
+		got, ok := syntax.GetFriendlyName(tt.attrs)
 		if got != tt.want || ok != tt.ok {
 			t.Errorf("GetFriendlyName(% x) = %q, %v, want %q, %v", tt.attrs, got, ok, tt.want, tt.ok)
 		}

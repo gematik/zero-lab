@@ -19,7 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-package pkcs12
+package syntax
 
 import (
 	"crypto/aes"
@@ -50,26 +50,27 @@ var (
 	ErrInvalidPadding = errors.New("pkcs12: invalid padding")
 )
 
-// pbes2Cipher is an encryption scheme of PBES2.
-type pbes2Cipher struct {
-	keySize  int
-	newBlock func(key []byte) (cipher.Block, error)
+// PBES2Cipher is an encryption scheme of PBES2.
+type PBES2Cipher struct {
+	KeySize  int
+	NewBlock func(key []byte) (cipher.Block, error)
 }
 
-func pbes2CipherFor(oid asn1.ObjectIdentifier) (pbes2Cipher, bool) {
+// PBES2CipherFor finds the AES-CBC cipher an identifier names.
+func PBES2CipherFor(oid asn1.ObjectIdentifier) (PBES2Cipher, bool) {
 	switch {
 	case oid.Equal(OIDAes128CBC):
-		return pbes2Cipher{16, aes.NewCipher}, true
+		return PBES2Cipher{16, aes.NewCipher}, true
 	case oid.Equal(OIDAes192CBC):
-		return pbes2Cipher{24, aes.NewCipher}, true
+		return PBES2Cipher{24, aes.NewCipher}, true
 	case oid.Equal(OIDAes256CBC):
-		return pbes2Cipher{32, aes.NewCipher}, true
+		return PBES2Cipher{32, aes.NewCipher}, true
 	}
-	return pbes2Cipher{}, false
+	return PBES2Cipher{}, false
 }
 
-// pbkdf2PRF returns the hash of a PBKDF2 PRF (RFC 8018 §B.1).
-func pbkdf2PRF(oid asn1.ObjectIdentifier) (func() hash.Hash, error) {
+// PBKDF2PRF returns the hash of a PBKDF2 PRF (RFC 8018 §B.1).
+func PBKDF2PRF(oid asn1.ObjectIdentifier) (func() hash.Hash, error) {
 	if prf, ok := pbe.PBKDF2PRF(oid); ok {
 		return prf, nil
 	}
@@ -79,8 +80,8 @@ func pbkdf2PRF(oid asn1.ObjectIdentifier) (func() hash.Hash, error) {
 // legacyPBE is a PKCS#12 password-based encryption scheme (RFC 7292
 // appendix C): key and IV come from the PKCS#12 KDF with SHA-1.
 type legacyPBE struct {
-	keySize  int
-	newBlock func(key []byte) (cipher.Block, error)
+	KeySize  int
+	NewBlock func(key []byte) (cipher.Block, error)
 }
 
 // legacyPBEFor knows three-key Triple DES only; package legacy adds RC2 and
@@ -97,27 +98,27 @@ func DecryptPBES2(encAlg *EncryptionAlgorithm, password []byte, data []byte) ([]
 	if encAlg.KDF == nil || encAlg.Cipher == nil {
 		return nil, fmt.Errorf("%w: incomplete PBES2 parameters", ErrDecryption)
 	}
-	c, ok := pbes2CipherFor(encAlg.Cipher.Algorithm)
+	c, ok := PBES2CipherFor(encAlg.Cipher.Algorithm)
 	if !ok {
 		return nil, fmt.Errorf("%w: PBES2 encryption scheme %v", ErrUnsupportedAlgorithm, encAlg.Cipher.Algorithm)
 	}
-	prf, err := pbkdf2PRF(encAlg.KDF.PRF)
+	prf, err := PBKDF2PRF(encAlg.KDF.PRF)
 	if err != nil {
 		return nil, err
 	}
-	if encAlg.KDF.KeyLength != 0 && encAlg.KDF.KeyLength != c.keySize {
+	if encAlg.KDF.KeyLength != 0 && encAlg.KDF.KeyLength != c.KeySize {
 		return nil, fmt.Errorf("%w: PBKDF2 keyLength %d does not fit the cipher", ErrParse, encAlg.KDF.KeyLength)
 	}
-	if err := checkIterations(encAlg.KDF.Iterations); err != nil {
+	if err := CheckIterations(encAlg.KDF.Iterations); err != nil {
 		return nil, err
 	}
 	// PBES2 feeds the password octets to PBKDF2 unchanged (RFC 8018 §6.2.1);
 	// only the PKCS#12 KDF uses the BMPString form.
-	key, err := pbkdf2.Key(prf, string(password), encAlg.KDF.Salt, encAlg.KDF.Iterations, c.keySize)
+	key, err := pbkdf2.Key(prf, string(password), encAlg.KDF.Salt, encAlg.KDF.Iterations, c.KeySize)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrDecryption, err)
 	}
-	block, err := c.newBlock(key)
+	block, err := c.NewBlock(key)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrDecryption, err)
 	}
@@ -131,12 +132,12 @@ func DecryptLegacyPBE(encAlg *EncryptionAlgorithm, password []byte, data []byte)
 	if !ok {
 		return nil, fmt.Errorf("%w: encryption scheme %v", ErrUnsupportedAlgorithm, encAlg.Algorithm)
 	}
-	if err := checkIterations(encAlg.Iterations); err != nil {
+	if err := CheckIterations(encAlg.Iterations); err != nil {
 		return nil, err
 	}
 	bmp := pbe.BMPPassword(password)
-	key := pbe.PKCS12KDF(sha1.New, bmp, encAlg.Salt, encAlg.Iterations, pbe.PurposeKey, scheme.keySize)
-	block, err := scheme.newBlock(key)
+	key := pbe.PKCS12KDF(sha1.New, bmp, encAlg.Salt, encAlg.Iterations, pbe.PurposeKey, scheme.KeySize)
+	block, err := scheme.NewBlock(key)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrDecryption, err)
 	}
@@ -195,9 +196,9 @@ func decryptCBC(block cipher.Block, iv, ciphertext []byte) ([]byte, error) {
 	return plaintext, nil
 }
 
-// checkIterations bounds an iteration count read from a file, see
+// CheckIterations bounds an iteration count read from a file, see
 // pbe.MaxIterations.
-func checkIterations(n int) error {
+func CheckIterations(n int) error {
 	if n < 1 {
 		return fmt.Errorf("%w: iteration count %d", ErrParse, n)
 	}
@@ -226,14 +227,14 @@ func macHash(alg asn1.ObjectIdentifier) (func() hash.Hash, error) {
 	return nil, fmt.Errorf("%w: MAC algorithm %v", ErrUnsupportedAlgorithm, alg)
 }
 
-// computeMAC is the password integrity mode of RFC 7292 §5: HMAC over the
+// ComputeMAC is the password integrity mode of RFC 7292 §5: HMAC over the
 // authSafe octets with a key from the PKCS#12 KDF, as long as the digest.
-func computeMAC(alg asn1.ObjectIdentifier, password, salt []byte, iterations int, data []byte) ([]byte, error) {
+func ComputeMAC(alg asn1.ObjectIdentifier, password, salt []byte, iterations int, data []byte) ([]byte, error) {
 	newHash, err := macHash(alg)
 	if err != nil {
 		return nil, err
 	}
-	if err := checkIterations(iterations); err != nil {
+	if err := CheckIterations(iterations); err != nil {
 		return nil, err
 	}
 	key := pbe.PKCS12KDF(newHash, pbe.BMPPassword(password), salt, iterations, pbe.PurposeMAC, newHash().Size())
@@ -249,7 +250,7 @@ func VerifyMAC(pfx *PFX, password []byte) error {
 		return nil
 	}
 	md := pfx.MacData
-	expected, err := computeMAC(md.Mac.Algorithm.Algorithm, password, md.MacSalt, md.Iterations, pfx.RawAuthSafe)
+	expected, err := ComputeMAC(md.Mac.Algorithm.Algorithm, password, md.MacSalt, md.Iterations, pfx.RawAuthSafe)
 	if err != nil {
 		return err
 	}

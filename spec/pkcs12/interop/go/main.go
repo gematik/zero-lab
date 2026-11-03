@@ -40,7 +40,6 @@ import (
 
 	"github.com/gematik/zero-lab/go/pkcs12"
 	"github.com/gematik/zero-lab/go/pkcs12/legacy"
-	"github.com/gematik/zero-lab/go/pkcs12/legacy/ber"
 )
 
 type item struct {
@@ -103,11 +102,9 @@ func decode(data, password []byte, useLegacy bool) result {
 	r.Code = "ok"
 	fill(&r, bags)
 	// The MAC algorithm is not part of Bags; read it from the PFX.
-	if der, err := ber.ToDER(data); err == nil {
-		if pfx, err := pkcs12.Parse(der); err == nil && pfx.MacData != nil {
-			name := macName(pfx.MacData.Mac.Algorithm.Algorithm.String())
-			r.MAC = &name
-		}
+	if pfx, err := legacy.Parse(data); err == nil && pfx.MacData != nil {
+		name := macName(pfx.MacData.Mac.Algorithm.Algorithm.String())
+		r.MAC = &name
 	}
 	return r
 }

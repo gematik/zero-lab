@@ -24,6 +24,8 @@ package pkcs12
 import (
 	"bytes"
 	"fmt"
+
+	"github.com/gematik/zero-lab/go/pkcs12/internal/syntax"
 )
 
 // CertificateBag is a certificate of a PKCS#12 file with its attributes.
@@ -78,7 +80,7 @@ func Decode(data, password []byte) (*Bags, error) {
 // privacy modes are supported; a signed authSafe or an enveloped safe yields
 // ErrUnsupportedAlgorithm. CRL, secret and unknown bags are skipped.
 func ExtractBags(pfx *PFX, password []byte) (*Bags, error) {
-	if !pfx.AuthSafe.ContentType.Equal(OIDData) {
+	if !pfx.AuthSafe.ContentType.Equal(syntax.OIDData) {
 		return nil, fmt.Errorf("%w: authSafe content type %v (public-key integrity mode)", ErrUnsupportedAlgorithm, pfx.AuthSafe.ContentType)
 	}
 	// The MAC is checked before anything inside the authSafe is parsed, so
@@ -87,7 +89,7 @@ func ExtractBags(pfx *PFX, password []byte) (*Bags, error) {
 		return nil, fmt.Errorf("MAC verification failed: %w", err)
 	}
 
-	authSafe, err := ParseAuthenticatedSafe(pfx.RawAuthSafe)
+	authSafe, err := syntax.ParseAuthenticatedSafe(pfx.RawAuthSafe)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse authenticated safe: %w", err)
 	}
@@ -99,19 +101,19 @@ func ExtractBags(pfx *PFX, password []byte) (*Bags, error) {
 	for _, ci := range authSafe.ContentInfos {
 		var safe []byte
 		switch {
-		case ci.ContentType.Equal(OIDData):
-			if safe, err = extractOctetString(ci.Content); err != nil {
+		case ci.ContentType.Equal(syntax.OIDData):
+			if safe, err = syntax.ExtractOctetString(ci.Content); err != nil {
 				return nil, fmt.Errorf("failed to extract safe contents: %w", err)
 			}
-		case ci.ContentType.Equal(OIDEncryptedData):
-			if safe, err = DecryptEncryptedData(ci, password); err != nil {
+		case ci.ContentType.Equal(syntax.OIDEncryptedData):
+			if safe, err = syntax.DecryptEncryptedData(ci, password); err != nil {
 				return nil, fmt.Errorf("failed to decrypt safe contents: %w", err)
 			}
 		default:
 			return nil, fmt.Errorf("%w: safe content type %v (public-key privacy mode)", ErrUnsupportedAlgorithm, ci.ContentType)
 		}
 
-		sc, err := ParseSafeContents(safe)
+		sc, err := syntax.ParseSafeContents(safe)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse safe contents: %w", err)
 		}
@@ -124,26 +126,26 @@ func ExtractBags(pfx *PFX, password []byte) (*Bags, error) {
 
 // collectBags adds the certificates and keys of sc to bags, descending into
 // nested safe contents bags.
-func collectBags(sc *SafeContents, password []byte, bags *Bags) error {
+func collectBags(sc *syntax.SafeContents, password []byte, bags *Bags) error {
 	for _, bag := range sc.Bags {
-		friendlyName, _ := GetFriendlyName(bag.Attributes)
-		localKeyID, _ := GetLocalKeyID(bag.Attributes)
+		friendlyName, _ := syntax.GetFriendlyName(bag.Attributes)
+		localKeyID, _ := syntax.GetLocalKeyID(bag.Attributes)
 
 		switch {
-		case bag.BagID.Equal(OIDCertBag):
-			cb, err := ParseCertBag(bag.BagValue)
+		case bag.BagID.Equal(syntax.OIDCertBag):
+			cb, err := syntax.ParseCertBag(bag.BagValue)
 			if err != nil {
 				return fmt.Errorf("failed to extract certificate: %w", err)
 			}
-			if !cb.CertID.Equal(OIDX509Certificate) {
+			if !cb.CertID.Equal(syntax.OIDX509Certificate) {
 				return fmt.Errorf("failed to extract certificate: %w: certificate type %v", ErrUnsupportedAlgorithm, cb.CertID)
 			}
 			bags.Certificates = append(bags.Certificates, CertificateBag{
 				Raw: cb.CertValue, FriendlyName: friendlyName, LocalKeyID: localKeyID,
 			})
 
-		case bag.BagID.Equal(OIDPKCS8ShroudedKeyBag):
-			key, err := DecryptShroudedKeyBag(bag.BagValue, password)
+		case bag.BagID.Equal(syntax.OIDPKCS8ShroudedKeyBag):
+			key, err := syntax.DecryptShroudedKeyBag(bag.BagValue, password)
 			if err != nil {
 				return fmt.Errorf("failed to extract shrouded key: %w", err)
 			}
@@ -151,14 +153,14 @@ func collectBags(sc *SafeContents, password []byte, bags *Bags) error {
 				Raw: key, FriendlyName: friendlyName, LocalKeyID: localKeyID,
 			})
 
-		case bag.BagID.Equal(OIDKeyBag):
+		case bag.BagID.Equal(syntax.OIDKeyBag):
 			// A KeyBag holds the PKCS#8 PrivateKeyInfo in the clear.
 			bags.PrivateKeys = append(bags.PrivateKeys, PrivateKeyBag{
 				Raw: bag.BagValue, FriendlyName: friendlyName, LocalKeyID: localKeyID,
 			})
 
-		case bag.BagID.Equal(OIDSafeContentsBag):
-			nested, err := ParseSafeContents(bag.BagValue)
+		case bag.BagID.Equal(syntax.OIDSafeContentsBag):
+			nested, err := syntax.ParseSafeContents(bag.BagValue)
 			if err != nil {
 				return fmt.Errorf("failed to parse nested safe contents: %w", err)
 			}

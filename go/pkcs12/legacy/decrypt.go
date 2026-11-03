@@ -36,7 +36,8 @@ import (
 
 	"github.com/gematik/zero-lab/go/pkcs12"
 	"github.com/gematik/zero-lab/go/pkcs12/internal/pbe"
-	"github.com/gematik/zero-lab/go/pkcs12/legacy/rc2"
+	"github.com/gematik/zero-lab/go/pkcs12/internal/rc2"
+	"github.com/gematik/zero-lab/go/pkcs12/internal/syntax"
 )
 
 // decrypt decrypts data with the scheme alg names: the legacy schemes here,
@@ -50,17 +51,17 @@ func decrypt(alg pkix.AlgorithmIdentifier, password, data []byte) ([]byte, error
 		return decryptPBE(scheme, password, salt, iterations, data)
 	}
 
-	ea, err := pkcs12.ParseEncryptionAlgorithm(alg)
+	ea, err := syntax.ParseEncryptionAlgorithm(alg)
 	if err != nil {
 		return nil, err
 	}
-	if ea.Algorithm.Equal(pkcs12.OIDPBES2) {
-		if ea.Cipher.Algorithm.Equal(OIDDESEDE3CBC) {
+	if ea.Algorithm.Equal(syntax.OIDPBES2) {
+		if ea.Cipher.Algorithm.Equal(oidDESEDE3CBC) {
 			return decryptPBES2TripleDES(ea, password, data)
 		}
-		return pkcs12.DecryptPBES2(ea, password, data)
+		return syntax.DecryptPBES2(ea, password, data)
 	}
-	return pkcs12.DecryptLegacyPBE(ea, password, data)
+	return syntax.DecryptLegacyPBE(ea, password, data)
 }
 
 // decryptSafe decrypts a PKCS#7 EncryptedData (RFC 2315 §13) and returns the
@@ -136,14 +137,14 @@ type legacyPBE struct {
 
 func legacyPBEFor(oid asn1.ObjectIdentifier) (legacyPBE, bool) {
 	switch {
-	case oid.Equal(OIDPBEWithSHAAnd2KeyTripleDESCBC):
+	case oid.Equal(oidPBEWithSHAAnd2KeyTripleDESCBC):
 		// Two-key Triple DES is K1 K2 K1.
 		return legacyPBE{16, func(key []byte) (cipher.Block, error) {
 			return des.NewTripleDESCipher(append(key[:16:16], key[:8]...))
 		}}, true
-	case oid.Equal(pkcs12.OIDPBEWithSHAAnd128BitRC2CBC):
+	case oid.Equal(syntax.OIDPBEWithSHAAnd128BitRC2CBC):
 		return legacyPBE{16, func(key []byte) (cipher.Block, error) { return rc2.New(key, 128) }}, true
-	case oid.Equal(OIDPBEWithSHAAnd40BitRC2CBC):
+	case oid.Equal(oidPBEWithSHAAnd40BitRC2CBC):
 		return legacyPBE{5, func(key []byte) (cipher.Block, error) { return rc2.New(key, 40) }}, true
 	}
 	return legacyPBE{}, false
@@ -177,7 +178,7 @@ func decryptPBE(scheme legacyPBE, password, salt []byte, iterations int, data []
 	return decryptCBC(block, iv, data)
 }
 
-func decryptPBES2TripleDES(ea *pkcs12.EncryptionAlgorithm, password, data []byte) ([]byte, error) {
+func decryptPBES2TripleDES(ea *syntax.EncryptionAlgorithm, password, data []byte) ([]byte, error) {
 	prf, ok := pbe.PBKDF2PRF(ea.KDF.PRF)
 	if !ok {
 		return nil, fmt.Errorf("%w: PBKDF2 PRF %v", pkcs12.ErrUnsupportedAlgorithm, ea.KDF.PRF)
