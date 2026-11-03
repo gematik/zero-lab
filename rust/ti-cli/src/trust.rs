@@ -157,6 +157,30 @@ pub fn parse_tsl_state(bytes: &[u8]) -> Result<TslState, serde_json::Error> {
     serde_json::from_slice(bytes)
 }
 
+/// Runs `verify` with the state an earlier run kept, so that an older list is rejected
+/// (TSLSIG-053), and keeps the state of the list it verified when that changed. Taking
+/// the state as a parameter keeps the wiring testable without the wall clock.
+async fn with_kept_state<F, Fut>(
+    state: Option<&TslStateStore>,
+    verify: F,
+) -> Result<Material, CliError>
+where
+    F: FnOnce(Option<TslState>) -> Fut,
+    Fut: std::future::Future<Output = Result<Material, CliError>>,
+{
+    let stored = match state {
+        Some(state) => state.read()?,
+        None => None,
+    };
+    let material = verify(stored.clone()).await?;
+    if let (Some(file), Some(current)) = (state, &material.tsl_state)
+        && stored.as_ref() != Some(current)
+    {
+        file.write(current)?;
+    }
+    Ok(material)
+}
+
 /// Where the trust material came from, for the report.
 #[derive(Serialize)]
 pub struct TrustInfo {
@@ -311,25 +335,27 @@ impl Session {
         tier: Tier,
         at: Option<Timestamp>,
     ) -> Result<Material, CliError> {
+        self.load_with_state(config, tier, at, self.tsl_state(config, at).as_ref())
+    }
+
+    /// [`load`](Self::load) with the TSL state to check against and keep given, apart
+    /// from the time it is verified at.
+    fn load_with_state(
+        &self,
+        config: &TrustConfig,
+        tier: Tier,
+        at: Option<Timestamp>,
+        state: Option<&TslStateStore>,
+    ) -> Result<Material, CliError> {
         let clock = At(at);
-        // The list seen before guards against an older one, but only for the current
-        // time: a past instant may well need an older list.
-        let state = match (&self.profile, at) {
-            (Some(profile), None) => Some(TslStateStore::for_config(profile, config, self.verbose)),
-            _ => None,
-        };
-        let stored = match &state {
-            Some(state) => state.read()?,
-            None => None,
-        };
-        block_on(async {
-            let material = if let Some(transport) = &self.transport {
+        block_on(with_kept_state(state, |stored| async move {
+            if let Some(transport) = &self.transport {
                 let reloader = reloader(
                     config,
                     tier,
                     AtTime::new(self.loader(config, transport), at),
                     clock,
-                    stored.clone(),
+                    stored,
                 )?;
                 if at.is_none() {
                     let checker =
@@ -345,7 +371,7 @@ impl Session {
                     tier,
                     AtTime::new(self.loader(config, NoNetwork), at),
                     clock,
-                    stored.clone(),
+                    stored,
                 )?;
                 match first_tick(&reloader).await {
                     Err(Expired(ReloadError::Load(LoadError::Offline(_)))) => embedded(
@@ -361,14 +387,17 @@ impl Session {
                     ),
                     other => other.map_err(CliError::from),
                 }
-            }?;
-            if let (Some(file), Some(current)) = (&state, &material.tsl_state)
-                && stored.as_ref() != Some(current)
-            {
-                file.write(current)?;
             }
-            Ok(material)
-        })
+        }))
+    }
+
+    /// The list seen before guards against an older one, but only for the current time:
+    /// a past instant may well need an older list.
+    fn tsl_state(&self, config: &TrustConfig, at: Option<Timestamp>) -> Option<TslStateStore> {
+        match (&self.profile, at) {
+            (Some(profile), None) => Some(TslStateStore::for_config(profile, config, self.verbose)),
+            _ => None,
+        }
     }
 
     /// The TSL as loaded (unverified bytes; see [`ti_pki::tsl`]), with where it came
@@ -689,21 +718,134 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    /// TSLSIG-053: what one run keeps is what the next run's check starts from, and a
-    /// later list replaces it.
+    const CAPTURED_AT: &str = "2026-11-01T16:47:42Z";
+
+    /// The production TSL of `spec/tsl-detached`, verified at the time it was captured
+    /// through the same `reloader` and `first_tick` the commands use.
+    fn verify_fixture(
+        stored: Option<TslState>,
+    ) -> impl std::future::Future<Output = Result<Material, CliError>> {
+        let set = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../spec/tsl-detached/testdata/prod/ECC-RSA_TSL");
+        let config = TrustConfig::preset_prod();
+        let transport = ti_pki::load::FileTransport::new(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../ti-pki/src/roots-prod.json"),
+            set.with_extension("xml"),
+            set.with_extension("sig"),
+        );
+        let at = At(Some(Timestamp::parse_rfc3339(CAPTURED_AT).unwrap()));
+        async move {
+            let reloader = reloader(
+                &config,
+                Tier::Prod,
+                HttpLoader::new(&config, transport, SystemClock),
+                at,
+                stored,
+            )?;
+            first_tick(&reloader).await.map_err(CliError::from)
+        }
+    }
+
+    /// TSLSIG-053: a list older than the one a previous run kept is rejected, through the
+    /// state file and the same wiring `Session::load` uses.
     #[test]
     fn an_older_tsl_is_rejected_on_a_later_run() {
         let dir = scratch("later-run");
         let p = profile(&dir, Some("work"));
-        TslStateStore::new(&p, "abc", 0).write(&state(9)).unwrap();
+        let newer = state(20_000);
+        TslStateStore::new(&p, "abc", 0).write(&newer).unwrap();
+
         let later = TslStateStore::new(&p, "abc", 0);
-        assert_eq!(later.read().unwrap(), Some(state(9)));
-        later.write(&state(10)).unwrap();
+        let Err(error) = block_on(with_kept_state(Some(&later), verify_fixture)) else {
+            panic!("a list older than the kept state must be rejected");
+        };
+        assert!(error.to_string().contains("tsl_id_incorrect"), "{error}");
         assert_eq!(
-            TslStateStore::new(&p, "abc", 0).read().unwrap(),
-            Some(state(10))
+            later.read().unwrap(),
+            Some(newer),
+            "the state is not rewound"
         );
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_verified_tsl_is_kept_for_the_next_run() {
+        let dir = scratch("kept");
+        let p = profile(&dir, None);
+        let first = block_on(with_kept_state(
+            Some(&TslStateStore::new(&p, "abc", 0)),
+            verify_fixture,
+        ))
+        .unwrap();
+        let verified = first.tsl_state.expect("the fixture's TSL state");
+        let next = TslStateStore::new(&p, "abc", 0);
+        assert_eq!(
+            next.read().unwrap(),
+            Some(verified),
+            "kept by the first run"
+        );
+        block_on(with_kept_state(Some(&next), verify_fixture))
+            .expect("the same list again is not an error");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A session offline over a cache holding the fixture set, as a command sees it.
+    fn fixture_session(p: &Profile) -> Session {
+        let session = Session {
+            transport: None,
+            profile: Some(p.clone()),
+            cache: None,
+            memory: Arc::default(),
+            insecure: false,
+            verbose: 0,
+        };
+        let set = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../spec/tsl-detached/testdata/prod/ECC-RSA_TSL");
+        let config = TrustConfig::preset_prod();
+        let transport = ti_pki::load::FileTransport::new(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../ti-pki/src/roots-prod.json"),
+            set.with_extension("xml"),
+            set.with_extension("sig"),
+        );
+        let filler = CachingLoader::new(
+            HttpLoader::new(&config, transport, SystemClock),
+            session.store(),
+            SystemClock,
+            CachePolicy::default(),
+        );
+        block_on(filler.load_all()).unwrap();
+        session
+    }
+
+    /// The wiring of `Session::load`: it reads the kept state into the check, and keeps
+    /// the state of the list it verified.
+    #[test]
+    fn session_load_checks_against_and_keeps_the_tsl_state() {
+        let dir = scratch("session");
+        let p = profile(&dir, None);
+        let session = fixture_session(&p);
+        let config = TrustConfig::preset_prod();
+        let at = Some(Timestamp::parse_rfc3339(CAPTURED_AT).unwrap());
+        let store = TslStateStore::for_config(&p, &config, 0);
+
+        let material = session
+            .load_with_state(&config, Tier::Prod, at, Some(&store))
+            .unwrap();
+        assert_eq!(store.read().unwrap(), material.tsl_state, "kept");
+
+        let newer = state(20_000);
+        store.write(&newer).unwrap();
+        let Err(error) = session.load_with_state(&config, Tier::Prod, at, Some(&store)) else {
+            panic!("an older list must be rejected");
+        };
+        assert!(error.to_string().contains("tsl_id_incorrect"), "{error}");
+        assert_eq!(store.read().unwrap(), Some(newer));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn no_state_is_kept_or_checked_without_a_store() {
+        assert!(block_on(with_kept_state(None, verify_fixture)).is_ok());
     }
 
     #[test]
