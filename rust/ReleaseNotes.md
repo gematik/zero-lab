@@ -37,7 +37,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   chooses `profiles/NAME` below them, created on first use; no profile is remembered
   between runs and no name is reserved. For a throwaway run use `--profile "$(uuidgen)"`
   or `TI_STATE_DIR=$(mktemp -d) TI_CACHE_DIR=$(mktemp -d)`.
-- The TSL state is kept on every run without setup, so an older TSL is rejected from the
+- The TSL state is kept on every run without setup, except with `--at`, so an older TSL is rejected from the
   first verified list on. A corrupt TSL state file is refused with `state_file_failed`
   naming it, where it was ignored.
 - Comfort IDs lie unencrypted in private files (mode 0600 in a directory of mode 0700), no

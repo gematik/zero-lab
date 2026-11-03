@@ -48,10 +48,10 @@ or stdin.
 | --- | --- |
 | 0 | success; for a verification: valid, or the PIN was accepted |
 | 1 | a verification ran and the result is not valid, or the PIN was not accepted (the report is still on stdout) |
-| 2 | wrong arguments, the environment cannot be told, no usable connector configuration, an output file that exists, or a store problem the user can fix |
+| 2 | wrong arguments, the environment cannot be told, no usable connector configuration, or an output file that exists |
 | 3 | trust material unavailable or failed verification, or a remote party (server, Konnektor, IDP-Dienst, FHIR-Directory) did not answer or refused the call |
 | 4 | input unreadable or without the expected content, or a key that cannot sign |
-| 5 | output could not be written, or the store was busy or failed |
+| 5 | output, a state file or the cache could not be written or read |
 
 On failure with `--format json`, stderr carries
 `{"schema":1,"error":{"kind","message","hint"}}`. Branch on `kind` and the exit code,
@@ -130,7 +130,8 @@ never on `message`. `hint` says what to do, when there is something.
   answers and errors are not cached. Every command that checks OCSP uses it.
 - `{bin} cache clear` empties the profile's cache.
 - State is kept in the profile's state directory without any setup: the TSL seen last
-  (`tsl/ID.json`, not secret; it keeps an older TSL rejected) and comfort IDs
+  (`tsl/ID.json`, not secret; it keeps an older TSL rejected, except in a run with `--at`,
+  which neither reads nor writes it) and comfort IDs
   (`comfort/KONNEKTOR/CARD`). A corrupt or unwritable state file is `state_file_failed`
   (exit 5) naming the file; removing a corrupt TSL state file restarts from the next
   verified TSL. No token and no other secret is written to disk.

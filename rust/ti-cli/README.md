@@ -303,7 +303,8 @@ are written whole by renaming a temporary file; a put removes entries not writte
 days. `ti cache clear` empties the cache and leaves the state alone.
 
 The state holds the TSL seen last and comfort signature IDs. The TSL state is kept on
-every run without any setup, so an older list stays rejected; it is not secret. A
+every run without any setup, except with `--at`, which neither reads nor writes it
+(a past instant may need an older list), so an older list stays rejected; it is not secret. A
 corrupt TSL state file is an error that names the file (`state_file_failed`); removing it
 restarts from the next verified TSL.
 
