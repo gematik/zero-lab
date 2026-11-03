@@ -21,7 +21,12 @@
 
 package pkcs12
 
-import "github.com/gematik/zero-lab/go/pkcs12/internal/syntax"
+import (
+	"crypto/x509"
+	"encoding/asn1"
+
+	"github.com/gematik/zero-lab/go/pkcs12/internal/syntax"
+)
 
 // Errors returned by this package. Callers test with errors.Is; the wrapped message adds the detail.
 var (
@@ -47,13 +52,22 @@ var (
 
 // The identifiers [EncodeOptions] takes.
 var (
-	OIDAes128CBC = syntax.OIDAes128CBC
-	OIDAes192CBC = syntax.OIDAes192CBC
-	OIDAes256CBC = syntax.OIDAes256CBC
-	OIDSHA256    = syntax.OIDSHA256
-	OIDSHA384    = syntax.OIDSHA384
-	OIDSHA512    = syntax.OIDSHA512
+	OIDAes128CBC = publicOID(syntax.OIDAes128CBC)
+	OIDAes192CBC = publicOID(syntax.OIDAes192CBC)
+	OIDAes256CBC = publicOID(syntax.OIDAes256CBC)
+	OIDSHA256    = publicOID(syntax.OIDSHA256)
+	OIDSHA384    = publicOID(syntax.OIDSHA384)
+	OIDSHA512    = publicOID(syntax.OIDSHA512)
 )
+
+// publicOID panics on an identifier x509.OID cannot hold, which none of the constants above is.
+func publicOID(id asn1.ObjectIdentifier) x509.OID {
+	public, err := x509.OIDFromASN1OID(id)
+	if err != nil {
+		panic(err)
+	}
+	return public
+}
 
 // PFX is a parsed PKCS#12 file (RFC 7292 Section 4), before anything inside its authSafe is read.
 type PFX = syntax.PFX

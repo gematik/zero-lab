@@ -1,8 +1,8 @@
 # ti-pkcs12
 
 PKCS#12 (RFC 7292) decoding for the identities of the gematik Telematikinfrastruktur
-(TI): the `.p12` files of SMC-B, HBA and component test cards and of soft keys. A port of
-`go/pkcs12`, without its OpenSSL dependency.
+(TI): the `.p12` files of SMC-B, HBA and component test cards and of soft keys. It and
+`go/pkcs12` are held to the same specification, `spec/pkcs12`.
 
 ```rust,no_run
 # fn demo(bytes: &[u8]) -> Result<(), ti_pkcs12::Error> {
@@ -21,8 +21,7 @@ cargo run -p ti-pkcs12 --example info -- identity.p12 [PASSWORD]   # password de
 ## What it reads
 
 - **DER and BER.** Java keystores and card vendors write indefinite lengths and
-  constructed strings. `der`'s BER mode decodes them, so, unlike the Go module, no
-  `openssl -legacy` conversion is needed. The MAC is checked over the auth-safe octets
+  constructed strings. `der`'s BER mode decodes them. The MAC is checked over the auth-safe octets
   as received, before anything inside is parsed.
 - **Integrity:** the password mode with HMAC-SHA-1, -224, -256, -384 or -512 and the
   PKCS#12 KDF (RFC 7292 Appendix B).
@@ -47,8 +46,8 @@ With the `encode` feature, `encode` writes a file as OpenSSL 3 does by default:
 - an HMAC-SHA-256 MAC;
 - attributes kept.
 
-Such files need no `-legacy` in OpenSSL 3, and the Go module decodes them without its
-OpenSSL conversion. The caller supplies the randomness for salts and IVs, so the crate
+Such files need no `-legacy` in OpenSSL 3, and `pkcs12.Decode` of `go/pkcs12` reads them.
+The caller supplies the randomness for salts and IVs, so the crate
 has no OS dependency.
 
 The crate builds for `wasm32-unknown-unknown`.
@@ -61,8 +60,8 @@ The fixtures are those of `go/pkcs12`, copied unchanged and pinned by SHA-256:
 - two BER vendor files (`legacy/`).
 
 Every one decodes to the certificates, keys and pairs the Go decoder reports
-(`tests/fixtures/go-baseline.json`). One exception for the BER files: Go reads them
-through an OpenSSL re-export, which rewrites attributes and re-encodes keys. There, the
+(`tests/fixtures/go-baseline.json`). One exception for the BER files: that baseline was
+written through an OpenSSL re-export, which rewrites attributes and re-encodes keys. There, the
 attributes and private scalars are pinned to what `openssl pkcs12 -info` shows in the
 originals.
 

@@ -91,6 +91,16 @@ func testBags(t testing.TB) *pkcs12.Bags {
 	}
 }
 
+// publicOID gives an identifier the form EncodeOptions takes.
+func publicOID(t *testing.T, id asn1.ObjectIdentifier) x509.OID {
+	t.Helper()
+	public, err := x509.OIDFromASN1OID(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return public
+}
+
 func TestEncodeDecode(t *testing.T) {
 	bags := testBags(t)
 	password := []byte("päss😀")
@@ -105,7 +115,7 @@ func TestEncodeDecode(t *testing.T) {
 		"SHA-384":            func(o *pkcs12.EncodeOptions) { o.MacAlgorithm = pkcs12.OIDSHA384 },
 		"SHA-512":            func(o *pkcs12.EncodeOptions) { o.MacAlgorithm = pkcs12.OIDSHA512 },
 		"no MAC":             func(o *pkcs12.EncodeOptions) { o.IncludeMAC = false },
-		"plain certificates": func(o *pkcs12.EncodeOptions) { o.CertEncryption = nil },
+		"plain certificates": func(o *pkcs12.EncodeOptions) { o.CertEncryption = x509.OID{} },
 		"one iteration":      func(o *pkcs12.EncodeOptions) { o.Iterations = 1 },
 	}
 	for name, modify := range options {
@@ -233,9 +243,11 @@ func TestEncodeRejects(t *testing.T) {
 		bags   *pkcs12.Bags
 	}{
 		"zero iterations":     {modify: func(o *pkcs12.EncodeOptions) { o.Iterations = 0 }},
-		"SHA-1 MAC":           {modify: func(o *pkcs12.EncodeOptions) { o.MacAlgorithm = syntax.OIDSHA1 }},
-		"Triple DES keys":     {modify: func(o *pkcs12.EncodeOptions) { o.KeyEncryption = syntax.OIDPBEWithSHAAnd3KeyTripleDESCBC }},
-		"unknown cipher":      {modify: func(o *pkcs12.EncodeOptions) { o.CertEncryption = asn1.ObjectIdentifier{1, 2, 3} }},
+		"no KeyEncryption":    {modify: func(o *pkcs12.EncodeOptions) { o.KeyEncryption = x509.OID{} }},
+		"no MacAlgorithm":     {modify: func(o *pkcs12.EncodeOptions) { o.MacAlgorithm = x509.OID{} }},
+		"SHA-1 MAC":           {modify: func(o *pkcs12.EncodeOptions) { o.MacAlgorithm = publicOID(t, syntax.OIDSHA1) }},
+		"Triple DES keys":     {modify: func(o *pkcs12.EncodeOptions) { o.KeyEncryption = publicOID(t, syntax.OIDPBEWithSHAAnd3KeyTripleDESCBC) }},
+		"unknown cipher":      {modify: func(o *pkcs12.EncodeOptions) { o.CertEncryption = publicOID(t, asn1.ObjectIdentifier{1, 2, 3}) }},
 		"non-BMP name":        {bags: &pkcs12.Bags{Certificates: []pkcs12.CertificateBag{{Raw: bags.Certificates[0].Raw, FriendlyName: "😀"}}}},
 		"nil bags":            {bags: nil},
 		"too many iterations": {modify: func(o *pkcs12.EncodeOptions) { o.Iterations = 1 << 30 }},
@@ -263,7 +275,7 @@ func TestEncodeReadByOpenSSL(t *testing.T) {
 		t.Skip("openssl not installed")
 	}
 	bags := testBags(t)
-	for _, mac := range []asn1.ObjectIdentifier{pkcs12.OIDSHA256, pkcs12.OIDSHA512} {
+	for _, mac := range []x509.OID{pkcs12.OIDSHA256, pkcs12.OIDSHA512} {
 		opts := pkcs12.DefaultEncodeOptions()
 		opts.MacAlgorithm = mac
 		data, err := pkcs12.EncodeWithOptions(bags, []byte("pass"), opts)
@@ -294,8 +306,8 @@ func TestEncodeReadByOpenSSL(t *testing.T) {
 	}
 }
 
-func macName(oid asn1.ObjectIdentifier) string {
-	if oid.Equal(pkcs12.OIDSHA512) {
+func macName(id x509.OID) string {
+	if id.Equal(pkcs12.OIDSHA512) {
 		return "sha512"
 	}
 	return "sha256"
@@ -380,7 +392,7 @@ func TestIterationLimits(t *testing.T) {
 	alg := &syntax.EncryptionAlgorithm{
 		Algorithm: syntax.OIDPBES2,
 		KDF:       &syntax.PBKDF2Params{Salt: []byte("salt"), Iterations: 1 << 30, PRF: syntax.OIDHMACSHA256},
-		Cipher:    &syntax.CipherParams{Algorithm: pkcs12.OIDAes256CBC, IV: make([]byte, 16)},
+		Cipher:    &syntax.CipherParams{Algorithm: syntax.OIDAes256CBC, IV: make([]byte, 16)},
 	}
 	if _, err := syntax.DecryptPBES2(alg, []byte("x"), make([]byte, 16)); !errors.Is(err, pkcs12.ErrLimitExceeded) {
 		t.Errorf("PBKDF2: %v, want ErrLimitExceeded", err)
@@ -400,7 +412,7 @@ func TestDecryptPBES2Algorithms(t *testing.T) {
 		}
 	}
 	unknown := asn1.ObjectIdentifier{1, 2, 840, 113549, 2, 127}
-	if _, err := syntax.DecryptPBES2(alg(unknown, pkcs12.OIDAes256CBC), nil, make([]byte, 16)); !errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
+	if _, err := syntax.DecryptPBES2(alg(unknown, syntax.OIDAes256CBC), nil, make([]byte, 16)); !errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
 		t.Errorf("unknown PRF: %v, want ErrUnsupportedAlgorithm", err)
 	}
 	if _, err := syntax.DecryptPBES2(alg(syntax.OIDHMACSHA256, unknown), nil, make([]byte, 16)); !errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
@@ -408,10 +420,10 @@ func TestDecryptPBES2Algorithms(t *testing.T) {
 	}
 	// Up to v0.99.3 this package wrote the digest OID as PRF; such files
 	// must stay readable.
-	if _, err := syntax.DecryptPBES2(alg(pkcs12.OIDSHA256, pkcs12.OIDAes256CBC), nil, make([]byte, 16)); errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
+	if _, err := syntax.DecryptPBES2(alg(syntax.OIDSHA256, syntax.OIDAes256CBC), nil, make([]byte, 16)); errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
 		t.Errorf("digest OID as PRF: %v", err)
 	}
-	keyLength := alg(syntax.OIDHMACSHA256, pkcs12.OIDAes256CBC)
+	keyLength := alg(syntax.OIDHMACSHA256, syntax.OIDAes256CBC)
 	keyLength.KDF.KeyLength = 16
 	if _, err := syntax.DecryptPBES2(keyLength, nil, make([]byte, 16)); !errors.Is(err, pkcs12.ErrParse) {
 		t.Errorf("keyLength that does not fit: %v, want ErrParse", err)

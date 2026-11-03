@@ -27,6 +27,7 @@ import (
 	"crypto/cipher"
 	"crypto/pbkdf2"
 	"crypto/rand"
+	"crypto/x509"
 	"encoding/asn1"
 	"errors"
 	"fmt"
@@ -43,18 +44,18 @@ import (
 type EncodeOptions struct {
 	// KeyEncryption is the PBES2 cipher for private keys: OIDAes128CBC,
 	// OIDAes192CBC or OIDAes256CBC.
-	KeyEncryption asn1.ObjectIdentifier
+	KeyEncryption x509.OID
 
 	// CertEncryption is the PBES2 cipher for the certificate safe, one of the
-	// AES OIDs; nil writes the certificates unencrypted.
-	CertEncryption asn1.ObjectIdentifier
+	// AES OIDs; empty writes the certificates unencrypted.
+	CertEncryption x509.OID
 
 	// Iterations is the PBKDF2 and MAC iteration count.
 	Iterations int
 
 	// MacAlgorithm is the MAC digest: OIDSHA256, OIDSHA384 or OIDSHA512. The
 	// PBKDF2 PRF is HMAC with the same digest.
-	MacAlgorithm asn1.ObjectIdentifier
+	MacAlgorithm x509.OID
 
 	// KeyPassword and CertPassword encrypt keys and certificates; nil means
 	// the password passed to EncodeWithOptions.
@@ -121,7 +122,7 @@ func EncodeWithOptions(bags *Bags, password []byte, opts *EncodeOptions) ([]byte
 				b.SetError(err)
 				return
 			}
-			if o.CertEncryption == nil {
+			if o.CertEncryption.Equal(x509.OID{}) {
 				addDataContentInfo(b, certs)
 				return
 			}
@@ -155,35 +156,41 @@ type encodeParams struct {
 	prfOID     asn1.ObjectIdentifier
 }
 
-func encodeCipher(oid asn1.ObjectIdentifier, what string) (syntax.PBES2Cipher, error) {
-	if c, ok := syntax.PBES2CipherFor(oid); ok {
-		return c, nil
+// encodeCipher resolves a public identifier to the one this package writes: x509.OID has no way back to
+// encoding/asn1, and only the AES ciphers may be written (P12-054).
+func encodeCipher(id x509.OID, what string) (asn1.ObjectIdentifier, syntax.PBES2Cipher, error) {
+	for _, known := range []asn1.ObjectIdentifier{syntax.OIDAes128CBC, syntax.OIDAes192CBC, syntax.OIDAes256CBC} {
+		if id.EqualASN1OID(known) {
+			if c, ok := syntax.PBES2CipherFor(known); ok {
+				return known, c, nil
+			}
+		}
 	}
-	return syntax.PBES2Cipher{}, fmt.Errorf("%w: %s %v (want AES-CBC)", ErrUnsupportedAlgorithm, what, oid)
+	return nil, syntax.PBES2Cipher{}, fmt.Errorf("%w: %s %v (want AES-CBC)", ErrUnsupportedAlgorithm, what, id)
 }
 
 func newEncodeParams(o *EncodeOptions) (*encodeParams, error) {
 	if err := syntax.CheckIterations(o.Iterations); err != nil {
 		return nil, err
 	}
-	p := &encodeParams{iterations: o.Iterations, keyOID: o.KeyEncryption, certOID: o.CertEncryption}
+	p := &encodeParams{iterations: o.Iterations}
 	var err error
-	if p.keyCipher, err = encodeCipher(o.KeyEncryption, "KeyEncryption"); err != nil {
+	if p.keyOID, p.keyCipher, err = encodeCipher(o.KeyEncryption, "KeyEncryption"); err != nil {
 		return nil, err
 	}
-	if o.CertEncryption != nil {
-		if p.certCipher, err = encodeCipher(o.CertEncryption, "CertEncryption"); err != nil {
+	if !o.CertEncryption.Equal(x509.OID{}) {
+		if p.certOID, p.certCipher, err = encodeCipher(o.CertEncryption, "CertEncryption"); err != nil {
 			return nil, err
 		}
 	}
 	// SHA-1 and SHA-224 remain readable but are not written.
 	switch {
 	case o.MacAlgorithm.Equal(OIDSHA256):
-		p.macOID, p.prfOID = OIDSHA256, syntax.OIDHMACSHA256
+		p.macOID, p.prfOID = syntax.OIDSHA256, syntax.OIDHMACSHA256
 	case o.MacAlgorithm.Equal(OIDSHA384):
-		p.macOID, p.prfOID = OIDSHA384, syntax.OIDHMACSHA384
+		p.macOID, p.prfOID = syntax.OIDSHA384, syntax.OIDHMACSHA384
 	case o.MacAlgorithm.Equal(OIDSHA512):
-		p.macOID, p.prfOID = OIDSHA512, syntax.OIDHMACSHA512
+		p.macOID, p.prfOID = syntax.OIDSHA512, syntax.OIDHMACSHA512
 	default:
 		return nil, fmt.Errorf("%w: MacAlgorithm %v (want SHA-256, SHA-384 or SHA-512)", ErrUnsupportedAlgorithm, o.MacAlgorithm)
 	}
