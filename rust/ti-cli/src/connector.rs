@@ -48,8 +48,8 @@ pub struct Session {
     pub dotkon: Dotkon,
     /// The configuration's name, e.g. `default`.
     pub name: String,
-    /// The store profile in effect, which keeps comfort IDs.
-    pub selected: crate::store::profile::Selected,
+    /// The profile in effect, whose state directory keeps comfort IDs.
+    pub profile: crate::profile::Profile,
 }
 
 /// `$XDG_CONFIG_HOME/telematik/connectors`, or `~/.config/…` on every platform, as the
@@ -191,7 +191,7 @@ pub fn open(args: &ConnectorArgs, global: &GlobalArgs, out: &Output) -> Result<S
         connector,
         dotkon,
         name,
-        selected: crate::store::profile::Selected::resolve(global)?,
+        profile: crate::profile::Profile::resolve(global)?,
     })
 }
 

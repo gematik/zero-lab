@@ -269,8 +269,10 @@ impl CliError {
             CliError::CacheDir(_) => Some("set --cache-dir or TI_CACHE_DIR"),
             CliError::Store { file, error, .. } => store_hint(*file, error.code()),
             CliError::State { .. } => Some(
-                "the file named above keeps the TSL rollback check across runs; removing it \
-                 restarts from the next verified TSL",
+                "the file named above is state ti keeps across runs. The TSL state is the \
+                 rollback check: removing it restarts from the next verified TSL. A comfort \
+                 ID cannot be recovered: after fixing the mode as the message says, or \
+                 removing the file, `connector comfort activate` makes a new one",
             ),
             CliError::ConnectorConfig(_)
             | CliError::Connector(ti_connector_client::Error::Config(_)) => Some(

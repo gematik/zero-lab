@@ -15,6 +15,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4.13"
 ti-cli = { path = ".." }
+ti-connector-client = { path = "../../ti-connector-client" }
 
 [[bin]]
 name = "cache_entry"
@@ -26,6 +27,13 @@ bench = false
 [[bin]]
 name = "tsl_state"
 path = "fuzz_targets/tsl_state.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "comfort_id"
+path = "fuzz_targets/comfort_id.rs"
 test = false
 doc = false
 bench = false

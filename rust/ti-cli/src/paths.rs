@@ -21,22 +21,11 @@
  * find details in the "Readme" file.
  */
 
-//! The platform's per-user state and cache homes, and where versions of ti before the
-//! shared store kept their state.
+//! The platform's per-user state and cache homes.
 
 use std::path::PathBuf;
 
 use crate::error::CliError;
-
-/// The folder all TI tools share, and this tool's name within it.
-const GROUP: &str = "telematik";
-const TOOL: &str = "ti";
-
-/// Where versions before the store kept TSL state and comfort IDs: read once, to move
-/// them into the profile's state.
-pub fn legacy_state_dir() -> Result<PathBuf, CliError> {
-    state_home().map(|base| base.join(GROUP).join(TOOL))
-}
 
 /// The per-user home for state files; the tool's own folder is `telematik/ti` below it.
 pub fn state_home() -> Result<PathBuf, CliError> {
@@ -85,22 +74,4 @@ fn default_cache_base() -> Result<PathBuf, CliError> {
         .filter(|home| home.is_absolute())
         .map(|home| home.join(".cache"))
         .ok_or(CliError::CacheDir("no home directory"))
-}
-
-#[cfg(test)]
-mod tests {
-    use std::path::Path;
-
-    use super::*;
-
-    #[test]
-    fn legacy_state_ends_in_the_tool_folder() {
-        if let Ok(dir) = legacy_state_dir() {
-            assert!(
-                dir.ends_with(Path::new("telematik").join("ti")),
-                "{}",
-                dir.display()
-            );
-        }
-    }
 }

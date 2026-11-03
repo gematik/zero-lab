@@ -1648,6 +1648,7 @@ version = "0.0.0"
 dependencies = [
  "libfuzzer-sys",
  "ti-cli",
+ "ti-connector-client",
 ]
 
 [[package]]
