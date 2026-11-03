@@ -1,5 +1,52 @@
 # Release Notes
 
+# Release go/kv v0.1.0
+
+### breaking
+- `Store` gains `SetIfAbsent`, and loses `GetItem`; `Item` and `Entry.Metadata` are gone. The Postgres
+  column stays, so that older replicas keep working during an upgrade.
+
+### features
+- `NewSealed` encrypts and authenticates every value, bound to its key, purpose and key ID, with key IDs
+  for rotation without a restart; `Keyring`, `ParseKeyring` and `LoadKeyring` hold the keys.
+- `ReplayCache`, and `Reap` to run `Cleanup` at an interval.
+
+### verified
+- `just check` across all modules passed on be5aceb; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`.
+- The Postgres suite passed on 2026-11-03 against a throwaway `postgres:17-alpine`: 12 tests.
+- The tag is on `chore/go-consolidation`, not yet on `main`.
+
+# Release go/nonce v0.22.0
+
+### breaking
+- Nonces are sealed values with an expiry, so issuing one writes nothing. `Service` is now a type made by
+  `New`, and `Redeem` takes a context. `NewKVService`, `HashicorpNonceService` and `Options` are gone.
+- Single use holds through a `Record` on acceptance, and a store outage fails closed.
+
+### features
+- `Source`, from `NewSource`, for nonces that are only checked for validity, and `NewEphemeralKeys`.
+
+### verified
+- `just check` across all modules passed on be5aceb; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`. The development guide lists no gated suite as required for `nonce`.
+- The tag is on `chore/go-consolidation`, not yet on `main`.
+
+# Release go/openid v0.52.0
+
+The first release of `go/openid`, which takes over from `go/oauth`, whose last tag is v0.51.0 and stays
+resolvable. The number continues from it.
+
+### breaking, for a port from go/oauth
+- A new module path: the `oidc` package is the root of `go/openid`, with the PKCE and assertion names in
+  it, and `oauth/providers` is `openid/providers`. The `oidc` provider type and YAML key stay.
+- JOSE is go-jose, not jwx, so keys in the API are `jose.JSONWebKey` and `jose.JSONWebKeySet`.
+
+### verified
+- `just check` across all modules passed on be5aceb; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`. The development guide lists no gated suite as required for `openid`.
+- The tag is on `chore/go-consolidation`, not yet on `main`.
+
 # Release go/tipki v0.31.1
 
 ### changes
