@@ -130,6 +130,14 @@ pub enum CliError {
         /// The result code and what it is about.
         error: ti_store::store::StoreError,
     },
+    /// A state file, such as the TSL state, could not be read, parsed or written.
+    #[error("state file {path}: {reason}")]
+    State {
+        /// The file.
+        path: String,
+        /// What went wrong.
+        reason: String,
+    },
     /// No usable `.kon` file, or one the transport cannot use.
     #[error("{0}")]
     ConnectorConfig(String),
@@ -198,6 +206,7 @@ impl CliError {
             CliError::UnknownSchema(_) => "unknown_schema",
             CliError::CacheDir(_) => "cache_dir_unknown",
             CliError::Store { error, .. } => store_kind(error.code()),
+            CliError::State { .. } => "state_file_failed",
             CliError::ConnectorConfig(_)
             | CliError::Connector(ti_connector_client::Error::Config(_)) => "connector_config",
             CliError::Connector(ti_connector_client::Error::Transport(_)) => {
@@ -259,6 +268,10 @@ impl CliError {
             CliError::UnknownSchema(_) => Some("the schema command without COMMAND lists them all"),
             CliError::CacheDir(_) => Some("set --cache-dir or TI_CACHE_DIR"),
             CliError::Store { file, error, .. } => store_hint(*file, error.code()),
+            CliError::State { .. } => Some(
+                "the file named above keeps the TSL rollback check across runs; removing it \
+                 restarts from the next verified TSL",
+            ),
             CliError::ConnectorConfig(_)
             | CliError::Connector(ti_connector_client::Error::Config(_)) => Some(
                 "`connector configs` lists the configurations; select one with -c NAME or `connector use NAME`",
@@ -355,7 +368,7 @@ impl CliError {
             | CliError::Signing(_)
             | CliError::Idpd(_)
             | CliError::Directory(_) => Exit::Remote,
-            CliError::Output(_) => Exit::Output,
+            CliError::Output(_) | CliError::State { .. } => Exit::Output,
             CliError::Store { error, .. } => match error.code() {
                 "busy" | "backend_error" => Exit::Output,
                 _ => Exit::Usage,
@@ -620,6 +633,10 @@ mod tests {
             CliError::ServerUnreachable("a".into()),
             CliError::HttpSetup("a".into()),
             CliError::CacheDir("a"),
+            CliError::State {
+                path: "a".into(),
+                reason: "a".into(),
+            },
         ]
     }
 
@@ -727,6 +744,7 @@ mod tests {
             | CliError::HttpSetup(_)
             | CliError::CacheDir(_)
             | CliError::Store { .. }
+            | CliError::State { .. }
             | CliError::ConnectorConfig(_)
             | CliError::Connector(_)
             | CliError::CardRestricted { .. }

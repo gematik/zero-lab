@@ -109,6 +109,7 @@ never on `message`. `hint` says what to do, when there is something.
 | `claims_invalid` | 4 | the claims are not a JSON object |
 | `signature_malformed` | 4 | a signature neither DER nor r‖s |
 | `output_failed` | 5 | stdout or a file could not be written |
+| `state_file_failed` | 5 | the TSL state file could not be read, parsed or written; removing it restarts from the next verified TSL |
 | `store_busy` | 5 | the database stayed locked |
 | `store_backend_error` | 5 | an I/O or database error of the store |
 

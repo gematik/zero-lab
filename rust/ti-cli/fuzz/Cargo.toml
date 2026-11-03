@@ -22,3 +22,10 @@ path = "fuzz_targets/cache_entry.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "tsl_state"
+path = "fuzz_targets/tsl_state.rs"
+test = false
+doc = false
+bench = false

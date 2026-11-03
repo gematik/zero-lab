@@ -47,15 +47,12 @@ use ti_pki::{Clock, Tier, Timestamp, TrustConfig, TrustStore, roots};
 
 use crate::block::block_on;
 use crate::cli::GlobalArgs;
-use crate::error::{CliError, StoreFile};
+use crate::error::CliError;
 use crate::file_cache::FileCache;
+use crate::files::{create_private_dir, path_component, write_atomic};
 use crate::http::{self, Http};
 use crate::output::{Output, warning};
-use crate::paths;
 use crate::profile::Profile;
-use crate::store::profile::{ProfileStore, Selected};
-use ti_store::store::StoreError;
-use ti_store::store::registry::TSL_STATE;
 
 /// How long downloaded material may be used without the network. Production keeps
 /// ti-pki's maximum; elsewhere a week, so `--offline` stays useful on a laptop.
@@ -81,127 +78,46 @@ impl Clock for At {
     }
 }
 
-/// The `Id` and sequence number of the TSL last used from one URL, sealed in the
-/// profile's state: `cache clear` leaves it, so an older list stays rejected (TSLSIG-053).
-/// Without a keyring it is not kept, with a warning that names the fix; a state or
-/// keyring that does not open is an error (STORE-128). Files of earlier versions in the
-/// legacy state directory are read while the profile has no keyring, and moved into the
-/// store once it has one.
+/// The `Id` and sequence number of the TSL last used from one URL, kept as a plain file
+/// in the profile's state directory: `cache clear` leaves it, so an older list stays
+/// rejected (TSLSIG-053). It needs no setup, and it is never dropped silently: a file
+/// that cannot be read, parsed or written is an error, since a rollback check that
+/// quietly stopped working would be worse than a command that stops.
 struct TslStateStore {
-    store: Option<ProfileStore>,
-    profile: String,
-    id: String,
-    legacy: Option<PathBuf>,
+    path: PathBuf,
     verbose: u8,
 }
 
-/// The payload's version (STORE-110), before the state as JSON.
-const TSL_STATE_V1: u8 = 1;
-
 impl TslStateStore {
     /// The state of `config`'s TSL, keyed as its cache entry is.
-    fn for_config(
-        selected: &Selected,
-        config: &TrustConfig,
-        verbose: u8,
-    ) -> Result<Self, CliError> {
+    fn for_config(profile: &Profile, config: &TrustConfig, verbose: u8) -> Self {
         let key = Artifact::Tsl.cache_key(&config.tsl_url);
-        let id = key.rsplit('/').next().unwrap_or(&key).to_owned();
-        let legacy = paths::legacy_state_dir()
-            .ok()
-            .map(|dir| dir.join("tsl").join(format!("{id}.json")));
-        Self::open(selected, id, legacy, verbose)
+        Self::new(profile, key.rsplit('/').next().unwrap_or(&key), verbose)
     }
 
-    fn open(
-        selected: &Selected,
-        id: String,
-        legacy: Option<PathBuf>,
-        verbose: u8,
-    ) -> Result<Self, CliError> {
-        let store = if selected.has_keyring() {
-            Some(selected.open_state()?)
-        } else {
-            None
-        };
-        let state = TslStateStore {
-            store,
-            profile: selected.profile.name.clone(),
-            id,
-            legacy,
+    fn new(profile: &Profile, id: &str, verbose: u8) -> Self {
+        TslStateStore {
+            path: profile
+                .state_dir
+                .join("tsl")
+                .join(format!("{}.json", path_component(id))),
             verbose,
-        };
-        state.import_legacy()?;
-        Ok(state)
-    }
-
-    /// Moves a file of an earlier version into the store, once.
-    fn import_legacy(&self) -> Result<(), CliError> {
-        let (Some(_), Some(path)) = (&self.store, &self.legacy) else {
-            return Ok(());
-        };
-        let Some(old) = read_legacy(path) else {
-            return Ok(());
-        };
-        if self.get()?.is_none() {
-            self.put(&old)?;
-            self.verbose(format_args!(
-                "TSL state: moved {} into the profile's state",
-                path.display()
-            ));
-        }
-        let _ = std::fs::remove_file(path);
-        Ok(())
-    }
-
-    fn get(&self) -> Result<Option<TslState>, CliError> {
-        let Some(store) = &self.store else {
-            return Ok(None);
-        };
-        match block_on(store.get(&TSL_STATE, self.id.as_bytes(), crate::store::now())) {
-            Ok(stored) => Ok(stored
-                .payload
-                .split_first()
-                .filter(|(v, _)| **v == TSL_STATE_V1)
-                .and_then(|(_, json)| serde_json::from_slice(json).ok())),
-            Err(StoreError::NotFound) => Ok(None),
-            Err(error) => Err(self.fail(error)),
         }
     }
 
-    fn put(&self, state: &TslState) -> Result<(), CliError> {
-        let Some(store) = &self.store else {
-            return Ok(());
-        };
-        let mut payload = vec![TSL_STATE_V1];
-        payload.extend(serde_json::to_vec(state)?);
-        block_on(store.put(
-            &TSL_STATE,
-            self.id.as_bytes(),
-            &payload,
-            &[],
-            None,
-            crate::store::now(),
-        ))
-        .map(drop)
-        .map_err(|error| self.fail(error))
-    }
-
-    fn fail(&self, error: StoreError) -> CliError {
-        CliError::Store {
-            profile: self.profile.clone(),
-            file: StoreFile::Record,
-            path: "tsl.state".into(),
-            error,
+    fn fail(&self, reason: impl std::fmt::Display) -> CliError {
+        CliError::State {
+            path: self.path.display().to_string(),
+            reason: reason.to_string(),
         }
     }
 
     /// The stored state; none before the first run.
     fn read(&self) -> Result<Option<TslState>, CliError> {
-        let state = if self.store.is_some() {
-            self.get()?
-        } else {
-            self.legacy.as_deref().and_then(read_legacy)
+        let state = match std::fs::read(&self.path) {
+            Ok(bytes) => Some(parse_tsl_state(&bytes).map_err(|error| self.fail(error))?),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(self.fail(error)),
         };
         match &state {
             Some(s) => self.verbose(format_args!("TSL state: #{} {}", s.sequence_number, s.id)),
@@ -211,18 +127,16 @@ impl TslStateStore {
     }
 
     fn write(&self, state: &TslState) -> Result<(), CliError> {
-        if self.store.is_none() {
-            warning(format_args!(
-                "profile {} has no keyring: the TSL seen now is not kept, so an older list is \
-                 not rejected next time; run `ti profile create`",
-                self.profile
-            ));
-            return Ok(());
+        if let Some(dir) = self.path.parent() {
+            create_private_dir(dir).map_err(|error| self.fail(error))?;
         }
-        self.put(state)?;
+        let json = serde_json::to_vec(state).map_err(|error| self.fail(error))?;
+        write_atomic(&self.path, &json).map_err(|error| self.fail(error))?;
         self.verbose(format_args!(
-            "TSL state: kept #{} {}",
-            state.sequence_number, state.id
+            "TSL state: kept #{} {} in {}",
+            state.sequence_number,
+            state.id,
+            self.path.display()
         ));
         Ok(())
     }
@@ -234,9 +148,13 @@ impl TslStateStore {
     }
 }
 
-/// A TSL state file of an earlier version; an unreadable one counts as none.
-fn read_legacy(path: &std::path::Path) -> Option<TslState> {
-    serde_json::from_slice(&std::fs::read(path).ok()?).ok()
+/// A TSL state file's content.
+///
+/// # Errors
+///
+/// The bytes are not the JSON of a [`TslState`].
+pub fn parse_tsl_state(bytes: &[u8]) -> Result<TslState, serde_json::Error> {
+    serde_json::from_slice(bytes)
 }
 
 /// Where the trust material came from, for the report.
@@ -328,7 +246,7 @@ impl CertRef {
 pub struct Session {
     transport: Option<Http>,
     /// The profile in effect; none when it cannot be resolved, and then nothing is kept.
-    selected: Option<Selected>,
+    profile: Option<Profile>,
     /// The profile's cache.
     cache: Option<Arc<FileCache>>,
     /// Stands in for the profile's cache when it cannot be opened.
@@ -343,7 +261,6 @@ impl Session {
     /// A session for `global`'s cache and HTTP options; with `offline`, no request is
     /// ever made. Warns on stderr when `-k` is in effect.
     pub fn new(global: &GlobalArgs, offline: bool, out: &Output) -> Result<Self, CliError> {
-        let selected = Selected::resolve(global)?;
         let profile = Profile::resolve(global)?;
         let cache = match FileCache::open(&profile) {
             Ok(cache) => Some(Arc::new(cache)),
@@ -366,7 +283,7 @@ impl Session {
         };
         Ok(Session {
             transport,
-            selected: Some(selected),
+            profile: Some(profile),
             cache,
             memory: Arc::default(),
             insecure,
@@ -397,10 +314,8 @@ impl Session {
         let clock = At(at);
         // The list seen before guards against an older one, but only for the current
         // time: a past instant may well need an older list.
-        let state = match (&self.selected, at) {
-            (Some(selected), None) => {
-                Some(TslStateStore::for_config(selected, config, self.verbose)?)
-            }
+        let state = match (&self.profile, at) {
+            (Some(profile), None) => Some(TslStateStore::for_config(profile, config, self.verbose)),
             _ => None,
         };
         let stored = match &state {
@@ -733,7 +648,6 @@ fn refused(url: &str) -> TransportError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::store::profile::tests::{TestProfile, with_keyring};
 
     fn state(id: u64) -> TslState {
         TslState {
@@ -742,69 +656,100 @@ mod tests {
         }
     }
 
-    /// STORE-023: without a keyring the TSL state of an earlier version is read and never
-    /// written or removed.
-    #[test]
-    fn tsl_state_without_a_keyring_reads_the_legacy_file_only() {
-        let p = TestProfile::new("tsl-nokeyring");
-        let legacy = p.dir.join("legacy.json");
-        std::fs::write(&legacy, serde_json::to_vec(&state(7)).unwrap()).unwrap();
-        let s = TslStateStore::open(&p.selected, "abc".into(), Some(legacy.clone()), 0).unwrap();
-        assert_eq!(s.read().unwrap(), Some(state(7)));
-        s.write(&state(8)).unwrap();
-        assert_eq!(s.read().unwrap(), Some(state(7)), "not written");
-        assert!(legacy.exists());
-        assert!(
-            !Path::new(p.selected.state_path()).exists(),
-            "no state.db made"
-        );
-    }
-
-    /// TSLSIG-053 with STORE-023: with a keyring the state is sealed in the profile, the
-    /// legacy file moved into it and removed.
-    #[test]
-    fn tsl_state_with_a_keyring_is_sealed_and_takes_over_the_legacy_file() {
-        let p = with_keyring("tsl-keyring");
-        let legacy = p.dir.join("legacy.json");
-        std::fs::write(&legacy, serde_json::to_vec(&state(7)).unwrap()).unwrap();
-        let s = TslStateStore::open(&p.selected, "abc".into(), Some(legacy.clone()), 0).unwrap();
-        assert!(!legacy.exists(), "moved");
-        assert_eq!(s.read().unwrap(), Some(state(7)));
-        s.write(&state(9)).unwrap();
-        let again = TslStateStore::open(&p.selected, "abc".into(), None, 0).unwrap();
-        assert_eq!(again.read().unwrap(), Some(state(9)));
-        let other = TslStateStore::open(&p.selected, "other".into(), None, 0).unwrap();
-        assert_eq!(other.read().unwrap(), None, "keyed by the TSL's URL");
-
-        // a new record may still be in the WAL rather than the database file
-        for suffix in ["", "-wal"] {
-            let path = format!("{}{suffix}", p.selected.state_path());
-            let raw = std::fs::read(&path).unwrap_or_default();
-            assert!(
-                !raw.windows(3).any(|w| w == b"ID9"),
-                "no state in clear in {path}"
-            );
+    fn profile(dir: &Path, name: Option<&str>) -> Profile {
+        Profile {
+            name: name.map(str::to_owned),
+            state_dir: match name {
+                Some(name) => dir.join("profiles").join(name),
+                None => dir.to_owned(),
+            },
+            cache_dir: dir.join("cache"),
         }
-        let wal = std::fs::read(format!("{}-wal", p.selected.state_path())).unwrap_or_default();
-        let db = std::fs::read(p.selected.state_path()).unwrap();
-        assert!(
-            wal.len() + db.len() > 4096,
-            "the record is somewhere in these files"
-        );
     }
 
-    /// STORE-128: a state that does not open is an error, and is left as it is.
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("ti-tsl-state-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
     #[test]
-    fn tsl_state_in_a_broken_state_db_is_an_error() {
-        let p = with_keyring("tsl-broken");
-        std::fs::write(p.selected.state_path(), [0x5a; 4096]).unwrap();
-        let Err(error) = TslStateStore::open(&p.selected, "abc".into(), None, 0) else {
-            panic!("a broken state.db must not open");
-        };
-        assert_eq!(error.kind(), "store_malformed");
+    fn tsl_state_is_kept_without_any_setup() {
+        let dir = scratch("setup");
+        let p = profile(&dir, None);
+        let store = TslStateStore::new(&p, "abc", 0);
+        assert_eq!(store.read().unwrap(), None, "none before the first run");
+        store.write(&state(7)).unwrap();
+        let file = p.state_dir.join("tsl").join("abc.json");
         assert_eq!(
-            std::fs::read(p.selected.state_path()).unwrap(),
-            [0x5a; 4096]
+            parse_tsl_state(&std::fs::read(&file).unwrap()).unwrap(),
+            state(7)
         );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// TSLSIG-053: what one run keeps is what the next run's check starts from, and a
+    /// later list replaces it.
+    #[test]
+    fn an_older_tsl_is_rejected_on_a_later_run() {
+        let dir = scratch("later-run");
+        let p = profile(&dir, Some("work"));
+        TslStateStore::new(&p, "abc", 0).write(&state(9)).unwrap();
+        let later = TslStateStore::new(&p, "abc", 0);
+        assert_eq!(later.read().unwrap(), Some(state(9)));
+        later.write(&state(10)).unwrap();
+        assert_eq!(
+            TslStateStore::new(&p, "abc", 0).read().unwrap(),
+            Some(state(10))
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_corrupt_tsl_state_is_an_error_naming_the_file() {
+        let dir = scratch("corrupt");
+        let p = profile(&dir, None);
+        let file = p.state_dir.join("tsl").join("abc.json");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, b"{\"id\":").unwrap();
+        let Err(error) = TslStateStore::new(&p, "abc", 0).read() else {
+            panic!("a corrupt state must not read as none");
+        };
+        assert_eq!(error.kind(), "state_file_failed");
+        assert!(error.to_string().contains(&file.display().to_string()));
+        assert_eq!(std::fs::read(&file).unwrap(), b"{\"id\":", "left as it is");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_unwritable_state_directory_is_an_error() {
+        let dir = scratch("unwritable");
+        let p = profile(&dir, None);
+        std::fs::create_dir_all(&p.state_dir).unwrap();
+        std::fs::write(
+            p.state_dir.join("tsl"),
+            b"a file where the directory belongs",
+        )
+        .unwrap();
+        let Err(error) = TslStateStore::new(&p, "abc", 0).write(&state(1)) else {
+            panic!("a failed write must not pass silently");
+        };
+        assert_eq!(error.kind(), "state_file_failed");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn profiles_keep_separate_tsl_state() {
+        let dir = scratch("profiles");
+        let (a, b) = (profile(&dir, Some("a")), profile(&dir, Some("b")));
+        TslStateStore::new(&a, "abc", 0).write(&state(3)).unwrap();
+        assert_eq!(TslStateStore::new(&b, "abc", 0).read().unwrap(), None);
+        assert_eq!(
+            TslStateStore::new(&a, "other", 0).read().unwrap(),
+            None,
+            "keyed by the TSL's URL"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

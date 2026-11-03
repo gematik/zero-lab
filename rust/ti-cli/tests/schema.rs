@@ -1275,6 +1275,38 @@ fn tsl_verify_offline_with_a_previous_list() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// TSLSIG-053: the state a run left is read by the next process, with no setup, and a
+/// file that does not parse stops the run instead of dropping the rollback check.
+#[test]
+fn a_corrupt_tsl_state_stops_the_next_run_naming_the_file() {
+    let cache = SeededCache::new("corrupt-tsl-state");
+    let dir = cache.0.join("state/telematik/ti/profiles/default/tsl");
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join(format!("{}.json", url_id(TSL_URL)));
+    std::fs::write(&file, b"{\"id\":").unwrap();
+
+    let out = ti(
+        &cache.0,
+        &["--format", "json", "pki", "tsl", "show", "--offline"],
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(5),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let error: Value = serde_json::from_slice(&out.stderr).unwrap();
+    assert_eq!(error["error"]["kind"], "state_file_failed");
+    assert!(
+        error["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains(&file.display().to_string()),
+        "{error}"
+    );
+    assert_eq!(std::fs::read(&file).unwrap(), b"{\"id\":", "left as it is");
+}
+
 /// The codes a TSL verify report may carry are exactly ti-pki's.
 #[test]
 fn tsl_verify_codes_are_ti_pkis() {

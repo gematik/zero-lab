@@ -529,7 +529,7 @@ fuzz-ti-cli seconds="30":
     #!/usr/bin/env bash
     set -euo pipefail
     cd ti-cli/fuzz
-    for target in cache_entry; do
+    for target in cache_entry tsl_state; do
         mkdir -p "corpus/$target"
         cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
             -max_total_time={{seconds}} -max_len=65536 -print_final_stats=1 2>&1 \

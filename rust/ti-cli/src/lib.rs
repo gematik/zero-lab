@@ -44,6 +44,7 @@ pub mod files;
 #[doc(hidden)]
 pub mod fuzz {
     pub use crate::file_cache::decode;
+    pub use crate::trust::parse_tsl_state;
 }
 mod http;
 mod identity;

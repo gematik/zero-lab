@@ -40,7 +40,9 @@ static COUNTER: AtomicU64 = AtomicU64::new(0);
 ///
 /// # Errors
 ///
-/// Any I/O error; the temporary file is removed and `path` is untouched.
+/// Any I/O error. Before the rename the temporary file is removed and `path` is
+/// untouched; an error from the final directory sync means the new file is in place but
+/// not yet known to survive a power loss.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     write_atomic_with(path, bytes, |from, to| fs::rename(from, to))
 }
@@ -62,8 +64,28 @@ fn write_atomic_with(
     let result = write_synced(&temp, bytes).and_then(|()| rename(&temp, path));
     if result.is_err() {
         let _ = fs::remove_file(&temp);
+        return result;
     }
-    result
+    sync_parent(path)
+}
+
+/// Makes the rename itself durable: without it a power loss can bring the old file
+/// back, and with the TSL state that rewinds the rollback check. Failing here is an
+/// error although the new file is already in place, since durability is what the caller
+/// asked for and cannot tell otherwise.
+#[cfg(unix)]
+fn sync_parent(path: &Path) -> io::Result<()> {
+    let dir = match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
+    fs::File::open(dir)?.sync_all()
+}
+
+// std cannot open a directory on other platforms.
+#[cfg(not(unix))]
+fn sync_parent(_: &Path) -> io::Result<()> {
+    Ok(())
 }
 
 fn write_synced(temp: &Path, bytes: &[u8]) -> io::Result<()> {
