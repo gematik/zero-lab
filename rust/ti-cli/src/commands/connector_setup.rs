@@ -511,7 +511,7 @@ fn pkcs12(
             cert.not_after,
             client.key.as_deref().unwrap_or("unknown key")
         ));
-        if cert.expires < crate::store::profile::now() {
+        if cert.expires < crate::now() {
             warn(
                 ask,
                 warnings,

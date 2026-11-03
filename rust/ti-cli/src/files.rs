@@ -101,9 +101,7 @@ pub fn create_private_dir(path: &Path) -> io::Result<()> {
 /// values never share one.
 #[must_use]
 pub fn path_component(text: &str) -> String {
-    let plain =
-        (1..=64).contains(&text.len()) && !text.starts_with('.') && text.bytes().all(is_name_byte);
-    if plain {
+    if is_plain_name(text) {
         return text.to_owned();
     }
     Sha256::digest(text.as_bytes())
@@ -114,8 +112,14 @@ pub fn path_component(text: &str) -> String {
         })
 }
 
-pub(crate) fn is_name_byte(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-')
+/// The one rule that keeps untrusted text inside its directory: 1 to 64 characters of
+/// `A-Z a-z 0-9 . _ -`, not starting with a dot.
+pub(crate) fn is_plain_name(text: &str) -> bool {
+    (1..=64).contains(&text.len())
+        && !text.starts_with('.')
+        && text
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
 }
 
 #[cfg(test)]

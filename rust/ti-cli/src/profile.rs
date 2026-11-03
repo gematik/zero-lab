@@ -28,7 +28,7 @@ use std::path::{Path, PathBuf};
 
 use crate::cli::GlobalArgs;
 use crate::error::CliError;
-use crate::files::is_name_byte;
+use crate::files::is_plain_name;
 use crate::paths;
 
 const GROUP: &str = "telematik";
@@ -59,7 +59,9 @@ impl Profile {
     /// has to be derived and the platform has no home for it.
     pub fn resolve(global: &GlobalArgs) -> Result<Self, CliError> {
         let env_profile = env_text("TI_PROFILE")?;
-        let env_state = non_empty(std::env::var_os("TI_STATE_DIR")).map(PathBuf::from);
+        // Not filtered like TI_PROFILE: an empty TI_STATE_DIR is refused, so a failed
+        // `TI_STATE_DIR=$(mktemp -d)` cannot fall back to the real state directory.
+        let env_state = std::env::var_os("TI_STATE_DIR").map(PathBuf::from);
         resolve_from(
             Inputs {
                 profile: global.profile.as_deref().or(env_profile.as_deref()),
@@ -130,9 +132,7 @@ fn base(
 /// `arguments_invalid` unless the name is 1 to 64 characters of `A-Z a-z 0-9 . _ -` and
 /// does not start with a dot.
 pub fn validate_name(name: &str) -> Result<(), CliError> {
-    let ok =
-        (1..=64).contains(&name.len()) && !name.starts_with('.') && name.bytes().all(is_name_byte);
-    if ok {
+    if is_plain_name(name) {
         Ok(())
     } else {
         Err(CliError::Arguments(format!(
@@ -199,6 +199,12 @@ mod tests {
         }
         let p = dirs(Some("default"), Some("/s"), Some("/c")).unwrap();
         assert_eq!(p.state_dir, PathBuf::from("/s/profiles/default"));
+    }
+
+    #[test]
+    fn an_empty_state_dir_is_refused() {
+        assert!(dirs(None, Some(""), None).is_err());
+        assert!(dirs(None, None, Some("")).is_err());
     }
 
     #[test]

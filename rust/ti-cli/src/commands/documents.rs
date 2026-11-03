@@ -39,9 +39,9 @@ use crate::cli::{
 use crate::connector::Session;
 use crate::error::{CliError, Exit, StoreFile};
 use crate::input;
+use crate::now;
 use crate::output::{Line, Output, Tone, Waiting, pem, warning};
 use crate::paths;
-use crate::store::now;
 use crate::store::profile::{ProfileStore, Selected};
 use ti_store::store::StoreError;
 use ti_store::store::registry::COMFORT;
