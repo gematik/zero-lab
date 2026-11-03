@@ -1,5 +1,34 @@
 # Release Notes
 
+# Release go/epa v0.24.1
+
+### features
+- The first page shows TI services and all proxies in two compact columns, names the providers
+  IBM, RISE and EY, and refreshes the proxies every 5 seconds. Rounds do not overlap and a hidden
+  tab polls nothing.
+
+### changes
+- `GET /status` goes through a guard, because checking a provider without a session opens one:
+  callers share one result for 5 seconds, and a failed provider reports its last error for 60
+  seconds without being contacted. A failure can so stay visible for up to a minute after the
+  provider recovered.
+
+### verified
+- `just check` across all modules passed on 26c1402; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`.
+- `TestEPA_Connect` ran on 2026-11-03 on epa.t20r.cloud, built from 26c1402 with this version.
+  ref passed. dev failed once at provider 1 with `TLS handshake timeout`, before the code this
+  release changes, then passed three times in a row. The same host also timed out in the running
+  proxy's logs that day, so this reads as that endpoint being intermittent; it was not proven.
+
+### known limits
+- Opening a session holds the session manager's lock through the whole login, so a slow login at
+  one provider delays the proxy's others (TASK-203).
+- The guard covers the status endpoint only: other calls still try to open a session at a
+  provider that is down.
+- As in v0.24.0: nothing checks at start that the version fits `x-useragent`, `TestEPA_Connect`
+  and `ti` 0.5.0 do not cover provider 3, and the image runs as root (TASK-197).
+
 # Release go/epa v0.24.0
 
 ### features
