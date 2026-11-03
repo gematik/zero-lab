@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/caddyserver/caddy/v2 v2.11.7
-	github.com/gematik/zero-lab/go/pep v0.25.8-0.20261103183821-bec983281778
+	github.com/gematik/zero-lab/go/pep v0.25.8-0.20261103185239-142cdf5db185
 )
 
 require (
