@@ -1,8 +1,8 @@
 [package]
 name = "ti-store"
 version = "0.1.0"
-description = "Storage for gematik Telematikinfrastruktur (TI) clients: HTTP-style caching (freshness, revalidation, stale-on-error) over pluggable stores"
-keywords = ["cache", "storage", "etag", "gematik", "telematik"]
+description = "HTTP-style caching for gematik Telematikinfrastruktur (TI) clients: freshness, revalidation and stale-on-error over pluggable stores"
+keywords = ["cache", "http", "etag", "gematik", "telematik"]
 categories = ["caching", "wasm"]
 edition.workspace = true
 rust-version.workspace = true

@@ -21,9 +21,30 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   load of it verified.
 
 #### removed
+- The sealed store: `ti store`, `ti profile create|use|show|rotate|rewrap`, `TI_STORE_KEK_PATH`,
+  `TI_STORE_BACKEND` and `TI_STORE_TRACE` are gone, with the `store_*` error kinds, the
+  SQLite databases (`state.db`, `cache.db`), the keyring and the key file. They are not
+  read: files of the former store may be removed by hand (`~/.local/state/telematik/profiles`,
+  `~/.cache/telematik/profiles`, `~/.config/telematik/profiles`). `ti profile list` and
+  `delete` stay.
 - SOCKS proxies: `-x socks5://` and a `socks5://` in the proxy variables are refused with
   `http_setup` (exit 2), and `ureq`'s `socks-proxy` feature, `socks` and `byteorder` are
   gone.
+
+#### changed
+- State and cache are plain files below `~/.local/state/telematik/ti` and
+  `~/.cache/telematik/ti` (`%LOCALAPPDATA%` on Windows). `--profile NAME` or `TI_PROFILE`
+  chooses `profiles/NAME` below them, created on first use; no profile is remembered
+  between runs and no name is reserved. For a throwaway run use `--profile "$(uuidgen)"`
+  or `TI_STATE_DIR=$(mktemp -d) TI_CACHE_DIR=$(mktemp -d)`.
+- The TSL state is kept on every run without setup, so an older TSL is rejected from the
+  first verified list on. A corrupt TSL state file is refused with `state_file_failed`
+  naming it, where it was ignored.
+- Comfort IDs lie unencrypted in private files (mode 0600 in a directory of mode 0700), no
+  longer sealed. Existing sealed IDs are not migrated: **activate comfort signature
+  again.** On POSIX a comfort file or directory that is a symbolic link or open to group
+  or others is refused. A comfort file of a version before the sealed store is not found
+  under a Konnektor name that is not a plain file name.
 
 #### fixed
 - Proxy variables no longer reach the Konnektor, as `AGENTS.md` always said: only `-x`
@@ -631,6 +652,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   the OpenSSL 3 defaults; the caller supplies the randomness.
 
 ### ti-store
+
+#### removed
+- The features `store` and `test-util`: the sealed store (`ti_store::store`) is gone with
+  its AES-GCM, HKDF and HMAC dependencies. `Cache` and `CacheStore` are unchanged.
 
 #### added
 - Renamed from ti-cache; the cache API is unchanged under `ti_store`.

@@ -16,14 +16,13 @@ or stdin.
   where that is possible. Do not repeat it, quote it, or carry it into commands or
   files.
 - Secrets in output stay out of the conversation and logs: `access_token` and the
-  output of `--token`, comfort user IDs, `store show --reveal`. Summarise instead.
+  output of `--token`, comfort user IDs. Summarise instead.
 - Commands that use a card's PIN or wait for the user at the card terminal
   (`connector verify pin`, `change pin`, `comfort activate`, `sign` and `decrypt`) run
   only when the user asks for that step; say before what the user will be asked for.
   `connector describe card` reads the PINs' status without asking for one: use it first.
-- Commands that delete or re-key what cannot be fetched again (`profile delete`,
-  `profile rotate`, `profile rewrap`, `store rm`, `store purge`) and `--force` run only
-  when the user asks for them.
+- Commands that delete what cannot be fetched again (`profile delete`) and `--force`
+  run only when the user asks for them.
 - `-k` only when the user asks for it.
 - Report a verification with its verdict and `errors`, the `warnings` that matter, and
   whether revocation was checked (`revocation_checked`); a `trust.note` means the trust
@@ -110,41 +109,35 @@ never on `message`. `hint` says what to do, when there is something.
   detect it with `auto` (their default); `pki roots list` and `pki tsl show` cannot, so
   `auto` from `TI_ENV` means `prod` there and `--env auto` is an error (exit 2,
   `environment_invalid`).
-- Profiles: `--profile NAME`, else `TI_PROFILE`, else the one `{bin} profile use` chose,
-  else `default`. A profile is shared with the other TI tools (zero-epa, zeta-cli): its
-  cache (`cache.db`), its state (`state.db`) and its keyring. `TI_CACHE_DIR` and
-  `TI_STATE_DIR` move the bases of the profiles' caches and states, `TI_STORE_KEK_PATH`
-  names the key file; with all three a test or HITL session gets a separate store.
+- Profiles: `--profile NAME`, else `TI_PROFILE`, is a directory `profiles/NAME` below
+  the state and the cache base, created on first use. Without a name the bases
+  themselves are used; no profile is remembered between runs and no name is reserved.
+  The state base is `TI_STATE_DIR`, else `~/.local/state/telematik/ti`; the cache base is
+  `TI_CACHE_DIR` (or `--cache-dir`), else `~/.cache/telematik/ti` (both below
+  `%LOCALAPPDATA%` on Windows). An override must be an absolute path. For a throwaway
+  run use `--profile "$(uuidgen)"`, or
+  `TI_STATE_DIR=$(mktemp -d) TI_CACHE_DIR=$(mktemp -d) {bin} ...`.
 - The HTTP options and variables follow curl: `-x`/`HTTPS_PROXY`/`HTTP_PROXY`/
   `ALL_PROXY`, `--noproxy`/`NO_PROXY`, `--cacert`/`CURL_CA_BUNDLE`/`SSL_CERT_FILE`,
   `--capath`/`SSL_CERT_DIR`, `--connect-timeout`, `-m`, `--retry`, `-A`.
 - `-k` skips TLS checks for downloads only and sets `insecure_transport` in the report;
   the trust material is still verified. Do not use it unless asked to.
-- Downloads are cached in the profile's `cache.db`
-  (`~/.cache/telematik/profiles/NAME/cache.db`). `--offline` makes no request and works
-  from the cache.
+- Downloads are cached as plain files in the profile's cache directory, under `v1/`.
+  `--offline` makes no request and works from the cache.
 - OCSP responses (`good`, `revoked`) are cached there too, for one hour and never past
   the response's `nextUpdate`, so the next run within the hour asks no responder. What
   is read back is verified again (signature, responder, certificate); `unknown`
   answers and errors are not cached. Every command that checks OCSP uses it.
 - `{bin} cache clear` empties the profile's cache.
-- What must stay secret or must not be lost (TSL state, comfort IDs, later tokens) is
-  sealed in the profile's `state.db` and needs a keyring: `{bin} profile create` makes it
-  once, with a key file at `~/.config/telematik/profiles/NAME/store.kek`. Without one,
-  `ti` keeps none of it and says so (`store_no_keyring`). Losing the key file loses
-  only the sealed records. Store errors have kinds `store_<code>` with a hint.
-- `{bin} profile list|show|use NAME|delete NAME --yes` manage profiles; `use` writes the
-  active file every TI tool reads. `{bin} profile rotate` starts a new sealing key and
-  drops keys no live record uses; `{bin} profile rewrap --kek-file PATH` wraps the keys
-  with another key file (then set `TI_STORE_KEK_PATH`). `{bin} store doctor [--json]
-  [--deep]` checks the profile's key file, keyring, databases and records without
-  changing them: each check `ok`, `warn` or `fail`, exit 1 if one fails; `--deep` opens
-  every sealed record. `{bin} store ls [NS]` lists records (never ids or contents),
-  `store show NS ID [--reveal]` one record, `store rm NS ID` and `store purge NS --yes`
-  remove them, `store cleanup` removes expired ones (also done once a day on its own),
-  `store migrate [--dry-run]` reports format levels. `TI_STORE_TRACE=1` writes one line per store operation to
-  stderr (operation, namespace, the first 8 bytes of the name, code, duration), never a
-  payload.
+- State is kept in the profile's state directory without any setup: the TSL seen last
+  (`tsl/ID.json`, not secret; it keeps an older TSL rejected) and comfort IDs
+  (`comfort/KONNEKTOR/CARD`). A corrupt or unwritable state file is `state_file_failed`
+  (exit 5) naming the file; removing a corrupt TSL state file restarts from the next
+  verified TSL. No token and no other secret is written to disk.
+- `{bin} profile list` shows the unnamed location and each profile with the size of its
+  state and cache; `{bin} profile delete NAME --yes` removes a profile's directories.
+  There is no command to create or select a profile and none to inspect state.
+  Files of the former sealed store are not read.
 
 ## Names
 
@@ -551,10 +544,12 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   it as `mime_type`); by default both take it from the file extension.
 - Comfort signature: `comfort activate` asks for PIN.QES once and stores a new random
   user ID for that HBA; `sign` then uses it and needs no PIN until the session's count
-  or time runs out. The ID lets anyone with the same context sign without a PIN: it is
-  sealed in the profile's state, so `comfort activate` needs a keyring
-  (`{bin} profile create`); it is masked in `-vv`, and removed by `comfort deactivate`; deactivate it when the
-  work is done. `--comfort-user-id` or `TI_COMFORT_USER_ID` supplies one instead.
+  or time runs out. The ID lets anyone with the same context sign without a PIN: it lies
+  unencrypted in a private file (mode 0600 in a directory of mode 0700) of the profile's
+  state, and `{bin}` refuses it when group or others can open it; it is masked in `-vv`,
+  and removed by `comfort deactivate`; deactivate it when the work is done. The checks
+  cover `comfort/` and its Konnektor directory, not a state directory shared with other
+  users. `--comfort-user-id` or `TI_COMFORT_USER_ID` supplies one instead.
 
 ## Subsystem probe: are the TI services reachable
 

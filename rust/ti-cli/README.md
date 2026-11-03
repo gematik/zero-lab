@@ -53,11 +53,8 @@ ti connector export certificate 80276883110000162094 C.ENC > enc.pem
 ti connector decrypt letter.txt.p7m --card 80276883110000163974
 ti connector comfort activate 80276883110000163974   # PIN.QES once, then signatures without
 ti probe ref                        # which TI services of ref answer, live (or --env ref)
-ti profile create                   # keyring and key file: TSL state and comfort IDs are kept
 ti --profile work pki verify card.pem   # another profile's cache and state
-ti profile list                     # profiles, the active one, their keyrings and sizes
-ti store doctor                     # key file, keyring, databases, records: ok, warn or fail
-ti store ls                         # records: namespace, name prefix, expiry, size, kid
+ti profile list                     # the profiles and the size of their state and cache
 ti cache clear
 ti schema pki verify                # JSON Schema of a command's output
 ti agent                            # usage guide for scripts and agents
@@ -119,8 +116,8 @@ writes the TSL as published, after it verified. All three go to stdout, or to `-
 (`--force` replaces it), and report as JSON with `--format json`.
 
 The TSL is verified wherever it is loaded (`spec/tsl-detached`): the detached signature, signer under
-the embedded TSL signer CA, `NextUpdate`, the list seen before (sealed in the profile's
-state once it has a keyring, so an older list stays rejected), and online the signer's OCSP status;
+the embedded TSL signer CA, `NextUpdate`, the list seen before (kept in the profile's
+state, so an older list stays rejected), and online the signer's OCSP status;
 offline or with `--at` the trust line says the status was not checked. A list that
 fails is not used at all. Of each entry the view shows only what the CA certificate says
 (name, organization, validity) and which verified root signed it; the TSL's per-CA
@@ -237,7 +234,7 @@ explanation. While a PIN is entered, a terminal shows a spinner on stderr, a bus
 tab (OSC 9;4: Ghostty, iTerm2, Windows Terminal, cmux) and one desktop notification (OSC
 9). PKCS#12 client certificates must be P-256, P-384 or RSA for now (TLS runs
 on ring, which has no brainpool). Comfort signature keeps each session's random user ID
-sealed in the profile's state; `ti profile create` makes the keyring that needs.
+in a private file of the profile's state ([Files](#files)).
 
 ## Conventions
 
@@ -268,40 +265,61 @@ The tool is meant for people and for agents alike:
 
 ## Files
 
-The TI tools share a store per profile ([spec/store](../../spec/store/README.md)): `ti`,
-zero-epa and later zeta-cli read and write the same files. The profile in effect is
-`--profile`, else `TI_PROFILE`, else the one `ti profile use` chose, else `default`.
+`ti` keeps plain files in two directories, the state and the cache. Without `--profile`
+(or `TI_PROFILE`) they are the bases below; `--profile NAME` uses `profiles/NAME` inside
+each, created on first use. A name is 1 to 64 characters of `A-Z a-z 0-9 . _ -` and does
+not start with a dot; no name is reserved, and no profile is remembered between runs.
 
 | | Linux, macOS | Windows |
 | --- | --- | --- |
-| Keyring, state | `$XDG_STATE_HOME/telematik/profiles/NAME/{keyring.bin,state.db}` | `%LOCALAPPDATA%\state\telematik\profiles\NAME\…` |
-| Cache | `$XDG_CACHE_HOME/telematik/profiles/NAME/cache.db` | `%LOCALAPPDATA%\telematik\profiles\NAME\cache.db` |
-| Key file | `$XDG_CONFIG_HOME/telematik/profiles/NAME/store.kek` | `%APPDATA%\telematik\profiles\NAME\store.kek` |
+| State base | `$XDG_STATE_HOME/telematik/ti`, else `~/.local/state/telematik/ti` | `%LOCALAPPDATA%\state\telematik\ti` |
+| Cache base | `$XDG_CACHE_HOME/telematik/ti`, else `~/.cache/telematik/ti` | `%LOCALAPPDATA%\telematik\ti` |
+| TSL state | `STATE/tsl/ID.json` | the same below `STATE` |
+| Comfort IDs | `STATE/comfort/KONNEKTOR/CARD` | the same below `STATE` |
+| Cache entries | `CACHE/v1/SHA-256 of the key` | the same below `CACHE` |
 
-`TI_STATE_DIR`, `TI_CACHE_DIR` (or `--cache-dir`) and `TI_STORE_KEK_PATH` override them;
-the three together give a separate store for a test or a HITL session.
-`TI_STORE_BACKEND=files` keeps one file per record instead of SQLite, for inspecting
-them; `TI_STORE_TRACE=1` writes one line per store operation to stderr. `ti profile list`,
-`show`, `use` and `delete --yes` manage the profiles; `ti store doctor [--deep]` checks
-the one in effect without changing it. `ti profile rotate` starts a new sealing key once
-a year (doctor warns after that), `ti profile rewrap --kek-file PATH` moves the keyring to
-another key file. `ti store ls`, `show [--reveal]`, `rm`, `purge --yes`, `cleanup` and
-`migrate [--dry-run]` inspect and maintain the records; expired ones are also removed once
-a day on their own.
+`TI_STATE_DIR` replaces the state base and `TI_CACHE_DIR` (or `--cache-dir`) the cache
+base; both must be absolute paths. A profile's directories lie below the replaced bases
+as below the defaults. `ti profile list` shows the profiles with the size of their state
+and cache, and `ti profile delete NAME --yes` removes one.
+
+A throwaway run leaves nothing behind that a later run reads. Either name a profile that
+is never used again, and remove it with `ti profile delete`, or point both bases at
+temporary directories:
+
+```sh
+ti --profile "$(uuidgen)" pki tsl show
+TI_STATE_DIR=$(mktemp -d) TI_CACHE_DIR=$(mktemp -d) ti pki tsl show
+```
+
+The Konnektor configurations (`.kon` files, `~/.config/telematik/connectors`) are outside
+the profiles and shared by them. A comfort ID belongs to its profile.
 
 The cache holds downloaded trust material, OCSP responses and Konnektor service
 directories with their HTTP validators. An entry is used without asking for an hour,
 then revalidated with its `ETag`; when the network fails it serves for up to a day more.
-Material older than 24 hours (production) or 7 days (elsewhere) is not used.
-`ti cache clear` empties it.
+Material older than 24 hours (production) or 7 days (elsewhere) is not used. Entries
+are written whole by renaming a temporary file; a put removes entries not written for 30
+days. `ti cache clear` empties the cache and leaves the state alone.
 
-The state holds what must not be lost or must stay secret: the TSL seen last and comfort
-signature IDs, sealed with AES-256-GCM under the profile's keyring. `ti profile create`
-makes the keyring and, unless it exists, the key file; until then nothing of it is kept,
-with a warning. Losing the key file or the keyring loses the sealed records and nothing
-else. State files of earlier versions in `~/.local/state/telematik/ti` are read until the
-profile has a keyring and then moved into it; the old cache folder
-`~/.cache/telematik/ti` is no longer used and can be deleted.
+The state holds the TSL seen last and comfort signature IDs. The TSL state is kept on
+every run without any setup, so an older list stays rejected; it is not secret. A
+corrupt TSL state file is an error that names the file (`state_file_failed`); removing it
+restarts from the next verified TSL.
+
+A comfort ID lies unencrypted in a file of mode 0600 in a directory of mode 0700 (POSIX).
+It lets anyone with the same call context sign without a PIN while the session lasts, so
+a backup or copy of the state directory exposes it. `ti` refuses a comfort file, or the
+`comfort/` directory and the one for the Konnektor, that is a symbolic link or open to
+group or others, and says what to `chmod`. These checks stop at `comfort/`: they do not
+cover the state directory above it, and a `TI_STATE_DIR` shared with other users gives no
+such protection. `comfort deactivate` removes the file. No token and no other secret is
+written to disk.
+
+Files of the former sealed store (`state.db`, `cache.db`, `keyring.bin`, `store.kek`) are
+not read and may be removed by hand: `~/.local/state/telematik/profiles`,
+`~/.cache/telematik/profiles`, `~/.config/telematik/profiles`. Comfort is activated
+again, and the TSL state restarts from the next verified TSL.
 
 ## HTTP
 

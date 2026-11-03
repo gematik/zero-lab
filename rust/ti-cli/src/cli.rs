@@ -45,8 +45,9 @@ Environment:
   TI_ENV          default for --env (auto, prod, ref, test, dev); commands that cannot
                   detect (roots list, tsl show) read auto as prod, probe as unset
   TI_PROFILE      default for --profile
-  TI_CACHE_DIR    default for --cache-dir
-  TI_STATE_DIR    base of the profiles' state [default: ~/.local/state/telematik]
+  TI_CACHE_DIR    default for --cache-dir: base of the cache [default: ~/.cache/telematik/ti]
+  TI_STATE_DIR    base of the state, TSL state and comfort IDs [default:
+                  ~/.local/state/telematik/ti]; on Windows both are below %LOCALAPPDATA%
   TI_CONNECTOR_CONFIG, TI_CONNECTOR_TIMEOUT, TI_CARD_TIMEOUT
                   defaults for connector -c, --connector-timeout, --card-timeout
   NO_COLOR        disables colors; CLICOLOR_FORCE=1 forces them
@@ -122,8 +123,8 @@ pub struct GlobalArgs {
     /// TI_PROFILE, then none)
     #[arg(long, value_name = "NAME", global = true, hide_short_help = true)]
     pub profile: Option<String>,
-    /// Base of the profiles' caches, shared with the other TI tools [default:
-    /// ~/.cache/telematik, %LOCALAPPDATA%\telematik on Windows]
+    /// Base of the cache; a profile's is profiles/NAME below it [default:
+    /// ~/.cache/telematik/ti, %LOCALAPPDATA%\telematik\ti on Windows]
     #[arg(
         long,
         value_name = "DIR",
