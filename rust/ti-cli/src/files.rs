@@ -66,13 +66,15 @@ fn write_atomic_with(
         let _ = fs::remove_file(&temp);
         return result;
     }
-    sync_parent(path)
+    #[cfg(unix)]
+    sync_parent(path)?;
+    Ok(())
 }
 
 /// Makes the rename itself durable: without it a power loss can bring the old file
 /// back, and with the TSL state that rewinds the rollback check. Failing here is an
 /// error although the new file is already in place, since durability is what the caller
-/// asked for and cannot tell otherwise.
+/// asked for and cannot tell otherwise. Unix only: std cannot open a directory elsewhere.
 #[cfg(unix)]
 fn sync_parent(path: &Path) -> io::Result<()> {
     let dir = match path.parent() {
@@ -80,12 +82,6 @@ fn sync_parent(path: &Path) -> io::Result<()> {
         _ => Path::new("."),
     };
     fs::File::open(dir)?.sync_all()
-}
-
-// std cannot open a directory on other platforms.
-#[cfg(not(unix))]
-fn sync_parent(_: &Path) -> io::Result<()> {
-    Ok(())
 }
 
 fn write_synced(temp: &Path, bytes: &[u8]) -> io::Result<()> {

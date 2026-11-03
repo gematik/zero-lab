@@ -329,6 +329,7 @@ struct Fake {
     dir: PathBuf,
     kon: PathBuf,
     activations: Arc<AtomicUsize>,
+    #[cfg(unix)]
     deactivations: Arc<AtomicUsize>,
 }
 
@@ -405,6 +406,7 @@ impl Fake {
             dir,
             kon,
             activations: behavior.activations.clone(),
+            #[cfg(unix)]
             deactivations: behavior.deactivations.clone(),
         }
     }
@@ -974,6 +976,7 @@ fn activate(fake: &Fake) -> Output {
     ])
 }
 
+#[cfg(unix)]
 fn deactivate(fake: &Fake) -> Output {
     fake.ti(&[
         "connector",
@@ -985,6 +988,7 @@ fn deactivate(fake: &Fake) -> Output {
     ])
 }
 
+#[cfg(unix)]
 fn comfort_status(fake: &Fake) -> Output {
     fake.ti(&["connector", "-c", "praxis", "comfort", "status", "card-hba"])
 }
