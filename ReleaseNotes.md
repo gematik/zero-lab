@@ -1,5 +1,48 @@
 # Release Notes
 
+# Release go/tipki v0.30.0
+
+The first release of `go/tipki`, the native TI trust path held to Rust's `ti-pki` through `spec/`. It
+takes over from `go/gempki`, whose last tag is v0.23.1 and stays resolvable; the number starts at
+0.30.0 to move clearly on from it.
+
+### breaking, for a port from go/gempki
+- A new module path and new names, such as `Admission` for `ParseAdmissionStatement`,
+  `ProfessionOIDs` for `ProfessionOids` and `CertHciAut` for `CertTypeHciAUT`.
+- `DetectCertificateType` returns `(type, bool)`. `IsKnownCertificateType`, `CheckRoleOID` and
+  `ValidationError` are gone.
+- Identifiers are `crypto/x509.OID`, not `asn1.ObjectIdentifier`: the `oid` tables, `Lookup`,
+  `Format`, `CertificateType.OID`, `Spec`, `ProfessionOIDs`, `RequiredRoleOIDs`, `TypeOIDs` and
+  `CATypes`. An `x509.OID` has no `==` and is no map key; compare with `Equal`, or `EqualASN1OID`
+  against what the standard library hands over as `asn1.ObjectIdentifier`.
+- `Admission` is stricter: it refuses trailing bytes, a registration number that is not
+  PrintableString, and malformed profession items.
+- An eGK AUT or ENC certificate without a type OID stays undetected, because its pseudonymous
+  sibling looks the same.
+
+### features
+- `oid.Parse` reads an identifier in its canonical dotted form, and refuses what
+  `x509.ParseOID` would read as another identifier, such as 1.2.030 for 1.2.30. `oid.MustParse` is
+  for identifiers in source.
+- The tables follow gemSpec_OID V3.26.0: `TechRoleZETAPrvApprov` is added and ZETA Guard is on
+  `C.FD.AUT` only, like `ti-pki`.
+
+### fixes
+- A TSL's `ExtensionOID` that is not in canonical form is refused.
+- An empty OID, which an unknown certificate type has, is listed nowhere.
+
+### verified
+- `just check` across all modules passed on 48c3e74; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`. The development guide lists no gated suite as required for `tipki`.
+- Run on 2026-11-03 through `idpd`, against this code: `just idpd-trust-fetch-test`, with a live
+  TSL of the reference environment (sequence 10717), and `just idpd-smcb-test`.
+
+### known limits
+- `idpd`, `pdp` and `pep/proxy` still pin `tipki` by pseudo-version until the next `just sync`, so
+  their builds outside the workspace do not use this release yet.
+- `ti-pki`'s matching table change is unreleased: it ships with that crate's next version.
+- The tag is on `chore/go-consolidation`, not yet on `main`.
+
 # Release go/epa v0.24.1
 
 ### features
