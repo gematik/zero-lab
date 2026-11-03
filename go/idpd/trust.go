@@ -111,7 +111,7 @@ func (v *verifier) check(ctx context.Context, store *tipki.TrustStore, which IDP
 	}
 	reasons := make([]string, 0, len(result.Errors))
 	for _, finding := range result.Errors {
-		reasons = append(reasons, finding.Code+": "+finding.Message)
+		reasons = append(reasons, string(finding.Code)+": "+finding.Message)
 	}
 	return fmt.Errorf("%s: %q is not valid for an IDP-Dienst: %s", which, certs[0].Subject.CommonName, strings.Join(reasons, "; "))
 }

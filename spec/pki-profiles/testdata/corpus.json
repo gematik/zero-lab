@@ -1431,6 +1431,33 @@
     }
   ],
   "tables": {
+    "error_codes": [
+      "revoked",
+      "ocsp_response_invalid",
+      "ocsp_responder_untrusted",
+      "ocsp_unavailable",
+      "unrecognized_critical_extension",
+      "ocsp_responder_not_rfc6960",
+      "fqdn_mismatch",
+      "role_oid_missing",
+      "expired",
+      "not_yet_valid",
+      "chain_incomplete",
+      "policy_mismatch",
+      "signature_invalid",
+      "key_usage_mismatch",
+      "key_not_admissible",
+      "key_phased_out",
+      "profile_not_detected",
+      "profile_ambiguous",
+      "profile_type_mismatch",
+      "cert_type_ca_not_authorized",
+      "ca_revoked_in_tsl",
+      "ca_not_in_tsl",
+      "issued_before_ca_revocation",
+      "revoked_after_reference_time",
+      "issued_before_ca_expiry"
+    ],
     "institutions": [
       "1.2.276.0.76.4.50",
       "1.2.276.0.76.4.51",

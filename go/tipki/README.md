@@ -110,8 +110,11 @@ not be able to send a request anywhere.
 
 **The verdict.** Only `result.Valid` decides. It means no error, and a warning never changes it. Every
 failure lands in `result.Errors`; `Validate` itself returns an error only when given no certificate, or
-when the path check cannot start. Errors and warnings carry the same codes as `ti-pki`, such as
-`policy_mismatch` or `ca_not_in_tsl`.
+when the path check cannot start.
+
+**Findings.** Each finding carries an `ErrorCode`, a constant such as `CodePolicyMismatch` or
+`CodeCANotInTSL`. Match on the code, not on the message. `ErrorCodes` lists them all, and `spec/pki-profiles`
+holds them to the same values as `ti-pki`.
 
 **Revocation modes.** The mode decides what an OCSP outcome means:
 

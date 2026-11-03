@@ -48,6 +48,8 @@ Each rule has one identifier `PROF-nnn`, and tests cite them. MUST and MUST NOT 
 
 - **PROF-031** The same corpus holds the table of gemSpec_OID identifiers with their reference names and
   descriptions, and the lists of professions and institutions, which both implementations MUST declare alike.
+- **PROF-032** The same corpus holds the codes a validation failure is reported under, which both
+  implementations MUST declare alike. Callers match on the code, not on the message.
 
 ## Traceability
 
@@ -57,3 +59,4 @@ Each rule has one identifier `PROF-nnn`, and tests cite them. MUST and MUST NOT 
 | PROF-010, 011 | `prof_010_admission_values_are_read_or_refused_as_stated` | `TestPROF010AdmissionValuesAreReadOrRefusedAsStated`, `FuzzParseAdmission` |
 | PROF-030 | `prof_030_the_corpus_is_what_ti_pki_says` | `TestPROF030TheTablesAreThoseOfTiPki` |
 | PROF-031 | `prof_030_the_corpus_is_what_ti_pki_says` | `TestPROF031TheIdentifiersAreThoseOfTiPki` |
+| PROF-032 | `prof_030_the_corpus_is_what_ti_pki_says` | `TestPROF032TheFindingCodesAreThoseOfTiPki` |

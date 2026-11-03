@@ -99,6 +99,7 @@ fn tables() -> Value {
         "oids": oids,
         "professions": strings(ti_pki::oid::PROFESSIONS),
         "institutions": strings(ti_pki::oid::INSTITUTIONS),
+        "error_codes": strings(ti_pki::ErrorCode::ALL),
     })
 }
 

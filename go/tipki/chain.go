@@ -173,7 +173,7 @@ func ValidatePath(chain []*x509.Certificate, options PathOptions) (PathResult, e
 			for _, ext := range cert.Extensions {
 				if ext.Critical && !slices.ContainsFunc(processedExtensions, func(known x509.OID) bool { return known.EqualASN1OID(ext.Id) }) {
 					result.Errors = append(result.Errors, Finding{
-						"unrecognized_critical_extension", cert.Subject.CommonName,
+						CodeUnrecognizedCriticalExtension, cert.Subject.CommonName,
 						"critical extension " + formatASN1OID(ext.Id) + " is not processed (RFC 5280 §4.2)",
 					})
 				}
@@ -187,7 +187,7 @@ func ValidatePath(chain []*x509.Certificate, options PathOptions) (PathResult, e
 		if i+1 < len(chain) {
 			if err := verifySignedBy(cert, chain[i+1]); err != nil {
 				result.Errors = append(result.Errors, Finding{
-					"signature_invalid", cert.Subject.CommonName,
+					CodeSignatureInvalid, cert.Subject.CommonName,
 					"chain signature verification failed: " + err.Error(),
 				})
 			}
@@ -205,7 +205,7 @@ func checkIssuerValidity(cert, below *x509.Certificate, options PathOptions, res
 		result.Errors = append(result.Errors, *finding)
 	} else if checkValidity(cert, options.Now, options.MaxClockSkew) != nil {
 		result.Warnings = append(result.Warnings, Finding{
-			"issued_before_ca_expiry", cert.Subject.CommonName,
+			CodeIssuedBeforeCAExpiry, cert.Subject.CommonName,
 			fmt.Sprintf("expired, but valid when it issued %q", below.Subject.CommonName),
 		})
 	}
@@ -215,10 +215,10 @@ func checkIssuerValidity(cert, below *x509.Certificate, options PathOptions, res
 func checkValidity(cert *x509.Certificate, now time.Time, skew time.Duration) *Finding {
 	seconds := int64(skew / time.Second)
 	if now.Unix()+seconds < cert.NotBefore.Unix() {
-		return &Finding{"not_yet_valid", cert.Subject.CommonName, fmt.Sprintf("notBefore=%s, now=%s", cert.NotBefore, now)}
+		return &Finding{CodeNotYetValid, cert.Subject.CommonName, fmt.Sprintf("notBefore=%s, now=%s", cert.NotBefore, now)}
 	}
 	if now.Unix()-seconds > cert.NotAfter.Unix() {
-		return &Finding{"expired", cert.Subject.CommonName, fmt.Sprintf("notAfter=%s, now=%s", cert.NotAfter, now)}
+		return &Finding{CodeExpired, cert.Subject.CommonName, fmt.Sprintf("notAfter=%s, now=%s", cert.NotAfter, now)}
 	}
 	return nil
 }
@@ -226,14 +226,14 @@ func checkValidity(cert *x509.Certificate, now time.Time, skew time.Duration) *F
 func checkCAConstraints(cert *x509.Certificate, intermediatesBelow int) *Finding {
 	subject := cert.Subject.CommonName
 	if !cert.BasicConstraintsValid || !cert.IsCA {
-		return &Finding{"chain_incomplete", subject, "non-root, non-EE certificate is not marked CA"}
+		return &Finding{CodeChainIncomplete, subject, "non-root, non-EE certificate is not marked CA"}
 	}
 	hasKeyUsage := slices.ContainsFunc(cert.Extensions, func(ext pkix.Extension) bool { return keyUsageExtension.EqualASN1OID(ext.Id) })
 	if hasKeyUsage && cert.KeyUsage&x509.KeyUsageCertSign == 0 {
-		return &Finding{"key_usage_mismatch", subject, "CA certificate missing KeyUsageCertSign"}
+		return &Finding{CodeKeyUsageMismatch, subject, "CA certificate missing KeyUsageCertSign"}
 	}
 	if (cert.MaxPathLen > 0 || cert.MaxPathLenZero) && intermediatesBelow > cert.MaxPathLen {
-		return &Finding{"chain_incomplete", subject, fmt.Sprintf("PathLenConstraint exceeded: max=%d, below=%d", cert.MaxPathLen, intermediatesBelow)}
+		return &Finding{CodeChainIncomplete, subject, fmt.Sprintf("PathLenConstraint exceeded: max=%d, below=%d", cert.MaxPathLen, intermediatesBelow)}
 	}
 	return nil
 }

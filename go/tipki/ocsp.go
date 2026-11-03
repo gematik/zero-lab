@@ -115,7 +115,7 @@ type RevocationResult struct {
 // OCSPError says why a response gave no result. Code is ocsp_unavailable, ocsp_response_invalid or
 // ocsp_responder_untrusted, as the revocation table in [ApplyRevocation] decides on them.
 type OCSPError struct {
-	Code    string
+	Code    ErrorCode
 	Subject string
 	Message string
 	defect  responseDefect
@@ -123,7 +123,7 @@ type OCSPError struct {
 	unreachable bool
 }
 
-func (e *OCSPError) Error() string { return e.Code + ": " + e.Message }
+func (e *OCSPError) Error() string { return string(e.Code) + ": " + e.Message }
 
 type responseDefect int
 
@@ -220,7 +220,7 @@ type basicResponse struct {
 }
 
 func undecodable(detail string) *OCSPError {
-	return &OCSPError{Code: "ocsp_unavailable", Message: "OCSP response could not be decoded: " + detail}
+	return &OCSPError{Code: CodeOCSPUnavailable, Message: "OCSP response could not be decoded: " + detail}
 }
 
 // responseStatus reads the outer OCSPResponse: its status, and the BasicOCSPResponse bytes if any.
@@ -312,7 +312,7 @@ func parseBasicResponse(der []byte) (*basicResponse, error) {
 		for _, one := range raw {
 			cert, err := ParseCertificate(one.FullBytes)
 			if err != nil {
-				return nil, &OCSPError{Code: "ocsp_unavailable", Message: "OCSP response embeds an unparsable certificate"}
+				return nil, &OCSPError{Code: CodeOCSPUnavailable, Message: "OCSP response embeds an unparsable certificate"}
 			}
 			basic.certs = append(basic.certs, cert)
 		}
@@ -523,13 +523,13 @@ func verifyResponse(der []byte, cert, issuer *x509.Certificate, check ResponseCh
 		return nil, undecodable(err.Error())
 	}
 	if status != 0 {
-		return nil, &OCSPError{Code: "ocsp_unavailable", Message: fmt.Sprintf("OCSP responder answered status %d", status)}
+		return nil, &OCSPError{Code: CodeOCSPUnavailable, Message: fmt.Sprintf("OCSP responder answered status %d", status)}
 	}
 	if body == nil {
-		return nil, &OCSPError{Code: "ocsp_unavailable", Message: "OCSP response is successful but carries no response"}
+		return nil, &OCSPError{Code: CodeOCSPUnavailable, Message: "OCSP response is successful but carries no response"}
 	}
 	if !oidOCSPBasic.EqualASN1OID(responseType) {
-		return nil, &OCSPError{Code: "ocsp_unavailable", Message: "OCSP response type " + responseType.String() + " is not id-pkix-ocsp-basic"}
+		return nil, &OCSPError{Code: CodeOCSPUnavailable, Message: "OCSP response type " + responseType.String() + " is not id-pkix-ocsp-basic"}
 	}
 	basic, err := parseBasicResponse(body)
 	if err != nil {
@@ -547,7 +547,7 @@ func verifyResponse(der []byte, cert, issuer *x509.Certificate, check ResponseCh
 			reason = certIDMatches(&basic.responses[0], cert, issuer)
 		}
 		return nil, &OCSPError{
-			Code: "ocsp_response_invalid", defect: defectWrongCertificate,
+			Code: CodeOCSPResponseInvalid, defect: defectWrongCertificate,
 			Message: "OCSP response does not answer for this certificate: " + reason,
 		}
 	}
@@ -559,19 +559,19 @@ func verifyResponse(der []byte, cert, issuer *x509.Certificate, check ResponseCh
 	if responder != nil {
 		signer = responder
 		if authorization, err = authorizeResponder(responder, issuer, check); err != nil {
-			return nil, &OCSPError{Code: "ocsp_responder_untrusted", Message: err.Error()}
+			return nil, &OCSPError{Code: CodeOCSPResponderUntrusted, Message: err.Error()}
 		}
 	}
 	algorithm, ok := signatureAlgorithmFromID(basic.sigAlgorithm)
 	if !ok {
 		return nil, &OCSPError{
-			Code: "ocsp_response_invalid", defect: defectSignature,
+			Code: CodeOCSPResponseInvalid, defect: defectSignature,
 			Message: fmt.Sprintf("OCSP response signature does not verify under %q: no admitted algorithm", signer.Subject.CommonName),
 		}
 	}
 	if err := verifySignature(signer.PublicKey, algorithm, basic.tbs, basic.signature); err != nil {
 		return nil, &OCSPError{
-			Code: "ocsp_response_invalid", defect: defectSignature,
+			Code: CodeOCSPResponseInvalid, defect: defectSignature,
 			Message: fmt.Sprintf("OCSP response signature does not verify under %q: %v", signer.Subject.CommonName, err),
 		}
 	}
@@ -702,7 +702,7 @@ func sameTSPDelegate(responder, issuer *x509.Certificate, check ResponseCheck) (
 
 func verifyCertHash(extensions []asn1.RawValue, cert *x509.Certificate, allowMissing bool) *OCSPError {
 	mismatch := func(message string) *OCSPError {
-		return &OCSPError{Code: "ocsp_response_invalid", defect: defectCertHashMismatch, Message: message}
+		return &OCSPError{Code: CodeOCSPResponseInvalid, defect: defectCertHashMismatch, Message: message}
 	}
 	for _, extension := range extensions {
 		parts, err := elements(extension.Bytes)
@@ -745,7 +745,7 @@ func verifyCertHash(extensions []asn1.RawValue, cert *x509.Certificate, allowMis
 	if allowMissing {
 		return nil
 	}
-	return &OCSPError{Code: "ocsp_response_invalid", defect: defectCertHashMissing, Message: "OCSP response carries no certHash extension"}
+	return &OCSPError{Code: CodeOCSPResponseInvalid, defect: defectCertHashMissing, Message: "OCSP response carries no certHash extension"}
 }
 
 // outsideWindow is the TUC_PKI_006 window: producedAt within [now - max age, now + tolerance], thisUpdate at
@@ -851,7 +851,7 @@ func (c *OCSPChecker) Check(ctx context.Context, cert, issuer *x509.Certificate,
 	}
 	body, err := OCSPRequest(cert, issuer)
 	if err != nil {
-		return nil, &OCSPError{Code: "ocsp_unavailable", Subject: cert.Subject.CommonName, Message: err.Error()}
+		return nil, &OCSPError{Code: CodeOCSPUnavailable, Subject: cert.Subject.CommonName, Message: err.Error()}
 	}
 	now := c.Now()
 	if cached := c.cached(string(body), now); cached != nil {
@@ -859,7 +859,7 @@ func (c *OCSPChecker) Check(ctx context.Context, cert, issuer *x509.Certificate,
 	}
 	if until, ok := c.restingUntil(url, now); ok {
 		return nil, &OCSPError{
-			Code: "ocsp_unavailable", Subject: cert.Subject.CommonName,
+			Code: CodeOCSPUnavailable, Subject: cert.Subject.CommonName,
 			Message: fmt.Sprintf("OCSP responder %s rests until %s after repeated failures", url, until.UTC().Format(time.RFC3339)),
 		}
 	}
@@ -935,20 +935,20 @@ func (c *OCSPChecker) query(ctx context.Context, url string, body []byte, cert *
 	for range OCSPStatusRetries + 1 {
 		answer, err := c.Transport.Post(ctx, url, contentTypeOCSPRequest, contentTypeOCSPResponse, body)
 		if ctx.Err() != nil {
-			return nil, &OCSPError{Code: "ocsp_unavailable", Subject: cert.Subject.CommonName, Message: ctx.Err().Error(), unreachable: true}
+			return nil, &OCSPError{Code: CodeOCSPUnavailable, Subject: cert.Subject.CommonName, Message: ctx.Err().Error(), unreachable: true}
 		}
 		switch {
 		case err != nil:
-			failure = &OCSPError{Code: "ocsp_unavailable", Message: fmt.Sprintf("OCSP responder %s unreachable: %v", url, err), unreachable: true}
+			failure = &OCSPError{Code: CodeOCSPUnavailable, Message: fmt.Sprintf("OCSP responder %s unreachable: %v", url, err), unreachable: true}
 		default:
 			status, _, _, parseErr := parseOuterResponse(answer)
 			if parseErr == nil && status == 0 {
 				return answer, nil
 			}
 			if parseErr != nil {
-				failure = &OCSPError{Code: "ocsp_unavailable", Message: fmt.Sprintf("OCSP responder %s sent no OCSP response", url)}
+				failure = &OCSPError{Code: CodeOCSPUnavailable, Message: fmt.Sprintf("OCSP responder %s sent no OCSP response", url)}
 			} else {
-				failure = &OCSPError{Code: "ocsp_unavailable", Message: fmt.Sprintf("OCSP responder %s answered status %d", url, status)}
+				failure = &OCSPError{Code: CodeOCSPUnavailable, Message: fmt.Sprintf("OCSP responder %s answered status %d", url, status)}
 			}
 		}
 	}
@@ -986,14 +986,14 @@ func ApplyRevocation(mode RevocationMode, subject string, result *RevocationResu
 	}
 	soft := mode == RevocationSoftFail
 	if failure != nil {
-		code, message, name := "ocsp_unavailable", failure.Error(), subject
+		code, message, name := CodeOCSPUnavailable, failure.Error(), subject
 		if ocspError, ok := errors.AsType[*OCSPError](failure); ok {
 			code, message = ocspError.Code, ocspError.Message
 			if ocspError.Subject != "" {
 				name = ocspError.Subject
 			}
 		}
-		untrusted := code == "ocsp_responder_untrusted" || code == "ocsp_response_invalid"
+		untrusted := code == CodeOCSPResponderUntrusted || code == CodeOCSPResponseInvalid
 		return &RevocationFinding{Finding{code, name, message}, soft && !untrusted}
 	}
 	switch result.Status {
@@ -1005,14 +1005,14 @@ func ApplyRevocation(mode RevocationMode, subject string, result *RevocationResu
 			when = result.RevokedAt.UTC().Format(time.RFC3339)
 			if result.RevokedAt.Unix() > at.Unix() {
 				return &RevocationFinding{Finding{
-					"revoked_after_reference_time", subject,
+					CodeRevokedAfterReferenceTime, subject,
 					fmt.Sprintf("certificate revoked at %s, after the reference time: %s", when, result.Reason),
 				}, true}
 			}
 		}
-		return &RevocationFinding{Finding{"revoked", subject, fmt.Sprintf("certificate revoked at %s: %s", when, result.Reason)}, false}
+		return &RevocationFinding{Finding{CodeRevoked, subject, fmt.Sprintf("certificate revoked at %s: %s", when, result.Reason)}, false}
 	}
-	return &RevocationFinding{Finding{"ocsp_unavailable", subject, "revocation status unknown: " + result.Reason}, soft}
+	return &RevocationFinding{Finding{CodeOCSPUnavailable, subject, "revocation status unknown: " + result.Reason}, soft}
 }
 
 // CheckSignerStatus asks checker for the signer's status (TSLSIG-040 to 042), with the TSL signer CA as
@@ -1084,13 +1084,13 @@ func statusError(err error) error {
 	}
 	code, rule := "ocsp_check_revocation_error", "TSLSIG-042"
 	switch {
-	case failure.Code == "ocsp_response_invalid" && failure.defect == defectCertHashMissing:
+	case failure.Code == CodeOCSPResponseInvalid && failure.defect == defectCertHashMissing:
 		code, rule = "certhash_extension_missing", "TSLSIG-041"
-	case failure.Code == "ocsp_response_invalid" && failure.defect == defectCertHashMismatch:
+	case failure.Code == CodeOCSPResponseInvalid && failure.defect == defectCertHashMismatch:
 		code, rule = "certhash_mismatch", "TSLSIG-041"
-	case failure.Code == "ocsp_responder_untrusted", failure.Code == "ocsp_response_invalid" && failure.defect == defectSignature:
+	case failure.Code == CodeOCSPResponderUntrusted, failure.Code == CodeOCSPResponseInvalid && failure.defect == defectSignature:
 		code, rule = "ocsp_signature_error", "TSLSIG-040"
-	case failure.Code == "ocsp_unavailable" && !failure.unreachable:
+	case failure.Code == CodeOCSPUnavailable && !failure.unreachable:
 		code, rule = "ocsp_status_error", "TSLSIG-042"
 	}
 	return &TSLError{code, rule, failure.Message}

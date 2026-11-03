@@ -84,11 +84,10 @@ pub enum ErrorCode {
     /// reports its stricter variant as a custom exception, without an SE code.
     UnrecognizedCriticalExtension,
     /// Warning only: the OCSP responder is not authorized under RFC 6960, but was
-    /// accepted as a delegate of another CA of the same TSP. `ti-pki`'s own code; Go
-    /// has no equivalent.
+    /// accepted as a delegate of another CA of the same TSP. `ti-pki`'s own code.
     OcspResponderNotRfc6960,
     /// The fully qualified domain name in the end entity's commonName is not the one
-    /// expected (A_30046 (5) of C_12791). `ti-pki`'s own code; Go has no equivalent.
+    /// expected (A_30046 (5) of C_12791). `ti-pki`'s own code.
     FqdnMismatch,
     /// A required profession or role OID is not present in the admission
     /// extension. (SE_1036)

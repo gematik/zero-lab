@@ -157,8 +157,8 @@ func (p *Profile) matches(cert *x509.Certificate) bool {
 
 // Finding is one requirement a certificate does not meet.
 type Finding struct {
-	// Code is ti-pki's error code, e.g. policy_mismatch or signature_invalid.
-	Code string
+	// Code says why; see [ErrorCode].
+	Code ErrorCode
 	// Subject is the common name of the certificate concerned.
 	Subject string
 	Message string
@@ -179,7 +179,7 @@ func (p *Profile) Check(cert *x509.Certificate, t CertificateType) []Finding {
 	add(checkExtKeyUsage(cert, spec.ExtKeyUsage))
 	if roles := p.EffectiveRoleOIDs(t); len(roles) > 0 {
 		if message := missingRole(cert, roles); message != "" {
-			findings = append(findings, Finding{"role_oid_missing", cert.Subject.CommonName, message})
+			findings = append(findings, Finding{CodeRoleOIDMissing, cert.Subject.CommonName, message})
 		}
 	}
 	return findings
@@ -195,14 +195,14 @@ func checkPolicies(cert *x509.Certificate, required []x509.OID) *Finding {
 	if len(missing) == 0 {
 		return nil
 	}
-	return &Finding{"policy_mismatch", cert.Subject.CommonName, "required CertificatePolicy missing: " + formatOIDs(missing)}
+	return &Finding{CodePolicyMismatch, cert.Subject.CommonName, "required CertificatePolicy missing: " + formatOIDs(missing)}
 }
 
 func checkKeyUsage(cert *x509.Certificate, required x509.KeyUsage) *Finding {
 	if cert.KeyUsage&required == required {
 		return nil
 	}
-	return &Finding{"key_usage_mismatch", cert.Subject.CommonName, fmt.Sprintf("required KeyUsage bits %b, have %b", required, cert.KeyUsage)}
+	return &Finding{CodeKeyUsageMismatch, cert.Subject.CommonName, fmt.Sprintf("required KeyUsage bits %b, have %b", required, cert.KeyUsage)}
 }
 
 func checkExtKeyUsage(cert *x509.Certificate, allowed []x509.OID) *Finding {
@@ -213,7 +213,7 @@ func checkExtKeyUsage(cert *x509.Certificate, allowed []x509.OID) *Finding {
 	if slices.ContainsFunc(have, anyExtendedKeyUsage.EqualASN1OID) || slices.ContainsFunc(allowed, func(want x509.OID) bool { return slices.ContainsFunc(have, want.EqualASN1OID) }) {
 		return nil
 	}
-	return &Finding{"key_usage_mismatch", cert.Subject.CommonName, "certificate ExtKeyUsage matches none of: " + dottedOIDs(allowed)}
+	return &Finding{CodeKeyUsageMismatch, cert.Subject.CommonName, "certificate ExtKeyUsage matches none of: " + dottedOIDs(allowed)}
 }
 
 func missingRole(cert *x509.Certificate, roles []x509.OID) string {

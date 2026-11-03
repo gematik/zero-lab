@@ -189,7 +189,7 @@ func checkFQDN(cert *x509.Certificate, expected string) *Finding {
 	if !ok || strings.EqualFold(strings.TrimRight(named, "."), expected) {
 		return nil
 	}
-	return &Finding{"fqdn_mismatch", cert.Subject.CommonName, fmt.Sprintf("commonName names %s, expected %s", named, expected)}
+	return &Finding{CodeFQDNMismatch, cert.Subject.CommonName, fmt.Sprintf("commonName names %s, expected %s", named, expected)}
 }
 
 // leadingFQDN is the domain name a commonName starts with: the first word, with at least two labels of letters,
@@ -273,7 +273,7 @@ func (v *Validator) Validate(ctx context.Context, certs []*x509.Certificate, now
 	result.Valid = len(result.Errors) == 0
 	if result.Valid && len(v.RequiredRoleOIDs) > 0 {
 		if message := missingRole(chain[0], v.RequiredRoleOIDs); message != "" {
-			result.Errors = append(result.Errors, Finding{"role_oid_missing", chain[0].Subject.CommonName, message})
+			result.Errors = append(result.Errors, Finding{CodeRoleOIDMissing, chain[0].Subject.CommonName, message})
 			result.Valid = false
 		}
 	}
@@ -290,14 +290,14 @@ func incompleteResult(partial []*x509.Certificate, err error) *ValidationResult 
 		result.CertResults = append(result.CertResults, CertResult{Subject: cert.Subject.CommonName, Position: position})
 	}
 	last := partial[len(partial)-1].Subject.CommonName
-	result.Errors = []Finding{{"chain_incomplete", last, err.Error()}}
+	result.Errors = []Finding{{CodeChainIncomplete, last, err.Error()}}
 	return result
 }
 
 func downgradeValidityErrors(result *ValidationResult) {
 	var rest []Finding
 	for _, finding := range result.Errors {
-		if finding.Code == "expired" || finding.Code == "not_yet_valid" {
+		if finding.Code == CodeExpired || finding.Code == CodeNotYetValid {
 			finding.Message += " (expired certificates allowed)"
 			result.Warnings = append(result.Warnings, finding)
 			continue
@@ -321,7 +321,7 @@ func (v *Validator) checkAcceptedType(leaf *x509.Certificate, result *Validation
 	if ok {
 		shown = "type " + string(detected)
 	}
-	result.Errors = append(result.Errors, Finding{"profile_type_mismatch", leaf.Subject.CommonName, "the profile does not accept a certificate of " + shown})
+	result.Errors = append(result.Errors, Finding{CodeProfileTypeMismatch, leaf.Subject.CommonName, "the profile does not accept a certificate of " + shown})
 }
 
 // checkCAsListed requires, with a verified list, every CA of the chain to be one it names in accord, or revoked
@@ -334,7 +334,7 @@ func (v *Validator) checkCAsListed(chain []*x509.Certificate, result *Validation
 	for _, ca := range chain[1 : len(chain)-1] {
 		if _, listed := v.Store.providerOf(ca); !listed {
 			result.Errors = append(result.Errors, Finding{
-				"ca_not_in_tsl", ca.Subject.CommonName,
+				CodeCANotInTSL, ca.Subject.CommonName,
 				fmt.Sprintf("the verified TSL does not name %q as a CA in use", ca.Subject.CommonName),
 			})
 		}
@@ -347,9 +347,9 @@ func checkEndEntityKey(leaf *x509.Certificate, now time.Time, result *Validation
 	status, description := ClassifyKey(leaf, now)
 	switch status {
 	case KeyNotAdmissible:
-		result.Errors = append(result.Errors, Finding{"key_not_admissible", leaf.Subject.CommonName, "public key " + description + " is not admissible for a TI certificate"})
+		result.Errors = append(result.Errors, Finding{CodeKeyNotAdmissible, leaf.Subject.CommonName, "public key " + description + " is not admissible for a TI certificate"})
 	case KeyPhasedOut:
-		result.Warnings = append(result.Warnings, Finding{"key_phased_out", leaf.Subject.CommonName, "public key " + description + " is past its gemSpec_Krypt admissibility date"})
+		result.Warnings = append(result.Warnings, Finding{CodeKeyPhasedOut, leaf.Subject.CommonName, "public key " + description + " is past its gemSpec_Krypt admissibility date"})
 	}
 }
 
@@ -364,7 +364,7 @@ func (v *Validator) checkTSLType(chain []*x509.Certificate, certType Certificate
 	types := v.Store.tslTypesOf(issuer)
 	if !containsOID(types, certType.OID()) {
 		result.Errors = append(result.Errors, Finding{
-			"cert_type_ca_not_authorized", leaf.Subject.CommonName,
+			CodeCertTypeCANotAuthorized, leaf.Subject.CommonName,
 			fmt.Sprintf("the TSL does not list %s among the types %q may issue", certType, issuer.Subject.CommonName),
 		})
 	}
@@ -382,13 +382,13 @@ func (v *Validator) checkCARevokedInTSL(chain []*x509.Certificate, result *Valid
 	}
 	if leaf.NotBefore.Unix() < revoked.Unix() {
 		result.Warnings = append(result.Warnings, Finding{
-			"issued_before_ca_revocation", leaf.Subject.CommonName,
+			CodeIssuedBeforeCARevocation, leaf.Subject.CommonName,
 			fmt.Sprintf("the TSL lists %q as revoked since %s; issued before", issuer.Subject.CommonName, revoked.UTC().Format(time.RFC3339)),
 		})
 		return
 	}
 	result.Errors = append(result.Errors, Finding{
-		"ca_revoked_in_tsl", leaf.Subject.CommonName,
+		CodeCARevokedInTSL, leaf.Subject.CommonName,
 		fmt.Sprintf("the TSL lists %q as revoked since %s, and the certificate was issued after", issuer.Subject.CommonName, revoked.UTC().Format(time.RFC3339)),
 	})
 }
@@ -411,7 +411,7 @@ func (v *Validator) checkRevocation(ctx context.Context, chain []*x509.Certifica
 		if failure == nil {
 			if outcome.Authorization != nil && outcome.Authorization.Kind == "same_tsp_delegate" {
 				result.Warnings = append(result.Warnings, Finding{
-					"ocsp_responder_not_rfc6960", cert.Subject.CommonName,
+					CodeOCSPResponderNotRFC6960, cert.Subject.CommonName,
 					fmt.Sprintf("OCSP responder %q is not RFC 6960 conform: certified by %q, not by the issuing CA %q; accepted as a delegate of the same TSP %q",
 						outcome.ResponderName, outcome.Authorization.CA, issuer.Subject.CommonName, outcome.Authorization.TSP),
 				})

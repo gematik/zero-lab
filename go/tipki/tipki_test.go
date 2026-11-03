@@ -78,6 +78,7 @@ type corpusFile struct {
 		} `json:"oids"`
 		Professions  []string `json:"professions"`
 		Institutions []string `json:"institutions"`
+		ErrorCodes   []string `json:"error_codes"`
 	} `json:"tables"`
 	Certificates []struct {
 		File      string `json:"file"`
@@ -247,7 +248,7 @@ func TestPROF030EveryCertificateReadsAsInTiPki(t *testing.T) {
 			for _, profile := range Profiles() {
 				codes := []string{}
 				for _, finding := range profile.Check(cert, got) {
-					codes = append(codes, finding.Code)
+					codes = append(codes, string(finding.Code))
 				}
 				if !reflect.DeepEqual(codes, append([]string{}, want.Findings[profile.Name]...)) {
 					t.Errorf("%s: %v, ti-pki has %v", profile.Name, codes, want.Findings[profile.Name])
