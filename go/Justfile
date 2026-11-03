@@ -157,18 +157,20 @@ sync REF=`git rev-parse --abbrev-ref HEAD`:
     commit=$(git rev-parse "{{REF}}")
     short=$(git rev-parse --short=12 "$commit")
     ts=$(TZ=UTC git show -s --date=format-local:%Y%m%d%H%M%S --format=%cd "$commit")
-    # modver <name>: the version to require for go/<name> at $commit — its tag if
-    # the tag is at $commit, otherwise a correctly-based pseudo-version above the
+    root=$(pwd)
+    # modver <name>: the version to require for go/<name> at $commit — its latest tag if
+    # the module is unchanged since, otherwise a correctly-based pseudo-version above the
     # highest tag that is an ANCESTOR of $commit (Go rejects a pseudo-version whose
     # base tag is not an ancestor, and tags may live off-main).
     modver() {
-        local tag best="" ma mi pa
+        local tag best="" ma mi pa nested
         for tag in $(git tag -l "go/$1/v*" | sort -V); do
             git merge-base --is-ancestor "$(git rev-list -n1 "$tag")" "$commit" 2>/dev/null && best="$tag"
         done
         if [ -z "$best" ]; then
             echo "v0.0.0-$ts-$short"
-        elif [ "$(git rev-list -n1 "$best")" = "$commit" ]; then
+        elif nested=$(cd "$root" && find "$1" -mindepth 2 -name go.mod -exec dirname {} \; | sed 's/^/:!/') \
+            && git -C "$root" diff --quiet "$best" "$commit" -- "$1" $nested; then
             echo "${best##*/}"
         elif [[ "${best##*/v}" == *-* ]]; then
             # Above a pre-release vX.Y.Z-pre the pseudo-version is vX.Y.Z-pre.0.<time>-<hash>.

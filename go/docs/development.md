@@ -127,8 +127,8 @@ and the release PR records the runs; the rules are in
 
 `go install <cmd>@<tag>` and tag-pinned Docker builds run **outside** `go.work`, so a
 command resolves its libraries from its `go.mod`. To make a tagged build pick up a library
-change, repin with `just sync` before tagging. It requires each in-repo module at its tag when
-the tag is at the ref, otherwise at a pseudo-version above its latest tag (also above a
+change, repin with `just sync` before tagging. It requires each in-repo module at its latest tag when
+the module is unchanged since that tag, otherwise at a pseudo-version above its latest tag (also above a
 pre-release such as `v1.0.0-beta.1`), then runs `go mod tidy` outside the workspace so every
 `go.sum` holds what those builds need.
 

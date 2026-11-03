@@ -1,5 +1,18 @@
 # Release Notes
 
+# Release go/tipki v0.31.1
+
+### changes
+- Requires `go/brainpool` v1.3.0 by its tag instead of a pseudo-version. The code is that of v0.31.0.
+
+### verified
+- `just check` across all modules passed; `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`. The
+  development guide lists no gated suite as required for `tipki`.
+- `just idpd-trust-fetch-test` and `just idpd-smcb-test` failed on 2026-11-03: the reference OCSP
+  responder answers unknown for the IDP's `disc.ru.idp` certificate. c736b56, on which both passed
+  earlier that day, now fails the same way, so this is not this release's doing.
+- The tag is on `chore/go-consolidation`, not yet on `main`.
+
 # Release go/pkcs12 v1.0.0-rc.1
 
 The release candidate for a stable API. The exported names are pinned by a test, so adding one is a
