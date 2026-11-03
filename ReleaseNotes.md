@@ -1,5 +1,39 @@
 # Release Notes
 
+# Release go/epa v0.24.0
+
+### features
+- The first page of the portal shows whether the TI services answer, per environment the
+  proxies use and per access path, through the new `GET /api/probe`. It runs `ti probe`, shares
+  one run per environment and reuses the result for a minute. This says the services answer,
+  not that they can be trusted: `ti` does not verify TLS for it.
+
+### changes
+- Provider 4 is left out of the providers a proxy talks to until it works.
+- The image downloads `ti` 0.5.0 from its GitHub release, pinned by SHA-256, instead of building
+  it, and is about a third of its former size.
+- `github.com/google/uuid` and `github.com/segmentio/ksuid` are replaced by the standard library,
+  `golang.org/x/crypto` is no longer a direct dependency.
+
+### fixes
+- The portal's `esc()` escapes quotes, since its results also go into HTML attributes.
+- The VAU key derivation's input is kept in its own buffer.
+
+### verified
+- `TestEPA_Connect` (`just epa-connect-test`) passed on 2026-11-03 against dev and ref: VAU,
+  authorization, record status and consent at providers 1 and 2. It ran on epa.t20r.cloud,
+  built from 3b23a28 with this version, with an SMC-B identity of that server.
+- The running proxy opened sessions at providers 1 to 3 in dev and at 1 and 2 in ref.
+
+### known limits
+- A build's version goes into `x-useragent`, where the aggregators allow at most 15 characters:
+  a longer `VERSION` build argument, such as `0.23.1-dev.3b23a28`, makes every provider refuse
+  the VAU handshake. Nothing checks this at start yet.
+- ref's provider 3 could not be reached: `epa-as-3.ref.epa4all.de` did not resolve.
+- `TestEPA_Connect` covers providers 1 and 2 only, and `ti` 0.5.0 probes `epa-1` and `epa-2` only,
+  so the first page says nothing about provider 3.
+- The image still runs as root (TASK-197).
+
 # Release go/dpop v1.0.0-beta.1
 
 A rewrite against [RFC 9449](https://www.rfc-editor.org/rfc/rfc9449) on go-jose v4; the first
