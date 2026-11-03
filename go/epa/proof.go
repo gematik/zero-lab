@@ -30,6 +30,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -38,9 +39,15 @@ import (
 	"golang.org/x/text/encoding/charmap"
 )
 
-type ProvidePNFunc func(insurantId string) (string, error)
-type ProvideHCVFunc func(insurantId string) ([]byte, error)
+type (
+	// ProvidePNFunc returns the Prüfziffer (proof of audit evidence) for an insurant's KVNR.
+	ProvidePNFunc func(insurantID string) (string, error)
+	// ProvideHCVFunc returns the hash check value (hcv) for an insurant's KVNR.
+	ProvideHCVFunc func(insurantID string) ([]byte, error)
+)
 
+// ProvidePNByHMAC returns a provider of version 1 Prüfziffern: KVNR, time, the marker U and
+// the key ID, with a truncated HMAC-SHA256 over them. hmacKeyKid has 2 characters.
 func ProvidePNByHMAC(hmacKeyHex string, hmacKeyKid string) (ProvidePNFunc, error) {
 	hmacKey, err := hex.DecodeString(hmacKeyHex)
 	if err != nil {
@@ -48,22 +55,22 @@ func ProvidePNByHMAC(hmacKeyHex string, hmacKeyKid string) (ProvidePNFunc, error
 	}
 
 	if len(hmacKeyKid) != 2 {
-		return nil, fmt.Errorf("hmacKeyKid: must be 2 characters long")
+		return nil, errors.New("hmacKeyKid: must be 2 characters long")
 	}
 
-	return func(insurantId string) (string, error) {
-		if len(insurantId) != 10 {
-			return "", fmt.Errorf("insurantId must be 10 characters long")
+	return func(insurantID string) (string, error) {
+		if len(insurantID) != 10 {
+			return "", errors.New("insurantId must be 10 characters long")
 		}
 
 		iat := strconv.FormatInt(time.Now().Unix(), 10)
 
 		proofData := make([]byte, 0, 10+10+2+1+24)
-		proofData = append(proofData, []byte(insurantId)...)
+		proofData = append(proofData, []byte(insurantID)...)
 		proofData = append(proofData, []byte(iat)...)
 		proofData = append(proofData, 'U')
 		proofData = append(proofData, []byte(hmacKeyKid)...)
-		//str := fmt.Sprintf("%s%sU%s", insurantId, iat, hmacKeyKid)
+		// str := fmt.Sprintf("%s%sU%s", insurantID, iat, hmacKeyKid)
 		mac := hmac.New(sha256.New, hmacKey)
 		mac.Write(proofData)
 		hmacResult := mac.Sum(nil)[:24] // Truncate to 24 bytes
@@ -74,6 +81,8 @@ func ProvidePNByHMAC(hmacKeyHex string, hmacKeyKid string) (ProvidePNFunc, error
 	}, nil
 }
 
+// CalculateHCV computes the hcv from the coverage begin and street address of the VSD: the
+// leading 40 bits of SHA-256 over their ISO 8859-15 form, with the top bit cleared.
 func CalculateHCV(coverageBegin, streetAddress string) ([]byte, error) {
 	coverageBegin = strings.ReplaceAll(coverageBegin, " ", "")
 
@@ -91,7 +100,7 @@ func CalculateHCV(coverageBegin, streetAddress string) ([]byte, error) {
 
 	h40_0 := make([]byte, 5)
 	copy(h40_0, h40)
-	h40_0[0] = h40_0[0] & 0x7F // Set the first bit to 0
+	h40_0[0] &= 0x7F // Set the first bit to 0
 
 	return h40_0, nil
 }
@@ -104,6 +113,9 @@ func deriveAES128Key(hmacKey []byte) ([]byte, error) {
 	return derived, nil
 }
 
+// CalculatePNv2 returns a provider of version 2 Prüfziffern (A_27278, A_27323), AES-GCM
+// sealed under a key derived from the operator's HMAC key. hmacKeyKid names the operator
+// (A to Z) and the key version (0 to 3).
 func CalculatePNv2(hmacKeyHex string, hmacKeyKid string, provideHcv ProvideHCVFunc) (ProvidePNFunc, error) {
 	hmacKey, err := hex.DecodeString(hmacKeyHex)
 	if err != nil {
@@ -111,7 +123,7 @@ func CalculatePNv2(hmacKeyHex string, hmacKeyKid string, provideHcv ProvideHCVFu
 	}
 
 	if len(hmacKeyKid) != 2 {
-		return nil, fmt.Errorf("hmacKeyKid: must be 2 characters long")
+		return nil, errors.New("hmacKeyKid: must be 2 characters long")
 	}
 
 	aesKey, err := deriveAES128Key(hmacKey)
@@ -119,30 +131,30 @@ func CalculatePNv2(hmacKeyHex string, hmacKeyKid string, provideHcv ProvideHCVFu
 		return nil, fmt.Errorf("deriving AES key: %w", err)
 	}
 
-	return func(insurantId string) (string, error) {
-		if len(insurantId) != 10 {
-			return "", fmt.Errorf("insurantId must be 10 characters long")
+	return func(insurantID string) (string, error) {
+		if len(insurantID) != 10 {
+			return "", errors.New("insurantId must be 10 characters long")
 		}
 
-		hcv, err := provideHcv(insurantId)
+		hcv, err := provideHcv(insurantID)
 		if err != nil {
 			return "", fmt.Errorf("getting HCV: %w", err)
 		}
 
 		// A_27323 - VSDM-FD: relative Zeit (Zeit-offset) Prüfziffer Version 2
-		const iat_offset = 1735689600
+		const iatOffset = 1735689600
 		iat := time.Now().Unix()
-		r_iat_8 := (iat - iat_offset) >> 3
-		r_iat_bytes := make([]byte, 3)
-		r_iat_bytes[0] = byte((r_iat_8 >> 16) & 0xFF)
-		r_iat_bytes[1] = byte((r_iat_8 >> 8) & 0xFF)
-		r_iat_bytes[2] = byte(r_iat_8 & 0xFF)
+		rIAT8 := (iat - iatOffset) >> 3
+		rIATBytes := make([]byte, 3)
+		rIATBytes[0] = byte((rIAT8 >> 16) & 0xFF)
+		rIATBytes[1] = byte((rIAT8 >> 8) & 0xFF)
+		rIATBytes[2] = byte(rIAT8 & 0xFF)
 
-		//A_27278 - VSDM-FD: Struktur einer Prüfziffer der Version 2
+		// A_27278 - VSDM-FD: Struktur einer Prüfziffer der Version 2
 		proofData := make([]byte, 0, 5+3+10)
 		proofData = append(proofData, hcv...)
-		proofData = append(proofData, r_iat_bytes...)
-		proofData = append(proofData, []byte(insurantId)...)
+		proofData = append(proofData, rIATBytes...)
+		proofData = append(proofData, []byte(insurantID)...)
 
 		// Encrypt proofData using AES-GCM
 		block, err := aes.NewCipher(aesKey)
@@ -168,32 +180,32 @@ func CalculatePNv2(hmacKeyHex string, hmacKeyKid string, provideHcv ProvideHCVFu
 		// Calculate Field_1
 		const V = 128
 		if len(hmacKeyKid) != 2 {
-			return "", fmt.Errorf("hmacKeyKid must be 2 characters long")
+			return "", errors.New("hmacKeyKid must be 2 characters long")
 		}
 		BK := hmacKeyKid[0]
 		if BK < 'A' || BK > 'Z' {
-			return "", fmt.Errorf("invalid operator identifier (must be 'A' to 'Z')")
+			return "", errors.New("invalid operator identifier (must be 'A' to 'Z')")
 		}
-		BK_D := BK - 'A'
-		BK_D_4 := BK_D << 2
+		BKD := BK - 'A'
+		BKD4 := BKD << 2
 
 		SV := hmacKeyKid[1] - '0'
 		if SV >= 4 {
-			return "", fmt.Errorf("invalid secret/key version (must be 0 to 3)")
+			return "", errors.New("invalid secret/key version (must be 0 to 3)")
 		}
 
-		field1 := V + BK_D_4 + SV
+		field1 := V + BKD4 + SV
 
-		checksum_bytes := make([]byte, 0, 1+12+18+16)
-		checksum_bytes = append(checksum_bytes, field1)
-		checksum_bytes = append(checksum_bytes, iv...)
-		checksum_bytes = append(checksum_bytes, ciphertext...)
+		checksumBytes := make([]byte, 0, 1+12+18+16)
+		checksumBytes = append(checksumBytes, field1)
+		checksumBytes = append(checksumBytes, iv...)
+		checksumBytes = append(checksumBytes, ciphertext...)
 
-		if len(checksum_bytes) != 47 {
-			return "", fmt.Errorf("invalid length of PZV2 in bytes: %d", len(checksum_bytes))
+		if len(checksumBytes) != 47 {
+			return "", fmt.Errorf("invalid length of PZV2 in bytes: %d", len(checksumBytes))
 		}
 
-		checksum := base64.StdEncoding.EncodeToString(checksum_bytes)
+		checksum := base64.StdEncoding.EncodeToString(checksumBytes)
 
 		if len(checksum) != 64 {
 			return "", fmt.Errorf("invalid length of PZV2: %d", len(checksum))

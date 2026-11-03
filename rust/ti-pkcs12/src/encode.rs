@@ -59,17 +59,7 @@ pub fn encode(
         let mut iv = [0u8; 16];
         fill_random(&mut salt);
         fill_random(&mut iv);
-        let params =
-            pkcs5::pbes2::Parameters::generate_pbkdf2_sha256_aes256cbc(ITERATIONS, &salt, iv)
-                .map_err(|e| Error::malformed("PBES2 parameters", e.to_string()))?;
-        let ciphertext = params
-            .encrypt(password.as_bytes(), plaintext)
-            .map_err(|e| Error::malformed("PBES2 encryption", e.to_string()))?;
-        let algorithm = AlgorithmIdentifierOwned {
-            oid: oids::PBES2,
-            parameters: Some(Any::encode_from(&params)?),
-        };
-        Ok((algorithm, ciphertext))
+        crate::pbes2::encrypt(password, plaintext, &salt, iv, ITERATIONS)
     };
 
     let cert_bags = p12

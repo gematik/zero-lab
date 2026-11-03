@@ -36,12 +36,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
+
 	"github.com/gematik/zero-lab/go/dpop"
+	"github.com/gematik/zero-lab/go/openid"
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jws"
-	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
 // Defaults for the e2e knobs; overridable via the matching ZERO_PDP_E2E_* env vars.
@@ -57,14 +56,14 @@ const (
 
 // clientKey loads the e2e client's private signing JWK (its public half is registered in the AS
 // config), used to mint private_key_jwt assertions. Override with ZERO_PDP_E2E_CLIENT_KEY_PATH.
-func clientKey(t *testing.T) jwk.Key {
+func clientKey(t *testing.T) *jose.JSONWebKey {
 	t.Helper()
 	path := env("ZERO_PDP_E2E_CLIENT_KEY_PATH", defaultClientKeyPath)
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read client key %s: %v", path, err)
 	}
-	k, err := jwk.ParseKey(b)
+	k, err := openid.ParseKey(b)
 	if err != nil {
 		t.Fatalf("parse client key: %v", err)
 	}
@@ -73,11 +72,11 @@ func clientKey(t *testing.T) jwk.Key {
 
 // clientAssertion mints a private_key_jwt assertion (RFC 7523) for clientID signed with key: a fresh
 // AS nonce, iss=sub=clientID, aud=issuer, and cnf.jkt = key's thumbprint.
-func clientAssertion(t *testing.T, md authzserver.ExtendedMetadata, clientID string, key jwk.Key) string {
+func clientAssertion(t *testing.T, md authzserver.ExtendedMetadata, clientID string, key *jose.JSONWebKey) string {
 	t.Helper()
 	resp := mustGet(t, httpClient(), md.NonceEndpoint)
 	nonceBytes, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	nonce := strings.TrimSpace(string(nonceBytes))
 
 	thumb, err := key.Thumbprint(crypto.SHA256)
@@ -85,32 +84,40 @@ func clientAssertion(t *testing.T, md authzserver.ExtendedMetadata, clientID str
 		t.Fatalf("thumbprint: %v", err)
 	}
 	now := time.Now()
-	tok := jwt.New()
-	tok.Set(jwt.IssuerKey, clientID)
-	tok.Set(jwt.SubjectKey, clientID)
-	tok.Set(jwt.AudienceKey, md.Issuer)
-	tok.Set(jwt.IssuedAtKey, now.Unix())
-	tok.Set(jwt.ExpirationKey, now.Add(time.Minute).Unix())
-	tok.Set("nonce", nonce)
-	tok.Set("cnf", map[string]string{"jkt": base64.RawURLEncoding.EncodeToString(thumb)})
-	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.ES256(), key))
+	payload, err := json.Marshal(map[string]any{
+		"iss":   clientID,
+		"sub":   clientID,
+		"aud":   []string{md.Issuer},
+		"iat":   now.Unix(),
+		"exp":   now.Add(time.Minute).Unix(),
+		"nonce": nonce,
+		"cnf":   map[string]string{"jkt": base64.RawURLEncoding.EncodeToString(thumb)},
+	})
+	if err != nil {
+		t.Fatalf("encode claims: %v", err)
+	}
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.ES256, Key: key}, (&jose.SignerOptions{}).WithType("JWT"))
+	if err != nil {
+		t.Fatalf("signer: %v", err)
+	}
+	object, err := signer.Sign(payload)
 	if err != nil {
 		t.Fatalf("sign assertion: %v", err)
 	}
-	return string(signed)
+	signed, err := object.CompactSerialize()
+	if err != nil {
+		t.Fatalf("serialize assertion: %v", err)
+	}
+	return signed
 }
 
 // signDPoP adds a DPoP proof for req signed by key, the key clientAssertion names as cnf.jkt: RFC 9449
 // Section 5 requires a proof on every token request whose tokens are DPoP-bound.
-func signDPoP(t *testing.T, req *http.Request, key jwk.Key) {
+func signDPoP(t *testing.T, req *http.Request, key *jose.JSONWebKey) {
 	t.Helper()
-	var raw any
-	if err := jwk.Export(key, &raw); err != nil {
-		t.Fatalf("export key: %v", err)
-	}
-	signer, ok := raw.(crypto.Signer)
+	signer, ok := key.Key.(crypto.Signer)
 	if !ok {
-		t.Fatalf("key %T is not a private key", raw)
+		t.Fatalf("key %T is not a private key", key.Key)
 	}
 	dpopKey, err := dpop.NewKeyFromSigner(signer)
 	if err != nil {
@@ -183,14 +190,18 @@ func getOpenidProviders(t *testing.T, md authzserver.ExtendedMetadata) []openidP
 	return providers
 }
 
-func getJWKS(t *testing.T, md authzserver.ExtendedMetadata) jwk.Set {
+func getJWKS(t *testing.T, md authzserver.ExtendedMetadata) *jose.JSONWebKeySet {
 	t.Helper()
 	resp := mustGet(t, httpClient(), md.JwksURI)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("jwks: status %d", resp.StatusCode)
 	}
-	set, err := jwk.ParseReader(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("jwks: read: %v", err)
+	}
+	set, err := openid.ParseKeySet(body)
 	if err != nil {
 		t.Fatalf("jwks: parse: %v", err)
 	}
@@ -198,16 +209,16 @@ func getJWKS(t *testing.T, md authzserver.ExtendedMetadata) jwk.Set {
 }
 
 // verifyAccessToken parses and signature-verifies an access token against the server JWKS.
-func verifyAccessToken(t *testing.T, raw string, keys jwk.Set) jwt.Token {
+func verifyAccessToken(t *testing.T, raw string, keys *jose.JSONWebKeySet) []byte {
 	t.Helper()
-	tok, err := jwt.Parse([]byte(raw),
-		jwt.WithKeySet(keys, jws.WithInferAlgorithmFromKey(true)),
-		jwt.WithValidate(true),
-	)
+	payload, err := openid.VerifyJWS([]byte(raw), keys, openid.VerifyOptions{})
 	if err != nil {
 		t.Fatalf("access token did not verify against JWKS: %v", err)
 	}
-	return tok
+	if err := openid.ValidateLifetime(payload, time.Now(), 0); err != nil {
+		t.Fatalf("access token is not valid now: %v", err)
+	}
+	return payload
 }
 
 func mustGet(t *testing.T, c *http.Client, url string) *http.Response {
@@ -270,7 +281,7 @@ func startCallbackServer(t *testing.T, addr string) *callbackServer {
 	if err != nil {
 		t.Fatalf("callback server listen on %s: %v", addr, err)
 	}
-	cb.srv = &http.Server{Handler: mux}
+	cb.srv = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = cb.srv.Serve(ln) }()
 	cb.redirectURI = "http://" + addr + "/as-callback"
 	t.Cleanup(func() { _ = cb.srv.Close() })

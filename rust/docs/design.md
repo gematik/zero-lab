@@ -11,13 +11,13 @@ The crates are the reference implementation of zero-lab's TI building blocks
 server, a browser, an air-gapped installation and, through bindings, in other hosts.
 
 ```text
- hosts      ti-cli (ureq, rustls/ring)   ti-wasm (wasm-bindgen)   servers (reqwest, tokio)
+ hosts      ti-cli (ureq, rustls/ring)   ti-wasm (wasm-bindgen)   servers (their own)
               │                            │                        │
- adapters   `ureq` / `reqwest` / `tokio` / `os` features: the only code that does I/O
+ adapters   `ureq` / `os` features: the only code that does I/O
               │
  engines    ti-idpd  ti-directory  ti-connector-client  ti-report       (sans I/O)
               │
- core       ti-pki (+ load)  ti-xmldsig  jwz (+ jwz-brainpool, ti-jwz)  ti-pkcs12
+ core       ti-pki (+ load)  jwz (+ jwz-brainpool, ti-jwz)  ti-pkcs12
               │
  vocabulary ti-types (Env, Tier; no_std, no dependencies)   ti-store (policy, store trait)
 ```
@@ -55,7 +55,7 @@ binaries entirely, and `just nonprod-absent` checks the bytes are absent.
 TLS peer verification of TI endpoints is the core's
 ([architecture](../../docs/architecture.md#the-host-owns-the-transport-the-core-owns-trust)):
 ti-pki is to supply a rustls `ServerCertVerifier` that validates the chain against the
-verified TSL with the profile, algorithm and OCSP rules, and the ureq and reqwest
+verified TSL with the profile, algorithm and OCSP rules, and the ureq
 adapters use it for TI endpoints (TASK-97). Today ti-connector-client verifies the
 Konnektor by its `.kon` pins and CAs, and other TLS goes through the platform verifier.
 
@@ -111,20 +111,20 @@ the interop adapter in `spec/<topic>/interop/rust` prints the code.
 
 | Category | Rust tool | When | Today |
 |---|---|---|---|
-| unsafe-code ban, lints, documented API | `unsafe_code = "forbid"` (ti-wasm glue excepted, `just wasm-unsafe-free`); clippy `pedantic`, rustdoc, `missing_docs` | check | all crates |
+| unsafe-code ban, lints, documented API | `unsafe_code = "forbid"` (ti-wasm glue excepted, `just wasm-unsafe-free`); the cores' dependencies only with an approved exception (`just unsafe-free`, [section 8](#8-dependencies)); clippy `pedantic`, rustdoc, `missing_docs` | check | all crates |
 | build matrix and layer checks | `just wasm32`, `just core-deps`, `just nonprod-absent`; `just features` | check; `just features` before a release (`check-full`) | all crates |
-| bounded model checking | Kani | design time, stamped | ti-xmldsig C14N, jwz (base64url, compact, ECDH) |
+| bounded model checking | Kani | design time, stamped | jwz (base64url, compact, ECDH) |
 | functional proof | hax → F* | design time, stamped | jwz Concat KDF (SP 800-56A §5.8.1) |
-| fuzzing | cargo-fuzz (below) | release, design time | jwz parsers |
-| property tests | proptest | check | ti-xmldsig |
-| known-answer, corpora, interop | Wycheproof, spec corpora, interop runs | check | jwz, jwz-brainpool, ti-pki, ti-xmldsig, ti-pkcs12 |
+| fuzzing | cargo-fuzz (below) | release, design time | jwz, ti-store and ti-pki parsers |
+| known-answer, corpora, interop | Wycheproof, spec corpora, interop runs | check | jwz, jwz-brainpool, ti-pki, ti-pkcs12 |
 | undefined behaviour | Miri | only if `unsafe` ever enters | n/a |
 | mutation testing | cargo-mutants (`just mutants`) | before a release | per crate, by hand |
 | supply chain | cargo-deny, cargo-audit, cargo-vet | check / audit | workspace |
 | compatibility | cargo-semver-checks, MSRV, cargo-machete | audit / check | workspace |
 
-Hostile input is parsed strictly: DER through `der`, XML through `roxmltree` without
-DTDs, JSON through serde with unknown fields rejected where the format is ours; secrets
+Hostile input is parsed strictly: DER through `der`, XML through `quick-xml` into typed
+structures without entity expansion, read for the TSL only from bytes its detached
+signature covers, JSON through serde with unknown fields rejected where the format is ours; secrets
 in `Zeroizing`, digests and MACs compared with `subtle`.
 
 Design-time results are stamped in `jwz/verification/stamps/*.toml`; `just jwz-recheck`
@@ -141,8 +141,7 @@ with `cargo fuzz tmin`; structure-aware targets with `arbitrary`.
 | Crate | Entry points |
 |---|---|
 | jwz | JWS and JWE compact and JSON, JWK and JWK Set, JWT claims (exist) |
-| ti-pki | certificate and chain parsing, roots.json, TSL (`quick-xml`), OCSP responses, `TrustStore` validation of a parsed chain, offline bundle |
-| ti-xmldsig | XML parsing, C14N, signature verification of a TSL-shaped document |
+| ti-pki | certificate and chain parsing, roots.json, the detached TSL signature, TSL (`quick-xml`), OCSP responses, `TrustStore` validation of a parsed chain, offline bundle |
 | ti-pkcs12 | `decode` with password, MAC and KDF parameters, legacy PBEs |
 | ti-connector-client | `.kon` files, SOAP responses and faults, service directory |
 | ti-idpd, ti-directory | discovery document, IDP keys and challenge, redirects, token responses |
@@ -158,23 +157,43 @@ pinned `wasm-bindgen` aside), with their reason as a comment where it is not obv
 and semver in `just audit` before tagging. Known compromises, each with its exit trigger,
 are in [development.md](./development.md#known-compromises).
 
+**No `unsafe` in a core, also not through its dependencies.** The cores are ti-types,
+ti-store, ti-pki, ti-pkcs12, ti-connector-client, ti-report, jwz,
+jwz-brainpool, ti-jwz, ti-idpd and ti-directory, with every feature but their adapters
+(the `ureq` transports, ti-types' `clap`) and `test-util`.
+The hosts are ti-cli and ti-wasm: a crate that reaches the terminal, the operating system
+or foreign code through `unsafe` (rpassword, rusqlite) belongs there. What counts is what
+ends up in the program on the release targets and wasm32: normal dependencies, not proc
+macros or build scripts. A crate with `unsafe` enters a core only through an entry in
+[unsafe-exceptions.md](./unsafe-exceptions.md) with its exact version, the reason and the
+maintainer's approval date; a new version is reviewed again before its row changes.
+`just unsafe-free` (in `just check`) runs `unsafe-audit`, which parses every crate of each
+core's tree with `syn` and fails on a crate with `unsafe` that is not listed, a listed
+crate in another version, and a row no core needs any more; `cargo run -p unsafe-audit --
+inventory` prints the sites per crate.
+
 ## 9. Crossing languages
 
 The core offers itself to other languages as [interop](../../docs/interop.md) describes:
-`ti` subprocesses and `ti serve` (protocol open, TASK-65), next to a client or as a
-sidecar, for Go and Java, wasm-bindgen for the browser (`ti-wasm`), uniffi for Swift and
-Kotlin/Java (planned). On a process boundary the Rust side decodes requests from
-borrowed slices into reused buffers. `ti-wasm` exports are pure; `#[wasm_bindgen]` glue
+`ti` subprocesses and stateless helpers (`ti-<group>-helper`, JSON lines over stdio or a
+Unix socket, TASK-120) for Go servers, wasm-bindgen for the browser (`ti-wasm`), uniffi
+for Swift, Kotlin/Java and C# (clients only, planned). On a process boundary the Rust
+side decodes requests from borrowed slices into reused buffers. `ti-wasm` exports are pure; `#[wasm_bindgen]` glue
 is the only `unsafe` in the workspace, kept out of ti-wasm's own sources, and all logic
 stays in crates under `unsafe_code = "forbid"`. Builds favour verification speed over
 module size (`opt-level 3`, `wasm-opt -O3`). The decision record is backlog doc-1.
 
 ## 10. Servers
 
-No standalone Rust workload yet. `ti serve` runs next to a client or as a sidecar inside a
-server workload; as a sidecar it follows the [server rules](../../docs/design/servers.md)
-(non-root, read-only root filesystem, Unix socket with file permissions, probes,
-graceful shutdown, telemetry without leaking, inside the workload's enclave).
+No standalone Rust workload yet. A helper runs inside a server workload, as a child
+process or as a sidecar container from the same image, and follows the
+[server rules](../../docs/design/servers.md) there: stateless (no profile, store, cache or
+key file; trust material supplied from a mounted directory and kept in memory), non-root,
+read-only root filesystem, a Unix socket with file permissions and peer checks, no
+network listener, probes after the handshake, graceful shutdown, telemetry without
+leaking, inside the workload's enclave. The helpers (TASK-120) and the producer of trust
+material for containers (TASK-173) are built on the loaders in
+[development.md](./development.md#trust-material-loading).
 
 ## 11. Build and release
 
@@ -184,7 +203,7 @@ are in its "Gated tests" table.
 
 ## 12. Status
 
-Gaps against the rules are backlog tasks: the crate labels (`ti-pki`, `ti-xmldsig`,
+Gaps against the rules are backlog tasks: the crate labels (`ti-pki`,
 `ti-pkcs12`, `jwz`, …) together with `fuzz`, `tests`, `deps`, `keys`. Most relevant now:
 fuzz targets beyond jwz (TASK-44 to TASK-49), requirement-named tests outside jwz
 (TASK-50, TASK-51), the silently passing Konnektor end-to-end tests (TASK-52), keys as

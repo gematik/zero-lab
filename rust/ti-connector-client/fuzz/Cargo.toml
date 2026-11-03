@@ -1,0 +1,40 @@
+# cargo-fuzz targets for ti-connector-client's parsers (nightly; `just fuzz-ti-connector-client`).
+# Outside the workspace so that libfuzzer never enters the workspace's lock file and checks.
+[package]
+name = "ti-connector-client-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "EUPL-1.2"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+futures-lite = "2"
+libfuzzer-sys = "0.4.13"
+serde_json = "1"
+ti-connector-client = { path = ".." }
+
+[[bin]]
+name = "dotkon"
+path = "fuzz_targets/dotkon.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sds"
+path = "fuzz_targets/sds.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "soap"
+path = "fuzz_targets/soap.rs"
+test = false
+doc = false
+bench = false

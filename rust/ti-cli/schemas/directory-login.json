@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "directory login",
-  "description": "A FHIR-Directory access token from one of its Auth-Service endpoints: owner by card through the IDP-Dienst, owner with a TI-Messenger RegService-OpenID-Token, or holder, service and ti-provider with client credentials at the directory's Keycloak. One document for every path; what does not apply is null.",
+  "description": "A FHIR-Directory access token from one of its Auth-Service endpoints: owner by card through the IDP-Dienst (also as login search, for the Search API), owner with a TI-Messenger RegService-OpenID-Token, or holder, service and ti-provider with client credentials at the directory's Keycloak. One document for every path; what does not apply is null.",
   "type": "object",
   "properties": {
     "schema": {
@@ -112,12 +112,20 @@
             "null"
           ],
           "description": "The IDP-Dienst authorization URL the directory sent the card to; null without a card"
+        },
+        "search_url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The Search API the token is for (login search); null for the other logins"
         }
       },
       "required": [
         "base_url",
         "endpoint_url",
-        "authorization_url"
+        "authorization_url",
+        "search_url"
       ],
       "additionalProperties": false
     },
@@ -247,10 +255,11 @@
       "type": "array",
       "items": {
         "enum": [
-          "idp_certificates_unverified"
+          "idp_certificates_unverified",
+          "search_not_in_audience"
         ]
       },
-      "description": "What was not proven: idp_certificates_unverified when the IDP's certificates were not checked (--idp-unverified)"
+      "description": "What was not proven: idp_certificates_unverified when the IDP's certificates were not checked (--idp-unverified); search_not_in_audience when the token of login search does not list the Search API in aud"
     }
   },
   "required": [

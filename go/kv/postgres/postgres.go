@@ -33,13 +33,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gematik/zero-lab/go/kv"
+	// Registers the "pgx" driver with database/sql.
 	_ "github.com/jackc/pgx/v5/stdlib"
+
+	"github.com/gematik/zero-lab/go/kv"
 )
 
 // schemaSQL is applied idempotently on Open (no migration tool). value is bytea — an opaque binary store
 // (the kv never queries inside values), so JSON, snapshots, and at-rest ciphertext all store as raw bytes
-// with no base64/jsonb overhead. The DO block migrates pre-existing jsonb tables in place.
+// with no base64/jsonb overhead. The DO block migrates pre-existing jsonb tables in place. The metadata column
+// is no longer read or written, but stays: during a rolling deploy an older replica's upsert still names it
+// (server rule 22). A later release drops it.
 const schemaSQL = `
 CREATE TABLE IF NOT EXISTS kv (
   key        text PRIMARY KEY,
@@ -87,54 +91,59 @@ func (s *store) Get(ctx context.Context, key string) ([]byte, bool, error) {
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, fmt.Errorf("kv/postgres: get %q: %w", key, err)
+		return nil, false, fmt.Errorf("kv/postgres: get: %w", err)
 	}
 	return v, true, nil
 }
 
-func (s *store) GetItem(ctx context.Context, key string) (kv.Item, bool, error) {
-	var value, metadata []byte
-	err := s.db.QueryRowContext(ctx,
-		`SELECT value, metadata FROM kv WHERE key=$1 AND (expires_at IS NULL OR expires_at > now())`,
-		key).Scan(&value, &metadata)
-	if errors.Is(err, sql.ErrNoRows) {
-		return kv.Item{}, false, nil
-	}
-	if err != nil {
-		return kv.Item{}, false, fmt.Errorf("kv/postgres: getitem %q: %w", key, err)
-	}
-	return kv.Item{Value: value, Metadata: metadata}, true, nil
-}
+// The errors of this store name the operation and never the key: a key names what it holds, as:code:<the code> or
+// pep:state:<the state>, and errors reach logs.
 
 type execer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
+// ttlMicroseconds is the statement parameter for an expiry of now() + TTL: the expiry comes from the database
+// clock, the one every read compares against, so skew between the replicas and the database cannot stretch or
+// cut short a TTL. NULL makes the sum NULL, which is no expiry.
+func ttlMicroseconds(ttl time.Duration) any {
+	if ttl <= 0 {
+		return nil
+	}
+	return ttl.Microseconds()
+}
+
 func upsert(ctx context.Context, e execer, ent kv.Entry) error {
-	// The expiry comes from the database clock, the one every read compares against, so
-	// skew between the replicas and the database cannot stretch or cut short a TTL.
-	var ttlMicros any
-	if ent.TTL > 0 {
-		ttlMicros = ent.TTL.Microseconds()
-	}
-	var metadata any
-	if len(ent.Metadata) > 0 {
-		metadata = string(ent.Metadata)
-	}
 	_, err := e.ExecContext(ctx,
-		`INSERT INTO kv(key, value, metadata, expires_at) VALUES($1, $2, $3::jsonb,
-		     now() + $4::bigint * interval '1 microsecond')
-		   ON CONFLICT(key) DO UPDATE SET value=excluded.value, metadata=excluded.metadata,
-		     created_at=now(), expires_at=excluded.expires_at`,
-		ent.Key, ent.Value, metadata, ttlMicros)
+		`INSERT INTO kv(key, value, expires_at) VALUES($1, $2, now() + $3::bigint * interval '1 microsecond')
+		   ON CONFLICT(key) DO UPDATE SET value=excluded.value, created_at=now(), expires_at=excluded.expires_at`,
+		ent.Key, ent.Value, ttlMicroseconds(ent.TTL))
 	if err != nil {
-		return fmt.Errorf("kv/postgres: set %q: %w", ent.Key, err)
+		return fmt.Errorf("kv/postgres: set: %w", err)
 	}
 	return nil
 }
 
 func (s *store) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
 	return upsert(ctx, s.db, kv.Entry{Key: key, Value: value, TTL: ttl})
+}
+
+// SetIfAbsent is one statement, so two replicas cannot both win: the loser of a race for an expired row waits
+// for the winner's commit and then re-evaluates the WHERE on the new row, which is no longer expired.
+func (s *store) SetIfAbsent(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
+	res, err := s.db.ExecContext(ctx,
+		`INSERT INTO kv(key, value, expires_at) VALUES($1, $2, now() + $3::bigint * interval '1 microsecond')
+		   ON CONFLICT(key) DO UPDATE SET value=excluded.value, created_at=now(), expires_at=excluded.expires_at
+		   WHERE kv.expires_at IS NOT NULL AND kv.expires_at <= now()`,
+		key, value, ttlMicroseconds(ttl))
+	if err != nil {
+		return false, fmt.Errorf("kv/postgres: set if absent: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("kv/postgres: set if absent: %w", err)
+	}
+	return n == 1, nil
 }
 
 func (s *store) SetMany(ctx context.Context, entries ...kv.Entry) error {
@@ -161,14 +170,14 @@ func (s *store) Take(ctx context.Context, key string) ([]byte, bool, error) {
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, fmt.Errorf("kv/postgres: take %q: %w", key, err)
+		return nil, false, fmt.Errorf("kv/postgres: take: %w", err)
 	}
 	return v, true, nil
 }
 
 func (s *store) Delete(ctx context.Context, key string) error {
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM kv WHERE key=$1`, key); err != nil {
-		return fmt.Errorf("kv/postgres: delete %q: %w", key, err)
+		return fmt.Errorf("kv/postgres: delete: %w", err)
 	}
 	return nil
 }

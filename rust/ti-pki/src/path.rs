@@ -39,7 +39,7 @@ use const_oid::db::rfc5280::{
 
 use crate::algorithms::AlgorithmSet;
 use crate::checks::CertificateCheck;
-use crate::error::{ErrorCode, ValidationError};
+use crate::error::{ErrorCode, ValidationError, ValidationWarning};
 use crate::time::Timestamp;
 use crate::validate::{CertResult, ChainPosition, ValidationResult};
 use crate::{Certificate, Error};
@@ -60,6 +60,33 @@ pub const PROCESSED_EXTENSIONS: &[ObjectIdentifier] = &[
     crate::oid::ADMISSION_EXTENSION,
 ];
 
+/// When a CA's validity counts (gemKPT_PKI_TIP 2.4). The end entity is checked at the
+/// reference time under either (gemSpec_PKI TUC_PKI_002).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ValidityModel {
+    /// The PKIX shell model (2.4.1): every certificate of the chain valid at the
+    /// reference time. For components (devices, services) and the eGK's nonQES
+    /// certificates.
+    #[default]
+    Shell,
+    /// The Kompromissmodell (2.4.2): each CA valid when it issued the certificate below
+    /// it. For every nonQES certificate of the HBA and the SMC-B; a CA expired since is
+    /// a warning ([`ErrorCode::IssuedBeforeCaExpiry`]), as the TSL keeps such CAs in
+    /// accord (gemSpec_PKI Tab_PKI_271).
+    Compromise,
+}
+
+impl ValidityModel {
+    /// The model gemKPT_PKI_TIP 2.4 assigns to `cert_type`.
+    pub const fn for_type(cert_type: crate::CertificateType) -> Self {
+        use crate::CertificateType as T;
+        match cert_type {
+            T::HpAut | T::HpEnc | T::HciAut | T::HciEnc | T::HciOsig => ValidityModel::Compromise,
+            _ => ValidityModel::Shell,
+        }
+    }
+}
+
 /// What [`validate_path`] checks against.
 #[derive(Clone, Copy)]
 pub struct PathOptions<'a> {
@@ -75,12 +102,16 @@ pub struct PathOptions<'a> {
     pub max_clock_skew: Duration,
     /// Checks run on the end entity after the RFC 5280 checks.
     pub ee_checks: &'a [CertificateCheck],
+    /// When the CAs' validity counts.
+    pub model: ValidityModel,
 }
 
 /// Validates `chain` (end entity first, root last, as [`build_chain`] returns it)
 /// against RFC 5280 §6 and the end-entity checks.
 ///
-/// Every certificate must be valid at `now`, and every certificate but the root may mark
+/// The end entity must be valid at `now`; each CA at `now` under the shell model, or
+/// when it issued the certificate below under the Kompromissmodell. Every certificate
+/// but the root may mark
 /// only [`PROCESSED_EXTENSIONS`] critical; the root is the trust anchor, whose extensions
 /// RFC 5280 leaves to the relying party. Every CA below the end entity must be
 /// marked as a CA, must allow certificate signing if it restricts key usage, and must
@@ -126,8 +157,17 @@ pub fn validate_path(
     };
 
     for (i, cert) in chain.iter().enumerate() {
-        if let Err(e) = check_validity(cert, options.now, options.max_clock_skew) {
-            result.add_error(e);
+        let issued = i
+            .checked_sub(1)
+            .and_then(|below| chain.get(below))
+            .filter(|_| options.model == ValidityModel::Compromise);
+        match issued {
+            Some(below) => check_issuer_validity(cert, below, options, &mut result),
+            None => {
+                if let Err(e) = check_validity(cert, options.now, options.max_clock_skew) {
+                    result.add_error(e);
+                }
+            }
         }
         if i + 1 < chain.len() {
             for extension in cert
@@ -184,6 +224,36 @@ fn position_of(i: usize, len: usize) -> ChainPosition {
         ChainPosition::Root
     } else {
         ChainPosition::SubCa
+    }
+}
+
+/// The Kompromissmodell for the CA `cert`, which issued `below`: valid at `below`'s
+/// notBefore, or an error; expired at `now` although valid then, a warning.
+fn check_issuer_validity(
+    cert: &Certificate,
+    below: &Certificate,
+    options: &PathOptions<'_>,
+    result: &mut ValidationResult,
+) {
+    if let Err(mut e) = check_validity(cert, below.not_before(), options.max_clock_skew) {
+        e.message = format!(
+            "{} when it issued {:?} (Kompromissmodell)",
+            e.message,
+            below.subject_cn()
+        );
+        result.add_error(e);
+    } else if check_validity(cert, options.now, options.max_clock_skew).is_err() {
+        result.warnings.push(
+            ValidationWarning::new(
+                ErrorCode::IssuedBeforeCaExpiry,
+                format!(
+                    "expired (notAfter={}), but valid when it issued {:?}: the Kompromissmodell for HBA and SMC-B",
+                    cert.not_after(),
+                    below.subject_cn()
+                ),
+            )
+            .with_subject(cert.subject_cn()),
+        );
     }
 }
 
@@ -261,6 +331,7 @@ mod tests {
             algorithms: DEFAULT,
             max_clock_skew: Duration::ZERO,
             ee_checks: &[],
+            model: ValidityModel::Shell,
         }
     }
 
@@ -385,6 +456,81 @@ mod tests {
                 "GEM.SubCA-NameConstraints TEST-ONLY"
             )]
         );
+    }
+
+    fn short_chain(ee: &Certificate, pki: &TestPki) -> [Certificate; 3] {
+        [ee.clone(), pki.sub_ca_short.clone(), pki.rca1.clone()]
+    }
+
+    fn warning_codes(result: &ValidationResult) -> Vec<(ErrorCode, &str)> {
+        result
+            .warnings
+            .iter()
+            .map(|w| (w.code, w.subject.as_str()))
+            .collect()
+    }
+
+    /// gemKPT_PKI_TIP 2.4.2: under the Kompromissmodell a CA counts as it was when it
+    /// issued the certificate below; expired since, it is a warning.
+    #[test]
+    fn kompromissmodell_accepts_a_ca_that_expired_after_issuing() {
+        let pki = TestPki::new();
+        let options = PathOptions {
+            model: ValidityModel::Compromise,
+            ..options(TestPki::AFTER_SHORT)
+        };
+        let result = validate_path(&short_chain(&pki.ee_short_hci_aut, &pki), &options).unwrap();
+        assert!(result.valid, "{:?}", result.errors);
+        assert_eq!(
+            warning_codes(&result),
+            [(ErrorCode::IssuedBeforeCaExpiry, "GEM.SubCA-Short TEST-ONLY")]
+        );
+    }
+
+    /// gemKPT_PKI_TIP 2.4.2: a certificate issued after its CA expired is not valid
+    /// under the Kompromissmodell either.
+    #[test]
+    fn kompromissmodell_rejects_a_certificate_issued_after_the_ca_expired() {
+        let pki = TestPki::new();
+        let options = PathOptions {
+            model: ValidityModel::Compromise,
+            ..options(TestPki::AFTER_SHORT)
+        };
+        let result = validate_path(&short_chain(&pki.ee_after_short, &pki), &options).unwrap();
+        assert_eq!(
+            codes(&result),
+            [(ErrorCode::Expired, "GEM.SubCA-Short TEST-ONLY")]
+        );
+        assert!(warning_codes(&result).is_empty(), "{:?}", result.warnings);
+    }
+
+    /// gemKPT_PKI_TIP 2.4.1: under the shell model every certificate must be valid at the
+    /// reference time.
+    #[test]
+    fn shell_model_rejects_a_chain_whose_ca_has_expired() {
+        let pki = TestPki::new();
+        let result = validate_path(
+            &short_chain(&pki.ee_short_fd_tls_s, &pki),
+            &options(TestPki::AFTER_SHORT),
+        )
+        .unwrap();
+        assert_eq!(
+            codes(&result),
+            [(ErrorCode::Expired, "GEM.SubCA-Short TEST-ONLY")]
+        );
+    }
+
+    /// gemKPT_PKI_TIP 2.4: the Kompromissmodell for every nonQES certificate of HBA and
+    /// SMC-B, the shell model for components and the eGK.
+    #[test]
+    fn the_certificate_type_picks_the_validity_model() {
+        use crate::CertificateType as T;
+        for t in [T::HpAut, T::HpEnc, T::HciAut, T::HciEnc, T::HciOsig] {
+            assert_eq!(ValidityModel::for_type(t), ValidityModel::Compromise, "{t}");
+        }
+        for t in [T::ChAut, T::ChEnc, T::FdTlsS, T::FdSig, T::ZdTlsS, T::HpQes] {
+            assert_eq!(ValidityModel::for_type(t), ValidityModel::Shell, "{t}");
+        }
     }
 
     #[test]

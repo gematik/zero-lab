@@ -24,6 +24,7 @@ package ti
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 )
@@ -60,7 +61,7 @@ func (a *Authenticator) Authenticate(ctx context.Context, authURL string) (*Code
 	case a.Env != "":
 		args = append(args, "--env", a.Env)
 	default:
-		return nil, fmt.Errorf("authenticator: Env or IdpURL is required")
+		return nil, errors.New("authenticator: Env or IdpURL is required")
 	}
 	out, err := a.Runner.Run(ctx, nil, args...)
 	if err != nil {

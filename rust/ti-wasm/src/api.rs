@@ -29,6 +29,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 use ti_pki::config::MAX_TSL_GRACE_PERIOD;
+use ti_pki::tsl_signature::DetachedTsl;
 use ti_pki::{Certificate, Env, Timestamp, TrustConfig, parse_pem_certificates};
 use ti_report::{CertificateInfo, CheckContext, SCHEMA, describe, tsl_view};
 
@@ -81,6 +82,8 @@ pub fn trust_urls(env: &str) -> Result<String, String> {
 /// An unknown environment, a bad time or a grace period over 30 days.
 pub fn verify_tsl(
     xml: &[u8],
+    signature: &[u8],
+    signer_status: Option<&[u8]>,
     env: &str,
     now: &str,
     roots_json: Option<&[u8]>,
@@ -89,7 +92,13 @@ pub fn verify_tsl(
     let env = parse_env(env)?;
     let now = parse_now(now)?;
     let config = config_for(env, grace_seconds)?;
-    Ok(to_json(&tsl_view(xml, env, &config, roots_json, now)))
+    let files = DetachedTsl {
+        signature,
+        signer_status,
+    };
+    Ok(to_json(&tsl_view(
+        xml, files, env, &config, roots_json, now,
+    )))
 }
 
 /// See [`crate::describe_certificate`].
@@ -117,6 +126,7 @@ impl Context {
     /// An unknown environment, a bad time or a grace period over 30 days.
     pub fn new(
         xml: &[u8],
+        signature: &[u8],
         env: &str,
         now: &str,
         roots_json: Option<&[u8]>,
@@ -126,7 +136,7 @@ impl Context {
         let now = parse_now(now)?;
         let config = config_for(env, grace_seconds)?;
         Ok(Context(CheckContext::new(
-            env, config, roots_json, xml, now,
+            env, config, roots_json, xml, signature, now,
         )))
     }
 

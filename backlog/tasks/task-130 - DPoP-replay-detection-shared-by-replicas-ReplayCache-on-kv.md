@@ -3,7 +3,8 @@ id: TASK-130
 title: DPoP replay detection shared by replicas (ReplayCache on kv)
 status: To Do
 assignee: []
-created_date: '2026-10-21 07:53'
+created_date: 2026-10-21 07:53
+updated_date: '2026-11-02T22:23:00Z'
 labels:
   - go
   - kv
@@ -24,3 +25,9 @@ go/dpop's MemoryReplayCache detects a replayed proof only at the replica that sa
 - [ ] #1 kv.Store offers an atomic set-if-absent with TTL in every backend, tested under concurrency
 - [ ] #2 pdp and pep use a kv-backed ReplayCache; a proof replayed at another replica is refused (test with two servers on one store)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+kv.ReplayCache is wired into pdp. pep's Builder takes one, but its only production user is zaddy, which has no kv, and pep/proxy verifies no DPoP proofs. So AC 2 stays open for zaddy.
+<!-- SECTION:NOTES:END -->

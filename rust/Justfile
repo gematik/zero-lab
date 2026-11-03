@@ -318,7 +318,7 @@ wasm-size:
 # Run the built package in Node on the real TSLs, cross-checked with `ti pki tsl verify`
 wasm-smoke: wasm-build
     cargo build --locked -q -p ti-cli
-    node ti-wasm/js/smoke.mjs {{WASM_PKG}} ../spec/tsl-xmldsig/testdata/tsl/real target/debug/ti
+    node ti-wasm/js/smoke.mjs {{WASM_PKG}} ../spec/tsl-detached/testdata target/debug/ti
 
 # Refuses an unoptimized or dirty build.
 # Copy the package into a consumer as vendor/ti-wasm, after smoke and size pass
@@ -336,7 +336,7 @@ wasm-vendor dest="../../gemiverse": wasm-smoke wasm-size
 # ---- Tier 1: every change, and before a release ------------------------------------
 
 # Everything a PR must pass, in the order that fails fastest
-check: fmt clippy doc test wasm32 wasm-unsafe-free core-deps nonprod-absent jwz-backends jwz-rsa-guard machete deny vet
+check: fmt clippy doc test wasm32 wasm-unsafe-free unsafe-free core-deps nonprod-absent jwz-backends jwz-rsa-guard machete deny vet
     just brainpool-absent jwz
     just brainpool-absent ti-jwz
 
@@ -376,15 +376,14 @@ test:
 test-defaults:
     cargo nextest run --workspace
 
-# The cache, XML signature checking, the loading layer, the reqwest transport and PKCS#12 decoding build for
+# The cache, XML signature checking, the loading layer and PKCS#12 decoding build for
 # the browser
 wasm32:
     cargo check -p ti-types --target wasm32-unknown-unknown --features std
     cargo check -p ti-store --target wasm32-unknown-unknown
     cargo check -p ti-store --target wasm32-unknown-unknown --features store
-    cargo check -p ti-xmldsig --target wasm32-unknown-unknown
     cargo check -p ti-connector-client --target wasm32-unknown-unknown
-    cargo check -p ti-pki --target wasm32-unknown-unknown --features load,reqwest
+    cargo check -p ti-pki --target wasm32-unknown-unknown --features load
     cargo check -p ti-pkcs12 --target wasm32-unknown-unknown
     cargo check -p ti-report --target wasm32-unknown-unknown
     cargo check -p ti-wasm --target wasm32-unknown-unknown
@@ -400,6 +399,11 @@ wasm32:
 # No `unsafe` in ti-wasm's own sources
 wasm-unsafe-free:
     ! grep -rnw unsafe ti-wasm/src
+
+# The cores' dependency trees hold no unsafe beyond the approved exceptions
+# (docs/unsafe-exceptions.md); `cargo run -p unsafe-audit -- inventory` lists the sites
+unsafe-free:
+    cargo run -q --locked -p unsafe-audit -- check
 
 # ti-pki's and ti-connector-client's cores (everything but the optional adapter and
 # algorithm features) pull in no HTTP client, TLS, executor, file watcher or brainpool
@@ -518,6 +522,68 @@ fuzz-ti-store seconds="30":
             | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
         [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
     done
+
+# Fuzz every ti-pki parser of network bytes for `seconds` each (design time; nightly and
+# cargo-fuzz). Corpora start from ti-pki/fuzz/seeds and grow in ti-pki/fuzz/corpus (not
+# committed).
+fuzz-ti-pki seconds="30":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd ti-pki/fuzz
+    for target in detached_signature tsl_xml ocsp_response bundle; do
+        mkdir -p "corpus/$target"
+        cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
+            -max_total_time={{seconds}} -max_len=65536 -print_final_stats=1 2>&1 \
+            | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
+        [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
+    done
+
+# Fuzz every ti-connector-client parser for `seconds` each (design time; nightly and
+# cargo-fuzz). Corpora start from ti-connector-client/fuzz/seeds and grow in
+# ti-connector-client/fuzz/corpus (not committed).
+fuzz-ti-connector-client seconds="30":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd ti-connector-client/fuzz
+    for target in dotkon sds soap; do
+        # The service directories and recorded answers of the tests seed sds and soap.
+        seeds=../tests/fixtures
+        [ "$target" != dotkon ] || seeds=seeds/dotkon
+        mkdir -p "corpus/$target"
+        cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "$seeds" -- \
+            -max_total_time={{seconds}} -max_len=65536 -timeout=30 -print_final_stats=1 2>&1 \
+            | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
+        [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
+    done
+
+# Fuzz ti-pkcs12's decoder for `seconds` (design time; nightly, cargo-fuzz and Go). The
+# seeds are a fresh spec/pkcs12 conformance corpus and its vendor files, each as a
+# length byte, the password and the file; corpora grow in ti-pkcs12/fuzz/corpus (not
+# committed).
+fuzz-ti-pkcs12 seconds="30":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    spec="$PWD/../spec/pkcs12"
+    cd ti-pkcs12/fuzz
+    work=$(mktemp -d)
+    trap 'rm -rf "$work"' EXIT
+    (cd "$spec/tool" && go build -o "$work/p12conformance" .)
+    "$work/p12conformance" generate -manifest "$spec/testdata/manifest.json" -out "$work/corpus" >/dev/null
+    cp "$spec"/testdata/vendor/*.p12 "$spec"/testdata/vendor/*-password.txt "$work/corpus/"
+    rm -rf seeds/decode && mkdir -p seeds/decode corpus/decode
+    for file in "$work"/corpus/*.p12; do
+        name=$(basename "$file" .p12)
+        password_file="$work/corpus/${name%.*}.password"
+        [ -f "$password_file" ] || password_file="$work/corpus/$name-password.txt"
+        password=$(tr -d '\n' < "$password_file")
+        length=$(printf %s "$password" | wc -c | tr -d ' ')
+        { printf "\\$(printf %03o "$length")"; printf %s "$password"; cat "$file"; } > "seeds/decode/$name"
+    done
+    cargo +{{JWZ_NIGHTLY}} fuzz run -O decode corpus/decode seeds/decode -- \
+        -max_total_time={{seconds}} -max_len=65536 -timeout=30 -malloc_limit_mb=256 \
+        -print_final_stats=1 2>&1 \
+        | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
+    [ -z "$(ls -A artifacts/decode 2>/dev/null)" ] || { echo "decode: crash in artifacts/decode" >&2; exit 1; }
 
 # Chrome for Testing (headless shell and its chromedriver) for `jwz-browser`; override
 # the location with JWZ_CHROME_DIR=<dir>
@@ -687,15 +753,6 @@ semver *crates:
     done
 
 # ---- Optional, on demand -----------------------------------------------------------
-
-# Kani proofs of ti-xmldsig (escaping, namespace rendering, depth scan); slow, not part
-# of `check`. Needs `cargo install --locked kani-verifier && cargo kani setup`.
-verify-formal:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd ti-xmldsig
-    # A long proof run must not be cut short by the Mac going to sleep.
-    if command -v caffeinate >/dev/null; then caffeinate -i cargo kani; else cargo kani; fi
 
 # Kani proofs of jwz (src/proofs.rs; design time, stamped as verification/stamps/kani.toml)
 verify-formal-jwz:

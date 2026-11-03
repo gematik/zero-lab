@@ -53,7 +53,7 @@ a smartcard, the IDP-Dienst, a database, a real browser, a human) are gated, nev
 deleted, never faked away, and never skipped silently.
 
 - **One gate, named for what it needs.** An environment variable per resource, prefixed
-  by the component (`TI_TEST_KON_PATH`, `ZERO_PDP_E2E_URL`, `GEMIDP_SMCB_P12_PATH`);
+  by the component (`TI_TEST_KON_PATH`, `ZERO_PDP_E2E_URL`, `IDPD_SMCB_P12_PATH`);
   [naming](../conventions/naming-and-config.md) applies: paths end in `_PATH` or `_DIR`,
   secrets come from files, never from the variable's value. Test material is TEST-ONLY.
 - **Loud when skipped.** A gated test shows as skipped or ignored with the variable it

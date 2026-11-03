@@ -41,10 +41,15 @@ use ti_store::{Conditional, Source};
 /// `.xml`) before it is downloaded: a caller holding the list with that hash
 /// (`sha256:<hex>` as its entity tag) gets "not modified", and a download must match the
 /// hash (A_30044 (2) of C_12791). Without a readable hash the TSL is fetched as before.
+///
+/// The list, its `.sig` and its `.ocsp` come from [`TrustConfig::tsl_detached_url`] as one
+/// set (`spec/tsl-detached` TSLDET-010), under a hash read from the HTTPS point. Without a
+/// readable hash the list comes from HTTPS itself, never from the plain-HTTP origin.
 #[derive(Debug)]
 pub struct HttpLoader<T, C> {
     roots_url: Cow<'static, str>,
     tsl_url: Cow<'static, str>,
+    tsl_detached_url: Cow<'static, str>,
     transport: T,
     clock: C,
 }
@@ -55,15 +60,26 @@ impl<T: Transport + MaybeSend + MaybeSync, C: Clock + MaybeSend + MaybeSync> Htt
         HttpLoader {
             roots_url: config.roots_url.clone(),
             tsl_url: config.tsl_url.clone(),
+            tsl_detached_url: config.tsl_detached_url.clone(),
             transport,
             clock,
         }
     }
 
-    fn url(&self, artifact: Artifact) -> &str {
+    /// Where `artifact` is fetched from. The list's own URL is the HTTPS point: the
+    /// plain-HTTP origin is asked for it only under a hash from HTTPS, in
+    /// [`fetch_tsl_by_hash`](Self::fetch_tsl_by_hash).
+    fn url(&self, artifact: Artifact) -> Option<Cow<'_, str>> {
+        let detached = |suffix: &str| {
+            self.tsl_detached_url
+                .strip_suffix(".xml")
+                .map(|stem| Cow::Owned(format!("{stem}{suffix}")))
+        };
         match artifact {
-            Artifact::Roots => &self.roots_url,
-            Artifact::Tsl => &self.tsl_url,
+            Artifact::Roots => Some(Cow::Borrowed(self.roots_url.as_ref())),
+            Artifact::Tsl => Some(Cow::Borrowed(self.tsl_url.as_ref())),
+            Artifact::TslSignature => detached(".sig"),
+            Artifact::TslSignerStatus => detached(".ocsp"),
         }
     }
 
@@ -113,37 +129,58 @@ impl<T: Transport + MaybeSend + MaybeSync, C: Clock + MaybeSend + MaybeSync> Htt
                 .at(now),
             ));
         }
+        // The list comes from where its signature is (A_21177): HTTPS may already have a
+        // list whose `.sig` is not published yet (A_21178 allows an hour), and taking it
+        // would replace the set in hand with one that cannot verify. So a list that does
+        // not match, or no list, is a failure to retry, with the set in hand kept. The
+        // origin is plain HTTP: no validators go there and its "not modified" is not
+        // believed, or an unauthenticated answer would renew the list's age.
+        let origin = self.tsl_detached_url.as_ref();
+        let unusable = |why: String| {
+            LoadError::Transport(TransportError {
+                kind: TransportErrorKind::Other,
+                message: format!("the TSL at {origin}: {why}"),
+                retryable: true,
+            })
+        };
         let response = self
             .transport
             .get(&ArtifactRequest {
                 artifact: Artifact::Tsl,
-                url: &self.tsl_url,
+                url: origin,
                 etag: None,
                 last_modified: None,
             })
-            .await?;
-        Ok(match response {
-            ArtifactResponse::Fresh { body, mut meta } => {
-                let actual = content_etag(&body);
-                if actual != published {
-                    return Err(LoadError::Transport(TransportError {
-                        kind: TransportErrorKind::Other,
-                        message: format!(
-                            "the TSL does not match its published SHA-256 ({actual}, published \
-                             {published}); a new list may be under way"
-                        ),
-                        retryable: true,
-                    }));
-                }
-                meta.etag = Some(actual);
-                Fetched::Body(Loaded {
-                    body,
-                    meta: meta.at(now),
-                    stale: None,
-                })
-            }
-            ArtifactResponse::NotModified { meta } => Fetched::NotModified(meta.at(now)),
-        })
+            .await
+            .map_err(|e| unusable(e.message))?;
+        let ArtifactResponse::Fresh { body, meta } = response else {
+            return Err(unusable(
+                "answered \"not modified\" to no validators".to_owned(),
+            ));
+        };
+        let actual = content_etag(&body);
+        if actual != published {
+            return Err(unusable(format!(
+                "does not match its published SHA-256 ({actual}, published {published}); a \
+                 new list may be under way, its signature is not published yet"
+            )));
+        }
+        Ok(Fetched::Body(checked_list(body, meta, published, now)))
+    }
+}
+
+/// A list that matched the published hash, with the hash as its entity tag.
+fn checked_list(
+    body: Vec<u8>,
+    mut meta: ResponseMeta,
+    published: String,
+    now: crate::time::Timestamp,
+) -> Loaded {
+    meta.etag = Some(published);
+    Loaded {
+        body,
+        meta: meta.at(now),
+        stale: None,
     }
 }
 
@@ -156,9 +193,10 @@ impl<T: Transport + MaybeSend + MaybeSync, C: Clock + MaybeSend + MaybeSync> Loa
         {
             return self.fetch_tsl_by_hash(&hash, cond).await;
         }
+        let url = self.url(artifact).ok_or(LoadError::Unavailable(artifact))?;
         let request = ArtifactRequest {
             artifact,
-            url: self.url(artifact),
+            url: &url,
             etag: cond.etag,
             last_modified: cond.last_modified,
         };
@@ -175,7 +213,7 @@ impl<T: Transport + MaybeSend + MaybeSync, C: Clock + MaybeSend + MaybeSync> Loa
     }
 
     fn cache_key(&self, artifact: Artifact) -> String {
-        artifact.cache_key(self.url(artifact))
+        artifact.cache_key(self.url(artifact).as_deref().unwrap_or(""))
     }
 }
 
@@ -184,7 +222,7 @@ mod tests {
     use futures_lite::future::block_on;
 
     use super::*;
-    use crate::load::{MockTransport, content_etag};
+    use crate::load::{MockTransport, TrustMaterial, content_etag};
     use crate::time::{FixedClock, Timestamp};
 
     const TSL: &[u8] = b"<TrustServiceStatusList/>";
@@ -215,6 +253,193 @@ mod tests {
                 last_modified: None,
             },
         ))
+    }
+
+    const DETACHED: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../spec/tsl-detached/testdata/ref/ECC-RSA_TSL-ref."
+    );
+
+    fn ref_set() -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+        let read = |suffix: &str| std::fs::read(format!("{DETACHED}{suffix}")).unwrap();
+        (read("xml"), read("sig"), read("ocsp"))
+    }
+
+    fn load_all_ref(
+        config: &TrustConfig,
+        transport: &MockTransport,
+    ) -> Result<TrustMaterial, LoadError> {
+        let clock = FixedClock::new(Timestamp(1_767_225_600));
+        let loader = HttpLoader::new(config, transport, &clock);
+        block_on(loader.load_all())
+    }
+
+    fn transport_error() -> TransportError {
+        TransportError {
+            kind: TransportErrorKind::Other,
+            message: "blocked".into(),
+            retryable: true,
+        }
+    }
+
+    /// TSLDET-010: blocking the hash must not leave the list to the unauthenticated
+    /// origin; it then comes from the HTTPS point, with the caller's validators.
+    #[test]
+    fn tsldet_010_unreadable_hash_takes_the_list_from_https() {
+        let transport = MockTransport::new([
+            Err(transport_error()),
+            Ok(fresh(TSL, Some("\"e\""), Source::Http)),
+        ]);
+        let Fetched::Body(loaded) = fetch(&transport, Some("\"old\"")).unwrap() else {
+            panic!("a body");
+        };
+        assert_eq!(loaded.body, TSL);
+        let requests = transport.requests();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[1].url, crate::tsl::URL_PROD);
+        assert_eq!(requests[1].etag.as_deref(), Some("\"old\""));
+    }
+
+    /// TSLDET-010: the plain-HTTP origin gets no validators, and its "not modified" is
+    /// not believed: it would renew the list's age without any authentication.
+    #[test]
+    fn tsldet_010_a_not_modified_from_the_plain_origin_is_not_believed() {
+        let transport = MockTransport::new([
+            Ok(fresh(hash_of(TSL).as_bytes(), None, Source::Http)),
+            Ok(ArtifactResponse::NotModified {
+                meta: ResponseMeta {
+                    etag: None,
+                    last_modified: None,
+                    max_age: None,
+                    source: Source::Http,
+                },
+            }),
+        ]);
+        let Err(LoadError::Transport(error)) = fetch(&transport, Some("sha256:older")) else {
+            panic!("no list, and no confirmation of the old one");
+        };
+        assert!(error.retryable);
+        let requests = transport.requests();
+        assert_eq!(requests[1].url, crate::tsl::URL_DETACHED_PROD);
+        assert_eq!(requests[1].etag, None);
+    }
+
+    /// TSLDET-014: the plain-HTTP origin blocked, or lagging behind the published hash:
+    /// its signature would not fit the list HTTPS has, so nothing replaces the set in hand
+    /// and the failure is one to retry. HTTPS is not asked.
+    #[test]
+    fn tsldet_014_an_unusable_plain_origin_is_a_retryable_failure() {
+        for origin in [
+            Err(transport_error()),
+            Ok(fresh(b"older", None, Source::Http)),
+        ] {
+            let transport = MockTransport::new([
+                Ok(fresh(hash_of(TSL).as_bytes(), None, Source::Http)),
+                origin,
+            ]);
+            let Err(LoadError::Transport(error)) = fetch(&transport, None) else {
+                panic!("a retryable failure");
+            };
+            assert!(error.retryable);
+            assert_eq!(
+                transport.requests().len(),
+                2,
+                "HTTPS is not asked for the list"
+            );
+        }
+    }
+
+    /// TSLDET-010, 012: the hash from the HTTPS point, the set from the automated one.
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_010_http_loader_fetches_the_set_from_the_detached_origin() {
+        let (xml, sig, ocsp) = ref_set();
+        let config = TrustConfig::preset(crate::Env::Ref);
+        let transport = MockTransport::new([
+            Ok(fresh(b"{}", None, Source::Http)),
+            Ok(fresh(hash_of(&xml).as_bytes(), None, Source::Http)),
+            Ok(fresh(&xml, None, Source::Http)),
+            Ok(fresh(&sig, None, Source::Http)),
+            Ok(fresh(&ocsp, None, Source::Http)),
+        ]);
+        let material = load_all_ref(&config, &transport).unwrap();
+        let detached = material
+            .detached
+            .as_ref()
+            .expect("the signature was loaded");
+        assert_eq!(detached.signature, sig);
+        assert_eq!(
+            detached.signer_status.as_ref().map(|(b, _)| b.as_slice()),
+            Some(ocsp.as_slice())
+        );
+        assert_eq!(material.tsl, xml);
+        let urls: Vec<String> = transport.requests().into_iter().map(|r| r.url).collect();
+        assert_eq!(
+            urls,
+            [
+                crate::roots::URL_REF.to_owned(),
+                "https://download-ref.tsl.ti-dienste.de/ECC/ECC-RSA_TSL-ref.sha2".to_owned(),
+                crate::tsl::URL_DETACHED_REF.to_owned(),
+                "http://download-testref.crl.ti-dienste.de/TSL-ECC-ref/ECC-RSA_TSL-ref.sig"
+                    .to_owned(),
+                "http://download-testref.crl.ti-dienste.de/TSL-ECC-ref/ECC-RSA_TSL-ref.ocsp"
+                    .to_owned(),
+            ]
+        );
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_010_list_not_matching_published_hash_is_retryable() {
+        let (xml, _, _) = ref_set();
+        let config = TrustConfig::preset(crate::Env::Ref);
+        let transport = MockTransport::new([
+            Ok(fresh(b"{}", None, Source::Http)),
+            Ok(fresh(
+                hash_of(b"another list").as_bytes(),
+                None,
+                Source::Http,
+            )),
+            Ok(fresh(&xml, None, Source::Http)),
+            Ok(fresh(&xml, None, Source::Http)),
+        ]);
+        let LoadError::Transport(error) = load_all_ref(&config, &transport).unwrap_err() else {
+            panic!("a hash mismatch is a transport error");
+        };
+        assert!(error.retryable);
+    }
+
+    /// TSLDET-013: with the signature's download failing there is no material; nothing
+    /// falls back to an unsigned list.
+    #[test]
+    fn tsldet_013_no_signature_no_material() {
+        let transport = MockTransport::new([
+            Ok(fresh(b"{}", None, Source::Http)),
+            Ok(fresh(hash_of(TSL).as_bytes(), None, Source::Http)),
+            Ok(fresh(TSL, None, Source::Http)),
+            Err(transport_error()),
+        ]);
+        assert!(matches!(
+            load_all_ref(&TrustConfig::preset_prod(), &transport),
+            Err(LoadError::Transport(_))
+        ));
+    }
+
+    /// TSLDET-012: the `.sig` and `.ocsp` URIs of A_21182 are the list's, by suffix.
+    #[test]
+    fn tsldet_012_the_detached_uris_follow_the_list() {
+        let transport = MockTransport::new([]);
+        let clock = FixedClock::new(Timestamp(1_767_225_600));
+        let loader = HttpLoader::new(&TrustConfig::preset_prod(), &transport, &clock);
+        let origin = "http://download.crl.ti-dienste.de/TSL-ECC/ECC-RSA_TSL";
+        assert_eq!(
+            loader.url(Artifact::TslSignature).as_deref(),
+            Some(format!("{origin}.sig").as_str())
+        );
+        assert_eq!(
+            loader.url(Artifact::TslSignerStatus).as_deref(),
+            Some(format!("{origin}.ocsp").as_str())
+        );
     }
 
     /// A_30044 (2): the published hash decides whether the TSL is downloaded.
@@ -258,6 +483,7 @@ mod tests {
                 None,
                 Source::Http,
             )),
+            Ok(fresh(TSL, None, Source::Http)),
             Ok(fresh(TSL, None, Source::Http)),
         ]);
         let error = fetch(&transport, None).unwrap_err();

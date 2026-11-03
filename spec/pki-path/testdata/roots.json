@@ -1,0 +1,1137 @@
+{
+  "real": [
+    {
+      "anchor": "MIICmTCCAj+gAwIBAgIBATAKBggqhkjOPQQDAjBtMQswCQYDVQQGEwJERTEVMBMGA1UECgwMZ2VtYXRpayBHbWJIMTQwMgYDVQQLDCtaZW50cmFsZSBSb290LUNBIGRlciBUZWxlbWF0aWtpbmZyYXN0cnVrdHVyMREwDwYDVQQDDAhHRU0uUkNBNzAeFw0yMzA3MDUwNzM3NDRaFw0zMzA3MDIwNzM3NDRaMG0xCzAJBgNVBAYTAkRFMRUwEwYDVQQKDAxnZW1hdGlrIEdtYkgxNDAyBgNVBAsMK1plbnRyYWxlIFJvb3QtQ0EgZGVyIFRlbGVtYXRpa2luZnJhc3RydWt0dXIxETAPBgNVBAMMCEdFTS5SQ0E3MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEl4tVA95MpEQxVFt1PZPj/qeYwhqMIe/mHD1Y1/ZkvYMbgdXTDyFqxE8v2CK58mUUYBCCI5KMWpQJZyhZv54NSqOBzzCBzDAdBgNVHQ4EFgQUExB4Hoh3243lq+gtAOAy+O31IVUwQgYIKwYBBQUHAQEENjA0MDIGCCsGAQUFBzABhiZodHRwOi8vb2NzcC5yb290LWNhLnRpLWRpZW5zdGUuZGUvb2NzcDAOBgNVHQ8BAf8EBAMCAQYwRgYDVR0gBD8wPTA7BggqghQATASBIzAvMC0GCCsGAQUFBwIBFiFodHRwOi8vd3d3LmdlbWF0aWsuZGUvZ28vcG9saWNpZXMwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiAzpCIQsymAk4TDXyQxPHT20WPTATQM3jIgxONL5EKhSQIhANKtJAHGmIezhsJLbyLuTbeB1fyyxGpsy8E9QhBDX12g",
+      "file": "roots-prod.json",
+      "name": "prod",
+      "now": 1793577600,
+      "outcome": {
+        "backward_stop": null,
+        "forward_stop": null,
+        "trusted": [
+          "GEM.RCA7",
+          "GEM.RCA8",
+          "GEM.RCA9",
+          "GEM.RCA10",
+          "GEM.RCA11",
+          "GEM.RCA6",
+          "GEM.RCA5",
+          "GEM.RCA4",
+          "GEM.RCA3",
+          "GEM.RCA2"
+        ]
+      }
+    },
+    {
+      "anchor": "MIICmTCCAj+gAwIBAgIBATAKBggqhkjOPQQDAjBtMQswCQYDVQQGEwJERTEVMBMGA1UECgwMZ2VtYXRpayBHbWJIMTQwMgYDVQQLDCtaZW50cmFsZSBSb290LUNBIGRlciBUZWxlbWF0aWtpbmZyYXN0cnVrdHVyMREwDwYDVQQDDAhHRU0uUkNBNzAeFw0yMzA3MDUwNzM3NDRaFw0zMzA3MDIwNzM3NDRaMG0xCzAJBgNVBAYTAkRFMRUwEwYDVQQKDAxnZW1hdGlrIEdtYkgxNDAyBgNVBAsMK1plbnRyYWxlIFJvb3QtQ0EgZGVyIFRlbGVtYXRpa2luZnJhc3RydWt0dXIxETAPBgNVBAMMCEdFTS5SQ0E3MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEl4tVA95MpEQxVFt1PZPj/qeYwhqMIe/mHD1Y1/ZkvYMbgdXTDyFqxE8v2CK58mUUYBCCI5KMWpQJZyhZv54NSqOBzzCBzDAdBgNVHQ4EFgQUExB4Hoh3243lq+gtAOAy+O31IVUwQgYIKwYBBQUHAQEENjA0MDIGCCsGAQUFBzABhiZodHRwOi8vb2NzcC5yb290LWNhLnRpLWRpZW5zdGUuZGUvb2NzcDAOBgNVHQ8BAf8EBAMCAQYwRgYDVR0gBD8wPTA7BggqghQATASBIzAvMC0GCCsGAQUFBwIBFiFodHRwOi8vd3d3LmdlbWF0aWsuZGUvZ28vcG9saWNpZXMwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiAzpCIQsymAk4TDXyQxPHT20WPTATQM3jIgxONL5EKhSQIhANKtJAHGmIezhsJLbyLuTbeB1fyyxGpsy8E9QhBDX12g",
+      "file": "roots-prod.json",
+      "name": "prod",
+      "now": 2109801600,
+      "outcome": {
+        "backward_stop": "2",
+        "forward_stop": "2",
+        "trusted": [
+          "GEM.RCA7"
+        ]
+      }
+    },
+    {
+      "anchor": "MIICmTCCAkCgAwIBAgIBATAKBggqhkjOPQQDAjBtMQswCQYDVQQGEwJERTEVMBMGA1UECgwMZ2VtYXRpayBHbWJIMTQwMgYDVQQLDCtaZW50cmFsZSBSb290LUNBIGRlciBUZWxlbWF0aWtpbmZyYXN0cnVrdHVyMREwDwYDVQQDDAhHRU0uUkNBODAeFw0yMzEyMTIwOTU3MTNaFw0zMzEyMDkwOTU3MTNaMG0xCzAJBgNVBAYTAkRFMRUwEwYDVQQKDAxnZW1hdGlrIEdtYkgxNDAyBgNVBAsMK1plbnRyYWxlIFJvb3QtQ0EgZGVyIFRlbGVtYXRpa2luZnJhc3RydWt0dXIxETAPBgNVBAMMCEdFTS5SQ0E4MFowFAYHKoZIzj0CAQYJKyQDAwIIAQEHA0IABIwmqH0yFsDRE7IMfPIRk+Emh2U4ZFVjvFgmr0qSwdyVL32ZfNpLJGvUPhCYiedfMSkDBK+zToDBDU/lmSScDT6jgc8wgcwwHQYDVR0OBBYEFIucDNB6vgBoeq0yjWmPmYByx5ssMEIGCCsGAQUFBwEBBDYwNDAyBggrBgEFBQcwAYYmaHR0cDovL29jc3Aucm9vdC1jYS50aS1kaWVuc3RlLmRlL29jc3AwDgYDVR0PAQH/BAQDAgEGMEYGA1UdIAQ/MD0wOwYIKoIUAEwEgSMwLzAtBggrBgEFBQcCARYhaHR0cDovL3d3dy5nZW1hdGlrLmRlL2dvL3BvbGljaWVzMA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDRwAwRAIgZMA4ldNbm42AaLy/iTkIRbOZ5StBjYbn+asOoN06eWcCIH8na29NzkvzPKwQ1UY4qaPdOCvibXlC07zbTfzLJzkx",
+      "file": "roots-prod.json",
+      "name": "prod from RCA8",
+      "now": 1793577600,
+      "outcome": {
+        "backward_stop": null,
+        "forward_stop": null,
+        "trusted": [
+          "GEM.RCA8",
+          "GEM.RCA9",
+          "GEM.RCA10",
+          "GEM.RCA11",
+          "GEM.RCA7",
+          "GEM.RCA6",
+          "GEM.RCA5",
+          "GEM.RCA4",
+          "GEM.RCA3",
+          "GEM.RCA2"
+        ]
+      }
+    },
+    {
+      "anchor": "MIICmTCCAkCgAwIBAgIBATAKBggqhkjOPQQDAjBtMQswCQYDVQQGEwJERTEVMBMGA1UECgwMZ2VtYXRpayBHbWJIMTQwMgYDVQQLDCtaZW50cmFsZSBSb290LUNBIGRlciBUZWxlbWF0aWtpbmZyYXN0cnVrdHVyMREwDwYDVQQDDAhHRU0uUkNBODAeFw0yMzEyMTIwOTU3MTNaFw0zMzEyMDkwOTU3MTNaMG0xCzAJBgNVBAYTAkRFMRUwEwYDVQQKDAxnZW1hdGlrIEdtYkgxNDAyBgNVBAsMK1plbnRyYWxlIFJvb3QtQ0EgZGVyIFRlbGVtYXRpa2luZnJhc3RydWt0dXIxETAPBgNVBAMMCEdFTS5SQ0E4MFowFAYHKoZIzj0CAQYJKyQDAwIIAQEHA0IABIwmqH0yFsDRE7IMfPIRk+Emh2U4ZFVjvFgmr0qSwdyVL32ZfNpLJGvUPhCYiedfMSkDBK+zToDBDU/lmSScDT6jgc8wgcwwHQYDVR0OBBYEFIucDNB6vgBoeq0yjWmPmYByx5ssMEIGCCsGAQUFBwEBBDYwNDAyBggrBgEFBQcwAYYmaHR0cDovL29jc3Aucm9vdC1jYS50aS1kaWVuc3RlLmRlL29jc3AwDgYDVR0PAQH/BAQDAgEGMEYGA1UdIAQ/MD0wOwYIKoIUAEwEgSMwLzAtBggrBgEFBQcCARYhaHR0cDovL3d3dy5nZW1hdGlrLmRlL2dvL3BvbGljaWVzMA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDRwAwRAIgZMA4ldNbm42AaLy/iTkIRbOZ5StBjYbn+asOoN06eWcCIH8na29NzkvzPKwQ1UY4qaPdOCvibXlC07zbTfzLJzkx",
+      "file": "roots-prod.json",
+      "name": "prod from RCA8",
+      "now": 2109801600,
+      "outcome": {
+        "backward_stop": "2",
+        "forward_stop": "2",
+        "trusted": [
+          "GEM.RCA8"
+        ]
+      }
+    },
+    {
+      "anchor": "MIICzDCCAnGgAwIBAgIBATAKBggqhkjOPQQDAjCBgTELMAkGA1UEBhMCREUxHzAdBgNVBAoMFmdlbWF0aWsgR21iSCBOT1QtVkFMSUQxNDAyBgNVBAsMK1plbnRyYWxlIFJvb3QtQ0EgZGVyIFRlbGVtYXRpa2luZnJhc3RydWt0dXIxGzAZBgNVBAMMEkdFTS5SQ0E3IFRFU1QtT05MWTAeFw0yMzA1MjUxMjIxMzlaFw0zMzA1MjIxMjIxMzlaMIGBMQswCQYDVQQGEwJERTEfMB0GA1UECgwWZ2VtYXRpayBHbWJIIE5PVC1WQUxJRDE0MDIGA1UECwwrWmVudHJhbGUgUm9vdC1DQSBkZXIgVGVsZW1hdGlraW5mcmFzdHJ1a3R1cjEbMBkGA1UEAwwSR0VNLlJDQTcgVEVTVC1PTkxZMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEGv3lzIASzKQHW0YbxoaSIFUlGcgH8c/JEWOifqVVKkJUS81zG1ogcL6skAhGCtkksfdSJKiZnmnKeQ/yAgGZUaOB1zCB1DAdBgNVHQ4EFgQUsvAJPk0L4wgkgJY1bjo2MyvySxowSgYIKwYBBQUHAQEEPjA8MDoGCCsGAQUFBzABhi5odHRwOi8vb2NzcC10ZXN0cmVmLnJvb3QtY2EudGktZGllbnN0ZS5kZS9vY3NwMA4GA1UdDwEB/wQEAwIBBjBGBgNVHSAEPzA9MDsGCCqCFABMBIEjMC8wLQYIKwYBBQUHAgEWIWh0dHA6Ly93d3cuZ2VtYXRpay5kZS9nby9wb2xpY2llczAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0kAMEYCIQCntB3Gck9DDlVADBZQCrT3RU3D9QS5k9bd3NKCexf9LQIhAIG2Qyu9HVlKnz8a8qdSJE6+TTejs15x7CLEvaLouXUk",
+      "file": "roots-nonprod.json",
+      "name": "nonprod",
+      "now": 1793577600,
+      "outcome": {
+        "backward_stop": null,
+        "forward_stop": null,
+        "trusted": [
+          "GEM.RCA7 TEST-ONLY",
+          "GEM.RCA8 TEST-ONLY",
+          "GEM.RCA9 TEST-ONLY",
+          "GEM.RCA10 TEST-ONLY",
+          "GEM.RCA11 TEST-ONLY",
+          "GEM.RCA6 TEST-ONLY",
+          "GEM.RCA5 TEST-ONLY",
+          "GEM.RCA4 TEST-ONLY",
+          "GEM.RCA3 TEST-ONLY",
+          "GEM.RCA2 TEST-ONLY"
+        ]
+      }
+    },
+    {
+      "anchor": "MIICzDCCAnGgAwIBAgIBATAKBggqhkjOPQQDAjCBgTELMAkGA1UEBhMCREUxHzAdBgNVBAoMFmdlbWF0aWsgR21iSCBOT1QtVkFMSUQxNDAyBgNVBAsMK1plbnRyYWxlIFJvb3QtQ0EgZGVyIFRlbGVtYXRpa2luZnJhc3RydWt0dXIxGzAZBgNVBAMMEkdFTS5SQ0E3IFRFU1QtT05MWTAeFw0yMzA1MjUxMjIxMzlaFw0zMzA1MjIxMjIxMzlaMIGBMQswCQYDVQQGEwJERTEfMB0GA1UECgwWZ2VtYXRpayBHbWJIIE5PVC1WQUxJRDE0MDIGA1UECwwrWmVudHJhbGUgUm9vdC1DQSBkZXIgVGVsZW1hdGlraW5mcmFzdHJ1a3R1cjEbMBkGA1UEAwwSR0VNLlJDQTcgVEVTVC1PTkxZMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEGv3lzIASzKQHW0YbxoaSIFUlGcgH8c/JEWOifqVVKkJUS81zG1ogcL6skAhGCtkksfdSJKiZnmnKeQ/yAgGZUaOB1zCB1DAdBgNVHQ4EFgQUsvAJPk0L4wgkgJY1bjo2MyvySxowSgYIKwYBBQUHAQEEPjA8MDoGCCsGAQUFBzABhi5odHRwOi8vb2NzcC10ZXN0cmVmLnJvb3QtY2EudGktZGllbnN0ZS5kZS9vY3NwMA4GA1UdDwEB/wQEAwIBBjBGBgNVHSAEPzA9MDsGCCqCFABMBIEjMC8wLQYIKwYBBQUHAgEWIWh0dHA6Ly93d3cuZ2VtYXRpay5kZS9nby9wb2xpY2llczAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0kAMEYCIQCntB3Gck9DDlVADBZQCrT3RU3D9QS5k9bd3NKCexf9LQIhAIG2Qyu9HVlKnz8a8qdSJE6+TTejs15x7CLEvaLouXUk",
+      "file": "roots-nonprod.json",
+      "name": "nonprod",
+      "now": 2109801600,
+      "outcome": {
+        "backward_stop": "2",
+        "forward_stop": "2",
+        "trusted": [
+          "GEM.RCA7 TEST-ONLY"
+        ]
+      }
+    }
+  ],
+  "steps": [
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 1767225600,
+      "step": 4,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 1451001600,
+      "step": 2,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 2083449600,
+      "step": 2,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 1767225600,
+      "step": null,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 1451001600,
+      "step": 2,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 2083449600,
+      "step": 2,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 1767225600,
+      "step": 4,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 1451001600,
+      "step": 2,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 2083449600,
+      "step": 2,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca1-for-rca7.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 1767225600,
+      "step": null,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 1451001600,
+      "step": 2,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 2083449600,
+      "step": 2,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 1767225600,
+      "step": 4,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 1451001600,
+      "step": 2,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 2083449600,
+      "step": 2,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 1767225600,
+      "step": 4,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 1451001600,
+      "step": 2,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 2083449600,
+      "step": 2,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca7-for-rca1.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 1767225600,
+      "step": 3,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 1451001600,
+      "step": 2,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 2083449600,
+      "step": 2,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 1767225600,
+      "step": 3,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 1451001600,
+      "step": 2,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 2083449600,
+      "step": 2,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 1767225600,
+      "step": 3,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 1451001600,
+      "step": 2,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 2083449600,
+      "step": 2,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "cross-rca1-not-rca.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 1767225600,
+      "step": 3,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 1451001600,
+      "step": 2,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 2083449600,
+      "step": 2,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 1767225600,
+      "step": 3,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 1451001600,
+      "step": 2,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 2083449600,
+      "step": 2,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 1767225600,
+      "step": 3,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 1451001600,
+      "step": 2,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca1.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 2083449600,
+      "step": 2,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rca7.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rca1.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rca7.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 1767225600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 1451001600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    },
+    {
+      "anchor": "rogue-root.pem",
+      "cross": "sub-ca-hba.pem",
+      "now": 2083449600,
+      "step": 1,
+      "subordinate": "rogue-root.pem"
+    }
+  ],
+  "synthetic": [
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "[{\"cert\":\"MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==\",\"cn\":\"GEM.RCA1 TEST-ONLY\",\"next\":\"MIIBpjCCAU2gAwIBAgICA/wwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBNyBURVNULU9OTFkwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAR9GcUtHIQxAsuUWH/Edowm1FxVSMCvDeUsvPJJgfrJNhBmApOYXPsbtipi7BGI6HXKlKCR3luJRjsymTMp70ggo2MwYTAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUHMNY7nw/n16jOM25yfjYLjUjDX0wHwYDVR0jBBgwFoAURq0yqTmQajufbee2+10VsZu6DLswCgYIKoZIzj0EAwIDRwAwRAIgU+eCBBc9JPrQCHvKGlzJfx5g7fIiLx4dHwln6TDsLOcCIDVJuv84+sQ/1jfJIvk6hReWn++L4UANhNToMkh/x44S\",\"prev\":null},{\"cert\":\"MIIBpzCCAU2gAwIBAgICA/gwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0E3IFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBNyBURVNULU9OTFkwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAR9GcUtHIQxAsuUWH/Edowm1FxVSMCvDeUsvPJJgfrJNhBmApOYXPsbtipi7BGI6HXKlKCR3luJRjsymTMp70ggo2MwYTAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUHMNY7nw/n16jOM25yfjYLjUjDX0wHwYDVR0jBBgwFoAUHMNY7nw/n16jOM25yfjYLjUjDX0wCgYIKoZIzj0EAwIDSAAwRQIgRJRRsTYrcIT7q2BAvEmFvOLngMSkFcdYC4ZbUa678a4CIQDq2QY0q5CbaibMVizP1G7GqBdiEaMvlbIMF9zNhCLI6g==\",\"cn\":\"GEM.RCA7 TEST-ONLY\",\"next\":null,\"prev\":\"MIIBqDCCAU6gAwIBAgICA/0wCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0E3IFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFBzDWO58P59eozjNucn42C41Iw19MAoGCCqGSM49BAMCA0gAMEUCIHjFSXLcQ9O2SU/wGWCgGpz/T0Qy39RaOLXFPJXTvprVAiEA7PYohLU+ot/b/eElADgOr01QmEwrtDQpyUv5i88T6dI=\"}]",
+      "name": "from the older root",
+      "now": 1767225600,
+      "outcome": {
+        "backward_stop": null,
+        "forward_stop": null,
+        "trusted": [
+          "GEM.RCA1 TEST-ONLY",
+          "GEM.RCA7 TEST-ONLY"
+        ]
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU2gAwIBAgICA/gwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0E3IFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBNyBURVNULU9OTFkwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAR9GcUtHIQxAsuUWH/Edowm1FxVSMCvDeUsvPJJgfrJNhBmApOYXPsbtipi7BGI6HXKlKCR3luJRjsymTMp70ggo2MwYTAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUHMNY7nw/n16jOM25yfjYLjUjDX0wHwYDVR0jBBgwFoAUHMNY7nw/n16jOM25yfjYLjUjDX0wCgYIKoZIzj0EAwIDSAAwRQIgRJRRsTYrcIT7q2BAvEmFvOLngMSkFcdYC4ZbUa678a4CIQDq2QY0q5CbaibMVizP1G7GqBdiEaMvlbIMF9zNhCLI6g==",
+      "json": "[{\"cert\":\"MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==\",\"cn\":\"GEM.RCA1 TEST-ONLY\",\"next\":\"MIIBpjCCAU2gAwIBAgICA/wwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBNyBURVNULU9OTFkwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAR9GcUtHIQxAsuUWH/Edowm1FxVSMCvDeUsvPJJgfrJNhBmApOYXPsbtipi7BGI6HXKlKCR3luJRjsymTMp70ggo2MwYTAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUHMNY7nw/n16jOM25yfjYLjUjDX0wHwYDVR0jBBgwFoAURq0yqTmQajufbee2+10VsZu6DLswCgYIKoZIzj0EAwIDRwAwRAIgU+eCBBc9JPrQCHvKGlzJfx5g7fIiLx4dHwln6TDsLOcCIDVJuv84+sQ/1jfJIvk6hReWn++L4UANhNToMkh/x44S\",\"prev\":null},{\"cert\":\"MIIBpzCCAU2gAwIBAgICA/gwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0E3IFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBNyBURVNULU9OTFkwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAR9GcUtHIQxAsuUWH/Edowm1FxVSMCvDeUsvPJJgfrJNhBmApOYXPsbtipi7BGI6HXKlKCR3luJRjsymTMp70ggo2MwYTAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUHMNY7nw/n16jOM25yfjYLjUjDX0wHwYDVR0jBBgwFoAUHMNY7nw/n16jOM25yfjYLjUjDX0wCgYIKoZIzj0EAwIDSAAwRQIgRJRRsTYrcIT7q2BAvEmFvOLngMSkFcdYC4ZbUa678a4CIQDq2QY0q5CbaibMVizP1G7GqBdiEaMvlbIMF9zNhCLI6g==\",\"cn\":\"GEM.RCA7 TEST-ONLY\",\"next\":null,\"prev\":\"MIIBqDCCAU6gAwIBAgICA/0wCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0E3IFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFBzDWO58P59eozjNucn42C41Iw19MAoGCCqGSM49BAMCA0gAMEUCIHjFSXLcQ9O2SU/wGWCgGpz/T0Qy39RaOLXFPJXTvprVAiEA7PYohLU+ot/b/eElADgOr01QmEwrtDQpyUv5i88T6dI=\"}]",
+      "name": "from the newer root",
+      "now": 1767225600,
+      "outcome": {
+        "backward_stop": null,
+        "forward_stop": null,
+        "trusted": [
+          "GEM.RCA7 TEST-ONLY",
+          "GEM.RCA1 TEST-ONLY"
+        ]
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "{\"roots\":[{\"cert\":\"MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==\",\"cn\":\"GEM.RCA1 TEST-ONLY\",\"next\":\"MIIBpjCCAU2gAwIBAgICA/wwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBNyBURVNULU9OTFkwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAR9GcUtHIQxAsuUWH/Edowm1FxVSMCvDeUsvPJJgfrJNhBmApOYXPsbtipi7BGI6HXKlKCR3luJRjsymTMp70ggo2MwYTAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUHMNY7nw/n16jOM25yfjYLjUjDX0wHwYDVR0jBBgwFoAURq0yqTmQajufbee2+10VsZu6DLswCgYIKoZIzj0EAwIDRwAwRAIgU+eCBBc9JPrQCHvKGlzJfx5g7fIiLx4dHwln6TDsLOcCIDVJuv84+sQ/1jfJIvk6hReWn++L4UANhNToMkh/x44S\",\"prev\":null},{\"cert\":\"MIIBpzCCAU2gAwIBAgICA/gwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0E3IFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBNyBURVNULU9OTFkwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAR9GcUtHIQxAsuUWH/Edowm1FxVSMCvDeUsvPJJgfrJNhBmApOYXPsbtipi7BGI6HXKlKCR3luJRjsymTMp70ggo2MwYTAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUHMNY7nw/n16jOM25yfjYLjUjDX0wHwYDVR0jBBgwFoAUHMNY7nw/n16jOM25yfjYLjUjDX0wCgYIKoZIzj0EAwIDSAAwRQIgRJRRsTYrcIT7q2BAvEmFvOLngMSkFcdYC4ZbUa678a4CIQDq2QY0q5CbaibMVizP1G7GqBdiEaMvlbIMF9zNhCLI6g==\",\"cn\":\"GEM.RCA7 TEST-ONLY\",\"next\":null,\"prev\":\"MIIBqDCCAU6gAwIBAgICA/0wCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0E3IFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFBzDWO58P59eozjNucn42C41Iw19MAoGCCqGSM49BAMCA0gAMEUCIHjFSXLcQ9O2SU/wGWCgGpz/T0Qy39RaOLXFPJXTvprVAiEA7PYohLU+ot/b/eElADgOr01QmEwrtDQpyUv5i88T6dI=\"}],\"version\":1}",
+      "name": "wrapped",
+      "now": 1767225600,
+      "outcome": {
+        "backward_stop": null,
+        "forward_stop": null,
+        "trusted": [
+          "GEM.RCA1 TEST-ONLY",
+          "GEM.RCA7 TEST-ONLY"
+        ]
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "[{\"cert\":\"MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==\",\"cn\":\"GEM.RCA1 TEST-ONLY\",\"next\":\"MIIBpjCCAU2gAwIBAgICA/wwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBNyBURVNULU9OTFkwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAR9GcUtHIQxAsuUWH/Edowm1FxVSMCvDeUsvPJJgfrJNhBmApOYXPsbtipi7BGI6HXKlKCR3luJRjsymTMp70ggo2MwYTAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUHMNY7nw/n16jOM25yfjYLjUjDX0wHwYDVR0jBBgwFoAURq0yqTmQajufbee2+10VsZu6DLswCgYIKoZIzj0EAwIDRwAwRAIgU+eCBBc9JPrQCHvKGlzJfx5g7fIiLx4dHwln6TDsLOcCIDVJuv84+sQ/1jfJIvk6hReWn++L4UANhNToMkh/x44S\",\"prev\":null},{\"cert\":\"MIIBpzCCAU2gAwIBAgICA/gwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0E3IFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBNyBURVNULU9OTFkwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAR9GcUtHIQxAsuUWH/Edowm1FxVSMCvDeUsvPJJgfrJNhBmApOYXPsbtipi7BGI6HXKlKCR3luJRjsymTMp70ggo2MwYTAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUHMNY7nw/n16jOM25yfjYLjUjDX0wHwYDVR0jBBgwFoAUHMNY7nw/n16jOM25yfjYLjUjDX0wCgYIKoZIzj0EAwIDSAAwRQIgRJRRsTYrcIT7q2BAvEmFvOLngMSkFcdYC4ZbUa678a4CIQDq2QY0q5CbaibMVizP1G7GqBdiEaMvlbIMF9zNhCLI6g==\",\"cn\":\"GEM.RCA7 TEST-ONLY\",\"next\":null,\"prev\":\"MIIBqDCCAU6gAwIBAgICA/0wCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0E3IFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFBzDWO58P59eozjNucn42C41Iw19MAoGCCqGSM49BAMCA0gAMEUCIHjFSXLcQ9O2SU/wGWCgGpz/T0Qy39RaOLXFPJXTvprVAiEA7PYohLU+ot/b/eElADgOr01QmEwrtDQpyUv5i88T6dI=\"}]",
+      "name": "before the cross certificate",
+      "now": 1451001600,
+      "outcome": {
+        "backward_stop": null,
+        "forward_stop": "2",
+        "trusted": [
+          "GEM.RCA1 TEST-ONLY"
+        ]
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "[{\"cert\":\"MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==\",\"cn\":\"GEM.RCA1 TEST-ONLY\",\"next\":\"MIIBpjCCAU2gAwIBAgICA/wwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBNyBURVNULU9OTFkwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAR9GcUtHIQxAsuUWH/Edowm1FxVSMCvDeUsvPJJgfrJNhBmApOYXPsbtipi7BGI6HXKlKCR3luJRjsymTMp70ggo2MwYTAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUHMNY7nw/n16jOM25yfjYLjUjDX0wHwYDVR0jBBgwFoAURq0yqTmQajufbee2+10VsZu6DLswCgYIKoZIzj0EAwIDRwAwRAIgU+eCBBc9JPrQCHvKGlzJfx5g7fIiLx4dHwln6TDsLOcCIDVJuv84+sQ/1jfJIvk6hReWn++L4UANhNToMkh/x44S\",\"prev\":null},{\"cert\":\"MIIBpzCCAU2gAwIBAgICA/gwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0E3IFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBNyBURVNULU9OTFkwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAR9GcUtHIQxAsuUWH/Edowm1FxVSMCvDeUsvPJJgfrJNhBmApOYXPsbtipi7BGI6HXKlKCR3luJRjsymTMp70ggo2MwYTAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUHMNY7nw/n16jOM25yfjYLjUjDX0wHwYDVR0jBBgwFoAUHMNY7nw/n16jOM25yfjYLjUjDX0wCgYIKoZIzj0EAwIDSAAwRQIgRJRRsTYrcIT7q2BAvEmFvOLngMSkFcdYC4ZbUa678a4CIQDq2QY0q5CbaibMVizP1G7GqBdiEaMvlbIMF9zNhCLI6g==\",\"cn\":\"GEM.RCA7 TEST-ONLY\",\"next\":null,\"prev\":\"MIIBqDCCAU6gAwIBAgICA/0wCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0E3IFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFBzDWO58P59eozjNucn42C41Iw19MAoGCCqGSM49BAMCA0gAMEUCIHjFSXLcQ9O2SU/wGWCgGpz/T0Qy39RaOLXFPJXTvprVAiEA7PYohLU+ot/b/eElADgOr01QmEwrtDQpyUv5i88T6dI=\"}]",
+      "name": "after the cross certificate",
+      "now": 2083449600,
+      "outcome": {
+        "backward_stop": null,
+        "forward_stop": "2",
+        "trusted": [
+          "GEM.RCA1 TEST-ONLY"
+        ]
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "[{\"cert\":\"MIIBpzCCAU2gAwIBAgICA/gwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0E3IFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBNyBURVNULU9OTFkwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAR9GcUtHIQxAsuUWH/Edowm1FxVSMCvDeUsvPJJgfrJNhBmApOYXPsbtipi7BGI6HXKlKCR3luJRjsymTMp70ggo2MwYTAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUHMNY7nw/n16jOM25yfjYLjUjDX0wHwYDVR0jBBgwFoAUHMNY7nw/n16jOM25yfjYLjUjDX0wCgYIKoZIzj0EAwIDSAAwRQIgRJRRsTYrcIT7q2BAvEmFvOLngMSkFcdYC4ZbUa678a4CIQDq2QY0q5CbaibMVizP1G7GqBdiEaMvlbIMF9zNhCLI6g==\",\"cn\":\"GEM.RCA7 TEST-ONLY\",\"next\":null,\"prev\":null}]",
+      "name": "anchor absent",
+      "now": 1767225600,
+      "outcome": {
+        "anchor_absent": true
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "[{\"cert\":\"MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==\",\"cn\":\"GEM.RCA1 TEST-ONLY\",\"next\":\"AAAA\",\"prev\":null}]",
+      "name": "cross does not parse",
+      "now": 1767225600,
+      "outcome": {
+        "backward_stop": null,
+        "forward_stop": "parse",
+        "trusted": [
+          "GEM.RCA1 TEST-ONLY"
+        ]
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "[{\"cert\":\"MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==\",\"cn\":\"GEM.RCA1 TEST-ONLY\",\"next\":\"MIIBpjCCAU2gAwIBAgICA/wwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBNyBURVNULU9OTFkwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAR9GcUtHIQxAsuUWH/Edowm1FxVSMCvDeUsvPJJgfrJNhBmApOYXPsbtipi7BGI6HXKlKCR3luJRjsymTMp70ggo2MwYTAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUHMNY7nw/n16jOM25yfjYLjUjDX0wHwYDVR0jBBgwFoAURq0yqTmQajufbee2+10VsZu6DLswCgYIKoZIzj0EAwIDRwAwRAIgU+eCBBc9JPrQCHvKGlzJfx5g7fIiLx4dHwln6TDsLOcCIDVJuv84+sQ/1jfJIvk6hReWn++L4UANhNToMkh/x44S\",\"prev\":null}]",
+      "name": "names a root that is absent",
+      "now": 1767225600,
+      "outcome": {
+        "backward_stop": null,
+        "forward_stop": "absent",
+        "trusted": [
+          "GEM.RCA1 TEST-ONLY"
+        ]
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "[{\"cert\":\"MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==\",\"cn\":\"GEM.RCA1 TEST-ONLY\",\"next\":\"MIIBqDCCAU6gAwIBAgICA/0wCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0E3IFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFBzDWO58P59eozjNucn42C41Iw19MAoGCCqGSM49BAMCA0gAMEUCIHjFSXLcQ9O2SU/wGWCgGpz/T0Qy39RaOLXFPJXTvprVAiEA7PYohLU+ot/b/eElADgOr01QmEwrtDQpyUv5i88T6dI=\",\"prev\":null},{\"cert\":\"MIIBpzCCAU2gAwIBAgICA/gwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0E3IFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBNyBURVNULU9OTFkwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAAR9GcUtHIQxAsuUWH/Edowm1FxVSMCvDeUsvPJJgfrJNhBmApOYXPsbtipi7BGI6HXKlKCR3luJRjsymTMp70ggo2MwYTAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUHMNY7nw/n16jOM25yfjYLjUjDX0wHwYDVR0jBBgwFoAUHMNY7nw/n16jOM25yfjYLjUjDX0wCgYIKoZIzj0EAwIDSAAwRQIgRJRRsTYrcIT7q2BAvEmFvOLngMSkFcdYC4ZbUa678a4CIQDq2QY0q5CbaibMVizP1G7GqBdiEaMvlbIMF9zNhCLI6g==\",\"cn\":\"GEM.RCA7 TEST-ONLY\",\"next\":null,\"prev\":null}]",
+      "name": "loops",
+      "now": 1767225600,
+      "outcome": {
+        "backward_stop": null,
+        "forward_stop": "loop",
+        "trusted": [
+          "GEM.RCA1 TEST-ONLY"
+        ]
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "[{\"cert\":\"MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==\",\"cn\":\"GEM.RCA1 TEST-ONLY\",\"next\":\"\",\"prev\":\"\"}]",
+      "name": "empty strings are no links",
+      "now": 1767225600,
+      "outcome": {
+        "backward_stop": null,
+        "forward_stop": null,
+        "trusted": [
+          "GEM.RCA1 TEST-ONLY"
+        ]
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "[]",
+      "name": "empty",
+      "now": 1767225600,
+      "outcome": {
+        "parse_error": true
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "{\"roots\":[]}",
+      "name": "empty wrapped",
+      "now": 1767225600,
+      "outcome": {
+        "parse_error": true
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "{\"other\":[]}",
+      "name": "no list",
+      "now": 1767225600,
+      "outcome": {
+        "parse_error": true
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "{\"roots\":null}",
+      "name": "null list",
+      "now": 1767225600,
+      "outcome": {
+        "parse_error": true
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "nope",
+      "name": "not json",
+      "now": 1767225600,
+      "outcome": {
+        "parse_error": true
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "[1]",
+      "name": "an entry not an object",
+      "now": 1767225600,
+      "outcome": {
+        "parse_error": true
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "[{\"cn\":\"x\"}]",
+      "name": "no cert",
+      "now": 1767225600,
+      "outcome": {
+        "parse_error": true
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "[{\"cert\":null}]",
+      "name": "null cert",
+      "now": 1767225600,
+      "outcome": {
+        "parse_error": true
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "[{\"cert\":\"***\"}]",
+      "name": "cert not base64",
+      "now": 1767225600,
+      "outcome": {
+        "parse_error": true
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "[{\"cert\":\"AAAA\"}]",
+      "name": "cert not a certificate",
+      "now": 1767225600,
+      "outcome": {
+        "parse_error": true
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "[{\"cert\":\"MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==\",\"cn\":null}]",
+      "name": "null cn",
+      "now": 1767225600,
+      "outcome": {
+        "parse_error": true
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "[{\"cert\":\"MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==\",\"next\":\"***\"}]",
+      "name": "next not base64",
+      "now": 1767225600,
+      "outcome": {
+        "parse_error": true
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "[{\"cert\":\"MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==\",\"next\":1}]",
+      "name": "next a number",
+      "now": 1767225600,
+      "outcome": {
+        "parse_error": true
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "[{\"CERT\":\"MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==\"}]",
+      "name": "another spelling of cert",
+      "now": 1767225600,
+      "outcome": {
+        "parse_error": true
+      }
+    },
+    {
+      "anchor": "MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==",
+      "json": "[{\"cert\":\"MIIBpzCCAU6gAwIBAgICA+kwCgYIKoZIzj0EAwIwKjELMAkGA1UEBhMCREUxGzAZBgNVBAMMEkdFTS5SQ0ExIFRFU1QtT05MWTAeFw0yNjAxMDEwMDAwMDBaFw0zNjAxMDEwMDAwMDBaMCoxCzAJBgNVBAYTAkRFMRswGQYDVQQDDBJHRU0uUkNBMSBURVNULU9OTFkwWjAUBgcqhkjOPQIBBgkrJAMDAggBAQcDQgAEercOyZZsbMoQJhBnp6StjuHwUCFYaIvxqtZ8xpAwjYGOWVjt6dF30f6CkoD5yUQ8sbADvS1WV0WP8KYj+NjaPaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFEatMqk5kGo7n23ntvtdFbGbugy7MB8GA1UdIwQYMBaAFEatMqk5kGo7n23ntvtdFbGbugy7MAoGCCqGSM49BAMCA0cAMEQCIDYykPbpFUX08K7BpsK2X3rz8WEo7eqEjTQxMlTLMlAyAiBENE/B6DepzhST+RNHvVuXd982G/E8lPOyzs2duBh8yA==\",\"extra\":{}}]",
+      "name": "unknown fields are ignored",
+      "now": 1767225600,
+      "outcome": {
+        "backward_stop": null,
+        "forward_stop": null,
+        "trusted": [
+          "GEM.RCA1 TEST-ONLY"
+        ]
+      }
+    }
+  ]
+}

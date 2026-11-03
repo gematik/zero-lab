@@ -1,10 +1,10 @@
 ---
 id: TASK-95
 title: 'Go deps: JOSE strategy for lestrrat-go/jwx'
-status: In Progress
+status: Done
 assignee: []
-created_date: '2026-10-14 20:44'
-updated_date: '2026-10-21 08:35'
+created_date: 2026-10-14 20:44
+updated_date: '2026-11-02T21:44:00Z'
 labels:
   - go
   - deps
@@ -26,7 +26,7 @@ jwx is the largest unaudited cryptographic dependency, has one maintainer, and i
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 decided with the maintainer: go-jose, extending josebp on the standard library, or the Rust jwz through ti; plan per module
+- [x] #1 decided with the maintainer: go-jose, extending josebp on the standard library, or the Rust jwz through ti; plan per module
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -46,3 +46,9 @@ Step 1 (dpop) implemented on feat/dpop-rfc9449: go/dpop rewritten on go-jose per
 
 Step 1 HITL passed (maintainer, 2026-10-21): pep/proxy/e2e PDP backend setup, login through the mock IdP, GET /api/protected-dpop 200 (pdp verified the token request proof against cnf.jkt, zaddy verified token, proof, ath and key binding against public_origin); without a token zaddy answers 401 with a bare DPoP challenge.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+go-jose replaces jwx, httprc and x/oauth2 in every module; josebp stays for Brainpool. Old tokens, cookies and snapshots still open; fixtures pin it.
+<!-- SECTION:FINAL_SUMMARY:END -->

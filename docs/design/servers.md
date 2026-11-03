@@ -1,12 +1,12 @@
 # Servers
 
 The same rules bind server software in every language: everything deployed as a Docker
-(OCI) workload, today `zero-pdp`, `zero-pep-proxy`, `zero-caddy`, `zero-bff-pdp`,
+(OCI) workload, today `zero-pdp`, `zero-pep-proxy`, `zero-caddy`,
 `zero-epa` and `metsubushi`, and any to come, together with everything that runs inside
-such a workload. `ti serve` is not a workload of its own, but it can run as a sidecar in
-one; there it is part of that workload and follows these rules. Client-side software
-(the `ti` CLI, `ti serve` next to a client, the bindings in apps) follows the other
-documents. Server software is built to run as a confidential workload: in an enclave,
+such a workload. A helper (`ti-pki-helper`, `ti-idpd-helper`) is not a workload of its
+own, but it runs inside one, as a child process or as a sidecar container; there it is
+part of that workload and follows these rules. Client-side software (the `ti` CLI, the
+bindings in apps) follows the other documents. Server software is built to run as a confidential workload: in an enclave,
 with a minimal trusted computing base, horizontally scaled on Kubernetes, with
 everything outside the workload untrusted.
 
@@ -34,9 +34,11 @@ everything outside the workload untrusted.
    live in shared storage (the `kv` store) and are correct with any number of replicas. Per-replica
    caches are optimisations only. Operations that can be retried are idempotent.
 4. **Minimal trusted computing base.** Workloads run in enclaves (confidential VMs or
-   containers: SEV-SNP, TDX, Nitro, confidential Kubernetes). Inside: one static binary
-   (no native library linked in, [interop](../interop.md)), a `scratch` or distroless image without shell or package manager, the
-   fewest dependencies ([dependencies](../conventions/dependencies.md)). The host, the hypervisor operator, the Kubernetes
+   containers: SEV-SNP, TDX, Nitro, confidential Kubernetes). Inside: one measured image
+   with a static binary and, where a helper is used, the helper beside it (no native
+   library linked in, [interop](../interop.md)), a `scratch` or distroless image without
+   shell or package manager, the fewest dependencies
+   ([dependencies](../conventions/dependencies.md)). The host, the hypervisor operator, the Kubernetes
    control plane, the ingress and sidecars outside the enclave are not trusted.
 5. **All data is encrypted outside the workload.** TLS ends inside the workload, not at
    an ingress or sidecar outside the TCB. Data at rest in `kv`, Redis, Postgres, files or
@@ -48,7 +50,13 @@ everything outside the workload untrusted.
    only after its attestation is verified (a KMS or key broker with a release policy on
    the measurement), delivered as files (`*_PATH`), never baked into images, environment
    variables or the kv store. Workload keys follow the [private-key rules](keys.md); rotation
-   works without a restart; credentials are short-lived where the peer allows.
+   works without a restart; credentials are short-lived where the peer allows. An HSM or
+   KMS that holds a workload key is part of the workload's trusted base, and its key
+   policy admits only this workload, proven by attestation and a workload identity the
+   platform provides (the SPIFFE Workload API where it is mounted), never by a credential
+   in a file. The channel is a cloud KMS API or a key provider sidecar over a Unix socket
+   (the pattern of the Kubernetes KMS plugin); the vendor's native library is never in the
+   workload's image, and only digests cross the channel.
 7. **Attestation friendly, signed workloads.** Builds are reproducible (pinned toolchain,
    base images by digest, `-trimpath`, no build-time network for code), images are
    signed with provenance and an SBOM, and the measured image contains everything that
@@ -58,10 +66,30 @@ everything outside the workload untrusted.
 8. **Kubernetes, Docker and sidecars as untrusted neighbours.** Run as non-root with a
    read-only root filesystem, no capabilities, seccomp `RuntimeDefault`, resource limits;
    liveness and readiness reflect real state (trust material loaded, storage reachable);
-   SIGTERM drains and shuts down gracefully; configuration and trust material reload from
-   mounted files. A sidecar (`ti serve`, a key broker agent) is reached over a Unix socket
-   with file permissions; a sidecar outside the enclave gets only ciphertext or data that
-   is public anyway.
+   SIGTERM drains and shuts down gracefully; configuration reloads from mounted files. Trust
+   material comes one of two ways, outside the request path, and consumers keep nothing of it
+   on disk: from mounted files written by a producer (a CronJob from the same image that
+   fetches, verifies and exports the set; an operator's import on an air-gapped site), or, for
+   a standalone image, from the workload's own background download from the fixed hosts of
+   the specification, under a hash that TLS vouches for
+   ([decision-12](../../backlog/decisions/)).
+   - **One image, several deployments.** A helper ships in the product's image
+     (`libexec/telematik`, [git and releases](../conventions/git-and-releases.md)) and
+     runs either as a child process over stdio inside the container or as a sidecar
+     container started from the same image with the helper as its command; protocol and
+     client are the same in both modes.
+   - **Sidecars inside the enclave** (a helper, OPA, a key provider) are reached over a
+     Unix socket in a shared `emptyDir` with file permissions and a peer check
+     (`SO_PEERCRED`; on Linux the peer's executable through a pidfd), have no network
+     listener, receive no secret across the socket, bound their frames and version their
+     handshake. They are part of the measured workload: their digests are in the same
+     signed manifest and in the pod policy that attestation measures; native sidecar
+     containers order their start, and readiness follows their handshake. Policy engines
+     run the same way, and their policies are configuration under rule 7, mounted at
+     start and never loaded at run time.
+   - Platform services (workload identity, mesh TLS, attestation) are consumed through
+     their standard interfaces and never provided here. A sidecar outside the enclave
+     gets only ciphertext or data that is public anyway.
 9. **Cloud native preferred.** Standard, portable building blocks: OCI images,
    Kubernetes primitives (Deployments, probes, PodDisruptionBudgets, topology spread,
    NetworkPolicies, mounted Secrets and ConfigMaps), declarative configuration,
@@ -124,8 +152,8 @@ everything outside the workload untrusted.
     choice at the edge (the command), and the exporter's library falls under the dependency rules. A
     scrape endpoint is on the admin listener, restricted by NetworkPolicy and
     authentication, never on the public port.
-    - Rate, errors and duration per endpoint and per dependency (store, key service, `ti
-      serve` sidecar, upstream IdPs), saturation per replica; SLOs per service with
+    - Rate, errors and duration per endpoint and per dependency (store, key service, helper
+      sidecar, upstream IdPs), saturation per replica; SLOs per service with
       alerts on the error budget.
     - Security signals are first-class metrics with alerts, not log lines to grep:
       verification failures (TSL, signatures, attestation), replay attempts, rejected

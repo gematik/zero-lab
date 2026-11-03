@@ -262,6 +262,13 @@ fn verify(
         ));
     }
     let basic = BasicOcspResponse::from_der(bytes.response.as_bytes()).map_err(undecodable)?;
+    // No signature covers these two, so nothing else would notice them changed.
+    if basic.signature_algorithm.tag() != Tag::Sequence || basic.signature.as_bytes().is_none() {
+        return Err(ValidationError::new(
+            ErrorCode::OcspUnavailable,
+            "OCSP response could not be decoded: its signature is not as DER has it",
+        ));
+    }
     let tbs_der = basic.tbs_response_data.to_der().map_err(undecodable)?;
     let data = ResponseData::from_der(&tbs_der).map_err(undecodable)?;
 
@@ -1299,10 +1306,13 @@ impl EncodeValue for Time {
 
 /// `YYYYMMDDHHMMSS[.f+]Z`.
 fn parse_generalized_time(bytes: &[u8]) -> Option<Timestamp> {
-    let s = core::str::from_utf8(bytes).ok()?;
-    if s.len() < 15 || !s[..14].bytes().all(|b| b.is_ascii_digit()) {
+    // The digits are checked on the bytes before any string is sliced: a multibyte
+    // character across byte 14 would make `&s[..14]` panic, and a response is network
+    // input (found by the ocsp_response fuzz target).
+    if bytes.len() < 15 || !bytes[..14].iter().all(u8::is_ascii_digit) {
         return None;
     }
+    let s = core::str::from_utf8(bytes).ok()?;
     let rest = &s[14..];
     let fraction_ok = rest == "Z"
         || rest
@@ -1337,6 +1347,30 @@ mod tests {
 
     fn at(rfc3339: &str) -> Timestamp {
         Timestamp::parse_rfc3339(rfc3339).unwrap()
+    }
+
+    /// Found by the `ocsp_response` fuzz target: a multibyte character inside the first
+    /// 14 bytes of a GeneralizedTime made the parser slice the string off a character
+    /// boundary and panic (TSLDET-020: a response errors, never panics).
+    #[test]
+    fn generalized_time_with_a_multibyte_character_is_rejected_not_a_panic() {
+        // 13 digits, then a two-byte character across byte index 14.
+        assert_eq!(
+            parse_generalized_time("2026110116474\u{e4}2Z".as_bytes()),
+            None
+        );
+        assert_eq!(
+            parse_generalized_time("2026110116\u{e4}742Z".as_bytes()),
+            None
+        );
+        assert_eq!(
+            parse_generalized_time("20261101164742\u{e4}".as_bytes()),
+            None
+        );
+        assert_eq!(
+            parse_generalized_time(b"20261101164742Z"),
+            Some(at("2026-11-01T16:47:42Z"))
+        );
     }
 
     #[test]

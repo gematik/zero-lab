@@ -28,6 +28,8 @@ mod agent;
 mod bundle;
 mod cache;
 mod connector;
+mod connector_config;
+mod connector_setup;
 mod directory;
 mod documents;
 mod identity;
@@ -41,6 +43,7 @@ mod profiles;
 mod roots;
 mod schema;
 mod store;
+mod trust_export;
 mod tsl;
 mod verify;
 mod verify_signature;
@@ -50,7 +53,8 @@ use ti_pki::{Certificate, Env, Timestamp};
 
 use crate::cli::{
     CacheCommand, Cli, Command, DirectoryCommand, Environment, GlobalArgs, IdentityCommand,
-    IdpdCommand, Pkcs12Command, PkiCommand, ProbeEnv, ProfilesCommand, RootsCommand, TslCommand,
+    IdpdCommand, Pkcs12Command, PkiCommand, ProbeEnv, ProfilesCommand, RootsCommand, TrustCommand,
+    TslCommand,
 };
 use crate::error::{CliError, Exit};
 use crate::output::document::{TreeRow, date, when};
@@ -106,6 +110,9 @@ pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
         }
         Command::Pki(PkiCommand::Tsl(TslCommand::Export(args))) => {
             tsl::export(args, &cli.global, out)
+        }
+        Command::Pki(PkiCommand::Trust(TrustCommand::Export(args))) => {
+            trust_export::export(args, &cli.global, out)
         }
         Command::Pki(PkiCommand::Tsl(TslCommand::Verify(args))) => {
             tsl::verify(args, &cli.global, out)
@@ -228,10 +235,20 @@ fn expiry(not_after: Timestamp, validity: &str) -> Line {
     }
 }
 
+/// ` · expired 2025-08-28, valid when it issued` in yellow: a CA the Kompromissmodell
+/// still accepts for what it issued before (gemKPT_PKI_TIP 2.4.2).
+fn expiry_after_issuing(not_after: Timestamp) -> Line {
+    Line::dim(" · ").and_status(
+        Tone::Warn,
+        format!("expired {}, valid when it issued", date(not_after)),
+    )
+}
+
 /// A chain as rows of a tree, the first certificate at the top and the root at the
 /// bottom: each with `mark(i)` before its common name, then its place in the chain and
-/// validity at `at`, then `extra(i)`. An incomplete chain ends with the issuer that was
-/// not found.
+/// validity at `at`, then `extra(i)`. A CA counts under the validity model of the first
+/// certificate's type: under the Kompromissmodell (SMC-B, HBA) as it was when it issued
+/// the certificate below. An incomplete chain ends with the issuer that was not found.
 fn chain_tree(
     chain: &[Certificate],
     complete: bool,
@@ -240,6 +257,11 @@ fn chain_tree(
     extra: impl Fn(usize) -> Line,
 ) -> Vec<TreeRow> {
     let last = chain.len().saturating_sub(1);
+    let compromise = chain
+        .first()
+        .and_then(ti_pki::detect_certificate_type)
+        .map(ti_pki::ValidityModel::for_type)
+        == Some(ti_pki::ValidityModel::Compromise);
     let mut rows: Vec<TreeRow> = chain
         .iter()
         .enumerate()
@@ -255,11 +277,20 @@ fn chain_tree(
             } else {
                 Line::text(cert.subject_cn())
             };
+            let status = validity(cert, at);
+            let issued_while_valid = compromise
+                && status == "expired"
+                && i.checked_sub(1)
+                    .and_then(|below| chain.get(below))
+                    .is_some_and(|below| validity(cert, below.not_before()) == "valid");
+            let expiry = if issued_while_valid {
+                expiry_after_issuing(cert.not_after())
+            } else {
+                expiry(cert.not_after(), status)
+            };
             TreeRow {
                 name: mark(i).and_line(name),
-                detail: Line::dim(place)
-                    .and_line(expiry(cert.not_after(), validity(cert, at)))
-                    .and_line(extra(i)),
+                detail: Line::dim(place).and_line(expiry).and_line(extra(i)),
             }
         })
         .collect();
@@ -408,6 +439,43 @@ mod tests {
 
     use super::*;
     use crate::cli::ProbeEnv;
+
+    fn pki_fixture(name: &str) -> Certificate {
+        let path = format!(
+            "{}/../ti-pki/tests/pki/{name}.pem",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        ti_pki::parse_pem_certificates(&std::fs::read(path).unwrap())
+            .unwrap()
+            .remove(0)
+    }
+
+    /// gemKPT_PKI_TIP 2.4: the trust tree shows a CA that expired after it issued an
+    /// SMC-B or HBA certificate as a warning (Kompromissmodell), and as expired under a
+    /// component's certificate (shell model).
+    #[test]
+    fn the_trust_tree_shows_the_validity_model_of_the_certificate_type() {
+        // 2028-01-01: GEM.SubCA-Short TEST-ONLY expired at the end of 2026.
+        let at = Timestamp(1_830_297_600);
+        let ca = |ee: &str| {
+            let chain = [
+                pki_fixture(ee),
+                pki_fixture("sub-ca-short"),
+                pki_fixture("rca1"),
+            ];
+            chain_tree(&chain, true, at, |_| Line::default(), |_| Line::default())[1]
+                .detail
+                .plain()
+        };
+        for ee in ["ee-short-hci-aut", "ee-short-hp-aut"] {
+            assert!(ca(ee).contains("valid when it issued"), "{ee}: {}", ca(ee));
+        }
+        let component = ca("ee-short-fd-tls-s");
+        assert!(component.contains("expired"), "{component}");
+        assert!(!component.contains("valid when it issued"), "{component}");
+        let late = ca("ee-after-short");
+        assert!(!late.contains("valid when it issued"), "{late}");
+    }
 
     fn global(env_from_variable: bool) -> GlobalArgs {
         let mut global = Cli::try_parse_from(["ti", "version"]).unwrap().global;

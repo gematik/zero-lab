@@ -142,6 +142,40 @@ impl<S: CacheStore, C: Clock> Cache<S, C> {
         &self.clock
     }
 
+    /// Makes the next [`get`](Self::get) of `key` ask the origin, without validators it
+    /// could answer "not modified" to. The entry just passes `max_age`, so it still serves
+    /// an origin that fails, for the rest of `stale_if_error`. Does nothing when offline,
+    /// where nothing could replace it.
+    ///
+    /// # Errors
+    ///
+    /// A fault of the store.
+    pub async fn expire(&self, key: &str) -> Result<(), CacheError> {
+        if self.policy.offline {
+            return Ok(());
+        }
+        let Some(mut entry) = self.store.get(key).await? else {
+            return Ok(());
+        };
+        entry.meta.fetched_at = entry
+            .meta
+            .fetched_at
+            .min(self.clock.now() - self.policy.max_age);
+        entry.meta.etag = None;
+        entry.meta.last_modified = None;
+        self.store.put(key, &entry).await
+    }
+
+    /// The entry under `key` whatever its age, for a body that stays usable past
+    /// `stale_if_error`; the caller answers for that.
+    ///
+    /// # Errors
+    ///
+    /// A fault of the store.
+    pub async fn stored(&self, key: &str) -> Result<Option<CacheEntry>, CacheError> {
+        self.store.get(key).await
+    }
+
     /// The body under `key`: from the store while fresh (or offline), otherwise from
     /// `origin`, which receives the stored copy's validators and may answer "not
     /// modified". A failing origin is answered with the stored copy while it is within

@@ -20,14 +20,15 @@
 // find details in the "Readme" file.
 
 // Package proxy is an oauth2-proxy-style authentication gateway: it runs the login (against direct OIDC/
-// OIDF/gemidp providers or — later — a PDP), keeps the tokens server-side, and exposes the oauth2-proxy
+// OIDF/idpd providers or — later — a PDP), keeps the tokens server-side, and exposes the oauth2-proxy
 // endpoint contract (/oauth2/{auth,start,sign_in,callback,sign_out,…}) so it works behind Caddy in
-// forward_auth mode and as a standalone gateway. It is the token-mediating BFF, generalized, and will
-// replace the bff over time.
+// forward_auth mode and as a standalone gateway. It is a token-mediating backend for frontend
+// (draft-ietf-oauth-browser-based-apps); backlog doc-4 holds the history.
 package proxy
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -44,7 +45,7 @@ import (
 // Config configures the proxy server.
 type Config struct {
 	Backend        Backend       // the auth backend (providerBackend today; pdpBackend later)
-	Store          kv.Store      // session store
+	Store          kv.Store      // session store; a persistent one comes sealed from the host (kv.NewSealed)
 	SessionTTL     time.Duration // sliding session TTL (0 = 1h); ignored when the snapshot fast path is on
 	CookieName     string        // session cookie name (default ZERO-PEP-SID)
 	InsecureCookie bool          // drop the __Host- prefix + Secure for http dev; default is secure
@@ -55,12 +56,6 @@ type Config struct {
 	SnapshotKeyPath         string        // base64 256-bit key file; "" disables the fast path
 	SnapshotPreviousKeyPath string        // optional previous key file (rotation overlap)
 	SnapshotTTL             time.Duration // = session absolute lifetime (0 = 8h)
-
-	// SessionStoreKeyPath enables at-rest encryption of kv session records (AES-256-GCM, the id as AAD) with a
-	// SEPARATE base64 256-bit key file, independent of the snapshot key. "" leaves records as plaintext JSON.
-	// Defends a rogue storage admin against disclosure, forgery, and record substitution. See
-	// docs/at-rest-encryption.md.
-	SessionStoreKeyPath string
 
 	// Bus carries session revocations to all replicas so logout/lockout is fleet-wide instant. nil = a
 	// single-instance in-memory revoker.
@@ -89,12 +84,13 @@ type Server struct {
 	gateway    *Gateway // nil in forward_auth-only mode (no Routes)
 }
 
+// New returns a Server for cfg. It fails without a Backend or Store and on a key file that cannot be loaded.
 func New(cfg Config) (*Server, error) {
 	if cfg.Backend == nil {
-		return nil, fmt.Errorf("proxy: backend is required")
+		return nil, errors.New("proxy: backend is required")
 	}
 	if cfg.Store == nil {
-		return nil, fmt.Errorf("proxy: store is required")
+		return nil, errors.New("proxy: store is required")
 	}
 	if cfg.CookieName == "" {
 		cfg.CookieName = "ZERO-PEP-SID"
@@ -119,17 +115,6 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	sessions := newSessionStore(cfg.Store, cfg.SessionTTL)
-	if cfg.SessionStoreKeyPath != "" {
-		key, err := loadBase64Key(cfg.SessionStoreKeyPath)
-		if err != nil {
-			return nil, fmt.Errorf("session store key: %w", err)
-		}
-		crypter, err := newAESRecordCrypter(key)
-		if err != nil {
-			return nil, fmt.Errorf("session store cipher: %w", err)
-		}
-		sessions.crypter = crypter
-	}
 	s := &Server{
 		sessions: sessions,
 		cookie:   newCookieTemplate(cfg.CookieName, cfg.InsecureCookie),
@@ -232,7 +217,7 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	sess, ok := s.currentSession(r)
 	if !ok || !sess.Authenticated() {
 		_, cookieErr := r.Cookie(s.cookie.Name)
-		slog.Debug("forward_auth deny", "uri", r.Header.Get("X-Forwarded-Uri"),
+		slog.Debug("forward_auth deny", "uri", withoutQuery(r.Header.Get("X-Forwarded-Uri")),
 			"cookie_present", cookieErr == nil, "session_found", ok)
 		w.WriteHeader(http.StatusUnauthorized)
 		return
@@ -249,13 +234,13 @@ func (s *Server) setSnapshot(w http.ResponseWriter, sess *Session) {
 	}
 	tok, err := s.snap.mint(sess.ID, sess.Identity)
 	if err != nil {
-		slog.Warn("mint snapshot failed", "session", sess.ID, "error", err)
+		slog.Warn("mint snapshot failed", "session_ref", logRef(sess.ID), "error", err)
 		return
 	}
 	setCookie(w, s.snapCookie, tok)
 }
 
-// sortProviders orders the chooser list: oidc + gemidp keep their configured order at the top, and the OIDF
+// sortProviders orders the chooser list: oidc + idpd keep their configured order at the top, and the OIDF
 // federation IdPs (typically many) are sorted by label. The browser then pins the last-used provider above
 // all (localStorage) and fuzzy-filters.
 func sortProviders(providers []Provider) {
@@ -328,7 +313,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	}
 	setCookie(w, s.cookie, sess.token)
 
-	slog.Info("login start", "session", sess.ID, "idp_iss", idpIss, "mode", start.Mode, "auth_endpoint", withoutQuery(start.AuthURL))
+	slog.Info("login start", "session_ref", logRef(sess.ID), "idp_iss", idpIss, "mode", start.Mode, "auth_endpoint", withoutQuery(start.AuthURL))
 
 	var name string
 	if start.Provider != nil {
@@ -345,7 +330,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 			ProviderName: name, AuthURL: start.AuthURL, QRImage: img,
 			PollURL: "/oauth2/poll", ReturnTo: sess.ReturnTo,
 		})
-	case "authenticator": // gemidp — open the authenticator:// app on this device + poll
+	case "authenticator": // idpd — open the authenticator:// app on this device + poll
 		s.render.render(w, http.StatusOK, "authenticator.html", qrData{
 			ProviderName: name, AuthURL: start.AuthURL,
 			PollURL: "/oauth2/poll", ReturnTo: sess.ReturnTo,
@@ -374,7 +359,7 @@ func (s *Server) handlePoll(w http.ResponseWriter, r *http.Request) {
 		// snapshot before handing back control.
 		oldID := sess.ID
 		if err := s.sessions.rotate(sess); err != nil {
-			slog.Warn("session rotation failed", "session", sess.ID, "error", err)
+			slog.Warn("session rotation failed", "session_ref", logRef(sess.ID), "error", err)
 		} else {
 			s.revoker.Revoke(oldID)
 			setCookie(w, s.cookie, sess.token)
@@ -442,7 +427,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// the cookie. Show a success page; the originating device (polling /oauth2/poll) proceeds to rd and rotates
 	// the id there.
 	if !s.requestOwnsSession(r, sess) {
-		slog.Info("login complete", "session", sess.ID, "idp_iss", sess.IDPIss, "decoupled", true)
+		slog.Info("login complete", "session_ref", logRef(sess.ID), "idp_iss", sess.IDPIss, "decoupled", true)
 		s.render.render(w, http.StatusOK, "complete.html", nil)
 		return
 	}
@@ -456,7 +441,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	s.revoker.Revoke(oldID)
 	setCookie(w, s.cookie, sess.token)
 	s.setSnapshot(w, sess)
-	slog.Info("login complete", "session", sess.ID, "idp_iss", sess.IDPIss, "return_to", dest)
+	slog.Info("login complete", "session_ref", logRef(sess.ID), "idp_iss", sess.IDPIss, "return_to", dest)
 	http.Redirect(w, r, dest, http.StatusFound)
 }
 

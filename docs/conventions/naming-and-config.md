@@ -11,6 +11,11 @@
 - Tests are named after the requirement they prove
   ([testing](../design/testing.md#tests-name-the-requirement-they-prove)).
 
+- A Go module and its Rust crate share a name, without the `ti-` prefix: `go/idpd` and
+  `ti-idpd`, `go/tipki` and `ti-pki`, `go/pkcs12` and `ti-pkcs12`. So do what an operator sees
+  of it: `idpd:` in YAML, `PEP_IDPD_*`, `/idpd-callback`. `go/brainpool` keeps its name, being
+  wider than `jwz-brainpool`; `go/dpop`, `go/openid`, `go/oidf` have no crate yet.
+
 ## Environment variables
 
 - Prefixed by the component that reads them: `ZERO_PDP_…`, `PEP_…`, `EPA_…`, `TI_…`,
@@ -20,6 +25,18 @@
 - Secrets never travel as a variable's value: the variable names a file (`…_PATH`) and the
   command reads the secret from it. Secrets are not bootstrapped into or stored in the kv
   store either.
+
+## Helpers
+
+- A helper is named after the `ti` command group it serves: `ti <group>` becomes
+  `ti-<group>-helper`, crate and binary of the same name under `rust/helpers/<group>`;
+  its protocol is `<group>/<n>` in `spec/ti-rpc`; its Go client is `go/tirpc/<group>`.
+- Methods carry the names of the group's subcommands and the `--format json` schemas of
+  `ti`, so a subprocess and a helper return the same shapes.
+- `TI_<GROUP>_HELPER_PATH` overrides where a product finds the helper;
+  `TI_<GROUP>_HELPER_SOCKET_PATH` names the Unix socket of a sidecar. A helper reads no
+  other configuration than its flags and these variables: no profile, configuration
+  directory, store, cache file or key file.
 
 ## Configuration
 

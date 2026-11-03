@@ -1,0 +1,6 @@
+/target
+/corpus
+/artifacts
+/coverage
+# Generated from spec/pkcs12 by `just fuzz-ti-pkcs12`.
+/seeds

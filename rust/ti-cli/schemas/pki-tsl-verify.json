@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "pki tsl verify",
-  "description": "A TSL file verified against the embedded TSL signer CA of an environment (spec/tsl-xmldsig parts A to D): the XMLDSig/XAdES signature, a C.TSL.SIG signer that CA issued, NextUpdate and the grace period, the sequence against --previous, and online the signer's OCSP status. Not covered: anchor change. The list fields are read from the signed bytes and are null or empty for an invalid list.",
+  "description": "A TSL file verified against the embedded TSL signer CA of an environment (spec/tsl-detached, spec/tsl-xmldsig parts B to D): the detached signature, a C.TSL.SIG signer that CA issued, NextUpdate and the grace period, the sequence against --previous, and online the signer's OCSP status. Not covered: anchor change. The list fields are read from the signed bytes and are null or empty for an invalid list.",
   "type": "object",
   "properties": {
     "schema": {
@@ -44,7 +44,7 @@
     "code": {
       "enum": [
         "tsl_not_wellformed",
-        "xml_signature_error",
+        "detached_signature_error",
         "tsl_cert_extraction_error",
         "certificate_not_valid_math",
         "authoritykeyid_different",
@@ -80,7 +80,7 @@
         "string",
         "null"
       ],
-      "description": "The rule of spec/tsl-xmldsig that failed, e.g. TSLSIG-018."
+      "description": "The rule of spec/tsl-xmldsig or spec/tsl-detached that failed, e.g. TSLDET-005 or TSLDET-005."
     },
     "detail": {
       "type": [
@@ -110,13 +110,6 @@
       ],
       "format": "date-time",
       "description": "RFC 3339, UTC; null for a closed list"
-    },
-    "signing_time": {
-      "type": [
-        "string",
-        "null"
-      ],
-      "description": "XAdES SigningTime as written."
     },
     "anchor": {
       "oneOf": [
@@ -187,7 +180,8 @@
               "const": "good"
             },
             "responder_url": {
-              "type": "string"
+              "type": "string",
+              "description": "The responder asked, or `supplied` for a response given with the list."
             },
             "produced_at": {
               "type": [
@@ -208,7 +202,7 @@
           "type": "null"
         }
       ],
-      "description": "The signer's OCSP status, when it was queried."
+      "description": "The signer's OCSP status, when it was queried or supplied with --signer-status."
     },
     "sequence": {
       "enum": [
@@ -233,7 +227,6 @@
     "sequence_number",
     "issued_at",
     "next_update",
-    "signing_time",
     "anchor",
     "signer",
     "cas",

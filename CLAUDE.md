@@ -25,7 +25,8 @@ why, or does not land.
    ([dependencies](docs/conventions/dependencies.md)).
 9. Fuzzed ([testing](docs/design/testing.md#fuzzing)).
 10. Servers are confidential workloads, 26 rules ([servers](docs/design/servers.md)).
-11. Languages meet through processes or shared specifications ([interop](docs/interop.md)).
+11. Languages meet through processes (stateless helpers in the same image) or shared
+    specifications ([interop](docs/interop.md)).
 
 Conventions: [naming and configuration](docs/conventions/naming-and-config.md),
 [code and comments](docs/conventions/code-and-comments.md),
@@ -37,8 +38,8 @@ guides next to them.
 ## For agents
 
 - **Dependencies:** ask the maintainer before adding a dependency, enabling a feature that
-  pulls new ones, or swapping a library, with the reason, the transitive cost and the
-  alternatives.
+  pulls new ones, or swapping a library, with the reason, the transitive cost, the
+  alternatives, whether it contains `unsafe` and which unit (core or host) it lands in.
 - **Checks:** run `just check` in each workspace you changed (`rust/`, `go/`). Never weaken
   a lint, a check or a proof to get a change through. Regenerate stale generated files
   instead of editing them: `just jwz-recheck` for verification stamps,

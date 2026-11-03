@@ -36,8 +36,11 @@ use super::profile::{ProfileStore, now};
 
 /// The cache keys the libraries use, and the namespace each belongs to; the rest of the
 /// key is the record's id.
-const PREFIXES: [(&str, &NamespaceSpec); 4] = [
+const PREFIXES: [(&str, &NamespaceSpec); 6] = [
     ("ti-pki/v1/tsl/", &PKI_TSL),
+    // The list's detached files live with it; each is keyed by its own URL.
+    ("ti-pki/v1/tsl-sig/", &PKI_TSL),
+    ("ti-pki/v1/tsl-ocsp/", &PKI_TSL),
     ("ti-pki/v1/roots/", &PKI_ROOTS),
     ("ti-pki/v1/ocsp/", &PKI_OCSP),
     ("ti-connector/v1/sds/", &CONNECTOR_SDS),
@@ -153,6 +156,8 @@ mod tests {
     fn every_library_key_has_a_namespace() {
         for key in [
             "ti-pki/v1/tsl/0123456789abcdef",
+            "ti-pki/v1/tsl-sig/0123456789abcdef",
+            "ti-pki/v1/tsl-ocsp/0123456789abcdef",
             "ti-pki/v1/roots/0123456789abcdef",
             "ti-pki/v1/ocsp/ab/cd",
             "ti-connector/v1/sds/0123456789abcdef",

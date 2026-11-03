@@ -19,6 +19,9 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Package vau implements the client side of the VAU channel of ePA für alle (gemSpec_Krypt):
+// the handshake with its key confirmation, the encrypted request and response messages,
+// and a snapshot to resume a channel in another process. It also holds a Server for tests.
 package vau
 
 import (
@@ -28,6 +31,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -39,17 +43,23 @@ import (
 	"github.com/fxamacker/cbor/v2"
 )
 
+// Env is the environment byte in the header of a VAU message.
 type Env byte
 
-const EnvNonPU Env = 0
-const EnvPU Env = 1
+// Environments a VAU message can carry: anything short of production, or production (PU).
+const (
+	EnvNonPU Env = 0
+	EnvPU    Env = 1
+)
 
+// Header fields of a VAU message: the protocol version and the direction of the message.
 const (
 	Version        = byte(0x02)
 	HeaderRequest  = byte(0x01)
 	HeaderResponse = byte(0x02)
 )
 
+// Counter is a monotonic counter safe for concurrent use; its first value is 1.
 type Counter struct {
 	mu    sync.Mutex
 	value uint64
@@ -62,6 +72,8 @@ func (c *Counter) next() uint64 {
 	return c.value
 }
 
+// Channel is an open VAU channel. Requests go encrypted to ChannelURL under the channel's
+// K2 keys; OpenChannelVerified or RestoreChannel build one.
 type Channel struct {
 	httpClient          *http.Client
 	Env                 Env
@@ -69,15 +81,16 @@ type Channel struct {
 	ChannelURL          *url.URL
 	SignedPublicVAUKeys *SignedPublicVAUKeys
 	keyID               []byte
-	// key and counter for k2_c2s_app_data
-	k2_c2s_app_data         []byte
-	k2_c2s_app_data_counter Counter
+	// key and counter for the client-to-server application data
+	k2C2SAppData        []byte
+	k2C2SAppDataCounter Counter
 	// key to decrypt the responses from server
-	k2_s2c_app_data []byte
+	k2S2CAppData []byte
 	// request/response counter
 	requestCounter Counter
 }
 
+// EncryptedRequest is a sealed VAU request and the request counter its header carries.
 type EncryptedRequest struct {
 	RequestCounter uint64
 	Ciphertext     []byte
@@ -113,18 +126,18 @@ func (c *Channel) Snapshot() ChannelSnapshot {
 	rc := c.requestCounter.value
 	c.requestCounter.mu.Unlock()
 
-	c.k2_c2s_app_data_counter.mu.Lock()
-	cc := c.k2_c2s_app_data_counter.value
-	c.k2_c2s_app_data_counter.mu.Unlock()
+	c.k2C2SAppDataCounter.mu.Lock()
+	cc := c.k2C2SAppDataCounter.value
+	c.k2C2SAppDataCounter.mu.Unlock()
 
 	return ChannelSnapshot{
 		Env:                 c.Env,
 		ID:                  c.ID,
 		ChannelURL:          c.ChannelURL.String(),
 		KeyID:               append([]byte(nil), c.keyID...),
-		K2C2SAppData:        append([]byte(nil), c.k2_c2s_app_data...),
+		K2C2SAppData:        append([]byte(nil), c.k2C2SAppData...),
 		K2C2SAppDataCounter: cc,
-		K2S2CAppData:        append([]byte(nil), c.k2_s2c_app_data...),
+		K2S2CAppData:        append([]byte(nil), c.k2S2CAppData...),
 		RequestCounter:      rc,
 	}
 }
@@ -135,28 +148,30 @@ func (c *Channel) Snapshot() ChannelSnapshot {
 // counters in the state.
 func RestoreChannel(state ChannelSnapshot, httpClient *http.Client) (*Channel, error) {
 	if httpClient == nil {
-		return nil, fmt.Errorf("RestoreChannel: httpClient is required")
+		return nil, errors.New("RestoreChannel: httpClient is required")
 	}
 	u, err := url.Parse(state.ChannelURL)
 	if err != nil {
 		return nil, fmt.Errorf("RestoreChannel: parsing channel URL: %w", err)
 	}
 	if len(state.KeyID) == 0 || len(state.K2C2SAppData) == 0 || len(state.K2S2CAppData) == 0 {
-		return nil, fmt.Errorf("RestoreChannel: state is missing required key material")
+		return nil, errors.New("RestoreChannel: state is missing required key material")
 	}
 	return &Channel{
-		httpClient:              httpClient,
-		Env:                     state.Env,
-		ID:                      state.ID,
-		ChannelURL:              u,
-		keyID:                   append([]byte(nil), state.KeyID...),
-		k2_c2s_app_data:         append([]byte(nil), state.K2C2SAppData...),
-		k2_c2s_app_data_counter: Counter{value: state.K2C2SAppDataCounter},
-		k2_s2c_app_data:         append([]byte(nil), state.K2S2CAppData...),
-		requestCounter:          Counter{value: state.RequestCounter},
+		httpClient:          httpClient,
+		Env:                 state.Env,
+		ID:                  state.ID,
+		ChannelURL:          u,
+		keyID:               append([]byte(nil), state.KeyID...),
+		k2C2SAppData:        append([]byte(nil), state.K2C2SAppData...),
+		k2C2SAppDataCounter: Counter{value: state.K2C2SAppDataCounter},
+		k2S2CAppData:        append([]byte(nil), state.K2S2CAppData...),
+		requestCounter:      Counter{value: state.RequestCounter},
 	}, nil
 }
 
+// Do encrypts req, posts it to the channel and returns the decrypted inner response. A
+// status other than 200 from the VAU is an error, wrapping the [MessageError] its body decodes to.
 func (c *Channel) Do(req *http.Request) (*http.Response, error) {
 	if req.Host == "" && req.URL.Host == "" {
 		req.Host = c.ChannelURL.Host
@@ -189,6 +204,7 @@ func (c *Channel) Do(req *http.Request) (*http.Response, error) {
 	return c.DecryptResponse(encResp, req)
 }
 
+// EncryptRequest serialises r as HTTP/1.1 and seals it with [Channel.Encrypt].
 func (c *Channel) EncryptRequest(r *http.Request) (*EncryptedRequest, error) {
 	slog.Debug("Encrypting VAU request", "channel_url", c.ChannelURL.String(), "method", r.Method, "url", r.URL.String())
 	data, err := httputil.DumpRequest(r, true)
@@ -199,6 +215,8 @@ func (c *Channel) EncryptRequest(r *http.Request) (*EncryptedRequest, error) {
 	return c.Encrypt(data)
 }
 
+// Encrypt seals data for the server. Every call takes the next request and IV counters,
+// so it advances the state a [ChannelSnapshot] has to keep.
 func (c *Channel) Encrypt(data []byte) (*EncryptedRequest, error) {
 	requestCounter := c.requestCounter.next()
 	header := make([]byte, 43)
@@ -209,7 +227,7 @@ func (c *Channel) Encrypt(data []byte) (*EncryptedRequest, error) {
 	binary.BigEndian.PutUint64(header[3:], requestCounter)
 	copy(header[11:], c.keyID)
 
-	aes, err := aes.NewCipher(c.k2_c2s_app_data)
+	aes, err := aes.NewCipher(c.k2C2SAppData)
 	if err != nil {
 		return nil, fmt.Errorf("creating AES cipher: %w", err)
 	}
@@ -226,7 +244,7 @@ func (c *Channel) Encrypt(data []byte) (*EncryptedRequest, error) {
 		return nil, fmt.Errorf("generating iv: %w", err)
 	}
 	// add 64 bit from counter
-	binary.LittleEndian.PutUint64(iv[4:], c.k2_c2s_app_data_counter.next())
+	binary.LittleEndian.PutUint64(iv[4:], c.k2C2SAppDataCounter.next())
 
 	// encrypt data
 	ciphertext := aesGCM.Seal(iv, iv, data, header)
@@ -237,6 +255,7 @@ func (c *Channel) Encrypt(data []byte) (*EncryptedRequest, error) {
 	}, nil
 }
 
+// DecryptResponse reads and closes the body of resp and opens it with [Channel.Decrypt].
 func (c *Channel) DecryptResponse(resp *http.Response, req *http.Request) (*http.Response, error) {
 	// read body
 	defer resp.Body.Close()
@@ -247,6 +266,8 @@ func (c *Channel) DecryptResponse(resp *http.Response, req *http.Request) (*http
 	return c.Decrypt(data, req)
 }
 
+// Decrypt checks the header of a VAU response (version, environment, direction, key ID),
+// opens it and parses the inner HTTP response, for which req is the request it answers.
 func (c *Channel) Decrypt(data []byte, req *http.Request) (*http.Response, error) {
 	if len(data) < 43 {
 		return nil, fmt.Errorf("invalid data length: %d", len(data))
@@ -269,7 +290,7 @@ func (c *Channel) Decrypt(data []byte, req *http.Request) (*http.Response, error
 		return nil, fmt.Errorf("invalid keyID: %s", header[11:43])
 	}
 
-	aes, err := aes.NewCipher(c.k2_s2c_app_data)
+	aes, err := aes.NewCipher(c.k2S2CAppData)
 	if err != nil {
 		return nil, fmt.Errorf("creating AES cipher: %w", err)
 	}
@@ -316,6 +337,7 @@ func (c *Channel) PostEncryptedRequest(data []byte) (*http.Response, error) {
 	return resp, nil
 }
 
+// Status is the answer of GET /VAU-Status, with the keys the specification names.
 type Status struct {
 	VAUType            string `json:"VAU-Type"`
 	VAUVersion         string `json:"VAU-Version"`

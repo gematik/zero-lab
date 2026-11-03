@@ -7,21 +7,61 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ## Unreleased
 
+### added
+- New crate: certificate verification for a server workload as a process beside it, protocol
+  `pki/1` of `spec/ti-rpc`, over stdio or a Unix socket. Trust material comes from a mounted
+  directory and nothing is written to disk; OCSP goes only to the responders of a chain that
+  has verified. The production build holds no TEST-ONLY anchors.
+
 ### ti-cli
 
+#### added
+- `ti pki trust export -o FILE`: roots.json, the TSL, its signature and its signer's status as
+  one bundle file for a server or an air-gapped site, written whole and only once a consumer's
+  load of it verified.
+
+#### removed
+- SOCKS proxies: `-x socks5://` and a `socks5://` in the proxy variables are refused with
+  `http_setup` (exit 2), and `ureq`'s `socks-proxy` feature, `socks` and `byteorder` are
+  gone.
+
+#### fixed
+- Proxy variables no longer reach the Konnektor, as `AGENTS.md` always said: only `-x`
+  sets a proxy for it.
+- A Konnektor whose service directory names another origin than the `.kon` url is refused
+  before anything is sent, and `connector config test` fails at `sds`, with the hint to
+  `rewriteServiceEndpoints`. Before, credentials and documents went wherever the directory
+  said, plain http included. **A Konnektor behind NAT that worked without the rewrite now
+  needs it.**
+- `--card` (identity, directory login) chooses its Konnektor with `-c`/`--connector-config`
+  like the `connector` commands; `--connector` stays as an alias.
+- `pki verify` applies the Kompromissmodell to the nonQES certificates of SMC-B and HBA
+  (gemKPT_PKI_TIP 2.4.2, gemSpec_PKI Tab_PKI_271): an SMC-B or HBA certificate whose CA
+  has expired since it was issued is valid with the warning `issued_before_ca_expiry`;
+  it was rejected as `expired`. Components and the eGK keep the shell model. The trust
+  tree of `pki inspect` and `pki verify` shows such a CA in yellow as "expired …, valid
+  when it issued", no longer as a red error.
+
 #### security
-- crypto-bigint 0.7.6, ctutils 0.4.5 and tokio 1.54.1 (RUSTSEC-2026-0387,
-  RUSTSEC-2026-0385, RUSTSEC-2026-0386).
+- crypto-bigint 0.7.10, ctutils 0.4.6 and tokio 1.54.1 (RUSTSEC-2026-0387,
+  RUSTSEC-2026-0385, RUSTSEC-2026-0386); crypto-bigint 0.7.6, which fixed the first,
+  was yanked since.
 
 #### added
-- `probe prod` checks the Bestandsnetze of gematik's Bestandsnetze.xml (2.1.36) in a
-  block of their own (`access: "bestandsnetz"`): the SNK (KV-SafeNet) at
-  `portal.kv-safenet.de`, the others at a known HTTPS host or with a TCP connection to
-  their first DNS server (kind `dns`). A practice books only some of them, so one that
-  does not answer is a warning, never a failure, and the exit code stays 0; the text
-  lists those not routed on one line. Each probe in the JSON carries `answered`.
+- `pki tsl verify TSL SIG [--signer-status FILE.ocsp]`: the signature file is a required
+  argument, because the list is verified by gematik's detached signature file, and the
+  signer's status can come from the published response instead of a network query. `tsl
+  show`, `bundle` and `export` load the two files from the environment's automated download
+  point. Reports lose `signing_time`, and `xml_signature_error` became
+  `detached_signature_error` (`spec/tsl-detached`, TASK-166). `tsl export -o` writes the
+  `.sig` and `.ocsp` next to the list. **Lists need their `.sig`: scripts calling `pki tsl
+  verify FILE` must pass it as the second argument.**
 
 #### changed
+- `ti pki verify --validation-profile` fails a certificate whose type the profile does not accept: `profile_type_mismatch`
+  is an error, it was a warning. New error `ca_not_in_tsl`. The warning `cert_type_unchecked` is gone: a CA the TSL
+  states no types for fails with `cert_type_ca_not_authorized`. A report on a certificate that already failed shows no
+  revocation results, because no responder is asked about it.
 - Konnektor faults about the information model carry a hint naming the cause, the
   `.kon` fields concerned and where to fix it (gemSpec_Kon): 4092 (no Remote-PIN-KT
   for the workplace), 4053, 4004 to 4007 (unknown Mandant, client system, workplace,
@@ -29,6 +69,16 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   incomplete), 4204 (client system not authenticated), 4093 and 4060 (card or terminal
   busy). The fault's code and text are unchanged; the hint is in the text and in the
   JSON error's `hint`.
+- `ti agent` states the rules agents follow with the tool (never ask for or print a real
+  `.kon` file, PKCS#12 file, PIN or token; PIN and destructive commands only on
+  request), lists every error kind with its exit code, describes the `.kon` format with
+  a sample of placeholders, and names the Konnektor fault hints. A test keeps the list
+  of error kinds equal to the binary's: `output_exists` is exit 2, `key_unsupported` 4,
+  the `store_*` kinds 2, except `store_busy` and `store_backend_error`, which are 5.
+- `ti` without arguments and a command group without its subcommand show the commands
+  without the output, profile, HTTP and Konnektor options every command shares; `-h` and
+  `--help` both show everything. A set `TI_FORMAT` or `TI_CACHE_DIR` no
+  longer turns the help of `ti` without arguments into an error.
 
 ### ti-idpd
 
@@ -129,7 +179,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 #### added
 - `Document::parse`: strict XML 1.0 in UTF-8 without DTDs, bounded by `Limits` (size,
-  depth checked before parsing, attributes, namespaces, nodes); errors name the rule of
+  depth and attributes checked before parsing, namespaces, nodes); errors name the rule of
   `spec/tsl-xmldsig` they enforce.
 - Exclusive XML Canonicalization 1.0 without comments: `Document::exc_c14n`,
   `exc_c14n_by_id`, `exc_c14n_by_name`; checked against the C14N and Exc-C14N
@@ -146,6 +196,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-report
 
 #### added
+- `tsl_view` and `CheckContext::new` take the list's detached files; `SignatureView` loses
+  `signing_time` (TASK-166).
 - `check::CheckContext`: an environment's TSL and roots verified once, then any number of
   certificates checked against them offline as `ti pki verify --profile auto` does
   (`CheckReport`: verdict, profile, type, errors, warnings and the trust tree, end entity
@@ -164,6 +216,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-wasm
 
 #### added
+- **Breaking for consumers:** `verify_tsl(xml, sig, ocsp?, env, now, roots_json?, grace_seconds)`
+  and `new TrustContext(xml, sig, env, now, roots_json?, grace)` take the list's detached
+  `.sig`; the view loses `signature.signing_time` (TASK-166).
 - `TrustContext`: `new TrustContext(xml, env, now, roots_json?, grace)` verifies once,
   `check(der_or_pem, now)` returns `schemas/check.json`; for certificate checks in the
   browser. The smoke test cross-checks it with `ti pki verify --offline`.
@@ -211,14 +266,116 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - A session recorded with an eHEX Konnektor replayed offline (`tests/recorded.rs`):
   every request byte for byte as the Konnektor accepted it. The e2e tests record new
   sessions with `TI_TEST_KON_RECORD_DIR`.
+- `Credentials::None` (`"credentials": {"type": "none"}`): no client certificate and no
+  `Authorization` header; `Credentials::kind`.
+- `config::ConfigView`: a `.kon` file without its secrets, for front ends: where the
+  password and the PKCS#12 bytes are kept (plain, `${NAME}`, absent), whether a user ID
+  is set, the PKCS#12 client certificate (`config::client_certificate`: subject,
+  validity, key, whether ring can sign with it, encryption) and the trust store as pins
+  and CAs with their SHA-256. ti-pkcs12 is now a regular dependency.
+- `check`: the test of a `.kon` configuration as pure functions of what the host
+  observed, steps `file`, `tcp`, `tls`, `auth`, `sds`, `context`, `cards`, each finding
+  `ok`, `skip`, `warn` or `fail` with a hint; a failed step skips the rest. An `http`
+  url fails (the service directory is read over https only); with `env: pu`,
+  `insecureSkipVerify` and credentials `none` fail, elsewhere they warn. `ureq::check_config` runs the
+  steps against a Konnektor (`ureq::probe` connects and records the server certificate
+  also when the handshake fails), the service directory and GetCards through the
+  caller's transport.
+- `Fault::hint` and `fault_hint`: what to do about faults on the information model
+  (4004 to 4007, 4010 to 4012, 4021, 4053, 4060, 4092, 4093, 4204, 4263), formerly in
+  ti-cli.
+- `edit`: `.kon` files written by front ends: `normalize_address` (URL, host,
+  host:port, IP, [IPv6]:port; always https, http refused), `NewConfig::to_json`, `set`
+  for the members without secrets, `with_credentials`, `with_pin` (CAs stay),
+  `refusals` (what a change brings that is not allowed: an http url anywhere,
+  insecureSkipVerify and none in a pu file).
+  `ureq::server_certificate` fetches the certificate to pin without trusting it.
+  `check::Finding::action`: `renew_pin` for a server certificate that is not the pinned
+  one.
+- Fuzz target `dotkon` (`just fuzz-ti-connector-client`): the parser, the file check and
+  the redacted view.
+- Fuzz targets `sds` (the service directory, its bindings and rewrite) and `soap` (every
+  Konnektor call on any answer), seeded from the recorded runs.
+
+#### fixed
+- A call goes only to an endpoint at the origin of the `.kon` url or its `expectedHost`:
+  same scheme, host and port; otherwise `DiscoveryError::ForeignEndpoint`, a new variant,
+  and nothing is sent. `check::sds` takes the `Dotkon` as well (breaking).
+- `ServiceDirectory::rewrite_endpoints` keeps no endpoint outside the `.kon` origin: it
+  also rewrites `HTTPS://…`, and removes what is no http(s) URL with a host. Found by the
+  target `sds`.
 
 ### ti-pki
+
+#### changed
+- `Validator` asks no OCSP responder about a certificate that has already failed: the address is in the certificate, and
+  a forged one could otherwise send a request anywhere. A report on such a certificate shows no revocation results.
+- A CA the verified TSL states no certificate types for may issue none: `cert_type_ca_not_authorized`, where
+  `cert_type_unchecked` warned and let it pass. That code is gone (TUC_PKI_007 step 9a).
+- A profile's validator refuses a certificate whose type the profile does not accept, `profile_type_mismatch`.
+- With a verified TSL, every CA of a chain must be one it names in use, or the certificate is `ca_not_in_tsl`. A CA
+  supplied with the certificate gets no standing from a root's signature alone.
+- A certificate with a compressed EC public key no longer parses, whatever it is for; before, only a TSL signer was
+  refused, at TSLSIG-035. The TI issues uncompressed points.
+- A signature with unused bits no longer verifies, on a certificate or an OCSP response, and neither does a response
+  whose signature algorithm is not a SEQUENCE. Those bytes are outside what a signature covers, so a copy with
+  them changed passed as the same response.
 
 #### added
 - Profile `dipag-vau-aut` (`profile::DIPAG_VAU_AUT`): the C.FD.AUT certificate of the
   Digitale Patientenrechnung VAU, selected by its role `oid_dipag-vau` (gemSpec_DiPag_FD
   A_27411-01; TASK-198). `ti pki verify` picks it automatically and accepts it as
   `--validation-profile dipag-vau-aut`.
+- `oid::all()`: every identifier the module declares, for the corpus another implementation is held to.
+
+#### fixed
+- `TrustStoreHandle::snapshot` refuses a list past its `NextUpdate` and the grace period. A
+  reload that only confirmed unchanged material did not verify it again, so a source supplying
+  the same list kept it in use (TSLSIG-054).
+
+#### security
+- The OCSP response parser no longer panics on a GeneralizedTime with a multibyte
+  character across its 14th byte, which a hostile responder could use to end the
+  process. Found by the new `ocsp_response` fuzz target (TASK-166).
+
+#### removed
+- **The XMLDSig path and `ti-xmldsig` are gone, with `roxmltree` and `proptest`.** A list
+  without a fitting `.sig` no longer verifies, in every environment, and `.sig` exists only
+  on the plain-HTTP CRL host of A_21182: a network that blocks it cannot take new lists,
+  and for up to an hour after each publication (A_21178) the new list waits for its `.sig`.
+  This is a recorded deviation from TUC_PKI_012 (`spec/tsl-detached`, doc-3). Gone from the
+  API: `SignedTsl::signing_time`, `VerifiedTsl::signing_time`, the code
+  `xml_signature_error`. `FileTransport::new` takes the signature file,
+  `TrustStore::from_material` the detached files, and `TrustConfig::tsl_detached_url` is
+  required. A bundle without the signature is refused on import: export it again.
+- The features `reqwest` and `tokio` with `ti_pki::reqwest` and `ti_pki::tokio`, and the
+  examples `ocsp` and `validate`, which needed them; `ti pki verify` does what they did.
+  Nothing used them: a host implements `load::Transport` and calls `Reloader::tick` on
+  its own runtime.
+
+#### added
+- The TSL is verified by gematik's detached signature file (`spec/tsl-detached`,
+  gemSpec_TSL A_21175 ff.; TASK-166): `tsl_signature::verify`,
+  `parse_detached_signature`, `Tsl::parse_verified(xml, sig, …)`,
+  `Tsl::parse_verified_with_status`, `embedded_config_for(sig)`, and
+  `VerifiedTsl::check_signer_status_supplied` for the `.ocsp` published next to the list.
+  The loaders fetch `.xml`, `.sig` and `.ocsp` as one set from
+  `TrustConfig::tsl_detached_url`: `Artifact::TslSignature` and `TslSignerStatus`,
+  `load::Detached` on `TrustMaterial::detached`, the two files as optional fields of a
+  `Bundle`. The list comes from the plain-HTTP origin only under the hash from HTTPS, and
+  from HTTPS itself when no hash can be read. A signed `revoked` stops the list at any age.
+  A set that fails is fetched once more, keeping the set in hand (`Loader::revalidate`,
+  `Cache::expire`, `Cache::stored`), and a cached `.sig` stays usable at any age while
+  HTTPS confirms its list. The reloader asks the network for the signer's status only when
+  none came with the list.
+- `ti-pki/fuzz`: `just fuzz-ti-pki` runs the `detached_signature`, `tsl_xml` and
+  `ocsp_response` targets, seeded from the published sets.
+- The validity model follows the end entity's type (gemKPT_PKI_TIP 2.4): the
+  Kompromissmodell for C.HCI.AUT/ENC/OSIG and C.HP.AUT/ENC, under which each CA must have
+  been valid when it issued the certificate below and one expired since gives the
+  warning `issued_before_ca_expiry` (`ErrorCode::IssuedBeforeCaExpiry`); the shell model
+  for every other type. `ValidityModel` and `PathOptions::model` are new (breaking for
+  callers that build `PathOptions`).
 - A certificate OCSP reports revoked after the reference time is valid for that time,
   with the warning `revoked_after_reference_time`; at or before it, and without a
   `revocationTime`, it stays `revoked` (gemSpec_PKI TUC_PKI_006 variants 8a and 8b;
@@ -399,6 +556,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `oid_policy_gem_tsl_signer`) and profile `tsl-sig`.
 
 #### changed
+- `TrustStoreHandle` keeps the current material under a `std::sync::RwLock`, not `arc-swap`,
+  which is no longer a dependency.
+- `TrustMaterial::body` and `meta` answer `Option`,
+  since the two detached artefacts may be absent; `TrustMaterial::etags` lists all four.
 - `revocation::apply_revocation` takes the reference time the chain is validated for.
 - `Bundle` is JSON (format version 2) instead of CBOR, with the bodies in base64 and
   the anchor hash in hex; minicbor is no longer a dependency. Version-1 bundles are
@@ -446,6 +607,14 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   production policy OIDs, so there was nothing for it to relax.
 
 ### ti-pkcs12
+
+#### changed
+- PBES2 is read and written by the crate itself over `pbkdf2`, `aes` and `cbc`; `pkcs5`,
+  `scrypt` and `salsa20` are gone from the tree. Files written are byte for byte the same.
+  What a file can do differently: a `keyLength` other than the cipher's key size is now
+  `Error::Malformed` (P12-032) instead of a failed decryption, parameters that do not
+  decode are `Error::Malformed` instead of `Error::UnsupportedAlgorithm`, and salts longer
+  than 32 bytes are read.
 
 #### added
 - `CertificateBag::trusted_key_usage` and `oids::TRUSTED_KEY_USAGE`: Oracle's trusted key

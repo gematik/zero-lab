@@ -161,6 +161,7 @@ impl<T: Transport> Connector<T> {
         let binding = self
             .directory()
             .resolve(operation.service, &[operation.version])?;
+        let endpoint = self.endpoint(&binding)?;
         let xml = Envelope::new(request.into())
             .to_xml()
             .map_err(|e| Error::Decode(format!("encoding {}: {e}", operation.name)))?;
@@ -168,7 +169,7 @@ impl<T: Transport> Connector<T> {
             .transport()
             .send(&Request {
                 method: Method::Post,
-                url: &binding.endpoint,
+                url: endpoint,
                 soap_action: Some(operation.soap_action),
                 authorization: self.authorization(),
                 if_none_match: None,

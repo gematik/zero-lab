@@ -23,9 +23,8 @@ package proxy
 
 import (
 	"context"
-	"crypto"
-	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -36,15 +35,16 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/go-jose/go-jose/v4"
+
 	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
-	"golang.org/x/oauth2"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
-var _ Backend = (*pdpBackend)(nil)
-var _ dpopForwarder = (*pdpBackend)(nil)
+var (
+	_ Backend       = (*pdpBackend)(nil)
+	_ dpopForwarder = (*pdpBackend)(nil)
+)
 
 // injectDPoP mints a fresh proof bound to the outbound request and attaches the DPoP-bound token, replacing
 // any client Authorization. The proof is signed with the session's DPoP key (the token's cnf.jkt). This is the
@@ -63,14 +63,15 @@ func (b *pdpBackend) injectDPoP(out *http.Request, sess *Session, token string) 
 	return nil
 }
 
-const clientAssertionTypeJWTBearer = "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
+// maxASResponseBytes bounds what the authorization server can make the proxy read.
+const maxASResponseBytes = 1 << 20
 
 // PDPConfig configures the pdpBackend: pep as a confidential OAuth client of the PDP (the gematik AS).
 type PDPConfig struct {
-	ASIssuer    string  // the PDP authorization server (login + identity)
-	ClientID    string  // pep's registered client_id
-	SigningKey  jwk.Key // private_key_jwt signing key (loaded from a *_PATH file)
-	RedirectURI string  // default <public>/oauth2/callback
+	ASIssuer    string           // the PDP authorization server (login + identity)
+	ClientID    string           // pep's registered client_id
+	SigningKey  *jose.JSONWebKey // private_key_jwt signing key (loaded from a *_PATH file); its kid names it in the assertion header
+	RedirectURI string           // default <public>/oauth2/callback
 	Scopes      []string
 	HTTPClient  *http.Client
 }
@@ -86,7 +87,7 @@ type asMetadata struct {
 	PushedAuthorizationRequestEndpoint string `json:"pushed_authorization_request_endpoint"`
 }
 
-// pdpBackend is a confidential BFF client of the PDP: it drives the auth-code flow, holds DPoP-bound tokens
+// pdpBackend is a confidential client of the PDP: it drives the auth-code flow, holds DPoP-bound tokens
 // server-side (keyed by AS issuer on the session), and injects them into the gated /api reverse-proxy.
 type pdpBackend struct {
 	cfg       PDPConfig
@@ -99,13 +100,18 @@ type pdpBackend struct {
 // NewPDPBackend discovers the AS metadata and returns the backend (a confidential BFF client of the PDP).
 func NewPDPBackend(cfg PDPConfig) (Backend, error) {
 	if cfg.ASIssuer == "" || cfg.ClientID == "" || cfg.SigningKey == nil {
-		return nil, fmt.Errorf("pdp backend: as_issuer, client_id, signing key required")
+		return nil, errors.New("pdp backend: as_issuer, client_id, signing key required")
 	}
 	hc := cfg.HTTPClient
 	if hc == nil {
 		hc = &http.Client{Timeout: 30 * time.Second}
 	}
-	b := &pdpBackend{cfg: cfg, http: hc, signer: bffSigner{}}
+	// A redirect would lead past the checks on the endpoints, with the client's assertion in the form.
+	noRedirects := *hc
+	noRedirects.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return errors.New("redirect refused")
+	}
+	b := &pdpBackend{cfg: cfg, http: &noRedirects, signer: sessionKeySigner{}}
 	meta, err := b.discoverMetadata(cfg.ASIssuer)
 	if err != nil {
 		return nil, fmt.Errorf("pdp discovery: %w", err)
@@ -123,56 +129,67 @@ func NewPDPBackend(cfg PDPConfig) (Backend, error) {
 	return b, nil
 }
 
-// clientAssertion mints a private_key_jwt (RFC 7523 §2.2): iss=sub=client_id, aud=the AS's real issuer, a
-// fresh AS nonce, and cnf.jkt = the SESSION DPoP-key thumbprint. Port of bff clientAssertion, adapted to
-// bind the token to the per-session key.
+// clientAssertion mints a private_key_jwt (RFC 7523 §2.2): iss=sub=client_id, aud=the configured issuer, a
+// fresh AS nonce, and cnf.jkt = the SESSION DPoP-key thumbprint, binding the token to the per-session key.
 func (b *pdpBackend) clientAssertion(ctx context.Context, sess *Session) (string, error) {
 	if b.cfg.SigningKey == nil {
-		return "", fmt.Errorf("client signing key not configured")
+		return "", errors.New("client signing key not configured")
 	}
 	dkey, err := parseSessionDPoPKey(sess.DPoPKeyJWK)
 	if err != nil {
-		return "", fmt.Errorf("session dpop key: %w", err)
+		return "", err
 	}
-	thumb, err := dkey.Thumbprint(crypto.SHA256)
-	if err != nil {
-		return "", fmt.Errorf("dpop thumbprint: %w", err)
-	}
-	jkt := base64.RawURLEncoding.EncodeToString(thumb)
 
 	now := time.Now()
-	tok := jwt.New()
-	tok.Set(jwt.IssuerKey, b.cfg.ClientID)
-	tok.Set(jwt.SubjectKey, b.cfg.ClientID)
-	tok.Set(jwt.AudienceKey, b.meta.Issuer)
-	tok.Set(jwt.JwtIDKey, uuid.NewV4().String())
-	tok.Set(jwt.IssuedAtKey, now.Unix())
-	tok.Set(jwt.ExpirationKey, now.Add(time.Minute).Unix())
-	tok.Set("cnf", map[string]string{"jkt": jkt})
+	claims := map[string]any{
+		"iss": b.cfg.ClientID,
+		"sub": b.cfg.ClientID,
+		// An array, not a string: the PDP's client_assertion decoder takes aud as a list.
+		"aud": []string{b.cfg.ASIssuer},
+		"jti": uuid.NewV4().String(),
+		"iat": now.Unix(),
+		"exp": now.Add(time.Minute).Unix(),
+		"cnf": map[string]string{"jkt": dkey.Thumbprint()},
+	}
 	if b.meta.NonceEndpoint != "" {
 		nonce, err := b.fetchNonce(ctx)
 		if err != nil {
 			return "", fmt.Errorf("fetch nonce: %w", err)
 		}
-		tok.Set("nonce", nonce)
+		claims["nonce"] = nonce
 	}
-	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.ES256(), b.cfg.SigningKey))
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		return "", fmt.Errorf("encode client_assertion claims: %w", err)
+	}
+	signer, err := jose.NewSigner(
+		jose.SigningKey{Algorithm: jose.ES256, Key: b.cfg.SigningKey},
+		(&jose.SignerOptions{}).WithType("JWT"),
+	)
+	if err != nil {
+		return "", fmt.Errorf("client_assertion signer: %w", err)
+	}
+	signed, err := signer.Sign(payload)
 	if err != nil {
 		return "", fmt.Errorf("sign client_assertion: %w", err)
 	}
-	return string(signed), nil
+	compact, err := signed.CompactSerialize()
+	if err != nil {
+		return "", fmt.Errorf("sign client_assertion: %w", err)
+	}
+	return compact, nil
 }
 
 // fetchNonce gets a one-time nonce from the AS nonce endpoint (plain-text body). Port of bff fetchNonce.
 func (b *pdpBackend) fetchNonce(ctx context.Context) (string, error) {
 	if b.meta.NonceEndpoint == "" {
-		return "", fmt.Errorf("no nonce_endpoint in metadata")
+		return "", errors.New("no nonce_endpoint in metadata")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.meta.NonceEndpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.meta.NonceEndpoint, nil) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host
 	if err != nil {
 		return "", err
 	}
-	resp, err := b.http.Do(req)
+	resp, err := b.http.Do(req) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host
 	if err != nil {
 		return "", err
 	}
@@ -187,9 +204,69 @@ func (b *pdpBackend) fetchNonce(ctx context.Context) (string, error) {
 	return strings.TrimSpace(string(body)), nil
 }
 
+// decodeBounded decodes a JSON response of the authorization server within maxASResponseBytes: a longer one is cut off,
+// which the decoder takes for what it is.
+func decodeBounded(body io.Reader, into any) error {
+	return json.NewDecoder(io.LimitReader(body, maxASResponseBytes)).Decode(into)
+}
+
+// IsLocalHTTP reports whether rawURL is plain http on this machine by name or loopback address, the one place where
+// requiring TLS would only stop development. It takes no other form of those names.
+func IsLocalHTTP(rawURL string) bool {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Scheme != "http" || parsed.User != nil {
+		return false
+	}
+	host := parsed.Hostname()
+	return host == "localhost" || host == "127.0.0.1"
+}
+
+// checkEndpoint takes an https URL with a host, and plain http only when the issuer itself runs on this machine.
+func checkEndpoint(location string, plainAllowed bool) error {
+	parsed, err := url.Parse(location)
+	if err != nil || parsed.Host == "" || parsed.User != nil {
+		return fmt.Errorf("%q is no endpoint URL", location)
+	}
+	if parsed.Scheme != "https" && (parsed.Scheme != "http" || !plainAllowed) {
+		return fmt.Errorf("%q is not https", location)
+	}
+	return nil
+}
+
+// checkMetadata holds a metadata document to its issuer (RFC 8414 section 3.3): every later request goes to the
+// endpoints it names, and the issuer it names is the audience of the client's assertions.
+func checkMetadata(md asMetadata, issuer string) error {
+	if md.Issuer != issuer {
+		return fmt.Errorf("metadata names the issuer %q, configured is %q", md.Issuer, issuer)
+	}
+	if md.AuthorizationEndpoint == "" || md.TokenEndpoint == "" {
+		return errors.New("metadata missing authorization/token endpoint")
+	}
+	plainAllowed := IsLocalHTTP(issuer)
+	for _, endpoint := range []struct{ name, location string }{
+		{"authorization_endpoint", md.AuthorizationEndpoint},
+		{"token_endpoint", md.TokenEndpoint},
+		{"introspection_endpoint", md.IntrospectionEndpoint},
+		{"openid_providers_endpoint", md.OpenidProvidersEndpoint},
+		{"nonce_endpoint", md.NonceEndpoint},
+		{"pushed_authorization_request_endpoint", md.PushedAuthorizationRequestEndpoint},
+	} {
+		if endpoint.location == "" {
+			continue
+		}
+		if err := checkEndpoint(endpoint.location, plainAllowed); err != nil {
+			return fmt.Errorf("%s: %w", endpoint.name, err)
+		}
+	}
+	return nil
+}
+
 // discoverMetadata fetches the RFC 8414 authorization-server metadata document. Port of bff discoverMetadata.
 func (b *pdpBackend) discoverMetadata(issuer string) (asMetadata, error) {
 	var md asMetadata
+	if err := checkEndpoint(issuer, IsLocalHTTP(issuer)); err != nil {
+		return md, fmt.Errorf("issuer: %w", err)
+	}
 	u := strings.TrimRight(issuer, "/") + "/.well-known/oauth-authorization-server"
 	resp, err := b.http.Get(u)
 	if err != nil {
@@ -199,11 +276,11 @@ func (b *pdpBackend) discoverMetadata(issuer string) (asMetadata, error) {
 	if resp.StatusCode != http.StatusOK {
 		return md, fmt.Errorf("metadata endpoint %s returned %d", u, resp.StatusCode)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&md); err != nil {
+	if err := decodeBounded(resp.Body, &md); err != nil {
 		return md, fmt.Errorf("decode metadata: %w", err)
 	}
-	if md.AuthorizationEndpoint == "" || md.TokenEndpoint == "" {
-		return md, fmt.Errorf("metadata missing authorization/token endpoint")
+	if err := checkMetadata(md, issuer); err != nil {
+		return md, err
 	}
 	return md, nil
 }
@@ -223,13 +300,13 @@ type providerInfo struct {
 	Type    string `json:"type"`
 }
 
-func (b *pdpBackend) Providers(ctx context.Context) ([]Provider, error) {
+func (b *pdpBackend) Providers(_ context.Context) ([]Provider, error) {
 	return b.providers, nil
 }
 
 func (b *pdpBackend) fetchProviders() ([]providerInfo, error) {
 	if b.meta.OpenidProvidersEndpoint == "" {
-		return nil, fmt.Errorf("no openid_providers_endpoint in metadata")
+		return nil, errors.New("no openid_providers_endpoint in metadata")
 	}
 	resp, err := b.http.Get(b.meta.OpenidProvidersEndpoint)
 	if err != nil {
@@ -240,7 +317,7 @@ func (b *pdpBackend) fetchProviders() ([]providerInfo, error) {
 		return nil, fmt.Errorf("openid providers endpoint returned %d", resp.StatusCode)
 	}
 	var ps []providerInfo
-	if err := json.NewDecoder(resp.Body).Decode(&ps); err != nil {
+	if err := decodeBounded(resp.Body, &ps); err != nil {
 		return nil, err
 	}
 	return ps, nil
@@ -254,8 +331,8 @@ func (b *pdpBackend) StartLogin(ctx context.Context, sess *Session, idpIss, scop
 	sess.DPoPKeyJWK = jwkJSON
 	sess.State = uuid.NewV4().String()
 	sess.Nonce = uuid.NewV4().String()
-	sess.CodeVerifier = oauth2.GenerateVerifier()
-	sess.CodeChallengeMethod = "S256"
+	sess.CodeVerifier = openid.GenerateVerifier()
+	sess.CodeChallengeMethod = openid.CodeChallengeMethodS256
 	if scope == "" {
 		scope = strings.Join(b.cfg.Scopes, " ")
 	}
@@ -268,8 +345,8 @@ func (b *pdpBackend) StartLogin(ctx context.Context, sess *Session, idpIss, scop
 		"state":                 {sess.State},
 		"nonce":                 {sess.Nonce},
 		"scope":                 {scope},
-		"code_challenge":        {oauth2.S256ChallengeFromVerifier(sess.CodeVerifier)},
-		"code_challenge_method": {"S256"},
+		"code_challenge":        {openid.S256Challenge(sess.CodeVerifier)},
+		"code_challenge_method": {openid.CodeChallengeMethodS256},
 	}
 	if idpIss != "" {
 		params.Set("idp_iss", idpIss)
@@ -318,20 +395,20 @@ func (b *pdpBackend) pushAuthorizationRequest(ctx context.Context, sess *Session
 	}
 	form := url.Values{}
 	maps.Copy(form, params)
-	form.Set("client_assertion_type", clientAssertionTypeJWTBearer)
+	form.Set("client_assertion_type", openid.ClientAssertionTypeJWTBearer)
 	form.Set("client_assertion", assertion)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.meta.PushedAuthorizationRequestEndpoint, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.meta.PushedAuthorizationRequestEndpoint, strings.NewReader(form.Encode())) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := b.http.Do(req)
+	resp, err := b.http.Do(req) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxASResponseBytes))
 	if resp.StatusCode != http.StatusCreated {
 		return "", fmt.Errorf("PAR endpoint returned %d: %s", resp.StatusCode, string(body))
 	}
@@ -342,7 +419,7 @@ func (b *pdpBackend) pushAuthorizationRequest(ctx context.Context, sess *Session
 		return "", fmt.Errorf("decode PAR response: %w", err)
 	}
 	if pr.RequestURI == "" {
-		return "", fmt.Errorf("PAR response missing request_uri")
+		return "", errors.New("PAR response missing request_uri")
 	}
 	return pr.RequestURI, nil
 }
@@ -352,7 +429,7 @@ func (b *pdpBackend) pushAuthorizationRequest(ctx context.Context, sess *Session
 func (b *pdpBackend) resolveDecoupledAuthURL(authURL string) (string, error) {
 	noRedirect := *b.http
 	noRedirect.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	resp, err := noRedirect.Get(authURL)
+	resp, err := noRedirect.Get(authURL) //nolint:gosec // authURL is the AS's authorization endpoint from its metadata; the request only contributes url-encoded query values
 	if err != nil {
 		return "", fmt.Errorf("fetch authorization url: %w", err)
 	}
@@ -434,7 +511,7 @@ func (b *pdpBackend) tokenRequest(ctx context.Context, sess *Session, form url.V
 		return nil, err
 	}
 	form.Set("client_id", b.cfg.ClientID)
-	form.Set("client_assertion_type", clientAssertionTypeJWTBearer)
+	form.Set("client_assertion_type", openid.ClientAssertionTypeJWTBearer)
 	form.Set("client_assertion", assertion)
 
 	do := func(nonce string) (*http.Response, error) {
@@ -442,13 +519,13 @@ func (b *pdpBackend) tokenRequest(ctx context.Context, sess *Session, form url.V
 		if err != nil {
 			return nil, err
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.meta.TokenEndpoint, strings.NewReader(form.Encode()))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.meta.TokenEndpoint, strings.NewReader(form.Encode())) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host
 		if err != nil {
 			return nil, err
 		}
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set(dpop.HeaderName, proof)
-		return b.http.Do(req)
+		return b.http.Do(req) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host
 	}
 
 	resp, err := do("")
@@ -457,7 +534,7 @@ func (b *pdpBackend) tokenRequest(ctx context.Context, sess *Session, form url.V
 	}
 	if resp.StatusCode == http.StatusBadRequest {
 		if n := resp.Header.Get("DPoP-Nonce"); n != "" {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp, err = do(n); err != nil {
 				return nil, err
 			}
@@ -469,7 +546,7 @@ func (b *pdpBackend) tokenRequest(ctx context.Context, sess *Session, form url.V
 		return nil, fmt.Errorf("token endpoint %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	var tr tokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tr); err != nil {
+	if err := decodeBounded(resp.Body, &tr); err != nil {
 		return nil, err
 	}
 	return &tr, nil
@@ -482,18 +559,14 @@ func (b *pdpBackend) tokenDPoPProof(sess *Session, nonce string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	k, err := dpopKey(key)
-	if err != nil {
-		return "", err
-	}
-	return k.Proof(http.MethodPost, b.meta.TokenEndpoint, dpop.ProofOptions{Nonce: nonce})
+	return key.Proof(http.MethodPost, b.meta.TokenEndpoint, dpop.ProofOptions{Nonce: nonce})
 }
 
 // introspectIdentity introspects the access token at the AS (RFC 7662) for the upstream identity, surfacing
-// the nested identity claims. Port of bff introspectIdentity, adapted to take the session for the assertion.
+// the nested identity claims.
 func (b *pdpBackend) introspectIdentity(ctx context.Context, sess *Session, accessToken string) (map[string]any, error) {
 	if b.meta.IntrospectionEndpoint == "" {
-		return nil, fmt.Errorf("no introspection_endpoint in metadata")
+		return nil, errors.New("no introspection_endpoint in metadata")
 	}
 	assertion, err := b.clientAssertion(ctx, sess)
 	if err != nil {
@@ -501,15 +574,15 @@ func (b *pdpBackend) introspectIdentity(ctx context.Context, sess *Session, acce
 	}
 	form := url.Values{
 		"token":                 {accessToken},
-		"client_assertion_type": {clientAssertionTypeJWTBearer},
+		"client_assertion_type": {openid.ClientAssertionTypeJWTBearer},
 		"client_assertion":      {assertion},
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.meta.IntrospectionEndpoint, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.meta.IntrospectionEndpoint, strings.NewReader(form.Encode())) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := b.http.Do(req)
+	resp, err := b.http.Do(req) //nolint:gosec // the URL is an endpoint from the metadata of the operator-configured AS; nothing from the request selects the host
 	if err != nil {
 		return nil, err
 	}
@@ -518,11 +591,11 @@ func (b *pdpBackend) introspectIdentity(ctx context.Context, sess *Session, acce
 		return nil, fmt.Errorf("introspection returned %d", resp.StatusCode)
 	}
 	var ir map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&ir); err != nil {
+	if err := decodeBounded(resp.Body, &ir); err != nil {
 		return nil, err
 	}
 	if active, _ := ir["active"].(bool); !active {
-		return nil, fmt.Errorf("token is not active")
+		return nil, errors.New("token is not active")
 	}
 	if claims, ok := ir["identity"].(map[string]any); ok {
 		return claims, nil

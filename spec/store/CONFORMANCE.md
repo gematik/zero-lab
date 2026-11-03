@@ -12,7 +12,6 @@ migrations/        one file per level after the first (none yet)
 testdata/
   manifest.json    every case: kind, rules covered, input, expected code and output
 tool/              storeconformance: generates the manifest, verifies adapters (Go, stdlib only)
-interop/           run.sh, the cross-language matrix on one profile's files, and matrix.md of the last run
 ```
 
 ## Corpus
@@ -73,7 +72,7 @@ go run . generate                 # rewrite testdata/manifest.json
 go run . generate -check          # fail if it is stale
 go test ./...                     # manifest current, rules defined, reference passes, verifier rejects
 go run . verify -- ADAPTER [ARGS...]
-go run . verify -strict -markdown ../interop/matrix.md -name rust -- ADAPTER [ARGS...]
+go run . verify -strict -name rust -- ADAPTER [ARGS...]
 go run . adapter                  # the reference, as an adapter, for comparing answers
 ```
 
@@ -86,53 +85,30 @@ committed; the check is repeated when a rule of sections E, F or G changes.
 
 ## Result code mapping
 
-| Code | `go/store` | `ti_store::store` | JVM |
-|---|---|---|---|
-| `not_found` | `store.ErrNotFound` | `StoreError::NotFound` | TASK-111 |
-| `expired` | `store.ErrExpired` | `StoreError::Expired` | |
-| `malformed` | `store.ErrMalformed` | `StoreError::Malformed` | |
-| `unsupported_version` | `store.ErrUnsupportedVersion` | `StoreError::UnsupportedVersion` | |
-| `unknown_kid` | `store.ErrUnknownKid` | `StoreError::UnknownKid` | |
-| `auth_failed` | `store.ErrAuthFailed` | `StoreError::AuthFailed` | |
-| `limit_exceeded` | `store.ErrLimitExceeded` | `StoreError::LimitExceeded` | |
-| `invalid_argument` | `store.ErrInvalidArgument` | `StoreError::InvalidArgument` | |
-| `capability_missing` | `store.ErrCapabilityMissing` | `StoreError::CapabilityMissing` | |
-| `no_keyring` | `store.ErrNoKeyring` | `StoreError::NoKeyring` | |
-| `insecure_permissions` | `store.ErrInsecurePermissions` | `StoreError::InsecurePermissions` | |
-| `busy` | `store.ErrBusy` | `StoreError::Busy` | |
-| `backend_error` | `store.ErrBackend` | `StoreError::Backend` | |
+| Code | `ti_store::store` |
+|---|---|
+| `not_found` | `StoreError::NotFound` |
+| `expired` | `StoreError::Expired` |
+| `malformed` | `StoreError::Malformed` |
+| `unsupported_version` | `StoreError::UnsupportedVersion` |
+| `unknown_kid` | `StoreError::UnknownKid` |
+| `auth_failed` | `StoreError::AuthFailed` |
+| `limit_exceeded` | `StoreError::LimitExceeded` |
+| `invalid_argument` | `StoreError::InvalidArgument` |
+| `capability_missing` | `StoreError::CapabilityMissing` |
+| `no_keyring` | `StoreError::NoKeyring` |
+| `insecure_permissions` | `StoreError::InsecurePermissions` |
+| `busy` | `StoreError::Busy` |
+| `backend_error` | `StoreError::Backend` |
 
-In Go, `errors.Is(err, store.ErrNotFound)` matches by code and `store.CodeOf(err)` returns
-it; in Rust, `StoreError::code` does. The adapters:
+In Rust, `StoreError::code` returns the code. The adapter:
 
 ```sh
 # in spec/store/tool
-(cd ../../../go/store && go build -o /tmp/store-conformance ./cmd/store-conformance)
-go run . verify -- /tmp/store-conformance
 (cd ../../../rust && cargo build -p ti-store --features test-util --example conformance)
 go run . verify -- ../../../rust/target/debug/examples/conformance
 ```
 
-The Go adapter answers every kind but the SQLite backend's scenarios and capabilities;
-`go test ./...` in `go/sqlitestore` runs those from the manifest. The Rust adapter answers the kinds of ti-store; the SQLite and files backends
+The Rust adapter answers the kinds of ti-store; the SQLite and files backends
 are `ti`'s, and `cargo test -p ti-cli --lib store::` runs their `capabilities` and
 `scenario` cases from the manifest.
-
-## Interoperability matrix
-
-The corpus proves each implementation alone; `interop/run.sh` proves them together on one
-profile's files, for the SQLite and the files backend. Two drivers take the same
-arguments (`put`, `get`, `take`, `query` on a profile chosen by the `TI_*` variables):
-`go/sqlitestore/cmd/store-interop` and `rust/ti-cli/examples/store-interop.rs`, which uses
-`ti`'s own backends. `ti profile create` makes the keyring both use.
-
-- Round trips both ways: sealed records with tags (get, query by one and by two tags),
-  a sealed record without expiry, a plain record in the cache, and a take by the other
-  language after which the writer finds nothing.
-- Take race (STORE-012): rounds of one record taken by processes of both languages,
-  released together; every round has exactly one winner with the right payload, and the
-  others get `not_found`.
-
-```sh
-spec/store/interop/run.sh            # ROUNDS=20 TAKERS=8; writes interop/matrix.md, exit 1 on a failed cell
-```

@@ -23,12 +23,12 @@
 
 //! `ti pki tsl show`: the TSL's CAs under the verified roots that signed them, and the
 //! ones no verified root signed. The list is read from its signed bytes once its
-//! signature, signer and `NextUpdate` verified (`spec/tsl-xmldsig`); a CA still counts
+//! signature, signer and `NextUpdate` verified (`spec/tsl-detached`); a CA still counts
 //! only if a verified root signed it, and what is shown about a CA comes from its
 //! certificate.
 //!
 //! `ti pki tsl verify`: a TSL file's signature and signer under the embedded TSL signer
-//! CA of an environment (`spec/tsl-xmldsig` parts A and B), offline.
+//! CA of an environment (`spec/tsl-detached`, `spec/tsl-xmldsig` part B), offline.
 
 use std::time::Duration;
 
@@ -38,7 +38,9 @@ use sha2::{Digest, Sha256};
 use ti_pki::load::{Meta, Source, SystemClock};
 use ti_pki::ocsp::OcspChecker;
 use ti_pki::tsl::{self, Intermediate, Tsl};
-use ti_pki::tsl_signature::{Sequence, TslError, TslState, VerifiedTsl, embedded_config_for};
+use ti_pki::tsl_signature::{
+    DetachedTsl, Sequence, TslError, TslState, VerifiedTsl, embedded_config_for,
+};
 use ti_pki::{Certificate, Clock, Tier, Timestamp, TrustConfig, TrustStore};
 use ti_report::tsl::{CertSummary, Finding, rejection_code};
 
@@ -237,18 +239,17 @@ struct VerifyReport {
     result: &'static str,
     /// `prod` or `nonprod`, from the TSL signer CA; valid lists only.
     tier: Option<&'static str>,
-    /// The result code of an invalid list, e.g. `xml_signature_error`.
+    /// The result code of an invalid list, e.g. `detached_signature_error`.
     code: Option<&'static str>,
     /// Its gemSpec_PKI Tab_PKI_274 number, if it has one.
     code_number: Option<u16>,
-    /// The rule of `spec/tsl-xmldsig` that failed, e.g. `TSLSIG-018`.
+    /// The rule that failed, e.g. `TSLDET-005` or `TSLSIG-031`.
     rule: Option<&'static str>,
     detail: Option<String>,
     /// From here on, valid lists only, read from the signed bytes.
     sequence_number: Option<u64>,
     issued_at: Option<String>,
     next_update: Option<String>,
-    signing_time: Option<String>,
     anchor: Option<CertSummary>,
     signer: Option<CertSummary>,
     /// CA services in accord with a certificate.
@@ -257,7 +258,7 @@ struct VerifyReport {
     warnings: Vec<Finding>,
     /// Services of a valid list that could not be processed and were left out.
     skipped: Vec<SkippedInfo>,
-    /// The signer's OCSP status, when it was queried.
+    /// The signer's OCSP status, when it was queried or supplied.
     signer_status: Option<SignerStatus>,
     /// `newer` or `same` against `--previous`; null without it or for an invalid list.
     sequence: Option<&'static str>,
@@ -274,13 +275,34 @@ struct SkippedInfo {
 struct SignerStatus {
     /// `good`; anything else makes the list invalid.
     status: &'static str,
+    /// The responder asked, or `supplied` for a response given with the list.
     responder_url: String,
     produced_at: Option<String>,
 }
 
 /// Runs `ti pki tsl verify`.
 pub fn verify(args: &TslVerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
+    let from_stdin = [
+        Some(&args.file),
+        Some(&args.signature),
+        args.signer_status.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|path| path.as_os_str() == "-")
+    .count();
+    if from_stdin > 1 {
+        return Err(CliError::Arguments(
+            "only one of the list, its signature and its status can come from stdin".to_owned(),
+        ));
+    }
     let source = crate::input::read(&args.file)?;
+    let signature = crate::input::read(&args.signature)?;
+    let supplied_status = args
+        .signer_status
+        .as_deref()
+        .map(crate::input::read)
+        .transpose()?;
     let previous = args
         .previous
         .as_deref()
@@ -294,26 +316,27 @@ pub fn verify(args: &TslVerifyArgs, global: &GlobalArgs, out: &Output) -> Result
     let now = args.at.unwrap_or_else(|| SystemClock.now());
     let grace = Duration::from_hours(24 * u64::from(args.grace));
     let config = match args.env.concrete() {
-        Some(env) => Ok(TrustConfig {
-            tsl_grace_period: grace,
-            ..TrustConfig::preset(env)
-        }),
-        None => embedded_config_for(&source.bytes).map(|config| TrustConfig {
-            tsl_grace_period: grace,
-            ..config
-        }),
-    };
+        Some(env) => Ok(TrustConfig::preset(env)),
+        None => embedded_config_for(&signature.bytes),
+    }
+    .map(|config| TrustConfig {
+        tsl_grace_period: grace,
+        ..config
+    });
     if let (Ok(config), Some(env)) = (&config, args.env.concrete()) {
         config.validate(env.tier()).map_err(CliError::Trust)?;
     }
     let mut sequence = None;
     let result = config.map_err(VerifyFailure::from).and_then(|config| {
-        let mut verified = Tsl::parse_verified(&source.bytes, &config, now)?;
+        let mut verified = Tsl::parse_verified(&source.bytes, &signature.bytes, &config, now)?;
         if previous.is_some() {
             sequence = Some(verified.check_sequence(previous.as_ref())?);
         }
+        if let Some(status) = &supplied_status {
+            verified.check_signer_status_supplied(&status.bytes, now, &config.algorithms)?;
+        }
         // The status now says nothing about another time.
-        if !args.offline && args.at.is_none() {
+        if supplied_status.is_none() && !args.offline && args.at.is_none() {
             let transport = crate::http::transport(&global.net, out.verbosity())?;
             let store = crate::store::open_cache(global)?;
             let checker = OcspChecker::new(&config, &transport, SystemClock).with_store(store);
@@ -381,7 +404,6 @@ fn verify_report(
         sequence_number: None,
         issued_at: None,
         next_update: None,
-        signing_time: None,
         anchor: None,
         signer: None,
         cas: None,
@@ -400,7 +422,6 @@ fn verify_report(
             report.sequence_number = Some(verified.tsl.sequence_number);
             report.issued_at = Some(verified.tsl.issued_at.to_string());
             report.next_update = verified.tsl.next_update.map(|t| t.to_string());
-            report.signing_time = Some(verified.signing_time.clone());
             report.anchor = Some(CertSummary::new(&verified.anchor));
             report.signer = Some(CertSummary::new(&verified.signer));
             report.cas = Some(verified.tsl.intermediate_cas().len());
@@ -417,7 +438,11 @@ fn verify_report(
                 .collect();
             report.signer_status = verified.signer_status.as_ref().map(|r| SignerStatus {
                 status: r.status.as_str(),
-                responder_url: r.responder_url.clone(),
+                responder_url: if r.responder_url.is_empty() {
+                    "supplied".to_owned()
+                } else {
+                    r.responder_url.clone()
+                },
                 produced_at: r.produced_at.map(|t| t.to_string()),
             });
         }
@@ -470,9 +495,6 @@ fn verify_document(report: &VerifyReport) -> Document {
             "signer",
             Line::text(&signer.common_name).and_dim(format!(" · serial {}", signer.serial)),
         );
-    }
-    if let Some(signing_time) = &report.signing_time {
-        doc.field("signed", Line::text(signing_time));
     }
     let next = report.next_update.as_deref().unwrap_or("closed list");
     doc.field(
@@ -642,6 +664,10 @@ struct ExportReport {
     fetched_at: String,
     /// The file written; absent when the TSL went to stdout.
     output: Option<String>,
+    /// The `.sig` written next to it; absent when the TSL went to stdout.
+    signature_file: Option<String>,
+    /// The `.ocsp` written next to it, if one could be loaded.
+    signer_status_file: Option<String>,
 }
 
 /// Runs `ti pki tsl export`: the TSL's bytes as published, once they verified, to stdout
@@ -656,13 +682,26 @@ pub fn export(args: &TslExportArgs, global: &GlobalArgs, out: &Output) -> Result
     let Loaded {
         env,
         config,
+        session,
         bytes,
         meta,
         verified,
         ..
     } = load(&args.trust, global, out)?;
+    // The list cannot be verified later without its signature (TSLDET-013).
+    let mut signature_file = None;
+    let mut signer_status_file = None;
     if let Some(path) = &args.output {
         super::write_file(path, &bytes, args.force, false)?;
+        let files = session.tsl_detached(&config)?;
+        let sig = path.with_extension("sig");
+        super::write_file(&sig, &files.signature, args.force, false)?;
+        signature_file = Some(sig.display().to_string());
+        if let Some((status, _)) = &files.signer_status {
+            let ocsp = path.with_extension("ocsp");
+            super::write_file(&ocsp, status, args.force, false)?;
+            signer_status_file = Some(ocsp.display().to_string());
+        }
     } else if !out.is_json() {
         use std::io::Write as _;
         let mut stdout = std::io::stdout().lock();
@@ -683,6 +722,8 @@ pub fn export(args: &TslExportArgs, global: &GlobalArgs, out: &Output) -> Result
         source: source_name(&meta),
         fetched_at: meta.fetched_at.to_string(),
         output: args.output.as_ref().map(|p| p.display().to_string()),
+        signature_file,
+        signer_status_file,
     };
     super::connector::emit(out, Exit::Ok, &report, |doc| {
         doc.paragraph(
@@ -698,6 +739,12 @@ pub fn export(args: &TslExportArgs, global: &GlobalArgs, out: &Output) -> Result
         doc.field("bytes", report.bytes.to_string());
         if let Some(output) = &report.output {
             doc.field("to", Line::code(output));
+        }
+        if let Some(signature) = &report.signature_file {
+            doc.field("signature", Line::code(signature));
+        }
+        if let Some(status) = &report.signer_status_file {
+            doc.field("signer status", Line::code(status));
         }
     })
 }
@@ -726,7 +773,17 @@ fn load(trust: &TrustArgs, global: &GlobalArgs, out: &Output) -> Result<Loaded, 
     let material = session.load(&config, env.tier(), trust.at)?;
     let now = trust.at.unwrap_or_else(|| SystemClock.now());
     let (bytes, meta) = session.tsl(&config)?;
-    let verified = Tsl::parse_verified(&bytes, &config, now)
+    let detached = session.tsl_detached(&config)?;
+    let files = DetachedTsl {
+        signature: &detached.signature,
+        // The published status says nothing about another time (TSLDET-023).
+        signer_status: detached
+            .signer_status
+            .as_ref()
+            .filter(|_| trust.at.is_none())
+            .map(|(body, _)| body.as_slice()),
+    };
+    let verified = Tsl::parse_verified_with_status(&bytes, files, &config, now)
         .map_err(|e| CliError::TrustLoad(format!("TSL: {e}")))?;
     let matched = tsl::match_to_roots(
         verified.tsl.intermediate_cas(),

@@ -31,7 +31,7 @@ use crate::error::{CliError, Exit};
 use crate::output::{Output, SCHEMA};
 
 /// Every command with JSON output, and the error document.
-pub const SCHEMAS: [(&str, &str); 56] = [
+pub const SCHEMAS: [(&str, &str); 63] = [
     (
         "directory login",
         include_str!("../../schemas/directory-login.json"),
@@ -84,6 +84,10 @@ pub const SCHEMAS: [(&str, &str); 56] = [
     (
         "pki tsl export",
         include_str!("../../schemas/pki-tsl-export.json"),
+    ),
+    (
+        "pki trust export",
+        include_str!("../../schemas/pki-trust-export.json"),
     ),
     (
         "pki tsl verify",
@@ -151,6 +155,30 @@ pub const SCHEMAS: [(&str, &str); 56] = [
     (
         "connector use",
         include_str!("../../schemas/connector-use.json"),
+    ),
+    (
+        "connector config show",
+        include_str!("../../schemas/connector-config-show.json"),
+    ),
+    (
+        "connector config test",
+        include_str!("../../schemas/connector-config-test.json"),
+    ),
+    (
+        "connector config new",
+        include_str!("../../schemas/connector-config-new.json"),
+    ),
+    (
+        "connector config set",
+        include_str!("../../schemas/connector-config-set.json"),
+    ),
+    (
+        "connector config edit",
+        include_str!("../../schemas/connector-config-edit.json"),
+    ),
+    (
+        "connector config pin",
+        include_str!("../../schemas/connector-config-pin.json"),
     ),
     (
         "connector get info",

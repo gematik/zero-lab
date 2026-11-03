@@ -26,7 +26,7 @@ browser), for which the BCP rules DPoP "out of scope." Because the PDP flow is D
 
 ### Decisions (this planning session)
 - The PDP backend is **mutually exclusive** with the provider backend, selected by `PEP_BACKEND=pdp`. In PDP
-  mode the direct OIDC/OIDF/gemidp providers are off; the chooser lists the *AS's* providers.
+  mode the direct OIDC/OIDF/idpd providers are off; the chooser lists the *AS's* providers.
 - Reuse strategy: **port** into `pep/proxy` (no shared package); bff is deprecated in S7.
 - Multi-AS login: **one login + lazy per-API tokens** (see §5).
 - Hardening is staged. Per-session DPoP keys ship in S4. At-rest encryption / refresh rotation are a near-term
@@ -267,7 +267,7 @@ The PDP is containerized + given the mock IdP by the **PDP-alignment stage** (pr
   token-set selection by AS; injector strips inbound `Authorization` and sets `DPoP`; per-binding allowlist
   rejects an off-allowlist destination.
 - **e2e/HITL:** §11, human-driven.
-- **Module graph:** unchanged — `zero-caddy` stays free of `oidf/gemidp/kv/pep-proxy`
+- **Module graph:** unchanged — `zero-caddy` stays free of `oidf/idpd/kv/pep-proxy`
   (`go list -deps ./zaddy/cmd/zero-caddy | grep -c …` == 0). `zaddy` is the *resource server* in the HITL (a
   separate process), not an importer of `pep/proxy`.
 
@@ -277,5 +277,5 @@ The PDP is containerized + given the mock IdP by the **PDP-alignment stage** (pr
   e2e harness additions (compose: `zero-pdp` + `zaddy` + pep; the `/api` route).
 - **Modify:** `pep/proxy/session.go` (per-AS token set + session DPoP key), `pep/proxy/backend.go`
   (drop process-wide `DPoPKey()`; per-session key), `pep/proxy/proxy.go` (mount the gated `/api` proxy/proxies),
-  `pep/cmd/zero-pep-proxy/main.go` (PDP config + backend select + bindings), `DESIGN.md` (BFF vs
+  `pep/proxy/cmd/zero-pep-proxy/main.go` (PDP config + backend select + bindings), `DESIGN.md` (BFF vs
   token-mediating wording).

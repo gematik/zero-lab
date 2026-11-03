@@ -26,8 +26,8 @@
 //! snapshot), and OCSP at real responders. Ignored by default; run them with
 //! `just real-world`.
 //!
-//! The requests go through `curl`: the crate's reqwest adapter leaves TLS to the
-//! application, and these tests should not pick a TLS stack for it.
+//! The requests go through `curl`: the crate leaves the transport and its TLS to the
+//! host, and these tests should not pick a TLS stack for it.
 #![cfg(all(
     feature = "load",
     feature = "os",

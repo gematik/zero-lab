@@ -1,0 +1,3904 @@
+{
+  "certificates": [
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.49"
+        ],
+        "registration_number": null
+      },
+      "file": "fallback-ch-aut-undecidable.pem",
+      "findings": null,
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": null
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.49"
+        ],
+        "registration_number": null
+      },
+      "file": "fallback-ch-enc-undecidable.pem",
+      "findings": null,
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": null
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.49"
+        ],
+        "registration_number": null
+      },
+      "file": "fallback-ch-qes.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [
+          "policy_mismatch"
+        ],
+        "hci-aut": [
+          "policy_mismatch"
+        ],
+        "idpd-sig": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
+        "tsl-sig": [
+          "policy_mismatch"
+        ],
+        "zeta-guard-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.CH.QES"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.53"
+        ],
+        "registration_number": null
+      },
+      "file": "fallback-hci-aut-krankenhaus.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [
+          "policy_mismatch",
+          "key_usage_mismatch"
+        ],
+        "hci-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch"
+        ],
+        "idpd-sig": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "tsl-sig": [
+          "policy_mismatch",
+          "key_usage_mismatch"
+        ],
+        "zeta-guard-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": "hci-aut",
+        "reason": "default"
+      },
+      "type": "C.HCI.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.54"
+        ],
+        "registration_number": null
+      },
+      "file": "fallback-hci-enc-apotheke.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [
+          "policy_mismatch",
+          "key_usage_mismatch"
+        ],
+        "hci-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch"
+        ],
+        "idpd-sig": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "tsl-sig": [
+          "policy_mismatch",
+          "key_usage_mismatch"
+        ],
+        "zeta-guard-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HCI.ENC"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.50"
+        ],
+        "registration_number": null
+      },
+      "file": "fallback-hci-osig-praxis.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [
+          "policy_mismatch"
+        ],
+        "hci-aut": [
+          "policy_mismatch"
+        ],
+        "idpd-sig": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
+        "tsl-sig": [
+          "policy_mismatch"
+        ],
+        "zeta-guard-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HCI.OSIG"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.32"
+        ],
+        "registration_number": null
+      },
+      "file": "fallback-hp-aut-apotheker.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "key_usage_mismatch"
+        ],
+        "hci-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "key_usage_mismatch"
+        ],
+        "idpd-sig": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "tsl-sig": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "key_usage_mismatch"
+        ],
+        "zeta-guard-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HP.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.31"
+        ],
+        "registration_number": null
+      },
+      "file": "fallback-hp-enc-zahnarzt.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [
+          "policy_mismatch",
+          "key_usage_mismatch"
+        ],
+        "hci-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch"
+        ],
+        "idpd-sig": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "tsl-sig": [
+          "policy_mismatch",
+          "key_usage_mismatch"
+        ],
+        "zeta-guard-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HP.ENC"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.30"
+        ],
+        "registration_number": null
+      },
+      "file": "fallback-hp-qes-arzt.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [
+          "policy_mismatch"
+        ],
+        "hci-aut": [
+          "policy_mismatch"
+        ],
+        "idpd-sig": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
+        "tsl-sig": [
+          "policy_mismatch"
+        ],
+        "zeta-guard-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HP.QES"
+    },
+    {
+      "admission": null,
+      "file": "none-umbrella-only.pem",
+      "findings": null,
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": null
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.3.4.5"
+        ],
+        "registration_number": null
+      },
+      "file": "none-unrelated-admission.pem",
+      "findings": null,
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": null
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.323"
+        ],
+        "registration_number": null
+      },
+      "file": "role-fd-aut-dipag-vau.pem",
+      "findings": {
+        "dipag-vau-aut": [],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": "dipag-vau-aut",
+        "reason": "cert"
+      },
+      "type": "C.FD.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.209"
+        ],
+        "registration_number": null
+      },
+      "file": "role-fd-aut-epa-vau.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": "epa-vau-aut",
+        "reason": "cert"
+      },
+      "type": "C.FD.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.328"
+        ],
+        "registration_number": null
+      },
+      "file": "role-fd-aut-zeta-guard.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": []
+      },
+      "selection": {
+        "candidates": [],
+        "profile": "zeta-guard-aut",
+        "reason": "cert"
+      },
+      "type": "C.FD.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.260"
+        ],
+        "registration_number": null
+      },
+      "file": "role-fd-sig-idpd.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": "idpd-sig",
+        "reason": "cert"
+      },
+      "type": "C.FD.SIG"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.286"
+        ],
+        "registration_number": null
+      },
+      "file": "role-hci-aut-kim-anbieter.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": "hci-aut",
+        "reason": "default"
+      },
+      "type": "C.HCI.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.59"
+        ],
+        "registration_number": null
+      },
+      "file": "role-hci-aut-kostentraeger.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": "hci-aut",
+        "reason": "default"
+      },
+      "type": "C.HCI.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.235"
+        ],
+        "registration_number": null
+      },
+      "file": "role-hp-qes-hebamme.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HP.QES"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.178"
+        ],
+        "registration_number": null
+      },
+      "file": "role-hp-qes-notfallsanitaeter.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HP.QES"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.49"
+        ],
+        "registration_number": null
+      },
+      "file": "type-ch-aut.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.CH.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.49"
+        ],
+        "registration_number": null
+      },
+      "file": "type-ch-autn.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.CH.AUTN"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.49"
+        ],
+        "registration_number": null
+      },
+      "file": "type-ch-enc.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.CH.ENC"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.49"
+        ],
+        "registration_number": null
+      },
+      "file": "type-ch-encv.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.CH.ENCV"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.49"
+        ],
+        "registration_number": null
+      },
+      "file": "type-ch-qes.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.CH.QES"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.49"
+        ],
+        "registration_number": null
+      },
+      "file": "type-ch-sig.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.CH.SIG"
+    },
+    {
+      "admission": null,
+      "file": "type-fd-aut.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [
+          "dipag-vau-aut",
+          "epa-vau-aut",
+          "zeta-guard-aut"
+        ],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.FD.AUT"
+    },
+    {
+      "admission": null,
+      "file": "type-fd-enc.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.FD.ENC"
+    },
+    {
+      "admission": null,
+      "file": "type-fd-osig.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.FD.OSIG"
+    },
+    {
+      "admission": null,
+      "file": "type-fd-sig.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [
+          "idpd-sig"
+        ],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.FD.SIG"
+    },
+    {
+      "admission": null,
+      "file": "type-fd-tls-c.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.FD.TLS-C"
+    },
+    {
+      "admission": null,
+      "file": "type-fd-tls-s.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": "fd-tls-s",
+        "reason": "default"
+      },
+      "type": "C.FD.TLS-S"
+    },
+    {
+      "admission": null,
+      "file": "type-gem-ver.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.GEM.VER"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.50"
+        ],
+        "registration_number": null
+      },
+      "file": "type-hci-aut.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": "hci-aut",
+        "reason": "default"
+      },
+      "type": "C.HCI.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.50"
+        ],
+        "registration_number": null
+      },
+      "file": "type-hci-enc.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HCI.ENC"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.50"
+        ],
+        "registration_number": null
+      },
+      "file": "type-hci-osig.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HCI.OSIG"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.30"
+        ],
+        "registration_number": null
+      },
+      "file": "type-hp-aut.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HP.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.30"
+        ],
+        "registration_number": null
+      },
+      "file": "type-hp-enc.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HP.ENC"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.30"
+        ],
+        "registration_number": null
+      },
+      "file": "type-hp-qes.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HP.QES"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.302"
+        ],
+        "registration_number": null
+      },
+      "file": "type-hsk-enc.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HSK.ENC"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.302"
+        ],
+        "registration_number": null
+      },
+      "file": "type-hsk-sig.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.HSK.SIG"
+    },
+    {
+      "admission": null,
+      "file": "type-zd-sig.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.ZD.SIG"
+    },
+    {
+      "admission": null,
+      "file": "type-zd-tls-s.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": null,
+        "reason": "none"
+      },
+      "type": "C.ZD.TLS-S"
+    }
+  ],
+  "tables": {
+    "institutions": [
+      "1.2.276.0.76.4.50",
+      "1.2.276.0.76.4.51",
+      "1.2.276.0.76.4.52",
+      "1.2.276.0.76.4.53",
+      "1.2.276.0.76.4.54",
+      "1.2.276.0.76.4.55",
+      "1.2.276.0.76.4.56",
+      "1.2.276.0.76.4.57",
+      "1.2.276.0.76.4.58",
+      "1.2.276.0.76.4.59",
+      "1.2.276.0.76.4.187",
+      "1.2.276.0.76.4.190",
+      "1.2.276.0.76.4.210",
+      "1.2.276.0.76.4.223",
+      "1.2.276.0.76.4.226",
+      "1.2.276.0.76.4.227",
+      "1.2.276.0.76.4.228",
+      "1.2.276.0.76.4.224",
+      "1.2.276.0.76.4.225",
+      "1.2.276.0.76.4.229",
+      "1.2.276.0.76.4.230",
+      "1.2.276.0.76.4.231",
+      "1.2.276.0.76.4.242",
+      "1.2.276.0.76.4.243",
+      "1.2.276.0.76.4.244",
+      "1.2.276.0.76.4.245",
+      "1.2.276.0.76.4.246",
+      "1.2.276.0.76.4.247",
+      "1.2.276.0.76.4.248",
+      "1.2.276.0.76.4.249",
+      "1.2.276.0.76.4.250",
+      "1.2.276.0.76.4.251",
+      "1.2.276.0.76.4.252",
+      "1.2.276.0.76.4.253",
+      "1.2.276.0.76.4.254",
+      "1.2.276.0.76.4.255",
+      "1.2.276.0.76.4.256",
+      "1.2.276.0.76.4.257",
+      "1.2.276.0.76.4.262",
+      "1.2.276.0.76.4.263",
+      "1.2.276.0.76.4.264",
+      "1.2.276.0.76.4.265",
+      "1.2.276.0.76.4.266",
+      "1.2.276.0.76.4.267",
+      "1.2.276.0.76.4.268",
+      "1.2.276.0.76.4.269",
+      "1.2.276.0.76.4.270",
+      "1.2.276.0.76.4.271",
+      "1.2.276.0.76.4.278",
+      "1.2.276.0.76.4.279",
+      "1.2.276.0.76.4.280",
+      "1.2.276.0.76.4.281",
+      "1.2.276.0.76.4.284",
+      "1.2.276.0.76.4.285",
+      "1.2.276.0.76.4.286",
+      "1.2.276.0.76.4.282",
+      "1.2.276.0.76.4.295",
+      "1.2.276.0.76.4.292",
+      "1.2.276.0.76.4.303",
+      "1.2.276.0.76.4.304",
+      "1.2.276.0.76.4.306",
+      "1.2.276.0.76.4.311",
+      "1.2.276.0.76.4.314",
+      "1.2.276.0.76.4.317"
+    ],
+    "oids": [
+      {
+        "certificate_types": [],
+        "description": "KBV Kassenärztliche Bundesvereinigung",
+        "document": "",
+        "oid": "1.2.276.0.76.3.1.1",
+        "reference": "oid_kbv"
+      },
+      {
+        "certificate_types": [],
+        "description": "Bundesärztekammer",
+        "document": "",
+        "oid": "1.2.276.0.76.3.1.95",
+        "reference": "oid_baek"
+      },
+      {
+        "certificate_types": [],
+        "description": "Kassenzahnärztliche Bundesvereinigung KZBV",
+        "document": "",
+        "oid": "1.2.276.0.76.3.1.99",
+        "reference": "oid_kzbv"
+      },
+      {
+        "certificate_types": [],
+        "description": "Bundeszahnärztekammer",
+        "document": "",
+        "oid": "1.2.276.0.76.3.1.96",
+        "reference": "oid_bzaek"
+      },
+      {
+        "certificate_types": [],
+        "description": "Deutsche Krankenhausgesellschaft DKG",
+        "document": "",
+        "oid": "1.2.276.0.76.3.1.49",
+        "reference": "oid_dkg"
+      },
+      {
+        "certificate_types": [],
+        "description": "Bundespsychotherapeutenkammer BPTK",
+        "document": "",
+        "oid": "1.2.276.0.76.3.1.90",
+        "reference": "oid_bptk"
+      },
+      {
+        "certificate_types": [],
+        "description": "gematik Gesellschaft für Telematikanwendungen der Gesundheitskarte mbH",
+        "document": "",
+        "oid": "1.2.276.0.76.3.1.91",
+        "reference": "oid_gematik"
+      },
+      {
+        "certificate_types": [],
+        "description": "Ärztin/Arzt",
+        "document": "",
+        "oid": "1.2.276.0.76.4.30",
+        "reference": "oid_arzt"
+      },
+      {
+        "certificate_types": [],
+        "description": "Zahnärztin/Zahnarzt",
+        "document": "",
+        "oid": "1.2.276.0.76.4.31",
+        "reference": "oid_zahnarzt"
+      },
+      {
+        "certificate_types": [],
+        "description": "Apotheker/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.32",
+        "reference": "oid_apotheker"
+      },
+      {
+        "certificate_types": [],
+        "description": "Apothekerassistent/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.33",
+        "reference": "oid_apothekerassistent"
+      },
+      {
+        "certificate_types": [],
+        "description": "Pharmazieingenieur/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.34",
+        "reference": "oid_pharmazieingenieur"
+      },
+      {
+        "certificate_types": [],
+        "description": "pharmazeutisch-technische/-r Assistent/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.35",
+        "reference": "oid_pharm_techn_assistent"
+      },
+      {
+        "certificate_types": [],
+        "description": "pharmazeutisch-kaufmännische/-r Angestellte",
+        "document": "",
+        "oid": "1.2.276.0.76.4.36",
+        "reference": "oid_pharm_kaufm_angestellter"
+      },
+      {
+        "certificate_types": [],
+        "description": "Apothekenhelfer/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.37",
+        "reference": "oid_apothekenhelfer"
+      },
+      {
+        "certificate_types": [],
+        "description": "Apothekenassistent/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.38",
+        "reference": "oid_apothekenassistent"
+      },
+      {
+        "certificate_types": [],
+        "description": "Pharmazeutische/-r Assistent/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.39",
+        "reference": "oid_pharm_assistent"
+      },
+      {
+        "certificate_types": [],
+        "description": "Apothekenfacharbeiter/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.40",
+        "reference": "oid_apothekenfacharbeiter"
+      },
+      {
+        "certificate_types": [],
+        "description": "Pharmaziepraktikant/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.41",
+        "reference": "oid_pharmaziepraktikant"
+      },
+      {
+        "certificate_types": [],
+        "description": "Stud.pharm. oder Famulant/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.42",
+        "reference": "oid_famulant"
+      },
+      {
+        "certificate_types": [],
+        "description": "PTA-Praktikant/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.43",
+        "reference": "oid_pta_praktikant"
+      },
+      {
+        "certificate_types": [],
+        "description": "PKA Auszubildende/-r",
+        "document": "",
+        "oid": "1.2.276.0.76.4.44",
+        "reference": "oid_pka_auszubildender"
+      },
+      {
+        "certificate_types": [],
+        "description": "Psychotherapeut/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.45",
+        "reference": "oid_psychotherapeut"
+      },
+      {
+        "certificate_types": [],
+        "description": "Psychologische/-r Psychotherapeut/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.46",
+        "reference": "oid_ps_psychotherapeut"
+      },
+      {
+        "certificate_types": [],
+        "description": "Kinder- und Jugendlichenpsychotherapeut/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.47",
+        "reference": "oid_kuj_psychotherapeut"
+      },
+      {
+        "certificate_types": [],
+        "description": "Rettungsassistent/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.48",
+        "reference": "oid_rettungsassistent"
+      },
+      {
+        "certificate_types": [],
+        "description": "Versicherte/-r",
+        "document": "",
+        "oid": "1.2.276.0.76.4.49",
+        "reference": "oid_versicherter"
+      },
+      {
+        "certificate_types": [],
+        "description": "Notfallsanitäter/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.178",
+        "reference": "oid_notfallsanitaeter"
+      },
+      {
+        "certificate_types": [],
+        "description": "Gesundheits- und Krankenpfleger/-in, Gesundheits- und Kinderkrankenpfleger/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.232",
+        "reference": "oid_pfleger-hpc"
+      },
+      {
+        "certificate_types": [],
+        "description": "Altenpfleger/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.233",
+        "reference": "oid_altenpfleger-hpc"
+      },
+      {
+        "certificate_types": [],
+        "description": "Pflegefachfrauen und Pflegefachmänner",
+        "document": "",
+        "oid": "1.2.276.0.76.4.234",
+        "reference": "oid_pflegefachkraft-hpc"
+      },
+      {
+        "certificate_types": [],
+        "description": "Hebamme",
+        "document": "",
+        "oid": "1.2.276.0.76.4.235",
+        "reference": "oid_hebamme-hpc"
+      },
+      {
+        "certificate_types": [],
+        "description": "Physiotherapeut/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.236",
+        "reference": "oid_physiotherapeut-hpc"
+      },
+      {
+        "certificate_types": [],
+        "description": "Augenoptiker/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.237",
+        "reference": "oid_augenoptiker-hpc"
+      },
+      {
+        "certificate_types": [],
+        "description": "Hörakustiker/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.238",
+        "reference": "oid_hoerakustiker-hpc"
+      },
+      {
+        "certificate_types": [],
+        "description": "Orthopädieschuhmacher/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.239",
+        "reference": "oid_orthopaedieschuhmacher-hpc"
+      },
+      {
+        "certificate_types": [],
+        "description": "Orthopädietechniker/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.240",
+        "reference": "oid_orthopaedietechniker-hpc"
+      },
+      {
+        "certificate_types": [],
+        "description": "Zahntechniker/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.241",
+        "reference": "oid_zahntechniker-hpc"
+      },
+      {
+        "certificate_types": [],
+        "description": "Ergotherapeut/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.274",
+        "reference": "oid_ergotherapeut-hpc"
+      },
+      {
+        "certificate_types": [],
+        "description": "Logopäde/Logopädin",
+        "document": "",
+        "oid": "1.2.276.0.76.4.275",
+        "reference": "oid_logopaede-hpc"
+      },
+      {
+        "certificate_types": [],
+        "description": "Podologe/Podologin",
+        "document": "",
+        "oid": "1.2.276.0.76.4.276",
+        "reference": "oid_podologe-hpc"
+      },
+      {
+        "certificate_types": [],
+        "description": "Leistungserbringer/-in Ernährungstherapie",
+        "document": "",
+        "oid": "1.2.276.0.76.4.277",
+        "reference": "oid_ernaehrungstherapeut-hpc"
+      },
+      {
+        "certificate_types": [],
+        "description": "Augenoptiker/-in und Hörakustiker/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.308",
+        "reference": "oid_opto-audio-hpc"
+      },
+      {
+        "certificate_types": [],
+        "description": "Orthopädieschuhmacher/-in und Orthopädietechniker/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.305",
+        "reference": "oid_orthopaed-hpc"
+      },
+      {
+        "certificate_types": [],
+        "description": "Hilfsmittelerbringer/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.312",
+        "reference": "oid_himi-hpc"
+      },
+      {
+        "certificate_types": [],
+        "description": "Frisör/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.313",
+        "reference": "oid_friseur-hpc"
+      },
+      {
+        "certificate_types": [],
+        "description": "Leistungserbringer/-in Soziotherapie",
+        "document": "",
+        "oid": "1.2.276.0.76.4.316",
+        "reference": "oid_soziotherapeut"
+      },
+      {
+        "certificate_types": [],
+        "description": "Leistungserbringer/in Stimm-, Sprech-, Sprach- und Schluck-Therapie",
+        "document": "",
+        "oid": "1.2.276.0.76.4.318",
+        "reference": "oid_ssss-therapeut"
+      },
+      {
+        "certificate_types": [],
+        "description": "Masseur/-in und medizinische/-r Bademeister/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.315",
+        "reference": "oid_masseur-mbm-hpc"
+      },
+      {
+        "certificate_types": [],
+        "description": "Diätassistent/-in",
+        "document": "",
+        "oid": "1.2.276.0.76.4.319",
+        "reference": "oid_diaetassistent"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Arzt",
+        "document": "",
+        "oid": "1.2.276.0.76.4.50",
+        "reference": "oid_praxis_arzt"
+      },
+      {
+        "certificate_types": [],
+        "description": "Zahnarztpraxis",
+        "document": "",
+        "oid": "1.2.276.0.76.4.51",
+        "reference": "oid_zahnarztpraxis"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Psychotherapeut",
+        "document": "",
+        "oid": "1.2.276.0.76.4.52",
+        "reference": "oid_praxis_psychotherapeut"
+      },
+      {
+        "certificate_types": [],
+        "description": "Krankenhaus",
+        "document": "",
+        "oid": "1.2.276.0.76.4.53",
+        "reference": "oid_krankenhaus"
+      },
+      {
+        "certificate_types": [],
+        "description": "Öffentliche Apotheke",
+        "document": "",
+        "oid": "1.2.276.0.76.4.54",
+        "reference": "oid_oeffentliche_apotheke"
+      },
+      {
+        "certificate_types": [],
+        "description": "Krankenhausapotheke",
+        "document": "",
+        "oid": "1.2.276.0.76.4.55",
+        "reference": "oid_krankenhausapotheke"
+      },
+      {
+        "certificate_types": [],
+        "description": "Bundeswehrapotheke",
+        "document": "",
+        "oid": "1.2.276.0.76.4.56",
+        "reference": "oid_bundeswehrapotheke"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Mobile Einrichtung Rettungsdienst",
+        "document": "",
+        "oid": "1.2.276.0.76.4.57",
+        "reference": "oid_mobile_einrichtung_rettungsdienst"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte gematik",
+        "document": "",
+        "oid": "1.2.276.0.76.4.58",
+        "reference": "oid_bs_gematik"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Kostenträger",
+        "document": "",
+        "oid": "1.2.276.0.76.4.59",
+        "reference": "oid_kostentraeger"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Leistungserbringerorganisation Vertragszahnärzte",
+        "document": "",
+        "oid": "1.2.276.0.76.4.187",
+        "reference": "oid_leo_zahnaerzte"
+      },
+      {
+        "certificate_types": [],
+        "description": "AdV-Umgebung bei Kostenträger",
+        "document": "",
+        "oid": "1.2.276.0.76.4.190",
+        "reference": "oid_adv_ktr"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Leistungserbringerorganisation Kassenärztliche Vereinigung",
+        "document": "",
+        "oid": "1.2.276.0.76.4.210",
+        "reference": "oid_leo_kassenaerztliche_vereinigung"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte GKV-Spitzenverband",
+        "document": "",
+        "oid": "1.2.276.0.76.4.223",
+        "reference": "oid_bs_gkv_spitzenverband"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Mitgliedsverband der Krankenhäuser",
+        "document": "",
+        "oid": "1.2.276.0.76.4.226",
+        "reference": "oid_leo_krankenhausverband"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte der Deutsche Krankenhaus TrustCenter und Informationsverarbeitung GmbH",
+        "document": "",
+        "oid": "1.2.276.0.76.4.227",
+        "reference": "oid_leo_dktig"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte der Deutschen Krankenhausgesellschaft",
+        "document": "",
+        "oid": "1.2.276.0.76.4.228",
+        "reference": "oid_leo_dkg"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Apothekerverband",
+        "document": "",
+        "oid": "1.2.276.0.76.4.224",
+        "reference": "oid_leo_apothekerverband"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Deutscher Apothekerverband",
+        "document": "",
+        "oid": "1.2.276.0.76.4.225",
+        "reference": "oid_leo_dav"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte der Bundesärztekammer",
+        "document": "",
+        "oid": "1.2.276.0.76.4.229",
+        "reference": "oid_leo_baek"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte einer Ärztekammer",
+        "document": "",
+        "oid": "1.2.276.0.76.4.230",
+        "reference": "oid_leo_aerztekammer"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte einer Zahnärztekammer",
+        "document": "",
+        "oid": "1.2.276.0.76.4.231",
+        "reference": "oid_leo_zahnaerztekammer"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte der Kassenärztlichen Bundesvereinigung",
+        "document": "",
+        "oid": "1.2.276.0.76.4.242",
+        "reference": "oid_leo-kbv"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte der Bundeszahnärztekammer",
+        "document": "",
+        "oid": "1.2.276.0.76.4.243",
+        "reference": "oid_leo-bzaek"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte der Kassenzahnärztlichen Bundesvereinigung",
+        "document": "",
+        "oid": "1.2.276.0.76.4.244",
+        "reference": "oid_leo-kzbv"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Gesundheits-, Kranken- und Altenpflege",
+        "document": "",
+        "oid": "1.2.276.0.76.4.245",
+        "reference": "oid_institution-pflege"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Geburtshilfe",
+        "document": "",
+        "oid": "1.2.276.0.76.4.246",
+        "reference": "oid_institution-geburtshilfe"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Physiotherapie",
+        "document": "",
+        "oid": "1.2.276.0.76.4.247",
+        "reference": "oid_praxis-physiotherapeut"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Augenoptiker",
+        "document": "",
+        "oid": "1.2.276.0.76.4.248",
+        "reference": "oid_institution-augenoptiker"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Hörakustiker",
+        "document": "",
+        "oid": "1.2.276.0.76.4.249",
+        "reference": "oid_institution-hoerakustiker"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Orthopädieschuhmacher",
+        "document": "",
+        "oid": "1.2.276.0.76.4.250",
+        "reference": "oid_institution-orthopaedieschuhmacher"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Orthopädietechniker",
+        "document": "",
+        "oid": "1.2.276.0.76.4.251",
+        "reference": "oid_institution-orthopaedietechniker"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Zahntechniker",
+        "document": "",
+        "oid": "1.2.276.0.76.4.252",
+        "reference": "oid_institution-zahntechniker"
+      },
+      {
+        "certificate_types": [],
+        "description": "Rettungsleitstelle",
+        "document": "",
+        "oid": "1.2.276.0.76.4.253",
+        "reference": "oid_institution-rettungsleitstellen"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Sanitätsdienst Bundeswehr",
+        "document": "",
+        "oid": "1.2.276.0.76.4.254",
+        "reference": "oid_sanitaetsdienst-bundeswehr"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Öffentlicher Gesundheitsdienst",
+        "document": "",
+        "oid": "1.2.276.0.76.4.255",
+        "reference": "oid_institution-oegd"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Arbeitsmedizin",
+        "document": "",
+        "oid": "1.2.276.0.76.4.256",
+        "reference": "oid_institution-arbeitsmedizin"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Vorsorge- und Rehabilitation",
+        "document": "",
+        "oid": "1.2.276.0.76.4.257",
+        "reference": "oid_institution-vorsorge-reha"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Pflegeberatung nach § 7a SGB XI",
+        "document": "",
+        "oid": "1.2.276.0.76.4.262",
+        "reference": "oid_pflegeberatung"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Psychotherapeutenkammer",
+        "document": "",
+        "oid": "1.2.276.0.76.4.263",
+        "reference": "oid_leo_psychotherapeuten"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Bundespsychotherapeutenkammer",
+        "document": "",
+        "oid": "1.2.276.0.76.4.264",
+        "reference": "oid_leo_bptk"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Landesapothekerkammer",
+        "document": "",
+        "oid": "1.2.276.0.76.4.265",
+        "reference": "oid_leo_lak"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Bundesapothekerkammer",
+        "document": "",
+        "oid": "1.2.276.0.76.4.266",
+        "reference": "oid_leo_bak"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte elektronisches Gesundheitsberuferegister",
+        "document": "",
+        "oid": "1.2.276.0.76.4.267",
+        "reference": "oid_leo_egbr"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Handwerkskammer",
+        "document": "",
+        "oid": "1.2.276.0.76.4.268",
+        "reference": "oid_leo_handwerkskammer"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Register für Gesundheitsdaten",
+        "document": "",
+        "oid": "1.2.276.0.76.4.269",
+        "reference": "oid_gesundheitsdatenregister"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Abrechnungsdienstleister",
+        "document": "",
+        "oid": "1.2.276.0.76.4.270",
+        "reference": "oid_abrechnungsdienstleister"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte PKV-Verband",
+        "document": "",
+        "oid": "1.2.276.0.76.4.271",
+        "reference": "oid_pkv_verband"
+      },
+      {
+        "certificate_types": [],
+        "description": "Ergotherapiepraxis",
+        "document": "",
+        "oid": "1.2.276.0.76.4.278",
+        "reference": "oid_praxis-ergotherapeut"
+      },
+      {
+        "certificate_types": [],
+        "description": "Logopaedische Praxis",
+        "document": "",
+        "oid": "1.2.276.0.76.4.279",
+        "reference": "oid_praxis-logopaede"
+      },
+      {
+        "certificate_types": [],
+        "description": "Podologiepraxis",
+        "document": "",
+        "oid": "1.2.276.0.76.4.280",
+        "reference": "oid_praxis-podologe"
+      },
+      {
+        "certificate_types": [],
+        "description": "Ernährungstherapeutische Praxis",
+        "document": "",
+        "oid": "1.2.276.0.76.4.281",
+        "reference": "oid_praxis-ernaehrungstherapeut"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Weitere Kostenträger im Gesundheitswesen",
+        "document": "",
+        "oid": "1.2.276.0.76.4.284",
+        "reference": "oid_bs-weitere-kostentraeger"
+      },
+      {
+        "certificate_types": [],
+        "description": "Weitere Organisationen der Gesundheitsversorgung",
+        "document": "",
+        "oid": "1.2.276.0.76.4.285",
+        "reference": "oid_org-gesundheitsversorgung"
+      },
+      {
+        "certificate_types": [],
+        "description": "KIM-Hersteller und -Anbieter",
+        "document": "",
+        "oid": "1.2.276.0.76.4.286",
+        "reference": "oid_kim-anbieter"
+      },
+      {
+        "certificate_types": [],
+        "description": "DiGA-Hersteller und -Anbieter",
+        "document": "",
+        "oid": "1.2.276.0.76.4.282",
+        "reference": "oid_diga"
+      },
+      {
+        "certificate_types": [],
+        "description": "TIM-Hersteller und -Anbieter",
+        "document": "",
+        "oid": "1.2.276.0.76.4.295",
+        "reference": "oid_tim-anbieter"
+      },
+      {
+        "certificate_types": [],
+        "description": "NCPeH Fachdienst",
+        "document": "",
+        "oid": "1.2.276.0.76.4.292",
+        "reference": "oid_ncpeh"
+      },
+      {
+        "certificate_types": [],
+        "description": "Ombudsstelle eines Kostenträgers",
+        "document": "",
+        "oid": "1.2.276.0.76.4.303",
+        "reference": "oid_ombudsstelle"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Augenoptiker und Hörakustiker",
+        "document": "",
+        "oid": "1.2.276.0.76.4.304",
+        "reference": "oid_bs-opto-audio"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Orthopädieschuhmacher und Orthopädietechniker",
+        "document": "",
+        "oid": "1.2.276.0.76.4.306",
+        "reference": "oid_bs-orthopaed-hw"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Hilfsmittelerbringer",
+        "document": "",
+        "oid": "1.2.276.0.76.4.311",
+        "reference": "oid_bs-himi"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Frisör",
+        "document": "",
+        "oid": "1.2.276.0.76.4.314",
+        "reference": "oid_bs-friseur"
+      },
+      {
+        "certificate_types": [],
+        "description": "Betriebsstätte Soziotherapie",
+        "document": "",
+        "oid": "1.2.276.0.76.4.317",
+        "reference": "oid_bs-soziother"
+      },
+      {
+        "certificate_types": [],
+        "description": "Policy HPC QES, SIG, AUT, ENC",
+        "document": "[CP-HPC]",
+        "oid": "1.2.276.0.76.4.145",
+        "reference": "oid_policy_hba_cp"
+      },
+      {
+        "certificate_types": [],
+        "description": "Policy für alle Zertifikate ab Online-Rollout (eGK, SMC, Komponentenzertifikate) außer für das TSL-Signerzertifikat",
+        "document": "[gemRL_TSL_SP_CP]",
+        "oid": "1.2.276.0.76.4.163",
+        "reference": "oid_policy_gem_or_cp"
+      },
+      {
+        "certificate_types": [],
+        "description": "Policy für das TSL-Signerzertifikat",
+        "document": "[gemSpec_TSL]",
+        "oid": "1.2.276.0.76.4.176",
+        "reference": "oid_policy_gem_tsl_signer"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.CH.QES",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.66",
+        "reference": "oid_egk_qes"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.CH.SIG",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.67",
+        "reference": "oid_egk_sig"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.CH.ENC",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.68",
+        "reference": "oid_egk_enc"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.CH.ENCV",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.69",
+        "reference": "oid_egk_encv"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.CH.AUT",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.70",
+        "reference": "oid_egk_aut"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.CH.AUTN",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.71",
+        "reference": "oid_egk_autn"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.CH.ENC_ALT",
+        "document": "",
+        "oid": "1.2.276.0.76.4.211",
+        "reference": "oid_egk_enc_alt"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.CH.AUT_ALT",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.212",
+        "reference": "oid_egk_aut_alt"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.HP.QES",
+        "document": "[CertsBÄK#1]",
+        "oid": "1.2.276.0.76.4.72",
+        "reference": "oid_hba_qes"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.HP.SIG",
+        "document": "",
+        "oid": "1.2.276.0.76.4.73",
+        "reference": "oid_hba_sig"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.HP.ENC",
+        "document": "[CertsBÄK#1]",
+        "oid": "1.2.276.0.76.4.74",
+        "reference": "oid_hba_enc"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.HP.AUT",
+        "document": "[CertsBÄK#1]",
+        "oid": "1.2.276.0.76.4.75",
+        "reference": "oid_hba_aut"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.HCI.ENC",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.76",
+        "reference": "oid_smc_b_enc"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.HCI.AUT",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.77",
+        "reference": "oid_smc_b_aut"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.HCI.OSIG",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.78",
+        "reference": "oid_smc_b_osig"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.AK.AUT",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.79",
+        "reference": "oid_ak_aut"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.NK.VPN",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.80",
+        "reference": "oid_nk_vpn"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.VPNK.VPN",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.81",
+        "reference": "oid_vpnk_vpn"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.SMKT.AUT",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.82",
+        "reference": "oid_smkt_aut"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.SAK.AUT",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.113",
+        "reference": "oid_sak_aut"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.CM.TLS-CS",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.175",
+        "reference": "oid_cm_tls_c"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.FD.TLS-C",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.168",
+        "reference": "oid_fd_tls_c"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.FD.TLS-S",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.169",
+        "reference": "oid_fd_tls_s"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.FD.AUT",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.155",
+        "reference": "oid_fd_aut"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.ZD.TLS-C",
+        "document": "",
+        "oid": "1.2.276.0.76.4.156",
+        "reference": "oid_zd_tls_c"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.ZD.TLS-S",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.157",
+        "reference": "oid_zd_tls_s"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.ZD.AUT",
+        "document": "",
+        "oid": "1.2.276.0.76.4.158",
+        "reference": "oid_zd_aut"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.VPNK.VPN-SIS",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.165",
+        "reference": "oid_vpnk_vpn_sis"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.FD.SIG",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.203",
+        "reference": "oid_fd_sig"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.FD.ENC",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.202",
+        "reference": "oid_fd_enc"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.WHK-HSM.AUT",
+        "document": "",
+        "oid": "1.2.276.0.76.4.213",
+        "reference": "oid_whk_hsm_aut"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.HP.ENC",
+        "document": "[BÄK_ePA]",
+        "oid": "1.2.276.0.76.4.62",
+        "reference": "oid_vk_pt_enc"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.HP.ENC",
+        "document": "[BÄK_eAA]",
+        "oid": "1.3.6.1.4.1.24796.1.10",
+        "reference": "oid_vk_eaa_enc"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.FD.OSIG",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.283",
+        "reference": "oid_fd_osig"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.ZD.SIG",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.287",
+        "reference": "oid_zd_sig"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.HSK.SIG",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.300",
+        "reference": "oid_hsk_sig"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.HSK.ENC",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.301",
+        "reference": "oid_hsk_enc"
+      },
+      {
+        "certificate_types": [],
+        "description": "C.GEM.VER",
+        "document": "[gemSpec_PKI]",
+        "oid": "1.2.276.0.76.4.321",
+        "reference": "oid_gem-ver"
+      },
+      {
+        "certificate_types": [],
+        "description": "Root-CV-Zertifikat",
+        "document": "[gemSpec_TSL]",
+        "oid": "1.2.276.0.76.4.185",
+        "reference": "oid_cv_rootcert"
+      },
+      {
+        "certificate_types": [],
+        "description": "Cross-CV-Zertifikat",
+        "document": "[gemSpec_TSL]",
+        "oid": "1.2.276.0.76.4.186",
+        "reference": "oid_cv_cert"
+      },
+      {
+        "certificate_types": [
+          "C.FD.TLS-S"
+        ],
+        "description": "Versichertenstammdatendienst",
+        "document": "",
+        "oid": "1.2.276.0.76.4.97",
+        "reference": "oid_vsdd"
+      },
+      {
+        "certificate_types": [],
+        "description": "Online Certificate Status Protocol",
+        "document": "",
+        "oid": "1.2.276.0.76.4.99",
+        "reference": "oid_ocsp"
+      },
+      {
+        "certificate_types": [
+          "C.FD.TLS-S"
+        ],
+        "description": "Card Management System",
+        "document": "",
+        "oid": "1.2.276.0.76.4.100",
+        "reference": "oid_cms"
+      },
+      {
+        "certificate_types": [
+          "C.FD.TLS-S"
+        ],
+        "description": "Update Flag Service",
+        "document": "",
+        "oid": "1.2.276.0.76.4.101",
+        "reference": "oid_ufs"
+      },
+      {
+        "certificate_types": [
+          "C.AK.AUT"
+        ],
+        "description": "Anwendungskonnektor",
+        "document": "",
+        "oid": "1.2.276.0.76.4.103",
+        "reference": "oid_ak"
+      },
+      {
+        "certificate_types": [
+          "C.NK.VPN"
+        ],
+        "description": "Netzkonnektor",
+        "document": "",
+        "oid": "1.2.276.0.76.4.104",
+        "reference": "oid_nk"
+      },
+      {
+        "certificate_types": [
+          "C.SMKT.AUT"
+        ],
+        "description": "Kartenterminal",
+        "document": "",
+        "oid": "1.2.276.0.76.4.105",
+        "reference": "oid_kt"
+      },
+      {
+        "certificate_types": [
+          "C.SAK.AUT"
+        ],
+        "description": "Signaturanwendungskomponente",
+        "document": "",
+        "oid": "1.2.276.0.76.4.119",
+        "reference": "oid_sak"
+      },
+      {
+        "certificate_types": [
+          "C.FD.TLS-S",
+          "C.FD.TLS-C"
+        ],
+        "description": "Intermediär VSDM",
+        "document": "",
+        "oid": "1.2.276.0.76.4.159",
+        "reference": "oid_int_vsdm"
+      },
+      {
+        "certificate_types": [
+          "C.ZD.TLS-S"
+        ],
+        "description": "Konfigurationsdienst",
+        "document": "",
+        "oid": "1.2.276.0.76.4.160",
+        "reference": "oid_konfigdienst"
+      },
+      {
+        "certificate_types": [
+          "C.VPNK.VPN",
+          "C.ZD.TLS-S"
+        ],
+        "description": "VPN-Zugangsdienst-TI",
+        "document": "",
+        "oid": "1.2.276.0.76.4.161",
+        "reference": "oid_vpnz_ti"
+      },
+      {
+        "certificate_types": [
+          "C.VPNK.VPN-SIS"
+        ],
+        "description": "VPN-Zugangsdienst-SIS",
+        "document": "",
+        "oid": "1.2.276.0.76.4.166",
+        "reference": "oid_vpnz_sis"
+      },
+      {
+        "certificate_types": [
+          "C.CM.TLS-CS"
+        ],
+        "description": "Clientmodul",
+        "document": "",
+        "oid": "1.2.276.0.76.4.174",
+        "reference": "oid_cmfd"
+      },
+      {
+        "certificate_types": [
+          "C.ZD.TLS-S",
+          "C.FD.SIG"
+        ],
+        "description": "Verzeichnisdienst-TI",
+        "document": "",
+        "oid": "1.2.276.0.76.4.171",
+        "reference": "oid_vzd_ti"
+      },
+      {
+        "certificate_types": [
+          "C.FD.TLS-S",
+          "C.FD.TLS-C"
+        ],
+        "description": "KOM-LE Fachdienst",
+        "document": "",
+        "oid": "1.2.276.0.76.4.172",
+        "reference": "oid_komle"
+      },
+      {
+        "certificate_types": [],
+        "description": "KOM-LE S/MIME Attribut recipient-emails",
+        "document": "",
+        "oid": "1.2.276.0.76.4.173",
+        "reference": "oid_komle-recipient-emails"
+      },
+      {
+        "certificate_types": [
+          "C.ZD.TLS-S"
+        ],
+        "description": "Betriebsdatenerfassung",
+        "document": "",
+        "oid": "1.2.276.0.76.4.184",
+        "reference": "oid_stamp"
+      },
+      {
+        "certificate_types": [
+          "C.ZD.TLS-S"
+        ],
+        "description": "TSL-Dienst-TI",
+        "document": "",
+        "oid": "1.2.276.0.76.4.189",
+        "reference": "oid_tsl_ti"
+      },
+      {
+        "certificate_types": [
+          "C.FD.TLS-S",
+          "C.FD.SIG",
+          "C.FD.AUT",
+          "C.FD.ENC"
+        ],
+        "description": "Weitere elektronische Anwendungen des Gesundheitswesens sowie für die Gesundheitsforschung n. P. 291a Abs. 7 Satz 3 SGB V",
+        "document": "",
+        "oid": "1.2.276.0.76.4.198",
+        "reference": "oid_wadg"
+      },
+      {
+        "certificate_types": [
+          "C.FD.TLS-S",
+          "C.FD.SIG"
+        ],
+        "description": "ePA Authentisierung",
+        "document": "",
+        "oid": "1.2.276.0.76.4.204",
+        "reference": "oid_epa_authn"
+      },
+      {
+        "certificate_types": [
+          "C.FD.TLS-S",
+          "C.FD.SIG"
+        ],
+        "description": "ePA Autorisierung",
+        "document": "",
+        "oid": "1.2.276.0.76.4.205",
+        "reference": "oid_epa_authz"
+      },
+      {
+        "certificate_types": [
+          "C.FD.TLS-S"
+        ],
+        "description": "ePA Dokumentenverwaltung",
+        "document": "",
+        "oid": "1.2.276.0.76.4.206",
+        "reference": "oid_epa_dvw"
+      },
+      {
+        "certificate_types": [
+          "C.FD.TLS-S",
+          "C.FD.TLS-C"
+        ],
+        "description": "ePA Management",
+        "document": "",
+        "oid": "1.2.276.0.76.4.207",
+        "reference": "oid_epa_mgmt"
+      },
+      {
+        "certificate_types": [
+          "C.FD.ENC"
+        ],
+        "description": "ePA automatisierter Berechtigungserhalt",
+        "document": "",
+        "oid": "1.2.276.0.76.4.208",
+        "reference": "oid_epa_recovery"
+      },
+      {
+        "certificate_types": [
+          "C.FD.AUT",
+          "C.FD.ENC",
+          "C.FD.SIG"
+        ],
+        "description": "ePA vertrauenswürdige Ausführungsumgebung",
+        "document": "",
+        "oid": "1.2.276.0.76.4.209",
+        "reference": "oid_epa_vau"
+      },
+      {
+        "certificate_types": [],
+        "description": "Zertifikatsverzeichnis TSP X.509",
+        "document": "",
+        "oid": "1.2.276.0.76.4.215",
+        "reference": "oid_vz_tsp"
+      },
+      {
+        "certificate_types": [],
+        "description": "HSM Wiederherstellungskomponente 1",
+        "document": "",
+        "oid": "1.2.276.0.76.4.216",
+        "reference": "oid_whk1_hsm"
+      },
+      {
+        "certificate_types": [],
+        "description": "HSM Wiederherstellungskomponente 2",
+        "document": "",
+        "oid": "1.2.276.0.76.4.217",
+        "reference": "oid_whk2_hsm"
+      },
+      {
+        "certificate_types": [],
+        "description": "Wiederherstellungskomponente",
+        "document": "",
+        "oid": "1.2.276.0.76.4.218",
+        "reference": "oid_whk"
+      },
+      {
+        "certificate_types": [
+          "C.FD.TLS-S"
+        ],
+        "description": "Schlüsselgenerierungsdienst",
+        "document": "",
+        "oid": "1.2.276.0.76.4.221",
+        "reference": "oid_sgd"
+      },
+      {
+        "certificate_types": [
+          "C.FD.ENC",
+          "C.FD.AUT"
+        ],
+        "description": "E-Rezept vertrauenswürdige Ausführungsumgebung",
+        "document": "",
+        "oid": "1.2.276.0.76.4.258",
+        "reference": "oid_erp-vau"
+      },
+      {
+        "certificate_types": [
+          "C.FD.TLS-S",
+          "C.FD.SIG",
+          "C.FD.OSIG",
+          "C.FD.TLS-C"
+        ],
+        "description": "E-Rezept",
+        "document": "",
+        "oid": "1.2.276.0.76.4.259",
+        "reference": "oid_erezept"
+      },
+      {
+        "certificate_types": [
+          "C.FD.TLS-S",
+          "C.FD.SIG"
+        ],
+        "description": "IDP-Dienst",
+        "document": "",
+        "oid": "1.2.276.0.76.4.260",
+        "reference": "oid_idpd"
+      },
+      {
+        "certificate_types": [
+          "C.FD.SIG"
+        ],
+        "description": "ePA-Aktensystem-Logging",
+        "document": "",
+        "oid": "1.2.276.0.76.4.261",
+        "reference": "oid_epa_logging"
+      },
+      {
+        "certificate_types": [
+          "C.ZD.SIG"
+        ],
+        "description": "Bestandsnetze.xml Signatur",
+        "document": "",
+        "oid": "1.2.276.0.76.4.288",
+        "reference": "oid_bestandsnetze"
+      },
+      {
+        "certificate_types": [
+          "C.FD.TLS-S",
+          "C.FD.ENC",
+          "C.FD.AUT"
+        ],
+        "description": "ePA Vertrauensstelle",
+        "document": "",
+        "oid": "1.2.276.0.76.4.289",
+        "reference": "oid_epa_vst"
+      },
+      {
+        "certificate_types": [
+          "C.FD.TLS-S",
+          "C.FD.ENC",
+          "C.FD.AUT"
+        ],
+        "description": "ePA Forschungsdatenzentrum",
+        "document": "",
+        "oid": "1.2.276.0.76.4.290",
+        "reference": "oid_epa_fdz"
+      },
+      {
+        "certificate_types": [
+          "C.FD.SIG"
+        ],
+        "description": "TI-Messenger",
+        "document": "",
+        "oid": "1.2.276.0.76.4.294",
+        "reference": "oid_tim"
+      },
+      {
+        "certificate_types": [
+          "C.HSK.SIG",
+          "C.HSK.ENC"
+        ],
+        "description": "Highspeed-Konnektor",
+        "document": "",
+        "oid": "1.2.276.0.76.4.302",
+        "reference": "oid_hsk"
+      },
+      {
+        "certificate_types": [
+          "C.FD.SIG"
+        ],
+        "description": "sektoraler IDP",
+        "document": "",
+        "oid": "1.2.276.0.76.4.307",
+        "reference": "oid_idpd_sek"
+      },
+      {
+        "certificate_types": [
+          "C.FD.OSIG",
+          "C.FD.TLS-S"
+        ],
+        "description": "TI-Gateway Zugangsmodul",
+        "document": "",
+        "oid": "1.2.276.0.76.4.309",
+        "reference": "oid_tigw_zugm"
+      },
+      {
+        "certificate_types": [
+          "C.FD.TLS-C"
+        ],
+        "description": "Technische Zertifikatsausgabestelle eines Anbieters SMC-B",
+        "document": "",
+        "oid": "1.2.276.0.76.4.310",
+        "reference": "oid_zert_smb"
+      },
+      {
+        "certificate_types": [
+          "C.ZD.SIG"
+        ],
+        "description": "Proof of Patient Presence (PoPP) Dienst",
+        "document": "",
+        "oid": "1.2.276.0.76.4.293",
+        "reference": "oid_popp"
+      },
+      {
+        "certificate_types": [
+          "C.ZD.SIG"
+        ],
+        "description": "Token-Signatur-Identität für Proof of Patient Presence",
+        "document": "",
+        "oid": "1.2.276.0.76.4.320",
+        "reference": "oid_popp-token"
+      },
+      {
+        "certificate_types": [
+          "C.GEM.VER"
+        ],
+        "description": "PKI Change Verifikation",
+        "document": "",
+        "oid": "1.2.276.0.76.4.322",
+        "reference": "oid_pki-ver"
+      },
+      {
+        "certificate_types": [
+          "C.FD.AUT"
+        ],
+        "description": "Digitale Patientenrechnung vertrauenswürdige Ausführungsumgebung",
+        "document": "",
+        "oid": "1.2.276.0.76.4.323",
+        "reference": "oid_dipag-vau"
+      },
+      {
+        "certificate_types": [
+          "C.FD.AUT",
+          "C.FD.TLS-C"
+        ],
+        "description": "ZETA Guard",
+        "document": "",
+        "oid": "1.2.276.0.76.4.328",
+        "reference": "oid_zeta-guard"
+      },
+      {
+        "certificate_types": [
+          "C.FD.SIG"
+        ],
+        "description": "ZETA PIP/PAP Policies",
+        "document": "",
+        "oid": "1.2.276.0.76.4.324",
+        "reference": "oid_zeta-policies"
+      },
+      {
+        "certificate_types": [
+          "C.FD.SIG"
+        ],
+        "description": "OCI container image für ZETA",
+        "document": "",
+        "oid": "1.2.276.0.76.4.326",
+        "reference": "oid_zeta-oci"
+      },
+      {
+        "certificate_types": [
+          "C.FD.SIG"
+        ],
+        "description": "ZETA Policy Autor",
+        "document": "",
+        "oid": "1.2.276.0.76.4.329",
+        "reference": "oid_zeta-pol-author"
+      },
+      {
+        "certificate_types": [
+          "C.FD.SIG"
+        ],
+        "description": "ZETA Policy Freigeber",
+        "document": "",
+        "oid": "1.2.276.0.76.4.330",
+        "reference": "oid_zeta-pol-approv"
+      },
+      {
+        "certificate_types": [
+          "C.FD.SIG"
+        ],
+        "description": "ZETA Policy Leitstand",
+        "document": "",
+        "oid": "1.2.276.0.76.4.331",
+        "reference": "oid_zeta-pol-oper"
+      },
+      {
+        "certificate_types": [
+          "C.FD.OSIG",
+          "C.FD.TLS-C"
+        ],
+        "description": "Technische Zertifikatsausgabestelle eines Anbieters EGK",
+        "document": "",
+        "oid": "1.2.276.0.76.4.325",
+        "reference": "oid_tsp-egk"
+      },
+      {
+        "certificate_types": [
+          "C.FD.ENC"
+        ],
+        "description": "Cyber Defense Center Pseudonymisierung",
+        "document": "",
+        "oid": "1.2.276.0.76.4.327",
+        "reference": "oid_cdc-p15g"
+      }
+    ],
+    "professions": [
+      "1.2.276.0.76.4.30",
+      "1.2.276.0.76.4.31",
+      "1.2.276.0.76.4.32",
+      "1.2.276.0.76.4.33",
+      "1.2.276.0.76.4.34",
+      "1.2.276.0.76.4.35",
+      "1.2.276.0.76.4.36",
+      "1.2.276.0.76.4.37",
+      "1.2.276.0.76.4.38",
+      "1.2.276.0.76.4.39",
+      "1.2.276.0.76.4.40",
+      "1.2.276.0.76.4.41",
+      "1.2.276.0.76.4.42",
+      "1.2.276.0.76.4.43",
+      "1.2.276.0.76.4.44",
+      "1.2.276.0.76.4.45",
+      "1.2.276.0.76.4.46",
+      "1.2.276.0.76.4.47",
+      "1.2.276.0.76.4.48",
+      "1.2.276.0.76.4.178",
+      "1.2.276.0.76.4.232",
+      "1.2.276.0.76.4.233",
+      "1.2.276.0.76.4.234",
+      "1.2.276.0.76.4.235",
+      "1.2.276.0.76.4.236",
+      "1.2.276.0.76.4.237",
+      "1.2.276.0.76.4.238",
+      "1.2.276.0.76.4.239",
+      "1.2.276.0.76.4.240",
+      "1.2.276.0.76.4.241",
+      "1.2.276.0.76.4.274",
+      "1.2.276.0.76.4.275",
+      "1.2.276.0.76.4.276",
+      "1.2.276.0.76.4.277",
+      "1.2.276.0.76.4.308",
+      "1.2.276.0.76.4.305",
+      "1.2.276.0.76.4.312",
+      "1.2.276.0.76.4.313",
+      "1.2.276.0.76.4.316",
+      "1.2.276.0.76.4.318",
+      "1.2.276.0.76.4.315",
+      "1.2.276.0.76.4.319"
+    ],
+    "profiles": [
+      {
+        "accepts_types": [
+          "C.FD.AUT"
+        ],
+        "default_for": [],
+        "description": "Digitale Patientenrechnung VAU authenticity",
+        "name": "dipag-vau-aut",
+        "required_role_oids": [
+          "1.2.276.0.76.4.323"
+        ],
+        "revocation": "hard-fail"
+      },
+      {
+        "accepts_types": [
+          "C.FD.AUT"
+        ],
+        "default_for": [],
+        "description": "ePA Aktensystem VAU backend authenticity",
+        "name": "epa-vau-aut",
+        "required_role_oids": [
+          "1.2.276.0.76.4.209"
+        ],
+        "revocation": "hard-fail"
+      },
+      {
+        "accepts_types": [
+          "C.FD.TLS-S"
+        ],
+        "default_for": [
+          "C.FD.TLS-S"
+        ],
+        "description": "Fachdienst TLS server",
+        "name": "fd-tls-s",
+        "required_role_oids": [],
+        "revocation": "hard-fail"
+      },
+      {
+        "accepts_types": [
+          "C.HCI.AUT"
+        ],
+        "default_for": [
+          "C.HCI.AUT"
+        ],
+        "description": "Institution authentication, SM-B (SMC-B, HSM-B)",
+        "name": "hci-aut",
+        "required_role_oids": [],
+        "revocation": "soft-fail"
+      },
+      {
+        "accepts_types": [
+          "C.FD.SIG"
+        ],
+        "default_for": [],
+        "description": "IDP discovery document and token signing",
+        "name": "idpd-sig",
+        "required_role_oids": [
+          "1.2.276.0.76.4.260"
+        ],
+        "revocation": "hard-fail"
+      },
+      {
+        "accepts_types": [
+          "C.TSL.SIG"
+        ],
+        "default_for": [
+          "C.TSL.SIG"
+        ],
+        "description": "TSL signer",
+        "name": "tsl-sig",
+        "required_role_oids": [],
+        "revocation": "hard-fail"
+      },
+      {
+        "accepts_types": [
+          "C.FD.AUT"
+        ],
+        "default_for": [],
+        "description": "ZETA Guard access service layer authenticity",
+        "name": "zeta-guard-aut",
+        "required_role_oids": [
+          "1.2.276.0.76.4.328"
+        ],
+        "revocation": "hard-fail"
+      }
+    ],
+    "types": [
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "contentCommitment"
+        ],
+        "name": "C.CH.QES",
+        "oid": "1.2.276.0.76.4.66",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.66"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.49"
+        ]
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "contentCommitment"
+        ],
+        "name": "C.CH.SIG",
+        "oid": "1.2.276.0.76.4.67",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.67"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.49"
+        ]
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "keyAgreement"
+        ],
+        "name": "C.CH.ENC",
+        "oid": "1.2.276.0.76.4.68",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.68"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.49"
+        ]
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "keyAgreement"
+        ],
+        "name": "C.CH.ENCV",
+        "oid": "1.2.276.0.76.4.69",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.69"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.49"
+        ]
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "digitalSignature"
+        ],
+        "name": "C.CH.AUT",
+        "oid": "1.2.276.0.76.4.70",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.70"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.49"
+        ]
+      },
+      {
+        "ext_key_usage": [
+          "1.3.6.1.5.5.7.3.2"
+        ],
+        "key_usage": [
+          "digitalSignature"
+        ],
+        "name": "C.CH.AUTN",
+        "oid": "1.2.276.0.76.4.71",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.71"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.49"
+        ]
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "contentCommitment"
+        ],
+        "name": "C.HP.QES",
+        "oid": "1.2.276.0.76.4.72",
+        "policies": [
+          "1.2.276.0.76.4.145",
+          "1.2.276.0.76.4.72"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.30",
+          "1.2.276.0.76.4.31",
+          "1.2.276.0.76.4.32",
+          "1.2.276.0.76.4.33",
+          "1.2.276.0.76.4.34",
+          "1.2.276.0.76.4.35",
+          "1.2.276.0.76.4.36",
+          "1.2.276.0.76.4.37",
+          "1.2.276.0.76.4.38",
+          "1.2.276.0.76.4.39",
+          "1.2.276.0.76.4.40",
+          "1.2.276.0.76.4.41",
+          "1.2.276.0.76.4.42",
+          "1.2.276.0.76.4.43",
+          "1.2.276.0.76.4.44",
+          "1.2.276.0.76.4.45",
+          "1.2.276.0.76.4.46",
+          "1.2.276.0.76.4.47",
+          "1.2.276.0.76.4.48",
+          "1.2.276.0.76.4.178",
+          "1.2.276.0.76.4.232",
+          "1.2.276.0.76.4.233",
+          "1.2.276.0.76.4.234",
+          "1.2.276.0.76.4.235",
+          "1.2.276.0.76.4.236",
+          "1.2.276.0.76.4.237",
+          "1.2.276.0.76.4.238",
+          "1.2.276.0.76.4.239",
+          "1.2.276.0.76.4.240",
+          "1.2.276.0.76.4.241",
+          "1.2.276.0.76.4.274",
+          "1.2.276.0.76.4.275",
+          "1.2.276.0.76.4.276",
+          "1.2.276.0.76.4.277",
+          "1.2.276.0.76.4.308",
+          "1.2.276.0.76.4.305",
+          "1.2.276.0.76.4.312",
+          "1.2.276.0.76.4.313",
+          "1.2.276.0.76.4.316",
+          "1.2.276.0.76.4.318",
+          "1.2.276.0.76.4.315",
+          "1.2.276.0.76.4.319"
+        ]
+      },
+      {
+        "ext_key_usage": [
+          "1.3.6.1.5.5.7.3.2",
+          "1.3.6.1.5.5.7.3.4"
+        ],
+        "key_usage": [
+          "digitalSignature",
+          "keyAgreement"
+        ],
+        "name": "C.HP.AUT",
+        "oid": "1.2.276.0.76.4.75",
+        "policies": [
+          "1.2.276.0.76.4.145",
+          "1.2.276.0.76.4.75"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.30",
+          "1.2.276.0.76.4.31",
+          "1.2.276.0.76.4.32",
+          "1.2.276.0.76.4.33",
+          "1.2.276.0.76.4.34",
+          "1.2.276.0.76.4.35",
+          "1.2.276.0.76.4.36",
+          "1.2.276.0.76.4.37",
+          "1.2.276.0.76.4.38",
+          "1.2.276.0.76.4.39",
+          "1.2.276.0.76.4.40",
+          "1.2.276.0.76.4.41",
+          "1.2.276.0.76.4.42",
+          "1.2.276.0.76.4.43",
+          "1.2.276.0.76.4.44",
+          "1.2.276.0.76.4.45",
+          "1.2.276.0.76.4.46",
+          "1.2.276.0.76.4.47",
+          "1.2.276.0.76.4.48",
+          "1.2.276.0.76.4.178",
+          "1.2.276.0.76.4.232",
+          "1.2.276.0.76.4.233",
+          "1.2.276.0.76.4.234",
+          "1.2.276.0.76.4.235",
+          "1.2.276.0.76.4.236",
+          "1.2.276.0.76.4.237",
+          "1.2.276.0.76.4.238",
+          "1.2.276.0.76.4.239",
+          "1.2.276.0.76.4.240",
+          "1.2.276.0.76.4.241",
+          "1.2.276.0.76.4.274",
+          "1.2.276.0.76.4.275",
+          "1.2.276.0.76.4.276",
+          "1.2.276.0.76.4.277",
+          "1.2.276.0.76.4.308",
+          "1.2.276.0.76.4.305",
+          "1.2.276.0.76.4.312",
+          "1.2.276.0.76.4.313",
+          "1.2.276.0.76.4.316",
+          "1.2.276.0.76.4.318",
+          "1.2.276.0.76.4.315",
+          "1.2.276.0.76.4.319"
+        ]
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "keyAgreement"
+        ],
+        "name": "C.HP.ENC",
+        "oid": "1.2.276.0.76.4.74",
+        "policies": [
+          "1.2.276.0.76.4.145",
+          "1.2.276.0.76.4.74"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.30",
+          "1.2.276.0.76.4.31",
+          "1.2.276.0.76.4.32",
+          "1.2.276.0.76.4.33",
+          "1.2.276.0.76.4.34",
+          "1.2.276.0.76.4.35",
+          "1.2.276.0.76.4.36",
+          "1.2.276.0.76.4.37",
+          "1.2.276.0.76.4.38",
+          "1.2.276.0.76.4.39",
+          "1.2.276.0.76.4.40",
+          "1.2.276.0.76.4.41",
+          "1.2.276.0.76.4.42",
+          "1.2.276.0.76.4.43",
+          "1.2.276.0.76.4.44",
+          "1.2.276.0.76.4.45",
+          "1.2.276.0.76.4.46",
+          "1.2.276.0.76.4.47",
+          "1.2.276.0.76.4.48",
+          "1.2.276.0.76.4.178",
+          "1.2.276.0.76.4.232",
+          "1.2.276.0.76.4.233",
+          "1.2.276.0.76.4.234",
+          "1.2.276.0.76.4.235",
+          "1.2.276.0.76.4.236",
+          "1.2.276.0.76.4.237",
+          "1.2.276.0.76.4.238",
+          "1.2.276.0.76.4.239",
+          "1.2.276.0.76.4.240",
+          "1.2.276.0.76.4.241",
+          "1.2.276.0.76.4.274",
+          "1.2.276.0.76.4.275",
+          "1.2.276.0.76.4.276",
+          "1.2.276.0.76.4.277",
+          "1.2.276.0.76.4.308",
+          "1.2.276.0.76.4.305",
+          "1.2.276.0.76.4.312",
+          "1.2.276.0.76.4.313",
+          "1.2.276.0.76.4.316",
+          "1.2.276.0.76.4.318",
+          "1.2.276.0.76.4.315",
+          "1.2.276.0.76.4.319"
+        ]
+      },
+      {
+        "ext_key_usage": [
+          "1.3.6.1.5.5.7.3.2"
+        ],
+        "key_usage": [
+          "digitalSignature"
+        ],
+        "name": "C.HCI.AUT",
+        "oid": "1.2.276.0.76.4.77",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.77"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.50",
+          "1.2.276.0.76.4.51",
+          "1.2.276.0.76.4.52",
+          "1.2.276.0.76.4.53",
+          "1.2.276.0.76.4.54",
+          "1.2.276.0.76.4.55",
+          "1.2.276.0.76.4.56",
+          "1.2.276.0.76.4.57",
+          "1.2.276.0.76.4.58",
+          "1.2.276.0.76.4.59",
+          "1.2.276.0.76.4.187",
+          "1.2.276.0.76.4.190",
+          "1.2.276.0.76.4.210",
+          "1.2.276.0.76.4.223",
+          "1.2.276.0.76.4.226",
+          "1.2.276.0.76.4.227",
+          "1.2.276.0.76.4.228",
+          "1.2.276.0.76.4.224",
+          "1.2.276.0.76.4.225",
+          "1.2.276.0.76.4.229",
+          "1.2.276.0.76.4.230",
+          "1.2.276.0.76.4.231",
+          "1.2.276.0.76.4.242",
+          "1.2.276.0.76.4.243",
+          "1.2.276.0.76.4.244",
+          "1.2.276.0.76.4.245",
+          "1.2.276.0.76.4.246",
+          "1.2.276.0.76.4.247",
+          "1.2.276.0.76.4.248",
+          "1.2.276.0.76.4.249",
+          "1.2.276.0.76.4.250",
+          "1.2.276.0.76.4.251",
+          "1.2.276.0.76.4.252",
+          "1.2.276.0.76.4.253",
+          "1.2.276.0.76.4.254",
+          "1.2.276.0.76.4.255",
+          "1.2.276.0.76.4.256",
+          "1.2.276.0.76.4.257",
+          "1.2.276.0.76.4.262",
+          "1.2.276.0.76.4.263",
+          "1.2.276.0.76.4.264",
+          "1.2.276.0.76.4.265",
+          "1.2.276.0.76.4.266",
+          "1.2.276.0.76.4.267",
+          "1.2.276.0.76.4.268",
+          "1.2.276.0.76.4.269",
+          "1.2.276.0.76.4.270",
+          "1.2.276.0.76.4.271",
+          "1.2.276.0.76.4.278",
+          "1.2.276.0.76.4.279",
+          "1.2.276.0.76.4.280",
+          "1.2.276.0.76.4.281",
+          "1.2.276.0.76.4.284",
+          "1.2.276.0.76.4.285",
+          "1.2.276.0.76.4.286",
+          "1.2.276.0.76.4.282",
+          "1.2.276.0.76.4.295",
+          "1.2.276.0.76.4.292",
+          "1.2.276.0.76.4.303",
+          "1.2.276.0.76.4.304",
+          "1.2.276.0.76.4.306",
+          "1.2.276.0.76.4.311",
+          "1.2.276.0.76.4.314",
+          "1.2.276.0.76.4.317"
+        ]
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "keyAgreement"
+        ],
+        "name": "C.HCI.ENC",
+        "oid": "1.2.276.0.76.4.76",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.76"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.50",
+          "1.2.276.0.76.4.51",
+          "1.2.276.0.76.4.52",
+          "1.2.276.0.76.4.53",
+          "1.2.276.0.76.4.54",
+          "1.2.276.0.76.4.55",
+          "1.2.276.0.76.4.56",
+          "1.2.276.0.76.4.57",
+          "1.2.276.0.76.4.58",
+          "1.2.276.0.76.4.59",
+          "1.2.276.0.76.4.187",
+          "1.2.276.0.76.4.190",
+          "1.2.276.0.76.4.210",
+          "1.2.276.0.76.4.223",
+          "1.2.276.0.76.4.226",
+          "1.2.276.0.76.4.227",
+          "1.2.276.0.76.4.228",
+          "1.2.276.0.76.4.224",
+          "1.2.276.0.76.4.225",
+          "1.2.276.0.76.4.229",
+          "1.2.276.0.76.4.230",
+          "1.2.276.0.76.4.231",
+          "1.2.276.0.76.4.242",
+          "1.2.276.0.76.4.243",
+          "1.2.276.0.76.4.244",
+          "1.2.276.0.76.4.245",
+          "1.2.276.0.76.4.246",
+          "1.2.276.0.76.4.247",
+          "1.2.276.0.76.4.248",
+          "1.2.276.0.76.4.249",
+          "1.2.276.0.76.4.250",
+          "1.2.276.0.76.4.251",
+          "1.2.276.0.76.4.252",
+          "1.2.276.0.76.4.253",
+          "1.2.276.0.76.4.254",
+          "1.2.276.0.76.4.255",
+          "1.2.276.0.76.4.256",
+          "1.2.276.0.76.4.257",
+          "1.2.276.0.76.4.262",
+          "1.2.276.0.76.4.263",
+          "1.2.276.0.76.4.264",
+          "1.2.276.0.76.4.265",
+          "1.2.276.0.76.4.266",
+          "1.2.276.0.76.4.267",
+          "1.2.276.0.76.4.268",
+          "1.2.276.0.76.4.269",
+          "1.2.276.0.76.4.270",
+          "1.2.276.0.76.4.271",
+          "1.2.276.0.76.4.278",
+          "1.2.276.0.76.4.279",
+          "1.2.276.0.76.4.280",
+          "1.2.276.0.76.4.281",
+          "1.2.276.0.76.4.284",
+          "1.2.276.0.76.4.285",
+          "1.2.276.0.76.4.286",
+          "1.2.276.0.76.4.282",
+          "1.2.276.0.76.4.295",
+          "1.2.276.0.76.4.292",
+          "1.2.276.0.76.4.303",
+          "1.2.276.0.76.4.304",
+          "1.2.276.0.76.4.306",
+          "1.2.276.0.76.4.311",
+          "1.2.276.0.76.4.314",
+          "1.2.276.0.76.4.317"
+        ]
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "contentCommitment"
+        ],
+        "name": "C.HCI.OSIG",
+        "oid": "1.2.276.0.76.4.78",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.78"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.50",
+          "1.2.276.0.76.4.51",
+          "1.2.276.0.76.4.52",
+          "1.2.276.0.76.4.53",
+          "1.2.276.0.76.4.54",
+          "1.2.276.0.76.4.55",
+          "1.2.276.0.76.4.56",
+          "1.2.276.0.76.4.57",
+          "1.2.276.0.76.4.58",
+          "1.2.276.0.76.4.59",
+          "1.2.276.0.76.4.187",
+          "1.2.276.0.76.4.190",
+          "1.2.276.0.76.4.210",
+          "1.2.276.0.76.4.223",
+          "1.2.276.0.76.4.226",
+          "1.2.276.0.76.4.227",
+          "1.2.276.0.76.4.228",
+          "1.2.276.0.76.4.224",
+          "1.2.276.0.76.4.225",
+          "1.2.276.0.76.4.229",
+          "1.2.276.0.76.4.230",
+          "1.2.276.0.76.4.231",
+          "1.2.276.0.76.4.242",
+          "1.2.276.0.76.4.243",
+          "1.2.276.0.76.4.244",
+          "1.2.276.0.76.4.245",
+          "1.2.276.0.76.4.246",
+          "1.2.276.0.76.4.247",
+          "1.2.276.0.76.4.248",
+          "1.2.276.0.76.4.249",
+          "1.2.276.0.76.4.250",
+          "1.2.276.0.76.4.251",
+          "1.2.276.0.76.4.252",
+          "1.2.276.0.76.4.253",
+          "1.2.276.0.76.4.254",
+          "1.2.276.0.76.4.255",
+          "1.2.276.0.76.4.256",
+          "1.2.276.0.76.4.257",
+          "1.2.276.0.76.4.262",
+          "1.2.276.0.76.4.263",
+          "1.2.276.0.76.4.264",
+          "1.2.276.0.76.4.265",
+          "1.2.276.0.76.4.266",
+          "1.2.276.0.76.4.267",
+          "1.2.276.0.76.4.268",
+          "1.2.276.0.76.4.269",
+          "1.2.276.0.76.4.270",
+          "1.2.276.0.76.4.271",
+          "1.2.276.0.76.4.278",
+          "1.2.276.0.76.4.279",
+          "1.2.276.0.76.4.280",
+          "1.2.276.0.76.4.281",
+          "1.2.276.0.76.4.284",
+          "1.2.276.0.76.4.285",
+          "1.2.276.0.76.4.286",
+          "1.2.276.0.76.4.282",
+          "1.2.276.0.76.4.295",
+          "1.2.276.0.76.4.292",
+          "1.2.276.0.76.4.303",
+          "1.2.276.0.76.4.304",
+          "1.2.276.0.76.4.306",
+          "1.2.276.0.76.4.311",
+          "1.2.276.0.76.4.314",
+          "1.2.276.0.76.4.317"
+        ]
+      },
+      {
+        "ext_key_usage": [
+          "1.3.6.1.5.5.7.3.1"
+        ],
+        "key_usage": [
+          "digitalSignature"
+        ],
+        "name": "C.FD.TLS-S",
+        "oid": "1.2.276.0.76.4.169",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.169"
+        ],
+        "role_oids": []
+      },
+      {
+        "ext_key_usage": [
+          "1.3.6.1.5.5.7.3.2"
+        ],
+        "key_usage": [
+          "digitalSignature"
+        ],
+        "name": "C.FD.TLS-C",
+        "oid": "1.2.276.0.76.4.168",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.168"
+        ],
+        "role_oids": []
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "digitalSignature"
+        ],
+        "name": "C.FD.SIG",
+        "oid": "1.2.276.0.76.4.203",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.203"
+        ],
+        "role_oids": []
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "keyAgreement"
+        ],
+        "name": "C.FD.ENC",
+        "oid": "1.2.276.0.76.4.202",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.202"
+        ],
+        "role_oids": []
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "digitalSignature"
+        ],
+        "name": "C.FD.AUT",
+        "oid": "1.2.276.0.76.4.155",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.155"
+        ],
+        "role_oids": []
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "contentCommitment"
+        ],
+        "name": "C.FD.OSIG",
+        "oid": "1.2.276.0.76.4.283",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.283"
+        ],
+        "role_oids": []
+      },
+      {
+        "ext_key_usage": [
+          "1.3.6.1.5.5.7.3.1"
+        ],
+        "key_usage": [
+          "digitalSignature"
+        ],
+        "name": "C.ZD.TLS-S",
+        "oid": "1.2.276.0.76.4.157",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.157"
+        ],
+        "role_oids": []
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [
+          "contentCommitment"
+        ],
+        "name": "C.ZD.SIG",
+        "oid": "1.2.276.0.76.4.287",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.287"
+        ],
+        "role_oids": []
+      },
+      {
+        "ext_key_usage": [
+          "1.3.6.1.5.5.7.3.2",
+          "1.3.6.1.5.5.7.3.1"
+        ],
+        "key_usage": [
+          "contentCommitment"
+        ],
+        "name": "C.HSK.SIG",
+        "oid": "1.2.276.0.76.4.300",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.300"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.302"
+        ]
+      },
+      {
+        "ext_key_usage": [
+          "1.3.6.1.5.5.7.3.2",
+          "1.3.6.1.5.5.7.3.1"
+        ],
+        "key_usage": [
+          "keyAgreement"
+        ],
+        "name": "C.HSK.ENC",
+        "oid": "1.2.276.0.76.4.301",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.301"
+        ],
+        "role_oids": [
+          "1.2.276.0.76.4.302"
+        ]
+      },
+      {
+        "ext_key_usage": [],
+        "key_usage": [],
+        "name": "C.GEM.VER",
+        "oid": "1.2.276.0.76.4.321",
+        "policies": [
+          "1.2.276.0.76.4.163",
+          "1.2.276.0.76.4.321"
+        ],
+        "role_oids": []
+      },
+      {
+        "ext_key_usage": [
+          "0.4.0.2231.3.0"
+        ],
+        "key_usage": [
+          "contentCommitment"
+        ],
+        "name": "C.TSL.SIG",
+        "oid": "1.2.276.0.76.4.176",
+        "policies": [
+          "1.2.276.0.76.4.176"
+        ],
+        "role_oids": []
+      }
+    ]
+  }
+}

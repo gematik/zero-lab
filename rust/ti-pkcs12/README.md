@@ -26,7 +26,7 @@ cargo run -p ti-pkcs12 --example info -- identity.p12 [PASSWORD]   # password de
   as received, before anything inside is parsed.
 - **Integrity:** the password mode with HMAC-SHA-1, -224, -256, -384 or -512 and the
   PKCS#12 KDF (RFC 7292 Appendix B).
-- **Encryption:** PBES2 (PBKDF2, AES-128/192/256-CBC) through `pkcs5`. With the
+- **Encryption:** PBES2 (PBKDF2, AES-128/192/256-CBC). With the
   `legacy` feature (default), also the PKCS#12 PBEs with 3DES and RC2-40/128 and
   DES-EDE3 in PBES2, which OpenSSL's `-legacy` and gematik's card vendors still
   produce.

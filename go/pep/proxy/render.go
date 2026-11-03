@@ -24,7 +24,6 @@ package proxy
 import (
 	"fmt"
 	"html/template"
-	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -39,7 +38,7 @@ type renderer struct {
 }
 
 func newRenderer(templateDir string) (*renderer, error) {
-	var fsys fs.FS = webui.FS
+	fsys := webui.FS
 	if templateDir != "" {
 		fsys = os.DirFS(templateDir)
 	}

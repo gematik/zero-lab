@@ -346,7 +346,7 @@
       "properties": {
         "code": {
           "type": "string",
-          "description": "Result code, e.g. xml_signature_error"
+          "description": "Result code, e.g. detached_signature_error"
         },
         "code_number": {
           "type": [
@@ -357,7 +357,7 @@
         },
         "rule": {
           "type": "string",
-          "description": "Rule of spec/tsl-xmldsig, e.g. TSLSIG-018"
+          "description": "Rule of spec/tsl-xmldsig, e.g. TSLDET-005"
         },
         "detail": {
           "type": "string",

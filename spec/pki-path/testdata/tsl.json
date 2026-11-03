@@ -1,0 +1,1354 @@
+{
+  "captured": "2026-11-01T16:47:42Z",
+  "lists": [
+    {
+      "backup": "http://download-bak.tsl.telematik/ECC/ECC-RSA_TSL.xml",
+      "id": "ID31033720261028000007Z",
+      "intermediates": 76,
+      "intermediates_sha256": "b238108a95b55804159835f36aa134daa2ff4d62a4305523ce4b35804aed0ed0",
+      "issued_at": 1793145607,
+      "kept": [
+        {
+          "sha256": "97bc6a008ba5264566ec560e2c76a54966839b70b2c8146fb97d6906e71523be",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "18fcf410785b2b9bb032c4a370dcbbc4c4b04bcdc9faea277d29fa097be69406",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "21663ae40b13bfc469f7348cdff4b05c86115467c4fcc62b5bf11f737176c525",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "015535272a2906bd3deb051adfd3751a06da38b373831736ccfb5cfdfeeaea69",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "5c3fbe1168a1a802f5137609d27b423d13bd970239f1e02fe3ecfc3a24074f4e",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "8b27281c5da3fc2a9ec4c6e568470af8e9b48c702045f742ca827b4a90deb407",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "667209514c1cbf5e7efe9595ba0ba549f474889a2459dfa74e6b9fdbf3feb3a7",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "a28b8942914b6bf2621cc925929be5f3127458127381d04763ac6ca6b5dc7f64",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "5c8dd5961be51b156a20189e00a3bf94468126f527b3e115c2d22b67596141cf",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "e2992dc292f6aa8d9e462a7723f54c162853b4056c277260b82ce58921408448",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "4e5a47cb6dec603d3dbbec4302ac4bc29a755ff7645eca9110266673ffdb9c99",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "b42fbc96985a6bf29904b931e5ea0eea365e100c0169b7f6d6bae77089b8babf",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "b4369a7eceb58acfe798671502e38048427ab72d5403fef2f2b7f6bcb11d9db7",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "1899cc31fe3fe21b1545afec4fa3ef6db63783a8222d422e92939328b6099030",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "dcfd45476b48a713a64c2dd73632b66037edcb9d7769683b37289ebcc0e46546",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "c3fb5c9bcdf80c1fe9124e331688e7f6dce1c002c08695354e6689ecd7066079",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "f92784f58cf85bdd744bc44e00dc192578eae4d23ee237b6c68ff835191f8613",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "f2fb86e5ca461b69e8218d48764ad0fb88ff440380019f9c0f3ef2ca70e327cd",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "67c2f16979b0a8b5a8b979c1ae54976204a0144f5d797e312ba494d1fc4330bd",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "f7fabf6e7409f4d8b6e72365906d4f4caca328c6632383348878c69ecd79f0ef",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "60a1623c53c285235256f9c4163e2762be8b787d038a97f259903d6dd9e2c3f4",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "64f3aebfdc217af8b919ce0627e565f60e46c9853f0a970d621d3ccc21cc663e",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "8c7d7824d3c601df97c9b76662b55567e1ffd977d075309d095d8dd62ef3e175",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "11c413635f97118ec233ee829be75d8b0fcd71ce4aa0dabfcd04498aba0a0e34",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "90d569741cb59116fb87f09c27222685075b801f8d9a97e197399c6370d5ce5d",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "5fa552a1193e21fabfe289f2a1681685cf6eda0a470ad62cabce730c22fb31ed",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "2c59b3757482bf7116ce4db1513e488a6be7821b32fe76c8496732f7f9aa3a63",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "c2f543c11ff0c7ece7e2872353ca0da580e4749f9aa9e65df88f388656d8992f",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "114fbab86f237c2d3af5820961ed10db3d5b3c38efbd919859a7017aee6d9ef9",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "6e48ac042ead213bbfd141d750660a7857169b8cfc9ab9d3ba1c832960773729",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "2acf86cceb311505490ccdce8459955e573dcbbea9abe78dc7ac6cc7e0af2be8",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "9e4cf51dc88df82f35ff30e63d8f2898a7751131d080031a6c27768fce45ef00",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "85701643e91f1eb8049c67a1346fe3d0c1a48e7b1f981087f262340a31b8e897",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "95bbd03d3f799929bf5e7254f8e2da1455f139534fb44580568152358962b065",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "61b61d6d41cdb89226a95c08dbc3b3bd51a30aa51b118978880289d841e5571f",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "76974591c3e0b3cbca436a3bf1ba603b1f779047f6f899f566d534120180512d",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "925b5c3c3e589a51b49b1389b2750b8da9a311a7971964b445bc06ec4da8168d",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "a9d34264898c4854df5c61d771cc0810b7d098c0b3241ebc62fee6a23d7f85a4",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "5fcd5cb46ff16db59f07b07d9728b2163e5296a81dd2a97098a07581dec3d60a",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "3ee5802cbb74819459419f79fed6fd035c41f8d8e3f58953961f5bf36a699897",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "768c5327c56d2acbd0150ef3c604b1c41afb2b7c98343b1e1c3e5337b9d572ca",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "100b61443de94255c7e105f0d472d0a02c2a608fbd591c42afb14e6b100fa388",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "5eeec3d8a9cd80e3405c25ae9e44b2dc6c375c6095e8aae067265d653e64e43a",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "7ecba896c1a32f3800c795312aaef2d29aaab68272da72c4f7f9c77c365b6b59",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "537849e0d5f22961d4ca3cee456237f90d587d8118c9bb3925beee0891620087",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "3433e5c2e6a30949c7a6ef53206af6c4ac8a79fffc1f3b308126a09279932143",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "d770c3a2a15198440178b5952d6587ebd4bd8197bef09ae8607b1b18d31129e5",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "8730b56f1857ddd047677434598530d0d4fae8f07f51ca5737b2a1a5dea2822a",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "8a95dbc4949306518a8e53daf9bc548dad42603e50142670865576bf3a9c29fb",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "3ecd0918f475b802557ac036b158beef074bcaa5183291cf5129cb202ed8a47e",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "9cd05d9c64c3faa745a52e17379d471e98b4c90084dbef6a8d1f9f2468508528",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "134b76847b947a3d0a90e161bed90f5ff6ccff4422b2501fc4af39df5237a178",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "8458d0914989fa4f7f2e9a7b0002464a077ddde1d4774be236f1360e9d1a4f11",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "8277ecb5d5f9ad9fe912332c4c6c2a83b7913e920a05b365dda18b58d8fd4188",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "a9a36c897f89d24fda294a017dbfbe15ac24cd8204d18f5a277050fb20116abb",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "a2f6800014c1546d78bf2c7a9e27ed68729234f933c99f67db948d55feb6eefc",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "39e1a436def1d77453ed68e2ce03d8184b7af5d9e51c3c6b6d179f0d4bce594b",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "21b9855f359ee89bf106d5576414245afa5e185611b662a9320dd245d13b6c15",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "e8225637af9f2ac7556599117d405d7cd186be6af733dff87edb72d0186e6de0",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "5b6795249fd79190039f43e317fc4c830f3af66928a8ef0bbc6e4eb44c2007b5",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "8fc79f66cf51b279049294ff2b6c3c53cb7f9769ad8cf32284ab0213b8c60eeb",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "dc49095dec82c8d2748fe9e93bd820ab6009e628b18b5c9f4838059002a587c7",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "88b1d1a8322d60dee98b87fb9c881ef055698c5738dd0576aa1c34623d177454",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "7eded2a9e8e13e75e1ce72d0e17b76c5b25361ecbfb2bf4259438cd493697dca",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "14be2b8caa56ef170dd5728977ac07eaa0ad9c4e2b2658efd84330e58f5eb3a2",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "098e40ec1c9ee6b0d003e4d26b37a612441fa81ca4228b749b26190272013049",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "931426863238348774af0d4e0c6e94bfa59d5bb6d0f62a35f1e5ea5bace86d67",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "f0bc28333a89c744d558b76c26bff92bef85d86acf09c7302410d661bda62b5e",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "52dafb0d3759054f335f3959c31635a37189fe4c836e50a9031298f02ce8a958",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "7e0893862751b0d9873e88dfa23de189788e4a023ad34958ed4b1760105fa3d0",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "c4fadf205cfc674cd79584b7da7a4367feacde4fb6757b2160257f1b60d3b64d",
+          "signature": "1.2.840.10045.4.3.2"
+        }
+      ],
+      "name": "prod",
+      "next_update": 1795737607,
+      "nonprod": false,
+      "primary": "http://download.tsl.telematik/ECC/ECC-RSA_TSL.xml",
+      "production": true,
+      "rejected": [
+        {
+          "reason": "self-signed, not under a trusted root",
+          "sha256": "b277c3a4d8f2c57cee4ac7ba1ce693bcdde31f661dcb5173bd67ae64ab5b8ba5"
+        },
+        {
+          "reason": "self-signed, not under a trusted root",
+          "sha256": "195df845fef9540730b2b3653d2ea392558a49629b6079ead339f635d41d3474"
+        },
+        {
+          "reason": "issuer is not a trusted root",
+          "sha256": "a812801f03cc948f3f9abc743492ea851540123fa654f72921bb905efdefa4f4"
+        },
+        {
+          "reason": "self-signed, not under a trusted root",
+          "sha256": "f5ae56eb8d965a4fa3e68f166fd30bdc4f7fb1d3358f20f23d6b9eac0f983dcf"
+        },
+        {
+          "reason": "issuer is not a trusted root",
+          "sha256": "c0ca9ec98dadcbc8e86514a11e870ac901ce4742b7f41a57e439c0f02c73d0a3"
+        }
+      ],
+      "scheme_sha256": "3a44bf00eaf64e7e4b7263371a29a9bed10358a9bd585cde5411ccdf8b87b58b",
+      "sequence": [
+        {
+          "id": "",
+          "number": 0,
+          "result": "newer"
+        },
+        {
+          "id": "ID31033720261028000007Z",
+          "number": 10337,
+          "result": "same"
+        },
+        {
+          "id": "another",
+          "number": 10336,
+          "result": "newer"
+        },
+        {
+          "id": "another",
+          "number": 10337,
+          "result": "tsl_id_incorrect"
+        },
+        {
+          "id": "another",
+          "number": 10338,
+          "result": "tsl_id_incorrect"
+        },
+        {
+          "id": "ID31033720261028000007Z",
+          "number": 10336,
+          "result": "tsl_id_incorrect"
+        },
+        {
+          "id": "ID31033720261028000007Z",
+          "number": 10338,
+          "result": "tsl_id_incorrect"
+        }
+      ],
+      "sequence_number": 10337,
+      "services": 197,
+      "services_sha256": "770edc81bd7163b19431850b6926582510710d1eeb241100195c035f26fffba1",
+      "skipped": 0,
+      "stem": "prod/ECC-RSA_TSL"
+    },
+    {
+      "backup": "http://download-bak-ref.tsl.telematik-test/ECC/ECC-RSA_TSL-ref.xml",
+      "id": "ID31071720261028000013Z",
+      "intermediates": 109,
+      "intermediates_sha256": "a0d7500393ba54e6490e6d74fb1f5395fda567a1afa052cbed6ca2830a69d317",
+      "issued_at": 1793145613,
+      "kept": [
+        {
+          "sha256": "eb978969e90e48af8dce0b02239c037f599e7b1bc699e487ff6862f33097592b",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "4d81e98b9658e4486f4102f1c36faac316e2560091f81265f6bc94604907cc90",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "7e79e6b67c23aee4a668bc20880cf9ad641e6d951e8b55abd386dbd249db6993",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "86afd8c1cb63333ce3b9e247f58082866ce7a7b936ab4c205ceaa9b264681d0d",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "5b2dbdbdd9b00aee8f473965d8d083b9b9b9318bfdbe1429b2cb33ef200f5b22",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "89962becf363341d23f4e34d297d9224d9fd87915d1727e1c1bfc9eab95408ba",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "d9268b8c8e82079c999d0d894a206a86f9e3343aee8fef4839c87de27e33a6bc",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "50b09641c461072e02344dc64353108616e3b2ab3bc167aaa8312c32741959df",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "99b1f8002d30d7b4e9085357d343d980bea5b52cc0e0824b0b4615f337c20aac",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "372cd26d4b8215ef41fb6294ed4fb9cb6776c2cddc478115bf8a049f257b961b",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "7f1012217327c3a74b8e415351357f3679203125a8aded8829dd239e1da3e773",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "43853a0e92bfd6e9e99f02c1d165a688aa94f0df74d8ea0ddf849ecd01be1d6a",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "b97422ef447dd82fa6a6bebaf83bbb7b4d99808dd81502fa36da37b604c067dc",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "61339fcd22366dbe9fa7baf84e7aca32a4b6b2f701edafee51c322eb1c366ffe",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "c40154e168d9daf46eb898bc83a7391cc55bcc62b60571897be71134596614b3",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "3932ec6006612e0364690d57b36e9a0a8871c61ee16af017c9309f242a4cf527",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "af304de55523b5c8b60995ce964048c3ad321ad2bd37a4f0f782a2426f9befd1",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "d449b4509c4c52977af2de805ec4c5d16de76dd7d98e8dd084face9f162d23ac",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "d38096c72434236b31867fd1ba94b70ce9f30e4f35bfd89c46bbaaad8e7fb06c",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "13a1982fbc86b35f680650c4151c189098104f4c7b576486985067e889d56899",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "5134b31153dec3f22b53b6444fa52af6636e817d9977babd1ffb0d188aa35433",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "9103b8295f425ef7201d573546fdd7e983d41bc0241981ca533d021a6e22b0ea",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "bee99fc04388719cd3aa07913485d5cd3ef76a7b44764a65cabdab36274c1026",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "e7383885755d4e68c6226961e3bbe482fdc643c7c87603d642d8f702d970f99b",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "034ee1c431094a493b56254a4c4662560a3a942ac85886787b0739c30e695c41",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "5adcde829c27c4b40b34ba08b9edb5ffe54cba9ed84bf1cf35d249a32e4d2320",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "87c4160123e5bb8e24cdbf6f83dfb4a8ae61b02e4964fe98a541dd7a0ee80f42",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "f3aa286e20075415bc6f13d7f2a958034ab0e23ae6476ccba8e1a0918da268de",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "06bce8e607107e471720591176daf8231b6ee2b830183c646621d92606d29a28",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "0617f3ee8624ae9d09a2c1246c6751867c29277f6be094ff973ed6bc725ba897",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "cef2e12f61688ae36f4209c1db3e91cd17925ba40bbd6913d61d6a4210f46acb",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "2d19a5d8ba66700197ca37e5ebf795be01fb4a16dd37ae8bab23ef7e6cbec5ef",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "23e6a1d4b676a1cb6913d45dd4b2333593eaf936d0d503aa3531f8ff47057f5c",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "b6a3b2a508cb69575c99b0b03796baae213b55b4b216e8f57370e5748e4d061c",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "6caae3682be337039a6fa1d528778fd36900a55d7a036b3e1de068c1cf052684",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "4d39209125a1dc2dd59635ab5ebca0db7eac068f4c49fb0ce4b3925d75379acb",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "30bc32979bf042227456e16988564562f2d5228a642c1d5aff005dc161795749",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "3b924ebcf3c00e606318e1cbc76521078d128207e83dc06e926e9d073f99d7e4",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "bc575d5950368af802eeaf8b4608dfeb7db84094742bd00e71de2d88218ef979",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "f3084806fca30e95d2cf6edaad4bbc9d79f143a26b963eecfdfa18800d9c07cc",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "86e516c533f97c282a4b6c198a82606bb9660a9eaf804ba9362dfaebb11b99d9",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "da7ba0b93e60bf753b1aef19c41dfcbd8db7b7e553ad1f97a83a4a06b29e49e8",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "ed84b18f629fd7bbe7d1b5dfd0e37cd0a7955d0eeeedba39c4a024db75d215e3",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "6a9250997e8ecab32659ff99a30981075b423592e121b680d189af2544509359",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "b03bedfb0b47dd71af9cfd644607b81b7ba6a3b92a3567fa45abe36f2ee7d92d",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "cb0c87c7fa29281f26b147d1632ade653499d9fbe184ca0b8bc01c8e57e66baf",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "d7602b0a413929885530d0f43efe7e55fc424030c2565ca38cb4c17a336f63fe",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "b3e29fa75e167a708dce55c3803ea1a05fbda511922d5975027324e034134179",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "05af6648b66ddba3b0126ee90d56e7d7f856da575fd60ae820bd8f93b29601ce",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "8edab4906f91ff1ac37eee2b2cdec506a81d871fd478951712e2ea23b7f36385",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "56a358fe85cb879e1153c0bed79a2c66396757abe11d16bcb86feff15d2401ea",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "d365216486fcad0c799101fe03397f5d59d35b8db263a335be6e505bfe27834b",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "03dff9b5be2cca98c84eb7322f2af3ca25cc54974c365d17b2341cdabb46c3fb",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "406dea676da2b97b108a227e645a02177325f8c92681b5a80f744bad3e545bbd",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "8af18a6fb6b36853390d846e778be29ad9d06715378b01477b8523e6f9d9160d",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "2eb06b5e3b02453ebbaed983af7d487bf4d92d7ae634505707a04a7b0a536632",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "772600d6a23ee10875f54a5939740891a2777eccc03ed4a49c15b8400749f534",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "dc4219fd2756e5292bcbf68b9f33fb571929212c77a30d636e01ecf9bb555ed9",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "7697dce22564b784e739bfe8340c47b18fd8299210d53b66336345c5f5059665",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "3062c4c1de9f5be29f7e5a67deeed9f317a0c7d2107459883090471e39228006",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "0af6d373ae960c15db03a5f61b150992940273db00c14b481678e6f164ca2cc1",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "3295536daf92e357a0faaa9703614adf354db38b3f4b242aca8872d0e1d9c056",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "8d00229350f5721388bf602b1ea2ee0ca0b96c3aa2017167eac1bafe0e2a7c5e",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "eb4d4447b5f0c4a4c5b5057ad5e8e5acfab432dd6debd34f1cab7c8ed983f126",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "78409444560f886a33e7a84723d588c6d9645422a48dff3f679d0c1ea80b9d4c",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "aa9f0e9b1d34c3de13a08ac655552d40a0484536c4bc0dd7266206bbb5c410a3",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "24c3655b1a3b80a5fff1d9d395ee2e8e247a117866eb5ce645ed791ae45f4e8c",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "0cd70c27075e46e6e160a18b214b80b6573988d39d5e94144759e61e967c500e",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "a6bb3de4c2e0bd9e2448f9dc69c19b018a681b0bed5c0691e4158339c3a1de7b",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "c23e807753adadf1e7043fb0e5579c93c19659c0e5b13b2273231c4b84e88973",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "03c109d3ac5bdc386002fb6282e2ea4990c60049b62e3b7b3e9aa13e0df22e02",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "f087e7a4102d7a299f87ef3add3d95287affae1b05263d4ead151f3b87c776bf",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "f3347b849daea49e47772c1a00634dcb2f2473619ac03bd7f3eb6190e2d5b242",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "a1095aee8b00556931c5591a01e6d0620edbeb0f673ddd8c4fd947b46848e420",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "7918fb843b615956452411859342b74b25ff5f5609ebc75a7ad8f4cf418d9dd3",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "cbc5de3959a4c1b09ba88828333500e40589f16d410585a69538ef400b7fcf32",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "915a73139876ca548a59861364793bf834ab646135a7da232f21bbc88494a718",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "a311645c24bb4409d62b0540d45b09e5f8fcabda49e572b2ea4f6845e9198e2f",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "a0b050f46c051978d5c829667abfff5c26298df0f3aa99aadd81d72620793ab8",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "48135f6cb4a519018d237c24189ccaf7598e00aeedf972b76681755dcfc08f23",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "7151ccd75363c2f5ebce33e045a723332b55dba6a10f077a15b6babb02bbbf18",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "4cfe75d32199db6344034f8b3986b4e52d189eb40d2ae1386ebc99181eaa241e",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "751d1e401c6303aa7f13ff287024414031bb37997950395e1840b28b6d235fe2",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "5a881f6eadb043dcb54ddc785fd0cc2fb5a4a2c900e413a5f510881b2b960919",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "b44a46c88936983b4d8cac0b0925a2936ff11aa0661811b079b01f144a732597",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "450122756bca0bcc0e6c517db8ab8f974ddd5ea2162a8c725afba0d8171af9a3",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "2997ded8f728d301d47d0bb4ee2a818623641aa9d71d48c61f3188fa2bdb2503",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "6d8fb18815cc269f6d8865a872a104e0fe96bd3210b4187e67cad69062b889e1",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "401fa60d9ccdc1550aec85bea25b02919adfc6b08350e01fb6f70fff514a5425",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "a52e84006aa5a60ed333f3c95ac84a66c7da99b84360906bd40c6af1ca8336f7",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "3033ff33bfe260da4713ed0d00f7d657182e51a91fad3cb5631263eb316491df",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "340139530204c9a3c26d4aa66b9b1df192b0ed206ca425be4bb43d0088a69442",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "5d57ce2331521c6e78f15cf9b0d9229badab9f20550ee938100962cebb404707",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "4752dc77254a51b6c22622a9139f4e3f5534f3b8e9a80334d58a42086fe49c39",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "1a61fa9fa2bc8ba26641f2e62d27a953305e5c610a17ea0f33e27ca0a5eb8ff0",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "e91b9e5e917523e3803c952d85e26397d0d19d1666a50cdfa324076c6c7d2871",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "0be9ec051a99d21a13fd9151649fca727c29d3016ffe635c450232565d6552ed",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "66e413d0a41cbe3983ae2aef1427c1de5fd9267400a28e194501d8fa6655a2f7",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "3b00f9aed4d65166e42948de10ca06d10a753ce1139f2a2426f739a692dc5b70",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "cec186c4ea62a157618057138a038b80eb955fbbf5e77edfc1817ab0f7a5c074",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "8a7518faecb796f3da17ad7e88038fa1c6d4907e7f2e82a8b31d4e928df3a10b",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "05cd08dbebabd22c94801672f920001ceb0115b63607b91e25de04156dcba24c",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "d3aa37b4109de25d74593cc8579586d165f10542b10f9d3b0aeb5078a6cee8c7",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "beccdeaa1926172468169be4db79b5e0dc661d83f370bc9b2fc9eade899daba2",
+          "signature": "1.2.840.10045.4.3.2"
+        }
+      ],
+      "name": "ref",
+      "next_update": 1795737613,
+      "nonprod": true,
+      "primary": "http://download-ref.tsl.telematik-test/ECC/ECC-RSA_TSL-ref.xml",
+      "production": false,
+      "rejected": [
+        {
+          "reason": "issuer is not a trusted root",
+          "sha256": "50f285d6c421fedda50ed9260af568cb1e9937c2a943f0a4b43c8dc2b6ecfb1e"
+        },
+        {
+          "reason": "issuer is not a trusted root",
+          "sha256": "68ee92399ec30741812b8ce833e56ebbf1adcef21306ee26a3f25bfb9a0566ec"
+        },
+        {
+          "reason": "self-signed, not under a trusted root",
+          "sha256": "092ba8471ccddafbac1ff96f69364b8b07524b463ffda46fe6576198a08befe9"
+        },
+        {
+          "reason": "issuer is not a trusted root",
+          "sha256": "5b0e1090e919904000fe84b7644f5e66349a847225c885441423b1b25c70cd65"
+        },
+        {
+          "reason": "self-signed, not under a trusted root",
+          "sha256": "11e4b6947bd362cf9908b993e2b8297ab526c59be0078543b22c242443a2e1c6"
+        }
+      ],
+      "scheme_sha256": "d36352f8c6315fb1cc9fbba03e16052b4c13020fdf5700b0c6942ff61ebd1c94",
+      "sequence": [
+        {
+          "id": "",
+          "number": 0,
+          "result": "newer"
+        },
+        {
+          "id": "ID31071720261028000013Z",
+          "number": 10717,
+          "result": "same"
+        },
+        {
+          "id": "another",
+          "number": 10716,
+          "result": "newer"
+        },
+        {
+          "id": "another",
+          "number": 10717,
+          "result": "tsl_id_incorrect"
+        },
+        {
+          "id": "another",
+          "number": 10718,
+          "result": "tsl_id_incorrect"
+        },
+        {
+          "id": "ID31071720261028000013Z",
+          "number": 10716,
+          "result": "tsl_id_incorrect"
+        },
+        {
+          "id": "ID31071720261028000013Z",
+          "number": 10718,
+          "result": "tsl_id_incorrect"
+        }
+      ],
+      "sequence_number": 10717,
+      "services": 232,
+      "services_sha256": "e3c35600d12cc22ed9570c80457c6cb938666fed02572cf46b4fe20a07bd3e0d",
+      "skipped": 0,
+      "stem": "ref/ECC-RSA_TSL-ref"
+    },
+    {
+      "backup": "http://download-bak-test.tsl.telematik-test/ECC/ECC-RSA_TSL-test.xml",
+      "id": "ID31071620261028000010Z",
+      "intermediates": 108,
+      "intermediates_sha256": "e5b3ef405c89e9025fa79bffdd3300a96ceb8c5abceffae0308b75a107497755",
+      "issued_at": 1793145610,
+      "kept": [
+        {
+          "sha256": "4d81e98b9658e4486f4102f1c36faac316e2560091f81265f6bc94604907cc90",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "7e79e6b67c23aee4a668bc20880cf9ad641e6d951e8b55abd386dbd249db6993",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "86afd8c1cb63333ce3b9e247f58082866ce7a7b936ab4c205ceaa9b264681d0d",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "5b2dbdbdd9b00aee8f473965d8d083b9b9b9318bfdbe1429b2cb33ef200f5b22",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "89962becf363341d23f4e34d297d9224d9fd87915d1727e1c1bfc9eab95408ba",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "d9268b8c8e82079c999d0d894a206a86f9e3343aee8fef4839c87de27e33a6bc",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "50b09641c461072e02344dc64353108616e3b2ab3bc167aaa8312c32741959df",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "99b1f8002d30d7b4e9085357d343d980bea5b52cc0e0824b0b4615f337c20aac",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "372cd26d4b8215ef41fb6294ed4fb9cb6776c2cddc478115bf8a049f257b961b",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "7f1012217327c3a74b8e415351357f3679203125a8aded8829dd239e1da3e773",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "43853a0e92bfd6e9e99f02c1d165a688aa94f0df74d8ea0ddf849ecd01be1d6a",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "b97422ef447dd82fa6a6bebaf83bbb7b4d99808dd81502fa36da37b604c067dc",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "61339fcd22366dbe9fa7baf84e7aca32a4b6b2f701edafee51c322eb1c366ffe",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "c40154e168d9daf46eb898bc83a7391cc55bcc62b60571897be71134596614b3",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "3932ec6006612e0364690d57b36e9a0a8871c61ee16af017c9309f242a4cf527",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "af304de55523b5c8b60995ce964048c3ad321ad2bd37a4f0f782a2426f9befd1",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "d449b4509c4c52977af2de805ec4c5d16de76dd7d98e8dd084face9f162d23ac",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "d38096c72434236b31867fd1ba94b70ce9f30e4f35bfd89c46bbaaad8e7fb06c",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "13a1982fbc86b35f680650c4151c189098104f4c7b576486985067e889d56899",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "5134b31153dec3f22b53b6444fa52af6636e817d9977babd1ffb0d188aa35433",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "fd3b05b76c3981534b39b4f1312008e5b61cc81c78ecf21dccc5253c7b166d6d",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "abd91661b1bb691471c10f9e0267007a0e8e45ec094d7c440e8a50c26b5b77fc",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "8540c1a59a1fc45b493d01ba1a78ef390f22dfe79a5e3dbbe71d5a6476c67bc8",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "9414c604277d19e21d99f505478155e097668184260f116d651a62525be77307",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "0ce83a33ed9240b4bbf7604a1cc715f0c17fcad834f7ce2e8e0c94433d3e6426",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "d3eac0f66cd18660967e5c15b1136e8ffdbfb5f390d3a8332c23690142b4d829",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "53b767fe1e4f3c2ee1a57834051a9a28d917f736f1a19b857d07ca26e868e5e3",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "06bce8e607107e471720591176daf8231b6ee2b830183c646621d92606d29a28",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "0617f3ee8624ae9d09a2c1246c6751867c29277f6be094ff973ed6bc725ba897",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "cef2e12f61688ae36f4209c1db3e91cd17925ba40bbd6913d61d6a4210f46acb",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "2d19a5d8ba66700197ca37e5ebf795be01fb4a16dd37ae8bab23ef7e6cbec5ef",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "23e6a1d4b676a1cb6913d45dd4b2333593eaf936d0d503aa3531f8ff47057f5c",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "b6a3b2a508cb69575c99b0b03796baae213b55b4b216e8f57370e5748e4d061c",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "6caae3682be337039a6fa1d528778fd36900a55d7a036b3e1de068c1cf052684",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "4d39209125a1dc2dd59635ab5ebca0db7eac068f4c49fb0ce4b3925d75379acb",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "30bc32979bf042227456e16988564562f2d5228a642c1d5aff005dc161795749",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "3b924ebcf3c00e606318e1cbc76521078d128207e83dc06e926e9d073f99d7e4",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "bc575d5950368af802eeaf8b4608dfeb7db84094742bd00e71de2d88218ef979",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "f3084806fca30e95d2cf6edaad4bbc9d79f143a26b963eecfdfa18800d9c07cc",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "86e516c533f97c282a4b6c198a82606bb9660a9eaf804ba9362dfaebb11b99d9",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "da7ba0b93e60bf753b1aef19c41dfcbd8db7b7e553ad1f97a83a4a06b29e49e8",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "ed84b18f629fd7bbe7d1b5dfd0e37cd0a7955d0eeeedba39c4a024db75d215e3",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "6a9250997e8ecab32659ff99a30981075b423592e121b680d189af2544509359",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "b03bedfb0b47dd71af9cfd644607b81b7ba6a3b92a3567fa45abe36f2ee7d92d",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "cb0c87c7fa29281f26b147d1632ade653499d9fbe184ca0b8bc01c8e57e66baf",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "d7602b0a413929885530d0f43efe7e55fc424030c2565ca38cb4c17a336f63fe",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "b3e29fa75e167a708dce55c3803ea1a05fbda511922d5975027324e034134179",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "05af6648b66ddba3b0126ee90d56e7d7f856da575fd60ae820bd8f93b29601ce",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "8edab4906f91ff1ac37eee2b2cdec506a81d871fd478951712e2ea23b7f36385",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "56a358fe85cb879e1153c0bed79a2c66396757abe11d16bcb86feff15d2401ea",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "d365216486fcad0c799101fe03397f5d59d35b8db263a335be6e505bfe27834b",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "03dff9b5be2cca98c84eb7322f2af3ca25cc54974c365d17b2341cdabb46c3fb",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "406dea676da2b97b108a227e645a02177325f8c92681b5a80f744bad3e545bbd",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "8af18a6fb6b36853390d846e778be29ad9d06715378b01477b8523e6f9d9160d",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "2eb06b5e3b02453ebbaed983af7d487bf4d92d7ae634505707a04a7b0a536632",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "772600d6a23ee10875f54a5939740891a2777eccc03ed4a49c15b8400749f534",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "dc4219fd2756e5292bcbf68b9f33fb571929212c77a30d636e01ecf9bb555ed9",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "7697dce22564b784e739bfe8340c47b18fd8299210d53b66336345c5f5059665",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "3062c4c1de9f5be29f7e5a67deeed9f317a0c7d2107459883090471e39228006",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "0af6d373ae960c15db03a5f61b150992940273db00c14b481678e6f164ca2cc1",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "3295536daf92e357a0faaa9703614adf354db38b3f4b242aca8872d0e1d9c056",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "8d00229350f5721388bf602b1ea2ee0ca0b96c3aa2017167eac1bafe0e2a7c5e",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "eb4d4447b5f0c4a4c5b5057ad5e8e5acfab432dd6debd34f1cab7c8ed983f126",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "78409444560f886a33e7a84723d588c6d9645422a48dff3f679d0c1ea80b9d4c",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "aa9f0e9b1d34c3de13a08ac655552d40a0484536c4bc0dd7266206bbb5c410a3",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "24c3655b1a3b80a5fff1d9d395ee2e8e247a117866eb5ce645ed791ae45f4e8c",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "0cd70c27075e46e6e160a18b214b80b6573988d39d5e94144759e61e967c500e",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "a6bb3de4c2e0bd9e2448f9dc69c19b018a681b0bed5c0691e4158339c3a1de7b",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "c23e807753adadf1e7043fb0e5579c93c19659c0e5b13b2273231c4b84e88973",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "03c109d3ac5bdc386002fb6282e2ea4990c60049b62e3b7b3e9aa13e0df22e02",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "f087e7a4102d7a299f87ef3add3d95287affae1b05263d4ead151f3b87c776bf",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "f3347b849daea49e47772c1a00634dcb2f2473619ac03bd7f3eb6190e2d5b242",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "a1095aee8b00556931c5591a01e6d0620edbeb0f673ddd8c4fd947b46848e420",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "7918fb843b615956452411859342b74b25ff5f5609ebc75a7ad8f4cf418d9dd3",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "cbc5de3959a4c1b09ba88828333500e40589f16d410585a69538ef400b7fcf32",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "915a73139876ca548a59861364793bf834ab646135a7da232f21bbc88494a718",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "a311645c24bb4409d62b0540d45b09e5f8fcabda49e572b2ea4f6845e9198e2f",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "a0b050f46c051978d5c829667abfff5c26298df0f3aa99aadd81d72620793ab8",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "48135f6cb4a519018d237c24189ccaf7598e00aeedf972b76681755dcfc08f23",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "7151ccd75363c2f5ebce33e045a723332b55dba6a10f077a15b6babb02bbbf18",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "4cfe75d32199db6344034f8b3986b4e52d189eb40d2ae1386ebc99181eaa241e",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "751d1e401c6303aa7f13ff287024414031bb37997950395e1840b28b6d235fe2",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "5a881f6eadb043dcb54ddc785fd0cc2fb5a4a2c900e413a5f510881b2b960919",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "b44a46c88936983b4d8cac0b0925a2936ff11aa0661811b079b01f144a732597",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "450122756bca0bcc0e6c517db8ab8f974ddd5ea2162a8c725afba0d8171af9a3",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "2997ded8f728d301d47d0bb4ee2a818623641aa9d71d48c61f3188fa2bdb2503",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "6d8fb18815cc269f6d8865a872a104e0fe96bd3210b4187e67cad69062b889e1",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "401fa60d9ccdc1550aec85bea25b02919adfc6b08350e01fb6f70fff514a5425",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "a52e84006aa5a60ed333f3c95ac84a66c7da99b84360906bd40c6af1ca8336f7",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "3033ff33bfe260da4713ed0d00f7d657182e51a91fad3cb5631263eb316491df",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "340139530204c9a3c26d4aa66b9b1df192b0ed206ca425be4bb43d0088a69442",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "5d57ce2331521c6e78f15cf9b0d9229badab9f20550ee938100962cebb404707",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "1a61fa9fa2bc8ba26641f2e62d27a953305e5c610a17ea0f33e27ca0a5eb8ff0",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "e91b9e5e917523e3803c952d85e26397d0d19d1666a50cdfa324076c6c7d2871",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "0be9ec051a99d21a13fd9151649fca727c29d3016ffe635c450232565d6552ed",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "66e413d0a41cbe3983ae2aef1427c1de5fd9267400a28e194501d8fa6655a2f7",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "3b00f9aed4d65166e42948de10ca06d10a753ce1139f2a2426f739a692dc5b70",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "cec186c4ea62a157618057138a038b80eb955fbbf5e77edfc1817ab0f7a5c074",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "8a7518faecb796f3da17ad7e88038fa1c6d4907e7f2e82a8b31d4e928df3a10b",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "05cd08dbebabd22c94801672f920001ceb0115b63607b91e25de04156dcba24c",
+          "signature": "1.2.840.113549.1.1.11"
+        },
+        {
+          "sha256": "d3aa37b4109de25d74593cc8579586d165f10542b10f9d3b0aeb5078a6cee8c7",
+          "signature": "1.2.840.10045.4.3.2"
+        },
+        {
+          "sha256": "beccdeaa1926172468169be4db79b5e0dc661d83f370bc9b2fc9eade899daba2",
+          "signature": "1.2.840.10045.4.3.2"
+        }
+      ],
+      "name": "test",
+      "next_update": 1795737610,
+      "nonprod": true,
+      "primary": "http://download-test.tsl.telematik-test/ECC/ECC-RSA_TSL-test.xml",
+      "production": false,
+      "rejected": [
+        {
+          "reason": "self-signed, not under a trusted root",
+          "sha256": "bc9b306293689f2db270711f13a3df8874bf6196c67e043cbc3e89996088d866"
+        },
+        {
+          "reason": "issuer is not a trusted root",
+          "sha256": "50f285d6c421fedda50ed9260af568cb1e9937c2a943f0a4b43c8dc2b6ecfb1e"
+        },
+        {
+          "reason": "issuer is not a trusted root",
+          "sha256": "68ee92399ec30741812b8ce833e56ebbf1adcef21306ee26a3f25bfb9a0566ec"
+        },
+        {
+          "reason": "self-signed, not under a trusted root",
+          "sha256": "092ba8471ccddafbac1ff96f69364b8b07524b463ffda46fe6576198a08befe9"
+        },
+        {
+          "reason": "issuer is not a trusted root",
+          "sha256": "5b0e1090e919904000fe84b7644f5e66349a847225c885441423b1b25c70cd65"
+        },
+        {
+          "reason": "self-signed, not under a trusted root",
+          "sha256": "11e4b6947bd362cf9908b993e2b8297ab526c59be0078543b22c242443a2e1c6"
+        }
+      ],
+      "scheme_sha256": "7353fd7767b24800a55c3f66bface00eac66f16fe5f1a27cddc60deff6be5a0e",
+      "sequence": [
+        {
+          "id": "",
+          "number": 0,
+          "result": "newer"
+        },
+        {
+          "id": "ID31071620261028000010Z",
+          "number": 10716,
+          "result": "same"
+        },
+        {
+          "id": "another",
+          "number": 10715,
+          "result": "newer"
+        },
+        {
+          "id": "another",
+          "number": 10716,
+          "result": "tsl_id_incorrect"
+        },
+        {
+          "id": "another",
+          "number": 10717,
+          "result": "tsl_id_incorrect"
+        },
+        {
+          "id": "ID31071620261028000010Z",
+          "number": 10715,
+          "result": "tsl_id_incorrect"
+        },
+        {
+          "id": "ID31071620261028000010Z",
+          "number": 10717,
+          "result": "tsl_id_incorrect"
+        }
+      ],
+      "sequence_number": 10716,
+      "services": 224,
+      "services_sha256": "92ff56cf6f6874fdc45e310ac3dc34a4632db13dad535e89d8010acf4d858733",
+      "skipped": 0,
+      "stem": "test/ECC-RSA_TSL-test"
+    }
+  ]
+}

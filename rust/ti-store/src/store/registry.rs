@@ -122,7 +122,7 @@ pub const WELL_KNOWN: NamespaceSpec = spec(
     7 * DAY,
     &["issuer"],
 );
-/// TSL bytes as downloaded.
+/// TSL bytes and its detached files as downloaded.
 pub const PKI_TSL: NamespaceSpec = spec("pki.tsl", Kind::Plain, Database::Cache, 30 * DAY, &[]);
 /// Root certificate bundles as downloaded.
 pub const PKI_ROOTS: NamespaceSpec = spec("pki.roots", Kind::Plain, Database::Cache, 30 * DAY, &[]);

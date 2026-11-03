@@ -247,9 +247,11 @@ impl CliError {
             CliError::EnvironmentUndetected(_) | CliError::Environment(_) => {
                 Some("pass --env prod, ref, test or dev")
             }
-            CliError::TrustLoad(_) => {
-                Some("check the network and the HTTP options (-v shows them), or pass --offline")
-            }
+            CliError::TrustLoad(_) => Some(
+                "check the network and the HTTP options (-v shows them), or pass --offline; \
+                     the TSL's signature is published only over plain HTTP, so port 80 to its \
+                     download point must be open",
+            ),
             CliError::HttpSetup(_) => Some("check --cacert, --capath and --proxy"),
             CliError::ServerUnreachable(_) => Some(
                 "check the host and port, the network and --proxy; or save the chain and pass it as FILE",
@@ -264,11 +266,12 @@ impl CliError {
             CliError::Connector(ti_connector_client::Error::Transport(_)) => Some(
                 "check the .kon url, the network and the Konnektor's TLS certificate (-v shows each call)",
             ),
+            CliError::Connector(ti_connector_client::Error::Discovery(
+                ti_connector_client::DiscoveryError::ForeignEndpoint { .. },
+            )) => Some(ti_connector_client::check::FOREIGN_ENDPOINT),
             CliError::Connector(ti_connector_client::Error::Fault(fault)) => Some(
                 fault
-                    .trace
-                    .iter()
-                    .find_map(|t| t.code.and_then(fault_hint))
+                    .hint()
                     .unwrap_or("the Konnektor refused the call; its code and text say why"),
             ),
             CliError::CardRestricted { .. } => Some(
@@ -370,55 +373,6 @@ impl From<serde_json::Error> for CliError {
     fn from(error: serde_json::Error) -> Self {
         CliError::Output(error.into())
     }
-}
-
-/// What to do about a Konnektor fault, by its gematik error code. Most are about the
-/// information model of gemSpec_Kon (Mandant, client system, workplace, card terminal),
-/// which the Konnektor's administrator maintains and the `.kon` call context names.
-fn fault_hint(code: i64) -> Option<&'static str> {
-    Some(match code {
-        4004 => {
-            "the Konnektor does not know the .kon mandantId; compare it with the Mandanten in the Konnektor's information model"
-        }
-        4005 => {
-            "the Konnektor does not know the .kon clientSystemId; compare it with the client systems in the Konnektor's information model"
-        }
-        4006 => {
-            "the Konnektor does not know the .kon workplaceId; compare it with the workplaces in the Konnektor's information model"
-        }
-        4007 => {
-            "the Konnektor does not know the card terminal (CtId); `connector get cards` lists the cards with their terminals"
-        }
-        4010 => {
-            "the .kon clientSystemId is not assigned to its mandantId in the Konnektor's information model"
-        }
-        4011 => {
-            "the .kon workplaceId is not assigned to its mandantId in the Konnektor's information model"
-        }
-        4012 => {
-            "the card's terminal is not assigned to the .kon mandantId in the Konnektor's information model; `connector get cards` shows the terminal"
-        }
-        4021 => {
-            "the call context is incomplete: the .kon needs mandantId, clientSystemId and workplaceId; some Konnektors answer 4021 for an ID they do not know as well, so compare all three with the Konnektor's information model"
-        }
-        4053 => {
-            "PIN entry for an eGK needs a card terminal assigned locally to the .kon workplaceId; assign the eGK's terminal to that workplace in the Konnektor's information model (`connector get cards` shows the terminal)"
-        }
-        4060 => "the card terminal (PIN pad, display) is busy with another operation; retry",
-        4092 => {
-            "the card is in a terminal that is not local to the .kon workplaceId, and the workplace has no Remote-PIN-KT; in the Konnektor's information model assign that terminal locally to the workplace or name a Remote-PIN-KT for it, or use a workplaceId the terminal is local to (`connector get cards` shows the card's terminal)"
-        }
-        4093 => {
-            "another client system holds the card in an exclusive session; retry once it is released"
-        }
-        4204 => {
-            "the Konnektor could not authenticate the client system: check the .kon credentials (basic user and password, or the PKCS#12) against the client authentication configured in the Konnektor (ANCL_CAUT_MODE)"
-        }
-        4263 => {
-            "comfort signature is switched off in the Konnektor; an administrator enables it in its management interface"
-        }
-        _ => return None,
-    })
 }
 
 /// Which of a profile's files a store failure concerns, for its message and hint.
@@ -561,7 +515,7 @@ mod tests {
     fn kon_4092_without_remote_pin_kt_hints_the_workplace() {
         names(
             hint(&[4092]),
-            &["Remote-PIN-KT", "workplaceId", "connector get cards"],
+            &["Remote-PIN-KT", "workplaceId", "card list"],
         );
     }
 
@@ -575,7 +529,7 @@ mod tests {
         names(hint(&[4004]), &["mandantId"]);
         names(hint(&[4005]), &["clientSystemId"]);
         names(hint(&[4006]), &["workplaceId"]);
-        names(hint(&[4007]), &["CtId", "connector get cards"]);
+        names(hint(&[4007]), &["CtId", "card list"]);
     }
 
     #[test]
@@ -618,5 +572,204 @@ mod tests {
             hint(&[4000]),
             "the Konnektor refused the call; its code and text say why"
         );
+    }
+
+    /// One error of every kind, in the order of [`CliError`]'s variants.
+    fn every_kind() -> Vec<CliError> {
+        let mut errors = local_kinds();
+        errors.extend(store_kinds());
+        errors.extend(remote_kinds());
+        errors
+    }
+
+    fn local_kinds() -> Vec<CliError> {
+        let pki = || ti_pki::Error::Malformed {
+            what: "certificate",
+            reason: "test".into(),
+        };
+        vec![
+            CliError::Read {
+                source_name: "a".into(),
+                source: io::Error::other("test"),
+            },
+            CliError::NoCertificate {
+                source_name: "a".into(),
+            },
+            CliError::Certificate {
+                source_name: "a".into(),
+                source: pki(),
+            },
+            CliError::Pkcs12 {
+                source_name: "a".into(),
+                source: ti_pkcs12::Error::MacMismatch,
+            },
+            CliError::Pkcs12 {
+                source_name: "a".into(),
+                source: ti_pkcs12::Error::Malformed {
+                    what: "PFX",
+                    reason: "test".into(),
+                },
+            },
+            CliError::OutputExists("a".into()),
+            CliError::EnvironmentUndetected("a".into()),
+            CliError::Environment("a".into()),
+            CliError::Arguments("a".into()),
+            CliError::Trust(pki()),
+            CliError::TrustLoad("a".into()),
+            CliError::UnknownSchema("a".into()),
+            CliError::ServerUnreachable("a".into()),
+            CliError::HttpSetup("a".into()),
+            CliError::CacheDir("a"),
+        ]
+    }
+
+    fn store_kinds() -> impl Iterator<Item = CliError> {
+        use ti_store::store::StoreError;
+        [
+            StoreError::NotFound,
+            StoreError::Expired,
+            StoreError::Malformed("a"),
+            StoreError::UnsupportedVersion("a"),
+            StoreError::UnknownKid,
+            StoreError::AuthFailed("a"),
+            StoreError::LimitExceeded("a"),
+            StoreError::InvalidArgument("a"),
+            StoreError::CapabilityMissing("a"),
+            StoreError::NoKeyring,
+            StoreError::InsecurePermissions,
+            StoreError::Busy,
+            StoreError::Backend("a".into()),
+        ]
+        .into_iter()
+        .map(|error| CliError::Store {
+            profile: "default".into(),
+            file: StoreFile::StateDb,
+            path: String::new(),
+            error,
+        })
+    }
+
+    fn remote_kinds() -> Vec<CliError> {
+        vec![
+            CliError::ConnectorConfig("a".into()),
+            CliError::Connector(Error::Transport(ti_connector_client::TransportError {
+                message: "a".into(),
+                timed_out: false,
+            })),
+            CliError::Connector(Error::Fault(Fault {
+                code: "soap:Server".into(),
+                message: "a".into(),
+                trace: Vec::new(),
+            })),
+            CliError::Connector(Error::Discovery(
+                ti_connector_client::DiscoveryError::NotAdvertised {
+                    service: "a".into(),
+                },
+            )),
+            CliError::Connector(Error::Decode("a".into())),
+            CliError::CardRestricted {
+                card_type: "EGK".into(),
+                source: Error::Decode("a".into()),
+            },
+            CliError::PinType("a".into()),
+            CliError::IdentityNotFound("a".into()),
+            CliError::KeyUnsupported("a".into()),
+            CliError::Claims("a".into()),
+            CliError::Header("a".into()),
+            CliError::Signing("a".into()),
+            CliError::SignatureMalformed("a".into()),
+            CliError::Idpd(ti_idpd::Error::Idp(ti_idpd::IdpError::default())),
+            CliError::Idpd(ti_idpd::Error::Transport {
+                what: "a",
+                source: ti_idpd::http::TransportError("a".into()),
+            }),
+            CliError::Idpd(ti_idpd::Error::Untrusted {
+                which: ti_idpd::trust::IdpCertificate::TokenSigner,
+                detail: "a".into(),
+            }),
+            CliError::Idpd(ti_idpd::Error::Malformed {
+                what: "a",
+                detail: "a".into(),
+            }),
+            CliError::Directory(Box::new(ti_directory::Error::Directory(
+                ti_directory::DirectoryError::default(),
+            ))),
+            CliError::Directory(Box::new(ti_directory::Error::AuthServer(
+                ti_directory::OAuthError::default(),
+            ))),
+            CliError::Directory(Box::new(ti_directory::Error::Transport {
+                what: "a",
+                source: ti_idpd::http::TransportError("a".into()),
+            })),
+            CliError::Directory(Box::new(ti_directory::Error::Malformed {
+                what: "a",
+                detail: "a".into(),
+            })),
+            CliError::Output(io::Error::other("a")),
+        ]
+    }
+
+    /// Fails to compile when a variant is added, so that [`every_kind`] gets it too.
+    fn has_a_sample(error: &CliError) {
+        match error {
+            CliError::Read { .. }
+            | CliError::NoCertificate { .. }
+            | CliError::Certificate { .. }
+            | CliError::Pkcs12 { .. }
+            | CliError::OutputExists(_)
+            | CliError::EnvironmentUndetected(_)
+            | CliError::Environment(_)
+            | CliError::Arguments(_)
+            | CliError::Trust(_)
+            | CliError::TrustLoad(_)
+            | CliError::UnknownSchema(_)
+            | CliError::ServerUnreachable(_)
+            | CliError::HttpSetup(_)
+            | CliError::CacheDir(_)
+            | CliError::Store { .. }
+            | CliError::ConnectorConfig(_)
+            | CliError::Connector(_)
+            | CliError::CardRestricted { .. }
+            | CliError::PinType(_)
+            | CliError::IdentityNotFound(_)
+            | CliError::KeyUnsupported(_)
+            | CliError::Claims(_)
+            | CliError::Header(_)
+            | CliError::Signing(_)
+            | CliError::SignatureMalformed(_)
+            | CliError::Idpd(_)
+            | CliError::Directory(_)
+            | CliError::Output(_) => {}
+        }
+    }
+
+    /// AGENTS.md, which `ti agent` prints, names every error kind with its exit code,
+    /// and only those (docs/conventions/agents.md: the guide matches the binary).
+    #[test]
+    fn the_guide_lists_every_error_kind_with_its_exit_code() {
+        let mut kinds: Vec<(String, u8)> = every_kind()
+            .iter()
+            .inspect(|e| has_a_sample(e))
+            .map(|e| (e.kind().to_owned(), e.exit() as u8))
+            .collect();
+        kinds.sort();
+        kinds.dedup();
+        let guide = include_str!("../AGENTS.md");
+        let section = guide
+            .split("\n## Error kinds\n")
+            .nth(1)
+            .expect("AGENTS.md has an Error kinds section");
+        let section = section.split("\n## ").next().unwrap_or(section);
+        let mut listed: Vec<(String, u8)> = section
+            .lines()
+            .filter_map(|line| {
+                let mut cells = line.split('|').map(str::trim).skip(1);
+                let kind = cells.next()?.strip_prefix('`')?.strip_suffix('`')?;
+                let exit = cells.next()?.parse().ok()?;
+                Some((kind.to_owned(), exit))
+            })
+            .collect();
+        listed.sort();
+        assert_eq!(listed, kinds);
     }
 }

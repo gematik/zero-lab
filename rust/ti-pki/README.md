@@ -12,16 +12,18 @@ Implemented: roots.json verified from the embedded anchor (the A_28419 cross-cer
 walk), the TSL's CAs kept only when a verified root signed them, chain building, path
 validation, the gemSpec_Krypt key check, certificate types and profiles, OCSP for the end
 entity and every CA below the root, and loading with cache, bundle and reload. The TSL
-is verified as `spec/tsl-xmldsig` requires (signature, signer under the TSL signer CA,
-signer OCSP, `NextUpdate`, sequence) but stays a source of candidate intermediates, not
-of trust.
+is verified by the detached signature gematik publishes next to it, with the signer's
+status from the published OCSP response (`spec/tsl-detached`), then the signer under the
+TSL signer CA, `NextUpdate` and the sequence (`spec/tsl-xmldsig` parts B to G). It stays a
+source of candidate intermediates, not of trust.
 
 The gematik specifications it implements, in the versions it follows:
 [gemSpec_PKI V2.28.0](https://gemspec.gematik.de/downloads/gemSpec/gemSpec_PKI/gemSpec_PKI_V2.28.0.html),
 [gemSpec_TSL V1.25.0](https://gemspec.gematik.de/downloads/gemSpec/gemSpec_TSL/gemSpec_TSL_V1.25.0.html),
 [gemSpec_Krypt V2.51.0](https://gemspec.gematik.de/downloads/gemSpec/gemSpec_Krypt/gemSpec_Krypt_V2.51.0.html),
 [gemKPT_PKI_TIP V2.14.0](https://gemspec.gematik.de/downloads/gemKPT/gemKPT_PKI_TIP/gemKPT_PKI_TIP_V2.14.0.html).
-The TSL signature rules derived from them are in
+The TSL rules derived from them are in
+[`spec/tsl-detached`](../../spec/tsl-detached/README.md) and
 [`spec/tsl-xmldsig`](../../spec/tsl-xmldsig/README.md).
 
 The reference implementation is the Go package
@@ -53,7 +55,7 @@ builds leave it off.
 
 With the `load` feature, `ti_pki::load` loads roots.json and the TSL through pluggable,
 untrusted loaders, verifies them, and swaps them into a shared trust store. A production
-wiring with a cache, an offline fallback and a background reloader:
+wiring with a cache, an offline fallback and a reloader:
 
 ```rust
 use std::sync::Arc;
@@ -61,11 +63,10 @@ use ti_pki::load::{
     Bundle, CachePolicy, CachingLoader, FallbackLoader, HttpLoader, ReloadOutcome,
     ReloadPolicy, Reloader, StaticLoader, SystemClock,
 };
-use ti_pki::reqwest::ReqwestTransport;
 use ti_pki::{Tier, TrustConfig};
 
 let cfg = TrustConfig::preset_prod();
-let transport = ReqwestTransport::new(client); // proxy, timeouts, TLS set by the caller
+let transport = my_transport; // any load::Transport; proxy, timeouts, TLS are the host's
 let online = CachingLoader::new(
     HttpLoader::new(&cfg, transport, SystemClock),
     my_kv, // any CacheStore
@@ -78,7 +79,7 @@ let reloader = Arc::new(Reloader::new(cfg, Tier::Prod, loader, SystemClock, Relo
 if let ReloadOutcome::Expired { error } = reloader.tick().await {
     return Err(error.into()); // fail startup
 }
-let task = ti_pki::tokio::spawn_reloader(Arc::clone(&reloader))?;
+// The host calls reloader.tick() when reloader.until_due() has passed, on its own runtime.
 let store = reloader.handle().snapshot()?; // per request
 ```
 
@@ -124,8 +125,6 @@ let config = TrustConfig {
 | `rsa` (default) | RSA PKCS#1 v1.5 and PSS in the default algorithm set; the historical RSA roots GEM.RCA2/6/9 need it for the roots walk |
 | `load` | Loaders, cache, reloader; no HTTP client or executor; builds for wasm32 |
 | `os` | `FileTransport`, `SystemClock`, bundle files |
-| `reqwest` | `ti_pki::reqwest::ReqwestTransport` over a caller-provided client (native and wasm32) |
-| `tokio` | `ti_pki::tokio`: background reloader, SIGHUP, admin trigger |
 
 ## License
 

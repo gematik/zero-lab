@@ -32,7 +32,8 @@
     "credentials": {
       "enum": [
         "basic",
-        "pkcs12"
+        "pkcs12",
+        "none"
       ]
     },
     "environment": {

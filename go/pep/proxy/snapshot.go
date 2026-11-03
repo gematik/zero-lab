@@ -29,8 +29,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwe"
+	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/pep"
 )
@@ -73,8 +72,7 @@ func newSnapshotter(keyPath, prevKeyPath string, ttl time.Duration) (*snapshotte
 	return s, nil
 }
 
-// loadBase64Key reads a base64-encoded 256-bit key from a file (the snapshot key and the session-store
-// at-rest key share this format).
+// loadBase64Key reads a base64-encoded 256-bit key from a file.
 func loadBase64Key(path string) ([]byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -98,11 +96,19 @@ func (s *snapshotter) mint(sid string, identity map[string]any) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	enc, err := jwe.Encrypt(payload, jwe.WithKey(jwa.DIRECT(), s.encKey), jwe.WithContentEncryption(jwa.A256GCM()))
+	encrypter, err := jose.NewEncrypter(jose.A256GCM, jose.Recipient{Algorithm: jose.DIRECT, Key: s.encKey}, nil)
 	if err != nil {
 		return "", fmt.Errorf("encrypt snapshot: %w", err)
 	}
-	return string(enc), nil
+	sealed, err := encrypter.Encrypt(payload)
+	if err != nil {
+		return "", fmt.Errorf("encrypt snapshot: %w", err)
+	}
+	enc, err := sealed.CompactSerialize()
+	if err != nil {
+		return "", fmt.Errorf("encrypt snapshot: %w", err)
+	}
+	return enc, nil
 }
 
 // open decrypts and validates a snapshot via the shared pep validation (so the verifier and zaddy use the

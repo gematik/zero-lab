@@ -26,40 +26,45 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 	"uuid"
 )
 
+// EntitlementRequestType is the body of setEntitlementPs: the signed entitlement JWT.
 type EntitlementRequestType struct {
 	JWT string `json:"jwt"`
 }
 
+// EntitlementRequestTypeV2 is the body of setEntitlementPsV2: the PoPP token as issued.
 type EntitlementRequestTypeV2 struct {
 	PoPP string `json:"popp"`
 }
 
+// ValidToResponseType is the answer of setEntitlementPsV2.
 type ValidToResponseType struct {
 	ValidTo time.Time `json:"validTo"`
 }
 
 // ProvidePoPPFunc returns a PoPP token (JWS compact, typ vnd.telematik.popp+jwt)
 // for the given insurant, exactly as issued by the PoPP Service.
-type ProvidePoPPFunc func(insurantId string) (string, error)
+type ProvidePoPPFunc func(insurantID string) (string, error)
 
 // SetEntitlementPN entitles the current SMC-B for the insurant's record via
 // setEntitlementPs, using caller-supplied VSDM proof material: the
 // Prüfziffer (auditEvidence) and hash check value. The session only signs
 // and transports; obtaining the proof is the caller's concern.
-func (s *Session) SetEntitlementPN(insurantId string, auditEvidence string, hcv []byte) error {
+func (s *Session) SetEntitlementPN(insurantID string, auditEvidence string, hcv []byte) error {
 	identity, err := s.identity()
 	if err != nil {
 		return err
 	}
 	if s.VAUChannel == nil {
-		return fmt.Errorf("no open VAU channel")
+		return errors.New("no open VAU channel")
 	}
 
 	iat := time.Now().Add(-60 * time.Second)
@@ -79,19 +84,19 @@ func (s *Session) SetEntitlementPN(insurantId string, auditEvidence string, hcv 
 		JWT: string(jwt),
 	}
 
-	body, err := json.Marshal(entitlement)
+	body, err := json.Marshal(entitlement) //nolint:gosec // the signed entitlement JWT is the payload this request exists to send through the VAU channel
 	if err != nil {
 		return fmt.Errorf("marshaling body: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", "/epa/basic/api/v1/ps/entitlements", bytes.NewBuffer(body))
+	req, err := http.NewRequest(http.MethodPost, "/epa/basic/api/v1/ps/entitlements", bytes.NewBuffer(body))
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}
-	req.Header.Set("x-insurantid", insurantId)
+	req.Header.Set("x-insurantid", insurantID)
 	req.Header.Set("x-useragent", UserAgent)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
+	req.Header.Set("Content-Length", strconv.Itoa(len(body)))
 
 	slog.Debug("Sending entitlement request", "body", string(body))
 
@@ -101,7 +106,7 @@ func (s *Session) SetEntitlementPN(insurantId string, auditEvidence string, hcv 
 	}
 
 	if resp.StatusCode != http.StatusCreated {
-		return parseHttpError(resp)
+		return parseHTTPError(resp)
 	}
 
 	return nil
@@ -113,9 +118,9 @@ func (s *Session) SetEntitlementPN(insurantId string, auditEvidence string, hcv 
 // the registered entitlement.
 // A_27671 - the token is single-use: a failed request must not be retried
 // with the same token, and the token is never logged.
-func (s *Session) SetEntitlementPoPP(insurantId string, poppToken string) (time.Time, error) {
+func (s *Session) SetEntitlementPoPP(insurantID string, poppToken string) (time.Time, error) {
 	if s.VAUChannel == nil {
-		return time.Time{}, fmt.Errorf("no open VAU channel")
+		return time.Time{}, errors.New("no open VAU channel")
 	}
 
 	entitlement := EntitlementRequestTypeV2{
@@ -127,17 +132,17 @@ func (s *Session) SetEntitlementPoPP(insurantId string, poppToken string) (time.
 		return time.Time{}, fmt.Errorf("marshaling body: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", "/epa/basic/api/v2/ps/entitlements", bytes.NewBuffer(body))
+	req, err := http.NewRequest(http.MethodPost, "/epa/basic/api/v2/ps/entitlements", bytes.NewBuffer(body))
 	if err != nil {
 		return time.Time{}, fmt.Errorf("creating request: %w", err)
 	}
-	req.Header.Set("x-insurantid", insurantId)
+	req.Header.Set("x-insurantid", insurantID)
 	req.Header.Set("x-useragent", UserAgent)
 	req.Header.Set("x-request-id", uuid.NewV4().String())
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
+	req.Header.Set("Content-Length", strconv.Itoa(len(body)))
 
-	slog.Debug("Sending PoPP entitlement request", "insurantId", insurantId)
+	slog.Debug("Sending PoPP entitlement request", "insurantId", insurantID)
 
 	resp, err := s.VAUChannel.Do(req)
 	if err != nil {
@@ -146,7 +151,7 @@ func (s *Session) SetEntitlementPoPP(insurantId string, poppToken string) (time.
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		return time.Time{}, parseHttpError(resp)
+		return time.Time{}, parseHTTPError(resp)
 	}
 
 	var validTo ValidToResponseType

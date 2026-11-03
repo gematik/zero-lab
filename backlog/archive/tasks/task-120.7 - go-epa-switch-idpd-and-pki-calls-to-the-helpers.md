@@ -1,0 +1,40 @@
+---
+id: TASK-120.7
+title: 'go/epa: switch idpd and pki calls to the helpers'
+status: To Do
+assignee: []
+created_date: 2026-10-20 14:07
+updated_date: '2026-11-02T06:16:00Z'
+labels:
+  - go
+  - epa
+  - parked
+dependencies:
+  - TASK-120.4
+  - TASK-120.5
+  - TASK-120.6
+parent_task_id: TASK-120
+priority: medium
+ordinal: 132000
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+Waits for the maintainer's design of the ePA local setup (local test environment, local client, middleware in Docker). Then go/epa calls ti-idpd-helper for idpd authenticate and ti-pki-helper for pki verify and verify-signature, each started once per session as a stdio child through go/tirpc, instead of one ti process per call. identity inspect and sign stay on ti until a ti-identity-helper exists.
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 design of the ePA local setup agreed with the maintainer
+- [ ] #2 epa uses the helpers for idpd and pki
+- [ ] #3 HITL of the ePA flow proven by the maintainer
+<!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-01: the maintainer keeps the per-call ti for epa for now; whether epa in Docker moves to the stateless helpers in supplied mode (trust material from the mounted directory of TASK-173) is decided with the ePA local setup design. epa is a hybrid, a client deployed like a server; what stateless means for it is in doc-2.
+
+2026-11-02, maintainer: parked. Critical flows go native (decision-10, amendment of 2026-11-02), so the helper does not continue for now. The work stays on the unmerged branches feat/ti-pki-helper and feat/ti-trust-export; spec/ti-rpc, ti-pki-helper, go/tirpc and ti pki trust export live there.
+<!-- SECTION:NOTES:END -->

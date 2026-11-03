@@ -22,18 +22,19 @@
 package authzserver
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"slices"
 
-	"gopkg.in/yaml.v3"
+	yaml "go.yaml.in/yaml/v4"
 )
 
 // Product is an application registered with the authorization server. It owns the redirect-URI and
 // scope policy that all of its client instances share. Products are loaded inline from the config
 // (products:) and/or from a gematik clients-policy file (clients_policy_path).
 type Product struct {
-	ProductID         string   `yaml:"product_id" json:"product_id" validate:"required"`
+	ProductID         string   `yaml:"product_id" json:"product_id"`
 	ProductName       string   `yaml:"product_name" json:"product_name"`
 	ManufacturerID    string   `yaml:"manufacturer_id" json:"manufacturer_id"`
 	ManufacturerName  string   `yaml:"manufacturer_name" json:"manufacturer_name"`
@@ -48,14 +49,18 @@ type Product struct {
 	PushGateway      any      `yaml:"push_gateway" json:"push_gateway"`
 }
 
+// IsAllowedRedirectURI reports whether redirectURI is registered for the product. The comparison is exact
+// string matching (RFC 9700 §2.1).
 func (p *Product) IsAllowedRedirectURI(redirectURI string) bool {
 	return slices.Contains(p.RedirectURIs, redirectURI)
 }
 
+// IsAllowedScope reports whether scope is registered for the product.
 func (p *Product) IsAllowedScope(scope string) bool {
 	return slices.Contains(p.Scopes, scope)
 }
 
+// IsAllowedScopes reports whether every one of scopes is registered for the product. An empty list passes.
 func (p *Product) IsAllowedScopes(scopes []string) bool {
 	for _, scope := range scopes {
 		if !p.IsAllowedScope(scope) {
@@ -65,10 +70,12 @@ func (p *Product) IsAllowedScopes(scopes []string) bool {
 	return true
 }
 
+// ProductsRegistry finds the products registered with the server by their product_id.
 type ProductsRegistry struct {
 	products map[string]*Product
 }
 
+// NewProductsRegistry indexes products by ProductID. Of two products with one ID, the later one wins.
 func NewProductsRegistry(products []*Product) *ProductsRegistry {
 	indexed := make(map[string]*Product, len(products))
 	for _, p := range products {
@@ -77,6 +84,7 @@ func NewProductsRegistry(products []*Product) *ProductsRegistry {
 	return &ProductsRegistry{products: indexed}
 }
 
+// GetProduct returns the product registered under productID, or an error if there is none.
 func (r *ProductsRegistry) GetProduct(productID string) (*Product, error) {
 	if p, ok := r.products[productID]; ok {
 		return p, nil
@@ -110,8 +118,15 @@ func LoadProductsFile(path string) ([]*Product, error) {
 	var doc struct {
 		Products []*Product `yaml:"clients"`
 	}
-	if err := yaml.Unmarshal(yamlData, &doc); err != nil {
+	if err := decodeYAML(yamlData, &doc); err != nil {
 		return nil, fmt.Errorf("unmarshal products file '%s': %w", path, err)
 	}
 	return doc.Products, nil
+}
+
+// decodeYAML refuses an unknown key, so an outdated file stops the start.
+func decodeYAML(data []byte, v any) error {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	return decoder.Decode(v)
 }

@@ -37,6 +37,12 @@ use support::{assert_conforms, schema, violations};
 
 const ROOTS_URL: &str = "https://download.tsl.ti-dienste.de/ECC/ROOT-CA/roots.json";
 const TSL_URL: &str = "https://download.tsl.ti-dienste.de/ECC/ECC-RSA_TSL.xml";
+/// Where the list's detached signature is published (A_21182).
+const TSL_SIG_URL: &str = "http://download.crl.ti-dienste.de/TSL-ECC/ECC-RSA_TSL.sig";
+/// The published PU set.
+const PROD_SET: &str = "../../spec/tsl-detached/testdata/prod/ECC-RSA_TSL";
+/// The time it was captured at.
+const CAPTURED_AT: &str = "2026-11-01T16:47:42Z";
 
 fn manifest(path: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(path)
@@ -131,11 +137,8 @@ impl SeededCache {
                 ROOTS_URL,
                 manifest("../ti-pki/src/roots-prod.json"),
             ),
-            (
-                "pki.tsl",
-                TSL_URL,
-                manifest("../ti-pki/tests/fixtures/tsl/ECC-RSA_TSL.xml"),
-            ),
+            ("pki.tsl", TSL_URL, manifest(&format!("{PROD_SET}.xml"))),
+            ("pki.tsl", TSL_SIG_URL, manifest(&format!("{PROD_SET}.sig"))),
         ]
         .into_iter()
         .map(|(ns, url, body)| {
@@ -227,8 +230,8 @@ fn every_command_matches_its_schema() {
     );
     let show: Value = serde_json::from_slice(&show.stdout).unwrap();
     assert_eq!(
-        show["counts"]["kept"], 84,
-        "as pinned in ti-pki's tsl tests"
+        show["counts"]["kept"], 71,
+        "as pinned in ti-pki's load tests"
     );
     let under_roots: usize = show["roots"]
         .as_array()
@@ -237,10 +240,10 @@ fn every_command_matches_its_schema() {
         .map(|root| root["cas"].as_array().unwrap().len())
         .sum();
     assert_eq!(
-        under_roots, 84,
+        under_roots, 71,
         "every kept CA sits under the root that signed it"
     );
-    assert_eq!(show["rejected"].as_array().unwrap().len(), 6);
+    assert_eq!(show["rejected"].as_array().unwrap().len(), 5);
 
     let rejected = json_of(
         c,
@@ -410,6 +413,35 @@ fn roots_bundle_writes_what_it_reports() {
     );
 }
 
+/// The trust bundle: what it reports, and that it refuses to overwrite without being told.
+#[test]
+fn trust_export_writes_a_bundle_a_consumer_loads() {
+    let cache = SeededCache::new("trust-export");
+    let c = &cache.0;
+    let run = offline;
+    let out = c.join("trust-bundle.json").display().to_string();
+    let args = ["pki", "trust", "export", "-o", &out];
+    let exported = json_of(c, "pki trust export", &run(&args));
+    let exported: Value = serde_json::from_slice(&exported.stdout).unwrap();
+    assert_eq!(exported["environment"], "prod");
+    assert_eq!(exported["output"], out.as_str());
+    let written = std::fs::read(&out).unwrap();
+    assert_eq!(exported["bytes"], written.len());
+    assert_eq!(exported["fits_config_map"], true);
+    let bundle = ti_pki::load::Bundle::from_slice(&written).unwrap();
+    bundle
+        .check_anchor(&ti_pki::TrustConfig::preset_prod())
+        .unwrap();
+    let published = std::fs::read(manifest(&format!("{PROD_SET}.xml"))).unwrap();
+    assert_eq!(bundle.material.tsl, published);
+    assert!(bundle.material.detached.is_some());
+
+    let again = ti(c, &run(&args));
+    assert!(!again.status.success());
+    let with_force = [&args[..], &["--force"]].concat();
+    json_of(c, "pki trust export", &run(&with_force));
+}
+
 /// The TSL's CA bundle and the TSL export: what they write, and their reports.
 #[test]
 fn tsl_bundle_and_export_write_what_they_report() {
@@ -444,8 +476,16 @@ fn tsl_bundle_and_export_write_what_they_report() {
         &run(&["pki", "tsl", "export", "-o", &tsl]),
     );
     let exported: Value = serde_json::from_slice(&exported.stdout).unwrap();
-    let published =
-        std::fs::read(manifest("../ti-pki/tests/fixtures/tsl/ECC-RSA_TSL.xml")).unwrap();
+    assert_eq!(
+        std::fs::read(c.join("tsl.sig")).unwrap(),
+        std::fs::read(manifest(&format!("{PROD_SET}.sig"))).unwrap(),
+        "the list comes with its signature (TSLDET-013)"
+    );
+    assert_eq!(
+        exported["signature_file"],
+        c.join("tsl.sig").to_string_lossy().as_ref()
+    );
+    let published = std::fs::read(manifest(&format!("{PROD_SET}.xml"))).unwrap();
     assert_eq!(
         std::fs::read(&tsl).unwrap(),
         published,
@@ -688,7 +728,7 @@ fn cache_clear_removes_only_the_profiles_cache() {
     );
     let out = ti(&cache.0, &["--format", "json", "cache", "clear"]);
     let report: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(report["removed_records"], 3);
+    assert_eq!(report["removed_records"], 4);
     assert_eq!(report["profile"], "default");
     assert!(cache.0.join("keep.txt").exists(), "other files stay");
 
@@ -892,7 +932,8 @@ fn store_doctor_checks_and_traces() {
         .clone();
     assert_eq!(
         (pki_tsl["records"].as_u64(), pki_tsl["expired"].as_u64()),
-        (Some(1), Some(0))
+        (Some(2), Some(0)),
+        "the list and its signature"
     );
 
     let created = store_env(&mut Command::new(env!("CARGO_BIN_EXE_ti")), c)
@@ -942,22 +983,16 @@ fn verify_codes_are_ti_pkis() {
 fn tsl_verify_matches_its_schema() {
     let dir = std::env::temp_dir().join(format!("ti-tsl-verify-{}", std::process::id()));
     let c = &dir;
-    let tsl = manifest("../ti-pki/tests/fixtures/tsl/ECC-RSA_TSL.xml");
-    let tsl = tsl.to_str().unwrap();
-    let verified = json_of(
-        c,
-        "pki tsl verify",
-        &["pki", "tsl", "verify", tsl, "--at", "2026-10-01T00:00:00Z"],
-    );
+    let tsl = manifest(&format!("{PROD_SET}.xml"));
+    let sig = manifest(&format!("{PROD_SET}.sig"));
+    let (tsl, sig) = (tsl.to_str().unwrap(), sig.to_str().unwrap());
+    let args = |at: &'static str| ["pki", "tsl", "verify", tsl, sig, "--at", at];
+    let verified = json_of(c, "pki tsl verify", &args(CAPTURED_AT));
     assert_eq!(verified.status.code(), Some(0));
     let verified: Value = serde_json::from_slice(&verified.stdout).unwrap();
     assert_eq!(verified["tier"], "prod");
     assert_eq!(verified["anchor"]["common_name"], "GEM.TSL-CA3");
-    let expired = json_of(
-        c,
-        "pki tsl verify",
-        &["pki", "tsl", "verify", tsl, "--at", "2028-06-01T00:00:00Z"],
-    );
+    let expired = json_of(c, "pki tsl verify", &args("2028-06-01T00:00:00Z"));
     assert_eq!(expired.status.code(), Some(1));
     let expired: Value = serde_json::from_slice(&expired.stdout).unwrap();
     assert_eq!(expired["code"], "certificate_not_valid_time");
@@ -965,33 +1000,196 @@ fn tsl_verify_matches_its_schema() {
     assert!(expired["signer"].is_null());
 }
 
-/// Offline: the warning instead of the signer's status; --previous decides the sequence.
+/// TSLDET-020: the supplied status replaces the network query, and the report says so.
 #[test]
-fn tsl_verify_offline_with_a_previous_list() {
-    let dir = std::env::temp_dir().join(format!("ti-tsl-previous-{}", std::process::id()));
-    let real = |name: &str| {
-        manifest(&format!("../../spec/tsl-xmldsig/testdata/tsl/real/{name}"))
-            .to_str()
-            .unwrap()
-            .to_owned()
+fn tsl_verify_reports_the_supplied_status() {
+    let dir = std::env::temp_dir().join(format!("ti-tsl-detached-{}", std::process::id()));
+    let set = |suffix: &str| {
+        manifest(&format!(
+            "../../spec/tsl-detached/testdata/ref/ECC-RSA_TSL-ref.{suffix}"
+        ))
     };
-    let (older, newer) = (real("pu-10333.xml"), real("pu-10334.xml"));
-    let at = "2026-10-01T00:00:00Z";
-    let newer_out = json_of(
+    let (xml, sig, ocsp) = (set("xml"), set("sig"), set("ocsp"));
+    let out = json_of(
         &dir,
         "pki tsl verify",
         &[
             "pki",
             "tsl",
             "verify",
-            &newer,
-            "--previous",
-            &older,
-            "--offline",
+            xml.to_str().unwrap(),
+            sig.to_str().unwrap(),
+            "--signer-status",
+            ocsp.to_str().unwrap(),
             "--at",
-            at,
+            "2026-11-01T16:47:42Z",
         ],
     );
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["result"], "valid");
+    assert_eq!(report["tier"], "nonprod");
+    assert_eq!(report["signer_status"]["status"], "good");
+    assert_eq!(report["signer_status"]["responder_url"], "supplied");
+    assert_eq!(report["warnings"], serde_json::json!([]));
+}
+
+/// The loaders' detached files through the real profile store, offline, at and before
+/// the capture time: the list verifies by its `.sig`, and a past `--at` does not use the
+/// `.ocsp`, whose answer says nothing about that time. A mock store could not see this.
+#[test]
+fn tsldet_023_a_past_time_does_not_use_the_published_status() {
+    let dir = std::env::temp_dir().join(format!("ti-tsl-show-det-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let set = |suffix: &str| {
+        std::fs::read(manifest(&format!(
+            "../../spec/tsl-detached/testdata/prod/ECC-RSA_TSL.{suffix}"
+        )))
+        .unwrap()
+    };
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let origin = "http://download.crl.ti-dienste.de/TSL-ECC/ECC-RSA_TSL";
+    let roots = std::fs::read(manifest("../ti-pki/src/roots-prod.json")).unwrap();
+    seed_cache_db(
+        &dir,
+        &[
+            ("pki.roots", url_id(ROOTS_URL), cache_payload(now, &roots)),
+            ("pki.tsl", url_id(TSL_URL), cache_payload(now, &set("xml"))),
+            (
+                "pki.tsl",
+                url_id(&format!("{origin}.sig")),
+                cache_payload(now, &set("sig")),
+            ),
+            (
+                "pki.tsl",
+                url_id(&format!("{origin}.ocsp")),
+                cache_payload(now, &set("ocsp")),
+            ),
+        ],
+    );
+    for at in ["2026-11-01T16:47:42Z", "2026-11-01T10:00:00Z"] {
+        let out = json_of(
+            &dir,
+            "pki tsl show",
+            &[
+                "pki",
+                "tsl",
+                "show",
+                "--env",
+                "prod",
+                "--offline",
+                "--at",
+                at,
+            ],
+        );
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{at}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!(
+            report["warnings"],
+            serde_json::json!(["no_ocsp_check"]),
+            "{at}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Stdin can be read once: two inputs from it are a usage error, not an empty signature
+/// reported as an invalid list.
+#[test]
+fn tsl_verify_takes_at_most_one_input_from_stdin() {
+    let dir = std::env::temp_dir().join(format!("ti-tsl-stdin-{}", std::process::id()));
+    let sig = manifest(&format!("{PROD_SET}.sig"));
+    for args in [
+        vec!["pki", "tsl", "verify", "-", "-"],
+        vec![
+            "pki",
+            "tsl",
+            "verify",
+            "-",
+            sig.to_str().unwrap(),
+            "--signer-status",
+            "-",
+        ],
+    ] {
+        assert_eq!(ti(&dir, &args).status.code(), Some(2), "{args:?}");
+    }
+}
+
+/// The list and its signature are both required, in that order.
+#[test]
+fn tsl_verify_needs_the_signature() {
+    let dir = std::env::temp_dir().join(format!("ti-tsl-args-{}", std::process::id()));
+    let xml = manifest(&format!("{PROD_SET}.xml"));
+    let out = ti(&dir, &["pki", "tsl", "verify", xml.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(2));
+}
+
+/// TSLDET-005 through the CLI: a changed list fails on the detached signature.
+#[test]
+fn tsl_verify_rejects_a_tampered_list() {
+    let dir = std::env::temp_dir().join(format!("ti-tsl-tampered-{}", std::process::id()));
+    let xml = manifest("../../spec/tsl-detached/testdata/derived/ref-tampered.xml");
+    let sig = manifest("../../spec/tsl-detached/testdata/ref/ECC-RSA_TSL-ref.sig");
+    let out = json_of(
+        &dir,
+        "pki tsl verify",
+        &[
+            "pki",
+            "tsl",
+            "verify",
+            xml.to_str().unwrap(),
+            sig.to_str().unwrap(),
+            "--at",
+            "2026-11-01T16:47:42Z",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(1));
+    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["code"], "detached_signature_error");
+    assert_eq!(report["rule"], "TSLDET-005");
+}
+
+/// Offline: the warning instead of the signer's status; --previous decides the sequence.
+#[test]
+fn tsl_verify_offline_with_a_previous_list() {
+    let dir = std::env::temp_dir().join(format!("ti-tsl-previous-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = |p: PathBuf| p.to_str().unwrap().to_owned();
+    let list = path(manifest(&format!("{PROD_SET}.xml")));
+    let sig = path(manifest(&format!("{PROD_SET}.sig")));
+    let older = path(manifest(
+        "../../spec/tsl-xmldsig/testdata/tsl/real/pu-10334.xml",
+    ));
+    // --previous only reads a list's identity: a later one is made from the published one.
+    let later = dir.join("later.xml");
+    let published = String::from_utf8(std::fs::read(&list).unwrap()).unwrap();
+    std::fs::write(
+        &later,
+        published
+            .replace("<TSLSequenceNumber>10337<", "<TSLSequenceNumber>10338<")
+            .replacen("ID31033720261028000007Z", "ID31033820261127000007Z", 1),
+    )
+    .unwrap();
+    let later = path(later);
+    let verify = |extra: &[&str]| {
+        let mut args = vec!["pki", "tsl", "verify", &list, &sig, "--offline"];
+        args.extend_from_slice(extra);
+        json_of(&dir, "pki tsl verify", &args)
+    };
+    let newer_out = verify(&["--previous", &older, "--at", CAPTURED_AT]);
     assert_eq!(newer_out.status.code(), Some(0));
     let report: Value = serde_json::from_slice(&newer_out.stdout).unwrap();
     assert_eq!(report["sequence"], "newer");
@@ -999,47 +1197,24 @@ fn tsl_verify_offline_with_a_previous_list() {
     assert_eq!(report["warnings"][0]["code_number"], 1039);
     assert!(report["signer_status"].is_null());
 
-    let rollback = json_of(
-        &dir,
-        "pki tsl verify",
-        &[
-            "pki",
-            "tsl",
-            "verify",
-            &older,
-            "--previous",
-            &newer,
-            "--offline",
-            "--at",
-            at,
-        ],
-    );
+    let rollback = verify(&["--previous", &later, "--at", CAPTURED_AT]);
     assert_eq!(rollback.status.code(), Some(1));
     let report: Value = serde_json::from_slice(&rollback.stdout).unwrap();
     assert_eq!(report["code"], "tsl_id_incorrect");
     assert_eq!(report["rule"], "TSLSIG-053");
 
-    let overdue = json_of(
-        &dir,
-        "pki tsl verify",
-        &[
-            "pki",
-            "tsl",
-            "verify",
-            &older,
-            "--offline",
-            "--at",
-            "2026-10-15T00:00:00Z",
-            "--grace",
-            "3",
-        ],
-    );
+    // Past its NextUpdate of 2026-11-27T00:00:07Z.
+    let overdue = verify(&["--at", "2026-11-28T00:00:00Z", "--grace", "3"]);
     assert_eq!(overdue.status.code(), Some(0));
     let report: Value = serde_json::from_slice(&overdue.stdout).unwrap();
     assert_eq!(report["warnings"][0]["code"], "validity_warning_1");
 
-    let grace = ti(&dir, &["pki", "tsl", "verify", &older, "--grace", "31"]);
+    let grace = ti(
+        &dir,
+        &["pki", "tsl", "verify", &list, &sig, "--grace", "31"],
+    );
     assert_eq!(grace.status.code(), Some(2));
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// The codes a TSL verify report may carry are exactly ti-pki's.
@@ -1060,7 +1235,7 @@ fn schemas_are_published_by_name() {
     let all = ti(&dir, &["schema"]);
     let all: Value = serde_json::from_slice(&all.stdout).unwrap();
     let commands = all["commands"].as_object().unwrap();
-    assert_eq!(commands.len(), 56);
+    assert_eq!(commands.len(), 63);
     assert_eq!(commands["pki verify"], schema("pki verify"));
 
     let one = ti(&dir, &["schema", "pki", "tsl", "show"]);

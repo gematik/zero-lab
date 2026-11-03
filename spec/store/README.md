@@ -3,8 +3,7 @@
 Language-neutral specification of the local store the command-line tools of the telematics
 infrastructure share: tokens, discovery documents, cached trust material and small state, kept per
 profile, readable and writable by every conformant implementation on the same files. It is the
-binding basis for the Rust store (`ti_store::store` and the `ti` backends), the Go store (`go/store`)
-and a later JVM implementation (`zeta-cli`). An implementation built from this document alone and
+binding basis for the Rust store (`ti_store::store` and the `ti` backends). An implementation built from this document alone and
 checked against the corpus of [CONFORMANCE.md](CONFORMANCE.md) is conformant.
 
 Each rule has one identifier `STORE-nnn`. Tests and the corpus manifest cite these identifiers. The
@@ -320,7 +319,7 @@ A new level is added here with its migration and the levels it stays compatible 
 | `comfort` | sealed | state | 0 | `konnektor` | comfort-signature user IDs |
 | `tsl.state` | sealed | state | 0 | none | TSL rollback state (sequence numbers); sealed for integrity |
 | `well-known` | plain | cache | 7 days | `issuer` | discovery documents and entity statements |
-| `pki.tsl` | plain | cache | 30 days | none | TSL bytes as downloaded |
+| `pki.tsl` | plain | cache | 30 days | none | TSL bytes and its detached `.sig` and `.ocsp` as downloaded, each under its own URL |
 | `pki.roots` | plain | cache | 30 days | none | root certificate bundles as downloaded |
 | `pki.ocsp` | plain | cache | 7 days | `issuer` | OCSP responses |
 | `connector.sds` | plain | cache | 1 day | none | Konnektor service directories |

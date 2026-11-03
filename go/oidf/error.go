@@ -25,9 +25,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 )
 
+// Error is an OAuth 2.0 error response (RFC 6749 §5.2) with the members gematik's IDPs add to it.
 type Error struct {
 	Operation        string `json:"operation"`
 	ErrorCode        string `json:"error"`
@@ -51,21 +51,17 @@ func (e *Error) Error() string {
 	return s
 }
 
-// parseErrorResponse decodes an RFC 6749 error from the HTTP response body. source is the IDP URL the body
-// came from, used to flag a non-compliant response. If the IDP sent the description in camelCase
-// ("errorDescription"), it is still surfaced in Description and a warning names the offending IDP. The raw
-// body is logged at debug so terse IDP errors (e.g. a generic "400 BAD_REQUEST") can still be inspected.
+// parseErrorResponse decodes an RFC 6749 error from the HTTP response body. source is the IDP URL the body came from.
+// A description sent in camelCase ("errorDescription") is still surfaced in Description. The body stays out of the error
+// when it does not decode, since it comes from outside and may echo what the provider was sent.
 func parseErrorResponse(body io.Reader, source string) error {
 	raw, _ := io.ReadAll(io.LimitReader(body, 8192))
 	var oidcErr Error
 	if err := json.Unmarshal(raw, &oidcErr); err != nil {
-		return fmt.Errorf("unable to decode error from %s (body %q): %w", source, string(raw), err)
+		return fmt.Errorf("unable to decode error from %s: %w", source, err)
 	}
 	if oidcErr.Description == "" && oidcErr.BadDescription != "" {
 		oidcErr.Description = oidcErr.BadDescription
-		slog.Warn("IDP returned error_description in camelCase (RFC 6749 expects snake_case)",
-			"idp", source, "error", oidcErr.ErrorCode, "error_description", oidcErr.Description)
 	}
-	slog.Debug("IDP error response", "idp", source, "body", string(raw))
 	return &oidcErr
 }

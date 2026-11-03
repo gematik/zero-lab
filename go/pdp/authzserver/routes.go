@@ -40,7 +40,7 @@ func (s *Server) MountRoutes(mux *http.ServeMux) {
 		{http.MethodGet, s.endpointPaths.Authorization, s.AuthorizationEndpoint},
 		{http.MethodPost, s.endpointPaths.PushedAuthorizationRequest, s.PAREndpoint},
 		{http.MethodGet, s.endpointPaths.OPCallback, s.OPCallbackEndpoint},
-		{http.MethodGet, s.endpointPaths.GemIDPCallback, s.OPCallbackEndpoint},
+		{http.MethodGet, s.endpointPaths.IDPDCallback, s.OPCallbackEndpoint},
 		{http.MethodPost, s.endpointPaths.Token, s.TokenEndpoint},
 		{http.MethodPost, s.endpointPaths.Introspection, s.IntrospectionEndpoint},
 		{http.MethodGet, s.endpointPaths.Nonce, s.NonceEndpoint},

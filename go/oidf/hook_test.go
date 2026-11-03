@@ -29,8 +29,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jws"
+	"github.com/go-jose/go-jose/v4"
 )
 
 // TestEntityStatementHook checks that a registered hook injects values into the served entity statement,
@@ -40,20 +39,11 @@ func TestEntityStatementHook(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sigKey, err := jwk.Import(prk)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pub, err := sigKey.PublicKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	jwks := &Jwks{Keys: jwk.NewSet()}
-	jwks.Keys.AddKey(pub)
+	jwks := &Jwks{Keys: &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: prk.Public(), KeyID: "sign-kid", Algorithm: "ES256"}}}}
 
 	rp := &RelyingParty{
 		cfg:           &RelyingPartyConfig{FedMasterURL: "https://fedmaster.example"},
-		sigPrivateKey: sigKey,
+		sigPrivateKey: prk,
 		signKid:       "sign-kid",
 		entityStatement: &EntityStatement{
 			Issuer:  "https://rp.example",
@@ -78,10 +68,6 @@ func TestEntityStatementHook(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		msg, err := jws.Parse(signed)
-		if err != nil {
-			t.Fatal(err)
-		}
 		var claims struct {
 			Metadata struct {
 				OpenidRelyingParty struct {
@@ -89,7 +75,7 @@ func TestEntityStatementHook(t *testing.T) {
 				} `json:"openid_relying_party"`
 			} `json:"metadata"`
 		}
-		if err := json.Unmarshal(msg.Payload(), &claims); err != nil {
+		if err := json.Unmarshal(unverifiedPayload(t, signed), &claims); err != nil {
 			t.Fatal(err)
 		}
 		return claims.Metadata.OpenidRelyingParty.RedirectURIs

@@ -64,13 +64,23 @@ pub fn trust_urls(env: &str) -> Result<String, JsError> {
 )]
 pub fn verify_tsl(
     xml: &[u8],
+    signature: &[u8],
+    signer_status: Option<Vec<u8>>,
     env: &str,
     now: &str,
     roots_json: Option<Vec<u8>>,
     grace_seconds: u32,
 ) -> Result<String, JsError> {
-    api::verify_tsl(xml, env, now, roots_json.as_deref(), grace_seconds)
-        .map_err(|e| JsError::new(&e))
+    api::verify_tsl(
+        xml,
+        signature,
+        signer_status.as_deref(),
+        env,
+        now,
+        roots_json.as_deref(),
+        grace_seconds,
+    )
+    .map_err(|e| JsError::new(&e))
 }
 
 /// `{"schema","certificates":[…]}`: every certificate in `input` (DER or PEM) as `ti pki
@@ -105,14 +115,22 @@ impl TrustContext {
     )]
     pub fn new(
         xml: &[u8],
+        signature: &[u8],
         env: &str,
         now: &str,
         roots_json: Option<Vec<u8>>,
         grace_seconds: u32,
     ) -> Result<TrustContext, JsError> {
-        api::Context::new(xml, env, now, roots_json.as_deref(), grace_seconds)
-            .map(TrustContext)
-            .map_err(|e| JsError::new(&e))
+        api::Context::new(
+            xml,
+            signature,
+            env,
+            now,
+            roots_json.as_deref(),
+            grace_seconds,
+        )
+        .map(TrustContext)
+        .map_err(|e| JsError::new(&e))
     }
 
     /// The state of the trust material: `{"result","error","sequence_number",…}`.

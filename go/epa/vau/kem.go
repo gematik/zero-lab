@@ -26,8 +26,10 @@ import (
 	"github.com/cloudflare/circl/kem/kyber/kyber768"
 )
 
+// KEMData is a marshalled Kyber768 public key.
 type KEMData []byte
 
+// PublicKey parses the bytes as a Kyber768 public key.
 func (kd KEMData) PublicKey() (kem.PublicKey, error) {
 	return kyber768.Scheme().UnmarshalBinaryPublicKey(kd)
 }
@@ -48,11 +50,13 @@ func (kd KEMData) Encapsulate() (ss []byte, ct []byte, err error) {
 	return ss, ct, nil
 }
 
+// KEMKeyPair is a KEM key pair and its public key in message form.
 type KEMKeyPair struct {
 	privateKey kem.PrivateKey
 	PublicData KEMData
 }
 
+// GenerateKEMKeyPair generates a key pair of scheme.
 func GenerateKEMKeyPair(scheme kem.Scheme) (*KEMKeyPair, error) {
 	publicKey, privateKey, err := scheme.GenerateKeyPair()
 	if err != nil {
@@ -70,6 +74,7 @@ func GenerateKEMKeyPair(scheme kem.Scheme) (*KEMKeyPair, error) {
 	}, nil
 }
 
+// Decapsulate returns the shared secret of a ciphertext to this key.
 func (kp *KEMKeyPair) Decapsulate(ciphertext []byte) ([]byte, error) {
 	return kp.privateKey.Scheme().Decapsulate(kp.privateKey, ciphertext)
 }

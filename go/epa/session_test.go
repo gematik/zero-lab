@@ -24,10 +24,12 @@ package epa_test
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -154,7 +156,7 @@ func providePNFromShellEnv(provideHCV epa.ProvideHCVFunc) epa.ProvidePNFunc {
 		hmacKey := os.Getenv("VSDM_HMAC_KEY")
 		hmacKid := os.Getenv("VSDM_HMAC_KID")
 		if hmacKey == "" || hmacKid == "" {
-			return "", fmt.Errorf("VSDM_HMAC_KEY/VSDM_HMAC_KID not set in environment")
+			return "", errors.New("VSDM_HMAC_KEY/VSDM_HMAC_KID not set in environment")
 		}
 		pn, err := epa.CalculatePNv2(hmacKey, hmacKid, provideHCV)
 		if err != nil {
@@ -383,16 +385,16 @@ func TestEPA_RecordsAvailability(t *testing.T) {
 	}
 	debugLogger()
 
-	file, err := os.Open(kvnrsFile)
+	file, err := os.Open(kvnrsFile) //nolint:gosec // EPA_KVNRS_FILE is the test operator's own file, not request input
 	if err != nil {
 		t.Skipf("EPA_KVNRS_FILE %s not readable — skipping: %v", kvnrsFile, err)
 	}
 	defer file.Close()
-	var recordIds []string
+	var recordIDs []string
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		if line := strings.TrimSpace(scanner.Text()); line != "" {
-			recordIds = append(recordIds, line)
+			recordIDs = append(recordIDs, line)
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -407,15 +409,15 @@ func TestEPA_RecordsAvailability(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	for _, recordId := range recordIds {
-		exists, err := client.GetRecordStatus(recordId)
+	for _, recordID := range recordIDs {
+		exists, err := client.GetRecordStatus(recordID)
 		if err != nil {
-			t.Fatalf("GetRecordStatus(%s): %v", recordId, err)
+			t.Fatalf("GetRecordStatus(%s): %v", recordID, err)
 		}
 		if exists {
-			t.Logf("record %s exists", recordId)
+			t.Logf("record %s exists", recordID)
 		} else {
-			t.Errorf("record %s does not exist", recordId)
+			t.Errorf("record %s does not exist", recordID)
 		}
 	}
 }
@@ -460,7 +462,7 @@ func buildEPAReport(d epaReportData) string {
 	if d.consent != nil {
 		fmt.Fprintf(&b, "\n## Consent decisions\n\n| Function | Decision |\n|---|---|\n")
 		for _, c := range d.consent.Data {
-			fmt.Fprintf(&b, "| `%s` | %s |\n", c.FunctionId, c.Decision)
+			fmt.Fprintf(&b, "| `%s` | %s |\n", c.FunctionID, c.Decision)
 		}
 	}
 	if d.entitled != "" {
@@ -479,13 +481,21 @@ func writeEPAReport(t *testing.T, cfg epaTestConfig, name, report string) {
 		path = filepath.Join("test-reports", fmt.Sprintf("epa-%s-%s.md", name, time.Now().UTC().Format("20060102-150405")))
 	}
 	if dir := filepath.Dir(path); dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
 			t.Logf("warning: failed to create report dir %s: %v", dir, err)
 		}
 	}
-	if err := os.WriteFile(path, []byte(report), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(report), 0o600); err != nil {
 		t.Logf("warning: failed to write report to %s: %v", path, err)
 	} else {
 		t.Logf("test report written to %s", path)
+	}
+}
+
+// Provider 4 does not work yet, and a Proxy keeps trying to open a session with every listed provider.
+func TestAllProvidersLeavesOutProvider4(t *testing.T) {
+	want := []epa.ProviderNumber{epa.ProviderNumber1, epa.ProviderNumber2, epa.ProviderNumber3}
+	if !slices.Equal(epa.AllProviders, want) {
+		t.Errorf("AllProviders = %v, want %v", epa.AllProviders, want)
 	}
 }

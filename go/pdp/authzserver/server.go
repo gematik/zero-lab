@@ -19,11 +19,15 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Package authzserver implements the PDP's OAuth 2.0 authorization server: pushed authorization requests
+// (RFC 9126) with login at an upstream OpenID Provider, private_key_jwt client authentication (RFC 7523),
+// DPoP-bound tokens (RFC 9449) and token introspection (RFC 7662).
 package authzserver
 
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log"
 	"log/slog"
@@ -32,15 +36,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
+
 	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/nonce"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
-	"github.com/gematik/zero-lab/go/pep"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"gopkg.in/yaml.v3"
+	"github.com/gematik/zero-lab/go/openid/providers"
 )
 
 const (
@@ -50,53 +52,58 @@ const (
 	defaultNonceTTL = 5 * time.Minute
 )
 
+// Server is the authorization server. Build it with New.
 type Server struct {
 	Metadata         ExtendedMetadata
 	endpointPaths    *EndpointsConfig
 	clientsRegistry  ClientsRegistry
 	productsRegistry *ProductsRegistry
-	openidProviders  []oidc.Client
+	providers        *providers.Set
 	oidfRelyingParty *oidf.RelyingParty
 	defaultIDPIss    string
-	sessionStore     AuthzServerSessionStore
-	sigPrK           jwk.Key
-	jwks             jwk.Set
-	tokenVerifier    *pep.PEP
-	nonceService     nonce.Service
+	sessionStore     SessionStore
+	signer           jose.Signer
+	signerKeyID      string
+	jwks             *jose.JSONWebKeySet
+	nonceService     *nonce.Service
 	dpopVerifier     *dpop.Verifier
 }
 
+// NewFromConfigFile builds a server from a YAML file holding a Config. Unlike pdp.LoadConfigFile it expands
+// no environment variables, and relative paths resolve against the working directory.
 func NewFromConfigFile(filename string) (*Server, error) {
 	cfg := new(Config)
 	yamlFile, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("read config file '%s': %w", filename, err)
 	}
-	if err := yaml.Unmarshal(yamlFile, cfg); err != nil {
+	if err := decodeYAML(yamlFile, cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config file '%s': %w", filename, err)
 	}
 
 	return New(*cfg)
 }
 
+// New builds a server from cfg. Without Config.Store, sessions and nonces live in process memory, for one
+// replica only. It refuses to start without Config.SigningKey: a replica with a key of its own signs tokens
+// nobody else can verify. For the same reason it refuses a Store without Config.NonceKeys.
 func New(cfg Config) (*Server, error) {
+	if cfg.Providers == nil {
+		cfg.Providers = providers.New(nil)
+	}
 	s := &Server{
-		Metadata:        cfg.MetadataTemplate,
-		openidProviders: make([]oidc.Client, 0),
+		Metadata:  cfg.MetadataTemplate,
+		providers: cfg.Providers,
 	}
 
-	issuerUrl, err := url.Parse(cfg.Issuer)
+	issuerURL, err := url.Parse(cfg.Issuer)
 	if err != nil {
 		return nil, fmt.Errorf("invalid issuer URI: %w", err)
 	}
 	s.endpointPaths = &cfg.Endpoints
-	s.endpointPaths.applyDefaults(issuerUrl)
+	s.endpointPaths.applyDefaults(issuerURL)
 
-	if err := s.initOpenidProviders(cfg); err != nil {
-		return nil, err
-	}
-
-	s.initMetadata(issuerUrl, cfg)
+	s.initMetadata(issuerURL, cfg)
 	s.defaultIDPIss = cfg.DefaultIDPIss
 
 	// load clients registry
@@ -112,12 +119,6 @@ func New(cfg Config) (*Server, error) {
 		return nil, err
 	}
 
-	// Reuse the PEP as a token verifier for the server's own tokens (e.g. introspection). No
-	// resource is configured, so the audience is not restricted to a single resource server.
-	if s.tokenVerifier, err = pep.NewBuilder().WithJWKSet(s.jwks).Build(); err != nil {
-		return nil, fmt.Errorf("create token verifier: %w", err)
-	}
-
 	if err := s.initProducts(cfg); err != nil {
 		return nil, err
 	}
@@ -125,31 +126,30 @@ func New(cfg Config) (*Server, error) {
 	// One kv.Store backs the session store and the nonce service. The caller injects a Postgres-backed
 	// store via Config.Store (built in the command, which owns the driver dependency); without it we use
 	// an in-memory store (tests and dev).
-	store := cfg.Store
+	store, nonceKeys := cfg.Store, cfg.NonceKeys
 	if store == nil {
 		store = kv.NewMemory()
+		if nonceKeys == nil {
+			if nonceKeys, err = nonce.NewEphemeralKeys(); err != nil {
+				return nil, fmt.Errorf("nonce keys: %w", err)
+			}
+		}
+	}
+	if nonceKeys == nil {
+		return nil, errors.New("a store shared by replicas needs NonceKeys: nonces under a per-process key fail at every other replica")
 	}
 	s.sessionStore = newKVSessionStore(store, defaultSessionTTL)
 
-	if err := s.initRelyingParty(cfg); err != nil {
-		return nil, err
+	s.initRelyingParty(cfg)
+
+	s.nonceService, err = nonce.New(nonceKeys, nonceServicePurpose, defaultNonceTTL, recordNonce(store))
+	if err != nil {
+		return nil, fmt.Errorf("nonce service: %w", err)
 	}
 
-	if err := s.initGematikIdp(cfg); err != nil {
-		return nil, err
-	}
-
-	if cfg.NonceService != nil {
-		s.nonceService = cfg.NonceService
-	} else {
-		s.nonceService = nonce.NewKVService(store, defaultNonceTTL)
-	}
-
-	// Replay detection covers this replica only; replicas behind one endpoint share no
-	// state yet (RFC 9449 Section 11.1).
 	s.dpopVerifier, err = dpop.NewVerifier(dpop.Config{
 		MaxAge: 5 * time.Minute,
-		Replay: dpop.NewMemoryReplayCache(100_000, nil),
+		Replay: kv.NewReplayCache(store),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("dpop verifier: %w", err)
@@ -158,34 +158,21 @@ func New(cfg Config) (*Server, error) {
 	return s, nil
 }
 
-// initOpenidProviders configures the statically-listed OIDC providers.
-func (s *Server) initOpenidProviders(cfg Config) error {
-	for _, c := range cfg.OidcProviders {
-		client, err := oidc.NewClient(c)
-		if err != nil {
-			return fmt.Errorf("create oidc client: %w", err)
-		}
-		slog.Info("created oidc client", "issuer", client.Issuer())
-		s.openidProviders = append(s.openidProviders, client)
-	}
-	return nil
-}
-
 // initMetadata fills the authorization-server metadata document (RFC 8414).
-func (s *Server) initMetadata(issuerUrl *url.URL, cfg Config) {
+func (s *Server) initMetadata(issuerURL *url.URL, cfg Config) {
 	s.Metadata.Issuer = cfg.Issuer
 	s.Metadata.ScopesSupported = cfg.ScopesSupported
 
-	s.Metadata.AuthorizationEndpoint = buildURI(issuerUrl, s.endpointPaths.Authorization)
-	s.Metadata.TokenEndpoint = buildURI(issuerUrl, s.endpointPaths.Token)
-	s.Metadata.IntrospectionEndpoint = buildURI(issuerUrl, s.endpointPaths.Introspection)
+	s.Metadata.AuthorizationEndpoint = buildURI(issuerURL, s.endpointPaths.Authorization)
+	s.Metadata.TokenEndpoint = buildURI(issuerURL, s.endpointPaths.Token)
+	s.Metadata.IntrospectionEndpoint = buildURI(issuerURL, s.endpointPaths.Introspection)
 	s.Metadata.IntrospectionEndpointAuthMethodsSupported = []string{"private_key_jwt"}
-	s.Metadata.JwksURI = buildURI(issuerUrl, s.endpointPaths.Jwks)
-	s.Metadata.OpenidProvidersEndpoint = buildURI(issuerUrl, s.endpointPaths.OpenIDProviders)
-	s.Metadata.NonceEndpoint = buildURI(issuerUrl, s.endpointPaths.Nonce)
-	s.Metadata.PushedAuthorizationRequestEndpoint = buildURI(issuerUrl, s.endpointPaths.PushedAuthorizationRequest)
+	s.Metadata.JwksURI = buildURI(issuerURL, s.endpointPaths.Jwks)
+	s.Metadata.OpenidProvidersEndpoint = buildURI(issuerURL, s.endpointPaths.OpenIDProviders)
+	s.Metadata.NonceEndpoint = buildURI(issuerURL, s.endpointPaths.Nonce)
+	s.Metadata.PushedAuthorizationRequestEndpoint = buildURI(issuerURL, s.endpointPaths.PushedAuthorizationRequest)
 	s.Metadata.RequirePushedAuthorizationRequests = true
-	s.Metadata.RegistrationEndpoint = buildURI(issuerUrl, s.endpointPaths.Registration)
+	s.Metadata.RegistrationEndpoint = buildURI(issuerURL, s.endpointPaths.Registration)
 
 	s.Metadata.ResponseTypesSupported = []string{"code"}
 	s.Metadata.ResponseModesSupported = []string{"query"}
@@ -197,34 +184,6 @@ func (s *Server) initMetadata(issuerUrl *url.URL, cfg Config) {
 	s.Metadata.TokenEndpointAuthMethodsSupported = []string{"private_key_jwt"}
 	s.Metadata.TokenEndpointAuthSigningAlgValuesSupported = []string{"ES256"}
 	s.Metadata.CodeChallengeMethodsSupported = []string{"S256"}
-}
-
-// initSigningKey loads the signing JWK (or generates a random one) and builds the JWK set.
-func (s *Server) initSigningKey(cfg Config) error {
-	sigPrK, err := loadJwkFromFile(absPath(cfg.BaseDir, cfg.SignJwkPath))
-	if err != nil {
-		slog.Warn("failed to load signing key, will create random", "path", cfg.SignJwkPath, "error", err)
-		if sigPrK, err = GenerateRandomJwk(); err != nil {
-			return fmt.Errorf("generate signing key: %w", err)
-		}
-	}
-	s.sigPrK = sigPrK
-
-	sigPuK, err := sigPrK.PublicKey()
-	if err != nil {
-		return fmt.Errorf("get public key: %w", err)
-	}
-	s.jwks = jwk.NewSet()
-	s.jwks.AddKey(sigPuK)
-	return nil
-}
-
-func loadJwkFromFile(filename string) (jwk.Key, error) {
-	bytes, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, fmt.Errorf("read signing key file '%s': %w", filename, err)
-	}
-	return jwk.ParseKey(bytes)
 }
 
 // initProducts builds the products registry from inline config (products:) and/or the gematik
@@ -248,21 +207,8 @@ func (s *Server) initProducts(cfg Config) error {
 }
 
 // initRelyingParty configures the optional OpenID Federation relying party.
-func (s *Server) initRelyingParty(cfg Config) error {
-	var err error
-	switch {
-	case cfg.OidfRelyingPartyConfigPath != "":
-		filename := absPath(cfg.BaseDir, cfg.OidfRelyingPartyConfigPath)
-		if s.oidfRelyingParty, err = oidf.NewRelyingPartyFromConfigFile(filename); err != nil {
-			return fmt.Errorf("load relying party config: %w", err)
-		}
-		slog.Info("loaded relying party config", "path", filename)
-	case cfg.OidfRelyingPartyConfig != nil:
-		cfg.OidfRelyingPartyConfig.BaseDir = cfg.BaseDir
-		if s.oidfRelyingParty, err = oidf.NewRelyingPartyFromConfig(cfg.OidfRelyingPartyConfig); err != nil {
-			return fmt.Errorf("create relying party: %w", err)
-		}
-	}
+func (s *Server) initRelyingParty(cfg Config) {
+	s.oidfRelyingParty = cfg.RelyingParty
 
 	// Inject the products' oidc_redirect_uri into the served entity statement so the federation accepts the
 	// AS callback URLs the products register. oidf stays registry-agnostic — it just runs this func hook.
@@ -286,29 +232,15 @@ func (s *Server) initRelyingParty(cfg Config) error {
 			}
 		})
 	}
-	return nil
-}
-
-// initGematikIdp configures the optional gematik IDP-Dienst clients.
-func (s *Server) initGematikIdp(cfg Config) error {
-	for _, c := range cfg.GematikIdp {
-		client, err := gemidp.NewClientFromConfig(c)
-		if err != nil {
-			return fmt.Errorf("create gematik IDP-Dienst client: %w", err)
-		}
-		slog.Info("created gematik IDP-Dienst client", "issuer", client.Issuer())
-		s.openidProviders = append(s.openidProviders, client)
-	}
-	return nil
 }
 
 // MetadataEndpoint serves the authorization server metadata document (RFC 8414).
-func (s *Server) MetadataEndpoint(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) MetadataEndpoint(w http.ResponseWriter, _ *http.Request) error {
 	return writeJSON(w, http.StatusOK, s.Metadata)
 }
 
 // JWKS serves the JSON Web Key Set for the server.
-func (s *Server) JWKS(w http.ResponseWriter, r *http.Request) error {
+func (s *Server) JWKS(w http.ResponseWriter, _ *http.Request) error {
 	return writeJSON(w, http.StatusOK, s.jwks)
 }
 

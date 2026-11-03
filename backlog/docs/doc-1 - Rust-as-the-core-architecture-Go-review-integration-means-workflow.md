@@ -95,3 +95,10 @@ library from Go with CGO_ENABLED=0"; pact-go RFC #452 (purego); Apache OpenDAL G
 (repo layouts, satellite repos); uniffi-rs bindings docs; IronCoreLabs/uniffi-bindgen-java
 (Panama, Java 22+); NordSecurity/uniffi-bindgen-go (cgo, 0.x); GopherCon 2018 "Adventures
 in Cgo Performance"; rust-cross/cargo-zigbuild.
+
+## Later
+
+2026-11-01: doc-2 (stacks analysis) and decision-10 refine section 2: stateless Rust helpers
+in the same image, over stdio or a Unix socket, replace `ti serve`; the Java server client
+is dropped, JVM is a client stack only; the TSL's detached signature removes XMLDSig from
+the core (TASK-166).

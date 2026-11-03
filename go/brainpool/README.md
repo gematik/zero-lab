@@ -179,13 +179,12 @@ brainpool/                 Curves, certificate/key parsing, SignFunc, ECDH, Gene
   generated fields (`Element` mod p, `Scalar` mod n): four generated files, never
   hand-edited, checksums in `fiat/PROVENANCE.md`.
 - **josebp:** JWS/JWE/JWK over these curves for the IDP-Dienst; its exported surface is
-  what `gemidp` calls, helpers are unexported.
+  what `idpd` calls, helpers are unexported.
 
 ## Development
 
-The module is frozen: bugfix and security only; new brainpool work happens in Rust
-([Go profile](../docs/design.md)). The repository's rules apply
-([docs](../../docs/README.md)); in addition:
+The module is active: `go/tipki`'s trust path parses and verifies through it (decision-10, amendment
+of 2026-11-02). The repository's rules apply ([docs](../../docs/README.md)); in addition:
 
 - A secret scalar on brainpoolP256r1 never goes through `elliptic.Curve` methods:
   signing, ECDH and public-key derivation route through `hasConstantTimeCore` to
@@ -193,7 +192,7 @@ The module is frozen: bugfix and security only; new brainpool work happens in Ru
   library.
 - Every key that arrives from outside (certificate, JWK, ECDH peer) passes
   `ValidatePublicKey` before any arithmetic.
-- Exported only if a consumer calls it (in this repository: `gemidp`, and `josebp`
+- Exported only if a consumer calls it (in this repository: `idpd`, and `josebp`
   itself). Breaking changes ship as a minor bump; in-repo consumers pin explicitly.
 - Tests use the standard `testing` package; the differential tests in `internal/bp256`
   use `brainpool.P256r1()` (big.Int) as the oracle; Wycheproof vectors live in
@@ -203,7 +202,7 @@ The module is frozen: bugfix and security only; new brainpool work happens in Ru
 go build ./... && go vet ./... && go test ./...
 go test -tags openssl_cross ./...        # cross-checks against the openssl CLI (skips if absent)
 go test -run x -fuzz FuzzParseCertificate -fuzztime 30s
-cd .. && just golangci brainpool          # golangci-lint with the workspace configuration
+cd .. && just golangci                    # golangci-lint with the workspace configuration
 cd internal/bp256/fiat && go run generate.go -field p   # regenerate; needs the docker image from PROVENANCE.md
 ```
 

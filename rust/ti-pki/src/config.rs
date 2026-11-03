@@ -106,6 +106,12 @@ pub struct TrustConfig {
     /// Where the TSL is downloaded from. Must be `https://`. The TSL is verified against
     /// `tsl_signer_anchors` and supplies candidate intermediates (see [`tsl`]).
     pub tsl_url: Cow<'static, str>,
+    /// The list at the automated download point of gemSpec_TSL A_21182, next to which
+    /// its detached signature (`.sig`) and its signer's OCSP response (`.ocsp`) are
+    /// published; the two derive from this URL by their suffix. The loaders fetch the three
+    /// files as one set (`spec/tsl-detached`). Plain `http://` is what A_21175 mandates
+    /// there: the list is taken from here only under the hash published at `tsl_url`.
+    pub tsl_detached_url: Cow<'static, str>,
     /// The `GEM.TSL-CA<n>` TSL signer CAs, as DER, one of which must have issued a TSL's
     /// signer (GS-A_4640, `spec/tsl-xmldsig` TSLSIG-030). Separate from `anchor`:
     /// gemSpec_PKI installs the TSL signer CA itself as the TSL's trust anchor, without a
@@ -137,6 +143,7 @@ impl TrustConfig {
             roots: Cow::Borrowed(&[]),
             roots_url: Cow::Borrowed(roots::URL_PROD),
             tsl_url: Cow::Borrowed(tsl::URL_PROD),
+            tsl_detached_url: Cow::Borrowed(tsl::URL_DETACHED_PROD),
             tsl_signer_anchors: borrowed(anchors::TSL_SIGNER_CAS_PROD),
             tsl_grace_period: Duration::ZERO,
             revocation: RevocationMode::HardFail,
@@ -161,20 +168,31 @@ impl TrustConfig {
     /// the test environments run OCSP responders too.
     #[cfg(feature = "dangerous-nonprod")]
     pub fn preset(env: Env) -> Self {
-        let nonprod =
-            |anchor: &'static [u8], roots_url: &'static str, tsl_url: &'static str| TrustConfig {
-                roots: Cow::Borrowed(roots::ROOTS_NONPROD),
-                roots_url: Cow::Borrowed(roots_url),
-                tsl_url: Cow::Borrowed(tsl_url),
-                tsl_signer_anchors: borrowed(anchors::TSL_SIGNER_CAS_NONPROD),
-                ..Self::for_anchor(anchor)
-            };
+        let nonprod = |anchor: &'static [u8],
+                       roots_url: &'static str,
+                       tsl_url: &'static str,
+                       detached_url: &'static str| TrustConfig {
+            roots: Cow::Borrowed(roots::ROOTS_NONPROD),
+            roots_url: Cow::Borrowed(roots_url),
+            tsl_url: Cow::Borrowed(tsl_url),
+            tsl_detached_url: Cow::Borrowed(detached_url),
+            tsl_signer_anchors: borrowed(anchors::TSL_SIGNER_CAS_NONPROD),
+            ..Self::for_anchor(anchor)
+        };
         match env {
             Env::Prod => Self::preset_prod(),
-            Env::Test => nonprod(anchors::GEM_RCA7_TEST_ONLY, roots::URL_TEST, tsl::URL_TEST),
-            Env::Ref | Env::Dev => {
-                nonprod(anchors::GEM_RCA7_TEST_ONLY, roots::URL_REF, tsl::URL_REF)
-            }
+            Env::Test => nonprod(
+                anchors::GEM_RCA7_TEST_ONLY,
+                roots::URL_TEST,
+                tsl::URL_TEST,
+                tsl::URL_DETACHED_TEST,
+            ),
+            Env::Ref | Env::Dev => nonprod(
+                anchors::GEM_RCA7_TEST_ONLY,
+                roots::URL_REF,
+                tsl::URL_REF,
+                tsl::URL_DETACHED_REF,
+            ),
             _ => {
                 // Env::tier maps every variant other than Prod to NonProd, so an
                 // environment added to ti-types later is non-production by
@@ -214,6 +232,15 @@ impl TrustConfig {
         }
         if !self.tsl_url.starts_with("https://") {
             return Err(inconsistent("tsl_url must be an https URL"));
+        }
+        let url = &self.tsl_detached_url;
+        if !(url.starts_with("http://") || url.starts_with("https://")) {
+            return Err(inconsistent(
+                "tsl_detached_url must be an http or https URL",
+            ));
+        }
+        if !url.ends_with(".xml") {
+            return Err(inconsistent("tsl_detached_url must name the list (.xml)"));
         }
         if self.tsl_grace_period > MAX_TSL_GRACE_PERIOD {
             return Err(inconsistent(
@@ -483,6 +510,42 @@ pub(crate) mod tests {
             assert_eq!(config.roots_url, roots::URL_REF, "{env}");
             assert_eq!(config.tsl_url, tsl::URL_REF, "{env}");
         }
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn presets_carry_the_detached_download_points() {
+        assert_eq!(
+            TrustConfig::preset(Env::Prod).tsl_detached_url,
+            tsl::URL_DETACHED_PROD,
+        );
+        assert_eq!(
+            TrustConfig::preset(Env::Test).tsl_detached_url,
+            tsl::URL_DETACHED_TEST,
+        );
+        for env in [Env::Ref, Env::Dev] {
+            assert_eq!(
+                TrustConfig::preset(env).tsl_detached_url,
+                tsl::URL_DETACHED_REF,
+                "{env}"
+            );
+        }
+    }
+
+    /// The automated download point speaks plain HTTP (A_21175).
+    #[test]
+    fn tsldet_011_validate_accepts_http_for_the_detached_download_point() {
+        let config = TrustConfig::preset_prod();
+        assert!(config.tsl_detached_url.starts_with("http://"));
+        config.validate(Tier::Prod).unwrap();
+        let odd = TrustConfig {
+            tsl_detached_url: Cow::Borrowed("http://example.invalid/TSL.sig"),
+            ..TrustConfig::preset_prod()
+        };
+        assert_eq!(
+            odd.validate(Tier::Prod).unwrap_err().to_string(),
+            inconsistent("tsl_detached_url must name the list (.xml)").to_string()
+        );
     }
 
     #[cfg(feature = "test-util")]

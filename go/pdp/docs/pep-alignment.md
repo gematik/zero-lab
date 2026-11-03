@@ -7,7 +7,7 @@ IdP** so the PDP can authenticate without a real OP, and puts the PDP **in `dock
 its own PR with its own HITL.
 
 ## Why
-- The PDP and pep configure the **same providers** (OIDC / gemidp / OIDF). pep now loads them from a flat
+- The PDP and pep configure the **same providers** (OIDC / idpd / OIDF). pep now loads them from a flat
   `openid-providers.yaml`; the PDP should share that format (the original overlap goal).
 - pep set the house style this session — env + `*_PATH` secrets, secure-by-default, `/app` binary + mountable
   `/etc/<svc>` workdir, `just docker-build/push-<svc>` + version stamp, `CONFIG.md` + `DOCKERHUB.md`. The PDP
@@ -22,8 +22,8 @@ Today `pdp/authzserver/config.Config` is one big YAML. Realign along pep's lines
 
 - **Providers → shared `openid-providers.yaml`** (`PDP_OPENID_PROVIDERS_PATH`, default
   `openid-providers.yaml`). The `oidc_providers` / `gematik_idp` / `oidf_relying_party` fields move out of the
-  PDP YAML into the flat file, **reusing the same leaf types** pep uses (`oauth/oidc.Config`,
-  `gemidp.ClientConfig`, `oidf.RelyingPartyConfig`). A PDP-specific top-level struct binds them — no shared
+  PDP YAML into the flat file, **reusing the same leaf types** pep uses (`openid.Config`,
+  `idpd.ClientConfig`, `oidf.RelyingPartyConfig`). A PDP-specific top-level struct binds them — no shared
   wrapper package, same as pep.
 - **PDP-domain config stays YAML** (`pdp.yaml`): `issuer`, `scopes_supported`, `metadata_template`,
   `default_idp_iss`, `clients`, `products`, `clients_policy_path`, `endpoints`. Kept as a file because it's
@@ -72,7 +72,7 @@ pep + zaddy — entirely local, zero egress.
 - **HITL (this stage):** with `PDP_NON_PROD=true`, a client (or `curl`/the existing demo) completes an
   authorization against the **mock IdP** and receives a token — proving the airgapped path the S4 harness
   relies on.
-- Module graph unchanged: `zero-caddy` stays free of `oidf/gemidp/kv/pep-proxy`.
+- Module graph unchanged: `zero-caddy` stays free of `oidf/idpd/kv/pep-proxy`.
 
 ## Files (indicative)
 - **New:** `openid-providers.yaml` loader for the PDP (PDP-specific top-level struct over the shared leaf

@@ -26,14 +26,13 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/pep"
-	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
 // TestVerifyAccessToken_AudienceOptional proves the PEP can be reused both as a guard before a
 // resource server (audience enforced when Resource is set) and inside an authorization server
 // (audience unrestricted when no Resource is configured).
 func TestVerifyAccessToken_AudienceOptional(t *testing.T) {
-	jwks, err := jwk.Parse([]byte(publicJWSKSet))
+	jwks, err := pep.ParseJWKSet([]byte(publicJWSKSet))
 	if err != nil {
 		t.Fatal(err)
 	}

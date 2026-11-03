@@ -38,7 +38,7 @@ session, bare `401` otherwise. This is the **external/subrequest authorization**
 ## 3. Decoupled (cross-device) login + polling
 
 For providers where the authorization completes **out-of-band** — OIDF on a second device via a scanned QR,
-or gemidp via the gematik Authenticator app — the originating browser cannot follow a single redirect chain.
+or idpd via the gematik Authenticator app — the originating browser cannot follow a single redirect chain.
 Instead it lands on a wait page (`qr.html` / `authenticator.html`) that **polls** `/oauth2/poll` until the
 session becomes authenticated, then navigates to the return-to target.
 
@@ -61,7 +61,7 @@ The decoupled flow has two independent channels that must be tied to the same se
 | channel | who | correlates by |
 | --- | --- | --- |
 | **poll** (`/oauth2/poll`) | the waiting browser (1st device / tab) | the **session cookie** set at `/oauth2/start` |
-| **completion** (`/oauth2/callback?code&state`) | the 2nd device (OIDF QR) or the Authenticator app (gemidp) | the OAuth **`state`** (`sessions.byState`) |
+| **completion** (`/oauth2/callback?code&state`) | the 2nd device (OIDF QR) or the Authenticator app (idpd) | the OAuth **`state`** (`sessions.byState`) |
 
 `/oauth2/callback` fills `sess.Identity` on the session identified by `state`; the next poll resolves that
 same session by cookie and sees it authenticated. So the cookie binds the browser that will be logged in,

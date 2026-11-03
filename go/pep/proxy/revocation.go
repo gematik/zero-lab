@@ -79,10 +79,10 @@ func (r *busRevoker) Revoke(sid string) {
 	// Durable backstop: persist so a fresh replica loads it on startup and a dropped NOTIFY is caught by
 	// reconcile. TTL = the snapshot lifetime (self-cleaning — past it the snapshot is exp-rejected anyway).
 	if err := r.store.Set(context.Background(), revokedPrefix+sid, []byte{'1'}, r.ttl); err != nil {
-		slog.Warn("revocation backstop write failed", "sid", sid, "error", err)
+		slog.Warn("revocation backstop write failed", "session_ref", logRef(sid), "error", err)
 	}
 	if err := r.bus.Publish(context.Background(), revokeChannel, sid); err != nil {
-		slog.Warn("revocation publish failed; other replicas catch it on reconcile", "sid", sid, "error", err)
+		slog.Warn("revocation publish failed; other replicas catch it on reconcile", "session_ref", logRef(sid), "error", err)
 	}
 }
 

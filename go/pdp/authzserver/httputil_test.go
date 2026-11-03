@@ -34,13 +34,13 @@ import (
 func TestOAuthErrorNormalizer(t *testing.T) {
 	mux := http.NewServeMux()
 	// a normal JSON 200 handler
-	mux.HandleFunc("GET /ok", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /ok", func(w http.ResponseWriter, _ *http.Request) {
 		_ = writeJSON(w, http.StatusOK, map[string]string{"hello": "world"})
 	})
 	// a handler that returns an OAuth error via the handle adapter
 	s := &Server{}
-	mux.Handle("POST /thing", s.handle(func(w http.ResponseWriter, r *http.Request) error {
-		return &Error{HttpStatus: http.StatusBadRequest, Code: "invalid_request", Description: "nope"}
+	mux.Handle("POST /thing", s.handle(func(_ http.ResponseWriter, _ *http.Request) error {
+		return &Error{HTTPStatus: http.StatusBadRequest, Code: "invalid_request", Description: "nope"}
 	}))
 
 	srv := OAuthErrors(Logger(Recover(mux)))

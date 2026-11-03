@@ -33,16 +33,17 @@ import (
 	"uuid"
 
 	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/gematik/zero-lab/go/nonce"
 )
 
+// Grant types the token endpoint accepts (RFC 6749 §1.3).
 const (
 	GrantTypeAuthorizationCode = "authorization_code"
 	GrantTypeClientCredentials = "client_credentials"
 	GrantTypeRefreshToken      = "refresh_token"
 )
 
+// TokenResponse is a successful token response (RFC 6749 §5.1). ExpiresIn and RefreshExpiresIn are in seconds.
 type TokenResponse struct {
 	AccessToken      string `json:"access_token"`
 	TokenType        string `json:"token_type"`
@@ -74,9 +75,8 @@ func (s *Server) TokenEndpoint(w http.ResponseWriter, r *http.Request) error {
 		return s.tokenEndpointRefreshToken(w, r)
 	default:
 		slog.Error("Unsupported grant type", "grant_type", grantType)
-		return oauthErr(http.StatusBadRequest, "unsupported_grant_type", fmt.Sprintf("unsupported grant type: %s", grantType))
+		return oauthErr(http.StatusBadRequest, "unsupported_grant_type", "unsupported grant type: "+grantType)
 	}
-
 }
 
 // verifyClient authenticates the caller via private_key_jwt (RFC 7523 §2.2): the request carries a
@@ -106,12 +106,7 @@ func (s *Server) verifyClient(r *http.Request) (*Client, *ClientAssertionClaims,
 		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", err.Error())
 	}
 
-	if _, err := jwt.Parse([]byte(assertion),
-		jwt.WithKey(jwa.ES256(), client.Key()),
-		jwt.WithAudience(s.Metadata.Issuer),
-		jwt.WithAcceptableSkew(time.Minute),
-		jwt.WithValidate(true),
-	); err != nil {
+	if err := verifyClientAssertion(assertion, client.Key(), s.Metadata.Issuer, time.Now()); err != nil {
 		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", fmt.Sprintf("invalid client_assertion: %v", err))
 	}
 
@@ -123,8 +118,16 @@ func (s *Server) verifyClient(r *http.Request) (*Client, *ClientAssertionClaims,
 	}
 
 	// Redeem the one-time nonce (freshness / anti-replay).
-	if err := s.nonceService.Redeem(claims.Nonce); err != nil {
+	switch err := s.nonceService.Redeem(r.Context(), claims.Nonce); {
+	case err == nil:
+	case errors.Is(err, nonce.ErrReplayed):
+		slog.Warn("client assertion with a nonce that was used before", "client_id", client.ClientID)
 		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", fmt.Sprintf("invalid nonce: %v", err))
+	case errors.Is(err, nonce.ErrInvalid):
+		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", fmt.Sprintf("invalid nonce: %v", err))
+	default:
+		slog.Error("nonce could not be recorded", "error", err)
+		return nil, nil, oauthErr(http.StatusInternalServerError, "server_error", "nonce could not be checked")
 	}
 
 	return client, claims, nil
@@ -173,7 +176,6 @@ func (s *Server) clientProduct(client *Client) (*Product, *Error) {
 }
 
 func (s *Server) tokenEndpointClientCredentials(w http.ResponseWriter, r *http.Request) error {
-
 	client, claims, clientError := s.verifyClient(r)
 	if clientError != nil {
 		return clientError
@@ -192,7 +194,7 @@ func (s *Server) tokenEndpointClientCredentials(w http.ResponseWriter, r *http.R
 	}
 
 	if !product.IsAllowedScope(scope) {
-		return oauthErr(http.StatusForbidden, "invalid_scope", fmt.Sprintf("scope not allowed: %s", scope))
+		return oauthErr(http.StatusForbidden, "invalid_scope", "scope not allowed: "+scope)
 	}
 
 	jkt, dpopErr := s.dpopBinding(r, claims)
@@ -200,7 +202,7 @@ func (s *Server) tokenEndpointClientCredentials(w http.ResponseWriter, r *http.R
 		return dpopErr
 	}
 
-	session := &AuthzServerSession{
+	session := &Session{
 		ID:             uuid.NewV4().String(),
 		CreatedAt:      time.Now(),
 		ClientID:       client.ClientID,
@@ -215,11 +217,11 @@ func (s *Server) tokenEndpointClientCredentials(w http.ResponseWriter, r *http.R
 
 	response, err := s.issueOrRefreshTokens(session)
 	if err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to issue access token: %v", err))
+		return serverError("unable to issue the tokens", err)
 	}
 
 	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to save session: %v", err))
+		return serverError("unable to issue the tokens", err)
 	}
 
 	return writeJSON(w, http.StatusOK, response)
@@ -239,29 +241,32 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 
 	var code string
 	var codeVerifier string
-	var redirectUri string
+	var redirectURI string
 	binderr := newFormBinder(r).
 		MustString("code", &code).
 		MustString("code_verifier", &codeVerifier).
-		MustString("redirect_uri", &redirectUri).
+		MustString("redirect_uri", &redirectURI).
 		BindError()
 
 	if binderr != nil {
 		return oauthErr(http.StatusBadRequest, "invalid_request", binderr.Error())
 	}
 
-	slog.Info("Token request", "redirect_uri", redirectUri, "client_id", client.ClientID)
+	slog.Info("Token request", "redirect_uri", redirectURI, "client_id", client.ClientID)
 
 	session, err := s.sessionStore.GetAuthzServerSessionByCode(code)
+	if errors.Is(err, errSessionNotFound) {
+		return oauthErr(http.StatusBadRequest, "invalid_grant", "invalid or expired code")
+	}
 	if err != nil {
-		return oauthErr(http.StatusBadRequest, "invalid_request", fmt.Errorf("unable to get session: %w", err).Error())
+		return serverError("unable to redeem the code", err, code)
 	}
 
 	if session.ClientID != client.ClientID {
 		return oauthErr(http.StatusBadRequest, "invalid_request", "client_id mismatch")
 	}
 
-	if session.RedirectURI != redirectUri {
+	if session.RedirectURI != redirectURI {
 		return oauthErr(http.StatusBadRequest, "invalid_request", "redirect_uri mismatch")
 	}
 
@@ -286,17 +291,16 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 	}
 
 	response, err := s.issueOrRefreshTokens(session)
-
 	if err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to issue access token: %v", err))
+		return serverError("unable to issue the tokens", err, code)
 	}
 
 	// Persist the rotated refresh token (and its index) so the session is refreshable.
 	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to save session: %v", err))
+		return serverError("unable to issue the tokens", err, code)
 	}
 
-	slog.Info("Token request: tokens issued", "client_id", client.ClientID, "session", session.ID)
+	slog.Info("Token request: tokens issued", "client_id", client.ClientID, "session_ref", sessionRef(session.ID))
 
 	return writeJSON(w, http.StatusOK, response)
 }
@@ -346,18 +350,18 @@ func (s *Server) tokenEndpointRefreshToken(w http.ResponseWriter, r *http.Reques
 
 	response, err := s.issueOrRefreshTokens(session) // rotates RefreshToken, re-binds via DPoPThumbprint
 	if err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to refresh tokens: %v", err))
+		return serverError("unable to refresh the tokens", err)
 	}
 	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to save session: %v", err))
+		return serverError("unable to refresh the tokens", err)
 	}
 	// The session now indexes the NEW refresh hash; drop the rotated-out one so it stops resolving.
 	_ = s.sessionStore.DeleteRefreshIndex(refreshHash)
-	slog.Info("Token refreshed", "client", client.ClientID, "session", session.ID, "refresh_count", session.RefreshCount)
+	slog.Info("Token refreshed", "client", client.ClientID, "session_ref", sessionRef(session.ID), "refresh_count", session.RefreshCount)
 	return writeJSON(w, http.StatusOK, response)
 }
 
-func (s *Server) issueOrRefreshTokens(session *AuthzServerSession) (*TokenResponse, error) {
+func (s *Server) issueOrRefreshTokens(session *Session) (*TokenResponse, error) {
 	var tokenType string
 	if session.DPoPThumbprint != "" {
 		tokenType = "DPoP"
@@ -365,32 +369,31 @@ func (s *Server) issueOrRefreshTokens(session *AuthzServerSession) (*TokenRespon
 		tokenType = "Bearer"
 	}
 
-	accessJwt := jwt.New()
-	accessJwt.Set("jti", session.ID)
-	if session.Audience != nil {
-		accessJwt.Set("aud", session.Audience)
-	}
-	accessJwt.Set("iat", time.Now().Unix())
 	exp := time.Now().Add(session.AccessTokenDuration)
 	if session.ExpiresAt.Before(exp) {
 		exp = session.ExpiresAt
 	}
-	accessJwt.Set("client_id", session.ClientID)
-	// TODO: set proper subject
-	accessJwt.Set("sub", session.ClientID)
-
-	accessJwt.Set("exp", exp.Unix())
+	claims := map[string]any{
+		"jti":       session.ID,
+		"iat":       time.Now().Unix(),
+		"client_id": session.ClientID,
+		// TODO: set proper subject
+		"sub": session.ClientID,
+		"exp": exp.Unix(),
+	}
+	if session.Audience != nil {
+		claims["aud"] = session.Audience
+	}
 	if len(session.Scopes) > 0 {
-		accessJwt.Set("scope", strings.Join(session.Scopes, " "))
+		claims["scope"] = strings.Join(session.Scopes, " ")
 	}
-
 	if session.DPoPThumbprint != "" {
-		accessJwt.Set("cnf", map[string]any{
+		claims["cnf"] = map[string]any{
 			"jkt": session.DPoPThumbprint,
-		})
+		}
 	}
 
-	accessTokenBytes, err := jwt.Sign(accessJwt, jwt.WithKey(jwa.ES256(), s.sigPrK))
+	accessTokenBytes, err := s.signAccessToken(claims)
 	if err != nil {
 		return nil, fmt.Errorf("unable to sign access token: %w", err)
 	}
@@ -411,9 +414,9 @@ func (s *Server) issueOrRefreshTokens(session *AuthzServerSession) (*TokenRespon
 	}, nil
 }
 
-func (s *Server) applyPolicyNewSession(product *Product, session *AuthzServerSession) *Error {
+func (s *Server) applyPolicyNewSession(product *Product, session *Session) *Error {
 	if !product.IsAllowedScopes(session.Scopes) {
-		return oauthErr(http.StatusForbidden, "invalid_scope", fmt.Sprintf("scope not allowed: %s", strings.Join(session.Scopes, " ")))
+		return oauthErr(http.StatusForbidden, "invalid_scope", "scope not allowed: "+strings.Join(session.Scopes, " "))
 	}
 	session.AccessTokenDuration = 60 * time.Second
 	session.ExpiresAt = session.CreatedAt.Add(10 * time.Minute)

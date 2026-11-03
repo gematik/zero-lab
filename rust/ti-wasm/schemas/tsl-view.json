@@ -371,7 +371,7 @@
       "properties": {
         "code": {
           "type": "string",
-          "description": "Result code, e.g. xml_signature_error"
+          "description": "Result code, e.g. detached_signature_error"
         },
         "code_number": {
           "type": [
@@ -382,7 +382,7 @@
         },
         "rule": {
           "type": "string",
-          "description": "Rule of spec/tsl-xmldsig, e.g. TSLSIG-018"
+          "description": "Rule of spec/tsl-xmldsig, e.g. TSLDET-005"
         },
         "detail": {
           "type": "string",
@@ -410,10 +410,6 @@
           "pattern": "^[0-9a-f]{64}$",
           "description": "The TSL signer CA that issued it"
         },
-        "signing_time": {
-          "type": "string",
-          "description": "XAdES SigningTime as signed"
-        },
         "warnings": {
           "type": "array",
           "items": {
@@ -424,7 +420,6 @@
       "required": [
         "signer",
         "tsl_signer_ca",
-        "signing_time",
         "warnings"
       ],
       "additionalProperties": false

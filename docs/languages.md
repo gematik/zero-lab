@@ -9,7 +9,7 @@ language needs. A profile maps rules; it does not restate them, and it lists no 
 |---|---|---|---|
 | Rust | the core: PKI, TSL, JOSE, TI protocols, smartcard and Konnektor; CLI; WebAssembly | [rust/docs/design.md](../rust/docs/design.md) | [rust/docs/development.md](../rust/docs/development.md) |
 | Go | servers, relying parties and their libraries; ePA client | [go/docs/design.md](../go/docs/design.md) | [go/docs/development.md](../go/docs/development.md) |
-| Swift, Kotlin/Java, JavaScript/TypeScript | bindings to the Rust core on client platforms (planned) | to be written before the first code | — |
+| Swift, Kotlin/Java, C#/.NET, JavaScript/TypeScript | bindings to the Rust core on client platforms only, never a server (planned; .NET through `uniffi-bindgen-cs`, TASK-172) | to be written before the first code | — |
 
 ## What every profile answers
 

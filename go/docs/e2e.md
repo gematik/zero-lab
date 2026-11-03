@@ -28,7 +28,7 @@ cd go
 just pdp-e2e-serve            # issuer http://localhost:8011, client e2e-client / e2e-client
 
 # terminal 2 — run the suites
-just pdp-e2e-smoke            # smoke only
+just pdp-e2e URL Smoke        # smoke only
 just pdp-e2e                  # smoke + regression + flows
 ```
 
@@ -40,7 +40,7 @@ just pdp-e2e                  # smoke + regression + flows
 OIDC/OIDF flows need the server reachable at a stable public issuer and an OP to drive.
 
 1. Configure an OP in `go/pdp/e2e/testdata/pdp.e2e.yaml` (uncomment the `gematik_idp` /
-   `oidc_providers` / `oidf_relying_party` block; values come from env via `os.ExpandEnv`).
+   `openid-providers.yaml` with an `oidc` / `oidf` block next to it; values come from env via `os.ExpandEnv`).
 2. Start a rathole tunnel exposing local `:8011` at `https://<public-host>`.
 3. Serve with the public issuer and run against it:
 
@@ -69,4 +69,4 @@ redirect URI for the client and at the OP.
 | `ZERO_PDP_E2E_CALLBACK_ADDR` | HITL capture listen address | `localhost:8765` |
 
 Secrets are never committed: `sign.jwk` is generated and gitignored; the client secret is
-hashed at serve time; OP credentials come from your environment / `.env` (loaded by the server).
+hashed at serve time; OP credentials come from your environment / `.env` (loaded by `just`).

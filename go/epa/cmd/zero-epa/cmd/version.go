@@ -24,8 +24,9 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/gematik/zero-lab/go/epa"
 	"github.com/spf13/cobra"
+
+	"github.com/gematik/zero-lab/go/epa"
 )
 
 func init() {
@@ -35,7 +36,7 @@ func init() {
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version number",
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: func(_ *cobra.Command, _ []string) {
 		fmt.Printf("Version: %s\n", epa.ResolveVersion())
 	},
 }

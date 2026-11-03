@@ -139,7 +139,7 @@ arithmetic. The anchor of every environment is GEM.RCA7 (P-256), but most roots 
 and both TSL signer CAs are brainpool keys, so the feature is on by default. Without
 brainpool (the feature off, or `NIST` configured) the roots walk ends at the first
 brainpool root, GEM.RCA8 forwards and GEM.RCA5 backwards, leaving GEM.RCA7 and GEM.RCA6,
-and no TSL verifies (TSLSIG-012), which fails a load of roots and TSL together;
+and no TSL verifies (TSLDET-004), which fails a load of roots and TSL together;
 `validate` still refuses a brainpool anchor instead of failing later. Other
 implementations — webpki's FIPS-validated aws-lc-rs set, ML-DSA once post-quantum
 certificates appear — plug into the same set without touching the core.
@@ -164,8 +164,8 @@ names the trigger for removing it.
 | `rsa = "=0.10.0-rc.19"`, a release candidate | the only `rsa` line on the current RustCrypto stack (`crypto-bigint` 0.7, `sha2` 0.11); 0.9 would pull in a second, older stack | `rsa` 0.10 is released: switch to `"0.10"` |
 | ti releases carry unsigned `SHA256SUMS` | signing was deferred; the checksums catch broken downloads and Homebrew pins them in the formula, but a replaced release could replace them too | a release key exists: sign `SHA256SUMS` in `just release` and verify it in `publish-brew` |
 | RUSTSEC-2023-0071 ignored (`deny.toml`, `.cargo/audit.toml`) | the Marvin attack targets RSA private-key operations; `ti-pki` only verifies, on public data | a patched `rsa` is released |
-| The TSL signer CA does not change at run time: `spec/tsl-xmldsig` part E (TSLSIG-061 – 068: an anchor announced in the TSL becoming active at its `StatusStartingTime`, and the fallback through roots.json) is not implemented. `TrustConfig::tsl_signer_anchors` is a list; a `TSLServiceCertChange` the TSL announces is reported as the warning `tsl_anchor_announced` (logged by the tokio driver, shown by ti), and a release adds the CA to `anchors::TSL_SIGNER_CAS_*` | gematik changes the TSL signer CA rarely (GEM.TSL-CA3 runs until 2028-05-25) and announces it weeks ahead; adding it to the list in a release is simple and auditable, while part E needs persisted announcements re-verified on load, a roots.json path with its own profile, age and OCSP checks, and signed test TSLs | an installation must follow an anchor change without a release |
-| The TSL admits no CA on its own; of its per-CA metadata only the certificate types and the revocation time decide | the TSL is verified (`spec/tsl-xmldsig`), but a CA from it is kept only if a root from the A_28419 walk signed it. From a CA's entry, ti-pki uses the certificate types it may issue (TUC_PKI_007: `cert_type_ca_not_authorized`, `cert_type_unchecked` when the entry lists none) and a revocation with its `StatusStartingTime` (Tab_PKI_271: `ca_revoked_in_tsl`, `issued_before_ca_revocation`); provider names and the other metadata decide nothing. A CA's standing is otherwise checked by OCSP at its root; for OCSP responders see the next row | the TSL becomes a trust source of its own, admitting CAs no walked root signed |
+| The TSL signer CA does not change at run time: `spec/tsl-xmldsig` part E (TSLSIG-061 – 068: an anchor announced in the TSL becoming active at its `StatusStartingTime`, and the fallback through roots.json) is not implemented. `TrustConfig::tsl_signer_anchors` is a list; a `TSLServiceCertChange` the TSL announces is reported as the warning `tsl_anchor_announced` (shown by ti), and a release adds the CA to `anchors::TSL_SIGNER_CAS_*` | gematik changes the TSL signer CA rarely (GEM.TSL-CA3 runs until 2028-05-25) and announces it weeks ahead; adding it to the list in a release is simple and auditable, while part E needs persisted announcements re-verified on load, a roots.json path with its own profile, age and OCSP checks, and signed test TSLs | an installation must follow an anchor change without a release |
+| The TSL admits no CA on its own; of its per-CA metadata only the certificate types and the revocation time decide | the TSL is verified (`spec/tsl-xmldsig`), but a CA from it is kept only if a root from the A_28419 walk signed it. From a CA's entry, ti-pki uses the certificate types it may issue (TUC_PKI_007: `cert_type_ca_not_authorized`, also when the entry lists none), which makes a CA one for components, SMC-B, eGK or HBA, and a revocation with its `StatusStartingTime` (Tab_PKI_271: `ca_revoked_in_tsl`, `issued_before_ca_revocation`); provider names and the other metadata decide nothing. A CA's standing is otherwise checked by OCSP at its root; for OCSP responders see the next row | the TSL becomes a trust source of its own, admitting CAs no walked root signed |
 | OCSP responders beyond RFC 6960 must be certified by a CA of the issuing CA's TSP that a root signed, not only listed in the TSL: id-kp-OCSPSigning, valid now, signature verified under that TSL CA. Listed by the verified TSL under that TSP they are authorized (`tsl_listed`); not listed, they are accepted with an `ocsp_responder_not_rfc6960` warning | the TSL ties a responder to CAs only by the TSP it is listed under (its supply point and extension are placeholders), and TI TSPs sign for their CAs with delegates of other CAs (ehca: a GEM.KOMP-CA51 delegate answers for GEM.SMCB-CA51 and GEM.SMCB-CA9). Requiring the certification by a CA of the same TSP keeps a listed responder from answering for another TSP's CAs. The D-Trust responders under GEM.OCSP-CA1/3 stay rejected (their CA is not in the TSL) | gematik aligns responder issuance with RFC 6960 (then the fallback without listing goes) |
 | OCSP CertIDs use SHA-1 (`sha1` crate) | TI responders reject SHA-256 CertIDs as malformed (RFC 5019 profile). SHA-1 only names the certificate there; integrity rests on the response signature and the SHA-256 certHash | TI responders accept SHA-256 CertIDs |
 | `ureq`'s `unversioned` transport API in `ti_connector_client::ureq`, `ureq` pinned `~3.4` | `TlsConfig` takes no certificate verifier, and a Konnektor needs Go's: `.kon` pins accepted by equality, CA chains checked for `expectedHost`, which is also the SNI. A 60-line connector in ureq's chain does the TLS with our rustls config | ureq accepts a custom verifier or rustls config, or the adapter moves to a crate of its own before ti-connector-client 1.0 |
@@ -182,6 +182,15 @@ looping and a misnamed cross certificate) as PEM files, with validity fixed arou
 certificates in `ti-pki/tests/fixtures/` and the Wycheproof vectors complement them.
 
 ## The TSL
+
+The list is authenticated before it is read, by the detached signature file (`.sig`) and
+the signer's status file (`.ocsp`) that the TSL service publishes next to it at the
+automated download points of gemSpec_TSL A_21182 (`spec/tsl-detached`). The loaders take
+the list from there only under the `.sha2` of the HTTPS point, and from HTTPS otherwise; a
+list without a fitting `.sig` is not used, and a set that does not fit is fetched once
+more. A `.ocsp` older than two hours leaves the status to a network query, and `--at` never
+uses it. `.sig` exists only on the plain-HTTP host, so a network that blocks it cannot take
+new lists; the list in hand stays usable while HTTPS confirms it. `ti pki tsl verify TSL SIG --signer-status FILE` runs the check on files.
 
 `ti_pki::tsl` reads gematik's ETSI TS 119 612 list with quick-xml and serde, matching
 element names without their namespace prefix. It is used as a directory of candidate
@@ -316,13 +325,10 @@ Over HTTP the TSL is not downloaded while the SHA-256 published next to it (`.sh
 matches the list in hand; a download must match that hash (A_30044 (2) of C_12791). The
 hash only saves the download: the list is verified as before, whatever it says.
 
-The core has no HTTP client and no executor. Runtime glue is opt-in: the `reqwest`
-feature provides a transport over a caller-provided `reqwest::Client` (native and
-wasm32), the `tokio` feature a background driver with SIGHUP and an admin trigger.
-`just core-deps` proves the rest of the crate stays free of them, and `just wasm32`
-that the loading layer builds for the browser. The adapters are features rather than
-separate crates while everything is 0.x; once `ti-pki` aims for 1.0, `reqwest` (itself
-0.x) moves to its own crate so its breaking releases stop forcing `ti-pki` majors.
+The core has no HTTP client and no executor: the host implements `load::Transport` and
+calls `Reloader::tick` on its own runtime. `just core-deps` proves the crate stays free
+of them, and `just wasm32` that the loading layer builds for the browser. A Rust server
+brings its adapters in its own crate.
 
 ### Reload strategies
 
@@ -330,12 +336,12 @@ separate crates while everything is 0.x; once `ti-pki` aims for 1.0, `reqwest` (
   share of `jitter`, so a fleet started together does not reload in lockstep.
 - **TSL `NextUpdate` deadline**: with `honor_tsl_next_update`, the next reload is due
   `next_update_lead` before the current TSL's `NextUpdate` if that comes first.
-- **External trigger**: SIGHUP (`ti_pki::tokio::on_sighup`) or an admin endpoint / exec
-  probe calling `AdminTrigger::trigger`, e.g. right after a ConfigMap update.
+- **External trigger**: the host calls `Reloader::tick` on SIGHUP or from an admin
+  endpoint, e.g. right after a ConfigMap update.
 - **Lazy on use** — rejected: reloading from `snapshot()` would put network I/O,
   verification latency and their failures into the request path, need an executor
   there, and stampede the origin when many requests notice staleness at once.
-  `snapshot()` stays a lock-free read and only refuses expired material.
+  `snapshot()` stays a short read that only refuses expired material.
 
 Production caps `hard_expiry` at `MAX_PROD_HARD_EXPIRY` (24 h); `ReloadPolicy::validate`
 and `Reloader::new` enforce it.
@@ -348,15 +354,17 @@ and `Reloader::new` enforce it.
 - `subPath` mounts never receive updates; mount the whole volume.
 - Updates arrive after the kubelet sync period plus its cache TTL (about a minute by
   default), then on the next reload tick — or trigger one.
-- Put roots.json and the TSL in one ConfigMap so they change together.
+- Put roots.json, the TSL and its `.sig` and `.ocsp` in one ConfigMap so they change
+  together; a list under the signature of another state does not verify. The producer,
+  `ti pki trust export`, writes them as one bundle file; consumers keep nothing on disk.
 - Poll, don't watch: inotify is unreliable on these mounts because the files themselves
   never change, only the symlink.
 
 ### Offline bundle
 
 For air-gapped deployments, export both artefacts with their metadata on a connected
-machine (`Bundle::new(&config, label, material).write(path)`, from material any loader
-produced), transfer the JSON file, and serve it with
+machine (`ti pki trust export`, or `Bundle::new(&config, label, material).write(path)` from
+material any loader produced), transfer the JSON file, and serve it with
 `StaticLoader::from_bundle(Bundle::read(path)?, &config)?`, alone or as the backup of a
 `FallbackLoader`. The bundle is not signed and needs no signature: it is verified on
 import like any other source, and its anchor hash rejects a bundle meant for another
@@ -475,7 +483,7 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `check-full` | Tier 1 before a release (`just release` runs it): `check`, `test-defaults`, `features`, `cli-check` |
 | `cli-check` | `cli-targets check`: clippy with `-D warnings` for the Linux (musl) and Windows targets of `ti` in their cross containers; needs Docker |
 | `check` | Tier 1: `fmt`, `clippy`, `doc`, `test`, `wasm32`, `wasm-unsafe-free`, `core-deps`, `nonprod-absent`, `jwz-backends`, `jwz-rsa-guard`, `machete`, `deny`, `vet`, `brainpool-absent` for jwz and ti-jwz |
-| `wasm32` | `cargo check` for wasm32 of ti-types with `std`, ti-pki's loading layer and reqwest transport, ti-report, ti-wasm and the jwz crates |
+| `wasm32` | `cargo check` for wasm32 of ti-types with `std`, ti-pki's loading layer, ti-report, ti-wasm and the jwz crates |
 | `wasm-unsafe-free` | No `unsafe` in ti-wasm's own sources |
 | `check-jwz` | The jwz crates only (fmt, clippy, doc, test, feature matrix, wasm32, guards): the loop while working on jwz |
 | `jwz-backends` | No openssl, ring, aws-lc or cryptoki under jwz, jwz-brainpool or ti-jwz |
@@ -488,6 +496,10 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `jwz-browser-tools` | Download Chrome for Testing's headless shell and chromedriver into `JWZ_CHROME_DIR` (default `~/Development/tools/chrome`) |
 | `jwz-interop` | Design time (Go, Python 3): brainpool interop fixtures against Go josebp and Python jwcrypto, both directions, and their coverage table (`jwz-brainpool/interop`) |
 | `fuzz-jwz [seconds]` | Design time (nightly, cargo-fuzz): every jwz parser, `seconds` each (default 30), from the committed seeds |
+| `fuzz-ti-pki [seconds]` | Design time (nightly, cargo-fuzz): ti-pki's parsers of network bytes (the detached TSL signature, the TSL list, OCSP responses), `seconds` each, from the committed seeds |
+| `fuzz-ti-connector-client [seconds]` | Design time (nightly, cargo-fuzz): the `.kon` parser, its file check and redacted view, `seconds` each (default 30) |
+| `fuzz-ti-connector-client [seconds]` | Design time (nightly, cargo-fuzz): the `.kon` parser with its file check and redacted view, the service directory with its bindings and rewrite, and every Konnektor call on any answer, seeded from the recorded runs, `seconds` each (default 30) |
+| `fuzz-ti-pkcs12 [seconds]` | Design time (nightly, cargo-fuzz, Go): the PKCS#12 decoder with its password, seeded from a fresh spec/pkcs12 conformance corpus, `seconds` (default 30) |
 | `wasm-build` | Build the ti-wasm package into `target/ti-wasm/pkg` |
 | `wasm-size` | Module size raw, gzip, brotli; fails over 2.0 MB raw or 700 KB gzip |
 | `wasm-smoke` | The package in Node on the real TSLs, cross-checked with `ti pki tsl verify` |

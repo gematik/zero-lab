@@ -38,20 +38,24 @@ import (
 	"github.com/fxamacker/cbor/v2"
 )
 
+// ChannelState is what Server remembers of a channel: the handshake messages, the K1
+// material, and the K2 keys once Message3 is through.
 type ChannelState struct {
-	ID                      string
-	Message1Raw             []byte
-	Message2Raw             []byte
-	K1_ss_ecdh              []byte
-	K1_ss_kem               []byte
-	K1_c2s                  []byte
-	K1_s2c                  []byte
-	KeyID                   []byte
-	K2_c2s_app_data         []byte
-	K2_s2c_app_data         []byte
-	K2_s2c_app_data_counter Counter
+	ID                  string
+	Message1Raw         []byte
+	Message2Raw         []byte
+	K1SSECDH            []byte
+	K1SSKEM             []byte
+	K1C2S               []byte
+	K1S2C               []byte
+	KeyID               []byte
+	K2C2SAppData        []byte
+	K2S2CAppData        []byte
+	K2S2CAppDataCounter Counter
 }
 
+// Server is a VAU endpoint for tests: its keys are generated at start and carry neither
+// signature nor certificate, and its channels live in memory. It is no production VAU.
 type Server struct {
 	mux                 *http.ServeMux
 	keyPairs            *KeyPairs
@@ -60,6 +64,7 @@ type Server struct {
 	channels            map[string]*ChannelState
 }
 
+// NewServer generates the server's keys and sets up its routes.
 func NewServer() (s *Server, err error) {
 	s = &Server{
 		mux:      http.NewServeMux(),
@@ -79,11 +84,11 @@ func NewServer() (s *Server, err error) {
 
 	s.signedPublicKeys = &SignedPublicVAUKeys{
 		SignedPubKeys: &PublicVAUKeys{
-			ECDH_PK:     s.keyPairs.ECKeyPair.PublicData,
-			Kyber768_PK: s.keyPairs.KEMKeyPair.PublicData,
-			IssuedAt:    0,
-			ExpiresAt:   0,
-			Commment:    "Server keys are not implemented yet",
+			ECDHPK:     s.keyPairs.ECKeyPair.PublicData,
+			Kyber768PK: s.keyPairs.KEMKeyPair.PublicData,
+			IssuedAt:   0,
+			ExpiresAt:  0,
+			Commment:   "Server keys are not implemented yet",
 		},
 		Cdv: 1,
 	}
@@ -106,16 +111,21 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
+// HandleByContentType routes a POST on a channel: Message3 as application/cbor, a nested
+// request as application/octet-stream.
 func (s *Server) HandleByContentType(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("Content-Type") == "application/cbor" {
+	switch r.Header.Get("Content-Type") {
+	case "application/cbor":
 		s.HandleMessage3(w, r)
-	} else if r.Header.Get("Content-Type") == "application/octet-stream" {
+	case "application/octet-stream":
 		s.HandleNestedRequest(w, r)
-	} else {
+	default:
 		w.WriteHeader(http.StatusBadRequest)
 	}
 }
 
+// HandleMessage1 answers Message1 with Message2 and creates the channel, whose path goes
+// back in the VAU-CID header.
 func (s *Server) HandleMessage1(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Content-Type") != "application/cbor" {
 		w.WriteHeader(http.StatusBadRequest)
@@ -135,21 +145,21 @@ func (s *Server) HandleMessage1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ecdh_ss, ecdh_ct, err := m1.ECDH_PK.Encapsulate()
+	ecdhSS, ecdhCt, err := m1.ECDHPK.Encapsulate()
 	if err != nil {
 		slog.Error("encapsulating ECDH public key", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	kem_ss, kem_ct, err := m1.Kyber768_PK.Encapsulate()
+	kemSS, kemCt, err := m1.Kyber768PK.Encapsulate()
 	if err != nil {
 		slog.Error("encapsulating Kyber768 public key", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	k1_c2s, k1_s2c, err := KemKDF1(ecdh_ss, kem_ss)
+	k1C2S, k1S2C, err := KemKDF1(ecdhSS, kemSS)
 	if err != nil {
 		slog.Error("computing KEM KDF1", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -158,7 +168,7 @@ func (s *Server) HandleMessage1(w http.ResponseWriter, r *http.Request) {
 
 	// encrypt the signed public keys
 	slog.Info("Encrypting signed public keys")
-	encryptedSignedPublicKeys, err := AEADEncrypt(k1_s2c, s.signedPublicKeysRaw)
+	encryptedSignedPublicKeys, err := AEADEncrypt(k1S2C, s.signedPublicKeysRaw)
 	if err != nil {
 		slog.Error("encrypting signed public keys", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -167,9 +177,9 @@ func (s *Server) HandleMessage1(w http.ResponseWriter, r *http.Request) {
 
 	m2 := &Message2{
 		MessageType: "M2",
-		ECDH_ct:     *ecdh_ct,
-		Kyber768_ct: kem_ct,
-		AEAD_ct:     encryptedSignedPublicKeys,
+		ECDHCt:      *ecdhCt,
+		Kyber768Ct:  kemCt,
+		AEADCt:      encryptedSignedPublicKeys,
 	}
 
 	vauCid := "/" + uuid.NewV4().String()
@@ -188,17 +198,21 @@ func (s *Server) HandleMessage1(w http.ResponseWriter, r *http.Request) {
 		ID:          vauCid,
 		Message1Raw: m1cbor,
 		Message2Raw: m2cbor,
-		K1_ss_ecdh:  ecdh_ss,
-		K1_ss_kem:   kem_ss,
-		K1_c2s:      k1_c2s,
-		K1_s2c:      k1_s2c,
+		K1SSECDH:    ecdhSS,
+		K1SSKEM:     kemSS,
+		K1C2S:       k1C2S,
+		K1S2C:       k1S2C,
 	}
 
 	s.channels[vauCid] = channelState
 
-	w.Write(m2cbor)
+	if _, err := w.Write(m2cbor); err != nil {
+		slog.Error("writing Message2", "error", err)
+	}
 }
 
+// HandleMessage3 checks the key confirmation of Message3, installs the K2 keys and answers
+// with Message4.
 func (s *Server) HandleMessage3(w http.ResponseWriter, r *http.Request) {
 	cid := r.PathValue("cid")
 	channelState, ok := s.channels["/"+cid]
@@ -223,21 +237,21 @@ func (s *Server) HandleMessage3(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m3_inner_cbor, err := AEADDecrypt(channelState.K1_c2s, m3.AEAD_ct)
+	m3InnerCBOR, err := AEADDecrypt(channelState.K1C2S, m3.AEADCt)
 	if err != nil {
 		slog.Error("decrypting Message3", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	m3_inner := new(Message3Inner)
-	if err := cbor.Unmarshal(m3_inner_cbor, m3_inner); err != nil {
+	m3Inner := new(Message3Inner)
+	if err := cbor.Unmarshal(m3InnerCBOR, m3Inner); err != nil {
 		slog.Error("unmarshaling Message3Inner", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	k2_c2s_key_confirmation, k2_c2s_app_data, k2_s2c_key_confirmation, k2_s2c_app_data, key_id, err := s.Decapsulate(channelState.K1_ss_ecdh, channelState.K1_ss_kem, &m3_inner.ECDH_ct, m3_inner.Kyber768_ct)
+	k2C2SKeyConfirmation, k2C2SAppData, k2S2CKeyConfirmation, k2S2CAppData, keyID, err := s.Decapsulate(channelState.K1SSECDH, channelState.K1SSKEM, &m3Inner.ECDHCt, m3Inner.Kyber768Ct)
 	if err != nil {
 		slog.Error("decapsulating", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
@@ -246,37 +260,37 @@ func (s *Server) HandleMessage3(w http.ResponseWriter, r *http.Request) {
 
 	transcript := channelState.Message1Raw
 	transcript = append(transcript, channelState.Message2Raw...)
-	transcript = append(transcript, m3.AEAD_ct...)
+	transcript = append(transcript, m3.AEADCt...)
 
-	transcript_hash := sha256.Sum256(transcript)
+	transcriptHash := sha256.Sum256(transcript)
 
-	m3_key_confirmation, err := AEADDecrypt(k2_c2s_key_confirmation, m3.AEAD_ct_key_confirmation)
+	m3KeyConfirmation, err := AEADDecrypt(k2C2SKeyConfirmation, m3.AEADCtKeyConfirmation)
 	if err != nil {
 		slog.Error("decrypting Message3 key confirmation", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	if !bytes.Equal(transcript_hash[:], m3_key_confirmation) {
-		slog.Error("transcript hash and Message3 key confirmation do not match", "transcript_hash", transcript_hash[:], "m3_key_confirmation", m3_key_confirmation)
+	if !bytes.Equal(transcriptHash[:], m3KeyConfirmation) {
+		slog.Error("transcript hash and Message3 key confirmation do not match", "transcript_hash", transcriptHash[:], "m3_key_confirmation", m3KeyConfirmation)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	// update state
-	channelState.K1_c2s = nil
-	channelState.K1_s2c = nil
-	channelState.KeyID = key_id
-	channelState.K2_c2s_app_data = k2_c2s_app_data
-	channelState.K2_s2c_app_data = k2_s2c_app_data
+	channelState.K1C2S = nil
+	channelState.K1S2C = nil
+	channelState.KeyID = keyID
+	channelState.K2C2SAppData = k2C2SAppData
+	channelState.K2S2CAppData = k2S2CAppData
 
 	// create Message4
 	transcript = channelState.Message1Raw
 	transcript = append(transcript, channelState.Message2Raw...)
 	transcript = append(transcript, m3cbor...)
-	transcript_hash = sha256.Sum256(transcript)
+	transcriptHash = sha256.Sum256(transcript)
 
-	aead_ct_key_confirmation, err := AEADEncrypt(k2_s2c_key_confirmation, transcript_hash[:])
+	aeadCtKeyConfirmation, err := AEADEncrypt(k2S2CKeyConfirmation, transcriptHash[:])
 	if err != nil {
 		slog.Error("encrypting Message4 key confirmation", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -284,8 +298,8 @@ func (s *Server) HandleMessage3(w http.ResponseWriter, r *http.Request) {
 	}
 
 	m4 := &Message4{
-		MessageType:              "M4",
-		AEAD_ct_key_confirmation: aead_ct_key_confirmation,
+		MessageType:           "M4",
+		AEADCtKeyConfirmation: aeadCtKeyConfirmation,
 	}
 
 	m4cbor, err := cbor.Marshal(m4)
@@ -296,32 +310,39 @@ func (s *Server) HandleMessage3(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/cbor")
-	w.Write(m4cbor)
-
+	if _, err := w.Write(m4cbor); err != nil {
+		slog.Error("writing Message4", "error", err)
+	}
 }
 
-func (s *Server) Decapsulate(ecdh_ss1, kem_ss1 []byte, ecdh_ct *ECDHData, kem_ct []byte) (k2_c2s_key_confirmation, k2_c2s_app_data, k2_s2c_key_confirmation, k2_s2c_app_data, key_id []byte, err error) {
-	ecdh_ss2, err := s.keyPairs.ECKeyPair.Decapsulate(ecdh_ct)
+// Decapsulate opens the ciphertexts of Message3 and derives the K2 keys from them and the
+// shared secrets of Message1.
+func (s *Server) Decapsulate(ecdhSS1, kemSS1 []byte, ecdhCt *ECDHData, kemCt []byte) (k2C2SKeyConfirmation, k2C2SAppData, k2S2CKeyConfirmation, k2S2CAppData, keyID []byte, err error) {
+	ecdhSS2, err := s.keyPairs.ECKeyPair.Decapsulate(ecdhCt)
 	if err != nil {
 		return nil, nil, nil, nil, nil, fmt.Errorf("decapsulating ECDH: %w", err)
 	}
 
-	kem_ss2, err := s.keyPairs.KEMKeyPair.Decapsulate(kem_ct)
+	kemSS2, err := s.keyPairs.KEMKeyPair.Decapsulate(kemCt)
 	if err != nil {
 		return nil, nil, nil, nil, nil, fmt.Errorf("decapsulating Kyber768: %w", err)
 	}
 
-	return KemKDF2(ecdh_ss1, kem_ss1, ecdh_ss2, kem_ss2)
+	return KemKDF2(ecdhSS1, kemSS1, ecdhSS2, kemSS2)
 }
 
+// HandleCertData always answers 500: the server has no certificates to publish.
 func (s *Server) HandleCertData(w http.ResponseWriter, r *http.Request) {
 	hash := r.PathValue("hash")
 	version := r.PathValue("version")
 	slog.Info("CertData received", "hash", hash, "version", version)
 	w.WriteHeader(http.StatusInternalServerError)
-	w.Write([]byte("CertData"))
+	if _, err := w.Write([]byte("CertData")); err != nil {
+		slog.Error("writing CertData", "error", err)
+	}
 }
 
+// HandleNestedRequest opens a nested request and answers every one with a fixed 200.
 func (s *Server) HandleNestedRequest(w http.ResponseWriter, r *http.Request) {
 	cid := r.PathValue("cid")
 	channelState, ok := s.channels["/"+cid]
@@ -364,9 +385,12 @@ func (s *Server) HandleNestedRequest(w http.ResponseWriter, r *http.Request) {
 	slog.Info("Sending nested response", "response", string(nestedRespData))
 
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Write(encrypted)
+	if _, err := w.Write(encrypted); err != nil {
+		slog.Error("writing nested response", "error", err)
+	}
 }
 
+// EncryptNestedResponseData seals data as a nested response of channelState.
 func (s *Server) EncryptNestedResponseData(channelState *ChannelState, data []byte) ([]byte, error) {
 	header := make([]byte, 43)
 	header[0] = Version
@@ -374,7 +398,7 @@ func (s *Server) EncryptNestedResponseData(channelState *ChannelState, data []by
 	header[2] = HeaderResponse
 	copy(header[11:43], channelState.KeyID)
 
-	aes, err := aes.NewCipher(channelState.K2_s2c_app_data)
+	aes, err := aes.NewCipher(channelState.K2S2CAppData)
 	if err != nil {
 		return nil, fmt.Errorf("creating AES cipher: %w", err)
 	}
@@ -388,7 +412,7 @@ func (s *Server) EncryptNestedResponseData(channelState *ChannelState, data []by
 	iv := make([]byte, 12)
 
 	// increment counter
-	counter := channelState.K2_s2c_app_data_counter.next()
+	counter := channelState.K2S2CAppDataCounter.next()
 
 	// read random bits to have full iv size
 	if _, err := io.ReadAtLeast(rand.Reader, iv, 4); err != nil {
@@ -402,6 +426,7 @@ func (s *Server) EncryptNestedResponseData(channelState *ChannelState, data []by
 	return append(header, ciphertext...), nil
 }
 
+// DecryptNestedRequestData reads, checks and opens the nested request in the body of r.
 func (s *Server) DecryptNestedRequestData(channelState *ChannelState, r *http.Request) ([]byte, error) {
 	defer r.Body.Close()
 	data, err := io.ReadAll(r.Body)
@@ -431,7 +456,7 @@ func (s *Server) DecryptNestedRequestData(channelState *ChannelState, r *http.Re
 		return nil, fmt.Errorf("invalid keyID: %s", header[11:43])
 	}
 
-	aes, err := aes.NewCipher(channelState.K2_c2s_app_data)
+	aes, err := aes.NewCipher(channelState.K2C2SAppData)
 	if err != nil {
 		return nil, fmt.Errorf("creating AES cipher: %w", err)
 	}

@@ -41,7 +41,7 @@ use ti_pki::key::classify_key;
 use ti_pki::tsl::{self, Tsl};
 use ti_pki::{
     Certificate, CertificateCheck, CertificateType, Env, PathOptions, Timestamp, TrustConfig,
-    build_chain, checks, detect_certificate_type, roots, validate_path,
+    ValidityModel, build_chain, checks, detect_certificate_type, roots, validate_path,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -130,6 +130,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             algorithms: &config.algorithms,
             max_clock_skew: config.max_clock_skew,
             ee_checks: &ee_checks,
+            model: t.map_or(ValidityModel::Shell, ValidityModel::for_type),
         },
     )?;
     println!(

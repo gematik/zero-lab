@@ -24,7 +24,8 @@
 //! [`StaticLoader`] and [`Bundle`]: trust material fixed at construction, for offline
 //! and air-gapped deployments or as the last fallback.
 //!
-//! A bundle is a JSON file holding both artefacts with their metadata. It is not signed
+//! A bundle is a JSON file holding roots.json, the TSL and its detached files with their
+//! metadata. It is not signed
 //! and needs no signature: its contents are verified on import like any other load, and
 //! the bundle only contributes `fetched_at` to the freshness policy. It records the
 //! SHA-256 of the anchor it was exported for, so a bundle for another environment is
@@ -37,7 +38,7 @@ use base64ct::{Base64, Encoding};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use super::artifact::{Artifact, TrustMaterial};
+use super::artifact::{Artifact, Detached, TrustMaterial};
 use super::loader::{Fetched, LoadError, Loaded, Loader};
 use crate::TrustConfig;
 use crate::time::Timestamp;
@@ -75,19 +76,23 @@ impl StaticLoader {
 
 impl Loader for StaticLoader {
     async fn fetch(&self, artifact: Artifact, cond: Conditional<'_>) -> Result<Fetched, LoadError> {
-        let meta = self.material.meta(artifact).clone();
+        let (Some(meta), Some(body)) = (self.material.meta(artifact), self.material.body(artifact))
+        else {
+            return Err(LoadError::Unavailable(artifact));
+        };
+        let meta = meta.clone();
         if cond.etag.is_some() && cond.etag == meta.etag.as_deref() {
             return Ok(Fetched::NotModified(meta));
         }
         Ok(Fetched::Body(Loaded {
-            body: self.material.body(artifact).to_vec(),
+            body: body.to_vec(),
             meta,
             stale: None,
         }))
     }
 }
 
-/// Offline trust material: both artefacts, their metadata, and the anchor they belong to.
+/// Offline trust material: the artefacts, their metadata, and the anchor they belong to.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Bundle {
     /// Free-form description, e.g. the environment and export date. Not interpreted.
@@ -181,6 +186,16 @@ struct Wire {
     tsl: String,
     roots_meta: WireMeta,
     tsl_meta: WireMeta,
+    // Optional in the format so that a bundle from before them gets a clear refusal on
+    // import rather than a parse error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tsl_sig: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tsl_sig_meta: Option<WireMeta>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tsl_ocsp: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tsl_ocsp_meta: Option<WireMeta>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -196,6 +211,8 @@ struct WireMeta {
 impl From<&Bundle> for Wire {
     fn from(b: &Bundle) -> Self {
         let [roots_meta, tsl_meta] = b.material.meta.each_ref().map(WireMeta::from);
+        let detached = b.material.detached.as_ref();
+        let status = detached.and_then(|d| d.signer_status.as_ref());
         Wire {
             format_version: FORMAT_VERSION,
             label: b.label.clone(),
@@ -204,6 +221,10 @@ impl From<&Bundle> for Wire {
             tsl: Base64::encode_string(&b.material.tsl),
             roots_meta,
             tsl_meta,
+            tsl_sig: detached.map(|d| Base64::encode_string(&d.signature)),
+            tsl_sig_meta: detached.map(|d| WireMeta::from(&d.signature_meta)),
+            tsl_ocsp: status.map(|(body, _)| Base64::encode_string(body)),
+            tsl_ocsp_meta: status.map(|(_, meta)| WireMeta::from(meta)),
         }
     }
 }
@@ -219,6 +240,25 @@ impl TryFrom<Wire> for Bundle {
             ));
         }
         let body = |name: &str, s: &str| Base64::decode_vec(s).map_err(|e| format!("{name}: {e}"));
+        let detached = match (w.tsl_sig, w.tsl_sig_meta) {
+            (Some(sig), Some(sig_meta)) => Some(Detached {
+                signature: body("tsl_sig", &sig)?,
+                signature_meta: sig_meta.try_into()?,
+                signer_status: match (w.tsl_ocsp, w.tsl_ocsp_meta) {
+                    (Some(ocsp), Some(ocsp_meta)) => {
+                        Some((body("tsl_ocsp", &ocsp)?, ocsp_meta.try_into()?))
+                    }
+                    (None, None) => None,
+                    _ => return Err("tsl_ocsp and tsl_ocsp_meta come together".to_owned()),
+                },
+            }),
+            (None, None) => {
+                return Err(
+                    "no detached signature: this bundle cannot verify, export it again".to_owned(),
+                );
+            }
+            _ => return Err("tsl_sig and tsl_sig_meta come together".to_owned()),
+        };
         Ok(Bundle {
             label: w.label,
             anchor_sha256: unhex(&w.anchor_sha256).ok_or("anchor_sha256 must be 64 hex digits")?,
@@ -227,7 +267,8 @@ impl TryFrom<Wire> for Bundle {
                 w.roots_meta.try_into()?,
                 body("tsl", &w.tsl)?,
                 w.tsl_meta.try_into()?,
-            ),
+            )
+            .with_detached(detached),
         })
     }
 }
@@ -312,8 +353,47 @@ mod tests {
             max_age: Some(Duration::from_secs(3600)),
             source: Source::Http,
         };
-        let material = TrustMaterial::new(b"roots".to_vec(), meta("r"), b"tsl".to_vec(), meta("t"));
+        let material = TrustMaterial::new(b"roots".to_vec(), meta("r"), b"tsl".to_vec(), meta("t"))
+            .with_detached(Some(Detached {
+                signature: b"sig".to_vec(),
+                signature_meta: meta("s"),
+                signer_status: None,
+            }));
         Bundle::new(&TrustConfig::preset_prod(), "prod 2026-09-22", material)
+    }
+
+    #[test]
+    fn bundle_round_trips_detached_material() {
+        let meta = Meta {
+            etag: Some("s".into()),
+            last_modified: None,
+            fetched_at: Timestamp(900),
+            max_age: None,
+            source: Source::Http,
+        };
+        let mut original = bundle();
+        original.material = original.material.clone().with_detached(Some(Detached {
+            signature: b"sig".to_vec(),
+            signature_meta: meta.clone(),
+            signer_status: Some((b"ocsp".to_vec(), meta)),
+        }));
+        assert_eq!(
+            original.material.fetched_at,
+            Timestamp(1_000),
+            "optional files do not age the list; their own rules bound them"
+        );
+        assert_eq!(Bundle::from_slice(&original.to_vec()).unwrap(), original);
+    }
+
+    /// TSLDET-013: a bundle from before the detached files cannot verify; it says so on
+    /// import, not later as a load failure.
+    #[test]
+    fn tsldet_013_a_bundle_without_the_signature_is_refused() {
+        let mut unsigned = bundle();
+        unsigned.material.detached = None;
+        let json = serde_json::to_string(&Wire::from(&unsigned)).unwrap();
+        let error = Bundle::from_slice(json.as_bytes()).unwrap_err();
+        assert!(error.to_string().contains("detached signature"), "{error}");
     }
 
     #[test]

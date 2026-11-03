@@ -40,7 +40,7 @@
 //!   needed (the Go module shells out to OpenSSL for these).
 //! - The password integrity mode: HMAC-SHA-1/-224/-256/-384/-512 with the PKCS#12 KDF,
 //!   checked over the auth-safe octets as received, before anything inside is parsed.
-//! - Encryption: PBES2 (PBKDF2, AES-CBC) through `pkcs5`, and with the `legacy` feature
+//! - Encryption: PBES2 (PBKDF2, AES-CBC), and with the `legacy` feature
 //!   (default) the PKCS#12 PBEs with 3DES and RC2 that OpenSSL's `-legacy` and many
 //!   vendor files still use.
 //! - Bags: certificates (X.509), shrouded key bags, plain key bags, nested safe
@@ -56,6 +56,7 @@ mod decrypt;
 mod encode;
 mod kdf;
 mod mac;
+mod pbes2;
 
 use core::fmt;
 
@@ -111,6 +112,33 @@ pub mod oids {
         ObjectIdentifier::new_unwrap("2.5.29.37.0");
     /// PBES2 (RFC 8018).
     pub const PBES2: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.5.13");
+    /// PBKDF2 (RFC 8018).
+    pub const PBKDF2: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.1.5.12");
+    /// hmacWithSHA1 (RFC 8018).
+    pub const HMAC_WITH_SHA1: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.2.7");
+    /// hmacWithSHA224 (RFC 8018).
+    pub const HMAC_WITH_SHA224: ObjectIdentifier =
+        ObjectIdentifier::new_unwrap("1.2.840.113549.2.8");
+    /// hmacWithSHA256 (RFC 8018).
+    pub const HMAC_WITH_SHA256: ObjectIdentifier =
+        ObjectIdentifier::new_unwrap("1.2.840.113549.2.9");
+    /// hmacWithSHA384 (RFC 8018).
+    pub const HMAC_WITH_SHA384: ObjectIdentifier =
+        ObjectIdentifier::new_unwrap("1.2.840.113549.2.10");
+    /// hmacWithSHA512 (RFC 8018).
+    pub const HMAC_WITH_SHA512: ObjectIdentifier =
+        ObjectIdentifier::new_unwrap("1.2.840.113549.2.11");
+    /// AES-128-CBC (NIST).
+    pub const AES_128_CBC: ObjectIdentifier =
+        ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.1.2");
+    /// AES-192-CBC (NIST).
+    pub const AES_192_CBC: ObjectIdentifier =
+        ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.1.22");
+    /// AES-256-CBC (NIST).
+    pub const AES_256_CBC: ObjectIdentifier =
+        ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.1.42");
+    /// DES-EDE3-CBC (RFC 8018).
+    pub const DES_EDE3_CBC: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.113549.3.7");
     /// `pbeWithSHAAnd3-KeyTripleDES-CBC`.
     pub const PBE_SHA1_3DES: ObjectIdentifier =
         ObjectIdentifier::new_unwrap("1.2.840.113549.1.12.1.3");

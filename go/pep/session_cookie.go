@@ -24,13 +24,14 @@ package pep
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwe"
+	"github.com/go-jose/go-jose/v4"
 )
 
 // sessionCookieClaims is the encrypted snapshot payload. Its format (JWE dir+A256GCM, these json tags) is the
@@ -47,8 +48,12 @@ type sessionCookieClaims struct {
 // This is the validation half of pep/proxy's stateless snapshot, kept in pep so the verifier — and zaddy in
 // forward_auth — can gate on the session cookie without the kv.
 func OpenSessionCookie(token string, keys [][]byte) (identity map[string]any, sid string, ok bool) {
+	sealed, err := jose.ParseEncryptedCompact(token, []jose.KeyAlgorithm{jose.DIRECT}, []jose.ContentEncryption{jose.A256GCM})
+	if err != nil {
+		return nil, "", false
+	}
 	for _, k := range keys {
-		payload, err := jwe.Decrypt([]byte(token), jwe.WithKey(jwa.DIRECT(), k))
+		payload, err := sealed.Decrypt(k)
 		if err != nil {
 			continue
 		}
@@ -68,12 +73,13 @@ func OpenSessionCookie(token string, keys [][]byte) (identity map[string]any, si
 // the context's claims with the identity, so downstream policies (EnforcerScope) work. It is the BFF/gateway
 // and forward_auth counterpart to the token-verifying enforcers.
 type EnforcerSessionCookie struct {
-	TypeVal     EnforcerType `json:"type" validate:"required"`
-	CookieName  string       `json:"cookie_name" validate:"required"`
+	TypeVal     EnforcerType `json:"type"`
+	CookieName  string       `json:"cookie_name"`
 	KeyPath     string       `json:"key_path,omitempty"`
 	PrevKeyPath string       `json:"previous_key_path,omitempty"`
 
-	keys [][]byte
+	keysMu sync.Mutex
+	keys   [][]byte
 }
 
 // NewEnforcerSessionCookie builds the enforcer with keys supplied directly — the gateway passes the keys its
@@ -82,10 +88,14 @@ func NewEnforcerSessionCookie(cookieName string, keys [][]byte) *EnforcerSession
 	return &EnforcerSessionCookie{TypeVal: EnforcerTypeSessionCookie, CookieName: cookieName, keys: keys}
 }
 
+// Type returns EnforcerTypeSessionCookie.
 func (e *EnforcerSessionCookie) Type() EnforcerType { return EnforcerTypeSessionCookie }
 
+// Apply denies with ErrSessionRequired whatever goes wrong, including unavailable keys, so a client learns
+// nothing about the cause. Keys configured by path are read on the first request, not at start-up.
 func (e *EnforcerSessionCookie) Apply(ctx Context, next HandlerFunc) {
-	if err := e.ensureKeys(); err != nil {
+	keys, err := e.ensureKeys()
+	if err != nil {
 		ctx.Slogger().Error("session cookie keys unavailable", "error", err)
 		ctx.Deny(ErrSessionRequired)
 		return
@@ -95,7 +105,7 @@ func (e *EnforcerSessionCookie) Apply(ctx Context, next HandlerFunc) {
 		ctx.Deny(ErrSessionRequired)
 		return
 	}
-	identity, _, ok := OpenSessionCookie(c.Value, e.keys)
+	identity, _, ok := OpenSessionCookie(c.Value, keys)
 	if !ok {
 		ctx.Deny(ErrSessionRequired)
 		return
@@ -109,28 +119,32 @@ func (e *EnforcerSessionCookie) Apply(ctx Context, next HandlerFunc) {
 	next(ctx)
 }
 
-// ensureKeys lazily loads keys from the configured paths when none were injected (the JSON/Caddyfile path).
-func (e *EnforcerSessionCookie) ensureKeys() error {
+// ensureKeys loads the keys from the configured paths on the first request, when none were injected (the JSON and
+// Caddyfile path). It is no sync.Once, which would keep a failed read for good: a key file mounted after the start is
+// picked up by the next request.
+func (e *EnforcerSessionCookie) ensureKeys() ([][]byte, error) {
+	e.keysMu.Lock()
+	defer e.keysMu.Unlock()
 	if len(e.keys) > 0 {
-		return nil
+		return e.keys, nil
 	}
 	if e.KeyPath == "" {
-		return fmt.Errorf("no session cookie key configured")
+		return nil, errors.New("no session cookie key configured")
 	}
 	k, err := loadSessionCookieKey(e.KeyPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	keys := [][]byte{k}
 	if e.PrevKeyPath != "" {
 		p, err := loadSessionCookieKey(e.PrevKeyPath)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		keys = append(keys, p)
 	}
 	e.keys = keys
-	return nil
+	return keys, nil
 }
 
 func loadSessionCookieKey(path string) ([]byte, error) {

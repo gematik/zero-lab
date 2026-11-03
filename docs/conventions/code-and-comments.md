@@ -24,5 +24,10 @@
 - Formatting is the language's standard formatter with the repository's configuration;
   a check fails on unformatted code.
 - Prefer clear code over clever code; security-relevant code is written to be reviewed.
+- **Go is human-reviewable** (maintainer, 2026-11-01): every line of Go that ships is
+  written or read by a person. Generated Go is limited to what a reviewer can read in
+  full next to its source (a schema's types, a traceability table); code translated from
+  another language or a compiled artefact (such as a WebAssembly module turned into Go
+  source) does not ship. The same holds for a `go:embed` of executable code.
 - Errors carry the reason a reviewer and a caller need, and map to the result codes of the
   specification the code implements.

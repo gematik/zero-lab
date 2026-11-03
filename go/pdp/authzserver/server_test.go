@@ -25,6 +25,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -34,10 +35,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
+
 	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
 )
 
 const (
@@ -59,24 +59,18 @@ var testDPoPKey = func() *dpop.Key {
 
 // newTestServer builds an authorization server with one product and one client whose public JWK is
 // derived from the returned signing key. The signing key is used to mint client assertions.
-func newTestServer(t *testing.T) (*Server, jwk.Key) {
+func newTestServer(t *testing.T) (*Server, *jose.JSONWebKey) {
 	t.Helper()
 	prk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
-	signKey, err := jwk.Import(prk)
-	if err != nil {
-		t.Fatalf("import key: %v", err)
-	}
-	signKey.Set(jwk.KeyIDKey, "test-client-key")
-	pubKey, err := signKey.PublicKey()
-	if err != nil {
-		t.Fatalf("public key: %v", err)
-	}
+	signKey := &jose.JSONWebKey{Key: prk, KeyID: "test-client-key"}
+	pubKey := signKey.Public()
 
 	cfg := Config{
-		Issuer: testIssuer,
+		Issuer:     testIssuer,
+		SigningKey: &SigningKey{Signer: newP256(t), KeyID: "test-server-key"},
 		Products: []Product{{
 			ProductID:    testProductID,
 			RedirectURIs: []string{"https://rp.example.com/callback"},
@@ -85,7 +79,7 @@ func newTestServer(t *testing.T) (*Server, jwk.Key) {
 		Clients: []Client{{
 			ClientID:  testClientID,
 			ProductID: testProductID,
-			PublicJWK: jwkToMap(t, pubKey),
+			PublicJWK: jwkToMap(t, &pubKey),
 		}},
 	}
 	server, err := New(cfg)
@@ -95,7 +89,7 @@ func newTestServer(t *testing.T) (*Server, jwk.Key) {
 	return server, signKey
 }
 
-func jwkToMap(t *testing.T, key jwk.Key) map[string]any {
+func jwkToMap(t *testing.T, key *jose.JSONWebKey) map[string]any {
 	t.Helper()
 	b, err := json.Marshal(key)
 	if err != nil {
@@ -110,28 +104,46 @@ func jwkToMap(t *testing.T, key jwk.Key) map[string]any {
 
 // signClientAssertion mints a private_key_jwt assertion with a fresh nonce, applying mutate (if any)
 // before signing so tests can tamper with individual claims.
-func signClientAssertion(t *testing.T, server *Server, signKey jwk.Key, mutate func(jwt.Token)) string {
+func signClientAssertion(t *testing.T, server *Server, signKey *jose.JSONWebKey, mutate func(map[string]any)) string {
 	t.Helper()
 	nonce, err := server.nonceService.Get()
 	if err != nil {
 		t.Fatalf("get nonce: %v", err)
 	}
-	tok := jwt.New()
-	tok.Set(jwt.IssuerKey, testClientID)
-	tok.Set(jwt.SubjectKey, testClientID)
-	tok.Set(jwt.AudienceKey, testIssuer)
-	tok.Set(jwt.IssuedAtKey, time.Now().Unix())
-	tok.Set(jwt.ExpirationKey, time.Now().Add(time.Minute).Unix())
-	tok.Set("nonce", nonce)
-	tok.Set("cnf", map[string]string{"jkt": testDPoPKey.Thumbprint()})
+	claims := map[string]any{
+		"iss":   testClientID,
+		"sub":   testClientID,
+		"aud":   []string{testIssuer},
+		"iat":   time.Now().Unix(),
+		"exp":   time.Now().Add(time.Minute).Unix(),
+		"nonce": nonce,
+		"cnf":   map[string]string{"jkt": testDPoPKey.Thumbprint()},
+	}
 	if mutate != nil {
-		mutate(tok)
+		mutate(claims)
 	}
-	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.ES256(), signKey))
+	return signES256(t, signKey, claims)
+}
+
+func signES256(t *testing.T, key *jose.JSONWebKey, claims map[string]any) string {
+	t.Helper()
+	payload, err := json.Marshal(claims)
 	if err != nil {
-		t.Fatalf("sign assertion: %v", err)
+		t.Fatalf("encode claims: %v", err)
 	}
-	return string(signed)
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.ES256, Key: key}, (&jose.SignerOptions{}).WithType("JWT"))
+	if err != nil {
+		t.Fatalf("signer: %v", err)
+	}
+	object, err := signer.Sign(payload)
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	signed, err := object.CompactSerialize()
+	if err != nil {
+		t.Fatalf("serialize: %v", err)
+	}
+	return signed
 }
 
 // clientCredentialsRequest is a client_credentials token request with a DPoP proof by testDPoPKey.
@@ -185,16 +197,24 @@ func TestPrivateKeyJWTClientCredentials(t *testing.T) {
 		t.Fatalf("token_type = %q, want DPoP (cnf.jkt bound)", tr.TokenType)
 	}
 
-	tok, err := jwt.Parse([]byte(tr.AccessToken), jwt.WithVerify(false), jwt.WithValidate(false))
+	parts := strings.Split(tr.AccessToken, ".")
+	if len(parts) != 3 {
+		t.Fatalf("access token is not a compact JWS: %q", tr.AccessToken)
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		t.Fatalf("parse access token: %v", err)
+		t.Fatalf("decode access token: %v", err)
 	}
-	var cnf map[string]any
-	if err := tok.Get("cnf", &cnf); err != nil {
-		t.Fatalf("access token missing cnf: %v", err)
+	var claims struct {
+		Cnf struct {
+			Jkt string `json:"jkt"`
+		} `json:"cnf"`
 	}
-	if cnf["jkt"] != testDPoPKey.Thumbprint() {
-		t.Fatalf("cnf.jkt = %v, want %q", cnf["jkt"], testDPoPKey.Thumbprint())
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		t.Fatalf("access token claims: %v", err)
+	}
+	if claims.Cnf.Jkt != testDPoPKey.Thumbprint() {
+		t.Fatalf("cnf.jkt = %v, want %q", claims.Cnf.Jkt, testDPoPKey.Thumbprint())
 	}
 }
 
@@ -236,7 +256,7 @@ func TestRFC9449_5_ClientCredentialsProofForAnotherEndpointIsRefused(t *testing.
 func assertTokenError(t *testing.T, err error, code, description string) {
 	t.Helper()
 	var authzErr *Error
-	if !errors.As(err, &authzErr) || authzErr.HttpStatus != http.StatusBadRequest ||
+	if !errors.As(err, &authzErr) || authzErr.HTTPStatus != http.StatusBadRequest ||
 		authzErr.Code != code || authzErr.Description != description {
 		t.Fatalf("got %v, want 400 %s: %s", err, code, description)
 	}
@@ -259,27 +279,24 @@ func TestPrivateKeyJWTRejections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
-	wrongKey, err := jwk.Import(otherKey)
-	if err != nil {
-		t.Fatalf("import key: %v", err)
-	}
+	wrongKey := &jose.JSONWebKey{Key: otherKey}
 
 	cases := []struct {
 		name   string
-		mutate func(jwt.Token)
+		mutate func(map[string]any)
 		// when set, the assertion is signed with this key instead of the registered one
-		signWith jwk.Key
+		signWith *jose.JSONWebKey
 		// when set, replace the client_assertion_type with this value
 		assertionType string
 	}{
 		{name: "wrong signing key", signWith: wrongKey},
-		{name: "unknown client", mutate: func(tok jwt.Token) { tok.Set(jwt.SubjectKey, "nobody") }},
-		{name: "iss != sub", mutate: func(tok jwt.Token) { tok.Set(jwt.IssuerKey, "someone-else") }},
-		{name: "wrong audience", mutate: func(tok jwt.Token) { tok.Set(jwt.AudienceKey, "https://evil.example.com") }},
-		{name: "expired", mutate: func(tok jwt.Token) { tok.Set(jwt.ExpirationKey, time.Now().Add(-time.Hour).Unix()) }},
-		{name: "missing nonce", mutate: func(tok jwt.Token) { tok.Remove("nonce") }},
-		{name: "missing cnf", mutate: func(tok jwt.Token) { tok.Remove("cnf") }},
-		{name: "unknown nonce", mutate: func(tok jwt.Token) { tok.Set("nonce", "never-issued") }},
+		{name: "unknown client", mutate: func(c map[string]any) { c["sub"] = "nobody" }},
+		{name: "iss != sub", mutate: func(c map[string]any) { c["iss"] = "someone-else" }},
+		{name: "wrong audience", mutate: func(c map[string]any) { c["aud"] = []string{"https://evil.example.com"} }},
+		{name: "expired", mutate: func(c map[string]any) { c["exp"] = time.Now().Add(-time.Hour).Unix() }},
+		{name: "missing nonce", mutate: func(c map[string]any) { delete(c, "nonce") }},
+		{name: "missing cnf", mutate: func(c map[string]any) { delete(c, "cnf") }},
+		{name: "unknown nonce", mutate: func(c map[string]any) { c["nonce"] = "never-issued" }},
 		{name: "wrong assertion type", assertionType: "urn:bogus"},
 	}
 
@@ -310,7 +327,8 @@ func assertInvalidClient(t *testing.T, err error) {
 	if err == nil {
 		t.Fatal("expected client authentication to fail, got nil")
 	}
-	authzErr, ok := err.(*Error)
+	authzErr := &Error{}
+	ok := errors.As(err, &authzErr)
 	if !ok {
 		t.Fatalf("expected *Error, got %T: %v", err, err)
 	}

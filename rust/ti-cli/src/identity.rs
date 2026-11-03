@@ -21,11 +21,12 @@
  * find details in the "Readme" file.
  */
 
-//! The SMC-B authentication identity (AUT): a certificate with digitalSignature and
-//! without contentCommitment, and the key that signs for it. From a PKCS#12 file, a PEM
-//! certificate and key, or a card at the Konnektor; the commands see one [`Identity`]
-//! whichever it was, and ask it for a signer under the algorithm an interface wants:
-//! `ES256` (ePA) or `BP256R1` (the IDP-Dienst), the same ECDSA-SHA256 under two names.
+//! The SMC-B or HBA authentication identity (AUT): a certificate with digitalSignature
+//! and without contentCommitment, and the key that signs for it. From a PKCS#12 file, a
+//! PEM certificate and key, or a card at the Konnektor; the commands see one
+//! [`Identity`] whichever it was, and ask it for a signer under the algorithm an
+//! interface wants: `ES256` (ePA) or `BP256R1` (the IDP-Dienst), the same ECDSA-SHA256
+//! under two names.
 
 use std::cell::RefCell;
 use std::path::Path;
@@ -60,7 +61,7 @@ const ID_EC_PUBLIC_KEY: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840
 const BRAINPOOL_P256R1: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.36.3.3.2.8.1.1.7");
 const SECP256R1: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.3.1.7");
 
-/// The curves an SMC-B authentication key is on (gemSpec_Krypt).
+/// The curves an SMC-B or HBA authentication key is on (gemSpec_Krypt).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Curve {
     /// brainpoolP256r1, the cards in the field.
@@ -607,6 +608,8 @@ mod tests {
         assert!(!is_aut(&cert("osig.pem")), "OSIG carries contentCommitment");
         assert!(!is_aut(&cert("enc.pem")), "ENC has no digitalSignature");
         assert!(!is_aut(&cert("ca.pem")));
+        assert!(is_aut(&cert("hba-aut.pem")), "an HBA's C.HP.AUT");
+        assert!(!is_aut(&cert("hba-qes.pem")), "an HBA's C.HP.QES");
     }
 
     #[test]

@@ -41,15 +41,15 @@ func makeTestChannel(t *testing.T, requestCounter, ivCounter uint64) *Channel {
 		t.Fatalf("url.Parse: %v", err)
 	}
 	return &Channel{
-		httpClient:              &http.Client{},
-		Env:                     EnvNonPU,
-		ID:                      "test-channel-id",
-		ChannelURL:              u,
-		keyID:                   bytes.Repeat([]byte{0xA1}, 32),
-		k2_c2s_app_data:         bytes.Repeat([]byte{0xB2}, 32),
-		k2_c2s_app_data_counter: Counter{value: ivCounter},
-		k2_s2c_app_data:         bytes.Repeat([]byte{0xC3}, 32),
-		requestCounter:          Counter{value: requestCounter},
+		httpClient:          &http.Client{},
+		Env:                 EnvNonPU,
+		ID:                  "test-channel-id",
+		ChannelURL:          u,
+		keyID:               bytes.Repeat([]byte{0xA1}, 32),
+		k2C2SAppData:        bytes.Repeat([]byte{0xB2}, 32),
+		k2C2SAppDataCounter: Counter{value: ivCounter},
+		k2S2CAppData:        bytes.Repeat([]byte{0xC3}, 32),
+		requestCounter:      Counter{value: requestCounter},
 	}
 }
 
@@ -92,7 +92,7 @@ func TestSnapshotIsADefensiveCopy(t *testing.T) {
 	snap.K2C2SAppData[0] = 0xFF
 	snap.K2S2CAppData[0] = 0xFF
 
-	if c.keyID[0] != 0xA1 || c.k2_c2s_app_data[0] != 0xB2 || c.k2_s2c_app_data[0] != 0xC3 {
+	if c.keyID[0] != 0xA1 || c.k2C2SAppData[0] != 0xB2 || c.k2S2CAppData[0] != 0xC3 {
 		t.Fatal("Snapshot leaked a reference to internal key bytes")
 	}
 }
@@ -118,17 +118,17 @@ func TestRestoreRoundtripsAllFields(t *testing.T) {
 	if !bytes.Equal(restored.keyID, original.keyID) {
 		t.Errorf("keyID mismatch")
 	}
-	if !bytes.Equal(restored.k2_c2s_app_data, original.k2_c2s_app_data) {
+	if !bytes.Equal(restored.k2C2SAppData, original.k2C2SAppData) {
 		t.Errorf("k2_c2s_app_data mismatch")
 	}
-	if !bytes.Equal(restored.k2_s2c_app_data, original.k2_s2c_app_data) {
+	if !bytes.Equal(restored.k2S2CAppData, original.k2S2CAppData) {
 		t.Errorf("k2_s2c_app_data mismatch")
 	}
 	if restored.requestCounter.value != 42 {
 		t.Errorf("requestCounter: got %d, want 42", restored.requestCounter.value)
 	}
-	if restored.k2_c2s_app_data_counter.value != 7 {
-		t.Errorf("k2_c2s_app_data_counter: got %d, want 7", restored.k2_c2s_app_data_counter.value)
+	if restored.k2C2SAppDataCounter.value != 7 {
+		t.Errorf("k2_c2s_app_data_counter: got %d, want 7", restored.k2C2SAppDataCounter.value)
 	}
 }
 
@@ -255,9 +255,9 @@ func TestChannelSnapshotJSONRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RestoreChannel after JSON: %v", err)
 	}
-	if restored.requestCounter.value != 123 || restored.k2_c2s_app_data_counter.value != 456 {
+	if restored.requestCounter.value != 123 || restored.k2C2SAppDataCounter.value != 456 {
 		t.Fatalf("counters lost across JSON roundtrip: req=%d iv=%d",
-			restored.requestCounter.value, restored.k2_c2s_app_data_counter.value)
+			restored.requestCounter.value, restored.k2C2SAppDataCounter.value)
 	}
 	if !bytes.Equal(restored.keyID, snap.KeyID) {
 		t.Fatalf("keyID lost across JSON roundtrip")

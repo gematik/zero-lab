@@ -33,7 +33,7 @@ func TestSortProviders(t *testing.T) {
 		{Issuer: "https://oidf-z", Name: "Zeta Klinik", Type: "oidf"},
 		{Issuer: "https://oidc", Name: "Corporate SSO", Type: "oidc"},
 		{Issuer: "https://oidf-a", Name: "alpha Praxis", Type: "oidf"},
-		{Issuer: "https://gemidp", Name: "gematik IDP", Type: "gemidp"},
+		{Issuer: "https://idpd", Name: "gematik IDP", Type: "idpd"},
 		{Issuer: "https://oidf-m", Name: "Mittel GmbH", Type: "oidf"},
 	}
 	sortProviders(providers)
@@ -44,7 +44,7 @@ func TestSortProviders(t *testing.T) {
 	}
 	want := []string{
 		"Corporate SSO", // oidc — stays up, configured order
-		"gematik IDP",   // gemidp — stays up, configured order
+		"gematik IDP",   // idpd — stays up, configured order
 		"alpha Praxis",  // OIDF sorted by label (case-insensitive)
 		"Mittel GmbH",
 		"Zeta Klinik",

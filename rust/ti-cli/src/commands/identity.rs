@@ -21,8 +21,8 @@
  * find details in the "Readme" file.
  */
 
-//! `ti identity inspect` and `ti identity sign`: the SMC-B identity the way an ePA
-//! client or an IDP Authenticator-Modul needs it, whichever source holds the key.
+//! `ti identity inspect` and `ti identity sign`: the SMC-B or HBA identity the way an
+//! ePA client or an IDP Authenticator-Modul needs it, whichever source holds the key.
 
 use base64ct::{Base64UrlUnpadded, Encoding};
 use jwz::header::HeaderParams;

@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pki trust export",
+  "description": "The trust bundle written: roots.json, the TSL, its signature and its signer's status in one file, once a consumer's load of it verified.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "environment": {
+      "enum": [
+        "prod",
+        "ref",
+        "test",
+        "dev"
+      ]
+    },
+    "label": {
+      "type": "string",
+      "description": "The bundle's label: environment and fetch time"
+    },
+    "sequence_number": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "TSLSequenceNumber"
+    },
+    "next_update": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "The list's NextUpdate, RFC 3339, UTC"
+    },
+    "signer_status": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "good, revoked or unknown from the set; null if it holds no current status"
+    },
+    "fetched_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the set was fetched; a consumer's age of it starts here"
+    },
+    "bytes": {
+      "type": "integer",
+      "description": "The size of the file"
+    },
+    "fits_config_map": {
+      "type": "boolean",
+      "description": "False: too large for a ConfigMap, use a volume"
+    },
+    "output": {
+      "type": "string",
+      "description": "The file written"
+    }
+  },
+  "required": [
+    "schema",
+    "environment",
+    "label",
+    "sequence_number",
+    "next_update",
+    "signer_status",
+    "fetched_at",
+    "bytes",
+    "fits_config_map",
+    "output"
+  ],
+  "additionalProperties": false
+}

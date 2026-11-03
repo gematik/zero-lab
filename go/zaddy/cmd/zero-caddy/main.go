@@ -19,6 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Command zero-caddy is a Caddy build with the standard modules and the zaddy modules plugged in.
 package main
 
 import (
@@ -32,6 +33,7 @@ import (
 
 	// plug in Caddy modules here
 	_ "github.com/caddyserver/caddy/v2/modules/standard"
+
 	_ "github.com/gematik/zero-lab/go/zaddy"
 )
 
@@ -54,7 +56,7 @@ func resolveVersion() string {
 }
 
 // fullVersion combines the zero-caddy version with the upstream Caddy version as
-// SemVer build metadata, e.g. "0.16.0+caddy2.11.4".
+// SemVer build metadata, e.g. "0.16.0+caddy2.11.7".
 func fullVersion() string {
 	caddyVersion, _ := caddy.Version()
 	return fmt.Sprintf("%s+caddy%s", resolveVersion(), strings.TrimPrefix(caddyVersion, "v"))

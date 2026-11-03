@@ -21,10 +21,10 @@
  * find details in the "Readme" file.
  */
 
-//! `ti directory login owner|holder|service|ti-provider`: a FHIR-Directory access token
-//! from one of its Auth-Service endpoints, by card through the IDP-Dienst, with a
+//! `ti directory login owner|search|holder|service|ti-provider`: a FHIR-Directory access
+//! token from one of its Auth-Service endpoints, by card through the IDP-Dienst, with a
 //! TI-Messenger RegService-OpenID-Token, or with client credentials at the directory's
-//! Keycloak.
+//! Keycloak. `search` is the owner token of a card, named for the Search API it opens.
 
 use jwz::jwt::{Clock, SystemClock};
 use serde::Serialize;
@@ -38,7 +38,8 @@ use super::idp_trust::{CertificateInfo, IdpTrust, certificate_infos};
 use super::idpd::certificate_lines;
 use crate::block::block_on;
 use crate::cli::{
-    DirectoryClientArgs, DirectoryLoginCommand, DirectoryOwnerArgs, DirectoryTargetArgs, GlobalArgs,
+    DirectoryClientArgs, DirectoryLoginCommand, DirectoryOwnerArgs, DirectorySearchArgs,
+    DirectoryTargetArgs, GlobalArgs, IdentityArgs,
 };
 use crate::error::{CliError, Exit};
 use crate::http;
@@ -73,7 +74,8 @@ struct Report {
     challenge: Option<ChallengeInfo>,
     /// The client ID of client credentials; null for the owner methods.
     client_id: Option<String>,
-    /// What was not proven: `idp_certificates_unverified` with `--idp-unverified`.
+    /// What was not proven: `idp_certificates_unverified` with `--idp-unverified`;
+    /// `search_not_in_audience` when a token for search does not name `/search`.
     warnings: Vec<&'static str>,
 }
 
@@ -89,6 +91,8 @@ struct DirectoryInfo {
     /// The IDP-Dienst authorization URL the directory sent the card to; null without
     /// a card.
     authorization_url: Option<String>,
+    /// The Search API the token is for; null except for `login search`.
+    search_url: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -119,6 +123,7 @@ pub fn login(
 ) -> Result<Exit, CliError> {
     match command {
         DirectoryLoginCommand::Owner(args) => login_owner(args, global, out),
+        DirectoryLoginCommand::Search(args) => login_search(args, global, out),
         DirectoryLoginCommand::Holder(args) => login_client(args, Endpoint::Holder, global, out),
         DirectoryLoginCommand::Service(args) => login_client(args, Endpoint::Service, global, out),
         DirectoryLoginCommand::TiProvider(args) => {
@@ -228,7 +233,45 @@ fn login_owner(
             "an owner login needs a card identity (--p12, --cert/--key, --card) or --regservice-token-path".into(),
         ));
     };
-    let directory = directory(&args.target, Needs::Idp)?;
+    let report = login_card(
+        identity_args,
+        &args.target,
+        args.idp_unverified,
+        global,
+        out,
+    )?;
+    emit(&report, &args.target, out)
+}
+
+fn login_search(
+    args: &DirectorySearchArgs,
+    global: &GlobalArgs,
+    out: &Output,
+) -> Result<Exit, CliError> {
+    let mut report = login_card(
+        &args.identity,
+        &args.target,
+        args.idp_unverified,
+        global,
+        out,
+    )?;
+    let search_url = format!("{}/search", report.directory.base_url);
+    if !report.token.aud.contains(&search_url) {
+        report.warnings.push("search_not_in_audience");
+    }
+    report.directory.search_url = Some(search_url);
+    emit(&report, &args.target, out)
+}
+
+/// The owner token of a card identity, through the directory's IDP-Dienst.
+fn login_card(
+    identity_args: &IdentityArgs,
+    target: &DirectoryTargetArgs,
+    idp_unverified: bool,
+    global: &GlobalArgs,
+    out: &Output,
+) -> Result<Report, CliError> {
+    let directory = directory(target, Needs::Idp)?;
     let identity = Identity::load(identity_args, global, out)?;
     let signer = identity.signer(jwz_brainpool::BP256R1)?;
     let transport = http::Logged::new(&global.net, out)?;
@@ -240,7 +283,7 @@ fn login_owner(
             directory.idp().base_url()
         ),
     );
-    let trust = IdpTrust::new(args.idp_unverified, args.target.env, global, out);
+    let trust = IdpTrust::new(idp_unverified, target.env, global, out);
     let done = block_on(owner::login(
         &transport,
         &directory,
@@ -255,7 +298,7 @@ fn login_owner(
     let mut report = report(&directory, Endpoint::Owner, "card", done.token);
     report.directory.authorization_url = Some(done.authorization_url);
     with_card(&mut report, &directory, &done.authenticated, &identity);
-    emit(&report, &args.target, out)
+    Ok(report)
 }
 
 fn report(
@@ -278,6 +321,7 @@ fn report(
             base_url: directory.base_url().to_owned(),
             endpoint_url: directory.endpoint_url(endpoint),
             authorization_url: None,
+            search_url: None,
         },
         idp: None,
         identity: None,
@@ -345,6 +389,9 @@ fn document(report: &Report) -> Document {
             .and_dim(format!(" · {}", report.method.replace('_', " "))),
     );
     doc.field("endpoint", Line::link(&report.directory.endpoint_url));
+    if let Some(search) = &report.directory.search_url {
+        doc.field("for", Line::link(search));
+    }
     if let Some(idp) = &report.idp {
         doc.field("IDP", Line::text(&idp.issuer));
         certificate_lines(&mut doc, &idp.certificates);

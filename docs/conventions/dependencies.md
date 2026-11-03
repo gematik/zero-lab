@@ -26,11 +26,17 @@ answer to a new dependency is no.
    transitive tree, not only the direct dependency. Runtime glue (HTTP clients,
    executors, platform APIs) stays behind opt-in features or in adapter units, never in
    a core.
+   A dependency for a file format, a command line or a framework belongs in a host (a
+   command or server), never in a base library: libraries take typed configuration, and
+   hosts read files ([decision-13](../../backlog/decisions/)).
 6. **Latest versions.** Keep the latest toolchain and the latest release of every
    dependency; never downgrade for compatibility. A fixed advisory is a release blocker.
 7. **Ask first.** Adding a dependency, enabling a feature that pulls new crates or
    modules, or swapping one library for another needs the maintainer's approval, with the
-   reason, the transitive cost, and the alternatives considered. Record the reason next to
+   reason, the transitive cost, the alternatives considered, the unit it lands in (a core
+   or a host), and whether it or its new transitive crates contain `unsafe` code (Rust
+   `unsafe`, Go `unsafe` or cgo). A core takes such a crate only as an approved exception
+   (the profiles say where the list is). Record the reason next to
    the dependency (the profiles say where).
 8. **Removal is a feature.** When a dependency's use shrinks to something small, replace
    it and delete it.

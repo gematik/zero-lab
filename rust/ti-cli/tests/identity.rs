@@ -21,8 +21,8 @@
  * find details in the "Readme" file.
  */
 
-//! `ti identity` and `ti pki verify-signature`: the SMC-B identity the way ePA and the
-//! IDP-Dienst use it, through the binary as a script or `epa` would call it.
+//! `ti identity` and `ti pki verify-signature`: the SMC-B or HBA identity the way ePA
+//! and the IDP-Dienst use it, through the binary as a script or `epa` would call it.
 
 mod support;
 
@@ -135,8 +135,13 @@ fn der_of(pem: &Path) -> Vec<u8> {
 /// `aut.p12`, `osig.p12` and `enc.p12` merged into one file, as a card vendor's
 /// PKCS#12 holds all three identities of an SMC-B.
 fn merged_p12(dir: &TempDir) -> String {
+    merged_p12_of(dir, &["osig", "enc", "aut"])
+}
+
+/// The single-pair PKCS#12 fixtures `names` merged into one file.
+fn merged_p12_of(dir: &TempDir, names: &[&str]) -> String {
     let mut merged = ti_pkcs12::Pkcs12::default();
-    for name in ["osig", "enc", "aut"] {
+    for name in names {
         let bytes = std::fs::read(fixture(&format!("{name}.p12"))).unwrap();
         let p12 = ti_pkcs12::decode(&bytes, "00").unwrap();
         for cert in p12.certificates {
@@ -224,9 +229,37 @@ fn inspect_reads_a_pem_certificate_chain_and_key() {
     assert_eq!(report["source"]["kind"], "pem");
 }
 
+/// An HBA's C.HP.AUT is an identity as an SMC-B's C.HCI.AUT is; its C.HP.QES, which
+/// carries contentCommitment, is not.
+#[test]
+fn inspect_selects_the_aut_pair_of_an_hba() {
+    let dir = TempDir::new("inspect-hba");
+    let p12 = merged_p12_of(&dir, &["hba-qes", "hba-aut"]);
+    let out = ti(&["identity", "inspect", "--p12", &p12]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_conforms("identity inspect", &out.stdout);
+    let report = json(&out);
+    assert_eq!(report["telematik_id"], "1-HBA-TESTONLY01");
+    assert_eq!(
+        report["certificate"]["key_usage"],
+        json!(["digitalSignature"])
+    );
+    assert_eq!(
+        report["certificate"]["pem"].as_str().unwrap().trim(),
+        std::fs::read_to_string(fixture("hba-aut.pem"))
+            .unwrap()
+            .trim()
+    );
+}
+
 #[test]
 fn a_file_without_an_aut_pair_is_identity_not_found() {
-    for name in ["osig.p12", "enc.p12"] {
+    for name in ["osig.p12", "enc.p12", "hba-qes.p12"] {
         let out = ti(&["identity", "inspect", "--p12", &fixture_str(name)]);
         assert_eq!(out.status.code(), Some(4), "{name}");
         assert_eq!(error_kind(&out), "identity_not_found", "{name}");

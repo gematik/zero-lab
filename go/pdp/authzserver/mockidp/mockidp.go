@@ -24,7 +24,7 @@
 // Package mockidp is a co-hosted, non-production OpenID Provider for the PDP. It lets login run the REAL
 // op-callback path — browser → mock /auth login page → PDP /op-callback?code → code exchange → signed
 // id_token validation — with no external IdP and no special-casing in the authorization-server flow: the
-// mock registers as an ordinary oidc.Client provider. It is compiled ONLY with `-tags mockidp`; production
+// mock registers as an ordinary openid.Client provider. It is compiled ONLY with `-tags mockidp`; production
 // builds exclude it (and its routes) entirely.
 package mockidp
 
@@ -35,6 +35,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -42,11 +43,9 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
-	"golang.org/x/oauth2"
+	"github.com/go-jose/go-jose/v4"
+
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 const (
@@ -57,9 +56,9 @@ const (
 // Host is what the mock OP needs from the PDP authorization server, expressed as an interface so this package
 // never imports authzserver (which would be an import cycle, since the build-tagged seam there imports this).
 type Host interface {
-	IssuerBaseURL() string   // the PDP's public base URL (its issuer)
-	OPCallbackURL() string   // the PDP's op-callback URL (where the OP redirects back with the code)
-	AddProvider(oidc.Client) // register the mock as a normal upstream provider in the AS registry
+	IssuerBaseURL() string     // the PDP's public base URL (its issuer)
+	OPCallbackURL() string     // the PDP's op-callback URL (where the OP redirects back with the code)
+	AddProvider(openid.Client) // register the mock as a normal upstream provider in the AS registry
 }
 
 // Identity is the canned login the mock returns in its id_token.
@@ -75,10 +74,12 @@ type pendingAuth struct {
 }
 
 type provider struct {
-	issuer  string
-	id      Identity
-	signKey jwk.Key
-	jwks    jwk.Set
+	issuer string
+	// redirectURI is the one the mock client registered, the PDP's op-callback.
+	redirectURI string
+	id          Identity
+	signer      jose.Signer
+	jwks        *jose.JSONWebKeySet
 
 	mu    sync.Mutex
 	codes map[string]pendingAuth // single-use OP authorization codes (in-memory; dev/non-prod only)
@@ -87,24 +88,17 @@ type provider struct {
 // Register builds the mock OP, mounts its routes on mux, and registers it as a normal oidc provider so the
 // generic startOpenidProviderLogin / OPCallbackEndpoint / OpenidProviders paths handle it unchanged.
 func Register(h Host, mux *http.ServeMux, id Identity) error {
-	key, err := newSigningKey()
+	signer, jwks, err := newSigningKey()
 	if err != nil {
 		return fmt.Errorf("mockidp signing key: %w", err)
 	}
-	pub, err := key.PublicKey()
-	if err != nil {
-		return fmt.Errorf("mockidp public key: %w", err)
-	}
-	set := jwk.NewSet()
-	if err := set.AddKey(pub); err != nil {
-		return err
-	}
 	p := &provider{
-		issuer:  strings.TrimRight(h.IssuerBaseURL(), "/") + pathPrefix,
-		id:      id,
-		signKey: key,
-		jwks:    set,
-		codes:   map[string]pendingAuth{},
+		issuer:      strings.TrimRight(h.IssuerBaseURL(), "/") + pathPrefix,
+		redirectURI: h.OPCallbackURL(),
+		id:          id,
+		signer:      signer,
+		jwks:        jwks,
+		codes:       map[string]pendingAuth{},
 	}
 	mux.HandleFunc("GET "+pathPrefix+"/.well-known/openid-configuration", p.handleDiscovery)
 	mux.HandleFunc("GET "+pathPrefix+"/auth", p.handleAuthPage)
@@ -112,25 +106,24 @@ func Register(h Host, mux *http.ServeMux, id Identity) error {
 	mux.HandleFunc("POST "+pathPrefix+"/token", p.handleToken)
 	mux.HandleFunc("GET "+pathPrefix+"/jwks", p.handleJWKS)
 
-	h.AddProvider(&mockClient{issuer: p.issuer, clientID: mockClientID, redirectURI: h.OPCallbackURL(), pub: pub})
+	h.AddProvider(&mockClient{issuer: p.issuer, clientID: mockClientID, redirectURI: p.redirectURI, keys: jwks})
 	return nil
 }
 
-func newSigningKey() (jwk.Key, error) {
+func newSigningKey() (jose.Signer, *jose.JSONWebKeySet, error) {
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	key, err := jwk.Import(priv)
+	key := jose.JSONWebKey{Key: priv, KeyID: uuid.NewV4().String(), Algorithm: string(jose.ES256)}
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.ES256, Key: key}, (&jose.SignerOptions{}).WithType("JWT"))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	_ = key.Set(jwk.KeyIDKey, uuid.NewV4().String())
-	_ = key.Set(jwk.AlgorithmKey, jwa.ES256())
-	return key, nil
+	return signer, &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{key.Public()}}, nil
 }
 
-func (p *provider) handleDiscovery(w http.ResponseWriter, r *http.Request) {
+func (p *provider) handleDiscovery(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, map[string]any{
 		"issuer":                                p.issuer,
 		"authorization_endpoint":                p.issuer + "/auth",
@@ -142,7 +135,7 @@ func (p *provider) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (p *provider) handleJWKS(w http.ResponseWriter, r *http.Request) {
+func (p *provider) handleJWKS(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, p.jwks)
 }
 
@@ -178,8 +171,21 @@ button:hover{background:var(--magenta);border-color:var(--magenta)}
 <button type="submit">Sign in</button>
 </form></main></body></html>`))
 
+// checkClient holds a request to what the mock client registered (RFC 6749 section 3.1.2.3: exact match), so that even
+// a non-production build sends no code to a URI from a form.
+func (p *provider) checkClient(w http.ResponseWriter, clientID, redirectURI string) bool {
+	if clientID != mockClientID || redirectURI != p.redirectURI {
+		http.Error(w, "unknown client or redirect_uri", http.StatusBadRequest)
+		return false
+	}
+	return true
+}
+
 func (p *provider) handleAuthPage(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	if !p.checkClient(w, q.Get("client_id"), q.Get("redirect_uri")) {
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = loginPage.Execute(w, map[string]string{
 		"Subject":       p.id.Subject,
@@ -197,9 +203,7 @@ func (p *provider) handleAuthSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
 	}
-	redirectURI := r.FormValue("redirect_uri")
-	if redirectURI == "" {
-		http.Error(w, "missing redirect_uri", http.StatusBadRequest)
+	if !p.checkClient(w, r.FormValue("client_id"), r.FormValue("redirect_uri")) {
 		return
 	}
 	code := uuid.NewV4().String()
@@ -214,7 +218,7 @@ func (p *provider) handleAuthSubmit(w http.ResponseWriter, r *http.Request) {
 	q := url.Values{}
 	q.Set("code", code)
 	q.Set("state", r.FormValue("state"))
-	http.Redirect(w, r, redirectURI+"?"+q.Encode(), http.StatusFound)
+	http.Redirect(w, r, p.redirectURI+"?"+q.Encode(), http.StatusFound)
 }
 
 func (p *provider) handleToken(w http.ResponseWriter, r *http.Request) {
@@ -232,24 +236,33 @@ func (p *provider) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if pend.codeChallenge != "" {
-		if oauth2.S256ChallengeFromVerifier(r.FormValue("code_verifier")) != pend.codeChallenge {
+		if openid.S256Challenge(r.FormValue("code_verifier")) != pend.codeChallenge {
 			oauthError(w, "invalid_grant", "PKCE verification failed")
 			return
 		}
 	}
 
 	now := time.Now()
-	tok := jwt.New()
-	tok.Set("iss", p.issuer)
-	tok.Set("sub", p.id.Subject)
-	tok.Set("aud", pend.clientID)
-	tok.Set("nonce", pend.nonce)
-	tok.Set("iat", now.Unix())
-	tok.Set("exp", now.Add(5*time.Minute).Unix())
-	for k, v := range p.id.Claims {
-		tok.Set(k, v)
+	claims := map[string]any{
+		"iss":   p.issuer,
+		"sub":   p.id.Subject,
+		"aud":   []string{pend.clientID},
+		"nonce": pend.nonce,
+		"iat":   now.Unix(),
+		"exp":   now.Add(5 * time.Minute).Unix(),
 	}
-	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.ES256(), p.signKey))
+	maps.Copy(claims, p.id.Claims)
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		oauthError(w, "server_error", "encode id_token claims: "+err.Error())
+		return
+	}
+	object, err := p.signer.Sign(payload)
+	if err != nil {
+		oauthError(w, "server_error", "sign id_token: "+err.Error())
+		return
+	}
+	signed, err := object.CompactSerialize()
 	if err != nil {
 		oauthError(w, "server_error", "sign id_token: "+err.Error())
 		return
@@ -258,7 +271,7 @@ func (p *provider) handleToken(w http.ResponseWriter, r *http.Request) {
 		"access_token": "mock-" + code,
 		"token_type":   "Bearer",
 		"expires_in":   300,
-		"id_token":     string(signed),
+		"id_token":     signed,
 	})
 }
 

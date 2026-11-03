@@ -19,12 +19,127 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Command zero-pdp runs the Zero Trust Policy Decision Point.
 package main
 
 import (
-	"github.com/gematik/zero-lab/go/pdp/cmd/zero-pdp/cmd"
+	"errors"
+	"flag"
+	"fmt"
+	"log/slog"
+	"os"
+	"strings"
 )
 
+const usage = `zero-pdp: Zero Trust Policy Decision Point
+
+Usage: zero-pdp [flags] <command> [flags]
+
+Commands:
+  start                 start the PDP
+  version               print the version
+  jose generate-jwk     generate a JWK
+  jose generate-jwks N  generate a JWK Set of N keys
+  jose public-jwk       read a JWK from stdin, print the public JWK
+  jose public-jwks      read a JWK or JWK Set from stdin, print the public JWK Set
+  non-prod issue        issue an access token, bypassing client authentication
+
+Flags, also accepted after the command:
+  -f, --config-file  config file, or PDP_CONFIG_FILE (default pdp.yaml)
+  -w, --workdir      working directory, or PDP_WORKDIR
+  -v, --verbose      debug logging, or PDP_VERBOSE
+`
+
+// options are the flags every command takes.
+type options struct {
+	configFile string
+	workdir    string
+	verbose    bool
+}
+
+func (o *options) register(flags *flag.FlagSet) {
+	flags.StringVar(&o.configFile, "config-file", o.configFile, "config file")
+	flags.StringVar(&o.configFile, "f", o.configFile, "config file")
+	flags.StringVar(&o.workdir, "workdir", o.workdir, "working directory")
+	flags.StringVar(&o.workdir, "w", o.workdir, "working directory")
+	flags.BoolVar(&o.verbose, "verbose", o.verbose, "debug logging")
+	flags.BoolVar(&o.verbose, "v", o.verbose, "debug logging")
+}
+
+func newFlags(name string, opts *options) *flag.FlagSet {
+	flags := flag.NewFlagSet(name, flag.ContinueOnError)
+	flags.Usage = func() { fmt.Fprint(os.Stderr, usage) }
+	opts.register(flags)
+	return flags
+}
+
+// prepare applies what the options ask for, once all flags have been read.
+func (o *options) prepare() error {
+	if o.workdir != "" {
+		if err := os.Chdir(o.workdir); err != nil {
+			return fmt.Errorf("change working directory: %w", err)
+		}
+	}
+	level := slog.LevelInfo
+	if o.verbose {
+		level = slog.LevelDebug
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
+	return nil
+}
+
 func main() {
-	cmd.Execute()
+	if err := run(os.Args[1:]); err != nil {
+		if !errors.Is(err, flag.ErrHelp) {
+			fmt.Fprintln(os.Stderr, err)
+		}
+		os.Exit(1)
+	}
+}
+
+func run(args []string) error {
+	opts := &options{
+		configFile: envOr("PDP_CONFIG_FILE", "pdp.yaml"),
+		workdir:    os.Getenv("PDP_WORKDIR"),
+		verbose:    os.Getenv("PDP_VERBOSE") == "true",
+	}
+	flags := newFlags("zero-pdp", opts)
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	args = flags.Args()
+	if len(args) == 0 {
+		fmt.Fprint(os.Stderr, usage)
+		return nil
+	}
+	command, args := args[0], args[1:]
+	switch command {
+	case "start":
+		return runStart(opts, args)
+	case "version":
+		return runVersion(opts, args)
+	case "jose":
+		return runJose(opts, args)
+	case "non-prod":
+		return runNonProd(opts, args)
+	default:
+		return fmt.Errorf("unknown command %q", command)
+	}
+}
+
+func envOr(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
+}
+
+// repeated collects a flag given several times.
+type repeated []string
+
+func (r *repeated) String() string { return strings.Join(*r, ",") }
+
+func (r *repeated) Set(value string) error {
+	*r = append(*r, value)
+	return nil
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+
 	"github.com/gematik/zero-lab/go/pep"
 )
 
@@ -37,12 +38,15 @@ func init() {
 	httpcaddyfile.RegisterHandlerDirective("enforce_policy", parseCaddyfileEnforcePolicy)
 }
 
+// EnforcePolicyMiddleware is the Caddy HTTP handler enforce_policy: a request reaches the next handler
+// only if Enforcer lets it through, and is denied otherwise.
 type EnforcePolicyMiddleware struct {
 	Enforcer *pep.EnforcerHolder `json:"enforcer"`
 	logger   *slog.Logger
 	app      *App
 }
 
+// CaddyModule registers the handler under the module ID "http.handlers.enforce_policy".
 func (EnforcePolicyMiddleware) CaddyModule() caddy.ModuleInfo {
 	return caddy.ModuleInfo{
 		ID:  "http.handlers.enforce_policy",
@@ -50,6 +54,8 @@ func (EnforcePolicyMiddleware) CaddyModule() caddy.ModuleInfo {
 	}
 }
 
+// Provision resolves the logger and the app "zero" whose PEP the handler uses; it fails if that app is
+// not configured.
 func (m *EnforcePolicyMiddleware) Provision(ctx caddy.Context) error {
 	m.logger = ctx.Slogger()
 
@@ -70,10 +76,11 @@ func (m *EnforcePolicyMiddleware) Validate() error {
 func (m EnforcePolicyMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	pepCtx := m.app.pep.NewContext(w, r)
 	m.logger.Info("EnforcePolicyMiddleware", "enforcer", m.Enforcer)
-	m.Enforcer.Apply(pepCtx, func(ctx pep.Context) {
-		next.ServeHTTP(w, r)
+	var nextErr error
+	m.Enforcer.Apply(pepCtx, func(_ pep.Context) {
+		nextErr = next.ServeHTTP(w, r)
 	})
-	return nil
+	return nextErr
 }
 
 // Caddyfile parsing
@@ -149,7 +156,6 @@ func (m EnforcePolicyMiddleware) unmarshalMultipleEnforcer(d *caddyfile.Dispense
 		return d.Errf("unexpected block")
 	}
 	return nil
-
 }
 
 func parseCaddyfileEnforcePolicy(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
@@ -159,8 +165,8 @@ func parseCaddyfileEnforcePolicy(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHa
 		EnforcerHolders: make([]pep.EnforcerHolder, 0),
 	}
 	// consume the option name
-	if !h.Dispenser.Next() {
-		return nil, h.Dispenser.ArgErr()
+	if !h.Next() {
+		return nil, h.ArgErr()
 	}
 	err := m.unmarshalMultipleEnforcer(h.Dispenser, me, 0)
 	if err != nil {

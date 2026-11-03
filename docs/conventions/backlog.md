@@ -19,6 +19,9 @@ root; its configuration is `backlog/config.yml`. Tasks are Markdown files in git
 
 ## What goes into the backlog
 
+A task exists because someone will do it. Speculative work (a client nobody has asked for, a
+backend that might be useful) does not get a task; it is written down when it becomes real.
+
 - **Every piece of work before it starts:** a feature, a fix, a refactoring, a release, a
   housekeeping step. Work starts from a task, not from memory.
 - **Every gap against the rules** in [docs](../README.md): the documents state rules

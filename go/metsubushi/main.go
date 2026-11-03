@@ -19,6 +19,8 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
+// Command metsubushi is a featherweight pod smoke-test endpoint: an HTML page with live pod information
+// and the reflected request headers, plus a small httpbin-style JSON API. It listens on PORT (default 8080).
 package main
 
 import (
@@ -94,10 +96,10 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(indexHTML)
+	_, _ = w.Write(indexHTML)
 }
 
-func handleHealth(w http.ResponseWriter, r *http.Request) {
+func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":         "healthy",
 		"uptimeSeconds":  int64(time.Since(startTime).Seconds()),
@@ -105,11 +107,11 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func handleInfo(w http.ResponseWriter, r *http.Request) {
+func handleInfo(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"app":            "metsubushi",
-		"status":         "healthy",
-		"hostname":       hostname(),
+		"app":      "metsubushi",
+		"status":   "healthy",
+		"hostname": hostname(),
 		// Prefer the downward-API env vars; fall back to the pod's own context so the page is populated even
 		// when the deployment doesn't inject them. (NODE_NAME has no in-pod source — it needs the env var.)
 		"podName":        envOr("POD_NAME", hostname()),
@@ -143,7 +145,7 @@ func handleIP(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"origin": clientIP(r)})
 }
 
-func handleUUID(w http.ResponseWriter, r *http.Request) {
+func handleUUID(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"uuid": uuidV4()})
 }
 
@@ -250,7 +252,9 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.WriteHeader(code)
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	enc.Encode(v)
+	if err := enc.Encode(v); err != nil {
+		fmt.Fprintln(os.Stderr, "write response:", err)
+	}
 }
 
 func envOr(key, def string) string {

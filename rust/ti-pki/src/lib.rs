@@ -82,8 +82,9 @@
 //! Trust starts at one root certificate per environment, compiled into the
 //! crate ([`anchors`]). Every other root in a [`TrustStore`] earns its place by
 //! chaining back to the anchor through the A_28419 cross-certificate protocol
-//! ([`roots`]). The TSL is verified against the TSL signer CA of the
-//! environment ([`tsl_signature`]) but is not a trust source: it supplies candidate
+//! ([`roots`]). The TSL is verified by its detached signature file against the TSL signer
+//! CA of the environment ([`tsl_signature`]) but is not a
+//! trust source: it supplies candidate
 //! intermediates, of which only those a root signed are kept ([`tsl`]); trust still
 //! flows from the anchor.
 //!
@@ -121,8 +122,8 @@
 //! # Loading
 //!
 //! With the `load` feature, `load` fetches, caches, verifies and hot-reloads roots.json
-//! and the TSL through pluggable loaders; the `reqwest` and `tokio` features add a
-//! transport and a background driver.
+//! and the TSL through pluggable loaders; the host brings the transport and decides
+//! when to reload.
 
 pub mod admission;
 pub mod algorithms;
@@ -140,15 +141,11 @@ pub mod ocsp;
 pub mod oid;
 pub mod path;
 pub mod profile;
-#[cfg(feature = "reqwest")]
-pub mod reqwest;
 pub mod revocation;
 pub mod roots;
 #[cfg(all(test, feature = "brainpool"))]
 mod testing;
 pub mod time;
-#[cfg(feature = "tokio")]
-pub mod tokio;
 pub mod trustdomain;
 pub mod truststore;
 pub mod tsl;
@@ -161,7 +158,7 @@ pub use chain::build_chain;
 pub use checks::CertificateCheck;
 pub use config::TrustConfig;
 pub use error::{Error, ErrorCode, ValidationError, ValidationWarning};
-pub use path::{PathOptions, validate_path};
+pub use path::{PathOptions, ValidityModel, validate_path};
 pub use revocation::{RevocationChecker, RevocationMode, RevocationResult, RevocationStatus};
 pub use ti_types::{Env, Tier};
 pub use time::{Clock, Timestamp};

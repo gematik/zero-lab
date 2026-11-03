@@ -40,6 +40,10 @@ pub enum Artifact {
     Roots,
     /// The Trust Service Status List.
     Tsl,
+    /// The detached signature of the list, the `.sig` file (`spec/tsl-detached`).
+    TslSignature,
+    /// The OCSP response for the list's signer, the `.ocsp` file.
+    TslSignerStatus,
 }
 
 impl Artifact {
@@ -48,6 +52,8 @@ impl Artifact {
         match self {
             Artifact::Roots => "roots",
             Artifact::Tsl => "tsl",
+            Artifact::TslSignature => "tsl-sig",
+            Artifact::TslSignerStatus => "tsl-ocsp",
         }
     }
 
@@ -125,18 +131,34 @@ pub enum ArtifactResponse {
     },
 }
 
-/// Both artefacts, loaded but not yet verified. They always travel together, so a
-/// trust store never combines a new TSL with old roots.
+/// The detached files loaded with a list (`spec/tsl-detached`): the signature, and the
+/// signer's status when one could be loaded.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Detached {
+    /// The `.sig` bytes.
+    pub signature: Vec<u8>,
+    /// Their metadata.
+    pub signature_meta: Meta,
+    /// The `.ocsp` bytes with their metadata, if loaded.
+    pub signer_status: Option<(Vec<u8>, Meta)>,
+}
+
+/// The artefacts, loaded but not yet verified. They always travel together, so a trust
+/// store never combines a new TSL with old roots, or a list with another list's
+/// signature.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TrustMaterial {
     /// roots.json bytes.
     pub roots: Vec<u8>,
     /// TSL bytes.
     pub tsl: Vec<u8>,
-    /// The older of the two `fetched_at`; what freshness is measured from.
+    /// The older `fetched_at` of roots.json and the TSL; what freshness is measured from.
     pub fetched_at: Timestamp,
     /// Metadata of roots.json and the TSL, in that order.
     pub meta: [Meta; 2],
+    /// The list's detached signature and signer status. Without the signature the list
+    /// does not verify (TSLDET-013).
+    pub detached: Option<Detached>,
 }
 
 impl TrustMaterial {
@@ -147,23 +169,59 @@ impl TrustMaterial {
             tsl,
             fetched_at: roots_meta.fetched_at.min(tsl_meta.fetched_at),
             meta: [roots_meta, tsl_meta],
+            detached: None,
         }
     }
 
-    /// The body of `artifact`.
-    pub fn body(&self, artifact: Artifact) -> &[u8] {
+    /// The same material with `detached` as its detached files. They do not change
+    /// `fetched_at`: a signature is good for its list at any age and a status has its own
+    /// limit (TSLDET-015, 021), so a CRL host that is down does not age what HTTPS confirms.
+    #[must_use]
+    pub fn with_detached(mut self, detached: Option<Detached>) -> Self {
+        self.detached = detached;
+        self
+    }
+
+    /// The body of `artifact`, if the material has it.
+    pub fn body(&self, artifact: Artifact) -> Option<&[u8]> {
         match artifact {
-            Artifact::Roots => &self.roots,
-            Artifact::Tsl => &self.tsl,
+            Artifact::Roots => Some(&self.roots),
+            Artifact::Tsl => Some(&self.tsl),
+            Artifact::TslSignature => self.detached.as_ref().map(|d| d.signature.as_slice()),
+            Artifact::TslSignerStatus => self
+                .detached
+                .as_ref()
+                .and_then(|d| d.signer_status.as_ref())
+                .map(|(body, _)| body.as_slice()),
         }
     }
 
-    /// The metadata of `artifact`.
-    pub fn meta(&self, artifact: Artifact) -> &Meta {
+    /// The metadata of `artifact`, if the material has it.
+    pub fn meta(&self, artifact: Artifact) -> Option<&Meta> {
         match artifact {
-            Artifact::Roots => &self.meta[0],
-            Artifact::Tsl => &self.meta[1],
+            Artifact::Roots => Some(&self.meta[0]),
+            Artifact::Tsl => Some(&self.meta[1]),
+            Artifact::TslSignature => self.detached.as_ref().map(|d| &d.signature_meta),
+            Artifact::TslSignerStatus => self
+                .detached
+                .as_ref()
+                .and_then(|d| d.signer_status.as_ref())
+                .map(|(_, meta)| meta),
         }
+    }
+
+    /// The entity tags of every artefact, in the order of [`Artifact`]; `None` where
+    /// the source gave none or the artefact is absent.
+    pub fn etags(&self) -> Vec<Option<String>> {
+        [
+            Artifact::Roots,
+            Artifact::Tsl,
+            Artifact::TslSignature,
+            Artifact::TslSignerStatus,
+        ]
+        .into_iter()
+        .map(|artifact| self.meta(artifact).and_then(|m| m.etag.clone()))
+        .collect()
     }
 }
 

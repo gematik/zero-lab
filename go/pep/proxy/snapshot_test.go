@@ -136,8 +136,8 @@ func TestForwardAuth_SnapshotFastPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	newReq := func() *http.Request {
-		req := httptest.NewRequest("GET", "/oauth2/auth", nil)
-		req.AddCookie(&http.Cookie{Name: s.snapCookie.Name, Value: tok})
+		req := httptest.NewRequest(http.MethodGet, "/oauth2/auth", nil)
+		req.AddCookie(&http.Cookie{Name: s.snapCookie.Name, Value: tok}) //nolint:gosec // request cookie in a test: only name and value go on the wire
 		return req
 	}
 

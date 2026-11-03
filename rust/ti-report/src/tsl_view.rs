@@ -34,7 +34,7 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 use ti_pki::tsl::{self, Intermediate, Rejection, Service, Tsl};
-use ti_pki::tsl_signature::{TslCode, VerifiedTsl};
+use ti_pki::tsl_signature::{DetachedTsl, TslCode, VerifiedTsl};
 use ti_pki::{Certificate, Env, Tier, Timestamp, TrustConfig, TrustStore, roots};
 
 use crate::oid::TypeOid;
@@ -71,15 +71,13 @@ pub struct TslView {
     pub certificates: BTreeMap<String, CertificateInfo>,
 }
 
-/// The signature over the list (`spec/tsl-xmldsig` parts A and B).
+/// The signature over the list (`spec/tsl-detached`, `spec/tsl-xmldsig` part B).
 #[derive(Clone, Debug, Serialize)]
 pub struct SignatureView {
     /// The C.TSL.SIG certificate, by fingerprint.
     pub signer: String,
     /// The TSL signer CA that issued it, by fingerprint.
     pub tsl_signer_ca: String,
-    /// The XAdES `SigningTime`, as signed.
-    pub signing_time: String,
     /// Findings that leave the list usable, e.g. `no_ocsp_check`.
     pub warnings: Vec<Finding>,
 }
@@ -258,6 +256,7 @@ pub struct SkippedView {
 /// passed [`TrustConfig::validate`] for the tier of `env`.
 pub fn tsl_view(
     xml: &[u8],
+    files: DetachedTsl<'_>,
     env: Env,
     config: &TrustConfig,
     supplied_roots: Option<&[u8]>,
@@ -278,7 +277,8 @@ pub fn tsl_view(
         skipped: Vec::new(),
         certificates: BTreeMap::new(),
     };
-    let verified = match Tsl::parse_verified(xml, config, now) {
+    let verified = Tsl::parse_verified_with_status(xml, files, config, now);
+    let verified = match verified {
         Ok(verified) => verified,
         Err(e) => {
             view.error = Some(Finding::from(&e));
@@ -383,7 +383,6 @@ impl Builder<'_> {
         self.view.signature = Some(SignatureView {
             signer: self.file(&verified.signer),
             tsl_signer_ca: self.file(&verified.anchor),
-            signing_time: verified.signing_time.clone(),
             warnings: verified.warnings.iter().map(Finding::from).collect(),
         });
         self.view.list = Some(ListView {

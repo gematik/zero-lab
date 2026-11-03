@@ -22,18 +22,20 @@
 package proxy
 
 import (
+	"bytes"
 	"fmt"
 	"net/http/httputil"
 	"net/url"
 	"os"
 	"sort"
 
-	"gopkg.in/yaml.v3"
+	yaml "go.yaml.in/yaml/v4"
 )
 
 // InjectMode selects what a protected route forwards upstream to identify/authorize the user.
 type InjectMode string
 
+// The inject modes: nothing, the identity headers, or the session's DPoP-bound token with a fresh proof.
 const (
 	InjectNone     InjectMode = ""
 	InjectIdentity InjectMode = "identity"
@@ -45,6 +47,7 @@ const (
 // because the DPoP key never enters the cookie).
 type Gate string
 
+// The gates, as described on Gate.
 const (
 	GateNone     Gate = "none"
 	GateSnapshot Gate = "snapshot"
@@ -92,12 +95,14 @@ type routesFile struct {
 }
 
 func loadRoutes(path string) ([]Route, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // the path comes from PEP_ROUTES_PATH in the operator's environment, not a request
 	if err != nil {
 		return nil, fmt.Errorf("read routes %q: %w", path, err)
 	}
 	var f routesFile
-	if err := yaml.Unmarshal(b, &f); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(b))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&f); err != nil {
 		return nil, fmt.Errorf("parse routes %q: %w", path, err)
 	}
 	return f.Routes, nil

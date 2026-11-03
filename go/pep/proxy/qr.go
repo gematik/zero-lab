@@ -35,5 +35,5 @@ func qrImage(content string) (template.URL, error) {
 	if err != nil {
 		return "", err
 	}
-	return template.URL("data:image/png;base64," + base64.StdEncoding.EncodeToString(png)), nil
+	return template.URL("data:image/png;base64," + base64.StdEncoding.EncodeToString(png)), nil //nolint:gosec // the value is a constant data: prefix plus base64, so it cannot carry markup or a script URL
 }

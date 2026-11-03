@@ -31,11 +31,13 @@ import (
 	"github.com/stretchr/testify/assert/yaml"
 )
 
+// Config is the content of a configuration file: the proxies to run.
 type Config struct {
 	BaseDir      string        `yaml:"-"` // set to the base directory of config files when loading
 	ProxyConfigs []ProxyConfig `yaml:"proxies" validate:"required,dive,required"`
 }
 
+// GetProxyConfigByName returns a copy of the proxy configuration called name, if any.
 func (c *Config) GetProxyConfigByName(name string) (*ProxyConfig, bool) {
 	for _, proxy := range c.ProxyConfigs {
 		if proxy.Name == name {
@@ -45,6 +47,7 @@ func (c *Config) GetProxyConfigByName(name string) (*ProxyConfig, bool) {
 	return nil, false
 }
 
+// GetDefaultProxyConfig returns the first proxy configuration, if any.
 func (c *Config) GetDefaultProxyConfig() (*ProxyConfig, bool) {
 	if len(c.ProxyConfigs) > 0 {
 		return &c.ProxyConfigs[0], true
@@ -52,6 +55,8 @@ func (c *Config) GetDefaultProxyConfig() (*ProxyConfig, bool) {
 	return nil, false
 }
 
+// LoadConfigFile reads the YAML file at path, expands environment variables in it and
+// validates the result. Relative paths in it resolve against the file's directory.
 func LoadConfigFile(path string) (*Config, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {

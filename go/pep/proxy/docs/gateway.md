@@ -3,8 +3,7 @@
 **Goal.** Give `pep/proxy` a flexible, multi-route reverse-proxy gateway that gates **and** proxies a set of
 upstreams standalone (no Caddy in front), injecting either the user identity or a DPoP-bound access token per
 route. Gating reuses the **`pep.Enforcer`** policy model (the same one zaddy drives via `enforce_policy`), and
-this stage implements the long-stubbed **`pep.EnforcerSessionCookie`**. Closing this gap makes `bff` redundant
-([`BACKLOG.md`](BACKLOG.md)) and replaces the `zero-bff-pdp` all-in-one with `zero-pdp` + `zero-pep-proxy`.
+this stage implements the long-stubbed **`pep.EnforcerSessionCookie`**. This closed the gap that let the bff be removed; backlog doc-4 holds what it was.
 
 **Non-goals.** Cross-AS token acquisition (backlog); replicating the bff's JSON SPA (pep is server-rendered, no
 consumers); the full S6 zaddy in-process handler (this only *unblocks* it by making `EnforcerSessionCookie`
@@ -116,7 +115,7 @@ Validation (load time): longest-prefix sort; duplicate prefix / bad upstream / b
 - **pep/proxy unit**: longest-prefix match; identity inject (header decodes, client copies stripped, strip);
   dpop inject (Authorization DPoP + proof bound to the outbound request); `EnforcerScope` over the gateway
   context allows/denies; load errors (`dpop`+`gate:snapshot`, `dpop`+provider backend, dup prefix).
-- **Module guard**: `go list -deps ./zaddy/cmd/zero-caddy | grep -c '…/\(oidf\|gemidp\|pep/proxy\)'` → 0
+- **Module guard**: `go list -deps ./zaddy/cmd/zero-caddy | grep -c '…/\(oidf\|idpd\|pep/proxy\)'` → 0
   (zaddy gains `EnforcerSessionCookie` from `pep`, never `pep/proxy`).
 - **HITL** (bff-pdp replacement shape): pep standalone (no Caddy), a `/` identity route (gate snapshot) + an
   `/api` dpop route (gate session), PDP backend + mock-IdP harness. Unauthenticated `/` (browser) → login;

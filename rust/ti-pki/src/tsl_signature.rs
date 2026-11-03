@@ -21,14 +21,13 @@
  * find details in the "Readme" file.
  */
 
-//! The signature of a TSL, its signer and the rules of an update (`spec/tsl-xmldsig`,
-//! parts A to D).
+//! The signature of a TSL (`spec/tsl-detached`), its signer and the rules of an update
+//! (`spec/tsl-xmldsig`, parts B to D).
 //!
-//! [`verify`] is part A: `ti-xmldsig` checks the XML against the fixed XMLDSig/XAdES
-//! profile and the reference digests; this module parses the signer certificate, binds
-//! it by serial number, requires a brainpoolP256r1 key and verifies the ECDSA value over
-//! the canonical `SignedInfo`. That proves only that the certificate's key signed the
-//! list.
+//! [`verify`] checks gematik's detached signature file: it parses the three fields,
+//! requires a brainpoolP256r1 key and verifies the ECDSA value over the bytes of the list
+//! as received, without any canonicalization. That proves only that the certificate's key
+//! signed the list.
 //!
 //! [`Tsl::parse_verified`] adds part B: the signer must be a C.TSL.SIG certificate the
 //! configured TSL signer CAs ([`TrustConfig::tsl_signer_anchors`]) issued, valid now; only
@@ -49,21 +48,20 @@
 //! to the configured anchors, and a signer under a CA that is not configured fails.
 
 use core::fmt;
+use core::time::Duration;
 
 #[cfg(feature = "brainpool")]
 use bp256::BrainpoolP256r1;
 #[cfg(feature = "brainpool")]
 use rustls_pki_types::alg_id;
-use ti_xmldsig::ErrorKind;
-#[cfg(feature = "brainpool")]
-use ti_xmldsig::{Document, Limits};
 #[cfg(feature = "brainpool")]
 use x509_cert::ext::pkix::KeyUsages;
 
+use crate::algorithms::AlgorithmSet;
 #[cfg(feature = "brainpool")]
 use crate::algorithms::brainpool::BRAINPOOL_P256R1;
 #[cfg(feature = "brainpool")]
-use crate::algorithms::{AlgorithmSet, find};
+use crate::algorithms::find;
 #[cfg(feature = "brainpool")]
 use crate::cert_type::TSL_SIGNING;
 #[cfg(feature = "brainpool")]
@@ -71,7 +69,6 @@ use crate::config::TEST_ONLY_MARKER;
 use crate::error::{ErrorCode, ValidationError};
 use crate::ocsp::{ResponseDefect, UNKNOWN_STATUS};
 use crate::revocation::{RevocationChecker, RevocationResult, RevocationStatus};
-#[cfg(feature = "brainpool")]
 use crate::time::Timestamp;
 use crate::tsl::Tsl;
 use crate::{Certificate, Tier, TrustStore};
@@ -88,8 +85,9 @@ pub const MIN_SEQUENCE_NUMBER: u64 = 10_000;
 pub enum TslCode {
     /// The input is not well-formed XML within the limits (1011).
     TslNotWellformed,
-    /// The signature does not match the profile or does not verify (1013).
-    XmlSignatureError,
+    /// The detached signature file does not match the profile or does not verify
+    /// (`spec/tsl-detached` part A; `ti-pki`'s own code, Tab_PKI_274 has none for it).
+    DetachedSignatureError,
     /// `KeyInfo` does not hold exactly one parsable certificate (1002).
     TslCertExtractionError,
     /// The signer is not issued by the TSL signer anchor, or its signature does not
@@ -143,7 +141,7 @@ impl TslCode {
     /// documentation that list them.
     pub const ALL: &[TslCode] = &[
         TslCode::TslNotWellformed,
-        TslCode::XmlSignatureError,
+        TslCode::DetachedSignatureError,
         TslCode::TslCertExtractionError,
         TslCode::CertificateNotValidMath,
         TslCode::AuthoritykeyidDifferent,
@@ -165,11 +163,11 @@ impl TslCode {
         TslCode::TslAnchorAnnounced,
     ];
 
-    /// The code's name, e.g. `xml_signature_error`.
+    /// The code's name, e.g. `detached_signature_error`.
     pub const fn as_str(self) -> &'static str {
         match self {
             TslCode::TslNotWellformed => "tsl_not_wellformed",
-            TslCode::XmlSignatureError => "xml_signature_error",
+            TslCode::DetachedSignatureError => "detached_signature_error",
             TslCode::TslCertExtractionError => "tsl_cert_extraction_error",
             TslCode::CertificateNotValidMath => "certificate_not_valid_math",
             TslCode::AuthoritykeyidDifferent => "authoritykeyid_different",
@@ -204,7 +202,6 @@ impl TslCode {
     pub const fn number(self) -> Option<u16> {
         match self {
             TslCode::TslNotWellformed => Some(1011),
-            TslCode::XmlSignatureError => Some(1013),
             TslCode::TslCertExtractionError => Some(1002),
             TslCode::CertificateNotValidMath => Some(1024),
             TslCode::AuthoritykeyidDifferent => Some(1023),
@@ -222,7 +219,9 @@ impl TslCode {
             TslCode::TslIdIncorrect => Some(1007),
             TslCode::ValidityWarning1 => Some(1008),
             TslCode::ValidityWarning2 => Some(1009),
-            TslCode::TslSignerProfileViolation | TslCode::TslAnchorAnnounced => None,
+            TslCode::TslSignerProfileViolation
+            | TslCode::TslAnchorAnnounced
+            | TslCode::DetachedSignatureError => None,
         }
     }
 }
@@ -240,7 +239,7 @@ impl fmt::Display for TslCode {
 pub struct TslError {
     /// The result code.
     pub code: TslCode,
-    /// The rule, e.g. `TSLSIG-018`.
+    /// The rule, e.g. `TSLDET-005`.
     pub rule: &'static str,
     /// What failed, for humans; not stable.
     pub detail: String,
@@ -254,100 +253,180 @@ impl TslError {
             detail: detail.into(),
         }
     }
-
-    #[cfg(feature = "brainpool")]
-    fn signature(rule: &'static str, detail: impl Into<String>) -> Self {
-        TslError::new(TslCode::XmlSignatureError, rule, detail)
-    }
-}
-
-impl From<ti_xmldsig::Error> for TslError {
-    fn from(e: ti_xmldsig::Error) -> Self {
-        let code = match e.kind() {
-            ErrorKind::NotWellFormed => TslCode::TslNotWellformed,
-            ErrorKind::SignerCertificate => TslCode::TslCertExtractionError,
-            _ => TslCode::XmlSignatureError,
-        };
-        TslError {
-            code,
-            rule: e.rule(),
-            detail: e.detail().to_owned(),
-        }
-    }
 }
 
 /// A TSL whose signature verifies under the key of its signer certificate.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct SignedTsl {
-    /// The certificate in `KeyInfo`, which `CertDigest` and `X509SerialNumber` bind. Not
-    /// yet authenticated.
+    /// The certificate in the signature file. Not yet authenticated.
     pub signer: Certificate,
-    /// The canonical bytes of the signed content (TSLSIG-023): what to parse the TSL
-    /// from, never the received bytes.
+    /// The bytes the signature covers: what to parse the TSL from (TSLDET-006).
     pub content: Vec<u8>,
-    /// `SigningTime` as written; informational (TSLSIG-021).
-    pub signing_time: String,
 }
 
-#[cfg(feature = "brainpool")]
-/// Verifies the signature of the TSL `xml` with the algorithms of `algorithms`
-/// (TSLSIG-001, 010 – 023).
+/// The detached files of a list, as the loaders hand them on and ti-report takes them:
+/// the signature file and, when published with it, the signer's OCSP response.
+#[derive(Clone, Copy, Debug)]
+pub struct DetachedTsl<'a> {
+    /// The `.sig` file.
+    pub signature: &'a [u8],
+    /// The `.ocsp` file, if supplied.
+    pub signer_status: Option<&'a [u8]>,
+}
+
+/// How old the `.ocsp` published next to a list may be (TSLDET-021): the TSL service
+/// renews it hourly (A_21181), so two hours cover a missed renewal.
+pub const MAX_SUPPLIED_SIGNER_STATUS_AGE: Duration = Duration::from_hours(2);
+
+/// The most a TSL may have (TSLDET-006). The published lists are about 600 KB; the limit
+/// keeps a hostile download from being hashed and parsed at all.
+pub const MAX_TSL_LEN: usize = 16 * 1024 * 1024;
+
+/// The most a detached signature file may have (TSLDET-001): the published files are
+/// under 800 bytes, the certificate inside them is the bulk.
+pub const MAX_DETACHED_SIGNATURE_LEN: usize = 8192;
+
+/// The content of a detached signature file (`spec/tsl-detached` part A), parsed but
+/// not yet verified against a list.
+#[derive(Clone, Debug)]
+#[non_exhaustive]
+pub struct DetachedSignature {
+    /// The signer certificate the file carries; not yet authenticated.
+    pub signer: Certificate,
+    /// The DER `ECDSA-Sig-Value`, re-encoded from the file's BIT STRING.
+    pub signature: Vec<u8>,
+}
+
+/// Parses a detached signature file: `SEQUENCE { AlgorithmIdentifier, BIT STRING,
+/// Certificate }` (TSLDET-001 – 004). Pure parsing, no key material involved: the fuzz
+/// target.
 ///
 /// # Errors
 ///
 /// [`TslError`] with the code and the rule of the first check that failed.
-pub fn verify(xml: &[u8], algorithms: &AlgorithmSet) -> Result<SignedTsl, TslError> {
-    let xml_checked = Document::parse(xml, &Limits::TSL)?.verify_tsl_signature()?;
+#[cfg(feature = "brainpool")]
+pub fn parse_detached_signature(sig: &[u8]) -> Result<DetachedSignature, TslError> {
+    use der::{Decode, Reader};
 
-    let signer = Certificate::from_der(&xml_checked.signer_certificate).map_err(|e| TslError {
-        code: TslCode::TslCertExtractionError,
-        rule: "TSLSIG-022",
-        detail: format!("signer certificate: {e}"),
-    })?;
-    if !serial_matches(&xml_checked.signer_serial, signer.serial()) {
-        return Err(TslError::signature(
-            "TSLSIG-020",
+    let malformed =
+        |detail: String| TslError::new(TslCode::DetachedSignatureError, "TSLDET-001", detail);
+    if sig.len() > MAX_DETACHED_SIGNATURE_LEN {
+        return Err(malformed(format!(
+            "{} bytes, more than the {MAX_DETACHED_SIGNATURE_LEN} a signature file may have",
+            sig.len()
+        )));
+    }
+    let mut reader = der::SliceReader::new(sig).map_err(|e| malformed(e.to_string()))?;
+    let (algorithm, bits, cert_der) = reader
+        .sequence(|r| -> der::Result<_> {
+            let algorithm = x509_cert::spki::AlgorithmIdentifierOwned::decode(r)?;
+            let bits = der::asn1::BitStringRef::decode(r)?;
+            let cert_der = r.tlv_bytes()?;
+            Ok((algorithm, bits, cert_der))
+        })
+        .map_err(|e| {
+            malformed(format!(
+                "not a SEQUENCE of AlgorithmIdentifier, BIT STRING and Certificate: {e}"
+            ))
+        })?;
+    reader
+        .finish()
+        .map_err(|_| malformed("bytes after the signature structure".to_owned()))?;
+
+    if algorithm.oid != const_oid::db::rfc5912::ECDSA_WITH_SHA_256 || algorithm.parameters.is_some()
+    {
+        return Err(TslError::new(
+            TslCode::DetachedSignatureError,
+            "TSLDET-002",
             format!(
-                "X509SerialNumber {} is not the signer certificate's serial number",
-                xml_checked.signer_serial
+                "the algorithm is {}, not ecdsa-with-SHA256 without parameters",
+                algorithm.oid
             ),
         ));
     }
+    let value = bits.as_bytes().ok_or_else(|| {
+        TslError::new(
+            TslCode::DetachedSignatureError,
+            "TSLDET-003",
+            "the signature BIT STRING has unused bits",
+        )
+    })?;
+    // `from_der` takes only a minimal DER ECDSA-Sig-Value with r and s in range; the
+    // 64-byte plain form of TR-03111 5.2.1 fails here, as the specification wants.
+    let signature = ecdsa::Signature::<BrainpoolP256r1>::from_der(value)
+        .map_err(|_| {
+            TslError::new(
+                TslCode::DetachedSignatureError,
+                "TSLDET-003",
+                "the signature value is not a DER ECDSA-Sig-Value with r and s in range",
+            )
+        })?
+        .to_der();
+    let signer = Certificate::from_der(cert_der).map_err(|e| {
+        TslError::new(
+            TslCode::TslCertExtractionError,
+            "TSLDET-004",
+            format!("signer certificate: {e}"),
+        )
+    })?;
     if signer.public_key_alg_id() != BRAINPOOL_P256R1.as_ref() {
-        return Err(TslError::signature(
-            "TSLSIG-012",
+        return Err(TslError::new(
+            TslCode::TslCertExtractionError,
+            "TSLDET-004",
             "the signer key is not on brainpoolP256r1",
         ));
     }
+    Ok(DetachedSignature {
+        signer,
+        signature: signature.as_bytes().to_vec(),
+    })
+}
 
-    // XMLDSig writes r ‖ s; the algorithms take the DER ECDSA-Sig-Value.
-    let signature = ecdsa::Signature::<BrainpoolP256r1>::from_slice(&xml_checked.signature)
-        .map_err(|_| TslError::signature("TSLSIG-018", "r or s is out of range"))?
-        .to_der();
+#[cfg(feature = "brainpool")]
+/// Verifies the detached signature `sig` over the list `xml` with the algorithms of
+/// `algorithms` (`spec/tsl-detached` part A): the signature covers the bytes of the list
+/// as received, nothing is canonicalized.
+///
+/// # Errors
+///
+/// [`TslError`] with the code and the rule of the first check that failed.
+pub fn verify(xml: &[u8], sig: &[u8], algorithms: &AlgorithmSet) -> Result<SignedTsl, TslError> {
+    if xml.len() > MAX_TSL_LEN {
+        return Err(TslError::new(
+            TslCode::TslNotWellformed,
+            "TSLDET-006",
+            format!(
+                "{} bytes, more than the {MAX_TSL_LEN} a list may have",
+                xml.len()
+            ),
+        ));
+    }
+    let parsed = parse_detached_signature(sig)?;
     let algorithm = find(
         algorithms,
         BRAINPOOL_P256R1.as_ref(),
         alg_id::ECDSA_SHA256.as_ref(),
     )
     .ok_or_else(|| {
-        TslError::signature(
-            "TSLSIG-012",
+        TslError::new(
+            TslCode::DetachedSignatureError,
+            "TSLDET-002",
             "the algorithm set has no ECDSA brainpoolP256r1 SHA-256",
         )
     })?;
     algorithm
-        .verify_signature(
-            signer.public_key(),
-            &xml_checked.signed_info,
-            signature.as_bytes(),
-        )
-        .map_err(|_| TslError::signature("TSLSIG-018", "the signature value does not verify"))?;
-
+        .verify_signature(parsed.signer.public_key(), xml, &parsed.signature)
+        .map_err(|_| {
+            TslError::new(
+                TslCode::DetachedSignatureError,
+                "TSLDET-005",
+                "the signature value does not verify over the list",
+            )
+        })?;
     Ok(SignedTsl {
-        signer,
-        content: xml_checked.content,
-        signing_time: xml_checked.signing_time,
+        signer: parsed.signer,
+        content: xml.to_vec(),
     })
 }
 
@@ -364,8 +443,6 @@ pub struct VerifiedTsl {
     pub anchor: Certificate,
     /// The C.TSL.SIG certificate the list is signed with.
     pub signer: Certificate,
-    /// `SigningTime` as written; informational (TSLSIG-021).
-    pub signing_time: String,
     /// What leaves the list usable but deserves attention: [`TslCode::NoOcspCheck`] until
     /// [`check_signer_status`](Self::check_signer_status) succeeded,
     /// [`TslCode::ValidityWarning1`] within the grace period.
@@ -424,7 +501,84 @@ impl VerifiedTsl {
             .check(&self.signer, &self.anchor, &TrustStore::new([]))
             .await
             .map_err(|e| status_error(&e))?;
-        let detail = |what: &str| format!("{what} ({})", result.responder_url);
+        let source = result.responder_url.clone();
+        self.adopt_signer_status(result, &source)
+    }
+
+    /// The signer's status from a supplied OCSP response, the `.ocsp` file published
+    /// next to the list (`spec/tsl-detached` TSLDET-020, 021), checked at `now` with the
+    /// `algorithms`: `Ok(true)` once it is adopted; `Ok(false)` if its `producedAt` is
+    /// older than [`MAX_SUPPLIED_SIGNER_STATUS_AGE`], which leaves the status unqueried
+    /// (the [`TslCode::NoOcspCheck`] warning then names the age) for a network query to
+    /// replace.
+    ///
+    /// # Errors
+    ///
+    /// [`TslError`] with the code of TSLSIG-040 – 042 for a response that is fresh but
+    /// says revoked or unknown, is for another certificate, is signed by an unauthorized
+    /// responder, lies in the future or cannot be parsed; the list must not be used.
+    pub fn check_signer_status_supplied(
+        &mut self,
+        response: &[u8],
+        now: Timestamp,
+        algorithms: &AlgorithmSet,
+    ) -> Result<bool, TslError> {
+        let check = crate::ocsp::ResponseCheck {
+            max_response_age: MAX_SUPPLIED_SIGNER_STATUS_AGE,
+            ..crate::ocsp::ResponseCheck::new(now, algorithms)
+        };
+        let result = crate::ocsp::verify_response(response, &self.signer, &self.anchor, &check)
+            .map_err(|e| status_error(&e))?;
+        // A response that failed the window check comes back as Unknown with the reason;
+        // its own producedAt tells "too old" from everything else.
+        if result.status == RevocationStatus::Unknown
+            && let Some(produced_at) = result.produced_at
+            && now.since(produced_at) > MAX_SUPPLIED_SIGNER_STATUS_AGE
+        {
+            // Old says nothing about good, but a signed `revoked` stays true whatever its
+            // age, and this consumer may not have seen it when it was fresh. As of its
+            // own time the window passes and the response tells its status.
+            let as_produced = crate::ocsp::ResponseCheck::new(produced_at, algorithms);
+            let then =
+                crate::ocsp::verify_response(response, &self.signer, &self.anchor, &as_produced)
+                    .map_err(|e| status_error(&e))?;
+            if then.status == RevocationStatus::Revoked {
+                self.adopt_signer_status(then, "supplied")?;
+            }
+            let detail = format!(
+                "the supplied status was produced at {produced_at}, {} s before {now}, older \
+                 than the {} s a published response may be",
+                now.since(produced_at).as_secs(),
+                MAX_SUPPLIED_SIGNER_STATUS_AGE.as_secs()
+            );
+            match self
+                .warnings
+                .iter_mut()
+                .find(|w| w.code == TslCode::NoOcspCheck)
+            {
+                Some(warning) => {
+                    warning.rule = "TSLDET-021";
+                    warning.detail = detail;
+                }
+                None => {
+                    self.warnings
+                        .push(TslError::new(TslCode::NoOcspCheck, "TSLDET-021", detail));
+                }
+            }
+            return Ok(false);
+        }
+        self.adopt_signer_status(result, "supplied")?;
+        Ok(true)
+    }
+
+    /// TSLSIG-041 and 042 for a verified response: `good` is adopted, anything else
+    /// stops the use of the list. `source` names where the response came from.
+    fn adopt_signer_status(
+        &mut self,
+        result: RevocationResult,
+        source: &str,
+    ) -> Result<(), TslError> {
+        let detail = |what: &str| format!("{what} ({source})");
         match result.status {
             RevocationStatus::Good => {}
             RevocationStatus::Revoked => {
@@ -525,19 +679,54 @@ fn unreachable(error: &ValidationError) -> bool {
 
 #[cfg(feature = "brainpool")]
 impl Tsl {
-    /// Verifies the TSL `xml` against `config` at `now` and parses it from the signed
-    /// bytes: the signature (part A) and a signer issued by
-    /// one of [`TrustConfig::tsl_signer_anchors`] (part B, TSLSIG-030 – 035), with the
-    /// configuration's algorithms. Validity is checked without clock skew.
+    /// Verifies the TSL `xml` by its detached signature file `sig` against `config` at
+    /// `now`, and parses it from the signed bytes: the signature (`spec/tsl-detached`
+    /// part A) and a signer issued by one of [`TrustConfig::tsl_signer_anchors`]
+    /// (`spec/tsl-xmldsig` part B), with the configuration's algorithms. Validity is
+    /// checked without clock skew.
     ///
     /// # Errors
     ///
     /// [`TslError`] with the code and the rule of the first check that failed.
     pub fn parse_verified(
         xml: &[u8],
+        sig: &[u8],
         config: &TrustConfig,
         now: Timestamp,
     ) -> Result<VerifiedTsl, TslError> {
+        verify_signed(verify(xml, sig, &config.algorithms)?, config, now)
+    }
+
+    /// [`Tsl::parse_verified`] with the files as the loaders deliver them: a supplied
+    /// signer status is adopted (TSLDET-020, 021).
+    ///
+    /// # Errors
+    ///
+    /// As [`Tsl::parse_verified`] and [`VerifiedTsl::check_signer_status_supplied`].
+    pub fn parse_verified_with_status(
+        xml: &[u8],
+        files: DetachedTsl<'_>,
+        config: &TrustConfig,
+        now: Timestamp,
+    ) -> Result<VerifiedTsl, TslError> {
+        let mut verified = Tsl::parse_verified(xml, files.signature, config, now)?;
+        if let Some(status) = files.signer_status {
+            verified.check_signer_status_supplied(status, now, &config.algorithms)?;
+        }
+        Ok(verified)
+    }
+}
+
+#[cfg(feature = "brainpool")]
+/// Parts B – G for a list whose signature verified: the signer under one of
+/// [`TrustConfig::tsl_signer_anchors`] (TSLSIG-030 – 035), the list from the signed
+/// content, `NextUpdate` and the grace period, the anchor announcements.
+fn verify_signed(
+    signed: SignedTsl,
+    config: &TrustConfig,
+    now: Timestamp,
+) -> Result<VerifiedTsl, TslError> {
+    {
         let anchors = config
             .tsl_signer_anchors
             .iter()
@@ -550,13 +739,12 @@ impl Tsl {
                     format!("TSL signer anchor: {e}"),
                 )
             })?;
-        let signed = verify(xml, &config.algorithms)?;
         let anchor = issuing_anchor(&anchors, &signed.signer)?.clone();
         check_signer(&signed.signer, &anchor, &config.algorithms, now)?;
         let tsl = Tsl::parse_with(&signed.content, true).map_err(|e| {
             TslError::new(
                 TslCode::TslNotWellformed,
-                "TSLSIG-023",
+                "TSLDET-006",
                 format!("signed content: {e}"),
             )
         })?;
@@ -593,20 +781,26 @@ impl Tsl {
             tier,
             anchor,
             signer: signed.signer,
-            signing_time: signed.signing_time,
             warnings,
             signer_status: None,
         })
     }
+}
 
+#[cfg(feature = "brainpool")]
+impl Tsl {
     /// [`Tsl::parse_verified`] for production: GEM.TSL-CA3 and the production
     /// configuration's algorithms. A TSL of another environment fails.
     ///
     /// # Errors
     ///
     /// As [`Tsl::parse_verified`].
-    pub fn parse_verified_prod(xml: &[u8], now: Timestamp) -> Result<VerifiedTsl, TslError> {
-        Tsl::parse_verified(xml, &TrustConfig::preset_prod(), now)
+    pub fn parse_verified_prod(
+        xml: &[u8],
+        sig: &[u8],
+        now: Timestamp,
+    ) -> Result<VerifiedTsl, TslError> {
+        Tsl::parse_verified(xml, sig, &TrustConfig::preset_prod(), now)
     }
 
     /// [`Tsl::parse_verified`] for the environment whose embedded TSL signer CA issued the
@@ -618,30 +812,38 @@ impl Tsl {
     ///
     /// [`TslCode::CertificateNotValidMath`] if no embedded TSL signer CA has the signer's
     /// issuer name and key identifier; otherwise as [`Tsl::parse_verified`].
-    pub fn parse_verified_auto(xml: &[u8], now: Timestamp) -> Result<VerifiedTsl, TslError> {
-        Tsl::parse_verified(xml, &embedded_config_for(xml)?, now)
+    pub fn parse_verified_auto(
+        xml: &[u8],
+        sig: &[u8],
+        now: Timestamp,
+    ) -> Result<VerifiedTsl, TslError> {
+        Tsl::parse_verified(xml, sig, &embedded_config_for(sig)?, now)
     }
 }
 
 #[cfg(feature = "brainpool")]
 /// The preset whose embedded TSL signer CA has the name and key identifier of the issuer
-/// of `xml`'s signer, as [`Tsl::parse_verified_auto`] picks it; a caller adjusts it, e.g.
-/// [`TrustConfig::tsl_grace_period`], before [`Tsl::parse_verified`]. Only the signature
-/// is verified here.
+/// of the signer in the signature file `sig`, as [`Tsl::parse_verified_auto`] picks it; a
+/// caller adjusts it, e.g. [`TrustConfig::tsl_grace_period`], before
+/// [`Tsl::parse_verified`]. Only the file is parsed here, nothing is verified yet.
 ///
 /// # Errors
 ///
-/// As [`verify`], and [`TslCode::CertificateNotValidMath`] if no embedded TSL signer CA
-/// fits.
-pub fn embedded_config_for(xml: &[u8]) -> Result<TrustConfig, TslError> {
-    let signed = verify(xml, crate::algorithms::DEFAULT)?;
+/// As [`parse_detached_signature`], and [`TslCode::CertificateNotValidMath`] if no
+/// embedded TSL signer CA fits.
+pub fn embedded_config_for(sig: &[u8]) -> Result<TrustConfig, TslError> {
+    config_for_signer(&parse_detached_signature(sig)?.signer)
+}
+
+#[cfg(feature = "brainpool")]
+fn config_for_signer(signer: &Certificate) -> Result<TrustConfig, TslError> {
     embedded_configs()
         .into_iter()
         .find(|config| {
             config.tsl_signer_anchors.iter().any(|der| {
                 Certificate::from_der(der).is_ok_and(|anchor| {
-                    anchor.subject_der() == signed.signer.issuer_der()
-                        && anchor.subject_key_id() == signed.signer.authority_key_id()
+                    anchor.subject_der() == signer.issuer_der()
+                        && anchor.subject_key_id() == signer.authority_key_id()
                 })
             })
         })
@@ -651,7 +853,7 @@ pub fn embedded_config_for(xml: &[u8]) -> Result<TrustConfig, TslError> {
                 "TSLSIG-031",
                 format!(
                     "the signer's issuer {} is no embedded TSL signer CA",
-                    signed.signer.issuer()
+                    signer.issuer()
                 ),
             )
         })
@@ -841,139 +1043,391 @@ fn check_signer(
     Ok(())
 }
 
-#[cfg(feature = "brainpool")]
-/// Whether the decimal `written` (`X509SerialNumber`, an `xsd:integer`) is the serial
-/// number whose big-endian two's-complement bytes are `serial`.
-fn serial_matches(written: &str, serial: &[u8]) -> bool {
-    // A serial number has at most 20 octets (RFC 5280 §4.1.2.2), so at most 49 digits;
-    // the limit keeps the conversion linear in practice. Negative serials do not occur
-    // here: ti-xmldsig accepts digits only.
-    if written.len() > 64 || serial.first().is_some_and(|b| b & 0x80 != 0) {
-        return false;
-    }
-    let mut value: Vec<u8> = Vec::new();
-    for digit in written.bytes() {
-        if !digit.is_ascii_digit() {
-            return false;
-        }
-        let mut carry = digit - b'0';
-        for byte in value.iter_mut().rev() {
-            let [high, low] = (u16::from(*byte) * 10 + u16::from(carry)).to_be_bytes();
-            *byte = low;
-            carry = high;
-        }
-        if carry != 0 {
-            value.insert(0, carry);
-        }
-    }
-    let significant =
-        |bytes: &[u8]| -> Vec<u8> { bytes.iter().copied().skip_while(|b| *b == 0).collect() };
-    significant(&value) == significant(serial)
-}
-
 #[cfg(all(test, feature = "brainpool"))]
 mod tests {
     use super::*;
     use crate::algorithms::DEFAULT;
 
-    fn real(name: &str) -> Vec<u8> {
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../spec/tsl-xmldsig/testdata/tsl/real/"
+    const DETACHED: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../spec/tsl-detached/testdata/"
+    );
+
+    /// The published set of `env` (`prod`, `ref`, `test`): the list, its `.sig` and its
+    /// `.ocsp`, captured together (spec/tsl-detached/testdata/README.md).
+    fn detached(env: &str) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
+        let stem = match env {
+            "prod" => "prod/ECC-RSA_TSL",
+            "ref" => "ref/ECC-RSA_TSL-ref",
+            "test" => "test/ECC-RSA_TSL-test",
+            _ => panic!("no such set: {env}"),
+        };
+        let read = |suffix: &str| std::fs::read(format!("{DETACHED}{stem}.{suffix}")).unwrap();
+        (read("xml"), read("sig"), read("ocsp"))
+    }
+
+    fn real(env: &str) -> Vec<u8> {
+        detached(env).0
+    }
+
+    fn sig(env: &str) -> Vec<u8> {
+        detached(env).1
+    }
+
+    fn derived(name: &str) -> Vec<u8> {
+        std::fs::read(format!("{DETACHED}derived/{name}")).unwrap()
+    }
+
+    fn assert_code<T: core::fmt::Debug>(result: Result<T, TslError>, code: TslCode, rule: &str) {
+        match result {
+            Ok(v) => panic!("expected {code} ({rule}), got Ok({v:?})"),
+            Err(e) => assert_eq!((e.code, e.rule), (code, rule), "{e}"),
+        }
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    /// The capture time of the published sets (spec/tsl-detached/testdata/README.md).
+    fn captured_at() -> Timestamp {
+        Timestamp::parse_rfc3339("2026-11-01T16:47:42Z").unwrap()
+    }
+
+    /// The published sets at their capture time: identity from the list, the signer
+    /// under the environment's anchor, nothing skipped.
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_030_published_sets_pass_parts_b_to_g() {
+        for (env, preset, sequence, ca) in [
+            ("prod", crate::Env::Prod, 10337, "GEM.TSL-CA3"),
+            ("ref", crate::Env::Ref, 10717, "GEM.TSL-CA28 TEST-ONLY"),
+            ("test", crate::Env::Test, 10716, "GEM.TSL-CA28 TEST-ONLY"),
+        ] {
+            let (xml, sig, _) = detached(env);
+            let verified =
+                Tsl::parse_verified(&xml, &sig, &TrustConfig::preset(preset), captured_at())
+                    .unwrap_or_else(|e| panic!("{env}: {e}"));
+            assert_eq!(verified.tsl.sequence_number, sequence, "{env}");
+            assert_eq!(verified.anchor.subject_cn(), ca, "{env}");
+            assert!(verified.tsl.skipped.is_empty(), "{env}");
+            assert_eq!(codes(&verified.warnings), [TslCode::NoOcspCheck], "{env}");
+        }
+    }
+
+    /// TSLDET-006: an oversized list is refused before it is hashed or parsed.
+    #[test]
+    fn tsldet_006_oversized_list_rejected() {
+        let (_, signature, _) = detached("prod");
+        assert_code(
+            verify(&vec![0; MAX_TSL_LEN + 1], &signature, DEFAULT),
+            TslCode::TslNotWellformed,
+            "TSLDET-006",
         );
-        std::fs::read(format!("{path}{name}")).unwrap()
+    }
+
+    /// TSLDET-006: what is parsed are the signed bytes, and the `ds:Signature` still
+    /// inside the published list is content, not read.
+    #[test]
+    fn tsldet_006_the_list_is_read_from_the_verified_bytes() {
+        let (xml, signature, _) = detached("prod");
+        let signed = verify(&xml, &signature, DEFAULT).unwrap();
+        assert_eq!(signed.content, xml);
+        assert!(xml.windows(13).any(|w| w == b"<ds:Signature"));
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_030_signer_of_another_environment_rejected() {
+        let (xml, sig, _) = detached("prod");
+        assert_code(
+            Tsl::parse_verified(
+                &xml,
+                &sig,
+                &TrustConfig::preset(crate::Env::Ref),
+                captured_at(),
+            ),
+            TslCode::CertificateNotValidMath,
+            "TSLSIG-031",
+        );
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_030_embedded_config_follows_the_signer_in_the_file() {
+        assert_eq!(
+            embedded_config_for(&sig("prod")).unwrap().tsl_url,
+            crate::tsl::URL_PROD
+        );
+        // The non-production environments share one TSL signer CA: the lookup tells the
+        // tier, and the test preset stands for it.
+        let nonprod = embedded_config_for(&sig("ref")).unwrap();
+        assert_eq!(
+            nonprod.tsl_url,
+            TrustConfig::preset(crate::Env::Test).tsl_url
+        );
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    fn parse_detached(env: &str) -> VerifiedTsl {
+        let (xml, sig, _) = detached(env);
+        let preset = match env {
+            "prod" => crate::Env::Prod,
+            "ref" => crate::Env::Ref,
+            _ => crate::Env::Test,
+        };
+        Tsl::parse_verified(&xml, &sig, &TrustConfig::preset(preset), captured_at()).unwrap()
+    }
+
+    /// A supplied status is adopted with the list, and a bad one stops it.
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_020_with_status_adopts_or_stops() {
+        let config = TrustConfig::preset(crate::Env::Ref);
+        let (xml, signature, ocsp) = detached("ref");
+        let files = |signer_status| DetachedTsl {
+            signature: &signature,
+            signer_status,
+        };
+        let verified =
+            Tsl::parse_verified_with_status(&xml, files(Some(&ocsp)), &config, captured_at())
+                .unwrap();
+        assert!(verified.signer_status.is_some());
+        assert!(
+            Tsl::parse_verified_with_status(&xml, files(Some(&[])), &config, captured_at())
+                .is_err()
+        );
+    }
+
+    /// TSLDET-021: signed evidence of revocation stops the list at any age; a consumer
+    /// need not have seen the response while it was fresh.
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_021_a_stale_revoked_status_stops_the_list() {
+        let pki = crate::testing::TestPki::new();
+        let response = include_bytes!("../tests/pki/ocsp/revoked.der");
+        let mut verified = parse_detached("ref");
+        verified.signer = pki.ee_revoked.clone();
+        verified.anchor = pki.sub_ca_hba.clone();
+        let much_later = crate::testing::TestPki::NOW + Duration::from_hours(3);
+        let e = verified
+            .check_signer_status_supplied(response, much_later, DEFAULT)
+            .unwrap_err();
+        assert_eq!(e.code, TslCode::CertRevoked, "{e}");
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_020_supplied_status_good_at_capture_time() {
+        for env in ["prod", "ref", "test"] {
+            let (_, _, ocsp) = detached(env);
+            let mut verified = parse_detached(env);
+            let used = verified
+                .check_signer_status_supplied(&ocsp, captured_at(), DEFAULT)
+                .unwrap_or_else(|e| panic!("{env}: {e}"));
+            assert!(used, "{env}");
+            let status = verified.signer_status.as_ref().unwrap();
+            assert_eq!(status.status, RevocationStatus::Good, "{env}");
+            assert!(
+                !verified
+                    .warnings
+                    .iter()
+                    .any(|w| w.code == TslCode::NoOcspCheck)
+            );
+        }
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_021_supplied_status_older_than_the_maximum_is_not_used() {
+        let mut verified = parse_detached("ref");
+        let used = verified
+            .check_signer_status_supplied(&derived("stale.ocsp"), captured_at(), DEFAULT)
+            .unwrap();
+        assert!(!used);
+        assert!(verified.signer_status.is_none());
+        let warning = verified
+            .warnings
+            .iter()
+            .find(|w| w.code == TslCode::NoOcspCheck)
+            .unwrap();
+        assert_eq!(warning.rule, "TSLDET-021");
+        assert!(warning.detail.contains("older than"), "{warning}");
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_020_status_for_another_certificate_is_an_error() {
+        let (_, _, prod_ocsp) = detached("prod");
+        let mut verified = parse_detached("ref");
+        let e = verified
+            .check_signer_status_supplied(&prod_ocsp, captured_at(), DEFAULT)
+            .unwrap_err();
+        assert!(
+            matches!(
+                e.code,
+                TslCode::CerthashMismatch
+                    | TslCode::OcspCheckRevocationError
+                    | TslCode::OcspSignatureError
+            ),
+            "{e}"
+        );
+        assert!(verified.signer_status.is_none());
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_020_empty_status_is_an_error() {
+        let mut verified = parse_detached("ref");
+        let e = verified
+            .check_signer_status_supplied(&[], captured_at(), DEFAULT)
+            .unwrap_err();
+        assert_eq!(e.rule, "TSLSIG-042", "{e}");
+    }
+
+    #[cfg(feature = "dangerous-nonprod")]
+    #[test]
+    fn tsldet_020_status_from_the_future_is_an_error() {
+        let (_, _, ocsp) = detached("ref");
+        let mut verified = parse_detached("ref");
+        let three_hours_earlier = captured_at() - core::time::Duration::from_hours(3);
+        let e = verified
+            .check_signer_status_supplied(&ocsp, three_hours_earlier, DEFAULT)
+            .unwrap_err();
+        assert_eq!(e.rule, "TSLSIG-042", "{e}");
     }
 
     #[test]
-    fn tslsig_018_published_tsls_verify() {
-        for name in [
-            "pu-10333.xml",
-            "pu-10334.xml",
-            "tu-10687.xml",
-            "tu-10713.xml",
-        ] {
-            let signed = verify(&real(name), DEFAULT).unwrap_or_else(|e| panic!("{name}: {e}"));
-            assert!(
-                signed.signer.subject_cn().starts_with("TSL Signing Unit"),
-                "{name}"
-            );
-            assert!(signed.content.starts_with(b"<TrustServiceStatusList "));
+    fn tsldet_005_published_sets_verify() {
+        for env in ["prod", "ref", "test"] {
+            let (xml, sig, _) = detached(env);
+            let signed = verify(&xml, &sig, DEFAULT).unwrap_or_else(|e| panic!("{env}: {e}"));
+            assert_eq!(signed.content, xml, "{env}");
+            assert_eq!(signed.signer.serial(), &[6], "{env}");
+            assert!(signed.signer.subject_cn().starts_with("TSL Signing Unit"));
         }
     }
 
     #[test]
-    fn tslsig_018_bundled_tsl_verifies() {
-        let xml = include_bytes!("../tests/fixtures/tsl/ECC-RSA_TSL.xml");
-        verify(xml, DEFAULT).unwrap();
+    fn tsldet_001_truncated_rejected() {
+        let (xml, _, _) = detached("ref");
+        assert_code(
+            verify(&xml, &derived("ref-truncated.sig"), DEFAULT),
+            TslCode::DetachedSignatureError,
+            "TSLDET-001",
+        );
     }
 
-    /// A TSL whose XML still matches the profile and whose digests still hold, but whose
-    /// `SignedInfo` changed (the free `Id` value of reference 2), fails at the ECDSA check.
     #[test]
-    fn tslsig_018_changed_signed_info_fails_the_signature() {
-        let xml = String::from_utf8(real("pu-10334.xml")).unwrap();
-        let changed = xml.replacen(
-            "<ds:Reference Id=\"Reference-SignedProperties-",
-            "<ds:Reference Id=\"Reference-SignedPropertieS-",
-            1,
+    fn tsldet_001_trailing_bytes_rejected() {
+        let (xml, _, _) = detached("ref");
+        assert_code(
+            verify(&xml, &derived("ref-trailing-byte.sig"), DEFAULT),
+            TslCode::DetachedSignatureError,
+            "TSLDET-001",
         );
-        assert_ne!(changed, xml);
-        let e = verify(changed.as_bytes(), DEFAULT).unwrap_err();
-        assert_eq!(
-            (e.code, e.rule),
-            (TslCode::XmlSignatureError, "TSLSIG-018"),
-            "{e}"
+    }
+
+    #[test]
+    fn tsldet_001_oversized_rejected() {
+        let (xml, mut sig, _) = detached("ref");
+        sig.resize(MAX_DETACHED_SIGNATURE_LEN + 1, 0);
+        assert_code(
+            verify(&xml, &sig, DEFAULT),
+            TslCode::DetachedSignatureError,
+            "TSLDET-001",
+        );
+    }
+
+    #[test]
+    fn tsldet_002_wrong_algorithm_rejected() {
+        let (xml, _, _) = detached("ref");
+        assert_code(
+            verify(&xml, &derived("ref-wrong-algorithm.sig"), DEFAULT),
+            TslCode::DetachedSignatureError,
+            "TSLDET-002",
+        );
+    }
+
+    #[test]
+    fn tsldet_003_plain_signature_rejected() {
+        let (xml, _, _) = detached("ref");
+        assert_code(
+            verify(&xml, &derived("ref-plain-signature.sig"), DEFAULT),
+            TslCode::DetachedSignatureError,
+            "TSLDET-003",
+        );
+    }
+
+    #[test]
+    fn tsldet_003_unused_bits_rejected() {
+        let (xml, _, _) = detached("ref");
+        assert_code(
+            verify(&xml, &derived("ref-unused-bits.sig"), DEFAULT),
+            TslCode::DetachedSignatureError,
+            "TSLDET-003",
+        );
+    }
+
+    /// The certificate's outer tag changed from SEQUENCE to SET: the file is still one
+    /// SEQUENCE of three elements, but element 3 is no certificate.
+    #[test]
+    fn tsldet_004_unparsable_signer_is_cert_extraction_error() {
+        let (xml, sig, _) = detached("ref");
+        let mut broken = sig.clone();
+        // The certificate starts right after the BIT STRING; find its SEQUENCE header.
+        let bits_end = {
+            let alg_len = usize::from(sig[5]) + 2; // short-form AlgorithmIdentifier
+            let bits_at = 4 + alg_len;
+            bits_at + 2 + usize::from(sig[bits_at + 1])
+        };
+        assert_eq!(sig[bits_end], 0x30);
+        broken[bits_end] = 0x31;
+        assert_code(
+            verify(&xml, &broken, DEFAULT),
+            TslCode::TslCertExtractionError,
+            "TSLDET-004",
+        );
+    }
+
+    #[test]
+    fn tsldet_005_tampered_list_rejected() {
+        let (_, sig, _) = detached("ref");
+        assert_code(
+            verify(&derived("ref-tampered.xml"), &sig, DEFAULT),
+            TslCode::DetachedSignatureError,
+            "TSLDET-005",
+        );
+    }
+
+    #[test]
+    fn tsldet_005_signature_of_another_list_rejected() {
+        let (xml, _, _) = detached("ref");
+        let (_, prod_sig, _) = detached("prod");
+        assert_code(
+            verify(&xml, &prod_sig, DEFAULT),
+            TslCode::DetachedSignatureError,
+            "TSLDET-005",
+        );
+    }
+
+    #[test]
+    fn tsldet_005_flipped_signature_byte_rejected() {
+        let (xml, _, _) = detached("ref");
+        assert_code(
+            verify(&xml, &derived("ref-flipped-signature-byte.sig"), DEFAULT),
+            TslCode::DetachedSignatureError,
+            "TSLDET-005",
         );
     }
 
     #[test]
     fn tslsig_012_needs_brainpool_in_the_algorithm_set() {
+        let (xml, signature, _) = detached("prod");
         for algorithms in [crate::algorithms::STANDARD, crate::algorithms::NIST] {
-            let e = verify(&real("pu-10334.xml"), algorithms).unwrap_err();
-            assert_eq!(
-                (e.code, e.rule),
-                (TslCode::XmlSignatureError, "TSLSIG-012"),
-                "{e}"
+            assert_code(
+                verify(&xml, &signature, algorithms),
+                TslCode::DetachedSignatureError,
+                "TSLDET-002",
             );
         }
-    }
-
-    #[test]
-    fn codes_of_the_xml_layer() {
-        let e = verify(b"<a>", DEFAULT).unwrap_err();
-        assert_eq!((e.code, e.rule), (TslCode::TslNotWellformed, "TSLSIG-001"));
-        assert_eq!(e.code.number(), Some(1011));
-
-        let xml = String::from_utf8(real("pu-10334.xml")).unwrap();
-        let changed = xml.replacen(
-            "</ds:X509Data>",
-            "</ds:X509Data><ds:KeyName>k</ds:KeyName>",
-            1,
-        );
-        let e = verify(changed.as_bytes(), DEFAULT).unwrap_err();
-        assert_eq!(
-            (e.code, e.rule),
-            (TslCode::TslCertExtractionError, "TSLSIG-022"),
-            "{e}"
-        );
-        assert_eq!(e.code.number(), Some(1002));
-    }
-
-    #[test]
-    fn tslsig_020_serial_numbers() {
-        assert!(serial_matches("6", &[0x06]));
-        assert!(serial_matches("0006", &[0x06]));
-        assert!(serial_matches("128", &[0x00, 0x80]));
-        assert!(serial_matches("262", &[0x01, 0x06]));
-        assert!(!serial_matches("6", &[0x01, 0x06]));
-        assert!(!serial_matches("7", &[0x06]));
-        assert!(!serial_matches("128", &[0x80]));
-        let big = "1461501637330902918203684832716283019655932542975"; // 2^160 − 1
-        assert!(serial_matches(
-            big,
-            &[[0x00].as_slice(), &[0xff; 20]].concat()
-        ));
-        assert!(!serial_matches(&"9".repeat(65), &[0x01]));
     }
 
     fn at(rfc3339: &str) -> Timestamp {
@@ -1079,7 +1533,6 @@ mod tests {
             signer_fixture!("signer-no-policy"),
             signer_fixture!("signer-ca"),
             signer_fixture!("signer-no-aia"),
-            signer_fixture!("signer-compressed-key"),
             signer_fixture!("signer-p256"),
             signer_fixture!("signer-sha384"),
         ] {
@@ -1089,24 +1542,19 @@ mod tests {
 
     #[test]
     fn tslsig_030_production_tsls_verify_for_production() {
-        for (name, sequence) in [("pu-10333.xml", 10333), ("pu-10334.xml", 10334)] {
-            let verified = Tsl::parse_verified_prod(&real(name), at("2026-10-03T00:00:00Z"))
-                .unwrap_or_else(|e| panic!("{name}: {e}"));
-            assert_eq!(verified.tier, Tier::Prod);
-            assert_eq!(verified.tsl.sequence_number, sequence);
-            assert_eq!(verified.anchor.subject_cn(), "GEM.TSL-CA3");
-            assert_eq!(verified.signer.subject_cn(), "TSL Signing Unit 6");
-            assert!(
-                !verified.tsl.intermediate_cas().is_empty(),
-                "{:?}",
-                verified.tsl.intermediate_cas()
-            );
-        }
+        let verified =
+            Tsl::parse_verified_prod(&real("prod"), &sig("prod"), at("2026-11-01T16:47:42Z"))
+                .unwrap();
+        assert_eq!(verified.tier, Tier::Prod);
+        assert_eq!(verified.tsl.sequence_number, 10337);
+        assert_eq!(verified.anchor.subject_cn(), "GEM.TSL-CA3");
+        assert_eq!(verified.signer.subject_cn(), "TSL Signing Unit 6");
+        assert_eq!(verified.tsl.intermediate_cas().len(), 76);
     }
 
     #[test]
     fn tslsig_030_a_test_tsl_is_no_production_tsl() {
-        let e = Tsl::parse_verified_prod(&real("tu-10713.xml"), at("2026-10-03T00:00:00Z"))
+        let e = Tsl::parse_verified_prod(&real("test"), &sig("test"), at("2026-10-03T00:00:00Z"))
             .unwrap_err();
         assert_eq!(
             (e.code, e.rule),
@@ -1117,7 +1565,7 @@ mod tests {
 
     #[test]
     fn tslsig_032_production_tsl_after_its_ca_expired() {
-        let e = Tsl::parse_verified_prod(&real("pu-10334.xml"), at("2028-05-26T00:00:00Z"))
+        let e = Tsl::parse_verified_prod(&real("prod"), &sig("prod"), at("2028-05-26T00:00:00Z"))
             .unwrap_err();
         assert_eq!(
             (e.code, e.rule),
@@ -1132,8 +1580,13 @@ mod tests {
             tsl_signer_anchors: vec![std::borrow::Cow::Borrowed(b"not a certificate")],
             ..TrustConfig::preset_prod()
         };
-        let e = Tsl::parse_verified(&real("pu-10334.xml"), &config, at("2026-10-03T00:00:00Z"))
-            .unwrap_err();
+        let e = Tsl::parse_verified(
+            &real("prod"),
+            &sig("prod"),
+            &config,
+            at("2026-10-03T00:00:00Z"),
+        )
+        .unwrap_err();
         assert_eq!(
             (e.code, e.rule),
             (TslCode::CertificateNotValidMath, "TSLSIG-030")
@@ -1143,30 +1596,28 @@ mod tests {
     #[test]
     fn auto_detects_production() {
         let verified =
-            Tsl::parse_verified_auto(&real("pu-10334.xml"), at("2026-10-03T00:00:00Z")).unwrap();
+            Tsl::parse_verified_auto(&real("prod"), &sig("prod"), at("2026-10-03T00:00:00Z"))
+                .unwrap();
         assert_eq!(verified.tier, Tier::Prod);
     }
 
     #[cfg(feature = "dangerous-nonprod")]
     #[test]
     fn test_tsls_verify_for_non_production() {
-        // Each within its own validity: tu-10687 expired on 2026-07-02.
-        for (name, now) in [
-            ("tu-10687.xml", at("2026-06-03T00:00:00Z")),
-            ("tu-10713.xml", at("2026-10-03T00:00:00Z")),
-        ] {
+        let now = at("2026-11-01T16:47:42Z");
+        for env in ["test", "ref"] {
             let config = TrustConfig::preset(crate::Env::Test);
-            let verified = Tsl::parse_verified(&real(name), &config, now).unwrap();
+            let verified = Tsl::parse_verified(&real(env), &sig(env), &config, now).unwrap();
             assert_eq!(verified.tier, Tier::NonProd);
             assert_eq!(verified.anchor.subject_cn(), "GEM.TSL-CA28 TEST-ONLY");
-            let auto = Tsl::parse_verified_auto(&real(name), now).unwrap();
+            let auto = Tsl::parse_verified_auto(&real(env), &sig(env), now).unwrap();
             assert_eq!(auto.tier, Tier::NonProd);
             assert_eq!(auto.tsl.sequence_number, verified.tsl.sequence_number);
         }
         // And a production TSL under the non-production anchor fails.
-        let now = at("2026-10-03T00:00:00Z");
         let e = Tsl::parse_verified(
-            &real("pu-10334.xml"),
+            &real("prod"),
+            &sig("prod"),
             &TrustConfig::preset(crate::Env::Ref),
             now,
         )
@@ -1177,7 +1628,7 @@ mod tests {
     #[cfg(not(feature = "dangerous-nonprod"))]
     #[test]
     fn without_nonprod_material_a_test_tsl_is_not_recognised() {
-        let e = Tsl::parse_verified_auto(&real("tu-10713.xml"), at("2026-10-03T00:00:00Z"))
+        let e = Tsl::parse_verified_auto(&real("test"), &sig("test"), at("2026-10-03T00:00:00Z"))
             .unwrap_err();
         assert_eq!(
             (e.code, e.rule),
@@ -1186,13 +1637,13 @@ mod tests {
         );
     }
 
-    /// pu-10334: issued 2026-09-27T23:00:07Z, NextUpdate 2026-10-27T23:00:07Z.
-    fn pu_10334(now: &str, grace_days: u64) -> Result<VerifiedTsl, TslError> {
+    /// The PU set: issued 2026-10-28T00:00:07Z, NextUpdate 2026-11-27T00:00:07Z.
+    fn pu_list(now: &str, grace_days: u64) -> Result<VerifiedTsl, TslError> {
         let config = TrustConfig {
             tsl_grace_period: core::time::Duration::from_hours(grace_days * 24),
             ..TrustConfig::preset_prod()
         };
-        Tsl::parse_verified(&real("pu-10334.xml"), &config, at(now))
+        Tsl::parse_verified(&real("prod"), &sig("prod"), &config, at(now))
     }
 
     fn codes(warnings: &[TslError]) -> Vec<TslCode> {
@@ -1201,10 +1652,10 @@ mod tests {
 
     #[test]
     fn tslsig_054_next_update_and_grace_period() {
-        let before = pu_10334("2026-10-27T23:00:06Z", 0).unwrap();
+        let before = pu_list("2026-11-27T00:00:06Z", 0).unwrap();
         assert_eq!(codes(&before.warnings), [TslCode::NoOcspCheck]);
 
-        let e = pu_10334("2026-10-27T23:00:07Z", 0).unwrap_err();
+        let e = pu_list("2026-11-27T00:00:07Z", 0).unwrap_err();
         assert_eq!(
             (e.code, e.rule),
             (TslCode::ValidityWarning2, "TSLSIG-054"),
@@ -1212,39 +1663,35 @@ mod tests {
         );
         assert!(!e.code.is_warning());
 
-        let within = pu_10334("2026-11-01T00:00:00Z", 7).unwrap();
+        let within = pu_list("2026-12-01T00:00:00Z", 7).unwrap();
         assert_eq!(
             codes(&within.warnings),
             [TslCode::ValidityWarning1, TslCode::NoOcspCheck]
         );
         assert!(TslCode::ValidityWarning1.is_warning());
-        let e = pu_10334("2026-11-03T23:00:07Z", 7).unwrap_err();
+        let e = pu_list("2026-12-04T00:00:07Z", 7).unwrap_err();
         assert_eq!(e.code, TslCode::ValidityWarning2);
     }
 
     #[test]
     fn tslsig_052_the_published_lists_skip_nothing() {
-        let verified = pu_10334("2026-10-03T00:00:00Z", 0).unwrap();
+        let verified = pu_list("2026-10-03T00:00:00Z", 0).unwrap();
         assert!(
             verified.tsl.skipped.is_empty(),
             "{:?}",
             verified.tsl.skipped
         );
-        assert_eq!(verified.tsl.id, "ID31033420260927230007Z");
+        assert_eq!(verified.tsl.id, "ID31033720261028000007Z");
     }
 
     #[test]
     fn tslsig_053_sequence() {
-        let mut verified = pu_10334("2026-10-03T00:00:00Z", 0).unwrap();
+        let mut verified = pu_list("2026-10-03T00:00:00Z", 0).unwrap();
         let state = |id: &str, sequence_number| TslState {
             id: id.to_owned(),
             sequence_number,
         };
-        let previous = TslState::of(
-            &Tsl::parse_verified_prod(&real("pu-10333.xml"), at("2026-10-03T00:00:00Z"))
-                .unwrap()
-                .tsl,
-        );
+        let previous = state("ID31033420260927230007Z", 10334);
         assert_eq!(verified.check_sequence(None), Ok(Sequence::Newer));
         assert_eq!(
             verified.check_sequence(Some(&previous)),
@@ -1253,9 +1700,9 @@ mod tests {
         let current = TslState::of(&verified.tsl);
         assert_eq!(verified.check_sequence(Some(&current)), Ok(Sequence::Same));
         for stored in [
-            state("ID31033420260927230007Z", 10333),
-            state("other", 10334),
-            state("other", 10335),
+            state("ID31033720261028000007Z", 10336),
+            state("other", 10337),
+            state("other", 10338),
         ] {
             let e = verified.check_sequence(Some(&stored)).unwrap_err();
             assert_eq!(
@@ -1292,7 +1739,7 @@ mod tests {
     }
 
     fn status(outcome: Result<RevocationResult, ValidationError>) -> Result<VerifiedTsl, TslError> {
-        let mut verified = pu_10334("2026-10-03T00:00:00Z", 0).unwrap();
+        let mut verified = pu_list("2026-10-03T00:00:00Z", 0).unwrap();
         futures_lite::future::block_on(verified.check_signer_status(&Scripted(outcome)))?;
         Ok(verified)
     }
@@ -1387,10 +1834,10 @@ mod tests {
             ..TrustConfig::preset_prod()
         };
         let now = at("2026-10-03T00:00:00Z");
-        let prod = Tsl::parse_verified(&real("pu-10334.xml"), &config, now).unwrap();
+        let prod = Tsl::parse_verified(&real("prod"), &sig("prod"), &config, now).unwrap();
         assert_eq!(prod.anchor.subject_cn(), "GEM.TSL-CA3");
         assert_eq!(prod.tier, Tier::Prod);
-        let test = Tsl::parse_verified(&real("tu-10713.xml"), &config, now).unwrap();
+        let test = Tsl::parse_verified(&real("test"), &sig("test"), &config, now).unwrap();
         assert_eq!(test.anchor.subject_cn(), "GEM.TSL-CA28 TEST-ONLY");
         assert_eq!(test.tier, Tier::NonProd);
     }
@@ -1411,9 +1858,10 @@ mod tests {
             supply_points: Vec::new(),
             type_oids: Vec::new(),
         };
-        let mut tsl = Tsl::parse_verified_prod(&real("pu-10334.xml"), at("2026-10-03T00:00:00Z"))
-            .unwrap()
-            .tsl;
+        let mut tsl =
+            Tsl::parse_verified_prod(&real("prod"), &sig("prod"), at("2026-10-03T00:00:00Z"))
+                .unwrap()
+                .tsl;
         let announced = announced_anchors(&tsl, std::slice::from_ref(&ca3));
         assert!(announced.is_empty(), "{announced:?}");
 
@@ -1462,7 +1910,7 @@ mod tests {
             let clock = FixedClock::new(at(now));
             let transport = MockTransport::posting(answers);
             let checker = OcspChecker::new(config, &transport, &clock);
-            let mut verified = Tsl::parse_verified(&real(tsl), config, at(now)).unwrap();
+            let mut verified = Tsl::parse_verified(&real(tsl), &sig(tsl), config, at(now)).unwrap();
             let result = futures_lite::future::block_on(verified.check_signer_status(&checker))
                 .map(|()| verified);
             (result, transport.posts())
@@ -1477,7 +1925,7 @@ mod tests {
         #[test]
         fn tslsig_040_production_signer_is_good() {
             let (result, posts) = checked(
-                "pu-10334.xml",
+                "prod",
                 &TrustConfig::preset_prod(),
                 PRODUCED,
                 vec![Ok(PU.to_vec())],
@@ -1497,7 +1945,7 @@ mod tests {
         #[test]
         fn tslsig_040_test_signer_is_good() {
             let (result, posts) = checked(
-                "tu-10713.xml",
+                "test",
                 &TrustConfig::preset(crate::Env::Test),
                 PRODUCED,
                 vec![Ok(TU.to_vec())],
@@ -1510,7 +1958,7 @@ mod tests {
         #[test]
         fn tslsig_042_an_answer_about_another_signer() {
             let (result, _) = checked(
-                "pu-10334.xml",
+                "prod",
                 &TrustConfig::preset_prod(),
                 PRODUCED,
                 vec![Ok(TU.to_vec())],
@@ -1526,7 +1974,7 @@ mod tests {
             let last = broken.len() - 1;
             broken[last] ^= 1;
             let (result, _) = checked(
-                "pu-10334.xml",
+                "prod",
                 &TrustConfig::preset_prod(),
                 PRODUCED,
                 vec![Ok(broken)],
@@ -1553,7 +2001,7 @@ mod tests {
             let mut broken = PU.to_vec();
             broken[certs - 1] ^= 1;
             let (result, _) = checked(
-                "pu-10334.xml",
+                "prod",
                 &TrustConfig::preset_prod(),
                 PRODUCED,
                 vec![Ok(broken)],
@@ -1572,7 +2020,7 @@ mod tests {
         #[test]
         fn tslsig_042_an_answer_too_old() {
             let (result, _) = checked(
-                "pu-10334.xml",
+                "prod",
                 &TrustConfig::preset_prod(),
                 "2026-10-03T18:20:21Z",
                 vec![Ok(PU.to_vec())],
@@ -1585,7 +2033,7 @@ mod tests {
             // OCSPResponse { responseStatus tryLater }.
             let try_later = vec![0x30, 0x03, 0x0a, 0x01, 0x03];
             let (result, posts) = checked(
-                "pu-10334.xml",
+                "prod",
                 &TrustConfig::preset_prod(),
                 PRODUCED,
                 vec![Ok(try_later); 4],
@@ -1604,7 +2052,7 @@ mod tests {
                 })
             };
             let (result, _) = checked(
-                "pu-10334.xml",
+                "prod",
                 &TrustConfig::preset_prod(),
                 PRODUCED,
                 (0..4).map(|_| refused()).collect(),
@@ -1633,7 +2081,7 @@ mod tests {
         /// anchor are the test PKI's, checked at the answers' producedAt.
         fn status_of(answer: Vec<u8>) -> Result<VerifiedTsl, TslError> {
             let mut verified =
-                Tsl::parse_verified_prod(&real("pu-10334.xml"), at("2026-10-03T00:00:00Z"))
+                Tsl::parse_verified_prod(&real("prod"), &sig("prod"), at("2026-10-03T00:00:00Z"))
                     .unwrap();
             verified.signer = signer_fixture!("signer");
             verified.anchor = signer_fixture!("ca");

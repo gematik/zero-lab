@@ -30,8 +30,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-jose/go-jose/v4"
+
+	"github.com/gematik/zero-lab/go/openid"
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
-	"github.com/lestrrat-go/jwx/v3/jwk"
 )
 
 // introspect posts a token to the introspection endpoint, authenticating with the given client
@@ -54,13 +56,13 @@ func introspect(t *testing.T, md authzserver.ExtendedMetadata, assertion, token 
 			t.Fatalf("introspect decode: %v", err)
 		}
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	return resp, ir
 }
 
 // mintClientCredentialsToken obtains an access token via the client_credentials grant, authenticating
 // clientID with key.
-func mintClientCredentialsToken(t *testing.T, md authzserver.ExtendedMetadata, clientID, scope string, key jwk.Key) string {
+func mintClientCredentialsToken(t *testing.T, md authzserver.ExtendedMetadata, clientID, scope string, key *jose.JSONWebKey) string {
 	t.Helper()
 	form := url.Values{"grant_type": {"client_credentials"}, "scope": {scope}}
 	addClientAuth(form, clientAssertion(t, md, clientID, key))
@@ -152,11 +154,11 @@ func TestFlow_Introspection_CrossClient(t *testing.T) {
 
 	token := mintClientCredentialsToken(t, md, clientID, scope, clientKey(t))
 
-	key2b, err := os.ReadFile(key2Path)
+	key2b, err := os.ReadFile(key2Path) //nolint:gosec // the path comes from the test's own ZERO_PDP_E2E_CLIENT2_KEY_PATH variable
 	if err != nil {
 		t.Fatalf("read client2 key: %v", err)
 	}
-	key2, err := jwk.ParseKey(key2b)
+	key2, err := openid.ParseKey(key2b)
 	if err != nil {
 		t.Fatalf("parse client2 key: %v", err)
 	}

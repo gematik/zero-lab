@@ -141,7 +141,8 @@ impl ServiceDirectory {
         })
     }
 
-    /// Replaces scheme and host of every endpoint with those of `base`, keeping paths.
+    /// Replaces scheme and host of every endpoint with those of `base`, keeping paths, and
+    /// removes an endpoint that is no http(s) URL with a host.
     pub fn rewrite_endpoints(&mut self, base: &str) {
         let Some((origin, _)) = split_origin(base) else {
             return;
@@ -150,11 +151,12 @@ impl ServiceDirectory {
             .services
             .iter_mut()
             .flat_map(|s| &mut s.versions)
-            .flat_map(|v| [&mut v.endpoint_tls, &mut v.endpoint].into_iter().flatten());
+            .flat_map(|v| [&mut v.endpoint_tls, &mut v.endpoint]);
         for endpoint in endpoints {
-            if let Some((_, path)) = split_origin(endpoint) {
-                *endpoint = format!("{origin}{path}");
-            }
+            *endpoint = endpoint
+                .as_deref()
+                .and_then(split_origin)
+                .map(|(_, path)| format!("{origin}{path}"));
         }
     }
 
@@ -305,15 +307,66 @@ pub fn sds_url(base: &str) -> String {
 
 /// `("https://host:port", "/path?query")` of an http(s) URL with a host.
 pub(crate) fn split_origin(url: &str) -> Option<(&str, &str)> {
-    let rest = url
-        .strip_prefix("https://")
-        .or_else(|| url.strip_prefix("http://"))?;
+    // URL schemes are case-insensitive, and an HTTP client takes `HTTPS://` as well.
+    let rest = ["https://", "http://"].iter().find_map(|scheme| {
+        let start = url.get(..scheme.len())?;
+        start
+            .eq_ignore_ascii_case(scheme)
+            .then(|| &url[scheme.len()..])
+    })?;
     let authority_len = rest.find(['/', '?', '#']).unwrap_or(rest.len());
     if authority_len == 0 {
         return None;
     }
     let split = url.len() - rest.len() + authority_len;
     Some((&url[..split], &url[split..]))
+}
+
+/// Whether `endpoint` is the origin of the `.kon` URL `base`, or the same under the
+/// `.kon` file's `expectedHost`: same scheme, host and port. What cannot be read exactly
+/// (user information, a backslash) is no match, so a URL another parser would take to
+/// another host fails here.
+pub(crate) fn same_origin(base: &str, expected_host: Option<&str>, endpoint: &str) -> bool {
+    let (Some(base), Some(endpoint)) = (origin_parts(base), origin_parts(endpoint)) else {
+        return false;
+    };
+    base.0 == endpoint.0
+        && base.2 == endpoint.2
+        && (base.1 == endpoint.1
+            || expected_host.is_some_and(|h| h.eq_ignore_ascii_case(&endpoint.1)))
+}
+
+/// Whether the URL is https, its lowercase host, and its port.
+fn origin_parts(url: &str) -> Option<(bool, String, u16)> {
+    let (origin, _) = split_origin(url)?;
+    let (scheme, authority) = origin.split_once("://")?;
+    if authority.contains(['@', '\\']) || authority.contains(char::is_whitespace) {
+        return None;
+    }
+    let https = scheme.eq_ignore_ascii_case("https");
+    let (host, port) = match authority.strip_prefix('[') {
+        Some(rest) => {
+            let (host, after) = rest.split_once(']')?;
+            match after.strip_prefix(':') {
+                Some(port) => (host, Some(port)),
+                None if after.is_empty() => (host, None),
+                None => return None,
+            }
+        }
+        None => match authority.rsplit_once(':') {
+            Some((host, port)) => (host, Some(port)),
+            None => (authority, None),
+        },
+    };
+    if host.is_empty() {
+        return None;
+    }
+    let port = match port {
+        Some(port) => port.parse().ok()?,
+        None if https => 443,
+        None => 80,
+    };
+    Some((https, host.to_ascii_lowercase(), port))
 }
 
 /// `8.2` of `8.2.1`.
@@ -519,6 +572,63 @@ mod tests {
         sds.rewrite_endpoints("https://localhost:8443/base/");
         let event = sds.resolve("EventService", &["7.2"]).unwrap();
         assert_eq!(event.endpoint, "https://localhost:8443/ws/EventService");
+    }
+
+    /// `rewriteServiceEndpoints` sends every service to the `.kon` host: an endpoint it
+    /// cannot rewrite must not stay, or the directory would still choose where the
+    /// credentials go. Found by the fuzz target `sds`.
+    #[test]
+    fn no_endpoint_leaves_the_kon_origin_after_a_rewrite() {
+        let mut sds = ServiceDirectory::parse(EHEX).unwrap();
+        let version = &mut sds.services[0].versions[0];
+        version.endpoint_tls = Some("HTTPS://elsewhere.example/ws".into());
+        version.endpoint = Some("%%ENDPOINT%%/ws".into());
+        sds.rewrite_endpoints("https://k:8443");
+        let version = &sds.services[0].versions[0];
+        assert_eq!(version.endpoint_tls.as_deref(), Some("https://k:8443/ws"));
+        assert_eq!(version.endpoint, None);
+    }
+
+    #[test]
+    fn an_endpoint_must_have_the_origin_of_the_kon_url() {
+        let kon = "https://k.example:8443/konnektor/";
+        for same in [
+            "https://k.example:8443/ws",
+            "https://K.EXAMPLE:8443",
+            "HTTPS://k.example:8443/ws",
+        ] {
+            assert!(same_origin(kon, None, same), "{same}");
+        }
+        for other in [
+            "http://k.example:8443/ws",
+            "https://k.example/ws",
+            "https://k.example:443/ws",
+            "https://elsewhere.example:8443/ws",
+            "https://k.example.elsewhere.example:8443/ws",
+            "https://k.example:8443@elsewhere.example:8443/ws",
+            "https://user@k.example:8443/ws",
+            "https://elsewhere.example\\@k.example:8443/ws",
+            "https://k.example:notaport/ws",
+            "%%ENDPOINT%%/ws",
+            "//k.example:8443/ws",
+            "",
+        ] {
+            assert!(!same_origin(kon, None, other), "{other}");
+        }
+        assert!(same_origin("https://k", None, "https://k:443/ws"));
+        assert!(same_origin("http://k", None, "http://k:80/ws"));
+        assert!(same_origin("https://[::1]", None, "https://[::1]:443/ws"));
+        assert!(!same_origin("https://[::1]", None, "https://[::2]/ws"));
+        assert!(same_origin(
+            "https://10.0.0.1:8443",
+            Some("K.example"),
+            "https://k.example:8443/ws"
+        ));
+        assert!(!same_origin(
+            "https://10.0.0.1:8443",
+            Some("k.example"),
+            "https://k.example/ws"
+        ));
     }
 
     #[test]

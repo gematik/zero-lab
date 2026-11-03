@@ -125,19 +125,21 @@ pub enum ErrorCode {
     /// The issuing CA's entry in the verified TSL does not list the end entity's
     /// certificate type (TUC_PKI_007 step 9a, CERT_TYPE_CA_NOT_AUTHORIZED, 1061).
     CertTypeCaNotAuthorized,
-    /// Warning only: a verified TSL is at hand, but it states no certificate types for
-    /// the issuing CA, so the end entity's type was not checked against it (TUC_PKI_007
-    /// variant 7a). `ti-pki`'s own code.
-    CertTypeUnchecked,
     /// The TSL lists the issuing CA as revoked, and the end entity was issued at or
     /// after its `StatusStartingTime` (Tab_PKI_271, TUC_PKI_002 step 5).
     CaRevokedInTsl,
+    /// A CA of the chain is not one the verified TSL names as in use.
+    CaNotInTsl,
     /// Warning only: the TSL lists the issuing CA as revoked, but the end entity was
     /// issued before its `StatusStartingTime`, so it is treated as usual (Tab_PKI_271).
     IssuedBeforeCaRevocation,
     /// Warning only: OCSP reports the certificate revoked, but its `revocationTime` lies
     /// after the reference time, so it was valid then (TUC_PKI_006 variant 8a).
     RevokedAfterReferenceTime,
+    /// Warning only: a CA of the chain has expired, but was valid when it issued the
+    /// certificate below it, which the Kompromissmodell for nonQES certificates of HBA
+    /// and SMC-B accepts (gemKPT_PKI_TIP 2.4.2, gemSpec_PKI Tab_PKI_271).
+    IssuedBeforeCaExpiry,
 }
 
 impl ErrorCode {
@@ -163,10 +165,11 @@ impl ErrorCode {
         ErrorCode::ProfileAmbiguous,
         ErrorCode::ProfileTypeMismatch,
         ErrorCode::CertTypeCaNotAuthorized,
-        ErrorCode::CertTypeUnchecked,
         ErrorCode::CaRevokedInTsl,
+        ErrorCode::CaNotInTsl,
         ErrorCode::IssuedBeforeCaRevocation,
         ErrorCode::RevokedAfterReferenceTime,
+        ErrorCode::IssuedBeforeCaExpiry,
     ];
 
     /// The stable string form, as used in logs and by the Go implementation.
@@ -192,10 +195,11 @@ impl ErrorCode {
             ErrorCode::ProfileAmbiguous => "profile_ambiguous",
             ErrorCode::ProfileTypeMismatch => "profile_type_mismatch",
             ErrorCode::CertTypeCaNotAuthorized => "cert_type_ca_not_authorized",
-            ErrorCode::CertTypeUnchecked => "cert_type_unchecked",
             ErrorCode::CaRevokedInTsl => "ca_revoked_in_tsl",
+            ErrorCode::CaNotInTsl => "ca_not_in_tsl",
             ErrorCode::IssuedBeforeCaRevocation => "issued_before_ca_revocation",
             ErrorCode::RevokedAfterReferenceTime => "revoked_after_reference_time",
+            ErrorCode::IssuedBeforeCaExpiry => "issued_before_ca_expiry",
         }
     }
 }
@@ -333,12 +337,13 @@ mod tests {
             ErrorCode::ProfileAmbiguous => 17,
             ErrorCode::ProfileTypeMismatch => 18,
             ErrorCode::CertTypeCaNotAuthorized => 19,
-            ErrorCode::CertTypeUnchecked => 20,
-            ErrorCode::CaRevokedInTsl => 21,
+            ErrorCode::CaRevokedInTsl => 20,
+            ErrorCode::CaNotInTsl => 21,
             ErrorCode::IssuedBeforeCaRevocation => 22,
             ErrorCode::RevokedAfterReferenceTime => 23,
+            ErrorCode::IssuedBeforeCaExpiry => 24,
         };
-        assert_eq!(ErrorCode::ALL.len(), 24);
+        assert_eq!(ErrorCode::ALL.len(), 25);
         for (i, code) in ErrorCode::ALL.iter().enumerate() {
             assert_eq!(place(*code), i, "{code}");
         }

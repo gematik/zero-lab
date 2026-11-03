@@ -62,7 +62,7 @@ where
 {
     async fn fetch(&self, artifact: Artifact, cond: Conditional<'_>) -> Result<Fetched, LoadError> {
         let key = self.inner.cache_key(artifact);
-        let cached = self
+        let answer_of = self
             .cache
             .get(&key, async |validators| {
                 Ok(match self.inner.fetch(artifact, validators).await? {
@@ -73,15 +73,38 @@ where
                     Fetched::NotModified(meta) => OriginResponse::NotModified(meta),
                 })
             })
-            .await
-            .map_err(|error| match error {
-                CacheLookupError::Store(e) => LoadError::Cache(e),
-                CacheLookupError::OfflineMiss => LoadError::Offline(artifact),
-                CacheLookupError::UnexpectedNotModified => {
-                    LoadError::UnexpectedNotModified(artifact)
-                }
-                CacheLookupError::Origin(e) => e,
-            })?;
+            .await;
+        let cached = match answer_of {
+            Ok(cached) => cached,
+            // A signature stays good for its list at any age, and only fits or does not:
+            // a list HTTPS keeps confirming must not expire because the plain-HTTP host
+            // is down (TSLDET-015).
+            Err(CacheLookupError::Origin(error @ LoadError::Transport(_)))
+                if artifact == Artifact::TslSignature =>
+            {
+                let Some(entry) = self.cache.stored(&key).await.map_err(LoadError::Cache)? else {
+                    return Err(error);
+                };
+                return Ok(answer(
+                    Loaded {
+                        body: entry.body,
+                        meta: entry.meta,
+                        stale: Some(error),
+                    },
+                    cond,
+                ));
+            }
+            Err(error) => {
+                return Err(match error {
+                    CacheLookupError::Store(e) => LoadError::Cache(e),
+                    CacheLookupError::OfflineMiss => LoadError::Offline(artifact),
+                    CacheLookupError::UnexpectedNotModified => {
+                        LoadError::UnexpectedNotModified(artifact)
+                    }
+                    CacheLookupError::Origin(e) => e,
+                });
+            }
+        };
         let loaded = Loaded {
             body: cached.body,
             meta: cached.meta,
@@ -92,6 +115,20 @@ where
 
     fn cache_key(&self, artifact: Artifact) -> String {
         self.inner.cache_key(artifact)
+    }
+
+    async fn revalidate(&self) -> Result<(), LoadError> {
+        for artifact in [
+            Artifact::Tsl,
+            Artifact::TslSignature,
+            Artifact::TslSignerStatus,
+        ] {
+            self.cache
+                .expire(&self.inner.cache_key(artifact))
+                .await
+                .map_err(LoadError::Cache)?;
+        }
+        Ok(())
     }
 }
 
@@ -150,6 +187,97 @@ mod tests {
             message: "connection refused".into(),
             retryable: true,
         })
+    }
+
+    /// TSLDET-013: revalidation asks the origin again, but does not throw away the set in
+    /// hand: with the origin down, it is served stale at its real age.
+    #[test]
+    fn tsldet_013_revalidate_keeps_the_stale_window_and_the_age() {
+        let clock = FixedClock::new(T0);
+        let store = MemoryCacheStore::default();
+        let transport = MockTransport::new([Ok(fresh(b"old", "e1")), unreachable()]);
+        let loader = CachingLoader::new(
+            HttpLoader::new(&TrustConfig::preset_prod(), &transport, &clock),
+            &store,
+            &clock,
+            policy(false),
+        );
+        block_on(loader.load(Artifact::TslSignerStatus)).unwrap();
+        block_on(loader.revalidate()).unwrap();
+        let served = block_on(loader.load(Artifact::TslSignerStatus)).unwrap();
+        assert_eq!(served.body, b"old");
+        assert!(served.stale.is_some());
+        assert_eq!(
+            served.meta.fetched_at,
+            T0 - HOUR,
+            "no older than expiring needs"
+        );
+    }
+
+    /// TSLDET-015: a signature for the list in hand is good at any age, so with the plain
+    /// origin down for days a list HTTPS keeps confirming stays usable.
+    #[test]
+    fn tsldet_015_a_signature_is_served_at_any_age_while_its_origin_is_down() {
+        let clock = FixedClock::new(T0);
+        let store = MemoryCacheStore::default();
+        let transport = MockTransport::new([
+            Ok(fresh(b"sig", "e1")),
+            Ok(fresh(b"ocsp", "e2")),
+            unreachable(),
+            unreachable(),
+        ]);
+        let loader = CachingLoader::new(
+            HttpLoader::new(&TrustConfig::preset_prod(), &transport, &clock),
+            &store,
+            &clock,
+            policy(false),
+        );
+        block_on(loader.load(Artifact::TslSignature)).unwrap();
+        block_on(loader.load(Artifact::TslSignerStatus)).unwrap();
+        clock.advance(Duration::from_hours(24 * 30));
+        let signature = block_on(loader.load(Artifact::TslSignature)).unwrap();
+        assert_eq!(signature.body, b"sig");
+        assert!(signature.stale.is_some());
+        assert!(
+            block_on(loader.load(Artifact::TslSignerStatus)).is_err(),
+            "a status has its age limit"
+        );
+    }
+
+    /// TSLDET-013: after revalidation the set comes from the origin again, without
+    /// validators; offline there is nothing to ask, and the entry keeps its age.
+    #[test]
+    fn tsldet_013_revalidate_makes_the_next_load_ask_the_origin() {
+        let clock = FixedClock::new(T0);
+        let store = MemoryCacheStore::default();
+        let transport = MockTransport::new([Ok(fresh(b"old", "e1")), Ok(fresh(b"new", "e2"))]);
+        let loader = CachingLoader::new(
+            HttpLoader::new(&TrustConfig::preset_prod(), &transport, &clock),
+            &store,
+            &clock,
+            policy(false),
+        );
+        let load = || block_on(loader.load(Artifact::TslSignature)).unwrap().body;
+        assert_eq!(load(), b"old");
+        assert_eq!(
+            load(),
+            b"old",
+            "fresh in the cache: the origin is not asked"
+        );
+        assert_eq!(transport.requests().len(), 1);
+        block_on(loader.revalidate()).unwrap();
+        assert_eq!(load(), b"new");
+        assert_eq!(transport.requests()[1].etag, None);
+
+        let offline = CachingLoader::new(
+            HttpLoader::new(&TrustConfig::preset_prod(), &transport, &clock),
+            &store,
+            &clock,
+            policy(true),
+        );
+        block_on(offline.revalidate()).unwrap();
+        let kept = block_on(offline.load(Artifact::TslSignature)).unwrap();
+        assert_eq!(kept.meta.fetched_at, T0, "offline keeps the entry's age");
     }
 
     fn policy(offline: bool) -> CachePolicy {

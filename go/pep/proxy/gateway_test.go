@@ -43,7 +43,7 @@ type dpopTestBackend struct {
 	pdp *pdpBackend
 }
 
-func (d *dpopTestBackend) FreshAccessToken(ctx context.Context, sess *Session) (string, error) {
+func (d *dpopTestBackend) FreshAccessToken(_ context.Context, _ *Session) (string, error) {
 	return "test-token", nil
 }
 
@@ -158,7 +158,7 @@ func TestGatewayUnauthenticatedBranch(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/dashboard", nil)
+	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
 	req.Header.Set("Accept", "text/html")
 	gw.ServeHTTP(rec, req)
 	if rec.Code != http.StatusFound {
@@ -169,7 +169,7 @@ func TestGatewayUnauthenticatedBranch(t *testing.T) {
 	}
 
 	rec = httptest.NewRecorder()
-	gw.ServeHTTP(rec, httptest.NewRequest("GET", "/api/data", nil))
+	gw.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/data", nil))
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("api unauth: status %d, want 401", rec.Code)
 	}
@@ -180,7 +180,7 @@ func TestGatewayUnauthenticatedBranch(t *testing.T) {
 
 func TestGatewayIdentityInjection(t *testing.T) {
 	var gotPath, gotIdentity, gotForgedUser string
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotIdentity = r.Header.Get("X-Auth-Request-Identity")
 		gotForgedUser = r.Header.Get("X-Auth-Request-User")
@@ -196,7 +196,7 @@ func TestGatewayIdentityInjection(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/app/page", nil)
+	req := httptest.NewRequest(http.MethodGet, "/app/page", nil)
 	req.Header.Set("X-Auth-Request-User", "attacker")
 	gw.ServeHTTP(rec, req)
 
@@ -224,7 +224,7 @@ func TestGatewayIdentityInjection(t *testing.T) {
 
 func TestGatewayUnprotectedPassthrough(t *testing.T) {
 	hit := false
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hit = true }))
+	upstream := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) { hit = true }))
 	defer upstream.Close()
 
 	gw, err := newGateway([]Route{
@@ -234,14 +234,14 @@ func TestGatewayUnprotectedPassthrough(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	gw.ServeHTTP(rec, httptest.NewRequest("GET", "/public/x", nil))
+	gw.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/public/x", nil))
 	if !hit {
 		t.Error("unprotected route did not reach the upstream")
 	}
 }
 
 func TestServerMountsOAuthBeforeGateway(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(299) // sentinel: the gateway proxied to the upstream
 	}))
 	defer upstream.Close()
@@ -258,13 +258,13 @@ func TestServerMountsOAuthBeforeGateway(t *testing.T) {
 	h := s.Handler()
 
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("GET", "/oauth2/sign_in", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/oauth2/sign_in", nil))
 	if rec.Code == 299 {
 		t.Fatal("/oauth2/* was proxied to the upstream — pep must serve it")
 	}
 
 	rec = httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("GET", "/anything", nil))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/anything", nil))
 	if rec.Code != 299 {
 		t.Fatalf("gateway route not reached: status %d", rec.Code)
 	}
@@ -272,7 +272,7 @@ func TestServerMountsOAuthBeforeGateway(t *testing.T) {
 
 func TestGatewayScopeGate(t *testing.T) {
 	reached := false
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached = true }))
+	upstream := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) { reached = true }))
 	defer upstream.Close()
 	routes := []Route{{PathPrefix: "/", Upstream: upstream.URL, Inject: InjectIdentity, Gate: GateSession, Scope: "admin"}}
 
@@ -281,7 +281,7 @@ func TestGatewayScopeGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gw.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/x", nil))
+	gw.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/x", nil))
 	if !reached {
 		t.Error("required scope present but upstream not reached")
 	}
@@ -290,7 +290,7 @@ func TestGatewayScopeGate(t *testing.T) {
 	denied := &Session{Identity: map[string]any{"sub": "u1", "scope": "read"}}
 	gw2, _ := newGateway(routes, gatewayDeps{currentSession: staticSession(denied), backend: &fakeBackend{}})
 	rec := httptest.NewRecorder()
-	gw2.ServeHTTP(rec, httptest.NewRequest("GET", "/x", nil))
+	gw2.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
 	if reached {
 		t.Error("upstream reached without the required scope")
 	}
@@ -307,20 +307,20 @@ func TestGatewayDPoPInjection(t *testing.T) {
 	sess := &Session{Identity: map[string]any{"sub": "u1"}, DPoPKeyJWK: jwkJSON}
 
 	var gotAuth, gotProof string
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		gotProof = r.Header.Get("DPoP")
 	}))
 	defer upstream.Close()
 
-	backend := &dpopTestBackend{pdp: &pdpBackend{signer: bffSigner{}}}
+	backend := &dpopTestBackend{pdp: &pdpBackend{signer: sessionKeySigner{}}}
 	gw, err := newGateway([]Route{
 		{PathPrefix: "/api", Upstream: upstream.URL, Inject: InjectDPoP, Gate: GateSession, StripPrefix: true},
 	}, gatewayDeps{currentSession: staticSession(sess), backend: backend})
 	if err != nil {
 		t.Fatal(err)
 	}
-	gw.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/orders", nil))
+	gw.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/orders", nil))
 
 	if !strings.HasPrefix(gotAuth, "DPoP ") {
 		t.Errorf("Authorization = %q, want DPoP <token>", gotAuth)
@@ -339,7 +339,7 @@ func TestGatewaySnapshotGate(t *testing.T) {
 	}
 
 	var gotIdentity string
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		gotIdentity = r.Header.Get("X-Auth-Request-Identity")
 	}))
 	defer upstream.Close()
@@ -350,8 +350,8 @@ func TestGatewaySnapshotGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := httptest.NewRequest("GET", "/page", nil)
-	req.AddCookie(&http.Cookie{Name: "SID", Value: cookie})
+	req := httptest.NewRequest(http.MethodGet, "/page", nil)
+	req.AddCookie(&http.Cookie{Name: "SID", Value: cookie}) //nolint:gosec // request cookie in a test: only name and value go on the wire
 	gw.ServeHTTP(httptest.NewRecorder(), req)
 
 	if gotIdentity == "" {
@@ -359,7 +359,9 @@ func TestGatewaySnapshotGate(t *testing.T) {
 	}
 	raw, _ := base64.RawURLEncoding.DecodeString(gotIdentity)
 	var claims map[string]any
-	json.Unmarshal(raw, &claims)
+	if err := json.Unmarshal(raw, &claims); err != nil {
+		t.Fatal(err)
+	}
 	if claims["sub"] != "u9" {
 		t.Errorf("identity = %v", claims)
 	}

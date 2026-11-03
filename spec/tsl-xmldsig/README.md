@@ -2,9 +2,15 @@
 
 Language-neutral specification for authenticating the gematik Trust-service Status List
 (TSL) and for the TSL update that depends on it. It is the binding basis for the Rust
-implementation (`rust/ti-xmldsig`, `rust/ti-pki`) and for any later one (e.g. Go
-`gempki`): an implementation built from this document alone, checked against the corpus
-described in [CONFORMANCE.md](CONFORMANCE.md), is conformant.
+implementation (`rust/ti-pki`) and for any later one.
+
+**Part A (XML and signature) and the [signature profile](#signature-profile) are
+withdrawn.** The list is authenticated by its detached signature
+([`spec/tsl-detached`](../tsl-detached/README.md)), and `ti-xmldsig` was removed
+(TASK-166). They stay here as the record of the XMLDSig profile the TSL still carries.
+Parts B to G are in force and apply to the signer and the list that specification
+delivers. [CONFORMANCE.md](CONFORMANCE.md) describes the withdrawn corpus; conformance is
+now that of `spec/tsl-detached`.
 
 Each rule has exactly one identifier `TSLSIG-nnn`. Tests cite these identifiers; the
 gematik requirements map onto them in [Requirement mapping](#requirement-mapping). The

@@ -40,7 +40,7 @@ use crate::cert_type::CertificateType;
 use crate::checks::{self, CertificateCheck};
 use crate::error::{ErrorCode, ValidationError, ValidationWarning};
 use crate::key::{KeyStatus, classify_key};
-use crate::path::{PathOptions, validate_path};
+use crate::path::{PathOptions, ValidityModel, validate_path};
 use crate::revocation::{
     ResponderAuthorization, RevocationChecker, RevocationFinding, RevocationMode, RevocationResult,
     apply_revocation,
@@ -168,6 +168,9 @@ pub struct Validator {
     /// types the verified TSL lets the issuing CA issue (TUC_PKI_007). Without it, the
     /// type detected from the certificate is checked.
     pub cert_type: Option<CertificateType>,
+    /// The types a certificate may have, from its profile: one the certificate does not show is an
+    /// error, and so is showing none. Empty requires nothing.
+    pub accepted_types: Vec<CertificateType>,
 }
 
 impl Validator {
@@ -188,6 +191,7 @@ impl Validator {
             required_role_oids: Vec::new(),
             expected_fqdn: None,
             cert_type: None,
+            accepted_types: Vec::new(),
         }
     }
 
@@ -266,6 +270,10 @@ impl Validator {
             Err(e) => return Ok(incomplete(e.partial, e.error)),
         };
         let ee_checks = self.ee_checks();
+        let model = self
+            .cert_type
+            .or_else(|| crate::cert_type::detect_certificate_type(leaf))
+            .map_or(ValidityModel::Shell, ValidityModel::for_type);
         let mut result = validate_path(
             &chain,
             &PathOptions {
@@ -273,16 +281,23 @@ impl Validator {
                 algorithms: &self.algorithms,
                 max_clock_skew: self.max_clock_skew,
                 ee_checks: &ee_checks,
+                model,
             },
         )?;
         if self.allow_expired {
             downgrade_validity_errors(&mut result);
         }
+        self.check_accepted_type(&chain[0], &mut result);
         check_key(&chain[0], now, &mut result);
+        self.check_cas_listed(&chain, &mut result);
         self.check_tsl_type(&chain, &mut result);
         self.check_ca_revoked_in_tsl(&chain, &mut result);
-        self.check_revocation(&chain, now, checker, &mut result)
-            .await;
+        // The address of a responder is in a certificate an attacker may have made, so it is asked
+        // only about what has passed everything else.
+        if result.valid {
+            self.check_revocation(&chain, now, checker, &mut result)
+                .await;
+        }
         if result.valid
             && !self.required_role_oids.is_empty()
             && let Err(mut error) = checks::role_oid(&self.required_role_oids)(&chain[0])
@@ -346,11 +361,50 @@ impl Validator {
 }
 
 impl Validator {
-    /// TUC_PKI_007 steps 7 – 9 against the verified TSL in the store: the end entity's
-    /// type OID must be among those its issuing CA's TSL entry lists. Without a verified
-    /// TSL nothing is checked; with one that states no types for the issuer, a warning
-    /// says the type went unchecked (variant 7a). The TSL signer is checked by
-    /// TUC_PKI_011 instead.
+    /// The certificate's own type against what its profile accepts. The caller's choice of profile
+    /// says what is wanted; what the certificate shows decides.
+    fn check_accepted_type(&self, leaf: &Certificate, result: &mut ValidationResult) {
+        if self.accepted_types.is_empty() {
+            return;
+        }
+        let detected = crate::cert_type::detect_certificate_type(leaf);
+        if detected.is_some_and(|t| self.accepted_types.contains(&t)) {
+            return;
+        }
+        let shown =
+            detected.map_or_else(|| "no detectable type".to_owned(), |t| format!("type {t}"));
+        result.add_error(
+            ValidationError::new(
+                ErrorCode::ProfileTypeMismatch,
+                format!("the profile does not accept a certificate of {shown}"),
+            )
+            .with_subject(leaf.subject_cn()),
+        );
+    }
+
+    /// With a verified TSL, every CA of the chain must be one it names in accord, or revoked with a
+    /// time, under a root: a CA supplied with the certificate gets no standing from its signature
+    /// alone (TIP1-A_2059). Without a verified TSL there is nothing to check against.
+    fn check_cas_listed(&self, chain: &[Certificate], result: &mut ValidationResult) {
+        if !self.store.has_tsl_types() {
+            return;
+        }
+        for ca in &chain[1..chain.len() - 1] {
+            if !self.store.intermediates().contains(ca) {
+                result.add_error(
+                    ValidationError::new(
+                        ErrorCode::CaNotInTsl,
+                        format!(
+                            "the verified TSL does not name {:?} as a CA in use",
+                            ca.subject_cn()
+                        ),
+                    )
+                    .with_subject(ca.subject_cn()),
+                );
+            }
+        }
+    }
+
     /// A CA the TSL lists as revoked still vouches for the end entities it issued
     /// before its `StatusStartingTime` (gemSpec_PKI Tab_PKI_271, TUC_PKI_002 step 5:
     /// the end entity's `notBefore` against the time), not for later ones.
@@ -386,6 +440,11 @@ impl Validator {
         }
     }
 
+    /// TUC_PKI_007 steps 7 – 9 against the verified TSL in the store: the end entity's
+    /// type OID must be among those its issuing CA's TSL entry lists, which is what makes a
+    /// CA one for components, SMC-B, eGK or HBA. A CA with no types stated may issue none
+    /// (step 9a: no match). Without a verified TSL nothing is checked. The TSL signer is
+    /// checked by TUC_PKI_011 instead.
     fn check_tsl_type(&self, chain: &[Certificate], result: &mut ValidationResult) {
         let (Some(leaf), Some(issuer)) = (chain.first(), chain.get(1)) else {
             return;
@@ -402,9 +461,9 @@ impl Validator {
         if cert_type == CertificateType::TslSig {
             return;
         }
-        match self.store.tsl_types_of(issuer) {
-            Some(types) if types.contains(&cert_type.oid()) => {}
-            Some(_) => result.add_error(
+        let stated = self.store.tsl_types_of(issuer).unwrap_or_default();
+        if !stated.contains(&cert_type.oid()) {
+            result.add_error(
                 ValidationError::new(
                     ErrorCode::CertTypeCaNotAuthorized,
                     format!(
@@ -413,15 +472,7 @@ impl Validator {
                     ),
                 )
                 .with_subject(leaf.subject_cn()),
-            ),
-            None => result.warnings.push(ValidationWarning::new(
-                ErrorCode::CertTypeUnchecked,
-                format!(
-                    "{cert_type} not checked against the TSL: it states no certificate types \
-                     for {:?}",
-                    issuer.subject_cn()
-                ),
-            )),
+            );
         }
     }
 }
@@ -656,6 +707,45 @@ mod tests {
             }
         }
 
+        /// gemKPT_PKI_TIP 2.4: the end entity's type picks the validity model. Under a
+        /// CA that has expired since it issued them, an SMC-B's and an HBA's certificate
+        /// are valid with a warning (Kompromissmodell), a component's is not (shell
+        /// model).
+        #[test]
+        fn the_validity_model_follows_the_certificate_type() {
+            let pki = TestPki::new();
+            let v = Validator {
+                store: Arc::new(TrustStore::new([pki.rca1.clone()]).with_intermediates(vec![
+                    crate::tsl::Intermediate {
+                        certificate: pki.sub_ca_short.clone(),
+                        provider: "Test TSP".into(),
+                        revoked_since: None,
+                    },
+                ])),
+                ..validator(&pki, RevocationMode::Disabled)
+            };
+            let at = |ee: &Certificate| {
+                block_on(v.validate(std::slice::from_ref(ee), TestPki::AFTER_SHORT, &Unchecked))
+                    .unwrap()
+            };
+            for ee in [&pki.ee_short_hci_aut, &pki.ee_short_hp_aut] {
+                let result = at(ee);
+                assert!(!result.has_error(ErrorCode::Expired), "{:?}", result.errors);
+                assert!(
+                    result.has_warning(ErrorCode::IssuedBeforeCaExpiry),
+                    "{:?}",
+                    result.warnings
+                );
+            }
+            let component = at(&pki.ee_short_fd_tls_s);
+            assert!(
+                component.has_error(ErrorCode::Expired),
+                "{:?}",
+                component.errors
+            );
+            assert!(!component.has_warning(ErrorCode::IssuedBeforeCaExpiry));
+        }
+
         #[test]
         fn offline_validation_with_the_stores_intermediates() {
             let pki = TestPki::new();
@@ -765,6 +855,110 @@ mod tests {
             );
         }
 
+        /// A checker that notes whom it was asked about, and says good.
+        struct Noting(std::sync::Mutex<Vec<String>>);
+
+        impl RevocationChecker for Noting {
+            async fn check(
+                &self,
+                cert: &Certificate,
+                _: &Certificate,
+                _: &TrustStore,
+            ) -> Result<RevocationResult, ValidationError> {
+                self.0.lock().unwrap().push(cert.subject_cn().to_owned());
+                let mut result = RevocationResult::unknown(TestPki::NOW, "");
+                result.status = crate::revocation::RevocationStatus::Good;
+                Ok(result)
+            }
+        }
+
+        /// The address of a responder is in a certificate an attacker may have made, so it is asked
+        /// only once everything else has passed.
+        #[test]
+        fn no_responder_is_asked_for_a_certificate_that_failed() {
+            let pki = TestPki::new();
+            let noting = Noting(std::sync::Mutex::default());
+            let expired =
+                futures_lite::future::block_on(validator(&pki, RevocationMode::HardFail).validate(
+                    &[pki.ee_arzt.clone(), pki.sub_ca_hba.clone()],
+                    Timestamp(TestPki::NOW.0 + 10 * 366 * 86_400),
+                    &noting,
+                ))
+                .unwrap();
+            assert!(!expired.valid);
+            assert!(noting.0.lock().unwrap().is_empty());
+
+            let valid =
+                futures_lite::future::block_on(validator(&pki, RevocationMode::HardFail).validate(
+                    &[pki.ee_arzt.clone(), pki.sub_ca_hba.clone()],
+                    TestPki::NOW,
+                    &noting,
+                ))
+                .unwrap();
+            assert!(valid.valid, "{:?}", valid.errors);
+            assert_eq!(noting.0.lock().unwrap().len(), 2);
+        }
+
+        /// A CA supplied with the certificate, signed by a root, that a verified TSL does not name.
+        #[test]
+        fn a_ca_the_verified_tsl_does_not_name_gives_no_standing() {
+            let pki = TestPki::new();
+            let chain = [typed("type-hci-aut"), pki.sub_ca_komp.clone()];
+            let unlisted = Validator {
+                store: Arc::new(
+                    TrustStore::new([pki.rca1.clone(), pki.rca7.clone()]).with_ca_types(vec![(
+                        pki.sub_ca_komp.clone(),
+                        vec![crate::oid::CERT_TYPE_SMC_B_AUT],
+                    )]),
+                ),
+                ..validator(&pki, RevocationMode::Disabled)
+            };
+            assert_eq!(
+                codes(&offline(&unlisted, &chain)),
+                [(ErrorCode::CaNotInTsl, "GEM.SubCA-Komp TEST-ONLY")]
+            );
+            // Without a verified TSL there is nothing to check against.
+            let no_list = validator(&pki, RevocationMode::Disabled);
+            assert!(offline(&no_list, &chain).valid);
+        }
+
+        /// A profile accepts what the certificate shows, whatever the caller wanted of it.
+        #[test]
+        fn a_profile_refuses_a_type_it_does_not_accept() {
+            let pki = TestPki::new();
+            let store = Arc::new(TrustStore::new([pki.rca1.clone(), pki.rca7.clone()]));
+            let config = TrustConfig {
+                revocation: RevocationMode::Disabled,
+                ..TrustConfig::for_anchor(pki.rca1.der().to_vec())
+            };
+            let chain = [typed("type-hci-aut"), pki.sub_ca_komp.clone()];
+            let as_hci = crate::profile::HCI_AUT.validator(
+                &config,
+                Arc::clone(&store),
+                CertificateType::HciAut,
+            );
+            assert!(
+                offline(&as_hci, &chain).valid,
+                "{:?}",
+                offline(&as_hci, &chain).errors
+            );
+            for profile in [
+                &crate::profile::FD_TLS_S,
+                &crate::profile::TSL_SIG,
+                &crate::profile::IDPD_SIG,
+            ] {
+                let validator =
+                    profile.validator(&config, Arc::clone(&store), CertificateType::HciAut);
+                assert!(
+                    offline(&validator, &chain).has_error(ErrorCode::ProfileTypeMismatch),
+                    "{profile}"
+                );
+            }
+            // A type named by the caller does not change what the certificate shows.
+            let named = crate::profile::IDPD_SIG.validator(&config, store, CertificateType::FdSig);
+            assert!(offline(&named, &chain).has_error(ErrorCode::ProfileTypeMismatch));
+        }
+
         /// TUC_PKI_007: the verified TSL must list the end entity's type for its CA.
         #[test]
         fn tsl_states_the_types_a_ca_may_issue() {
@@ -773,6 +967,11 @@ mod tests {
             let with_types = |types: Vec<ObjectIdentifier>| Validator {
                 store: Arc::new(
                     TrustStore::new([pki.rca1.clone(), pki.rca7.clone()])
+                        .with_intermediates(vec![crate::tsl::Intermediate {
+                            certificate: pki.sub_ca_komp.clone(),
+                            provider: "TSP".to_owned(),
+                            revoked_since: None,
+                        }])
                         .with_ca_types(vec![(pki.sub_ca_komp.clone(), types)]),
                 ),
                 ..validator(&pki, RevocationMode::Disabled)
@@ -789,10 +988,11 @@ mod tests {
                 [(ErrorCode::CertTypeCaNotAuthorized, "type-hci-aut TEST-ONLY")]
             );
 
-            // The placeholder only: the TSL states nothing, so the type goes unchecked.
-            let unstated = offline(&with_types(Vec::new()), &chain);
-            assert!(unstated.valid);
-            assert!(unstated.has_warning(ErrorCode::CertTypeUnchecked));
+            // A CA the TSL states no types for may issue none: there is nothing to match (step 9a).
+            assert_eq!(
+                codes(&offline(&with_types(Vec::new()), &chain)),
+                [(ErrorCode::CertTypeCaNotAuthorized, "type-hci-aut TEST-ONLY")]
+            );
 
             // Without a verified TSL there is nothing to check against.
             let hci = validator(&pki, RevocationMode::Disabled)
