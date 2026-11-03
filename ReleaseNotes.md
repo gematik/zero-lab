@@ -1,5 +1,35 @@
 # Release Notes
 
+# Release go/tipki v0.31.0
+
+### breaking
+- The `hci-aut` profile checks revocation hard-fail, like every other profile: an SMC-B whose OCSP
+  answer cannot be had is refused under it, also under a configured soft-fail. An OCSP outage now
+  blocks what this profile validates. A configured `disabled` still disables.
+- `Finding.Code` and `OCSPError.Code` are of the new type `ErrorCode`, not `string`. Comparing with a
+  literal still compiles; concatenating needs `string(code)`. `TSLError.Code` stays a string.
+
+### features
+- `ErrorCode` has a constant for each of `ti-pki`'s 25 codes, such as `CodePolicyMismatch`, and
+  `ErrorCodes` lists them. `CodeProfileNotDetected` and `CodeProfileAmbiguous` complete that list:
+  no finding uses them, since `SelectForCert` reports those cases itself.
+- A README.
+
+### verified
+- `just check` across all modules passed on c736b56; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`. The development guide lists no gated suite as required for `tipki`.
+- Run on 2026-11-03 through `idpd`, against this code: `just idpd-trust-fetch-test`, with a live
+  TSL of the reference environment (sequence 10717), and `just idpd-smcb-test`.
+- The corpus changed in 4 of 6104 verdicts, all `hci-aut` under soft-fail with the responder
+  unavailable: 3 went from valid to invalid, and 1 stayed invalid with `ocsp_unavailable` in place of
+  `role_oid_missing`.
+
+### known limits
+- As in v0.30.0: `idpd`, `pdp` and `pep/proxy` still pin `tipki` by pseudo-version until the next
+  `just sync`, `ti-pki`'s matching changes are unreleased, and the tag is on
+  `chore/go-consolidation`, not yet on `main`.
+- A `Finding` made with a literal code still compiles; a test reads the source for that.
+
 # Release go/tipki v0.30.0
 
 The first release of `go/tipki`, the native TI trust path held to Rust's `ti-pki` through `spec/`. It
