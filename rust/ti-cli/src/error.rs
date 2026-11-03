@@ -51,6 +51,11 @@ impl From<Exit> for ExitCode {
     }
 }
 
+const TSL_ROLLBACK_HINT: &str = "an older list than the one kept from an earlier run was rejected; \
+     it can be an attack or a mirror lagging behind, so find out why first (another network, the \
+     proxy, -k). Only if the kept list is known to be wrong, remove tsl/ID.json in the state \
+     directory; the check then restarts from the next verified TSL";
+
 /// A failure that ends a command. Each carries a stable `kind` for JSON output and, where
 /// the user can act on it, a hint.
 #[derive(Debug, thiserror::Error)]
@@ -269,13 +274,7 @@ impl CliError {
                      the TSL's signature is published only over plain HTTP, so port 80 to its \
                      download point must be open",
             ),
-            CliError::TslRollback(_) => Some(
-                "an older list than the one kept from an earlier run was rejected; it can be an \
-                     attack or a mirror lagging behind, so find out why first (another network, \
-                     the proxy, -k). Only if the kept list is known to be wrong, remove \
-                     tsl/ID.json in the state directory; the check then restarts from the next \
-                     verified TSL",
-            ),
+            CliError::TslRollback(_) => Some(TSL_ROLLBACK_HINT),
             CliError::HttpSetup(_) => Some("check --cacert, --capath and --proxy"),
             CliError::ServerUnreachable(_) => Some(
                 "check the host and port, the network and --proxy; or save the chain and pass it as FILE",
