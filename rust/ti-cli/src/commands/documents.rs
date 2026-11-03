@@ -133,11 +133,20 @@ impl ComfortStore {
         check_private_dir(&self.dir)
     }
 
-    fn load(&self, card: &Card) -> Result<Option<ComfortUserId>, CliError> {
+    /// Whether the directories exist, after checking them: everything that reads or
+    /// deletes a file goes through it, so no path is followed through a symlink.
+    fn check(&self) -> Result<bool, CliError> {
         for dir in [&self.root, &self.dir] {
             if !private_dir_exists(dir)? {
-                return Ok(None);
+                return Ok(false);
             }
+        }
+        Ok(true)
+    }
+
+    fn load(&self, card: &Card) -> Result<Option<ComfortUserId>, CliError> {
+        if !self.check()? {
+            return Ok(None);
         }
         read_comfort(&self.path(card))
     }
@@ -150,6 +159,9 @@ impl ComfortStore {
 
     /// Whether an ID was stored.
     fn remove(&self, card: &Card) -> Result<bool, CliError> {
+        if !self.check()? {
+            return Ok(false);
+        }
         let path = self.path(card);
         match std::fs::remove_file(&path) {
             Ok(()) => Ok(true),
@@ -701,6 +713,8 @@ pub fn comfort(
             fill_mode(&mut report, &card, &signatures, &user)?;
         }
         ConnectorComfort::Deactivate { .. } => {
+            // A refusal must leave the card session and the file alike.
+            store.check()?;
             card_call(&card, signatures.deactivate_comfort(&[&card.card_handle]))?;
             report.user_id_stored = !store.remove(&card)?;
         }

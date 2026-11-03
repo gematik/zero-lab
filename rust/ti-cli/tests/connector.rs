@@ -140,9 +140,6 @@ fn answer(path: &str, action: &str, body: &str, behavior: &Behavior) -> (u16, St
         .lines()
         .filter(|l| !l.starts_with("-----"))
         .collect();
-    if operation == "ActivateComfortSignature" {
-        behavior.activations.fetch_add(1, Ordering::SeqCst);
-    }
     if let Some(answer) = document_answer(operation, body) {
         return answer;
     }
@@ -275,6 +272,7 @@ fn document_answer(operation: &str, body: &str) -> Option<(u16, String)> {
 struct Behavior {
     hba_iccsn: Option<String>,
     activations: Arc<AtomicUsize>,
+    deactivations: Arc<AtomicUsize>,
 }
 
 impl Behavior {
@@ -282,6 +280,7 @@ impl Behavior {
         Behavior {
             hba_iccsn: Some("80276001011699910103".into()),
             activations: Arc::default(),
+            deactivations: Arc::default(),
         }
     }
 }
@@ -308,6 +307,12 @@ fn handle(stream: impl Read + Write, behavior: &Behavior) -> Option<()> {
     }
     let mut body = vec![0; length];
     reader.read_exact(&mut body).ok()?;
+    if action.contains("ActivateComfortSignature") && !action.contains("Deactivate") {
+        behavior.activations.fetch_add(1, Ordering::SeqCst);
+    }
+    if action.contains("DeactivateComfortSignature") {
+        behavior.deactivations.fetch_add(1, Ordering::SeqCst);
+    }
     let (status, response) = answer(&path, &action, &String::from_utf8_lossy(&body), behavior);
     let stream = reader.get_mut();
     write!(
@@ -324,6 +329,7 @@ struct Fake {
     dir: PathBuf,
     kon: PathBuf,
     activations: Arc<AtomicUsize>,
+    deactivations: Arc<AtomicUsize>,
 }
 
 impl Fake {
@@ -346,14 +352,14 @@ impl Fake {
     fn start_with(name: &str, behavior: Behavior) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
-        let activations = behavior.activations.clone();
+        let served = behavior.clone();
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
                 let behavior = behavior.clone();
                 std::thread::spawn(move || handle(stream, &behavior));
             }
         });
-        Fake::with_kon(name, &format!("http://127.0.0.1:{port}"), "", activations)
+        Fake::with_kon(name, &format!("http://127.0.0.1:{port}"), "", &served)
     }
 
     /// Over TLS with ti-connector-client's test server certificate, pinned in the
@@ -361,7 +367,7 @@ impl Fake {
     fn start_tls(name: &str) -> Self {
         let config = tls_server_config();
         let behavior = Behavior::standard();
-        let activations = behavior.activations.clone();
+        let served = behavior.clone();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         std::thread::spawn(move || {
@@ -378,15 +384,10 @@ impl Fake {
             r#""trustStore": ["{}"], "#,
             base64ct_encode(&tls_der(TLS_SERVER))
         );
-        Fake::with_kon(
-            name,
-            &format!("https://127.0.0.1:{port}"),
-            &pin,
-            activations,
-        )
+        Fake::with_kon(name, &format!("https://127.0.0.1:{port}"), &pin, &served)
     }
 
-    fn with_kon(name: &str, url: &str, extra: &str, activations: Arc<AtomicUsize>) -> Self {
+    fn with_kon(name: &str, url: &str, extra: &str, behavior: &Behavior) -> Self {
         let dir = std::env::temp_dir().join(format!("ti-connector-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("config/telematik/connectors")).unwrap();
@@ -403,7 +404,8 @@ impl Fake {
         Fake {
             dir,
             kon,
-            activations,
+            activations: behavior.activations.clone(),
+            deactivations: behavior.deactivations.clone(),
         }
     }
 
@@ -1179,6 +1181,17 @@ fn activate(fake: &Fake) -> Output {
     ])
 }
 
+fn deactivate(fake: &Fake) -> Output {
+    fake.ti(&[
+        "connector",
+        "-c",
+        "praxis",
+        "comfort",
+        "deactivate",
+        "card-hba",
+    ])
+}
+
 fn comfort_status(fake: &Fake) -> Output {
     fake.ti(&["connector", "-c", "praxis", "comfort", "status", "card-hba"])
 }
@@ -1262,13 +1275,20 @@ fn a_comfort_directory_open_to_others_is_refused() {
     let root = konnektor.parent().unwrap().to_owned();
     for dir in [&konnektor, &root] {
         set_mode(dir, 0o755);
-        for out in [comfort_status(&fake), activate(&fake)] {
+        let (activations, deactivations) = (
+            fake.activations.load(Ordering::SeqCst),
+            fake.deactivations.load(Ordering::SeqCst),
+        );
+        for out in [comfort_status(&fake), activate(&fake), deactivate(&fake)] {
             assert_eq!(out.status.code(), Some(5), "{}", stderr_of(&out));
             let stderr = stderr_of(&out);
             assert!(stderr.contains("chmod 700"), "{stderr}");
             assert!(stderr.contains(&dir.display().to_string()), "{stderr}");
         }
         assert_eq!(mode(dir), 0o755, "never changed silently");
+        assert!(comfort_file(&fake).is_file(), "the ID survives");
+        assert_eq!(fake.activations.load(Ordering::SeqCst), activations);
+        assert_eq!(fake.deactivations.load(Ordering::SeqCst), deactivations);
         set_mode(dir, 0o700);
     }
     assert_eq!(activate(&fake).status.code(), Some(0));
@@ -1288,6 +1308,17 @@ fn a_comfort_directory_that_is_a_symlink_is_refused() {
         assert_eq!(out.status.code(), Some(5), "{}", stderr_of(&out));
         assert_eq!(fake.activations.load(Ordering::SeqCst), 0);
         assert_eq!(std::fs::read_dir(&elsewhere).unwrap().count(), 0);
+
+        let behind = elsewhere.join("praxis");
+        std::fs::create_dir(&behind).unwrap();
+        set_mode(&behind, 0o700);
+        let survivor = behind.join("80276001011699910103");
+        std::fs::write(&survivor, "0b9d1d7c-6b1b-4c52-9d0a-0e2b8f3f6a11").unwrap();
+        set_mode(&survivor, 0o600);
+        let out = deactivate(&fake);
+        assert_eq!(out.status.code(), Some(5), "{}", stderr_of(&out));
+        assert!(survivor.is_file(), "nothing is deleted through the link");
+        assert_eq!(fake.deactivations.load(Ordering::SeqCst), 0);
     }
 }
 
