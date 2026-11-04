@@ -502,7 +502,7 @@ fn path_str(p: &Path) -> &str {
 fn every_connector_command_matches_its_schema() {
     let fake = Fake::start("schema");
 
-    let (configs, _) = fake.json("connector configs", &["configs"]);
+    let (configs, _) = fake.json("connector config list", &["config", "list"]);
     assert_eq!(configs["configurations"][0]["name"], "praxis");
     assert_eq!(configs["configurations"][0]["context"], "M1/W1/C1");
 
@@ -817,6 +817,50 @@ fn certificates_of_one_holder_name_it_once() {
     assert!(!text.contains("TELEMATIK-ID"), "no column: {text}");
     assert!(!text.contains("SUBJECT"), "no column: {text}");
     assert!(text.contains("REF"), "{text}");
+}
+
+#[test]
+fn the_configurations_are_listed_where_they_are_looked_for() {
+    let fake = Fake::start("list");
+    let list = fake.ti(&["--format", "json", "connector", "config", "list"]);
+    assert_eq!(list.status.code(), Some(0));
+    let listed: serde_json::Value = serde_json::from_slice(&list.stdout).unwrap();
+    assert_eq!(listed["configurations"][0]["name"], "praxis");
+
+    let old_name = fake.ti(&["--format", "json", "connector", "configs"]);
+    assert_eq!(old_name.status.code(), Some(0));
+    assert_eq!(old_name.stdout, list.stdout, "the old name lists the same");
+
+    let help = fake.ti(&["connector", "--help"]);
+    let help = String::from_utf8_lossy(&help.stdout);
+    assert!(
+        !help.lines().any(|l| l.trim_start().starts_with("configs")),
+        "{help}"
+    );
+    let help = fake.ti(&["connector", "config", "--help"]);
+    let help = String::from_utf8_lossy(&help.stdout);
+    assert!(
+        help.lines().any(|l| l.trim_start().starts_with("list")),
+        "{help}"
+    );
+}
+
+#[test]
+fn use_without_a_name_lists_and_selects_nothing() {
+    let fake = Fake::start("use-list");
+    let (listed, code) = fake.json("connector use", &["use"]);
+    assert_eq!(code, Some(0));
+    assert_eq!(listed["configurations"][0]["name"], "praxis");
+    let verbose = |fake: &Fake| fake.ti(&["-v", "--format", "json", "connector", "get", "info"]);
+    assert!(
+        !String::from_utf8_lossy(&verbose(&fake).stderr).contains("the active selection"),
+        "listing selected something"
+    );
+
+    let (selected, code) = fake.json("connector use", &["use", "praxis"]);
+    assert_eq!(code, Some(0));
+    assert_eq!(selected["name"], "praxis");
+    assert!(String::from_utf8_lossy(&verbose(&fake).stderr).contains("the active selection"));
 }
 
 #[test]

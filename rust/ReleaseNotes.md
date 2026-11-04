@@ -19,6 +19,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `ti pki trust export -o FILE`: roots.json, the TSL, its signature and its signer's status as
   one bundle file for a server or an air-gapped site, written whole and only once a consumer's
   load of it verified.
+- `ti connector config list` lists the .kon files, where the other `config` commands are.
+  `connector configs` still works, no longer in `--help`, and `connector use` without a name
+  shows the same list. `ti schema` knows the list as `connector config list`, and
+  `connector use` as either of its two answers.
 
 #### removed
 - The sealed store: `ti store`, `ti profile create|use|show|rotate|rewrap`, `TI_STORE_KEK_PATH`,

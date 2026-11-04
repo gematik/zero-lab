@@ -253,7 +253,7 @@ Each table's columns are a decision, not a dump of the JSON:
 | `pki tsl show` | CA | ORGANIZATION (subject O=), ROOT (or the reason there is none), VALIDITY | policies, path length, TSL provider, PEM |
 | `pki inspect --short` | SUBJECT (common name) | NOT AFTER (date), TELEMATIK-ID (only when a certificate has one; CAs never do) | everything else: JSON is the full report |
 | `pki roots bundle`, `pki tsl bundle` (with `-o`) | CERTIFICATE | NOT AFTER, ALIAS (`--p12`) | SHA-256, PEM |
-| `connector configs` | `*` for the selected one, NAME (the `-c` value) | URL, CONTEXT | path |
+| `connector config list` | `*` for the selected one, NAME (the `-c` value) | URL, CONTEXT | path |
 | `connector get cards` | HANDLE (what every card command takes, as is the ICCSN; shortened when longer than 20 characters, whole with `-v`) | TYPE, ICCSN, TERMINAL (CtId and slot), HOLDER | versions, insert time |
 | `connector get certificates` | REF | KEY, VALIDITY, ALGORITHM; SUBJECT and TELEMATIK-ID only where the certificates differ, otherwise once above the table | profession, dates, PEM |
 | `connector get services` | SERVICE | VERSION, used mark, ENDPOINT | product |

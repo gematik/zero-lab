@@ -110,8 +110,8 @@ pub const SCHEMAS: [(&str, &str); 51] = [
         include_str!("../../schemas/pki-pkcs12-convert.json"),
     ),
     (
-        "connector configs",
-        include_str!("../../schemas/connector-configs.json"),
+        "connector config list",
+        include_str!("../../schemas/connector-config-list.json"),
     ),
     (
         "connector use",

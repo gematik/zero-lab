@@ -288,7 +288,7 @@ impl CliError {
             CliError::State { .. } => Some("the message names the file"),
             CliError::ConnectorConfig(_)
             | CliError::Connector(ti_connector_client::Error::Config(_)) => Some(
-                "`connector configs` lists the configurations; select one with -c NAME or `connector use NAME`",
+                "`connector config list` shows the configurations; select one with -c NAME or `connector use NAME`",
             ),
             CliError::Connector(ti_connector_client::Error::Transport(_)) => Some(
                 "check the .kon url, the network and the Konnektor's TLS certificate (-v shows each call)",

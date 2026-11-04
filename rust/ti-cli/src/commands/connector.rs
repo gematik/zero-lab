@@ -50,8 +50,10 @@ use crate::output::{Document, Line, Output, SCHEMA, Tone, Waiting, pem};
 pub fn run(cli: &ConnectorCli, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     let open = || connector::open(&cli.args, global, out);
     match &cli.command {
-        ConnectorCommand::Configs => configs(&cli.args, out),
-        ConnectorCommand::Use { name } => use_config(name, out),
+        ConnectorCommand::Configs
+        | ConnectorCommand::Use { name: None }
+        | ConnectorCommand::Config(ConnectorConfig::List) => configs(&cli.args, out),
+        ConnectorCommand::Use { name: Some(name) } => use_config(name, out),
         ConnectorCommand::Config(ConnectorConfig::Show { name }) => {
             super::connector_config::show(name.as_deref(), &cli.args, out)
         }

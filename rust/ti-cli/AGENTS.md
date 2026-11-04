@@ -425,8 +425,8 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 ## Subsystem connector: the Konnektor
 
 ```sh
-{bin} --format json connector configs                   # the .kon files; "selected" is the default
-{bin} connector use praxis                              # select one for later commands
+{bin} --format json connector config list               # the .kon files; "selected" is the default
+{bin} connector use praxis                              # select one for later commands; no name: the list
 {bin} --format json connector config show [NAME]        # the .kon without its secrets
 {bin} --format json connector config test [NAME]        # step by step to the cards; exit 1 if one fails
 {bin} --format json connector config new NAME --url ADDRESS --env ru --mandant M --client-system C \

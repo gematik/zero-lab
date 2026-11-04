@@ -32,8 +32,8 @@ ti identity sign --p12 smcb.p12 --claims - < claims.json         # ES256 JWS, x5
 ti identity sign --card 80276883110000163974 --claims claims.json   # the selected Konnektor signs
 ti idpd authenticate --env ref --p12 smcb.p12 --auth-url "$AUTHZ_URI"   # IDP-Dienst → authorization code
 ti directory login owner --env ref --p12 smcb.p12   # FHIR-Directory → owner access token
-ti connector configs                # the .kon files (~/.config/telematik/connectors)
-ti connector use praxis             # the configuration later commands use
+ti connector config list            # the .kon files (~/.config/telematik/connectors)
+ti connector use praxis             # the configuration later commands use; no name: the list
 ti connector config new praxis      # step by step on a terminal: address, pin, credentials, context
 ti connector config test praxis     # tcp, tls, auth, sds, context, cards; exit 1 on a failure
 ti connector config show praxis     # the file without its secrets

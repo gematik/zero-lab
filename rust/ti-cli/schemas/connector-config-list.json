@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "connector configs",
+  "title": "connector config list",
   "description": "The .kon files in the current directory and in ~/.config/telematik/connectors.",
   "type": "object",
   "properties": {

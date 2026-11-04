@@ -80,7 +80,7 @@ Examples:
   {bin} directory login owner --env ref --p12 smcb.p12   # FHIR-Directory owner token
   {bin} directory login search --env ref --p12 smcb.p12  # its token for the Search API
   {bin} pki verify-signature --cert vau.pem --data keys.cbor --signature sig.bin
-  {bin} connector configs                       # the .kon files, shared with the Go ti
+  {bin} connector config list                   # the .kon files, shared with the Go ti
   {bin} connector -c praxis get cards
   {bin} connector get certificates 80276883110000163974   # ICCSN, Telematik-ID or handle
   {bin} connector verify pin 1-SMC-B-Testkarte-883110000129072
@@ -1096,13 +1096,14 @@ fn seconds(value: &str) -> Result<Duration, String> {
 /// `ti connector …` commands.
 #[derive(Debug, Subcommand)]
 pub enum ConnectorCommand {
-    /// List the .kon files (here and in ~/.config/telematik/connectors)
+    /// The former name of `config list`
+    #[command(hide = true)]
     Configs,
-    /// Select the configuration later commands use without -c
+    /// Select the configuration later commands use without -c; without a name, list them
     Use {
         /// NAME or path
         #[arg(value_name = "NAME|PATH")]
-        name: String,
+        name: Option<String>,
     },
     /// Show or test a .kon configuration
     #[command(subcommand)]
@@ -1137,6 +1138,8 @@ pub enum ConnectorCommand {
 /// `ti connector config …`.
 #[derive(Debug, Subcommand)]
 pub enum ConnectorConfig {
+    /// List the .kon files (here and in ~/.config/telematik/connectors)
+    List,
     /// The configuration without its secrets: passwords, PKCS#12 bytes and the user ID
     /// only say where they are kept
     Show {
