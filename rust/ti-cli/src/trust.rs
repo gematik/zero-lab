@@ -423,28 +423,15 @@ impl<T: Transport + Send + Sync> Session<T> {
     /// alone, with no check of its sequence, could be an older one. Another process
     /// sharing the cache may have replaced the entry since, and that ends in an error.
     ///
-    /// The published signer status is left out at `--at` (TSLDET-023).
+    /// The published signer status is left out at `--at` (TSLDET-023), and when it is
+    /// stale (TSLDET-015).
     pub fn verified_set(
         &self,
         config: &TrustConfig,
         material: &Material,
         at: Option<Timestamp>,
     ) -> Result<VerifiedSet, CliError> {
-        let reader = CachingLoader::new(
-            HttpLoader::new(config, NoNetwork, SystemClock),
-            self.store(),
-            SystemClock,
-            CachePolicy {
-                offline: true,
-                ..CachePolicy::default()
-            },
-        );
-        let mut set = block_on(reader.load_all()).map_err(|error| match error {
-            LoadError::Offline(_) => {
-                CliError::TrustLoad("offline and no TSL cached; run once without --offline".into())
-            }
-            error => CliError::TrustLoad(error.to_string()),
-        })?;
+        let mut set = self.cached_set(config)?;
         if at.is_some()
             && let Some(detached) = &mut set.detached
         {
@@ -485,6 +472,21 @@ impl<T: Transport + Send + Sync> Session<T> {
             )));
         }
         Ok(VerifiedSet { set, verified })
+    }
+
+    /// The cached set under the age rules `load` applied, with no origin to ask: online,
+    /// an entry past its age counts as stale, which keeps a stale status out as it did
+    /// there; offline, any age is served, as it was there.
+    fn cached_set(&self, config: &TrustConfig) -> Result<TrustMaterial, CliError> {
+        block_on(self.loader(config, NoNetwork).load_all()).map_err(|error| match error {
+            LoadError::Offline(_) => {
+                CliError::TrustLoad("offline and no TSL cached; run once without --offline".into())
+            }
+            LoadError::Transport(_) => CliError::TrustLoad(
+                "the cached TSL set is gone: another process removed it; run again".into(),
+            ),
+            error => CliError::TrustLoad(error.to_string()),
+        })
     }
 
     /// The cache on disk, or this session's memory when there is no cache directory:
@@ -1097,6 +1099,103 @@ mod tests {
             .unwrap();
         let read = session.verified_set(&config, &material, at).unwrap();
         assert!(read.set.detached.unwrap().signer_status.is_none());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Puts `body` in the cache as the published status, fetched `age` ago.
+    fn cache_status<T: Transport + Send + Sync>(
+        session: &Session<T>,
+        config: &TrustConfig,
+        body: &[u8],
+        age: Duration,
+    ) {
+        let filler = fixture_loader(&session.store(), config);
+        let store = session.store();
+        let mut meta = block_on(store.get(&filler.cache_key(Artifact::Tsl)))
+            .unwrap()
+            .unwrap()
+            .meta;
+        meta.fetched_at = SystemClock.now() - age;
+        let entry = CacheEntry {
+            body: body.to_vec(),
+            meta,
+        };
+        block_on(store.put(&filler.cache_key(Artifact::TslSignerStatus), &entry)).unwrap();
+    }
+
+    fn cached_status<T: Transport + Send + Sync>(
+        session: &Session<T>,
+        config: &TrustConfig,
+    ) -> Option<Vec<u8>> {
+        let set = session.cached_set(config).unwrap();
+        set.detached
+            .and_then(|detached| detached.signer_status)
+            .map(|(body, _)| body)
+    }
+
+    /// TSLDET-015: online, a status past its age is what `load` dropped, and the set a
+    /// command hands out must not bring it back; garbage in it must not stop the command
+    /// either, as nothing reads it.
+    #[test]
+    fn tsldet_015_a_stale_status_is_left_out_of_the_set_read_back() {
+        let dir = scratch("stale-status");
+        let p = profile(&dir, None);
+        let session = session_over_a_stale_cache(&p, b"<older/>");
+        let config = TrustConfig::preset_prod();
+        let limit = CachePolicy::default().max_age;
+
+        cache_status(&session, &config, b"not a status", limit);
+        assert_eq!(cached_status(&session, &config), None, "at the limit");
+
+        cache_status(&session, &config, b"a status", limit / 2);
+        assert_eq!(
+            cached_status(&session, &config).as_deref(),
+            Some(&b"a status"[..]),
+            "under the limit it is what load used"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Offline, `load` serves the cache at any age and the status's own `producedAt`
+    /// decides; the read back keeps to the same set.
+    #[test]
+    fn offline_the_set_read_back_keeps_a_status_of_any_age() {
+        let dir = scratch("offline-status");
+        let p = profile(&dir, None);
+        let session = fixture_session(&p);
+        let config = TrustConfig::preset_prod();
+        cache_status(&session, &config, b"a status", Duration::from_hours(48));
+        assert_eq!(
+            cached_status(&session, &config).as_deref(),
+            Some(&b"a status"[..])
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Online, a set gone from the cache since the load is another process's doing: the
+    /// error says so, not that the run was offline.
+    #[test]
+    fn a_set_gone_from_the_cache_since_the_load_says_so() {
+        let dir = scratch("gone");
+        let p = profile(&dir, None);
+        let session = Session {
+            transport: Some(ScriptedOrigin {
+                down: AtomicBool::new(true),
+                requests: AtomicUsize::new(0),
+                offered: b"<unused/>",
+            }),
+            profile: p.clone(),
+            cache: None,
+            memory: Arc::default(),
+            insecure: false,
+            verbose: 0,
+        };
+        let Err(error) = session.cached_set(&TrustConfig::preset_prod()) else {
+            panic!("nothing is cached");
+        };
+        let message = error.to_string();
+        assert!(message.contains("run again"), "{message}");
+        assert!(!message.contains("offline"), "{message}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
