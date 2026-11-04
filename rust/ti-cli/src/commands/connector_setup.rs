@@ -1197,6 +1197,7 @@ mod tests {
     }
 
     /// A file for pu, edited by `script` (a shell script getting the copy's path).
+    #[cfg(unix)]
     fn editing(name: &str, script: &str) -> (PathBuf, String) {
         let dir = dir(name);
         let file = dir.join("e.kon");
@@ -1222,6 +1223,7 @@ mod tests {
         (file, format!("sh {}", editor.display()))
     }
 
+    #[cfg(unix)]
     fn edit_in(file: &Path, editor: &str, script: &mut Script) -> Result<Exit, CliError> {
         let path = file.to_str().unwrap();
         let cli = cli(&["--format", "json", "connector", "config", "edit", path]);
@@ -1240,6 +1242,7 @@ mod tests {
         )
     }
 
+    #[cfg(unix)]
     /// Hidden files next to the .kon file: an edited copy or a temporary file left over.
     fn leftovers(file: &Path) -> Vec<String> {
         std::fs::read_dir(file.parent().unwrap())

@@ -1192,6 +1192,41 @@ fn a_4018_says_what_it_means() {
     assert!(stderr.contains("comfort deactivate"), "{stderr}");
 }
 
+/// Nothing was stored, and nothing is after deactivating, so the report must not say so.
+#[test]
+fn deactivating_without_a_stored_id_says_none_is_stored() {
+    let fake = Fake::start("deactivate-none");
+    let (report, code) = fake.json("connector comfort", &["comfort", "deactivate", "card-hba"]);
+    assert_eq!(code, Some(0));
+    assert_eq!(report["user_id_stored"], false);
+}
+
+/// `get cards` only knows the connection broke; `config test` names the step.
+#[test]
+fn a_broken_connection_points_to_the_step_by_step_test() {
+    let fake = Fake::start("transport-hint");
+    assert_eq!(
+        fake.ti(&[
+            "connector",
+            "-c",
+            "praxis",
+            "config",
+            "set",
+            "url=127.0.0.1:9"
+        ])
+        .status
+        .code(),
+        Some(0)
+    );
+    let out = fake.ti(&["connector", "-c", "praxis", "--no-cache", "get", "cards"]);
+    assert_ne!(out.status.code(), Some(0));
+    assert!(
+        stderr_of(&out).contains("connector config test"),
+        "{}",
+        stderr_of(&out)
+    );
+}
+
 #[test]
 fn comfort_signature_keeps_the_user_id_in_a_private_file() {
     let fake = Fake::start("comfort");

@@ -57,6 +57,7 @@ pub struct FileCache {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StoredMeta {
     etag: Option<String>,
     last_modified: Option<String>,
@@ -221,6 +222,18 @@ mod tests {
     use std::sync::Arc;
 
     const KEY: &str = "ti-pki/v1/tsl/0123456789abcdef";
+
+    /// docs/design/testing.md: unknown fields are rejected where the format is ours.
+    #[test]
+    fn an_entry_with_an_unknown_metadata_field_is_no_entry() {
+        let meta =
+            br#"{"etag":null,"last_modified":null,"fetched_at":1,"max_age_secs":null,"extra":1}"#;
+        let mut payload = vec![FORMAT_V1];
+        payload.extend_from_slice(&u32::try_from(meta.len()).unwrap().to_be_bytes());
+        payload.extend_from_slice(meta);
+        payload.extend_from_slice(b"body");
+        assert!(decode(&payload).is_none());
+    }
 
     struct Dir(PathBuf);
 

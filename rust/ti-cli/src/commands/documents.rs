@@ -24,6 +24,7 @@
 //! `ti connector sign|encrypt|decrypt|comfort` and `verify signature`: documents
 //! through the Konnektor's SignatureService and EncryptionService.
 
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -168,15 +169,14 @@ impl UserIdStore {
         write_atomic(&path, user.as_str().as_bytes()).map_err(|e| state_error(&path, e))
     }
 
-    /// Whether an ID was stored.
-    fn remove(&self, card: &Card) -> Result<bool, CliError> {
+    fn remove(&self, card: &Card) -> Result<(), CliError> {
         if !self.check()? {
-            return Ok(false);
+            return Ok(());
         }
         let path = self.path(card);
         match std::fs::remove_file(&path) {
-            Ok(()) => Ok(true),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(e) => Err(state_error(&path, e)),
         }
     }
@@ -249,10 +249,34 @@ fn read_comfort(path: &Path) -> Result<Option<ComfortUserId>, CliError> {
     if !meta.is_file() {
         return Err(state_error(path, "is not a regular file"));
     }
+    let mut file = std::fs::File::open(path).map_err(|e| state_error(path, e))?;
+    let opened = file.metadata().map_err(|e| state_error(path, e))?;
+    check_opened(path, &meta, &opened)?;
+    let mut text = String::new();
+    file.read_to_string(&mut text)
+        .map_err(|e| state_error(path, e))?;
+    ComfortUserId::parse(text.trim()).map(Some).ok_or_else(|| {
+        state_error(
+            path,
+            "does not hold a user ID; remove it and activate again",
+        )
+    })
+}
+
+/// The file opened must be the one checked, or a swap between the two steps would make
+/// the checks say nothing about what is read. The mode is taken from the open file.
+fn check_opened(
+    path: &Path,
+    checked: &std::fs::Metadata,
+    opened: &std::fs::Metadata,
+) -> Result<(), CliError> {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt as _;
-        let mode = meta.permissions().mode() & 0o777;
+        use std::os::unix::fs::MetadataExt as _;
+        if (checked.dev(), checked.ino()) != (opened.dev(), opened.ino()) {
+            return Err(state_error(path, "changed while it was being opened"));
+        }
+        let mode = opened.mode() & 0o777;
         if mode & 0o077 != 0 {
             return Err(state_error(
                 path,
@@ -260,13 +284,9 @@ fn read_comfort(path: &Path) -> Result<Option<ComfortUserId>, CliError> {
             ));
         }
     }
-    let text = std::fs::read_to_string(path).map_err(|e| state_error(path, e))?;
-    ComfortUserId::parse(text.trim()).map(Some).ok_or_else(|| {
-        state_error(
-            path,
-            "does not hold a user ID; remove it and activate again",
-        )
-    })
+    #[cfg(not(unix))]
+    let _ = (path, checked, opened);
+    Ok(())
 }
 
 /// The comfort session's user ID for `card`: `--comfort-user-id`, else the stored one.
@@ -750,7 +770,8 @@ pub fn comfort(
             // A refusal must leave the card session and the file alike.
             store.check()?;
             card_call(&card, signatures.deactivate_comfort(&[&card.card_handle]))?;
-            report.user_id_stored = !store.remove(&card)?;
+            store.remove(&card)?;
+            report.user_id_stored = false;
         }
     }
     emit(out, Exit::Ok, &report, |doc| {
@@ -882,4 +903,29 @@ pub fn export(session: &Session, args: &ExportArgs, out: &Output) -> Result<Exit
             doc.field("to", Line::code(output));
         }
     })
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_file_other_than_the_one_checked_is_refused() {
+        let dir = std::env::temp_dir().join(format!("ti-opened-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (checked, swapped) = (dir.join("checked"), dir.join("swapped"));
+        std::fs::write(&checked, "a").unwrap();
+        std::fs::write(&swapped, "b").unwrap();
+        let meta = |path: &Path| std::fs::metadata(path).unwrap();
+        for path in [&checked, &swapped] {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        assert!(check_opened(&checked, &meta(&checked), &meta(&checked)).is_ok());
+        let Err(error) = check_opened(&checked, &meta(&checked), &meta(&swapped)) else {
+            panic!("another file was opened");
+        };
+        assert!(error.to_string().contains("changed"), "{error}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

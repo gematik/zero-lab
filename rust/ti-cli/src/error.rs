@@ -291,7 +291,7 @@ impl CliError {
                 "`connector config list` shows the configurations; select one with -c NAME or `connector use NAME`",
             ),
             CliError::Connector(ti_connector_client::Error::Transport(_)) => Some(
-                "check the .kon url, the network and the Konnektor's TLS certificate (-v shows each call)",
+                "`connector config test` finds the failing step, a refused client certificate too; -v shows each call",
             ),
             CliError::Connector(ti_connector_client::Error::Discovery(
                 ti_connector_client::DiscoveryError::ForeignEndpoint { .. },
