@@ -57,6 +57,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   signature and status the list verified with, no status with `--at`, and none that is past
   its age online (TSLDET-015). Past the age limit they refuse with `--offline`, where they
   showed the cached list.
+- `connector get status` colors a condition by its severity: Info is not red.
 - A rejected older TSL hints at what it means and how to recover, not at the network.
 - Proxy variables no longer reach the Konnektor, as `AGENTS.md` always said: only `-x`
   sets a proxy for it.

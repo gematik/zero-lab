@@ -754,7 +754,7 @@ fn status(session: &Session, out: &Output) -> Result<Exit, CliError> {
             .filter(|e| e.active)
             .map(|e| {
                 vec![
-                    Line::status(Tone::Bad, &e.condition),
+                    condition_line(&e.condition, &e.severity),
                     Line::text(&e.severity),
                     Line::text(&e.kind),
                     Line::dim(&e.since),
@@ -768,6 +768,18 @@ fn status(session: &Session, out: &Output) -> Result<Exit, CliError> {
             doc.table(&["CONDITION", "SEVERITY", "TYPE", "SINCE"], active);
         }
     })
+}
+
+/// An active condition, colored by its severity (gemSpec_Kon TAB_KON_503). A severity
+/// that is not known stays red: a manufacturer chooses its own for its own conditions.
+fn condition_line(condition: &str, severity: &str) -> Line {
+    if severity.eq_ignore_ascii_case("info") {
+        Line::text(condition)
+    } else if severity.eq_ignore_ascii_case("warning") {
+        Line::status(Tone::Warn, condition)
+    } else {
+        Line::status(Tone::Bad, condition)
+    }
 }
 
 #[derive(Serialize)]
@@ -1177,5 +1189,18 @@ mod tests {
             shorten("80276001011699910102", false),
             "80276001011699910102"
         );
+    }
+
+    /// TAB_KON_503: an Info condition is no fault, and a severity not known stays red.
+    #[test]
+    fn a_condition_is_colored_by_its_severity() {
+        use super::{Line, Tone, condition_line};
+        let c = "EC_X";
+        assert_eq!(condition_line(c, "Info"), Line::text(c));
+        assert_eq!(condition_line(c, "INFO"), Line::text(c));
+        assert_eq!(condition_line(c, "Warning"), Line::status(Tone::Warn, c));
+        for severity in ["Error", "Fatal", "Something new", ""] {
+            assert_eq!(condition_line(c, severity), Line::status(Tone::Bad, c));
+        }
     }
 }
