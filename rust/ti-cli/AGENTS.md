@@ -431,7 +431,7 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 {bin} --format json connector config test [NAME]        # step by step to the cards; exit 1 if one fails
 {bin} --format json connector config new NAME --url ADDRESS --env ru --mandant M --client-system C \
     --workplace W --basic USER --password-path FILE --pin-sha256 HEX   # tested, then saved 0600
-{bin} --format json connector config set NAME workplaceId=W2     # members without secrets
+{bin} --format json connector -c NAME config set workplaceId=W2  # members without secrets
 {bin} --format json connector config edit NAME --p12 FILE --p12-password-path FILE   # new credentials
 {bin} --format json connector config pin NAME --pin-sha256 HEX   # renew the pin
 {bin} --format json connector -c praxis get info        # configuration and product

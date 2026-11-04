@@ -1162,9 +1162,6 @@ pub enum ConnectorConfig {
     /// Change members without secrets: url, env, mandantId, clientSystemId, workplaceId,
     /// userId, expectedHost, rewriteServiceEndpoints, insecureSkipVerify
     Set {
-        /// NAME or path
-        #[arg(value_name = "NAME|PATH")]
-        name: String,
         /// KEY=VALUE; an empty VALUE removes the member
         #[arg(value_name = "KEY=VALUE", required = true)]
         assignments: Vec<String>,

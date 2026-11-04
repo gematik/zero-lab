@@ -36,6 +36,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   gone.
 
 #### changed
+- `ti connector config set` takes its configuration from `-c` or the selection, like the other
+  connector commands, no longer as an argument.
 - State and cache are plain files below `~/.local/state/telematik/ti` and
   `~/.cache/telematik/ti` (`%LOCALAPPDATA%` on Windows). `--profile NAME` or `TI_PROFILE`
   chooses `profiles/NAME` below them, created on first use; no profile is remembered

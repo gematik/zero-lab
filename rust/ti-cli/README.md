@@ -39,7 +39,7 @@ ti connector config test praxis     # tcp, tls, auth, sds, context, cards; exit 
 ti connector config show praxis     # the file without its secrets
 ti connector config pin praxis      # pin the Konnektor's new server certificate
 ti connector config edit praxis     # in $EDITOR; only a valid copy replaces the file
-ti connector config set praxis workplaceId=W2   # one field without a secret
+ti connector -c praxis config set workplaceId=W2   # one field without a secret
 ti connector get cards
 ti connector get certificates 80276883110000163974   # ICCSN, Telematik-ID or handle
 ti connector describe certificate 1-SMC-B-Testkarte-883110000129072 C.AUT

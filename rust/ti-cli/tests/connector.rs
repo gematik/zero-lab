@@ -2078,6 +2078,57 @@ fn base64ct_encode(bytes: &[u8]) -> String {
 }
 
 #[test]
+fn config_set_names_its_configuration_like_the_other_commands() {
+    let fake = Fake::start("config-set-c");
+    let workplace = |fake: &Fake| {
+        let kon: Value = serde_json::from_slice(&std::fs::read(&fake.kon).unwrap()).unwrap();
+        kon["workplaceId"].as_str().unwrap().to_owned()
+    };
+    let before_subcommand = fake.ti(&[
+        "connector",
+        "-c",
+        "praxis",
+        "config",
+        "set",
+        "workplaceId=W2",
+    ]);
+    assert_eq!(before_subcommand.status.code(), Some(0));
+    assert_eq!(workplace(&fake), "W2");
+
+    let after_subcommand = fake.ti(&[
+        "connector",
+        "config",
+        "set",
+        "-c",
+        "praxis",
+        "workplaceId=W3",
+    ]);
+    assert_eq!(after_subcommand.status.code(), Some(0));
+    assert_eq!(workplace(&fake), "W3");
+
+    assert_eq!(
+        fake.ti(&["connector", "use", "praxis"]).status.code(),
+        Some(0)
+    );
+    let selected = fake.ti(&["connector", "config", "set", "workplaceId=W4"]);
+    assert_eq!(selected.status.code(), Some(0));
+    assert_eq!(workplace(&fake), "W4");
+    assert!(
+        String::from_utf8_lossy(&selected.stdout).contains(path_str(&fake.kon)),
+        "it says which file it saved"
+    );
+
+    let old_form = fake.ti(&["connector", "config", "set", "praxis", "workplaceId=W5"]);
+    assert_eq!(old_form.status.code(), Some(2));
+    assert!(
+        stderr_of(&old_form).contains("-c"),
+        "{}",
+        stderr_of(&old_form)
+    );
+    assert_eq!(workplace(&fake), "W4", "nothing changed");
+}
+
+#[test]
 fn config_set_changes_members_but_never_secrets() {
     let fake = Fake::start("config-set");
     let (report, code) = fake.json(
@@ -2085,7 +2136,6 @@ fn config_set_changes_members_but_never_secrets() {
         &[
             "config",
             "set",
-            "praxis",
             "workplaceId=W2",
             "url=127.0.0.1:9",
             "userId=",
@@ -2107,6 +2157,7 @@ fn config_set_changes_members_but_never_secrets() {
             "connector",
             "config",
             "set",
+            "-c",
             "praxis",
             "credentials.password=x",
         ][..],
@@ -2114,6 +2165,7 @@ fn config_set_changes_members_but_never_secrets() {
             "connector",
             "config",
             "set",
+            "-c",
             "praxis",
             "env=pu",
             "insecureSkipVerify=true",

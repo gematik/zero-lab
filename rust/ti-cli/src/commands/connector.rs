@@ -67,8 +67,8 @@ pub fn run(cli: &ConnectorCli, global: &GlobalArgs, out: &Output) -> Result<Exit
         ConnectorCommand::Config(ConnectorConfig::Edit(args)) => {
             super::connector_setup::edit(args, &cli.args, out)
         }
-        ConnectorCommand::Config(ConnectorConfig::Set { name, assignments }) => {
-            super::connector_setup::set(name, assignments, out)
+        ConnectorCommand::Config(ConnectorConfig::Set { assignments }) => {
+            super::connector_setup::set(assignments, &cli.args, out)
         }
         ConnectorCommand::Config(ConnectorConfig::Pin(args)) => {
             super::connector_setup::pin(args, &cli.args, global, out)

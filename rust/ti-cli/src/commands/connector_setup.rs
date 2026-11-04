@@ -617,16 +617,18 @@ struct SetReport<'a> {
     changed: Vec<String>,
 }
 
-/// `ti connector config set NAME KEY=VALUE …`.
-pub fn set(name: &str, assignments: &[String], out: &Output) -> Result<Exit, CliError> {
-    let file = existing(Some(name))?;
+/// `ti connector config set KEY=VALUE …`, on the configuration of `-c` or the selected one.
+pub fn set(assignments: &[String], args: &ConnectorArgs, out: &Output) -> Result<Exit, CliError> {
+    let file = configs::read(None, args)?;
     let before = validate(&file.json)?;
     let mut json = file.json.clone();
     let mut changed = Vec::new();
     for assignment in assignments {
-        let (key, value) = assignment
-            .split_once('=')
-            .ok_or_else(|| CliError::Arguments(format!("{assignment:?}: expected KEY=VALUE")))?;
+        let (key, value) = assignment.split_once('=').ok_or_else(|| {
+            CliError::Arguments(format!(
+                "{assignment:?}: expected KEY=VALUE; -c names the configuration"
+            ))
+        })?;
         json = edit::set(&json, key, value).map_err(CliError::Arguments)?;
         changed.push(key.to_owned());
     }
