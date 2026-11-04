@@ -34,6 +34,7 @@ use crate::api::gematik::conn::encryptionservice611::{
 use crate::api::oasis::dss10core::Base64Data;
 use crate::connector::Connector;
 use crate::error::Error;
+use crate::signatures::ComfortUserId;
 use crate::signatures::decode;
 use crate::soap::Transport;
 use crate::types::Crypt;
@@ -42,12 +43,16 @@ use crate::types::Crypt;
 #[derive(Debug)]
 pub struct Encryption<'a, T> {
     connector: &'a Connector<T>,
+    user: Option<&'a ComfortUserId>,
 }
 
 impl<T: Transport> Connector<T> {
     /// Hybrid encryption and decryption of documents (EncryptionService 6.1).
     pub fn encryption(&self) -> Encryption<'_, T> {
-        Encryption { connector: self }
+        Encryption {
+            connector: self,
+            user: None,
+        }
     }
 }
 
@@ -72,7 +77,14 @@ fn content(document: Option<Document>) -> Result<Vec<u8>, Error> {
     }
 }
 
-impl<T: Transport> Encryption<'_, T> {
+impl<'a, T: Transport> Encryption<'a, T> {
+    /// Calls name this session's user instead of the `.kon` file's: a card session of an
+    /// HBA belongs to one user ID. `None` keeps the `.kon` file's.
+    #[must_use]
+    pub fn as_user(self, user: Option<&'a ComfortUserId>) -> Self {
+        Self { user, ..self }
+    }
+
     /// `document` encrypted as CMS (RFC 5652) for the holders of `recipients`, DER
     /// certificates with encryption keys (C.ENC, C.HCI.ENC).
     ///
@@ -88,7 +100,7 @@ impl<T: Transport> Encryption<'_, T> {
         let response = self
             .connector
             .call::<EncryptDocumentInput>(EncryptDocument {
-                context: self.connector.context(),
+                context: self.connector.context_as(self.user),
                 recipient_keys: EncryptDocumentRecipientKeys {
                     certificate_on_card: None,
                     certificate: recipients.iter().map(|r| r.to_vec().into()).collect(),
@@ -122,7 +134,7 @@ impl<T: Transport> Encryption<'_, T> {
         let response = self
             .connector
             .call::<DecryptDocumentInput>(DecryptDocument {
-                context: self.connector.context(),
+                context: self.connector.context_as(self.user),
                 private_key_on_card: KeyOnCardType {
                     card_handle: handle.to_owned(),
                     key_reference: None,

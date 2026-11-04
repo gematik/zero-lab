@@ -31,6 +31,7 @@ use crate::api::gematik::conn::connectorcontext20::Context;
 use crate::dotkon::Dotkon;
 use crate::error::{DiscoveryError, Error};
 use crate::sds::{Binding, ServiceDirectory, Target, same_origin};
+use crate::signatures::ComfortUserId;
 use crate::soap::{Timeouts, Transport};
 
 /// A Konnektor, ready for calls.
@@ -126,6 +127,15 @@ impl<T: Transport> Connector<T> {
 
     pub(crate) fn context(&self) -> Context {
         self.context.clone()
+    }
+
+    /// The call context with `user` in place of the `.kon` file's user ID, if given.
+    pub(crate) fn context_as(&self, user: Option<&ComfortUserId>) -> Context {
+        let mut context = self.context();
+        if let Some(user) = user {
+            context.user_id = Some(user.as_str().to_owned());
+        }
+        context
     }
 
     pub(crate) fn authorization(&self) -> Option<&str> {

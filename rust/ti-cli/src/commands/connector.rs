@@ -34,6 +34,7 @@ use ti_connector_client::{BINDINGS, Error, PinType, Product};
 use ti_pki::load::SystemClock;
 use ti_pki::{Certificate, Clock, Timestamp};
 
+use super::documents::card_user;
 use super::inspect;
 use crate::block::block_on;
 use crate::cli::{
@@ -214,7 +215,8 @@ pub(super) fn card_certificate(
 ) -> Result<(String, Certificate), CliError> {
     let card = find(session, card)?;
     let crypt = Crypt::from(crypt);
-    let certificates = session.connector.certificates();
+    let user = card_user(session, &card)?;
+    let certificates = session.connector.certificates().as_user(user.as_ref());
     let read = card_call(
         &card,
         certificates.read(&card.card_handle, crypt, &[cert_ref]),
@@ -609,7 +611,8 @@ struct CertificateInfo {
 
 fn certificates(session: &Session, card: &str, out: &Output) -> Result<Exit, CliError> {
     let card = find(session, card)?;
-    let certificates = session.connector.certificates();
+    let user = card_user(session, &card)?;
+    let certificates = session.connector.certificates().as_user(user.as_ref());
     let read = card_call(
         &card,
         certificates.read_all(&card.card_handle, card.card_type),
@@ -799,10 +802,12 @@ struct IdentityInfo {
 /// The Telematik-ID in `card`'s ECC C.AUT; `None` for a card without one or whose C.AUT
 /// cannot be read, which is still shown, without an ID.
 fn telematik_id(session: &Session, card: &Card) -> Option<String> {
+    let user = card_user(session, card).ok()?;
     block_on(
         session
             .connector
             .certificates()
+            .as_user(user.as_ref())
             .read(&card.card_handle, Crypt::Ecc, &[CertRef::CAut]),
     )
     .ok()?
@@ -869,7 +874,11 @@ fn expiration(
 ) -> Result<Exit, CliError> {
     let card = card.map(|card| find(session, card)).transpose()?;
     let handle = card.as_ref().map(|c| c.card_handle.as_str());
-    let certificates = session.connector.certificates();
+    let user = match &card {
+        Some(card) => card_user(session, card)?,
+        None => None,
+    };
+    let certificates = session.connector.certificates().as_user(user.as_ref());
     let future = certificates.expiration(handle, crypt.into());
     let expiry = match &card {
         Some(card) => card_call(card, future)?,
@@ -930,26 +939,26 @@ struct PinInfo {
 
 /// The status of each of `card`'s user PINs. A failed query is reported per PIN, so the
 /// rest of the description still shows.
-fn pin_infos(session: &Session, card: &Card) -> Vec<PinInfo> {
-    PinType::for_card(card.card_type)
+fn pin_infos(session: &Session, card: &Card) -> Result<Vec<PinInfo>, CliError> {
+    let user = card_user(session, card)?;
+    let pins = session.connector.pins().as_user(user.as_ref());
+    Ok(PinType::for_card(card.card_type)
         .iter()
-        .map(
-            |pin| match call(session.connector.pins().status(&card.card_handle, *pin)) {
-                Ok(s) => PinInfo {
-                    pin: pin.as_str(),
-                    status: s.pin_status.map(PinState::as_str),
-                    left_tries: s.left_tries,
-                    error: None,
-                },
-                Err(e) => PinInfo {
-                    pin: pin.as_str(),
-                    status: None,
-                    left_tries: None,
-                    error: Some(e.to_string()),
-                },
+        .map(|pin| match call(pins.status(&card.card_handle, *pin)) {
+            Ok(s) => PinInfo {
+                pin: pin.as_str(),
+                status: s.pin_status.map(PinState::as_str),
+                left_tries: s.left_tries,
+                error: None,
             },
-        )
-        .collect()
+            Err(e) => PinInfo {
+                pin: pin.as_str(),
+                status: None,
+                left_tries: None,
+                error: Some(e.to_string()),
+            },
+        })
+        .collect())
 }
 
 /// `verified`, or `PIN entry needed · 3 tries left` and the like, by what it means for
@@ -1001,7 +1010,7 @@ fn describe_card(session: &Session, card: &str, out: &Output) -> Result<Exit, Cl
     let report = CardReport {
         card: CardInfo::from(&found),
         telematik_id: holder.then(|| telematik_id(session, &found)).flatten(),
-        pins: pin_infos(session, &found),
+        pins: pin_infos(session, &found)?,
     };
     emit(out, Exit::Ok, &report, |doc| {
         let c = &report.card;
@@ -1075,7 +1084,8 @@ fn pin(
     let verb = if change { "Change" } else { "Enter" };
     let message = format!("{verb} {pin_type} at the card terminal");
     let waiting = Waiting::start(&message, &card_label(&card), args.card_timeout);
-    let pins = session.connector.pins();
+    let user = card_user(session, &card)?;
+    let pins = session.connector.pins().as_user(user.as_ref());
     let response = if change {
         card_call(&card, pins.change(&card.card_handle, pin_type))
     } else {

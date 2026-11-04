@@ -275,6 +275,16 @@ struct Behavior {
     deactivations: Arc<AtomicUsize>,
     /// Every call, as its action and body.
     calls: Arc<Mutex<Vec<(String, String)>>>,
+    /// The ID the HBA's comfort session runs under: a call on the HBA with another one is
+    /// refused (gemSpec_Kon TAB_KON_514-01, 4018).
+    raised_for: Arc<Mutex<Option<String>>>,
+}
+
+/// The `UserId` of a call's context.
+fn user_id_of(body: &str) -> Option<&str> {
+    let start = body.find("UserId>")? + "UserId>".len();
+    let end = start + body[start..].find('<')?;
+    Some(&body[start..end])
 }
 
 impl Behavior {
@@ -284,7 +294,28 @@ impl Behavior {
             activations: Arc::default(),
             deactivations: Arc::default(),
             calls: Arc::default(),
+            raised_for: Arc::default(),
         }
+    }
+
+    /// What the HBA's raised session means for this call: a 4018 for another user's.
+    fn refusal(&self, action: &str, body: &str) -> Option<String> {
+        let mut raised = self.raised_for.lock().unwrap();
+        if action.contains("DeactivateComfortSignature") {
+            *raised = None;
+            return None;
+        }
+        if action.contains("ActivateComfortSignature") {
+            *raised = user_id_of(body).map(str::to_owned);
+            return None;
+        }
+        let holder = raised.as_deref()?;
+        (body.contains("card-hba") && user_id_of(body) != Some(holder)).then(|| {
+            fault(
+                4018,
+                "Der HBAx hat mindestens eine Kartensitzung zu einer anderen UserId",
+            )
+        })
     }
 }
 
@@ -322,7 +353,10 @@ fn handle(stream: impl Read + Write, behavior: &Behavior) -> Option<()> {
         .lock()
         .unwrap()
         .push((action.clone(), body.clone().into_owned()));
-    let (status, response) = answer(&path, &action, &body, behavior);
+    let (status, response) = match behavior.refusal(&action, &body) {
+        Some(refused) => (500, refused),
+        None => answer(&path, &action, &body, behavior),
+    };
     let stream = reader.get_mut();
     write!(
         stream,
@@ -341,6 +375,7 @@ struct Fake {
     #[cfg(unix)]
     deactivations: Arc<AtomicUsize>,
     calls: Arc<Mutex<Vec<(String, String)>>>,
+    raised_for: Arc<Mutex<Option<String>>>,
 }
 
 impl Fake {
@@ -419,6 +454,7 @@ impl Fake {
             #[cfg(unix)]
             deactivations: behavior.deactivations.clone(),
             calls: behavior.calls.clone(),
+            raised_for: behavior.raised_for.clone(),
         }
     }
 
@@ -983,6 +1019,179 @@ fn comfort_file(fake: &Fake) -> PathBuf {
         .join("state/telematik/ti/comfort/praxis/80276001011699910103")
 }
 
+/// Where the generated ID of the HBA is kept.
+fn generated_id_file(fake: &Fake) -> PathBuf {
+    fake.dir
+        .join("state/telematik/ti/hba-user/praxis/80276001011699910103")
+}
+
+impl Fake {
+    /// The user IDs of the calls naming `handle` since [`forget_calls`](Self::forget_calls).
+    fn user_ids_on(&self, handle: &str) -> Vec<Option<String>> {
+        self.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, body)| body.contains(handle))
+            .map(|(_, body)| user_id_of(body).map(str::to_owned))
+            .collect()
+    }
+
+    /// Every command that names the HBA, each expected to be answered by the Konnektor.
+    fn use_the_hba(&self) {
+        let text = self.dir.join("use.txt");
+        std::fs::write(&text, "x").unwrap();
+        let force = ["sign", path_str(&text), "--card", "card-hba", "--force"];
+        let commands: [&[&str]; 7] = [
+            &["get", "certificates", "card-hba"],
+            &["get", "expiration", "card-hba"],
+            &["describe", "card", "card-hba"],
+            &["verify", "certificate", "card-hba", "C.AUT"],
+            &["export", "certificate", "card-hba", "C.AUT"],
+            &["change", "pin", "card-hba", "PIN.CH"],
+            &force,
+        ];
+        for command in commands {
+            let mut all = vec!["--format", "json", "connector", "-c", "praxis"];
+            all.extend_from_slice(command);
+            let out = self.ti(&all);
+            // `verify certificate` exits 1 for the fake's INVALID, which is an answer too.
+            assert!(
+                matches!(out.status.code(), Some(0 | 1)),
+                "{command:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+    }
+}
+
+/// gemSpec_Kon TAB_KON_514-01: while comfort signature is on, a call under another ID is
+/// refused with 4018, so every call on the HBA goes under the comfort ID.
+#[test]
+fn tab_kon_514_every_call_on_the_hba_uses_its_comfort_id() {
+    let fake = Fake::start("one-id");
+    fake.json("connector comfort", &["comfort", "activate", "card-hba"]);
+    let comfort = std::fs::read_to_string(comfort_file(&fake)).unwrap();
+
+    fake.forget_calls();
+    fake.use_the_hba();
+    let used = fake.user_ids_on("card-hba");
+    assert_ne!(used.len(), 0);
+    assert!(
+        used.iter().all(|id| id.as_deref() == Some(comfort.trim())),
+        "{used:?}"
+    );
+    assert!(!generated_id_file(&fake).exists(), "no second ID is made");
+}
+
+/// C16: an HBA session always has a user ID; without one in the .kon `ti` keeps its own,
+/// and calls on other cards go on sending none.
+#[test]
+fn c16_without_any_id_the_hba_gets_one_of_its_own() {
+    let fake = Fake::start("generated");
+    fake.use_the_hba();
+    let kept = std::fs::read_to_string(generated_id_file(&fake)).unwrap();
+    let used = fake.user_ids_on("card-hba");
+    assert_ne!(used.len(), 0);
+    assert!(
+        used.iter().all(|id| id.as_deref() == Some(kept.trim())),
+        "{used:?}"
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        let file = generated_id_file(&fake);
+        assert_eq!(mode(&file), 0o600);
+        assert_eq!(mode(file.parent().unwrap()), 0o700);
+    }
+
+    fake.forget_calls();
+    fake.json(
+        "connector get certificates",
+        &["get", "certificates", "card-smcb"],
+    );
+    let used = fake.user_ids_on("card-smcb");
+    assert_ne!(used.len(), 0);
+    assert!(used.iter().all(Option::is_none), "{used:?}");
+}
+
+/// A_20074: each activation has a new ID, not the generated one; after deactivating, the
+/// generated one is back.
+#[test]
+fn a_20074_activating_does_not_reuse_the_generated_id() {
+    let fake = Fake::start("activate-new");
+    fake.json(
+        "connector get certificates",
+        &["get", "certificates", "card-hba"],
+    );
+    let generated = std::fs::read_to_string(generated_id_file(&fake)).unwrap();
+
+    fake.json("connector comfort", &["comfort", "activate", "card-hba"]);
+    let first = std::fs::read_to_string(comfort_file(&fake)).unwrap();
+    assert_ne!(first.trim(), generated.trim());
+    fake.json("connector comfort", &["comfort", "deactivate", "card-hba"]);
+    fake.json("connector comfort", &["comfort", "activate", "card-hba"]);
+    let second = std::fs::read_to_string(comfort_file(&fake)).unwrap();
+    assert_ne!(first, second);
+    fake.json("connector comfort", &["comfort", "deactivate", "card-hba"]);
+
+    fake.forget_calls();
+    fake.json(
+        "connector get certificates",
+        &["get", "certificates", "card-hba"],
+    );
+    assert_eq!(
+        fake.user_ids_on("card-hba")[0].as_deref(),
+        Some(generated.trim())
+    );
+}
+
+/// The .kon's userId is kept as the choice of whoever set it, and no ID is generated.
+#[test]
+fn the_user_id_of_the_kon_is_used_without_a_comfort_id() {
+    let fake = Fake::start("kon-user");
+    let kon = std::fs::read_to_string(&fake.kon).unwrap();
+    let kon = kon.replacen('{', "{\"userId\": \"U1\",", 1);
+    std::fs::write(&fake.kon, kon).unwrap();
+    fake.use_the_hba();
+    let used = fake.user_ids_on("card-hba");
+    assert_ne!(used.len(), 0);
+    assert!(
+        used.iter().all(|id| id.as_deref() == Some("U1")),
+        "{used:?}"
+    );
+    assert!(!generated_id_file(&fake).exists());
+
+    fake.json("connector comfort", &["comfort", "activate", "card-hba"]);
+    let comfort = std::fs::read_to_string(comfort_file(&fake)).unwrap();
+    fake.forget_calls();
+    fake.use_the_hba();
+    let used = fake.user_ids_on("card-hba");
+    assert!(
+        used.iter().all(|id| id.as_deref() == Some(comfort.trim())),
+        "the comfort ID goes first: {used:?}"
+    );
+}
+
+/// A session of another profile or client still ends in 4018; the hint says what to do.
+#[test]
+fn a_4018_says_what_it_means() {
+    let fake = Fake::start("hint");
+    *fake.raised_for.lock().unwrap() = Some("another-id".into());
+    let out = fake.ti(&[
+        "connector",
+        "-c",
+        "praxis",
+        "get",
+        "certificates",
+        "card-hba",
+    ]);
+    assert_ne!(out.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("comfort deactivate"), "{stderr}");
+}
+
 #[test]
 fn comfort_signature_keeps_the_user_id_in_a_private_file() {
     let fake = Fake::start("comfort");
@@ -1350,8 +1559,8 @@ fn activate_fails_before_the_card_is_asked_when_state_cannot_be_written() {
 #[test]
 fn profiles_keep_separate_comfort_ids() {
     let fake = Fake::start("comfort-profiles");
-    let in_profile = |profile: &str, what: &str| {
-        let out = fake.ti(&[
+    let run = |profile: &str, what: &str| {
+        fake.ti(&[
             "--format",
             "json",
             "--profile",
@@ -1362,13 +1571,25 @@ fn profiles_keep_separate_comfort_ids() {
             "comfort",
             what,
             "card-hba",
-        ]);
+        ])
+    };
+    let in_profile = |profile: &str, what: &str| {
+        let out = run(profile, what);
         assert_eq!(out.status.code(), Some(0), "{}", stderr_of(&out));
         serde_json::from_slice::<Value>(&out.stdout).unwrap()
     };
+    assert_eq!(in_profile("home", "status")["user_id_stored"], false);
     assert_eq!(in_profile("work", "activate")["user_id_stored"], true);
     assert_eq!(in_profile("work", "status")["user_id_stored"], true);
-    assert_eq!(in_profile("home", "status")["user_id_stored"], false);
+    // GetSignatureMode checks access like any call (TUC_KON_000): another profile's ID is
+    // another user's.
+    let refused = run("home", "status");
+    assert_ne!(refused.status.code(), Some(0));
+    assert!(
+        stderr_of(&refused).contains("4018"),
+        "{}",
+        stderr_of(&refused)
+    );
     assert!(
         fake.dir
             .join("state/telematik/ti/profiles/work/comfort/praxis/80276001011699910103")

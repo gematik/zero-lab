@@ -276,6 +276,7 @@ not start with a dot; no name is reserved, and no profile is remembered between 
 | Cache base | `$XDG_CACHE_HOME/telematik/ti`, else `~/.cache/telematik/ti` | `%LOCALAPPDATA%\telematik\ti` |
 | TSL state | `STATE/tsl/ID.json` | the same below `STATE` |
 | Comfort IDs | `STATE/comfort/KONNEKTOR/CARD` | the same below `STATE` |
+| Generated HBA user IDs | `STATE/hba-user/KONNEKTOR/CARD` | the same below `STATE` |
 | Cache entries | `CACHE/v1/SHA-256 of the key` | the same below `CACHE` |
 
 `TI_STATE_DIR` replaces the state base and `TI_CACHE_DIR` (or `--cache-dir`) the cache
@@ -305,7 +306,8 @@ Material older than 24 hours (production) or 7 days (elsewhere) is not used. Ent
 are written whole by renaming a temporary file; a put removes entries not written for 30
 days. `ti cache clear` empties the cache and leaves the state alone.
 
-The state holds the TSL seen last and comfort signature IDs. The TSL state is kept on
+The state holds the TSL seen last, comfort signature IDs and the user IDs generated for HBAs.
+Every call on an HBA uses one ID: the comfort ID, else the `.kon` file's `userId`, else the generated one. The TSL state is kept on
 every run without any setup, except with `--at`, which neither reads nor writes it
 (a past instant may need an older list), so an older list stays rejected; it is not secret. A
 corrupt TSL state file is an error that names the file (`state_file_failed`); removing it

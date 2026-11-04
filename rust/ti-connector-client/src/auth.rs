@@ -32,6 +32,7 @@ use crate::api::gematik::conn::signatureservice74::{
 use crate::api::oasis::dss10core::Base64Data;
 use crate::connector::Connector;
 use crate::error::Error;
+use crate::signatures::ComfortUserId;
 use crate::soap::Transport;
 
 /// The signature scheme of [`Auth::external_authenticate`].
@@ -58,16 +59,27 @@ impl SignatureType {
 #[derive(Debug)]
 pub struct Auth<'a, T> {
     connector: &'a Connector<T>,
+    user: Option<&'a ComfortUserId>,
 }
 
 impl<T: Transport> Connector<T> {
     /// Signing with a card's authentication key (AuthSignatureService).
     pub fn auth(&self) -> Auth<'_, T> {
-        Auth { connector: self }
+        Auth {
+            connector: self,
+            user: None,
+        }
     }
 }
 
-impl<T: Transport> Auth<'_, T> {
+impl<'a, T: Transport> Auth<'a, T> {
+    /// Calls name this session's user instead of the `.kon` file's: a card session of an
+    /// HBA belongs to one user ID. `None` keeps the `.kon` file's.
+    #[must_use]
+    pub fn as_user(self, user: Option<&'a ComfortUserId>) -> Self {
+        Self { user, ..self }
+    }
+
     /// Signs `hash`, which the Konnektor does not hash again, with the C.AUT key of the
     /// card with `handle`. An ECDSA signature comes back raw (R‖S, each the curve's
     /// size), also from Konnektors that answer in DER.
@@ -85,7 +97,7 @@ impl<T: Transport> Auth<'_, T> {
             .connector
             .call::<ExternalAuthenticateInput>(ExternalAuthenticate {
                 card_handle: handle.to_owned(),
-                context: self.connector.context(),
+                context: self.connector.context_as(self.user),
                 optional_inputs: Some(ExternalAuthenticateOptionalInputs {
                     signature_type: Some(signature_type.uri().to_owned()),
                     signature_schemes: None,

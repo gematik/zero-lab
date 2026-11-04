@@ -95,20 +95,31 @@ fn random(bytes: &mut [u8]) {
 
 // ---- comfort signature sessions ---------------------------------------------------
 
-/// The user IDs of comfort signature sessions, one private file each under
-/// `comfort/<Konnektor>/<card>` in the profile's state directory. An ID lets anyone with
-/// the same call context sign without a PIN while its session lasts, so the files and
-/// the directories above them are for the user alone.
-struct ComfortStore {
+/// User IDs of an HBA's card sessions, one private file each under
+/// `<kind>/<Konnektor>/<card>` in the profile's state directory. An ID lets anyone with
+/// the same call context use what its session has unlocked: sign without a PIN in comfort
+/// signature, or a card whose PIN was entered. So the files and the directories above
+/// them are for the user alone.
+struct UserIdStore {
     root: PathBuf,
     dir: PathBuf,
 }
 
-impl ComfortStore {
-    fn open(session: &Session) -> Self {
-        let root = session.profile.state_dir.join("comfort");
+impl UserIdStore {
+    fn at(session: &Session, kind: &str) -> Self {
+        let root = session.profile.state_dir.join(kind);
         let dir = root.join(path_component(&session.name));
-        ComfortStore { root, dir }
+        UserIdStore { root, dir }
+    }
+
+    /// The IDs of comfort signature sessions.
+    fn comfort(session: &Session) -> Self {
+        Self::at(session, "comfort")
+    }
+
+    /// The IDs generated for HBAs with no other.
+    fn generated(session: &Session) -> Self {
+        Self::at(session, "hba-user")
     }
 
     /// Keyed by ICCSN: a card handle changes when the card is inserted again. The
@@ -200,7 +211,7 @@ fn check_private_dir_meta(dir: &Path, meta: &std::fs::Metadata) -> Result<(), Cl
     if meta.file_type().is_symlink() {
         return Err(state_error(
             dir,
-            "is a symbolic link; comfort IDs are kept in real directories only",
+            "is a symbolic link; user IDs are kept in real directories only",
         ));
     }
     if !meta.is_dir() {
@@ -232,7 +243,7 @@ fn read_comfort(path: &Path) -> Result<Option<ComfortUserId>, CliError> {
     if meta.file_type().is_symlink() {
         return Err(state_error(
             path,
-            "is a symbolic link; comfort IDs are kept in regular files only",
+            "is a symbolic link; user IDs are kept in regular files only",
         ));
     }
     if !meta.is_file() {
@@ -259,17 +270,40 @@ fn read_comfort(path: &Path) -> Result<Option<ComfortUserId>, CliError> {
 }
 
 /// The comfort session's user ID for `card`: `--comfort-user-id`, else the stored one.
-fn comfort_user(
-    args: &ConnectorArgs,
-    store: &ComfortStore,
-    card: &Card,
-) -> Result<Option<ComfortUserId>, CliError> {
-    match args.comfort_user_id.as_deref() {
+fn comfort_user(session: &Session, card: &Card) -> Result<Option<ComfortUserId>, CliError> {
+    match session.comfort_user_id.as_deref() {
         Some(text) => ComfortUserId::parse(text)
             .map(Some)
             .ok_or_else(|| CliError::ConnectorConfig("--comfort-user-id is not a UUID".into())),
-        None => store.load(card),
+        None => UserIdStore::comfort(session).load(card),
     }
+}
+
+/// The user ID for every call on `card`, in place of the `.kon` file's when `Some`. The
+/// Konnektor keys an HBA's card session by card, client system and user ID, and refuses
+/// another ID while one has entered a PIN (gemSpec_Kon C2, C16, TAB_KON_514-01, 4018): so
+/// one ID per HBA, the comfort session's while there is one. Other cards have no such
+/// sessions.
+pub(crate) fn card_user(session: &Session, card: &Card) -> Result<Option<ComfortUserId>, CliError> {
+    if !matches!(
+        card.card_type,
+        CardType::Hba | CardType::HbaQSig | CardType::HbAx | CardType::Zod20
+    ) {
+        return Ok(None);
+    }
+    if let Some(user) = comfort_user(session, card)? {
+        return Ok(Some(user));
+    }
+    if session.dotkon.user_id.is_some() {
+        return Ok(None);
+    }
+    let store = UserIdStore::generated(session);
+    if let Some(user) = store.load(card)? {
+        return Ok(Some(user));
+    }
+    let user = ComfortUserId::generate(|b| random(b));
+    store.save(card, &user)?;
+    Ok(Some(user))
 }
 
 // ---- sign and verify -------------------------------------------------------------
@@ -351,8 +385,7 @@ pub fn sign(
     let pades = format == SignatureFormat::Pades;
     ensure_writable(&output, args.force)?;
     let card = find(session, &args.card)?;
-    let store = ComfortStore::open(session);
-    let user = comfort_user(connector_args, &store, &card)?;
+    let user = comfort_user(session, &card)?;
     let message = match (card.card_type, &user) {
         (CardType::Hba, None) => "Enter PIN.QES at the card terminal",
         _ => "Signing with the card",
@@ -363,10 +396,8 @@ pub fn sign(
     let job_number = call(signatures.job_number())?;
     let detail = format!("{} · job {job_number}", card_label(&card));
     let waiting = Waiting::start(message, &detail, connector_args.card_timeout);
-    let signatures = match &user {
-        Some(user) => signatures.as_user(user),
-        None => signatures,
-    };
+    let card_user = card_user(session, &card)?;
+    let signatures = signatures.as_user(card_user.as_ref());
     let crypt = Crypt::from(args.crypt);
     let signed = card_call(
         &card,
@@ -520,7 +551,8 @@ pub fn encrypt(session: &Session, args: &EncryptArgs, out: &Output) -> Result<Ex
     }
     for card in &args.recipient_cards {
         let card = find(session, card)?;
-        let certificates = session.connector.certificates();
+        let user = card_user(session, &card)?;
+        let certificates = session.connector.certificates().as_user(user.as_ref());
         let read = card_call(
             &card,
             certificates.read(&card.card_handle, Crypt::Ecc, &[CertRef::CEnc]),
@@ -607,6 +639,7 @@ pub fn decrypt(
         .unwrap_or_else(|| mime_type(&output, false).to_owned());
     ensure_writable(&output, args.force)?;
     let card = find(session, &args.card)?;
+    let user = card_user(session, &card)?;
     let waiting = Waiting::start(
         "Decrypting with the card",
         &card_label(&card),
@@ -618,6 +651,7 @@ pub fn decrypt(
         session
             .connector
             .encryption()
+            .as_user(user.as_ref())
             .decrypt(&card.card_handle, Some(crypt), &cms, &mime),
     );
     drop(waiting);
@@ -676,7 +710,7 @@ pub fn comfort(
     | ConnectorComfort::Status { card }
     | ConnectorComfort::Deactivate { card }) = command;
     let card = find(session, card)?;
-    let store = ComfortStore::open(session);
+    let store = UserIdStore::comfort(session);
     let signatures = session.connector.signatures();
     let mut report = ComfortReport {
         card: CardInfo::from(&card),
@@ -705,11 +739,11 @@ pub fn comfort(
             fill_mode(&mut report, &card, &signatures, &user)?;
         }
         ConnectorComfort::Status { .. } => {
-            // Without a stored session the mode is asked with a fresh ID: whether
-            // comfort signature is enabled does not depend on it.
-            let stored = comfort_user(connector_args, &store, &card)?;
-            report.user_id_stored = stored.is_some();
-            let user = stored.unwrap_or_else(|| ComfortUserId::generate(|b| random(b)));
+            // With no ID of its own the mode is asked with a fresh one: whether comfort
+            // signature is enabled does not depend on it.
+            report.user_id_stored = comfort_user(session, &card)?.is_some();
+            let user = card_user(session, &card)?
+                .unwrap_or_else(|| ComfortUserId::generate(|b| random(b)));
             fill_mode(&mut report, &card, &signatures, &user)?;
         }
         ConnectorComfort::Deactivate { .. } => {
@@ -788,7 +822,8 @@ pub fn export(session: &Session, args: &ExportArgs, out: &Output) -> Result<Exit
         ensure_writable(path, args.force)?;
     }
     let card = find(session, &args.card)?;
-    let certificates = session.connector.certificates();
+    let user = card_user(session, &card)?;
+    let certificates = session.connector.certificates().as_user(user.as_ref());
     let handle = &card.card_handle;
     let read = match (args.cert_ref, args.crypt) {
         (Some(cert_ref), crypt) => {

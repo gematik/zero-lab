@@ -479,7 +479,7 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   ```
 
   `url`, `mandantId`, `clientSystemId`, `workplaceId` and `credentials` are required;
-  `userId` is needed by some calls (with an HBA), `env` is `ru`, `tu` or `pu`.
+  `userId` is optional (see the user ID of an HBA below), `env` is `ru`, `tu` or `pu`.
   Credentials are `basic` (`username`, `password`), `pkcs12` (`data` the base64
   PKCS#12, `password`) for mutual TLS, or `none` for a Konnektor that does not
   authenticate client systems; a brainpool client key cannot be used.
@@ -557,6 +557,13 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   and removed by `comfort deactivate`; deactivate it when the work is done. The checks
   cover `comfort/` and its Konnektor directory, not a state directory shared with other
   users. `--comfort-user-id` or `TI_COMFORT_USER_ID` supplies one instead.
+- The user ID of an HBA: the Konnektor keeps a card session per card, client system and
+  user ID, and refuses other IDs with 4018 while one has entered a PIN. So every call on
+  an HBA uses one ID: the comfort ID while there is one, else the `.kon` file's `userId`,
+  else one `{bin}` generates and keeps under `hba-user/` of the profile's state, protected
+  like the comfort ID. There is nothing to set up. Each `comfort activate` still uses a
+  new ID. A 4018 that remains comes from another profile or client system:
+  `comfort deactivate` ends a comfort session, taking the card out ends any other.
 
 ## Subsystem probe: are the TI services reachable
 

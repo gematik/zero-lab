@@ -50,6 +50,8 @@ pub struct Session {
     pub name: String,
     /// The profile in effect, whose state directory keeps comfort IDs.
     pub profile: crate::profile::Profile,
+    /// `--comfort-user-id`.
+    pub comfort_user_id: Option<String>,
 }
 
 /// `$XDG_CONFIG_HOME/telematik/connectors`, or `~/.config/…` on every platform, as the
@@ -191,6 +193,7 @@ pub fn open(args: &ConnectorArgs, global: &GlobalArgs, out: &Output) -> Result<S
         connector,
         dotkon,
         name,
+        comfort_user_id: args.comfort_user_id.clone(),
         profile: crate::profile::Profile::resolve(global)?,
     })
 }

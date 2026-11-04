@@ -58,6 +58,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   its age online (TSLDET-015). Past the age limit they refuse with `--offline`, where they
   showed the cached list.
 - `connector get status` colors a condition by its severity: Info is not red.
+- Every call on an HBA uses one user ID, so PIN commands, `verify certificate`, `export` and
+  the like work while comfort signature is on, where they ended in 4018, and need no `userId`
+  in the `.kon` file: the comfort ID, else the `.kon` file's, else one generated and kept per
+  HBA under `hba-user/` of the profile's state. A 4018 says what to do.
 - A rejected older TSL hints at what it means and how to recover, not at the network.
 - Proxy variables no longer reach the Konnektor, as `AGENTS.md` always said: only `-x`
   sets a proxy for it.

@@ -37,6 +37,7 @@ use crate::api::gematik::conn::certificateservice602::{
 };
 use crate::connector::Connector;
 use crate::error::Error;
+use crate::signatures::ComfortUserId;
 use crate::soap::Transport;
 use crate::types::{CardType, CertRef, CertificateExpiration, CertificateVerification, Crypt};
 
@@ -88,16 +89,27 @@ pub fn cert_refs(card_type: CardType) -> Option<&'static [CertRef]> {
 #[derive(Debug)]
 pub struct Certificates<'a, T> {
     connector: &'a Connector<T>,
+    user: Option<&'a ComfortUserId>,
 }
 
 impl<T: Transport> Connector<T> {
     /// Card certificates and certificate checks (CertificateService).
     pub fn certificates(&self) -> Certificates<'_, T> {
-        Certificates { connector: self }
+        Certificates {
+            connector: self,
+            user: None,
+        }
     }
 }
 
-impl<T: Transport> Certificates<'_, T> {
+impl<'a, T: Transport> Certificates<'a, T> {
+    /// Calls name this session's user instead of the `.kon` file's: a card session of an
+    /// HBA belongs to one user ID. `None` keeps the `.kon` file's.
+    #[must_use]
+    pub fn as_user(self, user: Option<&'a ComfortUserId>) -> Self {
+        Self { user, ..self }
+    }
+
     /// The certificates `refs` of `crypt` from the card with `handle`; references the
     /// card has no certificate for are left out.
     ///
@@ -114,7 +126,7 @@ impl<T: Transport> Certificates<'_, T> {
             .connector
             .call::<ReadCardCertificateInput>(ReadCardCertificate {
                 card_handle: handle.to_owned(),
-                context: self.connector.context(),
+                context: self.connector.context_as(self.user),
                 cert_ref_list: ReadCardCertificateCertRefList {
                     cert_ref: refs.iter().map(|r| r.as_str().to_owned()).collect(),
                 },
@@ -180,7 +192,7 @@ impl<T: Transport> Certificates<'_, T> {
             .connector
             .call::<CheckCertificateExpirationInput>(CheckCertificateExpiration {
                 card_handle: handle.map(str::to_owned),
-                context: self.connector.context(),
+                context: self.connector.context_as(self.user),
                 crypt: Some(crypt),
             })
             .await?;
@@ -200,7 +212,7 @@ impl<T: Transport> Certificates<'_, T> {
     ) -> Result<CertificateVerification, Error> {
         self.connector
             .call::<VerifyCertificateInput>(VerifyCertificate {
-                context: self.connector.context(),
+                context: self.connector.context_as(self.user),
                 x509_certificate: der.to_vec().into(),
                 verification_time: at.map(|t| t.to_string()),
             })
