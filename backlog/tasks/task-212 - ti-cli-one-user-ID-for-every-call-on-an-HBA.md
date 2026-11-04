@@ -4,7 +4,7 @@ title: 'ti-cli: one user ID for every call on an HBA'
 status: In Progress
 assignee: []
 created_date: '2026-11-04T17:05:00Z'
-updated_date: '2026-11-04T17:13:00Z'
+updated_date: '2026-11-04T19:01:00Z'
 labels:
   - ti-cli
   - ti-connector-client
@@ -28,7 +28,7 @@ The Konnektor keys an HBA card session by card, client system and user ID, and e
 - [x] #5 Calls on other cards send what they sent before
 - [x] #6 A 4018 hint says what it means and what to do
 - [x] #7 AGENTS.md and the README explain which ID is used; the ID stays masked in -vv
-- [ ] #8 Proven by the maintainer against a real Konnektor and HBA
+- [x] #8 Proven by the maintainer against a real Konnektor and HBA
 <!-- AC:END -->
 
 ## Implementation Plan

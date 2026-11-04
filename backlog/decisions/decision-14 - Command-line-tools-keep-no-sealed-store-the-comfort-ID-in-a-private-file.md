@@ -10,7 +10,7 @@ status: accepted
 Decision-7 persisted tokens and other secrets only as sealed records under a profile keyring, shared by the Go and Rust tools. Its premises have gone:
 
 - No tool persists a token: TASK-105 is archived undone, and `oauth.access`, `oauth.refresh` and `popp` have no consumer. Only `comfort` and `tsl.state` are sealed in use.
-- The tools no longer share a store: `go/store` and `go/sqlitestore` were removed in a2b2b32, and TASK-111 (JVM) and TASK-115 (zero-epa) are archived undone.
+- The tools no longer share a store: `go/store` and `go/sqlitestore` are removed by a2b2b32 on `chore/go-consolidation`, which has not reached `main` yet, and TASK-111 (JVM) and TASK-115 (zero-epa) are archived undone.
 - Hardware-held keys never came: TASK-104 is archived undone. The default key file lies under the same account as the records, so sealing helps only when the state directory is copied without the configuration directory.
 
 The store costs about 7,000 lines of Rust, `spec/store`, four fuzz targets and bundled C SQLite. It also weakens a check: without `ti profile create`, TSL rollback state is not kept, so an older TSL is not rejected.
