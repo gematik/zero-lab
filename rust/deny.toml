@@ -31,6 +31,9 @@ exceptions = [
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# A path dependency without a version names a crate of this workspace, never a registry
+# release; the dev-only traceability crate is one, and is never published.
+allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"
