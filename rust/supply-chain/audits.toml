@@ -54,3 +54,486 @@ who = "Sergej Suskov <108782+spilikin@users.noreply.github.com>"
 criteria = "safe-to-deploy"
 delta = "1.4.2 -> 1.5.0"
 notes = "Edition 2024 and MSRV 1.85, format-string and assert! rewrites of the same panics, Data:: instead of syn::Data::, and unused_assignments added to the allow on generated match arms. Still forbid(unsafe_code), no build script; the generated zeroize code is unchanged."
+
+[[trusted.aead]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/traits"
+start = "2026-06-08"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.aes]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/block-ciphers"
+start = "2026-04-10"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.aes-gcm]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/AEADs"
+start = "2026-08-21"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.aes-kw]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/key-wraps"
+start = "2026-04-10"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.base16ct]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2022-01-13"
+end = "2027-11-05"
+notes = "Tony Arcieri, RustCrypto lead maintainer and author of the RustCrypto formats crates."
+
+[[trusted.base64ct]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2021-01-21"
+end = "2027-11-05"
+notes = "Tony Arcieri, RustCrypto lead maintainer and author of the RustCrypto formats crates."
+
+[[trusted.block-buffer]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/utils"
+start = "2026-02-24"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.block-padding]]
+criteria = "safe-to-deploy"
+user-id = 5059 # Artyom Pavlov (newpavlov)
+start = "2019-04-22"
+end = "2027-11-05"
+notes = "Artyom Pavlov, RustCrypto lead maintainer and author of the block-modes and padding crates."
+
+[[trusted.bp256]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/elliptic-curves"
+start = "2026-06-04"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.bp384]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/elliptic-curves"
+start = "2026-06-04"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.cbc]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/block-modes"
+start = "2026-02-27"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.cc]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:rust-lang/cc-rs"
+start = "2025-09-01"
+end = "2027-11-05"
+notes = "The Rust project: published from rust-lang/cc-rs by crates.io trusted publishing."
+
+[[trusted.cfg-if]]
+criteria = "safe-to-deploy"
+user-id = 55123 # rust-lang-owner
+start = "2025-06-09"
+end = "2027-11-05"
+notes = "The Rust project's own crates.io publisher (rust-lang organisation)."
+
+[[trusted.cipher]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/traits"
+start = "2026-02-04"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.const-oid]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-08-04"
+end = "2027-11-05"
+notes = "Tony Arcieri, RustCrypto lead maintainer and author of the RustCrypto formats crates."
+
+[[trusted.cpubits]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/utils"
+start = "2026-04-28"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.crypto-bigint]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/crypto-bigint"
+start = "2026-02-12"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.crypto-common]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/traits"
+start = "2026-02-04"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.crypto-primes]]
+criteria = "safe-to-deploy"
+user-id = 105941 # Bogdan Opanchuk (fjarri)
+start = "2023-01-21"
+end = "2027-11-05"
+notes = "Bogdan Opanchuk, author and maintainer of crypto-primes, the prime generation of RustCrypto's rsa."
+
+[[trusted.ctr]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/block-modes"
+start = "2026-02-27"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.curve25519-dalek]]
+criteria = "safe-to-deploy"
+user-id = 6979 # Michael Rosenberg (rozbb)
+start = "2022-12-13"
+end = "2027-11-05"
+notes = "Michael Rosenberg, maintainer of the dalek-cryptography crates."
+
+[[trusted.curve25519-dalek-derive]]
+criteria = "safe-to-deploy"
+user-id = 6979 # Michael Rosenberg (rozbb)
+start = "2023-06-24"
+end = "2027-11-05"
+notes = "Michael Rosenberg, maintainer of the dalek-cryptography crates."
+
+[[trusted.der]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/formats"
+start = "2026-02-11"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.der_derive]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2020-12-18"
+end = "2027-11-05"
+notes = "Tony Arcieri, RustCrypto lead maintainer and author of the RustCrypto formats crates."
+
+[[trusted.des]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/block-ciphers"
+start = "2026-04-10"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.digest]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/traits"
+start = "2026-02-12"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.ecdsa]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/signatures"
+start = "2026-04-15"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.ed25519]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/signatures"
+start = "2026-05-03"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.ed25519-dalek]]
+criteria = "safe-to-deploy"
+user-id = 6979 # Michael Rosenberg (rozbb)
+start = "2023-02-04"
+end = "2027-11-05"
+notes = "Michael Rosenberg, maintainer of the dalek-cryptography crates."
+
+[[trusted.elliptic-curve]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/traits"
+start = "2026-03-10"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.ff]]
+criteria = "safe-to-deploy"
+user-id = 1244 # Sean Bowe (ebfull)
+start = "2019-10-08"
+end = "2027-11-05"
+notes = "Sean Bowe, author and maintainer of the zkcrypto ff and group traits."
+
+[[trusted.getrandom]]
+criteria = "safe-to-deploy"
+user-id = 5059 # Artyom Pavlov (newpavlov)
+start = "2019-06-28"
+end = "2027-11-05"
+notes = "Artyom Pavlov, maintainer of rust-random's getrandom (the OS random source of RustCrypto and ring)."
+
+[[trusted.ghash]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/universal-hashes"
+start = "2026-02-28"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.group]]
+criteria = "safe-to-deploy"
+user-id = 1244 # Sean Bowe (ebfull)
+start = "2019-10-08"
+end = "2027-11-05"
+notes = "Sean Bowe, author and maintainer of the zkcrypto ff and group traits."
+
+[[trusted.hybrid-array]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/hybrid-array"
+start = "2026-03-08"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.libc]]
+criteria = "safe-to-deploy"
+user-id = 55123 # rust-lang-owner
+start = "2024-08-15"
+end = "2027-11-05"
+notes = "The Rust project's own crates.io publisher (rust-lang organisation)."
+
+[[trusted.libm]]
+criteria = "safe-to-deploy"
+user-id = 55123 # rust-lang-owner
+start = "2024-10-26"
+end = "2027-11-05"
+notes = "The Rust project's own crates.io publisher (rust-lang organisation)."
+
+[[trusted.openssl-probe]]
+criteria = "safe-to-deploy"
+user-id = 4556 # Dirkjan Ochtman (djc)
+start = "2025-12-29"
+end = "2027-11-05"
+notes = "Dirkjan Ochtman, rustls core maintainer; the crate lives in the rustls organisation."
+
+[[trusted.p256]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/elliptic-curves"
+start = "2026-04-19"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.p384]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/elliptic-curves"
+start = "2026-04-19"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.pem-rfc7468]]
+criteria = "safe-to-deploy"
+user-id = 267 # Tony Arcieri (tarcieri)
+start = "2021-02-16"
+end = "2027-11-05"
+notes = "Tony Arcieri, RustCrypto lead maintainer and author of the RustCrypto formats crates."
+
+[[trusted.pkcs1]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/formats"
+start = "2026-10-05"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.pkcs8]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/formats"
+start = "2026-02-11"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.polyval]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/universal-hashes"
+start = "2026-02-10"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.primefield]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/elliptic-curves"
+start = "2026-04-17"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.primeorder]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/elliptic-curves"
+start = "2026-04-17"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.rc2]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/block-ciphers"
+start = "2026-04-10"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.rfc6979]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/signatures"
+start = "2026-05-06"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.ring]]
+criteria = "safe-to-deploy"
+user-id = 2751 # Joe Birr-Pixton (ctz)
+start = "2025-02-22"
+end = "2027-11-05"
+notes = "Joseph Birr-Pixton, rustls author, maintains and publishes ring 0.17 for the rustls project."
+
+[[trusted.rsa]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/RSA"
+start = "2026-02-27"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.rustls]]
+criteria = "safe-to-deploy"
+user-id = 209038 # Daniel McCarney (cpu)
+start = "2023-07-05"
+end = "2027-11-05"
+notes = "Daniel McCarney, rustls core maintainer."
+
+[[trusted.rustls-native-certs]]
+criteria = "safe-to-deploy"
+user-id = 4556 # Dirkjan Ochtman (djc)
+start = "2023-06-14"
+end = "2027-11-05"
+notes = "Dirkjan Ochtman, rustls core maintainer; the crate lives in the rustls organisation."
+
+[[trusted.rustls-pki-types]]
+criteria = "safe-to-deploy"
+user-id = 4556 # Dirkjan Ochtman (djc)
+start = "2023-08-31"
+end = "2027-11-05"
+notes = "Dirkjan Ochtman, rustls core maintainer; the crate lives in the rustls organisation."
+
+[[trusted.rustls-platform-verifier]]
+criteria = "safe-to-deploy"
+user-id = 146896 # ComplexSpaces (complexspaces)
+start = "2024-01-03"
+end = "2027-11-05"
+notes = "ComplexSpaces, author and maintainer of rustls-platform-verifier in the rustls organisation."
+
+[[trusted.rustls-webpki]]
+criteria = "safe-to-deploy"
+user-id = 2751 # Joe Birr-Pixton (ctz)
+start = "2023-01-09"
+end = "2027-11-05"
+notes = "Joseph Birr-Pixton, rustls author and maintainer."
+
+[[trusted.sec1]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/formats"
+start = "2026-03-10"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.serde]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-03-01"
+end = "2027-11-05"
+notes = "David Tolnay, author and maintainer of serde; serde_json parses the hostile JOSE and API input."
+
+[[trusted.serde_core]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2025-09-13"
+end = "2027-11-05"
+notes = "David Tolnay, author and maintainer of serde; serde_json parses the hostile JOSE and API input."
+
+[[trusted.serde_derive]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-03-01"
+end = "2027-11-05"
+notes = "David Tolnay, author and maintainer of serde; serde_json parses the hostile JOSE and API input."
+
+[[trusted.serde_json]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2019-02-28"
+end = "2027-11-05"
+notes = "David Tolnay, author and maintainer of serde; serde_json parses the hostile JOSE and API input."
+
+[[trusted.serdect]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/formats"
+start = "2026-05-04"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.sha1]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/hashes"
+start = "2026-03-27"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.sha2]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/hashes"
+start = "2026-03-25"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.signature]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/traits"
+start = "2026-05-02"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.spki]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/formats"
+start = "2026-04-04"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.universal-hash]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/traits"
+start = "2026-02-27"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.webpki-root-certs]]
+criteria = "safe-to-deploy"
+user-id = 209038 # Daniel McCarney (cpu)
+start = "2024-08-07"
+end = "2027-11-05"
+notes = "Daniel McCarney, rustls core maintainer; webpki-roots lives in the rustls organisation."
+
+[[trusted.wnaf]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/elliptic-curves"
+start = "2026-06-23"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
+
+[[trusted.x509-cert]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/formats"
+start = "2026-07-09"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
