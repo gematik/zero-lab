@@ -129,6 +129,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-idpd
 
+#### fixed
+- A `Location` with a `%` before a non-ASCII character no longer panics: the query is decoded
+  byte by byte, and `%+F` is no longer read as an escape. Found by the new fuzz targets.
+- A code redirect whose `code` is empty is malformed, as one without `code` is.
+
 #### changed
 - `discovery::parse` takes the `Idp` asked and refuses a signed document that names another
   issuer.

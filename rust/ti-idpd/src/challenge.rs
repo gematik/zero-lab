@@ -214,11 +214,45 @@ pub fn code(response: &Response) -> Result<CodeRedirect, Error> {
             .find(|(k, _)| k == name)
             .map(|(_, v)| v.clone())
     };
-    let code =
-        get("code").ok_or_else(|| Error::malformed("code redirect", "no code in Location"))?;
+    // An empty code is none: it would only be refused one step later, by the token endpoint.
+    let code = get("code")
+        .filter(|code| !code.is_empty())
+        .ok_or_else(|| Error::malformed("code redirect", "no code in Location"))?;
     Ok(CodeRedirect {
         state: get("state"),
         url,
         code,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn redirect(location: &str) -> Response {
+        Response {
+            status: 302,
+            headers: vec![("Location".to_owned(), location.to_owned())],
+            body: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_redirect_without_a_code_value_has_no_code() {
+        for location in [
+            "https://rp.example/cb?code&state=s",
+            "https://rp.example/cb?code=&state=s",
+            "https://rp.example/cb?state=s",
+        ] {
+            assert!(
+                matches!(code(&redirect(location)), Err(Error::Malformed { .. })),
+                "{location}"
+            );
+        }
+        let found = code(&redirect("https://rp.example/cb?code=c1&state=s")).unwrap();
+        assert_eq!(
+            (found.code.as_str(), found.state.as_deref()),
+            ("c1", Some("s"))
+        );
+    }
 }

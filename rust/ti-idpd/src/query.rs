@@ -48,12 +48,14 @@ fn decode(text: &str) -> String {
     while i < bytes.len() {
         match bytes[i] {
             b'+' => out.push(b' '),
-            b'%' if i + 2 < bytes.len() => match u8::from_str_radix(&text[i + 1..i + 3], 16) {
-                Ok(byte) => {
-                    out.push(byte);
+            // The digits are read as bytes: the text after a `%` may be any character, and a
+            // number parser would also take a sign.
+            b'%' if i + 2 < bytes.len() => match (hex(bytes[i + 1]), hex(bytes[i + 2])) {
+                (Some(high), Some(low)) => {
+                    out.push(high << 4 | low);
                     i += 2;
                 }
-                Err(_) => out.push(b'%'),
+                _ => out.push(b'%'),
             },
             byte => out.push(byte),
         }
@@ -62,9 +64,31 @@ fn decode(text: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+fn hex(byte: u8) -> Option<u8> {
+    char::from(byte)
+        .to_digit(16)
+        .and_then(|digit| u8::try_from(digit).ok())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_escape_before_a_multibyte_character_is_kept_as_it_is() {
+        assert_eq!(
+            pairs("https://rp.example/cb?state=a%\u{e4}b%\u{20ac}"),
+            vec![("state".to_owned(), "a%\u{e4}b%\u{20ac}".to_owned())]
+        );
+    }
+
+    #[test]
+    fn a_sign_is_no_hex_digit() {
+        assert_eq!(
+            pairs("https://rp.example/cb?state=%+F%-1"),
+            vec![("state".to_owned(), "% F%-1".to_owned())]
+        );
+    }
 
     #[test]
     fn decodes_the_query_only() {
