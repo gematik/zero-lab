@@ -96,7 +96,8 @@ pub struct Signatures<'a, T> {
     user: Option<&'a ComfortUserId>,
 }
 
-/// The UserId of a comfort signature session: a random UUID (RFC 4122, version 4).
+/// The UserId of an HBA's card session, comfort signature above all: a random UUID
+/// (RFC 4122, version 4).
 /// The Konnektor refuses a UserId that is not a 128-bit UUID (A_20073-01, error 4272) or
 /// that one of its last 1,000 operations used (A_20074, error 4270); gematik's client
 /// guidance (A_21528) takes a new one for each activation. Every call of the session
@@ -203,22 +204,15 @@ pub(crate) fn decode(text: &str) -> Result<Vec<u8>, Error> {
 }
 
 impl<'a, T: Transport> Signatures<'a, T> {
-    /// Signs within the comfort signature session of `user`: no PIN entry per signature
-    /// while the session lasts.
+    /// Signs within the card session of `user`: in a comfort signature session, no PIN
+    /// entry per signature while it lasts. `None` keeps the `.kon` file's user ID.
     #[must_use]
-    pub fn as_user(self, user: &'a ComfortUserId) -> Self {
-        Signatures {
-            user: Some(user),
-            ..self
-        }
+    pub fn as_user(self, user: Option<&'a ComfortUserId>) -> Self {
+        Signatures { user, ..self }
     }
 
     fn context(&self, user: Option<&ComfortUserId>) -> Context {
-        let mut context = self.connector.context();
-        if let Some(user) = user {
-            context.user_id = Some(user.as_str().to_owned());
-        }
-        context
+        self.connector.context_as(user)
     }
 
     /// Signs `documents` with the card with `handle`, in one job. With an HBA the

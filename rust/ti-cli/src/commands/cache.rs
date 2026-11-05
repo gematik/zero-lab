@@ -21,67 +21,40 @@
  * find details in the "Readme" file.
  */
 
-//! `ti cache clear`: removes every record of the profile's cache (`cache.db`): trust
+//! `ti cache clear`: removes every entry of the profile's download cache: trust
 //! material, OCSP responses and Konnektor service directories. The profile's state, its
 //! TSL state and comfort IDs, stays.
 
 use serde::Serialize;
-use ti_store::store::registry::{self, Database};
-use ti_store::store::{Backend as _, Namespace, StoreError};
-use ti_types::Timestamp;
 
-use crate::block::block_on;
 use crate::cli::GlobalArgs;
-use crate::error::{CliError, Exit, StoreFile};
+use crate::error::{CliError, Exit};
+use crate::file_cache;
 use crate::output::{Document, Line, Output, SCHEMA};
-use crate::store::profile::Selected;
+use crate::profile::Profile;
 
 /// The JSON document.
 #[derive(Serialize)]
 struct Report {
     schema: u32,
-    /// The profile whose cache was cleared.
-    profile: String,
-    /// `cache.db`, or the cache's files tree.
+    /// The profile whose cache was cleared; none without one.
+    profile: Option<String>,
+    /// The profile's cache directory.
     path: String,
     removed_records: u64,
 }
 
 /// Runs `ti cache clear`.
 pub fn clear(global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
-    let selected = Selected::resolve(global)?;
-    let path = selected.cache_path().to_owned();
-    let store = selected.open_cache()?;
-    let fail = |error: StoreError| CliError::Store {
-        profile: selected.profile.name.clone(),
-        file: StoreFile::CacheDb,
+    let profile = Profile::resolve(global)?;
+    let path = profile.cache_dir.display().to_string();
+    let removed = file_cache::clear(&profile.cache_dir).map_err(|e| CliError::Cache {
         path: path.clone(),
-        error,
-    };
-    let mut removed = 0u64;
-    for spec in registry::ALL
-        .iter()
-        .filter(|ns| ns.database == Database::Cache)
-    {
-        let ns = Namespace::new(spec.name).map_err(fail)?;
-        let mut cursor = None;
-        loop {
-            // every record of the cache expires, so all are live at time 0
-            let (page, next) =
-                block_on(store.query(spec, &[], 1000, cursor, Timestamp(0))).map_err(fail)?;
-            for record in &page {
-                block_on(store.backend().delete(&ns, &record.name)).map_err(fail)?;
-                removed += 1;
-            }
-            match next {
-                Some(next) => cursor = Some(next),
-                None => break,
-            }
-        }
-    }
+        reason: e.to_string(),
+    })?;
     let report = Report {
         schema: SCHEMA,
-        profile: selected.profile.name.clone(),
+        profile: profile.name,
         path,
         removed_records: removed,
     };
@@ -90,7 +63,9 @@ pub fn clear(global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     } else {
         let mut doc = Document::default();
         doc.section("Cache");
-        doc.field("profile", Line::text(&report.profile));
+        if let Some(name) = &report.profile {
+            doc.field("profile", Line::text(name));
+        }
         doc.field("path", Line::code(&report.path));
         doc.field(
             "removed",

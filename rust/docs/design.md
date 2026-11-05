@@ -19,7 +19,7 @@ server, a browser, an air-gapped installation and, through bindings, in other ho
               │
  core       ti-pki (+ load)  jwz (+ jwz-brainpool, ti-jwz)  ti-pkcs12
               │
- vocabulary ti-types (Env, Tier; no_std, no dependencies)   ti-store (policy, store trait)
+ vocabulary ti-types (Env, Tier; no_std, no dependencies)   ti-store (cache policy, store trait)
 ```
 
 A crate depends only downwards. Adapters are Cargo features of the crate they serve,
@@ -115,7 +115,7 @@ the interop adapter in `spec/<topic>/interop/rust` prints the code.
 | build matrix and layer checks | `just wasm32`, `just core-deps`, `just nonprod-absent`; `just features` | check; `just features` before a release (`check-full`) | all crates |
 | bounded model checking | Kani | design time, stamped | jwz (base64url, compact, ECDH) |
 | functional proof | hax → F* | design time, stamped | jwz Concat KDF (SP 800-56A §5.8.1) |
-| fuzzing | cargo-fuzz (below) | release, design time | jwz, ti-store and ti-pki parsers |
+| fuzzing | cargo-fuzz (below) | release, design time | jwz, ti-cli, ti-pki and ti-connector-client parsers |
 | known-answer, corpora, interop | Wycheproof, spec corpora, interop runs | check | jwz, jwz-brainpool, ti-pki, ti-pkcs12 |
 | undefined behaviour | Miri | only if `unsafe` ever enters | n/a |
 | mutation testing | cargo-mutants (`just mutants`) | before a release | per crate, by hand |
@@ -162,7 +162,7 @@ ti-store, ti-pki, ti-pkcs12, ti-connector-client, ti-report, jwz,
 jwz-brainpool, ti-jwz, ti-idpd and ti-directory, with every feature but their adapters
 (the `ureq` transports, ti-types' `clap`) and `test-util`.
 The hosts are ti-cli and ti-wasm: a crate that reaches the terminal, the operating system
-or foreign code through `unsafe` (rpassword, rusqlite) belongs there. What counts is what
+or foreign code through `unsafe` (rpassword) belongs there. What counts is what
 ends up in the program on the release targets and wasm32: normal dependencies, not proc
 macros or build scripts. A crate with `unsafe` enters a core only through an entry in
 [unsafe-exceptions.md](./unsafe-exceptions.md) with its exact version, the reason and the

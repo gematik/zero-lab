@@ -31,6 +31,7 @@ use crate::api::gematik::conn::cardservice812::{
 };
 use crate::connector::Connector;
 use crate::error::Error;
+use crate::signatures::ComfortUserId;
 use crate::soap::Transport;
 use crate::types::{CardType, PinResponse, PinStatus};
 
@@ -91,16 +92,27 @@ impl core::str::FromStr for PinType {
 #[derive(Debug)]
 pub struct Pins<'a, T> {
     connector: &'a Connector<T>,
+    user: Option<&'a ComfortUserId>,
 }
 
 impl<T: Transport> Connector<T> {
     /// PIN status, verification and change (CardService).
     pub fn pins(&self) -> Pins<'_, T> {
-        Pins { connector: self }
+        Pins {
+            connector: self,
+            user: None,
+        }
     }
 }
 
-impl<T: Transport> Pins<'_, T> {
+impl<'a, T: Transport> Pins<'a, T> {
+    /// Calls name this session's user instead of the `.kon` file's: a card session of an
+    /// HBA belongs to one user ID. `None` keeps the `.kon` file's.
+    #[must_use]
+    pub fn as_user(self, user: Option<&'a ComfortUserId>) -> Self {
+        Self { user, ..self }
+    }
+
     /// Whether `pin` of the card with `handle` is verified, verifiable, blocked or still
     /// a transport PIN, and the tries left.
     ///
@@ -110,7 +122,7 @@ impl<T: Transport> Pins<'_, T> {
     pub async fn status(&self, handle: &str, pin: PinType) -> Result<PinStatus, Error> {
         self.connector
             .call::<GetPinStatusInput>(GetPinStatus {
-                context: self.connector.context(),
+                context: self.connector.context_as(self.user),
                 card_handle: handle.to_owned(),
                 pin_typ: pin.as_str().to_owned(),
             })
@@ -125,7 +137,7 @@ impl<T: Transport> Pins<'_, T> {
     pub async fn verify(&self, handle: &str, pin: PinType) -> Result<PinResponse, Error> {
         self.connector
             .call::<VerifyPinInput>(VerifyPin {
-                context: self.connector.context(),
+                context: self.connector.context_as(self.user),
                 card_handle: handle.to_owned(),
                 pin_typ: pin.as_str().to_owned(),
             })
@@ -140,7 +152,7 @@ impl<T: Transport> Pins<'_, T> {
     pub async fn change(&self, handle: &str, pin: PinType) -> Result<PinResponse, Error> {
         self.connector
             .call::<ChangePinInput>(ChangePin {
-                context: self.connector.context(),
+                context: self.connector.context_as(self.user),
                 card_handle: handle.to_owned(),
                 pin_typ: pin.as_str().to_owned(),
             })

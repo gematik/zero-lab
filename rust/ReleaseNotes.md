@@ -19,13 +19,54 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `ti pki trust export -o FILE`: roots.json, the TSL, its signature and its signer's status as
   one bundle file for a server or an air-gapped site, written whole and only once a consumer's
   load of it verified.
+- `ti connector config list` lists the .kon files, where the other `config` commands are.
+  `connector configs` still works, no longer in `--help`, and `connector use` without a name
+  shows the same list. `ti schema` knows the list as `connector config list`, and
+  `connector use` as either of its two answers.
 
 #### removed
+- The sealed store: `ti store`, `ti profile create|use|show|rotate|rewrap`, `TI_STORE_KEK_PATH`,
+  `TI_STORE_BACKEND` and `TI_STORE_TRACE` are gone, with the `store_*` error kinds, the
+  SQLite databases (`state.db`, `cache.db`), the keyring and the key file. They are not
+  read: files of the former store may be removed by hand (`~/.local/state/telematik/profiles`,
+  `~/.cache/telematik/profiles`, `~/.config/telematik/profiles`). `ti profile list` and
+  `delete` stay.
 - SOCKS proxies: `-x socks5://` and a `socks5://` in the proxy variables are refused with
   `http_setup` (exit 2), and `ureq`'s `socks-proxy` feature, `socks` and `byteorder` are
   gone.
 
+#### changed
+- `ti connector config set` takes its configuration from `-c` or the selection, like the other
+  connector commands, no longer as an argument.
+- State and cache are plain files below `~/.local/state/telematik/ti` and
+  `~/.cache/telematik/ti` (`%LOCALAPPDATA%` on Windows). `--profile NAME` or `TI_PROFILE`
+  chooses `profiles/NAME` below them, created on first use; no profile is remembered
+  between runs and no name is reserved. For a throwaway run use `--profile "$(uuidgen)"`
+  or `TI_STATE_DIR=$(mktemp -d) TI_CACHE_DIR=$(mktemp -d)`.
+- The TSL state is kept on every run without setup, except with `--at`, so an older TSL is rejected from the
+  first verified list on. A corrupt TSL state file is refused with `state_file_failed`
+  naming it, where it was ignored.
+- Comfort IDs lie unencrypted in private files (mode 0600 in a directory of mode 0700), no
+  longer sealed, as `hba-user/KONNEKTOR/CARD`. Existing IDs, sealed or in `comfort/`, are not
+  migrated: **activate comfort signature again.** On POSIX such a file or directory that is a symbolic
+  link or open to group or others is refused.
+
 #### fixed
+- `pki tsl show`, `pki tsl export` and `pki trust export` use the list their load verified
+  against the TSL state. They read it back from the cache without asking the origin again, a
+  stale entry could send that read there, and refuse any other list. `tsl export` writes the
+  signature and status the list verified with, no status with `--at`, and none that is past
+  its age online (TSLDET-015). Past the age limit they refuse with `--offline`, where they
+  showed the cached list.
+- `connector get status` colors a condition by its severity: Info is not red.
+- Every call on an HBA uses one user ID, so PIN commands, `verify certificate`, `export` and
+  the like work while comfort signature is on, where they ended in 4018, and need no `userId`
+  in the `.kon` file: the one in the HBA's file under `hba-user/` of the profile's state, else
+  the `.kon` file's, else a new one kept there. `comfort activate` writes a new ID to that
+  file and `comfort deactivate` removes it. A 4018 says what to do.
+- `connector sign` asks the Konnektor whether a comfort session runs, so `comfort` is no
+  longer true for a session that has ended. `user_id_stored` is gone from `connector comfort`.
+- A rejected older TSL hints at what it means and how to recover, not at the network.
 - Proxy variables no longer reach the Konnektor, as `AGENTS.md` always said: only `-x`
   sets a proxy for it.
 - A Konnektor whose service directory names another origin than the `.kon` url is refused
@@ -641,6 +682,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   the OpenSSL 3 defaults; the caller supplies the randomness.
 
 ### ti-store
+
+#### removed
+- The features `store` and `test-util`: the sealed store (`ti_store::store`) is gone with
+  its AES-GCM, HKDF and HMAC dependencies. `Cache` and `CacheStore` are unchanged.
 
 #### added
 - Renamed from ti-cache; the cache API is unchanged under `ti_store`.

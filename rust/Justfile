@@ -69,9 +69,6 @@ cli-targets mode="build":
     if [[ "$(uname -m)" != x86_64 ]]; then
         export CROSS_CONTAINER_OPTS="${CROSS_CONTAINER_OPTS:-} --platform linux/amd64"
     fi
-    # cross mounts only the workspace, at /project; ti-cli includes the store schema from
-    # ../spec, which /project/../spec resolves to.
-    export CROSS_CONTAINER_OPTS="${CROSS_CONTAINER_OPTS:-} -v $(cd ../spec && pwd):/spec:ro"
     if [[ "{{mode}}" == check ]]; then
         for t in "${targets[@]}"; do
             echo "==> clippy $t"
@@ -381,7 +378,6 @@ test-defaults:
 wasm32:
     cargo check -p ti-types --target wasm32-unknown-unknown --features std
     cargo check -p ti-store --target wasm32-unknown-unknown
-    cargo check -p ti-store --target wasm32-unknown-unknown --features store
     cargo check -p ti-connector-client --target wasm32-unknown-unknown
     cargo check -p ti-pki --target wasm32-unknown-unknown --features load
     cargo check -p ti-pkcs12 --target wasm32-unknown-unknown
@@ -509,13 +505,13 @@ fuzz-jwz seconds="30":
         [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
     done
 
-# Fuzz every ti-store parser for `seconds` each (design time; nightly and cargo-fuzz).
-# Corpora start from ti-store/fuzz/seeds and grow in ti-store/fuzz/corpus (not committed).
-fuzz-ti-store seconds="30":
+# Fuzz every ti-cli file parser for `seconds` each (design time; nightly and cargo-fuzz).
+# Corpora start from ti-cli/fuzz/seeds and grow in ti-cli/fuzz/corpus (not committed).
+fuzz-ti-cli seconds="30":
     #!/usr/bin/env bash
     set -euo pipefail
-    cd ti-store/fuzz
-    for target in record keyring record_file kek_file; do
+    cd ti-cli/fuzz
+    for target in cache_entry tsl_state comfort_id; do
         mkdir -p "corpus/$target"
         cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
             -max_total_time={{seconds}} -max_len=65536 -print_final_stats=1 2>&1 \

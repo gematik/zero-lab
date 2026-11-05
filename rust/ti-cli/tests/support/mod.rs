@@ -25,9 +25,46 @@
 
 #![allow(dead_code, reason = "each test file uses a part")]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
+
+/// What a file of the old store is seeded with: a reader would have to fail on it.
+pub const OLD_STORE_CONTENT: &[u8] = b"not a database, a keyring or a key";
+
+/// Writes the default profile's files of the sealed store, at the paths it kept them:
+/// below `state` the keyring and state, below each of `caches` the cache, below `config`
+/// the key file. The bases are what `$XDG_STATE_HOME`, `$XDG_CACHE_HOME` or `TI_CACHE_DIR`,
+/// and `$XDG_CONFIG_HOME` name.
+pub fn seed_old_store(state: &Path, caches: &[&Path], config: &Path) -> Vec<PathBuf> {
+    let profile = |base: &Path, file: &str| base.join("profiles/default").join(file);
+    let telematik = |base: &Path, file: &str| profile(&base.join("telematik"), file);
+    let mut files = vec![
+        telematik(state, "state.db"),
+        telematik(state, "keyring.bin"),
+        telematik(config, "store.kek"),
+    ];
+    for base in caches {
+        files.push(telematik(base, "cache.db"));
+        files.push(profile(base, "cache.db"));
+    }
+    for file in &files {
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, OLD_STORE_CONTENT).unwrap();
+    }
+    files
+}
+
+pub fn assert_old_store_untouched(files: &[PathBuf]) {
+    for file in files {
+        assert_eq!(
+            std::fs::read(file).unwrap(),
+            OLD_STORE_CONTENT,
+            "{}",
+            file.display()
+        );
+    }
+}
 
 fn manifest(path: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(path)

@@ -80,14 +80,8 @@ pub fn export(args: &TrustExportArgs, global: &GlobalArgs, out: &Output) -> Resu
     let config = TrustConfig::preset(env);
     config.validate(env.tier()).map_err(CliError::Trust)?;
     let session = Session::new(global, args.trust.offline, out)?;
-    session.load(&config, env.tier(), args.trust.at)?;
-    let mut material = session.trust_material(&config)?;
-    // A status says nothing about another time (TSLDET-023).
-    if args.trust.at.is_some()
-        && let Some(detached) = &mut material.detached
-    {
-        detached.signer_status = None;
-    }
+    let loaded = session.load(&config, env.tier(), args.trust.at)?;
+    let material = session.verified_set(&config, &loaded, args.trust.at)?.set;
     let label = format!("{env} {}", material.fetched_at);
     let bytes = Bundle::new(&config, label.clone(), material).to_vec();
 

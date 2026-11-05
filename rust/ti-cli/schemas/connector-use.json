@@ -1,24 +1,91 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "connector use",
-  "description": "The configuration now selected.",
-  "type": "object",
-  "properties": {
-    "schema": {
-      "const": 1,
-      "description": "The JSON contract version; fields are only added within it."
+  "description": "The configuration now selected or, without a name, the list and nothing selected.",
+  "oneOf": [
+    {
+      "description": "The configuration now selected.",
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": 1,
+          "description": "The JSON contract version; fields are only added within it."
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "name",
+        "path"
+      ],
+      "additionalProperties": false
     },
-    "name": {
-      "type": "string"
-    },
-    "path": {
-      "type": "string"
+    {
+      "description": "The .kon files in the current directory and in ~/.config/telematik/connectors.",
+      "type": "object",
+      "properties": {
+        "schema": {
+          "const": 1,
+          "description": "The JSON contract version; fields are only added within it."
+        },
+        "selected": {
+          "type": "string",
+          "description": "The configuration commands use without -c."
+        },
+        "configurations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "context": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "mandant/workplace/client system"
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Why the file cannot be used."
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "url",
+              "context",
+              "error"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "schema",
+        "selected",
+        "configurations"
+      ],
+      "additionalProperties": false
     }
-  },
-  "required": [
-    "schema",
-    "name",
-    "path"
-  ],
-  "additionalProperties": false
+  ]
 }

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "profile delete",
-  "description": "What was removed, keyring first (STORE-096).",
+  "description": "The directories removed: the profile's state, then its cache.",
   "type": "object",
   "properties": {
     "schema": {

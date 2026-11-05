@@ -239,8 +239,6 @@ fn ti(args: &[&str]) -> Output {
         .env_remove("TI_ENV")
         .env("TI_PROFILE", "default")
         .env_remove("TI_STATE_DIR")
-        .env_remove("TI_STORE_KEK_PATH")
-        .env_remove("TI_STORE_BACKEND")
         .env_remove("TI_P12_PASSWORD_PATH")
         .env_remove("TI_DIRECTORY_CLIENT_ID")
         .env_remove("TI_DIRECTORY_CLIENT_SECRET_PATH")

@@ -2,7 +2,7 @@
 id: decision-7
 title: Tokens persisted only as sealed records under a profile keyring
 date: '2026-10-15 17:46'
-status: accepted
+status: superseded
 ---
 ## Context
 
@@ -23,3 +23,7 @@ This supersedes the "no token cache" sentence of TASK-30.
 - TASK-105 adds the token consumers.
 - Rollback of the whole store file (restoring an old `state.db`) is not detected; a refresh token restored that way is still bounded by its own expiry and the server's rotation.
 - A process that holds the unwrapped keyring holds every token of its profile for its lifetime, as it would hold one fetched token.
+
+## Superseded
+
+Superseded by decision-14: the command-line tools keep no sealed store and persist no tokens.
