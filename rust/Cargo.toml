@@ -144,6 +144,13 @@ unused_async_trait_impl = "allow"
 # Release builds are what `just install` and distributed binaries use: stripped, whole
 # program optimised, aborting on panic (nothing catches one; the CLI's only panics are
 # programming errors). ti-cli shrinks from 6.2 to 3.5 MB on aarch64-apple-darwin.
+# Dependencies are built optimized in debug and test builds, the workspace's own crates are not.
+# Unoptimized, the curve and RSA arithmetic took most of the time of tests that verify many
+# signatures: ti-pki's validate_corpus ran 50 s against nextest's 60 s limit, 13.5 s with this
+# (TASK-214). Release, wasm and fuzz builds have their own settings.
+[profile.dev.package."*"]
+opt-level = 2
+
 [profile.release]
 strip = "symbols"
 lto = "fat"
