@@ -560,6 +560,19 @@ fuzz-ti-directory seconds="30":
         [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
     done
 
+# Fuzz what ti-wasm hands ti-report from a web page: certificates, the TSL, a supplied roots.json
+fuzz-ti-report seconds="30":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd ti-report/fuzz
+    for target in describe_certificate verify_tsl verify_tsl_roots; do
+        mkdir -p "corpus/$target"
+        cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
+            -max_total_time={{seconds}} -max_len=65536 -print_final_stats=1 2>&1 \
+            | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
+        [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
+    done
+
 # Fuzz every ti-connector-client parser for `seconds` each (design time; nightly and
 # cargo-fuzz). Corpora start from ti-connector-client/fuzz/seeds and grow in
 # ti-connector-client/fuzz/corpus (not committed).
