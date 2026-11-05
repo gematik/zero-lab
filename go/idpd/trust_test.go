@@ -178,6 +178,16 @@ func (idp *fakeIDP) config(trust CertificateTrust) ClientConfig {
 	}
 }
 
+// The signature says who wrote the document, not that it describes the IDP asked for.
+func TestASignedDiscoveryDocumentOfAnotherIssuerIsRefused(t *testing.T) {
+	idp := newFakeIDP(t)
+	idp.discovery = func(string) []byte { return idp.signDiscovery(t, "https://idp.other.example", idp.key) }
+	_, err := NewClientFromConfig(idp.config(&recording{}))
+	if err == nil || !strings.Contains(err.Error(), "names the issuer") {
+		t.Errorf("err = %v", err)
+	}
+}
+
 func TestIDPV001TheDiscoverySignerIsCheckedBeforeItsKeyIsUsed(t *testing.T) {
 	idp := newFakeIDP(t)
 	trust := &recording{}

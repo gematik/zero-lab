@@ -164,6 +164,12 @@ func fetchMetadata(baseURL string, httpClient *http.Client, trust CertificateTru
 		return nil, fmt.Errorf("parsing discovery document: %w", err)
 	}
 
+	// gemSpec_IDP_Dienst: the signed document names the IDP it describes. Its signature says who wrote it, not
+	// that this is the IDP asked for: another IDP's valid document must not be taken for this one.
+	if strings.TrimSuffix(metadata.Issuer, "/") != strings.TrimSuffix(baseURL, "/") {
+		return nil, fmt.Errorf("discovery document names the issuer %q, asked was %q", metadata.Issuer, baseURL)
+	}
+
 	slog.Debug("Fetched OP metadata", "metadata", metadata)
 
 	return metadata, nil

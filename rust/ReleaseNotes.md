@@ -124,6 +124,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-idpd
 
 #### changed
+- `discovery::parse` takes the `Idp` asked and refuses a signed document that names another
+  issuer.
 - `authenticator::authenticate` takes a `trust::CertificateTrust` and hands it the
   discovery document's signer and `PuK_IDP_SIG`'s certificate before anything is
   signed; a refusal is `Error::Untrusted`. `trust::Unverified` keeps the former

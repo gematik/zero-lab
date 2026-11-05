@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -49,6 +50,9 @@ type DiscoveryDocument struct {
 // could never succeed either; a single tenant's document names itself, with the tenant as its GUID, and that GUID is
 // what the configuration has to hold.
 func FetchDiscoveryDocument(issuer string, httpClient *http.Client) (*DiscoveryDocument, error) {
+	if err := requireHTTPS("issuer", issuer); err != nil {
+		return nil, err
+	}
 	// Section 4.1: a terminating / is removed before the path is appended, and stays part of the issuer.
 	location := strings.TrimSuffix(issuer, "/") + "/.well-known/openid-configuration"
 	resp, err := httpClient.Get(location)
@@ -75,6 +79,30 @@ func FetchDiscoveryDocument(issuer string, httpClient *http.Client) (*DiscoveryD
 	if doc.Issuer != issuer {
 		return nil, fmt.Errorf("%s: discovery document names the issuer %q, configured is %q", location, doc.Issuer, issuer)
 	}
+	for name, endpoint := range map[string]string{
+		"authorization_endpoint": doc.AuthorizationEndpoint,
+		"token_endpoint":         doc.TokenEndpoint,
+		"jwks_uri":               doc.JwksURI,
+		"userinfo_endpoint":      doc.UserinfoEndpoint,
+		"revocation_endpoint":    doc.RevocationEndpoint,
+	} {
+		if endpoint == "" {
+			continue
+		}
+		if err := requireHTTPS(name, endpoint); err != nil {
+			return nil, fmt.Errorf("%s: %w", location, err)
+		}
+	}
 
 	return &doc, nil
+}
+
+// requireHTTPS refuses anything but an https URL (OpenID Connect Discovery 1.0 section 3): a code, a token or
+// the keys that verify an ID token must not travel without TLS.
+func requireHTTPS(name, raw string) error {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return fmt.Errorf("%s must be an https URL, is %q", name, raw)
+	}
+	return nil
 }

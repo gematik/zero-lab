@@ -44,6 +44,32 @@ type opStub struct {
 	idToken string
 }
 
+// OpenID Connect Discovery 1.0 section 3: every location in the document is https.
+func TestDiscovery_RefusesAnythingButHTTPS(t *testing.T) {
+	if _, err := FetchDiscoveryDocument("http://op.example", http.DefaultClient); err == nil || !strings.Contains(err.Error(), "issuer must be an https URL") {
+		t.Errorf("an http issuer: %v", err)
+	}
+	for _, field := range []string{"authorization_endpoint", "token_endpoint", "jwks_uri", "userinfo_endpoint", "revocation_endpoint"} {
+		t.Run(field, func(t *testing.T) {
+			var server *httptest.Server
+			server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_ = json.NewEncoder(w).Encode(map[string]string{
+					"issuer":                 server.URL,
+					"authorization_endpoint": server.URL + "/a",
+					"token_endpoint":         server.URL + "/t",
+					"jwks_uri":               server.URL + "/j",
+					field:                    "http://op.example/plain",
+				})
+			}))
+			defer server.Close()
+			_, err := FetchDiscoveryDocument(server.URL, server.Client())
+			if err == nil || !strings.Contains(err.Error(), field+" must be an https URL") {
+				t.Errorf("err = %v", err)
+			}
+		})
+	}
+}
+
 func newOPStub(t *testing.T) *opStub {
 	t.Helper()
 	stub := &opStub{key: newECKey(t, elliptic.P256())}
@@ -63,7 +89,7 @@ func newOPStub(t *testing.T) *opStub {
 	mux.HandleFunc("POST /token", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "at", "token_type": "Bearer", "id_token": stub.idToken})
 	})
-	stub.Server = httptest.NewServer(mux)
+	stub.Server = httptest.NewTLSServer(mux)
 	t.Cleanup(stub.Close)
 	return stub
 }
@@ -145,7 +171,7 @@ func TestNewClientFailsWhenTheKeySetCannotBeFetched(t *testing.T) {
 	mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(DiscoveryDocument{Issuer: server.URL, JwksURI: server.URL + "/missing"})
 	})
-	server = httptest.NewServer(mux)
+	server = httptest.NewTLSServer(mux)
 	defer server.Close()
 	_, err := NewClient(Config{Issuer: server.URL, HTTPClient: server.Client()})
 	if err == nil || !strings.Contains(err.Error(), "failed to fetch signing keys") {
@@ -169,7 +195,7 @@ func serveDiscovery(t *testing.T, status int, doc func(base string) DiscoveryDoc
 	t.Helper()
 	var server *httptest.Server
 	keys := jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: newECKey(t, elliptic.P256()).Public(), KeyID: "k"}}}
-	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasSuffix(r.URL.Path, "/.well-known/openid-configuration") {
 			_ = json.NewEncoder(w).Encode(keys)
 			return
@@ -226,7 +252,7 @@ func TestDiscoveryAFailureStatusIsRefusedHoweverItsBodyReads(t *testing.T) {
 func TestDiscovery4_1_AnIssuerWithATrailingSlashIsFetchedWithoutItAndComparedWithIt(t *testing.T) {
 	var server *httptest.Server
 	keys := jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: newECKey(t, elliptic.P256()).Public(), KeyID: "k"}}}
-	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/.well-known/openid-configuration":
 			_ = json.NewEncoder(w).Encode(DiscoveryDocument{Issuer: server.URL + "/", JwksURI: server.URL + "/jwks"})
@@ -248,7 +274,7 @@ func TestDiscovery4_1_AnIssuerWithATrailingSlashIsFetchedWithoutItAndComparedWit
 
 func TestDiscoveryReadsNoMoreThanItsBound(t *testing.T) {
 	var server *httptest.Server
-	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprintf(w, `{"issuer":%q,"jwks_uri":%q,"padding":"`, server.URL, server.URL+"/jwks")
 		for range maxResponseBytes / 1024 {
 			_, _ = w.Write(make([]byte, 1024))
@@ -305,7 +331,7 @@ func TestALoginLogsNoSecretAtDebug(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": token, "refresh_token": refresh, "token_type": "Bearer", "id_token": stub.idToken})
 	})
-	stub.Server = httptest.NewServer(mux)
+	stub.Server = httptest.NewTLSServer(mux)
 	defer stub.Close()
 
 	logs := captureDebugLogs(t)

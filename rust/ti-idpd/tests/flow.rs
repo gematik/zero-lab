@@ -434,6 +434,7 @@ fn the_signed_challenge_nests_the_challenge_under_the_card_certificate() {
     // An ES256 signer (ePA's) is not what the IDP accepts for the challenge.
     let es256 = jwz_brainpool::BrainpoolEs256Key::generate(backend().as_ref().rng()).unwrap();
     let metadata = discovery::parse(
+        &Idp::new("https://idp.test"),
         &idp.send(&discovery::request(&Idp::new("https://idp.test")))
             .unwrap(),
         NOW,
@@ -541,8 +542,23 @@ fn a_challenge_that_does_not_verify_or_has_expired_is_refused() {
         );
     }
 
+    // A signed document of another IDP is not the one asked for.
+    let idp = FakeIdp::new(Behaviour::Normal);
+    let error = discovery::parse(
+        &Idp::new("https://idp.other"),
+        &idp.send(&discovery::request(&Idp::new("https://idp.test")))
+            .unwrap(),
+        NOW,
+    )
+    .unwrap_err();
+    assert!(
+        error.to_string().contains("names the issuer"),
+        "another IDP's document was taken: {error}"
+    );
+
     let idp = FakeIdp::new(Behaviour::DiscoveryWithoutX5c);
     let error = discovery::parse(
+        &Idp::new("https://idp.test"),
         &idp.send(&discovery::request(&Idp::new("https://idp.test")))
             .unwrap(),
         NOW,
