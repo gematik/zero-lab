@@ -92,10 +92,13 @@ pub fn verify_tsl(
     let env = parse_env(env)?;
     let now = parse_now(now)?;
     let config = config_for(env, grace_seconds)?;
+    // TSLDET-005: the list verifies by its detached signature; TSLDET-020: a supplied
+    // status is verified like a queried one and replaces the query.
     let files = DetachedTsl {
         signature,
         signer_status,
     };
+    // ROOTS-002: supplied roots count as far as the walk from the anchor takes them.
     Ok(to_json(&tsl_view(
         xml, files, env, &config, roots_json, now,
     )))
@@ -135,6 +138,7 @@ impl Context {
         let env = parse_env(env)?;
         let now = parse_now(now)?;
         let config = config_for(env, grace_seconds)?;
+        // ROOTS-002: supplied roots count as far as the walk from the anchor takes them.
         Ok(Context(CheckContext::new(
             env, config, roots_json, xml, signature, now,
         )))
@@ -159,6 +163,7 @@ impl Context {
 
 fn config_for(env: Env, grace_seconds: u32) -> Result<TrustConfig, String> {
     let grace = Duration::from_secs(u64::from(grace_seconds));
+    // TSLSIG-054: at most 30 days past NextUpdate.
     if grace > MAX_TSL_GRACE_PERIOD {
         return Err(format!(
             "grace period {grace_seconds} s exceeds {} s",
@@ -167,6 +172,7 @@ fn config_for(env: Env, grace_seconds: u32) -> Result<TrustConfig, String> {
     }
     let config = TrustConfig {
         tsl_grace_period: grace,
+        // The environment's pinned TSL signer CA (TSLSIG-030).
         ..TrustConfig::preset(env)
     };
     config

@@ -184,7 +184,7 @@ fn invalid_list_checks_nothing() {
 }
 
 #[test]
-fn supplied_roots_fall_back_to_embedded() {
+fn roots_002_supplied_roots_fall_back_to_embedded() {
     let nonprod = manifest("../ti-pki/src/roots-nonprod.json");
     let ctx = Context::new(&tsl("prod"), &sig("prod"), "prod", NOW, Some(&nonprod), 0).unwrap();
     let state: Value = serde_json::from_str(&ctx.tsl()).unwrap();

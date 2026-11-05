@@ -85,7 +85,7 @@ fn root_names(view: &Value) -> Vec<&str> {
 
 /// TSLDET-020: with the status supplied, the view has no `no_ocsp_check` warning.
 #[test]
-fn verify_tsl_with_a_supplied_status() {
+fn tsldet_020_verify_tsl_with_a_supplied_status() {
     let json = api::verify_tsl(
         &set_file("ref", "xml"),
         &set_file("ref", "sig"),
@@ -201,7 +201,7 @@ fn test_list_for_test_and_reference() {
 }
 
 #[test]
-fn lists_of_the_other_tier_are_invalid() {
+fn tslsig_030_lists_of_the_other_tier_are_invalid() {
     for (tsl, env) in [("test", "prod"), ("prod", "test")] {
         let v = view(tsl, env, NOW, None, 0);
         assert_eq!(v["result"], "invalid");
@@ -215,7 +215,7 @@ fn lists_of_the_other_tier_are_invalid() {
 }
 
 #[test]
-fn a_flipped_byte_breaks_the_signature() {
+fn tsldet_005_a_flipped_byte_breaks_the_signature() {
     let mut xml = set_file("prod", "xml");
     let at = xml
         .windows(b"gematik GmbH".len())
@@ -228,7 +228,7 @@ fn a_flipped_byte_breaks_the_signature() {
 }
 
 #[test]
-fn grace_period_past_next_update() {
+fn tslsig_054_grace_period_past_next_update() {
     // The PU list's NextUpdate is 2026-11-27T00:00:07Z.
     let after = "2026-11-28T00:00:00Z";
     let v = view("prod", "prod", after, None, 0);
@@ -240,7 +240,7 @@ fn grace_period_past_next_update() {
 }
 
 #[test]
-fn supplied_roots_cannot_add_test_roots_to_production() {
+fn roots_002_supplied_roots_cannot_add_test_roots_to_production() {
     let nonprod = std::fs::read(
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../ti-pki/src/roots-nonprod.json"),
     )
