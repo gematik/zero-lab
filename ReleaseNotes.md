@@ -1,5 +1,28 @@
 # Release Notes
 
+# Release go/pkcs12 v1.0.0-rc.2
+
+### changes
+- One decode spends at most 10,000,000 iterations on key derivation, all its derivations
+  together: the MAC and each PBKDF2 once, each PKCS#12 PBE twice (key and IV), checked before each
+  derivation (spec/pkcs12 P12-036, TASK-158). A crafted file of many bags no longer costs
+  10,000,000 iterations per bag; it fails with `ErrLimitExceeded`. Both `pkcs12.Decode` and
+  `legacy.Decode` keep one budget per call, and `VerifyMAC` one of its own. Producers use at most
+  102,400 per count, so ordinary files are far below the budget.
+
+### verified
+- `just check` across all Go modules passed on ee1439e, which holds this change; `api-lint` was
+  skipped without `GEMATIK_API_TOOLS_DIR`.
+- `spec/pkcs12/interop/run.sh` on 2026-11-05, OpenSSL 4.1.0: `pkcs12.Decode` 29 of 29,
+  `legacy.Decode` and `ti-pkcs12` 57 of 57, all compared in full. OpenSSL, pyca/cryptography 50.0.2
+  and the JDK decode the new over-budget case, as they have no such budget.
+- The development guide lists no gated suite as required for `pkcs12`.
+
+### known limits
+- `PFX`, `ContentInfo`, `MacData` and `DigestInfo` are aliases of an internal package, and their
+  identifiers stay `asn1.ObjectIdentifier`.
+- Keys and passwords are not wiped from memory, unlike `ti-pkcs12`.
+
 # Release go/kv v0.1.0
 
 ### breaking
