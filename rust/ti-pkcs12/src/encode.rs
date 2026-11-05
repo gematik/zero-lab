@@ -23,7 +23,7 @@
 
 //! Writing PKCS#12 the way OpenSSL 3 does by default: certificates in a PBES2-encrypted
 //! safe, keys in shrouded key bags, both PBKDF2-HMAC-SHA-256 with AES-256-CBC, and an
-//! HMAC-SHA-256 MAC. Files written so need no `-legacy` anywhere.
+//! HMAC-SHA-256 MAC. Files written so need no `-legacy` anywhere (P12-054).
 
 use der::asn1::{Any, BmpString, ObjectIdentifier, OctetString, SetOfVec};
 use der::{Encode, Sequence};
@@ -35,7 +35,7 @@ use crate::asn1::{Attribute, DigestInfo, MacData};
 use crate::kdf::{self, Purpose};
 use crate::{CertificateBag, Error, Pkcs12, oids};
 
-/// PBKDF2 and MAC iterations, OpenSSL 3's default.
+/// PBKDF2 and MAC iterations, OpenSSL 3's default and P12-051's minimum.
 pub const ITERATIONS: u32 = 2048;
 
 const SALT_LEN: usize = 16;
@@ -54,6 +54,7 @@ pub fn encode(
     password: &str,
     mut fill_random: impl FnMut(&mut [u8]),
 ) -> Result<Vec<u8>, Error> {
+    // P12-051: a fresh salt and IV for every encryption.
     let mut encrypt = |plaintext: &[u8]| -> Result<(AlgorithmIdentifierOwned, Vec<u8>), Error> {
         let mut salt = [0u8; SALT_LEN];
         let mut iv = [0u8; 16];
@@ -109,6 +110,8 @@ pub fn encode(
     }
     let auth_safe = safes.to_der()?;
 
+    // P12-052: HMAC-SHA-256 over the authSafe octets with a fresh salt, the digest
+    // named with NULL parameters.
     let mut mac_salt = [0u8; MAC_SALT_LEN];
     fill_random(&mut mac_salt);
     let mac_key = kdf::derive::<Sha256>(
@@ -160,6 +163,7 @@ fn cert_bag(cert: &CertificateBag) -> Result<SafeBagOut, Error> {
     })
 }
 
+/// P12-053: friendlyName as a BMPString, localKeyId as an OCTET STRING.
 fn attributes(
     friendly_name: Option<&str>,
     local_key_id: Option<&[u8]>,
@@ -188,7 +192,7 @@ fn attributes(
 }
 
 /// The DER-only counterparts of the structures in `asn1`, which decode BER by hand and
-/// therefore have no encoders.
+/// therefore have no encoders. P12-050: DER, every SET OF a `SetOfVec` in DER order.
 #[derive(Sequence)]
 struct PfxOut {
     version: u8,
@@ -255,7 +259,8 @@ mod tests {
     }
 
     /// A Java truststore: OpenSSL's `-jdktrust` attributes decode, and encoding writes them
-    /// back unchanged, so a truststore written here reads as OpenSSL's does.
+    /// back unchanged, so a truststore written here reads as OpenSSL's does. Interoperability
+    /// with Java, no rule of spec/pkcs12.
     #[test]
     fn truststore_attributes_round_trip() {
         let fixture = std::fs::read(concat!(
@@ -284,15 +289,18 @@ mod tests {
         );
     }
 
+    /// What `encode` writes decodes to the same certificates, keys and pairs, with PBES2
+    /// AES-256-CBC and an HMAC-SHA-256 MAC (P12-052).
     #[test]
-    fn round_trips_through_decode() {
+    fn p12_051_round_trips_through_decode() {
         round_trip("modern.p12");
     }
 
-    /// A legacy file, read only with the legacy feature, is written back with modern encryption.
+    /// A legacy file, read only with the legacy feature, is written back with modern
+    /// encryption (P12-051, P12-052).
     #[cfg(feature = "legacy")]
     #[test]
-    fn a_legacy_file_is_written_back_modern() {
+    fn p12_054_a_legacy_file_is_written_back_modern() {
         round_trip("legacy.p12");
     }
 

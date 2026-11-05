@@ -162,6 +162,7 @@ fn password(file: &Path) -> String {
     }
 }
 
+/// The fixtures are pinned: a test of the test data, no rule.
 #[test]
 fn fixtures_are_the_go_ones() {
     for (name, expected) in FIXTURES {
@@ -170,6 +171,8 @@ fn fixtures_are_the_go_ones() {
     }
 }
 
+/// Interoperability with `go/pkcs12`: every fixture yields what Go's decoder reports.
+/// Covers the bag rules (P12-040 to P12-046) as a whole, not each rule.
 #[test]
 fn decodes_like_go() {
     let baseline: Value =
@@ -261,8 +264,10 @@ fn decodes_like_go() {
     }
 }
 
+/// A wrong password fails the MAC; without a MAC (P12-015) only the padding check of
+/// P12-034 notices it.
 #[test]
-fn wrong_passwords_are_told_apart_from_broken_files() {
+fn p12_010_wrong_passwords_are_told_apart_from_broken_files() {
     let read = |name: &str| std::fs::read(fixtures().join(name)).unwrap();
     assert!(matches!(
         decode(&read("modern.p12"), "wrong"),
@@ -279,6 +284,7 @@ fn wrong_passwords_are_told_apart_from_broken_files() {
     ));
 }
 
+/// What a file is protected with is reported: an API property, no rule.
 #[test]
 fn reports_mac_and_encryption() {
     let read = |name: &str| std::fs::read(fixtures().join(name)).unwrap();
@@ -319,10 +325,10 @@ fn reports_mac_and_encryption() {
 
 /// The attributes of the BER vendor files as `openssl pkcs12 -info -legacy` shows them
 /// in the originals: the key and its certificate share a `localKeyId` and a name, the
-/// CA certificate in `cgm.p12` has none.
+/// CA certificate in `cgm.p12` has none. Also P12-002 (BER) and P12-045 (pairs).
 #[cfg(feature = "legacy")]
 #[test]
-fn ber_files_keep_their_attributes() {
+fn p12_044_ber_files_keep_their_attributes() {
     for (name, friendly_name, local_key_id, scalar) in [
         (
             "cgm",
@@ -364,7 +370,8 @@ fn ber_files_keep_their_attributes() {
 const SECUNET_SCALAR: &str = "5605847b0310c128044501cbe9fb1ac4c421571097d0b4c12a0439628fca4137";
 
 /// Without the legacy feature, a file encrypted with an RFC 7292 Appendix C PBE is refused for its
-/// algorithm, never read or taken for a wrong password.
+/// algorithm, never read or taken for a wrong password. A property of the crate's
+/// features: the spec's `modern` profile still reads pbeWithSHAAnd3-KeyTripleDES-CBC.
 #[cfg(not(feature = "legacy"))]
 #[test]
 fn without_legacy_an_appendix_c_pbe_is_unsupported() {

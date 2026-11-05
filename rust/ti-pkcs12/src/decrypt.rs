@@ -22,7 +22,7 @@
  */
 
 //! Decryption of shrouded key bags and encrypted safes: PBES2, and with the `legacy`
-//! feature the PKCS#12 PBEs of RFC 7292 Appendix C.
+//! feature the PKCS#12 PBEs of RFC 7292 Appendix C (P12-033).
 
 use spki::AlgorithmIdentifierOwned;
 use zeroize::Zeroizing;

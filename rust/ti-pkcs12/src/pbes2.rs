@@ -110,6 +110,8 @@ enum Cipher {
 }
 
 impl Cipher {
+    /// P12-031: AES-CBC, with the `legacy` feature DES-EDE3-CBC; any other cipher is
+    /// unsupported.
     fn of(oid: ObjectIdentifier) -> Result<Self, Error> {
         match oid {
             oids::AES_128_CBC => Ok(Cipher::Aes128),
@@ -182,6 +184,7 @@ pub(crate) fn decrypt(
     let kdf: Pbkdf2Params = reparse(kdf_parameters)?;
     let prf = Prf::of(kdf.prf.as_ref())?;
     let cipher = Cipher::of(params.cipher.oid)?;
+    // P12-032: a keyLength other than the cipher's key size is malformed.
     if kdf
         .key_length
         .is_some_and(|len| usize::try_from(len) != Ok(cipher.key_size()))
@@ -199,6 +202,7 @@ pub(crate) fn decrypt(
         .ok_or_else(|| Error::malformed("PBES2 IV", "missing"))?;
     let iv: OctetString = reparse(iv_parameter)?;
     let mut key = Zeroizing::new(vec![0u8; cipher.key_size()]);
+    // P12-021: PBKDF2 takes the password's octets unchanged, without terminator.
     prf.derive(
         password.as_bytes(),
         kdf.salt.as_bytes(),

@@ -352,7 +352,7 @@ pub struct Pair {
 
 impl Pkcs12 {
     /// The certificates that have their private key in the file, matched by
-    /// `localKeyId`, the attribute PKCS#12 writers set for exactly this.
+    /// `localKeyId`, the attribute PKCS#12 writers set for exactly this (P12-045).
     pub fn pairs(&self) -> Vec<Pair> {
         self.certificates
             .iter()
@@ -397,12 +397,13 @@ pub fn decode(bytes: &[u8], password: &str) -> Result<Pkcs12, Error> {
     if !is_pkcs12(bytes) {
         return Err(Error::malformed("PFX", "not a PKCS#12 file"));
     }
+    // P12-001: a PFX of version 3, else malformed.
     let pfx = Pfx::from_ber(bytes)?;
     if pfx.version != 3 {
         return Err(Error::malformed("PFX", format!("version {}", pfx.version)));
     }
     if pfx.auth_safe.content_type != oids::DATA {
-        // A signed auth safe: public-key integrity mode.
+        // P12-016: a signed auth safe, the public-key integrity mode.
         return Err(Error::UnsupportedAlgorithm(pfx.auth_safe.content_type));
     }
     let Content::Data(auth_safe) = &pfx.auth_safe.content else {
@@ -410,6 +411,8 @@ pub fn decode(bytes: &[u8], password: &str) -> Result<Pkcs12, Error> {
     };
 
     let mut p12 = Pkcs12::default();
+    // P12-010: the MAC is verified before anything inside the authSafe is parsed;
+    // P12-015: a file without one is read, and reports no MAC.
     if let Some(mac_data) = &pfx.mac_data {
         mac::verify(
             mac_data,
@@ -439,7 +442,7 @@ pub fn decode(bytes: &[u8], password: &str) -> Result<Pkcs12, Error> {
                     &mut budget,
                 )?
             }
-            // Enveloped safes (public-key privacy mode) need the recipient's key.
+            // P12-035: enveloped safes (public-key privacy mode) need the recipient's key.
             Content::Other => return Err(Error::UnsupportedAlgorithm(safe.content_type)),
         };
         collect(
@@ -463,6 +466,7 @@ fn collect(
         match bag.id {
             oids::CERT_BAG => {
                 let cert: CertBag = reparse(&bag.value)?;
+                // P12-040: X.509 certificates only, their octets unchanged.
                 if cert.cert_id != oids::X509_CERTIFICATE {
                     return Err(Error::UnsupportedAlgorithm(cert.cert_id));
                 }
@@ -473,6 +477,7 @@ fn collect(
                     trusted_key_usage,
                 });
             }
+            // P12-041: the PrivateKeyInfo octets, decrypted or as they are.
             oids::SHROUDED_KEY_BAG => {
                 let shrouded: EncryptedPrivateKeyInfo = reparse(&bag.value)?;
                 p12.encryption.push(Encryption {
@@ -498,10 +503,11 @@ fn collect(
                     local_key_id,
                 });
             }
+            // P12-042: nested safe contents are decoded recursively.
             oids::SAFE_CONTENTS_BAG => {
                 collect(&reparse::<Vec<SafeBag>>(&bag.value)?, password, p12, budget)?;
             }
-            // CRL, secret and unknown bags carry nothing an identity needs.
+            // P12-043: CRL, secret and unknown bags carry nothing an identity needs.
             _ => {}
         }
     }
@@ -509,7 +515,7 @@ fn collect(
 }
 
 /// `friendlyName` (a BMPString), `localKeyId` (an OCTET STRING) and the trusted key usage
-/// (an OBJECT IDENTIFIER) of a bag.
+/// (an OBJECT IDENTIFIER) of a bag; other attributes are ignored (P12-044).
 fn attributes(bag: &SafeBag) -> (Option<String>, Option<Vec<u8>>, Option<ObjectIdentifier>) {
     let mut friendly_name = None;
     let mut local_key_id = None;

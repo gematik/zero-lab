@@ -21,7 +21,7 @@
  * find details in the "Readme" file.
  */
 
-//! The RFC 7292 structures, decoded with `der` in BER mode. Owned types throughout:
+//! The RFC 7292 structures, decoded with `der` in BER mode (P12-002). Owned types throughout:
 //! indefinite lengths and constructed strings leave no contiguous value to borrow.
 
 use der::asn1::{Any, ContextSpecific, ObjectIdentifier, OctetString, SetOfVec};
@@ -54,7 +54,7 @@ impl<'a> Decode<'a> for Pfx {
 
 /// `ContentInfo` (RFC 2315 §7) with its content decoded by type. Hand-written: under
 /// BER, [`Any`] reports a constructed OCTET STRING as primitive with its segment headers
-/// as the value, which would change the octets the MAC covers.
+/// as the value, which would change the octets the MAC covers (P12-011).
 #[derive(Clone, Debug)]
 pub(crate) struct ContentInfo {
     pub content_type: ObjectIdentifier,
@@ -113,6 +113,7 @@ pub(crate) struct MacData {
     pub iterations: u32,
 }
 
+/// P12-013: absent iterations mean 1.
 fn one() -> u32 {
     1
 }
@@ -165,7 +166,7 @@ pub(crate) struct PbeParams {
 
 /// The `EncryptedData` of an encrypted safe (RFC 5652 §8): the algorithm and the
 /// ciphertext. Hand-written, because BER writers may put the `[0] IMPLICIT OCTET
-/// STRING` in its constructed form, which the derived decoder does not accept.
+/// STRING` in its constructed form, which the derived decoder does not accept (P12-005).
 #[derive(Clone, Debug)]
 pub(crate) struct EncryptedData {
     pub algorithm: AlgorithmIdentifierOwned,

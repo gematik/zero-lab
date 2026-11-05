@@ -48,6 +48,7 @@ pub(crate) fn verify(
         oids::SHA256 => check::<Sha256>,
         oids::SHA384 => check::<Sha384>,
         oids::SHA512 => check::<Sha512>,
+        // P12-012: any other MAC algorithm, PBMAC1 included, is unsupported.
         _ => return Err(Error::UnsupportedAlgorithm(oid)),
     };
     budget.spend("MAC", mac_data.iterations, 1)?;
@@ -83,7 +84,7 @@ fn check<D: Digest + BlockSizeUser + Clone>(
     content: &[u8],
     expected: &[u8],
 ) -> bool {
-    // The MAC key is as long as the digest (RFC 7292 B.4).
+    // P12-013: the MAC key is as long as the digest (RFC 7292 B.4).
     let key = kdf::derive::<D>(
         password,
         salt,
@@ -95,6 +96,7 @@ fn check<D: Digest + BlockSizeUser + Clone>(
         return false;
     };
     mac.update(content);
+    // P12-014: `verify_slice` compares in constant time.
     mac.verify_slice(expected).is_ok()
 }
 

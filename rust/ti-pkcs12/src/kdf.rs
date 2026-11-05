@@ -43,7 +43,7 @@ pub(crate) enum Purpose {
 
 /// The password as RFC 7292 B.1 feeds it to the KDF: UTF-16 big-endian with a
 /// two-byte terminator. An empty password is the terminator alone, as OpenSSL writes
-/// it.
+/// it (P12-020).
 pub(crate) fn bmp_password(password: &str) -> Zeroizing<Vec<u8>> {
     let mut out = Zeroizing::new(Vec::with_capacity(2 * password.len() + 2));
     for unit in password.encode_utf16() {
@@ -107,17 +107,18 @@ mod tests {
 
     use super::*;
 
+    /// The KDF's password encoding, the empty password included.
     #[test]
-    fn passwords_are_utf16_be_with_a_terminator() {
+    fn p12_020_passwords_are_utf16_be_with_a_terminator() {
         assert_eq!(*bmp_password("00"), [0, 0x30, 0, 0x30, 0, 0]);
         assert_eq!(*bmp_password(""), [0, 0]);
         assert_eq!(*bmp_password("ä"), [0, 0xe4, 0, 0]);
     }
 
     /// RFC 7292 has no test vectors; these are the ones Bouncy Castle's PKCS12 tests
-    /// and other implementations share.
+    /// and other implementations share, for the key and the IV (RFC 7292 Appendix B.3).
     #[test]
-    fn derivation_matches_the_shared_vectors() {
+    fn rfc_7292_appendix_b_2_derivation_matches_the_shared_vectors() {
         // password "smeg", salt 0A58CF64530D823F, 1 iteration, SHA-1.
         let password = bmp_password("smeg");
         let salt = [0x0a, 0x58, 0xcf, 0x64, 0x53, 0x0d, 0x82, 0x3f];
