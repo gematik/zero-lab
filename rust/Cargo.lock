@@ -1783,6 +1783,7 @@ dependencies = [
  "const-oid",
  "pem-rfc7468",
  "serde",
+ "serde_json",
  "sha2",
  "ti-pki",
 ]

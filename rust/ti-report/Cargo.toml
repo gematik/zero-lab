@@ -20,5 +20,9 @@ pem-rfc7468 = { workspace = true, features = ["alloc"] }
 serde.workspace = true
 sha2.workspace = true
 
+[dev-dependencies]
+# The reports are held to the published JSON schemas.
+serde_json.workspace = true
+
 [lints]
 workspace = true

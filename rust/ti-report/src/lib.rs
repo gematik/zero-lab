@@ -78,7 +78,8 @@ pub fn pem(der: &[u8]) -> String {
         .expect("base64 of a certificate held in memory cannot fail")
 }
 
-/// `valid`, `expired` or `not_yet_valid` at `now`.
+/// `valid`, `expired` or `not_yet_valid` at `now`; both bounds are inside the period
+/// (RFC 5280 §4.1.2.5: notBefore through notAfter, inclusive).
 pub fn validity(cert: &Certificate, now: Timestamp) -> &'static str {
     if now < cert.not_before() {
         "not_yet_valid"
