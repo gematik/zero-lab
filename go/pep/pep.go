@@ -54,6 +54,9 @@ type PEP struct {
 	// DPoP proof's htu is checked against it plus the request path (RFC 9449 Section 4.3).
 	publicOrigin string
 	dpopVerifier *dpop.Verifier
+	// dpopNonceVerifier checks proofs for the enforcers that require a nonce; nil without a nonce source.
+	dpopNonceVerifier *dpop.Verifier
+	dpopNonces        dpop.NonceSource
 }
 
 // Builder configures a PEP. An option that fails records its error for Build to return.
@@ -61,6 +64,7 @@ type Builder struct {
 	p          *PEP
 	err        error
 	dpopReplay dpop.ReplayCache
+	dpopNonces dpop.NonceSource
 }
 
 // NewBuilder starts a Builder with no JWK set source, which Build requires.
@@ -106,6 +110,13 @@ func (b *Builder) Build() (*PEP, error) {
 		return nil, fmt.Errorf("dpop verifier: %w", err)
 	}
 	b.p.dpopVerifier = verifier
+	if b.dpopNonces != nil {
+		nonced, err := dpop.NewVerifier(dpop.Config{Replay: b.dpopReplay, Nonces: b.dpopNonces})
+		if err != nil {
+			return nil, fmt.Errorf("dpop verifier with nonces: %w", err)
+		}
+		b.p.dpopNonceVerifier, b.p.dpopNonces = nonced, b.dpopNonces
+	}
 	return b.p, nil
 }
 
@@ -150,6 +161,14 @@ func (b *Builder) WithJWKSetPath(path string) *Builder {
 	}
 
 	return b.WithJWKSet(jwks)
+}
+
+// WithDPoPNonces sets where the resource server's nonces come from (RFC 9449 Section 9), for the
+// authorization_dpop enforcers that require one. Replicas behind one origin need a source whose nonces
+// all of them accept, such as a nonce.Source over keys they share.
+func (b *Builder) WithDPoPNonces(source dpop.NonceSource) *Builder {
+	b.dpopNonces = source
+	return b
 }
 
 // WithDPoPReplayCache sets where accepted DPoP proofs are remembered. A host running several replicas supplies
@@ -211,6 +230,9 @@ func (p *PEP) deny(ctx Context, err Error) {
 	slog.Debug("Request denied", "method", r.Method, "path", r.URL.Path)
 	if err.WWWAuthenticate != "" {
 		w.Header().Set("WWW-Authenticate", err.WWWAuthenticate)
+	}
+	if err.DPoPNonce != "" {
+		handOutNonce(w, err.DPoPNonce)
 	}
 	// A request without credentials gets the challenge alone: no error code, so no error body
 	// (RFC 6750 Section 3.1, RFC 9449 Figure 15).
@@ -320,7 +342,7 @@ func (c *pepContext) verifyAuthorizationBearer() error {
 // the DPoP-scheme credentials, the access token, and the proof for this request's method and URI,
 // with ath and the key binding to the token's cnf.jkt. The URI is the configured public origin
 // plus the request path, never one built from the client's Host or X-Forwarded-* headers.
-func (c *pepContext) verifyAuthorizationDPoP() error {
+func (c *pepContext) verifyAuthorizationDPoP(nonceRequired bool) error {
 	if c.pep.publicOrigin == "" {
 		return errors.New("DPoP needs the resource's public origin: set PublicOrigin or Resource")
 	}
@@ -333,7 +355,14 @@ func (c *pepContext) verifyAuthorizationDPoP() error {
 	}
 	// An unbound token has no cnf.jkt; the verifier refuses it as invalid_token.
 	jkt := c.accessToken.Thumbprint()
-	proof, err := c.pep.dpopVerifier.Verify(c.request.Header, dpop.Request{
+	verifier := c.pep.dpopVerifier
+	if nonceRequired {
+		if c.pep.dpopNonceVerifier == nil {
+			return errNoNonceSource
+		}
+		verifier = c.pep.dpopNonceVerifier
+	}
+	proof, err := verifier.Verify(c.request.Header, dpop.Request{
 		Method:      c.request.Method,
 		URI:         c.pep.publicOrigin + c.request.URL.EscapedPath(),
 		AccessToken: accessToken,
@@ -343,7 +372,31 @@ func (c *pepContext) verifyAuthorizationDPoP() error {
 		return err
 	}
 	c.dpop = proof
+	// Section 8.2: the next nonce rides on the successful response too, so the client need not be refused
+	// once the current one expires.
+	if nonceRequired {
+		if next, err := c.pep.dpopNonces.Fresh(); err == nil {
+			handOutNonce(c.writer, next)
+		} else {
+			c.Slogger().Warn("No DPoP nonce for the response", "error", err)
+		}
+	}
 	return nil
+}
+
+// errNoNonceSource refuses a request an enforcer requires a nonce for when the PEP has no nonce source:
+// refusing beats checking proofs without the nonce.
+var errNoNonceSource = Error{
+	HTTPStatus:  http.StatusInternalServerError,
+	Code:        "internal_error",
+	Description: "DPoP nonces are not configured",
+}
+
+// handOutNonce sends nonce for the client's next proof (RFC 9449 Section 8.2), readable by scripts of
+// another origin.
+func handOutNonce(w http.ResponseWriter, nonce string) {
+	dpop.SetNonce(w, nonce)
+	w.Header().Add("Access-Control-Expose-Headers", "DPoP-Nonce")
 }
 
 // dpopDenial is the pep Error for a DPoP refusal: the status RFC 6750 Section 3.1 gives the
@@ -358,6 +411,7 @@ func (p *PEP) dpopDenial(e *dpop.Error) Error {
 		Code:            e.Code,
 		Description:     e.Description,
 		WWWAuthenticate: p.dpopVerifier.Challenge(e),
+		DPoPNonce:       e.Nonce,
 	}
 }
 

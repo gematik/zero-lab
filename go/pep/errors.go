@@ -32,6 +32,8 @@ type Error struct {
 	URI         string `json:"error_uri,omitempty"`
 	// WWWAuthenticate is the challenge to send with the denial, if any (RFC 9449 Section 7.1).
 	WWWAuthenticate string `json:"-"`
+	// DPoPNonce is the nonce the client's next proof has to carry, if any (RFC 9449 Section 9).
+	DPoPNonce string `json:"-"`
 }
 
 func (e Error) Error() string {

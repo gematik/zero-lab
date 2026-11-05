@@ -28,6 +28,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig"
@@ -35,6 +36,8 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
+	"github.com/gematik/zero-lab/go/kv"
+	"github.com/gematik/zero-lab/go/nonce"
 	"github.com/gematik/zero-lab/go/pep"
 )
 
@@ -51,6 +54,10 @@ type App struct {
 	// PublicOrigin is the scheme, host and port clients reach this server at; DPoP proofs' htu are checked
 	// against it plus the request path (RFC 9449 Section 4.3). Defaults to the origin of Resource.
 	PublicOrigin string `json:"public_origin"`
+	// DPoPNonceKeyringPath names the kv keyring (kv.LoadKeyring) the DPoP nonces of nonce_required are sealed
+	// under. Every replica behind one origin needs the same keyring to accept the others' nonces (RFC 9449
+	// Section 9); without one, a key of this process alone, enough for a single replica.
+	DPoPNonceKeyringPath string `json:"dpop_nonce_keyring_path"`
 
 	logger *slog.Logger
 	pep    *pep.PEP
@@ -67,11 +74,15 @@ func (App) CaddyModule() caddy.ModuleInfo {
 // Start builds the PEP from the app's configuration; Caddy does not start if that fails.
 func (a *App) Start() error {
 	a.logger.Info("Starting Zero app")
-	var err error
+	nonces, err := a.dpopNonces()
+	if err != nil {
+		return fmt.Errorf("DPoP nonces: %w", err)
+	}
 	a.pep, err = pep.NewBuilder().
 		Resource(a.Resource).
 		PublicOrigin(a.PublicOrigin).
 		WithJWKSetPath(a.JWKSPath).
+		WithDPoPNonces(nonces).
 		WithSlogger(a.logger).
 		Build()
 	if err != nil {
@@ -82,6 +93,33 @@ func (a *App) Start() error {
 
 	return nil
 }
+
+// dpopNonces are the resource server nonces of nonce_required, sealed under the configured keyring.
+func (a *App) dpopNonces() (*nonce.Source, error) {
+	var keys nonce.Keys
+	if a.DPoPNonceKeyringPath != "" {
+		ring, err := kv.LoadKeyring(a.DPoPNonceKeyringPath)
+		if err != nil {
+			return nil, err
+		}
+		keys = ring
+	} else {
+		a.logger.Warn("dpop_nonce_keyring_path not set: DPoP nonces hold for this replica only")
+		ephemeral, err := nonce.NewEphemeralKeys()
+		if err != nil {
+			return nil, err
+		}
+		keys = ephemeral
+	}
+	return nonce.NewSource(keys, dpopNoncePurpose, dpopNonceTTL)
+}
+
+const (
+	dpopNoncePurpose = "zaddy/dpop-nonce"
+	// dpopNonceTTL is how long a nonce is accepted: long enough for a client's next requests, short enough
+	// that a captured one soon stops working (RFC 9449 Section 8).
+	dpopNonceTTL = 5 * time.Minute
+)
 
 // Stop closes the PEP.
 func (a *App) Stop() error {
@@ -135,6 +173,11 @@ func parseCaddyfilePEP(d *caddyfile.Dispenser, existingVal any) (any, error) {
 				return nil, d.ArgErr()
 			}
 			a.PublicOrigin = d.Val()
+		case "dpop_nonce_keyring_path":
+			if !d.NextArg() {
+				return nil, d.ArgErr()
+			}
+			a.DPoPNonceKeyringPath = d.Val()
 		default:
 			return nil, d.Errf("unrecognized subdirective: %s", d.Val())
 		}

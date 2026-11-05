@@ -317,8 +317,9 @@ func (e *EnforcerAuthorizationBearer) Apply(ctx Context, next HandlerFunc) {
 }
 
 // EnforcerAuthorizationDPoP requires a DPoP-bound JWT access token and its proof (RFC 9449 Section 7.1)
-// and makes the token's claims available on the context. NonceRequired is not implemented: when set,
-// every request is denied with internal_error.
+// and makes the token's claims available on the context. NonceRequired requires the PEP's nonce in every
+// proof (RFC 9449 Section 9); a PEP built without WithDPoPNonces then denies every request with
+// internal_error.
 type EnforcerAuthorizationDPoP struct {
 	TypeVal       EnforcerType `json:"type"`
 	NonceRequired bool         `json:"nonce_required"`
@@ -343,18 +344,7 @@ func (e *EnforcerAuthorizationDPoP) Apply(ctx Context, next HandlerFunc) {
 		return
 	}
 
-	// Resource server nonces (RFC 9449 Section 9) need a NonceSource shared by the replicas,
-	// which pep does not have yet: refusing beats checking proofs without the nonce.
-	if e.NonceRequired {
-		ctx.Deny(Error{
-			HTTPStatus:  500,
-			Code:        "internal_error",
-			Description: "Nonce required but not implemented",
-		})
-		return
-	}
-
-	if err := internalCtx.verifyAuthorizationDPoP(); err != nil {
+	if err := internalCtx.verifyAuthorizationDPoP(e.NonceRequired); err != nil {
 		ctx.Slogger().Warn("Failed to verify authorization dpop", "error", err)
 		var pepErr Error
 		var dpopErr *dpop.Error
