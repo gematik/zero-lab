@@ -3,9 +3,10 @@ id: TASK-203
 title: >-
   epa: opening a session holds the session manager's lock through the whole
   login
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-03T16:57:00Z'
+updated_date: '2026-11-05T18:57:00Z'
 labels:
   - epa
 dependencies: []
@@ -20,6 +21,12 @@ sessionManager.openSession holds sm.lock during OpenSession and Authorize, and G
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A slow or failing login at one provider does not delay another provider of the same proxy
-- [ ] #2 Concurrent callers for one provider still open only one session
+- [x] #1 A slow or failing login at one provider does not delay another provider of the same proxy
+- [x] #2 Concurrent callers for one provider still open only one session
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+A lock per provider: a login waits only for another at the same provider; an open session is returned without waiting. Tested with an injected login.
+<!-- SECTION:NOTES:END -->

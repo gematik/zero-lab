@@ -42,6 +42,10 @@ type sessionManager struct {
 	vauVerifier       vau.CertVerifier
 	vauVerify         vau.VerifyMode
 	sessions          map[ProviderNumber]*Session
+	// opening holds a lock per provider, so a login waits only for another login at the same provider.
+	opening map[ProviderNumber]*sync.Mutex
+	// login opens and authorizes a session; nil means [sessionManager.loginAt].
+	login func(ProviderNumber) (*Session, error)
 }
 
 func (sm *sessionManager) GetSession(provider ProviderNumber) (*Session, error) {
@@ -55,14 +59,50 @@ func (sm *sessionManager) GetSession(provider ProviderNumber) (*Session, error) 
 }
 
 func (sm *sessionManager) openSession(provider ProviderNumber) (*Session, error) {
-	sm.lock.Lock()
-	defer sm.lock.Unlock()
+	gate := sm.gate(provider)
+	gate.Lock()
+	defer gate.Unlock()
 
 	// a concurrent caller may have opened the session while we waited
-	if session, ok := sm.sessions[provider]; ok {
+	sm.lock.RLock()
+	session, ok := sm.sessions[provider]
+	sm.lock.RUnlock()
+	if ok {
 		return session, nil
 	}
 
+	login := sm.login
+	if login == nil {
+		login = sm.loginAt
+	}
+	session, err := login(provider)
+	if err != nil {
+		return nil, err
+	}
+
+	sm.lock.Lock()
+	sm.sessions[provider] = session
+	sm.lock.Unlock()
+	return session, nil
+}
+
+// gate is the lock that lets one login at a time run at provider.
+func (sm *sessionManager) gate(provider ProviderNumber) *sync.Mutex {
+	sm.lock.Lock()
+	defer sm.lock.Unlock()
+	if sm.opening == nil {
+		sm.opening = make(map[ProviderNumber]*sync.Mutex)
+	}
+	gate, ok := sm.opening[provider]
+	if !ok {
+		gate = new(sync.Mutex)
+		sm.opening[provider] = gate
+	}
+	return gate
+}
+
+// loginAt opens a VAU session at provider and authorizes it.
+func (sm *sessionManager) loginAt(provider ProviderNumber) (*Session, error) {
 	options := []ClientOption{WithTimeout(sm.timeout), WithVAUVerification(sm.vauVerifier, sm.vauVerify)}
 	if sm.certPool == nil {
 		options = append(options, WithInsecureSkipVerify())
@@ -80,13 +120,10 @@ func (sm *sessionManager) openSession(provider ProviderNumber) (*Session, error)
 		return nil, fmt.Errorf("open session at provider %d: %w", provider, err)
 	}
 
-	err = session.Authorize(sm.authenticator)
-	if err != nil {
+	if err := session.Authorize(sm.authenticator); err != nil {
 		client.Close()
 		return nil, fmt.Errorf("authorize session at provider %d: %w", provider, err)
 	}
-
-	sm.sessions[provider] = session
 	return session, nil
 }
 

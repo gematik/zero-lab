@@ -217,7 +217,7 @@ func (p *Proxy) HandleEntitleInsurant(w http.ResponseWriter, r *http.Request) {
 
 	validTo, err := p.entitle(session, insurantID)
 	if err != nil {
-		slog.Error("Failed to entitle", "provider", session.ProviderNumber, "insurantID", insurantID, "error", err)
+		slog.Error("Failed to entitle", "provider", session.ProviderNumber, "error", err)
 		writeJSONError(w, http.StatusBadGateway, "entitlement_failed", err.Error())
 		return
 	}

@@ -63,7 +63,7 @@ func (c *Client) GetConsentDecisionInformation(insurantID string) (*GetConsentDe
 	req.Header.Set("x-useragent", UserAgent)
 	req.Header.Set("x-insurantid", insurantID)
 
-	slog.Info("Requesting consent decision information", "method", req.Method, "url", req.URL, "headers", req.Header)
+	slog.Info("Requesting consent decision information", "host", req.URL.Host)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {

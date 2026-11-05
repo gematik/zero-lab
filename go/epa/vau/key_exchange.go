@@ -34,7 +34,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -111,7 +110,7 @@ func OpenChannel(baseURLString string, env Env, httpClient *http.Client) (*Chann
 
 // OpenChannelVerified opens a VAU channel and, when verifier is given and mode is not
 // off, checks the VAU's CertData and host keys with it.
-func OpenChannelVerified(baseURLString string, _ Env, httpClient *http.Client, verifier CertVerifier, mode VerifyMode) (*Channel, error) {
+func OpenChannelVerified(baseURLString string, env Env, httpClient *http.Client, verifier CertVerifier, mode VerifyMode) (*Channel, error) {
 	// validate base URL
 	baseURL, err := url.Parse(baseURLString)
 	if err != nil {
@@ -162,22 +161,22 @@ func OpenChannelVerified(baseURLString string, _ Env, httpClient *http.Client, v
 
 	cK1C2S, cK1S2C, err := KemKDF1(ssEECDH, ssEKEM)
 	if err != nil {
-		log.Fatalf("computing KDF: %v", err)
+		return nil, fmt.Errorf("computing KDF: %w", err)
 	}
 
 	plaintext, err := AEADDecrypt(cK1S2C, m2.AEADCt)
 	if err != nil {
-		log.Fatalf("decrypting: %v", err)
+		return nil, fmt.Errorf("decrypting: %w", err)
 	}
 
 	signedPubKeys := new(SignedPublicVAUKeys)
 	if err = cbor.Unmarshal(plaintext, signedPubKeys); err != nil {
-		log.Fatalf("decoding VAU keys: %v", err)
+		return nil, fmt.Errorf("decoding VAU keys: %w", err)
 	}
 
 	pubKeys := new(PublicVAUKeys)
 	if err = cbor.Unmarshal(signedPubKeys.SignedPubKeysRaw, pubKeys); err != nil {
-		log.Fatalf("decoding public keys: %v", err)
+		return nil, fmt.Errorf("decoding public keys: %w", err)
 	}
 
 	signedPubKeys.SignedPubKeys = pubKeys
@@ -189,7 +188,7 @@ func OpenChannelVerified(baseURLString string, _ Env, httpClient *http.Client, v
 	// prepare Message3
 	ecdhSS, ecdhCt, err := pubKeys.ECDHPK.Encapsulate()
 	if err != nil {
-		log.Fatalf("encapsulating ECDH: %v", err)
+		return nil, fmt.Errorf("encapsulating ECDH: %w", err)
 	}
 
 	kemSS, kemCt, err := pubKeys.Kyber768PK.Encapsulate()
@@ -211,12 +210,12 @@ func OpenChannelVerified(baseURLString string, _ Env, httpClient *http.Client, v
 
 	m3InnerCBOR, err := cbor.Marshal(m3Inner)
 	if err != nil {
-		log.Fatalf("marshaling M3Inner: %v", err)
+		return nil, fmt.Errorf("marshaling M3Inner: %w", err)
 	}
 
 	m3InnerCBOREncrypted, err := AEADEncrypt(cK1C2S, m3InnerCBOR)
 	if err != nil {
-		log.Fatalf("encrypting M3Inner: %v", err)
+		return nil, fmt.Errorf("encrypting M3Inner: %w", err)
 	}
 
 	transcript := m1CBOR
@@ -226,7 +225,7 @@ func OpenChannelVerified(baseURLString string, _ Env, httpClient *http.Client, v
 	transcriptHash := sha256.Sum256(transcript)
 	m3AEADCtKeyConfirmation, err := AEADEncrypt(k2C2SKeyConfirmation, transcriptHash[:])
 	if err != nil {
-		log.Fatalf("encrypting M3 key confirmation: %v", err)
+		return nil, fmt.Errorf("encrypting M3 key confirmation: %w", err)
 	}
 
 	m3 := Message3{
@@ -259,7 +258,7 @@ func OpenChannelVerified(baseURLString string, _ Env, httpClient *http.Client, v
 
 	channel := &Channel{
 		httpClient:          httpClient,
-		Env:                 EnvNonPU,
+		Env:                 env,
 		ID:                  channelID,
 		ChannelURL:          channelURL,
 		SignedPublicVAUKeys: signedPubKeys,
@@ -283,7 +282,7 @@ func PostMessage[M any](httpClient *http.Client, url string, requestMessage any)
 	// create request to VAU
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(requestMessageCbor))
 	if err != nil {
-		log.Fatalf("creating request to VAU: %v", err)
+		return nil, nil, nil, nil, fmt.Errorf("creating request to VAU: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/cbor")
 

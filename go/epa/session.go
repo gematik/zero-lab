@@ -189,6 +189,14 @@ const (
 // AllProviders lists the providers a Proxy talks to. ProviderNumber4 is left out until it works.
 var AllProviders = []ProviderNumber{ProviderNumber1, ProviderNumber2, ProviderNumber3}
 
+// vauEnv is the environment byte of a VAU message: production only in production.
+func vauEnv(env Env) vau.Env {
+	if env == EnvProd {
+		return vau.EnvPU
+	}
+	return vau.EnvNonPU
+}
+
 // ResolveBaseURL is the base URL of a provider in env. It panics on an unknown environment.
 func ResolveBaseURL(env Env, provider ProviderNumber) string {
 	switch env {
@@ -248,7 +256,7 @@ func NewClient(env Env, provider ProviderNumber, sf *SecurityFunctions, options 
 // Authorized for VAU-bound calls. The underlying Client (HTTP transport,
 // identity) is shared with the returned Session via embedding.
 func (c *Client) OpenSession() (*Session, error) {
-	vauChannel, err := vau.OpenChannelVerified(c.BaseURL, vau.EnvNonPU, c.HTTPClient, c.vauVerifier, c.vauVerify)
+	vauChannel, err := vau.OpenChannelVerified(c.BaseURL, vauEnv(c.Env), c.HTTPClient, c.vauVerifier, c.vauVerify)
 	if err != nil {
 		return nil, err
 	}
