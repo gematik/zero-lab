@@ -1,8 +1,56 @@
 
 # cargo-vet audits file
 
+[[audits.cmov]]
+who = "Sergej Suskov <108782+spilikin@users.noreply.github.com>"
+criteria = "safe-to-deploy"
+version = "0.5.4"
+notes = "No build script, no std, no I/O. Read all of src/. The unsafe is the x86 CMOV and AArch64 CSEL asm! blocks (pure, nomem, nostack; the condition is tested on its low byte, results narrowed back to the operand width), the ARM and RISC-V mask asm of the soft backend, slice-to-array chunking with split_at_unchecked at a length rounded down to the chunk size, size- and alignment-checked casts of signed, NonZero and Ordering slices to their unsigned twins, and NonZero::new_unchecked and the Ordering cast after a select, both sound because a select only ever yields one of its two valid inputs. Elsewhere (wasm32 among them) the portable backend is best-effort constant time through black_box masks, as documented."
+
+[[audits.ctutils]]
+who = "Sergej Suskov <108782+spilikin@users.noreply.github.com>"
+criteria = "safe-to-deploy"
+version = "0.4.6"
+notes = "forbid(unsafe_code), no build script, no I/O; selection is delegated to cmov. Read choice.rs and primitives.rs in full and checked the le, lt, borrow and nz bit formulas against Hacker's Delight; skimmed the trait impls and CtOption for branches on secret data: only into_option, unwrap and expect branch, and they are documented as variable-time. Slice equality short-circuits only on the (public) length."
+
+[[audits.hkdf]]
+who = "Sergej Suskov <108782+spilikin@users.noreply.github.com>"
+criteria = "safe-to-deploy"
+version = "0.13.0"
+notes = "No unsafe, no build script, no std, no I/O. Read all of src/: RFC 5869 extract and expand over hmac; the default salt is HashLen zero bytes, a PRK shorter than HashLen is rejected, output is capped at 255 blocks so the block counter cannot overflow. Debug of the HKDF state goes through hmac's opaque Debug and prints no key."
+
+[[audits.hmac]]
+who = "Sergej Suskov <108782+spilikin@users.noreply.github.com>"
+criteria = "safe-to-deploy"
+version = "0.13.0"
+notes = "No unsafe, no build script, no std, no I/O. Read all of src/: RFC 2104 key handling (keys longer than a block are hashed, shorter ones zero-padded), ipad and opad precomputation, the eager and the simple (lazy-hash) variants and their reset forms. Debug impls are opaque. The padded key block lives on the stack and is not wiped; tag comparison is digest's (subtle), not this crate's."
+
+[[audits.pbkdf2]]
+who = "Sergej Suskov <108782+spilikin@users.noreply.github.com>"
+criteria = "safe-to-deploy"
+version = "0.13.0"
+notes = "No unsafe, no build script, no std, no I/O. Read all of src/: PBKDF2 (RFC 8018) over any KeyInit + Update + FixedOutput PRF, with the block index as a big-endian u32. The optional mcf feature (not used here) verifies against as many bytes as the stored hash decodes to, so a stored hash with an empty or very short final field matches (almost) any password; worth reporting upstream, irrelevant to callers that only derive keys."
+
+[[audits.rpassword]]
+who = "Sergej Suskov <108782+spilikin@users.noreply.github.com>"
+criteria = "safe-to-deploy"
+version = "7.5.4"
+notes = "No build script. Read all of src/. Opens /dev/tty (CONIN$ and CONOUT$ on Windows) or a caller-given path, nothing else; no network, no environment. The unsafe is libc isatty, tcgetattr (assume_init only after success), tcsetattr and raise(SIGINT), and the Windows CreateFileW, ReadConsoleW, ReadFile, WriteConsoleW, WriteFile, Get/SetConsoleMode and GenerateConsoleCtrlEvent calls with buffers and lengths taken from live Rust values. The typed password is kept in rtoolbox's SafeString (wiped on drop) but returned as a plain String, and the per-character UTF-8 buffers are not wiped. On Ctrl-C it raises SIGINT before its Drop restores echo, and on Windows a failed second open leaks the first handle; neither is a security issue."
+
+[[audits.rtoolbox]]
+who = "Sergej Suskov <108782+spilikin@users.noreply.github.com>"
+criteria = "safe-to-deploy"
+version = "0.0.6"
+notes = "No build script. Read all of src/. SafeString and SafeVec wipe their buffer with volatile writes and a fence on drop (best effort: earlier reallocations are not wiped, and both derive Debug and Clone). print_tty writes to /dev/tty or CONOUT$. atty::is on Windows keeps the old atty msys check that casts a Vec<u8> to &FILE_NAME_INFO (the RUSTSEC-2021-0145 pattern, misaligned only under an allocator with byte alignment); rpassword does not call it and no input can steer it."
+
 [[audits.yoke-derive]]
 who = "Sergej Suskov <108782+spilikin@users.noreply.github.com>"
 criteria = "safe-to-deploy"
 delta = "0.8.3 -> 0.8.4"
 notes = "Adds rust-version 1.82 and builds the lifetime underscores with str::repeat instead of from_utf8 with expect; no behavioural change."
+
+[[audits.zeroize_derive]]
+who = "Sergej Suskov <108782+spilikin@users.noreply.github.com>"
+criteria = "safe-to-deploy"
+delta = "1.4.2 -> 1.5.0"
+notes = "Edition 2024 and MSRV 1.85, format-string and assert! rewrites of the same panics, Data:: instead of syn::Data::, and unused_assignments added to the allow on generated match arms. Still forbid(unsafe_code), no build script; the generated zeroize code is unchanged."

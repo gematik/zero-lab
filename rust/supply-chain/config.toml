@@ -139,10 +139,6 @@ criteria = "safe-to-deploy"
 version = "1.1.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.cmov]]
-version = "0.5.4"
-criteria = "safe-to-deploy"
-
 [[exemptions.colorchoice]]
 version = "1.0.5"
 criteria = "safe-to-deploy"
@@ -177,10 +173,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.ctr]]
 version = "0.10.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.ctutils]]
-version = "0.4.6"
 criteria = "safe-to-deploy"
 
 [[exemptions.curve25519-dalek]]
@@ -294,14 +286,6 @@ version = "0.4.2"
 criteria = "safe-to-deploy"
 notes = "jwz's hax annotations, a cfg(hax) dependency: compiled only when hax extracts jwz for proof"
 
-[[exemptions.hkdf]]
-version = "0.13.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.hmac]]
-version = "0.13.0"
-criteria = "safe-to-deploy"
-
 [[exemptions.http]]
 version = "1.5.0"
 criteria = "safe-to-deploy"
@@ -414,10 +398,6 @@ criteria = "safe-to-deploy"
 version = "0.14.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.pbkdf2]]
-version = "0.13.0"
-criteria = "safe-to-deploy"
-
 [[exemptions.pem-rfc7468]]
 version = "1.0.0"
 criteria = "safe-to-deploy"
@@ -478,16 +458,8 @@ criteria = "safe-to-deploy"
 version = "0.17.14"
 criteria = "safe-to-deploy"
 
-[[exemptions.rpassword]]
-version = "7.5.4"
-criteria = "safe-to-deploy"
-
 [[exemptions.rsa]]
 version = "0.10.0-rc.19"
-criteria = "safe-to-deploy"
-
-[[exemptions.rtoolbox]]
-version = "0.0.6"
 criteria = "safe-to-deploy"
 
 [[exemptions.rustls]]
@@ -740,10 +712,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.zeroize]]
 version = "1.9.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.zeroize_derive]]
-version = "1.5.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.zmij]]
