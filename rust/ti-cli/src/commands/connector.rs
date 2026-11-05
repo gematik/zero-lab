@@ -1203,7 +1203,7 @@ mod tests {
 
     /// TAB_KON_503: an Info condition is no fault, and a severity not known stays red.
     #[test]
-    fn a_condition_is_colored_by_its_severity() {
+    fn tab_kon_503_a_condition_is_colored_by_its_severity() {
         use super::{Line, Tone, condition_line};
         let c = "EC_X";
         assert_eq!(condition_line(c, "Info"), Line::text(c));

@@ -825,7 +825,7 @@ mod tests {
     /// TSLSIG-053: a list older than the one a previous run kept is rejected, through the
     /// state file and the same wiring `Session::load` uses.
     #[test]
-    fn an_older_tsl_is_rejected_on_a_later_run() {
+    fn tslsig_053_an_older_tsl_is_rejected_on_a_later_run() {
         let dir = scratch("later-run");
         let p = profile(&dir, Some("work"));
         let newer = state(20_000);
@@ -1014,7 +1014,7 @@ mod tests {
     /// TSLSIG-053: what a command uses is read after the load, and a stale entry must not
     /// send that read to the origin, whose answer the rollback check would never see.
     #[test]
-    fn reading_after_load_does_not_reach_the_origin_when_the_entry_is_stale() {
+    fn tslsig_053_reading_after_load_does_not_reach_the_origin_when_the_entry_is_stale() {
         let dir = scratch("read-back");
         let p = profile(&dir, None);
         let session = session_over_a_stale_cache(&p, b"<older/>");
@@ -1041,7 +1041,7 @@ mod tests {
     /// TSLSIG-053: a list in the cache that is not the one the load verified, here one
     /// older than it, never reaches a command, even though its signature is good.
     #[test]
-    fn a_cached_list_other_than_the_verified_one_is_refused() {
+    fn tslsig_053_a_cached_list_other_than_the_verified_one_is_refused() {
         let dir = scratch("other-list");
         let p = profile(&dir, None);
         let session = session_over_a_stale_cache(&p, b"<older/>");

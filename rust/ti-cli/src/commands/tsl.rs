@@ -241,7 +241,7 @@ struct VerifyReport {
     code: Option<&'static str>,
     /// Its gemSpec_PKI Tab_PKI_274 number, if it has one.
     code_number: Option<u16>,
-    /// The rule that failed, e.g. `TSLDET-005` or `TSLSIG-031`.
+    /// The rule of `spec/tsl-detached` or `spec/tsl-xmldsig` that failed.
     rule: Option<&'static str>,
     detail: Option<String>,
     /// From here on, valid lists only, read from the signed bytes.
@@ -318,6 +318,7 @@ pub fn verify(args: &TslVerifyArgs, global: &GlobalArgs, out: &Output) -> Result
         None => embedded_config_for(&signature.bytes),
     }
     .map(|config| TrustConfig {
+        // TSLSIG-054: how long past its NextUpdate the list stays usable.
         tsl_grace_period: grace,
         ..config
     });
@@ -326,14 +327,17 @@ pub fn verify(args: &TslVerifyArgs, global: &GlobalArgs, out: &Output) -> Result
     }
     let mut sequence = None;
     let result = config.map_err(VerifyFailure::from).and_then(|config| {
+        // TSLDET-005: the detached signature over the bytes as read, before any parsing.
         let mut verified = Tsl::parse_verified(&source.bytes, &signature.bytes, &config, now)?;
         if previous.is_some() {
+            // TSLSIG-053: a list may not roll back behind the one given as previous.
             sequence = Some(verified.check_sequence(previous.as_ref())?);
         }
+        // TSLDET-020: a supplied status is verified like a queried one and replaces it.
         if let Some(status) = &supplied_status {
             verified.check_signer_status_supplied(&status.bytes, now, &config.algorithms)?;
         }
-        // The status now says nothing about another time.
+        // The status now says nothing about another time (TSLDET-023).
         if supplied_status.is_none() && !args.offline && args.at.is_none() {
             let transport = crate::http::transport(&global.net, out.verbosity())?;
             let store = crate::file_cache::open_cache(global)?;

@@ -1068,7 +1068,7 @@ fn tsl_verify_matches_its_schema() {
 
 /// TSLDET-020: the supplied status replaces the network query, and the report says so.
 #[test]
-fn tsl_verify_reports_the_supplied_status() {
+fn tsldet_020_tsl_verify_reports_the_supplied_status() {
     let dir = std::env::temp_dir().join(format!("ti-tsl-detached-{}", std::process::id()));
     let set = |suffix: &str| {
         manifest(&format!(
@@ -1213,7 +1213,7 @@ fn tsl_verify_needs_the_signature() {
 
 /// TSLDET-005 through the CLI: a changed list fails on the detached signature.
 #[test]
-fn tsl_verify_rejects_a_tampered_list() {
+fn tsldet_005_tsl_verify_rejects_a_tampered_list() {
     let dir = std::env::temp_dir().join(format!("ti-tsl-tampered-{}", std::process::id()));
     let xml = manifest("../../spec/tsl-detached/testdata/derived/ref-tampered.xml");
     let sig = manifest("../../spec/tsl-detached/testdata/ref/ECC-RSA_TSL-ref.sig");
@@ -1236,9 +1236,10 @@ fn tsl_verify_rejects_a_tampered_list() {
     assert_eq!(report["rule"], "TSLDET-005");
 }
 
-/// Offline: the warning instead of the signer's status; --previous decides the sequence.
+/// TSLSIG-053 through the CLI: offline, the warning instead of the signer's status, and
+/// --previous decides the sequence; TSLSIG-054: an overdue list.
 #[test]
-fn tsl_verify_offline_with_a_previous_list() {
+fn tslsig_053_tsl_verify_offline_with_a_previous_list() {
     let dir = std::env::temp_dir().join(format!("ti-tsl-previous-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = |p: PathBuf| p.to_str().unwrap().to_owned();
@@ -1294,7 +1295,7 @@ fn tsl_verify_offline_with_a_previous_list() {
 /// TSLSIG-053: the state a run left is read by the next process, with no setup, and a
 /// file that does not parse stops the run instead of dropping the rollback check.
 #[test]
-fn a_corrupt_tsl_state_stops_the_next_run_naming_the_file() {
+fn tslsig_053_a_corrupt_tsl_state_stops_the_next_run_naming_the_file() {
     let cache = SeededCache::new("corrupt-tsl-state");
     let dir = cache.0.join("state/telematik/ti/profiles/default/tsl");
     std::fs::create_dir_all(&dir).unwrap();

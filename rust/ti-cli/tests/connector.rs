@@ -1099,10 +1099,10 @@ fn tab_kon_514_every_call_on_the_hba_uses_its_comfort_id() {
     assert!(!fake.dir.join("state/telematik/ti/comfort").exists());
 }
 
-/// C16: an HBA session always has a user ID; without one in the .kon `ti` keeps its own,
-/// and calls on other cards go on sending none.
+/// gemSpec_Kon TAB_KON_510 C16: an HBA session always has a user ID; without one in the
+/// .kon `ti` keeps its own, and calls on other cards go on sending none.
 #[test]
-fn c16_without_any_id_the_hba_gets_one_of_its_own() {
+fn tab_kon_510_c16_without_any_id_the_hba_gets_one_of_its_own() {
     let fake = Fake::start("generated");
     fake.use_the_hba();
     let kept = std::fs::read_to_string(id_file(&fake)).unwrap();
@@ -1205,9 +1205,10 @@ fn the_user_id_of_the_kon_is_used_without_a_comfort_id() {
     );
 }
 
-/// A session of another profile or client still ends in 4018; the hint says what to do.
+/// gemSpec_Kon TAB_KON_514-01: a session of another profile or client still ends in
+/// 4018; the hint says what to do.
 #[test]
-fn a_4018_says_what_it_means() {
+fn tab_kon_514_error_4018_says_what_to_do() {
     let fake = Fake::start("hint");
     *fake.raised_for.lock().unwrap() = Some("another-id".into());
     let out = fake.ti(&[

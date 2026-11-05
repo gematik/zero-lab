@@ -743,7 +743,7 @@ pub(super) fn split_name(name: &str) -> (Option<String>, String) {
     (cn.or(person), rest.join(" · "))
 }
 
-/// The attribute=value components of an RFC 4514 name in its order, the values of a
+/// The attribute=value components of an RFC 4514 §3 name in its order, the values of a
 /// multi-valued RDN (`GN=…+SN=…+CN=…`, as on an HBA) one by one; an escaped `,` or `+`
 /// is part of its value.
 pub(super) fn dn_parts(name: &str) -> Vec<String> {
@@ -770,8 +770,8 @@ pub(super) fn dn_parts(name: &str) -> Vec<String> {
     parts
 }
 
-/// An RFC 4514 attribute value as text: `\,` becomes `,`, `\C3\A4` the UTF-8 it encodes,
-/// and a `#`-hex DER string (an attribute without a short name, such as
+/// An RFC 4514 §3 attribute value as text: `\,` becomes `,`, `\C3\A4` the UTF-8 it
+/// encodes, and a `#`-hex DER string (an attribute without a short name, such as
 /// organizationIdentifier) its text.
 pub(super) fn unescape(value: &str) -> String {
     if let Some(text) = value.strip_prefix('#').and_then(der_string) {
@@ -867,7 +867,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn distinguished_names_split_on_unescaped_commas_and_pluses() {
+    fn rfc_4514_3_distinguished_names_split_on_unescaped_commas_and_pluses() {
         assert_eq!(
             dn_parts(r"CN=Praxis Dr. A\, B,O=X,C=DE"),
             [r"CN=Praxis Dr. A\, B", "O=X", "C=DE"]
@@ -899,7 +899,7 @@ mod tests {
     }
 
     #[test]
-    fn escaped_values() {
+    fn rfc_4514_3_escaped_values() {
         assert_eq!(unescape(r"A\, B\+C"), "A, B+C");
         assert_eq!(unescape(r"Angerm\C3\A4nn"), "Angermänn");
         assert_eq!(unescape(r"trailing\"), "trailing");

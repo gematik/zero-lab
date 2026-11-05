@@ -283,10 +283,10 @@ fn check_opened(
 
 /// The user ID for every call on `card`, in place of the `.kon` file's when `Some`. The
 /// Konnektor keys an HBA's card session by card, client system and user ID, and refuses
-/// another ID while one has entered a PIN (gemSpec_Kon C2, C16, TAB_KON_514-01, 4018): so
-/// one ID per HBA. Its file goes first, as activating writes there; deactivating removes
-/// it, which brings back the `.kon` file's or makes a new one. Other cards have no such
-/// sessions.
+/// another ID while one has entered a PIN (gemSpec_Kon TAB_KON_510 C2 and C16,
+/// TAB_KON_514-01 error 4018): so one ID per HBA. Its file goes first, as activating
+/// writes there; deactivating removes it, which brings back the `.kon` file's or makes a
+/// new one. Other cards have no such sessions.
 pub(crate) fn card_user(session: &Session, card: &Card) -> Result<Option<ComfortUserId>, CliError> {
     if !matches!(
         card.card_type,
