@@ -203,15 +203,10 @@ func TestRFC8414_3_3_MetadataNamingAnotherIssuerIsRefused(t *testing.T) {
 	}
 }
 
-func TestRFC8414_MetadataOfAnHTTPSIssuerNeedsHTTPSEndpoints(t *testing.T) {
-	endpoints := map[string]func(*asMetadata, string){
-		"authorization_endpoint": func(md *asMetadata, plain string) { md.AuthorizationEndpoint = plain },
-		"token_endpoint":         func(md *asMetadata, plain string) { md.TokenEndpoint = plain },
-		"introspection_endpoint": func(md *asMetadata, plain string) { md.IntrospectionEndpoint = plain },
-		"openid_providers":       func(md *asMetadata, plain string) { md.OpenidProvidersEndpoint = plain },
-		"nonce_endpoint":         func(md *asMetadata, plain string) { md.NonceEndpoint = plain },
-		"pushed_authorization":   func(md *asMetadata, plain string) { md.PushedAuthorizationRequestEndpoint = plain },
-	}
+// refusesPlainEndpoints checks that discovery refuses metadata of an https issuer in which any one of endpoints is
+// plain http.
+func refusesPlainEndpoints(t *testing.T, endpoints map[string]func(*asMetadata, string)) {
+	t.Helper()
 	for name, set := range endpoints {
 		t.Run(name, func(t *testing.T) {
 			server := asStub(t, true, func(base string) asMetadata {
@@ -226,7 +221,32 @@ func TestRFC8414_MetadataOfAnHTTPSIssuerNeedsHTTPSEndpoints(t *testing.T) {
 	}
 }
 
-func TestRFC8414_MetadataOfAnHTTPSIssuerWithHTTPSEndpointsIsTaken(t *testing.T) {
+// RFC 6749 Section 10.9: requests to the authorization and token endpoints use TLS with server authentication.
+func TestRFC6749_10_9_AuthorizationAndTokenEndpointsMustBeHTTPS(t *testing.T) {
+	refusesPlainEndpoints(t, map[string]func(*asMetadata, string){
+		"authorization_endpoint": func(md *asMetadata, plain string) { md.AuthorizationEndpoint = plain },
+		"token_endpoint":         func(md *asMetadata, plain string) { md.TokenEndpoint = plain },
+	})
+}
+
+// RFC 9126 Section 2: the pushed authorization request endpoint URL uses the https scheme.
+func TestRFC9126_2_ThePushedAuthorizationRequestEndpointMustBeHTTPS(t *testing.T) {
+	refusesPlainEndpoints(t, map[string]func(*asMetadata, string){
+		"pushed_authorization": func(md *asMetadata, plain string) { md.PushedAuthorizationRequestEndpoint = plain },
+	})
+}
+
+// Our policy, beyond RFC 7662 Section 4 (which asks the server to support TLS) and RFC 8414 (which asks https of
+// the issuer and jwks_uri only): an https issuer names no plain endpoint, so no token or proof leaves in clear.
+func TestMetadataOfAnHTTPSIssuerNamesNoPlainEndpoint(t *testing.T) {
+	refusesPlainEndpoints(t, map[string]func(*asMetadata, string){
+		"introspection_endpoint": func(md *asMetadata, plain string) { md.IntrospectionEndpoint = plain },
+		"openid_providers":       func(md *asMetadata, plain string) { md.OpenidProvidersEndpoint = plain },
+		"nonce_endpoint":         func(md *asMetadata, plain string) { md.NonceEndpoint = plain },
+	})
+}
+
+func TestMetadataOfAnHTTPSIssuerWithHTTPSEndpointsIsTaken(t *testing.T) {
 	server := asStub(t, true, fullMetadata)
 	if _, err := discover(t, server, server.URL); err != nil {
 		t.Fatal(err)
@@ -253,7 +273,8 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-func TestRFC8414_AnIssuerOverPlainHTTPOnThisMachineMayHavePlainEndpoints(t *testing.T) {
+// A development exception to RFC 8414 Section 2: an issuer on this machine may run over plain http.
+func TestAnIssuerOverPlainHTTPOnThisMachineMayHavePlainEndpoints(t *testing.T) {
 	server := asStub(t, false, fullMetadata)
 	if _, err := discover(t, server, server.URL); err != nil {
 		t.Fatal(err)
