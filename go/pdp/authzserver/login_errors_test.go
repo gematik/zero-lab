@@ -112,6 +112,24 @@ func pendingLogin(t *testing.T, server *Server, assertion string, op *fakeOP) (o
 	return op.login.State
 }
 
+// sessionOfState reads a pending login's session without consuming its state, as the callback does.
+func sessionOfState(t *testing.T, server *Server, opState string) *Session {
+	t.Helper()
+	store, ok := server.sessionStore.(*kvSessionStore)
+	if !ok {
+		t.Fatalf("session store is a %T", server.sessionStore)
+	}
+	data, found, err := store.store.Get(context.Background(), asAuthnKey(opState))
+	if err != nil || !found {
+		t.Fatalf("no index for the state: %v", err)
+	}
+	session, err := store.resolveIndex(data, found, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return session
+}
+
 func callback(server *Server, query url.Values) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	server.handle(server.OPCallbackEndpoint).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/op-callback?"+query.Encode(), nil))
@@ -153,6 +171,7 @@ func TestALoginLogsNoSecretAtDebug(t *testing.T) {
 	op := &fakeOP{}
 	parAssertion := signClientAssertion(t, server, signKey, nil)
 	opState := pendingLogin(t, server, parAssertion, op)
+	session := sessionOfState(t, server, opState)
 
 	const opCode = "op-code-value"
 	done := callback(server, url.Values{"state": {opState}, "code": {opCode}})
@@ -164,10 +183,6 @@ func TestALoginLogsNoSecretAtDebug(t *testing.T) {
 		t.Fatal(err)
 	}
 	clientCode := location.Query().Get("code")
-	session, err := server.sessionStore.GetAuthzServerSessionByAuthnState(opState)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	assertion := signClientAssertion(t, server, signKey, nil)
 	issued := httptest.NewRecorder()
@@ -197,13 +212,160 @@ func TestALoginThatFailsLogsNoSecretEvenIfTheProviderEchoesIt(t *testing.T) {
 	opState := pendingLogin(t, server, signClientAssertion(t, server, signKey, nil), op)
 	const opCode = "op-code-value"
 	op.exchangeErr = fmt.Errorf("no such code %s, verifier %s", opCode, op.login.Verifier)
-	if rec := callback(server, url.Values{"state": {opState}, "code": {opCode}}); rec.Code != http.StatusInternalServerError {
+	if rec := callback(server, url.Values{"state": {opState}, "code": {opCode}}); rec.Code != http.StatusFound {
 		t.Fatalf("callback = %d: %s", rec.Code, rec.Body)
 	}
 	if !strings.Contains(logs.String(), "no such code") {
 		t.Errorf("the detail is gone from the log:\n%s", logs)
 	}
 	assertNoneInLog(t, logs, opState, op.login.Nonce, op.login.Verifier, opCode)
+}
+
+// Server rule 10: a kv key is in clear even in a sealed store, so it holds a hash of a secret.
+func TestAKVKeyHoldsNoSecretOfALogin(t *testing.T) {
+	server, signKey := newTestServer(t)
+	memory := kv.NewMemory()
+	server.sessionStore = newKVSessionStore(memory, time.Hour)
+	op := &fakeOP{}
+	opState := pendingLogin(t, server, signClientAssertion(t, server, signKey, nil), op)
+	session := sessionOfState(t, server, opState)
+	requestURI := session.RequestURI
+	done := callback(server, url.Values{"state": {opState}, "code": {"op-code-value"}})
+	location, err := url.Parse(done.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientCode := location.Query().Get("code")
+	if clientCode == "" {
+		t.Fatalf("no code: %s", done.Header().Get("Location"))
+	}
+	keys, err := memory.Keys(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(keys) == 0 {
+		t.Fatal("no keys to check")
+	}
+	for _, key := range keys {
+		for name, secret := range map[string]string{"code": clientCode, "state": opState, "request_uri": requestURI} {
+			if secret != "" && strings.Contains(key, secret) {
+				t.Errorf("key %q holds the %s", key, name)
+			}
+		}
+	}
+	if len(keysWithPrefix(keys, "as:code:")) != 1 {
+		t.Errorf("keys = %v", keys)
+	}
+}
+
+func keysWithPrefix(keys []string, prefix string) []string {
+	var found []string
+	for _, key := range keys {
+		if strings.HasPrefix(key, prefix) {
+			found = append(found, key)
+		}
+	}
+	return found
+}
+
+// RFC 6749 section 10.12: a state answers one request. A replay with another code must not overwrite the authorization
+// code the first callback issued, also after the session was saved again.
+func TestOPCallback_TheStateIsSingleUse(t *testing.T) {
+	server, signKey := newTestServer(t)
+	op := &fakeOP{}
+	opState := pendingLogin(t, server, signClientAssertion(t, server, signKey, nil), op)
+
+	first := callback(server, url.Values{"state": {opState}, "code": {"op-code-value"}})
+	if first.Code != http.StatusFound {
+		t.Fatalf("first callback = %d: %s", first.Code, first.Body)
+	}
+	location, err := url.Parse(first.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientCode := location.Query().Get("code")
+
+	replay := callback(server, url.Values{"state": {opState}, "code": {"attacker-code-value"}})
+	if replay.Code != http.StatusBadRequest {
+		t.Fatalf("replay = %d: %s", replay.Code, replay.Body)
+	}
+
+	issued := httptest.NewRecorder()
+	assertion := signClientAssertion(t, server, signKey, nil)
+	server.handle(server.TokenEndpoint).ServeHTTP(issued, authorizationCodeRequest(t, assertion, clientCode))
+	if issued.Code != http.StatusOK {
+		t.Fatalf("the first callback's code stopped working: %d: %s", issued.Code, issued.Body)
+	}
+}
+
+// A request that is no answer of the provider does not end the login it names.
+func TestOPCallback_ARequestWithoutACodeDoesNotConsumeTheState(t *testing.T) {
+	server, signKey := newTestServer(t)
+	op := &fakeOP{}
+	opState := pendingLogin(t, server, signClientAssertion(t, server, signKey, nil), op)
+	if rec := callback(server, url.Values{"state": {opState}}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("no code = %d: %s", rec.Code, rec.Body)
+	}
+	if rec := callback(server, url.Values{"state": {opState}, "code": {"op-code-value"}}); rec.Code != http.StatusFound {
+		t.Fatalf("the login did not survive: %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// RFC 6749 section 4.1.2.1: a login that fails after the client is known ends at the client, not in JSON in the browser.
+func TestOPCallback_AFailureRedirectsToTheClientWithGenericText(t *testing.T) {
+	server, signKey := newTestServer(t)
+	op := &fakeOP{}
+	opState := pendingLogin(t, server, signClientAssertion(t, server, signKey, nil), op)
+	op.exchangeErr = errors.New(testInternals)
+	rec := callback(server, url.Values{"state": {opState}, "code": {"c"}})
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	location, err := url.Parse(rec.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := location.Scheme + "://" + location.Host + location.Path; got != "https://rp.example.com/callback" {
+		t.Errorf("redirected to %s", got)
+	}
+	query := location.Query()
+	if query.Get("state") != "st-123" || query.Get("error") != "server_error" {
+		t.Errorf("query = %v", query)
+	}
+	if strings.Contains(rec.Header().Get("Location"), testInternals) {
+		t.Errorf("internals reached the client: %s", rec.Header().Get("Location"))
+	}
+}
+
+// An unknown client and a bad signature read alike, so the answer does not say which clients exist.
+func TestVerifyClient_FailuresNameNoDetail(t *testing.T) {
+	server, signKey := newTestServer(t)
+	assertion := signClientAssertion(t, server, signKey, nil)
+	request := func(assertion string) *http.Request {
+		form := url.Values{"client_assertion_type": {ClientAssertionTypeJWTBearer}, "client_assertion": {assertion}}
+		req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		return req
+	}
+	unknown := signClientAssertion(t, server, signKey, func(claims map[string]any) {
+		claims["iss"], claims["sub"] = "unknown-client", "unknown-client"
+	})
+	parts := strings.Split(assertion, ".")
+	for name, value := range map[string]string{
+		"not a token":     "not-a-token",
+		"unknown client":  unknown,
+		"wrong signature": parts[0] + "." + parts[1] + "." + parts[2][:len(parts[2])-4] + "AAAA",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, _, failure := server.verifyClient(request(value))
+			if failure == nil {
+				t.Fatal("accepted")
+			}
+			if failure.Code != "invalid_client" || failure.Description != clientAuthFailed {
+				t.Errorf("answer = %s: %s", failure.Code, failure.Description)
+			}
+		})
+	}
 }
 
 // RFC 6749 section 4.1.2.1: the error goes to the client's redirect URI with the client's state. The session's other
@@ -296,7 +458,7 @@ func TestAStoreFailureReachesTheClientAsAGenericErrorAndTheLogWithoutTheSecret(t
 			return rec, code
 		},
 		"callback looking up the state": func(_ *testing.T, server *Server, store *failingStore, _ string, op *fakeOP) (*httptest.ResponseRecorder, string) {
-			store.fail["get"] = true
+			store.fail["take"] = true
 			return callback(server, url.Values{"state": {op.login.State}, "code": {"op-code-value"}}), op.login.State
 		},
 		"callback saving the session": func(_ *testing.T, server *Server, store *failingStore, _ string, op *fakeOP) (*httptest.ResponseRecorder, string) {
@@ -313,7 +475,12 @@ func TestAStoreFailureReachesTheClientAsAGenericErrorAndTheLogWithoutTheSecret(t
 			assertion := signClientAssertion(t, server, signKey, nil)
 			logs := captureDebugLogs(t)
 			rec, secret := run(t, server, store, assertion, op)
-			if rec.Code != http.StatusInternalServerError {
+			// Once the callback knows the client, the failure ends there (RFC 6749 section 4.1.2.1).
+			want := http.StatusInternalServerError
+			if name == "callback saving the session" {
+				want = http.StatusFound
+			}
+			if rec.Code != want {
 				t.Errorf("status = %d: %s", rec.Code, rec.Body)
 			}
 			assertGenericError(t, rec, secret)

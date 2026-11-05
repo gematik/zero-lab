@@ -119,7 +119,7 @@ func newSessionStore(store kv.Store, ttl time.Duration) *sessionStore {
 }
 
 func sessionKey(id string) string  { return "pep:session:" + id }
-func stateKey(state string) string { return "pep:state:" + state }
+func stateKey(state string) string { return "pep:state:" + hashToken(state) }
 
 // reportIntegrity logs a record that does not open at error level, since it can mean tampering with the store
 // (server rule 14). The caller gets the error and treats the session as absent, so the user just logs in again.

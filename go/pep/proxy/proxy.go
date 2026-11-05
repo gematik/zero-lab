@@ -272,7 +272,7 @@ func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {
 	rd := sanitizeReturnTo(r.URL.Query().Get("rd"))
 	providers, err := s.backend.Providers(r.Context())
 	if err != nil {
-		s.renderError(w, "providers_error", err.Error(), "", rd)
+		s.renderFailure(w, "providers_error", "The identity providers are not available.", err, "", rd)
 		return
 	}
 	sortProviders(providers)
@@ -304,11 +304,11 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	sess.ReturnTo = rd
 	start, err := s.backend.StartLogin(r.Context(), sess, idpIss, q.Get("scope"))
 	if err != nil {
-		s.renderError(w, "login_failed", err.Error(), idpIss, rd)
+		s.renderFailure(w, "login_failed", loginNotStarted, err, idpIss, rd)
 		return
 	}
 	if err := s.sessions.save(sess); err != nil {
-		s.renderError(w, "server_error", err.Error(), idpIss, rd)
+		s.renderFailure(w, "server_error", loginNotCompleted, err, idpIss, rd)
 		return
 	}
 	setCookie(w, s.cookie, sess.token)
@@ -323,7 +323,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	case "decoupled": // OIDF — QR for a second device + on-device redirect, polled
 		img, err := qrImage(start.AuthURL)
 		if err != nil {
-			s.renderError(w, "qr_error", err.Error(), idpIss, rd)
+			s.renderFailure(w, "qr_error", loginNotStarted, err, idpIss, rd)
 			return
 		}
 		s.render.render(w, http.StatusOK, "qr.html", qrData{
@@ -399,7 +399,8 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		idpIss, rd = sess.IDPIss, sess.ReturnTo
 	}
 	if e := q.Get("error"); e != "" {
-		s.renderError(w, e, q.Get("error_description"), idpIss, rd)
+		slog.Warn("identity provider refused the login", "idp_iss", idpIss, "error", e, "description", q.Get("error_description"))
+		s.renderError(w, "login_failed", "The identity provider refused the login.", idpIss, rd)
 		return
 	}
 	if serr != nil {
@@ -407,14 +408,14 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.backend.Complete(r.Context(), sess, q.Get("code")); err != nil {
-		s.renderError(w, "exchange_failed", err.Error(), idpIss, rd)
+		s.renderFailure(w, "exchange_failed", loginNotCompleted, err, idpIss, rd, q.Get("code"), q.Get("state"))
 		return
 	}
 	// Consume the one-time state so it can't be replayed; clearing it also stops save() from re-indexing it.
 	s.sessions.deleteState(sess.State)
 	sess.State = ""
 	if err := s.sessions.save(sess); err != nil {
-		s.renderError(w, "server_error", err.Error(), idpIss, rd)
+		s.renderFailure(w, "server_error", loginNotCompleted, err, idpIss, rd)
 		return
 	}
 	dest := sess.ReturnTo
@@ -435,7 +436,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// (kills any old snapshot), re-bind the cookie, and mint a fresh snapshot before returning to rd.
 	oldID := sess.ID
 	if err := s.sessions.rotate(sess); err != nil {
-		s.renderError(w, "server_error", err.Error(), idpIss, rd)
+		s.renderFailure(w, "server_error", loginNotCompleted, err, idpIss, rd)
 		return
 	}
 	s.revoker.Revoke(oldID)
@@ -492,6 +493,25 @@ func (s *Server) renderError(w http.ResponseWriter, code, description, idpIss, r
 	s.render.render(w, http.StatusBadRequest, "error.html", errorData{
 		Code: code, Description: description, IDPIss: idpIss, ReturnTo: returnTo,
 	})
+}
+
+// What a browser reads of a failed login.
+const (
+	loginNotStarted   = "The login could not be started."
+	loginNotCompleted = "The login could not be completed."
+)
+
+// renderFailure shows the browser description alone and logs err, which may carry an authorization server's
+// response. secrets are values of this request that such a response may echo.
+func (s *Server) renderFailure(w http.ResponseWriter, code, description string, err error, idpIss, returnTo string, secrets ...string) {
+	detail := err.Error()
+	for _, secret := range secrets {
+		if secret != "" {
+			detail = strings.ReplaceAll(detail, secret, "[redacted]")
+		}
+	}
+	slog.Error(description, "code", code, "idp_iss", idpIss, "error", detail)
+	s.renderError(w, code, description, idpIss, returnTo)
 }
 
 // sanitizeReturnTo guards the rd= return-to against open redirects and login loops: a local absolute path

@@ -62,10 +62,17 @@ func asInvalidSession(err error) error {
 }
 
 func asSessionKey(id string) string    { return "as:session:" + id }
-func asCodeKey(code string) string     { return "as:code:" + code }
-func asAuthnKey(state string) string   { return "as:authn:" + state }
-func asRequriKey(uri string) string    { return "as:requri:" + uri }
+func asCodeKey(code string) string     { return "as:code:" + indexHash(code) }
+func asAuthnKey(state string) string   { return "as:authn:" + indexHash(state) }
+func asRequriKey(uri string) string    { return "as:requri:" + indexHash(uri) }
 func asRefreshKey(token string) string { return "as:refresh:" + token }
+
+// indexHash keeps a secret out of a key, which a sealed store leaves in clear (server rule 10, "keyed by a
+// hash"). The values are long and random, so a key adds nothing against a preimage search. A refresh
+// token's index needs none of this: it holds [hashRefreshToken] already.
+func indexHash(secret string) string {
+	return hashRefreshToken(secret)
+}
 
 // hashRefreshToken maps a raw refresh token to its stored form. Only the hash is persisted (in the session
 // record and the as:refresh index), so a rogue storage admin reading the kv learns hashes, not replayable
@@ -148,8 +155,10 @@ func (s *kvSessionStore) resolveIndex(idData []byte, found bool, err error) (*Se
 	return s.GetAuthzServerSessionByID(id)
 }
 
+// GetAuthzServerSessionByAuthnState consumes the state index (Take) so the state sent to an OpenID provider
+// answers one callback: a replay with another code resolves to not-found and cannot overwrite the code.
 func (s *kvSessionStore) GetAuthzServerSessionByAuthnState(authnState string) (*Session, error) {
-	v, found, err := s.store.Get(context.Background(), asAuthnKey(authnState))
+	v, found, err := s.store.Take(context.Background(), asAuthnKey(authnState))
 	return s.resolveIndex(v, found, err)
 }
 

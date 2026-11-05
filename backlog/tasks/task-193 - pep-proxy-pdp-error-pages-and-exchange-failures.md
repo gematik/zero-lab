@@ -1,9 +1,10 @@
 ---
 id: TASK-193
 title: 'pep/proxy, pdp: error pages and exchange failures'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-02T22:59:00Z'
+updated_date: '2026-11-05T18:30:00Z'
 labels:
   - go
   - security
@@ -20,5 +21,11 @@ pep/proxy error pages show err.Error(), including authorization server response 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Clients and browsers see generic text; pdp redirects to the client
+- [x] #1 Clients and browsers see generic text; pdp redirects to the client
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+pep/proxy shows generic text and logs the detail with the request's code and state scrubbed; an upstream error and description are no longer reflected. pdp redirects a callback failure to the client once it knows it. verifyClient answers client authentication failed for every rejected assertion, so unknown clients and bad signatures read alike.
+<!-- SECTION:NOTES:END -->

@@ -79,6 +79,15 @@ func (s *Server) TokenEndpoint(w http.ResponseWriter, r *http.Request) error {
 	}
 }
 
+// clientAuthFailed is all a client learns of a rejected assertion: which clients exist and what the
+// verification found stay in the log.
+const clientAuthFailed = "client authentication failed"
+
+func clientAuthError(err error) *Error {
+	slog.Warn(clientAuthFailed, "error", err)
+	return oauthErr(http.StatusUnauthorized, "invalid_client", clientAuthFailed)
+}
+
 // verifyClient authenticates the caller via private_key_jwt (RFC 7523 §2.2): the request carries a
 // client_assertion JWT whose signature is verified against the calling client's registered public
 // JWK. It also redeems the assertion's one-time nonce and returns the validated claims (for the
@@ -99,19 +108,19 @@ func (s *Server) verifyClient(r *http.Request) (*Client, *ClientAssertionClaims,
 	// against that client's registered public JWK.
 	claims, err := parseClientAssertionClaims(assertion)
 	if err != nil {
-		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", err.Error())
+		return nil, nil, clientAuthError(err)
 	}
 	client, err := s.clientsRegistry.GetClient(claims.Sub)
 	if err != nil {
-		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", err.Error())
+		return nil, nil, clientAuthError(err)
 	}
 
 	if err := verifyClientAssertion(assertion, client.Key(), s.Metadata.Issuer, time.Now()); err != nil {
-		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", fmt.Sprintf("invalid client_assertion: %v", err))
+		return nil, nil, clientAuthError(err)
 	}
 
 	if err := claims.Validate(); err != nil {
-		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", fmt.Sprintf("invalid client_assertion claims: %v", err))
+		return nil, nil, clientAuthError(err)
 	}
 	if claims.Iss != client.ClientID || claims.Sub != client.ClientID {
 		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", "iss and sub must equal client_id")
@@ -122,9 +131,9 @@ func (s *Server) verifyClient(r *http.Request) (*Client, *ClientAssertionClaims,
 	case err == nil:
 	case errors.Is(err, nonce.ErrReplayed):
 		slog.Warn("client assertion with a nonce that was used before", "client_id", client.ClientID)
-		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", fmt.Sprintf("invalid nonce: %v", err))
+		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", "invalid nonce")
 	case errors.Is(err, nonce.ErrInvalid):
-		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", fmt.Sprintf("invalid nonce: %v", err))
+		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", "invalid nonce")
 	default:
 		slog.Error("nonce could not be recorded", "error", err)
 		return nil, nil, oauthErr(http.StatusInternalServerError, "server_error", "nonce could not be checked")

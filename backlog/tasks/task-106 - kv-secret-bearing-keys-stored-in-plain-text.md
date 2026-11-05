@@ -1,9 +1,10 @@
 ---
 id: TASK-106
 title: 'kv: secret-bearing keys stored in plain text'
-status: To Do
+status: In Progress
 assignee: []
-created_date: '2026-10-15 17:45'
+created_date: 2026-10-15 17:45
+updated_date: '2026-11-05T18:30:00Z'
 labels:
   - go
   - pdp
@@ -25,3 +26,9 @@ go/pdp/authzserver/session_store_kv.go:36-56 writes index keys as:code:<code> an
 <!-- AC:BEGIN -->
 - [ ] #1 no secret value appears in a kv key; index keys use a keyed hash
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+as:code, as:authn, as:requri and pep:state keys hold a SHA-256 of the value; as:refresh already held one. The criterion asks for a keyed hash, the server rule for keying by a hash. The values are long and random, so this uses a plain hash. Criterion unticked until the maintainer rules on that.
+<!-- SECTION:NOTES:END -->

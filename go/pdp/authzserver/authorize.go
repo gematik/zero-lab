@@ -260,8 +260,13 @@ func (s *Server) OPCallbackEndpoint(w http.ResponseWriter, r *http.Request) erro
 	if state == "" {
 		return oauthErr(http.StatusBadRequest, "invalid_request", "missing state")
 	}
+	// Before the state is consumed: a request that is no answer of the provider ends no login.
+	upstream, code := query.Get("error"), query.Get("code")
+	if upstream == "" && code == "" {
+		return oauthErr(http.StatusBadRequest, "invalid_request", "missing code")
+	}
 
-	// find running session by the OP state
+	// find running session by the OP state, which this consumes
 	authzSession, err := s.sessionStore.GetAuthzServerSessionByAuthnState(state)
 	if errors.Is(err, errSessionNotFound) {
 		return oauthErr(http.StatusBadRequest, "invalid_request", "unknown or expired login")
@@ -273,8 +278,14 @@ func (s *Server) OPCallbackEndpoint(w http.ResponseWriter, r *http.Request) erro
 	if authnSession == nil {
 		return oauthErr(http.StatusBadRequest, "invalid_request", "missing openid session")
 	}
+	// Saving the session below would otherwise index the consumed state again.
+	authnSession.State = ""
+	// RFC 6749 section 4.1.2.1: from here on the client is known, so a failure ends there.
+	toClient := func(failure *Error) error {
+		return redirectWithError(w, r, authzSession.RedirectURI, authzSession.State, *failure)
+	}
 
-	if upstream := query.Get("error"); upstream != "" {
+	if upstream != "" {
 		slog.Error("OP callback error", "issuer", authnSession.Issuer, "error", upstream, "session_ref", sessionRef(authzSession.ID))
 		// RFC 6749 section 4.1.2.1: to the client that asked, with its state. authnSession's are this server's own
 		// callback and the state it sent the provider.
@@ -284,18 +295,12 @@ func (s *Server) OPCallbackEndpoint(w http.ResponseWriter, r *http.Request) erro
 		})
 	}
 
-	// retrieve PKCE code from query
-	code := query.Get("code")
-	if code == "" {
-		return oauthErr(http.StatusBadRequest, "invalid_request", "missing code")
-	}
-
 	slog.Info("OP callback", "issuer", authnSession.Issuer, "session_ref", sessionRef(authzSession.ID))
 
 	identityIssuer, err := s.GetOpenidClient(r.Context(), authnSession.Issuer)
 	if err != nil {
 		slog.Warn("no client for the login's OpenID Provider", "issuer", authnSession.Issuer, "error", err)
-		return oauthErr(http.StatusBadRequest, "invalid_request", "the identity provider is not available")
+		return toClient(oauthErr(http.StatusServiceUnavailable, "temporarily_unavailable", "the identity provider is not available"))
 	}
 
 	// exchange code for tokens with the OP
@@ -305,7 +310,7 @@ func (s *Server) OPCallbackEndpoint(w http.ResponseWriter, r *http.Request) erro
 		RedirectURI: authnSession.RedirectURI,
 	}, code)
 	if err != nil {
-		return serverError("unable to complete the login at the identity provider", err, code, state, authnSession.Nonce, authnSession.Verifier)
+		return toClient(serverError("unable to complete the login at the identity provider", err, code, state, authnSession.Nonce, authnSession.Verifier))
 	}
 
 	authnSession.TokenResponse = tokenResponse
@@ -316,19 +321,20 @@ func (s *Server) OPCallbackEndpoint(w http.ResponseWriter, r *http.Request) erro
 		Nonce string `json:"nonce"`
 	}
 	if err := tokenResponse.Claims(&idClaims); err != nil || idClaims.Nonce != authnSession.Nonce {
-		return oauthErr(http.StatusBadRequest, "invalid_request", "id_token nonce mismatch")
+		return toClient(oauthErr(http.StatusBadRequest, "access_denied", "the login could not be completed"))
 	}
 
 	authzSession.Code = generateNonce(64)
 
 	if err := s.sessionStore.SaveAutzhServerSession(authzSession); err != nil {
-		return serverError("unable to complete the login", err, authzSession.Code, state)
+		return toClient(serverError("unable to complete the login", err, authzSession.Code, state))
 	}
 
 	params := url.Values{}
 	params.Set("code", authzSession.Code)
 	params.Set("state", authzSession.State)
 
-	http.Redirect(w, r, authzSession.RedirectURI+"?"+params.Encode(), http.StatusFound) //nolint:gosec // the session's RedirectURI was matched exactly against the product's registered URIs at PAR
+	// The session's RedirectURI was matched exactly against the product's registered URIs at PAR.
+	http.Redirect(w, r, authzSession.RedirectURI+"?"+params.Encode(), http.StatusFound)
 	return nil
 }

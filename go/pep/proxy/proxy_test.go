@@ -25,6 +25,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -70,6 +71,78 @@ func newTestServer(t *testing.T) *Server {
 		t.Fatal(err)
 	}
 	return s
+}
+
+// failingBackend fails with what no browser may read.
+type failingBackend struct{ fakeBackend }
+
+const backendInternals = "as-response-body-value"
+
+func (f *failingBackend) Providers(context.Context) ([]Provider, error) {
+	return nil, errors.New(backendInternals)
+}
+
+func (f *failingBackend) StartLogin(context.Context, *Session, string, string) (LoginStart, error) {
+	return LoginStart{}, errors.New(backendInternals)
+}
+
+func (f *failingBackend) Complete(_ context.Context, _ *Session, code string) error {
+	return fmt.Errorf("%s, code %s", backendInternals, code)
+}
+
+func TestAFailedLoginShowsTheBrowserGenericText(t *testing.T) {
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	s, err := New(Config{Backend: &failingBackend{}, Store: kv.NewMemory(), CookieName: "TEST-SID"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess := s.sessions.create()
+	sess.State = "test-state"
+	if err := s.sessions.save(sess); err != nil {
+		t.Fatal(err)
+	}
+	for name, target := range map[string]string{
+		"the provider list":   "/oauth2/sign_in",
+		"the login's start":   "/oauth2/start?idp_iss=https%3A%2F%2Fidp.example",
+		"the code's exchange": "/oauth2/callback?state=test-state&code=code-value",
+	} {
+		t.Run(name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, target, nil)
+			req.AddCookie(&http.Cookie{Name: s.cookie.Name, Value: sess.token}) //nolint:gosec // request cookie in a test
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, req)
+			if strings.Contains(rec.Body.String(), backendInternals) || !strings.Contains(rec.Body.String(), "could") && !strings.Contains(rec.Body.String(), "not available") {
+				t.Errorf("page = %d: %s", rec.Code, rec.Body)
+			}
+		})
+	}
+	if !strings.Contains(logs.String(), backendInternals) {
+		t.Errorf("the detail is gone from the log:\n%s", logs.String())
+	}
+	if strings.Contains(logs.String(), "code-value") {
+		t.Errorf("the code reached the log:\n%s", logs.String())
+	}
+}
+
+func TestAnIdentityProvidersErrorIsNotReflected(t *testing.T) {
+	s := newTestServer(t)
+	sess := s.sessions.create()
+	sess.State = "test-state"
+	if err := s.sessions.save(sess); err != nil {
+		t.Fatal(err)
+	}
+	const planted = "planted-text-value"
+	req := httptest.NewRequest(http.MethodGet, "/oauth2/callback?state=test-state&error="+planted+"&error_description="+planted, nil)
+	req.AddCookie(&http.Cookie{Name: s.cookie.Name, Value: sess.token}) //nolint:gosec // request cookie in a test
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if strings.Contains(rec.Body.String(), planted) {
+		t.Errorf("reflected: %s", rec.Body)
+	}
 }
 
 func TestForwardAuth_Unauthenticated(t *testing.T) {
