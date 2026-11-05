@@ -80,12 +80,13 @@ func Decode(data, password []byte) (*Bags, error) {
 // privacy modes are supported; a signed authSafe or an enveloped safe yields
 // ErrUnsupportedAlgorithm. CRL, secret and unknown bags are skipped.
 func ExtractBags(pfx *PFX, password []byte) (*Bags, error) {
+	budget := new(syntax.Budget)
 	if !pfx.AuthSafe.ContentType.Equal(syntax.OIDData) {
 		return nil, fmt.Errorf("%w: authSafe content type %v (public-key integrity mode)", ErrUnsupportedAlgorithm, pfx.AuthSafe.ContentType)
 	}
 	// The MAC is checked before anything inside the authSafe is parsed, so
 	// a tampered file never reaches the decoders.
-	if err := VerifyMAC(pfx, password); err != nil {
+	if err := syntax.VerifyMAC(pfx, password, budget); err != nil {
 		return nil, fmt.Errorf("MAC verification failed: %w", err)
 	}
 
@@ -106,7 +107,7 @@ func ExtractBags(pfx *PFX, password []byte) (*Bags, error) {
 				return nil, fmt.Errorf("failed to extract safe contents: %w", err)
 			}
 		case ci.ContentType.Equal(syntax.OIDEncryptedData):
-			if safe, err = syntax.DecryptEncryptedData(ci, password); err != nil {
+			if safe, err = syntax.DecryptEncryptedData(ci, password, budget); err != nil {
 				return nil, fmt.Errorf("failed to decrypt safe contents: %w", err)
 			}
 		default:
@@ -117,7 +118,7 @@ func ExtractBags(pfx *PFX, password []byte) (*Bags, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse safe contents: %w", err)
 		}
-		if err := collectBags(sc, password, bags); err != nil {
+		if err := collectBags(sc, password, bags, budget); err != nil {
 			return nil, err
 		}
 	}
@@ -126,7 +127,7 @@ func ExtractBags(pfx *PFX, password []byte) (*Bags, error) {
 
 // collectBags adds the certificates and keys of sc to bags, descending into
 // nested safe contents bags.
-func collectBags(sc *syntax.SafeContents, password []byte, bags *Bags) error {
+func collectBags(sc *syntax.SafeContents, password []byte, bags *Bags, budget *syntax.Budget) error {
 	for _, bag := range sc.Bags {
 		friendlyName, _ := syntax.GetFriendlyName(bag.Attributes)
 		localKeyID, _ := syntax.GetLocalKeyID(bag.Attributes)
@@ -145,7 +146,7 @@ func collectBags(sc *syntax.SafeContents, password []byte, bags *Bags) error {
 			})
 
 		case bag.BagID.Equal(syntax.OIDPKCS8ShroudedKeyBag):
-			key, err := syntax.DecryptShroudedKeyBag(bag.BagValue, password)
+			key, err := syntax.DecryptShroudedKeyBag(bag.BagValue, password, budget)
 			if err != nil {
 				return fmt.Errorf("failed to extract shrouded key: %w", err)
 			}
@@ -164,7 +165,7 @@ func collectBags(sc *syntax.SafeContents, password []byte, bags *Bags) error {
 			if err != nil {
 				return fmt.Errorf("failed to parse nested safe contents: %w", err)
 			}
-			if err := collectBags(nested, password, bags); err != nil {
+			if err := collectBags(nested, password, bags, budget); err != nil {
 				return err
 			}
 		}

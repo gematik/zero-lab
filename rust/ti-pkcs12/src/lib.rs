@@ -68,9 +68,10 @@ use crate::asn1::{CertBag, Content, ContentInfo, EncryptedPrivateKeyInfo, Pfx, S
 #[cfg(feature = "encode")]
 pub use crate::encode::{ITERATIONS, encode};
 
-/// The highest iteration count a MAC, PKCS#12 KDF or PBKDF2 may ask for (spec/pkcs12
-/// P12-036). Producers use 1 to 102,400; the limit bounds the CPU time a crafted file
-/// can cost, and is checked before anything is derived.
+/// The work budget of one decode (spec/pkcs12 P12-036): the iteration counts of all its
+/// derivations together, the MAC and each PBKDF2 once, each PKCS#12 PBE twice (key and IV).
+/// Producers use 1 to 102,400 per count; the budget bounds the CPU time a crafted file can
+/// cost, however many bags it holds, and is checked before each derivation.
 pub const MAX_ITERATIONS: u32 = 10_000_000;
 
 /// The object identifiers of RFC 7292 and the algorithms PKCS#12 files use.
@@ -185,8 +186,10 @@ pub enum Error {
     /// An algorithm or mode this crate does not implement.
     #[error("unsupported algorithm or mode {0}")]
     UnsupportedAlgorithm(ObjectIdentifier),
-    /// An iteration count above [`MAX_ITERATIONS`].
-    #[error("{what} iteration count {iterations} above the limit of {MAX_ITERATIONS}")]
+    /// A derivation that would take the decode over its work budget of [`MAX_ITERATIONS`].
+    #[error(
+        "{what} iteration count {iterations} exceeds the work budget of {MAX_ITERATIONS} for one decode"
+    )]
     LimitExceeded {
         /// Whose count: `MAC`, `PBE` or `PBKDF2`.
         what: &'static str,
@@ -204,18 +207,33 @@ impl Error {
     }
 }
 
-/// Checks an iteration count from the file before anything is derived with it (P12-036).
-pub(crate) fn check_iterations(what: &'static str, iterations: u32) -> Result<(), Error> {
-    match iterations {
-        0 => Err(Error::malformed(
-            "iteration count",
-            format!("{what} iterations are 0"),
-        )),
-        n if n > MAX_ITERATIONS => Err(Error::LimitExceeded {
-            what,
-            iterations: n,
-        }),
-        _ => Ok(()),
+/// The iterations one decode has spent on key derivation (P12-036).
+#[derive(Debug, Default)]
+pub(crate) struct Budget {
+    spent: u64,
+}
+
+impl Budget {
+    /// Checks an iteration count from the file and spends it `derivations` times, before
+    /// anything is derived with it.
+    pub(crate) fn spend(
+        &mut self,
+        what: &'static str,
+        iterations: u32,
+        derivations: u32,
+    ) -> Result<(), Error> {
+        if iterations == 0 {
+            return Err(Error::malformed(
+                "iteration count",
+                format!("{what} iterations are 0"),
+            ));
+        }
+        let total = self.spent + u64::from(iterations) * u64::from(derivations);
+        if total > u64::from(MAX_ITERATIONS) {
+            return Err(Error::LimitExceeded { what, iterations });
+        }
+        self.spent = total;
+        Ok(())
     }
 }
 
@@ -375,6 +393,7 @@ pub fn is_pkcs12(bytes: &[u8]) -> bool {
 /// password in a file without a MAC, [`Error::Malformed`] for anything that does not
 /// parse, [`Error::UnsupportedAlgorithm`] for modes and algorithms outside this crate.
 pub fn decode(bytes: &[u8], password: &str) -> Result<Pkcs12, Error> {
+    let mut budget = Budget::default();
     if !is_pkcs12(bytes) {
         return Err(Error::malformed("PFX", "not a PKCS#12 file"));
     }
@@ -392,7 +411,12 @@ pub fn decode(bytes: &[u8], password: &str) -> Result<Pkcs12, Error> {
 
     let mut p12 = Pkcs12::default();
     if let Some(mac_data) = &pfx.mac_data {
-        mac::verify(mac_data, &kdf::bmp_password(password), auth_safe)?;
+        mac::verify(
+            mac_data,
+            &kdf::bmp_password(password),
+            auth_safe,
+            &mut budget,
+        )?;
         p12.mac = Some(MacInfo {
             digest: mac::name(mac_data.mac.algorithm.oid)
                 .map_or_else(|| mac_data.mac.algorithm.oid.to_string(), str::to_owned),
@@ -408,17 +432,32 @@ pub fn decode(bytes: &[u8], password: &str) -> Result<Pkcs12, Error> {
                     target: Target::Safe,
                     algorithm: decrypt::name(&encrypted.algorithm),
                 });
-                decrypt::decrypt(&encrypted.algorithm, password, &encrypted.ciphertext)?
+                decrypt::decrypt(
+                    &encrypted.algorithm,
+                    password,
+                    &encrypted.ciphertext,
+                    &mut budget,
+                )?
             }
             // Enveloped safes (public-key privacy mode) need the recipient's key.
             Content::Other => return Err(Error::UnsupportedAlgorithm(safe.content_type)),
         };
-        collect(&Vec::<SafeBag>::from_ber(&contents)?, password, &mut p12)?;
+        collect(
+            &Vec::<SafeBag>::from_ber(&contents)?,
+            password,
+            &mut p12,
+            &mut budget,
+        )?;
     }
     Ok(p12)
 }
 
-fn collect(bags: &[SafeBag], password: &str, p12: &mut Pkcs12) -> Result<(), Error> {
+fn collect(
+    bags: &[SafeBag],
+    password: &str,
+    p12: &mut Pkcs12,
+    budget: &mut Budget,
+) -> Result<(), Error> {
     for bag in bags {
         let (friendly_name, local_key_id, trusted_key_usage) = attributes(bag);
         match bag.id {
@@ -444,6 +483,7 @@ fn collect(bags: &[SafeBag], password: &str, p12: &mut Pkcs12) -> Result<(), Err
                     &shrouded.encryption_algorithm,
                     password,
                     shrouded.encrypted_data.as_bytes(),
+                    budget,
                 )?;
                 p12.keys.push(KeyBag {
                     pkcs8,
@@ -459,7 +499,7 @@ fn collect(bags: &[SafeBag], password: &str, p12: &mut Pkcs12) -> Result<(), Err
                 });
             }
             oids::SAFE_CONTENTS_BAG => {
-                collect(&reparse::<Vec<SafeBag>>(&bag.value)?, password, p12)?;
+                collect(&reparse::<Vec<SafeBag>>(&bag.value)?, password, p12, budget)?;
             }
             // CRL, secret and unknown bags carry nothing an identity needs.
             _ => {}
@@ -495,4 +535,50 @@ fn bmp_string(value: &Any) -> Option<String> {
     }
     let units: Vec<u16> = pairs.iter().map(|pair| u16::from_be_bytes(*pair)).collect();
     String::from_utf16(&units).ok()
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    fn exceeded(result: &Result<(), Error>) -> bool {
+        matches!(result, Err(Error::LimitExceeded { .. }))
+    }
+
+    #[test]
+    fn p12_036_the_budget_covers_all_derivations_of_one_decode() {
+        let mut budget = Budget::default();
+        assert!(budget.spend("MAC", 4_000_000, 1).is_ok());
+        assert!(budget.spend("PBKDF2", 4_000_000, 1).is_ok());
+        assert!(exceeded(&budget.spend("PBKDF2", 4_000_000, 1)));
+        assert!(
+            budget.spend("PBKDF2", 2_000_000, 1).is_ok(),
+            "exactly the budget"
+        );
+        assert!(exceeded(&budget.spend("PBKDF2", 1, 1)));
+    }
+
+    #[test]
+    fn p12_036_a_pkcs12_pbe_spends_its_count_for_key_and_iv() {
+        let mut budget = Budget::default();
+        assert!(budget.spend("PBE", 5_000_000, 2).is_ok());
+        assert!(exceeded(&budget.spend("MAC", 1, 1)));
+        assert!(exceeded(&Budget::default().spend("PBE", 5_000_001, 2)));
+    }
+
+    #[test]
+    fn p12_036_a_count_above_the_budget_fails_and_spends_nothing() {
+        let mut budget = Budget::default();
+        assert!(exceeded(&budget.spend("MAC", MAX_ITERATIONS + 1, 1)));
+        assert!(exceeded(&budget.spend("MAC", u32::MAX, 2)));
+        assert!(budget.spend("MAC", MAX_ITERATIONS, 1).is_ok());
+    }
+
+    #[test]
+    fn p12_036_a_zero_count_is_malformed() {
+        assert!(matches!(
+            Budget::default().spend("MAC", 0, 1),
+            Err(Error::Malformed { .. })
+        ));
+    }
 }

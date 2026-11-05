@@ -94,7 +94,7 @@ func legacyPBEFor(oid asn1.ObjectIdentifier) (legacyPBE, bool) {
 }
 
 // DecryptPBES2 decrypts data encrypted with PBES2 (RFC 8018 §6.2).
-func DecryptPBES2(encAlg *EncryptionAlgorithm, password []byte, data []byte) ([]byte, error) {
+func DecryptPBES2(encAlg *EncryptionAlgorithm, password []byte, data []byte, budget *Budget) ([]byte, error) {
 	if encAlg.KDF == nil || encAlg.Cipher == nil {
 		return nil, fmt.Errorf("%w: incomplete PBES2 parameters", ErrDecryption)
 	}
@@ -109,7 +109,7 @@ func DecryptPBES2(encAlg *EncryptionAlgorithm, password []byte, data []byte) ([]
 	if encAlg.KDF.KeyLength != 0 && encAlg.KDF.KeyLength != c.KeySize {
 		return nil, fmt.Errorf("%w: PBKDF2 keyLength %d does not fit the cipher", ErrParse, encAlg.KDF.KeyLength)
 	}
-	if err := CheckIterations(encAlg.KDF.Iterations); err != nil {
+	if err := budget.Spend(encAlg.KDF.Iterations, 1); err != nil {
 		return nil, err
 	}
 	// PBES2 feeds the password octets to PBKDF2 unchanged (RFC 8018 §6.2.1);
@@ -127,12 +127,13 @@ func DecryptPBES2(encAlg *EncryptionAlgorithm, password []byte, data []byte) ([]
 
 // DecryptLegacyPBE decrypts data encrypted with pbeWithSHAAnd3-KeyTripleDES-CBC.
 // RC2 and two-key Triple DES are decrypted by package legacy.
-func DecryptLegacyPBE(encAlg *EncryptionAlgorithm, password []byte, data []byte) ([]byte, error) {
+func DecryptLegacyPBE(encAlg *EncryptionAlgorithm, password []byte, data []byte, budget *Budget) ([]byte, error) {
 	scheme, ok := legacyPBEFor(encAlg.Algorithm)
 	if !ok {
 		return nil, fmt.Errorf("%w: encryption scheme %v", ErrUnsupportedAlgorithm, encAlg.Algorithm)
 	}
-	if err := CheckIterations(encAlg.Iterations); err != nil {
+	// Key and IV are two derivations.
+	if err := budget.Spend(encAlg.Iterations, 2); err != nil {
 		return nil, err
 	}
 	bmp := pbe.BMPPassword(password)
@@ -146,16 +147,16 @@ func DecryptLegacyPBE(encAlg *EncryptionAlgorithm, password []byte, data []byte)
 }
 
 // decryptWith decrypts data with the scheme alg names.
-func decryptWith(alg *EncryptionAlgorithm, password, data []byte) ([]byte, error) {
+func decryptWith(alg *EncryptionAlgorithm, password, data []byte, budget *Budget) ([]byte, error) {
 	if alg.Algorithm.Equal(OIDPBES2) {
-		return DecryptPBES2(alg, password, data)
+		return DecryptPBES2(alg, password, data, budget)
 	}
-	return DecryptLegacyPBE(alg, password, data)
+	return DecryptLegacyPBE(alg, password, data, budget)
 }
 
 // DecryptEncryptedData decrypts a safe whose ContentInfo is EncryptedData
 // and returns the SafeContents encoding.
-func DecryptEncryptedData(contentInfo ContentInfo, password []byte) ([]byte, error) {
+func DecryptEncryptedData(contentInfo ContentInfo, password []byte, budget *Budget) ([]byte, error) {
 	if !contentInfo.ContentType.Equal(OIDEncryptedData) {
 		return nil, fmt.Errorf("%w: content type %v is not EncryptedData", ErrDecryption, contentInfo.ContentType)
 	}
@@ -167,12 +168,12 @@ func DecryptEncryptedData(contentInfo ContentInfo, password []byte) ([]byte, err
 	if err != nil {
 		return nil, err
 	}
-	return decryptWith(alg, password, ciphertext)
+	return decryptWith(alg, password, ciphertext, budget)
 }
 
 // DecryptShroudedKeyBag decrypts the value of a shrouded key bag and returns
 // the PKCS#8 PrivateKeyInfo.
-func DecryptShroudedKeyBag(bagValue []byte, password []byte) ([]byte, error) {
+func DecryptShroudedKeyBag(bagValue []byte, password []byte, budget *Budget) ([]byte, error) {
 	epki, err := ParseEncryptedPrivateKeyInfo(bagValue)
 	if err != nil {
 		return nil, err
@@ -181,7 +182,7 @@ func DecryptShroudedKeyBag(bagValue []byte, password []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return decryptWith(alg, password, epki.Data)
+	return decryptWith(alg, password, epki.Data, budget)
 }
 
 // decryptCBC decrypts CBC and removes the PKCS#7 padding.
@@ -196,7 +197,29 @@ func decryptCBC(block cipher.Block, iv, ciphertext []byte) ([]byte, error) {
 	return plaintext, nil
 }
 
-// CheckIterations bounds an iteration count read from a file, see
+// Budget is the key derivation work one decode may do (spec/pkcs12 P12-036): the
+// iteration counts of all its derivations together, at most pbe.MaxIterations. The
+// zero value is a full budget.
+type Budget struct {
+	spent int
+}
+
+// Spend checks an iteration count read from a file and takes it derivations times
+// from the budget, before anything is derived with it.
+func (b *Budget) Spend(iterations, derivations int) error {
+	if iterations < 1 {
+		return fmt.Errorf("%w: iteration count %d", ErrParse, iterations)
+	}
+	// Each term stays below the limit before the product, so nothing overflows.
+	if iterations > pbe.MaxIterations || b.spent+iterations*derivations > pbe.MaxIterations {
+		return fmt.Errorf("%w: iteration count %d (%d derivations) on top of %d exceeds the budget of %d for one decode",
+			ErrLimitExceeded, iterations, derivations, b.spent, pbe.MaxIterations)
+	}
+	b.spent += iterations * derivations
+	return nil
+}
+
+// CheckIterations bounds an iteration count an encoder is asked for, see
 // pbe.MaxIterations.
 func CheckIterations(n int) error {
 	if n < 1 {
@@ -245,11 +268,14 @@ func ComputeMAC(alg asn1.ObjectIdentifier, password, salt []byte, iterations int
 
 // VerifyMAC checks the MAC of pfx. A PFX without MacData has no integrity
 // protection and passes; callers that require one check pfx.MacData.
-func VerifyMAC(pfx *PFX, password []byte) error {
+func VerifyMAC(pfx *PFX, password []byte, budget *Budget) error {
 	if pfx.MacData == nil {
 		return nil
 	}
 	md := pfx.MacData
+	if err := budget.Spend(md.Iterations, 1); err != nil {
+		return err
+	}
 	expected, err := ComputeMAC(md.Mac.Algorithm.Algorithm, password, md.MacSalt, md.Iterations, pfx.RawAuthSafe)
 	if err != nil {
 		return err

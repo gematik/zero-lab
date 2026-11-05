@@ -87,4 +87,6 @@ func Parse(data []byte) (*PFX, error) { return syntax.Parse(data) }
 
 // VerifyMAC checks the MAC of pfx. A PFX without MacData has no integrity protection and passes; callers
 // that require one check pfx.MacData.
-func VerifyMAC(pfx *PFX, password []byte) error { return syntax.VerifyMAC(pfx, password) }
+func VerifyMAC(pfx *PFX, password []byte) error {
+	return syntax.VerifyMAC(pfx, password, new(syntax.Budget))
+}

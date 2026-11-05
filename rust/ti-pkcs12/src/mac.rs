@@ -35,7 +35,12 @@ use crate::kdf::{self, Purpose};
 use crate::{Error, oids};
 
 /// Checks `mac_data` over `content` with the KDF-ready `password`.
-pub(crate) fn verify(mac_data: &MacData, password: &[u8], content: &[u8]) -> Result<(), Error> {
+pub(crate) fn verify(
+    mac_data: &MacData,
+    password: &[u8],
+    content: &[u8],
+    budget: &mut crate::Budget,
+) -> Result<(), Error> {
     let oid = mac_data.mac.algorithm.oid;
     let check = match oid {
         oids::SHA1 => check::<Sha1>,
@@ -45,7 +50,7 @@ pub(crate) fn verify(mac_data: &MacData, password: &[u8], content: &[u8]) -> Res
         oids::SHA512 => check::<Sha512>,
         _ => return Err(Error::UnsupportedAlgorithm(oid)),
     };
-    crate::check_iterations("MAC", mac_data.iterations)?;
+    budget.spend("MAC", mac_data.iterations, 1)?;
     if check(
         password,
         mac_data.mac_salt.as_bytes(),
@@ -100,6 +105,11 @@ mod tests {
 
     use super::*;
     use crate::asn1::DigestInfo;
+
+    /// The MAC check of one decode, with a budget of its own.
+    fn verify(mac_data: &MacData, password: &[u8], content: &[u8]) -> Result<(), Error> {
+        super::verify(mac_data, password, content, &mut crate::Budget::default())
+    }
 
     /// P12-036: a crafted MAC count fails at once instead of costing billions of hashes
     /// (the corpus case `mac-iterations-limit`).

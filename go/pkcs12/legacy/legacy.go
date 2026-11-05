@@ -82,7 +82,8 @@ func Decode(data, password []byte) (*pkcs12.Bags, error) {
 	}
 	// RawAuthSafe holds the authSafe octets with BER segments joined, which
 	// are exactly the octets the MAC covers (RFC 7292 §4).
-	if err := pkcs12.VerifyMAC(pfx, password); err != nil {
+	budget := new(syntax.Budget)
+	if err := syntax.VerifyMAC(pfx, password, budget); err != nil {
 		return nil, fmt.Errorf("MAC verification failed: %w", err)
 	}
 
@@ -107,13 +108,13 @@ func Decode(data, password []byte) (*pkcs12.Bags, error) {
 				return nil, fmt.Errorf("failed to extract safe contents: %w", err)
 			}
 		case ci.ContentType.Equal(syntax.OIDEncryptedData):
-			if safe, err = decryptSafe(ci.Content, password); err != nil {
+			if safe, err = decryptSafe(ci.Content, password, budget); err != nil {
 				return nil, fmt.Errorf("failed to decrypt safe contents: %w", err)
 			}
 		default:
 			return nil, fmt.Errorf("%w: safe content type %v (public-key privacy mode)", pkcs12.ErrUnsupportedAlgorithm, ci.ContentType)
 		}
-		if err := collect(safe, password, bags); err != nil {
+		if err := collect(safe, password, bags, budget); err != nil {
 			return nil, err
 		}
 	}
@@ -121,7 +122,7 @@ func Decode(data, password []byte) (*pkcs12.Bags, error) {
 }
 
 // collect adds the certificates and keys of a SafeContents encoding to bags.
-func collect(safe, password []byte, bags *pkcs12.Bags) error {
+func collect(safe, password []byte, bags *pkcs12.Bags, budget *syntax.Budget) error {
 	safeDER, err := toDER(safe)
 	if err != nil {
 		return fmt.Errorf("failed to parse safe contents: %w", err)
@@ -152,7 +153,7 @@ func collect(safe, password []byte, bags *pkcs12.Bags) error {
 			if err != nil {
 				return fmt.Errorf("failed to extract shrouded key: %w", err)
 			}
-			key, err := decrypt(epki.Algorithm, password, epki.Data)
+			key, err := decrypt(epki.Algorithm, password, epki.Data, budget)
 			if err != nil {
 				return fmt.Errorf("failed to extract shrouded key: %w", err)
 			}
@@ -166,7 +167,7 @@ func collect(safe, password []byte, bags *pkcs12.Bags) error {
 			})
 
 		case bag.BagID.Equal(syntax.OIDSafeContentsBag):
-			if err := collect(bag.BagValue, password, bags); err != nil {
+			if err := collect(bag.BagValue, password, bags, budget); err != nil {
 				return err
 			}
 		}

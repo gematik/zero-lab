@@ -35,11 +35,14 @@ pub(crate) fn decrypt(
     algorithm: &AlgorithmIdentifierOwned,
     password: &str,
     ciphertext: &[u8],
+    budget: &mut crate::Budget,
 ) -> Result<Zeroizing<Vec<u8>>, Error> {
     match algorithm.oid {
-        oids::PBES2 => crate::pbes2::decrypt(algorithm, password, ciphertext),
+        oids::PBES2 => crate::pbes2::decrypt(algorithm, password, ciphertext, budget),
         #[cfg(feature = "legacy")]
-        oid if legacy::is_pkcs12_pbe(oid) => legacy::decrypt(algorithm, password, ciphertext),
+        oid if legacy::is_pkcs12_pbe(oid) => {
+            legacy::decrypt(algorithm, password, ciphertext, budget)
+        }
         oid => Err(Error::UnsupportedAlgorithm(oid)),
     }
 }
@@ -97,13 +100,15 @@ mod legacy {
         algorithm: &AlgorithmIdentifierOwned,
         password: &str,
         ciphertext: &[u8],
+        budget: &mut crate::Budget,
     ) -> Result<Zeroizing<Vec<u8>>, Error> {
         let parameters = algorithm
             .parameters
             .as_ref()
             .ok_or_else(|| Error::malformed("PBE parameters", "missing"))?;
         let params: PbeParams = reparse(parameters)?;
-        crate::check_iterations("PBE", params.iterations)?;
+        // Key and IV are two derivations.
+        budget.spend("PBE", params.iterations, 2)?;
         let password = kdf::bmp_password(password);
         let derive = |purpose, len| {
             kdf::derive::<Sha1>(
@@ -153,6 +158,20 @@ mod tests {
     use der::asn1::OctetString;
 
     use super::*;
+
+    /// The decryption of one decode, with a budget of its own.
+    fn decrypt(
+        algorithm: &AlgorithmIdentifierOwned,
+        password: &str,
+        ciphertext: &[u8],
+    ) -> Result<Zeroizing<Vec<u8>>, Error> {
+        super::decrypt(
+            algorithm,
+            password,
+            ciphertext,
+            &mut crate::Budget::default(),
+        )
+    }
 
     fn pbe_algorithm(iterations: u32) -> AlgorithmIdentifierOwned {
         let params = crate::asn1::PbeParams {

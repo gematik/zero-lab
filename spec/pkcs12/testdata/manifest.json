@@ -983,6 +983,27 @@
       "expect": {
         "code": "limit_exceeded"
       }
+    },
+    {
+      "id": "work-budget-total",
+      "description": "Key, certificates and MAC at 4,000,000 iterations each: every count is within the limit, their sum of 12,000,000 is over the budget",
+      "rules": [
+        "P12-036"
+      ],
+      "profile": "modern",
+      "openssl": [
+        "-iter",
+        "4000000"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "encodings": [
+        "der"
+      ],
+      "expect": {
+        "code": "limit_exceeded"
+      }
     }
   ]
 }

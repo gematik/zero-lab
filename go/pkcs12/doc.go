@@ -63,7 +63,8 @@
 //
 // Rejected: the public-key integrity and privacy modes, PBMAC1 (RFC 9579),
 // RC4, single DES, unknown PRFs and ciphers (ErrUnsupportedAlgorithm), and
-// iteration counts above 10,000,000 (ErrLimitExceeded). The MAC is checked
+// files whose derivations together ask for more than 10,000,000 iterations
+// (ErrLimitExceeded, spec/pkcs12 P12-036). The MAC is checked
 // before anything inside the authSafe is parsed. Legacy algorithms are never
 // written.
 //

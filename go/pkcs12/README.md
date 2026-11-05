@@ -50,7 +50,9 @@ MAC digest, iterations and passwords. `Parse` and `ExtractBags` split decoding i
 - The MAC is verified before anything inside the authSafe is parsed. A file without MAC is
   accepted; `Parse` followed by a check of `pfx.MacData` rejects it.
 - Unknown algorithms fail (`ErrUnsupportedAlgorithm`), including the public-key modes, PBMAC1,
-  RC4 and unknown PBKDF2 PRFs. Iteration counts above 10,000,000 fail (`ErrLimitExceeded`).
+  RC4 and unknown PBKDF2 PRFs. One decode may spend 10,000,000 iterations on key derivation in
+  total, all its MAC, PBKDF2 and PBE derivations together; beyond that it fails
+  (`ErrLimitExceeded`).
 - Legacy algorithms are read-only and live in `pkcs12/legacy`.
 - Errors are sentinel values for `errors.Is`: `ErrInvalidPFX`, `ErrParse`, `ErrAuthentication`
   (wrong password or altered file), `ErrDecryption`, `ErrUnsupportedAlgorithm`,

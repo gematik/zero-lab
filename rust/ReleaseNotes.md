@@ -669,6 +669,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pkcs12
 
 #### changed
+- One decode may spend `MAX_ITERATIONS` (10,000,000) iterations on key derivation in total,
+  all its MAC, PBKDF2 and PBE derivations together (spec/pkcs12 P12-036), where each count was
+  bounded alone: a file of many bags no longer costs 10,000,000 iterations per bag.
+  `Error::LimitExceeded` reports the derivation that would exceed the budget.
 - PBES2 is read and written by the crate itself over `pbkdf2`, `aes` and `cbc`; `pkcs5`,
   `scrypt` and `salsa20` are gone from the tree. Files written are byte for byte the same.
   What a file can do differently: a `keyLength` other than the cipher's key size is now

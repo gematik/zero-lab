@@ -168,6 +168,7 @@ pub(crate) fn decrypt(
     algorithm: &AlgorithmIdentifierOwned,
     password: &str,
     ciphertext: &[u8],
+    budget: &mut crate::Budget,
 ) -> Result<Zeroizing<Vec<u8>>, Error> {
     let params = params(algorithm)?;
     if params.kdf.oid != oids::PBKDF2 {
@@ -190,7 +191,7 @@ pub(crate) fn decrypt(
             "differs from the key size of the cipher",
         ));
     }
-    crate::check_iterations("PBKDF2", kdf.iterations)?;
+    budget.spend("PBKDF2", kdf.iterations, 1)?;
     let iv_parameter = params
         .cipher
         .parameters
@@ -275,6 +276,20 @@ mod tests {
 
     use super::*;
     use crate::MAX_ITERATIONS;
+
+    /// The decryption of one decode, with a budget of its own.
+    fn decrypt(
+        algorithm: &AlgorithmIdentifierOwned,
+        password: &str,
+        ciphertext: &[u8],
+    ) -> Result<Zeroizing<Vec<u8>>, Error> {
+        super::decrypt(
+            algorithm,
+            password,
+            ciphertext,
+            &mut crate::Budget::default(),
+        )
+    }
 
     const SCRYPT: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.6.1.4.1.11591.4.11");
 

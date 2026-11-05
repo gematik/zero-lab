@@ -206,16 +206,16 @@ func TestEncodeSeparatePasswords(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := syntax.DecryptShroudedKeyBag(sc.Bags[0].BagValue, []byte("cert")); err == nil {
+			if _, err := syntax.DecryptShroudedKeyBag(sc.Bags[0].BagValue, []byte("cert"), new(syntax.Budget)); err == nil {
 				t.Error("key decrypts with the certificate password")
 			}
-			key, err := syntax.DecryptShroudedKeyBag(sc.Bags[0].BagValue, []byte("key"))
+			key, err := syntax.DecryptShroudedKeyBag(sc.Bags[0].BagValue, []byte("key"), new(syntax.Budget))
 			if err != nil || !bytes.Equal(key, bags.PrivateKeys[0].Raw) {
 				t.Errorf("key with KeyPassword: %v", err)
 			}
 			sawKey = true
 		case ci.ContentType.Equal(syntax.OIDEncryptedData):
-			if _, err := syntax.DecryptEncryptedData(ci, []byte("cert")); err != nil {
+			if _, err := syntax.DecryptEncryptedData(ci, []byte("cert"), new(syntax.Budget)); err != nil {
 				t.Errorf("certificates with CertPassword: %v", err)
 			}
 			sawCert = true
@@ -394,11 +394,11 @@ func TestIterationLimits(t *testing.T) {
 		KDF:       &syntax.PBKDF2Params{Salt: []byte("salt"), Iterations: 1 << 30, PRF: syntax.OIDHMACSHA256},
 		Cipher:    &syntax.CipherParams{Algorithm: syntax.OIDAes256CBC, IV: make([]byte, 16)},
 	}
-	if _, err := syntax.DecryptPBES2(alg, []byte("x"), make([]byte, 16)); !errors.Is(err, pkcs12.ErrLimitExceeded) {
+	if _, err := syntax.DecryptPBES2(alg, []byte("x"), make([]byte, 16), new(syntax.Budget)); !errors.Is(err, pkcs12.ErrLimitExceeded) {
 		t.Errorf("PBKDF2: %v, want ErrLimitExceeded", err)
 	}
 	pbe := &syntax.EncryptionAlgorithm{Algorithm: syntax.OIDPBEWithSHAAnd3KeyTripleDESCBC, Salt: []byte("salt"), Iterations: 1 << 30}
-	if _, err := syntax.DecryptLegacyPBE(pbe, []byte("x"), make([]byte, 8)); !errors.Is(err, pkcs12.ErrLimitExceeded) {
+	if _, err := syntax.DecryptLegacyPBE(pbe, []byte("x"), make([]byte, 8), new(syntax.Budget)); !errors.Is(err, pkcs12.ErrLimitExceeded) {
 		t.Errorf("PKCS#12 PBE: %v, want ErrLimitExceeded", err)
 	}
 }
@@ -412,24 +412,24 @@ func TestDecryptPBES2Algorithms(t *testing.T) {
 		}
 	}
 	unknown := asn1.ObjectIdentifier{1, 2, 840, 113549, 2, 127}
-	if _, err := syntax.DecryptPBES2(alg(unknown, syntax.OIDAes256CBC), nil, make([]byte, 16)); !errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
+	if _, err := syntax.DecryptPBES2(alg(unknown, syntax.OIDAes256CBC), nil, make([]byte, 16), new(syntax.Budget)); !errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
 		t.Errorf("unknown PRF: %v, want ErrUnsupportedAlgorithm", err)
 	}
-	if _, err := syntax.DecryptPBES2(alg(syntax.OIDHMACSHA256, unknown), nil, make([]byte, 16)); !errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
+	if _, err := syntax.DecryptPBES2(alg(syntax.OIDHMACSHA256, unknown), nil, make([]byte, 16), new(syntax.Budget)); !errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
 		t.Errorf("unknown cipher: %v, want ErrUnsupportedAlgorithm", err)
 	}
 	// Up to v0.99.3 this package wrote the digest OID as PRF; such files
 	// must stay readable.
-	if _, err := syntax.DecryptPBES2(alg(syntax.OIDSHA256, syntax.OIDAes256CBC), nil, make([]byte, 16)); errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
+	if _, err := syntax.DecryptPBES2(alg(syntax.OIDSHA256, syntax.OIDAes256CBC), nil, make([]byte, 16), new(syntax.Budget)); errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
 		t.Errorf("digest OID as PRF: %v", err)
 	}
 	keyLength := alg(syntax.OIDHMACSHA256, syntax.OIDAes256CBC)
 	keyLength.KDF.KeyLength = 16
-	if _, err := syntax.DecryptPBES2(keyLength, nil, make([]byte, 16)); !errors.Is(err, pkcs12.ErrParse) {
+	if _, err := syntax.DecryptPBES2(keyLength, nil, make([]byte, 16), new(syntax.Budget)); !errors.Is(err, pkcs12.ErrParse) {
 		t.Errorf("keyLength that does not fit: %v, want ErrParse", err)
 	}
 	rc2 := &syntax.EncryptionAlgorithm{Algorithm: syntax.OIDPBEWithSHAAnd128BitRC2CBC, Salt: []byte("s"), Iterations: 1}
-	if _, err := syntax.DecryptLegacyPBE(rc2, nil, make([]byte, 8)); !errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
+	if _, err := syntax.DecryptLegacyPBE(rc2, nil, make([]byte, 8), new(syntax.Budget)); !errors.Is(err, pkcs12.ErrUnsupportedAlgorithm) {
 		t.Errorf("RC2 in package pkcs12: %v, want ErrUnsupportedAlgorithm", err)
 	}
 }

@@ -42,13 +42,13 @@ import (
 
 // decrypt decrypts data with the scheme alg names: the legacy schemes here,
 // everything else through package pkcs12.
-func decrypt(alg pkix.AlgorithmIdentifier, password, data []byte) ([]byte, error) {
+func decrypt(alg pkix.AlgorithmIdentifier, password, data []byte, budget *syntax.Budget) ([]byte, error) {
 	if scheme, ok := legacyPBEFor(alg.Algorithm); ok {
 		salt, iterations, err := parsePBEParams(alg.Parameters.FullBytes)
 		if err != nil {
 			return nil, err
 		}
-		return decryptPBE(scheme, password, salt, iterations, data)
+		return decryptPBE(scheme, password, salt, iterations, data, budget)
 	}
 
 	ea, err := syntax.ParseEncryptionAlgorithm(alg)
@@ -57,16 +57,16 @@ func decrypt(alg pkix.AlgorithmIdentifier, password, data []byte) ([]byte, error
 	}
 	if ea.Algorithm.Equal(syntax.OIDPBES2) {
 		if ea.Cipher.Algorithm.Equal(oidDESEDE3CBC) {
-			return decryptPBES2TripleDES(ea, password, data)
+			return decryptPBES2TripleDES(ea, password, data, budget)
 		}
-		return syntax.DecryptPBES2(ea, password, data)
+		return syntax.DecryptPBES2(ea, password, data, budget)
 	}
-	return syntax.DecryptLegacyPBE(ea, password, data)
+	return syntax.DecryptLegacyPBE(ea, password, data, budget)
 }
 
 // decryptSafe decrypts a PKCS#7 EncryptedData (RFC 2315 §13) and returns the
 // SafeContents encoding.
-func decryptSafe(content, password []byte) ([]byte, error) {
+func decryptSafe(content, password []byte, budget *syntax.Budget) ([]byte, error) {
 	// EncryptedData ::= SEQUENCE { version INTEGER, encryptedContentInfo SEQUENCE {
 	//   contentType OBJECT IDENTIFIER, contentEncryptionAlgorithm AlgorithmIdentifier,
 	//   encryptedContent [0] IMPLICIT OCTET STRING OPTIONAL } }
@@ -92,7 +92,7 @@ func decryptSafe(content, password []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return decrypt(alg, password, ciphertext)
+	return decrypt(alg, password, ciphertext, budget)
 }
 
 // encryptedContent reads encryptedContent [0] IMPLICIT OCTET STRING. BER
@@ -164,8 +164,9 @@ func parsePBEParams(params []byte) ([]byte, int, error) {
 	return salt, iterations, nil
 }
 
-func decryptPBE(scheme legacyPBE, password, salt []byte, iterations int, data []byte) ([]byte, error) {
-	if err := checkIterations(iterations); err != nil {
+func decryptPBE(scheme legacyPBE, password, salt []byte, iterations int, data []byte, budget *syntax.Budget) ([]byte, error) {
+	// Key and IV are two derivations.
+	if err := budget.Spend(iterations, 2); err != nil {
 		return nil, err
 	}
 	bmp := pbe.BMPPassword(password)
@@ -178,7 +179,7 @@ func decryptPBE(scheme legacyPBE, password, salt []byte, iterations int, data []
 	return decryptCBC(block, iv, data)
 }
 
-func decryptPBES2TripleDES(ea *syntax.EncryptionAlgorithm, password, data []byte) ([]byte, error) {
+func decryptPBES2TripleDES(ea *syntax.EncryptionAlgorithm, password, data []byte, budget *syntax.Budget) ([]byte, error) {
 	prf, ok := pbe.PBKDF2PRF(ea.KDF.PRF)
 	if !ok {
 		return nil, fmt.Errorf("%w: PBKDF2 PRF %v", pkcs12.ErrUnsupportedAlgorithm, ea.KDF.PRF)
@@ -186,7 +187,7 @@ func decryptPBES2TripleDES(ea *syntax.EncryptionAlgorithm, password, data []byte
 	if ea.KDF.KeyLength != 0 && ea.KDF.KeyLength != 24 {
 		return nil, fmt.Errorf("%w: PBKDF2 keyLength %d does not fit DES-EDE3", pkcs12.ErrParse, ea.KDF.KeyLength)
 	}
-	if err := checkIterations(ea.KDF.Iterations); err != nil {
+	if err := budget.Spend(ea.KDF.Iterations, 1); err != nil {
 		return nil, err
 	}
 	key, err := pbkdf2.Key(prf, string(password), ea.KDF.Salt, ea.KDF.Iterations, 24)
@@ -209,14 +210,4 @@ func decryptCBC(block cipher.Block, iv, ciphertext []byte) ([]byte, error) {
 		return nil, fmt.Errorf("%w: %w", pkcs12.ErrDecryption, err)
 	}
 	return plaintext, nil
-}
-
-func checkIterations(n int) error {
-	if n < 1 {
-		return fmt.Errorf("%w: iteration count %d", pkcs12.ErrParse, n)
-	}
-	if n > pbe.MaxIterations {
-		return fmt.Errorf("%w: iteration count %d above %d", pkcs12.ErrLimitExceeded, n, pbe.MaxIterations)
-	}
-	return nil
 }

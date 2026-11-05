@@ -110,7 +110,7 @@ Rules marked *(legacy)* apply to the profile `legacy` only. A `modern` decoder M
 | P12-033 | PKCS#12 PBEs (RFC 7292 appendix C, key and IV from the PKCS#12 KDF with SHA-1, IDs 1 and 2): pbeWithSHAAnd3-KeyTripleDES-CBC. *(legacy)* pbeWithSHAAnd2-KeyTripleDES-CBC (key K1 K2 K1), pbeWithSHAAnd128BitRC2-CBC and pbeWithSHAAnd40BitRC2-CBC (RC2 with 128 and 40 effective key bits). RC4 is `unsupported_algorithm`. |
 | P12-034 | Decryption is CBC with PKCS#7 padding. Ciphertext that is empty or not a multiple of the block size, an IV of the wrong size, and padding that is 0, larger than the block size or inconsistent are `decryption_failed`. |
 | P12-035 | A safe of a content type other than Data or EncryptedData (public-key privacy mode) is `unsupported_algorithm`. |
-| P12-036 | Iteration counts (MAC, PKCS#12 KDF, PBKDF2) MUST be at least 1 (else `malformed`) and MUST NOT exceed 10,000,000; above that the decoder MUST fail with `limit_exceeded` before deriving anything. Producers use 1 to 102,400. |
+| P12-036 | Iteration counts (MAC, PKCS#12 KDF, PBKDF2) MUST be at least 1 (else `malformed`). One decode has a work budget of 10,000,000 iterations: every derivation spends its iteration count, the MAC and a PBKDF2 once, a PKCS#12 PBE twice (for its key and its IV). The decoder MUST fail with `limit_exceeded` before the derivation that would take the total above the budget, so a single count above 10,000,000 fails before anything is derived. Producers use 1 to 102,400 per count. |
 
 ### E. Bags
 
@@ -143,7 +143,7 @@ Rules marked *(legacy)* apply to the profile `legacy` only. A `modern` decoder M
 | `mac_mismatch` | wrong password or altered file | `ErrAuthentication` | `Error::MacMismatch` |
 | `decryption_failed` | ciphertext does not decrypt (wrong password without MAC, corrupt data) | `ErrDecryption` (with `ErrInvalidPadding`) | `Error::DecryptFailed` |
 | `unsupported_algorithm` | algorithm or mode outside this specification | `ErrUnsupportedAlgorithm` | `Error::UnsupportedAlgorithm` |
-| `limit_exceeded` | iteration count above P12-036 | `ErrLimitExceeded` | `Error::LimitExceeded` |
+| `limit_exceeded` | the work budget of P12-036 exceeded | `ErrLimitExceeded` | `Error::LimitExceeded` |
 
 A wrong password on a file without MAC yields `decryption_failed` in about 255 of 256 cases; in the
 others the padding happens to be valid and the plaintext fails to parse (`malformed`). Both are
@@ -157,7 +157,7 @@ decode(file, password):
  2. if pfx.authSafe.contentType ≠ Data → unsupported_algorithm (P12-016)
  3. octets := value of the authSafe OCTET STRING, segments joined (P12-011)
  4. if pfx.macData present:
-      check iterations (P12-036); hash := MAC digest (P12-012)
+      spend iterations (P12-036); hash := MAC digest (P12-012)
       key := PKCS12-KDF(hash, BMP(password), macSalt, iterations, ID 3, |hash|) (P12-013, P12-020)
       HMAC(hash, key, octets) = mac, constant time (P12-014), else mac_mismatch (P12-010)
  5. for each ContentInfo of AuthenticatedSafe(octets):
@@ -175,9 +175,9 @@ collect(bags): for each bag
       otherwise          → skip (P12-043)
 
 decrypt(algorithm, ciphertext):
-      PBES2  → PRF (P12-030), keyLength (P12-032), iterations (P12-036), cipher (P12-031),
+      PBES2  → PRF (P12-030), keyLength (P12-032), spend iterations (P12-036), cipher (P12-031),
                key := PBKDF2(PRF, password octets (P12-021), salt, iterations, key size)
-      PKCS#12 PBE → scheme (P12-033), iterations (P12-036),
+      PKCS#12 PBE → scheme (P12-033), spend iterations twice (P12-036),
                key, IV := PKCS12-KDF(SHA-1, BMP(password), salt, iterations, ID 1 / ID 2)
       CBC decrypt, remove padding (P12-034)
 ```
