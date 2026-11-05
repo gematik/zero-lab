@@ -4,7 +4,7 @@ title: 'ti-cli, ti-store: replace the sealed store with plain files'
 status: In Progress
 assignee: []
 created_date: '2026-11-03T19:45:00Z'
-updated_date: '2026-11-05T16:52:00Z'
+updated_date: '2026-11-05T17:47:00Z'
 labels:
   - ti-cli
   - ti-store
@@ -40,7 +40,7 @@ Profiles stay as plain directories; the design is in the implementation notes.
 - [x] #2 TSL rollback state is kept on every run with a writable state directory, without any setup; an older TSL is rejected after a fresh install's first verified TSL
 - [x] #3 Each comfort ID lies in its own file: mode 0600 in a 0700 directory on POSIX; on POSIX, ti refuses a comfort file readable by group or others
 - [x] #4 comfort activate, a sign without PIN and comfort deactivate work against a real Konnektor and HBA, proven by the maintainer
-- [ ] #5 No token and no other secret than the comfort ID is written to disk by ti
+- [x] #5 No token and no other secret than the comfort ID is written to disk by ti
 - [x] #6 The feature store of ti-store, rusqlite and any crate only they need are gone from Cargo.lock and rust/supply-chain
 - [ ] #7 spec/store and the store fuzz targets are removed; each new file parser has a fuzz target
 - [x] #8 Tests named after the requirement each proves cover the file layout, the mode check and TSL rollback across runs
@@ -208,4 +208,6 @@ Open:
 - AC #5: TASK-212 also keeps a generated HBA user ID in STATE/hba-user/KONNEKTOR/CARD, same modes as a comfort ID. A card session is keyed by this ID, so it may count as a second secret on disk against AC #5 and decision-14 point 3. For the maintainer to rule on.
 - AC #7: store fuzz targets are gone, the file parsers have fuzz targets; spec/store stays until chore/go-consolidation (a2b2b32) merges.
 - AC #11: spec/README.md still lists spec/store, for the same reason. The other documents are updated.
+
+AC #5 settled by b25988b: the comfort ID and the generated ID are one file per HBA, hba-user/KONNEKTOR/CARD, so the ID stays the one secret kept on disk, with decision-14 unchanged. The maintainer repeated the HITL on b25988b: comfort activate, sign without PIN, ls of the ID file, comfort deactivate. ti profile delete under a throwaway profile is not recorded. Paths in the README and notes for comfort IDs now read hba-user/ instead of comfort/.
 <!-- SECTION:NOTES:END -->

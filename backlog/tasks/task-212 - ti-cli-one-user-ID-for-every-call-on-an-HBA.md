@@ -4,7 +4,7 @@ title: 'ti-cli: one user ID for every call on an HBA'
 status: In Progress
 assignee: []
 created_date: '2026-11-04T17:05:00Z'
-updated_date: '2026-11-04T19:01:00Z'
+updated_date: '2026-11-05T17:47:00Z'
 labels:
   - ti-cli
   - ti-connector-client
@@ -47,4 +47,6 @@ Rule, per call on a card of the HBA family (HBA, HBA-qSig, ZOD 2.0, HBAx): --com
 
 <!-- SECTION:NOTES:BEGIN -->
 Spec: GetSignatureMode and ActivateComfortSignature run TUC_KON_000, DeactivateComfortSignature has no context, so comfort deactivate works from any profile. comfort status from another profile than the one that activated gets 4018 by the spec. AC 8 waits for an HBA and Konnektor that accept each other: HBA-108's C.QES is INVALID on the secunet Konnektor (1027, 1059), which blocks signing but not PIN and certificate calls.
+
+After the HITL of b25988b: one ID file per HBA, hba-user/KONNEKTOR/CARD, in place of a comfort file and a generated file. comfort activate writes a new ID, comfort deactivate removes the file, the next call brings back the .kon userId or makes a new one. connector sign asks the Konnektor (GetSignatureMode) whether a comfort session runs. user_id_stored is removed. Edge case, documented in the README: a file left from before a userId was added to the .kon goes first until comfort deactivate. Maintainer proved on secunet with one HBA, 2026-11-05: verify pin, comfort activate, sign without PIN, verify certificate C.QES, comfort deactivate, describe card, no 4018.
 <!-- SECTION:NOTES:END -->
