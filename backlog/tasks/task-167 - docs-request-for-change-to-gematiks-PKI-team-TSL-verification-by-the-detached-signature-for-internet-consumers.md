@@ -3,10 +3,10 @@ id: TASK-167
 title: >-
   docs: request for change to gematik's PKI team, TSL verification by the
   detached signature for internet consumers
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-01T16:11:00Z'
-updated_date: '2026-11-01T19:13:00Z'
+updated_date: '2026-11-05T19:25:00Z'
 labels:
   - docs
   - pki
@@ -34,3 +34,9 @@ Conditional on TASK-166's gate: new requirements for internet and TI 2.0 consume
 
 2026-11-01: doc-3 updated after the review and the removal: gematik's design note and the BSI background added, hash gate, stale revoked, --at and the HTTPS availability argument added; the false point about the signature format removed. XMLDSig is now removed (TASK-166), so the deviation is live; handing doc-3 to the PKI team is the maintainer's step.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed: doc-3 (the request for change on TSL verification by the detached signature) is written; whether it reached the PKI team is not recorded here.
+<!-- SECTION:FINAL_SUMMARY:END -->

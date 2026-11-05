@@ -3,10 +3,10 @@ id: TASK-166
 title: >-
   ti-pki: TSL trust from the detached signature (.sig) and the signer's OCSP
   (.ocsp); XMLDSig leaves the trust path
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-01T16:10:00Z'
-updated_date: '2026-11-01T19:39:00Z'
+updated_date: '2026-11-05T19:25:00Z'
 labels:
   - ti-pki
   - rust
@@ -356,3 +356,9 @@ The removal of XMLDSig (criterion 4) waits for the gate (criterion 1): a second 
 
 2026-11-01: on the maintainer's request tsl verify takes TSL and SIG as two positional arguments; two inputs from stdin are a usage error (exit 2), which closes that deferred minor.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Done in PR #78: the TSL verifies from its detached signature and the signer's OCSP; ti-xmldsig, C14N and the second XML parser left the workspace.
+<!-- SECTION:FINAL_SUMMARY:END -->

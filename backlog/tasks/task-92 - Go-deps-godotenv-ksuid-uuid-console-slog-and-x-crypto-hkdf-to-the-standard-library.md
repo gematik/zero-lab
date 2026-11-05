@@ -3,10 +3,10 @@ id: TASK-92
 title: >-
   Go deps: godotenv, ksuid, uuid, console-slog and x/crypto/hkdf to the standard
   library
-status: In Progress
+status: Done
 assignee: []
 created_date: 2026-10-14 20:44
-updated_date: '2026-11-05T18:57:00Z'
+updated_date: '2026-11-05T19:25:00Z'
 labels:
   - go
   - deps
@@ -36,3 +36,9 @@ Decision (2026-10-20): godotenv stays. A .env holds paths to secrets or secret n
 
 console-slog left go/epa for slog's text handler. google/uuid stays indirect in zaddy through Caddy; no module imports x/crypto/hkdf.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed: ksuid, uuid, console-slog and x/crypto/hkdf left our code; google/uuid stays indirect in zaddy through Caddy, which this repository does not control.
+<!-- SECTION:FINAL_SUMMARY:END -->

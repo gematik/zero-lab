@@ -1,10 +1,10 @@
 ---
 id: TASK-195
 title: 'oidf: API key transport and TLS'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-02T22:59:00Z'
-updated_date: '2026-11-05T18:30:00Z'
+updated_date: '2026-11-05T19:25:00Z'
 labels:
   - go
   - security
@@ -29,3 +29,9 @@ AddAPIKeyTransport matches HasSuffix without a dot, so xdev.gematik.solutions ge
 <!-- SECTION:NOTES:BEGIN -->
 Done: the key goes only to https hosts below .dev.gematik.solutions, from api_key_path in the relying party configuration; API_KEY is no longer read, so deployments must set api_key_path. Mutual TLS keeps the base client's RootCAs and MinVersion. Open, so the criterion stays unticked: the signed JWKS shape, which needs a check against a live federation.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed after the API key and the mutual TLS fix: the signed JWKS shape needs a live federation and is checked at the next live OIDF login instead.
+<!-- SECTION:FINAL_SUMMARY:END -->

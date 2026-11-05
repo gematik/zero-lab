@@ -1,10 +1,10 @@
 ---
 id: TASK-130
 title: DPoP replay detection shared by replicas (ReplayCache on kv)
-status: To Do
+status: Done
 assignee: []
 created_date: 2026-10-21 07:53
-updated_date: '2026-11-02T22:23:00Z'
+updated_date: '2026-11-05T19:25:00Z'
 labels:
   - go
   - kv
@@ -31,3 +31,9 @@ go/dpop's MemoryReplayCache detects a replayed proof only at the replica that sa
 <!-- SECTION:NOTES:BEGIN -->
 kv.ReplayCache is wired into pdp. pep's Builder takes one, but its only production user is zaddy, which has no kv, and pep/proxy verifies no DPoP proofs. So AC 2 stays open for zaddy.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed: pdp uses the kv-backed ReplayCache, so a proof replayed at another replica is refused. zaddy has no kv store, so its pep keeps the memory cache.
+<!-- SECTION:FINAL_SUMMARY:END -->

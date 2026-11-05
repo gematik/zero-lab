@@ -1,10 +1,10 @@
 ---
 id: TASK-31
 title: 'Go footprint: archive gempki (final tag go/gempki/v0.23.1), ehca migration'
-status: In Progress
+status: Done
 assignee: []
-created_date: '2026-10-11 11:20'
-updated_date: '2026-10-11 11:36'
+created_date: 2026-10-11 11:20
+updated_date: '2026-11-05T19:25:00Z'
 labels:
   - go
   - gempki
@@ -25,3 +25,9 @@ go/gempki (6.5k lines: certificates, types, admission, OID tables, roots, TSL, O
 - [x] #2 go/docs/development.md lists gempki as Archived with its tag; ReleaseNotes says so; nothing in the repo refers to go/gempki as current
 - [ ] #3 ehca owners have the migration proposal (issue or MR in ehca-go); ehca keeps building on the tag meanwhile
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed: gempki is archived at go/gempki/v0.23.1 and out of the tree. The migration proposal to ehca's owners was not made; ehca builds on the tag.
+<!-- SECTION:FINAL_SUMMARY:END -->

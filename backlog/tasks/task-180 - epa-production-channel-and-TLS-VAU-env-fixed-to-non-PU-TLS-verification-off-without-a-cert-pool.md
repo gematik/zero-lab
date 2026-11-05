@@ -3,10 +3,10 @@ id: TASK-180
 title: >-
   epa: production channel and TLS: VAU env fixed to non-PU, TLS verification off
   without a cert pool
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-02T15:42:00Z'
-updated_date: '2026-11-05T19:05:00Z'
+updated_date: '2026-11-05T19:32:00Z'
 labels:
   - go
   - security
@@ -33,3 +33,9 @@ Done: a production channel carries the production environment byte (OpenChannelV
 
 Maintainer, 2026-11-05: TLS verification waits for TASK-98. The fixed test-data HCV stays: zero-epa is not for production.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed after the production byte. TLS verification of the aggregators moved to TASK-98, which gives epa the TI-PKI profile. The fixed test-data HCV stays, as zero-epa is not for production.
+<!-- SECTION:FINAL_SUMMARY:END -->
