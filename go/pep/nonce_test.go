@@ -24,14 +24,15 @@
 package pep_test
 
 import (
+	"crypto/rand"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/gematik/zero-lab/go/nonce"
 	"github.com/gematik/zero-lab/go/pep"
 )
 
@@ -59,22 +60,27 @@ func nonceServer(t *testing.T, source dpop.NonceSource) *httptest.Server {
 	return server
 }
 
-func nonceSource(t *testing.T, keys nonce.Keys) *nonce.Source {
-	t.Helper()
-	source, err := nonce.NewSource(keys, "pep-dpop", time.Minute)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return source
+// nonces is a NonceSource that remembers what it handed out. pep depends on dpop alone, so the tests
+// stand in for go/nonce, whose own tests prove that its sealed nonces hold across replicas sharing keys.
+type nonces struct {
+	mu     sync.Mutex
+	issued map[string]bool
 }
 
-func sharedKeys(t *testing.T) nonce.Keys {
-	t.Helper()
-	keys, err := nonce.NewEphemeralKeys()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return keys
+func newNonces() *nonces { return &nonces{issued: map[string]bool{}} }
+
+func (n *nonces) Valid(nonce string) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.issued[nonce]
+}
+
+func (n *nonces) Fresh() (string, error) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	nonce := rand.Text()
+	n.issued[nonce] = true
+	return nonce, nil
 }
 
 // call sends a DPoP request with a fresh proof key, carrying proofNonce.
@@ -129,7 +135,7 @@ func TestRFC9449_9_NoncesRequiredWithoutASourceAreRefused(t *testing.T) {
 
 // RFC 9449 Section 9: a proof without the server's nonce is answered with use_dpop_nonce and a nonce.
 func TestRFC9449_9_AProofWithoutTheNonceIsAnsweredWithOne(t *testing.T) {
-	server := nonceServer(t, nonceSource(t, sharedKeys(t)))
+	server := nonceServer(t, newNonces())
 	for name, proofNonce := range map[string]string{"none": "", "forged": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"} {
 		t.Run(name, func(t *testing.T) {
 			resp := call(t, server, proofNonce)
@@ -146,7 +152,7 @@ func TestRFC9449_9_AProofWithoutTheNonceIsAnsweredWithOne(t *testing.T) {
 
 // RFC 9449 Sections 8.2 and 9: a proof with the nonce is accepted, and the response carries the next one.
 func TestRFC9449_9_AProofWithTheNonceIsAcceptedAndGetsTheNext(t *testing.T) {
-	server := nonceServer(t, nonceSource(t, sharedKeys(t)))
+	server := nonceServer(t, newNonces())
 	first := assertNonceHandedOut(t, call(t, server, ""))
 	resp := call(t, server, first)
 	if resp.StatusCode != http.StatusOK {
@@ -155,17 +161,17 @@ func TestRFC9449_9_AProofWithTheNonceIsAcceptedAndGetsTheNext(t *testing.T) {
 	assertNonceHandedOut(t, resp)
 }
 
-// RFC 9449 Section 9: replicas that share the nonce keys accept each other's nonces, with no store
-// between them.
+// RFC 9449 Section 9: replicas whose nonce source accepts the same nonces accept each other's, so the PEP
+// keeps none of its own.
 func TestRFC9449_9_ANonceOfOneReplicaIsAcceptedByAnother(t *testing.T) {
-	keys := sharedKeys(t)
-	one := nonceServer(t, nonceSource(t, keys))
-	other := nonceServer(t, nonceSource(t, keys))
+	shared := newNonces()
+	one := nonceServer(t, shared)
+	other := nonceServer(t, shared)
 	handedOut := assertNonceHandedOut(t, call(t, one, ""))
 	if resp := call(t, other, handedOut); resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d", resp.StatusCode)
 	}
-	stranger := nonceServer(t, nonceSource(t, sharedKeys(t)))
+	stranger := nonceServer(t, newNonces())
 	if resp := call(t, stranger, handedOut); resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("a replica with other keys: status = %d", resp.StatusCode)
 	}
