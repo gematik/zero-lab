@@ -4,7 +4,7 @@ title: 'ti-cli, ti-store: replace the sealed store with plain files'
 status: In Progress
 assignee: []
 created_date: '2026-11-03T19:45:00Z'
-updated_date: '2026-11-03T20:20:00Z'
+updated_date: '2026-11-05T16:52:00Z'
 labels:
   - ti-cli
   - ti-store
@@ -36,16 +36,16 @@ Profiles stay as plain directories; the design is in the implementation notes.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 ti keeps its HTTP cache as plain files written by atomic rename; concurrent ti processes never leave a torn entry
-- [ ] #2 TSL rollback state is kept on every run with a writable state directory, without any setup; an older TSL is rejected after a fresh install's first verified TSL
-- [ ] #3 Each comfort ID lies in its own file: mode 0600 in a 0700 directory on POSIX; on POSIX, ti refuses a comfort file readable by group or others
-- [ ] #4 comfort activate, a sign without PIN and comfort deactivate work against a real Konnektor and HBA, proven by the maintainer
+- [x] #1 ti keeps its HTTP cache as plain files written by atomic rename; concurrent ti processes never leave a torn entry
+- [x] #2 TSL rollback state is kept on every run with a writable state directory, without any setup; an older TSL is rejected after a fresh install's first verified TSL
+- [x] #3 Each comfort ID lies in its own file: mode 0600 in a 0700 directory on POSIX; on POSIX, ti refuses a comfort file readable by group or others
+- [x] #4 comfort activate, a sign without PIN and comfort deactivate work against a real Konnektor and HBA, proven by the maintainer
 - [ ] #5 No token and no other secret than the comfort ID is written to disk by ti
-- [ ] #6 The feature store of ti-store, rusqlite and any crate only they need are gone from Cargo.lock and rust/supply-chain
+- [x] #6 The feature store of ti-store, rusqlite and any crate only they need are gone from Cargo.lock and rust/supply-chain
 - [ ] #7 spec/store and the store fuzz targets are removed; each new file parser has a fuzz target
-- [ ] #8 Tests named after the requirement each proves cover the file layout, the mode check and TSL rollback across runs
-- [ ] #9 ti store and the keyring subcommands of ti profile are gone; ti cache works on the plain files; TI_STORE_KEK_PATH and TI_STORE_BACKEND have no effect
-- [ ] #10 ti no longer reads state.db, cache.db, keyring.bin or store.kek
+- [x] #8 Tests named after the requirement each proves cover the file layout, the mode check and TSL rollback across runs
+- [x] #9 ti store and the keyring subcommands of ti profile are gone; ti cache works on the plain files; TI_STORE_KEK_PATH and TI_STORE_BACKEND have no effect
+- [x] #10 ti no longer reads state.db, cache.db, keyring.bin or store.kek
 - [ ] #11 rust/ti-cli/README.md, rust/ti-store/README.md, rust/docs/design.md, spec/README.md and the ti-cli JSON schemas describe the new layout; rust/ReleaseNotes.md records the removal of the sealed store
 <!-- AC:END -->
 
@@ -197,4 +197,15 @@ On POSIX, `read_comfort` checks `symlink_metadata` first and refuses a symlink, 
 
 <!-- SECTION:NOTES:BEGIN -->
 Design agreed with the maintainer on 2026-11-03. Profiles stay as plain directories: --profile NAME and TI_PROFILE choose a directory below profiles/, created on first use, with no reserved names and no remembered active profile; without a name, the bases themselves. ti profile list and delete stay; create, use, show, rotate and rewrap go, and so does ti store. Throwaway runs are left to the shell: --profile "$(uuidgen)", or TI_STATE_DIR and TI_CACHE_DIR with mktemp. Layout: <state>/tsl/<id>.json, <state>/comfort/<konnektor>/<card>, <cache>/v1/<sha256 of key>, with <state> = ~/.local/state/telematik/ti and <cache> = ~/.cache/telematik/ti. The maintainer is the only user, so nothing is migrated and old files are removed by hand.
+
+State on refactor/ti-cli-plain-files at fc725bb, 2026-11-05.
+
+Maintainer proved comfort activate, a sign without PIN and comfort deactivate on a real Konnektor and HBA (AC #4). Whether the HITL's ls -l on the comfort file and ti profile delete were run is not recorded.
+
+just check and just cli-check (Linux, Windows) pass. The first just check failed: ti-pki validate_corpus hit nextest's 60 s limit under load; alone it takes 52 s, in the passing run 57 s.
+
+Open:
+- AC #5: TASK-212 also keeps a generated HBA user ID in STATE/hba-user/KONNEKTOR/CARD, same modes as a comfort ID. A card session is keyed by this ID, so it may count as a second secret on disk against AC #5 and decision-14 point 3. For the maintainer to rule on.
+- AC #7: store fuzz targets are gone, the file parsers have fuzz targets; spec/store stays until chore/go-consolidation (a2b2b32) merges.
+- AC #11: spec/README.md still lists spec/store, for the same reason. The other documents are updated.
 <!-- SECTION:NOTES:END -->
