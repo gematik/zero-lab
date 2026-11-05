@@ -185,7 +185,7 @@ func TestFederationVerifiesItsWayFromTheTrustAnchorToTheSignedJwks(t *testing.T)
 	}
 }
 
-func TestFederationRefusesMasterStatementNotSignedByTheTrustAnchor(t *testing.T) {
+func TestOIDF_10_2_AMasterStatementNotSignedByTheTrustAnchorIsRefused(t *testing.T) {
 	stub := newFederationStub(t)
 	_, err := NewOpenidFederation(stub.URL, keySetOf(newTestKey(t), "master"), WithHTTPClient(stub.Client()))
 	if err == nil {
@@ -201,7 +201,7 @@ func TestFederationRefusesTrustAnchorWithoutAlg(t *testing.T) {
 	}
 }
 
-func TestFederationRefusesOPStatementNotSignedByTheKeyTheMasterVouchesFor(t *testing.T) {
+func TestOIDF_10_2_AnOPStatementNotSignedByTheKeyTheMasterVouchesForIsRefused(t *testing.T) {
 	stub := newFederationStub(t)
 	federation := stub.federation(t)
 	stub.opStatement = signJWS(t, newTestKey(t), "op", map[string]any{"iss": stub.URL + "/op"})
@@ -210,7 +210,7 @@ func TestFederationRefusesOPStatementNotSignedByTheKeyTheMasterVouchesFor(t *tes
 	}
 }
 
-func TestFederationRefusesMasterStatementThatVouchesForNoKeys(t *testing.T) {
+func TestOIDF_3_2_AMasterStatementThatVouchesForNoKeysIsRefused(t *testing.T) {
 	stub := newFederationStub(t)
 	federation := stub.federation(t)
 	stub.fetchStatement = signJWS(t, stub.masterKey, "master", map[string]any{"iss": stub.URL, "sub": stub.URL + "/op"})
@@ -219,7 +219,7 @@ func TestFederationRefusesMasterStatementThatVouchesForNoKeys(t *testing.T) {
 	}
 }
 
-func TestFederationRefusesSignedJwksNotSignedByTheStatementsKey(t *testing.T) {
+func TestOIDF_5_2_1_ASignedJwksNotSignedByTheStatementsKeyIsRefused(t *testing.T) {
 	stub := newFederationStub(t)
 	federation := stub.federation(t)
 	op, err := federation.FetchEntityStatement(stub.URL + "/op")
@@ -340,7 +340,8 @@ func validIDTokenClaims() map[string]any {
 	return map[string]any{"iss": "https://op.example", "aud": "https://rp.example", "nonce": "n", "exp": time.Now().Add(time.Hour).Unix()}
 }
 
-func TestExchangeDecryptsAndVerifiesTheNestedIDToken(t *testing.T) {
+// gemSpec_IDP_FD A_23195: the ID token is decrypted with the relying party's own key before it is used.
+func TestA_23195_TheNestedIDTokenIsDecryptedAndVerified(t *testing.T) {
 	stub := newLoginStub(t)
 	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
 	response, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: "verifier"}, "code")
@@ -361,7 +362,8 @@ func TestExchangeDecryptsAndVerifiesTheNestedIDToken(t *testing.T) {
 	}
 }
 
-func TestExchangeRefusesEncryptionOtherThanRegistered(t *testing.T) {
+// OIDC Core 3.1.3.7 step 1: decrypt with the algorithms registered; a token not encrypted as registered is refused.
+func TestOIDCCore_3_1_3_7_1_EncryptionOtherThanRegisteredIsRefused(t *testing.T) {
 	stub := newLoginStub(t)
 	signed := signJWS(t, stub.sigKey, "k", validIDTokenClaims())
 	for name, token := range map[string]string{
@@ -379,7 +381,8 @@ func TestExchangeRefusesEncryptionOtherThanRegistered(t *testing.T) {
 	}
 }
 
-func TestExchangeRefusesTokenForAnotherRecipient(t *testing.T) {
+// gemSpec_IDP_FD A_23195.
+func TestA_23195_ATokenEncryptedForAnotherRecipientIsRefused(t *testing.T) {
 	stub := newLoginStub(t)
 	stub.idToken = encryptForTest(t, newTestKey(t).Public(), jose.ECDH_ES, jose.A256GCM, signJWS(t, stub.sigKey, "k", validIDTokenClaims()))
 	if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: "verifier"}, "code"); err == nil {
@@ -387,7 +390,8 @@ func TestExchangeRefusesTokenForAnotherRecipient(t *testing.T) {
 	}
 }
 
-func TestExchangeRefusesIDToken(t *testing.T) {
+// gemSpec_IDP_FD A_23049, OIDC Core 3.1.3.7 steps 3, 6 and 9: audience, signature and lifetime.
+func TestA_23049_AnIDTokenThatDoesNotHoldIsRefused(t *testing.T) {
 	stub := newLoginStub(t)
 	expired := validIDTokenClaims()
 	expired["exp"] = time.Now().Add(-time.Second).Unix()
@@ -491,7 +495,7 @@ func (s *federationStub) relyingParty(t *testing.T) *RelyingParty {
 	}
 }
 
-func TestFederationRefusesAMasterStatementNamingAnotherMaster(t *testing.T) {
+func TestOIDF_10_2_AMasterStatementNamingAnotherMasterIsRefused(t *testing.T) {
 	for name, claims := range map[string]map[string]any{
 		"issuer":  {"iss": "https://other.example", "sub": nil},
 		"subject": {"iss": nil, "sub": "https://other.example"},
@@ -513,7 +517,7 @@ func TestFederationRefusesAMasterStatementNamingAnotherMaster(t *testing.T) {
 }
 
 // Without the comparison the master's word about one member would hand any other member's issuer its keys.
-func TestFederationRefusesAMasterStatementAboutAnotherEntity(t *testing.T) {
+func TestOIDF_10_2_AMasterStatementAboutAnotherEntityIsRefused(t *testing.T) {
 	stub := newFederationStub(t)
 	federation := stub.federation(t)
 	for name, claims := range map[string]map[string]any{
@@ -529,7 +533,7 @@ func TestFederationRefusesAMasterStatementAboutAnotherEntity(t *testing.T) {
 	}
 }
 
-func TestFederationRefusesASelfSignedStatementOfAnotherEntity(t *testing.T) {
+func TestOIDF_10_2_ASelfSignedStatementOfAnotherEntityIsRefused(t *testing.T) {
 	stub := newFederationStub(t)
 	federation := stub.federation(t)
 	for name, overrides := range map[string]map[string]any{
@@ -546,7 +550,7 @@ func TestFederationRefusesASelfSignedStatementOfAnotherEntity(t *testing.T) {
 }
 
 // The request's idp_iss arrives here, so nothing goes out for an issuer that cannot be an entity identifier.
-func TestFederationAsksNobodyAboutAnIssuerThatIsNoHTTPSEntityIdentifier(t *testing.T) {
+func TestOIDF_1_2_NobodyIsAskedAboutAnIssuerThatIsNoHTTPSEntityIdentifier(t *testing.T) {
 	stub := newFederationStub(t)
 	federation := stub.federation(t)
 	var fetches atomic.Int64
@@ -565,7 +569,7 @@ func TestFederationAsksNobodyAboutAnIssuerThatIsNoHTTPSEntityIdentifier(t *testi
 	}
 }
 
-func TestFederationRefusesAPlainHTTPMaster(t *testing.T) {
+func TestOIDF_1_2_APlainHTTPMasterIsRefused(t *testing.T) {
 	plain := httptest.NewServer(http.NotFoundHandler())
 	defer plain.Close()
 	_, err := NewOpenidFederation(plain.URL, keySetOf(newTestKey(t), "master"), WithHTTPClient(plain.Client()))
@@ -574,7 +578,7 @@ func TestFederationRefusesAPlainHTTPMaster(t *testing.T) {
 	}
 }
 
-func TestFederationFetchesTheMastersEndpointsOverHTTPSOnly(t *testing.T) {
+func TestOIDF_5_1_1_TheMastersEndpointsAreFetchedOverHTTPSOnly(t *testing.T) {
 	for name, fetch := range map[string]func(*OpenidFederation, string) error{
 		"federation_fetch_endpoint": func(f *OpenidFederation, iss string) error {
 			_, err := f.FetchEntityStatement(iss)
@@ -598,7 +602,8 @@ func TestFederationFetchesTheMastersEndpointsOverHTTPSOnly(t *testing.T) {
 	}
 }
 
-func TestFederationDoesNotFollowARedirect(t *testing.T) {
+// Server rule 2: outbound fetches go only to trust-chain-derived hosts, which a redirect would leave.
+func TestServerRule2_FederationDoesNotFollowARedirect(t *testing.T) {
 	stub := newFederationStub(t)
 	endpoints := map[string]any{"federation_fetch_endpoint": stub.URL + "/redirecting", "idp_list_endpoint": stub.URL + "/redirecting"}
 	stub.masterStatement = signJWS(t, stub.masterKey, "master", map[string]any{"iss": stub.URL, "sub": stub.URL, "metadata": map[string]any{"federation_entity": endpoints}})
@@ -614,7 +619,7 @@ func TestFederationDoesNotFollowARedirect(t *testing.T) {
 	}
 }
 
-func TestFetchSignedJwksTakesAnHTTPSURIOnly(t *testing.T) {
+func TestOIDF_5_2_1_FetchSignedJwksTakesAnHTTPSURIOnly(t *testing.T) {
 	stub := newFederationStub(t)
 	federation := stub.federation(t)
 	op := &EntityStatement{
@@ -626,7 +631,7 @@ func TestFetchSignedJwksTakesAnHTTPSURIOnly(t *testing.T) {
 	}
 }
 
-func TestFetchSignedJwksDoesNotFollowARedirect(t *testing.T) {
+func TestServerRule2_FetchSignedJwksDoesNotFollowARedirect(t *testing.T) {
 	stub := newFederationStub(t)
 	federation := stub.federation(t)
 	op := &EntityStatement{
@@ -641,7 +646,8 @@ func TestFetchSignedJwksDoesNotFollowARedirect(t *testing.T) {
 	}
 }
 
-func TestFetchSignedJwksRefusesAnOldSetOrOneThatNeverExpires(t *testing.T) {
+// OpenID Federation 5.2.1 leaves exp of a signed JWK Set optional; server rule 15 makes it mandatory.
+func TestServerRule15_ASignedJwksThatIsOldOrNeverExpiresIsRefused(t *testing.T) {
 	stub := newFederationStub(t)
 	federation := stub.federation(t)
 	op, err := federation.FetchEntityStatement(stub.URL + "/op")
@@ -664,7 +670,7 @@ func TestFetchSignedJwksRefusesAnOldSetOrOneThatNeverExpires(t *testing.T) {
 	}
 }
 
-func TestFederationReadsNoMoreThanItsBound(t *testing.T) {
+func TestServerRule2_FederationReadsNoMoreThanItsBound(t *testing.T) {
 	stub := newFederationStub(t)
 	federation := stub.federation(t)
 	op, err := federation.FetchEntityStatement(stub.URL + "/op")
@@ -743,7 +749,7 @@ func TestLoadCertBytesFromPemNamesTheFileWithoutAMissingError(t *testing.T) {
 
 // Server rules 5 and 14. A provider's refusal may echo what it was sent, and the statement fetch's failure body comes
 // from outside.
-func TestAFederatedLoginLogsNoSecretAtDebug(t *testing.T) {
+func TestServerRule14_AFederatedLoginLogsNoSecretAtDebug(t *testing.T) {
 	const (
 		state, nonce, verifier = "state-value", "nonce-value", "verifier-value"
 		code, requestURI       = "code-value", "urn:request-uri-value"
@@ -844,8 +850,8 @@ func testRelyingPartyConfig(t *testing.T, stub *federationStub) *RelyingPartyCon
 	}
 }
 
-// OIDC Core 3.1.3.7, step 11: a token issued for another login must not be accepted for this one.
-func TestExchangeRefusesAnIDTokenOfAnotherLogin(t *testing.T) {
+// gemSpec_IDP_FD A_23049, OIDC Core 3.1.3.7 step 11: a token issued for another login must not be accepted for this one.
+func TestA_23049_AnIDTokenOfAnotherLoginIsRefused(t *testing.T) {
 	stub := newLoginStub(t)
 	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
 	if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "another", Verifier: "verifier"}, "code"); !errors.Is(err, openid.ErrNonceMismatch) {
@@ -859,7 +865,7 @@ func withoutAlg(set *jose.JSONWebKeySet) *jose.JSONWebKeySet {
 }
 
 // T-Systems' IdPs in the reference federation publish every key without alg, which RFC 7517 section 4.4 leaves optional.
-func TestFederationAcceptsMemberKeysWithoutAlg(t *testing.T) {
+func TestRFC7517_4_4_FederationAcceptsMemberKeysWithoutAlg(t *testing.T) {
 	stub := newFederationStub(t)
 	lifetime := func(claims map[string]any) map[string]any {
 		claims["iat"], claims["exp"] = time.Now().Unix(), time.Now().Add(time.Hour).Unix()
@@ -882,8 +888,9 @@ func TestFederationAcceptsMemberKeysWithoutAlg(t *testing.T) {
 	}
 }
 
-// Without an alg on the key, its type and curve still leave the token one algorithm.
-func TestFederationRefusesMemberTokenWhoseAlgDoesNotFitTheKeyWithoutAlg(t *testing.T) {
+// RFC 8725 Section 3.1: each key is used with exactly one algorithm. Without an alg on the key, its type and curve
+// still leave the token one algorithm.
+func TestRFC8725_3_1_AMemberTokenWhoseAlgDoesNotFitTheKeyWithoutAlgIsRefused(t *testing.T) {
 	stub := newFederationStub(t)
 	stub.fetchStatement = signJWS(t, stub.masterKey, "master", map[string]any{
 		"iss": stub.URL, "sub": stub.URL + "/op", "exp": time.Now().Add(time.Hour).Unix(),
@@ -909,7 +916,7 @@ func TestFederationRefusesMemberTokenWhoseAlgDoesNotFitTheKeyWithoutAlg(t *testi
 	}
 }
 
-func TestExchangeVerifiesAnIDTokenWithAKeyWithoutAlg(t *testing.T) {
+func TestRFC7517_4_4_AnIDTokenIsVerifiedWithAKeyWithoutAlg(t *testing.T) {
 	stub := newLoginStub(t)
 	withoutAlg(stub.client.jwks)
 	stub.idToken = stub.nestedToken(t, validIDTokenClaims())

@@ -189,7 +189,8 @@ func TestClientKeyPublishesTheAlgOfItsCurve(t *testing.T) {
 	}
 }
 
-func TestSignKeyHasToBeP256(t *testing.T) {
+// gemSpec_IDP_FD A_23196: the entity statement is signed with a P-256 key only.
+func TestA_23196_TheSigningKeyHasToBeP256(t *testing.T) {
 	path, _ := writeTestKeyPEM(t, elliptic.P384())
 	if _, _, _, err := loadKeyConfig(KeyConfig{KeyPEMPath: path}, "", keyUseSign); err == nil {
 		t.Error("accepted a key that cannot sign ES256")
