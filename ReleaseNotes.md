@@ -1,5 +1,136 @@
 # Release Notes
 
+# Release go/oidf v0.51.0
+
+### breaking
+- The federation API key comes from `api_key_path` in the relying party configuration; the
+  `API_KEY` environment variable is no longer read (TASK-195). `AddAPIKeyTransport` takes the key as
+  an argument, and `WithAPIKey` is new.
+- The key goes only to https hosts below `.dev.gematik.solutions`; `xdev.gematik.solutions` and
+  plain http no longer get it.
+
+### fixed
+- Mutual TLS keeps the base client's root certificates and minimum TLS version, where it fell back
+  to the system's.
+- ID tokens are bound to the login by their nonce, and the issuer of ID tokens and entity statements
+  is checked; https is required, redirects are refused, reads are bounded, and a signed JWKS needs
+  `exp` (go consolidation, PR #86).
+- Federation member keys and ID token keys that state no `alg` are accepted, as RFC 7517 allows:
+  T-Systems' IdPs in the reference federation publish theirs so. The trust anchor still has to state
+  it.
+
+### changes
+- go-jose instead of jwx; `go/oauth` is now `go/openid`.
+
+### verified
+- `just check` across all Go modules passed on 8d8ccc7; later commits change only go.mod pins and
+  Rust. `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+- The OpenID Federation suite (`just oidf-test`) passed on 2026-11-05, run by the maintainer.
+
+# Release go/idpd v0.1.0
+
+The first release under this name: the relying party of the gematik IDP-Dienst, formerly the
+untagged `go/gemidp`.
+
+### features
+- The IDP-Dienst's certificates are verified: the discovery signer before its key is used, and
+  `PuK_IDP_SIG` on every fetch, with the idpd-sig profile and hard-fail OCSP, against the bundle
+  `ti pki trust export` writes (`trust_bundle_path`) or material it downloads itself
+  (`trust_fetch`). There is no client without trust material (TASK-171, TASK-176, TASK-190).
+- The signed discovery document must name the IDP asked as its issuer (TASK-194).
+
+### changes
+- Renamed from gemidp everywhere an operator sees it: the `idpd:` YAML key, `PEP_IDPD_*`, `IDPD_*`
+  in the gated tests and `/idpd-callback`.
+
+### verified
+- `just check` across all Go modules passed on 8d8ccc7; later commits change only go.mod pins and
+  Rust. `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+- The idpd suites passed on 2026-11-05, run by the maintainer: the IDP certificates, the trust
+  download and the SMC-B login.
+
+# Release go/pep v0.26.0
+
+### breaking
+- go-jose instead of jwx: verification is stricter. A token with no `alg`, one whose `alg` differs
+  from its key's, HS256 with an oct key in a set, `crit` headers and nested JWS are refused.
+- `pep` depends on `dpop` alone; DPoP is RFC 9449 on go-jose (TASK-95).
+
+### features
+- Resource server DPoP nonces: `Builder.WithDPoPNonces` makes an `authorization_dpop` enforcer with
+  `nonce_required` check them, answer 401 `use_dpop_nonce` with a `DPoP-Nonce`, and hand out the
+  next nonce on success (RFC 9449 Sections 8 and 9, TASK-131). Without a source, `nonce_required`
+  still refuses with `internal_error`.
+- `WithDPoPReplayCache` takes a replay cache the replicas share.
+
+### fixed
+- An invalid token is answered 401; no secret, token or session ID reaches a log (TASK-185).
+
+### verified
+- `just check` across all Go modules passed on 8d8ccc7; later commits change only go.mod pins and
+  Rust. `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+- The OpenID Federation suite (`just oidf-test`) passed on 2026-11-05, run by the maintainer.
+
+# Release go/pep/proxy v0.1.0
+
+The first release of the reverse proxy and forward-auth gate, `zero-pep-proxy`, now its own module.
+
+### features
+- Logins at OpenID Connect providers, the gematik IDP-Dienst (`PEP_IDPD_*`) and OpenID Federation
+  (`PEP_OIDF_RP_CONFIG_PATH`), with sessions in a sealed kv store (`PEP_SESSION_STORE_KEY_PATH`).
+
+### security
+- Browsers see generic text for failed logins, and the detail goes to the log with the request's
+  code and state removed; an identity provider's error is no longer reflected (TASK-193).
+- The login state is kept under a hash in the store (TASK-106).
+- Every server bounds slow clients (10 s header, 120 s idle) and drains for up to 25 s on SIGTERM.
+
+### verified
+- `just check` across all Go modules passed on 8d8ccc7; later commits change only go.mod pins and
+  Rust. `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+- The development guide lists no gated suite as required for `pep/proxy`.
+
+# Release go/zaddy v0.6.0
+
+### features
+- DPoP nonces for `nonce_required`, sealed under the keyring `dpop_nonce_keyring_path` names in the
+  `pep` block, or under a key of the process alone, with a warning (TASK-131).
+
+### changes
+- On `pep` v0.26.0: go-jose instead of jwx, stricter token verification.
+
+### verified
+- `just check` across all Go modules passed on 8d8ccc7; later commits change only go.mod pins and
+  Rust. `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+- The development guide lists no gated suite as required for `zaddy`.
+
+# Release go/epa v0.25.0
+
+### breaking
+- zero-epa takes its settings from flags; viper's undocumented `PDP_` environment prefix is gone.
+  `zero-epa version` is gone; the portal shows the version.
+- Proxy names are limited to `A-Z a-z 0-9 . _ -`, and an empty `proxies` list is refused.
+- The image runs as `65532:65532`; a volume over `/var/cache/ti` needs `fsGroup` 65532 (TASK-197).
+
+### security
+- Only the known providers are reached: another number is 404 before any login (TASK-181).
+- No panic or exit on hostile VAU messages; forwarded bodies are closed (TASK-188).
+- The entitlement JWT, headers, the authorization and code URLs and KVNRs stay out of the proxy's
+  log, and `zero-epa config` prints secrets redacted (TASK-185).
+- A production channel carries the production environment byte (TASK-180).
+- One provider's slow login no longer holds the others (TASK-203).
+
+### changes
+- http.ServeMux instead of echo, explicit configuration validation instead of validator, slog
+  instead of console-slog, go.yaml.in/yaml/v3 only; go.mod keeps 4 indirect dependencies of 27
+  (TASK-91 to TASK-94).
+
+### verified
+- `just check` across all Go modules passed on 8d8ccc7; later commits change only go.mod pins and
+  Rust. `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+- ePA connect and ePA entitlement passed on 2026-11-05, run by the maintainer; the image ran a
+  probe against dev as the non-root user (TASK-197).
+
 # Release go/openid v0.53.0
 
 ### breaking
