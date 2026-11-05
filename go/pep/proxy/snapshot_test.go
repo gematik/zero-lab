@@ -65,7 +65,8 @@ func TestSnapshotMintOpen(t *testing.T) {
 	}
 }
 
-func TestSnapshotExpired(t *testing.T) {
+// Server rule 10: sealed client-side state carries its expiry.
+func TestServerRule10_SnapshotExpired(t *testing.T) {
 	snap, _ := newSnapshotter(writeKeyFile(t, "key"), "", -time.Minute) // already expired
 	tok, _ := snap.mint("sid", map[string]any{"sub": "u"})
 	if _, ok := snap.open(tok); ok {
@@ -73,7 +74,8 @@ func TestSnapshotExpired(t *testing.T) {
 	}
 }
 
-func TestSnapshotWrongKeyAndTamper(t *testing.T) {
+// Server rule 10: sealed client-side state opens only under its key and unaltered.
+func TestServerRule10_SnapshotWrongKeyAndTamper(t *testing.T) {
 	a, _ := newSnapshotter(writeKeyFile(t, "a"), "", time.Hour)
 	b, _ := newSnapshotter(writeKeyFile(t, "b"), "", time.Hour)
 	tok, _ := a.mint("sid", map[string]any{"sub": "u"})

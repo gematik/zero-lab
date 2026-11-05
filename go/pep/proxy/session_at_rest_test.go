@@ -54,7 +54,8 @@ func sealedSessions(t *testing.T) (*sessionStore, kv.Store) {
 	return newSessionStore(kv.NewSealed(raw, testRing(t, 3), "pep/session"), time.Hour), raw
 }
 
-func TestSessionStoreEncryptsAtRest(t *testing.T) {
+// Server rule 5: the store sees ciphertext only, and records cannot be swapped into another context.
+func TestServerRule5_SessionStoreEncryptsAtRest(t *testing.T) {
 	m, raw := sealedSessions(t)
 	sess := m.create()
 	sess.Identity = map[string]any{"sub": "u1"}
@@ -91,7 +92,7 @@ func TestSessionStoreEncryptsAtRest(t *testing.T) {
 }
 
 // A rogue storage admin copies session A's record onto session B's key.
-func TestSessionStoreRejectsARecordCopiedOntoAnotherSession(t *testing.T) {
+func TestServerRule5_SessionStoreRejectsARecordCopiedOntoAnotherSession(t *testing.T) {
 	m, raw := sealedSessions(t)
 	a := m.create()
 	a.Identity = map[string]any{"sub": "victim"}
@@ -107,7 +108,8 @@ func TestSessionStoreRejectsARecordCopiedOntoAnotherSession(t *testing.T) {
 	}
 }
 
-func TestSessionStoreRejectsARecordUnderTheWrongKey(t *testing.T) {
+// Server rule 5: a record sealed under another key does not open.
+func TestServerRule5_SessionStoreRejectsARecordUnderTheWrongKey(t *testing.T) {
 	m, raw := sealedSessions(t)
 	sess := m.create()
 	if err := m.save(sess); err != nil {
@@ -120,7 +122,7 @@ func TestSessionStoreRejectsARecordUnderTheWrongKey(t *testing.T) {
 }
 
 // The state index is sealed as well, so a storage admin cannot repoint a login state to another session.
-func TestSessionStoreRejectsARepointedLoginState(t *testing.T) {
+func TestServerRule5_SessionStoreRejectsARepointedLoginState(t *testing.T) {
 	m, raw := sealedSessions(t)
 	a := m.create()
 	a.State = "state-a"
@@ -136,7 +138,7 @@ func TestSessionStoreRejectsARepointedLoginState(t *testing.T) {
 }
 
 // A record that opens but names another session is refused too, as the distinct integrity failure.
-func TestSessionStoreRejectsARecordNamingAnotherSession(t *testing.T) {
+func TestServerRule5_SessionStoreRejectsARecordNamingAnotherSession(t *testing.T) {
 	store := kv.NewMemory()
 	m := newSessionStore(store, time.Hour)
 	if err := store.Set(context.Background(), sessionKey("slot"), []byte(`{"id":"other"}`), time.Hour); err != nil {
@@ -174,7 +176,7 @@ func TestSessionStoreTokenHashing(t *testing.T) {
 
 // A record that no longer opens (after the upgrade to sealed records, or after tampering) is an invalid session
 // for the user, who can log in again, and an error-level event for the operator.
-func TestAnIntegrityFailureIsAnInvalidSessionAndLoggedAtErrorLevel(t *testing.T) {
+func TestServerRule14_AnIntegrityFailureIsAnInvalidSessionAndLoggedAtErrorLevel(t *testing.T) {
 	raw := kv.NewMemory()
 	s, err := New(Config{Backend: &fakeBackend{}, Store: kv.NewSealed(raw, testRing(t, 3), "pep/session")})
 	if err != nil {

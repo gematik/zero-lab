@@ -548,7 +548,7 @@ func assertInvalidToken(t *testing.T, enforcer pep.Enforcer, request func(*testi
 }
 
 // A query can carry what the log must not hold, as a forwarded callback's code does.
-func TestADeniedRequestIsLoggedWithoutItsQuery(t *testing.T) {
+func TestServerRule14_ADeniedRequestIsLoggedWithoutItsQuery(t *testing.T) {
 	var logs bytes.Buffer
 	previous := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))

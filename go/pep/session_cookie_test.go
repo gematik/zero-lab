@@ -157,8 +157,8 @@ func TestEnforcerSessionCookie_ConcurrentFirstRequestsShareTheLoadedKeys(t *test
 	waiting.Wait()
 }
 
-// A key file mounted after the start is picked up, so a failed read must not stay the answer for good.
-func TestEnforcerSessionCookie_AFailedKeyReadDeniesAndIsRetried(t *testing.T) {
+// Server rule 16: a failed key read denies. The file may be mounted after the start, so the failure is not kept.
+func TestServerRule16_ASessionCookieKeyReadFailureDeniesAndIsRetried(t *testing.T) {
 	key := bytes.Repeat([]byte{7}, 32)
 	path := filepath.Join(t.TempDir(), "session.key")
 	enforcer := &EnforcerSessionCookie{TypeVal: EnforcerTypeSessionCookie, CookieName: "SID", KeyPath: path}

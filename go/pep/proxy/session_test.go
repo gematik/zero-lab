@@ -88,7 +88,8 @@ func TestSessionAbsoluteTimeout(t *testing.T) {
 	}
 }
 
-func TestSessionStateSingleUse(t *testing.T) {
+// RFC 9700 Section 2.1: the state is a one-time use CSRF token.
+func TestRFC9700_2_1_SessionStateSingleUse(t *testing.T) {
 	store := newSessionStore(kv.NewMemory(), time.Hour)
 	sess := store.create()
 	sess.State = "s-123"
@@ -108,7 +109,7 @@ func TestSessionStateSingleUse(t *testing.T) {
 }
 
 // Server rule 10: a kv key is in clear even in a sealed store, so it holds a hash of the login state.
-func TestAStateKeyHoldsNoState(t *testing.T) {
+func TestServerRule10_AStateKeyHoldsNoState(t *testing.T) {
 	memory := kv.NewMemory()
 	s, err := New(Config{Backend: &fakeBackend{}, Store: memory, CookieName: "TEST-SID"})
 	if err != nil {

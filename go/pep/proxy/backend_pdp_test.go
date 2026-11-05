@@ -233,7 +233,8 @@ func TestRFC8414_MetadataOfAnHTTPSIssuerWithHTTPSEndpointsIsTaken(t *testing.T) 
 	}
 }
 
-func TestRFC8414_AnIssuerOverPlainHTTPElsewhereThanThisMachineIsRefusedBeforeAnyFetch(t *testing.T) {
+// RFC 8414 Section 2: the issuer is a URL that uses the https scheme.
+func TestRFC8414_2_AnIssuerOverPlainHTTPElsewhereThanThisMachineIsRefusedBeforeAnyFetch(t *testing.T) {
 	var fetches atomic.Int64
 	client := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 		fetches.Add(1)
@@ -259,7 +260,8 @@ func TestRFC8414_AnIssuerOverPlainHTTPOnThisMachineMayHavePlainEndpoints(t *test
 	}
 }
 
-func TestDiscoverMetadataDoesNotFollowARedirect(t *testing.T) {
+// Server rule 2, no SSRF: no redirects on outbound fetches.
+func TestServerRule2_MetadataDiscoveryDoesNotFollowARedirect(t *testing.T) {
 	mux := http.NewServeMux()
 	server := httptest.NewTLSServer(mux)
 	defer server.Close()
@@ -279,7 +281,8 @@ func TestDiscoverMetadataDoesNotFollowARedirect(t *testing.T) {
 	}
 }
 
-func TestDiscoverMetadataReadsNoMoreThanItsBound(t *testing.T) {
+// Server rule 2: size limits on outbound fetches.
+func TestServerRule2_MetadataDiscoveryReadsNoMoreThanItsBound(t *testing.T) {
 	var server *httptest.Server
 	server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprintf(w, `{"issuer":%q,"authorization_endpoint":%q,"token_endpoint":%q,"padding":"`, server.URL, server.URL+"/auth", server.URL+"/token")
@@ -295,7 +298,7 @@ func TestDiscoverMetadataReadsNoMoreThanItsBound(t *testing.T) {
 }
 
 // Every other endpoint answers within the same bound, or a member of the configuration could exhaust the proxy.
-func TestPDPResponsesAreReadWithinTheirBound(t *testing.T) {
+func TestServerRule2_PDPResponsesAreReadWithinTheirBound(t *testing.T) {
 	huge := strings.Repeat(" ", maxASResponseBytes) + `{"request_uri":"urn:x","access_token":"at","active":true}`
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/par" {

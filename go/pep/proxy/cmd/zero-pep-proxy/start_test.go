@@ -31,7 +31,7 @@ import (
 )
 
 // Rule 17: the refusal comes before any connection, so an unreachable database cannot hide it.
-func TestStoreKeys_APersistentStoreWithoutAKeyFileRefusesToStartNamingTheVariable(t *testing.T) {
+func TestServerRule17_APersistentStoreWithoutAKeyFileRefusesToStartNamingTheVariable(t *testing.T) {
 	_, err := storeKeys("postgres://nobody@127.0.0.1:1/none", "")
 	if err == nil {
 		t.Fatal("started")
@@ -41,7 +41,8 @@ func TestStoreKeys_APersistentStoreWithoutAKeyFileRefusesToStartNamingTheVariabl
 	}
 }
 
-func TestStoreKeys_ABrokenKeyFileRefusesToStart(t *testing.T) {
+// Rule 17: a key file that does not parse stops the start.
+func TestServerRule17_ABrokenKeyFileRefusesToStart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "store.key")
 	if err := os.WriteFile(path, []byte("k1 short\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -75,7 +76,7 @@ func TestStoreKeys_InMemoryNeedsNoKeyFile(t *testing.T) {
 }
 
 // Rule 17: the session cookie goes without Secure only where there is no TLS to require, on this machine.
-func TestInsecureCookie_IsTakenForPlainHTTPOnThisMachineOnly(t *testing.T) {
+func TestServerRule17_AnInsecureCookieIsTakenForPlainHTTPOnThisMachineOnly(t *testing.T) {
 	for _, publicURL := range []string{"http://localhost", "http://localhost:8080", "http://127.0.0.1", "http://127.0.0.1:4180"} {
 		if err := checkInsecureCookie(publicURL); err != nil {
 			t.Errorf("%s: %v", publicURL, err)

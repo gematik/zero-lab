@@ -287,7 +287,8 @@ func newTestKey(t *testing.T) *ecdsa.PrivateKey {
 	return jwk.Key.(*ecdsa.PrivateKey)
 }
 
-func TestRSAKeyBelow2048BitsCannotVerify(t *testing.T) {
+// RFC 7518 Section 3.3: a key of 2048 bits or larger must be used with RS256.
+func TestRFC7518_3_3_RSAKeyBelow2048BitsCannotVerify(t *testing.T) {
 	short, err := rsa.GenerateKey(rand.Reader, 1024) //nolint:gosec // the point of the test: a key too short to rely on
 	if err != nil {
 		t.Fatal(err)
@@ -297,7 +298,8 @@ func TestRSAKeyBelow2048BitsCannotVerify(t *testing.T) {
 	}
 }
 
-func TestThumbprintReadsCnfJktOnly(t *testing.T) {
+// RFC 9449 Section 6.1: the key binding is the jkt member of cnf, and claim names are case-sensitive.
+func TestRFC9449_6_1_ThumbprintReadsCnfJktOnly(t *testing.T) {
 	for payload, want := range map[string]string{
 		`{"cnf":{"jkt":"abc"}}`: "abc",
 		`{"CNF":{"jkt":"abc"}}`: "",

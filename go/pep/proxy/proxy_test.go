@@ -90,7 +90,8 @@ func (f *failingBackend) Complete(_ context.Context, _ *Session, code string) er
 	return fmt.Errorf("%s, code %s", backendInternals, code)
 }
 
-func TestAFailedLoginShowsTheBrowserGenericText(t *testing.T) {
+// Server rule 2: uniform error responses that leak no internals.
+func TestServerRule2_AFailedLoginShowsTheBrowserGenericText(t *testing.T) {
 	var logs bytes.Buffer
 	previous := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
@@ -128,7 +129,8 @@ func TestAFailedLoginShowsTheBrowserGenericText(t *testing.T) {
 	}
 }
 
-func TestAnIdentityProvidersErrorIsNotReflected(t *testing.T) {
+// Server rule 2: output encoding by context; the provider's text never reaches the page.
+func TestServerRule2_AnIdentityProvidersErrorIsNotReflected(t *testing.T) {
 	s := newTestServer(t)
 	sess := s.sessions.create()
 	sess.State = "test-state"
@@ -233,7 +235,8 @@ func TestSignOut_ClearsSession(t *testing.T) {
 	}
 }
 
-func TestSignOut_POSTRequiresCSRF(t *testing.T) {
+// Server rule 2: CSRF protection for cookie flows.
+func TestServerRule2_SignOutByPOSTRequiresCSRFProtection(t *testing.T) {
 	s := newTestServer(t)
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/oauth2/sign_out", nil))
@@ -242,7 +245,8 @@ func TestSignOut_POSTRequiresCSRF(t *testing.T) {
 	}
 }
 
-func TestSanitizeReturnTo(t *testing.T) {
+// RFC 9700 Section 4.11.1: the client exposes no open redirector.
+func TestRFC9700_4_11_1_SanitizeReturnTo(t *testing.T) {
 	cases := map[string]string{
 		"/dashboard": "/dashboard", "/a?b=c": "/a?b=c",
 		"//evil.example": "", "https://evil.example": "", "/\\evil": "", "": "",
@@ -268,7 +272,7 @@ func captureDebugLogs(t *testing.T) *bytes.Buffer {
 
 // Server rules 5 and 14. A session's ID is the hash of its cookie, and it names the session's record, the revocation
 // entry and the snapshot's sid, so it stays out of the log as well as the cookie does.
-func TestALoginLogsNoSessionIDNorCookieNorStateAtDebug(t *testing.T) {
+func TestServerRule14_ALoginLogsNoSessionIDNorCookieNorStateAtDebug(t *testing.T) {
 	logs := captureDebugLogs(t)
 	s := newTestServer(t)
 
@@ -321,7 +325,8 @@ func (failingStore) Set(context.Context, string, []byte, time.Duration) error {
 	return errors.New("no store")
 }
 
-func TestARevocationThatFailsLogsNoSid(t *testing.T) {
+// Server rule 14: telemetry carries no secrets and only pseudonymised identifiers.
+func TestServerRule14_ARevocationThatFailsLogsNoSid(t *testing.T) {
 	logs := captureDebugLogs(t)
 	r := &busRevoker{local: newMemRevoker(time.Hour, time.Now), bus: failingBus{}, store: failingStore{kv.NewMemory()}, ttl: time.Hour}
 	const sid = "sid-token-hash-value"
@@ -334,7 +339,8 @@ func TestARevocationThatFailsLogsNoSid(t *testing.T) {
 	}
 }
 
-func TestLogRefCorrelatesAndRevealsNoPartOfTheID(t *testing.T) {
+// Server rule 14: identifiers in telemetry are pseudonymised.
+func TestServerRule14_LogRefCorrelatesAndRevealsNoPartOfTheID(t *testing.T) {
 	id := hashToken("cookie-token")
 	ref := logRef(id)
 	if again := logRef(id); again != ref {
@@ -352,7 +358,7 @@ func TestLogRefCorrelatesAndRevealsNoPartOfTheID(t *testing.T) {
 }
 
 // A forwarded URI's query can carry a code, or anything else of the application behind the gate.
-func TestAForwardAuthDenialLogsNoQuery(t *testing.T) {
+func TestServerRule14_AForwardAuthDenialLogsNoQuery(t *testing.T) {
 	logs := captureDebugLogs(t)
 	s := newTestServer(t)
 	request := httptest.NewRequest(http.MethodGet, "/oauth2/auth", nil)
@@ -371,7 +377,7 @@ func TestAForwardAuthDenialLogsNoQuery(t *testing.T) {
 }
 
 // A store's error text reaches pages and logs, so a session's own lookup errors name neither the ID nor the state.
-func TestSessionLookupErrorsNameNeitherIDNorState(t *testing.T) {
+func TestServerRule14_SessionLookupErrorsNameNeitherIDNorState(t *testing.T) {
 	store := newSessionStore(kv.NewMemory(), time.Hour)
 	if _, err := store.byID("session-id-value"); err == nil || strings.Contains(err.Error(), "session-id-value") {
 		t.Errorf("err = %v", err)
