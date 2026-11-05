@@ -14,6 +14,7 @@ Three sources, the same split pep uses:
 | --- | --- | --- |
 | `PDP_CONFIG_FILE` (`-f`) | the domain config file | `pdp.yaml` |
 | `PDP_OPENID_PROVIDERS_PATH` | the providers file | `openid-providers.yaml` |
+| `PDP_OIDF_DEV_API_KEY` | key of gematik's development federation, sent only to `*.dev.gematik.solutions`; a value, not a file, as it opens only that environment ([naming and configuration](../../../../docs/conventions/naming-and-config.md)) | — |
 | `PDP_WORKDIR` (`-w`) | chdir before loading config | — |
 | `PDP_NON_PROD` | `true` → NonProdMode (enables the mock IdP) | `false` |
 | `DATABASE_URL` | Postgres kv store; requires `PDP_STORE_KEY_PATH`. Unset → in-memory, for a single replica | in-memory |

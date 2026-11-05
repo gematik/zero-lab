@@ -77,8 +77,8 @@ type RelyingPartyConfig struct {
 	// When empty, defaultOPScopes is used.
 	Scopes []string `yaml:"scopes,omitempty"`
 
-	// APIKey is the key of the gematik environments that gate on one (*.dev.gematik.solutions). Not serialized;
-	// the program supplies it, the library reads no environment.
+	// APIKey is the key of gematik's development federation (*.dev.gematik.solutions). Not serialized; the
+	// program supplies it, the library reads no environment.
 	APIKey string `yaml:"-"`
 
 	// HTTPClient is the base client for federation and relying-party calls. Not serialized; supplied

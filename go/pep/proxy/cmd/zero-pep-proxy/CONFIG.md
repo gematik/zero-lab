@@ -25,8 +25,9 @@ oidf:   <oidf.RelyingPartyConfig>       # one OIDF relying party (brings its fed
 - `${VAR}` placeholders expand from the environment (keep secrets in a `.env` / mounted file).
 - Relative paths in the OIDF config (`key_pem_path`, `cert_pem_path`, …) resolve against the providers file's
   own directory — not the process working directory, and not `-w`.
-- `API_KEY` in the environment is the key of the gematik federation environments that gate on one
-  (`*.dev.gematik.solutions`); zero-pep-proxy reads it and hands it to the OIDF relying party.
+- `PEP_OIDF_DEV_API_KEY` is the key of gematik's development federation (`*.dev.gematik.solutions`),
+  which zero-pep-proxy hands to the OIDF relying party. It is a value rather than a file because it opens
+  only that environment ([naming and configuration](../../../../../docs/conventions/naming-and-config.md)).
 
 ## 2. Environment variables (everything that is not a provider)
 
@@ -85,6 +86,7 @@ providers, use openid-providers.yaml.
 | `PEP_OIDC_ISSUER` | OIDC | enables a direct OIDC provider |
 | `PEP_OIDC_CLIENT_ID` / `_CLIENT_SECRET` / `_SCOPES` / `_NAME` / `_LOGO_URI` / `_ACCEPTABLE_SKEW` | OIDC | client + chooser options; scopes space-separated; skew a Go duration (default 1m) |
 | `PEP_OIDF_RP_CONFIG_PATH` | OIDF | path to the relying-party config (YAML) → enables federation login |
+| `PEP_OIDF_DEV_API_KEY` | OIDF | key of gematik's development federation, sent only to `*.dev.gematik.solutions`; unset elsewhere |
 | `PEP_IDPD_CLIENT_ID` | idpd | enables the gematik IDP-Dienst (always Authenticator deep-link flow) |
 | `PEP_IDPD_ENV` | idpd | `test` \| `ref` \| `prod` (or `PEP_IDPD_BASE_URL` to override) |
 | `PEP_IDPD_TRUST_FETCH` | idpd | `"true"` downloads the trust material from gematik's hosts at start and hourly, for a standalone image: needs outbound access to the environment's `download*.tsl.ti-dienste.de` and `download*.crl.ti-dienste.de`. Exactly one of this and the next is **required**; a client without either does not start |

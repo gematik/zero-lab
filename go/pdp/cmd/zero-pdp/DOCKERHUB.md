@@ -32,6 +32,7 @@ Full reference: [CONFIG.md](https://github.com/gematik/zero-lab/blob/main/go/pdp
 | --- | --- | --- |
 | `PDP_CONFIG_FILE` | the domain config file | `pdp.yaml` |
 | `PDP_OPENID_PROVIDERS_PATH` | the IdPs file | `openid-providers.yaml` |
+| `PDP_OIDF_DEV_API_KEY` | key of gematik's development federation, sent only to `*.dev.gematik.solutions` | — |
 | `PDP_NON_PROD` | `true` → NonProdMode (mock IdP) | `false` |
 | `DATABASE_URL` | Postgres kv store; needs `PDP_STORE_KEY_PATH` | in-memory |
 | `PDP_STORE_KEY_PATH` | key file sealing the kv store and the nonces | required with `DATABASE_URL` |

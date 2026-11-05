@@ -25,6 +25,12 @@
 - Secrets never travel as a variable's value: the variable names a file (`…_PATH`) and the
   command reads the secret from it. Secrets are not bootstrapped into or stored in the kv
   store either.
+- One value stays a variable: the key of gematik's development federation
+  (`PDP_OIDF_DEV_API_KEY`, `PEP_OIDF_DEV_API_KEY`). It opens a development environment,
+  `*.dev.gematik.solutions`, and nothing else: it signs nothing, names no identity, guards
+  no personal data and has no counterpart in test, reference or production. The transport
+  sends it only over https to hosts below `.dev.gematik.solutions`, so a deployment
+  outside that environment leaves it unset and never sees it.
 
 ## Helpers
 

@@ -67,7 +67,8 @@ func TestTheAPIKeyGoesOnlyToTheIntendedHosts(t *testing.T) {
 }
 
 func TestALibraryReadsNoAPIKeyFromTheEnvironment(t *testing.T) {
-	t.Setenv("API_KEY", "from-the-environment")
+	t.Setenv("PEP_OIDF_DEV_API_KEY", "from-the-environment")
+	t.Setenv("PDP_OIDF_DEV_API_KEY", "from-the-environment")
 	next := &recordingTransport{}
 	req, err := http.NewRequest(http.MethodGet, "https://idp.dev.gematik.solutions/x", nil)
 	if err != nil {

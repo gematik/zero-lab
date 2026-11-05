@@ -41,7 +41,7 @@ type Config struct {
 	AuthzServerConfig authzserver.Config `yaml:"authorization_server"`
 	// ProvidersPath is the providers file, empty if there is none.
 	ProvidersPath string `yaml:"-"`
-	// OIDFAPIKey is the key of the gematik federation environments that gate on one; the program supplies it.
+	// OIDFAPIKey is the key of gematik's development federation; the program supplies it.
 	OIDFAPIKey string `yaml:"-"`
 }
 

@@ -36,6 +36,10 @@ import (
 	"github.com/gematik/zero-lab/go/openid/providers"
 )
 
+// oidfDevAPIKeyEnv holds the key of gematik's development federation; a value, not a file, see
+// docs/conventions/naming-and-config.md.
+const oidfDevAPIKeyEnv = "PEP_OIDF_DEV_API_KEY" //nolint:gosec // the name of the variable, not a key
+
 // loadProviders builds the providers from openid-providers.yaml. An oidc or idpd entry uses
 // <public>/oauth2/callback unless it sets its own redirect_uri; the idpd client is always the gematik
 // Authenticator deep-link flow.
@@ -48,7 +52,7 @@ func loadProviders(path, publicURL string) (*providers.Set, error) {
 	set, err := providers.Build(entries, env, providers.Kinds{
 		"oidc": providers.OIDC,
 		"idpd": idpd.Kind(func(c *idpd.ClientConfig) { c.AuthenticatorMode = true }),
-		"oidf": oidf.Kind(os.Getenv("API_KEY"), nil),
+		"oidf": oidf.Kind(os.Getenv(oidfDevAPIKeyEnv), nil),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("providers %q: %w", path, err)
@@ -100,7 +104,7 @@ func providersFromEnv(publicURL string) *providers.Set {
 		if err := loadYAML(rpPath, config); err != nil {
 			log.Fatalf("load oidf relying party: %v", err)
 		}
-		config.APIKey = os.Getenv("API_KEY")
+		config.APIKey = os.Getenv(oidfDevAPIKeyEnv)
 		rp, err := oidf.NewRelyingParty(config, filepath.Dir(rpPath))
 		if err != nil {
 			log.Fatalf("load oidf relying party: %v", err)

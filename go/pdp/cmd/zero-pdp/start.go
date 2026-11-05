@@ -46,6 +46,9 @@ const (
 	storeKeyPathEnv = "PDP_STORE_KEY_PATH"
 	// storePurpose names the records of the authorization server in the key derivation.
 	storePurpose = "pdp/authzserver"
+	// oidfDevAPIKeyEnv holds the key of gematik's development federation; a value, not a file, see
+	// docs/conventions/naming-and-config.md.
+	oidfDevAPIKeyEnv = "PDP_OIDF_DEV_API_KEY" //nolint:gosec // the name of the variable, not a key
 	// reapEvery is how often expired rows leave the store.
 	reapEvery = 10 * time.Minute
 )
@@ -119,7 +122,7 @@ func createPdp(opts *options) (*pdp.PDP, kv.Store, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("load config file: %w", err)
 	}
-	config.OIDFAPIKey = os.Getenv("API_KEY")
+	config.OIDFAPIKey = os.Getenv(oidfDevAPIKeyEnv)
 	slog.Debug("Loaded config file", "config_file", configFile)
 
 	store, nonceKeys, err := openStore(os.Getenv("DATABASE_URL"), os.Getenv(storeKeyPathEnv))
