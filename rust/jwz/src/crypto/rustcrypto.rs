@@ -220,7 +220,7 @@ impl Ecdsa for P256 {
     }
 
     fn sign(&self, secret: &[u8], msg: &[u8], _rng: &dyn Rng) -> Result<Vec<u8>, CryptoError> {
-        // RFC 6979 deterministic nonces: signing needs no randomness, so `rng` is unused.
+        // RFC 6979 §3.2: deterministic nonces, so signing needs no randomness and `rng` is unused.
         let key =
             p256::ecdsa::SigningKey::from_slice(secret).map_err(|_| CryptoError::InvalidKey)?;
         let signature: p256::ecdsa::Signature = key.sign(msg);
@@ -263,14 +263,14 @@ impl Ecdh for P256 {
     fn agree(&self, secret: &[u8], peer: &[u8]) -> Result<Zeroizing<Vec<u8>>, CryptoError> {
         let secret = p256::SecretKey::from_slice(secret).map_err(|_| CryptoError::InvalidKey)?;
         // from_sec1_bytes rejects points not on the curve and the identity, the
-        // invalid-curve attacks of RFC 7518 §8.2 / SP 800-56A §5.6.2.3.
+        // invalid-curve attacks of RFC 8725 §3.4 / NIST SP 800-56A §5.6.2.3.
         let peer = p256::PublicKey::from_sec1_bytes(peer).map_err(|_| CryptoError::InvalidKey)?;
         let shared = p256::ecdh::diffie_hellman(secret.to_nonzero_scalar(), peer.as_affine());
         Ok(Zeroizing::new(shared.raw_secret_bytes().to_vec()))
     }
 }
 
-/// Ed25519 (RFC 8032, RFC 8037 §3.1).
+/// Ed25519 (RFC 8032 §5.1, RFC 8037 §3.1).
 struct Ed25519;
 
 impl Ed25519 {

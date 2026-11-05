@@ -254,9 +254,6 @@ fn jwk_parsing_is_strict() {
     ] {
         assert_eq!(Jwk::parse(text).map_err(|e| e.code()), Err(code), "{text}");
     }
-    // A set skips key types it does not know (RFC 7517 §5) but not broken keys.
-    let set = JwkSet::parse(r#"{"keys":[{"kty":"XYZ"},{"kty":"oct","k":"AQ"}]}"#).unwrap();
-    assert_eq!(set.keys.len(), 1);
 }
 
 #[test]
@@ -306,6 +303,463 @@ fn ecdh_both_sides_agree() {
     let z2 = bob.agree(&point(alice.public_jwk())).unwrap();
     assert_eq!(*z1, *z2);
     assert_eq!(z1.len(), 32);
+}
+
+fn hex(s: &str) -> Vec<u8> {
+    let s: String = s.split_whitespace().collect();
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+        .collect()
+}
+
+/// RFC 7518 Appendix C: Bob's static private key and Alice's ephemeral public point.
+const BOB_D: &str = "VEmDZpDXXK8p8N0Cndsxs924q6nS1RXFASRl6BfUqdw";
+const ALICE_X: &str = "gI0GAILBdu7T53akrFmMyGcsF3n5dO7MmwNBHKW5SV0";
+const ALICE_Y: &str = "SLW_xSffzlPWrHEVI30DHM_4egVwt3NQqeUD7nMFpps";
+
+/// RFC 7518 Appendix C's Z: the x-coordinate of Bob's scalar times Alice's point.
+#[test]
+fn sp_800_56a_5_7_1_2_z_is_the_x_coordinate_of_the_shared_point() {
+    let backend = backend();
+    let ecdh = backend.ecdh(jwz::jwa::Curve::P256).unwrap();
+    let alice = [vec![4], b64(ALICE_X), b64(ALICE_Y)].concat();
+    let z = ecdh.agree(&b64(BOB_D), &alice).unwrap();
+    assert_eq!(
+        *z,
+        [
+            158, 86, 217, 29, 129, 113, 53, 211, 114, 131, 66, 131, 191, 132, 38, 156, 251, 49,
+            110, 163, 218, 128, 106, 72, 246, 218, 167, 121, 140, 254, 144, 196
+        ]
+    );
+}
+
+/// RFC 8725 §3.4: an ECDH-ES peer point is validated before use, so a point off the
+/// curve, the point at infinity or a coordinate outside the field never reaches the
+/// scalar multiplication (the invalid-curve attack).
+#[test]
+fn sp_800_56a_5_6_2_3_a_peer_point_off_the_curve_is_refused() {
+    let backend = backend();
+    let ecdh = backend.ecdh(jwz::jwa::Curve::P256).unwrap();
+    let bob = b64(BOB_D);
+    let p = hex("ffffffff00000001000000000000000000000000ffffffffffffffffffffffff");
+    for (point, what) in [
+        (
+            [vec![4], b64(ALICE_X), b64(BOB_D)].concat(),
+            "not on the curve",
+        ),
+        (vec![0], "the point at infinity"),
+        ([vec![4], p, b64(ALICE_Y)].concat(), "x = p"),
+        ([vec![4], vec![0; 32], vec![0; 32]].concat(), "(0, 0)"),
+    ] {
+        assert_eq!(
+            ecdh.agree(&bob, &point).map(|_| ()),
+            Err(jwz::crypto::CryptoError::InvalidKey),
+            "{what}"
+        );
+    }
+}
+
+/// RFC 4231 test cases 2 (a key shorter than the block) and 6 (a key longer than the
+/// block, hashed first) for HMAC-SHA-256.
+#[cfg(feature = "hmac")]
+#[test]
+fn rfc_2104_2_hmac_sha_256_of_rfc_4231_test_cases_2_and_6() {
+    let backend = backend();
+    let mac = backend.mac(HashAlgorithm::Sha256).unwrap();
+    assert_eq!(
+        mac.compute(b"Jefe", &[b"what do ya want ", b"for nothing?"])
+            .unwrap(),
+        hex("5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843")
+    );
+    let long_key = [0xaa; 131];
+    let tag = hex("60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54");
+    let message: &[u8] = b"Test Using Larger Than Block-Size Key - Hash Key First";
+    assert_eq!(mac.compute(&long_key, &[message]).unwrap(), tag);
+    mac.verify(&long_key, &[message], &tag).unwrap();
+    let mut wrong = tag;
+    wrong[31] ^= 1;
+    assert_eq!(
+        mac.verify(&long_key, &[message], &wrong),
+        Err(jwz::crypto::CryptoError::VerificationFailed)
+    );
+}
+
+#[test]
+fn rfc_3394_2_key_data_of_fewer_than_two_blocks_is_refused() {
+    let backend = backend();
+    let kw = backend.key_wrap(16).unwrap();
+    let kek = [1u8; 16];
+    for cek in [&[][..], &[2; 8], &[2; 12], &[2; 20]] {
+        assert_eq!(
+            kw.wrap(&kek, cek),
+            Err(jwz::crypto::CryptoError::InvalidInput),
+            "{} bytes",
+            cek.len()
+        );
+    }
+    for wrapped in [&[3u8; 16][..], &[3; 23], &[3; 28]] {
+        assert_eq!(
+            kw.unwrap(&kek, wrapped).map(|_| ()),
+            Err(jwz::crypto::CryptoError::InvalidInput),
+            "{} bytes",
+            wrapped.len()
+        );
+    }
+}
+
+/// RFC 3394 §4.1 wraps and unwraps; a changed bit anywhere fails the integrity check
+/// instead of yielding other key data.
+#[test]
+fn rfc_3394_2_2_3_a_failed_integrity_check_returns_no_key_data() {
+    let backend = backend();
+    let kw = backend.key_wrap(16).unwrap();
+    let kek = hex("000102030405060708090A0B0C0D0E0F");
+    let key_data = hex("00112233445566778899AABBCCDDEEFF");
+    let wrapped = hex("1FA68B0A8112B447 AEF34BD8FB5A7B82 9D3E862371D2CFE5");
+    assert_eq!(kw.wrap(&kek, &key_data).unwrap(), wrapped);
+    assert_eq!(*kw.unwrap(&kek, &wrapped).unwrap(), key_data);
+    for byte in 0..wrapped.len() {
+        let mut altered = wrapped.clone();
+        altered[byte] ^= 0x80;
+        assert_eq!(
+            kw.unwrap(&kek, &altered).map(|_| ()),
+            Err(jwz::crypto::CryptoError::VerificationFailed),
+            "byte {byte}"
+        );
+    }
+}
+
+/// RFC 6979 Appendix A.2.5: P-256, SHA-256, message "sample"; the nonce comes from the
+/// key and the message, so the signature is the RFC's to the bit.
+#[test]
+fn rfc_6979_3_2_es256_signs_deterministically() {
+    let backend = backend();
+    let ecdsa = backend.ecdsa(jwz::jwa::Curve::P256).unwrap();
+    let x = hex("C9AFA9D845BA75166B5C215767B1D6934E50C3DB36E89B127B8A622B120F6721");
+    let expected = hex(
+        "EFD48B2AACB6A8FD1140DD9CD45E81D69D2C877B56AAF991C34D0EA84EAF3716
+         F7CB1C942D657C41D436C7A1B6E29F65F3E900DBB9AFF4064DC4AB2F843ACDA8",
+    );
+    for _ in 0..2 {
+        assert_eq!(ecdsa.sign(&x, b"sample", backend.rng()).unwrap(), expected);
+    }
+}
+
+/// RFC 8032 §7.1 TEST 1: the public key of the secret and the signature of the empty
+/// message.
+#[test]
+fn rfc_8032_5_1_ed25519_test_1() {
+    let backend = backend();
+    let ed25519 = backend.eddsa(jwz::jwa::Curve::ED25519).unwrap();
+    let secret = hex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60");
+    let public = hex("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a");
+    let signature = hex(
+        "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e06522490155
+         5fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b",
+    );
+    assert_eq!(ed25519.public_key(&secret).unwrap(), public);
+    assert_eq!(ed25519.sign(&secret, b"").unwrap(), signature);
+    ed25519.verify(&public, b"", &signature).unwrap();
+}
+
+/// RFC 8032 §5.1.7: the S half of a signature must be below the group order L; S + L
+/// satisfies the same equation but is not the signature.
+#[test]
+fn rfc_8032_5_1_7_s_not_below_l_is_refused() {
+    let backend = backend();
+    let ed25519 = backend.eddsa(jwz::jwa::Curve::ED25519).unwrap();
+    let secret = hex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60");
+    let public = ed25519.public_key(&secret).unwrap();
+    let mut signature = ed25519.sign(&secret, b"msg").unwrap();
+    // L = 2^252 + 27742317777372353535851937790883648493, little-endian.
+    let l = hex("edd3f55c1a631258d69cf7a2def9de1400000000000000000000000000000010");
+    let mut carry = 0u16;
+    for (s, l) in signature[32..].iter_mut().zip(&l) {
+        let sum = u16::from(*s) + u16::from(*l) + carry;
+        *s = sum.to_le_bytes()[0];
+        carry = sum >> 8;
+    }
+    assert_eq!(carry, 0);
+    assert_eq!(
+        ed25519.verify(&public, b"msg", &signature),
+        Err(jwz::crypto::CryptoError::VerificationFailed)
+    );
+}
+
+/// The signature is `r || s`, 32 bytes each; DER or any other length is refused.
+#[test]
+fn rfc_7518_3_4_es256_signature_is_r_and_s_of_32_bytes_each() {
+    let registry = Registry::standard();
+    let key = SoftwareKey::generate(SignatureAlgorithm::ES256, &registry, backend()).unwrap();
+    let sig = jwz::keys::Signer::try_sign(&key, b"msg").unwrap();
+    assert_eq!(sig.as_bytes().len(), 64);
+    key.verify(b"msg", &sig).unwrap();
+    let (r, s) = sig.as_bytes().split_at(32);
+    let integer = |n: &[u8]| {
+        let mut n = n.to_vec();
+        if n[0] & 0x80 != 0 {
+            n.insert(0, 0);
+        }
+        [vec![2, u8::try_from(n.len()).unwrap()], n].concat()
+    };
+    let body = [integer(r), integer(s)].concat();
+    let der = [vec![0x30, u8::try_from(body.len()).unwrap()], body].concat();
+    let padded = [sig.as_bytes(), &[0]].concat();
+    for (bytes, what) in [
+        (der, "DER"),
+        (padded, "65 bytes"),
+        (sig.as_bytes()[..63].to_vec(), "63 bytes"),
+    ] {
+        assert_eq!(
+            key.verify(b"msg", &Signature::from(bytes))
+                .map_err(|e| e.code()),
+            Err(ErrorCode::VerificationFailed),
+            "{what}"
+        );
+    }
+}
+
+#[test]
+fn rfc_7517_4_1_kty_is_required_and_case_sensitive() {
+    for (text, code) in [
+        (
+            r#"{"crv":"P-256","x":"AA","y":"AA"}"#,
+            ErrorCode::MissingMember,
+        ),
+        (
+            r#"{"kty":"ec","crv":"P-256","x":"AA","y":"AA"}"#,
+            ErrorCode::UnsupportedKeyType,
+        ),
+        (r#"{"kty":"OCT","k":"AQ"}"#, ErrorCode::UnsupportedKeyType),
+        (r#"{"kty":1,"k":"AQ"}"#, ErrorCode::InvalidMember),
+    ] {
+        assert_eq!(Jwk::parse(text).map_err(|e| e.code()), Err(code), "{text}");
+    }
+}
+
+/// RFC 8037 §2 adds `OKP` to the three key types; anything else is not a key jwz reads.
+#[test]
+fn rfc_7518_6_1_ec_rsa_and_oct_are_the_key_types() {
+    use jwz::jwa::KeyType;
+    for (text, kty) in [
+        (
+            r#"{"kty":"EC","crv":"P-256","x":"AA","y":"AA"}"#,
+            KeyType::EC,
+        ),
+        (r#"{"kty":"RSA","n":"AQ","e":"AQAB"}"#, KeyType::RSA),
+        (r#"{"kty":"oct","k":"AQ"}"#, KeyType::OCT),
+        (r#"{"kty":"OKP","crv":"Ed25519","x":"AA"}"#, KeyType::OKP),
+    ] {
+        assert_eq!(Jwk::parse(text).unwrap().key_type(), kty, "{text}");
+    }
+    assert_eq!(
+        Jwk::parse(r#"{"kty":"AKP","pub":"AA"}"#).map_err(|e| e.code()),
+        Err(ErrorCode::UnsupportedKeyType)
+    );
+}
+
+#[test]
+fn rfc_7517_4_2_use_is_a_string() {
+    let key = |value: &str| format!(r#"{{"kty":"oct","k":"AQ","use":{value}}}"#);
+    let parsed = Jwk::parse(&key(r#""sig""#)).unwrap();
+    assert_eq!(parsed.key_use.as_deref(), Some("sig"));
+    assert_eq!(Jwk::parse(&parsed.to_json()).unwrap(), parsed);
+    assert_eq!(
+        Jwk::parse(&key(r#"["sig"]"#)).map_err(|e| e.code()),
+        Err(ErrorCode::InvalidMember)
+    );
+}
+
+#[test]
+fn rfc_7517_4_3_key_ops_is_an_array_of_strings() {
+    let key = |ops: &str| format!(r#"{{"kty":"oct","k":"AQ","key_ops":{ops}}}"#);
+    let parsed = Jwk::parse(&key(r#"["sign","verify"]"#)).unwrap();
+    assert_eq!(
+        parsed.key_ops.as_deref(),
+        Some(&["sign".to_string(), "verify".to_string()][..])
+    );
+    assert_eq!(Jwk::parse(&parsed.to_json()).unwrap(), parsed);
+    for ops in [r#""sign""#, r#"["sign",1]"#] {
+        assert_eq!(
+            Jwk::parse(&key(ops)).map_err(|e| e.code()),
+            Err(ErrorCode::InvalidMember),
+            "{ops}"
+        );
+    }
+}
+
+/// RFC 7517 §4.9: `x5t#S256` is kept as the string it is. jwz does not validate
+/// certificates, so a JWK's chain and thumbprint are data for the application.
+#[test]
+fn rfc_7517_4_7_x5c_is_an_array_of_strings_kept_as_given() {
+    let key = |x5c: &str| {
+        format!(r#"{{"kty":"EC","crv":"P-256","x":"AA","y":"AA","x5c":{x5c},"x5t#S256":"dA"}}"#)
+    };
+    let parsed = Jwk::parse(&key(r#"["TUlJQg==","Q0E="]"#)).unwrap();
+    assert_eq!(
+        parsed.x5c.as_deref(),
+        Some(&["TUlJQg==".to_string(), "Q0E=".to_string()][..])
+    );
+    assert_eq!(parsed.x5t_s256.as_deref(), Some("dA"));
+    assert_eq!(Jwk::parse(&parsed.to_json()).unwrap(), parsed);
+    for x5c in [r#""TUlJQg==""#, "[1]"] {
+        assert_eq!(
+            Jwk::parse(&key(x5c)).map_err(|e| e.code()),
+            Err(ErrorCode::InvalidMember),
+            "{x5c}"
+        );
+    }
+}
+
+/// A set skips keys of a type it does not know; a broken key of a known type fails the
+/// whole set rather than silently shrinking it.
+#[test]
+fn rfc_7517_5_a_set_skips_unknown_key_types_but_not_broken_keys() {
+    let set = JwkSet::parse(r#"{"keys":[{"kty":"XYZ"},{"kty":"oct","k":"AQ"}]}"#).unwrap();
+    assert_eq!(set.keys.len(), 1);
+    for text in [
+        r#"{"keys":[{"kty":"oct"},{"kty":"oct","k":"AQ"}]}"#,
+        r#"{"keys":[{"kty":"oct","k":"AQ=="}]}"#,
+        r#"{"keys":["x"]}"#,
+        r#"{"keys":{}}"#,
+        "{}",
+    ] {
+        assert!(JwkSet::parse(text).is_err(), "{text}");
+    }
+}
+
+#[test]
+fn rfc_7518_6_3_an_rsa_key_has_n_and_e() {
+    let registry = Registry::standard();
+    let key = Jwk::parse(r#"{"kty":"RSA","n":"AQ","e":"AQAB"}"#).unwrap();
+    key.check(&registry).unwrap();
+    assert!(!key.is_private());
+    for text in [r#"{"kty":"RSA","e":"AQAB"}"#, r#"{"kty":"RSA","n":"AQ"}"#] {
+        assert_eq!(
+            Jwk::parse(text).map_err(|e| e.code()),
+            Err(ErrorCode::MissingMember),
+            "{text}"
+        );
+    }
+    assert_eq!(
+        Jwk::parse(r#"{"kty":"RSA","n":"","e":"AQAB"}"#)
+            .unwrap()
+            .check(&registry)
+            .map_err(|e| e.code()),
+        Err(ErrorCode::KeyLength)
+    );
+}
+
+#[test]
+fn rfc_7518_6_3_2_crt_parameters_come_together_or_not_at_all() {
+    let key = |extra: &str| format!(r#"{{"kty":"RSA","n":"AQ","e":"AQAB","d":"AQ"{extra}}}"#);
+    assert!(Jwk::parse(&key("")).unwrap().is_private());
+    let all = r#","p":"AQ","q":"AQ","dp":"AQ","dq":"AQ","qi":"AQ""#;
+    let parsed = Jwk::parse(&key(all)).unwrap();
+    assert_eq!(Jwk::parse(&parsed.to_json()).unwrap(), parsed);
+    for extra in [r#","p":"AQ""#, r#","p":"AQ","q":"AQ","dp":"AQ","dq":"AQ""#] {
+        assert_eq!(
+            Jwk::parse(&key(extra)).map_err(|e| e.code()),
+            Err(ErrorCode::MissingMember),
+            "{extra}"
+        );
+    }
+}
+
+#[test]
+fn rfc_7518_6_4_a_symmetric_key_has_a_non_empty_k() {
+    assert_eq!(
+        Jwk::parse(r#"{"kty":"oct"}"#).map_err(|e| e.code()),
+        Err(ErrorCode::MissingMember)
+    );
+    assert_eq!(
+        Jwk::parse(r#"{"kty":"oct","k":""}"#)
+            .unwrap()
+            .check(&Registry::standard())
+            .map_err(|e| e.code()),
+        Err(ErrorCode::KeyLength)
+    );
+}
+
+/// RFC 7638 §3.2.1: the thumbprint of a private key is that of its public key, and
+/// optional members do not change it.
+#[test]
+fn rfc_7638_3_2_only_the_required_public_members_count() {
+    let backend = backend();
+    let sha256 = backend.hash(HashAlgorithm::Sha256).unwrap();
+    let private = Jwk::parse(RFC7515_A3_KEY).unwrap();
+    let mut decorated = private.public();
+    decorated.kid = Some("k".into());
+    decorated.alg = Some("ES256".into());
+    decorated.key_use = Some("sig".into());
+    let thumbprint = private.thumbprint(sha256);
+    assert_eq!(private.public().thumbprint(sha256), thumbprint);
+    assert_eq!(decorated.thumbprint(sha256), thumbprint);
+    let mut other = private.public();
+    if let KeyMaterial::Ec(k) = &mut other.material {
+        k.crv = "P-384".into();
+    }
+    assert_ne!(other.thumbprint(sha256), thumbprint);
+}
+
+#[test]
+fn rfc_8037_2_okp_keys_have_the_raw_length_of_their_curve() {
+    let registry = Registry::standard();
+    let check = |text: &str| {
+        Jwk::parse(text)
+            .unwrap()
+            .check(&registry)
+            .map_err(|e| e.code())
+    };
+    assert_eq!(check(RFC8037_A1), Ok(()));
+    for (text, code) in [
+        (
+            r#"{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHUQ"}"#,
+            ErrorCode::KeyLength,
+        ),
+        (
+            r#"{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo","d":"AA"}"#,
+            ErrorCode::KeyLength,
+        ),
+        (
+            r#"{"kty":"OKP","crv":"P-256","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"}"#,
+            ErrorCode::UnknownCurve,
+        ),
+    ] {
+        assert_eq!(check(text), Err(code), "{text}");
+    }
+    assert_eq!(
+        Jwk::parse(r#"{"kty":"OKP","x":"AA"}"#).map_err(|e| e.code()),
+        Err(ErrorCode::MissingMember)
+    );
+}
+
+/// EdDSA takes its curve from the key's `crv`: a key-agreement curve (X25519) does not
+/// sign, and an Edwards curve the backend lacks (Ed448) is refused, not replaced.
+#[test]
+fn rfc_8037_3_1_eddsa_takes_the_curve_from_the_key() {
+    let registry = Registry::standard();
+    let ed25519 = Jwk::parse(RFC8037_A1).unwrap();
+    SoftwareKey::from_jwk(&ed25519, SignatureAlgorithm::EDDSA, &registry, backend()).unwrap();
+    let mut x25519 = ed25519.public();
+    if let KeyMaterial::Okp(k) = &mut x25519.material {
+        k.crv = "X25519".into();
+    }
+    let ed448 = Jwk::parse(&format!(
+        r#"{{"kty":"OKP","crv":"Ed448","x":"{}"}}"#,
+        jwz::b64::encode(&[1; 57])
+    ))
+    .unwrap();
+    for (jwk, what) in [(x25519, "X25519"), (ed448, "Ed448")] {
+        assert_eq!(
+            SoftwareKey::from_jwk(&jwk, SignatureAlgorithm::EDDSA, &registry, backend())
+                .map(|_| ())
+                .map_err(|e| e.code()),
+            Err(ErrorCode::KeyMismatch),
+            "{what}"
+        );
+    }
 }
 
 #[cfg(feature = "test-util")]

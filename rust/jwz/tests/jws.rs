@@ -359,7 +359,7 @@ fn rfc_7515_a_7_flattened_json() {
 }
 
 #[test]
-fn json_alg_must_be_protected_and_headers_disjoint() {
+fn rfc_7515_7_2_1_alg_protected_and_headers_disjoint() {
     let registry = Registry::standard();
     for text in [
         r#"{"payload":"e30","protected":"e30","header":{"alg":"ES256"},"signature":"AA"}"#,
@@ -376,7 +376,7 @@ fn json_alg_must_be_protected_and_headers_disjoint() {
 }
 
 #[test]
-fn general_json_with_two_signers() {
+fn rfc_7515_7_2_1_general_json_with_two_signers() {
     let registry = Registry::standard();
     let es = SoftwareKey::generate(SignatureAlgorithm::ES256, &registry, backend()).unwrap();
     let ed = SoftwareKey::generate(SignatureAlgorithm::EDDSA, &registry, backend()).unwrap();
@@ -448,5 +448,132 @@ fn rfc_7515_4_1_8_x5t_s256_binds_the_leaf() {
         if ok {
             assert_eq!(chain.unwrap(), vec![leaf.to_vec(), b"ca".to_vec()]);
         }
+    }
+}
+
+// ---- header parameters and the signing input ----
+
+#[test]
+fn rfc_7515_4_1_1_alg_is_required_and_case_sensitive() {
+    let registry = Registry::standard();
+    for (header, expected) in [
+        (r#"{"kid":"k"}"#, ErrorCode::MissingMember),
+        (r#"{"alg":"es256"}"#, ErrorCode::UnsupportedAlgorithm),
+        (r#"{"alg":"Es256"}"#, ErrorCode::UnsupportedAlgorithm),
+        (r#"{"alg":["ES256"]}"#, ErrorCode::MissingMember),
+    ] {
+        let token = format!("{}.e30.AAAA", jwz::b64::encode(header.as_bytes()));
+        assert_eq!(
+            code(Jws::parse(&token, &strict(), &registry)).err(),
+            Some(expected),
+            "{header}"
+        );
+    }
+}
+
+/// `x5c` entries are standard base64 with padding, not base64url, and the chain is not
+/// empty.
+#[test]
+fn rfc_7515_4_1_6_x5c_is_padded_standard_base64() {
+    let der: &[u8] = &[0xfb, 0xff, 0xbf];
+    let header = |x5c: serde_json::Value| {
+        let json = serde_json::json!({ "alg": "ES256", "x5c": x5c }).to_string();
+        jwz::header::Header::decode(&jwz::b64::encode(json.as_bytes())).unwrap()
+    };
+    assert_eq!(
+        header(serde_json::json!(["+/+/", "AQ=="]))
+            .x5c()
+            .unwrap()
+            .unwrap(),
+        vec![der.to_vec(), vec![1]]
+    );
+    let token = jws::sign(b"x", HeaderParams::new().x5c(&[der]), &es256_key()).unwrap();
+    let mut policy = strict();
+    policy.key_references.x5c = true;
+    let parsed = Jws::parse(&token, &policy, &Registry::standard()).unwrap();
+    assert_eq!(
+        parsed.header().get("x5c"),
+        Some(&serde_json::json!(["+/+/"]))
+    );
+    for (x5c, expected) in [
+        (serde_json::json!(["-_-_"]), ErrorCode::Base64),
+        (serde_json::json!(["AQ"]), ErrorCode::Base64),
+        (serde_json::json!([]), ErrorCode::InvalidMember),
+        (serde_json::json!("AQ=="), ErrorCode::InvalidMember),
+    ] {
+        assert_eq!(
+            header(x5c.clone()).x5c().map_err(|e| e.code()).err(),
+            Some(expected),
+            "{x5c}"
+        );
+    }
+}
+
+/// The signature covers ASCII(BASE64URL(protected header) || '.' || BASE64URL(payload)),
+/// so it verifies over exactly those bytes and over nothing else.
+#[test]
+fn rfc_7515_5_1_the_signing_input_is_header_dot_payload() {
+    use jwz::keys::{Signature, Verifier};
+    let key = es256_key();
+    let token = jws::sign(b"{\"a\":1}", HeaderParams::new().kid("k"), &key).unwrap();
+    let [h, p, s]: [&str; 3] = token.split('.').collect::<Vec<_>>().try_into().unwrap();
+    assert_eq!(p, jwz::b64::encode(b"{\"a\":1}"));
+    let signature = Signature::from(jwz::b64::decode(s, "signature").unwrap());
+    key.verify(format!("{h}.{p}").as_bytes(), &signature)
+        .unwrap();
+    for other in [format!("{h}{p}"), format!("{h}.{p}."), format!(".{p}")] {
+        assert!(key.verify(other.as_bytes(), &signature).is_err(), "{other}");
+    }
+}
+
+/// RFC 4648 §5: `-` and `_` in place of `+` and `/`; the standard alphabet is refused
+/// in a token.
+#[test]
+fn rfc_4648_5_base64url_alphabet() {
+    let bytes = [0xfb, 0xff, 0xbf];
+    assert_eq!(jwz::b64::encode(&bytes), "-_-_");
+    assert_eq!(jwz::b64::decode("-_-_", "test").unwrap(), bytes);
+    for text in ["+/+/", "-_-/", "+_-_"] {
+        assert_eq!(
+            jwz::b64::decode(text, "test").map_err(|e| e.code()),
+            Err(ErrorCode::Base64),
+            "{text}"
+        );
+    }
+}
+
+/// RFC 7797 makes `b64` change the signing input, and jwz does not implement it: a
+/// token carrying `b64` is refused, critical and understood or not.
+#[test]
+fn rfc_7797_3_b64_is_refused() {
+    let registry = Registry::standard();
+    let key = es256_key();
+    let mut understood = strict();
+    understood.understood_critical.push("b64".into());
+    for (params, policy) in [
+        (
+            HeaderParams::new()
+                .param("b64", serde_json::json!(false))
+                .unwrap(),
+            strict(),
+        ),
+        (
+            HeaderParams::new()
+                .critical("b64", serde_json::json!(false))
+                .unwrap(),
+            understood.clone(),
+        ),
+        (
+            HeaderParams::new()
+                .critical("b64", serde_json::json!(true))
+                .unwrap(),
+            understood,
+        ),
+    ] {
+        let token = jws::sign(b"x", params, &key).unwrap();
+        assert_eq!(
+            code(Jws::parse(&token, &policy, &registry)).err(),
+            Some(ErrorCode::PolicyViolation)
+        );
     }
 }

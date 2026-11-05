@@ -715,6 +715,173 @@ mod tests {
     }
 
     #[test]
+    fn rfc_7518_3_1_jws_algorithms_with_their_keys_and_hashes() {
+        let registry = Registry::standard();
+        let (sha256, sha384, sha512) = (
+            Some(HashAlgorithm::Sha256),
+            Some(HashAlgorithm::Sha384),
+            Some(HashAlgorithm::Sha512),
+        );
+        for (name, key_type, curve, hash) in [
+            ("HS256", KeyType::OCT, None, sha256),
+            ("HS384", KeyType::OCT, None, sha384),
+            ("HS512", KeyType::OCT, None, sha512),
+            ("RS256", KeyType::RSA, None, sha256),
+            ("RS384", KeyType::RSA, None, sha384),
+            ("RS512", KeyType::RSA, None, sha512),
+            ("ES256", KeyType::EC, Some(Curve::P256), sha256),
+            ("ES384", KeyType::EC, Some(Curve::P384), sha384),
+            ("ES512", KeyType::EC, Some(Curve::P521), sha512),
+            ("PS256", KeyType::RSA, None, sha256),
+            ("PS384", KeyType::RSA, None, sha384),
+            ("PS512", KeyType::RSA, None, sha512),
+        ] {
+            let entry = registry.signature(name).unwrap();
+            assert_eq!(
+                (entry.key_type, entry.curve, entry.hash),
+                (key_type, curve, hash),
+                "{name}"
+            );
+        }
+        assert!(registry.signature("none").is_none());
+    }
+
+    /// RFC 7516 §2: the key management mode each `alg` employs, and the size of the key
+    /// that wraps the CEK where it wraps one.
+    #[test]
+    fn rfc_7518_4_1_jwe_algorithms_with_their_key_management_modes() {
+        use KeyManagementMode::{
+            DirectEncryption, DirectKeyAgreement, KeyAgreementWithKeyWrapping, KeyEncryption,
+            KeyWrapping, PasswordBased,
+        };
+        let registry = Registry::standard();
+        for (name, mode) in [
+            ("RSA1_5", KeyEncryption),
+            ("RSA-OAEP", KeyEncryption),
+            ("RSA-OAEP-256", KeyEncryption),
+            ("A128KW", KeyWrapping { kek_len: 16 }),
+            ("A192KW", KeyWrapping { kek_len: 24 }),
+            ("A256KW", KeyWrapping { kek_len: 32 }),
+            ("dir", DirectEncryption),
+            ("ECDH-ES", DirectKeyAgreement),
+            (
+                "ECDH-ES+A128KW",
+                KeyAgreementWithKeyWrapping { kek_len: 16 },
+            ),
+            (
+                "ECDH-ES+A192KW",
+                KeyAgreementWithKeyWrapping { kek_len: 24 },
+            ),
+            (
+                "ECDH-ES+A256KW",
+                KeyAgreementWithKeyWrapping { kek_len: 32 },
+            ),
+            ("A128GCMKW", KeyWrapping { kek_len: 16 }),
+            ("A192GCMKW", KeyWrapping { kek_len: 24 }),
+            ("A256GCMKW", KeyWrapping { kek_len: 32 }),
+            ("PBES2-HS256+A128KW", PasswordBased),
+            ("PBES2-HS384+A192KW", PasswordBased),
+            ("PBES2-HS512+A256KW", PasswordBased),
+        ] {
+            assert_eq!(registry.key_encryption(name).unwrap().mode, mode, "{name}");
+        }
+        assert!(registry.key_encryption("DIR").is_none());
+    }
+
+    /// RFC 7518 §5.2: AES-CBC with HMAC is known with its key, IV and tag lengths
+    /// (§5.2.3 to §5.2.5) but not implemented, so it is never available.
+    #[test]
+    fn rfc_7518_5_1_content_encryption_algorithms_with_their_lengths() {
+        let registry = Registry::standard();
+        for (name, kind, key_len, iv_len, tag_len, support) in [
+            (
+                "A128CBC-HS256",
+                ContentEncryptionKind::CbcHmac,
+                32,
+                16,
+                16,
+                Support::Reserved,
+            ),
+            (
+                "A192CBC-HS384",
+                ContentEncryptionKind::CbcHmac,
+                48,
+                16,
+                24,
+                Support::Reserved,
+            ),
+            (
+                "A256CBC-HS512",
+                ContentEncryptionKind::CbcHmac,
+                64,
+                16,
+                32,
+                Support::Reserved,
+            ),
+            (
+                "A128GCM",
+                ContentEncryptionKind::Aead,
+                16,
+                12,
+                16,
+                Support::Available,
+            ),
+            (
+                "A192GCM",
+                ContentEncryptionKind::Aead,
+                24,
+                12,
+                16,
+                Support::Available,
+            ),
+            (
+                "A256GCM",
+                ContentEncryptionKind::Aead,
+                32,
+                12,
+                16,
+                Support::Available,
+            ),
+        ] {
+            let entry = registry.content_encryption(name).unwrap();
+            assert_eq!(
+                (
+                    entry.kind,
+                    entry.key_len,
+                    entry.iv_len,
+                    entry.tag_len,
+                    entry.support
+                ),
+                (kind, key_len, iv_len, tag_len, support),
+                "{name}"
+            );
+        }
+    }
+
+    /// RFC 8037 §2: the OKP curves and the lengths of their raw keys.
+    #[test]
+    fn rfc_7518_6_2_1_1_curves_with_their_coordinate_lengths() {
+        let registry = Registry::standard();
+        for (name, key_type, len) in [
+            ("P-256", KeyType::EC, 32),
+            ("P-384", KeyType::EC, 48),
+            ("P-521", KeyType::EC, 66),
+            ("Ed25519", KeyType::OKP, 32),
+            ("Ed448", KeyType::OKP, 57),
+            ("X25519", KeyType::OKP, 32),
+            ("X448", KeyType::OKP, 56),
+        ] {
+            let entry = registry.curve(name).unwrap();
+            assert_eq!(
+                (entry.key_type, entry.coordinate_len),
+                (key_type, len),
+                "{name}"
+            );
+        }
+        assert!(registry.curve("p-256").is_none());
+    }
+
+    #[test]
     fn reserved_names_are_known_but_not_available() {
         let registry = Registry::standard();
         assert_eq!(

@@ -95,6 +95,8 @@ fn decrypt_json(text: &str, key: DecryptionKey<'_>) -> Result<Vec<u8>, ErrorCode
     code(all.remove(0).decrypt(key, backend().as_ref())).map(|d| d.plaintext().to_vec())
 }
 
+/// RFC 7518 §4.5: under `dir` the shared key is the CEK; the RFC's key decrypts the
+/// RFC's token with no encrypted key.
 #[test]
 fn rfc_7520_5_6_dir_a128gcm() {
     let key = symmetric(DIR_KEY);
@@ -113,6 +115,7 @@ fn rfc_7520_5_6_dir_a128gcm() {
     }
 }
 
+/// RFC 7518 §4.4: the RFC's A128KW key unwraps the RFC's encrypted key into the CEK.
 #[test]
 fn rfc_7520_5_8_a128kw_a128gcm() {
     let key = symmetric(A128KW_KEY);
@@ -147,6 +150,8 @@ fn rfc_7520_5_8_a128kw_a128gcm() {
     }
 }
 
+/// RFC 7516 §4.1.3: jwz does not implement `zip`, so the RFC's compressed example is
+/// refused, compact and JSON.
 #[test]
 fn rfc_7520_5_9_zip_and_5_12_unprotected_enc_are_refused() {
     let key = symmetric(A128KW_KEY);
@@ -254,21 +259,27 @@ fn rfc_7518_appendix_c_recipient_derives_the_rfc_cek() {
     );
 }
 
+/// The Appendix C header with the member at `path` (`apu`, `epk.x`) set to `value`, or
+/// removed for `null`, as a token with a dummy ciphertext.
+fn appendix_c_with(path: &str, value: Value) -> String {
+    let mut header = appendix_c_header();
+    if let Some(member) = path.strip_prefix("epk.") {
+        header["epk"][member] = value;
+    } else if value.is_null() {
+        header.as_object_mut().unwrap().remove(path);
+    } else {
+        header[path] = value;
+    }
+    handmade(&header, b"", None)
+}
+
+/// `epk` is a public key on a curve the policy allows, of the recipient key's type,
+/// with full-length coordinates of a point on the curve.
 #[test]
-fn rfc_7518_4_6_1_epk_apu_apv_negatives() {
+fn rfc_7518_4_6_1_1_epk_negatives() {
     let bob = bob();
     let key = DecryptionKey::Agreement(&bob);
-    let with = |path: &str, value: Value| {
-        let mut header = appendix_c_header();
-        if let Some(member) = path.strip_prefix("epk.") {
-            header["epk"][member] = value;
-        } else if value.is_null() {
-            header.as_object_mut().unwrap().remove(path);
-        } else {
-            header[path] = value;
-        }
-        handmade(&header, b"", None)
-    };
+    let with = appendix_c_with;
     for (token, expected, what) in [
         (with("epk", Value::Null), ErrorCode::MissingMember, "no epk"),
         (
@@ -313,17 +324,44 @@ fn rfc_7518_4_6_1_epk_apu_apv_negatives() {
             ErrorCode::Crypto(CryptoError::InvalidKey),
             "point not on the curve",
         ),
-        (
-            with("apu", json!(1)),
-            ErrorCode::InvalidMember,
-            "apu number",
-        ),
-        (with("apv", json!("Qm9i=")), ErrorCode::Base64, "apv padded"),
     ] {
         assert_eq!(decrypt_compact(&token, key), Err(expected), "{what}");
     }
 }
 
+/// RFC 7518 §4.6.1.3: `apv` likewise. Both are base64url strings; absent means empty,
+/// which changes the derived key, so the token sealed under the RFC's CEK no longer
+/// opens.
+#[test]
+fn rfc_7518_4_6_1_2_apu_and_apv_are_base64url_strings() {
+    let bob = bob();
+    let key = DecryptionKey::Agreement(&bob);
+    for (member, value, expected) in [
+        ("apu", json!(1), ErrorCode::InvalidMember),
+        ("apu", json!("QWxpY2U="), ErrorCode::Base64),
+        ("apv", json!(["Qm9i"]), ErrorCode::InvalidMember),
+        ("apv", json!("Qm9i="), ErrorCode::Base64),
+    ] {
+        assert_eq!(
+            decrypt_compact(&appendix_c_with(member, value.clone()), key),
+            Err(expected),
+            "{member}: {value}"
+        );
+    }
+    let cek = jwz::b64::decode("VqqN6vgjbSBcIijNcacQGg", "cek").unwrap();
+    for member in ["apu", "apv"] {
+        let mut header = appendix_c_header();
+        header.as_object_mut().unwrap().remove(member);
+        assert_eq!(
+            decrypt_compact(&handmade(&header, b"", Some(&cek)), key),
+            Err(ErrorCode::VerificationFailed),
+            "without {member}"
+        );
+    }
+}
+
+/// RFC 7516 §7.1: a compact JWE has exactly five parts; four or six are refused before
+/// any key is used.
 #[test]
 fn rfc_7516_5_2_structure_negatives() {
     let a128kw = symmetric(A128KW_KEY);
@@ -340,16 +378,6 @@ fn rfc_7516_5_2_structure_negatives() {
     for (token, expected, what) in [
         (parts[..4].join("."), ErrorCode::Malformed, "four parts"),
         (format!("{token}."), ErrorCode::Malformed, "six parts"),
-        (
-            replaced(2, &b64(&[0; 16])),
-            ErrorCode::InvalidMember,
-            "16-byte iv",
-        ),
-        (
-            replaced(4, &b64(&[0; 12])),
-            ErrorCode::InvalidMember,
-            "12-byte tag",
-        ),
         (
             replaced(1, ""),
             ErrorCode::Malformed,
@@ -388,6 +416,161 @@ fn rfc_7516_5_2_structure_negatives() {
         code(Jwe::parse(&token, &small, &Registry::standard())).map(|_| ()),
         Err(ErrorCode::TokenTooLarge)
     );
+}
+
+#[test]
+fn rfc_7518_5_3_the_iv_is_96_bits_and_the_tag_128_bits() {
+    let key = symmetric(A128KW_KEY);
+    let key = DecryptionKey::Symmetric(&key);
+    let token = rfc7520("5.8 JWE Compact Serialization");
+    let parts: Vec<&str> = token.split('.').collect();
+    assert_eq!(jwz::b64::decode(parts[2], "iv").unwrap().len(), 12);
+    assert_eq!(jwz::b64::decode(parts[4], "tag").unwrap().len(), 16);
+    for (index, len) in [(2, 8), (2, 16), (4, 12), (4, 15), (4, 17)] {
+        let mut altered = parts.clone();
+        let value = b64(&vec![0; len]);
+        altered[index] = &value;
+        assert_eq!(
+            decrypt_compact(&altered.join("."), key),
+            Err(ErrorCode::InvalidMember),
+            "part {index}, {len} bytes"
+        );
+    }
+}
+
+#[test]
+fn rfc_7516_4_1_1_alg_is_required_and_case_sensitive() {
+    for (header, expected) in [
+        (json!({"enc": "A128GCM"}), ErrorCode::MissingMember),
+        (
+            json!({"alg": 1, "enc": "A128GCM"}),
+            ErrorCode::MissingMember,
+        ),
+        (
+            json!({"alg": "a128kw", "enc": "A128GCM"}),
+            ErrorCode::UnsupportedAlgorithm,
+        ),
+        (
+            json!({"alg": "DIR", "enc": "A128GCM"}),
+            ErrorCode::UnsupportedAlgorithm,
+        ),
+    ] {
+        let token = handmade(&header, &[0; 24], None);
+        assert_eq!(
+            code(Jwe::parse(&token, &interop(), &Registry::standard())).map(|_| ()),
+            Err(expected),
+            "{header}"
+        );
+    }
+}
+
+#[test]
+fn rfc_7516_4_1_2_enc_is_required_and_case_sensitive() {
+    for (header, expected) in [
+        (json!({"alg": "A128KW"}), ErrorCode::MissingMember),
+        (
+            json!({"alg": "A128KW", "enc": "a128gcm"}),
+            ErrorCode::UnsupportedAlgorithm,
+        ),
+    ] {
+        let token = handmade(&header, &[0; 24], None);
+        assert_eq!(
+            code(Jwe::parse(&token, &interop(), &Registry::standard())).map(|_| ()),
+            Err(expected),
+            "{header}"
+        );
+    }
+}
+
+/// `crit` names extensions only: a parameter RFC 7516 §4.1 defines for JWE is never
+/// critical.
+#[test]
+fn rfc_7516_4_1_crit_may_not_name_a_registered_parameter() {
+    let mut policy = interop();
+    for name in ["enc", "cty", "typ", "kid"] {
+        policy.understood_critical.push(name.into());
+        let mut header = json!({"alg": "A128KW", "enc": "A128GCM", "crit": [name]});
+        if header.get(name).is_none() {
+            header[name] = json!("x");
+        }
+        let token = handmade(&header, &[0; 24], None);
+        assert_eq!(
+            code(Jwe::parse(&token, &policy, &Registry::standard())).map(|_| ()),
+            Err(ErrorCode::Critical),
+            "{name}"
+        );
+    }
+}
+
+/// The AAD is ASCII(BASE64URL(protected header)), and with a JSON `aad` that followed by
+/// `.` and the encoded `aad`: the content opens under exactly that AAD.
+#[test]
+fn rfc_7516_5_1_step_14_the_aad_is_the_encoded_protected_header() {
+    let registry = Registry::standard();
+    let backend = backend();
+    let cek = SymmetricKey::new(vec![7; 16]);
+    let cipher = backend.aead(Enc::A128GCM).unwrap();
+    let open = |iv: &str, aad: &str, ciphertext: &str, tag: &str| {
+        let decode = |part: &str| jwz::b64::decode(part, "part").unwrap();
+        cipher
+            .open(
+                &[7; 16],
+                &decode(iv),
+                aad.as_bytes(),
+                &decode(ciphertext),
+                &decode(tag),
+            )
+            .map(|plaintext| plaintext.to_vec())
+    };
+
+    let token = jwe::encrypt(
+        b"compact",
+        Alg::DIR,
+        Enc::A128GCM,
+        EncryptionKey::Symmetric(&cek),
+        HeaderParams::new(),
+        &registry,
+        backend.as_ref(),
+    )
+    .unwrap();
+    let parts: Vec<&str> = token.split('.').collect();
+    assert_eq!(
+        open(parts[2], parts[0], parts[3], parts[4]).unwrap(),
+        b"compact"
+    );
+    assert!(open(parts[2], "", parts[3], parts[4]).is_err());
+
+    let recipient = Recipient {
+        alg: Alg::DIR,
+        key: EncryptionKey::Symmetric(&cek),
+        header: HeaderParams::new(),
+    };
+    let text = jwe::json::encrypt(
+        b"json",
+        Enc::A128GCM,
+        HeaderParams::new(),
+        &[recipient],
+        Some(b"context"),
+        &registry,
+        backend.as_ref(),
+    )
+    .unwrap();
+    let object: Value = serde_json::from_str(&text).unwrap();
+    let member = |name: &str| object[name].as_str().unwrap().to_string();
+    let (protected, encoded_aad) = (member("protected"), member("aad"));
+    assert_eq!(encoded_aad, b64(b"context"));
+    let (iv, ciphertext, tag) = (member("iv"), member("ciphertext"), member("tag"));
+    assert_eq!(
+        open(
+            &iv,
+            &format!("{protected}.{encoded_aad}"),
+            &ciphertext,
+            &tag
+        )
+        .unwrap(),
+        b"json"
+    );
+    assert!(open(&iv, &protected, &ciphertext, &tag).is_err());
 }
 
 #[test]
@@ -510,6 +693,7 @@ fn round_trip_every_alg_and_enc() {
     }
 }
 
+/// RFC 7517 §4.2: a public key whose `use` is `sig` does not encrypt.
 #[test]
 fn encryption_key_must_fit_the_algorithm() {
     let registry = Registry::standard();
@@ -666,7 +850,7 @@ fn rfc_7516_7_2_1_general_json_with_several_recipients() {
 }
 
 #[test]
-fn json_headers_must_be_disjoint_and_enc_protected() {
+fn rfc_7516_7_2_1_headers_disjoint_and_enc_protected() {
     let key = symmetric(A128KW_KEY);
     let key = DecryptionKey::Symmetric(&key);
     let base: Value =

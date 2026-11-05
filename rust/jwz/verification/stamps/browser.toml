@@ -6,7 +6,7 @@ outcome = "passed"
 
 [inputs]
 "tests/browser.rs" = "05a02897118114d3aea18271054ed3faaefcb13224110e2cd66183ab7b97c6db"
-"src/crypto/rustcrypto.rs" = "55f6f26e9bab7f04e5e0ff99ae6a364e9fee67fcdeb42278087c9a42ed74ad27"
+"src/crypto/rustcrypto.rs" = "48a2a82177d6a0637b75afde591bf9d39d5baa0e121ce0e2713e8bd7029c1f4f"
 "src/jwt.rs" = "14eaacfc5b4ff6ccc85f6abc4de20acfa84cb7c75999b748bcc981b85641650e"
 "Cargo.toml" = "2648640f133e0ed445cd6296c034f1449a83edd4168ef0135298e54d007a5225"
 "../Cargo.toml" = "57a6d12e1d5912ed9870a26baa8493b29058d626da9639af4395ef0dff51c422"

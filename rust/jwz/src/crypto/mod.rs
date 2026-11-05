@@ -109,7 +109,7 @@ pub trait Hash {
     fn digest(&self, parts: &[&[u8]]) -> Vec<u8>;
 }
 
-/// HMAC (RFC 2104) over one hash.
+/// HMAC (RFC 2104 §2) over one hash.
 pub trait Mac {
     /// The hash it is built on.
     fn hash(&self) -> HashAlgorithm;
