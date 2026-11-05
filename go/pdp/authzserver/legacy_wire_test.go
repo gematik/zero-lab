@@ -363,7 +363,7 @@ func unsecured(header, payload string) string {
 }
 
 // What introspection was checking through pep: the published key by kid, and exp, nbf and iat with a minute of skew.
-func TestIntrospection_OnlyAVerifiedLiveTokenOfThisServerIsActive(t *testing.T) {
+func TestRFC7662_4_OnlyAVerifiedLiveTokenOfThisServerIsActive(t *testing.T) {
 	server, _ := newTestServer(t)
 	now := time.Unix(1_800_000_000, 0)
 	pastSkew := now.Add(-ownTokenSkew).Unix()
@@ -452,7 +452,7 @@ func TestIntrospection_EndpointAnswersWithTheTokensInstants(t *testing.T) {
 // RFC 7523 Section 3: the assertion is checked against the one key registered for its client. It never went through
 // a key set, and a client's assertion does not have to name its key, so a missing or other kid stays acceptable;
 // everything else about the signature does not.
-func TestClientAssertion_IsVerifiedOnlyWithTheRegisteredKeyAndES256(t *testing.T) {
+func TestRFC7523_3_ClientAssertionIsVerifiedOnlyWithTheRegisteredKeyAndES256(t *testing.T) {
 	server, signKey := newTestServer(t)
 	now := time.Now()
 	good := map[string]any{"aud": []string{testIssuer}, "exp": now.Add(time.Minute).Unix()}

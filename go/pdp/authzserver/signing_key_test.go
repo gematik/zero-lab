@@ -78,7 +78,7 @@ func writeJWK(t *testing.T, key any, kid string) (dir, name string) {
 }
 
 // servers.md rule 17: a server without its key does not start; it never makes one up.
-func TestSigningKey_missing_or_unusable_fails_startup(t *testing.T) {
+func TestServerRule17_AMissingOrUnusableSigningKeyFailsStartup(t *testing.T) {
 	t.Run("no key at all", func(t *testing.T) {
 		if _, err := New(Config{Issuer: testIssuer}); err == nil {
 			t.Fatal("a server started without a signing key")
@@ -115,7 +115,7 @@ func TestSigningKey_missing_or_unusable_fails_startup(t *testing.T) {
 }
 
 // keys.md rule 5: the key is bound to ES256, whatever a file or a signer holds.
-func TestSigningKey_must_be_P256(t *testing.T) {
+func TestKeysRule5_TheSigningKeyMustBeP256(t *testing.T) {
 	p384, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
@@ -141,7 +141,7 @@ func TestSigningKey_must_be_P256(t *testing.T) {
 
 // keys.md rule 1: the server holds a function to sign with, and its tokens verify under the keys
 // it publishes.
-func TestSigningKey_tokens_are_signed_through_the_signer(t *testing.T) {
+func TestKeysRule1_TokensAreSignedThroughTheSigner(t *testing.T) {
 	signer := &countingSigner{inner: newP256(t)}
 	server, err := New(Config{
 		Issuer:     testIssuer,

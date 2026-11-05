@@ -51,7 +51,8 @@ func parRequest(assertion string) *http.Request {
 	return req
 }
 
-func TestPAREndpointStoresSingleUseRequest(t *testing.T) {
+// RFC 9126 Section 4: the authorization server treats a request_uri as one-time use.
+func TestRFC9126_4_PAREndpointStoresSingleUseRequest(t *testing.T) {
 	server, signKey := newTestServer(t)
 	rec := httptest.NewRecorder()
 	if err := server.PAREndpoint(rec, parRequest(signClientAssertion(t, server, signKey, nil))); err != nil {
@@ -85,7 +86,8 @@ func TestPAREndpointStoresSingleUseRequest(t *testing.T) {
 	}
 }
 
-func TestPAREndpointRequiresClientAuth(t *testing.T) {
+// RFC 9126 Section 2: the token endpoint's rules for client authentication apply to the PAR endpoint.
+func TestRFC9126_2_PAREndpointRequiresClientAuth(t *testing.T) {
 	server, _ := newTestServer(t)
 	rec := httptest.NewRecorder()
 	if err := server.PAREndpoint(rec, parRequest("")); err == nil {

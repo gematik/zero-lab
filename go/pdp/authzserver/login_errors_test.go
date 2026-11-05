@@ -165,7 +165,7 @@ func assertNoneInLog(t *testing.T, logs *bytes.Buffer, values ...string) {
 
 // Server rules 5 and 14: the whole login, from the pushed request to the tokens, in the callback's case the path
 // that once logged both sessions.
-func TestALoginLogsNoSecretAtDebug(t *testing.T) {
+func TestServerRule14_ALoginLogsNoSecretAtDebug(t *testing.T) {
 	logs := captureDebugLogs(t)
 	server, signKey := newTestServer(t)
 	op := &fakeOP{}
@@ -205,7 +205,7 @@ func TestALoginLogsNoSecretAtDebug(t *testing.T) {
 }
 
 // An upstream's refusal is outside this server's control and may echo what it was sent.
-func TestALoginThatFailsLogsNoSecretEvenIfTheProviderEchoesIt(t *testing.T) {
+func TestServerRule14_ALoginThatFailsLogsNoSecretEvenIfTheProviderEchoesIt(t *testing.T) {
 	logs := captureDebugLogs(t)
 	server, signKey := newTestServer(t)
 	op := &fakeOP{}
@@ -222,7 +222,7 @@ func TestALoginThatFailsLogsNoSecretEvenIfTheProviderEchoesIt(t *testing.T) {
 }
 
 // Server rule 10: a kv key is in clear even in a sealed store, so it holds a hash of a secret.
-func TestAKVKeyHoldsNoSecretOfALogin(t *testing.T) {
+func TestServerRule10_AKVKeyHoldsNoSecretOfALogin(t *testing.T) {
 	server, signKey := newTestServer(t)
 	memory := kv.NewMemory()
 	server.sessionStore = newKVSessionStore(memory, time.Hour)
@@ -268,9 +268,9 @@ func keysWithPrefix(keys []string, prefix string) []string {
 	return found
 }
 
-// RFC 6749 section 10.12: a state answers one request. A replay with another code must not overwrite the authorization
+// RFC 9700 section 2.1 (RFC 6749 section 10.12): a state answers one request. A replay with another code must not overwrite the authorization
 // code the first callback issued, also after the session was saved again.
-func TestOPCallback_TheStateIsSingleUse(t *testing.T) {
+func TestRFC9700_2_1_TheStateOfAnOPCallbackIsSingleUse(t *testing.T) {
 	server, signKey := newTestServer(t)
 	op := &fakeOP{}
 	opState := pendingLogin(t, server, signClientAssertion(t, server, signKey, nil), op)
@@ -312,7 +312,7 @@ func TestOPCallback_ARequestWithoutACodeDoesNotConsumeTheState(t *testing.T) {
 }
 
 // RFC 6749 section 4.1.2.1: a login that fails after the client is known ends at the client, not in JSON in the browser.
-func TestOPCallback_AFailureRedirectsToTheClientWithGenericText(t *testing.T) {
+func TestRFC6749_4_1_2_1_AFailedLoginRedirectsToTheClientWithGenericText(t *testing.T) {
 	server, signKey := newTestServer(t)
 	op := &fakeOP{}
 	opState := pendingLogin(t, server, signClientAssertion(t, server, signKey, nil), op)
@@ -338,7 +338,7 @@ func TestOPCallback_AFailureRedirectsToTheClientWithGenericText(t *testing.T) {
 }
 
 // An unknown client and a bad signature read alike, so the answer does not say which clients exist.
-func TestVerifyClient_FailuresNameNoDetail(t *testing.T) {
+func TestServerRule2_ClientVerificationFailuresNameNoDetail(t *testing.T) {
 	server, signKey := newTestServer(t)
 	assertion := signClientAssertion(t, server, signKey, nil)
 	request := func(assertion string) *http.Request {
@@ -370,7 +370,7 @@ func TestVerifyClient_FailuresNameNoDetail(t *testing.T) {
 
 // RFC 6749 section 4.1.2.1: the error goes to the client's redirect URI with the client's state. The session's other
 // ones are the server's own callback at the provider and the state it sent there.
-func TestOPCallback_AnUpstreamErrorReachesTheClientWithItsOwnState(t *testing.T) {
+func TestRFC6749_4_1_2_1_AnUpstreamErrorReachesTheClientWithItsOwnState(t *testing.T) {
 	server, signKey := newTestServer(t)
 	op := &fakeOP{}
 	opState := pendingLogin(t, server, signClientAssertion(t, server, signKey, nil), op)
@@ -437,7 +437,7 @@ func assertGenericError(t *testing.T, rec *httptest.ResponseRecorder, secrets ..
 }
 
 // Server rule 2: uniform errors that leak no internals. The store's text can carry its key, as:code:<the code> among them.
-func TestAStoreFailureReachesTheClientAsAGenericErrorAndTheLogWithoutTheSecret(t *testing.T) {
+func TestServerRule2_AStoreFailureReachesTheClientAsAGenericErrorAndTheLogWithoutTheSecret(t *testing.T) {
 	for name, run := range map[string]func(t *testing.T, server *Server, store *failingStore, assertion string, op *fakeOP) (*httptest.ResponseRecorder, string){
 		"token endpoint looking up the code": func(t *testing.T, server *Server, store *failingStore, assertion string, _ *fakeOP) (*httptest.ResponseRecorder, string) {
 			store.fail["take"] = true
@@ -509,7 +509,8 @@ func TestRFC6749_5_2_AnUnknownCodeIsInvalidGrant(t *testing.T) {
 	}
 }
 
-func TestAProviderFailureReachesTheClientAsAGenericError(t *testing.T) {
+// Server rule 2: uniform error responses that leak no internals.
+func TestServerRule2_AProviderFailureReachesTheClientAsAGenericError(t *testing.T) {
 	t.Run("the authorization URL", func(t *testing.T) {
 		server, signKey := newTestServer(t)
 		op := &fakeOP{}
@@ -557,7 +558,8 @@ func (failingFederation) Providers(context.Context) ([]providers.Info, error) {
 	return nil, errors.New(testInternals)
 }
 
-func TestAHandlerErrorOfNoOAuthKindIsGeneric(t *testing.T) {
+// Server rule 2: uniform error responses that leak no internals.
+func TestServerRule2_AHandlerErrorOfNoOAuthKindIsGeneric(t *testing.T) {
 	server, _ := newTestServer(t)
 	rec := httptest.NewRecorder()
 	server.handle(func(http.ResponseWriter, *http.Request) error {
@@ -566,9 +568,9 @@ func TestAHandlerErrorOfNoOAuthKindIsGeneric(t *testing.T) {
 	assertGenericError(t, rec)
 }
 
-// A private JWK in public_jwk would work through its public half, with the private half in a configuration file that is
+// Server rule 17: a private JWK in public_jwk would work through its public half, with the private half in a configuration file that is
 // not kept as a secret.
-func TestClientsRegistry_ARegisteredKeyThatIsNotPublicIsRefusedAtLoad(t *testing.T) {
+func TestServerRule17_ARegisteredClientKeyThatIsNotPublicIsRefusedAtLoad(t *testing.T) {
 	private := newP256(t)
 	for name, key := range map[string]any{
 		"an EC private key": private,
@@ -593,7 +595,8 @@ func TestClientsRegistry_ARegisteredKeyThatIsNotPublicIsRefusedAtLoad(t *testing
 	}
 }
 
-func TestSessionRefCorrelatesAndRevealsNoPartOfTheID(t *testing.T) {
+// Server rule 14: identifiers in telemetry are pseudonymised.
+func TestServerRule14_SessionRefCorrelatesAndRevealsNoPartOfTheID(t *testing.T) {
 	const id = "0f8fad5b-d9cb-469f-a165-70867728950e"
 	ref := sessionRef(id)
 	if again := sessionRef(id); again != ref {

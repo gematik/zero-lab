@@ -101,7 +101,8 @@ func requireStatus(t *testing.T, err error, status int, code string) {
 	}
 }
 
-func TestNew_RefusesAStoreWithoutNonceKeys(t *testing.T) {
+// Server rule 17: a per-process nonce key with a shared store would refuse every other replica's nonces.
+func TestServerRule17_NewRefusesAStoreWithoutNonceKeys(t *testing.T) {
 	_, err := New(Config{Issuer: testIssuer, SigningKey: &SigningKey{Signer: newP256(t), KeyID: "k"}, Store: kv.NewMemory()})
 	if err == nil {
 		t.Fatal("started with a store and a per-process nonce key")
@@ -109,7 +110,7 @@ func TestNew_RefusesAStoreWithoutNonceKeys(t *testing.T) {
 }
 
 // A nonce issued at one replica is good at another, and single use holds across them.
-func TestPrivateKeyJWTNonce_IsAcceptedOnceAcrossReplicas(t *testing.T) {
+func TestServerRule11_PrivateKeyJWTNonceIsAcceptedOnceAcrossReplicas(t *testing.T) {
 	a, b, signKey := replicas(t, kv.NewSealed(kv.NewMemory(), testKeyring(t), "test"))
 	assertion := signClientAssertion(t, a, signKey, nil)
 	if err := b.TokenEndpoint(httptest.NewRecorder(), clientCredentialsRequest(t, assertion)); err != nil {
@@ -147,7 +148,8 @@ func (s *failingOn) SetIfAbsent(ctx context.Context, key string, value []byte, t
 	return s.Store.SetIfAbsent(ctx, key, value, ttl)
 }
 
-func TestNonceRedeem_AStoreOutageFailsClosedAndLeaksNothing(t *testing.T) {
+// Server rule 16: an outage of the store behind single use means deny, and its text stays out of the answer.
+func TestServerRule16_ANonceStoreOutageFailsClosedAndLeaksNothing(t *testing.T) {
 	a, _, signKey := replicas(t, &failingOn{Store: kv.NewMemory(), prefix: "nonce:"})
 	err := a.TokenEndpoint(httptest.NewRecorder(), clientCredentialsRequest(t, signClientAssertion(t, a, signKey, nil)))
 	requireStatus(t, err, http.StatusInternalServerError, "server_error")
@@ -156,7 +158,8 @@ func TestNonceRedeem_AStoreOutageFailsClosedAndLeaksNothing(t *testing.T) {
 	}
 }
 
-func TestDPoPReplayCache_AStoreOutageRefusesTheProof(t *testing.T) {
+// Server rule 16: without the replay cache no proof is accepted.
+func TestServerRule16_ADPoPReplayCacheOutageRefusesTheProof(t *testing.T) {
 	a, _, signKey := replicas(t, &failingOn{Store: kv.NewMemory(), prefix: "dpop:replay:"})
 	resp := httptest.NewRecorder()
 	err := a.TokenEndpoint(resp, clientCredentialsRequest(t, signClientAssertion(t, a, signKey, nil)))
@@ -187,7 +190,8 @@ func (s *writeCounter) SetMany(ctx context.Context, entries ...kv.Entry) error {
 	return s.Store.SetMany(ctx, entries...)
 }
 
-func TestNonceEndpoint_AnAnonymousGetCausesNoWrite(t *testing.T) {
+// Server rule 10: handing out a nonce costs no store.
+func TestServerRule10_AnAnonymousNonceRequestCausesNoWrite(t *testing.T) {
 	store := &writeCounter{Store: kv.NewMemory()}
 	a, _, _ := replicas(t, store)
 	resp := httptest.NewRecorder()
@@ -315,7 +319,8 @@ func TestSessionLookup_ARecordThatDoesNotOpenIsAnInvalidSessionAndLogged(t *test
 	}
 }
 
-func TestSessionRecords_ReachASealedStoreAsCiphertext(t *testing.T) {
+// Server rule 5: the store sees ciphertext only.
+func TestServerRule5_SessionRecordsReachASealedStoreAsCiphertext(t *testing.T) {
 	raw := kv.NewMemory()
 	sessions := newKVSessionStore(kv.NewSealed(raw, testKeyring(t), "test"), time.Hour)
 	if err := sessions.SaveAutzhServerSession(&Session{ID: "s1", RefreshToken: "refresh-secret", Code: "code-secret"}); err != nil {

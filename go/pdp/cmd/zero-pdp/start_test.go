@@ -31,7 +31,7 @@ import (
 )
 
 // Rule 17: the refusal comes before any connection, so an unreachable database cannot hide it.
-func TestOpenStore_APersistentStoreWithoutAKeyFileRefusesToStartNamingTheVariable(t *testing.T) {
+func TestServerRule17_APersistentStoreWithoutAKeyFileRefusesToStartNamingTheVariable(t *testing.T) {
 	_, _, err := openStore("postgres://nobody@127.0.0.1:1/none", "")
 	if err == nil {
 		t.Fatal("started")
@@ -41,7 +41,7 @@ func TestOpenStore_APersistentStoreWithoutAKeyFileRefusesToStartNamingTheVariabl
 	}
 }
 
-func TestOpenStore_ABrokenKeyFileRefusesToStart(t *testing.T) {
+func TestServerRule17_ABrokenKeyFileRefusesToStart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "store.key")
 	if err := os.WriteFile(path, []byte("k1 short\n"), 0o600); err != nil {
 		t.Fatal(err)

@@ -262,8 +262,8 @@ func assertTokenError(t *testing.T, err error, code, description string) {
 	}
 }
 
-// TestPrivateKeyJWTNonceIsSingleUse verifies a redeemed nonce cannot be replayed.
-func TestPrivateKeyJWTNonceIsSingleUse(t *testing.T) {
+// TestServerRule11_PrivateKeyJWTNonceIsSingleUse verifies a redeemed nonce cannot be replayed.
+func TestServerRule11_PrivateKeyJWTNonceIsSingleUse(t *testing.T) {
 	server, signKey := newTestServer(t)
 	assertion := signClientAssertion(t, server, signKey, nil)
 
@@ -274,7 +274,8 @@ func TestPrivateKeyJWTNonceIsSingleUse(t *testing.T) {
 	assertInvalidClient(t, err)
 }
 
-func TestPrivateKeyJWTRejections(t *testing.T) {
+// RFC 7523 Section 3: signature, iss, sub, aud and exp of the assertion are checked; nonce and cnf are this server's own.
+func TestRFC7523_3_PrivateKeyJWTRejections(t *testing.T) {
 	otherKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
