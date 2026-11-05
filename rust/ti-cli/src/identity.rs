@@ -462,6 +462,7 @@ fn from_pem(cert_path: &Path, key_path: &Path) -> Result<Identity, CliError> {
 struct ConnectorKey {
     session: Session,
     handle: String,
+    user: Option<ti_connector_client::ComfortUserId>,
     /// The last failure, for the command to report as a Konnektor error.
     error: RefCell<Option<ti_connector_client::Error>>,
 }
@@ -475,7 +476,7 @@ impl ConnectorKey {
     /// given, raw r‖s comes back.
     async fn sign(&self, msg: &[u8]) -> Result<Signature, jwz::Error> {
         let hash = Sha256::digest(msg);
-        let auth = self.session.connector.auth();
+        let auth = self.session.connector.auth().as_user(self.user.as_ref());
         match auth
             .external_authenticate(&self.handle, &hash, SignatureType::Ecdsa)
             .await
@@ -546,7 +547,8 @@ fn from_connector(
     let args = ConnectorArgs::for_identity(name);
     let session = connector::open(&args, global, out)?;
     let found = block_on(session.connector.cards().find(card)).map_err(CliError::Connector)?;
-    let certificates = session.connector.certificates();
+    let user = crate::commands::card_user(&session, &found)?;
+    let certificates = session.connector.certificates().as_user(user.as_ref());
     let read = block_on(certificates.read(&found.card_handle, Crypt::Ecc, &[CertRef::CAut]))
         .map_err(CliError::Connector)?;
     let label = format!(
@@ -580,6 +582,7 @@ fn from_connector(
         key: Key::Connector(Rc::new(ConnectorKey {
             session,
             handle: found.card_handle,
+            user,
             error: RefCell::new(None),
         })),
     })

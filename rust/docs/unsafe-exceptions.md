@@ -17,7 +17,7 @@ task.
 | Core | Features |
 |---|---|
 | ti-types | std, serde |
-| ti-store | store |
+| ti-store | – |
 | ti-pki | brainpool, rsa, load, os, dangerous-nonprod |
 | ti-pkcs12 | legacy, encode |
 | ti-connector-client | – |
@@ -41,7 +41,7 @@ task.
 
 | Crate | Version | Why | Approved |
 |---|---|---|---|
-| aes | 0.9.3 | AES-NI and ARMv8 AES intrinsics: AES-GCM (jwz JWE, ti-store records), AES-CBC (PKCS#12) | 2026-10-29 |
+| aes | 0.9.3 | AES-NI and ARMv8 AES intrinsics: AES-GCM (jwz JWE), AES-CBC (PKCS#12) | 2026-10-29 |
 | base16ct | 1.0.0 | constant-time hex: unchecked UTF-8 of the ASCII it wrote | 2026-10-29 |
 | base64 | 0.23.1 | only the generated Konnektor bindings: unchecked UTF-8 of its own output; *replace* with base64ct: TASK-159 | 2026-10-29 |
 | base64ct | 1.8.3 | constant-time Base64: unchecked UTF-8 of the ASCII it wrote | 2026-10-29 |

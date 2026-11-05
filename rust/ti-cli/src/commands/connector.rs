@@ -34,6 +34,7 @@ use ti_connector_client::{BINDINGS, Error, PinType, Product};
 use ti_pki::load::SystemClock;
 use ti_pki::{Certificate, Clock, Timestamp};
 
+use super::documents::card_user;
 use super::inspect;
 use crate::block::block_on;
 use crate::cli::{
@@ -50,8 +51,10 @@ use crate::output::{Document, Line, Output, SCHEMA, Tone, Waiting, pem};
 pub fn run(cli: &ConnectorCli, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     let open = || connector::open(&cli.args, global, out);
     match &cli.command {
-        ConnectorCommand::Configs => configs(&cli.args, out),
-        ConnectorCommand::Use { name } => use_config(name, out),
+        ConnectorCommand::Configs
+        | ConnectorCommand::Use { name: None }
+        | ConnectorCommand::Config(ConnectorConfig::List) => configs(&cli.args, out),
+        ConnectorCommand::Use { name: Some(name) } => use_config(name, out),
         ConnectorCommand::Config(ConnectorConfig::Show { name }) => {
             super::connector_config::show(name.as_deref(), &cli.args, out)
         }
@@ -64,8 +67,8 @@ pub fn run(cli: &ConnectorCli, global: &GlobalArgs, out: &Output) -> Result<Exit
         ConnectorCommand::Config(ConnectorConfig::Edit(args)) => {
             super::connector_setup::edit(args, &cli.args, out)
         }
-        ConnectorCommand::Config(ConnectorConfig::Set { name, assignments }) => {
-            super::connector_setup::set(name, assignments, out)
+        ConnectorCommand::Config(ConnectorConfig::Set { assignments }) => {
+            super::connector_setup::set(assignments, &cli.args, out)
         }
         ConnectorCommand::Config(ConnectorConfig::Pin(args)) => {
             super::connector_setup::pin(args, &cli.args, global, out)
@@ -212,7 +215,8 @@ pub(super) fn card_certificate(
 ) -> Result<(String, Certificate), CliError> {
     let card = find(session, card)?;
     let crypt = Crypt::from(crypt);
-    let certificates = session.connector.certificates();
+    let user = card_user(session, &card)?;
+    let certificates = session.connector.certificates().as_user(user.as_ref());
     let read = card_call(
         &card,
         certificates.read(&card.card_handle, crypt, &[cert_ref]),
@@ -607,7 +611,8 @@ struct CertificateInfo {
 
 fn certificates(session: &Session, card: &str, out: &Output) -> Result<Exit, CliError> {
     let card = find(session, card)?;
-    let certificates = session.connector.certificates();
+    let user = card_user(session, &card)?;
+    let certificates = session.connector.certificates().as_user(user.as_ref());
     let read = card_call(
         &card,
         certificates.read_all(&card.card_handle, card.card_type),
@@ -752,7 +757,7 @@ fn status(session: &Session, out: &Output) -> Result<Exit, CliError> {
             .filter(|e| e.active)
             .map(|e| {
                 vec![
-                    Line::status(Tone::Bad, &e.condition),
+                    condition_line(&e.condition, &e.severity),
                     Line::text(&e.severity),
                     Line::text(&e.kind),
                     Line::dim(&e.since),
@@ -766,6 +771,18 @@ fn status(session: &Session, out: &Output) -> Result<Exit, CliError> {
             doc.table(&["CONDITION", "SEVERITY", "TYPE", "SINCE"], active);
         }
     })
+}
+
+/// An active condition, colored by its severity (gemSpec_Kon TAB_KON_503). A severity
+/// that is not known stays red: a manufacturer chooses its own for its own conditions.
+fn condition_line(condition: &str, severity: &str) -> Line {
+    if severity.eq_ignore_ascii_case("info") {
+        Line::text(condition)
+    } else if severity.eq_ignore_ascii_case("warning") {
+        Line::status(Tone::Warn, condition)
+    } else {
+        Line::status(Tone::Bad, condition)
+    }
 }
 
 #[derive(Serialize)]
@@ -785,10 +802,12 @@ struct IdentityInfo {
 /// The Telematik-ID in `card`'s ECC C.AUT; `None` for a card without one or whose C.AUT
 /// cannot be read, which is still shown, without an ID.
 fn telematik_id(session: &Session, card: &Card) -> Option<String> {
+    let user = card_user(session, card).ok()?;
     block_on(
         session
             .connector
             .certificates()
+            .as_user(user.as_ref())
             .read(&card.card_handle, Crypt::Ecc, &[CertRef::CAut]),
     )
     .ok()?
@@ -855,7 +874,11 @@ fn expiration(
 ) -> Result<Exit, CliError> {
     let card = card.map(|card| find(session, card)).transpose()?;
     let handle = card.as_ref().map(|c| c.card_handle.as_str());
-    let certificates = session.connector.certificates();
+    let user = match &card {
+        Some(card) => card_user(session, card)?,
+        None => None,
+    };
+    let certificates = session.connector.certificates().as_user(user.as_ref());
     let future = certificates.expiration(handle, crypt.into());
     let expiry = match &card {
         Some(card) => card_call(card, future)?,
@@ -916,26 +939,26 @@ struct PinInfo {
 
 /// The status of each of `card`'s user PINs. A failed query is reported per PIN, so the
 /// rest of the description still shows.
-fn pin_infos(session: &Session, card: &Card) -> Vec<PinInfo> {
-    PinType::for_card(card.card_type)
+fn pin_infos(session: &Session, card: &Card) -> Result<Vec<PinInfo>, CliError> {
+    let user = card_user(session, card)?;
+    let pins = session.connector.pins().as_user(user.as_ref());
+    Ok(PinType::for_card(card.card_type)
         .iter()
-        .map(
-            |pin| match call(session.connector.pins().status(&card.card_handle, *pin)) {
-                Ok(s) => PinInfo {
-                    pin: pin.as_str(),
-                    status: s.pin_status.map(PinState::as_str),
-                    left_tries: s.left_tries,
-                    error: None,
-                },
-                Err(e) => PinInfo {
-                    pin: pin.as_str(),
-                    status: None,
-                    left_tries: None,
-                    error: Some(e.to_string()),
-                },
+        .map(|pin| match call(pins.status(&card.card_handle, *pin)) {
+            Ok(s) => PinInfo {
+                pin: pin.as_str(),
+                status: s.pin_status.map(PinState::as_str),
+                left_tries: s.left_tries,
+                error: None,
             },
-        )
-        .collect()
+            Err(e) => PinInfo {
+                pin: pin.as_str(),
+                status: None,
+                left_tries: None,
+                error: Some(e.to_string()),
+            },
+        })
+        .collect())
 }
 
 /// `verified`, or `PIN entry needed · 3 tries left` and the like, by what it means for
@@ -987,7 +1010,7 @@ fn describe_card(session: &Session, card: &str, out: &Output) -> Result<Exit, Cl
     let report = CardReport {
         card: CardInfo::from(&found),
         telematik_id: holder.then(|| telematik_id(session, &found)).flatten(),
-        pins: pin_infos(session, &found),
+        pins: pin_infos(session, &found)?,
     };
     emit(out, Exit::Ok, &report, |doc| {
         let c = &report.card;
@@ -1061,7 +1084,8 @@ fn pin(
     let verb = if change { "Change" } else { "Enter" };
     let message = format!("{verb} {pin_type} at the card terminal");
     let waiting = Waiting::start(&message, &card_label(&card), args.card_timeout);
-    let pins = session.connector.pins();
+    let user = card_user(session, &card)?;
+    let pins = session.connector.pins().as_user(user.as_ref());
     let response = if change {
         card_call(&card, pins.change(&card.card_handle, pin_type))
     } else {
@@ -1175,5 +1199,18 @@ mod tests {
             shorten("80276001011699910102", false),
             "80276001011699910102"
         );
+    }
+
+    /// TAB_KON_503: an Info condition is no fault, and a severity not known stays red.
+    #[test]
+    fn a_condition_is_colored_by_its_severity() {
+        use super::{Line, Tone, condition_line};
+        let c = "EC_X";
+        assert_eq!(condition_line(c, "Info"), Line::text(c));
+        assert_eq!(condition_line(c, "INFO"), Line::text(c));
+        assert_eq!(condition_line(c, "Warning"), Line::status(Tone::Warn, c));
+        for severity in ["Error", "Fatal", "Something new", ""] {
+            assert_eq!(condition_line(c, severity), Line::status(Tone::Bad, c));
+        }
     }
 }

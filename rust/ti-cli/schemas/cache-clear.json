@@ -9,12 +9,12 @@
       "description": "The JSON contract version; fields are only added within it."
     },
     "profile": {
-      "type": "string",
-      "description": "The profile whose cache was cleared."
+      "type": ["string", "null"],
+      "description": "The profile whose cache was cleared; null when no profile is in effect."
     },
     "path": {
       "type": "string",
-      "description": "cache.db, or the cache's files tree with TI_STORE_BACKEND=files."
+      "description": "The cache directory."
     },
     "removed_records": {
       "type": "integer",

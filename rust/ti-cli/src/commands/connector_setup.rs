@@ -511,7 +511,7 @@ fn pkcs12(
             cert.not_after,
             client.key.as_deref().unwrap_or("unknown key")
         ));
-        if cert.expires < crate::store::profile::now() {
+        if cert.expires < crate::now() {
             warn(
                 ask,
                 warnings,
@@ -617,16 +617,18 @@ struct SetReport<'a> {
     changed: Vec<String>,
 }
 
-/// `ti connector config set NAME KEY=VALUE …`.
-pub fn set(name: &str, assignments: &[String], out: &Output) -> Result<Exit, CliError> {
-    let file = existing(Some(name))?;
+/// `ti connector config set KEY=VALUE …`, on the configuration of `-c` or the selected one.
+pub fn set(assignments: &[String], args: &ConnectorArgs, out: &Output) -> Result<Exit, CliError> {
+    let file = configs::read(None, args)?;
     let before = validate(&file.json)?;
     let mut json = file.json.clone();
     let mut changed = Vec::new();
     for assignment in assignments {
-        let (key, value) = assignment
-            .split_once('=')
-            .ok_or_else(|| CliError::Arguments(format!("{assignment:?}: expected KEY=VALUE")))?;
+        let (key, value) = assignment.split_once('=').ok_or_else(|| {
+            CliError::Arguments(format!(
+                "{assignment:?}: expected KEY=VALUE; -c names the configuration"
+            ))
+        })?;
         json = edit::set(&json, key, value).map_err(CliError::Arguments)?;
         changed.push(key.to_owned());
     }
@@ -1195,6 +1197,7 @@ mod tests {
     }
 
     /// A file for pu, edited by `script` (a shell script getting the copy's path).
+    #[cfg(unix)]
     fn editing(name: &str, script: &str) -> (PathBuf, String) {
         let dir = dir(name);
         let file = dir.join("e.kon");
@@ -1220,6 +1223,7 @@ mod tests {
         (file, format!("sh {}", editor.display()))
     }
 
+    #[cfg(unix)]
     fn edit_in(file: &Path, editor: &str, script: &mut Script) -> Result<Exit, CliError> {
         let path = file.to_str().unwrap();
         let cli = cli(&["--format", "json", "connector", "config", "edit", path]);
@@ -1238,6 +1242,7 @@ mod tests {
         )
     }
 
+    #[cfg(unix)]
     /// Hidden files next to the .kon file: an edited copy or a temporary file left over.
     fn leftovers(file: &Path) -> Vec<String> {
         std::fs::read_dir(file.parent().unwrap())

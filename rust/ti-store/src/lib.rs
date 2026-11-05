@@ -25,8 +25,6 @@
 
 mod cache;
 mod cache_store;
-#[cfg(feature = "store")]
-pub mod store;
 
 pub use cache::{Cache, CacheLookupError, CachePolicy, Cached, Conditional, OriginResponse};
 pub use cache_store::{CacheEntry, CacheError, CacheStore, MemoryCacheStore, Meta, Source};

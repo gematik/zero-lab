@@ -31,7 +31,7 @@ use crate::error::{CliError, Exit};
 use crate::output::{Output, SCHEMA};
 
 /// Every command with JSON output, and the error document.
-pub const SCHEMAS: [(&str, &str); 63] = [
+pub const SCHEMAS: [(&str, &str); 51] = [
     (
         "directory login",
         include_str!("../../schemas/directory-login.json"),
@@ -98,59 +98,20 @@ pub const SCHEMAS: [(&str, &str); 63] = [
         include_str!("../../schemas/cache-clear.json"),
     ),
     (
-        "profile create",
-        include_str!("../../schemas/profile-create.json"),
-    ),
-    (
         "profile list",
         include_str!("../../schemas/profile-list.json"),
-    ),
-    (
-        "profile use",
-        include_str!("../../schemas/profile-use.json"),
     ),
     (
         "profile delete",
         include_str!("../../schemas/profile-delete.json"),
     ),
     (
-        "profile show",
-        include_str!("../../schemas/profile-show.json"),
-    ),
-    (
-        "store doctor",
-        include_str!("../../schemas/store-doctor.json"),
-    ),
-    (
-        "profile rotate",
-        include_str!("../../schemas/profile-rotate.json"),
-    ),
-    (
-        "profile rewrap",
-        include_str!("../../schemas/profile-rewrap.json"),
-    ),
-    ("store ls", include_str!("../../schemas/store-ls.json")),
-    ("store show", include_str!("../../schemas/store-show.json")),
-    ("store rm", include_str!("../../schemas/store-rm.json")),
-    (
-        "store purge",
-        include_str!("../../schemas/store-purge.json"),
-    ),
-    (
-        "store cleanup",
-        include_str!("../../schemas/store-cleanup.json"),
-    ),
-    (
-        "store migrate",
-        include_str!("../../schemas/store-migrate.json"),
-    ),
-    (
         "pki pkcs12 convert",
         include_str!("../../schemas/pki-pkcs12-convert.json"),
     ),
     (
-        "connector configs",
-        include_str!("../../schemas/connector-configs.json"),
+        "connector config list",
+        include_str!("../../schemas/connector-config-list.json"),
     ),
     (
         "connector use",

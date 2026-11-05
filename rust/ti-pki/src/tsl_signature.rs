@@ -455,6 +455,7 @@ pub struct VerifiedTsl {
 /// What is kept of a TSL between updates to judge the next one (TSLSIG-053). Persist it:
 /// it must survive restarts.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TslState {
     /// The root element's `Id`.
     pub id: String,
@@ -1047,6 +1048,15 @@ fn check_signer(
 mod tests {
     use super::*;
     use crate::algorithms::DEFAULT;
+
+    /// docs/design/testing.md: unknown fields are rejected where the format is ours.
+    #[test]
+    fn a_tsl_state_with_an_unknown_field_is_refused() {
+        let known = r#"{"id":"ID1","sequence_number":7}"#;
+        assert!(serde_json::from_str::<TslState>(known).is_ok());
+        let unknown = r#"{"id":"ID1","sequence_number":7,"extra":1}"#;
+        assert!(serde_json::from_str::<TslState>(unknown).is_err());
+    }
 
     const DETACHED: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),

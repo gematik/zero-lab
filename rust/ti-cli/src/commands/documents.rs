@@ -24,27 +24,25 @@
 //! `ti connector sign|encrypt|decrypt|comfort` and `verify signature`: documents
 //! through the Konnektor's SignatureService and EncryptionService.
 
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use ti_connector_client::types::{Card, CardType, CertRef, Crypt, VerificationResult};
+use ti_connector_client::types::{
+    Card, CardType, CertRef, Crypt, SignatureMode, VerificationResult,
+};
 use ti_connector_client::{ComfortUserId, Error, SignatureFormat, ToSign};
 
 use super::connector::{CardInfo, call, card_call, card_label, emit, find};
-use crate::block::block_on;
 use crate::cli::{
     ConnectorArgs, ConnectorComfort, CryptArg, DecryptArgs, EncryptArgs, ExportArgs, FormatArg,
     SignArgs,
 };
 use crate::connector::Session;
-use crate::error::{CliError, Exit, StoreFile};
+use crate::error::{CliError, Exit};
+use crate::files::{create_private_dir, path_component, write_atomic};
 use crate::input;
 use crate::output::{Line, Output, Tone, Waiting, pem, warning};
-use crate::paths;
-use crate::store::now;
-use crate::store::profile::{ProfileStore, Selected};
-use ti_store::store::StoreError;
-use ti_store::store::registry::COMFORT;
 
 /// The media type of a file by its extension; a PDF to sign with PAdES is PDF/A.
 fn mime_type(path: &Path, pdfa: bool) -> &'static str {
@@ -100,153 +98,217 @@ fn random(bytes: &mut [u8]) {
 
 // ---- comfort signature sessions ---------------------------------------------------
 
-/// The user IDs of comfort signature sessions, sealed in the profile's state under the
-/// connector configuration and the card's ICCSN. An ID lets anyone with the same call
-/// context sign without a PIN while its session lasts, so it is kept only with a keyring.
-/// Files of earlier versions are read while the profile has none, and moved into the
-/// store once it has one.
-struct ComfortStore<'a> {
-    selected: &'a Selected,
-    store: Option<ProfileStore>,
-    config: String,
-    legacy: Option<PathBuf>,
+/// The user ID of each HBA, one private file under `hba-user/<Konnektor>/<card>` in the
+/// profile's state directory. An ID lets anyone with the same call context use what its
+/// session has unlocked: sign without a PIN in comfort signature, or a card whose PIN was
+/// entered. So the files and the directories above them are for the user alone. A file
+/// does not say comfort signature is on: only the Konnektor knows.
+struct UserIdStore {
+    root: PathBuf,
+    dir: PathBuf,
 }
 
-impl<'a> ComfortStore<'a> {
-    fn open(session: &'a Session) -> Result<Self, CliError> {
-        let selected = &session.selected;
-        let store = if selected.has_keyring() {
-            Some(selected.open_state()?)
-        } else {
-            None
-        };
-        let dir_name: String = session
-            .name
-            .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || "-_.".contains(c) {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect();
-        Ok(ComfortStore {
-            selected,
-            store,
-            config: session.name.clone(),
-            legacy: paths::legacy_state_dir()
-                .ok()
-                .map(|dir| dir.join("comfort").join(dir_name)),
-        })
+impl UserIdStore {
+    fn of(session: &Session) -> Self {
+        let root = session.profile.state_dir.join("hba-user");
+        let dir = root.join(path_component(&session.name));
+        UserIdStore { root, dir }
     }
 
-    /// Keyed by ICCSN: a card handle changes when the card is inserted again.
+    /// Keyed by ICCSN: a card handle changes when the card is inserted again. The
+    /// Konnektor supplies both, so the file name is `path_component` of it.
     fn card_id(card: &Card) -> &str {
         card.iccsn.as_deref().unwrap_or(&card.card_handle)
     }
 
-    fn id(&self, card: &Card) -> String {
-        format!("{}/{}", self.config, Self::card_id(card))
+    fn path(&self, card: &Card) -> PathBuf {
+        self.dir.join(path_component(Self::card_id(card)))
     }
 
-    fn legacy_path(&self, card: &Card) -> Option<PathBuf> {
-        self.legacy
-            .as_ref()
-            .map(|dir| dir.join(Self::card_id(card)))
+    /// Creates the directories and checks them. Activating runs it before the card is
+    /// asked: a PIN entered for an ID that cannot be kept would be wasted.
+    fn prepare(&self) -> Result<(), CliError> {
+        // Before creating anything: a symlinked `hba-user/` must not take the new
+        // directory to wherever it points.
+        private_dir_exists(&self.root)?;
+        private_dir_exists(&self.dir)?;
+        create_private_dir(&self.dir).map_err(|e| state_error(&self.dir, e))?;
+        check_private_dir(&self.root)?;
+        check_private_dir(&self.dir)
     }
 
-    fn fail(&self, error: StoreError) -> CliError {
-        CliError::Store {
-            profile: self.selected.profile.name.clone(),
-            file: StoreFile::Record,
-            path: "comfort".into(),
-            error,
+    /// Whether the directories exist, after checking them: everything that reads or
+    /// deletes a file goes through it, so no path is followed through a symlink.
+    fn check(&self) -> Result<bool, CliError> {
+        for dir in [&self.root, &self.dir] {
+            if !private_dir_exists(dir)? {
+                return Ok(false);
+            }
         }
-    }
-
-    /// Activating needs a place to keep the new ID: checked before the card is asked.
-    fn require_keyring(&self) -> Result<(), CliError> {
-        match self.store {
-            Some(_) => Ok(()),
-            None => Err(self.fail(StoreError::NoKeyring)),
-        }
+        Ok(true)
     }
 
     fn load(&self, card: &Card) -> Result<Option<ComfortUserId>, CliError> {
-        let legacy = || {
-            let path = self.legacy_path(card)?;
-            let text = std::fs::read_to_string(path).ok()?;
-            ComfortUserId::parse(text.trim())
-        };
-        let Some(store) = &self.store else {
-            return Ok(legacy());
-        };
-        match block_on(store.get(&COMFORT, self.id(card).as_bytes(), now())) {
-            Ok(stored) => Ok(std::str::from_utf8(&stored.payload)
-                .ok()
-                .and_then(ComfortUserId::parse)),
-            Err(StoreError::NotFound) => match legacy() {
-                Some(user) => {
-                    self.save(card, &user)?;
-                    Ok(Some(user))
-                }
-                None => Ok(None),
-            },
-            Err(error) => Err(self.fail(error)),
+        if !self.check()? {
+            return Ok(None);
         }
+        read_comfort(&self.path(card))
     }
 
     fn save(&self, card: &Card, user: &ComfortUserId) -> Result<(), CliError> {
-        let Some(store) = &self.store else {
-            return Err(self.fail(StoreError::NoKeyring));
-        };
-        block_on(store.put(
-            &COMFORT,
-            self.id(card).as_bytes(),
-            user.as_str().as_bytes(),
-            &[("konnektor", self.config.as_bytes())],
-            None,
-            now(),
-        ))
-        .map_err(|error| self.fail(error))?;
-        if let Some(path) = self.legacy_path(card) {
-            let _ = std::fs::remove_file(path);
-        }
-        Ok(())
+        self.prepare()?;
+        let path = self.path(card);
+        write_atomic(&path, user.as_str().as_bytes()).map_err(|e| state_error(&path, e))
     }
 
-    /// Whether an ID was stored.
-    fn remove(&self, card: &Card) -> Result<bool, CliError> {
-        let legacy = self
-            .legacy_path(card)
-            .is_some_and(|path| std::fs::remove_file(path).is_ok());
-        let Some(store) = &self.store else {
-            return Ok(legacy);
-        };
-        let id = self.id(card);
-        let stored = match block_on(store.get(&COMFORT, id.as_bytes(), now())) {
-            Ok(_) => true,
-            Err(StoreError::NotFound) => false,
-            Err(error) => return Err(self.fail(error)),
-        };
-        block_on(store.delete(&COMFORT, id.as_bytes())).map_err(|error| self.fail(error))?;
-        Ok(stored || legacy)
+    fn remove(&self, card: &Card) -> Result<(), CliError> {
+        if !self.check()? {
+            return Ok(());
+        }
+        let path = self.path(card);
+        match std::fs::remove_file(&path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(state_error(&path, e)),
+        }
     }
 }
 
-/// The comfort session's user ID for `card`: `--comfort-user-id`, else the stored one.
-fn comfort_user(
-    args: &ConnectorArgs,
-    store: &ComfortStore<'_>,
-    card: &Card,
-) -> Result<Option<ComfortUserId>, CliError> {
-    match args.comfort_user_id.as_deref() {
-        Some(text) => ComfortUserId::parse(text)
-            .map(Some)
-            .ok_or_else(|| CliError::ConnectorConfig("--comfort-user-id is not a UUID".into())),
-        None => store.load(card),
+fn state_error(path: &Path, reason: impl std::fmt::Display) -> CliError {
+    CliError::State {
+        path: path.display().to_string(),
+        reason: reason.to_string(),
     }
+}
+
+/// Whether `dir` exists, after checking that it is a real directory only the user can
+/// enter.
+fn private_dir_exists(dir: &Path) -> Result<bool, CliError> {
+    match std::fs::symlink_metadata(dir) {
+        Ok(meta) => check_private_dir_meta(dir, &meta).map(|()| true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(state_error(dir, e)),
+    }
+}
+
+fn check_private_dir(dir: &Path) -> Result<(), CliError> {
+    let meta = std::fs::symlink_metadata(dir).map_err(|e| state_error(dir, e))?;
+    check_private_dir_meta(dir, &meta)
+}
+
+/// A symlink is refused, not followed: it could lead the ID out of the user's own
+/// directories. A wider mode is refused rather than repaired, since only the user knows
+/// who else was meant to have access.
+fn check_private_dir_meta(dir: &Path, meta: &std::fs::Metadata) -> Result<(), CliError> {
+    if meta.file_type().is_symlink() {
+        return Err(state_error(
+            dir,
+            "is a symbolic link; user IDs are kept in real directories only",
+        ));
+    }
+    if !meta.is_dir() {
+        return Err(state_error(dir, "is not a directory"));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode = meta.permissions().mode() & 0o777;
+        if mode & 0o077 != 0 {
+            return Err(state_error(
+                dir,
+                format!("is open to other users (mode {mode:03o}); run `chmod 700` on it"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The ID in `path`: none if there is no file. A symlink, a file other users can open
+/// and content that is not a user ID are refused, so a file a crash or another process
+/// left behind never becomes a session ID.
+fn read_comfort(path: &Path) -> Result<Option<ComfortUserId>, CliError> {
+    let meta = match std::fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(state_error(path, e)),
+    };
+    if meta.file_type().is_symlink() {
+        return Err(state_error(
+            path,
+            "is a symbolic link; user IDs are kept in regular files only",
+        ));
+    }
+    if !meta.is_file() {
+        return Err(state_error(path, "is not a regular file"));
+    }
+    let mut file = std::fs::File::open(path).map_err(|e| state_error(path, e))?;
+    #[cfg(unix)]
+    check_opened(
+        path,
+        &meta,
+        &file.metadata().map_err(|e| state_error(path, e))?,
+    )?;
+    let mut text = String::new();
+    file.read_to_string(&mut text)
+        .map_err(|e| state_error(path, e))?;
+    ComfortUserId::parse(text.trim()).map(Some).ok_or_else(|| {
+        state_error(
+            path,
+            "does not hold a user ID; remove it and activate again",
+        )
+    })
+}
+
+/// The file opened must be the one checked, or a swap between the two steps would make
+/// the checks say nothing about what is read. The mode is taken from the open file.
+#[cfg(unix)]
+fn check_opened(
+    path: &Path,
+    checked: &std::fs::Metadata,
+    opened: &std::fs::Metadata,
+) -> Result<(), CliError> {
+    use std::os::unix::fs::MetadataExt as _;
+    if (checked.dev(), checked.ino()) != (opened.dev(), opened.ino()) {
+        return Err(state_error(path, "changed while it was being opened"));
+    }
+    let mode = opened.mode() & 0o777;
+    if mode & 0o077 != 0 {
+        return Err(state_error(
+            path,
+            format!("is open to other users (mode {mode:03o}); run `chmod 600` on it"),
+        ));
+    }
+    Ok(())
+}
+
+/// The user ID for every call on `card`, in place of the `.kon` file's when `Some`. The
+/// Konnektor keys an HBA's card session by card, client system and user ID, and refuses
+/// another ID while one has entered a PIN (gemSpec_Kon C2, C16, TAB_KON_514-01, 4018): so
+/// one ID per HBA. Its file goes first, as activating writes there; deactivating removes
+/// it, which brings back the `.kon` file's or makes a new one. Other cards have no such
+/// sessions.
+pub(crate) fn card_user(session: &Session, card: &Card) -> Result<Option<ComfortUserId>, CliError> {
+    if !matches!(
+        card.card_type,
+        CardType::Hba | CardType::HbaQSig | CardType::HbAx | CardType::Zod20
+    ) {
+        return Ok(None);
+    }
+    if let Some(text) = session.comfort_user_id.as_deref() {
+        return ComfortUserId::parse(text)
+            .map(Some)
+            .ok_or_else(|| CliError::ConnectorConfig("--comfort-user-id is not a UUID".into()));
+    }
+    let store = UserIdStore::of(session);
+    if let Some(user) = store.load(card)? {
+        return Ok(Some(user));
+    }
+    if session.dotkon.user_id.is_some() {
+        return Ok(None);
+    }
+    let user = ComfortUserId::generate(|b| random(b));
+    store.save(card, &user)?;
+    Ok(Some(user))
 }
 
 // ---- sign and verify -------------------------------------------------------------
@@ -328,22 +390,19 @@ pub fn sign(
     let pades = format == SignatureFormat::Pades;
     ensure_writable(&output, args.force)?;
     let card = find(session, &args.card)?;
-    let store = ComfortStore::open(session)?;
-    let user = comfort_user(connector_args, &store, &card)?;
-    let message = match (card.card_type, &user) {
-        (CardType::Hba, None) => "Enter PIN.QES at the card terminal",
+    let user = card_user(session, &card)?;
+    let signatures = session.connector.signatures();
+    let comfort = in_comfort_session(&card, &signatures, user.as_ref());
+    let message = match (card.card_type, comfort) {
+        (CardType::Hba, false) => "Enter PIN.QES at the card terminal",
         _ => "Signing with the card",
     };
-    let signatures = session.connector.signatures();
     // The card terminal shows the job number at PIN entry; showing it here lets the user
     // match the prompt to this job.
     let job_number = call(signatures.job_number())?;
     let detail = format!("{} · job {job_number}", card_label(&card));
     let waiting = Waiting::start(message, &detail, connector_args.card_timeout);
-    let signatures = match &user {
-        Some(user) => signatures.as_user(user),
-        None => signatures,
-    };
+    let signatures = signatures.as_user(user.as_ref());
     let crypt = Crypt::from(args.crypt);
     let signed = card_call(
         &card,
@@ -391,7 +450,7 @@ pub fn sign(
         output: output.display().to_string(),
         format: format.as_str(),
         card: CardInfo::from(&card),
-        comfort: user.is_some(),
+        comfort,
     };
     emit(out, Exit::Ok, &report, |doc| {
         doc.field(
@@ -418,6 +477,19 @@ struct VerifySignatureReport {
     /// What the verification time is based on, e.g. `SIGNATURE_EMBEDDED_TIMESTAMP`.
     timestamp_type: String,
     timestamp: String,
+}
+
+/// Whether `user` holds a comfort session on `card`. What this cannot find out does not stop
+/// the signature: a call the Konnektor refuses for the card fails the same way in the
+/// signing itself, with the error to show.
+fn in_comfort_session<T: ti_connector_client::Transport>(
+    card: &Card,
+    signatures: &ti_connector_client::Signatures<'_, T>,
+    user: Option<&ComfortUserId>,
+) -> bool {
+    user.and_then(|user| call(signatures.mode(&card.card_handle, user)).ok())
+        .and_then(|mode| mode.session_info)
+        .is_some_and(|session| session.signature_mode == SignatureMode::Comfort)
 }
 
 /// Runs `ti connector verify signature`.
@@ -497,7 +569,8 @@ pub fn encrypt(session: &Session, args: &EncryptArgs, out: &Output) -> Result<Ex
     }
     for card in &args.recipient_cards {
         let card = find(session, card)?;
-        let certificates = session.connector.certificates();
+        let user = card_user(session, &card)?;
+        let certificates = session.connector.certificates().as_user(user.as_ref());
         let read = card_call(
             &card,
             certificates.read(&card.card_handle, Crypt::Ecc, &[CertRef::CEnc]),
@@ -584,6 +657,7 @@ pub fn decrypt(
         .unwrap_or_else(|| mime_type(&output, false).to_owned());
     ensure_writable(&output, args.force)?;
     let card = find(session, &args.card)?;
+    let user = card_user(session, &card)?;
     let waiting = Waiting::start(
         "Decrypting with the card",
         &card_label(&card),
@@ -595,6 +669,7 @@ pub fn decrypt(
         session
             .connector
             .encryption()
+            .as_user(user.as_ref())
             .decrypt(&card.card_handle, Some(crypt), &cms, &mime),
     );
     drop(waiting);
@@ -630,8 +705,6 @@ struct ComfortReport {
     max_duration: Option<String>,
     /// The session of the stored user ID, if one is active.
     session: Option<ComfortSession>,
-    /// A user ID for this card is stored (`activate`) or was removed (`deactivate`).
-    user_id_stored: bool,
 }
 
 #[derive(Serialize)]
@@ -653,7 +726,7 @@ pub fn comfort(
     | ConnectorComfort::Status { card }
     | ConnectorComfort::Deactivate { card }) = command;
     let card = find(session, card)?;
-    let store = ComfortStore::open(session)?;
+    let store = UserIdStore::of(session);
     let signatures = session.connector.signatures();
     let mut report = ComfortReport {
         card: CardInfo::from(&card),
@@ -661,11 +734,10 @@ pub fn comfort(
         max_signatures: None,
         max_duration: None,
         session: None,
-        user_id_stored: false,
     };
     match command {
         ConnectorComfort::Activate { .. } => {
-            store.require_keyring()?;
+            store.prepare()?;
             // A new random user ID for each activation (A_21528), unique among the
             // Konnektor's last 1,000 operations (A_20074).
             let user = ComfortUserId::generate(|b| random(b));
@@ -678,20 +750,20 @@ pub fn comfort(
             drop(waiting);
             activated?;
             store.save(&card, &user)?;
-            report.user_id_stored = true;
             fill_mode(&mut report, &card, &signatures, &user)?;
         }
         ConnectorComfort::Status { .. } => {
-            // Without a stored session the mode is asked with a fresh ID: whether
-            // comfort signature is enabled does not depend on it.
-            let stored = comfort_user(connector_args, &store, &card)?;
-            report.user_id_stored = stored.is_some();
-            let user = stored.unwrap_or_else(|| ComfortUserId::generate(|b| random(b)));
+            // With no ID of its own the mode is asked with a fresh one: whether comfort
+            // signature is enabled does not depend on it.
+            let user = card_user(session, &card)?
+                .unwrap_or_else(|| ComfortUserId::generate(|b| random(b)));
             fill_mode(&mut report, &card, &signatures, &user)?;
         }
         ConnectorComfort::Deactivate { .. } => {
+            // A refusal must leave the card session and the file alike.
+            store.check()?;
             card_call(&card, signatures.deactivate_comfort(&[&card.card_handle]))?;
-            report.user_id_stored = !store.remove(&card)?;
+            store.remove(&card)?;
         }
     }
     emit(out, Exit::Ok, &report, |doc| {
@@ -713,10 +785,6 @@ pub fn comfort(
             let left = format!(" · {} signatures, {} left", s.signatures_left, s.time_left);
             doc.field("session", Line::strong(s.mode).and_dim(left));
         }
-        doc.field(
-            "user ID stored",
-            if report.user_id_stored { "yes" } else { "no" },
-        );
     })
 }
 
@@ -763,7 +831,8 @@ pub fn export(session: &Session, args: &ExportArgs, out: &Output) -> Result<Exit
         ensure_writable(path, args.force)?;
     }
     let card = find(session, &args.card)?;
-    let certificates = session.connector.certificates();
+    let user = card_user(session, &card)?;
+    let certificates = session.connector.certificates().as_user(user.as_ref());
     let handle = &card.card_handle;
     let read = match (args.cert_ref, args.crypt) {
         (Some(cert_ref), crypt) => {
@@ -822,4 +891,29 @@ pub fn export(session: &Session, args: &ExportArgs, out: &Output) -> Result<Exit
             doc.field("to", Line::code(output));
         }
     })
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_file_other_than_the_one_checked_is_refused() {
+        let dir = std::env::temp_dir().join(format!("ti-opened-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (checked, swapped) = (dir.join("checked"), dir.join("swapped"));
+        std::fs::write(&checked, "a").unwrap();
+        std::fs::write(&swapped, "b").unwrap();
+        let meta = |path: &Path| std::fs::metadata(path).unwrap();
+        for path in [&checked, &swapped] {
+            use std::os::unix::fs::PermissionsExt as _;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        assert!(check_opened(&checked, &meta(&checked), &meta(&checked)).is_ok());
+        let Err(error) = check_opened(&checked, &meta(&checked), &meta(&swapped)) else {
+            panic!("another file was opened");
+        };
+        assert!(error.to_string().contains("changed"), "{error}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

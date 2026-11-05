@@ -21,26 +21,27 @@
  * find details in the "Readme" file.
  */
 
-//! Where versions of ti before the shared store kept their state. The store's own paths
-//! are spec/store's (STORE-092), resolved in [`crate::store::profile`].
+//! The platform's per-user state and cache homes.
 
 use std::path::PathBuf;
 
 use crate::error::CliError;
 
-/// The folder all TI tools share, and this tool's name within it.
-const GROUP: &str = "telematik";
-const TOOL: &str = "ti";
+/// The per-user home for state files; the tool's own folder is `telematik/ti` below it.
+pub fn state_home() -> Result<PathBuf, CliError> {
+    default_state_base()
+}
 
-/// Where versions before the store kept TSL state and comfort IDs: read once, to move
-/// them into the profile's state.
-pub fn legacy_state_dir() -> Result<PathBuf, CliError> {
-    default_state_base().map(|base| base.join(GROUP).join(TOOL))
+/// The per-user home for cache files; the tool's own folder is `telematik/ti` below it.
+pub fn cache_home() -> Result<PathBuf, CliError> {
+    default_cache_base()
 }
 
 #[cfg(windows)]
 fn default_state_base() -> Result<PathBuf, CliError> {
-    default_cache_base().map(|base| base.join("state"))
+    default_cache_base()
+        .map(|base| base.join("state"))
+        .map_err(|_| CliError::StateDir("LOCALAPPDATA is not set"))
 }
 
 #[cfg(not(windows))]
@@ -53,7 +54,7 @@ fn default_state_base() -> Result<PathBuf, CliError> {
     std::env::home_dir()
         .filter(|home| home.is_absolute())
         .map(|home| home.join(".local").join("state"))
-        .ok_or(CliError::CacheDir("no home directory"))
+        .ok_or(CliError::StateDir("no home directory"))
 }
 
 #[cfg(windows)]
@@ -64,20 +65,15 @@ fn default_cache_base() -> Result<PathBuf, CliError> {
         .ok_or(CliError::CacheDir("LOCALAPPDATA is not set"))
 }
 
-#[cfg(test)]
-mod tests {
-    use std::path::Path;
-
-    use super::*;
-
-    #[test]
-    fn legacy_state_ends_in_the_tool_folder() {
-        if let Ok(dir) = legacy_state_dir() {
-            assert!(
-                dir.ends_with(Path::new("telematik").join("ti")),
-                "{}",
-                dir.display()
-            );
-        }
+#[cfg(not(windows))]
+fn default_cache_base() -> Result<PathBuf, CliError> {
+    if let Some(xdg) = std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from)
+        && xdg.is_absolute()
+    {
+        return Ok(xdg);
     }
+    std::env::home_dir()
+        .filter(|home| home.is_absolute())
+        .map(|home| home.join(".cache"))
+        .ok_or(CliError::CacheDir("no home directory"))
 }

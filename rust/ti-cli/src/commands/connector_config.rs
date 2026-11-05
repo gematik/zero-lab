@@ -308,7 +308,7 @@ pub(super) fn run_checks(
             short: args.connector_timeout,
             long: args.card_timeout,
         },
-        now: crate::store::profile::now(),
+        now: crate::now(),
         through_proxy: connector::explicit_proxy(global).is_some(),
     };
     block_on(ti_connector_client::ureq::check_config(

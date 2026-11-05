@@ -48,8 +48,10 @@ pub struct Session {
     pub dotkon: Dotkon,
     /// The configuration's name, e.g. `default`.
     pub name: String,
-    /// The store profile in effect, which keeps comfort IDs.
-    pub selected: crate::store::profile::Selected,
+    /// The profile in effect, whose state directory keeps comfort IDs.
+    pub profile: crate::profile::Profile,
+    /// `--comfort-user-id`.
+    pub comfort_user_id: Option<String>,
 }
 
 /// `$XDG_CONFIG_HOME/telematik/connectors`, or `~/.config/…` on every platform, as the
@@ -178,7 +180,7 @@ pub fn open(args: &ConnectorArgs, global: &GlobalArgs, out: &Output) -> Result<S
     let connector = if args.no_cache {
         block_on(Connector::connect(&dotkon, transport, timeouts)).map_err(CliError::Connector)?
     } else {
-        let store = crate::store::open_cache(global)?;
+        let store = crate::file_cache::open_cache(global)?;
         let cache = Cache::new(store, SystemClock, CachePolicy::default());
         let (connector, meta) = block_on(Connector::connect_cached(
             &dotkon, transport, timeouts, &cache,
@@ -191,7 +193,8 @@ pub fn open(args: &ConnectorArgs, global: &GlobalArgs, out: &Output) -> Result<S
         connector,
         dotkon,
         name,
-        selected: crate::store::profile::Selected::resolve(global)?,
+        comfort_user_id: args.comfort_user_id.clone(),
+        profile: crate::profile::Profile::resolve(global)?,
     })
 }
 
