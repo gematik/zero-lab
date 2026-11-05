@@ -286,12 +286,19 @@ mod tests {
 
     #[test]
     fn round_trips_through_decode() {
-        let fixture = std::fs::read(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tests/fixtures/legacy.p12"
-        ))
-        .unwrap();
-        let original = decode(&fixture, "test1234").unwrap();
+        round_trip("modern.p12");
+    }
+
+    /// A legacy file, read only with the legacy feature, is written back with modern encryption.
+    #[cfg(feature = "legacy")]
+    #[test]
+    fn a_legacy_file_is_written_back_modern() {
+        round_trip("legacy.p12");
+    }
+
+    fn round_trip(fixture: &str) {
+        let path = format!("{}/tests/fixtures/{fixture}", env!("CARGO_MANIFEST_DIR"));
+        let original = decode(&std::fs::read(path).unwrap(), "test1234").unwrap();
         let encoded = encode(&original, "00", counter()).unwrap();
         let again = decode(&encoded, "00").unwrap();
         assert_eq!(again.certificates, original.certificates);

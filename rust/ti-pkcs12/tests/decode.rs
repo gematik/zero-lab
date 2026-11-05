@@ -127,6 +127,10 @@ const FIXTURES: &[(&str, &str)] = &[
     ),
 ];
 
+/// The fixtures encrypted with a PBE of RFC 7292 Appendix C (3DES, RC2), as `openssl pkcs12
+/// -info` shows them: only the legacy feature reads them.
+const LEGACY_ENCRYPTED: &[&str] = &["legacy.p12", "legacy/cgm.p12", "legacy/secunet.p12"];
+
 fn fixtures() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
@@ -182,6 +186,13 @@ fn decodes_like_go() {
                 "{name}: Go failed, Rust gave {result:?}"
             );
             assert!(!is_pkcs12(&bytes) || name == "truncated.p12", "{name}");
+            continue;
+        }
+        if !cfg!(feature = "legacy") && LEGACY_ENCRYPTED.contains(&name) {
+            assert!(
+                matches!(result, Err(Error::UnsupportedAlgorithm(_))),
+                "{name}: without the legacy feature, Rust gave {result:?}"
+            );
             continue;
         }
         let p12 = result.unwrap_or_else(|e| panic!("{name}: {e}"));
@@ -281,6 +292,9 @@ fn reports_mac_and_encryption() {
             .all(|e| e.algorithm == "PBES2 AES-256-CBC")
     );
 
+    if !cfg!(feature = "legacy") {
+        return;
+    }
     let path = fixtures().join("legacy/cgm.p12");
     let vendor = decode(&std::fs::read(&path).unwrap(), &password(&path)).unwrap();
     assert_eq!(vendor.mac.unwrap().iterations, 102_400);
@@ -306,6 +320,7 @@ fn reports_mac_and_encryption() {
 /// The attributes of the BER vendor files as `openssl pkcs12 -info -legacy` shows them
 /// in the originals: the key and its certificate share a `localKeyId` and a name, the
 /// CA certificate in `cgm.p12` has none.
+#[cfg(feature = "legacy")]
 #[test]
 fn ber_files_keep_their_attributes() {
     for (name, friendly_name, local_key_id, scalar) in [
@@ -345,4 +360,20 @@ fn ber_files_keep_their_attributes() {
 }
 
 /// The private scalar of the key in `legacy/secunet.p12`, as `openssl pkey -text` prints it.
+#[cfg(feature = "legacy")]
 const SECUNET_SCALAR: &str = "5605847b0310c128044501cbe9fb1ac4c421571097d0b4c12a0439628fca4137";
+
+/// Without the legacy feature, a file encrypted with an RFC 7292 Appendix C PBE is refused for its
+/// algorithm, never read or taken for a wrong password.
+#[cfg(not(feature = "legacy"))]
+#[test]
+fn without_legacy_an_appendix_c_pbe_is_unsupported() {
+    for name in LEGACY_ENCRYPTED {
+        let path = fixtures().join(name);
+        let result = decode(&std::fs::read(&path).unwrap(), &password(&path));
+        assert!(
+            matches!(result, Err(Error::UnsupportedAlgorithm(_))),
+            "{name}: {result:?}"
+        );
+    }
+}

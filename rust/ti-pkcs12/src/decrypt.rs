@@ -146,14 +146,14 @@ mod legacy {
     }
 }
 
-#[cfg(test)]
+// Every test here is of a legacy PBE.
+#[cfg(all(test, feature = "legacy"))]
 mod tests {
     use der::Any;
     use der::asn1::OctetString;
 
     use super::*;
 
-    #[cfg(feature = "legacy")]
     fn pbe_algorithm(iterations: u32) -> AlgorithmIdentifierOwned {
         let params = crate::asn1::PbeParams {
             salt: OctetString::new(vec![7; 8]).unwrap(),
@@ -166,7 +166,6 @@ mod tests {
     }
 
     /// P12-036: the PKCS#12 KDF of the legacy PBEs is bounded like PBKDF2.
-    #[cfg(feature = "legacy")]
     #[test]
     fn p12_036_pbe_iterations_above_the_limit_are_refused() {
         let err = decrypt(&pbe_algorithm(u32::MAX), "pw", &[0; 16]).unwrap_err();
@@ -177,7 +176,6 @@ mod tests {
     }
 
     /// P12-036: an explicit count of 0 is malformed, not silently 1.
-    #[cfg(feature = "legacy")]
     #[test]
     fn p12_036_zero_iterations_are_malformed() {
         let err = decrypt(&pbe_algorithm(0), "pw", &[0; 16]).unwrap_err();

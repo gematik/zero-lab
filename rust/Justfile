@@ -686,8 +686,11 @@ test-pki:
 features:
     cargo hack check --workspace --exclude jwz --feature-powerset --depth 2 --no-dev-deps
     cargo hack check -p jwz --each-feature --exclude-features rsa --no-dev-deps
-    # The tests too, where gating mistakes hide: ti-pki with none of its algorithm features.
+    # The tests too, where gating mistakes hide: ti-pki with none of its algorithm features,
+    # ti-pkcs12 without legacy, reading and writing.
     cargo test -p ti-pki --no-default-features --quiet
+    cargo test -p ti-pkcs12 --no-default-features --quiet
+    cargo test -p ti-pkcs12 --no-default-features --features encode --quiet
 
 # Unused dependencies in Cargo.toml
 machete:

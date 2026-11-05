@@ -1,9 +1,10 @@
 ---
 id: TASK-164
 title: 'ti-pkcs12: a unit test fails without the legacy feature'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-01T15:18:00Z'
+updated_date: '2026-11-05T19:40:00Z'
 labels:
   - ti-pkcs12
   - testing
@@ -20,5 +21,11 @@ Found in TASK-56, already so before it. cargo test -p ti-pkcs12 --no-default-fea
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The test passes or is gated without legacy, and that feature combination is tested
+- [x] #1 The test passes or is gated without legacy, and that feature combination is tested
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ti-pkcs12's tests pass without the legacy feature, reading and writing: the round trip uses modern.p12, the legacy fixtures are expected to be refused as unsupported, and the legacy-only tests are gated. just features now tests both combinations.
+<!-- SECTION:FINAL_SUMMARY:END -->
