@@ -125,7 +125,8 @@ func TestKeySetCacheFetchesOnceWithinTTL(t *testing.T) {
 	}
 }
 
-func TestKeySetCacheRefreshesWhenTTLIsOver(t *testing.T) {
+// A cached key set lives no longer than its bound, so a provider's change of keys reaches the verifier.
+func TestServerRule12_KeySetCacheRefreshesWhenTTLIsOver(t *testing.T) {
 	stub := newIssuerStub(t, "a")
 	cache, clock := newCacheOf(stub)
 	mustKeySet(t, cache, "a")
@@ -137,7 +138,7 @@ func TestKeySetCacheRefreshesWhenTTLIsOver(t *testing.T) {
 	}
 }
 
-func TestKeySetCachePicksUpARotatedKeyByItsUnknownKid(t *testing.T) {
+func TestOIDCCore_10_1_1_KeySetCachePicksUpARotatedKeyByItsUnknownKid(t *testing.T) {
 	stub := newIssuerStub(t, "a")
 	cache, clock := newCacheOf(stub)
 	mustKeySet(t, cache, "a")
@@ -167,7 +168,8 @@ func TestKeySetCacheRateLimitsFetchesForUnknownKids(t *testing.T) {
 	}
 }
 
-func TestKeySetCacheServesLastGoodSetWhileRefreshFails(t *testing.T) {
+// Stale trust material is a bounded degraded mode: the last good set serves only within its limit.
+func TestServerRule16_KeySetCacheServesLastGoodSetWhileRefreshFails(t *testing.T) {
 	stub := newIssuerStub(t, "a")
 	cache, clock := newCacheOf(stub)
 	mustKeySet(t, cache, "a")
@@ -178,7 +180,7 @@ func TestKeySetCacheServesLastGoodSetWhileRefreshFails(t *testing.T) {
 	}
 }
 
-func TestKeySetCacheFailsClosedWhenLastGoodSetIsTooOld(t *testing.T) {
+func TestServerRule16_KeySetCacheFailsClosedWhenLastGoodSetIsTooOld(t *testing.T) {
 	stub := newIssuerStub(t, "a")
 	cache, clock := newCacheOf(stub)
 	mustKeySet(t, cache, "a")
@@ -318,7 +320,8 @@ func TestKeySetCacheWaitingCallerHonoursItsContext(t *testing.T) {
 	}
 }
 
-func TestKeySetCacheConcurrentCallersShareOneFetch(t *testing.T) {
+// The cache protects the provider against a stampede of callers that all find it empty.
+func TestServerRule12_KeySetCacheConcurrentCallersShareOneFetch(t *testing.T) {
 	stub := newIssuerStub(t, "a")
 	cache, _ := newCacheOf(stub)
 	var group sync.WaitGroup

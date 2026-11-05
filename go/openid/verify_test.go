@@ -140,7 +140,7 @@ func TestVerifyJWSAcceptsEveryAllowedAlgorithm(t *testing.T) {
 	}
 }
 
-func TestVerifyJWSRefusesAlgNone(t *testing.T) {
+func TestRFC8725_3_2_VerifyJWSRefusesAlgNone(t *testing.T) {
 	key := newECKey(t, elliptic.P256())
 	keys := setOf(jose.JSONWebKey{Key: key.Public(), KeyID: "k"})
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none","kid":"k"}`))
@@ -153,7 +153,7 @@ func TestVerifyJWSRefusesAlgNone(t *testing.T) {
 }
 
 // The classic confusion: an HS256 token keyed with the bytes of the public key an RS256 verifier would use.
-func TestVerifyJWSRefusesHS256KeyedWithThePublicKey(t *testing.T) {
+func TestRFC8725_3_1_VerifyJWSRefusesHS256KeyedWithThePublicKey(t *testing.T) {
 	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
@@ -174,7 +174,8 @@ func TestVerifyJWSRefusesHS256KeyedWithThePublicKey(t *testing.T) {
 	}
 }
 
-func TestVerifyJWSRefusesHS256EvenWithASymmetricKeyInTheSet(t *testing.T) {
+// Only the verifier's allowlist of algorithms is used, whatever keys the set holds.
+func TestRFC8725_3_1_VerifyJWSRefusesHS256EvenWithASymmetricKeyInTheSet(t *testing.T) {
 	secret := []byte("0123456789abcdef0123456789abcdef")
 	keys := setOf(jose.JSONWebKey{Key: secret, KeyID: "k", Algorithm: "HS256"})
 	if _, err := VerifyJWS([]byte(signToken(t, jose.HS256, secret, "k", testPayload)), keys, VerifyOptions{}); err == nil {
@@ -182,7 +183,7 @@ func TestVerifyJWSRefusesHS256EvenWithASymmetricKeyInTheSet(t *testing.T) {
 	}
 }
 
-func TestVerifyJWSRefusesTokenWithoutAlg(t *testing.T) {
+func TestRFC7515_4_1_1_VerifyJWSRefusesTokenWithoutAlg(t *testing.T) {
 	key := newECKey(t, elliptic.P256())
 	for name, jwk := range map[string]jose.JSONWebKey{
 		"key states alg":    {Key: key.Public(), KeyID: "k", Algorithm: "ES256"},
@@ -197,7 +198,7 @@ func TestVerifyJWSRefusesTokenWithoutAlg(t *testing.T) {
 	}
 }
 
-func TestVerifyJWSRefusesAlgOtherThanTheKeyStates(t *testing.T) {
+func TestRFC7517_4_4_VerifyJWSRefusesAlgOtherThanTheKeyStates(t *testing.T) {
 	key := newECKey(t, elliptic.P256())
 	keys := setOf(jose.JSONWebKey{Key: key.Public(), KeyID: "k", Algorithm: "ES384"})
 	if _, err := VerifyJWS([]byte(signToken(t, jose.ES256, key, "k", testPayload)), keys, VerifyOptions{}); err == nil {
@@ -205,7 +206,8 @@ func TestVerifyJWSRefusesAlgOtherThanTheKeyStates(t *testing.T) {
 	}
 }
 
-func TestVerifyJWSRefusesCurveOtherThanTheAlgorithmNames(t *testing.T) {
+// ES256 is ECDSA on P-256 only.
+func TestRFC7518_3_4_VerifyJWSRefusesCurveOtherThanTheAlgorithmNames(t *testing.T) {
 	p384 := newECKey(t, elliptic.P384())
 	keys := setOf(jose.JSONWebKey{Key: p384.Public(), KeyID: "k"})
 	token := signRawES256(t, newECKey(t, elliptic.P256()), map[string]string{"alg": "ES256", "kid": "k"}, testPayload)
@@ -214,7 +216,7 @@ func TestVerifyJWSRefusesCurveOtherThanTheAlgorithmNames(t *testing.T) {
 	}
 }
 
-func TestVerifyJWSRefusesKeyMarkedForEncryption(t *testing.T) {
+func TestRFC7517_4_2_VerifyJWSRefusesKeyMarkedForEncryption(t *testing.T) {
 	key := newECKey(t, elliptic.P256())
 	keys := setOf(jose.JSONWebKey{Key: key.Public(), KeyID: "k", Use: "enc"})
 	if _, err := VerifyJWS([]byte(signToken(t, jose.ES256, key, "k", testPayload)), keys, VerifyOptions{}); err == nil {
@@ -249,7 +251,7 @@ func TestVerifyJWSWithKidUsesOnlyTheFirstKeyOfThatKid(t *testing.T) {
 	}
 }
 
-func TestVerifyJWSRefusesTamperedPayload(t *testing.T) {
+func TestRFC7515_5_2_VerifyJWSRefusesTamperedPayload(t *testing.T) {
 	key := newECKey(t, elliptic.P256())
 	keys := setOf(jose.JSONWebKey{Key: key.Public(), KeyID: "k"})
 	parts := strings.Split(signToken(t, jose.ES256, key, "k", testPayload), ".")
@@ -259,7 +261,8 @@ func TestVerifyJWSRefusesTamperedPayload(t *testing.T) {
 	}
 }
 
-func TestVerifyJWSIgnoresKeyEmbeddedInTheHeader(t *testing.T) {
+// The origin of a verification key has to be authenticated, which a key the token brings along is not.
+func TestRFC7515_10_3_VerifyJWSIgnoresKeyEmbeddedInTheHeader(t *testing.T) {
 	attacker := newECKey(t, elliptic.P256())
 	signer, err := jose.NewSigner(
 		jose.SigningKey{Algorithm: jose.ES256, Key: attacker},
@@ -312,7 +315,8 @@ func TestVerifyJWSWithoutRequireKeyAlgorithmAcceptsKeyWithoutAlg(t *testing.T) {
 	}
 }
 
-func TestVerifyJWSRefusesJSONSerialization(t *testing.T) {
+// A JWT is always in the JWS or JWE Compact Serialization.
+func TestRFC7519_1_VerifyJWSRefusesJSONSerialization(t *testing.T) {
 	key := newECKey(t, elliptic.P256())
 	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.ES256, Key: key}, nil)
 	if err != nil {
@@ -343,7 +347,7 @@ const (
 	offCurveJWK = `{"kty":"EC","crv":"P-256","x":"cdIR8dLbqaGrzfgyu365KM5s00zjFq8DFaUFqBvrWLs","y":"cdIR8dLbqaGrzfgyu365KM5s00zjFq8DFaUFqBvrWLs","kid":"c"}`
 )
 
-func TestParseKeySetLeavesOutEntriesItCannotUse(t *testing.T) {
+func TestRFC7517_5_ParseKeySetLeavesOutEntriesItCannotUse(t *testing.T) {
 	keys, err := ParseKeySet([]byte(`{"keys":[` + x25519JWK + `,` + p256JWK + `,` + offCurveJWK + `]}`))
 	if err != nil {
 		t.Fatal(err)
@@ -401,7 +405,7 @@ func TestParseKeySetRefusesMoreKeysThanTheBound(t *testing.T) {
 	}
 }
 
-func TestParseKeyRefusesRSAKeyBelow2048Bits(t *testing.T) {
+func TestRFC7518_3_3_ParseKeyRefusesRSAKeyBelow2048Bits(t *testing.T) {
 	modulus := new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 2047), big.NewInt(1))
 	data, err := json.Marshal(jose.JSONWebKey{Key: &rsa.PublicKey{N: modulus, E: 65537}})
 	if err != nil {

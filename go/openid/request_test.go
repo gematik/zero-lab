@@ -29,7 +29,7 @@ import (
 	"testing"
 )
 
-func TestALoginRepeatsItsRedirectURIInBothRequests(t *testing.T) {
+func TestRFC6749_4_1_3_ALoginRepeatsItsRedirectURIInBothRequests(t *testing.T) {
 	login := Login{State: "s", Nonce: "n", Verifier: "v", RedirectURI: "https://rp/own"}
 	if got := AuthorizationQuery("c", "https://rp/configured", []string{"openid"}, login).Get("redirect_uri"); got != "https://rp/own" {
 		t.Errorf("authorization request: %s", got)
@@ -42,7 +42,7 @@ func TestALoginRepeatsItsRedirectURIInBothRequests(t *testing.T) {
 	}
 }
 
-func TestAuthorizationQuerySendsPKCEAndNeverTheVerifier(t *testing.T) {
+func TestRFC7636_4_3_AuthorizationQuerySendsPKCEAndNeverTheVerifier(t *testing.T) {
 	query := AuthorizationQuery("c", "https://rp/cb", []string{"openid", "email"}, Login{State: "s", Nonce: "n", Verifier: "secret"})
 	if query.Get("code_challenge_method") != "S256" || query.Get("code_challenge") == "" || query.Get("scope") != "openid email" {
 		t.Errorf("%v", query)

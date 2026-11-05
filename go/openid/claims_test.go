@@ -28,7 +28,7 @@ import (
 	"time"
 )
 
-func TestIDTokenChecks(t *testing.T) {
+func TestOIDCCore_3_1_3_7_IDTokenChecks(t *testing.T) {
 	const (
 		issuer   = "https://op.example"
 		clientID = "client"
@@ -80,7 +80,7 @@ func TestIDTokenChecksWithAnEmptyExpectationRefuseEverything(t *testing.T) {
 	}
 }
 
-func TestClaimNamesAreCaseSensitive(t *testing.T) {
+func TestRFC7519_7_3_ClaimNamesAreCaseSensitive(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	payload := fmt.Sprintf(`{"ISS":"i","AUD":"c","NONCE":"n","EXP":%d}`, now.Add(time.Hour).Unix())
 	if err := (IDTokenChecks{Nonce: "n", Issuer: "i", ClientID: "c", Now: now}).Validate([]byte(payload)); err == nil {
@@ -88,7 +88,7 @@ func TestClaimNamesAreCaseSensitive(t *testing.T) {
 	}
 }
 
-func TestClaimsOfTheWrongTypeAreRefused(t *testing.T) {
+func TestRFC7519_4_1_ClaimsOfTheWrongTypeAreRefused(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	for _, payload := range []string{
 		`null`, `[]`, `"x"`, `not json`,
@@ -102,13 +102,14 @@ func TestClaimsOfTheWrongTypeAreRefused(t *testing.T) {
 	}
 }
 
-func TestValidateLifetimeAllowsAbsentTimeClaims(t *testing.T) {
+// None of the registered claims is mandatory in JWT itself; the profile using it says which are.
+func TestRFC7519_4_1_ValidateLifetimeAllowsAbsentTimeClaims(t *testing.T) {
 	if err := ValidateLifetime([]byte(`{"iss":"i"}`), time.Now(), 0); err != nil {
 		t.Error(err)
 	}
 }
 
-func TestValidateLifetimeRefusesAtTheInstantOfExp(t *testing.T) {
+func TestRFC7519_4_1_4_ValidateLifetimeRefusesAtTheInstantOfExp(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	if err := ValidateLifetime(fmt.Appendf(nil, `{"exp":%d}`, now.Unix()), now, 0); !errors.Is(err, ErrTokenExpired) {
 		t.Errorf("err = %v", err)
@@ -118,7 +119,8 @@ func TestValidateLifetimeRefusesAtTheInstantOfExp(t *testing.T) {
 	}
 }
 
-func TestValidateLifetimeKeepsFractionalSeconds(t *testing.T) {
+// A NumericDate may be a non-integer value.
+func TestRFC7519_2_ValidateLifetimeKeepsFractionalSeconds(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	if err := ValidateLifetime(fmt.Appendf(nil, `{"nbf":%d.5}`, now.Unix()), now, 0); !errors.Is(err, ErrTokenNotYetValid) {
 		t.Errorf("nbf half a second ahead: %v", err)
@@ -128,7 +130,7 @@ func TestValidateLifetimeKeepsFractionalSeconds(t *testing.T) {
 	}
 }
 
-func TestValidateAudience(t *testing.T) {
+func TestRFC7519_4_1_3_ValidateAudience(t *testing.T) {
 	if err := ValidateAudience([]byte(`{"aud":["a","c"]}`), "c"); err != nil {
 		t.Error(err)
 	}
@@ -140,7 +142,7 @@ func TestValidateAudience(t *testing.T) {
 	}
 }
 
-func TestIDTokenChecksBindTheTokenToTheLogin(t *testing.T) {
+func TestOIDCCore_3_1_3_7_IDTokenChecksBindTheTokenToTheLogin(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	payload := fmt.Appendf(nil, `{"iss":"i","aud":"c","nonce":"n","exp":%d}`, now.Add(time.Hour).Unix())
 	for name, expected := range map[string]string{"another login": "other", "no nonce expected": ""} {

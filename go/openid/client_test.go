@@ -45,7 +45,7 @@ type opStub struct {
 }
 
 // OpenID Connect Discovery 1.0 section 3: every location in the document is https.
-func TestDiscovery_RefusesAnythingButHTTPS(t *testing.T) {
+func TestOIDCDiscovery_3_RefusesAnythingButHTTPS(t *testing.T) {
 	if _, err := FetchDiscoveryDocument("http://op.example", http.DefaultClient); err == nil || !strings.Contains(err.Error(), "issuer must be an https URL") {
 		t.Errorf("an http issuer: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestExchangeAcceptsTokenFromAKeyWithoutAlg(t *testing.T) {
 	}
 }
 
-func TestExchangeRefuses(t *testing.T) {
+func TestOIDCCore_3_1_3_7_ExchangeRefusesAnIDTokenThatFailsValidation(t *testing.T) {
 	stub := newOPStub(t)
 	client := stub.client(t)
 	forged := newECKey(t, elliptic.P256())
@@ -179,7 +179,7 @@ func TestNewClientFailsWhenTheKeySetCannotBeFetched(t *testing.T) {
 	}
 }
 
-func TestAuthenticationURLCarriesTheS256Challenge(t *testing.T) {
+func TestRFC7636_4_3_AuthenticationURLCarriesTheS256Challenge(t *testing.T) {
 	stub := newOPStub(t)
 	authURL, err := stub.client(t).AuthenticationURL(t.Context(), Login{State: "state", Nonce: "nonce", Verifier: "verifier"})
 	if err != nil {
@@ -209,7 +209,7 @@ func serveDiscovery(t *testing.T, status int, doc func(base string) DiscoveryDoc
 
 // OpenID Connect Discovery 1.0 section 4.3: the issuer in the document must be exactly the one it was asked of, or a
 // provider could speak for another.
-func TestDiscovery4_3_ADocumentNamingAnotherIssuerIsRefused(t *testing.T) {
+func TestOIDCDiscovery_4_3_ADocumentNamingAnotherIssuerIsRefused(t *testing.T) {
 	server := serveDiscovery(t, http.StatusOK, func(base string) DiscoveryDocument {
 		return DiscoveryDocument{Issuer: "https://evil.example", JwksURI: base + "/jwks"}
 	})
@@ -219,7 +219,7 @@ func TestDiscovery4_3_ADocumentNamingAnotherIssuerIsRefused(t *testing.T) {
 	}
 }
 
-func TestDiscovery4_3_ADocumentWithoutAnIssuerIsRefused(t *testing.T) {
+func TestOIDCDiscovery_4_3_ADocumentWithoutAnIssuerIsRefused(t *testing.T) {
 	server := serveDiscovery(t, http.StatusOK, func(base string) DiscoveryDocument {
 		return DiscoveryDocument{JwksURI: base + "/jwks"}
 	})
@@ -230,7 +230,7 @@ func TestDiscovery4_3_ADocumentWithoutAnIssuerIsRefused(t *testing.T) {
 
 // A multi-tenant Entra document names the issuer {tenantid}, which no ID token ever carries, so such a configuration
 // could not log anybody in: it is refused at the start, without an exception for the placeholder.
-func TestDiscovery4_3_EntrasTenantPlaceholderIsRefusedLikeAnyOtherIssuer(t *testing.T) {
+func TestOIDCDiscovery_4_3_EntrasTenantPlaceholderIsRefusedLikeAnyOtherIssuer(t *testing.T) {
 	server := serveDiscovery(t, http.StatusOK, func(base string) DiscoveryDocument {
 		return DiscoveryDocument{Issuer: "https://login.microsoftonline.com/{tenantid}/v2.0", JwksURI: base + "/jwks"}
 	})
@@ -239,7 +239,8 @@ func TestDiscovery4_3_EntrasTenantPlaceholderIsRefusedLikeAnyOtherIssuer(t *test
 	}
 }
 
-func TestDiscoveryAFailureStatusIsRefusedHoweverItsBodyReads(t *testing.T) {
+// A successful configuration response uses 200 OK; any other status is no configuration.
+func TestOIDCDiscovery_4_2_AFailureStatusIsRefusedHoweverItsBodyReads(t *testing.T) {
 	server := serveDiscovery(t, http.StatusServiceUnavailable, func(base string) DiscoveryDocument {
 		return DiscoveryDocument{Issuer: base, JwksURI: base + "/jwks"}
 	})
@@ -249,7 +250,7 @@ func TestDiscoveryAFailureStatusIsRefusedHoweverItsBodyReads(t *testing.T) {
 }
 
 // Section 4.1: a terminating / is removed before the path is appended, while the comparison stays exact.
-func TestDiscovery4_1_AnIssuerWithATrailingSlashIsFetchedWithoutItAndComparedWithIt(t *testing.T) {
+func TestOIDCDiscovery_4_1_AnIssuerWithATrailingSlashIsFetchedWithoutItAndComparedWithIt(t *testing.T) {
 	var server *httptest.Server
 	keys := jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: newECKey(t, elliptic.P256()).Public(), KeyID: "k"}}}
 	server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -288,7 +289,8 @@ func TestDiscoveryReadsNoMoreThanItsBound(t *testing.T) {
 	}
 }
 
-func TestClaimsRefusesATokenThatIsNoCompactJWS(t *testing.T) {
+// A JWT is always in the JWS or JWE Compact Serialization.
+func TestRFC7519_1_ClaimsRefusesATokenThatIsNoCompactJWS(t *testing.T) {
 	for _, token := range []string{"nodots", "one.dot", "a.b.c.d"} {
 		var claims map[string]any
 		if err := (&TokenResponse{IDTokenRaw: token}).Claims(&claims); err == nil {
@@ -307,7 +309,7 @@ func captureDebugLogs(t *testing.T) *bytes.Buffer {
 }
 
 // Server rules 5 and 14. The provider's refusal echoes the code, as nothing stops one from doing.
-func TestALoginLogsNoSecretAtDebug(t *testing.T) {
+func TestServerRule14_ALoginLogsNoSecretAtDebug(t *testing.T) {
 	const (
 		secret, state, nonce  = "client-secret-value", "state-value", "nonce-value"
 		verifier, code, token = "verifier-value", "code-value", "access-token-value"
@@ -359,7 +361,7 @@ func TestALoginLogsNoSecretAtDebug(t *testing.T) {
 }
 
 // A slog handler for JSON goes through MarshalJSON and one for text through String, and neither may show the secret.
-func TestSecretStringShowsNothingInLogsOrJSON(t *testing.T) {
+func TestServerRule14_SecretStringShowsNothingInLogsOrJSON(t *testing.T) {
 	const value = "client-secret-value"
 	secret := NewSecretString(value)
 	var logs bytes.Buffer
