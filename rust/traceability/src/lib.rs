@@ -181,6 +181,11 @@ fn gematik(word: &str) -> Option<String> {
             return Some(format!("{prefix}{a}"));
         }
     }
+    // A table's version suffix (`TAB_KON_514-01`) is dropped like an afo's.
+    let word = word
+        .rsplit_once('-')
+        .filter(|(_, v)| is_digits(v, 2..=2))
+        .map_or(word, |(base, _)| base);
     let mut parts = word.split('_');
     match (parts.next(), parts.next(), parts.next()) {
         (Some("TUC"), Some(area), Some(n))
@@ -188,7 +193,7 @@ fn gematik(word: &str) -> Option<String> {
         {
             parts.next().is_none().then(|| word.to_string())
         }
-        (Some("Tab"), Some(area), Some(n))
+        (Some("Tab" | "TAB"), Some(area), Some(n))
             if area.chars().all(|c| c.is_ascii_uppercase()) && is_digits(n, 1..=4) =>
         {
             parts.all(|p| is_digits(p, 1..=3)).then(|| word.to_string())
@@ -585,14 +590,15 @@ mod tests {
     fn gematik_references_drop_the_afo_version() {
         assert_eq!(
             texts(
-                " gemSpec_PKI A_23142-01, GS-A_4898 and TIP1-A_4108; TUC_PKI_006 step 8a, Tab_PKI_252_01."
+                " gemSpec_PKI A_23142-01, GS-A_4898 and TIP1-A_4108; TUC_PKI_006 step 8a, Tab_PKI_252_01, TAB_KON_514-01."
             ),
             [
                 "A_23142",
                 "GS-A_4898",
                 "TIP1-A_4108",
                 "TUC_PKI_006",
-                "Tab_PKI_252_01"
+                "Tab_PKI_252_01",
+                "TAB_KON_514"
             ]
         );
     }
