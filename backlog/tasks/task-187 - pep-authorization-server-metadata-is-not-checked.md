@@ -1,9 +1,10 @@
 ---
 id: TASK-187
 title: 'pep: authorization server metadata is not checked'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-02T15:42:00Z'
+updated_date: '2026-11-02T23:09:00Z'
 labels:
   - go
   - security
@@ -20,5 +21,11 @@ discoverMetadata never compares md.Issuer with the configured issuer (RFC 8414 3
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Issuer and https are enforced, with tests
+- [x] #1 Issuer and https are enforced, with tests
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Fixed with requirement-named tests in the consolidation.
+<!-- SECTION:FINAL_SUMMARY:END -->

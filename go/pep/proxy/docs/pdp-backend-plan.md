@@ -17,7 +17,7 @@
 - `PEP_BACKEND=pdp` is mutually exclusive with the provider backend.
 - BCP allowlist MUST: the `/api` proxy forwards only to the one configured upstream host.
 - Tests: table-driven, `httptest`, in-memory store via `kv.NewMemory()`, call handler/backend methods directly (match `pep/proxy/*_test.go`).
-- Module graph unchanged: `go list -deps ./zaddy/cmd/zero-caddy | grep -c 'gematik/zero-lab/go/\(oidf\|gemidp\|kv\|oauth\|pep/proxy\)'` stays `0`.
+- Module graph unchanged: `go list -deps ./zaddy/cmd/zero-caddy | grep -c 'gematik/zero-lab/go/\(oidf\|idpd\|kv\|oauth\|pep/proxy\)'` stays `0`.
 - Commits: conventional, no AI attribution. Branch `feat/pep-pdp-backend`.
 
 ## File Structure
@@ -31,7 +31,7 @@
 - **Create** `pep/proxy/inject_test.go`.
 - **Modify** `pep/proxy/backend.go` — drop `DPoPKey()` from the `Backend` interface.
 - **Modify** `pep/proxy/backend_provider.go` — drop its `DPoPKey()` method.
-- **Modify** `pep/cmd/zero-pep-proxy/main.go` + a new `pep/cmd/zero-pep-proxy/backend_pdp.go` — `PEP_BACKEND=pdp` selection + the binding config.
+- **Modify** `pep/proxy/cmd/zero-pep-proxy/main.go` + a new `pep/proxy/cmd/zero-pep-proxy/backend_pdp.go` — `PEP_BACKEND=pdp` selection + the binding config.
 - **Modify** `pep/proxy/e2e/` (compose + README) — the airgapped HITL composing pep(pdp) + zero-pdp + zaddy.
 
 ---
@@ -731,11 +731,11 @@ git commit -m "feat(pep): gated /api reverse-proxy injecting Authorization: DPoP
 
 ### Task 7: Config + backend selection (`PEP_BACKEND=pdp`)
 
-**Files:** Create `pep/cmd/zero-pep-proxy/backend_pdp.go`; Modify `pep/cmd/zero-pep-proxy/main.go`.
+**Files:** Create `pep/proxy/cmd/zero-pep-proxy/backend_pdp.go`; Modify `pep/proxy/cmd/zero-pep-proxy/main.go`.
 
 - [ ] **Step 1: Build the PDP backend from env**
 
-Create `pep/cmd/zero-pep-proxy/backend_pdp.go` with `func pdpBackendFromEnv(publicURL string) (proxy.Backend, http.Handler)` reading: `PEP_AS_ISSUER`, `PEP_CLIENT_ID`, `PEP_CLIENT_SIGNING_KEY_PATH` (load the JWK from the file), `PEP_REDIRECT_URI` (default `<public>/oauth2/callback`), `PEP_API_UPSTREAM`, `PEP_API_PREFIX` (default `/api`), `PEP_SCOPES`. Construct `proxy.NewPDPBackend(proxy.PDPConfig{...})`.
+Create `pep/proxy/cmd/zero-pep-proxy/backend_pdp.go` with `func pdpBackendFromEnv(publicURL string) (proxy.Backend, http.Handler)` reading: `PEP_AS_ISSUER`, `PEP_CLIENT_ID`, `PEP_CLIENT_SIGNING_KEY_PATH` (load the JWK from the file), `PEP_REDIRECT_URI` (default `<public>/oauth2/callback`), `PEP_API_UPSTREAM`, `PEP_API_PREFIX` (default `/api`), `PEP_SCOPES`. Construct `proxy.NewPDPBackend(proxy.PDPConfig{...})`.
 
 - [ ] **Step 2: Wire selection in main.go**
 
@@ -743,12 +743,12 @@ In `main.go`, before building the provider opts: if `os.Getenv("PEP_BACKEND") ==
 
 - [ ] **Step 3: Build + smoke**
 
-Run: `go build ./pep/...` then `PEP_BACKEND=pdp PEP_AS_ISSUER=... PEP_CLIENT_ID=... PEP_CLIENT_SIGNING_KEY_PATH=... PEP_API_UPSTREAM=... go run ./pep/cmd/zero-pep-proxy` against a reachable AS — expect "providers loaded"/listening (discovery succeeds). (Full flow is the HITL.)
+Run: `go build ./pep/...` then `PEP_BACKEND=pdp PEP_AS_ISSUER=... PEP_CLIENT_ID=... PEP_CLIENT_SIGNING_KEY_PATH=... PEP_API_UPSTREAM=... go run ./pep/proxy/cmd/zero-pep-proxy` against a reachable AS — expect "providers loaded"/listening (discovery succeeds). (Full flow is the HITL.)
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add pep/cmd/zero-pep-proxy/backend_pdp.go pep/cmd/zero-pep-proxy/main.go
+git add pep/proxy/cmd/zero-pep-proxy/backend_pdp.go pep/proxy/cmd/zero-pep-proxy/main.go
 git commit -m "feat(pep): PEP_BACKEND=pdp selection + PDP/api binding config"
 ```
 
@@ -767,7 +767,7 @@ Extend the e2e compose to run (all local, no egress): `zero-pdp` (built, `PDP_NO
 Run:
 ```
 go build ./pep/... && go vet ./pep/... && go test ./pep/...
-go list -deps ./zaddy/cmd/zero-caddy | grep -c 'gematik/zero-lab/go/\(oidf\|gemidp\|kv\|oauth\|pep/proxy\)'   # expect 0
+go list -deps ./zaddy/cmd/zero-caddy | grep -c 'gematik/zero-lab/go/\(oidf\|idpd\|kv\|oauth\|pep/proxy\)'   # expect 0
 ```
 
 - [ ] **Step 3: HITL (human)**

@@ -27,6 +27,7 @@ import (
 	"crypto/cipher"
 	"crypto/pbkdf2"
 	"crypto/rand"
+	"crypto/x509"
 	"encoding/asn1"
 	"errors"
 	"fmt"
@@ -34,6 +35,8 @@ import (
 
 	"golang.org/x/crypto/cryptobyte"
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
+
+	"github.com/gematik/zero-lab/go/pkcs12/internal/syntax"
 )
 
 // EncodeOptions configures EncodeWithOptions. Start from
@@ -41,18 +44,18 @@ import (
 type EncodeOptions struct {
 	// KeyEncryption is the PBES2 cipher for private keys: OIDAes128CBC,
 	// OIDAes192CBC or OIDAes256CBC.
-	KeyEncryption asn1.ObjectIdentifier
+	KeyEncryption x509.OID
 
 	// CertEncryption is the PBES2 cipher for the certificate safe, one of the
-	// AES OIDs; nil writes the certificates unencrypted.
-	CertEncryption asn1.ObjectIdentifier
+	// AES OIDs; empty writes the certificates unencrypted.
+	CertEncryption x509.OID
 
 	// Iterations is the PBKDF2 and MAC iteration count.
 	Iterations int
 
 	// MacAlgorithm is the MAC digest: OIDSHA256, OIDSHA384 or OIDSHA512. The
 	// PBKDF2 PRF is HMAC with the same digest.
-	MacAlgorithm asn1.ObjectIdentifier
+	MacAlgorithm x509.OID
 
 	// KeyPassword and CertPassword encrypt keys and certificates; nil means
 	// the password passed to EncodeWithOptions.
@@ -119,7 +122,7 @@ func EncodeWithOptions(bags *Bags, password []byte, opts *EncodeOptions) ([]byte
 				b.SetError(err)
 				return
 			}
-			if o.CertEncryption == nil {
+			if o.CertEncryption.Equal(x509.OID{}) {
 				addDataContentInfo(b, certs)
 				return
 			}
@@ -145,50 +148,56 @@ func EncodeWithOptions(bags *Bags, password []byte, opts *EncodeOptions) ([]byte
 // encodeParams are the validated algorithm choices of one encoding.
 type encodeParams struct {
 	iterations int
-	keyCipher  pbes2Cipher
+	keyCipher  syntax.PBES2Cipher
 	keyOID     asn1.ObjectIdentifier
-	certCipher pbes2Cipher
+	certCipher syntax.PBES2Cipher
 	certOID    asn1.ObjectIdentifier
 	macOID     asn1.ObjectIdentifier
 	prfOID     asn1.ObjectIdentifier
 }
 
-func encodeCipher(oid asn1.ObjectIdentifier, what string) (pbes2Cipher, error) {
-	if c, ok := pbes2CipherFor(oid); ok {
-		return c, nil
+// encodeCipher resolves a public identifier to the one this package writes: x509.OID has no way back to
+// encoding/asn1, and only the AES ciphers may be written (P12-054).
+func encodeCipher(id x509.OID, what string) (asn1.ObjectIdentifier, syntax.PBES2Cipher, error) {
+	for _, known := range []asn1.ObjectIdentifier{syntax.OIDAes128CBC, syntax.OIDAes192CBC, syntax.OIDAes256CBC} {
+		if id.EqualASN1OID(known) {
+			if c, ok := syntax.PBES2CipherFor(known); ok {
+				return known, c, nil
+			}
+		}
 	}
-	return pbes2Cipher{}, fmt.Errorf("%w: %s %v (want AES-CBC)", ErrUnsupportedAlgorithm, what, oid)
+	return nil, syntax.PBES2Cipher{}, fmt.Errorf("%w: %s %v (want AES-CBC)", ErrUnsupportedAlgorithm, what, id)
 }
 
 func newEncodeParams(o *EncodeOptions) (*encodeParams, error) {
-	if err := checkIterations(o.Iterations); err != nil {
+	if err := syntax.CheckIterations(o.Iterations); err != nil {
 		return nil, err
 	}
-	p := &encodeParams{iterations: o.Iterations, keyOID: o.KeyEncryption, certOID: o.CertEncryption}
+	p := &encodeParams{iterations: o.Iterations}
 	var err error
-	if p.keyCipher, err = encodeCipher(o.KeyEncryption, "KeyEncryption"); err != nil {
+	if p.keyOID, p.keyCipher, err = encodeCipher(o.KeyEncryption, "KeyEncryption"); err != nil {
 		return nil, err
 	}
-	if o.CertEncryption != nil {
-		if p.certCipher, err = encodeCipher(o.CertEncryption, "CertEncryption"); err != nil {
+	if !o.CertEncryption.Equal(x509.OID{}) {
+		if p.certOID, p.certCipher, err = encodeCipher(o.CertEncryption, "CertEncryption"); err != nil {
 			return nil, err
 		}
 	}
 	// SHA-1 and SHA-224 remain readable but are not written.
 	switch {
 	case o.MacAlgorithm.Equal(OIDSHA256):
-		p.macOID, p.prfOID = OIDSHA256, OIDHMACSHA256
+		p.macOID, p.prfOID = syntax.OIDSHA256, syntax.OIDHMACSHA256
 	case o.MacAlgorithm.Equal(OIDSHA384):
-		p.macOID, p.prfOID = OIDSHA384, OIDHMACSHA384
+		p.macOID, p.prfOID = syntax.OIDSHA384, syntax.OIDHMACSHA384
 	case o.MacAlgorithm.Equal(OIDSHA512):
-		p.macOID, p.prfOID = OIDSHA512, OIDHMACSHA512
+		p.macOID, p.prfOID = syntax.OIDSHA512, syntax.OIDHMACSHA512
 	default:
 		return nil, fmt.Errorf("%w: MacAlgorithm %v (want SHA-256, SHA-384 or SHA-512)", ErrUnsupportedAlgorithm, o.MacAlgorithm)
 	}
 	return p, nil
 }
 
-// keySafe returns a SafeContents of shrouded key bags.
+// keySafe returns a syntax.SafeContents of shrouded key bags.
 func (p *encodeParams) keySafe(keys []PrivateKeyBag, password []byte) ([]byte, error) {
 	var b cryptobyte.Builder
 	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
@@ -207,7 +216,7 @@ func (p *encodeParams) keySafe(keys []PrivateKeyBag, password []byte) ([]byte, e
 				b.SetError(err)
 				return
 			}
-			if err := addSafeBag(b, OIDPKCS8ShroudedKeyBag, value, key.FriendlyName, key.LocalKeyID); err != nil {
+			if err := addSafeBag(b, syntax.OIDPKCS8ShroudedKeyBag, value, key.FriendlyName, key.LocalKeyID); err != nil {
 				b.SetError(err)
 				return
 			}
@@ -216,15 +225,15 @@ func (p *encodeParams) keySafe(keys []PrivateKeyBag, password []byte) ([]byte, e
 	return b.Bytes()
 }
 
-// certSafe returns a SafeContents of X.509 certificate bags.
+// certSafe returns a syntax.SafeContents of X.509 certificate bags.
 func certSafe(certs []CertificateBag) ([]byte, error) {
 	var b cryptobyte.Builder
 	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
 		for _, cert := range certs {
 			var cb cryptobyte.Builder
 			cb.AddASN1(cryptobyte_asn1.SEQUENCE, func(c *cryptobyte.Builder) {
-				c.AddASN1ObjectIdentifier(OIDX509Certificate)
-				c.AddASN1(tagContext0Explicit, func(c *cryptobyte.Builder) {
+				c.AddASN1ObjectIdentifier(syntax.OIDX509Certificate)
+				c.AddASN1(syntax.TagContext0Explicit, func(c *cryptobyte.Builder) {
 					c.AddASN1OctetString(cert.Raw)
 				})
 			})
@@ -233,7 +242,7 @@ func certSafe(certs []CertificateBag) ([]byte, error) {
 				b.SetError(err)
 				return
 			}
-			if err := addSafeBag(b, OIDCertBag, value, cert.FriendlyName, cert.LocalKeyID); err != nil {
+			if err := addSafeBag(b, syntax.OIDCertBag, value, cert.FriendlyName, cert.LocalKeyID); err != nil {
 				b.SetError(err)
 				return
 			}
@@ -254,7 +263,7 @@ func addSafeBag(b *cryptobyte.Builder, id asn1.ObjectIdentifier, value []byte, f
 		attributes = append(attributes, attr)
 	}
 	if len(localKeyID) > 0 {
-		attr, err := attribute(OIDLocalKeyID, func(b *cryptobyte.Builder) { b.AddASN1OctetString(localKeyID) })
+		attr, err := attribute(syntax.OIDLocalKeyID, func(b *cryptobyte.Builder) { b.AddASN1OctetString(localKeyID) })
 		if err != nil {
 			return err
 		}
@@ -265,7 +274,7 @@ func addSafeBag(b *cryptobyte.Builder, id asn1.ObjectIdentifier, value []byte, f
 
 	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
 		b.AddASN1ObjectIdentifier(id)
-		b.AddASN1(tagContext0Explicit, func(b *cryptobyte.Builder) { b.AddBytes(value) })
+		b.AddASN1(syntax.TagContext0Explicit, func(b *cryptobyte.Builder) { b.AddBytes(value) })
 		if len(attributes) > 0 {
 			b.AddASN1(cryptobyte_asn1.SET, func(b *cryptobyte.Builder) {
 				for _, attr := range attributes {
@@ -297,16 +306,16 @@ func friendlyNameAttribute(name string) ([]byte, error) {
 		}
 		bmp = append(bmp, byte(r>>8), byte(r))
 	}
-	return attribute(OIDFriendlyName, func(b *cryptobyte.Builder) {
-		b.AddASN1(tagBMPString, func(b *cryptobyte.Builder) { b.AddBytes(bmp) })
+	return attribute(syntax.OIDFriendlyName, func(b *cryptobyte.Builder) {
+		b.AddASN1(syntax.TagBMPString, func(b *cryptobyte.Builder) { b.AddBytes(bmp) })
 	})
 }
 
 // addDataContentInfo adds a ContentInfo of type Data holding content.
 func addDataContentInfo(b *cryptobyte.Builder, content []byte) {
 	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
-		b.AddASN1ObjectIdentifier(OIDData)
-		b.AddASN1(tagContext0Explicit, func(b *cryptobyte.Builder) {
+		b.AddASN1ObjectIdentifier(syntax.OIDData)
+		b.AddASN1(syntax.TagContext0Explicit, func(b *cryptobyte.Builder) {
 			b.AddASN1OctetString(content)
 		})
 	})
@@ -316,18 +325,18 @@ func addDataContentInfo(b *cryptobyte.Builder, content []byte) {
 // content encrypted with PBES2.
 func (p *encodeParams) addEncryptedContentInfo(b *cryptobyte.Builder, content, password []byte) {
 	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
-		b.AddASN1ObjectIdentifier(OIDEncryptedData)
-		b.AddASN1(tagContext0Explicit, func(b *cryptobyte.Builder) {
+		b.AddASN1ObjectIdentifier(syntax.OIDEncryptedData)
+		b.AddASN1(syntax.TagContext0Explicit, func(b *cryptobyte.Builder) {
 			b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
 				b.AddASN1Int64(0)
 				b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
-					b.AddASN1ObjectIdentifier(OIDData)
+					b.AddASN1ObjectIdentifier(syntax.OIDData)
 					ciphertext, err := p.addPBES2(b, p.certCipher, p.certOID, password, content)
 					if err != nil {
 						b.SetError(err)
 						return
 					}
-					b.AddASN1(tagContext0Implicit, func(b *cryptobyte.Builder) { b.AddBytes(ciphertext) })
+					b.AddASN1(syntax.TagContext0Implicit, func(b *cryptobyte.Builder) { b.AddBytes(ciphertext) })
 				})
 			})
 		})
@@ -335,7 +344,7 @@ func (p *encodeParams) addEncryptedContentInfo(b *cryptobyte.Builder, content, p
 }
 
 // addPBES2 encrypts plaintext with PBES2 and adds its AlgorithmIdentifier.
-func (p *encodeParams) addPBES2(b *cryptobyte.Builder, c pbes2Cipher, cipherOID asn1.ObjectIdentifier, password, plaintext []byte) ([]byte, error) {
+func (p *encodeParams) addPBES2(b *cryptobyte.Builder, c syntax.PBES2Cipher, cipherOID asn1.ObjectIdentifier, password, plaintext []byte) ([]byte, error) {
 	salt := make([]byte, 16)
 	iv := make([]byte, aes.BlockSize)
 	if _, err := rand.Read(salt); err != nil {
@@ -344,15 +353,15 @@ func (p *encodeParams) addPBES2(b *cryptobyte.Builder, c pbes2Cipher, cipherOID 
 	if _, err := rand.Read(iv); err != nil {
 		return nil, err
 	}
-	prf, err := pbkdf2PRF(p.prfOID)
+	prf, err := syntax.PBKDF2PRF(p.prfOID)
 	if err != nil {
 		return nil, err
 	}
-	key, err := pbkdf2.Key(prf, string(password), salt, p.iterations, c.keySize)
+	key, err := pbkdf2.Key(prf, string(password), salt, p.iterations, c.KeySize)
 	if err != nil {
 		return nil, err
 	}
-	block, err := c.newBlock(key)
+	block, err := c.NewBlock(key)
 	if err != nil {
 		return nil, err
 	}
@@ -362,10 +371,10 @@ func (p *encodeParams) addPBES2(b *cryptobyte.Builder, c pbes2Cipher, cipherOID 
 
 	// AlgorithmIdentifier { pbes2, PBES2-params { { pbkdf2, PBKDF2-params }, { cipher, iv } } }
 	b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
-		b.AddASN1ObjectIdentifier(OIDPBES2)
+		b.AddASN1ObjectIdentifier(syntax.OIDPBES2)
 		b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
 			b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
-				b.AddASN1ObjectIdentifier(OIDPBKDF2)
+				b.AddASN1ObjectIdentifier(syntax.OIDPBKDF2)
 				b.AddASN1(cryptobyte_asn1.SEQUENCE, func(b *cryptobyte.Builder) {
 					b.AddASN1OctetString(salt)
 					b.AddASN1Int64(int64(p.iterations))
@@ -388,7 +397,7 @@ func (p *encodeParams) addMacData(b *cryptobyte.Builder, authSafe, password []by
 		b.SetError(err)
 		return
 	}
-	mac, err := computeMAC(p.macOID, password, salt, p.iterations, authSafe)
+	mac, err := syntax.ComputeMAC(p.macOID, password, salt, p.iterations, authSafe)
 	if err != nil {
 		b.SetError(err)
 		return

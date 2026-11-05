@@ -22,22 +22,17 @@
 package oidf
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
-	"strings"
+	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwe"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
-	"golang.org/x/oauth2"
+	"github.com/go-jose/go-jose/v4"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // CodeChallengeMethod is a PKCE code_challenge_method (RFC 7636 §4.3).
@@ -48,7 +43,7 @@ const (
 	CodeChallengeMethodS256 CodeChallengeMethod = "S256"
 )
 
-// RelyingPartyClient is an oidc.Client for one OpenID provider of the federation; RelyingParty.NewClient
+// RelyingPartyClient is an openid.Client for one OpenID provider of the federation; RelyingParty.NewClient
 // creates it.
 type RelyingPartyClient struct {
 	rp          *RelyingParty
@@ -56,182 +51,98 @@ type RelyingPartyClient struct {
 	metadata    *OpenIDProviderMetadata
 	scopes      []string
 	redirectURI string
-	jwks        jwk.Set
+	jwks        *jose.JSONWebKeySet
 }
 
-// AuthenticationURL pushes the authorization request to the provider's PAR endpoint (RFC 9126) over mutual
-// TLS and returns the URL to send the user agent to. verifier is the PKCE code verifier.
-func (c *RelyingPartyClient) AuthenticationURL(state, nonce, verifier string, options ...oidc.Option) (string, error) {
-	codeChallenge := oauth2.S256ChallengeFromVerifier(verifier)
+// AuthenticationURL pushes the authorization request (PAR) and gives the URL that carries its request_uri.
+func (c *RelyingPartyClient) AuthenticationURL(ctx context.Context, login openid.Login) (string, error) {
+	form := openid.AuthorizationQuery(c.rp.ClientID(), c.redirectURI, c.scopes, login)
+	form.Set("acr_values", "gematik-ehealth-loa-high")
 
-	parData := url.Values{}
-	parData.Add("scope", strings.Join(c.scopes, " "))
-	parData.Add("acr_values", "gematik-ehealth-loa-high")
-	parData.Add("response_type", "code")
-	parData.Add("state", state)
-	parData.Add("redirect_uri", c.redirectURI)
-	parData.Add("code_challenge_method", string(CodeChallengeMethodS256))
-	parData.Add("nonce", nonce)
-	parData.Add("client_id", c.rp.ClientID())
-	parData.Add("code_challenge", codeChallenge)
-
-	for _, option := range options {
-		if opt, ok := option.(oidc.WithAlternateRedirectURI); ok {
-			parData.Set("redirect_uri", string(opt))
-		}
-	}
-
-	slog.Info("Issuing PAR request", "endpoint", c.op.Metadata.OpenidProvider.PushedAuthorizationRequestEndpoint, "params", parData)
-
-	parRequest, err := http.NewRequest(
-		http.MethodPost,
-		c.op.Metadata.OpenidProvider.PushedAuthorizationRequestEndpoint,
-		strings.NewReader(parData.Encode()),
-	)
-	if err != nil {
-		return "", fmt.Errorf("unable to create PAR request: %w", err)
-	}
-
-	parRequest.Header.Add("Accept", "*/*")
-	parRequest.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-
-	parResponse, err := c.rp.httpClient.Do(parRequest)
+	endpoint := c.op.Metadata.OpenidProvider.PushedAuthorizationRequestEndpoint
+	response, err := openid.PostForm(ctx, c.rp.httpClient, endpoint, form)
 	if err != nil {
 		return "", fmt.Errorf("unable to do PAR request: %w", err)
 	}
-	defer parResponse.Body.Close()
-
-	if parResponse.StatusCode != http.StatusCreated {
-		return "", fmt.Errorf("PAR: unexpected status '%s': %w", parResponse.Status, parseErrorResponse(parResponse.Body, c.op.Metadata.OpenidProvider.PushedAuthorizationRequestEndpoint))
+	if response.Status != http.StatusCreated {
+		return "", fmt.Errorf("PAR: unexpected status %d: %w", response.Status, parseErrorResponse(bytes.NewReader(response.Body), endpoint))
 	}
-
-	var parResp pushedAuthorizationResponse
-
-	err = json.NewDecoder(parResponse.Body).Decode(&parResp)
-	if err != nil {
+	var pushed pushedAuthorizationResponse
+	if err := json.Unmarshal(response.Body, &pushed); err != nil {
 		return "", fmt.Errorf("unable to read PAR response body: %w", err)
 	}
 
 	params := url.Values{}
-	params.Add("request_uri", parResp.RequestURI)
+	params.Add("request_uri", pushed.RequestURI)
 	params.Add("client_id", c.rp.ClientID())
-
 	return c.op.Metadata.OpenidProvider.AuthorizationEndpoint + "?" + params.Encode(), nil
 }
 
-// ExchangeForIdentity redeems the authorization code over mutual TLS, decrypts the JWE id_token with the
+// Exchange redeems the authorization code over mutual TLS, decrypts the JWE id_token with the
 // relying party's encryption key and verifies its signature against the provider's signed JWKS, its expiry
-// and its audience against the client_id. Issuer and nonce are not checked here. A provider's rejection is
+// and its audience against the client_id. A provider's rejection is
 // returned as *Error.
-func (c *RelyingPartyClient) ExchangeForIdentity(code, verifier string, options ...oidc.Option) (*oidc.TokenResponse, error) {
-	tokenParams := url.Values{}
-	tokenParams.Add("grant_type", "authorization_code")
-	tokenParams.Add("code", code)
-	tokenParams.Add("redirect_uri", c.redirectURI)
-	tokenParams.Add("client_id", c.rp.ClientID())
-	tokenParams.Add("code_verifier", verifier)
+func (c *RelyingPartyClient) Exchange(ctx context.Context, login openid.Login, code string) (*openid.TokenResponse, error) {
+	form := url.Values{}
+	form.Set("grant_type", "authorization_code")
+	form.Set("code", code)
+	form.Set("redirect_uri", login.RedirectFor(c.redirectURI))
+	form.Set("client_id", c.rp.ClientID())
+	form.Set("code_verifier", login.Verifier)
 
-	for _, option := range options {
-		if opt, ok := option.(oidc.WithAlternateRedirectURI); ok {
-			tokenParams.Set("redirect_uri", string(opt))
-		}
-	}
-
-	req, err := http.NewRequest(http.MethodPost, c.op.Metadata.OpenidProvider.TokenEndpoint, strings.NewReader(tokenParams.Encode()))
-	if err != nil {
-		return nil, fmt.Errorf("unable to create token request: %w", err)
-	}
-	req.Header.Add("Accept", "application/json")
-	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := c.rp.httpClient.Do(req)
+	response, err := openid.PostForm(ctx, c.rp.httpClient, c.op.Metadata.OpenidProvider.TokenEndpoint, form)
 	if err != nil {
 		return nil, fmt.Errorf("unable to do token request: %w", err)
 	}
-
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("unable to read response body: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
+	if response.Status != http.StatusOK {
 		var oidcErr Error
-		err = json.Unmarshal(body, &oidcErr)
-		if err != nil {
+		if err := json.Unmarshal(response.Body, &oidcErr); err != nil {
 			return nil, fmt.Errorf("unable to decode error: %w", err)
 		}
 		return nil, &oidcErr
 	}
-
-	var tokenResponse oidc.TokenResponse
-	err = json.Unmarshal(body, &tokenResponse)
+	tokenResponse, err := openid.ParseTokenResponse(response.Body)
 	if err != nil {
-		return nil, fmt.Errorf("unable to decode token response: %w", err)
+		return nil, err
 	}
 
-	decryptedIDToken, err := jwe.Decrypt([]byte(tokenResponse.IDTokenRaw), jwe.WithKey(jwa.ECDH_ES(), c.rp.encPrivateKey))
+	decryptedIDToken, err := c.decryptIDToken(tokenResponse.IDTokenRaw)
 	if err != nil {
 		return nil, fmt.Errorf("unable to decrypt id_token: %w", err)
 	}
 
 	tokenResponse.IDTokenRaw = string(decryptedIDToken)
 
-	if tokenResponse.IDToken, err = c.parseIDToken(&tokenResponse); err != nil {
+	if err := c.verifyIDToken(login, tokenResponse); err != nil {
 		return nil, fmt.Errorf("unable to parse id_token: %w", err)
 	}
 
-	return &tokenResponse, nil
+	return tokenResponse, nil
 }
 
-func (c *RelyingPartyClient) parseIDToken(response *oidc.TokenResponse) (jwt.Token, error) {
-	tokenJwt, err := jwt.Parse([]byte(response.IDTokenRaw), jwt.WithKeySet(c.jwks))
+// decryptIDToken takes only what buildMetadata registers the relying party for: id_token_encrypted_response_alg
+// ECDH-ES and id_token_encrypted_response_enc A256GCM.
+func (c *RelyingPartyClient) decryptIDToken(raw string) ([]byte, error) {
+	encrypted, err := jose.ParseEncryptedCompact(raw, []jose.KeyAlgorithm{jose.ECDH_ES}, []jose.ContentEncryption{jose.A256GCM})
 	if err != nil {
-		return nil, fmt.Errorf("unable to parse token: %w", err)
+		return nil, err
 	}
-	// verify audience
-	aud, ok := tokenJwt.Audience()
-	if !ok {
-		slog.Error("token audience not found", "aud", aud)
-		return nil, errors.New("token audience not found")
-	}
-	var matchedAud string
-	for _, a := range aud {
-		if a == c.rp.ClientID() {
-			matchedAud = a
-			break
-		}
-	}
-	if matchedAud == "" {
-		slog.Error("token audience does not match client_id", "aud", aud, "client_id", c.rp.ClientID())
-		return nil, errors.New("token audience does not match client_id")
-	}
-
-	return tokenJwt, nil
+	return encrypted.Decrypt(c.rp.encPrivateKey)
 }
 
-// ClientID returns the relying party's entity identifier, which is its OIDF client_id.
-func (c *RelyingPartyClient) ClientID() string {
-	return c.rp.ClientID()
+func (c *RelyingPartyClient) verifyIDToken(login openid.Login, response *openid.TokenResponse) error {
+	payload, err := openid.VerifyJWS([]byte(response.IDTokenRaw), c.jwks, memberKeys)
+	if err != nil {
+		return fmt.Errorf("unable to parse token: %w", err)
+	}
+	checks := openid.IDTokenChecks{Issuer: c.op.Issuer, ClientID: c.rp.ClientID(), Nonce: login.Nonce, Now: time.Now()}
+	if err := checks.Validate(payload); err != nil {
+		return fmt.Errorf("unable to parse token: %w", err)
+	}
+	return nil
 }
 
 // Issuer returns the issuer named in the provider's entity statement.
 func (c *RelyingPartyClient) Issuer() string {
 	return c.op.Issuer
-}
-
-// Name returns the provider's organization_name, for display.
-func (c *RelyingPartyClient) Name() string {
-	return c.metadata.OrganizationName
-}
-
-// LogoURI returns the provider's logo_uri, for display.
-func (c *RelyingPartyClient) LogoURI() string {
-	return c.metadata.LogoURI
-}
-
-// RedirectURI returns the first configured redirect URI, used unless a call overrides it with
-// oidc.WithAlternateRedirectURI.
-func (c *RelyingPartyClient) RedirectURI() string {
-	return c.redirectURI
 }

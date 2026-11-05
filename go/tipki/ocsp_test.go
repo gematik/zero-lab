@@ -114,7 +114,7 @@ func describeWanted(want ocspOutcome) string {
 func describeGot(result *RevocationResult, err error) string {
 	if err != nil {
 		if failure, ok := errors.AsType[*OCSPError](err); ok {
-			return "error " + failure.Code + " about " + failure.Subject
+			return "error " + string(failure.Code) + " about " + failure.Subject
 		}
 		return "error " + err.Error()
 	}
@@ -463,7 +463,7 @@ func TestOCSPACertificateWithoutAResponderIsUnknown(t *testing.T) {
 // The revocation table of the module docs, row by row.
 func TestRevocationTheTableDecides(t *testing.T) {
 	at := time.Unix(ocspNow, 0)
-	failure := func(code string) error { return &OCSPError{Code: code, Message: "x"} }
+	failure := func(code string) error { return &OCSPError{Code: ErrorCode(code), Message: "x"} }
 	for _, test := range []struct {
 		name         string
 		result       *RevocationResult
@@ -488,7 +488,7 @@ func TestRevocationTheTableDecides(t *testing.T) {
 				switch {
 				case code == "" && got != nil:
 					t.Errorf("%s: %+v", mode, got)
-				case code != "" && (got == nil || got.Finding.Code != code || got.Warning != warning):
+				case code != "" && (got == nil || string(got.Finding.Code) != code || got.Warning != warning):
 					t.Errorf("%s: %+v, want %s warning=%v", mode, got, code, warning)
 				}
 			}

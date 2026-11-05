@@ -36,8 +36,8 @@ import (
 type handlerFunc func(w http.ResponseWriter, r *http.Request) error
 
 // handle adapts a handlerFunc to http.HandlerFunc, rendering a returned error as an
-// OAuth JSON error. A *Error keeps its status/code; any other error becomes 500
-// server_error. This replaces the former echo ErrorHandlerMiddleware.
+// OAuth JSON error. A *Error keeps its status/code; any other error becomes a generic 500
+// server_error, its text going to the log alone. This replaces the former echo ErrorHandlerMiddleware.
 func (s *Server) handle(h handlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		err := h(w, r)
@@ -53,7 +53,7 @@ func (s *Server) handle(h handlerFunc) http.HandlerFunc {
 		_ = writeJSON(w, http.StatusInternalServerError, &Error{
 			HTTPStatus:  http.StatusInternalServerError,
 			Code:        "server_error",
-			Description: err.Error(),
+			Description: "internal server error",
 		})
 	}
 }

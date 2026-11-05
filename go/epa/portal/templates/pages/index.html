@@ -5,11 +5,25 @@
   den gemIDP-Flow und die VAU-Verschlüsselung - Clients sprechen einfaches HTTPS.
 </p>
 
-<div class="card mb-4">
-  <div class="card-body" data-status-brief>
-    <span class="spinner-border spinner-border-sm text-body-secondary me-2" aria-hidden="true"></span>
-    <span class="text-body-secondary small">Status wird geladen…</span>
-  </div>
+<div class="status-console mb-4">
+  <section>
+    <header>
+      <h2>TI-Dienste</h2>
+      <span class="status-muted">max. 1 min alt</span>
+    </header>
+    <div data-ti-probe><span class="status-muted">Dienste werden geprüft…</span></div>
+    <footer>Nur Erreichbarkeit, keine TLS-Prüfung</footer>
+  </section>
+  <section>
+    <header>
+      <h2>ePA-Proxies</h2>
+      <span class="status-muted" data-status-clock>
+        <span class="status-dot" aria-hidden="true"></span> 5s <time>–</time>
+      </span>
+    </header>
+    <div data-status-brief><span class="status-muted">Status wird geladen…</span></div>
+    <footer><a href="/status">Zur Status-Seite</a></footer>
+  </section>
 </div>
 
 <div class="row row-cols-1 row-cols-md-2 g-3 mb-5">

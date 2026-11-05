@@ -22,7 +22,10 @@
 package authzserver
 
 import (
-	"fmt"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -30,10 +33,33 @@ import (
 	"time"
 	"uuid"
 
-	"golang.org/x/oauth2"
-
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
+
+// sessionRef is what a log says for a session: enough to correlate its lines, and nothing of its ID, which is the jti of
+// its access tokens and the key of its record (server rule 5).
+func sessionRef(id string) string {
+	sum := sha256.Sum256([]byte(id))
+	return hex.EncodeToString(sum[:6])
+}
+
+// scrubbed is err's text for the log, without the given values: an upstream's refusal can echo what it was sent, and a
+// store's error can name a key, as:code:<the code> among them, whichever store it is.
+func scrubbed(err error, secrets ...string) string {
+	text := err.Error()
+	for _, secret := range secrets {
+		if secret != "" {
+			text = strings.ReplaceAll(text, secret, "[redacted]")
+		}
+	}
+	return text
+}
+
+// serverError logs the detail and gives the client the description alone (server rule 2).
+func serverError(description string, err error, secrets ...string) *Error {
+	slog.Error(description, "error", scrubbed(err, secrets...))
+	return oauthErr(http.StatusInternalServerError, "server_error", description)
+}
 
 func redirectWithError(w http.ResponseWriter, r *http.Request, redirectURI string, state string, err Error) error {
 	params := url.Values{}
@@ -131,56 +157,51 @@ func (s *Server) AuthorizationEndpoint(w http.ResponseWriter, r *http.Request) e
 // redirects the user-agent to the provider. On error it redirects back to the client with an
 // OAuth error.
 func (s *Server) startOpenidProviderLogin(w http.ResponseWriter, r *http.Request, session *Session, product *Product) error {
-	opClient, err := s.GetOpenidClient(session.IDPIss)
+	opClient, err := s.GetOpenidClient(r.Context(), session.IDPIss)
 	if err != nil {
+		slog.Warn("no client for the requested OpenID Provider", "issuer", session.IDPIss, "error", err)
 		return redirectWithError(w, r, session.RedirectURI, session.State, Error{
 			Code:        "invalid_request",
-			Description: err.Error(),
+			Description: "the identity provider is not available",
 		})
 	}
 
 	// A product may register its own redirect_uri at the upstream IdP (oidc_redirect_uri): the IdP then
 	// redirects straight back to the AS at that URL instead of the default /op-callback, so no app-side
 	// intermediary popup is needed. When unset, fall back to the AS's own op-callback.
-	opRedirectURI := opClient.RedirectURI()
+	var opRedirectURI string
 	if len(product.OIDCRedirectURIs) > 0 {
 		opRedirectURI = product.OIDCRedirectURIs[0]
 	}
 
-	opSession := &oidc.AuthnClientSession{
+	opSession := &openid.AuthnClientSession{
 		ID:          uuid.NewV4().String(),
 		Issuer:      session.IDPIss,
 		State:       uuid.NewV4().String(),
 		Nonce:       uuid.NewV4().String(),
-		Verifier:    oauth2.GenerateVerifier(),
+		Verifier:    openid.GenerateVerifier(),
 		RedirectURI: opRedirectURI,
 	}
 
-	slog.Info("OP session", "op_session", opSession.ID, "issuer", opSession.Issuer)
-
-	authURL, err := opClient.AuthenticationURL(
-		opSession.State,
-		opSession.Nonce,
-		opSession.Verifier,
-		oidc.WithAlternateRedirectURI(opSession.RedirectURI),
-	)
+	authURL, err := opClient.AuthenticationURL(r.Context(), openid.Login{
+		State:       opSession.State,
+		Nonce:       opSession.Nonce,
+		Verifier:    opSession.Verifier,
+		RedirectURI: opSession.RedirectURI,
+	})
 	if err != nil {
-		return redirectWithError(w, r, session.RedirectURI, session.State, Error{
-			Code:        "server_error",
-			Description: fmt.Errorf("unable to generate auth url: %w", err).Error(),
-		})
+		refused := serverError("unable to start the login at the identity provider", err, opSession.State, opSession.Nonce, opSession.Verifier)
+		return redirectWithError(w, r, session.RedirectURI, session.State, *refused)
 	}
 	opSession.AuthURL = authURL
 
 	session.AuthnClientSession = opSession
 	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {
-		return redirectWithError(w, r, session.RedirectURI, session.State, Error{
-			Code:        "server_error",
-			Description: fmt.Errorf("unable to save session: %w", err).Error(),
-		})
+		refused := serverError("unable to start the login", err, opSession.State)
+		return redirectWithError(w, r, session.RedirectURI, session.State, *refused)
 	}
 
-	slog.Info("Redirecting to OpenID Provider", "auth_url", authURL)
+	slog.Info("Redirecting to OpenID Provider", "issuer", opSession.Issuer, "session_ref", sessionRef(session.ID))
 
 	http.Redirect(w, r, authURL, http.StatusFound) //nolint:gosec // the target is the authorization endpoint of a configured provider or of a federation-verified entity statement
 	return nil
@@ -223,17 +244,12 @@ func (s *Server) PAREndpoint(w http.ResponseWriter, r *http.Request) error {
 }
 
 // GetOpenidClient returns an OpenID Connect client for the given issuer
-func (s *Server) GetOpenidClient(issuer string) (oidc.Client, error) {
-	for _, op := range s.openidProviders {
-		if op.Issuer() == issuer {
-			return op, nil
-		}
+func (s *Server) GetOpenidClient(ctx context.Context, issuer string) (openid.Client, error) {
+	provider, err := s.providers.Provider(ctx, issuer)
+	if err != nil {
+		return nil, err
 	}
-
-	if s.oidfRelyingParty != nil {
-		return s.oidfRelyingParty.NewClient(issuer)
-	}
-	return nil, fmt.Errorf("unknown issuer: %s", issuer)
+	return provider.Client, nil
 }
 
 // OPCallbackEndpoint handles the callback from the OpenID Provider
@@ -244,48 +260,57 @@ func (s *Server) OPCallbackEndpoint(w http.ResponseWriter, r *http.Request) erro
 	if state == "" {
 		return oauthErr(http.StatusBadRequest, "invalid_request", "missing state")
 	}
-
-	// find running session by the OP state
-	var authnSession *oidc.AuthnClientSession
-	authzSession, err := s.sessionStore.GetAuthzServerSessionByAuthnState(state)
-	if err == nil {
-		authnSession = authzSession.AuthnClientSession
-		if authnSession == nil {
-			return oauthErr(http.StatusBadRequest, "invalid_request", "missing openid session")
-		}
-	} else {
-		return oauthErr(http.StatusBadRequest, "invalid_request", fmt.Errorf("unable to get session: %w", err).Error())
+	// Before the state is consumed: a request that is no answer of the provider ends no login.
+	upstream, code := query.Get("error"), query.Get("code")
+	if upstream == "" && code == "" {
+		return oauthErr(http.StatusBadRequest, "invalid_request", "missing code")
 	}
 
-	if query.Get("error") != "" {
-		slog.Error("OP callback error", "query", r.URL.RawQuery)
-		return redirectWithError(w, r, authnSession.RedirectURI, authnSession.State, Error{
-			Code:        query.Get("error"),
+	// find running session by the OP state, which this consumes
+	authzSession, err := s.sessionStore.GetAuthzServerSessionByAuthnState(state)
+	if errors.Is(err, errSessionNotFound) {
+		return oauthErr(http.StatusBadRequest, "invalid_request", "unknown or expired login")
+	}
+	if err != nil {
+		return serverError("unable to continue the login", err, state)
+	}
+	authnSession := authzSession.AuthnClientSession
+	if authnSession == nil {
+		return oauthErr(http.StatusBadRequest, "invalid_request", "missing openid session")
+	}
+	// Saving the session below would otherwise index the consumed state again.
+	authnSession.State = ""
+	// RFC 6749 section 4.1.2.1: from here on the client is known, so a failure ends there.
+	toClient := func(failure *Error) error {
+		return redirectWithError(w, r, authzSession.RedirectURI, authzSession.State, *failure)
+	}
+
+	if upstream != "" {
+		slog.Error("OP callback error", "issuer", authnSession.Issuer, "error", upstream, "session_ref", sessionRef(authzSession.ID))
+		// RFC 6749 section 4.1.2.1: to the client that asked, with its state. authnSession's are this server's own
+		// callback and the state it sent the provider.
+		return redirectWithError(w, r, authzSession.RedirectURI, authzSession.State, Error{
+			Code:        upstream,
 			Description: query.Get("error_description"),
 		})
 	}
 
-	// retrieve PKCE code from query
-	code := query.Get("code")
-	if code == "" {
-		return oauthErr(http.StatusBadRequest, "invalid_request", "missing code")
-	}
+	slog.Info("OP callback", "issuer", authnSession.Issuer, "session_ref", sessionRef(authzSession.ID))
 
-	slog.Info("OP callback", "s", s, "authnSessiom", authnSession, "authzSession", authzSession)
-
-	identityIssuer, err := s.GetOpenidClient(authnSession.Issuer)
+	identityIssuer, err := s.GetOpenidClient(r.Context(), authnSession.Issuer)
 	if err != nil {
-		return oauthErr(http.StatusBadRequest, "invalid_request", err.Error())
+		slog.Warn("no client for the login's OpenID Provider", "issuer", authnSession.Issuer, "error", err)
+		return toClient(oauthErr(http.StatusServiceUnavailable, "temporarily_unavailable", "the identity provider is not available"))
 	}
 
 	// exchange code for tokens with the OP
-	tokenResponse, err := identityIssuer.ExchangeForIdentity(
-		code,
-		authnSession.Verifier,
-		oidc.WithAlternateRedirectURI(authnSession.RedirectURI),
-	)
+	tokenResponse, err := identityIssuer.Exchange(r.Context(), openid.Login{
+		Nonce:       authnSession.Nonce,
+		Verifier:    authnSession.Verifier,
+		RedirectURI: authnSession.RedirectURI,
+	}, code)
 	if err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Errorf("unable to exchange code: %w", err).Error())
+		return toClient(serverError("unable to complete the login at the identity provider", err, code, state, authnSession.Nonce, authnSession.Verifier))
 	}
 
 	authnSession.TokenResponse = tokenResponse
@@ -296,23 +321,20 @@ func (s *Server) OPCallbackEndpoint(w http.ResponseWriter, r *http.Request) erro
 		Nonce string `json:"nonce"`
 	}
 	if err := tokenResponse.Claims(&idClaims); err != nil || idClaims.Nonce != authnSession.Nonce {
-		return oauthErr(http.StatusBadRequest, "invalid_request", "id_token nonce mismatch")
+		return toClient(oauthErr(http.StatusBadRequest, "access_denied", "the login could not be completed"))
 	}
 
-	if authzSession != nil {
-		authzSession.Code = generateNonce(64)
+	authzSession.Code = generateNonce(64)
 
-		if err := s.sessionStore.SaveAutzhServerSession(authzSession); err != nil {
-			return oauthErr(http.StatusInternalServerError, "server_error", fmt.Errorf("unable to save session: %w", err).Error())
-		}
-
-		params := url.Values{}
-		params.Set("code", authzSession.Code)
-		params.Set("state", authzSession.State)
-
-		http.Redirect(w, r, authzSession.RedirectURI+"?"+params.Encode(), http.StatusFound) //nolint:gosec // the session's RedirectURI was matched exactly against the product's registered URIs at PAR
-		return nil
+	if err := s.sessionStore.SaveAutzhServerSession(authzSession); err != nil {
+		return toClient(serverError("unable to complete the login", err, authzSession.Code, state))
 	}
 
-	return writeJSON(w, http.StatusOK, tokenResponse)
+	params := url.Values{}
+	params.Set("code", authzSession.Code)
+	params.Set("state", authzSession.State)
+
+	// The session's RedirectURI was matched exactly against the product's registered URIs at PAR.
+	http.Redirect(w, r, authzSession.RedirectURI+"?"+params.Encode(), http.StatusFound)
+	return nil
 }

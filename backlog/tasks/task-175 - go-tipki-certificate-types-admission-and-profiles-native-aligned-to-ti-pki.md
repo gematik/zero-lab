@@ -1,10 +1,10 @@
 ---
 id: TASK-175
 title: 'go/tipki: certificate types, admission and profiles, native, aligned to ti-pki'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-02T06:07:00Z'
-updated_date: '2026-11-02T08:14:00Z'
+updated_date: '2026-11-02T20:13:00Z'
 labels:
   - go
   - pki
@@ -33,3 +33,9 @@ Maintainer, 2026-11-02: critical flows use the smallest possible Go-native libra
 
 2026-11-02: go/tipki/oid added, all 211 gemSpec_OID entries generated from ti-pki's table with the Go names of gempki, held equal by the corpus (PROF-031). ParseCertificate and ParsePEMCertificates back as in gempki, at the maintainer's request, so go/brainpool is now a library dependency.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+go/tipki reads certificate types, admission and profiles, aligned to ti-pki and held to it by shared corpora. Merged in #79.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -23,23 +23,25 @@ package oidf
 
 import (
 	"encoding/json"
+	"errors"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/go-jose/go-jose/v4"
+
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // NewJwkFromJSON parses a single JWK from its JSON form.
 func NewJwkFromJSON(data string) (*Jwk, error) {
-	key, err := jwk.ParseKey([]byte(data))
+	key, err := openid.ParseKey([]byte(data))
 	if err != nil {
 		return nil, err
 	}
 	return &Jwk{Key: key}, nil
 }
 
-// Jwk wraps a jwk.Key, an interface the encoding packages cannot decode into, so that configuration can hold
-// a plain JWK.
+// Jwk holds one key, or none while Key is nil, in the form configuration reads and writes: a plain JWK.
 type Jwk struct {
-	Key jwk.Key
+	Key *jose.JSONWebKey
 }
 
 // MarshalJSON writes the key as a JWK (RFC 7517).
@@ -49,7 +51,7 @@ func (j *Jwk) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON parses a JWK and replaces the wrapped key.
 func (j *Jwk) UnmarshalJSON(data []byte) error {
-	key, err := jwk.ParseKey(data)
+	key, err := openid.ParseKey(data)
 	if err != nil {
 		return err
 	}
@@ -69,7 +71,7 @@ func (j *Jwk) UnmarshalYAML(unmarshal func(any) error) error {
 		return err
 	}
 
-	key, err := jwk.ParseKey(json)
+	key, err := openid.ParseKey(json)
 	if err != nil {
 		return err
 	}
@@ -79,17 +81,15 @@ func (j *Jwk) UnmarshalYAML(unmarshal func(any) error) error {
 
 // AsSet returns a key set holding only this key. It fails if no key is set.
 func (j *Jwk) AsSet() (*Jwks, error) {
-	keys := jwk.NewSet()
-	if err := keys.AddKey(j.Key); err != nil {
-		return nil, err
+	if j.Key == nil {
+		return nil, errors.New("no key set")
 	}
-	return &Jwks{Keys: keys}, nil
+	return &Jwks{Keys: &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{*j.Key}}}, nil
 }
 
-// Jwks wraps a jwk.Set, an interface the encoding packages cannot decode into, so that it marshals to and from
-// a JWK Set in JSON.
+// Jwks holds a key set in the form entity statements carry it, a JWK Set in JSON.
 type Jwks struct {
-	Keys jwk.Set
+	Keys *jose.JSONWebKeySet
 }
 
 // MarshalJSON writes the keys as a JWK Set (RFC 7517 §5).
@@ -97,9 +97,10 @@ func (j *Jwks) MarshalJSON() ([]byte, error) {
 	return json.Marshal(j.Keys)
 }
 
-// UnmarshalJSON parses a JWK Set and replaces the wrapped set.
+// UnmarshalJSON parses a JWK Set and replaces the wrapped set. As [openid.ParseKeySet] leaves out entries it cannot
+// use, marshalling a set read from elsewhere does not reproduce those.
 func (j *Jwks) UnmarshalJSON(data []byte) error {
-	keys, err := jwk.Parse(data)
+	keys, err := openid.ParseKeySet(data)
 	if err != nil {
 		return err
 	}

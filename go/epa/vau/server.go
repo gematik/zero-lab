@@ -434,7 +434,7 @@ func (s *Server) DecryptNestedRequestData(channelState *ChannelState, r *http.Re
 		return nil, fmt.Errorf("reading request: %w", err)
 	}
 
-	if len(data) < 43 {
+	if len(data) < minEncryptedLength {
 		return nil, fmt.Errorf("invalid data length: %d", len(data))
 	}
 	header := data[:43]

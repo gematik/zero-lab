@@ -39,6 +39,42 @@ func newTestPortal(t *testing.T, proxyInfos []*epa.ProxyInfo) *Portal {
 	return portal
 }
 
+func TestFirstPageHasThePlaceForTheTIServices(t *testing.T) {
+	portal := newTestPortal(t, nil)
+	rec := httptest.NewRecorder()
+	portal.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if !strings.Contains(rec.Body.String(), "data-ti-probe") {
+		t.Error("first page has no element for the probe results")
+	}
+
+	rec = httptest.NewRecorder()
+	portal.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/static/portal.js", nil))
+	if !strings.Contains(rec.Body.String(), "/api/probe") {
+		t.Error("portal.js does not load the probe results")
+	}
+}
+
+func TestFirstPageShowsTIServicesAndProxiesInOneTwoColumnStatus(t *testing.T) {
+	portal := newTestPortal(t, nil)
+	rec := httptest.NewRecorder()
+	portal.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	body := rec.Body.String()
+	for _, want := range []string{"status-console", "data-ti-probe", "data-status-brief", "data-status-clock"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("first page misses %q", want)
+		}
+	}
+
+	rec = httptest.NewRecorder()
+	portal.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/static/portal.js", nil))
+	script := rec.Body.String()
+	for _, want := range []string{"'IBM'", "'RISE'", "'EY'", "visibilitychange"} {
+		if !strings.Contains(script, want) {
+			t.Errorf("portal.js misses %s", want)
+		}
+	}
+}
+
 func TestPortalPages(t *testing.T) {
 	proxyInfos := []*epa.ProxyInfo{
 		{

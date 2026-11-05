@@ -1,0 +1,33 @@
+{
+ "jwks": {
+  "keys": [
+   {
+    "alg": "ES256",
+    "crv": "P-256",
+    "kid": "legacy-kid",
+    "kty": "EC",
+    "use": "sig",
+    "x": "nzfuwPTABFFjdJ0CwkbJsfm5LidkFs_vNPcxzzK6urA",
+    "y": "gCbuqVqGszFAVVDtixEgX2rV7iL3FiQ-UjvHlCcwq7Y"
+   }
+  ]
+ },
+ "access_token": "eyJhbGciOiJFUzI1NiIsImtpZCI6ImxlZ2FjeS1raWQiLCJ0eXAiOiJKV1QifQ.eyJhdWQiOlsiaHR0cHM6Ly9ycy5leGFtcGxlIl0sImNsaWVudF9pZCI6InRlc3QtY2xpZW50IiwiY25mIjp7ImprdCI6ImxlZ2FjeS1qa3QifSwiZXhwIjo0OTQ3MjU0NDI3LCJpYXQiOjE3OTM2NTQ0MjcsImp0aSI6ImxlZ2FjeS1zZXNzaW9uIiwic2NvcGUiOiJhIGIiLCJzdWIiOiJ0ZXN0LWNsaWVudCJ9.BZdCWR2hZvQUR22QnVluzlYdAwOwhf3kTekJ7Tlf1UWpgKyHslkONBZxZO1EV7afXGy6MbJ1L0Gb0lj27e6R-A",
+ "jkt": "legacy-jkt",
+ "snapshot_key_b64": "JCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQ=",
+ "snapshot": "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..73evkgiQe_h8yoWY.GXjfGJ6pS0P3xH9U-1_uXMKGSCTko2n7qvyVfgAUWSRHGClXiATny3oawVCRXhhIfe66k-aQLry1UKHgpp_nC8G6mSigozwJKiRvPPd0-IgLkHfU1G4T8AI67WhUJKv4ITXlbVNvB3JyGoHXpUqxNhYoc3NGYiH31OqTdliBfp6Kg311uT-owJ-4gFR8_LBxJZXEkkik9UPVzUp67M_BkvkgsPdPVOHTmV7fSC5al7Sz2W76fWqPiK_CPFifcDg.MAx8NuKo0hI_Hz-2A2O1JQ",
+ "sid": "sid-legacy",
+ "identity": {
+  "email": "\u00e4@example.com",
+  "name": "Test <User>",
+  "nested": {
+   "l": [
+    "a",
+    true
+   ],
+   "n": 1.5
+  },
+  "scope": "read write",
+  "sub": "X110000001"
+ }
+}

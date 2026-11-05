@@ -27,37 +27,30 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/go-jose/go-jose/v4"
 )
 
 // GenerateRandomJwk returns a new P-256 private key as a JWK whose kid is its ThumbprintS256.
-func GenerateRandomJwk() (jwk.Key, error) {
+func GenerateRandomJwk() (*jose.JSONWebKey, error) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("could not generate key: %w", err)
 	}
-	jwkKey, err := jwk.Import(privateKey)
+	key := &jose.JSONWebKey{Key: privateKey}
+	t, err := ThumbprintS256(key)
 	if err != nil {
-		return nil, fmt.Errorf("could not create jwk from key: %w", err)
+		return nil, err
 	}
-
-	t, err := ThumbprintS256(jwkKey)
-	if err != nil {
-		return nil, fmt.Errorf("could not create thumbprint: %w", err)
-	}
-
-	if err := jwkKey.Set(jwk.KeyIDKey, t); err != nil {
-		return nil, fmt.Errorf("could not set key id: %w", err)
-	}
-
-	return jwkKey, nil
+	key.KeyID = t
+	return key, nil
 }
 
 // ThumbprintS256 returns the base64url-encoded SHA-256 JWK thumbprint of a key (RFC 7638).
-func ThumbprintS256(jwk jwk.Key) (string, error) {
-	thumbprint, err := jwk.Thumbprint(crypto.SHA256)
+func ThumbprintS256(key *jose.JSONWebKey) (string, error) {
+	thumbprint, err := key.Thumbprint(crypto.SHA256)
 	if err != nil {
 		return "", fmt.Errorf("could not create thumbprint: %w", err)
 	}
@@ -65,36 +58,38 @@ func ThumbprintS256(jwk jwk.Key) (string, error) {
 }
 
 // GenerateJwkSet returns a set of num keys from GenerateRandomJwk. The set holds the private keys.
-func GenerateJwkSet(num int) (jwk.Set, error) {
-	set := jwk.NewSet()
+func GenerateJwkSet(num int) (*jose.JSONWebKeySet, error) {
+	set := &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{}}
 	for range num {
 		key, err := GenerateRandomJwk()
 		if err != nil {
 			return nil, fmt.Errorf("could not generate key: %w", err)
 		}
-		if err := set.AddKey(key); err != nil {
-			return nil, fmt.Errorf("could not add key: %w", err)
-		}
+		set.Keys = append(set.Keys, *key)
 	}
 
 	return set, nil
 }
 
+// PublicKey returns the public part of key. A symmetric key has none, and it is an error: it must not end up in a
+// document meant to be public.
+func PublicKey(key *jose.JSONWebKey) (*jose.JSONWebKey, error) {
+	public := key.Public()
+	if !public.Valid() {
+		return nil, errors.New("the key has no public part")
+	}
+	return &public, nil
+}
+
 // PublicJwkSet returns a set with the public part of every key in set.
-func PublicJwkSet(set jwk.Set) (jwk.Set, error) {
-	publicSet := jwk.NewSet()
-	for i := 0; i < set.Len(); i++ {
-		key, ok := set.Key(i)
-		if !ok {
-			continue
-		}
-		publicKey, err := key.PublicKey()
+func PublicJwkSet(set *jose.JSONWebKeySet) (*jose.JSONWebKeySet, error) {
+	publicSet := &jose.JSONWebKeySet{Keys: make([]jose.JSONWebKey, 0, len(set.Keys))}
+	for i := range set.Keys {
+		public, err := PublicKey(&set.Keys[i])
 		if err != nil {
 			return nil, fmt.Errorf("could not get public key: %w", err)
 		}
-		if err := publicSet.AddKey(publicKey); err != nil {
-			return nil, fmt.Errorf("could not add public key: %w", err)
-		}
+		publicSet.Keys = append(publicSet.Keys, *public)
 	}
 	return publicSet, nil
 }

@@ -24,31 +24,31 @@ package authzserver
 import (
 	"time"
 
-	"github.com/gematik/zero-lab/go/oauth/oidc"
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // Session is the state of one authorization, from the pushed request to the last token refresh.
 // RefreshToken holds the hash of the current refresh token, not the token.
 type Session struct {
-	ID                  string                   `json:"id"`
-	CreatedAt           time.Time                `json:"created_at"`
-	ExpiresAt           time.Time                `json:"expires_at"`
-	AccessTokenDuration time.Duration            `json:"access_token_duration"`
-	Audience            []string                 `json:"audience"`
-	ClientID            string                   `json:"client_id"`
-	RedirectURI         string                   `json:"redirect_uri"`
-	CodeChallenge       string                   `json:"code_challenge"`
-	CodeChallengeMethod string                   `json:"code_challenge_method"`
-	State               string                   `json:"state"`
-	Scopes              []string                 `json:"scopes"`
-	IDPIss              string                   `json:"idp_iss"`
-	RequestURI          string                   `json:"request_uri"`
-	AuthnClientSession  *oidc.AuthnClientSession `json:"authn_client_session"`
-	Code                string                   `json:"code"`
-	RefreshToken        string                   `json:"refresh_token"`
-	RefreshCount        int                      `json:"refresh_count"`
-	LastRefreshAt       time.Time                `json:"last_refresh_at"`
-	DPoPThumbprint      string                   `json:"dpop_thumbprint"`
+	ID                  string                     `json:"id"`
+	CreatedAt           time.Time                  `json:"created_at"`
+	ExpiresAt           time.Time                  `json:"expires_at"`
+	AccessTokenDuration time.Duration              `json:"access_token_duration"`
+	Audience            []string                   `json:"audience"`
+	ClientID            string                     `json:"client_id"`
+	RedirectURI         string                     `json:"redirect_uri"`
+	CodeChallenge       string                     `json:"code_challenge"`
+	CodeChallengeMethod string                     `json:"code_challenge_method"`
+	State               string                     `json:"state"`
+	Scopes              []string                   `json:"scopes"`
+	IDPIss              string                     `json:"idp_iss"`
+	RequestURI          string                     `json:"request_uri"`
+	AuthnClientSession  *openid.AuthnClientSession `json:"authn_client_session"`
+	Code                string                     `json:"code"`
+	RefreshToken        string                     `json:"refresh_token"`
+	RefreshCount        int                        `json:"refresh_count"`
+	LastRefreshAt       time.Time                  `json:"last_refresh_at"`
+	DPoPThumbprint      string                     `json:"dpop_thumbprint"`
 }
 
 // SessionStore persists sessions and finds them by their lookup values. The lookup by request_uri

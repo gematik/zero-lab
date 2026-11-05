@@ -32,10 +32,8 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwt"
-
 	"github.com/gematik/zero-lab/go/dpop"
+	"github.com/gematik/zero-lab/go/nonce"
 )
 
 // Grant types the token endpoint accepts (RFC 6749 §1.3).
@@ -81,6 +79,15 @@ func (s *Server) TokenEndpoint(w http.ResponseWriter, r *http.Request) error {
 	}
 }
 
+// clientAuthFailed is all a client learns of a rejected assertion: which clients exist and what the
+// verification found stay in the log.
+const clientAuthFailed = "client authentication failed"
+
+func clientAuthError(err error) *Error {
+	slog.Warn(clientAuthFailed, "error", err)
+	return oauthErr(http.StatusUnauthorized, "invalid_client", clientAuthFailed)
+}
+
 // verifyClient authenticates the caller via private_key_jwt (RFC 7523 §2.2): the request carries a
 // client_assertion JWT whose signature is verified against the calling client's registered public
 // JWK. It also redeems the assertion's one-time nonce and returns the validated claims (for the
@@ -101,32 +108,35 @@ func (s *Server) verifyClient(r *http.Request) (*Client, *ClientAssertionClaims,
 	// against that client's registered public JWK.
 	claims, err := parseClientAssertionClaims(assertion)
 	if err != nil {
-		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", err.Error())
+		return nil, nil, clientAuthError(err)
 	}
 	client, err := s.clientsRegistry.GetClient(claims.Sub)
 	if err != nil {
-		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", err.Error())
+		return nil, nil, clientAuthError(err)
 	}
 
-	if _, err := jwt.Parse([]byte(assertion),
-		jwt.WithKey(jwa.ES256(), client.Key()),
-		jwt.WithAudience(s.Metadata.Issuer),
-		jwt.WithAcceptableSkew(time.Minute),
-		jwt.WithValidate(true),
-	); err != nil {
-		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", fmt.Sprintf("invalid client_assertion: %v", err))
+	if err := verifyClientAssertion(assertion, client.Key(), s.Metadata.Issuer, time.Now()); err != nil {
+		return nil, nil, clientAuthError(err)
 	}
 
 	if err := claims.Validate(); err != nil {
-		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", fmt.Sprintf("invalid client_assertion claims: %v", err))
+		return nil, nil, clientAuthError(err)
 	}
 	if claims.Iss != client.ClientID || claims.Sub != client.ClientID {
 		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", "iss and sub must equal client_id")
 	}
 
 	// Redeem the one-time nonce (freshness / anti-replay).
-	if err := s.nonceService.Redeem(claims.Nonce); err != nil {
-		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", fmt.Sprintf("invalid nonce: %v", err))
+	switch err := s.nonceService.Redeem(r.Context(), claims.Nonce); {
+	case err == nil:
+	case errors.Is(err, nonce.ErrReplayed):
+		slog.Warn("client assertion with a nonce that was used before", "client_id", client.ClientID)
+		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", "invalid nonce")
+	case errors.Is(err, nonce.ErrInvalid):
+		return nil, nil, oauthErr(http.StatusUnauthorized, "invalid_client", "invalid nonce")
+	default:
+		slog.Error("nonce could not be recorded", "error", err)
+		return nil, nil, oauthErr(http.StatusInternalServerError, "server_error", "nonce could not be checked")
 	}
 
 	return client, claims, nil
@@ -216,11 +226,11 @@ func (s *Server) tokenEndpointClientCredentials(w http.ResponseWriter, r *http.R
 
 	response, err := s.issueOrRefreshTokens(session)
 	if err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to issue access token: %v", err))
+		return serverError("unable to issue the tokens", err)
 	}
 
 	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to save session: %v", err))
+		return serverError("unable to issue the tokens", err)
 	}
 
 	return writeJSON(w, http.StatusOK, response)
@@ -254,8 +264,11 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 	slog.Info("Token request", "redirect_uri", redirectURI, "client_id", client.ClientID)
 
 	session, err := s.sessionStore.GetAuthzServerSessionByCode(code)
+	if errors.Is(err, errSessionNotFound) {
+		return oauthErr(http.StatusBadRequest, "invalid_grant", "invalid or expired code")
+	}
 	if err != nil {
-		return oauthErr(http.StatusBadRequest, "invalid_request", fmt.Errorf("unable to get session: %w", err).Error())
+		return serverError("unable to redeem the code", err, code)
 	}
 
 	if session.ClientID != client.ClientID {
@@ -288,15 +301,15 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 
 	response, err := s.issueOrRefreshTokens(session)
 	if err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to issue access token: %v", err))
+		return serverError("unable to issue the tokens", err, code)
 	}
 
 	// Persist the rotated refresh token (and its index) so the session is refreshable.
 	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to save session: %v", err))
+		return serverError("unable to issue the tokens", err, code)
 	}
 
-	slog.Info("Token request: tokens issued", "client_id", client.ClientID, "session", session.ID)
+	slog.Info("Token request: tokens issued", "client_id", client.ClientID, "session_ref", sessionRef(session.ID))
 
 	return writeJSON(w, http.StatusOK, response)
 }
@@ -346,14 +359,14 @@ func (s *Server) tokenEndpointRefreshToken(w http.ResponseWriter, r *http.Reques
 
 	response, err := s.issueOrRefreshTokens(session) // rotates RefreshToken, re-binds via DPoPThumbprint
 	if err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to refresh tokens: %v", err))
+		return serverError("unable to refresh the tokens", err)
 	}
 	if err := s.sessionStore.SaveAutzhServerSession(session); err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", fmt.Sprintf("unable to save session: %v", err))
+		return serverError("unable to refresh the tokens", err)
 	}
 	// The session now indexes the NEW refresh hash; drop the rotated-out one so it stops resolving.
 	_ = s.sessionStore.DeleteRefreshIndex(refreshHash)
-	slog.Info("Token refreshed", "client", client.ClientID, "session", session.ID, "refresh_count", session.RefreshCount)
+	slog.Info("Token refreshed", "client", client.ClientID, "session_ref", sessionRef(session.ID), "refresh_count", session.RefreshCount)
 	return writeJSON(w, http.StatusOK, response)
 }
 
@@ -389,14 +402,7 @@ func (s *Server) issueOrRefreshTokens(session *Session) (*TokenResponse, error) 
 		}
 	}
 
-	accessJwt := jwt.New()
-	for name, value := range claims {
-		if err := accessJwt.Set(name, value); err != nil {
-			return nil, fmt.Errorf("unable to set access token claim %q: %w", name, err)
-		}
-	}
-
-	accessTokenBytes, err := s.signAccessToken(accessJwt)
+	accessTokenBytes, err := s.signAccessToken(claims)
 	if err != nil {
 		return nil, fmt.Errorf("unable to sign access token: %w", err)
 	}

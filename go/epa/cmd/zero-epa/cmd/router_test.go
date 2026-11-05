@@ -22,6 +22,9 @@
 package cmd
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -30,7 +33,57 @@ import (
 
 	"github.com/gematik/zero-lab/go/epa"
 	"github.com/gematik/zero-lab/go/epa/epatest"
+	"github.com/gematik/zero-lab/go/epa/ti"
 )
+
+// probeRunner answers `ti probe ENV`: ref has no tool behind it, every other environment
+// reports one service that fails, the way the tool does, with exit 1 and a report.
+type probeRunner struct{}
+
+func (probeRunner) Run(_ context.Context, _ []byte, args ...string) ([]byte, error) {
+	env := args[1]
+	if env == string(epa.EnvRef) {
+		return nil, errors.New("ti is gone")
+	}
+	return nil, &ti.Error{ExitCode: 1, Stdout: []byte(`{"schema":1,"environment":"` + env + `","duration_ms":5,
+		"counts":{"ok":0,"warn":0,"fail":1},
+		"access_paths":[{"access":"internet","available":false,"probes":1}],
+		"probes":[{"name":"catalog","access":"internet","status":"fail","detail":"timeout","duration_ms":3}]}`)}
+}
+
+func TestProbeAnswersPerEnvironmentOfTheProxies(t *testing.T) {
+	infos := []*epa.ProxyInfo{
+		{Name: "d1", Env: epa.EnvDev},
+		{Name: "d2", Env: epa.EnvDev},
+		{Name: "r1", Env: epa.EnvRef},
+	}
+	rec := httptest.NewRecorder()
+	probeHandler(ti.NewProber(probeRunner{}), infos).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/probe", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("a failed run must not be an HTTP error: %d %s", rec.Code, rec.Body)
+	}
+
+	var got []struct {
+		Environment string `json:"environment"`
+		Error       string `json:"error"`
+		Probes      []struct {
+			Name   string `json:"name"`
+			Status string `json:"status"`
+		} `json:"probes"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("%v: %s", err, rec.Body)
+	}
+	if len(got) != 2 {
+		t.Fatalf("want one entry per environment, in the proxies' order: %s", rec.Body)
+	}
+	if got[0].Environment != "dev" || got[0].Error != "" || len(got[0].Probes) != 1 || got[0].Probes[0].Status != "fail" {
+		t.Errorf("dev: %+v", got[0])
+	}
+	if got[1].Environment != "ref" || got[1].Error == "" || len(got[1].Probes) != 0 {
+		t.Errorf("ref: %+v", got[1])
+	}
+}
 
 func TestRouterPrecedence(t *testing.T) {
 	sf := &epa.SecurityFunctions{Identity: &epatest.Identity{
@@ -51,7 +104,7 @@ func TestRouterPrecedence(t *testing.T) {
 		AdmissionStatement: &epa.Admission{RegistrationNumber: "test"},
 	}}
 
-	e, err := buildRouter([]*epa.Proxy{proxy}, infos)
+	router, err := buildRouter([]*epa.Proxy{proxy}, infos, ti.NewProber(probeRunner{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +112,7 @@ func TestRouterPrecedence(t *testing.T) {
 	get := func(path string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
-		e.ServeHTTP(rec, req)
+		router.ServeHTTP(rec, req)
 		return rec
 	}
 
@@ -78,6 +131,9 @@ func TestRouterPrecedence(t *testing.T) {
 	}
 
 	// /api routes must win over the portal catch-all
+	if rec := get("/api/probe"); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"environment":"dev"`) {
+		t.Errorf("GET /api/probe: %d %q", rec.Code, rec.Body.String())
+	}
 	if rec := get("/api/proxies"); rec.Code != 200 || !strings.Contains(rec.Header().Get("Content-Type"), "json") {
 		t.Errorf("GET /api/proxies: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}

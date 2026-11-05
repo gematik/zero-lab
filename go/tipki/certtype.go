@@ -25,7 +25,6 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/gematik/zero-lab/go/tipki/oid"
@@ -68,13 +67,13 @@ const (
 // policy asserted, one role in the admission extension. An empty entry requires nothing.
 type TypeSpec struct {
 	KeyUsage    x509.KeyUsage
-	ExtKeyUsage []string
-	Policies    []string
-	RoleOIDs    []string
+	ExtKeyUsage []x509.OID
+	Policies    []x509.OID
+	RoleOIDs    []x509.OID
 }
 
 type typeEntry struct {
-	id   string
+	id   x509.OID
 	spec TypeSpec
 }
 
@@ -91,8 +90,8 @@ var typeTable = map[CertificateType]typeEntry{
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageContentCommitment,
 			ExtKeyUsage: nil,
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeEgkQES},
-			RoleOIDs:    []string{oid.ProfVersicherter},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeEgkQES},
+			RoleOIDs:    []x509.OID{oid.ProfVersicherter},
 		},
 	},
 	CertChSig: {
@@ -100,8 +99,8 @@ var typeTable = map[CertificateType]typeEntry{
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageContentCommitment,
 			ExtKeyUsage: nil,
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeEgkSIG},
-			RoleOIDs:    []string{oid.ProfVersicherter},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeEgkSIG},
+			RoleOIDs:    []x509.OID{oid.ProfVersicherter},
 		},
 	},
 	CertChEnc: {
@@ -109,8 +108,8 @@ var typeTable = map[CertificateType]typeEntry{
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageKeyAgreement,
 			ExtKeyUsage: nil,
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeEgkENC},
-			RoleOIDs:    []string{oid.ProfVersicherter},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeEgkENC},
+			RoleOIDs:    []x509.OID{oid.ProfVersicherter},
 		},
 	},
 	CertChEncv: {
@@ -118,8 +117,8 @@ var typeTable = map[CertificateType]typeEntry{
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageKeyAgreement,
 			ExtKeyUsage: nil,
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeEgkENCV},
-			RoleOIDs:    []string{oid.ProfVersicherter},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeEgkENCV},
+			RoleOIDs:    []x509.OID{oid.ProfVersicherter},
 		},
 	},
 	CertChAut: {
@@ -127,17 +126,17 @@ var typeTable = map[CertificateType]typeEntry{
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature,
 			ExtKeyUsage: nil,
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeEgkAUT},
-			RoleOIDs:    []string{oid.ProfVersicherter},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeEgkAUT},
+			RoleOIDs:    []x509.OID{oid.ProfVersicherter},
 		},
 	},
 	CertChAutn: {
 		id: oid.CertTypeEgkAUTN,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature,
-			ExtKeyUsage: []string{clientAuth},
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeEgkAUTN},
-			RoleOIDs:    []string{oid.ProfVersicherter},
+			ExtKeyUsage: []x509.OID{clientAuth},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeEgkAUTN},
+			RoleOIDs:    []x509.OID{oid.ProfVersicherter},
 		},
 	},
 	CertHpQes: {
@@ -145,7 +144,7 @@ var typeTable = map[CertificateType]typeEntry{
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageContentCommitment,
 			ExtKeyUsage: nil,
-			Policies:    []string{oid.PolicyHbaCP, oid.CertTypeHbaQES},
+			Policies:    []x509.OID{oid.PolicyHbaCP, oid.CertTypeHbaQES},
 			RoleOIDs:    oid.Professions,
 		},
 	},
@@ -153,8 +152,8 @@ var typeTable = map[CertificateType]typeEntry{
 		id: oid.CertTypeHbaAUT,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageKeyAgreement,
-			ExtKeyUsage: []string{clientAuth, emailProtection},
-			Policies:    []string{oid.PolicyHbaCP, oid.CertTypeHbaAUT},
+			ExtKeyUsage: []x509.OID{clientAuth, emailProtection},
+			Policies:    []x509.OID{oid.PolicyHbaCP, oid.CertTypeHbaAUT},
 			RoleOIDs:    oid.Professions,
 		},
 	},
@@ -163,7 +162,7 @@ var typeTable = map[CertificateType]typeEntry{
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageKeyAgreement,
 			ExtKeyUsage: nil,
-			Policies:    []string{oid.PolicyHbaCP, oid.CertTypeHbaENC},
+			Policies:    []x509.OID{oid.PolicyHbaCP, oid.CertTypeHbaENC},
 			RoleOIDs:    oid.Professions,
 		},
 	},
@@ -171,8 +170,8 @@ var typeTable = map[CertificateType]typeEntry{
 		id: oid.CertTypeSmcBAUT,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature,
-			ExtKeyUsage: []string{clientAuth},
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeSmcBAUT},
+			ExtKeyUsage: []x509.OID{clientAuth},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeSmcBAUT},
 			RoleOIDs:    oid.Institutions,
 		},
 	},
@@ -181,7 +180,7 @@ var typeTable = map[CertificateType]typeEntry{
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageKeyAgreement,
 			ExtKeyUsage: nil,
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeSmcBENC},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeSmcBENC},
 			RoleOIDs:    oid.Institutions,
 		},
 	},
@@ -190,7 +189,7 @@ var typeTable = map[CertificateType]typeEntry{
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageContentCommitment,
 			ExtKeyUsage: nil,
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeSmcBOSIG},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeSmcBOSIG},
 			RoleOIDs:    oid.Institutions,
 		},
 	},
@@ -198,8 +197,8 @@ var typeTable = map[CertificateType]typeEntry{
 		id: oid.CertTypeFdTLSS,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature,
-			ExtKeyUsage: []string{serverAuth},
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeFdTLSS},
+			ExtKeyUsage: []x509.OID{serverAuth},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeFdTLSS},
 			RoleOIDs:    nil,
 		},
 	},
@@ -207,8 +206,8 @@ var typeTable = map[CertificateType]typeEntry{
 		id: oid.CertTypeFdTLSC,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature,
-			ExtKeyUsage: []string{clientAuth},
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeFdTLSC},
+			ExtKeyUsage: []x509.OID{clientAuth},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeFdTLSC},
 			RoleOIDs:    nil,
 		},
 	},
@@ -217,7 +216,7 @@ var typeTable = map[CertificateType]typeEntry{
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature,
 			ExtKeyUsage: nil,
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeFdSIG},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeFdSIG},
 			RoleOIDs:    nil,
 		},
 	},
@@ -226,7 +225,7 @@ var typeTable = map[CertificateType]typeEntry{
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageKeyAgreement,
 			ExtKeyUsage: nil,
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeFdENC},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeFdENC},
 			RoleOIDs:    nil,
 		},
 	},
@@ -235,7 +234,7 @@ var typeTable = map[CertificateType]typeEntry{
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature,
 			ExtKeyUsage: nil,
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeFdAUT},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeFdAUT},
 			RoleOIDs:    nil,
 		},
 	},
@@ -244,7 +243,7 @@ var typeTable = map[CertificateType]typeEntry{
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageContentCommitment,
 			ExtKeyUsage: nil,
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeFdOSIG},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeFdOSIG},
 			RoleOIDs:    nil,
 		},
 	},
@@ -252,8 +251,8 @@ var typeTable = map[CertificateType]typeEntry{
 		id: oid.CertTypeZdTLSS,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageDigitalSignature,
-			ExtKeyUsage: []string{serverAuth},
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeZdTLSS},
+			ExtKeyUsage: []x509.OID{serverAuth},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeZdTLSS},
 			RoleOIDs:    nil,
 		},
 	},
@@ -262,7 +261,7 @@ var typeTable = map[CertificateType]typeEntry{
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageContentCommitment,
 			ExtKeyUsage: nil,
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeZdSIG},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeZdSIG},
 			RoleOIDs:    nil,
 		},
 	},
@@ -270,18 +269,18 @@ var typeTable = map[CertificateType]typeEntry{
 		id: oid.CertTypeHskSIG,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageContentCommitment,
-			ExtKeyUsage: []string{clientAuth, serverAuth},
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeHskSIG},
-			RoleOIDs:    []string{oid.TechRoleHSK},
+			ExtKeyUsage: []x509.OID{clientAuth, serverAuth},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeHskSIG},
+			RoleOIDs:    []x509.OID{oid.TechRoleHSK},
 		},
 	},
 	CertHskEnc: {
 		id: oid.CertTypeHskENC,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageKeyAgreement,
-			ExtKeyUsage: []string{clientAuth, serverAuth},
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeHskENC},
-			RoleOIDs:    []string{oid.TechRoleHSK},
+			ExtKeyUsage: []x509.OID{clientAuth, serverAuth},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeHskENC},
+			RoleOIDs:    []x509.OID{oid.TechRoleHSK},
 		},
 	},
 	CertGemVer: {
@@ -289,7 +288,7 @@ var typeTable = map[CertificateType]typeEntry{
 		spec: TypeSpec{
 			KeyUsage:    0,
 			ExtKeyUsage: nil,
-			Policies:    []string{oid.PolicyGemOrCP, oid.CertTypeGemVER},
+			Policies:    []x509.OID{oid.PolicyGemOrCP, oid.CertTypeGemVER},
 			RoleOIDs:    nil,
 		},
 	},
@@ -297,15 +296,15 @@ var typeTable = map[CertificateType]typeEntry{
 		id: oid.PolicyGemTSLSigner,
 		spec: TypeSpec{
 			KeyUsage:    x509.KeyUsageContentCommitment,
-			ExtKeyUsage: []string{tslSigning},
-			Policies:    []string{oid.PolicyGemTSLSigner},
+			ExtKeyUsage: []x509.OID{tslSigning},
+			Policies:    []x509.OID{oid.PolicyGemTSLSigner},
 			RoleOIDs:    nil,
 		},
 	},
 }
 
 // OID is the type's Tab_PKI_405 identifier; for C.TSL.SIG, which has none, the policy identifying it.
-func (t CertificateType) OID() string { return typeTable[t].id }
+func (t CertificateType) OID() x509.OID { return typeTable[t].id }
 
 // Spec is the baseline of the type.
 func (t CertificateType) Spec() TypeSpec { return typeTable[t].spec }
@@ -330,9 +329,9 @@ func ParseCertificateType(name string) (CertificateType, error) {
 	return "", fmt.Errorf("tipki: unknown certificate type %q", name)
 }
 
-func typeByOID(id string) (CertificateType, bool) {
+func typeByOID(id x509.OID) (CertificateType, bool) {
 	for _, t := range AllCertificateTypes() {
-		if t.OID() == id {
+		if t.OID().Equal(id) {
 			return t, true
 		}
 	}
@@ -348,7 +347,7 @@ func typeByOID(id string) (CertificateType, bool) {
 // with the same admission and key usage, so those stay undecided (PROF-002).
 func DetectCertificateType(cert *x509.Certificate) (CertificateType, bool) {
 	for _, policy := range cert.Policies {
-		if t, ok := typeByOID(policy.String()); ok {
+		if t, ok := typeByOID(policy); ok {
 			return t, true
 		}
 	}
@@ -368,11 +367,11 @@ func typeFromAdmission(cert *x509.Certificate) (CertificateType, bool) {
 	family := 0
 	for _, role := range admission.ProfessionOIDs {
 		switch {
-		case role == oid.ProfVersicherter:
+		case role.Equal(oid.ProfVersicherter):
 			family = egk
-		case slices.Contains(oid.Institutions, role):
+		case containsOID(oid.Institutions, role):
 			family = smcb
-		case slices.Contains(oid.Professions, role):
+		case containsOID(oid.Professions, role):
 			family = hba
 		}
 		if family != 0 {
@@ -414,18 +413,14 @@ func typeFromAdmission(cert *x509.Certificate) (CertificateType, bool) {
 
 // extKeyUsages reads the extension itself: crypto/x509 folds what it does not know, such as the
 // TSL signing purpose, into a separate list.
-func extKeyUsages(cert *x509.Certificate) []string {
+func extKeyUsages(cert *x509.Certificate) []asn1.ObjectIdentifier {
 	for _, ext := range cert.Extensions {
-		if ext.Id.String() != extKeyUsageExtension {
+		if !extKeyUsageExtension.EqualASN1OID(ext.Id) {
 			continue
 		}
-		var oids []asn1.ObjectIdentifier
-		if _, err := asn1.Unmarshal(ext.Value, &oids); err != nil {
+		var usages []asn1.ObjectIdentifier
+		if _, err := asn1.Unmarshal(ext.Value, &usages); err != nil {
 			return nil
-		}
-		usages := make([]string, len(oids))
-		for i, id := range oids {
-			usages[i] = id.String()
 		}
 		return usages
 	}

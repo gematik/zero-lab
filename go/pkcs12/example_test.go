@@ -43,7 +43,7 @@ func ExampleEncode() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("version:", pfx.Version, "MAC:", pfx.MacData.Mac.Algorithm.Algorithm.Equal(pkcs12.OIDSHA256))
+	fmt.Println("version:", pfx.Version, "MAC:", pkcs12.OIDSHA256.EqualASN1OID(pfx.MacData.Mac.Algorithm.Algorithm))
 	// Output: version: 3 MAC: true
 }
 

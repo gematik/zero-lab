@@ -93,7 +93,7 @@ func tamperedCopy(t *testing.T, cert *x509.Certificate) *x509.Certificate {
 func codes(findings []Finding) []string {
 	out := []string{}
 	for _, finding := range findings {
-		out = append(out, finding.Code+"|"+finding.Subject)
+		out = append(out, string(finding.Code)+"|"+finding.Subject)
 	}
 	return out
 }

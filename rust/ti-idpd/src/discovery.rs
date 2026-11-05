@@ -109,7 +109,7 @@ pub fn request(idp: &Idp) -> Request {
 /// [`Error::Idp`] or [`Error::Status`] for a non-200; [`Error::Jose`] if the JWS does
 /// not parse under the TI profile or does not verify; [`Error::Malformed`] for a
 /// payload that is not the metadata.
-pub fn parse(response: &Response, now: u64) -> Result<Discovery, Error> {
+pub fn parse(idp: &Idp, response: &Response, now: u64) -> Result<Discovery, Error> {
     expect_ok("discovery document", response)?;
     let token = std::str::from_utf8(&response.body)
         .map_err(|e| Error::malformed("discovery document", e))?
@@ -140,6 +140,18 @@ pub fn parse(response: &Response, now: u64) -> Result<Discovery, Error> {
         .map_err(Error::jose("discovery document validity"))?;
     let metadata: Metadata = serde_json::from_slice(verified.payload())
         .map_err(|e| Error::malformed("discovery document", e))?;
+    // The signature says who wrote the document, not that this is the IDP asked for: another
+    // IDP's valid document must not be taken for this one.
+    if metadata.issuer.trim_end_matches('/') != idp.base_url() {
+        return Err(Error::malformed(
+            "discovery document",
+            format!(
+                "names the issuer {}, asked was {}",
+                metadata.issuer,
+                idp.base_url()
+            ),
+        ));
+    }
     Ok(Discovery {
         metadata,
         signer_der: leaf.clone(),

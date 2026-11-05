@@ -28,6 +28,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/gematik/zero-lab/go/kv"
@@ -49,11 +50,29 @@ func newKVSessionStore(store kv.Store, defaultTTL time.Duration) *kvSessionStore
 
 var errSessionNotFound = errors.New("session not found")
 
+// asInvalidSession makes a record that does not open a session that does not exist, for the client: the client
+// can do nothing about it but start again, and retrying must not end in a server error. It logs at error level,
+// since it can mean tampering with the store (server rule 14).
+func asInvalidSession(err error) error {
+	if errors.Is(err, kv.ErrIntegrity) {
+		slog.Error("authorization session record failed its integrity check, treating it as absent", "error", err)
+		return errSessionNotFound
+	}
+	return err
+}
+
 func asSessionKey(id string) string    { return "as:session:" + id }
-func asCodeKey(code string) string     { return "as:code:" + code }
-func asAuthnKey(state string) string   { return "as:authn:" + state }
-func asRequriKey(uri string) string    { return "as:requri:" + uri }
+func asCodeKey(code string) string     { return "as:code:" + indexHash(code) }
+func asAuthnKey(state string) string   { return "as:authn:" + indexHash(state) }
+func asRequriKey(uri string) string    { return "as:requri:" + indexHash(uri) }
 func asRefreshKey(token string) string { return "as:refresh:" + token }
+
+// indexHash keeps a secret out of a key, which a sealed store leaves in clear (server rule 10, "keyed by a
+// hash"). The values are long and random, so a key adds nothing against a preimage search. A refresh
+// token's index needs none of this: it holds [hashRefreshToken] already.
+func indexHash(secret string) string {
+	return hashRefreshToken(secret)
+}
 
 // hashRefreshToken maps a raw refresh token to its stored form. Only the hash is persisted (in the session
 // record and the as:refresh index), so a rogue storage admin reading the kv learns hashes, not replayable
@@ -77,7 +96,7 @@ func (s *kvSessionStore) ttl(sess *Session) time.Duration {
 
 func (s *kvSessionStore) SaveAutzhServerSession(session *Session) error {
 	ctx := context.Background()
-	record, err := json.Marshal(session) //nolint:gosec // TASK-178: the record holds tokens and verifiers unencrypted
+	record, err := json.Marshal(session) //nolint:gosec // the command seals a persistent store: zero-pdp refuses to start without the key
 	if err != nil {
 		return fmt.Errorf("marshal session: %w", err)
 	}
@@ -109,7 +128,7 @@ func (s *kvSessionStore) SaveAutzhServerSession(session *Session) error {
 func (s *kvSessionStore) GetAuthzServerSessionByID(id string) (*Session, error) {
 	data, found, err := s.store.Get(context.Background(), asSessionKey(id))
 	if err != nil {
-		return nil, err
+		return nil, asInvalidSession(err)
 	}
 	if !found {
 		return nil, errSessionNotFound
@@ -124,7 +143,7 @@ func (s *kvSessionStore) GetAuthzServerSessionByID(id string) (*Session, error) 
 // resolveIndex reads an index key (holding a session id) and returns the referenced session.
 func (s *kvSessionStore) resolveIndex(idData []byte, found bool, err error) (*Session, error) {
 	if err != nil {
-		return nil, err
+		return nil, asInvalidSession(err)
 	}
 	if !found {
 		return nil, errSessionNotFound
@@ -136,8 +155,10 @@ func (s *kvSessionStore) resolveIndex(idData []byte, found bool, err error) (*Se
 	return s.GetAuthzServerSessionByID(id)
 }
 
+// GetAuthzServerSessionByAuthnState consumes the state index (Take) so the state sent to an OpenID provider
+// answers one callback: a replay with another code resolves to not-found and cannot overwrite the code.
 func (s *kvSessionStore) GetAuthzServerSessionByAuthnState(authnState string) (*Session, error) {
-	v, found, err := s.store.Get(context.Background(), asAuthnKey(authnState))
+	v, found, err := s.store.Take(context.Background(), asAuthnKey(authnState))
 	return s.resolveIndex(v, found, err)
 }
 

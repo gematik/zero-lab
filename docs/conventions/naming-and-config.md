@@ -11,6 +11,11 @@
 - Tests are named after the requirement they prove
   ([testing](../design/testing.md#tests-name-the-requirement-they-prove)).
 
+- A Go module and its Rust crate share a name, without the `ti-` prefix: `go/idpd` and
+  `ti-idpd`, `go/tipki` and `ti-pki`, `go/pkcs12` and `ti-pkcs12`. So do what an operator sees
+  of it: `idpd:` in YAML, `PEP_IDPD_*`, `/idpd-callback`. `go/brainpool` keeps its name, being
+  wider than `jwz-brainpool`; `go/dpop`, `go/openid`, `go/oidf` have no crate yet.
+
 ## Environment variables
 
 - Prefixed by the component that reads them: `ZERO_PDP_…`, `PEP_…`, `EPA_…`, `TI_…`,

@@ -22,10 +22,8 @@
 package authzserver
 
 import (
-	"fmt"
+	"context"
 	"net/http"
-
-	"github.com/gematik/zero-lab/go/gemidp"
 )
 
 // OpenidProviderInfo represents the information about an OpenID Provider
@@ -37,45 +35,23 @@ type OpenidProviderInfo struct {
 }
 
 // OpenidProvidersEndpoint serves the list of OpenID Providers supported by the server
-func (s *Server) OpenidProvidersEndpoint(w http.ResponseWriter, _ *http.Request) error {
-	providers, err := s.OpenidProviders()
+func (s *Server) OpenidProvidersEndpoint(w http.ResponseWriter, r *http.Request) error {
+	providers, err := s.OpenidProviders(r.Context())
 	if err != nil {
-		return oauthErr(http.StatusInternalServerError, "server_error", err.Error())
+		return serverError("unable to list the identity providers", err)
 	}
 	return writeJSON(w, http.StatusOK, providers)
 }
 
 // OpenidProviders returns the list of OpenID Providers supported by the server
-func (s *Server) OpenidProviders() ([]OpenidProviderInfo, error) {
-	providers := make([]OpenidProviderInfo, 0, len(s.openidProviders))
-	for _, op := range s.openidProviders {
-		info := OpenidProviderInfo{
-			Issuer:  op.Issuer(),
-			LogoURI: op.LogoURI(),
-			Name:    op.Name(),
-		}
-		switch op.(type) {
-		case *gemidp.Client:
-			info.Type = "gemidp"
-		default:
-			info.Type = "oidc"
-		}
-		providers = append(providers, info)
+func (s *Server) OpenidProviders(ctx context.Context) ([]OpenidProviderInfo, error) {
+	infos, err := s.providers.Providers(ctx)
+	if err != nil {
+		return nil, err
 	}
-	if s.oidfRelyingParty != nil {
-		idps, err := s.oidfRelyingParty.Federation().FetchIdpList()
-		if err != nil {
-			return nil, fmt.Errorf("fetching idp list from federation: %w", err)
-		}
-		for _, op := range idps {
-			providers = append(providers, OpenidProviderInfo{
-				Issuer:  op.Issuer,
-				LogoURI: op.LogoURI,
-				Name:    op.OrganizationName,
-				Type:    "oidf",
-			})
-		}
+	list := make([]OpenidProviderInfo, 0, len(infos))
+	for _, info := range infos {
+		list = append(list, OpenidProviderInfo{Issuer: info.Issuer, LogoURI: info.LogoURI, Name: info.Name, Type: info.Type})
 	}
-
-	return providers, nil
+	return list, nil
 }

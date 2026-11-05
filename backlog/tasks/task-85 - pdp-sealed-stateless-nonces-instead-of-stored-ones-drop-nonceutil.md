@@ -1,9 +1,10 @@
 ---
 id: TASK-85
 title: 'pdp: sealed stateless nonces instead of stored ones; drop nonceutil'
-status: To Do
+status: Done
 assignee: []
-created_date: '2026-10-14 20:44'
+created_date: 2026-10-14 20:44
+updated_date: '2026-11-02T22:23:00Z'
 labels:
   - go
   - pdp
@@ -24,5 +25,11 @@ pdp stores every nonce in kv; HashicorpNonceService seals with a per-process key
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 one sealed nonce (AEAD over issue time, purpose and binding) under a shared workload key, verified without a lookup; nonceutil removed
+- [x] #1 one sealed nonce (AEAD over issue time, purpose and binding) under a shared workload key, verified without a lookup; nonceutil removed
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+go/nonce seals its nonces: issuing writes nothing, and single use holds through a record on acceptance. nonceutil is gone.
+<!-- SECTION:FINAL_SUMMARY:END -->

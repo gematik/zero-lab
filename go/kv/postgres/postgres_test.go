@@ -22,10 +22,14 @@
 package postgres_test
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -165,5 +169,221 @@ func TestPostgres_ExpiryFromDatabaseClock(t *testing.T) {
 	}
 	if expires.Valid {
 		t.Fatalf("no TTL: expires_at = %v, want NULL", expires.Time)
+	}
+}
+
+// Under concurrency exactly one replica wins a fresh key, and exactly one wins a key whose row has expired:
+// the second is the race Set-then-check could not survive.
+func TestPostgres_SetIfAbsentConcurrencyHasExactlyOneWinner(t *testing.T) {
+	ctx := context.Background()
+	s, p := testStore(t)
+
+	race := func(key string) int64 {
+		var wins atomic.Int64
+		var wg sync.WaitGroup
+		for range 8 {
+			wg.Go(func() {
+				set, err := s.SetIfAbsent(ctx, key, []byte(`1`), time.Minute)
+				if err != nil {
+					t.Error(err)
+				}
+				if set {
+					wins.Add(1)
+				}
+			})
+		}
+		wg.Wait()
+		return wins.Load()
+	}
+	for i := range 50 {
+		key := fmt.Sprintf("%sfresh:%d", p, i)
+		if wins := race(key); wins != 1 {
+			t.Fatalf("%s: %d winners on a fresh key", key, wins)
+		}
+	}
+	for i := range 20 {
+		key := fmt.Sprintf("%sexpired:%d", p, i)
+		if err := s.Set(ctx, key, []byte(`0`), time.Millisecond); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(5 * time.Millisecond)
+		if wins := race(key); wins != 1 {
+			t.Fatalf("%s: %d winners on an expired row", key, wins)
+		}
+	}
+}
+
+func TestPostgres_SetIfAbsentExpiredCountsAsAbsent(t *testing.T) {
+	ctx := context.Background()
+	s, p := testStore(t)
+	key := p + "k"
+	if set, err := s.SetIfAbsent(ctx, key, []byte(`old`), 200*time.Millisecond); err != nil || !set {
+		t.Fatalf("first: set=%v err=%v", set, err)
+	}
+	if set, err := s.SetIfAbsent(ctx, key, []byte(`new`), time.Minute); err != nil || set {
+		t.Fatalf("over a live row: set=%v err=%v", set, err)
+	}
+	if v, _, _ := s.Get(ctx, key); string(v) != "old" {
+		t.Fatalf("live row overwritten: %q", v)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if set, err := s.SetIfAbsent(ctx, key, []byte(`new`), time.Minute); err != nil || !set {
+		t.Fatalf("over an expired row: set=%v err=%v", set, err)
+	}
+	if v, _, _ := s.Get(ctx, key); string(v) != "new" {
+		t.Fatalf("got %q", v)
+	}
+}
+
+func TestPostgres_SetIfAbsentWithoutTTLNeverExpires(t *testing.T) {
+	ctx := context.Background()
+	s, p := testStore(t)
+	key := p + "k"
+	if set, err := s.SetIfAbsent(ctx, key, []byte(`1`), 0); err != nil || !set {
+		t.Fatalf("set=%v err=%v", set, err)
+	}
+	if set, err := s.SetIfAbsent(ctx, key, []byte(`2`), 0); err != nil || set {
+		t.Fatalf("a row without expiry counted as absent: set=%v err=%v", set, err)
+	}
+}
+
+func TestPostgres_SetIfAbsentExpiryFromDatabaseClock(t *testing.T) {
+	ctx := context.Background()
+	s, p := testStore(t)
+	ttl := 90 * time.Second
+	if set, err := s.SetIfAbsent(ctx, p+"ttl", []byte(`1`), ttl); err != nil || !set {
+		t.Fatalf("set=%v err=%v", set, err)
+	}
+	db, err := sql.Open("pgx", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var micros int64
+	if err := db.QueryRowContext(ctx,
+		`SELECT (EXTRACT(EPOCH FROM expires_at - created_at) * 1000000)::bigint FROM kv WHERE key=$1`,
+		p+"ttl").Scan(&micros); err != nil {
+		t.Fatal(err)
+	}
+	if got := time.Duration(micros) * time.Microsecond; got != ttl {
+		t.Fatalf("expires_at - created_at = %v, want %v", got, ttl)
+	}
+}
+
+// Rule 22: during a rolling deploy a replica of the previous release still upserts naming metadata.
+func TestPostgres_MetadataColumnStaysForOldReplicas(t *testing.T) {
+	ctx := context.Background()
+	s, p := testStore(t)
+	db, err := sql.Open("pgx", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO kv(key, value, metadata, expires_at) VALUES($1, $2, $3::jsonb, now() + interval '1 minute')
+		   ON CONFLICT(key) DO UPDATE SET value=excluded.value, metadata=excluded.metadata,
+		     created_at=now(), expires_at=excluded.expires_at`,
+		p+"old", []byte(`1`), `{"codec":"x"}`); err != nil {
+		t.Fatalf("an old replica's upsert fails: %v", err)
+	}
+	if v, found, err := s.Get(ctx, p+"old"); err != nil || !found || string(v) != "1" {
+		t.Fatalf("%q found=%v err=%v", v, found, err)
+	}
+	if err := s.Set(ctx, p+"old", []byte(`2`), time.Minute); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPostgres_CleanupRemovesExpiredRows(t *testing.T) {
+	ctx := context.Background()
+	s, p := testStore(t)
+	if err := s.Set(ctx, p+"gone", []byte(`1`), time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Set(ctx, p+"stays", []byte(`1`), time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	if _, err := s.Cleanup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("pgx", os.Getenv("TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var rows int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM kv WHERE key=$1`, p+"gone").Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 0 {
+		t.Fatal("the expired row is still in the table")
+	}
+	if _, found, _ := s.Get(ctx, p+"stays"); !found {
+		t.Fatal("a live row was removed")
+	}
+}
+
+func TestPostgres_SealedStoreHoldsCiphertextAndDetectsAMovedRecord(t *testing.T) {
+	ctx := context.Background()
+	s, p := testStore(t)
+	ring, err := kv.ParseKeyring([]byte("k1 " + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32)) + "\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealed := kv.NewSealed(s, ring, "test")
+	secret := []byte("refresh-token-super-secret")
+	if err := sealed.Set(ctx, p+"a", secret, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if set, err := sealed.SetIfAbsent(ctx, p+"b", secret, time.Minute); err != nil || !set {
+		t.Fatalf("set=%v err=%v", set, err)
+	}
+	stored, found, err := s.Get(ctx, p+"a")
+	if err != nil || !found || bytes.Contains(stored, secret) {
+		t.Fatalf("stored %q found=%v err=%v", stored, found, err)
+	}
+	if got, _, err := sealed.Get(ctx, p+"a"); err != nil || !bytes.Equal(got, secret) {
+		t.Fatalf("%q err=%v", got, err)
+	}
+	if got, _, err := sealed.Take(ctx, p+"b"); err != nil || !bytes.Equal(got, secret) {
+		t.Fatalf("%q err=%v", got, err)
+	}
+	if err := s.Set(ctx, p+"moved", stored, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := sealed.Get(ctx, p+"moved"); !errors.Is(err, kv.ErrIntegrity) {
+		t.Fatalf("got %v, want ErrIntegrity", err)
+	}
+}
+
+// A key names what it holds, as:code:<the code> or pep:state:<the state>, and the store's errors reach logs.
+func TestPostgres_ErrorsDoNotNameTheKey(t *testing.T) {
+	store, prefix := testStore(t)
+	ctx := context.Background()
+	key := prefix + "as:code:code-value"
+	closer, ok := store.(interface{ Close() error })
+	if !ok {
+		t.Fatal("the store cannot be closed")
+	}
+	if err := closer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, _, getErr := store.Get(ctx, key)
+	_, _, takeErr := store.Take(ctx, key)
+	_, ifAbsentErr := store.SetIfAbsent(ctx, key, []byte("v"), time.Minute)
+	for name, err := range map[string]error{
+		"get":           getErr,
+		"take":          takeErr,
+		"set":           store.Set(ctx, key, []byte("v"), time.Minute),
+		"set if absent": ifAbsentErr,
+		"set many":      store.SetMany(ctx, kv.Entry{Key: key, Value: []byte("v"), TTL: time.Minute}),
+		"delete":        store.Delete(ctx, key),
+	} {
+		if err == nil {
+			t.Errorf("%s: no error from a closed store", name)
+		} else if strings.Contains(err.Error(), "code-value") {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }

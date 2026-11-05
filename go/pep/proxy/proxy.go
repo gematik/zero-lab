@@ -20,10 +20,10 @@
 // find details in the "Readme" file.
 
 // Package proxy is an oauth2-proxy-style authentication gateway: it runs the login (against direct OIDC/
-// OIDF/gemidp providers or — later — a PDP), keeps the tokens server-side, and exposes the oauth2-proxy
+// OIDF/idpd providers or — later — a PDP), keeps the tokens server-side, and exposes the oauth2-proxy
 // endpoint contract (/oauth2/{auth,start,sign_in,callback,sign_out,…}) so it works behind Caddy in
-// forward_auth mode and as a standalone gateway. It is the token-mediating BFF, generalized, and will
-// replace the bff over time.
+// forward_auth mode and as a standalone gateway. It is a token-mediating backend for frontend
+// (draft-ietf-oauth-browser-based-apps); backlog doc-4 holds the history.
 package proxy
 
 import (
@@ -45,7 +45,7 @@ import (
 // Config configures the proxy server.
 type Config struct {
 	Backend        Backend       // the auth backend (providerBackend today; pdpBackend later)
-	Store          kv.Store      // session store
+	Store          kv.Store      // session store; a persistent one comes sealed from the host (kv.NewSealed)
 	SessionTTL     time.Duration // sliding session TTL (0 = 1h); ignored when the snapshot fast path is on
 	CookieName     string        // session cookie name (default ZERO-PEP-SID)
 	InsecureCookie bool          // drop the __Host- prefix + Secure for http dev; default is secure
@@ -56,12 +56,6 @@ type Config struct {
 	SnapshotKeyPath         string        // base64 256-bit key file; "" disables the fast path
 	SnapshotPreviousKeyPath string        // optional previous key file (rotation overlap)
 	SnapshotTTL             time.Duration // = session absolute lifetime (0 = 8h)
-
-	// SessionStoreKeyPath enables at-rest encryption of kv session records (AES-256-GCM, the id as AAD) with a
-	// SEPARATE base64 256-bit key file, independent of the snapshot key. "" leaves records as plaintext JSON.
-	// Defends a rogue storage admin against disclosure, forgery, and record substitution. See
-	// docs/at-rest-encryption.md.
-	SessionStoreKeyPath string
 
 	// Bus carries session revocations to all replicas so logout/lockout is fleet-wide instant. nil = a
 	// single-instance in-memory revoker.
@@ -121,17 +115,6 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	sessions := newSessionStore(cfg.Store, cfg.SessionTTL)
-	if cfg.SessionStoreKeyPath != "" {
-		key, err := loadBase64Key(cfg.SessionStoreKeyPath)
-		if err != nil {
-			return nil, fmt.Errorf("session store key: %w", err)
-		}
-		crypter, err := newAESRecordCrypter(key)
-		if err != nil {
-			return nil, fmt.Errorf("session store cipher: %w", err)
-		}
-		sessions.crypter = crypter
-	}
 	s := &Server{
 		sessions: sessions,
 		cookie:   newCookieTemplate(cfg.CookieName, cfg.InsecureCookie),
@@ -234,7 +217,7 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	sess, ok := s.currentSession(r)
 	if !ok || !sess.Authenticated() {
 		_, cookieErr := r.Cookie(s.cookie.Name)
-		slog.Debug("forward_auth deny", "uri", r.Header.Get("X-Forwarded-Uri"),
+		slog.Debug("forward_auth deny", "uri", withoutQuery(r.Header.Get("X-Forwarded-Uri")),
 			"cookie_present", cookieErr == nil, "session_found", ok)
 		w.WriteHeader(http.StatusUnauthorized)
 		return
@@ -251,13 +234,13 @@ func (s *Server) setSnapshot(w http.ResponseWriter, sess *Session) {
 	}
 	tok, err := s.snap.mint(sess.ID, sess.Identity)
 	if err != nil {
-		slog.Warn("mint snapshot failed", "session", sess.ID, "error", err)
+		slog.Warn("mint snapshot failed", "session_ref", logRef(sess.ID), "error", err)
 		return
 	}
 	setCookie(w, s.snapCookie, tok)
 }
 
-// sortProviders orders the chooser list: oidc + gemidp keep their configured order at the top, and the OIDF
+// sortProviders orders the chooser list: oidc + idpd keep their configured order at the top, and the OIDF
 // federation IdPs (typically many) are sorted by label. The browser then pins the last-used provider above
 // all (localStorage) and fuzzy-filters.
 func sortProviders(providers []Provider) {
@@ -289,7 +272,7 @@ func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {
 	rd := sanitizeReturnTo(r.URL.Query().Get("rd"))
 	providers, err := s.backend.Providers(r.Context())
 	if err != nil {
-		s.renderError(w, "providers_error", err.Error(), "", rd)
+		s.renderFailure(w, "providers_error", "The identity providers are not available.", err, "", rd)
 		return
 	}
 	sortProviders(providers)
@@ -321,16 +304,16 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	sess.ReturnTo = rd
 	start, err := s.backend.StartLogin(r.Context(), sess, idpIss, q.Get("scope"))
 	if err != nil {
-		s.renderError(w, "login_failed", err.Error(), idpIss, rd)
+		s.renderFailure(w, "login_failed", loginNotStarted, err, idpIss, rd)
 		return
 	}
 	if err := s.sessions.save(sess); err != nil {
-		s.renderError(w, "server_error", err.Error(), idpIss, rd)
+		s.renderFailure(w, "server_error", loginNotCompleted, err, idpIss, rd)
 		return
 	}
 	setCookie(w, s.cookie, sess.token)
 
-	slog.Info("login start", "session", sess.ID, "idp_iss", idpIss, "mode", start.Mode, "auth_endpoint", withoutQuery(start.AuthURL))
+	slog.Info("login start", "session_ref", logRef(sess.ID), "idp_iss", idpIss, "mode", start.Mode, "auth_endpoint", withoutQuery(start.AuthURL))
 
 	var name string
 	if start.Provider != nil {
@@ -340,14 +323,14 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	case "decoupled": // OIDF — QR for a second device + on-device redirect, polled
 		img, err := qrImage(start.AuthURL)
 		if err != nil {
-			s.renderError(w, "qr_error", err.Error(), idpIss, rd)
+			s.renderFailure(w, "qr_error", loginNotStarted, err, idpIss, rd)
 			return
 		}
 		s.render.render(w, http.StatusOK, "qr.html", qrData{
 			ProviderName: name, AuthURL: start.AuthURL, QRImage: img,
 			PollURL: "/oauth2/poll", ReturnTo: sess.ReturnTo,
 		})
-	case "authenticator": // gemidp — open the authenticator:// app on this device + poll
+	case "authenticator": // idpd — open the authenticator:// app on this device + poll
 		s.render.render(w, http.StatusOK, "authenticator.html", qrData{
 			ProviderName: name, AuthURL: start.AuthURL,
 			PollURL: "/oauth2/poll", ReturnTo: sess.ReturnTo,
@@ -376,7 +359,7 @@ func (s *Server) handlePoll(w http.ResponseWriter, r *http.Request) {
 		// snapshot before handing back control.
 		oldID := sess.ID
 		if err := s.sessions.rotate(sess); err != nil {
-			slog.Warn("session rotation failed", "session", sess.ID, "error", err)
+			slog.Warn("session rotation failed", "session_ref", logRef(sess.ID), "error", err)
 		} else {
 			s.revoker.Revoke(oldID)
 			setCookie(w, s.cookie, sess.token)
@@ -416,7 +399,8 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		idpIss, rd = sess.IDPIss, sess.ReturnTo
 	}
 	if e := q.Get("error"); e != "" {
-		s.renderError(w, e, q.Get("error_description"), idpIss, rd)
+		slog.Warn("identity provider refused the login", "idp_iss", idpIss, "error", e, "description", q.Get("error_description"))
+		s.renderError(w, "login_failed", "The identity provider refused the login.", idpIss, rd)
 		return
 	}
 	if serr != nil {
@@ -424,14 +408,14 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.backend.Complete(r.Context(), sess, q.Get("code")); err != nil {
-		s.renderError(w, "exchange_failed", err.Error(), idpIss, rd)
+		s.renderFailure(w, "exchange_failed", loginNotCompleted, err, idpIss, rd, q.Get("code"), q.Get("state"))
 		return
 	}
 	// Consume the one-time state so it can't be replayed; clearing it also stops save() from re-indexing it.
 	s.sessions.deleteState(sess.State)
 	sess.State = ""
 	if err := s.sessions.save(sess); err != nil {
-		s.renderError(w, "server_error", err.Error(), idpIss, rd)
+		s.renderFailure(w, "server_error", loginNotCompleted, err, idpIss, rd)
 		return
 	}
 	dest := sess.ReturnTo
@@ -444,7 +428,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// the cookie. Show a success page; the originating device (polling /oauth2/poll) proceeds to rd and rotates
 	// the id there.
 	if !s.requestOwnsSession(r, sess) {
-		slog.Info("login complete", "session", sess.ID, "idp_iss", sess.IDPIss, "decoupled", true)
+		slog.Info("login complete", "session_ref", logRef(sess.ID), "idp_iss", sess.IDPIss, "decoupled", true)
 		s.render.render(w, http.StatusOK, "complete.html", nil)
 		return
 	}
@@ -452,13 +436,13 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// (kills any old snapshot), re-bind the cookie, and mint a fresh snapshot before returning to rd.
 	oldID := sess.ID
 	if err := s.sessions.rotate(sess); err != nil {
-		s.renderError(w, "server_error", err.Error(), idpIss, rd)
+		s.renderFailure(w, "server_error", loginNotCompleted, err, idpIss, rd)
 		return
 	}
 	s.revoker.Revoke(oldID)
 	setCookie(w, s.cookie, sess.token)
 	s.setSnapshot(w, sess)
-	slog.Info("login complete", "session", sess.ID, "idp_iss", sess.IDPIss, "return_to", dest)
+	slog.Info("login complete", "session_ref", logRef(sess.ID), "idp_iss", sess.IDPIss, "return_to", dest)
 	http.Redirect(w, r, dest, http.StatusFound)
 }
 
@@ -509,6 +493,25 @@ func (s *Server) renderError(w http.ResponseWriter, code, description, idpIss, r
 	s.render.render(w, http.StatusBadRequest, "error.html", errorData{
 		Code: code, Description: description, IDPIss: idpIss, ReturnTo: returnTo,
 	})
+}
+
+// What a browser reads of a failed login.
+const (
+	loginNotStarted   = "The login could not be started."
+	loginNotCompleted = "The login could not be completed."
+)
+
+// renderFailure shows the browser description alone and logs err, which may carry an authorization server's
+// response. secrets are values of this request that such a response may echo.
+func (s *Server) renderFailure(w http.ResponseWriter, code, description string, err error, idpIss, returnTo string, secrets ...string) {
+	detail := err.Error()
+	for _, secret := range secrets {
+		if secret != "" {
+			detail = strings.ReplaceAll(detail, secret, "[redacted]")
+		}
+	}
+	slog.Error(description, "code", code, "idp_iss", idpIss, "error", detail)
+	s.renderError(w, code, description, idpIss, returnTo)
 }
 
 // sanitizeReturnTo guards the rd= return-to against open redirects and login loops: a local absolute path

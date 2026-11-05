@@ -1,9 +1,10 @@
 ---
 id: TASK-126
 title: 'Go: JWKS provider on the cached HTTP content'
-status: To Do
+status: Done
 assignee: []
-created_date: '2026-10-21 07:14'
+created_date: 2026-10-21 07:14
+updated_date: '2026-11-02T21:44:00Z'
 labels:
   - go
   - security
@@ -21,6 +22,12 @@ jwx brings its own JWKS cache (jwk.Cache over httprc, background goroutines), us
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 a JWKS provider on the cached HTTP content: kid lookup, rate-limited refetch on an unknown kid, size limits, use and algorithm filtering, tested against a local server (rotation, forged kid, oversized set, origin down within stale-if-error)
-- [ ] #2 oauth/oidc uses it instead of jwx's jwk.Cache
+- [x] #1 a JWKS provider on the cached HTTP content: kid lookup, rate-limited refetch on an unknown kid, size limits, use and algorithm filtering, tested against a local server (rotation, forged kid, oversized set, origin down within stale-if-error)
+- [x] #2 oauth/oidc uses it instead of jwx's jwk.Cache
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+oauth/oidc has a small JWKS cache: TTL and unknown-kid refresh, rate limited, last good set for a bounded time, then fail closed.
+<!-- SECTION:FINAL_SUMMARY:END -->

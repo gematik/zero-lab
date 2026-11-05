@@ -43,11 +43,10 @@ $EDITOR brainpool/parser.go
 # Build / test / run — the change is already in effect via go.work
 go build ./...
 (cd brainpool && go test ./...)
-go run ./epa/cmd/zero-epa version
+go run ./pdp/cmd/zero-pdp version
 
 # Build a stamped binary locally (version from the module's git tag)
-just build-epa       # ./dist/zero-epa
-just build           # all three commands into ./dist/
+go build -o dist/ ./epa/cmd/zero-epa ./pdp/cmd/zero-pdp   # commands into ./dist/
 ```
 
 Confirm the workspace is wiring local source:
@@ -64,9 +63,14 @@ has the architecture). Go keeps the servers and relying parties, and the ePA cli
 
 | Status | Modules | Notes |
 | --- | --- | --- |
-| Active | `pdp`, `pep`, `bff`, `zaddy`, `kv`, `nonce`, `dpop`, `oauth`, `oidf`, `gemidp`, `epa`, `metsubushi`, `tipki`, `brainpool` | `gemidp` serves the servers' relying-party role only; `epa` gets its SMC-B identity, the IDP-Dienst flow and the VAU certificate checks from the Rust `ti` (below) |
-| Frozen | `pkcs12` | bugfix and security only; `pkcs12` stays for `gemidp`'s tests and external consumers (ehca-go); the Rust successor of `pkcs12` is `ti-pkcs12` |
+| Active | `pdp`, `pep`, `pep/proxy`, `zaddy`, `kv`, `nonce`, `dpop`, `openid`, `oidf`, `idpd`, `epa`, `metsubushi`, `tipki`, `brainpool`, `pkcs12` | `pkcs12` is held to the same specification as Rust's `ti-pkcs12` (`spec/pkcs12`); `idpd` serves the servers' relying-party role only; `epa` gets its SMC-B identity, the IDP-Dienst flow and the VAU certificate checks from the Rust `ti` (below) |
 | Archived | `gempki` (`go/gempki/v0.23.1`), `ti` (`go/ti/v0.23.4`), `kon` (`go/kon/v0.21.4`), `asl` (`go/asl/v0.0.2`), `libzero` (`go/libzero/v0.1.0`) | removed from the workspace; the tag keeps each `go get`-able; `ti-pki`, the Rust `ti` and `ti-connector-client` replace the first three |
+
+## Known compromises
+
+| Compromise | Why | Remove when |
+| --- | --- | --- |
+| `go.yaml.in/yaml/v4` at a release candidate | the maintained YAML library, no dependencies of its own; maintainer's choice, decision-13 | v4.0.0 is released: move to it |
 
 Archiving a module: tag its last version, remove it from `go.work` and this Justfile,
 delete the directory (as commit 9b4054a did for `asl` and `libzero`).
@@ -86,8 +90,9 @@ enters the Go process.
   `authn_card` (+ `authn_connector`) for an SMC-B at the Konnektor. `vau_cert_verify:
   warn|enforce|off` (default `warn`) says what a bad verdict on the VAU's certificates
   does.
-- The Docker image builds `ti` in a Rust stage; its build context is the repository root
-  (`just docker-build-epa`).
+- The Docker image downloads a released, statically linked `ti` from GitHub, pinned by its
+  SHA-256 in the Dockerfile (`just docker-build epa`). Moving to a newer `ti` means changing
+  the URL and the hash there.
 - Tests: `go test ./epa/...` needs no `ti` (the unit tests use fakes); the env-guarded
   `just epa-connect-test` and `just epa-entitle-test` need it and skip when it is
   missing.
@@ -110,20 +115,20 @@ and the release PR records the runs; the rules are in
 |---|---|---|---|---|
 | PDP end to end | `just pdp-e2e-serve` then `just pdp-e2e` | `ZERO_PDP_E2E_URL` (and the client variables in `docs/e2e.md`) | the authorization server over HTTP: metadata, JWKS, nonce, entity statement, OAuth error shapes, `client_credentials`, and the flows up to the IdP's pushed authorization request (`docs/e2e.md`) | `pdp`, `bff` |
 | PDP HITL | `just pdp-e2e-hitl URL` | `ZERO_PDP_E2E_URL`, `ZERO_PDP_E2E_HITL=1`, a person | a full login with a real OpenID provider | `pdp` |
-| gemidp IDP certificates (HITL) | `just gemidp-trust-test` | `GEMIDP_TRUST_BUNDLE_PATH`, a route to the reference IDP and its OCSP responder | both real IDP certificates pass `idpd-sig` with live OCSP (IDPV-005) | gemidp |
-| gemidp trust download (HITL) | `just gemidp-trust-fetch-test` | a route to gematik's TSL and CRL hosts, the reference IDP and its OCSP responder | the material downloads and verifies, and both real IDP certificates pass with live OCSP (IDPV-007) | gemidp |
-| gemidp SMC-B | `just gemidp-smcb-test` | `GEMIDP_*`, an SMC-B identity (`GEMIDP_SMCB_P12`), a bundle from `ti pki trust export` (`GEMIDP_TRUST_BUNDLE_PATH`) | authentication at the gematik IDP-Dienst with an SMC-B | `gemidp` |
+| idpd IDP certificates (HITL) | `just idpd-trust-test` | `IDPD_TRUST_BUNDLE_PATH`, a route to the reference IDP and its OCSP responder | both real IDP certificates pass `idpd-sig` with live OCSP (IDPV-005) | idpd |
+| idpd trust download (HITL) | `just idpd-trust-fetch-test` | a route to gematik's TSL and CRL hosts, the reference IDP and its OCSP responder | the material downloads and verifies, and both real IDP certificates pass with live OCSP (IDPV-007) | idpd |
+| idpd SMC-B | `just idpd-smcb-test` | `IDPD_*`, an SMC-B identity (`IDPD_SMCB_P12`), a route to gematik's hosts; `IDPD_TRUST_BUNDLE_PATH` replaces the download with a bundle from `ti pki trust export` | authentication at the gematik IDP-Dienst with an SMC-B | `idpd` |
 | ePA connect | `just epa-connect-test` | `EPA_*`, the Rust `ti` (`EPA_TI_BIN`), an SMC-B identity | VAU, authorization, record status and consent at both providers | `epa` |
 | ePA entitlement | `just epa-entitle-test` | as ePA connect, plus `VSDM_HMAC_KEY` / `VSDM_HMAC_KID` | entitlement with a VSDM proof | `epa` |
 | OpenID Federation | `just oidf-test` | `OIDF_FEDMASTER_URL` | entity statements and trust chains against a live federation master | `oidf`, `pep` |
-| kv on Postgres | `TEST_DATABASE_URL=… go test ./kv/postgres` | a Postgres database | the Postgres store: round trip, expiry, `Take` single-use under concurrency | `kv`, `pdp`, `pep`, `bff` |
+| kv on Postgres | `TEST_DATABASE_URL=… go test ./kv/postgres` | a Postgres database | the Postgres store: round trip, expiry, `Take` and `SetIfAbsent` single-use under concurrency, a sealed store over it | `kv`, `pdp`, `pep`, `bff` |
 
 ## Part B — Tag & reproducible builds
 
 `go install <cmd>@<tag>` and tag-pinned Docker builds run **outside** `go.work`, so a
 command resolves its libraries from its `go.mod`. To make a tagged build pick up a library
-change, repin with `just sync` before tagging. It requires each in-repo module at its tag when
-the tag is at the ref, otherwise at a pseudo-version above its latest tag (also above a
+change, repin with `just sync` before tagging. It requires each in-repo module at its latest tag when
+the module is unchanged since that tag, otherwise at a pseudo-version above its latest tag (also above a
 pre-release such as `v1.0.0-beta.1`), then runs `go mod tidy` outside the workspace so every
 `go.sum` holds what those builds need.
 
@@ -155,12 +160,12 @@ tag. Unchanged modules keep their existing tag.
 the module build info:
 
 ```console
-go install github.com/gematik/zero-lab/go/epa/cmd/zero-epa@v0.20.3
-zero-epa version  # -> "0.20.3"
+go install github.com/gematik/zero-lab/go/pdp/cmd/zero-pdp@v0.22.2
+zero-pdp version  # -> "Zero Policy Decision Point v0.22.2"
 ```
 
-The `@` takes the bare semver (`v0.20.3`); Go maps the module's `go/epa` subdirectory to the
-`go/epa/v0.20.3` tag automatically.
+The `@` takes the bare semver (`v0.22.2`); Go maps the module's `go/pdp` subdirectory to the
+`go/pdp/v0.22.2` tag automatically.
 
 If `proxy.golang.org` returns "unknown revision"/404 right after tagging (it negatively
 caches a version that didn't exist yet), fetch directly:
@@ -182,10 +187,10 @@ The build context includes `go.work`; the version is derived from `git describe`
 via `--build-arg VERSION`:
 
 ```console
-just docker-build-epa      # spilikin/zero-epa:<git-describe>            (+ :latest)
-just docker-build-pdp
-just docker-build-caddy    # spilikin/zero-caddy:<ver>-caddy2.11.7
-just docker-push-epa       # build + push
+just docker-build epa      # spilikin/zero-epa:<git-describe>            (+ :latest)
+just docker-build pdp
+just docker-build caddy    # spilikin/zero-caddy:<ver>-caddy2.11.7
+just docker-push epa       # build + push
 ```
 
 For a clean image tag (`0.20.3` instead of `0.20.3-2-g…`), build from a checkout of the tag:

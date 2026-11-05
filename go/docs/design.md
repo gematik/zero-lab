@@ -10,12 +10,11 @@ Go keeps servers and relying parties, their libraries and the ePA client
 ([architecture](../../docs/architecture.md#roles-of-the-languages)).
 
 ```text
- commands   cmd/zero-pdp  cmd/zero-pep-proxy  cmd/zero-bff-pdp  cmd/zero-epa  zero-caddy
+ commands   cmd/zero-pdp  cmd/zero-pep-proxy  cmd/zero-epa  zero-caddy
               │  flags, env, files, secrets (*_PATH), logger, servers, signals
- servers    pdp/authzserver  pep/proxy  bff/gateway  epa/vau        (http.Handler)
+ servers    pdp/authzserver  pep/proxy  epa/vau                     (http.Handler)
               │
- libraries  oauth  oidf  dpop  nonce  gemidp  kv  store  brainpool  pkcs12  (no ambient I/O)
- adapters   sqlitestore                                             (a driver of their own)
+ libraries  oauth  oidf  idpd  dpop  nonce  kv  tipki  brainpool  pkcs12  (no ambient I/O)
 ```
 
 - `main` and `cmd/` own the process: they read flags, environment and files, build the
@@ -114,7 +113,7 @@ Native fuzz tests, `func FuzzXxx(f *testing.F)`, next to the code they cover, se
 A `just fuzz` recipe that runs every target for a short time and fails on a crash comes
 with the first server-side targets (TASK-90). Targets needed:
 DPoP proofs, client assertions, PAR and token requests, entity statements and trust
-chains (`oidf`), ID tokens and JWKS (`oauth`), nonces, VAU messages and CBOR (`epa`),
+chains (`oidf`), ID tokens and JWKS (`openid`), nonces, VAU messages and CBOR (`epa`),
 routes and policy files (`pep`).
 
 ## 8. Dependencies

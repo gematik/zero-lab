@@ -40,7 +40,7 @@ func TestSmoke_Metadata(t *testing.T) {
 
 func TestSmoke_JWKS(t *testing.T) {
 	md := getMetadata(t, baseURL(t))
-	if set := getJWKS(t, md); set.Len() == 0 {
+	if set := getJWKS(t, md); len(set.Keys) == 0 {
 		t.Fatal("jwks: no keys")
 	}
 }

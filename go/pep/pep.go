@@ -24,7 +24,6 @@
 package pep
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,9 +34,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jws"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/dpop"
 )
@@ -49,7 +46,7 @@ const defaultHTTPTimeout = 30 * time.Second
 type PEP struct {
 	slogger                   *slog.Logger
 	httpClient                *http.Client
-	provideJwkSetFunc         func() (jwk.Set, error)
+	provideJwkSetFunc         func() (*jose.JSONWebKeySet, error)
 	decryptAccessTokenFunc    func(string) (string, error)
 	accessTokenAcceptableSkew time.Duration
 	resource                  string // URI of the resource being protected
@@ -61,8 +58,9 @@ type PEP struct {
 
 // Builder configures a PEP. An option that fails records its error for Build to return.
 type Builder struct {
-	p   *PEP
-	err error
+	p          *PEP
+	err        error
+	dpopReplay dpop.ReplayCache
 }
 
 // NewBuilder starts a Builder with no JWK set source, which Build requires.
@@ -99,8 +97,11 @@ func (b *Builder) Build() (*PEP, error) {
 		}
 		b.p.publicOrigin = origin
 	}
-	// Replay detection covers this process only (RFC 9449 Section 11.1).
-	verifier, err := dpop.NewVerifier(dpop.Config{Replay: dpop.NewMemoryReplayCache(100_000, nil)})
+	// Without a cache from the host, replay detection covers this process only (RFC 9449 Section 11.1).
+	if b.dpopReplay == nil {
+		b.dpopReplay = dpop.NewMemoryReplayCache(100_000, nil)
+	}
+	verifier, err := dpop.NewVerifier(dpop.Config{Replay: b.dpopReplay})
 	if err != nil {
 		return nil, fmt.Errorf("dpop verifier: %w", err)
 	}
@@ -122,14 +123,14 @@ func originOf(raw string) (string, error) {
 
 // WithJWKSetFunc sets the source of the verification keys; f is called for every token, so it can follow
 // key rotation and should cache.
-func (b *Builder) WithJWKSetFunc(f func() (jwk.Set, error)) *Builder {
+func (b *Builder) WithJWKSetFunc(f func() (*jose.JSONWebKeySet, error)) *Builder {
 	b.p.provideJwkSetFunc = f
 	return b
 }
 
 // WithJWKSet sets a fixed set of verification keys.
-func (b *Builder) WithJWKSet(jwkSet jwk.Set) *Builder {
-	b.p.provideJwkSetFunc = func() (jwk.Set, error) {
+func (b *Builder) WithJWKSet(jwkSet *jose.JSONWebKeySet) *Builder {
+	b.p.provideJwkSetFunc = func() (*jose.JSONWebKeySet, error) {
 		return jwkSet, nil
 	}
 	return b
@@ -140,13 +141,23 @@ func (b *Builder) WithJWKSetPath(path string) *Builder {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		b.err = fmt.Errorf("could not read JWKSet from %s: %w", path, err)
+		return b
 	}
-	jwks, err := jwk.Parse(data)
+	jwks, err := ParseJWKSet(data)
 	if err != nil {
 		b.err = fmt.Errorf("could not parse JWKSet from %s: %w", path, err)
+		return b
 	}
 
 	return b.WithJWKSet(jwks)
+}
+
+// WithDPoPReplayCache sets where accepted DPoP proofs are remembered. A host running several replicas supplies
+// one they share, so a proof replayed at another replica is refused (RFC 9449 Section 11.1); this package stays
+// free of any store. An error from the cache refuses the proof. Without it, proofs are remembered per process.
+func (b *Builder) WithDPoPReplayCache(cache dpop.ReplayCache) *Builder {
+	b.dpopReplay = cache
+	return b
 }
 
 // WithAccessTokenAcceptableSkew sets the clock skew tolerated on a token's time claims; zero means one minute.
@@ -197,7 +208,7 @@ func (p *PEP) Close() error {
 func (p *PEP) deny(ctx Context, err Error) {
 	w := ctx.Writer()
 	r := ctx.Request()
-	slog.Debug("Request denied", "method", r.Method, "url", r.URL)
+	slog.Debug("Request denied", "method", r.Method, "path", r.URL.Path)
 	if err.WWWAuthenticate != "" {
 		w.Header().Set("WWW-Authenticate", err.WWWAuthenticate)
 	}
@@ -237,7 +248,7 @@ type pepContext struct {
 	request        *http.Request
 	deny           func(Context, Error)
 	accessTokenRaw string
-	accessToken    jwt.Token
+	accessToken    *AccessToken
 	dpop           *dpop.Proof
 	claimsRaw      []byte
 }
@@ -283,12 +294,26 @@ func (c *pepContext) UnmarshalClaims(claims any) error {
 	return nil
 }
 
+// RFC 6750 section 3.1. The description is fixed: why a token was refused is for the server's log (server rule 2).
+const (
+	codeInvalidToken        = "invalid_token"
+	descriptionInvalidToken = "invalid access token"
+)
+
 func (c *pepContext) verifyAuthorizationBearer() error {
 	bearerToken, err := c.parseAuthorizationScheme("bearer")
 	if err != nil {
 		return err
 	}
-	return c.verifyAccessToken(bearerToken)
+	if err := c.verifyAccessToken(bearerToken); err != nil {
+		return Error{
+			HTTPStatus:      http.StatusUnauthorized,
+			Code:            codeInvalidToken,
+			Description:     descriptionInvalidToken,
+			WWWAuthenticate: fmt.Sprintf(`Bearer error=%q, error_description=%q`, codeInvalidToken, descriptionInvalidToken),
+		}
+	}
+	return nil
 }
 
 // verifyAuthorizationDPoP checks a DPoP-bound access token and its proof (RFC 9449 Section 7.1):
@@ -304,14 +329,10 @@ func (c *pepContext) verifyAuthorizationDPoP() error {
 		return err
 	}
 	if err := c.verifyAccessToken(accessToken); err != nil {
-		return err
+		return &dpop.Error{Code: dpop.CodeInvalidToken, Description: descriptionInvalidToken}
 	}
 	// An unbound token has no cnf.jkt; the verifier refuses it as invalid_token.
-	var jkt string
-	var cnf map[string]any
-	if c.accessToken.Get("cnf", &cnf) == nil {
-		jkt, _ = cnf["jkt"].(string)
-	}
+	jkt := c.accessToken.Thumbprint()
 	proof, err := c.pep.dpopVerifier.Verify(c.request.Header, dpop.Request{
 		Method:      c.request.Method,
 		URI:         c.pep.publicOrigin + c.request.URL.EscapedPath(),
@@ -360,30 +381,15 @@ func (c *pepContext) parseAuthorizationScheme(scheme string) (string, error) {
 	return "", ErrInvalidAuthorizationHeader
 }
 
+// verifyAccessToken leaves the denial to the scheme's caller. VerifyAccessToken has logged why the token was refused.
 func (c *pepContext) verifyAccessToken(accessToken string) error {
 	jwtToken, err := c.pep.VerifyAccessToken(accessToken)
 	if err != nil {
-		return &Error{
-			HTTPStatus:  http.StatusUnauthorized,
-			Code:        "invalid_token",
-			Description: fmt.Sprintf("invalid access token: %s", err),
-		}
+		return err
 	}
 	c.accessTokenRaw = accessToken
 	c.accessToken = jwtToken
-
-	parts := strings.Split(accessToken, ".")
-	if len(parts) != 3 {
-		return errors.New("invalid JWT format")
-	}
-
-	claimsSegment := parts[1]
-	claimsRaw, err := base64.RawURLEncoding.DecodeString(claimsSegment)
-	if err != nil {
-		return fmt.Errorf("invalid JWT claims segment: %w", err)
-	}
-
-	c.claimsRaw = claimsRaw
+	c.claimsRaw = jwtToken.Payload
 
 	return nil
 }
@@ -412,25 +418,20 @@ func (p *PEP) GuardedHandlerFunc(enforcer Enforcer, next func(w http.ResponseWri
 
 // VerifyAccessToken parses and verifies a JWT access token against the configured JWKSet. When a
 // resource is set (guarding a resource server) the token's audience must match it; with no resource
-// configured — e.g. when an authorization server reuses the PEP to verify its own tokens — the
-// audience is not restricted.
-func (p *PEP) VerifyAccessToken(tokenRaw string) (jwt.Token, error) {
+// configured the audience is not restricted.
+func (p *PEP) VerifyAccessToken(tokenRaw string) (*AccessToken, error) {
 	jwks, err := p.provideJwkSetFunc()
 	if err != nil {
 		return nil, fmt.Errorf("could not get JWKSet: %w", err)
 	}
-	opts := []jwt.ParseOption{
-		jwt.WithAcceptableSkew(p.accessTokenAcceptableSkew),
-		jwt.WithKeySet(jwks, jws.WithInferAlgorithmFromKey(true)),
+	payload, err := verifyJWS(tokenRaw, jwks)
+	if err == nil {
+		err = validateClaims(payload, time.Now(), p.accessTokenAcceptableSkew, p.resource)
 	}
-	if p.resource != "" {
-		opts = append(opts, jwt.WithAudience(p.resource))
-	}
-	token, err := jwt.ParseString(tokenRaw, opts...)
 	if err != nil {
 		p.slogger.Warn("could not parse JWT", "error", err)
 		return nil, fmt.Errorf("could not parse JWT: %w", err)
 	}
 
-	return token, nil
+	return &AccessToken{Payload: payload}, nil
 }

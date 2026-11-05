@@ -168,14 +168,14 @@ func (s *Session) Authorize(authenticator Authenticator) error {
 		return fmt.Errorf("sending authorization request: %w", err)
 	}
 
-	slog.Debug("Authorize", "authz_uri", authzURI)
+	slog.Debug("Authorize: authorization request sent")
 
 	codeRedirectURL, err := authenticator.Authenticate(context.Background(), authzURI)
 	if err != nil {
 		return fmt.Errorf("authenticate: %w", err)
 	}
 
-	slog.Debug("Authorize", "code_redirect_url", codeRedirectURL.URL)
+	slog.Debug("Authorize: authenticated at the IDP-Dienst")
 
 	err = s.SendAuthCodeSC(SendAuthCodeSCtype{
 		AuthorizationCode: codeRedirectURL.Code,

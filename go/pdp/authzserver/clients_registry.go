@@ -26,24 +26,26 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/go-jose/go-jose/v4"
+
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // Client is a registered instance of a Product. A product may have many client instances; each
 // authenticates with private_key_jwt (RFC 7523), proving itself with a client_assertion verified
 // against PublicJWK. Redirect-URI and scope policy live on the Product the client belongs to.
 type Client struct {
-	ClientID  string `yaml:"client_id" json:"client_id" validate:"required"`
-	ProductID string `yaml:"product_id" json:"product_id" validate:"required"`
+	ClientID  string `yaml:"client_id" json:"client_id"`
+	ProductID string `yaml:"product_id" json:"product_id"`
 	// PublicJWK is the client's assertion-verification key as a nested JWK object. It is parsed into
-	// a jwk.Key once at registry-build time (see Key).
-	PublicJWK map[string]any `yaml:"public_jwk" json:"public_jwk" validate:"required"`
+	// a key once at registry-build time (see Key).
+	PublicJWK map[string]any `yaml:"public_jwk" json:"public_jwk"`
 
-	key jwk.Key
+	key *jose.JSONWebKey
 }
 
 // Key returns the parsed public JWK used to verify the client's assertions.
-func (c *Client) Key() jwk.Key { return c.key }
+func (c *Client) Key() *jose.JSONWebKey { return c.key }
 
 // ClientsRegistry resolves a client_id to its registered Client. GetClient returns an error for an unknown
 // client.
@@ -79,7 +81,7 @@ func (r *StaticClientsRegistry) GetClient(clientID string) (*Client, error) {
 	return nil, fmt.Errorf("client not found: %q", clientID)
 }
 
-func parsePublicJWK(raw map[string]any) (jwk.Key, error) {
+func parsePublicJWK(raw map[string]any) (*jose.JSONWebKey, error) {
 	if len(raw) == 0 {
 		return nil, errors.New("missing public_jwk")
 	}
@@ -87,9 +89,13 @@ func parsePublicJWK(raw map[string]any) (jwk.Key, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshal public_jwk: %w", err)
 	}
-	key, err := jwk.ParseKey(b)
+	key, err := openid.ParseKey(b)
 	if err != nil {
 		return nil, fmt.Errorf("parse public_jwk: %w", err)
+	}
+	// A private or symmetric key would work through its public half, and sit in a file nobody treats as a secret.
+	if !key.IsPublic() {
+		return nil, errors.New("public_jwk holds a private or symmetric key")
 	}
 	return key, nil
 }

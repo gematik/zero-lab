@@ -266,10 +266,13 @@ func (c *Channel) DecryptResponse(resp *http.Response, req *http.Request) (*http
 	return c.Decrypt(data, req)
 }
 
+// minEncryptedLength is a VAU message's header, the IV and the GCM tag: anything shorter holds no ciphertext.
+const minEncryptedLength = 43 + 12 + 16
+
 // Decrypt checks the header of a VAU response (version, environment, direction, key ID),
 // opens it and parses the inner HTTP response, for which req is the request it answers.
 func (c *Channel) Decrypt(data []byte, req *http.Request) (*http.Response, error) {
-	if len(data) < 43 {
+	if len(data) < minEncryptedLength {
 		return nil, fmt.Errorf("invalid data length: %d", len(data))
 	}
 	header := data[:43]

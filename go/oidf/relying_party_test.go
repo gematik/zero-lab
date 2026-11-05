@@ -27,21 +27,35 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"math/big"
 	"os"
+	"strings"
 	"testing"
 	"time"
-
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jwt"
 )
+
+// unverifiedPayload reads the claims of a compact JWS, for a test that has already got what it needs from the signer.
+func unverifiedPayload(t *testing.T, signed []byte) []byte {
+	t.Helper()
+	parts := strings.Split(string(signed), ".")
+	if len(parts) != 3 {
+		t.Fatalf("not a compact JWS: %s", signed)
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return payload
+}
 
 func TestNewRelyingParty(t *testing.T) {
 	fedMasterURL := os.Getenv("OIDF_FEDMASTER_URL")
 	if fedMasterURL == "" {
-		t.Skip("OIDF_FEDMASTER_URL not set — skipping (NewRelyingPartyFromConfig fetches a live federation master)")
+		t.Skip("OIDF_FEDMASTER_URL not set — skipping (NewRelyingParty fetches a live federation master)")
 	}
 	signKeyPath, _ := generateTempKeyFile()
 	defer os.Remove(signKeyPath)
@@ -52,7 +66,7 @@ func TestNewRelyingParty(t *testing.T) {
 	clientCertPath, _ := generateCert(clientKeyPath)
 	defer os.Remove(clientCertPath)
 
-	jwk, err := NewJwkFromJSON(`{
+	fedMasterJwk, err := NewJwkFromJSON(`{
 		"kty": "EC",
 		"crv": "P-256",
 		"x":   "cdIR8dLbqaGrzfgyu365KM5s00zjFq8DFaUFqBvrWLs",
@@ -68,7 +82,7 @@ func TestNewRelyingParty(t *testing.T) {
 	cfg := &RelyingPartyConfig{
 		Subject:      "https://example.com",
 		FedMasterURL: fedMasterURL,
-		FedMasterJWK: jwk,
+		FedMasterJWK: fedMasterJwk,
 		SignKey:      KeyConfig{KeyPEMPath: signKeyPath},
 		EncKey:       KeyConfig{KeyPEMPath: encKeyPath},
 		ClientKey:    KeyConfig{KeyPEMPath: clientKeyPath, CertPEMPath: clientCertPath},
@@ -78,7 +92,7 @@ func TestNewRelyingParty(t *testing.T) {
 		},
 	}
 
-	es, err := NewRelyingPartyFromConfig(cfg)
+	es, err := NewRelyingParty(cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,21 +102,17 @@ func TestNewRelyingParty(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	unverified, err := jwt.Parse(signed, jwt.WithVerify(false))
-	if err != nil {
+	var claims struct {
+		Metadata map[string]any `json:"metadata"`
+	}
+	if err := json.Unmarshal(unverifiedPayload(t, signed), &claims); err != nil {
 		t.Fatal(err)
 	}
-
-	var metaRaw any
-	if err := unverified.Get("metadata", &metaRaw); err != nil {
-		t.Fatal(err)
-	}
-	metadataMap, ok := metaRaw.(map[string]any)
-	if !ok {
+	if claims.Metadata == nil {
 		t.Fatal("metadata not found")
 	}
 
-	t.Log(metadataMap)
+	t.Log(claims.Metadata)
 }
 
 func generateTempKeyFile() (string, error) {
@@ -133,19 +143,17 @@ func generateTempKeyFile() (string, error) {
 }
 
 func generateCert(keyfile string) (string, error) {
-	keyJwks, err := jwk.ReadFile(keyfile, jwk.WithPEM(true))
+	keyData, err := os.ReadFile(keyfile)
 	if err != nil {
 		return "", err
 	}
-
-	prkJwk, ok := keyJwks.Key(0)
+	parsed, err := parsePrivateKeyPEM(keyData)
+	if err != nil {
+		return "", err
+	}
+	privKey, ok := parsed.Key.(*ecdsa.PrivateKey)
 	if !ok {
-		return "", errors.New("no key")
-	}
-
-	pukJwk, err := prkJwk.PublicKey()
-	if err != nil {
-		return "", err
+		return "", errors.New("not an EC key")
 	}
 
 	template := x509.Certificate{
@@ -161,16 +169,7 @@ func generateCert(keyfile string) (string, error) {
 		BasicConstraintsValid: true,
 	}
 
-	var pubKey ecdsa.PublicKey
-	if err := jwk.Export(pukJwk, &pubKey); err != nil {
-		return "", err
-	}
-	var privKey ecdsa.PrivateKey
-	if err := jwk.Export(prkJwk, &privKey); err != nil {
-		return "", err
-	}
-
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &pubKey, &privKey)
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, privKey.Public(), privKey)
 	if err != nil {
 		return "", err
 	}
@@ -190,32 +189,8 @@ func generateCert(keyfile string) (string, error) {
 	return tmpfile.Name(), nil
 }
 
-func TestConfigFile(t *testing.T) {
-	cfg, err := LoadRelyingPartyConfig("testdata/relying-party.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if cfg.Subject != "https://rp.example.com" {
-		t.Errorf("sub = %q", cfg.Subject)
-	}
-	if cfg.FedMasterURL != "https://app-ref.federationmaster.de" {
-		t.Errorf("fed_master_url = %q", cfg.FedMasterURL)
-	}
-	if cfg.RelyingParty.ClientName != "Zero Trust Lab" {
-		t.Errorf("client_name = %q", cfg.RelyingParty.ClientName)
-	}
-	if len(cfg.RelyingParty.RedirectURIs) == 0 {
-		t.Error("redirect_uris empty")
-	}
-	if cfg.SignKey.KeyPEMPath == "" {
-		t.Errorf("sign_key.key_pem_path = %q", cfg.SignKey.KeyPEMPath)
-	}
-	if cfg.ClientKey.CertPEMPath == "" {
-		t.Errorf("client_key.cert_pem_path = %q", cfg.ClientKey.CertPEMPath)
-	}
-
-	// buildMetadata fills the OIDF boilerplate (response_types, algs, …) the config omits.
+func TestBuildMetadataFillsTheDefaultsAConfigOmits(t *testing.T) {
+	cfg := &RelyingPartyConfig{RelyingParty: RelyingPartyMetadata{ClientName: "c", RedirectURIs: []string{"https://rp/cb"}}}
 	md := cfg.buildMetadata().OpenidRelyingParty
 	if md.TokenEndpointAuthMethod != "self_signed_tls_client_auth" || md.IDTokenEncryptedResponseEnc != "A256GCM" {
 		t.Errorf("defaults not applied: %+v", md)

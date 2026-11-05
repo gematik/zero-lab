@@ -26,8 +26,6 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/gematik/zero-lab/go/epa"
 )
 
@@ -48,13 +46,19 @@ func TestCalculateHCV(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.coverageBegin+"_"+tt.streetAddress, func(t *testing.T) {
 			result, err := epa.CalculateHCV(tt.coverageBegin, tt.streetAddress)
-			assert.NoError(t, err)
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			resultHex := hex.EncodeToString(result)
-			assert.Equal(t, tt.expectedHash, resultHex)
+			if resultHex != tt.expectedHash {
+				t.Errorf("got %s, want %s", resultHex, tt.expectedHash)
+			}
 
 			resultBase64 := base64.StdEncoding.EncodeToString(result)
-			assert.Equal(t, tt.expectedBase64, resultBase64)
+			if resultBase64 != tt.expectedBase64 {
+				t.Errorf("got %s, want %s", resultBase64, tt.expectedBase64)
+			}
 		})
 	}
 }

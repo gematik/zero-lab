@@ -104,7 +104,11 @@ pub async fn authenticate<T: Transport>(
             .send(&request)
             .map_err(|source| Error::Transport { what, source })
     };
-    let discovery = discovery::parse(&send("discovery document", discovery::request(idp))?, now)?;
+    let discovery = discovery::parse(
+        idp,
+        &send("discovery document", discovery::request(idp))?,
+        now,
+    )?;
     check(
         IdpCertificate::DiscoverySigner,
         &discovery.signer_der,

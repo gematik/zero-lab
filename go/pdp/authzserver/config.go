@@ -22,40 +22,41 @@
 package authzserver
 
 import (
+	"errors"
+	"fmt"
 	"net/url"
 	"path/filepath"
 	"strings"
 
-	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/nonce"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
+	"github.com/gematik/zero-lab/go/openid/providers"
 )
 
 // Config is the authorization_server section of pdp.yaml. Relative paths resolve against BaseDir.
 type Config struct {
-	BaseDir                    string                   `yaml:"-"`
-	Issuer                     string                   `yaml:"issuer" validate:"required"`
-	SignJwkPath                string                   `yaml:"sign_jwk_path"`
-	SigningKey                 *SigningKey              `yaml:"-" validate:"-"`
-	ScopesSupported            []string                 `yaml:"scopes_supported"`
-	MetadataTemplate           ExtendedMetadata         `yaml:"metadata_template"`
-	DefaultIDPIss              string                   `yaml:"default_idp_iss"`
-	OidcProviders              []oidc.Config            `yaml:"oidc_providers" validate:"dive"`
-	GematikIdp                 []gemidp.ClientConfig    `yaml:"gematik_idp" validate:"dive"`
-	ClientsPolicyPath          string                   `yaml:"clients_policy_path"`
-	Products                   []Product                `yaml:"products" validate:"omitempty,dive"`
-	Clients                    []Client                 `yaml:"clients" validate:"omitempty,dive"`
-	OidfRelyingPartyConfigPath string                   `yaml:"oidf_relying_party_path"`
-	OidfRelyingPartyConfig     *oidf.RelyingPartyConfig `yaml:"oidf_relying_party" validate:"omitempty"`
-	Endpoints                  EndpointsConfig          `yaml:"endpoints" validate:"omitempty"`
-	// some values may be set programmatically
-	NonceService nonce.Service
-	// Store is the kv backend for sessions + nonces. The command opens the Postgres store from
-	// DATABASE_URL (it owns the driver dependency) and injects it here; nil ⇒ an in-memory store
-	// (tests and dev).
-	Store kv.Store
+	BaseDir           string           `yaml:"-"`
+	Issuer            string           `yaml:"issuer"`
+	SignJwkPath       string           `yaml:"sign_jwk_path"`
+	SigningKey        *SigningKey      `yaml:"-"`
+	ScopesSupported   []string         `yaml:"scopes_supported"`
+	MetadataTemplate  ExtendedMetadata `yaml:"metadata_template"`
+	DefaultIDPIss     string           `yaml:"default_idp_iss"`
+	ClientsPolicyPath string           `yaml:"clients_policy_path"`
+	Products          []Product        `yaml:"products"`
+	Clients           []Client         `yaml:"clients"`
+	Endpoints         EndpointsConfig  `yaml:"endpoints"`
+	// Providers and RelyingParty are built by the caller from the providers file; nil means none.
+	Providers    *providers.Set     `yaml:"-"`
+	RelyingParty *oidf.RelyingParty `yaml:"-"`
+	// Store is the kv backend for sessions, nonce records and DPoP proofs. The command opens the Postgres
+	// store from DATABASE_URL, sealed (it owns the driver dependency), and injects it here; nil ⇒ an in-memory
+	// store, for one replica only (tests and dev).
+	Store kv.Store `yaml:"-"`
+	// NonceKeys seal the replay nonces; all replicas share them. Required with a Store; without one, nonces
+	// are sealed under a key of this process alone, as the in-memory store is its alone.
+	NonceKeys nonce.Keys `yaml:"-"`
 }
 
 // EndpointsConfig holds the paths the server mounts its endpoints at. An empty field takes its default.
@@ -67,7 +68,7 @@ type EndpointsConfig struct {
 	Authorization               string `yaml:"authorization"`
 	PushedAuthorizationRequest  string `yaml:"pushed_authorization_request"`
 	OPCallback                  string `yaml:"op_callback"`
-	GemIDPCallback              string `yaml:"gemidp_callback"`
+	IDPDCallback                string `yaml:"idpd_callback"`
 	Token                       string `yaml:"token"`
 	Introspection               string `yaml:"introspection"`
 	EntityStatement             string `yaml:"entity_statement"`
@@ -101,8 +102,8 @@ func (s *EndpointsConfig) applyDefaults(baseURI *url.URL) {
 	if s.OPCallback == "" {
 		s.OPCallback = basePath + "/op-callback"
 	}
-	if s.GemIDPCallback == "" {
-		s.GemIDPCallback = basePath + "/gemidp-callback"
+	if s.IDPDCallback == "" {
+		s.IDPDCallback = basePath + "/idpd-callback"
 	}
 	if s.Token == "" {
 		s.Token = basePath + "/token"
@@ -123,4 +124,27 @@ func absPath(baseDir, path string) string {
 		return path
 	}
 	return filepath.Join(baseDir, path)
+}
+
+// Validate reports what a configuration cannot do without. What needs I/O is checked when it is loaded.
+func (c *Config) Validate() error {
+	if c.Issuer == "" {
+		return errors.New("issuer is required")
+	}
+	for i, product := range c.Products {
+		if product.ProductID == "" {
+			return fmt.Errorf("products[%d]: product_id is required", i)
+		}
+	}
+	for i, client := range c.Clients {
+		switch {
+		case client.ClientID == "":
+			return fmt.Errorf("clients[%d]: client_id is required", i)
+		case client.ProductID == "":
+			return fmt.Errorf("clients[%d]: product_id is required", i)
+		case len(client.PublicJWK) == 0:
+			return fmt.Errorf("clients[%d]: public_jwk is required", i)
+		}
+	}
+	return nil
 }

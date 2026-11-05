@@ -1,6 +1,6 @@
 # ti-jwz
 
-The gematik TI profiles for [jwz](../jwz/README.md), from gemSpec_Krypt V2.50.0 and
+The gematik TI profiles for [jwz](../jwz/README.md), from gemSpec_Krypt V2.51.0 and
 gemSpec_IDP_Dienst V2.2.0:
 
 - `ti_jwz::ti()` for new components: ES256; ECDH-ES on P-256 and `dir`, both with

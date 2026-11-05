@@ -39,18 +39,29 @@ import (
 	cryptobyte_asn1 "golang.org/x/crypto/cryptobyte/asn1"
 
 	"github.com/gematik/zero-lab/go/pkcs12"
-	"github.com/gematik/zero-lab/go/pkcs12/legacy/ber"
+	"github.com/gematik/zero-lab/go/pkcs12/internal/ber"
+	"github.com/gematik/zero-lab/go/pkcs12/internal/syntax"
 )
 
 var (
 	// PKCS#12 password-based encryption schemes this package decrypts in
 	// addition to package pkcs12 (RFC 7292 appendix C).
-	OIDPBEWithSHAAnd2KeyTripleDESCBC = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 12, 1, 4}
-	OIDPBEWithSHAAnd40BitRC2CBC      = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 12, 1, 6}
+	oidPBEWithSHAAnd2KeyTripleDESCBC = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 12, 1, 4}
+	oidPBEWithSHAAnd40BitRC2CBC      = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 12, 1, 6}
 
-	// OIDDESEDE3CBC is Triple DES as a PBES2 encryption scheme (RFC 8018 §B.2.2).
-	OIDDESEDE3CBC = asn1.ObjectIdentifier{1, 2, 840, 113549, 3, 7}
+	// oidDESEDE3CBC is Triple DES as a PBES2 encryption scheme (RFC 8018 §B.2.2).
+	oidDESEDE3CBC = asn1.ObjectIdentifier{1, 2, 840, 113549, 3, 7}
 )
+
+// Parse reads the outer structure of a file in DER or BER without a password, e.g. to insist on a MAC
+// before decoding: PFX.MacData is nil in a file without one.
+func Parse(data []byte) (*pkcs12.PFX, error) {
+	der, err := ber.ToDER(data)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", pkcs12.ErrInvalidPFX, err)
+	}
+	return pkcs12.Parse(der)
+}
 
 // Decode verifies, decrypts and extracts a PKCS#12 file in DER or BER
 // encoding. It follows pkcs12.ExtractBags step by step and differs in two
@@ -66,7 +77,7 @@ func Decode(data, password []byte) (*pkcs12.Bags, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse PKCS#12: %w", err)
 	}
-	if !pfx.AuthSafe.ContentType.Equal(pkcs12.OIDData) {
+	if !pfx.AuthSafe.ContentType.Equal(syntax.OIDData) {
 		return nil, fmt.Errorf("%w: authSafe content type %v (public-key integrity mode)", pkcs12.ErrUnsupportedAlgorithm, pfx.AuthSafe.ContentType)
 	}
 	// RawAuthSafe holds the authSafe octets with BER segments joined, which
@@ -79,7 +90,7 @@ func Decode(data, password []byte) (*pkcs12.Bags, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse authenticated safe: %w", err)
 	}
-	authSafe, err := pkcs12.ParseAuthenticatedSafe(authSafeDER)
+	authSafe, err := syntax.ParseAuthenticatedSafe(authSafeDER)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse authenticated safe: %w", err)
 	}
@@ -91,11 +102,11 @@ func Decode(data, password []byte) (*pkcs12.Bags, error) {
 	for _, ci := range authSafe.ContentInfos {
 		var safe []byte
 		switch {
-		case ci.ContentType.Equal(pkcs12.OIDData):
+		case ci.ContentType.Equal(syntax.OIDData):
 			if safe, err = octetString(ci.Content); err != nil {
 				return nil, fmt.Errorf("failed to extract safe contents: %w", err)
 			}
-		case ci.ContentType.Equal(pkcs12.OIDEncryptedData):
+		case ci.ContentType.Equal(syntax.OIDEncryptedData):
 			if safe, err = decryptSafe(ci.Content, password); err != nil {
 				return nil, fmt.Errorf("failed to decrypt safe contents: %w", err)
 			}
@@ -115,29 +126,29 @@ func collect(safe, password []byte, bags *pkcs12.Bags) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse safe contents: %w", err)
 	}
-	sc, err := pkcs12.ParseSafeContents(safeDER)
+	sc, err := syntax.ParseSafeContents(safeDER)
 	if err != nil {
 		return fmt.Errorf("failed to parse safe contents: %w", err)
 	}
 	for _, bag := range sc.Bags {
-		friendlyName, _ := pkcs12.GetFriendlyName(bag.Attributes)
-		localKeyID, _ := pkcs12.GetLocalKeyID(bag.Attributes)
+		friendlyName, _ := syntax.GetFriendlyName(bag.Attributes)
+		localKeyID, _ := syntax.GetLocalKeyID(bag.Attributes)
 
 		switch {
-		case bag.BagID.Equal(pkcs12.OIDCertBag):
-			cb, err := pkcs12.ParseCertBag(bag.BagValue)
+		case bag.BagID.Equal(syntax.OIDCertBag):
+			cb, err := syntax.ParseCertBag(bag.BagValue)
 			if err != nil {
 				return fmt.Errorf("failed to extract certificate: %w", err)
 			}
-			if !cb.CertID.Equal(pkcs12.OIDX509Certificate) {
+			if !cb.CertID.Equal(syntax.OIDX509Certificate) {
 				return fmt.Errorf("failed to extract certificate: %w: certificate type %v", pkcs12.ErrUnsupportedAlgorithm, cb.CertID)
 			}
 			bags.Certificates = append(bags.Certificates, pkcs12.CertificateBag{
 				Raw: cb.CertValue, FriendlyName: friendlyName, LocalKeyID: localKeyID,
 			})
 
-		case bag.BagID.Equal(pkcs12.OIDPKCS8ShroudedKeyBag):
-			epki, err := pkcs12.ParseEncryptedPrivateKeyInfo(bag.BagValue)
+		case bag.BagID.Equal(syntax.OIDPKCS8ShroudedKeyBag):
+			epki, err := syntax.ParseEncryptedPrivateKeyInfo(bag.BagValue)
 			if err != nil {
 				return fmt.Errorf("failed to extract shrouded key: %w", err)
 			}
@@ -149,12 +160,12 @@ func collect(safe, password []byte, bags *pkcs12.Bags) error {
 				Raw: key, FriendlyName: friendlyName, LocalKeyID: localKeyID,
 			})
 
-		case bag.BagID.Equal(pkcs12.OIDKeyBag):
+		case bag.BagID.Equal(syntax.OIDKeyBag):
 			bags.PrivateKeys = append(bags.PrivateKeys, pkcs12.PrivateKeyBag{
 				Raw: bag.BagValue, FriendlyName: friendlyName, LocalKeyID: localKeyID,
 			})
 
-		case bag.BagID.Equal(pkcs12.OIDSafeContentsBag):
+		case bag.BagID.Equal(syntax.OIDSafeContentsBag):
 			if err := collect(bag.BagValue, password, bags); err != nil {
 				return err
 			}
@@ -180,29 +191,4 @@ func octetString(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("%w: cannot read OCTET STRING", pkcs12.ErrParse)
 	}
 	return value, nil
-}
-
-// ConvertWithOpenSSL re-encodes a PKCS#12 file the way `openssl pkcs12
-// -legacy` followed by `openssl pkcs12 -export` did: DER, PBES2 with
-// AES-256-CBC, an HMAC-SHA-256 MAC, the same password. Despite its name it no
-// longer runs OpenSSL.
-//
-// Deprecated: Decode reads BER and legacy algorithms directly; to write a
-// modern file, pass its result to pkcs12.Encode.
-func ConvertWithOpenSSL(data []byte, password string) ([]byte, error) {
-	bags, err := Decode(data, []byte(password))
-	if err != nil {
-		return nil, fmt.Errorf("legacy: %w", err)
-	}
-	out, err := pkcs12.Encode(bags, []byte(password))
-	if err != nil {
-		return nil, fmt.Errorf("legacy: %w", err)
-	}
-	return out, nil
-}
-
-// IsBER reports whether data starts with an indefinite-length SEQUENCE, the
-// usual sign of a BER-encoded PKCS#12 file.
-func IsBER(data []byte) bool {
-	return len(data) >= 2 && data[0] == 0x30 && data[1] == 0x80
 }

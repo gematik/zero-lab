@@ -1,9 +1,10 @@
 ---
 id: TASK-188
 title: 'Go: panics and leaks on hostile or failing input'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-02T15:42:00Z'
+updated_date: '2026-11-05T19:19:00Z'
 labels:
   - go
   - security
@@ -20,5 +21,19 @@ epa vau channel.go Decrypt and server.go DecryptNestedRequestData slice cipherte
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Each returns an error with a test or fuzz target, and none exits or panics
+- [x] #1 Each returns an error with a test or fuzz target, and none exits or panics
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Fixed outside epa. Open for go/epa.
+
+go/epa: Decrypt on both sides refuses a message shorter than header, IV and tag; the handshake returns errors where it called log.Fatalf (9 places); the forwarding closes response bodies. Tests: short messages, and Message2 damaged at 100 positions never exits the process.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Hostile or failing input returns an error in pdp, pep, openid, oidf and epa, with tests; the VAU handshake no longer calls log.Fatalf.
+<!-- SECTION:FINAL_SUMMARY:END -->

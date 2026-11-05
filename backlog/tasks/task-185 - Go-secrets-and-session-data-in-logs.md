@@ -1,9 +1,10 @@
 ---
 id: TASK-185
 title: 'Go: secrets and session data in logs'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-02T15:42:00Z'
+updated_date: '2026-11-05T19:19:00Z'
 labels:
   - go
   - security
@@ -20,5 +21,19 @@ pdp authorize.go logs authnSession and authzSession at Info including the PKCE v
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 No secret, token, verifier or key reaches a log or stdout in these paths, and SecretString does what its comment says
+- [x] #1 No secret, token, verifier or key reaches a log or stdout in these paths, and SecretString does what its comment says
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Fixed outside epa, with capture tests. Open for go/epa, which stays as it is for now.
+
+go/epa: the entitlement body (the signed JWT), request headers, the authorization URI and the code's redirect URL are out of the log; zero-epa config prints authn_p12_password and vsdm_hmac_key_hex redacted. KVNRs are out of the proxy's server log; the probe command, run by hand, still shows the one it was given.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+No secret, token, verifier or key reaches a log in pdp, pep, openid, oidf and epa; capture tests guard them, and zero-epa config prints secrets redacted.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -22,11 +22,17 @@
 package authzserver
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/gematik/zero-lab/go/openid"
 )
+
+// ownTokenSkew is the clock skew tolerated on the time claims of a token presented for introspection.
+const ownTokenSkew = time.Minute
 
 // IntrospectionResponse is the OAuth 2.0 Token Introspection response (RFC 7662), extended per §2.2
 // with the brokered upstream OIDC identity and session metadata as service-specific members.
@@ -74,17 +80,12 @@ func (s *Server) IntrospectionEndpoint(w http.ResponseWriter, r *http.Request) e
 		return oauthErr(http.StatusBadRequest, "invalid_request", "missing token parameter")
 	}
 
-	token, err := s.tokenVerifier.VerifyAccessToken(tokenRaw)
-	if err != nil {
+	token, err := s.verifyOwnToken(tokenRaw, time.Now())
+	if err != nil || token.JTI == "" {
 		return writeJSON(w, http.StatusOK, IntrospectionResponse{Active: false})
 	}
 
-	var jti string
-	if err := token.Get("jti", &jti); err != nil || jti == "" {
-		return writeJSON(w, http.StatusOK, IntrospectionResponse{Active: false})
-	}
-
-	session, err := s.sessionStore.GetAuthzServerSessionByID(jti)
+	session, err := s.sessionStore.GetAuthzServerSessionByID(token.JTI)
 	if err != nil {
 		return writeJSON(w, http.StatusOK, IntrospectionResponse{Active: false})
 	}
@@ -110,6 +111,8 @@ func (s *Server) IntrospectionEndpoint(w http.ResponseWriter, r *http.Request) e
 		Aud:       session.Audience,
 		Iss:       s.Metadata.Issuer,
 		Jti:       session.ID,
+		Exp:       token.Exp,
+		Iat:       token.Iat,
 		Session: &IntrospectedSession{
 			CreatedAt:      session.CreatedAt,
 			ExpiresAt:      session.ExpiresAt,
@@ -117,12 +120,6 @@ func (s *Server) IntrospectionEndpoint(w http.ResponseWriter, r *http.Request) e
 			RedirectURI:    session.RedirectURI,
 			DPoPThumbprint: session.DPoPThumbprint,
 		},
-	}
-	if exp, ok := token.Expiration(); ok {
-		resp.Exp = exp.Unix()
-	}
-	if iat, ok := token.IssuedAt(); ok {
-		resp.Iat = iat.Unix()
 	}
 	if session.DPoPThumbprint != "" {
 		resp.Cnf = map[string]any{"jkt": session.DPoPThumbprint}
@@ -142,6 +139,30 @@ func (s *Server) IntrospectionEndpoint(w http.ResponseWriter, r *http.Request) e
 	}
 
 	return writeJSON(w, http.StatusOK, resp)
+}
+
+// ownTokenClaims are the claims of a token this server issued that introspection reports.
+type ownTokenClaims struct {
+	JTI string `json:"jti"`
+	Exp int64  `json:"exp"`
+	Iat int64  `json:"iat"`
+}
+
+// verifyOwnToken verifies raw as a token this server issued, with the keys it publishes. It has no audience to
+// insist on, since tokens name the resource servers they are for, not this server.
+func (s *Server) verifyOwnToken(raw string, now time.Time) (*ownTokenClaims, error) {
+	payload, err := openid.VerifyJWS([]byte(raw), s.jwks, openid.VerifyOptions{RequireKeyAlgorithm: true})
+	if err != nil {
+		return nil, err
+	}
+	if err := openid.ValidateLifetime(payload, now, ownTokenSkew); err != nil {
+		return nil, err
+	}
+	claims := new(ownTokenClaims)
+	if err := json.Unmarshal(payload, claims); err != nil {
+		return nil, err
+	}
+	return claims, nil
 }
 
 func firstNonEmpty(m map[string]any, keys ...string) string {

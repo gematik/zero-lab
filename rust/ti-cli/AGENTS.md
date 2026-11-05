@@ -151,7 +151,7 @@ never on `message`. `hint` says what to do, when there is something.
 Certificate types are the gemSpec_PKI Tab_PKI_405 names (`C.HCI.AUT`, `C.FD.TLS-S`,
 `C.NK.VPN`), in `certificate_type` and every `…_types` list. Profiles are named after
 their type without `C.` (`hci-aut`, `fd-tls-s`, `tsl-sig`) or after their technical
-role plus usage (`idpd-sig`, `epa-vau-aut`, `zeta-guard-aut`). Type and profile
+role plus usage (`idpd-sig`, `epa-vau-aut`, `dipag-vau-aut`, `zeta-guard-aut`). Type and profile
 arguments ignore case, treat `.` and `-` alike and accept a leading `C.`:
 `--validation-profile C.HCI.AUT` is `hci-aut`. Cards keep their own names where a card is meant (`EGK`,
 `HBA`, `SMC-B`, `C.AUT` in `connector`); eGK certificates are `C.CH.*`, HBA `C.HP.*`,

@@ -35,13 +35,16 @@ authorization_server:
   # --- Optional: configure an OpenID Provider to exercise the authorization-code / PAR /
   # --- HITL flows. Provide credentials via env and uncomment a block. See docs/e2e.md.
   #
-  # gematik_idp:
-  #   - environment: ref
-  #     client_id: "${GEMIDP_CLIENT_ID}"
-  #     redirect_uri: "${ZERO_PDP_E2E_URL}/gemidp-callback"
-  #     scopes: ["openid"]
   # default_idp_iss: "https://idp-ref.app.ti-dienste.de"
   #
-  # oidf_relying_party:
+  # The providers themselves go in openid-providers.yaml next to this file:
+  #
+  # idpd:
+  #   - environment: ref
+  #     client_id: "${IDPD_CLIENT_ID}"
+  #     redirect_uri: "${ZERO_PDP_E2E_URL}/idpd-callback"
+  #     scopes: ["openid"]
+  #     trust_fetch: true
+  # oidf:
   #   fed_master_url: "${OIDF_FED_MASTER_URL}"
   #   ...

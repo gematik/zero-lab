@@ -23,6 +23,7 @@ package proxy
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -103,5 +104,34 @@ func TestSessionStateSingleUse(t *testing.T) {
 	}
 	if _, err := store.byID(sess.ID); err != nil {
 		t.Errorf("session itself lost after state consumption: %v", err)
+	}
+}
+
+// Server rule 10: a kv key is in clear even in a sealed store, so it holds a hash of the login state.
+func TestAStateKeyHoldsNoState(t *testing.T) {
+	memory := kv.NewMemory()
+	s, err := New(Config{Backend: &fakeBackend{}, Store: memory, CookieName: "TEST-SID"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess := s.sessions.create()
+	sess.State = "login-state-value"
+	if err := s.sessions.save(sess); err != nil {
+		t.Fatal(err)
+	}
+	keys, err := memory.Keys(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(keys) < 2 {
+		t.Fatalf("keys = %v", keys)
+	}
+	for _, key := range keys {
+		if strings.Contains(key, sess.State) {
+			t.Errorf("key %q holds the state", key)
+		}
+	}
+	if found, err := s.sessions.byState(sess.State); err != nil || found.ID != sess.ID {
+		t.Errorf("not found again: %v", err)
 	}
 }

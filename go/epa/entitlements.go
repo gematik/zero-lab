@@ -98,7 +98,7 @@ func (s *Session) SetEntitlementPN(insurantID string, auditEvidence string, hcv 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Length", strconv.Itoa(len(body)))
 
-	slog.Debug("Sending entitlement request", "body", string(body))
+	slog.Debug("Sending entitlement request")
 
 	resp, err := s.VAUChannel.Do(req)
 	if err != nil {

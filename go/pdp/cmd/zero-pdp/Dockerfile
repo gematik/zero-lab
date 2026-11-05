@@ -15,5 +15,4 @@ COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certifica
 # Binary in /app, config + secrets mounted at the WORKDIR /etc/pdp without shadowing the executable.
 COPY --from=build /out/zero-pdp /app/zero-pdp
 WORKDIR /etc/pdp
-ENV PRETTY_LOGS=false
 ENTRYPOINT ["/app/zero-pdp"]

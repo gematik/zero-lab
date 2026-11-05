@@ -22,18 +22,19 @@
 package authzserver
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"slices"
 
-	"gopkg.in/yaml.v3"
+	yaml "go.yaml.in/yaml/v4"
 )
 
 // Product is an application registered with the authorization server. It owns the redirect-URI and
 // scope policy that all of its client instances share. Products are loaded inline from the config
 // (products:) and/or from a gematik clients-policy file (clients_policy_path).
 type Product struct {
-	ProductID         string   `yaml:"product_id" json:"product_id" validate:"required"`
+	ProductID         string   `yaml:"product_id" json:"product_id"`
 	ProductName       string   `yaml:"product_name" json:"product_name"`
 	ManufacturerID    string   `yaml:"manufacturer_id" json:"manufacturer_id"`
 	ManufacturerName  string   `yaml:"manufacturer_name" json:"manufacturer_name"`
@@ -117,8 +118,15 @@ func LoadProductsFile(path string) ([]*Product, error) {
 	var doc struct {
 		Products []*Product `yaml:"clients"`
 	}
-	if err := yaml.Unmarshal(yamlData, &doc); err != nil {
+	if err := decodeYAML(yamlData, &doc); err != nil {
 		return nil, fmt.Errorf("unmarshal products file '%s': %w", path, err)
 	}
 	return doc.Products, nil
+}
+
+// decodeYAML refuses an unknown key, so an outdated file stops the start.
+func decodeYAML(data []byte, v any) error {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	return decoder.Decode(v)
 }

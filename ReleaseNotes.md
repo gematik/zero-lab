@@ -1,5 +1,248 @@
 # Release Notes
 
+# Release go/kv v0.1.0
+
+### breaking
+- `Store` gains `SetIfAbsent`, and loses `GetItem`; `Item` and `Entry.Metadata` are gone. The Postgres
+  column stays, so that older replicas keep working during an upgrade.
+
+### features
+- `NewSealed` encrypts and authenticates every value, bound to its key, purpose and key ID, with key IDs
+  for rotation without a restart; `Keyring`, `ParseKeyring` and `LoadKeyring` hold the keys.
+- `ReplayCache`, and `Reap` to run `Cleanup` at an interval.
+
+### verified
+- `just check` across all modules passed on be5aceb; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`.
+- The Postgres suite passed on 2026-11-03 against a throwaway `postgres:17-alpine`: 12 tests.
+- The tag is on `chore/go-consolidation`, not yet on `main`.
+
+# Release go/nonce v0.22.0
+
+### breaking
+- Nonces are sealed values with an expiry, so issuing one writes nothing. `Service` is now a type made by
+  `New`, and `Redeem` takes a context. `NewKVService`, `HashicorpNonceService` and `Options` are gone.
+- Single use holds through a `Record` on acceptance, and a store outage fails closed.
+
+### features
+- `Source`, from `NewSource`, for nonces that are only checked for validity, and `NewEphemeralKeys`.
+
+### verified
+- `just check` across all modules passed on be5aceb; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`. The development guide lists no gated suite as required for `nonce`.
+- The tag is on `chore/go-consolidation`, not yet on `main`.
+
+# Release go/openid v0.52.0
+
+The first release of `go/openid`, which takes over from `go/oauth`, whose last tag is v0.51.0 and stays
+resolvable. The number continues from it.
+
+### breaking, for a port from go/oauth
+- A new module path: the `oidc` package is the root of `go/openid`, with the PKCE and assertion names in
+  it, and `oauth/providers` is `openid/providers`. The `oidc` provider type and YAML key stay.
+- JOSE is go-jose, not jwx, so keys in the API are `jose.JSONWebKey` and `jose.JSONWebKeySet`.
+
+### verified
+- `just check` across all modules passed on be5aceb; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`. The development guide lists no gated suite as required for `openid`.
+- The tag is on `chore/go-consolidation`, not yet on `main`.
+
+# Release go/tipki v0.31.1
+
+### changes
+- Requires `go/brainpool` v1.3.0 by its tag instead of a pseudo-version. The code is that of v0.31.0.
+
+### verified
+- `just check` across all modules passed; `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`. The
+  development guide lists no gated suite as required for `tipki`.
+- `just idpd-trust-fetch-test` and `just idpd-smcb-test` failed on 2026-11-03: the reference OCSP
+  responder answers unknown for the IDP's `disc.ru.idp` certificate. c736b56, on which both passed
+  earlier that day, now fails the same way, so this is not this release's doing.
+- The tag is on `chore/go-consolidation`, not yet on `main`.
+
+# Release go/pkcs12 v1.0.0-rc.1
+
+The release candidate for a stable API. The exported names are pinned by a test, so adding one is a
+decision, and `pkcs12` is an active module again. Open before v1.0.0: see known limits.
+
+### breaking
+- Removed from `pkcs12`: `ParseAuthenticatedSafe`, `ParseSafeContents`, `ParseCertBag`,
+  `ParseEncryptedPrivateKeyInfo`, `ParseEncryptionAlgorithm`, `DecryptPBES2`, `DecryptLegacyPBE`,
+  `DecryptEncryptedData`, `DecryptShroudedKeyBag`, `GetFriendlyName`, `GetLocalKeyID`,
+  `ErrInvalidMAC`, the ASN.1 types behind them, and the OIDs `EncodeOptions` does not take.
+- Removed from `pkcs12/legacy`: `ConvertWithOpenSSL`, `IsBER` and its OIDs. The packages
+  `legacy/ber` and `legacy/rc2` are internal now.
+- `EncodeOptions.KeyEncryption`, `CertEncryption` and `MacAlgorithm`, and the OIDs that go with
+  them, are `crypto/x509.OID`. An empty `CertEncryption` writes plain certificates, as nil did.
+
+### features
+- `legacy.Parse` reads the outer structure of a file in DER or BER, so that a caller of `legacy` can
+  insist on a MAC too.
+
+### verified
+- `just check` across all modules passed on the tree of ba166e7; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`. The development guide lists no gated suite as required for `pkcs12`.
+- `spec/pkcs12/interop/run.sh` on 2026-11-03, OpenSSL 4.1.0: `legacy.Decode` and `ti-pkcs12` 56 of 56,
+  `pkcs12.Decode` 28 of 28, all compared in full. The committed `matrix.md` is of an earlier run.
+- A file written by `pkcs12.Encode` read in `ti-pkcs12` and `openssl pkcs12 -info`, and one written by
+  `ti_pkcs12::encode` read in `pkcs12.Decode`. These were one-off runs: the corpus covers decoders only.
+
+### known limits
+- `PFX`, `ContentInfo`, `MacData` and `DigestInfo` are aliases of an internal package, and their
+  identifiers stay `asn1.ObjectIdentifier`.
+- A crafted file can cost seconds per bag: the iteration limit is per count, not per file (TASK-158).
+- Keys and passwords are not wiped from memory, unlike `ti-pkcs12`.
+- The tag is on `chore/go-consolidation`, not yet on `main`.
+
+# Release go/brainpool v1.3.0
+
+### fixed
+- `josebp` writes a JWK's coordinates at the curve's full length, as RFC 7518 requires (TASK-189).
+
+### changes
+- The module is active again; `go/tipki`'s trust path parses and verifies through it.
+
+### verified
+- `just check` across all modules passed on the tree of ba166e7; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`. The development guide lists no gated suite as required for `brainpool`.
+- The tag is on `chore/go-consolidation`, not yet on `main`.
+
+# Release go/tipki v0.31.0
+
+### breaking
+- The `hci-aut` profile checks revocation hard-fail, like every other profile: an SMC-B whose OCSP
+  answer cannot be had is refused under it, also under a configured soft-fail. An OCSP outage now
+  blocks what this profile validates. A configured `disabled` still disables.
+- `Finding.Code` and `OCSPError.Code` are of the new type `ErrorCode`, not `string`. Comparing with a
+  literal still compiles; concatenating needs `string(code)`. `TSLError.Code` stays a string.
+
+### features
+- `ErrorCode` has a constant for each of `ti-pki`'s 25 codes, such as `CodePolicyMismatch`, and
+  `ErrorCodes` lists them. `CodeProfileNotDetected` and `CodeProfileAmbiguous` complete that list:
+  no finding uses them, since `SelectForCert` reports those cases itself.
+- A README.
+
+### verified
+- `just check` across all modules passed on c736b56; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`. The development guide lists no gated suite as required for `tipki`.
+- Run on 2026-11-03 through `idpd`, against this code: `just idpd-trust-fetch-test`, with a live
+  TSL of the reference environment (sequence 10717), and `just idpd-smcb-test`.
+- The corpus changed in 4 of 6104 verdicts, all `hci-aut` under soft-fail with the responder
+  unavailable: 3 went from valid to invalid, and 1 stayed invalid with `ocsp_unavailable` in place of
+  `role_oid_missing`.
+
+### known limits
+- As in v0.30.0: `idpd`, `pdp` and `pep/proxy` still pin `tipki` by pseudo-version until the next
+  `just sync`, `ti-pki`'s matching changes are unreleased, and the tag is on
+  `chore/go-consolidation`, not yet on `main`.
+- A `Finding` made with a literal code still compiles; a test reads the source for that.
+
+# Release go/tipki v0.30.0
+
+The first release of `go/tipki`, the native TI trust path held to Rust's `ti-pki` through `spec/`. It
+takes over from `go/gempki`, whose last tag is v0.23.1 and stays resolvable; the number starts at
+0.30.0 to move clearly on from it.
+
+### breaking, for a port from go/gempki
+- A new module path and new names, such as `Admission` for `ParseAdmissionStatement`,
+  `ProfessionOIDs` for `ProfessionOids` and `CertHciAut` for `CertTypeHciAUT`.
+- `DetectCertificateType` returns `(type, bool)`. `IsKnownCertificateType`, `CheckRoleOID` and
+  `ValidationError` are gone.
+- Identifiers are `crypto/x509.OID`, not `asn1.ObjectIdentifier`: the `oid` tables, `Lookup`,
+  `Format`, `CertificateType.OID`, `Spec`, `ProfessionOIDs`, `RequiredRoleOIDs`, `TypeOIDs` and
+  `CATypes`. An `x509.OID` has no `==` and is no map key; compare with `Equal`, or `EqualASN1OID`
+  against what the standard library hands over as `asn1.ObjectIdentifier`.
+- `Admission` is stricter: it refuses trailing bytes, a registration number that is not
+  PrintableString, and malformed profession items.
+- An eGK AUT or ENC certificate without a type OID stays undetected, because its pseudonymous
+  sibling looks the same.
+
+### features
+- `oid.Parse` reads an identifier in its canonical dotted form, and refuses what
+  `x509.ParseOID` would read as another identifier, such as 1.2.030 for 1.2.30. `oid.MustParse` is
+  for identifiers in source.
+- The tables follow gemSpec_OID V3.26.0: `TechRoleZETAPrvApprov` is added and ZETA Guard is on
+  `C.FD.AUT` only, like `ti-pki`.
+
+### fixes
+- A TSL's `ExtensionOID` that is not in canonical form is refused.
+- An empty OID, which an unknown certificate type has, is listed nowhere.
+
+### verified
+- `just check` across all modules passed on 48c3e74; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`. The development guide lists no gated suite as required for `tipki`.
+- Run on 2026-11-03 through `idpd`, against this code: `just idpd-trust-fetch-test`, with a live
+  TSL of the reference environment (sequence 10717), and `just idpd-smcb-test`.
+
+### known limits
+- `idpd`, `pdp` and `pep/proxy` still pin `tipki` by pseudo-version until the next `just sync`, so
+  their builds outside the workspace do not use this release yet.
+- `ti-pki`'s matching table change is unreleased: it ships with that crate's next version.
+- The tag is on `chore/go-consolidation`, not yet on `main`.
+
+# Release go/epa v0.24.1
+
+### features
+- The first page shows TI services and all proxies in two compact columns, names the providers
+  IBM, RISE and EY, and refreshes the proxies every 5 seconds. Rounds do not overlap and a hidden
+  tab polls nothing.
+
+### changes
+- `GET /status` goes through a guard, because checking a provider without a session opens one:
+  callers share one result for 5 seconds, and a failed provider reports its last error for 60
+  seconds without being contacted. A failure can so stay visible for up to a minute after the
+  provider recovered.
+
+### verified
+- `just check` across all modules passed on 26c1402; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`.
+- `TestEPA_Connect` ran on 2026-11-03 on epa.t20r.cloud, built from 26c1402 with this version.
+  ref passed. dev failed once at provider 1 with `TLS handshake timeout`, before the code this
+  release changes, then passed three times in a row. The same host also timed out in the running
+  proxy's logs that day, so this reads as that endpoint being intermittent; it was not proven.
+
+### known limits
+- Opening a session holds the session manager's lock through the whole login, so a slow login at
+  one provider delays the proxy's others (TASK-203).
+- The guard covers the status endpoint only: other calls still try to open a session at a
+  provider that is down.
+- As in v0.24.0: nothing checks at start that the version fits `x-useragent`, `TestEPA_Connect`
+  and `ti` 0.5.0 do not cover provider 3, and the image runs as root (TASK-197).
+
+# Release go/epa v0.24.0
+
+### features
+- The first page of the portal shows whether the TI services answer, per environment the
+  proxies use and per access path, through the new `GET /api/probe`. It runs `ti probe`, shares
+  one run per environment and reuses the result for a minute. This says the services answer,
+  not that they can be trusted: `ti` does not verify TLS for it.
+
+### changes
+- Provider 4 is left out of the providers a proxy talks to until it works.
+- The image downloads `ti` 0.5.0 from its GitHub release, pinned by SHA-256, instead of building
+  it.
+- `github.com/google/uuid` and `github.com/segmentio/ksuid` are replaced by the standard library,
+  `golang.org/x/crypto` is no longer a direct dependency.
+
+### fixes
+- The portal's `esc()` escapes quotes, since its results also go into HTML attributes.
+- The VAU key derivation's input is kept in its own buffer.
+
+### verified
+- `TestEPA_Connect` (`just epa-connect-test`) passed on 2026-11-03 against dev and ref: VAU,
+  authorization, record status and consent at providers 1 and 2. It ran on epa.t20r.cloud,
+  built from 3b23a28 with this version, with an SMC-B identity of that server.
+- The running proxy opened sessions at providers 1 to 3 in dev and at 1 and 2 in ref.
+
+### known limits
+- A build's version goes into `x-useragent`, where the aggregators allow at most 15 characters:
+  a longer `VERSION` build argument, such as `0.23.1-dev.3b23a28`, makes every provider refuse
+  the VAU handshake. Nothing checks this at start yet.
+- ref's provider 3 could not be reached: `epa-as-3.ref.epa4all.de` did not resolve.
+- `TestEPA_Connect` covers providers 1 and 2 only, and `ti` 0.5.0 probes `epa-1` and `epa-2` only,
+  so the first page says nothing about provider 3.
+- The image still runs as root (TASK-197).
+
 # Release go/dpop v1.0.0-beta.1
 
 A rewrite against [RFC 9449](https://www.rfc-editor.org/rfc/rfc9449) on go-jose v4; the first

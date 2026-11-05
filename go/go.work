@@ -1,21 +1,19 @@
 go 1.27.0
 
 use (
-	./bff
 	./brainpool
 	./dpop
 	./epa
-	./gemidp
+	./idpd
 	./kv
 	./metsubushi
 	./nonce
-	./oauth
 	./oidf
+	./openid
 	./pdp
 	./pep
+	./pep/proxy
 	./pkcs12
-	./sqlitestore
-	./store
 	./tipki
 	./zaddy
 )

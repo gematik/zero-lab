@@ -23,153 +23,97 @@ package proxy
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 	"uuid"
 
-	"golang.org/x/oauth2"
-
-	"github.com/gematik/zero-lab/go/gemidp"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
-	"github.com/gematik/zero-lab/go/oidf"
+	"github.com/gematik/zero-lab/go/openid"
+	"github.com/gematik/zero-lab/go/openid/providers"
 )
 
-// providerBackend drives oidc.Client providers (standard OIDC; OIDF and gemidp also implement oidc.Client)
+// providerBackend drives openid.Client providers (standard OIDC; OIDF and idpd also implement openid.Client)
 // directly and issues a local session — pep acts as the authorization server itself, no upstream PDP.
 //
-// Static providers (plain OIDC, gemidp) are pre-constructed in byIssuer/order. An optional OIDF relying
+// Static providers (plain OIDC, idpd) are pre-constructed in byIssuer/order. An optional OIDF relying
 // party resolves federation issuers dynamically (rp.NewClient(issuer)) and contributes its federation IdP
 // list to the chooser; it also serves its entity statement at /.well-known/openid-federation.
 type providerBackend struct {
-	byIssuer map[string]oidc.Client
-	order    []oidc.Client
-	rp       *oidf.RelyingParty
+	set *providers.Set
 }
 
-// ProviderOption configures a providerBackend.
-type ProviderOption func(*providerBackend)
-
-// WithOIDCClients adds pre-constructed providers (plain OIDC, gemidp). The first is the default when no
-// idp_iss is given and no OIDF relying party is configured.
-func WithOIDCClients(clients ...oidc.Client) ProviderOption {
-	return func(b *providerBackend) {
-		for _, c := range clients {
-			b.byIssuer[c.Issuer()] = c
-			b.order = append(b.order, c)
-		}
-	}
-}
-
-// WithRelyingParty enables OIDF: dynamic federation issuer resolution + the federation IdP list. The RP's
-// own config supplies the redirect_uri (its redirect_uris[0] must be <public>/oauth2/callback).
-func WithRelyingParty(rp *oidf.RelyingParty) ProviderOption {
-	return func(b *providerBackend) { b.rp = rp }
-}
-
-// NewProviderBackend returns the Backend that drives the providers of opts directly and keeps their tokens
+// NewProviderBackend returns the Backend that drives the providers of set directly and keeps their tokens
 // in the local session.
-func NewProviderBackend(opts ...ProviderOption) Backend {
-	b := &providerBackend{byIssuer: make(map[string]oidc.Client)}
-	for _, o := range opts {
-		o(b)
-	}
-	return b
+func NewProviderBackend(set *providers.Set) Backend {
+	return &providerBackend{set: set}
 }
 
-func (b *providerBackend) get(issuer string) (oidc.Client, error) {
+func (b *providerBackend) get(ctx context.Context, issuer string) (providers.Provider, error) {
 	if issuer == "" {
-		if len(b.order) > 0 {
-			return b.order[0], nil
-		}
-		return nil, errors.New("no default provider configured; choose one")
+		return b.set.Default()
 	}
-	if c, ok := b.byIssuer[issuer]; ok {
-		return c, nil
-	}
-	if b.rp != nil {
-		return b.rp.NewClient(issuer) // federation discovery
-	}
-	return nil, fmt.Errorf("unknown provider issuer %q", issuer)
+	return b.set.Provider(ctx, issuer)
 }
 
-// providerType classifies a resolved client for the chooser + the redirect-vs-decoupled decision.
-func providerType(c oidc.Client) string {
-	switch c.(type) {
-	case *oidf.RelyingPartyClient:
-		return "oidf"
-	case *gemidp.Client:
-		return "gemidp"
-	default:
-		return "oidc"
-	}
-}
-
-func providerOf(c oidc.Client) Provider {
-	return Provider{Issuer: c.Issuer(), Name: c.Name(), LogoURI: c.LogoURI(), Type: providerType(c)}
+func providerOf(info providers.Info) Provider {
+	return Provider{Issuer: info.Issuer, Name: info.Name, LogoURI: info.LogoURI, Type: info.Type}
 }
 
 func (b *providerBackend) DefaultIssuer() string {
 	// Only auto-start when there is exactly one static provider and no federation to choose from.
-	if b.rp == nil && len(b.order) == 1 {
-		return b.order[0].Issuer()
+	if configured := b.set.Configured(); b.set.Federation() == nil && len(configured) == 1 {
+		return configured[0].Issuer
 	}
 	return ""
 }
 
-func (b *providerBackend) Providers(_ context.Context) ([]Provider, error) {
-	out := make([]Provider, 0, len(b.order))
-	for _, c := range b.order {
-		out = append(out, providerOf(c))
+func (b *providerBackend) Providers(ctx context.Context) ([]Provider, error) {
+	infos, err := b.set.Providers(ctx)
+	if err != nil {
+		return nil, err
 	}
-	if b.rp != nil {
-		idps, err := b.rp.Federation().FetchIdpList()
-		if err != nil {
-			return nil, fmt.Errorf("fetch federation idp list: %w", err)
-		}
-		for _, idp := range idps {
-			out = append(out, Provider{Issuer: idp.Issuer, Name: idp.OrganizationName, LogoURI: idp.LogoURI, Type: "oidf"})
-		}
+	out := make([]Provider, 0, len(infos))
+	for _, info := range infos {
+		out = append(out, providerOf(info))
 	}
 	return out, nil
 }
 
-func (b *providerBackend) StartLogin(_ context.Context, sess *Session, idpIss, _ string) (LoginStart, error) {
-	c, err := b.get(idpIss)
+func (b *providerBackend) StartLogin(ctx context.Context, sess *Session, idpIss, _ string) (LoginStart, error) {
+	provider, err := b.get(ctx, idpIss)
 	if err != nil {
 		return LoginStart{}, err
 	}
-	sess.IDPIss = c.Issuer()
+	sess.IDPIss = provider.Issuer
 	sess.State = uuid.NewV4().String()
 	sess.Nonce = uuid.NewV4().String()
-	sess.CodeVerifier = oauth2.GenerateVerifier()
-	sess.CodeChallengeMethod = "S256"
+	sess.CodeVerifier = openid.GenerateVerifier()
+	sess.CodeChallengeMethod = openid.CodeChallengeMethodS256
 
-	authURL, err := c.AuthenticationURL(sess.State, sess.Nonce, sess.CodeVerifier)
+	authURL, err := provider.Client.AuthenticationURL(ctx, openid.Login{State: sess.State, Nonce: sess.Nonce, Verifier: sess.CodeVerifier})
 	if err != nil {
 		return LoginStart{}, err
 	}
-	// Pick the front-end flow: gemidp's authenticator:// deep link → a wait page that opens the app and
+	// Pick the front-end flow: idpd's authenticator:// deep link → a wait page that opens the app and
 	// polls; OIDF's PAR URL → the decoupled QR; everything else → a plain redirect.
 	mode := "redirect"
 	switch {
 	case strings.HasPrefix(authURL, "authenticator://"):
 		mode = "authenticator"
-	case providerType(c) == "oidf":
+	case provider.Type == "oidf":
 		mode = "decoupled"
 	}
-	p := providerOf(c)
+	p := providerOf(provider.Info)
 	return LoginStart{AuthURL: authURL, Mode: mode, Provider: &p}, nil
 }
 
-func (b *providerBackend) Complete(_ context.Context, sess *Session, code string) error {
-	c, err := b.get(sess.IDPIss)
+func (b *providerBackend) Complete(ctx context.Context, sess *Session, code string) error {
+	provider, err := b.get(ctx, sess.IDPIss)
 	if err != nil {
 		return err
 	}
-	tr, err := c.ExchangeForIdentity(code, sess.CodeVerifier)
+	tr, err := provider.Client.Exchange(ctx, openid.Login{Nonce: sess.Nonce, Verifier: sess.CodeVerifier}, code)
 	if err != nil {
 		return err
 	}
@@ -191,14 +135,20 @@ func (b *providerBackend) FreshAccessToken(_ context.Context, sess *Session) (st
 	return sess.AccessToken, nil
 }
 
+// entityStatementServer is a federation's relying party, which has an entity statement to serve.
+type entityStatementServer interface {
+	Serve(w http.ResponseWriter, r *http.Request)
+}
+
 // proxyRoutes serves the OIDF relying-party entity statement so the federation (and the OPs) can resolve
 // this proxy as a relying party.
 func (b *providerBackend) proxyRoutes() []proxyRoute {
-	if b.rp == nil {
+	server, ok := b.set.Federation().(entityStatementServer)
+	if !ok {
 		return nil
 	}
 	return []proxyRoute{{
 		Pattern: "GET /.well-known/openid-federation",
-		Handler: http.HandlerFunc(b.rp.Serve),
+		Handler: http.HandlerFunc(server.Serve),
 	}}
 }

@@ -25,9 +25,9 @@
 package authzserver
 
 import (
-	"crypto"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log"
 	"log/slog"
@@ -36,16 +36,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"gopkg.in/yaml.v3"
+	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/gematik/zero-lab/go/gemidp"
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/nonce"
-	"github.com/gematik/zero-lab/go/oauth/oidc"
 	"github.com/gematik/zero-lab/go/oidf"
-	"github.com/gematik/zero-lab/go/pep"
+	"github.com/gematik/zero-lab/go/openid/providers"
 )
 
 const (
@@ -61,15 +58,14 @@ type Server struct {
 	endpointPaths    *EndpointsConfig
 	clientsRegistry  ClientsRegistry
 	productsRegistry *ProductsRegistry
-	openidProviders  []oidc.Client
+	providers        *providers.Set
 	oidfRelyingParty *oidf.RelyingParty
 	defaultIDPIss    string
 	sessionStore     SessionStore
-	signer           crypto.Signer
+	signer           jose.Signer
 	signerKeyID      string
-	jwks             jwk.Set
-	tokenVerifier    *pep.PEP
-	nonceService     nonce.Service
+	jwks             *jose.JSONWebKeySet
+	nonceService     *nonce.Service
 	dpopVerifier     *dpop.Verifier
 }
 
@@ -81,19 +77,23 @@ func NewFromConfigFile(filename string) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read config file '%s': %w", filename, err)
 	}
-	if err := yaml.Unmarshal(yamlFile, cfg); err != nil {
+	if err := decodeYAML(yamlFile, cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config file '%s': %w", filename, err)
 	}
 
 	return New(*cfg)
 }
 
-// New builds a server from cfg. Without Config.Store, sessions and nonces live in process memory. It refuses
-// to start without Config.SigningKey: a replica with a key of its own signs tokens nobody else can verify.
+// New builds a server from cfg. Without Config.Store, sessions and nonces live in process memory, for one
+// replica only. It refuses to start without Config.SigningKey: a replica with a key of its own signs tokens
+// nobody else can verify. For the same reason it refuses a Store without Config.NonceKeys.
 func New(cfg Config) (*Server, error) {
+	if cfg.Providers == nil {
+		cfg.Providers = providers.New(nil)
+	}
 	s := &Server{
-		Metadata:        cfg.MetadataTemplate,
-		openidProviders: make([]oidc.Client, 0),
+		Metadata:  cfg.MetadataTemplate,
+		providers: cfg.Providers,
 	}
 
 	issuerURL, err := url.Parse(cfg.Issuer)
@@ -102,10 +102,6 @@ func New(cfg Config) (*Server, error) {
 	}
 	s.endpointPaths = &cfg.Endpoints
 	s.endpointPaths.applyDefaults(issuerURL)
-
-	if err := s.initOpenidProviders(cfg); err != nil {
-		return nil, err
-	}
 
 	s.initMetadata(issuerURL, cfg)
 	s.defaultIDPIss = cfg.DefaultIDPIss
@@ -123,12 +119,6 @@ func New(cfg Config) (*Server, error) {
 		return nil, err
 	}
 
-	// Reuse the PEP as a token verifier for the server's own tokens (e.g. introspection). No
-	// resource is configured, so the audience is not restricted to a single resource server.
-	if s.tokenVerifier, err = pep.NewBuilder().WithJWKSet(s.jwks).Build(); err != nil {
-		return nil, fmt.Errorf("create token verifier: %w", err)
-	}
-
 	if err := s.initProducts(cfg); err != nil {
 		return nil, err
 	}
@@ -136,50 +126,36 @@ func New(cfg Config) (*Server, error) {
 	// One kv.Store backs the session store and the nonce service. The caller injects a Postgres-backed
 	// store via Config.Store (built in the command, which owns the driver dependency); without it we use
 	// an in-memory store (tests and dev).
-	store := cfg.Store
+	store, nonceKeys := cfg.Store, cfg.NonceKeys
 	if store == nil {
 		store = kv.NewMemory()
+		if nonceKeys == nil {
+			if nonceKeys, err = nonce.NewEphemeralKeys(); err != nil {
+				return nil, fmt.Errorf("nonce keys: %w", err)
+			}
+		}
+	}
+	if nonceKeys == nil {
+		return nil, errors.New("a store shared by replicas needs NonceKeys: nonces under a per-process key fail at every other replica")
 	}
 	s.sessionStore = newKVSessionStore(store, defaultSessionTTL)
 
-	if err := s.initRelyingParty(cfg); err != nil {
-		return nil, err
+	s.initRelyingParty(cfg)
+
+	s.nonceService, err = nonce.New(nonceKeys, nonceServicePurpose, defaultNonceTTL, recordNonce(store))
+	if err != nil {
+		return nil, fmt.Errorf("nonce service: %w", err)
 	}
 
-	if err := s.initGematikIdp(cfg); err != nil {
-		return nil, err
-	}
-
-	if cfg.NonceService != nil {
-		s.nonceService = cfg.NonceService
-	} else {
-		s.nonceService = nonce.NewKVService(store, defaultNonceTTL)
-	}
-
-	// Replay detection covers this replica only; replicas behind one endpoint share no
-	// state yet (RFC 9449 Section 11.1).
 	s.dpopVerifier, err = dpop.NewVerifier(dpop.Config{
 		MaxAge: 5 * time.Minute,
-		Replay: dpop.NewMemoryReplayCache(100_000, nil),
+		Replay: kv.NewReplayCache(store),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("dpop verifier: %w", err)
 	}
 
 	return s, nil
-}
-
-// initOpenidProviders configures the statically-listed OIDC providers.
-func (s *Server) initOpenidProviders(cfg Config) error {
-	for _, c := range cfg.OidcProviders {
-		client, err := oidc.NewClient(c)
-		if err != nil {
-			return fmt.Errorf("create oidc client: %w", err)
-		}
-		slog.Info("created oidc client", "issuer", client.Issuer())
-		s.openidProviders = append(s.openidProviders, client)
-	}
-	return nil
 }
 
 // initMetadata fills the authorization-server metadata document (RFC 8414).
@@ -231,21 +207,8 @@ func (s *Server) initProducts(cfg Config) error {
 }
 
 // initRelyingParty configures the optional OpenID Federation relying party.
-func (s *Server) initRelyingParty(cfg Config) error {
-	var err error
-	switch {
-	case cfg.OidfRelyingPartyConfigPath != "":
-		filename := absPath(cfg.BaseDir, cfg.OidfRelyingPartyConfigPath)
-		if s.oidfRelyingParty, err = oidf.NewRelyingPartyFromConfigFile(filename); err != nil {
-			return fmt.Errorf("load relying party config: %w", err)
-		}
-		slog.Info("loaded relying party config", "path", filename)
-	case cfg.OidfRelyingPartyConfig != nil:
-		cfg.OidfRelyingPartyConfig.BaseDir = cfg.BaseDir
-		if s.oidfRelyingParty, err = oidf.NewRelyingPartyFromConfig(cfg.OidfRelyingPartyConfig); err != nil {
-			return fmt.Errorf("create relying party: %w", err)
-		}
-	}
+func (s *Server) initRelyingParty(cfg Config) {
+	s.oidfRelyingParty = cfg.RelyingParty
 
 	// Inject the products' oidc_redirect_uri into the served entity statement so the federation accepts the
 	// AS callback URLs the products register. oidf stays registry-agnostic — it just runs this func hook.
@@ -269,20 +232,6 @@ func (s *Server) initRelyingParty(cfg Config) error {
 			}
 		})
 	}
-	return nil
-}
-
-// initGematikIdp configures the optional gematik IDP-Dienst clients.
-func (s *Server) initGematikIdp(cfg Config) error {
-	for _, c := range cfg.GematikIdp {
-		client, err := gemidp.NewClientFromConfig(c)
-		if err != nil {
-			return fmt.Errorf("create gematik IDP-Dienst client: %w", err)
-		}
-		slog.Info("created gematik IDP-Dienst client", "issuer", client.Issuer())
-		s.openidProviders = append(s.openidProviders, client)
-	}
-	return nil
 }
 
 // MetadataEndpoint serves the authorization server metadata document (RFC 8414).

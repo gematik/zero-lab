@@ -22,19 +22,52 @@
 package epa
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
+	"regexp"
 
-	"github.com/go-playground/validator/v10"
-	"github.com/stretchr/testify/assert/yaml"
+	"go.yaml.in/yaml/v3"
 )
 
 // Config is the content of a configuration file: the proxies to run.
 type Config struct {
 	BaseDir      string        `yaml:"-"` // set to the base directory of config files when loading
-	ProxyConfigs []ProxyConfig `yaml:"proxies" validate:"required,dive,required"`
+	ProxyConfigs []ProxyConfig `yaml:"proxies"`
+}
+
+// Redacted is a copy to show: the secrets a proxy's configuration may hold are replaced.
+func (c *Config) Redacted() *Config {
+	redacted := *c
+	redacted.ProxyConfigs = make([]ProxyConfig, len(c.ProxyConfigs))
+	for i, proxy := range c.ProxyConfigs {
+		if proxy.AuthnP12Password != "" {
+			proxy.AuthnP12Password = redactedValue
+		}
+		if proxy.VsdmHmacKeyHex != "" {
+			proxy.VsdmHmacKeyHex = redactedValue
+		}
+		redacted.ProxyConfigs[i] = proxy
+	}
+	return &redacted
+}
+
+const redactedValue = "[redacted]"
+
+var proxyName = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+
+// Validate reports the first thing wrong with the configuration.
+func (c *Config) Validate() error {
+	if len(c.ProxyConfigs) == 0 {
+		return errors.New("proxies: at least one is required")
+	}
+	for i := range c.ProxyConfigs {
+		if err := c.ProxyConfigs[i].Validate(); err != nil {
+			return fmt.Errorf("proxies[%d]: %w", i, err)
+		}
+	}
+	return nil
 }
 
 // GetProxyConfigByName returns a copy of the proxy configuration called name, if any.
@@ -74,13 +107,7 @@ func LoadConfigFile(path string) (*Config, error) {
 		return nil, fmt.Errorf("decode config file: %w", err)
 	}
 
-	validate := validator.New()
-	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
-		return fld.Tag.Get("yaml")
-	})
-
-	err = validate.Struct(cfg)
-	if err != nil {
+	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("validate config: %w", err)
 	}
 
@@ -89,4 +116,32 @@ func LoadConfigFile(path string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// Validate reports the first thing wrong with the proxy's configuration. It names the setting and never its
+// value, which may be a key.
+func (c *ProxyConfig) Validate() error {
+	switch {
+	case c.Name == "":
+		return errors.New("name is required")
+	case !proxyName.MatchString(c.Name):
+		return errors.New("name may hold only A-Z a-z 0-9 . _ - (at most 64), as it is part of the proxy's route")
+	case c.Timeout <= 0:
+		return errors.New("timeout must be greater than zero")
+	case c.VsdmHmacKeyHex == "":
+		return errors.New("vsdm_hmac_key_hex is required")
+	case c.VsdmHmacKeyID == "":
+		return errors.New("vsdm_hmac_key_id is required")
+	}
+	switch c.Env {
+	case EnvDev, EnvTest, EnvRef, EnvProd:
+	default:
+		return errors.New("env must be dev, test, ref or prod")
+	}
+	switch c.VAUCertVerify {
+	case "", "off", "warn", "enforce":
+	default:
+		return errors.New("vau_cert_verify must be off, warn or enforce")
+	}
+	return nil
 }

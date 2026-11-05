@@ -25,15 +25,22 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/asn1"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 
-	"github.com/lestrrat-go/jwx/v3/jwa"
-	"github.com/lestrrat-go/jwx/v3/jwk"
-	"github.com/lestrrat-go/jwx/v3/jws"
-	"github.com/lestrrat-go/jwx/v3/jwt"
+	"github.com/go-jose/go-jose/v4"
+
+	"github.com/gematik/zero-lab/go/openid"
 )
+
+// es256SignatureOctets is the size of R and of S in a JWS ES256 signature (RFC 7518 Section 3.4).
+const es256SignatureOctets = 32
 
 // SigningKey is what the server signs its tokens with. It holds a function, not key material
 // (docs/design/keys.md, rule 1), so a command can hand in a key in an HSM or a cloud KMS.
@@ -56,19 +63,18 @@ func (c *Config) LoadSigningKey() (*SigningKey, error) {
 		return nil, fmt.Errorf("read signing key: %w", err)
 	}
 	defer clear(raw)
-	key, err := jwk.ParseKey(raw)
+	key, err := openid.ParseKey(raw)
 	if err != nil {
 		return nil, fmt.Errorf("parse signing key %s: %w", filename, err)
 	}
-	var private ecdsa.PrivateKey
-	if err := jwk.Export(key, &private); err != nil {
-		return nil, fmt.Errorf("signing key %s: an EC private key on P-256 is required: %w", filename, err)
+	private, ok := key.Key.(*ecdsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("signing key %s: an EC private key on P-256 is required, not %T", filename, key.Key)
 	}
 	if err := checkSigningCurve(private.Public()); err != nil {
 		return nil, fmt.Errorf("signing key %s: %w", filename, err)
 	}
-	kid, _ := key.KeyID()
-	return &SigningKey{Signer: &private, KeyID: kid}, nil
+	return &SigningKey{Signer: private, KeyID: key.KeyID}, nil
 }
 
 func checkSigningCurve(public crypto.PublicKey) error {
@@ -89,35 +95,83 @@ func (s *Server) initSigningKey(cfg Config) error {
 	if err := checkSigningCurve(cfg.SigningKey.Signer.Public()); err != nil {
 		return err
 	}
-	public, err := jwk.Import(cfg.SigningKey.Signer.Public())
-	if err != nil {
-		return fmt.Errorf("import public key: %w", err)
+	public := jose.JSONWebKey{
+		Key:       cfg.SigningKey.Signer.Public(),
+		KeyID:     cfg.SigningKey.KeyID,
+		Algorithm: string(jose.ES256),
+		Use:       "sig",
 	}
-	kid := cfg.SigningKey.KeyID
-	if kid == "" {
-		if kid, err = ThumbprintS256(public); err != nil {
+	if public.KeyID == "" {
+		kid, err := ThumbprintS256(&public)
+		if err != nil {
 			return err
 		}
+		public.KeyID = kid
 	}
-	if err := public.Set(jwk.KeyIDKey, kid); err != nil {
-		return fmt.Errorf("set kid: %w", err)
+	signer, err := jose.NewSigner(
+		jose.SigningKey{Algorithm: jose.ES256, Key: es256OpaqueSigner{signer: cfg.SigningKey.Signer, public: public}},
+		(&jose.SignerOptions{}).WithType("JWT"),
+	)
+	if err != nil {
+		return fmt.Errorf("token signer: %w", err)
 	}
-	if err := public.Set(jwk.AlgorithmKey, jwa.ES256()); err != nil {
-		return fmt.Errorf("set alg: %w", err)
-	}
-	if err := public.Set(jwk.KeyUsageKey, jwk.ForSignature); err != nil {
-		return fmt.Errorf("set use: %w", err)
-	}
-	s.signer = cfg.SigningKey.Signer
-	s.signerKeyID = kid
-	s.jwks = jwk.NewSet()
-	return s.jwks.AddKey(public)
+	s.signer = signer
+	s.signerKeyID = public.KeyID
+	s.jwks = &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{public}}
+	return nil
 }
 
-func (s *Server) signAccessToken(token jwt.Token) ([]byte, error) {
-	headers := jws.NewHeaders()
-	if err := headers.Set(jws.KeyIDKey, s.signerKeyID); err != nil {
-		return nil, fmt.Errorf("set kid: %w", err)
+// signAccessToken signs claims as a compact JWS whose header names the published key.
+func (s *Server) signAccessToken(claims map[string]any) ([]byte, error) {
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		return nil, fmt.Errorf("encode claims: %w", err)
 	}
-	return jwt.Sign(token, jwt.WithKey(jwa.ES256(), s.signer, jws.WithProtectedHeaders(headers)))
+	signed, err := s.signer.Sign(payload)
+	if err != nil {
+		return nil, err
+	}
+	compact, err := signed.CompactSerialize()
+	if err != nil {
+		return nil, err
+	}
+	return []byte(compact), nil
+}
+
+// es256OpaqueSigner lets go-jose sign with the crypto.Signer without seeing the private key, which may live in an
+// HSM or a KMS.
+type es256OpaqueSigner struct {
+	signer crypto.Signer
+	public jose.JSONWebKey
+}
+
+func (s es256OpaqueSigner) Public() *jose.JSONWebKey { return &s.public }
+
+func (s es256OpaqueSigner) Algs() []jose.SignatureAlgorithm {
+	return []jose.SignatureAlgorithm{jose.ES256}
+}
+
+// SignPayload signs the digest of the JWS signing input and converts the signer's ASN.1 DER to JWS's fixed-length
+// R||S (RFC 7518 Section 3.4).
+func (s es256OpaqueSigner) SignPayload(payload []byte, alg jose.SignatureAlgorithm) ([]byte, error) {
+	if alg != jose.ES256 {
+		return nil, fmt.Errorf("the signing key signs ES256, not %s", alg)
+	}
+	digest := sha256.Sum256(payload)
+	der, err := s.signer.Sign(rand.Reader, digest[:], crypto.SHA256)
+	if err != nil {
+		return nil, fmt.Errorf("sign: %w", err)
+	}
+	var signature struct{ R, S *big.Int }
+	rest, err := asn1.Unmarshal(der, &signature)
+	if err != nil || len(rest) != 0 || signature.R.Sign() <= 0 || signature.S.Sign() <= 0 {
+		return nil, errors.New("the signer returned a malformed ECDSA signature")
+	}
+	if signature.R.BitLen() > 8*es256SignatureOctets || signature.S.BitLen() > 8*es256SignatureOctets {
+		return nil, errors.New("the signer returned an ECDSA signature too long for P-256")
+	}
+	raw := make([]byte, 2*es256SignatureOctets)
+	signature.R.FillBytes(raw[:es256SignatureOctets])
+	signature.S.FillBytes(raw[es256SignatureOctets:])
+	return raw, nil
 }

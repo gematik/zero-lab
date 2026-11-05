@@ -22,13 +22,14 @@
 package proxy
 
 import (
+	"bytes"
 	"fmt"
 	"net/http/httputil"
 	"net/url"
 	"os"
 	"sort"
 
-	"gopkg.in/yaml.v3"
+	yaml "go.yaml.in/yaml/v4"
 )
 
 // InjectMode selects what a protected route forwards upstream to identify/authorize the user.
@@ -99,7 +100,9 @@ func loadRoutes(path string) ([]Route, error) {
 		return nil, fmt.Errorf("read routes %q: %w", path, err)
 	}
 	var f routesFile
-	if err := yaml.Unmarshal(b, &f); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(b))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&f); err != nil {
 		return nil, fmt.Errorf("parse routes %q: %w", path, err)
 	}
 	return f.Routes, nil

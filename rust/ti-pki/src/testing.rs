@@ -143,6 +143,7 @@ pub(crate) fn typed(name: &str) -> Certificate {
         "fallback-hp-qes-arzt" => fixture!("types/fallback-hp-qes-arzt"),
         "none-umbrella-only" => fixture!("types/none-umbrella-only"),
         "none-unrelated-admission" => fixture!("types/none-unrelated-admission"),
+        "role-fd-aut-dipag-vau" => fixture!("types/role-fd-aut-dipag-vau"),
         "role-fd-aut-epa-vau" => fixture!("types/role-fd-aut-epa-vau"),
         "role-fd-aut-zeta-guard" => fixture!("types/role-fd-aut-zeta-guard"),
         "role-fd-sig-idpd" => fixture!("types/role-fd-sig-idpd"),

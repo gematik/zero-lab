@@ -27,9 +27,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"maps"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -73,6 +75,7 @@ type Proxy struct {
 	Authenticator  Authenticator
 	mux            *http.ServeMux
 	sessionManager *sessionManager
+	statusGuard    *statusGuard
 	records        map[string]PatientRecordMetadata
 	recordsLock    sync.RWMutex
 }
@@ -81,9 +84,9 @@ type Proxy struct {
 // or [NewProxyWithSecurityFunctions] fills in the identity.
 type ProxyConfig struct {
 	BaseDir string        `yaml:"-"`
-	Name    string        `yaml:"name" validate:"required"`
-	Env     Env           `yaml:"env" validate:"required,oneof=dev test ref prod"`
-	Timeout time.Duration `yaml:"timeout" validate:"required,gt=0"`
+	Name    string        `yaml:"name"`
+	Env     Env           `yaml:"env"`
+	Timeout time.Duration `yaml:"timeout"`
 
 	// SMC-B identity, loaded and used by the `ti` tool: a PKCS#12 (authn_p12_path, its
 	// password in the file authn_p12_password_path names, default 00), a PEM cert+key
@@ -102,10 +105,10 @@ type ProxyConfig struct {
 	// VAUCertVerify is what to do with the verdict on the VAU's certificates and host
 	// keys: warn (default) logs it, enforce fails the handshake on a bad one, off skips
 	// the check.
-	VAUCertVerify string `yaml:"vau_cert_verify" validate:"omitempty,oneof=off warn enforce"`
+	VAUCertVerify string `yaml:"vau_cert_verify"`
 
-	VsdmHmacKeyHex string `yaml:"vsdm_hmac_key_hex" validate:"required"`
-	VsdmHmacKeyID  string `yaml:"vsdm_hmac_key_id" validate:"required"`
+	VsdmHmacKeyHex string `yaml:"vsdm_hmac_key_hex"`
+	VsdmHmacKeyID  string `yaml:"vsdm_hmac_key_id"`
 
 	SecurityFunctions *SecurityFunctions `yaml:"-"`
 	// Authenticator answers the IDP-Dienst's challenges; Init sets it up over the
@@ -300,6 +303,8 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 		sessions:          make(map[ProviderNumber]*Session),
 	}
 
+	p.statusGuard = newStatusGuard(AllProviders, p.checkProviderStatus)
+
 	for _, providerNumber := range AllProviders {
 		go p.sessionManager.WatchSession(providerNumber)
 	}
@@ -327,63 +332,86 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 
 // HandleForwardToProvider forwards a request outside the VAU to the provider in the path.
 func (p *Proxy) HandleForwardToProvider(w http.ResponseWriter, r *http.Request) {
-	num, err := strconv.Atoi(r.PathValue("providerNumber"))
-	if err != nil {
-		http.Error(w, "invalid provider number", http.StatusBadRequest)
+	provider, ok := providerOf(r)
+	if !ok {
+		http.Error(w, "unknown provider", http.StatusNotFound)
 		return
 	}
 
-	session, err := p.sessionManager.GetSession(ProviderNumber(num))
+	session, err := p.sessionManager.GetSession(provider)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to get session: %v", err), http.StatusBadGateway)
+		slog.Error("Failed to get session", "provider", provider, "error", err)
+		http.Error(w, "the provider is not available", http.StatusBadGateway)
 		return
 	}
 
-	r2, err := http.NewRequest(r.Method, session.BaseURL+"/"+r.PathValue("path"), r.Body) //nolint:gosec // TASK-181: the request picks the provider number, unchecked, and so the host under epa4all.de
+	target, err := providerURL(session.BaseURL, r.PathValue("path"))
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to create request: %v", err), http.StatusInternalServerError)
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+	r2, err := http.NewRequest(r.Method, target, r.Body)
+	if err != nil {
+		slog.Error("Failed to create request", "error", err)
+		http.Error(w, "failed to create request", http.StatusInternalServerError)
 		return
 	}
 	r2.URL.RawQuery = r.URL.RawQuery
 
 	copyAndPrepareHeaders(r.Header, r2.Header)
 
-	slog.Info("Forwarding request to provider", "method", r2.Method, "url", r2.URL.String(), "headers", r2.Header)
+	slog.Info("Forwarding request to provider", "method", r2.Method, "path", r2.URL.Path, "provider", provider)
 
-	resp, err := session.HTTPClient.Do(r2) //nolint:gosec // TASK-181: the request picks the provider number, unchecked, and so the host under epa4all.de
+	resp, err := session.HTTPClient.Do(r2) //nolint:gosec // the host is one of AllProviders (providerOf), and providerURL lets the request pick the path only
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to forward request: %v", err), http.StatusInternalServerError)
+		slog.Error("Failed to forward request", "provider", provider, "error", err)
+		http.Error(w, "failed to forward the request", http.StatusBadGateway)
 		return
 	}
+	defer resp.Body.Close()
 
 	maps.Copy(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)
 
-	// read from response body and write to response writer
-	buf := make([]byte, 4096)
-	for {
-		n, err := resp.Body.Read(buf)
-		if n > 0 {
-			if _, err := w.Write(buf[:n]); err != nil {
-				slog.Error("Failed to write forwarded response", "error", err)
-				return
-			}
-		}
-		if err != nil {
-			break
-		}
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		slog.Error("Failed to write forwarded response", "error", err)
 	}
 }
 
 // HandleForwardToVAUProvider forwards a request into the VAU of the provider in the path.
 func (p *Proxy) HandleForwardToVAUProvider(w http.ResponseWriter, r *http.Request) {
-	num, err := strconv.Atoi(r.PathValue("providerNumber"))
-	if err != nil {
-		http.Error(w, "invalid provider number", http.StatusBadRequest)
+	provider, ok := providerOf(r)
+	if !ok {
+		http.Error(w, "unknown provider", http.StatusNotFound)
 		return
 	}
 
-	p.forwardToVAU(w, r, ProviderNumber(num), "")
+	p.forwardToVAU(w, r, provider, "")
+}
+
+// providerURL is path below the provider's base URL. The request picks the path only: whatever it holds,
+// the host stays the provider's.
+func providerURL(baseURL, path string) (string, error) {
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return "", err
+	}
+	target := base.JoinPath(path)
+	if target.Scheme != base.Scheme || target.Host != base.Host || target.User != nil {
+		return "", fmt.Errorf("%q leaves the provider", path)
+	}
+	return target.String(), nil
+}
+
+// providerOf is the provider the request's path names, if it is one of [AllProviders]. A number taken as it
+// comes would pick the host the proxy runs a VAU handshake and an SMC-B login at.
+func providerOf(r *http.Request) (ProviderNumber, bool) {
+	num, err := strconv.Atoi(r.PathValue("providerNumber"))
+	if err != nil {
+		return 0, false
+	}
+	provider := ProviderNumber(num)
+	return provider, slices.Contains(AllProviders, provider)
 }
 
 var proxyBlockedHeaderNames = []string{
@@ -398,7 +426,8 @@ func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNum
 	path = "/" + path
 	session, err := p.sessionManager.GetSession(providerNumber)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("failed to get session: %v", err), http.StatusBadGateway)
+		slog.Error("Failed to get session", "provider", providerNumber, "error", err)
+		http.Error(w, "the provider is not available", http.StatusBadGateway)
 		return
 	}
 
@@ -423,34 +452,24 @@ func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNum
 		r2.Header.Set("x-request-id", uuid.NewV4().String())
 	}
 
-	slog.Info("Forwarding request to VAU", "method", r2.Method, "path", r2.URL.String(), "headers", r2.Header, "session_url", session.BaseURL)
+	slog.Info("Forwarding request to VAU", "method", r2.Method, "path", r2.URL.Path, "provider", providerNumber)
 
 	resp, err := session.VAUChannel.Do(r2)
 	if err != nil {
-		slog.Error("Failed to forward request", "error", err)
-		http.Error(w, fmt.Sprintf("failed to forward request: %v", err), http.StatusInternalServerError)
+		slog.Error("Failed to forward request", "provider", providerNumber, "error", err)
+		http.Error(w, "failed to forward the request", http.StatusBadGateway)
 		return
 	}
+	defer resp.Body.Close()
 
 	maps.Copy(w.Header(), resp.Header)
 
-	slog.Info("Got forwarded request response", "method", r2.Method, "path", r2.URL.String(), "status", resp.StatusCode, "session_url", session.BaseURL)
+	slog.Info("Got forwarded request response", "method", r2.Method, "path", r2.URL.Path, "status", resp.StatusCode)
 
 	w.WriteHeader(resp.StatusCode)
 
-	// read from response body and write to response writer
-	buf := make([]byte, 4096)
-	for {
-		n, err := resp.Body.Read(buf)
-		if n > 0 {
-			if _, err := w.Write(buf[:n]); err != nil {
-				slog.Error("Failed to write forwarded response", "error", err)
-				return
-			}
-		}
-		if err != nil {
-			break
-		}
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		slog.Error("Failed to write forwarded response", "error", err)
 	}
 }
 
@@ -517,7 +536,7 @@ func (p *Proxy) findRecordProvider(insurantID string) (*Session, *MultiProviderE
 
 	for _, provider := range AllProviders {
 		go func(provider ProviderNumber) {
-			slog.Info("Checking record status", "insurantID", insurantID, "provider", provider)
+			slog.Info("Checking record status", "provider", provider)
 			session, err := p.sessionManager.GetSession(provider)
 			if err != nil {
 				results <- result{provider: provider, err: err}
@@ -545,7 +564,7 @@ func (p *Proxy) findRecordProvider(insurantID string) (*Session, *MultiProviderE
 			continue
 		}
 		if !r.found {
-			slog.Info("Record not found", "provider", r.provider, "insurantID", insurantID)
+			slog.Info("Record not found", "provider", r.provider)
 			multiProviderError.Errors = append(multiProviderError.Errors, ProvidersError{
 				Code:           "record_not_found",
 				Description:    fmt.Sprintf("record not found for insurantID '%s'", insurantID),
@@ -553,7 +572,7 @@ func (p *Proxy) findRecordProvider(insurantID string) (*Session, *MultiProviderE
 			})
 			continue
 		}
-		slog.Info("Record found", "provider", r.provider, "insurantID", insurantID)
+		slog.Info("Record found", "provider", r.provider)
 		if foundSession == nil {
 			foundSession = r.session
 		}
@@ -583,7 +602,7 @@ func (p *Proxy) findAndCacheRecord(insurantID string) (*PatientRecordMetadata, e
 		Provider:   session.ProviderNumber,
 	}
 	if validTo, err := p.entitle(session, insurantID); err != nil {
-		slog.Error("Failed to entitle", "provider", session.ProviderNumber, "insurantID", insurantID, "error", err)
+		slog.Error("Failed to entitle", "provider", session.ProviderNumber, "error", err)
 	} else {
 		rm.EntitledAt = time.Now()
 		rm.ValidTo = validTo
@@ -602,7 +621,7 @@ func (p *Proxy) HandleForwardToVAUInsurant(w http.ResponseWriter, r *http.Reques
 	insurantID := r.PathValue("insurantID")
 	rm, err := p.findAndCacheRecord(insurantID)
 	if err != nil {
-		slog.Error("Failed to find record", "insurantID", insurantID, "error", err)
+		slog.Error("Failed to find record", "error", err)
 		mperr := &MultiProviderError{}
 		if errors.As(err, &mperr) {
 			w.Header().Set("Content-Type", "application/json")

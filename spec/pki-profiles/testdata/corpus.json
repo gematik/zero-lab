@@ -50,6 +50,10 @@
       },
       "file": "fallback-ch-qes.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "policy_mismatch",
           "role_oid_missing"
@@ -91,6 +95,11 @@
       },
       "file": "fallback-hci-aut-krankenhaus.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "policy_mismatch",
           "key_usage_mismatch",
@@ -138,6 +147,11 @@
       },
       "file": "fallback-hci-enc-apotheke.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "policy_mismatch",
           "key_usage_mismatch",
@@ -185,6 +199,10 @@
       },
       "file": "fallback-hci-osig-praxis.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "policy_mismatch",
           "role_oid_missing"
@@ -226,6 +244,12 @@
       },
       "file": "fallback-hp-aut-apotheker.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "policy_mismatch",
           "key_usage_mismatch",
@@ -279,6 +303,11 @@
       },
       "file": "fallback-hp-enc-zahnarzt.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "policy_mismatch",
           "key_usage_mismatch",
@@ -326,6 +355,10 @@
       },
       "file": "fallback-hp-qes-arzt.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "policy_mismatch",
           "role_oid_missing"
@@ -391,12 +424,48 @@
           "TEST-ROLE"
         ],
         "oids": [
+          "1.2.276.0.76.4.323"
+        ],
+        "registration_number": null
+      },
+      "file": "role-fd-aut-dipag-vau.pem",
+      "findings": {
+        "dipag-vau-aut": [],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [
+          "role_oid_missing"
+        ]
+      },
+      "selection": {
+        "candidates": [],
+        "profile": "dipag-vau-aut",
+        "reason": "cert"
+      },
+      "type": "C.FD.AUT"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
           "1.2.276.0.76.4.209"
         ],
         "registration_number": null
       },
       "file": "role-fd-aut-epa-vau.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [],
         "fd-tls-s": [],
         "hci-aut": [],
@@ -427,6 +496,9 @@
       },
       "file": "role-fd-aut-zeta-guard.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -457,6 +529,9 @@
       },
       "file": "role-fd-sig-idpd.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -487,6 +562,9 @@
       },
       "file": "role-hci-aut-kim-anbieter.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -519,6 +597,9 @@
       },
       "file": "role-hci-aut-kostentraeger.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -551,6 +632,9 @@
       },
       "file": "role-hp-qes-hebamme.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -583,6 +667,9 @@
       },
       "file": "role-hp-qes-notfallsanitaeter.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -615,6 +702,9 @@
       },
       "file": "type-ch-aut.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -647,6 +737,9 @@
       },
       "file": "type-ch-autn.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -679,6 +772,9 @@
       },
       "file": "type-ch-enc.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -711,6 +807,9 @@
       },
       "file": "type-ch-encv.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -743,6 +842,9 @@
       },
       "file": "type-ch-qes.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -775,6 +877,9 @@
       },
       "file": "type-ch-sig.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -799,6 +904,9 @@
       "admission": null,
       "file": "type-fd-aut.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -814,6 +922,7 @@
       },
       "selection": {
         "candidates": [
+          "dipag-vau-aut",
           "epa-vau-aut",
           "zeta-guard-aut"
         ],
@@ -826,6 +935,9 @@
       "admission": null,
       "file": "type-fd-enc.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -850,6 +962,9 @@
       "admission": null,
       "file": "type-fd-osig.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -874,6 +989,9 @@
       "admission": null,
       "file": "type-fd-sig.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -900,6 +1018,9 @@
       "admission": null,
       "file": "type-fd-tls-c.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -924,6 +1045,9 @@
       "admission": null,
       "file": "type-fd-tls-s.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -948,6 +1072,9 @@
       "admission": null,
       "file": "type-gem-ver.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -980,6 +1107,9 @@
       },
       "file": "type-hci-aut.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -1012,6 +1142,9 @@
       },
       "file": "type-hci-enc.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -1044,6 +1177,9 @@
       },
       "file": "type-hci-osig.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -1076,6 +1212,9 @@
       },
       "file": "type-hp-aut.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -1108,6 +1247,9 @@
       },
       "file": "type-hp-enc.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -1140,6 +1282,9 @@
       },
       "file": "type-hp-qes.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -1172,6 +1317,9 @@
       },
       "file": "type-hsk-enc.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -1204,6 +1352,9 @@
       },
       "file": "type-hsk-sig.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -1228,6 +1379,9 @@
       "admission": null,
       "file": "type-zd-sig.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -1252,6 +1406,9 @@
       "admission": null,
       "file": "type-zd-tls-s.pem",
       "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
         "epa-vau-aut": [
           "role_oid_missing"
         ],
@@ -1274,6 +1431,33 @@
     }
   ],
   "tables": {
+    "error_codes": [
+      "revoked",
+      "ocsp_response_invalid",
+      "ocsp_responder_untrusted",
+      "ocsp_unavailable",
+      "unrecognized_critical_extension",
+      "ocsp_responder_not_rfc6960",
+      "fqdn_mismatch",
+      "role_oid_missing",
+      "expired",
+      "not_yet_valid",
+      "chain_incomplete",
+      "policy_mismatch",
+      "signature_invalid",
+      "key_usage_mismatch",
+      "key_not_admissible",
+      "key_phased_out",
+      "profile_not_detected",
+      "profile_ambiguous",
+      "profile_type_mismatch",
+      "cert_type_ca_not_authorized",
+      "ca_revoked_in_tsl",
+      "ca_not_in_tsl",
+      "issued_before_ca_revocation",
+      "revoked_after_reference_time",
+      "issued_before_ca_expiry"
+    ],
     "institutions": [
       "1.2.276.0.76.4.50",
       "1.2.276.0.76.4.51",
@@ -2867,8 +3051,7 @@
       },
       {
         "certificate_types": [
-          "C.FD.AUT",
-          "C.FD.TLS-C"
+          "C.FD.AUT"
         ],
         "description": "ZETA Guard",
         "document": "",
@@ -2919,6 +3102,15 @@
         "document": "",
         "oid": "1.2.276.0.76.4.331",
         "reference": "oid_zeta-pol-oper"
+      },
+      {
+        "certificate_types": [
+          "C.FD.SIG"
+        ],
+        "description": "ZETA Provisioning Container Image Freigeber",
+        "document": "",
+        "oid": "1.2.276.0.76.4.332",
+        "reference": "oid_zeta-prv-approv"
       },
       {
         "certificate_types": [
@@ -2990,6 +3182,18 @@
           "C.FD.AUT"
         ],
         "default_for": [],
+        "description": "Digitale Patientenrechnung VAU authenticity",
+        "name": "dipag-vau-aut",
+        "required_role_oids": [
+          "1.2.276.0.76.4.323"
+        ],
+        "revocation": "hard-fail"
+      },
+      {
+        "accepts_types": [
+          "C.FD.AUT"
+        ],
+        "default_for": [],
         "description": "ePA Aktensystem VAU backend authenticity",
         "name": "epa-vau-aut",
         "required_role_oids": [
@@ -3019,7 +3223,7 @@
         "description": "Institution authentication, SM-B (SMC-B, HSM-B)",
         "name": "hci-aut",
         "required_role_oids": [],
-        "revocation": "soft-fail"
+        "revocation": "hard-fail"
       },
       {
         "accepts_types": [

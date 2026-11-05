@@ -28,7 +28,7 @@ import (
 	"github.com/gematik/zero-lab/go/dpop"
 )
 
-func TestBffSignerProof(t *testing.T) {
+func TestSessionKeySignerProof(t *testing.T) {
 	priv, jwkJSON, err := newSessionDPoPKey()
 	if err != nil {
 		t.Fatal(err)
@@ -41,20 +41,16 @@ func TestBffSignerProof(t *testing.T) {
 	}
 
 	req, _ := http.NewRequest(http.MethodGet, "https://api.example/protected", nil)
-	proof, err := (bffSigner{}).dpopProof(req, "the-access-token", priv)
+	proof, err := (sessionKeySigner{}).dpopProof(req, "the-access-token", priv)
 	if err != nil {
 		t.Fatalf("dpopProof: %v", err)
-	}
-	key, err := dpopKey(priv)
-	if err != nil {
-		t.Fatal(err)
 	}
 	// The resource server's checks of RFC 9449 Section 4.3 and 7.1: htm, htu, ath and the key binding.
 	verifyDPoP(t, proof, dpop.Request{
 		Method:      http.MethodGet,
 		URI:         "https://api.example/protected",
 		AccessToken: "the-access-token",
-		Thumbprint:  key.Thumbprint(),
+		Thumbprint:  priv.Thumbprint(),
 	})
 }
 

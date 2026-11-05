@@ -123,7 +123,7 @@ func TestJWEEncryptRoundTrip(t *testing.T) {
 }
 
 // TestJSONWebKeyBrainpoolRoundTrip marshals and parses a Brainpool EC public key (crv "BP-256").
-// The x5c→certificate path (brainpool.ParseCertificate) is covered end to end by the live gemidp
+// The x5c→certificate path (brainpool.ParseCertificate) is covered end to end by the live idpd
 // SMC-B test, which parses the IDP's real Brainpool certificate.
 func TestJSONWebKeyBrainpoolRoundTrip(t *testing.T) {
 	prk, err := ecdsa.GenerateKey(brainpool.P256r1(), rand.Reader)

@@ -30,59 +30,51 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/lestrrat-go/jwx/v3/jwk"
+	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/dpop"
 )
 
-// sessionSigner mints the DPoP proof for an outbound API request. S4's implementation (bffSigner) signs with
-// the session's BFF-held key; the T3 stage (docs/pdp-backend.md §10) swaps in a browser-relaying signer.
+// sessionSigner mints the DPoP proof for an outbound API request. S4's implementation (sessionKeySigner) signs with
+// the session's server-held key; the T3 stage (docs/pdp-backend.md §10) swaps in a browser-relaying signer.
 type sessionSigner interface {
-	dpopProof(req *http.Request, accessToken string, key jwk.Key) (string, error)
+	dpopProof(req *http.Request, accessToken string, key *dpop.Key) (string, error)
 }
 
-type bffSigner struct{}
+type sessionKeySigner struct{}
 
-func (bffSigner) dpopProof(req *http.Request, accessToken string, key jwk.Key) (string, error) {
-	k, err := dpopKey(key)
-	if err != nil {
-		return "", err
-	}
-	return k.Proof(req.Method, req.URL.String(), dpop.ProofOptions{AccessToken: accessToken})
+func (sessionKeySigner) dpopProof(req *http.Request, accessToken string, key *dpop.Key) (string, error) {
+	return key.Proof(req.Method, req.URL.String(), dpop.ProofOptions{AccessToken: accessToken})
 }
 
-// dpopKey makes the session's stored DPoP key a signing key for proofs: the private key leaves the JWK only
-// as a crypto.Signer.
-func dpopKey(key jwk.Key) (*dpop.Key, error) {
-	var raw any
-	if err := jwk.Export(key, &raw); err != nil {
-		return nil, fmt.Errorf("session dpop key: %w", err)
-	}
-	signer, ok := raw.(crypto.Signer)
-	if !ok {
-		return nil, fmt.Errorf("session dpop key: %T is not a private key", raw)
-	}
-	return dpop.NewKeyFromSigner(signer)
-}
-
-// newSessionDPoPKey generates a per-session P-256 DPoP keypair and returns the private key plus its
-// JSON-marshaled JWK for storage on the session.
-func newSessionDPoPKey() (jwk.Key, []byte, error) {
+// newSessionDPoPKey generates a per-session P-256 DPoP keypair and returns it as a signing key plus its
+// JSON-marshaled private JWK for storage on the session.
+func newSessionDPoPKey() (*dpop.Key, []byte, error) {
 	private, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, nil, err
 	}
-	key, err := jwk.Import(private)
+	js, err := json.Marshal(jose.JSONWebKey{Key: private})
 	if err != nil {
 		return nil, nil, err
 	}
-	js, err := json.Marshal(key)
+	key, err := dpop.NewKeyFromSigner(private)
 	if err != nil {
 		return nil, nil, err
 	}
 	return key, js, nil
 }
 
-func parseSessionDPoPKey(jwkJSON []byte) (jwk.Key, error) {
-	return jwk.ParseKey(jwkJSON)
+// parseSessionDPoPKey makes the session's stored DPoP key a signing key for proofs: the private key leaves the JWK
+// only as a crypto.Signer.
+func parseSessionDPoPKey(jwkJSON []byte) (*dpop.Key, error) {
+	var jwk jose.JSONWebKey
+	if err := json.Unmarshal(jwkJSON, &jwk); err != nil {
+		return nil, fmt.Errorf("session dpop key: %w", err)
+	}
+	signer, ok := jwk.Key.(crypto.Signer)
+	if !ok {
+		return nil, fmt.Errorf("session dpop key: %T is not a private key", jwk.Key)
+	}
+	return dpop.NewKeyFromSigner(signer)
 }
