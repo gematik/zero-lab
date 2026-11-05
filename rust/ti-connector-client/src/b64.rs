@@ -23,7 +23,7 @@
 
 //! Base64 (RFC 4648 section 4, with padding) for what the Konnektor and a `.kon` file carry, in
 //! constant time. Whitespace, as line-wrapping encoders leave it, is ignored when decoding; an
-//! encoding with non-zero padding bits is refused.
+//! encoding with non-zero padding bits is refused (RFC 4648 section 3.5).
 
 use base64ct::{Base64, Encoding as _};
 
@@ -40,8 +40,10 @@ pub(crate) fn decode(text: &str) -> Result<Vec<u8>, base64ct::Error> {
 mod tests {
     use super::*;
 
+    /// RFC 4648 §4 with padding: whitespace is skipped, non-zero pad bits (RFC 4648 §3.5)
+    /// are refused.
     #[test]
-    fn whitespace_is_ignored_and_a_non_canonical_encoding_refused() {
+    fn rfc_4648_4_whitespace_is_ignored_and_a_non_canonical_encoding_refused() {
         assert_eq!(decode("aGVs\r\n bG8=").unwrap(), b"hello");
         assert!(decode("aGVsbG9=").is_err());
         assert!(decode("aGVsbG8").is_err());

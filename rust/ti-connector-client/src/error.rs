@@ -190,6 +190,7 @@ impl Fault {
 /// which the Konnektor's administrator maintains and the `.kon` call context names.
 pub fn fault_hint(code: i64) -> Option<&'static str> {
     Some(match code {
+        // TAB_KON_514-01: an HBA session of another user ID with a raised security state.
         4018 => {
             "another user ID has entered a PIN on this HBA (comfort signature, or another profile or client system): `connector comfort deactivate CARD` ends a comfort session; for any other, take the card out and put it back"
         }

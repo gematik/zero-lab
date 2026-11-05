@@ -436,8 +436,9 @@ impl<'a, T: Transport> Signatures<'a, T> {
 mod tests {
     use super::*;
 
+    /// A_20073-01: the Konnektor takes only a 128-bit UUID as UserId, RFC 4122 version 4.
     #[test]
-    fn comfort_user_ids_are_version_4_uuids() {
+    fn a_20073_comfort_user_ids_are_version_4_uuids() {
         let id = ComfortUserId::generate(|b| b.fill(0xff));
         assert_eq!(id.as_str(), "ffffffff-ffff-4fff-bfff-ffffffffffff");
         let id = ComfortUserId::generate(|b| b.fill(0));
