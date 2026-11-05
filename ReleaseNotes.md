@@ -1,5 +1,25 @@
 # Release Notes
 
+# Release go/openid v0.53.0
+
+### breaking
+- Discovery is https only: an issuer, or an authorization, token, JWKS, userinfo or revocation
+  endpoint in the discovery document, that is not an https URL is refused (OpenID Connect Discovery
+  1.0 section 3, TASK-194). A local provider over plain http no longer works.
+
+### verified
+- `just check` across all Go modules passed on 8d8ccc7; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`. The development guide lists no gated suite as required for this module.
+
+# Release go/metsubushi v0.2.2
+
+### changes
+- Built with golang:1.27, as `go.work` requires; lint findings cleared. No behaviour change.
+
+### verified
+- `just check` across all Go modules passed on 8d8ccc7; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`. The development guide lists no gated suite as required for this module.
+
 # Release go/pkcs12 v1.0.0-rc.2
 
 ### changes
