@@ -118,7 +118,8 @@ the interop adapter in `spec/<topic>/interop/rust` prints the code.
 | fuzzing | cargo-fuzz (below) | release, design time | jwz, ti-cli, ti-pki and ti-connector-client parsers |
 | known-answer, corpora, interop | Wycheproof, spec corpora, interop runs | check | jwz, jwz-brainpool, ti-pki, ti-pkcs12 |
 | undefined behaviour | Miri | only if `unsafe` ever enters | n/a |
-| mutation testing | cargo-mutants (`just mutants`) | before a release | per crate, by hand |
+| mutation testing | cargo-mutants (`just mutants-record`, `just mutants-gate`) | before a release; `just release` refuses a crate without a score for its current code or below its threshold in `mutation-scores.toml` | per crate |
+| coverage | cargo-llvm-cov (`just coverage`), with the cited requirements whose code no test runs | on demand | all crates |
 | supply chain | cargo-deny, cargo-audit, cargo-vet | check / audit | workspace |
 | compatibility | cargo-semver-checks, MSRV, cargo-machete | audit / check | workspace |
 

@@ -66,7 +66,8 @@ just check-full   # tier 1, before a release: check, the tests with default feat
 just audit        # tier 2, before tagging: advisories, vet, msrv, semver
 ```
 
-Each gate `just release` runs also runs earlier, so a release does not fail first on it:
+Each gate `just release` runs also runs earlier, so a release does not fail first on it
+(the mutation scores excepted, which `just mutants-record` measures beforehand, by hand):
 `vet` in `check`, the Linux and Windows builds of `ti` as `cli-check` in `check-full`
 (linted in the same cross containers `cli-targets` builds in), and the advisory database
 through `deny` in `check` (`advisories`, cargo audit, in `audit`). `msrv` and `semver` run
@@ -387,6 +388,10 @@ dependent's version requirement raised.
 just changed                       # what changed since each crate's last tag
 git add -A && git commit -m "ti-pki: release 0.1.1"
 
+#    A crate's mutation score must belong to its code as released and reach its threshold
+#    (mutation-scores.toml); `just release` checks it with `just mutants-gate`
+just mutants-record ti-pki         # slow; commit mutation-scores.toml
+
 # 3. Tier 2 must be green before tagging (semver compares against the last tag)
 just audit
 #    and every gated suite listed for the crates being released (see "Gated tests"),
@@ -510,6 +515,9 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `audit` | Tier 2: `advisories`, `vet`, `msrv`, `semver` |
 | `vet-suggest` | Dependencies still awaiting a cargo vet audit |
 | `miri`, `mutants <crate>` | On demand: Miri (nightly), mutation testing |
+| `mutants-record <crate>` | Measure a crate's mutation score on the committed tree into `mutation-scores.toml` |
+| `mutants-gate <crate>…` | The recorded scores of crates about to be released: present, current, at least the threshold |
+| `coverage [<crate>…]` | Line coverage per crate (HTML in `target/coverage/html`) and the cited requirements whose code no test runs |
 | `versions` | Show the latest tag for every crate |
 | `changed` | List crates with commits since their last tag |
 | `tag <crate> <ver>` | Create the `rust/<crate>/v<ver>` release tag |

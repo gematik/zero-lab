@@ -91,7 +91,8 @@ proof to get a change through; a stale stamp is rerun, not edited.
 | property tests | invariants over generated inputs | check |
 | known-answer, spec corpora, interop | known-answer and edge cases, same verdicts as other implementations | check |
 | race detection, sanitizers | no data races or undefined behaviour where the language allows them | check |
-| mutation testing | the tests notice when the code changes | before a release |
+| mutation testing | the tests notice when the code changes: a score per unit, measured on the code being released and at least the unit's threshold where it holds a security decision | before a release, gated |
+| coverage | which code, and which cited requirements, no test runs | on demand |
 | supply chain | licences, bans, sources, advisories, audited dependencies | check / audit |
 | compatibility | no accidental API breaks, declared toolchain, no unused dependencies | audit / check |
 

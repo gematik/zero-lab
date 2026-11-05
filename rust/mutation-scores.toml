@@ -1,0 +1,17 @@
+# Mutation scores per crate: (caught + timeout) / (caught + missed + timeout) of
+# cargo-mutants' viable mutants, measured by `just mutants-record <crate>` on a committed
+# tree and checked by `just mutants-gate` in `just release`. A score holds only for the
+# commit it was measured on: once the crate's directory changes, it must be measured again. The [scores] blocks
+# are written by scripts/mutation.py; edit only the thresholds by hand.
+#
+# A threshold applies to the crates that hold a security decision; a crate without one
+# still needs a current score to be released.
+
+[thresholds]
+"jwz" = 0.8
+"jwz-brainpool" = 0.8
+"ti-connector-client" = 0.8
+"ti-idpd" = 0.8
+"ti-jwz" = 0.8
+"ti-pkcs12" = 0.8
+"ti-pki" = 0.8

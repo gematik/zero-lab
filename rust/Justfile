@@ -8,6 +8,7 @@ MACHETE       := "cargo-machete@0.9.2"
 SEMVER_CHECKS := "cargo-semver-checks@0.50.0"
 MSRV          := "cargo-msrv@0.19.3"
 MUTANTS       := "cargo-mutants@27.1.0"
+COVERAGE      := "cargo-llvm-cov@0.9.1"
 RELEASE_PLZ   := "release-plz@0.3.169"
 CROSS         := "cross@0.2.5"
 BLOAT         := "cargo-bloat@0.12.1"
@@ -29,9 +30,10 @@ info:
 tools:
     #!/usr/bin/env bash
     set -euo pipefail
-    for t in {{NEXTEST}} {{DENY}} {{AUDIT}} {{VET}} {{HACK}} {{MACHETE}} {{SEMVER_CHECKS}} {{MSRV}} {{MUTANTS}} {{RELEASE_PLZ}} {{CROSS}} {{BLOAT}} {{WASM_BINDGEN}}; do
+    for t in {{NEXTEST}} {{DENY}} {{AUDIT}} {{VET}} {{HACK}} {{MACHETE}} {{SEMVER_CHECKS}} {{MSRV}} {{MUTANTS}} {{COVERAGE}} {{RELEASE_PLZ}} {{CROSS}} {{BLOAT}} {{WASM_BINDGEN}}; do
         if command -v cargo-binstall >/dev/null; then cargo binstall -y "$t"; else cargo install --locked "$t"; fi
     done
+    rustup component add llvm-tools-preview
 
 # ---- The ti command-line tool -------------------------------------------------------
 
@@ -152,6 +154,7 @@ release +releases:
     done
 
     echo "==> just check-full"; just check-full
+    echo "==> just mutants-gate"; just mutants-gate "${crates[@]}"
     # The semver step waits for the bumps: it judges the released crates' new versions.
     echo "==> just advisories vet msrv"; just advisories vet msrv
 
@@ -867,7 +870,45 @@ miri:
 
 # Mutation testing for a crate; slow, run before a release of that crate
 mutants crate:
-    cargo mutants -p {{crate}} --in-place
+    cargo mutants -p {{crate}} --in-place {{ if crate == "jwz" { "--features " + JWZ_FEATURES } else { "--all-features" } }}
+
+# `just release` checks the score; commit mutation-scores.toml afterwards.
+# Measure a crate's mutation score on the committed tree and record it in mutation-scores.toml
+mutants-record crate:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [[ -z "$(git status --porcelain -- {{crate}})" ]] || { echo "mutants-record: {{crate}} has uncommitted changes" >&2; exit 1; }
+    out=target/mutants/{{crate}}
+    mkdir -p "$out"
+    # A missed mutant makes cargo-mutants exit non-zero; the score is the verdict here.
+    cargo mutants -p {{crate}} --in-place --output "$out" {{ if crate == "jwz" { "--features " + JWZ_FEATURES } else { "--all-features" } }} || true
+    python3 -I scripts/mutation.py record {{crate}} "$out/mutants.out/outcomes.json"
+
+# Each score must exist, belong to the crate as it is now, and reach the crate's threshold.
+# Check the recorded mutation scores of crates about to be released
+mutants-gate +crates:
+    python3 -I scripts/mutation.py gate {{crates}}
+
+# Default: every workspace crate; the HTML report goes to target/coverage/html.
+# Line coverage per crate and the cited requirements whose code no test runs
+coverage *crates:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    crates=({{crates}})
+    if [[ ${#crates[@]} -eq 0 ]]; then
+        crates=($(cargo metadata --no-deps --format-version 1 \
+            | python3 -I -c 'import json, sys; print(" ".join(p["name"] for p in json.load(sys.stdin)["packages"]))'))
+    fi
+    mkdir -p target/coverage
+    cargo llvm-cov clean --workspace
+    for c in "${crates[@]}"; do
+        if [[ "$c" == jwz ]]; then features=(--features {{JWZ_FEATURES}}); else features=(--all-features); fi
+        cargo llvm-cov nextest -p "$c" "${features[@]}" --no-report
+    done
+    cargo llvm-cov report --html --output-dir target/coverage
+    cargo llvm-cov report --lcov --output-path target/coverage/lcov.info
+    python3 -I scripts/coverage_gaps.py target/coverage/lcov.info "${crates[@]}"
+    echo "HTML report: target/coverage/html/index.html"
 
 # The CLI's release binary is built with symbols in target/bloat, so the normal build stays
 # stripped.
