@@ -44,3 +44,17 @@ path = "fuzz_targets/bundle.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "certificate"
+path = "fuzz_targets/certificate.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "roots_json"
+path = "fuzz_targets/roots_json.rs"
+test = false
+doc = false
+bench = false
