@@ -82,9 +82,9 @@ type Proxy struct {
 // or [NewProxyWithSecurityFunctions] fills in the identity.
 type ProxyConfig struct {
 	BaseDir string        `yaml:"-"`
-	Name    string        `yaml:"name" validate:"required"`
-	Env     Env           `yaml:"env" validate:"required,oneof=dev test ref prod"`
-	Timeout time.Duration `yaml:"timeout" validate:"required,gt=0"`
+	Name    string        `yaml:"name"`
+	Env     Env           `yaml:"env"`
+	Timeout time.Duration `yaml:"timeout"`
 
 	// SMC-B identity, loaded and used by the `ti` tool: a PKCS#12 (authn_p12_path, its
 	// password in the file authn_p12_password_path names, default 00), a PEM cert+key
@@ -103,10 +103,10 @@ type ProxyConfig struct {
 	// VAUCertVerify is what to do with the verdict on the VAU's certificates and host
 	// keys: warn (default) logs it, enforce fails the handshake on a bad one, off skips
 	// the check.
-	VAUCertVerify string `yaml:"vau_cert_verify" validate:"omitempty,oneof=off warn enforce"`
+	VAUCertVerify string `yaml:"vau_cert_verify"`
 
-	VsdmHmacKeyHex string `yaml:"vsdm_hmac_key_hex" validate:"required"`
-	VsdmHmacKeyID  string `yaml:"vsdm_hmac_key_id" validate:"required"`
+	VsdmHmacKeyHex string `yaml:"vsdm_hmac_key_hex"`
+	VsdmHmacKeyID  string `yaml:"vsdm_hmac_key_id"`
 
 	SecurityFunctions *SecurityFunctions `yaml:"-"`
 	// Authenticator answers the IDP-Dienst's challenges; Init sets it up over the

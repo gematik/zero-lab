@@ -22,19 +22,31 @@
 package epa
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/stretchr/testify/assert/yaml"
 )
 
 // Config is the content of a configuration file: the proxies to run.
 type Config struct {
 	BaseDir      string        `yaml:"-"` // set to the base directory of config files when loading
-	ProxyConfigs []ProxyConfig `yaml:"proxies" validate:"required,dive,required"`
+	ProxyConfigs []ProxyConfig `yaml:"proxies"`
+}
+
+// Validate reports the first thing wrong with the configuration.
+func (c *Config) Validate() error {
+	if len(c.ProxyConfigs) == 0 {
+		return errors.New("proxies: at least one is required")
+	}
+	for i := range c.ProxyConfigs {
+		if err := c.ProxyConfigs[i].Validate(); err != nil {
+			return fmt.Errorf("proxies[%d]: %w", i, err)
+		}
+	}
+	return nil
 }
 
 // GetProxyConfigByName returns a copy of the proxy configuration called name, if any.
@@ -74,13 +86,7 @@ func LoadConfigFile(path string) (*Config, error) {
 		return nil, fmt.Errorf("decode config file: %w", err)
 	}
 
-	validate := validator.New()
-	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
-		return fld.Tag.Get("yaml")
-	})
-
-	err = validate.Struct(cfg)
-	if err != nil {
+	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("validate config: %w", err)
 	}
 
@@ -89,4 +95,30 @@ func LoadConfigFile(path string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// Validate reports the first thing wrong with the proxy's configuration. It names the setting and never its
+// value, which may be a key.
+func (c *ProxyConfig) Validate() error {
+	switch {
+	case c.Name == "":
+		return errors.New("name is required")
+	case c.Timeout <= 0:
+		return errors.New("timeout must be greater than zero")
+	case c.VsdmHmacKeyHex == "":
+		return errors.New("vsdm_hmac_key_hex is required")
+	case c.VsdmHmacKeyID == "":
+		return errors.New("vsdm_hmac_key_id is required")
+	}
+	switch c.Env {
+	case EnvDev, EnvTest, EnvRef, EnvProd:
+	default:
+		return errors.New("env must be dev, test, ref or prod")
+	}
+	switch c.VAUCertVerify {
+	case "", "off", "warn", "enforce":
+	default:
+		return errors.New("vau_cert_verify must be off, warn or enforce")
+	}
+	return nil
 }
