@@ -23,8 +23,6 @@
 
 //! AuthSignatureService: signing a hash with a card's authentication key (C.AUT).
 
-use base64::Engine as _;
-
 use crate::api::gematik::conn::authsignatureservice741::ExternalAuthenticateInput;
 use crate::api::gematik::conn::signatureservice74::{
     BinaryDocumentType, ExternalAuthenticate, ExternalAuthenticateOptionalInputs,
@@ -109,7 +107,7 @@ impl<'a, T: Transport> Auth<'a, T> {
                     schema_refs: None,
                     base64_data: Base64Data {
                         mime_type: Some("application/octet-stream".into()),
-                        char_data: base64::engine::general_purpose::STANDARD.encode(hash),
+                        char_data: crate::b64::encode(hash),
                     },
                 },
             })
@@ -119,12 +117,7 @@ impl<'a, T: Transport> Auth<'a, T> {
             .and_then(|o| o.base64_signature)
             .ok_or_else(|| Error::Decode("ExternalAuthenticate: no Base64Signature".into()))?
             .char_data;
-        let compact: String = encoded
-            .chars()
-            .filter(|c| !c.is_ascii_whitespace())
-            .collect();
-        let signature = base64::engine::general_purpose::STANDARD
-            .decode(compact)
+        let signature = crate::b64::decode(&encoded)
             .map_err(|e| Error::Decode(format!("ExternalAuthenticate: {e}")))?;
         Ok(match signature_type {
             SignatureType::Ecdsa => ecdsa_raw(&signature).unwrap_or(signature),

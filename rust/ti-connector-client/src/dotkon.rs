@@ -37,7 +37,6 @@
 
 use core::fmt::{self, Write as _};
 
-use base64::Engine as _;
 use serde::Deserialize;
 use serde_json::Value;
 use ti_types::Env;
@@ -224,7 +223,7 @@ impl Dotkon {
         match &self.credentials {
             Credentials::Basic { username, password } => Some(format!(
                 "Basic {}",
-                base64::engine::general_purpose::STANDARD.encode(format!("{username}:{password}"))
+                crate::b64::encode(format!("{username}:{password}"))
             )),
             Credentials::Pkcs12 { .. } | Credentials::None => None,
         }
@@ -398,10 +397,7 @@ fn credentials(raw: RawCredentials, problems: &mut Vec<String>) -> Option<Creden
 
 /// Standard base64, ignoring line breaks and other whitespace (MIME-style wrapping).
 fn decode_base64(text: &str) -> Option<Vec<u8>> {
-    let compact: String = text.chars().filter(|c| !c.is_ascii_whitespace()).collect();
-    base64::engine::general_purpose::STANDARD
-        .decode(compact)
-        .ok()
+    crate::b64::decode(text).ok()
 }
 
 #[cfg(test)]

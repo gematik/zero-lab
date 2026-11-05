@@ -27,8 +27,6 @@
 
 use core::fmt::{self, Write as _};
 
-use base64::Engine as _;
-
 use crate::api::gematik::conn::connectorcontext20::Context;
 use crate::api::gematik::conn::signatureservice75::{
     ActivateComfortSignature, ActivateComfortSignatureInput, DeactivateComfortSignature,
@@ -182,7 +180,7 @@ fn document(id: &str, bytes: &[u8], mime_type: &str, short_text: Option<&str>) -
         base64_xml: None,
         base64_data: Some(Base64Data {
             mime_type: Some(mime_type.to_owned()),
-            char_data: base64::engine::general_purpose::STANDARD.encode(bytes),
+            char_data: crate::b64::encode(bytes),
         }),
     }
 }
@@ -197,10 +195,7 @@ fn bytes(document: Document) -> Result<Vec<u8>, Error> {
 }
 
 pub(crate) fn decode(text: &str) -> Result<Vec<u8>, Error> {
-    let compact: String = text.chars().filter(|c| !c.is_ascii_whitespace()).collect();
-    base64::engine::general_purpose::STANDARD
-        .decode(compact)
-        .map_err(|e| Error::Decode(format!("base64: {e}")))
+    crate::b64::decode(text).map_err(|e| Error::Decode(format!("base64: {e}")))
 }
 
 impl<'a, T: Transport> Signatures<'a, T> {
@@ -339,7 +334,7 @@ impl<'a, T: Transport> Signatures<'a, T> {
                     timestamp: None,
                     base64_signature: Some(Base64Signature {
                         r#type: Some(format.uri().to_owned()),
-                        char_data: base64::engine::general_purpose::STANDARD.encode(s),
+                        char_data: crate::b64::encode(s),
                     }),
                     signature_ptr: None,
                     other: None,

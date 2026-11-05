@@ -31,7 +31,6 @@
 //! credentials of type `none` ([`refusals`]). What a file already has is left for the
 //! user to fix.
 
-use base64::Engine as _;
 use serde::Serialize;
 use serde_json::{Map, Value};
 use ti_pki::Certificate;
@@ -179,7 +178,7 @@ impl core::fmt::Debug for NewCredentials {
 
 impl NewCredentials {
     fn to_value(&self) -> Value {
-        let b64 = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+        let b64 = |bytes: &[u8]| crate::b64::encode(bytes);
         match self {
             NewCredentials::Basic { username, password } => serde_json::json!({
                 "type": "basic", "username": username, "password": password,
@@ -263,7 +262,7 @@ impl NewConfig {
 }
 
 fn b64(bytes: &[u8]) -> String {
-    base64::engine::general_purpose::STANDARD.encode(bytes)
+    crate::b64::encode(bytes)
 }
 
 fn pretty(value: &impl Serialize) -> Vec<u8> {
@@ -350,7 +349,7 @@ pub fn with_pin(json: &[u8], pin: &[u8]) -> Result<Vec<u8>, String> {
         .filter(|entry| {
             entry
                 .as_str()
-                .and_then(|text| base64::engine::general_purpose::STANDARD.decode(text).ok())
+                .and_then(|text| crate::b64::decode(text).ok())
                 .and_then(|der| Certificate::from_der(&der).ok())
                 .is_some_and(|c| c.is_ca())
         })

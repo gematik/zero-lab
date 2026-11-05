@@ -280,6 +280,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-connector-client
 
+#### changed
+- Base64 through `base64ct` in constant time, in the generated bindings (wsdl2openapi
+  ddb0a65) and the hand-written code alike; `base64` leaves the crate. Whitespace stays
+  ignored, and an encoding with non-zero padding bits is refused.
+
 #### added
 - `Dotkon`: the `.kon` format of the Go and Kotlin clients, with `${NAME}` expanded
   only in credentials, only as plain names, and never from unset variables.

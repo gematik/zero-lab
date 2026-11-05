@@ -32,6 +32,7 @@
 )]
 pub mod api;
 mod auth;
+mod b64;
 mod cards;
 mod certificates;
 pub mod check;

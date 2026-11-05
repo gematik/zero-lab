@@ -31,7 +31,7 @@ use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use base64::Engine as _;
+use base64ct::Encoding as _;
 use futures_lite::future::block_on;
 use rustls::server::WebPkiClientVerifier;
 use rustls::{RootCertStore, ServerConfig, ServerConnection, StreamOwned};
@@ -52,7 +52,7 @@ fn der(pem: &[u8]) -> Vec<u8> {
 }
 
 fn b64(bytes: &[u8]) -> String {
-    base64::engine::general_purpose::STANDARD.encode(bytes)
+    base64ct::Base64::encode_string(bytes)
 }
 
 /// What the server saw of the one request it answered.

@@ -658,6 +658,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ti-cache"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "ti-types",
+]
+
+[[package]]
 name = "ti-pki"
 version = "0.1.0"
 dependencies = [
@@ -690,14 +698,6 @@ version = "0.0.0"
 dependencies = [
  "libfuzzer-sys",
  "ti-pki",
-]
-
-[[package]]
-name = "ti-cache"
-version = "0.1.0"
-dependencies = [
- "thiserror",
- "ti-types",
 ]
 
 [[package]]

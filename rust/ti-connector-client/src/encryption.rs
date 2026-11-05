@@ -24,8 +24,6 @@
 //! EncryptionService 6.1: documents encrypted for recipients' certificates (CMS), and
 //! decrypted with a card's C.ENC key.
 
-use base64::Engine as _;
-
 use crate::api::gematik::conn::connectorcommon50::Document;
 use crate::api::gematik::conn::encryptionservice611::{
     DecryptDocument, DecryptDocumentInput, EncryptDocument, EncryptDocumentInput,
@@ -65,7 +63,7 @@ fn document(bytes: &[u8], mime_type: &str) -> Document {
         base64_xml: None,
         base64_data: Some(Base64Data {
             mime_type: Some(mime_type.to_owned()),
-            char_data: base64::engine::general_purpose::STANDARD.encode(bytes),
+            char_data: crate::b64::encode(bytes),
         }),
     }
 }

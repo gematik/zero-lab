@@ -24,7 +24,7 @@
 //! The checks of `.kon` configurations (`check`) and their redacted view (`config`), as
 //! pure functions of what a host observed: one test per rule.
 
-use base64::Engine as _;
+use base64ct::Encoding as _;
 use rustls_pki_types::CertificateDer;
 use rustls_pki_types::pem::PemObject;
 use ti_connector_client::check::{
@@ -52,7 +52,7 @@ fn der(pem: &[u8]) -> Vec<u8> {
 }
 
 fn b64(bytes: &[u8]) -> String {
-    base64::engine::general_purpose::STANDARD.encode(bytes)
+    base64ct::Base64::encode_string(bytes)
 }
 
 const BASIC: &str = r#"{"type": "basic", "username": "praxis", "password": "s3cret-pw"}"#;

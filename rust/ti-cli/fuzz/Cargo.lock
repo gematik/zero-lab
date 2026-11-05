@@ -1559,6 +1559,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ti-cache"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "ti-types",
+]
+
+[[package]]
 name = "ti-cli"
 version = "0.5.0"
 dependencies = [
@@ -1580,13 +1588,13 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
+ "ti-cache",
  "ti-connector-client",
  "ti-directory",
  "ti-idpd",
  "ti-pkcs12",
  "ti-pki",
  "ti-report",
- "ti-cache",
  "ti-types",
  "ureq",
  "x509-cert",
@@ -1606,7 +1614,7 @@ dependencies = [
 name = "ti-connector-client"
 version = "0.1.0"
 dependencies = [
- "base64",
+ "base64ct",
  "p256",
  "p384",
  "quick-xml",
@@ -1617,9 +1625,9 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
+ "ti-cache",
  "ti-pkcs12",
  "ti-pki",
- "ti-cache",
  "ti-types",
  "ureq",
 ]
@@ -1714,14 +1722,6 @@ dependencies = [
  "serde",
  "sha2",
  "ti-pki",
-]
-
-[[package]]
-name = "ti-cache"
-version = "0.1.0"
-dependencies = [
- "thiserror",
- "ti-types",
 ]
 
 [[package]]

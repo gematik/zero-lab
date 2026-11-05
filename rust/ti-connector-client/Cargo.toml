@@ -25,8 +25,8 @@ ti-pki.workspace = true
 serde = { workspace = true, features = ["std"] }
 serde_json.workspace = true
 quick-xml.workspace = true
-# The generated code's xs:base64Binary; the same version ureq already brings.
-base64.workspace = true
+# The generated code's xs:base64Binary, in constant time.
+base64ct.workspace = true
 sha2.workspace = true
 # The client certificate of `pkcs12` credentials, for the redacted view and the checks.
 ti-pkcs12.workspace = true

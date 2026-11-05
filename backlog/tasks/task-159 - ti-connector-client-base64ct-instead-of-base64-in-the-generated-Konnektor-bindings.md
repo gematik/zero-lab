@@ -3,10 +3,10 @@ id: TASK-159
 title: >-
   ti-connector-client: base64ct in the generated Konnektor bindings, through
   wsdl2openapi
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-10-29T12:24:00Z'
-updated_date: '2026-11-05T19:35:00Z'
+updated_date: '2026-11-05T19:59:00Z'
 labels:
   - rust
   - deps
@@ -26,7 +26,19 @@ The code is not hand-written: wsdl2openapi's generator-rust writes it (src/emit/
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 wsdl2openapi's generator-rust emits base64ct for xs:base64Binary, with a test of whitespace and of refused non-canonical input, committed there
-- [ ] #2 ti-connector-client regenerated with just generate-connector; base64 leaves its Cargo.toml and normal tree, and the recorded Konnektor responses still decode
-- [ ] #3 base64's row leaves rust/docs/unsafe-exceptions.md and just unsafe-free passes
+- [x] #1 wsdl2openapi's generator-rust emits base64ct for xs:base64Binary, with a test of whitespace and of refused non-canonical input, committed there
+- [x] #2 ti-connector-client regenerated with just generate-connector; base64 leaves its Cargo.toml and normal tree, and the recorded Konnektor responses still decode
+- [x] #3 base64's row leaves rust/docs/unsafe-exceptions.md and just unsafe-free passes
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+wsdl2openapi: c887809 on feat/rust-base64ct (amended to ddb0a65 with testproj's lock file), based on the local bugfix/rust-empty-text-content; neither is pushed there. The hand-written code used base64 too (edit, dotkon, encryption, signatures, auth, four test files): it goes through the new src/b64.rs. base64 stays in the workspace only inside ureq and ureq-proto, outside every core, so its row left unsafe-exceptions.md and the workspace dependency is gone. Checked: just unsafe-free, just core-deps, just machete, clippy with and without features, nextest of ti-connector-client and ti-cli (340 tests).
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ti-connector-client uses base64ct for Base64, in the bindings wsdl2openapi generates and in its own code; base64 is in no core any more and left the unsafe exceptions.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -142,8 +142,9 @@ impl ::std::fmt::Display for UnknownEnumValue {
 
 impl ::std::error::Error for UnknownEnumValue {}
 
-/// `xs:base64Binary` content. Whitespace in the encoded text, as left by
-/// line-wrapping encoders, is ignored when parsing.
+/// `xs:base64Binary` content, encoded and decoded in constant time. Whitespace in
+/// the encoded text, as left by line-wrapping encoders, is ignored when parsing;
+/// an encoding that is not canonical (non-zero padding bits) is refused.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct Base64Binary(pub Vec<u8>);
 
@@ -167,18 +168,17 @@ impl AsRef<[u8]> for Base64Binary {
 
 impl ::serde::Serialize for Base64Binary {
     fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use ::base64::Engine as _;
-        serializer.serialize_str(&::base64::engine::general_purpose::STANDARD.encode(&self.0))
+        use ::base64ct::Encoding as _;
+        serializer.serialize_str(&::base64ct::Base64::encode_string(&self.0))
     }
 }
 
 impl<'de> ::serde::Deserialize<'de> for Base64Binary {
     fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        use ::base64::Engine as _;
+        use ::base64ct::Encoding as _;
         let text = <String as ::serde::Deserialize>::deserialize(deserializer)?;
         let compact: String = text.chars().filter(|c| !c.is_ascii_whitespace()).collect();
-        ::base64::engine::general_purpose::STANDARD
-            .decode(compact)
+        ::base64ct::Base64::decode_vec(&compact)
             .map(Self)
             .map_err(::serde::de::Error::custom)
     }

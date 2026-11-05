@@ -98,7 +98,6 @@ base64ct = { version = "1.8.3", features = ["alloc"] }
 # Constant-time comparison of secrets and tags.
 subtle = { version = "2.6.1", default-features = false }
 # Only for the generated Konnektor bindings, which are written against it.
-base64 = "0.23.1"
 
 # jwz (JOSE): the RustCrypto 0.14 line, no_std; features chosen per crate.
 elliptic-curve = { version = "0.14.1", default-features = false }

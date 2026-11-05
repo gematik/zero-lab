@@ -32,12 +32,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd307490d624467aa6f74b0eabb77633d1f758a7b25f12bceb0b22e08d9726f6"
 
 [[package]]
-name = "base64"
-version = "0.23.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
-
-[[package]]
 name = "base64ct"
 version = "1.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -708,18 +702,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "ti-cache"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "ti-types",
+]
+
+[[package]]
 name = "ti-connector-client"
 version = "0.1.0"
 dependencies = [
- "base64",
+ "base64ct",
  "quick-xml",
  "serde",
  "serde_json",
  "sha2",
  "thiserror",
+ "ti-cache",
  "ti-pkcs12",
  "ti-pki",
- "ti-cache",
  "ti-types",
 ]
 
@@ -772,14 +774,6 @@ dependencies = [
  "thiserror",
  "ti-types",
  "x509-cert",
-]
-
-[[package]]
-name = "ti-cache"
-version = "0.1.0"
-dependencies = [
- "thiserror",
- "ti-types",
 ]
 
 [[package]]

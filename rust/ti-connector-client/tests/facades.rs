@@ -28,7 +28,7 @@ mod support;
 
 use std::time::Duration;
 
-use base64::Engine as _;
+use base64ct::Encoding as _;
 use futures_lite::future::block_on;
 use ti_connector_client::types::{
     CardType, CertRef, Crypt, PinResult, PinState, StatusResult, VerificationResult,
@@ -76,7 +76,7 @@ fn ee_arzt_der() -> Vec<u8> {
 }
 
 fn read_card_certificate_response() -> String {
-    let b64 = base64::engine::general_purpose::STANDARD.encode(ee_arzt_der());
+    let b64 = b64(&ee_arzt_der());
     envelope(&format!(
         r#"<CERT:ReadCardCertificateResponse xmlns:CERT="http://ws.gematik.de/conn/CertificateService/v6.0" xmlns:CERTCMN="http://ws.gematik.de/conn/CertificateServiceCommon/v2.0">{STATUS_OK}<CERTCMN:X509DataInfoList>
           <CERTCMN:X509DataInfo><CERTCMN:CertRef>C.AUT</CERTCMN:CertRef><CERTCMN:X509Data>
@@ -338,7 +338,7 @@ fn external_authenticate_returns_raw_signatures() {
     .concat();
     let response = envelope(&format!(
         r#"<SIG:ExternalAuthenticateResponse xmlns:SIG="http://ws.gematik.de/conn/SignatureService/v7.4" xmlns:dss="urn:oasis:names:tc:dss:1.0:core:schema">{STATUS_OK}<dss:SignatureObject><dss:Base64Signature Type="urn:bsi:tr:03111:ecdsa">{}</dss:Base64Signature></dss:SignatureObject></SIG:ExternalAuthenticateResponse>"#,
-        base64::engine::general_purpose::STANDARD.encode(&der)
+        b64(&der)
     ));
     let transport = Scripted::new([ok(200, &response)]);
     let connector = connector(&transport);
@@ -359,7 +359,7 @@ fn external_authenticate_returns_raw_signatures() {
             TIMEOUTS.long
         )
     );
-    let hash_b64 = base64::engine::general_purpose::STANDARD.encode(hash);
+    let hash_b64 = b64(&hash);
     for part in [
         "<dss10core:SignatureType>urn:bsi:tr:03111:ecdsa</dss10core:SignatureType>",
         &format!(
@@ -398,7 +398,7 @@ fn find_resolves_iccsn_and_falls_back_to_the_handle() {
 }
 
 fn b64(bytes: &[u8]) -> String {
-    base64::engine::general_purpose::STANDARD.encode(bytes)
+    base64ct::Base64::encode_string(bytes)
 }
 
 const JOB: &str = r#"<SIG:GetJobNumberResponse xmlns:SIG="http://ws.gematik.de/conn/SignatureService/v7.5"><SIG:JobNumber>ABC-123</SIG:JobNumber></SIG:GetJobNumberResponse>"#;
