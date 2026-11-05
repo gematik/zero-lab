@@ -1,10 +1,10 @@
 ---
 id: TASK-212
 title: 'ti-cli: one user ID for every call on an HBA'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-04T17:05:00Z'
-updated_date: '2026-11-05T17:47:00Z'
+updated_date: '2026-11-05T17:54:00Z'
 labels:
   - ti-cli
   - ti-connector-client
@@ -50,3 +50,9 @@ Spec: GetSignatureMode and ActivateComfortSignature run TUC_KON_000, DeactivateC
 
 After the HITL of b25988b: one ID file per HBA, hba-user/KONNEKTOR/CARD, in place of a comfort file and a generated file. comfort activate writes a new ID, comfort deactivate removes the file, the next call brings back the .kon userId or makes a new one. connector sign asks the Konnektor (GetSignatureMode) whether a comfort session runs. user_id_stored is removed. Edge case, documented in the README: a file left from before a userId was added to the .kon goes first until comfort deactivate. Maintainer proved on secunet with one HBA, 2026-11-05: verify pin, comfort activate, sign without PIN, verify certificate C.QES, comfort deactivate, describe card, no 4018.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Every call on an HBA uses one user ID: the one in hba-user/KONNEKTOR/CARD, else the .kon userId, else a new one kept in the file. comfort activate writes a new ID, comfort deactivate removes the file, connector sign asks the Konnektor whether a comfort session runs. Proven by the maintainer on a real Konnektor and HBA. Merged in PR #85 (ebdd88b).
+<!-- SECTION:FINAL_SUMMARY:END -->

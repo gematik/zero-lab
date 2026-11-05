@@ -1,10 +1,10 @@
 ---
 id: TASK-213
 title: 'ti-cli: connector config set names its configuration with -c'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-04T18:34:00Z'
-updated_date: '2026-11-04T18:35:00Z'
+updated_date: '2026-11-05T17:54:00Z'
 labels:
   - ti-cli
   - cli
@@ -26,3 +26,9 @@ ordinal: 220000
 - [x] #3 A NAME given the old way is refused with a message naming -c, and nothing changes
 - [x] #4 README, AGENTS.md and the release notes show the new form
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+connector config set takes its configuration from -c; a name given the old way is refused, naming -c. Merged in PR #85 (ebdd88b).
+<!-- SECTION:FINAL_SUMMARY:END -->

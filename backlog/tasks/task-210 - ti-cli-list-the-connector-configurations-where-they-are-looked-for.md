@@ -1,10 +1,10 @@
 ---
 id: TASK-210
 title: 'ti-cli: list the connector configurations where they are looked for'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-04T12:59:00Z'
-updated_date: '2026-11-04T13:00:00Z'
+updated_date: '2026-11-05T17:54:00Z'
 labels:
   - ti-cli
   - cli
@@ -42,3 +42,9 @@ ordinal: 217000
 <!-- SECTION:NOTES:BEGIN -->
 On refactor/ti-cli-plain-files with the next ti version. `connector use` answers in two shapes, so its schema is a oneOf; the schema of the list is renamed to `connector config list` and the hidden old name has no schema entry of its own.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ti connector config list lists the .kon files; connector configs stays hidden, connector use without a name shows the same list. Merged in PR #85 (ebdd88b).
+<!-- SECTION:FINAL_SUMMARY:END -->

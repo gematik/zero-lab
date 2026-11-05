@@ -1,10 +1,10 @@
 ---
 id: TASK-211
 title: 'ti-cli: connector get status colors a condition by its severity'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-04T13:23:00Z'
-updated_date: '2026-11-04T13:24:00Z'
+updated_date: '2026-11-05T17:54:00Z'
 labels:
   - ti-cli
   - cli
@@ -31,3 +31,9 @@ ordinal: 218000
 <!-- SECTION:NOTES:BEGIN -->
 On refactor/ti-cli-plain-files with the next ti version.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+connector get status colors a condition by its severity, so Info is not red. Merged in PR #85 (ebdd88b).
+<!-- SECTION:FINAL_SUMMARY:END -->
