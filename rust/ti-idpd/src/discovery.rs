@@ -118,6 +118,8 @@ pub fn parse(idp: &Idp, response: &Response, now: u64) -> Result<Discovery, Erro
     let profile = ti_jwz::ti_legacy();
     let jws =
         Jws::parse(token, &profile.policy, &registry).map_err(Error::jose("discovery document"))?;
+    // gemSpec_IDP_Frontend A_20614: the signature is traced to the signer's certificate,
+    // which the caller's trust check then judges.
     let chain = jws
         .header()
         .x5c()

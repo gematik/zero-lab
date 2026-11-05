@@ -356,8 +356,11 @@ fn an_asynchronous_signer_answers_the_challenge() {
     assert_eq!(idp.posted.borrow().len(), 1);
 }
 
+/// The answer to the challenge is the card's signature encrypted for `PuK_IDP_ENC` and
+/// posted; the code comes back (A_20527), and the JWE header carries the `exp` A_20699
+/// asks for.
 #[test]
-fn the_flow_yields_the_code_and_posts_a_well_formed_signed_challenge() {
+fn a_20526_the_flow_yields_the_code_and_posts_a_well_formed_signed_challenge() {
     let idp = FakeIdp::new(Behaviour::default());
     let (key, cert) = card();
     let identity = Identity {
@@ -402,9 +405,9 @@ fn base64_url_decode(text: &str) -> Vec<u8> {
 }
 
 /// The nested JWT the card signs is the one the IDP wants: `{"njwt": challenge}` under
-/// `alg BP256R1`, `typ JWT`, `cty NJWT`, `x5c`.
+/// `alg BP256R1`, `typ JWT`, `cty NJWT`, `x5c` (A_20526).
 #[test]
-fn the_signed_challenge_nests_the_challenge_under_the_card_certificate() {
+fn a_20700_the_signed_challenge_nests_the_challenge_under_the_card_certificate() {
     let idp = FakeIdp::new(Behaviour::default());
     let (key, cert) = card();
     let challenge = challenge::parse(
@@ -461,8 +464,10 @@ fn the_signed_challenge_nests_the_challenge_under_the_card_certificate() {
     );
 }
 
+/// An error in the redirect's query and one in a JSON body, with the `gematik_*` members
+/// gemSpec_IDP_Dienst adds.
 #[test]
-fn the_idps_refusals_are_reported_with_their_gematik_fields() {
+fn rfc_6749_4_1_2_1_the_idps_refusals_are_reported_with_their_gematik_fields() {
     let (key, cert) = card();
     let identity = Identity {
         signer: &key,
@@ -511,8 +516,10 @@ fn the_idps_refusals_are_reported_with_their_gematik_fields() {
     assert_eq!(refusal.gematik_code.as_deref(), Some("1020"));
 }
 
+/// Also A_20614: a discovery document of another IDP, or without the signer's `x5c`, is
+/// refused.
 #[test]
-fn a_challenge_that_does_not_verify_or_has_expired_is_refused() {
+fn a_19908_a_challenge_that_does_not_verify_or_has_expired_is_refused() {
     let (key, cert) = card();
     let identity = Identity {
         signer: &key,
@@ -589,8 +596,9 @@ impl CertificateTrust for Recording {
     }
 }
 
+/// Both the discovery signer and `puk_idp_sig`'s certificate (IDPV-002) are checked.
 #[test]
-fn both_idp_certificates_go_to_the_trust_check_and_verified_ones_leave_no_warning() {
+fn idpv_001_both_idp_certificates_go_to_the_trust_check_and_verified_ones_leave_no_warning() {
     let idp = FakeIdp::new(Behaviour::default());
     let (key, cert) = card();
     let identity = Identity {
@@ -626,8 +634,9 @@ fn both_idp_certificates_go_to_the_trust_check_and_verified_ones_leave_no_warnin
     );
 }
 
+/// Also A_20617: what depends on a certificate that did not pass is refused.
 #[test]
-fn a_refused_idp_certificate_stops_the_flow_before_the_card_signs() {
+fn idpv_001_a_refused_idp_certificate_stops_the_flow_before_the_card_signs() {
     let idp = FakeIdp::new(Behaviour::default());
     let (key, cert) = card();
     let identity = Identity {
@@ -658,8 +667,10 @@ fn a_refused_idp_certificate_stops_the_flow_before_the_card_signs() {
     assert!(idp.posted.borrow().is_empty());
 }
 
+/// Without an `x5c`, or with the certificate of another key, `puk_idp_sig` is refused
+/// before it verifies anything.
 #[test]
-fn puk_idp_sig_must_come_with_its_own_certificate() {
+fn idpv_002_puk_idp_sig_must_come_with_its_own_certificate() {
     let (key, cert) = card();
     let identity = Identity {
         signer: &key,
@@ -687,6 +698,7 @@ fn puk_idp_sig_must_come_with_its_own_certificate() {
     }
 }
 
+/// The environments' addresses: configuration, no requirement.
 #[test]
 fn the_environments_name_gematiks_idps() {
     assert_eq!(

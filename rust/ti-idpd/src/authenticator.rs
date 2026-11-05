@@ -109,6 +109,8 @@ pub async fn authenticate<T: Transport>(
         &send("discovery document", discovery::request(idp))?,
         now,
     )?;
+    // IDPV-001, gemSpec_IDP_Frontend A_20617: a refused certificate stops the flow
+    // before the card signs anything.
     check(
         IdpCertificate::DiscoverySigner,
         &discovery.signer_der,
@@ -122,6 +124,8 @@ pub async fn authenticate<T: Transport>(
             discovery::key_request(&metadata.uri_puk_idp_sig),
         )?,
     )?;
+    // IDPV-002: `puk_idp_sig`'s own certificate is checked before its key verifies the
+    // challenge.
     let sig_chain = discovery::key_certificates("PuK_IDP_SIG", &puk_idp_sig)?;
     check(IdpCertificate::TokenSigner, &sig_chain[0], &sig_chain[1..])?;
     let puk_idp_enc = discovery::parse_key(
@@ -144,6 +148,8 @@ pub async fn authenticate<T: Transport>(
         metadata,
     )
     .await?;
+    // gemSpec_IDP_Frontend A_20527: the code goes back to the caller, the
+    // Anwendungsfrontend.
     let redirect = challenge::code(&send("signed challenge", answer)?)?;
     let warnings = if certificates.iter().any(|c| c.checked == Checked::Unchecked) {
         vec![Warning::IdpCertificatesUnverified]

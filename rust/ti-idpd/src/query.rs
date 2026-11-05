@@ -74,6 +74,7 @@ fn hex(byte: u8) -> Option<u8> {
 mod tests {
     use super::*;
 
+    /// The decoder's robustness, an internal invariant: no panic on a multibyte character.
     #[test]
     fn an_escape_before_a_multibyte_character_is_kept_as_it_is() {
         assert_eq!(
@@ -82,6 +83,7 @@ mod tests {
         );
     }
 
+    /// The decoder's robustness, an internal invariant: `%+F` is no escape.
     #[test]
     fn a_sign_is_no_hex_digit() {
         assert_eq!(
@@ -90,6 +92,7 @@ mod tests {
         );
     }
 
+    /// The query is decoded, the fragment left out; an internal invariant.
     #[test]
     fn decodes_the_query_only() {
         let url = "https://rp.example/cb?code=ab%2Fc&state=x+y&empty&error=invalid_request#frag";

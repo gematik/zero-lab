@@ -83,6 +83,8 @@ pub fn parse(response: &Response, puk_idp_sig: &Jwk, now: u64) -> Result<Challen
     let registry = ti_jwz::registry();
     let profile = ti_jwz::ti_legacy();
     let jws = Jws::parse(&token, &profile.policy, &registry).map_err(Error::jose("challenge"))?;
+    // gemSpec_IDP_Frontend A_19908: the challenge's signature is checked against the
+    // IDP's current signing key.
     let key = discovery::verifier_from_jwk(puk_idp_sig, jws.algorithm(), &registry)?;
     let verified = jws
         .verify(&key)
@@ -105,7 +107,7 @@ pub fn parse(response: &Response, puk_idp_sig: &Jwk, now: u64) -> Result<Challen
     })
 }
 
-/// The IDP's error in a redirect's query, if the response is one.
+/// The IDP's error in a redirect's query, if the response is one (RFC 6749 §4.1.2.1).
 fn refusal(response: &Response) -> Option<IdpError> {
     if !(300..400).contains(&response.status) {
         return None;
@@ -118,9 +120,10 @@ fn refusal(response: &Response) -> Option<IdpError> {
 /// (`alg` the signer's, `BP256R1` for today's cards; `typ JWT`, `cty NJWT`, `x5c` the
 /// AUT certificate `certificate_der`), wrapped as `{"njwt": …}` in a JWE for
 /// `puk_idp_enc` (`ECDH-ES`, `A256GCM`, `cty NJWT`, `exp` of the challenge), posted
-/// as `signed_challenge` to the authorization endpoint. `signer` may answer
-/// asynchronously, as a card does through the Konnektor; every `Signer` is an
-/// `AsyncSigner`.
+/// as `signed_challenge` to the authorization endpoint (gemSpec_IDP_Frontend A_20700,
+/// A_20526; the IDP checks the `exp` before decrypting, gemSpec_IDP_Dienst A_20699).
+/// `signer` may answer asynchronously, as a card does through the Konnektor; every
+/// `Signer` is an `AsyncSigner`.
 ///
 /// # Errors
 ///
@@ -183,7 +186,7 @@ pub struct CodeRedirect {
     pub state: Option<String>,
 }
 
-/// The code in the `302` that answers [`respond`]'s request.
+/// The code in the `302` that answers [`respond`]'s request (RFC 6749 §4.1.2).
 ///
 /// # Errors
 ///
@@ -237,8 +240,9 @@ mod tests {
         }
     }
 
+    /// `code` is required in the authorization response.
     #[test]
-    fn a_redirect_without_a_code_value_has_no_code() {
+    fn rfc_6749_4_1_2_a_redirect_without_a_code_value_has_no_code() {
         for location in [
             "https://rp.example/cb?code&state=s",
             "https://rp.example/cb?code=&state=s",
