@@ -24,6 +24,9 @@ serde_json.workspace = true
 # Must equal the installed wasm-bindgen-cli (`just tools`).
 wasm-bindgen = "=0.2.128"
 
+[dev-dependencies]
+traceability.workspace = true
+
 # The workspace table minus `unsafe_code`: `#[wasm_bindgen]` expands to unsafe glue, so
 # src/ holds only the wrappers and `just wasm-unsafe-free` keeps `unsafe` out of them.
 [lints.rust]

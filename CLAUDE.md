@@ -43,7 +43,8 @@ guides next to them.
 - **Checks:** run `just check` in each workspace you changed (`rust/`, `go/`). Never weaken
   a lint, a check or a proof to get a change through. Regenerate stale generated files
   instead of editing them: `just jwz-recheck` for verification stamps,
-  `JWZ_BLESS=1 cargo test -p jwz --test traceability` for jwz's traceability table.
+  `JWZ_BLESS=1 cargo test -p jwz --test traceability` for jwz's traceability table,
+  `TRACE_BLESS=1 cargo test -p <crate> --test traceability` for a ti crate's.
 - **Tests:** name each test of a rule after the requirement it proves; a new parser comes
   with its fuzz target; a gated test never passes silently.
 - **OpenAPI contracts:** load the `gematik-openapi-lint` skill if it is installed before

@@ -38,6 +38,7 @@ des = { workspace = true, optional = true }
 rc2 = { workspace = true, optional = true }
 
 [dev-dependencies]
+traceability.workspace = true
 serde_json.workspace = true
 
 [lints]

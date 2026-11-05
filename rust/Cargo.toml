@@ -1,5 +1,5 @@
 [workspace]
-members = ["ti-types", "ti-cache", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-report", "ti-cli", "ti-wasm", "jwz", "jwz-brainpool", "ti-jwz", "ti-idpd", "ti-directory", "unsafe-audit"]
+members = ["ti-types", "ti-cache", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-report", "ti-cli", "ti-wasm", "jwz", "jwz-brainpool", "ti-jwz", "ti-idpd", "ti-directory", "unsafe-audit", "traceability"]
 # cargo-fuzz targets need nightly and a dependency tree of their own.
 exclude = ["jwz/fuzz"]
 resolver = "3"
@@ -29,6 +29,8 @@ jwz-brainpool = { version = "0.1", path = "jwz-brainpool" }
 ti-jwz = { version = "0.1", path = "ti-jwz" }
 ti-idpd = { version = "0.1", path = "ti-idpd" }
 ti-directory = { version = "0.1", path = "ti-directory" }
+# Dev-only: the traceability tables (tests/traceability.rs); never published.
+traceability = { path = "traceability" }
 
 # External. Pinned here once, inherited by every crate.
 der = { version = "0.8", features = ["alloc", "derive", "oid"] }

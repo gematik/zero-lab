@@ -1,0 +1,13 @@
+[package]
+name = "traceability"
+version = "0.0.0"
+description = "Generates and checks the requirement traceability tables of the ti crates; a dev-dependency only"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lints]
+workspace = true

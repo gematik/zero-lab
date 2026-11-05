@@ -1655,6 +1655,7 @@ dependencies = [
  "ti-pki",
  "ti-report",
  "ti-types",
+ "traceability",
  "ureq",
  "x509-cert",
  "zeroize",
@@ -1680,6 +1681,7 @@ dependencies = [
  "ti-pkcs12",
  "ti-pki",
  "ti-types",
+ "traceability",
  "ureq",
 ]
 
@@ -1694,6 +1696,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "ti-idpd",
+ "traceability",
 ]
 
 [[package]]
@@ -1711,6 +1714,7 @@ dependencies = [
  "ti-jwz",
  "ti-pki",
  "ti-types",
+ "traceability",
  "ureq",
 ]
 
@@ -1739,6 +1743,7 @@ dependencies = [
  "sha2",
  "spki",
  "thiserror",
+ "traceability",
  "zeroize",
 ]
 
@@ -1767,6 +1772,7 @@ dependencies = [
  "thiserror",
  "ti-cache",
  "ti-types",
+ "traceability",
  "x509-cert",
 ]
 
@@ -1798,6 +1804,7 @@ dependencies = [
  "serde_json",
  "ti-pki",
  "ti-report",
+ "traceability",
  "wasm-bindgen",
 ]
 
@@ -1821,6 +1828,10 @@ dependencies = [
  "quote",
  "syn 2.0.119",
 ]
+
+[[package]]
+name = "traceability"
+version = "0.0.0"
 
 [[package]]
 name = "typenum"

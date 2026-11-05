@@ -41,10 +41,11 @@ that implements it and the tests that prove it, and a requirement without a test
   and version it is from), an RFC or standard section, an ADR or design rule of this
   repository. A test of an internal invariant with no external requirement says so in its
   doc comment.
-- **Traced, not only named.** Where a unit has a traceability table (jwz's
-  `docs/traceability.md`, generated and checked by a test), new references and tests
-  appear there; a spec's `CONFORMANCE.md` maps its rules to corpus cases. A requirement
-  that is implemented but has no test is a gap, a backlog task until it has one.
+- **Traced, not only named.** Where a unit has a traceability table (its
+  `docs/traceability.md`, generated and checked by a test: jwz, and the ti crates through
+  the shared `rust/traceability`), new references and tests appear there; a spec's
+  `CONFORMANCE.md` maps its rules to corpus cases. A requirement that is implemented but
+  has no test is a gap, a backlog task until it has one.
 
 ## Env-gated tests run before every release
 

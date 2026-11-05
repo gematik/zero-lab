@@ -40,6 +40,7 @@ p256 = { workspace = true, optional = true, features = ["pkcs8", "alloc"] }
 p384 = { workspace = true, optional = true, features = ["pkcs8", "alloc"] }
 
 [dev-dependencies]
+traceability.workspace = true
 futures-lite.workspace = true
 rustls.workspace = true
 rustls-pki-types = { workspace = true, features = ["std"] }

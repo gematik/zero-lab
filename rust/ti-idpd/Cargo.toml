@@ -33,6 +33,7 @@ base64ct.workspace = true
 ureq = { workspace = true, optional = true, features = ["rustls-no-provider"] }
 
 [dev-dependencies]
+traceability.workspace = true
 ti-pki = { workspace = true, features = ["brainpool"] }
 # The TEST-ONLY IDP signer's key (tests/fixtures/idpd-sig.key, SEC1 PEM).
 sec1.workspace = true

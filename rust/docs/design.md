@@ -99,7 +99,12 @@ the interop adapter in `spec/<topic>/interop/rust` prints the code.
 - Requirement-named tests: `fn p12_036_mac_iterations_above_the_limit_are_refused()`,
   `fn rfc_7516_5_2_…()`; the implementing code cites the requirement in a comment, and
   jwz's `tests/traceability.rs` generates and checks `docs/traceability.md`
-  (`JWZ_BLESS=1` rewrites it).
+  (`JWZ_BLESS=1` rewrites it). The ti crates (ti-pki, ti-pkcs12, ti-idpd, ti-directory,
+  ti-connector-client, ti-cli, ti-wasm) do the same through the dev-only `traceability`
+  crate, which also reads spec rules (`TSLDET-013`), gematik afos, use cases and tables
+  (`A_28419`, `TUC_PKI_006`, `Tab_PKI_405`) and spec rule IDs in string literals, refuses a
+  spec rule `spec/` does not define, and lists requirement-named tests no citation takes;
+  `TRACE_BLESS=1 cargo test -p <crate> --test traceability` rewrites a table.
 - Gated tests are `#[ignore = "needs TI_TEST_KON_PATH: just <recipe>"]`, run by their
   recipe with `--ignored`, and fail when run without their variable; the suites are in
   [development.md](./development.md#gated-tests).
