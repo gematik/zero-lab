@@ -94,7 +94,7 @@ func newService(t *testing.T, keys nonce.Keys, purpose string, r *recorder, c *c
 	return s
 }
 
-func TestRedeem_ANonceIsAcceptedOnce(t *testing.T) {
+func TestServerRule11_ANonceIsRedeemedOnce(t *testing.T) {
 	r := newRecorder()
 	s := newService(t, keysOf("k1"), "p", r, &clock{start})
 	n, err := s.Get()
@@ -109,7 +109,7 @@ func TestRedeem_ANonceIsAcceptedOnce(t *testing.T) {
 	}
 }
 
-func TestRedeem_SingleUseHoldsAcrossReplicasSharingKeysAndRecord(t *testing.T) {
+func TestServerRule11_SingleUseHoldsAcrossReplicasSharingKeysAndRecord(t *testing.T) {
 	keys, r, c := keysOf("k1"), newRecorder(), &clock{start}
 	a, b := newService(t, keys, "p", r, c), newService(t, keys, "p", r, c)
 	n, _ := a.Get()
@@ -121,7 +121,7 @@ func TestRedeem_SingleUseHoldsAcrossReplicasSharingKeysAndRecord(t *testing.T) {
 	}
 }
 
-func TestRedeem_ConcurrencyHasExactlyOneWinner(t *testing.T) {
+func TestServerRule11_ConcurrentRedeemsHaveExactlyOneWinner(t *testing.T) {
 	r := newRecorder()
 	s := newService(t, keysOf("k1"), "p", r, &clock{start})
 	n, _ := s.Get()
@@ -140,7 +140,7 @@ func TestRedeem_ConcurrencyHasExactlyOneWinner(t *testing.T) {
 	}
 }
 
-func TestGet_IssuingTouchesNoStore(t *testing.T) {
+func TestServerRule10_IssuingANonceTouchesNoStore(t *testing.T) {
 	r := newRecorder()
 	s := newService(t, keysOf("k1"), "p", r, &clock{start})
 	for range 10 {
@@ -153,7 +153,7 @@ func TestGet_IssuingTouchesNoStore(t *testing.T) {
 	}
 }
 
-func TestRedeem_RecordIsKeyedByTheSHA256OfTheNonceUntilItsExpiry(t *testing.T) {
+func TestServerRule10_RecordIsKeyedByTheSHA256OfTheNonceUntilItsExpiry(t *testing.T) {
 	r := newRecorder()
 	c := &clock{start}
 	s := newService(t, keysOf("k1"), "p", r, c)
@@ -171,7 +171,7 @@ func TestRedeem_RecordIsKeyedByTheSHA256OfTheNonceUntilItsExpiry(t *testing.T) {
 	}
 }
 
-func TestRedeem_ARecordFailureRefuses(t *testing.T) {
+func TestServerRule16_ARecordFailureRefusesTheNonce(t *testing.T) {
 	r := newRecorder()
 	s := newService(t, keysOf("k1"), "p", r, &clock{start})
 	n, _ := s.Get()
@@ -186,7 +186,7 @@ func TestRedeem_ARecordFailureRefuses(t *testing.T) {
 	}
 }
 
-func TestRedeem_ExpiredNonceIsRefusedWithoutARecord(t *testing.T) {
+func TestServerRule10_ExpiredNonceIsRefusedWithoutARecord(t *testing.T) {
 	r := newRecorder()
 	c := &clock{start}
 	s := newService(t, keysOf("k1"), "p", r, c)
@@ -200,7 +200,7 @@ func TestRedeem_ExpiredNonceIsRefusedWithoutARecord(t *testing.T) {
 	}
 }
 
-func TestRedeem_ANonceOfAnotherPurposeIsRefused(t *testing.T) {
+func TestServerRule10_ANonceOfAnotherPurposeIsRefused(t *testing.T) {
 	keys, r, c := keysOf("k1"), newRecorder(), &clock{start}
 	n, _ := newService(t, keys, "a", r, c).Get()
 	if err := newService(t, keys, "b", r, c).Redeem(context.Background(), n); !errors.Is(err, nonce.ErrInvalid) {
@@ -208,7 +208,7 @@ func TestRedeem_ANonceOfAnotherPurposeIsRefused(t *testing.T) {
 	}
 }
 
-func TestRedeem_AForgedOrAlteredNonceIsRefusedWithoutARecord(t *testing.T) {
+func TestServerRule10_AForgedOrAlteredNonceIsRefusedWithoutARecord(t *testing.T) {
 	r := newRecorder()
 	s := newService(t, keysOf("k1"), "p", r, &clock{start})
 	n, _ := s.Get()
@@ -235,7 +235,7 @@ func TestRedeem_AForgedOrAlteredNonceIsRefusedWithoutARecord(t *testing.T) {
 
 // The record is keyed by the string: a second spelling of the same bytes would be a second use. Go's base64
 // decoder skips newlines and, unless strict, ignores the trailing bits of the last character.
-func TestRedeem_AnotherSpellingOfANonceIsRefused(t *testing.T) {
+func TestServerRule11_AnotherSpellingOfANonceIsRefused(t *testing.T) {
 	r := newRecorder()
 	s := newService(t, keysOf("k1"), "p", r, &clock{start})
 	n, _ := s.Get()
@@ -256,7 +256,7 @@ func TestRedeem_AnotherSpellingOfANonceIsRefused(t *testing.T) {
 	}
 }
 
-func TestGet_NoncesAreNQCHARAndBounded(t *testing.T) {
+func TestRFC9449_8_1_NoncesAreNQCHARAndBounded(t *testing.T) {
 	long := strings.Repeat("k", nonce.MaxKeyIDLen)
 	s := newService(t, keysOf(long), "p", newRecorder(), &clock{start})
 	for range 100 {
@@ -285,7 +285,7 @@ func TestGet_NoncesDiffer(t *testing.T) {
 	}
 }
 
-func TestRedeem_ANonceFromBeforeARotationStaysValid(t *testing.T) {
+func TestServerRule10_ANonceFromBeforeARotationStaysValid(t *testing.T) {
 	r, c := newRecorder(), &clock{start}
 	n, _ := newService(t, keysOf("old"), "p", r, c).Get()
 	rotated := keysOf("new")
@@ -295,7 +295,7 @@ func TestRedeem_ANonceFromBeforeARotationStaysValid(t *testing.T) {
 	}
 }
 
-func TestRedeem_ANonceUnderADroppedKeyIsRefused(t *testing.T) {
+func TestServerRule10_ANonceUnderADroppedKeyIsRefused(t *testing.T) {
 	r, c := newRecorder(), &clock{start}
 	n, _ := newService(t, keysOf("old"), "p", r, c).Get()
 	if err := newService(t, keysOf("new"), "p", r, c).Redeem(context.Background(), n); !errors.Is(err, nonce.ErrInvalid) {
@@ -337,7 +337,7 @@ func newSource(t *testing.T, keys nonce.Keys, purpose string, c *clock) *nonce.S
 }
 
 // RFC 9449 Section 8: a server nonce may be used by several proofs while it is current.
-func TestSource_ANonceIsReusableWithinItsWindow(t *testing.T) {
+func TestRFC9449_8_ASourceNonceIsReusableWithinItsWindow(t *testing.T) {
 	c := &clock{start}
 	s := newSource(t, keysOf("k1"), "dpop", c)
 	n, err := s.Fresh()
@@ -355,7 +355,7 @@ func TestSource_ANonceIsReusableWithinItsWindow(t *testing.T) {
 	}
 }
 
-func TestSource_ReplicasSharingKeysAcceptEachOthersNonces(t *testing.T) {
+func TestServerRule3_SourceReplicasSharingKeysAcceptEachOthersNonces(t *testing.T) {
 	keys, c := keysOf("k1"), &clock{start}
 	n, _ := newSource(t, keys, "dpop", c).Fresh()
 	if !newSource(t, keys, "dpop", c).Valid(n) {
@@ -363,7 +363,7 @@ func TestSource_ReplicasSharingKeysAcceptEachOthersNonces(t *testing.T) {
 	}
 }
 
-func TestSource_MustMatchExactly(t *testing.T) {
+func TestRFC9449_8_ASourceNonceMustMatchExactly(t *testing.T) {
 	s := newSource(t, keysOf("k1"), "dpop", &clock{start})
 	n, _ := s.Fresh()
 	for _, bad := range []string{"", "x", n + "\n", n + "=", n[:len(n)-1], strings.Repeat("A", 100_000)} {
@@ -374,7 +374,7 @@ func TestSource_MustMatchExactly(t *testing.T) {
 }
 
 // Even under one purpose string, a nonce that is reusable must not pass as a single-use one, or the other way.
-func TestSource_AndServiceDoNotAcceptEachOthersNonces(t *testing.T) {
+func TestServerRule10_SourceAndServiceDoNotAcceptEachOthersNonces(t *testing.T) {
 	keys, c, r := keysOf("k1"), &clock{start}, newRecorder()
 	source, service := newSource(t, keys, "same", c), newService(t, keys, "same", r, c)
 	fromSource, _ := source.Fresh()
