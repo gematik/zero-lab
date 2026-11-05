@@ -42,7 +42,7 @@ pub struct KeycloakToken {
 }
 
 /// `POST {auth}/auth/realms/{realm}/protocol/openid-connect/token` with
-/// `grant_type=client_credentials`, the client authenticated by `Basic`.
+/// `grant_type=client_credentials` (RFC 6749 §4.4.2), the client authenticated by `Basic`.
 ///
 /// # Errors
 ///
@@ -74,7 +74,7 @@ pub fn token_request(
     Ok(request)
 }
 
-/// The Keycloak token in `response`.
+/// The Keycloak token in `response`; a refusal is an OAuth error document (RFC 6749 §5.2).
 ///
 /// # Errors
 ///

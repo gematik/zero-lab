@@ -24,7 +24,9 @@
 //! The owner authentication's steps against responses as gemSpec_VZD_FHIR_Directory and
 //! I_VZD_Owner describe them, and the guards that keep the identity from signing for a
 //! foreign IDP or sending the code elsewhere. The IDP-Dienst flow itself is ti-idpd's
-//! to test; `login` is tried end to end by ti-cli against loopback fakes.
+//! to test; `login` is tried end to end by ti-cli against loopback fakes. None of these
+//! tests has a numbered requirement: the steps are the directory's interface, the guards
+//! this crate's design.
 
 use std::cell::RefCell;
 

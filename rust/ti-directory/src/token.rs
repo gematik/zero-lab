@@ -120,8 +120,9 @@ fn claims(token: &str) -> Option<TokenClaims> {
 mod tests {
     use super::*;
 
+    /// `aud` is one string or an array of them.
     #[test]
-    fn audience_takes_a_string_or_an_array() {
+    fn rfc_7519_4_1_3_audience_takes_a_string_or_an_array() {
         let one: TokenClaims = serde_json::from_str(r#"{"aud":"a"}"#).unwrap();
         assert_eq!(one.aud, ["a"]);
         let many: TokenClaims = serde_json::from_str(r#"{"aud":["a","b"]}"#).unwrap();

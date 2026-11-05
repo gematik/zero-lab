@@ -121,6 +121,7 @@ pub(crate) fn origin(url: &str) -> &str {
 mod tests {
     use super::*;
 
+    /// The origin a redirect is compared with; an internal invariant.
     #[test]
     fn origins() {
         assert_eq!(
@@ -132,8 +133,9 @@ mod tests {
         assert_eq!(origin("idp.test/auth"), "idp.test");
     }
 
+    /// Client id and secret are form-encoded before they become `Basic` credentials.
     #[test]
-    fn forms_and_basic_credentials_are_encoded() {
+    fn rfc_6749_2_3_1_forms_and_basic_credentials_are_encoded() {
         assert_eq!(
             form(&[("grant_type", "client_credentials"), ("x", "a b&c=d/é")]),
             "grant_type=client_credentials&x=a+b%26c%3Dd%2F%C3%A9"

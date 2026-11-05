@@ -24,7 +24,8 @@
 //! The token paths besides the owner login by card: client credentials at Keycloak
 //! exchanged at the directory and a bearer exchanged at `/owner-authenticate`, against
 //! responses shaped as gemSpec_VZD_FHIR_Directory, I_VZD_Owner and Keycloak give them
-//! (checked on RU, 2026-10-11).
+//! (checked on RU, 2026-10-11). The paths and the exchanges are the directory's interface,
+//! with no numbered requirement; the OAuth steps are named after RFC 6749.
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -144,8 +145,9 @@ fn endpoints_name_their_paths_and_realms() {
     assert_eq!(Directory::new(DIRECTORY, Idp::new(IDP)).auth_url(), None);
 }
 
+/// The client authenticates with `Basic` (RFC 6749 §2.3.1).
 #[test]
-fn the_keycloak_request_is_client_credentials_with_basic_auth() {
+fn rfc_6749_4_4_2_the_keycloak_request_is_client_credentials_with_basic_auth() {
     let request =
         keycloak::token_request(&directory(), Endpoint::Holder, "rs-1", "s3cret").unwrap();
     assert_eq!(request.method, Method::Post);
@@ -167,8 +169,9 @@ fn the_keycloak_request_is_client_credentials_with_basic_auth() {
     assert!(matches!(error, Error::Malformed { .. }), "{error}");
 }
 
+/// Keycloak's OAuth error document is an auth-server error; anything else is a status.
 #[test]
-fn keycloak_refusals_are_auth_server_errors() {
+fn rfc_6749_5_2_keycloak_refusals_are_auth_server_errors() {
     let error = keycloak::token(&response(
         401,
         r#"{"error":"unauthorized_client","error_description":"Invalid client or Invalid client credentials"}"#,
