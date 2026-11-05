@@ -100,7 +100,7 @@ mod tests {
     /// taken on faith a second time.
     #[cfg(feature = "brainpool")]
     #[test]
-    fn gem_rca8_vouches_for_gem_rca7() {
+    fn roots_003_gem_rca8_vouches_for_gem_rca7() {
         use crate::Certificate;
         use der::Encode;
 
@@ -144,8 +144,9 @@ mod tests {
         );
     }
 
+    /// TSLSIG-030, GS-A_4640: the TSL signer CA is pinned by its fingerprint.
     #[test]
-    fn gem_tsl_ca3_fingerprint() {
+    fn tslsig_030_gem_tsl_ca3_fingerprint() {
         assert_fingerprint(
             GEM_TSL_CA3,
             "E2:99:2D:C2:92:F6:AA:8D:9E:46:2A:77:23:F5:4C:16:28:53:B4:05:6C:27:72:60:B8:2C:E5:89:21:40:84:48",
@@ -153,8 +154,9 @@ mod tests {
     }
 
     #[cfg(feature = "dangerous-nonprod")]
+    /// TSLSIG-030, GS-A_4640: the TSL signer CA is pinned by its fingerprint.
     #[test]
-    fn gem_tsl_ca28_test_only_fingerprint() {
+    fn tslsig_030_gem_tsl_ca28_test_only_fingerprint() {
         assert_fingerprint(
             GEM_TSL_CA28_TEST_ONLY,
             "43:85:3A:0E:92:BF:D6:E9:E9:9F:02:C1:D1:65:A6:88:AA:94:F0:DF:74:D8:EA:0D:DF:84:9E:CD:01:BE:1D:6A",

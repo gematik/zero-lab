@@ -166,7 +166,8 @@ fn certificates() -> Value {
     )
 }
 
-/// PROF-001, 002, 003, 020, 030: the corpus is what this crate says.
+/// PROF-030, PROF-031 and PROF-032, over PROF-001, PROF-002, PROF-003 and PROF-020: the
+/// corpus is what this crate says.
 #[test]
 fn prof_030_the_corpus_is_what_ti_pki_says() {
     let corpus = json!({ "tables": tables(), "certificates": certificates() });
@@ -190,7 +191,7 @@ fn hex(text: &str) -> Vec<u8> {
         .collect()
 }
 
-/// PROF-010, 011: hand-built values, the malformed ones above all, on which Go must agree.
+/// PROF-010 and PROF-011: hand-built values, the malformed ones above all, on which Go must agree.
 #[test]
 fn prof_010_admission_values_are_read_or_refused_as_stated() {
     let vectors: Value =

@@ -258,6 +258,7 @@ fn path_007_a_compressed_key_does_not_parse() {
     assert!(ti_pki::parse_pem_certificates(&pem).is_err());
 }
 
+/// OCSP-001, OCSP-002 and OCSP-003: the corpus is what this crate says.
 #[test]
 fn ocsp_001_the_corpus_is_what_ti_pki_says() {
     let corpus =

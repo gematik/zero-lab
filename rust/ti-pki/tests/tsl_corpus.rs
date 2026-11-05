@@ -193,9 +193,9 @@ fn summary(name: &str, stem: &str, env: Env) -> Value {
     })
 }
 
-/// BUNDLE-003, with the rules of `spec/tsl-detached` on what a list holds.
+/// BUNDLE-003 and TSLSIG-053, with the rules of `spec/tsl-detached` on what a list holds.
 #[test]
-fn tsl_001_the_corpus_is_what_ti_pki_says() {
+fn bundle_003_the_tsl_corpus_is_what_ti_pki_says() {
     let corpus = json!({
         "captured": CAPTURED,
         "lists": [

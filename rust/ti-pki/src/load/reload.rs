@@ -1179,9 +1179,9 @@ mod tests {
         ReloadPolicy::default().validate(Tier::Prod).unwrap();
     }
 
-    /// TSLSIG-055: at most a day between checks, in every tier.
+    /// TSLSIG-055, GS-A_4899: at most a day between checks, in every tier.
     #[test]
-    fn the_interval_is_at_most_a_day() {
+    fn tslsig_055_the_interval_is_at_most_a_day() {
         let daily = ReloadPolicy {
             interval: MAX_RELOAD_INTERVAL,
             ..policy()
@@ -1262,11 +1262,11 @@ mod tests {
     #[cfg(feature = "brainpool")]
     const OCT_3: Timestamp = Timestamp(1_790_985_600);
 
-    /// TSLSIG-051, 053, 043: a verified list replaces the CAs, the same one under new
-    /// validators changes nothing. An older one is rejected by the next test.
+    /// TSLSIG-051, TSLSIG-053, TSLSIG-043: a verified list replaces the CAs, the same one
+    /// under new validators changes nothing. An older one is rejected by the next test.
     #[cfg(feature = "brainpool")]
     #[test]
-    fn the_tsl_is_verified_and_follows_its_sequence() {
+    fn tslsig_051_the_tsl_is_verified_and_follows_its_sequence() {
         use crate::tsl_signature::TslCode;
         let clock = FixedClock::new(OCT_3);
         let r = production(
@@ -1308,7 +1308,7 @@ mod tests {
     /// TSLSIG-053 across a restart: the persisted state rejects an older list at once.
     #[cfg(feature = "brainpool")]
     #[test]
-    fn a_stored_state_survives_a_restart() {
+    fn tslsig_053_a_stored_state_survives_a_restart() {
         let clock = FixedClock::new(OCT_3);
         let stored = TslState {
             id: "ID31033820261127000007Z".into(),
@@ -1331,7 +1331,7 @@ mod tests {
     /// TSLSIG-054: a list past its NextUpdate, without grace period, is not used.
     #[cfg(feature = "brainpool")]
     #[test]
-    fn an_overdue_tsl_is_not_used() {
+    fn tslsig_054_an_overdue_tsl_is_not_used() {
         let after = Timestamp::parse_rfc3339("2026-12-01T00:00:00Z").unwrap();
         let clock = FixedClock::new(after);
         let r = production(&clock, [Ok(published(after)), Ok(published(after))]);
@@ -1347,7 +1347,7 @@ mod tests {
     /// same list, supplied again past its NextUpdate, must not stay in use.
     #[cfg(feature = "brainpool")]
     #[test]
-    fn an_unchanged_tsl_stops_being_used_at_its_next_update() {
+    fn tslsig_054_an_unchanged_tsl_stops_being_used_at_its_next_update() {
         let clock = FixedClock::new(OCT_3);
         let after = Timestamp::parse_rfc3339("2026-12-01T00:00:00Z").unwrap();
         let r = production(&clock, [Ok(published(OCT_3)), Ok(published(after))]);
@@ -1377,10 +1377,10 @@ mod tests {
         }
     }
 
-    /// TSLSIG-040, 041: with a checker, the signer's status decides.
+    /// TSLSIG-040, TSLSIG-041: with a checker, the signer's status decides.
     #[cfg(feature = "brainpool")]
     #[test]
-    fn the_signer_status_decides() {
+    fn tslsig_040_the_signer_status_decides() {
         use crate::revocation::RevocationStatus;
         let clock = FixedClock::new(OCT_3);
         let good = production(&clock, [Ok(published(OCT_3))])

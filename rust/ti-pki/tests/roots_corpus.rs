@@ -271,7 +271,8 @@ fn steps() -> Vec<Value> {
     cases
 }
 
-/// ROOTS-001 to ROOTS-003: the corpus is what this crate says, and the real files reach all ten roots.
+/// ROOTS-001, ROOTS-002 and ROOTS-003: the corpus is what this crate says, and the real
+/// files reach all ten roots.
 #[test]
 fn roots_001_the_corpus_is_what_ti_pki_says() {
     let real = real();

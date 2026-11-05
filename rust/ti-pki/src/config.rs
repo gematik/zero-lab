@@ -411,8 +411,9 @@ pub(crate) mod tests {
     }
 
     #[cfg(feature = "dangerous-nonprod")]
+    /// TSLSIG-030: a TEST-ONLY anchor is not usable in a production configuration.
     #[test]
-    fn test_only_tsl_signer_anchor_is_rejected_in_prod() {
+    fn tslsig_030_test_only_tsl_signer_anchor_is_rejected_in_prod() {
         let config = TrustConfig {
             tsl_signer_anchors: vec![
                 Cow::Borrowed(anchors::GEM_TSL_CA3),
@@ -441,8 +442,9 @@ pub(crate) mod tests {
         assert_eq!(reason(none.validate(Tier::NonProd)), "no TSL signer anchor");
     }
 
+    /// TSLSIG-054, GS-A_4898: a grace period of at most 30 days.
     #[test]
-    fn tsl_grace_period_is_at_most_30_days() {
+    fn tslsig_054_tsl_grace_period_is_at_most_30_days() {
         let config = TrustConfig {
             tsl_grace_period: MAX_TSL_GRACE_PERIOD,
             ..nist_prod_config()
@@ -513,8 +515,9 @@ pub(crate) mod tests {
     }
 
     #[cfg(feature = "dangerous-nonprod")]
+    /// TSLDET-012: the automated download points of A_21182.
     #[test]
-    fn presets_carry_the_detached_download_points() {
+    fn tsldet_012_presets_carry_the_detached_download_points() {
         assert_eq!(
             TrustConfig::preset(Env::Prod).tsl_detached_url,
             tsl::URL_DETACHED_PROD,

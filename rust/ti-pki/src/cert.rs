@@ -383,8 +383,9 @@ impl Certificate {
         issuer: &Certificate,
         algorithms: &AlgorithmSet,
     ) -> Result<(), SignatureError> {
-        // Outside what the signature covers, and no signature has unused bits: taking the bytes
-        // regardless would let a copy with this byte changed pass as the same certificate.
+        // PATH-007: outside what the signature covers, and no signature has unused bits:
+        // taking the bytes regardless would let a copy with this byte changed pass as the
+        // same certificate.
         if self.0.inner.signature().as_bytes().is_none() {
             return Err(SignatureError::Invalid);
         }
@@ -413,8 +414,9 @@ impl Certificate {
     }
 }
 
-/// The TI issues uncompressed points only (gemSpec_Krypt), and the crates would decode any other form
-/// without a word: a key must have one encoding, or one key has several certificates.
+/// PATH-007: the TI issues uncompressed points only (gemSpec_Krypt), and the crates would
+/// decode any other form without a word: a key must have one encoding, or one key has
+/// several certificates.
 fn check_ec_point(certificate: &x509_cert::Certificate) -> Result<(), Error> {
     const EC_PUBLIC_KEY: const_oid::ObjectIdentifier =
         const_oid::ObjectIdentifier::new_unwrap("1.2.840.10045.2.1");

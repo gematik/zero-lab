@@ -241,8 +241,8 @@ impl Validator {
     /// [`Unchecked`](crate::revocation::Unchecked) with
     /// [`RevocationMode::Disabled`] to validate offline.
     ///
-    /// Every policy-level failure lands in the result's errors. The required admission
-    /// roles are checked last, and only for a certificate that is valid otherwise
+    /// VALID-001: every policy-level failure lands in the result's errors. The required
+    /// admission roles are checked last, and only for a certificate that is valid otherwise
     /// (A_30046 (4) of C_12791).
     ///
     /// # Errors
@@ -292,8 +292,8 @@ impl Validator {
         self.check_cas_listed(&chain, &mut result);
         self.check_tsl_type(&chain, &mut result);
         self.check_ca_revoked_in_tsl(&chain, &mut result);
-        // The address of a responder is in a certificate an attacker may have made, so it is asked
-        // only about what has passed everything else.
+        // VALID-004: the address of a responder is in a certificate an attacker may have made,
+        // so it is asked only about what has passed everything else.
         if result.valid {
             self.check_revocation(&chain, now, checker, &mut result)
                 .await;
@@ -361,7 +361,7 @@ impl Validator {
 }
 
 impl Validator {
-    /// The certificate's own type against what its profile accepts. The caller's choice of profile
+    /// VALID-005: the certificate's own type against what its profile accepts. The caller's choice of profile
     /// says what is wanted; what the certificate shows decides.
     fn check_accepted_type(&self, leaf: &Certificate, result: &mut ValidationResult) {
         if self.accepted_types.is_empty() {
@@ -382,7 +382,7 @@ impl Validator {
         );
     }
 
-    /// With a verified TSL, every CA of the chain must be one it names in accord, or revoked with a
+    /// VALID-006: with a verified TSL, every CA of the chain must be one it names in accord, or revoked with a
     /// time, under a root: a CA supplied with the certificate gets no standing from its signature
     /// alone (TIP1-A_2059). Without a verified TSL there is nothing to check against.
     fn check_cas_listed(&self, chain: &[Certificate], result: &mut ValidationResult) {
@@ -405,7 +405,7 @@ impl Validator {
         }
     }
 
-    /// A CA the TSL lists as revoked still vouches for the end entities it issued
+    /// VALID-003: a CA the TSL lists as revoked still vouches for the end entities it issued
     /// before its `StatusStartingTime` (gemSpec_PKI Tab_PKI_271, TUC_PKI_002 step 5:
     /// the end entity's `notBefore` against the time), not for later ones.
     fn check_ca_revoked_in_tsl(&self, chain: &[Certificate], result: &mut ValidationResult) {
@@ -440,7 +440,7 @@ impl Validator {
         }
     }
 
-    /// TUC_PKI_007 steps 7 – 9 against the verified TSL in the store: the end entity's
+    /// VALID-007, TUC_PKI_007 steps 7 – 9 against the verified TSL in the store: the end entity's
     /// type OID must be among those its issuing CA's TSL entry lists, which is what makes a
     /// CA one for components, SMC-B, eGK or HBA. A CA with no types stated may issue none
     /// (step 9a: no match). Without a verified TSL nothing is checked. The TSL signer is
@@ -548,7 +548,7 @@ fn downgrade_validity_errors(result: &mut ValidationResult) {
     result.valid = result.errors.is_empty();
 }
 
-/// Holds the end-entity key to gemSpec_Krypt. Only the end entity: which CAs may sign
+/// VALID-002: holds the end-entity key to gemSpec_Krypt. Only the end entity: which CAs may sign
 /// is the trust store's business, and historical RSA roots must keep validating the
 /// chains issued under them.
 fn check_key(ee: &Certificate, now: Timestamp, result: &mut ValidationResult) {
@@ -622,7 +622,7 @@ mod tests {
         /// end entity issued before the CA's StatusStartingTime is treated as usual,
         /// one issued at or after it is not valid.
         #[test]
-        fn a_revoked_tsl_ca_vouches_only_for_what_it_issued_before() {
+        fn valid_003_a_revoked_tsl_ca_vouches_only_for_what_it_issued_before() {
             let pki = TestPki::new();
             let issued = pki.ee_mixed.not_before();
             let store = |revoked_since| {
@@ -712,7 +712,7 @@ mod tests {
         /// are valid with a warning (Kompromissmodell), a component's is not (shell
         /// model).
         #[test]
-        fn the_validity_model_follows_the_certificate_type() {
+        fn path_003_the_validity_model_follows_the_certificate_type() {
             let pki = TestPki::new();
             let v = Validator {
                 store: Arc::new(TrustStore::new([pki.rca1.clone()]).with_intermediates(vec![
@@ -795,7 +795,7 @@ mod tests {
 
         /// A_30046 (5): a host named in the commonName must be the expected one.
         #[test]
-        fn expected_fqdn() {
+        fn a_30046_expected_fqdn() {
             let pki = TestPki::new();
             let chain = [pki.ee_zeta.clone(), pki.sub_ca_komp.clone()];
             let v = validator(&pki, RevocationMode::Disabled);
@@ -808,8 +808,10 @@ mod tests {
             );
         }
 
+        /// VALID-001: the roles last, only for a certificate valid otherwise; VALID-002: the
+        /// end entity's key; PATH-002: its expiry.
         #[test]
-        fn expiry_key_and_baseline_findings() {
+        fn valid_001_expiry_key_and_baseline_findings() {
             let pki = TestPki::new();
             let v = validator(&pki, RevocationMode::Disabled);
             let expired = [pki.ee_expired.clone(), pki.sub_ca_hba.clone()];
@@ -875,7 +877,7 @@ mod tests {
         /// The address of a responder is in a certificate an attacker may have made, so it is asked
         /// only once everything else has passed.
         #[test]
-        fn no_responder_is_asked_for_a_certificate_that_failed() {
+        fn valid_004_no_responder_is_asked_for_a_certificate_that_failed() {
             let pki = TestPki::new();
             let noting = Noting(std::sync::Mutex::default());
             let expired =
@@ -901,7 +903,7 @@ mod tests {
 
         /// A CA supplied with the certificate, signed by a root, that a verified TSL does not name.
         #[test]
-        fn a_ca_the_verified_tsl_does_not_name_gives_no_standing() {
+        fn valid_006_a_ca_the_verified_tsl_does_not_name_gives_no_standing() {
             let pki = TestPki::new();
             let chain = [typed("type-hci-aut"), pki.sub_ca_komp.clone()];
             let unlisted = Validator {
@@ -924,7 +926,7 @@ mod tests {
 
         /// A profile accepts what the certificate shows, whatever the caller wanted of it.
         #[test]
-        fn a_profile_refuses_a_type_it_does_not_accept() {
+        fn valid_005_a_profile_refuses_a_type_it_does_not_accept() {
             let pki = TestPki::new();
             let store = Arc::new(TrustStore::new([pki.rca1.clone(), pki.rca7.clone()]));
             let config = TrustConfig {
@@ -961,7 +963,7 @@ mod tests {
 
         /// TUC_PKI_007: the verified TSL must list the end entity's type for its CA.
         #[test]
-        fn tsl_states_the_types_a_ca_may_issue() {
+        fn valid_007_the_tsl_states_the_types_a_ca_may_issue() {
             let pki = TestPki::new();
             let chain = [typed("type-hci-aut"), pki.sub_ca_komp.clone()];
             let with_types = |types: Vec<ObjectIdentifier>| Validator {

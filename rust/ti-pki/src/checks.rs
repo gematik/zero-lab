@@ -41,7 +41,7 @@ pub type CertificateCheck = Arc<dyn Fn(&Certificate) -> Result<(), ValidationErr
 /// `anyExtendedKeyUsage`, which satisfies any extended key usage requirement.
 pub const ANY_EXTENDED_KEY_USAGE: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.5.29.37.0");
 
-/// Requires every bit of `required`; further bits are allowed. A certificate without a
+/// PROF-020: requires every bit of `required`; further bits are allowed. A certificate without a
 /// key usage extension has no bits.
 pub fn key_usage(required: &[KeyUsages]) -> CertificateCheck {
     let required = required.to_vec();
@@ -62,7 +62,8 @@ pub fn key_usage(required: &[KeyUsages]) -> CertificateCheck {
     })
 }
 
-/// Requires one of `allowed` among the extended key usages (or `anyExtendedKeyUsage`).
+/// PROF-020: requires one of `allowed` among the extended key usages (or
+/// `anyExtendedKeyUsage`).
 pub fn any_ext_key_usage(allowed: &[ObjectIdentifier]) -> CertificateCheck {
     let allowed = allowed.to_vec();
     Arc::new(move |cert| {
@@ -82,7 +83,7 @@ pub fn any_ext_key_usage(allowed: &[ObjectIdentifier]) -> CertificateCheck {
     })
 }
 
-/// Requires every policy in `required`; empty means no requirement.
+/// PROF-020: requires every policy in `required`; empty means no requirement.
 pub fn certificate_policies(required: &[ObjectIdentifier]) -> CertificateCheck {
     let required = required.to_vec();
     Arc::new(move |cert| {
@@ -147,7 +148,8 @@ fn leading_fqdn(common_name: &str) -> Option<&str> {
     .then_some(name)
 }
 
-/// Requires one of `allowed` among the admission roles; empty means no requirement. A
+/// PROF-020: requires one of `allowed` among the admission roles; empty means no
+/// requirement. A
 /// certificate without an admission extension asserts no roles.
 pub fn role_oid(allowed: &[ObjectIdentifier]) -> CertificateCheck {
     let allowed = allowed.to_vec();
@@ -250,7 +252,7 @@ mod tests {
     }
 
     #[test]
-    fn fqdn_in_the_common_name() {
+    fn a_30046_fqdn_in_the_common_name() {
         let pki = TestPki::new();
         // CN "zeta.ti-dienste.de TEST-ONLY"
         fqdn("zeta.ti-dienste.de")(&pki.ee_zeta).unwrap();
@@ -282,7 +284,7 @@ mod tests {
     }
 
     #[test]
-    fn key_usage_requires_every_bit() {
+    fn prof_020_key_usage_requires_every_bit() {
         let pki = TestPki::new();
         key_usage(&[KeyUsages::DigitalSignature])(&pki.ee_arzt).unwrap();
         let error = key_usage(&[KeyUsages::KeyCertSign])(&pki.ee_arzt).unwrap_err();
@@ -299,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn any_of_the_ext_key_usages() {
+    fn prof_020_any_of_the_ext_key_usages() {
         let pki = TestPki::new();
         any_ext_key_usage(&[crate::cert_type::SERVER_AUTH, crate::cert_type::CLIENT_AUTH])(
             &pki.ee_arzt,
@@ -313,7 +315,7 @@ mod tests {
     }
 
     #[test]
-    fn policies_all_required() {
+    fn prof_020_policies_all_required() {
         let cert = typed("type-fd-aut");
         certificate_policies(&[crate::oid::POLICY_GEM_OR_CP, crate::oid::CERT_TYPE_FD_AUT])(&cert)
             .unwrap();
@@ -328,7 +330,7 @@ mod tests {
     }
 
     #[test]
-    fn roles_one_of() {
+    fn prof_020_roles_one_of() {
         let pki = TestPki::new();
         role_oid(&[crate::oid::PROF_ARZT, crate::oid::PROF_ZAHNARZT])(&pki.ee_arzt).unwrap();
         role_oid(&[])(&pki.ee_zeta).unwrap();

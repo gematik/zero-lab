@@ -40,7 +40,8 @@ use ti_cache::{Conditional, Source};
 /// Over HTTP, the TSL is compared by the SHA-256 published next to it (`.sha2` for
 /// `.xml`) before it is downloaded: a caller holding the list with that hash
 /// (`sha256:<hex>` as its entity tag) gets "not modified", and a download must match the
-/// hash (A_30044 (2) of C_12791). Without a readable hash the TSL is fetched as before.
+/// hash (TSLSIG-050, A_30044 (2) of C_12791). Without a readable hash the TSL is fetched
+/// as before.
 ///
 /// The list, its `.sig` and its `.ocsp` come from [`TrustConfig::tsl_detached_url`] as one
 /// set (`spec/tsl-detached` TSLDET-010), under a hash read from the HTTPS point. Without a
@@ -129,11 +130,11 @@ impl<T: Transport + MaybeSend + MaybeSync, C: Clock + MaybeSend + MaybeSync> Htt
                 .at(now),
             ));
         }
-        // The list comes from where its signature is (A_21177): HTTPS may already have a
-        // list whose `.sig` is not published yet (A_21178 allows an hour), and taking it
-        // would replace the set in hand with one that cannot verify. So a list that does
-        // not match, or no list, is a failure to retry, with the set in hand kept. The
-        // origin is plain HTTP: no validators go there and its "not modified" is not
+        // TSLDET-014: the list comes from where its signature is (A_21177): HTTPS may
+        // already have a list whose `.sig` is not published yet (A_21178 allows an hour),
+        // and taking it would replace the set in hand with one that cannot verify. So a
+        // list that does not match, or no list, is a failure to retry, with the set in hand
+        // kept. The origin is plain HTTP: no validators go there and its "not modified" is not
         // believed, or an unauthenticated answer would renew the list's age.
         let origin = self.tsl_detached_url.as_ref();
         let unusable = |why: String| {
@@ -444,7 +445,7 @@ mod tests {
 
     /// A_30044 (2): the published hash decides whether the TSL is downloaded.
     #[test]
-    fn the_published_hash_decides_the_download() {
+    fn tslsig_050_the_published_hash_decides_the_download() {
         let sha2 = format!("{}  ECC-RSA_TSL.xml\n", hash_of(TSL).to_uppercase());
         let transport = MockTransport::new([Ok(fresh(sha2.as_bytes(), None, Source::Http))]);
         let held = content_etag(TSL);

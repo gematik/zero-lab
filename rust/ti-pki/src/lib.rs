@@ -103,7 +103,9 @@
 //! every certificate of that type must satisfy ([`cert_type`]). A profile is a
 //! validation strategy for one TI use case: the types it accepts, its
 //! revocation strictness, and optionally the admission role that identifies
-//! it ([`profile`]).
+//! it ([`profile`]). The tables of types and profiles, the gemSpec_OID identifiers and
+//! the finding codes are those `spec/pki-profiles` holds for `go/tipki` too (PROF-030,
+//! PROF-031, PROF-032).
 //!
 //! # Environments
 //!

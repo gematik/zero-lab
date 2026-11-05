@@ -58,7 +58,7 @@ pub struct Profile {
     /// one of these. Replacing rather than adding is deliberate, as the check is
     /// any-of and adding would widen the accepted set; a profile narrows a type.
     ///
-    /// It doubles as the selection discriminator: a profile with roles is only
+    /// PROF-003: it doubles as the selection discriminator: a profile with roles is only
     /// selected automatically for a certificate asserting one of them.
     pub required_role_oids: &'static [ObjectIdentifier],
     /// The types the profile is meant for. A certificate of another type may still
@@ -572,7 +572,7 @@ mod tests {
     }
 
     #[test]
-    fn automatic_selection() {
+    fn prof_003_automatic_selection() {
         assert_eq!(
             select("type-hci-aut"),
             (
@@ -640,7 +640,7 @@ mod tests {
     };
 
     #[test]
-    fn ambiguity_is_reported() {
+    fn prof_003_ambiguity_is_reported() {
         let plain = select_from(&[&PLAIN_A, &PLAIN_B], &typed("type-fd-aut"));
         assert_eq!(plain.reason, SelectReason::Ambiguous);
         assert_eq!(

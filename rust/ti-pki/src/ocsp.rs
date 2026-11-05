@@ -25,7 +25,7 @@
 //! [`verify_response`] decides what an answer is worth, and [`OcspChecker`] (feature
 //! `load`) sends one through a [`Transport`](crate::load::Transport).
 //!
-//! A response counts only if
+//! OCSP-001: a response counts only if
 //!
 //! - one of its single responses carries the CertID of the certificate asked about
 //!   (serial, and issuer name and key hashed with the algorithm the responder chose),
@@ -94,7 +94,7 @@ use crate::revocation::{
 use crate::time::Timestamp;
 use crate::{Certificate, TrustStore};
 
-/// The clock skew TUC_PKI_006 grants an OCSP responder (gemSpec_PKI: 37.5 s):
+/// The clock skew TUC_PKI_006 grants an OCSP responder (gemSpec_PKI GS-A_5215: 37.5 s):
 /// `thisUpdate` and `producedAt` may lie this far in the future, `nextUpdate` this far
 /// in the past.
 pub const DEFAULT_CLOCK_TOLERANCE: Duration = Duration::from_millis(37_500);
@@ -175,7 +175,7 @@ impl<'a> ResponseCheck<'a> {
     }
 }
 
-/// The DER `OCSPRequest` for `cert`, issued by `issuer`: one request with a SHA-1
+/// OCSP-003: the DER `OCSPRequest` for `cert`, issued by `issuer`: one request with a SHA-1
 /// CertID, unsigned and without nonce (TI responders sign on demand, so a response
 /// cannot be older than the time window allows).
 ///
@@ -262,7 +262,7 @@ fn verify(
         ));
     }
     let basic = BasicOcspResponse::from_der(bytes.response.as_bytes()).map_err(undecodable)?;
-    // No signature covers these two, so nothing else would notice them changed.
+    // OCSP-002: no signature covers these two, so nothing else would notice them changed.
     if basic.signature_algorithm.tag() != Tag::Sequence || basic.signature.as_bytes().is_none() {
         return Err(ValidationError::new(
             ErrorCode::OcspUnavailable,
@@ -610,7 +610,7 @@ fn verify_cert_hash(
     Ok(())
 }
 
-/// The TUC_PKI_006 window: `producedAt` within `[now - max age, now + tolerance]`,
+/// The TUC_PKI_006 window (GS-A_5215): `producedAt` within `[now - max age, now + tolerance]`,
 /// `thisUpdate` at most the tolerance in the future, `nextUpdate` (if set) at most the
 /// tolerance in the past. `None` inside it.
 fn outside_window(result: &RevocationResult, check: &ResponseCheck<'_>) -> Option<String> {
@@ -798,7 +798,7 @@ mod checker {
 
     /// Queries a certificate's OCSP responder through a [`Transport`] and verifies the
     /// answer with [`verify_response`](super::verify_response). The transport owns
-    /// timeouts and proxies. An OCSP status error (the transport failed, or the
+    /// timeouts and proxies. OCSP-005: an OCSP status error (the transport failed, or the
     /// responder answered `tryLater`, `internalError` and the like) is repeated up to
     /// [`OCSP_STATUS_RETRIES`] times; after that the responder rests for
     /// [`OCSP_STATUS_PAUSE`], shared by the checker's clones.
@@ -1424,7 +1424,7 @@ mod tests {
     }
 
     #[test]
-    fn request_carries_a_sha1_cert_id() {
+    fn ocsp_003_request_carries_a_sha1_cert_id() {
         let (ca, root) = (fixture(SMCB_CA51), fixture(RCA5));
         let der = request(&ca, &root);
         let request = OcspRequest::from_der(&der).unwrap();
@@ -1485,7 +1485,7 @@ mod tests {
 
         /// A_30046 (2): an unknown answer needs no certHash, even where one is required.
         #[test]
-        fn unknown_without_cert_hash() {
+        fn a_30046_unknown_without_cert_hash() {
             let pki = TestPki::new();
             let result = verify(
                 response!("unknown-no-cert-hash"),
@@ -1498,7 +1498,7 @@ mod tests {
         }
 
         #[test]
-        fn issuer_signed_answer_for_a_sub_ca() {
+        fn rfc_6960_4_2_2_2_issuer_signed_answer_for_a_sub_ca() {
             let pki = TestPki::new();
             let result = verify(response!("issuer-signed"), &pki.sub_ca_hba, &pki.rca1).unwrap();
             assert_eq!(result.status, RevocationStatus::Good);
@@ -1507,7 +1507,7 @@ mod tests {
         }
 
         #[test]
-        fn unauthorized_responders() {
+        fn rfc_6960_4_2_2_2_unauthorized_responders() {
             let pki = TestPki::new();
             for (der, message) in [
                 (
@@ -1552,7 +1552,7 @@ mod tests {
         /// ocsp-signer-komp, certified by GEM.SubCA-Komp, answers for a certificate of
         /// GEM.SubCA-HBA: not RFC 6960, acceptable only if both CAs share a TSP.
         #[test]
-        fn delegates_of_the_same_tsp() {
+        fn ocsp_001_delegates_of_the_same_tsp() {
             let pki = TestPki::new();
             let (hba, komp) = (&pki.sub_ca_hba, &pki.sub_ca_komp);
             let verify_with = |store: &TrustStore| {
@@ -1631,7 +1631,7 @@ mod tests {
         }
 
         #[test]
-        fn rfc6960_authorizations_are_recorded() {
+        fn rfc_6960_4_2_2_2_authorizations_are_recorded() {
             let pki = TestPki::new();
             let direct = verify(response!("good"), &pki.ee_arzt, &pki.sub_ca_hba).unwrap();
             assert_eq!(direct.authorization, Some(ResponderAuthorization::Delegate));
@@ -1640,7 +1640,7 @@ mod tests {
         }
 
         #[test]
-        fn response_for_another_certificate() {
+        fn ocsp_001_response_for_another_certificate() {
             let pki = TestPki::new();
             let error = verify(response!("good"), &pki.ee_revoked, &pki.sub_ca_hba).unwrap_err();
             assert_eq!(error.code, ErrorCode::OcspResponseInvalid);
@@ -1658,7 +1658,7 @@ mod tests {
         }
 
         #[test]
-        fn tampered_signature() {
+        fn ocsp_001_tampered_signature() {
             let pki = TestPki::new();
             let mut der = response!("issuer-signed").to_vec();
             // The last byte is the end of the ECDSA signature's s value.
@@ -1673,7 +1673,7 @@ mod tests {
         }
 
         #[test]
-        fn cert_hash() {
+        fn ocsp_001_cert_hash() {
             let pki = TestPki::new();
             let error =
                 verify(response!("no-cert-hash"), &pki.ee_arzt, &pki.sub_ca_hba).unwrap_err();
@@ -1708,7 +1708,7 @@ mod tests {
         /// A_30046 (7): a supplied response is valid at the reference time, without
         /// tolerance or maximum age.
         #[test]
-        fn stapled_responses_at_a_reference_time() {
+        fn a_30046_stapled_responses_at_a_reference_time() {
             let pki = TestPki::new();
             let (ee, ca) = (&pki.ee_arzt, &pki.sub_ca_hba);
             let stapled = |reference: Timestamp| {
@@ -1744,7 +1744,7 @@ mod tests {
         /// A_30046 (7): an eGK certificate's supplied response needs no certHash; any
         /// other's does, and online answers always do.
         #[test]
-        fn stapled_egk_responses_need_no_cert_hash() {
+        fn a_30046_stapled_egk_responses_need_no_cert_hash() {
             let pki = TestPki::new();
             let egk = crate::testing::typed("type-ch-aut");
             let stapled = ResponseCheck::stapled(TestPki::NOW, algorithms::DEFAULT);
@@ -1796,8 +1796,10 @@ mod tests {
             );
         }
 
+        /// GS-A_5215, TUC_PKI_006: producedAt, thisUpdate and nextUpdate are read with 37.5 s
+        /// of tolerance.
         #[test]
-        fn time_window() {
+        fn gs_a_5215_time_window() {
             let pki = TestPki::new();
             let (ee, ca) = (&pki.ee_arzt, &pki.sub_ca_hba);
             let window = |now: Timestamp| {
@@ -1922,7 +1924,7 @@ mod tests {
         /// then the responder rests for five minutes.
         #[cfg(feature = "load")]
         #[test]
-        fn status_errors_are_repeated_then_the_responder_rests() {
+        fn ocsp_005_status_errors_are_repeated_then_the_responder_rests() {
             use crate::load::MockTransport;
             use crate::revocation::RevocationChecker;
             use crate::time::FixedClock;
@@ -1991,7 +1993,7 @@ mod tests {
         /// nextUpdate; unknown results and errors are not.
         #[cfg(feature = "load")]
         #[test]
-        fn results_are_cached() {
+        fn ocsp_005_results_are_cached() {
             use crate::load::MockTransport;
             use crate::revocation::RevocationChecker;
             use crate::time::FixedClock;

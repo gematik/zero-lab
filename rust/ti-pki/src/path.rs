@@ -44,8 +44,8 @@ use crate::time::Timestamp;
 use crate::validate::{CertResult, ChainPosition, ValidationResult};
 use crate::{Certificate, Error};
 
-/// The extensions this crate processes, and so the only ones a certificate may mark
-/// critical (RFC 5280 §4.2). Real TI certificates mark basicConstraints and keyUsage
+/// PATH-004: the extensions this crate processes, and so the only ones a certificate may
+/// mark critical (RFC 5280 §4.2). Real TI certificates mark basicConstraints and keyUsage
 /// critical, a few also extendedKeyUsage. Name constraints and policy constraints are
 /// not implemented, so a CA marking them critical is rejected rather than half-checked.
 pub const PROCESSED_EXTENSIONS: &[ObjectIdentifier] = &[
@@ -77,7 +77,7 @@ pub enum ValidityModel {
 }
 
 impl ValidityModel {
-    /// The model gemKPT_PKI_TIP 2.4 assigns to `cert_type`.
+    /// PATH-003: the model gemKPT_PKI_TIP 2.4 assigns to `cert_type`.
     pub const fn for_type(cert_type: crate::CertificateType) -> Self {
         use crate::CertificateType as T;
         match cert_type {
@@ -109,14 +109,14 @@ pub struct PathOptions<'a> {
 /// Validates `chain` (end entity first, root last, as [`build_chain`] returns it)
 /// against RFC 5280 §6 and the end-entity checks.
 ///
-/// The end entity must be valid at `now`; each CA at `now` under the shell model, or
+/// PATH-002: the end entity must be valid at `now`; each CA at `now` under the shell model, or
 /// when it issued the certificate below under the Kompromissmodell. Every certificate
-/// but the root may mark
-/// only [`PROCESSED_EXTENSIONS`] critical; the root is the trust anchor, whose extensions
-/// RFC 5280 leaves to the relying party. Every CA below the end entity must be
+/// but the root may mark only [`PROCESSED_EXTENSIONS`] critical (PATH-004); the root is
+/// the trust anchor, whose extensions RFC 5280 leaves to the relying party. Every CA below the end entity must be
 /// marked as a CA, must allow certificate signing if it restricts key usage, and must
-/// not have more intermediates beneath it than its path length constraint allows. Every
-/// link's signature must verify under the next certificate's key. All findings are
+/// not have more intermediates beneath it than its path length constraint allows
+/// (PATH-005). Every link's signature must verify under the next certificate's key
+/// (PATH-006). All findings are
 /// collected; the result is valid only without any.
 ///
 /// # Errors
@@ -344,7 +344,7 @@ mod tests {
     }
 
     #[test]
-    fn brainpool_nist_and_mixed_chains_validate() {
+    fn path_006_brainpool_nist_and_mixed_chains_validate() {
         let pki = TestPki::new();
         for chain in [
             vec![
@@ -378,7 +378,7 @@ mod tests {
     }
 
     #[test]
-    fn expired_and_not_yet_valid_end_entities() {
+    fn path_002_expired_and_not_yet_valid_end_entities() {
         let pki = TestPki::new();
         let tail = [pki.sub_ca_hba.clone(), pki.rca1.clone()];
         for (ee, code) in [
@@ -416,7 +416,7 @@ mod tests {
     }
 
     #[test]
-    fn critical_extensions_must_be_processed() {
+    fn path_004_critical_extensions_must_be_processed() {
         let pki = TestPki::new();
         let validate = |chain: &[Certificate]| validate_path(chain, &options(NOW)).unwrap();
 
@@ -473,7 +473,7 @@ mod tests {
     /// gemKPT_PKI_TIP 2.4.2: under the Kompromissmodell a CA counts as it was when it
     /// issued the certificate below; expired since, it is a warning.
     #[test]
-    fn kompromissmodell_accepts_a_ca_that_expired_after_issuing() {
+    fn path_002_kompromissmodell_accepts_a_ca_that_expired_after_issuing() {
         let pki = TestPki::new();
         let options = PathOptions {
             model: ValidityModel::Compromise,
@@ -490,7 +490,7 @@ mod tests {
     /// gemKPT_PKI_TIP 2.4.2: a certificate issued after its CA expired is not valid
     /// under the Kompromissmodell either.
     #[test]
-    fn kompromissmodell_rejects_a_certificate_issued_after_the_ca_expired() {
+    fn path_002_kompromissmodell_rejects_a_certificate_issued_after_the_ca_expired() {
         let pki = TestPki::new();
         let options = PathOptions {
             model: ValidityModel::Compromise,
@@ -507,7 +507,7 @@ mod tests {
     /// gemKPT_PKI_TIP 2.4.1: under the shell model every certificate must be valid at the
     /// reference time.
     #[test]
-    fn shell_model_rejects_a_chain_whose_ca_has_expired() {
+    fn path_002_shell_model_rejects_a_chain_whose_ca_has_expired() {
         let pki = TestPki::new();
         let result = validate_path(
             &short_chain(&pki.ee_short_fd_tls_s, &pki),
@@ -523,7 +523,7 @@ mod tests {
     /// gemKPT_PKI_TIP 2.4: the Kompromissmodell for every nonQES certificate of HBA and
     /// SMC-B, the shell model for components and the eGK.
     #[test]
-    fn the_certificate_type_picks_the_validity_model() {
+    fn path_003_the_certificate_type_picks_the_validity_model() {
         use crate::CertificateType as T;
         for t in [T::HpAut, T::HpEnc, T::HciAut, T::HciEnc, T::HciOsig] {
             assert_eq!(ValidityModel::for_type(t), ValidityModel::Compromise, "{t}");
@@ -534,7 +534,7 @@ mod tests {
     }
 
     #[test]
-    fn expired_sub_ca_is_flagged_not_the_end_entity() {
+    fn path_002_expired_sub_ca_is_flagged_not_the_end_entity() {
         let pki = TestPki::new();
         let chain = [
             pki.ee_under_expired.clone(),
@@ -549,7 +549,7 @@ mod tests {
     }
 
     #[test]
-    fn validity_follows_the_given_instant() {
+    fn path_002_validity_follows_the_given_instant() {
         let pki = TestPki::new();
         let chain = [
             pki.ee_expired.clone(),
@@ -564,7 +564,7 @@ mod tests {
     }
 
     #[test]
-    fn foreign_links_fail_the_signature_check() {
+    fn path_006_foreign_links_fail_the_signature_check() {
         let pki = TestPki::new();
         let rsa_root = crate::cert::tests::fixture(crate::cert::tests::RCA2_RSA);
         for chain in [
@@ -585,7 +585,7 @@ mod tests {
     }
 
     #[test]
-    fn path_length_constraint() {
+    fn path_005_path_length_constraint() {
         let pki = TestPki::new();
         let chain = [
             pki.ee_deep.clone(),
@@ -602,7 +602,7 @@ mod tests {
     }
 
     #[test]
-    fn end_entity_as_issuer_is_not_a_ca() {
+    fn path_005_end_entity_as_issuer_is_not_a_ca() {
         let pki = TestPki::new();
         let chain = [
             pki.ee_under_ee.clone(),
@@ -641,7 +641,7 @@ mod tests {
     }
 
     #[test]
-    fn a_chain_needs_two_certificates() {
+    fn path_005_a_chain_needs_two_certificates() {
         let pki = TestPki::new();
         assert!(matches!(
             validate_path(&[pki.ee_arzt], &options(NOW)),

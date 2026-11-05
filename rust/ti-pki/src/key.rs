@@ -76,8 +76,8 @@ impl fmt::Display for KeyStatus {
 /// serves both.
 pub const RSA_2048_ADMISSIBLE_UNTIL: Timestamp = Timestamp(1_767_225_599);
 
-/// Classifies `key` as of `at` and describes it for messages (`ECDSA brainpoolP256r1`,
-/// `RSA 2048`).
+/// VALID-002: classifies `key` as of `at` and describes it for messages
+/// (`ECDSA brainpoolP256r1`, `RSA 2048`).
 pub fn classify_key(key: &SubjectPublicKeyInfoOwned, at: Timestamp) -> (KeyStatus, String) {
     let algorithm = key.algorithm.oid;
     if algorithm == ID_EC_PUBLIC_KEY {
@@ -200,7 +200,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn classification_table() {
+    fn valid_002_classification_table() {
         let before = Timestamp(RSA_2048_ADMISSIBLE_UNTIL.0 - 12 * 3600);
         let after = Timestamp(RSA_2048_ADMISSIBLE_UNTIL.0 + 1);
         for (key, at, want, desc) in [
@@ -262,7 +262,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn malformed_keys_are_not_admissible() {
+    fn valid_002_malformed_keys_are_not_admissible() {
         let mut no_curve = ec_spki("1.2.840.10045.3.1.7", 65);
         no_curve.algorithm.parameters = None;
         assert_eq!(
@@ -278,7 +278,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn rsa_date_is_end_of_2025() {
+    fn valid_002_rsa_date_is_end_of_2025() {
         // 2025-12-31T23:59:59Z
         assert_eq!(RSA_2048_ADMISSIBLE_UNTIL.0, 1_767_225_599);
     }

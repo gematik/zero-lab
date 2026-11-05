@@ -46,8 +46,8 @@ pub struct ChainError {
     pub error: ValidationError,
 }
 
-/// Walks issuer references from `leaf` through `intermediates` until it reaches a root
-/// of `store`, and returns the chain leaf first, root last.
+/// PATH-001: walks issuer references from `leaf` through `intermediates` until it reaches
+/// a root of `store`, and returns the chain leaf first, root last.
 ///
 /// Topology only: no signatures, no validity; [`validate_path`](crate::path::validate_path)
 /// checks those on the result. An issuer is looked up by the authority key identifier
@@ -151,7 +151,7 @@ mod tests {
     }
 
     #[test]
-    fn brainpool_chain() {
+    fn path_001_brainpool_chain() {
         let pki = TestPki::new();
         let store = TrustStore::new([pki.rca1.clone(), pki.rca7.clone()]);
         let chain = build_chain(
@@ -171,7 +171,7 @@ mod tests {
     }
 
     #[test]
-    fn nist_and_mixed_curve_chains() {
+    fn path_001_nist_and_mixed_curve_chains() {
         let pki = TestPki::new();
         let store = TrustStore::new([pki.rca1.clone(), pki.rca7.clone()]);
         let intermediates = [pki.sub_ca_komp.clone(), pki.sub_ca_mixed.clone()];
@@ -185,7 +185,7 @@ mod tests {
     }
 
     #[test]
-    fn rogue_root_outside_the_store() {
+    fn path_001_rogue_root_outside_the_store() {
         let pki = TestPki::new();
         let store = TrustStore::new([pki.rca1.clone()]);
         let error =
@@ -198,7 +198,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_intermediate_reports_where_it_stopped() {
+    fn path_001_missing_intermediate_reports_where_it_stopped() {
         let pki = TestPki::new();
         let store = TrustStore::new([pki.rca1.clone()]);
         let error = build_chain(&pki.ee_arzt, &[], &store).unwrap_err();
@@ -209,7 +209,7 @@ mod tests {
     }
 
     #[test]
-    fn deep_chain_within_the_bound() {
+    fn path_001_deep_chain_within_the_bound() {
         let pki = TestPki::new();
         let store = TrustStore::new([pki.rca1.clone()]);
         let chain = build_chain(
@@ -222,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    fn looping_intermediates_are_a_cycle() {
+    fn path_001_looping_intermediates_are_a_cycle() {
         let pki = TestPki::new();
         let store = TrustStore::new([pki.rogue_root.clone()]);
         // RCA1 and RCA7 cross-certify each other; neither is in the store.

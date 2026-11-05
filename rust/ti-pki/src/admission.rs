@@ -67,7 +67,8 @@ pub struct AdmissionStatement {
 }
 
 impl AdmissionStatement {
-    /// Decodes the DER value of an admission extension.
+    /// Decodes the DER value of an admission extension, wholly (PROF-010); the statement
+    /// is the first profession info of the first admission (PROF-011).
     ///
     /// # Errors
     ///
@@ -204,7 +205,7 @@ mod tests {
     }
 
     #[test]
-    fn malformed() {
+    fn prof_010_malformed() {
         assert!(matches!(
             AdmissionStatement::from_der(&[0x30, 0x02, 0x30, 0x00]),
             Err(Error::Malformed { .. })

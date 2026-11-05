@@ -29,7 +29,7 @@
 //! and sequence first (`spec/tsl-xmldsig`), as loading does. Either way the TSL is used as
 //! a directory, not as a trust source: it contributes candidate intermediates
 //! ([`Tsl::intermediate_cas`]), and a candidate is only kept if a root in the
-//! [`TrustStore`] signed it ([`match_to_roots`]).
+//! [`TrustStore`] signed it ([`match_to_roots`], BUNDLE-003).
 //!
 //! The TSL's per-CA metadata is not used for trust decisions: a SubCA's standing is
 //! checked by OCSP at its root's responder, and a certificate's type by its policies
@@ -816,7 +816,7 @@ mod tests {
     // The walk reaches the production roots past the RSA roots GEM.RCA2/6/9.
     #[cfg(all(feature = "brainpool", feature = "rsa"))]
     #[test]
-    fn production_cas_are_matched_to_production_roots() {
+    fn bundle_003_production_cas_are_matched_to_production_roots() {
         let tsl = Tsl::parse(PROD).unwrap();
         let config = crate::TrustConfig::preset_prod();
         let store = crate::roots::load(&config, tsl.issued_at).unwrap().store();
@@ -891,7 +891,7 @@ mod tests {
 
     #[cfg(feature = "brainpool")]
     #[test]
-    fn candidates_are_matched_to_roots() {
+    fn bundle_003_candidates_are_matched_to_roots() {
         use crate::testing::TestPki;
 
         let pki = TestPki::new();
@@ -1049,7 +1049,7 @@ mod tests {
     /// TSLSIG-052: a verified list skips what it cannot process, and an unspecified
     /// service type is no reason to.
     #[test]
-    fn a_verified_list_skips_broken_services() {
+    fn tslsig_052_a_verified_list_skips_broken_services() {
         let broken_certificate = service(SERVICE_TYPE_CA_PKC, SERVICE_STATUS_IN_ACCORD, "AAAA");
         let unspecified = service(
             "http://uri.etsi.org/TrstSvc/Svctype/unspecified",

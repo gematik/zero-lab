@@ -386,7 +386,8 @@ pub fn parse_detached_signature(sig: &[u8]) -> Result<DetachedSignature, TslErro
 #[cfg(feature = "brainpool")]
 /// Verifies the detached signature `sig` over the list `xml` with the algorithms of
 /// `algorithms` (`spec/tsl-detached` part A): the signature covers the bytes of the list
-/// as received, nothing is canonicalized.
+/// as received, nothing is canonicalized. The signer key must be brainpoolP256r1, so the
+/// set needs brainpool (TSLDET-004, TSLSIG-012).
 ///
 /// # Errors
 ///
@@ -719,7 +720,7 @@ impl Tsl {
 }
 
 #[cfg(feature = "brainpool")]
-/// Parts B – G for a list whose signature verified: the signer under one of
+/// TSLDET-030: parts B – G for a list whose signature verified: the signer under one of
 /// [`TrustConfig::tsl_signer_anchors`] (TSLSIG-030 – 035), the list from the signed
 /// content, `NextUpdate` and the grace period, the anchor announcements.
 fn verify_signed(
@@ -1461,6 +1462,7 @@ mod tests {
         assert_eq!((e.code, e.rule), (code, rule), "{e}");
     }
 
+    /// TSLSIG-031, TSLSIG-032, TSLSIG-033, TSLSIG-034 and TSLSIG-035 all pass.
     #[test]
     fn tslsig_031_035_a_signer_as_gematik_issues_it_passes() {
         let anchor = signer_fixture!("ca");
@@ -1523,6 +1525,7 @@ mod tests {
         }
     }
 
+    /// TSLSIG-033 and TSLSIG-034: each usage exactly.
     #[test]
     fn tslsig_033_034_key_usages_exactly() {
         signer_fails(
@@ -1694,6 +1697,7 @@ mod tests {
         assert_eq!(verified.tsl.id, "ID31033720261028000007Z");
     }
 
+    /// TSLSIG-053, with A_17685: a sequence number below 10000 is refused.
     #[test]
     fn tslsig_053_sequence() {
         let mut verified = pu_list("2026-10-03T00:00:00Z", 0).unwrap();
@@ -1754,6 +1758,7 @@ mod tests {
         Ok(verified)
     }
 
+    /// TSLSIG-040, lifting the warning of TSLSIG-043.
     #[test]
     fn tslsig_040_043_a_good_status_lifts_the_warning() {
         let verified = status(Ok(result(RevocationStatus::Good, ""))).unwrap();
@@ -1764,6 +1769,7 @@ mod tests {
         );
     }
 
+    /// TSLSIG-041 and TSLSIG-042.
     #[test]
     fn tslsig_041_042_what_stops_the_update() {
         let invalid = |defect| {

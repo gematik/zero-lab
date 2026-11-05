@@ -493,6 +493,7 @@ fn assert_real_families(ca_types: &Value) {
     }
 }
 
+/// VALID-001, VALID-002, VALID-003 and VALID-007: the corpus is what this crate says.
 #[test]
 fn valid_001_the_corpus_is_what_ti_pki_says() {
     let (real, signer, unlisted, ca_types, authorized) = real();

@@ -69,8 +69,8 @@ pub struct RootsEntry {
     next: Option<Vec<u8>>,
 }
 
-/// Parses a roots.json in either form gematik ships: a bare array (dev, ref, prod) or an
-/// object `{"roots": [...]}` (test).
+/// ROOTS-001: parses a roots.json in either form gematik ships: a bare array (dev, ref,
+/// prod) or an object `{"roots": [...]}` (test).
 ///
 /// # Errors
 ///
@@ -149,8 +149,8 @@ impl Walk {
     }
 }
 
-/// Walks `entries` from `anchor` through their `next` and `prev` cross certificates,
-/// importing each root whose link passes all seven A_28419 checks at `now`.
+/// ROOTS-002: walks `entries` from `anchor` through their `next` and `prev` cross
+/// certificates, importing each root whose link passes all seven A_28419 checks at `now`.
 ///
 /// # Errors
 ///
@@ -248,8 +248,8 @@ pub struct CrossCertError {
     pub reason: String,
 }
 
-/// The seven A_28419 checks for importing `subordinate` as a new root on the strength
-/// of `cross`, a certificate for the subordinate's name and key issued by `anchor`.
+/// ROOTS-003: the seven A_28419 checks for importing `subordinate` as a new root on the
+/// strength of `cross`, a certificate for the subordinate's name and key issued by `anchor`.
 ///
 /// 1. `cross` is signed by the already trusted `anchor`;
 /// 2. `cross` is valid at `now`;
@@ -390,14 +390,15 @@ mod tests {
         certs.iter().map(Certificate::subject_cn).collect()
     }
 
+    /// ROOTS-003: a cross certificate passing all seven checks of A_28419.
     #[test]
-    fn cross_signed_happy_path() {
+    fn roots_003_cross_signed_happy_path() {
         let pki = TestPki::new();
         verify_cross_signed(&pki.rca1, &pki.cross_rca1_for_rca7, &pki.rca7, NOW, DEFAULT).unwrap();
     }
 
     #[test]
-    fn cross_signed_by_another_root_fails_step_1() {
+    fn roots_003_cross_signed_by_another_root_fails_step_1() {
         let pki = TestPki::new();
         let error = verify_cross_signed(
             &pki.rogue_root,
@@ -411,7 +412,7 @@ mod tests {
     }
 
     #[test]
-    fn expired_cross_fails_step_2() {
+    fn roots_003_expired_cross_fails_step_2() {
         let pki = TestPki::new();
         let later = Timestamp(pki.cross_rca1_for_rca7.not_after().0 + 3600);
         let error = verify_cross_signed(
@@ -426,7 +427,7 @@ mod tests {
     }
 
     #[test]
-    fn other_subordinate_fails_step_4() {
+    fn roots_003_other_subordinate_fails_step_4() {
         let pki = TestPki::new();
         let error = verify_cross_signed(
             &pki.rca1,
@@ -440,7 +441,7 @@ mod tests {
     }
 
     #[test]
-    fn non_rca_name_fails_step_3() {
+    fn roots_003_non_rca_name_fails_step_3() {
         let pki = TestPki::new();
         let cross = &pki.cross_rca1_not_rca;
         let error = verify_cross_signed(&pki.rca1, cross, &pki.rca7, NOW, DEFAULT).unwrap_err();
@@ -448,7 +449,7 @@ mod tests {
     }
 
     #[test]
-    fn walk_follows_the_cross_certificate() {
+    fn roots_002_walk_follows_the_cross_certificate() {
         let pki = TestPki::new();
         let json = roots_json(&[
             Entry {
@@ -480,7 +481,7 @@ mod tests {
     }
 
     #[test]
-    fn walk_stops_at_a_failing_link_without_failing_the_load() {
+    fn roots_002_walk_stops_at_a_failing_link_without_failing_the_load() {
         let pki = TestPki::new();
         let json = roots_json(&[
             Entry {
@@ -501,7 +502,7 @@ mod tests {
     }
 
     #[test]
-    fn walk_does_not_loop() {
+    fn roots_002_walk_does_not_loop() {
         let pki = TestPki::new();
         let back = &pki.cross_rca7_for_rca1;
         let json = roots_json(&[
@@ -522,7 +523,7 @@ mod tests {
     }
 
     #[test]
-    fn anchor_must_be_in_roots_json() {
+    fn roots_002_anchor_must_be_in_roots_json() {
         let pki = TestPki::new();
         let json = roots_json(&[Entry {
             cert: &pki.rca7,
@@ -536,7 +537,7 @@ mod tests {
     }
 
     #[test]
-    fn both_document_forms_and_bad_input() {
+    fn roots_001_both_document_forms_and_bad_input() {
         let pki = TestPki::new();
         let array = roots_json(&[Entry {
             cert: &pki.rca1,
@@ -567,7 +568,7 @@ mod tests {
 
     #[cfg(feature = "rsa")]
     #[test]
-    fn embedded_prod_roots_walk_from_gem_rca7() {
+    fn roots_002_embedded_prod_roots_walk_from_gem_rca7() {
         // The roots `go/gempki` (archived at go/gempki/v0.23.1) trusts from the same roots.json (it walks from GEM.RCA8):
         // the anchor, then forwards, then backwards.
         let result = load(&TrustConfig::preset_prod(), REAL_NOW).unwrap();
@@ -591,7 +592,7 @@ mod tests {
 
     #[cfg(not(feature = "rsa"))]
     #[test]
-    fn embedded_prod_roots_without_rsa_stop_at_the_rsa_roots() {
+    fn roots_002_embedded_prod_roots_without_rsa_stop_at_the_rsa_roots() {
         let result = load(&TrustConfig::preset_prod(), REAL_NOW).unwrap();
         assert_eq!(cns(&result.trusted), ["GEM.RCA7", "GEM.RCA8"]);
         assert!(result.forward_stop.unwrap().contains("GEM.RCA9"));
@@ -600,7 +601,7 @@ mod tests {
 
     #[cfg(feature = "rsa")]
     #[test]
-    fn without_brainpool_the_walk_ends_at_the_first_brainpool_root() {
+    fn roots_002_without_brainpool_the_walk_ends_at_the_first_brainpool_root() {
         // GEM.RCA8 and GEM.RCA5 are brainpool: their self-signatures do not verify, so
         // neither they nor anything past them is trusted.
         let config = TrustConfig {
@@ -615,7 +616,7 @@ mod tests {
 
     #[cfg(feature = "dangerous-nonprod")]
     #[test]
-    fn embedded_nonprod_roots_contain_their_anchor() {
+    fn roots_002_embedded_nonprod_roots_contain_their_anchor() {
         use crate::Env;
         for (env, anchor) in [
             (Env::Test, "GEM.RCA7 TEST-ONLY"),

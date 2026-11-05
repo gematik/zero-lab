@@ -39,6 +39,8 @@ fn read(name: &str) -> Vec<u8> {
     std::fs::read(format!("{TESTDATA}{name}")).unwrap_or_else(|e| panic!("{name}: {e}"))
 }
 
+/// The rules each entry names: TSLDET-001, TSLDET-002, TSLDET-003, TSLDET-004, TSLDET-005,
+/// TSLDET-006, TSLDET-020, TSLDET-021, TSLDET-022, TSLDET-030, TSLSIG-031 and TSLSIG-042.
 #[test]
 fn every_manifest_entry_meets_its_expectation() {
     let manifest: Value = serde_json::from_slice(&read("manifest.json")).unwrap();

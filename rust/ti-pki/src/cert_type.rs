@@ -179,10 +179,10 @@ impl fmt::Display for CertificateType {
     }
 }
 
-/// A certificate type or profile name as a user may type it, folded for comparison: case
-/// ignored, `.` and `-` alike, a leading `C.` dropped. So `C.FD.TLS-S`, `FD.TLS-S` and
-/// `fd-tls-s` (the profile) compare equal, and `C.HCI.AUT` equals the profile
-/// `hci-aut`.
+/// PROF-001: a certificate type or profile name as a user may type it, folded for
+/// comparison: case ignored, `.` and `-` alike, a leading `C.` dropped. So `C.FD.TLS-S`,
+/// `FD.TLS-S` and `fd-tls-s` (the profile) compare equal, and `C.HCI.AUT` equals the
+/// profile `hci-aut`.
 pub fn fold_name(name: &str) -> String {
     let folded = name.trim().to_lowercase().replace('.', "-");
     folded
@@ -208,7 +208,7 @@ impl FromStr for CertificateType {
     }
 }
 
-/// The gemSpec_PKI baseline of a certificate type. Every entry is a floor: the key
+/// The gemSpec_PKI baseline of a certificate type. PROF-020: every entry is a floor: the key
 /// usage bits must all be set, one of the extended key usages must be present, every
 /// policy must be asserted, one of the roles must be in the admission extension. An
 /// empty entry means no requirement at this layer.
@@ -421,9 +421,9 @@ const TSL_SIG: TypeSpec = spec(CC, &[TSL_SIGNING], &[oid::POLICY_GEM_TSL_SIGNER]
 
 /// Classifies `cert` as a Tab_PKI_405 type; `None` if it carries no recognisable marker.
 ///
-/// 1. The type OID in the certificate policies, where gemSpec_PKI puts it next to the
+/// 1. PROF-001: the type OID in the certificate policies, where gemSpec_PKI puts it next to the
 ///    umbrella policy; this covers virtually every TI certificate.
-/// 2. Otherwise, for issuers that leave the type OID out, the admission extension and
+/// 2. PROF-002: otherwise, for issuers that leave the type OID out, the admission extension and
 ///    the key usage: an HBA profession, an SMC-B institution or the eGK insurant role,
 ///    with contentCommitment (QES/OSIG) taking precedence over digitalSignature (AUT)
 ///    over keyEncipherment/keyAgreement (ENC). An eGK's AUT and ENC certificates have
@@ -493,7 +493,7 @@ mod tests {
     const GEM: ObjectIdentifier = oid::POLICY_GEM_OR_CP;
 
     #[test]
-    fn names_fold_to_one_spelling() {
+    fn prof_001_names_fold_to_one_spelling() {
         for spelling in [
             "C.FD.TLS-S",
             "c.fd.tls-s",
@@ -582,7 +582,7 @@ mod tests {
 
     #[cfg(feature = "brainpool")]
     #[test]
-    fn a_certificate_built_to_its_baseline_is_detected_and_passes() {
+    fn prof_001_a_certificate_built_to_its_baseline_is_detected_and_passes() {
         use crate::checks;
         use crate::testing::typed;
         for t in CertificateType::ALL {
@@ -604,7 +604,7 @@ mod tests {
 
     #[cfg(feature = "brainpool")]
     #[test]
-    fn every_role_of_the_spec_tables_counts() {
+    fn prof_020_every_role_of_the_spec_tables_counts() {
         use crate::testing::typed;
         for (name, t) in [
             ("role-hci-aut-kostentraeger", CertificateType::HciAut),
@@ -620,7 +620,7 @@ mod tests {
 
     #[cfg(feature = "brainpool")]
     #[test]
-    fn admission_fallback() {
+    fn prof_002_admission_fallback() {
         use crate::testing::typed;
         for (name, want) in [
             (

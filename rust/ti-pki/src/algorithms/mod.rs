@@ -27,8 +27,8 @@
 //! chains, OCSP responses) goes through
 //! [`rustls_pki_types::SignatureVerificationAlgorithm`]: the verifier is chosen by the
 //! exact pair of the key's `subjectPublicKeyInfo` algorithm and the signature algorithm,
-//! as in webpki. Validation code never names a curve. A configuration carries its set in
-//! [`TrustConfig::algorithms`](crate::TrustConfig::algorithms).
+//! as in webpki (PATH-006: no other pair verifies). Validation code never names a curve. A
+//! configuration carries its set in [`TrustConfig::algorithms`](crate::TrustConfig::algorithms).
 //!
 //! - [`STANDARD`]: ECDSA on NIST P-256 / SHA-256 and P-384 / SHA-384 (RustCrypto).
 //! - [`brainpool`] (feature `brainpool`, on by default): ECDSA on brainpoolP256r1 /
@@ -315,7 +315,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn find_matches_the_exact_pair() {
+    fn path_006_find_matches_the_exact_pair() {
         let (rca10, _, _) = prod_root("GEM.RCA10");
         let (key_alg, sig_alg, ..) = signed_parts(&rca10, &rca10);
         assert!(find(STANDARD, &key_alg, &sig_alg).is_some());

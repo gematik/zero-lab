@@ -64,7 +64,7 @@ pub enum Error {
 /// Stable identifier for a validation failure reason. Callers match on the
 /// code rather than on message text.
 ///
-/// The string forms ([`ErrorCode::as_str`]) are identical to the Go
+/// PROF-032: the string forms ([`ErrorCode::as_str`]) are identical to the Go
 /// implementation's, and the `SE_*` references name the matching gemLibPki
 /// `GemPkiException` codes, so log lines and metrics stay comparable across
 /// implementations.

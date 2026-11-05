@@ -160,7 +160,8 @@ fn matrix() -> Value {
     Value::Array(cases)
 }
 
-/// PATH-001 to PATH-006: the corpus is what this crate says.
+/// PATH-001, PATH-002, PATH-003, PATH-004, PATH-005 and PATH-006: the corpus is what this
+/// crate says.
 #[test]
 fn path_001_the_corpus_is_what_ti_pki_says() {
     let written = serde_json::to_string_pretty(&matrix()).unwrap() + "\n";

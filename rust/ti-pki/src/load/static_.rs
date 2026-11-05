@@ -113,7 +113,7 @@ impl Bundle {
         }
     }
 
-    /// Checks that the bundle was exported for `config`'s anchor.
+    /// BUNDLE-002: checks that the bundle was exported for `config`'s anchor.
     ///
     /// # Errors
     ///
@@ -139,7 +139,7 @@ impl Bundle {
         serde_json::to_vec_pretty(&Wire::from(self)).expect("the wire form always serialises")
     }
 
-    /// Decodes a bundle.
+    /// Decodes a bundle (BUNDLE-001).
     ///
     /// # Errors
     ///
@@ -414,7 +414,7 @@ mod tests {
     }
 
     #[test]
-    fn garbage_and_other_versions_are_rejected() {
+    fn bundle_001_garbage_and_other_versions_are_rejected() {
         assert!(Bundle::from_slice(b"not json").is_err());
         let mut wire = Wire::from(&bundle());
         wire.format_version = 1;
@@ -430,7 +430,7 @@ mod tests {
     }
 
     #[test]
-    fn bundle_for_another_anchor_is_rejected() {
+    fn bundle_002_bundle_for_another_anchor_is_rejected() {
         let other = TrustConfig::for_anchor(vec![0_u8; 8]);
         assert!(matches!(
             StaticLoader::from_bundle(bundle(), &other),

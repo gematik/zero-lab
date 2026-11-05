@@ -22,8 +22,8 @@
  */
 
 //! The object identifiers gemSpec_OID defines for the TI, each declared together with
-//! the spec's reference name and description so the two can never drift; [`lookup`] and
-//! [`format()`] give them back. The tables are complete as of gemSpec_OID V3.26.0
+//! the spec's reference name and description so the two can never drift (PROF-031);
+//! [`lookup`] and [`format()`] give them back. The tables are complete as of gemSpec_OID V3.26.0
 //! (<https://gemspec.gematik.de/docs/gemSpec/gemSpec_OID/latest/>).
 //! Constant names are the gemSpec_OID reference name without `oid_`, uppercased, `-` as
 //! `_` (decision-5), under a family prefix:
