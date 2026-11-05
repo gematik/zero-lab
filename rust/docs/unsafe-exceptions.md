@@ -17,7 +17,7 @@ task.
 | Core | Features |
 |---|---|
 | ti-types | std, serde |
-| ti-store | – |
+| ti-cache | – |
 | ti-pki | brainpool, rsa, load, os, dangerous-nonprod |
 | ti-pkcs12 | legacy, encode |
 | ti-connector-client | – |

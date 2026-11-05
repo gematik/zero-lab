@@ -25,7 +25,7 @@
 
 use super::artifact::{Artifact, Detached, TrustMaterial};
 use super::transport::TransportError;
-use ti_store::{CacheError, Conditional, Meta};
+use ti_cache::{CacheError, Conditional, Meta};
 
 /// A loaded body.
 #[derive(Clone, Debug)]
@@ -147,7 +147,7 @@ pub trait Loader {
 #[cfg(test)]
 mod tests {
     use futures_lite::future::block_on;
-    use ti_store::{Meta, Source};
+    use ti_cache::{Meta, Source};
 
     use super::*;
     use crate::time::Timestamp;

@@ -679,7 +679,7 @@ dependencies = [
  "sha1",
  "sha2",
  "thiserror",
- "ti-store",
+ "ti-cache",
  "ti-types",
  "x509-cert",
 ]
@@ -693,7 +693,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ti-store"
+name = "ti-cache"
 version = "0.1.0"
 dependencies = [
  "thiserror",

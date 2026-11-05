@@ -29,13 +29,13 @@ dangerous-nonprod = []
 # Never a default feature.
 test-util = []
 # Loading layer: traits, loaders, cache and reloader. Runtime-agnostic, builds for wasm32.
-load = ["dep:ti-store"]
+load = ["dep:ti-cache"]
 # Operating-system facilities: file transport, system clock, bundle files.
 os = ["load", "ti-types/std"]
 
 [dependencies]
 ti-types.workspace = true
-ti-store = { workspace = true, optional = true }
+ti-cache = { workspace = true, optional = true }
 der.workspace = true
 x509-cert.workspace = true
 const-oid.workspace = true

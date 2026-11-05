@@ -377,7 +377,7 @@ test-defaults:
 # the browser
 wasm32:
     cargo check -p ti-types --target wasm32-unknown-unknown --features std
-    cargo check -p ti-store --target wasm32-unknown-unknown
+    cargo check -p ti-cache --target wasm32-unknown-unknown
     cargo check -p ti-connector-client --target wasm32-unknown-unknown
     cargo check -p ti-pki --target wasm32-unknown-unknown --features load
     cargo check -p ti-pkcs12 --target wasm32-unknown-unknown

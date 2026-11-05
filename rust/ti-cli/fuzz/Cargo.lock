@@ -1586,7 +1586,7 @@ dependencies = [
  "ti-pkcs12",
  "ti-pki",
  "ti-report",
- "ti-store",
+ "ti-cache",
  "ti-types",
  "ureq",
  "x509-cert",
@@ -1619,7 +1619,7 @@ dependencies = [
  "thiserror",
  "ti-pkcs12",
  "ti-pki",
- "ti-store",
+ "ti-cache",
  "ti-types",
  "ureq",
 ]
@@ -1700,7 +1700,7 @@ dependencies = [
  "sha1",
  "sha2",
  "thiserror",
- "ti-store",
+ "ti-cache",
  "ti-types",
  "x509-cert",
 ]
@@ -1717,7 +1717,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ti-store"
+name = "ti-cache"
 version = "0.1.0"
 dependencies = [
  "thiserror",

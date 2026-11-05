@@ -19,7 +19,7 @@ server, a browser, an air-gapped installation and, through bindings, in other ho
               │
  core       ti-pki (+ load)  jwz (+ jwz-brainpool, ti-jwz)  ti-pkcs12
               │
- vocabulary ti-types (Env, Tier; no_std, no dependencies)   ti-store (cache policy, store trait)
+ vocabulary ti-types (Env, Tier; no_std, no dependencies)   ti-cache (HTTP cache policy, cache store trait)
 ```
 
 A crate depends only downwards. Adapters are Cargo features of the crate they serve,
@@ -158,7 +158,7 @@ and semver in `just audit` before tagging. Known compromises, each with its exit
 are in [development.md](./development.md#known-compromises).
 
 **No `unsafe` in a core, also not through its dependencies.** The cores are ti-types,
-ti-store, ti-pki, ti-pkcs12, ti-connector-client, ti-report, jwz,
+ti-cache, ti-pki, ti-pkcs12, ti-connector-client, ti-report, jwz,
 jwz-brainpool, ti-jwz, ti-idpd and ti-directory, with every feature but their adapters
 (the `ureq` transports, ti-types' `clap`) and `test-util`.
 The hosts are ti-cli and ti-wasm: a crate that reaches the terminal, the operating system

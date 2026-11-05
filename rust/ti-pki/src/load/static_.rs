@@ -42,7 +42,7 @@ use super::artifact::{Artifact, Detached, TrustMaterial};
 use super::loader::{Fetched, LoadError, Loaded, Loader};
 use crate::TrustConfig;
 use crate::time::Timestamp;
-use ti_store::{Conditional, Meta, Source};
+use ti_cache::{Conditional, Meta, Source};
 
 const FORMAT_VERSION: u32 = 2;
 
@@ -324,7 +324,7 @@ fn source_name(source: Source) -> &'static str {
         Source::File => "file",
         Source::Cache => "cache",
         Source::Embedded => "embedded",
-        // Also any source added to ti-store after this format: informational only, and
+        // Also any source added to ti-cache after this format: informational only, and
         // read back from here the body did come from a bundle.
         _ => "bundle",
     }

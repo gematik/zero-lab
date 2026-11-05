@@ -46,7 +46,7 @@ anstream.workspace = true
 anstyle.workspace = true
 jiff.workspace = true
 pem-rfc7468 = { workspace = true, features = ["alloc"] }
-ti-store.workspace = true
+ti-cache.workspace = true
 ti-types.workspace = true
 rpassword.workspace = true
 serde.workspace = true

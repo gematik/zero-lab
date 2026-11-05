@@ -33,7 +33,7 @@ use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use ti_store::{CacheEntry, CacheError, CacheStore, Meta, Source};
+use ti_cache::{CacheEntry, CacheError, CacheStore, Meta, Source};
 use ti_types::Timestamp;
 
 use crate::cli::GlobalArgs;

@@ -719,7 +719,7 @@ dependencies = [
  "thiserror",
  "ti-pkcs12",
  "ti-pki",
- "ti-store",
+ "ti-cache",
  "ti-types",
 ]
 
@@ -775,7 +775,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ti-store"
+name = "ti-cache"
 version = "0.1.0"
 dependencies = [
  "thiserror",

@@ -26,7 +26,7 @@
 use core::fmt;
 
 use serde::Serialize;
-use ti_store::CacheLookupError;
+use ti_cache::CacheLookupError;
 
 use crate::soap::TransportError;
 

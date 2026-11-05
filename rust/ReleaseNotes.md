@@ -13,6 +13,12 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   directory and nothing is written to disk; OCSP goes only to the responders of a chain that
   has verified. The production build holds no TEST-ONLY anchors.
 
+### ti-cache
+
+#### changed
+- Renamed from `ti-store`, as it holds only the HTTP cache since the sealed store left: the
+  package and crate are `ti-cache` and `ti_cache`. `ti-pki`'s re-exports keep their names.
+
 ### ti-cli
 
 #### added
