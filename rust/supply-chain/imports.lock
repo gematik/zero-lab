@@ -8,6 +8,82 @@ user-id = 696
 user-login = "fitzgen"
 user-name = "Nick Fitzgerald"
 
+[[audits.ariel-os.audits.futures-lite]]
+who = "Antoine Lavandier <antoine.lavandier@inria.fr>"
+criteria = "safe-to-deploy"
+delta = "1.13.0 -> 2.0.0"
+notes = """
+No new unsafe code.
+Only internal refactors, refactors to drop local `Pending` and `Ready` Futures for core equivalents.
+Also make race futures available in no std using provided rng.
+"""
+
+[[audits.ariel-os.audits.futures-lite]]
+who = "Antoine Lavandier <antoine.lavandier@inria.fr>"
+criteria = "safe-to-deploy"
+delta = "2.0.0 -> 2.0.1"
+notes = "No new code, just removes an unnecessary dependency."
+
+[[audits.ariel-os.audits.futures-lite]]
+who = "Antoine Lavandier <antoine.lavandier@inria.fr>"
+criteria = "safe-to-deploy"
+delta = "2.0.1 -> 2.1.0"
+notes = """
+No new unsafe code.
+Just makes use of the `memchr` crate optional.
+"""
+
+[[audits.ariel-os.audits.futures-lite]]
+who = "Antoine Lavandier <antoine.lavandier@inria.fr>"
+criteria = "safe-to-deploy"
+delta = "2.1.0 -> 2.2.0"
+notes = """
+No new unsafe code.
+Relaxes MSRV; Remove `UnPin` bound; refactor a match expressions; impl `size_hint` for `Filter`
+"""
+
+[[audits.ariel-os.audits.futures-lite]]
+who = "Antoine Lavandier <antoine.lavandier@inria.fr>"
+criteria = "safe-to-deploy"
+delta = "2.2.0 -> 2.3.0"
+notes = """
+No new unsafe code.
+Adds a drain method to streams and related code. Also fix some conditional compilation flags regarding alloc and std.
+"""
+
+[[audits.ariel-os.audits.futures-lite]]
+who = "Antoine Lavandier <antoine.lavandier@inria.fr>"
+criteria = "safe-to-deploy"
+delta = "2.3.0 -> 2.4.0"
+notes = """
+No new unsafe code.
+Make TryZip and Zip drop the futures when completed. Also add some Stream functionality.
+"""
+
+[[audits.ariel-os.audits.futures-lite]]
+who = "Antoine Lavandier <antoine.lavandier@inria.fr>"
+criteria = "safe-to-deploy"
+delta = "2.4.0 -> 2.5.0"
+notes = """
+No new unsafe code.
+Removes `Unpin` bound on `Lines`
+"""
+
+[[audits.ariel-os.audits.futures-lite]]
+who = "Antoine Lavandier <antoine.lavandier@inria.fr>"
+criteria = "safe-to-deploy"
+delta = "2.5.0 -> 2.6.0"
+notes = """
+No new unsafe code.
+Small changes to docs and adds `map_while` to stream and removes some explicit lifetimes.
+"""
+
+[[audits.ariel-os.audits.futures-lite]]
+who = "Antoine Lavandier <antoine.lavandier@inria.fr>"
+criteria = "safe-to-deploy"
+delta = "2.6.0 -> 2.6.1"
+notes = "No new unsafe code. Only docs change and import positions."
+
 [[audits.bytecode-alliance.wildcard-audits.bumpalo]]
 who = "Nick Fitzgerald <fitzgen@gmail.com>"
 criteria = "safe-to-deploy"
@@ -25,6 +101,12 @@ notes = "Unsafe used to implement a concurrency primitive AtomicWaker. Well-comm
 who = "Pat Hickey <pat@moreproductive.org>"
 criteria = "safe-to-deploy"
 delta = "0.3.28 -> 0.3.31"
+
+[[audits.bytecode-alliance.audits.futures-lite]]
+who = "Chris Fallin <chris@cfallin.org>"
+criteria = "safe-to-deploy"
+version = "1.13.0"
+notes = "No unsafe code and fairly straightforward/expected imports for async IO primitives."
 
 [[audits.bytecode-alliance.audits.heck]]
 who = "Alex Crichton <alex@alexcrichton.com>"
