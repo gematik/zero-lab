@@ -250,8 +250,12 @@ fn read_comfort(path: &Path) -> Result<Option<ComfortUserId>, CliError> {
         return Err(state_error(path, "is not a regular file"));
     }
     let mut file = std::fs::File::open(path).map_err(|e| state_error(path, e))?;
-    let opened = file.metadata().map_err(|e| state_error(path, e))?;
-    check_opened(path, &meta, &opened)?;
+    #[cfg(unix)]
+    check_opened(
+        path,
+        &meta,
+        &file.metadata().map_err(|e| state_error(path, e))?,
+    )?;
     let mut text = String::new();
     file.read_to_string(&mut text)
         .map_err(|e| state_error(path, e))?;
@@ -265,27 +269,23 @@ fn read_comfort(path: &Path) -> Result<Option<ComfortUserId>, CliError> {
 
 /// The file opened must be the one checked, or a swap between the two steps would make
 /// the checks say nothing about what is read. The mode is taken from the open file.
+#[cfg(unix)]
 fn check_opened(
     path: &Path,
     checked: &std::fs::Metadata,
     opened: &std::fs::Metadata,
 ) -> Result<(), CliError> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt as _;
-        if (checked.dev(), checked.ino()) != (opened.dev(), opened.ino()) {
-            return Err(state_error(path, "changed while it was being opened"));
-        }
-        let mode = opened.mode() & 0o777;
-        if mode & 0o077 != 0 {
-            return Err(state_error(
-                path,
-                format!("is open to other users (mode {mode:03o}); run `chmod 600` on it"),
-            ));
-        }
+    use std::os::unix::fs::MetadataExt as _;
+    if (checked.dev(), checked.ino()) != (opened.dev(), opened.ino()) {
+        return Err(state_error(path, "changed while it was being opened"));
     }
-    #[cfg(not(unix))]
-    let _ = (path, checked, opened);
+    let mode = opened.mode() & 0o777;
+    if mode & 0o077 != 0 {
+        return Err(state_error(
+            path,
+            format!("is open to other users (mode {mode:03o}); run `chmod 600` on it"),
+        ));
+    }
     Ok(())
 }
 
