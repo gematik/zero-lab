@@ -828,7 +828,7 @@ fn profile_list_shows_the_slots_in_use() {
     let c = &cache.0;
     put(&c.join("keep.txt"), 11);
     put(&state_base(c).join("tsl/abc.json"), 3);
-    put(&state_base(c).join("profiles/work/comfort/praxis/id"), 10);
+    put(&state_base(c).join("profiles/work/hba-user/praxis/id"), 10);
     put(&c.join("profiles/work/v1/a"), 5);
     put(&c.join("profiles/home/v1/b"), 7);
     // not profiles: a name outside the rules, and a file
@@ -871,7 +871,7 @@ fn profile_delete_removes_state_and_cache() {
     let cache = SeededCache::new("profile-delete");
     let c = &cache.0;
     let (state, work_cache) = (state_base(c).join("profiles/work"), c.join("profiles/work"));
-    put(&state.join("comfort/praxis/id"), 10);
+    put(&state.join("hba-user/praxis/id"), 10);
     put(&work_cache.join("v1/a"), 5);
     put(&state_base(c).join("profiles/only-state/x"), 1);
     put(&c.join("profiles/only-cache/v1/y"), 1);

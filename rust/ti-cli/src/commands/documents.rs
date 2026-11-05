@@ -28,7 +28,9 @@ use std::io::Read as _;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use ti_connector_client::types::{Card, CardType, CertRef, Crypt, VerificationResult};
+use ti_connector_client::types::{
+    Card, CardType, CertRef, Crypt, SignatureMode, VerificationResult,
+};
 use ti_connector_client::{ComfortUserId, Error, SignatureFormat, ToSign};
 
 use super::connector::{CardInfo, call, card_call, card_label, emit, find};
@@ -96,31 +98,21 @@ fn random(bytes: &mut [u8]) {
 
 // ---- comfort signature sessions ---------------------------------------------------
 
-/// User IDs of an HBA's card sessions, one private file each under
-/// `<kind>/<Konnektor>/<card>` in the profile's state directory. An ID lets anyone with
-/// the same call context use what its session has unlocked: sign without a PIN in comfort
-/// signature, or a card whose PIN was entered. So the files and the directories above
-/// them are for the user alone.
+/// The user ID of each HBA, one private file under `hba-user/<Konnektor>/<card>` in the
+/// profile's state directory. An ID lets anyone with the same call context use what its
+/// session has unlocked: sign without a PIN in comfort signature, or a card whose PIN was
+/// entered. So the files and the directories above them are for the user alone. A file
+/// does not say comfort signature is on: only the Konnektor knows.
 struct UserIdStore {
     root: PathBuf,
     dir: PathBuf,
 }
 
 impl UserIdStore {
-    fn at(session: &Session, kind: &str) -> Self {
-        let root = session.profile.state_dir.join(kind);
+    fn of(session: &Session) -> Self {
+        let root = session.profile.state_dir.join("hba-user");
         let dir = root.join(path_component(&session.name));
         UserIdStore { root, dir }
-    }
-
-    /// The IDs of comfort signature sessions.
-    fn comfort(session: &Session) -> Self {
-        Self::at(session, "comfort")
-    }
-
-    /// The IDs generated for HBAs with no other.
-    fn generated(session: &Session) -> Self {
-        Self::at(session, "hba-user")
     }
 
     /// Keyed by ICCSN: a card handle changes when the card is inserted again. The
@@ -136,7 +128,7 @@ impl UserIdStore {
     /// Creates the directories and checks them. Activating runs it before the card is
     /// asked: a PIN entered for an ID that cannot be kept would be wasted.
     fn prepare(&self) -> Result<(), CliError> {
-        // Before creating anything: a symlinked `comfort/` must not take the new
+        // Before creating anything: a symlinked `hba-user/` must not take the new
         // directory to wherever it points.
         private_dir_exists(&self.root)?;
         private_dir_exists(&self.dir)?;
@@ -289,20 +281,11 @@ fn check_opened(
     Ok(())
 }
 
-/// The comfort session's user ID for `card`: `--comfort-user-id`, else the stored one.
-fn comfort_user(session: &Session, card: &Card) -> Result<Option<ComfortUserId>, CliError> {
-    match session.comfort_user_id.as_deref() {
-        Some(text) => ComfortUserId::parse(text)
-            .map(Some)
-            .ok_or_else(|| CliError::ConnectorConfig("--comfort-user-id is not a UUID".into())),
-        None => UserIdStore::comfort(session).load(card),
-    }
-}
-
 /// The user ID for every call on `card`, in place of the `.kon` file's when `Some`. The
 /// Konnektor keys an HBA's card session by card, client system and user ID, and refuses
 /// another ID while one has entered a PIN (gemSpec_Kon C2, C16, TAB_KON_514-01, 4018): so
-/// one ID per HBA, the comfort session's while there is one. Other cards have no such
+/// one ID per HBA. Its file goes first, as activating writes there; deactivating removes
+/// it, which brings back the `.kon` file's or makes a new one. Other cards have no such
 /// sessions.
 pub(crate) fn card_user(session: &Session, card: &Card) -> Result<Option<ComfortUserId>, CliError> {
     if !matches!(
@@ -311,15 +294,17 @@ pub(crate) fn card_user(session: &Session, card: &Card) -> Result<Option<Comfort
     ) {
         return Ok(None);
     }
-    if let Some(user) = comfort_user(session, card)? {
+    if let Some(text) = session.comfort_user_id.as_deref() {
+        return ComfortUserId::parse(text)
+            .map(Some)
+            .ok_or_else(|| CliError::ConnectorConfig("--comfort-user-id is not a UUID".into()));
+    }
+    let store = UserIdStore::of(session);
+    if let Some(user) = store.load(card)? {
         return Ok(Some(user));
     }
     if session.dotkon.user_id.is_some() {
         return Ok(None);
-    }
-    let store = UserIdStore::generated(session);
-    if let Some(user) = store.load(card)? {
-        return Ok(Some(user));
     }
     let user = ComfortUserId::generate(|b| random(b));
     store.save(card, &user)?;
@@ -405,19 +390,19 @@ pub fn sign(
     let pades = format == SignatureFormat::Pades;
     ensure_writable(&output, args.force)?;
     let card = find(session, &args.card)?;
-    let user = comfort_user(session, &card)?;
-    let message = match (card.card_type, &user) {
-        (CardType::Hba, None) => "Enter PIN.QES at the card terminal",
+    let user = card_user(session, &card)?;
+    let signatures = session.connector.signatures();
+    let comfort = in_comfort_session(&card, &signatures, user.as_ref());
+    let message = match (card.card_type, comfort) {
+        (CardType::Hba, false) => "Enter PIN.QES at the card terminal",
         _ => "Signing with the card",
     };
-    let signatures = session.connector.signatures();
     // The card terminal shows the job number at PIN entry; showing it here lets the user
     // match the prompt to this job.
     let job_number = call(signatures.job_number())?;
     let detail = format!("{} · job {job_number}", card_label(&card));
     let waiting = Waiting::start(message, &detail, connector_args.card_timeout);
-    let card_user = card_user(session, &card)?;
-    let signatures = signatures.as_user(card_user.as_ref());
+    let signatures = signatures.as_user(user.as_ref());
     let crypt = Crypt::from(args.crypt);
     let signed = card_call(
         &card,
@@ -465,7 +450,7 @@ pub fn sign(
         output: output.display().to_string(),
         format: format.as_str(),
         card: CardInfo::from(&card),
-        comfort: user.is_some(),
+        comfort,
     };
     emit(out, Exit::Ok, &report, |doc| {
         doc.field(
@@ -492,6 +477,19 @@ struct VerifySignatureReport {
     /// What the verification time is based on, e.g. `SIGNATURE_EMBEDDED_TIMESTAMP`.
     timestamp_type: String,
     timestamp: String,
+}
+
+/// Whether `user` holds a comfort session on `card`. What this cannot find out does not stop
+/// the signature: a call the Konnektor refuses for the card fails the same way in the
+/// signing itself, with the error to show.
+fn in_comfort_session<T: ti_connector_client::Transport>(
+    card: &Card,
+    signatures: &ti_connector_client::Signatures<'_, T>,
+    user: Option<&ComfortUserId>,
+) -> bool {
+    user.and_then(|user| call(signatures.mode(&card.card_handle, user)).ok())
+        .and_then(|mode| mode.session_info)
+        .is_some_and(|session| session.signature_mode == SignatureMode::Comfort)
 }
 
 /// Runs `ti connector verify signature`.
@@ -707,8 +705,6 @@ struct ComfortReport {
     max_duration: Option<String>,
     /// The session of the stored user ID, if one is active.
     session: Option<ComfortSession>,
-    /// A user ID for this card is stored (`activate`) or was removed (`deactivate`).
-    user_id_stored: bool,
 }
 
 #[derive(Serialize)]
@@ -730,7 +726,7 @@ pub fn comfort(
     | ConnectorComfort::Status { card }
     | ConnectorComfort::Deactivate { card }) = command;
     let card = find(session, card)?;
-    let store = UserIdStore::comfort(session);
+    let store = UserIdStore::of(session);
     let signatures = session.connector.signatures();
     let mut report = ComfortReport {
         card: CardInfo::from(&card),
@@ -738,7 +734,6 @@ pub fn comfort(
         max_signatures: None,
         max_duration: None,
         session: None,
-        user_id_stored: false,
     };
     match command {
         ConnectorComfort::Activate { .. } => {
@@ -755,13 +750,11 @@ pub fn comfort(
             drop(waiting);
             activated?;
             store.save(&card, &user)?;
-            report.user_id_stored = true;
             fill_mode(&mut report, &card, &signatures, &user)?;
         }
         ConnectorComfort::Status { .. } => {
             // With no ID of its own the mode is asked with a fresh one: whether comfort
             // signature is enabled does not depend on it.
-            report.user_id_stored = comfort_user(session, &card)?.is_some();
             let user = card_user(session, &card)?
                 .unwrap_or_else(|| ComfortUserId::generate(|b| random(b)));
             fill_mode(&mut report, &card, &signatures, &user)?;
@@ -771,7 +764,6 @@ pub fn comfort(
             store.check()?;
             card_call(&card, signatures.deactivate_comfort(&[&card.card_handle]))?;
             store.remove(&card)?;
-            report.user_id_stored = false;
         }
     }
     emit(out, Exit::Ok, &report, |doc| {
@@ -793,10 +785,6 @@ pub fn comfort(
             let left = format!(" · {} signatures, {} left", s.signatures_left, s.time_left);
             doc.field("session", Line::strong(s.mode).and_dim(left));
         }
-        doc.field(
-            "user ID stored",
-            if report.user_id_stored { "yes" } else { "no" },
-        );
     })
 }
 

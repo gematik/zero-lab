@@ -275,8 +275,7 @@ not start with a dot; no name is reserved, and no profile is remembered between 
 | State base | `$XDG_STATE_HOME/telematik/ti`, else `~/.local/state/telematik/ti` | `%LOCALAPPDATA%\state\telematik\ti` |
 | Cache base | `$XDG_CACHE_HOME/telematik/ti`, else `~/.cache/telematik/ti` | `%LOCALAPPDATA%\telematik\ti` |
 | TSL state | `STATE/tsl/ID.json` | the same below `STATE` |
-| Comfort IDs | `STATE/comfort/KONNEKTOR/CARD` | the same below `STATE` |
-| Generated HBA user IDs | `STATE/hba-user/KONNEKTOR/CARD` | the same below `STATE` |
+| HBA user IDs, comfort IDs among them | `STATE/hba-user/KONNEKTOR/CARD` | the same below `STATE` |
 | Cache entries | `CACHE/v1/SHA-256 of the key` | the same below `CACHE` |
 
 `TI_STATE_DIR` replaces the state base and `TI_CACHE_DIR` (or `--cache-dir`) the cache
@@ -306,8 +305,11 @@ Material older than 24 hours (production) or 7 days (elsewhere) is not used. Ent
 are written whole by renaming a temporary file; a put removes entries not written for 30
 days. `ti cache clear` empties the cache and leaves the state alone.
 
-The state holds the TSL seen last, comfort signature IDs and the user IDs generated for HBAs.
-Every call on an HBA uses one ID: the comfort ID, else the `.kon` file's `userId`, else the generated one. The TSL state is kept on
+The state holds the TSL seen last and one user ID per HBA. Every call on an HBA uses one ID:
+the one in its file, else the `.kon` file's `userId`, else a new one kept in the file.
+`comfort activate` writes a new ID to the file, and `comfort deactivate` removes the file.
+A file left from before a `userId` was added to the `.kon` file goes first until then, so
+run `comfort deactivate` once after adding it. The TSL state is kept on
 every run without any setup, except with `--at`, which neither reads nor writes it
 (a past instant may need an older list), so an older list stays rejected; it is not secret. A
 corrupt TSL state file is an error that names the file (`state_file_failed`); removing it
@@ -319,11 +321,12 @@ why first: try another network, and check any proxy and `-k`. Only if the kept l
 to be wrong, remove `tsl/ID.json` in the state directory; the check then restarts from the
 next verified TSL.
 
-A comfort ID lies unencrypted in a file of mode 0600 in a directory of mode 0700 (POSIX).
-It lets anyone with the same call context sign without a PIN while the session lasts, so
-a backup or copy of the state directory exposes it. `ti` refuses a comfort file, or the
-`comfort/` directory and the one for the Konnektor, that is a symbolic link or open to
-group or others, and says what to `chmod`. These checks stop at `comfort/`: they do not
+An HBA's user ID lies unencrypted in a file of mode 0600 in a directory of mode 0700 (POSIX).
+It lets anyone with the same call context use what its session has unlocked, in comfort
+signature to sign without a PIN, so a backup or copy of the state directory exposes it. `ti`
+refuses such a file, or the `hba-user/` directory and the one for the Konnektor, that is a
+symbolic link or open to group or others, and says what to `chmod`. These checks stop at
+`hba-user/`: they do not
 cover the state directory above it, and a `TI_STATE_DIR` shared with other users gives no
 such protection. `comfort deactivate` removes the file. No token and no other secret is
 written to disk.

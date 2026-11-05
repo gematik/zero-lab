@@ -60,9 +60,6 @@
           "type": "null"
         }
       ]
-    },
-    "user_id_stored": {
-      "type": "boolean"
     }
   },
   "required": [
@@ -71,8 +68,7 @@
     "comfort_signature",
     "max_signatures",
     "max_duration",
-    "session",
-    "user_id_stored"
+    "session"
   ],
   "additionalProperties": false,
   "$defs": {

@@ -47,10 +47,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   first verified list on. A corrupt TSL state file is refused with `state_file_failed`
   naming it, where it was ignored.
 - Comfort IDs lie unencrypted in private files (mode 0600 in a directory of mode 0700), no
-  longer sealed. Existing sealed IDs are not migrated: **activate comfort signature
-  again.** On POSIX a comfort file or directory that is a symbolic link or open to group
-  or others is refused. A comfort file of a version before the sealed store is not found
-  under a Konnektor name that is not a plain file name.
+  longer sealed, as `hba-user/KONNEKTOR/CARD`. Existing IDs, sealed or in `comfort/`, are not
+  migrated: **activate comfort signature again.** On POSIX such a file or directory that is a symbolic
+  link or open to group or others is refused.
 
 #### fixed
 - `pki tsl show`, `pki tsl export` and `pki trust export` use the list their load verified
@@ -62,8 +61,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `connector get status` colors a condition by its severity: Info is not red.
 - Every call on an HBA uses one user ID, so PIN commands, `verify certificate`, `export` and
   the like work while comfort signature is on, where they ended in 4018, and need no `userId`
-  in the `.kon` file: the comfort ID, else the `.kon` file's, else one generated and kept per
-  HBA under `hba-user/` of the profile's state. A 4018 says what to do.
+  in the `.kon` file: the one in the HBA's file under `hba-user/` of the profile's state, else
+  the `.kon` file's, else a new one kept there. `comfort activate` writes a new ID to that
+  file and `comfort deactivate` removes it. A 4018 says what to do.
+- `connector sign` asks the Konnektor whether a comfort session runs, so `comfort` is no
+  longer true for a session that has ended. `user_id_stored` is gone from `connector comfort`.
 - A rejected older TSL hints at what it means and how to recover, not at the network.
 - Proxy variables no longer reach the Konnektor, as `AGENTS.md` always said: only `-x`
   sets a proxy for it.

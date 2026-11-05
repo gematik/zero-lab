@@ -287,7 +287,21 @@ fn user_id_of(body: &str) -> Option<&str> {
     Some(&body[start..end])
 }
 
+/// `GetSignatureMode` for a user ID with no session on the card.
+fn mode_without_session() -> String {
+    envelope(&format!(
+        "<S:GetSignatureModeResponse xmlns:S=\"s\">{OK}<S:ComfortSignatureStatus>ENABLED</S:ComfortSignatureStatus>\
+         <S:ComfortSignatureMax>250</S:ComfortSignatureMax><S:ComfortSignatureTimer>PT24H</S:ComfortSignatureTimer>\
+         </S:GetSignatureModeResponse>"
+    ))
+}
+
 impl Behavior {
+    /// A call under another ID was refused by then, so this is the caller's session.
+    fn has_session(&self) -> bool {
+        self.raised_for.lock().unwrap().is_some()
+    }
+
     fn standard() -> Self {
         Behavior {
             hba_iccsn: Some("80276001011699910103".into()),
@@ -355,6 +369,9 @@ fn handle(stream: impl Read + Write, behavior: &Behavior) -> Option<()> {
         .push((action.clone(), body.clone().into_owned()));
     let (status, response) = match behavior.refusal(&action, &body) {
         Some(refused) => (500, refused),
+        None if action.contains("GetSignatureMode") && !behavior.has_session() => {
+            (200, mode_without_session())
+        }
         None => answer(&path, &action, &body, behavior),
     };
     let stream = reader.get_mut();
@@ -1012,15 +1029,9 @@ fn contains_uuid(text: &str) -> bool {
     })
 }
 
-/// Where the comfort ID of the HBA is kept: below the state directory, by Konnektor
+/// Where the one user ID of the HBA is kept: below the state directory, by Konnektor
 /// name and ICCSN.
-fn comfort_file(fake: &Fake) -> PathBuf {
-    fake.dir
-        .join("state/telematik/ti/comfort/praxis/80276001011699910103")
-}
-
-/// Where the generated ID of the HBA is kept.
-fn generated_id_file(fake: &Fake) -> PathBuf {
+fn id_file(fake: &Fake) -> PathBuf {
     fake.dir
         .join("state/telematik/ti/hba-user/praxis/80276001011699910103")
 }
@@ -1071,7 +1082,7 @@ impl Fake {
 fn tab_kon_514_every_call_on_the_hba_uses_its_comfort_id() {
     let fake = Fake::start("one-id");
     fake.json("connector comfort", &["comfort", "activate", "card-hba"]);
-    let comfort = std::fs::read_to_string(comfort_file(&fake)).unwrap();
+    let comfort = std::fs::read_to_string(id_file(&fake)).unwrap();
 
     fake.forget_calls();
     fake.use_the_hba();
@@ -1081,7 +1092,11 @@ fn tab_kon_514_every_call_on_the_hba_uses_its_comfort_id() {
         used.iter().all(|id| id.as_deref() == Some(comfort.trim())),
         "{used:?}"
     );
-    assert!(!generated_id_file(&fake).exists(), "no second ID is made");
+    let kept: Vec<_> = std::fs::read_dir(id_file(&fake).parent().unwrap())
+        .unwrap()
+        .collect();
+    assert_eq!(kept.len(), 1, "no second ID is made");
+    assert!(!fake.dir.join("state/telematik/ti/comfort").exists());
 }
 
 /// C16: an HBA session always has a user ID; without one in the .kon `ti` keeps its own,
@@ -1090,7 +1105,7 @@ fn tab_kon_514_every_call_on_the_hba_uses_its_comfort_id() {
 fn c16_without_any_id_the_hba_gets_one_of_its_own() {
     let fake = Fake::start("generated");
     fake.use_the_hba();
-    let kept = std::fs::read_to_string(generated_id_file(&fake)).unwrap();
+    let kept = std::fs::read_to_string(id_file(&fake)).unwrap();
     let used = fake.user_ids_on("card-hba");
     assert_ne!(used.len(), 0);
     assert!(
@@ -1101,7 +1116,7 @@ fn c16_without_any_id_the_hba_gets_one_of_its_own() {
     {
         use std::os::unix::fs::PermissionsExt as _;
         let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
-        let file = generated_id_file(&fake);
+        let file = id_file(&fake);
         assert_eq!(mode(&file), 0o600);
         assert_eq!(mode(file.parent().unwrap()), 0o700);
     }
@@ -1116,24 +1131,28 @@ fn c16_without_any_id_the_hba_gets_one_of_its_own() {
     assert!(used.iter().all(Option::is_none), "{used:?}");
 }
 
-/// A_20074: each activation has a new ID, not the generated one; after deactivating, the
-/// generated one is back.
+/// A_20074, A_21528: each activation has a new ID in place of the one before, and the end
+/// of a session leaves none of them to be used again.
 #[test]
-fn a_20074_activating_does_not_reuse_the_generated_id() {
+fn a_20074_every_activation_and_deactivation_ends_with_a_new_id() {
     let fake = Fake::start("activate-new");
+    let read = || std::fs::read_to_string(id_file(&fake)).unwrap();
     fake.json(
         "connector get certificates",
         &["get", "certificates", "card-hba"],
     );
-    let generated = std::fs::read_to_string(generated_id_file(&fake)).unwrap();
+    let generated = read();
 
     fake.json("connector comfort", &["comfort", "activate", "card-hba"]);
-    let first = std::fs::read_to_string(comfort_file(&fake)).unwrap();
-    assert_ne!(first.trim(), generated.trim());
+    let first = read();
+    assert_ne!(first, generated);
     fake.json("connector comfort", &["comfort", "deactivate", "card-hba"]);
+    assert!(!id_file(&fake).exists());
+
     fake.json("connector comfort", &["comfort", "activate", "card-hba"]);
-    let second = std::fs::read_to_string(comfort_file(&fake)).unwrap();
-    assert_ne!(first, second);
+    let second = read();
+    assert_ne!(second, first);
+    assert_ne!(second, generated);
     fake.json("connector comfort", &["comfort", "deactivate", "card-hba"]);
 
     fake.forget_calls();
@@ -1141,10 +1160,12 @@ fn a_20074_activating_does_not_reuse_the_generated_id() {
         "connector get certificates",
         &["get", "certificates", "card-hba"],
     );
+    let after = read();
     assert_eq!(
         fake.user_ids_on("card-hba")[0].as_deref(),
-        Some(generated.trim())
+        Some(after.trim())
     );
+    assert!(![&generated, &first, &second].contains(&&after), "{after}");
 }
 
 /// The .kon's userId is kept as the choice of whoever set it, and no ID is generated.
@@ -1161,16 +1182,26 @@ fn the_user_id_of_the_kon_is_used_without_a_comfort_id() {
         used.iter().all(|id| id.as_deref() == Some("U1")),
         "{used:?}"
     );
-    assert!(!generated_id_file(&fake).exists());
+    assert!(!id_file(&fake).exists());
 
     fake.json("connector comfort", &["comfort", "activate", "card-hba"]);
-    let comfort = std::fs::read_to_string(comfort_file(&fake)).unwrap();
+    let comfort = std::fs::read_to_string(id_file(&fake)).unwrap();
     fake.forget_calls();
     fake.use_the_hba();
     let used = fake.user_ids_on("card-hba");
     assert!(
         used.iter().all(|id| id.as_deref() == Some(comfort.trim())),
         "the comfort ID goes first: {used:?}"
+    );
+
+    fake.json("connector comfort", &["comfort", "deactivate", "card-hba"]);
+    assert!(!id_file(&fake).exists());
+    fake.forget_calls();
+    fake.use_the_hba();
+    let used = fake.user_ids_on("card-hba");
+    assert!(
+        used.iter().all(|id| id.as_deref() == Some("U1")),
+        "back to the .kon's: {used:?}"
     );
 }
 
@@ -1192,13 +1223,43 @@ fn a_4018_says_what_it_means() {
     assert!(stderr.contains("comfort deactivate"), "{stderr}");
 }
 
-/// Nothing was stored, and nothing is after deactivating, so the report must not say so.
+/// Deactivating also ends the use of an ID no comfort session ran under.
 #[test]
-fn deactivating_without_a_stored_id_says_none_is_stored() {
+fn deactivating_removes_the_id_of_the_card() {
     let fake = Fake::start("deactivate-none");
+    fake.json(
+        "connector get certificates",
+        &["get", "certificates", "card-hba"],
+    );
+    assert!(id_file(&fake).is_file());
     let (report, code) = fake.json("connector comfort", &["comfort", "deactivate", "card-hba"]);
     assert_eq!(code, Some(0));
-    assert_eq!(report["user_id_stored"], false);
+    assert!(report["comfort_signature"].is_null(), "{report}");
+    assert!(!id_file(&fake).exists());
+}
+
+/// The file holds an ID with or without a session, so only the Konnektor can say a signature
+/// needed no PIN (GetSignatureMode, SessionInfo).
+#[test]
+fn only_the_konnektors_session_makes_a_signature_comfort() {
+    let fake = Fake::start("sign-truth");
+    assert_eq!(
+        sign_text(&fake, "a.txt")["comfort"],
+        false,
+        "a generated ID"
+    );
+    assert!(id_file(&fake).is_file());
+
+    assert_eq!(activate(&fake).status.code(), Some(0));
+    assert_eq!(sign_text(&fake, "b.txt")["comfort"], true);
+
+    *fake.raised_for.lock().unwrap() = None;
+    assert!(id_file(&fake).is_file());
+    assert_eq!(
+        sign_text(&fake, "c.txt")["comfort"],
+        false,
+        "the session ended"
+    );
 }
 
 /// `get cards` only knows the connection broke; `config test` names the step.
@@ -1232,9 +1293,9 @@ fn comfort_signature_keeps_the_user_id_in_a_private_file() {
     let fake = Fake::start("comfort");
 
     let (report, _) = fake.json("connector comfort", &["comfort", "activate", "card-hba"]);
-    assert_eq!(report["user_id_stored"], true);
     assert_eq!(report["session"]["signatures_left"], 249);
-    assert!(comfort_file(&fake).is_file());
+    assert!(report.get("user_id_stored").is_none(), "{report}");
+    assert!(id_file(&fake).is_file());
 
     let (signed, _) = {
         let text = fake.dir.join("a.txt");
@@ -1260,13 +1321,8 @@ fn comfort_signature_keeps_the_user_id_in_a_private_file() {
     assert!(!contains_uuid(&stderr), "-vv masks every user ID: {stderr}");
 
     let (report, _) = fake.json("connector comfort", &["comfort", "deactivate", "card-hba"]);
-    assert_eq!(
-        (
-            report["comfort_signature"].is_null(),
-            report["user_id_stored"].as_bool()
-        ),
-        (true, Some(false))
-    );
+    assert!(report["comfort_signature"].is_null(), "{report}");
+    assert!(!id_file(&fake).exists());
     let (signed, _) = {
         let text = fake.dir.join("b.txt");
         std::fs::write(&text, "x").unwrap();
@@ -1275,7 +1331,7 @@ fn comfort_signature_keeps_the_user_id_in_a_private_file() {
             &["sign", path_str(&text), "--card", "card-hba"],
         )
     };
-    assert_eq!(signed["comfort"], false, "the ID is gone");
+    assert_eq!(signed["comfort"], false, "the session is gone");
 }
 
 #[cfg(unix)]
@@ -1337,7 +1393,7 @@ fn stderr_of(out: &Output) -> String {
 fn a_comfort_id_is_private_on_disk() {
     let fake = Fake::start("comfort-private");
     assert_eq!(activate(&fake).status.code(), Some(0));
-    let file = comfort_file(&fake);
+    let file = id_file(&fake);
     assert_eq!(mode(&file), 0o600);
     assert_eq!(mode(file.parent().unwrap()), 0o700);
     assert_eq!(mode(file.parent().unwrap().parent().unwrap()), 0o700);
@@ -1350,7 +1406,7 @@ fn a_comfort_id_is_private_on_disk() {
 fn a_group_readable_comfort_file_is_refused() {
     let fake = Fake::start("comfort-wide-file");
     assert_eq!(activate(&fake).status.code(), Some(0));
-    set_mode(&comfort_file(&fake), 0o640);
+    set_mode(&id_file(&fake), 0o640);
     std::fs::write(fake.dir.join("a.txt"), "x").unwrap();
     for out in [
         comfort_status(&fake),
@@ -1375,7 +1431,7 @@ fn a_group_readable_comfort_file_is_refused() {
 fn a_symlinked_comfort_file_is_refused() {
     let fake = Fake::start("comfort-symlink");
     assert_eq!(activate(&fake).status.code(), Some(0));
-    let file = comfort_file(&fake);
+    let file = id_file(&fake);
     let elsewhere = fake.dir.join("elsewhere");
     std::fs::rename(&file, &elsewhere).unwrap();
     std::os::unix::fs::symlink(&elsewhere, &file).unwrap();
@@ -1431,10 +1487,10 @@ fn assert_comfort_refused(fake: &Fake, id: Option<&str>) {
 fn malformed_comfort_content_is_refused_before_the_card_is_asked() {
     let fake = Fake::start("comfort-malformed");
     assert_eq!(activate(&fake).status.code(), Some(0));
-    std::fs::write(comfort_file(&fake), "not a user id").unwrap();
+    std::fs::write(id_file(&fake), "not a user id").unwrap();
     assert_comfort_refused(&fake, None);
     assert_eq!(
-        std::fs::read_to_string(comfort_file(&fake)).unwrap(),
+        std::fs::read_to_string(id_file(&fake)).unwrap(),
         "not a user id",
         "left as it is"
     );
@@ -1447,7 +1503,7 @@ fn malformed_comfort_content_is_refused_before_the_card_is_asked() {
 fn an_id_behind_a_symlinked_comfort_directory_is_never_sent() {
     let fake = Fake::start("comfort-linked");
     assert_eq!(activate(&fake).status.code(), Some(0));
-    let file = comfort_file(&fake);
+    let file = id_file(&fake);
     let id = std::fs::read_to_string(&file).unwrap();
     let konnektor = file.parent().unwrap().to_owned();
     let root = konnektor.parent().unwrap().to_owned();
@@ -1478,7 +1534,7 @@ fn an_id_behind_a_symlinked_comfort_directory_is_never_sent() {
 fn a_comfort_directory_open_to_others_is_refused() {
     let fake = Fake::start("comfort-wide-dir");
     assert_eq!(activate(&fake).status.code(), Some(0));
-    let konnektor = comfort_file(&fake).parent().unwrap().to_owned();
+    let konnektor = id_file(&fake).parent().unwrap().to_owned();
     let root = konnektor.parent().unwrap().to_owned();
     for dir in [&konnektor, &root] {
         set_mode(dir, 0o755);
@@ -1493,7 +1549,7 @@ fn a_comfort_directory_open_to_others_is_refused() {
             assert!(stderr.contains(&dir.display().to_string()), "{stderr}");
         }
         assert_eq!(mode(dir), 0o755, "never changed silently");
-        assert!(comfort_file(&fake).is_file(), "the ID survives");
+        assert!(id_file(&fake).is_file(), "the ID survives");
         assert_eq!(fake.activations.load(Ordering::SeqCst), activations);
         assert_eq!(fake.deactivations.load(Ordering::SeqCst), deactivations);
         set_mode(dir, 0o700);
@@ -1505,7 +1561,7 @@ fn a_comfort_directory_open_to_others_is_refused() {
 #[test]
 fn a_comfort_directory_that_is_a_symlink_is_refused() {
     let fake = Fake::start("comfort-dir-symlink");
-    let root = fake.dir.join("state/telematik/ti/comfort");
+    let root = fake.dir.join("state/telematik/ti/hba-user");
     std::fs::create_dir_all(root.parent().unwrap()).unwrap();
     let elsewhere = fake.dir.join("elsewhere");
     std::fs::create_dir_all(&elsewhere).unwrap();
@@ -1544,13 +1600,13 @@ fn files_below(dir: &Path, found: &mut Vec<PathBuf>) {
 fn a_hostile_card_id_stays_in_the_comfort_directory() {
     let fake = Fake::start_with_hba_iccsn("comfort-hostile", Some("../../x"));
     assert_eq!(activate(&fake).status.code(), Some(0));
-    let comfort = fake.dir.join("state/telematik/ti/comfort");
+    let comfort = fake.dir.join("state/telematik/ti/hba-user");
     let mut created = Vec::new();
     files_below(&fake.dir.join("state"), &mut created);
     for path in &created {
         let inside =
             path.starts_with(&comfort) || comfort.starts_with(path) || path.ends_with("telematik");
-        assert!(inside, "{} is outside comfort/", path.display());
+        assert!(inside, "{} is outside hba-user/", path.display());
     }
     assert!(!fake.dir.join("state/telematik/ti/x").exists());
     assert!(!fake.dir.join("state/x").exists());
@@ -1570,7 +1626,7 @@ fn a_hostile_card_id_stays_in_the_comfort_directory() {
 fn a_card_without_iccsn_is_kept_by_its_handle() {
     let fake = Fake::start_with_hba_iccsn("comfort-no-iccsn", None);
     assert_eq!(activate(&fake).status.code(), Some(0));
-    let file = fake.dir.join("state/telematik/ti/comfort/praxis/card-hba");
+    let file = fake.dir.join("state/telematik/ti/hba-user/praxis/card-hba");
     assert!(file.is_file());
     assert_eq!(sign_text(&fake, "a.txt")["comfort"], true);
 }
@@ -1580,10 +1636,10 @@ fn activate_fails_before_the_card_is_asked_when_state_cannot_be_written() {
     let fake = Fake::start("comfort-unwritable");
     let state = fake.dir.join("state/telematik/ti");
     std::fs::create_dir_all(&state).unwrap();
-    std::fs::write(state.join("comfort"), "in the way").unwrap();
+    std::fs::write(state.join("hba-user"), "in the way").unwrap();
     let out = activate(&fake);
     assert_eq!(out.status.code(), Some(5), "{}", stderr_of(&out));
-    assert!(stderr_of(&out).contains("comfort"), "{}", stderr_of(&out));
+    assert!(stderr_of(&out).contains("hba-user"), "{}", stderr_of(&out));
     assert_eq!(
         fake.activations.load(Ordering::SeqCst),
         0,
@@ -1613,9 +1669,9 @@ fn profiles_keep_separate_comfort_ids() {
         assert_eq!(out.status.code(), Some(0), "{}", stderr_of(&out));
         serde_json::from_slice::<Value>(&out.stdout).unwrap()
     };
-    assert_eq!(in_profile("home", "status")["user_id_stored"], false);
-    assert_eq!(in_profile("work", "activate")["user_id_stored"], true);
-    assert_eq!(in_profile("work", "status")["user_id_stored"], true);
+    assert!(in_profile("home", "status")["session"].is_null());
+    assert!(!in_profile("work", "activate")["session"].is_null());
+    assert!(!in_profile("work", "status")["session"].is_null());
     // GetSignatureMode checks access like any call (TUC_KON_000): another profile's ID is
     // another user's.
     let refused = run("home", "status");
@@ -1627,17 +1683,24 @@ fn profiles_keep_separate_comfort_ids() {
     );
     assert!(
         fake.dir
-            .join("state/telematik/ti/profiles/work/comfort/praxis/80276001011699910103")
+            .join("state/telematik/ti/profiles/work/hba-user/praxis/80276001011699910103")
             .is_file()
     );
-    assert!(!comfort_file(&fake).exists());
+    let id_of = |profile: &str| {
+        std::fs::read_to_string(fake.dir.join(format!(
+            "state/telematik/ti/profiles/{profile}/hba-user/praxis/80276001011699910103"
+        )))
+        .unwrap()
+    };
+    assert_ne!(id_of("home"), id_of("work"));
+    assert!(!id_file(&fake).exists());
 }
 
 #[cfg(unix)]
 #[test]
-fn a_comfort_id_file_from_an_earlier_version_is_used() {
+fn a_kept_id_file_is_used_and_deactivating_removes_it() {
     let fake = Fake::start("comfort-legacy");
-    let file = comfort_file(&fake);
+    let file = id_file(&fake);
     {
         use std::os::unix::fs::DirBuilderExt as _;
         std::fs::DirBuilder::new()
@@ -1648,9 +1711,10 @@ fn a_comfort_id_file_from_an_earlier_version_is_used() {
     }
     std::fs::write(&file, "0b9d1d7c-6b1b-4c52-9d0a-0e2b8f3f6a11\n").unwrap();
     set_mode(&file, 0o600);
+    *fake.raised_for.lock().unwrap() = Some("0b9d1d7c-6b1b-4c52-9d0a-0e2b8f3f6a11".into());
     assert_eq!(sign_text(&fake, "a.txt")["comfort"], true);
     let (report, _) = fake.json("connector comfort", &["comfort", "deactivate", "card-hba"]);
-    assert_eq!(report["user_id_stored"], false);
+    assert!(report["comfort_signature"].is_null(), "{report}");
     assert!(!file.exists());
 }
 
