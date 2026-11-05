@@ -29,8 +29,8 @@ import (
 	"testing"
 )
 
-// Short messages are refused, never sliced past their end.
-func TestATooShortMessageIsAnError(t *testing.T) {
+// A_24633: a response shorter than 72 bytes is refused, never sliced past its end.
+func TestA_24633_ATooShortMessageIsAnError(t *testing.T) {
 	keyID := bytes.Repeat([]byte{7}, 32)
 	channel := &Channel{Env: EnvNonPU, keyID: keyID, k2S2CAppData: make([]byte, 32)}
 	header := append([]byte{Version, byte(EnvNonPU), HeaderResponse}, make([]byte, 8)...)
@@ -85,8 +85,8 @@ func TestADamagedMessage2IsAnErrorNotAnExit(t *testing.T) {
 	}
 }
 
-// The channel keeps the environment it was opened for, so its messages carry that byte.
-func TestAChannelCarriesTheEnvironmentItWasOpenedFor(t *testing.T) {
+// A_24628-01: the channel keeps the environment it was opened for, so its messages carry that PU/nonPU byte.
+func TestA_24628_AChannelCarriesTheEnvironmentItWasOpenedFor(t *testing.T) {
 	server, err := NewServer()
 	if err != nil {
 		t.Fatal(err)

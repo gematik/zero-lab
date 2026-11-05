@@ -97,7 +97,7 @@ func TestConcurrentCallersOpenOneSessionPerProvider(t *testing.T) {
 	}
 }
 
-func TestOnlyAKnownProviderIsReached(t *testing.T) {
+func TestServerRule2_OnlyAKnownProviderIsReached(t *testing.T) {
 	// A nil session manager: reaching it would panic, so a refusal comes before any login.
 	p := &Proxy{}
 	for _, number := range []string{"99", "0", "-1", "4", "x"} {
@@ -117,7 +117,8 @@ func TestOnlyAKnownProviderIsReached(t *testing.T) {
 	}
 }
 
-func TestOnlyAProductionChannelCarriesTheProductionByte(t *testing.T) {
+// A_24628-01: the PU/nonPU byte is 1 only for a ciphertext made in the production environment.
+func TestA_24628_OnlyAProductionChannelCarriesTheProductionByte(t *testing.T) {
 	for env, want := range map[Env]vau.Env{EnvProd: vau.EnvPU, EnvRef: vau.EnvNonPU, EnvTest: vau.EnvNonPU, EnvDev: vau.EnvNonPU} {
 		if got := vauEnv(env); got != want {
 			t.Errorf("%s: %d, want %d", env, got, want)
@@ -125,7 +126,8 @@ func TestOnlyAProductionChannelCarriesTheProductionByte(t *testing.T) {
 	}
 }
 
-func TestTheRequestPicksOnlyThePathAtTheProvider(t *testing.T) {
+// Server rule 2, no SSRF: whatever path a request names, the host stays the provider's.
+func TestServerRule2_TheRequestPicksOnlyThePathAtTheProvider(t *testing.T) {
 	const base = "https://epa-as-1.dev.epa4all.de"
 	for _, path := range []string{"x", "a/b", "../../x", "//evil.example/x", "@evil.example", "%2F%2Fevil.example", "http://evil.example/"} {
 		got, err := providerURL(base, path)
