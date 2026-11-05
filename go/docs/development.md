@@ -43,7 +43,7 @@ $EDITOR brainpool/parser.go
 # Build / test / run — the change is already in effect via go.work
 go build ./...
 (cd brainpool && go test ./...)
-go run ./epa/cmd/zero-epa version
+go run ./pdp/cmd/zero-pdp version
 
 # Build a stamped binary locally (version from the module's git tag)
 go build -o dist/ ./epa/cmd/zero-epa ./pdp/cmd/zero-pdp   # commands into ./dist/
@@ -160,12 +160,12 @@ tag. Unchanged modules keep their existing tag.
 the module build info:
 
 ```console
-go install github.com/gematik/zero-lab/go/epa/cmd/zero-epa@v0.20.3
-zero-epa version  # -> "0.20.3"
+go install github.com/gematik/zero-lab/go/pdp/cmd/zero-pdp@v0.22.2
+zero-pdp version  # -> "Zero Policy Decision Point v0.22.2"
 ```
 
-The `@` takes the bare semver (`v0.20.3`); Go maps the module's `go/epa` subdirectory to the
-`go/epa/v0.20.3` tag automatically.
+The `@` takes the bare semver (`v0.22.2`); Go maps the module's `go/pdp` subdirectory to the
+`go/pdp/v0.22.2` tag automatically.
 
 If `proxy.golang.org` returns "unknown revision"/404 right after tagging (it negatively
 caches a version that didn't exist yet), fetch directly:
